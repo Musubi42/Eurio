@@ -1,0 +1,12 @@
+{
+  "mode": "arcface",
+  "classes": [
+    "111",
+    "135",
+    "159",
+    "226447",
+    "87"
+  ],
+  "num_classes": 5,
+  "embedding_dim": 256
+}

@@ -1,0 +1,40 @@
+# Secrets
+.env
+local.properties
+
+# Nix
+result
+.direnv/
+
+# IDE
+.idea/
+
+# OS
+.DS_Store
+
+# Gradle
+.gradle/
+
+# ML artifacts
+ml/datasets/
+ml/__pycache__/
+ml/*.pth
+ml/*.tflite
+ml/*.npy
+ml/checkpoints/
+ml/output/
+ml/yolov8n.pt
+
+# App test/temp models
+app/src/main/assets/models/test_model.tflite
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Kotlin build errors
+.kotlin/
+
+# Screenshots at root
+Screenshot_*.png

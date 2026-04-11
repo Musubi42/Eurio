@@ -1,0 +1,163 @@
+version: "3"
+
+vars:
+  VENV: "{{.ROOT_DIR}}/.venv/bin"
+  DATASET: "{{.ROOT_DIR}}/datasets/eurio-poc"
+  CHECKPOINTS: "{{.ROOT_DIR}}/checkpoints"
+  OUTPUT: "{{.ROOT_DIR}}/output"
+  ASSETS: "{{.ROOT_DIR}}/../app/src/main/assets"
+
+tasks:
+  # ---------- Full pipeline ----------
+  default:
+    desc: Run the full ML pipeline (prepare → train → export → deploy)
+    cmds:
+      - task: prepare
+      - task: train
+      - task: evaluate
+      - task: visualize
+      - task: export
+      - task: validate
+      - task: embeddings
+      - task: deploy
+      - task: seed
+
+  # ---------- Individual steps ----------
+  prepare:
+    desc: Resize images and split into train/val/test
+    cmds:
+      - "{{.VENV}}/python prepare_dataset.py"
+    sources:
+      - datasets/*/
+    generates:
+      - datasets/eurio-poc/train/*/
+      - datasets/eurio-poc/val/*/
+      - datasets/eurio-poc/test/*/
+
+  train:
+    desc: "Train the coin model (default: classification mode)"
+    deps: [prepare]
+    cmds:
+      - >-
+        {{.VENV}}/python train_embedder.py
+        --mode classify
+        --dataset {{.DATASET}}/train
+        --val-dataset {{.DATASET}}/val
+    generates:
+      - checkpoints/best_model.pth
+      - checkpoints/training_log.json
+
+  train-arcface:
+    desc: "Train ArcFace embedder (metric learning)"
+    deps: [prepare]
+    cmds:
+      - >-
+        {{.VENV}}/python train_embedder.py
+        --mode arcface
+        --dataset {{.DATASET}}/train
+        --val-dataset {{.DATASET}}/val
+        --epochs 40
+        --batch-size 64
+        --m-per-class 4
+    generates:
+      - checkpoints/best_model.pth
+      - checkpoints/training_log.json
+
+  augment:
+    desc: "Generate augmented images for training coins"
+    cmds:
+      - "{{.VENV}}/python augment_synthetic.py --coin-ids 135 111 159 87 226447 --target-per-class 50"
+
+  evaluate:
+    desc: Evaluate Recall@1/3 on the test set
+    deps: [train]
+    cmds:
+      - "{{.VENV}}/python evaluate.py"
+
+  visualize:
+    desc: Generate t-SNE plot and training curves
+    deps: [train]
+    cmds:
+      - "{{.VENV}}/python visualize.py"
+    generates:
+      - output/tsne_plot.png
+      - output/training_curves.png
+
+  export:
+    desc: Export PyTorch model to TFLite
+    deps: [train]
+    cmds:
+      - "{{.VENV}}/python export_tflite.py"
+    generates:
+      - output/eurio_embedder_v1.tflite
+
+  validate:
+    desc: Verify TFLite output matches PyTorch (cosine sim > 0.99)
+    deps: [export]
+    cmds:
+      - "{{.VENV}}/python validate_export.py"
+
+  embeddings:
+    desc: Compute reference centroid embeddings per coin class
+    deps: [train]
+    cmds:
+      - "{{.VENV}}/python compute_embeddings.py"
+    generates:
+      - output/embeddings_v1.json
+      - output/coin_embeddings.json
+
+  deploy:
+    desc: Copy TFLite model and metadata into Android assets
+    cmds:
+      - mkdir -p {{.ASSETS}}/models {{.ASSETS}}/data
+      - cp {{.OUTPUT}}/eurio_embedder_v1.tflite {{.ASSETS}}/models/
+      - cp {{.OUTPUT}}/model_meta.json {{.ASSETS}}/data/
+      - "[ -f {{.OUTPUT}}/coin_embeddings.json ] && cp {{.OUTPUT}}/coin_embeddings.json {{.ASSETS}}/data/ || true"
+
+  seed:
+    desc: Seed Supabase with coin catalog and embeddings (needs SERVICE_ROLE_KEY)
+    deps: [embeddings]
+    cmds:
+      - "{{.VENV}}/python seed_supabase.py"
+
+  # ---------- Utilities ----------
+  clean:
+    desc: Remove generated artifacts (checkpoints, output, split dataset)
+    cmds:
+      - rm -rf {{.CHECKPOINTS}} {{.OUTPUT}} {{.DATASET}}
+
+  import-numista:
+    desc: "Import all 2 euro coins from Numista API (metadata + images)"
+    cmds:
+      - "{{.VENV}}/python import_numista.py"
+
+  import-numista-dry:
+    desc: "Preview Numista import without downloading"
+    cmds:
+      - "{{.VENV}}/python import_numista.py --dry-run"
+
+  # ---------- Detection (YOLOv8-nano) ----------
+  detect-setup:
+    desc: "Download and prepare coin detection dataset"
+    cmds:
+      - "{{.VENV}}/python setup_detection_dataset.py"
+
+  detect-train:
+    desc: "Train YOLOv8-nano coin detector"
+    cmds:
+      - "{{.VENV}}/python train_detector.py --export"
+
+  detect-validate:
+    desc: "Validate trained detector"
+    cmds:
+      - "{{.VENV}}/python train_detector.py --validate"
+
+  detect-export:
+    desc: "Export detector to TFLite only"
+    cmds:
+      - "{{.VENV}}/python train_detector.py --export-only"
+
+  migrate-dirs:
+    desc: "Rename dataset dirs from slug names to Numista IDs"
+    cmds:
+      - "{{.VENV}}/python rename_to_numista_ids.py"
