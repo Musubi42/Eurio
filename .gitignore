@@ -27,6 +27,7 @@ ml/yolov8n.pt
 
 # App test/temp models
 app/src/main/assets/models/test_model.tflite
+ml/debug_captures/eurio_debug
 
 # Python
 __pycache__/
