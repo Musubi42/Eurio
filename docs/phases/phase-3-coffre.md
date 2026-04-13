@@ -1,6 +1,7 @@
 # Phase 3 — Le Coffre & Valorisation
 
 > Objectif : l'utilisateur peut ajouter des pièces scannées à sa collection, voir la valeur de son portefeuille, consulter les prix de marché et l'historique.
+> **Prérequis** : Phase 2C (référentiel canonique) terminée. Cette phase s'appuie sur `eurio_id` comme identifiant canonique des pièces, et sur les `observations.ebay_market` du référentiel pour les prix. Voir [`docs/research/data-referential-architecture.md`](../research/data-referential-architecture.md) et [`docs/phases/phase-2c-referential.md`](./phase-2c-referential.md).
 
 ---
 
@@ -12,7 +13,8 @@
 @Entity(tableName = "user_coins")
 data class UserCoinEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val numistaId: Int,
+    val eurioId: String,        // Canonical Eurio ID (ex: "hr-2025-2eur-amphitheatre-pula")
+    val numistaId: Int?,        // Legacy cross-ref, nullable (gardé pour transition)
     val name: String,
     val country: String,
     val year: Int?,
@@ -27,11 +29,12 @@ data class UserCoinEntity(
 
 @Entity(tableName = "cached_prices")
 data class CachedPriceEntity(
-    @PrimaryKey val numistaId: Int,
+    @PrimaryKey val eurioId: String,   // Clé sur eurio_id, plus sur numista_id
     val priceMedian: Double?,
     val priceP25: Double?,
     val priceP75: Double?,
-    val source: String,
+    val priceIssue: Double?,           // Prix d'émission Monnaie de Paris si connu
+    val source: String,                // 'ebay_market', 'mdp_issue', 'lmdlp_current'
     val updatedAt: Long
 )
 ```

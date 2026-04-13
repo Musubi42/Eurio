@@ -16,7 +16,15 @@ result
 .gradle/
 
 # ML artifacts
-ml/datasets/
+# Heavy ML training datasets (images, embeddings, etc.) — keep referential and snapshots
+ml/datasets/*
+!ml/datasets/eurio_referential.json
+!ml/datasets/country_mapping.json
+!ml/datasets/sources/
+ml/datasets/sources/*
+!ml/datasets/sources/*.html
+!ml/datasets/sources/*.json
+!ml/datasets/sources/*.jsonl
 ml/__pycache__/
 ml/*.pth
 ml/*.tflite

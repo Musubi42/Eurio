@@ -1,6 +1,7 @@
 # Phase 2B — ArcFace + Catalogue complet
 
 > Objectif : passer de 5 classes en classification à 500+ types de pièces euro avec metric learning. Ajouter une nouvelle pièce = ajouter 2-3 photos de référence, sans ré-entraîner le modèle.
+> **Note double usage** : le modèle d'embedding entraîné dans cette phase sert à **deux usages distincts** — (1) identifier les pièces scannées par l'utilisateur (feature scan), (2) le Stage 4 de matching visuel dans le référentiel de données Eurio (voir [`phase-2c-referential.md`](./phase-2c-referential.md) §2C.6). L'activation du Stage 4 attend la complétion de cette phase.
 
 ---
 

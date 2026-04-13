@@ -165,7 +165,7 @@ Chaque pièce identifiée possède une fiche riche :
 
 #### Valorisation marché
 - **Valeur faciale** : toujours rappelée
-- **Valeur de marché estimée** : fourchette P25/P75 basée sur les ventes récentes (source : eBay completed listings)
+- **Valeur de marché estimée** : fourchette P25/P75 pondérée par la vélocité de vente (source : eBay Browse API — voir `docs/research/ebay-api-strategy.md`)
 - **Delta** : "+X% par rapport à la valeur faciale"
 - **Dernière mise à jour des données**
 
@@ -240,14 +240,17 @@ Un *set* est une collection cohérente de pièces. Compléter un set débloque u
 ### 5.5 Historique de prix & projection
 
 #### Données
-- Prix de marché mis à jour hebdomadairement via eBay completed listings (API Finding)
+- Prix de marché mis à jour hebdomadairement via **eBay Browse API** (Supabase Edge Function cron)
+- Pondération par vélocité de vente : `sales_per_year = estimatedSoldQuantity / âge_du_listing`
+- Filtrage anti-bruit : rejet des titres "lot/coffret/BU/proof", rejet hors P5/P95, tri par seller trust
 - Stockage en time series par identifiant Numista
 - Calcul de percentiles (P10, P25, P50, P75, P90) pour chaque pièce
+- **Note** : la Finding API (utilisée initialement dans le PRD) a été décommissionnée le 2025-02-05. Voir `docs/research/ebay-api-strategy.md` pour la stratégie de remplacement.
 
 #### Affichage
 - Graphe interactif sur la fiche pièce
 - Indicateur de tendance : ↑ hausse / → stable / ↓ baisse sur 3 mois
-- Pour les pièces avec peu de transactions : affichage d'une valeur de cote (source Numista) avec mention de la source
+- Pour les pièces avec peu de transactions : fallback source à confirmer (exploration en cours — Numista API n'expose pas de prix, scraping éventuel)
 
 #### Projection
 - Modèle v1 : régression linéaire sur l'historique disponible (minimum 6 points de données)
@@ -372,24 +375,37 @@ Flux vidéo caméra
 
 ### Backend
 
-Architecture légère, coûts quasi nuls au démarrage :
+Architecture légère, coûts quasi nuls au démarrage, basée sur un **référentiel canonique Eurio** indépendant de toute source externe (voir `docs/research/data-referential-architecture.md` et `docs/phases/phase-2c-referential.md`) :
 
 ```
 Supabase (PostgreSQL + Auth + Storage)
-├── Table coins          : catalogue Numista + métadonnées
-├── Table price_history  : time series des prix eBay
-├── Table collections    : coffres utilisateurs
-├── Table achievements   : état gamification par user
-└── Storage              : images de référence des pièces
+├── Table coins                 : référentiel canonique Eurio (eurio_id),
+│                                 bootstrapé depuis JOUE/BCE, enrichi par scrapers
+├── Table source_observations   : time-series des prix par source (eBay, lmdlp,
+│                                 Monnaie de Paris, Numista, ...)
+├── Table matching_decisions    : audit trail de toutes les résolutions d'entité
+├── Table review_queue          : cas non-résolus en attente humain
+├── Table collections           : coffres utilisateurs (référence eurio_id)
+├── Table achievements          : état gamification par user
+└── Storage                     : images de référence des pièces
 
-Fastify (API légère)
-├── /enrich/:numista_id  : retourne fiche complète + prix
-├── /collection          : CRUD coffre utilisateur
-└── /prices/:id/history  : historique de prix
+Scrapers (exécutés via ml/scrape_*.py, snapshot immuables en JSON)
+├── ml/bootstrap_referential.py : bootstrap JOUE/BCE (one-shot)
+├── ml/scrape_lmdlp.py          : lamonnaiedelapiece.com (WooCommerce Store API)
+├── ml/scrape_monnaiedeparis.py : prix d'émission officiel (JSON-LD scraping)
+├── ml/scrape_ebay.py           : prix marché secondaire pondéré par vélocité
+└── ml/sync_to_supabase.py      : pousse le référentiel JSON vers Supabase
 
 Cron job (hebdomadaire)
-└── Pull eBay Finding API → price_history
+└── Re-run scrapers → merge dans référentiel → sync Supabase
 ```
+
+**Principes clés du référentiel** :
+- Bootstrap depuis la liste canonique BCE/JOUE (~500 entrées 2€ commémoratives + pièces de circulation)
+- Aucun scraper ne crée d'entrée : ils enrichissent `cross_refs` et `observations`
+- Pipeline de matching multi-stage (cross-ref → structural → fuzzy → visual → human review)
+- Stage 4 visuel réutilise le modèle ArcFace Phase 2B
+- Snapshots sources immuables + référentiel mergé reconstructible à tout moment
 
 ### Coût d'infra estimé au démarrage
 
@@ -397,7 +413,7 @@ Cron job (hebdomadaire)
 |---|---|
 | Supabase free tier | 0€ (jusqu'à 50k rows) |
 | Fastify (Railway / Fly.io) | ~5€/mois |
-| eBay Finding API | Gratuit (quotas généreux) |
+| eBay Browse API | Gratuit (5000 req/jour, extensible à 1,5M via Application Growth Check) |
 | Numista API | Gratuit (usage raisonnable) |
 | Scan on-device | 0€ |
 | **Total** | **~5€/mois** |
@@ -415,7 +431,7 @@ Cron job (hebdomadaire)
 | Matching v2 | **TFLite** via react-native-fast-tflite | Inférence on-device, zéro coût de requête |
 | Backend | **Fastify** + **PostgreSQL** (Supabase) | Stack connue, déploiement rapide |
 | Auth | **Supabase Auth** | Intégré, gratuit |
-| Prix historiques | **eBay Finding API** + cron | Prix de marché réels |
+| Prix historiques | **eBay Browse API** + cron pondéré | Estimation marché (voir `docs/research/ebay-api-strategy.md`) |
 | Catalogue | **Numista API** | Référence du domaine |
 
 ### Environnement de développement
@@ -466,20 +482,24 @@ adb install build/app-debug.apk
 **Numista** (numista.com)
 - API REST documentée, accès gratuit pour usage raisonnable
 - Catalogue de référence : toutes les pièces euro de circulation + commémoratives
-- Données disponibles : nom, pays, année, tirage, image recto/verso, cote communautaire
+- Données disponibles : nom, pays, année, tirage, images recto/verso, composition, catalogues de référence (KM, Schön, etc.)
+- **Pas de données de prix via l'API v3** (vérifié empiriquement — aucun champ price/market/cote, endpoints `/prices` `/ratings` `/statistics` → 404)
 - Identifiant unique par pièce (utilisé comme clé primaire dans Eurio)
 
 ### Prix de marché
 
-**eBay Finding API — completed listings**
-- Prix de transactions réelles, datées
-- Filtrage par keyword (ex: "2 euro commemorative germany 2006")
-- Gratuit, quotas généreux (5000 req/jour)
-- Permet de construire un historique propre en time series
+**eBay Browse API** (source primaire)
+- Recherche de listings actifs + détection des multi-variation groups
+- Filtrage côté serveur via `aspect_filter` (année, pays)
+- Enrichissement top-N via `getItem` pour obtenir `estimatedSoldQuantity` + `itemOriginDate`
+- Pondération par vélocité de vente pour compenser l'absence de "completed listings" depuis la décommission de la Finding API (2025-02-05)
+- Budget : ~13 appels par pièce, 5000/jour par défaut
+- **Détails complets : `docs/research/ebay-api-strategy.md`**
 
-**Fallback : Numista cote communautaire**
-- Utilisée quand eBay a trop peu de transactions pour une pièce donnée
-- Moins précise mais couvre toutes les pièces du catalogue
+**Fallback pour pièces à marché étroit** (à explorer)
+- Numista cote : **non disponible via API**, scraping web à évaluer
+- Sources alternatives : blogs numismatiques, catalogues de référence imprimés
+- À confirmer dans une phase d'exploration dédiée
 
 **Enrichissement futur :**
 - Catawiki (ventes enchères, pièces rares)
@@ -532,7 +552,7 @@ adb install build/app-debug.apk
 - [ ] Module de scan : preprocessing OpenCV + détection cercle
 - [ ] Identification : ORB matching vs index Numista (pièces 2€ commémoratives en priorité)
 - [ ] Intégration Numista API (catalogue)
-- [ ] Intégration eBay Finding API (prix)
+- [ ] Intégration eBay Browse API (prix pondérés par vélocité de vente)
 - [ ] UI Coffre (collection personnelle)
 - [ ] Fiche pièce avec graphe de prix
 - [ ] Achievements de base (5 sets)
