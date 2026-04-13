@@ -85,6 +85,8 @@ Page-passerelle. Liens vers des sous-pages annuelles :
 
 **BCE** : `https://www.ecb.europa.eu/euro/coins/2euro/html/index.en.html` (et équivalents par dénomination). Couvre 28 entités (21 zone euro + Andorre, Monaco, SM, Vatican) mais **un seul design représentatif par pays** — pas tous les millésimes. **Peu utile pour un référentiel année par année.**
 
+**⚠ Cas spécial Allemagne** : la page anglaise `en.wikipedia.org/wiki/German_euro_coins` n'a des Face Value tables que pour 2002-2016. Pour la couverture complète 2002-2024 + détail par mint A/D/F/G/J, utiliser **`de.wikipedia.org/wiki/Auflagen_der_deutschen_Euromünzen`** via le bootstrap dédié `ml/bootstrap_circulation_de.py` (Phase 2C.1c). Format : une table par dénomination, valeurs en notation `800.000.000` (point = thousand sep).
+
 **Wikipedia** : **une page par pays**, pattern `https://en.wikipedia.org/wiki/{Country}_euro_coins`. Exemples :
 - `Bulgarian_euro_coins`
 - `French_euro_coins`

@@ -5,10 +5,11 @@ See docs/research/data-referential-architecture.md for the full schema spec.
 
 import json
 import re
-import unicodedata
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from anyascii import anyascii
 
 REFERENTIAL_PATH = Path(__file__).parent / "datasets" / "eurio_referential.json"
 SOURCES_DIR = Path(__file__).parent / "datasets" / "sources"
@@ -49,24 +50,82 @@ COUNTRY_NAME_TO_ISO2: dict[str, str] = {
 ISO2_TO_NAME: dict[str, str] = {v: k for k, v in COUNTRY_NAME_TO_ISO2.items() if v != "eu"}
 ISO2_TO_NAME["eu"] = "European Union"
 
+# French country names — used by lamonnaiedelapiece, Monnaie de Paris, eBay FR marketplace, etc.
+ISO2_TO_NAME_FR: dict[str, str] = {
+    "AD": "Andorre",
+    "AT": "Autriche",
+    "BE": "Belgique",
+    "BG": "Bulgarie",
+    "CY": "Chypre",
+    "DE": "Allemagne",
+    "EE": "Estonie",
+    "ES": "Espagne",
+    "FI": "Finlande",
+    "FR": "France",
+    "GR": "Grèce",
+    "HR": "Croatie",
+    "IE": "Irlande",
+    "IT": "Italie",
+    "LT": "Lituanie",
+    "LU": "Luxembourg",
+    "LV": "Lettonie",
+    "MC": "Monaco",
+    "MT": "Malte",
+    "NL": "Pays-Bas",
+    "PT": "Portugal",
+    "SI": "Slovénie",
+    "SK": "Slovaquie",
+    "SM": "Saint-Marin",
+    "VA": "Vatican",
+    "eu": "zone euro",
+}
+
+COUNTRY_NAME_FR_TO_ISO2: dict[str, str] = {
+    "Allemagne": "DE",
+    "Andorre": "AD",
+    "Autriche": "AT",
+    "Belgique": "BE",
+    "Bulgarie": "BG",
+    "Chypre": "CY",
+    "Croatie": "HR",
+    "Espagne": "ES",
+    "Estonie": "EE",
+    "Finlande": "FI",
+    "France": "FR",
+    "Grèce": "GR",
+    "Irlande": "IE",
+    "Italie": "IT",
+    "Lettonie": "LV",
+    "Lituanie": "LT",
+    "Luxembourg": "LU",
+    "Malte": "MT",
+    "Monaco": "MC",
+    "Pays-Bas": "NL",
+    "Portugal": "PT",
+    "Saint Marin": "SM",
+    "Saint-Marin": "SM",
+    "Slovaquie": "SK",
+    "Slovénie": "SI",
+    "Vatican": "VA",
+}
+
 
 def slugify(text: str, max_len: int = 60) -> str:
     """Produce a kebab-case slug suitable for an eurio_id design component.
 
-    Truncates on word boundary to avoid mid-word cuts.
+    Uses anyascii to transliterate non-Latin scripts (Greek, Cyrillic,
+    Maltese H/G with dot, etc.) before normalisation. Truncates on word
+    boundary to avoid mid-word cuts.
     """
     if not text:
         return ""
-    # Replace en/em dashes with spaces so words don't collapse together
     text = text.replace("\u2013", " ").replace("\u2014", " ")
-    text = unicodedata.normalize("NFKD", text)
-    text = text.encode("ascii", "ignore").decode("ascii")
+    text = anyascii(text)
     text = text.lower()
     text = re.sub(r"['\u2019]", "", text)
     text = re.sub(r"[^a-z0-9]+", "-", text)
     text = text.strip("-")
     if len(text) > max_len:
-        # Truncate at last hyphen before max_len to preserve word boundaries
         cut = text[:max_len]
         if "-" in cut:
             cut = cut.rsplit("-", 1)[0]
@@ -172,7 +231,10 @@ def make_identity(
     national_variants: list[str] | None = None,
     collector_only: bool = False,
 ) -> dict[str, Any]:
-    """Build the immutable identity sub-document of a coin entry."""
+    """Build the immutable identity sub-document of a coin entry.
+
+    JOUE references live in cross_refs.joue_code, not in identity.
+    """
     return {
         "country": country_iso2,
         "country_name": ISO2_TO_NAME.get(country_iso2, country_iso2),
@@ -184,7 +246,6 @@ def make_identity(
         "design_description": design_description,
         "national_variants": national_variants,
         "collector_only": collector_only,
-        "joue_reference": None,
     }
 
 
@@ -232,7 +293,7 @@ def save_referential(data: dict[str, dict[str, Any]], path: Path = REFERENTIAL_P
     entries = sorted(data.values(), key=lambda e: e["eurio_id"])
     payload = {
         "schema_version": 1,
-        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
         "entry_count": len(entries),
         "entries": entries,
     }

@@ -1,0 +1,546 @@
+[
+  {
+    "url": "https://www.monnaiedeparis.fr/fr/erasmus-monnaie-de-2eur-commemorative-qualite-bu-millesime-2022",
+    "theme_url_slug": "erasmus",
+    "quality_raw": "bu",
+    "year": 2022,
+    "jsonld": {
+      "@context": "https://schema.org",
+      "@type": "Product",
+      "name": "Erasmus",
+      "description": "",
+      "image": "https://www.monnaiedeparis.fr/media/catalog/product/C/o/Coincard_Erasmus_face_00af.png?optimize=medium&fit=bounds&height=&width=&canvas=:",
+      "offers": {
+        "@type": "https://schema.org/Offer",
+        "price": 11,
+        "url": "https://www.monnaiedeparis.fr/fr/erasmus-monnaie-de-2eur-commemorative-qualite-bu-millesime-2022",
+        "priceCurrency": "EUR",
+        "availability": "https://schema.org/OutOfStock",
+        "shippingDetails": {
+          "deliveryTime": {
+            "businessDays": {
+              "@type": "OpeningHoursSpecification",
+              "dayOfWeek": [
+                ""
+              ]
+            },
+            "@type": "ShippingDeliveryTime"
+          },
+          "@type": "OfferShippingDetails"
+        }
+      }
+    }
+  },
+  {
+    "url": "https://www.monnaiedeparis.fr/fr/coupe-du-monde-de-rugby-france-2023-monnaie-de-2eur-commemorative-qualite-be-millesime-2023",
+    "theme_url_slug": "coupe-du-monde-de-rugby-france-2023",
+    "quality_raw": "be",
+    "year": 2023,
+    "jsonld": {
+      "@context": "https://schema.org",
+      "@type": "Product",
+      "name": "Coupe du Monde de Rugby France 2023",
+      "description": "",
+      "image": "https://www.monnaiedeparis.fr/media/catalog/product/M/5/M5066_MDP_00063325_BD_da1c.jpg?optimize=medium&fit=bounds&height=&width=&canvas=:",
+      "offers": {
+        "@type": "https://schema.org/Offer",
+        "price": 24,
+        "url": "https://www.monnaiedeparis.fr/fr/coupe-du-monde-de-rugby-france-2023-monnaie-de-2eur-commemorative-qualite-be-millesime-2023",
+        "priceCurrency": "EUR",
+        "availability": "https://schema.org/OutOfStock",
+        "shippingDetails": {
+          "deliveryTime": {
+            "businessDays": {
+              "@type": "OpeningHoursSpecification",
+              "dayOfWeek": [
+                ""
+              ]
+            },
+            "@type": "ShippingDeliveryTime"
+          },
+          "@type": "OfferShippingDetails"
+        }
+      }
+    }
+  },
+  {
+    "url": "https://www.monnaiedeparis.fr/fr/coupe-du-monde-de-rugby-france-2023-monnaie-de-2eur-commemorative-qualite-bu-millesime-2023",
+    "theme_url_slug": "coupe-du-monde-de-rugby-france-2023",
+    "quality_raw": "bu",
+    "year": 2023,
+    "jsonld": {
+      "@context": "https://schema.org",
+      "@type": "Product",
+      "name": "Coupe du Monde de Rugby France 2023",
+      "description": "",
+      "image": "https://www.monnaiedeparis.fr/media/catalog/product/M/5/M5066_MDP_00063324_BD_5db0.jpg?optimize=medium&fit=bounds&height=&width=&canvas=:",
+      "offers": {
+        "@type": "https://schema.org/Offer",
+        "price": 12,
+        "url": "https://www.monnaiedeparis.fr/fr/coupe-du-monde-de-rugby-france-2023-monnaie-de-2eur-commemorative-qualite-bu-millesime-2023",
+        "priceCurrency": "EUR",
+        "availability": "https://schema.org/OutOfStock",
+        "shippingDetails": {
+          "deliveryTime": {
+            "businessDays": {
+              "@type": "OpeningHoursSpecification",
+              "dayOfWeek": [
+                ""
+              ]
+            },
+            "@type": "ShippingDeliveryTime"
+          },
+          "@type": "OfferShippingDetails"
+        }
+      }
+    }
+  },
+  {
+    "url": "https://www.monnaiedeparis.fr/fr/musee-du-louvre-la-joconde-monnaie-de-2eur-commemorative-qualite-bu-millesime-2025",
+    "theme_url_slug": "musee-du-louvre-la-joconde",
+    "quality_raw": "bu",
+    "year": 2025,
+    "jsonld": {
+      "@context": "https://schema.org",
+      "@type": "Product",
+      "name": "Musée du Louvre - La Joconde",
+      "description": "",
+      "image": "https://www.monnaiedeparis.fr/media/catalog/product/M/5/M5066_MDP_00067322_BD_95d5.jpg?optimize=medium&fit=bounds&height=&width=&canvas=:",
+      "offers": {
+        "@type": "https://schema.org/Offer",
+        "price": 12,
+        "url": "https://www.monnaiedeparis.fr/fr/musee-du-louvre-la-joconde-monnaie-de-2eur-commemorative-qualite-bu-millesime-2025",
+        "priceCurrency": "EUR",
+        "availability": "https://schema.org/InStock",
+        "shippingDetails": {
+          "deliveryTime": {
+            "businessDays": {
+              "@type": "OpeningHoursSpecification",
+              "dayOfWeek": [
+                ""
+              ]
+            },
+            "@type": "ShippingDeliveryTime"
+          },
+          "@type": "OfferShippingDetails"
+        }
+      }
+    }
+  },
+  {
+    "url": "https://www.monnaiedeparis.fr/fr/musee-du-louvre-la-venus-de-milo-monnaie-de-2eur-commemorative-qualite-bu-millesime-2025",
+    "theme_url_slug": "musee-du-louvre-la-venus-de-milo",
+    "quality_raw": "bu",
+    "year": 2025,
+    "jsonld": {
+      "@context": "https://schema.org",
+      "@type": "Product",
+      "name": "Musée du Louvre - La Vénus de Milo",
+      "description": "",
+      "image": "https://www.monnaiedeparis.fr/media/catalog/product/M/5/M5066_MDP_00067316_ORI2_BD_7434.jpg?optimize=medium&fit=bounds&height=&width=&canvas=:",
+      "offers": {
+        "@type": "https://schema.org/Offer",
+        "price": 12,
+        "url": "https://www.monnaiedeparis.fr/fr/musee-du-louvre-la-venus-de-milo-monnaie-de-2eur-commemorative-qualite-bu-millesime-2025",
+        "priceCurrency": "EUR",
+        "availability": "https://schema.org/InStock",
+        "shippingDetails": {
+          "deliveryTime": {
+            "businessDays": {
+              "@type": "OpeningHoursSpecification",
+              "dayOfWeek": [
+                ""
+              ]
+            },
+            "@type": "ShippingDeliveryTime"
+          },
+          "@type": "OfferShippingDetails"
+        }
+      }
+    }
+  },
+  {
+    "url": "https://www.monnaiedeparis.fr/fr/musee-du-louvre-la-victoire-de-samothrace-monnaie-de-2eur-commemorative-qualite-bu-millesime-2025",
+    "theme_url_slug": "musee-du-louvre-la-victoire-de-samothrace",
+    "quality_raw": "bu",
+    "year": 2025,
+    "jsonld": {
+      "@context": "https://schema.org",
+      "@type": "Product",
+      "name": "Musée du Louvre - La Victoire de Samothrace",
+      "description": "",
+      "image": "https://www.monnaiedeparis.fr/media/catalog/product/M/5/M5066_MDP_00067318_ORI2_BD_6239.jpg?optimize=medium&fit=bounds&height=&width=&canvas=:",
+      "offers": {
+        "@type": "https://schema.org/Offer",
+        "price": 12,
+        "url": "https://www.monnaiedeparis.fr/fr/musee-du-louvre-la-victoire-de-samothrace-monnaie-de-2eur-commemorative-qualite-bu-millesime-2025",
+        "priceCurrency": "EUR",
+        "availability": "https://schema.org/InStock",
+        "shippingDetails": {
+          "deliveryTime": {
+            "businessDays": {
+              "@type": "OpeningHoursSpecification",
+              "dayOfWeek": [
+                ""
+              ]
+            },
+            "@type": "ShippingDeliveryTime"
+          },
+          "@type": "OfferShippingDetails"
+        }
+      }
+    }
+  },
+  {
+    "url": "https://www.monnaiedeparis.fr/fr/musee-du-louvre-monnaie-de-2eur-commemorative-belle-epreuve-qualite-be-millesime-2025",
+    "theme_url_slug": "musee-du-louvre",
+    "quality_raw": "be",
+    "year": 2025,
+    "jsonld": {
+      "@context": "https://schema.org",
+      "@type": "Product",
+      "name": "Musée du Louvre",
+      "description": "",
+      "image": "https://www.monnaiedeparis.fr/media/catalog/product/M/5/M5066_MDP_00067246_ORI_BD_23fd.jpg?optimize=medium&fit=bounds&height=&width=&canvas=:",
+      "offers": {
+        "@type": "https://schema.org/Offer",
+        "price": 26,
+        "url": "https://www.monnaiedeparis.fr/fr/musee-du-louvre-monnaie-de-2eur-commemorative-belle-epreuve-qualite-be-millesime-2025",
+        "priceCurrency": "EUR",
+        "availability": "https://schema.org/OutOfStock",
+        "shippingDetails": {
+          "deliveryTime": {
+            "businessDays": {
+              "@type": "OpeningHoursSpecification",
+              "dayOfWeek": [
+                ""
+              ]
+            },
+            "@type": "ShippingDeliveryTime"
+          },
+          "@type": "OfferShippingDetails"
+        }
+      }
+    }
+  },
+  {
+    "url": "https://www.monnaiedeparis.fr/fr/musee-du-louvre-polissage-inverse-monnaie-de-2eur-commemorative-qualite-be-millesime-2025",
+    "theme_url_slug": "musee-du-louvre-polissage-inverse",
+    "quality_raw": "be",
+    "year": 2025,
+    "jsonld": {
+      "@context": "https://schema.org",
+      "@type": "Product",
+      "name": "Musée du Louvre - polissage inversé",
+      "description": "",
+      "image": "https://www.monnaiedeparis.fr/media/catalog/product/M/5/M5066_MDP_00067248_ORI_BD_21db.jpg?optimize=medium&fit=bounds&height=&width=&canvas=:",
+      "offers": {
+        "@type": "https://schema.org/Offer",
+        "price": 32,
+        "url": "https://www.monnaiedeparis.fr/fr/musee-du-louvre-polissage-inverse-monnaie-de-2eur-commemorative-qualite-be-millesime-2025",
+        "priceCurrency": "EUR",
+        "availability": "https://schema.org/OutOfStock",
+        "shippingDetails": {
+          "deliveryTime": {
+            "businessDays": {
+              "@type": "OpeningHoursSpecification",
+              "dayOfWeek": [
+                ""
+              ]
+            },
+            "@type": "ShippingDeliveryTime"
+          },
+          "@type": "OfferShippingDetails"
+        }
+      }
+    }
+  },
+  {
+    "url": "https://www.monnaiedeparis.fr/fr/notre-dame-de-paris-monnaie-de-2eur-commemorative-belle-epreuve-qualite-be-millesime-2025",
+    "theme_url_slug": "notre-dame-de-paris",
+    "quality_raw": "be",
+    "year": 2025,
+    "jsonld": {
+      "@context": "https://schema.org",
+      "@type": "Product",
+      "name": "Notre-Dame de Paris",
+      "description": "",
+      "image": "https://www.monnaiedeparis.fr/media/catalog/product/M/5/M5066_MDP_00068067_BD_11ee.jpg?optimize=medium&fit=bounds&height=&width=&canvas=:",
+      "offers": {
+        "@type": "https://schema.org/Offer",
+        "price": 25,
+        "url": "https://www.monnaiedeparis.fr/fr/notre-dame-de-paris-monnaie-de-2eur-commemorative-belle-epreuve-qualite-be-millesime-2025",
+        "priceCurrency": "EUR",
+        "availability": "https://schema.org/InStock",
+        "shippingDetails": {
+          "deliveryTime": {
+            "businessDays": {
+              "@type": "OpeningHoursSpecification",
+              "dayOfWeek": [
+                ""
+              ]
+            },
+            "@type": "ShippingDeliveryTime"
+          },
+          "@type": "OfferShippingDetails"
+        }
+      }
+    }
+  },
+  {
+    "url": "https://www.monnaiedeparis.fr/fr/notre-dame-de-paris-monnaie-de-2eur-commemorative-qualite-bu-millesime-2025",
+    "theme_url_slug": "notre-dame-de-paris",
+    "quality_raw": "bu",
+    "year": 2025,
+    "jsonld": {
+      "@context": "https://schema.org",
+      "@type": "Product",
+      "name": "Notre-Dame de Paris",
+      "description": "",
+      "image": "https://www.monnaiedeparis.fr/media/catalog/product/M/5/M5066_MDP_00068063_BD_ab0b.jpg?optimize=medium&fit=bounds&height=&width=&canvas=:",
+      "offers": {
+        "@type": "https://schema.org/Offer",
+        "price": 12,
+        "url": "https://www.monnaiedeparis.fr/fr/notre-dame-de-paris-monnaie-de-2eur-commemorative-qualite-bu-millesime-2025",
+        "priceCurrency": "EUR",
+        "availability": "https://schema.org/OutOfStock",
+        "shippingDetails": {
+          "deliveryTime": {
+            "businessDays": {
+              "@type": "OpeningHoursSpecification",
+              "dayOfWeek": [
+                ""
+              ]
+            },
+            "@type": "ShippingDeliveryTime"
+          },
+          "@type": "OfferShippingDetails"
+        }
+      }
+    }
+  },
+  {
+    "url": "https://www.monnaiedeparis.fr/fr/erasmus-monnaie-de-2eur-commemorative-qualite-be-millesime-2022",
+    "theme_url_slug": "erasmus",
+    "quality_raw": "be",
+    "year": 2022,
+    "jsonld": {
+      "@context": "https://schema.org",
+      "@type": "Product",
+      "name": "Erasmus",
+      "description": "",
+      "image": "https://www.monnaiedeparis.fr/media/catalog/product/2/_/2____COMMEMORATIVE_ERASMUS_BE_FACE_c20d.jpg?optimize=medium&fit=bounds&height=&width=&canvas=:",
+      "offers": {
+        "@type": "https://schema.org/Offer",
+        "price": 24,
+        "url": "https://www.monnaiedeparis.fr/fr/erasmus-monnaie-de-2eur-commemorative-qualite-be-millesime-2022",
+        "priceCurrency": "EUR",
+        "availability": "https://schema.org/OutOfStock",
+        "shippingDetails": {
+          "deliveryTime": {
+            "businessDays": {
+              "@type": "OpeningHoursSpecification",
+              "dayOfWeek": [
+                ""
+              ]
+            },
+            "@type": "ShippingDeliveryTime"
+          },
+          "@type": "OfferShippingDetails"
+        }
+      }
+    }
+  },
+  {
+    "url": "https://www.monnaiedeparis.fr/fr/le-petit-prince-l-avion-monnaie-de-2eur-commemorative-qualite-bu-millesime-2026",
+    "theme_url_slug": "le-petit-prince-l-avion",
+    "quality_raw": "bu",
+    "year": 2026,
+    "jsonld": {
+      "@context": "https://schema.org",
+      "@type": "Product",
+      "name": "Le Petit Prince - L'avion",
+      "description": "",
+      "image": "https://www.monnaiedeparis.fr/media/catalog/product/M/5/M5066_MDP_00069364_BD_7fc2.jpg?optimize=medium&fit=bounds&height=&width=&canvas=:",
+      "offers": {
+        "@type": "https://schema.org/Offer",
+        "price": 12,
+        "url": "https://www.monnaiedeparis.fr/fr/le-petit-prince-l-avion-monnaie-de-2eur-commemorative-qualite-bu-millesime-2026",
+        "priceCurrency": "EUR",
+        "availability": "https://schema.org/OutOfStock",
+        "shippingDetails": {
+          "deliveryTime": {
+            "businessDays": {
+              "@type": "OpeningHoursSpecification",
+              "dayOfWeek": [
+                ""
+              ]
+            },
+            "@type": "ShippingDeliveryTime"
+          },
+          "@type": "OfferShippingDetails"
+        }
+      }
+    }
+  },
+  {
+    "url": "https://www.monnaiedeparis.fr/fr/le-petit-prince-le-livre-monnaie-de-2eur-commemorative-qualite-bu-millesime-2026",
+    "theme_url_slug": "le-petit-prince-le-livre",
+    "quality_raw": "bu",
+    "year": 2026,
+    "jsonld": {
+      "@context": "https://schema.org",
+      "@type": "Product",
+      "name": "Le Petit Prince - Le livre",
+      "description": "",
+      "image": "https://www.monnaiedeparis.fr/media/catalog/product/M/5/M5066_MDP_00069362_BD_887e.jpg?optimize=medium&fit=bounds&height=&width=&canvas=:",
+      "offers": {
+        "@type": "https://schema.org/Offer",
+        "price": 12,
+        "url": "https://www.monnaiedeparis.fr/fr/le-petit-prince-le-livre-monnaie-de-2eur-commemorative-qualite-bu-millesime-2026",
+        "priceCurrency": "EUR",
+        "availability": "https://schema.org/OutOfStock",
+        "shippingDetails": {
+          "deliveryTime": {
+            "businessDays": {
+              "@type": "OpeningHoursSpecification",
+              "dayOfWeek": [
+                ""
+              ]
+            },
+            "@type": "ShippingDeliveryTime"
+          },
+          "@type": "OfferShippingDetails"
+        }
+      }
+    }
+  },
+  {
+    "url": "https://www.monnaiedeparis.fr/fr/le-petit-prince-le-nuage-monnaie-de-2eur-commemorative-qualite-bu-millesime-2026",
+    "theme_url_slug": "le-petit-prince-le-nuage",
+    "quality_raw": "bu",
+    "year": 2026,
+    "jsonld": {
+      "@context": "https://schema.org",
+      "@type": "Product",
+      "name": "Le Petit Prince - Le nuage",
+      "description": "",
+      "image": "https://www.monnaiedeparis.fr/media/catalog/product/M/5/M5066_MDP_00069360_BD_1438.jpg?optimize=medium&fit=bounds&height=&width=&canvas=:",
+      "offers": {
+        "@type": "https://schema.org/Offer",
+        "price": 12,
+        "url": "https://www.monnaiedeparis.fr/fr/le-petit-prince-le-nuage-monnaie-de-2eur-commemorative-qualite-bu-millesime-2026",
+        "priceCurrency": "EUR",
+        "availability": "https://schema.org/OutOfStock",
+        "shippingDetails": {
+          "deliveryTime": {
+            "businessDays": {
+              "@type": "OpeningHoursSpecification",
+              "dayOfWeek": [
+                ""
+              ]
+            },
+            "@type": "ShippingDeliveryTime"
+          },
+          "@type": "OfferShippingDetails"
+        }
+      }
+    }
+  },
+  {
+    "url": "https://www.monnaiedeparis.fr/fr/le-petit-prince-polissage-inverse-monnaie-de-2eur-commemorative-qualite-be-millesime-2026",
+    "theme_url_slug": "le-petit-prince-polissage-inverse",
+    "quality_raw": "be",
+    "year": 2026,
+    "jsonld": {
+      "@context": "https://schema.org",
+      "@type": "Product",
+      "name": "Le Petit Prince - polissage inversé",
+      "description": "",
+      "image": "https://www.monnaiedeparis.fr/media/catalog/product/M/5/M5066_MDP_00069472_ORI2_bcdd.jpg?optimize=medium&fit=bounds&height=&width=&canvas=:",
+      "offers": {
+        "@type": "https://schema.org/Offer",
+        "price": 32,
+        "url": "https://www.monnaiedeparis.fr/fr/le-petit-prince-polissage-inverse-monnaie-de-2eur-commemorative-qualite-be-millesime-2026",
+        "priceCurrency": "EUR",
+        "availability": "https://schema.org/InStock",
+        "shippingDetails": {
+          "deliveryTime": {
+            "businessDays": {
+              "@type": "OpeningHoursSpecification",
+              "dayOfWeek": [
+                ""
+              ]
+            },
+            "@type": "ShippingDeliveryTime"
+          },
+          "@type": "OfferShippingDetails"
+        }
+      }
+    }
+  },
+  {
+    "url": "https://www.monnaiedeparis.fr/fr/le-petit-prince-le-desert-monnaie-de-2eur-commemorative-qualite-bu-millesime-2026",
+    "theme_url_slug": "le-petit-prince-le-desert",
+    "quality_raw": "bu",
+    "year": 2026,
+    "jsonld": {
+      "@context": "https://schema.org",
+      "@type": "Product",
+      "name": "Le Petit Prince - Le désert",
+      "description": "",
+      "image": "https://www.monnaiedeparis.fr/media/catalog/product/M/5/M5066_MDP_00069358_BD_0357.jpg?optimize=medium&fit=bounds&height=&width=&canvas=:",
+      "offers": {
+        "@type": "https://schema.org/Offer",
+        "price": 12,
+        "url": "https://www.monnaiedeparis.fr/fr/le-petit-prince-le-desert-monnaie-de-2eur-commemorative-qualite-bu-millesime-2026",
+        "priceCurrency": "EUR",
+        "availability": "https://schema.org/OutOfStock",
+        "shippingDetails": {
+          "deliveryTime": {
+            "businessDays": {
+              "@type": "OpeningHoursSpecification",
+              "dayOfWeek": [
+                ""
+              ]
+            },
+            "@type": "ShippingDeliveryTime"
+          },
+          "@type": "OfferShippingDetails"
+        }
+      }
+    }
+  },
+  {
+    "url": "https://www.monnaiedeparis.fr/fr/le-petit-prince-monnaie-de-2eur-commemorative-qualite-be-millesime-2026",
+    "theme_url_slug": "le-petit-prince",
+    "quality_raw": "be",
+    "year": 2026,
+    "jsonld": {
+      "@context": "https://schema.org",
+      "@type": "Product",
+      "name": "Le Petit Prince",
+      "description": "",
+      "image": "https://www.monnaiedeparis.fr/media/catalog/product/M/5/M5066_MDP_00069408_BD_ceb7.jpg?optimize=medium&fit=bounds&height=&width=&canvas=:",
+      "offers": {
+        "@type": "https://schema.org/Offer",
+        "price": 26,
+        "url": "https://www.monnaiedeparis.fr/fr/le-petit-prince-monnaie-de-2eur-commemorative-qualite-be-millesime-2026",
+        "priceCurrency": "EUR",
+        "availability": "https://schema.org/InStock",
+        "shippingDetails": {
+          "deliveryTime": {
+            "businessDays": {
+              "@type": "OpeningHoursSpecification",
+              "dayOfWeek": [
+                ""
+              ]
+            },
+            "@type": "ShippingDeliveryTime"
+          },
+          "@type": "OfferShippingDetails"
+        }
+      }
+    }
+  }
+]

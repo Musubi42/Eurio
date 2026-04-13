@@ -102,10 +102,12 @@ Les faits structurels qui définissent la pièce. Une fois écrits, jamais modif
     "theme": "Amphithéâtre de Pula",
     "design_description": "Vue de l'amphithéâtre romain de Pula, 1er siècle",
     "national_variants": null,
-    "joue_reference": "C/2025/XXX"
+    "collector_only": false
   }
 }
 ```
+
+> Note : la référence JOUE vit dans `cross_refs.joue_code`, jamais dans `identity` (évite la duplication, voir review Phase 2C.1).
 
 ### 4.2 Cross-refs (additif par source)
 
@@ -350,9 +352,9 @@ create table coins (
   year              int not null,
   face_value        numeric not null,
   is_commemorative  boolean not null default false,
+  collector_only    boolean not null default false,
   theme             text,
   design_description text,
-  joue_reference    text,
   national_variants jsonb,
   needs_review      boolean not null default false,
   review_reason     text,

@@ -9,14 +9,13 @@ and docs/phases/phase-2c-referential.md §2C.1a for the spec.
 
 import json
 import re
-import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
 from bs4 import BeautifulSoup, Tag
 
 from eurio_referential import (
-    SOURCES_DIR,
     compute_eurio_id,
     country_to_iso2,
     load_referential,
@@ -28,6 +27,8 @@ from eurio_referential import (
     slugify,
     write_snapshot,
 )
+
+REVIEW_QUEUE_PATH = Path(__file__).parent / "datasets" / "review_queue.json"
 
 WIKIPEDIA_URL = "https://en.wikipedia.org/wiki/2_euro_commemorative_coins"
 USER_AGENT = "Eurio/0.1 referential-bootstrap (https://github.com/Musubi42/Eurio)"
@@ -56,26 +57,33 @@ def find_table_after(heading: Tag) -> Tag | None:
     return heading.find_next("table", class_="wikitable")
 
 
-def extract_data_rows(table: Tag) -> list[tuple[Tag, ...]]:
+def extract_data_rows(table: Tag) -> list[tuple[Tag, Tag | None]]:
     """Extract data rows from a year/common-issue table.
 
     Each coin spans 2 rows: first with structured columns (Image, Country, Feature,
-    Volume, Date), second with a 'Description: ...' single cell. We pair them.
+    Volume, Date), second with a single cell starting with 'Description:'. We only
+    consume the description row when it actually starts with that marker — otherwise
+    we leave row N+1 for the next iteration so we never silently swallow a coin.
     """
     rows = table.find_all("tr")
-    data_rows: list[tuple[Tag, ...]] = []
+    data_rows: list[tuple[Tag, Tag | None]] = []
     i = 0
-    # Skip the header row
     if rows and rows[0].find("th"):
         i = 1
     while i < len(rows):
         row = rows[i]
         cells = row.find_all(["td", "th"], recursive=False)
-        if len(cells) >= 4:
-            # Look ahead for description row
-            desc_row = rows[i + 1] if i + 1 < len(rows) else None
+        if len(cells) >= 5:
+            desc_row: Tag | None = None
+            if i + 1 < len(rows):
+                peek = rows[i + 1]
+                peek_cells = peek.find_all(["td"], recursive=False)
+                if peek_cells:
+                    peek_text = peek_cells[0].get_text(" ", strip=True).lower()
+                    if peek_text.startswith("description:"):
+                        desc_row = peek
             data_rows.append((row, desc_row))
-            i += 2
+            i += 2 if desc_row else 1
         else:
             i += 1
     return data_rows
@@ -230,11 +238,15 @@ def build_common_issue_entry(table: Tag, year: int) -> dict | None:
     return entry
 
 
-def build_referential_from_html(html: str) -> dict[str, dict]:
-    """Parse the full Wikipedia page and return a dict of canonical entries."""
+def build_referential_from_html(html: str) -> tuple[dict[str, dict], list[dict]]:
+    """Parse the full Wikipedia page and return (entries, queue).
+
+    Per spec §3.3 we never auto-suffix collisions. Conflicting entries are
+    pushed to the review queue and the first-seen entry wins the canonical id.
+    """
     soup = BeautifulSoup(html, "lxml")
     entries: dict[str, dict] = {}
-    duplicates: list[str] = []
+    queue: list[dict] = []
 
     for heading in soup.find_all("h3"):
         title = heading.get_text(strip=True)
@@ -252,50 +264,64 @@ def build_referential_from_html(html: str) -> dict[str, dict]:
             year_entries = build_year_coinage_entries(table, year)
             print(f"  {title}: {len(year_entries)} entries")
             for e in year_entries:
-                _insert_with_collision_handling(entries, e, duplicates)
+                _insert_or_queue(entries, e, queue)
         else:
             common_entry = build_common_issue_entry(table, year)
             if common_entry:
-                _insert_with_collision_handling(entries, common_entry, duplicates)
+                _insert_or_queue(entries, common_entry, queue)
                 variants = common_entry["identity"]["national_variants"] or []
                 print(f"  {title}: 1 canonical entry + {len(variants)} national variants")
 
-    if duplicates:
-        print(f"\nWARN: {len(duplicates)} eurio_id collisions resolved with -v2/-v3 suffixes:")
-        for d in duplicates[:10]:
-            print(f"  - {d}")
-    return entries
+    if queue:
+        print(f"\nWARN: {len(queue)} bootstrap collision(s) deferred to review_queue.json:")
+        for item in queue[:10]:
+            print(f"  - {item['eurio_id']} ({item['theme']!r})")
+    return entries, queue
 
 
-def _insert_with_collision_handling(
+def _insert_or_queue(
     entries: dict[str, dict],
     new_entry: dict,
-    collision_log: list[str],
+    queue: list[dict],
 ) -> None:
-    """Insert an entry, suffixing the eurio_id if a collision is detected."""
+    """Insert a fresh entry, or push to review queue on collision.
+
+    Spec §3.3 forbids auto-suffixing canonical ids — collisions must be
+    arbitrated by a human via review_queue.json. The first entry to claim an
+    eurio_id keeps it; subsequent collisions are queued.
+    """
     eid = new_entry["eurio_id"]
     if eid not in entries:
         entries[eid] = new_entry
         return
 
-    # Collision — assign -v2, -v3, ... suffix
-    suffix_n = 2
-    while f"{eid}-v{suffix_n}" in entries:
-        suffix_n += 1
-    new_eid = f"{eid}-v{suffix_n}"
-    new_entry["eurio_id"] = new_eid
-    new_entry["provenance"]["needs_review"] = True
-    new_entry["provenance"]["review_reason"] = (
-        f"slug collision with {eid}: distinct themes share the same canonical slug, "
-        f"human verification required"
+    queue.append(
+        {
+            "eurio_id": eid,
+            "reason": "bootstrap_slug_collision",
+            "theme": new_entry["identity"].get("theme"),
+            "country": new_entry["identity"].get("country"),
+            "year": new_entry["identity"].get("year"),
+            "incumbent_theme": entries[eid]["identity"].get("theme"),
+            "raw_payload": new_entry,
+            "queued_at": datetime.now(timezone.utc).isoformat(),
+        }
     )
-    # Also flag the original
-    entries[eid]["provenance"]["needs_review"] = True
-    entries[eid]["provenance"]["review_reason"] = (
-        f"slug collision: {new_eid} also shares this canonical slug"
-    )
-    entries[new_eid] = new_entry
-    collision_log.append(f"{eid} -> {new_eid}")
+
+
+def write_review_queue(queue: list[dict]) -> None:
+    """Append new collisions to the review queue file."""
+    if not queue:
+        return
+    REVIEW_QUEUE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    existing: list[dict] = []
+    if REVIEW_QUEUE_PATH.exists():
+        try:
+            existing = json.loads(REVIEW_QUEUE_PATH.read_text())
+        except json.JSONDecodeError:
+            existing = []
+    existing.extend(queue)
+    REVIEW_QUEUE_PATH.write_text(json.dumps(existing, indent=2, ensure_ascii=False))
 
 
 def report(entries: dict[str, dict]) -> None:
@@ -343,7 +369,8 @@ BOOTSTRAP_SOURCE_TAG = "wikipedia_commemo"
 
 def main() -> None:
     html = fetch_wikipedia_commemo()
-    new_entries = build_referential_from_html(html)
+    new_entries, queue = build_referential_from_html(html)
+    write_review_queue(queue)
 
     existing = load_referential()
     print(f"\nExisting referential: {len(existing)} entries")
@@ -370,6 +397,15 @@ def main() -> None:
         if eid in surviving:
             # Preserve provenance.first_seen and any external observations
             entry["provenance"]["first_seen"] = surviving[eid]["provenance"]["first_seen"]
+            # Preserve enrichments added by other scrapers (images, descriptions,
+            # sources_used) — a bootstrap re-run must NOT wipe BCE/Wikipedia data.
+            if surviving[eid].get("images"):
+                entry["images"] = surviving[eid]["images"]
+            if surviving[eid]["identity"].get("design_description"):
+                entry["identity"]["design_description"] = surviving[eid]["identity"]["design_description"]
+            for s in surviving[eid]["provenance"].get("sources_used", []):
+                if s not in entry["provenance"]["sources_used"]:
+                    entry["provenance"]["sources_used"].append(s)
             for k, v in surviving[eid].get("observations", {}).items():
                 if k not in entry["observations"]:
                     entry["observations"][k] = v

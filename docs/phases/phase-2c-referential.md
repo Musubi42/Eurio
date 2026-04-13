@@ -115,6 +115,39 @@ Enrichissement de `eurio_referential.json` avec ~3 000 entrées de pièces de ci
 
 ---
 
+### 2C.1c — Bootstrap circulation Allemagne (source dédiée)
+
+#### Contexte
+
+La page anglaise `en.wikipedia.org/wiki/German_euro_coins` ne contient des Face Value tables que pour 2002-2016. Au-delà, plus rien — ce n'est pas un bug parser mais une vraie lacune de la source EN.
+
+La page allemande `de.wikipedia.org/wiki/Auflagen_der_deutschen_Euromünzen` couvre **2002-2024 complet**, avec en bonus le détail par mint (A=Berlin, D=Munich, F=Stuttgart, G=Karlsruhe, J=Hamburg). Format différent : une table par dénomination, valeurs en notation thousands-séparées par point (`800.000.000`).
+
+#### Livrable
+
+`ml/bootstrap_circulation_de.py` qui remplace les entrées DE existantes par une version complète (~120 entrées au lieu de 75).
+
+#### Étapes
+
+1. Fetch `de.wikipedia.org/wiki/Auflagen_der_deutschen_Euromünzen`
+2. Snapshot dans `ml/datasets/sources/wikipedia_de_auflagen_YYYY-MM-DD.html`
+3. Pour chaque h3 dénomination (`1 Cent`, …, `2 Euro`), parser la table suivante
+4. Sommer les colonnes A/D/F/G/J pour le total (la colonne Σ a des typos dans la source, ne pas s'y fier)
+5. Construire une entrée `de-{year}-{face_code}-standard` par (year, denom)
+6. Stocker `observations.wikipedia.by_mint = {A: ..., D: ..., F: ..., G: ..., J: ...}`
+7. Tag `sources_used = ["wikipedia_de_auflagen"]`
+8. Drop les anciennes entrées DE circulation taggées `wikipedia_country` ou `wikipedia_de_auflagen` avant insertion (idempotent)
+
+#### Critères d'acceptation
+
+- [ ] DE circulation couvre 2002-2024 (vs 2002-2016 avant)
+- [ ] Chaque entrée a `by_mint` rempli avec les 5 mints
+- [ ] `parse_de_value` gère le format `800.000.000` et les dashes `–`/`—`/`-`
+- [ ] Re-run idempotent (drop puis recrée)
+- [ ] Tests unitaires `parse_de_value` couvrent les cas connus
+
+---
+
 ## 2C.2 — Scraper lamonnaiedelapiece.com
 
 ### Livrable
@@ -339,8 +372,10 @@ Module `ml/matching/visual_stage.py` qui compute la similarité visuelle entre i
 
 | Sous-phase | Effort | Bloquant |
 |---|---|---|
-| 2C.1 Bootstrap JOUE | 1-2 jours | non |
-| 2C.2 Scraper lmdlp | 1 jour | 2C.1 |
+| 2C.1a Bootstrap commémoratives | 0.5-1 jour | non |
+| 2C.1b Bootstrap circulation (24 pays) | 1 jour | 2C.1a |
+| 2C.1c Bootstrap circulation DE (de.wikipedia) | 0.3 jour | 2C.1b |
+| 2C.2 Scraper lmdlp | 1 jour | 2C.1c |
 | 2C.3 Scraper Monnaie de Paris | 0.5 jour | 2C.1 |
 | 2C.4 Port eBay vers référentiel | 1 jour | 2C.1, 2C.2 |
 | 2C.5 Review queue CLI | 0.5 jour | 2C.2 |

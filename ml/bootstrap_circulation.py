@@ -16,7 +16,6 @@ Special handling:
 
 import json
 import re
-import sys
 import time
 from pathlib import Path
 
@@ -24,7 +23,6 @@ import httpx
 from bs4 import BeautifulSoup, Tag
 
 from eurio_referential import (
-    SOURCES_DIR,
     compute_eurio_id,
     load_referential,
     make_entry,
@@ -76,41 +74,51 @@ GERMAN_DECIMAL_RX = re.compile(r"^\d+,\d{1,3}$")  # e.g. '60,00' or '124,3'
 COMPACT_DECIMAL_RX = re.compile(r"^\d+\.\d{1,3}$")  # e.g. '800.0' or '1.234'
 
 
+COMPACT_MILLIONS_MAX = 10000  # > 10G coins: not a compact-millions value
+
+
 def parse_volume_cell(text: str) -> int | None:
     """Parse a mintage cell value.
 
     Wikipedia mixes several numeric formats across country pages:
     - European with thin spaces: '794 066 000'   -> 794066000  (exact units)
+    - European with commas:      '794,066,000'   -> 794066000
     - Compact in millions (US):  '800.0'          -> 800_000_000
-    - Compact in millions (DE):  '60,00'          -> 60_000_000
+    - Compact in millions (DE):  '60,00' / '124,3'-> 60_000_000 / 124_300_000
     - Specimen-only / unknown:   's', '—', 'N/a' -> None
+
+    Compact-millions are constrained to values <= COMPACT_MILLIONS_MAX so a
+    DE thousands-separator string like '1.234' (= 1234) wouldn't silently be
+    interpreted as 1.234 million. Above the threshold we return None and let
+    the caller decide.
     """
     if text is None:
         return None
     text = text.strip().replace("\u00a0", " ").replace("\u202f", " ")
-    text = re.sub(r"\[[^\]]+\]", "", text).strip()  # strip footnote refs
+    text = re.sub(r"\[[^\]]+\]", "", text).strip()
     if text in SPECIMEN_TOKENS:
         return None
     if not text:
         return None
 
-    # German decimal notation '60,00' — treat as compact millions
     if GERMAN_DECIMAL_RX.match(text):
         try:
             value = float(text.replace(",", "."))
         except ValueError:
             return None
+        if value > COMPACT_MILLIONS_MAX:
+            return None
         return int(value * 1_000_000)
 
-    # US compact decimal '800.0' / '1.234' — treat as compact millions if small
     if COMPACT_DECIMAL_RX.match(text):
         try:
             value = float(text)
         except ValueError:
             return None
+        if value > COMPACT_MILLIONS_MAX:
+            return None
         return int(value * 1_000_000)
 
-    # European format with spaces (no decimal): '794 066 000' or '794,066,000'
     cleaned = re.sub(r"[\s,]", "", text)
     if cleaned.isdigit():
         return int(cleaned)
@@ -180,21 +188,34 @@ def parse_face_value_table(table: Tag) -> dict[tuple[int, float], int]:
     return aggregated
 
 
-def parse_country_page(html: str, iso2: str) -> dict[tuple[int, float], int]:
-    """Parse all Face Value tables on a country page and merge."""
+def parse_country_page(
+    html: str, iso2: str
+) -> tuple[dict[tuple[int, float], int], bool]:
+    """Parse all Face Value tables on a country page.
+
+    Returns (mintage_by_year_face, aggregated_across_tables). The aggregated
+    flag is True when more than one FV table contributed to the same key,
+    which typically means we summed across mints or design eras.
+    """
     soup = BeautifulSoup(html, "lxml")
     tables = find_face_value_tables(soup)
     merged: dict[tuple[int, float], int] = {}
+    contributing_tables: dict[tuple[int, float], int] = {}
     for t in tables:
         sub = parse_face_value_table(t)
         for key, vol in sub.items():
-            # Sum across tables (DE has multiple tables, one per year, that's fine
-            # because keys differ; for VA with multiple design eras, sum is idempotent)
             merged[key] = merged.get(key, 0) + vol
-    return merged
+            contributing_tables[key] = contributing_tables.get(key, 0) + 1
+    aggregated = any(n > 1 for n in contributing_tables.values())
+    return merged, aggregated
 
 
-def build_circulation_entries(iso2: str, mintage: dict[tuple[int, float], int], wiki_url: str) -> list[dict]:
+def build_circulation_entries(
+    iso2: str,
+    mintage: dict[tuple[int, float], int],
+    wiki_url: str,
+    aggregated: bool,
+) -> list[dict]:
     """Build canonical entries for circulation coins of a country."""
     collector_only = iso2 in ("VA", "MC")
     entries: list[dict] = []
@@ -216,7 +237,7 @@ def build_circulation_entries(iso2: str, mintage: dict[tuple[int, float], int], 
             observations={
                 "wikipedia": {
                     "mintage_total": volume,
-                    "mintage_aggregated_across_mints": iso2 == "DE",
+                    "mintage_aggregated_across_tables": aggregated,
                 }
             },
             sources_used=["wikipedia_country"],
@@ -240,9 +261,9 @@ def bootstrap_all_countries() -> dict[str, dict]:
             failed.append(iso2)
             continue
         write_snapshot(f"wikipedia_{iso2.lower()}_country", html)
-        mintage = parse_country_page(html, iso2)
-        print(f"  parsed {len(mintage)} (year, denom) cells")
-        entries = build_circulation_entries(iso2, mintage, url)
+        mintage, aggregated = parse_country_page(html, iso2)
+        print(f"  parsed {len(mintage)} (year, denom) cells (aggregated={aggregated})")
+        entries = build_circulation_entries(iso2, mintage, url, aggregated)
         for e in entries:
             all_entries[e["eurio_id"]] = e
         print(f"  {len(entries)} circulation entries built for {iso2}")
@@ -279,6 +300,15 @@ def main() -> None:
     for eid, entry in new_entries.items():
         if eid in surviving:
             entry["provenance"]["first_seen"] = surviving[eid]["provenance"]["first_seen"]
+            # Preserve enrichments added by other scrapers (images, descriptions,
+            # sources_used) — a bootstrap re-run must NOT wipe BCE/Wikipedia data.
+            if surviving[eid].get("images"):
+                entry["images"] = surviving[eid]["images"]
+            if surviving[eid]["identity"].get("design_description"):
+                entry["identity"]["design_description"] = surviving[eid]["identity"]["design_description"]
+            for s in surviving[eid]["provenance"].get("sources_used", []):
+                if s not in entry["provenance"]["sources_used"]:
+                    entry["provenance"]["sources_used"].append(s)
             for k, v in surviving[eid].get("observations", {}).items():
                 if k not in entry["observations"]:
                     entry["observations"][k] = v

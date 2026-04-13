@@ -32,6 +32,7 @@ ml/*.npy
 ml/checkpoints/
 ml/output/
 ml/yolov8n.pt
+ml/.ebay_token_cache.json
 
 # App test/temp models
 app/src/main/assets/models/test_model.tflite

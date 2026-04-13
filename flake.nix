@@ -38,6 +38,11 @@
           matplotlib
           scikit-learn
           tqdm
+          # Referential bootstrap (Phase 2C)
+          httpx
+          beautifulsoup4
+          lxml
+          anyascii
         ]);
       in
       {
