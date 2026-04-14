@@ -305,6 +305,71 @@ a { color: inherit; text-decoration: none; }
   height: 72px;
 }
 
+/* ───────── Toast (ephemeral status pill) ─────────
+ * Position-fixed status message at the bottom of the screen. Scenes flip
+ * data-visible="true" (or .is-on) for ~1.8s then hide. Variants : default
+ * (dark on light), --on-dark (light pill on dark scenes), --debug (mono).
+ */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: var(--space-11);
+  transform: translate(-50%, 12px);
+  opacity: 0;
+  padding: 10px 18px;
+  background: var(--ink);
+  color: var(--surface);
+  border-radius: var(--radius-full);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  letter-spacing: 0.04em;
+  box-shadow: var(--shadow-lg);
+  pointer-events: none;
+  z-index: var(--z-toast);
+  transition: opacity var(--duration-base) var(--ease-out),
+              transform var(--duration-base) var(--ease-out);
+}
+.toast[data-visible="true"],
+.toast.is-on {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+.toast--on-dark {
+  background: rgba(14,14,31,0.92);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: var(--surface);
+}
+.toast--debug {
+  background: rgba(0,0,0,0.9);
+  border: 1px solid rgba(47,169,113,0.35);
+  border-radius: var(--radius-xs);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--scan-matched);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 8px 14px;
+}
+
+/* ───────── Button : disabled + danger + size variants ───────── */
+.btn[disabled],
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+.btn-danger {
+  background: var(--danger-soft);
+  color: var(--danger);
+  border: 1px solid rgba(209, 67, 67, 0.3);
+}
+.btn-gold--lg {
+  padding: 18px 22px;
+  font-size: var(--text-base);
+  border-radius: var(--radius-lg);
+  width: 100%;
+}
+
 /* ───────── Scene placeholder (fallback router state) ───────── */
 .scene-placeholder {
   display: flex;

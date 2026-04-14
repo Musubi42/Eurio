@@ -11,6 +11,8 @@ const DEFAULT_STATE = {
     tier: 'Découvreur',    // Découvreur | Passionné | Expert | Maître
     progressPct: 0,
     nextThresholdHint: 'Scanne ta première pièce',
+    pendingUnlock: null,   // setId waiting for profile.js to celebrate
+    unlockedSets: [],      // setIds already celebrated (deduped)
   },
   prefs: {
     notifications: false,
@@ -63,6 +65,34 @@ export function reset() {
 
 // ───────── Collection ─────────
 
+// Set definitions for auto-unlock celebration. Kept in sync with the
+// achievements list inside scenes/profile.js — when this list grows, mirror
+// the change there too. Only sets where completing them should trigger the
+// celebration screen belong here.
+const SET_DEFINITIONS = {
+  'circulation-fr': [
+    'fr-2020-1c-standard',  'fr-2020-2c-standard',
+    'fr-2020-5c-standard',  'fr-2020-10c-standard',
+    'fr-2020-20c-standard', 'fr-2020-50c-standard',
+    'fr-2020-1eur-standard','fr-2020-2eur-standard',
+  ],
+};
+
+function checkSetCompletions() {
+  const ids = new Set(state.collection.map(c => c.eurioId));
+  const already = new Set(state.level.unlockedSets || []);
+  for (const [setId, members] of Object.entries(SET_DEFINITIONS)) {
+    if (already.has(setId)) continue;
+    const complete = members.every(m => ids.has(m));
+    if (complete) {
+      state.level.pendingUnlock = setId;
+      state.level.unlockedSets = [...already, setId];
+      // Stop at the first newly-completed set — celebrate one at a time.
+      return;
+    }
+  }
+}
+
 export function addCoin(eurioId, opts = {}) {
   state.collection.push({
     eurioId,
@@ -72,7 +102,15 @@ export function addCoin(eurioId, opts = {}) {
     note: opts.note ?? null,
   });
   recomputeLevel();
+  checkSetCompletions();
   save();
+}
+
+export function consumePendingUnlock() {
+  const id = state.level.pendingUnlock;
+  state.level.pendingUnlock = null;
+  save();
+  return id;
 }
 
 export function removeCoin(eurioId) {

@@ -162,29 +162,7 @@
     margin-top: var(--space-6);
   }
 
-  /* Toast */
-  .scan-ni-toast {
-    position: fixed;
-    left: 50%;
-    bottom: 120px;
-    transform: translate(-50%, 12px);
-    opacity: 0;
-    padding: 10px 18px;
-    background: rgba(14,14,31,0.92);
-    border: 1px solid rgba(255,255,255,0.1);
-    border-radius: var(--radius-full);
-    font-size: var(--text-xs);
-    font-family: var(--font-ui);
-    color: var(--surface);
-    pointer-events: none;
-    transition: opacity var(--duration-base) var(--ease-out),
-                transform var(--duration-base) var(--ease-out);
-    z-index: var(--z-toast);
-  }
-  .scan-ni-toast[data-visible="true"] {
-    opacity: 1;
-    transform: translate(-50%, 0);
-  }
+  /* Toast → uses .toast.toast--on-dark from components.css */
 </style>
 
 <section class="scan-ni-root" data-scene="scan-not-identified">
@@ -235,5 +213,5 @@
     </div>
   </div>
 
-  <div class="scan-ni-toast" data-slot="toast" role="status">Merci, enregistr&eacute;.</div>
+  <div class="toast toast--on-dark" data-slot="toast" role="status">Merci, enregistr&eacute;.</div>
 </section>

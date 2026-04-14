@@ -22,6 +22,7 @@
  */
 
 const VIEW_KEY = 'vaultView';     // state.prefs[VIEW_KEY] = 'grid' | 'list'
+const SORT_KEY = 'vaultSort';     // 'country' (default) | 'face' | 'price' | 'month'
 const DEMO_KEY = 'eurio.proto.v1.vaultDemo';
 
 export function mount(ctx) {
@@ -44,11 +45,14 @@ export function mount(ctx) {
 
   // Populated state
   state.state.prefs[VIEW_KEY] = state.state.prefs[VIEW_KEY] || 'grid';
+  state.state.prefs[SORT_KEY] = state.state.prefs[SORT_KEY] || 'country';
   const view = state.state.prefs[VIEW_KEY];
+  const sort = state.state.prefs[SORT_KEY];
 
   renderHeader(root, collection, data);
+  renderSparkline(root, collection, data);
   renderStats(root, collection, data);
-  renderGroups(root, collection, data, view, navigate);
+  renderGroups(root, collection, data, view, sort, navigate);
   wireToolbar(root, state, navigate);
 }
 
@@ -133,31 +137,21 @@ function renderStats(root, collection, data) {
 
 /* ───────── Groups + grid/list ───────── */
 
-function renderGroups(root, collection, data, view, navigate) {
+function renderGroups(root, collection, data, view, sort, navigate) {
   const host = root.querySelector('[data-role="groups"]');
   if (!host) return;
   host.innerHTML = '';
 
-  // Bucket by addedAt month
-  const buckets = new Map();
-  for (const entry of collection) {
-    const d = new Date(entry.addedAt || Date.now());
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    if (!buckets.has(key)) buckets.set(key, { label: formatMonth(d), entries: [] });
-    buckets.get(key).entries.push(entry);
-  }
-
-  // Sorted newest first
-  const keys = Array.from(buckets.keys()).sort().reverse();
-
-  // Compute multiplicity per eurioId (global)
+  // Compute multiplicity per eurioId (global, used by tile/row badges)
   const multi = new Map();
   for (const e of collection) {
     multi.set(e.eurioId, (multi.get(e.eurioId) || 0) + 1);
   }
 
-  for (const key of keys) {
-    const { label, entries } = buckets.get(key);
+  // Build ordered list of { label, entries } buckets according to the active sort.
+  const groups = bucketCollection(collection, data, sort);
+
+  for (const { label, entries } of groups) {
     host.insertAdjacentHTML('beforeend', `
       <div class="vault-home-group">
         <span class="vault-home-group__label">${escapeHtml(label)}</span>
@@ -165,7 +159,7 @@ function renderGroups(root, collection, data, view, navigate) {
       </div>
     `);
 
-    // Group dedup : when multiple same-eurioId in same month, show once + ×N
+    // Group dedup : when multiple same-eurioId in same bucket, show once + ×N
     const seen = new Set();
     const deduped = entries.filter(e => {
       if (seen.has(e.eurioId)) return false;
@@ -293,7 +287,16 @@ function wireToolbar(root, state, navigate) {
         console.info('[vault-home] more clicked (no-op mock)');
       });
 
-  // View toggle
+  const rerender = () => {
+    const ctx = window.eurio;
+    const groupsHost = root.querySelector('[data-role="groups"]');
+    if (groupsHost) groupsHost.innerHTML = '';
+    const currentView = ctx.state.state.prefs[VIEW_KEY] || 'grid';
+    const currentSort = ctx.state.state.prefs[SORT_KEY] || 'country';
+    renderGroups(root, ctx.state.state.collection, ctx.data, currentView, currentSort, navigate);
+  };
+
+  // View toggle (grid/list)
   const toggle = root.querySelector('.vault-home-toggle');
   toggle?.addEventListener('click', (ev) => {
     const btn = ev.target.closest('button[data-view]');
@@ -304,22 +307,159 @@ function wireToolbar(root, state, navigate) {
     });
     state.state.prefs[VIEW_KEY] = view;
     state.save();
-    // Re-render groups area
-    import('./vault-home.js').then(mod => {
-      // Remount cleanly by re-reading groups (not full mount).
-      const ctx = window.eurio;
-      const groupsHost = root.querySelector('[data-role="groups"]');
-      if (groupsHost) groupsHost.innerHTML = '';
-      // re-render inline (reuse same fn)
-      renderGroups(root, ctx.state.state.collection, ctx.data, view, navigate);
-    });
+    rerender();
   });
 
   // Set initial selection from persisted pref
-  const active = state.state.prefs[VIEW_KEY] || 'grid';
+  const activeView = state.state.prefs[VIEW_KEY] || 'grid';
   toggle?.querySelectorAll('button').forEach(b => {
-    b.setAttribute('aria-selected', b.dataset.view === active ? 'true' : 'false');
+    b.setAttribute('aria-selected', b.dataset.view === activeView ? 'true' : 'false');
   });
+
+  // Sort chips (country / face / price / month)
+  const sortBar = root.querySelector('.vault-home-sort');
+  sortBar?.addEventListener('click', (ev) => {
+    const chip = ev.target.closest('button[data-sort]');
+    if (!chip) return;
+    const sort = chip.dataset.sort;
+    sortBar.querySelectorAll('button[data-sort]').forEach(b => {
+      b.setAttribute('aria-pressed', b.dataset.sort === sort ? 'true' : 'false');
+    });
+    state.state.prefs[SORT_KEY] = sort;
+    state.save();
+    rerender();
+  });
+
+  const activeSort = state.state.prefs[SORT_KEY] || 'country';
+  sortBar?.querySelectorAll('button[data-sort]').forEach(b => {
+    b.setAttribute('aria-pressed', b.dataset.sort === activeSort ? 'true' : 'false');
+  });
+}
+
+/* ───────── Bucketing (sort modes) ───────── */
+
+/**
+ * Returns an ordered array of { label, entries } buckets. The ordering
+ * reflects the chosen sort mode. Within each bucket, entries keep their
+ * collection order (month-sort reverses by recency inside groups).
+ */
+function bucketCollection(collection, data, sort) {
+  switch (sort) {
+    case 'face':       return bucketByFaceValue(collection, data);
+    case 'price':      return bucketByPrice(collection, data);
+    case 'month':      return bucketByMonth(collection);
+    case 'country':
+    default:           return bucketByCountry(collection, data);
+  }
+}
+
+function bucketByCountry(collection, data) {
+  const buckets = new Map();
+  for (const entry of collection) {
+    const coin = data.getCoin(entry.eurioId);
+    const label = coin?.countryName || '?';
+    if (!buckets.has(label)) buckets.set(label, { label, entries: [] });
+    buckets.get(label).entries.push(entry);
+  }
+  return Array.from(buckets.values())
+    .sort((a, b) => a.label.localeCompare(b.label, 'fr'));
+}
+
+function bucketByFaceValue(collection, data) {
+  const buckets = new Map();
+  for (const entry of collection) {
+    const coin = data.getCoin(entry.eurioId);
+    const cents = coin?.faceValueCents ?? 0;
+    if (!buckets.has(cents)) {
+      buckets.set(cents, { cents, label: formatFaceValue(cents), entries: [] });
+    }
+    buckets.get(cents).entries.push(entry);
+  }
+  // Descending : 2 € → 1 c
+  return Array.from(buckets.values())
+    .sort((a, b) => b.cents - a.cents)
+    .map(({ label, entries }) => ({ label, entries }));
+}
+
+function bucketByMonth(collection) {
+  const buckets = new Map();
+  for (const entry of collection) {
+    const d = new Date(entry.addedAt || Date.now());
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    if (!buckets.has(key)) buckets.set(key, { key, label: formatMonth(d), entries: [] });
+    buckets.get(key).entries.push(entry);
+  }
+  return Array.from(buckets.values())
+    .sort((a, b) => b.key.localeCompare(a.key))
+    .map(({ label, entries }) => ({ label, entries }));
+}
+
+function bucketByPrice(collection, data) {
+  // Single bucket, entries sorted by value descending.
+  const sorted = [...collection].sort((a, b) => {
+    const av = a.valueAtAddCents ?? (data.getCoin(a.eurioId)?.faceValueCents ?? 0);
+    const bv = b.valueAtAddCents ?? (data.getCoin(b.eurioId)?.faceValueCents ?? 0);
+    return bv - av;
+  });
+  return [{ label: 'Trié par prix', entries: sorted }];
+}
+
+/* ───────── Sparkline : value over time ───────── */
+
+function renderSparkline(root, collection, data) {
+  const host = root.querySelector('[data-role="spark"]');
+  if (!host || collection.length === 0) {
+    if (host) host.style.display = 'none';
+    return;
+  }
+
+  // Chronologically sorted cumulative value, 12 monthly samples.
+  const sorted = [...collection].sort((a, b) => (a.addedAt || 0) - (b.addedAt || 0));
+  const now = Date.now();
+  const monthMs = 30 * 24 * 60 * 60 * 1000;
+  const samples = 12;
+  const points = [];
+
+  for (let i = samples - 1; i >= 0; i--) {
+    const cutoff = now - i * monthMs;
+    let total = 0;
+    for (const entry of sorted) {
+      if ((entry.addedAt || now) > cutoff) continue;
+      const coin = data.getCoin(entry.eurioId);
+      total += entry.valueAtAddCents ?? (coin?.faceValueCents ?? 0);
+    }
+    points.push(total);
+  }
+
+  const max = Math.max(...points, 1);
+  const min = Math.min(...points);
+  const range = Math.max(max - min, 1);
+
+  // Map to SVG 0–300 × 2–50 space (leaving padding top/bottom)
+  const W = 300;
+  const H = 52;
+  const PAD = 6;
+  const coords = points.map((v, i) => {
+    const x = (i / (samples - 1)) * W;
+    const y = H - PAD - ((v - min) / range) * (H - PAD * 2);
+    return [x, y];
+  });
+
+  const linePath = coords
+    .map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`)
+    .join(' ');
+  const fillPath = `${linePath} L${W},${H} L0,${H} Z`;
+
+  const lineEl = host.querySelector('[data-role="spark-line"]');
+  const fillEl = host.querySelector('[data-role="spark-fill"]');
+  const dotEl  = host.querySelector('[data-role="spark-dot"]');
+  if (lineEl) lineEl.setAttribute('d', linePath);
+  if (fillEl) fillEl.setAttribute('d', fillPath);
+  if (dotEl && coords.length) {
+    const [lx, ly] = coords[coords.length - 1];
+    dotEl.setAttribute('cx', lx.toFixed(1));
+    dotEl.setAttribute('cy', ly.toFixed(1));
+  }
 }
 
 /* ───────── Remove confirm overlay ───────── */

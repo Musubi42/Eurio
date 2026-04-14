@@ -227,31 +227,7 @@
   .scan-debug-tool:hover { background: rgba(47,169,113,0.12); }
   .scan-debug-tool__glyph { font-size: 14px; line-height: 1; }
 
-  /* Toast (reused pattern) */
-  .scan-debug-toast {
-    position: fixed;
-    left: 50%;
-    bottom: 130px;
-    transform: translate(-50%, 12px);
-    opacity: 0;
-    padding: 8px 14px;
-    background: rgba(0,0,0,0.9);
-    border: 1px solid rgba(47,169,113,0.35);
-    border-radius: 3px;
-    font-size: 10px;
-    font-family: var(--font-mono);
-    color: var(--scan-matched);
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    pointer-events: none;
-    transition: opacity var(--duration-base) var(--ease-out),
-                transform var(--duration-base) var(--ease-out);
-    z-index: var(--z-toast);
-  }
-  .scan-debug-toast[data-visible="true"] {
-    opacity: 1;
-    transform: translate(-50%, 0);
-  }
+  /* Toast → uses .toast.toast--debug from components.css */
 </style>
 
 <section class="scan-debug-root" data-scene="scan-debug">
@@ -369,5 +345,5 @@
     </button>
   </nav>
 
-  <div class="scan-debug-toast" data-slot="toast">ok</div>
+  <div class="toast toast--debug" data-slot="toast">ok</div>
 </section>

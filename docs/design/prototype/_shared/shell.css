@@ -84,6 +84,18 @@ html, body {
 /* Dark-mode status bar (for scan / hero dark scenes) */
 .screen[data-chrome="dark"] .statusbar { color: var(--surface); }
 
+/* Full-bleed chrome — scenes that own their own top-to-bottom layout
+ * (onboarding, profile-unlock celebration). Hides every shell affordance
+ * so scenes don't reach into the shell themselves. */
+.screen[data-chrome="none"] .statusbar,
+.screen[data-chrome="none"] .bottomnav,
+.screen[data-chrome="none"] .home-indicator,
+.screen[data-chrome="none"] .version-badge { display: none; }
+.screen[data-chrome="none"] #view {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
 /* ───────── Version badge (top-left, 7-tap debug) ───────── */
 .version-badge {
   position: absolute;

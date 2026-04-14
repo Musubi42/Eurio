@@ -13,6 +13,8 @@
     inset: 0;
     overflow-y: auto;
     overflow-x: hidden;
+    /* Own scroll container overrides #view padding-bottom: reclaim nav clearance. */
+    padding-bottom: 104px;
     background: var(--surface);
     color: var(--ink);
     font-variant-numeric: tabular-nums;
@@ -216,7 +218,7 @@
     background: radial-gradient(circle at 30% 28%, var(--gold-soft) 0%, var(--gold-300) 30%, var(--gold) 60%, var(--gold-deep) 100%);
   }
   .profile-set-disc.silver {
-    background: radial-gradient(circle at 30% 28%, #F5F3EC 0%, #C7C6BC 45%, #6F6E63 100%);
+    background: radial-gradient(circle at 30% 28%, var(--paper) 0%, #C7C6BC 45%, #6F6E63 100%);
   }
   .profile-set-disc.bimetal {
     background: radial-gradient(circle at 30% 28%, var(--gold-soft) 0%, var(--gold) 35%, var(--gold-deep) 46%, #B7B59A 52%, #6B6A52 100%);

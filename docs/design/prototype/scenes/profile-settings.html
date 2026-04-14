@@ -1,0 +1,427 @@
+<!--
+  Scene : profile-settings
+  ------------------------
+  Scrollable list of 7 groups : Général, Notifications, Catalogue, Données
+  (inc. Debug), Vie privée, Compte, À propos.
+
+  Scoped : .profile-settings-*
+-->
+
+<style>
+  .profile-settings-root {
+    position: absolute;
+    inset: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    background: var(--surface);
+    color: var(--ink);
+    /* Own scroll container overrides #view padding-bottom: 104px reclaims nav clearance. */
+    padding: 56px var(--space-5) 104px;
+  }
+
+  /* Header */
+  .profile-settings-head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin-bottom: var(--space-7);
+  }
+  .profile-settings-head__back {
+    width: 38px; height: 38px;
+    border-radius: var(--radius-full);
+    background: var(--surface-1);
+    border: 1px solid var(--gray-100);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--ink);
+  }
+  .profile-settings-head__back svg {
+    width: 16px; height: 16px;
+    stroke: currentColor; fill: none; stroke-width: 1.8;
+  }
+  .profile-settings-head__title {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-weight: 400;
+    font-size: var(--text-xl);
+    color: var(--ink);
+  }
+
+  /* Group */
+  .profile-settings-group {
+    background: var(--paper);
+    border: 1px solid var(--gray-100);
+    border-radius: var(--radius-lg);
+    padding: var(--space-4) var(--space-5);
+    margin-bottom: var(--space-5);
+  }
+  .profile-settings-group__head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin-bottom: var(--space-3);
+  }
+  .profile-settings-group__head::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(90deg, var(--gray-200), transparent);
+  }
+  .profile-settings-group__badge {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    padding: 2px 8px;
+    border-radius: var(--radius-full);
+    background: var(--gold);
+    color: var(--gold-deep);
+  }
+
+  /* Row */
+  .profile-settings-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3) 0;
+    border-top: 1px solid var(--gray-100);
+    font-size: var(--text-sm);
+    color: var(--ink);
+    width: 100%;
+    text-align: left;
+    min-height: 44px;
+  }
+  .profile-settings-row:first-of-type { border-top: 0; }
+  .profile-settings-row__label {
+    flex: 1;
+    color: var(--ink);
+    font-weight: 500;
+  }
+  .profile-settings-row__help {
+    font-size: 11px;
+    color: var(--ink-400);
+    margin-top: 2px;
+    font-weight: 400;
+  }
+  .profile-settings-row__arrow {
+    color: var(--ink-300);
+    font-family: var(--font-mono);
+  }
+
+  /* Toggle */
+  .profile-settings-toggle {
+    width: 42px; height: 24px;
+    border-radius: var(--radius-full);
+    background: var(--gray-200);
+    position: relative;
+    flex: 0 0 42px;
+    transition: background var(--duration-base) var(--ease-out);
+  }
+  .profile-settings-toggle::after {
+    content: "";
+    position: absolute;
+    top: 3px; left: 3px;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: var(--surface);
+    box-shadow: var(--shadow-sm);
+    transition: transform var(--duration-base) var(--ease-out);
+  }
+  .profile-settings-toggle[aria-pressed="true"] {
+    background: var(--indigo-700);
+  }
+  .profile-settings-toggle[aria-pressed="true"]::after {
+    transform: translateX(18px);
+  }
+
+  /* Segmented control */
+  .profile-settings-seg {
+    display: flex;
+    gap: 2px;
+    padding: 2px;
+    background: var(--gray-100);
+    border-radius: var(--radius-md);
+    margin-top: var(--space-3);
+  }
+  .profile-settings-seg button {
+    flex: 1;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    font-family: var(--font-ui);
+    font-size: var(--text-xs);
+    font-weight: 500;
+    color: var(--ink-500);
+    min-height: 32px;
+  }
+  .profile-settings-seg button[aria-pressed="true"] {
+    background: var(--surface);
+    color: var(--ink);
+    box-shadow: var(--shadow-sm);
+  }
+
+  /* Select (langue) */
+  .profile-settings-select {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--ink-700);
+    background: var(--surface-1);
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--gray-100);
+    letter-spacing: 0.04em;
+  }
+
+  /* Data buttons */
+  .profile-settings-btnrow {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin-top: var(--space-3);
+  }
+  .profile-settings-btnrow .btn { width: 100%; justify-content: space-between; }
+  .profile-settings-btnrow .btn svg {
+    width: 16px; height: 16px;
+    stroke: currentColor; fill: none; stroke-width: 1.6;
+  }
+
+  /* Debug subsection */
+  .profile-settings-debug {
+    margin-top: var(--space-5);
+    padding-top: var(--space-4);
+    border-top: 1px dashed var(--gray-200);
+  }
+  .profile-settings-debug__eyebrow {
+    color: var(--danger);
+    margin-bottom: var(--space-3);
+  }
+  /* Danger button → uses .btn-danger from components.css */
+
+  /* Sign-in row */
+  .profile-settings-signin {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-4);
+    border: 1px dashed var(--gray-200);
+    border-radius: var(--radius-md);
+    margin-top: var(--space-3);
+  }
+  .profile-settings-signin__logo {
+    width: 34px; height: 34px;
+    flex: 0 0 34px;
+    border-radius: 50%;
+    background: var(--surface-1);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-display);
+    font-style: italic;
+    font-weight: 500;
+    color: var(--ink-400);
+  }
+  .profile-settings-signin__label {
+    flex: 1;
+    font-size: var(--text-sm);
+    color: var(--ink);
+    font-weight: 500;
+  }
+
+  /* About */
+  .profile-settings-about {
+    text-align: center;
+    padding: var(--space-5) 0 0;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    color: var(--ink-400);
+    text-transform: uppercase;
+  }
+  .profile-settings-about b {
+    color: var(--ink);
+    font-weight: 600;
+  }
+  .profile-settings-about a {
+    color: var(--gold-700);
+    margin: 0 var(--space-2);
+  }
+
+  /* Toast → uses .toast from components.css */
+
+  /* Confirm inline */
+  .profile-settings-confirm {
+    margin-top: var(--space-3);
+    padding: var(--space-3);
+    border-radius: var(--radius-md);
+    background: var(--danger-soft);
+    color: var(--danger);
+    font-size: var(--text-xs);
+    display: none;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+  .profile-settings-confirm.is-on { display: flex; }
+  .profile-settings-confirm__row { display: flex; gap: var(--space-2); }
+  .profile-settings-confirm__row .btn { flex: 1; min-height: 36px; padding: 8px 12px; }
+</style>
+
+<section class="profile-settings-root" data-scene="profile-settings">
+  <div class="profile-settings-head">
+    <button type="button" class="profile-settings-head__back" data-action="back" aria-label="Retour">
+      <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+    </button>
+    <h1 class="profile-settings-head__title">Paramètres</h1>
+  </div>
+
+  <!-- 1. Général -->
+  <div class="profile-settings-group">
+    <div class="profile-settings-group__head">
+      <div class="eyebrow eyebrow--gold">Général</div>
+    </div>
+    <div class="profile-settings-row">
+      <div class="profile-settings-row__label">Langue</div>
+      <select class="profile-settings-select" data-bind="pref-locale">
+        <option value="fr">Français</option>
+        <option value="en">English</option>
+        <option value="de">Deutsch</option>
+        <option value="it">Italiano</option>
+      </select>
+    </div>
+    <div class="profile-settings-row" style="flex-direction:column;align-items:stretch;gap:0;">
+      <div style="display:flex;align-items:center;width:100%;">
+        <div class="profile-settings-row__label">Thème</div>
+        <span class="pill">Bientôt · v2</span>
+      </div>
+      <div class="profile-settings-seg" role="radiogroup" data-bind="pref-theme" aria-disabled="true" style="opacity:0.45;pointer-events:none;">
+        <button type="button" role="radio" data-value="light" aria-pressed="true" disabled>Clair</button>
+        <button type="button" role="radio" data-value="dark" aria-pressed="false" disabled>Sombre</button>
+        <button type="button" role="radio" data-value="auto" aria-pressed="false" disabled>Auto</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. Notifications -->
+  <div class="profile-settings-group">
+    <div class="profile-settings-group__head">
+      <div class="eyebrow eyebrow--gold">Notifications</div>
+      <span class="profile-settings-group__badge">Opt-in</span>
+    </div>
+    <button type="button" class="profile-settings-row" data-toggle="notifHunting">
+      <div style="flex:1;">
+        <div class="profile-settings-row__label">Rappels de chasse</div>
+        <div class="profile-settings-row__help">Un petit signal quand une série est proche</div>
+      </div>
+      <div class="profile-settings-toggle" aria-pressed="false"></div>
+    </button>
+    <button type="button" class="profile-settings-row" data-toggle="notifSetDone">
+      <div style="flex:1;">
+        <div class="profile-settings-row__label">Complétion de set</div>
+        <div class="profile-settings-row__help">Quand une médaille devient débloquable</div>
+      </div>
+      <div class="profile-settings-toggle" aria-pressed="false"></div>
+    </button>
+    <button type="button" class="profile-settings-row" data-toggle="notifNewCoins">
+      <div style="flex:1;">
+        <div class="profile-settings-row__label">Nouvelles pièces disponibles</div>
+        <div class="profile-settings-row__help">Dès qu'une émission arrive au catalogue</div>
+      </div>
+      <div class="profile-settings-toggle" aria-pressed="false"></div>
+    </button>
+  </div>
+
+  <!-- 3. Catalogue -->
+  <div class="profile-settings-group">
+    <div class="profile-settings-group__head">
+      <div class="eyebrow eyebrow--gold">Catalogue</div>
+    </div>
+    <div class="profile-settings-row" style="flex-direction:column;align-items:stretch;gap:0;">
+      <div style="display:flex;align-items:center;width:100%;">
+        <div class="profile-settings-row__label">Mise à jour</div>
+      </div>
+      <div class="profile-settings-seg" role="radiogroup" data-bind="pref-catalog">
+        <button type="button" role="radio" data-value="wifi" aria-pressed="true">Wi-Fi</button>
+        <button type="button" role="radio" data-value="cell" aria-pressed="false">+ Cellulaire</button>
+        <button type="button" role="radio" data-value="manual" aria-pressed="false">Manuel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. Données -->
+  <div class="profile-settings-group">
+    <div class="profile-settings-group__head">
+      <div class="eyebrow eyebrow--gold">Données</div>
+    </div>
+    <div class="profile-settings-btnrow">
+      <button type="button" class="btn btn-ghost" data-action="export-pdf">
+        <span>Exporter le coffre (PDF)</span>
+        <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+      </button>
+      <button type="button" class="btn btn-ghost" data-action="export-csv">
+        <span>Exporter le coffre (CSV)</span>
+        <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+      </button>
+    </div>
+
+    <div class="profile-settings-debug">
+      <div class="eyebrow profile-settings-debug__eyebrow">Debug</div>
+      <div class="profile-settings-btnrow">
+        <button type="button" class="btn btn-ghost" data-action="seed-demo">
+          <span>Ajouter 15 pièces de démo</span>
+          <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+        <button type="button" class="btn btn-ghost btn-danger" data-action="reset">
+          <span>Réinitialiser le prototype</span>
+          <svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M10 11v6M14 11v6M5 6l1 14h12l1-14"/></svg>
+        </button>
+      </div>
+      <div class="profile-settings-confirm" data-bind="reset-confirm">
+        <div>Cette action vide ta collection et ramène à l'onboarding. Irréversible.</div>
+        <div class="profile-settings-confirm__row">
+          <button type="button" class="btn btn-ghost" data-action="reset-cancel">Annuler</button>
+          <button type="button" class="btn btn-danger" data-action="reset-confirm">Réinitialiser</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. Vie privée -->
+  <div class="profile-settings-group">
+    <div class="profile-settings-group__head">
+      <div class="eyebrow eyebrow--gold">Vie privée</div>
+    </div>
+    <button type="button" class="profile-settings-row" data-toggle="telemetry">
+      <div style="flex:1;">
+        <div class="profile-settings-row__label">Télémétrie anonyme</div>
+        <div class="profile-settings-row__help">Aide à améliorer l'identification. Aucune donnée perso.</div>
+      </div>
+      <div class="profile-settings-toggle" aria-pressed="false"></div>
+    </button>
+  </div>
+
+  <!-- 6. Compte -->
+  <div class="profile-settings-group">
+    <div class="profile-settings-group__head">
+      <div class="eyebrow eyebrow--gold">Compte</div>
+    </div>
+    <div class="profile-settings-signin">
+      <div class="profile-settings-signin__logo">G</div>
+      <div class="profile-settings-signin__label">Google Sign-in</div>
+      <span class="pill">Bientôt · v2</span>
+    </div>
+  </div>
+
+  <!-- 7. À propos -->
+  <div class="profile-settings-group">
+    <div class="profile-settings-group__head">
+      <div class="eyebrow eyebrow--gold">À propos</div>
+    </div>
+    <div class="profile-settings-about">
+      Eurio <b>v0.1.0</b><br/>
+      <a href="#/profile/settings" data-action="licenses">Licences</a>
+      ·
+      <a href="#/profile/settings" data-action="contact">Contact</a>
+    </div>
+  </div>
+
+  <div class="toast" data-bind="toast">—</div>
+</section>

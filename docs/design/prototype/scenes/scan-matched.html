@@ -94,7 +94,8 @@
     position: absolute;
     left: 0;
     right: 0;
-    bottom: 0;
+    /* Lifted above the bottom nav (96px) so the CTAs stay tappable. */
+    bottom: 96px;
     z-index: var(--z-sheet);
     animation: scan-matched-sheet-up 0.55s var(--ease-spring) forwards;
   }

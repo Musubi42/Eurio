@@ -145,6 +145,17 @@ export function mount(ctx) {
   const root = document.querySelector('[data-scene="profile"]');
   if (!root) return;
 
+  // ── Auto-unlock celebration : if a set was just completed (flagged by
+  //    state.addCoin → checkSetCompletions), redirect to the unlock scene
+  //    once. consumePendingUnlock clears the flag so we don't loop.
+  if (state.state.level && state.state.level.pendingUnlock) {
+    const setId = state.consumePendingUnlock();
+    if (setId) {
+      navigate(`#/profile/unlock?setId=${encodeURIComponent(setId)}`);
+      return;
+    }
+  }
+
   const col = state.state.collection || [];
   const count = col.length;
   const tierIdx = tierIndexFor(state.state.level.tier);

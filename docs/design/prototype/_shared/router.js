@@ -18,18 +18,24 @@ import * as data from './data.js';
 // - pattern : regex-style placeholder with :named segments
 // - scene   : filename (without .html) OR null for a deferred scene
 // - nav     : which bottom nav tab is active ('scan'|'vault'|'profile'|'marketplace'|null)
-// - chrome  : 'light' | 'dark' (for status bar + badge contrast)
+// - chrome  : 'none' | 'light' | 'dark' | 'modal'
+//             'none'  → full-bleed : status bar + bottom nav + home indicator hidden
+//             'light' → light status bar + light nav
+//             'dark'  → dark status bar (light text) + dark nav
+//             'modal' → reserved (sheets) — currently treated like 'light'
 
 const ROUTES = [
   // Onboarding
-  { path: '/onboarding/1',           scene: 'onboarding-1',         nav: null, chrome: 'dark' },
-  { path: '/onboarding/2',           scene: 'onboarding-2',         nav: null, chrome: 'dark' },
-  { path: '/onboarding/3',           scene: 'onboarding-3',         nav: null, chrome: 'dark' },
-  { path: '/onboarding/permission',  scene: 'onboarding-permission',nav: null, chrome: 'dark' },
-  { path: '/onboarding/replay',      scene: null,                   nav: null, chrome: 'dark', action: 'replay-onboarding' },
+  { path: '/onboarding/splash',      scene: 'onboarding-splash',    nav: null, chrome: 'none' },
+  { path: '/onboarding/1',           scene: 'onboarding-1',         nav: null, chrome: 'none' },
+  { path: '/onboarding/2',           scene: 'onboarding-2',         nav: null, chrome: 'none' },
+  { path: '/onboarding/3',           scene: 'onboarding-3',         nav: null, chrome: 'none' },
+  { path: '/onboarding/permission',  scene: 'onboarding-permission',nav: null, chrome: 'none' },
+  { path: '/onboarding/replay',      scene: null,                   nav: null, chrome: 'none', action: 'replay-onboarding' },
 
   // Scan
   { path: '/scan',                   scene: 'scan-idle',            nav: 'scan', chrome: 'dark' },
+  { path: '/scan/detecting',         scene: 'scan-detecting',       nav: 'scan', chrome: 'dark' },
   { path: '/scan/matched',           scene: 'scan-matched',         nav: 'scan', chrome: 'dark' },
   { path: '/scan/failure',           scene: 'scan-failure',         nav: 'scan', chrome: 'dark' },
   { path: '/scan/not-identified',    scene: 'scan-not-identified',  nav: 'scan', chrome: 'dark' },
@@ -38,8 +44,8 @@ const ROUTES = [
   // Coin detail
   { path: '/coin/:eurioId',          scene: 'coin-detail',          nav: null, chrome: 'light' },
 
-  // Vault
-  { path: '/vault',                  scene: 'vault',                nav: 'vault', chrome: 'light' },
+  // Vault — /vault routes directly to vault-home (no wrapper)
+  { path: '/vault',                  scene: 'vault-home',           nav: 'vault', chrome: 'light' },
   { path: '/vault/filters',          scene: 'vault-filters',        nav: 'vault', chrome: 'light' },
   { path: '/vault/search',           scene: 'vault-search',         nav: 'vault', chrome: 'light' },
 
@@ -47,6 +53,7 @@ const ROUTES = [
   { path: '/profile',                scene: 'profile',              nav: 'profile', chrome: 'light' },
   { path: '/profile/achievements',   scene: 'profile-achievements', nav: 'profile', chrome: 'light' },
   { path: '/profile/set/:setId',     scene: 'profile-set',          nav: 'profile', chrome: 'light' },
+  { path: '/profile/unlock',         scene: 'profile-unlock',       nav: 'profile', chrome: 'none' },
   { path: '/profile/settings',       scene: 'profile-settings',     nav: 'profile', chrome: 'light' },
 
   // Marketplace (grisé, bientôt)
@@ -139,12 +146,12 @@ async function renderScene(route, params, query) {
   // Special actions
   if (route.action === 'reset') {
     state.reset();
-    location.hash = '#/onboarding/1';
+    location.hash = '#/onboarding/splash';
     return;
   }
   if (route.action === 'replay-onboarding') {
     state.replayOnboarding();
-    location.hash = '#/onboarding/1';
+    location.hash = '#/onboarding/splash';
     return;
   }
   if (route.action === 'seed-demo') {
@@ -225,7 +232,7 @@ async function resolve() {
 
   // Home redirect
   if (rawPath === '/' || rawPath === '') {
-    const target = state.state.firstRun ? '#/onboarding/1' : '#/scan';
+    const target = state.state.firstRun ? '#/onboarding/splash' : '#/scan';
     location.replace(target);
     return;
   }

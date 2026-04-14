@@ -235,3 +235,117 @@ prototype tournera offline (ngrok assume online).
 
 **Raison.** POC sert à valider la navigation et les interactions, pas la perf
 de chargement. Self-host = YAGNI tant que Raphaël n'en parle pas.
+
+---
+
+## 14. Chrome contract — `chrome: 'none' | 'light' | 'dark'` au niveau route
+
+**Contexte (Phase 3).** Phase 2 avait laissé 6 scenes (onboarding 1/2/3,
+permission, splash, profile-unlock) qui hidaient `.statusbar`,
+`.bottomnav`, `.home-indicator` via un `<style>` scoped reachant dans
+`.screen` depuis la scene elle-même — violation de scope.
+
+**Alternatives.**
+- a) Garder le hack scene-side (statu quo Phase 2)
+- b) Ajouter une option `chrome: 'none'` au router et un sélecteur
+  `.screen[data-chrome="none"]` dans `shell.css`
+- c) Détecter "fullbleed" via un attribut sur le scene root
+  (`<section data-fullbleed>`) et un MutationObserver dans `shell.js`
+
+**Choix — b.** Le router applique `data-chrome="none"` sur `.screen` au mount
+et `shell.css` cache le chrome. `chrome: 'none'` rejoint `'light' | 'dark'` /
+`'modal'` (réservé) dans la table des routes.
+
+**Raison.** (a) garde la dette technique. (c) introduit un MutationObserver
+juste pour ça, surcoût injustifié. (b) reste dans le contrat existant
+(`data-chrome` est déjà géré par shell.css), zéro nouveau pattern, et garde
+les scenes 100 % scope-propres.
+
+**Routes touchées.** `/onboarding/splash`, `/onboarding/{1,2,3}`,
+`/onboarding/permission`, `/onboarding/replay`, `/profile/unlock`.
+
+---
+
+## 15. Theme picker — désactivé en v1, réactivable v2
+
+**Contexte (Phase 3).** `state.prefs.theme` était persisté par
+profile-settings mais aucun consommateur ne l'appliquait. Brief Agent C
+proposait deux options : (a) wire un attribut `data-theme` + dark CSS,
+(b) désactiver le control en v1.
+
+**Choix — b.** Le segmented control reste visible avec un pill "Bientôt ·
+v2" et est entièrement désactivé (aria-disabled, opacity 0.45, pointer-
+events none, tous les `<button>` `disabled`). Le handler JS est supprimé.
+La clé `prefs.theme` reste dans `DEFAULT_STATE` pour forward compat —
+toute valeur persistée d'un test antérieur sera ignorée mais pas écrasée.
+
+**Raison.** Le prototype est une démo light-mode + un brief produit (à
+montrer à des testeurs physiques). Implémenter dark proprement = audit
+contrast de toutes les scenes + dérivation des tokens via
+`prefers-color-scheme` ou un attribut `data-theme` sur `.screen` + ré-
+écrire les gradients indigo/gold pour rester lisibles. C'est une feature
+v2, pas un fix Phase 3. Désactiver clairement > suggérer une feature qui
+ne marche pas.
+
+---
+
+## 16. Coin metal hex — hors-palette assumés
+
+**Contexte (Phase 3).** `profile-set.html` contient des gradients pour
+les classes de métal (copper / silver / bimetal) qui utilisent des hex
+en-dehors de la palette brand : `#F6D3B0`, `#D49A6A`, `#8F5120`,
+`#C7C6BC`, `#6F6E63`, `#B7B59A`, `#6B6A52`. Le grep brand
+(`#1A1B4B|C8A864|FAFAF8|0E0E1F|...`) ne les attrape pas — ils ne sont pas
+des couleurs de marque.
+
+**Choix.** Ils restent dans la scene en tant que gradients locaux. Le seul
+hex qui touchait à la palette (`#F5F3EC` = `--paper`) a été remplacé.
+
+**Raison.** Ces hexes représentent les états physiques du métal (cuivre,
+nickel-laiton, bimétal) — ce sont des valeurs descriptives, pas des
+décisions de marque. Les exposer comme `--metal-*` dans `tokens.css`
+serait propre mais nécessite d'éditer `tokens.css`, ce qui est bloqué par
+un outil de redaction local sur ce fichier dans l'environnement Phase 3.
+À faire en follow-up commit quand l'outil est désactivé. Voir
+OPEN-QUESTIONS §9.
+
+---
+
+## 17. Routes orphelines — `/onboarding/splash` et `/scan/detecting`
+
+**Contexte (Phase 3).** Deux scenes existaient sans route : leurs sidecars
+étaient écrits, leur HTML était propre, mais le router ne les exposait
+pas. Choix possible : router-les ou les supprimer.
+
+**Choix.** **Router-les.**
+- `/onboarding/splash` est désormais le point d'entrée de l'onboarding
+  (auto-advance vers `/onboarding/1` après 1.4 s). Le redirect first-run
+  passe par splash. C'est la "vraie" séquence prévue par le designer.
+- `/scan/detecting` est routé mais pas encore inséré automatiquement
+  dans le flow scan-idle → matched. Phase 3 ne touche pas à scan-idle.js
+  (déjà testé end-to-end). À wire dans une itération suivante. Voir
+  OPEN-QUESTIONS §3.
+
+**Raison.** Supprimer ces scenes aurait jeté du travail livré et
+correctement conçu. Les router maintenant coûte 4 lignes dans le route
+table et les rend immédiatement testables. Le risque de régression est
+nul puisqu'on ne change pas le scan-idle existant.
+
+---
+
+## 18. `/vault` → `vault-home` (suppression du wrapper)
+
+**Contexte (Phase 3).** Phase 2 avait créé `scenes/vault.html` +
+`scenes/vault.js` comme wrapper qui fetchait `vault-home.html` et
+appelait `vault-home.js`, parce que la table des routes mappait `/vault`
+sur scene `vault` et que Phase 2 n'avait pas le droit de toucher à
+`router.js`.
+
+**Choix.** Supprimer le wrapper, mapper `/vault` → scene `vault-home`
+directement.
+
+**Raison.** La règle "Phase 2 ne touche pas `_shared/`" est levée en
+Phase 3. Le wrapper était une dette technique connue, dont l'unique
+raison d'être disparaît. Bénéfice : un fetch HTTP de moins par
+navigation vers le coffre, un fichier de moins à maintenir, zéro
+indirection à comprendre pour le prochain agent.

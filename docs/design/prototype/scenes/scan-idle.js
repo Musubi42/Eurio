@@ -18,24 +18,33 @@ export function mount(ctx) {
   const debugOn = document.querySelector('.version-badge')?.dataset.debug === 'on';
   if (debugBtn) debugBtn.dataset.debug = debugOn ? 'on' : 'off';
 
-  // Force-match button picks a random coin
-  debugBtn?.addEventListener('click', () => {
+  // Force-match button picks a random coin (also waits for data readiness)
+  debugBtn?.addEventListener('click', async () => {
+    await data.init();
     const coin = data.randomCoin();
     if (coin) navigate(`#/scan/matched?id=${coin.eurioId}`);
   });
 
   // Auto-advance timer (mock ML inference)
-  const timer = setTimeout(() => {
-    const coin = data.randomCoin();
-    if (coin) navigate(`#/scan/matched?id=${coin.eurioId}`);
-  }, AUTO_MATCH_DELAY_MS);
+  // The 3.6 MB referential fetch can outrun the 2s delay on a cold cache,
+  // so we await data.init() (idempotent) before arming the timer.
+  let timer = null;
+  let cancelled = false;
 
-  // Cancel the timer as soon as the user navigates elsewhere
   const onLeave = () => {
-    clearTimeout(timer);
+    cancelled = true;
+    if (timer) clearTimeout(timer);
     window.removeEventListener('scene:mounted', onLeave);
     window.removeEventListener('hashchange', onLeave);
   };
   window.addEventListener('scene:mounted', onLeave, { once: true });
   window.addEventListener('hashchange', onLeave, { once: true });
+
+  data.init().then(() => {
+    if (cancelled) return;
+    timer = setTimeout(() => {
+      const coin = data.randomCoin();
+      if (coin) navigate(`#/scan/matched?id=${coin.eurioId}`);
+    }, AUTO_MATCH_DELAY_MS);
+  });
 }

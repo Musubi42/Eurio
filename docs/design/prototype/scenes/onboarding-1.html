@@ -11,11 +11,8 @@
 -->
 
 <style>
-  .screen .statusbar,
-  .screen .bottomnav,
-  .screen .home-indicator { display: none; }
-  #view { padding: 0 !important; }
-
+  /* Full-bleed chrome contract : route declares chrome:'none' → shell.css
+   * hides .statusbar/.bottomnav/.home-indicator and zeros #view padding. */
   .onboarding-1-root {
     position: absolute;
     inset: 0;

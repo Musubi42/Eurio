@@ -1,0 +1,252 @@
+<!--
+  Scene : profile-unlock (celebration plein écran)
+  ------------------------------------------------
+  Full-bleed dark indigo, medaille 220px gold au centre, arc-text SVG
+  autour, halo + rays rotatifs, CTA "Continuer".
+
+  Scoped : .profile-unlock-*
+  Full-bleed trick : hide statusbar/bottomnav/home-indicator + view padding=0.
+-->
+
+<style>
+  /* Full-bleed via route chrome:'none' (handled by shell.css). */
+  .profile-unlock-root {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-11) var(--space-6) var(--space-10);
+    text-align: center;
+    color: var(--surface);
+    background:
+      radial-gradient(ellipse 80% 50% at 50% 38%, var(--indigo-600) 0%, transparent 65%),
+      radial-gradient(ellipse 60% 40% at 50% 100%, var(--indigo-950) 0%, transparent 70%),
+      var(--indigo-900);
+    overflow: hidden;
+  }
+
+  /* Noise overlay, very subtle */
+  .profile-unlock-root::before {
+    content: "";
+    position: absolute; inset: 0;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.95' numOctaves='2'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 .06 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+    mix-blend-mode: overlay;
+    opacity: 0.55;
+    pointer-events: none;
+  }
+
+  /* Rotating rays behind the medal */
+  .profile-unlock-rays {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 560px; height: 560px;
+    transform: translate(-50%, -56%);
+    pointer-events: none;
+    opacity: 0.35;
+    background:
+      conic-gradient(from 0deg,
+        transparent 0deg,
+        rgba(200, 168, 100, 0.22) 8deg,
+        transparent 20deg,
+        transparent 40deg,
+        rgba(200, 168, 100, 0.14) 48deg,
+        transparent 60deg,
+        transparent 90deg,
+        rgba(200, 168, 100, 0.18) 98deg,
+        transparent 110deg,
+        transparent 140deg,
+        rgba(200, 168, 100, 0.1) 148deg,
+        transparent 160deg,
+        transparent 200deg,
+        rgba(200, 168, 100, 0.2) 208deg,
+        transparent 220deg,
+        transparent 260deg,
+        rgba(200, 168, 100, 0.14) 268deg,
+        transparent 280deg,
+        transparent 320deg,
+        rgba(200, 168, 100, 0.16) 328deg,
+        transparent 340deg);
+    border-radius: 50%;
+    animation: profile-unlock-rotate 60s linear infinite;
+    mask-image: radial-gradient(circle, black 0%, black 35%, transparent 70%);
+    -webkit-mask-image: radial-gradient(circle, black 0%, black 35%, transparent 70%);
+  }
+  @keyframes profile-unlock-rotate {
+    to { transform: translate(-50%, -56%) rotate(360deg); }
+  }
+
+  /* Halo behind medal */
+  .profile-unlock-halo {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 340px; height: 340px;
+    transform: translate(-50%, -56%);
+    pointer-events: none;
+    background: radial-gradient(circle, rgba(200, 168, 100, 0.28) 0%, transparent 55%);
+    filter: blur(4px);
+  }
+
+  /* Medal wrapper holds the SVG arc-text */
+  .profile-unlock-medal-wrap {
+    position: relative;
+    width: 260px;
+    height: 260px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2;
+    animation: profile-unlock-bounce 1.2s var(--ease-spring) forwards;
+  }
+  @keyframes profile-unlock-bounce {
+    0%   { transform: scale(0.4); opacity: 0; }
+    60%  { transform: scale(1.08); opacity: 1; }
+    100% { transform: scale(1); }
+  }
+
+  .profile-unlock-arc {
+    position: absolute;
+    inset: 0;
+    animation: profile-unlock-slow-rotate 90s linear infinite;
+  }
+  @keyframes profile-unlock-slow-rotate {
+    to { transform: rotate(360deg); }
+  }
+  .profile-unlock-arc text {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    fill: var(--gold);
+    opacity: 0.75;
+  }
+
+  /* The actual gold disc : 220px */
+  .profile-unlock-medal {
+    width: 220px;
+    height: 220px;
+    border-radius: 50%;
+    background:
+      radial-gradient(circle at 32% 26%, var(--gold-soft) 0%, var(--gold-300) 28%, var(--gold) 58%, var(--gold-deep) 100%);
+    box-shadow:
+      inset 0 0 0 2px rgba(255, 255, 255, 0.35),
+      inset 0 -12px 24px rgba(0, 0, 0, 0.32),
+      inset 0 12px 20px rgba(255, 230, 170, 0.32),
+      0 28px 60px -18px rgba(200, 168, 100, 0.55),
+      0 8px 24px -8px rgba(14, 14, 31, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+  }
+  .profile-unlock-medal::before {
+    content: "";
+    position: absolute;
+    inset: 14px;
+    border-radius: 50%;
+    border: 1px solid rgba(143, 118, 55, 0.45);
+  }
+  .profile-unlock-medal::after {
+    content: "";
+    position: absolute;
+    inset: 22px;
+    border-radius: 50%;
+    border: 1px dashed rgba(143, 118, 55, 0.35);
+  }
+  .profile-unlock-medal__glyph {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-weight: 300;
+    font-size: 72px;
+    color: var(--gold-deep);
+    line-height: 1;
+    text-shadow: 0 2px 0 rgba(255, 230, 170, 0.35);
+    position: relative;
+    z-index: 1;
+  }
+
+  /* Text block under medal */
+  .profile-unlock-copy {
+    margin-top: var(--space-10);
+    max-width: 34ch;
+    position: relative;
+    z-index: 2;
+    animation: profile-unlock-fadein 1.2s var(--ease-out) 0.6s both;
+  }
+  @keyframes profile-unlock-fadein {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: none; }
+  }
+  .profile-unlock-eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--gold);
+    margin-bottom: var(--space-3);
+  }
+  .profile-unlock-eyebrow::before,
+  .profile-unlock-eyebrow::after {
+    content: "";
+    width: 22px; height: 1px;
+    background: var(--gold);
+    opacity: 0.55;
+  }
+  .profile-unlock-title {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-weight: 300;
+    font-size: var(--text-2xl);
+    line-height: 1.08;
+    letter-spacing: -0.02em;
+    color: var(--surface);
+    margin-bottom: var(--space-3);
+  }
+  .profile-unlock-sub {
+    font-size: var(--text-sm);
+    color: var(--ink-300);
+    font-family: var(--font-mono);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .profile-unlock-cta {
+    margin-top: var(--space-9);
+    position: relative;
+    z-index: 2;
+    animation: profile-unlock-fadein 1.2s var(--ease-out) 0.9s both;
+  }
+</style>
+
+<section class="profile-unlock-root" data-scene="profile-unlock">
+  <div class="profile-unlock-rays" aria-hidden="true"></div>
+  <div class="profile-unlock-halo" aria-hidden="true"></div>
+
+  <div class="profile-unlock-medal-wrap">
+    <svg class="profile-unlock-arc" viewBox="0 0 260 260" aria-hidden="true">
+      <defs>
+        <path id="profile-unlock-arc-path"
+              d="M 130,130 m -118,0 a 118,118 0 1,1 236,0 a 118,118 0 1,1 -236,0"/>
+      </defs>
+      <text>
+        <textPath href="#profile-unlock-arc-path" startOffset="0">
+          · COLLECTION EURIO · MMXXVI · COLLECTION EURIO · MMXXVI ·
+        </textPath>
+      </text>
+    </svg>
+
+    <div class="profile-unlock-medal" role="img" aria-label="Médaille débloquée">
+      <span class="profile-unlock-medal__glyph" data-bind="medal-glyph">★</span>
+    </div>
+  </div>
+
+  <div class="profile-unlock-copy">
+    <div class="eyebrow eyebrow--gold profile-unlock-eyebrow">Médaille débloquée</div>
+    <h1 class="profile-unlock-title" data-bind="set-title">Série complète France</h1>
+    <div class="profile-unlock-sub" data-bind="set-sub">Série 8 / 8 pièces</div>
+  </div>
+
+  <button type="button" class="btn btn-gold profile-unlock-cta" data-action="continue">
+    Continuer
+  </button>
+</section>

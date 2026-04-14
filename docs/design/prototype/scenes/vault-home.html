@@ -14,8 +14,7 @@
   grid/list toggle (persisted in state.prefs.vaultView) and the long-press
   "⋯" button that opens the remove-confirm overlay.
 
-  NOTE : `/vault` in the router points to scene `vault`. A thin wrapper file
-  `vault.html` re-uses this fragment via sidecar (see scenes/vault.html).
+  NOTE : the router maps `/vault` directly to scene `vault-home` (no wrapper).
 -->
 
 <style>
@@ -109,6 +108,45 @@
     font-size: var(--text-xs);
     color: var(--ink-500);
   }
+
+  /* ───────── Global sparkline (value over time) ───────── */
+  .vault-home-spark {
+    margin-top: var(--space-4);
+    position: relative;
+    height: 52px;
+    padding-right: var(--space-1);
+  }
+  .vault-home-spark svg {
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+  }
+  .vault-home-spark__line {
+    fill: none;
+    stroke: var(--indigo-700);
+    stroke-width: 1.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .vault-home-spark__fill {
+    fill: var(--indigo-100);
+    opacity: 0.45;
+  }
+  .vault-home-spark__dot {
+    fill: var(--gold);
+    stroke: var(--surface);
+    stroke-width: 1.5;
+  }
+  .vault-home-spark__scale {
+    position: absolute;
+    top: 2px;
+    right: 0;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    color: var(--ink-400);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
   .vault-home-delta-chip {
     display: inline-flex;
     align-items: center;
@@ -166,6 +204,46 @@
     flex-direction: column;
     gap: var(--space-3);
     margin-bottom: var(--space-5);
+  }
+  .vault-home-sort {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding: 2px 0;
+  }
+  .vault-home-sort::-webkit-scrollbar { display: none; }
+  .vault-home-sort__label {
+    flex: 0 0 auto;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: var(--tracking-eyebrow);
+    text-transform: uppercase;
+    color: var(--ink-400);
+    padding-right: var(--space-1);
+  }
+  .vault-home-sort__chip {
+    flex: 0 0 auto;
+    padding: 6px 12px;
+    border-radius: var(--radius-full);
+    background: var(--surface-1);
+    border: 1px solid rgba(14,14,31,0.06);
+    color: var(--ink-500);
+    font-size: var(--text-xs);
+    font-family: var(--font-ui);
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background var(--duration-fast) var(--ease-out),
+                color var(--duration-fast) var(--ease-out),
+                border-color var(--duration-fast) var(--ease-out);
+  }
+  .vault-home-sort__chip[aria-pressed="true"] {
+    background: var(--ink);
+    color: var(--gold);
+    border-color: var(--ink);
   }
   .vault-home-search {
     display: flex;
@@ -508,6 +586,15 @@
           </span>
           <span data-role="delta-caption">depuis tes premiers ajouts</span>
         </div>
+
+        <div class="vault-home-spark" data-role="spark">
+          <span class="vault-home-spark__scale">12 derniers mois</span>
+          <svg viewBox="0 0 300 52" preserveAspectRatio="none" aria-hidden="true">
+            <path class="vault-home-spark__fill" data-role="spark-fill" d=""/>
+            <path class="vault-home-spark__line" data-role="spark-line" d=""/>
+            <circle class="vault-home-spark__dot" data-role="spark-dot" cx="0" cy="0" r="3.2"/>
+          </svg>
+        </div>
       </div>
     </header>
 
@@ -559,6 +646,14 @@
             </svg>
           </button>
         </div>
+      </div>
+
+      <div class="vault-home-sort" role="radiogroup" aria-label="Trier par">
+        <span class="vault-home-sort__label">Trier</span>
+        <button type="button" class="vault-home-sort__chip" data-sort="country" aria-pressed="true">Pays</button>
+        <button type="button" class="vault-home-sort__chip" data-sort="face" aria-pressed="false">Valeur faciale</button>
+        <button type="button" class="vault-home-sort__chip" data-sort="price" aria-pressed="false">Prix</button>
+        <button type="button" class="vault-home-sort__chip" data-sort="month" aria-pressed="false">Date d'ajout</button>
       </div>
     </div>
 
