@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Eurio — Fiche pièce · Mockups</title>
+<link rel="stylesheet" href="_system.css">
+<style>
+  .stage { padding-top: 0; padding-left: 0; padding-right: 0; align-items: stretch; }
+  .mini-frame {
+    position: absolute;
+    inset: 0;
+    border: 0;
+    transform-origin: top left;
+    pointer-events: none;
+  }
+  .mini-wrap {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    border-radius: inherit;
+  }
+  .mini-inner {
+    width: 390px;
+    height: 500px;
+    transform-origin: top left;
+  }
+  .card-preview .device {
+    all: unset;
+    display: block;
+    position: absolute;
+    top: 0; left: 0;
+    width: 390px;
+    height: 500px;
+    background: var(--cream);
+    overflow: hidden;
+  }
+  .card-label {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+  }
+  .card-label .num {
+    color: var(--gold);
+    font-weight: 500;
+  }
+  .card-label .kind {
+    color: rgba(250,250,248,0.45);
+  }
+  .footer {
+    max-width: 1280px;
+    width: 100%;
+    padding: 40px 40px 60px;
+    border-top: 1px solid rgba(250,250,248,0.1);
+    margin-top: 40px;
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: rgba(250,250,248,0.4);
+  }
+  .footer span em { color: var(--gold); font-style: normal; }
+</style>
+</head>
+<body>
+
+<main class="stage">
+
+  <div class="index-head">
+    <div class="eyebrow">Eurio · Design System · 2026-04-13</div>
+    <h1>La fiche <em>pièce</em>,<br>dans toutes ses lumières.</h1>
+    <p>Sept mockups haute-fidélité d'une seule et même vue Compose, paramétrée par son contexte. Scan, coffre, référence, absences gracieuses, émissions communes. Un vocabulaire visuel unique — feuilleté de papier crème, nuit indigo et or brossé.</p>
+  </div>
+
+  <div class="index-divider">
+    <span>390 × 844 · iOS device frame · 7 écrans</span>
+  </div>
+
+  <div class="index-grid">
+
+    <a class="card" href="01-scan-result.html">
+      <div class="card-preview">
+        <iframe class="mini-frame" src="01-scan-result.html" scrolling="no" style="width: 520%; height: 520%; transform: scale(0.192); border: 0; background: transparent;"></iframe>
+      </div>
+      <div>
+        <div class="card-label"><span class="num">01</span><span class="kind">ScanResult</span></div>
+        <div class="card-title">Nouvelle pièce</div>
+        <div class="card-desc">Juste après un scan réussi. Photo utilisateur en polaroid, pastille « Nouvelle pièce », CTA or pour valider l'ajout au coffre.</div>
+      </div>
+    </a>
+
+    <a class="card" href="02-owned.html">
+      <div class="card-preview">
+        <iframe class="mini-frame" src="02-owned.html" scrolling="no" style="width: 520%; height: 520%; transform: scale(0.192); border: 0; background: transparent;"></iframe>
+      </div>
+      <div>
+        <div class="card-label"><span class="num">02</span><span class="kind">OwnedCoin</span></div>
+        <div class="card-title">Dans le coffre</div>
+        <div class="card-desc">Ouvert depuis le coffre. Bandeau date · état · delta, comparaison photo utilisateur vs BCE, marqueur « ajout » sur la courbe historique.</div>
+      </div>
+    </a>
+
+    <a class="card" href="03-reference-only.html">
+      <div class="card-preview">
+        <iframe class="mini-frame" src="03-reference-only.html" scrolling="no" style="width: 520%; height: 520%; transform: scale(0.192); border: 0; background: transparent;"></iframe>
+      </div>
+      <div>
+        <div class="card-label"><span class="num">03</span><span class="kind">ReferenceOnly</span></div>
+        <div class="card-title">Fiche référence</div>
+        <div class="card-desc">Ouvert depuis un deep link ou la future vue Explorer. Hero sur fond crème, aucune photo utilisateur, CTA discret d'ajout manuel.</div>
+      </div>
+    </a>
+
+    <a class="card" href="04-price-history-expanded.html">
+      <div class="card-preview">
+        <iframe class="mini-frame" src="04-price-history-expanded.html" scrolling="no" style="width: 520%; height: 520%; transform: scale(0.192); border: 0; background: transparent;"></iframe>
+      </div>
+      <div>
+        <div class="card-label"><span class="num">04</span><span class="kind">Modal Chart</span></div>
+        <div class="card-title">Historique · 5 ans</div>
+        <div class="card-desc">Modal plein écran après tap sur « Étendre ». Fond indigo nuit, courbe or, bande de confiance ±2σ, tooltip lisible au tap.</div>
+      </div>
+    </a>
+
+    <a class="card" href="05-empty-states.html">
+      <div class="card-preview">
+        <iframe class="mini-frame" src="05-empty-states.html" scrolling="no" style="width: 520%; height: 520%; transform: scale(0.192); border: 0; background: transparent;"></iframe>
+      </div>
+      <div>
+        <div class="card-label"><span class="num">05</span><span class="kind">Empty States</span></div>
+        <div class="card-title">Absences gracieuses</div>
+        <div class="card-desc">Image manquante, prix inexistants, historique insuffisant. Jamais de « 0 € » ni de « null » — uniquement des messages explicatifs honnêtes.</div>
+      </div>
+    </a>
+
+    <a class="card" href="06-commemorative-common.html">
+      <div class="card-preview">
+        <iframe class="mini-frame" src="06-commemorative-common.html" scrolling="no" style="width: 520%; height: 520%; transform: scale(0.192); border: 0; background: transparent;"></iframe>
+      </div>
+      <div>
+        <div class="card-label"><span class="num">06</span><span class="kind">Common Issue</span></div>
+        <div class="card-title">Émission commune</div>
+        <div class="card-desc">21 variantes nationales listées en grille, drapeaux possédés entourés d'or, progression vers le badge Europa dédié.</div>
+      </div>
+    </a>
+
+    <a class="card" href="DESIGN-NOTES.md">
+      <div class="card-preview" style="background: var(--indigo-900); display: flex; flex-direction: column; justify-content: space-between; padding: 38px 32px; box-shadow: 0 0 0 1px rgba(200,168,100,0.2), 0 30px 60px -20px rgba(0,0,0,0.6);">
+        <div>
+          <div style="font-family: var(--mono); font-size: 9px; letter-spacing: 0.22em; color: var(--gold); text-transform: uppercase;">— Annexe</div>
+          <div style="font-family: var(--display); font-style: italic; font-weight: 400; font-size: 38px; color: var(--cream); line-height: 1; letter-spacing: -0.02em; margin-top: 14px;">Design<br>Notes</div>
+        </div>
+        <div>
+          <div style="font-family: var(--body); font-size: 10px; color: rgba(250,250,248,0.5); line-height: 1.6;">Hiérarchie des composants · interactions · data bindings · états edge · questions ouvertes.</div>
+          <div style="margin-top: 18px; font-family: var(--mono); font-size: 9px; color: var(--gold); letter-spacing: 0.14em; text-transform: uppercase;">Ouvrir →</div>
+        </div>
+      </div>
+      <div>
+        <div class="card-label"><span class="num">07</span><span class="kind">ADR</span></div>
+        <div class="card-title">Décisions tranchées</div>
+        <div class="card-desc">Sept décisions de design, spécifications composants détaillées et questions encore ouvertes adressées à Raphaël.</div>
+      </div>
+    </a>
+
+  </div>
+
+  <div class="footer">
+    <span>Museum catalogue aesthetic · Fraunces italic + Inter tabular</span>
+    <span><em>Eurio</em> · coin-detail/mockups · v0.1</span>
+  </div>
+</main>
+
+<script>
+  // Render iframes into card previews with proper scale so they fit the aspect-ratio box.
+  // The aspect-ratio is 390/500. We scale 390->target width.
+  window.addEventListener('load', () => {
+    document.querySelectorAll('.card-preview').forEach(box => {
+      const iframe = box.querySelector('iframe');
+      if (!iframe) return;
+      const rect = box.getBoundingClientRect();
+      // Source iframe page is 390 wide, we want it to fit box width.
+      const scale = rect.width / 390;
+      // We render iframe at natural 390 size, then scale down.
+      iframe.style.width = '390px';
+      iframe.style.height = (rect.height / scale) + 'px';
+      iframe.style.transform = `scale(${scale})`;
+      iframe.style.transformOrigin = 'top left';
+      iframe.style.position = 'absolute';
+      iframe.style.top = '0';
+      iframe.style.left = '0';
+    });
+  });
+</script>
+</body>
+</html>

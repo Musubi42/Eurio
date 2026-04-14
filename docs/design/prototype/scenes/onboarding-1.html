@@ -1,0 +1,259 @@
+<!--
+  Scene : onboarding-1 (welcome)
+  ------------------------------
+  Step 1 of 3. "Scanne la pièce que tu as en main."
+  Hero : stylised generic 2€ coin with 12 euro stars, breathing animation.
+  CTAs : primary "Commencer", ghost-pill "Passer" top-right.
+
+  Filename matches the route table in _shared/router.js (`onboarding-1`).
+  The brief suggested `onboarding-welcome.html` but the router contract
+  wins — see the final report.
+-->
+
+<style>
+  .screen .statusbar,
+  .screen .bottomnav,
+  .screen .home-indicator { display: none; }
+  #view { padding: 0 !important; }
+
+  .onboarding-1-root {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    background:
+      radial-gradient(ellipse 90% 55% at 50% 30%, var(--indigo-500) 0%, transparent 70%),
+      radial-gradient(ellipse 60% 50% at 50% 100%, var(--indigo-900) 0%, transparent 70%),
+      var(--indigo-800);
+    color: var(--surface);
+    padding: 52px 24px 32px;
+    overflow: hidden;
+  }
+
+  .onboarding-1-root::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image:
+      radial-gradient(circle at 50% 36%, transparent 155px, rgba(200,168,100,0.16) 156px, transparent 158px),
+      radial-gradient(circle at 50% 36%, transparent 205px, rgba(200,168,100,0.09) 206px, transparent 208px);
+    pointer-events: none;
+  }
+
+  .onboarding-1-topbar {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    z-index: 2;
+  }
+  .onboarding-1-brand {
+    font-family: var(--font-display);
+    font-size: var(--text-lg);
+    font-weight: 400;
+    color: var(--surface);
+    letter-spacing: -0.02em;
+  }
+  .onboarding-1-brand em { font-style: italic; color: var(--gold); }
+
+  .onboarding-1-skip {
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.14);
+    color: rgba(255,255,255,0.85);
+    padding: 8px 16px;
+    border-radius: var(--radius-full);
+    font-family: var(--font-ui);
+    font-size: var(--text-xs);
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    min-height: 36px;
+    backdrop-filter: blur(8px);
+  }
+
+  .onboarding-1-stage {
+    position: relative;
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1;
+  }
+
+  .onboarding-1-coin {
+    width: 240px;
+    height: 240px;
+    animation: onboarding-1-breathe 3.4s var(--ease-in-out) infinite;
+    filter: drop-shadow(0 22px 40px rgba(0,0,0,0.45));
+  }
+  .onboarding-1-coin-halo {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 300px;
+    height: 300px;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(200,168,100,0.28) 0%, rgba(200,168,100,0.08) 50%, transparent 70%);
+    pointer-events: none;
+    animation: onboarding-1-halo 3.4s var(--ease-in-out) infinite;
+    z-index: 0;
+  }
+  @keyframes onboarding-1-breathe {
+    0%, 100% { transform: scale(1); }
+    50%      { transform: scale(1.035); }
+  }
+  @keyframes onboarding-1-halo {
+    0%, 100% { opacity: 0.55; transform: translate(-50%,-50%) scale(1); }
+    50%      { opacity: 0.95; transform: translate(-50%,-50%) scale(1.08); }
+  }
+
+  .onboarding-1-pager {
+    position: relative;
+    display: flex;
+    gap: 6px;
+    justify-content: center;
+    margin-bottom: var(--space-5);
+    z-index: 2;
+  }
+  .onboarding-1-pager span {
+    width: 18px;
+    height: 2px;
+    background: rgba(255,255,255,0.18);
+    border-radius: 1px;
+  }
+  .onboarding-1-pager span[data-active="true"] {
+    background: var(--gold);
+    width: 28px;
+  }
+
+  .onboarding-1-copy {
+    position: relative;
+    text-align: center;
+    z-index: 2;
+    margin-bottom: var(--space-6);
+  }
+  .onboarding-1-copy .eyebrow {
+    color: rgba(255,255,255,0.5);
+    margin-bottom: var(--space-3);
+    display: block;
+  }
+  .onboarding-1-copy h1 {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-weight: 400;
+    font-size: 34px;
+    line-height: 1.1;
+    color: var(--surface);
+    letter-spacing: -0.02em;
+    margin-bottom: var(--space-3);
+  }
+  .onboarding-1-copy p {
+    font-size: var(--text-sm);
+    color: rgba(255,255,255,0.65);
+    max-width: 300px;
+    margin: 0 auto;
+    line-height: var(--leading-base);
+  }
+
+  .onboarding-1-cta {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    z-index: 2;
+  }
+  .onboarding-1-cta .btn-gold {
+    width: 100%;
+    padding: 18px 20px;
+    font-size: var(--text-base);
+    border-radius: var(--radius-lg);
+  }
+  .onboarding-1-legal {
+    text-align: center;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.35);
+    margin-top: var(--space-2);
+  }
+</style>
+
+<section class="onboarding-1-root" data-scene="onboarding-1">
+  <header class="onboarding-1-topbar">
+    <div class="onboarding-1-brand">Eur<em>io</em></div>
+    <button type="button" class="onboarding-1-skip" data-action="skip">Passer</button>
+  </header>
+
+  <div class="onboarding-1-stage">
+    <div class="onboarding-1-coin-halo" aria-hidden="true"></div>
+    <svg class="onboarding-1-coin" viewBox="0 0 240 240" aria-label="Pièce 2 euros générique">
+      <defs>
+        <radialGradient id="ob1-metal" cx="35%" cy="32%" r="75%">
+          <stop offset="0%"  style="stop-color:var(--gold-soft)"/>
+          <stop offset="35%" style="stop-color:var(--gold-300)"/>
+          <stop offset="70%" style="stop-color:var(--gold)"/>
+          <stop offset="100%" style="stop-color:var(--gold-deep)"/>
+        </radialGradient>
+        <radialGradient id="ob1-core" cx="40%" cy="35%" r="70%">
+          <stop offset="0%"  style="stop-color:var(--gold-300)"/>
+          <stop offset="100%" style="stop-color:var(--gold-700)"/>
+        </radialGradient>
+      </defs>
+      <!-- outer ring -->
+      <circle cx="120" cy="120" r="116" fill="url(#ob1-metal)"/>
+      <circle cx="120" cy="120" r="116" fill="none" stroke="rgba(255,230,170,0.45)" stroke-width="1"/>
+      <!-- inner disc -->
+      <circle cx="120" cy="120" r="80" fill="url(#ob1-core)"/>
+      <circle cx="120" cy="120" r="80" fill="none" stroke="rgba(143,118,55,0.55)" stroke-width="1"/>
+      <!-- 12 euro stars on the outer ring -->
+      <g style="fill:var(--surface)" opacity="0.92">
+        <!-- Generated by hand : 12 points on r=98 around cx=cy=120 -->
+        <g transform="translate(120 22)"><polygon points="0,-6 1.76,-1.85 6,-1.85 2.62,0.7 3.88,4.85 0,2.4 -3.88,4.85 -2.62,0.7 -6,-1.85 -1.76,-1.85"/></g>
+        <g transform="translate(169 35.13)"><polygon points="0,-6 1.76,-1.85 6,-1.85 2.62,0.7 3.88,4.85 0,2.4 -3.88,4.85 -2.62,0.7 -6,-1.85 -1.76,-1.85"/></g>
+        <g transform="translate(204.87 71)"><polygon points="0,-6 1.76,-1.85 6,-1.85 2.62,0.7 3.88,4.85 0,2.4 -3.88,4.85 -2.62,0.7 -6,-1.85 -1.76,-1.85"/></g>
+        <g transform="translate(218 120)"><polygon points="0,-6 1.76,-1.85 6,-1.85 2.62,0.7 3.88,4.85 0,2.4 -3.88,4.85 -2.62,0.7 -6,-1.85 -1.76,-1.85"/></g>
+        <g transform="translate(204.87 169)"><polygon points="0,-6 1.76,-1.85 6,-1.85 2.62,0.7 3.88,4.85 0,2.4 -3.88,4.85 -2.62,0.7 -6,-1.85 -1.76,-1.85"/></g>
+        <g transform="translate(169 204.87)"><polygon points="0,-6 1.76,-1.85 6,-1.85 2.62,0.7 3.88,4.85 0,2.4 -3.88,4.85 -2.62,0.7 -6,-1.85 -1.76,-1.85"/></g>
+        <g transform="translate(120 218)"><polygon points="0,-6 1.76,-1.85 6,-1.85 2.62,0.7 3.88,4.85 0,2.4 -3.88,4.85 -2.62,0.7 -6,-1.85 -1.76,-1.85"/></g>
+        <g transform="translate(71 204.87)"><polygon points="0,-6 1.76,-1.85 6,-1.85 2.62,0.7 3.88,4.85 0,2.4 -3.88,4.85 -2.62,0.7 -6,-1.85 -1.76,-1.85"/></g>
+        <g transform="translate(35.13 169)"><polygon points="0,-6 1.76,-1.85 6,-1.85 2.62,0.7 3.88,4.85 0,2.4 -3.88,4.85 -2.62,0.7 -6,-1.85 -1.76,-1.85"/></g>
+        <g transform="translate(22 120)"><polygon points="0,-6 1.76,-1.85 6,-1.85 2.62,0.7 3.88,4.85 0,2.4 -3.88,4.85 -2.62,0.7 -6,-1.85 -1.76,-1.85"/></g>
+        <g transform="translate(35.13 71)"><polygon points="0,-6 1.76,-1.85 6,-1.85 2.62,0.7 3.88,4.85 0,2.4 -3.88,4.85 -2.62,0.7 -6,-1.85 -1.76,-1.85"/></g>
+        <g transform="translate(71 35.13)"><polygon points="0,-6 1.76,-1.85 6,-1.85 2.62,0.7 3.88,4.85 0,2.4 -3.88,4.85 -2.62,0.7 -6,-1.85 -1.76,-1.85"/></g>
+      </g>
+      <!-- "2 EURO" label -->
+      <text x="120" y="138" text-anchor="middle"
+            style="font-family:var(--font-display);fill:var(--ink-soft)"
+            font-style="italic"
+            font-size="54"
+            font-weight="500"
+            letter-spacing="-2">2</text>
+      <text x="120" y="160" text-anchor="middle"
+            style="font-family:var(--font-mono);fill:var(--gold-deep)"
+            font-size="9"
+            font-weight="600"
+            letter-spacing="2">EURO</text>
+    </svg>
+  </div>
+
+  <div class="onboarding-1-pager" aria-hidden="true">
+    <span data-active="true"></span>
+    <span></span>
+    <span></span>
+  </div>
+
+  <div class="onboarding-1-copy">
+    <span class="eyebrow">Étape 1 sur 3</span>
+    <h1>Scanne la pièce que tu as en main.</h1>
+    <p>Pointe ton téléphone, Eurio reconnaît la pièce en quelques dixièmes de seconde — 100&nbsp;% hors-ligne.</p>
+  </div>
+
+  <div class="onboarding-1-cta">
+    <button type="button" class="btn btn-gold" data-action="next">
+      <span>Commencer</span>
+      <span aria-hidden="true">→</span>
+    </button>
+    <div class="onboarding-1-legal">Fonctionne hors-ligne · Aucun compte requis</div>
+  </div>
+</section>

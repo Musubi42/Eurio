@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=390,initial-scale=1" />
+<title>Eurio · Chasses en cours</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --indigo:#1A1B4B;--indigo-2:#24265E;
+    --gold:#C8A864;--gold-2:#A8884A;--gold-3:#E7D29A;
+    --ink:#0E0E1F;--surface:#FAFAF8;--paper:#F4F1E8;
+    --n-100:#F2F2EE;--n-200:#E6E4DB;--n-300:#CFCEC4;
+    --n-400:#9C9A8E;--n-500:#6B6A62;--n-600:#3C3B38;
+  }
+  *{box-sizing:border-box;-webkit-font-smoothing:antialiased}
+  html,body{margin:0;padding:0}
+  body{
+    font-family:"Inter",system-ui,sans-serif;background:#2a2c5e;
+    display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px;
+  }
+  .device{
+    width:390px;height:844px;background:var(--surface);border-radius:44px;
+    box-shadow:0 60px 120px -40px rgba(0,0,0,.55),0 20px 40px -20px rgba(0,0,0,.35);
+    position:relative;overflow:hidden;color:var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+  .status{
+    position:absolute;top:0;left:0;right:0;height:44px;z-index:20;
+    display:flex;justify-content:space-between;align-items:center;
+    padding:0 28px;font-size:14px;font-weight:600;color:var(--ink);
+  }
+  .status .right{display:flex;gap:6px;align-items:center}
+  .status svg{width:16px;height:12px}
+
+  .topbar{
+    position:relative;padding:56px 24px 18px;
+    background:var(--surface);
+    border-bottom:1px solid var(--n-200);
+  }
+  .back{
+    display:flex;align-items:center;gap:8px;color:var(--n-500);
+    font-family:"JetBrains Mono",monospace;font-size:10px;letter-spacing:.18em;
+    text-transform:uppercase;margin-bottom:14px;text-decoration:none;
+  }
+  .back svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.6}
+  .title-row{display:flex;justify-content:space-between;align-items:baseline}
+  .title-row h1{
+    font-family:"Fraunces",serif;font-weight:400;font-style:italic;
+    font-size:34px;letter-spacing:-.02em;margin:0;line-height:1;
+  }
+  .title-row .meta{
+    font-family:"JetBrains Mono",monospace;font-size:10px;letter-spacing:.14em;
+    color:var(--gold-2);text-transform:uppercase;
+  }
+  .tabs{
+    display:flex;gap:22px;margin-top:22px;
+    border-bottom:1px solid var(--n-200);margin-bottom:-1px;
+  }
+  .tab{
+    font-family:"JetBrains Mono",monospace;font-size:11px;letter-spacing:.12em;
+    text-transform:uppercase;padding:0 0 12px;
+    color:var(--n-400);text-decoration:none;position:relative;
+    display:flex;align-items:center;gap:6px;
+  }
+  .tab .c{
+    font-size:9px;padding:2px 6px;border-radius:999px;
+    background:var(--n-200);color:var(--n-500);font-weight:500;
+  }
+  .tab.active{color:var(--ink)}
+  .tab.active .c{background:var(--indigo);color:#F4F1E8}
+  .tab.active::after{
+    content:"";position:absolute;left:0;right:0;bottom:-1px;height:2px;
+    background:var(--gold);
+  }
+
+  .body{
+    padding:18px 24px 140px;overflow-y:auto;height:calc(100% - 44px);
+    padding-top:0;
+  }
+  .body::-webkit-scrollbar{display:none}
+
+  .kicker{
+    font-family:"JetBrains Mono",monospace;font-size:9px;letter-spacing:.22em;
+    text-transform:uppercase;color:var(--n-400);
+    display:flex;align-items:center;gap:10px;margin:18px 0 10px;
+  }
+  .kicker::before{content:"";width:16px;height:1px;background:var(--n-300)}
+  .kicker::after{content:"";flex:1;height:1px;background:var(--n-200)}
+
+  .ach{
+    position:relative;background:var(--paper);border:1px solid var(--n-200);
+    border-radius:16px;padding:16px;margin-bottom:12px;overflow:hidden;
+  }
+  .ach::before{
+    content:"";position:absolute;left:0;top:0;bottom:0;width:3px;
+    background:linear-gradient(180deg,var(--gold),var(--gold-2));
+  }
+  .ach.hot::before{background:linear-gradient(180deg,#E7D29A,var(--gold))}
+  .ach .head{display:flex;align-items:center;gap:14px}
+  .medal{
+    width:48px;height:48px;flex:0 0 48px;border-radius:50%;
+    background:radial-gradient(circle at 30% 30%, #F7EBC2, #C8A864 55%, #7E5E22 100%);
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.35),inset 0 -4px 8px rgba(0,0,0,.28),0 4px 10px -4px rgba(126,94,34,.5);
+    display:flex;align-items:center;justify-content:center;
+    font-family:"Fraunces",serif;font-style:italic;font-size:20px;color:#3A2A05;font-weight:500;
+  }
+  .medal.silver{
+    background:radial-gradient(circle at 30% 30%, #F1F0EA, #BCBAAD 55%, #6A6858 100%);
+    color:#2F2C1E;
+  }
+  .medal.bronze{
+    background:radial-gradient(circle at 30% 30%, #EAC6A0, #A87245 55%, #54320E 100%);
+    color:#fff;
+  }
+  .ach .ttl{
+    font-family:"Fraunces",serif;font-weight:500;font-size:17px;letter-spacing:-.005em;line-height:1.2;
+  }
+  .ach .sub{
+    font-size:11px;color:var(--n-500);margin-top:3px;
+    display:flex;align-items:center;gap:8px;
+  }
+  .ach .sub .pill{
+    border:1px solid var(--n-300);border-radius:999px;padding:2px 7px;
+    font-family:"JetBrains Mono",monospace;font-size:9px;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--n-600);
+  }
+  .ach .sub .pill.hard{border-color:#C8A864;color:var(--gold-2)}
+
+  .ach .progress-wrap{
+    margin-top:14px;display:flex;align-items:center;gap:12px;
+  }
+  .ach .bar{
+    flex:1;height:3px;background:var(--n-200);border-radius:3px;position:relative;
+  }
+  .ach .bar .f{
+    position:absolute;left:0;top:0;bottom:0;background:var(--indigo);border-radius:3px;
+  }
+  .ach .bar .f.gold{background:linear-gradient(90deg,var(--gold),var(--gold-2))}
+  .ach .count{
+    font-family:"JetBrains Mono",monospace;font-size:12px;color:var(--n-500);
+  }
+  .ach .count b{color:var(--indigo);font-weight:600;font-size:13px}
+  .ach.hot .count b{color:var(--gold-2)}
+
+  .ach .missing{
+    margin-top:12px;padding-top:12px;border-top:1px dashed var(--n-300);
+    display:flex;gap:6px;flex-wrap:wrap;
+  }
+  .chip{
+    background:var(--surface);border:1px solid var(--n-200);border-radius:8px;
+    padding:5px 8px;font-size:10px;color:var(--n-600);
+    font-family:"JetBrains Mono",monospace;letter-spacing:.04em;
+    display:flex;align-items:center;gap:5px;
+  }
+  .chip .flag{
+    width:10px;height:10px;border-radius:2px;display:inline-block;
+  }
+  .chip .flag.fr{background:linear-gradient(90deg,#0055A4 33%, #fff 33% 66%, #EF4135 66%)}
+  .chip .flag.de{background:linear-gradient(180deg,#000 33%, #DD0000 33% 66%, #FFCE00 66%)}
+  .chip .flag.eu{background:#1A1B4B;position:relative}
+  .chip .flag.eu::before{content:"★";color:#C8A864;font-size:9px;position:absolute;inset:0;display:flex;align-items:center;justify-content:center;line-height:1}
+  .chip.more{color:var(--n-400);border-style:dashed}
+
+  /* nearly complete highlight */
+  .ach.hot{
+    background:linear-gradient(180deg,#FBF4E0,#F4F1E8);
+    border-color:#E6D3A3;
+    box-shadow:0 12px 24px -14px rgba(200,168,100,.35);
+  }
+  .nearly{
+    position:absolute;top:14px;right:14px;
+    font-family:"JetBrains Mono",monospace;font-size:9px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--gold-2);
+    display:flex;align-items:center;gap:5px;
+  }
+  .nearly::before{
+    content:"";width:6px;height:6px;border-radius:50%;background:var(--gold);
+    box-shadow:0 0 0 3px rgba(200,168,100,.2);
+    animation:pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse{
+    0%,100%{box-shadow:0 0 0 3px rgba(200,168,100,.2)}
+    50%{box-shadow:0 0 0 6px rgba(200,168,100,.08)}
+  }
+
+  /* nav */
+  .nav{
+    position:absolute;left:0;right:0;bottom:0;padding:10px 24px 28px;
+    background:linear-gradient(180deg,rgba(250,250,248,0),var(--surface) 35%);
+    z-index:10;
+  }
+  .nav .inner{
+    display:flex;justify-content:space-around;align-items:center;
+    background:#14153A;border-radius:22px;padding:10px 8px;
+    box-shadow:0 20px 40px -18px rgba(14,14,31,.5);
+  }
+  .nav a{
+    color:#6D6E85;text-decoration:none;
+    display:flex;flex-direction:column;align-items:center;gap:3px;
+    padding:6px 10px;border-radius:14px;font-size:9px;letter-spacing:.08em;
+    text-transform:uppercase;font-family:"JetBrains Mono",monospace;
+  }
+  .nav a svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6}
+  .nav a.active{color:var(--gold);background:rgba(200,168,100,.08)}
+</style>
+</head>
+<body>
+  <div class="device">
+    <div class="status">
+      <div>9:41</div>
+      <div class="right">
+        <svg viewBox="0 0 16 12"><path d="M1 8a7 7 0 0114 0" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/><path d="M3.5 9.5a4 4 0 019 0" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/><circle cx="8" cy="11" r="1" fill="currentColor"/></svg>
+        <svg viewBox="0 0 24 12"><rect x="1" y="2" width="19" height="8" rx="2" stroke="currentColor" fill="none" stroke-width="1.2"/><rect x="2.5" y="3.5" width="14" height="5" rx="1" fill="currentColor"/><rect x="21" y="4" width="2" height="4" rx=".5" fill="currentColor"/></svg>
+      </div>
+    </div>
+
+    <div class="topbar">
+      <a class="back" href="01-profile-home.html">
+        <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+        Profil
+      </a>
+      <div class="title-row">
+        <h1>Chasses.</h1>
+        <div class="meta">11 ACTIFS · 5 DONE</div>
+      </div>
+      <div class="tabs">
+        <a class="tab active">En cours <span class="c">11</span></a>
+        <a class="tab" href="03-achievements-unlocked.html">Débloqués <span class="c">5</span></a>
+        <a class="tab">Verrouillés <span class="c">7</span></a>
+      </div>
+    </div>
+
+    <div class="body">
+      <div class="kicker">Presque complètes</div>
+
+      <div class="ach hot">
+        <div class="nearly">Plus que 2</div>
+        <div class="head">
+          <div class="medal">★</div>
+          <div>
+            <div class="ttl">Série complète France</div>
+            <div class="sub">
+              <span class="pill">Facile</span>
+              <span>circulation</span>
+            </div>
+          </div>
+        </div>
+        <div class="progress-wrap">
+          <div class="bar"><div class="f gold" style="width:75%"></div></div>
+          <div class="count"><b>6</b>/8</div>
+        </div>
+        <div class="missing">
+          <div class="chip"><span class="flag fr"></span>5c · 2020</div>
+          <div class="chip"><span class="flag fr"></span>2€ · 2020</div>
+        </div>
+      </div>
+
+      <div class="kicker">En construction</div>
+
+      <div class="ach">
+        <div class="head">
+          <div class="medal silver">◎</div>
+          <div>
+            <div class="ttl">Eurozone founding</div>
+            <div class="sub">
+              <span class="pill">Moyen</span>
+              <span>12 pays fondateurs · 2002</span>
+            </div>
+          </div>
+        </div>
+        <div class="progress-wrap">
+          <div class="bar"><div class="f" style="width:41%"></div></div>
+          <div class="count"><b>5</b>/12</div>
+        </div>
+        <div class="missing">
+          <div class="chip"><span class="flag eu"></span>AT</div>
+          <div class="chip"><span class="flag eu"></span>FI</div>
+          <div class="chip"><span class="flag eu"></span>GR</div>
+          <div class="chip"><span class="flag eu"></span>IE</div>
+          <div class="chip more">+3 autres</div>
+        </div>
+      </div>
+
+      <div class="ach">
+        <div class="head">
+          <div class="medal bronze">◐</div>
+          <div>
+            <div class="ttl">Grande chasse</div>
+            <div class="sub">
+              <span class="pill hard">Difficile</span>
+              <span>21 pays zone euro · Bulgarie incl.</span>
+            </div>
+          </div>
+        </div>
+        <div class="progress-wrap">
+          <div class="bar"><div class="f" style="width:38%"></div></div>
+          <div class="count"><b>8</b>/21</div>
+        </div>
+      </div>
+
+      <div class="ach">
+        <div class="head">
+          <div class="medal silver">◇</div>
+          <div>
+            <div class="ttl">Commémoratives France</div>
+            <div class="sub">
+              <span class="pill hard">Difficile</span>
+              <span>2€ commémoratives</span>
+            </div>
+          </div>
+        </div>
+        <div class="progress-wrap">
+          <div class="bar"><div class="f" style="width:16%"></div></div>
+          <div class="count"><b>4</b>/25</div>
+        </div>
+      </div>
+
+      <div class="ach">
+        <div class="head">
+          <div class="medal bronze">◆</div>
+          <div>
+            <div class="ttl">Vintage 2002</div>
+            <div class="sub">
+              <span class="pill hard">Très difficile</span>
+              <span>Première année de frappe</span>
+            </div>
+          </div>
+        </div>
+        <div class="progress-wrap">
+          <div class="bar"><div class="f" style="width:8%"></div></div>
+          <div class="count"><b>2</b>/24</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="nav">
+      <div class="inner">
+        <a><svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>Coffre</a>
+        <a><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M9 6V4h6v2"/><circle cx="12" cy="12.5" r="3"/></svg>Scan</a>
+        <a><svg viewBox="0 0 24 24"><path d="M21 21l-4.35-4.35"/><circle cx="11" cy="11" r="8"/></svg>Explorer</a>
+        <a class="active"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0116 0"/></svg>Profil</a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=390,initial-scale=1" />
+<title>Eurio · Série complète France</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --indigo:#1A1B4B;--indigo-2:#24265E;--indigo-3:#0E0E27;
+    --gold:#C8A864;--gold-2:#A8884A;--gold-3:#E7D29A;
+    --ink:#0E0E1F;--surface:#FAFAF8;--paper:#F4F1E8;
+    --n-100:#F2F2EE;--n-200:#E6E4DB;--n-300:#CFCEC4;
+    --n-400:#9C9A8E;--n-500:#6B6A62;--n-600:#3C3B38;
+  }
+  *{box-sizing:border-box;-webkit-font-smoothing:antialiased}
+  html,body{margin:0;padding:0}
+  body{
+    font-family:"Inter",system-ui,sans-serif;background:#2a2c5e;
+    display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px;
+  }
+  .device{
+    width:390px;height:844px;background:var(--surface);border-radius:44px;
+    box-shadow:0 60px 120px -40px rgba(0,0,0,.55),0 20px 40px -20px rgba(0,0,0,.35);
+    position:relative;overflow:hidden;color:var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+  .status{
+    position:absolute;top:0;left:0;right:0;height:44px;z-index:20;
+    display:flex;justify-content:space-between;align-items:center;
+    padding:0 28px;font-size:14px;font-weight:600;color:#F4F1E8;
+  }
+  .status .right{display:flex;gap:6px;align-items:center}
+  .status svg{width:16px;height:12px}
+
+  .hero{
+    position:relative;padding:54px 24px 28px;
+    background:
+      radial-gradient(500px 260px at 85% -20%, #34357e 0%, transparent 60%),
+      linear-gradient(180deg,#1A1B4B 0%, #14153A 100%);
+    color:#F4F1E8;overflow:hidden;
+  }
+  .hero::before{
+    content:"";position:absolute;inset:0;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.95' numOctaves='2'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 .06 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+    mix-blend-mode:overlay;opacity:.6;pointer-events:none;
+  }
+  .back{
+    position:relative;display:flex;align-items:center;gap:8px;
+    color:#A3A3BC;text-decoration:none;
+    font-family:"JetBrains Mono",monospace;font-size:10px;letter-spacing:.18em;
+    text-transform:uppercase;margin-bottom:20px;
+  }
+  .back svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.6}
+
+  .eyebrow{
+    position:relative;
+    font-family:"JetBrains Mono",monospace;font-size:10px;letter-spacing:.22em;
+    text-transform:uppercase;color:var(--gold);
+    display:flex;align-items:center;gap:10px;margin-bottom:8px;
+  }
+  .eyebrow::before{content:"";width:18px;height:1px;background:var(--gold)}
+  .eyebrow .flag-fr{
+    width:16px;height:11px;border-radius:1px;display:inline-block;
+    background:linear-gradient(90deg,#0055A4 33%, #fff 33% 66%, #EF4135 66%);
+  }
+
+  h1{
+    position:relative;
+    font-family:"Fraunces",serif;font-weight:300;font-size:42px;line-height:.95;
+    letter-spacing:-.02em;margin:0;
+    color:#F4F1E8;
+  }
+  h1 em{font-style:italic;color:var(--gold-3);font-weight:400}
+  .sub{
+    position:relative;
+    color:#A3A3BC;font-size:12px;margin-top:10px;line-height:1.55;max-width:300px;
+  }
+
+  .hero-meta{
+    position:relative;
+    display:flex;gap:20px;margin-top:22px;align-items:flex-end;
+  }
+  .hero-meta .prog{
+    flex:1;
+  }
+  .hero-meta .big{
+    font-family:"Fraunces",serif;font-size:36px;font-weight:400;line-height:.9;
+    display:flex;align-items:baseline;gap:4px;
+  }
+  .hero-meta .big .sep{color:var(--n-400);font-size:24px}
+  .hero-meta .big .tot{color:var(--n-400);font-size:22px}
+  .hero-meta .lab{
+    font-family:"JetBrains Mono",monospace;font-size:9px;letter-spacing:.14em;
+    text-transform:uppercase;color:#8E8EA8;margin-top:6px;
+  }
+  .bar{
+    height:2px;background:rgba(255,255,255,.08);border-radius:2px;margin-top:10px;position:relative;
+  }
+  .bar .f{
+    position:absolute;left:0;top:0;bottom:0;width:75%;
+    background:linear-gradient(90deg,#E7D29A,#C8A864);border-radius:2px;
+    box-shadow:0 0 10px rgba(200,168,100,.45);
+  }
+
+  .body{
+    padding:24px 24px 140px;
+    background:
+      radial-gradient(400px 200px at 50% 0%, rgba(200,168,100,.06), transparent 60%),
+      var(--surface);
+  }
+
+  .grid-head{
+    display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;
+    font-family:"JetBrains Mono",monospace;font-size:10px;letter-spacing:.14em;
+    text-transform:uppercase;
+  }
+  .grid-head .t{color:var(--n-500)}
+  .grid-head .legend{display:flex;gap:12px;color:var(--n-500)}
+  .grid-head .legend .dot{
+    width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:4px;vertical-align:middle;
+  }
+  .grid-head .legend .own .dot{background:var(--gold)}
+  .grid-head .legend .miss .dot{background:var(--n-300)}
+
+  /* coin plate grid */
+  .plate{
+    display:grid;grid-template-columns:repeat(2,1fr);gap:12px;
+  }
+  .coin{
+    position:relative;background:var(--paper);border:1px solid var(--n-200);
+    border-radius:14px;padding:14px 14px 13px;
+    display:flex;gap:12px;align-items:center;overflow:hidden;
+  }
+  .coin-disc{
+    width:48px;height:48px;border-radius:50%;flex:0 0 48px;position:relative;
+  }
+  .coin-disc.own{
+    background:
+      radial-gradient(circle at 30% 28%, #F9EEC4 0%, #E7D29A 25%, #C8A864 55%, #8D6A2A 100%);
+    box-shadow:
+      inset 0 0 0 1px rgba(255,255,255,.35),
+      inset 0 -5px 10px rgba(0,0,0,.32),
+      inset 0 5px 10px rgba(255,255,255,.2),
+      0 6px 12px -6px rgba(126,94,34,.55);
+  }
+  .coin-disc.own.silver{
+    background:
+      radial-gradient(circle at 30% 28%, #FAF9F3 0%, #E4E1D2 25%, #B6B3A3 55%, #6E6B5B 100%);
+  }
+  .coin-disc.own.bi{
+    background:
+      radial-gradient(circle at 30% 28%, #F9EEC4 0%, #E7D29A 20%, #C8A864 40%, #A8884A 48%, #B6B3A3 52%, #7E7B6B 100%);
+  }
+  .coin-disc.missing{
+    background:
+      radial-gradient(circle at 30% 28%, #F2F1EA 0%, #E0DED5 55%, #C5C3BA 100%);
+    box-shadow:
+      inset 0 0 0 1px rgba(0,0,0,.06),
+      inset 0 -3px 6px rgba(0,0,0,.08);
+    opacity:.9;
+  }
+  .coin-disc::before{
+    content:"";position:absolute;inset:5px;border-radius:50%;
+    border:1px dashed rgba(58,42,5,.25);
+  }
+  .coin-disc.missing::before{border-color:rgba(0,0,0,.08)}
+  .coin-disc .v{
+    position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    font-family:"Fraunces",serif;font-weight:500;font-size:13px;color:#3A2A05;line-height:1;
+  }
+  .coin-disc.missing .v{color:var(--n-400)}
+  .coin-disc .check{
+    position:absolute;top:-2px;right:-2px;width:16px;height:16px;border-radius:50%;
+    background:var(--indigo);color:var(--gold-3);
+    display:flex;align-items:center;justify-content:center;
+    font-size:10px;border:2px solid var(--surface);
+  }
+
+  .coin .info{flex:1;min-width:0}
+  .coin .ttl{
+    font-family:"Fraunces",serif;font-weight:500;font-size:14px;letter-spacing:-.005em;
+    line-height:1.1;
+  }
+  .coin .meta{
+    font-family:"JetBrains Mono",monospace;font-size:9px;letter-spacing:.08em;
+    color:var(--n-500);margin-top:3px;text-transform:uppercase;
+  }
+  .coin.missing .ttl{color:var(--n-500);font-style:italic}
+  .coin.missing{background:var(--n-100);border-style:dashed}
+
+  .cta{
+    margin-top:22px;
+    background:var(--indigo);color:#F4F1E8;
+    border-radius:14px;padding:15px 16px;
+    display:flex;align-items:center;justify-content:space-between;gap:12px;
+    text-decoration:none;position:relative;overflow:hidden;
+    border:1px solid rgba(200,168,100,.3);
+  }
+  .cta::after{
+    content:"";position:absolute;right:-30px;top:-30px;width:120px;height:120px;border-radius:50%;
+    background:radial-gradient(circle,rgba(200,168,100,.2),transparent 70%);
+  }
+  .cta .l{
+    font-family:"Fraunces",serif;font-size:15px;font-weight:500;
+  }
+  .cta .s{font-size:10px;color:#A3A3BC;margin-top:2px}
+  .cta .ico{
+    width:40px;height:40px;border-radius:50%;background:rgba(200,168,100,.15);
+    display:flex;align-items:center;justify-content:center;flex:0 0 40px;
+    position:relative;z-index:1;
+  }
+  .cta .ico svg{width:20px;height:20px;stroke:var(--gold);fill:none;stroke-width:1.6}
+</style>
+</head>
+<body>
+  <div class="device">
+    <div class="status">
+      <div>9:41</div>
+      <div class="right">
+        <svg viewBox="0 0 16 12"><path d="M1 8a7 7 0 0114 0" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/><path d="M3.5 9.5a4 4 0 019 0" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/><circle cx="8" cy="11" r="1" fill="currentColor"/></svg>
+        <svg viewBox="0 0 24 12"><rect x="1" y="2" width="19" height="8" rx="2" stroke="currentColor" fill="none" stroke-width="1.2"/><rect x="2.5" y="3.5" width="14" height="5" rx="1" fill="currentColor"/><rect x="21" y="4" width="2" height="4" rx=".5" fill="currentColor"/></svg>
+      </div>
+    </div>
+
+    <div class="hero">
+      <a class="back" href="02-achievements-in-progress.html">
+        <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+        Chasses
+      </a>
+
+      <div class="eyebrow"><span class="flag-fr"></span>Série complète · France</div>
+      <h1>Huit pièces,<br/><em>une série.</em></h1>
+      <p class="sub">Toutes les pièces de circulation françaises, du centime à deux euros. Millésime 2020.</p>
+
+      <div class="hero-meta">
+        <div class="prog">
+          <div class="lab">Progression</div>
+          <div class="bar"><div class="f"></div></div>
+          <div class="lab" style="margin-top:8px;color:var(--gold)">Plus que <b style="color:#F4F1E8">2 pièces</b></div>
+        </div>
+        <div>
+          <div class="big">6<span class="sep">/</span><span class="tot">8</span></div>
+          <div class="lab">acquises</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="body">
+      <div class="grid-head">
+        <div class="t">Le plateau</div>
+        <div class="legend">
+          <span class="own"><span class="dot"></span>Acquise</span>
+          <span class="miss"><span class="dot"></span>Manquante</span>
+        </div>
+      </div>
+
+      <div class="plate">
+        <div class="coin">
+          <div class="coin-disc own"><div class="v">1¢</div><div class="check">✓</div></div>
+          <div class="info">
+            <div class="ttl">1 centime</div>
+            <div class="meta">FR · 2020</div>
+          </div>
+        </div>
+        <div class="coin">
+          <div class="coin-disc own"><div class="v">2¢</div><div class="check">✓</div></div>
+          <div class="info">
+            <div class="ttl">2 centimes</div>
+            <div class="meta">FR · 2020</div>
+          </div>
+        </div>
+
+        <div class="coin missing">
+          <div class="coin-disc missing"><div class="v">5¢</div></div>
+          <div class="info">
+            <div class="ttl">5 centimes</div>
+            <div class="meta">À TROUVER</div>
+          </div>
+        </div>
+        <div class="coin">
+          <div class="coin-disc own"><div class="v">10¢</div><div class="check">✓</div></div>
+          <div class="info">
+            <div class="ttl">10 centimes</div>
+            <div class="meta">FR · 2020</div>
+          </div>
+        </div>
+
+        <div class="coin">
+          <div class="coin-disc own"><div class="v">20¢</div><div class="check">✓</div></div>
+          <div class="info">
+            <div class="ttl">20 centimes</div>
+            <div class="meta">FR · 2020</div>
+          </div>
+        </div>
+        <div class="coin">
+          <div class="coin-disc own"><div class="v">50¢</div><div class="check">✓</div></div>
+          <div class="info">
+            <div class="ttl">50 centimes</div>
+            <div class="meta">FR · 2020</div>
+          </div>
+        </div>
+
+        <div class="coin">
+          <div class="coin-disc own silver"><div class="v">1€</div><div class="check">✓</div></div>
+          <div class="info">
+            <div class="ttl">1 euro</div>
+            <div class="meta">FR · 2020</div>
+          </div>
+        </div>
+        <div class="coin missing">
+          <div class="coin-disc missing"><div class="v">2€</div></div>
+          <div class="info">
+            <div class="ttl">2 euros</div>
+            <div class="meta">À TROUVER</div>
+          </div>
+        </div>
+      </div>
+
+      <a class="cta">
+        <div>
+          <div class="l">Scanner une pièce manquante</div>
+          <div class="s">5¢ ou 2€ France 2020</div>
+        </div>
+        <div class="ico">
+          <svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M9 6V4h6v2"/><circle cx="12" cy="12.5" r="3"/></svg>
+        </div>
+      </a>
+    </div>
+  </div>
+</body>
+</html>

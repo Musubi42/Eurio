@@ -1,0 +1,536 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=390,initial-scale=1" />
+<title>Eurio · Profil</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --indigo:#1A1B4B;
+    --indigo-2:#24265E;
+    --indigo-3:#0E0E27;
+    --gold:#C8A864;
+    --gold-2:#A8884A;
+    --gold-3:#E7D29A;
+    --ink:#0E0E1F;
+    --surface:#FAFAF8;
+    --paper:#F4F1E8;
+    --n-100:#F2F2EE;
+    --n-200:#E6E4DB;
+    --n-300:#CFCEC4;
+    --n-400:#9C9A8E;
+    --n-500:#6B6A62;
+    --n-600:#3C3B38;
+    --red:#D14343;
+  }
+  *{box-sizing:border-box;-webkit-font-smoothing:antialiased}
+  html,body{margin:0;padding:0}
+  body{
+    font-family:"Inter",system-ui,sans-serif;
+    background:#2a2c5e;
+    display:flex;align-items:center;justify-content:center;
+    min-height:100vh;
+    padding:24px;
+  }
+  .device{
+    width:390px;height:844px;
+    background:var(--surface);
+    border-radius:44px;
+    box-shadow:
+      0 60px 120px -40px rgba(0,0,0,.55),
+      0 20px 40px -20px rgba(0,0,0,.35),
+      inset 0 0 0 1px rgba(255,255,255,.06);
+    position:relative;overflow:hidden;
+    font-variant-numeric: tabular-nums;
+    color:var(--ink);
+  }
+  /* status bar */
+  .status{
+    position:absolute;top:0;left:0;right:0;height:44px;
+    display:flex;justify-content:space-between;align-items:center;
+    padding:0 28px;font-size:14px;font-weight:600;
+    color:#F4F1E8;z-index:20;
+  }
+  .status .right{display:flex;gap:6px;align-items:center}
+  .status svg{width:16px;height:12px}
+  /* top header hero */
+  .hero{
+    position:relative;
+    padding:54px 24px 28px;
+    background:
+      radial-gradient(600px 300px at 85% -20%, #34357e 0%, transparent 60%),
+      radial-gradient(500px 280px at 15% 110%, #141435 0%, transparent 55%),
+      linear-gradient(180deg,#1A1B4B 0%, #14153A 100%);
+    color:#F4F1E8;
+    overflow:hidden;
+  }
+  .hero::before{
+    content:"";position:absolute;inset:0;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.95' numOctaves='2'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 .07 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+    mix-blend-mode:overlay;opacity:.6;pointer-events:none;
+  }
+  .hero::after{
+    content:"";position:absolute;left:24px;right:24px;bottom:0;height:1px;
+    background:linear-gradient(90deg,transparent,var(--gold) 20%,var(--gold) 80%,transparent);
+    opacity:.45;
+  }
+  .top-row{
+    position:relative;display:flex;justify-content:space-between;align-items:center;
+    margin-bottom:30px;
+  }
+  .brand{
+    font-family:"Fraunces",serif;font-weight:400;font-size:20px;letter-spacing:-.01em;
+    display:flex;align-items:center;gap:10px;
+  }
+  .brand .dot{
+    width:10px;height:10px;border-radius:50%;
+    background:radial-gradient(circle at 30% 30%, #F5E0A3, #C8A864 55%, #7E5E22);
+    box-shadow:0 0 14px rgba(200,168,100,.55);
+  }
+  .icon-btn{
+    width:38px;height:38px;border-radius:12px;
+    background:rgba(255,255,255,.06);
+    border:1px solid rgba(255,255,255,.1);
+    display:flex;align-items:center;justify-content:center;
+    color:#F4F1E8;
+  }
+  .icon-btn svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.6}
+
+  .eyebrow{
+    font-family:"JetBrains Mono",monospace;
+    font-size:10px;letter-spacing:.22em;text-transform:uppercase;
+    color:var(--gold);
+    display:flex;align-items:center;gap:10px;
+    margin-bottom:10px;position:relative;
+  }
+  .eyebrow::before{content:"";width:18px;height:1px;background:var(--gold)}
+  .level-name{
+    position:relative;
+    font-family:"Fraunces",serif;
+    font-weight:300;font-style:italic;
+    font-size:62px;line-height:.92;letter-spacing:-.025em;
+    margin:0;
+    background:linear-gradient(180deg,#F7F0D8 0%, #E7D29A 50%, #C8A864 100%);
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+  }
+  .level-ord{
+    position:absolute;top:4px;right:0;
+    font-family:"JetBrains Mono",monospace;
+    font-size:10px;letter-spacing:.2em;color:var(--gold);opacity:.7;
+  }
+  .level-cap{
+    font-family:"Inter",sans-serif;font-size:12px;color:#BEBDC8;margin-top:10px;
+    display:flex;align-items:center;gap:10px;
+  }
+  .level-cap .num{color:#F4F1E8;font-weight:500}
+  .level-cap .sep{width:3px;height:3px;border-radius:50%;background:#7A7A8C}
+
+  /* ladder */
+  .ladder{
+    position:relative;margin-top:22px;
+  }
+  .ladder-labels{
+    display:flex;justify-content:space-between;
+    font-family:"JetBrains Mono",monospace;
+    font-size:9px;letter-spacing:.16em;text-transform:uppercase;
+    color:#6A6B85;
+    margin-bottom:10px;
+  }
+  .ladder-labels span.active{color:var(--gold)}
+  .ladder-labels span.current{color:#F4F1E8}
+  .bar{
+    position:relative;height:2px;background:rgba(255,255,255,.08);
+    border-radius:2px;
+  }
+  .bar .fill{
+    position:absolute;left:0;top:0;bottom:0;width:58%;
+    background:linear-gradient(90deg,#E7D29A,#C8A864);
+    border-radius:2px;
+    box-shadow:0 0 12px rgba(200,168,100,.5);
+  }
+  .bar .node{
+    position:absolute;top:50%;width:9px;height:9px;border-radius:50%;
+    transform:translate(-50%,-50%);
+    background:#14153A;border:1px solid rgba(255,255,255,.18);
+  }
+  .bar .node.done{background:var(--gold);border-color:#E7D29A}
+  .bar .node.current{
+    width:14px;height:14px;background:#14153A;border:1.5px solid var(--gold);
+    box-shadow:0 0 0 4px rgba(200,168,100,.12),0 0 16px rgba(200,168,100,.5);
+  }
+  .hint{
+    margin-top:14px;display:flex;justify-content:space-between;align-items:baseline;
+    font-size:12px;color:#B9B9C6;
+  }
+  .hint b{color:#F4F1E8;font-weight:500}
+  .hint .pct{
+    font-family:"JetBrains Mono",monospace;color:var(--gold);font-size:11px;letter-spacing:.08em;
+  }
+
+  /* body */
+  .body{
+    padding:22px 24px 120px;
+  }
+  .section-head{
+    display:flex;justify-content:space-between;align-items:baseline;
+    margin-bottom:14px;
+  }
+  .section-head h2{
+    font-family:"Fraunces",serif;font-weight:400;font-size:19px;letter-spacing:-.01em;
+    margin:0;color:var(--ink);
+  }
+  .section-head .link{
+    font-family:"JetBrains Mono",monospace;font-size:10px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--gold-2);text-decoration:none;
+    display:flex;align-items:center;gap:6px;
+  }
+  .section-head .link::after{content:"→"}
+
+  /* stats row */
+  .stats{
+    display:grid;grid-template-columns:repeat(3,1fr);gap:8px;
+    margin-top:-32px;margin-bottom:28px;position:relative;z-index:5;
+  }
+  .stat{
+    background:var(--surface);
+    border:1px solid var(--n-200);
+    border-radius:14px;
+    padding:14px 12px 13px;
+    box-shadow:0 14px 24px -14px rgba(14,14,31,.25);
+  }
+  .stat .k{
+    font-family:"JetBrains Mono",monospace;font-size:9px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--n-500);
+  }
+  .stat .v{
+    font-family:"Fraunces",serif;font-weight:400;font-size:26px;line-height:1;
+    margin-top:6px;letter-spacing:-.01em;
+  }
+  .stat .sub{
+    font-size:10px;color:var(--n-500);margin-top:4px;
+    display:flex;align-items:center;gap:4px;
+  }
+  .stat .sub .up{color:#2E7D4F;font-weight:500}
+
+  /* achievements in progress */
+  .ach-list{display:flex;flex-direction:column;gap:10px;margin-bottom:26px}
+  .ach{
+    position:relative;
+    background:var(--paper);
+    border:1px solid var(--n-200);
+    border-radius:14px;
+    padding:14px 14px 14px 16px;
+    display:flex;gap:14px;align-items:center;
+    overflow:hidden;
+  }
+  .ach::before{
+    content:"";position:absolute;left:0;top:0;bottom:0;width:3px;
+    background:linear-gradient(180deg,var(--gold),var(--gold-2));
+    opacity:.6;
+  }
+  .ach .medal{
+    width:44px;height:44px;border-radius:50%;flex:0 0 44px;
+    background:
+      radial-gradient(circle at 30% 30%, #F7EBC2, #C8A864 55%, #7E5E22 100%);
+    box-shadow:
+      inset 0 0 0 1px rgba(255,255,255,.3),
+      inset 0 -4px 8px rgba(0,0,0,.25),
+      0 4px 10px -4px rgba(126,94,34,.5);
+    display:flex;align-items:center;justify-content:center;
+    font-family:"Fraunces",serif;font-size:18px;color:#3A2A05;font-weight:500;font-style:italic;
+    position:relative;
+  }
+  .ach .medal.dim{
+    background:radial-gradient(circle at 30% 30%, #EFEDE4, #C3C1B6 55%, #8A8879 100%);
+    color:#5B594E;
+  }
+  .ach .content{flex:1;min-width:0}
+  .ach .title{
+    font-family:"Fraunces",serif;font-weight:500;font-size:15px;line-height:1.15;
+    letter-spacing:-.005em;color:var(--ink);
+  }
+  .ach .meta{
+    font-size:11px;color:var(--n-500);margin-top:3px;
+    display:flex;align-items:center;gap:8px;
+  }
+  .ach .meta b{color:var(--n-600);font-weight:500}
+  .ach .progress{
+    margin-top:9px;height:2px;background:var(--n-200);border-radius:2px;position:relative;
+  }
+  .ach .progress .f{
+    position:absolute;left:0;top:0;bottom:0;background:var(--indigo);border-radius:2px;
+  }
+  .ach .progress .f.gold{background:var(--gold-2)}
+  .ach .count{
+    font-family:"JetBrains Mono",monospace;font-size:11px;color:var(--n-500);
+    letter-spacing:.04em;flex:0 0 auto;
+  }
+  .ach .count b{color:var(--indigo);font-weight:600}
+
+  /* recent unlock banner */
+  .unlock-banner{
+    margin-bottom:26px;
+    background:linear-gradient(100deg,#1A1B4B 0%, #24265E 70%, #2A2C72 100%);
+    color:#F4F1E8;
+    border-radius:16px;
+    padding:16px 16px 16px 18px;
+    display:flex;align-items:center;gap:14px;
+    position:relative;overflow:hidden;
+    border:1px solid rgba(200,168,100,.3);
+  }
+  .unlock-banner::after{
+    content:"";position:absolute;right:-20px;top:-20px;width:120px;height:120px;border-radius:50%;
+    background:radial-gradient(circle,rgba(200,168,100,.25),transparent 70%);
+  }
+  .unlock-banner .medal{
+    width:40px;height:40px;flex:0 0 40px;
+    background:radial-gradient(circle at 30% 30%, #F7EBC2, #C8A864 55%, #7E5E22 100%);
+    border-radius:50%;
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.3),inset 0 -3px 6px rgba(0,0,0,.3);
+  }
+  .unlock-banner .txt{flex:1;min-width:0;position:relative;z-index:1}
+  .unlock-banner .eyb{
+    font-family:"JetBrains Mono",monospace;font-size:9px;letter-spacing:.22em;
+    color:var(--gold);text-transform:uppercase;
+  }
+  .unlock-banner .ttl{
+    font-family:"Fraunces",serif;font-size:15px;font-weight:500;margin-top:2px;
+  }
+  .unlock-banner .sub{font-size:11px;color:#A3A3BC;margin-top:2px}
+
+  /* settings preview */
+  .set-prev{
+    background:var(--paper);border:1px solid var(--n-200);border-radius:14px;
+    overflow:hidden;
+  }
+  .set-row{
+    display:flex;align-items:center;gap:12px;
+    padding:14px 16px;border-bottom:1px solid var(--n-200);
+    font-size:13px;color:var(--n-600);
+  }
+  .set-row:last-child{border-bottom:0}
+  .set-row svg{width:16px;height:16px;stroke:var(--n-500);fill:none;stroke-width:1.6;flex:0 0 16px}
+  .set-row .label{flex:1;color:var(--ink);font-weight:500}
+  .set-row .val{font-size:11px;color:var(--n-500)}
+  .set-row .arrow{color:var(--n-400)}
+
+  /* bottom nav */
+  .nav{
+    position:absolute;left:0;right:0;bottom:0;
+    padding:10px 24px 28px;
+    background:linear-gradient(180deg,rgba(250,250,248,0),var(--surface) 35%);
+    display:flex;justify-content:space-between;align-items:center;
+    z-index:10;
+  }
+  .nav .inner{
+    flex:1;display:flex;justify-content:space-around;align-items:center;
+    background:#14153A;
+    border-radius:22px;
+    padding:10px 8px;
+    box-shadow:0 20px 40px -18px rgba(14,14,31,.5);
+  }
+  .nav a{
+    color:#6D6E85;text-decoration:none;
+    display:flex;flex-direction:column;align-items:center;gap:3px;
+    padding:6px 10px;border-radius:14px;font-size:9px;letter-spacing:.08em;text-transform:uppercase;
+    font-family:"JetBrains Mono",monospace;
+  }
+  .nav a svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6}
+  .nav a.active{color:var(--gold);background:rgba(200,168,100,.08)}
+
+  /* decorative seal behind hero */
+  .seal{
+    position:absolute;right:-40px;top:40px;width:180px;height:180px;
+    border:1px solid rgba(200,168,100,.12);border-radius:50%;
+    pointer-events:none;
+  }
+  .seal::before{
+    content:"";position:absolute;inset:12px;border:1px dashed rgba(200,168,100,.12);border-radius:50%;
+  }
+  .seal::after{
+    content:"";position:absolute;inset:30px;border:1px solid rgba(200,168,100,.08);border-radius:50%;
+  }
+  .year-mark{
+    position:absolute;right:24px;top:80px;
+    font-family:"JetBrains Mono",monospace;font-size:9px;letter-spacing:.3em;
+    color:rgba(200,168,100,.55);text-transform:uppercase;
+    writing-mode:vertical-rl;
+  }
+</style>
+</head>
+<body>
+  <div class="device">
+    <!-- status bar -->
+    <div class="status">
+      <div>9:41</div>
+      <div class="right">
+        <svg viewBox="0 0 16 12"><path d="M1 8a7 7 0 0114 0" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/><path d="M3.5 9.5a4 4 0 019 0" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/><circle cx="8" cy="11" r="1" fill="currentColor"/></svg>
+        <svg viewBox="0 0 24 12"><rect x="1" y="2" width="19" height="8" rx="2" stroke="currentColor" fill="none" stroke-width="1.2"/><rect x="2.5" y="3.5" width="14" height="5" rx="1" fill="currentColor"/><rect x="21" y="4" width="2" height="4" rx=".5" fill="currentColor"/></svg>
+      </div>
+    </div>
+
+    <!-- hero -->
+    <div class="hero">
+      <div class="seal"></div>
+      <div class="year-mark">MMXXVI</div>
+
+      <div class="top-row">
+        <div class="brand"><span class="dot"></span>Eurio</div>
+        <div class="icon-btn">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.6 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.6a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+        </div>
+      </div>
+
+      <div class="eyebrow">Niveau · rang II de IV</div>
+      <h1 class="level-name">Passionné<span class="level-ord">II / IV</span></h1>
+      <div class="level-cap">
+        <span>« Tu prends goût à la collection »</span>
+      </div>
+
+      <div class="ladder">
+        <div class="ladder-labels">
+          <span class="active">Découvreur</span>
+          <span class="current">Passionné</span>
+          <span>Expert</span>
+          <span>Maître</span>
+        </div>
+        <div class="bar">
+          <div class="fill"></div>
+          <div class="node done" style="left:0%"></div>
+          <div class="node done" style="left:33%"></div>
+          <div class="node current" style="left:58%"></div>
+          <div class="node" style="left:66%"></div>
+          <div class="node" style="left:100%"></div>
+        </div>
+        <div class="hint">
+          <span>Encore <b>11 pièces</b> pour devenir Expert</span>
+          <span class="pct">58%</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- body scroll area -->
+    <div class="body">
+
+      <!-- stats floating -->
+      <div class="stats">
+        <div class="stat">
+          <div class="k">Pièces</div>
+          <div class="v">23</div>
+          <div class="sub"><span class="up">+4</span> ce mois</div>
+        </div>
+        <div class="stat">
+          <div class="k">Pays</div>
+          <div class="v">8<span style="font-size:14px;color:var(--n-400)">/21</span></div>
+          <div class="sub">Zone euro</div>
+        </div>
+        <div class="stat">
+          <div class="k">Valeur</div>
+          <div class="v">247<span style="font-size:14px;color:var(--n-400)">€</span></div>
+          <div class="sub"><span class="up">↑ 34%</span></div>
+        </div>
+      </div>
+
+      <!-- achievements en cours -->
+      <div class="section-head">
+        <h2>Chasses en cours</h2>
+        <a class="link" href="02-achievements-in-progress.html">Tout voir</a>
+      </div>
+
+      <div class="ach-list">
+        <div class="ach">
+          <div class="medal"><span>★</span></div>
+          <div class="content">
+            <div class="title">Série complète France</div>
+            <div class="meta"><b>Facile</b> · il te manque 2 pièces</div>
+            <div class="progress"><div class="f gold" style="width:75%"></div></div>
+          </div>
+          <div class="count"><b>6</b>/8</div>
+        </div>
+
+        <div class="ach">
+          <div class="medal"><span>◎</span></div>
+          <div class="content">
+            <div class="title">Eurozone founding</div>
+            <div class="meta"><b>Moyen</b> · 12 pays fondateurs</div>
+            <div class="progress"><div class="f" style="width:41%"></div></div>
+          </div>
+          <div class="count"><b>5</b>/12</div>
+        </div>
+
+        <div class="ach">
+          <div class="medal dim"><span>◐</span></div>
+          <div class="content">
+            <div class="title">Grande chasse</div>
+            <div class="meta"><b>Difficile</b> · 21 pays zone euro</div>
+            <div class="progress"><div class="f" style="width:38%"></div></div>
+          </div>
+          <div class="count"><b>8</b>/21</div>
+        </div>
+      </div>
+
+      <!-- unlock banner -->
+      <div class="unlock-banner">
+        <div class="medal"></div>
+        <div class="txt">
+          <div class="eyb">Débloqué · il y a 3 jours</div>
+          <div class="ttl">Première série</div>
+          <div class="sub">Série complète Allemagne — 8 pièces</div>
+        </div>
+      </div>
+
+      <!-- settings preview -->
+      <div class="section-head">
+        <h2>Paramètres</h2>
+        <a class="link" href="06-settings.html">Ouvrir</a>
+      </div>
+
+      <div class="set-prev">
+        <div class="set-row">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 010 18M12 3a14 14 0 000 18"/></svg>
+          <div class="label">Langue</div>
+          <div class="val">Français</div>
+          <div class="arrow">›</div>
+        </div>
+        <div class="set-row">
+          <svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+          <div class="label">Notifications</div>
+          <div class="val">Désactivées</div>
+          <div class="arrow">›</div>
+        </div>
+        <div class="set-row">
+          <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          <div class="label">Catalogue</div>
+          <div class="val">Wi-Fi uniquement</div>
+          <div class="arrow">›</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- bottom nav -->
+    <div class="nav">
+      <div class="inner">
+        <a>
+          <svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
+          Coffre
+        </a>
+        <a>
+          <svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M9 6V4h6v2"/><circle cx="12" cy="12.5" r="3"/></svg>
+          Scan
+        </a>
+        <a>
+          <svg viewBox="0 0 24 24"><path d="M21 21l-4.35-4.35"/><circle cx="11" cy="11" r="8"/></svg>
+          Explorer
+        </a>
+        <a class="active">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0116 0"/></svg>
+          Profil
+        </a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

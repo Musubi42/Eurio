@@ -1,0 +1,169 @@
+<!--
+  Scene : vault-remove-confirm (non-routed overlay)
+  -------------------------------------------------
+  Modal dialog appended on top of vault-home when user taps the "⋯" button
+  on a tile. Offers destructive "Retirer" + "Annuler". On confirm,
+  calls state.removeCoin() and shows an undo toast for 5 seconds.
+-->
+
+<style>
+  .vault-remove-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(14,14,31,0.5);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    z-index: var(--z-modal);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-5);
+    animation: vault-remove-fadein var(--duration-base) var(--ease-out);
+  }
+  @keyframes vault-remove-fadein {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+
+  .vault-remove-dialog {
+    width: 100%;
+    max-width: 320px;
+    background: var(--surface);
+    border-radius: var(--radius-xl);
+    padding: var(--space-6) var(--space-5) var(--space-5);
+    box-shadow: var(--shadow-lg);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    animation: vault-remove-scalein var(--duration-base) var(--ease-spring);
+  }
+  @keyframes vault-remove-scalein {
+    from { opacity: 0; transform: scale(0.94); }
+    to   { opacity: 1; transform: scale(1); }
+  }
+
+  .vault-remove-icon {
+    width: 48px; height: 48px;
+    border-radius: var(--radius-full);
+    background: var(--danger-soft);
+    color: var(--danger);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: var(--space-4);
+  }
+  .vault-remove-icon svg {
+    width: 22px; height: 22px;
+    fill: none; stroke: currentColor;
+    stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+  }
+
+  .vault-remove-title {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: var(--text-xl);
+    font-weight: 400;
+    color: var(--ink);
+    margin-bottom: var(--space-2);
+  }
+  .vault-remove-sub {
+    font-size: var(--text-sm);
+    color: var(--ink-500);
+    line-height: var(--leading-base);
+    margin-bottom: var(--space-5);
+  }
+  .vault-remove-warning {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    background: var(--warning-soft);
+    color: var(--warning);
+    border-radius: var(--radius-md);
+    font-size: var(--text-xs);
+    margin-bottom: var(--space-5);
+    text-align: left;
+  }
+  .vault-remove-warning svg {
+    flex: 0 0 14px;
+    width: 14px; height: 14px;
+    margin-top: 1px;
+    fill: none; stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round; stroke-linejoin: round;
+  }
+
+  .vault-remove-actions {
+    display: flex;
+    gap: var(--space-3);
+    width: 100%;
+  }
+  .vault-remove-actions .btn { flex: 1; }
+  .vault-remove-destructive {
+    background: var(--danger);
+    color: var(--surface);
+    box-shadow: 0 4px 14px rgba(209,67,67,0.25), var(--inner-highlight);
+  }
+
+  /* Undo toast */
+  .vault-remove-toast {
+    position: absolute;
+    left: 50%;
+    bottom: 120px;
+    transform: translateX(-50%);
+    background: var(--indigo-900);
+    color: var(--surface);
+    border-radius: var(--radius-full);
+    padding: 12px 18px;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-4);
+    font-size: var(--text-sm);
+    box-shadow: var(--shadow-lg);
+    z-index: var(--z-toast);
+    animation: vault-remove-toast-in var(--duration-base) var(--ease-spring);
+  }
+  @keyframes vault-remove-toast-in {
+    from { opacity: 0; transform: translate(-50%, 10px); }
+    to   { opacity: 1; transform: translate(-50%, 0); }
+  }
+  .vault-remove-toast__undo {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: var(--tracking-eyebrow);
+    text-transform: uppercase;
+    color: var(--gold);
+    font-weight: 600;
+  }
+</style>
+
+<div class="vault-remove-backdrop" data-scene="vault-remove-confirm" role="dialog"
+     aria-modal="true" aria-labelledby="vault-remove-title">
+  <div class="vault-remove-dialog">
+    <div class="vault-remove-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24">
+        <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m1 0v14a2 2 0 01-2 2H9a2 2 0 01-2-2V6"/>
+      </svg>
+    </div>
+
+    <h2 id="vault-remove-title" class="vault-remove-title">
+      Retirer cette pièce<br>du coffre ?
+    </h2>
+    <p class="vault-remove-sub" data-role="coin-meta">Pièce inconnue</p>
+
+    <div class="vault-remove-warning" data-role="warning" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 9v4M12 17h.01M10.3 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+      </svg>
+      <span data-role="warning-text">Cela brisera une série.</span>
+    </div>
+
+    <div class="vault-remove-actions">
+      <button type="button" class="btn btn-ghost" data-action="cancel">Annuler</button>
+      <button type="button" class="btn vault-remove-destructive" data-action="confirm">
+        Retirer
+      </button>
+    </div>
+  </div>
+</div>

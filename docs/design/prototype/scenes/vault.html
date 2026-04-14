@@ -1,0 +1,12 @@
+<!--
+  Scene : vault (routed)
+  ----------------------
+  Router table maps /vault → scene "vault". We keep the real content in
+  vault-home.html (brief spec) and simply re-use it here via a thin
+  sidecar that injects the vault-home fragment and mounts it.
+
+  This avoids touching _shared/router.js while respecting both :
+    - brief file naming (vault-home.html / vault-home.js)
+    - router contract (/vault → vault.html)
+-->
+<div data-scene="vault-wrapper"></div>

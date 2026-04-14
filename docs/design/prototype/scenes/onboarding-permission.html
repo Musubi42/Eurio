@@ -1,0 +1,299 @@
+<!--
+  Scene : onboarding-permission
+  -----------------------------
+  Pre-prompt camera permission sheet (Duolingo pattern : explain BEFORE
+  the native Android dialog). Dimmed viewfinder backdrop + indigo sheet
+  with 3 privacy promises + primary indigo CTA + secondary ghost.
+  On "Autoriser", mark onboarding done and navigate to #/scan.
+-->
+
+<style>
+  .screen .statusbar,
+  .screen .bottomnav,
+  .screen .home-indicator { display: none; }
+  #view { padding: 0 !important; }
+
+  .onboarding-permission-root {
+    position: absolute;
+    inset: 0;
+    background: var(--ink);
+    overflow: hidden;
+    color: var(--surface);
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+  }
+
+  /* Dimmed viewfinder backdrop (preview of what user will get) */
+  .onboarding-permission-backdrop {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 60% 40% at 50% 35%, var(--ink-soft) 0%, var(--ink) 60%, rgb(0,0,0) 100%);
+    opacity: 0.9;
+  }
+  .onboarding-permission-backdrop::before {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 35%;
+    width: 220px;
+    height: 220px;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    border: 1.5px dashed rgba(200,168,100,0.55);
+    animation: onboarding-permission-dash 8s linear infinite;
+  }
+  @keyframes onboarding-permission-dash {
+    0%, 100% { opacity: 0.4; }
+    50%      { opacity: 0.85; }
+  }
+  .onboarding-permission-backdrop__hint {
+    position: absolute;
+    left: 50%;
+    top: 35%;
+    transform: translate(-50%, -50%);
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: var(--text-sm);
+    color: rgba(255,255,255,0.55);
+    letter-spacing: 0.04em;
+  }
+
+  .onboarding-permission-topbar {
+    position: absolute;
+    top: 52px;
+    left: 24px;
+    right: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    z-index: 2;
+  }
+  .onboarding-permission-brand {
+    font-family: var(--font-display);
+    font-size: var(--text-lg);
+    color: var(--surface);
+  }
+  .onboarding-permission-brand em { font-style: italic; color: var(--gold); }
+  .onboarding-permission-cancel {
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.14);
+    color: rgba(255,255,255,0.85);
+    padding: 8px 16px;
+    border-radius: var(--radius-full);
+    font-size: var(--text-xs);
+    font-weight: 500;
+    min-height: 36px;
+    backdrop-filter: blur(8px);
+  }
+
+  /* Sheet */
+  .onboarding-permission-sheet {
+    position: relative;
+    background: linear-gradient(180deg, var(--indigo-600) 0%, var(--indigo-700) 50%, var(--indigo-800) 100%);
+    border-radius: var(--radius-2xl) var(--radius-2xl) 0 0;
+    padding: var(--space-3) var(--space-6) var(--space-9);
+    color: var(--surface);
+    box-shadow: var(--shadow-sheet);
+    z-index: 2;
+    transform: translateY(0);
+    animation: onboarding-permission-rise var(--duration-slow) var(--ease-out) both;
+  }
+  @keyframes onboarding-permission-rise {
+    from { transform: translateY(40px); opacity: 0; }
+    to   { transform: translateY(0);    opacity: 1; }
+  }
+
+  .onboarding-permission-handle {
+    width: 40px;
+    height: 4px;
+    background: rgba(255,255,255,0.2);
+    border-radius: 2px;
+    margin: 0 auto var(--space-5);
+  }
+
+  .onboarding-permission-icon {
+    width: 64px;
+    height: 64px;
+    margin: 0 auto var(--space-4);
+    border-radius: var(--radius-lg);
+    background: linear-gradient(180deg, var(--indigo-500), var(--indigo-800));
+    border: 1px solid rgba(200,168,100,0.45);
+    box-shadow: 0 0 24px rgba(200,168,100,0.25), var(--inner-highlight-gold);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--gold);
+  }
+  .onboarding-permission-icon svg { width: 30px; height: 30px; }
+
+  .onboarding-permission-title {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: 28px;
+    font-weight: 400;
+    color: var(--surface);
+    text-align: center;
+    letter-spacing: -0.02em;
+    margin-bottom: var(--space-2);
+    line-height: 1.1;
+  }
+  .onboarding-permission-sub {
+    text-align: center;
+    font-size: var(--text-sm);
+    color: rgba(255,255,255,0.65);
+    max-width: 300px;
+    margin: 0 auto var(--space-6);
+    line-height: var(--leading-base);
+  }
+
+  .onboarding-permission-promises {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    margin-bottom: var(--space-6);
+  }
+  .onboarding-permission-promises li {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3);
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: var(--radius-md);
+    font-size: var(--text-sm);
+    color: rgba(255,255,255,0.9);
+  }
+  .onboarding-permission-tick {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: rgba(200,168,100,0.18);
+    color: var(--gold);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    border: 1px solid rgba(200,168,100,0.4);
+    flex-shrink: 0;
+  }
+
+  .onboarding-permission-cta {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+  .onboarding-permission-primary {
+    width: 100%;
+    padding: 18px 20px;
+    border-radius: var(--radius-lg);
+    background: linear-gradient(180deg, var(--indigo-400), var(--indigo-700) 60%, var(--indigo-900));
+    color: var(--gold-soft);
+    font-family: var(--font-ui);
+    font-size: var(--text-base);
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    border: 1px solid rgba(200,168,100,0.4);
+    box-shadow:
+      0 8px 24px rgba(14,14,31,0.4),
+      var(--inner-highlight-gold),
+      inset 0 -2px 4px rgba(0,0,0,0.25);
+    min-height: 52px;
+  }
+  .onboarding-permission-primary:active { transform: scale(0.97); }
+
+  .onboarding-permission-secondary {
+    width: 100%;
+    padding: 14px 20px;
+    border-radius: var(--radius-lg);
+    background: transparent;
+    color: rgba(255,255,255,0.7);
+    font-family: var(--font-ui);
+    font-size: var(--text-sm);
+    font-weight: 500;
+    min-height: 44px;
+  }
+
+  .onboarding-permission-footer {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    margin-top: var(--space-5);
+    padding-top: var(--space-4);
+    border-top: 1px dashed rgba(200,168,100,0.25);
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.38);
+  }
+
+  /* Fade transition when accepting */
+  .onboarding-permission-root[data-state="accepting"] {
+    animation: onboarding-permission-fade var(--duration-slow) var(--ease-out) forwards;
+  }
+  @keyframes onboarding-permission-fade {
+    to { opacity: 0; }
+  }
+</style>
+
+<section class="onboarding-permission-root" data-scene="onboarding-permission">
+  <div class="onboarding-permission-backdrop" aria-hidden="true">
+    <div class="onboarding-permission-backdrop__hint">Pointer une pièce</div>
+  </div>
+
+  <header class="onboarding-permission-topbar">
+    <div class="onboarding-permission-brand">Eur<em>io</em></div>
+    <button type="button" class="onboarding-permission-cancel" data-action="back">Annuler</button>
+  </header>
+
+  <div class="onboarding-permission-sheet" role="dialog" aria-labelledby="perm-title">
+    <div class="onboarding-permission-handle" aria-hidden="true"></div>
+
+    <div class="onboarding-permission-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 7h3l2-3h8l2 3h3a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1Z"/>
+        <circle cx="12" cy="13" r="4"/>
+      </svg>
+    </div>
+
+    <h1 id="perm-title" class="onboarding-permission-title">Autoriser l'appareil photo.</h1>
+    <p class="onboarding-permission-sub">Eurio a besoin de la caméra pour reconnaître tes pièces. Tout se passe sur ton téléphone.</p>
+
+    <ul class="onboarding-permission-promises">
+      <li>
+        <span class="onboarding-permission-tick" aria-hidden="true">✓</span>
+        <span>Scan 100&nbsp;% on-device, aucune connexion requise.</span>
+      </li>
+      <li>
+        <span class="onboarding-permission-tick" aria-hidden="true">✓</span>
+        <span>Aucune photo n'est envoyée ni stockée.</span>
+      </li>
+      <li>
+        <span class="onboarding-permission-tick" aria-hidden="true">✓</span>
+        <span>Aucun compte, aucun email, jamais.</span>
+      </li>
+    </ul>
+
+    <div class="onboarding-permission-cta">
+      <button type="button" class="onboarding-permission-primary" data-action="allow">
+        <span>Autoriser la caméra</span>
+        <span aria-hidden="true">→</span>
+      </button>
+      <button type="button" class="onboarding-permission-secondary" data-action="later">
+        Plus tard
+      </button>
+    </div>
+
+    <div class="onboarding-permission-footer">
+      <span aria-hidden="true">🛡</span>
+      <span>Confidentialité by design &middot; Android permission native</span>
+    </div>
+  </div>
+</section>

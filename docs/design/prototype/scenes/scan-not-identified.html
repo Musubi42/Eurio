@@ -1,0 +1,239 @@
+<!--
+  Scene : scan-not-identified
+  ---------------------------
+  After ~6s of failure, show frozen frame + 3 escape hatches :
+    1. Retry
+    2. Send for analysis (fake, toast)
+    3. Manual add via face-value picker (degraded mode)
+  Also display fake top-5 suggestions with decreasing scores.
+-->
+
+<style>
+  .scan-ni-root {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 70% 50% at 50% 30%, var(--ink-soft) 0%, var(--ink) 55%, #000 100%);
+    overflow: hidden;
+    color: var(--surface);
+    display: flex;
+    flex-direction: column;
+  }
+
+  .scan-ni-frame {
+    position: relative;
+    height: 260px;
+    overflow: hidden;
+    filter: saturate(0.75) brightness(0.7);
+  }
+  .scan-ni-frame::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, transparent 55%, var(--ink) 100%);
+    pointer-events: none;
+  }
+  .scan-ni-frame__ghost {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 160px;
+    height: 160px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, rgba(200,168,100,0.24), rgba(14,14,31,0.05) 70%);
+    opacity: 0.6;
+  }
+  .scan-ni-frame__ring {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 240px;
+    height: 240px;
+    border-radius: 50%;
+    border: 1.5px solid var(--scan-rejected);
+    opacity: 0.75;
+    box-shadow: 0 0 20px rgba(209,67,67,0.25);
+  }
+  .scan-ni-frame__label {
+    position: absolute;
+    top: 58px;
+    left: 50%;
+    transform: translateX(-50%);
+    text-align: center;
+    z-index: 2;
+  }
+  .scan-ni-frame__title {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: var(--text-lg);
+    font-weight: 400;
+    color: var(--surface);
+    margin-top: 4px;
+  }
+
+  .scan-ni-body {
+    flex: 1;
+    padding: var(--space-5) var(--space-5) var(--space-8);
+    background: linear-gradient(180deg, var(--ink) 0%, var(--indigo-900) 100%);
+    overflow: auto;
+  }
+
+  .scan-ni-section {
+    margin-bottom: var(--space-6);
+  }
+  .scan-ni-section__label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.45);
+    margin-bottom: var(--space-3);
+    display: block;
+  }
+
+  /* Suggestions */
+  .scan-ni-suggestions {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+  .scan-ni-suggestion {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3);
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: var(--radius-md);
+  }
+  .scan-ni-suggestion__rank {
+    width: 22px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: rgba(255,255,255,0.45);
+    text-align: center;
+  }
+  .scan-ni-suggestion__name {
+    flex: 1;
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: var(--text-sm);
+    color: rgba(255,255,255,0.85);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .scan-ni-suggestion__score {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    color: var(--scan-detecting);
+  }
+
+  /* Face-value picker */
+  .scan-ni-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+  .scan-ni-chip {
+    padding: 8px 14px;
+    border-radius: var(--radius-full);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    letter-spacing: 0.04em;
+    background: rgba(255,255,255,0.06);
+    color: rgba(255,255,255,0.88);
+    border: 1px solid rgba(255,255,255,0.1);
+    cursor: pointer;
+    transition: background var(--duration-fast) var(--ease-out),
+                border-color var(--duration-fast) var(--ease-out);
+  }
+  .scan-ni-chip[aria-pressed="true"] {
+    background: rgba(200,168,100,0.18);
+    color: var(--gold-soft);
+    border-color: var(--gold);
+  }
+
+  .scan-ni-actions {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin-top: var(--space-6);
+  }
+
+  /* Toast */
+  .scan-ni-toast {
+    position: fixed;
+    left: 50%;
+    bottom: 120px;
+    transform: translate(-50%, 12px);
+    opacity: 0;
+    padding: 10px 18px;
+    background: rgba(14,14,31,0.92);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: var(--radius-full);
+    font-size: var(--text-xs);
+    font-family: var(--font-ui);
+    color: var(--surface);
+    pointer-events: none;
+    transition: opacity var(--duration-base) var(--ease-out),
+                transform var(--duration-base) var(--ease-out);
+    z-index: var(--z-toast);
+  }
+  .scan-ni-toast[data-visible="true"] {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+</style>
+
+<section class="scan-ni-root" data-scene="scan-not-identified">
+  <!-- Frozen frame -->
+  <div class="scan-ni-frame" aria-hidden="true">
+    <div class="scan-ni-frame__ghost"></div>
+    <div class="scan-ni-frame__ring"></div>
+    <div class="scan-ni-frame__label">
+      <div class="eyebrow eyebrow--paper">Non identifi&eacute;e</div>
+      <div class="scan-ni-frame__title">On n'a pas trouv&eacute;</div>
+    </div>
+  </div>
+
+  <!-- Body -->
+  <div class="scan-ni-body">
+    <!-- Suggestions -->
+    <div class="scan-ni-section">
+      <span class="scan-ni-section__label">Peut-&ecirc;tre l'une de celles-ci</span>
+      <div class="scan-ni-suggestions" data-slot="suggestions"></div>
+    </div>
+
+    <!-- Face-value picker -->
+    <div class="scan-ni-section">
+      <span class="scan-ni-section__label">Ou ajoute manuellement &mdash; valeur faciale</span>
+      <div class="scan-ni-chips" role="radiogroup" aria-label="Valeur faciale">
+        <button type="button" class="scan-ni-chip" data-cents="1">1 c</button>
+        <button type="button" class="scan-ni-chip" data-cents="2">2 c</button>
+        <button type="button" class="scan-ni-chip" data-cents="5">5 c</button>
+        <button type="button" class="scan-ni-chip" data-cents="10">10 c</button>
+        <button type="button" class="scan-ni-chip" data-cents="20">20 c</button>
+        <button type="button" class="scan-ni-chip" data-cents="50">50 c</button>
+        <button type="button" class="scan-ni-chip" data-cents="100">1 &euro;</button>
+        <button type="button" class="scan-ni-chip" data-cents="200">2 &euro;</button>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="scan-ni-actions">
+      <button type="button" class="btn btn-gold" data-action="manual-add" disabled>
+        Ajouter en mode d&eacute;grad&eacute;
+      </button>
+      <button type="button" class="btn btn-ghost btn-ghost--on-dark" data-action="retry">
+        Essayer &agrave; nouveau
+      </button>
+      <button type="button" class="btn btn-ghost btn-ghost--on-dark" data-action="send">
+        Envoyer pour analyse
+      </button>
+    </div>
+  </div>
+
+  <div class="scan-ni-toast" data-slot="toast" role="status">Merci, enregistr&eacute;.</div>
+</section>

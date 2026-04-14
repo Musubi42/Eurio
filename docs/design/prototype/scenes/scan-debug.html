@@ -1,0 +1,373 @@
+<!--
+  Scene : scan-debug (debug overlay)
+  ----------------------------------
+  scan-idle view + the 5 debug layers from DESIGN-NOTES :
+    1. YOLO bounding box (green, label "coin: 0.87")
+    2. Top-5 matches panel (monospace) + Δ(top1-top2) flag
+    3. Latencies panel (det / emb / knn / tot / fps)
+    4. Runtime context panel (model / embeddings / camera / device)
+    5. Convergence histogram (vertical, success/fail/skip)
+    + tools strip (Dump / Dumps / Replay / Freeze / Force match / Embed / Stats)
+  Everything monospace, only scan-state colours — NO indigo.
+-->
+
+<style>
+  .scan-debug-root {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 70% 50% at 50% 55%, var(--ink-soft) 0%, var(--ink) 55%, #000 100%);
+    overflow: hidden;
+    color: var(--surface);
+    font-family: var(--font-mono);
+  }
+
+  .scan-debug-noise {
+    position: absolute;
+    inset: 0;
+    opacity: 0.12;
+    mix-blend-mode: overlay;
+    pointer-events: none;
+  }
+
+  /* ── Base camera mock : faint guide ring + ghost coin ── */
+  .scan-debug-ghost {
+    position: absolute;
+    top: 45%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 150px;
+    height: 150px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, rgba(200,168,100,0.22), rgba(14,14,31,0.05) 70%);
+    opacity: 0.55;
+  }
+
+  /* ── 1. YOLO bbox ── */
+  .scan-debug-bbox {
+    position: absolute;
+    top: calc(45% - 100px);
+    left: calc(50% - 100px);
+    width: 200px;
+    height: 200px;
+    border: 1.5px solid var(--scan-matched);
+    box-shadow: 0 0 12px rgba(47,169,113,0.35);
+  }
+  .scan-debug-bbox::before {
+    content: 'coin: 0.87';
+    position: absolute;
+    top: -18px;
+    left: -1px;
+    padding: 2px 6px;
+    background: var(--scan-matched);
+    color: #062417;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    border-radius: 2px 2px 0 0;
+  }
+  .scan-debug-bbox::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+      linear-gradient(90deg, rgba(47,169,113,0.08) 1px, transparent 1px) 0 0 / 20px 100%,
+      linear-gradient(0deg,  rgba(47,169,113,0.08) 1px, transparent 1px) 0 0 / 100% 20px;
+    pointer-events: none;
+  }
+
+  /* Common overlay panel style */
+  .scan-debug-panel {
+    background: rgba(0,0,0,0.72);
+    border: 1px solid rgba(47,169,113,0.25);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-mono);
+    color: rgba(255,255,255,0.92);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+  .scan-debug-panel__title {
+    display: block;
+    padding: 4px 8px;
+    background: rgba(47,169,113,0.15);
+    color: var(--scan-matched);
+    font-size: 8px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    border-bottom: 1px solid rgba(47,169,113,0.2);
+  }
+
+  /* ── 2. Top-5 matches panel (bottom) ── */
+  .scan-debug-top5 {
+    position: absolute;
+    left: 12px;
+    right: 12px;
+    bottom: 82px;
+    padding-bottom: 6px;
+    font-size: 10px;
+    line-height: 1.55;
+  }
+  .scan-debug-top5__rows {
+    padding: 6px 8px 4px;
+  }
+  .scan-debug-top5__row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    font-variant-numeric: tabular-nums;
+  }
+  .scan-debug-top5__idx  { color: rgba(255,255,255,0.45); width: 14px; }
+  .scan-debug-top5__id   { flex: 1; color: rgba(255,255,255,0.85); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .scan-debug-top5__score{ color: var(--scan-detecting); }
+  .scan-debug-top5__row--top .scan-debug-top5__score,
+  .scan-debug-top5__row--top .scan-debug-top5__id {
+    color: var(--gold);
+  }
+  .scan-debug-top5__row--top .scan-debug-top5__star { color: var(--gold); }
+  .scan-debug-top5__delta {
+    padding: 4px 8px;
+    border-top: 1px dashed rgba(255,255,255,0.12);
+    color: var(--scan-detecting);
+    font-size: 9px;
+    letter-spacing: 0.06em;
+  }
+
+  /* ── 3. Latencies (top right) ── */
+  .scan-debug-latency {
+    position: absolute;
+    top: 62px;
+    right: 10px;
+    width: 118px;
+    font-size: 9px;
+  }
+  .scan-debug-kv {
+    padding: 4px 8px 6px;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 2px 6px;
+    font-variant-numeric: tabular-nums;
+  }
+  .scan-debug-kv > span:nth-child(odd)  { color: rgba(255,255,255,0.5); }
+  .scan-debug-kv > span:nth-child(even) { color: rgba(255,255,255,0.92); text-align: right; }
+  .scan-debug-kv .ok   { color: var(--scan-matched); }
+  .scan-debug-kv .warn { color: var(--scan-detecting); }
+
+  /* ── 4. Runtime context (bottom right, but over top5) ── */
+  .scan-debug-runtime {
+    position: absolute;
+    right: 10px;
+    bottom: 210px;
+    width: 170px;
+    font-size: 9px;
+  }
+
+  /* ── 5. Convergence histogram (left side) ── */
+  .scan-debug-hist {
+    position: absolute;
+    top: 62px;
+    left: 10px;
+    width: 92px;
+    font-size: 9px;
+  }
+  .scan-debug-hist__bar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+  }
+  .scan-debug-hist__label {
+    width: 34px;
+    font-size: 8px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.5);
+  }
+  .scan-debug-hist__track {
+    flex: 1;
+    font-family: var(--font-mono);
+    letter-spacing: -1px;
+  }
+  .scan-debug-hist__track--success { color: var(--scan-matched); }
+  .scan-debug-hist__track--fail    { color: var(--scan-rejected); }
+  .scan-debug-hist__track--skip    { color: rgba(255,255,255,0.35); }
+  .scan-debug-hist__bar:last-child { padding-bottom: 6px; }
+
+  /* ── Tools strip (bottom) ── */
+  .scan-debug-tools {
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    bottom: 14px;
+    display: flex;
+    gap: 4px;
+    padding: 6px;
+    background: rgba(0,0,0,0.78);
+    border: 1px solid rgba(47,169,113,0.25);
+    border-radius: var(--radius-sm);
+    backdrop-filter: blur(10px);
+  }
+  .scan-debug-tool {
+    flex: 1;
+    padding: 6px 4px;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.04em;
+    color: rgba(255,255,255,0.82);
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 3px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    min-height: 44px;
+    transition: background var(--duration-fast) var(--ease-out);
+  }
+  .scan-debug-tool:hover { background: rgba(47,169,113,0.12); }
+  .scan-debug-tool__glyph { font-size: 14px; line-height: 1; }
+
+  /* Toast (reused pattern) */
+  .scan-debug-toast {
+    position: fixed;
+    left: 50%;
+    bottom: 130px;
+    transform: translate(-50%, 12px);
+    opacity: 0;
+    padding: 8px 14px;
+    background: rgba(0,0,0,0.9);
+    border: 1px solid rgba(47,169,113,0.35);
+    border-radius: 3px;
+    font-size: 10px;
+    font-family: var(--font-mono);
+    color: var(--scan-matched);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    pointer-events: none;
+    transition: opacity var(--duration-base) var(--ease-out),
+                transform var(--duration-base) var(--ease-out);
+    z-index: var(--z-toast);
+  }
+  .scan-debug-toast[data-visible="true"] {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+</style>
+
+<section class="scan-debug-root" data-scene="scan-debug">
+  <svg class="scan-debug-noise" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+    <filter id="scan-debug-turb">
+      <feTurbulence type="fractalNoise" baseFrequency="1.6" numOctaves="2" seed="13"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.55 0"/>
+    </filter>
+    <rect width="100%" height="100%" filter="url(#scan-debug-turb)"/>
+  </svg>
+
+  <!-- Ghost coin -->
+  <div class="scan-debug-ghost" aria-hidden="true"></div>
+
+  <!-- 1. YOLO bounding box -->
+  <div class="scan-debug-bbox" aria-label="YOLO bounding box"></div>
+
+  <!-- 5. Convergence histogram -->
+  <aside class="scan-debug-panel scan-debug-hist" aria-label="Convergence">
+    <span class="scan-debug-panel__title">Converge</span>
+    <div class="scan-debug-hist__bar">
+      <span class="scan-debug-hist__label">Ok</span>
+      <span class="scan-debug-hist__track scan-debug-hist__track--success">████████░░</span>
+    </div>
+    <div class="scan-debug-hist__bar">
+      <span class="scan-debug-hist__label">Fail</span>
+      <span class="scan-debug-hist__track scan-debug-hist__track--fail">██░░░░░░░░</span>
+    </div>
+    <div class="scan-debug-hist__bar">
+      <span class="scan-debug-hist__label">Skip</span>
+      <span class="scan-debug-hist__track scan-debug-hist__track--skip">█░░░░░░░░░</span>
+    </div>
+  </aside>
+
+  <!-- 3. Latency panel -->
+  <aside class="scan-debug-panel scan-debug-latency" aria-label="Latencies">
+    <span class="scan-debug-panel__title">Latency</span>
+    <div class="scan-debug-kv">
+      <span>det</span><span class="ok">23ms</span>
+      <span>emb</span><span class="ok">87ms</span>
+      <span>knn</span><span class="ok">12ms</span>
+      <span>tot</span><span class="ok">122ms</span>
+      <span>fps</span><span class="warn">4.8</span>
+    </div>
+  </aside>
+
+  <!-- 4. Runtime context -->
+  <aside class="scan-debug-panel scan-debug-runtime" aria-label="Runtime">
+    <span class="scan-debug-panel__title">Runtime</span>
+    <div class="scan-debug-kv">
+      <span>model</span><span>arcface_v0.3.2</span>
+      <span>embeds</span><span>2938</span>
+      <span>hash</span><span>a7f2c1</span>
+      <span>cam</span><span>1280×720</span>
+      <span>device</span><span class="warn">34°C</span>
+    </div>
+  </aside>
+
+  <!-- 2. Top-5 matches -->
+  <aside class="scan-debug-panel scan-debug-top5" aria-label="Top 5 matches">
+    <span class="scan-debug-panel__title">Top-5 kNN · cosine</span>
+    <div class="scan-debug-top5__rows">
+      <div class="scan-debug-top5__row scan-debug-top5__row--top">
+        <span class="scan-debug-top5__idx">1.</span>
+        <span class="scan-debug-top5__id">fr-2012-2eur-10ans-euro</span>
+        <span class="scan-debug-top5__score">0.923</span>
+        <span class="scan-debug-top5__star">★</span>
+      </div>
+      <div class="scan-debug-top5__row">
+        <span class="scan-debug-top5__idx">2.</span>
+        <span class="scan-debug-top5__id">eu-2012-2eur-10ans-euro</span>
+        <span class="scan-debug-top5__score">0.871</span>
+      </div>
+      <div class="scan-debug-top5__row">
+        <span class="scan-debug-top5__idx">3.</span>
+        <span class="scan-debug-top5__id">de-2012-2eur-10ans-euro</span>
+        <span class="scan-debug-top5__score">0.854</span>
+      </div>
+      <div class="scan-debug-top5__row">
+        <span class="scan-debug-top5__idx">4.</span>
+        <span class="scan-debug-top5__id">fr-2009-2eur-uem</span>
+        <span class="scan-debug-top5__score">0.721</span>
+      </div>
+      <div class="scan-debug-top5__row">
+        <span class="scan-debug-top5__idx">5.</span>
+        <span class="scan-debug-top5__id">it-2012-2eur-10ans-euro</span>
+        <span class="scan-debug-top5__score">0.698</span>
+      </div>
+    </div>
+    <div class="scan-debug-top5__delta">Δ (top1 − top2) = 0.052 ⚠ CLOSE</div>
+  </aside>
+
+  <!-- Tools strip -->
+  <nav class="scan-debug-tools" aria-label="Debug tools">
+    <button type="button" class="scan-debug-tool" data-tool="dump">
+      <span class="scan-debug-tool__glyph">⬇</span><span>Dump</span>
+    </button>
+    <button type="button" class="scan-debug-tool" data-tool="dumps">
+      <span class="scan-debug-tool__glyph">▦</span><span>Dumps</span>
+    </button>
+    <button type="button" class="scan-debug-tool" data-tool="replay">
+      <span class="scan-debug-tool__glyph">↻</span><span>Replay</span>
+    </button>
+    <button type="button" class="scan-debug-tool" data-tool="freeze">
+      <span class="scan-debug-tool__glyph">⏸</span><span>Freeze</span>
+    </button>
+    <button type="button" class="scan-debug-tool" data-tool="force">
+      <span class="scan-debug-tool__glyph">◎</span><span>Force</span>
+    </button>
+    <button type="button" class="scan-debug-tool" data-tool="embed">
+      <span class="scan-debug-tool__glyph">⧖</span><span>Embed</span>
+    </button>
+    <button type="button" class="scan-debug-tool" data-tool="stats">
+      <span class="scan-debug-tool__glyph">▤</span><span>Stats</span>
+    </button>
+  </nav>
+
+  <div class="scan-debug-toast" data-slot="toast">ok</div>
+</section>

@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Eurio — Retirer une pièce</title>
+<link rel="stylesheet" href="_shared.css">
+</head>
+<body>
+<div class="stage">
+  <div class="device">
+    <div class="screen">
+      <div class="status-bar">
+        <span class="time tabular">9:41</span>
+        <span class="icons">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M2 12 Q12 2 22 12"/><path d="M5 15 Q12 8 19 15"/><path d="M8 18 Q12 14 16 18"/><circle cx="12" cy="20" r="1" fill="currentColor"/></svg>
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M2 18h2v-4H2v4zm4 0h2V10H6v8zm4 0h2V6h-2v12zm4 0h2V2h-2v16zm4 0h2v-8h-2v8z"/></svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="8" width="18" height="10" rx="2"/><rect x="4" y="10" width="14" height="6" rx="1" fill="currentColor"/><path d="M22 12v2"/></svg>
+        </span>
+      </div>
+
+      <div class="content">
+        <div class="scroll" style="filter:blur(1.5px);">
+          <div class="vault-header">
+            <div class="top-row">
+              <span class="eyebrow">Ton coffre</span>
+              <button class="icon-btn"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.5" fill="currentColor" stroke="none"/></svg></button>
+            </div>
+            <div class="value-block">
+              <span class="value-label">Valeur totale</span>
+              <div class="value-total tabular">247<span class="euro">€</span></div>
+            </div>
+          </div>
+          <div class="stats-strip">
+            <div class="stat"><span class="stat-val tabular">23</span><span class="stat-label">Pièces</span></div>
+            <div class="stat"><span class="stat-val tabular">8</span><span class="stat-label">Pays</span></div>
+            <div class="stat"><span class="stat-val tabular">2</span><span class="stat-label">Séries</span></div>
+          </div>
+          <div class="coin-grid" style="margin-top:60px;">
+            <div class="tile bicolor"><div class="coin-wrap"><div class="coin-disc" data-glyph="2€"></div></div><div class="meta-bar"><span class="flag fr"></span><span class="denom">2 €</span></div></div>
+            <div class="tile"><div class="coin-wrap"><div class="coin-disc" data-glyph="50¢"></div></div><div class="meta-bar"><span class="flag de"></span><span class="denom">50 c</span></div></div>
+            <div class="tile set-complete"><div class="coin-wrap"><div class="coin-disc" data-glyph="20¢"></div></div><div class="meta-bar"><span class="flag fr"></span><span class="denom">20 c</span></div></div>
+          </div>
+        </div>
+
+        <div class="sheet-backdrop"></div>
+        <div class="dialog">
+          <div class="dialog-icon">
+            <svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2M6 7l1 13a1 1 0 001 1h8a1 1 0 001-1l1-13" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+          <div class="dialog-title">Retirer cette pièce&nbsp;?</div>
+          <div class="dialog-sub">Elle ne sera plus comptée dans ta valeur totale ni dans la progression de tes séries. Tu pourras la rescanner plus tard.</div>
+
+          <div class="dialog-coin-card">
+            <div class="mini-coin bicolor">2€</div>
+            <div class="info">
+              <div class="n">2 € France · 10 ans de l'euro</div>
+              <div class="m">2012 · commémorative · ajoutée le 3 avr.</div>
+            </div>
+            <span class="val tabular">12,40&nbsp;€</span>
+          </div>
+
+          <div style="display:flex; gap:8px; padding:10px 12px; background:var(--surface-1); border-radius:var(--r-sm); margin-bottom:18px; align-items:flex-start;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#B8974E" stroke-width="2" style="flex-shrink:0; margin-top:1px;"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h0" stroke-linecap="round"/></svg>
+            <div style="font-size:11.5px; color:var(--ink-500); line-height:1.45;">
+              Cette pièce fait partie de <strong style="color:var(--ink-700);">ta série "Commémoratives France"</strong> actuellement complète. La retirer cassera le set.
+            </div>
+          </div>
+
+          <div class="dialog-actions">
+            <button class="btn-ghost" style="flex:1;">Annuler</button>
+            <button class="btn-danger">Retirer</button>
+          </div>
+        </div>
+
+        <!-- Undo toast layered below, representing the "after" state -->
+        <div class="toast">
+          <div class="toast-icon">
+            <svg viewBox="0 0 24 24"><path d="M5 12l5 5L20 7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+          <div class="toast-body">
+            <span class="toast-title">Pièce retirée du coffre</span>
+            <span class="toast-sub tabular">−12,40 € · 22 pièces restantes</span>
+          </div>
+          <button class="toast-btn">Annuler</button>
+        </div>
+      </div>
+      <div class="home-indicator"></div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

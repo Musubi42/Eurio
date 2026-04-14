@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Eurio — Historique 5 ans</title>
+<link rel="stylesheet" href="_system.css">
+</head>
+<body>
+
+<main class="stage">
+  <div class="stage-label">04 — Historique étendu · modal plein écran</div>
+  <div class="device">
+
+    <div class="statusbar on-dark">
+      <span>9:41</span>
+      <span class="sb-icons">
+        <svg viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx="0.5"/><rect x="4" y="5" width="3" height="7" rx="0.5"/><rect x="8" y="2" width="3" height="10" rx="0.5"/><rect x="12" y="0" width="3" height="12" rx="0.5"/></svg>
+        <svg viewBox="0 0 15 11" fill="currentColor"><path d="M7.5 10.5c-.6 0-1-.4-1-1s.4-1 1-1 1 .4 1 1-.4 1-1 1zm-3.2-3c-.3 0-.5-.1-.7-.3-.4-.4-.4-1 0-1.4 2.2-2.2 5.6-2.2 7.8 0 .4.4.4 1 0 1.4-.4.4-1 .4-1.4 0-1.4-1.4-3.6-1.4-5 0-.2.2-.4.3-.7.3zm-2.8-2.8c-.3 0-.5-.1-.7-.3-.4-.4-.4-1 0-1.4 4-4 10.4-4 14.4 0 .4.4.4 1 0 1.4-.4.4-1 .4-1.4 0-3.2-3.2-8.4-3.2-11.6 0-.2.2-.4.3-.7.3z"/></svg>
+        <svg viewBox="0 0 25 11" fill="none" stroke="currentColor"><rect x="0.5" y="0.5" width="21" height="10" rx="2.5"/><rect x="2" y="2" width="16" height="7" rx="1.2" fill="currentColor"/><rect x="22.5" y="3.5" width="1.5" height="4" rx="0.5" fill="currentColor"/></svg>
+      </span>
+    </div>
+
+    <div class="screen modal-screen" style="background: var(--indigo-900);">
+      <div class="topnav">
+        <button class="icon-btn" aria-label="Fermer">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+        <div class="pill">Historique</div>
+        <button class="icon-btn" aria-label="Exporter">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        </button>
+      </div>
+
+      <!-- Heading -->
+      <div style="padding: 16px 20px 4px;">
+        <div style="font-family: var(--mono); font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--gold);">2 € · France · 2012</div>
+        <h1 style="font-family: var(--display); font-style: italic; font-weight: 400; font-size: 28px; color: var(--cream); margin-top: 6px; line-height: 1.05; letter-spacing: -0.02em;">Dix ans de l'euro<br>fiduciaire</h1>
+      </div>
+
+      <!-- Range tabs -->
+      <div class="range-tabs">
+        <button class="range-tab">1 m</button>
+        <button class="range-tab">3 m</button>
+        <button class="range-tab">6 m</button>
+        <button class="range-tab">1 an</button>
+        <button class="range-tab active">5 ans</button>
+      </div>
+
+      <!-- Price headline -->
+      <div style="padding: 26px 20px 0;">
+        <div style="font-family: var(--body); font-size: 10px; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; color: rgba(250,250,248,0.45);">Au 13 avril 2026</div>
+        <div style="display: flex; align-items: baseline; gap: 10px; margin-top: 6px;">
+          <span style="font-family: var(--display); font-variant-numeric: tabular-nums; font-size: 52px; line-height: 1; color: var(--cream); letter-spacing: -0.03em;">11 €</span>
+          <span style="color: var(--up); font-family: var(--body); font-size: 13px; font-weight: 600;">▲ +183 % sur 5 ans</span>
+        </div>
+      </div>
+
+      <!-- Big chart -->
+      <div class="big-chart">
+        <svg viewBox="0 0 350 260" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="bigG" x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0" stop-color="#C8A864" stop-opacity="0.35"/>
+              <stop offset="1" stop-color="#C8A864" stop-opacity="0"/>
+            </linearGradient>
+            <linearGradient id="bandG" x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0" stop-color="#C8A864" stop-opacity="0.15"/>
+              <stop offset="1" stop-color="#C8A864" stop-opacity="0.05"/>
+            </linearGradient>
+          </defs>
+          <!-- y grid -->
+          <g stroke="rgba(250,250,248,0.06)" stroke-dasharray="2 4">
+            <line x1="0" y1="30" x2="350" y2="30"/>
+            <line x1="0" y1="90" x2="350" y2="90"/>
+            <line x1="0" y1="150" x2="350" y2="150"/>
+            <line x1="0" y1="210" x2="350" y2="210"/>
+          </g>
+          <!-- y labels -->
+          <g font-family="JetBrains Mono, monospace" font-size="9" fill="rgba(250,250,248,0.4)" letter-spacing="1">
+            <text x="0" y="26">15 €</text>
+            <text x="0" y="86">12 €</text>
+            <text x="0" y="146">9 €</text>
+            <text x="0" y="206">6 €</text>
+          </g>
+          <!-- confidence band -->
+          <path d="M0,205 L25,200 L50,192 L75,188 L100,180 L125,170 L150,160 L175,152 L200,140 L225,128 L250,112 L275,96 L300,80 L325,62 L350,44
+                   L350,74 L325,90 L300,108 L275,124 L250,140 L225,154 L200,166 L175,174 L150,182 L125,190 L100,198 L75,206 L50,210 L25,214 L0,218 Z"
+                   fill="url(#bandG)" opacity="0.6"/>
+          <!-- area under line -->
+          <path d="M0,212 L25,208 L50,198 L75,200 L100,190 L125,178 L150,168 L175,162 L200,150 L225,138 L250,122 L275,108 L300,92 L325,72 L350,54
+                   L350,260 L0,260 Z" fill="url(#bigG)"/>
+          <!-- main line -->
+          <path d="M0,212 L25,208 L50,198 L75,200 L100,190 L125,178 L150,168 L175,162 L200,150 L225,138 L250,122 L275,108 L300,92 L325,72 L350,54"
+                fill="none" stroke="#C8A864" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <!-- dots -->
+          <g fill="#C8A864">
+            <circle cx="0" cy="212" r="2"/>
+            <circle cx="50" cy="198" r="2"/>
+            <circle cx="100" cy="190" r="2"/>
+            <circle cx="150" cy="168" r="2"/>
+            <circle cx="200" cy="150" r="2"/>
+            <circle cx="250" cy="122" r="2"/>
+            <circle cx="300" cy="92" r="2"/>
+          </g>
+          <!-- active point -->
+          <line x1="175" y1="0" x2="175" y2="260" stroke="rgba(250,250,248,0.2)" stroke-dasharray="2 3"/>
+          <circle cx="175" cy="162" r="5" fill="#FAFAF8" stroke="#C8A864" stroke-width="2"/>
+        </svg>
+        <!-- tooltip -->
+        <div class="tooltip">
+          <div>OCT 2023</div>
+          <div class="big">9,80 €</div>
+        </div>
+      </div>
+
+      <!-- x labels -->
+      <div style="display: flex; justify-content: space-between; padding: 12px 20px 0; font-family: var(--mono); font-size: 9px; color: rgba(250,250,248,0.4); letter-spacing: 0.1em;">
+        <span>2021</span><span>2022</span><span>2023</span><span>2024</span><span>2025</span><span>2026</span>
+      </div>
+
+      <!-- Stats -->
+      <div class="big-stats">
+        <div class="big-stat">
+          <div class="label">Min période</div>
+          <div class="value">3,80 €</div>
+          <div class="sub">Sept. 2021</div>
+        </div>
+        <div class="big-stat">
+          <div class="label">Max période</div>
+          <div class="value">15,20 €</div>
+          <div class="sub">Mars 2026</div>
+        </div>
+        <div class="big-stat">
+          <div class="label">Médian 5 ans</div>
+          <div class="value">7,40 €</div>
+          <div class="sub">128 observations</div>
+        </div>
+        <div class="big-stat">
+          <div class="label">Volatilité</div>
+          <div class="value">σ 2,1 €</div>
+          <div class="sub">bande ±2σ affichée</div>
+        </div>
+      </div>
+
+      <!-- Freshness note -->
+      <div style="padding: 24px 20px 40px; text-align: center;">
+        <div style="font-family: var(--mono); font-size: 9px; letter-spacing: 0.14em; color: rgba(250,250,248,0.4); text-transform: uppercase;">Source · eBay Browse API</div>
+        <div style="font-family: var(--display); font-style: italic; font-size: 12px; color: rgba(250,250,248,0.55); margin-top: 6px;">Prix pondérés par vélocité de vente · hors lots et coffrets BU/Proof</div>
+      </div>
+    </div>
+  </div>
+  <p class="stage-caption">Modal plein écran après tap sur « Étendre 5 ans ». Fond indigo nuit, courbe or, bande de confiance ±2σ, tooltip lisible au tap.</p>
+</main>
+</body>
+</html>

@@ -1,0 +1,166 @@
+<!--
+  Scene : scan-detecting
+  ----------------------
+  Intermediate state between scan-idle and scan-matched.
+  The guide ring pulses faster in the detecting colour (var(--scan-detecting))
+  while a slim progress bar communicates "embedding in progress".
+  Auto-advances to #/scan/matched after ~1.6s.
+-->
+
+<style>
+  .scan-detecting-root {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 70% 50% at 50% 55%, var(--ink-soft) 0%, var(--ink) 55%, #000 100%);
+    overflow: hidden;
+    color: var(--surface);
+  }
+
+  .scan-detecting-noise {
+    position: absolute;
+    inset: 0;
+    opacity: 0.14;
+    mix-blend-mode: overlay;
+    pointer-events: none;
+  }
+
+  .scan-detecting-header {
+    position: absolute;
+    top: 62px;
+    left: 50%;
+    transform: translateX(-50%);
+    text-align: center;
+    z-index: 2;
+  }
+  .scan-detecting-header__title {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: var(--text-lg);
+    font-weight: 400;
+    color: var(--surface);
+    letter-spacing: 0.01em;
+    opacity: 0.92;
+  }
+
+  /* Faster pulse + warm colour */
+  .scan-detecting-guide {
+    position: absolute;
+    top: 48%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 280px;
+    height: 280px;
+    pointer-events: none;
+    animation: scan-detecting-pulse 0.85s var(--ease-in-out) infinite;
+  }
+  @keyframes scan-detecting-pulse {
+    0%, 100% { opacity: 0.7; transform: translate(-50%, -50%) scale(1); }
+    50%      { opacity: 1;   transform: translate(-50%, -50%) scale(1.04); }
+  }
+  .scan-detecting-corner {
+    position: absolute;
+    width: 28px;
+    height: 28px;
+    border: 2px solid var(--scan-detecting);
+    box-shadow: 0 0 12px rgba(216,138,45,0.55);
+  }
+  .scan-detecting-corner--tl { top: 0;    left: 0;    border-right: 0; border-bottom: 0; border-top-left-radius: 6px; }
+  .scan-detecting-corner--tr { top: 0;    right: 0;   border-left: 0;  border-bottom: 0; border-top-right-radius: 6px; }
+  .scan-detecting-corner--bl { bottom: 0; left: 0;    border-right: 0; border-top: 0;    border-bottom-left-radius: 6px; }
+  .scan-detecting-corner--br { bottom: 0; right: 0;   border-left: 0;  border-top: 0;    border-bottom-right-radius: 6px; }
+
+  /* Fake centred coin silhouette (so the "detecting" frame isn't empty) */
+  .scan-detecting-coin {
+    position: absolute;
+    top: 48%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 140px;
+    height: 140px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, rgba(200,168,100,0.28), rgba(26,27,75,0.05) 70%);
+    box-shadow: 0 0 40px rgba(216,138,45,0.22);
+    pointer-events: none;
+  }
+
+  .scan-detecting-status {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: 220px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-3);
+    width: 240px;
+  }
+  .scan-detecting-status__label {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: var(--text-sm);
+    color: rgba(255,255,255,0.85);
+    letter-spacing: 0.02em;
+  }
+
+  .scan-detecting-progress {
+    width: 100%;
+    height: 3px;
+    background: rgba(255,255,255,0.12);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .scan-detecting-progress__fill {
+    display: block;
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, var(--scan-detecting), var(--gold));
+    border-radius: 2px;
+    animation: scan-detecting-fill 1.6s var(--ease-out) forwards;
+  }
+  @keyframes scan-detecting-fill {
+    0%   { width: 0%; }
+    40%  { width: 48%; }
+    100% { width: 100%; }
+  }
+
+  .scan-detecting-meta {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.55);
+  }
+</style>
+
+<section class="scan-detecting-root" data-scene="scan-detecting">
+  <svg class="scan-detecting-noise" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+    <filter id="scan-detecting-turb">
+      <feTurbulence type="fractalNoise" baseFrequency="1.6" numOctaves="2" seed="7"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.55 0"/>
+    </filter>
+    <rect width="100%" height="100%" filter="url(#scan-detecting-turb)"/>
+  </svg>
+
+  <div class="scan-detecting-header">
+    <div class="eyebrow eyebrow--paper">Scan &middot; Eurio</div>
+    <div class="scan-detecting-header__title">Identification&hellip;</div>
+  </div>
+
+  <div class="scan-detecting-coin" aria-hidden="true"></div>
+
+  <div class="scan-detecting-guide" aria-hidden="true">
+    <div class="scan-detecting-corner scan-detecting-corner--tl"></div>
+    <div class="scan-detecting-corner scan-detecting-corner--tr"></div>
+    <div class="scan-detecting-corner scan-detecting-corner--bl"></div>
+    <div class="scan-detecting-corner scan-detecting-corner--br"></div>
+  </div>
+
+  <div class="scan-detecting-status">
+    <span class="scan-detecting-status__label">Extraction de l'empreinte&hellip;</span>
+    <div class="scan-detecting-progress" aria-hidden="true">
+      <span class="scan-detecting-progress__fill"></span>
+    </div>
+    <span class="scan-detecting-meta">embedding &middot; 128-D &middot; on-device</span>
+  </div>
+</section>

@@ -1,0 +1,433 @@
+<!--
+  Scene : profile-achievements
+  ----------------------------
+  Vue achievements complete avec tabs "En cours" / "Debloques" / "Verrouilles".
+  Tab "En cours" par defaut. "Presque completes" (>=75%) en haut en card "hot"
+  avec chips des pieces manquantes. Tab "Debloques" : featured + grille 2-col.
+  Tab "Verrouilles" : liste grisee.
+
+  Scoped : .profile-ach-*
+-->
+
+<style>
+  .profile-ach-root {
+    position: absolute;
+    inset: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    background: var(--surface);
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .profile-ach-topbar {
+    position: relative;
+    padding: 64px var(--space-6) 0;
+    background: var(--surface);
+  }
+  .profile-ach-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--ink-400);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    margin-bottom: 14px;
+  }
+  .profile-ach-back svg {
+    width: 14px; height: 14px;
+    stroke: currentColor; fill: none; stroke-width: 1.6;
+  }
+  .profile-ach-titlerow {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+  .profile-ach-titlerow h1 {
+    font-family: var(--font-display);
+    font-weight: 400;
+    font-style: italic;
+    font-size: 34px;
+    letter-spacing: -0.02em;
+    line-height: 1;
+    color: var(--ink);
+    margin: 0;
+  }
+  .profile-ach-titlerow__meta {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    color: var(--gold-700);
+    text-transform: uppercase;
+  }
+
+  .profile-ach-tabs {
+    display: flex;
+    gap: 22px;
+    margin-top: 22px;
+    border-bottom: 1px solid var(--gray-100);
+    margin-bottom: -1px;
+  }
+  .profile-ach-tab {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 0 0 12px;
+    color: var(--ink-400);
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: none;
+  }
+  .profile-ach-tab__c {
+    font-size: 9px;
+    padding: 2px 6px;
+    border-radius: var(--radius-full);
+    background: var(--gray-100);
+    color: var(--ink-400);
+    font-weight: 500;
+  }
+  .profile-ach-tab[aria-selected="true"] {
+    color: var(--ink);
+  }
+  .profile-ach-tab[aria-selected="true"] .profile-ach-tab__c {
+    background: var(--indigo-700);
+    color: var(--surface);
+  }
+  .profile-ach-tab[aria-selected="true"]::after {
+    content: "";
+    position: absolute;
+    left: 0; right: 0;
+    bottom: -1px;
+    height: 2px;
+    background: var(--gold);
+  }
+
+  .profile-ach-body {
+    padding: var(--space-6) var(--space-6) var(--space-11);
+  }
+
+  .profile-ach-section-eyebrow {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .profile-ach-section-eyebrow::before {
+    content: "";
+    width: 16px; height: 1px;
+    background: var(--gold);
+  }
+
+  /* Hot card (>=75%) */
+  .profile-ach-hot {
+    background: linear-gradient(160deg, var(--paper), var(--surface-1));
+    border: 1px solid rgba(200, 168, 100, 0.45);
+    border-radius: var(--radius-lg);
+    padding: var(--space-5);
+    position: relative;
+    overflow: hidden;
+    margin-bottom: var(--space-6);
+  }
+  .profile-ach-hot::after {
+    content: "";
+    position: absolute;
+    right: -40px; top: -40px;
+    width: 160px; height: 160px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(200,168,100,0.22), transparent 70%);
+  }
+  .profile-ach-hot__head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: var(--space-3);
+    position: relative;
+    z-index: 1;
+  }
+  .profile-ach-hot__medal {
+    width: 48px; height: 48px;
+    border-radius: 50%;
+    flex: 0 0 48px;
+    background: radial-gradient(circle at 30% 30%, var(--gold-soft), var(--gold) 55%, var(--gold-deep));
+    box-shadow:
+      inset 0 0 0 1px rgba(255, 255, 255, 0.3),
+      inset 0 -4px 8px rgba(0, 0, 0, 0.25),
+      0 4px 12px -4px rgba(126, 94, 34, 0.5);
+    animation: profile-ach-hot-pulse 3.8s var(--ease-in-out) infinite;
+  }
+  @keyframes profile-ach-hot-pulse {
+    0%, 100% { box-shadow: inset 0 0 0 1px rgba(255,255,255,0.3),
+                            inset 0 -4px 8px rgba(0,0,0,0.25),
+                            0 4px 12px -4px rgba(126,94,34,0.5); }
+    50%      { box-shadow: inset 0 0 0 1px rgba(255,255,255,0.3),
+                            inset 0 -4px 8px rgba(0,0,0,0.25),
+                            0 8px 20px -4px rgba(200,168,100,0.6); }
+  }
+  .profile-ach-hot__title {
+    font-family: var(--font-display);
+    font-weight: 500;
+    font-size: 18px;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+  }
+  .profile-ach-hot__sub {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--gold-700);
+    margin-top: 2px;
+  }
+  .profile-ach-hot__bar {
+    height: 3px;
+    background: var(--gray-100);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-bottom: var(--space-3);
+    position: relative;
+    z-index: 1;
+  }
+  .profile-ach-hot__fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--gold-300), var(--gold), var(--gold-700));
+    border-radius: 2px;
+  }
+  .profile-ach-hot__missing-lbl {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-400);
+    margin-bottom: 6px;
+    position: relative;
+    z-index: 1;
+  }
+  .profile-ach-chips {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* Regular in-progress card */
+  .profile-ach-row {
+    background: var(--paper);
+    border: 1px solid var(--gray-100);
+    border-radius: var(--radius-lg);
+    padding: 14px 14px 14px 16px;
+    display: flex;
+    gap: 14px;
+    align-items: center;
+    margin-bottom: 10px;
+    position: relative;
+    overflow: hidden;
+    color: inherit;
+  }
+  .profile-ach-row::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    background: linear-gradient(180deg, var(--gold), var(--gold-700));
+    opacity: 0.45;
+  }
+  .profile-ach-row__medal {
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    flex: 0 0 40px;
+    background: radial-gradient(circle at 30% 30%, var(--gold-soft), var(--gold) 55%, var(--gold-deep));
+    box-shadow:
+      inset 0 0 0 1px rgba(255, 255, 255, 0.3),
+      inset 0 -3px 6px rgba(0, 0, 0, 0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-display);
+    font-style: italic;
+    color: var(--gold-deep);
+  }
+  .profile-ach-row__medal.is-dim {
+    background: radial-gradient(circle at 30% 30%, var(--gray-50), var(--gray-200), var(--gray-400));
+    color: var(--gray-600);
+  }
+  .profile-ach-row__title {
+    font-family: var(--font-display);
+    font-weight: 500;
+    font-size: 14px;
+    color: var(--ink);
+  }
+  .profile-ach-row__meta {
+    font-size: 11px;
+    color: var(--ink-400);
+    margin-top: 3px;
+  }
+  .profile-ach-row__bar {
+    margin-top: 8px;
+    height: 2px;
+    background: var(--gray-100);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .profile-ach-row__fill {
+    height: 100%;
+    background: var(--indigo-700);
+  }
+  .profile-ach-row__count {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--ink-400);
+    flex: 0 0 auto;
+  }
+  .profile-ach-row__count b { color: var(--indigo-700); font-weight: 600; }
+
+  /* Unlocked tab — featured + grid */
+  .profile-ach-featured {
+    background: linear-gradient(135deg, var(--indigo-700), var(--indigo-800));
+    border-radius: var(--radius-xl);
+    padding: var(--space-6);
+    color: var(--surface);
+    margin-bottom: var(--space-6);
+    position: relative;
+    overflow: hidden;
+    border: 1px solid rgba(200, 168, 100, 0.3);
+  }
+  .profile-ach-featured::after {
+    content: "";
+    position: absolute;
+    right: -60px; top: -60px;
+    width: 240px; height: 240px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(200,168,100,0.25), transparent 70%);
+  }
+  .profile-ach-featured__medal {
+    width: 88px; height: 88px;
+    border-radius: 50%;
+    margin: 0 auto var(--space-4);
+    background: radial-gradient(circle at 30% 30%, var(--gold-soft), var(--gold) 50%, var(--gold-deep) 100%);
+    box-shadow:
+      inset 0 0 0 2px rgba(255, 255, 255, 0.35),
+      inset 0 -8px 16px rgba(0, 0, 0, 0.35),
+      0 12px 30px -8px rgba(126, 94, 34, 0.55);
+    position: relative;
+    z-index: 1;
+  }
+  .profile-ach-featured__title {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-weight: 400;
+    font-size: 28px;
+    text-align: center;
+    margin-bottom: 4px;
+    position: relative;
+    z-index: 1;
+  }
+  .profile-ach-featured__sub {
+    font-size: 12px;
+    color: var(--ink-300);
+    text-align: center;
+    position: relative;
+    z-index: 1;
+  }
+
+  .profile-ach-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .profile-ach-tile {
+    background: var(--paper);
+    border: 1px solid var(--gray-100);
+    border-radius: var(--radius-lg);
+    padding: var(--space-4);
+    text-align: center;
+  }
+  .profile-ach-tile__medal {
+    width: 56px; height: 56px;
+    border-radius: 50%;
+    margin: 0 auto 8px;
+    background: radial-gradient(circle at 30% 30%, var(--gold-soft), var(--gold) 55%, var(--gold-deep));
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.35), inset 0 -4px 8px rgba(0,0,0,0.25);
+  }
+  .profile-ach-tile__medal.is-dim {
+    background: radial-gradient(circle at 30% 30%, var(--gray-50), var(--gray-200), var(--gray-400));
+  }
+  .profile-ach-tile__title {
+    font-family: var(--font-display);
+    font-weight: 500;
+    font-size: 13px;
+    color: var(--ink);
+    line-height: 1.2;
+  }
+  .profile-ach-tile__date {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-400);
+    margin-top: 4px;
+  }
+
+  .profile-ach-empty {
+    padding: var(--space-8) var(--space-4);
+    text-align: center;
+    color: var(--ink-400);
+  }
+  .profile-ach-empty p {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: var(--text-sm);
+    max-width: 28ch;
+    margin: 0 auto;
+  }
+
+  .profile-ach-pane { display: none; }
+  .profile-ach-pane.is-active { display: block; }
+</style>
+
+<section class="profile-ach-root" data-scene="profile-achievements">
+  <div class="profile-ach-topbar">
+    <a class="profile-ach-back" href="#/profile">
+      <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+      Profil
+    </a>
+    <div class="profile-ach-titlerow">
+      <h1>Chasses &amp; médailles</h1>
+      <div class="profile-ach-titlerow__meta" data-bind="ach-count">0 / 0</div>
+    </div>
+    <div class="profile-ach-tabs" role="tablist">
+      <button class="profile-ach-tab" role="tab" aria-selected="true"  data-tab="in-progress">
+        En cours <span class="profile-ach-tab__c" data-bind="tab-c-in-progress">0</span>
+      </button>
+      <button class="profile-ach-tab" role="tab" aria-selected="false" data-tab="unlocked">
+        Débloqués <span class="profile-ach-tab__c" data-bind="tab-c-unlocked">0</span>
+      </button>
+      <button class="profile-ach-tab" role="tab" aria-selected="false" data-tab="locked">
+        Verrouillés <span class="profile-ach-tab__c" data-bind="tab-c-locked">0</span>
+      </button>
+    </div>
+  </div>
+
+  <div class="profile-ach-body">
+    <div class="profile-ach-pane is-active" data-pane="in-progress">
+      <div data-bind="pane-in-progress">
+        <div class="profile-ach-empty"><p>Les chasses apparaîtront dès ta première pièce scannée.</p></div>
+      </div>
+    </div>
+    <div class="profile-ach-pane" data-pane="unlocked">
+      <div data-bind="pane-unlocked">
+        <div class="profile-ach-empty"><p>Aucune médaille pour l'instant — continue à collectionner.</p></div>
+      </div>
+    </div>
+    <div class="profile-ach-pane" data-pane="locked">
+      <div data-bind="pane-locked">
+        <div class="profile-ach-empty"><p>Les chasses verrouillées apparaîtront ici.</p></div>
+      </div>
+    </div>
+  </div>
+</section>

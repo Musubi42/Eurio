@@ -1,0 +1,642 @@
+<!--
+  Scene : profile (home)
+  ----------------------
+  Centre de progression : hero indigo + niveau en titre d'honneur, ladder 4
+  nodes, stats flottantes chevauchant le hero (-32px), chasses en cours,
+  banner "derniere medaille", preview 4 settings.
+
+  Le niveau affiche vient de state.level (recompute par state.recomputeLevel)
+  et tombe en Decouvreur / Passionne / Expert / Maitre selon la taille de la
+  collection. Le sidecar profile.js injecte les valeurs dynamiques.
+
+  Scoped selectors : .profile-home-*
+  Zero hex, zero font-family inline. Tokens + classes .eyebrow / .card / .pill.
+-->
+
+<style>
+  .profile-home-root {
+    position: absolute;
+    inset: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    color: var(--ink);
+    background: var(--surface);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ───────── Hero ───────── */
+  .profile-home-hero {
+    position: relative;
+    padding: 72px var(--space-6) var(--space-10);
+    background:
+      radial-gradient(600px 280px at 85% -20%, var(--indigo-500) 0%, transparent 60%),
+      radial-gradient(500px 260px at 15% 110%, var(--indigo-900) 0%, transparent 55%),
+      linear-gradient(180deg, var(--indigo-700) 0%, var(--indigo-800) 100%);
+    color: var(--surface);
+    overflow: hidden;
+  }
+  .profile-home-hero::before {
+    content: "";
+    position: absolute; inset: 0;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.95' numOctaves='2'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 .07 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+    mix-blend-mode: overlay;
+    opacity: 0.6;
+    pointer-events: none;
+  }
+  .profile-home-hero::after {
+    content: "";
+    position: absolute;
+    left: var(--space-6); right: var(--space-6); bottom: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--gold) 20%, var(--gold) 80%, transparent);
+    opacity: 0.45;
+  }
+  .profile-home-seal {
+    position: absolute;
+    right: -40px; top: 56px;
+    width: 180px; height: 180px;
+    border: 1px solid rgba(200, 168, 100, 0.12);
+    border-radius: 50%;
+    pointer-events: none;
+  }
+  .profile-home-seal::before {
+    content: ""; position: absolute; inset: 12px;
+    border: 1px dashed rgba(200, 168, 100, 0.12);
+    border-radius: 50%;
+  }
+  .profile-home-seal::after {
+    content: ""; position: absolute; inset: 30px;
+    border: 1px solid rgba(200, 168, 100, 0.08);
+    border-radius: 50%;
+  }
+  .profile-home-year {
+    position: absolute;
+    right: var(--space-6);
+    top: 96px;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.3em;
+    color: rgba(200, 168, 100, 0.55);
+    text-transform: uppercase;
+    writing-mode: vertical-rl;
+  }
+
+  .profile-home-topbar {
+    position: relative;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--space-8);
+  }
+  .profile-home-brand {
+    font-family: var(--font-display);
+    font-weight: 400;
+    font-size: var(--text-lg);
+    letter-spacing: -0.01em;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .profile-home-brand__dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, var(--gold-soft), var(--gold) 55%, var(--gold-deep));
+    box-shadow: 0 0 14px rgba(200, 168, 100, 0.55);
+  }
+  .profile-home-iconbtn {
+    width: 38px; height: 38px;
+    border-radius: var(--radius-md);
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--surface);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .profile-home-iconbtn svg {
+    width: 18px; height: 18px;
+    stroke: currentColor; fill: none; stroke-width: 1.6;
+  }
+
+  .profile-home-eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .profile-home-eyebrow::before {
+    content: "";
+    width: 18px; height: 1px;
+    background: var(--gold);
+  }
+
+  .profile-home-level {
+    position: relative;
+    font-family: var(--font-display);
+    font-style: italic;
+    font-weight: 300;
+    font-size: var(--text-hero);
+    line-height: 0.92;
+    letter-spacing: -0.025em;
+    margin: 0;
+    background: linear-gradient(180deg, var(--gold-soft) 0%, var(--gold-300) 50%, var(--gold) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .profile-home-level__ord {
+    position: absolute;
+    top: 6px; right: 0;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    color: var(--gold);
+    opacity: 0.7;
+    -webkit-text-fill-color: var(--gold);
+  }
+  .profile-home-level__caption {
+    font-family: var(--font-ui);
+    font-size: var(--text-xs);
+    color: var(--ink-300);
+    margin-top: 10px;
+  }
+
+  /* Ladder */
+  .profile-home-ladder {
+    position: relative;
+    margin-top: var(--space-6);
+  }
+  .profile-home-ladder__labels {
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink-400);
+    margin-bottom: 10px;
+  }
+  .profile-home-ladder__labels span.is-done    { color: var(--gold); }
+  .profile-home-ladder__labels span.is-current { color: var(--surface); }
+  .profile-home-ladder__bar {
+    position: relative;
+    height: 2px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 2px;
+  }
+  .profile-home-ladder__fill {
+    position: absolute; left: 0; top: 0; bottom: 0;
+    background: linear-gradient(90deg, var(--gold-300), var(--gold));
+    border-radius: 2px;
+    box-shadow: 0 0 12px rgba(200, 168, 100, 0.5);
+    transition: width var(--duration-slow) var(--ease-out);
+  }
+  .profile-home-ladder__node {
+    position: absolute; top: 50%;
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    background: var(--indigo-900);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+  }
+  .profile-home-ladder__node.is-done {
+    background: var(--gold);
+    border-color: var(--gold-300);
+  }
+  .profile-home-ladder__node.is-current {
+    width: 14px; height: 14px;
+    background: var(--indigo-900);
+    border: 1.5px solid var(--gold);
+    box-shadow: 0 0 0 4px rgba(200, 168, 100, 0.12),
+                0 0 16px rgba(200, 168, 100, 0.5);
+  }
+  .profile-home-ladder__hint {
+    margin-top: 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: var(--text-xs);
+    color: var(--ink-300);
+  }
+  .profile-home-ladder__hint b {
+    color: var(--surface);
+    font-weight: 500;
+  }
+  .profile-home-ladder__pct {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--gold);
+    letter-spacing: 0.08em;
+  }
+
+  /* ───────── Body ───────── */
+  .profile-home-body {
+    padding: 0 var(--space-6) var(--space-11);
+  }
+
+  /* Stats flottantes qui chevauchent le hero */
+  .profile-home-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin-top: -32px;
+    margin-bottom: var(--space-8);
+    position: relative;
+    z-index: 5;
+  }
+  .profile-home-stat {
+    background: var(--surface);
+    border: 1px solid var(--gray-100);
+    border-radius: var(--radius-lg);
+    padding: 14px 12px 13px;
+    box-shadow: 0 14px 24px -14px rgba(14, 14, 31, 0.25);
+  }
+  .profile-home-stat__k {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-400);
+  }
+  .profile-home-stat__v {
+    font-family: var(--font-display);
+    font-weight: 400;
+    font-size: 26px;
+    line-height: 1;
+    margin-top: 6px;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+  }
+  .profile-home-stat__v small {
+    font-size: 14px;
+    color: var(--gray-300);
+  }
+  .profile-home-stat__sub {
+    font-size: 10px;
+    color: var(--ink-400);
+    margin-top: 4px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .profile-home-stat__sub .up {
+    color: var(--success);
+    font-weight: 500;
+  }
+
+  /* Section heads */
+  .profile-home-section {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 14px;
+  }
+  .profile-home-section h2 {
+    font-family: var(--font-display);
+    font-weight: 400;
+    font-size: 19px;
+    letter-spacing: -0.01em;
+    margin: 0;
+    color: var(--ink);
+  }
+  .profile-home-section a {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--gold-700);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .profile-home-section a::after { content: "→"; }
+
+  /* Chasses en cours */
+  .profile-home-chases {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: var(--space-7);
+  }
+  .profile-home-ach {
+    position: relative;
+    background: var(--paper);
+    border: 1px solid var(--gray-100);
+    border-radius: var(--radius-lg);
+    padding: 14px 14px 14px 16px;
+    display: flex;
+    gap: 14px;
+    align-items: center;
+    overflow: hidden;
+  }
+  .profile-home-ach::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    background: linear-gradient(180deg, var(--gold), var(--gold-700));
+    opacity: 0.6;
+  }
+  .profile-home-medal {
+    width: 44px; height: 44px;
+    flex: 0 0 44px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, var(--gold-soft), var(--gold) 55%, var(--gold-deep) 100%);
+    box-shadow:
+      inset 0 0 0 1px rgba(255, 255, 255, 0.3),
+      inset 0 -4px 8px rgba(0, 0, 0, 0.25),
+      0 4px 10px -4px rgba(126, 94, 34, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: 18px;
+    color: var(--gold-deep);
+    font-weight: 500;
+  }
+  .profile-home-medal.is-dim {
+    background: radial-gradient(circle at 30% 30%, var(--gray-50), var(--gray-200) 55%, var(--gray-400) 100%);
+    color: var(--gray-600);
+    box-shadow:
+      inset 0 0 0 1px rgba(255, 255, 255, 0.3),
+      inset 0 -3px 6px rgba(0, 0, 0, 0.15);
+  }
+  .profile-home-ach__body {
+    flex: 1;
+    min-width: 0;
+  }
+  .profile-home-ach__title {
+    font-family: var(--font-display);
+    font-weight: 500;
+    font-size: 15px;
+    line-height: 1.15;
+    letter-spacing: -0.005em;
+    color: var(--ink);
+  }
+  .profile-home-ach__meta {
+    font-size: 11px;
+    color: var(--ink-400);
+    margin-top: 3px;
+  }
+  .profile-home-ach__meta b {
+    color: var(--ink-700);
+    font-weight: 500;
+  }
+  .profile-home-ach__bar {
+    margin-top: 9px;
+    height: 2px;
+    background: var(--gray-100);
+    border-radius: 2px;
+    overflow: hidden;
+    position: relative;
+  }
+  .profile-home-ach__fill {
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    background: var(--indigo-700);
+    border-radius: 2px;
+  }
+  .profile-home-ach__fill.is-gold {
+    background: var(--gold-700);
+  }
+  .profile-home-ach__count {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--ink-400);
+    letter-spacing: 0.04em;
+    flex: 0 0 auto;
+  }
+  .profile-home-ach__count b {
+    color: var(--indigo-700);
+    font-weight: 600;
+  }
+
+  /* Unlock banner */
+  .profile-home-unlock {
+    margin-bottom: var(--space-7);
+    background: linear-gradient(100deg, var(--indigo-700) 0%, var(--indigo-600) 70%, var(--indigo-500) 100%);
+    color: var(--surface);
+    border-radius: var(--radius-lg);
+    padding: 16px 16px 16px 18px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    position: relative;
+    overflow: hidden;
+    border: 1px solid rgba(200, 168, 100, 0.3);
+  }
+  .profile-home-unlock::after {
+    content: "";
+    position: absolute;
+    right: -20px; top: -20px;
+    width: 120px; height: 120px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(200, 168, 100, 0.25), transparent 70%);
+  }
+  .profile-home-unlock .profile-home-medal {
+    width: 40px; height: 40px;
+    flex: 0 0 40px;
+  }
+  .profile-home-unlock__txt {
+    flex: 1;
+    min-width: 0;
+    position: relative;
+    z-index: 1;
+  }
+  .profile-home-unlock__title {
+    font-family: var(--font-display);
+    font-size: 15px;
+    font-weight: 500;
+    margin-top: 2px;
+  }
+  .profile-home-unlock__sub {
+    font-size: 11px;
+    color: var(--ink-300);
+    margin-top: 2px;
+  }
+
+  /* Settings preview */
+  .profile-home-settings {
+    background: var(--paper);
+    border: 1px solid var(--gray-100);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+  }
+  .profile-home-setrow {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--gray-100);
+    font-size: 13px;
+    color: var(--ink-700);
+    width: 100%;
+    text-align: left;
+  }
+  .profile-home-setrow:last-child { border-bottom: 0; }
+  .profile-home-setrow svg {
+    width: 16px; height: 16px;
+    stroke: var(--ink-400);
+    fill: none;
+    stroke-width: 1.6;
+    flex: 0 0 16px;
+  }
+  .profile-home-setrow__label {
+    flex: 1;
+    color: var(--ink);
+    font-weight: 500;
+  }
+  .profile-home-setrow__val {
+    font-size: 11px;
+    color: var(--ink-400);
+  }
+  .profile-home-setrow__arrow {
+    color: var(--ink-300);
+  }
+
+  /* Empty state for chases when collection is 0 */
+  .profile-home-empty {
+    background: var(--paper);
+    border: 1px dashed var(--gray-200);
+    border-radius: var(--radius-lg);
+    padding: var(--space-6);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: var(--space-3);
+    margin-bottom: var(--space-7);
+  }
+  .profile-home-empty .profile-home-medal {
+    width: 56px; height: 56px;
+  }
+  .profile-home-empty p {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-weight: 400;
+    color: var(--ink-500);
+    font-size: var(--text-sm);
+    max-width: 22ch;
+  }
+
+  /* Dark chrome for version badge on hero */
+  .screen[data-chrome="light"] .version-badge { z-index: var(--z-badge); }
+</style>
+
+<section class="profile-home-root" data-scene="profile">
+  <!-- Hero -->
+  <div class="profile-home-hero">
+    <div class="profile-home-seal" aria-hidden="true"></div>
+    <div class="profile-home-year" aria-hidden="true">MMXXVI</div>
+
+    <div class="profile-home-topbar">
+      <div class="profile-home-brand">
+        <span class="profile-home-brand__dot" aria-hidden="true"></span>
+        Eurio
+      </div>
+      <button type="button" class="profile-home-iconbtn" data-action="open-settings" aria-label="Paramètres">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.6 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.6a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>
+        </svg>
+      </button>
+    </div>
+
+    <div class="eyebrow eyebrow--gold profile-home-eyebrow" data-bind="level-eyebrow">Niveau · rang I de IV</div>
+    <h1 class="profile-home-level">
+      <span data-bind="level-name">Découvreur</span>
+      <span class="profile-home-level__ord" data-bind="level-ord">I / IV</span>
+    </h1>
+    <div class="profile-home-level__caption" data-bind="level-caption">« Ton aventure commence »</div>
+
+    <div class="profile-home-ladder">
+      <div class="profile-home-ladder__labels" data-bind="ladder-labels">
+        <span class="is-current">Découvreur</span>
+        <span>Passionné</span>
+        <span>Expert</span>
+        <span>Maître</span>
+      </div>
+      <div class="profile-home-ladder__bar">
+        <div class="profile-home-ladder__fill" data-bind="ladder-fill" style="width:0%"></div>
+        <div class="profile-home-ladder__node is-current" data-bind="node-0" style="left:0%"></div>
+        <div class="profile-home-ladder__node" data-bind="node-1" style="left:33%"></div>
+        <div class="profile-home-ladder__node" data-bind="node-2" style="left:66%"></div>
+        <div class="profile-home-ladder__node" data-bind="node-3" style="left:100%"></div>
+      </div>
+      <div class="profile-home-ladder__hint">
+        <span data-bind="ladder-hint">Scanne ta première pièce</span>
+        <span class="profile-home-ladder__pct" data-bind="ladder-pct">0%</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Body -->
+  <div class="profile-home-body">
+
+    <!-- Stats -->
+    <div class="profile-home-stats">
+      <div class="profile-home-stat">
+        <div class="profile-home-stat__k">Pièces</div>
+        <div class="profile-home-stat__v" data-bind="stat-coins">0</div>
+        <div class="profile-home-stat__sub" data-bind="stat-coins-sub">Aucune encore</div>
+      </div>
+      <div class="profile-home-stat">
+        <div class="profile-home-stat__k">Pays</div>
+        <div class="profile-home-stat__v">
+          <span data-bind="stat-countries">0</span><small>/21</small>
+        </div>
+        <div class="profile-home-stat__sub">Zone euro</div>
+      </div>
+      <div class="profile-home-stat">
+        <div class="profile-home-stat__k">Valeur</div>
+        <div class="profile-home-stat__v">
+          <span data-bind="stat-value">—</span><small data-bind="stat-value-unit"> €</small>
+        </div>
+        <div class="profile-home-stat__sub" data-bind="stat-value-sub">Coffre vide</div>
+      </div>
+    </div>
+
+    <!-- Chasses en cours -->
+    <div class="profile-home-section">
+      <h2>Chasses en cours</h2>
+      <a href="#/profile/achievements">Tout voir</a>
+    </div>
+    <div data-bind="chases-container"></div>
+
+    <!-- Unlock banner (optional) -->
+    <div data-bind="unlock-banner"></div>
+
+    <!-- Settings preview -->
+    <div class="profile-home-section">
+      <h2>Paramètres</h2>
+      <a href="#/profile/settings">Ouvrir</a>
+    </div>
+    <div class="profile-home-settings">
+      <button type="button" class="profile-home-setrow" data-action="open-settings">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 010 18M12 3a14 14 0 000 18"/></svg>
+        <span class="profile-home-setrow__label">Langue</span>
+        <span class="profile-home-setrow__val">Français</span>
+        <span class="profile-home-setrow__arrow">›</span>
+      </button>
+      <button type="button" class="profile-home-setrow" data-action="open-settings">
+        <svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+        <span class="profile-home-setrow__label">Notifications</span>
+        <span class="profile-home-setrow__val">Désactivées</span>
+        <span class="profile-home-setrow__arrow">›</span>
+      </button>
+      <button type="button" class="profile-home-setrow" data-action="open-settings">
+        <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+        <span class="profile-home-setrow__label">Catalogue</span>
+        <span class="profile-home-setrow__val">Wi-Fi uniquement</span>
+        <span class="profile-home-setrow__arrow">›</span>
+      </button>
+      <button type="button" class="profile-home-setrow" data-action="open-settings">
+        <svg viewBox="0 0 24 24"><path d="M12 3v18M3 12h18"/></svg>
+        <span class="profile-home-setrow__label">À propos</span>
+        <span class="profile-home-setrow__val">v0.1.0</span>
+        <span class="profile-home-setrow__arrow">›</span>
+      </button>
+    </div>
+  </div>
+</section>

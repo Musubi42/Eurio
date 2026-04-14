@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=390,initial-scale=1" />
+<title>Eurio · Achievements débloqués</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --indigo:#1A1B4B;--indigo-2:#24265E;
+    --gold:#C8A864;--gold-2:#A8884A;--gold-3:#E7D29A;
+    --ink:#0E0E1F;--surface:#FAFAF8;--paper:#F4F1E8;
+    --n-100:#F2F2EE;--n-200:#E6E4DB;--n-300:#CFCEC4;
+    --n-400:#9C9A8E;--n-500:#6B6A62;--n-600:#3C3B38;
+  }
+  *{box-sizing:border-box;-webkit-font-smoothing:antialiased}
+  html,body{margin:0;padding:0}
+  body{
+    font-family:"Inter",system-ui,sans-serif;background:#2a2c5e;
+    display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px;
+  }
+  .device{
+    width:390px;height:844px;background:var(--surface);border-radius:44px;
+    box-shadow:0 60px 120px -40px rgba(0,0,0,.55),0 20px 40px -20px rgba(0,0,0,.35);
+    position:relative;overflow:hidden;color:var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+  .status{
+    position:absolute;top:0;left:0;right:0;height:44px;z-index:20;
+    display:flex;justify-content:space-between;align-items:center;
+    padding:0 28px;font-size:14px;font-weight:600;color:var(--ink);
+  }
+  .status .right{display:flex;gap:6px;align-items:center}
+  .status svg{width:16px;height:12px}
+
+  .topbar{
+    position:relative;padding:56px 24px 0;background:var(--surface);
+  }
+  .back{
+    display:flex;align-items:center;gap:8px;color:var(--n-500);
+    font-family:"JetBrains Mono",monospace;font-size:10px;letter-spacing:.18em;
+    text-transform:uppercase;margin-bottom:14px;text-decoration:none;
+  }
+  .back svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.6}
+  .title-row{display:flex;justify-content:space-between;align-items:baseline}
+  .title-row h1{
+    font-family:"Fraunces",serif;font-weight:400;font-style:italic;
+    font-size:34px;letter-spacing:-.02em;margin:0;line-height:1;
+  }
+  .title-row .meta{
+    font-family:"JetBrains Mono",monospace;font-size:10px;letter-spacing:.14em;
+    color:var(--gold-2);text-transform:uppercase;
+  }
+  .tabs{
+    display:flex;gap:22px;margin-top:22px;border-bottom:1px solid var(--n-200);
+  }
+  .tab{
+    font-family:"JetBrains Mono",monospace;font-size:11px;letter-spacing:.12em;
+    text-transform:uppercase;padding:0 0 12px;color:var(--n-400);
+    text-decoration:none;position:relative;display:flex;align-items:center;gap:6px;
+  }
+  .tab .c{font-size:9px;padding:2px 6px;border-radius:999px;background:var(--n-200);color:var(--n-500)}
+  .tab.active{color:var(--ink)}
+  .tab.active .c{background:var(--indigo);color:#F4F1E8}
+  .tab.active::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:2px;background:var(--gold)}
+
+  .body{
+    padding:22px 24px 140px;overflow-y:auto;height:calc(100% - 44px);padding-top:0;
+  }
+  .body::-webkit-scrollbar{display:none}
+
+  /* featured "latest" card */
+  .featured{
+    margin-top:22px;
+    position:relative;
+    background:
+      radial-gradient(600px 300px at 85% 0%, #2a2c72 0%, transparent 60%),
+      linear-gradient(180deg,#1A1B4B 0%, #14153A 100%);
+    color:#F4F1E8;
+    border-radius:20px;padding:22px 22px 24px;overflow:hidden;
+    border:1px solid rgba(200,168,100,.28);
+  }
+  .featured::before{
+    content:"";position:absolute;inset:0;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.95' numOctaves='2'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 .06 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+    mix-blend-mode:overlay;opacity:.6;pointer-events:none;
+  }
+  .featured .kicker{
+    font-family:"JetBrains Mono",monospace;font-size:9px;letter-spacing:.22em;
+    text-transform:uppercase;color:var(--gold);display:flex;align-items:center;gap:10px;
+  }
+  .featured .kicker::before{content:"";width:16px;height:1px;background:var(--gold)}
+  .featured .row{
+    display:flex;gap:18px;align-items:center;margin-top:14px;position:relative;
+  }
+  .big-medal{
+    width:88px;height:88px;flex:0 0 88px;border-radius:50%;position:relative;
+    background:radial-gradient(circle at 30% 28%, #F9EEC4, #E7D29A 35%, #C8A864 60%, #7E5E22 100%);
+    box-shadow:
+      inset 0 0 0 2px rgba(255,255,255,.35),
+      inset 0 -8px 14px rgba(0,0,0,.35),
+      inset 0 8px 14px rgba(255,255,255,.15),
+      0 16px 28px -10px rgba(126,94,34,.6);
+    display:flex;align-items:center;justify-content:center;
+  }
+  .big-medal::before{
+    content:"";position:absolute;inset:6px;border-radius:50%;
+    border:1px dashed rgba(58,42,5,.4);
+  }
+  .big-medal .star{
+    font-family:"Fraunces",serif;font-style:italic;font-size:44px;
+    color:#3A2A05;font-weight:500;line-height:1;
+  }
+  .featured .ttl{
+    font-family:"Fraunces",serif;font-weight:400;font-size:26px;line-height:1.05;
+    letter-spacing:-.015em;margin:0;
+  }
+  .featured .sub{
+    font-size:11px;color:#B8B8CC;margin-top:6px;line-height:1.5;
+  }
+  .featured .date{
+    margin-top:14px;padding-top:14px;border-top:1px solid rgba(200,168,100,.2);
+    display:flex;justify-content:space-between;align-items:center;
+    font-family:"JetBrains Mono",monospace;font-size:10px;letter-spacing:.14em;
+    text-transform:uppercase;color:#8E8EA8;
+  }
+  .featured .date b{color:var(--gold)}
+
+  .kicker2{
+    font-family:"JetBrains Mono",monospace;font-size:9px;letter-spacing:.22em;
+    text-transform:uppercase;color:var(--n-400);
+    display:flex;align-items:center;gap:10px;margin:26px 0 14px;
+  }
+  .kicker2::before{content:"";width:16px;height:1px;background:var(--n-300)}
+  .kicker2::after{content:"";flex:1;height:1px;background:var(--n-200)}
+
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .card{
+    background:var(--paper);border:1px solid var(--n-200);border-radius:14px;
+    padding:16px 14px 14px;text-align:center;position:relative;
+  }
+  .card .medal{
+    width:56px;height:56px;margin:0 auto 10px;border-radius:50%;
+    background:radial-gradient(circle at 30% 28%, #F7EBC2, #C8A864 55%, #7E5E22 100%);
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.35),inset 0 -5px 10px rgba(0,0,0,.28),0 6px 14px -6px rgba(126,94,34,.45);
+    display:flex;align-items:center;justify-content:center;
+    font-family:"Fraunces",serif;font-style:italic;font-size:24px;color:#3A2A05;font-weight:500;
+    position:relative;
+  }
+  .card .medal::before{
+    content:"";position:absolute;inset:4px;border-radius:50%;border:1px dashed rgba(58,42,5,.3);
+  }
+  .card .ttl{
+    font-family:"Fraunces",serif;font-weight:500;font-size:14px;letter-spacing:-.005em;
+    line-height:1.2;
+  }
+  .card .date{
+    font-family:"JetBrains Mono",monospace;font-size:9px;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--n-500);margin-top:6px;
+  }
+
+  /* nav */
+  .nav{
+    position:absolute;left:0;right:0;bottom:0;padding:10px 24px 28px;
+    background:linear-gradient(180deg,rgba(250,250,248,0),var(--surface) 35%);z-index:10;
+  }
+  .nav .inner{
+    display:flex;justify-content:space-around;align-items:center;
+    background:#14153A;border-radius:22px;padding:10px 8px;
+    box-shadow:0 20px 40px -18px rgba(14,14,31,.5);
+  }
+  .nav a{
+    color:#6D6E85;text-decoration:none;display:flex;flex-direction:column;align-items:center;gap:3px;
+    padding:6px 10px;border-radius:14px;font-size:9px;letter-spacing:.08em;text-transform:uppercase;
+    font-family:"JetBrains Mono",monospace;
+  }
+  .nav a svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6}
+  .nav a.active{color:var(--gold);background:rgba(200,168,100,.08)}
+</style>
+</head>
+<body>
+  <div class="device">
+    <div class="status">
+      <div>9:41</div>
+      <div class="right">
+        <svg viewBox="0 0 16 12"><path d="M1 8a7 7 0 0114 0" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/><path d="M3.5 9.5a4 4 0 019 0" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/><circle cx="8" cy="11" r="1" fill="currentColor"/></svg>
+        <svg viewBox="0 0 24 12"><rect x="1" y="2" width="19" height="8" rx="2" stroke="currentColor" fill="none" stroke-width="1.2"/><rect x="2.5" y="3.5" width="14" height="5" rx="1" fill="currentColor"/><rect x="21" y="4" width="2" height="4" rx=".5" fill="currentColor"/></svg>
+      </div>
+    </div>
+
+    <div class="topbar">
+      <a class="back" href="01-profile-home.html">
+        <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+        Profil
+      </a>
+      <div class="title-row">
+        <h1>Débloqués.</h1>
+        <div class="meta">5 MÉDAILLES</div>
+      </div>
+      <div class="tabs">
+        <a class="tab" href="02-achievements-in-progress.html">En cours <span class="c">11</span></a>
+        <a class="tab active">Débloqués <span class="c">5</span></a>
+        <a class="tab">Verrouillés <span class="c">7</span></a>
+      </div>
+    </div>
+
+    <div class="body">
+      <div class="featured">
+        <div class="kicker">Dernière médaille</div>
+        <div class="row">
+          <div class="big-medal"><span class="star">★</span></div>
+          <div>
+            <h2 class="ttl">Première série</h2>
+            <div class="sub">Tu as complété ta première série — la circulation allemande, huit pièces alignées.</div>
+          </div>
+        </div>
+        <div class="date">
+          <span>Obtenue</span>
+          <b>10 AVR 2026</b>
+        </div>
+      </div>
+
+      <div class="kicker2">Panthéon</div>
+
+      <div class="grid">
+        <div class="card">
+          <div class="medal">◉</div>
+          <div class="ttl">Premier scan</div>
+          <div class="date">01 AVR 2026</div>
+        </div>
+        <div class="card">
+          <div class="medal">★</div>
+          <div class="ttl">Première série</div>
+          <div class="date">10 AVR 2026</div>
+        </div>
+        <div class="card">
+          <div class="medal">◐</div>
+          <div class="ttl">Dix pièces</div>
+          <div class="date">03 AVR 2026</div>
+        </div>
+        <div class="card">
+          <div class="medal">◇</div>
+          <div class="ttl">Première commémo</div>
+          <div class="date">05 AVR 2026</div>
+        </div>
+        <div class="card">
+          <div class="medal">◈</div>
+          <div class="ttl">Cinq pays</div>
+          <div class="date">07 AVR 2026</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="nav">
+      <div class="inner">
+        <a><svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>Coffre</a>
+        <a><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M9 6V4h6v2"/><circle cx="12" cy="12.5" r="3"/></svg>Scan</a>
+        <a><svg viewBox="0 0 24 24"><path d="M21 21l-4.35-4.35"/><circle cx="11" cy="11" r="8"/></svg>Explorer</a>
+        <a class="active"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0116 0"/></svg>Profil</a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

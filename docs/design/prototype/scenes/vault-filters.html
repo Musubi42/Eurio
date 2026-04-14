@@ -1,0 +1,247 @@
+<!--
+  Scene : vault-filters
+  ---------------------
+  Full-cover bottom sheet (not just 85%) with sections : pays, année, valeur
+  faciale, type, rareté, condition. Filter state is stored in
+  state.prefs.vaultFilters (session-persistent).
+-->
+
+<style>
+  .vault-filters-root {
+    position: relative;
+    min-height: 100%;
+    background: linear-gradient(180deg, var(--surface) 0%, var(--surface-1) 100%);
+    color: var(--ink);
+    display: flex;
+    flex-direction: column;
+    padding: var(--space-3) 0 0;
+  }
+
+  .vault-filters-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-3) var(--space-5) var(--space-4);
+    border-bottom: 1px solid rgba(14,14,31,0.06);
+  }
+  .vault-filters-head__title {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: var(--text-xl);
+    font-weight: 400;
+    color: var(--ink);
+  }
+  .vault-filters-close {
+    width: 36px; height: 36px;
+    border-radius: var(--radius-full);
+    background: var(--surface-1);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--ink);
+    border: 1px solid rgba(14,14,31,0.08);
+  }
+  .vault-filters-close svg {
+    width: 16px; height: 16px;
+    fill: none; stroke: currentColor;
+    stroke-width: 2; stroke-linecap: round;
+  }
+
+  .vault-filters-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--space-5) var(--space-5) var(--space-11);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-7);
+  }
+
+  .vault-filters-section__title {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-eyebrow);
+    color: var(--ink-400);
+    margin-bottom: var(--space-3);
+  }
+
+  .vault-filters-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+  .vault-filters-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 8px 14px;
+    border-radius: var(--radius-full);
+    background: var(--surface);
+    border: 1px solid var(--gray-100);
+    font-family: var(--font-ui);
+    font-size: var(--text-xs);
+    color: var(--ink);
+    cursor: pointer;
+    transition: background var(--duration-fast) var(--ease-out),
+                border-color var(--duration-fast) var(--ease-out),
+                color var(--duration-fast) var(--ease-out);
+  }
+  .vault-filters-chip[aria-pressed="true"] {
+    background: var(--indigo-700);
+    border-color: var(--indigo-700);
+    color: var(--surface);
+  }
+  .vault-filters-chip[aria-pressed="true"].vault-filters-chip--gold {
+    background: var(--gold);
+    border-color: var(--gold);
+    color: var(--indigo-900);
+  }
+
+  /* Year range (two chips) */
+  .vault-filters-year {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+  }
+  .vault-filters-year__chip {
+    flex: 1;
+    padding: 14px 16px;
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    border: 1px solid var(--gray-100);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .vault-filters-year__label {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-eyebrow);
+    color: var(--ink-400);
+  }
+  .vault-filters-year__value {
+    font-family: var(--font-display);
+    font-size: var(--text-xl);
+    font-variant-numeric: tabular-nums;
+    color: var(--ink);
+    background: none;
+    border: none;
+    outline: none;
+    padding: 0;
+    width: 100%;
+  }
+  .vault-filters-year__dash {
+    width: 16px;
+    height: 1px;
+    background: var(--ink-300);
+  }
+
+  /* Footer sticky */
+  .vault-filters-foot {
+    position: sticky;
+    bottom: 0;
+    left: 0; right: 0;
+    background: linear-gradient(180deg, rgba(250,250,248,0.8), var(--surface) 50%);
+    padding: var(--space-4) var(--space-5) var(--space-6);
+    display: flex;
+    gap: var(--space-3);
+    align-items: center;
+    border-top: 1px solid rgba(14,14,31,0.06);
+  }
+  .vault-filters-foot .btn { flex: 1; }
+  .vault-filters-reset {
+    flex: 0 0 auto;
+    padding: 14px 16px;
+  }
+</style>
+
+<section class="vault-filters-root" data-scene="vault-filters">
+  <header class="vault-filters-head">
+    <h2 class="vault-filters-head__title">Filtres</h2>
+    <button type="button" class="vault-filters-close" aria-label="Fermer"
+            data-action="close">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </header>
+
+  <div class="vault-filters-body">
+    <section class="vault-filters-section" data-filter="country">
+      <div class="vault-filters-section__title">Pays</div>
+      <div class="vault-filters-chips" data-role="countries">
+        <!-- injected by vault-filters.js -->
+      </div>
+    </section>
+
+    <section class="vault-filters-section" data-filter="year">
+      <div class="vault-filters-section__title">Année</div>
+      <div class="vault-filters-year">
+        <label class="vault-filters-year__chip">
+          <span class="vault-filters-year__label">De</span>
+          <input type="number" class="vault-filters-year__value tabular"
+                 data-role="year-min" min="1999" max="2026" value="1999"/>
+        </label>
+        <span class="vault-filters-year__dash" aria-hidden="true"></span>
+        <label class="vault-filters-year__chip">
+          <span class="vault-filters-year__label">À</span>
+          <input type="number" class="vault-filters-year__value tabular"
+                 data-role="year-max" min="1999" max="2026" value="2026"/>
+        </label>
+      </div>
+    </section>
+
+    <section class="vault-filters-section" data-filter="faceValue">
+      <div class="vault-filters-section__title">Valeur faciale</div>
+      <div class="vault-filters-chips" data-role="face-values">
+        <button type="button" class="vault-filters-chip" data-value="1"   aria-pressed="false">1 c</button>
+        <button type="button" class="vault-filters-chip" data-value="2"   aria-pressed="false">2 c</button>
+        <button type="button" class="vault-filters-chip" data-value="5"   aria-pressed="false">5 c</button>
+        <button type="button" class="vault-filters-chip" data-value="10"  aria-pressed="false">10 c</button>
+        <button type="button" class="vault-filters-chip" data-value="20"  aria-pressed="false">20 c</button>
+        <button type="button" class="vault-filters-chip" data-value="50"  aria-pressed="false">50 c</button>
+        <button type="button" class="vault-filters-chip" data-value="100" aria-pressed="false">1 €</button>
+        <button type="button" class="vault-filters-chip" data-value="200" aria-pressed="false">2 €</button>
+      </div>
+    </section>
+
+    <section class="vault-filters-section" data-filter="type">
+      <div class="vault-filters-section__title">Type</div>
+      <div class="vault-filters-chips" data-role="types">
+        <button type="button" class="vault-filters-chip" data-value="circulation"  aria-pressed="false">Circulation</button>
+        <button type="button" class="vault-filters-chip" data-value="commemorative" aria-pressed="false">Commémorative</button>
+        <button type="button" class="vault-filters-chip" data-value="common"       aria-pressed="false">Émission commune</button>
+      </div>
+    </section>
+
+    <section class="vault-filters-section" data-filter="rarity">
+      <div class="vault-filters-section__title">Rareté</div>
+      <div class="vault-filters-chips" data-role="rarity">
+        <button type="button" class="vault-filters-chip" data-value="common"   aria-pressed="false">Commune</button>
+        <button type="button" class="vault-filters-chip" data-value="uncommon" aria-pressed="false">Peu courante</button>
+        <button type="button" class="vault-filters-chip" data-value="rare"     aria-pressed="false">Rare</button>
+        <button type="button" class="vault-filters-chip" data-value="ultra"    aria-pressed="false">Très rare</button>
+      </div>
+    </section>
+
+    <section class="vault-filters-section" data-filter="condition">
+      <div class="vault-filters-section__title">Condition</div>
+      <div class="vault-filters-chips" data-role="condition">
+        <button type="button" class="vault-filters-chip" data-value="UNC"     aria-pressed="false">UNC</button>
+        <button type="button" class="vault-filters-chip" data-value="SUP"     aria-pressed="false">SUP</button>
+        <button type="button" class="vault-filters-chip" data-value="TTB"     aria-pressed="false">TTB</button>
+        <button type="button" class="vault-filters-chip" data-value="TB"      aria-pressed="false">TB</button>
+        <button type="button" class="vault-filters-chip" data-value="B"       aria-pressed="false">B</button>
+        <button type="button" class="vault-filters-chip" data-value="unknown" aria-pressed="false">Non renseignée</button>
+      </div>
+    </section>
+  </div>
+
+  <footer class="vault-filters-foot">
+    <button type="button" class="btn btn-ghost vault-filters-reset" data-action="reset">
+      Réinitialiser
+    </button>
+    <button type="button" class="btn btn-primary" data-action="apply">
+      <span>Voir <span data-role="count">0</span> pièces</span>
+    </button>
+  </footer>
+</section>

@@ -1,0 +1,424 @@
+<!--
+  Scene : profile-set (set detail, e.g. #/profile/set/circulation-fr)
+  -------------------------------------------------------------------
+  Hero indigo avec nom du set italic + compteur, grille 4x2 des 8 pieces,
+  liste des manquantes avec CTA scan, bouton retour.
+
+  Scoped : .profile-set-*
+-->
+
+<style>
+  .profile-set-root {
+    position: absolute;
+    inset: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    background: var(--surface);
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .profile-set-hero {
+    position: relative;
+    padding: 64px var(--space-6) var(--space-7);
+    background:
+      radial-gradient(600px 280px at 85% -20%, var(--indigo-500) 0%, transparent 60%),
+      linear-gradient(180deg, var(--indigo-700) 0%, var(--indigo-800) 100%);
+    color: var(--surface);
+    overflow: hidden;
+  }
+  .profile-set-hero::before {
+    content: "";
+    position: absolute; inset: 0;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.95' numOctaves='2'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 .07 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+    mix-blend-mode: overlay;
+    opacity: 0.55;
+    pointer-events: none;
+  }
+  .profile-set-hero::after {
+    content: "";
+    position: absolute;
+    left: var(--space-6); right: var(--space-6); bottom: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--gold) 20%, var(--gold) 80%, transparent);
+    opacity: 0.45;
+  }
+  .profile-set-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: rgba(255, 255, 255, 0.7);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    margin-bottom: 18px;
+  }
+  .profile-set-back svg {
+    width: 14px; height: 14px;
+    stroke: currentColor; fill: none; stroke-width: 1.6;
+  }
+  .profile-set-eyebrow {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .profile-set-eyebrow::before {
+    content: "";
+    width: 16px; height: 1px;
+    background: var(--gold);
+  }
+  .profile-set-hero h1 {
+    font-family: var(--font-display);
+    font-weight: 400;
+    font-size: 34px;
+    letter-spacing: -0.02em;
+    margin: 10px 0 6px;
+    line-height: 1.05;
+    color: var(--surface);
+  }
+  .profile-set-hero h1 em {
+    font-style: italic;
+    font-weight: 300;
+    background: linear-gradient(180deg, var(--gold-soft) 0%, var(--gold-300) 60%, var(--gold) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .profile-set-hero__sub {
+    font-size: var(--text-xs);
+    color: var(--ink-300);
+    max-width: 34ch;
+  }
+  .profile-set-herometa {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: var(--space-4);
+    margin-top: var(--space-6);
+  }
+  .profile-set-herometa__prog {
+    flex: 1;
+  }
+  .profile-set-herometa__lbl {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.55);
+    margin-bottom: 6px;
+  }
+  .profile-set-herometa__bar {
+    height: 3px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .profile-set-herometa__fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--gold-300), var(--gold));
+    border-radius: 2px;
+    box-shadow: 0 0 12px rgba(200, 168, 100, 0.5);
+  }
+  .profile-set-herometa__big {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-weight: 300;
+    font-size: 46px;
+    line-height: 1;
+    color: var(--surface);
+  }
+  .profile-set-herometa__big small {
+    font-size: 18px;
+    opacity: 0.55;
+  }
+
+  /* Body */
+  .profile-set-body {
+    padding: var(--space-6) var(--space-6) var(--space-11);
+  }
+  .profile-set-planche-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: var(--space-4);
+  }
+  .profile-set-planche-head h2 {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-weight: 400;
+    font-size: 20px;
+    color: var(--ink);
+  }
+  .profile-set-legend {
+    display: inline-flex;
+    gap: 12px;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-400);
+  }
+  .profile-set-legend__item {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .profile-set-legend__dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, var(--gold-soft), var(--gold) 60%, var(--gold-deep));
+  }
+  .profile-set-legend__dot.is-missing {
+    background: var(--gray-200);
+  }
+
+  .profile-set-planche {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    background: var(--paper);
+    border: 1px solid var(--gray-100);
+    border-radius: var(--radius-lg);
+    padding: var(--space-4);
+  }
+  .profile-set-cell {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px;
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    border: 1px solid var(--gray-100);
+  }
+  .profile-set-cell.is-missing {
+    background: transparent;
+    border-style: dashed;
+    border-color: var(--gray-200);
+  }
+  .profile-set-disc {
+    position: relative;
+    width: 42px; height: 42px;
+    border-radius: 50%;
+    flex: 0 0 42px;
+  }
+  .profile-set-disc::before {
+    content: "";
+    position: absolute;
+    inset: 4px;
+    border-radius: 50%;
+    border: 1px dashed rgba(58, 42, 5, 0.25);
+  }
+  .profile-set-disc.copper {
+    background: radial-gradient(circle at 30% 28%, #F6D3B0 0%, #D49A6A 50%, #8F5120 100%);
+  }
+  .profile-set-disc.nordic {
+    background: radial-gradient(circle at 30% 28%, var(--gold-soft) 0%, var(--gold-300) 30%, var(--gold) 60%, var(--gold-deep) 100%);
+  }
+  .profile-set-disc.silver {
+    background: radial-gradient(circle at 30% 28%, #F5F3EC 0%, #C7C6BC 45%, #6F6E63 100%);
+  }
+  .profile-set-disc.bimetal {
+    background: radial-gradient(circle at 30% 28%, var(--gold-soft) 0%, var(--gold) 35%, var(--gold-deep) 46%, #B7B59A 52%, #6B6A52 100%);
+  }
+  .profile-set-disc.is-missing {
+    background: radial-gradient(circle at 30% 28%, var(--gray-50) 0%, var(--gray-100) 55%, var(--gray-200) 100%);
+    opacity: 0.85;
+  }
+  .profile-set-disc.is-missing::before {
+    border-color: rgba(14, 14, 31, 0.08);
+  }
+  .profile-set-disc__val {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-display);
+    font-style: italic;
+    font-weight: 500;
+    font-size: 12px;
+    color: var(--gold-deep);
+  }
+  .profile-set-disc.is-missing .profile-set-disc__val {
+    color: var(--gray-400);
+  }
+  .profile-set-disc.silver .profile-set-disc__val { color: var(--ink-700); }
+  .profile-set-disc__check {
+    position: absolute;
+    top: -2px; right: -2px;
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: var(--indigo-700);
+    color: var(--gold-300);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    border: 2px solid var(--surface);
+  }
+  .profile-set-cell__info {
+    flex: 1;
+    min-width: 0;
+  }
+  .profile-set-cell__title {
+    font-family: var(--font-display);
+    font-weight: 500;
+    font-size: 13px;
+    line-height: 1.1;
+    color: var(--ink);
+  }
+  .profile-set-cell.is-missing .profile-set-cell__title {
+    color: var(--ink-400);
+    font-style: italic;
+  }
+  .profile-set-cell__meta {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-400);
+    margin-top: 3px;
+  }
+
+  /* Missing section */
+  .profile-set-missing {
+    margin-top: var(--space-7);
+    background: var(--paper);
+    border: 1px solid var(--gray-100);
+    border-radius: var(--radius-lg);
+    padding: var(--space-5);
+  }
+  .profile-set-missing h3 {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-weight: 400;
+    font-size: 17px;
+    color: var(--ink);
+    margin-bottom: var(--space-3);
+  }
+  .profile-set-missing ul {
+    list-style: none;
+    margin: 0; padding: 0;
+  }
+  .profile-set-missing li {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 0;
+    border-top: 1px solid var(--gray-100);
+    font-size: var(--text-sm);
+  }
+  .profile-set-missing li:first-child { border-top: 0; }
+  .profile-set-missing__name { flex: 1; color: var(--ink); }
+  .profile-set-missing__cta {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--gold-700);
+  }
+
+  .profile-set-cta {
+    margin-top: var(--space-6);
+    background: linear-gradient(135deg, var(--indigo-700), var(--indigo-800));
+    color: var(--surface);
+    border-radius: var(--radius-lg);
+    padding: 15px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    position: relative;
+    overflow: hidden;
+    border: 1px solid rgba(200, 168, 100, 0.3);
+  }
+  .profile-set-cta::after {
+    content: "";
+    position: absolute;
+    right: -30px; top: -30px;
+    width: 120px; height: 120px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(200,168,100,0.2), transparent 70%);
+  }
+  .profile-set-cta__l {
+    font-family: var(--font-display);
+    font-weight: 500;
+    font-size: 15px;
+  }
+  .profile-set-cta__s {
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.6);
+    margin-top: 2px;
+  }
+  .profile-set-cta__ico {
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    background: rgba(200, 168, 100, 0.15);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 40px;
+    position: relative;
+    z-index: 1;
+  }
+  .profile-set-cta__ico svg {
+    width: 20px; height: 20px;
+    stroke: var(--gold);
+    fill: none;
+    stroke-width: 1.6;
+  }
+</style>
+
+<section class="profile-set-root" data-scene="profile-set">
+  <div class="profile-set-hero">
+    <a class="profile-set-back" href="#/profile/achievements">
+      <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+      Chasses
+    </a>
+    <div class="eyebrow eyebrow--gold profile-set-eyebrow" data-bind="set-eyebrow">Série · —</div>
+    <h1>Huit pièces,<br/><em data-bind="set-title">une série.</em></h1>
+    <p class="profile-set-hero__sub" data-bind="set-desc">Toutes les pièces de circulation françaises, du centime à deux euros.</p>
+    <div class="profile-set-herometa">
+      <div class="profile-set-herometa__prog">
+        <div class="profile-set-herometa__lbl">Progression</div>
+        <div class="profile-set-herometa__bar">
+          <div class="profile-set-herometa__fill" data-bind="set-fill" style="width:0%"></div>
+        </div>
+      </div>
+      <div>
+        <div class="profile-set-herometa__big">
+          <span data-bind="set-have">0</span><small>/<span data-bind="set-total">8</span></small>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="profile-set-body">
+    <div class="profile-set-planche-head">
+      <h2>Le plateau</h2>
+      <div class="profile-set-legend">
+        <span class="profile-set-legend__item"><span class="profile-set-legend__dot"></span>Acquise</span>
+        <span class="profile-set-legend__item"><span class="profile-set-legend__dot is-missing"></span>Manquante</span>
+      </div>
+    </div>
+
+    <div class="profile-set-planche" data-bind="planche"></div>
+
+    <div data-bind="missing-block"></div>
+
+    <a class="profile-set-cta" href="#/scan">
+      <div>
+        <div class="profile-set-cta__l">Scanner une pièce manquante</div>
+        <div class="profile-set-cta__s" data-bind="cta-sub">Pointe ton capteur vers la pièce</div>
+      </div>
+      <div class="profile-set-cta__ico">
+        <svg viewBox="0 0 24 24">
+          <rect x="3" y="6" width="18" height="13" rx="2"/>
+          <path d="M9 6V4h6v2"/>
+          <circle cx="12" cy="12.5" r="3"/>
+        </svg>
+      </div>
+    </a>
+  </div>
+</section>

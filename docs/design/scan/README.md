@@ -12,6 +12,7 @@
 - [`ml-pipeline.md`](./ml-pipeline.md) — flux caméra → détection → embedding → matching → résultat. Référence aux docs ML existantes.
 - [`remote-fallback.md`](./remote-fallback.md) — **question ouverte** : que faire quand le scan local échoue parce que la pièce n'est pas dans le modèle ?
 - [`data-flow.md`](./data-flow.md) — qu'est-ce qu'on lit côté Room, qu'est-ce qu'on fetch côté Supabase, quelles sont les données qui sortent du scan.
+- [`debug-overlay.md`](./debug-overlay.md) — l'overlay de debug qui affiche bounding box, top-K matches, latences, outils de dump. Activé toujours en build debug, togglable via 7-tap en release. Voir aussi [`../_shared/dev-debug-strategy.md`](../_shared/dev-debug-strategy.md).
 
 ---
 
@@ -24,6 +25,7 @@
 | **Fallback serveur optionnel en cas d'échec** | Idée du 2026-04-13 : si le scan local ne matche pas, envoyer la photo à un endpoint serveur qui a le modèle à jour. **Pas tranché, voir `remote-fallback.md`.** |
 | **Vue unique paramétrée pour la fiche pièce** | Voir [`../coin-detail/README.md`](../coin-detail/README.md). Le résultat du scan = fiche avec un CTA "Ajouter au coffre". |
 | **Pas d'affichage fantaisiste en cas de doute** | PRD §5.1 : jamais de résultat avec confidence basse affiché comme certain. Si doute, on dit "pièce non identifiée" + suggestions. |
+| **Overlay de debug dédié** | Décidé le 2026-04-14. Un `ScanDebugOverlay` affiche en temps réel la bounding box, le top-K, les latences et des outils de dump. Activé toujours en build debug, togglable via 7-tap sur le numéro de version en build release. Voir [`debug-overlay.md`](./debug-overlay.md) et [`../_shared/dev-debug-strategy.md`](../_shared/dev-debug-strategy.md). |
 
 ---
 

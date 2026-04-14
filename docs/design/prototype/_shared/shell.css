@@ -1,0 +1,276 @@
+/* Eurio prototype — app shell
+ * Device frame on desktop, full-bleed on mobile.
+ * Owns : device bezel, status bar, bottom nav, version badge, home indicator, notch.
+ */
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+}
+
+.stage {
+  min-height: 100vh;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-10) var(--space-6);
+  background:
+    radial-gradient(ellipse 80% 60% at 50% 0%, #1F2057 0%, transparent 70%),
+    radial-gradient(ellipse 60% 50% at 50% 100%, #06071A 0%, transparent 70%),
+    var(--indigo-950);
+}
+
+/* ───────── Device frame (desktop only) ───────── */
+.device {
+  position: relative;
+  width: var(--device-w);
+  height: var(--device-h);
+  border-radius: var(--radius-device);
+  padding: 12px;
+  background: linear-gradient(180deg, #1F2033 0%, #0B0B18 100%);
+  box-shadow: var(--shadow-device);
+  flex-shrink: 0;
+}
+
+/* notch */
+.device::before {
+  content: "";
+  position: absolute;
+  top: 26px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 120px;
+  height: 30px;
+  background: #000;
+  border-radius: 20px;
+  z-index: var(--z-statusbar);
+}
+
+.screen {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 42px;
+  overflow: hidden;
+  background: var(--surface);
+  isolation: isolate;
+}
+
+/* ───────── Status bar ───────── */
+.statusbar {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 54px;
+  padding: 18px 32px 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: var(--font-ui);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+  z-index: var(--z-statusbar);
+  letter-spacing: -0.01em;
+  pointer-events: none;
+}
+.statusbar__right {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.statusbar svg { display: block; }
+
+/* Dark-mode status bar (for scan / hero dark scenes) */
+.screen[data-chrome="dark"] .statusbar { color: var(--surface); }
+
+/* ───────── Version badge (top-left, 7-tap debug) ───────── */
+.version-badge {
+  position: absolute;
+  top: 62px;
+  left: 18px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  border-radius: var(--radius-full);
+  background: rgba(0,0,0,0.35);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255,255,255,0.08);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: rgba(255,255,255,0.8);
+  z-index: var(--z-badge);
+  cursor: pointer;
+  user-select: none;
+}
+.screen[data-chrome="light"] .version-badge {
+  background: rgba(14,14,31,0.06);
+  color: var(--ink-400);
+  border-color: rgba(14,14,31,0.08);
+}
+.version-badge__led {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--debug-red);
+  box-shadow: 0 0 8px var(--debug-red);
+  opacity: 0;
+  transition: opacity var(--duration-base) var(--ease-out);
+}
+.version-badge[data-debug="on"] .version-badge__led {
+  opacity: 1;
+  animation: led-blink 2.4s ease-in-out infinite;
+}
+@keyframes led-blink {
+  0%, 90%, 100% { opacity: 1; }
+  95% { opacity: 0.4; }
+}
+
+/* ───────── Scene viewport ───────── */
+#view {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-top: 54px;       /* status bar clearance */
+  padding-bottom: 96px;    /* bottom nav clearance */
+  -webkit-overflow-scrolling: touch;
+}
+#view[data-fullbleed="true"] {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+/* ───────── Bottom nav ───────── */
+.bottomnav {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 96px;
+  padding: 14px 18px 28px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-1);
+  background: linear-gradient(180deg, rgba(250,250,248,0) 0%, rgba(250,250,248,0.95) 40%, var(--surface) 100%);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  z-index: var(--z-nav);
+}
+.screen[data-chrome="dark"] .bottomnav {
+  background: linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.6) 40%, rgba(0,0,0,0.88) 100%);
+}
+
+.bottomnav__tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 4px;
+  color: var(--ink-400);
+  font-family: var(--font-ui);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  font-weight: 500;
+  border-radius: var(--radius-md);
+  background: none;
+  min-height: 44px;
+}
+.screen[data-chrome="dark"] .bottomnav__tab {
+  color: rgba(255,255,255,0.5);
+}
+
+.bottomnav__tab[aria-current="page"] {
+  color: var(--indigo-700);
+}
+.screen[data-chrome="dark"] .bottomnav__tab[aria-current="page"] {
+  color: var(--gold);
+}
+
+.bottomnav__tab--scan {
+  flex: 0 0 auto;
+  width: 64px;
+  height: 64px;
+  margin-top: -22px;
+  border-radius: var(--radius-full);
+  background: radial-gradient(circle at 35% 30%, var(--indigo-500), var(--indigo-700) 60%, var(--indigo-800));
+  color: var(--gold);
+  box-shadow: 0 12px 32px -8px rgba(26,27,75,0.45),
+              0 0 0 4px rgba(250,250,248,0.98),
+              var(--inner-highlight-gold);
+  gap: 0;
+  justify-content: center;
+}
+.bottomnav__tab--scan svg { width: 26px; height: 26px; }
+.bottomnav__tab--scan .bottomnav__label { display: none; }
+
+.bottomnav__tab--soon {
+  opacity: 0.55;
+  position: relative;
+}
+.bottomnav__tab--soon .bottomnav__soon-badge {
+  position: absolute;
+  top: -2px;
+  right: 14%;
+  font-family: var(--font-mono);
+  font-size: 7px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 1px 5px;
+  border-radius: var(--radius-full);
+  background: var(--gold);
+  color: var(--indigo-900);
+  font-weight: 600;
+}
+
+.bottomnav__icon {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.bottomnav__icon svg { width: 22px; height: 22px; }
+
+/* ───────── Home indicator ───────── */
+.home-indicator {
+  position: absolute;
+  bottom: 9px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 134px;
+  height: 5px;
+  background: rgba(14,14,31,0.35);
+  border-radius: 3px;
+  z-index: var(--z-statusbar);
+  pointer-events: none;
+}
+.screen[data-chrome="dark"] .home-indicator {
+  background: rgba(255,255,255,0.4);
+}
+
+/* ───────── Responsive : mobile ≤ 500px ─────────
+ * Device frame disappears, #view takes full viewport.
+ */
+@media (max-width: 500px) {
+  .stage {
+    padding: 0;
+    background: var(--surface);
+  }
+  .device {
+    width: 100vw;
+    height: 100vh;
+    border-radius: 0;
+    padding: 0;
+    box-shadow: none;
+    background: var(--surface);
+  }
+  .device::before { display: none; }
+  .screen { border-radius: 0; }
+  .home-indicator { display: none; }
+}

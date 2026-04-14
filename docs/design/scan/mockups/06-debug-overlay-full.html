@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Eurio · 06 Debug overlay</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="_shared.css">
+</head>
+<body>
+<main class="stage">
+  <div class="device">
+    <div class="screen debug-mode">
+      <div class="camera">
+        <div class="coin" style="top:46%;"></div>
+      </div>
+
+      <!-- YOLO bounding box drawn on preview (layer 1) -->
+      <div class="debug-layer">
+        <div class="debug-bbox" style="top:280px; left:82px; width:226px; height:226px;">
+          <span class="label">coin · 0.87 · cls 0</span>
+          <span class="corner tl"></span>
+          <span class="corner tr"></span>
+          <span class="corner bl"></span>
+          <span class="corner br"></span>
+        </div>
+
+        <!-- Layer 3 — latencies -->
+        <div class="dpanel latency-panel">
+          <div class="head"><span>Latency</span><span class="right">budget</span></div>
+          <div class="body">
+            <div class="row"><span class="k">det</span><span class="v ok">23 ms</span></div>
+            <div class="row"><span class="k">emb</span><span class="v ok">87 ms</span></div>
+            <div class="row"><span class="k">knn</span><span class="v ok">12 ms</span></div>
+            <div class="row tot"><span class="k">tot</span><span class="v">122 ms</span></div>
+            <div class="row"><span class="k">fps</span><span class="v">4.8</span></div>
+          </div>
+        </div>
+
+        <!-- Layer 4 — runtime context -->
+        <div class="dpanel runtime-panel">
+          <div class="head"><span>Runtime</span><span class="right">ctx</span></div>
+          <div class="body">
+            <div class="row"><span class="k">model</span><span class="v">arcface_v0.3.2</span></div>
+            <div class="row"><span class="k">emb</span><span class="v">2938 · a7f2c1</span></div>
+            <div class="row"><span class="k">cam</span><span class="v">1280×720</span></div>
+            <div class="row"><span class="k">therm</span><span class="v">34 °C</span></div>
+          </div>
+        </div>
+
+        <!-- Layer 5 — histogram -->
+        <div class="histo">
+          <div class="title">Conv · 6s</div>
+          <div class="bars">
+            <i style="height:85%"></i>
+            <i style="height:72%"></i>
+            <i class="fail" style="height:40%"></i>
+            <i style="height:90%"></i>
+            <i style="height:78%"></i>
+            <i class="skip" style="height:20%"></i>
+            <i style="height:92%"></i>
+            <i style="height:88%"></i>
+            <i class="fail" style="height:35%"></i>
+            <i style="height:95%"></i>
+          </div>
+          <div class="legend">
+            <span class="s">OK</span>
+            <span class="f">fail</span>
+            <span class="k">skip</span>
+          </div>
+        </div>
+
+        <!-- Layer 2 — top-5 matches -->
+        <div class="dpanel match-panel">
+          <div class="head">
+            <span>TOP-5 · cosine</span>
+            <span class="right">k=5 · dim=256</span>
+          </div>
+          <div class="body">
+            <div class="match-row star">
+              <span class="rank">1</span>
+              <span class="id">fr-2012-2eur-10ans-euro</span>
+              <span class="bar"><i style="width:92%"></i></span>
+              <span class="score">0.923</span>
+            </div>
+            <div class="match-row">
+              <span class="rank">2</span>
+              <span class="id">eu-2012-2eur-10ans-euro</span>
+              <span class="bar"><i style="width:87%; background:var(--scan-orange)"></i></span>
+              <span class="score">0.871</span>
+            </div>
+            <div class="match-row">
+              <span class="rank">3</span>
+              <span class="id">fr-2012-2eur-standard</span>
+              <span class="bar"><i style="width:61%; background:rgba(255,255,255,0.35)"></i></span>
+              <span class="score">0.612</span>
+            </div>
+            <div class="match-row">
+              <span class="rank">4</span>
+              <span class="id">fr-2011-2eur-standard</span>
+              <span class="bar"><i style="width:58%; background:rgba(255,255,255,0.25)"></i></span>
+              <span class="score">0.587</span>
+            </div>
+            <div class="match-row">
+              <span class="rank">5</span>
+              <span class="id">be-2012-2eur-10ans-euro</span>
+              <span class="bar"><i style="width:54%; background:rgba(255,255,255,0.2)"></i></span>
+              <span class="score">0.541</span>
+            </div>
+            <div class="delta">
+              <span>Δ top1−top2</span>
+              <span class="val warn">0.052 · CLOSE</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Debug toolbar -->
+        <div class="debug-tools">
+          <div class="tool" title="Dump current frame">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <span>Dump</span>
+          </div>
+          <div class="tool" title="Replay dump">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/></svg>
+            <span>Replay</span>
+          </div>
+          <div class="tool" title="Freeze frame">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+            <span>Freeze</span>
+          </div>
+          <div class="tool" title="Force match">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2" fill="currentColor"/></svg>
+            <span>Force</span>
+          </div>
+          <div class="tool" title="Inspect embedding">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <span>Embed</span>
+          </div>
+          <div class="tool" title="Session stats">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+            <span>Stats</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- minimal state chip still here, pushed up above tools -->
+      <div class="state-chip matched" style="bottom:192px;">
+        <span class="dot"></span>
+        <span>MATCH · 92.3 %</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="stage-caption">
+    <b>06 · DEBUG OVERLAY</b>
+    <span class="dot"></span>
+    <span>5 layers · bbox / top-5 / latency / runtime / histo</span>
+  </div>
+</main>
+
+<script src="_chrome.js"></script>
+<script>EurioChrome.inject(document.querySelector('.screen'), {scanHeader: false, topCtl:false});</script>
+</body>
+</html>

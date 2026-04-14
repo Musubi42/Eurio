@@ -1,0 +1,174 @@
+<!--
+  Scene : vault-empty
+  -------------------
+  Coffre vide. Illustration SVG (une pièce tiltée en bas-relief entourée de
+  silhouettes floues) + message éditorial + CTA scan.
+  Mounted by router.js when a sidecar decides to render the empty state
+  (see vault.js which reroutes / delegates).
+  Also directly usable when the router maps `/vault` → `vault-empty` as an
+  alternative, but in our setup the empty state is reached via the `vault`
+  scene itself conditionally. We keep this file as a standalone asset too, so
+  scenes can include its fragment in the future.
+-->
+
+<style>
+  .vault-empty-root {
+    position: relative;
+    min-height: 100%;
+    padding: var(--space-6) var(--space-6) var(--space-10);
+    background: var(--surface);
+    color: var(--ink);
+    display: flex;
+    flex-direction: column;
+  }
+
+  .vault-empty-topbar {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    padding-top: var(--space-3);
+    margin-bottom: var(--space-8);
+  }
+
+  .vault-empty-art {
+    position: relative;
+    width: 240px;
+    height: 240px;
+    margin: var(--space-6) auto var(--space-8);
+  }
+  .vault-empty-art svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  .vault-empty-title {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-weight: 400;
+    font-size: var(--text-2xl);
+    line-height: var(--leading-tight);
+    letter-spacing: var(--tracking-tight);
+    color: var(--ink);
+    text-align: center;
+    margin: 0 auto var(--space-4);
+    max-width: 280px;
+  }
+
+  .vault-empty-sub {
+    font-family: var(--font-ui);
+    font-size: var(--text-sm);
+    line-height: var(--leading-base);
+    color: var(--ink-500);
+    text-align: center;
+    margin: 0 auto var(--space-9);
+    max-width: 300px;
+  }
+
+  .vault-empty-cta {
+    align-self: center;
+    padding: 16px 28px;
+    min-height: 52px;
+    border-radius: var(--radius-full);
+    font-size: var(--text-base);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  .vault-empty-cta svg {
+    width: 20px;
+    height: 20px;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 1.8;
+  }
+
+  .vault-empty-foot {
+    margin-top: auto;
+    text-align: center;
+    padding-top: var(--space-8);
+  }
+  .vault-empty-foot .eyebrow {
+    color: var(--ink-400);
+  }
+  .vault-empty-art svg text {
+    font-family: var(--font-display);
+    font-style: italic;
+  }
+</style>
+
+<section class="vault-empty-root" data-scene="vault-empty">
+  <div class="vault-empty-topbar">
+    <div class="eyebrow">Ton coffre</div>
+  </div>
+
+  <div class="vault-empty-art" aria-hidden="true">
+    <svg viewBox="0 0 240 240" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <radialGradient id="vault-empty-coin" cx="35%" cy="30%" r="80%">
+          <stop offset="0%"  stop-color="var(--gold-100)"/>
+          <stop offset="45%" stop-color="var(--gold)"/>
+          <stop offset="100%" stop-color="var(--gold-deep)"/>
+        </radialGradient>
+        <radialGradient id="vault-empty-halo" cx="50%" cy="50%" r="55%">
+          <stop offset="0%"  stop-color="rgba(200,168,100,0.28)"/>
+          <stop offset="100%" stop-color="rgba(200,168,100,0)"/>
+        </radialGradient>
+        <filter id="vault-empty-soft" x="-10%" y="-10%" width="120%" height="120%">
+          <feGaussianBlur stdDeviation="0.6"/>
+        </filter>
+      </defs>
+
+      <!-- Soft halo -->
+      <circle cx="120" cy="120" r="115" fill="url(#vault-empty-halo)"/>
+
+      <!-- Two guide rings (dashed indigo) -->
+      <circle cx="120" cy="120" r="88" fill="none"
+              stroke="var(--indigo-700)" stroke-opacity="0.1"
+              stroke-width="1" stroke-dasharray="2 4"/>
+      <circle cx="120" cy="120" r="68" fill="none"
+              stroke="var(--indigo-700)" stroke-opacity="0.08" stroke-width="1"/>
+
+      <!-- Floating silhouette coins -->
+      <g opacity="0.28">
+        <circle cx="50"  cy="70"  r="14" fill="var(--indigo-700)"/>
+        <circle cx="195" cy="80"  r="11" fill="var(--indigo-700)"/>
+        <circle cx="60"  cy="185" r="10" fill="var(--indigo-700)"/>
+        <circle cx="200" cy="180" r="13" fill="var(--indigo-700)"/>
+      </g>
+
+      <!-- Main tilted coin -->
+      <g transform="translate(120 120) rotate(-8)">
+        <ellipse cx="4" cy="8" rx="56" ry="12"
+                 fill="var(--ink)" opacity="0.15" filter="url(#vault-empty-soft)"/>
+        <circle r="58" fill="url(#vault-empty-coin)"/>
+        <circle r="52" fill="none"
+                stroke="var(--gold-deep)" stroke-opacity="0.45"
+                stroke-width="1" stroke-dasharray="1 3"/>
+        <text y="10" text-anchor="middle"
+              font-size="38"
+              font-weight="400"
+              fill="var(--gold-deep)"
+              opacity="0.8">€</text>
+      </g>
+    </svg>
+  </div>
+
+  <h1 class="vault-empty-title">Ton coffre<br>attend sa première pièce.</h1>
+  <p class="vault-empty-sub">
+    Scanne une pièce euro pour commencer ta collection. Eurio la reconnaît,
+    l'évalue, et la range ici pour toi.
+  </p>
+
+  <button type="button" class="btn btn-primary vault-empty-cta" data-action="scan">
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M4 7V5a1 1 0 011-1h2M17 4h2a1 1 0 011 1v2M20 17v2a1 1 0 01-1 1h-2M7 20H5a1 1 0 01-1-1v-2"
+            stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="12" cy="12" r="3.5"/>
+    </svg>
+    <span>Scanner ma première pièce</span>
+  </button>
+
+  <div class="vault-empty-foot">
+    <div class="eyebrow" data-role="first-run-hint">Bienvenue sur Eurio</div>
+  </div>
+</section>

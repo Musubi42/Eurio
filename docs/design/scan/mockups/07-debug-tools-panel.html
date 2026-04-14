@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Eurio · 07 Debug tools panel</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="_shared.css">
+<style>
+  /* Expanded tool drawer — shows Dump flow expanded */
+  .tool-drawer {
+    position: absolute;
+    left: 12px; right: 12px;
+    bottom: 104px;
+    background: var(--debug-bg);
+    backdrop-filter: blur(14px);
+    border: 1px solid var(--debug-border);
+    border-radius: 10px;
+    font-family: var(--f-mono);
+    color: var(--debug-text);
+    overflow: hidden;
+    z-index: 75;
+  }
+  .tool-drawer .drawer-body {
+    padding: 10px 12px 8px;
+    border-bottom: 1px dashed rgba(200,168,100,0.2);
+  }
+  .tool-drawer .drawer-title {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--gold); margin-bottom: 8px;
+  }
+  .tool-drawer .drawer-title .count { color: var(--debug-dim); letter-spacing: 0.04em; text-transform: none; }
+  .dump-row {
+    display: grid;
+    grid-template-columns: 42px 1fr auto;
+    gap: 10px;
+    align-items: center;
+    padding: 6px 0;
+    font-size: 9px;
+    border-bottom: 1px dashed rgba(255,255,255,0.05);
+  }
+  .dump-row:last-child { border-bottom: none; }
+  .dump-row .thumb {
+    width: 42px; height: 32px;
+    border-radius: 3px;
+    background: radial-gradient(ellipse 60% 70% at 50% 50%, #c8a864 0%, #3a2a14 60%, #0a0806 100%);
+    position: relative;
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+  .dump-row .thumb.fail { background: radial-gradient(ellipse 60% 70% at 50% 50%, #4a3820 0%, #1a0a0a 100%); }
+  .dump-row .thumb::after {
+    content: ''; position: absolute; inset: 6px 10px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 40% 30%, #e8d4a0, #5a4828);
+    opacity: 0.9;
+  }
+  .dump-row .thumb.fail::after { opacity: 0.3; }
+  .dump-row .info .id { color: var(--debug-text); font-weight: 500; }
+  .dump-row .info .ts { color: var(--debug-dim); font-size: 8px; margin-top: 1px; }
+  .dump-row .badge {
+    font-size: 8px; padding: 2px 5px; border-radius: 3px;
+    font-weight: 600; letter-spacing: 0.06em;
+  }
+  .dump-row .badge.ok { background: rgba(47,169,113,0.2); color: var(--scan-green); }
+  .dump-row .badge.bad { background: rgba(209,67,67,0.2); color: #ff8888; }
+  .dump-row .badge.warn { background: rgba(216,138,45,0.2); color: var(--scan-orange); }
+
+  .drawer-toolbar {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 6px;
+  }
+  .drawer-toolbar .t {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    padding: 6px 2px;
+    border-radius: 6px;
+    color: var(--debug-text);
+    font-size: 7px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    cursor: pointer;
+    border: 1px solid transparent;
+  }
+  .drawer-toolbar .t svg { width: 16px; height: 16px; }
+  .drawer-toolbar .t.active {
+    background: rgba(200,168,100,0.14);
+    border-color: rgba(200,168,100,0.35);
+    color: var(--gold);
+  }
+
+  /* Session stats callout top */
+  .session-callout {
+    position: absolute;
+    top: 112px;
+    left: 12px;
+    right: 12px;
+    background: var(--debug-bg);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--debug-border);
+    border-radius: 8px;
+    font-family: var(--f-mono);
+    color: var(--debug-text);
+    padding: 10px 12px;
+  }
+  .session-callout .head {
+    font-size: 8px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--gold); margin-bottom: 8px;
+    display: flex; justify-content: space-between;
+  }
+  .session-callout .head .t { color: var(--debug-dim); letter-spacing: 0.04em; text-transform: none; }
+  .session-callout .grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+  }
+  .session-callout .stat .k { color: var(--debug-dim); font-size: 8px; }
+  .session-callout .stat .v { font-size: 15px; color: var(--debug-text); font-weight: 500; }
+  .session-callout .stat .v.good { color: var(--scan-green); }
+  .session-callout .stat .v.warn { color: var(--scan-orange); }
+
+  /* Force match input row */
+  .force-match {
+    position: absolute;
+    top: 232px;
+    left: 12px;
+    right: 12px;
+    background: var(--debug-bg);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--debug-border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-family: var(--f-mono);
+    color: var(--debug-text);
+    font-size: 10px;
+  }
+  .force-match .head {
+    font-size: 8px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--gold); margin-bottom: 6px;
+  }
+  .force-match .input {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 8px;
+    background: rgba(0,0,0,0.4);
+    border: 1px solid rgba(200,168,100,0.2);
+    border-radius: 4px;
+    font-size: 10px;
+  }
+  .force-match .input span { color: var(--debug-dim); }
+  .force-match .input b { color: var(--gold); }
+  .force-match .input .cursor {
+    display: inline-block;
+    width: 6px; height: 11px;
+    background: var(--gold);
+    animation: blink 1s step-end infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+</style>
+</head>
+<body>
+<main class="stage">
+  <div class="device">
+    <div class="screen debug-mode">
+      <div class="camera" style="filter: brightness(0.5) saturate(0.6);"></div>
+
+      <!-- Session stats -->
+      <div class="session-callout">
+        <div class="head">
+          <span>Session stats</span>
+          <span class="t">uptime 12m 34s · 147 frames</span>
+        </div>
+        <div class="grid">
+          <div class="stat"><div class="k">scans</div><div class="v">42</div></div>
+          <div class="stat"><div class="k">success</div><div class="v good">88 %</div></div>
+          <div class="stat"><div class="k">avg tot</div><div class="v">118ms</div></div>
+          <div class="stat"><div class="k">fails</div><div class="v warn">5</div></div>
+        </div>
+      </div>
+
+      <!-- Force match input -->
+      <div class="force-match">
+        <div class="head">Force match · eurio_id</div>
+        <div class="input">
+          <span>›</span>
+          <b>fr-2012-2eur-10ans<span class="cursor"></span></b>
+        </div>
+      </div>
+
+      <!-- Expanded dump drawer + active tool -->
+      <div class="tool-drawer">
+        <div class="drawer-body">
+          <div class="drawer-title">
+            <span>Dumps saved</span>
+            <span class="count">7 · 48 MB · /files/debug-dumps/</span>
+          </div>
+          <div class="dump-row">
+            <div class="thumb"></div>
+            <div class="info">
+              <div class="id">20260414-153022-a7f2c1</div>
+              <div class="ts">now · det 0.87 · Δ 0.052</div>
+            </div>
+            <span class="badge warn">CLOSE</span>
+          </div>
+          <div class="dump-row">
+            <div class="thumb"></div>
+            <div class="info">
+              <div class="id">20260414-152847-b8e3d0</div>
+              <div class="ts">2m ago · det 0.92 · Δ 0.184</div>
+            </div>
+            <span class="badge ok">MATCH</span>
+          </div>
+          <div class="dump-row">
+            <div class="thumb fail"></div>
+            <div class="info">
+              <div class="id">20260414-152511-c91a22</div>
+              <div class="ts">6m ago · det 0.41 · Δ —</div>
+            </div>
+            <span class="badge bad">NO-COIN</span>
+          </div>
+        </div>
+        <div class="drawer-toolbar">
+          <div class="t active">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <span>Dump</span>
+          </div>
+          <div class="t">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/></svg>
+            <span>Replay</span>
+          </div>
+          <div class="t">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+            <span>Freeze</span>
+          </div>
+          <div class="t">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2" fill="currentColor"/></svg>
+            <span>Force</span>
+          </div>
+          <div class="t">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <span>Embed</span>
+          </div>
+          <div class="t">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+            <span>Stats</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="stage-caption">
+    <b>07 · DEBUG TOOLS</b>
+    <span class="dot"></span>
+    <span>expanded dump drawer · force match input · session stats</span>
+  </div>
+</main>
+
+<script src="_chrome.js"></script>
+<script>EurioChrome.inject(document.querySelector('.screen'), {scanHeader:false, topCtl:false});</script>
+</body>
+</html>

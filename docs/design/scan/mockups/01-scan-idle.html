@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Eurio · 01 Scan idle</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="_shared.css">
+</head>
+<body>
+<main class="stage">
+  <div class="device">
+    <div class="screen">
+      <div class="camera"></div>
+
+      <!-- Guide (idle pulse) -->
+      <div class="guide idle">
+        <div class="ring"></div>
+        <div class="corners"><span></span></div>
+      </div>
+
+      <div class="state-chip idle">
+        <span class="dot"></span>
+        <span>En attente · pointe une pièce</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="stage-caption">
+    <b>01 · SCAN IDLE</b>
+    <span class="dot"></span>
+    <span>camera active · no coin detected · soft pulse guide</span>
+  </div>
+</main>
+
+<script src="_chrome.js"></script>
+<script>EurioChrome.inject(document.querySelector('.screen'));</script>
+</body>
+</html>

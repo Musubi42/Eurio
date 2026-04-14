@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Eurio · 02 Scan detecting</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="_shared.css">
+</head>
+<body>
+<main class="stage">
+  <div class="device">
+    <div class="screen">
+      <div class="camera">
+        <div class="coin"></div>
+      </div>
+
+      <div class="guide detecting">
+        <div class="ring"></div>
+      </div>
+
+      <div class="state-chip detecting">
+        <span class="dot"></span>
+        <span>Analyse · 62 %</span>
+      </div>
+
+      <!-- Subtle progress bar under chip -->
+      <div style="position:absolute; bottom:214px; left:50%; transform:translateX(-50%); width:180px; height:2px; background:rgba(255,255,255,0.1); border-radius:2px; overflow:hidden; z-index:70;">
+        <div style="width:62%; height:100%; background:linear-gradient(90deg, var(--scan-orange) 0%, var(--gold) 100%); box-shadow:0 0 12px var(--scan-orange);"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="stage-caption">
+    <b>02 · DETECTING</b>
+    <span class="dot"></span>
+    <span>coin seen · embedding in flight · ring pulsing orange</span>
+  </div>
+</main>
+
+<script src="_chrome.js"></script>
+<script>EurioChrome.inject(document.querySelector('.screen'));</script>
+</body>
+</html>

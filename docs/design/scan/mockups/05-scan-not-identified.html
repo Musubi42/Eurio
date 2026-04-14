@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Eurio · 05 Scan not identified</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="_shared.css">
+<style>
+  .na-sheet {
+    position: absolute;
+    inset: 58px 0 0 0;
+    background: linear-gradient(180deg, #FAFAF8 0%, #F2F2EE 100%);
+    border-radius: 28px 28px 0 0;
+    padding: 22px 22px 120px;
+    color: var(--ink);
+    z-index: 95;
+    overflow: hidden;
+  }
+  .na-sheet .grabber { width:40px; height:4px; background:var(--n-200); border-radius:2px; margin:0 auto 18px; }
+  .na-title-row { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:6px; }
+  .na-eyebrow { font-family:var(--f-mono); font-size:10px; letter-spacing:0.14em; text-transform:uppercase; color:var(--scan-red); font-weight:600; }
+  .na-close {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: var(--n-50); border:1px solid var(--n-100);
+    display:flex; align-items:center; justify-content:center;
+    color:var(--n-600);
+  }
+  .na-heading { font-family:var(--f-display); font-size:26px; line-height:1.12; color:var(--ink); font-weight:400; margin-bottom:14px; letter-spacing:-0.01em; }
+
+  .snapshot {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16/10;
+    border-radius: 14px;
+    background:
+      radial-gradient(ellipse 40% 50% at 48% 54%, #1a1612 0%, #0a0806 50%, #000 90%);
+    overflow: hidden;
+    border: 1px solid var(--n-100);
+    margin-bottom: 14px;
+  }
+  .snapshot::before {
+    content: '';
+    position: absolute; inset: 0;
+    background-image:
+      repeating-linear-gradient(92deg, rgba(80,50,20,0.08) 0px, rgba(80,50,20,0.08) 1px, transparent 1px, transparent 7px);
+  }
+  .snapshot .mini-coin {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 100px; height: 100px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #f5d98a 0%, #c8a864 40%, #5a4828 80%);
+    filter: blur(0.4px);
+    box-shadow: inset -4px -6px 12px rgba(0,0,0,0.6), inset 3px 4px 8px rgba(255,220,150,0.3), 0 8px 20px rgba(0,0,0,0.5);
+  }
+  .snapshot .corners::before, .snapshot .corners::after,
+  .snapshot .corners > span::before, .snapshot .corners > span::after {
+    content: ''; position: absolute; width: 14px; height: 14px;
+    border: 1.5px solid rgba(255,255,255,0.4);
+  }
+  .snapshot .corners::before { top: 8px; left: 8px; border-right:none; border-bottom:none;}
+  .snapshot .corners::after { top: 8px; right: 8px; border-left:none; border-bottom:none;}
+  .snapshot .corners > span::before { bottom: 8px; left: 8px; border-right:none; border-top:none;}
+  .snapshot .corners > span::after { bottom: 8px; right: 8px; border-left:none; border-top:none;}
+  .snapshot .stamp {
+    position: absolute;
+    top: 10px; left: 10px;
+    font-family: var(--f-mono);
+    font-size: 9px;
+    color: rgba(255,255,255,0.75);
+    letter-spacing: 0.08em;
+    background: rgba(0,0,0,0.4);
+    padding: 3px 6px;
+    border-radius: 4px;
+  }
+
+  .partial-info {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+  .chip {
+    padding: 7px 11px;
+    background: var(--n-50);
+    border: 1px solid var(--n-100);
+    border-radius: 100px;
+    font-family: var(--f-mono);
+    font-size: 10px;
+    letter-spacing: 0.04em;
+    color: var(--ink-3);
+    display: flex; gap: 6px; align-items: center;
+  }
+  .chip .k { color: var(--n-600); }
+  .chip b { color: var(--indigo); font-weight: 600; }
+
+  .na-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
+  .na-btn {
+    padding: 14px;
+    border-radius: 12px;
+    border: none;
+    font-family: var(--f-sans);
+    font-size: 14px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    cursor: pointer;
+  }
+  .na-btn.primary { background: var(--indigo); color:#fff; box-shadow: 0 4px 14px rgba(26,27,75,0.25);}
+  .na-btn.primary svg { color: var(--gold); }
+  .na-btn.ghost { background: transparent; color: var(--ink); border: 1px solid var(--n-200); }
+  .na-btn.link { background: transparent; color: var(--indigo); padding: 8px; font-weight:500; font-size:13px; }
+</style>
+</head>
+<body>
+<main class="stage">
+  <div class="device">
+    <div class="screen">
+      <!-- dim camera kept as header atmosphere -->
+      <div class="camera"></div>
+
+      <div class="na-sheet">
+        <div class="grabber"></div>
+        <div class="na-title-row">
+          <div class="na-eyebrow">Pièce non identifiée</div>
+          <div class="na-close">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </div>
+        </div>
+        <div class="na-heading">On n'a pas<br>trouvé de match sûr.</div>
+
+        <div class="snapshot">
+          <div class="stamp">snapshot · 09:41:04</div>
+          <div class="mini-coin"></div>
+          <div class="corners"><span></span></div>
+        </div>
+
+        <div class="partial-info">
+          <div class="chip"><span class="k">Pays probable</span> <b>France · 62 %</b></div>
+          <div class="chip"><span class="k">Valeur</span> <b>2 €</b></div>
+        </div>
+
+        <div class="na-actions">
+          <button class="na-btn primary">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 4v6h6M23 20v-6h-6"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15"/></svg>
+            Réessayer
+          </button>
+          <button class="na-btn ghost">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+            Envoyer au support pour analyse
+          </button>
+          <button class="na-btn link">
+            Ajouter manuellement comme « 2 € France »
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="stage-caption">
+    <b>05 · NOT IDENTIFIED</b>
+    <span class="dot"></span>
+    <span>6s timeout · frozen snapshot · partial guess · 3 escape hatches</span>
+  </div>
+</main>
+
+<script src="_chrome.js"></script>
+<script>EurioChrome.inject(document.querySelector('.screen'), {scanHeader:false, topCtl:false, tabbar:false});</script>
+</body>
+</html>

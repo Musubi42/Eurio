@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Eurio · Scan mockups</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="_shared.css">
+<style>
+  body { background: #08080f; }
+  .page {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 72px 48px 120px;
+  }
+  .hero {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 40px;
+    align-items: end;
+    margin-bottom: 80px;
+    padding-bottom: 40px;
+    border-bottom: 1px solid rgba(200,168,100,0.15);
+  }
+  .hero h1 {
+    font-family: var(--f-display);
+    font-size: 96px;
+    line-height: 0.95;
+    font-weight: 400;
+    color: var(--surface);
+    letter-spacing: -0.02em;
+  }
+  .hero h1 em {
+    font-style: italic;
+    color: var(--gold);
+  }
+  .hero .lede {
+    font-family: var(--f-sans);
+    font-size: 14px;
+    color: var(--n-400);
+    max-width: 320px;
+    line-height: 1.55;
+  }
+  .hero .lede .tag {
+    display: inline-block;
+    font-family: var(--f-mono);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--gold);
+    padding: 4px 10px;
+    border: 1px solid rgba(200,168,100,0.3);
+    border-radius: 100px;
+    margin-bottom: 16px;
+  }
+
+  .meta-row {
+    display: flex;
+    gap: 32px;
+    font-family: var(--f-mono);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--n-600);
+    margin-bottom: 56px;
+  }
+  .meta-row b { color: var(--surface); font-weight: 500; letter-spacing: 0.08em; }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, 260px);
+    gap: 36px 28px;
+    justify-content: center;
+  }
+
+  .card {
+    text-decoration: none;
+    color: inherit;
+    display: block;
+    transition: transform 0.25s ease;
+  }
+  .card:hover { transform: translateY(-4px); }
+  .card-frame {
+    aspect-ratio: 390/844;
+    border-radius: 32px;
+    background: linear-gradient(180deg, #1a1a24 0%, #0a0a10 100%);
+    padding: 8px;
+    box-shadow:
+      0 0 0 1px #2a2a35,
+      0 24px 60px -16px rgba(0,0,0,0.8),
+      0 0 80px -24px rgba(200,168,100,0.1);
+    position: relative;
+    overflow: hidden;
+  }
+  .card-frame iframe {
+    width: 100%;
+    height: 100%;
+    border-radius: 24px;
+    border: none;
+    background: #000;
+    pointer-events: none;
+  }
+  .card-meta {
+    margin-top: 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+  .card-meta .num {
+    font-family: var(--f-mono);
+    font-size: 10px;
+    color: var(--gold);
+    letter-spacing: 0.1em;
+  }
+  .card-meta .state {
+    font-family: var(--f-mono);
+    font-size: 9px;
+    color: var(--n-600);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .card h3 {
+    font-family: var(--f-display);
+    font-size: 22px;
+    font-weight: 400;
+    color: var(--surface);
+    margin-top: 4px;
+    letter-spacing: -0.01em;
+  }
+  .card p {
+    margin-top: 4px;
+    font-family: var(--f-sans);
+    font-size: 12px;
+    color: var(--n-400);
+    line-height: 1.45;
+  }
+
+  .section-head {
+    font-family: var(--f-mono);
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--gold-dim);
+    margin: 80px 0 32px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .section-head::before,
+  .section-head::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: rgba(200,168,100,0.15);
+  }
+
+  /* Zoom out iframes so we see the content */
+  .card-frame {
+    transform: scale(1);
+  }
+
+  footer {
+    margin-top: 120px;
+    padding-top: 32px;
+    border-top: 1px solid rgba(200,168,100,0.15);
+    font-family: var(--f-mono);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    color: var(--n-600);
+    display: flex;
+    justify-content: space-between;
+  }
+  footer a { color: var(--gold); text-decoration: none; }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="hero">
+    <div>
+      <span class="tag" style="margin-bottom:20px; display:inline-block;">DESIGN · SCAN VIEW · v0.1</span>
+      <h1>Pointe,<br><em>ça lit.</em></h1>
+    </div>
+    <div class="lede">
+      <strong style="color:var(--surface); display:block; font-family:var(--f-sans); font-size:13px; margin-bottom:8px;">Eurio scan mockups</strong>
+      Vue caméra scan-continu, style Yuka. Sept états plus un overlay de debug dense comme Flipper.
+      100 % on-device, zéro bouton capture, zéro friction.
+    </div>
+  </div>
+
+  <div class="meta-row">
+    <span>Viewport <b>390×844</b></span>
+    <span>Mode <b>dark / camera</b></span>
+    <span>Type <b>Instrument Serif · Inter Tight · JetBrains Mono</b></span>
+    <span>Target <b>Android · Kotlin Compose</b></span>
+  </div>
+
+  <div class="section-head">User-facing scan states</div>
+
+  <div class="grid">
+    <a class="card" href="01-scan-idle.html">
+      <div class="card-frame"><iframe src="01-scan-idle.html"></iframe></div>
+      <div class="card-meta"><span class="num">01</span><span class="state">idle</span></div>
+      <h3>Idle</h3>
+      <p>Caméra active, aucune pièce. Pulse blanc discret, coins non-bloquants.</p>
+    </a>
+
+    <a class="card" href="02-scan-detecting.html">
+      <div class="card-frame"><iframe src="02-scan-detecting.html"></iframe></div>
+      <div class="card-meta"><span class="num">02</span><span class="state">detecting</span></div>
+      <h3>Detecting</h3>
+      <p>Pièce vue, anneau orange pulse, barre de confidence qui remplit.</p>
+    </a>
+
+    <a class="card" href="03-scan-matched.html">
+      <div class="card-frame"><iframe src="03-scan-matched.html"></iframe></div>
+      <div class="card-meta"><span class="num">03</span><span class="state">matched</span></div>
+      <h3>Matched</h3>
+      <p>Flash vert léger, bottom sheet résultat avec CTA « Ajouter au coffre ».</p>
+    </a>
+
+    <a class="card" href="04-scan-failure-hint.html">
+      <div class="card-frame"><iframe src="04-scan-failure-hint.html"></iframe></div>
+      <div class="card-meta"><span class="num">04</span><span class="state">hint (3s)</span></div>
+      <h3>Hint</h3>
+      <p>Bulle discrète « Approche un peu ». Le scan continue, jamais bloquant.</p>
+    </a>
+
+    <a class="card" href="05-scan-not-identified.html">
+      <div class="card-frame"><iframe src="05-scan-not-identified.html"></iframe></div>
+      <div class="card-meta"><span class="num">05</span><span class="state">not-identified</span></div>
+      <h3>Not identified</h3>
+      <p>Snapshot figé, guess partiel, 3 portes de sortie (retry / support / manuel).</p>
+    </a>
+  </div>
+
+  <div class="section-head">Debug layer (R8-stripped or 7-tap activated)</div>
+
+  <div class="grid">
+    <a class="card" href="06-debug-overlay-full.html">
+      <div class="card-frame"><iframe src="06-debug-overlay-full.html"></iframe></div>
+      <div class="card-meta"><span class="num">06</span><span class="state">full overlay</span></div>
+      <h3>Full overlay</h3>
+      <p>5 layers simultanés : bbox YOLO, top-5 cosine, latencies, runtime ctx, histogram.</p>
+    </a>
+
+    <a class="card" href="07-debug-tools-panel.html">
+      <div class="card-frame"><iframe src="07-debug-tools-panel.html"></iframe></div>
+      <div class="card-meta"><span class="num">07</span><span class="state">tools drawer</span></div>
+      <h3>Tools drawer</h3>
+      <p>Dumps saved, Force match input, Session stats — bande d'icônes en bas.</p>
+    </a>
+  </div>
+
+  <footer>
+    <span>docs/design/scan/mockups/ · <a href="DESIGN-NOTES.md">DESIGN-NOTES.md</a></span>
+    <span>Eurio · Phase 2B · 2026-04-14</span>
+  </footer>
+</div>
+</body>
+</html>

@@ -1,0 +1,264 @@
+<!--
+  Scene : scan-matched
+  --------------------
+  Frozen camera frame + subtle green flash + bottom sheet with coin info.
+  Query: ?id=<eurioId> (falls back to data.randomCoin()).
+  Sidecar scan-matched.js wires the CTA "Ajouter au coffre" to state.addCoin()
+  and replaces the sheet content with the selected coin's details.
+-->
+
+<style>
+  .scan-matched-root {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 65% 45% at 50% 38%, var(--ink-soft) 0%, var(--ink) 55%, #000 100%);
+    overflow: hidden;
+    color: var(--surface);
+    filter: brightness(0.82) saturate(1.05);
+  }
+
+  .scan-matched-flash {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(
+      ellipse 60% 45% at 50% 38%,
+      var(--success-soft) 0%,
+      transparent 60%);
+    pointer-events: none;
+    animation: scan-matched-flash-anim 0.9s var(--ease-out) forwards;
+  }
+  @keyframes scan-matched-flash-anim {
+    0%   { opacity: 0; }
+    30%  { opacity: 1; }
+    100% { opacity: 0.35; }
+  }
+
+  .scan-matched-guide {
+    position: absolute;
+    top: 38%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 240px;
+    height: 240px;
+    pointer-events: none;
+  }
+  .scan-matched-guide__ring {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    border: 2px solid var(--scan-matched);
+    box-shadow: 0 0 30px rgba(47,169,113,0.45),
+                inset 0 0 20px rgba(47,169,113,0.25);
+  }
+
+  /* Frozen coin silhouette inside the locked ring */
+  .scan-matched-coin-ghost {
+    position: absolute;
+    top: 38%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 170px;
+    height: 170px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, rgba(200,168,100,0.30), rgba(14,14,31,0.05) 70%);
+    pointer-events: none;
+  }
+
+  .scan-matched-header {
+    position: absolute;
+    top: 62px;
+    left: 50%;
+    transform: translateX(-50%);
+    text-align: center;
+    z-index: 2;
+  }
+  .scan-matched-header__title {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: var(--text-lg);
+    font-weight: 400;
+    color: var(--surface);
+    letter-spacing: 0.01em;
+  }
+
+  .scan-matched-close {
+    position: absolute;
+    top: 58px;
+    right: 20px;
+    z-index: 3;
+  }
+
+  /* ── Bottom sheet ── */
+  .scan-matched-sheet {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: var(--z-sheet);
+    animation: scan-matched-sheet-up 0.55s var(--ease-spring) forwards;
+  }
+  @keyframes scan-matched-sheet-up {
+    0%   { transform: translateY(100%); }
+    100% { transform: translateY(0); }
+  }
+
+  .scan-matched-sheet__head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    margin-bottom: var(--space-4);
+  }
+  .scan-matched-sheet__thumb {
+    width: 84px;
+    height: 84px;
+    flex: 0 0 84px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 32% 28%, var(--gold-soft), var(--gold) 55%, var(--gold-deep) 100%);
+    box-shadow: 0 8px 18px rgba(143,118,55,0.35), var(--inner-highlight-gold);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+  .scan-matched-sheet__thumb svg { width: 100%; height: 100%; }
+
+  .scan-matched-sheet__meta { flex: 1; min-width: 0; }
+  .scan-matched-sheet__country {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-500);
+  }
+  .scan-matched-sheet__title {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-weight: 400;
+    font-size: var(--text-xl);
+    color: var(--ink);
+    line-height: var(--leading-tight);
+    margin-top: 2px;
+  }
+  .scan-matched-sheet__sub {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--ink-400);
+    margin-top: 2px;
+  }
+
+  .scan-matched-sheet__badges {
+    display: flex;
+    gap: var(--space-2);
+    margin-bottom: var(--space-4);
+    flex-wrap: wrap;
+  }
+
+  .scan-matched-sheet__value {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    padding: var(--space-4) 0;
+    border-top: 1px dashed rgba(14,14,31,0.12);
+    border-bottom: 1px dashed rgba(14,14,31,0.12);
+    margin-bottom: var(--space-5);
+  }
+  .scan-matched-sheet__value-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-400);
+  }
+  .scan-matched-sheet__value-range {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-weight: 400;
+    font-size: var(--text-lg);
+    color: var(--ink);
+  }
+  .scan-matched-sheet__value-range em {
+    font-style: normal;
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--success);
+    margin-left: 6px;
+  }
+
+  .scan-matched-sheet__actions {
+    display: flex;
+    gap: var(--space-3);
+  }
+  .scan-matched-sheet__actions .btn { flex: 1; }
+</style>
+
+<section class="scan-matched-root" data-scene="scan-matched">
+  <!-- Ghost silhouette from frozen frame -->
+  <div class="scan-matched-coin-ghost" aria-hidden="true"></div>
+
+  <!-- Green flash overlay -->
+  <div class="scan-matched-flash" aria-hidden="true"></div>
+
+  <!-- Locked ring -->
+  <div class="scan-matched-guide" aria-hidden="true">
+    <div class="scan-matched-guide__ring"></div>
+  </div>
+
+  <!-- Header -->
+  <div class="scan-matched-header">
+    <div class="eyebrow eyebrow--paper">Match &middot; verrouill&eacute;</div>
+    <div class="scan-matched-header__title">Identifi&eacute;e</div>
+  </div>
+
+  <!-- Close -->
+  <button type="button" class="scan-matched-close btn-icon" data-action="close" aria-label="Fermer">
+    &times;
+  </button>
+
+  <!-- Bottom sheet : populated by scan-matched.js -->
+  <aside class="scan-matched-sheet sheet" role="dialog" aria-label="Pi&egrave;ce identifi&eacute;e">
+    <div class="sheet-handle" aria-hidden="true"></div>
+
+    <div class="scan-matched-sheet__head">
+      <div class="scan-matched-sheet__thumb" data-slot="thumb" aria-hidden="true"></div>
+      <div class="scan-matched-sheet__meta">
+        <div class="scan-matched-sheet__country">
+          <span data-slot="country">&mdash;</span>
+          <span>&middot;</span>
+          <span data-slot="face-value">&mdash;</span>
+        </div>
+        <h2 class="scan-matched-sheet__title" data-slot="title">Identification&hellip;</h2>
+        <div class="scan-matched-sheet__sub" data-slot="sub">&mdash;</div>
+      </div>
+    </div>
+
+    <div class="scan-matched-sheet__badges">
+      <span class="badge badge--gold" data-slot="rarity">Rare</span>
+      <span class="badge badge--success" data-slot="confidence">92.3 %</span>
+      <span class="badge" data-slot="kind">Circulation</span>
+    </div>
+
+    <div class="scan-matched-sheet__value">
+      <div>
+        <div class="scan-matched-sheet__value-label">Valorisation P25&ndash;P75</div>
+        <div class="scan-matched-sheet__value-range tabular">
+          <span data-slot="price-range">&mdash;</span>
+        </div>
+      </div>
+      <div>
+        <div class="scan-matched-sheet__value-label">Source</div>
+        <div class="scan-matched-sheet__value-range tabular" style="font-size:var(--text-sm);">
+          <span class="u-mono" style="color:var(--ink-400);">mock</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="scan-matched-sheet__actions">
+      <button type="button" class="btn btn-ghost" data-action="details">Voir la fiche</button>
+      <button type="button" class="btn btn-gold" data-action="add">Ajouter au coffre</button>
+    </div>
+  </aside>
+</section>

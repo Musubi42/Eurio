@@ -1,0 +1,622 @@
+<!--
+  Scene : vault-home
+  ------------------
+  Main vault view : value total (Fraunces italic 60px), stats strip, toolbar
+  with search/filters/sort/view-toggle, monthly group headers and
+  grid/list coin rendering.
+
+  Two states are handled in the same fragment :
+   - `[data-empty="true"]` : coffre vide → gros empty-state (delegated to
+     vault-empty fragment styling since we keep the shell persistent).
+   - `[data-empty="false"]` : coffre peuplé → header/stats/toolbar/grid.
+
+  The sidecar vault-home.js computes the totals, renders tiles, handles the
+  grid/list toggle (persisted in state.prefs.vaultView) and the long-press
+  "⋯" button that opens the remove-confirm overlay.
+
+  NOTE : `/vault` in the router points to scene `vault`. A thin wrapper file
+  `vault.html` re-uses this fragment via sidecar (see scenes/vault.html).
+-->
+
+<style>
+  .vault-home-root {
+    position: relative;
+    min-height: 100%;
+    background: var(--surface);
+    color: var(--ink);
+  }
+  .vault-home-scroll {
+    display: flex;
+    flex-direction: column;
+    padding: var(--space-3) var(--space-5) var(--space-10);
+  }
+
+  /* ───────── Header : eyebrow + value total ───────── */
+  .vault-home-header {
+    padding: var(--space-2) 0 var(--space-6);
+  }
+  .vault-home-header__top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--space-5);
+  }
+  .vault-home-header__actions {
+    display: flex;
+    gap: var(--space-1);
+  }
+  .vault-home-header__icon {
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-full);
+    background: var(--surface-1);
+    color: var(--ink);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(14,14,31,0.06);
+  }
+  .vault-home-header__icon svg {
+    width: 18px;
+    height: 18px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .vault-home-value {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+  .vault-home-value__label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: var(--tracking-eyebrow);
+    text-transform: uppercase;
+    color: var(--ink-400);
+  }
+  .vault-home-value__amount {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-weight: 300;
+    font-size: var(--text-hero);
+    line-height: 1;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+    display: flex;
+    align-items: baseline;
+    gap: 2px;
+  }
+  .vault-home-value__amount .vault-home-value__euro {
+    font-size: 40px;
+    font-weight: 300;
+    color: var(--ink-500);
+    padding-left: 4px;
+  }
+  .vault-home-value__amount .vault-home-value__cents {
+    font-size: 32px;
+    color: var(--ink-500);
+    margin-left: 2px;
+  }
+  .vault-home-value__delta {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-top: var(--space-3);
+    font-size: var(--text-xs);
+    color: var(--ink-500);
+  }
+  .vault-home-delta-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border-radius: var(--radius-full);
+    background: var(--success-soft);
+    color: var(--success);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+  }
+  .vault-home-delta-chip--down {
+    background: var(--danger-soft);
+    color: var(--danger-muted);
+  }
+  .vault-home-delta-chip svg {
+    width: 11px; height: 11px;
+    fill: none; stroke: currentColor;
+    stroke-width: 2.2;
+    stroke-linecap: round; stroke-linejoin: round;
+  }
+
+  /* ───────── Stats strip ───────── */
+  .vault-home-stats {
+    display: flex;
+    gap: var(--space-6);
+    padding: var(--space-4) 0 var(--space-5);
+    border-top: 1px solid rgba(14,14,31,0.08);
+    border-bottom: 1px solid rgba(14,14,31,0.08);
+    margin-bottom: var(--space-5);
+  }
+  .vault-home-stats .stat + .stat {
+    padding-left: var(--space-6);
+    border-left: 1px solid rgba(14,14,31,0.08);
+  }
+  .vault-home-stats .stat-value {
+    font-family: var(--font-display);
+    font-size: var(--text-xl);
+    font-weight: 400;
+    color: var(--ink);
+  }
+  .vault-home-stats .stat-label {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-eyebrow);
+    color: var(--ink-400);
+  }
+
+  /* ───────── Toolbar ───────── */
+  .vault-home-toolbar {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    margin-bottom: var(--space-5);
+  }
+  .vault-home-search {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: 12px 16px;
+    background: var(--surface-1);
+    border-radius: var(--radius-full);
+    border: 1px solid rgba(14,14,31,0.06);
+    cursor: pointer;
+    color: var(--ink-400);
+    font-size: var(--text-sm);
+  }
+  .vault-home-search svg {
+    width: 16px; height: 16px;
+    fill: none; stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+  }
+  .vault-home-toolbar__row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .vault-home-filters-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border-radius: var(--radius-full);
+    background: var(--indigo-700);
+    color: var(--surface);
+    font-size: var(--text-xs);
+    font-weight: 500;
+    font-family: var(--font-ui);
+    letter-spacing: 0.02em;
+  }
+  .vault-home-filters-btn svg {
+    width: 14px; height: 14px;
+    fill: none; stroke: currentColor;
+    stroke-width: 1.8; stroke-linecap: round;
+  }
+
+  .vault-home-toggle {
+    display: inline-flex;
+    padding: 3px;
+    background: var(--surface-1);
+    border: 1px solid rgba(14,14,31,0.06);
+    border-radius: var(--radius-full);
+  }
+  .vault-home-toggle button {
+    width: 34px; height: 28px;
+    border-radius: var(--radius-full);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--ink-400);
+    transition: background var(--duration-fast) var(--ease-out),
+                color var(--duration-fast) var(--ease-out);
+  }
+  .vault-home-toggle button svg {
+    width: 14px; height: 14px;
+    fill: none; stroke: currentColor;
+    stroke-width: 1.8;
+  }
+  .vault-home-toggle button[aria-selected="true"] {
+    background: var(--surface);
+    color: var(--indigo-700);
+    box-shadow: var(--shadow-sm);
+  }
+
+  /* ───────── Group headers ───────── */
+  .vault-home-group {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin: var(--space-5) 0 var(--space-3);
+  }
+  .vault-home-group__label {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: var(--text-sm);
+    color: var(--ink-500);
+    white-space: nowrap;
+  }
+  .vault-home-group__line {
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(90deg, rgba(200,168,100,0.35) 50%, transparent 0);
+    background-size: 6px 1px;
+    background-repeat: repeat-x;
+  }
+
+  /* ───────── Grid ───────── */
+  .vault-home-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-3);
+  }
+  .vault-home-tile {
+    position: relative;
+    aspect-ratio: 1 / 1.05;
+    border-radius: var(--radius-md);
+    background: var(--surface-1);
+    padding: var(--space-2);
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: space-between;
+    border: 1px solid rgba(14,14,31,0.04);
+    box-shadow: var(--shadow-sm);
+    cursor: pointer;
+    transition: transform var(--duration-fast) var(--ease-out);
+  }
+  .vault-home-tile:active {
+    transform: scale(0.97);
+  }
+  .vault-home-tile--set-complete {
+    box-shadow: var(--shadow-gold);
+    border-color: var(--gold);
+  }
+  .vault-home-tile__coin {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-1);
+  }
+  .vault-home-tile__coin svg {
+    width: 100%;
+    max-width: 78px;
+    height: auto;
+  }
+  .vault-home-tile__meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.04em;
+    color: var(--ink-500);
+    text-transform: uppercase;
+  }
+  .vault-home-tile__mult {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    padding: 2px 6px;
+    background: var(--indigo-700);
+    color: var(--surface);
+    border-radius: var(--radius-full);
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+  }
+  .vault-home-tile__more {
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    width: 22px; height: 22px;
+    border-radius: var(--radius-full);
+    background: rgba(255,255,255,0.85);
+    backdrop-filter: blur(6px);
+    color: var(--ink-500);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity var(--duration-fast) var(--ease-out);
+  }
+  .vault-home-tile:hover .vault-home-tile__more,
+  .vault-home-tile:focus-within .vault-home-tile__more {
+    opacity: 1;
+  }
+  .vault-home-tile__more svg {
+    width: 12px; height: 12px;
+  }
+
+  /* ───────── List ───────── */
+  .vault-home-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .vault-home-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-2);
+    min-height: 64px;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: background var(--duration-fast) var(--ease-out);
+  }
+  .vault-home-row:hover { background: var(--surface-1); }
+  .vault-home-row__coin {
+    flex: 0 0 44px;
+    width: 44px; height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .vault-home-row__coin svg {
+    width: 100%;
+    height: auto;
+  }
+  .vault-home-row__meta {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .vault-home-row__title {
+    font-family: var(--font-display);
+    font-size: var(--text-base);
+    font-weight: 400;
+    color: var(--ink);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .vault-home-row__sub {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--ink-400);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .vault-home-row__value {
+    text-align: right;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+  }
+  .vault-home-row__price {
+    font-family: var(--font-display);
+    font-size: var(--text-base);
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+  .vault-home-row__delta {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--success);
+  }
+  .vault-home-row__delta--down { color: var(--danger-muted); }
+  .vault-home-row__delta--neutral { color: var(--ink-400); }
+
+  /* ───────── Empty variant (inline fallback) ───────── */
+  .vault-home-root[data-empty="true"] .vault-home-scroll { display: none; }
+  .vault-home-root[data-empty="false"] .vault-home-empty { display: none; }
+
+  .vault-home-empty {
+    padding: var(--space-6) var(--space-6) var(--space-10);
+    display: flex;
+    flex-direction: column;
+    text-align: center;
+    min-height: 100%;
+  }
+  .vault-home-empty__art {
+    width: 220px; height: 220px;
+    margin: var(--space-8) auto var(--space-6);
+    position: relative;
+  }
+  .vault-home-empty__title {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: var(--text-2xl);
+    line-height: var(--leading-tight);
+    color: var(--ink);
+    margin-bottom: var(--space-3);
+  }
+  .vault-home-empty__sub {
+    font-size: var(--text-sm);
+    color: var(--ink-500);
+    max-width: 300px;
+    margin: 0 auto var(--space-8);
+    line-height: var(--leading-base);
+  }
+  .vault-home-empty__cta {
+    align-self: center;
+    padding: 16px 28px;
+    border-radius: var(--radius-full);
+    min-height: 52px;
+    font-size: var(--text-base);
+  }
+  .vault-home-empty__cta svg {
+    width: 20px; height: 20px;
+    fill: none; stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round; stroke-linejoin: round;
+  }
+  .vault-home-empty__art svg text {
+    font-family: var(--font-display);
+    font-style: italic;
+  }
+</style>
+
+<section class="vault-home-root" data-scene="vault-home" data-empty="true">
+
+  <!-- ───────── Populated state ───────── -->
+  <div class="vault-home-scroll" data-role="populated">
+    <header class="vault-home-header">
+      <div class="vault-home-header__top">
+        <div class="eyebrow">Ton coffre</div>
+        <div class="vault-home-header__actions">
+          <button type="button" class="vault-home-header__icon"
+                  aria-label="Exporter" data-action="export">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 3v12m0 0l-5-5m5 5l5-5M3 21h18"/>
+            </svg>
+          </button>
+          <button type="button" class="vault-home-header__icon"
+                  aria-label="Plus d'options" data-action="more">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="5"  cy="12" r="1.3" fill="currentColor" stroke="none"/>
+              <circle cx="12" cy="12" r="1.3" fill="currentColor" stroke="none"/>
+              <circle cx="19" cy="12" r="1.3" fill="currentColor" stroke="none"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="vault-home-value">
+        <span class="vault-home-value__label">Valeur totale</span>
+        <div class="vault-home-value__amount tabular" data-role="value-amount">
+          <span data-role="value-int">0</span><span
+                class="vault-home-value__euro">€</span>
+        </div>
+        <div class="vault-home-value__delta" data-role="delta-row">
+          <span class="vault-home-delta-chip tabular" data-role="delta-chip">
+            <svg viewBox="0 0 24 24" aria-hidden="true" data-role="delta-arrow">
+              <path d="M7 14l5-5 5 5"/>
+            </svg>
+            <span data-role="delta-pct">+0%</span>
+          </span>
+          <span data-role="delta-caption">depuis tes premiers ajouts</span>
+        </div>
+      </div>
+    </header>
+
+    <div class="vault-home-stats">
+      <div class="stat">
+        <span class="stat-value tabular" data-role="stat-coins">0</span>
+        <span class="stat-label">Pièces</span>
+      </div>
+      <div class="stat">
+        <span class="stat-value tabular" data-role="stat-countries">0</span>
+        <span class="stat-label">Pays</span>
+      </div>
+      <div class="stat">
+        <span class="stat-value tabular" data-role="stat-series">0/21</span>
+        <span class="stat-label">Séries</span>
+      </div>
+    </div>
+
+    <div class="vault-home-toolbar">
+      <button type="button" class="vault-home-search" data-action="search">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="11" cy="11" r="7"/>
+          <path d="M20 20l-3.5-3.5" stroke-linecap="round"/>
+        </svg>
+        <span>Chercher dans ton coffre</span>
+      </button>
+
+      <div class="vault-home-toolbar__row">
+        <button type="button" class="vault-home-filters-btn" data-action="filters">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 6h16M7 12h10M10 18h4"/>
+          </svg>
+          <span>Filtres</span>
+        </button>
+
+        <div class="vault-home-toggle" role="tablist" aria-label="Mode d'affichage">
+          <button type="button" data-view="grid" aria-selected="true" aria-label="Grille">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="3"  y="3"  width="7" height="7" rx="1"/>
+              <rect x="14" y="3"  width="7" height="7" rx="1"/>
+              <rect x="3"  y="14" width="7" height="7" rx="1"/>
+              <rect x="14" y="14" width="7" height="7" rx="1"/>
+            </svg>
+          </button>
+          <button type="button" data-view="list" aria-selected="false" aria-label="Liste">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 6h16M4 12h16M4 18h16"
+                    stroke-linecap="round"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Groups + coins injected by vault-home.js -->
+    <div data-role="groups"></div>
+
+    <div style="height: var(--space-10);"></div>
+  </div>
+
+  <!-- ───────── Empty state (inline) ───────── -->
+  <div class="vault-home-empty" data-role="empty">
+    <div class="vault-home-empty__art" aria-hidden="true">
+      <svg viewBox="0 0 240 240" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <radialGradient id="vault-home-coin" cx="35%" cy="30%" r="80%">
+            <stop offset="0%"  stop-color="var(--gold-100)"/>
+            <stop offset="45%" stop-color="var(--gold)"/>
+            <stop offset="100%" stop-color="var(--gold-deep)"/>
+          </radialGradient>
+          <radialGradient id="vault-home-halo" cx="50%" cy="50%" r="55%">
+            <stop offset="0%"  stop-color="rgba(200,168,100,0.28)"/>
+            <stop offset="100%" stop-color="rgba(200,168,100,0)"/>
+          </radialGradient>
+        </defs>
+        <circle cx="120" cy="120" r="115" fill="url(#vault-home-halo)"/>
+        <circle cx="120" cy="120" r="88" fill="none"
+                stroke="var(--indigo-700)" stroke-opacity="0.1"
+                stroke-width="1" stroke-dasharray="2 4"/>
+        <g opacity="0.28">
+          <circle cx="50"  cy="70"  r="14" fill="var(--indigo-700)"/>
+          <circle cx="195" cy="80"  r="11" fill="var(--indigo-700)"/>
+          <circle cx="60"  cy="185" r="10" fill="var(--indigo-700)"/>
+          <circle cx="200" cy="180" r="13" fill="var(--indigo-700)"/>
+        </g>
+        <g transform="translate(120 120) rotate(-8)">
+          <ellipse cx="4" cy="8" rx="56" ry="12" fill="var(--ink)" opacity="0.15"/>
+          <circle r="58" fill="url(#vault-home-coin)"/>
+          <circle r="52" fill="none"
+                  stroke="var(--gold-deep)" stroke-opacity="0.45"
+                  stroke-width="1" stroke-dasharray="1 3"/>
+          <text y="10" text-anchor="middle"
+                font-size="38"
+                fill="var(--gold-deep)" opacity="0.8">€</text>
+        </g>
+      </svg>
+    </div>
+    <h1 class="vault-home-empty__title">Ton coffre<br>attend sa première pièce.</h1>
+    <p class="vault-home-empty__sub">
+      Scanne une pièce euro pour commencer ta collection. Eurio la reconnaît,
+      l'évalue, et la range ici pour toi.
+    </p>
+    <button type="button" class="btn btn-primary vault-home-empty__cta"
+            data-action="scan">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M4 7V5a1 1 0 011-1h2M17 4h2a1 1 0 011 1v2M20 17v2a1 1 0 01-1 1h-2M7 20H5a1 1 0 01-1-1v-2"/>
+        <circle cx="12" cy="12" r="3.5"/>
+      </svg>
+      <span>Scanner ma première pièce</span>
+    </button>
+  </div>
+</section>

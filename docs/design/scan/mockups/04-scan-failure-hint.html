@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Eurio · 04 Scan hint</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="_shared.css">
+</head>
+<body>
+<main class="stage">
+  <div class="device">
+    <div class="screen">
+      <div class="camera">
+        <div class="coin" style="width:140px; height:140px; top:55%; left:42%;"></div>
+      </div>
+
+      <!-- Soft orange pulse ring -->
+      <div class="guide detecting">
+        <div class="ring"></div>
+      </div>
+
+      <!-- Hint bubble -->
+      <div class="hint">
+        <div class="icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        </div>
+        <span>Approche un peu, ou essaie une meilleure lumière</span>
+      </div>
+
+      <div class="state-chip detecting">
+        <span class="dot"></span>
+        <span>Doute · top-Δ 0.04</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="stage-caption">
+    <b>04 · HINT (3s no-convergence)</b>
+    <span class="dot"></span>
+    <span>coin small/blurry · gentle nudge · still scanning</span>
+  </div>
+</main>
+
+<script src="_chrome.js"></script>
+<script>EurioChrome.inject(document.querySelector('.screen'));</script>
+</body>
+</html>

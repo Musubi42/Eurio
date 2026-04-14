@@ -24,6 +24,7 @@
 - [`_shared/offline-first.md`](./_shared/offline-first.md) — Qu'est-ce qu'on ship dans l'APK, qu'est-ce qu'on fetch, stratégie de mise à jour des modèles ML et des métadonnées pièces.
 - [`_shared/auth-strategy.md`](./_shared/auth-strategy.md) — Auth silencieuse/différée, pattern Duolingo, Credential Manager Android, upgrade anonymous → compte complet.
 - [`_shared/data-contracts.md`](./_shared/data-contracts.md) — Schema Room local, mapping avec le schema canonique Supabase, points de synchronisation.
+- [`_shared/dev-debug-strategy.md`](./_shared/dev-debug-strategy.md) — Build debug vs release, pattern hidden dev menu (7-tap version), flag runtime `DebugState`, où vit le code debug.
 
 ## Vues v1
 

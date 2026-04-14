@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Eurio · 03 Scan matched + bottom sheet</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="_shared.css">
+</head>
+<body>
+<main class="stage">
+  <div class="device">
+    <div class="screen">
+      <div class="camera" style="filter: brightness(0.82) saturate(1.05);">
+        <div class="coin" style="top:32%;"></div>
+      </div>
+
+      <div class="guide matched" style="width:260px; height:260px; top:32%;">
+        <div class="ring"></div>
+      </div>
+
+      <!-- Flash overlay (subtle) -->
+      <div style="position:absolute; inset:0; background:radial-gradient(ellipse 60% 45% at 50% 32%, rgba(47,169,113,0.18) 0%, transparent 60%); pointer-events:none; z-index:50;"></div>
+
+      <!-- Bottom sheet result -->
+      <div class="sheet">
+        <div class="grabber"></div>
+
+        <div class="row">
+          <div class="coin-thumb"></div>
+          <div class="meta">
+            <div class="flag-country">
+              <span class="flag"></span>
+              <span>France · 2 €</span>
+            </div>
+            <h2>10 ans de l'Euro</h2>
+            <div class="year">2012 · Commémorative · Réf. fr-2012-2eur-10ans</div>
+          </div>
+        </div>
+
+        <div class="value-row">
+          <div>
+            <div class="label">Valeur estimée</div>
+            <div class="price">4,20 €<em>+110 %</em></div>
+          </div>
+          <div class="range">
+            <div class="label">Fourchette P25–P75</div>
+            <div class="amt">3,40 € – 5,10 €</div>
+          </div>
+        </div>
+
+        <div class="confidence">
+          <span>Confiance du match</span>
+          <span class="score">92,3 %</span>
+        </div>
+
+        <div class="actions">
+          <button class="btn secondary">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            Détails
+          </button>
+          <button class="btn primary">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><path d="M9 22V12h6v10"/></svg>
+            Ajouter au coffre
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="stage-caption">
+    <b>03 · MATCHED</b>
+    <span class="dot"></span>
+    <span>top-1 locked · green flash · bottom sheet w/ primary CTA</span>
+  </div>
+</main>
+
+<script src="_chrome.js"></script>
+<script>EurioChrome.inject(document.querySelector('.screen'), {tabbar: false});</script>
+</body>
+</html>

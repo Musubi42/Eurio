@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Eurio — Coffre · Filtres</title>
+<link rel="stylesheet" href="_shared.css">
+</head>
+<body>
+<div class="stage">
+  <div class="device">
+    <div class="screen">
+      <div class="status-bar">
+        <span class="time tabular">9:41</span>
+        <span class="icons">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M2 12 Q12 2 22 12"/><path d="M5 15 Q12 8 19 15"/><path d="M8 18 Q12 14 16 18"/><circle cx="12" cy="20" r="1" fill="currentColor"/></svg>
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M2 18h2v-4H2v4zm4 0h2V10H6v8zm4 0h2V6h-2v12zm4 0h2V2h-2v16zm4 0h2v-8h-2v8z"/></svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="8" width="18" height="10" rx="2"/><rect x="4" y="10" width="14" height="6" rx="1" fill="currentColor"/><path d="M22 12v2"/></svg>
+        </span>
+      </div>
+
+      <div class="content">
+        <!-- Background: vault grid slightly dimmed -->
+        <div class="scroll" style="filter:blur(0.5px);">
+          <div class="vault-header">
+            <div class="top-row">
+              <span class="eyebrow">Ton coffre</span>
+              <button class="icon-btn"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.5" fill="currentColor" stroke="none"/></svg></button>
+            </div>
+            <div class="value-block">
+              <span class="value-label">Valeur totale</span>
+              <div class="value-total tabular">247<span class="euro">€</span></div>
+            </div>
+          </div>
+          <div class="stats-strip">
+            <div class="stat"><span class="stat-val tabular">23</span><span class="stat-label">Pièces</span></div>
+            <div class="stat"><span class="stat-val tabular">8</span><span class="stat-label">Pays</span></div>
+            <div class="stat"><span class="stat-val tabular">2</span><span class="stat-label">Séries</span></div>
+          </div>
+        </div>
+
+        <div class="sheet-backdrop"></div>
+        <div class="sheet">
+          <div class="sheet-handle"></div>
+          <div class="sheet-head">
+            <span class="sheet-title">Filtrer ton coffre</span>
+            <button class="sheet-reset">Réinitialiser</button>
+          </div>
+          <div class="sheet-body">
+
+            <div class="filter-group">
+              <span class="filter-group-label">Pays · 3 sélectionnés</span>
+              <div class="chip-group">
+                <button class="check-chip on"><span class="flag fr"></span>France</button>
+                <button class="check-chip on"><span class="flag de"></span>Allemagne</button>
+                <button class="check-chip on"><span class="flag it"></span>Italie</button>
+                <button class="check-chip"><span class="flag es"></span>Espagne</button>
+                <button class="check-chip"><span class="flag be"></span>Belgique</button>
+                <button class="check-chip"><span class="flag nl"></span>Pays-Bas</button>
+                <button class="check-chip"><span class="flag pt"></span>Portugal</button>
+                <button class="check-chip"><span class="flag at"></span>Autriche</button>
+                <button class="check-chip"><span class="flag gr"></span>Grèce</button>
+                <button class="check-chip"><span class="flag ie"></span>Irlande</button>
+                <button class="check-chip">
+                  <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke-linecap="round"/></svg>
+                  11 autres
+                </button>
+              </div>
+            </div>
+
+            <div class="filter-group">
+              <span class="filter-group-label">Année · 2002 → 2018</span>
+              <div class="range-wrap">
+                <div class="range-track">
+                  <div class="range-fill" style="left:10%;right:20%;"></div>
+                  <div class="range-thumb" style="left:10%;"></div>
+                  <div class="range-thumb" style="left:80%;"></div>
+                </div>
+                <div class="range-labels">
+                  <span>2002</span>
+                  <span>2018</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="filter-group">
+              <span class="filter-group-label">Valeur faciale</span>
+              <div class="chip-group">
+                <button class="check-chip">1 c</button>
+                <button class="check-chip">2 c</button>
+                <button class="check-chip">5 c</button>
+                <button class="check-chip on">10 c</button>
+                <button class="check-chip on">20 c</button>
+                <button class="check-chip on">50 c</button>
+                <button class="check-chip on">1 €</button>
+                <button class="check-chip on">2 €</button>
+              </div>
+            </div>
+
+            <div class="filter-group">
+              <span class="filter-group-label">Type</span>
+              <div class="chip-group">
+                <button class="check-chip on">Circulation</button>
+                <button class="check-chip">Commémorative 2 €</button>
+                <button class="check-chip">Émission commune</button>
+              </div>
+            </div>
+
+            <div class="filter-group">
+              <span class="filter-group-label">Rareté</span>
+              <div class="chip-group">
+                <button class="check-chip">Commune</button>
+                <button class="check-chip">Peu courante</button>
+                <button class="check-chip on">Rare</button>
+                <button class="check-chip on">Très rare</button>
+              </div>
+            </div>
+
+            <div class="filter-group">
+              <span class="filter-group-label">Condition</span>
+              <div class="chip-group">
+                <button class="check-chip">UNC</button>
+                <button class="check-chip">SUP</button>
+                <button class="check-chip">TTB</button>
+                <button class="check-chip">TB</button>
+                <button class="check-chip">B</button>
+              </div>
+            </div>
+
+          </div>
+          <div class="sheet-foot">
+            <button class="btn-ghost">Annuler</button>
+            <button class="btn-primary">Voir 11 pièces</button>
+          </div>
+        </div>
+      </div>
+      <div class="home-indicator"></div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

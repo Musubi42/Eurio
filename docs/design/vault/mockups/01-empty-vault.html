@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Eurio — Coffre vide</title>
+<link rel="stylesheet" href="_shared.css">
+</head>
+<body>
+<div class="stage">
+  <div class="device">
+    <div class="screen">
+      <div class="status-bar">
+        <span class="time tabular">9:41</span>
+        <span class="icons">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M2 12 Q12 2 22 12"/><path d="M5 15 Q12 8 19 15"/><path d="M8 18 Q12 14 16 18"/><circle cx="12" cy="20" r="1" fill="currentColor"/></svg>
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M2 18h2v-4H2v4zm4 0h2V10H6v8zm4 0h2V6h-2v12zm4 0h2V2h-2v16zm4 0h2v-8h-2v8z"/></svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="8" width="18" height="10" rx="2"/><rect x="4" y="10" width="14" height="6" rx="1" fill="currentColor"/><path d="M22 12v2"/></svg>
+        </span>
+      </div>
+
+      <div class="content">
+        <div class="vault-header" style="padding-bottom:0;">
+          <div class="top-row">
+            <span class="eyebrow">Ton coffre</span>
+            <button class="icon-btn">
+              <svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.5" fill="currentColor" stroke="none"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="empty">
+          <div class="empty-art">
+            <svg viewBox="0 0 240 240" style="width:100%;height:100%;">
+              <defs>
+                <radialGradient id="coinGrad" cx="35%" cy="30%">
+                  <stop offset="0%" stop-color="#F8E8B5"/>
+                  <stop offset="35%" stop-color="#D8B46A"/>
+                  <stop offset="70%" stop-color="#9A7730"/>
+                  <stop offset="100%" stop-color="#6C4E1A"/>
+                </radialGradient>
+                <radialGradient id="ringGlow" cx="50%" cy="50%">
+                  <stop offset="0%" stop-color="rgba(200,168,100,0.25)"/>
+                  <stop offset="100%" stop-color="rgba(200,168,100,0)"/>
+                </radialGradient>
+                <filter id="soft"><feGaussianBlur stdDeviation="0.4"/></filter>
+              </defs>
+              <circle cx="120" cy="120" r="115" fill="url(#ringGlow)"/>
+              <circle cx="120" cy="120" r="88" fill="none" stroke="#1A1B4B" stroke-opacity="0.1" stroke-width="1" stroke-dasharray="2 4"/>
+              <circle cx="120" cy="120" r="68" fill="none" stroke="#1A1B4B" stroke-opacity="0.08" stroke-width="1"/>
+
+              <!-- Floating silhouette coins -->
+              <g opacity="0.3">
+                <circle cx="50" cy="70" r="14" fill="#1A1B4B"/>
+                <circle cx="195" cy="80" r="11" fill="#1A1B4B"/>
+                <circle cx="60" cy="185" r="10" fill="#1A1B4B"/>
+                <circle cx="200" cy="180" r="13" fill="#1A1B4B"/>
+              </g>
+
+              <!-- Main coin, tilted -->
+              <g transform="translate(120 120) rotate(-8)">
+                <ellipse cx="4" cy="8" rx="56" ry="12" fill="#0E0E1F" opacity="0.15" filter="url(#soft)"/>
+                <circle r="58" fill="url(#coinGrad)"/>
+                <circle r="52" fill="none" stroke="#6C4E1A" stroke-opacity="0.35" stroke-width="1" stroke-dasharray="1 3"/>
+                <text y="8" text-anchor="middle" font-family="Fraunces, serif" font-size="34" font-weight="500" fill="#4A3010" opacity="0.7">€</text>
+              </g>
+            </svg>
+          </div>
+
+          <h1 class="empty-title">Ton coffre<br>attend sa première pièce.</h1>
+          <p class="empty-sub">Scanne une pièce euro pour commencer ta collection. Eurio la reconnaît, l'évalue, et la range ici pour toi.</p>
+          <button class="empty-cta">
+            <svg viewBox="0 0 24 24"><path d="M4 7V5a1 1 0 011-1h2M17 4h2a1 1 0 011 1v2M20 17v2a1 1 0 01-1 1h-2M7 20H5a1 1 0 01-1-1v-2" stroke-linecap="round"/><circle cx="12" cy="12" r="3.5"/></svg>
+            Scanner ma première pièce
+          </button>
+        </div>
+
+        <div class="bottom-area">
+          <nav class="nav">
+            <a class="nav-item">
+              <svg viewBox="0 0 24 24"><path d="M3 10l9-7 9 7v10a2 2 0 01-2 2h-4v-7h-6v7H5a2 2 0 01-2-2V10z" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Accueil
+            </a>
+            <a class="nav-item active">
+              <svg viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="14" rx="2"/><path d="M8 10h8M8 14h5" stroke-linecap="round"/></svg>
+              Coffre
+            </a>
+            <div class="nav-spacer"></div>
+            <a class="nav-item">
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.5 3.5-8 8-8s8 3.5 8 8" stroke-linecap="round"/></svg>
+              Profil
+            </a>
+            <button class="fab" aria-label="Scanner">
+              <svg viewBox="0 0 24 24"><path d="M4 7V5a1 1 0 011-1h2M17 4h2a1 1 0 011 1v2M20 17v2a1 1 0 01-1 1h-2M7 20H5a1 1 0 01-1-1v-2" stroke-linecap="round"/><circle cx="12" cy="12" r="3.5"/></svg>
+            </button>
+          </nav>
+        </div>
+      </div>
+      <div class="home-indicator"></div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

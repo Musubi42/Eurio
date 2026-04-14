@@ -1,0 +1,221 @@
+<!--
+  Scene : vault-search
+  --------------------
+  Live search with two result sections :
+   - "Dans ton coffre" : coins in state.collection matching the query
+   - "Dans le catalogue · à chasser" : referential coins matching but NOT owned
+-->
+
+<style>
+  .vault-search-root {
+    position: relative;
+    min-height: 100%;
+    background: var(--surface);
+    color: var(--ink);
+    display: flex;
+    flex-direction: column;
+  }
+
+  .vault-search-head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-4) var(--space-3);
+    background: var(--surface);
+    border-bottom: 1px solid rgba(14,14,31,0.06);
+  }
+  .vault-search-field {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    background: var(--surface-1);
+    border: 1px solid rgba(14,14,31,0.06);
+    border-radius: var(--radius-full);
+    padding: 10px 14px;
+  }
+  .vault-search-field svg {
+    width: 16px; height: 16px;
+    fill: none; stroke: var(--ink-400);
+    stroke-width: 1.8; stroke-linecap: round;
+  }
+  .vault-search-field input {
+    flex: 1;
+    outline: none;
+    background: none;
+    font-family: var(--font-ui);
+    font-size: var(--text-sm);
+    color: var(--ink);
+  }
+  .vault-search-field input::placeholder { color: var(--ink-400); }
+
+  .vault-search-cancel {
+    font-family: var(--font-ui);
+    font-size: var(--text-sm);
+    color: var(--indigo-700);
+    padding: 8px 4px;
+    font-weight: 500;
+  }
+
+  .vault-search-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--space-5) var(--space-5) var(--space-10);
+  }
+
+  .vault-search-section + .vault-search-section {
+    margin-top: var(--space-8);
+  }
+  .vault-search-section__title {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-eyebrow);
+    color: var(--ink-400);
+    margin-bottom: var(--space-3);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .vault-search-section__count {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    color: var(--ink-300);
+  }
+
+  .vault-search-results {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .vault-search-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-2);
+    min-height: 64px;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: background var(--duration-fast) var(--ease-out);
+  }
+  .vault-search-row:hover { background: var(--surface-1); }
+  .vault-search-row__coin {
+    width: 44px; height: 44px;
+    flex: 0 0 44px;
+  }
+  .vault-search-row__coin svg { width: 100%; height: auto; }
+  .vault-search-row__meta {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .vault-search-row__title {
+    font-family: var(--font-display);
+    font-size: var(--text-base);
+    color: var(--ink);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .vault-search-row__sub {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--ink-400);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .vault-search-row__cta {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: var(--tracking-eyebrow);
+    text-transform: uppercase;
+    color: var(--gold-deep);
+  }
+
+  .vault-search-row mark {
+    background: rgba(200,168,100,0.28);
+    color: inherit;
+    padding: 0 1px;
+    border-radius: 2px;
+  }
+
+  .vault-search-empty {
+    text-align: center;
+    padding: var(--space-9) var(--space-6);
+    color: var(--ink-400);
+  }
+  .vault-search-empty h3 {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: var(--text-lg);
+    font-weight: 400;
+    color: var(--ink);
+    margin-bottom: var(--space-3);
+  }
+  .vault-search-empty .vault-search-suggest {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin-top: var(--space-4);
+    justify-content: center;
+  }
+  .vault-search-empty .vault-search-suggest button {
+    padding: 6px 12px;
+    border-radius: var(--radius-full);
+    background: var(--surface-1);
+    border: 1px solid var(--gray-100);
+    font-size: var(--text-xs);
+    color: var(--ink);
+  }
+</style>
+
+<section class="vault-search-root" data-scene="vault-search">
+  <header class="vault-search-head">
+    <div class="vault-search-field">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="11" cy="11" r="7"/>
+        <path d="M20 20l-3.5-3.5"/>
+      </svg>
+      <input type="search" placeholder="France 2012, Erasmus…"
+             autocomplete="off" spellcheck="false"
+             aria-label="Rechercher une pièce"
+             data-role="input"/>
+    </div>
+    <button type="button" class="vault-search-cancel" data-action="close">
+      Annuler
+    </button>
+  </header>
+
+  <div class="vault-search-body" data-role="body">
+    <div class="vault-search-empty" data-role="empty">
+      <h3>Cherche une pièce</h3>
+      <p>Essaye <em>France 2012</em> ou <em>Erasmus</em> — on cherchera dans
+         ton coffre et dans le catalogue.</p>
+      <div class="vault-search-suggest">
+        <button type="button" data-suggest="France">France</button>
+        <button type="button" data-suggest="Erasmus">Erasmus</button>
+        <button type="button" data-suggest="2 euros">2 euros</button>
+      </div>
+    </div>
+
+    <div class="vault-search-results-wrap" data-role="results" hidden>
+      <section class="vault-search-section" data-role="section-owned">
+        <div class="vault-search-section__title">
+          <span>Dans ton coffre</span>
+          <span class="vault-search-section__count" data-role="count-owned">0</span>
+        </div>
+        <div class="vault-search-results" data-role="list-owned"></div>
+      </section>
+
+      <section class="vault-search-section" data-role="section-hunt">
+        <div class="vault-search-section__title">
+          <span>Dans le catalogue · à chasser</span>
+          <span class="vault-search-section__count" data-role="count-hunt">0</span>
+        </div>
+        <div class="vault-search-results" data-role="list-hunt"></div>
+      </section>
+    </div>
+  </div>
+</section>

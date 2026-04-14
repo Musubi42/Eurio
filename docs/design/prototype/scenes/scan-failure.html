@@ -1,0 +1,151 @@
+<!--
+  Scene : scan-failure
+  --------------------
+  Scan has been running ~3s without converging. Discreet glass hint bubble
+  suggesting to get closer or find better lighting. The guide ring keeps
+  the detecting (warm) colour. Auto-retries to #/scan after ~3s, but a tap
+  anywhere also returns to idle.
+-->
+
+<style>
+  .scan-failure-root {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 70% 50% at 50% 55%, var(--ink-soft) 0%, var(--ink) 55%, #000 100%);
+    overflow: hidden;
+    color: var(--surface);
+    cursor: pointer;
+  }
+
+  .scan-failure-noise {
+    position: absolute;
+    inset: 0;
+    opacity: 0.14;
+    mix-blend-mode: overlay;
+    pointer-events: none;
+  }
+
+  .scan-failure-header {
+    position: absolute;
+    top: 62px;
+    left: 50%;
+    transform: translateX(-50%);
+    text-align: center;
+    z-index: 2;
+  }
+  .scan-failure-header__title {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: var(--text-lg);
+    font-weight: 400;
+    color: var(--surface);
+    letter-spacing: 0.01em;
+  }
+
+  .scan-failure-guide {
+    position: absolute;
+    top: 48%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 280px;
+    height: 280px;
+    pointer-events: none;
+    animation: scan-failure-pulse 1.4s var(--ease-in-out) infinite;
+  }
+  @keyframes scan-failure-pulse {
+    0%, 100% { opacity: 0.55; transform: translate(-50%, -50%) scale(1); }
+    50%      { opacity: 0.85; transform: translate(-50%, -50%) scale(1.02); }
+  }
+  .scan-failure-corner {
+    position: absolute;
+    width: 28px;
+    height: 28px;
+    border: 2px solid var(--scan-detecting);
+    opacity: 0.9;
+  }
+  .scan-failure-corner--tl { top: 0;    left: 0;    border-right: 0; border-bottom: 0; border-top-left-radius: 6px; }
+  .scan-failure-corner--tr { top: 0;    right: 0;   border-left: 0;  border-bottom: 0; border-top-right-radius: 6px; }
+  .scan-failure-corner--bl { bottom: 0; left: 0;    border-right: 0; border-top: 0;    border-bottom-left-radius: 6px; }
+  .scan-failure-corner--br { bottom: 0; right: 0;   border-left: 0;  border-top: 0;    border-bottom-right-radius: 6px; }
+
+  .scan-failure-bubble {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: 200px;
+    max-width: 280px;
+    padding: var(--space-4) var(--space-5);
+    background: rgba(0,0,0,0.55);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid rgba(216,138,45,0.35);
+    border-radius: var(--radius-lg);
+    text-align: center;
+    box-shadow: 0 0 28px rgba(216,138,45,0.18);
+    animation: scan-failure-bubble-in 0.45s var(--ease-out) forwards;
+  }
+  @keyframes scan-failure-bubble-in {
+    0%   { opacity: 0; transform: translate(-50%, 12px); }
+    100% { opacity: 1; transform: translate(-50%, 0); }
+  }
+  .scan-failure-bubble__label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--scan-detecting);
+    display: block;
+    margin-bottom: 6px;
+  }
+  .scan-failure-bubble__hint {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: var(--text-base);
+    color: var(--surface);
+    line-height: var(--leading-snug);
+  }
+
+  .scan-failure-retry {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: 140px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.45);
+  }
+</style>
+
+<section class="scan-failure-root" data-scene="scan-failure">
+  <svg class="scan-failure-noise" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+    <filter id="scan-failure-turb">
+      <feTurbulence type="fractalNoise" baseFrequency="1.6" numOctaves="2" seed="11"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.55 0"/>
+    </filter>
+    <rect width="100%" height="100%" filter="url(#scan-failure-turb)"/>
+  </svg>
+
+  <div class="scan-failure-header">
+    <div class="eyebrow eyebrow--paper">Scan &middot; ajuste</div>
+    <div class="scan-failure-header__title">Un peu plus pr&egrave;s&hellip;</div>
+  </div>
+
+  <div class="scan-failure-guide" aria-hidden="true">
+    <div class="scan-failure-corner scan-failure-corner--tl"></div>
+    <div class="scan-failure-corner scan-failure-corner--tr"></div>
+    <div class="scan-failure-corner scan-failure-corner--bl"></div>
+    <div class="scan-failure-corner scan-failure-corner--br"></div>
+  </div>
+
+  <div class="scan-failure-bubble" role="status">
+    <span class="scan-failure-bubble__label">Conseil</span>
+    <span class="scan-failure-bubble__hint">
+      Approche un peu &mdash; ou essaie une meilleure lumi&egrave;re.
+    </span>
+  </div>
+
+  <div class="scan-failure-retry">Nouvelle tentative dans quelques secondes</div>
+</section>

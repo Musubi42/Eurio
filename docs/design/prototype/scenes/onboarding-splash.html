@@ -1,0 +1,160 @@
+<!--
+  Scene : onboarding-splash
+  -------------------------
+  Initial launch splash — wordmark Eurio (Fraunces italic), pulsing 2€ coin,
+  dashed progress. Auto-advances to #/onboarding/1 after ~1.4s.
+  NOTE : the router has no `/onboarding/splash` route yet — this scene is
+  reachable only via the sidecar's auto-advance if it is navigated to. To
+  wire it into the first-run flow, Phase 3 should add the route in router.js
+  and redirect `firstRun` to `#/onboarding/splash` instead of `/onboarding/1`.
+-->
+
+<style>
+  /* Full-bleed : hide status bar + bottom nav while this scene is mounted */
+  .screen .statusbar,
+  .screen .bottomnav,
+  .screen .home-indicator { display: none; }
+  #view { padding: 0 !important; }
+
+  .onboarding-splash-root {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-7);
+    background:
+      radial-gradient(ellipse 80% 60% at 50% 35%, var(--indigo-500) 0%, transparent 70%),
+      radial-gradient(ellipse 60% 50% at 50% 100%, var(--indigo-900) 0%, transparent 70%),
+      var(--indigo-800);
+    color: var(--surface);
+    overflow: hidden;
+  }
+
+  .onboarding-splash-root::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image:
+      radial-gradient(circle at 50% 42%, transparent 140px, rgba(200,168,100,0.18) 141px, transparent 143px),
+      radial-gradient(circle at 50% 42%, transparent 190px, rgba(200,168,100,0.10) 191px, transparent 193px),
+      radial-gradient(circle at 50% 42%, transparent 240px, rgba(200,168,100,0.06) 241px, transparent 243px);
+    pointer-events: none;
+    animation: onboarding-splash-compass 9s var(--ease-in-out) infinite;
+  }
+  @keyframes onboarding-splash-compass {
+    0%, 100% { opacity: 0.65; }
+    50%      { opacity: 1; }
+  }
+
+  .onboarding-splash-coin {
+    position: relative;
+    width: 148px;
+    height: 148px;
+    border-radius: 50%;
+    background:
+      radial-gradient(circle at 35% 32%, var(--gold-300) 0%, var(--gold) 42%, var(--gold-700) 82%, var(--gold-deep) 100%);
+    box-shadow:
+      0 0 0 2px rgba(200,168,100,0.35),
+      0 0 32px rgba(200,168,100,0.45),
+      inset 0 2px 0 rgba(255,230,170,0.45),
+      inset 0 -8px 16px rgba(0,0,0,0.25);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: onboarding-splash-breathe 3.4s var(--ease-in-out) infinite;
+  }
+  .onboarding-splash-coin__label {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: 46px;
+    font-weight: 500;
+    color: var(--indigo-900);
+    letter-spacing: -0.02em;
+  }
+  @keyframes onboarding-splash-breathe {
+    0%, 100% { transform: scale(1);    box-shadow: 0 0 0 2px rgba(200,168,100,0.35), 0 0 32px rgba(200,168,100,0.45), inset 0 2px 0 rgba(255,230,170,0.45), inset 0 -8px 16px rgba(0,0,0,0.25); }
+    50%      { transform: scale(1.04); box-shadow: 0 0 0 2px rgba(200,168,100,0.55), 0 0 60px rgba(200,168,100,0.7),  inset 0 2px 0 rgba(255,230,170,0.5),  inset 0 -8px 16px rgba(0,0,0,0.25); }
+  }
+
+  .onboarding-splash-wordmark {
+    position: relative;
+    font-family: var(--font-display);
+    font-size: 56px;
+    font-weight: 400;
+    color: var(--surface);
+    letter-spacing: -0.03em;
+    line-height: 1;
+    z-index: 1;
+  }
+  .onboarding-splash-wordmark em {
+    font-style: italic;
+    color: var(--gold);
+  }
+
+  .onboarding-splash-tagline {
+    position: relative;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: var(--tracking-eyebrow);
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.55);
+    z-index: 1;
+  }
+
+  .onboarding-splash-progress {
+    position: absolute;
+    bottom: 72px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 120px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-3);
+    z-index: 1;
+  }
+  .onboarding-splash-progress__track {
+    width: 100%;
+    height: 1px;
+    background: rgba(200,168,100,0.18);
+    overflow: hidden;
+  }
+  .onboarding-splash-progress__fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, transparent, var(--gold), transparent);
+    animation: onboarding-splash-load 1.4s var(--ease-out) forwards;
+  }
+  @keyframes onboarding-splash-load {
+    0%   { width: 0%; }
+    100% { width: 100%; }
+  }
+  .onboarding-splash-progress__copy {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.38);
+  }
+</style>
+
+<section class="onboarding-splash-root" data-scene="onboarding-splash">
+  <div class="onboarding-splash-coin" aria-hidden="true">
+    <span class="onboarding-splash-coin__label">2€</span>
+  </div>
+
+  <div class="onboarding-splash-wordmark" aria-label="Eurio">
+    Eur<em>io</em>
+  </div>
+
+  <div class="onboarding-splash-tagline">Numismatique &middot; Europ&eacute;enne</div>
+
+  <div class="onboarding-splash-progress" aria-hidden="true">
+    <div class="onboarding-splash-progress__track">
+      <div class="onboarding-splash-progress__fill"></div>
+    </div>
+    <div class="onboarding-splash-progress__copy">Musubi &middot; 2026</div>
+  </div>
+</section>
