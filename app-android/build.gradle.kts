@@ -28,6 +28,12 @@ android {
 
         buildConfigField("String", "SUPABASE_URL", "\"${envProps.getProperty("SUPABASE_URL", "")}\"")
         buildConfigField("String", "SUPABASE_ANON_KEY", "\"${envProps.getProperty("SUPABASE_ANON_KEY", "")}\"")
+
+        // Restrict to arm64-v8a only — all modern Android phones (including Pixel 9a) use this.
+        // Drops OpenCV native libs from ~120 MB (all ABIs) to ~30 MB.
+        ndk {
+            abiFilters.add("arm64-v8a")
+        }
     }
 
     buildTypes {
@@ -76,6 +82,10 @@ dependencies {
     implementation("com.google.ai.edge.litert:litert-support:1.4.2")
     implementation("com.google.ai.edge.litert:litert-gpu:1.4.2")
     implementation("com.google.ai.edge.litert:litert-gpu-api:1.4.2")
+
+    // OpenCV — for HoughCircles fallback detection when YOLO fails on hand-held / cluttered frames.
+    // Official Maven publication since OpenCV 4.9.0.
+    implementation("org.opencv:opencv:4.10.0")
 
     // Room (SQLite)
     val roomVersion = "2.6.1"

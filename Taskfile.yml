@@ -1,0 +1,13 @@
+version: '3'
+
+includes:
+  android:
+    taskfile: ./app-android/Taskfile.yml
+    dir: .
+
+tasks:
+  default:
+    desc: List all available tasks
+    cmds:
+      - task --list-all
+    silent: true

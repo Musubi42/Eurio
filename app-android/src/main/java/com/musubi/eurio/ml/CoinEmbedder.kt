@@ -23,7 +23,7 @@ data class ModelMeta(
  */
 class CoinRecognizer(
     context: Context,
-    modelPath: String = "models/eurio_embedder_v1.tflite",
+    val modelPath: String = "models/eurio_embedder_v1.tflite",
     metaPath: String = "data/model_meta.json",
 ) {
     private val interpreter: Interpreter

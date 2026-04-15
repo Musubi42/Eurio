@@ -14,6 +14,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
+import androidx.camera.core.resolutionselector.ResolutionSelector
+import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.animation.AnimatedVisibility
@@ -46,18 +48,23 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import org.opencv.android.OpenCVLoader
 import com.musubi.eurio.data.CoinDetail
 import com.musubi.eurio.data.SupabaseCoinClient
 import com.musubi.eurio.ml.CoinAnalyzer
 import com.musubi.eurio.ml.CoinDetector
 import com.musubi.eurio.ml.CoinMatch
 import com.musubi.eurio.ml.CoinRecognizer
+import com.musubi.eurio.ml.Detection
+import com.musubi.eurio.ml.DetectionSource
 import com.musubi.eurio.ml.EmbeddingMatcher
 import com.musubi.eurio.ml.ScanResult
 import com.musubi.eurio.ui.theme.EurioTheme
@@ -67,6 +74,12 @@ import java.util.concurrent.Executors
 
 class MainActivity : ComponentActivity() {
 
+    companion object {
+        // Consensus window for stable identification display (see plan, fix ④).
+        private const val CONSENSUS_WINDOW = 5
+        private const val CONSENSUS_THRESHOLD = 3
+    }
+
     private var cameraGranted by mutableStateOf(false)
 
     // Scan state
@@ -74,6 +87,11 @@ class MainActivity : ComponentActivity() {
     private var coinDetail by mutableStateOf<CoinDetail?>(null)
     private var mlStatus by mutableStateOf("Loading model...")
     private var lastFetchedClass: String? = null
+
+    // Frame consensus for stable identification (fix ④)
+    private val recentMatches = ArrayDeque<String?>()  // null = miss/reject
+    private var consensusClass by mutableStateOf<String?>(null)  // sticky
+    private var consensusSimilarity by mutableStateOf(0f)
 
     // ML components (initialized once)
     private var coinRecognizer: CoinRecognizer? = null
@@ -101,6 +119,13 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
+        // Initialize OpenCV native libs before any ML component uses them (Hough fallback).
+        if (!OpenCVLoader.initLocal()) {
+            Log.e("Eurio", "OpenCV init failed — Hough fallback unavailable")
+        } else {
+            Log.d("Eurio", "OpenCV initialized")
+        }
+
         initMl()
         refreshCaptureCount()
 
@@ -123,14 +148,14 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    // YOLO bounding box overlay
+                    // Detection bounding box overlay (YOLO or Hough, all candidates + selected)
                     scanResult?.let { result ->
-                        if (result.detected && result.detectionBbox != null && result.frameWidth > 0) {
+                        if (result.detected && result.frameWidth > 0) {
                             YoloBboxOverlay(
-                                bbox = result.detectionBbox,
+                                detections = result.detections,
+                                selectedIndex = result.selectedDetectionIndex,
                                 frameWidth = result.frameWidth,
                                 frameHeight = result.frameHeight,
-                                confidence = result.detectionConfidence,
                             )
                         }
                     }
@@ -138,6 +163,8 @@ class MainActivity : ComponentActivity() {
                     // Result overlay
                     ScanOverlay(
                         scanResult = scanResult,
+                        consensusClass = consensusClass,
+                        consensusSimilarity = consensusSimilarity,
                         coinDetail = coinDetail,
                         mlStatus = mlStatus,
                         useYolo = useYolo,
@@ -195,11 +222,30 @@ class MainActivity : ComponentActivity() {
     private fun onScanResult(result: ScanResult) {
         scanResult = result
 
-        val topMatch = result.matches.firstOrNull() ?: return
-        // Only fetch from Supabase if the top match changed
-        if (topMatch.className != lastFetchedClass) {
-            lastFetchedClass = topMatch.className
-            fetchCoinDetail(topMatch.className)
+        // Update sliding window (null = frame with no accepted detection)
+        val topClass = result.matches.firstOrNull()?.className
+        recentMatches.addLast(topClass)
+        while (recentMatches.size > CONSENSUS_WINDOW) recentMatches.removeFirst()
+
+        // Compute consensus: class that appears ≥ CONSENSUS_THRESHOLD times in the window.
+        val counts = recentMatches.filterNotNull().groupingBy { it }.eachCount()
+        val newConsensus = counts.entries
+            .filter { it.value >= CONSENSUS_THRESHOLD }
+            .maxByOrNull { it.value }
+            ?.key
+
+        // Sticky: only switch when a NEW consensus is reached; never clear to null.
+        if (newConsensus != null && newConsensus != consensusClass) {
+            consensusClass = newConsensus
+            if (newConsensus != lastFetchedClass) {
+                lastFetchedClass = newConsensus
+                fetchCoinDetail(newConsensus)
+            }
+        }
+
+        // Keep consensusSimilarity fresh for the displayed class
+        if (topClass != null && topClass == consensusClass) {
+            consensusSimilarity = result.matches.first().similarity
         }
     }
 
@@ -243,7 +289,20 @@ class MainActivity : ComponentActivity() {
                             it.surfaceProvider = surfaceProvider
                         }
 
+                        // Target 720×1280 analysis resolution. The default CameraX picks
+                        // something like 480×640 which leaves coins at ~70px after letterbox —
+                        // too small for reliable YOLO detection.
+                        val resolutionSelector = ResolutionSelector.Builder()
+                            .setResolutionStrategy(
+                                ResolutionStrategy(
+                                    android.util.Size(720, 1280),
+                                    ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER,
+                                )
+                            )
+                            .build()
+
                         val imageAnalysis = ImageAnalysis.Builder()
+                            .setResolutionSelector(resolutionSelector)
                             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                             .build()
                             .also {
@@ -298,6 +357,7 @@ class MainActivity : ComponentActivity() {
     private fun captureDebugLog() {
         val result = scanResult ?: return
         val timestamp = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date())
+        val humanTime = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date())
         val dir = getDebugDir()
         dir?.mkdirs()
 
@@ -306,43 +366,127 @@ class MainActivity : ComponentActivity() {
         coinAnalyzer?.captureTimestamp = timestamp
         coinAnalyzer?.captureNextFrame = true
 
-        // Build filenames that will be created
-        val frameFile = "frame_$timestamp.jpg"
-        val cropFile = if (useYolo && result.detected) "crop_$timestamp.jpg" else null
+        val detectorModel = coinDetector?.modelPath ?: "—"
+        val identifierModel = coinRecognizer?.modelPath ?: "—"
+        val identifierMode = coinRecognizer?.meta?.mode ?: "—"
+        val matcherCoins = embeddingMatcher?.coinCount
 
         val logFile = dir?.resolve("capture_$timestamp.txt")
         val log = buildString {
             appendLine("=== Eurio Debug Capture ===")
-            appendLine("Time: $timestamp")
-            appendLine("Files: $frameFile${cropFile?.let { ", $it" } ?: ""}")
-            appendLine("ML Status: $mlStatus")
+            appendLine("Date: $humanTime")
+            appendLine("Capture ID: $timestamp")
             appendLine()
-            appendLine("--- Toggles ---")
-            appendLine("YOLO: ${if (useYolo) "ON" else "OFF"}")
-            appendLine("ArcFace: ${if (useArcFace) "ON" else "OFF"}")
-            appendLine()
-            appendLine("--- Detection ---")
-            appendLine("Detected: ${result.detected}")
-            appendLine("Det Confidence: ${String.format("%.3f", result.detectionConfidence)}")
-            appendLine("Det BBox: ${result.detectionBbox?.let { "[${it.left.toInt()},${it.top.toInt()},${it.right.toInt()},${it.bottom.toInt()}]" } ?: "null"}")
-            appendLine("Frame: ${result.frameWidth}x${result.frameHeight}")
-            appendLine("Crop: ${result.cropSize}")
-            appendLine()
-            appendLine("--- Identification ---")
-            appendLine("Inference: ${result.inferenceTimeMs}ms")
-            result.matches.forEachIndexed { i, m ->
-                appendLine("  #${i+1} ${m.className} → ${String.format("%.3f", m.similarity)} (${(m.similarity*100).toInt()}%)")
+            appendLine("--- Fichiers ---")
+            appendLine("Frame brute     : frame_$timestamp.jpg")
+            appendLine("Frame annotée   : frame_annotated_$timestamp.jpg")
+            if (result.detected) {
+                appendLine("Crop (pièce)    : crop_$timestamp.jpg")
             }
             appendLine()
-            appendLine("--- Coin Detail ---")
+            appendLine("--- Configuration ML ---")
+            appendLine("YOLO (détection de forme pièce)             : ${if (useYolo && hasDetector) "ON" else "OFF"} — $detectorModel")
+            val idState = if (useArcFace) "ON" else "OFF"
+            val matcherSuffix = matcherCoins?.let { ", $it pièces" } ?: ""
+            appendLine("$identifierMode (identification avers pièce) : $idState — $identifierModel$matcherSuffix")
+            appendLine("ML status       : $mlStatus")
+            appendLine("Seuil détection : 0.40 (conf) / IoU 0.45 (NMS)")
+            appendLine()
+            appendLine("--- Image source ---")
+            appendLine("Frame           : ${result.frameWidth}x${result.frameHeight}")
+            appendLine("Camera target   : 720x1280 (ResolutionSelector)")
+            appendLine("Letterbox       : scale=${"%.3f".format(result.letterboxScale)} padX=${result.letterboxPadX} padY=${result.letterboxPadY}")
+            appendLine()
+            appendLine("--- YOLO — détection de forme pièce ---")
+            appendLine("Temps inférence (interpreter) : ${result.yoloInferenceMs}ms")
+            appendLine("Temps total (preprocess+NMS)  : ${result.yoloTotalMs}ms")
+            appendLine("Candidats bruts (>0.40)       : ${result.rawYoloCount}")
+            appendLine("Conservés après NMS           : ${result.yoloKeptCount}")
+            if (result.rawYoloCount == 0) {
+                appendLine("→ YOLO n'a trouvé aucun candidat")
+            }
+            appendLine()
+            appendLine("--- Hough Circle Transform (OpenCV, parallèle à YOLO) ---")
+            if (!result.houghRan) {
+                appendLine("Statut : non exécuté (désactivé ou OpenCV init ratée)")
+            } else {
+                appendLine("Statut                         : EXÉCUTÉ (toujours en parallèle de YOLO)")
+                appendLine("Paramètres                     : radius 8-30% short side, minDist=25%, maxR ceiling=30%")
+                appendLine("Temps OpenCV HoughCircles      : ${result.houghInferenceMs}ms")
+                appendLine("Cercles conservés              : ${result.houghKeptCount}")
+            }
+            appendLine()
+            appendLine("--- Merge YOLO ∪ Hough ---")
+            appendLine("YOLO kept      : ${result.yoloKeptCount}")
+            appendLine("Hough kept     : ${result.houghKeptCount}")
+            appendLine("Dedup (Hough écartés car IoU>0.6 avec YOLO) : ${result.mergeDedupCount}")
+            appendLine("Candidats finaux après cap (5) : ${result.detections.size}")
+            appendLine()
+            appendLine("--- Rerank ArcFace (spread-based decision) ---")
+            appendLine("Temps total rerank : ${result.rerankMs}ms")
+            appendLine("Règle             : top1 > ${CoinAnalyzer.RERANK_TOP1_MIN} ET (top1 > ${CoinAnalyzer.RERANK_CONFIDENT_ALONE} OU spread > ${CoinAnalyzer.RERANK_SPREAD_MIN})")
+            if (result.detections.isEmpty()) {
+                appendLine("→ Aucun candidat à rerank (YOLO et Hough vides)")
+            } else {
+                appendLine("Similarities par candidat :")
+                result.detections.forEachIndexed { i, det ->
+                    val top1 = result.rerankSimilaritiesTop1.getOrNull(i) ?: 0f
+                    val top2 = result.rerankSimilaritiesTop2.getOrNull(i) ?: 0f
+                    val spread = top1 - top2
+                    val marker = if (i == result.selectedDetectionIndex) " ← SÉLECTIONNÉ" else ""
+                    val b = det.bbox
+                    val size = "${(b.right - b.left).toInt()}x${(b.bottom - b.top).toInt()}"
+                    appendLine(
+                        "  #${i + 1} [${det.source}] geom=${"%.2f".format(det.confidence)} " +
+                            "top1=${"%.3f".format(top1)} top2=${"%.3f".format(top2)} spread=${"%.3f".format(spread)} " +
+                            "size=${size}$marker"
+                    )
+                }
+                appendLine("Décision : ${result.rerankDecisionReason}")
+            }
+            appendLine()
+            appendLine("--- $identifierMode — identification d'avers de pièce ---")
+            appendLine("Modèle          : $identifierModel")
+            appendLine("Mode            : $identifierMode")
+            appendLine("Temps inférence : ${result.identificationInferenceMs}ms (= rerank total, winner réutilise)")
+            appendLine("Pipeline total  : ${result.totalInferenceMs}ms")
+            val padPct = when (result.bestDetection?.source) {
+                DetectionSource.HOUGH -> 25
+                DetectionSource.YOLO -> 10
+                null -> 0
+            }
+            appendLine("Crop utilisé    : ${if (result.cropSize.isNotEmpty()) "${result.cropSize} (padding ${padPct}%)" else "— (pas de détection retenue)"}")
+            if (result.matches.isEmpty()) {
+                appendLine("→ Aucun match (rerank rejeté ou pas de détection)")
+            } else {
+                appendLine("Top matches du winner :")
+                result.matches.forEachIndexed { i, m ->
+                    appendLine("  #${i + 1} Numista ${m.className} → similarity=${"%.3f".format(m.similarity)} (${(m.similarity * 100).toInt()}%)")
+                }
+            }
+            appendLine()
+            appendLine("--- Frame consensus (fenêtre=$CONSENSUS_WINDOW, seuil=$CONSENSUS_THRESHOLD) ---")
+            val bufferStr = recentMatches.joinToString(", ") { it ?: "miss" }
+            appendLine("Buffer récent   : [$bufferStr]")
+            val consensusCounts = recentMatches.filterNotNull().groupingBy { it }.eachCount()
+            if (consensusCounts.isEmpty()) {
+                appendLine("Consensus       : aucun (buffer vide ou que des miss)")
+            } else {
+                val sortedCounts = consensusCounts.entries.sortedByDescending { it.value }
+                appendLine("Comptes         : ${sortedCounts.joinToString(", ") { "${it.key}=${it.value}/$CONSENSUS_WINDOW" }}")
+                appendLine("Consensus actif : ${consensusClass ?: "aucun (seuil pas atteint)"}")
+                appendLine("Sim affichée    : ${"%.3f".format(consensusSimilarity)}")
+            }
+            appendLine()
+            appendLine("--- Détail pièce (Supabase) ---")
             coinDetail?.let { d ->
-                appendLine("Name: ${d.name}")
-                appendLine("Country: ${d.country}")
-                appendLine("Year: ${d.year}")
-                appendLine("Value: ${d.face_value}€")
-                appendLine("Type: ${d.type}")
-                appendLine("Image: ${d.image_obverse_url}")
-            } ?: appendLine("No detail fetched")
+                appendLine("Nom             : ${d.name}")
+                appendLine("Pays            : ${d.country}")
+                appendLine("Année           : ${d.year ?: "—"}")
+                appendLine("Valeur faciale  : ${d.face_value?.let { "${it}€" } ?: "—"}")
+                appendLine("Type            : ${d.type ?: "—"}")
+                appendLine("Image avers     : ${d.image_obverse_url ?: "—"}")
+            } ?: appendLine("→ Aucun détail récupéré (pas de match Supabase)")
         }
 
         logFile?.writeText(log)
@@ -365,41 +509,67 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun YoloBboxOverlay(
-    bbox: RectF,
+    detections: List<Detection>,
+    selectedIndex: Int,
     frameWidth: Int,
     frameHeight: Int,
-    confidence: Float,
 ) {
+    if (detections.isEmpty() || frameWidth == 0) return
     Canvas(modifier = Modifier.fillMaxSize()) {
-        // Scale bbox from frame coordinates to canvas coordinates
-        // Camera preview fills the screen, so we scale proportionally
         val scaleX = size.width / frameWidth
         val scaleY = size.height / frameHeight
 
-        val left = bbox.left * scaleX
-        val top = bbox.top * scaleY
-        val right = bbox.right * scaleX
-        val bottom = bbox.bottom * scaleY
+        detections.forEachIndexed { index, det ->
+            val bbox = det.bbox
+            val left = bbox.left * scaleX
+            val top = bbox.top * scaleY
+            val right = bbox.right * scaleX
+            val bottom = bbox.bottom * scaleY
 
-        val color = when {
-            confidence > 0.7f -> Color(0xFF4CAF50)  // green
-            confidence > 0.5f -> Color(0xFFFF9800)  // orange
-            else -> Color(0xFFF44336)                // red
+            val color = when {
+                det.confidence > 0.7f -> Color(0xFF4CAF50)
+                det.confidence > 0.5f -> Color(0xFFFF9800)
+                else -> Color(0xFFF44336)
+            }
+            // Selected detection = thicker stroke
+            val strokeW = if (index == selectedIndex) 8f else 4f
+
+            drawRect(
+                color = color,
+                topLeft = Offset(left, top),
+                size = Size(right - left, bottom - top),
+                style = Stroke(width = strokeW),
+            )
+
+            val label = "${det.source} ${(det.confidence * 100).toInt()}%"
+            val textPaint = android.graphics.Paint().apply {
+                this.color = android.graphics.Color.WHITE
+                textSize = 38f
+                isAntiAlias = true
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+            }
+            val bgPaint = android.graphics.Paint().apply {
+                this.color = color.toArgb()
+                style = android.graphics.Paint.Style.FILL
+                isAntiAlias = true
+            }
+            val textWidth = textPaint.measureText(label)
+            val pad = 8f
+            val labelBottom = (top - pad).coerceAtLeast(38f + pad * 2)
+            val labelTop = labelBottom - 38f - pad * 2
+            drawContext.canvas.nativeCanvas.apply {
+                drawRect(left, labelTop, left + textWidth + pad * 2, labelBottom, bgPaint)
+                drawText(label, left + pad, labelBottom - pad, textPaint)
+            }
         }
-
-        // Draw bounding box
-        drawRect(
-            color = color,
-            topLeft = Offset(left, top),
-            size = Size(right - left, bottom - top),
-            style = Stroke(width = 3f),
-        )
     }
 }
 
 @Composable
 fun ScanOverlay(
     scanResult: ScanResult?,
+    consensusClass: String?,
+    consensusSimilarity: Float,
     coinDetail: CoinDetail?,
     mlStatus: String,
     useYolo: Boolean,
@@ -412,23 +582,20 @@ fun ScanOverlay(
     onClearCaptures: () -> Unit = {},
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
-        // Top: identified coin info
+        // Top: identified coin info — driven by the consensus (sticky across misses)
         AnimatedVisibility(
-            visible = scanResult != null && scanResult.matches.isNotEmpty(),
+            visible = consensusClass != null,
             enter = fadeIn(),
             exit = fadeOut(),
             modifier = Modifier.align(Alignment.TopCenter),
         ) {
-            scanResult?.let { result ->
-                val topMatch = result.matches.firstOrNull()
-                if (topMatch != null) {
-                    CoinResultCard(
-                        match = topMatch,
-                        detail = coinDetail,
-                        modifier = Modifier
-                            .padding(top = 60.dp, start = 16.dp, end = 16.dp),
-                    )
-                }
+            consensusClass?.let { className ->
+                CoinResultCard(
+                    match = CoinMatch(className, consensusSimilarity),
+                    detail = coinDetail,
+                    modifier = Modifier
+                        .padding(top = 60.dp, start = 16.dp, end = 16.dp),
+                )
             }
         }
 
@@ -609,17 +776,26 @@ fun DebugPanel(
         if (scanResult != null) {
             Spacer(modifier = Modifier.height(4.dp))
 
-            // YOLO detection info
-            val yoloInfo = if (scanResult.detected && scanResult.detectionBbox != null) {
-                val b = scanResult.detectionBbox
-                "YOLO: ${String.format("%.0f%%", scanResult.detectionConfidence * 100)} bbox=[${b.left.toInt()},${b.top.toInt()},${b.right.toInt()},${b.bottom.toInt()}] crop=${scanResult.cropSize}"
+            // Detection info (unified YOLO+Hough + rerank)
+            val yoloInfo = if (scanResult.detected) {
+                val best = scanResult.bestDetection!!
+                val b = best.bbox
+                "${best.source}: ${(best.confidence * 100).toInt()}% bbox=[${b.left.toInt()},${b.top.toInt()},${b.right.toInt()},${b.bottom.toInt()}]"
             } else if (useYolo) {
-                "YOLO: no detection"
+                val yK = scanResult.yoloKeptCount
+                val hK = scanResult.houghKeptCount
+                val rej = if (scanResult.rerankRejectedAll) " (rerank rejected)" else ""
+                "DET: miss (yolo=$yK hough=$hK)$rej"
             } else {
-                "YOLO: OFF"
+                "DET: OFF"
+            }
+            val detTimingStr = if (scanResult.houghRan) {
+                "yolo=${scanResult.yoloInferenceMs}ms hough=${scanResult.houghInferenceMs}ms"
+            } else {
+                "yolo=${scanResult.yoloInferenceMs}ms"
             }
             Text(
-                text = "${scanResult.inferenceTimeMs}ms | $yoloInfo",
+                text = "$detTimingStr rerank=${scanResult.rerankMs}ms total=${scanResult.totalInferenceMs}ms | $yoloInfo",
                 color = Color.White.copy(alpha = 0.5f),
                 fontSize = 8.sp,
             )

@@ -1,6 +1,8 @@
 # Handoff — YOLO11-nano déployé, debug du scan à venir
 
-> Session du 2026-04-15. À lire au début de la prochaine session pour reprendre où on s'est arrêté.
+> Session du 2026-04-15 matin. À lire au début de la prochaine session pour reprendre où on s'est arrêté.
+>
+> **⚠️ Ce handoff est maintenant historique.** La session du 2026-04-15 soir a remplacé YOLO seul par un pipeline unifié. Voir `detection-pipeline-unified.md` pour l'architecture actuelle du scan côté Android.
 
 ## État actuel
 

@@ -44,6 +44,9 @@ yolo*.pt
 app-android/src/main/assets/models/test_model.tflite
 ml/debug_captures/eurio_debug
 
+# Debug captures pulled from device (via `go-task android:pull-debug`)
+debug_pull/
+
 # Python
 __pycache__/
 *.pyc

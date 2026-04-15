@@ -1,0 +1,74 @@
+version: '3'
+
+vars:
+  APP_ID: com.musubi.eurio
+  MAIN_ACTIVITY: '{{.APP_ID}}/.MainActivity'
+  DEBUG_DIR_DEVICE: /sdcard/Android/data/{{.APP_ID}}/files/Documents/eurio_debug
+  DEBUG_PULL_ROOT: '{{.ROOT_DIR}}/debug_pull'
+
+tasks:
+  build:
+    desc: Assemble the debug APK
+    dir: '{{.ROOT_DIR}}'
+    cmds:
+      - ./gradlew :app-android:assembleDebug
+
+  install:
+    desc: Build + push APK to the connected device
+    dir: '{{.ROOT_DIR}}'
+    cmds:
+      - ./gradlew :app-android:installDebug
+
+  start:
+    desc: Launch the app on the device (does not rebuild)
+    cmds:
+      - adb shell am start -n {{.MAIN_ACTIVITY}}
+
+  run:
+    desc: Install + start (the default dev loop)
+    cmds:
+      - task: install
+      - task: start
+
+  logs:
+    desc: Tail logcat, filtered on Eurio ML tags
+    cmds:
+      - adb logcat -c
+      - adb logcat Eurio:D CoinAnalyzer:D CoinDetector:D AndroidRuntime:E '*:S'
+
+  logs-all:
+    desc: Tail logcat with no filter
+    cmds:
+      - adb logcat
+
+  devices:
+    desc: List connected adb devices (Wi-Fi or USB)
+    cmds:
+      - adb devices -l
+
+  pull-debug:
+    desc: Pull debug captures from the device into ./debug_pull/TIMESTAMP/
+    vars:
+      TS:
+        sh: date +%Y%m%d_%H%M%S
+    cmds:
+      - mkdir -p {{.DEBUG_PULL_ROOT}}/{{.TS}}
+      - adb pull {{.DEBUG_DIR_DEVICE}}/ {{.DEBUG_PULL_ROOT}}/{{.TS}}/
+      - echo "Pulled to {{.DEBUG_PULL_ROOT}}/{{.TS}}/"
+
+  clean-debug:
+    desc: Delete all debug captures on the device
+    cmds:
+      - adb shell rm -rf {{.DEBUG_DIR_DEVICE}}
+      - echo "Device debug dir cleaned"
+
+  clean:
+    desc: Gradle clean for app-android
+    dir: '{{.ROOT_DIR}}'
+    cmds:
+      - ./gradlew :app-android:clean
+
+  stop:
+    desc: Force-stop the app on the device
+    cmds:
+      - adb shell am force-stop {{.APP_ID}}
