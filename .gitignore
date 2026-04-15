@@ -41,7 +41,7 @@ runs/
 yolo*.pt
 
 # App test/temp models
-app/src/main/assets/models/test_model.tflite
+app-android/src/main/assets/models/test_model.tflite
 ml/debug_captures/eurio_debug
 
 # Python
@@ -51,6 +51,11 @@ __pycache__/
 
 # Kotlin build errors
 .kotlin/
+
+# Node
+node_modules/
+dist/
+.vite/
 
 # Screenshots at root
 Screenshot_*.png

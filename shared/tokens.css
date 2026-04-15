@@ -1,0 +1,178 @@
+/* Eurio — design tokens (source of truth)
+ *
+ * Ce fichier est la SOURCE CANONIQUE des tokens CSS Eurio.
+ * Il est partagé entre tous les projets du monorepo :
+ *   - docs/design/prototype/_shared/tokens.css  → @import de ce fichier
+ *   - admin/                                     → import Vite depuis ../../shared/tokens.css
+ *
+ * Ne JAMAIS hardcoder ces valeurs ailleurs — toujours utiliser var(--…).
+ * Historique de fusion dans docs/design/_shared/DECISIONS.md
+ */
+
+:root {
+  /* ───────── Indigo scale (brand primary) ─────────
+   * Merged from scan (#1A1B4B), coin-detail (indigo-900 #0E0E1F),
+   * vault (indigo-700 #1A1B4B), onboarding (surface #0B0C2E).
+   * We keep #1A1B4B as canonical `--indigo-700` (brand).
+   */
+  --indigo-50:  #EDEDF5;
+  --indigo-100: #D8D9E8;
+  --indigo-200: #B1B3D0;
+  --indigo-300: #8A8DB8;
+  --indigo-400: #5A5B8A;
+  --indigo-500: #33346A;
+  --indigo-600: #242556;
+  --indigo-700: #1A1B4B;  /* BRAND primary */
+  --indigo-800: #14142F;
+  --indigo-900: #0E0E1F;
+  --indigo-950: #0B0C22;
+
+  /* ───────── Gold scale (accents, moments) ───────── */
+  --gold-soft:  #F5EBD3;  /* hover/italic text */
+  --gold-100:   #F5EBD3;
+  --gold-300:   #E0C688;  /* bright */
+  --gold-400:   #D9BF87;
+  --gold:       #C8A864;  /* canonical */
+  --gold-500:   #C8A864;
+  --gold-600:   #B8974E;
+  --gold-700:   #A7883F;
+  --gold-deep:  #8F7637;  /* inscribed, shadowed */
+
+  /* ───────── Surfaces & ink ───────── */
+  --surface:    #FAFAF8;   /* paper app surface */
+  --surface-1:  #F4F3EE;   /* warmer chip/sheet */
+  --surface-2:  #ECEBE4;
+  --surface-3:  #E2E0D6;
+  --paper:      #F5F3EC;   /* hero light variant */
+
+  --ink:        #0E0E1F;   /* deepest text / app bg on dark */
+  --ink-soft:   #14142A;
+  --ink-700:    #2A2B3F;
+  --ink-500:    #55566C;
+  --ink-400:    #7A7B90;
+  --ink-300:    #A6A7B6;
+  --ink-200:    #C8C9D4;
+
+  /* ───────── Neutral grays ───────── */
+  --gray-50:  #F2F2EE;
+  --gray-100: #E4E4DE;
+  --gray-200: #C9C9C1;
+  --gray-300: #A6A69E;
+  --gray-400: #8B8B85;
+  --gray-500: #6B6B66;
+  --gray-600: #5A5A58;
+  --gray-700: #3A3A44;
+  --gray-800: #26262F;
+  --gray-900: #14141A;
+
+  /* ───────── Semantic ───────── */
+  --success:   #2FA971;
+  --success-soft: rgba(47, 169, 113, 0.18);
+  --warning:   #D88A2D;
+  --warning-soft: rgba(216, 138, 45, 0.18);
+  --danger:    #D14343;
+  --danger-soft: rgba(209, 67, 67, 0.18);
+  --danger-muted: #D87878;   /* negative delta, pale */
+  --debug-red: #D14343;       /* LED pastille badge version */
+
+  /* Scan states */
+  --scan-idle:      rgba(255,255,255,0.55);
+  --scan-detecting: var(--warning);
+  --scan-matched:   var(--success);
+  --scan-rejected:  var(--danger);
+
+  /* ───────── Typography ───────── */
+  --font-display: 'Fraunces', Georgia, 'Times New Roman', serif;
+  --font-ui:      'Inter Tight', system-ui, -apple-system, sans-serif;
+  --font-mono:    'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
+
+  --text-xs:    12px;
+  --text-sm:    14px;
+  --text-base:  16px;
+  --text-lg:    20px;
+  --text-xl:    24px;
+  --text-2xl:   32px;
+  --text-3xl:   40px;
+  --text-hero:  60px;
+
+  /* Tabular-friendly line height */
+  --leading-tight: 1.1;
+  --leading-snug:  1.25;
+  --leading-base:  1.45;
+
+  /* Tracking */
+  --tracking-eyebrow: 0.22em;   /* uppercase micro labels */
+  --tracking-tight:  -0.02em;
+
+  /* ───────── Spacing (4/8/12/16/24/32/48) ───────── */
+  --space-0:  0px;
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-7:  28px;
+  --space-8:  32px;
+  --space-9:  40px;
+  --space-10: 48px;
+  --space-11: 64px;
+  --space-12: 96px;
+
+  /* ───────── Radius ───────── */
+  --radius-xs:   6px;
+  --radius-sm:   8px;
+  --radius-md:   12px;
+  --radius-lg:   16px;
+  --radius-xl:   24px;
+  --radius-2xl:  32px;
+  --radius-full: 999px;
+  --radius-device: 54px;
+
+  /* ───────── Shadows & inner highlights ───────── */
+  --shadow-sm:    0 1px 2px rgba(14,14,31,0.04), 0 1px 3px rgba(14,14,31,0.02);
+  --shadow-md:    0 4px 12px rgba(14,14,31,0.06), 0 1px 2px rgba(14,14,31,0.03);
+  --shadow-lg:    0 16px 48px rgba(14,14,31,0.12), 0 4px 12px rgba(14,14,31,0.06);
+  --shadow-card:  0 2px 6px rgba(14,14,31,0.05), 0 8px 24px rgba(14,14,31,0.06);
+  --shadow-indigo:0 8px 24px rgba(26,27,75,0.28);
+  --shadow-gold:  0 0 0 2px var(--gold), 0 0 24px rgba(200,168,100,0.35);
+  --shadow-sheet: 0 -20px 60px rgba(0,0,0,0.5);
+  --shadow-device: 0 50px 100px -20px rgba(14,14,31,0.45),
+                   0 30px 60px -30px rgba(14,14,31,0.35),
+                   0 0 0 1px rgba(255,255,255,0.05) inset,
+                   0 0 0 2px #000;
+
+  --inner-highlight: inset 0 1px 0 rgba(255,255,255,0.12);
+  --inner-highlight-gold: inset 0 1px 0 rgba(255,230,170,0.35);
+
+  /* ───────── Easings & durations ───────── */
+  --ease-out:     cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out:  cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-spring:  cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  --duration-fast: 120ms;
+  --duration-base: 220ms;
+  --duration-slow: 400ms;
+
+  /* ───────── Device viewport ───────── */
+  --device-w: 390px;
+  --device-h: 844px;
+
+  /* ───────── z-index layers ───────── */
+  --z-scene:      1;
+  --z-nav:       50;
+  --z-sheet:     60;
+  --z-statusbar: 70;
+  --z-badge:     80;
+  --z-modal:     90;
+  --z-toast:     100;
+}
+
+/* Reduced motion accessibility */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+    --duration-base: 0ms;
+    --duration-slow: 0ms;
+  }
+}

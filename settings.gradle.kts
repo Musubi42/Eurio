@@ -20,4 +20,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "Eurio"
-include(":app")
+include(":app-android")

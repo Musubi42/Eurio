@@ -1,5 +1,5 @@
 {
-  description = "Eurio – Android + ML dev environment";
+  description = "Eurio – Android + ML + Admin dev environment";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
@@ -60,6 +60,12 @@
 
             # Task runner
             pkgs.go-task
+
+            # Admin web (Vue 3 + Vite)
+            # Node 22 LTS — nodejs_25 n'est plus disponible dans nixpkgs (EOL avril 2025).
+            # Prochaine version disponible : nodejs_22 (LTS jusqu'en 2027).
+            pkgs.nodejs_22
+            pkgs.pnpm
           ];
 
           JAVA_HOME = "${pkgs.jdk17}";
@@ -72,6 +78,13 @@
             echo "  Gradle:  $(gradle --version 2>/dev/null | grep '^Gradle' || echo 'available')"
             echo "  Android: $ANDROID_HOME"
             echo "  Python:  $(python3 --version)"
+            echo "  Node:    $(node --version)"
+            echo "  pnpm:    $(pnpm --version)"
+            echo ""
+            echo "  Secrets admin : exporter via .envrc (direnv) :"
+            echo "    export VITE_SUPABASE_URL=..."
+            echo "    export VITE_SUPABASE_ANON_KEY=..."
+            echo "  Aucun .env file — Vite lit VITE_* depuis l'environnement shell."
           '';
         };
       }
