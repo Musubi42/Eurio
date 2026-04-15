@@ -1,0 +1,529 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 1,
+    "identityHash": "55565fcd41a01c61604039fb58c1a502",
+    "entities": [
+      {
+        "tableName": "coins",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`eurio_id` TEXT NOT NULL, `numista_id` INTEGER, `country` TEXT NOT NULL, `year` INTEGER, `face_value` REAL, `issue_type` TEXT, `series_id` TEXT, `name_fr` TEXT, `name_en` TEXT, `image_obverse_url` TEXT, `image_reverse_url` TEXT, `mintage` INTEGER, `is_withdrawn` INTEGER NOT NULL, `withdrawal_reason` TEXT, `design_description` TEXT, `theme_code` TEXT, PRIMARY KEY(`eurio_id`))",
+        "fields": [
+          {
+            "fieldPath": "eurioId",
+            "columnName": "eurio_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "numistaId",
+            "columnName": "numista_id",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "country",
+            "columnName": "country",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "year",
+            "columnName": "year",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "faceValue",
+            "columnName": "face_value",
+            "affinity": "REAL",
+            "notNull": false
+          },
+          {
+            "fieldPath": "issueType",
+            "columnName": "issue_type",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "seriesId",
+            "columnName": "series_id",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "nameFr",
+            "columnName": "name_fr",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "nameEn",
+            "columnName": "name_en",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "imageObverseUrl",
+            "columnName": "image_obverse_url",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "imageReverseUrl",
+            "columnName": "image_reverse_url",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "mintage",
+            "columnName": "mintage",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "isWithdrawn",
+            "columnName": "is_withdrawn",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "withdrawalReason",
+            "columnName": "withdrawal_reason",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "designDescription",
+            "columnName": "design_description",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "themeCode",
+            "columnName": "theme_code",
+            "affinity": "TEXT",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "eurio_id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_coins_country",
+            "unique": false,
+            "columnNames": [
+              "country"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_coins_country` ON `${TABLE_NAME}` (`country`)"
+          },
+          {
+            "name": "index_coins_year",
+            "unique": false,
+            "columnNames": [
+              "year"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_coins_year` ON `${TABLE_NAME}` (`year`)"
+          },
+          {
+            "name": "index_coins_series_id",
+            "unique": false,
+            "columnNames": [
+              "series_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_coins_series_id` ON `${TABLE_NAME}` (`series_id`)"
+          },
+          {
+            "name": "index_coins_issue_type",
+            "unique": false,
+            "columnNames": [
+              "issue_type"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_coins_issue_type` ON `${TABLE_NAME}` (`issue_type`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "coin_series",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `country` TEXT NOT NULL, `designation_fr` TEXT NOT NULL, `designation_en` TEXT, `minting_started_at` TEXT NOT NULL, `minting_ended_at` TEXT, `minting_end_reason` TEXT, `supersedes_series_id` TEXT, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "country",
+            "columnName": "country",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "designationFr",
+            "columnName": "designation_fr",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "designationEn",
+            "columnName": "designation_en",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "mintingStartedAt",
+            "columnName": "minting_started_at",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mintingEndedAt",
+            "columnName": "minting_ended_at",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "mintingEndReason",
+            "columnName": "minting_end_reason",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "supersedesSeriesId",
+            "columnName": "supersedes_series_id",
+            "affinity": "TEXT",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_coin_series_country",
+            "unique": false,
+            "columnNames": [
+              "country"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_coin_series_country` ON `${TABLE_NAME}` (`country`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "sets",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `kind` TEXT NOT NULL, `name_fr` TEXT NOT NULL, `name_en` TEXT NOT NULL, `description_fr` TEXT, `description_en` TEXT, `criteria_json` TEXT, `param_key` TEXT, `reward_json` TEXT, `display_order` INTEGER NOT NULL, `category` TEXT NOT NULL, `icon` TEXT, `expected_count` INTEGER, `active` INTEGER NOT NULL, `completed_at` INTEGER, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "kind",
+            "columnName": "kind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nameFr",
+            "columnName": "name_fr",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nameEn",
+            "columnName": "name_en",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "descriptionFr",
+            "columnName": "description_fr",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "descriptionEn",
+            "columnName": "description_en",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "criteriaJson",
+            "columnName": "criteria_json",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "paramKey",
+            "columnName": "param_key",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "rewardJson",
+            "columnName": "reward_json",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "displayOrder",
+            "columnName": "display_order",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "category",
+            "columnName": "category",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "icon",
+            "columnName": "icon",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "expectedCount",
+            "columnName": "expected_count",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "active",
+            "columnName": "active",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "completedAt",
+            "columnName": "completed_at",
+            "affinity": "INTEGER",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_sets_category",
+            "unique": false,
+            "columnNames": [
+              "category"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_sets_category` ON `${TABLE_NAME}` (`category`)"
+          },
+          {
+            "name": "index_sets_display_order",
+            "unique": false,
+            "columnNames": [
+              "display_order"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_sets_display_order` ON `${TABLE_NAME}` (`display_order`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "set_members",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`set_id` TEXT NOT NULL, `coin_eurio_id` TEXT NOT NULL, `position` INTEGER, PRIMARY KEY(`set_id`, `coin_eurio_id`), FOREIGN KEY(`set_id`) REFERENCES `sets`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`coin_eurio_id`) REFERENCES `coins`(`eurio_id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "setId",
+            "columnName": "set_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "coinEurioId",
+            "columnName": "coin_eurio_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "position",
+            "columnName": "position",
+            "affinity": "INTEGER",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "set_id",
+            "coin_eurio_id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_set_members_coin_eurio_id",
+            "unique": false,
+            "columnNames": [
+              "coin_eurio_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_set_members_coin_eurio_id` ON `${TABLE_NAME}` (`coin_eurio_id`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "sets",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "set_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "coins",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "coin_eurio_id"
+            ],
+            "referencedColumns": [
+              "eurio_id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "vault_entries",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `coin_eurio_id` TEXT NOT NULL, `scanned_at` INTEGER NOT NULL, `source` TEXT NOT NULL, `confidence` REAL, `notes` TEXT, FOREIGN KEY(`coin_eurio_id`) REFERENCES `coins`(`eurio_id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "coinEurioId",
+            "columnName": "coin_eurio_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "scannedAt",
+            "columnName": "scanned_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "source",
+            "columnName": "source",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "confidence",
+            "columnName": "confidence",
+            "affinity": "REAL",
+            "notNull": false
+          },
+          {
+            "fieldPath": "notes",
+            "columnName": "notes",
+            "affinity": "TEXT",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_vault_entries_coin_eurio_id",
+            "unique": false,
+            "columnNames": [
+              "coin_eurio_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_vault_entries_coin_eurio_id` ON `${TABLE_NAME}` (`coin_eurio_id`)"
+          },
+          {
+            "name": "index_vault_entries_scanned_at",
+            "unique": false,
+            "columnNames": [
+              "scanned_at"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_vault_entries_scanned_at` ON `${TABLE_NAME}` (`scanned_at`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "coins",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "coin_eurio_id"
+            ],
+            "referencedColumns": [
+              "eurio_id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "catalog_meta",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`key` TEXT NOT NULL, `value` TEXT NOT NULL, PRIMARY KEY(`key`))",
+        "fields": [
+          {
+            "fieldPath": "key",
+            "columnName": "key",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "value",
+            "columnName": "value",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "key"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      }
+    ],
+    "views": [],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '55565fcd41a01c61604039fb58c1a502')"
+    ]
+  }
+}

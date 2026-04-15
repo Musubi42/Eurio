@@ -22,7 +22,7 @@ android {
         minSdk = 26
         targetSdk = 36
         versionCode = 1
-        versionName = "1.0"
+        versionName = "0.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -58,6 +58,13 @@ android {
     }
 }
 
+ksp {
+    // Exporte le schéma Room à chaque build → permet de diff/review les migrations
+    // et de détecter les changements de schéma dans le repo.
+    arg("room.schemaLocation", "$projectDir/schemas")
+    arg("room.incremental", "true")
+}
+
 dependencies {
     // Compose
     implementation(libs.androidx.core.ktx)
@@ -68,6 +75,7 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
+    implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
 
     // CameraX

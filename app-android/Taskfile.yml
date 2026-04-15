@@ -72,3 +72,15 @@ tasks:
     desc: Force-stop the app on the device
     cmds:
       - adb shell am force-stop {{.APP_ID}}
+
+  snapshot:
+    desc: Export a fresh catalog_snapshot.json from Supabase into assets/
+    dir: '{{.ROOT_DIR}}'
+    cmds:
+      - python ml/export_catalog_snapshot.py
+
+  snapshot-dry:
+    desc: Preview the catalog snapshot (counts + size) without writing
+    dir: '{{.ROOT_DIR}}'
+    cmds:
+      - python ml/export_catalog_snapshot.py --dry-run
