@@ -33,6 +33,12 @@ ml/checkpoints/
 ml/output/
 ml/yolov8n.pt
 ml/.ebay_token_cache.json
+ml/.dataset_cache/
+
+# YOLO training env + outputs (NixOS 1080 Ti)
+yolo_env/
+runs/
+yolo*.pt
 
 # App test/temp models
 app/src/main/assets/models/test_model.tflite

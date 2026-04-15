@@ -30,33 +30,88 @@
 
 ## Ou entrainer ?
 
-### Option A : PC Windows 10 + 1080 Ti (RECOMMANDE)
+### Option A : PC Linux NixOS + 1080 Ti (RECOMMANDE)
 
 | | Specs |
 |---|---|
-| GPU | NVIDIA 1080 Ti — 11 GB VRAM, CUDA |
+| GPU | NVIDIA 1080 Ti — 11 GB VRAM, CUDA (compute capability 6.1, Pascal) |
 | Avantage | 5-10x plus rapide que Mac MPS pour le training |
 | Temps estime | ~30 min pour 300 epochs sur ~1500 images |
 
 C'est le choix evident : CUDA est le runtime natif de PyTorch/YOLO, la 1080 Ti a 11GB de VRAM (largement suffisant pour nano), et c'est gratuit.
 
-**Setup :**
+**Specificite NixOS** : les wheels pip de PyTorch sont linkes contre `/lib64/ld-linux-x86-64.so.2` et des libs systemes (glibc, libstdc++, CUDA, cuDNN) qui n'existent pas aux chemins standards sur NixOS. Deux options :
+
+#### A.1 — Approche recommandee : `shell.nix` FHS env
+
+Creer `yolo_shell.nix` a la racine du projet :
+
+```nix
+{ pkgs ? import <nixpkgs> {
+    config.allowUnfree = true;
+    config.cudaSupport = true;
+  }
+}:
+
+(pkgs.buildFHSEnv {
+  name = "yolo-cuda-env";
+  targetPkgs = pkgs: with pkgs; [
+    python310
+    python310Packages.pip
+    python310Packages.virtualenv
+    cudaPackages.cudatoolkit
+    cudaPackages.cudnn
+    linuxPackages.nvidia_x11
+    libGL
+    glib
+    zlib
+    stdenv.cc.cc.lib   # libstdc++.so.6 — requis par les wheels PyTorch
+    git
+    which
+  ];
+  runScript = "zsh";
+}).env
+```
+
+Puis :
+
 ```bash
-# 1. Installer Python 3.10+ et CUDA toolkit (si pas deja fait)
-# Verifier : nvidia-smi doit afficher la 1080 Ti
+# 1. Verifier que la carte est vue par le driver (hors shell nix)
+nvidia-smi
+# Doit afficher: NVIDIA GeForce GTX 1080 Ti, driver version, CUDA version
 
-# 2. Creer un venv
+# 2. Entrer dans le FHS env
+nix-shell yolo_shell.nix
+
+# 3. Creer et activer le venv (maintenant on est dans un /usr/lib /bin classique)
 python -m venv yolo_env
-yolo_env\Scripts\activate
+source yolo_env/bin/activate
 
-# 3. Installer PyTorch CUDA + Ultralytics
+# 4. Installer PyTorch CUDA + Ultralytics
+#    cu121 fonctionne avec la 1080 Ti (Pascal reste supporte dans les wheels actuels)
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
-pip install "ultralytics>=8.4.0"
+pip install "ultralytics>=8.4.0" onnx2tf
 
-# 4. Verifier
+# 5. Verifier
 python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"
 # Doit afficher: True NVIDIA GeForce GTX 1080 Ti
 ```
+
+A chaque nouvelle session : `nix-shell yolo_shell.nix` puis `source yolo_env/bin/activate`.
+
+#### A.2 — Alternative : `nix-ld` (si deja active sur ton systeme)
+
+Si tu as deja `programs.nix-ld.enable = true;` dans ta config NixOS, tu peux rester dans un shell normal et juste faire :
+
+```bash
+# Ajouter les libs CUDA a NIX_LD_LIBRARY_PATH via nix-ld, puis
+python -m venv yolo_env
+source yolo_env/bin/activate
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+pip install "ultralytics>=8.4.0" onnx2tf
+```
+
+Plus simple mais exige que `nix-ld` soit configure avec cudatoolkit/cudnn/nvidia_x11 dans `programs.nix-ld.libraries`. Si tu ne sais pas si c'est le cas : utilise l'option A.1.
 
 ### Option B : Mac M3 Air (MPS)
 
@@ -93,7 +148,7 @@ Utilisable en depannage, mais pas ideal pour iterer rapidement.
 
 Bonne option de backup si le PC Windows pose probleme.
 
-### Verdict : PC 1080 Ti > Colab > Mac > Roboflow
+### Verdict : PC NixOS 1080 Ti > Colab > Mac > Roboflow
 
 ---
 
@@ -184,7 +239,8 @@ remap_to_single_class("datasets/coin_detect_v2/val/labels")
 ### Etape 3 : Entrainer YOLO11-nano
 
 ```bash
-# Sur le PC Windows avec 1080 Ti
+# Sur le PC NixOS avec 1080 Ti
+# (dans nix-shell yolo_shell.nix + venv active)
 yolo detect train \
   model=yolo11n.pt \
   data=datasets/coin_detect_v2/data.yaml \
@@ -292,10 +348,13 @@ Pour YOLO11 : **ne pas utiliser `disable_group_convolution=True`** dans onnx2tf,
 
 ## Checklist avant de commencer
 
-- [ ] PC Windows : Python 3.10+ installe
-- [ ] PC Windows : CUDA toolkit installe, `nvidia-smi` fonctionne
-- [ ] PC Windows : `pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121`
-- [ ] PC Windows : `pip install "ultralytics>=8.4.0" onnx2tf`
+- [ ] PC NixOS : driver NVIDIA charge, `nvidia-smi` affiche la 1080 Ti
+- [ ] PC NixOS : `yolo_shell.nix` cree a la racine du projet
+- [ ] PC NixOS : `nix-shell yolo_shell.nix` entre sans erreur
+- [ ] PC NixOS : venv cree + `source yolo_env/bin/activate`
+- [ ] PC NixOS : `pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121`
+- [ ] PC NixOS : `pip install "ultralytics>=8.4.0" onnx2tf`
+- [ ] PC NixOS : `torch.cuda.is_available()` renvoie `True`
 - [ ] Telecharger dataset OwnSoft Euro (format YOLO11)
 - [ ] Telecharger dataset YoloCOIN (format YOLO11)
 - [ ] Preparer ~100-200 images background
