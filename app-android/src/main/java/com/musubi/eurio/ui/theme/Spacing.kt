@@ -7,26 +7,22 @@
 
 package com.musubi.eurio.ui.theme
 
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Shapes
 import androidx.compose.ui.unit.dp
 
-// Mirror de --radius-* dans shared/tokens.css
-object EurioRadii {
-    val xs = 6.dp
-    val sm = 8.dp
-    val md = 12.dp
-    val lg = 16.dp
-    val xl = 24.dp
-    val r2xl = 32.dp
-    val full = 999.dp
-    val device = 54.dp
+// Mirror de --space-* dans shared/tokens.css
+// Convention : sN = N comme dans le proto (ex : s4 = var(--space-4) = 16px).
+object EurioSpacing {
+    val s0 = 0.dp
+    val s1 = 4.dp
+    val s2 = 8.dp
+    val s3 = 12.dp
+    val s4 = 16.dp
+    val s5 = 20.dp
+    val s6 = 24.dp
+    val s7 = 28.dp
+    val s8 = 32.dp
+    val s9 = 40.dp
+    val s10 = 48.dp
+    val s11 = 64.dp
+    val s12 = 96.dp
 }
-
-val EurioShapes = Shapes(
-    extraSmall = RoundedCornerShape(EurioRadii.xs),
-    small = RoundedCornerShape(EurioRadii.sm),
-    medium = RoundedCornerShape(EurioRadii.md),
-    large = RoundedCornerShape(EurioRadii.lg),
-    extraLarge = RoundedCornerShape(EurioRadii.xl),
-)

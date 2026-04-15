@@ -11,3 +11,14 @@ tasks:
     cmds:
       - task --list-all
     silent: true
+
+  tokens:generate:
+    desc: Regenerate Android theme files (Color/Shape/Spacing) from shared/tokens.css
+    cmds:
+      - node scripts/generate_android_tokens.mjs
+
+  tokens:check:
+    desc: Run the token generator and fail if it produces unstaged changes (CI guard)
+    cmds:
+      - node scripts/generate_android_tokens.mjs
+      - git diff --exit-code app-android/src/main/java/com/musubi/eurio/ui/theme/Color.kt app-android/src/main/java/com/musubi/eurio/ui/theme/Shape.kt app-android/src/main/java/com/musubi/eurio/ui/theme/Spacing.kt

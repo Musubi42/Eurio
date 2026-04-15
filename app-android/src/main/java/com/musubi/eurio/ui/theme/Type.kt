@@ -2,17 +2,41 @@ package com.musubi.eurio.ui.theme
 
 import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
+import com.musubi.eurio.R
 
-// TODO Phase 1+: charger les fonts custom (Fraunces, Inter Tight, JetBrains Mono)
-// depuis res/font/ une fois les fichiers .ttf ajoutés. Pour l'instant on utilise
-// les stacks système qui donnent un rendu proche sur Android (serif pour display,
-// sans-serif pour UI, monospace pour debug).
-private val DisplayFamily = FontFamily.Serif
-private val UiFamily = FontFamily.SansSerif
-val MonoFamily = FontFamily.Monospace
+// Fonts chargées depuis res/font/ — les 6 .ttf minimaux couvrant les poids
+// effectivement utilisés dans le proto (Regular/Italic display, Regular/Medium/
+// SemiBold UI, Medium mono). Si un poids manque, Compose remplace par le plus
+// proche disponible dans la famille — pas de fallback silencieux vers le
+// système tant qu'au moins un Font est présent.
+
+val FrauncesFamily = FontFamily(
+    Font(R.font.fraunces_regular, FontWeight.Normal, FontStyle.Normal),
+    Font(R.font.fraunces_italic, FontWeight.Normal, FontStyle.Italic),
+)
+
+val InterTightFamily = FontFamily(
+    Font(R.font.inter_tight_regular, FontWeight.Normal),
+    Font(R.font.inter_tight_medium, FontWeight.Medium),
+    Font(R.font.inter_tight_semibold, FontWeight.SemiBold),
+)
+
+val JetBrainsMonoFamily = FontFamily(
+    Font(R.font.jetbrains_mono_medium, FontWeight.Medium),
+)
+
+// Aliases sémantiques qui matchent la convention du proto (tokens.css) :
+//   --font-display = Fraunces (serif)
+//   --font-ui      = Inter Tight (sans-serif)
+//   --font-mono    = JetBrains Mono
+private val DisplayFamily = FrauncesFamily
+private val UiFamily = InterTightFamily
+val MonoFamily = JetBrainsMonoFamily
 
 val EurioTypography = Typography(
     displayLarge = TextStyle(
