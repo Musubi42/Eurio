@@ -91,7 +91,7 @@ go-task embeddings
 go-task deploy
 ```
 
-**Copies to:** `app/src/main/assets/models/` and `app/src/main/assets/data/`
+**Copies to:** `app-android/src/main/assets/models/` and `app-android/src/main/assets/data/`
 
 ### 9. `seed` — Populate Supabase
 

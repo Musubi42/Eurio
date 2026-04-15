@@ -150,7 +150,7 @@ Le toggle YOLO est grisé si `coin_detector.tflite` n'est pas dans les assets.
 
 ```bash
 # Copier le détecteur dans les assets Android
-cp ml/output/coin_detector.tflite app/src/main/assets/models/
+cp ml/output/coin_detector.tflite app-android/src/main/assets/models/
 ```
 
 L'app détecte automatiquement la présence du modèle au démarrage.

@@ -1,21 +1,30 @@
 # Prototype — Open Questions (post-Phase 3)
 
 > Consolidated questions across all phases. Prioritised P0 (must answer
-> before app build) → P2 (defer to v2). Date : 2026-04-13.
+> before app build) → P2 (defer to v2). Date : 2026-04-13, dernière revue
+> 2026-04-15.
 
 ---
 
 ## P0 · Must answer before Kotlin app build
 
-### 1. Set definitions — single source of truth
-The list of "achievement sets" lives in two places :
-`scenes/profile.js` (UI computation) and `_shared/state.js`
-(`SET_DEFINITIONS`, used by auto-unlock). Currently only `circulation-fr` is
-mirrored — `eurozone-founding` and `grande-chasse` are NOT yet auto-unlock-
-able. Decide whether to :
-- (a) Mirror all sets in `state.js` (small dup, but state stays the source).
-- (b) Move set definitions to `data.js` and import from both consumers.
-- (c) In the Kotlin app, model sets as first-class entities in Supabase.
+### 1. ~~Set definitions — single source of truth~~ ✅ Résolu 2026-04-15
+
+**Décision** : option (c) étendue — les sets sont des entités Supabase first-class
+(`sets`, `set_members`, `sets_audit`), avec taxonomie 4 types (structurel / curé /
+paramétré / dynamique), DSL figé v1, complétion utilisateur 100% locale.
+L'enrichissement metadata `coins` (issue_type, series, ruler, theme_code) est un
+prérequis. Un outil admin séparé (Vue 3 + shadcn-vue + Vercel + Supabase) est
+documenté mais développement différé post-launch v1.
+
+**Pour le proto navigable** : en attente du re-bootstrap du référentiel enrichi, puis
+`_shared/sets.js` généré au format final et consommé par `state.js` + `profile.js`
+(plus de duplication).
+
+**Voir** :
+- [`docs/design/_shared/sets-architecture.md`](../../_shared/sets-architecture.md)
+- [`docs/design/admin/README.md`](../../admin/README.md)
+- [`docs/DECISIONS.md`](../../../DECISIONS.md) §« Sets d'achievement » et §« Admin tooling »
 
 ### 2. Reset confirm UX
 `profile-settings` reset uses an inline `.profile-settings-confirm` panel.

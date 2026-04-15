@@ -250,10 +250,10 @@ Copier les artefacts ML dans le projet Android :
 
 ```bash
 # Modèle TFLite
-cp ml/output/eurio_embedder_v1.tflite android/app/src/main/assets/models/
+cp ml/output/eurio_embedder_v1.tflite app-android/src/main/assets/models/
 
 # Base d'embeddings
-cp ml/output/embeddings_v1.json android/app/src/main/assets/data/
+cp ml/output/embeddings_v1.json app-android/src/main/assets/data/
 ```
 
 Créer les classes Kotlin pour charger et utiliser le modèle :

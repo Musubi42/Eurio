@@ -102,7 +102,7 @@ val V1_SETS = listOf(
 )
 ```
 
-Où est-ce que ça vit ? Probablement dans un fichier Kotlin `app/src/main/java/com/musubi/eurio/achievements/SetCatalog.kt`. Statique. Pas de table Room. Modifiable uniquement par une release.
+Où est-ce que ça vit ? Probablement dans un fichier Kotlin `app-android/src/main/java/com/musubi/eurio/achievements/SetCatalog.kt`. Statique. Pas de table Room. Modifiable uniquement par une release.
 
 **Alternative** : table Room `set_definition` pour permettre des mises à jour via sync Supabase. Question ouverte, voir ci-dessous.
 

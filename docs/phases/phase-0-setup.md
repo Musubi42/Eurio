@@ -241,7 +241,7 @@ curl -L -o mobilenet_v3_small.tflite \
   "https://storage.googleapis.com/mediapipe-models/image_classifier/efficientnet_lite0/float32/1/efficientnet_lite0.tflite"
 
 # Le placer dans le projet
-# → app/src/main/assets/models/test_model.tflite
+# → app-android/src/main/assets/models/test_model.tflite
 ```
 
 ### Code de test
@@ -490,7 +490,7 @@ Eurio/                              # Ce repo
 │       └── phase-5-polish-beta.md
 ├── flake.nix                       # Nix devShell (JDK, SDK, Python, etc.)
 ├── .envrc                          # direnv → use flake
-├── app/                            # Projet Android (Kotlin + Compose)
+├── app-android/                    # Projet Android (Kotlin + Compose)
 │   └── ... (créé par Android Studio)
 └── ml/                             # Scripts d'entraînement Python
     ├── train_embedder.py

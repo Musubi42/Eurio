@@ -107,11 +107,11 @@ Le TFLite float32 fait 12 MB. Options :
 | `ml/import_numista.py` | Import catalogue Numista |
 | `ml/augment_synthetic.py` | Augmentation d'images |
 | `ml/Taskfile.yml` | Toutes les commandes go-task |
-| `app/.../ml/CoinDetector.kt` | Wrapper TFLite YOLO (output [1,5,2100]) |
-| `app/.../ml/CoinAnalyzer.kt` | Pipeline 2 modèles + capture debug |
-| `app/.../ml/CoinEmbedder.kt` | Wrapper TFLite ArcFace/classification |
-| `app/.../ml/EmbeddingMatcher.kt` | Cosine similarity matching |
-| `app/.../MainActivity.kt` | UI avec toggles + capture + bbox overlay |
+| `app-android/.../ml/CoinDetector.kt` | Wrapper TFLite YOLO (output [1,5,2100]) |
+| `app-android/.../ml/CoinAnalyzer.kt` | Pipeline 2 modèles + capture debug |
+| `app-android/.../ml/CoinEmbedder.kt` | Wrapper TFLite ArcFace/classification |
+| `app-android/.../ml/EmbeddingMatcher.kt` | Cosine similarity matching |
+| `app-android/.../MainActivity.kt` | UI avec toggles + capture + bbox overlay |
 | `docs/adr/003-yolo-tflite-export.md` | Comment exporter YOLO en TFLite |
 | `docs/research/yolo-detection-findings.md` | Analyse des problèmes YOLO |
 
@@ -133,7 +133,7 @@ go-task detect-train          # Entraîner + exporter
 .venv/bin/python -c "from ultralytics import YOLO; YOLO('output/detection/coin_detector/weights/best.pt').export(format='onnx', imgsz=320, simplify=True, nms=False)"
 .venv/bin/python -m onnx2tf -i output/detection/coin_detector/weights/best.onnx -o output/detection/coin_detector/weights/tflite_no_nms
 cp output/detection/coin_detector/weights/tflite_no_nms/best_float32.tflite output/coin_detector.tflite
-cp output/coin_detector.tflite ../app/src/main/assets/models/
+cp output/coin_detector.tflite ../app-android/src/main/assets/models/
 
 # Numista
 .venv/bin/python import_numista.py --retry-images --retry-delay 2

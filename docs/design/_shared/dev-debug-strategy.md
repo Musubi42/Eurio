@@ -29,7 +29,7 @@ Pour itérer efficacement, Raphaël a besoin de voir en temps réel :
 ## Les patterns standards dans l'industrie
 
 ### Pattern 1 — Build variants Android natifs (`debug` vs `release`)
-Code dans `app/src/debug/java/` vs `app/src/main/java/`. Le code `debug/` n'est **littéralement pas** compilé dans l'APK release. Zéro risque de fuite. Standard Android, utilisé par la plupart des apps open source.
+Code dans `app-android/src/debug/java/` vs `app-android/src/main/java/`. Le code `debug/` n'est **littéralement pas** compilé dans l'APK release. Zéro risque de fuite. Standard Android, utilisé par la plupart des apps open source.
 
 ### Pattern 2 — `BuildConfig.DEBUG` + branches conditionnelles
 `if (BuildConfig.DEBUG) { ... }` — R8/ProGuard strippe le code mort en release. Simple, mais le code reste dans le même fichier, plus facile à oublier.
@@ -60,9 +60,9 @@ Trois flavors : `dev`, `internal`, `release`. `internal` = release signé + outi
    - L'user final ne voit rien de différent de la prod normale.
    - Accessible uniquement via un **geste secret** qui persiste dans DataStore.
 
-3. **Le code de l'overlay vit dans `app/src/main/`**, pas dans `app/src/debug/`.
+3. **Le code de l'overlay vit dans `app-android/src/main/`**, pas dans `app-android/src/debug/`.
    - Raison : on veut qu'il soit compilé en release aussi pour le pattern 3.
-   - Les *outils* de debug qui n'ont absolument aucune raison d'exister en prod (replay de frames, dump complet de l'état interne, mock data) peuvent vivre dans `app/src/debug/` et être no-op en release via une interface.
+   - Les *outils* de debug qui n'ont absolument aucune raison d'exister en prod (replay de frames, dump complet de l'état interne, mock data) peuvent vivre dans `app-android/src/debug/` et être no-op en release via une interface.
 
 ### Flag runtime
 
@@ -129,7 +129,7 @@ Une fois activé, le mode dev reste activé entre les sessions. Un 2ème cycle d
 ## Où vit quoi
 
 ```
-app/src/main/java/com/musubi/eurio/
+app-android/src/main/java/com/musubi/eurio/
 ├── debug/
 │   ├── DebugState.kt                  # le flag runtime
 │   ├── DebugVersionBadge.kt           # le composable du badge top-left avec 7-tap detector
@@ -138,15 +138,15 @@ app/src/main/java/com/musubi/eurio/
 │       └── ScanDebugViewModel.kt
 ```
 
-Note : `app/src/main/java/.../debug/` existe bien en **main**, pas en source set debug. Le dossier s'appelle `debug` pour la sémantique, mais c'est du code de prod minifié.
+Note : `app-android/src/main/java/.../debug/` existe bien en **main**, pas en source set debug. Le dossier s'appelle `debug` pour la sémantique, mais c'est du code de prod minifié.
 
 Pour les features qui doivent VRAIMENT être strippées en release (mock data, replay tools qui accèdent à un dossier spécifique) :
 
 ```
-app/src/main/java/com/musubi/eurio/debug/
+app-android/src/main/java/com/musubi/eurio/debug/
 └── DebugTools.kt              # interface + default no-op impl
 
-app/src/debug/java/com/musubi/eurio/debug/
+app-android/src/debug/java/com/musubi/eurio/debug/
 └── DebugTools.kt              # impl réelle avec replay, mock, dump
 ```
 

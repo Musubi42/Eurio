@@ -5,7 +5,7 @@ vars:
   DATASET: "{{.ROOT_DIR}}/datasets/eurio-poc"
   CHECKPOINTS: "{{.ROOT_DIR}}/checkpoints"
   OUTPUT: "{{.ROOT_DIR}}/output"
-  ASSETS: "{{.ROOT_DIR}}/../app/src/main/assets"
+  ASSETS: "{{.ROOT_DIR}}/../app-android/src/main/assets"
 
 tasks:
   # ---------- Full pipeline ----------

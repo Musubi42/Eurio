@@ -73,7 +73,7 @@ cp output/detection/coin_detector/weights/tflite_out/best_integer_quant.tflite \
    output/coin_detector.tflite
 
 # 4. Déployer dans les assets Android
-cp output/coin_detector.tflite ../app/src/main/assets/models/
+cp output/coin_detector.tflite ../app-android/src/main/assets/models/
 ```
 
 ## Alternatives considérées

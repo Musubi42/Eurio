@@ -51,7 +51,7 @@ Ce n'est pas le focus du MVP. On construit Android d'abord, on porte ensuite.
 ## Architecture de l'app
 
 ```
-app/
+app-android/
 ├── data/
 │   ├── local/              # Room DB (cache, collection)
 │   ├── remote/             # Supabase client, API calls
