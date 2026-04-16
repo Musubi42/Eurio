@@ -30,6 +30,27 @@
 
         androidSdk = androidComposition.androidsdk;
 
+        # Maestro CLI — mobile UI automation for parity screenshot capture.
+        # Not in nixpkgs; packaged from the GitHub release zip.
+        maestro = pkgs.stdenv.mkDerivation rec {
+          pname = "maestro";
+          version = "2.4.0";
+          src = pkgs.fetchzip {
+            url = "https://github.com/mobile-dev-inc/Maestro/releases/download/cli-${version}/maestro.zip";
+            hash = "sha256-4M+1KaIU6xlV8Rpq8kNCLWc5AMcrAifDZoXOiJbyu6s=";
+            stripRoot = false;
+          };
+          nativeBuildInputs = [ pkgs.makeWrapper ];
+          dontBuild = true;
+          installPhase = ''
+            mkdir -p $out/bin $out/lib
+            cp -r maestro/* $out/lib/
+            chmod +x $out/lib/bin/maestro
+            makeWrapper $out/lib/bin/maestro $out/bin/maestro \
+              --set JAVA_HOME "${pkgs.jdk17}"
+          '';
+        };
+
         pythonEnv = pkgs.python312.withPackages (ps: with ps; [
           torch
           torchvision
@@ -43,6 +64,9 @@
           beautifulsoup4
           lxml
           anyascii
+          # ML API (FastAPI)
+          fastapi
+          uvicorn
         ]);
       in
       {
@@ -60,6 +84,9 @@
 
             # Task runner
             pkgs.go-task
+
+            # Parity viewer — Maestro UI automation
+            maestro
 
             # Admin web (Vue 3 + Vite)
             # Node 22 LTS — nodejs_25 n'est plus disponible dans nixpkgs (EOL avril 2025).
@@ -80,6 +107,7 @@
             echo "  Python:  $(python3 --version)"
             echo "  Node:    $(node --version)"
             echo "  pnpm:    $(pnpm --version)"
+            echo "  Maestro: $(maestro --version 2>/dev/null || echo 'not available')"
             echo ""
             echo "  Secrets admin : exporter via .envrc (direnv) :"
             echo "    export VITE_SUPABASE_URL=..."

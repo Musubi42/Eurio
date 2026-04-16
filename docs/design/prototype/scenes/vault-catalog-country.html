@@ -1,0 +1,251 @@
+<!--
+  Scene : vault-catalog-country
+  -----------------------------
+  Drill-down from vault-catalog-map for a single eurozone country.
+  Shows :
+    - back button to /vault/catalog
+    - hero : big flag + country name + ratio + progress bar
+    - issue_type filter chips (Tout / Circulation / Commémoratives)
+    - full planche grid of all coins of the country (owned + silhouettes)
+    - long-press on a missing cell → mock "Marquer comme possédée"
+
+  Route : /vault/catalog/:iso
+  Mock data lives in vault-catalog-country.js.
+-->
+
+<style>
+  .scene-vcc-root {
+    position: relative;
+    min-height: 100%;
+    background: var(--surface);
+    color: var(--ink);
+    padding: 0 0 var(--space-10);
+  }
+
+  .scene-vcc-topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--space-3) var(--space-5);
+  }
+  .scene-vcc-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--ink-500);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    padding: 8px 2px;
+  }
+  .scene-vcc-back svg {
+    width: 14px; height: 14px;
+    fill: none; stroke: currentColor; stroke-width: 1.8;
+    stroke-linecap: round; stroke-linejoin: round;
+  }
+  .scene-vcc-topbar__more {
+    width: 36px; height: 36px;
+    border-radius: var(--radius-full);
+    background: var(--surface-1);
+    border: 1px solid rgba(14, 14, 31, 0.06);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--ink);
+  }
+  .scene-vcc-topbar__more svg { width: 16px; height: 16px; }
+
+  /* ───────── Hero ───────── */
+  .scene-vcc-hero {
+    position: relative;
+    padding: var(--space-3) var(--space-5) var(--space-6);
+    display: flex;
+    align-items: center;
+    gap: var(--space-5);
+  }
+  .scene-vcc-hero::after {
+    content: "";
+    position: absolute;
+    left: var(--space-5); right: var(--space-5); bottom: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(200, 168, 100, 0.5) 20%, rgba(200, 168, 100, 0.5) 80%, transparent);
+  }
+  .scene-vcc-flag {
+    flex: 0 0 88px;
+    width: 88px;
+    height: 88px;
+    border-radius: 50%;
+    background: var(--surface-1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 56px;
+    border: 1px solid rgba(14, 14, 31, 0.08);
+    box-shadow:
+      inset 0 -3px 6px rgba(14, 14, 31, 0.08),
+      var(--shadow-sm);
+  }
+  .scene-vcc-hero__body { flex: 1; min-width: 0; }
+  .scene-vcc-hero__eyebrow {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: var(--tracking-eyebrow);
+    text-transform: uppercase;
+    color: var(--ink-400);
+    margin-bottom: 4px;
+  }
+  .scene-vcc-hero__name {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-weight: 400;
+    font-size: 34px;
+    line-height: 1;
+    color: var(--ink);
+    letter-spacing: -0.02em;
+    margin-bottom: var(--space-2);
+  }
+  .scene-vcc-hero__ratio {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--ink-500);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .scene-vcc-hero__ratio strong {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-weight: 400;
+    font-size: var(--text-lg);
+    color: var(--ink);
+    letter-spacing: 0;
+    text-transform: none;
+    margin-right: 4px;
+  }
+  .scene-vcc-hero__bar .progress-track {
+    height: 3px;
+  }
+
+  /* ───────── Filters ───────── */
+  .scene-vcc-filters {
+    display: flex;
+    justify-content: center;
+    padding: var(--space-5) var(--space-5) var(--space-3);
+  }
+  .scene-vcc-filters .tabbed-nav {
+    background: var(--surface-1);
+  }
+
+  /* ───────── Planche (3 cols) ───────── */
+  .scene-vcc-planche-wrap {
+    padding: var(--space-2) var(--space-5) 0;
+  }
+  .scene-vcc-planche-wrap .planche__grid {
+    --planche-cols: 3;
+    gap: var(--space-3);
+  }
+  .scene-vcc-planche-wrap .disc__val { font-size: 14px; }
+
+  /* ───────── Eyebrow above planche ───────── */
+  .scene-vcc-section-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: var(--space-3);
+    padding: 0 2px;
+  }
+  .scene-vcc-section-head h2 {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-weight: 400;
+    font-size: var(--text-lg);
+    color: var(--ink);
+  }
+  .scene-vcc-section-head__count {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-400);
+  }
+
+  /* ───────── Issue type filters ───────── */
+  .scene-vcc-filter-row {
+    display: inline-flex;
+    padding: 3px;
+    background: var(--surface-1);
+    border-radius: var(--radius-full);
+    border: 1px solid rgba(14, 14, 31, 0.06);
+  }
+  .scene-vcc-filter-row button {
+    padding: 7px 14px;
+    border-radius: var(--radius-full);
+    font-family: var(--font-ui);
+    font-size: var(--text-xs);
+    color: var(--ink-400);
+  }
+  .scene-vcc-filter-row button[aria-selected="true"] {
+    background: var(--surface);
+    color: var(--ink);
+    box-shadow: var(--shadow-sm);
+  }
+</style>
+
+<section class="scene-vcc-root" data-scene="vault-catalog-country">
+
+  <!-- Topbar -->
+  <div class="scene-vcc-topbar">
+    <a href="#/vault/catalog" class="scene-vcc-back">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+      <span>Carte</span>
+    </a>
+    <button type="button" class="scene-vcc-topbar__more" aria-label="Plus d'options">
+      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <circle cx="5"  cy="12" r="1.5"/>
+        <circle cx="12" cy="12" r="1.5"/>
+        <circle cx="19" cy="12" r="1.5"/>
+      </svg>
+    </button>
+  </div>
+
+  <!-- Hero -->
+  <header class="scene-vcc-hero">
+    <div class="scene-vcc-flag" data-role="flag">🇫🇷</div>
+    <div class="scene-vcc-hero__body">
+      <div class="scene-vcc-hero__eyebrow">Catalogue · pays</div>
+      <h1 class="scene-vcc-hero__name" data-role="name">France</h1>
+      <div class="scene-vcc-hero__ratio">
+        <strong data-role="ratio">12 / 18</strong> possédées
+        · <span data-role="pct">66%</span>
+      </div>
+      <div class="scene-vcc-hero__bar progress-bar">
+        <div class="progress-track">
+          <div class="progress-fill" data-role="fill" style="width: 66%;"></div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Filters -->
+  <div class="scene-vcc-filters">
+    <div class="scene-vcc-filter-row" role="radiogroup" aria-label="Filtrer par type d'émission">
+      <button type="button" data-filter="all"         aria-selected="true">Tout</button>
+      <button type="button" data-filter="circulation" aria-selected="false">Circulation</button>
+      <button type="button" data-filter="commemo"     aria-selected="false">Commémos</button>
+    </div>
+  </div>
+
+  <!-- Planche -->
+  <div class="scene-vcc-planche-wrap">
+    <div class="scene-vcc-section-head">
+      <h2>Planche du pays</h2>
+      <span class="scene-vcc-section-head__count" data-role="planche-count">18 pièces</span>
+    </div>
+    <div class="planche">
+      <div class="planche__grid" data-role="planche-grid"></div>
+    </div>
+  </div>
+
+  <div style="height: var(--space-10);"></div>
+</section>

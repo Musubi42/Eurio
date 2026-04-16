@@ -1,0 +1,415 @@
+{
+  "_comment": "Seed data for coin_series table. Compiled 2026-04-15 from BCE + Numista + national mint sources cross-referenced against Wikipedia per country. Series ID format: {country}-{designation-slug}. Date boundaries are inclusive; use YYYY-12-31 for end dates (minting runs through end of year). Commemoratives are NOT series — they stay series_id=NULL. For ruler changes, the new series picks up Jan 1 of the year following the abdication/death, per euro mint convention.",
+  "_refs": [
+    "https://www.ecb.europa.eu/euro/coins/html/index.en.html",
+    "https://en.numista.com",
+    "national mint press releases"
+  ],
+  "series": [
+    {
+      "id": "be-albert-ii",
+      "country": "be",
+      "designation": "Albert II",
+      "designation_i18n": {
+        "fr": "Albert II",
+        "en": "Albert II"
+      },
+      "description": "Effigie du roi Albert II sur la face nationale belge. Albert II a abdiqué le 21 juillet 2013 ; les pièces datées jusqu'en 2013 portent son effigie.",
+      "minting_started_at": "1999-01-01",
+      "minting_ended_at": "2013-12-31",
+      "minting_end_reason": "ruler_change",
+      "superseded_by_series_id": "be-philippe"
+    },
+    {
+      "id": "be-philippe",
+      "country": "be",
+      "designation": "Philippe",
+      "designation_i18n": {
+        "fr": "Philippe",
+        "en": "Philippe"
+      },
+      "description": "Effigie du roi Philippe. Première frappe 2014.",
+      "minting_started_at": "2014-01-01",
+      "minting_ended_at": null,
+      "supersedes_series_id": "be-albert-ii"
+    },
+    {
+      "id": "de-circ",
+      "country": "de",
+      "designation": "Type 2002",
+      "designation_i18n": {
+        "fr": "Type 2002",
+        "en": "Type 2002"
+      },
+      "description": "Design circulation allemand stable depuis 2002 : aigle fédéral (€1/€2), porte de Brandebourg (10/20/50c), chêne (1/2/5c). Frappé dans 5 ateliers (A, D, F, G, J).",
+      "minting_started_at": "1999-01-01",
+      "minting_ended_at": null
+    },
+    {
+      "id": "ie-circ",
+      "country": "ie",
+      "designation": "Type 2002",
+      "designation_i18n": {
+        "fr": "Type 2002",
+        "en": "Type 2002"
+      },
+      "description": "Harpe celtique, design unique pour toutes les dénominations irlandaises, stable depuis 2002.",
+      "minting_started_at": "1999-01-01",
+      "minting_ended_at": null
+    },
+    {
+      "id": "es-juan-carlos",
+      "country": "es",
+      "designation": "Juan Carlos Ier",
+      "designation_i18n": {
+        "fr": "Juan Carlos Ier",
+        "en": "Juan Carlos I"
+      },
+      "description": "Effigie du roi Juan Carlos Ier sur les €1 et €2 espagnols. Juan Carlos a abdiqué le 19 juin 2014 ; les pièces datées jusqu'en 2014 portent son effigie. Note : seuls les €1/€2 changent de face avec le monarque, les centimes gardent Cervantes et la cathédrale Saint-Jacques-de-Compostelle. Pour simplicité v1, cette série couvre toutes les dénominations espagnoles jusqu'à 2014.",
+      "minting_started_at": "1999-01-01",
+      "minting_ended_at": "2014-12-31",
+      "minting_end_reason": "ruler_change",
+      "superseded_by_series_id": "es-felipe-vi"
+    },
+    {
+      "id": "es-felipe-vi",
+      "country": "es",
+      "designation": "Felipe VI",
+      "designation_i18n": {
+        "fr": "Felipe VI",
+        "en": "Felipe VI"
+      },
+      "description": "Effigie du roi Felipe VI. Première frappe 2015. Couvre toutes les dénominations en v1.",
+      "minting_started_at": "2015-01-01",
+      "minting_ended_at": null,
+      "supersedes_series_id": "es-juan-carlos"
+    },
+    {
+      "id": "fr-1999",
+      "country": "fr",
+      "designation": "Type 1999",
+      "designation_i18n": {
+        "fr": "Type 1999",
+        "en": "Type 1999"
+      },
+      "description": "Design original de Joaquin Jimenez : Marianne (1/2/5c), la Semeuse (10/20/50c), l'arbre de la Liberté (€1/€2). Frappé de 1999 à 2021. Remplacé en 2022 par un redesign pour le 20e anniversaire de l'euro.",
+      "minting_started_at": "1999-01-01",
+      "minting_ended_at": "2021-12-31",
+      "minting_end_reason": "redesign",
+      "superseded_by_series_id": "fr-2022"
+    },
+    {
+      "id": "fr-2022",
+      "country": "fr",
+      "designation": "Type 2022",
+      "designation_i18n": {
+        "fr": "Type 2022",
+        "en": "Type 2022"
+      },
+      "description": "Redesign 2022 de la face nationale française pour les 20 ans de l'euro. Première frappe 2022.",
+      "minting_started_at": "2022-01-01",
+      "minting_ended_at": null,
+      "supersedes_series_id": "fr-1999"
+    },
+    {
+      "id": "it-circ",
+      "country": "it",
+      "designation": "Type 2002",
+      "designation_i18n": {
+        "fr": "Type 2002",
+        "en": "Type 2002"
+      },
+      "description": "8 designs historiques italiens, un par dénomination (Dante, Castel del Monte, etc.), stables depuis 2002.",
+      "minting_started_at": "1999-01-01",
+      "minting_ended_at": null
+    },
+    {
+      "id": "lu-henri",
+      "country": "lu",
+      "designation": "Grand-Duc Henri",
+      "designation_i18n": {
+        "fr": "Grand-Duc Henri",
+        "en": "Grand Duke Henri"
+      },
+      "description": "Effigie du Grand-Duc Henri. Note : de subtiles variantes d'effigie existent (2002, 2004, 2006) mais sont regroupées ici sous une seule série v1.",
+      "minting_started_at": "1999-01-01",
+      "minting_ended_at": null
+    },
+    {
+      "id": "nl-beatrix",
+      "country": "nl",
+      "designation": "Beatrix",
+      "designation_i18n": {
+        "fr": "Beatrix",
+        "en": "Beatrix"
+      },
+      "description": "Effigie de la reine Beatrix. Beatrix a abdiqué le 30 avril 2013 ; les pièces datées jusqu'en 2013 portent son effigie.",
+      "minting_started_at": "1999-01-01",
+      "minting_ended_at": "2013-12-31",
+      "minting_end_reason": "ruler_change",
+      "superseded_by_series_id": "nl-willem-alexander"
+    },
+    {
+      "id": "nl-willem-alexander",
+      "country": "nl",
+      "designation": "Willem-Alexander",
+      "designation_i18n": {
+        "fr": "Willem-Alexander",
+        "en": "Willem-Alexander"
+      },
+      "description": "Effigie du roi Willem-Alexander. Première frappe 2014.",
+      "minting_started_at": "2014-01-01",
+      "minting_ended_at": null,
+      "supersedes_series_id": "nl-beatrix"
+    },
+    {
+      "id": "at-circ",
+      "country": "at",
+      "designation": "Type 2002",
+      "designation_i18n": {
+        "fr": "Type 2002",
+        "en": "Type 2002"
+      },
+      "description": "8 designs autrichiens (fleurs, cathédrale, Mozart, etc.), stables depuis 2002.",
+      "minting_started_at": "1999-01-01",
+      "minting_ended_at": null
+    },
+    {
+      "id": "pt-circ",
+      "country": "pt",
+      "designation": "Type 2002",
+      "designation_i18n": {
+        "fr": "Type 2002",
+        "en": "Type 2002"
+      },
+      "description": "Sceaux royaux portugais (1184, 1142, 1134), stables depuis 2002.",
+      "minting_started_at": "1999-01-01",
+      "minting_ended_at": null
+    },
+    {
+      "id": "fi-circ",
+      "country": "fi",
+      "designation": "Type 2002",
+      "designation_i18n": {
+        "fr": "Type 2002",
+        "en": "Type 2002"
+      },
+      "description": "Lion héraldique finlandais, baies de mûrier, cygnes. Note : un ajustement mineur du €1/€2 en 2007 (ajout des étoiles européennes selon la recommandation BCE) est ignoré v1.",
+      "minting_started_at": "1999-01-01",
+      "minting_ended_at": null
+    },
+    {
+      "id": "gr-circ",
+      "country": "gr",
+      "designation": "Type 2002",
+      "designation_i18n": {
+        "fr": "Type 2002",
+        "en": "Type 2002"
+      },
+      "description": "8 designs grecs (trireme, Corvette, navire, chouette athénienne, etc.), stables depuis 2002.",
+      "minting_started_at": "1999-01-01",
+      "minting_ended_at": null
+    },
+    {
+      "id": "si-circ",
+      "country": "si",
+      "designation": "Type 2007",
+      "designation_i18n": {
+        "fr": "Type 2007",
+        "en": "Type 2007"
+      },
+      "description": "Designs slovènes stables depuis l'adhésion à la zone euro au 1er janvier 2007.",
+      "minting_started_at": "2007-01-01",
+      "minting_ended_at": null
+    },
+    {
+      "id": "cy-circ",
+      "country": "cy",
+      "designation": "Type 2008",
+      "designation_i18n": {
+        "fr": "Type 2008",
+        "en": "Type 2008"
+      },
+      "description": "Designs chypriotes stables depuis l'adhésion à la zone euro au 1er janvier 2008.",
+      "minting_started_at": "2008-01-01",
+      "minting_ended_at": null
+    },
+    {
+      "id": "mt-circ",
+      "country": "mt",
+      "designation": "Type 2008",
+      "designation_i18n": {
+        "fr": "Type 2008",
+        "en": "Type 2008"
+      },
+      "description": "Designs maltais stables depuis l'adhésion à la zone euro au 1er janvier 2008.",
+      "minting_started_at": "2008-01-01",
+      "minting_ended_at": null
+    },
+    {
+      "id": "sk-circ",
+      "country": "sk",
+      "designation": "Type 2009",
+      "designation_i18n": {
+        "fr": "Type 2009",
+        "en": "Type 2009"
+      },
+      "description": "Designs slovaques stables depuis l'adhésion à la zone euro au 1er janvier 2009.",
+      "minting_started_at": "2009-01-01",
+      "minting_ended_at": null
+    },
+    {
+      "id": "ee-circ",
+      "country": "ee",
+      "designation": "Type 2011",
+      "designation_i18n": {
+        "fr": "Type 2011",
+        "en": "Type 2011"
+      },
+      "description": "Design unique : la carte de l'Estonie, stable depuis l'adhésion au 1er janvier 2011.",
+      "minting_started_at": "2011-01-01",
+      "minting_ended_at": null
+    },
+    {
+      "id": "lv-circ",
+      "country": "lv",
+      "designation": "Type 2014",
+      "designation_i18n": {
+        "fr": "Type 2014",
+        "en": "Type 2014"
+      },
+      "description": "Designs lettons stables depuis l'adhésion à la zone euro au 1er janvier 2014.",
+      "minting_started_at": "2014-01-01",
+      "minting_ended_at": null
+    },
+    {
+      "id": "lt-circ",
+      "country": "lt",
+      "designation": "Type 2015",
+      "designation_i18n": {
+        "fr": "Type 2015",
+        "en": "Type 2015"
+      },
+      "description": "Chevalier de Vytis, design unique pour toutes dénominations, stable depuis l'adhésion au 1er janvier 2015.",
+      "minting_started_at": "2015-01-01",
+      "minting_ended_at": null
+    },
+    {
+      "id": "hr-circ",
+      "country": "hr",
+      "designation": "Type 2023",
+      "designation_i18n": {
+        "fr": "Type 2023",
+        "en": "Type 2023"
+      },
+      "description": "Designs croates (Nikola Tesla, glagolitique, carte, etc.) stables depuis l'adhésion à la zone euro au 1er janvier 2023.",
+      "minting_started_at": "2023-01-01",
+      "minting_ended_at": null
+    },
+    {
+      "id": "bg-circ",
+      "country": "bg",
+      "designation": "Type 2026",
+      "designation_i18n": {
+        "fr": "Type 2026",
+        "en": "Type 2026"
+      },
+      "description": "Designs bulgares stables depuis l'adhésion à la zone euro au 1er janvier 2026. 21e pays de la zone.",
+      "minting_started_at": "2026-01-01",
+      "minting_ended_at": null
+    },
+    {
+      "id": "mc-rainier",
+      "country": "mc",
+      "designation": "Rainier III",
+      "designation_i18n": {
+        "fr": "Rainier III",
+        "en": "Rainier III"
+      },
+      "description": "Effigie du prince Rainier III. Première frappe 2001 (avant mise en circulation le 01/01/2002). Rainier III est décédé le 6 avril 2005 ; toutes les pièces de 2005 portent son effigie (Albert II n'a pas frappé de pièces datées 2005).",
+      "minting_started_at": "2001-01-01",
+      "minting_ended_at": "2005-12-31",
+      "minting_end_reason": "ruler_change",
+      "superseded_by_series_id": "mc-albert-ii"
+    },
+    {
+      "id": "mc-albert-ii",
+      "country": "mc",
+      "designation": "Albert II",
+      "designation_i18n": {
+        "fr": "Albert II",
+        "en": "Albert II"
+      },
+      "description": "Effigie du prince Albert II. Première frappe 2006.",
+      "minting_started_at": "2006-01-01",
+      "minting_ended_at": null,
+      "supersedes_series_id": "mc-rainier"
+    },
+    {
+      "id": "sm-circ",
+      "country": "sm",
+      "designation": "Type 2002",
+      "designation_i18n": {
+        "fr": "Type 2002",
+        "en": "Type 2002"
+      },
+      "description": "8 designs saint-marinais (tour Guaita, armoiries, etc.), stables depuis 2002. Note : léger redesign en 2017 regroupé v1 dans cette série unique.",
+      "minting_started_at": "2002-01-01",
+      "minting_ended_at": null
+    },
+    {
+      "id": "va-jp2",
+      "country": "va",
+      "designation": "Jean-Paul II",
+      "designation_i18n": {
+        "fr": "Jean-Paul II",
+        "en": "John Paul II"
+      },
+      "description": "Effigie du pape Jean-Paul II. Décédé le 2 avril 2005. Les pièces de circulation du Vatican sont frappées en très faibles quantités (emissions annuelles ~70 000 exemplaires par dénomination, toutes destinées aux collectionneurs).",
+      "minting_started_at": "2002-01-01",
+      "minting_ended_at": "2005-12-31",
+      "minting_end_reason": "ruler_change",
+      "superseded_by_series_id": "va-benedict-xvi"
+    },
+    {
+      "id": "va-benedict-xvi",
+      "country": "va",
+      "designation": "Benoît XVI",
+      "designation_i18n": {
+        "fr": "Benoît XVI",
+        "en": "Benedict XVI"
+      },
+      "description": "Effigie du pape Benoît XVI. Première frappe 2006 (le conclave a élu Benoît XVI le 19 avril 2005, trop tard pour le millésime 2005). A démissionné le 28 février 2013 ; dernières pièces datées 2013.",
+      "minting_started_at": "2006-01-01",
+      "minting_ended_at": "2013-12-31",
+      "minting_end_reason": "ruler_change",
+      "supersedes_series_id": "va-jp2",
+      "superseded_by_series_id": "va-francis"
+    },
+    {
+      "id": "va-francis",
+      "country": "va",
+      "designation": "François",
+      "designation_i18n": {
+        "fr": "François",
+        "en": "Francis"
+      },
+      "description": "Effigie du pape François (élu le 13 mars 2013). Première frappe de circulation 2014. Note : les pièces de sede vacante 2005 et 2013 sont des commémoratives €2 standalone, elles ne font partie d'aucune série de circulation et portent series_id=NULL.",
+      "minting_started_at": "2014-01-01",
+      "minting_ended_at": null,
+      "supersedes_series_id": "va-benedict-xvi"
+    },
+    {
+      "id": "ad-circ",
+      "country": "ad",
+      "designation": "Type 2014",
+      "designation_i18n": {
+        "fr": "Type 2014",
+        "en": "Type 2014"
+      },
+      "description": "Andorre a adopté l'euro par traité monétaire (2011), premières pièces frappées en 2014. Designs stables.",
+      "minting_started_at": "2014-01-01",
+      "minting_ended_at": null
+    }
+  ]
+}

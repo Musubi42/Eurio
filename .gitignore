@@ -62,3 +62,7 @@ dist/
 
 # Screenshots at root
 Screenshot_*.png
+
+# Maestro parity screenshots (captured on device, not committed)
+maestro/screenshots/*
+!maestro/screenshots/.gitignore

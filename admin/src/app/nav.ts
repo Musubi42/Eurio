@@ -1,4 +1,4 @@
-import { ClipboardList, Coins, LayoutDashboard, Layers } from 'lucide-vue-next'
+import { Brain, ClipboardList, Coins, Eye, LayoutDashboard, Layers, Scale } from 'lucide-vue-next'
 import type { Component } from 'vue'
 
 export interface NavItem {
@@ -51,6 +51,29 @@ export const navSections: NavSection[] = [
         label: 'Audit log',
         icon: ClipboardList,
         route: '/audit',
+      },
+    ],
+  },
+  {
+    title: 'Outils',
+    items: [
+      {
+        id: 'parity',
+        label: 'Parity Viewer',
+        icon: Eye,
+        route: '/parity',
+      },
+      {
+        id: 'arbitrage',
+        label: 'Arbitrage Numista',
+        icon: Scale,
+        route: '/coins/arbitrage',
+      },
+      {
+        id: 'training',
+        label: 'Training',
+        icon: Brain,
+        route: '/training',
       },
     ],
   },

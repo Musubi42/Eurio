@@ -1,0 +1,12 @@
+appId: com.musubi.eurio
+env:
+  PARITY_ID: scan-detecting
+  PARITY_LABEL: "Scan — Detecting"
+  PARITY_GROUP: Scan
+  PARITY_PHASE: "1"
+  PARITY_PROTO_ROUTE: /scan/detecting
+---
+- launchApp
+- openLink: eurio://scene/scan-detecting?mock_camera=true
+- assertVisible: ".*"
+- takeScreenshot: scan-detecting

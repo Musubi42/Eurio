@@ -286,3 +286,30 @@ html, body {
   .screen { border-radius: 0; }
   .home-indicator { display: none; }
 }
+
+/* ───────── Embed chrome (parity viewer iframe) ─────────
+ * Activated via hash query: #/vault?chrome=embed
+ * Strips device frame so the scene renders full-bleed inside
+ * the parity viewer's own device frame.
+ * Structure: .stage > .device > .screen > (.statusbar, .bottomnav, etc.)
+ */
+.screen[data-chrome="embed"] { border-radius: 0; }
+.screen[data-chrome="embed"] > .statusbar { display: none; }
+.screen[data-chrome="embed"] > .bottomnav { display: none; }
+.screen[data-chrome="embed"] > .home-indicator { display: none; }
+.screen[data-chrome="embed"] > .version-badge { display: none; }
+
+.device:has(> .screen[data-chrome="embed"]) {
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: var(--surface);
+}
+.device:has(> .screen[data-chrome="embed"])::before { display: none; }
+
+.stage:has(.screen[data-chrome="embed"]) {
+  padding: 0;
+  background: none;
+}

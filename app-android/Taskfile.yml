@@ -73,6 +73,21 @@ tasks:
     cmds:
       - adb shell am force-stop {{.APP_ID}}
 
+  parity:capture:
+    desc: Run all Maestro parity flows and capture screenshots
+    dir: '{{.ROOT_DIR}}'
+    cmds:
+      - |
+        for f in maestro/flows/*.yaml; do
+          maestro test --test-output-dir maestro "$f"
+        done
+
+  parity:capture-scene:
+    desc: Capture a single scene (go-task android:parity:capture-scene -- vault-home)
+    dir: '{{.ROOT_DIR}}'
+    cmds:
+      - maestro test --test-output-dir maestro maestro/flows/{{.CLI_ARGS}}.yaml
+
   snapshot:
     desc: Export a fresh catalog_snapshot.json from Supabase into assets/
     dir: '{{.ROOT_DIR}}'

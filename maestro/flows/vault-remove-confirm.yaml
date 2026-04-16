@@ -1,0 +1,17 @@
+appId: com.musubi.eurio
+env:
+  PARITY_ID: vault-remove-confirm
+  PARITY_LABEL: "Coffre — Confirmation retrait"
+  PARITY_GROUP: Coffre
+  PARITY_PHASE: "2"
+  PARITY_PROTO_ROUTE: /vault
+  PARITY_STATE: populated
+---
+- launchApp
+- openLink: "eurio://parity/seed?fixture=populated"
+- extendedWaitUntil:
+    visible: ".*"
+    timeout: 5000
+- openLink: eurio://scene/vault-remove-confirm
+- assertVisible: ".*"
+- takeScreenshot: vault-remove-confirm

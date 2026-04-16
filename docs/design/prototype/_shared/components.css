@@ -370,6 +370,199 @@ a { color: inherit; text-decoration: none; }
   width: 100%;
 }
 
+/* ───────── Coffre segmented header ─────────
+ * Shared header for the three Coffre sub-views (Mes pièces / Sets / Catalogue).
+ * Used in vault-home, vault-sets-list, vault-catalog-map. Reuses .tabbed-nav
+ * for the segmented control itself (see above).
+ */
+.coffre-header {
+  padding: var(--space-3) var(--space-5) var(--space-4);
+}
+.coffre-header__top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-4);
+}
+.coffre-header__actions {
+  display: flex;
+  gap: var(--space-1);
+}
+.coffre-header__icon {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-full);
+  background: var(--surface-1);
+  color: var(--ink);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(14, 14, 31, 0.06);
+}
+.coffre-header__icon svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* ───────── Planche (collector's plate) ─────────
+ * Signature Eurio pattern for displaying a grid of coins — owned and
+ * missing — as if laid in a numismatic album page. Used in vault-sets-detail,
+ * vault-catalog-country, and a compact variant in vault-sets-list cards.
+ *
+ * A planche is a paper-textured frame that hosts inset cells.
+ * Each cell is a recessed cavity that receives a .disc medallion.
+ * Terminology matches profile-set.html (scene-scoped earlier iteration
+ * of this pattern — kept for reference, to be migrated separately).
+ */
+.planche {
+  position: relative;
+  background: var(--paper);
+  border: 1px solid rgba(14, 14, 31, 0.06);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.45),
+    0 1px 2px rgba(14, 14, 31, 0.03);
+}
+.planche::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/><feColorMatrix values='0 0 0 0 0.05  0 0 0 0 0.05  0 0 0 0 0.1  0 0 0 .05 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  mix-blend-mode: multiply;
+  opacity: 0.55;
+  border-radius: inherit;
+  pointer-events: none;
+}
+.planche__grid {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(var(--planche-cols, 3), 1fr);
+  gap: var(--space-3);
+}
+.planche--compact {
+  padding: var(--space-3);
+}
+.planche--compact .planche__grid {
+  --planche-cols: 4;
+  gap: 6px;
+}
+.planche__cell {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: var(--radius-md);
+  background: radial-gradient(circle at 50% 30%, rgba(14, 14, 31, 0.02) 0%, rgba(14, 14, 31, 0.1) 78%);
+  box-shadow:
+    inset 0 2px 5px rgba(14, 14, 31, 0.14),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.6),
+    inset 0 0 0 1px rgba(14, 14, 31, 0.06);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+.planche__cell:active {
+  transform: scale(0.95);
+}
+.planche__cell--missing {
+  background: var(--surface-2);
+  box-shadow:
+    inset 0 2px 5px rgba(14, 14, 31, 0.1),
+    inset 0 0 0 1px rgba(14, 14, 31, 0.05);
+}
+.planche__cell--missing::after {
+  content: "";
+  position: absolute;
+  inset: 8px;
+  border: 1px dashed rgba(14, 14, 31, 0.2);
+  border-radius: calc(var(--radius-md) - 4px);
+  pointer-events: none;
+}
+.planche__cell__date {
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--font-mono);
+  font-size: 7px;
+  letter-spacing: 0.06em;
+  color: rgba(14, 14, 31, 0.42);
+  text-transform: uppercase;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* ───────── Disc (coin medallion) ─────────
+ * Radial-gradient CSS-only coin. Variants for metal type. Used inside
+ * .planche__cell and standalone for small previews.
+ */
+.disc {
+  position: relative;
+  width: 76%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  filter: drop-shadow(0 2px 3px rgba(14, 14, 31, 0.28));
+}
+.disc::before {
+  content: "";
+  position: absolute;
+  inset: 9%;
+  border-radius: 50%;
+  border: 1px dashed rgba(58, 42, 5, 0.22);
+  pointer-events: none;
+}
+.disc--copper {
+  background: radial-gradient(circle at 30% 28%, #F6D3B0 0%, #D49A6A 48%, #8F5120 100%);
+}
+.disc--nordic {
+  background: radial-gradient(circle at 30% 28%, var(--gold-soft) 0%, var(--gold-300) 28%, var(--gold) 58%, var(--gold-deep) 100%);
+}
+.disc--silver {
+  background: radial-gradient(circle at 30% 28%, var(--paper) 0%, #C7C6BC 45%, #6F6E63 100%);
+}
+.disc--bimetal {
+  background:
+    radial-gradient(circle at 30% 28%, var(--gold-soft) 0%, var(--gold) 35%, var(--gold-deep) 46%, #B7B59A 52%, #6B6A52 100%);
+}
+.disc--missing {
+  background: radial-gradient(circle at 30% 28%, var(--gray-50) 0%, var(--gray-100) 55%, var(--gray-200) 100%);
+  filter: none;
+  opacity: 0.85;
+}
+.disc__val {
+  position: relative;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 500;
+  font-size: 14px;
+  line-height: 1;
+  color: var(--gold-deep);
+}
+.disc--copper .disc__val {
+  color: #5C2D08;
+}
+.disc--silver .disc__val {
+  color: var(--ink-700);
+}
+.disc--missing .disc__val {
+  color: var(--gray-400);
+}
+.disc--xs .disc__val {
+  font-size: 9px;
+}
+.disc--xs::before {
+  inset: 14%;
+}
+
 /* ───────── Scene placeholder (fallback router state) ───────── */
 .scene-placeholder {
   display: flex;

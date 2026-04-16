@@ -1,0 +1,17 @@
+appId: com.musubi.eurio
+env:
+  PARITY_ID: vault-empty
+  PARITY_LABEL: "Coffre — État vide"
+  PARITY_GROUP: Coffre
+  PARITY_PHASE: "2"
+  PARITY_PROTO_ROUTE: /vault
+  PARITY_STATE: empty
+---
+- launchApp
+- openLink: "eurio://parity/seed?fixture=empty"
+- extendedWaitUntil:
+    visible: ".*"
+    timeout: 5000
+- openLink: eurio://scene/vault-empty
+- assertVisible: ".*"
+- takeScreenshot: vault-empty

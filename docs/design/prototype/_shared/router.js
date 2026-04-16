@@ -12,6 +12,7 @@
 
 import * as state from './state.js';
 import * as data from './data.js';
+import { init as initBridge } from './bridge.js';
 
 // ───────── Route table ─────────
 // Each entry : { pattern, scene, nav, chrome }
@@ -48,6 +49,12 @@ const ROUTES = [
   { path: '/vault',                  scene: 'vault-home',           nav: 'vault', chrome: 'light' },
   { path: '/vault/filters',          scene: 'vault-filters',        nav: 'vault', chrome: 'light' },
   { path: '/vault/search',           scene: 'vault-search',         nav: 'vault', chrome: 'light' },
+  // Vault — Sets sub-view + detail
+  { path: '/vault/sets',             scene: 'vault-sets-list',      nav: 'vault', chrome: 'light' },
+  { path: '/vault/sets/:setId',      scene: 'vault-sets-detail',    nav: 'vault', chrome: 'light' },
+  // Vault — Catalogue sub-view (eurozone map) + country drill-down
+  { path: '/vault/catalog',          scene: 'vault-catalog-map',    nav: 'vault', chrome: 'light' },
+  { path: '/vault/catalog/:iso',     scene: 'vault-catalog-country',nav: 'vault', chrome: 'light' },
 
   // Profile
   { path: '/profile',                scene: 'profile',              nav: 'profile', chrome: 'light' },
@@ -140,8 +147,19 @@ async function renderScene(route, params, query) {
   const sc = screenEl();
   if (!v || !sc) return;
 
-  // Chrome (light/dark status bar + badge contrast)
-  sc.dataset.chrome = route.chrome || 'light';
+  // Chrome: in embedded mode (parity viewer iframe), always use 'embed'.
+  // Otherwise, hash query ?chrome= overrides the route default.
+  const embedded = window.parent !== window;
+  sc.dataset.chrome = embedded ? 'embed' : (query.chrome || route.chrome || 'light');
+
+  // State preset: hash query ?state=populated overrides localStorage (parity viewer)
+  if (query.state) {
+    try {
+      await state.applyPreset(query.state);
+    } catch (err) {
+      console.warn('[router] applyPreset failed', query.state, err);
+    }
+  }
 
   // Special actions
   if (route.action === 'reset') {
@@ -230,8 +248,9 @@ export function onRoute(fn) {
 async function resolve() {
   const { rawPath, query } = parseHash(location.hash);
 
-  // Home redirect
+  // Home redirect — skip when embedded (parity viewer controls navigation via postMessage)
   if (rawPath === '/' || rawPath === '') {
+    if (window.parent !== window) return;
     const target = state.state.firstRun ? '#/onboarding/splash' : '#/scan';
     location.replace(target);
     return;
@@ -258,6 +277,7 @@ async function boot() {
   installVersionBadge();
   window.addEventListener('hashchange', resolve);
   resolve();
+  initBridge({ state, navigate });
 }
 
 // ───────── Version badge 7-tap debug ─────────

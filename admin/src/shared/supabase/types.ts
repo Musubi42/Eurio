@@ -1,47 +1,162 @@
-// Types Supabase générés manuellement — à régénérer avec :
-//   supabase gen types typescript --project-id <id> > src/shared/supabase/types.ts
-//
-// Pour l'instant, types stricts alignés sur sets-architecture.md §4.
+/**
+ * Domain types — types métier indépendants des types générés.
+ * Les pages castent les résultats Supabase (`as Coin[]`, `as Set[]`) parce que
+ * Supabase JS retourne `Json` pour les JSONB et on narrow-type ici.
+ *
+ * Toujours importer depuis ce fichier, jamais depuis database.generated.ts.
+ */
+import type { Database as DatabaseGenerated, Json } from './database.generated'
 
-export type Json = string | number | boolean | null | { [key: string]: Json } | Json[]
+export type { Json }
+export type Database = DatabaseGenerated
 
-export interface Database {
-  public: {
-    Tables: {
-      sets: {
-        Row: Set
-        Insert: Omit<Set, 'created_at' | 'updated_at'>
-        Update: Partial<Omit<Set, 'id' | 'created_at'>>
-      }
-      set_members: {
-        Row: SetMember
-        Insert: SetMember
-        Update: Partial<SetMember>
-      }
-      sets_audit: {
-        Row: SetAudit
-        Insert: Omit<SetAudit, 'id' | 'at'>
-        Update: never
-      }
-      coins: {
-        Row: Coin
-        Insert: never
-        Update: never
-      }
-    }
-  }
+// ───────── Enums ─────────
+
+export type IssueType =
+  | 'circulation'
+  | 'commemo-national'
+  | 'commemo-common'
+  | 'starter-kit'
+  | 'bu-set'
+  | 'proof'
+
+export type SetKind = 'structural' | 'curated' | 'parametric'
+
+export type SetCategory = 'country' | 'theme' | 'tier' | 'personal' | 'hunt'
+
+export type SetAuditAction =
+  | 'create'
+  | 'update'
+  | 'delete'
+  | 'activate'
+  | 'deactivate'
+  | 'publish'
+
+export type MintingEndReason =
+  | 'ruler_change'
+  | 'redesign'
+  | 'policy'
+  | 'sede_vacante_end'
+  | 'other'
+
+// ───────── JSONB shapes ─────────
+
+export interface I18nField {
+  fr: string
+  en?: string
+  de?: string
+  it?: string
+}
+
+/**
+ * DSL criteria structurel — figé v1 (sets-architecture.md §3).
+ * AND implicite entre clés. Pas de OR, pas de range year.
+ */
+export interface SetCriteria {
+  country?: string | string[]
+  issue_type?: IssueType | IssueType[]
+  year?: number | 'current'
+  denomination?: number[]
+  series_id?: string
+  is_withdrawn?: boolean
+  distinct_by?: 'country'
+  min_mintage?: number
+  max_mintage?: number
+}
+
+export interface SetReward {
+  badge?: 'bronze' | 'silver' | 'gold'
+  xp?: number
+  level_bump?: boolean
+}
+
+/** Élément du array coins.images (JSONB) — ancien format */
+export interface CoinImage {
+  url: string
+  role: 'obverse' | 'reverse' | 'edge' | 'detail' | string
+  source: 'bce_comm' | 'numista' | 'mdp' | 'lmdlp' | string
+  feature?: string
+  fetched_at?: string
+  description?: string
+}
+
+/** coins.images — nouveau format dict (enrichissement Numista) */
+export interface CoinImageDict {
+  obverse?: string
+  obverse_thumb?: string
+  reverse?: string
+  reverse_thumb?: string
+}
+
+/** coins.images peut être array (ancien) ou dict (nouveau) */
+export type CoinImages = CoinImage[] | CoinImageDict
+
+/** coins.cross_refs — union des clés observées en prod */
+export interface CoinCrossRefs {
+  wikipedia_url?: string
+  lmdlp_url?: string
+  lmdlp_skus?: string[]
+  mdp_urls?: string[]
+  mdp_skus?: string[]
+  numista_id?: number
+  numista_url?: string
+}
+
+// ───────── Domain entities ─────────
+// Standalone interfaces — pas dérivées des Row pour éviter la complexité des
+// conditional types Supabase. Gardées alignées à la main sur database.generated.ts.
+
+export interface Coin {
+  eurio_id: string
+  country: string
+  year: number
+  face_value: number
+  currency: string
+  theme: string | null
+  design_description: string | null
+  is_commemorative: boolean
+  collector_only: boolean
+  issue_type: IssueType | null
+  series_id: string | null
+  mintage: number | null
+  is_withdrawn: boolean
+  withdrawn_at: string | null
+  withdrawal_reason: string | null
+  images: CoinImages
+  cross_refs: CoinCrossRefs
+  national_variants: Record<string, unknown> | null
+  sources_used: string[]
+  needs_review: boolean
+  review_reason: string | null
+  first_seen: string
+  last_updated: string
+}
+
+export interface CoinSeries {
+  id: string
+  country: string
+  designation: string
+  designation_i18n: I18nField | null
+  description: string | null
+  minting_started_at: string
+  minting_ended_at: string | null
+  minting_end_reason: MintingEndReason | null
+  supersedes_series_id: string | null
+  superseded_by_series_id: string | null
+  created_at: string
+  updated_at: string
 }
 
 export interface Set {
   id: string
-  kind: 'structural' | 'curated' | 'parametric'
+  kind: SetKind
+  category: SetCategory
   name_i18n: I18nField
   description_i18n: I18nField | null
   criteria: SetCriteria | null
   param_key: string | null
   reward: SetReward | null
   display_order: number
-  category: SetCategory
   icon: string | null
   expected_count: number | null
   active: boolean
@@ -58,62 +173,9 @@ export interface SetMember {
 export interface SetAudit {
   id: number
   set_id: string
-  action: 'create' | 'update' | 'delete' | 'activate' | 'deactivate' | 'publish'
+  action: SetAuditAction
   before: Json | null
   after: Json | null
   actor: string
   at: string
-}
-
-export interface Coin {
-  eurio_id: string
-  country: string
-  year: number
-  denomination: number
-  title: string | null
-  issue_type: IssueType | null
-  series: string | null
-  ruler: string | null
-  theme_code: string | null
-  mintage: number | null
-  series_rank: number | null
-  numista_id: number | null
-  active: boolean
-}
-
-// DSL criteria — figé v1 (sets-architecture.md §3)
-export interface SetCriteria {
-  country?: string | string[]
-  issue_type?: IssueType | IssueType[]
-  year?: number | [number, number] | 'current'
-  denomination?: number[]
-  series?: string
-  ruler?: string
-  theme_code?: string
-  distinct_by?: 'country'
-  min_mintage?: number
-  max_mintage?: number
-}
-
-export type IssueType =
-  | 'circulation'
-  | 'commemo-national'
-  | 'commemo-common'
-  | 'starter-kit'
-  | 'bu-set'
-  | 'proof'
-
-export type SetCategory = 'country' | 'theme' | 'tier' | 'personal' | 'hunt'
-
-export interface I18nField {
-  fr: string
-  en?: string
-  de?: string
-  it?: string
-}
-
-export interface SetReward {
-  badge?: 'bronze' | 'silver' | 'gold'
-  xp?: number
-  level_bump?: boolean
 }

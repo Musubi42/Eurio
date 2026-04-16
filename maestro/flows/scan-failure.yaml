@@ -1,0 +1,12 @@
+appId: com.musubi.eurio
+env:
+  PARITY_ID: scan-failure
+  PARITY_LABEL: "Scan — Failure"
+  PARITY_GROUP: Scan
+  PARITY_PHASE: "1"
+  PARITY_PROTO_ROUTE: /scan/failure
+---
+- launchApp
+- openLink: eurio://scene/scan-failure?mock_camera=true
+- assertVisible: ".*"
+- takeScreenshot: scan-failure

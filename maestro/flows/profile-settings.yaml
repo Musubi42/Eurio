@@ -1,0 +1,17 @@
+appId: com.musubi.eurio
+env:
+  PARITY_ID: profile-settings
+  PARITY_LABEL: "Profil — Réglages"
+  PARITY_GROUP: Profil
+  PARITY_PHASE: "5"
+  PARITY_PROTO_ROUTE: /profile/settings
+  PARITY_STATE: profile-demo
+---
+- launchApp
+- openLink: "eurio://parity/seed?fixture=profile-demo"
+- extendedWaitUntil:
+    visible: ".*"
+    timeout: 5000
+- openLink: eurio://scene/profile-settings
+- assertVisible: ".*"
+- takeScreenshot: profile-settings

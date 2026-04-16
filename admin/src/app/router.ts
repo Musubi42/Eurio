@@ -33,8 +33,24 @@ const router = createRouter({
           component: () => import('@/features/coins/pages/CoinsPage.vue'),
         },
         {
+          path: 'coins/arbitrage',
+          component: () => import('@/features/coins/pages/CoinArbitragePage.vue'),
+        },
+        {
+          path: 'coins/:eurio_id',
+          component: () => import('@/features/coins/pages/CoinDetailPage.vue'),
+        },
+        {
           path: 'audit',
           component: () => import('@/features/audit/pages/AuditPage.vue'),
+        },
+        {
+          path: 'parity',
+          component: () => import('@/features/parity/pages/ParityPage.vue'),
+        },
+        {
+          path: 'training',
+          component: () => import('@/features/training/pages/TrainingPage.vue'),
         },
       ],
     },

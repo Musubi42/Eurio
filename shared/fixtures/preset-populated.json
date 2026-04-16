@@ -1,0 +1,112 @@
+{
+  "name": "populated",
+  "firstRun": false,
+  "levelOverride": null,
+  "collection": [
+    {
+      "eurioId": "de-2002-1eur-standard",
+      "addedAt": 1765800000000,
+      "valueAtAddCents": 281,
+      "condition": "good",
+      "note": null
+    },
+    {
+      "eurioId": "es-2012-2eur-standard",
+      "addedAt": 1766275200000,
+      "valueAtAddCents": 474,
+      "condition": null,
+      "note": null
+    },
+    {
+      "eurioId": "it-2008-50c-standard",
+      "addedAt": 1766750400000,
+      "valueAtAddCents": 163,
+      "condition": null,
+      "note": null
+    },
+    {
+      "eurioId": "nl-2014-10c-standard",
+      "addedAt": 1767225600000,
+      "valueAtAddCents": 104,
+      "condition": "good",
+      "note": null
+    },
+    {
+      "eurioId": "pt-2010-5c-standard",
+      "addedAt": 1767700800000,
+      "valueAtAddCents": 44,
+      "condition": null,
+      "note": null
+    },
+    {
+      "eurioId": "de-2007-2eur-treaty-of-rome",
+      "addedAt": 1768176000000,
+      "valueAtAddCents": 474,
+      "condition": null,
+      "note": null
+    },
+    {
+      "eurioId": "fr-2015-2eur-70-years-of-peace-in-europe",
+      "addedAt": 1768651200000,
+      "valueAtAddCents": 474,
+      "condition": "good",
+      "note": null
+    },
+    {
+      "eurioId": "it-2012-2eur-10-years-of-euro-cash",
+      "addedAt": 1769126400000,
+      "valueAtAddCents": 474,
+      "condition": null,
+      "note": null
+    },
+    {
+      "eurioId": "lu-2009-2eur-10th-anniversary-of-the-economic-and-monetary-union",
+      "addedAt": 1769601600000,
+      "valueAtAddCents": 474,
+      "condition": null,
+      "note": null
+    },
+    {
+      "eurioId": "mc-2015-2eur-800-years-since-the-first-castle-in-the-rock",
+      "addedAt": 1770076800000,
+      "valueAtAddCents": 474,
+      "condition": "good",
+      "note": null
+    },
+    {
+      "eurioId": "sm-2016-2eur-550-years-since-the-death-of-donatello",
+      "addedAt": 1770552000000,
+      "valueAtAddCents": 474,
+      "condition": null,
+      "note": null
+    },
+    {
+      "eurioId": "va-2017-2eur-100-years-of-marian-apparitions-in-fatima",
+      "addedAt": 1771027200000,
+      "valueAtAddCents": 474,
+      "condition": null,
+      "note": null
+    },
+    {
+      "eurioId": "ad-2014-2eur-20-years-in-the-council-of-europe",
+      "addedAt": 1771502400000,
+      "valueAtAddCents": 474,
+      "condition": "good",
+      "note": null
+    },
+    {
+      "eurioId": "mt-2015-2eur-republic-of-malta-1974",
+      "addedAt": 1771977600000,
+      "valueAtAddCents": 474,
+      "condition": null,
+      "note": null
+    },
+    {
+      "eurioId": "ie-2009-2eur-10th-anniversary-of-the-economic-and-monetary-union",
+      "addedAt": 1772452800000,
+      "valueAtAddCents": 474,
+      "condition": null,
+      "note": null
+    }
+  ]
+}

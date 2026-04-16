@@ -48,6 +48,66 @@ export type Database = {
           },
         ]
       }
+      coin_series: {
+        Row: {
+          country: string
+          created_at: string
+          description: string | null
+          designation: string
+          designation_i18n: Json | null
+          id: string
+          minting_end_reason: string | null
+          minting_ended_at: string | null
+          minting_started_at: string
+          superseded_by_series_id: string | null
+          supersedes_series_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          country: string
+          created_at?: string
+          description?: string | null
+          designation: string
+          designation_i18n?: Json | null
+          id: string
+          minting_end_reason?: string | null
+          minting_ended_at?: string | null
+          minting_started_at: string
+          superseded_by_series_id?: string | null
+          supersedes_series_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          country?: string
+          created_at?: string
+          description?: string | null
+          designation?: string
+          designation_i18n?: Json | null
+          id?: string
+          minting_end_reason?: string | null
+          minting_ended_at?: string | null
+          minting_started_at?: string
+          superseded_by_series_id?: string | null
+          supersedes_series_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coin_series_superseded_by_series_id_fkey"
+            columns: ["superseded_by_series_id"]
+            isOneToOne: false
+            referencedRelation: "coin_series"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coin_series_supersedes_series_id_fkey"
+            columns: ["supersedes_series_id"]
+            isOneToOne: false
+            referencedRelation: "coin_series"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       coins: {
         Row: {
           collector_only: boolean
@@ -60,18 +120,18 @@ export type Database = {
           first_seen: string
           images: Json
           is_commemorative: boolean
+          is_withdrawn: boolean
           issue_type: string | null
           last_updated: string
           mintage: number | null
           national_variants: Json | null
           needs_review: boolean
           review_reason: string | null
-          ruler: string | null
-          series: string | null
-          series_rank: number | null
+          series_id: string | null
           sources_used: string[]
           theme: string | null
-          theme_code: string | null
+          withdrawal_reason: string | null
+          withdrawn_at: string | null
           year: number
         }
         Insert: {
@@ -85,18 +145,18 @@ export type Database = {
           first_seen?: string
           images?: Json
           is_commemorative?: boolean
+          is_withdrawn?: boolean
           issue_type?: string | null
           last_updated?: string
           mintage?: number | null
           national_variants?: Json | null
           needs_review?: boolean
           review_reason?: string | null
-          ruler?: string | null
-          series?: string | null
-          series_rank?: number | null
+          series_id?: string | null
           sources_used?: string[]
           theme?: string | null
-          theme_code?: string | null
+          withdrawal_reason?: string | null
+          withdrawn_at?: string | null
           year: number
         }
         Update: {
@@ -110,21 +170,29 @@ export type Database = {
           first_seen?: string
           images?: Json
           is_commemorative?: boolean
+          is_withdrawn?: boolean
           issue_type?: string | null
           last_updated?: string
           mintage?: number | null
           national_variants?: Json | null
           needs_review?: boolean
           review_reason?: string | null
-          ruler?: string | null
-          series?: string | null
-          series_rank?: number | null
+          series_id?: string | null
           sources_used?: string[]
           theme?: string | null
-          theme_code?: string | null
+          withdrawal_reason?: string | null
+          withdrawn_at?: string | null
           year?: number
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "coins_series_id_fkey"
+            columns: ["series_id"]
+            isOneToOne: false
+            referencedRelation: "coin_series"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       matching_decisions: {
         Row: {

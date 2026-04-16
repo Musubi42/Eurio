@@ -23,15 +23,10 @@
 
 const VIEW_KEY = 'vaultView';     // state.prefs[VIEW_KEY] = 'grid' | 'list'
 const SORT_KEY = 'vaultSort';     // 'country' (default) | 'face' | 'price' | 'month'
-const DEMO_KEY = 'eurio.proto.v1.vaultDemo';
-
 export function mount(ctx) {
   const { state, data, navigate } = ctx;
   const root = document.querySelector('[data-scene="vault-home"]');
   if (!root) return;
-
-  // Optional demo seed (non-destructive, session-scoped)
-  maybeSeedDemo(state, data);
 
   const collection = state.state.collection;
   const isEmpty = collection.length === 0;
@@ -54,23 +49,23 @@ export function mount(ctx) {
   renderStats(root, collection, data);
   renderGroups(root, collection, data, view, sort, navigate);
   wireToolbar(root, state, navigate);
+  wireCoffreTabs(root, navigate);
 }
 
-/* ───────── Mock demo seed ───────── */
-
-function maybeSeedDemo(state, data) {
-  if (sessionStorage.getItem(DEMO_KEY) !== 'on') return;
-  if (state.state.collection.length > 0) return;
-  if (!data.isReady()) return;
-  // Pick 10 random referential coins
-  for (let i = 0; i < 10; i++) {
-    const coin = data.randomCoin();
-    if (!coin) break;
-    // Mock a small +/- variation on initial value
-    const base = coin.faceValueCents || 10;
-    const jitter = Math.round(base * (0.85 + Math.random() * 0.2));
-    state.addCoin(coin.eurioId, { valueAtAddCents: jitter });
-  }
+/* ───────── Coffre segmented tabs ─────────
+ * Routes the user to the Sets / Catalogue sub-views. The "Mes pièces"
+ * tab is already the current scene (noop). Each scene hosts its own
+ * copy of this segmented control — see coffre-header pattern.
+ */
+function wireCoffreTabs(root, navigate) {
+  const tabs = root.querySelectorAll('[data-coffre-tab]');
+  tabs.forEach((tab) => {
+    tab.addEventListener('click', () => {
+      const id = tab.dataset.coffreTab;
+      if (id === 'sets')    return navigate('#/vault/sets');
+      if (id === 'catalog') return navigate('#/vault/catalog');
+    });
+  });
 }
 
 /* ───────── Header : value total + delta ───────── */

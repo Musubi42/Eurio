@@ -32,7 +32,10 @@
 
   /* ───────── Header : eyebrow + value total ───────── */
   .vault-home-header {
-    padding: var(--space-2) 0 var(--space-6);
+    padding: var(--space-1) 0 var(--space-6);
+  }
+  .vault-home-header__segnav {
+    margin: 0 0 var(--space-6);
   }
   .vault-home-header__top {
     display: flex;
@@ -570,6 +573,12 @@
           </button>
         </div>
       </div>
+
+      <nav class="tabbed-nav vault-home-header__segnav" role="tablist" aria-label="Vues du coffre">
+        <button type="button" role="tab" aria-selected="true"  data-coffre-tab="coins">Mes pièces</button>
+        <button type="button" role="tab" aria-selected="false" data-coffre-tab="sets">Sets</button>
+        <button type="button" role="tab" aria-selected="false" data-coffre-tab="catalog">Catalogue</button>
+      </nav>
 
       <div class="vault-home-value">
         <span class="vault-home-value__label">Valeur totale</span>

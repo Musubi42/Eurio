@@ -173,99 +173,49 @@ export function replayOnboarding() {
   save();
 }
 
-// ───────── Demo seed (Phase 2 · Agent B5) ─────────
+// ───────── State presets (parity viewer + demo seed) ─────────
 //
-// Fills the collection with ~15 representative coins so the vault, profile
-// level and achievements have something to show without going through 15
-// scans. Spread addedAt dates over the last ~90 days and set a
-// `valueAtAddCents` a bit lower than a mocked current p50, so a positive
-// delta appears in profile stats.
-//
-// All helpers are local to this function — we do NOT extend the top-level
-// module surface, and we do NOT mutate the existing `addCoin`/`reset` logic.
+// Presets are loaded from shared JSON fixtures in _shared/fixtures/.
+// They override state in memory WITHOUT writing to localStorage.
+// This lets the parity viewer show different states per scene
+// (populated vault, empty vault, advanced profile) without side effects.
+// The same JSON files are consumed by Android (debug seed) and Maestro.
 
-const DEMO_COIN_IDS = [
-  // 5 pieces de circulation, pays varies (couvre copper / nordic / silver / bi-metal)
-  'de-2002-1eur-standard',
-  'es-2012-2eur-standard',
-  'it-2008-50c-standard',
-  'nl-2014-10c-standard',
-  'pt-2010-5c-standard',
-  // 6 commemoratives 2EUR "interessantes"
-  'de-2007-2eur-treaty-of-rome',
-  'fr-2015-2eur-70-years-of-peace-in-europe',
-  'it-2012-2eur-10-years-of-euro-cash',
-  'lu-2009-2eur-10th-anniversary-of-the-economic-and-monetary-union',
-  'mc-2015-2eur-800-years-since-the-first-castle-in-the-rock',
-  'sm-2016-2eur-550-years-since-the-death-of-donatello',
-  // 4 pieces plus rares / micro-etats / emissions communes
-  'va-2017-2eur-100-years-of-marian-apparitions-in-fatima',
-  'ad-2014-2eur-20-years-in-the-council-of-europe',
-  'mt-2015-2eur-republic-of-malta-1974',
-  'ie-2009-2eur-10th-anniversary-of-the-economic-and-monetary-union',
-];
+const KNOWN_PRESETS = ['empty', 'populated', 'profile-demo'];
+const _presetCache = new Map();
 
-// Fallback p50s by face value cents — matches the tone of the profile mockup
-// without needing a real price oracle. Used both for the `current` (returned
-// by hasCoin consumers) and to back-compute a plausible lower `valueAtAdd`.
-function demoCurrentP50Cents(faceValueCents) {
-  if (faceValueCents == null) return 220;
-  if (faceValueCents <= 5)   return 60;    // ~0.60 €
-  if (faceValueCents <= 20)  return 140;   // ~1.40 €
-  if (faceValueCents <= 50)  return 220;   // ~2.20 €
-  if (faceValueCents <= 100) return 380;   // ~3.80 €
-  return 640;                               // ~6.40 € (commemos 2€)
+async function fetchPreset(name) {
+  if (_presetCache.has(name)) return _presetCache.get(name);
+  const res = await fetch(`_shared/fixtures/preset-${name}.json`);
+  if (!res.ok) throw new Error(`Preset "${name}" not found (${res.status})`);
+  const data = await res.json();
+  _presetCache.set(name, data);
+  return data;
 }
 
-export async function seedDemoCollection() {
-  // Lazy-load data.js to avoid a hard import-time coupling with the mock
-  // collection (state.js must stay standalone — data may not be loaded yet).
-  const data = await import('./data.js');
-  if (typeof data.init === 'function') {
-    await data.init();
+export async function applyPreset(name) {
+  if (!name || !KNOWN_PRESETS.includes(name)) return false;
+
+  const preset = await fetchPreset(name);
+
+  // Reset state to defaults, then apply fixture collection
+  Object.assign(state, deepClone(DEFAULT_STATE));
+  state.firstRun = preset.firstRun ?? false;
+  state.collection = deepClone(preset.collection ?? []);
+
+  // Apply level override if present (e.g. profile-demo), otherwise recompute
+  if (preset.levelOverride) {
+    Object.assign(state.level, deepClone(preset.levelOverride));
+  } else {
+    recomputeLevel();
   }
 
-  // Wipe the existing collection so re-running seed stays idempotent instead
-  // of stacking duplicates. We do this in-place so we don't touch save/reset.
-  state.collection.length = 0;
-
-  const added = [];
-  const now = Date.now();
-  const DAY = 24 * 60 * 60 * 1000;
-
-  DEMO_COIN_IDS.forEach((eurioId, i) => {
-    // Not every id is guaranteed to exist in the dataset — if a commemorative
-    // has been renamed, fall back to a same-country random coin so the demo
-    // still lands 15 items.
-    let coin = data.getCoin ? data.getCoin(eurioId) : null;
-    if (!coin && typeof data.randomCoin === 'function') {
-      coin = data.randomCoin();
-    }
-    if (!coin) return;
-
-    const current = demoCurrentP50Cents(coin.faceValueCents);
-    // Back-compute a value-at-add around 75% of current → positive delta.
-    const valueAtAddCents = Math.max(coin.faceValueCents ?? 1,
-                                     Math.round(current * 0.74));
-
-    // Spread addedAt over the last ~90 days, deterministically.
-    const addedAt = now - Math.round((90 - i * 5.5) * DAY);
-
-    state.collection.push({
-      eurioId: coin.eurioId,
-      addedAt,
-      valueAtAddCents,
-      condition: i % 3 === 0 ? 'good' : null,
-      note: null,
-    });
-    added.push(coin.eurioId);
-  });
-
-  // Mark onboarding as done so the router doesn't bounce us back to it.
-  state.firstRun = false;
-
-  recomputeLevel();
   save();
+  return true;
+}
 
-  return added;
+// Backward-compatible alias — used by #/debug/seed-demo route
+export async function seedDemoCollection() {
+  await applyPreset('populated');
+  return state.collection.map(c => c.eurioId);
 }

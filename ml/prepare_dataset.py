@@ -43,12 +43,12 @@ def split_dataset(
 
     for cls_dir in classes:
         cls_name = cls_dir.name
-        # Real photos only (not augmented, not Numista studio)
+        # Source images (not augmented, not in augmented/ subdir)
         images = sorted([
             f for f in cls_dir.iterdir()
             if f.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp")
             and not f.stem.startswith("aug_")
-            and f.stem not in ("obverse", "reverse")
+            and f.is_file()
         ])
 
         if not images:

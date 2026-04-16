@@ -97,8 +97,9 @@
 | 🟢 | eBay Finding API morte depuis 2025-02-05 → Browse API + velocity weighting (`ebay_client.py`) | 2026-04-13 | [`research/phase-2c4-ebay-run.md`](./research/phase-2c4-ebay-run.md) |
 | 🟢 | Bulgarie dans la zone euro depuis 2026-01-01 → **21 pays** euro à partir de 2026 | 2026-01-01 | Mémoire `reference_eurozone_21.md` |
 | 🟢 | Schema Room local = **miroir aplati** du schema Supabase (JSONB → colonnes typées), sync par points (bootstrap / delta fetch / prix eBay / user collection) | 2026-04-13 | [`design/_shared/data-contracts.md`](./design/_shared/data-contracts.md) |
-| 🟢 | **Enrichissement metadata `coins`** : ajout de `issue_type`, `series`, `ruler`, `theme_code`, `mintage`, `series_rank`. Prérequis pour rendre les sets structurels riches. | 2026-04-15 | [`design/_shared/sets-architecture.md`](./design/_shared/sets-architecture.md) §6 |
-| 🟢 | **BCE = source officielle** pour les `theme_code` des émissions communes €2. Scrape one-shot + cron mensuel `ml/bootstrap_common_commemo.py`, idempotent, assert count vs expected | 2026-04-15 | [`design/_shared/sets-architecture.md`](./design/_shared/sets-architecture.md) §7.2 |
+| 🟢 | **Enrichissement metadata `coins`** : ajout de `issue_type`, `series_id` (FK), `mintage`, `is_withdrawn`, `withdrawn_at`, `withdrawal_reason`. Colonnes `theme_code`, `ruler`, `series_rank` droppées (redondantes / inutiles). | 2026-04-15 | [`design/_shared/sets-architecture.md`](./design/_shared/sets-architecture.md) §6 |
+| 🟢 | **Nouvelle table `coin_series`** first-class : séries de circulation avec `minting_started_at`, `minting_ended_at`, `minting_end_reason`, chaîne `supersedes`/`superseded_by`. ~32 entrées au total pour toute la zone euro historique, seed dans `ml/data/coin_series_seed.json`. | 2026-04-15 | [`design/_shared/sets-architecture.md`](./design/_shared/sets-architecture.md) §6.2 |
+| 🟢 | **Distinction frappe arrêtée vs retrait** : `coin_series.minting_ended_at` = la Monnaie arrête de frapper, pièces restent en circulation (cas standard à chaque rupture de série). `coins.is_withdrawn` = décision de retrait officiel, aucun cas historique euro mais modélisé pour signaler explosion de valeur collection. | 2026-04-15 | [`design/_shared/sets-architecture.md`](./design/_shared/sets-architecture.md) §6.2 |
 
 ---
 
@@ -108,13 +109,13 @@
 |---|---|---|---|
 | 🟢 | Un set est un **objet produit de premier plan**, pas une constante de code. Canonique dans Supabase, synchronisable, éditable via admin tool futur | 2026-04-15 | [`design/_shared/sets-architecture.md`](./design/_shared/sets-architecture.md) §1 |
 | 🟢 | **Taxonomie 4 types** : structurel (majorité, dérivable), curé (rare, Grande Chasse v1), paramétré (millésime de naissance v1), dynamique (v2) | 2026-04-15 | [`design/_shared/sets-architecture.md`](./design/_shared/sets-architecture.md) §2 |
-| 🟢 | **DSL structurel figé v1** : `country`, `issue_type`, `year`, `denomination`, `series`, `ruler`, `theme_code`, `distinct_by`, `min/max_mintage`. Ajouter une clé = PR coordonnée client + admin | 2026-04-15 | [`design/_shared/sets-architecture.md`](./design/_shared/sets-architecture.md) §3 |
+| 🟢 | **DSL structurel figé v1** : `country`, `issue_type`, `year` (int, pas range), `denomination`, `series_id` (FK coin_series), `is_withdrawn`, `distinct_by`, `min/max_mintage`. Clés supprimées après révision : `year: [min,max]` (remplacé par `series_id`), `theme_code` (redondant avec `year+issue_type`), `ruler`, `series_rank`. Ajouter une clé = PR coordonnée client + admin | 2026-04-15 | [`design/_shared/sets-architecture.md`](./design/_shared/sets-architecture.md) §3 |
 | 🟢 | Schéma Supabase = 3 tables : `sets`, `set_members`, `sets_audit` (append-only). RLS lecture publique, écriture rôle admin only | 2026-04-15 | [`design/_shared/sets-architecture.md`](./design/_shared/sets-architecture.md) §4 |
 | 🟢 | **Complétion utilisateur 100% locale v1** (`user_set_progress` Room), jamais synced. Sync cloud gated sur lien de compte (v2) | 2026-04-15 | [`design/_shared/sets-architecture.md`](./design/_shared/sets-architecture.md) §5 |
 | 🟢 | **Grande Chasse v1 = 3-4 pièces symboliques**, arbitrage complet à trancher plus tard avec l'outil admin | 2026-04-15 | Conversation 2026-04-15 |
 | 🟢 | **Millésime de naissance v1** : set paramétrique, prompt au moment d'ouvrir la carte du set, pas à l'onboarding (friction minimale, cohérent no-account) | 2026-04-15 | [`design/_shared/sets-architecture.md`](./design/_shared/sets-architecture.md) §2.3 |
-| 🟢 | **Inférence 3 chemins** : A runtime client (DSL), B bootstrap BCE (source officielle), C cluster visuel ArcFace (failsafe, gated Phase 2B) | 2026-04-15 | [`design/_shared/sets-architecture.md`](./design/_shared/sets-architecture.md) §7 |
-| 🟢 | **Cas de validation Rome 2007** : approche validée le 2026-04-15 contre la page Wikipédia dédiée. 13 pays attendus via `theme_code='eu-rome-2007'` + `distinct_by='country'` | 2026-04-15 | [`design/_shared/sets-architecture.md`](./design/_shared/sets-architecture.md) §10 |
+| 🟢 | **Inférence 2 chemins** : A runtime client (évaluateur DSL Kotlin), B bootstrap `ml/enrich_coins_metadata.py` (seed `coin_series` + populate `issue_type` + match `series_id`). Chemin C cluster visuel ArcFace reporté post Phase 2B comme failsafe de cohérence. | 2026-04-15 | [`design/_shared/sets-architecture.md`](./design/_shared/sets-architecture.md) §7 |
+| 🟢 | **Cas de validation Rome 2007** : 13 pays attendus via `{year: 2007, issue_type: 'commemo-common', distinct_by: 'country'}`. Pas de `theme_code`, la sémantique thématique vit dans `sets.name_i18n` et l'id du set. | 2026-04-15 | [`design/_shared/sets-architecture.md`](./design/_shared/sets-architecture.md) §7.3 |
 
 ---
 

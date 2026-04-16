@@ -66,15 +66,20 @@ Les critères structurels sont exprimés en JSONB (`sets.criteria`). Le DSL est 
 |---|---|---|---|
 | `country` | `iso2` \| `iso2[]` | Un ou plusieurs pays ISO2 | `"fr"` ou `["mc","sm","va","ad"]` |
 | `issue_type` | enum \| enum[] | Type d'émission | `"circulation"`, `"commemo-national"`, `"commemo-common"`, `"starter-kit"`, `"bu-set"`, `"proof"` |
-| `year` | `int` \| `[min,max]` \| `"current"` | Année ou plage | `2007` ou `[2007,2012]` ou `"current"` |
+| `year` | `int` \| `"current"` | Année unique ou année courante | `2007` ou `"current"` |
 | `denomination` | `float[]` | Valeurs faciales en euros | `[0.01,0.02,0.05,0.10,0.20,0.50,1.00,2.00]` |
-| `series` | `string` | Identifiant de série/type | `"fr-2022"`, `"be-albert-ii"` |
-| `ruler` | `string` | Identifiant dirigeant (redondant avec series pour monarchies) | `"jp2"`, `"benedict-xvi"` |
-| `theme_code` | `string` | Thème officiel BCE | `"eu-rome-2007"`, `"eu-emu-2009"` |
+| `series_id` | `string` | FK vers `coin_series(id)` — sélectionne toutes les pièces d'une série (circulation uniquement) | `"be-philippe"`, `"va-jp2"`, `"fr-2022"` |
+| `is_withdrawn` | `bool` | Filtre sur le statut de retrait | `true` (pièces retirées) / `false` (en circulation) |
 | `distinct_by` | `"country"` | Dédoublonnage : une seule pièce par valeur distincte | voir §3.3 |
-| `min_mintage` / `max_mintage` | `int` | Bornes sur le tirage | `max_mintage: 100000` (sets raretés) |
+| `min_mintage` / `max_mintage` | `int` | Bornes sur le tirage | `max_mintage: 100000` (sets raretés, gated sur la colonne `mintage`) |
 
 Toute combinaison AND implicite entre les clés. Pas de OR explicite dans le DSL v1 (si besoin, split en deux sets).
+
+**Clés volontairement absentes** et pourquoi :
+- `year: [min, max]` (range) — remplacé par `series_id` qui porte la sémantique des plages temporelles au niveau métier (dates de frappe). Si un besoin légitime de plage d'années non-série apparaît (ex: « décennie 2010-2019 »), on l'ajoutera explicitement au DSL v2.
+- `theme_code` — redondant avec `(year, issue_type='commemo-common')` puisqu'il n'y a jamais eu qu'une seule émission commune par an dans l'histoire de l'euro. La sémantique thématique vit dans `sets.name_i18n` et l'id du set, pas dans une colonne de `coins`. Si deux communes sortent la même année un jour, fallback curé pour ce cas.
+- `ruler` — redondant avec `coin_series.designation`.
+- `series_rank` — pas de cas d'usage v1.
 
 ### 3.2 Structure `criteria` JSONB
 
@@ -228,35 +233,59 @@ user_set_progress                              -- LOCAL UNIQUEMENT v1, jamais sy
 
 ---
 
-## 6. Enrichissements requis sur `coins`
+## 6. Enrichissements sur `coins` et nouvelle table `coin_series`
 
-Les colonnes nécessaires pour faire vivre le DSL. À ajouter en migration Supabase + Room :
+Le DSL a besoin de metadata qui n'existait pas dans le schéma initial de `coins`. Deux migrations ont été appliquées le 2026-04-15 :
+
+### 6.1 `coins` — colonnes ajoutées
+
+| Colonne | Type | Rôle |
+|---|---|---|
+| `issue_type` | text check (enum) | Type d'émission. Populé par l'enrichment script depuis `is_commemorative` + `national_variants` : `circulation` / `commemo-national` / `commemo-common`. `starter-kit` / `bu-set` / `proof` réservés futur. |
+| `series_id` | text FK → `coin_series(id)` | Série de circulation à laquelle appartient la pièce. NULL pour toutes les commémoratives (commemos = standalone, pas de série). |
+| `mintage` | bigint nullable | Tirage total. Reporté v2, laissé NULL v1. |
+| `is_withdrawn` | bool default false | La pièce a-t-elle été officiellement retirée de la circulation ? Aucun cas historique connu pour l'euro, mais modélisé. |
+| `withdrawn_at` | date nullable | Date de la décision de retrait. |
+| `withdrawal_reason` | text nullable | Raison : `design_issue`, `political`, `defect`, `other`. |
+
+Champs legacy conservés pour compat : `is_commemorative` (bool), `theme` (text libre), `national_variants` (jsonb).
+
+### 6.2 `coin_series` — nouvelle table first-class
+
+Une **série** est un type de design circulant pour un pays donné, avec un cycle de vie (début-fin de frappe) et une chaîne de succession.
 
 ```sql
-ALTER TABLE coins ADD COLUMN issue_type text
-  CHECK (issue_type IN ('circulation','commemo-national','commemo-common','starter-kit','bu-set','proof'));
-ALTER TABLE coins ADD COLUMN series text;      -- 'fr-2022', 'be-albert-ii'
-ALTER TABLE coins ADD COLUMN ruler text;       -- 'jp2','benedict-xvi' (nullable)
-ALTER TABLE coins ADD COLUMN theme_code text;  -- 'eu-rome-2007' (nullable)
-ALTER TABLE coins ADD COLUMN mintage bigint;   -- tirage Numista si déjà pas présent
-ALTER TABLE coins ADD COLUMN series_rank int;
-
-CREATE INDEX idx_coins_country_series ON coins(country, series);
-CREATE INDEX idx_coins_theme_code ON coins(theme_code);
-CREATE INDEX idx_coins_issue_type_year ON coins(issue_type, year);
+CREATE TABLE coin_series (
+  id                       text PRIMARY KEY,           -- 'be-philippe', 'fr-1999', 'va-jp2'
+  country                  text NOT NULL,
+  designation              text NOT NULL,              -- 'Philippe', 'Type 1999', 'Jean-Paul II'
+  designation_i18n         jsonb,                      -- {fr:"…", en:"…"}
+  description              text,
+  minting_started_at       date NOT NULL,              -- date de première frappe officielle
+  minting_ended_at         date,                       -- NULL = encore en production
+  minting_end_reason       text,                       -- 'ruler_change','redesign','policy','sede_vacante_end','other'
+  supersedes_series_id     text REFERENCES coin_series(id),
+  superseded_by_series_id  text REFERENCES coin_series(id),
+  created_at               timestamptz NOT NULL DEFAULT now(),
+  updated_at               timestamptz NOT NULL DEFAULT now()
+);
 ```
 
-Note : `coins` a déjà un champ `theme` (free text) et `is_commemorative` (bool). Ces champs restent pour compat. `theme_code` est une clé canonique distincte (« eu-rome-2007 »), `theme` reste descriptif (« 50e anniversaire du Traité de Rome »).
+**Distinction sémantique critique** :
+- `coin_series.minting_ended_at` = la Monnaie nationale a **arrêté de frapper** cette série. Les pièces existantes **restent en circulation** et conservent leur cours légal. C'est le cas standard à chaque rupture de série (Belgique 2013, France 2021, Vatican à chaque pape, etc.).
+- `coins.is_withdrawn` = la pièce a été **retirée de la circulation** par décision officielle. Les banques la refusent, son cours légal est supprimé. **Aucun cas historique connu pour l'euro** (la BCE et les BC nationales n'ont jamais procédé à un recall post-émission depuis 2002), mais le data model le supporte parce que quand ça arrive, la valeur de collection explose — signal premier pour un numismate.
+
+**Source de vérité des séries** : aucune base machine-readable unique. Compilé à la main dans `ml/data/coin_series_seed.json` (~32 entrées au total pour toute la zone euro historique) en croisant BCE + Numista + communiqués des monnaies nationales. Le taggage est one-shot, maintenu éditorialement via l'admin quand un nouveau pays entre ou qu'une rupture se produit.
+
+**Matching coins → series** : pour chaque coin de circulation, trouver la série telle que `country` matche et `coin.year` ∈ `[minting_started_at.year, coalesce(minting_ended_at.year, ∞)]`. Toutes les frontières sont des années civiles pleines (aucune année de transition ambiguë dans l'histoire de l'euro). Les commémoratives ont `series_id = NULL`.
 
 ---
 
-## 7. Inférence — algorithme officiel
+## 7. Inférence — runtime et bootstrap
 
-Trois chemins complémentaires. Le chemin A est le runtime. B et C sont des outils de bootstrap / validation.
+### 7.1 Runtime client — évaluateur DSL
 
-### 7.1 Chemin A — Metadata canonique (runtime client)
-
-C'est l'évaluateur exécuté dans l'app à chaque changement de `user_collection` :
+Exécuté dans l'app à chaque changement de `user_collection` :
 
 ```kotlin
 fun evaluateSet(set: Set, ownedCoins: List<Coin>): SetProgress {
@@ -274,26 +303,51 @@ fun evaluateSet(set: Set, ownedCoins: List<Coin>): SetProgress {
 }
 ```
 
-Coût : O(N coins) par set, ~3000 coins × 80 sets max = 240k évaluations, acceptable en mémoire Room indexé (< 50 ms sur téléphone moderne). Re-calcul déclenché uniquement à l'ajout/suppression d'une pièce.
+Coût : O(N coins) par set, ~3000 coins × 80 sets = ~240k évaluations, < 50 ms sur téléphone moderne avec indexes Room. Re-calcul déclenché uniquement à l'ajout/suppression d'une pièce.
 
-### 7.2 Chemin B — Bootstrap depuis sources officielles
+### 7.2 Bootstrap `coin_series` et enrichissement
 
-Pour **poser** les valeurs `theme_code`, `series`, `ruler` dans le référentiel. Exécuté côté `ml/`, pas côté app.
+Script `ml/enrich_coins_metadata.py` (dry-run + apply) :
 
-**Source BCE** (pour `theme_code` des communes) :
-1. Scraper la page [BCE Joint commemorative issues](https://www.ecb.europa.eu/euro/coins/comm/html/index.en.html) → liste `[(theme_code, year, theme_name, countries[])]`
-2. Pour chaque `(theme_code, country)`, retrouver l'`eurio_id` via `(country, year, denomination=2, issue_type='commemo-common')`
-3. `UPDATE coins SET theme_code = ? WHERE eurio_id = ?`
-4. `ASSERT COUNT(*) == expected` (13 pour Rome 2007, 16 pour EMU 2009, etc.). Abort sur mismatch.
+1. **Seed `coin_series`** depuis `ml/data/coin_series_seed.json` (~32 entrées compilées à la main depuis BCE + Numista + communiqués monnaies nationales).
+2. **Populate `issue_type`** sur les 2938 coins (dérivation auto) :
+   ```
+   is_commemorative=false              → 'circulation'
+   is_commemorative=true, nat_var NULL → 'commemo-national'
+   is_commemorative=true, nat_var !=   → 'commemo-common'
+   ```
+3. **Populate `coins.series_id`** pour les coins de circulation uniquement : matching `(country, year)` contre `[minting_started_at.year, minting_ended_at.year || ∞]`. Commémoratives laissées `NULL`.
+4. **Assertions** :
+   - `issue_type NOT NULL` sur 100% des coins
+   - `series_id NOT NULL` sur 100% des coins où `issue_type='circulation'`
+   - `series_id IS NULL` sur 100% des coins commémoratifs
+   - Compte par série cohérent avec les bornes temporelles
 
-**Source Numista + catalog catalogs** (pour `series`, `ruler`) :
-Les ruptures de série (Belgique Albert II → Philippe, France 1999 → 2022, Vatican par pape, Monaco par prince, Espagne Juan Carlos → Felipe) sont **une vingtaine au total** sur toute la zone euro. Elles se taguent à la main dans un fichier `ml/data/series_overrides.json` et sont appliquées par le bootstrap.
+### 7.3 Émissions communes — sans theme_code
 
-**Source BCE pour les nouveautés** : cron mensuel (`ml/bootstrap_common_commemo.py`), idempotent, détecte nouvelles émissions communes et les ajoute au référentiel.
+Les commémoratives communes (Rome 2007, EMU 2009, Cash 2012, Flag 2015, Erasmus 2022, futures) sont **matchées par `(year, issue_type='commemo-common')`** dans le DSL, pas par un `theme_code` dédié. Possible parce qu'il n'y a jamais eu qu'**une seule commune par année** dans l'histoire de l'euro (2002-2026).
 
-### 7.3 Chemin C — Validation par clustering visuel (failsafe, post Phase 2B)
+Exemple Rome 2007 :
+```json
+{
+  "id": "common-rome-2007",
+  "kind": "structural",
+  "criteria": {
+    "year": 2007,
+    "issue_type": "commemo-common",
+    "distinct_by": "country"
+  },
+  "expected_count": 13
+}
+```
 
-Une émission commune a par définition une signature visuelle : N pays, même année, design identique sauf le champ national. Avec les embeddings ArcFace (disponibles après Phase 2B), on peut **détecter automatiquement** les communes non-taggées :
+Le libellé « 50e anniversaire du Traité de Rome » vit dans `sets.name_i18n` et l'`id` du set (`common-rome-2007` comme convention éditoriale lisible), pas dans une colonne de `coins`. La table `coins` reste **neutre descriptive**, la sémantique thématique vit dans les sets.
+
+**Failsafe pour un scénario 2-communes-la-même-année** : détectable au seed (`expected_count != actual`) → fallback curé pour ce cas, pas de casse du système.
+
+### 7.4 Validation par clustering visuel (failsafe futur, post Phase 2B)
+
+Une émission commune a par définition une signature visuelle : N pays, même année, design identique sauf le champ national. Avec les embeddings ArcFace disponibles post-Phase 2B, on peut détecter automatiquement des communes non-taggées ou des erreurs de taggage :
 
 ```python
 for year in range(2002, current_year + 1):
@@ -301,11 +355,11 @@ for year in range(2002, current_year + 1):
     clusters = arcface_cluster(candidates, similarity_threshold=0.92)
     for cluster in clusters:
         if len(cluster) >= 3 and distinct_countries(cluster) == len(cluster):
-            if not all_have_same_theme_code(cluster):
-                flag_review_queue(cluster, "potential common issue, check BCE")
+            if not all_share_common_issue_type(cluster):
+                flag_review_queue(cluster, "potential common issue miscategorized")
 ```
 
-Usage : contrôle de cohérence, pas source primaire. Utile si la BCE publie tardivement ou si Numista loupe un tag. Gated sur Phase 2B (dépend de l'existence d'embeddings entraînés).
+Contrôle de cohérence. Gated sur Phase 2B.
 
 ---
 
@@ -329,19 +383,21 @@ Liste cible pour le premier référentiel (approximative, à affiner au bootstra
 
 | id | kind | criteria / membres | expected_count | category |
 |---|---|---|---|---|
-| `circulation-fr` | structural | `country=fr, issue_type=circulation` | 8 × nb séries FR | country |
-| `circulation-de` | structural | `country=de, issue_type=circulation` | 8 | country |
-| … (21 pays) | | | | |
+| `circulation-fr-1999` | structural | `series_id=fr-1999` | 8 × nb millésimes FR 1999-2021 | country |
+| `circulation-fr-2022` | structural | `series_id=fr-2022` | 8 × nb millésimes FR 2022+ | country |
+| `circulation-de` | structural | `series_id=de-circ` | 8 × nb millésimes DE | country |
+| … (une par série, 32 au total) | | | | |
 | `commemo-national-fr` | structural | `country=fr, issue_type=commemo-national` | dynamique | country |
-| `common-rome-2007` | structural | `theme_code='eu-rome-2007'`, `distinct_by='country'` | 13 | theme |
-| `common-emu-2009` | structural | `theme_code='eu-emu-2009'`, `distinct_by='country'` | 16 | theme |
-| `common-euro-cash-2012` | structural | `theme_code='eu-cash-2012'`, `distinct_by='country'` | 17 | theme |
-| `common-flag-2015` | structural | `theme_code='eu-flag-2015'`, `distinct_by='country'` | 19 | theme |
-| `common-erasmus-2022` | structural | `theme_code='eu-erasmus-2022'`, `distinct_by='country'` | 19 | theme |
-| `micro-states` | structural | `country IN (mc,sm,va,ad), issue_type=circulation, denomination=2.00` | 4 | hunt |
-| `eurozone-tour` | structural | `issue_type=circulation, denomination=2.00, distinct_by=country` | 21 | hunt |
-| `vatican-jp2` | structural | `country=va, series=va-jp2` | variable | theme |
-| `vatican-benedict` | structural | `country=va, series=va-benedict-xvi` | variable | theme |
+| `common-rome-2007` | structural | `year=2007, issue_type=commemo-common, distinct_by=country` | 13 | theme |
+| `common-emu-2009` | structural | `year=2009, issue_type=commemo-common, distinct_by=country` | 16 | theme |
+| `common-cash-2012` | structural | `year=2012, issue_type=commemo-common, distinct_by=country` | 17 | theme |
+| `common-flag-2015` | structural | `year=2015, issue_type=commemo-common, distinct_by=country` | 19 | theme |
+| `common-erasmus-2022` | structural | `year=2022, issue_type=commemo-common, distinct_by=country` | 19 | theme |
+| `micro-states` | structural | `country IN (mc,sm,va,ad), issue_type=circulation, denomination=[2.00]` | 4 | hunt |
+| `eurozone-tour` | structural | `issue_type=circulation, denomination=[2.00], distinct_by=country` | 21 | hunt |
+| `vatican-jp2` | structural | `series_id=va-jp2` | variable | theme |
+| `vatican-benedict` | structural | `series_id=va-benedict-xvi` | variable | theme |
+| `withdrawn-collector` | structural | `is_withdrawn=true` | 0 à ce jour (modélisation) | hunt |
 | `birth-year` | parametric | `year=<param>`, `param_key='birth_year'` | variable | personal |
 | `grande-chasse` | curated | 3-4 pièces symboliques v1 (à compléter plus tard) | ~4 | hunt |
 | `coffre-dor` | curated | tier éditorial (à définir) | TBD | tier |
@@ -402,13 +458,13 @@ Condition d'existence : le bootstrap BCE doit avoir posé `theme_code='eu-rome-2
 
 ## Historique
 
-- **2026-04-15** — Création du doc, brainstorm avec Raphaël. Décisions clés :
-  - Enrichissement metadata `coins` (issue_type, series, ruler, theme_code)
-  - DSL structurel figé v1
-  - Sets curés strictement limités à Grande Chasse v1
-  - Paramétré v1 : millésime de naissance, prompt au moment d'ouvrir la carte du set
-  - Schéma Supabase `sets` / `set_members` / `sets_audit`
-  - Complétion utilisateur 100% locale v1
-  - Chemins d'inférence A (runtime) + B (bootstrap BCE) + C (ArcFace failsafe, gated Phase 2B)
-  - Validation par le cas Rome 2007 : théorie validée contre Wikipédia, 13 pays attendus
-  - Un admin tooling séparé est planifié (cf. `docs/design/admin/README.md`)
+- **2026-04-15 (matin)** — Création du doc, brainstorm initial. Premier plan : enrichir `coins` avec `issue_type`, `series`, `ruler`, `theme_code`, `mintage`, `series_rank`. DSL avec `year: [min,max]` et `theme_code` comme clés.
+- **2026-04-15 (après-midi)** — Révision après pushback produit :
+  - **`theme_code` supprimé** : redondant avec `(year, issue_type='commemo-common')` vu qu'il n'y a jamais eu qu'une commune par an. La sémantique thématique vit dans `sets.name_i18n`, pas dans `coins`. Table `coins` reste neutre descriptive.
+  - **`year: [min, max]` supprimé du DSL** : identifié comme dette métier. Les plages temporelles passent par `coin_series` qui modélise proprement le cycle de vie des séries (dates de frappe + chaîne supersedes).
+  - **Nouvelle table `coin_series`** first-class avec `minting_started_at`, `minting_ended_at`, `minting_end_reason`, `supersedes`/`superseded_by` chaînage. 32 entrées compilées dans `ml/data/coin_series_seed.json`.
+  - **`coins.series` → `coins.series_id`** FK vers `coin_series`. Colonnes `ruler` et `series_rank` supprimées (redondantes / non utilisées).
+  - **Distinction frappe arrêtée vs retrait** : `coin_series.minting_ended_at` = Monnaie stoppe la frappe, pièces restent en circulation (cas standard à chaque rupture). `coins.is_withdrawn` / `withdrawn_at` / `withdrawal_reason` = décision de retrait officiel, aucun cas historique connu pour l'euro mais modélisé pour signaler l'explosion de valeur de collection quand ça arrive.
+  - Paramétré v1 confirmé : millésime de naissance, prompt au moment d'ouvrir la carte du set.
+  - Schéma Supabase `sets` / `set_members` / `sets_audit` inchangé.
+  - Admin tooling séparé planifié (cf. `docs/design/admin/README.md`).

@@ -12,7 +12,7 @@
 - 🟢 livré — parité visuelle validée
 - — — pas d'écran Android (proto-only ou delta)
 
-## Inventaire (2026-04-16)
+## Inventaire (2026-04-16, rev 2)
 
 ### Onboarding
 
@@ -28,51 +28,51 @@
 
 | Proto scene | Android destination | Phase | Status | Notes |
 |---|---|---|---|---|
-| `scan-idle.html` | `ScanScreen` state Idle | 1 | ⏳ | Viewfinder live par défaut |
-| `scan-detecting.html` | `ScanScreen` state Detecting | 1 | ⏳ | Overlay "détection…" entre Idle et Matched |
-| `scan-matched.html` | `ScanScreen` state Accepted + `CoinResultCard` | 1 | ⏳ | Card 2 CTA (Détail / Ajouter) |
-| `scan-not-identified.html` | `ScanScreen` state NotIdentified | 1 | ⏳ | Rejet spread-based, encourage retry |
-| `scan-failure.html` | `ScanScreen` state Failure | 1 | ⏳ | Erreur ML / caméra indisponible |
-| `scan-debug.html` | `ScanScreen` avec `debugMode = true` | 1 | ⏳ | Toggles YOLO/ArcFace + CAPTURE + overlay bboxes |
+| `scan-idle.html` | `ScanScreen` state Idle → `ScanIdleLayer` | 1 | 🟡 | Portage Compose livré (L-corners animés + hint pill). Validation device pendante. |
+| `scan-detecting.html` | `ScanScreen` state Detecting → `ScanDetectingLayer` | 1 | 🟡 | Portage livré (gold pulse + linear progress). Validation device pendante. |
+| `scan-matched.html` | `ScanScreen` state Accepted → `ScanAcceptedCard` | 1 | 🟡 | Portage livré (bottom sheet 2 CTA + swipe-down dismiss + 3s cooldown). Validation device pendante. |
+| `scan-not-identified.html` | `ScanScreen` state NotIdentified → `ScanNotIdentifiedSheet` | 1 | 🟡 | Portage livré (red ring + top-5 + face-value picker 8 chips). Validation device pendante. |
+| `scan-failure.html` | `ScanScreen` state Failure → `ScanFailureLayer` | 1 | 🟡 | Portage livré (warm orange + auto-retry 3s). Le trigger `ScanState.Failure` reste à définir côté pipeline (actuellement inatteignable). |
+| `scan-debug.html` | `ScanScreen` + `ScanDebugOverlay` gated by `debugMode` | 1 | 🟡 | Portage livré (5 panels + tool strip). Le 7-tap version badge fonctionne. `DebugViewData` populée vide pour l'instant — à brancher sur `ScanResult` latences + bboxes réelles. |
 
 ### Coin detail
 
 | Proto scene | Android destination | Phase | Status | Notes |
 |---|---|---|---|---|
-| `coin-detail.html` | `CoinDetailScreen` route `coin/{eurioId}` | 1 (min) / 2 (full) | ⏳ | CTA "Ajouter au coffre" persistant si `?fromScan=true` |
+| `coin-detail.html` | `CoinDetailScreen` route `coin/{eurioId}` | 1 (min) / 2 (full) | 🟡 | Phase 2 : identité, description, sets, retirer du coffre dialog |
 
 ### Coffre — Mes pièces (sub-view 1)
 
 | Proto scene | Android destination | Phase | Status | Notes |
 |---|---|---|---|---|
-| `vault-home.html` | `CoffreScreen` sub-view "Mes pièces" — liste peuplée | 2 | ⏳ | Grille + filtres + tri |
-| `vault-empty.html` | Même sous-vue — état vide | 2 | ⏳ | CTA pulse vers FAB scan |
-| `vault-filters.html` | Filtres inline dans la sub-view | 2 | ⏳ | Chips M3 multi-select |
-| `vault-search.html` | Icône loupe → overlay search | 2 | ⏳ | Text field live filter |
-| `vault-remove-confirm.html` | Dialog M3 de confirmation | 2 | ⏳ | Delete depuis Coin detail |
+| `vault-home.html` | `CoffreScreen` sub-view "Mes pièces" — liste peuplée | 2 | 🟡 | Grille 3 col + liste + tri (pays/valeur/date) + segmented control |
+| `vault-empty.html` | Même sous-vue — état vide | 2 | 🟡 | Coin illustration Canvas + CTA "Scanner ma première pièce" |
+| `vault-filters.html` | Filtres inline dans la sub-view | 2 | 🟡 | Chips M3 multi-select (pays/type/valeur) inline panel animé |
+| `vault-search.html` | Icône loupe → overlay search | 2 | 🟡 | BasicTextField live filter 300ms debounce, inline dans toolbar |
+| `vault-remove-confirm.html` | Dialog M3 de confirmation | 2 | 🟡 | AlertDialog "Retirer du coffre ?" depuis CoinDetailScreen |
 
 ### Coffre — Sets (sub-view 2)
 
 | Proto scene | Android destination | Phase | Status | Notes |
 |---|---|---|---|---|
-| **(manquant)** | `CoffreScreen` sub-view "Sets" — liste | 3 | ❌ **à proto'er** | Cards de sets avec mini-grille silhouette + progress |
-| **(manquant)** | `SetDetailScreen` route `set/{setId}` | 3 | ❌ **à proto'er** | Grille silhouette complète (pattern Pocket) |
-| `profile-set.html` | À relocaliser conceptuellement dans Coffre | 3 | ⏳ | Base existe mais dans le namespace profile, à adapter |
+| `vault-sets-list.html` | `CoffreScreen` sub-view "Sets" — `SetsListScreen` | 3 | 🟡 | Cards sets + mini-planche 8 slots + progress bar + category/state filters. Sorted in-progress first. |
+| `vault-sets-detail.html` | `SetDetailScreen` route `set/{setId}` | 3 | 🟡 | Hero fan-collage 4 coins + big % + planche 3-col grid owned/silhouette + reward teaser + manual add long-press. |
+| `profile-set.html` | À relocaliser conceptuellement dans Coffre | 3 | ⏳ | Iteration antérieure du pattern planche — conservée pour référence, à migrer ultérieurement dans le namespace vault. |
 
 ### Coffre — Catalogue (sub-view 3)
 
 | Proto scene | Android destination | Phase | Status | Notes |
 |---|---|---|---|---|
-| **(manquant)** | `CoffreScreen` sub-view "Catalogue" — carte eurozone | 4 | ❌ **à proto'er** | 21 pays interactifs, fill par % possédé |
-| **(manquant)** | `CatalogCountryScreen` route `catalog/country/{iso2}` | 4 | ❌ **à proto'er** | Grille silhouette des pièces du pays |
+| `vault-catalog-map.html` | `CoffreScreen` sub-view "Catalogue" — `CatalogScreen` | 4 | 🟡 | Canvas map 18 blobs + 3 micro-state pastilles, gold fill by %, peek card, list mode. Toggle Carte/Liste. |
+| `vault-catalog-country.html` | `CatalogCountryScreen` route `catalog/country/{iso2}` | 4 | 🟡 | Hero flag + progress + type filter (Tout/Circulation/Commémos) + planche 3-col owned/silhouette + long-press manual add. |
 
 ### Profil
 
 | Proto scene | Android destination | Phase | Status | Notes |
 |---|---|---|---|---|
-| `profile.html` | `ProfilScreen` — hub principal | 5 | ⏳ | Grade + streak + stats + sections |
-| `profile-achievements.html` | Section "Badges" dans `ProfilScreen` | 5 | ⏳ | Débloqués + next-goal |
-| `profile-settings.html` | Section "Réglages" dans `ProfilScreen` | 5 | ⏳ | Langue, debug, about, reset |
+| `profile.html` | `ProfilScreen` — hub principal | 5 | 🟡 | Hero indigo gradient + grade ladder + stats cards + streak + badges (unlocked row + next 3) + settings preview |
+| `profile-achievements.html` | Section "Badges" dans `ProfilScreen` | 5 | 🟡 | 11 badge definitions, unlocked LazyRow + next-to-unlock with progress bars |
+| `profile-settings.html` | Section "Réglages" dans `ProfilScreen` | 5 | 🟡 | Langue/Notifications/Catalogue/À propos preview rows (read-only v1) |
 | `profile-unlock.html` | Modale animation débloquage grade/badge | 5 | ⏳ | Transition identitaire |
 | `profile-set.html` | Voir section Coffre/Sets ci-dessus | 3 | ⏳ | À relocaliser |
 
@@ -84,12 +84,22 @@
 
 ## Récapitulatif gaps bloquants
 
-Avant de pouvoir démarrer une phase de dev, voici les scènes à proto'er :
+**Session 2026-04-16 rev 2 — tous les gaps bloquants sont résolus.** Les 4 scènes manquantes pour les Phases 3 et 4 ont été livrées et sont prêtes pour le portage Compose.
 
-| Phase | Nb scènes manquantes | Scènes à créer |
+| Phase | Scènes proto | Status |
 |---|---|---|
-| Phase 3 (Coffre Sets) | 2 | `vault-sets-list.html`, `vault-sets-detail.html` |
-| Phase 4 (Coffre Catalogue) | 2 | `vault-catalog-map.html`, `vault-catalog-country.html` |
+| Phase 1 (Scan) | 6 scènes | ⏳ prêtes |
+| Phase 2 (Mes pièces) | 5 scènes | ⏳ prêtes |
+| Phase 3 (Coffre Sets) | `vault-sets-list.html`, `vault-sets-detail.html` | ⏳ prêtes |
+| Phase 4 (Coffre Catalogue) | `vault-catalog-map.html`, `vault-catalog-country.html` | ⏳ prêtes |
+| Phase 5 (Profil) | 5 scènes | ⏳ prêtes (`profile-set.html` à migrer ultérieurement) |
 
-Phase 1 (Scan) et Phase 2 (Mes pièces) ont tout ce qu'il faut dans le proto et peuvent démarrer immédiatement.
-Phase 5 (Profil) a 95% de ce qu'il faut, `profile-set.html` peut servir de base.
+## Composants partagés introduits session 2026-04-16
+
+Extraits dans `docs/design/prototype/_shared/components.css` :
+
+- `.coffre-header` — wrapper du segmented control commun aux 3 sous-vues du Coffre, au-dessus de `.tabbed-nav`
+- `.planche` / `.planche__grid` / `.planche__cell` / `.planche__cell--missing` / `.planche__cell__date` — pattern signature "classeur de collection" utilisé dans vault-sets-list (compact), vault-sets-detail et vault-catalog-country
+- `.disc` + variantes `--copper` / `--nordic` / `--silver` / `--bimetal` / `--missing` / `--xs` — médaillon CSS-only radial-gradient reposant dans une cavité planche
+
+`vault-home.html` a été refactoré en rev 2 pour partager le même segmented control (`.tabbed-nav`) que les 3 nouvelles sous-vues, garantissant la cohérence visuelle du header Coffre entre les 3 segments. Note : en empty state, le segmented control n'est pas visible — à revoir si on veut permettre la navigation Sets/Catalogue avant le premier scan.

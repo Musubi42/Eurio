@@ -1,0 +1,12 @@
+appId: com.musubi.eurio
+env:
+  PARITY_ID: scan-idle
+  PARITY_LABEL: "Scan — Idle"
+  PARITY_GROUP: Scan
+  PARITY_PHASE: "1"
+  PARITY_PROTO_ROUTE: /scan
+---
+- launchApp
+- openLink: eurio://scene/scan-idle?mock_camera=true
+- assertVisible: ".*"
+- takeScreenshot: scan-idle

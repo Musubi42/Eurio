@@ -1,0 +1,323 @@
+<!--
+  Scene : vault-sets-list
+  -----------------------
+  Coffre sub-view #2 : list of sets.
+  Each card = a set with :
+    - title + description + kind chip
+    - mini planche preview (4×2 compact grid) showing the first 8 slots
+    - progress bar + X / Y + percentage
+  Completed sets are demoted below a dashed-gold section header.
+
+  Uses shared .planche / .planche--compact / .disc primitives from
+  components.css. Scene-scoped classes are prefixed .scene-vsl-*.
+
+  Sidecar : vault-sets-list.js renders from mock data and wires taps.
+-->
+
+<style>
+  .scene-vsl-root {
+    position: relative;
+    min-height: 100%;
+    background: var(--surface);
+    color: var(--ink);
+  }
+  .scene-vsl-scroll {
+    display: flex;
+    flex-direction: column;
+    padding: 0 0 var(--space-10);
+  }
+
+  /* ───────── Filters row (category + state) ───────── */
+  .scene-vsl-filters {
+    padding: 0 var(--space-5) var(--space-4);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+  .scene-vsl-filters__row {
+    display: flex;
+    gap: var(--space-1);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 2px;
+  }
+  .scene-vsl-filters__row::-webkit-scrollbar { display: none; }
+  .scene-vsl-filters__chip {
+    flex: 0 0 auto;
+    padding: 7px 13px;
+    border-radius: var(--radius-full);
+    background: var(--surface-1);
+    border: 1px solid rgba(14, 14, 31, 0.06);
+    color: var(--ink-500);
+    font-size: var(--text-xs);
+    font-family: var(--font-ui);
+    font-weight: 500;
+    white-space: nowrap;
+    transition:
+      background var(--duration-fast) var(--ease-out),
+      color var(--duration-fast) var(--ease-out),
+      border-color var(--duration-fast) var(--ease-out);
+  }
+  .scene-vsl-filters__chip[aria-pressed="true"] {
+    background: var(--ink);
+    color: var(--gold);
+    border-color: var(--ink);
+  }
+  .scene-vsl-filters__label {
+    flex: 0 0 auto;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: var(--tracking-eyebrow);
+    text-transform: uppercase;
+    color: var(--ink-400);
+    padding-right: var(--space-2);
+    align-self: center;
+  }
+
+  /* ───────── Cards list ───────── */
+  .scene-vsl-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    padding: var(--space-2) var(--space-5) 0;
+  }
+
+  .scene-vsl-card {
+    position: relative;
+    background: var(--surface);
+    border: 1px solid rgba(14, 14, 31, 0.06);
+    border-radius: var(--radius-lg);
+    padding: var(--space-4);
+    cursor: pointer;
+    box-shadow: var(--shadow-card);
+    transition:
+      transform var(--duration-fast) var(--ease-out),
+      box-shadow var(--duration-base) var(--ease-out);
+  }
+  .scene-vsl-card:active { transform: scale(0.985); }
+  .scene-vsl-card--done {
+    box-shadow: var(--shadow-card), 0 0 0 1px rgba(200, 168, 100, 0.5);
+    border-color: rgba(200, 168, 100, 0.4);
+  }
+  .scene-vsl-card--done::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: radial-gradient(180px 120px at 85% -10%, rgba(200, 168, 100, 0.12), transparent 70%);
+    pointer-events: none;
+  }
+
+  .scene-vsl-card__head {
+    display: flex;
+    gap: var(--space-3);
+    align-items: flex-start;
+    margin-bottom: var(--space-3);
+    position: relative;
+  }
+  .scene-vsl-card__titles {
+    flex: 1;
+    min-width: 0;
+  }
+  .scene-vsl-card__title {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-weight: 400;
+    font-size: var(--text-lg);
+    line-height: 1.1;
+    color: var(--ink);
+    margin-bottom: 3px;
+    letter-spacing: -0.01em;
+  }
+  .scene-vsl-card__sub {
+    font-size: var(--text-xs);
+    color: var(--ink-400);
+    line-height: 1.35;
+  }
+  .scene-vsl-card__crown {
+    position: absolute;
+    top: -2px;
+    right: 0;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--gold);
+    filter: drop-shadow(0 2px 4px rgba(200, 168, 100, 0.35));
+  }
+  .scene-vsl-card__crown svg { width: 22px; height: 22px; }
+
+  .scene-vsl-card__chips {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-bottom: var(--space-4);
+  }
+  .scene-vsl-card__kind {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border-radius: var(--radius-full);
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .scene-vsl-card__kind--country   { background: rgba(26, 27, 75, 0.1); color: var(--indigo-700); }
+  .scene-vsl-card__kind--theme     { background: rgba(200, 168, 100, 0.18); color: var(--gold-deep); }
+  .scene-vsl-card__kind--tier      { background: rgba(47, 169, 113, 0.15); color: var(--success); }
+  .scene-vsl-card__kind--personal  { background: rgba(14, 14, 31, 0.08); color: var(--ink-500); }
+  .scene-vsl-card__kind--hunt      { background: rgba(209, 67, 67, 0.14); color: var(--danger); }
+
+  .scene-vsl-card__kind::before {
+    content: "";
+    width: 4px; height: 4px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+
+  /* Mini planche preview uses shared .planche--compact */
+  .scene-vsl-card__preview {
+    margin-bottom: var(--space-4);
+  }
+
+  .scene-vsl-card__progress {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+  }
+  .scene-vsl-card__progress__bar { flex: 1; }
+  .scene-vsl-card__progress__label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-400);
+    white-space: nowrap;
+  }
+  .scene-vsl-card__progress__pct {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: var(--text-lg);
+    line-height: 1;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+    min-width: 42px;
+    text-align: right;
+  }
+  .scene-vsl-card--done .scene-vsl-card__progress__pct {
+    color: var(--gold-deep);
+  }
+
+  /* ───────── Section divider between in-progress and completed ───────── */
+  .scene-vsl-divider {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-6) var(--space-5) var(--space-2);
+  }
+  .scene-vsl-divider__label {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: var(--text-sm);
+    color: var(--ink-500);
+    white-space: nowrap;
+  }
+  .scene-vsl-divider__line {
+    flex: 1;
+    height: 1px;
+    background-image: linear-gradient(90deg, rgba(200, 168, 100, 0.45) 50%, transparent 0);
+    background-size: 6px 1px;
+    background-repeat: repeat-x;
+  }
+
+  /* ───────── Stats eyebrow under filters ───────── */
+  .scene-vsl-stats {
+    padding: 0 var(--space-5) var(--space-4);
+    display: flex;
+    gap: var(--space-4);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-400);
+  }
+  .scene-vsl-stats strong {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-weight: 400;
+    font-size: var(--text-base);
+    color: var(--ink);
+    margin-right: 4px;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+</style>
+
+<section class="scene-vsl-root" data-scene="vault-sets-list">
+  <div class="scene-vsl-scroll">
+
+    <!-- ───── Coffre segmented header ───── -->
+    <header class="coffre-header">
+      <div class="coffre-header__top">
+        <span class="eyebrow">Ton coffre</span>
+        <div class="coffre-header__actions">
+          <button type="button" class="coffre-header__icon" aria-label="Rechercher">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="11" cy="11" r="7"/>
+              <path d="M20 20l-3.5-3.5"/>
+            </svg>
+          </button>
+          <button type="button" class="coffre-header__icon" aria-label="Plus d'options">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="5"  cy="12" r="1.3" fill="currentColor" stroke="none"/>
+              <circle cx="12" cy="12" r="1.3" fill="currentColor" stroke="none"/>
+              <circle cx="19" cy="12" r="1.3" fill="currentColor" stroke="none"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <nav class="tabbed-nav" role="tablist" aria-label="Vues du coffre">
+        <button type="button" role="tab" aria-selected="false" data-coffre-tab="coins">Mes pièces</button>
+        <button type="button" role="tab" aria-selected="true"  data-coffre-tab="sets">Sets</button>
+        <button type="button" role="tab" aria-selected="false" data-coffre-tab="catalog">Catalogue</button>
+      </nav>
+    </header>
+
+    <!-- ───── Stats line ───── -->
+    <div class="scene-vsl-stats">
+      <span><strong data-role="stat-total">6</strong>sets</span>
+      <span><strong data-role="stat-done">1</strong>complétés</span>
+      <span><strong data-role="stat-coins">37/92</strong>pièces</span>
+    </div>
+
+    <!-- ───── Filter chips ───── -->
+    <div class="scene-vsl-filters">
+      <div class="scene-vsl-filters__row" role="radiogroup" aria-label="Filtrer par catégorie">
+        <span class="scene-vsl-filters__label">Type</span>
+        <button type="button" class="scene-vsl-filters__chip" data-filter-cat="all"      aria-pressed="true">Tous</button>
+        <button type="button" class="scene-vsl-filters__chip" data-filter-cat="country"  aria-pressed="false">Pays</button>
+        <button type="button" class="scene-vsl-filters__chip" data-filter-cat="theme"    aria-pressed="false">Thème</button>
+        <button type="button" class="scene-vsl-filters__chip" data-filter-cat="tier"     aria-pressed="false">Tier</button>
+        <button type="button" class="scene-vsl-filters__chip" data-filter-cat="personal" aria-pressed="false">Perso</button>
+        <button type="button" class="scene-vsl-filters__chip" data-filter-cat="hunt"     aria-pressed="false">Chasse</button>
+      </div>
+      <div class="scene-vsl-filters__row" role="radiogroup" aria-label="Filtrer par état">
+        <span class="scene-vsl-filters__label">État</span>
+        <button type="button" class="scene-vsl-filters__chip" data-filter-state="all"      aria-pressed="true">Tous</button>
+        <button type="button" class="scene-vsl-filters__chip" data-filter-state="progress" aria-pressed="false">En cours</button>
+        <button type="button" class="scene-vsl-filters__chip" data-filter-state="done"     aria-pressed="false">Complétés</button>
+        <button type="button" class="scene-vsl-filters__chip" data-filter-state="idle"     aria-pressed="false">Non commencés</button>
+      </div>
+    </div>
+
+    <!-- ───── Sets list (rendered by sidecar) ───── -->
+    <div class="scene-vsl-list" data-role="list"></div>
+
+    <div style="height: var(--space-10);"></div>
+  </div>
+</section>

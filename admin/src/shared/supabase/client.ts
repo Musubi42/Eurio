@@ -10,9 +10,13 @@ if (!url || !anonKey) {
     'Ajouter dans .envrc :\n' +
     '  export VITE_SUPABASE_URL=...\n' +
     '  export VITE_SUPABASE_ANON_KEY=...\n' +
-    'Puis : direnv allow'
+    'Puis : direnv allow',
   )
 }
+
+// Assertions narrow après check
+const supabaseUrl: string = url
+const supabaseAnonKey: string = anonKey
 
 // En dev local, si VITE_SUPABASE_SERVICE_KEY est défini,
 // on crée un client avec la service key qui bypass RLS et auth.
@@ -23,8 +27,8 @@ const serviceKey = import.meta.env.VITE_SUPABASE_SERVICE_KEY
 export const DEV_BYPASS = import.meta.env.DEV && !!serviceKey
 
 export const supabase = createClient<Database>(
-  url,
-  DEV_BYPASS ? serviceKey : anonKey,
+  supabaseUrl,
+  DEV_BYPASS ? (serviceKey as string) : supabaseAnonKey,
   {
     auth: {
       autoRefreshToken: !DEV_BYPASS,

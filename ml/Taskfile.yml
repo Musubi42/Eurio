@@ -126,6 +126,36 @@ tasks:
     cmds:
       - rm -rf {{.CHECKPOINTS}} {{.OUTPUT}} {{.DATASET}}
 
+  enrich-numista:
+    desc: "Enrich referential with Numista IDs (hardcoded 5 ML coins)"
+    cmds:
+      - "{{.VENV}}/python enrich_from_numista.py"
+
+  enrich-numista-dry:
+    desc: "Preview Numista enrichment without writing"
+    cmds:
+      - "{{.VENV}}/python enrich_from_numista.py --dry-run"
+
+  batch-match:
+    desc: "Batch-match coin_catalog.json 2EUR types to referential (0 API calls)"
+    cmds:
+      - "{{.VENV}}/python batch_match_numista.py --review"
+
+  batch-match-dry:
+    desc: "Preview batch matching without writing"
+    cmds:
+      - "{{.VENV}}/python batch_match_numista.py --dry-run --review"
+
+  batch-images:
+    desc: "Fetch/resize/upload images for all coins with numista_id but no images"
+    cmds:
+      - "{{.VENV}}/python batch_fetch_images.py"
+
+  batch-images-dry:
+    desc: "Preview batch image fetch"
+    cmds:
+      - "{{.VENV}}/python batch_fetch_images.py --dry-run"
+
   import-numista:
     desc: "Import all 2 euro coins from Numista API (metadata + images)"
     cmds:
@@ -161,3 +191,14 @@ tasks:
     desc: "Rename dataset dirs from slug names to Numista IDs"
     cmds:
       - "{{.VENV}}/python rename_to_numista_ids.py"
+
+  # ---------- ML API ----------
+  api:
+    desc: "Start the ML training API (FastAPI on port 8042)"
+    cmds:
+      - "{{.VENV}}/python -m uvicorn api.server:app --port 8042 --reload"
+
+  api-prod:
+    desc: "Start the ML API without reload"
+    cmds:
+      - "{{.VENV}}/python -m uvicorn api.server:app --port 8042"
