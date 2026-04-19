@@ -190,8 +190,17 @@ def train_classifier(args):
     effective_epoch_size = len(train_dataset) * 10
     sampler = WeightedRandomSampler(weights, num_samples=effective_epoch_size, replacement=True)
 
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, sampler=sampler, num_workers=0)
-    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=0)
+    use_cuda = device.type == "cuda"
+    n_workers = args.num_workers if args.num_workers >= 0 else (4 if use_cuda else 0)
+
+    train_loader = DataLoader(
+        train_dataset, batch_size=args.batch_size, sampler=sampler,
+        num_workers=n_workers, pin_memory=use_cuda, persistent_workers=n_workers > 0,
+    )
+    val_loader = DataLoader(
+        val_dataset, batch_size=args.batch_size, shuffle=False,
+        num_workers=n_workers, pin_memory=use_cuda, persistent_workers=n_workers > 0,
+    )
 
     # Model
     model = CoinClassifier(num_classes=num_classes).to(device)
@@ -282,6 +291,7 @@ def train_classifier(args):
                 "accuracy": val_metrics["accuracy"],
                 "top3_accuracy": val_metrics["top3_accuracy"],
                 "classes": train_dataset.classes,
+                "model_version": args.model_version,
             }, output_dir / "best_model.pth")
             print(f"  → Saved best model (acc: {best_acc:.2%})")
 
@@ -317,8 +327,17 @@ def train_embedder(args):
         length_before_new_iter=effective_epoch_size,
     )
 
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, sampler=sampler, num_workers=0)
-    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=0)
+    use_cuda = device.type == "cuda"
+    n_workers = args.num_workers if args.num_workers >= 0 else (4 if use_cuda else 0)
+
+    train_loader = DataLoader(
+        train_dataset, batch_size=args.batch_size, sampler=sampler,
+        num_workers=n_workers, pin_memory=use_cuda, persistent_workers=n_workers > 0,
+    )
+    val_loader = DataLoader(
+        val_dataset, batch_size=args.batch_size, shuffle=False,
+        num_workers=n_workers, pin_memory=use_cuda, persistent_workers=n_workers > 0,
+    )
 
     model = CoinEmbedder(embedding_dim=args.embedding_dim).to(device)
     print(f"Model parameters: {sum(p.numel() for p in model.parameters()):,}")
@@ -402,6 +421,7 @@ def train_embedder(args):
                 "recall@1": val_metrics["recall@1"],
                 "recall@3": val_metrics["recall@3"],
                 "classes": train_dataset.classes,
+                "model_version": args.model_version,
             }, output_dir / "best_model.pth")
             print(f"  → Saved best model (R@1: {best_recall:.2%})")
 
@@ -437,8 +457,27 @@ def train_arcface(args):
         length_before_new_iter=effective_epoch_size,
     )
 
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, sampler=sampler, num_workers=0)
-    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=0)
+    # num_workers > 0 parallelizes image loading across CPU cores
+    # pin_memory speeds up CPU→GPU transfers on CUDA
+    use_cuda = device.type == "cuda"
+    n_workers = args.num_workers if args.num_workers >= 0 else (4 if use_cuda else 0)
+
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=args.batch_size,
+        sampler=sampler,
+        num_workers=n_workers,
+        pin_memory=use_cuda,
+        persistent_workers=n_workers > 0,
+    )
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=args.batch_size,
+        shuffle=False,
+        num_workers=n_workers,
+        pin_memory=use_cuda,
+        persistent_workers=n_workers > 0,
+    )
 
     # Model: same CoinEmbedder backbone + projection → L2-normalized embeddings
     model = CoinEmbedder(embedding_dim=args.embedding_dim).to(device)
@@ -537,6 +576,7 @@ def train_arcface(args):
                 "recall@1": val_metrics["recall@1"],
                 "recall@3": val_metrics["recall@3"],
                 "classes": train_dataset.classes,
+                "model_version": args.model_version,
             }, output_dir / "best_model.pth")
             print(f"  → Saved best model (R@1: {best_recall:.2%})")
 
@@ -565,7 +605,9 @@ def main():
     parser.add_argument("--embedding-dim", type=int, default=256, help="Embedding dim (embed mode)")
     parser.add_argument("--freeze-epochs", type=int, default=5, help="Epochs to freeze backbone")
     parser.add_argument("--device", type=str, default="auto")
+    parser.add_argument("--num-workers", type=int, default=-1, help="DataLoader workers (-1=auto: 4 on CUDA, 0 on CPU/MPS)")
     parser.add_argument("--output", type=str, default="./checkpoints/")
+    parser.add_argument("--model-version", type=str, default="", help="Version label stored in the checkpoint for downstream tracking.")
     args = parser.parse_args()
 
     if args.mode == "classify":

@@ -1,4 +1,12 @@
-"""Compute reference (centroid) embeddings for each coin class."""
+"""Compute reference (centroid) embeddings for each coin class.
+
+Output:
+  - embeddings_v1.json — rich per-class info (class_kind, member eurio_ids,
+    embedding). Consumed by seed_supabase and other ML tooling.
+  - coin_embeddings.json — flat numista_id → embedding map. Preserved for
+    the Android reader (EmbeddingMatcher). For a design_group class the
+    same centroid is emitted once per member numista_id.
+"""
 
 import argparse
 import json
@@ -9,42 +17,43 @@ import torch
 from torch.utils.data import DataLoader
 from torchvision.datasets import ImageFolder
 
+from class_resolver import MANIFEST_FILENAME, read_manifest
 from train_embedder import CoinEmbedder, get_val_transforms
 
 CATALOG_PATH = Path(__file__).parent / "datasets" / "coin_catalog.json"
 
 
 def load_display_names() -> dict[str, str]:
-    """Load display names from coin_catalog.json."""
     if CATALOG_PATH.exists():
         with open(CATALOG_PATH) as f:
             catalog = json.load(f)["coins"]
-        return {k: v["name"] for k, v in catalog.items()}
+        return {k: v.get("name", k) for k, v in catalog.items()}
     return {}
 
 
 @torch.no_grad()
-def compute(args):
-    device = torch.device("cpu")  # No need for GPU here
+def compute(args: argparse.Namespace) -> None:
+    device = torch.device("cpu")
 
-    # Load model
     checkpoint = torch.load(args.model, map_location=device, weights_only=False)
-    model = CoinEmbedder(embedding_dim=checkpoint["embedding_dim"])
+    embedding_dim = checkpoint["embedding_dim"]
+    model = CoinEmbedder(embedding_dim=embedding_dim)
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
 
-    embedding_dim = checkpoint["embedding_dim"]
     print(f"Model from epoch {checkpoint['epoch']}, dim={embedding_dim}")
 
-    output_dir = Path(args.output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
     dataset_root = Path(args.dataset)
+    manifest = read_manifest(dataset_root / MANIFEST_FILENAME)
+    manifest_by_class = {d.class_id: d for d in manifest}
+    if not manifest_by_class:
+        print(
+            f"WARNING: no class manifest at {dataset_root / MANIFEST_FILENAME}; "
+            "class_kind will default to eurio_id."
+        )
 
-    # Collect embeddings per class from all splits
     class_embeddings: dict[str, list[np.ndarray]] = {}
-
-    for split in ["train", "val", "test"]:
+    for split in ("train", "val", "test"):
         split_dir = dataset_root / split
         if not split_dir.exists():
             continue
@@ -56,48 +65,64 @@ def compute(args):
             emb = model(images).numpy()
             for i, label in enumerate(labels):
                 cls_name = dataset.classes[label]
-                if cls_name not in class_embeddings:
-                    class_embeddings[cls_name] = []
-                class_embeddings[cls_name].append(emb[i])
+                class_embeddings.setdefault(cls_name, []).append(emb[i])
 
-    # Compute centroids
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
     display_names = load_display_names()
-    coins_full = {}
-    coins_flat = {}
+    coins_full: dict[str, dict] = {}
+    coins_flat: dict[str, list[float]] = {}
 
-    for cls_name, emb_list in sorted(class_embeddings.items()):
-        embeddings = np.stack(emb_list)
-        centroid = embeddings.mean(axis=0)
-        centroid = centroid / np.linalg.norm(centroid)  # L2 normalize
+    model_version = args.model_version
+    if not model_version:
+        ckpt_version = checkpoint.get("model_version")
+        if ckpt_version:
+            model_version = ckpt_version
+        else:
+            model_version = f"v1-{checkpoint.get('mode', 'unknown')}"
 
-        display_name = display_names.get(cls_name, cls_name)
+    for class_id, emb_list in sorted(class_embeddings.items()):
+        stacked = np.stack(emb_list)
+        centroid = stacked.mean(axis=0)
+        centroid = centroid / np.linalg.norm(centroid)
         embedding_list = [round(float(x), 6) for x in centroid]
 
-        coins_full[cls_name] = {
+        descriptor = manifest_by_class.get(class_id)
+        class_kind = descriptor.class_kind if descriptor else "eurio_id"
+        numista_ids = list(descriptor.numista_ids) if descriptor else []
+        eurio_ids = list(descriptor.eurio_ids) if descriptor else []
+        display_name = display_names.get(class_id, class_id)
+
+        coins_full[class_id] = {
             "name": display_name,
+            "class_kind": class_kind,
+            "numista_ids": numista_ids,
+            "eurio_ids": eurio_ids,
+            "n_samples": len(emb_list),
             "embedding": embedding_list,
         }
-        coins_flat[cls_name] = embedding_list
 
-        print(f"  {cls_name}: {len(emb_list)} images → centroid computed")
+        for nid in numista_ids:
+            coins_flat[str(nid)] = embedding_list
+        if not numista_ids:
+            # Fallback: no numista mapping available (manifest missing).
+            coins_flat[class_id] = embedding_list
 
-    # Full metadata JSON
+        print(f"  {class_id} [{class_kind}]: {len(emb_list)} imgs → centroid")
+
     full_output = {
         "version": "1.0",
-        "model": "eurio_embedder_v1",
+        "model": model_version,
         "embedding_dim": embedding_dim,
         "coins": coins_full,
     }
-
     full_path = output_dir / "embeddings_v1.json"
-    with open(full_path, "w") as f:
-        json.dump(full_output, f, indent=2)
+    full_path.write_text(json.dumps(full_output, indent=2))
     print(f"\nFull embeddings: {full_path}")
 
-    # Flat JSON for Android
     flat_path = output_dir / "coin_embeddings.json"
-    with open(flat_path, "w") as f:
-        json.dump(coins_flat, f)
+    flat_path.write_text(json.dumps(coins_flat))
     print(f"Flat embeddings: {flat_path} ({flat_path.stat().st_size / 1024:.1f} KB)")
 
 
@@ -106,6 +131,12 @@ def main():
     parser.add_argument("--model", type=str, default="./checkpoints/best_model.pth")
     parser.add_argument("--dataset", type=str, default="./datasets/eurio-poc")
     parser.add_argument("--output-dir", type=str, default="./output")
+    parser.add_argument(
+        "--model-version",
+        type=str,
+        default="",
+        help="Override model version string (else read from checkpoint or derived).",
+    )
     args = parser.parse_args()
     compute(args)
 
