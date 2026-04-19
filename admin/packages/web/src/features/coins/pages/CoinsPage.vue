@@ -1,9 +1,11 @@
 <script setup lang="ts">
+import { fetchZoneMap } from '@/features/confusion/composables/useConfusionMap'
+import { zoneStyle } from '@/features/confusion/composables/useConfusionZone'
 import { supabase } from '@/shared/supabase/client'
-import type { Coin, IssueType } from '@/shared/supabase/types'
+import type { Coin, ConfusionZone, IssueType } from '@/shared/supabase/types'
 import { firstImageUrl } from '@/shared/utils/coin-images'
 import { useDebounceFn } from '@vueuse/core'
-import { Brain, Check, ImageOff, Play, Search } from 'lucide-vue-next'
+import { Brain, Check, Copy, ImageOff, Play, Search } from 'lucide-vue-next'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
@@ -22,6 +24,8 @@ const filterFaceValue = ref<number | null>(null)
 const filterCommemo = ref<boolean | null>(null)
 const filterNumista = ref<'with' | 'without' | null>(null)
 const filterImages = ref<'with' | 'without' | null>(null)
+const filterZone = ref<ConfusionZone | 'unmapped' | null>(null)
+const filterTrained = ref<'trained' | 'not-trained' | null>(null)
 
 const COUNTRIES = [
   'AD', 'AT', 'BE', 'BG', 'CY', 'DE', 'EE', 'ES', 'FI', 'FR',
@@ -50,9 +54,16 @@ async function fetchCoins(search = '', append = false) {
 
   if (search.trim()) {
     const s = search.trim()
-    q = q.or(
-      `eurio_id.ilike.%${s}%,theme.ilike.%${s}%,country.ilike.${s}`,
-    )
+    const clauses = [
+      `eurio_id.ilike.%${s}%`,
+      `theme.ilike.%${s}%`,
+      `country.ilike.${s}`,
+    ]
+    // Exact match on numista_id when the query is purely numeric.
+    if (/^\d+$/.test(s)) {
+      clauses.push(`cross_refs->>numista_id.eq.${s}`)
+    }
+    q = q.or(clauses.join(','))
   }
 
   // Apply filters
@@ -63,6 +74,45 @@ async function fetchCoins(search = '', append = false) {
   if (filterNumista.value === 'without') q = q.is('cross_refs->numista_id', null)
   if (filterImages.value === 'with') q = q.neq('images', '[]').not('images', 'is', null)
   if (filterImages.value === 'without') q = q.or('images.eq.[],images.is.null')
+
+  // Training filter — applies trainedEurioIds set fetched from coin_embeddings.
+  if (filterTrained.value === 'trained') {
+    const ids = [...trainedEurioIds.value]
+    if (ids.length === 0) {
+      coins.value = append ? coins.value : []
+      total.value = append ? total.value : 0
+      loading.value = false
+      return
+    }
+    q = q.in('eurio_id', ids)
+  } else if (filterTrained.value === 'not-trained') {
+    const ids = [...trainedEurioIds.value]
+    if (ids.length > 0 && ids.length < 1000) {
+      q = q.not('eurio_id', 'in', `(${ids.map(id => `"${id}"`).join(',')})`)
+    }
+  }
+
+  // Zone filter — uses pre-fetched confusionZones map and restricts via .in()/.not.in()
+  if (filterZone.value) {
+    const mapped = [...confusionZones.value.keys()]
+    if (filterZone.value === 'unmapped') {
+      // Coins NOT in confusion map. Avoid huge IN() lists: fallback to no-op if >1k mapped.
+      if (mapped.length > 0 && mapped.length < 1000) {
+        q = q.not('eurio_id', 'in', `(${mapped.map(id => `"${id}"`).join(',')})`)
+      }
+    } else {
+      const zone = filterZone.value
+      const ids = mapped.filter(id => confusionZones.value.get(id)?.zone === zone)
+      if (ids.length === 0) {
+        // Shortcut: no matches → empty list
+        coins.value = append ? coins.value : []
+        total.value = append ? total.value : 0
+        loading.value = false
+        return
+      }
+      q = q.in('eurio_id', ids)
+    }
+  }
 
   q = q
     .order('country')
@@ -95,8 +145,10 @@ function resetAndFetch() {
 
 const debouncedFetch = useDebounceFn(() => resetAndFetch(), 250)
 watch(query, debouncedFetch)
-watch([filterCountry, filterFaceValue, filterCommemo, filterNumista, filterImages], resetAndFetch)
-onMounted(() => {
+watch([filterCountry, filterFaceValue, filterCommemo, filterNumista, filterImages, filterZone, filterTrained], resetAndFetch)
+onMounted(async () => {
+  // Load zones FIRST so the in-memory filter has data before initial fetch
+  await fetchConfusionZones()
   fetchCoins()
   fetchTrainedIds()
   checkMlApi()
@@ -126,11 +178,28 @@ function clearFilters() {
   filterCommemo.value = null
   filterNumista.value = null
   filterImages.value = null
+  filterZone.value = null
+  filterTrained.value = null
   query.value = ''
 }
 
 // Training status
 const trainedEurioIds = ref<Set<string>>(new Set())
+
+// Confusion-map zones (Phase 1 ML scalability)
+const confusionZones = ref<Map<string, { zone: ConfusionZone, nearest_similarity: number }>>(new Map())
+
+async function fetchConfusionZones() {
+  try {
+    confusionZones.value = await fetchZoneMap()
+  } catch {
+    // silent — zone filter/badge just becomes inert
+  }
+}
+
+function coinZone(coin: Coin): { zone: ConfusionZone, nearest_similarity: number } | null {
+  return confusionZones.value.get(coin.eurio_id) ?? null
+}
 
 async function fetchTrainedIds() {
   const { data } = await supabase
@@ -147,15 +216,25 @@ function isTrained(coin: Coin): boolean {
 
 const hasActiveFilters = () =>
   filterCountry.value || filterFaceValue.value != null || filterCommemo.value != null
-  || filterNumista.value != null || filterImages.value != null || query.value
+  || filterNumista.value != null || filterImages.value != null || filterZone.value != null
+  || filterTrained.value != null
+  || query.value
 
-// ─── Training enqueue ───
+// ─── Training staging ───
+//
+// A "class" is the ArcFace label: design_group_id when the coin belongs to a
+// shared-design grouping, else eurio_id. Clicking any coin toggles its class_id;
+// all sibling coins sharing the same design_group_id light up visually for free.
+
+type ClassKind = 'eurio_id' | 'design_group_id'
 
 const ML_API = 'http://localhost:8042'
 const mlApiOnline = ref(false)
-const selectedDesigns = ref<Set<number>>(new Set())
+const selectedClasses = ref<Set<string>>(new Set())
+const selectedClassKinds = ref<Map<string, ClassKind>>(new Map())
 const enqueueLoading = ref(false)
 const enqueueSuccess = ref(false)
+const enqueueStagedCount = ref(0)
 
 async function checkMlApi() {
   try {
@@ -168,29 +247,67 @@ async function checkMlApi() {
 
 let mlApiInterval: ReturnType<typeof setInterval>
 
-function toggleDesignSelection(numistaId: number, event: Event) {
-  event.stopPropagation()
-  const s = new Set(selectedDesigns.value)
-  if (s.has(numistaId)) s.delete(numistaId)
-  else s.add(numistaId)
-  selectedDesigns.value = s
+function coinClassId(coin: Coin): string {
+  return coin.design_group_id || coin.eurio_id
 }
 
-const selectedCount = computed(() => selectedDesigns.value.size)
+function coinClassKind(coin: Coin): ClassKind {
+  return coin.design_group_id ? 'design_group_id' : 'eurio_id'
+}
 
-async function enqueueSelected() {
-  if (!mlApiOnline.value || selectedDesigns.value.size === 0) return
+function isSelected(coin: Coin): boolean {
+  return selectedClasses.value.has(coinClassId(coin))
+}
+
+function canStage(coin: Coin): boolean {
+  // Need a Numista mapping somewhere in the class to drive augmentation.
+  // Either the coin itself has one, or it belongs to a design_group (which
+  // necessarily contains at least one member with a numista_id).
+  return !!coin.cross_refs?.numista_id || !!coin.design_group_id
+}
+
+function toggleSelection(coin: Coin, event: Event) {
+  event.stopPropagation()
+  if (!canStage(coin)) return
+  const classId = coinClassId(coin)
+  const s = new Set(selectedClasses.value)
+  const m = new Map(selectedClassKinds.value)
+  if (s.has(classId)) {
+    s.delete(classId)
+    m.delete(classId)
+  } else {
+    s.add(classId)
+    m.set(classId, coinClassKind(coin))
+  }
+  selectedClasses.value = s
+  selectedClassKinds.value = m
+}
+
+const selectedCount = computed(() => selectedClasses.value.size)
+
+async function enqueueSelected(andNavigate = false) {
+  if (!mlApiOnline.value || selectedClasses.value.size === 0) return
   enqueueLoading.value = true
   try {
-    const resp = await fetch(`${ML_API}/train`, {
+    const items = Array.from(selectedClasses.value).map(class_id => ({
+      class_id,
+      class_kind: selectedClassKinds.value.get(class_id) ?? 'eurio_id',
+    }))
+    const resp = await fetch(`${ML_API}/training/stage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ design_ids: Array.from(selectedDesigns.value) }),
+      body: JSON.stringify({ items }),
     })
     if (resp.ok) {
+      enqueueStagedCount.value = items.length
       enqueueSuccess.value = true
-      selectedDesigns.value = new Set()
-      setTimeout(() => { enqueueSuccess.value = false }, 3000)
+      selectedClasses.value = new Set()
+      selectedClassKinds.value = new Map()
+      if (andNavigate) {
+        router.push('/training')
+        return
+      }
+      setTimeout(() => { enqueueSuccess.value = false }, 4000)
     }
   } catch {
     // ignore
@@ -200,7 +317,21 @@ async function enqueueSelected() {
 }
 
 function clearSelection() {
-  selectedDesigns.value = new Set()
+  selectedClasses.value = new Set()
+  selectedClassKinds.value = new Map()
+}
+
+// ─── Clipboard copy ───
+
+const copiedToast = ref<{ label: string, value: string } | null>(null)
+let copiedToastTimer: ReturnType<typeof setTimeout> | null = null
+
+function copyToClipboard(value: string, label: string, event: Event) {
+  event.stopPropagation()
+  navigator.clipboard?.writeText(value)
+  copiedToast.value = { label, value }
+  if (copiedToastTimer) clearTimeout(copiedToastTimer)
+  copiedToastTimer = setTimeout(() => { copiedToast.value = null }, 1500)
 }
 </script>
 
@@ -235,7 +366,7 @@ function clearSelection() {
       <input
         v-model="query"
         type="search"
-        placeholder="eurio_id, thème, pays (fr, de…)"
+        placeholder="eurio_id, thème, pays, numista_id (226447)…"
         class="w-full rounded-md border py-2 pl-9 pr-3 text-sm outline-none focus:ring-2"
         style="border-color: var(--surface-3); background: var(--surface); color: var(--ink); --tw-ring-color: var(--indigo-700);"
       />
@@ -337,6 +468,72 @@ function clearSelection() {
           {{ opt.label }}
         </button>
       </div>
+
+      <!-- Separator -->
+      <div class="h-5 w-px" style="background: var(--surface-3);" />
+
+      <!-- Training status chips -->
+      <div class="flex items-center gap-1">
+        <span
+          class="mr-1 text-[10px] font-medium uppercase"
+          style="color: var(--ink-500); letter-spacing: var(--tracking-eyebrow);"
+          title="Statut d'entraînement dans le modèle ArcFace courant"
+        >
+          Modèle ML
+        </span>
+        <button
+          v-for="opt in ([
+            { key: 'trained' as const, label: 'Entraînées', color: 'var(--indigo-700)' },
+            { key: 'not-trained' as const, label: 'Non entraînées', color: 'var(--ink-400)' },
+          ])" :key="opt.key + '-trained'"
+          class="flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors"
+          :style="{
+            background: filterTrained === opt.key ? opt.color : 'var(--surface)',
+            color: filterTrained === opt.key ? 'white' : 'var(--ink-500)',
+            borderColor: filterTrained === opt.key ? 'transparent' : 'var(--surface-3)',
+          }"
+          @click="filterTrained = filterTrained === opt.key ? null : opt.key"
+        >
+          <Brain v-if="opt.key === 'trained'" class="h-3 w-3" />
+          {{ opt.label }}
+        </button>
+      </div>
+
+      <!-- Separator -->
+      <div v-if="confusionZones.size > 0" class="h-5 w-px" style="background: var(--surface-3);" />
+
+      <!-- Zone chips (Phase 1 ML scalability) -->
+      <div v-if="confusionZones.size > 0" class="flex items-center gap-1">
+        <span
+          class="mr-1 text-[10px] font-medium uppercase"
+          style="color: var(--ink-500); letter-spacing: var(--tracking-eyebrow);"
+          title="Cartographie de confusion (voir /confusion)"
+        >
+          Zone
+        </span>
+        <button
+          v-for="opt in ([
+            { key: 'green' as const, label: 'Verte', color: 'var(--success)' },
+            { key: 'orange' as const, label: 'Orange', color: 'var(--warning)' },
+            { key: 'red' as const, label: 'Rouge', color: 'var(--danger)' },
+            { key: 'unmapped' as const, label: 'Non cart.', color: 'var(--ink-400)' },
+          ])" :key="opt.key"
+          class="flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors"
+          :style="{
+            background: filterZone === opt.key ? opt.color : 'var(--surface)',
+            color: filterZone === opt.key ? 'white' : 'var(--ink-500)',
+            borderColor: filterZone === opt.key ? 'transparent' : 'var(--surface-3)',
+          }"
+          @click="filterZone = filterZone === opt.key ? null : opt.key"
+        >
+          <span
+            v-if="opt.key !== 'unmapped'"
+            class="h-1.5 w-1.5 rounded-full"
+            :style="{ background: filterZone === opt.key ? 'white' : opt.color }"
+          />
+          {{ opt.label }}
+        </button>
+      </div>
     </div>
 
     <div v-if="error"
@@ -387,21 +584,24 @@ function clearSelection() {
             <span class="text-[10px] uppercase tracking-wider">pas d'image</span>
           </div>
 
-          <!-- Selection checkbox (only for coins with numista_id, visible on hover or when selected) -->
+          <!-- Selection checkbox (coins stageable for training) -->
           <div
-            v-if="hasNumistaId(coin) && mlApiOnline"
+            v-if="canStage(coin) && mlApiOnline"
             class="absolute left-2 top-2 z-10 flex h-5 w-5 items-center justify-center rounded transition-opacity"
-            :class="selectedDesigns.has(coin.cross_refs.numista_id!) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'"
+            :class="isSelected(coin) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'"
             :style="{
-              background: selectedDesigns.has(coin.cross_refs.numista_id!)
+              background: isSelected(coin)
                 ? 'var(--indigo-700)' : 'rgba(255,255,255,0.9)',
-              border: selectedDesigns.has(coin.cross_refs.numista_id!)
+              border: isSelected(coin)
                 ? 'none' : '1.5px solid var(--surface-3)',
             }"
-            @click="toggleDesignSelection(coin.cross_refs.numista_id!, $event)"
+            :title="coin.design_group_id
+              ? `Design partagé : toutes les pièces de ${coin.design_group_id} seront ajoutées`
+              : 'Ajouter au prochain entraînement'"
+            @click="toggleSelection(coin, $event)"
           >
             <Check
-              v-if="selectedDesigns.has(coin.cross_refs.numista_id!)"
+              v-if="isSelected(coin)"
               class="h-3 w-3"
               style="color: white"
             />
@@ -410,7 +610,7 @@ function clearSelection() {
           <!-- Face value badge -->
           <span
             class="absolute rounded-full px-2 py-0.5 text-[10px] font-mono font-medium"
-            :class="hasNumistaId(coin) && mlApiOnline ? 'left-9 top-2' : 'left-2 top-2'"
+            :class="canStage(coin) && mlApiOnline ? 'left-9 top-2' : 'left-2 top-2'"
             style="background: var(--indigo-700); color: white;"
           >
             {{ formatFaceValue(coin.face_value) }}
@@ -424,14 +624,33 @@ function clearSelection() {
             {{ coin.country }}
           </span>
 
-          <!-- Numista badge -->
-          <span
+          <!-- EurioID label (always present, click to copy full slug) -->
+          <div
+            role="button"
+            tabindex="0"
+            class="absolute left-2 flex cursor-pointer items-center gap-1 rounded-full border px-1.5 py-0.5 text-[9px] font-mono font-medium transition-colors hover:border-current"
+            :class="hasNumistaId(coin) ? 'bottom-8' : 'bottom-2'"
+            style="background: rgba(255,255,255,0.92); color: var(--ink); border-color: var(--surface-3);"
+            :title="`Copier ${coin.eurio_id}`"
+            @click="copyToClipboard(coin.eurio_id, 'EurioID', $event)"
+          >
+            <Copy class="h-2.5 w-2.5" />
+            EurioID
+          </div>
+
+          <!-- Numista badge (click to copy numista_id) -->
+          <div
             v-if="hasNumistaId(coin)"
-            class="absolute bottom-2 left-2 rounded-full px-1.5 py-0.5 text-[9px] font-mono font-medium"
+            role="button"
+            tabindex="0"
+            class="absolute bottom-2 left-2 flex cursor-pointer items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-mono font-medium"
             style="background: #059669; color: white;"
+            :title="`Copier ${coin.cross_refs.numista_id}`"
+            @click="copyToClipboard(String(coin.cross_refs.numista_id), 'NumistaID', $event)"
           >
             N{{ coin.cross_refs.numista_id }}
-          </span>
+            <Copy class="h-2.5 w-2.5 opacity-80" />
+          </div>
 
           <!-- Training badge -->
           <span
@@ -442,6 +661,24 @@ function clearSelection() {
           >
             <Brain class="h-2.5 w-2.5" />
             ML
+          </span>
+
+          <!-- Zone badge (Phase 1 ML scalability) -->
+          <span
+            v-if="coinZone(coin)"
+            :class="isTrained(coin) ? 'absolute bottom-2 right-11' : 'absolute bottom-2 right-2'"
+            class="flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-mono font-medium"
+            :style="{
+              background: 'rgba(255,255,255,0.92)',
+              color: zoneStyle(coinZone(coin)!.zone).solid,
+            }"
+            :title="`${zoneStyle(coinZone(coin)!.zone).label} · voisin @ ${coinZone(coin)!.nearest_similarity.toFixed(3)}`"
+          >
+            <span
+              class="h-1.5 w-1.5 rounded-full"
+              :style="{ background: zoneStyle(coinZone(coin)!.zone).solid }"
+            />
+            {{ zoneStyle(coinZone(coin)!.zone).short }}
           </span>
         </div>
 
@@ -488,7 +725,7 @@ function clearSelection() {
            style="color: var(--indigo-700);" />
     </div>
 
-    <!-- Sticky bottom bar for training enqueue -->
+    <!-- Sticky bottom bar for training staging -->
     <Teleport to="body">
       <Transition name="slide-up">
         <div
@@ -499,7 +736,7 @@ function clearSelection() {
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-3">
               <span class="text-sm font-medium" style="color: var(--ink)">
-                {{ selectedCount }} design{{ selectedCount > 1 ? 's' : '' }} sélectionné{{ selectedCount > 1 ? 's' : '' }}
+                {{ selectedCount }} design{{ selectedCount > 1 ? 's' : '' }} à ajouter
               </span>
               <button
                 class="text-xs underline"
@@ -510,24 +747,65 @@ function clearSelection() {
               </button>
             </div>
             <div class="flex items-center gap-3">
-              <span
-                v-if="enqueueSuccess"
-                class="text-xs font-medium"
-                style="color: var(--success)"
+              <button
+                class="rounded-md px-3 py-2 text-sm font-medium transition-all"
+                style="background: var(--surface-1); color: var(--ink)"
+                :disabled="enqueueLoading"
+                @click="enqueueSelected(true)"
               >
-                Ajouté à la queue !
-              </span>
+                Ajouter et voir →
+              </button>
               <button
                 class="flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-all"
                 style="background: var(--indigo-700); color: white"
                 :disabled="enqueueLoading"
-                @click="enqueueSelected"
+                @click="enqueueSelected(false)"
               >
                 <Play class="h-3.5 w-3.5" />
-                Ajouter à la queue
+                Ajouter au training
               </button>
             </div>
           </div>
+        </div>
+      </Transition>
+    </Teleport>
+
+    <!-- Clipboard copy toast -->
+    <Teleport to="body">
+      <Transition name="slide-up">
+        <div
+          v-if="copiedToast"
+          class="fixed bottom-4 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-md border px-3 py-2 text-xs"
+          style="background: var(--surface); border-color: var(--surface-3); box-shadow: var(--shadow-md); color: var(--ink)"
+        >
+          <Check class="h-3 w-3" style="color: var(--success)" />
+          <span><strong>{{ copiedToast.label }}</strong> copié</span>
+          <code
+            class="truncate rounded px-1.5 py-0.5 font-mono text-[10px]"
+            style="background: var(--surface-1); color: var(--ink-500); max-width: 320px;"
+          >{{ copiedToast.value }}</code>
+        </div>
+      </Transition>
+    </Teleport>
+
+    <!-- Success toast with navigate action -->
+    <Teleport to="body">
+      <Transition name="slide-up">
+        <div
+          v-if="enqueueSuccess && selectedCount === 0"
+          class="fixed bottom-4 right-4 z-50 flex items-center gap-3 rounded-md border px-4 py-3 text-sm"
+          style="background: var(--surface); border-color: var(--success); box-shadow: var(--shadow-md); color: var(--ink)"
+        >
+          <span>
+            <strong>{{ enqueueStagedCount }}</strong> design{{ enqueueStagedCount > 1 ? 's' : '' }} ajouté{{ enqueueStagedCount > 1 ? 's' : '' }} au prochain entraînement
+          </span>
+          <button
+            class="text-xs font-medium underline"
+            style="color: var(--indigo-700)"
+            @click="router.push('/training')"
+          >
+            Voir →
+          </button>
         </div>
       </Transition>
     </Teleport>

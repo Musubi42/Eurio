@@ -114,6 +114,7 @@ export interface Coin {
   currency: string
   theme: string | null
   design_description: string | null
+  design_group_id: string | null
   is_commemorative: boolean
   collector_only: boolean
   issue_type: IssueType | null
@@ -178,4 +179,25 @@ export interface SetAudit {
   after: Json | null
   actor: string
   at: string
+}
+
+// ───────── Confusion map (Phase 1 ML scalability) ─────────
+
+export type ConfusionZone = 'green' | 'orange' | 'red'
+
+export interface ConfusionNeighbor {
+  eurio_id: string
+  similarity: number
+  obverse_url: string | null
+}
+
+export interface ConfusionMapRow {
+  id: number
+  eurio_id: string
+  encoder_version: string
+  nearest_eurio_id: string | null
+  nearest_similarity: number
+  top_k_neighbors: ConfusionNeighbor[]
+  zone: ConfusionZone
+  computed_at: string
 }
