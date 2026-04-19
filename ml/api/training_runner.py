@@ -1,154 +1,104 @@
-"""Training runner — manages a queue of ML training jobs.
+"""Training runner — one retrain per run, many classes in one retrain.
 
-Each job trains one design (numista_id) through the full pipeline:
-augment → prepare → train ArcFace → compute embeddings → export TFLite → seed Supabase.
+ArcFace has no incremental add: every added (or removed) class triggers a
+full retrain of the model on the complete class set. This runner reflects
+that reality:
 
-Jobs are processed sequentially (or up to max_concurrent in parallel on GPU).
+  - `start_run(added, removed)` creates a single `TrainingRun` that covers
+    all requested mutations in one pipeline execution.
+  - Only one run may be active at a time; a second `start_run` raises.
+  - Persistence lives in the SQLite Store (`state/training.db`). History,
+    logs, per-epoch metrics, and per-class metrics all survive process
+    restarts.
+
+Pipeline steps:
+  0. Augmentation          — for each added class, augment each member numista
+  1. Suppression           — rm augmented/ + prepared split dirs + Supabase rows
+  2. Préparation           — prepare_dataset.py (rebuild eurio-poc + manifest)
+  3. Entraînement          — train_embedder.py with --model-version vN-arcface
+  4. Embeddings            — compute_embeddings.py with --model-version
+  5. Synchronisation       — seed_supabase.py (dual-write model_classes + legacy)
+  6. Validation per-class  — validate_per_class.py → training_run_classes
 """
 
 from __future__ import annotations
 
 import json
+import os
+import shutil
+import statistics
 import subprocess
+import sys
 import threading
 import uuid
-from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
 from pathlib import Path
+
+import httpx
+
+from state import (
+    ClassMetricRow,
+    ClassRef,
+    EpochRow,
+    RunRow,
+    StepRow,
+    Store,
+)
 
 ML_DIR = Path(__file__).parent.parent
 VENV_PYTHON = str(ML_DIR / ".venv" / "bin" / "python")
 DATASETS_DIR = ML_DIR / "datasets"
 CHECKPOINTS_DIR = ML_DIR / "checkpoints"
 OUTPUT_DIR = ML_DIR / "output"
+EURIO_POC = DATASETS_DIR / "eurio-poc"
+PER_CLASS_METRICS = OUTPUT_DIR / "per_class_metrics.json"
 
-STEP_NAMES = [
+# Ensure `class_resolver` (at ml/ root) is importable from this api module.
+if str(ML_DIR) not in sys.path:
+    sys.path.insert(0, str(ML_DIR))
+
+STEPS = [
     "Augmentation",
+    "Suppression",
     "Préparation",
     "Entraînement",
     "Embeddings",
     "Synchronisation",
+    "Validation per-class",
 ]
 
+STEP_INDEX = {name: i for i, name in enumerate(STEPS)}
 
-class RunStatus(str, Enum):
-    QUEUED = "queued"
-    RUNNING = "running"
-    COMPLETED = "completed"
-    FAILED = "failed"
-
-
-@dataclass
-class StepInfo:
-    name: str
-    status: str = "pending"  # pending | running | done | failed
-    started_at: str | None = None
-    finished_at: str | None = None
-    detail: str | None = None
-
-    def to_dict(self) -> dict:
-        return {
-            "name": self.name,
-            "status": self.status,
-            "started_at": self.started_at,
-            "finished_at": self.finished_at,
-            "detail": self.detail,
-        }
-
-    def start(self) -> None:
-        self.status = "running"
-        self.started_at = datetime.utcnow().isoformat()
-
-    def done(self, detail: str | None = None) -> None:
-        self.status = "done"
-        self.finished_at = datetime.utcnow().isoformat()
-        if detail:
-            self.detail = detail
-
-    def fail(self, detail: str | None = None) -> None:
-        self.status = "failed"
-        self.finished_at = datetime.utcnow().isoformat()
-        if detail:
-            self.detail = detail
+DEFAULT_CONFIG = {
+    "epochs": 40,
+    "batch_size": 256,
+    "m_per_class": 4,
+    "target_augmented": 50,
+    "mode": "arcface",
+}
 
 
 @dataclass
-class TrainingRun:
-    id: str
-    design_id: int
-    design_name: str = ""
-    design_country: str = ""
-    status: RunStatus = RunStatus.QUEUED
-    started_at: str | None = None
-    finished_at: str | None = None
-    error: str | None = None
-    # Steps
-    steps: list[StepInfo] = field(default_factory=list)
-    # Training metrics (populated during training step)
+class ActiveState:
+    """Ephemeral in-memory view of the currently executing run."""
+
+    run_id: str
     epoch: int = 0
     epochs_total: int = 0
-    loss: float | None = None
-    recall_at_1: float | None = None
-    recall_at_3: float | None = None
-    # Config
-    config: dict = field(default_factory=dict)
-    # Logs
     log_lines: list[str] = field(default_factory=list)
-
-    def __post_init__(self) -> None:
-        if not self.steps:
-            self.steps = [StepInfo(name=n) for n in STEP_NAMES]
-
-    @property
-    def steps_completed(self) -> int:
-        return sum(1 for s in self.steps if s.status == "done")
-
-    def to_dict(self, include_logs: bool = False) -> dict:
-        d = {
-            "id": self.id,
-            "design_id": self.design_id,
-            "design_name": self.design_name,
-            "design_country": self.design_country,
-            "status": self.status.value,
-            "started_at": self.started_at,
-            "finished_at": self.finished_at,
-            "error": self.error,
-            "steps": [s.to_dict() for s in self.steps],
-            "steps_completed": self.steps_completed,
-            "steps_total": len(self.steps),
-            "epoch": self.epoch,
-            "epochs_total": self.epochs_total,
-            "loss": self.loss,
-            "recall_at_1": self.recall_at_1,
-            "recall_at_3": self.recall_at_3,
-            "config": self.config,
-        }
-        if include_logs:
-            d["log_lines"] = self.log_lines
-        return d
+    epoch_start_ts: float | None = None
 
 
 class TrainingRunner:
-    """Manages a queue of training jobs with configurable concurrency."""
-
-    def __init__(self) -> None:
-        self._queue: deque[TrainingRun] = deque()
-        self._active: list[TrainingRun] = []
-        self._history: list[TrainingRun] = []
-        self._all_runs: dict[str, TrainingRun] = {}
+    def __init__(self, store: Store) -> None:
+        self._store = store
+        self._active: ActiveState | None = None
         self._lock = threading.Lock()
-        self._max_concurrent: int = 1
-        self._device: str = "mps"
+        self._device = "mps"
+        self._rehydrate()
 
-    @property
-    def max_concurrent(self) -> int:
-        return self._max_concurrent
-
-    @max_concurrent.setter
-    def max_concurrent(self, value: int) -> None:
-        self._max_concurrent = max(1, min(value, 4))
+    # ─── Config ──────────────────────────────────────────────────────────
 
     @property
     def device(self) -> str:
@@ -158,205 +108,387 @@ class TrainingRunner:
     def device(self, value: str) -> None:
         self._device = value
 
-    @property
-    def active(self) -> list[TrainingRun]:
-        return list(self._active)
+    # ─── Public query API ────────────────────────────────────────────────
 
-    @property
-    def queue(self) -> list[TrainingRun]:
-        return list(self._queue)
+    def active_run(self) -> RunRow | None:
+        with self._lock:
+            run_id = self._active.run_id if self._active else None
+        return self._store.get_run(run_id) if run_id else None
 
-    @property
-    def history(self) -> list[TrainingRun]:
-        return list(reversed(self._history[-20:]))
+    def active_snapshot(self) -> dict | None:
+        with self._lock:
+            if self._active is None:
+                return None
+            return {
+                "run_id": self._active.run_id,
+                "epoch": self._active.epoch,
+                "epochs_total": self._active.epochs_total,
+            }
 
-    def get_run(self, run_id: str) -> TrainingRun | None:
-        return self._all_runs.get(run_id)
+    def get_run(self, run_id: str) -> RunRow | None:
+        return self._store.get_run(run_id)
 
-    def enqueue(
+    def list_runs(self, *, limit: int = 50, offset: int = 0) -> list[RunRow]:
+        return self._store.list_runs(limit=limit, offset=offset)
+
+    def count_runs(self, *, status: str | None = None) -> int:
+        return self._store.count_runs(status=status)
+
+    def list_steps(self, run_id: str) -> list[StepRow]:
+        return self._store.list_steps(run_id)
+
+    def list_epochs(self, run_id: str) -> list[EpochRow]:
+        return self._store.list_epochs(run_id)
+
+    def list_run_classes(self, run_id: str) -> list[ClassMetricRow]:
+        return self._store.list_classes_for_run(run_id)
+
+    def list_runs_for_class(self, class_id: str):
+        return self._store.list_runs_for_class(class_id)
+
+    def load_logs(self, run_id: str) -> list[str]:
+        with self._lock:
+            if self._active and self._active.run_id == run_id:
+                return list(self._active.log_lines)
+        return self._store.load_logs(run_id)
+
+    def current_classes(self) -> list[ClassRef]:
+        return _read_current_classes()
+
+    # ─── Public mutation API ─────────────────────────────────────────────
+
+    def start_run(
         self,
-        design_ids: list[int],
         *,
-        design_names: dict[int, str] | None = None,
-        design_countries: dict[int, str] | None = None,
-        epochs: int = 40,
-        batch_size: int = 64,
-        m_per_class: int = 4,
-        target_augmented: int = 50,
-    ) -> list[TrainingRun]:
-        """Create one run per design_id and add to queue."""
-        names = design_names or {}
-        countries = design_countries or {}
-        runs: list[TrainingRun] = []
-
-        config = {
-            "epochs": epochs,
-            "batch_size": batch_size,
-            "m_per_class": m_per_class,
-            "target_augmented": target_augmented,
-            "mode": "arcface",
-        }
+        added: list[ClassRef],
+        removed: list[ClassRef],
+        config: dict | None = None,
+    ) -> RunRow:
+        """Create and kick off a training run covering `added` + `removed`."""
+        cfg = dict(DEFAULT_CONFIG)
+        if config:
+            cfg.update({k: v for k, v in config.items() if v is not None})
 
         with self._lock:
-            for did in design_ids:
-                run = TrainingRun(
-                    id=str(uuid.uuid4())[:8],
-                    design_id=did,
-                    design_name=names.get(did, f"Design {did}"),
-                    design_country=countries.get(did, ""),
-                    config=config,
+            if self._active is not None:
+                raise RuntimeError("A training run is already active")
+
+            classes_before = _read_current_classes()
+            removed_ids = {c.class_id for c in removed}
+            added_map = {c.class_id: c for c in added}
+
+            classes_after_map: dict[str, ClassRef] = {
+                c.class_id: c
+                for c in classes_before
+                if c.class_id not in removed_ids
+            }
+            for class_id, ref in added_map.items():
+                classes_after_map[class_id] = ref
+            classes_after = sorted(classes_after_map.values(), key=lambda c: c.class_id)
+
+            run_id = uuid.uuid4().hex[:8]
+            version = self._store.next_version()
+            row = RunRow(
+                id=run_id,
+                version=version,
+                status="queued",
+                config=cfg,
+                classes_before=classes_before,
+                classes_after=classes_after,
+                classes_added=list(added),
+                classes_removed=list(removed),
+            )
+            self._store.create_run(row)
+            for i, name in enumerate(STEPS):
+                self._store.upsert_step(
+                    run_id, StepRow(step_index=i, name=name, status="pending")
                 )
-                self._queue.append(run)
-                self._all_runs[run.id] = run
-                runs.append(run)
+            self._active = ActiveState(
+                run_id=run_id, epochs_total=int(cfg.get("epochs", 40))
+            )
 
-        self._maybe_start_next()
-        return runs
+        thread = threading.Thread(
+            target=self._execute, args=(run_id,), daemon=True
+        )
+        thread.start()
+        return row
 
-    def remove_from_queue(self, run_id: str) -> bool:
-        """Remove a queued job. Returns True if found and removed."""
-        with self._lock:
-            for run in self._queue:
-                if run.id == run_id:
-                    self._queue.remove(run)
-                    del self._all_runs[run.id]
-                    return True
-        return False
+    # ─── Execution ───────────────────────────────────────────────────────
 
-    def _maybe_start_next(self) -> None:
-        """Start the next queued job if capacity allows."""
-        with self._lock:
-            while len(self._active) < self._max_concurrent and self._queue:
-                run = self._queue.popleft()
-                self._active.append(run)
-                thread = threading.Thread(
-                    target=self._execute_run,
-                    args=(run,),
-                    daemon=True,
-                )
-                thread.start()
+    def _rehydrate(self) -> None:
+        """Mark any leftover 'running' runs as failed (process was killed)."""
+        for r in self._store.list_runs(status="running"):
+            self._store.update_run_status(
+                r.id,
+                "failed",
+                error="Interrupted by API restart",
+                finished_at=_now_iso(),
+            )
 
-    def _execute_run(self, run: TrainingRun) -> None:
-        """Execute the full training pipeline for one design."""
-        run.status = RunStatus.RUNNING
-        run.started_at = datetime.utcnow().isoformat()
-        design_id_str = str(run.design_id)
-
+    def _execute(self, run_id: str) -> None:
+        version_str = self._version_string(run_id)
         try:
-            # Step 0: Augmentation
-            step = run.steps[0]
-            step.start()
-            self._run_script(
-                run,
-                [
-                    VENV_PYTHON,
-                    str(ML_DIR / "augment_synthetic.py"),
-                    "--coin-ids",
-                    design_id_str,
-                    "--target-per-class",
-                    str(run.config["target_augmented"]),
-                ],
+            self._store.update_run_status(
+                run_id, "running", started_at=_now_iso()
             )
-            aug_dir = DATASETS_DIR / design_id_str / "augmented"
-            aug_count = len(list(aug_dir.glob("aug_*.jpg"))) if aug_dir.exists() else 0
-            step.done(f"{aug_count} images")
-
-            # Step 1: Prepare dataset
-            step = run.steps[1]
-            step.start()
-            self._run_script(
-                run,
-                [VENV_PYTHON, str(ML_DIR / "prepare_dataset.py")],
+            self._run_step(run_id, 0, lambda row: self._augment(row))
+            self._run_step(run_id, 1, lambda row: self._delete(row))
+            self._run_step(run_id, 2, lambda row: self._prepare(row))
+            self._run_step(run_id, 3, lambda row: self._train(row, version_str))
+            self._run_step(run_id, 4, lambda row: self._compute_embeddings(row, version_str))
+            self._run_step(run_id, 5, lambda row: self._seed(row))
+            self._run_step(run_id, 6, lambda row: self._validate_per_class(row))
+            self._finalize_run(run_id)
+            self._store.update_run_status(
+                run_id, "completed", finished_at=_now_iso()
             )
-            # Count classes and images in the prepared dataset
-            train_dir = DATASETS_DIR / "eurio-poc" / "train"
-            if train_dir.exists():
-                classes = [d for d in train_dir.iterdir() if d.is_dir()]
-                total_imgs = sum(len(list(c.iterdir())) for c in classes)
-                step.done(f"{len(classes)} classes, {total_imgs} images")
-            else:
-                step.done()
-
-            # Step 2: Train ArcFace
-            step = run.steps[2]
-            step.start()
-            run.epochs_total = run.config["epochs"]
-            self._run_script(
-                run,
-                [
-                    VENV_PYTHON,
-                    str(ML_DIR / "train_embedder.py"),
-                    "--mode",
-                    "arcface",
-                    "--dataset",
-                    str(DATASETS_DIR / "eurio-poc" / "train"),
-                    "--val-dataset",
-                    str(DATASETS_DIR / "eurio-poc" / "val"),
-                    "--epochs",
-                    str(run.config["epochs"]),
-                    "--batch-size",
-                    str(run.config["batch_size"]),
-                    "--m-per-class",
-                    str(run.config["m_per_class"]),
-                ],
-                parse_training_output=True,
+        except Exception as exc:  # noqa: BLE001 — top-level run failure
+            self._store.update_run_status(
+                run_id,
+                "failed",
+                error=str(exc),
+                finished_at=_now_iso(),
             )
-            self._read_final_metrics(run)
-            r1 = f"{run.recall_at_1:.0%}" if run.recall_at_1 is not None else "?"
-            step.done(f"R@1: {r1}")
-
-            # Step 3: Compute embeddings
-            step = run.steps[3]
-            step.start()
-            self._run_script(
-                run,
-                [VENV_PYTHON, str(ML_DIR / "compute_embeddings.py")],
-            )
-            emb_path = OUTPUT_DIR / "embeddings_v1.json"
-            if emb_path.exists():
-                emb_data = json.loads(emb_path.read_text())
-                n_classes = len(emb_data.get("coins", {}))
-                dim = emb_data.get("embedding_dim", 256)
-                step.done(f"{n_classes} classes, {dim}-dim")
-            else:
-                step.done()
-
-            # Step 4: Seed Supabase
-            step = run.steps[4]
-            step.start()
-            self._run_script(
-                run,
-                [VENV_PYTHON, str(ML_DIR / "seed_supabase.py")],
-            )
-            step.done("Synchronisé")
-
-            run.status = RunStatus.COMPLETED
-
-        except Exception as e:
-            run.status = RunStatus.FAILED
-            run.error = str(e)
-            # Mark current running step as failed
-            for s in run.steps:
-                if s.status == "running":
-                    s.fail(str(e))
-                    break
-
         finally:
-            run.finished_at = datetime.utcnow().isoformat()
             with self._lock:
-                if run in self._active:
-                    self._active.remove(run)
-                self._history.append(run)
-            self._maybe_start_next()
+                active = self._active
+                self._active = None
+            if active is not None:
+                self._store.save_logs(run_id, active.log_lines)
 
-    def _run_script(
+    def _version_string(self, run_id: str) -> str:
+        row = self._store.get_run(run_id)
+        mode = (row.config.get("mode") if row and row.config else None) or "arcface"
+        version = row.version if row else 0
+        return f"v{version}-{mode}"
+
+    def _run_step(self, run_id: str, idx: int, action) -> None:
+        row = self._store.get_run(run_id)
+        if row is None:
+            raise RuntimeError(f"Run {run_id} disappeared")
+        name = STEPS[idx]
+        started = _now_iso()
+        self._store.upsert_step(
+            run_id,
+            StepRow(step_index=idx, name=name, status="running", started_at=started),
+        )
+        try:
+            detail = action(row)
+            status = "skipped" if detail and detail.startswith("skipped") else "done"
+            self._store.upsert_step(
+                run_id,
+                StepRow(
+                    step_index=idx,
+                    name=name,
+                    status=status,
+                    started_at=started,
+                    finished_at=_now_iso(),
+                    detail=detail,
+                ),
+            )
+        except Exception as exc:
+            self._store.upsert_step(
+                run_id,
+                StepRow(
+                    step_index=idx,
+                    name=name,
+                    status="failed",
+                    started_at=started,
+                    finished_at=_now_iso(),
+                    detail=str(exc),
+                ),
+            )
+            raise
+
+    # ─── Steps ───────────────────────────────────────────────────────────
+
+    def _augment(self, row: RunRow) -> str:
+        if not row.classes_added:
+            return "skipped (no added classes)"
+        resolver = _build_resolver()
+        target = row.config.get("target_augmented", 50)
+        dirs_augmented = 0
+        for ref in row.classes_added:
+            descriptor = resolver.for_class(ref.class_id)
+            if descriptor is None:
+                self._log(row.id, f"  {ref.class_id}: no Supabase members, skipping")
+                continue
+            for nid in descriptor.numista_ids:
+                self._run_subprocess(
+                    row.id,
+                    [
+                        VENV_PYTHON,
+                        str(ML_DIR / "augment_synthetic.py"),
+                        "--coin-ids",
+                        str(nid),
+                        "--target-per-class",
+                        str(target),
+                    ],
+                )
+                dirs_augmented += 1
+        return f"{dirs_augmented} source dirs augmented"
+
+    def _delete(self, row: RunRow) -> str:
+        if not row.classes_removed:
+            return "skipped (no removed classes)"
+        resolver = _build_resolver()
+        removed_aug = 0
+        for ref in row.classes_removed:
+            descriptor = resolver.for_class(ref.class_id)
+            numista_ids = descriptor.numista_ids if descriptor else ()
+            for nid in numista_ids:
+                aug = DATASETS_DIR / str(nid) / "augmented"
+                if aug.exists():
+                    shutil.rmtree(aug)
+                    removed_aug += 1
+                    self._log(row.id, f"  removed {aug}")
+            for split in ("train", "val", "test"):
+                split_dir = EURIO_POC / split / ref.class_id
+                if split_dir.exists():
+                    shutil.rmtree(split_dir)
+                    self._log(row.id, f"  removed {split_dir}")
+            _purge_supabase(ref, descriptor.eurio_ids if descriptor else ())
+        return f"{removed_aug} augmented dirs removed"
+
+    def _prepare(self, row: RunRow) -> str:
+        self._run_subprocess(
+            row.id,
+            [VENV_PYTHON, str(ML_DIR / "prepare_dataset.py")],
+        )
+        manifest_path = EURIO_POC / "class_manifest.json"
+        if manifest_path.exists():
+            payload = json.loads(manifest_path.read_text())
+            n = len(payload.get("classes", []))
+            return f"{n} classes prepared"
+        return "prepared"
+
+    def _train(self, row: RunRow, version_str: str) -> str:
+        cfg = row.config
+        with self._lock:
+            if self._active is not None:
+                self._active.epoch = 0
+                self._active.epochs_total = int(cfg.get("epochs", 40))
+        self._run_subprocess(
+            row.id,
+            [
+                VENV_PYTHON,
+                str(ML_DIR / "train_embedder.py"),
+                "--mode",
+                cfg.get("mode", "arcface"),
+                "--dataset",
+                str(EURIO_POC / "train"),
+                "--val-dataset",
+                str(EURIO_POC / "val"),
+                "--epochs",
+                str(cfg["epochs"]),
+                "--batch-size",
+                str(cfg["batch_size"]),
+                "--m-per-class",
+                str(cfg["m_per_class"]),
+                "--device",
+                self._device,
+                "--model-version",
+                version_str,
+            ],
+            parse_training_output=True,
+        )
+        return f"{cfg['epochs']} epochs ({version_str})"
+
+    def _compute_embeddings(self, row: RunRow, version_str: str) -> str:
+        self._run_subprocess(
+            row.id,
+            [
+                VENV_PYTHON,
+                str(ML_DIR / "compute_embeddings.py"),
+                "--model-version",
+                version_str,
+            ],
+        )
+        emb_path = OUTPUT_DIR / "embeddings_v1.json"
+        if emb_path.exists():
+            n = len(json.loads(emb_path.read_text()).get("coins", {}))
+            return f"{n} class embeddings"
+        return "embeddings computed"
+
+    def _seed(self, row: RunRow) -> str:
+        self._run_subprocess(
+            row.id, [VENV_PYTHON, str(ML_DIR / "seed_supabase.py")]
+        )
+        return "synced to Supabase"
+
+    def _validate_per_class(self, row: RunRow) -> str:
+        self._run_subprocess(
+            row.id, [VENV_PYTHON, str(ML_DIR / "validate_per_class.py")]
+        )
+        if not PER_CLASS_METRICS.exists():
+            return "no metrics written"
+        data = json.loads(PER_CLASS_METRICS.read_text())
+        classes = data.get("classes", [])
+        rows = [
+            ClassMetricRow(
+                class_id=c["class_id"],
+                class_kind=c.get("class_kind", "eurio_id"),
+                recall_at_1=c.get("recall_at_1"),
+                n_train_images=c.get("n_train_images"),
+                n_val_images=c.get("n_val_images"),
+            )
+            for c in classes
+        ]
+        self._store.set_run_classes(row.id, rows)
+        return f"{len(rows)} per-class metrics"
+
+    # ─── Finalization ────────────────────────────────────────────────────
+
+    def _finalize_run(self, run_id: str) -> None:
+        log_path = CHECKPOINTS_DIR / "training_log.json"
+        if not log_path.exists():
+            return
+        try:
+            logs = json.loads(log_path.read_text())
+        except json.JSONDecodeError:
+            return
+        if not isinstance(logs, list) or not logs:
+            return
+        for entry in logs:
+            epoch = entry.get("epoch")
+            if epoch is None:
+                continue
+            r1 = entry.get("recall@1") if "recall@1" in entry else entry.get("val_acc")
+            r3 = entry.get("recall@3") if "recall@3" in entry else entry.get("val_top3_acc")
+            self._store.append_epoch(
+                run_id,
+                EpochRow(
+                    epoch=int(epoch),
+                    train_loss=entry.get("train_loss"),
+                    recall_at_1=r1,
+                    recall_at_3=r3,
+                    lr=entry.get("lr"),
+                ),
+            )
+        durations = [
+            e.duration_sec
+            for e in self._store.list_epochs(run_id)
+            if e.duration_sec is not None
+        ]
+        median = statistics.median(durations) if durations else None
+        last = logs[-1]
+        self._store.update_run_metrics(
+            run_id,
+            loss=last.get("train_loss"),
+            recall_at_1=last.get("recall@1") or last.get("val_acc"),
+            recall_at_3=last.get("recall@3") or last.get("val_top3_acc"),
+            epoch_duration_median_sec=median,
+        )
+
+    # ─── Subprocess + streaming ──────────────────────────────────────────
+
+    def _run_subprocess(
         self,
-        run: TrainingRun,
+        run_id: str,
         cmd: list[str],
         *,
         parse_training_output: bool = False,
     ) -> None:
-        """Run a subprocess and stream output to the run's log."""
         proc = subprocess.Popen(
             cmd,
             cwd=str(ML_DIR),
@@ -364,58 +496,149 @@ class TrainingRunner:
             stderr=subprocess.STDOUT,
             text=True,
         )
-
         assert proc.stdout is not None
-        for line in proc.stdout:
-            line = line.rstrip()
-            run.log_lines.append(line)
-            if len(run.log_lines) > 200:
-                run.log_lines = run.log_lines[-200:]
-
+        for raw in proc.stdout:
+            line = raw.rstrip()
+            self._log(run_id, line)
             if parse_training_output:
-                self._parse_epoch_line(run, line)
-
-        returncode = proc.wait()
-        if returncode != 0:
+                self._parse_epoch_line(run_id, line)
+        rc = proc.wait()
+        if rc != 0:
             raise RuntimeError(
-                f"Script failed (exit {returncode}): {' '.join(cmd)}"
+                f"Command failed (exit {rc}): {' '.join(cmd)}"
             )
 
-    def _parse_epoch_line(self, run: TrainingRun, line: str) -> None:
-        """Parse training output to extract epoch/metrics."""
+    def _log(self, run_id: str, line: str) -> None:
+        with self._lock:
+            if self._active is None or self._active.run_id != run_id:
+                return
+            self._active.log_lines.append(line)
+
+    def _parse_epoch_line(self, run_id: str, line: str) -> None:
         if "Epoch" not in line or "loss:" not in line:
             return
         try:
             parts = line.strip().split()
             epoch_idx = parts.index("Epoch") + 1
-            run.epoch = int(parts[epoch_idx])
-
-            # Update step detail with current epoch
-            step = run.steps[2]
-            step.detail = f"Epoch {run.epoch}/{run.epochs_total}"
-
-            for i, p in enumerate(parts):
-                if p == "loss:":
-                    run.loss = float(parts[i + 1])
-                elif p == "R@1:":
-                    run.recall_at_1 = float(parts[i + 1].rstrip("%")) / 100
-                elif p == "R@3:":
-                    run.recall_at_3 = float(parts[i + 1].rstrip("%")) / 100
+            epoch = int(parts[epoch_idx])
         except (ValueError, IndexError):
-            pass
-
-    def _read_final_metrics(self, run: TrainingRun) -> None:
-        """Read final metrics from the training log JSON."""
-        log_path = CHECKPOINTS_DIR / "training_log.json"
-        if not log_path.exists():
             return
-        try:
-            logs = json.loads(log_path.read_text())
-            if logs:
-                last = logs[-1]
-                run.recall_at_1 = last.get("recall@1", run.recall_at_1)
-                run.recall_at_3 = last.get("recall@3", run.recall_at_3)
-                run.loss = last.get("train_loss", run.loss)
-                run.epoch = last.get("epoch", run.epoch)
-        except (json.JSONDecodeError, KeyError):
-            pass
+
+        loss: float | None = None
+        r1: float | None = None
+        r3: float | None = None
+        for i, p in enumerate(parts):
+            if p == "loss:":
+                loss = _safe_float(parts[i + 1] if i + 1 < len(parts) else None)
+            elif p == "R@1:":
+                r1 = _safe_pct(parts[i + 1] if i + 1 < len(parts) else None)
+            elif p == "R@3:":
+                r3 = _safe_pct(parts[i + 1] if i + 1 < len(parts) else None)
+            elif p == "val_acc:":
+                r1 = _safe_pct(parts[i + 1] if i + 1 < len(parts) else None)
+            elif p == "val_top3:":
+                r3 = _safe_pct(parts[i + 1] if i + 1 < len(parts) else None)
+
+        now = datetime.utcnow().timestamp()
+        duration: float | None = None
+        with self._lock:
+            if self._active is not None and self._active.run_id == run_id:
+                if self._active.epoch_start_ts is not None:
+                    duration = now - self._active.epoch_start_ts
+                self._active.epoch = epoch
+                self._active.epoch_start_ts = now
+
+        self._store.append_epoch(
+            run_id,
+            EpochRow(
+                epoch=epoch,
+                train_loss=loss,
+                recall_at_1=r1,
+                recall_at_3=r3,
+                duration_sec=duration,
+            ),
+        )
+        self._store.upsert_step(
+            run_id,
+            StepRow(
+                step_index=STEP_INDEX["Entraînement"],
+                name="Entraînement",
+                status="running",
+                detail=f"Epoch {epoch}",
+            ),
+        )
+
+
+# ─── Module-level helpers ────────────────────────────────────────────────
+
+
+def _now_iso() -> str:
+    return datetime.utcnow().isoformat()
+
+
+def _safe_float(s: str | None) -> float | None:
+    if s is None:
+        return None
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
+def _safe_pct(s: str | None) -> float | None:
+    if s is None:
+        return None
+    try:
+        return float(s.rstrip("%")) / 100
+    except ValueError:
+        return None
+
+
+def _read_current_classes() -> list[ClassRef]:
+    manifest = EURIO_POC / "class_manifest.json"
+    if not manifest.exists():
+        return []
+    data = json.loads(manifest.read_text())
+    return [
+        ClassRef(class_id=c["class_id"], class_kind=c["class_kind"])
+        for c in data.get("classes", [])
+    ]
+
+
+def _build_resolver():
+    from class_resolver import build_resolver
+
+    return build_resolver()
+
+
+def _load_env() -> dict[str, str]:
+    env: dict[str, str] = {}
+    env_path = ML_DIR.parent / ".env"
+    if env_path.exists():
+        for raw in env_path.read_text().splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, _, v = line.partition("=")
+            env[k.strip()] = v.strip()
+    for k in ("SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"):
+        if k in os.environ:
+            env[k] = os.environ[k]
+    return env
+
+
+def _purge_supabase(ref: ClassRef, eurio_ids: tuple[str, ...]) -> None:
+    env = _load_env()
+    url = env.get("SUPABASE_URL", "")
+    key = env.get("SUPABASE_SERVICE_ROLE_KEY", "")
+    if not url or not key:
+        return
+    headers = {"apikey": key, "Authorization": f"Bearer {key}"}
+    rest = url.rstrip("/") + "/rest/v1"
+    with httpx.Client(headers=headers, timeout=30) as c:
+        c.delete(f"{rest}/model_classes?class_id=eq.{ref.class_id}")
+        if ref.class_kind == "eurio_id":
+            c.delete(f"{rest}/coin_embeddings?eurio_id=eq.{ref.class_id}")
+        elif eurio_ids:
+            quoted = ",".join(f'"{eid}"' for eid in eurio_ids)
+            c.delete(f"{rest}/coin_embeddings?eurio_id=in.({quoted})")
