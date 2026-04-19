@@ -193,6 +193,27 @@ tasks:
     cmds:
       - "{{.VENV}}/python rename_to_numista_ids.py"
 
+  # ---------- Training state (SQLite) ----------
+  export-state-lite:
+    desc: "Export training state DB only (portable history/staging) → tar.gz in CWD"
+    cmds:
+      - "{{.VENV}}/python -m state.archive export --mode lite {{.CLI_ARGS}}"
+
+  export-state-full:
+    desc: "Export state + datasets + checkpoints + embeddings → tar.gz (500MB-1GB)"
+    cmds:
+      - "{{.VENV}}/python -m state.archive export --mode full {{.CLI_ARGS}}"
+
+  import-state:
+    desc: "Import a state tarball. Usage: go-task ml:import-state -- path.tar.gz"
+    cmds:
+      - "{{.VENV}}/python -m state.archive import {{.CLI_ARGS}}"
+
+  prune-history:
+    desc: "Keep only the last N runs. Usage: go-task ml:prune-history -- --keep-last 100"
+    cmds:
+      - "{{.VENV}}/python -m state.archive prune {{.CLI_ARGS}}"
+
   # ---------- ML API ----------
   api:
     desc: "Start the ML training API (FastAPI on port 8042)"
