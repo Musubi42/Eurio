@@ -19,6 +19,54 @@ export type Database = {
   }
   public: {
     Tables: {
+      coin_confusion_map: {
+        Row: {
+          computed_at: string
+          encoder_version: string
+          eurio_id: string
+          id: number
+          nearest_eurio_id: string | null
+          nearest_similarity: number
+          top_k_neighbors: Json
+          zone: string
+        }
+        Insert: {
+          computed_at?: string
+          encoder_version: string
+          eurio_id: string
+          id?: number
+          nearest_eurio_id?: string | null
+          nearest_similarity: number
+          top_k_neighbors: Json
+          zone: string
+        }
+        Update: {
+          computed_at?: string
+          encoder_version?: string
+          eurio_id?: string
+          id?: number
+          nearest_eurio_id?: string | null
+          nearest_similarity?: number
+          top_k_neighbors?: Json
+          zone?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coin_confusion_map_eurio_id_fkey"
+            columns: ["eurio_id"]
+            isOneToOne: false
+            referencedRelation: "coins"
+            referencedColumns: ["eurio_id"]
+          },
+          {
+            foreignKeyName: "coin_confusion_map_nearest_eurio_id_fkey"
+            columns: ["nearest_eurio_id"]
+            isOneToOne: false
+            referencedRelation: "coins"
+            referencedColumns: ["eurio_id"]
+          },
+        ]
+      }
       coin_embeddings: {
         Row: {
           created_at: string
@@ -115,6 +163,7 @@ export type Database = {
           cross_refs: Json
           currency: string
           design_description: string | null
+          design_group_id: string | null
           eurio_id: string
           face_value: number
           first_seen: string
@@ -140,6 +189,7 @@ export type Database = {
           cross_refs?: Json
           currency?: string
           design_description?: string | null
+          design_group_id?: string | null
           eurio_id: string
           face_value: number
           first_seen?: string
@@ -165,6 +215,7 @@ export type Database = {
           cross_refs?: Json
           currency?: string
           design_description?: string | null
+          design_group_id?: string | null
           eurio_id?: string
           face_value?: number
           first_seen?: string
@@ -186,6 +237,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "coins_design_group_id_fkey"
+            columns: ["design_group_id"]
+            isOneToOne: false
+            referencedRelation: "design_groups"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "coins_series_id_fkey"
             columns: ["series_id"]
             isOneToOne: false
@@ -193,6 +251,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      design_groups: {
+        Row: {
+          created_at: string
+          description: string | null
+          designation: string
+          designation_i18n: Json | null
+          id: string
+          shared_obverse_url: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          designation: string
+          designation_i18n?: Json | null
+          id: string
+          shared_obverse_url?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          designation?: string
+          designation_i18n?: Json | null
+          id?: string
+          shared_obverse_url?: string | null
+          updated_at?: string
+        }
+        Relationships: []
       }
       matching_decisions: {
         Row: {

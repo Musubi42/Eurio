@@ -1,11 +1,11 @@
 version: "3"
 
 vars:
-  VENV: "{{.ROOT_DIR}}/.venv/bin"
-  DATASET: "{{.ROOT_DIR}}/datasets/eurio-poc"
-  CHECKPOINTS: "{{.ROOT_DIR}}/checkpoints"
-  OUTPUT: "{{.ROOT_DIR}}/output"
-  ASSETS: "{{.ROOT_DIR}}/../app-android/src/main/assets"
+  VENV: "{{.TASKFILE_DIR}}/.venv/bin"
+  DATASET: "{{.TASKFILE_DIR}}/datasets/eurio-poc"
+  CHECKPOINTS: "{{.TASKFILE_DIR}}/checkpoints"
+  OUTPUT: "{{.TASKFILE_DIR}}/output"
+  ASSETS: "{{.TASKFILE_DIR}}/../app-android/src/main/assets"
 
 tasks:
   # ---------- Full pipeline ----------
@@ -57,8 +57,9 @@ tasks:
         --dataset {{.DATASET}}/train
         --val-dataset {{.DATASET}}/val
         --epochs 40
-        --batch-size 64
+        --batch-size 256
         --m-per-class 4
+        --num-workers 4
     generates:
       - checkpoints/best_model.pth
       - checkpoints/training_log.json
@@ -110,9 +111,9 @@ tasks:
     desc: Copy TFLite model and metadata into Android assets
     cmds:
       - mkdir -p {{.ASSETS}}/models {{.ASSETS}}/data
-      - cp {{.OUTPUT}}/eurio_embedder_v1.tflite {{.ASSETS}}/models/
-      - cp {{.OUTPUT}}/model_meta.json {{.ASSETS}}/data/
-      - "[ -f {{.OUTPUT}}/coin_embeddings.json ] && cp {{.OUTPUT}}/coin_embeddings.json {{.ASSETS}}/data/ || true"
+      - /bin/cp {{.OUTPUT}}/eurio_embedder_v1.tflite {{.ASSETS}}/models/
+      - /bin/cp {{.OUTPUT}}/model_meta.json {{.ASSETS}}/data/
+      - "[ -f {{.OUTPUT}}/coin_embeddings.json ] && /bin/cp {{.OUTPUT}}/coin_embeddings.json {{.ASSETS}}/data/ || true"
 
   seed:
     desc: Seed Supabase with coin catalog and embeddings (needs SERVICE_ROLE_KEY)
@@ -202,3 +203,36 @@ tasks:
     desc: "Start the ML API without reload"
     cmds:
       - "{{.VENV}}/python -m uvicorn api.server:app --port 8042"
+
+  # ---------- Confusion Map ----------
+  confusion-map:
+    desc: "Generate coin confusion map via DINOv2 and upsert to Supabase"
+    cmds:
+      - "{{.VENV}}/python confusion_map.py"
+
+  confusion-map-dry:
+    desc: "Dry-run confusion map computation (no DB writes)"
+    cmds:
+      - "{{.VENV}}/python confusion_map.py --dry-run"
+
+  # ---------- Design Groups ----------
+  bootstrap-design-groups:
+    desc: "Bootstrap design_groups + populate coins.design_group_id (axis A auto, axis B seed)"
+    cmds:
+      - "{{.VENV}}/python bootstrap_design_groups.py --apply"
+
+  bootstrap-design-groups-dry:
+    desc: "Preview design_groups bootstrap without writing"
+    cmds:
+      - "{{.VENV}}/python bootstrap_design_groups.py"
+
+  # ---------- Phase 2 Augmentation ----------
+  augment-preview:
+    desc: "Generate a preview grid of augmented images for a design (takes --design-group-id or --eurio-id)"
+    cmds:
+      - "{{.VENV}}/python preview_augmentations.py {{.CLI_ARGS}}"
+
+  augment-textures-check:
+    desc: "Validate that overlay textures are present and readable"
+    cmds:
+      - "{{.VENV}}/python -c 'from augmentations.overlays import sanity_check_textures; import sys; sys.exit(sanity_check_textures())'"

@@ -1,0 +1,83 @@
+{
+  "axis_b": {
+    "status": "deferred",
+    "deferred_reason": "Joint issues are currently modeled as single eu-country rows in `coins` (country='eu', national_variants JSONB lists emitting countries). Per-country expansion of `coins` (one row per country variant of a joint issue, with its own eurio_id, numista_id, images) is required before these design_groups can be created. Tracked as a separate session — see docs/design/_shared/design-groups.md §5 'Pending: per-country expansion'.",
+    "entries": [
+      {
+        "id": "eu-rome-2007",
+        "designation": "50e anniversaire du Traité de Rome",
+        "designation_i18n": {
+          "fr": "50e anniversaire du Traité de Rome",
+          "en": "50th anniversary of the Treaty of Rome",
+          "de": "50. Jahrestag der Römischen Verträge",
+          "it": "50° anniversario dei Trattati di Roma"
+        },
+        "description": "Première émission commémorative commune de la zone euro. Design unique, légende nationale variable selon le pays émetteur.",
+        "members": {
+          "criteria": { "year": 2007, "issue_type": "commemo-common" }
+        },
+        "expected_count": 13
+      },
+      {
+        "id": "eu-emu-2009",
+        "designation": "10e anniversaire de l'Union économique et monétaire",
+        "designation_i18n": {
+          "fr": "10e anniversaire de l'Union économique et monétaire",
+          "en": "10th anniversary of the Economic and Monetary Union",
+          "de": "10. Jahrestag der Wirtschafts- und Währungsunion",
+          "it": "10° anniversario dell'Unione economica e monetaria"
+        },
+        "description": "Commémorative commune de 2009. Design unique représentant un personnage stylisé échangeant avec l'euro. 16 pays émetteurs (ajout de CY, MT, SK vs 2007).",
+        "members": {
+          "criteria": { "year": 2009, "issue_type": "commemo-common" }
+        },
+        "expected_count": 16
+      },
+      {
+        "id": "eu-cash-2012",
+        "designation": "10 ans de l'euro fiduciaire",
+        "designation_i18n": {
+          "fr": "10 ans de l'euro fiduciaire",
+          "en": "10 years of euro banknotes and coins",
+          "de": "10 Jahre Euro-Bargeld",
+          "it": "10 anni delle banconote e monete in euro"
+        },
+        "description": "Commémorative commune de 2012 célébrant les 10 ans de circulation de l'euro fiduciaire. 17 pays émetteurs (ajout de EE vs 2009).",
+        "members": {
+          "criteria": { "year": 2012, "issue_type": "commemo-common" }
+        },
+        "expected_count": 17
+      },
+      {
+        "id": "eu-flag-2015",
+        "designation": "30e anniversaire du drapeau européen",
+        "designation_i18n": {
+          "fr": "30e anniversaire du drapeau européen",
+          "en": "30th anniversary of the European flag",
+          "de": "30. Jahrestag der Europaflagge",
+          "it": "30° anniversario della bandiera europea"
+        },
+        "description": "Commémorative commune de 2015. 19 pays émetteurs (ajout de LV et LT vs 2012).",
+        "members": {
+          "criteria": { "year": 2015, "issue_type": "commemo-common" }
+        },
+        "expected_count": 19
+      },
+      {
+        "id": "eu-erasmus-2022",
+        "designation": "35e anniversaire du programme Erasmus",
+        "designation_i18n": {
+          "fr": "35e anniversaire du programme Erasmus",
+          "en": "35th anniversary of the Erasmus programme",
+          "de": "35. Jahrestag des Erasmus-Programms",
+          "it": "35° anniversario del programma Erasmus"
+        },
+        "description": "Commémorative commune de 2022. 19 pays émetteurs (HR a rejoint la zone euro en 2023, pas de rétro-frappe).",
+        "members": {
+          "criteria": { "year": 2022, "issue_type": "commemo-common" }
+        },
+        "expected_count": 19
+      }
+    ]
+  }
+}

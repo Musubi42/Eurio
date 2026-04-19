@@ -408,7 +408,7 @@ Total estimé v1 : ~50 sets structurels auto-générés + ~2-3 sets curés symbo
 
 ## 10. Validation du cas de référence — Rome 2007
 
-Le set « 50e anniversaire du Traité de Rome » est **le** cas de test critique pour valider l'approche. Challenge fait le 2026-04-15 contre la page Wikipédia correspondante : théorie validée, 13 pays attendus (BE, DE, IE, ES, FR, IT, LU, NL, AT, PT, SI, FI, GR), récupérables via `theme_code='eu-rome-2007'` + `distinct_by='country'`.
+Le set « 50e anniversaire du Traité de Rome » est **le** cas de test critique pour valider l'approche. Challenge fait le 2026-04-15 contre la page Wikipédia correspondante : théorie validée, 13 pays attendus (BE, DE, IE, ES, FR, IT, LU, NL, AT, PT, SI, FI, GR), récupérables via `(year=2007, issue_type='commemo-common')` + `distinct_by='country'`.
 
 Définition canonique :
 ```json
@@ -422,7 +422,8 @@ Définition canonique :
     "it": "50° anniversario dei Trattati di Roma"
   },
   "criteria": {
-    "theme_code": "eu-rome-2007",
+    "year": 2007,
+    "issue_type": "commemo-common",
     "distinct_by": "country"
   },
   "expected_count": 13,
@@ -432,7 +433,7 @@ Définition canonique :
 }
 ```
 
-Condition d'existence : le bootstrap BCE doit avoir posé `theme_code='eu-rome-2007'` sur exactement 13 entrées `coins` correspondant aux 13 pays. Assert dans le script, abort sur mismatch.
+Condition d'existence : le bootstrap doit avoir posé `issue_type='commemo-common'` sur exactement 13 entrées `coins` en 2007, une par pays émetteur. Assert dans le script, abort sur mismatch. À partir de la bootstrap `design_groups` (cf. [`design-groups.md`](./design-groups.md)), ces 13 coins partagent en plus un même `design_group_id='eu-rome-2007'` — condition dérivée, pas utilisée par le DSL sets v1.
 
 ---
 
