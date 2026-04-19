@@ -326,6 +326,42 @@ export type Database = {
           },
         ]
       }
+      model_classes: {
+        Row: {
+          class_id: string
+          class_kind: string
+          created_at: string
+          embedding: number[]
+          model_version: string
+          n_train_images: number | null
+          n_val_images: number | null
+          recall_at_1: number | null
+          updated_at: string
+        }
+        Insert: {
+          class_id: string
+          class_kind: string
+          created_at?: string
+          embedding: number[]
+          model_version: string
+          n_train_images?: number | null
+          n_val_images?: number | null
+          recall_at_1?: number | null
+          updated_at?: string
+        }
+        Update: {
+          class_id?: string
+          class_kind?: string
+          created_at?: string
+          embedding?: number[]
+          model_version?: string
+          n_train_images?: number | null
+          n_val_images?: number | null
+          recall_at_1?: number | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       review_queue: {
         Row: {
           candidates: Json | null
