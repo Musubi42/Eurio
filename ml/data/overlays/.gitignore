@@ -1,0 +1,9 @@
+# Overlay textures are user-populated (scraped libre-de-droits, generated with
+# Blender, etc.). They can be large and non-deterministic — keep the directory
+# structure tracked but ignore the binary assets themselves.
+*/*.png
+*/*.jpg
+*/*.jpeg
+*/*.webp
+!.gitignore
+!*/.gitkeep

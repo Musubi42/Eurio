@@ -3,6 +3,7 @@ package com.musubi.eurio.data.repository
 import com.musubi.eurio.data.local.dao.CoinDao
 import com.musubi.eurio.data.local.dao.MetaDao
 import com.musubi.eurio.data.local.dao.VaultDao
+import com.musubi.eurio.domain.AppEvent
 import com.musubi.eurio.domain.Grade
 import com.musubi.eurio.domain.badges.BADGE_DEFINITIONS
 import com.musubi.eurio.domain.badges.BadgeDefinition
@@ -41,6 +42,7 @@ class RoomProfileRepository(
     private val coinDao: CoinDao,
     private val metaDao: MetaDao,
     private val setRepository: SetRepository,
+    private val onAppEvent: ((AppEvent) -> Unit)? = null,
 ) : ProfileRepository {
 
     override fun observeProfileState(): Flow<ProfileState> {
@@ -85,6 +87,7 @@ class RoomProfileRepository(
                 val isNowUnlocked = def.predicate(snapshot)
                 if (isNowUnlocked && !wasUnlocked) {
                     metaDao.putLong("badge_${def.id}_unlocked_at", System.currentTimeMillis())
+                    onAppEvent?.invoke(AppEvent.BadgeUnlocked(def.nameFr, def.icon))
                 }
                 val progress = def.progressExtractor?.invoke(snapshot)
                 BadgeState(

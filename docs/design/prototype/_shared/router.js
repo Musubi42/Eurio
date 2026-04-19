@@ -12,7 +12,7 @@
 
 import * as state from './state.js';
 import * as data from './data.js';
-import { init as initBridge } from './bridge.js';
+
 
 // ───────── Route table ─────────
 // Each entry : { pattern, scene, nav, chrome }
@@ -147,10 +147,7 @@ async function renderScene(route, params, query) {
   const sc = screenEl();
   if (!v || !sc) return;
 
-  // Chrome: in embedded mode (parity viewer iframe), always use 'embed'.
-  // Otherwise, hash query ?chrome= overrides the route default.
-  const embedded = window.parent !== window;
-  sc.dataset.chrome = embedded ? 'embed' : (query.chrome || route.chrome || 'light');
+  sc.dataset.chrome = query.chrome || route.chrome || 'light';
 
   // State preset: hash query ?state=populated overrides localStorage (parity viewer)
   if (query.state) {
@@ -248,9 +245,7 @@ export function onRoute(fn) {
 async function resolve() {
   const { rawPath, query } = parseHash(location.hash);
 
-  // Home redirect — skip when embedded (parity viewer controls navigation via postMessage)
   if (rawPath === '/' || rawPath === '') {
-    if (window.parent !== window) return;
     const target = state.state.firstRun ? '#/onboarding/splash' : '#/scan';
     location.replace(target);
     return;
@@ -277,7 +272,6 @@ async function boot() {
   installVersionBadge();
   window.addEventListener('hashchange', resolve);
   resolve();
-  initBridge({ state, navigate });
 }
 
 // ───────── Version badge 7-tap debug ─────────

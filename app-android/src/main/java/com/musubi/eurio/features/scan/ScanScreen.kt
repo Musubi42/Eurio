@@ -186,7 +186,7 @@ private fun CameraPreview(
     onFrame: (androidx.camera.core.ImageProxy) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    if (BuildConfig.DEBUG && ParityFlags.mockCamera) {
+    if (BuildConfig.IS_QA && ParityFlags.mockCamera) {
         MockCameraPreview(modifier = modifier)
         return
     }

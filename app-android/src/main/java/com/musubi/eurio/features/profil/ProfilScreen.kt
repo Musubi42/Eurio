@@ -2,6 +2,7 @@ package com.musubi.eurio.features.profil
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,6 +25,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -61,10 +64,13 @@ import com.musubi.eurio.ui.theme.MonoBadgeStyle
 import com.musubi.eurio.ui.theme.Paper
 import com.musubi.eurio.ui.theme.PaperSurface
 import com.musubi.eurio.ui.theme.PaperSurface1
+import com.musubi.eurio.ui.theme.PaperSurface1
 
 @Composable
 fun ProfilScreen(viewModel: ProfileViewModel) {
     val state by viewModel.profileState.collectAsStateWithLifecycle()
+    val debugMode by viewModel.debugMode.collectAsStateWithLifecycle()
+    val language by viewModel.language.collectAsStateWithLifecycle()
 
     if (state == null) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -82,7 +88,13 @@ fun ProfilScreen(viewModel: ProfileViewModel) {
             .verticalScroll(rememberScrollState()),
     ) {
         HeroSection(profile)
-        BodySection(profile)
+        BodySection(
+            profile = profile,
+            debugMode = debugMode,
+            onToggleDebug = { viewModel.toggleDebugMode() },
+            language = language,
+            onLanguageChange = { viewModel.setLanguage(it) },
+        )
     }
 }
 
@@ -209,7 +221,13 @@ private fun GradeLadder(profile: ProfileState) {
 }
 
 @Composable
-private fun BodySection(profile: ProfileState) {
+private fun BodySection(
+    profile: ProfileState,
+    debugMode: Boolean,
+    onToggleDebug: () -> Unit,
+    language: String,
+    onLanguageChange: (String) -> Unit,
+) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -261,9 +279,14 @@ private fun BodySection(profile: ProfileState) {
                 .background(Paper)
                 .border(1.dp, Gray100, RoundedCornerShape(EurioRadii.lg)),
         ) {
-            SettingsRow("Langue", "Français")
-            SettingsRow("Notifications", "Désactivées")
-            SettingsRow("Catalogue", "Wi-Fi uniquement")
+            LanguageSettingsRow(
+                currentLang = language,
+                onLanguageChange = onLanguageChange,
+            )
+            DebugSettingsRow(
+                enabled = debugMode,
+                onToggle = onToggleDebug,
+            )
             SettingsRow("À propos", "v0.1.0")
         }
 
@@ -389,6 +412,76 @@ private fun SectionHeader(title: String, action: String? = null) {
     ) {
         Text(text = title, style = MaterialTheme.typography.headlineMedium, color = Ink)
         if (action != null) Text(text = action, style = MonoBadgeStyle, color = Gold700)
+    }
+}
+
+@Composable
+private fun LanguageSettingsRow(
+    currentLang: String,
+    onLanguageChange: (String) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = EurioSpacing.s4, vertical = 14.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = "Langue",
+            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+            color = Ink,
+        )
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(EurioSpacing.s2),
+        ) {
+            val options = listOf("fr" to "FR", "en" to "EN")
+            options.forEach { (code, label) ->
+                val selected = code == currentLang
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(EurioRadii.full))
+                        .background(if (selected) Indigo700 else PaperSurface1)
+                        .clickable { onLanguageChange(code) }
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (selected) PaperSurface else Ink400,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DebugSettingsRow(
+    enabled: Boolean,
+    onToggle: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = EurioSpacing.s4, vertical = 10.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = "Mode debug",
+            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+            color = Ink,
+        )
+        Switch(
+            checked = enabled,
+            onCheckedChange = { onToggle() },
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = Gold,
+                checkedTrackColor = Indigo700,
+            ),
+        )
     }
 }
 

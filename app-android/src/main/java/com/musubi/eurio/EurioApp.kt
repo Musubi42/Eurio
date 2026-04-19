@@ -20,13 +20,17 @@ import com.musubi.eurio.ml.CoinAnalyzer
 import com.musubi.eurio.ml.CoinDetector
 import com.musubi.eurio.ml.CoinRecognizer
 import com.musubi.eurio.ml.EmbeddingMatcher
+import com.musubi.eurio.domain.AppEvent
+import com.musubi.eurio.features.scan.ScanState
 import com.musubi.eurio.ml.ScanResult
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import org.opencv.android.OpenCVLoader
 
@@ -51,12 +55,34 @@ class ScanCallbackRelay {
     }
 }
 
+class ScanStateRelay {
+    private val _pending = MutableStateFlow<ScanState?>(null)
+    val pending: StateFlow<ScanState?> = _pending.asStateFlow()
+
+    fun post(state: ScanState) {
+        _pending.value = state
+    }
+
+    fun consume(): ScanState? {
+        val current = _pending.value
+        _pending.value = null
+        return current
+    }
+}
+
 class EurioApp : Application() {
     lateinit var database: EurioDatabase
         private set
 
     private val _bootstrapState = MutableStateFlow(BootstrapState.Running)
     val bootstrapState: StateFlow<BootstrapState> = _bootstrapState.asStateFlow()
+
+    // null = still reading from Room ; false/true = hydrated. MainActivity
+    // blocks rendering of the NavHost until this is non-null so the
+    // startDestination is chosen based on the persisted flag (no flash
+    // of Scan on first run before we know the user hasn't onboarded yet).
+    private val _onboardingCompleted = MutableStateFlow<Boolean?>(null)
+    val onboardingCompleted: StateFlow<Boolean?> = _onboardingCompleted.asStateFlow()
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -91,6 +117,7 @@ class EurioApp : Application() {
             database.coinDao(),
             database.metaDao(),
             setRepository,
+            onAppEvent = ::emitEvent,
         )
     }
 
@@ -99,7 +126,16 @@ class EurioApp : Application() {
     // model loading is expensive so we don't want it tied to a VM lifetime.
     // ─────────────────────────────────────────────────────────────────
 
+    // App-wide event channel for cross-feature feedback (set completion, badge unlock)
+    private val _appEvents = Channel<AppEvent>(Channel.BUFFERED)
+    val appEvents = _appEvents.receiveAsFlow()
+
+    fun emitEvent(event: AppEvent) {
+        _appEvents.trySend(event)
+    }
+
     val scanCallbackRelay = ScanCallbackRelay()
+    val scanStateRelay = ScanStateRelay()
 
     private val coinRecognizer: CoinRecognizer by lazy {
         CoinRecognizer(applicationContext)
@@ -161,9 +197,23 @@ class EurioApp : Application() {
             runCatching { streakRepository.initializeFromDb() }
                 .onFailure { Log.w(TAG, "Streak init failed", it) }
         }
+
+        // Hydrate the onboarding flag — decides startDestination of NavHost.
+        appScope.launch {
+            val completed = runCatching {
+                database.metaDao().getBoolean(KEY_ONBOARDING_COMPLETED) ?: false
+            }.getOrDefault(false)
+            _onboardingCompleted.value = completed
+        }
+    }
+
+    suspend fun markOnboardingCompleted() {
+        database.metaDao().putBoolean(KEY_ONBOARDING_COMPLETED, true)
+        _onboardingCompleted.value = true
     }
 
     companion object {
         private const val TAG = "EurioApp"
+        const val KEY_ONBOARDING_COMPLETED = "onboarding_completed"
     }
 }

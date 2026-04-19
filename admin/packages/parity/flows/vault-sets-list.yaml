@@ -1,0 +1,17 @@
+appId: com.musubi.eurio.qa
+env:
+  PARITY_ID: vault-sets-list
+  PARITY_LABEL: "Coffre — Sets list"
+  PARITY_GROUP: "Coffre Sets"
+  PARITY_PHASE: "3"
+  PARITY_PROTO_ROUTE: /vault/sets
+  PARITY_STATE: populated
+---
+- launchApp
+- openLink: "eurio://parity/seed?fixture=populated"
+- extendedWaitUntil:
+    visible: ".*"
+    timeout: 5000
+- openLink: eurio://scene/vault-sets-list
+- assertVisible: ".*"
+- takeScreenshot: vault-sets-list

@@ -4,6 +4,7 @@ package com.musubi.eurio.ui.nav
 // Phase 1 : ajout de la route coin detail (drill-down depuis le scan + futures
 // planches). Phase 3+ ajoutera set detail + catalogue country drilldown.
 object EurioDestinations {
+    const val ONBOARDING = "onboarding"
     const val SCAN = "scan"
     const val COFFRE = "coffre"
     const val PROFIL = "profil"

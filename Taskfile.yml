@@ -4,6 +4,9 @@ includes:
   android:
     taskfile: ./app-android/Taskfile.yml
     dir: .
+  ml:
+    taskfile: ./ml/Taskfile.yml
+    dir: ./ml
 
 tasks:
   default:
@@ -17,8 +20,25 @@ tasks:
     cmds:
       - node scripts/generate_android_tokens.mjs
 
+  parity:capture-proto:
+    desc: Capture proto screenshots via Playwright (requires dev server running)
+    cmds:
+      - pnpm -C admin/packages/parity capture:proto
+
   tokens:check:
     desc: Run the token generator and fail if it produces unstaged changes (CI guard)
     cmds:
       - node scripts/generate_android_tokens.mjs
       - git diff --exit-code app-android/src/main/java/com/musubi/eurio/ui/theme/Color.kt app-android/src/main/java/com/musubi/eurio/ui/theme/Shape.kt app-android/src/main/java/com/musubi/eurio/ui/theme/Spacing.kt
+
+  augment-textures-generate:
+    desc: Procedurally (re)generate overlay textures (patina/dust/scratches/fingerprints)
+    dir: ./ml
+    cmds:
+      - ./.venv/bin/python generate_overlay_textures.py {{.CLI_ARGS}}
+
+  augment-textures-check:
+    desc: Validate that overlay textures are present and readable
+    dir: ./ml
+    cmds:
+      - ./.venv/bin/python -c 'from augmentations.overlays import sanity_check_textures; import sys; sys.exit(sanity_check_textures())'

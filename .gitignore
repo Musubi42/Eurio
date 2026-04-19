@@ -37,6 +37,7 @@ ml/.dataset_cache/
 ml/state/training.db
 ml/state/training.db-wal
 ml/state/training.db-shm
+ml/cache/dinov2_inputs/*.webp
 
 # YOLO training env + outputs (NixOS 1080 Ti)
 yolo_env/

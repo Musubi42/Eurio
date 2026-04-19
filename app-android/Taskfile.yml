@@ -30,6 +30,24 @@ tasks:
       - task: install
       - task: start
 
+  build-qa:
+    desc: Assemble the QA APK (with parity state injection)
+    dir: '{{.ROOT_DIR}}'
+    cmds:
+      - ./gradlew :app-android:assembleQa
+
+  install-qa:
+    desc: Build + push QA APK to the connected device
+    dir: '{{.ROOT_DIR}}'
+    cmds:
+      - ./gradlew :app-android:installQa
+
+  run-qa:
+    desc: Install + start QA build
+    cmds:
+      - task: install-qa
+      - adb shell am start -n com.musubi.eurio.qa/.MainActivity
+
   logs:
     desc: Tail logcat, filtered on Eurio ML tags
     cmds:
@@ -76,17 +94,18 @@ tasks:
   parity:capture:
     desc: Run all Maestro parity flows and capture screenshots
     dir: '{{.ROOT_DIR}}'
+    deps: [install-qa]
     cmds:
       - |
-        for f in maestro/flows/*.yaml; do
-          maestro test --test-output-dir maestro "$f"
+        for f in admin/packages/parity/flows/*.yaml; do
+          maestro test --test-output-dir admin/packages/parity/screenshots/android "$f"
         done
 
   parity:capture-scene:
     desc: Capture a single scene (go-task android:parity:capture-scene -- vault-home)
     dir: '{{.ROOT_DIR}}'
     cmds:
-      - maestro test --test-output-dir maestro maestro/flows/{{.CLI_ARGS}}.yaml
+      - maestro test --test-output-dir admin/packages/parity/screenshots/android admin/packages/parity/flows/{{.CLI_ARGS}}.yaml
 
   snapshot:
     desc: Export a fresh catalog_snapshot.json from Supabase into assets/

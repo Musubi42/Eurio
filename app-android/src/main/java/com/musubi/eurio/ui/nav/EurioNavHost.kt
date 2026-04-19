@@ -2,6 +2,7 @@ package com.musubi.eurio.ui.nav
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -26,6 +27,8 @@ import com.musubi.eurio.features.coffre.CoffreScreen
 import com.musubi.eurio.features.coffre.CoffreViewModel
 import com.musubi.eurio.features.coindetail.CoinDetailScreen
 import com.musubi.eurio.features.coindetail.CoinDetailViewModel
+import com.musubi.eurio.features.onboarding.OnboardingScreen
+import com.musubi.eurio.features.onboarding.OnboardingViewModel
 import com.musubi.eurio.features.profil.ProfileViewModel
 import com.musubi.eurio.features.profil.ProfilScreen
 import com.musubi.eurio.features.scan.ScanScreen
@@ -38,6 +41,7 @@ import com.musubi.eurio.ml.CoinAnalyzer
 @Composable
 fun EurioNavHost(
     navController: NavHostController,
+    startDestination: String,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -45,9 +49,24 @@ fun EurioNavHost(
 
     NavHost(
         navController = navController,
-        startDestination = EurioDestinations.SCAN,
+        startDestination = startDestination,
         modifier = modifier,
     ) {
+        composable(EurioDestinations.ONBOARDING) {
+            val onboardingVm: OnboardingViewModel = viewModel(
+                factory = OnboardingViewModelFactory(app = app),
+            )
+            OnboardingScreen(
+                viewModel = onboardingVm,
+                onComplete = {
+                    navController.navigate(EurioDestinations.SCAN) {
+                        popUpTo(EurioDestinations.ONBOARDING) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                },
+            )
+        }
+
         composable(EurioDestinations.SCAN) {
             val scanVm: ScanViewModel = viewModel(
                 factory = ScanViewModelFactory(
@@ -55,6 +74,8 @@ fun EurioNavHost(
                     vaultRepository = app.vaultRepository,
                     streakRepository = app.streakRepository,
                     coinAnalyzer = app.coinAnalyzer,
+                    setRepository = app.setRepository,
+                    onAppEvent = app::emitEvent,
                 ),
             )
 
@@ -66,6 +87,17 @@ fun EurioNavHost(
             }
             DisposableEffect(scanVm) {
                 onDispose { app.scanCallbackRelay.delegate = null }
+            }
+
+            // QA: consume any pending forced scan state from the parity deep link
+            if (BuildConfig.IS_QA) {
+                LaunchedEffect(scanVm) {
+                    app.scanStateRelay.pending.collect { pending ->
+                        if (pending != null) {
+                            app.scanStateRelay.consume()?.let { scanVm.forceState(it) }
+                        }
+                    }
+                }
             }
 
             ScanScreen(
@@ -123,6 +155,7 @@ fun EurioNavHost(
             val profileVm: ProfileViewModel = viewModel(
                 factory = ProfileViewModelFactory(
                     profileRepository = app.profileRepository,
+                    metaDao = app.database.metaDao(),
                 ),
             )
             ProfilScreen(viewModel = profileVm)
@@ -233,6 +266,8 @@ private class ScanViewModelFactory(
     private val vaultRepository: VaultRepository,
     private val streakRepository: StreakRepository,
     private val coinAnalyzer: CoinAnalyzer,
+    private val setRepository: SetRepository,
+    private val onAppEvent: (com.musubi.eurio.domain.AppEvent) -> Unit,
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         @Suppress("UNCHECKED_CAST")
@@ -241,6 +276,8 @@ private class ScanViewModelFactory(
             vaultRepository = vaultRepository,
             streakRepository = streakRepository,
             coinAnalyzer = coinAnalyzer,
+            setRepository = setRepository,
+            onAppEvent = onAppEvent,
         ) as T
     }
 }
@@ -327,11 +364,22 @@ private class CatalogCountryViewModelFactory(
 
 private class ProfileViewModelFactory(
     private val profileRepository: com.musubi.eurio.data.repository.ProfileRepository,
+    private val metaDao: com.musubi.eurio.data.local.dao.MetaDao,
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         @Suppress("UNCHECKED_CAST")
         return ProfileViewModel(
             profileRepository = profileRepository,
+            metaDao = metaDao,
         ) as T
+    }
+}
+
+private class OnboardingViewModelFactory(
+    private val app: EurioApp,
+) : ViewModelProvider.Factory {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        @Suppress("UNCHECKED_CAST")
+        return OnboardingViewModel(app = app) as T
     }
 }

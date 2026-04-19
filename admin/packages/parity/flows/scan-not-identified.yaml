@@ -1,0 +1,12 @@
+appId: com.musubi.eurio.qa
+env:
+  PARITY_ID: scan-not-identified
+  PARITY_LABEL: "Scan — Not identified"
+  PARITY_GROUP: Scan
+  PARITY_PHASE: "1"
+  PARITY_PROTO_ROUTE: /scan/not-identified
+---
+- launchApp
+- openLink: eurio://scene/scan-not-identified?mock_camera=true&scan_state=not-identified
+- assertVisible: ".*"
+- takeScreenshot: scan-not-identified

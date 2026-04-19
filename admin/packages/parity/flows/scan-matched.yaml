@@ -1,0 +1,12 @@
+appId: com.musubi.eurio.qa
+env:
+  PARITY_ID: scan-matched
+  PARITY_LABEL: "Scan — Matched"
+  PARITY_GROUP: Scan
+  PARITY_PHASE: "1"
+  PARITY_PROTO_ROUTE: /scan/matched
+---
+- launchApp
+- openLink: eurio://scene/scan-matched?mock_camera=true&scan_state=matched
+- assertVisible: ".*"
+- takeScreenshot: scan-matched
