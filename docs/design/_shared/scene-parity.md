@@ -18,11 +18,11 @@
 
 | Proto scene | Android destination | Phase | Status | Notes |
 |---|---|---|---|---|
-| `onboarding-splash.html` | Non planifié | — | ⏳ | Premier run, à planifier |
-| `onboarding-1.html` | Non planifié | — | ⏳ | Tutorial slide 1 |
-| `onboarding-2.html` | Non planifié | — | ⏳ | Tutorial slide 2 |
-| `onboarding-3.html` | Non planifié | — | ⏳ | Tutorial slide 3 |
-| `onboarding-permission.html` | In-line dans `ScanScreen` | 1 | ⏳ | Permission caméra demandée localement au scan |
+| `onboarding-splash.html` | `OnboardingScreen` page 0 → `OnboardingSplashPage` | 0 | 🟡 | Auto-advance 1.4s, gated first-run via `MetaDao` key `onboarding_completed` |
+| `onboarding-1.html` | `OnboardingScreen` page 1 → `OnboardingSlide1Page` | 0 | 🟡 | Tutorial slide 1 "Scanne la pièce" — Canvas coin (12 stars) + breathing anim |
+| `onboarding-2.html` | `OnboardingScreen` page 2 → `OnboardingSlide2Page` | 0 | 🟡 | Tutorial slide 2 "Ton coffre" — fake vault card + 3×2 coin grid |
+| `onboarding-3.html` | `OnboardingScreen` page 3 → `OnboardingSlide3Page` | 0 | 🟡 | Tutorial slide 3 "Complète des séries" — set card 6/8 + 4×2 owned/missing |
+| `onboarding-permission.html` | `OnboardingScreen` page 4 → `OnboardingPermissionPage` | 0 | 🟡 | Pre-prompt caméra (Duolingo pattern) — launches native permission dialog on "Autoriser". `ScanScreen` garde l'inline fallback pour le premier scan après "Plus tard". |
 
 ### Scan
 

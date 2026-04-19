@@ -4,7 +4,9 @@ import android.util.Log
 import androidx.camera.core.ImageProxy
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.musubi.eurio.BuildConfig
 import com.musubi.eurio.data.repository.CoinRepository
+import com.musubi.eurio.data.repository.SetRepository
 import com.musubi.eurio.data.repository.StreakRepository
 import com.musubi.eurio.data.repository.VaultRepository
 import com.musubi.eurio.features.scan.components.DebugViewData
@@ -29,6 +31,8 @@ class ScanViewModel(
     private val vaultRepository: VaultRepository,
     private val streakRepository: StreakRepository,
     private val coinAnalyzer: CoinAnalyzer,
+    private val setRepository: SetRepository? = null,
+    private val onAppEvent: ((com.musubi.eurio.domain.AppEvent) -> Unit)? = null,
 ) : ViewModel() {
 
     companion object {
@@ -42,6 +46,12 @@ class ScanViewModel(
 
     private val _state = MutableStateFlow<ScanState>(ScanState.Idle)
     val state: StateFlow<ScanState> = _state.asStateFlow()
+
+    fun forceState(state: ScanState) {
+        if (!BuildConfig.IS_QA) return
+        Log.d(TAG, "[QA] Forcing scan state: $state")
+        _state.value = state
+    }
 
     private val _debugMode = MutableStateFlow(false)
     val debugMode: StateFlow<Boolean> = _debugMode.asStateFlow()
@@ -199,6 +209,7 @@ class ScanViewModel(
         viewModelScope.launch {
             vaultRepository.addCoin(current.coin.eurioId, current.confidence)
             streakRepository.onScanAccepted()
+            checkSetCompletions(current.coin.eurioId)
             returnToIdle(cooldownClass = current.coin.eurioId)
         }
     }
@@ -248,6 +259,23 @@ class ScanViewModel(
             cooldownUntilMs = System.currentTimeMillis() + DISMISS_COOLDOWN_MS
         }
         _state.value = ScanState.Idle
+    }
+
+    private suspend fun checkSetCompletions(eurioId: String) {
+        val repo = setRepository ?: return
+        val impactedSets = repo.findSetsContaining(eurioId)
+        for (set in impactedSets) {
+            if (set.isComplete) {
+                val completion = repo.checkCompletion(set.id)
+                if (completion != null) {
+                    repo.markCompleted(set.id, completion.completedAt)
+                    onAppEvent?.invoke(
+                        com.musubi.eurio.domain.AppEvent.SetCompleted(completion.nameFr)
+                    )
+                    Log.d(TAG, "Set completed: ${completion.nameFr}")
+                }
+            }
+        }
     }
 
     override fun onCleared() {

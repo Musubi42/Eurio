@@ -1,39 +1,9 @@
 {
-  "name": "eurio-admin",
-  "version": "0.1.0",
+  "name": "eurio-admin-workspace",
   "private": true,
-  "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vue-tsc --noEmit && vite build",
-    "preview": "vite preview",
-    "typecheck": "vue-tsc --noEmit"
-  },
-  "dependencies": {
-    "@supabase/supabase-js": "^2.49.4",
-    "@vee-validate/zod": "^4.15.0",
-    "@vueuse/core": "^13.1.0",
-    "class-variance-authority": "^0.7.1",
-    "clsx": "^2.1.1",
-    "lucide-vue-next": "^0.503.0",
-    "pinia": "^3.0.2",
-    "radix-vue": "^1.9.13",
-    "tailwind-merge": "^3.2.0",
-    "vee-validate": "^4.15.0",
-    "vue": "^3.5.13",
-    "vue-router": "^4.5.0",
-    "zod": "^3.24.2"
-  },
-  "devDependencies": {
-    "@types/js-yaml": "^4.0.9",
-    "@vitejs/plugin-vue": "^5.2.3",
-    "autoprefixer": "^10.4.21",
-    "js-yaml": "^4.1.1",
-    "postcss": "^8.5.3",
-    "tailwindcss": "^3.4.17",
-    "tailwindcss-animate": "^1.0.7",
-    "typescript": "^5.8.3",
-    "vite": "^6.3.2",
-    "vue-tsc": "^2.2.8"
+    "dev": "pnpm -C packages/web dev",
+    "build": "pnpm -C packages/web build",
+    "typecheck": "pnpm -C packages/web typecheck"
   }
 }

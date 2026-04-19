@@ -1,0 +1,12 @@
+appId: com.musubi.eurio.qa
+env:
+  PARITY_ID: scan-debug
+  PARITY_LABEL: "Scan — Debug overlay"
+  PARITY_GROUP: Scan
+  PARITY_PHASE: "1"
+  PARITY_PROTO_ROUTE: /scan/debug
+---
+- launchApp
+- openLink: eurio://scene/scan-debug?mock_camera=true&scan_state=idle
+- assertVisible: ".*"
+- takeScreenshot: scan-debug

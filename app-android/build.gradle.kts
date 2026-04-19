@@ -37,12 +37,21 @@ android {
     }
 
     buildTypes {
+        debug {
+            buildConfigField("Boolean", "IS_QA", "false")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            buildConfigField("Boolean", "IS_QA", "false")
+        }
+        create("qa") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".qa"
+            buildConfigField("Boolean", "IS_QA", "true")
         }
     }
     compileOptions {

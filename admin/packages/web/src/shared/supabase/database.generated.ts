@@ -1,0 +1,737 @@
+/**
+ * AUTO-GENERATED — ne pas éditer à la main.
+ *
+ * Régénérer avec :
+ *   mcp__supabase__generate_typescript_types  (via Claude / Supabase MCP)
+ * Ou :
+ *   supabase gen types typescript --project-id <id>
+ *
+ * Dernière regen : 2026-04-20
+ */
+
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[]
+
+export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.5"
+  }
+  public: {
+    Tables: {
+      coin_confusion_map: {
+        Row: {
+          computed_at: string
+          encoder_version: string
+          eurio_id: string
+          id: number
+          nearest_eurio_id: string | null
+          nearest_similarity: number
+          top_k_neighbors: Json
+          zone: string
+        }
+        Insert: {
+          computed_at?: string
+          encoder_version: string
+          eurio_id: string
+          id?: number
+          nearest_eurio_id?: string | null
+          nearest_similarity: number
+          top_k_neighbors: Json
+          zone: string
+        }
+        Update: {
+          computed_at?: string
+          encoder_version?: string
+          eurio_id?: string
+          id?: number
+          nearest_eurio_id?: string | null
+          nearest_similarity?: number
+          top_k_neighbors?: Json
+          zone?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coin_confusion_map_eurio_id_fkey"
+            columns: ["eurio_id"]
+            isOneToOne: false
+            referencedRelation: "coins"
+            referencedColumns: ["eurio_id"]
+          },
+          {
+            foreignKeyName: "coin_confusion_map_nearest_eurio_id_fkey"
+            columns: ["nearest_eurio_id"]
+            isOneToOne: false
+            referencedRelation: "coins"
+            referencedColumns: ["eurio_id"]
+          },
+        ]
+      }
+      coin_embeddings: {
+        Row: {
+          created_at: string
+          embedding: number[]
+          eurio_id: string
+          model_version: string
+        }
+        Insert: {
+          created_at?: string
+          embedding: number[]
+          eurio_id: string
+          model_version: string
+        }
+        Update: {
+          created_at?: string
+          embedding?: number[]
+          eurio_id?: string
+          model_version?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coin_embeddings_eurio_id_fkey"
+            columns: ["eurio_id"]
+            isOneToOne: true
+            referencedRelation: "coins"
+            referencedColumns: ["eurio_id"]
+          },
+        ]
+      }
+      coin_series: {
+        Row: {
+          country: string
+          created_at: string
+          description: string | null
+          designation: string
+          designation_i18n: Json | null
+          id: string
+          minting_end_reason: string | null
+          minting_ended_at: string | null
+          minting_started_at: string
+          superseded_by_series_id: string | null
+          supersedes_series_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          country: string
+          created_at?: string
+          description?: string | null
+          designation: string
+          designation_i18n?: Json | null
+          id: string
+          minting_end_reason?: string | null
+          minting_ended_at?: string | null
+          minting_started_at: string
+          superseded_by_series_id?: string | null
+          supersedes_series_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          country?: string
+          created_at?: string
+          description?: string | null
+          designation?: string
+          designation_i18n?: Json | null
+          id?: string
+          minting_end_reason?: string | null
+          minting_ended_at?: string | null
+          minting_started_at?: string
+          superseded_by_series_id?: string | null
+          supersedes_series_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coin_series_superseded_by_series_id_fkey"
+            columns: ["superseded_by_series_id"]
+            isOneToOne: false
+            referencedRelation: "coin_series"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coin_series_supersedes_series_id_fkey"
+            columns: ["supersedes_series_id"]
+            isOneToOne: false
+            referencedRelation: "coin_series"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      coins: {
+        Row: {
+          collector_only: boolean
+          country: string
+          cross_refs: Json
+          currency: string
+          design_description: string | null
+          design_group_id: string | null
+          eurio_id: string
+          face_value: number
+          first_seen: string
+          images: Json
+          is_commemorative: boolean
+          is_withdrawn: boolean
+          issue_type: string | null
+          last_updated: string
+          mintage: number | null
+          national_variants: Json | null
+          needs_review: boolean
+          review_reason: string | null
+          series_id: string | null
+          sources_used: string[]
+          theme: string | null
+          withdrawal_reason: string | null
+          withdrawn_at: string | null
+          year: number
+        }
+        Insert: {
+          collector_only?: boolean
+          country: string
+          cross_refs?: Json
+          currency?: string
+          design_description?: string | null
+          design_group_id?: string | null
+          eurio_id: string
+          face_value: number
+          first_seen?: string
+          images?: Json
+          is_commemorative?: boolean
+          is_withdrawn?: boolean
+          issue_type?: string | null
+          last_updated?: string
+          mintage?: number | null
+          national_variants?: Json | null
+          needs_review?: boolean
+          review_reason?: string | null
+          series_id?: string | null
+          sources_used?: string[]
+          theme?: string | null
+          withdrawal_reason?: string | null
+          withdrawn_at?: string | null
+          year: number
+        }
+        Update: {
+          collector_only?: boolean
+          country?: string
+          cross_refs?: Json
+          currency?: string
+          design_description?: string | null
+          design_group_id?: string | null
+          eurio_id?: string
+          face_value?: number
+          first_seen?: string
+          images?: Json
+          is_commemorative?: boolean
+          is_withdrawn?: boolean
+          issue_type?: string | null
+          last_updated?: string
+          mintage?: number | null
+          national_variants?: Json | null
+          needs_review?: boolean
+          review_reason?: string | null
+          series_id?: string | null
+          sources_used?: string[]
+          theme?: string | null
+          withdrawal_reason?: string | null
+          withdrawn_at?: string | null
+          year?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coins_design_group_id_fkey"
+            columns: ["design_group_id"]
+            isOneToOne: false
+            referencedRelation: "design_groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coins_series_id_fkey"
+            columns: ["series_id"]
+            isOneToOne: false
+            referencedRelation: "coin_series"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      design_groups: {
+        Row: {
+          created_at: string
+          description: string | null
+          designation: string
+          designation_i18n: Json | null
+          id: string
+          shared_obverse_url: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          designation: string
+          designation_i18n?: Json | null
+          id: string
+          shared_obverse_url?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          designation?: string
+          designation_i18n?: Json | null
+          id?: string
+          shared_obverse_url?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      matching_decisions: {
+        Row: {
+          confidence: number | null
+          decided_at: string
+          eurio_id: string | null
+          id: number
+          method: string
+          reviewer_notes: string | null
+          runner_up: string | null
+          source: string
+          source_native_id: string | null
+        }
+        Insert: {
+          confidence?: number | null
+          decided_at?: string
+          eurio_id?: string | null
+          id?: number
+          method: string
+          reviewer_notes?: string | null
+          runner_up?: string | null
+          source: string
+          source_native_id?: string | null
+        }
+        Update: {
+          confidence?: number | null
+          decided_at?: string
+          eurio_id?: string | null
+          id?: number
+          method?: string
+          reviewer_notes?: string | null
+          runner_up?: string | null
+          source?: string
+          source_native_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "matching_decisions_eurio_id_fkey"
+            columns: ["eurio_id"]
+            isOneToOne: false
+            referencedRelation: "coins"
+            referencedColumns: ["eurio_id"]
+          },
+        ]
+      }
+      model_classes: {
+        Row: {
+          class_id: string
+          class_kind: string
+          created_at: string
+          embedding: number[]
+          model_version: string
+          n_train_images: number | null
+          n_val_images: number | null
+          recall_at_1: number | null
+          updated_at: string
+        }
+        Insert: {
+          class_id: string
+          class_kind: string
+          created_at?: string
+          embedding: number[]
+          model_version: string
+          n_train_images?: number | null
+          n_val_images?: number | null
+          recall_at_1?: number | null
+          updated_at?: string
+        }
+        Update: {
+          class_id?: string
+          class_kind?: string
+          created_at?: string
+          embedding?: number[]
+          model_version?: string
+          n_train_images?: number | null
+          n_val_images?: number | null
+          recall_at_1?: number | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      review_queue: {
+        Row: {
+          candidates: Json | null
+          created_at: string
+          id: number
+          raw_payload: Json
+          reason: string
+          resolution: Json | null
+          resolved: boolean
+          source: string
+          source_native_id: string | null
+        }
+        Insert: {
+          candidates?: Json | null
+          created_at?: string
+          id?: number
+          raw_payload: Json
+          reason: string
+          resolution?: Json | null
+          resolved?: boolean
+          source: string
+          source_native_id?: string | null
+        }
+        Update: {
+          candidates?: Json | null
+          created_at?: string
+          id?: number
+          raw_payload?: Json
+          reason?: string
+          resolution?: Json | null
+          resolved?: boolean
+          source?: string
+          source_native_id?: string | null
+        }
+        Relationships: []
+      }
+      set_members: {
+        Row: {
+          eurio_id: string
+          position: number | null
+          set_id: string
+        }
+        Insert: {
+          eurio_id: string
+          position?: number | null
+          set_id: string
+        }
+        Update: {
+          eurio_id?: string
+          position?: number | null
+          set_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "set_members_eurio_id_fkey"
+            columns: ["eurio_id"]
+            isOneToOne: false
+            referencedRelation: "coins"
+            referencedColumns: ["eurio_id"]
+          },
+          {
+            foreignKeyName: "set_members_set_id_fkey"
+            columns: ["set_id"]
+            isOneToOne: false
+            referencedRelation: "sets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sets: {
+        Row: {
+          active: boolean
+          category: string
+          created_at: string
+          criteria: Json | null
+          description_i18n: Json | null
+          display_order: number
+          expected_count: number | null
+          icon: string | null
+          id: string
+          kind: string
+          name_i18n: Json
+          param_key: string | null
+          reward: Json | null
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          category: string
+          created_at?: string
+          criteria?: Json | null
+          description_i18n?: Json | null
+          display_order?: number
+          expected_count?: number | null
+          icon?: string | null
+          id: string
+          kind: string
+          name_i18n: Json
+          param_key?: string | null
+          reward?: Json | null
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          category?: string
+          created_at?: string
+          criteria?: Json | null
+          description_i18n?: Json | null
+          display_order?: number
+          expected_count?: number | null
+          icon?: string | null
+          id?: string
+          kind?: string
+          name_i18n?: Json
+          param_key?: string | null
+          reward?: Json | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      sets_audit: {
+        Row: {
+          action: string
+          actor: string
+          after: Json | null
+          at: string
+          before: Json | null
+          id: number
+          set_id: string
+        }
+        Insert: {
+          action: string
+          actor: string
+          after?: Json | null
+          at?: string
+          before?: Json | null
+          id?: number
+          set_id: string
+        }
+        Update: {
+          action?: string
+          actor?: string
+          after?: Json | null
+          at?: string
+          before?: Json | null
+          id?: number
+          set_id?: string
+        }
+        Relationships: []
+      }
+      source_observations: {
+        Row: {
+          eurio_id: string
+          id: number
+          observation_type: string
+          payload: Json
+          sampled_at: string
+          source: string
+          source_native_id: string | null
+        }
+        Insert: {
+          eurio_id: string
+          id?: number
+          observation_type: string
+          payload: Json
+          sampled_at?: string
+          source: string
+          source_native_id?: string | null
+        }
+        Update: {
+          eurio_id?: string
+          id?: number
+          observation_type?: string
+          payload?: Json
+          sampled_at?: string
+          source?: string
+          source_native_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "source_observations_eurio_id_fkey"
+            columns: ["eurio_id"]
+            isOneToOne: false
+            referencedRelation: "coins"
+            referencedColumns: ["eurio_id"]
+          },
+        ]
+      }
+      user_collections: {
+        Row: {
+          added_at: string
+          eurio_id: string
+          id: number
+          notes: string | null
+          quality: string | null
+          scan_image_url: string | null
+          user_id: string
+          value_at_addition: number | null
+        }
+        Insert: {
+          added_at?: string
+          eurio_id: string
+          id?: number
+          notes?: string | null
+          quality?: string | null
+          scan_image_url?: string | null
+          user_id: string
+          value_at_addition?: number | null
+        }
+        Update: {
+          added_at?: string
+          eurio_id?: string
+          id?: number
+          notes?: string | null
+          quality?: string | null
+          scan_image_url?: string | null
+          user_id?: string
+          value_at_addition?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_collections_eurio_id_fkey"
+            columns: ["eurio_id"]
+            isOneToOne: false
+            referencedRelation: "coins"
+            referencedColumns: ["eurio_id"]
+          },
+        ]
+      }
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      [_ in never]: never
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
+}
+
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
+
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
+
+export type Tables<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+      Row: infer R
+    }
+    ? R
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+        Row: infer R
+      }
+      ? R
+      : never
+    : never
+
+export type TablesInsert<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Insert: infer I
+    }
+    ? I
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Insert: infer I
+      }
+      ? I
+      : never
+    : never
+
+export type TablesUpdate<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Update: infer U
+    }
+    ? U
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Update: infer U
+      }
+      ? U
+      : never
+    : never
+
+export type Enums<
+  DefaultSchemaEnumNameOrOptions extends
+    | keyof DefaultSchema["Enums"]
+    | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    : never = never,
+> = DefaultSchemaEnumNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+    : never
+
+export type CompositeTypes<
+  PublicCompositeTypeNameOrOptions extends
+    | keyof DefaultSchema["CompositeTypes"]
+    | { schema: keyof DatabaseWithoutInternals },
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    : never = never,
+> = PublicCompositeTypeNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+    : never
+
+export const Constants = {
+  public: {
+    Enums: {},
+  },
+} as const

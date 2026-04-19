@@ -257,3 +257,8 @@ tasks:
     desc: "Validate that overlay textures are present and readable"
     cmds:
       - "{{.VENV}}/python -c 'from augmentations.overlays import sanity_check_textures; import sys; sys.exit(sanity_check_textures())'"
+
+  augment-textures-generate:
+    desc: "Procedurally (re)generate overlay textures (patina/dust/scratches/fingerprints)"
+    cmds:
+      - "{{.VENV}}/python generate_overlay_textures.py {{.CLI_ARGS}}"
