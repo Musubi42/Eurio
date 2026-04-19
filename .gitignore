@@ -34,6 +34,9 @@ ml/output/
 ml/yolov8n.pt
 ml/.ebay_token_cache.json
 ml/.dataset_cache/
+ml/state/training.db
+ml/state/training.db-wal
+ml/state/training.db-shm
 
 # YOLO training env + outputs (NixOS 1080 Ti)
 yolo_env/
@@ -63,6 +66,8 @@ dist/
 # Screenshots at root
 Screenshot_*.png
 
-# Maestro parity screenshots (captured on device, not committed)
-maestro/screenshots/*
-!maestro/screenshots/.gitignore
+# Parity screenshots (captured locally, not committed)
+admin/packages/parity/screenshots/proto/*
+!admin/packages/parity/screenshots/proto/.gitignore
+admin/packages/parity/screenshots/android/*
+!admin/packages/parity/screenshots/android/.gitignore
