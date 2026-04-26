@@ -24,6 +24,7 @@ import {
   Network,
   Play,
   ShieldAlert,
+  TrendingUp,
 } from 'lucide-vue-next'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -45,6 +46,18 @@ const enqueueState = ref<'idle' | 'loading' | 'success'>('idle')
 // Confusion-map detail (Phase 1 ML scalability)
 const confusion = ref<CoinConfusionDetail | null>(null)
 const confusionLoading = ref(false)
+
+// eBay market prices
+interface MarketPrice {
+  p25: number
+  p50: number
+  p75: number
+  samples_count: number
+  with_sales_count: number
+  fetched_at: string
+}
+const marketPrice = ref<MarketPrice | null | undefined>(undefined) // undefined = loading, null = not fetched
+const marketPriceLoading = ref(false)
 
 const issueLabel: Record<IssueType, string> = {
   'circulation':       'Circulation',
@@ -115,6 +128,8 @@ async function fetchCoin(eurioId: string) {
 
   // Confusion map — non-blocking; prefer ML API if reachable, fallback to Supabase
   loadConfusion(coin.value.eurio_id)
+  // eBay market prices — non-blocking
+  loadMarketPrice(coin.value.eurio_id)
 }
 
 async function loadConfusion(eurioId: string) {
@@ -130,6 +145,21 @@ async function loadConfusion(eurioId: string) {
   }
 }
 
+async function loadMarketPrice(eurioId: string) {
+  marketPriceLoading.value = true
+  marketPrice.value = undefined
+  const { data } = await supabase
+    .from('coin_market_prices')
+    .select('p25, p50, p75, samples_count, with_sales_count, fetched_at')
+    .eq('eurio_id', eurioId)
+    .eq('source', 'ebay')
+    .order('fetched_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  marketPrice.value = data as MarketPrice | null
+  marketPriceLoading.value = false
+}
+
 onMounted(() => fetchCoin(route.params.eurio_id as string))
 watch(() => route.params.eurio_id, (v) => { if (v) fetchCoin(v as string) })
 
@@ -143,6 +173,16 @@ function formatDate(iso: string | null) {
   return new Date(iso).toLocaleDateString('fr-FR', {
     year: 'numeric', month: 'long', day: 'numeric',
   })
+}
+
+function formatShortDate(iso: string) {
+  return new Date(iso).toLocaleDateString('fr-FR', {
+    year: 'numeric', month: 'short', day: 'numeric',
+  })
+}
+
+function formatPrice(v: number): string {
+  return v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 const seriesMintingPeriod = computed(() => {
@@ -507,6 +547,78 @@ const crossRefLinks = computed(() => {
                 Voir training
                 <ArrowUpRight class="h-3 w-3" />
               </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Prix de marché eBay -->
+        <div class="mt-6">
+          <p class="mb-2 text-[10px] uppercase tracking-wider" style="color: var(--ink-500);">
+            Prix de marché eBay
+          </p>
+
+          <!-- Loading -->
+          <div
+            v-if="marketPriceLoading"
+            class="h-20 animate-pulse rounded-lg"
+            style="background: var(--surface-1);"
+          />
+
+          <!-- Not fetched yet -->
+          <div
+            v-else-if="marketPrice === null"
+            class="flex items-center gap-3 rounded-lg border px-4 py-3"
+            style="border-color: var(--surface-3); background: var(--surface);"
+          >
+            <TrendingUp class="h-4 w-4 flex-shrink-0" style="color: var(--ink-400);" />
+            <p class="text-sm" style="color: var(--ink-500);">Pas encore fetchés</p>
+          </div>
+
+          <!-- Prices available -->
+          <div
+            v-else-if="marketPrice"
+            class="rounded-lg border px-4 py-4"
+            style="border-color: var(--surface-3); background: var(--surface);"
+          >
+            <!-- P25 / P50 / P75 row -->
+            <div class="flex items-end gap-4">
+              <!-- P25 -->
+              <div class="flex-1 text-center">
+                <p class="text-[10px] uppercase tracking-wider" style="color: var(--ink-500);">P25</p>
+                <p class="font-mono text-sm tabular-nums" style="color: var(--ink);">
+                  {{ formatPrice(marketPrice.p25) }} €
+                </p>
+              </div>
+
+              <!-- P50 — highlighted -->
+              <div
+                class="flex-1 rounded-md px-3 py-2 text-center"
+                style="background: color-mix(in srgb, var(--gold) 10%, var(--surface));"
+              >
+                <p class="text-[10px] uppercase tracking-wider" style="color: var(--ink-500);">P50 médiane</p>
+                <p class="font-mono text-xl font-semibold tabular-nums" style="color: var(--indigo-700);">
+                  {{ formatPrice(marketPrice.p50) }} €
+                </p>
+              </div>
+
+              <!-- P75 -->
+              <div class="flex-1 text-center">
+                <p class="text-[10px] uppercase tracking-wider" style="color: var(--ink-500);">P75</p>
+                <p class="font-mono text-sm tabular-nums" style="color: var(--ink);">
+                  {{ formatPrice(marketPrice.p75) }} €
+                </p>
+              </div>
+            </div>
+
+            <!-- Meta row -->
+            <div class="mt-3 flex items-center justify-between border-t pt-3"
+                 style="border-color: var(--surface-2);">
+              <p class="text-[11px]" style="color: var(--ink-400);">
+                {{ marketPrice.samples_count }} annonces analysées
+              </p>
+              <p class="font-mono text-[10px]" style="color: var(--ink-400);">
+                {{ formatShortDate(marketPrice.fetched_at) }}
+              </p>
             </div>
           </div>
         </div>
