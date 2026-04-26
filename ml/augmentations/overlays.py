@@ -23,7 +23,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from augmentations.base import Augmentor, circular_mask
+from augmentations.base import PROBABILITY_SCHEMA, Augmentor, LayerSchema, circular_mask
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +72,46 @@ class OverlayAugmentor(Augmentor):
         self.max_layers = max(1, int(max_layers))
         self._paths_by_category = self._scan()
         self._warned_empty = False
+
+    @classmethod
+    def get_schema(cls) -> LayerSchema:
+        return {
+            "type": "overlays",
+            "label": "Overlays (patina / dust / scratches / fingerprints)",
+            "description": (
+                "Compose 1 à max_layers textures par-dessus la pièce (multiply / screen / overlay). "
+                "Simule usure, dépôt, rayures et traces de doigts. Les bancs de textures vivent sous ml/data/overlays/<category>/."
+            ),
+            "params": [
+                {**PROBABILITY_SCHEMA, "default": 0.5},
+                {
+                    "name": "categories",
+                    "type": "list[string]",
+                    "default": ["patina", "dust"],
+                    "options": list(CATEGORIES),
+                    "description": "Catégories de textures autorisées pour ce layer.",
+                },
+                {
+                    "name": "opacity_range",
+                    "type": "list[float]",
+                    "default": [0.10, 0.30],
+                    "min": 0.0,
+                    "max": 1.0,
+                    "length": 2,
+                    "step": 0.05,
+                    "description": "Plage d'opacité appliquée à chaque texture [min, max].",
+                },
+                {
+                    "name": "max_layers",
+                    "type": "int",
+                    "default": 2,
+                    "min": 1,
+                    "max": 5,
+                    "step": 1,
+                    "description": "Nombre maximum de textures empilées par variation.",
+                },
+            ],
+        }
 
     def _scan(self) -> dict[str, list[Path]]:
         paths: dict[str, list[Path]] = {}

@@ -32,6 +32,7 @@ sys.path.insert(0, str(ML_DIR))
 from api.supabase_client import SupabaseClient, load_env  # noqa: E402
 from augmentations.pipeline import AugmentationPipeline  # noqa: E402
 from augmentations.recipes import DEFAULT_RECIPE, ZONE_RECIPES  # noqa: E402
+from state import Store  # noqa: E402
 
 logger = logging.getLogger("preview_augmentations")
 
@@ -244,6 +245,13 @@ def build_argparser() -> argparse.ArgumentParser:
         help="Override the zone resolved from coin_confusion_map.",
     )
     p.add_argument(
+        "--recipe",
+        type=str,
+        default=None,
+        help="Id or name of a recipe stored in state/training.db. "
+             "When set, --zone is ignored.",
+    )
+    p.add_argument(
         "--count",
         type=int,
         default=16,
@@ -292,9 +300,21 @@ def main(argv: Iterable[str] | None = None) -> int:
     finally:
         sb.close()
 
-    zone = args.zone or resolved_zone
-    recipe = ZONE_RECIPES.get(zone, DEFAULT_RECIPE)
-    logger.info("Label=%s zone=%s (resolved=%s) count=%d", label, zone, resolved_zone, args.count)
+    if args.recipe:
+        store = Store(ML_DIR / "state" / "training.db")
+        row = store.get_recipe(args.recipe)
+        if row is None:
+            raise SystemExit(f"Recipe {args.recipe!r} not found in state/training.db")
+        recipe = row.config
+        zone = row.zone or (args.zone or resolved_zone)
+        logger.info(
+            "Label=%s recipe=%s (id=%s zone=%s) count=%d",
+            label, row.name, row.id, zone, args.count,
+        )
+    else:
+        zone = args.zone or resolved_zone
+        recipe = ZONE_RECIPES.get(zone, DEFAULT_RECIPE)
+        logger.info("Label=%s zone=%s (resolved=%s) count=%d", label, zone, resolved_zone, args.count)
 
     logger.info("Fetching obverse image: %s", obverse_url)
     source_path = _download_image(obverse_url)

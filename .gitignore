@@ -15,6 +15,14 @@ result
 # Gradle
 .gradle/
 
+# Filament toolchain (matc) — installed locally via `go-task filament:install-matc`,
+# pinned to v1.71.0 to match the runtime shipped in SceneView 4.0.0.
+tools/filament/
+
+# Compiled Filament materials — generated from app-android/src/main/materials/*.mat
+# by `go-task filament:compile-materials` (auto-run by Gradle preBuild).
+app-android/src/main/assets/materials/
+
 # ML artifacts
 # Heavy ML training datasets (images, embeddings, etc.) — keep referential and snapshots
 ml/datasets/*
@@ -38,6 +46,12 @@ ml/state/training.db
 ml/state/training.db-wal
 ml/state/training.db-shm
 ml/cache/dinov2_inputs/*.webp
+
+# Real-photo benchmark hold-out — NEVER committed. These photos are the
+# ground truth for PRD Bloc 3 and must remain strictly off-training (see
+# `docs/augmentation-benchmark/03-real-photo-benchmark.md §7 R1`).
+ml/data/real_photos/
+ml/reports/
 
 # YOLO training env + outputs (NixOS 1080 Ti)
 yolo_env/

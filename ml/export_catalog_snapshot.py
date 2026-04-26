@@ -17,7 +17,9 @@ Schema of the emitted JSON mirrors
       "generated_at":    "2026-04-15T12:00:00Z",
       "coins": [ { eurio_id, numista_id, country, year, face_value,
                    issue_type, series_id, name_fr, name_en,
-                   image_obverse_url, image_reverse_url, mintage,
+                   image_obverse_url, image_reverse_url,
+                   obverse_meta, reverse_meta,   # {cx_uv, cy_uv, radius_uv}, optional
+                   mintage,
                    is_withdrawn, withdrawal_reason, design_description,
                    theme_code }, ... ],
       "coin_series": [ { id, country, designation, designation_i18n,
@@ -46,7 +48,10 @@ from typing import Any
 
 import httpx
 
+from measure_photo_meta import find_image, measure_photo
 from sync_to_supabase import load_env
+
+DATASETS_DIR = Path(__file__).resolve().parent / "datasets"
 
 SNAPSHOT_PATH = (
     Path(__file__).resolve().parent.parent
@@ -171,6 +176,31 @@ def _derive_name(row: dict[str, Any]) -> tuple[str | None, str | None]:
     return None, None
 
 
+def _photo_meta_for(numista_id: int | None, side: str) -> dict[str, float] | None:
+    """Measure {cx_uv, cy_uv, radius_uv} from the local dataset photo.
+
+    Used by the 3D coin viewer (cf. docs/coin-3d-viewer/technical-notes.md).
+    Returns None if the dataset image is missing or unreadable — the Android
+    viewer falls back to (0.5, 0.5, 0.499) in that case.
+    """
+    if numista_id is None:
+        return None
+    coin_dir = DATASETS_DIR / str(numista_id)
+    if not coin_dir.is_dir():
+        return None
+    img = find_image(coin_dir, side)
+    if img is None:
+        return None
+    raw = measure_photo(img)
+    if raw is None:
+        return None
+    return {
+        "cx_uv": raw["cx_uv"],
+        "cy_uv": raw["cy_uv"],
+        "radius_uv": raw["radius_uv"],
+    }
+
+
 def flatten_coin(row: dict[str, Any]) -> dict[str, Any]:
     """Map a Supabase `coins` row to the CoinDto shape expected by Android."""
     images = row.get("images") or {}
@@ -188,9 +218,10 @@ def flatten_coin(row: dict[str, Any]) -> dict[str, Any]:
             or images.get("back")
         )
     name_fr, name_en = _derive_name(row)
+    numista_id = _extract_numista_id(row.get("cross_refs"))
     return {
         "eurio_id": row["eurio_id"],
-        "numista_id": _extract_numista_id(row.get("cross_refs")),
+        "numista_id": numista_id,
         "country": row.get("country"),
         "year": row.get("year"),
         "face_value": row.get("face_value"),
@@ -200,6 +231,8 @@ def flatten_coin(row: dict[str, Any]) -> dict[str, Any]:
         "name_en": name_en,
         "image_obverse_url": image_obverse,
         "image_reverse_url": image_reverse,
+        "obverse_meta": _photo_meta_for(numista_id, "obverse"),
+        "reverse_meta": _photo_meta_for(numista_id, "reverse"),
         "mintage": row.get("mintage"),
         "is_withdrawn": bool(row.get("is_withdrawn")) if row.get("is_withdrawn") is not None else False,
         "withdrawal_reason": row.get("withdrawal_reason"),
@@ -254,10 +287,15 @@ def main() -> int:
         member_rows = fetch_table(client, base_url, "set_members", SET_MEMBER_COLUMNS)
         print(f"  {len(member_rows)} set_members")
 
+    coins_out = [flatten_coin(r) for r in coin_rows]
+    n_obv_meta = sum(1 for c in coins_out if c.get("obverse_meta"))
+    n_rev_meta = sum(1 for c in coins_out if c.get("reverse_meta"))
+    print(f"  photo_meta : obverse={n_obv_meta}/{len(coins_out)} reverse={n_rev_meta}/{len(coins_out)}")
+
     snapshot = {
         "catalog_version": now,
         "generated_at": now,
-        "coins": [flatten_coin(r) for r in coin_rows],
+        "coins": coins_out,
         "coin_series": series_rows,
         "sets": set_rows,
         "set_members": member_rows,

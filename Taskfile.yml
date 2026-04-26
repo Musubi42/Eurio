@@ -37,6 +37,41 @@ tasks:
     cmds:
       - ./.venv/bin/python generate_overlay_textures.py {{.CLI_ARGS}}
 
+  filament:install-matc:
+    desc: Download Filament macOS toolchain (matc) into ./tools/filament/. Pinned to v1.71.0 to match the runtime shipped in SceneView 4.0.0.
+    vars:
+      FILAMENT_VERSION: v1.71.0
+    cmds:
+      - mkdir -p tools/filament
+      - |
+        if [ -x tools/filament/bin/matc ]; then
+          echo "matc already installed: $(tools/filament/bin/matc --version 2>&1 | head -1)"
+          exit 0
+        fi
+        echo "Downloading filament-{{.FILAMENT_VERSION}}-mac.tgz..."
+        curl -L --fail -o tools/filament.tgz \
+          https://github.com/google/filament/releases/download/{{.FILAMENT_VERSION}}/filament-{{.FILAMENT_VERSION}}-mac.tgz
+        tar -xzf tools/filament.tgz -C tools/filament --strip-components=1
+        rm tools/filament.tgz
+        echo "matc installed: $(tools/filament/bin/matc --version 2>&1 | head -1)"
+
+  filament:compile-materials:
+    desc: Compile *.mat sources in app-android/src/main/materials/ to *.filamat in assets/materials/. Run automatically by Gradle preBuild — invoke manually only when iterating on a material.
+    cmds:
+      - |
+        if [ ! -x tools/filament/bin/matc ]; then
+          echo "matc not found. Run: go-task filament:install-matc" >&2
+          exit 1
+        fi
+        mkdir -p app-android/src/main/assets/materials
+        for src in app-android/src/main/materials/*.mat; do
+          [ -f "$src" ] || continue
+          name=$(basename "${src%.mat}")
+          out="app-android/src/main/assets/materials/${name}.filamat"
+          tools/filament/bin/matc -p mobile -a opengl -o "$out" "$src"
+          echo "  $src → $out"
+        done
+
   augment-textures-check:
     desc: Validate that overlay textures are present and readable
     dir: ./ml

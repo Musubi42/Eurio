@@ -261,6 +261,8 @@ class MainActivity : ComponentActivity() {
             "profile" to EurioDestinations.PROFIL,
             "profile-achievements" to EurioDestinations.PROFIL,
             "profile-settings" to EurioDestinations.PROFIL,
+            // Dev sandboxes (Phase 0 du portage 3D viewer)
+            "coin-3d-sandbox" to EurioDestinations.DEV_COIN_3D_SANDBOX,
         )
 
         private fun resolveSceneRoute(sceneId: String): String? = SCENE_ROUTE_MAP[sceneId]

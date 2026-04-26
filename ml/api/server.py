@@ -23,6 +23,10 @@ from pydantic import BaseModel
 
 from .supabase_client import SupabaseClient, load_env
 from .training_runner import TrainingRunner
+from . import augmentation_routes
+from . import benchmark_routes
+from . import iteration_runner as iteration_runner_module
+from . import lab_routes
 
 ML_DIR = Path(__file__).parent.parent
 VENV_PYTHON = str(ML_DIR / ".venv" / "bin" / "python")
@@ -59,6 +63,64 @@ _env: dict[str, str] = {}
 _supabase: SupabaseClient | None = None
 _store = Store(STATE_DIR / "training.db")
 _runner = TrainingRunner(_store)
+
+# Wire augmentation routes to the shared store + a lazy supabase fetcher.
+augmentation_routes.bind(_store, lambda: get_supabase())
+app.include_router(augmentation_routes.router)
+
+# Wire benchmark routes (real-photo hold-out — no Supabase dependency).
+benchmark_routes.bind(_store)
+app.include_router(benchmark_routes.router)
+
+# Wire lab routes — orchestrates training + benchmark as "iterations".
+_iteration_runner = iteration_runner_module.bind(_store, _runner)
+lab_routes.bind(_store, _iteration_runner)
+app.include_router(lab_routes.router)
+
+
+@app.on_event("startup")
+def _augmentation_startup() -> None:
+    """Sweep stale preview dirs (TTL = 24h) at each API startup."""
+    try:
+        augmentation_routes.cleanup_expired_previews()
+    except Exception as exc:  # noqa: BLE001
+        import logging
+        logging.getLogger(__name__).warning(
+            "augmentation preview cleanup failed at startup: %s", exc
+        )
+
+
+@app.on_event("startup")
+def _benchmark_startup() -> None:
+    """Sweep stale benchmark thumbnails (TTL = 24h) at each API startup."""
+    try:
+        benchmark_routes.cleanup_expired_thumbnails()
+    except Exception as exc:  # noqa: BLE001
+        import logging
+        logging.getLogger(__name__).warning(
+            "benchmark thumbnail cleanup failed at startup: %s", exc
+        )
+
+
+@app.on_event("startup")
+def _lab_startup() -> None:
+    """Re-queue any Lab iteration stuck in training/benchmarking.
+
+    Without this, a CLI restart (`go-task ml:api` reload) would orphan
+    iterations mid-flight — we'd never mark them completed.
+    """
+    try:
+        resumed = _iteration_runner.recover_on_boot()
+        if resumed:
+            import logging
+            logging.getLogger(__name__).info(
+                "Lab runner recovered %d iteration(s) at startup", resumed
+            )
+    except Exception as exc:  # noqa: BLE001
+        import logging
+        logging.getLogger(__name__).warning(
+            "Lab runner recovery failed at startup: %s", exc
+        )
 
 
 def get_supabase() -> SupabaseClient:
@@ -102,6 +164,7 @@ class AugmentRequest(BaseModel):
 class StageItem(BaseModel):
     class_id: str
     class_kind: str  # 'eurio_id' | 'design_group_id'
+    aug_recipe_id: str | None = None  # id OR name; resolved server-side
 
 
 class StagePayload(BaseModel):
@@ -113,6 +176,7 @@ class RunPayload(BaseModel):
     batch_size: int | None = None
     m_per_class: int | None = None
     target_augmented: int | None = None
+    aug_recipe: str | None = None  # id OR name — overrides per-class staging
 
 
 class EstimatePayload(BaseModel):
@@ -428,6 +492,7 @@ def _run_to_dict(row) -> dict:
         "recall_at_3": row.recall_at_3,
         "epoch_duration_median_sec": row.epoch_duration_median_sec,
         "error": row.error,
+        "aug_recipe_id": row.aug_recipe_id,
     }
 
 
@@ -452,8 +517,12 @@ def set_training_config(config: TrainConfig) -> dict:
 
 @app.get("/training/stage")
 def training_stage_list() -> dict:
+    staged = _store.list_staging_with_recipe()
     return {
-        "staged": [c.to_dict() for c in _store.list_staging()],
+        "staged": [
+            {**ref.to_dict(), "aug_recipe_id": recipe_id}
+            for ref, recipe_id in staged
+        ],
         "removal": [c.to_dict() for c in _store.list_removal_staging()],
     }
 
@@ -463,8 +532,27 @@ def training_stage(payload: StagePayload) -> dict:
     from state import ClassRef
 
     refs = [ClassRef(i.class_id, i.class_kind) for i in payload.items]
-    _store.stage_classes(refs)
-    return {"staged": [c.to_dict() for c in _store.list_staging()]}
+    recipe_ids: list[str | None] = []
+    for item in payload.items:
+        if item.aug_recipe_id is None:
+            recipe_ids.append(None)
+            continue
+        recipe = _store.get_recipe(item.aug_recipe_id)
+        if recipe is None:
+            raise HTTPException(
+                status_code=400,
+                detail=f"aug_recipe_id {item.aug_recipe_id!r} introuvable",
+            )
+        recipe_ids.append(recipe.id)
+
+    _store.stage_classes(refs, aug_recipe_ids=recipe_ids)
+    staged = _store.list_staging_with_recipe()
+    return {
+        "staged": [
+            {**ref.to_dict(), "aug_recipe_id": rid}
+            for ref, rid in staged
+        ]
+    }
 
 
 @app.delete("/training/stage/{class_id}")
@@ -497,7 +585,9 @@ def training_run(payload: RunPayload | None = None) -> dict:
     if _runner.active_run() is not None:
         raise HTTPException(status_code=409, detail="Un run est déjà actif")
 
-    added = _store.clear_staging()
+    added_with_recipe = _store.clear_staging_with_recipe()
+    added = [ref for ref, _ in added_with_recipe]
+    staged_recipe_ids = [rid for _, rid in added_with_recipe]
     removed = _store.clear_removal_staging()
     if not added and not removed:
         raise HTTPException(
@@ -506,19 +596,49 @@ def training_run(payload: RunPayload | None = None) -> dict:
         )
 
     config: dict = {}
+    aug_recipe_override: str | None = None
     if payload:
         for key in ("epochs", "batch_size", "m_per_class", "target_augmented"):
             val = getattr(payload, key)
             if val is not None:
                 config[key] = val
+        aug_recipe_override = payload.aug_recipe
+
+    # Resolve effective aug_recipe for this run:
+    #   - explicit payload.aug_recipe wins over per-class staging
+    #   - else, if all staged items share the same non-null recipe, use it
+    #   - else (heterogeneous or all-null), no recipe is attached
+    effective_recipe_id: str | None = None
+    if aug_recipe_override:
+        recipe = _store.get_recipe(aug_recipe_override)
+        if recipe is None:
+            # Restore staging before raising.
+            _store.stage_classes(added, aug_recipe_ids=staged_recipe_ids)
+            _store.stage_removal(removed)
+            raise HTTPException(
+                status_code=400,
+                detail=f"aug_recipe {aug_recipe_override!r} introuvable",
+            )
+        effective_recipe_id = recipe.id
+    else:
+        non_null = {rid for rid in staged_recipe_ids if rid is not None}
+        if len(non_null) == 1:
+            effective_recipe_id = next(iter(non_null))
+
+    if effective_recipe_id is not None:
+        config["aug_recipe"] = effective_recipe_id
 
     try:
         row = _runner.start_run(added=added, removed=removed, config=config)
     except RuntimeError as exc:
         # Restore staging if the runner rejected the run.
-        _store.stage_classes(added)
+        _store.stage_classes(added, aug_recipe_ids=staged_recipe_ids)
         _store.stage_removal(removed)
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    if effective_recipe_id is not None:
+        _store.update_run_aug_recipe(row.id, effective_recipe_id)
+        row = _store.get_run(row.id) or row
     return _run_to_dict(row)
 
 

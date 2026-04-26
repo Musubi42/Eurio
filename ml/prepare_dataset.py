@@ -194,6 +194,11 @@ def main():
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
+    from train_embedder import _assert_no_real_photos
+
+    _assert_no_real_photos(str(args.raw_dir), role="raw")
+    _assert_no_real_photos(str(args.output_dir), role="prepared-output")
+
     if args.output_dir.exists():
         print(f"Output directory {args.output_dir} already exists. Removing...")
         shutil.rmtree(args.output_dir)

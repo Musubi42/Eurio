@@ -262,3 +262,14 @@ tasks:
     desc: "Procedurally (re)generate overlay textures (patina/dust/scratches/fingerprints)"
     cmds:
       - "{{.VENV}}/python generate_overlay_textures.py {{.CLI_ARGS}}"
+
+  # ---------- PRD Bloc 3 — Real-photo benchmark ----------
+  benchmark:
+    desc: "Run a benchmark against real photos. Usage: go-task ml:benchmark -- --model <path> [--zones green,orange] [--eurio-ids …]"
+    cmds:
+      - "{{.VENV}}/python evaluate_real_photos.py {{.CLI_ARGS}}"
+
+  benchmark:photos:check:
+    desc: "Validate structure of ml/data/real_photos/ and regenerate _manifest.json"
+    cmds:
+      - "{{.VENV}}/python check_real_photos.py {{.CLI_ARGS}}"

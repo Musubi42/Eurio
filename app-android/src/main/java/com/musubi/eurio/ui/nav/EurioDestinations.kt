@@ -30,6 +30,11 @@ object EurioDestinations {
     const val CATALOG_COUNTRY_ARG = "countryCode"
 
     fun catalogCountry(countryCode: String): String = "catalog/country/$countryCode"
+
+    // Dev-only sandbox for the SceneView/Filament smoke test (Phase 0 du portage
+    // 3D viewer — cf. docs/coin-3d-viewer/porting-android.md). Sera retirée à la
+    // fin de Phase 4.
+    const val DEV_COIN_3D_SANDBOX = "dev/coin-3d-sandbox"
 }
 
 enum class BottomNavTab(val route: String, val labelFr: String) {

@@ -29,6 +29,7 @@ import httpx
 
 from eurio_referential import load_referential, save_referential
 from import_numista import get_type_details
+from numista_keys import KeyManager
 from sync_to_supabase import load_env
 
 # ---------------------------------------------------------------------------
@@ -160,7 +161,7 @@ def enrich_referential(
 # ---------------------------------------------------------------------------
 
 
-def fetch_numista_image_urls(api_key: str) -> dict[int, dict[str, str]]:
+def fetch_numista_image_urls(km: KeyManager) -> dict[int, dict[str, str]]:
     """Fetch obverse/reverse image URLs from Numista API for each mapped type.
 
     Returns {numista_id: {"obverse": url, "reverse": url}}.
@@ -171,8 +172,8 @@ def fetch_numista_image_urls(api_key: str) -> dict[int, dict[str, str]]:
         nid = mapping["numista_id"]
         print(f"  GET /types/{nid} ...", end=" ", flush=True)
         try:
-            details = get_type_details(api_key, nid)
-        except httpx.HTTPError as e:
+            details = km.call(get_type_details, nid)
+        except (httpx.HTTPError, RuntimeError) as e:
             print(f"FAIL ({e})")
             continue
 
@@ -430,13 +431,14 @@ def main() -> int:
 
     # --- Image pipeline ---
     if args.images:
-        api_key = env.get("NUMISTA_API_KEY")
-        if not api_key:
-            print("\nERROR: --images requires NUMISTA_API_KEY in .env")
+        try:
+            km = KeyManager()
+        except RuntimeError as e:
+            print(f"\nERROR: {e}")
             return 2
 
         print("\nFetching image URLs from Numista API (5 calls)...")
-        image_urls = fetch_numista_image_urls(api_key)
+        image_urls = fetch_numista_image_urls(km)
         print(f"  Got URLs for {len(image_urls)} types")
 
         print("\nProcessing images (download → resize → upload)...")

@@ -28,7 +28,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import com.musubi.eurio.features.scan.components.Coin3DTuneFab
+import com.musubi.eurio.features.scan.components.Coin3DTuning
+import com.musubi.eurio.features.scan.components.Coin3DTuningPanel
+import com.musubi.eurio.features.scan.components.Coin3DViewer
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -41,6 +48,8 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.musubi.eurio.features.scan.components.ScanAcceptedCard
+import com.musubi.eurio.features.scan.components.ScanCarouselNav
+import com.musubi.eurio.features.scan.components.ScanDebugModeToggle
 import com.musubi.eurio.features.scan.components.ScanDebugOverlay
 import com.musubi.eurio.features.scan.components.ScanDetectingLayer
 import com.musubi.eurio.features.scan.components.ScanFailureLayer
@@ -73,10 +82,18 @@ fun ScanScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val debugMode by viewModel.debugMode.collectAsStateWithLifecycle()
+    val carouselMode by viewModel.carouselMode.collectAsStateWithLifecycle()
+    val carouselCoin by viewModel.carouselCurrent.collectAsStateWithLifecycle()
     val streakCount by viewModel.streakCount.collectAsStateWithLifecycle()
     val debugData by viewModel.debugData.collectAsStateWithLifecycle()
 
     val snackbarHostState = remember { SnackbarHostState() }
+
+    // Live PBR/exposure tuning, only meaningful in carousel debug mode. The
+    // panel is collapsed by default; opening it doesn't reset the values so
+    // the user can compare current vs default by toggling the FAB.
+    var tuning by remember { mutableStateOf(Coin3DTuning.Default) }
+    var tunePanelOpen by remember { mutableStateOf(false) }
 
     // Show the "déjà dans ton coffre" snackbar when state becomes Accepted
     // with alreadyOwned=true.
@@ -99,24 +116,54 @@ fun ScanScreen(
                 .background(Ink)
                 .padding(insets),
         ) {
-            CameraPreview(
-                onFrame = { image -> viewModel.onFrame(image) },
-                modifier = Modifier.fillMaxSize(),
-            )
+            // In carousel mode the live camera + ML pipeline is bypassed —
+            // unmounting CameraPreview both stops onFrame() and releases the
+            // camera so battery/heat don't burn while debugging.
+            if (!carouselMode) {
+                CameraPreview(
+                    onFrame = { image -> viewModel.onFrame(image) },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
 
             // State-driven layer
             when (val s = state) {
                 is ScanState.Idle -> ScanIdleLayer()
                 is ScanState.Detecting -> ScanDetectingLayer()
                 is ScanState.Accepted -> {
-                    ScanAcceptedCard(
-                        coin = s.coin,
-                        confidence = s.confidence,
-                        onDetail = { onOpenCoinDetail(s.coin.eurioId) },
-                        onAddToVault = { viewModel.onAddToVault() },
-                        onDismiss = { viewModel.onDismissCard() },
-                        modifier = Modifier.align(Alignment.BottomCenter),
+                    // Discovery moment (Phase 5) : the 3D viewer fills the
+                    // screen behind the AcceptedCard and plays a flip on every
+                    // new coin. The card slides in 400 ms later — the flip is
+                    // still mid-rotation when the card arrives, which reads as
+                    // "the coin lands and the sheet catches it".
+                    Coin3DViewer(
+                        eurioId = s.coin.eurioId,
+                        obverseImageUrl = s.coin.imageObverseUrl,
+                        reverseImageUrl = s.coin.imageReverseUrl,
+                        obverseMeta = s.coin.obversePhotoMeta,
+                        reverseMeta = s.coin.reversePhotoMeta,
+                        flipKey = s.coin.eurioId,
+                        tuning = tuning,
+                        modifier = Modifier.fillMaxSize(),
                     )
+                    var cardVisible by remember(s.coin.eurioId) { mutableStateOf(false) }
+                    LaunchedEffect(s.coin.eurioId) {
+                        delay(400)
+                        cardVisible = true
+                    }
+                    // Carousel mode = clean 3D viewer only — the AcceptedCard
+                    // would obscure the coin and clash with the bottom carousel
+                    // nav, so we suppress it here.
+                    if (cardVisible && !carouselMode) {
+                        ScanAcceptedCard(
+                            coin = s.coin,
+                            confidence = s.confidence,
+                            onDetail = { onOpenCoinDetail(s.coin.eurioId) },
+                            onAddToVault = { viewModel.onAddToVault() },
+                            onDismiss = { viewModel.onDismissCard() },
+                            modifier = Modifier.align(Alignment.BottomCenter),
+                        )
+                    }
                 }
                 is ScanState.NotIdentified -> {
                     // UX decision: scan is continuous like a QR scanner.
@@ -140,8 +187,52 @@ fun ScanScreen(
                 modifier = Modifier.align(Alignment.TopCenter),
             )
 
-            // Already-owned inline hint (small thumbnail near the top bar)
-            (state as? ScanState.Accepted)?.takeIf { it.alreadyOwned }?.let { s ->
+            if (debugMode && carouselMode) {
+                ScanCarouselNav(
+                    coin = carouselCoin,
+                    onPrev = { viewModel.onCarouselPrev() },
+                    onNext = { viewModel.onCarouselNext() },
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = EurioSpacing.s6),
+                )
+
+                // Tune FAB sits bottom-right above the carousel nav. When open,
+                // the sliders panel floats above the FAB.
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = EurioSpacing.s3, bottom = 88.dp),
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.spacedBy(EurioSpacing.s2),
+                ) {
+                    if (tunePanelOpen) {
+                        Coin3DTuningPanel(
+                            tuning = tuning,
+                            onChange = { tuning = it },
+                            onReset = { tuning = Coin3DTuning.Default },
+                        )
+                    }
+                    Coin3DTuneFab(
+                        open = tunePanelOpen,
+                        onClick = { tunePanelOpen = !tunePanelOpen },
+                    )
+                }
+            }
+
+            if (debugMode) {
+                ScanDebugModeToggle(
+                    carouselActive = carouselMode,
+                    onClick = { viewModel.toggleCarouselMode() },
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 80.dp),
+                )
+            }
+
+            // Already-owned inline hint (small thumbnail near the top bar) —
+            // suppressed in carousel mode where the vault state is irrelevant.
+            (state as? ScanState.Accepted)?.takeIf { it.alreadyOwned && !carouselMode }?.let { s ->
                 Row(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
@@ -165,7 +256,7 @@ fun ScanScreen(
                 }
             }
 
-            if (debugMode) {
+            if (debugMode && !carouselMode) {
                 ScanDebugOverlay(
                     data = debugData,
                     onDump = { viewModel.onCaptureClicked() },

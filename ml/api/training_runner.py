@@ -368,31 +368,32 @@ class TrainingRunner:
             if self._active is not None:
                 self._active.epoch = 0
                 self._active.epochs_total = int(cfg.get("epochs", 40))
-        self._run_subprocess(
-            row.id,
-            [
-                VENV_PYTHON,
-                str(ML_DIR / "train_embedder.py"),
-                "--mode",
-                cfg.get("mode", "arcface"),
-                "--dataset",
-                str(EURIO_POC / "train"),
-                "--val-dataset",
-                str(EURIO_POC / "val"),
-                "--epochs",
-                str(cfg["epochs"]),
-                "--batch-size",
-                str(cfg["batch_size"]),
-                "--m-per-class",
-                str(cfg["m_per_class"]),
-                "--device",
-                self._device,
-                "--model-version",
-                version_str,
-            ],
-            parse_training_output=True,
-        )
-        return f"{cfg['epochs']} epochs ({version_str})"
+        cmd: list[str] = [
+            VENV_PYTHON,
+            str(ML_DIR / "train_embedder.py"),
+            "--mode",
+            cfg.get("mode", "arcface"),
+            "--dataset",
+            str(EURIO_POC / "train"),
+            "--val-dataset",
+            str(EURIO_POC / "val"),
+            "--epochs",
+            str(cfg["epochs"]),
+            "--batch-size",
+            str(cfg["batch_size"]),
+            "--m-per-class",
+            str(cfg["m_per_class"]),
+            "--device",
+            self._device,
+            "--model-version",
+            version_str,
+        ]
+        aug_recipe = cfg.get("aug_recipe") or row.aug_recipe_id
+        if aug_recipe:
+            cmd.extend(["--aug-recipe", str(aug_recipe)])
+        self._run_subprocess(row.id, cmd, parse_training_output=True)
+        suffix = f" + recipe={aug_recipe}" if aug_recipe else ""
+        return f"{cfg['epochs']} epochs ({version_str}){suffix}"
 
     def _compute_embeddings(self, row: RunRow, version_str: str) -> str:
         self._run_subprocess(

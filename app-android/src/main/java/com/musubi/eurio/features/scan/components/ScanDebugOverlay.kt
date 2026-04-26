@@ -197,6 +197,38 @@ fun ScanDebugOverlay(
     }
 }
 
+/**
+ * Top-center mode switch shown whenever debug mode is on. Splits the debug
+ * UI into two disjoint experiences: the full scan inspector (panels + bbox +
+ * tools) and the clean 3D coin carousel (just the viewer + a bottom nav).
+ */
+@Composable
+fun ScanDebugModeToggle(
+    carouselActive: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(EurioRadii.sm))
+            .background(Color.Black.copy(alpha = 0.78f))
+            .border(
+                width = 1.dp,
+                color = Success.copy(alpha = 0.45f),
+                shape = RoundedCornerShape(EurioRadii.sm),
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = EurioSpacing.s3, vertical = EurioSpacing.s2),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = if (carouselActive) "Scan coin debug" else "3D coin carrousel",
+            style = MonoBadgeStyle,
+            color = Success,
+        )
+    }
+}
+
 @Composable
 private fun BboxOverlay(bbox: DebugViewData.BboxInfo) {
     Canvas(modifier = Modifier.fillMaxSize()) {
