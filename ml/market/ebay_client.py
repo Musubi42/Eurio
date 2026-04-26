@@ -12,7 +12,6 @@ Spec: docs/research/ebay-api-strategy.md
 
 import base64
 import json
-import os
 import time
 from pathlib import Path
 from typing import Any
@@ -27,22 +26,6 @@ SCOPE = "https://api.ebay.com/oauth/api_scope"
 MARKETPLACE = "EBAY_FR"
 
 TOKEN_CACHE_PATH = Path(__file__).parent.parent / ".ebay_token_cache.json"
-
-
-def load_env() -> dict[str, str]:
-    env: dict[str, str] = {}
-    env_path = Path(__file__).parent.parent.parent / ".env"
-    if env_path.exists():
-        for line in env_path.read_text().splitlines():
-            line = line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            key, _, value = line.partition("=")
-            env[key.strip()] = value.strip()
-    for key in ("EBAY_CLIENT_ID", "EBAY_CLIENT_SECRET"):
-        if key in os.environ:
-            env[key] = os.environ[key]
-    return env
 
 
 def get_app_token(client_id: str, client_secret: str, force: bool = False) -> str:

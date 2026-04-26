@@ -22,6 +22,7 @@ Spec: docs/research/ebay-api-strategy.md, docs/phases/phase-2c-referential.md §
 import argparse
 import json
 import math
+import os
 import re
 import time
 from collections import defaultdict
@@ -32,7 +33,7 @@ from typing import Any
 
 import httpx
 
-from market.ebay_client import EbayClient, get_app_token, load_env
+from market.ebay_client import EbayClient, get_app_token
 from referential.eurio_referential import (
     ISO2_TO_NAME_FR,
     SOURCES_DIR,
@@ -420,6 +421,37 @@ def write_snapshot(records: list[dict]) -> Path:
 # ---------- main ----------
 
 
+def _insert_market_price(
+    eurio_id: str,
+    stats: dict,
+    query_used: str,
+    supabase_url: str,
+    supabase_key: str,
+) -> None:
+    row = {
+        "eurio_id": eurio_id,
+        "source": SOURCE_TAG,
+        "p25": _round(stats.get("p25")),
+        "p50": _round(stats.get("p50")),
+        "p75": _round(stats.get("p75")),
+        "samples_count": stats.get("samples_count"),
+        "with_sales_count": stats.get("with_sales_count"),
+        "query_used": query_used,
+    }
+    resp = httpx.post(
+        f"{supabase_url.rstrip('/')}/rest/v1/coin_market_prices",
+        json=row,
+        headers={
+            "apikey": supabase_key,
+            "Authorization": f"Bearer {supabase_key}",
+            "Content-Type": "application/json",
+            "Prefer": "return=minimal",
+        },
+        timeout=15,
+    )
+    resp.raise_for_status()
+
+
 def parse_args() -> argparse.Namespace:
     ap = argparse.ArgumentParser(description="Enrich referential with eBay market prices")
     ap.add_argument("--limit", type=int, default=30, help="Max target coins to enrich (default 30)")
@@ -439,6 +471,11 @@ def parse_args() -> argparse.Namespace:
         default=0.5,
         help="Sleep seconds between API calls (politeness)",
     )
+    ap.add_argument(
+        "--sync-supabase",
+        action="store_true",
+        help="Insert each observation into Supabase coin_market_prices after fetch",
+    )
     return ap.parse_args()
 
 
@@ -446,12 +483,19 @@ def main() -> None:
     args = parse_args()
     countries = {c.strip().upper() for c in args.countries.split(",")} if args.countries else None
 
-    env = load_env()
-    client_id = env.get("EBAY_CLIENT_ID")
-    client_secret = env.get("EBAY_CLIENT_SECRET")
+    client_id = os.environ.get("EBAY_CLIENT_ID")
+    client_secret = os.environ.get("EBAY_CLIENT_SECRET")
     if not client_id or not client_secret:
-        print("ERROR: EBAY_CLIENT_ID / EBAY_CLIENT_SECRET missing from .env")
+        print("ERROR: EBAY_CLIENT_ID / EBAY_CLIENT_SECRET not set (check .envrc)")
         raise SystemExit(1)
+
+    supabase_url = supabase_key = None
+    if args.sync_supabase:
+        supabase_url = os.environ.get("SUPABASE_URL")
+        supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+        if not supabase_url or not supabase_key:
+            print("ERROR: --sync-supabase requires SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY in env")
+            raise SystemExit(1)
 
     referential = load_referential()
     targets = target_commemoratives(
@@ -524,6 +568,12 @@ def main() -> None:
             if stats["samples_count"] >= 3:
                 write_observation(entry, stats, q, kept)
                 touched += 1
+                if args.sync_supabase:
+                    try:
+                        _insert_market_price(entry["eurio_id"], stats, q, supabase_url, supabase_key)
+                        print(f"  → synced to Supabase")
+                    except httpx.HTTPError as exc:
+                        print(f"  → Supabase sync failed: {exc}")
             time.sleep(args.sleep)
 
     snapshot_path = write_snapshot(snapshot_records)
