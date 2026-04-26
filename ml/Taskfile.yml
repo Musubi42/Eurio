@@ -26,7 +26,7 @@ tasks:
   prepare:
     desc: Resize images and split into train/val/test
     cmds:
-      - "{{.VENV}}/python prepare_dataset.py"
+      - "{{.VENV}}/python training/prepare_dataset.py"
     sources:
       - datasets/*/
     generates:
@@ -39,7 +39,7 @@ tasks:
     deps: [prepare]
     cmds:
       - >-
-        {{.VENV}}/python train_embedder.py
+        {{.VENV}}/python training/train_embedder.py
         --mode classify
         --dataset {{.DATASET}}/train
         --val-dataset {{.DATASET}}/val
@@ -52,7 +52,7 @@ tasks:
     deps: [prepare]
     cmds:
       - >-
-        {{.VENV}}/python train_embedder.py
+        {{.VENV}}/python training/train_embedder.py
         --mode arcface
         --dataset {{.DATASET}}/train
         --val-dataset {{.DATASET}}/val
@@ -67,19 +67,19 @@ tasks:
   augment:
     desc: "Generate augmented images for training coins"
     cmds:
-      - "{{.VENV}}/python augment_synthetic.py --coin-ids 135 111 159 87 226447 --target-per-class 50"
+      - "{{.VENV}}/python training/augment_synthetic.py --coin-ids 135 111 159 87 226447 --target-per-class 50"
 
   evaluate:
     desc: Evaluate Recall@1/3 on the test set
     deps: [train]
     cmds:
-      - "{{.VENV}}/python evaluate.py"
+      - "{{.VENV}}/python eval/evaluate.py"
 
   visualize:
     desc: Generate t-SNE plot and training curves
     deps: [train]
     cmds:
-      - "{{.VENV}}/python visualize.py"
+      - "{{.VENV}}/python eval/visualize.py"
     generates:
       - output/tsne_plot.png
       - output/training_curves.png
@@ -88,7 +88,7 @@ tasks:
     desc: Export PyTorch model to TFLite
     deps: [train]
     cmds:
-      - "{{.VENV}}/python export_tflite.py"
+      - "{{.VENV}}/python training/export_tflite.py"
     generates:
       - output/eurio_embedder_v1.tflite
 
@@ -96,13 +96,13 @@ tasks:
     desc: Verify TFLite output matches PyTorch (cosine sim > 0.99)
     deps: [export]
     cmds:
-      - "{{.VENV}}/python validate_export.py"
+      - "{{.VENV}}/python training/validate_export.py"
 
   embeddings:
     desc: Compute reference centroid embeddings per coin class
     deps: [train]
     cmds:
-      - "{{.VENV}}/python compute_embeddings.py"
+      - "{{.VENV}}/python training/compute_embeddings.py"
     generates:
       - output/embeddings_v1.json
       - output/coin_embeddings.json
@@ -119,7 +119,7 @@ tasks:
     desc: Seed Supabase with coin catalog and embeddings (needs SERVICE_ROLE_KEY)
     deps: [embeddings]
     cmds:
-      - "{{.VENV}}/python seed_supabase.py"
+      - "{{.VENV}}/python bootstrap/seed_supabase.py"
 
   # ---------- Utilities ----------
   clean:
@@ -130,68 +130,68 @@ tasks:
   enrich-numista:
     desc: "Enrich referential with Numista IDs (hardcoded 5 ML coins)"
     cmds:
-      - "{{.VENV}}/python enrich_from_numista.py"
+      - "{{.VENV}}/python referential/enrich_from_numista.py"
 
   enrich-numista-dry:
     desc: "Preview Numista enrichment without writing"
     cmds:
-      - "{{.VENV}}/python enrich_from_numista.py --dry-run"
+      - "{{.VENV}}/python referential/enrich_from_numista.py --dry-run"
 
   batch-match:
     desc: "Batch-match coin_catalog.json 2EUR types to referential (0 API calls)"
     cmds:
-      - "{{.VENV}}/python batch_match_numista.py --review"
+      - "{{.VENV}}/python referential/batch_match_numista.py --review"
 
   batch-match-dry:
     desc: "Preview batch matching without writing"
     cmds:
-      - "{{.VENV}}/python batch_match_numista.py --dry-run --review"
+      - "{{.VENV}}/python referential/batch_match_numista.py --dry-run --review"
 
   batch-images:
     desc: "Fetch/resize/upload images for all coins with numista_id but no images"
     cmds:
-      - "{{.VENV}}/python batch_fetch_images.py"
+      - "{{.VENV}}/python referential/batch_fetch_images.py"
 
   batch-images-dry:
     desc: "Preview batch image fetch"
     cmds:
-      - "{{.VENV}}/python batch_fetch_images.py --dry-run"
+      - "{{.VENV}}/python referential/batch_fetch_images.py --dry-run"
 
   import-numista:
     desc: "Import all 2 euro coins from Numista API (metadata + images)"
     cmds:
-      - "{{.VENV}}/python import_numista.py"
+      - "{{.VENV}}/python referential/import_numista.py"
 
   import-numista-dry:
     desc: "Preview Numista import without downloading"
     cmds:
-      - "{{.VENV}}/python import_numista.py --dry-run"
+      - "{{.VENV}}/python referential/import_numista.py --dry-run"
 
   # ---------- Detection (YOLOv8-nano) ----------
   detect-setup:
     desc: "Download and prepare coin detection dataset"
     cmds:
-      - "{{.VENV}}/python setup_detection_dataset.py"
+      - "{{.VENV}}/python training/setup_detection_dataset.py"
 
   detect-train:
     desc: "Train YOLOv8-nano coin detector"
     cmds:
-      - "{{.VENV}}/python train_detector.py --export"
+      - "{{.VENV}}/python training/train_detector.py --export"
 
   detect-validate:
     desc: "Validate trained detector"
     cmds:
-      - "{{.VENV}}/python train_detector.py --validate"
+      - "{{.VENV}}/python training/train_detector.py --validate"
 
   detect-export:
     desc: "Export detector to TFLite only"
     cmds:
-      - "{{.VENV}}/python train_detector.py --export-only"
+      - "{{.VENV}}/python training/train_detector.py --export-only"
 
   migrate-dirs:
     desc: "Rename dataset dirs from slug names to Numista IDs"
     cmds:
-      - "{{.VENV}}/python rename_to_numista_ids.py"
+      - "{{.VENV}}/python bootstrap/rename_to_numista_ids.py"
 
   # ---------- Training state (SQLite) ----------
   export-state-lite:
@@ -229,29 +229,29 @@ tasks:
   confusion-map:
     desc: "Generate coin confusion map via DINOv2 and upsert to Supabase"
     cmds:
-      - "{{.VENV}}/python confusion_map.py"
+      - "{{.VENV}}/python eval/confusion_map.py"
 
   confusion-map-dry:
     desc: "Dry-run confusion map computation (no DB writes)"
     cmds:
-      - "{{.VENV}}/python confusion_map.py --dry-run"
+      - "{{.VENV}}/python eval/confusion_map.py --dry-run"
 
   # ---------- Design Groups ----------
   bootstrap-design-groups:
     desc: "Bootstrap design_groups + populate coins.design_group_id (axis A auto, axis B seed)"
     cmds:
-      - "{{.VENV}}/python bootstrap_design_groups.py --apply"
+      - "{{.VENV}}/python bootstrap/bootstrap_design_groups.py --apply"
 
   bootstrap-design-groups-dry:
     desc: "Preview design_groups bootstrap without writing"
     cmds:
-      - "{{.VENV}}/python bootstrap_design_groups.py"
+      - "{{.VENV}}/python bootstrap/bootstrap_design_groups.py"
 
   # ---------- Phase 2 Augmentation ----------
   augment-preview:
     desc: "Generate a preview grid of augmented images for a design (takes --design-group-id or --eurio-id)"
     cmds:
-      - "{{.VENV}}/python preview_augmentations.py {{.CLI_ARGS}}"
+      - "{{.VENV}}/python eval/preview_augmentations.py {{.CLI_ARGS}}"
 
   augment-textures-check:
     desc: "Validate that overlay textures are present and readable"
@@ -261,15 +261,15 @@ tasks:
   augment-textures-generate:
     desc: "Procedurally (re)generate overlay textures (patina/dust/scratches/fingerprints)"
     cmds:
-      - "{{.VENV}}/python generate_overlay_textures.py {{.CLI_ARGS}}"
+      - "{{.VENV}}/python training/generate_overlay_textures.py {{.CLI_ARGS}}"
 
   # ---------- PRD Bloc 3 — Real-photo benchmark ----------
   benchmark:
     desc: "Run a benchmark against real photos. Usage: go-task ml:benchmark -- --model <path> [--zones green,orange] [--eurio-ids …]"
     cmds:
-      - "{{.VENV}}/python evaluate_real_photos.py {{.CLI_ARGS}}"
+      - "{{.VENV}}/python eval/evaluate_real_photos.py {{.CLI_ARGS}}"
 
   benchmark:photos:check:
     desc: "Validate structure of ml/data/real_photos/ and regenerate _manifest.json"
     cmds:
-      - "{{.VENV}}/python check_real_photos.py {{.CLI_ARGS}}"
+      - "{{.VENV}}/python eval/check_real_photos.py {{.CLI_ARGS}}"

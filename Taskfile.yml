@@ -35,7 +35,7 @@ tasks:
     desc: Procedurally (re)generate overlay textures (patina/dust/scratches/fingerprints)
     dir: ./ml
     cmds:
-      - ./.venv/bin/python generate_overlay_textures.py {{.CLI_ARGS}}
+      - ./.venv/bin/python training/generate_overlay_textures.py {{.CLI_ARGS}}
 
   filament:install-matc:
     desc: Download Filament macOS toolchain (matc) into ./tools/filament/. Pinned to v1.71.0 to match the runtime shipped in SceneView 4.0.0.
