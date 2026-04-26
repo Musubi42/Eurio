@@ -79,10 +79,30 @@ L'admin lit la ligne la plus récente via `DISTINCT ON (eurio_id, source) ORDER 
 - **Pays par défaut** : FR, DE, IT, ES, GR — environ 300 commémoratives
 - **Full run** : ~500 commémoratives × ~3 calls = ~1500 calls eBay (quota 5000/jour)
 
-## Budget eBay
+## Budget eBay — données empiriques
 
-Premier run (2026-04-13) : 30 pièces, P50 médian = 5.90€.
-Rapport complet : `docs/research/phase-2c4-ebay-run.md`.
+| Run | Date | Calls consommés | Pièces ciblées | Enrichies |
+|---|---|---|---|---|
+| 1 (test) | 2026-04-13 | 30 | 30 | 30 |
+| 2 (full commemos avec numista_id) | 2026-04-26 | 127 | 127 | 116 |
+
+**Ratio observé :** ~1 call/pièce en moyenne (certaines déclenchent une expansion de groupe → 2-3 calls).  
+**Capacité restante après run 2 :** ~4 870 calls sur 5 000/jour.  
+**Run full (~500 commemos) :** estimation ~500–1 000 calls = 10–20% du quota journalier.
+
+Rapport du premier run : `docs/research/phase-2c4-ebay-run.md`.
+
+## Quota tracking
+
+**Numista** — déjà instrumenté dans `ml/referential/numista_keys.py` :
+- `_MONTHLY_LIMIT = 1800` (soft limit conservative, quota API réel ~2000/mois)
+- `KeyManager.quota_status()` retourne `calls_this_month`, `remaining`, `exhausted` par clé
+- Stocké en SQLite (`ml/state/training.db`, table `numista_key_usage`)
+
+**eBay** — pas encore instrumenté :
+- `EbayClient.call_count` est un compteur en mémoire par run, non persisté
+- Pour du suivi inter-runs, il faudra une table SQLite similaire à `numista_key_usage`
+- Alternative : interroger l'eBay Analytics API (`getRateLimits`) — mais ajoute une dépendance
 
 ---
 
