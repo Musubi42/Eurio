@@ -54,7 +54,7 @@ OUTPUT_DIR = ML_DIR / "output"
 EURIO_POC = DATASETS_DIR / "eurio-poc"
 PER_CLASS_METRICS = OUTPUT_DIR / "per_class_metrics.json"
 
-# Ensure `class_resolver` (at ml/ root) is importable from this api module.
+# Ensure ml/ root is in sys.path for absolute package imports (referential, eval, etc.).
 if str(ML_DIR) not in sys.path:
     sys.path.insert(0, str(ML_DIR))
 
@@ -607,7 +607,7 @@ def _read_current_classes() -> list[ClassRef]:
 
 
 def _build_resolver():
-    from class_resolver import build_resolver
+    from eval.class_resolver import build_resolver
 
     return build_resolver()
 
