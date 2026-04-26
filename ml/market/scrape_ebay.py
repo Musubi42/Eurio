@@ -210,6 +210,7 @@ def target_commemoratives(
     countries: set[str] | None = None,
     limit: int | None = None,
     only_enriched: bool = False,
+    requires_numista: bool = False,
 ) -> list[dict]:
     """Select commemorative entries to target in this run.
 
@@ -228,6 +229,8 @@ def target_commemoratives(
         if ident.get("country") == "eu":
             continue
         if countries and ident.get("country") not in countries:
+            continue
+        if requires_numista and not (entry.get("cross_refs") or {}).get("numista_id"):
             continue
         sources = set(entry["provenance"].get("sources_used", []))
         already_enriched = bool(sources & {"lmdlp", "mdp"})
@@ -466,6 +469,11 @@ def parse_args() -> argparse.Namespace:
         help="Target all commemos instead of only those already enriched by lmdlp/mdp",
     )
     ap.add_argument(
+        "--requires-numista",
+        action="store_true",
+        help="Only target coins that have a numista_id in cross_refs",
+    )
+    ap.add_argument(
         "--sleep",
         type=float,
         default=0.5,
@@ -503,6 +511,7 @@ def main() -> None:
         countries=countries,
         limit=args.limit,
         only_enriched=not args.all_commemos,
+        requires_numista=args.requires_numista,
     )
     print(f"Loaded referential: {len(referential)} entries")
     print(f"Targeting {len(targets)} commemoratives ({'any' if args.all_commemos else 'lmdlp/mdp-enriched'}, countries={sorted(countries or [])})")
