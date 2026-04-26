@@ -28,6 +28,11 @@ interface CoinDao {
     @Query("SELECT * FROM coins WHERE numista_id = :numistaId LIMIT 1")
     suspend fun findByNumistaId(numistaId: Int): CoinEntity?
 
+    // Used by the debug carousel (Phase 4) to cycle through every 2 €
+    // commemorative + circulation coin without invoking the ML pipeline.
+    @Query("SELECT * FROM coins WHERE face_value = :faceValue ORDER BY country, year, eurio_id")
+    suspend fun findAllByFaceValue(faceValue: Double): List<CoinEntity>
+
     @Query("SELECT * FROM coins ORDER BY country, year, face_value")
     fun observeAll(): Flow<List<CoinEntity>>
 

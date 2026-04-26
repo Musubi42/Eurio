@@ -5,27 +5,38 @@ import { supabase } from '@/shared/supabase/client'
 import type { Coin, ConfusionZone, IssueType } from '@/shared/supabase/types'
 import { firstImageUrl } from '@/shared/utils/coin-images'
 import { useDebounceFn } from '@vueuse/core'
-import { Brain, Check, Copy, ImageOff, Play, Search } from 'lucide-vue-next'
+import { Brain, Check, Copy, FlaskConical, ImageOff, Play, Search, Sparkles } from 'lucide-vue-next'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
+const route = useRoute()
 const router = useRouter()
 const coins = ref<Coin[]>([])
 const loading = ref(true)
 const error = ref<string | null>(null)
-const query = ref('')
 const total = ref(0)
 const offset = ref(0)
 const PAGE = 60
 
-// Filters
-const filterCountry = ref<string>('')
-const filterFaceValue = ref<number | null>(null)
-const filterCommemo = ref<boolean | null>(null)
-const filterNumista = ref<'with' | 'without' | null>(null)
-const filterImages = ref<'with' | 'without' | null>(null)
-const filterZone = ref<ConfusionZone | 'unmapped' | null>(null)
-const filterTrained = ref<'trained' | 'not-trained' | null>(null)
+// Filters — initialized from URL query params so browser back/forward restores state
+const query = ref((route.query.q as string) || '')
+const filterCountry = ref<string>((route.query.country as string) || '')
+const filterFaceValue = ref<number | null>(route.query.fv ? Number(route.query.fv) : null)
+const filterCommemo = ref<boolean | null>(
+  route.query.commemo === 'true' ? true : route.query.commemo === 'false' ? false : null,
+)
+const filterNumista = ref<'with' | 'without' | null>(
+  (route.query.numista as 'with' | 'without') || null,
+)
+const filterImages = ref<'with' | 'without' | null>(
+  (route.query.images as 'with' | 'without') || null,
+)
+const filterZone = ref<ConfusionZone | 'unmapped' | null>(
+  (route.query.zone as ConfusionZone | 'unmapped') || null,
+)
+const filterTrained = ref<'trained' | 'not-trained' | null>(
+  (route.query.trained as 'trained' | 'not-trained') || null,
+)
 
 const COUNTRIES = [
   'AD', 'AT', 'BE', 'BG', 'CY', 'DE', 'EE', 'ES', 'FI', 'FR',
@@ -143,9 +154,26 @@ function resetAndFetch() {
   fetchCoins(query.value)
 }
 
+function buildUrlQuery(): Record<string, string> {
+  const q: Record<string, string> = {}
+  if (query.value) q.q = query.value
+  if (filterCountry.value) q.country = filterCountry.value
+  if (filterFaceValue.value != null) q.fv = String(filterFaceValue.value)
+  if (filterCommemo.value != null) q.commemo = String(filterCommemo.value)
+  if (filterNumista.value) q.numista = filterNumista.value
+  if (filterImages.value) q.images = filterImages.value
+  if (filterZone.value) q.zone = filterZone.value
+  if (filterTrained.value) q.trained = filterTrained.value
+  return q
+}
+
 const debouncedFetch = useDebounceFn(() => resetAndFetch(), 250)
 watch(query, debouncedFetch)
 watch([filterCountry, filterFaceValue, filterCommemo, filterNumista, filterImages, filterZone, filterTrained], resetAndFetch)
+watch(
+  [query, filterCountry, filterFaceValue, filterCommemo, filterNumista, filterImages, filterZone, filterTrained],
+  () => router.replace({ query: buildUrlQuery() }),
+)
 onMounted(async () => {
   // Load zones FIRST so the in-memory filter has data before initial fetch
   await fetchConfusionZones()
@@ -284,6 +312,50 @@ function toggleSelection(coin: Coin, event: Event) {
 }
 
 const selectedCount = computed(() => selectedClasses.value.size)
+
+const AUGMENT_CAP = 20
+
+// Resolve eurio_ids for the selected set, falling back to displayed coin rows.
+// This skips any class whose coin row isn't currently visible (rare edge case).
+const augmentEurioIds = computed<string[]>(() => {
+  const byClass = new Map(coins.value.map(c => [coinClassId(c), c]))
+  const ids: string[] = []
+  for (const cid of selectedClasses.value) {
+    const coin = byClass.get(cid)
+    if (coin) ids.push(coin.eurio_id)
+  }
+  return ids
+})
+
+const augmentOverCap = computed(() => augmentEurioIds.value.length > AUGMENT_CAP)
+const augmentDisabled = computed(
+  () => !mlApiOnline.value || augmentEurioIds.value.length === 0 || augmentOverCap.value,
+)
+const augmentTitle = computed(() => {
+  if (augmentOverCap.value) return `Maximum ${AUGMENT_CAP} pièces — désélectionne avant d’augmenter`
+  if (!mlApiOnline.value) return 'ML API hors-ligne'
+  return 'Ouvre le Studio d’augmentation sur la sélection'
+})
+
+const cohortDisabled = computed(
+  () => !mlApiOnline.value || augmentEurioIds.value.length === 0,
+)
+const cohortTitle = computed(() => {
+  if (augmentEurioIds.value.length === 0) return 'Sélectionne au moins une pièce'
+  if (!mlApiOnline.value) return 'ML API hors-ligne'
+  return 'Crée un cohort Lab pré-rempli avec la sélection'
+})
+function openCohortWizard() {
+  if (cohortDisabled.value) return
+  const ids = augmentEurioIds.value.join(',')
+  router.push(`/lab/cohorts/new?eurio_ids=${ids}`)
+}
+
+function openAugmentation() {
+  if (augmentDisabled.value) return
+  const ids = augmentEurioIds.value.slice(0, AUGMENT_CAP).join(',')
+  router.push(`/augmentation?eurio_ids=${ids}`)
+}
 
 async function enqueueSelected(andNavigate = false) {
   if (!mlApiOnline.value || selectedClasses.value.size === 0) return
@@ -754,6 +826,41 @@ function copyToClipboard(value: string, label: string, event: Event) {
                 @click="enqueueSelected(true)"
               >
                 Ajouter et voir →
+              </button>
+              <button
+                class="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-all"
+                :style="{
+                  background: 'var(--surface-1)',
+                  color: augmentDisabled ? 'var(--ink-400)' : 'var(--ink)',
+                  cursor: augmentDisabled ? 'not-allowed' : 'pointer',
+                  opacity: augmentDisabled ? 0.6 : 1,
+                }"
+                :disabled="augmentDisabled"
+                :title="augmentTitle"
+                @click="openAugmentation"
+              >
+                <Sparkles class="h-3.5 w-3.5" />
+                Augmenter
+                <span
+                  v-if="augmentOverCap"
+                  class="ml-1 rounded px-1 text-[10px] font-mono"
+                  style="background: var(--danger); color: white;"
+                >{{ AUGMENT_CAP }} max</span>
+              </button>
+              <button
+                class="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-all"
+                :style="{
+                  background: 'var(--surface-1)',
+                  color: cohortDisabled ? 'var(--ink-400)' : 'var(--ink)',
+                  cursor: cohortDisabled ? 'not-allowed' : 'pointer',
+                  opacity: cohortDisabled ? 0.6 : 1,
+                }"
+                :disabled="cohortDisabled"
+                :title="cohortTitle"
+                @click="openCohortWizard"
+              >
+                <FlaskConical class="h-3.5 w-3.5" />
+                Nouveau cohort Lab
               </button>
               <button
                 class="flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-all"

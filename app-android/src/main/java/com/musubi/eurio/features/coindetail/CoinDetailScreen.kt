@@ -42,6 +42,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.musubi.eurio.data.repository.CoinViewData
 import com.musubi.eurio.data.repository.SetWithProgress
+import com.musubi.eurio.features.scan.components.Coin3DViewer
 import com.musubi.eurio.ui.theme.Danger
 import com.musubi.eurio.ui.theme.EurioRadii
 import com.musubi.eurio.ui.theme.EurioSpacing
@@ -171,8 +172,30 @@ private fun CoinContent(
     ) {
         Spacer(Modifier.height(EurioSpacing.s4))
 
-        // Image carousel (obverse / reverse if both exist)
-        CoinImageCarousel(coin = coin)
+        // Phase 6 : full 3D viewer when we have an obverse photo, else fall
+        // back to the legacy gold-disc carousel. Manipulable (orbit/zoom) and
+        // does NOT play the discovery flip — that's reserved for the scan
+        // accept moment to keep the gesture meaningful.
+        if (coin.imageObverseUrl != null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(360.dp)
+                    .clip(RoundedCornerShape(EurioRadii.lg))
+                    .background(Ink),
+            ) {
+                Coin3DViewer(
+                    eurioId = coin.eurioId,
+                    obverseImageUrl = coin.imageObverseUrl,
+                    reverseImageUrl = coin.imageReverseUrl,
+                    obverseMeta = coin.obversePhotoMeta,
+                    reverseMeta = coin.reversePhotoMeta,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+        } else {
+            CoinImageCarousel(coin = coin)
+        }
 
         Spacer(Modifier.height(EurioSpacing.s5))
 

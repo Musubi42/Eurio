@@ -58,8 +58,10 @@ android {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
-    kotlinOptions {
-        jvmTarget = "11"
+    kotlin {
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11)
+        }
     }
     buildFeatures {
         compose = true
@@ -105,7 +107,7 @@ dependencies {
     implementation("org.opencv:opencv:4.10.0")
 
     // Room (SQLite)
-    val roomVersion = "2.6.1"
+    val roomVersion = "2.8.4"
     implementation("androidx.room:room-runtime:$roomVersion")
     implementation("androidx.room:room-ktx:$roomVersion")
     ksp("androidx.room:room-compiler:$roomVersion")
@@ -132,6 +134,9 @@ dependencies {
     // Koin (DI)
     implementation("io.insert-koin:koin-androidx-compose:4.0.0")
 
+    // SceneView (Filament) — 3D coin viewer (cf. docs/coin-3d-viewer/porting-android.md)
+    implementation("io.github.sceneview:sceneview:4.0.0")
+
     // Test
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
@@ -141,3 +146,38 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 }
+
+// ── Filament material compilation ────────────────────────────────────────────
+// Compile *.mat sources in src/main/materials/ to *.filamat in
+// src/main/assets/materials/ via the matc binary installed by
+// `go-task filament:install-matc` (cf. docs/coin-3d-viewer/porting-android.md
+// D-PORT-7). Wired into preBuild so a fresh checkout that has run the install
+// task gets self-contained builds.
+val compileFilamentMaterials by tasks.registering(Exec::class) {
+    val matc = file("${rootProject.projectDir}/tools/filament/bin/matc")
+    val srcDir = file("src/main/materials")
+    val outDir = file("src/main/assets/materials")
+    inputs.dir(srcDir)
+    outputs.dir(outDir)
+    doFirst {
+        if (!matc.exists()) {
+            throw GradleException(
+                "matc not found at $matc — run `go-task filament:install-matc` first."
+            )
+        }
+        outDir.mkdirs()
+    }
+    workingDir = projectDir
+    commandLine = listOf(
+        "bash", "-c",
+        """
+        set -e
+        for src in src/main/materials/*.mat; do
+          [ -f "${'$'}src" ] || continue
+          name=${'$'}(basename "${'$'}{src%.mat}")
+          "${matc.absolutePath}" -p mobile -a opengl -o "src/main/assets/materials/${'$'}{name}.filamat" "${'$'}src"
+        done
+        """.trimIndent()
+    )
+}
+tasks.named("preBuild") { dependsOn(compileFilamentMaterials) }

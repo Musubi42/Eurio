@@ -8,9 +8,47 @@ pipeline (see ``pipeline.py``) composes several of them in order.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from typing import TypedDict
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
+
+
+class ParamSchema(TypedDict, total=False):
+    """JSON-serializable description of one Augmentor param.
+
+    Consumed by ``GET /augmentation/schema`` so the admin Studio can render
+    sliders/selects without duplicating bounds. Only ``name``, ``type`` and
+    ``default`` are required; the rest are type-dependent.
+    """
+
+    name: str
+    type: str          # float | int | bool | string | list[float] | list[string]
+    default: object
+    min: float | int
+    max: float | int
+    step: float
+    length: int        # list[...] only
+    options: list[str] # string / list[string] with a finite set
+    description: str
+
+
+class LayerSchema(TypedDict):
+    type: str
+    label: str
+    description: str
+    params: list[ParamSchema]
+
+
+PROBABILITY_SCHEMA: ParamSchema = {
+    "name": "probability",
+    "type": "float",
+    "default": 1.0,
+    "min": 0.0,
+    "max": 1.0,
+    "step": 0.05,
+    "description": "Probabilité d'appliquer ce layer à chaque variation (0 = jamais, 1 = toujours).",
+}
 
 
 class Augmentor(ABC):
@@ -44,6 +82,21 @@ class Augmentor(ABC):
         if self.probability >= 1.0 or rng.random() < self.probability:
             return self.apply(img, rng)
         return img
+
+    @classmethod
+    def get_schema(cls) -> LayerSchema:
+        """Return a JSON-friendly introspection payload for this Augmentor.
+
+        Subclasses override to declare their own params. The default
+        implementation exposes only ``probability`` so a custom Augmentor with
+        no extra knobs still yields a valid schema.
+        """
+        return {
+            "type": cls.__name__.replace("Augmentor", "").lower(),
+            "label": cls.__name__,
+            "description": (cls.__doc__ or "").strip().splitlines()[0] if cls.__doc__ else "",
+            "params": [PROBABILITY_SCHEMA],
+        }
 
 
 def circular_mask(size: int, feather: int = 2) -> np.ndarray:

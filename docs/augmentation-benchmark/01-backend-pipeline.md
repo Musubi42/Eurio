@@ -50,8 +50,13 @@ Non livré (scope de ce bloc) :
   - `POST /augmentation/preview`
   - `GET /augmentation/preview/images/{run_id}/{index}`
   - `GET/POST/PUT/DELETE /augmentation/recipes`
-- Extension du store SQLite (`ml/state/schema.sql`) avec deux tables : `augmentation_recipes`, `augmentation_runs`
+- Extension du store SQLite (`ml/state/schema.sql`) :
+  - Deux nouvelles tables : `augmentation_recipes`, `augmentation_runs`
+  - Colonne additive `training_runs.aug_recipe_id` (FK → `augmentation_recipes(id) ON DELETE SET NULL`)
+  - Colonne additive `training_staging.aug_recipe_id` (FK idem) pour propager la recette depuis le handoff Studio → Training
+- Extension du body `POST /training/stage` : accepte `aug_recipe_id?: string | null` par item (résolu par id ou name côté API). Consommé par le handoff Studio (PRD02).
 - Intégration opt-in dans `train_embedder.py` via `--aug-recipe <id_or_name>`
+- Propagation `TrainingRunner` : lit `config.aug_recipe` OU dérive depuis les items de staging (au choix, cf. §5.6), persiste `aug_recipe_id` sur `training_runs` au moment du run
 
 ### Out (roadmap)
 
@@ -229,11 +234,23 @@ CREATE INDEX IF NOT EXISTS idx_augmentation_runs_recipe ON augmentation_runs(rec
 CREATE INDEX IF NOT EXISTS idx_augmentation_runs_created ON augmentation_runs(created_at DESC);
 ```
 
+**Migration additive** sur les tables existantes (via `PRAGMA table_info` + `ALTER TABLE` idempotent côté Store bootstrap, SQLite ne supportant pas `ADD COLUMN IF NOT EXISTS`) :
+
+```sql
+-- Ajouté par Store._bootstrap si la colonne n'existe pas :
+ALTER TABLE training_runs     ADD COLUMN aug_recipe_id TEXT
+  REFERENCES augmentation_recipes(id) ON DELETE SET NULL;
+ALTER TABLE training_staging  ADD COLUMN aug_recipe_id TEXT
+  REFERENCES augmentation_recipes(id) ON DELETE SET NULL;
+```
+
+**Traçabilité** : `training_runs.aug_recipe_id` ferme la chaîne recipe → training_run → benchmark_run (cf. PRD03 §5.3 qui consomme `training_run_id` comme FK). Sans cette colonne, PRD03 ne peut pas drill-down "quel run de bench vient de quelle recette".
+
 **Pourquoi SQLite, pas Supabase** : c'est de la donnée de tooling (training/calibration), strictement locale au poste du dev. Pas de partage multi-user, pas d'usage côté app Android. Ça cohabite proprement avec `training_runs` existant.
 
-### 5.6 Intégration `train_embedder.py`
+### 5.6 Intégration `train_embedder.py` + `/training/stage`
 
-Nouveau flag, **opt-in** :
+**Flag CLI `--aug-recipe`**, opt-in :
 
 ```
 --aug-recipe <id_or_name>    # référence une recette stockée en SQLite
@@ -243,10 +260,35 @@ Comportement :
 
 - Sans flag : comportement actuel inchangé (augmentations legacy rotation/color jitter/blur + augmented/ côté dataset)
 - Avec flag : le dataloader applique `AugmentationPipeline(recipe).generate(...)` **en plus** des augmentations legacy (cf. note dans `recipes.py` : les deux couches se composent, l'avancée s'empile sur la legacy)
-- La résolution `id_or_name` passe par le Store SQLite étendu
-- Le `TrainingRunner` (`ml/api/training_runner.py`) propage le flag si présent dans `RunPayload.config.aug_recipe`
+- La résolution `id_or_name` passe par le Store SQLite étendu (méthode `get_recipe(id_or_name)`)
 
-**Non-régression** : aucune recette par défaut n'est appliquée. Les runs existants doivent produire exactement les mêmes poids qu'avant.
+**Extension `POST /training/stage`** :
+
+```jsonc
+// Avant
+{ "items": [{ "class_id": "...", "class_kind": "eurio_id" }] }
+
+// Après
+{
+  "items": [
+    {
+      "class_id": "...",
+      "class_kind": "eurio_id",
+      "aug_recipe_id": "red-tuned-v2"   // nouveau — id OU name, optionnel
+    }
+  ]
+}
+```
+
+Le champ est résolu côté API (name ↔ id) avant persistence dans `training_staging.aug_recipe_id`. `null` ou absent = pas de recipe associée (comportement legacy).
+
+**Propagation `TrainingRunner`** :
+
+- Au `start_run`, le runner lit `aug_recipe_id` depuis les items `training_staging` collectés. Si une seule valeur distincte non-null est présente pour tous les items, elle est promue sur `training_runs.aug_recipe_id`. Sinon (hétérogène ou toutes null), le champ reste null (v1 = un seul recipe par run).
+- Le flag `--aug-recipe` est ajouté à la commande `train_embedder.py` lors du step `Entraînement` si la recipe est résolue.
+- Alternativement, `RunPayload.config.aug_recipe` peut forcer une recipe uniforme depuis l'endpoint `/training/run` (override des items).
+
+**Non-régression** : aucune recette par défaut n'est appliquée. Les runs existants sans `aug_recipe_id` staged + sans flag produisent exactement les mêmes poids qu'avant.
 
 ## 6. Métriques de succès
 
@@ -271,15 +313,15 @@ Le bloc est considéré livré quand :
 
 **Non-dépendances explicites** : pas de couplage avec Supabase, pas de couplage avec app-android, pas de couplage avec le prototype HTML.
 
-## 8. Questions ouvertes
+## 8. Décisions (session 2026-04-19)
 
-À trancher en implém (pas bloquant pour le PRD) :
+Tranchées avant implém :
 
-1. **TTL des previews** sur disque : 24h ? 7 jours ? Nettoyage à l'accès ou cron au démarrage du serveur ?
-2. **Limit count preview** : est-ce qu'on cap à N=64 côté API pour éviter qu'un utilisateur ne demande count=10000 et sature le disque ?
-3. **Validation bounds stricte ou warning** : si un `ambient=1.5` arrive côté preview, rejet 400 ou clamp silencieux ? Proposition : rejet 400 (explicite > implicite).
-4. **Promotion `based_on_recipe_id`** : doit-on tracker automatiquement (quand le Studio clone une recette existante) ou le laisser manuel ? Proposition : automatique côté Studio, champ optionnel côté API.
-5. **Layer ordering côté Studio** : le recipe expose les layers dans l'ordre d'application. Doit-on permettre au Studio de réordonner ? Proposition : non pour v1 (l'ordre `perspective → relighting → overlays` est sémantiquement contraint, cf. commentaire dans `recipes.py`).
+1. **TTL des previews** sur disque : **24h**. Cleanup au démarrage du serveur FastAPI (`on_startup`) — balayage unique des dossiers `ml/output/augmentation_previews/*` dont `mtime > 24h`, supprimés avec leurs PNG. Le `ml/output/` est déjà `.gitignore` donc aucun risque de commit accidentel.
+2. **Cap `count` côté API** : **64 max** (le Studio en demande 16 par run, 64 laisse de la marge). Au-delà → 400 avec message explicite.
+3. **Validation bounds** : **rejet 400** (explicite > clamp silencieux). Un `ambient=1.5` remonte une erreur détaillée `{param: "ambient", got: 1.5, max: 1.0}` pour que le Studio puisse afficher côté UI.
+4. **`based_on_recipe_id`** : automatique côté Studio lors d'un clone, champ **optionnel côté API** (pas d'enforcement serveur).
+5. **Layer ordering** : **non v1**. L'ordre `perspective → relighting → overlays` est sémantiquement contraint (cf. commentaire `recipes.py`). Le Studio n'expose pas de drag & drop.
 
 ## 9. Voir aussi
 
@@ -288,5 +330,5 @@ Le bloc est considéré livré quand :
 - `ml/preview_augmentations.py` — CLI preview existante
 - `ml/api/server.py` — patterns FastAPI (`/training/*`, `/confusion-map/*`) à mimer
 - `ml/state/schema.sql` — schema SQLite à étendre
-- `docs/augmentation-benchmark/02-studio-admin.md` — PRD Bloc 2 (Studio, à écrire)
-- `docs/augmentation-benchmark/03-benchmark.md` — PRD Bloc 3 (Benchmark, à écrire)
+- `docs/augmentation-benchmark/02-augmentation-studio.md` — PRD Bloc 2 (Studio)
+- `docs/augmentation-benchmark/03-real-photo-benchmark.md` — PRD Bloc 3 (Benchmark)

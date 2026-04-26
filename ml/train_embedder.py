@@ -7,6 +7,7 @@ Supports two modes:
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
 import torch
@@ -19,6 +20,34 @@ from torchvision import models, transforms
 from torchvision.datasets import ImageFolder
 from torchvision.models import MobileNet_V3_Small_Weights
 from tqdm import tqdm
+
+ML_DIR = Path(__file__).parent
+if str(ML_DIR) not in sys.path:
+    sys.path.insert(0, str(ML_DIR))
+
+
+REAL_PHOTOS_DIR = (ML_DIR / "data" / "real_photos").resolve()
+
+
+def _assert_no_real_photos(path_str: str, *, role: str) -> None:
+    """Hard-fail if a training path resolves to the real-photo hold-out.
+
+    PRD Bloc 3 §7 R1 — the photos in `ml/data/real_photos/` are reserved for
+    benchmarking and must never leak into training. Data leak would gonfler
+    artificially R@1 and invalidate every recipe tuning decision.
+    """
+    if not path_str:
+        return
+    resolved = Path(path_str).resolve()
+    try:
+        resolved.relative_to(REAL_PHOTOS_DIR)
+    except ValueError:
+        return
+    raise SystemExit(
+        f"Data leak detected: {role} dataset points to "
+        f"{resolved} which lives under the real-photo hold-out "
+        f"({REAL_PHOTOS_DIR}). See PRD Bloc 3 §7 R1."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -65,8 +94,45 @@ class CoinClassifier(nn.Module):
 # Transforms
 # ---------------------------------------------------------------------------
 
-def get_train_transforms() -> transforms.Compose:
+def _resolve_recipe(id_or_name: str) -> dict:
+    """Resolve a recipe id or name via the SQLite Store.
+
+    Kept local so that passing `--aug-recipe` is the *only* way the
+    legacy-only code path changes. No silent default injection.
+    """
+    from state import Store
+
+    store = Store(ML_DIR / "state" / "training.db")
+    row = store.get_recipe(id_or_name)
+    if row is None:
+        raise SystemExit(f"aug_recipe {id_or_name!r} introuvable en SQLite")
+    print(f"Loaded aug_recipe {row.name!r} (id={row.id}, zone={row.zone})")
+    return row.config
+
+
+def _make_recipe_transform(recipe: dict):
+    """Wrap AugmentationPipeline into a PIL→PIL callable for torchvision."""
+    from augmentations import AugmentationPipeline
+
+    pipeline = AugmentationPipeline(recipe, seed=None)
+
+    def _apply(img):
+        return pipeline.generate(img, count=1)[0]
+
+    return transforms.Lambda(_apply)
+
+
+def get_train_transforms(aug_recipe: dict | None = None) -> transforms.Compose:
+    head: list = []
+    if aug_recipe is not None:
+        # Advanced augmentation runs FIRST on the raw PIL image, before the
+        # legacy torchvision pipeline. The two layers stack per the design
+        # note in augmentations/recipes.py — overlays/relighting apply to
+        # the untouched coin, then legacy transforms (rotation, jitter, blur)
+        # compose on top for intra-class variance.
+        head.append(_make_recipe_transform(aug_recipe))
     return transforms.Compose([
+        *head,
         transforms.Resize((256, 256)),
         transforms.RandomCrop(224),
         transforms.RandomRotation(360),
@@ -173,7 +239,8 @@ def train_classifier(args):
     print(f"Mode: classify | Device: {device}")
 
     # Data
-    train_dataset = ImageFolder(args.dataset, transform=get_train_transforms())
+    recipe = getattr(args, "_resolved_aug_recipe", None)
+    train_dataset = ImageFolder(args.dataset, transform=get_train_transforms(recipe))
     val_dataset = ImageFolder(args.val_dataset, transform=get_val_transforms())
     num_classes = len(train_dataset.classes)
 
@@ -313,7 +380,8 @@ def train_embedder(args):
     device = get_device(args.device)
     print(f"Mode: embed (triplet) | Device: {device}")
 
-    train_dataset = ImageFolder(args.dataset, transform=get_train_transforms())
+    recipe = getattr(args, "_resolved_aug_recipe", None)
+    train_dataset = ImageFolder(args.dataset, transform=get_train_transforms(recipe))
     val_dataset = ImageFolder(args.val_dataset, transform=get_val_transforms())
 
     print(f"Train: {len(train_dataset)} images, {len(train_dataset.classes)} classes")
@@ -442,7 +510,8 @@ def train_arcface(args):
     device = get_device(args.device)
     print(f"Mode: arcface | Device: {device}")
 
-    train_dataset = ImageFolder(args.dataset, transform=get_train_transforms())
+    recipe = getattr(args, "_resolved_aug_recipe", None)
+    train_dataset = ImageFolder(args.dataset, transform=get_train_transforms(recipe))
     val_dataset = ImageFolder(args.val_dataset, transform=get_val_transforms())
     num_classes = len(train_dataset.classes)
 
@@ -608,7 +677,22 @@ def main():
     parser.add_argument("--num-workers", type=int, default=-1, help="DataLoader workers (-1=auto: 4 on CUDA, 0 on CPU/MPS)")
     parser.add_argument("--output", type=str, default="./checkpoints/")
     parser.add_argument("--model-version", type=str, default="", help="Version label stored in the checkpoint for downstream tracking.")
+    parser.add_argument(
+        "--aug-recipe",
+        type=str,
+        default=None,
+        help="Optional: id or name of an augmentation recipe stored in state/training.db. "
+             "When set, the pipeline runs in addition to legacy torchvision transforms.",
+    )
     args = parser.parse_args()
+
+    _assert_no_real_photos(args.dataset, role="train")
+    _assert_no_real_photos(args.val_dataset, role="val")
+
+    if args.aug_recipe:
+        args._resolved_aug_recipe = _resolve_recipe(args.aug_recipe)
+    else:
+        args._resolved_aug_recipe = None
 
     if args.mode == "classify":
         train_classifier(args)

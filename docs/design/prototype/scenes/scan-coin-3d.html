@@ -1,0 +1,266 @@
+<!--
+  Scene : scan-coin-3d
+  --------------------
+  Proto isolé pour valider le rendu 3D bimétal d'une pièce 2€.
+  Mesh procédural (anneau argent + disque or + tranche), textures = photos
+  Numista (obverse/reverse) sur ml/datasets/226447, normal map dérivée de la
+  luminance via Sobel, tranche procédurale "2 ★ ★ ★".
+  Drag pour tourner, molette/pinch pour zoomer. Pas d'animation flip pour v0.
+-->
+
+<style>
+  .coin3d-root {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 70% 55% at 50% 45%, #2a2a35 0%, #15151c 60%, #08080c 100%);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .coin3d-header {
+    position: relative;
+    z-index: 2;
+    padding: 64px 20px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    color: rgba(255,255,255,0.85);
+  }
+  .coin3d-header__title {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: var(--text-lg);
+    font-weight: 400;
+  }
+  .coin3d-header__hint {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.45);
+  }
+
+  .coin3d-canvas-wrap {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+  }
+  .coin3d-canvas-wrap canvas {
+    display: block;
+    width: 100% !important;
+    height: 100% !important;
+    touch-action: none;
+    cursor: grab;
+  }
+  .coin3d-canvas-wrap canvas:active { cursor: grabbing; }
+
+  .coin3d-status {
+    position: absolute;
+    left: 50%;
+    bottom: 120px;
+    transform: translateX(-50%);
+    color: rgba(255,255,255,0.55);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    pointer-events: none;
+    transition: opacity 0.4s ease;
+  }
+  .coin3d-status.is-hidden { opacity: 0; }
+
+  .coin3d-controls {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 96px;
+    z-index: 2;
+    padding: 0 20px;
+    display: flex;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+    justify-content: center;
+    pointer-events: none;
+  }
+
+  /* Carousel : prev / label / next, sits above the controls row. */
+  .coin3d-carousel {
+    position: absolute;
+    left: 16px;
+    right: 16px;
+    bottom: 156px;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    color: rgba(255,255,255,0.85);
+  }
+  .coin3d-carousel__btn {
+    flex: 0 0 auto;
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.10);
+    border: 1px solid rgba(255,255,255,0.18);
+    color: rgba(255,255,255,0.92);
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+    transition: background 0.18s ease, transform 0.18s ease;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .coin3d-carousel__btn:hover { background: rgba(255,255,255,0.18); }
+  .coin3d-carousel__btn:active { transform: scale(0.94); }
+  .coin3d-carousel__label {
+    flex: 1;
+    min-width: 0;
+    text-align: center;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    color: rgba(255,255,255,0.78);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+  }
+  .coin3d-chip {
+    pointer-events: auto;
+    padding: 8px 14px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.16);
+    color: rgba(255,255,255,0.85);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    transition: background 0.2s ease, border-color 0.2s ease;
+  }
+  .coin3d-chip:hover { background: rgba(255,255,255,0.14); }
+  .coin3d-chip[aria-pressed="true"] {
+    background: rgba(212,178,94,0.22);
+    border-color: rgba(212,178,94,0.55);
+    color: #f1d99a;
+  }
+
+  /* Sliders panel — collapsible */
+  .coin3d-tune {
+    position: absolute;
+    right: 12px;
+    bottom: 140px;
+    z-index: 3;
+    background: rgba(20,20,28,0.85);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 12px;
+    padding: 12px 14px;
+    color: rgba(255,255,255,0.85);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    width: 200px;
+    backdrop-filter: blur(8px);
+    transform: translateX(220px);
+    transition: transform 0.25s var(--ease-out);
+  }
+  .coin3d-tune[data-open="true"] { transform: translateX(0); }
+  .coin3d-tune__row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 10px;
+  }
+  .coin3d-tune__row:last-child { margin-bottom: 0; }
+  .coin3d-tune__label {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    color: rgba(255,255,255,0.55);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    font-size: 10px;
+  }
+  .coin3d-tune__val {
+    color: #f1d99a;
+    font-variant-numeric: tabular-nums;
+  }
+  .coin3d-tune__row input[type="range"] {
+    width: 100%;
+    -webkit-appearance: none;
+    height: 4px;
+    background: rgba(255,255,255,0.18);
+    border-radius: 2px;
+    outline: none;
+  }
+  .coin3d-tune__row input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: #f1d99a;
+    cursor: pointer;
+  }
+  .coin3d-tune-toggle {
+    position: absolute;
+    right: 12px;
+    bottom: 100px;
+    z-index: 4;
+  }
+  .coin3d-tune-toggle.is-hidden { display: none; }
+  .coin3d-tune__close {
+    position: absolute;
+    top: 4px;
+    right: 6px;
+    background: transparent;
+    border: 0;
+    color: rgba(255,255,255,0.55);
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 4px 6px;
+  }
+  .coin3d-tune__close:hover { color: rgba(255,255,255,0.95); }
+</style>
+
+<section class="coin3d-root" data-scene="scan-coin-3d">
+  <header class="coin3d-header">
+    <div class="coin3d-header__title">Vue 3D · proto</div>
+    <div class="coin3d-header__hint">Carousel</div>
+  </header>
+
+  <div class="coin3d-canvas-wrap" data-slot="canvas-wrap">
+    <div class="coin3d-status" data-slot="status">Chargement…</div>
+  </div>
+
+  <div class="coin3d-carousel" aria-label="Navigation pièces">
+    <button type="button" class="coin3d-carousel__btn" data-action="prev" aria-label="Pièce précédente">‹</button>
+    <div class="coin3d-carousel__label" data-slot="label">—</div>
+    <button type="button" class="coin3d-carousel__btn" data-action="next" aria-label="Pièce suivante">›</button>
+  </div>
+
+  <div class="coin3d-controls" aria-label="Contrôles rendu">
+    <button type="button" class="coin3d-chip" data-action="toggle-normal" aria-pressed="true">Relief</button>
+    <button type="button" class="coin3d-chip" data-action="toggle-rotate" aria-pressed="false">Auto-rotate</button>
+    <button type="button" class="coin3d-chip" data-action="reset-view">Reset</button>
+    <button type="button" class="coin3d-chip coin3d-tune-toggle" data-action="toggle-tune" aria-pressed="false">Tune</button>
+  </div>
+
+  <aside class="coin3d-tune" data-slot="tune" data-open="false" aria-label="Paramètres rendu">
+    <button type="button" class="coin3d-tune__close" data-action="toggle-tune" aria-label="Fermer">×</button>
+    <div class="coin3d-tune__row">
+      <div class="coin3d-tune__label"><span>Relief</span><span class="coin3d-tune__val" data-val="relief">0.30</span></div>
+      <input type="range" data-tune="relief" min="0" max="5" step="0.05" value="0.30"/>
+    </div>
+    <div class="coin3d-tune__row">
+      <div class="coin3d-tune__label"><span>Metalness</span><span class="coin3d-tune__val" data-val="metalness">0.95</span></div>
+      <input type="range" data-tune="metalness" min="0" max="1" step="0.01" value="0.95"/>
+    </div>
+    <div class="coin3d-tune__row">
+      <div class="coin3d-tune__label"><span>Roughness</span><span class="coin3d-tune__val" data-val="roughness">0.35</span></div>
+      <input type="range" data-tune="roughness" min="0" max="1" step="0.01" value="0.35"/>
+    </div>
+    <div class="coin3d-tune__row">
+      <div class="coin3d-tune__label"><span>Exposure</span><span class="coin3d-tune__val" data-val="exposure">1.05</span></div>
+      <input type="range" data-tune="exposure" min="0.5" max="2" step="0.05" value="1.05"/>
+    </div>
+  </aside>
+</section>

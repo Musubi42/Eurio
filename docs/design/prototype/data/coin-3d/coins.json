@@ -1,0 +1,6634 @@
+{
+  "generated_at": "2026-04-25T23:42:40.605726+00:00",
+  "source_catalog": "ml/datasets/coin_catalog.json",
+  "stats": {
+    "total_2eur_in_catalog": 441,
+    "with_image_pair": 301,
+    "skipped_no_pair": 140,
+    "skipped_unmeasurable": 0
+  },
+  "coins": [
+    {
+      "numista_id": "68395",
+      "country": "Andorra",
+      "year": 2014,
+      "name": "2 Euros",
+      "obverse": {
+        "path": "/ml/datasets/68395/obverse.jpg",
+        "cx_uv": 0.49967,
+        "cy_uv": 0.49967,
+        "radius_uv": 0.49967,
+        "width": 1500,
+        "height": 1500
+      },
+      "reverse": {
+        "path": "/ml/datasets/68395/reverse.jpg",
+        "cx_uv": 0.49967,
+        "cy_uv": 0.49967,
+        "radius_uv": 0.49967,
+        "width": 1500,
+        "height": 1500
+      }
+    },
+    {
+      "numista_id": "68396",
+      "country": "Andorra",
+      "year": 2014,
+      "name": "2 Euros (Council of Europe)",
+      "obverse": {
+        "path": "/ml/datasets/68396/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2580,
+        "height": 2580
+      },
+      "reverse": {
+        "path": "/ml/datasets/68396/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      }
+    },
+    {
+      "numista_id": "82007",
+      "country": "Andorra",
+      "year": 2015,
+      "name": "2 Euros (Political Rights)",
+      "obverse": {
+        "path": "/ml/datasets/82007/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2590,
+        "height": 2590
+      },
+      "reverse": {
+        "path": "/ml/datasets/82007/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      }
+    },
+    {
+      "numista_id": "90170",
+      "country": "Andorra",
+      "year": 2015,
+      "name": "2 Euros (Customs Agreement)",
+      "obverse": {
+        "path": "/ml/datasets/90170/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2590,
+        "height": 2590
+      },
+      "reverse": {
+        "path": "/ml/datasets/90170/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      }
+    },
+    {
+      "numista_id": "96326",
+      "country": "Andorra",
+      "year": 2016,
+      "name": "2 Euros (Radio and Television of Andorra)",
+      "obverse": {
+        "path": "/ml/datasets/96326/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      },
+      "reverse": {
+        "path": "/ml/datasets/96326/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      }
+    },
+    {
+      "numista_id": "96327",
+      "country": "Andorra",
+      "year": 2016,
+      "name": "2 Euros (New Reform)",
+      "obverse": {
+        "path": "/ml/datasets/96327/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2600,
+        "height": 2600
+      },
+      "reverse": {
+        "path": "/ml/datasets/96327/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      }
+    },
+    {
+      "numista_id": "124386",
+      "country": "Andorra",
+      "year": 2017,
+      "name": "2 Euros (Anthem of Andorra)",
+      "obverse": {
+        "path": "/ml/datasets/124386/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2590,
+        "height": 2590
+      },
+      "reverse": {
+        "path": "/ml/datasets/124386/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      }
+    },
+    {
+      "numista_id": "124387",
+      "country": "Andorra",
+      "year": 2017,
+      "name": "2 Euros (The Pyrenean country)",
+      "obverse": {
+        "path": "/ml/datasets/124387/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2584,
+        "height": 2584
+      },
+      "reverse": {
+        "path": "/ml/datasets/124387/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      }
+    },
+    {
+      "numista_id": "133778",
+      "country": "Andorra",
+      "year": 2018,
+      "name": "2 Euros (Constitution of Andorra)",
+      "obverse": {
+        "path": "/ml/datasets/133778/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2590,
+        "height": 2590
+      },
+      "reverse": {
+        "path": "/ml/datasets/133778/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      }
+    },
+    {
+      "numista_id": "152661",
+      "country": "Andorra",
+      "year": 2018,
+      "name": "2 Euros (Universal Declaration of Human Rights)",
+      "obverse": {
+        "path": "/ml/datasets/152661/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2600,
+        "height": 2600
+      },
+      "reverse": {
+        "path": "/ml/datasets/152661/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      }
+    },
+    {
+      "numista_id": "162097",
+      "country": "Andorra",
+      "year": 2019,
+      "name": "2 Euros (Alpine Ski World Cup Finals)",
+      "obverse": {
+        "path": "/ml/datasets/162097/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2584,
+        "height": 2584
+      },
+      "reverse": {
+        "path": "/ml/datasets/162097/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      }
+    },
+    {
+      "numista_id": "184042",
+      "country": "Andorra",
+      "year": 2019,
+      "name": "2 Euros (General Council of the Valleys)",
+      "obverse": {
+        "path": "/ml/datasets/184042/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2590,
+        "height": 2590
+      },
+      "reverse": {
+        "path": "/ml/datasets/184042/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      }
+    },
+    {
+      "numista_id": "215401",
+      "country": "Andorra",
+      "year": 2020,
+      "name": "2 Euros (Ibero-American Summit)",
+      "obverse": {
+        "path": "/ml/datasets/215401/obverse.jpg",
+        "cx_uv": 0.49979,
+        "cy_uv": 0.49979,
+        "radius_uv": 0.49979,
+        "width": 2400,
+        "height": 2400
+      },
+      "reverse": {
+        "path": "/ml/datasets/215401/reverse.jpg",
+        "cx_uv": 0.49979,
+        "cy_uv": 0.49979,
+        "radius_uv": 0.49979,
+        "width": 2376,
+        "height": 2376
+      }
+    },
+    {
+      "numista_id": "232060",
+      "country": "Andorra",
+      "year": 2020,
+      "name": "2 Euros (Universal Women's Suffrage)",
+      "obverse": {
+        "path": "/ml/datasets/232060/obverse.jpg",
+        "cx_uv": 0.49864,
+        "cy_uv": 0.49862,
+        "radius_uv": 0.49457,
+        "width": 368,
+        "height": 362
+      },
+      "reverse": {
+        "path": "/ml/datasets/232060/reverse.jpg",
+        "cx_uv": 0.49868,
+        "cy_uv": 0.49868,
+        "radius_uv": 0.49868,
+        "width": 378,
+        "height": 378
+      }
+    },
+    {
+      "numista_id": "302814",
+      "country": "Andorra",
+      "year": 2021,
+      "name": "2 Euros (Our Lady of Meritxell)",
+      "obverse": {
+        "path": "/ml/datasets/302814/obverse.jpg",
+        "cx_uv": 0.49936,
+        "cy_uv": 0.49936,
+        "radius_uv": 0.49872,
+        "width": 784,
+        "height": 782
+      },
+      "reverse": {
+        "path": "/ml/datasets/302814/reverse.jpg",
+        "cx_uv": 0.49919,
+        "cy_uv": 0.49919,
+        "radius_uv": 0.50081,
+        "width": 616,
+        "height": 620
+      }
+    },
+    {
+      "numista_id": "302815",
+      "country": "Andorra",
+      "year": 2021,
+      "name": "2 Euros (Old People in Covid-19 Pandemic)",
+      "obverse": {
+        "path": "/ml/datasets/302815/obverse.jpg",
+        "cx_uv": 0.49935,
+        "cy_uv": 0.49934,
+        "radius_uv": 0.49641,
+        "width": 765,
+        "height": 756
+      },
+      "reverse": {
+        "path": "/ml/datasets/302815/reverse.jpg",
+        "cx_uv": 0.49919,
+        "cy_uv": 0.49919,
+        "radius_uv": 0.50081,
+        "width": 616,
+        "height": 620
+      }
+    },
+    {
+      "numista_id": "344732",
+      "country": "Andorra",
+      "year": 2022,
+      "name": "2 Euros (The Legend of Charlemagne)",
+      "obverse": {
+        "path": "/ml/datasets/344732/obverse.jpg",
+        "cx_uv": 0.49959,
+        "cy_uv": 0.49959,
+        "radius_uv": 0.5031,
+        "width": 1208,
+        "height": 1225
+      },
+      "reverse": {
+        "path": "/ml/datasets/344732/reverse.jpg",
+        "cx_uv": 0.49918,
+        "cy_uv": 0.49919,
+        "radius_uv": 0.50204,
+        "width": 612,
+        "height": 619
+      }
+    },
+    {
+      "numista_id": "344733",
+      "country": "Andorra",
+      "year": 2022,
+      "name": "2 Euros (Currency Agreement between Andorra and EU)",
+      "obverse": {
+        "path": "/ml/datasets/344733/obverse.jpg",
+        "cx_uv": 0.49956,
+        "cy_uv": 0.49956,
+        "radius_uv": 0.50044,
+        "width": 1129,
+        "height": 1133
+      },
+      "reverse": {
+        "path": "/ml/datasets/344733/reverse.jpg",
+        "cx_uv": 0.49918,
+        "cy_uv": 0.49919,
+        "radius_uv": 0.50204,
+        "width": 612,
+        "height": 619
+      }
+    },
+    {
+      "numista_id": "372756",
+      "country": "Andorra",
+      "year": 2023,
+      "name": "2 Euros (Summer solstice fire festival)",
+      "obverse": {
+        "path": "/ml/datasets/372756/obverse.jpg",
+        "cx_uv": 0.49967,
+        "cy_uv": 0.49967,
+        "radius_uv": 0.49933,
+        "width": 1500,
+        "height": 1498
+      },
+      "reverse": {
+        "path": "/ml/datasets/372756/reverse.jpg",
+        "cx_uv": 0.49918,
+        "cy_uv": 0.49919,
+        "radius_uv": 0.50204,
+        "width": 612,
+        "height": 619
+      }
+    },
+    {
+      "numista_id": "372758",
+      "country": "Andorra",
+      "year": 2023,
+      "name": "2 Euros (Admission of Andorra to the UN)",
+      "obverse": {
+        "path": "/ml/datasets/372758/obverse.jpg",
+        "cx_uv": 0.49967,
+        "cy_uv": 0.49967,
+        "radius_uv": 0.50218,
+        "width": 1494,
+        "height": 1509
+      },
+      "reverse": {
+        "path": "/ml/datasets/372758/reverse.jpg",
+        "cx_uv": 0.49918,
+        "cy_uv": 0.49919,
+        "radius_uv": 0.50204,
+        "width": 612,
+        "height": 619
+      }
+    },
+    {
+      "numista_id": "427530",
+      "country": "Andorra",
+      "year": 2024,
+      "name": "2 Euros (Skiing in Andorra)",
+      "obverse": {
+        "path": "/ml/datasets/427530/obverse.jpg",
+        "cx_uv": 0.49947,
+        "cy_uv": 0.49947,
+        "radius_uv": 0.49868,
+        "width": 948,
+        "height": 945
+      },
+      "reverse": {
+        "path": "/ml/datasets/427530/reverse.jpg",
+        "cx_uv": 0.49918,
+        "cy_uv": 0.49919,
+        "radius_uv": 0.50204,
+        "width": 612,
+        "height": 619
+      }
+    },
+    {
+      "numista_id": "427536",
+      "country": "Andorra",
+      "year": 2024,
+      "name": "2 Euros (Mountain Bike World Championships)",
+      "obverse": {
+        "path": "/ml/datasets/427536/obverse.jpg",
+        "cx_uv": 0.49945,
+        "cy_uv": 0.49945,
+        "radius_uv": 0.49726,
+        "width": 914,
+        "height": 906
+      },
+      "reverse": {
+        "path": "/ml/datasets/427536/reverse.jpg",
+        "cx_uv": 0.49918,
+        "cy_uv": 0.49919,
+        "radius_uv": 0.50204,
+        "width": 612,
+        "height": 619
+      }
+    },
+    {
+      "numista_id": "482934",
+      "country": "Andorra",
+      "year": 2025,
+      "name": "2 Euros (Games of the Small States of Europe)",
+      "obverse": {
+        "path": "/ml/datasets/482934/obverse.jpg",
+        "cx_uv": 0.49947,
+        "cy_uv": 0.49947,
+        "radius_uv": 0.49947,
+        "width": 945,
+        "height": 945
+      },
+      "reverse": {
+        "path": "/ml/datasets/482934/reverse.jpg",
+        "cx_uv": 0.49958,
+        "cy_uv": 0.49958,
+        "radius_uv": 0.49958,
+        "width": 1192,
+        "height": 1192
+      }
+    },
+    {
+      "numista_id": "482937",
+      "country": "Andorra",
+      "year": 2025,
+      "name": "2 Euros (Bearded vulture)",
+      "obverse": {
+        "path": "/ml/datasets/482937/obverse.jpg",
+        "cx_uv": 0.49947,
+        "cy_uv": 0.49947,
+        "radius_uv": 0.49947,
+        "width": 945,
+        "height": 945
+      },
+      "reverse": {
+        "path": "/ml/datasets/482937/reverse.jpg",
+        "cx_uv": 0.49958,
+        "cy_uv": 0.49958,
+        "radius_uv": 0.49958,
+        "width": 1192,
+        "height": 1192
+      }
+    },
+    {
+      "numista_id": "64",
+      "country": "Austria",
+      "year": 2002,
+      "name": "2 Euros (1st map)",
+      "obverse": {
+        "path": "/ml/datasets/64/obverse.jpg",
+        "cx_uv": 0.49968,
+        "cy_uv": 0.49968,
+        "radius_uv": 0.49968,
+        "width": 1548,
+        "height": 1548
+      },
+      "reverse": {
+        "path": "/ml/datasets/64/reverse.jpg",
+        "cx_uv": 0.49968,
+        "cy_uv": 0.49968,
+        "radius_uv": 0.49968,
+        "width": 1548,
+        "height": 1548
+      }
+    },
+    {
+      "numista_id": "2193",
+      "country": "Austria",
+      "year": 2005,
+      "name": "2 Euros (Austrian State Treaty)",
+      "obverse": {
+        "path": "/ml/datasets/2193/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2698,
+        "height": 2698
+      },
+      "reverse": {
+        "path": "/ml/datasets/2193/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2668,
+        "height": 2668
+      }
+    },
+    {
+      "numista_id": "2163",
+      "country": "Austria",
+      "year": 2007,
+      "name": "2 Euros (Treaty of Rome)",
+      "obverse": {
+        "path": "/ml/datasets/2163/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2674,
+        "height": 2674
+      },
+      "reverse": {
+        "path": "/ml/datasets/2163/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      }
+    },
+    {
+      "numista_id": "9761",
+      "country": "Austria",
+      "year": 2008,
+      "name": "2 Euros (2nd map)",
+      "obverse": {
+        "path": "/ml/datasets/9761/obverse.jpg",
+        "cx_uv": 0.49968,
+        "cy_uv": 0.49968,
+        "radius_uv": 0.49968,
+        "width": 1544,
+        "height": 1544
+      },
+      "reverse": {
+        "path": "/ml/datasets/9761/reverse.jpg",
+        "cx_uv": 0.49968,
+        "cy_uv": 0.49968,
+        "radius_uv": 0.49968,
+        "width": 1544,
+        "height": 1544
+      }
+    },
+    {
+      "numista_id": "5055",
+      "country": "Austria",
+      "year": 2009,
+      "name": "2 Euros (Economic and Monetary Union)",
+      "obverse": {
+        "path": "/ml/datasets/5055/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2700,
+        "height": 2700
+      },
+      "reverse": {
+        "path": "/ml/datasets/5055/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      }
+    },
+    {
+      "numista_id": "28191",
+      "country": "Austria",
+      "year": 2012,
+      "name": "2 Euros (10 Years of Euro Cash)",
+      "obverse": {
+        "path": "/ml/datasets/28191/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2572,
+        "height": 2572
+      },
+      "reverse": {
+        "path": "/ml/datasets/28191/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      }
+    },
+    {
+      "numista_id": "77180",
+      "country": "Austria",
+      "year": 2015,
+      "name": "2 Euros (European Union Flag)",
+      "obverse": {
+        "path": "/ml/datasets/77180/obverse.jpg",
+        "cx_uv": 0.49979,
+        "cy_uv": 0.49979,
+        "radius_uv": 0.49979,
+        "width": 2398,
+        "height": 2398
+      },
+      "reverse": {
+        "path": "/ml/datasets/77180/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      }
+    },
+    {
+      "numista_id": "80926",
+      "country": "Austria",
+      "year": 2016,
+      "name": "2 Euros (Anniversary of the National Bank)",
+      "obverse": {
+        "path": "/ml/datasets/80926/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2700,
+        "height": 2700
+      },
+      "reverse": {
+        "path": "/ml/datasets/80926/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      }
+    },
+    {
+      "numista_id": "131199",
+      "country": "Austria",
+      "year": 2018,
+      "name": "2 Euros (Republic of Austria)",
+      "obverse": {
+        "path": "/ml/datasets/131199/obverse.jpg",
+        "cx_uv": 0.49938,
+        "cy_uv": 0.49938,
+        "radius_uv": 0.49906,
+        "width": 801,
+        "height": 800
+      },
+      "reverse": {
+        "path": "/ml/datasets/131199/reverse.jpg",
+        "cx_uv": 0.49938,
+        "cy_uv": 0.49938,
+        "radius_uv": 0.49938,
+        "width": 800,
+        "height": 800
+      }
+    },
+    {
+      "numista_id": "331112",
+      "country": "Austria",
+      "year": 2022,
+      "name": "2 Euros (Erasmus Programme)",
+      "obverse": {
+        "path": "/ml/datasets/331112/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2698,
+        "height": 2698
+      },
+      "reverse": {
+        "path": "/ml/datasets/331112/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      }
+    },
+    {
+      "numista_id": "80",
+      "country": "Belgium",
+      "year": 1999,
+      "name": "2 Euros - Albert II (1st map, 1st type, 1st portrait)",
+      "obverse": {
+        "path": "/ml/datasets/80/obverse.jpg",
+        "cx_uv": 0.49968,
+        "cy_uv": 0.49968,
+        "radius_uv": 0.49968,
+        "width": 1548,
+        "height": 1548
+      },
+      "reverse": {
+        "path": "/ml/datasets/80/reverse.jpg",
+        "cx_uv": 0.49968,
+        "cy_uv": 0.49968,
+        "radius_uv": 0.49968,
+        "width": 1548,
+        "height": 1548
+      }
+    },
+    {
+      "numista_id": "2165",
+      "country": "Belgium",
+      "year": 2005,
+      "name": "2 Euros - Albert II (Belgium-Luxembourg Economic Union)",
+      "obverse": {
+        "path": "/ml/datasets/2165/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2600,
+        "height": 2600
+      },
+      "reverse": {
+        "path": "/ml/datasets/2165/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2692,
+        "height": 2692
+      }
+    },
+    {
+      "numista_id": "2166",
+      "country": "Belgium",
+      "year": 2006,
+      "name": "2 Euros - Albert II (Brussels Atomium)",
+      "obverse": {
+        "path": "/ml/datasets/2166/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2584,
+        "height": 2584
+      },
+      "reverse": {
+        "path": "/ml/datasets/2166/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2692,
+        "height": 2692
+      }
+    },
+    {
+      "numista_id": "2167",
+      "country": "Belgium",
+      "year": 2007,
+      "name": "2 Euros - Albert II (Treaty of Rome)",
+      "obverse": {
+        "path": "/ml/datasets/2167/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2584,
+        "height": 2584
+      },
+      "reverse": {
+        "path": "/ml/datasets/2167/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      }
+    },
+    {
+      "numista_id": "6292",
+      "country": "Belgium",
+      "year": 2007,
+      "name": "2 Euros - Albert II (2nd map, 1st type, 1st portrait)",
+      "obverse": {
+        "path": "/ml/datasets/6292/obverse.jpg",
+        "cx_uv": 0.49968,
+        "cy_uv": 0.49968,
+        "radius_uv": 0.49968,
+        "width": 1550,
+        "height": 1550
+      },
+      "reverse": {
+        "path": "/ml/datasets/6292/reverse.jpg",
+        "cx_uv": 0.49968,
+        "cy_uv": 0.49968,
+        "radius_uv": 0.49968,
+        "width": 1544,
+        "height": 1544
+      }
+    },
+    {
+      "numista_id": "3196",
+      "country": "Belgium",
+      "year": 2008,
+      "name": "2 Euros - Albert II (Human Rights)",
+      "obverse": {
+        "path": "/ml/datasets/3196/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2599,
+        "height": 2599
+      },
+      "reverse": {
+        "path": "/ml/datasets/3196/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      }
+    },
+    {
+      "numista_id": "6293",
+      "country": "Belgium",
+      "year": 2008,
+      "name": "2 Euros - Albert II (2nd map, 2nd type, 2nd portrait)",
+      "obverse": {
+        "path": "/ml/datasets/6293/obverse.jpg",
+        "cx_uv": 0.49962,
+        "cy_uv": 0.49962,
+        "radius_uv": 0.49962,
+        "width": 1300,
+        "height": 1300
+      },
+      "reverse": {
+        "path": "/ml/datasets/6293/reverse.jpg",
+        "cx_uv": 0.49962,
+        "cy_uv": 0.49962,
+        "radius_uv": 0.49962,
+        "width": 1300,
+        "height": 1300
+      }
+    },
+    {
+      "numista_id": "5056",
+      "country": "Belgium",
+      "year": 2009,
+      "name": "2 Euros - Albert II (Economic and Monetary Union)",
+      "obverse": {
+        "path": "/ml/datasets/5056/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2600,
+        "height": 2600
+      },
+      "reverse": {
+        "path": "/ml/datasets/5056/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      }
+    },
+    {
+      "numista_id": "6311",
+      "country": "Belgium",
+      "year": 2009,
+      "name": "2 Euros - Albert II (2nd map, 2nd type, 1st portrait)",
+      "obverse": {
+        "path": "/ml/datasets/6311/obverse.jpg",
+        "cx_uv": 0.49968,
+        "cy_uv": 0.49968,
+        "radius_uv": 0.49968,
+        "width": 1548,
+        "height": 1548
+      },
+      "reverse": {
+        "path": "/ml/datasets/6311/reverse.jpg",
+        "cx_uv": 0.49968,
+        "cy_uv": 0.49968,
+        "radius_uv": 0.49968,
+        "width": 1544,
+        "height": 1544
+      }
+    },
+    {
+      "numista_id": "8070",
+      "country": "Belgium",
+      "year": 2009,
+      "name": "2 Euros - Albert II (Louis Braille)",
+      "obverse": {
+        "path": "/ml/datasets/8070/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2588,
+        "height": 2588
+      },
+      "reverse": {
+        "path": "/ml/datasets/8070/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      }
+    },
+    {
+      "numista_id": "11550",
+      "country": "Belgium",
+      "year": 2010,
+      "name": "2 Euros - Albert II (Belgian Presidency of the European Union)",
+      "obverse": {
+        "path": "/ml/datasets/11550/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      },
+      "reverse": {
+        "path": "/ml/datasets/11550/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      }
+    },
+    {
+      "numista_id": "19734",
+      "country": "Belgium",
+      "year": 2011,
+      "name": "2 Euros - Albert II (100th Women's Day)",
+      "obverse": {
+        "path": "/ml/datasets/19734/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2590,
+        "height": 2590
+      },
+      "reverse": {
+        "path": "/ml/datasets/19734/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      }
+    },
+    {
+      "numista_id": "28325",
+      "country": "Belgium",
+      "year": 2012,
+      "name": "2 Euros - Albert II (10 Years of Euro Cash)",
+      "obverse": {
+        "path": "/ml/datasets/28325/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      },
+      "reverse": {
+        "path": "/ml/datasets/28325/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      }
+    },
+    {
+      "numista_id": "32526",
+      "country": "Belgium",
+      "year": 2012,
+      "name": "2 Euros - Albert II (Queen Elisabeth Music Competition)",
+      "obverse": {
+        "path": "/ml/datasets/32526/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2600,
+        "height": 2600
+      },
+      "reverse": {
+        "path": "/ml/datasets/32526/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      }
+    },
+    {
+      "numista_id": "49339",
+      "country": "Belgium",
+      "year": 2013,
+      "name": "2 Euros - Philippe (Royal Meteorological Institute)",
+      "obverse": {
+        "path": "/ml/datasets/49339/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2580,
+        "height": 2580
+      },
+      "reverse": {
+        "path": "/ml/datasets/49339/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      }
+    },
+    {
+      "numista_id": "56039",
+      "country": "Belgium",
+      "year": 2014,
+      "name": "2 Euros - Philippe",
+      "obverse": {
+        "path": "/ml/datasets/56039/obverse.jpg",
+        "cx_uv": 0.49968,
+        "cy_uv": 0.49968,
+        "radius_uv": 0.49968,
+        "width": 1548,
+        "height": 1548
+      },
+      "reverse": {
+        "path": "/ml/datasets/56039/reverse.jpg",
+        "cx_uv": 0.49968,
+        "cy_uv": 0.49968,
+        "radius_uv": 0.49968,
+        "width": 1544,
+        "height": 1544
+      }
+    },
+    {
+      "numista_id": "59828",
+      "country": "Belgium",
+      "year": 2014,
+      "name": "2 Euros - Philippe (WW I Anniversary)",
+      "obverse": {
+        "path": "/ml/datasets/59828/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2600,
+        "height": 2600
+      },
+      "reverse": {
+        "path": "/ml/datasets/59828/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      }
+    },
+    {
+      "numista_id": "64978",
+      "country": "Belgium",
+      "year": 2014,
+      "name": "2 Euros - Philippe (Belgian Red Cross)",
+      "obverse": {
+        "path": "/ml/datasets/64978/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      },
+      "reverse": {
+        "path": "/ml/datasets/64978/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      }
+    },
+    {
+      "numista_id": "76630",
+      "country": "Belgium",
+      "year": 2015,
+      "name": "2 Euros - Philippe (European Year for Development)",
+      "obverse": {
+        "path": "/ml/datasets/76630/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2600,
+        "height": 2600
+      },
+      "reverse": {
+        "path": "/ml/datasets/76630/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      }
+    },
+    {
+      "numista_id": "77181",
+      "country": "Belgium",
+      "year": 2015,
+      "name": "2 Euros - Philippe (30 Years of European Union Flag)",
+      "obverse": {
+        "path": "/ml/datasets/77181/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2580,
+        "height": 2580
+      },
+      "reverse": {
+        "path": "/ml/datasets/77181/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      }
+    },
+    {
+      "numista_id": "84609",
+      "country": "Belgium",
+      "year": 2016,
+      "name": "2 Euros - Philippe (Summer Olympics 2016 in Rio de Janeiro)",
+      "obverse": {
+        "path": "/ml/datasets/84609/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2600,
+        "height": 2600
+      },
+      "reverse": {
+        "path": "/ml/datasets/84609/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      }
+    },
+    {
+      "numista_id": "87173",
+      "country": "Belgium",
+      "year": 2016,
+      "name": "2 Euros - Philippe (Child Focus)",
+      "obverse": {
+        "path": "/ml/datasets/87173/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2600,
+        "height": 2600
+      },
+      "reverse": {
+        "path": "/ml/datasets/87173/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      }
+    },
+    {
+      "numista_id": "108778",
+      "country": "Belgium",
+      "year": 2017,
+      "name": "2 Euros - Philippe (200 years of the University of Liège)",
+      "obverse": {
+        "path": "/ml/datasets/108778/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2600,
+        "height": 2600
+      },
+      "reverse": {
+        "path": "/ml/datasets/108778/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      }
+    },
+    {
+      "numista_id": "124813",
+      "country": "Belgium",
+      "year": 2017,
+      "name": "2 Euros - Philippe (200 years of the University of Ghent)",
+      "obverse": {
+        "path": "/ml/datasets/124813/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      },
+      "reverse": {
+        "path": "/ml/datasets/124813/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      }
+    },
+    {
+      "numista_id": "140149",
+      "country": "Belgium",
+      "year": 2018,
+      "name": "2 Euros - Philippe (Events of May 1968)",
+      "obverse": {
+        "path": "/ml/datasets/140149/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2580,
+        "height": 2580
+      },
+      "reverse": {
+        "path": "/ml/datasets/140149/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      }
+    },
+    {
+      "numista_id": "150281",
+      "country": "Belgium",
+      "year": 2018,
+      "name": "2 Euros (ESRO-2B)",
+      "obverse": {
+        "path": "/ml/datasets/150281/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2600,
+        "height": 2600
+      },
+      "reverse": {
+        "path": "/ml/datasets/150281/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      }
+    },
+    {
+      "numista_id": "155931",
+      "country": "Belgium",
+      "year": 2019,
+      "name": "2 Euros (Pieter Bruegel the Elder)",
+      "obverse": {
+        "path": "/ml/datasets/155931/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      },
+      "reverse": {
+        "path": "/ml/datasets/155931/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      }
+    },
+    {
+      "numista_id": "155935",
+      "country": "Belgium",
+      "year": 2019,
+      "name": "2 Euros (European Monetary Institute (EMI))",
+      "obverse": {
+        "path": "/ml/datasets/155935/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2600,
+        "height": 2600
+      },
+      "reverse": {
+        "path": "/ml/datasets/155935/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      }
+    },
+    {
+      "numista_id": "176636",
+      "country": "Belgium",
+      "year": 2020,
+      "name": "2 Euros - Philippe (International Year of Plant Health)",
+      "obverse": {
+        "path": "/ml/datasets/176636/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      },
+      "reverse": {
+        "path": "/ml/datasets/176636/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      }
+    },
+    {
+      "numista_id": "176637",
+      "country": "Belgium",
+      "year": 2020,
+      "name": "2 Euros (Jan van Eyck)",
+      "obverse": {
+        "path": "/ml/datasets/176637/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2580,
+        "height": 2580
+      },
+      "reverse": {
+        "path": "/ml/datasets/176637/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      }
+    },
+    {
+      "numista_id": "299176",
+      "country": "Belgium",
+      "year": 2021,
+      "name": "2 Euros - Philippe (Economic Union)",
+      "obverse": {
+        "path": "/ml/datasets/299176/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2588,
+        "height": 2588
+      },
+      "reverse": {
+        "path": "/ml/datasets/299176/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      }
+    },
+    {
+      "numista_id": "309301",
+      "country": "Belgium",
+      "year": 2021,
+      "name": "2 Euros - (Carolus V Coins)",
+      "obverse": {
+        "path": "/ml/datasets/309301/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2600,
+        "height": 2600
+      },
+      "reverse": {
+        "path": "/ml/datasets/309301/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      }
+    },
+    {
+      "numista_id": "328080",
+      "country": "Belgium",
+      "year": 2022,
+      "name": "2 Euros - Philippe (Healthcare in COVID)",
+      "obverse": {
+        "path": "/ml/datasets/328080/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2600,
+        "height": 2600
+      },
+      "reverse": {
+        "path": "/ml/datasets/328080/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      }
+    },
+    {
+      "numista_id": "331208",
+      "country": "Belgium",
+      "year": 2022,
+      "name": "2 Euros - Philippe (Erasmus Programme)",
+      "obverse": {
+        "path": "/ml/datasets/331208/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      },
+      "reverse": {
+        "path": "/ml/datasets/331208/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      }
+    },
+    {
+      "numista_id": "368766",
+      "country": "Belgium",
+      "year": 2023,
+      "name": "2 Euros - Philippe (Art Nouveau)",
+      "obverse": {
+        "path": "/ml/datasets/368766/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      },
+      "reverse": {
+        "path": "/ml/datasets/368766/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      }
+    },
+    {
+      "numista_id": "383352",
+      "country": "Belgium",
+      "year": 2023,
+      "name": "2 Euros - Philippe (Women's suffrage)",
+      "obverse": {
+        "path": "/ml/datasets/383352/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2600,
+        "height": 2600
+      },
+      "reverse": {
+        "path": "/ml/datasets/383352/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.4999,
+        "width": 2597,
+        "height": 2598
+      }
+    },
+    {
+      "numista_id": "395552",
+      "country": "Belgium",
+      "year": 2024,
+      "name": "2 Euros - Philippe (Presidency of the Council of the EU)",
+      "obverse": {
+        "path": "/ml/datasets/395552/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2592,
+        "height": 2592
+      },
+      "reverse": {
+        "path": "/ml/datasets/395552/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2592,
+        "height": 2592
+      }
+    },
+    {
+      "numista_id": "415044",
+      "country": "Belgium",
+      "year": 2024,
+      "name": "2 Euros - Philippe (Cancer)",
+      "obverse": {
+        "path": "/ml/datasets/415044/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2490,
+        "height": 2490
+      },
+      "reverse": {
+        "path": "/ml/datasets/415044/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2478,
+        "height": 2478
+      }
+    },
+    {
+      "numista_id": "451966",
+      "country": "Belgium",
+      "year": 2025,
+      "name": "2 Euro (Lottery)",
+      "obverse": {
+        "path": "/ml/datasets/451966/obverse.jpg",
+        "cx_uv": 0.49947,
+        "cy_uv": 0.49947,
+        "radius_uv": 0.49947,
+        "width": 942,
+        "height": 942
+      },
+      "reverse": {
+        "path": "/ml/datasets/451966/reverse.jpg",
+        "cx_uv": 0.49958,
+        "cy_uv": 0.49958,
+        "radius_uv": 0.49958,
+        "width": 1192,
+        "height": 1192
+      }
+    },
+    {
+      "numista_id": "477994",
+      "country": "Belgium",
+      "year": 2025,
+      "name": "2 Euros - (Spa-Francorchamps Circuit)",
+      "obverse": {
+        "path": "/ml/datasets/477994/obverse.jpg",
+        "cx_uv": 0.4997,
+        "cy_uv": 0.49969,
+        "radius_uv": 0.49728,
+        "width": 1653,
+        "height": 1637
+      },
+      "reverse": {
+        "path": "/ml/datasets/477994/reverse.jpg",
+        "cx_uv": 0.49928,
+        "cy_uv": 0.49927,
+        "radius_uv": 0.4971,
+        "width": 690,
+        "height": 684
+      }
+    },
+    {
+      "numista_id": "537216",
+      "country": "Bulgaria",
+      "year": 2026,
+      "name": "2 Euros",
+      "obverse": {
+        "path": "/ml/datasets/537216/obverse.jpg",
+        "cx_uv": 0.49973,
+        "cy_uv": 0.49973,
+        "radius_uv": 0.49465,
+        "width": 1869,
+        "height": 1831
+      },
+      "reverse": {
+        "path": "/ml/datasets/537216/reverse.jpg",
+        "cx_uv": 0.49972,
+        "cy_uv": 0.49971,
+        "radius_uv": 0.49042,
+        "width": 1801,
+        "height": 1734
+      }
+    },
+    {
+      "numista_id": "338339",
+      "country": "Croatia",
+      "year": 2023,
+      "name": "2 Euros (2nd map)",
+      "obverse": {
+        "path": "/ml/datasets/338339/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2490,
+        "height": 2490
+      },
+      "reverse": {
+        "path": "/ml/datasets/338339/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4999,
+        "width": 2499,
+        "height": 2500
+      }
+    },
+    {
+      "numista_id": "373926",
+      "country": "Croatia",
+      "year": 2023,
+      "name": "2 Euros (Member of the Euro Area)",
+      "obverse": {
+        "path": "/ml/datasets/373926/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      },
+      "reverse": {
+        "path": "/ml/datasets/373926/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      }
+    },
+    {
+      "numista_id": "400974",
+      "country": "Croatia",
+      "year": 2024,
+      "name": "2 Euros (Old Town of Varaždin)",
+      "obverse": {
+        "path": "/ml/datasets/400974/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2600,
+        "height": 2600
+      },
+      "reverse": {
+        "path": "/ml/datasets/400974/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2592,
+        "height": 2592
+      }
+    },
+    {
+      "numista_id": "437781",
+      "country": "Croatia",
+      "year": 2024,
+      "name": "2 Euros (Marko Marulić)",
+      "obverse": {
+        "path": "/ml/datasets/437781/obverse.jpg",
+        "cx_uv": 0.49977,
+        "cy_uv": 0.49977,
+        "radius_uv": 0.49977,
+        "width": 2196,
+        "height": 2196
+      },
+      "reverse": {
+        "path": "/ml/datasets/437781/reverse.jpg",
+        "cx_uv": 0.49977,
+        "cy_uv": 0.49977,
+        "radius_uv": 0.49977,
+        "width": 2200,
+        "height": 2200
+      }
+    },
+    {
+      "numista_id": "474230",
+      "country": "Croatia",
+      "year": 2025,
+      "name": "2 Euros (King Tomislav)",
+      "obverse": {
+        "path": "/ml/datasets/474230/obverse.jpg",
+        "cx_uv": 0.49977,
+        "cy_uv": 0.49977,
+        "radius_uv": 0.49977,
+        "width": 2200,
+        "height": 2200
+      },
+      "reverse": {
+        "path": "/ml/datasets/474230/reverse.jpg",
+        "cx_uv": 0.49977,
+        "cy_uv": 0.49977,
+        "radius_uv": 0.49977,
+        "width": 2200,
+        "height": 2200
+      }
+    },
+    {
+      "numista_id": "514512",
+      "country": "Croatia",
+      "year": 2025,
+      "name": "2 Euros (City of Pula)",
+      "obverse": {
+        "path": "/ml/datasets/514512/obverse.jpg",
+        "cx_uv": 0.49976,
+        "cy_uv": 0.49976,
+        "radius_uv": 0.49965,
+        "width": 2122,
+        "height": 2121
+      },
+      "reverse": {
+        "path": "/ml/datasets/514512/reverse.jpg",
+        "cx_uv": 0.49978,
+        "cy_uv": 0.49978,
+        "radius_uv": 0.49978,
+        "width": 2257,
+        "height": 2257
+      }
+    },
+    {
+      "numista_id": "2180",
+      "country": "Cyprus",
+      "year": 2008,
+      "name": "2 Euros",
+      "obverse": {
+        "path": "/ml/datasets/2180/obverse.jpg",
+        "cx_uv": 0.49951,
+        "cy_uv": 0.49951,
+        "radius_uv": 0.49951,
+        "width": 1024,
+        "height": 1024
+      },
+      "reverse": {
+        "path": "/ml/datasets/2180/reverse.jpg",
+        "cx_uv": 0.49951,
+        "cy_uv": 0.49951,
+        "radius_uv": 0.49951,
+        "width": 1024,
+        "height": 1024
+      }
+    },
+    {
+      "numista_id": "5060",
+      "country": "Cyprus",
+      "year": 2009,
+      "name": "2 Euros (Economic and Monetary Union)",
+      "obverse": {
+        "path": "/ml/datasets/5060/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2700,
+        "height": 2700
+      },
+      "reverse": {
+        "path": "/ml/datasets/5060/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2700,
+        "height": 2700
+      }
+    },
+    {
+      "numista_id": "28326",
+      "country": "Cyprus",
+      "year": 2012,
+      "name": "2 Euros (Euro Cash)",
+      "obverse": {
+        "path": "/ml/datasets/28326/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2700,
+        "height": 2700
+      },
+      "reverse": {
+        "path": "/ml/datasets/28326/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2700,
+        "height": 2700
+      }
+    },
+    {
+      "numista_id": "76633",
+      "country": "Cyprus",
+      "year": 2015,
+      "name": "2 Euros (European Union Flag)",
+      "obverse": {
+        "path": "/ml/datasets/76633/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2700,
+        "height": 2700
+      },
+      "reverse": {
+        "path": "/ml/datasets/76633/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2700,
+        "height": 2700
+      }
+    },
+    {
+      "numista_id": "112816",
+      "country": "Cyprus",
+      "year": 2017,
+      "name": "2 Euros (Paphos)",
+      "obverse": {
+        "path": "/ml/datasets/112816/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2682,
+        "height": 2682
+      },
+      "reverse": {
+        "path": "/ml/datasets/112816/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2700,
+        "height": 2700
+      }
+    },
+    {
+      "numista_id": "225688",
+      "country": "Cyprus",
+      "year": 2020,
+      "name": "2 Euros (Institute of Neurology and Genetics)",
+      "obverse": {
+        "path": "/ml/datasets/225688/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2676,
+        "height": 2676
+      },
+      "reverse": {
+        "path": "/ml/datasets/225688/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2700,
+        "height": 2700
+      }
+    },
+    {
+      "numista_id": "319134",
+      "country": "Cyprus",
+      "year": 2022,
+      "name": "2 Euros (Erasmus Programme)",
+      "obverse": {
+        "path": "/ml/datasets/319134/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2694,
+        "height": 2694
+      },
+      "reverse": {
+        "path": "/ml/datasets/319134/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2700,
+        "height": 2700
+      }
+    },
+    {
+      "numista_id": "431867",
+      "country": "Cyprus",
+      "year": 2024,
+      "name": "2 Euros (EU Membership)",
+      "obverse": {
+        "path": "/ml/datasets/431867/obverse.jpg",
+        "cx_uv": 0.49927,
+        "cy_uv": 0.49927,
+        "radius_uv": 0.4989,
+        "width": 682,
+        "height": 681
+      },
+      "reverse": {
+        "path": "/ml/datasets/431867/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2700,
+        "height": 2700
+      }
+    },
+    {
+      "numista_id": "16593",
+      "country": "Estonia",
+      "year": 2011,
+      "name": "2 Euros (2nd map)",
+      "obverse": {
+        "path": "/ml/datasets/16593/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2499,
+        "height": 2499
+      },
+      "reverse": {
+        "path": "/ml/datasets/16593/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      }
+    },
+    {
+      "numista_id": "28192",
+      "country": "Estonia",
+      "year": 2012,
+      "name": "2 Euros (10 Years of Euro Cash)",
+      "obverse": {
+        "path": "/ml/datasets/28192/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2676,
+        "height": 2676
+      },
+      "reverse": {
+        "path": "/ml/datasets/28192/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2592,
+        "height": 2592
+      }
+    },
+    {
+      "numista_id": "77306",
+      "country": "Estonia",
+      "year": 2015,
+      "name": "2 Euros (European Union Flag)",
+      "obverse": {
+        "path": "/ml/datasets/77306/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2682,
+        "height": 2682
+      },
+      "reverse": {
+        "path": "/ml/datasets/77306/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2700,
+        "height": 2700
+      }
+    },
+    {
+      "numista_id": "80919",
+      "country": "Estonia",
+      "year": 2016,
+      "name": "2 Euros (Paul Keres)",
+      "obverse": {
+        "path": "/ml/datasets/80919/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2700,
+        "height": 2700
+      },
+      "reverse": {
+        "path": "/ml/datasets/80919/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2592,
+        "height": 2592
+      }
+    },
+    {
+      "numista_id": "115286",
+      "country": "Estonia",
+      "year": 2017,
+      "name": "2 Euros (Road to Independence)",
+      "obverse": {
+        "path": "/ml/datasets/115286/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2682,
+        "height": 2682
+      },
+      "reverse": {
+        "path": "/ml/datasets/115286/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2700,
+        "height": 2700
+      }
+    },
+    {
+      "numista_id": "133760",
+      "country": "Estonia",
+      "year": 2018,
+      "name": "2 Euros (Independent Baltic States)",
+      "obverse": {
+        "path": "/ml/datasets/133760/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2694,
+        "height": 2694
+      },
+      "reverse": {
+        "path": "/ml/datasets/133760/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2682,
+        "height": 2682
+      }
+    },
+    {
+      "numista_id": "134284",
+      "country": "Estonia",
+      "year": 2018,
+      "name": "2 Euros (Independence of Estonia)",
+      "obverse": {
+        "path": "/ml/datasets/134284/obverse.jpg",
+        "cx_uv": 0.49938,
+        "cy_uv": 0.49938,
+        "radius_uv": 0.49875,
+        "width": 802,
+        "height": 800
+      },
+      "reverse": {
+        "path": "/ml/datasets/134284/reverse.jpg",
+        "cx_uv": 0.49938,
+        "cy_uv": 0.49938,
+        "radius_uv": 0.49938,
+        "width": 800,
+        "height": 800
+      }
+    },
+    {
+      "numista_id": "168218",
+      "country": "Estonia",
+      "year": 2019,
+      "name": "2 Euros (Festival of the Song of Estonia)",
+      "obverse": {
+        "path": "/ml/datasets/168218/obverse.jpg",
+        "cx_uv": 0.49938,
+        "cy_uv": 0.49938,
+        "radius_uv": 0.49906,
+        "width": 801,
+        "height": 800
+      },
+      "reverse": {
+        "path": "/ml/datasets/168218/reverse.jpg",
+        "cx_uv": 0.49938,
+        "cy_uv": 0.49938,
+        "radius_uv": 0.49938,
+        "width": 800,
+        "height": 800
+      }
+    },
+    {
+      "numista_id": "183116",
+      "country": "Estonia",
+      "year": 2019,
+      "name": "2 Euros (University of Tartu)",
+      "obverse": {
+        "path": "/ml/datasets/183116/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2700,
+        "height": 2700
+      },
+      "reverse": {
+        "path": "/ml/datasets/183116/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2682,
+        "height": 2682
+      }
+    },
+    {
+      "numista_id": "193396",
+      "country": "Estonia",
+      "year": 2020,
+      "name": "2 Euros (Discovery of Antarctica)",
+      "obverse": {
+        "path": "/ml/datasets/193396/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2688,
+        "height": 2688
+      },
+      "reverse": {
+        "path": "/ml/datasets/193396/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2592,
+        "height": 2592
+      }
+    },
+    {
+      "numista_id": "275664",
+      "country": "Estonia",
+      "year": 2021,
+      "name": "2 Euros (Wolf)",
+      "obverse": {
+        "path": "/ml/datasets/275664/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2597,
+        "height": 2597
+      },
+      "reverse": {
+        "path": "/ml/datasets/275664/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2597,
+        "height": 2597
+      }
+    },
+    {
+      "numista_id": "287622",
+      "country": "Estonia",
+      "year": 2021,
+      "name": "2 Euros (Finno-Ugric people)",
+      "obverse": {
+        "path": "/ml/datasets/287622/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2700,
+        "height": 2700
+      },
+      "reverse": {
+        "path": "/ml/datasets/287622/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2700,
+        "height": 2700
+      }
+    },
+    {
+      "numista_id": "321860",
+      "country": "Estonia",
+      "year": 2022,
+      "name": "2 Euros (Society of Estonian Literaty)",
+      "obverse": {
+        "path": "/ml/datasets/321860/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2694,
+        "height": 2694
+      },
+      "reverse": {
+        "path": "/ml/datasets/321860/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2700,
+        "height": 2700
+      }
+    },
+    {
+      "numista_id": "331415",
+      "country": "Estonia",
+      "year": 2022,
+      "name": "2 Euros (Erasmus Programme)",
+      "obverse": {
+        "path": "/ml/datasets/331415/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2694,
+        "height": 2694
+      },
+      "reverse": {
+        "path": "/ml/datasets/331415/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2592,
+        "height": 2592
+      }
+    },
+    {
+      "numista_id": "332623",
+      "country": "Estonia",
+      "year": 2022,
+      "name": "2 Euros (For Ukraine)",
+      "obverse": {
+        "path": "/ml/datasets/332623/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2682,
+        "height": 2682
+      },
+      "reverse": {
+        "path": "/ml/datasets/332623/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2700,
+        "height": 2700
+      }
+    },
+    {
+      "numista_id": "364450",
+      "country": "Estonia",
+      "year": 2023,
+      "name": "2 Euros (Barn Swallow)",
+      "obverse": {
+        "path": "/ml/datasets/364450/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2700,
+        "height": 2700
+      },
+      "reverse": {
+        "path": "/ml/datasets/364450/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2682,
+        "height": 2682
+      }
+    },
+    {
+      "numista_id": "415214",
+      "country": "Estonia",
+      "year": 2024,
+      "name": "2 Euros (Cornflower)",
+      "obverse": {
+        "path": "/ml/datasets/415214/obverse.jpg",
+        "cx_uv": 0.49979,
+        "cy_uv": 0.49979,
+        "radius_uv": 0.4962,
+        "width": 2435,
+        "height": 2400
+      },
+      "reverse": {
+        "path": "/ml/datasets/415214/reverse.jpg",
+        "cx_uv": 0.49979,
+        "cy_uv": 0.49979,
+        "radius_uv": 0.4959,
+        "width": 2438,
+        "height": 2400
+      }
+    },
+    {
+      "numista_id": "451746",
+      "country": "Estonia",
+      "year": 2025,
+      "name": "2 Euros (Book)",
+      "obverse": {
+        "path": "/ml/datasets/451746/obverse.jpg",
+        "cx_uv": 0.49977,
+        "cy_uv": 0.49977,
+        "radius_uv": 0.49977,
+        "width": 2200,
+        "height": 2200
+      },
+      "reverse": {
+        "path": "/ml/datasets/451746/reverse.jpg",
+        "cx_uv": 0.49977,
+        "cy_uv": 0.49977,
+        "radius_uv": 0.49977,
+        "width": 2200,
+        "height": 2200
+      }
+    },
+    {
+      "numista_id": "96",
+      "country": "Finland",
+      "year": 1999,
+      "name": "2 Euros (1st type, 1st map)",
+      "obverse": {
+        "path": "/ml/datasets/96/obverse.jpg",
+        "cx_uv": 0.49971,
+        "cy_uv": 0.49971,
+        "radius_uv": 0.49971,
+        "width": 1696,
+        "height": 1696
+      },
+      "reverse": {
+        "path": "/ml/datasets/96/reverse.jpg",
+        "cx_uv": 0.49968,
+        "cy_uv": 0.49968,
+        "radius_uv": 0.49968,
+        "width": 1548,
+        "height": 1548
+      }
+    },
+    {
+      "numista_id": "2189",
+      "country": "Finland",
+      "year": 2004,
+      "name": "2 Euros (Enlargement of the European Union)",
+      "obverse": {
+        "path": "/ml/datasets/2189/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2496,
+        "height": 2496
+      },
+      "reverse": {
+        "path": "/ml/datasets/2189/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2600,
+        "height": 2600
+      }
+    },
+    {
+      "numista_id": "2194",
+      "country": "Finland",
+      "year": 2005,
+      "name": "2 Euros (60th Anniversary - Finland in UN)",
+      "obverse": {
+        "path": "/ml/datasets/2194/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2674,
+        "height": 2674
+      },
+      "reverse": {
+        "path": "/ml/datasets/2194/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2692,
+        "height": 2692
+      }
+    },
+    {
+      "numista_id": "2198",
+      "country": "Finland",
+      "year": 2006,
+      "name": "2 Euros (Universal Suffrage)",
+      "obverse": {
+        "path": "/ml/datasets/2198/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2496,
+        "height": 2496
+      },
+      "reverse": {
+        "path": "/ml/datasets/2198/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      }
+    },
+    {
+      "numista_id": "259433",
+      "country": "Finland",
+      "year": 2006,
+      "name": "2 Euros (1st Type, 2nd Map; Mule)",
+      "obverse": {
+        "path": "/ml/datasets/259433/obverse.jpg",
+        "cx_uv": 0.49971,
+        "cy_uv": 0.49971,
+        "radius_uv": 0.49971,
+        "width": 1696,
+        "height": 1696
+      },
+      "reverse": {
+        "path": "/ml/datasets/259433/reverse.jpg",
+        "cx_uv": 0.49968,
+        "cy_uv": 0.49968,
+        "radius_uv": 0.49968,
+        "width": 1544,
+        "height": 1544
+      }
+    },
+    {
+      "numista_id": "2203",
+      "country": "Finland",
+      "year": 2007,
+      "name": "2 Euros (Independence)",
+      "obverse": {
+        "path": "/ml/datasets/2203/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      },
+      "reverse": {
+        "path": "/ml/datasets/2203/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2496,
+        "height": 2496
+      }
+    },
+    {
+      "numista_id": "2205",
+      "country": "Finland",
+      "year": 2007,
+      "name": "2 Euros (Treaty of Rome)",
+      "obverse": {
+        "path": "/ml/datasets/2205/obverse.jpg",
+        "cx_uv": 0.49916,
+        "cy_uv": 0.49915,
+        "radius_uv": 0.49706,
+        "width": 596,
+        "height": 591
+      },
+      "reverse": {
+        "path": "/ml/datasets/2205/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2496,
+        "height": 2496
+      }
+    },
+    {
+      "numista_id": "8714",
+      "country": "Finland",
+      "year": 2007,
+      "name": "2 Euros (2nd type, 2nd map)",
+      "obverse": {
+        "path": "/ml/datasets/8714/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2688,
+        "height": 2688
+      },
+      "reverse": {
+        "path": "/ml/datasets/8714/reverse.jpg",
+        "cx_uv": 0.49968,
+        "cy_uv": 0.49968,
+        "radius_uv": 0.49968,
+        "width": 1544,
+        "height": 1544
+      }
+    },
+    {
+      "numista_id": "4292",
+      "country": "Finland",
+      "year": 2008,
+      "name": "2 Euros (Declaration of Human Rights)",
+      "obverse": {
+        "path": "/ml/datasets/4292/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      },
+      "reverse": {
+        "path": "/ml/datasets/4292/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2496,
+        "height": 2496
+      }
+    },
+    {
+      "numista_id": "5062",
+      "country": "Finland",
+      "year": 2009,
+      "name": "2 Euros (Economic and Monetary Union)",
+      "obverse": {
+        "path": "/ml/datasets/5062/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2484,
+        "height": 2484
+      },
+      "reverse": {
+        "path": "/ml/datasets/5062/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2496,
+        "height": 2496
+      }
+    },
+    {
+      "numista_id": "9174",
+      "country": "Finland",
+      "year": 2009,
+      "name": "2 Euros (Autonomy)",
+      "obverse": {
+        "path": "/ml/datasets/9174/obverse.jpg",
+        "cx_uv": 0.49979,
+        "cy_uv": 0.49979,
+        "radius_uv": 0.49979,
+        "width": 2400,
+        "height": 2400
+      },
+      "reverse": {
+        "path": "/ml/datasets/9174/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2496,
+        "height": 2496
+      }
+    },
+    {
+      "numista_id": "16111",
+      "country": "Finland",
+      "year": 2010,
+      "name": "2 Euros (Rahapaja - Mark)",
+      "obverse": {
+        "path": "/ml/datasets/16111/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2490,
+        "height": 2490
+      },
+      "reverse": {
+        "path": "/ml/datasets/16111/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2496,
+        "height": 2496
+      }
+    },
+    {
+      "numista_id": "26165",
+      "country": "Finland",
+      "year": 2011,
+      "name": "2 Euros (Finland National Bank)",
+      "obverse": {
+        "path": "/ml/datasets/26165/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2490,
+        "height": 2490
+      },
+      "reverse": {
+        "path": "/ml/datasets/26165/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2496,
+        "height": 2496
+      }
+    },
+    {
+      "numista_id": "28328",
+      "country": "Finland",
+      "year": 2012,
+      "name": "2 Euros (10 Years of Euro Cash)",
+      "obverse": {
+        "path": "/ml/datasets/28328/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2490,
+        "height": 2490
+      },
+      "reverse": {
+        "path": "/ml/datasets/28328/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2496,
+        "height": 2496
+      }
+    },
+    {
+      "numista_id": "38356",
+      "country": "Finland",
+      "year": 2012,
+      "name": "2 Euros (Helene Schjerfbeck)",
+      "obverse": {
+        "path": "/ml/datasets/38356/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2496,
+        "height": 2496
+      },
+      "reverse": {
+        "path": "/ml/datasets/38356/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2496,
+        "height": 2496
+      }
+    },
+    {
+      "numista_id": "48329",
+      "country": "Finland",
+      "year": 2013,
+      "name": "2 Euros (Parliament)",
+      "obverse": {
+        "path": "/ml/datasets/48329/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2484,
+        "height": 2484
+      },
+      "reverse": {
+        "path": "/ml/datasets/48329/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2496,
+        "height": 2496
+      }
+    },
+    {
+      "numista_id": "51670",
+      "country": "Finland",
+      "year": 2013,
+      "name": "2 Euros (Frans Eemil Sillanpää)",
+      "obverse": {
+        "path": "/ml/datasets/51670/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      },
+      "reverse": {
+        "path": "/ml/datasets/51670/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2496,
+        "height": 2496
+      }
+    },
+    {
+      "numista_id": "61715",
+      "country": "Finland",
+      "year": 2014,
+      "name": "2 Euros (Tove Jansson)",
+      "obverse": {
+        "path": "/ml/datasets/61715/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2490,
+        "height": 2490
+      },
+      "reverse": {
+        "path": "/ml/datasets/61715/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2496,
+        "height": 2496
+      }
+    },
+    {
+      "numista_id": "66921",
+      "country": "Finland",
+      "year": 2014,
+      "name": "2 Euros (Ilmari Tapiovaara)",
+      "obverse": {
+        "path": "/ml/datasets/66921/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2496,
+        "height": 2496
+      },
+      "reverse": {
+        "path": "/ml/datasets/66921/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2496,
+        "height": 2496
+      }
+    },
+    {
+      "numista_id": "69852",
+      "country": "Finland",
+      "year": 2015,
+      "name": "2 Euros (Jean Sibelius)",
+      "obverse": {
+        "path": "/ml/datasets/69852/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2496,
+        "height": 2496
+      },
+      "reverse": {
+        "path": "/ml/datasets/69852/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2496,
+        "height": 2496
+      }
+    },
+    {
+      "numista_id": "74920",
+      "country": "Finland",
+      "year": 2015,
+      "name": "2 Euros (European Union Flag)",
+      "obverse": {
+        "path": "/ml/datasets/74920/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      },
+      "reverse": {
+        "path": "/ml/datasets/74920/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2496,
+        "height": 2496
+      }
+    },
+    {
+      "numista_id": "77165",
+      "country": "Finland",
+      "year": 2015,
+      "name": "2 Euros (Akseli Gallen-Kallela)",
+      "obverse": {
+        "path": "/ml/datasets/77165/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2496,
+        "height": 2496
+      },
+      "reverse": {
+        "path": "/ml/datasets/77165/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2496,
+        "height": 2496
+      }
+    },
+    {
+      "numista_id": "86837",
+      "country": "Finland",
+      "year": 2016,
+      "name": "2 Euros (Eino Leino)",
+      "obverse": {
+        "path": "/ml/datasets/86837/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2478,
+        "height": 2478
+      },
+      "reverse": {
+        "path": "/ml/datasets/86837/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2496,
+        "height": 2496
+      }
+    },
+    {
+      "numista_id": "93999",
+      "country": "Finland",
+      "year": 2016,
+      "name": "2 Euros (Georg Henrik von Wright)",
+      "obverse": {
+        "path": "/ml/datasets/93999/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2496,
+        "height": 2496
+      },
+      "reverse": {
+        "path": "/ml/datasets/93999/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2490,
+        "height": 2490
+      }
+    },
+    {
+      "numista_id": "113429",
+      "country": "Finland",
+      "year": 2017,
+      "name": "2 Euros (Independence)",
+      "obverse": {
+        "path": "/ml/datasets/113429/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      },
+      "reverse": {
+        "path": "/ml/datasets/113429/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2490,
+        "height": 2490
+      }
+    },
+    {
+      "numista_id": "124447",
+      "country": "Finland",
+      "year": 2017,
+      "name": "2 Euros (Finnish Nature)",
+      "obverse": {
+        "path": "/ml/datasets/124447/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      },
+      "reverse": {
+        "path": "/ml/datasets/124447/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2490,
+        "height": 2490
+      }
+    },
+    {
+      "numista_id": "141243",
+      "country": "Finland",
+      "year": 2018,
+      "name": "2 Euros (Landscape Koli)",
+      "obverse": {
+        "path": "/ml/datasets/141243/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      },
+      "reverse": {
+        "path": "/ml/datasets/141243/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2490,
+        "height": 2490
+      }
+    },
+    {
+      "numista_id": "143884",
+      "country": "Finland",
+      "year": 2018,
+      "name": "2 Euros (Finnish Sauna Culture)",
+      "obverse": {
+        "path": "/ml/datasets/143884/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2496,
+        "height": 2496
+      },
+      "reverse": {
+        "path": "/ml/datasets/143884/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2490,
+        "height": 2490
+      }
+    },
+    {
+      "numista_id": "182638",
+      "country": "Finland",
+      "year": 2019,
+      "name": "2 Euros (Constitution Act of Finland)",
+      "obverse": {
+        "path": "/ml/datasets/182638/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      },
+      "reverse": {
+        "path": "/ml/datasets/182638/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2490,
+        "height": 2490
+      }
+    },
+    {
+      "numista_id": "220248",
+      "country": "Finland",
+      "year": 2020,
+      "name": "2 Euros (University of Turku)",
+      "obverse": {
+        "path": "/ml/datasets/220248/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      },
+      "reverse": {
+        "path": "/ml/datasets/220248/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2490,
+        "height": 2490
+      }
+    },
+    {
+      "numista_id": "241918",
+      "country": "Finland",
+      "year": 2020,
+      "name": "2 Euros (Väinö Linna)",
+      "obverse": {
+        "path": "/ml/datasets/241918/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      },
+      "reverse": {
+        "path": "/ml/datasets/241918/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2490,
+        "height": 2490
+      }
+    },
+    {
+      "numista_id": "280491",
+      "country": "Finland",
+      "year": 2021,
+      "name": "2 Euros (Journalism)",
+      "obverse": {
+        "path": "/ml/datasets/280491/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      },
+      "reverse": {
+        "path": "/ml/datasets/280491/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2490,
+        "height": 2490
+      }
+    },
+    {
+      "numista_id": "284816",
+      "country": "Finland",
+      "year": 2021,
+      "name": "2 Euros (Autonomy of the Åland Islands)",
+      "obverse": {
+        "path": "/ml/datasets/284816/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      },
+      "reverse": {
+        "path": "/ml/datasets/284816/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2490,
+        "height": 2490
+      }
+    },
+    {
+      "numista_id": "318763",
+      "country": "Finland",
+      "year": 2022,
+      "name": "2 Euros (Ballet)",
+      "obverse": {
+        "path": "/ml/datasets/318763/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      },
+      "reverse": {
+        "path": "/ml/datasets/318763/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2490,
+        "height": 2490
+      }
+    },
+    {
+      "numista_id": "331204",
+      "country": "Finland",
+      "year": 2022,
+      "name": "2 Euros (Erasmus Programme)",
+      "obverse": {
+        "path": "/ml/datasets/331204/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2496,
+        "height": 2496
+      },
+      "reverse": {
+        "path": "/ml/datasets/331204/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2490,
+        "height": 2490
+      }
+    },
+    {
+      "numista_id": "341111",
+      "country": "Finland",
+      "year": 2022,
+      "name": "2 Euros (Climate Research)",
+      "obverse": {
+        "path": "/ml/datasets/341111/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2490,
+        "height": 2490
+      },
+      "reverse": {
+        "path": "/ml/datasets/341111/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2490,
+        "height": 2490
+      }
+    },
+    {
+      "numista_id": "353329",
+      "country": "Finland",
+      "year": 2023,
+      "name": "2 Euros (First Finnish Nature Conservation Act)",
+      "obverse": {
+        "path": "/ml/datasets/353329/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2490,
+        "height": 2490
+      },
+      "reverse": {
+        "path": "/ml/datasets/353329/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2490,
+        "height": 2490
+      }
+    },
+    {
+      "numista_id": "371497",
+      "country": "Finland",
+      "year": 2023,
+      "name": "2 Euros (Social and Health Services)",
+      "obverse": {
+        "path": "/ml/datasets/371497/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2496,
+        "height": 2496
+      },
+      "reverse": {
+        "path": "/ml/datasets/371497/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2490,
+        "height": 2490
+      }
+    },
+    {
+      "numista_id": "401377",
+      "country": "Finland",
+      "year": 2024,
+      "name": "2 Euros (Elections and Democracy)",
+      "obverse": {
+        "path": "/ml/datasets/401377/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2484,
+        "height": 2484
+      },
+      "reverse": {
+        "path": "/ml/datasets/401377/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2478,
+        "height": 2478
+      }
+    },
+    {
+      "numista_id": "432150",
+      "country": "Finland",
+      "year": 2024,
+      "name": "2 Euros (Finnish architecture)",
+      "obverse": {
+        "path": "/ml/datasets/432150/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      },
+      "reverse": {
+        "path": "/ml/datasets/432150/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2478,
+        "height": 2478
+      }
+    },
+    {
+      "numista_id": "467198",
+      "country": "Finland",
+      "year": 2025,
+      "name": "2 Euros (Diplomacy and Foreign Policy)",
+      "obverse": {
+        "path": "/ml/datasets/467198/obverse.jpg",
+        "cx_uv": 0.49965,
+        "cy_uv": 0.49965,
+        "radius_uv": 0.49757,
+        "width": 1440,
+        "height": 1428
+      },
+      "reverse": {
+        "path": "/ml/datasets/467198/reverse.jpg",
+        "cx_uv": 0.49958,
+        "cy_uv": 0.49958,
+        "radius_uv": 0.49958,
+        "width": 1192,
+        "height": 1192
+      }
+    },
+    {
+      "numista_id": "481105",
+      "country": "Finland",
+      "year": 2025,
+      "name": "2 Euro (Finland-Sweden Athletics International 100 years)",
+      "obverse": {
+        "path": "/ml/datasets/481105/obverse.jpg",
+        "cx_uv": 0.49945,
+        "cy_uv": 0.49945,
+        "radius_uv": 0.50055,
+        "width": 913,
+        "height": 917
+      },
+      "reverse": {
+        "path": "/ml/datasets/481105/reverse.jpg",
+        "cx_uv": 0.49924,
+        "cy_uv": 0.49924,
+        "radius_uv": 0.50114,
+        "width": 656,
+        "height": 661
+      }
+    },
+    {
+      "numista_id": "104",
+      "country": "France",
+      "year": 1999,
+      "name": "2 Euros (1st map)",
+      "obverse": {
+        "path": "/ml/datasets/104/obverse.jpg",
+        "cx_uv": 0.49971,
+        "cy_uv": 0.49971,
+        "radius_uv": 0.49971,
+        "width": 1696,
+        "height": 1696
+      },
+      "reverse": {
+        "path": "/ml/datasets/104/reverse.jpg",
+        "cx_uv": 0.49968,
+        "cy_uv": 0.49968,
+        "radius_uv": 0.49968,
+        "width": 1548,
+        "height": 1548
+      }
+    },
+    {
+      "numista_id": "2161",
+      "country": "France",
+      "year": 2007,
+      "name": "2 Euros (Treaty of Rome)",
+      "obverse": {
+        "path": "/ml/datasets/2161/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2496,
+        "height": 2496
+      },
+      "reverse": {
+        "path": "/ml/datasets/2161/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2490,
+        "height": 2490
+      }
+    },
+    {
+      "numista_id": "6376",
+      "country": "France",
+      "year": 2007,
+      "name": "2 Euros (2nd map)",
+      "obverse": {
+        "path": "/ml/datasets/6376/obverse.jpg",
+        "cx_uv": 0.4997,
+        "cy_uv": 0.4997,
+        "radius_uv": 0.4997,
+        "width": 1680,
+        "height": 1680
+      },
+      "reverse": {
+        "path": "/ml/datasets/6376/reverse.jpg",
+        "cx_uv": 0.49968,
+        "cy_uv": 0.49968,
+        "radius_uv": 0.49968,
+        "width": 1544,
+        "height": 1544
+      }
+    },
+    {
+      "numista_id": "3561",
+      "country": "France",
+      "year": 2008,
+      "name": "2 Euros (French Presidency of the European Union)",
+      "obverse": {
+        "path": "/ml/datasets/3561/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2490,
+        "height": 2490
+      },
+      "reverse": {
+        "path": "/ml/datasets/3561/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      }
+    },
+    {
+      "numista_id": "183033",
+      "country": "France",
+      "year": 2008,
+      "name": "2 Euros (French Presidency of the EU; coloured)",
+      "obverse": {
+        "path": "/ml/datasets/183033/obverse.jpg",
+        "cx_uv": 0.49878,
+        "cy_uv": 0.49876,
+        "radius_uv": 0.49451,
+        "width": 410,
+        "height": 403
+      },
+      "reverse": {
+        "path": "/ml/datasets/183033/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      }
+    },
+    {
+      "numista_id": "5063",
+      "country": "France",
+      "year": 2009,
+      "name": "2 Euros (Economic and Monetary Union)",
+      "obverse": {
+        "path": "/ml/datasets/5063/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2490,
+        "height": 2490
+      },
+      "reverse": {
+        "path": "/ml/datasets/5063/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      }
+    },
+    {
+      "numista_id": "11526",
+      "country": "France",
+      "year": 2010,
+      "name": "2 Euros (Speech of June 18th 1940)",
+      "obverse": {
+        "path": "/ml/datasets/11526/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2496,
+        "height": 2496
+      },
+      "reverse": {
+        "path": "/ml/datasets/11526/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      }
+    },
+    {
+      "numista_id": "22431",
+      "country": "France",
+      "year": 2011,
+      "name": "2 Euros (Music Day)",
+      "obverse": {
+        "path": "/ml/datasets/22431/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      },
+      "reverse": {
+        "path": "/ml/datasets/22431/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      }
+    },
+    {
+      "numista_id": "28330",
+      "country": "France",
+      "year": 2012,
+      "name": "2 Euros (10 Years of Euro Cash)",
+      "obverse": {
+        "path": "/ml/datasets/28330/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      },
+      "reverse": {
+        "path": "/ml/datasets/28330/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      }
+    },
+    {
+      "numista_id": "35856",
+      "country": "France",
+      "year": 2012,
+      "name": "2 Euros (Birth of Abbé Pierre)",
+      "obverse": {
+        "path": "/ml/datasets/35856/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2496,
+        "height": 2496
+      },
+      "reverse": {
+        "path": "/ml/datasets/35856/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      }
+    },
+    {
+      "numista_id": "41904",
+      "country": "France",
+      "year": 2013,
+      "name": "2 Euros (Élysée Treaty)",
+      "obverse": {
+        "path": "/ml/datasets/41904/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2496,
+        "height": 2496
+      },
+      "reverse": {
+        "path": "/ml/datasets/41904/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      }
+    },
+    {
+      "numista_id": "45827",
+      "country": "France",
+      "year": 2013,
+      "name": "2 Euros (Pierre de Coubertin)",
+      "obverse": {
+        "path": "/ml/datasets/45827/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      },
+      "reverse": {
+        "path": "/ml/datasets/45827/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      }
+    },
+    {
+      "numista_id": "60800",
+      "country": "France",
+      "year": 2014,
+      "name": "2 Euros (D-Day)",
+      "obverse": {
+        "path": "/ml/datasets/60800/obverse.jpg",
+        "cx_uv": 0.49978,
+        "cy_uv": 0.49978,
+        "radius_uv": 0.49978,
+        "width": 2298,
+        "height": 2298
+      },
+      "reverse": {
+        "path": "/ml/datasets/60800/reverse.jpg",
+        "cx_uv": 0.49978,
+        "cy_uv": 0.49978,
+        "radius_uv": 0.49978,
+        "width": 2300,
+        "height": 2300
+      }
+    },
+    {
+      "numista_id": "67264",
+      "country": "France",
+      "year": 2014,
+      "name": "2 Euros (World AIDS Day)",
+      "obverse": {
+        "path": "/ml/datasets/67264/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2496,
+        "height": 2496
+      },
+      "reverse": {
+        "path": "/ml/datasets/67264/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2490,
+        "height": 2490
+      }
+    },
+    {
+      "numista_id": "67424",
+      "country": "France",
+      "year": 2014,
+      "name": "2 Euros (World AIDS Day; Coloured)",
+      "obverse": {
+        "path": "/ml/datasets/67424/obverse.jpg",
+        "cx_uv": 0.4995,
+        "cy_uv": 0.4995,
+        "radius_uv": 0.4995,
+        "width": 1000,
+        "height": 1000
+      },
+      "reverse": {
+        "path": "/ml/datasets/67424/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2496,
+        "height": 2496
+      }
+    },
+    {
+      "numista_id": "69366",
+      "country": "France",
+      "year": 2015,
+      "name": "2 Euros (Peace)",
+      "obverse": {
+        "path": "/ml/datasets/69366/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      },
+      "reverse": {
+        "path": "/ml/datasets/69366/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2490,
+        "height": 2490
+      }
+    },
+    {
+      "numista_id": "74223",
+      "country": "France",
+      "year": 2015,
+      "name": "2 Euros (Festival of the Federation)",
+      "obverse": {
+        "path": "/ml/datasets/74223/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      },
+      "reverse": {
+        "path": "/ml/datasets/74223/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      }
+    },
+    {
+      "numista_id": "76635",
+      "country": "France",
+      "year": 2015,
+      "name": "2 Euros (30 Years of European Union Flag)",
+      "obverse": {
+        "path": "/ml/datasets/76635/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4999,
+        "width": 2499,
+        "height": 2500
+      },
+      "reverse": {
+        "path": "/ml/datasets/76635/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      }
+    },
+    {
+      "numista_id": "77126",
+      "country": "France",
+      "year": 2015,
+      "name": "2 Euros (Festival of the Federation; Coloured)",
+      "obverse": {
+        "path": "/ml/datasets/77126/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2700,
+        "height": 2700
+      },
+      "reverse": {
+        "path": "/ml/datasets/77126/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2700,
+        "height": 2700
+      }
+    },
+    {
+      "numista_id": "78890",
+      "country": "France",
+      "year": 2015,
+      "name": "2 Euros (30 Years of European Union Flag; Coloured)",
+      "obverse": {
+        "path": "/ml/datasets/78890/obverse.jpg",
+        "cx_uv": 0.49916,
+        "cy_uv": 0.49917,
+        "radius_uv": 0.5021,
+        "width": 596,
+        "height": 603
+      },
+      "reverse": {
+        "path": "/ml/datasets/78890/reverse.jpg",
+        "cx_uv": 0.49921,
+        "cy_uv": 0.49921,
+        "radius_uv": 0.49921,
+        "width": 631,
+        "height": 631
+      }
+    },
+    {
+      "numista_id": "82237",
+      "country": "France",
+      "year": 2016,
+      "name": "2 Euros (EURO 2016 Football Championship)",
+      "obverse": {
+        "path": "/ml/datasets/82237/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      },
+      "reverse": {
+        "path": "/ml/datasets/82237/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      }
+    },
+    {
+      "numista_id": "91431",
+      "country": "France",
+      "year": 2016,
+      "name": "2 Euros (François Mitterrand)",
+      "obverse": {
+        "path": "/ml/datasets/91431/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      },
+      "reverse": {
+        "path": "/ml/datasets/91431/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      }
+    },
+    {
+      "numista_id": "102697",
+      "country": "France",
+      "year": 2017,
+      "name": "2 Euros (Auguste Rodin)",
+      "obverse": {
+        "path": "/ml/datasets/102697/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      },
+      "reverse": {
+        "path": "/ml/datasets/102697/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      }
+    },
+    {
+      "numista_id": "122799",
+      "country": "France",
+      "year": 2017,
+      "name": "2 Euros (Pink ribbon)",
+      "obverse": {
+        "path": "/ml/datasets/122799/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2496,
+        "height": 2496
+      },
+      "reverse": {
+        "path": "/ml/datasets/122799/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      }
+    },
+    {
+      "numista_id": "124498",
+      "country": "France",
+      "year": 2017,
+      "name": "2 Euros (Pink Ribbon; Coloured)",
+      "obverse": {
+        "path": "/ml/datasets/124498/obverse.jpg",
+        "cx_uv": 0.4989,
+        "cy_uv": 0.4989,
+        "radius_uv": 0.49835,
+        "width": 455,
+        "height": 454
+      },
+      "reverse": {
+        "path": "/ml/datasets/124498/reverse.jpg",
+        "cx_uv": 0.4989,
+        "cy_uv": 0.4989,
+        "radius_uv": 0.49781,
+        "width": 456,
+        "height": 454
+      }
+    },
+    {
+      "numista_id": "134283",
+      "country": "France",
+      "year": 2018,
+      "name": "2 Euros (Bleuet de France; Coloured)",
+      "obverse": {
+        "path": "/ml/datasets/134283/obverse.jpg",
+        "cx_uv": 0.49959,
+        "cy_uv": 0.49959,
+        "radius_uv": 0.5,
+        "width": 1213,
+        "height": 1215
+      },
+      "reverse": {
+        "path": "/ml/datasets/134283/reverse.jpg",
+        "cx_uv": 0.49959,
+        "cy_uv": 0.49959,
+        "radius_uv": 0.50103,
+        "width": 1214,
+        "height": 1221
+      }
+    },
+    {
+      "numista_id": "134685",
+      "country": "France",
+      "year": 2018,
+      "name": "2 Euros (Bleuet de France)",
+      "obverse": {
+        "path": "/ml/datasets/134685/obverse.jpg",
+        "cx_uv": 0.49938,
+        "cy_uv": 0.49938,
+        "radius_uv": 0.49906,
+        "width": 801,
+        "height": 800
+      },
+      "reverse": {
+        "path": "/ml/datasets/134685/reverse.jpg",
+        "cx_uv": 0.49938,
+        "cy_uv": 0.49938,
+        "radius_uv": 0.49938,
+        "width": 800,
+        "height": 800
+      }
+    },
+    {
+      "numista_id": "141382",
+      "country": "France",
+      "year": 2018,
+      "name": "2 Euros (Simone Veil)",
+      "obverse": {
+        "path": "/ml/datasets/141382/obverse.jpg",
+        "cx_uv": 0.49938,
+        "cy_uv": 0.49938,
+        "radius_uv": 0.49906,
+        "width": 801,
+        "height": 800
+      },
+      "reverse": {
+        "path": "/ml/datasets/141382/reverse.jpg",
+        "cx_uv": 0.49938,
+        "cy_uv": 0.49938,
+        "radius_uv": 0.49938,
+        "width": 800,
+        "height": 800
+      }
+    },
+    {
+      "numista_id": "160246",
+      "country": "France",
+      "year": 2019,
+      "name": "2 Euros (Berlin Wall)",
+      "obverse": {
+        "path": "/ml/datasets/160246/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2490,
+        "height": 2490
+      },
+      "reverse": {
+        "path": "/ml/datasets/160246/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      }
+    },
+    {
+      "numista_id": "167978",
+      "country": "France",
+      "year": 2019,
+      "name": "2 Euros (Astérix)",
+      "obverse": {
+        "path": "/ml/datasets/167978/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2490,
+        "height": 2490
+      },
+      "reverse": {
+        "path": "/ml/datasets/167978/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      }
+    },
+    {
+      "numista_id": "192990",
+      "country": "France",
+      "year": 2020,
+      "name": "2 Euros (General Charles de Gaulle)",
+      "obverse": {
+        "path": "/ml/datasets/192990/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2484,
+        "height": 2484
+      },
+      "reverse": {
+        "path": "/ml/datasets/192990/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      }
+    },
+    {
+      "numista_id": "239405",
+      "country": "France",
+      "year": 2020,
+      "name": "2 Euros (Medical Research)",
+      "obverse": {
+        "path": "/ml/datasets/239405/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2496,
+        "height": 2496
+      },
+      "reverse": {
+        "path": "/ml/datasets/239405/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      }
+    },
+    {
+      "numista_id": "275891",
+      "country": "France",
+      "year": 2021,
+      "name": "2 Euros (UNICEF)",
+      "obverse": {
+        "path": "/ml/datasets/275891/obverse.jpg",
+        "cx_uv": 0.49961,
+        "cy_uv": 0.49961,
+        "radius_uv": 0.5,
+        "width": 1291,
+        "height": 1293
+      },
+      "reverse": {
+        "path": "/ml/datasets/275891/reverse.jpg",
+        "cx_uv": 0.49962,
+        "cy_uv": 0.49962,
+        "radius_uv": 0.49905,
+        "width": 1316,
+        "height": 1313
+      }
+    },
+    {
+      "numista_id": "304119",
+      "country": "France",
+      "year": 2021,
+      "name": "2 Euros (Olympic Games, Paris 2024 - France 2021)",
+      "obverse": {
+        "path": "/ml/datasets/304119/obverse.jpg",
+        "cx_uv": 0.49977,
+        "cy_uv": 0.49977,
+        "radius_uv": 0.49977,
+        "width": 2200,
+        "height": 2200
+      },
+      "reverse": {
+        "path": "/ml/datasets/304119/reverse.jpg",
+        "cx_uv": 0.49978,
+        "cy_uv": 0.49978,
+        "radius_uv": 0.49978,
+        "width": 2300,
+        "height": 2300
+      }
+    },
+    {
+      "numista_id": "314962",
+      "country": "France",
+      "year": 2022,
+      "name": "2 Euros (2nd type)",
+      "obverse": {
+        "path": "/ml/datasets/314962/obverse.jpg",
+        "cx_uv": 0.49957,
+        "cy_uv": 0.49957,
+        "radius_uv": 0.49935,
+        "width": 1159,
+        "height": 1158
+      },
+      "reverse": {
+        "path": "/ml/datasets/314962/reverse.jpg",
+        "cx_uv": 0.49957,
+        "cy_uv": 0.49957,
+        "radius_uv": 0.49978,
+        "width": 1155,
+        "height": 1156
+      }
+    },
+    {
+      "numista_id": "318748",
+      "country": "France",
+      "year": 2022,
+      "name": "2 Euros (Jacques Chirac)",
+      "obverse": {
+        "path": "/ml/datasets/318748/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2496,
+        "height": 2496
+      },
+      "reverse": {
+        "path": "/ml/datasets/318748/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      }
+    },
+    {
+      "numista_id": "331022",
+      "country": "France",
+      "year": 2022,
+      "name": "2 Euros (Erasmus Programme)",
+      "obverse": {
+        "path": "/ml/datasets/331022/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2484,
+        "height": 2484
+      },
+      "reverse": {
+        "path": "/ml/datasets/331022/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      }
+    },
+    {
+      "numista_id": "341320",
+      "country": "France",
+      "year": 2022,
+      "name": "2 Euros (Olympic Games, Paris 2024 - France 2022)",
+      "obverse": {
+        "path": "/ml/datasets/341320/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2496,
+        "height": 2496
+      },
+      "reverse": {
+        "path": "/ml/datasets/341320/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      }
+    },
+    {
+      "numista_id": "352565",
+      "country": "France",
+      "year": 2023,
+      "name": "2 Euros (Olympic Games, Paris 2024 - France 2023)",
+      "obverse": {
+        "path": "/ml/datasets/352565/obverse.jpg",
+        "cx_uv": 0.49979,
+        "cy_uv": 0.49979,
+        "radius_uv": 0.49784,
+        "width": 2430,
+        "height": 2411
+      },
+      "reverse": {
+        "path": "/ml/datasets/352565/reverse.jpg",
+        "cx_uv": 0.49983,
+        "cy_uv": 0.49983,
+        "radius_uv": 0.49828,
+        "width": 2905,
+        "height": 2887
+      }
+    },
+    {
+      "numista_id": "369820",
+      "country": "France",
+      "year": 2023,
+      "name": "2 Euros (Rugby World Cup 2023)",
+      "obverse": {
+        "path": "/ml/datasets/369820/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      },
+      "reverse": {
+        "path": "/ml/datasets/369820/reverse.jpg",
+        "cx_uv": 0.49978,
+        "cy_uv": 0.49978,
+        "radius_uv": 0.49978,
+        "width": 2300,
+        "height": 2300
+      }
+    },
+    {
+      "numista_id": "394012",
+      "country": "France",
+      "year": 2024,
+      "name": "2 Euros (Olympic Games, Paris 2024 - France 2024)",
+      "obverse": {
+        "path": "/ml/datasets/394012/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      },
+      "reverse": {
+        "path": "/ml/datasets/394012/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      }
+    },
+    {
+      "numista_id": "403198",
+      "country": "France",
+      "year": 2024,
+      "name": "2 Euros (JO 2024 Paris)",
+      "obverse": {
+        "path": "/ml/datasets/403198/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2592,
+        "height": 2592
+      },
+      "reverse": {
+        "path": "/ml/datasets/403198/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2586,
+        "height": 2586
+      }
+    },
+    {
+      "numista_id": "419643",
+      "country": "France",
+      "year": 2024,
+      "name": "2 Euros (Olympic Games, Paris; Coloured)",
+      "obverse": {
+        "path": "/ml/datasets/419643/obverse.jpg",
+        "cx_uv": 0.49929,
+        "cy_uv": 0.49927,
+        "radius_uv": 0.49394,
+        "width": 701,
+        "height": 686
+      },
+      "reverse": {
+        "path": "/ml/datasets/419643/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      }
+    },
+    {
+      "numista_id": "455096",
+      "country": "France",
+      "year": 2025,
+      "name": "2 Euros (Louvre Museum)",
+      "obverse": {
+        "path": "/ml/datasets/455096/obverse.jpg",
+        "cx_uv": 0.49945,
+        "cy_uv": 0.49944,
+        "radius_uv": 0.4967,
+        "width": 910,
+        "height": 900
+      },
+      "reverse": {
+        "path": "/ml/datasets/455096/reverse.jpg",
+        "cx_uv": 0.49958,
+        "cy_uv": 0.49958,
+        "radius_uv": 0.49958,
+        "width": 1192,
+        "height": 1192
+      }
+    },
+    {
+      "numista_id": "521871",
+      "country": "France",
+      "year": 2025,
+      "name": "2 Euros (Notre Dame de Paris)",
+      "obverse": {
+        "path": "/ml/datasets/521871/obverse.jpg",
+        "cx_uv": 0.49956,
+        "cy_uv": 0.49956,
+        "radius_uv": 0.49956,
+        "width": 1134,
+        "height": 1134
+      },
+      "reverse": {
+        "path": "/ml/datasets/521871/reverse.jpg",
+        "cx_uv": 0.49956,
+        "cy_uv": 0.49956,
+        "radius_uv": 0.49956,
+        "width": 1134,
+        "height": 1134
+      }
+    },
+    {
+      "numista_id": "556437",
+      "country": "France",
+      "year": 2026,
+      "name": "2 Euros (The Little Prince)",
+      "obverse": {
+        "path": "/ml/datasets/556437/obverse.jpg",
+        "cx_uv": 0.49951,
+        "cy_uv": 0.49951,
+        "radius_uv": 0.49951,
+        "width": 1020,
+        "height": 1020
+      },
+      "reverse": {
+        "path": "/ml/datasets/556437/reverse.jpg",
+        "cx_uv": 0.49958,
+        "cy_uv": 0.49958,
+        "radius_uv": 0.49958,
+        "width": 1192,
+        "height": 1192
+      }
+    },
+    {
+      "numista_id": "226447",
+      "country": "Germany",
+      "year": 2020,
+      "name": "2 Euro - Germany 2020 (Kniefall von Warschau)",
+      "obverse": {
+        "path": "/ml/datasets/226447/obverse.png",
+        "cx_uv": 0.49953,
+        "cy_uv": 0.49953,
+        "radius_uv": 0.49953,
+        "width": 1063,
+        "height": 1063
+      },
+      "reverse": {
+        "path": "/ml/datasets/226447/reverse.png",
+        "cx_uv": 0.49953,
+        "cy_uv": 0.49953,
+        "radius_uv": 0.49953,
+        "width": 1063,
+        "height": 1063
+      }
+    },
+    {
+      "numista_id": "112",
+      "country": "Germany, Federal Republic of",
+      "year": 2002,
+      "name": "2 Euros (1st map)",
+      "obverse": {
+        "path": "/ml/datasets/112/obverse.jpg",
+        "cx_uv": 0.49971,
+        "cy_uv": 0.49971,
+        "radius_uv": 0.49971,
+        "width": 1700,
+        "height": 1700
+      },
+      "reverse": {
+        "path": "/ml/datasets/112/reverse.jpg",
+        "cx_uv": 0.49968,
+        "cy_uv": 0.49968,
+        "radius_uv": 0.49968,
+        "width": 1548,
+        "height": 1548
+      }
+    },
+    {
+      "numista_id": "284509",
+      "country": "Germany, Federal Republic of",
+      "year": 2002,
+      "name": "2 Euro (Pattern)",
+      "obverse": {
+        "path": "/ml/datasets/284509/obverse.jpg",
+        "cx_uv": 0.49917,
+        "cy_uv": 0.49916,
+        "radius_uv": 0.49833,
+        "width": 599,
+        "height": 597
+      },
+      "reverse": {
+        "path": "/ml/datasets/284509/reverse.jpg",
+        "cx_uv": 0.49916,
+        "cy_uv": 0.49916,
+        "radius_uv": 0.49916,
+        "width": 597,
+        "height": 597
+      }
+    },
+    {
+      "numista_id": "2169",
+      "country": "Germany, Federal Republic of",
+      "year": 2006,
+      "name": "2 Euros (Bundesländer - \"Schleswig-Holstein\")",
+      "obverse": {
+        "path": "/ml/datasets/2169/obverse.jpg",
+        "cx_uv": 0.49979,
+        "cy_uv": 0.49979,
+        "radius_uv": 0.49979,
+        "width": 2400,
+        "height": 2400
+      },
+      "reverse": {
+        "path": "/ml/datasets/2169/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2490,
+        "height": 2490
+      }
+    },
+    {
+      "numista_id": "2162",
+      "country": "Germany, Federal Republic of",
+      "year": 2007,
+      "name": "2 Euros (Treaty of Rome)",
+      "obverse": {
+        "path": "/ml/datasets/2162/obverse.jpg",
+        "cx_uv": 0.49979,
+        "cy_uv": 0.49979,
+        "radius_uv": 0.49979,
+        "width": 2388,
+        "height": 2388
+      },
+      "reverse": {
+        "path": "/ml/datasets/2162/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2478,
+        "height": 2478
+      }
+    },
+    {
+      "numista_id": "2201",
+      "country": "Germany, Federal Republic of",
+      "year": 2007,
+      "name": "2 Euros (Bundesländer - \"Mecklenburg-Vorpommern\")",
+      "obverse": {
+        "path": "/ml/datasets/2201/obverse.jpg",
+        "cx_uv": 0.49979,
+        "cy_uv": 0.49979,
+        "radius_uv": 0.49979,
+        "width": 2388,
+        "height": 2388
+      },
+      "reverse": {
+        "path": "/ml/datasets/2201/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2478,
+        "height": 2478
+      }
+    },
+    {
+      "numista_id": "2994",
+      "country": "Germany, Federal Republic of",
+      "year": 2008,
+      "name": "2 Euros (Bundesländer - \"Hamburg\")",
+      "obverse": {
+        "path": "/ml/datasets/2994/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2592,
+        "height": 2592
+      },
+      "reverse": {
+        "path": "/ml/datasets/2994/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2600,
+        "height": 2600
+      }
+    },
+    {
+      "numista_id": "6323",
+      "country": "Germany, Federal Republic of",
+      "year": 2008,
+      "name": "2 Euros (2nd map)",
+      "obverse": {
+        "path": "/ml/datasets/6323/obverse.jpg",
+        "cx_uv": 0.49971,
+        "cy_uv": 0.49971,
+        "radius_uv": 0.49971,
+        "width": 1700,
+        "height": 1700
+      },
+      "reverse": {
+        "path": "/ml/datasets/6323/reverse.jpg",
+        "cx_uv": 0.49968,
+        "cy_uv": 0.49968,
+        "radius_uv": 0.49968,
+        "width": 1544,
+        "height": 1544
+      }
+    },
+    {
+      "numista_id": "327881",
+      "country": "Germany, Federal Republic of",
+      "year": 2008,
+      "name": "2 Euros Bundesländer - \"Hamburg\" (Mule)",
+      "obverse": {
+        "path": "/ml/datasets/327881/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2600,
+        "height": 2600
+      },
+      "reverse": {
+        "path": "/ml/datasets/327881/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2600,
+        "height": 2600
+      }
+    },
+    {
+      "numista_id": "5053",
+      "country": "Germany, Federal Republic of",
+      "year": 2009,
+      "name": "2 Euros (Bundesländer - \"Saarland\")",
+      "obverse": {
+        "path": "/ml/datasets/5053/obverse.jpg",
+        "cx_uv": 0.49979,
+        "cy_uv": 0.49979,
+        "radius_uv": 0.49979,
+        "width": 2394,
+        "height": 2394
+      },
+      "reverse": {
+        "path": "/ml/datasets/5053/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2478,
+        "height": 2478
+      }
+    },
+    {
+      "numista_id": "5054",
+      "country": "Germany, Federal Republic of",
+      "year": 2009,
+      "name": "2 Euros (Economic and Monetary Union)",
+      "obverse": {
+        "path": "/ml/datasets/5054/obverse.jpg",
+        "cx_uv": 0.49979,
+        "cy_uv": 0.49979,
+        "radius_uv": 0.49979,
+        "width": 2382,
+        "height": 2382
+      },
+      "reverse": {
+        "path": "/ml/datasets/5054/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2478,
+        "height": 2478
+      }
+    },
+    {
+      "numista_id": "10069",
+      "country": "Germany, Federal Republic of",
+      "year": 2010,
+      "name": "2 Euros (Bundesländer - \"Bremen\")",
+      "obverse": {
+        "path": "/ml/datasets/10069/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2688,
+        "height": 2688
+      },
+      "reverse": {
+        "path": "/ml/datasets/10069/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2694,
+        "height": 2694
+      }
+    },
+    {
+      "numista_id": "18666",
+      "country": "Germany, Federal Republic of",
+      "year": 2011,
+      "name": "2 Euros (Bundesländer - \"Nordrhein-Westfalen\")",
+      "obverse": {
+        "path": "/ml/datasets/18666/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2700,
+        "height": 2700
+      },
+      "reverse": {
+        "path": "/ml/datasets/18666/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2694,
+        "height": 2694
+      }
+    },
+    {
+      "numista_id": "28321",
+      "country": "Germany, Federal Republic of",
+      "year": 2012,
+      "name": "2 Euros (10 Years of Euro Cash)",
+      "obverse": {
+        "path": "/ml/datasets/28321/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2600,
+        "height": 2600
+      },
+      "reverse": {
+        "path": "/ml/datasets/28321/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2694,
+        "height": 2694
+      }
+    },
+    {
+      "numista_id": "29694",
+      "country": "Germany, Federal Republic of",
+      "year": 2012,
+      "name": "2 Euros (Bundesländer - \"Bayern\")",
+      "obverse": {
+        "path": "/ml/datasets/29694/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2694,
+        "height": 2694
+      },
+      "reverse": {
+        "path": "/ml/datasets/29694/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2694,
+        "height": 2694
+      }
+    },
+    {
+      "numista_id": "41786",
+      "country": "Germany, Federal Republic of",
+      "year": 2013,
+      "name": "2 Euros (Élysée Treaty)",
+      "obverse": {
+        "path": "/ml/datasets/41786/obverse.jpg",
+        "cx_uv": 0.49979,
+        "cy_uv": 0.49979,
+        "radius_uv": 0.49979,
+        "width": 2382,
+        "height": 2382
+      },
+      "reverse": {
+        "path": "/ml/datasets/41786/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2478,
+        "height": 2478
+      }
+    },
+    {
+      "numista_id": "42149",
+      "country": "Germany, Federal Republic of",
+      "year": 2013,
+      "name": "2 Euros (Bundesländer - \"Baden-Württemberg\")",
+      "obverse": {
+        "path": "/ml/datasets/42149/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2700,
+        "height": 2700
+      },
+      "reverse": {
+        "path": "/ml/datasets/42149/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2694,
+        "height": 2694
+      }
+    },
+    {
+      "numista_id": "53570",
+      "country": "Germany, Federal Republic of",
+      "year": 2014,
+      "name": "2 Euros (Bundesländer - \"Niedersachsen\")",
+      "obverse": {
+        "path": "/ml/datasets/53570/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2700,
+        "height": 2700
+      },
+      "reverse": {
+        "path": "/ml/datasets/53570/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2694,
+        "height": 2694
+      }
+    },
+    {
+      "numista_id": "69263",
+      "country": "Germany, Federal Republic of",
+      "year": 2015,
+      "name": "2 Euros (Bundesländer - \"Hessen\")",
+      "obverse": {
+        "path": "/ml/datasets/69263/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2700,
+        "height": 2700
+      },
+      "reverse": {
+        "path": "/ml/datasets/69263/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2694,
+        "height": 2694
+      }
+    },
+    {
+      "numista_id": "69264",
+      "country": "Germany, Federal Republic of",
+      "year": 2015,
+      "name": "2 Euros (25 Years of German Unity)",
+      "obverse": {
+        "path": "/ml/datasets/69264/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2694,
+        "height": 2694
+      },
+      "reverse": {
+        "path": "/ml/datasets/69264/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2694,
+        "height": 2694
+      }
+    },
+    {
+      "numista_id": "76632",
+      "country": "Germany, Federal Republic of",
+      "year": 2015,
+      "name": "2 Euros (30 Years of European Union Flag)",
+      "obverse": {
+        "path": "/ml/datasets/76632/obverse.jpg",
+        "cx_uv": 0.49979,
+        "cy_uv": 0.49979,
+        "radius_uv": 0.49979,
+        "width": 2394,
+        "height": 2394
+      },
+      "reverse": {
+        "path": "/ml/datasets/76632/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2478,
+        "height": 2478
+      }
+    },
+    {
+      "numista_id": "284594",
+      "country": "Germany, Federal Republic of",
+      "year": 2015,
+      "name": "2 Euros (Bundesländer - \"Hessen\" - Pattern)",
+      "obverse": {
+        "path": "/ml/datasets/284594/obverse.jpg",
+        "cx_uv": 0.49913,
+        "cy_uv": 0.49914,
+        "radius_uv": 0.50305,
+        "width": 573,
+        "height": 582
+      },
+      "reverse": {
+        "path": "/ml/datasets/284594/reverse.jpg",
+        "cx_uv": 0.49913,
+        "cy_uv": 0.49914,
+        "radius_uv": 0.5035,
+        "width": 572,
+        "height": 582
+      }
+    },
+    {
+      "numista_id": "80927",
+      "country": "Germany, Federal Republic of",
+      "year": 2016,
+      "name": "2 Euros (Bundesländer - \"Sachsen\")",
+      "obverse": {
+        "path": "/ml/datasets/80927/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2680,
+        "height": 2680
+      },
+      "reverse": {
+        "path": "/ml/datasets/80927/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      }
+    },
+    {
+      "numista_id": "102445",
+      "country": "Germany, Federal Republic of",
+      "year": 2017,
+      "name": "2 Euros (Bundesländer - \"Rheinland-Pfalz\")",
+      "obverse": {
+        "path": "/ml/datasets/102445/obverse.jpg",
+        "cx_uv": 0.49979,
+        "cy_uv": 0.49979,
+        "radius_uv": 0.49979,
+        "width": 2388,
+        "height": 2388
+      },
+      "reverse": {
+        "path": "/ml/datasets/102445/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2478,
+        "height": 2478
+      }
+    },
+    {
+      "numista_id": "132935",
+      "country": "Germany, Federal Republic of",
+      "year": 2018,
+      "name": "2 Euros (Bundesländer - \"Berlin\")",
+      "obverse": {
+        "path": "/ml/datasets/132935/obverse.jpg",
+        "cx_uv": 0.49937,
+        "cy_uv": 0.49938,
+        "radius_uv": 0.5,
+        "width": 798,
+        "height": 800
+      },
+      "reverse": {
+        "path": "/ml/datasets/132935/reverse.jpg",
+        "cx_uv": 0.49938,
+        "cy_uv": 0.49938,
+        "radius_uv": 0.49938,
+        "width": 800,
+        "height": 800
+      }
+    },
+    {
+      "numista_id": "132936",
+      "country": "Germany, Federal Republic of",
+      "year": 2018,
+      "name": "2 Euros (Helmut Schmidt)",
+      "obverse": {
+        "path": "/ml/datasets/132936/obverse.jpg",
+        "cx_uv": 0.49938,
+        "cy_uv": 0.49938,
+        "radius_uv": 0.49938,
+        "width": 800,
+        "height": 800
+      },
+      "reverse": {
+        "path": "/ml/datasets/132936/reverse.jpg",
+        "cx_uv": 0.49938,
+        "cy_uv": 0.49938,
+        "radius_uv": 0.49938,
+        "width": 800,
+        "height": 800
+      }
+    },
+    {
+      "numista_id": "139058",
+      "country": "Germany, Federal Republic of",
+      "year": 2019,
+      "name": "2 Euros (Bundesrat)",
+      "obverse": {
+        "path": "/ml/datasets/139058/obverse.jpg",
+        "cx_uv": 0.49979,
+        "cy_uv": 0.49979,
+        "radius_uv": 0.49979,
+        "width": 2400,
+        "height": 2400
+      },
+      "reverse": {
+        "path": "/ml/datasets/139058/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2478,
+        "height": 2478
+      }
+    },
+    {
+      "numista_id": "180626",
+      "country": "Germany, Federal Republic of",
+      "year": 2019,
+      "name": "2 Euros (Berlin Wall)",
+      "obverse": {
+        "path": "/ml/datasets/180626/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2700,
+        "height": 2700
+      },
+      "reverse": {
+        "path": "/ml/datasets/180626/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      }
+    },
+    {
+      "numista_id": "193506",
+      "country": "Germany, Federal Republic of",
+      "year": 2020,
+      "name": "2 Euros (Bundesländer - \"Brandenburg\")",
+      "obverse": {
+        "path": "/ml/datasets/193506/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2680,
+        "height": 2680
+      },
+      "reverse": {
+        "path": "/ml/datasets/193506/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      }
+    },
+    {
+      "numista_id": "267621",
+      "country": "Germany, Federal Republic of",
+      "year": 2021,
+      "name": "2 Euros (Bundesländer - \"Sachsen-Anhalt\")",
+      "obverse": {
+        "path": "/ml/datasets/267621/obverse.jpg",
+        "cx_uv": 0.49976,
+        "cy_uv": 0.49976,
+        "radius_uv": 0.49976,
+        "width": 2048,
+        "height": 2048
+      },
+      "reverse": {
+        "path": "/ml/datasets/267621/reverse.jpg",
+        "cx_uv": 0.49976,
+        "cy_uv": 0.49976,
+        "radius_uv": 0.49976,
+        "width": 2048,
+        "height": 2048
+      }
+    },
+    {
+      "numista_id": "314709",
+      "country": "Germany, Federal Republic of",
+      "year": 2022,
+      "name": "2 Euros (Bundesländer - \"Thüringen\")",
+      "obverse": {
+        "path": "/ml/datasets/314709/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2700,
+        "height": 2700
+      },
+      "reverse": {
+        "path": "/ml/datasets/314709/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2596,
+        "height": 2596
+      }
+    },
+    {
+      "numista_id": "324867",
+      "country": "Germany, Federal Republic of",
+      "year": 2022,
+      "name": "2 Euros (Erasmus Programme)",
+      "obverse": {
+        "path": "/ml/datasets/324867/obverse.jpg",
+        "cx_uv": 0.49978,
+        "cy_uv": 0.49978,
+        "radius_uv": 0.49978,
+        "width": 2298,
+        "height": 2298
+      },
+      "reverse": {
+        "path": "/ml/datasets/324867/reverse.jpg",
+        "cx_uv": 0.49978,
+        "cy_uv": 0.49978,
+        "radius_uv": 0.49978,
+        "width": 2286,
+        "height": 2286
+      }
+    },
+    {
+      "numista_id": "352712",
+      "country": "Germany, Federal Republic of",
+      "year": 2023,
+      "name": "2 Euros (Bundesländer II - \"Hamburg\")",
+      "obverse": {
+        "path": "/ml/datasets/352712/obverse.jpg",
+        "cx_uv": 0.49979,
+        "cy_uv": 0.49979,
+        "radius_uv": 0.49979,
+        "width": 2388,
+        "height": 2388
+      },
+      "reverse": {
+        "path": "/ml/datasets/352712/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2478,
+        "height": 2478
+      }
+    },
+    {
+      "numista_id": "356441",
+      "country": "Germany, Federal Republic of",
+      "year": 2023,
+      "name": "2 Euros (Charlemagne)",
+      "obverse": {
+        "path": "/ml/datasets/356441/obverse.jpg",
+        "cx_uv": 0.49979,
+        "cy_uv": 0.49979,
+        "radius_uv": 0.49979,
+        "width": 2394,
+        "height": 2394
+      },
+      "reverse": {
+        "path": "/ml/datasets/356441/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2478,
+        "height": 2478
+      }
+    },
+    {
+      "numista_id": "394629",
+      "country": "Germany, Federal Republic of",
+      "year": 2024,
+      "name": "2 Euros (Bundesländer II - \"Mecklenburg-Vorpommern\")",
+      "obverse": {
+        "path": "/ml/datasets/394629/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2592,
+        "height": 2592
+      },
+      "reverse": {
+        "path": "/ml/datasets/394629/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2592,
+        "height": 2592
+      }
+    },
+    {
+      "numista_id": "396761",
+      "country": "Germany, Federal Republic of",
+      "year": 2024,
+      "name": "2 Euros (Constitution of St. Paul's Church)",
+      "obverse": {
+        "path": "/ml/datasets/396761/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2496,
+        "height": 2496
+      },
+      "reverse": {
+        "path": "/ml/datasets/396761/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2478,
+        "height": 2478
+      }
+    },
+    {
+      "numista_id": "439766",
+      "country": "Germany, Federal Republic of",
+      "year": 2025,
+      "name": "2 Euros (Bundesländer II - \"Saarland\")",
+      "obverse": {
+        "path": "/ml/datasets/439766/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2490,
+        "height": 2490
+      },
+      "reverse": {
+        "path": "/ml/datasets/439766/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2478,
+        "height": 2478
+      }
+    },
+    {
+      "numista_id": "448790",
+      "country": "Germany, Federal Republic of",
+      "year": 2025,
+      "name": "2 Euros (German Reunification)",
+      "obverse": {
+        "path": "/ml/datasets/448790/obverse.jpg",
+        "cx_uv": 0.49976,
+        "cy_uv": 0.49976,
+        "radius_uv": 0.49976,
+        "width": 2048,
+        "height": 2048
+      },
+      "reverse": {
+        "path": "/ml/datasets/448790/reverse.jpg",
+        "cx_uv": 0.49976,
+        "cy_uv": 0.49976,
+        "radius_uv": 0.49976,
+        "width": 2048,
+        "height": 2048
+      }
+    },
+    {
+      "numista_id": "474550",
+      "country": "Germany, Federal Republic of",
+      "year": 2026,
+      "name": "2 Euros (Bundesländer II - \"Bremen\")",
+      "obverse": {
+        "path": "/ml/datasets/474550/obverse.jpg",
+        "cx_uv": 0.49976,
+        "cy_uv": 0.49976,
+        "radius_uv": 0.49976,
+        "width": 2048,
+        "height": 2048
+      },
+      "reverse": {
+        "path": "/ml/datasets/474550/reverse.jpg",
+        "cx_uv": 0.49976,
+        "cy_uv": 0.49976,
+        "radius_uv": 0.49976,
+        "width": 2048,
+        "height": 2048
+      }
+    },
+    {
+      "numista_id": "544530",
+      "country": "Germany, Federal Republic of",
+      "year": 2026,
+      "name": "2 Euros (Konrad Adenauer)",
+      "obverse": {
+        "path": "/ml/datasets/544530/obverse.jpg",
+        "cx_uv": 0.49976,
+        "cy_uv": 0.49976,
+        "radius_uv": 0.49976,
+        "width": 2048,
+        "height": 2048
+      },
+      "reverse": {
+        "path": "/ml/datasets/544530/reverse.jpg",
+        "cx_uv": 0.49976,
+        "cy_uv": 0.49976,
+        "radius_uv": 0.49976,
+        "width": 2048,
+        "height": 2048
+      }
+    },
+    {
+      "numista_id": "120",
+      "country": "Greece",
+      "year": 2002,
+      "name": "2 Euros (1st map)",
+      "obverse": {
+        "path": "/ml/datasets/120/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2592,
+        "height": 2592
+      },
+      "reverse": {
+        "path": "/ml/datasets/120/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2700,
+        "height": 2700
+      }
+    },
+    {
+      "numista_id": "2190",
+      "country": "Greece",
+      "year": 2004,
+      "name": "2 Euros (Olympic Games)",
+      "obverse": {
+        "path": "/ml/datasets/2190/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2600,
+        "height": 2600
+      },
+      "reverse": {
+        "path": "/ml/datasets/2190/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2484,
+        "height": 2484
+      }
+    },
+    {
+      "numista_id": "2213",
+      "country": "Greece",
+      "year": 2007,
+      "name": "2 Euros (Treaty of Rome)",
+      "obverse": {
+        "path": "/ml/datasets/2213/obverse.jpg",
+        "cx_uv": 0.49917,
+        "cy_uv": 0.49917,
+        "radius_uv": 0.49917,
+        "width": 600,
+        "height": 600
+      },
+      "reverse": {
+        "path": "/ml/datasets/2213/reverse.jpg",
+        "cx_uv": 0.49917,
+        "cy_uv": 0.49917,
+        "radius_uv": 0.49917,
+        "width": 600,
+        "height": 600
+      }
+    },
+    {
+      "numista_id": "6353",
+      "country": "Greece",
+      "year": 2007,
+      "name": "2 Euros (2nd map)",
+      "obverse": {
+        "path": "/ml/datasets/6353/obverse.jpg",
+        "cx_uv": 0.49971,
+        "cy_uv": 0.49971,
+        "radius_uv": 0.49971,
+        "width": 1700,
+        "height": 1700
+      },
+      "reverse": {
+        "path": "/ml/datasets/6353/reverse.jpg",
+        "cx_uv": 0.49968,
+        "cy_uv": 0.49968,
+        "radius_uv": 0.49968,
+        "width": 1544,
+        "height": 1544
+      }
+    },
+    {
+      "numista_id": "5068",
+      "country": "Greece",
+      "year": 2009,
+      "name": "2 Euros (Economic and Monetary Union)",
+      "obverse": {
+        "path": "/ml/datasets/5068/obverse.jpg",
+        "cx_uv": 0.49917,
+        "cy_uv": 0.49917,
+        "radius_uv": 0.49917,
+        "width": 600,
+        "height": 600
+      },
+      "reverse": {
+        "path": "/ml/datasets/5068/reverse.jpg",
+        "cx_uv": 0.49917,
+        "cy_uv": 0.49917,
+        "radius_uv": 0.49917,
+        "width": 600,
+        "height": 600
+      }
+    },
+    {
+      "numista_id": "16063",
+      "country": "Greece",
+      "year": 2010,
+      "name": "2 Euros (Battle of Marathon)",
+      "obverse": {
+        "path": "/ml/datasets/16063/obverse.jpg",
+        "cx_uv": 0.49917,
+        "cy_uv": 0.49917,
+        "radius_uv": 0.49917,
+        "width": 600,
+        "height": 600
+      },
+      "reverse": {
+        "path": "/ml/datasets/16063/reverse.jpg",
+        "cx_uv": 0.49917,
+        "cy_uv": 0.49917,
+        "radius_uv": 0.49917,
+        "width": 600,
+        "height": 600
+      }
+    },
+    {
+      "numista_id": "22333",
+      "country": "Greece",
+      "year": 2011,
+      "name": "2 Euros (Special Olympics)",
+      "obverse": {
+        "path": "/ml/datasets/22333/obverse.jpg",
+        "cx_uv": 0.49983,
+        "cy_uv": 0.49983,
+        "radius_uv": 0.50035,
+        "width": 2860,
+        "height": 2866
+      },
+      "reverse": {
+        "path": "/ml/datasets/22333/reverse.jpg",
+        "cx_uv": 0.49982,
+        "cy_uv": 0.49982,
+        "radius_uv": 0.4993,
+        "width": 2838,
+        "height": 2832
+      }
+    },
+    {
+      "numista_id": "28102",
+      "country": "Greece",
+      "year": 2012,
+      "name": "2 Euros (10 Years of Euro Cash)",
+      "obverse": {
+        "path": "/ml/datasets/28102/obverse.jpg",
+        "cx_uv": 0.49967,
+        "cy_uv": 0.49967,
+        "radius_uv": 0.49967,
+        "width": 1500,
+        "height": 1500
+      },
+      "reverse": {
+        "path": "/ml/datasets/28102/reverse.jpg",
+        "cx_uv": 0.49917,
+        "cy_uv": 0.49916,
+        "radius_uv": 0.4975,
+        "width": 600,
+        "height": 596
+      }
+    },
+    {
+      "numista_id": "49903",
+      "country": "Greece",
+      "year": 2013,
+      "name": "2 Euros (Platonic Academy)",
+      "obverse": {
+        "path": "/ml/datasets/49903/obverse.jpg",
+        "cx_uv": 0.49972,
+        "cy_uv": 0.49972,
+        "radius_uv": 0.49861,
+        "width": 1796,
+        "height": 1788
+      },
+      "reverse": {
+        "path": "/ml/datasets/49903/reverse.jpg",
+        "cx_uv": 0.49973,
+        "cy_uv": 0.49973,
+        "radius_uv": 0.49973,
+        "width": 1840,
+        "height": 1840
+      }
+    },
+    {
+      "numista_id": "49944",
+      "country": "Greece",
+      "year": 2013,
+      "name": "2 Euros (Crete)",
+      "obverse": {
+        "path": "/ml/datasets/49944/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2600,
+        "height": 2600
+      },
+      "reverse": {
+        "path": "/ml/datasets/49944/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2694,
+        "height": 2694
+      }
+    },
+    {
+      "numista_id": "65017",
+      "country": "Greece",
+      "year": 2014,
+      "name": "2 Euros (Domenikos Theotokopoulos)",
+      "obverse": {
+        "path": "/ml/datasets/65017/obverse.jpg",
+        "cx_uv": 0.4997,
+        "cy_uv": 0.4997,
+        "radius_uv": 0.4997,
+        "width": 1692,
+        "height": 1692
+      },
+      "reverse": {
+        "path": "/ml/datasets/65017/reverse.jpg",
+        "cx_uv": 0.49967,
+        "cy_uv": 0.49967,
+        "radius_uv": 0.49967,
+        "width": 1500,
+        "height": 1500
+      }
+    },
+    {
+      "numista_id": "65018",
+      "country": "Greece",
+      "year": 2014,
+      "name": "2 Euros (Ionian Islands)",
+      "obverse": {
+        "path": "/ml/datasets/65018/obverse.jpg",
+        "cx_uv": 0.4997,
+        "cy_uv": 0.4997,
+        "radius_uv": 0.4997,
+        "width": 1692,
+        "height": 1692
+      },
+      "reverse": {
+        "path": "/ml/datasets/65018/reverse.jpg",
+        "cx_uv": 0.49967,
+        "cy_uv": 0.49967,
+        "radius_uv": 0.49967,
+        "width": 1500,
+        "height": 1500
+      }
+    },
+    {
+      "numista_id": "76539",
+      "country": "Greece",
+      "year": 2015,
+      "name": "2 Euros (Spyridon Louis)",
+      "obverse": {
+        "path": "/ml/datasets/76539/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2700,
+        "height": 2700
+      },
+      "reverse": {
+        "path": "/ml/datasets/76539/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2694,
+        "height": 2694
+      }
+    },
+    {
+      "numista_id": "76636",
+      "country": "Greece",
+      "year": 2015,
+      "name": "2 Euros (European Union Flag)",
+      "obverse": {
+        "path": "/ml/datasets/76636/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2700,
+        "height": 2700
+      },
+      "reverse": {
+        "path": "/ml/datasets/76636/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2694,
+        "height": 2694
+      }
+    },
+    {
+      "numista_id": "86464",
+      "country": "Greece",
+      "year": 2016,
+      "name": "2 Euros (Arkadi Monastery)",
+      "obverse": {
+        "path": "/ml/datasets/86464/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2700,
+        "height": 2700
+      },
+      "reverse": {
+        "path": "/ml/datasets/86464/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2694,
+        "height": 2694
+      }
+    },
+    {
+      "numista_id": "86465",
+      "country": "Greece",
+      "year": 2016,
+      "name": "2 Euros (Dimitris Mitropoulos)",
+      "obverse": {
+        "path": "/ml/datasets/86465/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2700,
+        "height": 2700
+      },
+      "reverse": {
+        "path": "/ml/datasets/86465/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2694,
+        "height": 2694
+      }
+    },
+    {
+      "numista_id": "117572",
+      "country": "Greece",
+      "year": 2017,
+      "name": "2 Euros (Nikos Kazantzakis)",
+      "obverse": {
+        "path": "/ml/datasets/117572/obverse.jpg",
+        "cx_uv": 0.49971,
+        "cy_uv": 0.49971,
+        "radius_uv": 0.49971,
+        "width": 1740,
+        "height": 1740
+      },
+      "reverse": {
+        "path": "/ml/datasets/117572/reverse.jpg",
+        "cx_uv": 0.49967,
+        "cy_uv": 0.49967,
+        "radius_uv": 0.49967,
+        "width": 1500,
+        "height": 1500
+      }
+    },
+    {
+      "numista_id": "118557",
+      "country": "Greece",
+      "year": 2017,
+      "name": "2 Euros (Archeological Site of Philippi)",
+      "obverse": {
+        "path": "/ml/datasets/118557/obverse.jpg",
+        "cx_uv": 0.49971,
+        "cy_uv": 0.49971,
+        "radius_uv": 0.49971,
+        "width": 1732,
+        "height": 1732
+      },
+      "reverse": {
+        "path": "/ml/datasets/118557/reverse.jpg",
+        "cx_uv": 0.49967,
+        "cy_uv": 0.49967,
+        "radius_uv": 0.49967,
+        "width": 1500,
+        "height": 1500
+      }
+    },
+    {
+      "numista_id": "141389",
+      "country": "Greece",
+      "year": 2018,
+      "name": "2 Euros (Union of the Dodecanese with Greece)",
+      "obverse": {
+        "path": "/ml/datasets/141389/obverse.jpg",
+        "cx_uv": 0.49938,
+        "cy_uv": 0.49938,
+        "radius_uv": 0.49906,
+        "width": 801,
+        "height": 800
+      },
+      "reverse": {
+        "path": "/ml/datasets/141389/reverse.jpg",
+        "cx_uv": 0.49938,
+        "cy_uv": 0.49938,
+        "radius_uv": 0.49938,
+        "width": 800,
+        "height": 800
+      }
+    },
+    {
+      "numista_id": "141403",
+      "country": "Greece",
+      "year": 2018,
+      "name": "2 Euros (Kostis Palamas)",
+      "obverse": {
+        "path": "/ml/datasets/141403/obverse.jpg",
+        "cx_uv": 0.49938,
+        "cy_uv": 0.49938,
+        "radius_uv": 0.49906,
+        "width": 801,
+        "height": 800
+      },
+      "reverse": {
+        "path": "/ml/datasets/141403/reverse.jpg",
+        "cx_uv": 0.49938,
+        "cy_uv": 0.49938,
+        "radius_uv": 0.49938,
+        "width": 800,
+        "height": 800
+      }
+    },
+    {
+      "numista_id": "169092",
+      "country": "Greece",
+      "year": 2019,
+      "name": "2 Euros (Manolis Andronicos)",
+      "obverse": {
+        "path": "/ml/datasets/169092/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2688,
+        "height": 2688
+      },
+      "reverse": {
+        "path": "/ml/datasets/169092/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2694,
+        "height": 2694
+      }
+    },
+    {
+      "numista_id": "169094",
+      "country": "Greece",
+      "year": 2019,
+      "name": "2 Euros (Andreas Kalvos)",
+      "obverse": {
+        "path": "/ml/datasets/169094/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2700,
+        "height": 2700
+      },
+      "reverse": {
+        "path": "/ml/datasets/169094/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2694,
+        "height": 2694
+      }
+    },
+    {
+      "numista_id": "198590",
+      "country": "Greece",
+      "year": 2020,
+      "name": "2 Euros (Battle of Thermopylae)",
+      "obverse": {
+        "path": "/ml/datasets/198590/obverse.jpg",
+        "cx_uv": 0.49976,
+        "cy_uv": 0.49976,
+        "radius_uv": 0.49976,
+        "width": 2048,
+        "height": 2048
+      },
+      "reverse": {
+        "path": "/ml/datasets/198590/reverse.jpg",
+        "cx_uv": 0.49976,
+        "cy_uv": 0.49976,
+        "radius_uv": 0.49976,
+        "width": 2048,
+        "height": 2048
+      }
+    },
+    {
+      "numista_id": "214727",
+      "country": "Greece",
+      "year": 2020,
+      "name": "2 Euros (Union of Thrace with Greece)",
+      "obverse": {
+        "path": "/ml/datasets/214727/obverse.jpg",
+        "cx_uv": 0.49976,
+        "cy_uv": 0.49976,
+        "radius_uv": 0.49976,
+        "width": 2048,
+        "height": 2048
+      },
+      "reverse": {
+        "path": "/ml/datasets/214727/reverse.jpg",
+        "cx_uv": 0.49976,
+        "cy_uv": 0.49976,
+        "radius_uv": 0.49976,
+        "width": 2048,
+        "height": 2048
+      }
+    },
+    {
+      "numista_id": "261607",
+      "country": "Greece",
+      "year": 2021,
+      "name": "2 Euros (1821 Greek Revolution)",
+      "obverse": {
+        "path": "/ml/datasets/261607/obverse.jpg",
+        "cx_uv": 0.49954,
+        "cy_uv": 0.49954,
+        "radius_uv": 0.50325,
+        "width": 1076,
+        "height": 1092
+      },
+      "reverse": {
+        "path": "/ml/datasets/261607/reverse.jpg",
+        "cx_uv": 0.49918,
+        "cy_uv": 0.49919,
+        "radius_uv": 0.50204,
+        "width": 612,
+        "height": 619
+      }
+    },
+    {
+      "numista_id": "331432",
+      "country": "Greece",
+      "year": 2022,
+      "name": "2 Euros (Erasmus Programme)",
+      "obverse": {
+        "path": "/ml/datasets/331432/obverse.jpg",
+        "cx_uv": 0.49937,
+        "cy_uv": 0.49937,
+        "radius_uv": 0.50063,
+        "width": 790,
+        "height": 794
+      },
+      "reverse": {
+        "path": "/ml/datasets/331432/reverse.jpg",
+        "cx_uv": 0.49936,
+        "cy_uv": 0.49937,
+        "radius_uv": 0.50223,
+        "width": 785,
+        "height": 794
+      }
+    },
+    {
+      "numista_id": "332105",
+      "country": "Greece",
+      "year": 2022,
+      "name": "2 Euros (Greek Constitution)",
+      "obverse": {
+        "path": "/ml/datasets/332105/obverse.jpg",
+        "cx_uv": 0.49937,
+        "cy_uv": 0.49937,
+        "radius_uv": 0.49906,
+        "width": 795,
+        "height": 794
+      },
+      "reverse": {
+        "path": "/ml/datasets/332105/reverse.jpg",
+        "cx_uv": 0.49936,
+        "cy_uv": 0.49937,
+        "radius_uv": 0.50223,
+        "width": 785,
+        "height": 794
+      }
+    },
+    {
+      "numista_id": "365351",
+      "country": "Greece",
+      "year": 2023,
+      "name": "2 Euros (Maria Callas)",
+      "obverse": {
+        "path": "/ml/datasets/365351/obverse.jpg",
+        "cx_uv": 0.49923,
+        "cy_uv": 0.49922,
+        "radius_uv": 0.49654,
+        "width": 651,
+        "height": 644
+      },
+      "reverse": {
+        "path": "/ml/datasets/365351/reverse.jpg",
+        "cx_uv": 0.49918,
+        "cy_uv": 0.49919,
+        "radius_uv": 0.50204,
+        "width": 612,
+        "height": 619
+      }
+    },
+    {
+      "numista_id": "365354",
+      "country": "Greece",
+      "year": 2023,
+      "name": "2 Euros (Constantin Carathéodory)",
+      "obverse": {
+        "path": "/ml/datasets/365354/obverse.jpg",
+        "cx_uv": 0.49978,
+        "cy_uv": 0.49977,
+        "radius_uv": 0.49191,
+        "width": 2288,
+        "height": 2216
+      },
+      "reverse": {
+        "path": "/ml/datasets/365354/reverse.jpg",
+        "cx_uv": 0.49918,
+        "cy_uv": 0.49919,
+        "radius_uv": 0.50204,
+        "width": 612,
+        "height": 619
+      }
+    },
+    {
+      "numista_id": "421060",
+      "country": "Greece",
+      "year": 2024,
+      "name": "2 Euros (Democracy in Greece)",
+      "obverse": {
+        "path": "/ml/datasets/421060/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2592,
+        "height": 2592
+      },
+      "reverse": {
+        "path": "/ml/datasets/421060/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2592,
+        "height": 2592
+      }
+    },
+    {
+      "numista_id": "421064",
+      "country": "Greece",
+      "year": 2024,
+      "name": "2 Euros (Penelope Delta)",
+      "obverse": {
+        "path": "/ml/datasets/421064/obverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2598,
+        "height": 2598
+      },
+      "reverse": {
+        "path": "/ml/datasets/421064/reverse.jpg",
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981,
+        "width": 2592,
+        "height": 2592
+      }
+    },
+    {
+      "numista_id": "481971",
+      "country": "Greece",
+      "year": 2025,
+      "name": "2 Euros (Laskarina Bouboulina)",
+      "obverse": {
+        "path": "/ml/datasets/481971/obverse.jpg",
+        "cx_uv": 0.49979,
+        "cy_uv": 0.49979,
+        "radius_uv": 0.49979,
+        "width": 2382,
+        "height": 2382
+      },
+      "reverse": {
+        "path": "/ml/datasets/481971/reverse.jpg",
+        "cx_uv": 0.49977,
+        "cy_uv": 0.49977,
+        "radius_uv": 0.49977,
+        "width": 2200,
+        "height": 2200
+      }
+    },
+    {
+      "numista_id": "481973",
+      "country": "Greece",
+      "year": 2025,
+      "name": "2 Euros (Mikis Theodorakis)",
+      "obverse": {
+        "path": "/ml/datasets/481973/obverse.jpg",
+        "cx_uv": 0.49979,
+        "cy_uv": 0.49979,
+        "radius_uv": 0.49979,
+        "width": 2400,
+        "height": 2400
+      },
+      "reverse": {
+        "path": "/ml/datasets/481973/reverse.jpg",
+        "cx_uv": 0.49977,
+        "cy_uv": 0.49977,
+        "radius_uv": 0.49977,
+        "width": 2200,
+        "height": 2200
+      }
+    },
+    {
+      "numista_id": "128",
+      "country": "Ireland",
+      "year": 2002,
+      "name": "2 Euros (1st map)",
+      "obverse": {
+        "path": "/ml/datasets/128/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2478,
+        "height": 2478
+      },
+      "reverse": {
+        "path": "/ml/datasets/128/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      }
+    },
+    {
+      "numista_id": "2211",
+      "country": "Ireland",
+      "year": 2007,
+      "name": "2 Euros (Treaty of Rome)",
+      "obverse": {
+        "path": "/ml/datasets/2211/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2490,
+        "height": 2490
+      },
+      "reverse": {
+        "path": "/ml/datasets/2211/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2484,
+        "height": 2484
+      }
+    },
+    {
+      "numista_id": "6334",
+      "country": "Ireland",
+      "year": 2007,
+      "name": "2 Euros (2nd map)",
+      "obverse": {
+        "path": "/ml/datasets/6334/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      },
+      "reverse": {
+        "path": "/ml/datasets/6334/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2496,
+        "height": 2496
+      }
+    },
+    {
+      "numista_id": "5069",
+      "country": "Ireland",
+      "year": 2009,
+      "name": "2 Euros (10 Years of EMU)",
+      "obverse": {
+        "path": "/ml/datasets/5069/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2490,
+        "height": 2490
+      },
+      "reverse": {
+        "path": "/ml/datasets/5069/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2484,
+        "height": 2484
+      }
+    },
+    {
+      "numista_id": "28194",
+      "country": "Ireland",
+      "year": 2012,
+      "name": "2 Euros (10 Years of Euro Cash)",
+      "obverse": {
+        "path": "/ml/datasets/28194/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2490,
+        "height": 2490
+      },
+      "reverse": {
+        "path": "/ml/datasets/28194/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      }
+    },
+    {
+      "numista_id": "77182",
+      "country": "Ireland",
+      "year": 2015,
+      "name": "2 Euros (30 Years of European Union Flag)",
+      "obverse": {
+        "path": "/ml/datasets/77182/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2490,
+        "height": 2490
+      },
+      "reverse": {
+        "path": "/ml/datasets/77182/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      }
+    },
+    {
+      "numista_id": "80921",
+      "country": "Ireland",
+      "year": 2016,
+      "name": "2 Euros (Easter Rising)",
+      "obverse": {
+        "path": "/ml/datasets/80921/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2478,
+        "height": 2478
+      },
+      "reverse": {
+        "path": "/ml/datasets/80921/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      }
+    },
+    {
+      "numista_id": "151940",
+      "country": "Ireland",
+      "year": 2019,
+      "name": "2 Euros (First meeting of Dáil Éireann)",
+      "obverse": {
+        "path": "/ml/datasets/151940/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2478,
+        "height": 2478
+      },
+      "reverse": {
+        "path": "/ml/datasets/151940/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2484,
+        "height": 2484
+      }
+    },
+    {
+      "numista_id": "319135",
+      "country": "Ireland",
+      "year": 2022,
+      "name": "2 Euros (Erasmus Programme)",
+      "obverse": {
+        "path": "/ml/datasets/319135/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      },
+      "reverse": {
+        "path": "/ml/datasets/319135/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      }
+    },
+    {
+      "numista_id": "368762",
+      "country": "Ireland",
+      "year": 2023,
+      "name": "2 Euros (EU Membership)",
+      "obverse": {
+        "path": "/ml/datasets/368762/obverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      },
+      "reverse": {
+        "path": "/ml/datasets/368762/reverse.jpg",
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998,
+        "width": 2500,
+        "height": 2500
+      }
+    },
+    {
+      "numista_id": "136",
+      "country": "Italy",
+      "year": 2002,
+      "name": "2 Euros (1st map)",
+      "obverse": {
+        "path": "/ml/datasets/136/obverse.jpg",
+        "cx_uv": 0.49951,
+        "cy_uv": 0.49951,
+        "radius_uv": 0.49951,
+        "width": 1024,
+        "height": 1024
+      },
+      "reverse": {
+        "path": "/ml/datasets/136/reverse.jpg",
+        "cx_uv": 0.49951,
+        "cy_uv": 0.49951,
+        "radius_uv": 0.49951,
+        "width": 1024,
+        "height": 1024
+      }
+    },
+    {
+      "numista_id": "2191",
+      "country": "Italy",
+      "year": 2004,
+      "name": "2 Euros (World Food Program)",
+      "obverse": {
+        "path": "/ml/datasets/2191/obverse.jpg",
+        "cx_uv": 0.49968,
+        "cy_uv": 0.49968,
+        "radius_uv": 0.50064,
+        "width": 1572,
+        "height": 1578
+      },
+      "reverse": {
+        "path": "/ml/datasets/2191/reverse.jpg",
+        "cx_uv": 0.49966,
+        "cy_uv": 0.49966,
+        "radius_uv": 0.5,
+        "width": 1453,
+        "height": 1455
+      }
+    },
+    {
+      "numista_id": "2195",
+      "country": "Italy",
+      "year": 2005,
+      "name": "2 Euros (European Constitution)",
+      "obverse": {
+        "path": "/ml/datasets/2195/obverse.jpg",
+        "cx_uv": 0.49968,
+        "cy_uv": 0.49968,
+        "radius_uv": 0.50128,
+        "width": 1561,
+        "height": 1571
+      },
+      "reverse": {
+        "path": "/ml/datasets/2195/reverse.jpg",
+        "cx_uv": 0.49936,
+        "cy_uv": 0.49936,
+        "radius_uv": 0.49872,
+        "width": 782,
+        "height": 780
+      }
+    },
+    {
+      "numista_id": "2199",
+      "country": "Italy",
+      "year": 2006,
+      "name": "2 Euros (2006 Winter Olympics - Turin)",
+      "obverse": {
+        "path": "/ml/datasets/2199/obverse.jpg",
+        "cx_uv": 0.49968,
+        "cy_uv": 0.49968,
+        "radius_uv": 0.50143,
+        "width": 1570,
+        "height": 1581
+      },
+      "reverse": {
+        "path": "/ml/datasets/2199/reverse.jpg",
+        "cx_uv": 0.49936,
+        "cy_uv": 0.49936,
+        "radius_uv": 0.50064,
+        "width": 777,
+        "height": 781
+      }
+    },
+    {
+      "numista_id": "2210",
+      "country": "Italy",
+      "year": 2007,
+      "name": "2 Euros (Treaty of Rome)",
+      "obverse": {
+        "path": "/ml/datasets/2210/obverse.jpg",
+        "cx_uv": 0.49954,
+        "cy_uv": 0.49955,
+        "radius_uv": 0.50068,
+        "width": 1096,
+        "height": 1101
+      },
+      "reverse": {
+        "path": "/ml/datasets/2210/reverse.jpg",
+        "cx_uv": 0.49936,
+        "cy_uv": 0.49936,
+        "radius_uv": 0.49968,
+        "width": 782,
+        "height": 783
+      }
+    },
+    {
+      "numista_id": "3731",
+      "country": "Italy",
+      "year": 2008,
+      "name": "2 Euros (Human Rights)",
+      "obverse": {
+        "path": "/ml/datasets/3731/obverse.jpg",
+        "cx_uv": 0.49936,
+        "cy_uv": 0.49936,
+        "radius_uv": 0.49936,
+        "width": 784,
+        "height": 784
+      },
+      "reverse": {
+        "path": "/ml/datasets/3731/reverse.jpg",
+        "cx_uv": 0.49936,
+        "cy_uv": 0.49937,
+        "radius_uv": 0.50064,
+        "width": 784,
+        "height": 788
+      }
+    },
+    {
+      "numista_id": "6384",
+      "country": "Italy",
+      "year": 2008,
+      "name": "2 Euros (2nd map)",
+      "obverse": {
+        "path": "/ml/datasets/6384/obverse.jpg",
+        "cx_uv": 0.4997,
+        "cy_uv": 0.4997,
+        "radius_uv": 0.4997,
+        "width": 1692,
+        "height": 1692
+      },
+      "reverse": {
+        "path": "/ml/datasets/6384/reverse.jpg",
+        "cx_uv": 0.49968,
+        "cy_uv": 0.49968,
+        "radius_uv": 0.49968,
+        "width": 1544,
+        "height": 1544
+      }
+    },
+    {
+      "numista_id": "5070",
+      "country": "Italy",
+      "year": 2009,
+      "name": "2 Euros (Economic and Monetary Union)",
+      "obverse": {
+        "path": "/ml/datasets/5070/obverse.jpg",
+        "cx_uv": 0.49936,
+        "cy_uv": 0.49937,
+        "radius_uv": 0.5,
+        "width": 786,
+        "height": 788
+      },
+      "reverse": {
+        "path": "/ml/datasets/5070/reverse.jpg",
+        "cx_uv": 0.49936,
+        "cy_uv": 0.49937,
+        "radius_uv": 0.50064,
+        "width": 785,
+        "height": 789
+      }
+    },
+    {
+      "numista_id": "8108",
+      "country": "Italy",
+      "year": 2009,
+      "name": "2 Euros (Louis Braille)",
+      "obverse": {
+        "path": "/ml/datasets/8108/obverse.jpg",
+        "cx_uv": 0.49936,
+        "cy_uv": 0.49937,
+        "radius_uv": 0.5016,
+        "width": 781,
+        "height": 788
+      },
+      "reverse": {
+        "path": "/ml/datasets/8108/reverse.jpg",
+        "cx_uv": 0.49936,
+        "cy_uv": 0.49937,
+        "radius_uv": 0.5016,
+        "width": 783,
+        "height": 790
+      }
+    },
+    {
+      "numista_id": "14445",
+      "country": "Italy",
+      "year": 2010,
+      "name": "2 Euros (Count of Cavour)",
+      "obverse": {
+        "path": "/ml/datasets/14445/obverse.jpg",
+        "cx_uv": 0.49968,
+        "cy_uv": 0.49968,
+        "radius_uv": 0.49968,
+        "width": 1578,
+        "height": 1578
+      },
+      "reverse": {
+        "path": "/ml/datasets/14445/reverse.jpg",
+        "cx_uv": 0.49936,
+        "cy_uv": 0.49937,
+        "radius_uv": 0.50064,
+        "width": 785,
+        "height": 789
+      }
+    },
+    {
+      "numista_id": "20892",
+      "country": "Italy",
+      "year": 2011,
+      "name": "2 Euros (Unification of Italy)",
+      "obverse": {
+        "path": "/ml/datasets/20892/obverse.jpg",
+        "cx_uv": 0.49936,
+        "cy_uv": 0.49936,
+        "radius_uv": 0.49841,
+        "width": 785,
+        "height": 782
+      },
+      "reverse": {
+        "path": "/ml/datasets/20892/reverse.jpg",
+        "cx_uv": 0.49936,
+        "cy_uv": 0.49936,
+        "radius_uv": 0.50096,
+        "width": 780,
+        "height": 785
+      }
+    },
+    {
+      "numista_id": "28324",
+      "country": "Italy",
+      "year": 2012,
+      "name": "2 Euros (10 Years of Euro Cash)",
+      "obverse": {
+        "path": "/ml/datasets/28324/obverse.jpg",
+        "cx_uv": 0.49936,
+        "cy_uv": 0.49937,
+        "radius_uv": 0.50095,
+        "width": 786,
+        "height": 791
+      },
+      "reverse": {
+        "path": "/ml/datasets/28324/reverse.jpg",
+        "cx_uv": 0.49936,
+        "cy_uv": 0.49937,
+        "radius_uv": 0.5016,
+        "width": 783,
+        "height": 790
+      }
+    },
+    {
+      "numista_id": "38359",
+      "country": "Italy",
+      "year": 2012,
+      "name": "2 Euros (Giovanni Pascoli)",
+      "obverse": {
+        "path": "/ml/datasets/38359/obverse.jpg",
+        "cx_uv": 0.49936,
+        "cy_uv": 0.49936,
+        "radius_uv": 0.49904,
+        "width": 784,
+        "height": 783
+      },
+      "reverse": {
+        "path": "/ml/datasets/38359/reverse.jpg",
+        "cx_uv": 0.49936,
+        "cy_uv": 0.49936,
+        "radius_uv": 0.50032,
+        "width": 783,
+        "height": 786
+      }
+    },
+    {
+      "numista_id": "45254",
+      "country": "Italy",
+      "year": 2013,
+      "name": "2 Euros (Giuseppe Verdi)",
+      "obverse": {
+        "path": "/ml/datasets/45254/obverse.jpg",
+        "cx_uv": 0.49936,
+        "cy_uv": 0.49936,
+        "radius_uv": 0.49936,
+        "width": 787,
+        "height": 787
+      },
+      "reverse": {
+        "path": "/ml/datasets/45254/reverse.jpg",
+        "cx_uv": 0.49936,
+        "cy_uv": 0.49936,
+        "radius_uv": 0.49873,
+        "width": 787,
+        "height": 785
+      }
+    },
+    {
+      "numista_id": "50746",
+      "country": "Italy",
+      "year": 2013,
+      "name": "2 Euros (Giovanni Boccaccio)",
+      "obverse": {
+        "path": "/ml/datasets/50746/obverse.jpg",
+        "cx_uv": 0.49949,
+        "cy_uv": 0.49949,
+        "radius_uv": 0.49924,
+        "width": 982,
+        "height": 981
+      },
+      "reverse": {
+        "path": "/ml/datasets/50746/reverse.jpg",
+        "cx_uv": 0.49936,
+        "cy_uv": 0.49937,
+        "radius_uv": 0.50064,
+        "width": 785,
+        "height": 789
+      }
+    },
+    {
+      "numista_id": "61828",
+      "country": "Italy",
+      "year": 2014,
+      "name": "2 Euros (Carabinieri)",
+      "obverse": {
+        "path": "/ml/datasets/61828/obverse.jpg",
+        "cx_uv": 0.49936,
+        "cy_uv": 0.49936,
+        "radius_uv": 0.49968,
+        "width": 785,
+        "height": 786
+      },
+      "reverse": {
+        "path": "/ml/datasets/61828/reverse.jpg",
+        "cx_uv": 0.49937,
+        "cy_uv": 0.49936,
+        "radius_uv": 0.49778,
+        "width": 788,
+        "height": 783
+      }
+    },
+    {
+      "numista_id": "64092",
+      "country": "Italy",
+      "year": 2014,
+      "name": "2 Euros (Galileo Galilei)",
+      "obverse": {
+        "path": "/ml/datasets/64092/obverse.jpg",
+        "cx_uv": 0.49949,
+        "cy_uv": 0.49949,
+        "radius_uv": 0.50179,
+        "width": 980,
+        "height": 989
+      },
+      "reverse": {
+        "path": "/ml/datasets/64092/reverse.jpg",
+        "cx_uv": 0.49936,
+        "cy_uv": 0.49936,
+        "radius_uv": 0.50032,
+        "width": 783,
+        "height": 786
+      }
+    },
+    {
+      "numista_id": "72035",
+      "country": "Italy",
+      "year": 2015,
+      "name": "2 Euros (Expo Milano 2015)",
+      "obverse": {
+        "path": "/ml/datasets/72035/obverse.jpg",
+        "cx_uv": 0.4997,
+        "cy_uv": 0.4997,
+        "radius_uv": 0.4997,
+        "width": 1680,
+        "height": 1680
+      },
+      "reverse": {
+        "path": "/ml/datasets/72035/reverse.jpg",
+        "cx_uv": 0.49967,
+        "cy_uv": 0.49967,
+        "radius_uv": 0.49967,
+        "width": 1500,
+        "height": 1500
+      }
+    },
+    {
+      "numista_id": "74627",
+      "country": "Italy",
+      "year": 2015,
+      "name": "2 Euros (Dante Alighieri)",
+      "obverse": {
+        "path": "/ml/datasets/74627/obverse.jpg",
+        "cx_uv": 0.49919,
+        "cy_uv": 0.4992,
+        "radius_uv": 0.5004,
+        "width": 620,
+        "height": 623
+      },
+      "reverse": {
+        "path": "/ml/datasets/74627/reverse.jpg",
+        "cx_uv": 0.49921,
+        "cy_uv": 0.49921,
+        "radius_uv": 0.49881,
+        "width": 630,
+        "height": 629
+      }
+    },
+    {
+      "numista_id": "76638",
+      "country": "Italy",
+      "year": 2015,
+      "name": "2 Euros (30 Years of European Union Flag)",
+      "obverse": {
+        "path": "/ml/datasets/76638/obverse.jpg",
+        "cx_uv": 0.49969,
+        "cy_uv": 0.49969,
+        "radius_uv": 0.49969,
+        "width": 1588,
+        "height": 1588
+      },
+      "reverse": {
+        "path": "/ml/datasets/76638/reverse.jpg",
+        "cx_uv": 0.49967,
+        "cy_uv": 0.49967,
+        "radius_uv": 0.49967,
+        "width": 1500,
+        "height": 1500
+      }
+    },
+    {
+      "numista_id": "82330",
+      "country": "Italy",
+      "year": 2016,
+      "name": "2 Euros (Donatello)",
+      "obverse": {
+        "path": "/ml/datasets/82330/obverse.jpg",
+        "cx_uv": 0.49976,
+        "cy_uv": 0.49976,
+        "radius_uv": 0.49868,
+        "width": 2089,
+        "height": 2080
+      },
+      "reverse": {
+        "path": "/ml/datasets/82330/reverse.jpg",
+        "cx_uv": 0.49967,
+        "cy_uv": 0.49967,
+        "radius_uv": 0.49867,
+        "width": 1506,
+        "height": 1500
+      }
+    },
+    {
+      "numista_id": "84714",
+      "country": "Italy",
+      "year": 2016,
+      "name": "2 Euros (Plautus)",
+      "obverse": {
+        "path": "/ml/datasets/84714/obverse.jpg",
+        "cx_uv": 0.49962,
+        "cy_uv": 0.49961,
+        "radius_uv": 0.49808,
+        "width": 1302,
+        "height": 1294
+      },
+      "reverse": {
+        "path": "/ml/datasets/84714/reverse.jpg",
+        "cx_uv": 0.49965,
+        "cy_uv": 0.49965,
+        "radius_uv": 0.49826,
+        "width": 1438,
+        "height": 1430
+      }
+    },
+    {
+      "numista_id": "107086",
+      "country": "Italy",
+      "year": 2017,
+      "name": "2 Euros (St. Mark's Basilica)",
+      "obverse": {
+        "path": "/ml/datasets/107086/obverse.jpg",
+        "cx_uv": 0.49971,
+        "cy_uv": 0.49971,
+        "radius_uv": 0.49971,
+        "width": 1750,
+        "height": 1750
+      },
+      "reverse": {
+        "path": "/ml/datasets/107086/reverse.jpg",
+        "cx_uv": 0.49967,
+        "cy_uv": 0.49967,
+        "radius_uv": 0.49967,
+        "width": 1500,
+        "height": 1500
+      }
+    }
+  ]
+}

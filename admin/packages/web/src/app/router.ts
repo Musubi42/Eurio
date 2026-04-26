@@ -56,6 +56,42 @@ const router = createRouter({
           path: 'confusion',
           component: () => import('@/features/confusion/pages/ConfusionMapPage.vue'),
         },
+        {
+          path: 'augmentation',
+          component: () => import('@/features/augmentation/pages/AugmentationStudioPage.vue'),
+        },
+        {
+          path: 'benchmark',
+          component: () => import('@/features/benchmark/pages/BenchmarkPage.vue'),
+        },
+        {
+          path: 'benchmark/runs/:id',
+          component: () => import('@/features/benchmark/pages/BenchmarkRunDetailPage.vue'),
+        },
+        {
+          path: 'benchmark/compare',
+          component: () => import('@/features/benchmark/pages/BenchmarkComparePage.vue'),
+        },
+        {
+          path: 'lab',
+          component: () => import('@/features/lab/pages/LabHomePage.vue'),
+        },
+        {
+          path: 'lab/cohorts/new',
+          component: () => import('@/features/lab/pages/CohortNewPage.vue'),
+        },
+        {
+          path: 'lab/cohorts/:id',
+          component: () => import('@/features/lab/pages/CohortDetailPage.vue'),
+        },
+        {
+          path: 'lab/cohorts/:id/iterations/new',
+          component: () => import('@/features/lab/pages/IterationNewPage.vue'),
+        },
+        {
+          path: 'lab/cohorts/:cohortId/iterations/:iterationId',
+          component: () => import('@/features/lab/pages/IterationDetailPage.vue'),
+        },
       ],
     },
     {

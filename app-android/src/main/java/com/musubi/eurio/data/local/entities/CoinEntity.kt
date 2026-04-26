@@ -64,4 +64,21 @@ data class CoinEntity(
 
     @ColumnInfo(name = "theme_code")
     val themeCode: String? = null,
+
+    // Photo metadata — coin center & radius normalized to [0,1] in the source
+    // Numista photo, used by the 3D coin viewer to align textures on the mesh
+    // (cf. docs/coin-3d-viewer/technical-notes.md). Null when no measured photo
+    // is available; the viewer falls back to (0.5, 0.5, 0.499).
+    @ColumnInfo(name = "obverse_cx_uv")
+    val obverseCxUv: Float? = null,
+    @ColumnInfo(name = "obverse_cy_uv")
+    val obverseCyUv: Float? = null,
+    @ColumnInfo(name = "obverse_radius_uv")
+    val obverseRadiusUv: Float? = null,
+    @ColumnInfo(name = "reverse_cx_uv")
+    val reverseCxUv: Float? = null,
+    @ColumnInfo(name = "reverse_cy_uv")
+    val reverseCyUv: Float? = null,
+    @ColumnInfo(name = "reverse_radius_uv")
+    val reverseRadiusUv: Float? = null,
 )

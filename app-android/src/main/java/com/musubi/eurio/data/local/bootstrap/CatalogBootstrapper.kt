@@ -125,6 +125,12 @@ private fun CoinDto.toEntity(): CoinEntity = CoinEntity(
     withdrawalReason = withdrawalReason,
     designDescription = designDescription,
     themeCode = themeCode,
+    obverseCxUv = obverseMeta?.cxUv,
+    obverseCyUv = obverseMeta?.cyUv,
+    obverseRadiusUv = obverseMeta?.radiusUv,
+    reverseCxUv = reverseMeta?.cxUv,
+    reverseCyUv = reverseMeta?.cyUv,
+    reverseRadiusUv = reverseMeta?.radiusUv,
 )
 
 private fun CoinSeriesDto.toEntity(): CoinSeriesEntity = CoinSeriesEntity(

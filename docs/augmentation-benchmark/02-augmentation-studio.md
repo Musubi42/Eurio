@@ -200,7 +200,7 @@ Tous définis dans le Bloc 1. Aucun nouvel endpoint créé ici — si besoin, re
 | GET | `/health` | Healthcheck ML API pour dégradation offline |
 | GET | `/augmentation/schema` | Au mount : récupère layers disponibles + params + bounds pour générer le configurateur |
 | GET | `/augmentation/overlays` | À la demande (section overlays) : liste les textures disponibles en read-only |
-| POST | `/augmentation/preview` | À chaque `Regenerate` : body `{recipe, eurio_id, count, seed?}` → renvoie `{run_id, indices: [0..N-1]}` |
+| POST | `/augmentation/preview` | À chaque `Regenerate` : body `{recipe, eurio_id, count, seed?}` → renvoie `{run_id, images: [{index, url}], duration_ms, seed}` (shape figée par PRD01 §5.4) |
 | GET | `/augmentation/preview/images/{run_id}/{index}` | `<img :src>` dans la grille |
 | GET | `/augmentation/recipes` | Au mount : peuple le preset dropdown avec les recipes custom |
 | POST | `/augmentation/recipes` | Save recipe modal |
@@ -333,18 +333,20 @@ Aucune nouvelle dépendance npm requise. Stack disponible :
 
 ---
 
-## 9. Questions ouvertes
+## 9. Décisions (session 2026-04-19)
 
-| # | Question | Blocage | Proposition par défaut |
-|---|---|---|---|
-| Q1 | `/training/stage` accepte-t-il un champ `aug_recipe_id` par item ? | Bloque le handoff training | Remonter au Bloc 1 : étendre le body de `/training/stage` avec `aug_recipe_id?: string \| null` par item, ignoré pour l'instant côté orchestrateur training si non supporté |
-| Q2 | Une entrée `/augmentation` dans la nav principale ? | Non bloquant | Non en v1 — on entre exclusivement par `/coins` → `Augmenter`. Reconsidérer si d'autres entry points apparaissent |
-| Q3 | Support d'un coin sans image source (ex. design_group_id dont aucun membre n'a encore été enrichi) | Cas rare mais réel | Backend Bloc 1 renvoie 404 sur `/preview` avec un code clair ; le Studio affiche "pas d'image source, pièce exclue" dans la liste staged et la skip |
-| Q4 | Compare mode : recipe B doit-elle aussi être sauvegardable indépendamment de A ? | UX subtle | Oui — même bouton Save par slot, indépendants |
-| Q5 | Lightbox plein écran ou drawer latéral pour zoom case ? | UX | Lightbox plein écran (cf. `ConfusionMapPage` ne zoome pas ; c'est une nouvelle pattern à introduire) |
-| Q6 | Persistance de la dernière recipe utilisée entre sessions ? | UX | Non en v1. L'URL porte l'état (`?recipe=<id>`), le dev peut bookmarker. Éviter localStorage pour garder l'URL comme seule source. |
-| Q7 | Que se passe-t-il si le dev sélectionne 40 coins et clique `Augmenter` ? | Scaling UX | Cap à 20 coins côté bouton (disable + tooltip "maximum 20"). 40 coins × 16 variantes = 640 générations, le cockpit devient inutilisable. Au-delà → passer directement au training. |
-| Q8 | Envoi au training : les recipes utilisées sont-elles persistées côté run training (traçabilité) ? | Traçabilité ML | Oui, idéalement le `training_run` enregistre `aug_recipe_id` par class. Dépend de Q1 + migration `training_runs` côté Bloc 1 ou Bloc 3. |
+Toutes les questions tranchées — Q1 et Q8 résolues par le Bloc 1 livré.
+
+| # | Décision |
+|---|----------|
+| Q1 | ✅ Résolu Bloc 1 : `/training/stage` accepte `aug_recipe_id?: string \| null` par item (id ou name). Serveur résout et persiste l'id dans `training_staging.aug_recipe_id`. |
+| Q2 | Pas d'entrée nav principale — on entre exclusivement par `/coins` → `Augmenter`. |
+| Q3 | Backend Bloc 1 renvoie **404** sur `/preview` si le coin n'a pas d'image source. Studio affiche "image source absente, pièce exclue" dans la liste staged et la skip sans bloquer les autres. |
+| Q4 | Compare mode : Save par slot, **indépendants**. |
+| Q5 | Lightbox plein écran au clic sur une case (close Escape + clic extérieur). |
+| Q6 | Pas de persistance entre sessions — l'URL porte l'état (`?eurio_ids=…&recipe=<id>`). |
+| Q7 | **Cap 20 coins** côté bouton `Augmenter` de `/coins` (disable + tooltip au-delà). 20 × 16 variantes = plafond acceptable pour le cockpit. |
+| Q8 | ✅ Résolu Bloc 1 : `training_runs.aug_recipe_id` persisté à la promotion (règle : override explicit > homogène staged > null). Chaîne recipe → training_run → benchmark_run complète pour PRD03. |
 
 ---
 

@@ -27,6 +27,7 @@ import com.musubi.eurio.features.coffre.CoffreScreen
 import com.musubi.eurio.features.coffre.CoffreViewModel
 import com.musubi.eurio.features.coindetail.CoinDetailScreen
 import com.musubi.eurio.features.coindetail.CoinDetailViewModel
+import com.musubi.eurio.features.dev.Coin3DSandboxScreen
 import com.musubi.eurio.features.onboarding.OnboardingScreen
 import com.musubi.eurio.features.onboarding.OnboardingViewModel
 import com.musubi.eurio.features.profil.ProfileViewModel
@@ -257,6 +258,10 @@ fun EurioNavHost(
                 fromScan = fromScan,
                 onBack = { navController.popBackStack() },
             )
+        }
+
+        composable(EurioDestinations.DEV_COIN_3D_SANDBOX) {
+            Coin3DSandboxScreen(onBack = { navController.popBackStack() })
         }
     }
 }

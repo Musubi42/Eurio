@@ -23,25 +23,13 @@ from pathlib import Path
 
 import httpx
 
+from numista_keys import KeyManager
+
 CATALOG_PATH = Path(__file__).parent / "datasets" / "coin_catalog.json"
 DATASETS_DIR = Path(__file__).parent / "datasets"
 
 API_BASE = "https://api.numista.com/v3"
 DELAY_BETWEEN_CALLS = 0.5  # seconds — be respectful to Numista
-
-
-def load_env() -> dict[str, str]:
-    env = {}
-    env_path = Path(__file__).parent.parent / ".env"
-    if env_path.exists():
-        for line in env_path.read_text().splitlines():
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            if "=" in line:
-                key, _, value = line.partition("=")
-                env[key.strip()] = value.strip()
-    return env
 
 
 def search_types(api_key: str, query: str = "2 euros", page: int = 1) -> dict:
@@ -140,6 +128,14 @@ def extract_coin_data(data: dict) -> dict | None:
     }
 
 
+def is_complete(str_id: str, catalog: dict) -> bool:
+    """Return True only when metadata AND both images are present."""
+    if str_id not in catalog["coins"]:
+        return False
+    coin_dir = DATASETS_DIR / str_id
+    return (coin_dir / "obverse.jpg").exists() and (coin_dir / "reverse.jpg").exists()
+
+
 def load_catalog() -> dict:
     """Load existing catalog or create a fresh one."""
     if CATALOG_PATH.exists():
@@ -159,7 +155,7 @@ def save_catalog(catalog: dict) -> None:
     print(f"\nCatalog saved: {CATALOG_PATH} ({len(catalog['coins'])} coins)")
 
 
-def import_all(api_key: str, catalog: dict, dry_run: bool = False) -> int:
+def import_all(km: KeyManager, catalog: dict, dry_run: bool = False) -> int:
     """Import all 2€ coins via global search. Returns count of new coins added."""
     added = 0
     skipped = 0
@@ -168,18 +164,18 @@ def import_all(api_key: str, catalog: dict, dry_run: bool = False) -> int:
 
     # First, get total count
     try:
-        first_result = search_types(api_key, query="2 euros", page=1)
+        first_result = km.call(search_types, query="2 euros", page=1)
         total_count = first_result.get("count", 0)
         print(f"  Search returned {total_count} results to scan")
-    except httpx.HTTPError as e:
+    except (httpx.HTTPError, RuntimeError) as e:
         print(f"  Search error: {e}")
         return 0
 
     while True:
         time.sleep(DELAY_BETWEEN_CALLS)
         try:
-            result = search_types(api_key, query="2 euros", page=page)
-        except httpx.HTTPError as e:
+            result = km.call(search_types, query="2 euros", page=page)
+        except (httpx.HTTPError, RuntimeError) as e:
             print(f"  Search error page {page}: {e}")
             break
 
@@ -202,16 +198,33 @@ def import_all(api_key: str, catalog: dict, dry_run: bool = False) -> int:
                 filtered += 1
                 continue
 
-            # Skip if already in catalog
-            if str_id in catalog["coins"]:
+            # Already fully scraped (catalog + both images) — nothing to do
+            if is_complete(str_id, catalog):
                 skipped += 1
                 continue
 
-            # Fetch full details
+            # In catalog but images missing — retry CDN without burning API quota
+            if str_id in catalog["coins"]:
+                cached = catalog["coins"][str_id]
+                coin_dir = DATASETS_DIR / str_id
+                coin_dir.mkdir(parents=True, exist_ok=True)
+                name = cached.get("name", str_id)
+                missing_ob = not (coin_dir / "obverse.jpg").exists()
+                missing_rv = not (coin_dir / "reverse.jpg").exists()
+                if missing_ob and cached.get("obverse_image_url"):
+                    ok = download_image(cached["obverse_image_url"], coin_dir / "obverse.jpg")
+                    print(f"    ~ {name} — obverse retry {'OK' if ok else 'FAILED'}")
+                if missing_rv and cached.get("reverse_image_url"):
+                    ok = download_image(cached["reverse_image_url"], coin_dir / "reverse.jpg")
+                    print(f"    ~ {name} — reverse retry {'OK' if ok else 'FAILED'}")
+                skipped += 1
+                continue
+
+            # Not in catalog — fetch metadata from API then download images
             time.sleep(DELAY_BETWEEN_CALLS)
             try:
-                details = get_type_details(api_key, type_id)
-            except httpx.HTTPError as e:
+                details = km.call(get_type_details, type_id)
+            except (httpx.HTTPError, RuntimeError) as e:
                 print(f"    Error fetching type {type_id}: {e}")
                 continue
 
@@ -335,7 +348,7 @@ def retry_missing_images(catalog: dict, delay: float = 1.0) -> int:
     return retried
 
 
-def backfill_urls(api_key: str, catalog: dict) -> int:
+def backfill_urls(km: KeyManager, catalog: dict) -> int:
     """Fetch image URLs from API for catalog entries that don't have them cached.
 
     This uses API quota (get_type_details). Run only when you have quota available.
@@ -353,12 +366,12 @@ def backfill_urls(api_key: str, catalog: dict) -> int:
     for i, (str_id, coin) in enumerate(entries_without_urls):
         time.sleep(DELAY_BETWEEN_CALLS)
         try:
-            details = get_type_details(api_key, int(str_id))
+            details = km.call(get_type_details, int(str_id))
+        except RuntimeError as e:
+            print(f"  All keys exhausted: {e}")
+            break
         except httpx.HTTPError as e:
             print(f"  [{i+1}/{len(entries_without_urls)}] {str_id}: API error — {e}")
-            if "429" in str(e):
-                print("  Rate limited — stopping. Run again when quota resets.")
-                break
             continue
 
         obverse = details.get("obverse", {})
@@ -382,12 +395,23 @@ def main():
     parser.add_argument("--retry-images", action="store_true", help="Re-download missing images (no API calls)")
     parser.add_argument("--retry-delay", type=float, default=1.0, help="Delay between image downloads in retry mode")
     parser.add_argument("--backfill-urls", action="store_true", help="Fetch missing image URLs from API (uses quota)")
+    parser.add_argument("--status", action="store_true", help="Show API key quota status for current month")
     args = parser.parse_args()
 
-    env = load_env()
-    api_key = env.get("NUMISTA_API_KEY")
-    if not api_key:
-        print("ERROR: NUMISTA_API_KEY not found in .env")
+    try:
+        km = KeyManager()
+    except RuntimeError as e:
+        print(f"ERROR: {e}")
+        return
+
+    if args.status:
+        print(f"\n{'='*60}")
+        print(f"  NUMISTA KEY STATUS")
+        print(f"{'='*60}")
+        for s in km.status():
+            flag = " [EXHAUSTED]" if s["exhausted"] else ""
+            print(f"  Slot {s['slot']} ({s['key_hash']}): {s['calls_this_month']} calls, {s['remaining']} remaining{flag}")
+        print(f"{'='*60}")
         return
 
     catalog = load_catalog()
@@ -411,7 +435,7 @@ def main():
         print(f"  BACKFILLING IMAGE URLs ({len(catalog['coins'])} coins in catalog)")
         print(f"  WARNING: This uses Numista API quota (get_type_details)")
         print(f"{'='*60}")
-        backfill_urls(api_key, catalog)
+        backfill_urls(km, catalog)
         save_catalog(catalog)
         return
 
@@ -427,7 +451,7 @@ def main():
     print(f"  Already in catalog: {len(catalog['coins'])} coins")
     print(f"{'='*60}")
 
-    total_added = import_all(api_key, catalog, dry_run=args.dry_run)
+    total_added = import_all(km, catalog, dry_run=args.dry_run)
 
     print(f"\n{'='*60}")
     print(f"  TOTAL: {total_added} new coins added")

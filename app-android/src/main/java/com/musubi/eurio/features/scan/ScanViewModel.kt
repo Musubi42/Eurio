@@ -56,6 +56,20 @@ class ScanViewModel(
     private val _debugMode = MutableStateFlow(false)
     val debugMode: StateFlow<Boolean> = _debugMode.asStateFlow()
 
+    // ── Debug carousel mode (Phase 4) ───────────────────────────────────────
+    // When ON (debugMode required), the camera/ML pipeline is bypassed and the
+    // user cycles through every 2 € coin via prev/next buttons. Each step
+    // emits ScanState.Accepted through the same path as a real detection so
+    // the UI/animation stays identical between fake and real flows.
+    private val _carouselMode = MutableStateFlow(false)
+    val carouselMode: StateFlow<Boolean> = _carouselMode.asStateFlow()
+
+    private val _carouselCurrent = MutableStateFlow<com.musubi.eurio.data.repository.CoinViewData?>(null)
+    val carouselCurrent: StateFlow<com.musubi.eurio.data.repository.CoinViewData?> = _carouselCurrent.asStateFlow()
+
+    private var carouselCoins: List<com.musubi.eurio.data.repository.CoinViewData> = emptyList()
+    private var carouselIndex: Int = 0
+
     private val _debugData = MutableStateFlow(DebugViewData())
     val debugData: StateFlow<DebugViewData> = _debugData.asStateFlow()
 
@@ -243,6 +257,51 @@ class ScanViewModel(
 
     fun setDebugMode(enabled: Boolean) {
         _debugMode.value = enabled
+    }
+
+    /** Toggle the debug carousel. No-op if debug mode is off. */
+    fun toggleCarouselMode() {
+        if (!_debugMode.value) return
+        val turningOn = !_carouselMode.value
+        _carouselMode.value = turningOn
+        if (turningOn) {
+            viewModelScope.launch {
+                if (carouselCoins.isEmpty()) {
+                    carouselCoins = coinRepository.findAllByFaceValue(2.0)
+                    Log.d(TAG, "carousel loaded ${carouselCoins.size} 2€ coins")
+                }
+                if (carouselCoins.isNotEmpty()) {
+                    carouselIndex = 0
+                    showCarouselAt(carouselIndex)
+                }
+            }
+        } else {
+            // Leaving carousel mode — drop any Accepted state and return to Idle
+            // so the live camera resumes cleanly.
+            returnToIdle(cooldownClass = null)
+            _carouselCurrent.value = null
+        }
+    }
+
+    fun onCarouselNext() = stepCarousel(+1)
+    fun onCarouselPrev() = stepCarousel(-1)
+
+    private fun stepCarousel(delta: Int) {
+        if (!_carouselMode.value || carouselCoins.isEmpty()) return
+        carouselIndex = ((carouselIndex + delta) % carouselCoins.size + carouselCoins.size) % carouselCoins.size
+        Log.d(TAG, "carousel step delta=$delta → index=$carouselIndex/${carouselCoins.size} ${carouselCoins[carouselIndex].eurioId}")
+        showCarouselAt(carouselIndex)
+    }
+
+    private fun showCarouselAt(index: Int) {
+        val coin = carouselCoins[index]
+        viewModelScope.launch {
+            val alreadyOwned = vaultRepository.containsCoin(coin.eurioId)
+            _carouselCurrent.value = coin
+            // Same emission path as a real detection — the UI doesn't know the
+            // difference, which is the whole point of the debug carousel.
+            _state.value = ScanState.Accepted(coin, confidence = 1.0f, alreadyOwned = alreadyOwned)
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────

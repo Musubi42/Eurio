@@ -30,11 +30,24 @@ data class CoinDto(
     val name: String? = null,
     @SerialName("image_obverse_url") val imageObverseUrl: String? = null,
     @SerialName("image_reverse_url") val imageReverseUrl: String? = null,
+    @SerialName("obverse_meta") val obverseMeta: PhotoMetaDto? = null,
+    @SerialName("reverse_meta") val reverseMeta: PhotoMetaDto? = null,
     val mintage: Long? = null,
     @SerialName("is_withdrawn") val isWithdrawn: Boolean = false,
     @SerialName("withdrawal_reason") val withdrawalReason: String? = null,
     @SerialName("design_description") val designDescription: String? = null,
     @SerialName("theme_code") val themeCode: String? = null,
+)
+
+// {cx_uv, cy_uv, radius_uv} — coordonnées normalisées du centre & rayon de la
+// pièce dans la photo Numista, mesurées par ml/measure_photo_meta.py et
+// embarquées dans le snapshot. Consommées par le viewer 3D
+// (cf. docs/coin-3d-viewer/technical-notes.md, section UV mapping XY → photo).
+@Serializable
+data class PhotoMetaDto(
+    @SerialName("cx_uv") val cxUv: Float,
+    @SerialName("cy_uv") val cyUv: Float,
+    @SerialName("radius_uv") val radiusUv: Float,
 )
 
 @Serializable
