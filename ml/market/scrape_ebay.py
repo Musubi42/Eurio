@@ -457,7 +457,7 @@ def _insert_market_price(
 
 def parse_args() -> argparse.Namespace:
     ap = argparse.ArgumentParser(description="Enrich referential with eBay market prices")
-    ap.add_argument("--limit", type=int, default=30, help="Max target coins to enrich (default 30)")
+    ap.add_argument("--limit", type=int, default=None, help="Max target coins to enrich (default: all)")
     ap.add_argument(
         "--countries",
         default="FR,DE,IT,ES,GR",
