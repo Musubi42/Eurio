@@ -100,6 +100,7 @@ export interface CoinCrossRefs {
   mdp_skus?: string[]
   numista_id?: number
   numista_url?: string
+  bce_comm_url?: string
 }
 
 // ───────── Domain entities ─────────
@@ -129,6 +130,7 @@ export interface Coin {
   sources_used: string[]
   needs_review: boolean
   review_reason: string | null
+  personal_owned: boolean
   first_seen: string
   last_updated: string
 }

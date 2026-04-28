@@ -162,7 +162,13 @@ class EurioApp : Application() {
             matcher = embeddingMatcher,
             detector = coinDetector,
             onResult = scanCallbackRelay::emit,
-        )
+        ).apply {
+            // Lines up with go-task android:pull-debug (DEBUG_DIR_DEVICE).
+            debugRootDir = java.io.File(
+                getExternalFilesDir(android.os.Environment.DIRECTORY_DOCUMENTS),
+                "eurio_debug",
+            ).apply { mkdirs() }
+        }
     }
 
     override fun onCreate() {

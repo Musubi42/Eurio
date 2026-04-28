@@ -76,6 +76,13 @@ class CoinRecognizer(
     }
 
     private fun preprocessBitmap(bitmap: Bitmap): ByteBuffer {
+        // Mirror PyTorch `Resize((224, 224))` exactly — the training pipeline
+        // (see get_val_transforms in train_embedder.py) does a direct resize
+        // to 224x224 with no crop. Keeping the full coin (including the outer
+        // ring) in view matters: the ring carries discriminative signal on
+        // many denominations and commemoratives, even though it is partly
+        // shared on 2 EUR. The recipe-side `background` layer handles the
+        // studio-bg-vs-real-surface gap.
         val resized = Bitmap.createScaledBitmap(bitmap, 224, 224, true)
         val pixels = IntArray(224 * 224)
         resized.getPixels(pixels, 0, 224, 0, 0, 224, 224)

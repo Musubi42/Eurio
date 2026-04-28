@@ -36,6 +36,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -159,6 +160,57 @@ class PostgrestClient:
 # ---------- flatteners ----------
 
 
+_BCE_VOLUME_RX = re.compile(r"(\d+(?:\.\d+)?)\s*(million|billion)?")
+
+
+def parse_bce_mintage(issuing_volume: str | None) -> int | None:
+    """Convert a BCE 'issuing_volume' string ('1 million coins') to an integer.
+
+    Returns None when the string can't be parsed. The match is intentionally
+    permissive: the BCE writes things like '1 million', '1,000,000 coins',
+    '500.000', etc. We strip separators then look for a leading number with an
+    optional 'million'/'billion' suffix.
+    """
+    if not issuing_volume:
+        return None
+    s = issuing_volume.lower().replace(",", "").replace(" ", "")
+    m = _BCE_VOLUME_RX.search(s)
+    if not m:
+        return None
+    try:
+        val = float(m.group(1))
+    except ValueError:
+        return None
+    if m.group(2) == "million":
+        val *= 1_000_000
+    elif m.group(2) == "billion":
+        val *= 1_000_000_000
+    return int(val)
+
+
+def resolve_mintage(entry: dict) -> int | None:
+    """Pick the best mintage from the available sources.
+
+    Numista (precise integer in identity.mintage) wins over a BCE string
+    parsed from observations.bce_comm.issuing_volume. LMDLP mintage is a
+    third fallback (also a precise integer).
+    """
+    ident = entry.get("identity") or {}
+    direct = ident.get("mintage")
+    if isinstance(direct, int) and direct > 0:
+        return direct
+    obs = entry.get("observations") or {}
+    lmdlp = obs.get("lmdlp_mintage")
+    if isinstance(lmdlp, dict) and isinstance(lmdlp.get("value"), int):
+        return lmdlp["value"]
+    bce = obs.get("bce_comm")
+    if isinstance(bce, dict):
+        parsed = parse_bce_mintage(bce.get("issuing_volume"))
+        if parsed:
+            return parsed
+    return None
+
+
 def referential_to_coins_rows(referential: dict[str, dict]) -> list[dict]:
     rows: list[dict] = []
     for entry in referential.values():
@@ -176,6 +228,7 @@ def referential_to_coins_rows(referential: dict[str, dict]) -> list[dict]:
                 "theme": ident.get("theme"),
                 "design_description": ident.get("design_description"),
                 "national_variants": ident.get("national_variants"),
+                "mintage": resolve_mintage(entry),
                 "images": entry.get("images") or [],
                 "cross_refs": entry.get("cross_refs") or {},
                 "sources_used": prov.get("sources_used") or [],
@@ -256,6 +309,56 @@ def referential_to_observations_rows(referential: dict[str, dict]) -> list[dict]
                     "source_native_id": None,
                     "observation_type": "market_stats",
                     "payload": ebay_market,
+                }
+            )
+
+        bce_comm = obs.get("bce_comm")
+        if isinstance(bce_comm, dict):
+            rows.append(
+                {
+                    "eurio_id": eurio_id,
+                    "source": "bce_comm",
+                    "source_native_id": None,
+                    "observation_type": "coin_info",
+                    "payload": bce_comm,
+                }
+            )
+    return rows
+
+
+def referential_to_market_prices_rows(referential: dict[str, dict]) -> list[dict]:
+    """Flatten LMDLP catalogue prices into coin_market_prices rows.
+
+    LMDLP quotes one catalogue price per (coin × quality), so there's no
+    distribution: we put the catalogue price in `p50` and leave p25/p75 NULL,
+    `samples_count = 1`. The variant's `sampled_at` becomes `fetched_at` so
+    re-running the sync on the same snapshot upserts in place (matches the
+    unique constraint on (eurio_id, source, quality, fetched_at)).
+
+    eBay rows are produced by `scrape_ebay.py` directly — not from the
+    referential — so they aren't emitted here.
+    """
+    rows: list[dict] = []
+    for entry in referential.values():
+        eurio_id = entry["eurio_id"]
+        for v in (entry.get("observations") or {}).get("lmdlp_variants") or []:
+            price = v.get("price_eur")
+            if price is None:
+                continue
+            quality = v.get("quality") or "unknown"
+            sampled_at = v.get("sampled_at") or datetime.now(timezone.utc).isoformat()
+            rows.append(
+                {
+                    "eurio_id": eurio_id,
+                    "source": "lmdlp",
+                    "quality": quality,
+                    "p25": None,
+                    "p50": float(price),
+                    "p75": None,
+                    "samples_count": 1,
+                    "with_sales_count": 1 if v.get("in_stock") else 0,
+                    "query_used": v.get("sku"),
+                    "fetched_at": sampled_at,
                 }
             )
     return rows
@@ -344,15 +447,29 @@ def main() -> None:
     referential = load_referential()
     coins_rows = referential_to_coins_rows(referential)
     obs_rows = referential_to_observations_rows(referential)
+    market_rows = referential_to_market_prices_rows(referential)
     queue = load_queue()
     queue_rows = queue_to_review_rows(queue)
-    decisions_rows = matching_log_to_rows(MATCHING_LOG_PATH)
+    raw_decisions = matching_log_to_rows(MATCHING_LOG_PATH)
+
+    # Drop matching_decisions rows whose eurio_id no longer exists in the
+    # referential — the JSONL log is append-only and accumulates references
+    # to slugs that have since been renamed or pruned, which would trip the
+    # foreign key on insert.
+    known_ids = set(referential.keys())
+    decisions_rows = [
+        r for r in raw_decisions
+        if r.get("eurio_id") is None or r["eurio_id"] in known_ids
+    ]
+    dropped = len(raw_decisions) - len(decisions_rows)
 
     print("Source counts :")
     print(f"  coins            : {len(coins_rows)}")
     print(f"  observations     : {len(obs_rows)}")
+    print(f"  market_prices    : {len(market_rows)} (lmdlp)")
     print(f"  review_queue     : {len(queue_rows)}")
-    print(f"  matching_decisions: {len(decisions_rows)}")
+    print(f"  matching_decisions: {len(decisions_rows)}"
+          + (f" (dropped {dropped} stale)" if dropped else ""))
 
     if args.dry_run:
         print("\n[dry-run] no HTTP calls.")
@@ -380,6 +497,14 @@ def main() -> None:
             on_conflict="eurio_id,source,source_native_id,observation_type",
         )
         print(f"  source_observations now: {client.count('source_observations')}")
+
+        print("\nUpserting coin_market_prices (lmdlp)...")
+        client.upsert(
+            "coin_market_prices",
+            market_rows,
+            on_conflict="eurio_id,source,quality,fetched_at",
+        )
+        print(f"  coin_market_prices now: {client.count('coin_market_prices')}")
 
         print("\nUpserting review_queue...")
         client.upsert(

@@ -51,6 +51,10 @@ import com.musubi.eurio.features.scan.components.ScanAcceptedCard
 import com.musubi.eurio.features.scan.components.ScanCarouselNav
 import com.musubi.eurio.features.scan.components.ScanDebugModeToggle
 import com.musubi.eurio.features.scan.components.ScanDebugOverlay
+import com.musubi.eurio.features.scan.components.CaptureGuideOverlay
+import com.musubi.eurio.features.scan.components.CaptureSnapResultLayer
+import com.musubi.eurio.features.scan.components.PhotoGuideOverlay
+import com.musubi.eurio.features.scan.components.PhotoSnapResultLayer
 import com.musubi.eurio.features.scan.components.ScanDetectingLayer
 import com.musubi.eurio.features.scan.components.ScanFailureLayer
 import com.musubi.eurio.features.scan.components.ScanIdleLayer
@@ -86,6 +90,13 @@ fun ScanScreen(
     val carouselCoin by viewModel.carouselCurrent.collectAsStateWithLifecycle()
     val streakCount by viewModel.streakCount.collectAsStateWithLifecycle()
     val debugData by viewModel.debugData.collectAsStateWithLifecycle()
+    val recordMode by viewModel.recordMode.collectAsStateWithLifecycle()
+    val recordedFrameCount by viewModel.recordedFrameCount.collectAsStateWithLifecycle()
+    val photoMode by viewModel.photoMode.collectAsStateWithLifecycle()
+    val photoSnap by viewModel.photoSnap.collectAsStateWithLifecycle()
+    val photoLiveCircleFound by viewModel.photoLiveCircleFound.collectAsStateWithLifecycle()
+    val captureMode by viewModel.captureMode.collectAsStateWithLifecycle()
+    val captureProgress by viewModel.captureProgress.collectAsStateWithLifecycle()
 
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -106,6 +117,7 @@ fun ScanScreen(
         }
     }
 
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         containerColor = Color.Transparent,
@@ -116,9 +128,18 @@ fun ScanScreen(
                 .background(Ink)
                 .padding(insets),
         ) {
+            val showSnapResult = photoMode && photoSnap != null
+
             // In carousel mode the live camera + ML pipeline is bypassed —
             // unmounting CameraPreview both stops onFrame() and releases the
             // camera so battery/heat don't burn while debugging.
+            //
+            // Photo-mode snap result, in contrast, keeps the camera mounted
+            // underneath the result overlay (PhotoSnapResultLayer paints an
+            // opaque Ink background that covers the preview). This way AF
+            // and AE keep converging while the user inspects the result —
+            // tapping "reset" returns to a warm preview instead of a cold
+            // restart, which previously produced blurry/dim re-snaps.
             if (!carouselMode) {
                 CameraPreview(
                     onFrame = { image -> viewModel.onFrame(image) },
@@ -126,8 +147,8 @@ fun ScanScreen(
                 )
             }
 
-            // State-driven layer
-            when (val s = state) {
+            // State-driven layer (suppressed when a snap result is on screen).
+            if (!showSnapResult) when (val s = state) {
                 is ScanState.Idle -> ScanIdleLayer()
                 is ScanState.Detecting -> ScanDetectingLayer()
                 is ScanState.Accepted -> {
@@ -257,15 +278,37 @@ fun ScanScreen(
             }
 
             if (debugMode && !carouselMode) {
+                val snap = photoSnap
+                val progress = captureProgress
+                if (showSnapResult && snap != null) {
+                    if (captureMode && progress != null) {
+                        CaptureSnapResultLayer(
+                            snap = snap,
+                            progress = progress,
+                            onRedo = { viewModel.onCaptureRedo() },
+                            onNext = { viewModel.onCaptureNext() },
+                        )
+                    } else {
+                        PhotoSnapResultLayer(snap = snap)
+                    }
+                } else if (photoMode && state !is ScanState.Accepted) {
+                    PhotoGuideOverlay(circleFound = photoLiveCircleFound)
+                }
+                if (captureMode && progress != null && !showSnapResult) {
+                    CaptureGuideOverlay(progress = progress)
+                }
                 ScanDebugOverlay(
                     data = debugData,
-                    onDump = { viewModel.onCaptureClicked() },
-                    onDumps = {},
-                    onReplay = {},
-                    onFreeze = {},
-                    onForce = {},
-                    onEmbed = {},
-                    onStats = {},
+                    recording = recordMode,
+                    recordedFrameCount = recordedFrameCount,
+                    photoMode = photoMode,
+                    hasSnapResult = showSnapResult,
+                    captureMode = captureMode,
+                    onRecordToggle = { viewModel.onRecordToggle() },
+                    onPhotoToggle = { viewModel.onPhotoToggle() },
+                    onSnap = { viewModel.onSnap() },
+                    onReset = { viewModel.onSnapAgain() },
+                    onCaptureToggle = { viewModel.onCaptureToggle() },
                 )
             }
         }

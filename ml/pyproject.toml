@@ -10,4 +10,10 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["referential*", "market*", "export*", "training*", "eval*", "bootstrap*", "api*", "augmentations*", "state*", "tests*"]
+include = ["referential*", "market*", "export*", "training*", "eval*", "bootstrap*", "api*", "augmentations*", "scan*", "state*", "tests*"]
+
+# Top-level modules (single .py files at ml/ root). setuptools.packages.find
+# only picks up packages, so any new sibling .py needs to be listed here too
+# or it won't be importable through the editable install.
+[tool.setuptools]
+py-modules = ["api_quota", "api_quota_cli"]

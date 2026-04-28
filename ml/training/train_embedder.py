@@ -17,13 +17,15 @@ from torch.optim import Adam
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader
 from torchvision import models, transforms
-from torchvision.datasets import ImageFolder
 from torchvision.models import MobileNet_V3_Small_Weights
 from tqdm import tqdm
 
 ML_DIR = Path(__file__).parent.parent
 if str(ML_DIR) not in sys.path:
     sys.path.insert(0, str(ML_DIR))
+
+from training.coin_dataset import EurioCoinDataset, EurioValDataset
+from training.zone_resolver import fetch_eurio_zones, resolve_class_zones
 
 
 REAL_PHOTOS_DIR = (ML_DIR / "data" / "real_photos").resolve()
@@ -110,35 +112,41 @@ def _resolve_recipe(id_or_name: str) -> dict:
     return row.config
 
 
-def _make_recipe_transform(recipe: dict):
-    """Wrap AugmentationPipeline into a PIL→PIL callable for torchvision."""
-    from augmentations import AugmentationPipeline
+def get_train_transforms() -> transforms.Compose:
+    """Phase-2 augmentation stack — applied on the already-normalized
+    224×224 tight coin crop produced by ``scan.normalize_snap``.
 
-    pipeline = AugmentationPipeline(recipe, seed=None)
+    Source data has been geometrically aligned upstream (centered, scaled,
+    background masked black). What remains is camera-nuisance variability:
 
-    def _apply(img):
-        return pipeline.generate(img, count=1)[0]
+    - ``RandomRotation(360)``: the user's coin can be at any in-plane angle.
+    - ``RandomAffine(scale=(0.97, 1.03))``: ±3% scale jitter — Hough is not
+      pixel-perfect, the inferred crop side has small variance.
+    - ``RandomPerspective(distortion_scale=0.05)``: ±~5° tilt residue not
+      flattened out by the 2D circle fit (a real coin photographed at 10°
+      stays nearly circular, but its content is faintly skewed).
+    - ``ColorJitter``: covers exposure/white-balance variability between
+      bright/dim/daylight phone captures.
+    - ``GaussianBlur``: phone autofocus isn't always sharp.
 
-    return transforms.Lambda(_apply)
+    NOT included (and intentional):
 
-
-def get_train_transforms(aug_recipe: dict | None = None) -> transforms.Compose:
-    head: list = []
-    if aug_recipe is not None:
-        # Advanced augmentation runs FIRST on the raw PIL image, before the
-        # legacy torchvision pipeline. The two layers stack per the design
-        # note in augmentations/recipes.py — overlays/relighting apply to
-        # the untouched coin, then legacy transforms (rotation, jitter, blur)
-        # compose on top for intra-class variance.
-        head.append(_make_recipe_transform(aug_recipe))
+    - ``RandomHorizontalFlip`` / ``VerticalFlip``: coins cannot physically be
+      mirrored (the metal is engraved chiral text — "ANDORRA" reads only one
+      way). Including them taught the embedder a non-existent invariance and
+      contributed to the cross-class collapse observed pre-Phase-2.
+    - Translation: ``normalize_snap`` recenters every input on the detected
+      circle, so the model never sees off-center crops at inference.
+    - Background augmentation: the alpha mask in normalize_snap fills outside
+      the coin disk with pure black, which is what the model also sees at
+      inference time. Adding random backgrounds during training would break
+      the alignment.
+    """
     return transforms.Compose([
-        *head,
-        transforms.Resize((256, 256)),
-        transforms.RandomCrop(224),
+        transforms.Resize((224, 224)),
         transforms.RandomRotation(360),
-        transforms.RandomHorizontalFlip(),
-        transforms.RandomVerticalFlip(),
-        transforms.RandomPerspective(distortion_scale=0.2, p=0.5),
+        transforms.RandomAffine(degrees=0, scale=(0.97, 1.03)),
+        transforms.RandomPerspective(distortion_scale=0.05, p=0.7),
         transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.2, hue=0.05),
         transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 1.0)),
         transforms.ToTensor(),
@@ -146,13 +154,106 @@ def get_train_transforms(aug_recipe: dict | None = None) -> transforms.Compose:
     ])
 
 
+def _build_train_dataset(args) -> EurioCoinDataset:
+    """Build the training Dataset with zone-resolved on-the-fly augmentation.
+
+    If ``args.aug_recipe`` is set (advanced override), that single recipe is
+    applied to all classes. Otherwise each class is mapped to a zone
+    (green/orange/red) and the matching ZONE_RECIPES entry is applied.
+    """
+    override = getattr(args, "_resolved_aug_recipe", None)
+    legacy = get_train_transforms()
+    if override is not None:
+        return EurioCoinDataset(
+            args.dataset,
+            class_zones={},
+            legacy_transform=legacy,
+            recipe_override=override,
+        )
+
+    # Resolve per-class zones from confusion_map. Classes are derived from
+    # the on-disk train/ folder layout — no need to consult Supabase for the
+    # class list itself, just for the zone of each class.
+    from eval.class_resolver import build_resolver
+
+    resolver = build_resolver()
+    eurio_zones = fetch_eurio_zones()
+    class_dirs = sorted(
+        d.name for d in Path(args.dataset).iterdir() if d.is_dir()
+    )
+    class_zones = resolve_class_zones(class_dirs, resolver, eurio_zones=eurio_zones)
+    by_zone: dict[str, int] = {}
+    for z in class_zones.values():
+        by_zone[z] = by_zone.get(z, 0) + 1
+    print(f"Zone distribution: {dict(sorted(by_zone.items()))}")
+    return EurioCoinDataset(
+        args.dataset,
+        class_zones=class_zones,
+        legacy_transform=legacy,
+    )
+
+
 def get_val_transforms() -> transforms.Compose:
+    """Inference / centroid-eval preprocessing — must mirror Android exactly.
+
+    Android does ``Bitmap.createScaledBitmap(bitmap, 224, 224)`` then
+    ImageNet normalize. Anything we add here that is not in the Android
+    pipeline creates a train/inference gap.
+    """
     return transforms.Compose([
-        transforms.Resize((256, 256)),
-        transforms.CenterCrop(224),
+        transforms.Resize((224, 224)),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
+
+
+def dump_aug_preview(dataset, output_dir: Path, *, count_per_class: int = 6) -> Path:
+    """Render N augmented samples per class to disk for visual inspection.
+
+    Pulls fresh items via dataset.__getitem__ (which re-runs the augmentation
+    pipeline on every call) and de-normalizes the ImageNet-mean-subtracted
+    tensor back to a viewable JPEG. This is the only way to verify that the
+    augmentation stack actually produces images that look like the eval_real
+    distribution — looking at the recipe config alone is misleading.
+
+    Output layout: ``<output_dir>/<class_name>__<idx>.jpg``.
+    Returns the output directory path.
+    """
+    import torch
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    mean = torch.tensor([0.485, 0.456, 0.406]).view(3, 1, 1)
+    std = torch.tensor([0.229, 0.224, 0.225]).view(3, 1, 1)
+
+    # Build per-class index lists from dataset.targets so we can sample the
+    # *same* class multiple times and see augmentation variability.
+    targets = list(getattr(dataset, "targets", []))
+    classes = list(getattr(dataset, "classes", []))
+    if not targets or not classes:
+        print("  aug preview: dataset missing .targets/.classes, skipping")
+        return output_dir
+    by_target: dict[int, list[int]] = {}
+    for i, t in enumerate(targets):
+        by_target.setdefault(t, []).append(i)
+
+    n_written = 0
+    for target, idx_list in sorted(by_target.items()):
+        cls_name = classes[target]
+        for k in range(count_per_class):
+            base = idx_list[k % len(idx_list)]
+            tensor, _ = dataset[base]
+            img = (tensor.detach().cpu() * std + mean).clamp(0, 1)
+            arr = (img.permute(1, 2, 0).numpy() * 255).astype("uint8")
+            # PIL expects RGB; tensors from torchvision are RGB already.
+            from PIL import Image as _Image
+            _Image.fromarray(arr).save(
+                output_dir / f"{cls_name}__{k:02d}.jpg",
+                "JPEG", quality=92,
+            )
+            n_written += 1
+    print(f"Augmentation preview: {n_written} images → {output_dir}")
+    return output_dir
 
 
 # ---------------------------------------------------------------------------
@@ -239,9 +340,8 @@ def train_classifier(args):
     print(f"Mode: classify | Device: {device}")
 
     # Data
-    recipe = getattr(args, "_resolved_aug_recipe", None)
-    train_dataset = ImageFolder(args.dataset, transform=get_train_transforms(recipe))
-    val_dataset = ImageFolder(args.val_dataset, transform=get_val_transforms())
+    train_dataset = _build_train_dataset(args)
+    val_dataset = EurioValDataset(args.val_dataset, transform=get_val_transforms())
     num_classes = len(train_dataset.classes)
 
     print(f"Train: {len(train_dataset)} images, {num_classes} classes")
@@ -306,8 +406,8 @@ def train_classifier(args):
         epoch_correct = 0
         epoch_total = 0
 
-        pbar = tqdm(train_loader, desc=f"Epoch {epoch:>2}/{args.epochs}")
-        for images, labels in pbar:
+        print(f"  Epoch {epoch:>2}/{args.epochs} — starting", flush=True)
+        for images, labels in train_loader:
             images, labels = images.to(device), labels.to(device)
 
             logits = model(images)
@@ -320,7 +420,6 @@ def train_classifier(args):
             epoch_loss += loss.item()
             epoch_correct += (logits.argmax(dim=1) == labels).sum().item()
             epoch_total += labels.size(0)
-            pbar.set_postfix(loss=f"{loss.item():.4f}")
 
         scheduler.step()
 
@@ -380,9 +479,8 @@ def train_embedder(args):
     device = get_device(args.device)
     print(f"Mode: embed (triplet) | Device: {device}")
 
-    recipe = getattr(args, "_resolved_aug_recipe", None)
-    train_dataset = ImageFolder(args.dataset, transform=get_train_transforms(recipe))
-    val_dataset = ImageFolder(args.val_dataset, transform=get_val_transforms())
+    train_dataset = _build_train_dataset(args)
+    val_dataset = EurioValDataset(args.val_dataset, transform=get_val_transforms())
 
     print(f"Train: {len(train_dataset)} images, {len(train_dataset.classes)} classes")
     print(f"Val:   {len(val_dataset)} images")
@@ -442,8 +540,8 @@ def train_embedder(args):
         epoch_loss = 0.0
         n_batches = 0
 
-        pbar = tqdm(train_loader, desc=f"Epoch {epoch:>2}/{args.epochs}")
-        for images, labels in pbar:
+        print(f"  Epoch {epoch:>2}/{args.epochs} — starting", flush=True)
+        for images, labels in train_loader:
             images, labels = images.to(device), labels.to(device)
             embeddings = model(images)
             hard_pairs = miner(embeddings, labels)
@@ -455,7 +553,6 @@ def train_embedder(args):
 
             epoch_loss += loss.item()
             n_batches += 1
-            pbar.set_postfix(loss=f"{loss.item():.4f}")
 
         scheduler.step()
         avg_loss = epoch_loss / max(n_batches, 1)
@@ -510,14 +607,20 @@ def train_arcface(args):
     device = get_device(args.device)
     print(f"Mode: arcface | Device: {device}")
 
-    recipe = getattr(args, "_resolved_aug_recipe", None)
-    train_dataset = ImageFolder(args.dataset, transform=get_train_transforms(recipe))
-    val_dataset = ImageFolder(args.val_dataset, transform=get_val_transforms())
+    train_dataset = _build_train_dataset(args)
+    val_dataset = EurioValDataset(args.val_dataset, transform=get_val_transforms())
     num_classes = len(train_dataset.classes)
 
     print(f"Train: {len(train_dataset)} images, {num_classes} classes")
-    print(f"Val:   {len(val_dataset)} images")
+    print(f"Val:   {len(val_dataset)} images  ← {args.val_dataset}")
+    if len(val_dataset) == 0:
+        print("       (val empty — per-epoch R@1 will be n/a; "
+              "populate via `python -m scan.sync_eval_real <debug_pull>`)")
     print(f"Classes: {train_dataset.classes}")
+
+    output_dir = Path(args.output)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    dump_aug_preview(train_dataset, output_dir / "aug_preview", count_per_class=6)
 
     effective_epoch_size = len(train_dataset) * 10
     sampler = MPerClassSampler(
@@ -539,14 +642,19 @@ def train_arcface(args):
         pin_memory=use_cuda,
         persistent_workers=n_workers > 0,
     )
-    val_loader = DataLoader(
-        val_dataset,
-        batch_size=args.batch_size,
-        shuffle=False,
-        num_workers=n_workers,
-        pin_memory=use_cuda,
-        persistent_workers=n_workers > 0,
-    )
+    # Val can legitimately be empty when every class has ≤2 sources (small-n
+    # policy keeps everything in train). validate_per_class.py covers eval
+    # via fresh augmentations, so per-epoch R@1 just becomes a no-op.
+    val_loader: DataLoader | None = None
+    if len(val_dataset) > 0:
+        val_loader = DataLoader(
+            val_dataset,
+            batch_size=args.batch_size,
+            shuffle=False,
+            num_workers=n_workers,
+            pin_memory=use_cuda,
+            persistent_workers=n_workers > 0,
+        )
 
     # Model: same CoinEmbedder backbone + projection → L2-normalized embeddings
     model = CoinEmbedder(embedding_dim=args.embedding_dim).to(device)
@@ -571,9 +679,6 @@ def train_arcface(args):
     loss_optimizer = torch.optim.SGD(loss_fn.parameters(), lr=0.01)
     scheduler = CosineAnnealingLR(model_optimizer, T_max=args.epochs, eta_min=args.lr * 0.01)
 
-    output_dir = Path(args.output)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
     best_recall = 0.0
     training_log = []
 
@@ -595,8 +700,11 @@ def train_arcface(args):
         epoch_loss = 0.0
         n_batches = 0
 
-        pbar = tqdm(train_loader, desc=f"Epoch {epoch:>2}/{args.epochs}")
-        for images, labels in pbar:
+        # tqdm batch progress is suppressed — stdout is captured by the runner
+        # and the per-batch percentage lines drown the actually-useful per-epoch
+        # summary when the log buffer is tailed. Keep one start + one finish line.
+        print(f"  Epoch {epoch:>2}/{args.epochs} — starting", flush=True)
+        for images, labels in train_loader:
             images, labels = images.to(device), labels.to(device)
 
             embeddings = model(images)
@@ -610,12 +718,14 @@ def train_arcface(args):
 
             epoch_loss += loss.item()
             n_batches += 1
-            pbar.set_postfix(loss=f"{loss.item():.4f}")
 
         scheduler.step()
         avg_loss = epoch_loss / max(n_batches, 1)
 
-        val_metrics = compute_recall_at_k(model, val_loader, device, k_values=(1, 3))
+        if val_loader is not None:
+            val_metrics = compute_recall_at_k(model, val_loader, device, k_values=(1, 3))
+        else:
+            val_metrics = {"recall@1": 0.0, "recall@3": 0.0}
 
         log_entry = {
             "epoch": epoch,
@@ -627,15 +737,26 @@ def train_arcface(args):
         training_log.append(log_entry)
 
         frozen_str = " [frozen]" if epoch <= args.freeze_epochs else ""
-        print(
-            f"  Epoch {epoch:>2} — loss: {avg_loss:.4f}  "
-            f"R@1: {val_metrics['recall@1']:.2%}  "
-            f"R@3: {val_metrics['recall@3']:.2%}"
-            f"{frozen_str}"
+        val_str = (
+            f"R@1: {val_metrics['recall@1']:.2%}  R@3: {val_metrics['recall@3']:.2%}"
+            if val_loader is not None
+            else "R@1: n/a (val empty — see validate_per_class)"
         )
+        print(f"  Epoch {epoch:>2} — loss: {avg_loss:.4f}  {val_str}{frozen_str}")
 
-        if val_metrics["recall@1"] >= best_recall:
+        # Save when we improve val R@1 (real signal). When val is empty,
+        # save on the final epoch — loss alone is too noisy a selector.
+        save_now = (
+            val_loader is not None and val_metrics["recall@1"] >= best_recall
+        ) or (val_loader is None and epoch == args.epochs)
+        if save_now:
             best_recall = val_metrics["recall@1"]
+            # ArcFace prototypes — pytorch_metric_learning stores W as a
+            # parameter shaped [embedding_size, num_classes]. Saved here so
+            # compute_embeddings can use the learned class anchors directly
+            # instead of averaging val-image embeddings (which is biased when
+            # source counts differ across classes).
+            arcface_W = loss_fn.W.detach().cpu()
             torch.save({
                 "epoch": epoch,
                 "mode": "arcface",
@@ -646,13 +767,17 @@ def train_arcface(args):
                 "recall@3": val_metrics["recall@3"],
                 "classes": train_dataset.classes,
                 "model_version": args.model_version,
+                "arcface_weights": arcface_W,
             }, output_dir / "best_model.pth")
-            print(f"  → Saved best model (R@1: {best_recall:.2%})")
+            print(f"  → Saved best model (R@1: {best_recall:.2%}) → "
+                  f"{(output_dir / 'best_model.pth').resolve()}")
 
     with open(output_dir / "training_log.json", "w") as f:
         json.dump(training_log, f, indent=2)
 
     print(f"\nTraining complete. Best Recall@1: {best_recall:.2%}")
+    print(f"Training log: {(output_dir / 'training_log.json').resolve()}")
+    print(f"Aug preview:  {(output_dir / 'aug_preview').resolve()}")
 
 
 # ---------------------------------------------------------------------------

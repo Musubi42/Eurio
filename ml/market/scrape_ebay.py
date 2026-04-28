@@ -41,6 +41,10 @@ from referential.eurio_referential import (
     save_referential,
     slugify,
 )
+from state.sources_runs import record_run
+
+ML_DIR = Path(__file__).parent.parent
+PRICE_SNAPSHOTS_DIR = ML_DIR / "state" / "price_snapshots"
 
 SOURCE_TAG = "ebay"
 CATEGORY_EURO_COINS = "32650"
@@ -421,6 +425,33 @@ def write_snapshot(records: list[dict]) -> Path:
     return path
 
 
+def write_price_snapshot(records: list[dict], period: str) -> Path:
+    """Idempotent monthly cache used by the /sources admin delta calculation.
+
+    Format documented in docs/sources/temporal.md. Multiple runs in the same
+    month overwrite the file — the last run of the month wins.
+    """
+    PRICE_SNAPSHOTS_DIR.mkdir(parents=True, exist_ok=True)
+    path = PRICE_SNAPSHOTS_DIR / f"ebay_{period}.json"
+    payload = {
+        "source": SOURCE_TAG,
+        "period": period,
+        "fetched_at": datetime.now(timezone.utc).isoformat(),
+        "coins": {
+            r["eurio_id"]: {
+                "p25": r["stats"].get("p25"),
+                "p50": r["stats"].get("p50"),
+                "p75": r["stats"].get("p75"),
+                "samples": r["stats"].get("samples_count", 0),
+            }
+            for r in records
+            if r.get("stats", {}).get("samples_count", 0) >= 3
+        },
+    }
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False))
+    return path
+
+
 # ---------- main ----------
 
 
@@ -483,6 +514,11 @@ def parse_args() -> argparse.Namespace:
         "--sync-supabase",
         action="store_true",
         help="Insert each observation into Supabase coin_market_prices after fetch",
+    )
+    ap.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Fetch from eBay normally but skip Supabase insert, snapshot file and referential write",
     )
     return ap.parse_args()
 
@@ -577,7 +613,7 @@ def main() -> None:
             if stats["samples_count"] >= 3:
                 write_observation(entry, stats, q, kept)
                 touched += 1
-                if args.sync_supabase:
+                if args.sync_supabase and not args.dry_run:
                     try:
                         _insert_market_price(entry["eurio_id"], stats, q, supabase_url, supabase_key)
                         print(f"  → synced to Supabase")
@@ -585,12 +621,23 @@ def main() -> None:
                         print(f"  → Supabase sync failed: {exc}")
             time.sleep(args.sleep)
 
-    snapshot_path = write_snapshot(snapshot_records)
-    save_referential(referential)
+    period = datetime.now(timezone.utc).strftime("%Y-%m")
+    if args.dry_run:
+        snapshot_path = None
+        price_snapshot_path = None
+        print("\n--dry-run: skipping snapshot file, referential save and Supabase insert")
+    else:
+        snapshot_path = write_snapshot(snapshot_records)
+        save_referential(referential)
+        price_snapshot_path = write_price_snapshot(snapshot_records, period)
     append_matching_log(log_entries)
 
+    if not args.dry_run:
+        record_run("ebay", "scrape", calls=client.call_count, added_coins=touched)
+
     print("\n" + "=" * 60)
-    print(f"Snapshot: {snapshot_path}")
+    print(f"Snapshot: {snapshot_path if snapshot_path else '(skipped — dry-run)'}")
+    print(f"Price snapshot: {price_snapshot_path if price_snapshot_path else '(skipped — dry-run)'}")
     print(f"eBay API calls consumed: {client.call_count}")
     print(f"Enriched entries: {touched}/{len(targets)}")
     print("=" * 60)

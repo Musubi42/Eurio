@@ -201,18 +201,41 @@ def _photo_meta_for(numista_id: int | None, side: str) -> dict[str, float] | Non
     }
 
 
+def _pick_url(value: Any) -> str | None:
+    """Extract a single URL string from any of the legacy/new image shapes.
+
+    The Supabase `coins.images` column went through three shapes:
+    - legacy:    {"obverse": "<url>"} (or "obverse_url")
+    - mid:       [{"role": "obverse", "url": "<url>"}, ...]
+    - current:   {"obverse": [{"source": "numista", "url": "<url>", ...}, ...]}
+    Android expects a plain string. Prefer the numista variant when several
+    sources are listed, otherwise fall back to the first.
+    """
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list) and value:
+        preferred = next(
+            (v for v in value if isinstance(v, dict) and v.get("source") == "numista"),
+            None,
+        )
+        picked = preferred or value[0]
+        if isinstance(picked, dict):
+            return picked.get("url")
+    return None
+
+
 def flatten_coin(row: dict[str, Any]) -> dict[str, Any]:
     """Map a Supabase `coins` row to the CoinDto shape expected by Android."""
     images = row.get("images") or {}
     image_obverse = None
     image_reverse = None
     if isinstance(images, dict):
-        image_obverse = (
+        image_obverse = _pick_url(
             images.get("obverse")
             or images.get("obverse_url")
             or images.get("front")
         )
-        image_reverse = (
+        image_reverse = _pick_url(
             images.get("reverse")
             or images.get("reverse_url")
             or images.get("back")

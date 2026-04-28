@@ -59,6 +59,15 @@ interface MarketPrice {
 const marketPrice = ref<MarketPrice | null | undefined>(undefined) // undefined = loading, null = not fetched
 const marketPriceLoading = ref(false)
 
+// LMDLP catalogue prices — one entry per (eurio_id × quality)
+interface LmdlpPrice {
+  quality: string
+  p50: number
+  in_stock: boolean
+  fetched_at: string
+}
+const lmdlpPrices = ref<LmdlpPrice[] | null | undefined>(undefined)
+
 const issueLabel: Record<IssueType, string> = {
   'circulation':       'Circulation',
   'commemo-national':  'Commémo nationale',
@@ -93,13 +102,46 @@ async function fetchCoin(eurioId: string) {
 
   coin.value = data as Coin
 
-  // Normalize images: dict format → array for consistent UI handling
+  // Normalize coins.images → flat CoinImage[] (the format the UI uses below).
+  // Three possible inputs:
+  //   1. New per-eurio_id shape: { obverse: [{source,url,thumb_url,width,...}], reverse: [...] }
+  //   2. Legacy Numista dict:    { obverse, reverse, obverse_thumb, reverse_thumb, [obverse_source] }
+  //   3. Legacy flat array:      [{role, url, source}]
+  // We sort variants by width desc when known so the default selection is the
+  // highest-quality one per role.
   const raw = coin.value.images
   if (raw && !Array.isArray(raw)) {
-    const dict = raw as CoinImageDict
+    const obj = raw as Record<string, unknown>
     const normalized: CoinImage[] = []
-    if (dict.obverse) normalized.push({ url: dict.obverse, role: 'obverse', source: 'numista' })
-    if (dict.reverse) normalized.push({ url: dict.reverse, role: 'reverse', source: 'numista' })
+    const isNewShape = Array.isArray(obj.obverse) || Array.isArray(obj.reverse)
+
+    if (isNewShape) {
+      for (const role of ['obverse', 'reverse'] as const) {
+        const variants = (obj[role] as Array<Record<string, unknown>> | undefined) || []
+        const sorted = [...variants].sort(
+          (a, b) => ((b.width as number) ?? 0) - ((a.width as number) ?? 0),
+        )
+        for (const v of sorted) {
+          if (typeof v.url === 'string') {
+            normalized.push({
+              url: v.url,
+              role,
+              source: (v.source as CoinImage['source']) ?? 'numista',
+            })
+          }
+        }
+      }
+    } else {
+      const dict = raw as CoinImageDict & { obverse_source?: string; reverse_source?: string }
+      if (dict.obverse) normalized.push({
+        url: dict.obverse, role: 'obverse',
+        source: (dict.obverse_source as CoinImage['source']) ?? 'numista',
+      })
+      if (dict.reverse) normalized.push({
+        url: dict.reverse, role: 'reverse',
+        source: (dict.reverse_source as CoinImage['source']) ?? 'numista',
+      })
+    }
     coin.value.images = normalized
   }
   const imgs = coin.value.images as CoinImage[]
@@ -148,15 +190,52 @@ async function loadConfusion(eurioId: string) {
 async function loadMarketPrice(eurioId: string) {
   marketPriceLoading.value = true
   marketPrice.value = undefined
+  lmdlpPrices.value = undefined
   const { data } = await supabase
     .from('coin_market_prices')
-    .select('p25, p50, p75, samples_count, with_sales_count, fetched_at')
+    .select('source, quality, p25, p50, p75, samples_count, with_sales_count, fetched_at, with_sales_count')
     .eq('eurio_id', eurioId)
-    .eq('source', 'ebay')
     .order('fetched_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-  marketPrice.value = data as MarketPrice | null
+
+  const rows = (data ?? []) as unknown as Array<{
+    source: string
+    quality: string | null
+    p25: number | null
+    p50: number | null
+    p75: number | null
+    samples_count: number | null
+    with_sales_count: number | null
+    fetched_at: string
+  }>
+
+  // eBay: pick the most recent row (already DESC ordered)
+  const ebay = rows.find(r => r.source === 'ebay')
+  marketPrice.value = ebay
+    ? {
+        p25: ebay.p25 ?? 0,
+        p50: ebay.p50 ?? 0,
+        p75: ebay.p75 ?? 0,
+        samples_count: ebay.samples_count ?? 0,
+        with_sales_count: ebay.with_sales_count ?? 0,
+        fetched_at: ebay.fetched_at,
+      }
+    : null
+
+  // LMDLP: keep the latest row per quality (rows are DESC by fetched_at, so first wins)
+  const byQuality = new Map<string, LmdlpPrice>()
+  for (const r of rows) {
+    if (r.source !== 'lmdlp' || r.p50 == null) continue
+    const q = r.quality ?? 'unknown'
+    if (byQuality.has(q)) continue
+    byQuality.set(q, {
+      quality: q,
+      p50: r.p50,
+      in_stock: (r.with_sales_count ?? 0) > 0,
+      fetched_at: r.fetched_at,
+    })
+  }
+  lmdlpPrices.value = byQuality.size > 0 ? [...byQuality.values()] : null
+
   marketPriceLoading.value = false
 }
 
@@ -268,6 +347,7 @@ const crossRefLinks = computed(() => {
     links.push({ label: `Monnaie de Paris ${refs.mdp_urls!.length > 1 ? `#${i+1}` : ''}`, url: u }),
   )
   if (refs.numista_url) links.push({ label: 'Numista', url: refs.numista_url })
+  if (refs.bce_comm_url) links.push({ label: 'BCE', url: refs.bce_comm_url })
   return links
 })
 </script>
@@ -618,6 +698,50 @@ const crossRefLinks = computed(() => {
               </p>
               <p class="font-mono text-[10px]" style="color: var(--ink-400);">
                 {{ formatShortDate(marketPrice.fetched_at) }}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Prix catalogue LMDLP — affiché séparément d'eBay -->
+        <div v-if="lmdlpPrices && lmdlpPrices.length > 0" class="mt-6">
+          <p class="mb-2 text-[10px] uppercase tracking-wider" style="color: var(--ink-500);">
+            Prix catalogue La Maison de la Pièce
+          </p>
+          <div
+            class="rounded-lg border"
+            style="border-color: var(--surface-3); background: var(--surface);"
+          >
+            <div
+              v-for="(p, i) in lmdlpPrices"
+              :key="p.quality"
+              class="flex items-center justify-between px-4 py-2.5"
+              :class="i > 0 ? 'border-t' : ''"
+              style="border-color: var(--surface-2);"
+            >
+              <div class="flex items-center gap-2">
+                <span class="font-mono text-xs uppercase" style="color: var(--ink);">
+                  {{ p.quality }}
+                </span>
+                <span
+                  v-if="!p.in_stock"
+                  class="rounded-full px-1.5 py-0.5 text-[9px] font-medium uppercase"
+                  style="background: var(--surface-1); color: var(--ink-400); letter-spacing: var(--tracking-eyebrow);"
+                >
+                  rupture
+                </span>
+              </div>
+              <p class="font-mono text-sm tabular-nums" style="color: var(--indigo-700);">
+                {{ formatPrice(p.p50) }} €
+              </p>
+            </div>
+            <div class="flex items-center justify-between border-t px-4 py-2"
+                 style="border-color: var(--surface-2); background: var(--surface-1);">
+              <p class="text-[11px]" style="color: var(--ink-400);">
+                Prix catalogue par qualité (1 obs / qualité)
+              </p>
+              <p class="font-mono text-[10px]" style="color: var(--ink-400);">
+                {{ formatShortDate(lmdlpPrices[0].fetched_at) }}
               </p>
             </div>
           </div>

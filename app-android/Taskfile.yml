@@ -109,12 +109,12 @@ tasks:
 
   snapshot:
     desc: Export a fresh catalog_snapshot.json from Supabase into assets/
-    dir: '{{.ROOT_DIR}}'
+    dir: '{{.ROOT_DIR}}/ml'
     cmds:
-      - python ml/export_catalog_snapshot.py
+      - .venv/bin/python -m export.export_catalog_snapshot
 
   snapshot-dry:
     desc: Preview the catalog snapshot (counts + size) without writing
-    dir: '{{.ROOT_DIR}}'
+    dir: '{{.ROOT_DIR}}/ml'
     cmds:
-      - python ml/export_catalog_snapshot.py --dry-run
+      - .venv/bin/python -m export.export_catalog_snapshot --dry-run

@@ -123,13 +123,15 @@ function formatScore(score: number): string {
           Source Numista
         </p>
         <div class="flex gap-5">
-          <!-- Placeholder image -->
-          <div class="w-28 h-28 shrink-0 rounded-lg flex items-center justify-center"
+          <!-- Source image from ML API -->
+          <div class="w-28 h-28 shrink-0 rounded-lg overflow-hidden flex items-center justify-center"
                style="background: var(--surface-1);">
-            <div class="flex flex-col items-center gap-1" style="color: var(--ink-300);">
-              <ImageOff class="h-8 w-8" />
-              <span class="text-[9px] uppercase tracking-wider">numista</span>
-            </div>
+            <img
+              :src="`http://localhost:8042/images/${currentEntry.numista_id}/source`"
+              :alt="currentEntry.numista_name"
+              class="w-full h-full object-cover"
+              @error="(e) => (e.target as HTMLImageElement).style.display = 'none'"
+            />
           </div>
           <!-- Data -->
           <div class="flex-1 min-w-0">

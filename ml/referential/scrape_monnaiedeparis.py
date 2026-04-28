@@ -17,6 +17,7 @@ Outputs:
 - `ml/datasets/review_queue.json` — escalations (replaces source=mdp slot)
 """
 
+import argparse
 import html
 import json
 import re
@@ -34,6 +35,7 @@ from referential.eurio_referential import (
     slugify,
 )
 from eval.matching import index_referential, match as match_identity
+from state.sources_runs import record_run
 
 SITEMAP_URL = "https://www.monnaiedeparis.fr/media/sitemap/sitemap_mdp_fr.xml"
 USER_AGENT = "Eurio/0.1 mdp-scraper (https://github.com/Musubi42/Eurio)"
@@ -283,11 +285,18 @@ def replace_review_queue_for_source(items: list[dict]) -> None:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--limit", type=int, default=None, help="Scrape only the first N product pages")
+    args = parser.parse_args()
+
     print(f"Fetching sitemap: {SITEMAP_URL}")
     urls = fetch_sitemap()
     print(f"  {len(urls)} URLs in sitemap")
     coin_urls = filter_coin_urls(urls)
     print(f"  {len(coin_urls)} single 2€ commemo product pages")
+    if args.limit is not None:
+        coin_urls = coin_urls[: args.limit]
+        print(f"  --limit {args.limit}: keeping {len(coin_urls)} pages")
 
     raw_snapshot: list[dict] = []
     products: list[dict] = []
@@ -370,6 +379,8 @@ def main() -> None:
     replace_review_queue_for_source(queue)
     if queue:
         print(f"Queued {len(queue)} products for human review")
+
+    record_run("mdp", "scrape", calls=0, added_coins=touched)
 
 
 if __name__ == "__main__":

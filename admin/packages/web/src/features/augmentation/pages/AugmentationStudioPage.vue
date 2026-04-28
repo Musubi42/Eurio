@@ -289,12 +289,39 @@ async function regenerateAll() {
   await Promise.all(tasks)
 }
 
+// Auto-load the coin's zone preset into slot A when active coin changes.
+// Only overwrites the slot when it is "fresh" (no custom recipe loaded and
+// the user hasn't touched parameters) — we never wipe user customizations.
+watch(
+  () => [active.value?.eurio_id, zoneByEurioId.value],
+  () => {
+    if (!schema.value || !slotA.loaded) return
+    if (slotA.recipeId !== null || slotA.state.dirty) return
+    const eurioId = active.value?.eurio_id
+    if (!eurioId) return
+    const zone = zoneByEurioId.value[eurioId] ?? 'orange'
+    if (slotA.state.baselineName === zone) return
+    loadPresetIntoSlot(slotA, zone)
+  },
+  { deep: true },
+)
+
 // Regenerate automatically when active coin changes and schema is ready.
 watch(active, (coin) => {
   if (coin && schema.value && slotA.loaded) {
     void regenerateAll()
   }
 })
+
+// ─── Advanced mode (custom recipe save) ──────────────────────────────────
+//
+// In normal mode the studio is read-only: previews show what the on-the-fly
+// training augmentation will produce for this coin's confusion zone, and
+// "Envoyer au training" stages with aug_recipe_id=null (zone-default at
+// runtime). Advanced mode unlocks the "Save recipe…" path for power users
+// who want to lock a custom recipe to a specific coin.
+
+const advancedMode = ref(false)
 
 // ─── Save recipe ────────────────────────────────────────────────────────
 
@@ -316,6 +343,10 @@ async function submitSave(slotKey: 'A' | 'B', payload: { name: string, zone: str
     if (schema.value) slot.state.ensureLayersFromSchema(schema.value.layers)
     slot.recipeId = created.id
     saveModalOpenFor.value = null
+    if (pendingHandoffAfterSave.value === slotKey) {
+      pendingHandoffAfterSave.value = null
+      await performHandoff(slot)
+    }
   } catch (err) {
     saveError.value = err instanceof Error ? err.message : 'Save failed'
   }
@@ -325,16 +356,10 @@ async function submitSave(slotKey: 'A' | 'B', payload: { name: string, zone: str
 
 const handoffLoading = ref(false)
 const handoffError = ref<string | null>(null)
+const pendingHandoffAfterSave = ref<'A' | 'B' | null>(null)
 
-// Assign the ACTIVE slot's recipe (if persisted) to all coins; can be
-// refined per-coin via `coinRecipeAssignment` but v1 defaults to uniform.
-async function sendToTraining() {
-  if (!coins.value.length) return
-  const activeSlot = compareMode.value ? slotB : slotA
-  if (!activeSlot.recipeId) {
-    handoffError.value = 'Sauvegarde d\'abord ta recette active avant d\'envoyer au training.'
-    return
-  }
+async function performHandoff(activeSlot: Slot) {
+  if (!activeSlot.recipeId) return
   handoffLoading.value = true
   handoffError.value = null
   try {
@@ -351,6 +376,42 @@ async function sendToTraining() {
   } finally {
     handoffLoading.value = false
   }
+}
+
+// Normal mode: stage with aug_recipe_id=null on every coin so the trainer
+// resolves the per-class zone-default at runtime. No save dance.
+//
+// Advanced mode: if the active slot has no persisted recipe yet, open the
+// save modal and chain the handoff after a successful save (legacy flow).
+async function sendToTraining() {
+  if (!coins.value.length) return
+  const slotKey: 'A' | 'B' = compareMode.value ? 'B' : 'A'
+  const activeSlot = slotKey === 'A' ? slotA : slotB
+  handoffError.value = null
+  if (!advancedMode.value) {
+    handoffLoading.value = true
+    try {
+      const items = coins.value.map(c => ({
+        class_id: c.design_group_id || c.eurio_id,
+        class_kind: (c.design_group_id ? 'design_group_id' : 'eurio_id') as
+          'eurio_id' | 'design_group_id',
+        aug_recipe_id: null,
+      }))
+      await stageForTraining(items)
+      router.push('/training')
+    } catch (err) {
+      handoffError.value = err instanceof Error ? err.message : 'Handoff failed'
+    } finally {
+      handoffLoading.value = false
+    }
+    return
+  }
+  if (!activeSlot.recipeId) {
+    pendingHandoffAfterSave.value = slotKey
+    saveModalOpenFor.value = slotKey
+    return
+  }
+  await performHandoff(activeSlot)
 }
 
 // ─── Lightbox ───────────────────────────────────────────────────────────
@@ -549,6 +610,23 @@ function layerForType(slot: Slot, type: string): { layer: Layer, index: number }
             <SplitSquareHorizontal class="h-3 w-3" />
             {{ compareMode ? 'Quitter Compare' : 'Compare' }}
           </button>
+          <label
+            class="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium cursor-pointer"
+            :style="{
+              background: advancedMode ? 'var(--gold)' : 'var(--surface-1)',
+              color: advancedMode ? 'var(--ink)' : 'var(--ink-500)',
+            }"
+            :title="advancedMode
+              ? 'Mode avancé : permet de sauver une recette custom et de l\'envoyer au training'
+              : 'Mode normal : preview uniquement, le training utilise la recette de zone par défaut'"
+          >
+            <input
+              v-model="advancedMode"
+              type="checkbox"
+              class="hidden"
+            />
+            Mode avancé
+          </label>
         </div>
       </div>
 
@@ -639,7 +717,7 @@ function layerForType(slot: Slot, type: string): { layer: Layer, index: number }
           </div>
 
           <button
-            v-if="slotA.state.dirty"
+            v-if="advancedMode && slotA.state.dirty"
             class="flex items-center justify-center gap-1.5 rounded-md px-3 py-2 text-xs font-medium"
             style="background: var(--indigo-700); color: white;"
             @click="saveModalOpenFor = 'A'"
@@ -713,7 +791,7 @@ function layerForType(slot: Slot, type: string): { layer: Layer, index: number }
             </template>
 
             <button
-              v-if="slotB.state.dirty"
+              v-if="advancedMode && slotB.state.dirty"
               class="flex items-center justify-center gap-1.5 rounded-md px-3 py-2 text-xs font-medium"
               style="background: var(--indigo-700); color: white;"
               @click="saveModalOpenFor = 'B'"
@@ -755,14 +833,14 @@ function layerForType(slot: Slot, type: string): { layer: Layer, index: number }
       :open="saveModalOpenFor === 'A'"
       :initial-zone="null"
       :based-on-name="slotA.state.baselineName"
-      @close="saveModalOpenFor = null"
+      @close="saveModalOpenFor = null; pendingHandoffAfterSave = null"
       @save="(p) => submitSave('A', p)"
     />
     <SaveRecipeModal
       :open="saveModalOpenFor === 'B'"
       :initial-zone="null"
       :based-on-name="slotB.state.baselineName"
-      @close="saveModalOpenFor = null"
+      @close="saveModalOpenFor = null; pendingHandoffAfterSave = null"
       @save="(p) => submitSave('B', p)"
     />
 

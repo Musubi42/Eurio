@@ -18,6 +18,8 @@ from typing import Any
 
 import httpx
 
+from api_quota import QuotaTracker
+
 OAUTH_URL = "https://api.ebay.com/identity/v1/oauth2/token"
 SEARCH_URL = "https://api.ebay.com/buy/browse/v1/item_summary/search"
 ITEM_URL = "https://api.ebay.com/buy/browse/v1/item/{item_id}"
@@ -65,10 +67,16 @@ def get_app_token(client_id: str, client_secret: str, force: bool = False) -> st
     return access_token
 
 
+EBAY_DAILY_LIMIT = 5000
+
+
 class EbayClient:
-    def __init__(self, token: str):
+    def __init__(self, token: str, tracker: QuotaTracker | None = None):
         self.token = token
         self.call_count = 0
+        self._tracker = tracker if tracker is not None else QuotaTracker(
+            "ebay", "daily", EBAY_DAILY_LIMIT
+        )
         self._client = httpx.Client(
             headers={
                 "Authorization": f"Bearer {token}",
@@ -85,6 +93,16 @@ class EbayClient:
 
     def __exit__(self, *exc: Any) -> None:
         self.close()
+
+    def _request(self, url: str, params: dict[str, Any] | None) -> dict:
+        resp = self._client.get(url, params=params)
+        if resp.status_code == 429:
+            self._tracker.mark_exhausted()
+            resp.raise_for_status()
+        resp.raise_for_status()
+        self.call_count += 1
+        self._tracker.record()
+        return resp.json()
 
     def search(
         self,
@@ -106,22 +124,11 @@ class EbayClient:
             params["filter"] = filter_expr
         if fieldgroups:
             params["fieldgroups"] = fieldgroups
-        resp = self._client.get(SEARCH_URL, params=params)
-        self.call_count += 1
-        resp.raise_for_status()
-        return resp.json()
+        return self._request(SEARCH_URL, params)
 
     def get_item(self, item_id: str, fieldgroups: str = "PRODUCT") -> dict:
-        resp = self._client.get(
-            ITEM_URL.format(item_id=item_id),
-            params={"fieldgroups": fieldgroups} if fieldgroups else None,
-        )
-        self.call_count += 1
-        resp.raise_for_status()
-        return resp.json()
+        params = {"fieldgroups": fieldgroups} if fieldgroups else None
+        return self._request(ITEM_URL.format(item_id=item_id), params)
 
     def get_items_by_group(self, group_id: str) -> dict:
-        resp = self._client.get(GROUP_URL, params={"item_group_id": group_id})
-        self.call_count += 1
-        resp.raise_for_status()
-        return resp.json()
+        return self._request(GROUP_URL, {"item_group_id": group_id})

@@ -28,6 +28,7 @@ import httpx
 from referential.eurio_referential import load_referential, save_referential
 from referential.import_numista import get_type_details
 from export.sync_to_supabase import load_env
+from state.sources_runs import record_run
 
 IMAGE_SIZES = {"detail": 400, "thumb": 120}
 WEBP_QUALITY = {"detail": 82, "thumb": 78}
@@ -185,10 +186,44 @@ def patch_coins_images(
     return patched
 
 
+def list_missing_obverse(supabase_url: str, key: str) -> None:
+    """Print eurio_ids whose images.obverse is missing. Read-only, no API calls."""
+    base = supabase_url.rstrip("/") + "/rest/v1"
+    headers = {
+        "apikey": key,
+        "Authorization": f"Bearer {key}",
+        "Accept": "application/json",
+    }
+    offset = 0
+    page_size = 1000
+    with httpx.Client(headers=headers, timeout=60) as client:
+        while True:
+            resp = client.get(
+                f"{base}/coins",
+                params={"select": "eurio_id,images"},
+                headers={"Range": f"{offset}-{offset + page_size - 1}"},
+            )
+            rows = resp.json()
+            if not rows:
+                break
+            for row in rows:
+                imgs = row.get("images")
+                if not isinstance(imgs, dict) or not imgs.get("obverse"):
+                    print(row["eurio_id"])
+            if len(rows) < page_size:
+                break
+            offset += page_size
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--limit", type=int, default=0, help="Max types to process (0 = all)")
+    parser.add_argument(
+        "--list-missing",
+        action="store_true",
+        help="Read-only: list eurio_ids without images.obverse, then exit",
+    )
     args = parser.parse_args()
 
     env = load_env()
@@ -199,6 +234,11 @@ def main() -> int:
     if not supabase_url or not supabase_key:
         print("ERROR: SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY required")
         return 2
+
+    if args.list_missing:
+        list_missing_obverse(supabase_url, supabase_key)
+        return 0
+
     if not api_key:
         print("ERROR: NUMISTA_API_KEY required")
         return 2
@@ -274,6 +314,8 @@ def main() -> int:
     print("\nSaving referential...")
     save_referential(referential)
     print("  Done.")
+
+    record_run("numista_images", "batch_fetch", calls=processed, added_coins=coins_patched)
 
     print("\nRun 'go-task android:snapshot' to regenerate the snapshot.")
     return 0

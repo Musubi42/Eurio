@@ -199,6 +199,23 @@ async function stageClassForRemoval(cls: ModelClassSummary) {
   await refreshStaging()
 }
 
+async function removeClassNoConfirm(cls: ModelClassSummary) {
+  if (removalIds.value.has(cls.class_id)) return
+  await stageRemoval([{ class_id: cls.class_id, class_kind: cls.class_kind }])
+  await refreshStaging()
+}
+
+async function removeAllClasses() {
+  const targets = trainedClasses.value.filter(
+    c => !removalIds.value.has(c.class_id),
+  )
+  if (!targets.length) return
+  await stageRemoval(
+    targets.map(c => ({ class_id: c.class_id, class_kind: c.class_kind })),
+  )
+  await refreshStaging()
+}
+
 async function cancelRemoval(classId: string) {
   await unstageRemoval(classId)
   await refreshStaging()
@@ -224,7 +241,7 @@ async function launch() {
 async function openRunDetail(runId: string) {
   const [detail, logs] = await Promise.all([
     fetchRunDetail(runId),
-    fetchRunLogs(runId, 200),
+    fetchRunLogs(runId, 0),
   ])
   selectedRun.value = detail
   selectedRunLogs.value = logs.lines
@@ -259,10 +276,20 @@ const lastCompletedRun = computed(() => runs.value.find(r => r.status === 'compl
 
 const isIdle = computed(() => activeRun.value === null)
 
+// Re-running on the same class set (empty staging + empty removal) is allowed
+// once there's a completed run — the runner resolves classes_after to
+// classes_before in that case. Useful when iterating on training config
+// (recipes, transforms, hyper-params) without changing the class set.
 const canLaunch = computed(() =>
   apiStatus.value === 'online'
   && isIdle.value
-  && (staged.value.length > 0 || removal.value.length > 0),
+  && (staged.value.length > 0 || removal.value.length > 0 || lastCompletedRun.value !== null),
+)
+
+const isRetrainSameClasses = computed(() =>
+  staged.value.length === 0
+  && removal.value.length === 0
+  && lastCompletedRun.value !== null,
 )
 
 // ─── Formatting ────────────────────────────────────────────────────────
@@ -636,9 +663,24 @@ onMounted(fetchExportStatus)
               <p class="text-xs font-medium" style="color: var(--ink);">
                 Classes actuelles · {{ trainedClasses.length }}
               </p>
-              <span class="font-mono text-[10px]" style="color: var(--ink-400);">
-                entraînées
-              </span>
+              <div class="flex items-center gap-2">
+                <button
+                  v-if="trainedClasses.length > 0"
+                  class="rounded px-2 py-0.5 font-mono text-[10px] uppercase hover:opacity-80"
+                  :style="{
+                    border: '1px solid var(--danger)',
+                    color: 'var(--danger)',
+                    background: 'transparent',
+                  }"
+                  :title="'Stage toutes les classes pour suppression'"
+                  @click="removeAllClasses"
+                >
+                  Tout retirer
+                </button>
+                <span class="font-mono text-[10px]" style="color: var(--ink-400);">
+                  entraînées
+                </span>
+              </div>
             </div>
             <div
               v-if="trainedClasses.length === 0"
@@ -648,24 +690,48 @@ onMounted(fetchExportStatus)
               Aucune classe entraînée
             </div>
             <div v-else class="flex flex-wrap gap-1.5">
-              <button
+              <div
                 v-for="cls in trainedClasses"
                 :key="cls.class_id"
-                class="flex items-center gap-1 rounded-md border px-2 py-1 font-mono text-[10px] transition-colors"
+                class="flex items-center rounded-md border font-mono text-[10px] transition-colors"
                 :style="{
                   borderColor: removalIds.has(cls.class_id) ? 'var(--danger)' : 'var(--surface-3)',
                   background: removalIds.has(cls.class_id)
                     ? 'color-mix(in srgb, var(--danger) 12%, var(--surface))'
                     : 'var(--surface)',
                   color: removalIds.has(cls.class_id) ? 'var(--danger)' : 'var(--ink)',
-                  textDecoration: removalIds.has(cls.class_id) ? 'line-through' : 'none',
                 }"
-                :title="`${cls.class_id} (${cls.class_kind})`"
-                @click="openClassDetail(cls)"
               >
-                <Layers v-if="cls.class_kind === 'design_group_id'" class="h-2.5 w-2.5" />
-                {{ cls.class_id }}
-              </button>
+                <button
+                  class="flex items-center gap-1 px-2 py-1"
+                  :style="{
+                    textDecoration: removalIds.has(cls.class_id) ? 'line-through' : 'none',
+                  }"
+                  :title="`${cls.class_id} (${cls.class_kind})`"
+                  @click="openClassDetail(cls)"
+                >
+                  <Layers v-if="cls.class_kind === 'design_group_id'" class="h-2.5 w-2.5" />
+                  {{ cls.class_id }}
+                </button>
+                <button
+                  v-if="!removalIds.has(cls.class_id)"
+                  class="flex items-center px-1.5 py-1 hover:opacity-70"
+                  :style="{ color: 'var(--ink-400)' }"
+                  :title="`Retirer ${cls.class_id} du modèle`"
+                  @click.stop="removeClassNoConfirm(cls)"
+                >
+                  <X class="h-2.5 w-2.5" />
+                </button>
+                <button
+                  v-else
+                  class="flex items-center px-1.5 py-1 hover:opacity-70"
+                  :style="{ color: 'var(--danger)' }"
+                  :title="`Annuler la suppression de ${cls.class_id}`"
+                  @click.stop="cancelRemoval(cls.class_id)"
+                >
+                  <X class="h-2.5 w-2.5" />
+                </button>
+              </div>
             </div>
           </div>
 
@@ -776,7 +842,15 @@ onMounted(fetchExportStatus)
           >
             <Loader2 v-if="launchLoading" class="h-4 w-4 animate-spin" />
             <Play v-else class="h-4 w-4" />
-            {{ launchLoading ? 'Démarrage…' : activeRun ? 'Entraînement en cours' : 'Lancer l\'entraînement' }}
+            {{
+              launchLoading
+                ? 'Démarrage…'
+                : activeRun
+                  ? 'Entraînement en cours'
+                  : isRetrainSameClasses
+                    ? 'Re-entraîner sur les mêmes classes'
+                    : 'Lancer l\'entraînement'
+            }}
           </button>
         </div>
       </section>
@@ -1042,6 +1116,96 @@ onMounted(fetchExportStatus)
             style="background: color-mix(in srgb, var(--danger) 8%, var(--surface)); color: var(--danger);"
           >
             {{ exportStatus.error }}
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══ Cheat sheet : commandes CLI post-training ═══ -->
+      <section class="mb-6">
+        <h2 class="mb-3 text-xs font-medium uppercase tracking-wider" style="color: var(--ink-500);">
+          Workflow CLI · post-training
+        </h2>
+        <div
+          class="rounded-lg border px-5 py-4 text-xs"
+          style="border-color: var(--surface-3); background: var(--surface);"
+        >
+          <p class="mb-3" style="color: var(--ink-500);">
+            Une fois le run d'entraînement terminé (status <span class="font-mono">completed</span>),
+            enchaîne ces commandes dans l'ordre depuis la racine du repo pour bundler le modèle
+            sur le téléphone :
+          </p>
+          <div class="space-y-3">
+            <div class="flex flex-col gap-1">
+              <code class="font-mono text-[11px] rounded px-2 py-1 w-fit" style="background: var(--surface-2); color: var(--indigo-700);">
+                go-task ml:export
+              </code>
+              <p style="color: var(--ink-500);">
+                Convertit <span class="font-mono">checkpoints/best_model.pth</span> (PyTorch)
+                en <span class="font-mono">output/eurio_embedder_v1.tflite</span>. Lit le checkpoint
+                ArcFace, exporte le backbone + head en TFLite via ONNX. Pas de re-training.
+              </p>
+            </div>
+            <div class="flex flex-col gap-1">
+              <code class="font-mono text-[11px] rounded px-2 py-1 w-fit" style="background: var(--surface-2); color: var(--indigo-700);">
+                go-task ml:validate
+              </code>
+              <p style="color: var(--ink-500);">
+                Compare embeddings PyTorch vs TFLite sur les images sources. Cosine sim doit être ≥ 0.99.
+                Sanity check de conversion — ne mesure PAS la qualité du modèle, juste que la TFLite
+                produit la même chose que le PyTorch original.
+              </p>
+            </div>
+            <div class="flex flex-col gap-1">
+              <code class="font-mono text-[11px] rounded px-2 py-1 w-fit" style="background: var(--surface-2); color: var(--indigo-700);">
+                go-task ml:validate-per-class
+              </code>
+              <p style="color: var(--ink-500);">
+                R@1 par classe sur 50 augmentations à la volée (recette de zone + rotation 0–360°).
+                C'est la VRAIE éval qualité — combien de scans simulés sont correctement classés
+                via les prototypes ArcFace déployés. Tourne aussi automatiquement en step 5 du run
+                ; cette commande est pour la rejouer hors run.
+              </p>
+            </div>
+            <div class="flex flex-col gap-1">
+              <code class="font-mono text-[11px] rounded px-2 py-1 w-fit" style="background: var(--surface-2); color: var(--indigo-700);">
+                go-task ml:deploy
+              </code>
+              <p style="color: var(--ink-500);">
+                Copie le TFLite + <span class="font-mono">model_meta.json</span> +
+                <span class="font-mono">coin_embeddings.json</span> (centroïdes) vers
+                <span class="font-mono">app-android/src/main/assets/</span>. C'est ce qui finit dans l'APK.
+              </p>
+            </div>
+            <div class="flex flex-col gap-1">
+              <code class="font-mono text-[11px] rounded px-2 py-1 w-fit" style="background: var(--surface-2); color: var(--indigo-700);">
+                go-task android:snapshot
+              </code>
+              <p style="color: var(--ink-500);">
+                Refresh <span class="font-mono">catalog_snapshot.json</span> depuis Supabase
+                (toutes les pièces du catalogue, leurs noms, années, URLs photos). À refaire
+                quand le catalogue Supabase a changé, sinon les nouvelles pièces n'apparaîtront
+                pas dans le vault Android.
+              </p>
+            </div>
+            <div class="flex flex-col gap-1">
+              <code class="font-mono text-[11px] rounded px-2 py-1 w-fit" style="background: var(--surface-2); color: var(--indigo-700);">
+                go-task android:install
+              </code>
+              <p style="color: var(--ink-500);">
+                Build l'APK debug + push sur le device connecté en USB / Wi-Fi. Combine
+                <span class="font-mono">build</span> + <span class="font-mono">installDebug</span>
+                Gradle. Le téléphone démarre le nouvel APK avec les assets tout frais.
+              </p>
+            </div>
+          </div>
+          <div class="mt-4 rounded border-l-2 px-3 py-2" style="border-color: var(--warning); background: color-mix(in srgb, var(--warning) 6%, var(--surface)); color: var(--ink-500);">
+            <p class="font-medium" style="color: var(--warning);">⚠ Une seule règle</p>
+            <p class="mt-1">
+              Ne lance <span class="font-mono">go-task ml:train</span> ni
+              <span class="font-mono">ml:train-arcface</span> à la main — ça écrase ton
+              checkpoint actuel. L'entraînement passe toujours par le bouton "Lancer le run"
+              ci-dessus, qui orchestre prepare → train → embeddings → seed → validate.
+            </p>
           </div>
         </div>
       </section>

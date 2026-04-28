@@ -45,9 +45,10 @@
 1. **Phase 2B — ArcFace 500+ classes** — training + export TFLite + `coin_embeddings.npy` pré-calculé. Bloque le scan utilisateur réel ET la Phase 2C.6 (Stage 4 visual matching).
 2. **Phase 3 — Coffre Android** — écrans Kotlin Compose, branchement Supabase via supabase-kt, collection user. Peut avancer en parallèle de 2B.
 3. **Phase 2C.6 — Stage 4 visual** — brancher ArcFace dans `matching.py::match()` pour résoudre les escalades FR↔EN restantes. Dépend de Phase 2B.
-4. **Phase 2C — Review manuelle de la queue** — 121 groupes uniques à trancher dans le web tool, ~20 min. Optionnel, pas bloquant.
-5. **Phase 4 — Gamification** — achievements, series completion, streak. Dépend de Phase 3.
-6. **Phase 5 — Polish + beta** — UI finale, onboarding, beta closed puis ouverte.
+4. **Phase 2C.8 — Enrichissement multi-sources + admin** — URL BCE cross_refs, sync bce_comm → Supabase, mintage BCE+Numista, images BCE download, LMDLP prix avec qualité, filtres cumulables `/coins`. Voir [`docs/phases/phase-2c8-enrichment-admin.md`](./phases/phase-2c8-enrichment-admin.md).
+5. **Phase 2C — Review manuelle de la queue** — 121 groupes uniques à trancher dans le web tool, ~20 min. Optionnel, pas bloquant.
+6. **Phase 4 — Gamification** — achievements, series completion, streak. Dépend de Phase 3.
+7. **Phase 5 — Polish + beta** — UI finale, onboarding, beta closed puis ouverte.
 
 ---
 
