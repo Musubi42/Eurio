@@ -83,6 +83,7 @@ state/archive.py
 state/sources_runs.py
 state/store.py
 tests/__init__.py
+tests/bench_normalize.py
 tests/test_augmentation.py
 tests/test_augmentation_api.py
 tests/test_benchmark.py

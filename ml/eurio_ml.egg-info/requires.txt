@@ -1,4 +1,7 @@
+ai-edge-torch
+ai-edge-litert
 opencv-python-headless
 pytorch-metric-learning
 torch
 torchvision
+typing-extensions>=4.13

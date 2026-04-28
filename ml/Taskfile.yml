@@ -147,9 +147,9 @@ tasks:
     desc: Copy TFLite model and metadata into Android assets
     cmds:
       - mkdir -p {{.ASSETS}}/models {{.ASSETS}}/data
-      - /bin/cp {{.OUTPUT}}/eurio_embedder_v1.tflite {{.ASSETS}}/models/
-      - /bin/cp {{.OUTPUT}}/model_meta.json {{.ASSETS}}/data/
-      - "[ -f {{.OUTPUT}}/coin_embeddings.json ] && /bin/cp {{.OUTPUT}}/coin_embeddings.json {{.ASSETS}}/data/ || true"
+      - cp {{.OUTPUT}}/eurio_embedder_v1.tflite {{.ASSETS}}/models/
+      - cp {{.OUTPUT}}/model_meta.json {{.ASSETS}}/data/
+      - "[ -f {{.OUTPUT}}/coin_embeddings.json ] && cp {{.OUTPUT}}/coin_embeddings.json {{.ASSETS}}/data/ || true"
 
   seed:
     desc: Seed Supabase with coin catalog and embeddings (needs SERVICE_ROLE_KEY)

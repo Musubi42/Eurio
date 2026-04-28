@@ -7,10 +7,17 @@ requires-python = ">=3.12"
 # fastapi, uvicorn, scikit-learn, matplotlib, httpx…) is provided by the
 # devShell and reaches the venv via include-system-site-packages = true.
 dependencies = [
+  "ai-edge-torch",
+  "ai-edge-litert",
   "opencv-python-headless",
   "pytorch-metric-learning",
   "torch",
   "torchvision",
+  # `xdsl` (transitive de litert-torch) pin typing-extensions<4.13, mais
+  # le `pydantic-core` servi par le devShell Nix importe `Sentinel` qui
+  # n'existe qu'à partir de 4.13. On force >=4.13 ici — xdsl tourne très
+  # bien en pratique sur 4.15 malgré son pin déclaré.
+  "typing-extensions>=4.13",
 ]
 
 [build-system]
@@ -27,15 +34,19 @@ include = ["referential*", "market*", "export*", "training*", "eval*", "bootstra
 [tool.setuptools]
 py-modules = ["api_quota", "api_quota_cli"]
 
-# Per-platform torch source. Linux x86_64 → CUDA 12.1 wheel (1080ti = compute
-# 6.1, supported). Other platforms (notably macOS arm64) fall through to PyPI
-# default, which ships MPS-enabled wheels. Marker is evaluated at install time
-# by uv, so a single `uv pip install -e .` does the right thing on each host.
+# Per-platform torch source. Linux x86_64 → CUDA 12.6 wheel (1080ti = compute
+# 6.1, supporté par les wheels PyTorch jusqu'à au moins 2.9.x). On a dû
+# remonter de cu121 à cu126 parce que litert-torch + torchao requièrent
+# torch ≥ 2.7 (API torch.utils._pytree.register_constant) et les index
+# cu121/cu124 ne publient pas torch ≥ 2.7. Other platforms
+# (macOS arm64) fall through to PyPI default, which ships MPS-enabled wheels.
+# Marker is evaluated at install time by uv, so a single `uv pip install -e .`
+# does the right thing on each host.
 [tool.uv.sources]
-torch       = [{ index = "pytorch-cu121", marker = "sys_platform == 'linux' and platform_machine == 'x86_64'" }]
-torchvision = [{ index = "pytorch-cu121", marker = "sys_platform == 'linux' and platform_machine == 'x86_64'" }]
+torch       = [{ index = "pytorch-cu126", marker = "sys_platform == 'linux' and platform_machine == 'x86_64'" }]
+torchvision = [{ index = "pytorch-cu126", marker = "sys_platform == 'linux' and platform_machine == 'x86_64'" }]
 
 [[tool.uv.index]]
-name     = "pytorch-cu121"
-url      = "https://download.pytorch.org/whl/cu121"
+name     = "pytorch-cu126"
+url      = "https://download.pytorch.org/whl/cu126"
 explicit = true

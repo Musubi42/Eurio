@@ -94,7 +94,7 @@ class TrainingRunner:
         self._store = store
         self._active: ActiveState | None = None
         self._lock = threading.Lock()
-        self._device = "mps"
+        self._device = "auto"  # forwarded to train_embedder.py --device; resolves to cuda/mps/cpu per host
         self._rehydrate()
 
     # ─── Config ──────────────────────────────────────────────────────────

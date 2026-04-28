@@ -157,7 +157,7 @@ class HealthResponse(BaseModel):
 
 
 class TrainConfig(BaseModel):
-    device: str = "mps"
+    device: str = "auto"
 
 
 class AugmentRequest(BaseModel):

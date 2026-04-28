@@ -221,7 +221,9 @@ def _load_image_tensor(path: Path, transform: transforms.Compose) -> torch.Tenso
 
 
 def pick_device() -> torch.device:
-    """MPS on Apple Silicon, CPU otherwise. No CUDA (user is Mac-only)."""
+    """CUDA on NixOS+NVIDIA, MPS on Apple Silicon, CPU otherwise."""
+    if torch.cuda.is_available():
+        return torch.device("cuda")
     if torch.backends.mps.is_available():
         return torch.device("mps")
     return torch.device("cpu")
