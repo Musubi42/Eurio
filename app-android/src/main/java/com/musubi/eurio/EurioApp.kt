@@ -21,6 +21,7 @@ import com.musubi.eurio.ml.CoinDetector
 import com.musubi.eurio.ml.CoinRecognizer
 import com.musubi.eurio.ml.EmbeddingMatcher
 import com.musubi.eurio.domain.AppEvent
+import com.musubi.eurio.features.scan.CaptureProtocol
 import com.musubi.eurio.features.scan.ScanState
 import com.musubi.eurio.ml.ScanResult
 import kotlinx.coroutines.CoroutineScope
@@ -180,6 +181,11 @@ class EurioApp : Application() {
         } else {
             Log.i(TAG, "OpenCV init OK")
         }
+
+        // Load the capture-mode coin list from assets/capture_coins.csv.
+        // Synchronous: file is small (<1 KB) and CaptureProtocol is read
+        // by the scan VM the moment the user opens the scanner.
+        CaptureProtocol.init(this)
 
         database = EurioDatabase.get(this)
 

@@ -1,0 +1,11 @@
+@import "tailwindcss";
+@import "../../../shared/tokens.css";
+
+:root {
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+body {
+  background: var(--surface);
+  color: var(--ink);
+}

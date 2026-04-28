@@ -174,7 +174,9 @@ export type Database = {
           last_updated: string
           mintage: number | null
           national_variants: Json | null
+          lent_to_me: boolean
           needs_review: boolean
+          personal_owned: boolean
           review_reason: string | null
           series_id: string | null
           sources_used: string[]
@@ -198,9 +200,11 @@ export type Database = {
           is_withdrawn?: boolean
           issue_type?: string | null
           last_updated?: string
+          lent_to_me?: boolean
           mintage?: number | null
           national_variants?: Json | null
           needs_review?: boolean
+          personal_owned?: boolean
           review_reason?: string | null
           series_id?: string | null
           sources_used?: string[]
@@ -224,9 +228,11 @@ export type Database = {
           is_withdrawn?: boolean
           issue_type?: string | null
           last_updated?: string
+          lent_to_me?: boolean
           mintage?: number | null
           national_variants?: Json | null
           needs_review?: boolean
+          personal_owned?: boolean
           review_reason?: string | null
           series_id?: string | null
           sources_used?: string[]

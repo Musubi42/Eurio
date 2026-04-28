@@ -65,10 +65,16 @@ IMAGENET_STD = (0.229, 0.224, 0.225)
 TOP_K = 5
 BATCH_SIZE = 32
 
-# Default zone thresholds. Override via --thresholds green:X,red:Y.
+# Default zone thresholds (used only when --thresholds-mode=fixed).
 # green: nearest_similarity < green_max   (isolated design)
 # orange: green_max <= nearest_similarity < red_min
 # red:   nearest_similarity >= red_min    (quasi-twin)
+#
+# Default mode is now `percentile` — derive green_max/red_min from the
+# observed nearest_similarity distribution (p25/p75). DINOv2 inflates
+# similarities on euro coins (every 2€ shares the same shape/star ring),
+# so absolute thresholds drift with the encoder; quartile-based zones
+# stay self-calibrating. See docs/research/_drafts/coin-similarity-encoder-followup.md.
 ZONE_THRESHOLDS: dict[str, float] = {
     "green_max": 0.70,
     "red_min": 0.85,
@@ -96,11 +102,27 @@ class CoinEntry:
 
 
 def _extract_obverse_url(images: dict | list | None) -> str | None:
-    """Extract the obverse URL from the coins.images payload (dict or legacy list)."""
+    """Extract the obverse URL from the coins.images payload.
+
+    Supports three payload shapes encountered in the catalogue history:
+
+    - Modern dict-of-arrays:  {"obverse": [{"url": "...", "source": "..."}], ...}
+    - Legacy dict-of-strings: {"obverse": "https://..."}
+    - Legacy list-of-roles:   [{"role": "obverse", "url": "..."}]
+    """
     if not images:
         return None
     if isinstance(images, dict):
-        return images.get("obverse") or images.get("obverse_url")
+        obv = images.get("obverse") or images.get("obverse_url")
+        if isinstance(obv, str):
+            return obv
+        if isinstance(obv, list) and obv:
+            first = obv[0]
+            if isinstance(first, dict):
+                return first.get("url")
+            if isinstance(first, str):
+                return first
+        return None
     if isinstance(images, list):
         match = next((i for i in images if i.get("role") == "obverse"), None)
         if match:
@@ -311,16 +333,42 @@ def zone_for_similarity(sim: float, thresholds: dict[str, float]) -> str:
     return "green"
 
 
+def derive_percentile_thresholds(nearest_sims: list[float]) -> dict[str, float]:
+    """Compute zone thresholds as quartiles of the observed distribution.
+
+    bottom 25% → green, middle 50% → orange, top 25% → red.
+    Robust to encoder swap: if a future encoder shifts every similarity
+    by +0.1, the percentiles shift with it and the triage stays useful.
+    """
+    if not nearest_sims:
+        return dict(ZONE_THRESHOLDS)
+    arr = np.asarray(nearest_sims, dtype=np.float64)
+    green_max = float(np.quantile(arr, 0.25))
+    red_min = float(np.quantile(arr, 0.75))
+    # Defensive: if the distribution is degenerate (all values identical),
+    # quantiles collapse — fall back to a tiny epsilon so the orange band exists.
+    if green_max >= red_min:
+        red_min = green_max + 1e-6
+    return {"green_max": green_max, "red_min": red_min}
+
+
 def compute_pairwise_neighbors(
     coins: list[CoinEntry],
     eurio_ids: list[str],
     matrix: np.ndarray,
     thresholds: dict[str, float],
+    *,
+    percentile_mode: bool = True,
 ) -> list[dict]:
     """For each coin, compute its cosine similarity to every other coin,
     filter out same-design neighbors (shared design_group_id, with fallback
     on numista_id when the group is not yet populated), and return one row
-    per coin ready for upsert."""
+    per coin ready for upsert.
+
+    When ``percentile_mode=True``, the zone boundaries are recomputed from
+    the actual ``nearest_similarity`` distribution (quartiles). The
+    ``thresholds`` argument is then ignored.
+    """
     if matrix.shape[0] < 2:
         if matrix.shape[0] > 0:
             logger.warning("Fewer than 2 coins embedded — nothing to compare.")
@@ -364,7 +412,6 @@ def compute_pairwise_neighbors(
         top_k = candidates[:TOP_K]
 
         nearest_eid, nearest_sim = top_k[0]
-        zone = zone_for_similarity(nearest_sim, thresholds)
 
         neighbors_json = [
             {
@@ -381,9 +428,25 @@ def compute_pairwise_neighbors(
                 "nearest_eurio_id": nearest_eid,
                 "nearest_similarity": round(nearest_sim, 6),
                 "top_k_neighbors": neighbors_json,
-                "zone": zone,
+                # zone assigned in the second pass below
             }
         )
+
+    # Second pass: assign zone now that we have the full distribution.
+    if percentile_mode:
+        thresholds = derive_percentile_thresholds([r["nearest_similarity"] for r in rows])
+        logger.info(
+            "Percentile thresholds (n=%d): green<%.4f, orange [%.4f..%.4f), red>=%.4f",
+            len(rows), thresholds["green_max"], thresholds["green_max"],
+            thresholds["red_min"], thresholds["red_min"],
+        )
+    else:
+        logger.info(
+            "Fixed thresholds: green<%.4f, red>=%.4f",
+            thresholds["green_max"], thresholds["red_min"],
+        )
+    for r in rows:
+        r["zone"] = zone_for_similarity(r["nearest_similarity"], thresholds)
 
     return rows
 
@@ -442,6 +505,7 @@ def run(
     encoder_version: str,
     thresholds: dict[str, float],
     status_path: Path | None = None,
+    thresholds_mode: str = "percentile",
 ) -> dict:
     env = load_env()
     url = env.get("SUPABASE_URL", "")
@@ -504,7 +568,8 @@ def run(
             rows=0,
         )
         rows = compute_pairwise_neighbors(
-            coins, eurio_ids_out, matrix, thresholds
+            coins, eurio_ids_out, matrix, thresholds,
+            percentile_mode=(thresholds_mode == "percentile"),
         )
         logger.info("Computed %d confusion rows", len(rows))
 
@@ -604,10 +669,25 @@ def build_argparser() -> argparse.ArgumentParser:
         help=f"Encoder version tag written to DB (default: {DEFAULT_ENCODER_VERSION}).",
     )
     p.add_argument(
+        "--thresholds-mode",
+        type=str,
+        choices=("percentile", "fixed"),
+        default="percentile",
+        help=(
+            "How to compute zone boundaries. "
+            "'percentile' (default): bottom 25%% green, top 25%% red, middle orange — "
+            "self-calibrates to encoder distribution. "
+            "'fixed': use --thresholds clauses (or hardcoded defaults)."
+        ),
+    )
+    p.add_argument(
         "--thresholds",
         type=str,
         default=None,
-        help="Override zone thresholds, e.g. 'green:0.70,red:0.85'.",
+        help=(
+            "Override zone thresholds when --thresholds-mode=fixed, "
+            "e.g. 'green:0.70,red:0.85'. Ignored otherwise."
+        ),
     )
     p.add_argument(
         "--status-file",
@@ -643,6 +723,7 @@ def main(argv: Iterable[str] | None = None) -> int:
         encoder_version=args.encoder_version,
         thresholds=thresholds,
         status_path=status_path,
+        thresholds_mode=args.thresholds_mode,
     )
     logger.info("Done: %s", json.dumps(result))
     return 0

@@ -8,6 +8,7 @@ import {
   type ComputeStatus,
   type ConfusionPair,
   type ConfusionStats,
+  type PersonalFilter,
 } from '@/features/confusion/composables/useConfusionMap'
 import { zoneStyle } from '@/features/confusion/composables/useConfusionZone'
 import type { ConfusionZone } from '@/shared/supabase/types'
@@ -19,6 +20,7 @@ import {
   Network,
   RefreshCw,
   Search,
+  Wallet,
   Wifi,
   WifiOff,
 } from 'lucide-vue-next'
@@ -45,6 +47,9 @@ const computing = ref(false)
 
 // Filters for the pairs section
 const filterZone = ref<'all' | ConfusionZone>('all')
+// `coins.personal_owned` filter (admin's physical collection — see migration
+// 20260428). 3-state chip group: all / both / either.
+const filterPersonal = ref<PersonalFilter>('all')
 const filterCountry = ref<string>('')
 const filterQuery = ref<string>('')
 
@@ -102,6 +107,7 @@ async function loadPairs() {
     pairs.value = await fetchPairs(mlApiOnline.value, {
       limit: 100,
       zone: filterZone.value,
+      personal: filterPersonal.value,
     })
   } catch (e) {
     pairsError.value = (e as Error).message
@@ -111,6 +117,7 @@ async function loadPairs() {
 }
 
 watch(filterZone, () => loadPairs())
+watch(filterPersonal, () => loadPairs())
 
 /* ───────── Compute + polling ───────── */
 
@@ -711,6 +718,49 @@ const progressPercent = computed(() => {
             <span v-else-if="z === 'red'">Rouge</span>
             <span v-else-if="z === 'orange'">Orange</span>
             <span v-else>Verte</span>
+          </button>
+        </div>
+
+        <div class="h-4 w-px" style="background: var(--surface-3);" />
+
+        <!--
+          Personal-collection chips (3-state, mirrors /coins page pattern shipped
+          with migration 20260428_coins_personal_owned). Filter is applied at
+          query-time on Supabase — see useConfusionMap.fetchPairsFromSupabase.
+        -->
+        <div class="flex items-center gap-2">
+          <Wallet class="h-3.5 w-3.5" style="color: var(--ink-400);" />
+          <span
+            class="text-[10px] font-medium uppercase"
+            style="color: var(--ink-500); letter-spacing: var(--tracking-eyebrow);"
+          >
+            Collection
+          </span>
+        </div>
+        <div class="flex gap-1">
+          <button
+            v-for="opt in ([
+              { key: 'all' as const, label: 'Tous' },
+              { key: 'both' as const, label: 'Dans ma collec', icon: true },
+              { key: 'either' as const, label: 'Partiel' },
+            ])" :key="opt.key + '-personal'"
+            class="flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors"
+            :style="{
+              background: filterPersonal === opt.key
+                ? (opt.key === 'all' ? 'var(--indigo-700)' : 'var(--success)')
+                : 'var(--surface)',
+              color: filterPersonal === opt.key ? 'white' : 'var(--ink-500)',
+              borderColor: filterPersonal === opt.key ? 'transparent' : 'var(--surface-3)',
+            }"
+            :title="opt.key === 'both'
+              ? 'Les deux pièces de la paire sont dans ta collection'
+              : opt.key === 'either'
+                ? 'Au moins une des deux pièces est dans ta collection'
+                : 'Aucun filtre'"
+            @click="filterPersonal = opt.key"
+          >
+            <Wallet v-if="opt.icon" class="h-3 w-3" />
+            {{ opt.label }}
           </button>
         </div>
 
