@@ -50,6 +50,10 @@ data class ScanResult(
     val letterboxPadX: Int = 0,
     val letterboxPadY: Int = 0,
     val timestamp: Long = System.currentTimeMillis(),
+    // Photo mode (one-shot): absolute path to the masked crop sent to ArcFace.
+    // Null in continuous mode. UI displays this exact image so the user can
+    // see what the model actually saw.
+    val photoSnapCropPath: String? = null,
 ) {
     val detected: Boolean get() = detections.isNotEmpty() && selectedDetectionIndex >= 0
     val bestDetection: Detection? get() = detections.getOrNull(selectedDetectionIndex)
@@ -88,24 +92,135 @@ class CoinAnalyzer(
     @Volatile
     var useEmbeddings: Boolean = matcher != null
 
-    /** Set to true to save the next frame + crop to disk. Reset automatically after capture. */
-    @Volatile
-    var captureNextFrame: Boolean = false
+    /** Root debug directory (set by the application). Record sessions go inside. */
+    var debugRootDir: java.io.File? = null
 
-    /** Directory to save debug captures. Must be set by the activity. */
-    var captureDir: java.io.File? = null
-
-    /** Timestamp to use for capture filenames. Set by the activity before triggering capture. */
+    /**
+     * Continuous record mode. When true and [recordSessionDir] is set, every
+     * analyzed frame is dumped to disk: raw jpg + annotated jpg + a JSONL line
+     * with the full pipeline state (YOLO, Hough, ArcFace top-3 per candidate,
+     * decision, timings). Toggled from the debug overlay.
+     */
     @Volatile
-    var captureTimestamp: String? = null
+    var recordMode: Boolean = false
 
-    /** Files saved during the last capture (populated after capture completes). */
+    /** Session directory for the current record run. Set when recording starts. */
     @Volatile
-    var lastCapturedFiles: List<String> = emptyList()
+    var recordSessionDir: java.io.File? = null
+
+    /** Frame index within the current record session. Reset on session start. */
+    private val recordFrameIndex = java.util.concurrent.atomic.AtomicInteger(0)
+
+    /** Last frame index written (read by the UI for the live counter). */
+    @Volatile
+    var recordedFrameCount: Int = 0
+        private set
+
+    fun resetRecordCounter() {
+        recordFrameIndex.set(0)
+        recordedFrameCount = 0
+    }
+
+    /**
+     * Photo mode: continuous analysis is paused; frames are dropped until the
+     * user taps SNAP. On snap we crop a centered square (matching the on-screen
+     * guide diameter), apply a circular gray-114 mask, and feed the result
+     * straight to ArcFace — bypassing YOLO/Hough (the user did the framing).
+     */
+    @Volatile
+    var photoMode: Boolean = false
+
+    @Volatile
+    var snapRequested: Boolean = false
+
+    /**
+     * When set, the next snap is written to `eval_real/<eurioId>/<stepId>_*`
+     * (golden-set capture for Phase 0) instead of the rolling `snaps/snap_<ts>/`
+     * directory. The VM sets this before flipping [snapRequested] and clears it
+     * after the snap is consumed.
+     */
+    data class CaptureContext(
+        val eurioId: String,
+        val stepId: String,
+        val stepLabel: String,
+        val stepIndex: Int,
+    )
+
+    @Volatile
+    var captureContext: CaptureContext? = null
+
+    /**
+     * Diameter of the photo-mode on-screen guide circle, fraction of the
+     * frame's short side. Purely a UX hint now ("aim your coin here roughly")
+     * — the actual crop is determined by Hough in [SnapNormalizer], which
+     * recenters precisely on the detected coin regardless of where the user
+     * placed it inside the guide. Kept so the on-screen overlay stays in
+     * sync with the user expectation set during capture-mode framing.
+     */
+    var photoCropDiameterRatio: Float = 0.70f
+
+    /**
+     * Callback fired when a live Hough check produces a new ring state in
+     * photo mode. Called at most every [photoLiveDetectIntervalMs] ms; never
+     * called outside photo mode. Allows the overlay to color the on-screen
+     * guide ring (green when a centered circle is found, gray otherwise)
+     * without burning ArcFace cycles on every frame.
+     */
+    var onPhotoLiveDetection: ((SnapNormalizer.Detection?) -> Unit)? = null
+
+    /**
+     * Throttle for the live photo-mode detection loop. 200 ms = 5 fps —
+     * Hough on a 480p frame takes ~10–30 ms, so this leaves ~85% of the CPU
+     * idle and the camera pipeline unblocked, while still being responsive
+     * enough that the ring color tracks the user's framing motion.
+     */
+    var photoLiveDetectIntervalMs: Long = 200L
 
     private var lastAnalyzedTimestamp = 0L
+    private var lastPhotoLiveDetectMs = 0L
 
     override fun analyze(imageProxy: ImageProxy) {
+        // Photo mode: drop full pipeline (YOLO + Hough + ArcFace) and only
+        // run a cheap Hough probe at [photoLiveDetectIntervalMs] cadence to
+        // drive the on-screen ring color. The full normalization + ArcFace
+        // pass runs only when the user taps SNAP (snapRequested=true).
+        if (photoMode) {
+            if (!snapRequested) {
+                val now = System.currentTimeMillis()
+                if (now - lastPhotoLiveDetectMs >= photoLiveDetectIntervalMs) {
+                    lastPhotoLiveDetectMs = now
+                    try {
+                        val bitmap = imageProxyToBitmap(imageProxy)
+                        if (bitmap != null) {
+                            val det = SnapNormalizer.detectCircleOnly(bitmap)
+                            onPhotoLiveDetection?.invoke(det)
+                            bitmap.recycle()
+                        }
+                    } catch (e: Exception) {
+                        Log.w("CoinAnalyzer", "Photo live-detect failed", e)
+                    }
+                }
+                imageProxy.close()
+                return
+            }
+            snapRequested = false
+            try {
+                val bitmap = imageProxyToBitmap(imageProxy)
+                if (bitmap != null) {
+                    val start = System.currentTimeMillis()
+                    val result = analyzePhotoBitmap(bitmap)
+                    val elapsed = System.currentTimeMillis() - start
+                    onResult(result.copy(totalInferenceMs = elapsed))
+                    bitmap.recycle()
+                }
+            } catch (e: Exception) {
+                Log.e("CoinAnalyzer", "Photo analysis failed", e)
+            } finally {
+                imageProxy.close()
+            }
+            return
+        }
+
         val now = System.currentTimeMillis()
         if (now - lastAnalyzedTimestamp < analyzeIntervalMs) {
             imageProxy.close()
@@ -127,6 +242,198 @@ class CoinAnalyzer(
             Log.e("CoinAnalyzer", "Analysis failed", e)
         } finally {
             imageProxy.close()
+        }
+    }
+
+    /**
+     * One-shot analysis path used in photo mode. The raw camera frame is
+     * normalized by [SnapNormalizer] (Hough → tight crop → black mask → 224)
+     * — the same algorithm `ml/scan/normalize_snap.py` runs on studio
+     * sources at training time. ArcFace then sees an input from the same
+     * distribution it was trained on, which is what makes photo mode usable
+     * for identification (vs. continuous scan, which feeds raw bbox crops
+     * with a different geometry).
+     *
+     * Failure mode: if Hough finds no centered circle, the snap is rejected
+     * before ArcFace runs. Raw frame + meta are still saved so the user can
+     * inspect what the camera actually saw and tune framing/lighting; the
+     * UI surfaces the "no circle" reason instead of a fake match.
+     */
+    private fun analyzePhotoBitmap(bitmap: Bitmap): ScanResult {
+        val frameW = bitmap.width
+        val frameH = bitmap.height
+
+        val normStart = System.currentTimeMillis()
+        val norm = SnapNormalizer.normalize(bitmap)
+        val normMs = System.currentTimeMillis() - normStart
+
+        val syntheticBbox = if (norm.r > 0) {
+            // Tangent square in raw-frame coords matches what SnapNormalizer
+            // cropped, so the debug overlay can render the actual crop region.
+            val half = (norm.r + norm.marginPx).toFloat()
+            RectF(
+                (norm.cx - half).coerceAtLeast(0f),
+                (norm.cy - half).coerceAtLeast(0f),
+                (norm.cx + half).coerceAtMost(frameW.toFloat()),
+                (norm.cy + half).coerceAtMost(frameH.toFloat()),
+            )
+        } else {
+            RectF(0f, 0f, frameW.toFloat(), frameH.toFloat())
+        }
+
+        if (norm.image == null) {
+            // Normalization failed — surface the reason, save raw + meta only,
+            // skip ArcFace entirely. PhotoSnapResultLayer reads the empty crop
+            // path and the decision reason to render the failure card.
+            val reason = "NORMALIZE FAILED: ${norm.error ?: "unknown"}"
+            Log.d("CoinAnalyzer", reason)
+            saveSnapToDisk(
+                raw = bitmap,
+                masked = null,
+                matches = emptyList(),
+                rerankMs = 0L,
+                frameW = frameW,
+                frameH = frameH,
+                cropSize = 0,
+                norm = norm,
+            )
+            return ScanResult(
+                matches = emptyList(),
+                detections = emptyList(),
+                selectedDetectionIndex = -1,
+                rerankMs = 0L,
+                rerankSimilaritiesTop1 = emptyList(),
+                rerankSimilaritiesTop2 = emptyList(),
+                rerankRejectedAll = true,
+                rerankDecisionReason = reason,
+                frameWidth = frameW,
+                frameHeight = frameH,
+                cropWidth = 0,
+                cropHeight = 0,
+                photoSnapCropPath = null,
+            )
+        }
+
+        val masked = norm.image
+        val rerankStart = System.currentTimeMillis()
+        val matches = identifyCrop(masked)
+        val rerankMs = System.currentTimeMillis() - rerankStart
+
+        val cropPath = saveSnapToDisk(
+            raw = bitmap,
+            masked = masked,
+            matches = matches,
+            rerankMs = rerankMs,
+            frameW = frameW,
+            frameH = frameH,
+            cropSize = masked.width,
+            norm = norm,
+        )
+        masked.recycle()
+
+        val top1 = matches.getOrNull(0)?.similarity ?: Float.NEGATIVE_INFINITY
+        val top2 = matches.getOrNull(1)?.similarity ?: Float.NEGATIVE_INFINITY
+        val accepted = top1 > RERANK_TOP1_MIN
+        val reason = if (accepted) {
+            "PHOTO ACCEPTED top1=${"%.2f".format(top1)} norm=${norm.method} (${normMs}ms)"
+        } else {
+            "PHOTO REJECTED top1=${"%.2f".format(top1)} < $RERANK_TOP1_MIN norm=${norm.method}"
+        }
+        Log.d("CoinAnalyzer", reason)
+
+        val syntheticDet = Detection(
+            bbox = syntheticBbox,
+            confidence = top1.coerceIn(0f, 1f),
+            source = DetectionSource.HOUGH,
+        )
+
+        return ScanResult(
+            matches = matches,
+            detections = listOf(syntheticDet),
+            selectedDetectionIndex = if (accepted) 0 else -1,
+            rerankMs = rerankMs,
+            rerankSimilaritiesTop1 = listOf(top1),
+            rerankSimilaritiesTop2 = listOf(top2),
+            rerankRejectedAll = !accepted,
+            rerankDecisionReason = reason,
+            frameWidth = frameW,
+            frameHeight = frameH,
+            cropWidth = masked.width,
+            cropHeight = masked.height,
+            photoSnapCropPath = cropPath,
+        )
+    }
+
+    /**
+     * Persist a snap to disk. Always writes the raw frame and meta.json; the
+     * normalized 224×224 crop is only written when [masked] is non-null
+     * (Hough succeeded). Capture mode (eval_real/) and rolling snap mode
+     * (snaps/snap_<ts>/) share the same write logic — only the path layout
+     * differs. Returns the crop path for the UI, or null if no crop was
+     * produced (failure path).
+     */
+    private fun saveSnapToDisk(
+        raw: Bitmap,
+        masked: Bitmap?,
+        matches: List<CoinMatch>,
+        rerankMs: Long,
+        frameW: Int,
+        frameH: Int,
+        cropSize: Int,
+        norm: SnapNormalizer.Result,
+    ): String? {
+        val root = debugRootDir ?: return null
+        return try {
+            val ts = java.text.SimpleDateFormat("yyyyMMdd_HHmmss_SSS", java.util.Locale.US)
+                .format(java.util.Date())
+            val matchesJson = matches.joinToString(",", "[", "]") { m ->
+                """{"class":"${m.className.replace("\"", "\\\"")}","sim":${"%.4f".format(java.util.Locale.US, m.similarity)}}"""
+            }
+            val safeError = norm.error?.replace("\"", "\\\"") ?: ""
+            val normJson = """{"method":"${norm.method}","cx":${norm.cx},"cy":${norm.cy},""" +
+                """"r":${norm.r},"crop_side":${norm.cropSide},"margin_px":${norm.marginPx},""" +
+                """"error":"$safeError"}"""
+
+            val ctx = captureContext
+            val cropFile: java.io.File
+            val rawFile: java.io.File
+            val metaFile: java.io.File
+            val meta: String
+
+            if (ctx != null) {
+                // Capture mode (Phase 0 golden-set): write under eval_real/<eurioId>/.
+                val dir = java.io.File(root, "eval_real/${ctx.eurioId}").apply { mkdirs() }
+                cropFile = java.io.File(dir, "${ctx.stepId}_crop.jpg")
+                rawFile = java.io.File(dir, "${ctx.stepId}_raw.jpg")
+                metaFile = java.io.File(dir, "${ctx.stepId}.json")
+                val safeLabel = ctx.stepLabel.replace("\"", "\\\"")
+                meta = """{"ts":"$ts","eurio_id":"${ctx.eurioId}",""" +
+                    """"step_id":"${ctx.stepId}","step_label":"$safeLabel",""" +
+                    """"step_index":${ctx.stepIndex},""" +
+                    """"frame_size":[$frameW,$frameH],"crop_size":$cropSize,""" +
+                    """"rerank_ms":$rerankMs,"normalize":$normJson,"matches":$matchesJson}"""
+            } else {
+                val dir = java.io.File(root, "snaps/snap_$ts").apply { mkdirs() }
+                cropFile = java.io.File(dir, "crop.jpg")
+                rawFile = java.io.File(dir, "raw.jpg")
+                metaFile = java.io.File(dir, "meta.json")
+                meta = """{"ts":"$ts","frame_size":[$frameW,$frameH],""" +
+                    """"crop_size":$cropSize,"rerank_ms":$rerankMs,"normalize":$normJson,"matches":$matchesJson}"""
+            }
+
+            // Stale-state hygiene: a previous run may have left a crop here when
+            // Hough succeeded; if this run failed, drop it so the absence of a
+            // crop file matches the absence of a normalized output.
+            if (masked == null && cropFile.exists()) cropFile.delete()
+            if (masked != null) {
+                cropFile.outputStream().use { masked.compress(Bitmap.CompressFormat.JPEG, 95, it) }
+            }
+            rawFile.outputStream().use { raw.compress(Bitmap.CompressFormat.JPEG, 90, it) }
+            metaFile.writeText(meta)
+            if (masked != null) cropFile.absolutePath else null
+        } catch (e: Exception) {
+            Log.e("CoinAnalyzer", "Snap save failed", e)
+            null
         }
     }
 
@@ -172,12 +479,13 @@ class CoinAnalyzer(
         var rerankTop2s: List<Float> = emptyList()
         var rerankRejectedAll = false
         var rerankDecisionReason = ""
+        var perCandidateMatches: List<List<CoinMatch>> = emptyList()
 
         if (detections.isNotEmpty()) {
             val rerankStart = System.currentTimeMillis()
             val top1s = mutableListOf<Float>()
             val top2s = mutableListOf<Float>()
-            val perCandidateMatches = mutableListOf<List<CoinMatch>>()
+            val pcm = mutableListOf<List<CoinMatch>>()
 
             detections.forEach { det ->
                 // Padding adapts to the detection source: Hough needs more to capture
@@ -186,13 +494,14 @@ class CoinAnalyzer(
                 val crop = cropDetection(bitmap, det.bbox, padRatio = pad)
                 val candMatches = identifyCrop(crop)
                 crop.recycle()
-                perCandidateMatches.add(candMatches)
+                pcm.add(candMatches)
                 top1s.add(candMatches.getOrNull(0)?.similarity ?: Float.NEGATIVE_INFINITY)
                 top2s.add(candMatches.getOrNull(1)?.similarity ?: Float.NEGATIVE_INFINITY)
             }
             rerankMs = System.currentTimeMillis() - rerankStart
             rerankTop1s = top1s
             rerankTop2s = top2s
+            perCandidateMatches = pcm
 
             // Pick the candidate with the highest top1 similarity.
             var bestIdx = -1
@@ -220,7 +529,7 @@ class CoinAnalyzer(
 
             if (accepted) {
                 selectedIndex = bestIdx
-                matches = perCandidateMatches[bestIdx]
+                matches = pcm[bestIdx]
                 Log.d("CoinAnalyzer", "Rerank: $rerankDecisionReason → pick #${bestIdx + 1}/${detections.size}")
             } else {
                 rerankRejectedAll = true
@@ -250,8 +559,30 @@ class CoinAnalyzer(
             coinBitmap = bitmap
         }
 
-        // Save debug frames (always honor capture, even on miss so we can inspect)
-        maybeCaptureFrame(bitmap, if (coinBitmap !== bitmap) coinBitmap else null, detections, selectedIndex)
+        // Continuous record mode: dump full pipeline state (frame + JSONL).
+        maybeRecordFrame(
+            bitmap = bitmap,
+            cropBitmap = if (coinBitmap !== bitmap) coinBitmap else null,
+            detections = detections,
+            selectedIndex = selectedIndex,
+            perCandidateMatches = perCandidateMatches,
+            rerankTop1s = rerankTop1s,
+            rerankTop2s = rerankTop2s,
+            decisionReason = rerankDecisionReason,
+            yoloInferMs = yoloInferMs,
+            yoloTotalMs = yoloTotalMs,
+            yoloKept = yoloKept,
+            rawYolo = rawYolo,
+            houghInferMs = houghInferMs,
+            houghKept = houghKept,
+            dedupCount = dedupCount,
+            rerankMs = rerankMs,
+            frameW = frameW,
+            frameH = frameH,
+            lbScale = lbScale,
+            lbPadX = lbPadX,
+            lbPadY = lbPadY,
+        )
 
         if (coinBitmap !== bitmap) {
             coinBitmap.recycle()
@@ -285,42 +616,126 @@ class CoinAnalyzer(
         )
     }
 
-    private fun maybeCaptureFrame(
+    private fun maybeRecordFrame(
         bitmap: Bitmap,
-        coinBitmap: Bitmap?,
+        cropBitmap: Bitmap?,
         detections: List<Detection>,
         selectedIndex: Int,
+        perCandidateMatches: List<List<CoinMatch>>,
+        rerankTop1s: List<Float>,
+        rerankTop2s: List<Float>,
+        decisionReason: String,
+        yoloInferMs: Long,
+        yoloTotalMs: Long,
+        yoloKept: Int,
+        rawYolo: Int,
+        houghInferMs: Long,
+        houghKept: Int,
+        dedupCount: Int,
+        rerankMs: Long,
+        frameW: Int,
+        frameH: Int,
+        lbScale: Float,
+        lbPadX: Int,
+        lbPadY: Int,
     ) {
-        if (!captureNextFrame || captureDir == null) return
-        captureNextFrame = false
-        val ts = captureTimestamp ?: java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date())
-        captureTimestamp = null
-        val savedFiles = mutableListOf<String>()
+        val sessionDir = recordSessionDir ?: return
+        if (!recordMode) return
+
+        val idx = recordFrameIndex.incrementAndGet()
+        val name = "frame_${"%06d".format(idx)}"
         try {
             // Raw frame
-            val frameName = "frame_$ts.jpg"
-            val frameFile = java.io.File(captureDir, frameName)
-            frameFile.outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, it) }
-            savedFiles.add(frameName)
-            // Annotated frame — always saved (even if no detection) so we see what YOLO saw
-            val annotated = drawYoloOverlay(bitmap, detections, selectedIndex)
-            val annotatedName = "frame_annotated_$ts.jpg"
-            val annotatedFile = java.io.File(captureDir, annotatedName)
-            annotatedFile.outputStream().use { annotated.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, it) }
-            annotated.recycle()
-            savedFiles.add(annotatedName)
-            // Crop (when a coin was actually cropped out)
-            if (coinBitmap != null) {
-                val cropName = "crop_$ts.jpg"
-                val cropFile = java.io.File(captureDir, cropName)
-                cropFile.outputStream().use { coinBitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, it) }
-                savedFiles.add(cropName)
+            java.io.File(sessionDir, "$name.jpg").outputStream().use {
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 90, it)
             }
-            Log.d("CoinAnalyzer", "Frame captured: $frameName (${detections.size} detections)")
+            // Annotated frame (with bboxes)
+            val annotated = drawYoloOverlay(bitmap, detections, selectedIndex)
+            java.io.File(sessionDir, "${name}_annotated.jpg").outputStream().use {
+                annotated.compress(Bitmap.CompressFormat.JPEG, 90, it)
+            }
+            annotated.recycle()
+            // Crop, if any
+            if (cropBitmap != null) {
+                java.io.File(sessionDir, "${name}_crop.jpg").outputStream().use {
+                    cropBitmap.compress(Bitmap.CompressFormat.JPEG, 90, it)
+                }
+            }
+            // JSONL line — full pipeline state
+            val line = buildFrameJson(
+                idx = idx,
+                detections = detections,
+                selectedIndex = selectedIndex,
+                perCandidateMatches = perCandidateMatches,
+                rerankTop1s = rerankTop1s,
+                rerankTop2s = rerankTop2s,
+                decisionReason = decisionReason,
+                yoloInferMs = yoloInferMs,
+                yoloTotalMs = yoloTotalMs,
+                yoloKept = yoloKept,
+                rawYolo = rawYolo,
+                houghInferMs = houghInferMs,
+                houghKept = houghKept,
+                dedupCount = dedupCount,
+                rerankMs = rerankMs,
+                frameW = frameW,
+                frameH = frameH,
+                lbScale = lbScale,
+                lbPadX = lbPadX,
+                lbPadY = lbPadY,
+            )
+            java.io.File(sessionDir, "session.jsonl").appendText(line + "\n")
+            recordedFrameCount = idx
         } catch (e: Exception) {
-            Log.e("CoinAnalyzer", "Frame capture failed", e)
+            Log.e("CoinAnalyzer", "Record frame failed", e)
         }
-        lastCapturedFiles = savedFiles
+    }
+
+    private fun buildFrameJson(
+        idx: Int,
+        detections: List<Detection>,
+        selectedIndex: Int,
+        perCandidateMatches: List<List<CoinMatch>>,
+        rerankTop1s: List<Float>,
+        rerankTop2s: List<Float>,
+        decisionReason: String,
+        yoloInferMs: Long,
+        yoloTotalMs: Long,
+        yoloKept: Int,
+        rawYolo: Int,
+        houghInferMs: Long,
+        houghKept: Int,
+        dedupCount: Int,
+        rerankMs: Long,
+        frameW: Int,
+        frameH: Int,
+        lbScale: Float,
+        lbPadX: Int,
+        lbPadY: Int,
+    ): String {
+        fun f(x: Float) = "%.4f".format(java.util.Locale.US, x)
+        fun esc(s: String) = s.replace("\\", "\\\\").replace("\"", "\\\"")
+
+        val candidatesJson = detections.mapIndexed { i, det ->
+            val matches = perCandidateMatches.getOrNull(i).orEmpty()
+            val matchesJson = matches.joinToString(",", "[", "]") { m ->
+                """{"class":"${esc(m.className)}","sim":${f(m.similarity)}}"""
+            }
+            val top1 = rerankTop1s.getOrNull(i) ?: Float.NaN
+            val top2 = rerankTop2s.getOrNull(i) ?: Float.NaN
+            """{"idx":$i,"source":"${det.source}","conf":${f(det.confidence)},""" +
+                """"bbox":[${det.bbox.left.toInt()},${det.bbox.top.toInt()},${det.bbox.right.toInt()},${det.bbox.bottom.toInt()}],""" +
+                """"top1":${f(top1)},"top2":${f(top2)},"matches":$matchesJson}"""
+        }.joinToString(",", "[", "]")
+
+        return """{"frame":$idx,"ts":${System.currentTimeMillis()},""" +
+            """"frame_size":[$frameW,$frameH],""" +
+            """"letterbox":{"scale":${f(lbScale)},"pad_x":$lbPadX,"pad_y":$lbPadY},""" +
+            """"yolo":{"raw_above_thr":$rawYolo,"kept":$yoloKept,"infer_ms":$yoloInferMs,"total_ms":$yoloTotalMs},""" +
+            """"hough":{"kept":$houghKept,"infer_ms":$houghInferMs},""" +
+            """"merge":{"dedup":$dedupCount,"final":${detections.size}},""" +
+            """"rerank":{"ms":$rerankMs,"selected":$selectedIndex,"reason":"${esc(decisionReason)}"},""" +
+            """"candidates":$candidatesJson}"""
     }
 
     /**

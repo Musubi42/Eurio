@@ -1,4 +1,4 @@
-import { Brain, ClipboardList, Coins, Eye, FlaskConical, LayoutDashboard, Layers, Network, Scale, TrendingUp } from 'lucide-vue-next'
+import { Brain, CircleAlert, ClipboardList, Coins, Database, Eye, FlaskConical, LayoutDashboard, Layers, Network, Scale, TrendingUp } from 'lucide-vue-next'
 import type { Component } from 'vue'
 
 export interface NavItem {
@@ -41,11 +41,23 @@ export const navSections: NavSection[] = [
         icon: Coins,
         route: '/coins',
       },
+      {
+        id: 'numista-review',
+        label: 'Revue Numista',
+        icon: CircleAlert,
+        route: '/coins/numista-review',
+      },
     ],
   },
   {
     title: 'Système',
     items: [
+      {
+        id: 'sources',
+        label: 'Sources',
+        icon: Database,
+        route: '/sources',
+      },
       {
         id: 'audit',
         label: 'Audit log',

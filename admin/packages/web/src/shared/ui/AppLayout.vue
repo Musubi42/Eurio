@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { navSections } from '@/app/nav'
 import { DEV_BYPASS, supabase } from '@/shared/supabase/client'
+import { useNavState } from '@/shared/composables/useNavState'
 import { LogOut } from 'lucide-vue-next'
 import { ref } from 'vue'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
@@ -9,6 +10,7 @@ import { useRouter } from 'vue-router'
 const router = useRouter()
 const route = useRoute()
 const signingOut = ref(false)
+const { badges: navBadges } = useNavState()
 
 async function signOut() {
   signingOut.value = true
@@ -71,6 +73,13 @@ function isActive(itemRoute: string) {
                   ? 'color: white'
                   : 'color: rgba(255,255,255,0.65)'">
                   {{ item.label }}
+                </span>
+                <span
+                  v-if="navBadges[item.id]"
+                  class="ml-auto flex-shrink-0 rounded-full px-1.5 text-xs font-bold leading-5"
+                  style="background: var(--gold); color: var(--ink); min-width: 1.25rem; text-align: center;"
+                >
+                  {{ navBadges[item.id] }}
                 </span>
               </RouterLink>
             </li>

@@ -8,6 +8,7 @@ iteration ships the primitives plus a preview CLI so variations can be
 inspected before being wired into training.
 """
 
+from augmentations.background import BackgroundAugmentor
 from augmentations.base import Augmentor, LayerSchema, ParamSchema, circular_mask
 from augmentations.overlays import CATEGORIES as OVERLAY_CATEGORIES, OverlayAugmentor, sanity_check_textures
 from augmentations.perspective import PerspectiveAugmentor
@@ -23,6 +24,7 @@ from augmentations.relighting import RelightingAugmentor
 __all__ = [
     "Augmentor",
     "AugmentationPipeline",
+    "BackgroundAugmentor",
     "DEFAULT_RECIPE",
     "LayerSchema",
     "OVERLAY_CATEGORIES",

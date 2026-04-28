@@ -37,8 +37,16 @@ const router = createRouter({
           component: () => import('@/features/coins/pages/CoinArbitragePage.vue'),
         },
         {
+          path: 'coins/numista-review',
+          component: () => import('@/features/coins/pages/NumistaReviewPage.vue'),
+        },
+        {
           path: 'coins/:eurio_id',
           component: () => import('@/features/coins/pages/CoinDetailPage.vue'),
+        },
+        {
+          path: 'sources',
+          component: () => import('@/features/sources/pages/SourcesPage.vue'),
         },
         {
           path: 'audit',

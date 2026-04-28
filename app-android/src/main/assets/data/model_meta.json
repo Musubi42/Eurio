@@ -1,14 +1,11 @@
 {
   "mode": "arcface",
   "classes": [
-    "111",
-    "112",
-    "135",
-    "159",
-    "160246",
-    "226447",
-    "87"
+    "ad-2014-2eur-standard",
+    "de-2007-2eur-schwerin-castle-mecklenburg-vorpommern",
+    "de-2020-2eur-50-years-since-the-kniefall-von-warschau",
+    "fr-2007-2eur-standard"
   ],
-  "num_classes": 7,
+  "num_classes": 4,
   "embedding_dim": 256
 }

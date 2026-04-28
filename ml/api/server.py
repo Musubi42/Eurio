@@ -27,6 +27,7 @@ from . import augmentation_routes
 from . import benchmark_routes
 from . import iteration_runner as iteration_runner_module
 from . import lab_routes
+from . import sources_routes
 
 ML_DIR = Path(__file__).parent.parent
 VENV_PYTHON = str(ML_DIR / ".venv" / "bin" / "python")
@@ -76,6 +77,9 @@ app.include_router(benchmark_routes.router)
 _iteration_runner = iteration_runner_module.bind(_store, _runner)
 lab_routes.bind(_store, _iteration_runner)
 app.include_router(lab_routes.router)
+
+# Wire /sources/status — quota + temporal + coverage aggregation.
+app.include_router(sources_routes.router)
 
 
 @app.on_event("startup")
@@ -589,10 +593,14 @@ def training_run(payload: RunPayload | None = None) -> dict:
     added = [ref for ref, _ in added_with_recipe]
     staged_recipe_ids = [rid for _, rid in added_with_recipe]
     removed = _store.clear_removal_staging()
-    if not added and not removed:
+    # Empty staging+removal is allowed when a current model exists — interpreted
+    # as a re-train on the same classes. classes_after resolves to classes_before
+    # in the runner, which is exactly what we want when iterating on training
+    # config (recipes, transforms, hyper-params) without changing the class set.
+    if not added and not removed and not _runner.current_classes():
         raise HTTPException(
             status_code=400,
-            detail="Rien à entraîner — staging et removal sont vides",
+            detail="Rien à entraîner — staging et removal vides, et aucun modèle existant",
         )
 
     config: dict = {}
@@ -1065,7 +1073,7 @@ def augment_designs(req: AugmentRequest) -> dict:
     import sys
 
     sys.path.insert(0, str(ML_DIR))
-    from augment_synthetic import augment_coin
+    from training.augment_synthetic import augment_coin
 
     results: dict[int, int] = {}
     for nid in req.design_ids:
@@ -1376,6 +1384,71 @@ def confusion_map_coin(
             for n in neighbors
         ],
     }
+
+
+# ─── Numista Review ───
+
+REVIEW_QUEUE_PATH = DATASETS_DIR / "numista_review_queue.json"
+MANUAL_RESOLUTIONS_PATH = DATASETS_DIR / "numista_manual_resolutions.json"
+
+
+class NumistaResolvePayload(BaseModel):
+    numista_id: int
+    eurio_id: str | None  # None = skip (no matching entry)
+
+
+@app.get("/numista-review/queue")
+def numista_review_queue() -> list[dict]:
+    """Return the ambiguous review queue with current resolution status overlaid."""
+    if not REVIEW_QUEUE_PATH.exists():
+        return []
+    queue = json.loads(REVIEW_QUEUE_PATH.read_text())
+    resolutions: dict[str, dict] = {}
+    if MANUAL_RESOLUTIONS_PATH.exists():
+        resolutions = json.loads(MANUAL_RESOLUTIONS_PATH.read_text())
+    for item in queue:
+        item["resolution"] = resolutions.get(str(item["numista_id"]))
+    return queue
+
+
+@app.post("/numista-review/resolve")
+def numista_review_resolve(payload: NumistaResolvePayload) -> dict:
+    """Save a manual resolution (eurio_id=None means 'skip — no match')."""
+    resolutions: dict[str, dict] = {}
+    if MANUAL_RESOLUTIONS_PATH.exists():
+        resolutions = json.loads(MANUAL_RESOLUTIONS_PATH.read_text())
+    resolution = {
+        "eurio_id": payload.eurio_id,
+        "resolved_at": datetime.utcnow().isoformat(),
+    }
+    resolutions[str(payload.numista_id)] = resolution
+    MANUAL_RESOLUTIONS_PATH.write_text(
+        json.dumps(resolutions, indent=2, ensure_ascii=False)
+    )
+    return resolution
+
+
+@app.get("/numista-review/stats")
+def numista_review_stats() -> dict:
+    """Return pending/resolved/skipped counts (used for the nav badge)."""
+    if not REVIEW_QUEUE_PATH.exists():
+        return {"total": 0, "resolved": 0, "pending": 0, "skipped": 0}
+    queue = json.loads(REVIEW_QUEUE_PATH.read_text())
+    resolutions: dict[str, dict] = {}
+    if MANUAL_RESOLUTIONS_PATH.exists():
+        resolutions = json.loads(MANUAL_RESOLUTIONS_PATH.read_text())
+    total = len(queue)
+    resolved = sum(
+        1 for item in queue
+        if resolutions.get(str(item["numista_id"]), {}).get("eurio_id") is not None
+    )
+    skipped = sum(
+        1 for item in queue
+        if str(item["numista_id"]) in resolutions
+        and resolutions[str(item["numista_id"])]["eurio_id"] is None
+    )
+    pending = total - resolved - skipped
+    return {"total": total, "resolved": resolved, "pending": pending, "skipped": skipped}
 
 
 # ─── Helpers ───

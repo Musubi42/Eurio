@@ -1,0 +1,32 @@
+{
+  "lmdlp": {
+    "last_run_at": "2026-04-26T21:12:31.406735+00:00",
+    "last_run_kind": "scrape",
+    "last_run_calls": 0,
+    "last_run_added_coins": 275
+  },
+  "numista_match": {
+    "last_run_at": "2026-04-26T21:13:36.861052+00:00",
+    "last_run_kind": "batch_match",
+    "last_run_calls": 0,
+    "last_run_added_coins": 104
+  },
+  "bce": {
+    "last_run_at": "2026-04-26T22:12:32.698055+00:00",
+    "last_run_kind": "scrape",
+    "last_run_calls": 0,
+    "last_run_added_coins": 82
+  },
+  "numista_enrich": {
+    "last_run_at": "2026-04-26T22:24:23.135768+00:00",
+    "last_run_kind": "enrich",
+    "last_run_calls": 0,
+    "last_run_added_coins": 50
+  },
+  "bce_images": {
+    "last_run_at": "2026-04-26T22:36:13.717256+00:00",
+    "last_run_kind": "fetch",
+    "last_run_calls": 160,
+    "last_run_added_coins": 160
+  }
+}

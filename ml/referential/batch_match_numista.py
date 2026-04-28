@@ -29,9 +29,11 @@ import httpx
 
 from referential.eurio_referential import COUNTRY_NAME_TO_ISO2, load_referential, save_referential
 from export.sync_to_supabase import load_env
+from state.sources_runs import record_run
 
 CATALOG_PATH = Path(__file__).parent.parent / "datasets" / "coin_catalog.json"
 REVIEW_PATH = Path(__file__).parent.parent / "datasets" / "numista_review_queue.json"
+MANUAL_RESOLUTIONS_PATH = Path(__file__).parent.parent / "datasets" / "numista_manual_resolutions.json"
 
 # Numista uses some country names that differ from COUNTRY_NAME_TO_ISO2
 EXTRA_COUNTRY_MAP = {
@@ -214,11 +216,72 @@ def patch_supabase(
     print(f"  Supabase: patched {patched}" + (f", {errors} errors" if errors else ""))
 
 
+def apply_manual_resolutions(
+    referential: dict[str, dict[str, Any]],
+    dry_run: bool,
+    no_supabase: bool,
+) -> int:
+    """Apply saved manual resolutions from the review UI to the referential."""
+    if not MANUAL_RESOLUTIONS_PATH.exists():
+        print("No manual resolutions file found.")
+        return 0
+
+    with open(MANUAL_RESOLUTIONS_PATH) as f:
+        resolutions: dict[str, dict] = json.load(f)
+
+    if not REVIEW_PATH.exists():
+        print("No review queue found.")
+        return 0
+
+    with open(REVIEW_PATH) as f:
+        queue: list[dict] = json.load(f)
+
+    queue_by_nid = {str(item["numista_id"]): item for item in queue}
+    today = date.today().isoformat()
+    matched: list[tuple[str, int, str]] = []
+
+    for nid_str, resolution in resolutions.items():
+        eurio_id = resolution.get("eurio_id")
+        if eurio_id is None:
+            continue  # skipped — no match
+        if eurio_id not in referential:
+            print(f"  WARN: {eurio_id} not in referential (numista_id={nid_str})")
+            continue
+        entry = referential[eurio_id]
+        if entry.get("cross_refs", {}).get("numista_id"):
+            continue  # already resolved
+        matched.append((eurio_id, int(nid_str), queue_by_nid.get(nid_str, {}).get("numista_name", "")))
+
+    print(f"  Manual resolutions: {len(resolutions)} total, {len(matched)} new to apply")
+
+    if not matched:
+        print("  Nothing new to apply.")
+        return 0
+
+    if dry_run:
+        for eurio_id, nid, name in matched:
+            print(f"    {eurio_id} → numista_id={nid} ({name})")
+        print("\n--dry-run: not writing.")
+        return 0
+
+    update_referential(referential, matched)
+    save_referential(referential)
+    print("  Referential updated.")
+
+    if not no_supabase:
+        print("\nPatching Supabase...")
+        patch_supabase(matched, referential)
+
+    return len(matched)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--no-supabase", action="store_true")
     parser.add_argument("--review", action="store_true", help="Export ambiguous cases to review file")
+    parser.add_argument("--apply-manual", action="store_true", help="Apply manual resolutions from review UI")
+    parser.add_argument("--limit", type=int, default=None, help="Process only the first N catalog entries")
     args = parser.parse_args()
 
     print("Loading data...")
@@ -227,6 +290,17 @@ def main() -> int:
     two_eur = sum(1 for c in catalog.values() if c.get("face_value") == 2.0)
     print(f"  coin_catalog.json: {two_eur} 2EUR types")
     print(f"  eurio_referential: {len(referential)} entries")
+
+    if args.limit is not None:
+        catalog = dict(list(catalog.items())[: args.limit])
+        print(f"  --limit {args.limit}: trimmed catalog to {len(catalog)} entries")
+
+    if args.apply_manual:
+        print("\nApplying manual resolutions...")
+        n = apply_manual_resolutions(referential, args.dry_run, args.no_supabase)
+        if n > 0:
+            print(f"\nApplied {n} manual resolution(s). Run 'go-task android:snapshot' to regenerate.")
+        return 0
 
     print("\nMatching...")
     matched, ambiguous = match_catalog_to_referential(catalog, referential)
@@ -252,6 +326,8 @@ def main() -> int:
     if not args.no_supabase:
         print("\nPatching Supabase...")
         patch_supabase(matched, referential)
+
+    record_run("numista_match", "batch_match", calls=0, added_coins=len(matched))
 
     print("\nDone! Run 'go-task android:snapshot' to regenerate the snapshot.")
     return 0

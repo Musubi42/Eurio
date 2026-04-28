@@ -362,6 +362,56 @@ export type Database = {
         }
         Relationships: []
       }
+      coin_market_prices: {
+        Row: {
+          id: number
+          eurio_id: string
+          source: string
+          quality: string | null
+          p25: number | null
+          p50: number | null
+          p75: number | null
+          samples_count: number | null
+          with_sales_count: number | null
+          query_used: string | null
+          fetched_at: string
+        }
+        Insert: {
+          id?: number
+          eurio_id: string
+          source: string
+          quality?: string | null
+          p25?: number | null
+          p50?: number | null
+          p75?: number | null
+          samples_count?: number | null
+          with_sales_count?: number | null
+          query_used?: string | null
+          fetched_at?: string
+        }
+        Update: {
+          id?: number
+          eurio_id?: string
+          source?: string
+          quality?: string | null
+          p25?: number | null
+          p50?: number | null
+          p75?: number | null
+          samples_count?: number | null
+          with_sales_count?: number | null
+          query_used?: string | null
+          fetched_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coin_market_prices_eurio_id_fkey"
+            columns: ["eurio_id"]
+            isOneToOne: false
+            referencedRelation: "coins"
+            referencedColumns: ["eurio_id"]
+          },
+        ]
+      }
       review_queue: {
         Row: {
           candidates: Json | null

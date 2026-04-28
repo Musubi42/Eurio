@@ -140,7 +140,19 @@ def _extract_obverse_url(images: object) -> str | None:
     if not images:
         return None
     if isinstance(images, dict):
-        return images.get("obverse") or images.get("obverse_url")
+        # New shape: {"obverse": [{"source": ..., "url": ...}, ...]}
+        obv = images.get("obverse")
+        if isinstance(obv, list):
+            preferred = next((v for v in obv if v.get("source") == "numista"), None)
+            picked = preferred or (obv[0] if obv else None)
+            if isinstance(picked, dict):
+                return picked.get("url")
+            return None
+        # Legacy shapes: {"obverse": "<url>"} or {"obverse_url": "<url>"}
+        if isinstance(obv, str):
+            return obv
+        legacy = images.get("obverse_url")
+        return legacy if isinstance(legacy, str) else None
     if isinstance(images, list):
         obv = next((i for i in images if i.get("role") == "obverse"), None)
         if obv:

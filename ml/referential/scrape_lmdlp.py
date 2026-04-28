@@ -18,6 +18,7 @@ Outputs:
 - `ml/datasets/review_queue.json` — escalations
 """
 
+import argparse
 import html
 import json
 import re
@@ -42,6 +43,7 @@ from eval.matching import (
     match as match_identity,
     slug_score,
 )
+from state.sources_runs import record_run
 
 API_BASE = "https://lamonnaiedelapiece.com/wp-json/wc/store/v1/products"
 USER_AGENT = "Eurio/0.1 lmdlp-scraper (https://github.com/Musubi42/Eurio)"
@@ -336,7 +338,35 @@ def replace_review_queue_for_source(items: list[dict]) -> None:
 # ---------- main ----------
 
 
+def list_missing_eurio_ids() -> None:
+    """Print eurio_ids of 2€ commemos not enriched by lmdlp. Read-only."""
+    referential = load_referential()
+    for eid, entry in referential.items():
+        ident = entry.get("identity", {})
+        if not ident.get("is_commemorative"):
+            continue
+        if ident.get("face_value") != 2.0:
+            continue
+        if ident.get("country") == "eu":
+            continue
+        sources = set(entry.get("provenance", {}).get("sources_used", []))
+        if SOURCE_TAG not in sources:
+            print(eid)
+
+
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--list-missing",
+        action="store_true",
+        help="Read-only: list eurio_ids absent from the latest lmdlp enrichment, then exit",
+    )
+    args = parser.parse_args()
+
+    if args.list_missing:
+        list_missing_eurio_ids()
+        return
+
     print("Fetching lmdlp 2€ products...")
     raw_products = fetch_all_2eur_products()
     print(f"Fetched {len(raw_products)} raw products")
@@ -404,6 +434,8 @@ def main() -> None:
     replace_review_queue_for_source(queue)
     if queue:
         print(f"Queued {len(queue)} products for human review")
+
+    record_run("lmdlp", "scrape", calls=0, added_coins=touched)
 
 
 if __name__ == "__main__":

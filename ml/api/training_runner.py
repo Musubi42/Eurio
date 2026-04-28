@@ -12,13 +12,13 @@ that reality:
     restarts.
 
 Pipeline steps:
-  0. Augmentation          — for each added class, augment each member numista
-  1. Suppression           — rm augmented/ + prepared split dirs + Supabase rows
-  2. Préparation           — prepare_dataset.py (rebuild eurio-poc + manifest)
-  3. Entraînement          — train_embedder.py with --model-version vN-arcface
-  4. Embeddings            — compute_embeddings.py with --model-version
-  5. Synchronisation       — seed_supabase.py (dual-write model_classes + legacy)
-  6. Validation per-class  — validate_per_class.py → training_run_classes
+  0. Suppression           — rm prepared split dirs + Supabase rows of removed classes
+  1. Préparation           — prepare_dataset.py (rebuild eurio-poc + manifest)
+  2. Entraînement          — train_embedder.py with --model-version vN-arcface
+                             (augmentation is on-the-fly, per-zone, in the DataLoader)
+  3. Embeddings            — compute_embeddings.py with --model-version
+  4. Synchronisation       — seed_supabase.py (dual-write model_classes + legacy)
+  5. Validation per-class  — validate_per_class.py → training_run_classes
 """
 
 from __future__ import annotations
@@ -59,7 +59,6 @@ if str(ML_DIR) not in sys.path:
     sys.path.insert(0, str(ML_DIR))
 
 STEPS = [
-    "Augmentation",
     "Suppression",
     "Préparation",
     "Entraînement",
@@ -231,13 +230,12 @@ class TrainingRunner:
             self._store.update_run_status(
                 run_id, "running", started_at=_now_iso()
             )
-            self._run_step(run_id, 0, lambda row: self._augment(row))
-            self._run_step(run_id, 1, lambda row: self._delete(row))
-            self._run_step(run_id, 2, lambda row: self._prepare(row))
-            self._run_step(run_id, 3, lambda row: self._train(row, version_str))
-            self._run_step(run_id, 4, lambda row: self._compute_embeddings(row, version_str))
-            self._run_step(run_id, 5, lambda row: self._seed(row))
-            self._run_step(run_id, 6, lambda row: self._validate_per_class(row))
+            self._run_step(run_id, 0, lambda row: self._delete(row))
+            self._run_step(run_id, 1, lambda row: self._prepare(row))
+            self._run_step(run_id, 2, lambda row: self._train(row, version_str))
+            self._run_step(run_id, 3, lambda row: self._compute_embeddings(row, version_str))
+            self._run_step(run_id, 4, lambda row: self._seed(row))
+            self._run_step(run_id, 5, lambda row: self._validate_per_class(row))
             self._finalize_run(run_id)
             self._store.update_run_status(
                 run_id, "completed", finished_at=_now_iso()
@@ -302,59 +300,39 @@ class TrainingRunner:
 
     # ─── Steps ───────────────────────────────────────────────────────────
 
-    def _augment(self, row: RunRow) -> str:
-        if not row.classes_added:
-            return "skipped (no added classes)"
-        resolver = _build_resolver()
-        target = row.config.get("target_augmented", 50)
-        dirs_augmented = 0
-        for ref in row.classes_added:
-            descriptor = resolver.for_class(ref.class_id)
-            if descriptor is None:
-                self._log(row.id, f"  {ref.class_id}: no Supabase members, skipping")
-                continue
-            for nid in descriptor.numista_ids:
-                self._run_subprocess(
-                    row.id,
-                    [
-                        VENV_PYTHON,
-                        str(ML_DIR / "augment_synthetic.py"),
-                        "--coin-ids",
-                        str(nid),
-                        "--target-per-class",
-                        str(target),
-                    ],
-                )
-                dirs_augmented += 1
-        return f"{dirs_augmented} source dirs augmented"
-
     def _delete(self, row: RunRow) -> str:
         if not row.classes_removed:
             return "skipped (no removed classes)"
+        # If the same class is also being added (e.g. user removed all old
+        # classes then re-staged a subset), skip its removal — augmentation is
+        # now on-the-fly so there's nothing dataset-side to wipe, and we want
+        # the new staging to take effect.
+        added_ids = {ref.class_id for ref in row.classes_added}
         resolver = _build_resolver()
-        removed_aug = 0
+        removed_count = 0
         for ref in row.classes_removed:
+            if ref.class_id in added_ids:
+                self._log(
+                    row.id,
+                    f"  {ref.class_id}: also in classes_added, skipping removal",
+                )
+                continue
             descriptor = resolver.for_class(ref.class_id)
-            numista_ids = descriptor.numista_ids if descriptor else ()
-            for nid in numista_ids:
-                aug = DATASETS_DIR / str(nid) / "augmented"
-                if aug.exists():
-                    shutil.rmtree(aug)
-                    removed_aug += 1
-                    self._log(row.id, f"  removed {aug}")
             for split in ("train", "val", "test"):
                 split_dir = EURIO_POC / split / ref.class_id
                 if split_dir.exists():
                     shutil.rmtree(split_dir)
                     self._log(row.id, f"  removed {split_dir}")
             _purge_supabase(ref, descriptor.eurio_ids if descriptor else ())
-        return f"{removed_aug} augmented dirs removed"
+            removed_count += 1
+        return f"{removed_count} class(es) removed"
 
     def _prepare(self, row: RunRow) -> str:
-        self._run_subprocess(
-            row.id,
-            [VENV_PYTHON, str(ML_DIR / "prepare_dataset.py")],
-        )
+        cmd = [VENV_PYTHON, str(ML_DIR / "training" / "prepare_dataset.py")]
+        if row.classes_after:
+            only = ",".join(sorted({c.class_id for c in row.classes_after}))
+            cmd.extend(["--only-classes", only])
+        self._run_subprocess(row.id, cmd)
         manifest_path = EURIO_POC / "class_manifest.json"
         if manifest_path.exists():
             payload = json.loads(manifest_path.read_text())
@@ -370,7 +348,7 @@ class TrainingRunner:
                 self._active.epochs_total = int(cfg.get("epochs", 40))
         cmd: list[str] = [
             VENV_PYTHON,
-            str(ML_DIR / "train_embedder.py"),
+            str(ML_DIR / "training" / "train_embedder.py"),
             "--mode",
             cfg.get("mode", "arcface"),
             "--dataset",
@@ -400,7 +378,7 @@ class TrainingRunner:
             row.id,
             [
                 VENV_PYTHON,
-                str(ML_DIR / "compute_embeddings.py"),
+                str(ML_DIR / "training" / "compute_embeddings.py"),
                 "--model-version",
                 version_str,
             ],
@@ -413,13 +391,13 @@ class TrainingRunner:
 
     def _seed(self, row: RunRow) -> str:
         self._run_subprocess(
-            row.id, [VENV_PYTHON, str(ML_DIR / "seed_supabase.py")]
+            row.id, [VENV_PYTHON, str(ML_DIR / "bootstrap" / "seed_supabase.py")]
         )
         return "synced to Supabase"
 
     def _validate_per_class(self, row: RunRow) -> str:
         self._run_subprocess(
-            row.id, [VENV_PYTHON, str(ML_DIR / "validate_per_class.py")]
+            row.id, [VENV_PYTHON, str(ML_DIR / "training" / "validate_per_class.py")]
         )
         if not PER_CLASS_METRICS.exists():
             return "no metrics written"

@@ -7,6 +7,7 @@ import logging
 import numpy as np
 from PIL import Image
 
+from augmentations.background import BackgroundAugmentor
 from augmentations.base import Augmentor, LayerSchema
 from augmentations.overlays import OverlayAugmentor
 from augmentations.perspective import PerspectiveAugmentor
@@ -15,15 +16,20 @@ from augmentations.relighting import RelightingAugmentor
 logger = logging.getLogger(__name__)
 
 _DISPATCH: dict[str, type[Augmentor]] = {
+    "background": BackgroundAugmentor,
     "perspective": PerspectiveAugmentor,
     "relighting": RelightingAugmentor,
     "overlays": OverlayAugmentor,
 }
 
+# Stable order respected by the schema endpoint and the admin Studio. Mirrors
+# the runtime order of the recipes: background → perspective → relighting → overlays.
+_SCHEMA_ORDER = ("background", "perspective", "relighting", "overlays")
+
 
 def list_layer_schemas() -> list[LayerSchema]:
     """Introspection payload for all registered Augmentors (stable order)."""
-    return [_DISPATCH[key].get_schema() for key in ("perspective", "relighting", "overlays")]
+    return [_DISPATCH[key].get_schema() for key in _SCHEMA_ORDER]
 
 
 class RecipeValidationError(ValueError):

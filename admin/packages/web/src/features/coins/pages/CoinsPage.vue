@@ -5,7 +5,7 @@ import { supabase } from '@/shared/supabase/client'
 import type { Coin, ConfusionZone, IssueType } from '@/shared/supabase/types'
 import { firstImageUrl } from '@/shared/utils/coin-images'
 import { useDebounceFn } from '@vueuse/core'
-import { Brain, Check, Copy, FlaskConical, ImageOff, Play, Search, Sparkles } from 'lucide-vue-next'
+import { Brain, Check, Copy, FlaskConical, ImageOff, Play, Search, Sparkles, Wallet } from 'lucide-vue-next'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
@@ -20,7 +20,15 @@ const PAGE = 60
 
 // Filters — initialized from URL query params so browser back/forward restores state
 const query = ref((route.query.q as string) || '')
-const filterCountry = ref<string>((route.query.country as string) || '')
+
+// Multi-country filter. Backwards-compatible with the legacy single ?country=FR
+// param: a single value seeds the Set just like a comma-separated ?countries=FR,DE.
+function parseCountries(): Set<string> {
+  const raw = (route.query.countries as string) || (route.query.country as string) || ''
+  return new Set(raw.split(',').map(s => s.trim()).filter(Boolean))
+}
+const filterCountries = ref<Set<string>>(parseCountries())
+
 const filterFaceValue = ref<number | null>(route.query.fv ? Number(route.query.fv) : null)
 const filterCommemo = ref<boolean | null>(
   route.query.commemo === 'true' ? true : route.query.commemo === 'false' ? false : null,
@@ -36,6 +44,20 @@ const filterZone = ref<ConfusionZone | 'unmapped' | null>(
 )
 const filterTrained = ref<'trained' | 'not-trained' | null>(
   (route.query.trained as 'trained' | 'not-trained') || null,
+)
+// Personal-collection filter (admin's owned-coins flag, see migration
+// 20260428_coins_personal_owned). Mirrors the trained chip pattern.
+const filterPersonal = ref<'owned' | 'not-owned' | null>(
+  (route.query.personal as 'owned' | 'not-owned') || null,
+)
+
+// Multi-source filter. Cumulative AND. Backed by pre-computed boolean columns
+// on `coins` (has_bce/has_wikipedia/has_lmdlp/has_ebay) maintained by Postgres
+// triggers, plus cross_refs->numista_id for the numista source.
+type SourceKey = 'numista' | 'bce' | 'wikipedia' | 'lmdlp' | 'ebay'
+const SOURCE_KEYS: SourceKey[] = ['numista', 'bce', 'wikipedia', 'lmdlp', 'ebay']
+const filterSources = ref<Set<SourceKey>>(
+  new Set(((route.query.sources as string) || '').split(',').filter(Boolean) as SourceKey[]),
 )
 
 const COUNTRIES = [
@@ -78,13 +100,26 @@ async function fetchCoins(search = '', append = false) {
   }
 
   // Apply filters
-  if (filterCountry.value) q = q.eq('country', filterCountry.value)
+  if (filterCountries.value.size > 0) {
+    q = q.in('country', [...filterCountries.value])
+  }
   if (filterFaceValue.value != null) q = q.eq('face_value', filterFaceValue.value)
   if (filterCommemo.value != null) q = q.eq('is_commemorative', filterCommemo.value)
   if (filterNumista.value === 'with') q = q.not('cross_refs->numista_id', 'is', null)
   if (filterNumista.value === 'without') q = q.is('cross_refs->numista_id', null)
   if (filterImages.value === 'with') q = q.neq('images', '[]').not('images', 'is', null)
   if (filterImages.value === 'without') q = q.or('images.eq.[],images.is.null')
+
+  // Multi-source filter — cumulative AND on pre-computed flags.
+  if (filterSources.value.has('numista')) q = q.not('cross_refs->numista_id', 'is', null)
+  if (filterSources.value.has('bce'))       q = q.eq('has_bce', true)
+  if (filterSources.value.has('wikipedia')) q = q.eq('has_wikipedia', true)
+  if (filterSources.value.has('lmdlp'))     q = q.eq('has_lmdlp', true)
+  if (filterSources.value.has('ebay'))      q = q.eq('has_ebay', true)
+
+  // Personal-collection filter — flat boolean column on `coins`.
+  if (filterPersonal.value === 'owned')     q = q.eq('personal_owned', true)
+  if (filterPersonal.value === 'not-owned') q = q.eq('personal_owned', false)
 
   // Training filter — applies trainedEurioIds set fetched from coin_embeddings.
   if (filterTrained.value === 'trained') {
@@ -157,26 +192,31 @@ function resetAndFetch() {
 function buildUrlQuery(): Record<string, string> {
   const q: Record<string, string> = {}
   if (query.value) q.q = query.value
-  if (filterCountry.value) q.country = filterCountry.value
+  if (filterCountries.value.size > 0) q.countries = [...filterCountries.value].sort().join(',')
   if (filterFaceValue.value != null) q.fv = String(filterFaceValue.value)
   if (filterCommemo.value != null) q.commemo = String(filterCommemo.value)
   if (filterNumista.value) q.numista = filterNumista.value
   if (filterImages.value) q.images = filterImages.value
+  if (filterSources.value.size > 0) q.sources = [...filterSources.value].sort().join(',')
   if (filterZone.value) q.zone = filterZone.value
   if (filterTrained.value) q.trained = filterTrained.value
+  if (filterPersonal.value) q.personal = filterPersonal.value
   return q
 }
 
 const debouncedFetch = useDebounceFn(() => resetAndFetch(), 250)
 watch(query, debouncedFetch)
-watch([filterCountry, filterFaceValue, filterCommemo, filterNumista, filterImages, filterZone, filterTrained], resetAndFetch)
+watch([filterCountries, filterFaceValue, filterCommemo, filterNumista, filterImages, filterZone, filterTrained, filterPersonal, filterSources],
+  resetAndFetch, { deep: true })
 watch(
-  [query, filterCountry, filterFaceValue, filterCommemo, filterNumista, filterImages, filterZone, filterTrained],
+  [query, filterCountries, filterFaceValue, filterCommemo, filterNumista, filterImages, filterZone, filterTrained, filterPersonal, filterSources],
   () => router.replace({ query: buildUrlQuery() }),
+  { deep: true },
 )
 onMounted(async () => {
   // Load zones FIRST so the in-memory filter has data before initial fetch
   await fetchConfusionZones()
+  fetchSourceCounts()
   fetchCoins()
   fetchTrainedIds()
   checkMlApi()
@@ -201,14 +241,57 @@ function hasNumistaId(coin: Coin): boolean {
 }
 
 function clearFilters() {
-  filterCountry.value = ''
+  filterCountries.value = new Set()
   filterFaceValue.value = null
   filterCommemo.value = null
   filterNumista.value = null
   filterImages.value = null
   filterZone.value = null
   filterTrained.value = null
+  filterPersonal.value = null
+  filterSources.value = new Set()
   query.value = ''
+}
+
+function toggleCountry(c: string) {
+  const s = new Set(filterCountries.value)
+  if (s.has(c)) s.delete(c)
+  else s.add(c)
+  filterCountries.value = s
+}
+
+function toggleSource(s: SourceKey) {
+  const next = new Set(filterSources.value)
+  if (next.has(s)) next.delete(s)
+  else next.add(s)
+  filterSources.value = next
+}
+
+const SOURCE_LABELS: Record<SourceKey, string> = {
+  numista:   'Numista',
+  bce:       'BCE',
+  wikipedia: 'Wikipedia',
+  lmdlp:     'LMDLP',
+  ebay:      'eBay',
+}
+
+// Source row counts shown in the chips. Cheap: one HEAD per source, all in
+// parallel. Numista is the only one not backed by a `has_*` column — count
+// rows where cross_refs->numista_id is set.
+const sourceCounts = ref<Partial<Record<SourceKey, number>>>({})
+
+async function fetchSourceCounts() {
+  const queries: Array<Promise<void>> = SOURCE_KEYS.map(async (src) => {
+    let q = supabase.from('coins').select('eurio_id', { count: 'exact', head: true })
+    if (src === 'numista') q = q.not('cross_refs->numista_id', 'is', null)
+    else if (src === 'bce') q = q.eq('has_bce', true)
+    else if (src === 'wikipedia') q = q.eq('has_wikipedia', true)
+    else if (src === 'lmdlp') q = q.eq('has_lmdlp', true)
+    else if (src === 'ebay') q = q.eq('has_ebay', true)
+    const { count } = await q
+    sourceCounts.value = { ...sourceCounts.value, [src]: count ?? 0 }
+  })
+  await Promise.all(queries)
 }
 
 // Training status
@@ -243,9 +326,9 @@ function isTrained(coin: Coin): boolean {
 }
 
 const hasActiveFilters = () =>
-  filterCountry.value || filterFaceValue.value != null || filterCommemo.value != null
+  filterCountries.value.size > 0 || filterFaceValue.value != null || filterCommemo.value != null
   || filterNumista.value != null || filterImages.value != null || filterZone.value != null
-  || filterTrained.value != null
+  || filterTrained.value != null || filterPersonal.value != null || filterSources.value.size > 0
   || query.value
 
 // ─── Training staging ───
@@ -312,6 +395,45 @@ function toggleSelection(coin: Coin, event: Event) {
 }
 
 const selectedCount = computed(() => selectedClasses.value.size)
+
+// ─── Personal collection toggle ───
+//
+// Direct toggle (no batch footer): clicking the wallet checkbox flips
+// `coins.personal_owned` immediately on Supabase, with optimistic local
+// update so the UI feels instant. On error we revert the local row and
+// surface an error chip — the user can re-tap to retry. A Set of
+// in-flight eurio_ids prevents double-tap races.
+const personalSaving = ref<Set<string>>(new Set())
+
+async function togglePersonal(coin: Coin, event: Event) {
+  event.stopPropagation()
+  if (personalSaving.value.has(coin.eurio_id)) return
+  const prev = !!coin.personal_owned
+  const next = !prev
+
+  // Optimistic local update — patch the array in place so the wrapping
+  // ref triggers reactivity without re-fetching the page.
+  const idx = coins.value.findIndex(c => c.eurio_id === coin.eurio_id)
+  if (idx >= 0) coins.value[idx] = { ...coins.value[idx], personal_owned: next }
+  personalSaving.value = new Set([...personalSaving.value, coin.eurio_id])
+
+  try {
+    const { error: err } = await supabase
+      .from('coins')
+      .update({ personal_owned: next })
+      .eq('eurio_id', coin.eurio_id)
+    if (err) throw err
+  } catch (e) {
+    // Revert on failure — the user sees the checkbox snap back to
+    // its previous state and the error message at the top of the page.
+    if (idx >= 0) coins.value[idx] = { ...coins.value[idx], personal_owned: prev }
+    error.value = `Personal toggle failed: ${(e as Error).message}`
+  } finally {
+    const s = new Set(personalSaving.value)
+    s.delete(coin.eurio_id)
+    personalSaving.value = s
+  }
+}
 
 const AUGMENT_CAP = 20
 
@@ -446,15 +568,27 @@ function copyToClipboard(value: string, label: string, event: Event) {
 
     <!-- Filters -->
     <div class="mb-6 flex flex-wrap items-center gap-3">
-      <!-- Country -->
-      <select
-        v-model="filterCountry"
-        class="rounded-md border px-2 py-1.5 text-xs font-mono outline-none focus:ring-2"
-        style="border-color: var(--surface-3); background: var(--surface); color: var(--ink); --tw-ring-color: var(--indigo-700);"
-      >
-        <option value="">Tous pays</option>
-        <option v-for="c in COUNTRIES" :key="c" :value="c">{{ c }}</option>
-      </select>
+      <!-- Countries (multi-select chips, cumulable) -->
+      <div class="flex flex-wrap items-center gap-1">
+        <span
+          class="mr-1 text-[10px] font-medium uppercase"
+          style="color: var(--ink-500); letter-spacing: var(--tracking-eyebrow);"
+        >
+          Pays
+        </span>
+        <button
+          v-for="c in COUNTRIES" :key="c"
+          class="rounded-full border px-2 py-1 text-[11px] font-mono font-medium transition-colors"
+          :style="{
+            background: filterCountries.has(c) ? 'var(--indigo-700)' : 'var(--surface)',
+            color: filterCountries.has(c) ? 'white' : 'var(--ink-500)',
+            borderColor: filterCountries.has(c) ? 'var(--indigo-700)' : 'var(--surface-3)',
+          }"
+          @click="toggleCountry(c)"
+        >
+          {{ c }}
+        </button>
+      </div>
 
       <!-- Denomination chips -->
       <div class="flex flex-wrap gap-1">
@@ -544,6 +678,39 @@ function copyToClipboard(value: string, label: string, event: Event) {
       <!-- Separator -->
       <div class="h-5 w-px" style="background: var(--surface-3);" />
 
+      <!-- Sources (cumulable, AND across active sources) -->
+      <div class="flex items-center gap-1">
+        <span
+          class="mr-1 text-[10px] font-medium uppercase"
+          style="color: var(--ink-500); letter-spacing: var(--tracking-eyebrow);"
+          title="Filtre cumulable : la pièce doit avoir une donnée de chaque source active"
+        >
+          Sources
+        </span>
+        <button
+          v-for="s in SOURCE_KEYS" :key="s"
+          class="flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors"
+          :style="{
+            background: filterSources.has(s) ? 'var(--indigo-700)' : 'var(--surface)',
+            color: filterSources.has(s) ? 'white' : 'var(--ink-500)',
+            borderColor: filterSources.has(s) ? 'var(--indigo-700)' : 'var(--surface-3)',
+          }"
+          @click="toggleSource(s)"
+        >
+          {{ SOURCE_LABELS[s] }}
+          <span
+            v-if="sourceCounts[s] != null"
+            class="font-mono text-[10px]"
+            :style="{ color: filterSources.has(s) ? 'rgba(255,255,255,0.7)' : 'var(--ink-400)' }"
+          >
+            {{ sourceCounts[s] }}
+          </span>
+        </button>
+      </div>
+
+      <!-- Separator -->
+      <div class="h-5 w-px" style="background: var(--surface-3);" />
+
       <!-- Training status chips -->
       <div class="flex items-center gap-1">
         <span
@@ -567,6 +734,36 @@ function copyToClipboard(value: string, label: string, event: Event) {
           @click="filterTrained = filterTrained === opt.key ? null : opt.key"
         >
           <Brain v-if="opt.key === 'trained'" class="h-3 w-3" />
+          {{ opt.label }}
+        </button>
+      </div>
+
+      <!-- Separator -->
+      <div class="h-5 w-px" style="background: var(--surface-3);" />
+
+      <!-- Personal collection chips (admin's owned coins, see migration 20260428) -->
+      <div class="flex items-center gap-1">
+        <span
+          class="mr-1 text-[10px] font-medium uppercase"
+          style="color: var(--ink-500); letter-spacing: var(--tracking-eyebrow);"
+          title="Pièces marquées comme étant dans ta collection physique (toggle wallet sur chaque carte)"
+        >
+          Collection
+        </span>
+        <button
+          v-for="opt in ([
+            { key: 'owned' as const, label: 'Dans ma collec', color: 'var(--success)' },
+            { key: 'not-owned' as const, label: 'Pas dans ma collec', color: 'var(--ink-400)' },
+          ])" :key="opt.key + '-personal'"
+          class="flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors"
+          :style="{
+            background: filterPersonal === opt.key ? opt.color : 'var(--surface)',
+            color: filterPersonal === opt.key ? 'white' : 'var(--ink-500)',
+            borderColor: filterPersonal === opt.key ? 'transparent' : 'var(--surface-3)',
+          }"
+          @click="filterPersonal = filterPersonal === opt.key ? null : opt.key"
+        >
+          <Wallet v-if="opt.key === 'owned'" class="h-3 w-3" />
           {{ opt.label }}
         </button>
       </div>
@@ -679,10 +876,44 @@ function copyToClipboard(value: string, label: string, event: Event) {
             />
           </div>
 
-          <!-- Face value badge -->
+          <!-- Personal-collection toggle (wallet icon background).
+               Direct toggle: tap = flip personal_owned on Supabase. Sits next
+               to the training checkbox (left-9) when training is shown, else
+               takes its place at left-2. Always visible (every coin can be
+               in the user's physical collection regardless of trainability)
+               but uses opacity-0/100 to fade in on hover unless already on,
+               same pattern as training checkbox. -->
+          <div
+            class="absolute top-2 z-10 flex h-5 w-5 items-center justify-center rounded transition-opacity"
+            :class="[
+              canStage(coin) && mlApiOnline ? 'left-9' : 'left-2',
+              coin.personal_owned ? 'opacity-100' : 'opacity-0 group-hover:opacity-100',
+              personalSaving.has(coin.eurio_id) ? 'pointer-events-none' : '',
+            ]"
+            :style="{
+              background: coin.personal_owned
+                ? 'var(--success)' : 'rgba(255,255,255,0.9)',
+              border: coin.personal_owned
+                ? 'none' : '1.5px solid var(--surface-3)',
+              opacity: personalSaving.has(coin.eurio_id) ? '0.6' : undefined,
+            }"
+            :title="coin.personal_owned
+              ? 'Dans ta collection physique — clique pour retirer'
+              : 'Ajouter à ta collection physique'"
+            @click="togglePersonal(coin, $event)"
+          >
+            <Wallet
+              class="h-3 w-3"
+              :style="{ color: coin.personal_owned ? 'white' : 'var(--ink-400)' }"
+            />
+          </div>
+
+          <!-- Face value badge — shifts right based on which checkboxes are
+               visible above it. Both shown: left-16. One shown: left-9.
+               Neither (rare — would need !canStage AND no hover): left-2. -->
           <span
             class="absolute rounded-full px-2 py-0.5 text-[10px] font-mono font-medium"
-            :class="canStage(coin) && mlApiOnline ? 'left-9 top-2' : 'left-2 top-2'"
+            :class="canStage(coin) && mlApiOnline ? 'left-16 top-2' : 'left-9 top-2'"
             style="background: var(--indigo-700); color: white;"
           >
             {{ formatFaceValue(coin.face_value) }}

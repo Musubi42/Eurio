@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -83,22 +82,66 @@ data class DebugViewData(
 /**
  * Scene parity: docs/design/prototype/scenes/scan-debug.html
  *
- * 5 monospace panels + a 7-button tool strip. Gated by [ScanViewModel.debugMode]
- * at the call site — this composable assumes it should draw when invoked.
+ * 5 monospace panels + a single-button tool strip (Record). Gated by
+ * [ScanViewModel.debugMode] at the call site — this composable assumes it
+ * should draw when invoked.
  */
 @Composable
 fun ScanDebugOverlay(
     data: DebugViewData,
-    onDump: () -> Unit,
-    onDumps: () -> Unit,
-    onReplay: () -> Unit,
-    onFreeze: () -> Unit,
-    onForce: () -> Unit,
-    onEmbed: () -> Unit,
-    onStats: () -> Unit,
+    recording: Boolean,
+    recordedFrameCount: Int,
+    photoMode: Boolean,
+    hasSnapResult: Boolean,
+    captureMode: Boolean,
+    onRecordToggle: () -> Unit,
+    onPhotoToggle: () -> Unit,
+    onSnap: () -> Unit,
+    onReset: () -> Unit,
+    onCaptureToggle: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Box(modifier = modifier.fillMaxSize()) {
+        // Capture mode hides every ArcFace-debug panel — those metrics are
+        // misleading during golden-set capture (the model is intentionally
+        // broken). Only the bottom tools strip stays.
+        if (!captureMode) {
+            ArcFaceDebugPanels(data = data)
+        }
+
+        // Tools strip (bottom): record | photo | snap-or-reset | capture.
+        // The middle button is contextual: "snap" when the user is framing,
+        // "reset" once a snap result is on screen — taps "reset" → live
+        // preview returns (camera was kept warm), user re-frames, then taps
+        // "snap" again. Splitting these two actions stops the previous
+        // single-button flow that re-snapped immediately on tap, before
+        // AF/AE could converge.
+        DebugToolsStrip(
+            recording = recording,
+            recordedFrameCount = recordedFrameCount,
+            photoMode = photoMode,
+            hasSnapResult = hasSnapResult,
+            captureMode = captureMode,
+            onRecordToggle = onRecordToggle,
+            onPhotoToggle = onPhotoToggle,
+            onSnap = onSnap,
+            onReset = onReset,
+            onCaptureToggle = onCaptureToggle,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(
+                    start = EurioSpacing.s3,
+                    end = EurioSpacing.s3,
+                    bottom = EurioSpacing.s4,
+                )
+                .fillMaxWidth(),
+        )
+    }
+}
+
+@Composable
+private fun ArcFaceDebugPanels(data: DebugViewData) {
+    Box(modifier = Modifier.fillMaxSize()) {
         // 1. YOLO bbox (Canvas coordinates mapped to composable size)
         data.bbox?.let { BboxOverlay(it) }
 
@@ -175,24 +218,51 @@ fun ScanDebugOverlay(
                 )
             }
         }
+    }
+}
 
-        // Tools strip (bottom)
-        DebugToolsStrip(
-            onDump = onDump,
-            onDumps = onDumps,
-            onReplay = onReplay,
-            onFreeze = onFreeze,
-            onForce = onForce,
-            onEmbed = onEmbed,
-            onStats = onStats,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(
-                    start = EurioSpacing.s3,
-                    end = EurioSpacing.s3,
-                    bottom = EurioSpacing.s4,
-                )
-                .fillMaxWidth(),
+/**
+ * Photo-mode guide circle, drawn on top of the camera preview. The diameter
+ * matches `CoinAnalyzer.photoCropDiameterRatio` (70% of the short side) and
+ * acts purely as a placement hint — the actual crop is determined by Hough
+ * in [com.musubi.eurio.ml.SnapNormalizer], which tightly recenters on the
+ * detected coin regardless of how the user framed it inside the guide.
+ *
+ * The ring color reflects the analyzer's live Hough probe (5 fps): green
+ * when a centered circle is found (a SNAP now would normalize successfully)
+ * and a dim default otherwise. The user gets immediate visual confirmation
+ * that the framing is good without having to take the snap to find out.
+ */
+@Composable
+fun PhotoGuideOverlay(
+    circleFound: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    Canvas(modifier = modifier.fillMaxSize()) {
+        val short = minOf(size.width, size.height)
+        val radius = short * 0.35f
+        val center = Offset(size.width / 2f, size.height / 2f)
+
+        // Dim the background with an even-odd path: full screen rect minus the disk.
+        val path = androidx.compose.ui.graphics.Path().apply {
+            addRect(androidx.compose.ui.geometry.Rect(0f, 0f, size.width, size.height))
+            addOval(androidx.compose.ui.geometry.Rect(
+                center.x - radius, center.y - radius,
+                center.x + radius, center.y + radius,
+            ))
+            fillType = androidx.compose.ui.graphics.PathFillType.EvenOdd
+        }
+        drawPath(path, color = Color.Black.copy(alpha = 0.55f))
+        // Disk outline — green when ready to snap, gold (default) otherwise.
+        // The stroke is also slightly thicker in the "ready" state so the
+        // signal is legible at a glance, not just by hue.
+        val ringColor = if (circleFound) Success else Gold.copy(alpha = 0.55f)
+        val ringStroke = if (circleFound) 3.dp.toPx() else 2.dp.toPx()
+        drawCircle(
+            color = ringColor,
+            radius = radius,
+            center = center,
+            style = Stroke(width = ringStroke),
         )
     }
 }
@@ -357,67 +427,99 @@ private fun Top5Row(rank: Int, match: DebugViewData.DebugMatch, highlight: Boole
 
 @Composable
 private fun DebugToolsStrip(
-    onDump: () -> Unit,
-    onDumps: () -> Unit,
-    onReplay: () -> Unit,
-    onFreeze: () -> Unit,
-    onForce: () -> Unit,
-    onEmbed: () -> Unit,
-    onStats: () -> Unit,
+    recording: Boolean,
+    recordedFrameCount: Int,
+    photoMode: Boolean,
+    hasSnapResult: Boolean,
+    captureMode: Boolean,
+    onRecordToggle: () -> Unit,
+    onPhotoToggle: () -> Unit,
+    onSnap: () -> Unit,
+    onReset: () -> Unit,
+    onCaptureToggle: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Row(
-        modifier = modifier
-            .clip(RoundedCornerShape(EurioRadii.sm))
-            .background(Color.Black.copy(alpha = 0.78f))
-            .border(
-                width = 1.dp,
-                color = Success.copy(alpha = 0.25f),
-                shape = RoundedCornerShape(EurioRadii.sm),
-            )
-            .padding(EurioSpacing.s1),
-        horizontalArrangement = Arrangement.spacedBy(EurioSpacing.s1),
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(EurioSpacing.s2),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        ToolButton("⬇", "Dump", onDump, modifier = Modifier.weight(1f))
-        ToolButton("▦", "Dumps", onDumps, modifier = Modifier.weight(1f))
-        ToolButton("↻", "Replay", onReplay, modifier = Modifier.weight(1f))
-        ToolButton("⏸", "Freeze", onFreeze, modifier = Modifier.weight(1f))
-        ToolButton("◎", "Force", onForce, modifier = Modifier.weight(1f))
-        ToolButton("⧖", "Embed", onEmbed, modifier = Modifier.weight(1f))
-        ToolButton("▤", "Stats", onStats, modifier = Modifier.weight(1f))
+        DebugStripButton(
+            glyph = if (recording) "■" else "●",
+            label = if (recording) "stop" else "rec",
+            badge = if (recording || recordedFrameCount > 0) "$recordedFrameCount" else null,
+            accent = if (recording) Warning else Success,
+            onClick = onRecordToggle,
+            modifier = Modifier.weight(1f),
+        )
+        DebugStripButton(
+            glyph = "📷",
+            label = if (photoMode) "photo on" else "photo",
+            accent = if (photoMode) Gold else Success,
+            onClick = onPhotoToggle,
+            // Capture mode owns photoMode internally — disable manual photo toggle.
+            enabled = !captureMode,
+            modifier = Modifier.weight(1f),
+        )
+        DebugStripButton(
+            glyph = if (hasSnapResult) "↻" else "📸",
+            label = when {
+                hasSnapResult -> "reset"
+                else -> "snap"
+            },
+            accent = if (photoMode) Gold else Color.White.copy(alpha = 0.25f),
+            enabled = photoMode,
+            onClick = if (hasSnapResult) onReset else onSnap,
+            modifier = Modifier.weight(1f),
+        )
+        DebugStripButton(
+            glyph = "🎯",
+            label = if (captureMode) "capture on" else "capture",
+            accent = if (captureMode) Gold else Success,
+            onClick = onCaptureToggle,
+            modifier = Modifier.weight(1f),
+        )
     }
 }
 
 @Composable
-private fun ToolButton(
+private fun DebugStripButton(
     glyph: String,
     label: String,
+    accent: Color,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    badge: String? = null,
+    enabled: Boolean = true,
 ) {
-    Column(
+    Row(
         modifier = modifier
-            .clip(RoundedCornerShape(3.dp))
-            .background(Color.White.copy(alpha = 0.04f))
+            .clip(RoundedCornerShape(EurioRadii.sm))
+            .background(Color.Black.copy(alpha = if (enabled) 0.78f else 0.4f))
             .border(
                 width = 1.dp,
-                color = Color.White.copy(alpha = 0.08f),
-                shape = RoundedCornerShape(3.dp),
+                color = accent.copy(alpha = if (enabled) 0.45f else 0.15f),
+                shape = RoundedCornerShape(EurioRadii.sm),
             )
-            .clickable(onClick = onClick)
-            .padding(vertical = EurioSpacing.s1, horizontal = EurioSpacing.s1),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(EurioSpacing.s1),
+            .let { if (enabled) it.clickable(onClick = onClick) else it }
+            .padding(horizontal = EurioSpacing.s2, vertical = EurioSpacing.s2),
+        horizontalArrangement = Arrangement.spacedBy(EurioSpacing.s1),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            text = glyph,
-            style = MonoBadgeStyle,
-            color = Color.White.copy(alpha = 0.92f),
-        )
+        Text(text = glyph, style = MonoBadgeStyle, color = accent)
         Text(
             text = label,
             style = MonoBadgeStyle,
-            color = Color.White.copy(alpha = 0.82f),
+            color = accent,
+            modifier = Modifier.weight(1f),
         )
+        if (badge != null) {
+            Text(
+                text = badge,
+                style = MonoBadgeStyle,
+                color = Color.White.copy(alpha = 0.7f),
+            )
+        }
     }
 }
+

@@ -22,6 +22,7 @@ Outputs:
 
 from __future__ import annotations
 
+import argparse
 import json
 import re
 import time
@@ -41,6 +42,7 @@ from referential.eurio_referential import (
     slugify,
 )
 from eval.matching import index_referential, match as match_identity
+from state.sources_runs import record_run
 
 BCE_BASE = "https://www.ecb.europa.eu/euro/coins/comm/html/"
 BCE_YEAR_URL = BCE_BASE + "comm_{year}.en.html"
@@ -173,26 +175,24 @@ def enrich_entry_with_image(
     entry: dict,
     coin: dict,
 ) -> bool:
-    """Append the BCE image + description to an existing canonical entry.
+    """Store BCE image URL + metadata in observations["bce_comm"].
 
-    Returns True if a new image was added (False if it was already present).
+    Returns True if the entry was updated (False if already present and unchanged).
     """
-    images = entry.setdefault("images", [])
-    existing_urls = {i.get("url") for i in images}
-    if coin["image_url"] in existing_urls:
+    obs = entry.setdefault("observations", {})
+    existing = obs.get("bce_comm", {})
+    if existing.get("image_url") == coin["image_url"]:
         return False
-    images.append(
-        {
-            "url": coin["image_url"],
-            "source": SOURCE_TAG,
-            "role": "obverse",
-            "feature": coin.get("feature"),
-            "description": coin.get("description"),
-            "fetched_at": date.today().isoformat(),
-        }
-    )
-    # Identity description is null on most entries — fill it with the BCE
-    # authoritative description if we have it.
+    obs["bce_comm"] = {
+        "image_url": coin["image_url"],
+        "feature": coin.get("feature"),
+        "description": coin.get("description"),
+        "issuing_volume": coin.get("issuing_volume"),
+        "issuing_date": coin.get("issuing_date"),
+        "fetched_at": date.today().isoformat(),
+    }
+    cross_refs = entry.setdefault("cross_refs", {})
+    cross_refs["bce_comm_url"] = BCE_YEAR_URL.format(year=coin["year"])
     if coin.get("description") and not entry["identity"].get("design_description"):
         entry["identity"]["design_description"] = coin["description"]
     sources = entry["provenance"].setdefault("sources_used", [])
@@ -220,13 +220,26 @@ def append_matching_log(records: list[dict]) -> None:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--year",
+        type=int,
+        default=None,
+        help="Scrape only the given year (default: 2004 → current year)",
+    )
+    args = parser.parse_args()
+
     referential = load_referential()
     print(f"Loaded referential: {len(referential)} entries")
     idx = index_referential(referential)
 
     current_year = date.today().year
-    years = list(range(2004, current_year + 1))
-    print(f"Fetching BCE comm pages for {years[0]}-{years[-1]}\n")
+    if args.year is not None:
+        years = [args.year]
+        print(f"Fetching BCE comm page for {args.year}\n")
+    else:
+        years = list(range(2004, current_year + 1))
+        print(f"Fetching BCE comm pages for {years[0]}-{years[-1]}\n")
 
     log_records: list[dict] = []
     stage_counts: dict[str, int] = defaultdict(int)
@@ -274,6 +287,8 @@ def main() -> None:
     print(f"Images added to referential: {total_added}")
     print(f"Years covered: {sorted(coins_by_year)}")
     print("=" * 60)
+
+    record_run("bce", "scrape", calls=0, added_coins=total_added)
 
 
 if __name__ == "__main__":

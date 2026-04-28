@@ -30,7 +30,16 @@ import httpx
 from referential.eurio_referential import load_referential, save_referential
 from referential.import_numista import get_type_details
 from referential.numista_keys import KeyManager
+from referential.coin_image_storage import (
+    BUCKET_NAME,
+    ImageVariant,
+    copy_variant,
+    merge_variant,
+    storage_key,
+    upload_variant,
+)
 from export.sync_to_supabase import load_env
+from state.sources_runs import record_run
 
 # ---------------------------------------------------------------------------
 # Hardcoded mapping: Numista type ID -> matching criteria
@@ -85,12 +94,7 @@ NUMISTA_MAPPING: list[dict[str, Any]] = [
     },
 ]
 
-IMAGE_SIZES = {
-    "detail": 400,
-    "thumb": 120,
-}
-WEBP_QUALITY = {"detail": 82, "thumb": 78}
-BUCKET_NAME = "coin-images"
+NUMISTA_DETAIL_WIDTH = 400  # downscale Numista source to 400 for detail
 NUMISTA_CDN_DELAY = 0.5  # seconds between image downloads
 
 
@@ -125,8 +129,18 @@ def find_matching_entries(
     return sorted(matches)
 
 
+def _mapping_country(mapping: dict[str, Any]) -> str | None:
+    """Return the ISO2 country a mapping entry targets (explicit field or eurio_id prefix)."""
+    if mapping.get("country"):
+        return mapping["country"].upper()
+    eid = mapping.get("eurio_id") or ""
+    head = eid.split("-", 1)[0]
+    return head.upper() if len(head) == 2 else None
+
+
 def enrich_referential(
     referential: dict[str, dict[str, Any]],
+    mapping_list: list[dict[str, Any]] | None = None,
 ) -> tuple[int, list[tuple[str, int]]]:
     """Add numista_id to cross_refs for all matching entries.
 
@@ -134,8 +148,9 @@ def enrich_referential(
     """
     today = date.today().isoformat()
     enriched: list[tuple[str, int]] = []
+    mappings = mapping_list if mapping_list is not None else NUMISTA_MAPPING
 
-    for mapping in NUMISTA_MAPPING:
+    for mapping in mappings:
         numista_id = mapping["numista_id"]
         matched = find_matching_entries(referential, mapping)
 
@@ -161,14 +176,38 @@ def enrich_referential(
 # ---------------------------------------------------------------------------
 
 
-def fetch_numista_image_urls(km: KeyManager) -> dict[int, dict[str, str]]:
-    """Fetch obverse/reverse image URLs from Numista API for each mapped type.
+def _extract_type_mintage(details: dict[str, Any]) -> int | None:
+    """Pick the mintage figure from a Numista /types/{id} response when unambiguous.
 
-    Returns {numista_id: {"obverse": url, "reverse": url}}.
-    Uses 1 API call per type (5 total for current mapping).
+    For multi-issue types (circulation coins covering many years) Numista returns
+    a per-issue mintage list, not a single number — we can't safely reduce that
+    to a coin-row scalar, so we return None. For single-issue commemorative types
+    we lift the lone issue's mintage.
+    """
+    direct = details.get("mintage")
+    if isinstance(direct, int) and direct > 0:
+        return direct
+    issues = details.get("issues")
+    if isinstance(issues, list) and len(issues) == 1:
+        m = issues[0].get("mintage")
+        if isinstance(m, int) and m > 0:
+            return m
+    return None
+
+
+def fetch_numista_image_urls(
+    km: KeyManager,
+    mapping_list: list[dict[str, Any]] | None = None,
+) -> tuple[dict[int, dict[str, str]], dict[int, int]]:
+    """Fetch obverse/reverse image URLs + mintage from Numista API for each mapped type.
+
+    Returns ({numista_id: {"obverse": url, "reverse": url}}, {numista_id: mintage}).
+    Uses 1 API call per type.
     """
     urls: dict[int, dict[str, str]] = {}
-    for mapping in NUMISTA_MAPPING:
+    mintages: dict[int, int] = {}
+    mappings = mapping_list if mapping_list is not None else NUMISTA_MAPPING
+    for mapping in mappings:
         nid = mapping["numista_id"]
         print(f"  GET /types/{nid} ...", end=" ", flush=True)
         try:
@@ -184,10 +223,19 @@ def fetch_numista_image_urls(km: KeyManager) -> dict[int, dict[str, str]]:
             urls[nid]["obverse"] = obverse_url
         if reverse_url:
             urls[nid]["reverse"] = reverse_url
-        print(f"OK (obverse={'yes' if obverse_url else 'no'}, reverse={'yes' if reverse_url else 'no'})")
+
+        mintage = _extract_type_mintage(details)
+        if mintage:
+            mintages[nid] = mintage
+
+        print(
+            f"OK (obverse={'yes' if obverse_url else 'no'}, "
+            f"reverse={'yes' if reverse_url else 'no'}, "
+            f"mintage={mintage if mintage else 'n/a'})"
+        )
         time.sleep(0.5)  # respect Numista API rate limit
 
-    return urls
+    return urls, mintages
 
 
 def download_image(url: str) -> bytes | None:
@@ -202,44 +250,6 @@ def download_image(url: str) -> bytes | None:
     return None
 
 
-def resize_to_webp(raw_bytes: bytes, target_width: int, quality: int) -> bytes:
-    """Resize image to target width (preserving aspect ratio) and encode as WebP."""
-    from PIL import Image
-
-    img = Image.open(io.BytesIO(raw_bytes))
-    if img.mode in ("RGBA", "P"):
-        img = img.convert("RGB")
-
-    ratio = target_width / img.width
-    target_height = round(img.height * ratio)
-    img = img.resize((target_width, target_height), Image.LANCZOS)
-
-    buf = io.BytesIO()
-    img.save(buf, format="WEBP", quality=quality)
-    return buf.getvalue()
-
-
-def upload_to_storage(
-    client: httpx.Client,
-    base_url: str,
-    path: str,
-    data: bytes,
-) -> bool:
-    """Upload a file to Supabase Storage. Returns True on success."""
-    resp = client.post(
-        f"{base_url}/storage/v1/object/{BUCKET_NAME}/{path}",
-        content=data,
-        headers={
-            "Content-Type": "image/webp",
-            "x-upsert": "true",
-        },
-    )
-    if resp.status_code >= 400:
-        print(f"    upload FAIL {path}: HTTP {resp.status_code} {resp.text[:200]}")
-        return False
-    return True
-
-
 def process_images(
     image_urls: dict[int, dict[str, str]],
     enriched: list[tuple[str, int]],
@@ -247,7 +257,12 @@ def process_images(
     dry_run: bool = False,
     skip_supabase: bool = False,
 ) -> None:
-    """Download, resize, upload images and update DB + referential."""
+    """Download Numista images, encode + upload to the first eurio_id of each
+    numista group, then server-side copy to siblings (same numista_id covers
+    multiple eurio_ids — one CDN fetch is enough).
+
+    Updates `entry["images"]` to the new array shape and patches Supabase.
+    """
     env = load_env()
     supabase_url = env.get("SUPABASE_URL", "")
     supabase_key = env.get("SUPABASE_SERVICE_ROLE_KEY", "")
@@ -256,108 +271,125 @@ def process_images(
         print("  WARNING: SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY not found, skipping upload")
         skip_supabase = True
 
-    public_base = f"{supabase_url}/storage/v1/object/public/{BUCKET_NAME}"
     today = date.today().isoformat()
 
-    # Build image URLs map: numista_id -> images dict for the DB
-    images_by_numista: dict[int, dict[str, str]] = {}
-    uploaded = 0
-    skipped = 0
+    # Group eurio_ids by numista_id so we can upload once + copy to siblings.
+    eurio_ids_by_nid: dict[int, list[str]] = {}
+    for eurio_id, nid in enriched:
+        eurio_ids_by_nid.setdefault(nid, []).append(eurio_id)
 
     storage_headers = {
         "apikey": supabase_key,
         "Authorization": f"Bearer {supabase_key}",
     }
-
-    with httpx.Client(headers=storage_headers, timeout=30) as storage_client:
-        for nid, face_urls in image_urls.items():
-            print(f"\n  Processing Numista {nid}:")
-            nid_images: dict[str, str] = {}
-
-            for face in ("obverse", "reverse"):
-                src_url = face_urls.get(face)
-                if not src_url:
-                    print(f"    {face}: no URL, skipping")
-                    continue
-
-                print(f"    {face}: downloading ...", end=" ", flush=True)
-                if dry_run:
-                    print("(dry-run skip)")
-                    nid_images[face] = f"{public_base}/{nid}/{face}-400.webp"
-                    nid_images[f"{face}_thumb"] = f"{public_base}/{nid}/{face}-120.webp"
-                    continue
-
-                raw = download_image(src_url)
-                if not raw:
-                    continue
-                print(f"{len(raw) // 1024} KB")
-
-                for label, width in IMAGE_SIZES.items():
-                    quality = WEBP_QUALITY[label]
-                    suffix = str(width)
-                    webp_data = resize_to_webp(raw, width, quality)
-                    storage_path = f"{nid}/{face}-{suffix}.webp"
-                    print(f"      {face}-{suffix}.webp: {len(webp_data) // 1024} KB", end="")
-
-                    if skip_supabase:
-                        print(" (skip upload)")
-                    else:
-                        ok = upload_to_storage(storage_client, supabase_url, storage_path, webp_data)
-                        if ok:
-                            uploaded += 1
-                            print(" -> uploaded")
-                        else:
-                            skipped += 1
-
-                    url_key = face if label == "detail" else f"{face}_thumb"
-                    nid_images[url_key] = f"{public_base}/{nid}/{face}-{suffix}.webp"
-
-                time.sleep(NUMISTA_CDN_DELAY)
-
-            if nid_images:
-                images_by_numista[nid] = nid_images
-
-    if not dry_run:
-        print(f"\n  Storage: {uploaded} uploaded, {skipped} failed")
-
-    # Update referential and Supabase coins.images
-    print("\n  Updating images in referential + Supabase...")
-    patched = 0
     rest_headers = {
-        "apikey": supabase_key,
-        "Authorization": f"Bearer {supabase_key}",
+        **storage_headers,
         "Content-Type": "application/json",
         "Prefer": "return=minimal",
     }
     rest_base = supabase_url.rstrip("/") + "/rest/v1"
 
-    with httpx.Client(headers=rest_headers, timeout=60) as rest_client:
-        for eurio_id, nid in enriched:
-            nid_images = images_by_numista.get(nid)
-            if not nid_images:
+    uploaded = 0
+    copied = 0
+    failed = 0
+    patched = 0
+
+    with httpx.Client(headers=storage_headers, timeout=60) as storage_client, \
+         httpx.Client(headers=rest_headers, timeout=60) as rest_client:
+
+        for nid, eurio_ids in eurio_ids_by_nid.items():
+            face_urls = image_urls.get(nid) or {}
+            if not face_urls:
+                continue
+            print(f"\n  Numista {nid} → {len(eurio_ids)} eurio_id(s)")
+
+            # variants_per_face[face] = ImageVariant from the canonical (first) upload
+            variants_per_face: dict[str, ImageVariant] = {}
+            primary = eurio_ids[0]
+
+            for face in ("obverse", "reverse"):
+                src_url = face_urls.get(face)
+                if not src_url:
+                    continue
+                print(f"    {face}: GET CDN ...", end=" ", flush=True)
+                if dry_run:
+                    print("(dry-run)")
+                    continue
+                raw = download_image(src_url)
+                if not raw:
+                    failed += 1
+                    continue
+                print(f"{len(raw) // 1024} KB")
+
+                if skip_supabase:
+                    continue
+
+                variant = upload_variant(
+                    storage_client, supabase_url,
+                    primary, face, "numista",
+                    raw,
+                    detail_max_width=NUMISTA_DETAIL_WIDTH,
+                )
+                if variant is None:
+                    failed += 1
+                    continue
+                uploaded += 1
+                print(f"      → {primary}/{face}_numista.webp "
+                      f"{variant['width']}×{variant['height']} ({variant['bytes'] // 1024} KB)")
+                variants_per_face[face] = variant
+
+                # Server-side copy to the other eurio_ids sharing this numista_id.
+                for sibling in eurio_ids[1:]:
+                    sib_var = copy_variant(
+                        storage_client, supabase_url,
+                        src_eurio_id=primary, dest_eurio_id=sibling,
+                        role=face, source="numista",
+                        width=variant["width"], height=variant["height"], bytes_=variant["bytes"],
+                    )
+                    if sib_var is not None:
+                        copied += 1
+                    else:
+                        failed += 1
+
+                time.sleep(NUMISTA_CDN_DELAY)
+
+            if not variants_per_face:
                 continue
 
-            # Update referential
-            referential[eurio_id]["images"] = nid_images
-            referential[eurio_id]["provenance"]["last_updated"] = today
+            # Update each eurio_id's coins.images (and the local referential).
+            for eurio_id in eurio_ids:
+                entry = referential[eurio_id]
+                images = entry.get("images") or {}
+                for face, variant in variants_per_face.items():
+                    if eurio_id == primary:
+                        v = variant
+                    else:
+                        # Reconstruct the per-eurio_id URL (same shape, different prefix)
+                        v = {
+                            **variant,
+                            "url": variant["url"].replace(f"/{primary}/", f"/{eurio_id}/"),
+                            "thumb_url": variant.get("thumb_url", "").replace(
+                                f"/{primary}/", f"/{eurio_id}/"
+                            ),
+                        }
+                    images = merge_variant(images, face, v)
+                entry["images"] = images
+                entry.setdefault("provenance", {})["last_updated"] = today
 
-            if dry_run or skip_supabase:
-                patched += 1
-                continue
+                if not dry_run and not skip_supabase:
+                    resp = rest_client.patch(
+                        f"{rest_base}/coins",
+                        params={"eurio_id": f"eq.{eurio_id}"},
+                        json={"images": entry["images"]},
+                    )
+                    if resp.status_code < 400:
+                        patched += 1
+                    else:
+                        print(f"    patch FAIL {eurio_id}: HTTP {resp.status_code}")
 
-            # Patch Supabase
-            resp = rest_client.patch(
-                f"{rest_base}/coins",
-                params={"eurio_id": f"eq.{eurio_id}"},
-                json={"images": nid_images},
-            )
-            if resp.status_code < 400:
-                patched += 1
-            else:
-                print(f"    FAIL {eurio_id}: HTTP {resp.status_code}")
-
-    action = "would patch" if dry_run else "patched"
-    print(f"  {action} images for {patched} coins")
+    if not dry_run:
+        print(f"\n  Storage: {uploaded} uploaded, {copied} server-side copied, {failed} failed")
+        print(f"  DB: patched {patched} coins.images")
 
 
 # ---------------------------------------------------------------------------
@@ -408,12 +440,54 @@ def update_supabase_cross_refs(
 # ---------------------------------------------------------------------------
 
 
+def discover_existing_mappings(
+    referential: dict[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Build a mapping list from numista_ids already present in the referential.
+
+    Use this with `--scan-referential` to fetch images for coins that have been
+    matched to a Numista type by previous runs of `batch_match_numista.py`,
+    without needing a hardcoded `NUMISTA_MAPPING` entry.
+    """
+    seen: set[int] = set()
+    out: list[dict[str, Any]] = []
+    for entry in referential.values():
+        nid = (entry.get("cross_refs") or {}).get("numista_id")
+        if not isinstance(nid, int) or nid in seen:
+            continue
+        seen.add(nid)
+        ident = entry.get("identity", {})
+        out.append({
+            "numista_id": nid,
+            "description": f"{ident.get('country', '??')} {ident.get('year', '?')} "
+                           f"{ident.get('face_value', '?')} — discovered",
+            "country": ident.get("country"),
+            "face_value": float(ident.get("face_value")) if ident.get("face_value") is not None else None,
+            "is_commemorative": bool(ident.get("is_commemorative")),
+            "min_year": ident.get("year"),
+            "max_year": ident.get("year"),
+        })
+    return out
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dry-run", action="store_true", help="Preview without writing")
     parser.add_argument("--no-supabase", action="store_true", help="Skip Supabase updates")
     parser.add_argument("--images", action="store_true", help="Fetch, resize & upload coin images")
+    parser.add_argument("--limit", type=int, default=None, help="Process only the first N mapping entries")
+    parser.add_argument("--countries", default=None, help="Comma-separated ISO2 country filter")
+    parser.add_argument(
+        "--scan-referential",
+        action="store_true",
+        help="Process every numista_id already mapped in the referential "
+             "(instead of the hardcoded NUMISTA_MAPPING).",
+    )
     args = parser.parse_args()
+
+    countries_filter: set[str] | None = None
+    if args.countries:
+        countries_filter = {c.strip().upper() for c in args.countries.split(",") if c.strip()}
 
     env = load_env()
 
@@ -421,8 +495,21 @@ def main() -> int:
     referential = load_referential()
     print(f"  {len(referential)} entries loaded")
 
+    if args.scan_referential:
+        mapping_list = discover_existing_mappings(referential)
+        print(f"  --scan-referential: {len(mapping_list)} numista_ids discovered in referential")
+    else:
+        mapping_list = NUMISTA_MAPPING
+    if countries_filter:
+        before = len(mapping_list)
+        mapping_list = [m for m in mapping_list if _mapping_country(m) in countries_filter]
+        print(f"  --countries {sorted(countries_filter)}: {len(mapping_list)}/{before} mappings kept")
+    if args.limit is not None:
+        mapping_list = mapping_list[: args.limit]
+        print(f"  --limit {args.limit}: processing {len(mapping_list)} mapping(s)")
+
     print("\nMatching Numista IDs:")
-    total, enriched = enrich_referential(referential)
+    total, enriched = enrich_referential(referential, mapping_list)
     print(f"\n  Total: {total} coins enriched with numista_id")
 
     if not enriched:
@@ -437,9 +524,15 @@ def main() -> int:
             print(f"\nERROR: {e}")
             return 2
 
-        print("\nFetching image URLs from Numista API (5 calls)...")
-        image_urls = fetch_numista_image_urls(km)
-        print(f"  Got URLs for {len(image_urls)} types")
+        print(f"\nFetching image URLs from Numista API ({len(mapping_list)} calls)...")
+        image_urls, mintages = fetch_numista_image_urls(km, mapping_list)
+        print(f"  Got URLs for {len(image_urls)} types, mintage for {len(mintages)}")
+
+        # Apply Numista mintage to every matched coin (priority source over BCE).
+        for eurio_id, nid in enriched:
+            m = mintages.get(nid)
+            if m:
+                referential[eurio_id].setdefault("identity", {})["mintage"] = m
 
         print("\nProcessing images (download → resize → upload)...")
         process_images(
@@ -463,6 +556,12 @@ def main() -> int:
     if not args.no_supabase:
         print("\nUpdating Supabase cross_refs...")
         update_supabase_cross_refs(enriched, referential)
+
+    if args.images:
+        record_run("numista_images", "enrich_with_images",
+                   calls=len(image_urls), added_coins=total)
+    else:
+        record_run("numista_enrich", "enrich", calls=0, added_coins=total)
 
     print("\nNext steps:")
     print("  go-task android:snapshot   # regenerate catalog_snapshot.json")

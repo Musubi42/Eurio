@@ -1,44 +1,39 @@
 """Numista API key manager with monthly quota tracking.
 
-Reads NUMISTA_API_KEY_1, NUMISTA_API_KEY_2, ... from environment (set via .envrc).
-Tracks monthly call counts in the training SQLite DB (state/training.db).
-Rotates to the next key automatically when one hits 429 or the 1800 soft limit.
+Reads NUMISTA_API_KEY_MUSUBI00, NUMISTA_API_KEY_MUSUBI01, ... from the
+environment (set via .envrc). Counting is delegated to QuotaTracker (one
+shared `api_call_log` SQLite table for every API source). KeyManager is the
+multi-key piece: pick the next-best key, rotate on 429, expose status.
 """
 
 from __future__ import annotations
 
 import hashlib
 import os
-import sqlite3
-import threading
-from datetime import datetime
 from pathlib import Path
 
+from api_quota import DEFAULT_DB, QuotaTracker
+
+_SOURCE = "numista"
+_WINDOW = "monthly"
 _MONTHLY_LIMIT = 1800
-_DEFAULT_DB = Path(__file__).parent.parent / "state" / "training.db"
 
 
 def _key_hash(key: str) -> str:
     return hashlib.sha256(key.encode()).hexdigest()[:12]
 
 
-def _current_month() -> str:
-    return datetime.now().strftime("%Y-%m")
-
-
 class KeyManager:
     """Pick the best available Numista key and track its quota."""
 
-    def __init__(self, db_path: Path = _DEFAULT_DB) -> None:
-        self._db_path = Path(db_path)
-        self._lock = threading.Lock()
+    def __init__(self, db_path: Path = DEFAULT_DB) -> None:
+        self._tracker = QuotaTracker(_SOURCE, _WINDOW, _MONTHLY_LIMIT, db_path=db_path)
         self._keys = self._load_keys()
         if not self._keys:
             raise RuntimeError(
                 "No Numista API keys found. "
                 "Add NUMISTA_API_KEY_MUSUBI00 (and optionally MUSUBI01, ...) to .envrc"
             )
-        self._ensure_table()
 
     # ── Key loading ──────────────────────────────────────────────────────────
 
@@ -48,7 +43,7 @@ class KeyManager:
         Scans NUMISTA_API_KEY_MUSUBI00, NUMISTA_API_KEY_MUSUBI01, ...
         Stops at the first missing slot.
         """
-        keys = []
+        keys: list[tuple[str, str]] = []
         i = 0
         while True:
             val = os.environ.get(f"NUMISTA_API_KEY_MUSUBI{i:02d}")
@@ -57,26 +52,6 @@ class KeyManager:
             keys.append((_key_hash(val), val))
             i += 1
         return keys
-
-    # ── SQLite ───────────────────────────────────────────────────────────────
-
-    def _conn(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self._db_path)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA journal_mode=WAL")
-        return conn
-
-    def _ensure_table(self) -> None:
-        with self._conn() as conn:
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS numista_key_usage (
-                    key_hash  TEXT NOT NULL,
-                    month     TEXT NOT NULL,
-                    calls     INTEGER NOT NULL DEFAULT 0,
-                    exhausted INTEGER NOT NULL DEFAULT 0,
-                    PRIMARY KEY (key_hash, month)
-                )
-            """)
 
     # ── Public API ───────────────────────────────────────────────────────────
 
@@ -87,24 +62,14 @@ class KeyManager:
         exhausted nor at the 1800 soft limit.
         Raises RuntimeError if all keys are at capacity.
         """
-        month = _current_month()
-        conn = self._conn()
-        rows = {
-            r["key_hash"]: dict(r)
-            for r in conn.execute(
-                "SELECT key_hash, calls, exhausted FROM numista_key_usage WHERE month = ?",
-                (month,),
-            ).fetchall()
-        }
-        conn.close()
-
-        candidates: list[tuple[int, str, str]] = []
+        per_key = {s.key_hash: s for s in self._tracker.status()}
+        candidates: list[tuple[int, str]] = []
         for key_hash, key_value in self._keys:
-            row = rows.get(key_hash)
-            calls = row["calls"] if row else 0
-            exhausted = bool(row["exhausted"]) if row else False
+            s = per_key.get(key_hash)
+            calls = s.calls if s else 0
+            exhausted = s.exhausted if s else False
             if not exhausted and calls < _MONTHLY_LIMIT:
-                candidates.append((calls, key_hash, key_value))
+                candidates.append((calls, key_value))
 
         if not candidates:
             raise RuntimeError(
@@ -112,39 +77,14 @@ class KeyManager:
                 "or have received a 429. Add a new key or wait until next month."
             )
 
-        candidates.sort()
-        _, _, key_value = candidates[0]
-        return key_value
+        candidates.sort(key=lambda x: x[0])
+        return candidates[0][1]
 
     def record_call(self, key: str) -> None:
-        """Increment the call count for the given key in the current month."""
-        kh = _key_hash(key)
-        month = _current_month()
-        with self._lock:
-            with self._conn() as conn:
-                conn.execute(
-                    """
-                    INSERT INTO numista_key_usage (key_hash, month, calls)
-                    VALUES (?, ?, 1)
-                    ON CONFLICT (key_hash, month) DO UPDATE SET calls = calls + 1
-                    """,
-                    (kh, month),
-                )
+        self._tracker.record(_key_hash(key))
 
     def mark_exhausted(self, key: str) -> None:
-        """Mark a key as exhausted (received 429) for the current month."""
-        kh = _key_hash(key)
-        month = _current_month()
-        with self._lock:
-            with self._conn() as conn:
-                conn.execute(
-                    """
-                    INSERT INTO numista_key_usage (key_hash, month, exhausted)
-                    VALUES (?, ?, 1)
-                    ON CONFLICT (key_hash, month) DO UPDATE SET exhausted = 1
-                    """,
-                    (kh, month),
-                )
+        self._tracker.mark_exhausted(_key_hash(key))
 
     def call(self, fn, *args, **kwargs):
         """Call fn(key, *args, **kwargs) with quota tracking and 429 rotation.
@@ -168,28 +108,19 @@ class KeyManager:
 
     def status(self) -> list[dict]:
         """Return quota status for all registered keys (current month)."""
-        month = _current_month()
-        conn = self._conn()
-        rows = {
-            r["key_hash"]: dict(r)
-            for r in conn.execute(
-                "SELECT key_hash, calls, exhausted FROM numista_key_usage WHERE month = ?",
-                (month,),
-            ).fetchall()
-        }
-        conn.close()
-
+        per_key = {s.key_hash: s for s in self._tracker.status()}
+        period = self._tracker._period()
         result = []
-        for i, (key_hash, _) in enumerate(self._keys, 1):
-            row = rows.get(key_hash)
-            calls = row["calls"] if row else 0
-            exhausted = bool(row["exhausted"]) if row else False
+        for slot, (key_hash, _) in enumerate(self._keys, 1):
+            s = per_key.get(key_hash)
+            calls = s.calls if s else 0
+            exhausted = s.exhausted if s else False
             result.append({
-                "slot": i,
+                "slot": slot,
                 "key_hash": key_hash,
                 "calls_this_month": calls,
                 "remaining": max(0, _MONTHLY_LIMIT - calls),
                 "exhausted": exhausted,
-                "month": month,
+                "month": period,
             })
         return result
