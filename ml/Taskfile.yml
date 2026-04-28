@@ -8,6 +8,19 @@ vars:
   ASSETS: "{{.TASKFILE_DIR}}/../app-android/src/main/assets"
 
 tasks:
+  # ---------- Bootstrap ----------
+  setup:
+    desc: "Bootstrap .venv (idempotent). Creates a system-site-packages venv inheriting Nix devShell deps, then installs editable package + per-platform torch."
+    cmds:
+      - |
+        if [ ! -f .venv/pyvenv.cfg ] || ! grep -q "include-system-site-packages = true" .venv/pyvenv.cfg; then
+          echo "Recreating .venv with --system-site-packages…"
+          rm -rf .venv
+          python3 -m venv --system-site-packages .venv
+        fi
+      - uv pip install --python .venv/bin/python -e .
+      - "{{.VENV}}/python -c 'import torch; print(f\"torch {torch.__version__}  cuda={torch.cuda.is_available()}  mps={torch.backends.mps.is_available()}\")'"
+
   # ---------- Full pipeline ----------
   default:
     desc: Run the full ML pipeline (prepare → train → export → deploy)

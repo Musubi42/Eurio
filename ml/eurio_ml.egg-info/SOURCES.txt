@@ -33,6 +33,7 @@ bootstrap/seed_supabase.py
 eurio_ml.egg-info/PKG-INFO
 eurio_ml.egg-info/SOURCES.txt
 eurio_ml.egg-info/dependency_links.txt
+eurio_ml.egg-info/requires.txt
 eurio_ml.egg-info/top_level.txt
 eval/__init__.py
 eval/check_real_photos.py
@@ -54,6 +55,7 @@ market/scrape_ebay.py
 referential/__init__.py
 referential/batch_fetch_images.py
 referential/batch_match_numista.py
+referential/bootstrap_design_groups_2eur.py
 referential/clean_referential.py
 referential/coin_image_storage.py
 referential/enrich_coins_metadata.py
@@ -71,8 +73,11 @@ referential/scrape_lmdlp.py
 referential/scrape_monnaiedeparis.py
 referential/verify_review_queue.py
 scan/__init__.py
+scan/diff_kotlin_python.py
+scan/eval_real_snaps.py
 scan/normalize_snap.py
 scan/preview_normalized.py
+scan/sync_eval_real.py
 state/__init__.py
 state/archive.py
 state/sources_runs.py
