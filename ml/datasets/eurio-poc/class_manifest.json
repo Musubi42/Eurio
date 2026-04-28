@@ -12,6 +12,50 @@
       ]
     },
     {
+      "class_id": "at-2005-2eur-50th-anniversary-of-the-austrian-state-treaty",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        2193
+      ],
+      "eurio_ids": [
+        "at-2005-2eur-50th-anniversary-of-the-austrian-state-treaty"
+      ]
+    },
+    {
+      "class_id": "at-2eur-standard-2002",
+      "class_kind": "design_group_id",
+      "numista_ids": [
+        64,
+        9761
+      ],
+      "eurio_ids": [
+        "at-2002-2eur-standard",
+        "at-2008-2eur-standard"
+      ]
+    },
+    {
+      "class_id": "be-2011-2eur-1st-centenary-of-the-international-womens-day",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        19734
+      ],
+      "eurio_ids": [
+        "be-2011-2eur-1st-centenary-of-the-international-womens-day"
+      ]
+    },
+    {
+      "class_id": "be-2eur-standard-2007",
+      "class_kind": "design_group_id",
+      "numista_ids": [
+        6292,
+        6293
+      ],
+      "eurio_ids": [
+        "be-2007-2eur-standard",
+        "be-2008-2eur-standard"
+      ]
+    },
+    {
       "class_id": "de-2007-2eur-schwerin-castle-mecklenburg-vorpommern",
       "class_kind": "eurio_id",
       "numista_ids": [
@@ -32,13 +76,111 @@
       ]
     },
     {
-      "class_id": "fr-2007-2eur-standard",
+      "class_id": "es-2016-2eur-old-city-of-segovia-and-its-aqueduct",
       "class_kind": "eurio_id",
       "numista_ids": [
+        81058
+      ],
+      "eurio_ids": [
+        "es-2016-2eur-old-city-of-segovia-and-its-aqueduct"
+      ]
+    },
+    {
+      "class_id": "es-2eur-standard-1999",
+      "class_kind": "design_group_id",
+      "numista_ids": [
+        88,
+        6364,
+        10862,
+        69470
+      ],
+      "eurio_ids": [
+        "es-1999-2eur-standard",
+        "es-2007-2eur-standard",
+        "es-2010-2eur-standard",
+        "es-2015-2eur-standard"
+      ]
+    },
+    {
+      "class_id": "fi-2016-2eur-100th-anniversary-of-the-birth-of-georg-henrik-von-wright",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        93999
+      ],
+      "eurio_ids": [
+        "fi-2016-2eur-100th-anniversary-of-the-birth-of-georg-henrik-von-wright"
+      ]
+    },
+    {
+      "class_id": "fi-2017-2eur-100-years-of-independence",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        113429
+      ],
+      "eurio_ids": [
+        "fi-2017-2eur-100-years-of-independence"
+      ]
+    },
+    {
+      "class_id": "fr-2008-2eur-french-presidency-of-the-council-of-the-european-union",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        3561
+      ],
+      "eurio_ids": [
+        "fr-2008-2eur-french-presidency-of-the-council-of-the-european-union"
+      ]
+    },
+    {
+      "class_id": "fr-2016-2eur-100-years-since-the-birth-of-francois-mitterrand",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        91431
+      ],
+      "eurio_ids": [
+        "fr-2016-2eur-100-years-since-the-birth-of-francois-mitterrand"
+      ]
+    },
+    {
+      "class_id": "fr-2018-2eur-simone-veil",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        141382
+      ],
+      "eurio_ids": [
+        "fr-2018-2eur-simone-veil"
+      ]
+    },
+    {
+      "class_id": "fr-2eur-standard-1999",
+      "class_kind": "design_group_id",
+      "numista_ids": [
+        104,
         6376
       ],
       "eurio_ids": [
+        "fr-1999-2eur-standard",
         "fr-2007-2eur-standard"
+      ]
+    },
+    {
+      "class_id": "it-2016-2eur-2200-years-since-the-death-of-plautus",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        84714
+      ],
+      "eurio_ids": [
+        "it-2016-2eur-2200-years-since-the-death-of-plautus"
+      ]
+    },
+    {
+      "class_id": "it-2016-2eur-550-years-since-the-death-of-donatello",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        82330
+      ],
+      "eurio_ids": [
+        "it-2016-2eur-550-years-since-the-death-of-donatello"
       ]
     }
   ]

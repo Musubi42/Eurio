@@ -9,7 +9,18 @@ Usage:
 import argparse
 from pathlib import Path
 
+import torch
 from ultralytics import YOLO
+
+
+def _resolve_device(value: str) -> str:
+    if value != "auto":
+        return value
+    if torch.cuda.is_available():
+        return "cuda"
+    if torch.backends.mps.is_available():
+        return "mps"
+    return "cpu"
 
 
 DETECTION_DIR = Path(__file__).parent.parent / "datasets" / "detection"
@@ -117,13 +128,14 @@ def main():
     parser.add_argument("--epochs", type=int, default=150, help="Training epochs")
     parser.add_argument("--imgsz", type=int, default=320, help="Image size (320 for mobile)")
     parser.add_argument("--batch", type=int, default=16, help="Batch size")
-    parser.add_argument("--device", type=str, default="mps", help="Device (mps, cuda, cpu)")
+    parser.add_argument("--device", type=str, default="auto", help="Device (auto, mps, cuda, cpu). 'auto' picks cuda → mps → cpu.")
     parser.add_argument("--patience", type=int, default=30, help="Early stopping patience")
     parser.add_argument("--freeze", type=int, default=10, help="Freeze backbone for N epochs")
     parser.add_argument("--export", action="store_true", help="Export to TFLite after training")
     parser.add_argument("--export-only", action="store_true", help="Only export existing model")
     parser.add_argument("--validate", action="store_true", help="Only validate existing model")
     args = parser.parse_args()
+    args.device = _resolve_device(args.device)
 
     if args.export_only:
         export_model(args)

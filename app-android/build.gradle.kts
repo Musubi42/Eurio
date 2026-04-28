@@ -36,8 +36,25 @@ android {
         }
     }
 
+    signingConfigs {
+        // Keystore versionné dans le repo pour que les debug builds aient la
+        // même signature sur toutes les machines (PC NixOS / Mac). Sans ça,
+        // Gradle génère un debug.keystore par machine et `installDebug` échoue
+        // avec INSTALL_FAILED_UPDATE_INCOMPATIBLE quand on push depuis une
+        // machine alors que le device a déjà une version signée par l'autre.
+        // Pas un risque sécurité : c'est une clé debug standard (password
+        // "android"), seule la signature release/QA prod doit rester secrète.
+        getByName("debug") {
+            storeFile = file("keys/debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         debug {
+            signingConfig = signingConfigs.getByName("debug")
             buildConfigField("Boolean", "IS_QA", "false")
         }
         release {

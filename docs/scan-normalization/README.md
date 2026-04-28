@@ -39,3 +39,14 @@ Run F1+F2+F3 (2026-04-27) : R@1 100% en train mais détection device cassée. Ca
 ## Règles non-négociables
 
 R0 (zéro dette), R1 (proto-first — n.b. la capture-mode est debug-only, hors scope proto), R2 (tokens auto-gen), `go-task` (pas `task`), staging git explicite par fichier.
+
+## Évolution post-Phase 5 — Refonte normalize (2026-04-29)
+
+Refonte du pipeline `scan/normalize_snap.py` : passage de "harmonie d'implémentation Python ↔ Kotlin" à "harmonie de contrat de sortie", ce qui débloque l'utilisation d'algos optimaux par contexte (Otsu+contour pour studio, Hough+YOLO pour device). Speedup attendu : ×100–500 sur `prepare_dataset.py`.
+
+Voir [`normalize-rework/`](normalize-rework/) :
+- [`VISION.md`](normalize-rework/VISION.md) — pourquoi
+- [`algorithms.md`](normalize-rework/algorithms.md) — quoi
+- [`parity-contract.md`](normalize-rework/parity-contract.md) — comment on valide
+- [`implementation-plan.md`](normalize-rework/implementation-plan.md) — phases d'exécution
+- [`bench-results-pre.md`](normalize-rework/bench-results-pre.md) — chiffres pré-rework

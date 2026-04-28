@@ -38,7 +38,7 @@ tasks:
       - ./.venv/bin/python training/generate_overlay_textures.py {{.CLI_ARGS}}
 
   filament:install-matc:
-    desc: Download Filament macOS toolchain (matc) into ./tools/filament/. Pinned to v1.71.0 to match the runtime shipped in SceneView 4.0.0.
+    desc: Download Filament toolchain (matc) into ./tools/filament/. Pinned to v1.71.0 to match the runtime shipped in SceneView 4.0.0. Auto-detects OS (linux x86_64 / mac universal).
     vars:
       FILAMENT_VERSION: v1.71.0
     cmds:
@@ -48,9 +48,14 @@ tasks:
           echo "matc already installed: $(tools/filament/bin/matc --version 2>&1 | head -1)"
           exit 0
         fi
-        echo "Downloading filament-{{.FILAMENT_VERSION}}-mac.tgz..."
+        case "$(uname -s)" in
+          Darwin) asset="filament-{{.FILAMENT_VERSION}}-mac.tgz" ;;
+          Linux)  asset="filament-{{.FILAMENT_VERSION}}-linux.tgz" ;;
+          *) echo "Unsupported OS: $(uname -s)" >&2; exit 1 ;;
+        esac
+        echo "Downloading $asset..."
         curl -L --fail -o tools/filament.tgz \
-          https://github.com/google/filament/releases/download/{{.FILAMENT_VERSION}}/filament-{{.FILAMENT_VERSION}}-mac.tgz
+          "https://github.com/google/filament/releases/download/{{.FILAMENT_VERSION}}/$asset"
         tar -xzf tools/filament.tgz -C tools/filament --strip-components=1
         rm tools/filament.tgz
         echo "matc installed: $(tools/filament/bin/matc --version 2>&1 | head -1)"
