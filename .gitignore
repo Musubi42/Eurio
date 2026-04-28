@@ -27,7 +27,7 @@ app-android/src/main/assets/materials/
 
 # ML artifacts
 # Heavy ML training datasets (images, embeddings, etc.) — keep referential and snapshots
-# ml/datasets/*
+ml/datasets/*
 # !ml/datasets/eurio_referential.json
 # !ml/datasets/country_mapping.json
 # !ml/datasets/sources/
