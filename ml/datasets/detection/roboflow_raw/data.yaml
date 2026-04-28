@@ -1,0 +1,25 @@
+names:
+- 1 Euro
+- 1 Euro-B
+- 2 Euro
+- 2 Euro-B
+- Canada-10cent-B
+- Canada-2Dollar-B
+- Canda-10cent-
+- Canda-2Dollar-
+- Croatia-2Kune-
+- Croatia-2Kune-B
+- US-1cent-
+- US-1cent-B
+- US-25cent-
+- US-25cent-B
+nc: 14
+roboflow:
+  license: CC BY 4.0
+  project: coin-gva2j
+  url: https://universe.roboflow.com/yolocoin/coin-gva2j/dataset/1
+  version: 1
+  workspace: yolocoin
+test: ../test/images
+train: ../train/images
+val: ../valid/images

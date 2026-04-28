@@ -1,0 +1,3111 @@
+[
+  {
+    "source": "lmdlp",
+    "source_native_id": "mt2026fhunc",
+    "reason": "no_candidate",
+    "candidates": [],
+    "raw_payload": {
+      "sku": "mt2026fhunc",
+      "name": "2 euros Malte 2026 – Chien pharaon UNC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-malte-2026-chien-pharaon-unc/",
+      "categories": [
+        "2026",
+        "Malte",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "MT",
+      "year": 2026,
+      "theme_slug": "chien-pharaon"
+    },
+    "queued_at": "2026-04-26T21:12:31.309863+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "mt2026vaunc",
+    "reason": "no_candidate",
+    "candidates": [],
+    "raw_payload": {
+      "sku": "mt2026vaunc",
+      "name": "2 euros Malte 2026 – La Valette Valletta UNC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-malte-2026-la-valette-valletta-unc/",
+      "categories": [
+        "2026",
+        "Malte",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "MT",
+      "year": 2026,
+      "theme_slug": "la-valette-valletta"
+    },
+    "queued_at": "2026-04-26T21:12:31.309889+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "mt2026fhcc",
+    "reason": "no_candidate",
+    "candidates": [],
+    "raw_payload": {
+      "sku": "mt2026fhcc",
+      "name": "2 euros Malte 2026 – Chien pharaon BU FDC Coincard",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-malte-2026-chien-pharaon-bu-fdc-coincard/",
+      "categories": [
+        "2026",
+        "Malte",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "MT",
+      "year": 2026,
+      "theme_slug": "chien-pharaon"
+    },
+    "queued_at": "2026-04-26T21:12:31.311684+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "mt2026vacc",
+    "reason": "no_candidate",
+    "candidates": [],
+    "raw_payload": {
+      "sku": "mt2026vacc",
+      "name": "2 euros Malte 2026 – La Valette Valletta BU FDC Coincard",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-malte-2026-la-valette-valletta-bu-fdc-coincard/",
+      "categories": [
+        "2026",
+        "Malte",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "MT",
+      "year": 2026,
+      "theme_slug": "la-valette-valletta"
+    },
+    "queued_at": "2026-04-26T21:12:31.311696+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "lu2026kdgcc",
+    "reason": "no_candidate",
+    "candidates": [],
+    "raw_payload": {
+      "sku": "lu2026kdgcc",
+      "name": "2 euros Luxembourg 2026 – Prix Charlemagne BU FDC Coincard poinçon KNM",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-luxembourg-2026-prix-charlemagne-bu-fdc-coincard-poincon-knm/",
+      "categories": [
+        "2026",
+        "Luxembourg",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "LU",
+      "year": 2026,
+      "theme_slug": "prix-charlemagne"
+    },
+    "queued_at": "2026-04-26T21:12:31.311706+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "lu2026guicc",
+    "reason": "no_candidate",
+    "candidates": [],
+    "raw_payload": {
+      "sku": "lu2026guicc",
+      "name": "2 euros Luxembourg 2026 – Accession au trône Guillaume BU FDC Coincard poinçon KNM",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-luxembourg-2026-accession-au-trone-guillaume-bu-fdc-coincard-poincon-knm/",
+      "categories": [
+        "2026",
+        "Luxembourg",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "LU",
+      "year": 2026,
+      "theme_slug": "accession-au-trone-guillaume"
+    },
+    "queued_at": "2026-04-26T21:12:31.311717+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "lu2026kdgunc",
+    "reason": "no_candidate",
+    "candidates": [],
+    "raw_payload": {
+      "sku": "lu2026kdgunc",
+      "name": "2 euros Luxembourg 2026 – Prix Charlemagne UNC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-luxembourg-2026-prix-charlemagne-unc/",
+      "categories": [
+        "2026",
+        "Luxembourg",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "LU",
+      "year": 2026,
+      "theme_slug": "prix-charlemagne"
+    },
+    "queued_at": "2026-04-26T21:12:31.311726+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "lu2026guiunc",
+    "reason": "no_candidate",
+    "candidates": [],
+    "raw_payload": {
+      "sku": "lu2026guiunc",
+      "name": "2 euros Luxembourg 2026 – Accession au trône Guillaume UNC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-luxembourg-2026-accession-au-trone-guillaume-unc/",
+      "categories": [
+        "2026",
+        "Luxembourg",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "LU",
+      "year": 2026,
+      "theme_slug": "accession-au-trone-guillaume"
+    },
+    "queued_at": "2026-04-26T21:12:31.311738+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "mt2026fhpr",
+    "reason": "no_candidate",
+    "candidates": [],
+    "raw_payload": {
+      "sku": "mt2026fhpr",
+      "name": "2 euros Malte 2026 – Chien pharaon BE Proof",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-malte-2026-chien-pharaon-be-proof/",
+      "categories": [
+        "2026",
+        "Malte",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "MT",
+      "year": 2026,
+      "theme_slug": "chien-pharaon"
+    },
+    "queued_at": "2026-04-26T21:12:31.312077+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "mt2026vapr",
+    "reason": "no_candidate",
+    "candidates": [],
+    "raw_payload": {
+      "sku": "mt2026vapr",
+      "name": "2 euros Malte 2026 – La Valette Valletta BE Proof",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-malte-2026-la-valette-valletta-be-proof/",
+      "categories": [
+        "2026",
+        "Malte",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "MT",
+      "year": 2026,
+      "theme_slug": "la-valette-valletta"
+    },
+    "queued_at": "2026-04-26T21:12:31.312087+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "ad2025lam",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "ad-2025-2eur-bearded-vulture",
+      "ad-2025-2eur-small-states-games"
+    ],
+    "raw_payload": {
+      "sku": "ad2025lam",
+      "name": "2 euros Andorre 2025 – Gypaète barbu BU FDC Coincard",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-andorre-2025-gypaete-barbu-bu-fdc-coincard/",
+      "categories": [
+        "2025",
+        "Andorre",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "AD",
+      "year": 2025,
+      "theme_slug": "gypaete-barbu"
+    },
+    "queued_at": "2026-04-26T21:12:31.313480+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "pt2025scpt",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "pt-2025-2eur-sustainable-development",
+      "pt-2025-2eur-world-scouting-and-youth-movements"
+    ],
+    "raw_payload": {
+      "sku": "pt2025scpt",
+      "name": "2 euros Portugal 2025 – Scoutisme et Mouvements de Jeunesse BU FDC Coincard",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-portugal-2025-scoutisme-et-mouvements-de-jeunesse-bu-fdc-coincard/",
+      "categories": [
+        "2025",
+        "Pièces / année",
+        "Pièces / pays",
+        "Portugal"
+      ],
+      "country": "PT",
+      "year": 2025,
+      "theme_slug": "scoutisme-et-mouvements-de-jeunesse"
+    },
+    "queued_at": "2026-04-26T21:12:31.313777+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "fi2025atpr",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "fi-2025-2eur-finland-sweden-athletics-international-100-years",
+      "fi-2025-2eur-finnish-state-visits-diplomacy-and-foreign-policy"
+    ],
+    "raw_payload": {
+      "sku": "fi2025atpr",
+      "name": "2 euros Finlande 2025 – Jeux d’Athlétisme BE Proof",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-finlande-2025-jeux-dathletisme-be-proof/",
+      "categories": [
+        "2025",
+        "Finlande",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "FI",
+      "year": 2025,
+      "theme_slug": "jeux-dathletisme"
+    },
+    "queued_at": "2026-04-26T21:12:31.314302+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "fi2025atccfise",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "fi-2025-2eur-finland-sweden-athletics-international-100-years",
+      "fi-2025-2eur-finnish-state-visits-diplomacy-and-foreign-policy"
+    ],
+    "raw_payload": {
+      "sku": "fi2025atccfise",
+      "name": "2 euros Finlande 2025 – Jeux d’Athlétisme BU FDC Coincard FI / SE",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-finlande-2025-jeux-dathletisme-bu-fdc-coincard-fi-se/",
+      "categories": [
+        "2025",
+        "Finlande",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "FI",
+      "year": 2025,
+      "theme_slug": "jeux-dathletisme"
+    },
+    "queued_at": "2026-04-26T21:12:31.314361+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "fi2025atccen",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "fi-2025-2eur-finland-sweden-athletics-international-100-years",
+      "fi-2025-2eur-finnish-state-visits-diplomacy-and-foreign-policy"
+    ],
+    "raw_payload": {
+      "sku": "fi2025atccen",
+      "name": "2 euros Finlande 2025 – Jeux d’Athlétisme BU FDC Coincard EN",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-finlande-2025-jeux-dathletisme-bu-fdc-coincard-en/",
+      "categories": [
+        "2025",
+        "Finlande",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "FI",
+      "year": 2025,
+      "theme_slug": "jeux-dathletisme"
+    },
+    "queued_at": "2026-04-26T21:12:31.314416+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "fi2025atunc",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "fi-2025-2eur-finland-sweden-athletics-international-100-years",
+      "fi-2025-2eur-finnish-state-visits-diplomacy-and-foreign-policy"
+    ],
+    "raw_payload": {
+      "sku": "fi2025atunc",
+      "name": "2 euros Finlande 2025 – Jeux d’Athlétisme UNC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-finlande-2025-jeux-dathletisme-unc/",
+      "categories": [
+        "2025",
+        "Finlande",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "FI",
+      "year": 2025,
+      "theme_slug": "jeux-dathletisme"
+    },
+    "queued_at": "2026-04-26T21:12:31.314469+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "mc2025",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "mc-2025-2eur-carlades-county",
+      "mc-2025-2eur-marquisate-of-baux"
+    ],
+    "raw_payload": {
+      "sku": "mc2025",
+      "name": "2 euros Monaco 2025 – Ancien fief du Carladès BE Proof",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-monaco-2025-ancien-fief-du-carlades-be-proof/",
+      "categories": [
+        "Pièces / année",
+        "2025",
+        "Pièces / pays",
+        "Monaco"
+      ],
+      "country": "MC",
+      "year": 2025,
+      "theme_slug": "ancien-fief-du-carlades"
+    },
+    "queued_at": "2026-04-26T21:12:31.314644+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "pt2025scunc",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "pt-2025-2eur-sustainable-development",
+      "pt-2025-2eur-world-scouting-and-youth-movements"
+    ],
+    "raw_payload": {
+      "sku": "pt2025scunc",
+      "name": "2 euros Portugal 2025 – Scoutisme et Mouvements de Jeunesse UNC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-portugal-2025-scoutisme-et-mouvements-de-jeunesse-unc/",
+      "categories": [
+        "2025",
+        "Pièces / année",
+        "Pièces / pays",
+        "Portugal"
+      ],
+      "country": "PT",
+      "year": 2025,
+      "theme_slug": "scoutisme-et-mouvements-de-jeunesse"
+    },
+    "queued_at": "2026-04-26T21:12:31.315030+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "fi2025dippr",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "fi-2025-2eur-finland-sweden-athletics-international-100-years",
+      "fi-2025-2eur-finnish-state-visits-diplomacy-and-foreign-policy"
+    ],
+    "raw_payload": {
+      "sku": "fi2025dippr",
+      "name": "2 euros Finlande 2025 – Diplomatie et Politique Étrangère BE Proof",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-finlande-2025-diplomatie-et-politique-etrangere-be-proof/",
+      "categories": [
+        "Pièces / année",
+        "2025",
+        "Pièces / pays",
+        "Finlande"
+      ],
+      "country": "FI",
+      "year": 2025,
+      "theme_slug": "diplomatie-et-politique-etrangere"
+    },
+    "queued_at": "2026-04-26T21:12:31.315144+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "fi2025dipccfise",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "fi-2025-2eur-finland-sweden-athletics-international-100-years",
+      "fi-2025-2eur-finnish-state-visits-diplomacy-and-foreign-policy"
+    ],
+    "raw_payload": {
+      "sku": "fi2025dipccfise",
+      "name": "2 euros Finlande 2025 – Diplomatie et Politique Étrangère BU FDC Coincard FI / SE",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-finlande-2025-diplomatie-et-politique-etrangere-bu-fdc-coincard-fi-se/",
+      "categories": [
+        "2025",
+        "Finlande",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "FI",
+      "year": 2025,
+      "theme_slug": "diplomatie-et-politique-etrangere"
+    },
+    "queued_at": "2026-04-26T21:12:31.315218+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "fi2025dipccen",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "fi-2025-2eur-finland-sweden-athletics-international-100-years",
+      "fi-2025-2eur-finnish-state-visits-diplomacy-and-foreign-policy"
+    ],
+    "raw_payload": {
+      "sku": "fi2025dipccen",
+      "name": "2 euros Finlande 2025 – Diplomatie et Politique Étrangère BU FDC Coincard EN",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-finlande-2025-diplomatie-et-politique-etrangere-bu-fdc-coincard-en/",
+      "categories": [
+        "2025",
+        "Finlande",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "FI",
+      "year": 2025,
+      "theme_slug": "diplomatie-et-politique-etrangere"
+    },
+    "queued_at": "2026-04-26T21:12:31.315291+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "fi2025dipunc",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "fi-2025-2eur-finland-sweden-athletics-international-100-years",
+      "fi-2025-2eur-finnish-state-visits-diplomacy-and-foreign-policy"
+    ],
+    "raw_payload": {
+      "sku": "fi2025dipunc",
+      "name": "2 euros Finlande 2025 – Diplomatie et Politique Étrangère UNC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-finlande-2025-diplomatie-et-politique-etrangere-unc/",
+      "categories": [
+        "2025",
+        "Finlande",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "FI",
+      "year": 2025,
+      "theme_slug": "diplomatie-et-politique-etrangere"
+    },
+    "queued_at": "2026-04-26T21:12:31.315362+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "mt2025osunc",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "mt-2025-2eur-city-walls-of-mdina",
+      "mt-2025-2eur-maltese-ox"
+    ],
+    "raw_payload": {
+      "sku": "mt2025osunc",
+      "name": "2 euros Malte 2025 – Bœuf maltais UNC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-malte-2025-boeuf-maltais-unc/",
+      "categories": [
+        "2025",
+        "Malte",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "MT",
+      "year": 2025,
+      "theme_slug": "boeuf-maltais"
+    },
+    "queued_at": "2026-04-26T21:12:31.315413+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "mt2025osbu",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "mt-2025-2eur-city-walls-of-mdina",
+      "mt-2025-2eur-maltese-ox"
+    ],
+    "raw_payload": {
+      "sku": "mt2025osbu",
+      "name": "2 euros Malte 2025 – Bœuf maltais BU FDC Coincard",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-malte-2025-boeuf-maltais-bu-fdc-coincard/",
+      "categories": [
+        "2025",
+        "Malte",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "MT",
+      "year": 2025,
+      "theme_slug": "boeuf-maltais"
+    },
+    "queued_at": "2026-04-26T21:12:31.315462+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "sm2025hj",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "sm-2025-2eur-jubilee-holy-year-2025-pilgrims-of-hope",
+      "sm-2025-2eur-the-550th-anniversary-of-the-birth-of-michelangelo"
+    ],
+    "raw_payload": {
+      "sku": "sm2025hj",
+      "name": "2 euros Saint-Marin 2025 – Année Sainte Jubilé BU FDC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-saint-marin-2025-annee-sainte-jubile-bu-fdc/",
+      "categories": [
+        "2025",
+        "Pièces / année",
+        "Pièces / pays",
+        "Saint Marin"
+      ],
+      "country": "SM",
+      "year": 2025,
+      "theme_slug": "annee-sainte-jubile"
+    },
+    "queued_at": "2026-04-26T21:12:31.315860+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "it2025jubpr",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "it-2025-2eur-jubilee-holy-year-2025",
+      "it-2025-2eur-world-voyage-of-the-amerigo-vespucci-sail-training-ship"
+    ],
+    "raw_payload": {
+      "sku": "it2025jubpr",
+      "name": "2 euros Italie 2025 – Année Sainte Jubilé BE Proof",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-italie-2025-annee-sainte-jubile-be-proof/",
+      "categories": [
+        "2025",
+        "Italie",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "IT",
+      "year": 2025,
+      "theme_slug": "annee-sainte-jubile"
+    },
+    "queued_at": "2026-04-26T21:12:31.315964+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "it2025jubcc",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "it-2025-2eur-jubilee-holy-year-2025",
+      "it-2025-2eur-world-voyage-of-the-amerigo-vespucci-sail-training-ship"
+    ],
+    "raw_payload": {
+      "sku": "it2025jubcc",
+      "name": "2 euros Italie 2025 – Année Sainte Jubilé BU FDC Coincard",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-italie-2025-annee-sainte-jubile-bu-fdc-coincard/",
+      "categories": [
+        "2025",
+        "Italie",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "IT",
+      "year": 2025,
+      "theme_slug": "annee-sainte-jubile"
+    },
+    "queued_at": "2026-04-26T21:12:31.316021+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "it2025jubunc",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "it-2025-2eur-jubilee-holy-year-2025",
+      "it-2025-2eur-world-voyage-of-the-amerigo-vespucci-sail-training-ship"
+    ],
+    "raw_payload": {
+      "sku": "it2025jubunc",
+      "name": "2 euros Italie 2025 – Année Sainte Jubilé UNC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-italie-2025-annee-sainte-jubile-unc/",
+      "categories": [
+        "2025",
+        "Italie",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "IT",
+      "year": 2025,
+      "theme_slug": "annee-sainte-jubile"
+    },
+    "queued_at": "2026-04-26T21:12:31.316074+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "ad2024wkmb",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "ad-2024-2eur-100-years-of-skiing-in-andorra",
+      "ad-2024-2eur-uci-mountain-bike-mtb-world-championships"
+    ],
+    "raw_payload": {
+      "sku": "ad2024wkmb",
+      "name": "2 euros Andorre 2024 – Championnats du Monde de VTT BU FDC Coincard",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-andorre-2024-championnats-du-monde-de-vtt-bu-fdc-coincard/",
+      "categories": [
+        "2024",
+        "Andorre",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "AD",
+      "year": 2024,
+      "theme_slug": "championnats-du-monde-de-vtt"
+    },
+    "queued_at": "2026-04-26T21:12:31.316453+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "gr2024pdpr",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "gr-2024-2eur-100th-anniversary-of-the-birth-of-childrens-book-author",
+      "gr-2024-2eur-50th-anniversary-of-the-restoration-of-democracy"
+    ],
+    "raw_payload": {
+      "sku": "gr2024pdpr",
+      "name": "2 euros Grèce 2024 – Penelope Delta BE Proof",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-grece-2024-penelope-delta-be-proof/",
+      "categories": [
+        "2024",
+        "Grèce",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "GR",
+      "year": 2024,
+      "theme_slug": "penelope-delta"
+    },
+    "queued_at": "2026-04-26T21:12:31.316957+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "mt2024bijbu",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "mt-2024-2eur-maltese-honey-bee",
+      "mt-2024-2eur-the-cittadella"
+    ],
+    "raw_payload": {
+      "sku": "mt2024bijbu",
+      "name": "2 euros Malte 2024 – L’abeille domestique maltaise BU FDC Coincard",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-malte-2024-labeille-domestique-maltaise-bu-fdc-coincard/",
+      "categories": [
+        "2024",
+        "Malte",
+        "Pièces / année",
+        "Pièces / pays",
+        "Promotion -10%"
+      ],
+      "country": "MT",
+      "year": 2024,
+      "theme_slug": "labeille-domestique-maltaise"
+    },
+    "queued_at": "2026-04-26T21:12:31.316997+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "gr2024depr",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "gr-2024-2eur-100th-anniversary-of-the-birth-of-childrens-book-author",
+      "gr-2024-2eur-50th-anniversary-of-the-restoration-of-democracy"
+    ],
+    "raw_payload": {
+      "sku": "gr2024depr",
+      "name": "2 euros Grèce 2024 – Démocratie BE Proof",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-grece-2024-democratie-be-proof/",
+      "categories": [
+        "2024",
+        "Grèce",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "GR",
+      "year": 2024,
+      "theme_slug": "democratie"
+    },
+    "queued_at": "2026-04-26T21:12:31.317076+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "gr2024deunc",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "gr-2024-2eur-100th-anniversary-of-the-birth-of-childrens-book-author",
+      "gr-2024-2eur-50th-anniversary-of-the-restoration-of-democracy"
+    ],
+    "raw_payload": {
+      "sku": "gr2024deunc",
+      "name": "2 euros Grèce 2024 – Démocratie UNC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-grece-2024-democratie-unc/",
+      "categories": [
+        "2024",
+        "Grèce",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "GR",
+      "year": 2024,
+      "theme_slug": "democratie"
+    },
+    "queued_at": "2026-04-26T21:12:31.317371+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "gr2024pdunc",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "gr-2024-2eur-100th-anniversary-of-the-birth-of-childrens-book-author",
+      "gr-2024-2eur-50th-anniversary-of-the-restoration-of-democracy"
+    ],
+    "raw_payload": {
+      "sku": "gr2024pdunc",
+      "name": "2 euros Grèce 2024 – Penelope Delta UNC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-grece-2024-penelope-delta-unc/",
+      "categories": [
+        "2024",
+        "Grèce",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "GR",
+      "year": 2024,
+      "theme_slug": "penelope-delta"
+    },
+    "queued_at": "2026-04-26T21:12:31.317444+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "be2024stkpr",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "be-2024-2eur-fight-against-cancer",
+      "be-2024-2eur-the-belgian-presidency-of-the-council-of-the-eu"
+    ],
+    "raw_payload": {
+      "sku": "be2024stkpr",
+      "name": "2 euros Belgique 2024 – Lutte contre le cancer BE Proof",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-belgique-2024-lutte-contre-le-cancer-be-proof/",
+      "categories": [
+        "2024",
+        "Belgique",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "BE",
+      "year": 2024,
+      "theme_slug": "lutte-contre-le-cancer"
+    },
+    "queued_at": "2026-04-26T21:12:31.317511+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "be2024stkunc",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "be-2024-2eur-fight-against-cancer",
+      "be-2024-2eur-the-belgian-presidency-of-the-council-of-the-eu"
+    ],
+    "raw_payload": {
+      "sku": "be2024stkunc",
+      "name": "2 euros Belgique 2024 – Lutte contre le cancer UNC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-belgique-2024-lutte-contre-le-cancer-unc/",
+      "categories": [
+        "2024",
+        "Belgique",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "BE",
+      "year": 2024,
+      "theme_slug": "lutte-contre-le-cancer"
+    },
+    "queued_at": "2026-04-26T21:12:31.317568+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "be2024stkccfr",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "be-2024-2eur-fight-against-cancer",
+      "be-2024-2eur-the-belgian-presidency-of-the-council-of-the-eu"
+    ],
+    "raw_payload": {
+      "sku": "be2024stkccfr",
+      "name": "2 euros Belgique 2024 – Lutte contre le cancer BU FDC Coincard FR",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-belgique-2024-lutte-contre-le-cancer-bu-fdc-coincard-fr/",
+      "categories": [
+        "2024",
+        "Belgique",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "BE",
+      "year": 2024,
+      "theme_slug": "lutte-contre-le-cancer"
+    },
+    "queued_at": "2026-04-26T21:12:31.317623+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "be2024stkccnl",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "be-2024-2eur-fight-against-cancer",
+      "be-2024-2eur-the-belgian-presidency-of-the-council-of-the-eu"
+    ],
+    "raw_payload": {
+      "sku": "be2024stkccnl",
+      "name": "2 euros Belgique 2024 – Lutte contre le cancer BU FDC Coincard NL",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-belgique-2024-lutte-contre-le-cancer-bu-fdc-coincard-nl/",
+      "categories": [
+        "2024",
+        "Belgique",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "BE",
+      "year": 2024,
+      "theme_slug": "lutte-contre-le-cancer"
+    },
+    "queued_at": "2026-04-26T21:12:31.317679+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "sm2024brbu",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "sm-2024-2eur-50th-anniversary-of-the-declaration-of-civil-rights-and-the",
+      "sm-2024-2eur-530th-anniversary-of-the-death-of-domenico-ghirlandaio"
+    ],
+    "raw_payload": {
+      "sku": "sm2024brbu",
+      "name": "2 euros Saint-Marin 2024 – Droits civils BU FDC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-saint-marin-2024-droits-civils-bu-fdc/",
+      "categories": [
+        "Pièces / année",
+        "2024",
+        "Pièces / pays",
+        "Saint Marin"
+      ],
+      "country": "SM",
+      "year": 2024,
+      "theme_slug": "droits-civils"
+    },
+    "queued_at": "2026-04-26T21:12:31.317731+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "it2024fgpr",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "it-2024-2eur-250th-anniversary-of-the-founding-of-the-financial-police",
+      "it-2024-2eur-rita-levi-montalcini"
+    ],
+    "raw_payload": {
+      "sku": "it2024fgpr",
+      "name": "2 euros Italie 2024 – Garde Financière BE Proof",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-italie-2024-garde-financiere-be-proof/",
+      "categories": [
+        "2024",
+        "Italie",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "IT",
+      "year": 2024,
+      "theme_slug": "garde-financiere"
+    },
+    "queued_at": "2026-04-26T21:12:31.318081+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "it2024fgcc",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "it-2024-2eur-250th-anniversary-of-the-founding-of-the-financial-police",
+      "it-2024-2eur-rita-levi-montalcini"
+    ],
+    "raw_payload": {
+      "sku": "it2024fgcc",
+      "name": "2 euros Italie 2024 – Garde Financière BU FDC Coincard",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-italie-2024-garde-financiere-bu-fdc-coincard/",
+      "categories": [
+        "2024",
+        "Italie",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "IT",
+      "year": 2024,
+      "theme_slug": "garde-financiere"
+    },
+    "queued_at": "2026-04-26T21:12:31.318126+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "it2024fgunc",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "it-2024-2eur-250th-anniversary-of-the-founding-of-the-financial-police",
+      "it-2024-2eur-rita-levi-montalcini"
+    ],
+    "raw_payload": {
+      "sku": "it2024fgunc",
+      "name": "2 euros Italie 2024 – Garde Financière UNC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-italie-2024-garde-financiere-unc/",
+      "categories": [
+        "Pièces / année",
+        "2024",
+        "Pièces / pays",
+        "Italie"
+      ],
+      "country": "IT",
+      "year": 2024,
+      "theme_slug": "garde-financiere"
+    },
+    "queued_at": "2026-04-26T21:12:31.318421+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "ad2023vnunc",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "ad-2023-2eur-30-years-of-the-entry-of-the-principality-of-andorra-into",
+      "ad-2023-2eur-summer-solstice-fire-festivals-in-the-pyrenees"
+    ],
+    "raw_payload": {
+      "sku": "ad2023vnunc",
+      "name": "2 euros Andorre 2023 – Adhésion ONU UNC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-andorre-2023-adhesion-onu-unc/",
+      "categories": [
+        "2023",
+        "Andorre",
+        "Pièces / année",
+        "Pièces / pays",
+        "Promotion -10%"
+      ],
+      "country": "AD",
+      "year": 2023,
+      "theme_slug": "adhesion-onu"
+    },
+    "queued_at": "2026-04-26T21:12:31.318930+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "ad2023vn",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "ad-2023-2eur-30-years-of-the-entry-of-the-principality-of-andorra-into",
+      "ad-2023-2eur-summer-solstice-fire-festivals-in-the-pyrenees"
+    ],
+    "raw_payload": {
+      "sku": "ad2023vn",
+      "name": "2 euros Andorre 2023 – Adhésion ONU BU FDC Coincard",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-andorre-2023-adhesion-onu-bu-fdc-coincard/",
+      "categories": [
+        "2023",
+        "Andorre",
+        "Pièces / année",
+        "Pièces / pays",
+        "Promotion -10%"
+      ],
+      "country": "AD",
+      "year": 2023,
+      "theme_slug": "adhesion-onu"
+    },
+    "queued_at": "2026-04-26T21:12:31.319161+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "pt2023vrunc",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "pt-2023-2eur-peace-among-nations",
+      "pt-2023-2eur-world-youth-day-2023"
+    ],
+    "raw_payload": {
+      "sku": "pt2023vrunc",
+      "name": "2 euros Portugal 2023 – Paix UNC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-portugal-2023-paix-unc/",
+      "categories": [
+        "2023",
+        "Pièces / année",
+        "Pièces / pays",
+        "Portugal"
+      ],
+      "country": "PT",
+      "year": 2023,
+      "theme_slug": "paix"
+    },
+    "queued_at": "2026-04-26T21:12:31.319237+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "cy2023cbpr",
+    "reason": "no_candidate",
+    "candidates": [],
+    "raw_payload": {
+      "sku": "cy2023cbpr",
+      "name": "2 euros Chypre 2023 – Banque centrale BE Proof",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-chypre-2023-banque-centrale-be-proof/",
+      "categories": [
+        "2023",
+        "Chypre",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "CY",
+      "year": 2023,
+      "theme_slug": "banque-centrale"
+    },
+    "queued_at": "2026-04-26T21:12:31.319352+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "cy2023cbcc",
+    "reason": "no_candidate",
+    "candidates": [],
+    "raw_payload": {
+      "sku": "cy2023cbcc",
+      "name": "2 euros Chypre 2023 – Banque centrale BU FDC Coincard",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-chypre-2023-banque-centrale-bu-fdc-coincard/",
+      "categories": [
+        "2023",
+        "Chypre",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "CY",
+      "year": 2023,
+      "theme_slug": "banque-centrale"
+    },
+    "queued_at": "2026-04-26T21:12:31.319361+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "cy2023cbunc",
+    "reason": "no_candidate",
+    "candidates": [],
+    "raw_payload": {
+      "sku": "cy2023cbunc",
+      "name": "2 euros Chypre 2023 – Banque centrale UNC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-chypre-2023-banque-centrale-unc/",
+      "categories": [
+        "2023",
+        "Chypre",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "CY",
+      "year": 2023,
+      "theme_slug": "banque-centrale"
+    },
+    "queued_at": "2026-04-26T21:12:31.319693+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "mt2023cop",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "mt-2023-2eur-225th-anniversary-of-the-french-invasion-of-malta",
+      "mt-2023-2eur-550th-anniversary-of-the-birth-of-nicolaus-copernicus"
+    ],
+    "raw_payload": {
+      "sku": "mt2023cop",
+      "name": "2 euros Malte 2023 – Copernic BU FDC Coincard",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-malte-2023-copernic-bu-fdc-coincard/",
+      "categories": [
+        "2023",
+        "Malte",
+        "Pièces / année",
+        "Pièces / pays",
+        "Promotion -10%"
+      ],
+      "country": "MT",
+      "year": 2023,
+      "theme_slug": "copernic"
+    },
+    "queued_at": "2026-04-26T21:12:31.319899+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "mt2023nfr",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "mt-2023-2eur-225th-anniversary-of-the-french-invasion-of-malta",
+      "mt-2023-2eur-550th-anniversary-of-the-birth-of-nicolaus-copernicus"
+    ],
+    "raw_payload": {
+      "sku": "mt2023nfr",
+      "name": "2 euros Malte 2023 – Napoléon et des Français BU FDC Coincard",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-malte-2023-napoleon-et-des-francais-bu-fdc-coincard/",
+      "categories": [
+        "2023",
+        "Malte",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "MT",
+      "year": 2023,
+      "theme_slug": "napoleon-et-des-francais"
+    },
+    "queued_at": "2026-04-26T21:12:31.320034+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "fi2023sgdpr",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "fi-2023-2eur-first-finnish-nature-conservation-act",
+      "fi-2023-2eur-social-and-health-services"
+    ],
+    "raw_payload": {
+      "sku": "fi2023sgdpr",
+      "name": "2 euros Finlande 2023 – Services sociaux et de santé BE Proof",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-finlande-2023-services-sociaux-et-de-sante-be-proof/",
+      "categories": [
+        "2023",
+        "Finlande",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "FI",
+      "year": 2023,
+      "theme_slug": "services-sociaux-et-de-sante"
+    },
+    "queued_at": "2026-04-26T21:12:31.320102+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "fi2023sgdunc",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "fi-2023-2eur-first-finnish-nature-conservation-act",
+      "fi-2023-2eur-social-and-health-services"
+    ],
+    "raw_payload": {
+      "sku": "fi2023sgdunc",
+      "name": "2 euros Finlande 2023 – Services sociaux et de santé UNC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-finlande-2023-services-sociaux-et-de-sante-unc/",
+      "categories": [
+        "2023",
+        "Finlande",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "FI",
+      "year": 2023,
+      "theme_slug": "services-sociaux-et-de-sante"
+    },
+    "queued_at": "2026-04-26T21:12:31.320157+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "pt2023wjdunc",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "pt-2023-2eur-peace-among-nations",
+      "pt-2023-2eur-world-youth-day-2023"
+    ],
+    "raw_payload": {
+      "sku": "pt2023wjdunc",
+      "name": "2 euros Portugal 2023 – Journée mondiale de la jeunesse Lisbonne UNC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-portugal-2023-journee-mondiale-de-la-jeunesse-lisbonne-unc/",
+      "categories": [
+        "2023",
+        "Pièces / année",
+        "Pièces / pays",
+        "Portugal"
+      ],
+      "country": "PT",
+      "year": 2023,
+      "theme_slug": "journee-mondiale-de-la-jeunesse-lisbonne"
+    },
+    "queued_at": "2026-04-26T21:12:31.320229+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "lu2023ioccc",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "lu-2023-2eur-175th-anniversary-of-the-chamber-of-deputies-and-the-first",
+      "lu-2023-2eur-25th-anniversary-of-the-admission-of-grand-duke-henri-as-a"
+    ],
+    "raw_payload": {
+      "sku": "lu2023ioccc",
+      "name": "2 euros Luxembourg 2023 – 25 ans membre du Comité International Olympique BU FDC Coincard poinçon KNM",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-luxembourg-2023-25-ans-membre-du-comite-international-olympique-bu-fdc-coincard/",
+      "categories": [
+        "2023",
+        "Luxembourg",
+        "Pièces / année",
+        "Pièces / pays",
+        "Promotion -10%"
+      ],
+      "country": "LU",
+      "year": 2023,
+      "theme_slug": "25-ans-membre-du-comite-international-olympique"
+    },
+    "queued_at": "2026-04-26T21:12:31.321058+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "lu2023iocunc",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "lu-2023-2eur-175th-anniversary-of-the-chamber-of-deputies-and-the-first",
+      "lu-2023-2eur-25th-anniversary-of-the-admission-of-grand-duke-henri-as-a"
+    ],
+    "raw_payload": {
+      "sku": "lu2023iocunc",
+      "name": "2 euros Luxembourg 2023 – 25 ans membre du Comité International Olympique UNC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-luxembourg-2023-25-ans-membre-du-comite-international-olympique-unc/",
+      "categories": [
+        "2023",
+        "Luxembourg",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "LU",
+      "year": 2023,
+      "theme_slug": "25-ans-membre-du-comite-international-olympique"
+    },
+    "queued_at": "2026-04-26T21:12:31.321290+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "it2023lmpr",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "it-2023-2eur-150th-anniversary-of-the-death-of-alessandro-manzoni",
+      "it-2023-2eur-italy-100-years-of-the-italian-air-force"
+    ],
+    "raw_payload": {
+      "sku": "it2023lmpr",
+      "name": "2 euros Italie 2023 – Armée de l’air italienne BE Proof",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-italie-2023-armee-de-lair-italienne-be-proof/",
+      "categories": [
+        "2023",
+        "Italie",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "IT",
+      "year": 2023,
+      "theme_slug": "armee-de-lair-italienne"
+    },
+    "queued_at": "2026-04-26T21:12:31.321428+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "it2023lmcc",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "it-2023-2eur-150th-anniversary-of-the-death-of-alessandro-manzoni",
+      "it-2023-2eur-italy-100-years-of-the-italian-air-force"
+    ],
+    "raw_payload": {
+      "sku": "it2023lmcc",
+      "name": "2 euros Italie 2023 – Armée de l’air italienne BU FDC Coincard",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-italie-2023-armee-de-lair-italienne-bu-fdc-coincard/",
+      "categories": [
+        "2023",
+        "Italie",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "IT",
+      "year": 2023,
+      "theme_slug": "armee-de-lair-italienne"
+    },
+    "queued_at": "2026-04-26T21:12:31.321495+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "it2023lmunc",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "it-2023-2eur-150th-anniversary-of-the-death-of-alessandro-manzoni",
+      "it-2023-2eur-italy-100-years-of-the-italian-air-force"
+    ],
+    "raw_payload": {
+      "sku": "it2023lmunc",
+      "name": "2 euros Italie 2023 – Armée de l’air italienne UNC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-italie-2023-armee-de-lair-italienne-unc/",
+      "categories": [
+        "2023",
+        "Italie",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "IT",
+      "year": 2023,
+      "theme_slug": "armee-de-lair-italienne"
+    },
+    "queued_at": "2026-04-26T21:12:31.321601+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "fi2023nbunc",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "fi-2023-2eur-first-finnish-nature-conservation-act",
+      "fi-2023-2eur-social-and-health-services"
+    ],
+    "raw_payload": {
+      "sku": "fi2023nbunc",
+      "name": "2 euros Finlande 2023 – Loi sur la protection de la nature UNC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-finlande-2023-loi-sur-la-protection-de-la-nature-unc/",
+      "categories": [
+        "2023",
+        "Finlande",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "FI",
+      "year": 2023,
+      "theme_slug": "loi-sur-la-protection-de-la-nature"
+    },
+    "queued_at": "2026-04-26T21:12:31.321817+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "fi2023nbpr",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "fi-2023-2eur-first-finnish-nature-conservation-act",
+      "fi-2023-2eur-social-and-health-services"
+    ],
+    "raw_payload": {
+      "sku": "fi2023nbpr",
+      "name": "2 euros Finlande 2023 – Loi sur la protection de la nature BE Proof",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-finlande-2023-loi-sur-la-protection-de-la-nature-be-proof/",
+      "categories": [
+        "2023",
+        "Finlande",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "FI",
+      "year": 2023,
+      "theme_slug": "loi-sur-la-protection-de-la-nature"
+    },
+    "queued_at": "2026-04-26T21:12:31.322065+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "mt2022erbu",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "mt-2022-2eur-hypogeum-of-hal-saflieni",
+      "mt-2022-2eur-united-nations-security-council-resolution-1325-on-women"
+    ],
+    "raw_payload": {
+      "sku": "mt2022erbu",
+      "name": "2 euros Malte 2022 – Erasmus BU FDC Coincard",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-malte-2022-erasmus-bu-fdc-coincard/",
+      "categories": [
+        "2022",
+        "2022 Erasmus",
+        "Malte",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "MT",
+      "year": 2022,
+      "theme_slug": "erasmus"
+    },
+    "queued_at": "2026-04-26T21:12:31.322725+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "mt2022erunc",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "mt-2022-2eur-hypogeum-of-hal-saflieni",
+      "mt-2022-2eur-united-nations-security-council-resolution-1325-on-women"
+    ],
+    "raw_payload": {
+      "sku": "mt2022erunc",
+      "name": "2 euros Malte 2022 – Erasmus UNC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-malte-2022-erasmus-unc-2/",
+      "categories": [
+        "2022",
+        "2022 Erasmus",
+        "Malte",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "MT",
+      "year": 2022,
+      "theme_slug": "erasmus"
+    },
+    "queued_at": "2026-04-26T21:12:31.322773+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "nl2022erunclos",
+    "reason": "no_candidate",
+    "candidates": [],
+    "raw_payload": {
+      "sku": "nl2022erunclos",
+      "name": "2 euros Pays-Bas 2022 – Erasmus UNC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-pays-bas-2022-erasmus-unc-2/",
+      "categories": [
+        "2022 Erasmus",
+        "Pays-Bas",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "NL",
+      "year": 2022,
+      "theme_slug": "erasmus"
+    },
+    "queued_at": "2026-04-26T21:12:31.323010+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "nl2022erunc",
+    "reason": "no_candidate",
+    "candidates": [],
+    "raw_payload": {
+      "sku": "nl2022erunc",
+      "name": "2 euros Pays-Bas 2022 – Erasmus UNC Coincard",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-pays-bas-2022-erasmus-unc/",
+      "categories": [
+        "2022",
+        "2022 Erasmus",
+        "Pays-Bas",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "NL",
+      "year": 2022,
+      "theme_slug": "erasmus"
+    },
+    "queued_at": "2026-04-26T21:12:31.323035+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "nl2022erpr",
+    "reason": "no_candidate",
+    "candidates": [],
+    "raw_payload": {
+      "sku": "nl2022erpr",
+      "name": "2 euros Pays-Bas 2022 – Erasmus BE Proof",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-pays-bas-2022-erasmus-be-proof/",
+      "categories": [
+        "2022",
+        "2022 Erasmus",
+        "Pays-Bas",
+        "Pièces / année",
+        "Pièces / pays",
+        "Promotion -10%"
+      ],
+      "country": "NL",
+      "year": 2022,
+      "theme_slug": "erasmus"
+    },
+    "queued_at": "2026-04-26T21:12:31.323044+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "ie2022erunc",
+    "reason": "no_candidate",
+    "candidates": [],
+    "raw_payload": {
+      "sku": "ie2022erunc",
+      "name": "2 euros Irlande 2022 – Erasmus UNC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-irlande-2022-erasmus-unc/",
+      "categories": [
+        "2022 Erasmus",
+        "Irlande",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "IE",
+      "year": 2022,
+      "theme_slug": "erasmus"
+    },
+    "queued_at": "2026-04-26T21:12:31.323054+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "cy2022ercc",
+    "reason": "no_candidate",
+    "candidates": [],
+    "raw_payload": {
+      "sku": "cy2022ercc",
+      "name": "2 euros Chypre 2022 – Erasmus BU FDC Coincard",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-chypre-2022-erasmus-bu-fdc-coincard/",
+      "categories": [
+        "2022 Erasmus",
+        "Chypre",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "CY",
+      "year": 2022,
+      "theme_slug": "erasmus"
+    },
+    "queued_at": "2026-04-26T21:12:31.323075+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "cy2022erunc",
+    "reason": "no_candidate",
+    "candidates": [],
+    "raw_payload": {
+      "sku": "cy2022erunc",
+      "name": "2 euros Chypre 2022 – Erasmus UNC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-chypre-2022-erasmus-unc/",
+      "categories": [
+        "2022 Erasmus",
+        "Chypre",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "CY",
+      "year": 2022,
+      "theme_slug": "erasmus"
+    },
+    "queued_at": "2026-04-26T21:12:31.323090+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "es2022erunc",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "es-2022-2eur-500-years-since-the-completion-of-the-first-circumnavigation",
+      "es-2022-2eur-garajonay-national-park-la-gomera"
+    ],
+    "raw_payload": {
+      "sku": "es2022erunc",
+      "name": "2 euros Espagne 2022 – Erasmus UNC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-espagne-2022-erasmus-unc/",
+      "categories": [
+        "2022",
+        "Espagne",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "ES",
+      "year": 2022,
+      "theme_slug": "erasmus"
+    },
+    "queued_at": "2026-04-26T21:12:31.323136+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "es2022erpr",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "es-2022-2eur-500-years-since-the-completion-of-the-first-circumnavigation",
+      "es-2022-2eur-garajonay-national-park-la-gomera"
+    ],
+    "raw_payload": {
+      "sku": "es2022erpr",
+      "name": "2 euros Espagne 2022 – Erasmus BE Proof",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-espagne-2022-erasmus-be-proof/",
+      "categories": [
+        "2022",
+        "2022 Erasmus",
+        "Espagne",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "ES",
+      "year": 2022,
+      "theme_slug": "erasmus"
+    },
+    "queued_at": "2026-04-26T21:12:31.323213+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "est2022erunc",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "ee-2022-2eur-150-years-since-the-founding-of-the-society-of-estonian",
+      "ee-2022-2eur-glory-to-ukraine"
+    ],
+    "raw_payload": {
+      "sku": "est2022erunc",
+      "name": "2 euros Estonie 2022 – Erasmus UNC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-estonie-2022-erasmus-unc/",
+      "categories": [
+        "2022",
+        "2022 Erasmus",
+        "Estonie",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "EE",
+      "year": 2022,
+      "theme_slug": "erasmus"
+    },
+    "queued_at": "2026-04-26T21:12:31.323245+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "lt2022erunc",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "lt-2022-2eur-100-years-of-basketball-in-lithuania",
+      "lt-2022-2eur-suvalkija"
+    ],
+    "raw_payload": {
+      "sku": "lt2022erunc",
+      "name": "2 euros Lituanie 2022 – Erasmus UNC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-lituanie-2022-erasmus-unc/",
+      "categories": [
+        "2022 Erasmus",
+        "Lituanie",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "LT",
+      "year": 2022,
+      "theme_slug": "erasmus"
+    },
+    "queued_at": "2026-04-26T21:12:31.323298+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "at2022erunc",
+    "reason": "no_candidate",
+    "candidates": [],
+    "raw_payload": {
+      "sku": "at2022erunc",
+      "name": "2 euros Autriche 2022 – Erasmus UNC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-autriche-2022-erasmus-unc/",
+      "categories": [
+        "2022 Erasmus",
+        "Autriche",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "AT",
+      "year": 2022,
+      "theme_slug": "erasmus"
+    },
+    "queued_at": "2026-04-26T21:12:31.323355+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "lu2022erunc",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "lu-2022-2eur-10-years-since-the-wedding-of-hereditary-grand-duke",
+      "lu-2022-2eur-50-years-since-the-flag-of-luxembourg"
+    ],
+    "raw_payload": {
+      "sku": "lu2022erunc",
+      "name": "2 euros Luxembourg 2022 – Erasmus UNC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-luxembourg-2022-erasmus-unc/",
+      "categories": [
+        "2022",
+        "2022 Erasmus",
+        "Luxembourg",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "LU",
+      "year": 2022,
+      "theme_slug": "erasmus"
+    },
+    "queued_at": "2026-04-26T21:12:31.323427+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "lu2022huwgsunc",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "lu-2022-2eur-10-years-since-the-wedding-of-hereditary-grand-duke",
+      "lu-2022-2eur-50-years-since-the-flag-of-luxembourg"
+    ],
+    "raw_payload": {
+      "sku": "lu2022huwgsunc",
+      "name": "2 euros Luxembourg 2022 – 10 ans mariage Guillaume et Stéphanie UNC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-luxembourg-2022-10-ans-mariage-guillaume-et-stephanie-unc/",
+      "categories": [
+        "2022",
+        "Luxembourg",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "LU",
+      "year": 2022,
+      "theme_slug": "10-ans-mariage-guillaume-et-stephanie"
+    },
+    "queued_at": "2026-04-26T21:12:31.323620+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "lu2022ercc",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "lu-2022-2eur-10-years-since-the-wedding-of-hereditary-grand-duke",
+      "lu-2022-2eur-50-years-since-the-flag-of-luxembourg"
+    ],
+    "raw_payload": {
+      "sku": "lu2022ercc",
+      "name": "2 euros Luxembourg 2022 – Erasmus BU FDC Coincard Poinçon",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-luxembourg-2022-erasmus-bu-fdc-coincard/",
+      "categories": [
+        "2022",
+        "2022 Erasmus",
+        "Luxembourg",
+        "Pièces / année",
+        "Pièces / pays",
+        "Promotion -10%"
+      ],
+      "country": "LU",
+      "year": 2022,
+      "theme_slug": "erasmus"
+    },
+    "queued_at": "2026-04-26T21:12:31.323659+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "lu2022huwgscc",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "lu-2022-2eur-10-years-since-the-wedding-of-hereditary-grand-duke",
+      "lu-2022-2eur-50-years-since-the-flag-of-luxembourg"
+    ],
+    "raw_payload": {
+      "sku": "lu2022huwgscc",
+      "name": "2 euros Luxembourg 2022 – 10 ans mariage Guillaume et Stéphanie BU FDC Coincard Poinçon",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-luxembourg-2022-10-ans-mariage-guillaume-et-stephanie-bu-fdc-coincard/",
+      "categories": [
+        "2022",
+        "Luxembourg",
+        "Pièces / année",
+        "Pièces / pays",
+        "Promotion -10%"
+      ],
+      "country": "LU",
+      "year": 2022,
+      "theme_slug": "10-ans-mariage-guillaume-et-stephanie"
+    },
+    "queued_at": "2026-04-26T21:12:31.323842+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "est2022ercc",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "ee-2022-2eur-150-years-since-the-founding-of-the-society-of-estonian",
+      "ee-2022-2eur-glory-to-ukraine"
+    ],
+    "raw_payload": {
+      "sku": "est2022ercc",
+      "name": "2 euros Estonie 2022 – Erasmus BU FDC Coincard",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-estonie-2022-erasmus-bu-fdc-coincard/",
+      "categories": [
+        "2022 Erasmus",
+        "Estonie",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "EE",
+      "year": 2022,
+      "theme_slug": "erasmus"
+    },
+    "queued_at": "2026-04-26T21:12:31.323876+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "est2022elgcc",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "ee-2022-2eur-150-years-since-the-founding-of-the-society-of-estonian",
+      "ee-2022-2eur-glory-to-ukraine"
+    ],
+    "raw_payload": {
+      "sku": "est2022elgcc",
+      "name": "2 euros Estonie 2022 – Société littéraire estonienne BU FDC Coincard",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-estonie-2022-societe-litteraire-estonienne-bu-fdc-coincard/",
+      "categories": [
+        "2022",
+        "Estonie",
+        "Pièces / année",
+        "Pièces / pays",
+        "Promotion -10%"
+      ],
+      "country": "EE",
+      "year": 2022,
+      "theme_slug": "societe-litteraire-estonienne"
+    },
+    "queued_at": "2026-04-26T21:12:31.324581+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "est2022elgunc",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "ee-2022-2eur-150-years-since-the-founding-of-the-society-of-estonian",
+      "ee-2022-2eur-glory-to-ukraine"
+    ],
+    "raw_payload": {
+      "sku": "est2022elgunc",
+      "name": "2 euros Estonie 2022 – Société littéraire estonienne UNC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-estonie-2022-societe-litteraire-estonienne-unc/",
+      "categories": [
+        "2022",
+        "Estonie",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "EE",
+      "year": 2022,
+      "theme_slug": "societe-litteraire-estonienne"
+    },
+    "queued_at": "2026-04-26T21:12:31.324651+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "mt2022erunc-old",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "mt-2022-2eur-hypogeum-of-hal-saflieni",
+      "mt-2022-2eur-united-nations-security-council-resolution-1325-on-women"
+    ],
+    "raw_payload": {
+      "sku": "mt2022erunc-old",
+      "name": "2 euros Malte 2022 – Erasmus UNC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-malte-2022-erasmus-unc/",
+      "categories": [
+        "2022",
+        "Malte",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "MT",
+      "year": 2022,
+      "theme_slug": "erasmus"
+    },
+    "queued_at": "2026-04-26T21:12:31.324742+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "be2021carpr",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "be-2021-2eur-100-years-since-the-signing-of-the-belgium-luxembourg",
+      "be-2021-2eur-500-years-since-the-issuance-of-the-carolus-guilder"
+    ],
+    "raw_payload": {
+      "sku": "be2021carpr",
+      "name": "2 euros Belgique 2021 – 500 ans pièces de Charles Quint BE Proof",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-belgique-2021-500-ans-pieces-de-charles-quint-be-proof/",
+      "categories": [
+        "2021",
+        "Belgique",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "BE",
+      "year": 2021,
+      "theme_slug": "500-ans-pieces-de-charles-quint"
+    },
+    "queued_at": "2026-04-26T21:12:31.325109+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "be2021carccfr",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "be-2021-2eur-100-years-since-the-signing-of-the-belgium-luxembourg",
+      "be-2021-2eur-500-years-since-the-issuance-of-the-carolus-guilder"
+    ],
+    "raw_payload": {
+      "sku": "be2021carccfr",
+      "name": "2 euros Belgique 2021 – 500 ans pièces de Charles Quint BU FDC Coincard FR",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-belgique-2021-500-ans-pieces-de-charles-quint-bu-fdc-coincard-fr/",
+      "categories": [
+        "2021",
+        "Belgique",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "BE",
+      "year": 2021,
+      "theme_slug": "500-ans-pieces-de-charles-quint"
+    },
+    "queued_at": "2026-04-26T21:12:31.325225+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "be2021carccnl",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "be-2021-2eur-100-years-since-the-signing-of-the-belgium-luxembourg",
+      "be-2021-2eur-500-years-since-the-issuance-of-the-carolus-guilder"
+    ],
+    "raw_payload": {
+      "sku": "be2021carccnl",
+      "name": "2 euros Belgique 2021 – 500 ans pièces de Charles Quint BU FDC Coincard NL",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-belgique-2021-500-ans-pieces-de-charles-quint-bu-fdc-coincard-nl/",
+      "categories": [
+        "2021",
+        "Belgique",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "BE",
+      "year": 2021,
+      "theme_slug": "500-ans-pieces-de-charles-quint"
+    },
+    "queued_at": "2026-04-26T21:12:31.325385+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "va2021capr",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "va-2021-2eur-450-years-since-the-birth-of-caravaggio",
+      "va-2021-2eur-700-years-since-the-death-of-dante-alighieri"
+    ],
+    "raw_payload": {
+      "sku": "va2021capr",
+      "name": "2 euros Vatican 2021 – Caravage BE Proof",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-vatican-2021-caravage-be-proof/",
+      "categories": [
+        "2021",
+        "Pièces / année",
+        "Pièces / pays",
+        "Vatican"
+      ],
+      "country": "VA",
+      "year": 2021,
+      "theme_slug": "caravage"
+    },
+    "queued_at": "2026-04-26T21:12:31.325512+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "va2021cabu",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "va-2021-2eur-450-years-since-the-birth-of-caravaggio",
+      "va-2021-2eur-700-years-since-the-death-of-dante-alighieri"
+    ],
+    "raw_payload": {
+      "sku": "va2021cabu",
+      "name": "2 euros Vatican 2021 – Caravage BU FDC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-vatican-2021-caravage-bu-fdc/",
+      "categories": [
+        "2021",
+        "La collection",
+        "Pièces / année",
+        "Pièces / pays",
+        "Vatican"
+      ],
+      "country": "VA",
+      "year": 2021,
+      "theme_slug": "caravage"
+    },
+    "queued_at": "2026-04-26T21:12:31.326016+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "pt2021osunc",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "pt-2021-2eur-participation-in-tokyo-summer-olympics",
+      "pt-2021-2eur-portuguese-presidency-of-the-council-of-the-european-union"
+    ],
+    "raw_payload": {
+      "sku": "pt2021osunc",
+      "name": "2 euros Portugal 2021 – Jeux Olympiques UNC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-portugal-2021-jeux-olympiques-unc/",
+      "categories": [
+        "2021",
+        "Pièces / année",
+        "Pièces / pays",
+        "Portugal"
+      ],
+      "country": "PT",
+      "year": 2021,
+      "theme_slug": "jeux-olympiques"
+    },
+    "queued_at": "2026-04-26T21:12:31.326273+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "mt2020spuncmdp",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "mt-2020-2eur-childrens-games",
+      "mt-2020-2eur-skorba-temples"
+    ],
+    "raw_payload": {
+      "sku": "mt2020spuncmdp",
+      "name": "2 euros Malte 2020 – Jeux UNC poinçon MdP",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-malte-2020-jeux-unc-poincon-mdp/",
+      "categories": [
+        "2020",
+        "Malte",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "MT",
+      "year": 2020,
+      "theme_slug": "jeux"
+    },
+    "queued_at": "2026-04-26T21:12:31.327231+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "va2019numis",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "va-2019-2eur-25-years-since-the-restoration-of-the-sistine-chapel",
+      "va-2019-2eur-90th-anniversary-of-the-foundation-of-the-vatican-city-state"
+    ],
+    "raw_payload": {
+      "sku": "va2019numis",
+      "name": "2 euros Vatican 2019 – 90 ans Cité du Vatican BU FDC Lettre Numis",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-vatican-2019-90-ans-cite-du-vatican-bu-fdc-lettre-numis/",
+      "categories": [
+        "2019",
+        "Pièces / année",
+        "Pièces / pays",
+        "Promotion -10%",
+        "Vatican"
+      ],
+      "country": "VA",
+      "year": 2019,
+      "theme_slug": "90-ans-cite-du-vatican"
+    },
+    "queued_at": "2026-04-26T21:12:31.327323+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "ad2019ctunc",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "ad-2019-2eur-2019-fis-alpine-ski-world-cup-final",
+      "ad-2019-2eur-600-years-since-the-constitution-of-the-general-council-of"
+    ],
+    "raw_payload": {
+      "sku": "ad2019ctunc",
+      "name": "2 euros Andorre 2019 – Consell de la Terra UNC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-andorre-2019-consell-de-la-terra-unc/",
+      "categories": [
+        "2019",
+        "Andorre",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "AD",
+      "year": 2019,
+      "theme_slug": "consell-de-la-terra"
+    },
+    "queued_at": "2026-04-26T21:12:31.327390+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "va2020raproof",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "va-2020-2eur-100-years-since-the-birth-of-pope-john-paul-ii",
+      "va-2020-2eur-500-years-since-the-death-of-raphael"
+    ],
+    "raw_payload": {
+      "sku": "va2020raproof",
+      "name": "2 euros Vatican 2020 – Raffaello BE Proof",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-vatican-2020-raffaello-be-proof/",
+      "categories": [
+        "2020",
+        "Pièces / année",
+        "Pièces / pays",
+        "Vatican"
+      ],
+      "country": "VA",
+      "year": 2020,
+      "theme_slug": "raffaello"
+    },
+    "queued_at": "2026-04-26T21:12:31.327518+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "mt2020spcc",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "mt-2020-2eur-childrens-games",
+      "mt-2020-2eur-skorba-temples"
+    ],
+    "raw_payload": {
+      "sku": "mt2020spcc",
+      "name": "2 euros Malte 2020 – Jeux BU FDC Coincard poinçon MdP",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-malte-2020-jeux-bu-fdc-coincard-poincon-mdp/",
+      "categories": [
+        "2020",
+        "Malte",
+        "Pièces / année",
+        "Pièces / pays",
+        "Promotion -10%"
+      ],
+      "country": "MT",
+      "year": 2020,
+      "theme_slug": "jeux"
+    },
+    "queued_at": "2026-04-26T21:12:31.327717+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "fr2020mobu",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "fr-2020-2eur-charles-de-gaulle",
+      "fr-2020-2eur-medical-research"
+    ],
+    "raw_payload": {
+      "sku": "fr2020mobu",
+      "name": "2 euros France 2020 – Recherche Médicale BU FDC Coincard",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-france-2020-recherche-medicale-bu-fdc-coincard/",
+      "categories": [
+        "2020",
+        "France",
+        "Pièces / année",
+        "Pièces / pays",
+        "Promotion -10%"
+      ],
+      "country": "FR",
+      "year": 2020,
+      "theme_slug": "recherche-medicale"
+    },
+    "queued_at": "2026-04-26T21:12:31.328182+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "ad2018mr",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "ad-2018-2eur-25th-anniversary-of-the-andorran-constitution",
+      "ad-2018-2eur-70th-anniversary-of-the-universal-declaration-of-human"
+    ],
+    "raw_payload": {
+      "sku": "ad2018mr",
+      "name": "2 euros Andorre 2018 – 70 ans Droits de l’Homme BU FDC Coincard",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-andorre-2018-70-ans-droits-de-lhomme-bu-fdc-coincard/",
+      "categories": [
+        "2018",
+        "Andorre",
+        "Pièces / année",
+        "Pièces / pays",
+        "Promotion -10%"
+      ],
+      "country": "AD",
+      "year": 2018,
+      "theme_slug": "70-ans-droits-de-lhomme"
+    },
+    "queued_at": "2026-04-26T21:12:31.328727+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "be2020plpr",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "be-2020-2eur-international-year-of-plant-health",
+      "be-2020-2eur-jan-van-eyck"
+    ],
+    "raw_payload": {
+      "sku": "be2020plpr",
+      "name": "2 euros Belgique 2020 – Santé des Plantes BE Proof",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-belgique-2020-sante-des-plantes-be-proof/",
+      "categories": [
+        "2020",
+        "Belgique",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "BE",
+      "year": 2020,
+      "theme_slug": "sante-des-plantes"
+    },
+    "queued_at": "2026-04-26T21:12:31.328828+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "it2020bwunc",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "it-2020-2eur-150-years-since-the-birth-of-maria-montessori",
+      "it-2020-2eur-80th-anniversary-of-the-national-firefighters-corps"
+    ],
+    "raw_payload": {
+      "sku": "it2020bwunc",
+      "name": "2 euros Italie 2020 – 80 ans pompiers UNC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-italie-2020-80-ans-pompiers-unc/",
+      "categories": [
+        "2020",
+        "Italie",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "IT",
+      "year": 2020,
+      "theme_slug": "80-ans-pompiers"
+    },
+    "queued_at": "2026-04-26T21:12:31.328953+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "est2019utcc",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "ee-2019-2eur-100-years-since-the-foundation-of-the-estonian-language",
+      "ee-2019-2eur-150th-anniversary-of-the-first-estonian-song-festival"
+    ],
+    "raw_payload": {
+      "sku": "est2019utcc",
+      "name": "2 euros Estonie 2019 – Université de Tartu BU FDC Coincard",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-estonie-2019-universite-de-tartu-bu-fdc-coincard/",
+      "categories": [
+        "2019",
+        "Estonie",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "EE",
+      "year": 2019,
+      "theme_slug": "universite-de-tartu"
+    },
+    "queued_at": "2026-04-26T21:12:31.329049+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "va2019skpr",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "va-2019-2eur-25-years-since-the-restoration-of-the-sistine-chapel",
+      "va-2019-2eur-90th-anniversary-of-the-foundation-of-the-vatican-city-state"
+    ],
+    "raw_payload": {
+      "sku": "va2019skpr",
+      "name": "2 euros Vatican 2019 – Chapelle Sixtine BE Proof",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-vatican-2019-chapelle-sixtine-be-proof/",
+      "categories": [
+        "2019",
+        "Pièces / année",
+        "Pièces / pays",
+        "Promotion -10%",
+        "Vatican"
+      ],
+      "country": "VA",
+      "year": 2019,
+      "theme_slug": "chapelle-sixtine"
+    },
+    "queued_at": "2026-04-26T21:12:31.329101+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "mt2020spunc",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "mt-2020-2eur-childrens-games",
+      "mt-2020-2eur-skorba-temples"
+    ],
+    "raw_payload": {
+      "sku": "mt2020spunc",
+      "name": "2 euros Malte 2020 – Jeux UNC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-malte-2020-jeux-unc/",
+      "categories": [
+        "2020",
+        "Malte",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "MT",
+      "year": 2020,
+      "theme_slug": "jeux"
+    },
+    "queued_at": "2026-04-26T21:12:31.329370+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "po2020osunc",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "pt-2020-2eur-730-years-since-the-foundation-of-the-university-of-coimbra",
+      "pt-2020-2eur-75-years-since-the-formation-of-the-united-nations"
+    ],
+    "raw_payload": {
+      "sku": "po2020osunc",
+      "name": "2 euros Portugal 2020 – Jeux Olympiques Tokyo UNC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-portugal-2020-jeux-olympiques-tokyo-unc/",
+      "categories": [
+        "2020",
+        "Pièces / année",
+        "Pièces / pays",
+        "Portugal"
+      ],
+      "country": "PT",
+      "year": 2020,
+      "theme_slug": "jeux-olympiques-tokyo"
+    },
+    "queued_at": "2026-04-26T21:12:31.329463+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "be2020plunc",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "be-2020-2eur-international-year-of-plant-health",
+      "be-2020-2eur-jan-van-eyck"
+    ],
+    "raw_payload": {
+      "sku": "be2020plunc",
+      "name": "2 euros Belgique 2020 – Santé des Plantes UNC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-belgique-2020-sante-des-plantes-unc/",
+      "categories": [
+        "2020",
+        "Belgique",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "BE",
+      "year": 2020,
+      "theme_slug": "sante-des-plantes"
+    },
+    "queued_at": "2026-04-26T21:12:31.329534+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "ad2019ctbu",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "ad-2019-2eur-2019-fis-alpine-ski-world-cup-final",
+      "ad-2019-2eur-600-years-since-the-constitution-of-the-general-council-of"
+    ],
+    "raw_payload": {
+      "sku": "ad2019ctbu",
+      "name": "2 euros Andorre 2019 – Consell de la Terra BU FDC Coincard",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-andorre-2019-consell-de-la-terra-bu-fdc-coincard/",
+      "categories": [
+        "2019",
+        "Andorre",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "AD",
+      "year": 2019,
+      "theme_slug": "consell-de-la-terra"
+    },
+    "queued_at": "2026-04-26T21:12:31.329844+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "ad2019asunc",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "ad-2019-2eur-2019-fis-alpine-ski-world-cup-final",
+      "ad-2019-2eur-600-years-since-the-constitution-of-the-general-council-of"
+    ],
+    "raw_payload": {
+      "sku": "ad2019asunc",
+      "name": "2 euros Andorre 2019 – Coupe du Monde Ski Alpin UNC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-andorre-2019-coupe-du-monde-ski-alpin-unc/",
+      "categories": [
+        "2019",
+        "Andorre",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "AD",
+      "year": 2019,
+      "theme_slug": "coupe-du-monde-ski-alpin"
+    },
+    "queued_at": "2026-04-26T21:12:31.329945+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "ad2019asbu",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "ad-2019-2eur-2019-fis-alpine-ski-world-cup-final",
+      "ad-2019-2eur-600-years-since-the-constitution-of-the-general-council-of"
+    ],
+    "raw_payload": {
+      "sku": "ad2019asbu",
+      "name": "2 euros Andorre 2019 – Coupe du Monde Ski Alpin BU FDC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-andorre-2019-coupe-du-monde-ski-alpin-bu-fdc/",
+      "categories": [
+        "2019",
+        "Andorre",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "AD",
+      "year": 2019,
+      "theme_slug": "coupe-du-monde-ski-alpin"
+    },
+    "queued_at": "2026-04-26T21:12:31.330005+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "est2019utunc",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "ee-2019-2eur-100-years-since-the-foundation-of-the-estonian-language",
+      "ee-2019-2eur-150th-anniversary-of-the-first-estonian-song-festival"
+    ],
+    "raw_payload": {
+      "sku": "est2019utunc",
+      "name": "2 euros Estonie 2019 – Université de Tartu UNC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-estonie-2019-universite-de-tartu-unc/",
+      "categories": [
+        "2019",
+        "Estonie",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "EE",
+      "year": 2019,
+      "theme_slug": "universite-de-tartu"
+    },
+    "queued_at": "2026-04-26T21:12:31.330814+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "ad2018mrunc",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "ad-2018-2eur-25th-anniversary-of-the-andorran-constitution",
+      "ad-2018-2eur-70th-anniversary-of-the-universal-declaration-of-human"
+    ],
+    "raw_payload": {
+      "sku": "ad2018mrunc",
+      "name": "2 euros Andorre 2018 – 70 ans Droits de l’Homme UNC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-andorre-2018-70-ans-droits-de-lhomme-unc/",
+      "categories": [
+        "2018",
+        "Andorre",
+        "Pièces / année",
+        "Pièces / pays",
+        "Promotion -10%"
+      ],
+      "country": "AD",
+      "year": 2018,
+      "theme_slug": "70-ans-droits-de-lhomme"
+    },
+    "queued_at": "2026-04-26T21:12:31.331092+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "be2018sounc",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "be-2018-2eur-50-years-since-the-launch-of-european-satellite-esro-2b",
+      "be-2018-2eur-50th-anniversary-of-may-1968-events-in-belgium"
+    ],
+    "raw_payload": {
+      "sku": "be2018sounc",
+      "name": "2 euros Belgique 2018 – 2 euros révolte étudiante mai ’68 1968 UNC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-belgique-2018-2-euros-revolte-etudiante-mai-68-1968-unc/",
+      "categories": [
+        "2018",
+        "Belgique",
+        "Pièces / année",
+        "Pièces / pays",
+        "Promotion -10%"
+      ],
+      "country": "BE",
+      "year": 2018,
+      "theme_slug": "2-euros-revolte-etudiante-mai-68-1968"
+    },
+    "queued_at": "2026-04-26T21:12:31.331200+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "be2018sobuccfr",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "be-2018-2eur-50-years-since-the-launch-of-european-satellite-esro-2b",
+      "be-2018-2eur-50th-anniversary-of-may-1968-events-in-belgium"
+    ],
+    "raw_payload": {
+      "sku": "be2018sobuccfr",
+      "name": "2 euros Belgique 2018 – 2 euros révolte étudiante mai ’68 1968 BU FDC Coincard FR",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-belgique-2018-2-euros-revolte-etudiante-mai-68-1968-bu-fdc-coincard-fr/",
+      "categories": [
+        "2018",
+        "Belgique",
+        "Pièces / année",
+        "Pièces / pays",
+        "Promotion -10%"
+      ],
+      "country": "BE",
+      "year": 2018,
+      "theme_slug": "2-euros-revolte-etudiante-mai-68-1968"
+    },
+    "queued_at": "2026-04-26T21:12:31.331296+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "be2018sobuccnl",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "be-2018-2eur-50-years-since-the-launch-of-european-satellite-esro-2b",
+      "be-2018-2eur-50th-anniversary-of-may-1968-events-in-belgium"
+    ],
+    "raw_payload": {
+      "sku": "be2018sobuccnl",
+      "name": "2 euros Belgique 2018 – 2 euros révolte étudiante mai ’68 1968 BU FDC Coincard NL",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-belgique-2018-2-euros-revolte-etudiante-mai-68-1968-bu-fdc-coincard-nl/",
+      "categories": [
+        "2018",
+        "Belgique",
+        "Pièces / année",
+        "Pièces / pays",
+        "Promotion -10%"
+      ],
+      "country": "BE",
+      "year": 2018,
+      "theme_slug": "2-euros-revolte-etudiante-mai-68-1968"
+    },
+    "queued_at": "2026-04-26T21:12:31.331398+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "ma2017vruncmdp",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "mt-2017-2eur-hagar-qim",
+      "mt-2017-2eur-solidarity-and-peace"
+    ],
+    "raw_payload": {
+      "sku": "ma2017vruncmdp",
+      "name": "2 euros Malte 2017 – Paix UNC poinçon MdP",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-malte-2017-paix-unc-poincon-mdp/",
+      "categories": [
+        "2017",
+        "Malte",
+        "Pièces / année",
+        "Pièces / pays",
+        "Promotion -10%"
+      ],
+      "country": "MT",
+      "year": 2017,
+      "theme_slug": "paix"
+    },
+    "queued_at": "2026-04-26T21:12:31.331756+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "ma2017vrbufdcccmdp",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "mt-2017-2eur-hagar-qim",
+      "mt-2017-2eur-solidarity-and-peace"
+    ],
+    "raw_payload": {
+      "sku": "ma2017vrbufdcccmdp",
+      "name": "2 euros Malte 2017 – Paix BU FDC Coincard poinçon MdP",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-malte-2017-paix-bu-fdc-coincard-poincon-mdp/",
+      "categories": [
+        "2017",
+        "Malte",
+        "Pièces / année",
+        "Pièces / pays",
+        "Promotion -10%"
+      ],
+      "country": "MT",
+      "year": 2017,
+      "theme_slug": "paix"
+    },
+    "queued_at": "2026-04-26T21:12:31.331781+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "be2007vvrcc",
+    "reason": "no_candidate",
+    "candidates": [],
+    "raw_payload": {
+      "sku": "be2007vvrcc",
+      "name": "Belgique 2007 – 2 euros Traité de Rome TdR BU FDC Coincard",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/belgique-2007-2-euros-traite-de-rome-tdr-bu-fdc-coincard/",
+      "categories": [
+        "2007",
+        "Belgique",
+        "Pièces / année",
+        "Pièces / pays",
+        "Promotion -10%"
+      ],
+      "country": "BE",
+      "year": 2007,
+      "theme_slug": "belgique-2007-2-euros-traite-de-rome-tdr"
+    },
+    "queued_at": "2026-04-26T21:12:31.331815+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "ma2017vrunc",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "mt-2017-2eur-hagar-qim",
+      "mt-2017-2eur-solidarity-and-peace"
+    ],
+    "raw_payload": {
+      "sku": "ma2017vrunc",
+      "name": "2 euros Malte 2017 – Paix UNC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-malte-2017-paix-unc/",
+      "categories": [
+        "2017",
+        "Malte",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "MT",
+      "year": 2017,
+      "theme_slug": "paix"
+    },
+    "queued_at": "2026-04-26T21:12:31.331845+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "lu2017vlunc",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "lu-2017-2eur-200-years-since-the-birth-of-grand-duke-william-iii",
+      "lu-2017-2eur-50-years-since-the-foundation-of-the-current-luxembourg-army"
+    ],
+    "raw_payload": {
+      "sku": "lu2017vlunc",
+      "name": "2 euros Luxembourg 2017 – Service Militaire Volontaire UNC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-luxembourg-2017-service-militaire-volontaire-unc/",
+      "categories": [
+        "2017",
+        "Luxembourg",
+        "Pièces / année",
+        "Pièces / pays",
+        "Promotion -10%"
+      ],
+      "country": "LU",
+      "year": 2017,
+      "theme_slug": "service-militaire-volontaire"
+    },
+    "queued_at": "2026-04-26T21:12:31.331996+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "be2016cfbeproof",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "be-2016-2eur-2016-summer-olympics-rio-de-janeiro",
+      "be-2016-2eur-international-missing-childrens-day"
+    ],
+    "raw_payload": {
+      "sku": "be2016cfbeproof",
+      "name": "2 euros Belgique 2016 – Child Focus BE Proof",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-belgique-2016-child-focus-be-proof/",
+      "categories": [
+        "2016",
+        "Belgique",
+        "Pièces / année",
+        "Pièces / pays",
+        "Promotion -10%"
+      ],
+      "country": "BE",
+      "year": 2016,
+      "theme_slug": "child-focus"
+    },
+    "queued_at": "2026-04-26T21:12:31.332205+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "po2016osunc",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "pt-2016-2eur-50-years-since-inauguration-of-25-april-bridge",
+      "pt-2016-2eur-portuguese-athletes-participating-in-the-2016-summer"
+    ],
+    "raw_payload": {
+      "sku": "po2016osunc",
+      "name": "2 euros Portugal 2016 – Jeux Olympiques UNC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-portugal-2016-jeux-olympiques-unc/",
+      "categories": [
+        "2016",
+        "Pièces / année",
+        "Pièces / pays",
+        "Portugal"
+      ],
+      "country": "PT",
+      "year": 2016,
+      "theme_slug": "jeux-olympiques"
+    },
+    "queued_at": "2026-04-26T21:12:31.332261+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "oost2012tje",
+    "reason": "no_candidate",
+    "candidates": [],
+    "raw_payload": {
+      "sku": "oost2012tje",
+      "name": "2 euro Autriche 2012 – 10 ans euro UNC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/autriche-2012-2-euro-10-ans-euro-unc/",
+      "categories": [
+        "2012",
+        "Autriche",
+        "Pièces / année",
+        "Pièces / pays",
+        "Promotion -10%"
+      ],
+      "country": "AT",
+      "year": 2012,
+      "theme_slug": "10-ans-euro"
+    },
+    "queued_at": "2026-04-26T21:12:31.332555+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "nl2012tje",
+    "reason": "no_candidate",
+    "candidates": [],
+    "raw_payload": {
+      "sku": "nl2012tje",
+      "name": "2 euro Pays-Bas 2012 – 10 ans euro UNC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/pays-bas-2012-2-euro-10-ans-euro-unc/",
+      "categories": [
+        "2012",
+        "Pays-Bas",
+        "Pièces / année",
+        "Pièces / pays",
+        "Promotion -10%"
+      ],
+      "country": "NL",
+      "year": 2012,
+      "theme_slug": "10-ans-euro"
+    },
+    "queued_at": "2026-04-26T21:12:31.332566+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "est2012tje",
+    "reason": "no_candidate",
+    "candidates": [],
+    "raw_payload": {
+      "sku": "est2012tje",
+      "name": "2 euro Estonie 2012 – 10 ans euro UNC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/estonie-2012-2-euro-10-ans-euro-unc/",
+      "categories": [
+        "2012",
+        "Estonie",
+        "Pièces / année",
+        "Pièces / pays",
+        "Promotion -10%"
+      ],
+      "country": "EE",
+      "year": 2012,
+      "theme_slug": "10-ans-euro"
+    },
+    "queued_at": "2026-04-26T21:12:31.332575+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "va2020rabu",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "va-2020-2eur-100-years-since-the-birth-of-pope-john-paul-ii",
+      "va-2020-2eur-500-years-since-the-death-of-raphael"
+    ],
+    "raw_payload": {
+      "sku": "va2020rabu",
+      "name": "2 euros Vatican 2020 – Raffaello BU FDC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-vatican-2020-raffaello-bu-fdc/",
+      "categories": [
+        "2020",
+        "La collection",
+        "Pièces / année",
+        "Pièces / pays",
+        "Vatican"
+      ],
+      "country": "VA",
+      "year": 2020,
+      "theme_slug": "raffaello"
+    },
+    "queued_at": "2026-04-26T21:12:31.332972+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "be2020plbufdcccfr",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "be-2020-2eur-international-year-of-plant-health",
+      "be-2020-2eur-jan-van-eyck"
+    ],
+    "raw_payload": {
+      "sku": "be2020plbufdcccfr",
+      "name": "2 euros Belgique 2020 – Santé des Plantes BU FDC Coincard FR",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-belgique-2020-sante-des-plantes-bu-fdc-coincard-fr/",
+      "categories": [
+        "2020",
+        "Belgique",
+        "Pièces / année",
+        "Pièces / pays",
+        "Promotion -10%"
+      ],
+      "country": "BE",
+      "year": 2020,
+      "theme_slug": "sante-des-plantes"
+    },
+    "queued_at": "2026-04-26T21:12:31.333239+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "be2020plbufdcccnl",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "be-2020-2eur-international-year-of-plant-health",
+      "be-2020-2eur-jan-van-eyck"
+    ],
+    "raw_payload": {
+      "sku": "be2020plbufdcccnl",
+      "name": "2 euros Belgique 2020 – Santé des Plantes BU FDC Coincard NL",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-belgique-2020-sante-des-plantes-bu-fdc-coincard-nl/",
+      "categories": [
+        "2020",
+        "Belgique",
+        "Pièces / année",
+        "Pièces / pays",
+        "Promotion -10%"
+      ],
+      "country": "BE",
+      "year": 2020,
+      "theme_slug": "sante-des-plantes"
+    },
+    "queued_at": "2026-04-26T21:12:31.333294+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "va2019skbu",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "va-2019-2eur-25-years-since-the-restoration-of-the-sistine-chapel",
+      "va-2019-2eur-90th-anniversary-of-the-foundation-of-the-vatican-city-state"
+    ],
+    "raw_payload": {
+      "sku": "va2019skbu",
+      "name": "2 euros Vatican 2019 – Chapelle Sixtine BU FDC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-vatican-2019-chapelle-sixtine-bu-fdc/",
+      "categories": [
+        "2019",
+        "La collection",
+        "Pièces / année",
+        "Pièces / pays",
+        "Vatican"
+      ],
+      "country": "VA",
+      "year": 2019,
+      "theme_slug": "chapelle-sixtine"
+    },
+    "queued_at": "2026-04-26T21:12:31.333547+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "va2019vabu",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "va-2019-2eur-25-years-since-the-restoration-of-the-sistine-chapel",
+      "va-2019-2eur-90th-anniversary-of-the-foundation-of-the-vatican-city-state"
+    ],
+    "raw_payload": {
+      "sku": "va2019vabu",
+      "name": "2 euros Vatican 2019 – 90 ans Cité du Vatican BU FDC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-vatican-2019-90-ans-cite-du-vatican-bu-fdc/",
+      "categories": [
+        "2019",
+        "La collection",
+        "Pièces / année",
+        "Pièces / pays",
+        "Vatican"
+      ],
+      "country": "VA",
+      "year": 2019,
+      "theme_slug": "90-ans-cite-du-vatican"
+    },
+    "queued_at": "2026-04-26T21:12:31.333639+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "sm2017dt",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "sm-2017-2eur-750-years-since-the-birth-of-giotto",
+      "sm-2017-2eur-international-year-of-sustainable-tourism"
+    ],
+    "raw_payload": {
+      "sku": "sm2017dt",
+      "name": "2 euros Saint-Marin 2017 – Tourisme Durable BU FDC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-saint-marin-2017-tourisme-durable-bu-fdc/",
+      "categories": [
+        "2017",
+        "La collection",
+        "Pièces / année",
+        "Pièces / pays",
+        "Saint Marin"
+      ],
+      "country": "SM",
+      "year": 2017,
+      "theme_slug": "tourisme-durable"
+    },
+    "queued_at": "2026-04-26T21:12:31.334055+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "va2016ba",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "va-2016-2eur-holy-year-of-mercy",
+      "va-2016-2eur-the-200th-anniversary-of-the-vatican-guard"
+    ],
+    "raw_payload": {
+      "sku": "va2016ba",
+      "name": "2 euros Vatican 2016 – Miséricorde BU FDC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-vatican-2016-misericorde-bu-fdc/",
+      "categories": [
+        "2016",
+        "La collection",
+        "Pièces / année",
+        "Pièces / pays",
+        "Vatican"
+      ],
+      "country": "VA",
+      "year": 2016,
+      "theme_slug": "misericorde"
+    },
+    "queued_at": "2026-04-26T21:12:31.334204+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "sm2015de",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "sm-2015-2eur-25-years-of-german-unity",
+      "sm-2015-2eur-750-years-since-the-birth-of-dante-alighieri"
+    ],
+    "raw_payload": {
+      "sku": "sm2015de",
+      "name": "2 euros Saint-Marin 2015 – Unité Allemande BU FDC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-saint-marin-2015-unite-allemande-bu-fdc/",
+      "categories": [
+        "2015",
+        "La collection",
+        "Pièces / année",
+        "Pièces / pays",
+        "Saint Marin"
+      ],
+      "country": "SM",
+      "year": 2015,
+      "theme_slug": "unite-allemande"
+    },
+    "queued_at": "2026-04-26T21:12:31.334245+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "va2013wjd",
+    "reason": "ambiguous_fuzzy",
+    "candidates": [
+      "va-2013-2eur-28th-world-youth-day-rio-de-janeiro",
+      "va-2013-2eur-sede-vacante"
+    ],
+    "raw_payload": {
+      "sku": "va2013wjd",
+      "name": "2 euro Vatican 2013 – Journées mondiales de la jeunesse BU FDC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euro-vatican-2013-journees-mondiales-de-la-jeunesse-bu-fdc/",
+      "categories": [
+        "2013",
+        "La collection",
+        "Pièces / année",
+        "Pièces / pays",
+        "Vatican"
+      ],
+      "country": "VA",
+      "year": 2013,
+      "theme_slug": "journees-mondiales-de-la-jeunesse"
+    },
+    "queued_at": "2026-04-26T21:12:31.334613+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "fr2009emupr",
+    "reason": "no_candidate",
+    "candidates": [],
+    "raw_payload": {
+      "sku": "fr2009emupr",
+      "name": "2 euros France 2009 – 10 ans UEM BE Proof",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-france-2009-10-ans-uem-be-proof/",
+      "categories": [
+        "2009",
+        "France",
+        "Pièces / année",
+        "Pièces / pays",
+        "Promotion -10%"
+      ],
+      "country": "FR",
+      "year": 2009,
+      "theme_slug": "10-ans-uem"
+    },
+    "queued_at": "2026-04-26T21:12:31.334689+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "fr2009emucc",
+    "reason": "no_candidate",
+    "candidates": [],
+    "raw_payload": {
+      "sku": "fr2009emucc",
+      "name": "2 euros France 2009 – 10 ans UEM BU FDC Coincard",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/2-euros-france-2009-10-ans-uem-bu-fdc-coincard/",
+      "categories": [
+        "2009",
+        "France",
+        "Pièces / année",
+        "Pièces / pays",
+        "Promotion -10%"
+      ],
+      "country": "FR",
+      "year": 2009,
+      "theme_slug": "10-ans-uem"
+    },
+    "queued_at": "2026-04-26T21:12:31.334717+00:00"
+  },
+  {
+    "source": "lmdlp",
+    "source_native_id": "be2007vvr",
+    "reason": "no_candidate",
+    "candidates": [],
+    "raw_payload": {
+      "sku": "be2007vvr",
+      "name": "2 euros Belgique 2007 – Traité de Rome TdR UNC",
+      "permalink": "https://lamonnaiedelapiece.com/fr/product/belgique-2007-2-euros-traite-de-rome-tdr-unc/",
+      "categories": [
+        "2007",
+        "Belgique",
+        "Pièces / année",
+        "Pièces / pays"
+      ],
+      "country": "BE",
+      "year": 2007,
+      "theme_slug": "traite-de-rome-tdr"
+    },
+    "queued_at": "2026-04-26T21:12:31.334803+00:00"
+  }
+]
