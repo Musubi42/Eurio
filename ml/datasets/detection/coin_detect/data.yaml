@@ -1,0 +1,6 @@
+train: /Users/musubi42/Documents/Musubi42/Eurio/ml/datasets/detection/coin_detect/train/images
+val: /Users/musubi42/Documents/Musubi42/Eurio/ml/datasets/detection/coin_detect/val/images
+test: /Users/musubi42/Documents/Musubi42/Eurio/ml/datasets/detection/coin_detect/test/images
+
+nc: 1
+names: ['coin']

@@ -1,0 +1,189 @@
+[
+  {
+    "numista_id": 331415,
+    "numista_name": "2 Euros (Erasmus Programme)",
+    "country": "EE",
+    "year": 2022,
+    "numista_theme": "erasmus programme",
+    "candidates": [
+      {
+        "eurio_id": "ee-2022-2eur-glory-to-ukraine",
+        "score": 0.0
+      },
+      {
+        "eurio_id": "ee-2022-2eur-150-years-since-the-founding-of-the-society-of-estonian",
+        "score": 0.0
+      }
+    ]
+  },
+  {
+    "numista_id": 74920,
+    "numista_name": "2 Euros (European Union Flag)",
+    "country": "FI",
+    "year": 2015,
+    "numista_theme": "european union flag",
+    "candidates": [
+      {
+        "eurio_id": "fi-2015-2eur-150-years-since-the-birth-of-jean-sibelius",
+        "score": 0.0
+      },
+      {
+        "eurio_id": "fi-2015-2eur-150-years-since-the-birth-of-akseli-gallen-kallela",
+        "score": 0.0
+      }
+    ]
+  },
+  {
+    "numista_id": 76638,
+    "numista_name": "2 Euros (30 Years of European Union Flag)",
+    "country": "IT",
+    "year": 2015,
+    "numista_theme": "30 years of european union flag",
+    "candidates": [
+      {
+        "eurio_id": "it-2015-2eur-750-years-since-the-birth-of-dante-alighieri",
+        "score": 0.25
+      },
+      {
+        "eurio_id": "it-2015-2eur-universal-exposition-expo-2015-in-milan",
+        "score": 0.0
+      }
+    ]
+  },
+  {
+    "numista_id": 323472,
+    "numista_name": "2 Euros (Erasmus Programme)",
+    "country": "LT",
+    "year": 2022,
+    "numista_theme": "erasmus programme",
+    "candidates": [
+      {
+        "eurio_id": "lt-2022-2eur-suvalkija",
+        "score": 0.0
+      },
+      {
+        "eurio_id": "lt-2022-2eur-100-years-of-basketball-in-lithuania",
+        "score": 0.0
+      }
+    ]
+  },
+  {
+    "numista_id": 28323,
+    "numista_name": "2 Euros - Henri I (Euro Cash)",
+    "country": "LU",
+    "year": 2012,
+    "numista_theme": "euro cash",
+    "candidates": [
+      {
+        "eurio_id": "lu-2012-2eur-royal-wedding-of-guillaume-hereditary-grand-duke-of",
+        "score": 0.0
+      },
+      {
+        "eurio_id": "lu-2012-2eur-100-years-since-the-death-of-william-iv-grand-duke-of",
+        "score": 0.0
+      }
+    ]
+  },
+  {
+    "numista_id": 78817,
+    "numista_name": "2 Euros - Henri I (European Union Flag)",
+    "country": "LU",
+    "year": 2015,
+    "numista_theme": "european union flag",
+    "candidates": [
+      {
+        "eurio_id": "lu-2015-2eur-15th-anniversary-of-grand-duke-henri-accession-to-the-throne",
+        "score": 0.0
+      },
+      {
+        "eurio_id": "lu-2015-2eur-125th-anniversary-of-the-nassau-weilburg-dynasty",
+        "score": 0.0
+      }
+    ]
+  },
+  {
+    "numista_id": 331428,
+    "numista_name": "2 Euros - Henri I (Erasmus Programme)",
+    "country": "LU",
+    "year": 2022,
+    "numista_theme": "erasmus programme",
+    "candidates": [
+      {
+        "eurio_id": "lu-2022-2eur-50-years-since-the-flag-of-luxembourg",
+        "score": 0.0
+      },
+      {
+        "eurio_id": "lu-2022-2eur-10-years-since-the-wedding-of-hereditary-grand-duke",
+        "score": 0.0
+      }
+    ]
+  },
+  {
+    "numista_id": 77307,
+    "numista_name": "2 Euros (30 Years of European Union Flag)",
+    "country": "MT",
+    "year": 2015,
+    "numista_theme": "30 years of european union flag",
+    "candidates": [
+      {
+        "eurio_id": "mt-2015-2eur-100-years-since-the-first-flight-from-malta",
+        "score": 0.25
+      },
+      {
+        "eurio_id": "mt-2015-2eur-proclamation-of-the-republic-of-malta-in-1974",
+        "score": 0.0
+      }
+    ]
+  },
+  {
+    "numista_id": 319136,
+    "numista_name": "2 Euros (Erasmus Programme)",
+    "country": "MT",
+    "year": 2022,
+    "numista_theme": "erasmus programme",
+    "candidates": [
+      {
+        "eurio_id": "mt-2022-2eur-united-nations-security-council-resolution-1325-on-women",
+        "score": 0.0
+      },
+      {
+        "eurio_id": "mt-2022-2eur-hypogeum-of-hal-saflieni",
+        "score": 0.0
+      }
+    ]
+  },
+  {
+    "numista_id": 77133,
+    "numista_name": "2 Euros (30 Years of European Union Flag)",
+    "country": "PT",
+    "year": 2015,
+    "numista_theme": "30 years of european union flag",
+    "candidates": [
+      {
+        "eurio_id": "pt-2015-2eur-500-years-since-first-contact-with-timor",
+        "score": 0.25
+      },
+      {
+        "eurio_id": "pt-2015-2eur-150-years-portuguese-red-cross",
+        "score": 0.25
+      }
+    ]
+  },
+  {
+    "numista_id": 331425,
+    "numista_name": "2 Euros (Erasmus Programme)",
+    "country": "ES",
+    "year": 2022,
+    "numista_theme": "erasmus programme",
+    "candidates": [
+      {
+        "eurio_id": "es-2022-2eur-garajonay-national-park-la-gomera",
+        "score": 0.0
+      },
+      {
+        "eurio_id": "es-2022-2eur-500-years-since-the-completion-of-the-first-circumnavigation",
+        "score": 0.0
+      }
+    ]
+  }
+]

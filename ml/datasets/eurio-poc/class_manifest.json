@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "classes": [
+    {
+      "class_id": "ad-2014-2eur-standard",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        68395
+      ],
+      "eurio_ids": [
+        "ad-2014-2eur-standard"
+      ]
+    },
+    {
+      "class_id": "de-2007-2eur-schwerin-castle-mecklenburg-vorpommern",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        2201
+      ],
+      "eurio_ids": [
+        "de-2007-2eur-schwerin-castle-mecklenburg-vorpommern"
+      ]
+    },
+    {
+      "class_id": "de-2020-2eur-50-years-since-the-kniefall-von-warschau",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        226447
+      ],
+      "eurio_ids": [
+        "de-2020-2eur-50-years-since-the-kniefall-von-warschau"
+      ]
+    },
+    {
+      "class_id": "fr-2007-2eur-standard",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        6376
+      ],
+      "eurio_ids": [
+        "fr-2007-2eur-standard"
+      ]
+    }
+  ]
+}
