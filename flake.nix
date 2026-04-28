@@ -100,6 +100,15 @@
           ANDROID_SDK_ROOT = "${androidSdk}/libexec/android-sdk";
 
           shellHook = ''
+            # NixOS uniquement : expose le driver NVIDIA (/run/opengl-driver/lib,
+            # libcuda.so.1) + les libs C++ servies par nix-ld (libstdc++.so.6, …)
+            # via LD_LIBRARY_PATH, pour que les wheels PyPI chargés via dlopen
+            # (torch+cu121, opencv-python-headless, …) trouvent ce qu'il leur faut.
+            # Sur nix-darwin le test sur /run/opengl-driver est faux, le bloc skip.
+            if [ -d /run/opengl-driver/lib ]; then
+              export LD_LIBRARY_PATH="/run/opengl-driver/lib:''${NIX_LD_LIBRARY_PATH:-}:''${LD_LIBRARY_PATH:-}"
+            fi
+
             echo "Eurio dev shell loaded"
             echo "  Java:    $(java -version 2>&1 | head -1)"
             echo "  Gradle:  $(gradle --version 2>/dev/null | grep '^Gradle' || echo 'available')"
