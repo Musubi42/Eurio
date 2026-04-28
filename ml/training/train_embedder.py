@@ -120,14 +120,19 @@ def get_train_transforms() -> transforms.Compose:
     background masked black). What remains is camera-nuisance variability:
 
     - ``RandomRotation(360)``: the user's coin can be at any in-plane angle.
-    - ``RandomAffine(scale=(0.97, 1.03))``: ±3% scale jitter — Hough is not
-      pixel-perfect, the inferred crop side has small variance.
+    - ``RandomAffine(translate=(0.02, 0.02), scale=(0.97, 1.03))``:
+      ±~4.5px translation + ±3% scale jitter — Hough recenters but not pixel-
+      perfect, and the inferred crop side has small variance.
     - ``RandomPerspective(distortion_scale=0.05)``: ±~5° tilt residue not
       flattened out by the 2D circle fit (a real coin photographed at 10°
       stays nearly circular, but its content is faintly skewed).
     - ``ColorJitter``: covers exposure/white-balance variability between
       bright/dim/daylight phone captures.
     - ``GaussianBlur``: phone autofocus isn't always sharp.
+    - ``RandomErasing(p=0.2, scale=(0.02, 0.05))``: erases a 2-5% patch
+      filled with zeros (post-Normalize). Cheap simulation of localized
+      patina, dust, fingerprint, or specular reflection on a real coin —
+      nuisance the model should learn to ignore.
 
     NOT included (and intentional):
 
@@ -135,8 +140,6 @@ def get_train_transforms() -> transforms.Compose:
       mirrored (the metal is engraved chiral text — "ANDORRA" reads only one
       way). Including them taught the embedder a non-existent invariance and
       contributed to the cross-class collapse observed pre-Phase-2.
-    - Translation: ``normalize_snap`` recenters every input on the detected
-      circle, so the model never sees off-center crops at inference.
     - Background augmentation: the alpha mask in normalize_snap fills outside
       the coin disk with pure black, which is what the model also sees at
       inference time. Adding random backgrounds during training would break
@@ -145,12 +148,13 @@ def get_train_transforms() -> transforms.Compose:
     return transforms.Compose([
         transforms.Resize((224, 224)),
         transforms.RandomRotation(360),
-        transforms.RandomAffine(degrees=0, scale=(0.97, 1.03)),
+        transforms.RandomAffine(degrees=0, translate=(0.02, 0.02), scale=(0.97, 1.03)),
         transforms.RandomPerspective(distortion_scale=0.05, p=0.7),
         transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.2, hue=0.05),
         transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 1.0)),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        transforms.RandomErasing(p=0.2, scale=(0.02, 0.05), value=0.0),
     ])
 
 

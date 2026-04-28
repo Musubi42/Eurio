@@ -155,17 +155,33 @@ async function fetchStatsFromSupabase(): Promise<ConfusionStats> {
 
 /* ───────── Pairs (ML API + Supabase fallback) ───────── */
 
+/**
+ * Personal-collection filter mode for pairs.
+ *
+ * - `all`     : no filter
+ * - `both`    : strict — both coin_a AND coin_b are personal_owned
+ * - `either`  : partial — at least one of A or B is personal_owned
+ *
+ * Filtering happens at query time on Supabase (and fetch-time post-filter on
+ * the ML API path) — never client-side over a paginated set, since the data
+ * volume is large and we'd silently drop pairs.
+ */
+export type PersonalFilter = 'all' | 'both' | 'either'
+
 export interface FetchPairsOpts {
   limit?: number
   zone?: 'all' | ConfusionZone
+  personal?: PersonalFilter
 }
 
 export async function fetchPairs(
   preferMlApi: boolean,
   opts: FetchPairsOpts = {},
 ): Promise<ConfusionPair[]> {
-  const { limit = 100, zone = 'all' } = opts
-  if (preferMlApi) {
+  const { limit = 100, zone = 'all', personal = 'all' } = opts
+  // The ML API doesn't yet expose a personal_owned filter, so when the user
+  // selects one we go straight to Supabase where we can join cleanly.
+  if (preferMlApi && personal === 'all') {
     try {
       const url = new URL(`${ML_API}/confusion-map/pairs`)
       url.searchParams.set('limit', String(limit))
@@ -178,31 +194,80 @@ export async function fetchPairs(
       /* fallthrough */
     }
   }
-  return fetchPairsFromSupabase({ limit, zone })
+  return fetchPairsFromSupabase({ limit, zone, personal })
 }
 
 async function fetchPairsFromSupabase(
-  opts: { limit: number, zone: 'all' | ConfusionZone },
+  opts: { limit: number, zone: 'all' | ConfusionZone, personal: PersonalFilter },
 ): Promise<ConfusionPair[]> {
+  // Strategy:
+  //   1. If personal !== 'all' — first resolve the candidate eurio_id set on
+  //      `coins.personal_owned = true`. With ~78 owned coins this is a single
+  //      cheap query and keeps the filter strictly server-side.
+  //   2. Then query confusion_map with the appropriate `eurio_id in (...)` /
+  //      neighbor constraint. PostgREST can't join across tables in a single
+  //      filter, so we bring the set client-side and feed it back as `in`.
+  let ownedIds: Set<string> | null = null
+  if (opts.personal !== 'all') {
+    const { data, error } = await supabase
+      .from('coins')
+      .select('eurio_id')
+      .eq('personal_owned', true)
+    if (error) throw error
+    ownedIds = new Set((data ?? []).map(r => (r as { eurio_id: string }).eurio_id))
+    // Empty set → no possible match, short-circuit.
+    if (ownedIds.size === 0) return []
+  }
+
   let q = supabase
     .from('coin_confusion_map')
     .select('eurio_id, nearest_eurio_id, nearest_similarity, zone')
     .eq('encoder_version', ENCODER_VERSION)
     .not('nearest_eurio_id', 'is', null)
     .order('nearest_similarity', { ascending: false })
-    .limit(opts.limit)
 
   if (opts.zone !== 'all') q = q.eq('zone', opts.zone)
+
+  if (ownedIds !== null) {
+    const owned = [...ownedIds]
+    if (opts.personal === 'both') {
+      // Both endpoints owned → row.eurio_id ∈ owned AND nearest ∈ owned.
+      q = q.in('eurio_id', owned).in('nearest_eurio_id', owned)
+    }
+    else {
+      // 'either' → at least one endpoint owned. PostgREST OR clause:
+      //   eurio_id in (...) OR nearest_eurio_id in (...)
+      const list = owned.map(id => `"${id}"`).join(',')
+      q = q.or(`eurio_id.in.(${list}),nearest_eurio_id.in.(${list})`)
+    }
+  }
+
+  // Always apply a generous over-fetch ceiling so we have material to dedupe
+  // pairs (A↔B and B↔A both surface in confusion_map). 4× should cover.
+  q = q.limit(opts.limit * 4)
 
   const { data, error } = await q
   if (error) throw error
 
-  const rows = (data ?? []) as Array<{
+  const rawRows = (data ?? []) as Array<{
     eurio_id: string
     nearest_eurio_id: string
     nearest_similarity: number
     zone: ConfusionZone
   }>
+
+  // Dedupe symmetric pairs and cap to opts.limit (mirrors the ML API path).
+  const seen = new Set<string>()
+  const rows: typeof rawRows = []
+  for (const r of rawRows) {
+    const key = r.eurio_id < r.nearest_eurio_id
+      ? `${r.eurio_id}__${r.nearest_eurio_id}`
+      : `${r.nearest_eurio_id}__${r.eurio_id}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    rows.push(r)
+    if (rows.length >= opts.limit) break
+  }
 
   // Collect unique eurio_ids to enrich in a single IN() query
   const ids = new Set<string>()

@@ -131,6 +131,7 @@ export interface Coin {
   needs_review: boolean
   review_reason: string | null
   personal_owned: boolean
+  lent_to_me: boolean
   first_seen: string
   last_updated: string
 }

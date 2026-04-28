@@ -193,6 +193,7 @@ class ConfusionMapComputeRequest(BaseModel):
     limit: int | None = None
     encoder_version: str | None = None
     thresholds: str | None = None
+    thresholds_mode: str | None = None  # 'percentile' (default) | 'fixed'
 
 
 # ─── Health ───
@@ -1137,9 +1138,12 @@ def confusion_map_compute(req: ConfusionMapComputeRequest | None = None) -> dict
     encoder_version = payload.encoder_version or _DEFAULT_CONFUSION_ENCODER
     job_id = uuid.uuid4().hex[:12]
 
+    # The script was moved under ml/eval/ during the 2026-04 refactor (commit
+    # 6f84eea). Keep the call self-contained — invoking via `-m` would require
+    # tweaking sys.path inside the worker; the direct path is simpler.
     cmd: list[str] = [
         VENV_PYTHON,
-        str(ML_DIR / "confusion_map.py"),
+        str(ML_DIR / "eval" / "confusion_map.py"),
         "--encoder-version",
         encoder_version,
         "--status-file",
@@ -1151,6 +1155,8 @@ def confusion_map_compute(req: ConfusionMapComputeRequest | None = None) -> dict
         cmd.extend(["--limit", str(payload.limit)])
     if payload.thresholds:
         cmd.extend(["--thresholds", payload.thresholds])
+    if payload.thresholds_mode:
+        cmd.extend(["--thresholds-mode", payload.thresholds_mode])
 
     def _do_compute() -> None:
         _confusion_status["running"] = True

@@ -5,7 +5,7 @@ import { supabase } from '@/shared/supabase/client'
 import type { Coin, ConfusionZone, IssueType } from '@/shared/supabase/types'
 import { firstImageUrl } from '@/shared/utils/coin-images'
 import { useDebounceFn } from '@vueuse/core'
-import { Brain, Check, Copy, FlaskConical, ImageOff, Play, Search, Sparkles, Wallet } from 'lucide-vue-next'
+import { Brain, Check, Copy, FlaskConical, HandHelping, ImageOff, Layers, Play, Search, Sparkles, Wallet } from 'lucide-vue-next'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
@@ -49,6 +49,19 @@ const filterTrained = ref<'trained' | 'not-trained' | null>(
 // 20260428_coins_personal_owned). Mirrors the trained chip pattern.
 const filterPersonal = ref<'owned' | 'not-owned' | null>(
   (route.query.personal as 'owned' | 'not-owned') || null,
+)
+// Design-group filter (post 2026-04-28 axis-A bootstrap on 2€ standards).
+// 'in-group' = coin.design_group_id IS NOT NULL, 'solo' = IS NULL.
+const filterDesignGroup = ref<'in-group' | 'solo' | null>(
+  (route.query.dg as 'in-group' | 'solo') || null,
+)
+// Loan filter — coins.lent_to_me boolean (friends' physical loans).
+const filterLent = ref<'lent' | 'not-lent' | null>(
+  (route.query.lent as 'lent' | 'not-lent') || null,
+)
+// Testable filter — personal_owned OR lent_to_me (candidate pool for training).
+const filterTestable = ref<'yes' | 'no' | null>(
+  (route.query.testable as 'yes' | 'no') || null,
 )
 
 // Multi-source filter. Cumulative AND. Backed by pre-computed boolean columns
@@ -120,6 +133,18 @@ async function fetchCoins(search = '', append = false) {
   // Personal-collection filter — flat boolean column on `coins`.
   if (filterPersonal.value === 'owned')     q = q.eq('personal_owned', true)
   if (filterPersonal.value === 'not-owned') q = q.eq('personal_owned', false)
+
+  // Design-group filter — null vs not-null on design_group_id.
+  if (filterDesignGroup.value === 'in-group') q = q.not('design_group_id', 'is', null)
+  if (filterDesignGroup.value === 'solo')     q = q.is('design_group_id', null)
+
+  // Loan filter — coins.lent_to_me boolean.
+  if (filterLent.value === 'lent')     q = q.eq('lent_to_me', true)
+  if (filterLent.value === 'not-lent') q = q.eq('lent_to_me', false)
+
+  // Testable filter — personal_owned OR lent_to_me.
+  if (filterTestable.value === 'yes') q = q.or('personal_owned.eq.true,lent_to_me.eq.true')
+  if (filterTestable.value === 'no')  q = q.eq('personal_owned', false).eq('lent_to_me', false)
 
   // Training filter — applies trainedEurioIds set fetched from coin_embeddings.
   if (filterTrained.value === 'trained') {
@@ -201,15 +226,18 @@ function buildUrlQuery(): Record<string, string> {
   if (filterZone.value) q.zone = filterZone.value
   if (filterTrained.value) q.trained = filterTrained.value
   if (filterPersonal.value) q.personal = filterPersonal.value
+  if (filterDesignGroup.value) q.dg = filterDesignGroup.value
+  if (filterLent.value) q.lent = filterLent.value
+  if (filterTestable.value) q.testable = filterTestable.value
   return q
 }
 
 const debouncedFetch = useDebounceFn(() => resetAndFetch(), 250)
 watch(query, debouncedFetch)
-watch([filterCountries, filterFaceValue, filterCommemo, filterNumista, filterImages, filterZone, filterTrained, filterPersonal, filterSources],
+watch([filterCountries, filterFaceValue, filterCommemo, filterNumista, filterImages, filterZone, filterTrained, filterPersonal, filterDesignGroup, filterSources, filterLent, filterTestable],
   resetAndFetch, { deep: true })
 watch(
-  [query, filterCountries, filterFaceValue, filterCommemo, filterNumista, filterImages, filterZone, filterTrained, filterPersonal, filterSources],
+  [query, filterCountries, filterFaceValue, filterCommemo, filterNumista, filterImages, filterZone, filterTrained, filterPersonal, filterDesignGroup, filterSources, filterLent, filterTestable],
   () => router.replace({ query: buildUrlQuery() }),
   { deep: true },
 )
@@ -249,6 +277,9 @@ function clearFilters() {
   filterZone.value = null
   filterTrained.value = null
   filterPersonal.value = null
+  filterDesignGroup.value = null
+  filterLent.value = null
+  filterTestable.value = null
   filterSources.value = new Set()
   query.value = ''
 }
@@ -328,8 +359,9 @@ function isTrained(coin: Coin): boolean {
 const hasActiveFilters = () =>
   filterCountries.value.size > 0 || filterFaceValue.value != null || filterCommemo.value != null
   || filterNumista.value != null || filterImages.value != null || filterZone.value != null
-  || filterTrained.value != null || filterPersonal.value != null || filterSources.value.size > 0
-  || query.value
+  || filterTrained.value != null || filterPersonal.value != null || filterDesignGroup.value != null
+  || filterLent.value != null || filterTestable.value != null
+  || filterSources.value.size > 0 || query.value
 
 // ─── Training staging ───
 //
@@ -432,6 +464,33 @@ async function togglePersonal(coin: Coin, event: Event) {
     const s = new Set(personalSaving.value)
     s.delete(coin.eurio_id)
     personalSaving.value = s
+  }
+}
+
+// ─── Loan toggle ───
+const lentSaving = ref<Set<string>>(new Set())
+
+async function toggleLent(coin: Coin, event: Event) {
+  event.stopPropagation()
+  if (lentSaving.value.has(coin.eurio_id)) return
+  const prev = !!coin.lent_to_me
+  const next = !prev
+  const idx = coins.value.findIndex(c => c.eurio_id === coin.eurio_id)
+  if (idx >= 0) coins.value[idx] = { ...coins.value[idx], lent_to_me: next }
+  lentSaving.value = new Set([...lentSaving.value, coin.eurio_id])
+  try {
+    const { error: err } = await supabase
+      .from('coins')
+      .update({ lent_to_me: next })
+      .eq('eurio_id', coin.eurio_id)
+    if (err) throw err
+  } catch (e) {
+    if (idx >= 0) coins.value[idx] = { ...coins.value[idx], lent_to_me: prev }
+    error.value = `Loan toggle failed: ${(e as Error).message}`
+  } finally {
+    const s = new Set(lentSaving.value)
+    s.delete(coin.eurio_id)
+    lentSaving.value = s
   }
 }
 
@@ -769,6 +828,98 @@ function copyToClipboard(value: string, label: string, event: Event) {
       </div>
 
       <!-- Separator -->
+      <div class="h-5 w-px" style="background: var(--surface-3);" />
+
+      <!-- Design-group chips (axis A bootstrap on 2€ standards, 2026-04-28).
+           A coin is "in group" when coins.design_group_id IS NOT NULL —
+           i.e. it shares a design with at least one other coin (re-issue,
+           joint issue, …). "Solo" = unique design, no shared siblings. -->
+      <div class="flex items-center gap-1">
+        <span
+          class="mr-1 text-[10px] font-medium uppercase"
+          style="color: var(--ink-500); letter-spacing: var(--tracking-eyebrow);"
+          title="Regroupement de designs partagés (re-éditions, joint issues)"
+        >
+          Design
+        </span>
+        <button
+          v-for="opt in ([
+            { key: 'in-group' as const, label: 'En groupe', color: 'var(--indigo-700)' },
+            { key: 'solo' as const, label: 'Solo', color: 'var(--ink-400)' },
+          ])" :key="opt.key + '-dg'"
+          class="flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors"
+          :style="{
+            background: filterDesignGroup === opt.key ? opt.color : 'var(--surface)',
+            color: filterDesignGroup === opt.key ? 'white' : 'var(--ink-500)',
+            borderColor: filterDesignGroup === opt.key ? 'transparent' : 'var(--surface-3)',
+          }"
+          @click="filterDesignGroup = filterDesignGroup === opt.key ? null : opt.key"
+        >
+          <Layers v-if="opt.key === 'in-group'" class="h-3 w-3" />
+          {{ opt.label }}
+        </button>
+      </div>
+
+      <!-- Separator -->
+      <div class="h-5 w-px" style="background: var(--surface-3);" />
+
+      <!-- Loan chips — lent_to_me boolean (friends' physical loans) -->
+      <div class="flex items-center gap-1">
+        <span
+          class="mr-1 text-[10px] font-medium uppercase"
+          style="color: var(--ink-500); letter-spacing: var(--tracking-eyebrow);"
+          title="Pièces physiquement prêtées par des amis (toggle prêt sur chaque carte)"
+        >
+          Prêt
+        </span>
+        <button
+          v-for="opt in ([
+            { key: 'lent' as const, label: 'Prêtée', color: 'var(--warning)' },
+            { key: 'not-lent' as const, label: 'Pas prêtée', color: 'var(--ink-400)' },
+          ])" :key="opt.key + '-lent'"
+          class="flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors"
+          :style="{
+            background: filterLent === opt.key ? opt.color : 'var(--surface)',
+            color: filterLent === opt.key ? 'white' : 'var(--ink-500)',
+            borderColor: filterLent === opt.key ? 'transparent' : 'var(--surface-3)',
+          }"
+          @click="filterLent = filterLent === opt.key ? null : opt.key"
+        >
+          <HandHelping v-if="opt.key === 'lent'" class="h-3 w-3" />
+          {{ opt.label }}
+        </button>
+      </div>
+
+      <!-- Separator -->
+      <div class="h-5 w-px" style="background: var(--surface-3);" />
+
+      <!-- Testable chips — personal_owned OR lent_to_me (training candidate pool) -->
+      <div class="flex items-center gap-1">
+        <span
+          class="mr-1 text-[10px] font-medium uppercase"
+          style="color: var(--ink-500); letter-spacing: var(--tracking-eyebrow);"
+          title="Testable = personal_owned OU lent_to_me — candidat pool d'entraînement"
+        >
+          Testable
+        </span>
+        <button
+          v-for="opt in ([
+            { key: 'yes' as const, label: 'Oui', color: 'var(--success)' },
+            { key: 'no' as const, label: 'Non', color: 'var(--ink-400)' },
+          ])" :key="opt.key + '-testable'"
+          class="flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors"
+          :style="{
+            background: filterTestable === opt.key ? opt.color : 'var(--surface)',
+            color: filterTestable === opt.key ? 'white' : 'var(--ink-500)',
+            borderColor: filterTestable === opt.key ? 'transparent' : 'var(--surface-3)',
+          }"
+          @click="filterTestable = filterTestable === opt.key ? null : opt.key"
+        >
+          {{ opt.label }}
+        </button>
+      </div>
+
+      <!-- Separator -->
       <div v-if="confusionZones.size > 0" class="h-5 w-px" style="background: var(--surface-3);" />
 
       <!-- Zone chips (Phase 1 ML scalability) -->
@@ -908,12 +1059,39 @@ function copyToClipboard(value: string, label: string, event: Event) {
             />
           </div>
 
+          <!-- Loan toggle (lent_to_me). Sits at left-16 when training shown,
+               left-9 otherwise. Same opacity/hover pattern as personal toggle. -->
+          <div
+            class="absolute top-2 z-10 flex h-5 w-5 items-center justify-center rounded transition-opacity"
+            :class="[
+              canStage(coin) && mlApiOnline ? 'left-16' : 'left-9',
+              coin.lent_to_me ? 'opacity-100' : 'opacity-0 group-hover:opacity-100',
+              lentSaving.has(coin.eurio_id) ? 'pointer-events-none' : '',
+            ]"
+            :style="{
+              background: coin.lent_to_me
+                ? 'var(--warning)' : 'rgba(255,255,255,0.9)',
+              border: coin.lent_to_me
+                ? 'none' : '1.5px solid var(--surface-3)',
+              opacity: lentSaving.has(coin.eurio_id) ? '0.6' : undefined,
+            }"
+            :title="coin.lent_to_me
+              ? 'Pièce prêtée par un ami — clique pour retirer'
+              : 'Marquer comme prêtée par un ami'"
+            @click="toggleLent(coin, $event)"
+          >
+            <HandHelping
+              class="h-3 w-3"
+              :style="{ color: coin.lent_to_me ? 'white' : 'var(--ink-400)' }"
+            />
+          </div>
+
           <!-- Face value badge — shifts right based on which checkboxes are
-               visible above it. Both shown: left-16. One shown: left-9.
-               Neither (rare — would need !canStage AND no hover): left-2. -->
+               visible above it. Training shown: left-[5.75rem] (3 icons).
+               Training hidden: left-16 (personal + lent only). -->
           <span
             class="absolute rounded-full px-2 py-0.5 text-[10px] font-mono font-medium"
-            :class="canStage(coin) && mlApiOnline ? 'left-16 top-2' : 'left-9 top-2'"
+            :class="canStage(coin) && mlApiOnline ? 'left-[5.75rem] top-2' : 'left-16 top-2'"
             style="background: var(--indigo-700); color: white;"
           >
             {{ formatFaceValue(coin.face_value) }}
@@ -925,6 +1103,20 @@ function copyToClipboard(value: string, label: string, event: Event) {
             style="background: rgba(255,255,255,0.92); color: var(--ink);"
           >
             {{ coin.country }}
+          </span>
+
+          <!-- Design-group badge — present iff design_group_id is set.
+               Shows a Layers icon top-right under the country. Tooltip
+               carries the full group id so the admin can spot which coins
+               will be merged into one ArcFace class at training time. -->
+          <span
+            v-if="coin.design_group_id"
+            class="absolute right-2 top-9 flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-mono font-medium"
+            style="background: var(--indigo-700); color: white;"
+            :title="`Design partagé : ${coin.design_group_id}`"
+          >
+            <Layers class="h-2.5 w-2.5" />
+            DG
           </span>
 
           <!-- EurioID label (always present, click to copy full slug) -->

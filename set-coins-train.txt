@@ -1,5 +1,0 @@
-eurio_id;numista_id
-de-2007-2eur-schwerin-castle-mecklenburg-vorpommern;2201
-fr-2007-2eur-standard;6376
-de-2020-2eur-50-years-since-the-kniefall-von-warschau;226447
-ad-2014-2eur-standard;68395
