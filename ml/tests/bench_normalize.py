@@ -3,8 +3,8 @@
 Runs `normalize_studio` and `normalize_device` from `ml/scan/normalize_snap.py`
 on a stratified sample (size buckets + explicit bimétal + low-contrast) and
 reports wall-clock + cross-algo parity (MAE 224×224, |Δr|, fallback rate).
-The cross-algo reference is `normalize_device`; that's the same convention
-used by `ml/tests/measure_parity_baseline.py` and the parity-contract.
+The cross-algo reference is `normalize_device` (same convention as
+`measure_parity_baseline.py`).
 
 Usage:
     go-task ml:scan:bench-normalize -- [--per-bucket N] [--variants studio,device]
@@ -36,15 +36,16 @@ from scan.normalize_snap import (  # noqa: E402
     normalize_device,
     normalize_studio,
 )
+from tests._utils import diff_metrics, fmt_table  # noqa: E402
 
 
 def log(msg: str = "") -> None:
     print(msg, flush=True)
 
 
-# Phase A explicit IDs. Picked from coin_catalog.json + a contrast-ranking
-# script (see implementation-plan.md §Phase A Log). All present in
-# ml/datasets/<id>/obverse.jpg.
+# Explicit IDs to ensure the bench always covers the bimétal-trap and
+# low-contrast cases regardless of the random size-bucket sample. Picked
+# from coin_catalog.json. All present in ml/datasets/<id>/obverse.jpg.
 EXPLICIT_BIMETAL = [64, 9761, 2193, 2163, 5055, 28191]
 EXPLICIT_LOW_CONTRAST = [2180, 164656, 3911, 168218]
 
@@ -90,19 +91,6 @@ def _time_variant(fn: Callable[[], NormalizationResult], runs: int,
         if max_seconds is not None and dt > max_seconds:
             return statistics.median(times), last, True
     return statistics.median(times), last, False
-
-
-def _diff_metrics(base: np.ndarray, var: np.ndarray) -> dict:
-    if base is None or var is None:
-        return {"mae": float("nan"), "max": 255, "pct_diff": 100.0}
-    if base.shape != var.shape:
-        return {"mae": float("nan"), "max": 255, "pct_diff": 100.0}
-    diff = np.abs(base.astype(np.int16) - var.astype(np.int16))
-    return {
-        "mae": float(diff.mean()),
-        "max": int(diff.max()),
-        "pct_diff": float((diff > 1).any(axis=-1).mean() * 100.0),
-    }
 
 
 def sample_dataset(root: Path, per_bucket: int, seed: int = 42,
@@ -164,18 +152,6 @@ def sample_dataset(root: Path, per_bucket: int, seed: int = 42,
         _add_explicit(explicit_low_contrast, "low_contrast")
 
     return [(p, tuple(sorted(tags))) for p, tags in chosen.items()]
-
-
-def fmt_table(rows: list[list[str]]) -> str:
-    if not rows:
-        return ""
-    widths = [max(len(r[i]) for r in rows) for i in range(len(rows[0]))]
-    out = []
-    for i, r in enumerate(rows):
-        out.append(" | ".join(c.ljust(widths[j]) for j, c in enumerate(r)))
-        if i == 0:
-            out.append("-+-".join("-" * w for w in widths))
-    return "\n".join(out)
 
 
 def main() -> None:
@@ -348,7 +324,7 @@ def main() -> None:
                 d_cx.append(abs(ref.cx - v.cx))
                 d_cy.append(abs(ref.cy - v.cy))
                 d_r.append(abs(ref.r - v.r))
-                m = _diff_metrics(ref.out, v.out)
+                m = diff_metrics(ref.out, v.out)
                 mae.append(m["mae"]); mx.append(m["max"])
             med = lambda lst: f"{statistics.median(lst):.2f}" if lst else "-"
             p95 = lambda lst: f"{np.percentile(lst, 95):.2f}" if lst else "-"
@@ -365,7 +341,7 @@ def main() -> None:
             ref = runs.get(ref_name); v = runs.get("studio")
             if not (ref and v and ref.success and v.success):
                 continue
-            m = _diff_metrics(ref.out, v.out)
+            m = diff_metrics(ref.out, v.out)
             ranked.append((m["mae"], img, ref, v))
         ranked.sort(key=lambda x: -x[0])
         dumped = 0

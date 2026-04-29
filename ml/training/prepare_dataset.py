@@ -41,9 +41,9 @@ def normalize_and_save(src: Path, dst: Path) -> bool:
     Studio pipeline (Otsu + minEnclosingCircle at WR=1024) — sub-pixel rim
     capture and bimétal-aware. The 224×224 contract is identical to the
     device pipeline (`normalize_device`) so train and inference distributions
-    align (cross-algo parity test #1, see parity-contract.md). Returns True
-    on success; False if both contour and Hough fallback failed — caller
-    then falls back to a plain LANCZOS resize so the source isn't dropped.
+    align. Returns True on success; False if both contour and Hough fallback
+    failed — caller then falls back to a plain LANCZOS resize so the source
+    isn't dropped.
     """
     result = normalize_studio_path(src)
     if result.image is None:

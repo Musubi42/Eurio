@@ -52,17 +52,17 @@ tasks:
       - "{{.VENV}}/python -m scan.diff_kotlin_python {{.CLI_ARGS}}"
 
   scan:bench-normalize:
-    desc: "Phase A sandbox bench. Run normalize variants (incl. studio_contour) on a stratified sample. Usage: go-task ml:scan:bench-normalize -- [--per-bucket N] [--variants studio_contour,wr_1024_tightR]"
+    desc: "Sandbox bench: time normalize_studio / normalize_device on a stratified sample, with cross-algo parity stats. Usage: go-task ml:scan:bench-normalize -- [--per-bucket N] [--variants studio,device]"
     cmds:
       - "{{.VENV}}/python -m tests.bench_normalize {{.CLI_ARGS}}"
 
   scan:measure-baseline:
-    desc: "Phase B parity baseline. Measures cross-algo dispersion (normalize_studio ↔ normalize_device) on the parity manifest, and recommends ε / M_max."
+    desc: "Measure cross-algo dispersion (normalize_studio ↔ normalize_device) on the parity manifest, and recommend ε / M_max thresholds."
     cmds:
       - "{{.VENV}}/python -m tests.measure_parity_baseline --manifest tests/parity_dataset.yaml --datasets datasets --out-dir tests/_parity_out {{.CLI_ARGS}}"
 
   scan:parity-test:
-    desc: "Cross-algo parity gate (test #1 of parity-contract.md). Exits non-zero if too many images diverge between normalize_studio and normalize_device."
+    desc: "Cross-algo parity gate. Exits non-zero if too many images diverge between normalize_studio and normalize_device (ε on Hough-OK subset, pct_diff on full manifest)."
     cmds:
       - "{{.VENV}}/python -m tests.parity_test --manifest tests/parity_dataset.yaml --datasets datasets --out-dir tests/_parity_out {{.CLI_ARGS}}"
 

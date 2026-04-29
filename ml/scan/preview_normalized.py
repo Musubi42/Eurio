@@ -73,7 +73,7 @@ def main() -> int:
             dbg_path = inp.parent / inp.name.replace(suffix, "_debug.jpg")
             cv2.imwrite(str(dbg_path), dbg)
 
-    success = sum(1 for _, dbg in failures if False) + (len(inputs) - len(failures))
+    success = len(inputs) - len(failures)
     print(f"\nsuccess: {success}/{len(inputs)}")
 
     if by_step:

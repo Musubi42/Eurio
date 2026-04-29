@@ -14,20 +14,19 @@ import org.opencv.imgproc.Imgproc
  * Bit-for-bit Kotlin port of `ml/scan/normalize_snap.py::normalize_device`.
  * Same OpenCV calls, same params, same selection rule — the JPEG produced
  * here on a `_raw.jpg` should be diffable byte-for-byte against
- * `python -m scan.preview_normalized --algo device` on the same input (see
- * `go-task ml:scan:diff` validation in docs/scan-normalization/).
+ * `python -m scan.preview_normalized --algo device` on the same input
+ * (see `go-task ml:scan:diff`).
  *
  * Pipeline (must mirror `normalize_device` exactly):
  *   1. Downscale to long-side = WORKING_RES (1024) with INTER_AREA.
  *      Skipped when the input long side is already ≤ 1024 (no-op for the
- *      live ImageAnalysis ~720p path; meaningful when Phase F
- *      ImageCapture full-res is enabled).
+ *      live ImageAnalysis ~720p path; meaningful for higher-res inputs).
  *   2. Median-blurred grayscale on the working-res image.
- *   3. Hough 2-pass at working-res: tight precision (rejects phantoms)
- *      then relaxed recall fallback. Tight radius range 0.35–0.55
- *      replaces the old 0.15–0.55 — coins always fill the frame in the
- *      ring-guided photo-mode capture, so the wider range was dead range
- *      and slowed Hough proportionally.
+ *   3. Hough 2-pass at working-res: `strict` (high precision) then
+ *      `loose` (recall fallback). Both passes use the wide radius range
+ *      0.15–0.55 / 0.10–0.55 — a tighter floor was tried but caused
+ *      parasitic circle picks on frames with variable BG (table grain,
+ *      shadow), see comment on [PASSES] below for rationale.
  *   4. Selection: drop circles whose center is >30% of the short side
  *      away from the frame center, then pick the **largest** radius
  *      among survivors. "Largest centered" is critical for bimetallic
@@ -59,7 +58,7 @@ object SnapNormalizer {
         val cx: Int = 0,
         val cy: Int = 0,
         val r: Int = 0,
-        val method: String = "failed",  // "hough_tight" | "hough_relaxed" | "failed"
+        val method: String = "failed",  // "hough_strict" | "hough_loose" | "failed"
         val error: String? = null,
         val inputW: Int = 0,
         val inputH: Int = 0,
@@ -76,16 +75,17 @@ object SnapNormalizer {
     )
 
     // Same two passes, same params as normalize_snap._DEVICE_HOUGH_PASSES.
-    // Wide radius range 0.15–0.55 / 0.10–0.55 mirrors the legacy on-device
-    // path that produced eval_real_norm/ for the R@1=94.74% Phase D run.
-    // A tight 0.35–0.55 floor was tried post-Phase C but caused parasitic
-    // circle picks on device frames with variable BG (table grain, shadow):
-    // the "largest centred" rule then selected a non-coin large circle and
-    // the resulting 224 crop was massively offset. See the Python comment
-    // in `_DEVICE_HOUGH_PASSES` for the full rationale.
+    // The naming `strict / loose` describes the Hough param2 accumulator
+    // threshold (precision floor first, recall fallback) — **not** the
+    // radius range, which is intentionally wide on both passes
+    // (0.15–0.55 / 0.10–0.55). A tighter rmin floor was tried but caused
+    // parasitic circle picks on device frames with variable BG (table
+    // grain, shadow): "largest centred" then selected a non-coin large
+    // circle and the resulting 224 crop was massively offset. See the
+    // Python comment in `_DEVICE_HOUGH_PASSES` for the full rationale.
     private val PASSES = listOf(
-        HoughPass("hough_tight",   param1 = 100.0, param2 = 30.0, rMinFrac = 0.15, rMaxFrac = 0.55),
-        HoughPass("hough_relaxed", param1 =  60.0, param2 = 22.0, rMinFrac = 0.10, rMaxFrac = 0.55),
+        HoughPass("hough_strict", param1 = 100.0, param2 = 30.0, rMinFrac = 0.15, rMaxFrac = 0.55),
+        HoughPass("hough_loose",  param1 =  60.0, param2 = 22.0, rMinFrac = 0.10, rMaxFrac = 0.55),
     )
 
     /**
