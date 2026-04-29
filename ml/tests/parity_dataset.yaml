@@ -1,0 +1,103 @@
+# Parity dataset manifest — Phase B
+#
+# Used by ml/tests/measure_parity_baseline.py and (later) ml/tests/parity_test.py.
+# All entries reference ml/datasets/<numista_id>/obverse.jpg. No on-device capture
+# needed; the test compares two normalizers on the same input image.
+#
+# Stratification reality check
+# ----------------------------
+# The available studio source pool (ml/datasets/) contains only 2 EUR coins
+# (684) and 4 specific 1 EUR (Italy/Germany/Portugal/Spain). All are physically
+# bimetal. The original parity-contract.md §"Dataset D_studio" budget asked for
+# "8 mono-métal commun (1c, 2c, 5c, …)" — those copper/yellow mono-metal coins
+# are not in this dataset at all. We therefore replace the mono-metal stratum
+# with a "bimetal_stable" stratum (coins where Hough wr_1024_tightR happens to
+# land on the outer rim, i.e. behaves "like mono-metal" from the algo POV).
+# The mismatch with the original spec is intentional and documented here.
+#
+# Tags used
+# ---------
+#   training        — coin is part of the eurio-poc training class_manifest.json
+#   bimetal_stable  — Hough wr_1024_tightR consistently picks the outer rim on
+#                     this coin (validated by Phase A bench: |Δr| ≤ 8 vs
+#                     studio_contour). Stand-in for "mono-metal" stratum.
+#   bimetal_trap    — Hough wr_1024_tightR is known to vote the inner ring on
+#                     this coin (|Δr| ≥ 30 vs studio_contour, Phase A worst
+#                     cases). Critical case for the rework's value claim.
+#   commemorative   — non-standard back side
+#   standard        — country's "1st map" / "2nd map" reverse
+#   low_contrast    — pale silver / coloured / Δ(coin_mean,corner_mean) < 70
+#   small_size      — short side < 1200 px (max(w,h) < 1200)
+#   large_size      — short side ≥ 2400 px
+#   atypical_country — Vatican / Monaco / San Marino / Andorra (unusual
+#                      iconography vs the eurozone "block")
+#   outlier         — frame quirks: very small or very large coin within the
+#                     image, off-centre, ring guide present in source
+#
+# Multiple tags allowed; the measurement script aggregates per tag.
+
+version: 1
+description: |
+  Phase B parity dataset for ml/tests/measure_parity_baseline.py and
+  ml/tests/parity_test.py. Built on 2026-04-29 from the 23 training IDs
+  (eurio-poc/class_manifest.json) plus diversification (atypical countries,
+  low-contrast, size outliers).
+
+# 2 EUR standard coins ("mono-metal-equivalent": Hough lands on outer rim).
+# All taken from training set.
+coins:
+  - { numista_id: 64,    tags: [training, standard, bimetal_stable] }     # AT 1st map
+  - { numista_id: 9761,  tags: [training, standard, bimetal_stable] }     # AT 2nd map
+  - { numista_id: 6292,  tags: [training, standard, bimetal_stable] }     # BE 2nd map p1
+  - { numista_id: 6293,  tags: [training, standard, bimetal_stable] }     # BE 2nd map p2
+  - { numista_id: 88,    tags: [training, standard, bimetal_stable] }     # ES 1st type 1st map
+  - { numista_id: 6364,  tags: [training, standard] }                     # ES 1st type 2nd map (medium-Δr in Phase A: bucket 1800-2400)
+  - { numista_id: 10862, tags: [training, standard] }                     # ES 2nd type 2nd map
+  - { numista_id: 69470, tags: [training, standard] }                     # ES Felipe VI
+  - { numista_id: 104,   tags: [training, standard, bimetal_stable] }     # FR 1st map
+  - { numista_id: 6376,  tags: [training, standard, bimetal_stable] }     # FR 2nd map
+  - { numista_id: 68395, tags: [training, standard, bimetal_stable] }     # AD standard
+
+  # 2 EUR commemoratives — training subset
+  - { numista_id: 2193,  tags: [training, commemorative, bimetal_stable] } # AT State Treaty
+  - { numista_id: 19734, tags: [training, commemorative] }                 # BE Womens Day
+  - { numista_id: 2201,  tags: [training, commemorative] }                 # DE Schwerin Castle
+  - { numista_id: 81058, tags: [training, commemorative] }                 # ES Segovia Aqueduct
+  - { numista_id: 93999, tags: [training, commemorative] }                 # FI Von Wright
+  - { numista_id: 113429, tags: [training, commemorative] }                # FI Independence
+  - { numista_id: 3561,  tags: [training, commemorative] }                 # FR EU Presidency
+  - { numista_id: 91431, tags: [training, commemorative] }                 # FR Mitterrand
+  - { numista_id: 141382, tags: [training, commemorative, small_size] }    # FR Simone Veil 800x800
+  - { numista_id: 84714, tags: [training, commemorative] }                 # IT Plautus
+  - { numista_id: 82330, tags: [training, commemorative] }                 # IT Donatello
+
+  # Phase A bench: bimetal_trap (Hough latent bug confirmed)
+  - { numista_id: 19979, tags: [commemorative, bimetal_trap, large_size] } # ES Alhambra Δr=144
+  - { numista_id: 457922, tags: [commemorative, bimetal_trap] }            # ES Salamanca Δr=92
+  - { numista_id: 431862, tags: [commemorative, bimetal_trap] }            # VA commemorative
+
+  # Atypical-country (Vatican, Monaco, San Marino)
+  - { numista_id: 219,   tags: [atypical_country, commemorative, large_size] } # VA John Paul II
+  - { numista_id: 227,   tags: [atypical_country, commemorative, small_size, outlier] } # VA Sede Vacante 538x538
+  - { numista_id: 211,   tags: [atypical_country, standard] }              # MC Rainier III
+  - { numista_id: 5036,  tags: [atypical_country, commemorative] }         # MC Grace Kelly
+  - { numista_id: 203,   tags: [atypical_country, standard] }              # SM 1st map
+
+  # Low-contrast (Phase A: Δ(coin_mean, corner_mean) < 70)
+  - { numista_id: 2180,  tags: [standard, low_contrast] }                  # plain 2 EUR pale silver
+  - { numista_id: 164656, tags: [low_contrast, commemorative, outlier] }   # NL Maastricht red star coloured
+  - { numista_id: 3911,  tags: [commemorative, low_contrast, small_size] } # 600x600
+  - { numista_id: 168218, tags: [commemorative, low_contrast, small_size] } # EE Song Festival 800x800
+
+# Total: 34 entries.
+# Strata counts (informational, for sanity checking):
+#   training        : 22
+#   bimetal_stable  : 12  (replaces mono-metal stratum)
+#   bimetal_trap    :  3  (Phase A-confirmed Hough bug cases)
+#   commemorative   : 19
+#   standard        : 12
+#   low_contrast    :  4  (≥ 4 ✓)
+#   atypical_country:  5
+#   small_size      :  4
+#   large_size      :  2
+#   outlier         :  3
