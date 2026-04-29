@@ -1,0 +1,1 @@
+{"ts":"20260429_180636_102","frame_size":[480,640],"crop_size":224,"rerank_ms":23,"normalize":{"method":"hough_tight","cx":233,"cy":329,"r":96,"crop_side":194,"margin_px":1,"error":""},"matches":[{"class":"84714","sim":0.8447},{"class":"141382","sim":0.7332},{"class":"19734","sim":0.7110}]}
