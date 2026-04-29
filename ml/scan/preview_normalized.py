@@ -1,10 +1,16 @@
 """
-Run normalize_snap over a Phase 0 eval_real/ directory. For each input writes
+Run a normalizer over a Phase 0 eval_real/ directory. For each input writes
 `<stem>_norm.jpg` (and `<stem>_debug.jpg` with --debug) next to the source so
 visual inspection is one-glance.
 
+By default uses `normalize_device` (mirrors the Android live pipeline), which
+is the relevant view for eval_real captures. Pass `--algo studio` to preview
+the training-side `normalize_studio` output on the same input — useful to
+visually compare the two on a given source.
+
 Usage:
-    python -m scan.preview_normalized <path-to-eval_real> [--source raw|crop] [--debug]
+    python -m scan.preview_normalized <path-to-eval_real> \\
+        [--source raw|crop] [--debug] [--algo device|studio]
 """
 from __future__ import annotations
 
@@ -14,7 +20,7 @@ from pathlib import Path
 
 import cv2
 
-from .normalize_snap import draw_debug, normalize_path
+from .normalize_snap import draw_debug, normalize_device_path, normalize_studio_path
 
 
 def main() -> int:
@@ -25,7 +31,10 @@ def main() -> int:
                     help="Operate on raw camera frame (default) or current masked crop")
     ap.add_argument("--debug", action="store_true",
                     help="Also write <stem>_debug.jpg with the detected circle overlaid")
+    ap.add_argument("--algo", choices=["device", "studio"], default="device",
+                    help="Which normalizer to run (default: device, matching the Android pipeline)")
     args = ap.parse_args()
+    normalize_fn = normalize_device_path if args.algo == "device" else normalize_studio_path
 
     if not args.eval_dir.exists():
         print(f"not found: {args.eval_dir}", file=sys.stderr)
@@ -43,7 +52,7 @@ def main() -> int:
     failures: list[tuple[Path, dict]] = []
 
     for inp in inputs:
-        result = normalize_path(inp)
+        result = normalize_fn(inp)
         rel = f"{inp.parent.name}/{inp.stem}"
         step_id = inp.stem.replace(suffix.replace(".jpg", ""), "")
 

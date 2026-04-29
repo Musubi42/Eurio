@@ -2,8 +2,9 @@
 Sync golden-set device snaps from a debug pull into ml/datasets/eval_real_norm/.
 
 Walks ``<debug_pull_dir>/eurio_debug/eval_real/<eurio_id>/<step>_raw.jpg``,
-runs ``scan.normalize_snap`` on each, and writes the normalized 224×224 crop
-to ``ml/datasets/eval_real_norm/<eurio_id>/<step>.jpg`` (a clean ImageFolder
+runs ``normalize_device`` on each (mirrors the live Android Hough pipeline),
+and writes the normalized 224×224 crop to
+``ml/datasets/eval_real_norm/<eurio_id>/<step>.jpg`` (a clean ImageFolder
 layout consumable as val_dataset by train_embedder).
 
 Usage:
@@ -22,7 +23,7 @@ from pathlib import Path
 
 import cv2
 
-from .normalize_snap import normalize_path
+from .normalize_snap import normalize_device_path
 
 
 ML_DIR = Path(__file__).resolve().parent.parent
@@ -73,7 +74,7 @@ def main() -> int:
     for raw in raw_files:
         eurio_id = raw.parent.name
         step_id = raw.stem.removesuffix("_raw")
-        result = normalize_path(raw)
+        result = normalize_device_path(raw)
         ok = result.image is not None
         by_class.setdefault(eurio_id, []).append(ok)
         if not ok:

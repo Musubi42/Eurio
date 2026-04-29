@@ -41,7 +41,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from .normalize_snap import normalize_path
+from .normalize_snap import normalize_device_path
 
 
 CENTER_TOL_PX = 2          # |Δcx|, |Δcy| ≤ 2 px
@@ -123,7 +123,7 @@ def _diff_one(
     out = SnapDiff(cls=cls, step=step, py_status="?", kt_status="?")
 
     # Python side: re-run the canonical normalizer on the raw frame.
-    py_result = normalize_path(raw_path)
+    py_result = normalize_device_path(raw_path)
     out.py_status = "ok" if py_result.image is not None else "fail"
 
     # Kotlin side: meta.json carries the normalize block produced on device.

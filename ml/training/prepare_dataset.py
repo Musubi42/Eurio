@@ -32,20 +32,22 @@ from eval.class_resolver import (
     build_resolver,
     write_manifest,
 )
-from scan.normalize_snap import OUTPUT_SIZE, normalize_path
+from scan.normalize_snap import OUTPUT_SIZE, normalize_studio_path
 
 
 def normalize_and_save(src: Path, dst: Path) -> bool:
-    """Run scan.normalize_snap on src and write the 224×224 tight crop to dst.
+    """Run `normalize_studio` on src and write the 224×224 tight crop to dst.
 
-    The same normalization runs on phone snaps at inference, so passing studio
-    sources through it here is what aligns the train and inference distributions
-    (Phase 2). Returns True on success; False (with a warning print) if Hough
-    failed — caller falls back to a plain resize so the source isn't dropped.
+    Studio pipeline (Otsu + minEnclosingCircle at WR=1024) — sub-pixel rim
+    capture and bimétal-aware. The 224×224 contract is identical to the
+    device pipeline (`normalize_device`) so train and inference distributions
+    align (cross-algo parity test #1, see parity-contract.md). Returns True
+    on success; False if both contour and Hough fallback failed — caller
+    then falls back to a plain LANCZOS resize so the source isn't dropped.
     """
-    result = normalize_path(src)
+    result = normalize_studio_path(src)
     if result.image is None:
-        print(f"  ! normalize failed on {src} ({result.debug}), falling back to resize")
+        print(f"  ! normalize_studio failed on {src} ({result.debug}), falling back to resize")
         with Image.open(src) as img:
             img.convert("RGB").resize((OUTPUT_SIZE, OUTPUT_SIZE), Image.LANCZOS).save(
                 dst, "JPEG", quality=95,
@@ -231,7 +233,7 @@ def split_dataset(
 
     # Override val/ with the device golden set when available. The device
     # snaps (eval_real_norm/<class>/<step>.jpg) are real photos taken on the
-    # phone and pushed through scan.normalize_snap — they are the only val
+    # phone and pushed through `normalize_device` — they are the only val
     # set whose metric correlates with on-device behavior. With n_sources=1
     # the studio-derived val/ is empty anyway (everything fell into train),
     # so overriding it is lossless.
