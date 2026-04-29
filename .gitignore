@@ -67,6 +67,11 @@ app-android/src/main/assets/models/test_model.tflite
 # Debug captures pulled from device (via `go-task android:pull-debug`)
 # debug_pull/
 
+# Bench / parity test outputs (rework normalize)
+ml/tests/_bench_out/
+ml/tests/_bench_smoke/
+ml/tests/_parity_out/
+
 # Python
 __pycache__/
 *.pyc
