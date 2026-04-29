@@ -1,37 +1,36 @@
 <script setup lang="ts">
 import { checkMlApi } from '@/features/training/composables/useTrainingApi'
 import CohortCard from '@/features/lab/components/CohortCard.vue'
-import { fetchCohorts, fetchRunnerStatus } from '@/features/lab/composables/useLabApi'
+import { useCohortsQuery, useRunnerStatusQuery } from '@/features/lab/composables/useLabQueries'
 import type { CohortSummary } from '@/features/lab/types'
 import { FlaskConical, Loader2, Plus, Wifi, WifiOff } from 'lucide-vue-next'
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
 
 const mlApiOnline = ref(false)
 const mlApiChecking = ref(true)
-const runnerBusy = ref(false)
-
-const cohorts = ref<CohortSummary[]>([])
-const loading = ref(true)
-const error = ref<string | null>(null)
 
 const filterZone = ref<'' | 'green' | 'orange' | 'red'>('')
 
+const cohortsQuery = useCohortsQuery(() => ({ zone: filterZone.value || null }))
+const cohorts = computed<CohortSummary[]>(() => cohortsQuery.data.value ?? [])
+const loading = computed(() => cohortsQuery.isLoading.value && cohorts.value.length === 0)
+const error = computed(() => (cohortsQuery.error.value as Error | null)?.message ?? null)
+
+const runnerQuery = useRunnerStatusQuery()
+const runnerBusy = computed(() => runnerQuery.data.value?.busy ?? false)
+
 let healthInterval: ReturnType<typeof setInterval> | null = null
-let runnerInterval: ReturnType<typeof setInterval> | null = null
 
 onMounted(async () => {
   await checkApi()
   healthInterval = setInterval(checkApi, 30_000)
-  runnerInterval = setInterval(refreshRunner, 5_000)
-  await Promise.all([load(), refreshRunner()])
 })
 
 onUnmounted(() => {
   if (healthInterval) clearInterval(healthInterval)
-  if (runnerInterval) clearInterval(runnerInterval)
 })
 
 async function checkApi() {
@@ -39,33 +38,6 @@ async function checkApi() {
   mlApiOnline.value = await checkMlApi()
   mlApiChecking.value = false
 }
-
-async function refreshRunner() {
-  if (!mlApiOnline.value) {
-    runnerBusy.value = false
-    return
-  }
-  try {
-    const s = await fetchRunnerStatus()
-    runnerBusy.value = s.busy
-  } catch {
-    runnerBusy.value = false
-  }
-}
-
-async function load() {
-  loading.value = true
-  error.value = null
-  try {
-    cohorts.value = await fetchCohorts(filterZone.value || undefined)
-  } catch (e) {
-    error.value = (e as Error).message
-  } finally {
-    loading.value = false
-  }
-}
-
-watch(filterZone, load)
 
 function openCohort(c: CohortSummary) {
   router.push(`/lab/cohorts/${c.id}`)

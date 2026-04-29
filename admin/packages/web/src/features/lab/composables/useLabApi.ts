@@ -1,11 +1,15 @@
 // Fetch wrappers for the /lab/* subsystem served by the local ML API.
 //
-// Same host as the training composable (http://localhost:8042).
+// Same host as the training composable (http://127.0.0.1:8042).
 
 import { ML_API } from '@/features/training/composables/useTrainingApi'
 import type {
+  CohortCaptureManifest,
   CohortCreatePayload,
+  CohortCsvResult,
+  CohortStatus,
   CohortSummary,
+  CohortSyncResult,
   IterationCreatePayload,
   IterationDetail,
   RunnerStatus,
@@ -34,8 +38,14 @@ async function json<T>(path: string, init?: RequestInit): Promise<T> {
 
 // ─── Cohorts ───────────────────────────────────────────────────────────
 
-export async function fetchCohorts(zone?: string | null): Promise<CohortSummary[]> {
-  const qs = zone ? `?zone=${encodeURIComponent(zone)}` : ''
+export async function fetchCohorts(opts?: {
+  zone?: string | null
+  status?: CohortStatus | null
+}): Promise<CohortSummary[]> {
+  const params = new URLSearchParams()
+  if (opts?.zone) params.set('zone', opts.zone)
+  if (opts?.status) params.set('status', opts.status)
+  const qs = params.toString() ? `?${params.toString()}` : ''
   return json<CohortSummary[]>(`/lab/cohorts${qs}`)
 }
 
@@ -64,6 +74,61 @@ export async function deleteCohort(id: string): Promise<void> {
   await json<{ deleted: boolean }>(`/lab/cohorts/${encodeURIComponent(id)}`, {
     method: 'DELETE',
   })
+}
+
+export async function addCoinsToCohort(
+  cohortId: string,
+  eurioIds: string[],
+): Promise<CohortSummary> {
+  return json<CohortSummary>(
+    `/lab/cohorts/${encodeURIComponent(cohortId)}/coins`,
+    { method: 'POST', body: JSON.stringify({ eurio_ids: eurioIds }) },
+  )
+}
+
+export async function removeCoinFromCohort(
+  cohortId: string,
+  eurioId: string,
+): Promise<CohortSummary> {
+  return json<CohortSummary>(
+    `/lab/cohorts/${encodeURIComponent(cohortId)}/coins/${encodeURIComponent(eurioId)}`,
+    { method: 'DELETE' },
+  )
+}
+
+export async function cloneCohort(
+  cohortId: string,
+  payload: { name: string; description?: string | null },
+): Promise<CohortSummary> {
+  return json<CohortSummary>(
+    `/lab/cohorts/${encodeURIComponent(cohortId)}/clone`,
+    { method: 'POST', body: JSON.stringify(payload) },
+  )
+}
+
+// ─── Captures (cohort capture flow) ────────────────────────────────────
+
+export async function fetchCohortCaptures(cohortId: string): Promise<CohortCaptureManifest> {
+  return json<CohortCaptureManifest>(
+    `/lab/cohorts/${encodeURIComponent(cohortId)}/captures/status`,
+  )
+}
+
+export async function generateCohortCsv(cohortId: string): Promise<CohortCsvResult> {
+  return json<CohortCsvResult>(
+    `/lab/cohorts/${encodeURIComponent(cohortId)}/captures/csv`,
+    { method: 'POST', body: '{}' },
+  )
+}
+
+export async function syncCohortCaptures(
+  cohortId: string,
+  opts: { pull_dir?: string; overwrite?: boolean } = {},
+): Promise<CohortSyncResult> {
+  return json<CohortSyncResult>(
+    `/lab/cohorts/${encodeURIComponent(cohortId)}/captures/sync`,
+    { method: 'POST', body: JSON.stringify(opts) },
+  )
 }
 
 // ─── Iterations ────────────────────────────────────────────────────────

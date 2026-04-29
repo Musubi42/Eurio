@@ -169,6 +169,9 @@ CREATE TABLE IF NOT EXISTS experiment_cohorts (
   zone                TEXT
                       CHECK (zone IS NULL OR zone IN ('green','orange','red')),
   eurio_ids_json      TEXT NOT NULL,
+  status              TEXT NOT NULL DEFAULT 'draft'
+                      CHECK (status IN ('draft','frozen')),
+  frozen_at           TEXT,
   created_at          TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at          TEXT NOT NULL DEFAULT (datetime('now'))
 );

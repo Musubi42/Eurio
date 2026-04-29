@@ -7,16 +7,65 @@ export type Verdict = 'pending' | 'baseline' | 'better' | 'worse' | 'mixed' | 'n
 
 export type IterationStatus = 'pending' | 'training' | 'benchmarking' | 'completed' | 'failed'
 
+export type CohortStatus = 'draft' | 'frozen'
+
 export interface CohortSummary {
   id: string
   name: string
   description: string | null
   zone: 'green' | 'orange' | 'red' | null
   eurio_ids: string[]
+  status: CohortStatus
+  frozen_at: string | null
   iteration_count: number
   best_r_at_1: number | null
   created_at: string | null
   updated_at: string | null
+}
+
+export interface CoinCaptureStatus {
+  eurio_id: string
+  numista_id: number | null
+  has_captures: boolean
+  num_files: number
+  expected_steps: string[]
+  missing_steps: string[]
+  last_modified: string | null
+}
+
+export interface CohortCaptureManifest {
+  cohort_id: string
+  total_coins: number
+  fully_captured: number
+  partial: number
+  missing: number
+  expected_steps: string[]
+  per_coin: CoinCaptureStatus[]
+}
+
+export interface CohortCsvResult {
+  csv_path: string
+  csv_content: string
+  rows: number
+  skipped_no_numista: string[]
+  skipped_complete: number
+  device_target_path: string
+  push_command: string
+  pull_command: string
+  sync_endpoint_hint: string
+}
+
+export interface CohortSyncResult {
+  pull_dir: string
+  output_dir: string
+  total_files: number
+  normalized: number
+  failures: string[]
+  per_class: Record<string, { normalized: number; total: number }>
+  captures_copied: number
+  captures_skipped_existing: number
+  captures_unmapped_eurio_ids: string[]
+  duration_s: number
 }
 
 export interface BenchmarkSummary {

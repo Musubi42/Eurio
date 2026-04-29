@@ -193,6 +193,8 @@ class ExperimentCohortRow:
     description: str | None = None
     zone: str | None = None
     eurio_ids: list[str] = field(default_factory=list)
+    status: str = "draft"
+    frozen_at: str | None = None
     created_at: str | None = None
     updated_at: str | None = None
 
@@ -203,6 +205,8 @@ class ExperimentCohortRow:
             "description": self.description,
             "zone": self.zone,
             "eurio_ids": self.eurio_ids,
+            "status": self.status,
+            "frozen_at": self.frozen_at,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
         }
@@ -306,6 +310,18 @@ class Store:
                 table="benchmark_runs",
                 column="per_condition_json",
                 decl="TEXT NOT NULL DEFAULT '{}'",
+            )
+            self._ensure_column(
+                conn,
+                table="experiment_cohorts",
+                column="status",
+                decl="TEXT NOT NULL DEFAULT 'draft'",
+            )
+            self._ensure_column(
+                conn,
+                table="experiment_cohorts",
+                column="frozen_at",
+                decl="TEXT",
             )
 
     @staticmethod
@@ -1155,8 +1171,8 @@ class Store:
             c.execute(
                 """
                 INSERT INTO experiment_cohorts (
-                  id, name, description, zone, eurio_ids_json
-                ) VALUES (?, ?, ?, ?, ?)
+                  id, name, description, zone, eurio_ids_json, status, frozen_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     cohort.id,
@@ -1164,6 +1180,8 @@ class Store:
                     cohort.description,
                     cohort.zone,
                     json.dumps(cohort.eurio_ids),
+                    cohort.status,
+                    cohort.frozen_at,
                 ),
             )
 
@@ -1174,8 +1192,15 @@ class Store:
         name: str | None = None,
         description: str | None = None,
         zone: str | None = None,
+        eurio_ids: list[str] | None = None,
+        status: str | None = None,
+        frozen_at: str | None = None,
     ) -> None:
-        """Update metadata. `eurio_ids` is frozen — fork a new cohort instead."""
+        """Update mutable cohort fields.
+
+        `eurio_ids` and `status` should only be touched while the cohort is
+        ``draft``; the route layer enforces that — the store stays dumb.
+        """
         fields_sql = ["updated_at = datetime('now')"]
         params: list = []
         if name is not None:
@@ -1187,6 +1212,15 @@ class Store:
         if zone is not None:
             fields_sql.append("zone = ?")
             params.append(zone)
+        if eurio_ids is not None:
+            fields_sql.append("eurio_ids_json = ?")
+            params.append(json.dumps(eurio_ids))
+        if status is not None:
+            fields_sql.append("status = ?")
+            params.append(status)
+        if frozen_at is not None:
+            fields_sql.append("frozen_at = ?")
+            params.append(frozen_at)
         if len(fields_sql) == 1:
             return
         params.append(cohort_id)
@@ -1207,12 +1241,23 @@ class Store:
             ).fetchone()
         return _row_to_cohort(row) if row else None
 
-    def list_cohorts(self, *, zone: str | None = None) -> list[ExperimentCohortRow]:
+    def list_cohorts(
+        self,
+        *,
+        zone: str | None = None,
+        status: str | None = None,
+    ) -> list[ExperimentCohortRow]:
         q = "SELECT * FROM experiment_cohorts"
+        clauses: list[str] = []
         params: list = []
         if zone is not None:
-            q += " WHERE zone = ?"
+            clauses.append("zone = ?")
             params.append(zone)
+        if status is not None:
+            clauses.append("status = ?")
+            params.append(status)
+        if clauses:
+            q += " WHERE " + " AND ".join(clauses)
         q += " ORDER BY created_at DESC"
         return [
             _row_to_cohort(r)
@@ -1468,6 +1513,8 @@ def _row_to_cohort(r: sqlite3.Row) -> ExperimentCohortRow:
         description=r["description"],
         zone=r["zone"],
         eurio_ids=json.loads(r["eurio_ids_json"]),
+        status=r["status"] or "draft",
+        frozen_at=r["frozen_at"],
         created_at=r["created_at"],
         updated_at=r["updated_at"],
     )

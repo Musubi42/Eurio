@@ -1,6 +1,6 @@
 // Fetch wrappers for the /benchmark/* subsystem served by the local ML API.
 //
-// Same host as the training composable (http://localhost:8042).
+// Same host as the training composable (http://127.0.0.1:8042).
 
 import { ML_API } from '@/features/training/composables/useTrainingApi'
 import type {

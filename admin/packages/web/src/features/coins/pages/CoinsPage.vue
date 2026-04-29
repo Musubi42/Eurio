@@ -1,5 +1,10 @@
 <script setup lang="ts">
-import { fetchZoneMap } from '@/features/confusion/composables/useConfusionMap'
+import CohortAttachModal from '@/features/lab/components/CohortAttachModal.vue'
+import {
+  useConfusionZoneMap,
+  useSourceCounts,
+  useTrainedEurioIds,
+} from '@/features/coins/composables/useCoinLookups'
 import { zoneStyle } from '@/features/confusion/composables/useConfusionZone'
 import { supabase } from '@/shared/supabase/client'
 import type { Coin, ConfusionZone, IssueType } from '@/shared/supabase/types'
@@ -147,6 +152,11 @@ async function fetchCoins(search = '', append = false) {
   if (filterTestable.value === 'no')  q = q.eq('personal_owned', false).eq('lent_to_me', false)
 
   // Training filter — applies trainedEurioIds set fetched from coin_embeddings.
+  // Lazy: fetch the set only if the filter is active and we don't have it yet.
+  if (filterTrained.value && trainedEurioIds.value.size === 0) {
+    // Wait for the in-flight Vue Query fetch (or kick one off) before applying.
+    await trainedQuery.suspense()
+  }
   if (filterTrained.value === 'trained') {
     const ids = [...trainedEurioIds.value]
     if (ids.length === 0) {
@@ -164,6 +174,10 @@ async function fetchCoins(search = '', append = false) {
   }
 
   // Zone filter — uses pre-fetched confusionZones map and restricts via .in()/.not.in()
+  // Lazy: only fetch the zone map when this filter is active.
+  if (filterZone.value && confusionZones.value.size === 0) {
+    await zonesQuery.suspense()
+  }
   if (filterZone.value) {
     const mapped = [...confusionZones.value.keys()]
     if (filterZone.value === 'unmapped') {
@@ -241,12 +255,13 @@ watch(
   () => router.replace({ query: buildUrlQuery() }),
   { deep: true },
 )
-onMounted(async () => {
-  // Load zones FIRST so the in-memory filter has data before initial fetch
-  await fetchConfusionZones()
-  fetchSourceCounts()
+onMounted(() => {
+  // Lookups (trained, zones, source counts) auto-fetch via their useQuery
+  // composables — see useCoinLookups.ts. They're cached in IDB across
+  // reloads with a 5-min staleTime, so most navigations don't hit Supabase.
+  // fetchCoins lazy-awaits trainedIds/zones via .suspense() when the
+  // matching filter is active.
   fetchCoins()
-  fetchTrainedIds()
   checkMlApi()
   mlApiInterval = setInterval(checkMlApi, 30_000)
 })
@@ -309,47 +324,22 @@ const SOURCE_LABELS: Record<SourceKey, string> = {
 // Source row counts shown in the chips. Cheap: one HEAD per source, all in
 // parallel. Numista is the only one not backed by a `has_*` column — count
 // rows where cross_refs->numista_id is set.
-const sourceCounts = ref<Partial<Record<SourceKey, number>>>({})
+// Cached in IndexedDB via TanStack Query — see useCoinLookups.ts.
+const sourceCountsQuery = useSourceCounts()
+const sourceCounts = computed(() => sourceCountsQuery.data.value ?? {})
 
-async function fetchSourceCounts() {
-  const queries: Array<Promise<void>> = SOURCE_KEYS.map(async (src) => {
-    let q = supabase.from('coins').select('eurio_id', { count: 'exact', head: true })
-    if (src === 'numista') q = q.not('cross_refs->numista_id', 'is', null)
-    else if (src === 'bce') q = q.eq('has_bce', true)
-    else if (src === 'wikipedia') q = q.eq('has_wikipedia', true)
-    else if (src === 'lmdlp') q = q.eq('has_lmdlp', true)
-    else if (src === 'ebay') q = q.eq('has_ebay', true)
-    const { count } = await q
-    sourceCounts.value = { ...sourceCounts.value, [src]: count ?? 0 }
-  })
-  await Promise.all(queries)
-}
+// Training status — cached in IDB.
+const trainedQuery = useTrainedEurioIds()
+const trainedEurioIds = computed(() => trainedQuery.data.value ?? new Set<string>())
 
-// Training status
-const trainedEurioIds = ref<Set<string>>(new Set())
-
-// Confusion-map zones (Phase 1 ML scalability)
-const confusionZones = ref<Map<string, { zone: ConfusionZone, nearest_similarity: number }>>(new Map())
-
-async function fetchConfusionZones() {
-  try {
-    confusionZones.value = await fetchZoneMap()
-  } catch {
-    // silent — zone filter/badge just becomes inert
-  }
-}
+// Confusion-map zones (Phase 1 ML scalability) — cached in IDB.
+const zonesQuery = useConfusionZoneMap()
+const confusionZones = computed(
+  () => zonesQuery.data.value ?? new Map<string, { zone: ConfusionZone, nearest_similarity: number }>(),
+)
 
 function coinZone(coin: Coin): { zone: ConfusionZone, nearest_similarity: number } | null {
   return confusionZones.value.get(coin.eurio_id) ?? null
-}
-
-async function fetchTrainedIds() {
-  const { data } = await supabase
-    .from('coin_embeddings')
-    .select('eurio_id') as { data: { eurio_id: string }[] | null }
-  if (data) {
-    trainedEurioIds.value = new Set(data.map(e => e.eurio_id))
-  }
 }
 
 function isTrained(coin: Coin): boolean {
@@ -371,7 +361,7 @@ const hasActiveFilters = () =>
 
 type ClassKind = 'eurio_id' | 'design_group_id'
 
-const ML_API = 'http://localhost:8042'
+const ML_API = 'http://127.0.0.1:8042'
 const mlApiOnline = ref(false)
 const selectedClasses = ref<Set<string>>(new Set())
 const selectedClassKinds = ref<Map<string, ClassKind>>(new Map())
@@ -526,10 +516,11 @@ const cohortTitle = computed(() => {
   if (!mlApiOnline.value) return 'ML API hors-ligne'
   return 'Crée un cohort Lab pré-rempli avec la sélection'
 })
+const cohortModalOpen = ref(false)
+
 function openCohortWizard() {
   if (cohortDisabled.value) return
-  const ids = augmentEurioIds.value.join(',')
-  router.push(`/lab/cohorts/new?eurio_ids=${ids}`)
+  cohortModalOpen.value = true
 }
 
 function openAugmentation() {
@@ -1299,6 +1290,13 @@ function copyToClipboard(value: string, label: string, event: Event) {
         </div>
       </Transition>
     </Teleport>
+
+    <!-- Cohort lab modal (create new or attach to draft) -->
+    <CohortAttachModal
+      :open="cohortModalOpen"
+      :eurio-ids="augmentEurioIds"
+      @close="cohortModalOpen = false"
+    />
 
     <!-- Clipboard copy toast -->
     <Teleport to="body">

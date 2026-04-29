@@ -1,12 +1,15 @@
 // Training API composables — thin fetch wrappers around the FastAPI ML server.
 //
-// The ML server runs locally (go-task ml:api → http://localhost:8042). All
+// The ML server runs locally (go-task ml:api → http://127.0.0.1:8042). All
 // training state lives there (SQLite). The admin page polls /training/runs/active
 // while a run is in-flight and refreshes history/classes on demand.
 
 import { ref, type Ref } from 'vue'
 
-export const ML_API = 'http://localhost:8042'
+// Use 127.0.0.1 (not localhost) — uvicorn binds to IPv4 only, but on macOS
+// `localhost` resolves to ::1 first and falls back to 127.0.0.1, adding
+// ~500ms per request from the IPv6 connection-refused before the retry.
+export const ML_API = 'http://127.0.0.1:8042'
 
 export type ClassKind = 'eurio_id' | 'design_group_id'
 

@@ -525,7 +525,7 @@ function layerForType(slot: Slot, type: string): { layer: Layer, index: number }
     >
       <WifiOff class="mx-auto mb-2 h-6 w-6" style="color: var(--danger);" />
       <p class="text-sm font-medium" style="color: var(--danger);">
-        ML API non jointe (http://localhost:8042)
+        ML API non jointe (http://127.0.0.1:8042)
       </p>
       <p class="mt-1 text-xs" style="color: var(--ink-500);">
         Lance <code style="background: var(--surface-1); padding: 1px 4px; border-radius: 3px;">go-task ml:api</code>

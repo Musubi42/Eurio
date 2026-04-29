@@ -146,7 +146,7 @@ onMounted(() => fetchQueue())
               <div class="w-24 h-24 shrink-0 rounded-lg overflow-hidden flex items-center justify-center"
                    style="background: var(--surface);">
                 <img
-                  :src="`http://localhost:8042/images/${selected.numista_id}/source`"
+                  :src="`http://127.0.0.1:8042/images/${selected.numista_id}/source`"
                   :alt="selected.numista_name"
                   class="w-full h-full object-cover"
                   @error="(e) => (e.target as HTMLImageElement).style.display = 'none'"

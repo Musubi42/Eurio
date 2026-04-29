@@ -1,23 +1,24 @@
 <script setup lang="ts">
+import CaptureSection from '@/features/lab/components/CaptureSection.vue'
 import IterationRow from '@/features/lab/components/IterationRow.vue'
 import SensitivityPanel from '@/features/lab/components/SensitivityPanel.vue'
 import TrajectoryChart from '@/features/lab/components/TrajectoryChart.vue'
+import { useQueryClient } from '@tanstack/vue-query'
+import { deleteCohort } from '@/features/lab/composables/useLabApi'
 import {
-  deleteCohort,
-  fetchCohort,
-  fetchIterations,
-  fetchSensitivity,
-  fetchTrajectory,
-  fetchRunnerStatus,
-} from '@/features/lab/composables/useLabApi'
+  useCloneCohortMutation,
+  useCohortQuery,
+  useIterationsQuery,
+  useRemoveCoinMutation,
+  useRunnerStatusQuery,
+  useSensitivityQuery,
+  useTrajectoryQuery,
+} from '@/features/lab/composables/useLabQueries'
 import type {
-  CohortSummary,
   IterationDetail,
-  SensitivityEntry,
-  TrajectoryPoint,
 } from '@/features/lab/types'
-import { ArrowLeft, Loader2, Plus, Trash2 } from 'lucide-vue-next'
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { ArrowLeft, Copy as CopyIcon, Loader2, Plus, Trash2, X } from 'lucide-vue-next'
+import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 const route = useRoute()
@@ -25,65 +26,61 @@ const router = useRouter()
 
 const cohortId = computed(() => String(route.params.id))
 
-const cohort = ref<CohortSummary | null>(null)
-const iterations = ref<IterationDetail[]>([])
-const trajectory = ref<TrajectoryPoint[]>([])
-const sensitivity = ref<SensitivityEntry[]>([])
-const runnerBusy = ref(false)
+const cohortQuery = useCohortQuery(cohortId)
+const cohort = computed(() => cohortQuery.data.value ?? null)
 
-const loading = ref(true)
-const error = ref<string | null>(null)
-
-let pollInterval: ReturnType<typeof setInterval> | null = null
-
-onMounted(async () => {
-  await reload()
-  pollInterval = setInterval(() => {
-    // Only poll actively when an iteration is in progress
-    if (iterations.value.some(it => it.status === 'training' || it.status === 'benchmarking')) {
-      reload()
-    } else {
-      refreshRunner()
-    }
-  }, 4000)
+const iterationsQuery = useIterationsQuery(cohortId, {
+  pollWhileBusy: () => iterations.value.some(
+    it => it.status === 'training' || it.status === 'benchmarking',
+  ),
 })
+const iterations = computed<IterationDetail[]>(() => iterationsQuery.data.value ?? [])
 
-onUnmounted(() => {
-  if (pollInterval) clearInterval(pollInterval)
-})
+const trajectoryQuery = useTrajectoryQuery(cohortId)
+const trajectory = computed(() => trajectoryQuery.data.value ?? [])
 
-async function reload() {
-  loading.value = true
-  error.value = null
+const sensitivityQuery = useSensitivityQuery(cohortId)
+const sensitivity = computed(() => sensitivityQuery.data.value ?? [])
+
+const runnerQuery = useRunnerStatusQuery()
+const runnerBusy = computed(() => runnerQuery.data.value?.busy ?? false)
+
+const loading = computed(() => cohortQuery.isLoading.value && cohort.value === null)
+const error = computed(() => (cohortQuery.error.value as Error | null)?.message ?? null)
+
+const isDraft = computed(() => cohort.value?.status === 'draft')
+
+const removeCoin = useRemoveCoinMutation(cohortId)
+async function handleRemoveCoin(eurioId: string) {
+  if (!cohort.value) return
+  if (!confirm(`Retirer ${eurioId} du cohort ?`)) return
   try {
-    const [c, its, traj, sens, runner] = await Promise.all([
-      fetchCohort(cohortId.value),
-      fetchIterations(cohortId.value),
-      fetchTrajectory(cohortId.value),
-      fetchSensitivity(cohortId.value),
-      fetchRunnerStatus().catch(() => ({ busy: false })),
-    ])
-    cohort.value = c
-    iterations.value = its
-    trajectory.value = traj
-    sensitivity.value = sens
-    runnerBusy.value = runner.busy
+    await removeCoin.mutateAsync(eurioId)
   } catch (e) {
-    error.value = (e as Error).message
-  } finally {
-    loading.value = false
+    alert(`Échec : ${(e as Error).message}`)
   }
 }
 
-async function refreshRunner() {
+function goAddCoins() {
+  if (!cohort.value) return
+  router.push({ path: '/coins', query: { cohort_attach: cohort.value.id } })
+}
+
+const cloneMut = useCloneCohortMutation()
+async function handleClone() {
+  if (!cohort.value) return
+  const proposed = `${cohort.value.name}-clone`
+  const name = window.prompt('Nom du clone (kebab-case) :', proposed)?.trim()
+  if (!name) return
   try {
-    const s = await fetchRunnerStatus()
-    runnerBusy.value = s.busy
-  } catch {
-    runnerBusy.value = false
+    const created = await cloneMut.mutateAsync({ cohortId: cohort.value.id, name })
+    router.push(`/lab/cohorts/${created.id}`)
+  } catch (e) {
+    alert(`Clone échoué : ${(e as Error).message}`)
   }
 }
 
+const qc = useQueryClient()
 async function handleDeleteCohort() {
   if (!cohort.value) return
   const ok = confirm(
@@ -92,6 +89,7 @@ async function handleDeleteCohort() {
   if (!ok) return
   try {
     await deleteCohort(cohort.value.id)
+    qc.invalidateQueries({ queryKey: ['lab', 'cohorts'] })
     router.push('/lab')
   } catch (e) {
     alert(`Suppression échouée : ${(e as Error).message}`)
@@ -173,6 +171,14 @@ function formatPct(v: number | null): string {
                 {{ cohort.name }}
               </h1>
               <span
+                class="rounded-full px-2 py-0.5 text-[10px] font-medium uppercase"
+                :style="{
+                  background: isDraft ? 'color-mix(in srgb, var(--ink-400) 14%, var(--surface))' : 'color-mix(in srgb, var(--indigo-700) 14%, var(--surface))',
+                  color: isDraft ? 'var(--ink-500)' : 'var(--indigo-700)',
+                  letterSpacing: 'var(--tracking-eyebrow)',
+                }"
+              >{{ cohort.status }}</span>
+              <span
                 v-if="cohort.zone"
                 class="rounded-full px-2 py-0.5 text-xs font-medium"
                 :style="{
@@ -207,11 +213,23 @@ function formatPct(v: number | null): string {
                 boxShadow: runnerBusy ? 'none' : 'var(--shadow-sm)',
               }"
               :disabled="runnerBusy"
-              :title="runnerBusy ? 'Une itération tourne déjà' : 'Lance une nouvelle itération'"
+              :title="isDraft
+                ? (runnerBusy ? 'Une itération tourne déjà' : 'Lancer figera le cohort')
+                : (runnerBusy ? 'Une itération tourne déjà' : 'Lance une nouvelle itération')"
               @click="router.push(`/lab/cohorts/${cohort.id}/iterations/new`)"
             >
               <Plus class="h-3.5 w-3.5" />
               Nouvelle itération
+            </button>
+            <button
+              v-if="!isDraft"
+              class="flex items-center gap-1.5 rounded-md border px-3 py-2 text-sm transition-colors hover:bg-[var(--surface-2)]"
+              style="border-color: var(--surface-3); color: var(--ink);"
+              title="Cloner ce cohort en draft"
+              @click="handleClone"
+            >
+              <CopyIcon class="h-3.5 w-3.5" />
+              Cloner
             </button>
             <button
               class="rounded-md border p-2 transition-colors hover:bg-[var(--surface-2)]"
@@ -226,24 +244,52 @@ function formatPct(v: number | null): string {
         <div class="mt-6 h-px w-16" style="background: var(--gold);" />
       </header>
 
-      <!-- Coin list (compact) -->
-      <section class="mb-8">
-        <p
-          class="mb-2 text-[10px] font-medium uppercase"
-          style="color: var(--ink-400); letter-spacing: var(--tracking-eyebrow);"
-        >
-          Pièces (frozen)
-        </p>
+      <!-- §1 Pièces -->
+      <section class="mb-6">
+        <div class="mb-2 flex items-center justify-between">
+          <p
+            class="text-[10px] font-medium uppercase"
+            style="color: var(--ink-400); letter-spacing: var(--tracking-eyebrow);"
+          >
+            §1 Pièces ({{ cohort.eurio_ids.length }}) {{ isDraft ? '· éditable' : '· frozen' }}
+          </p>
+          <button
+            v-if="isDraft"
+            class="flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px]"
+            style="border-color: var(--surface-3); color: var(--ink);"
+            @click="goAddCoins"
+          >
+            <Plus class="h-3 w-3" />
+            Ajouter
+          </button>
+        </div>
         <div class="flex flex-wrap gap-1.5">
           <span
             v-for="eid in cohort.eurio_ids"
             :key="eid"
-            class="rounded-md border px-2 py-0.5 font-mono text-[11px]"
+            class="flex items-center gap-1 rounded-md border px-2 py-0.5 font-mono text-[11px]"
             style="border-color: var(--surface-3); background: var(--surface); color: var(--ink);"
           >
             {{ eid }}
+            <button
+              v-if="isDraft"
+              class="rounded-full p-0.5 transition-colors hover:bg-[var(--danger-soft)]"
+              :title="`Retirer ${eid}`"
+              @click="handleRemoveCoin(eid)"
+            >
+              <X class="h-2.5 w-2.5" style="color: var(--ink-400);" />
+            </button>
           </span>
         </div>
+      </section>
+
+      <!-- §2 Captures -->
+      <section class="mb-6">
+        <CaptureSection
+          :cohort-id="cohort.id"
+          :cohort-name="cohort.name"
+          :cohort-status="cohort.status"
+        />
       </section>
 
       <!-- Trajectory -->

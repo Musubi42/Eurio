@@ -201,7 +201,23 @@ class ConfusionMapComputeRequest(BaseModel):
 
 @app.get("/health", response_model=HealthResponse)
 def health():
-    """Health check — the admin frontend polls this to know if API is up."""
+    """Cheap liveness probe — no I/O, no Supabase round-trips.
+
+    The admin frontend polls this every 30s on several pages just to know
+    whether the API is up. Rich diagnostics (model version, supabase counts,
+    queue length, active runs) live behind ``/health/full`` so the polling
+    path stays fast and offline-tolerant.
+    """
+    return HealthResponse(status="ok")
+
+
+@app.get("/health/full", response_model=HealthResponse)
+def health_full():
+    """Rich health payload — hits Supabase and the local store.
+
+    Slow on cold caches (~3-5s as of 2026-04). Dashboards/CLIs that want
+    deep status should hit this; UI polling code should use ``/health``.
+    """
     resp = HealthResponse(status="ok")
 
     # Current model info
