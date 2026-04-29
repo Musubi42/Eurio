@@ -1,17 +1,17 @@
-"""
-Bench: working-resolution downscale before Hough vs current full-res Hough.
+"""Sandbox bench for the prod normalizers.
 
-Goal: measure wall-clock + parity of a `normalize()` variant that downscales
-the input to a fixed working resolution before Hough circle detection, then
-scales (cx, cy, r) back to full-res coordinates and runs the crop / mask /
-224 resize on the full-res image. The 224x224 output that feeds ArcFace is
-still produced from full-res pixels — only the detection step sees a smaller
-image.
+Runs `normalize_studio` and `normalize_device` from `ml/scan/normalize_snap.py`
+on a stratified sample (size buckets + explicit bimétal + low-contrast) and
+reports wall-clock + cross-algo parity (MAE 224×224, |Δr|, fallback rate).
+The cross-algo reference is `normalize_device`; that's the same convention
+used by `ml/tests/measure_parity_baseline.py` and the parity-contract.
 
-Usage (from repo root, inside the venv):
-    python -m ml.tests.bench_normalize
+Usage:
+    go-task ml:scan:bench-normalize -- [--per-bucket N] [--variants studio,device]
 
-No prod code modified. Variants live inside this file.
+No prod code modified by this script — it imports the prod functions and
+times them. Use it to track wall-clock evolution after micro-tweaks to
+`normalize_studio` / `normalize_device`.
 """
 from __future__ import annotations
 
@@ -28,151 +28,25 @@ from typing import Callable
 import cv2
 import numpy as np
 
-# Force line-buffered stdout so progress lines are visible in real time when
-# the user runs `python -m ml.tests.bench_normalize` in a terminal (default
-# Python stdout is block-buffered when not attached to a tty).
 sys.stdout.reconfigure(line_buffering=True)
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from scan.normalize_snap import (  # noqa: E402
+    NormalizationResult,
+    normalize_device,
+    normalize_studio,
+)
 
 
 def log(msg: str = "") -> None:
     print(msg, flush=True)
 
-# Reuse prod constants / dataclasses so parity comparisons are 1:1.
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from scan.normalize_snap import (  # noqa: E402
-    BG_COLOR,
-    COIN_MARGIN,
-    OUTPUT_SIZE,
-    NormalizationResult,
-    normalize as normalize_baseline,
-)
 
-
-# ---------------------------------------------------------------------------
-# Variants
-# ---------------------------------------------------------------------------
-
-# Cascade presets. Each entry: (pass_name, param1, param2, rmin_frac, rmax_frac).
-# `prod` mirrors normalize_snap.py exactly (parity reference).
-# `tight_radius` shrinks the radius search range — coin fills the frame on both
-# studio sources AND camera frames (capture protocol centers + frames the coin),
-# so 0.15..0.55 is much wider than physically necessary. Reducing the range cuts
-# the Hough voting + radius-refinement work proportionally.
-HOUGH_CASCADES = {
-    "prod": (
-        ("hough_tight",   100, 30, 0.15, 0.55),
-        ("hough_relaxed",  60, 22, 0.10, 0.55),
-    ),
-    "tight_radius": (
-        ("hough_tight",   100, 30, 0.35, 0.55),
-        ("hough_relaxed",  60, 22, 0.30, 0.55),
-    ),
-    "alt": (  # HOUGH_GRADIENT_ALT — param2 is perfectness ratio in [0,1]
-        ("hough_alt_tight",   300, 0.85, 0.15, 0.55),
-        ("hough_alt_relaxed", 300, 0.70, 0.10, 0.55),
-    ),
-}
-
-
-def _hough_passes_on_gray(gray: np.ndarray, short: int, img_cx: float, img_cy: float,
-                           center_tol_sq: float, passes, mode: int = cv2.HOUGH_GRADIENT):
-    """Run a Hough cascade on a grayscale image. Returns (cx, cy, r, method) or None."""
-    for pass_name, p1, p2, rmin_frac, rmax_frac in passes:
-        circles = cv2.HoughCircles(
-            gray, mode, dp=1.0, minDist=short,
-            param1=p1, param2=p2,
-            minRadius=int(short * rmin_frac),
-            maxRadius=int(short * rmax_frac),
-        )
-        if circles is None or len(circles[0]) == 0:
-            continue
-        centered = [
-            c for c in circles[0]
-            if (c[0] - img_cx) ** 2 + (c[1] - img_cy) ** 2 <= center_tol_sq
-        ]
-        if not centered:
-            continue
-        best = max(centered, key=lambda c: c[2])
-        return float(best[0]), float(best[1]), float(best[2]), pass_name
-    return None
-
-
-def _crop_mask_resize(bgr: np.ndarray, cx: int, cy: int, r: int,
-                      method: str) -> NormalizationResult:
-    """Crop tangent square + alpha mask + resize 224. Same logic as prod."""
-    h, w = bgr.shape[:2]
-    margin = int(r * COIN_MARGIN)
-    half = r + margin
-    x0 = max(0, cx - half)
-    y0 = max(0, cy - half)
-    x1 = min(w, cx + half)
-    y1 = min(h, cy + half)
-
-    side = min(x1 - x0, y1 - y0)
-    x1, y1 = x0 + side, y0 + side
-
-    crop = bgr[y0:y1, x0:x1].copy()
-    if crop.size == 0:
-        return NormalizationResult(image=None, debug={"error": "empty crop"})
-
-    crop_cx = cx - x0
-    crop_cy = cy - y0
-
-    mask = np.zeros(crop.shape[:2], dtype=np.uint8)
-    cv2.circle(mask, (crop_cx, crop_cy), r, 255, -1)
-    bg = np.full_like(crop, BG_COLOR, dtype=np.uint8)
-    crop = np.where(mask[..., None].astype(bool), crop, bg)
-
-    out = cv2.resize(crop, (OUTPUT_SIZE, OUTPUT_SIZE), interpolation=cv2.INTER_AREA)
-    return NormalizationResult(
-        image=out, cx=cx, cy=cy, r=r, method=method,
-        debug={"input_size": (w, h), "crop_side": side, "margin_px": margin},
-    )
-
-
-def normalize_workres(bgr: np.ndarray, work_long_side: int | None,
-                       cascade: str = "prod",
-                       mode: int = cv2.HOUGH_GRADIENT) -> NormalizationResult:
-    """Variant: optionally downscale to fixed working res, run Hough cascade,
-    scale detection back to full-res, then crop/mask/resize on full-res.
-    `work_long_side=None` → no downscale (full-res Hough)."""
-    if bgr is None or bgr.size == 0:
-        return NormalizationResult(image=None, debug={"error": "empty input"})
-
-    h, w = bgr.shape[:2]
-    long_side = max(h, w)
-    if work_long_side is not None and long_side > work_long_side:
-        scale = work_long_side / long_side
-        small = cv2.resize(bgr, (int(round(w * scale)), int(round(h * scale))),
-                           interpolation=cv2.INTER_AREA)
-    else:
-        scale = 1.0
-        small = bgr
-
-    sh, sw = small.shape[:2]
-    short = min(sh, sw)
-    gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
-    gray = cv2.medianBlur(gray, 5)
-    img_cx, img_cy = sw / 2.0, sh / 2.0
-    center_tol_sq = (0.30 * short) ** 2
-
-    passes = HOUGH_CASCADES[cascade]
-    det = _hough_passes_on_gray(gray, short, img_cx, img_cy, center_tol_sq, passes, mode)
-    if det is None:
-        return NormalizationResult(image=None, debug={"error": "no circle"})
-
-    cx_lo, cy_lo, r_lo, method = det
-    inv_scale = 1.0 / scale
-    cx = int(round(cx_lo * inv_scale))
-    cy = int(round(cy_lo * inv_scale))
-    r = int(round(r_lo * inv_scale))
-    return _crop_mask_resize(bgr, cx, cy, r, method)
-
-
-def normalize_alt(bgr: np.ndarray) -> NormalizationResult:
-    """HOUGH_GRADIENT_ALT, full-res, prod cascade (with ALT-style params)."""
-    return normalize_workres(bgr, work_long_side=None, cascade="alt",
-                              mode=cv2.HOUGH_GRADIENT_ALT)
+# Phase A explicit IDs. Picked from coin_catalog.json + a contrast-ranking
+# script (see implementation-plan.md §Phase A Log). All present in
+# ml/datasets/<id>/obverse.jpg.
+EXPLICIT_BIMETAL = [64, 9761, 2193, 2163, 5055, 28191]
+EXPLICIT_LOW_CONTRAST = [2180, 164656, 3911, 168218]
 
 
 # ---------------------------------------------------------------------------
@@ -185,22 +59,21 @@ class RunResult:
     image_id: str
     input_w: int
     input_h: int
-    wall_ms: float           # median over RUNS
+    wall_ms: float
     success: bool
+    tags: tuple[str, ...] = ()
     cx: int = 0
     cy: int = 0
     r: int = 0
     method: str = "failed"
-    out: np.ndarray | None = None  # 224x224 BGR
+    out: np.ndarray | None = None
     timed_out: bool = False
+    fallback_reason: str | None = None
 
 
 def _time_variant(fn: Callable[[], NormalizationResult], runs: int,
-                   warmup: bool, max_seconds: float | None) -> tuple[float, NormalizationResult, bool]:
-    """Run `fn` `runs` times (median wall-clock returned in ms). If
-    `max_seconds` is set and any single invocation exceeds it, abort and
-    return what we have with `timed_out=True`. `warmup` adds an extra
-    invocation before timing starts."""
+                   warmup: bool, max_seconds: float | None
+                   ) -> tuple[float, NormalizationResult, bool]:
     last = None
     if warmup:
         t0 = time.perf_counter()
@@ -220,7 +93,6 @@ def _time_variant(fn: Callable[[], NormalizationResult], runs: int,
 
 
 def _diff_metrics(base: np.ndarray, var: np.ndarray) -> dict:
-    """Compare two 224x224 BGR uint8 outputs."""
     if base is None or var is None:
         return {"mae": float("nan"), "max": 255, "pct_diff": 100.0}
     if base.shape != var.shape:
@@ -233,8 +105,12 @@ def _diff_metrics(base: np.ndarray, var: np.ndarray) -> dict:
     }
 
 
-def sample_dataset(root: Path, per_bucket: int, seed: int = 42) -> list[Path]:
-    """Pick `per_bucket` images per size bucket, deterministic (seed)."""
+def sample_dataset(root: Path, per_bucket: int, seed: int = 42,
+                    explicit_bimetal: list[int] | None = None,
+                    explicit_low_contrast: list[int] | None = None,
+                    ) -> list[tuple[Path, tuple[str, ...]]]:
+    """Pick `per_bucket` images per size bucket (deterministic seed) plus the
+    optional explicit ID lists. Returns (path, tags)."""
     pool: list[tuple[int, Path]] = []
     for d in sorted(os.listdir(root)):
         p = root / d / "obverse.jpg"
@@ -254,12 +130,40 @@ def sample_dataset(root: Path, per_bucket: int, seed: int = 42) -> list[Path]:
         elif full < 1800: by_bucket["1200-1800"].append(p)
         elif full < 2400: by_bucket["1800-2400"].append(p)
         else: by_bucket["2400+"].append(p)
-    chosen: list[Path] = []
+    bucket_of_path: dict[Path, str] = {}
+    for name, lst in by_bucket.items():
+        for p in lst:
+            bucket_of_path[p] = name
+
+    chosen: dict[Path, set[str]] = {}
     for name, lst in by_bucket.items():
         rng.shuffle(lst)
-        chosen.extend(lst[:per_bucket])
+        for p in lst[:per_bucket]:
+            chosen.setdefault(p, set()).add(f"bucket:{name}")
         log(f"    bucket {name:11s}: {len(lst):4d} available, {min(per_bucket, len(lst)):2d} sampled")
-    return chosen
+
+    def _add_explicit(ids: list[int], tag: str) -> None:
+        added = 0
+        missing = []
+        for i in ids:
+            p = root / str(i) / "obverse.jpg"
+            if not p.is_file():
+                missing.append(i)
+                continue
+            chosen.setdefault(p, set()).add(tag)
+            b = bucket_of_path.get(p, "?")
+            if b != "?":
+                chosen[p].add(f"bucket:{b}")
+            added += 1
+        log(f"    explicit {tag:14s}: {added}/{len(ids)} added"
+            + (f" (missing: {missing})" if missing else ""))
+
+    if explicit_bimetal:
+        _add_explicit(explicit_bimetal, "bimetal")
+    if explicit_low_contrast:
+        _add_explicit(explicit_low_contrast, "low_contrast")
+
+    return [(p, tuple(sorted(tags))) for p, tags in chosen.items()]
 
 
 def fmt_table(rows: list[list[str]]) -> str:
@@ -274,16 +178,16 @@ def fmt_table(rows: list[list[str]]) -> str:
     return "\n".join(out)
 
 
-def main():
+def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--per-bucket", type=int, default=6,
-                    help="images sampled per size bucket (4 buckets total)")
+    ap.add_argument("--per-bucket", type=int, default=6)
     ap.add_argument("--datasets", default="ml/datasets")
     ap.add_argument("--out-dir", default="ml/tests/_bench_out")
-    ap.add_argument("--max-seconds-per-cell", type=float, default=120.0,
-                    help="abort a single (image, variant) if any run exceeds this")
-    ap.add_argument("--include-alt", action="store_true",
-                    help="also bench HOUGH_GRADIENT_ALT (slow, full-res)")
+    ap.add_argument("--max-seconds-per-cell", type=float, default=30.0)
+    ap.add_argument("--skip-explicit", action="store_true",
+                    help="skip the bimétal + low-contrast explicit IDs")
+    ap.add_argument("--variants", default=None,
+                    help="comma-separated subset (default: studio,device)")
     args = ap.parse_args()
 
     root = Path(args.datasets).resolve()
@@ -294,40 +198,48 @@ def main():
     log(f"  datasets root        = {root}")
     log(f"  per-bucket           = {args.per_bucket}")
     log(f"  max-seconds-per-cell = {args.max_seconds_per_cell}")
-    log(f"  include-alt          = {args.include_alt}")
+    log(f"  skip-explicit        = {args.skip_explicit}")
     log(f"  out-dir              = {out_dir}")
     log("")
     log("Sampling images…")
 
-    paths = sample_dataset(root, args.per_bucket)
-    log(f"  → {len(paths)} images selected\n")
+    sampled = sample_dataset(
+        root, args.per_bucket,
+        explicit_bimetal=None if args.skip_explicit else EXPLICIT_BIMETAL,
+        explicit_low_contrast=None if args.skip_explicit else EXPLICIT_LOW_CONTRAST,
+    )
+    log(f"  → {len(sampled)} images selected\n")
 
-    # Order matters: cheap variants first so partial-run cancellation still
-    # gives useful workres_* numbers. Per-variant `runs`: workres_* needs
-    # tight timing precision (median of 3); baseline / alt_fullres are slow
-    # parity-reference variants where we only need the output, not the wall.
+    # Two prod variants. Reference for parity = `device`.
     variants: list[tuple[str, Callable[[np.ndarray], NormalizationResult], int, bool]] = [
-        # name,                       fn,                                                                runs, warmup
-        ("workres_1024_tightR",       lambda b: normalize_workres(b, 1024, cascade="tight_radius"),       3,    True),
-        ("workres_1024_prodR",        lambda b: normalize_workres(b, 1024, cascade="prod"),               3,    True),
-        ("fullres_tightR",            lambda b: normalize_workres(b, None, cascade="tight_radius"),       3,    True),
+        # name,    fn,                               runs, warmup
+        ("studio", lambda b: normalize_studio(b),    3,    True),
+        ("device", lambda b: normalize_device(b),    3,    True),
     ]
-    if args.include_alt:
-        variants.append(("alt_fullres", lambda b: normalize_alt(b), 1, False))
-    variants.append(("baseline", lambda b: normalize_baseline(b),   1, False))
+    if args.variants:
+        wanted = {v.strip() for v in args.variants.split(",") if v.strip()}
+        variants = [v for v in variants if v[0] in wanted]
+        log(f"  variant filter        = {sorted(wanted)} → {[v[0] for v in variants]}")
+    if not variants:
+        log("  no variants selected — abort.")
+        return
 
     variant_names = [v[0] for v in variants]
     by_image: dict[str, dict[str, RunResult]] = {}
+    tags_of: dict[str, tuple[str, ...]] = {}
     bench_t0 = time.perf_counter()
 
-    for i, p in enumerate(paths, 1):
+    for i, (p, tags) in enumerate(sampled, 1):
         bgr = cv2.imread(str(p), cv2.IMREAD_COLOR)
         if bgr is None:
-            log(f"[{i:2d}/{len(paths)}] {p.parent.name}  SKIP (cv2.imread failed)")
+            log(f"[{i:2d}/{len(sampled)}] {p.parent.name}  SKIP (cv2.imread failed)")
             continue
         h, w = bgr.shape[:2]
         image_id = p.parent.name
-        log(f"[{i:2d}/{len(paths)}] id={image_id}  {w}x{h}  (bench elapsed {time.perf_counter()-bench_t0:.0f}s)")
+        tags_of[image_id] = tags
+        tag_str = ",".join(tags) if tags else "-"
+        log(f"[{i:2d}/{len(sampled)}] id={image_id}  {w}x{h}  tags=[{tag_str}]  "
+            f"(bench elapsed {time.perf_counter()-bench_t0:.0f}s)")
         by_image[image_id] = {}
         for k, (name, fn, runs, warmup) in enumerate(variants, 1):
             t_cell = time.perf_counter()
@@ -337,127 +249,140 @@ def main():
                     max_seconds=args.max_seconds_per_cell,
                 )
             except Exception as e:
-                log(f"   [{k}/{len(variants)}] {name:14s}  ERROR: {e}")
+                log(f"   [{k}/{len(variants)}] {name:8s}  ERROR: {e}")
                 continue
             ok = res.image is not None
             cell_wall = time.perf_counter() - t_cell
+            fb = res.debug.get("fallback_reason") if res.debug else None
             by_image[image_id][name] = RunResult(
                 variant=name, image_id=image_id, input_w=w, input_h=h,
-                wall_ms=ms, success=ok,
+                wall_ms=ms, success=ok, tags=tags,
                 cx=res.cx, cy=res.cy, r=res.r,
                 method=res.method, out=res.image, timed_out=timed_out,
+                fallback_reason=fb,
             )
-            tag = " TIMEOUT" if timed_out else ""
-            log(f"   [{k}/{len(variants)}] {name:14s}  median={ms:8.1f}ms  cell={cell_wall:5.1f}s  ok={ok}  c=({res.cx:5d},{res.cy:5d}) r={res.r:5d}  m={res.method}{tag}")
+            timeout_marker = " TIMEOUT" if timed_out else ""
+            fb_marker = f" fb={fb}" if fb else ""
+            log(f"   [{k}/{len(variants)}] {name:8s}  median={ms:8.1f}ms  "
+                f"cell={cell_wall:5.1f}s  ok={ok}  c=({res.cx:5d},{res.cy:5d}) "
+                f"r={res.r:5d}  m={res.method}{timeout_marker}{fb_marker}")
 
     log(f"\nBench finished in {time.perf_counter()-bench_t0:.1f}s")
 
-    # ----- Aggregate summary -----
-    log("\n\n=== Summary: median wall-clock per variant per size bucket (ms) ===")
+    ref_name = "device"
     bucket_of = lambda w, h: (
         "<1200" if max(w, h) < 1200 else
         "1200-1800" if max(w, h) < 1800 else
         "1800-2400" if max(w, h) < 2400 else
         "2400+"
     )
+
+    # ----- Wall-clock per variant per size bucket -----
+    log("\n\n=== Median wall-clock per variant per size bucket (ms) ===")
     times_bucket: dict[tuple[str, str], list[float]] = {}
     for img, runs in by_image.items():
-        if "baseline" not in runs:
+        anyr = next(iter(runs.values()), None)
+        if anyr is None:
             continue
-        b = bucket_of(runs["baseline"].input_w, runs["baseline"].input_h)
+        b = bucket_of(anyr.input_w, anyr.input_h)
         for name, r in runs.items():
             times_bucket.setdefault((b, name), []).append(r.wall_ms)
     buckets = ["<1200", "1200-1800", "1800-2400", "2400+"]
-    rows = [["variant"] + buckets]
+    rows = [["variant"] + buckets + ["all"]]
     for name in variant_names:
         row = [name]
+        all_vals = []
         for b in buckets:
             vals = times_bucket.get((b, name), [])
+            all_vals.extend(vals)
             row.append(f"{statistics.median(vals):.0f}" if vals else "-")
+        row.append(f"{statistics.median(all_vals):.0f}" if all_vals else "-")
         rows.append(row)
     log(fmt_table(rows))
 
-    # ----- Parity vs baseline -----
-    log("\n=== Parity vs baseline (224x224 output diff + center/radius delta) ===")
-    log("Reported: median over images where both succeeded")
-    rows = [["variant", "n_ok", "miss_vs_base", "|Δcx| px", "|Δcy| px", "|Δr| px",
-             "mae 224", "max 224", "pct>1/255"]]
-    for name in variant_names:
-        if name == "baseline":
-            continue
-        d_cx, d_cy, d_r = [], [], []
-        mae, mx, pct = [], [], []
-        n_ok = 0
-        miss = 0
+    # ----- Studio fallback rate -----
+    if "studio" in variant_names:
+        log("\n=== studio fallback rate per tag ===")
+        rows = [["tag", "n", "n_fallback", "fallback %", "ids_fallback"]]
+        groups: dict[str, list[RunResult]] = {"all": []}
         for img, runs in by_image.items():
-            b = runs.get("baseline")
-            v = runs.get(name)
-            if not (b and v):
+            r = runs.get("studio")
+            if r is None:
                 continue
-            if not b.success:
+            groups["all"].append(r)
+            for t in tags_of.get(img, ()):
+                groups.setdefault(t, []).append(r)
+        for tag in ["all"] + [t for t in sorted(groups) if t != "all"]:
+            results = groups.get(tag, [])
+            if not results:
                 continue
-            if not v.success:
-                miss += 1
-                continue
-            n_ok += 1
-            d_cx.append(abs(b.cx - v.cx))
-            d_cy.append(abs(b.cy - v.cy))
-            d_r.append(abs(b.r - v.r))
-            m = _diff_metrics(b.out, v.out)
-            mae.append(m["mae"]); mx.append(m["max"]); pct.append(m["pct_diff"])
-        med = lambda lst: f"{statistics.median(lst):.2f}" if lst else "-"
-        mx_max = lambda lst: f"{max(lst)}" if lst else "-"
-        rows.append([
-            name, str(n_ok), str(miss),
-            med(d_cx), med(d_cy), med(d_r),
-            med(mae), mx_max(mx), med(pct),
-        ])
-    log(fmt_table(rows))
+            fb = [r for r in results
+                  if r.method.startswith("contour_fallback") or not r.success]
+            ids_fb = ",".join(sorted({r.image_id for r in fb}))[:60]
+            rows.append([tag, str(len(results)), str(len(fb)),
+                         f"{100.0*len(fb)/len(results):.1f}",
+                         ids_fb or "-"])
+        log(fmt_table(rows))
 
-    # ----- Worst-case per variant -----
-    log("\n=== Worst-case parity per variant (max |Δr| across all images) ===")
-    rows = [["variant", "image_id", "input", "Δcx", "Δcy", "Δr", "mae", "max"]]
-    for name in variant_names:
-        if name == "baseline":
-            continue
-        worst = None
-        for img, runs in by_image.items():
-            b = runs.get("baseline"); v = runs.get(name)
-            if not (b and v and b.success and v.success):
+    # ----- Parity vs device -----
+    if ref_name in variant_names and len(variant_names) >= 2:
+        log(f"\n=== Parity vs {ref_name} (224×224 output diff + |Δr|) ===")
+        rows = [["variant", "n_ok", "miss_vs_ref", "|Δcx| px", "|Δcy| px",
+                 "|Δr| px", "mae 224 (med)", "mae 224 (p95)", "max 224 (max)"]]
+        for name in variant_names:
+            if name == ref_name:
                 continue
-            dr = abs(b.r - v.r)
-            if worst is None or dr > worst[0]:
-                m = _diff_metrics(b.out, v.out)
-                worst = (dr, img, b, v, m)
-        if worst:
-            dr, img, b, v, m = worst
-            rows.append([name, img, f"{b.input_w}x{b.input_h}",
-                         str(b.cx - v.cx), str(b.cy - v.cy), str(dr),
-                         f"{m['mae']:.2f}", str(m["max"])])
-    log(fmt_table(rows))
+            d_cx, d_cy, d_r, mae, mx = [], [], [], [], []
+            n_ok = 0
+            miss = 0
+            for img, runs in by_image.items():
+                ref = runs.get(ref_name); v = runs.get(name)
+                if not (ref and v):
+                    continue
+                if not ref.success:
+                    continue
+                if not v.success:
+                    miss += 1
+                    continue
+                n_ok += 1
+                d_cx.append(abs(ref.cx - v.cx))
+                d_cy.append(abs(ref.cy - v.cy))
+                d_r.append(abs(ref.r - v.r))
+                m = _diff_metrics(ref.out, v.out)
+                mae.append(m["mae"]); mx.append(m["max"])
+            med = lambda lst: f"{statistics.median(lst):.2f}" if lst else "-"
+            p95 = lambda lst: f"{np.percentile(lst, 95):.2f}" if lst else "-"
+            rows.append([name, str(n_ok), str(miss),
+                         med(d_cx), med(d_cy), med(d_r),
+                         med(mae), p95(mae),
+                         f"{max(mx)}" if mx else "-"])
+        log(fmt_table(rows))
 
-    # ----- Dump worst diffs to disk -----
-    dumped = 0
-    for name in variant_names:
-        if name == "baseline":
-            continue
-        worst_dr = -1
-        worst = None
+    # ----- Worst-case triptychs (top-3 MAE) -----
+    if "studio" in variant_names and ref_name in variant_names:
+        ranked: list[tuple[float, str, RunResult, RunResult]] = []
         for img, runs in by_image.items():
-            b = runs.get("baseline"); v = runs.get(name)
-            if not (b and v and b.success and v.success):
+            ref = runs.get(ref_name); v = runs.get("studio")
+            if not (ref and v and ref.success and v.success):
                 continue
-            dr = abs(b.r - v.r)
-            if dr > worst_dr:
-                worst_dr = dr
-                worst = (img, b, v)
-        if worst and worst[1].out is not None and worst[2].out is not None:
-            img, b, v = worst
-            row = np.hstack([b.out, v.out, np.abs(b.out.astype(np.int16) - v.out.astype(np.int16)).clip(0, 255).astype(np.uint8)])
-            cv2.imwrite(str(out_dir / f"worst_{name}_{img}.png"), row)
+            m = _diff_metrics(ref.out, v.out)
+            ranked.append((m["mae"], img, ref, v))
+        ranked.sort(key=lambda x: -x[0])
+        dumped = 0
+        for k, (mae, img, ref, v) in enumerate(ranked[:3]):
+            if v.out is None or ref.out is None:
+                continue
+            row = np.hstack([
+                ref.out, v.out,
+                np.abs(ref.out.astype(np.int16) - v.out.astype(np.int16))
+                  .clip(0, 255).astype(np.uint8),
+            ])
+            tagstr = "_".join(tags_of.get(img, ())) or "untagged"
+            cv2.imwrite(str(out_dir / f"worst_studio_mae{k+1}_{img}_{tagstr}.png"),
+                        row)
             dumped += 1
-    if dumped:
-        log(f"\nWrote {dumped} worst-case triptychs (baseline | variant | abs diff) → {out_dir}")
+        if dumped:
+            log(f"\nWrote {dumped} worst-case triptychs (device | studio | abs_diff) → {out_dir}")
 
 
 if __name__ == "__main__":
