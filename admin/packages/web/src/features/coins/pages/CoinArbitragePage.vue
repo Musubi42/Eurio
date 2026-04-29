@@ -127,7 +127,7 @@ function formatScore(score: number): string {
           <div class="w-28 h-28 shrink-0 rounded-lg overflow-hidden flex items-center justify-center"
                style="background: var(--surface-1);">
             <img
-              :src="`http://localhost:8042/images/${currentEntry.numista_id}/source`"
+              :src="`http://127.0.0.1:8042/images/${currentEntry.numista_id}/source`"
               :alt="currentEntry.numista_name"
               class="w-full h-full object-cover"
               @error="(e) => (e.target as HTMLImageElement).style.display = 'none'"

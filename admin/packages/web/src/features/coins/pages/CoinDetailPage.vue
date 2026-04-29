@@ -40,7 +40,7 @@ const selectedImage = ref<CoinImage | null>(null)
 const trainedModelVersion = ref<string | null>(null)
 
 // Training enqueue
-const ML_API = 'http://localhost:8042'
+const ML_API = 'http://127.0.0.1:8042'
 const enqueueState = ref<'idle' | 'loading' | 'success'>('idle')
 
 // Confusion-map detail (Phase 1 ML scalability)

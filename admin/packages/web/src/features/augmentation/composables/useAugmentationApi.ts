@@ -1,6 +1,6 @@
 // Fetch wrappers for the /augmentation/* subsystem served by the local ML API.
 //
-// Same host as the training composable (http://localhost:8042). Thin layer —
+// Same host as the training composable (http://127.0.0.1:8042). Thin layer —
 // all error handling + retry happens at the caller site, since the ergonomics
 // depend on the action (preview vs save vs load).
 

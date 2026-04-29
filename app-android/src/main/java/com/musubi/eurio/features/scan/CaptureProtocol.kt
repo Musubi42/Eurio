@@ -1,27 +1,34 @@
 package com.musubi.eurio.features.scan
 
 import android.content.Context
+import android.os.Environment
 import android.util.Log
+import java.io.File
 
 /**
  * Capture protocol — drives the debug "capture" walkthrough that produces
  * golden eval snaps (the data we copy into ml/datasets/eval_real for the
  * train↔inference gap measurement).
  *
- * The coin list is loaded at app startup from
- * ``app-android/src/main/assets/capture_coins.csv`` so it can be edited
- * by hand and bundled into the APK on install — no code change needed
- * to grow the eval set from 4 → 24 → N classes.
+ * The coin list is loaded at app startup. Two sources, in priority order:
+ *  1. Runtime override — ``getExternalFilesDir(DIRECTORY_DOCUMENTS)/eurio_capture/cohort.csv``.
+ *     Pushed by the admin web (cohort capture flow) via ``adb push``. App-scoped
+ *     external storage: writable by adb, readable by the app, no permission needed.
+ *  2. Bundled asset — ``app-android/src/main/assets/capture_coins.csv``.
+ *     Default debug capture set, ships with the APK. Used when no runtime
+ *     override is present (demo mode).
  *
  * The step list stays hardcoded: it's the protocol itself (lighting +
  * background + tilt conditions), not a per-coin payload.
  *
- * See docs/scan-normalization/phase-0-capture.md.
+ * See docs/scan-normalization/phase-0-capture.md and
+ * docs/admin/cohort-capture-flow/design.md.
  */
 object CaptureProtocol {
 
     private const val TAG = "CaptureProtocol"
     private const val ASSET_PATH = "capture_coins.csv"
+    private const val OVERRIDE_RELATIVE_PATH = "eurio_capture/cohort.csv"
 
     data class Step(val id: String, val label: String)
 
@@ -59,14 +66,33 @@ object CaptureProtocol {
      * empty lines and ``#``-prefixed comment lines are tolerated.
      */
     fun init(context: Context) {
+        val override = runCatching { readRuntimeOverride(context) }
+            .onFailure { Log.w(TAG, "Runtime override read failed", it) }
+            .getOrNull()
+        if (override != null && override.isNotEmpty()) {
+            _coins = override
+            Log.i(TAG, "Loaded ${_coins.size} coin(s) from runtime override $OVERRIDE_RELATIVE_PATH")
+            return
+        }
         _coins = runCatching { readAsset(context) }
             .onFailure { Log.e(TAG, "Failed to load $ASSET_PATH", it) }
             .getOrDefault(emptyList())
-        Log.i(TAG, "Loaded ${_coins.size} coin(s) from $ASSET_PATH")
+        Log.i(TAG, "Loaded ${_coins.size} coin(s) from asset $ASSET_PATH")
+    }
+
+    private fun readRuntimeOverride(context: Context): List<Coin>? {
+        val docs = context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS) ?: return null
+        val file = File(docs, OVERRIDE_RELATIVE_PATH)
+        if (!file.isFile) return null
+        return parseCsv(file.readLines(), source = file.absolutePath)
     }
 
     private fun readAsset(context: Context): List<Coin> {
         val lines = context.assets.open(ASSET_PATH).bufferedReader().use { it.readLines() }
+        return parseCsv(lines, source = ASSET_PATH)
+    }
+
+    private fun parseCsv(lines: List<String>, source: String): List<Coin> {
         val out = mutableListOf<Coin>()
         var sawHeader = false
         for ((idx, raw) in lines.withIndex()) {
@@ -74,7 +100,7 @@ object CaptureProtocol {
             if (line.isEmpty() || line.startsWith("#")) continue
             val parts = line.split(';').map { it.trim() }
             if (parts.size < 3) {
-                Log.w(TAG, "$ASSET_PATH:${idx + 1} expects 3+ columns, got ${parts.size} → skipped")
+                Log.w(TAG, "$source:${idx + 1} expects 3+ columns, got ${parts.size} → skipped")
                 continue
             }
             // Skip the header row (first non-empty, non-comment line whose
@@ -87,7 +113,7 @@ object CaptureProtocol {
             val eurioId = parts[0]
             val displayName = parts[2]
             if (eurioId.isEmpty() || displayName.isEmpty()) {
-                Log.w(TAG, "$ASSET_PATH:${idx + 1} empty eurio_id or display_name → skipped")
+                Log.w(TAG, "$source:${idx + 1} empty eurio_id or display_name → skipped")
                 continue
             }
             out.add(Coin(eurioId = eurioId, displayName = displayName))

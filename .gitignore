@@ -47,6 +47,7 @@ ml/.dataset_cache/
 ml/state/training.db
 ml/state/training.db-wal
 ml/state/training.db-shm
+ml/state/cohort_csvs/
 ml/cache/dinov2_inputs/*.webp
 
 # Real-photo benchmark hold-out — NEVER committed. These photos are the

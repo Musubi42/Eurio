@@ -18,10 +18,19 @@ class_id == eurio_id anyway).
 
 Usage:
     python -m scan.sync_eval_real <debug_pull_dir>
+    python -m scan.sync_eval_real <debug_pull_dir> --also-write-captures
+
+When ``--also-write-captures`` is set, every successfully normalized image is
+*additionally* copied into ``ml/datasets/<numista_id>/captures/<step>.jpg``
+(canonical capture store, eurio_id → numista_id via api.coin_lookup). Existing
+files in captures/ are not overwritten unless ``--overwrite`` is given.
 
 After running, prepare_dataset.py auto-detects the eval_real_norm/ tree and
 populates each class's val/ split with these normalized device snaps,
 replacing the (often empty) studio val split.
+
+The :func:`sync` function is also called directly by the FastAPI endpoint
+``POST /lab/cohorts/{id}/captures/sync`` and returns a structured report.
 """
 from __future__ import annotations
 
@@ -29,6 +38,8 @@ import argparse
 import json
 import shutil
 import sys
+import time
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import cv2
@@ -63,10 +74,108 @@ def _resolve_eval_real(pull_dir: Path) -> Path:
     ):
         if candidate.is_dir() and any(candidate.glob("*/*.jpg")):
             return candidate
-    raise SystemExit(
+    raise FileNotFoundError(
         f"Could not locate eval_real/ under {pull_dir} "
         "(expected <pull>/eurio_debug/eval_real/<class>/<step>_raw.jpg)"
     )
+
+
+@dataclass
+class SyncReport:
+    pull_dir: str
+    output_dir: str
+    total_files: int = 0
+    normalized: int = 0
+    failures: list[str] = field(default_factory=list)
+    per_class: dict[str, dict] = field(default_factory=dict)
+    captures_copied: int = 0
+    captures_skipped_existing: int = 0
+    captures_unmapped_eurio_ids: list[str] = field(default_factory=list)
+    duration_s: float = 0.0
+
+    def to_dict(self) -> dict:
+        return {
+            "pull_dir": self.pull_dir,
+            "output_dir": self.output_dir,
+            "total_files": self.total_files,
+            "normalized": self.normalized,
+            "failures": self.failures,
+            "per_class": self.per_class,
+            "captures_copied": self.captures_copied,
+            "captures_skipped_existing": self.captures_skipped_existing,
+            "captures_unmapped_eurio_ids": self.captures_unmapped_eurio_ids,
+            "duration_s": round(self.duration_s, 2),
+        }
+
+
+def sync(
+    pull_dir: Path,
+    *,
+    output: Path = DEFAULT_OUTPUT,
+    clear: bool = False,
+    also_write_captures: bool = False,
+    overwrite: bool = False,
+) -> SyncReport:
+    """Programmatic entry point. Mirrors the CLI flags."""
+    started = time.time()
+    src_root = _resolve_eval_real(pull_dir)
+    if clear and output.exists():
+        shutil.rmtree(output)
+    output.mkdir(parents=True, exist_ok=True)
+
+    raw_files = sorted(src_root.glob("*/*_raw.jpg"))
+    report = SyncReport(pull_dir=str(pull_dir), output_dir=str(output))
+    report.total_files = len(raw_files)
+
+    if also_write_captures:
+        # Lazy import — keep the script usable without FastAPI deps.
+        from api import coin_lookup  # noqa: WPS433
+    else:
+        coin_lookup = None  # type: ignore[assignment]
+
+    by_class: dict[str, list[bool]] = {}
+    for raw in raw_files:
+        eurio_id = raw.parent.name
+        step_id = raw.stem.removesuffix("_raw")
+        result = normalize_device_path(raw)
+        ok = result.image is not None
+        by_class.setdefault(eurio_id, []).append(ok)
+        if not ok:
+            report.failures.append(str(raw))
+            continue
+        out_dir = output / eurio_id
+        out_dir.mkdir(parents=True, exist_ok=True)
+        cv2.imwrite(
+            str(out_dir / f"{step_id}.jpg"),
+            result.image,
+            [cv2.IMWRITE_JPEG_QUALITY, 95],
+        )
+        report.normalized += 1
+
+        if also_write_captures and coin_lookup is not None:
+            nid = coin_lookup.numista_id_for(eurio_id)
+            if nid is None:
+                if eurio_id not in report.captures_unmapped_eurio_ids:
+                    report.captures_unmapped_eurio_ids.append(eurio_id)
+            else:
+                cap_dir = CAPTURES_BASE / str(nid) / "captures"
+                cap_dir.mkdir(parents=True, exist_ok=True)
+                cap_path = cap_dir / f"{step_id}.jpg"
+                if cap_path.exists() and not overwrite:
+                    report.captures_skipped_existing += 1
+                else:
+                    cv2.imwrite(
+                        str(cap_path),
+                        result.image,
+                        [cv2.IMWRITE_JPEG_QUALITY, 95],
+                    )
+                    report.captures_copied += 1
+
+    for cls, results in sorted(by_class.items()):
+        report.per_class[cls] = {"normalized": sum(results), "total": len(results)}
+
+    report.duration_s = time.time() - started
+    return report
 
 
 def main() -> int:
@@ -80,6 +189,10 @@ def main() -> int:
                          f"(default: {DEFAULT_MANIFEST})")
     ap.add_argument("--clear", action="store_true",
                     help="Wipe the output dir before writing (avoids stale classes)")
+    ap.add_argument("--also-write-captures", action="store_true",
+                    help="Also copy each normalized image to ml/datasets/<numista_id>/captures/")
+    ap.add_argument("--overwrite", action="store_true",
+                    help="With --also-write-captures, overwrite existing captures/<step>.jpg")
     args = ap.parse_args()
 
     eurio_to_class = _load_eurio_to_class(args.manifest)
@@ -132,7 +245,7 @@ def main() -> int:
         print(f"Failures ({len(failures)}):")
         for f in failures:
             print(f"  ✗ {f}")
-    return 0 if not failures else 2
+    return 0 if not report.failures else 2
 
 
 if __name__ == "__main__":

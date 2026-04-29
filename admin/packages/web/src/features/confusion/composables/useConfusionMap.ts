@@ -7,7 +7,7 @@ import type {
 import { firstImageUrl } from '@/shared/utils/coin-images'
 import { zoneFromSimilarity } from './useConfusionZone'
 
-export const ML_API = 'http://localhost:8042'
+export const ML_API = 'http://127.0.0.1:8042'
 export const ENCODER_VERSION = 'dinov2-vits14'
 
 /* ───────── Types ───────── */
