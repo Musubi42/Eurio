@@ -1,0 +1,497 @@
+{
+  "manifest": "tests/parity_dataset.yaml",
+  "ref": "wr_1024_tightR",
+  "cand": "studio_contour",
+  "n_measured": 34,
+  "control": {
+    "mae_p95": 0.0,
+    "mae_max": 0.0,
+    "max_max": 0
+  },
+  "cross_full": {
+    "mae_p95": 29.93422984428146,
+    "mae_p99": 32.6333587771046,
+    "max_p99": 255.0
+  },
+  "hough_ok_count": 22,
+  "hough_trap_count": 12,
+  "recommendations": [
+    {
+      "scope": "full_manifest",
+      "n": 34,
+      "epsilon": 35.921075813137755,
+      "M_max": 306.0,
+      "p95_mae": 29.93422984428146,
+      "p99_max": 255.0
+    },
+    {
+      "scope": "hough_ok_subset",
+      "n": 22,
+      "epsilon": 3.0,
+      "M_max": 306.0,
+      "p95_mae": 2.3437606292517006,
+      "p99_max": 255.0
+    }
+  ],
+  "per_image": [
+    {
+      "numista_id": 64,
+      "tags": [
+        "bimetal_stable",
+        "standard",
+        "training"
+      ],
+      "delta_r_px": 56,
+      "control_mae": 0.0,
+      "control_max": 0,
+      "cross_mae": 22.356505102040817,
+      "cross_max": 236,
+      "fallback_reason": null
+    },
+    {
+      "numista_id": 9761,
+      "tags": [
+        "bimetal_stable",
+        "standard",
+        "training"
+      ],
+      "delta_r_px": 3,
+      "control_mae": 0.0,
+      "control_max": 0,
+      "cross_mae": 1.1803784013605443,
+      "cross_max": 130,
+      "fallback_reason": null
+    },
+    {
+      "numista_id": 6292,
+      "tags": [
+        "bimetal_stable",
+        "standard",
+        "training"
+      ],
+      "delta_r_px": 4,
+      "control_mae": 0.0,
+      "control_max": 0,
+      "cross_mae": 1.5089950042517006,
+      "cross_max": 170,
+      "fallback_reason": null
+    },
+    {
+      "numista_id": 6293,
+      "tags": [
+        "bimetal_stable",
+        "standard",
+        "training"
+      ],
+      "delta_r_px": 4,
+      "control_mae": 0.0,
+      "control_max": 0,
+      "cross_mae": 1.662202380952381,
+      "cross_max": 223,
+      "fallback_reason": null
+    },
+    {
+      "numista_id": 88,
+      "tags": [
+        "bimetal_stable",
+        "standard",
+        "training"
+      ],
+      "delta_r_px": 13,
+      "control_mae": 0.0,
+      "control_max": 0,
+      "cross_mae": 1.7452699829931972,
+      "cross_max": 173,
+      "fallback_reason": null
+    },
+    {
+      "numista_id": 6364,
+      "tags": [
+        "standard",
+        "training"
+      ],
+      "delta_r_px": 8,
+      "control_mae": 0.0,
+      "control_max": 0,
+      "cross_mae": 1.8125597895408163,
+      "cross_max": 224,
+      "fallback_reason": null
+    },
+    {
+      "numista_id": 10862,
+      "tags": [
+        "standard",
+        "training"
+      ],
+      "delta_r_px": 5,
+      "control_mae": 0.0,
+      "control_max": 0,
+      "cross_mae": 1.1941831420068028,
+      "cross_max": 151,
+      "fallback_reason": null
+    },
+    {
+      "numista_id": 69470,
+      "tags": [
+        "standard",
+        "training"
+      ],
+      "delta_r_px": 10,
+      "control_mae": 0.0,
+      "control_max": 0,
+      "cross_mae": 2.034731079931973,
+      "cross_max": 240,
+      "fallback_reason": null
+    },
+    {
+      "numista_id": 104,
+      "tags": [
+        "bimetal_stable",
+        "standard",
+        "training"
+      ],
+      "delta_r_px": 4,
+      "control_mae": 0.0,
+      "control_max": 0,
+      "cross_mae": 1.5164753401360545,
+      "cross_max": 152,
+      "fallback_reason": null
+    },
+    {
+      "numista_id": 6376,
+      "tags": [
+        "bimetal_stable",
+        "standard",
+        "training"
+      ],
+      "delta_r_px": 5,
+      "control_mae": 0.0,
+      "control_max": 0,
+      "cross_mae": 1.883436968537415,
+      "cross_max": 208,
+      "fallback_reason": null
+    },
+    {
+      "numista_id": 68395,
+      "tags": [
+        "bimetal_stable",
+        "standard",
+        "training"
+      ],
+      "delta_r_px": 4,
+      "control_mae": 0.0,
+      "control_max": 0,
+      "cross_mae": 1.7807517538265305,
+      "cross_max": 222,
+      "fallback_reason": null
+    },
+    {
+      "numista_id": 2193,
+      "tags": [
+        "bimetal_stable",
+        "commemorative",
+        "training"
+      ],
+      "delta_r_px": 5,
+      "control_mae": 0.0,
+      "control_max": 0,
+      "cross_mae": 1.228681707057823,
+      "cross_max": 149,
+      "fallback_reason": null
+    },
+    {
+      "numista_id": 19734,
+      "tags": [
+        "commemorative",
+        "training"
+      ],
+      "delta_r_px": 4,
+      "control_mae": 0.0,
+      "control_max": 0,
+      "cross_mae": 1.1443850977891157,
+      "cross_max": 109,
+      "fallback_reason": null
+    },
+    {
+      "numista_id": 2201,
+      "tags": [
+        "commemorative",
+        "training"
+      ],
+      "delta_r_px": 73,
+      "control_mae": 0.0,
+      "control_max": 0,
+      "cross_mae": 28.293367346938776,
+      "cross_max": 250,
+      "fallback_reason": null
+    },
+    {
+      "numista_id": 81058,
+      "tags": [
+        "commemorative",
+        "training"
+      ],
+      "delta_r_px": 79,
+      "control_mae": 0.0,
+      "control_max": 0,
+      "cross_mae": 29.403061224489797,
+      "cross_max": 239,
+      "fallback_reason": null
+    },
+    {
+      "numista_id": 93999,
+      "tags": [
+        "commemorative",
+        "training"
+      ],
+      "delta_r_px": 106,
+      "control_mae": 0.0,
+      "control_max": 0,
+      "cross_mae": 23.110843165391156,
+      "cross_max": 253,
+      "fallback_reason": null
+    },
+    {
+      "numista_id": 113429,
+      "tags": [
+        "commemorative",
+        "training"
+      ],
+      "delta_r_px": 5,
+      "control_mae": 0.0,
+      "control_max": 0,
+      "cross_mae": 1.4146205357142858,
+      "cross_max": 201,
+      "fallback_reason": null
+    },
+    {
+      "numista_id": 3561,
+      "tags": [
+        "commemorative",
+        "training"
+      ],
+      "delta_r_px": 6,
+      "control_mae": 0.0,
+      "control_max": 0,
+      "cross_mae": 1.6292649872448979,
+      "cross_max": 157,
+      "fallback_reason": null
+    },
+    {
+      "numista_id": 91431,
+      "tags": [
+        "commemorative",
+        "training"
+      ],
+      "delta_r_px": 8,
+      "control_mae": 0.0,
+      "control_max": 0,
+      "cross_mae": 1.724954825680272,
+      "cross_max": 213,
+      "fallback_reason": null
+    },
+    {
+      "numista_id": 141382,
+      "tags": [
+        "commemorative",
+        "small_size",
+        "training"
+      ],
+      "delta_r_px": 2,
+      "control_mae": 0.0,
+      "control_max": 0,
+      "cross_mae": 1.986500850340136,
+      "cross_max": 255,
+      "fallback_reason": null
+    },
+    {
+      "numista_id": 84714,
+      "tags": [
+        "commemorative",
+        "training"
+      ],
+      "delta_r_px": 4,
+      "control_mae": 0.0,
+      "control_max": 0,
+      "cross_mae": 1.5910196109693877,
+      "cross_max": 255,
+      "fallback_reason": null
+    },
+    {
+      "numista_id": 82330,
+      "tags": [
+        "commemorative",
+        "training"
+      ],
+      "delta_r_px": 10,
+      "control_mae": 0.0,
+      "control_max": 0,
+      "cross_mae": 12.127258715986395,
+      "cross_max": 255,
+      "fallback_reason": null
+    },
+    {
+      "numista_id": 19979,
+      "tags": [
+        "bimetal_trap",
+        "commemorative",
+        "large_size"
+      ],
+      "delta_r_px": 144,
+      "control_mae": 0.0,
+      "control_max": 0,
+      "cross_mae": 29.42603369472789,
+      "cross_max": 255,
+      "fallback_reason": null
+    },
+    {
+      "numista_id": 457922,
+      "tags": [
+        "bimetal_trap",
+        "commemorative"
+      ],
+      "delta_r_px": 92,
+      "control_mae": 0.0,
+      "control_max": 0,
+      "cross_mae": 33.497927295918366,
+      "cross_max": 255,
+      "fallback_reason": null
+    },
+    {
+      "numista_id": 431862,
+      "tags": [
+        "bimetal_trap",
+        "commemorative"
+      ],
+      "delta_r_px": 61,
+      "control_mae": 0.0,
+      "control_max": 0,
+      "cross_mae": 30.87802269345238,
+      "cross_max": 219,
+      "fallback_reason": null
+    },
+    {
+      "numista_id": 219,
+      "tags": [
+        "atypical_country",
+        "commemorative",
+        "large_size"
+      ],
+      "delta_r_px": 90,
+      "control_mae": 0.0,
+      "control_max": 0,
+      "cross_mae": 21.747262967687075,
+      "cross_max": 239,
+      "fallback_reason": null
+    },
+    {
+      "numista_id": 227,
+      "tags": [
+        "atypical_country",
+        "commemorative",
+        "outlier",
+        "small_size"
+      ],
+      "delta_r_px": 0,
+      "control_mae": 0.0,
+      "control_max": 0,
+      "cross_mae": 0.0,
+      "cross_max": 0,
+      "fallback_reason": "low_fill_ratio_0.02"
+    },
+    {
+      "numista_id": 211,
+      "tags": [
+        "atypical_country",
+        "standard"
+      ],
+      "delta_r_px": 3,
+      "control_mae": 0.0,
+      "control_max": 0,
+      "cross_mae": 1.182882918792517,
+      "cross_max": 137,
+      "fallback_reason": null
+    },
+    {
+      "numista_id": 5036,
+      "tags": [
+        "atypical_country",
+        "commemorative"
+      ],
+      "delta_r_px": 2,
+      "control_mae": 0.0,
+      "control_max": 0,
+      "cross_mae": 0.9208519345238095,
+      "cross_max": 153,
+      "fallback_reason": null
+    },
+    {
+      "numista_id": 203,
+      "tags": [
+        "atypical_country",
+        "standard"
+      ],
+      "delta_r_px": 4,
+      "control_mae": 0.0,
+      "control_max": 0,
+      "cross_mae": 2.3625637755102042,
+      "cross_max": 241,
+      "fallback_reason": null
+    },
+    {
+      "numista_id": 2180,
+      "tags": [
+        "low_contrast",
+        "standard"
+      ],
+      "delta_r_px": 0,
+      "control_mae": 0.0,
+      "control_max": 0,
+      "cross_mae": 0.0,
+      "cross_max": 0,
+      "fallback_reason": "low_fill_ratio_0.07"
+    },
+    {
+      "numista_id": 164656,
+      "tags": [
+        "commemorative",
+        "low_contrast",
+        "outlier"
+      ],
+      "delta_r_px": 0,
+      "control_mae": 0.0,
+      "control_max": 0,
+      "cross_mae": 0.0,
+      "cross_max": 0,
+      "fallback_reason": "low_fill_ratio_0.52"
+    },
+    {
+      "numista_id": 3911,
+      "tags": [
+        "commemorative",
+        "low_contrast",
+        "small_size"
+      ],
+      "delta_r_px": 19,
+      "control_mae": 0.0,
+      "control_max": 0,
+      "cross_mae": 19.771265146683675,
+      "cross_max": 255,
+      "fallback_reason": null
+    },
+    {
+      "numista_id": 168218,
+      "tags": [
+        "commemorative",
+        "low_contrast",
+        "small_size"
+      ],
+      "delta_r_px": 4,
+      "control_mae": 0.0,
+      "control_max": 0,
+      "cross_mae": 3.042370854591837,
+      "cross_max": 255,
+      "fallback_reason": null
+    }
+  ]
+}
