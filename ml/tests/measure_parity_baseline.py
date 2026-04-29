@@ -1,20 +1,19 @@
-"""Measure cross-algo parity baseline (Phase B).
+"""Measure cross-algo parity baseline.
 
-Procedure (cf. docs/scan-normalization/normalize-rework/parity-contract.md
-§"Choix de ε et M_max"):
+Procedure:
 
-  1. Run two passes of `wr_1024_tightR` on each manifest image. Their per-pixel
-     diff is the deterministic-noise floor (expected ~0 since the algo is
-     deterministic). This is the control.
-  2. Run `studio_contour` and `wr_1024_tightR` on each image. Their diff is the
-     cross-algo dispersion. This is the measurement target.
-  3. Aggregate per-tag, isolate the "Hough-OK" subset (where `wr_1024_tightR`
-     happens to land within Δr ≤ 8 of the contour result, i.e. picks the outer
-     rim like a non-bimetal-trap case), and report ε / M_max recommendations
-     for both the full dataset and the "Hough-OK" subset.
+  1. Run two passes of `normalize_device` on each manifest image. Their
+     per-pixel diff is the deterministic-noise floor (expected ~0 since
+     the algo is deterministic). This is the control.
+  2. Run `normalize_studio` and `normalize_device` on each image. Their
+     diff is the cross-algo dispersion. This is the measurement target.
+  3. Aggregate per-tag, isolate the "Hough-OK" subset (where the device
+     pipeline happens to land within Δr ≤ 8 of the contour result, i.e.
+     picks the outer rim like a non-bimetal-trap case), and report ε /
+     M_max recommendations for both the full dataset and the "Hough-OK"
+     subset.
 
-The bench code from `ml/tests/bench_normalize.py` is reused so we don't
-re-implement the variants. No prod code modified.
+No prod code modified.
 
 Usage:
     python -m ml.tests.measure_parity_baseline \
@@ -38,10 +37,11 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from scan.normalize_snap import normalize_device, normalize_studio  # noqa: E402
-from tests.bench_normalize import _diff_metrics, fmt_table, log  # noqa: E402
+from tests._utils import diff_metrics, fmt_table  # noqa: E402
+from tests.bench_normalize import log  # noqa: E402
 
 
-REF_NAME = "device"      # = normalize_device (Hough WR=1024 + tight)
+REF_NAME = "device"      # = normalize_device (Hough at WR=1024)
 CAND_NAME = "studio"     # = normalize_studio (contour + fallback to device)
 HOUGH_OK_DELTA_R = 8     # |Δr| threshold (px, native res) below which we
                          # declare Hough not affected by the bimétal-trap.
@@ -82,14 +82,14 @@ def measure_one(bgr: np.ndarray, numista_id: int,
     if r1.image is None or r2.image is None:
         ctrl = {"mae": float("nan"), "max": 255, "pct_diff": 100.0}
     else:
-        ctrl = _diff_metrics(r1.image, r2.image)
+        ctrl = diff_metrics(r1.image, r2.image)
 
     # Cand vs ref cross-algo.
     c = _cand_call(bgr)
     if c.image is None or r1.image is None:
         cross = {"mae": float("nan"), "max": 255, "pct_diff": 100.0}
     else:
-        cross = _diff_metrics(c.image, r1.image)
+        cross = diff_metrics(c.image, r1.image)
 
     delta_r = abs(int(r1.r) - int(c.r)) if (c.image is not None and r1.image is not None) else -1
 
@@ -138,7 +138,7 @@ def main() -> None:
     log(f"Manifest      : {args.manifest} ({len(coins)} entries)")
     log(f"Datasets root : {datasets}")
     log(f"Out dir       : {out_dir}")
-    log(f"Reference algo: {REF_NAME} (= normalize_device, Hough WR=1024 + tight)")
+    log(f"Reference algo: {REF_NAME} (= normalize_device, Hough at WR=1024)")
     log(f"Candidate algo: {CAND_NAME} (= normalize_studio, contour + fallback)")
     log("")
 

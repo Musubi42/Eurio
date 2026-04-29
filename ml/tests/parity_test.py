@@ -1,11 +1,10 @@
-"""Cross-algo parity gate (test #1 of parity-contract.md).
+"""Cross-algo parity gate.
 
 Compares `normalize_studio` and `normalize_device` on the manifest images
-and exits non-zero if too many diverge. Default thresholds are anchored on
-the Phase B baseline (`bench-results-pre.md` §"Valeurs ε / M_max retenues —
-Phase B"): ε = 3.0 / 255 on the Hough-OK subset, `cross_pct_diff` ≤ 5% on
-the full manifest. The Hough-OK split (|Δr| ≤ 8 px) isolates the bimétal-
-trap cases from the cross-algo evaluation; those are flagged separately.
+and exits non-zero if too many diverge. Default thresholds: ε = 3.0 / 255 on
+the Hough-OK subset, `cross_pct_diff` ≤ 5 % on the full manifest. The
+Hough-OK split (|Δr| ≤ 8 px) isolates the bimétal-trap cases from the
+cross-algo evaluation; those are flagged separately.
 
 Usage:
     go-task ml:scan:parity-test
@@ -27,7 +26,7 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from scan.normalize_snap import normalize_device, normalize_studio  # noqa: E402
-from tests.bench_normalize import _diff_metrics, fmt_table  # noqa: E402
+from tests._utils import diff_metrics, fmt_table  # noqa: E402
 
 
 HOUGH_OK_DELTA_R = 8
@@ -66,7 +65,7 @@ def measure(manifest_path: Path, datasets: Path) -> list[Row]:
                              float("nan"), 255, 100.0,
                              cand.method, cand.image is not None, ref.image is not None))
             continue
-        m = _diff_metrics(ref.image, cand.image)
+        m = diff_metrics(ref.image, cand.image)
         rows.append(Row(nid, tags, abs(ref.r - cand.r),
                          m["mae"], m["max"], m["pct_diff"],
                          cand.method, True, True))

@@ -36,7 +36,7 @@ Backend storage : Supabase (Postgrest), schéma de vérité dans `supabase/types
 
 ## Contexte récent (utile pour comprendre l'état du repo)
 
-Le rework du pipeline `scan/normalize_snap.py` vient de se terminer (2026-04-29) : R@1 ArcFace passé de ~68 % à 94.74 % sur le golden set device, parity studio↔device validée à 100 %. Le port Kotlin `SnapNormalizer.kt` est validé. Détails : `docs/scan-normalization/normalize-rework/`. Pas directement pertinent pour cette session, mais c'est ce qui a généré les ~600 fichiers dans `debug_pull/20260429_170852/` que tu vas voir.
+Le rework du pipeline `scan/normalize_snap.py` vient de se terminer (2026-04-29) : R@1 ArcFace passé de ~68 % à 94.74 % sur le golden set device, parity studio↔device validée à 100 %. Le port Kotlin `SnapNormalizer.kt` est validé. État courant documenté dans `docs/scan-normalization/README.md`. Pas directement pertinent pour cette session, mais c'est ce qui a généré les ~600 fichiers dans `debug_pull/20260429_170852/` que tu vas voir.
 
 L'état actuel : la pipeline scan marche bien sur **17 pièces × 6 angles** (le golden set device), mais on veut maintenant industrialiser le process pour scaler à plusieurs cohortes de pièces, comparer des recettes d'augmentation, et avoir un vrai workflow A/B reproductible.
 

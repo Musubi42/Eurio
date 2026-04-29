@@ -7,29 +7,26 @@ Two pipelines, one shared output contract.
     `cv2.minEnclosingCircle` (sub-pixel `(cx, cy, r)` preserved through the
     crop). Bimetal-ring guard via `fill_ratio < 0.7`. Falls back to the
     device pipeline on contour failure (no contour, off-centre, ring
-    contour, image-filling collapse).
+    contour, image-filling collapse) — `fallback_reason` is reported in
+    `result.debug` so callers can attribute the miss.
 
   * `normalize_device(bgr)` — for camera frames (Android live + offline
-    eval_real). Hough cascade `tight → relaxed` at `WORKING_RES = 1024`
+    eval_real). Hough cascade `strict → loose` at `WORKING_RES = 1024`
     long-side, with **wide** radius range `0.15–0.55 / 0.10–0.55` — the
-    legacy on-device range that was validated through R@1 = 94.74% in
-    Phase D. A tighter 0.35–0.55 floor was tried in Phase C but introduced
-    parasitic circle picks on device frames with variable BG (cf. comment
-    on `_DEVICE_HOUGH_PASSES` below). Mirrored bit-for-bit by
-    `app-android/.../ml/SnapNormalizer.kt`.
+    legacy on-device range validated by R@1 = 94.74% on the device golden
+    set. A tighter 0.35–0.55 floor was tried but caused parasitic circle
+    picks on frames with variable BG (cf. `_DEVICE_HOUGH_PASSES` below).
+    Mirrored bit-for-bit by `app-android/.../ml/SnapNormalizer.kt`.
 
-The 224×224 BGR output is the unit of cohérence: both pipelines must produce
-ε-equivalent outputs on the same input image (cross-algo test #1, see
-`docs/scan-normalization/normalize-rework/parity-contract.md`).
+The 224×224 BGR output is the unit of cohérence: both pipelines must
+produce ε-equivalent outputs on the same input image. See
+`docs/scan-normalization/README.md`.
 
 Constants:
   - `OUTPUT_SIZE = 224`         (figé par le contrat ArcFace)
   - `COIN_MARGIN = 0.02`        (figé)
   - `BG_COLOR    = (0, 0, 0)`   (figé)
   - `WORKING_RES = 1024`        (long-side, partagé par les deux pipelines)
-
-See `docs/scan-normalization/README.md` and
-`docs/scan-normalization/normalize-rework/algorithms.md`.
 """
 from __future__ import annotations
 
@@ -46,35 +43,42 @@ COIN_MARGIN = 0.02
 BG_COLOR = (0, 0, 0)
 WORKING_RES = 1024
 
-# Studio pipeline tuning (cf. algorithms.md §"Pipeline studio").
+# Studio pipeline tuning.
 _STUDIO_FILL_RATIO_MIN = 0.70   # bimétal/ring guard: contour area / minEnclosingCircle area
 _STUDIO_AREA_RATIO_MAX = 0.85   # reject Otsu collapse where the binarisation swallowed the frame
 _STUDIO_CENTER_TOL_FRAC = 0.30  # contour centroid must be within 0.30·short of image centre
 
-# Device pipeline cascade. Wide radius range 0.15–0.55 / 0.10–0.55 — same as
-# the legacy on-device path that was validated through R@1=94.74% in Phase D.
+# Device pipeline cascade. The naming `strict / loose` describes the Hough
+# `param2` accumulator threshold (precision floor first, recall fallback) —
+# **not** the radius range, which is intentionally wide on both passes.
 #
-# Why not the bench-validated tight 0.35–0.55? The Phase A bench measured
-# tight on **studio sources** (Numista, uniform BG, coin centred and
-# frame-filling — the radius range is then a guaranteed match). On **device
-# frames** the BG carries gradients (table grain, shadow, vignette) which
-# Hough can vote into circular candidates. With a tight rmin floor the rule
-# "largest centred" risks picking up such a parasitic circle over the actual
-# coin rim (cf. user-reported offset bug 2026-04-29 post-Phase C: the snap
-# fell back to hough_relaxed and the cropped 224 was massively shifted).
+# Why wide radius (0.15–0.55 / 0.10–0.55) rather than tight (0.35–0.55)?
+# Tight was tried and rejected: on device frames the BG carries gradients
+# (table grain, shadow, vignette) which Hough can vote into circular
+# candidates. With a tight rmin floor the "largest centred" selection rule
+# would then pick a parasitic background circle over the actual coin rim,
+# producing massively offset 224 crops. The wide range matches the legacy
+# on-device path that produced R@1 = 94.74 % on the device golden set.
 #
 # Speed loss vs tight is negligible on the live ImageAnalysis path (~720p
 # already ≤ working_res 1024 → no downscale), and bounded for higher-res
-# inputs (Phase F) by the working_res cap. The studio pipeline keeps the
-# tight cascade in its fallback (`_studio_fallback`) because once it falls
-# through, we already know the contour pipeline rejected the image — the
-# studio source is well-behaved by definition.
+# inputs by the working_res cap. There is no "studio fallback cascade":
+# when the studio contour pipeline rejects an image, it calls
+# `normalize_device` directly — same passes, same wide radius range.
+#
+# Future work flagged: the device pipeline does **not** apply the
+# `fill_ratio` bimétal guard that the studio pipeline uses; on bimétal
+# coins Hough picks the inner cupro/or ring rather than the rim ~36 % of
+# the time. The "largest centred" rule mitigates but does not fully fix
+# this. Adding a fill_ratio guard equivalent to `_STUDIO_FILL_RATIO_MIN`
+# is a separate sprint — would close the train↔inference latent drift on
+# bimétal classes.
 #
 # Mirrored bit-for-bit by `SnapNormalizer.kt::PASSES`.
 _DEVICE_HOUGH_PASSES = (
-    # (name,           param1, param2, rmin_frac, rmax_frac)
-    ("hough_tight",    100.0,  30.0,   0.15,      0.55),
-    ("hough_relaxed",   60.0,  22.0,   0.10,      0.55),
+    # (name,          param1, param2, rmin_frac, rmax_frac)
+    ("hough_strict",  100.0,  30.0,   0.15,      0.55),
+    ("hough_loose",    60.0,  22.0,   0.10,      0.55),
 )
 
 
@@ -84,7 +88,7 @@ class NormalizationResult:
     cx: int = 0
     cy: int = 0
     r: int = 0
-    method: str = "failed"      # "contour" | "contour_fallback:hough_*" | "hough_tight" | "hough_relaxed" | "failed"
+    method: str = "failed"      # "contour" | "contour_fallback:hough_*" | "hough_strict" | "hough_loose" | "failed"
     debug: dict[str, Any] = field(default_factory=dict)
 
 
@@ -254,12 +258,15 @@ def normalize_device_path(path: Path) -> NormalizationResult:
 # ---------------------------------------------------------------------------
 
 def _detect_circle_contour(bgr: np.ndarray
-                            ) -> tuple[float, float, float, dict] | None:
-    """Otsu-based contour detection at WORKING_RES=1024. Returns
-    `(cx, cy, r, debug)` in **native pixel** coordinates with **sub-pixel
-    precision**, or None if the contour is unusable (no centred contour,
-    ring shape, image-filling). The reason is in `debug["fallback_reason"]`
-    so the caller can log it."""
+                            ) -> tuple[tuple[float, float, float, dict] | None, str | None]:
+    """Otsu-based contour detection at WORKING_RES=1024.
+
+    Returns ``(detection, reason)`` where exactly one is None:
+      - ``detection = (cx, cy, r, debug)`` in native-pixel sub-pixel coords
+        on success; ``reason = None``.
+      - ``detection = None``; ``reason`` is one of ``"no_contour"``,
+        ``"off_centre"``, ``"image_filling"``, ``"ring_contour"``.
+    """
     work, scale = _downscale_to_working_res(bgr)
     h, w = work.shape[:2]
     short = min(h, w)
@@ -285,7 +292,7 @@ def _detect_circle_contour(bgr: np.ndarray
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL,
                                     cv2.CHAIN_APPROX_NONE)
     if not contours:
-        return None  # caller sets fallback_reason
+        return None, "no_contour"
 
     tol_sq = (_STUDIO_CENTER_TOL_FRAC * short) ** 2
     centred: list[tuple[float, np.ndarray]] = []
@@ -298,43 +305,42 @@ def _detect_circle_contour(bgr: np.ndarray
         if (ccx - img_cx) ** 2 + (ccy - img_cy) ** 2 <= tol_sq:
             centred.append((cv2.contourArea(c), c))
     if not centred:
-        return None
+        return None, "off_centre"
 
     area, best = max(centred, key=lambda x: x[0])
     if area / img_area > _STUDIO_AREA_RATIO_MAX:
         # Otsu collapsed everything into foreground.
-        return None
+        return None, "image_filling"
 
     (cx, cy), r = cv2.minEnclosingCircle(best)
     fill_ratio = area / max(1.0, np.pi * r * r)
     if fill_ratio < _STUDIO_FILL_RATIO_MIN:
         # Ring contour (bimétal misfire) — fallback.
-        return None
+        return None, "ring_contour"
 
     debug = {
         "fill_ratio": float(fill_ratio),
         "working_res": WORKING_RES,
         "scale": float(scale),
     }
-    return cx * scale, cy * scale, r * scale, debug
+    return (cx * scale, cy * scale, r * scale, debug), None
 
 
 def normalize_studio(bgr: np.ndarray) -> NormalizationResult:
     """Normalize a Numista studio source (training pipeline) into a 224×224
     tight coin crop. Falls back to `normalize_device` if the contour
-    detection fails (no contour / off-centre / ring / image-filling)."""
+    detection fails — the reason (no_contour / off_centre / image_filling /
+    ring_contour) is reported in ``result.debug["fallback_reason"]``."""
     if bgr is None or bgr.size == 0:
         return NormalizationResult(image=None, debug={"error": "empty input"})
 
-    det = _detect_circle_contour(bgr)
+    det, reason = _detect_circle_contour(bgr)
     if det is None:
         # Fallback to device pipeline. Tag method so we can count fallback rate.
         res = normalize_device(bgr)
         if res.image is not None:
             res.method = f"contour_fallback:{res.method}"
-        # We don't know the precise reason here without re-running the
-        # detector; keeping it generic is enough for the fallback rate stat.
-        res.debug.setdefault("fallback_reason", "contour_failed")
+        res.debug["fallback_reason"] = reason
         return res
 
     cx, cy, r, extra_debug = det

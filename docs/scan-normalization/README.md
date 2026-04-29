@@ -40,13 +40,14 @@ Run F1+F2+F3 (2026-04-27) : R@1 100% en train mais détection device cassée. Ca
 
 R0 (zéro dette), R1 (proto-first — n.b. la capture-mode est debug-only, hors scope proto), R2 (tokens auto-gen), `go-task` (pas `task`), staging git explicite par fichier.
 
-## Évolution post-Phase 5 — Refonte normalize (2026-04-29)
+## État actuel — pipeline normalize (post-rework 2026-04-29)
 
-Refonte du pipeline `scan/normalize_snap.py` : passage de "harmonie d'implémentation Python ↔ Kotlin" à "harmonie de contrat de sortie", ce qui débloque l'utilisation d'algos optimaux par contexte (Otsu+contour pour studio, Hough+YOLO pour device). Speedup attendu : ×100–500 sur `prepare_dataset.py`.
+`scan/normalize_snap.py` expose deux pipelines partageant le même contrat de sortie 224×224 :
 
-Voir [`normalize-rework/`](normalize-rework/) :
-- [`VISION.md`](normalize-rework/VISION.md) — pourquoi
-- [`algorithms.md`](normalize-rework/algorithms.md) — quoi
-- [`parity-contract.md`](normalize-rework/parity-contract.md) — comment on valide
-- [`implementation-plan.md`](normalize-rework/implementation-plan.md) — phases d'exécution
-- [`bench-results-pre.md`](normalize-rework/bench-results-pre.md) — chiffres pré-rework
+- **`normalize_studio(bgr)`** — sources Numista (training). Otsu + `minEnclosingCircle` à `WORKING_RES=1024`, garde-fou bimétal via `fill_ratio < 0.7`. Bascule sur `normalize_device` si la détection de contour échoue.
+- **`normalize_device(bgr)`** — frames device (Android live + offline `eval_real_norm`). Cascade Hough `strict → loose` à `WORKING_RES=1024` avec une plage radius wide `0.15–0.55 / 0.10–0.55`. Mirroré bit-pour-bit par `app-android/.../ml/SnapNormalizer.kt`.
+
+Tests :
+- `go-task ml:scan:test-dispatch` — unit tests API publique
+- `go-task ml:scan:parity-test` — gate cross-algo (ε = 3.0 sur sous-ensemble Hough-OK)
+- `go-task ml:scan:diff -- <debug_pull>` — validation port Kotlin sur snaps device
