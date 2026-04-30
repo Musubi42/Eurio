@@ -1022,3 +1022,68 @@ dedans. Aucun blocage.
   - `admin/packages/web/src/features/benchmark/` (entier — 5 fichiers)
 
 ---
+
+## 2026-04-30 · Post-sprint 5 · Premier vrai run cohort fe933e8571a1
+
+**Done** :
+- Sync captures device (`debug_pull/20260430_135515` → `ml/datasets/<nid>/captures/`) :
+  16/17 pièces synquées (fr-1999-2eur-standard absente du pull device).
+  Fix bug `NameError: CAPTURES_BASE` dans `ml/scan/sync_eval_real.py`.
+- `launch_training` strict bake check : fail explicite si une pièce a < variant_count
+  samples, message lisible avec liste des pièces manquantes.
+- **RecipeConfigurator embarqué dans IterationDetailPage** :
+  - `useRecipeEditor` composable extrait de `AugmentationStudioPage` vers
+    `admin/packages/web/src/features/augmentation/composables/useRecipeEditor.ts`
+  - Nouveau composant `RecipeConfigurator.vue` (sliders + preview grid + save modal)
+  - §0 dans `IterationDetailPage` intègre le configurateur inline (toggle ✦↑↓)
+    avec sélecteur de pièce de preview parmi les eurio_ids du cohort
+  - `onRecipeSaved` met à jour `recipeDraft` sans fermer le configurateur
+    (la preview reste visible), auto-regenerate preview après save
+- **Galerie augmentations** :
+  - Bouton "Régénérer" retiré de la galerie (il y en avait deux — confusion)
+  - Cache-busting : `imgUrl(rel)` ajoute `?v=${augQuery.dataUpdatedAt.value}`
+  - Fix `ExternalLink` manquant dans les imports lucide de `IterationDetailPage`
+- **Recette hell-yeah créée** (id `066c75c654c5`) : perspective p=0.7,
+  relighting p=0.35, overlays p=0.7, background p=0. 800 samples bakés
+  (16 pièces × 50). File sizes variés (339–495 KB) confirment les transforms.
+- Training lancé, runner `busy: true` — premier run réel end-to-end.
+
+**Working** :
+- Configurateur inline fonctionne : création de recette, preview live, save,
+  retour au §0 sans perdre la preview.
+- Bake end-to-end : §0 → Générer → galerie met à jour avec les bons samples.
+- `pnpm tsc --noEmit` : clean, aucune erreur.
+
+**Broken / partial** :
+- **Training invisible** (G-001, gap principal de cette session) : une fois
+  "Lancer training" cliqué, la page n'affiche qu'un spinner. Aucune info
+  sur l'epoch en cours, la loss, l'ETA, ni les logs. L'utilisateur est dans
+  le noir pendant tout le training.
+- **§0 disparaît au launch** (G-002) : la recette utilisée n'est plus visible
+  quand le training est en cours.
+- Recipe affichée comme UUID dans la section Inputs, pas par nom.
+
+**Decisions taken** :
+- `onRecipeSaved` ne ferme plus le configurateur : la preview reste visible
+  pour que l'utilisateur confirme visuellement la recipe avant de baker.
+- Cache-busting via `augQuery.dataUpdatedAt.value` (numéro timestamp de
+  TanStack Query, mis à jour à chaque refetch) — testé : image servie HTTP 200
+  avec `?v=...`, static files FastAPI ignorent le query param.
+
+**Handoff** :
+- Doc de design créée : `docs/training-pipeline/iteration-detail-page-design.md`
+  — gap complet + vision + open questions + liste d'actions concrètes.
+- Prochaine session : implémenter le **Training monitor (§T)**.
+  Ordre d'actions : B-002 (recipe_name) → F-001 (§0 collapsed) →
+  B-001-optionB (écriture JSON progress) → endpoint → F-002 (composant monitor).
+- Runner actif (`busy: true`) — le training test-1 est peut-être encore en cours.
+  À vérifier au démarrage de la prochaine session.
+- **Fichiers modifiés** :
+  - `ml/scan/sync_eval_real.py` (fix CAPTURES_BASE)
+  - `ml/api/iteration_runner.py` (strict bake check)
+  - `admin/packages/web/src/features/augmentation/composables/useRecipeEditor.ts` (nouveau)
+  - `admin/packages/web/src/features/augmentation/components/RecipeConfigurator.vue` (nouveau)
+  - `admin/packages/web/src/features/lab/pages/IterationDetailPage.vue`
+  - `admin/packages/web/src/features/lab/components/AugmentationsGallery.vue`
+
+---

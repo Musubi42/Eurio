@@ -5,6 +5,8 @@ pyproject.toml
 api/__init__.py
 api/augmentation_routes.py
 api/benchmark_routes.py
+api/coin_lookup.py
+api/distance_logic.py
 api/iteration_logic.py
 api/iteration_runner.py
 api/lab_routes.py
@@ -83,7 +85,10 @@ state/archive.py
 state/sources_runs.py
 state/store.py
 tests/__init__.py
+tests/_utils.py
 tests/bench_normalize.py
+tests/measure_parity_baseline.py
+tests/parity_test.py
 tests/test_augmentation.py
 tests/test_augmentation_api.py
 tests/test_benchmark.py
@@ -94,6 +99,7 @@ tests/test_ebay_item.py
 tests/test_eurio_referential.py
 tests/test_lab.py
 tests/test_lab_api.py
+tests/test_normalize_dispatch.py
 training/__init__.py
 training/add_backgrounds.py
 training/augment_synthetic.py
@@ -101,6 +107,7 @@ training/coin_dataset.py
 training/compute_embeddings.py
 training/export_tflite.py
 training/generate_overlay_textures.py
+training/iteration_augmentations.py
 training/prepare_dataset.py
 training/run_onnx2tf.py
 training/setup_detection_dataset.py
