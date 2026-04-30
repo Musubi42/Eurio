@@ -50,6 +50,7 @@ from .normalize_snap import normalize_device_path
 ML_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_OUTPUT = ML_DIR / "datasets" / "eval_real_norm"
 DEFAULT_MANIFEST = ML_DIR / "datasets" / "eurio-poc" / "class_manifest.json"
+CAPTURES_BASE = ML_DIR / "datasets"
 
 
 def _load_eurio_to_class(manifest_path: Path) -> dict[str, str]:

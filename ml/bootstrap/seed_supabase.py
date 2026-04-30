@@ -81,17 +81,20 @@ def seed(args: argparse.Namespace) -> int:
         )
 
         # Dual-write: expand a class to its member eurio_ids for back-compat.
+        # Priority: design_group fan-out > standalone eurio_id (design_group
+        # centroids are computed over more samples and are strictly better when
+        # both classes cover the same coin).
+        priority = 1 if class_kind == "eurio_id" else 2
         if class_kind == "eurio_id":
-            # Class_id IS the eurio_id (standalone coin).
             coin_embeddings_rows.append(
                 {
                     "eurio_id": class_id,
                     "embedding": embedding,
                     "model_version": model_version,
+                    "_priority": priority,
                 }
             )
         else:
-            # design_group: fan out to every member.
             if not eurio_ids:
                 print(
                     f"  WARNING: {class_id} has class_kind=design_group_id "
@@ -103,8 +106,31 @@ def seed(args: argparse.Namespace) -> int:
                         "eurio_id": eid,
                         "embedding": embedding,
                         "model_version": model_version,
+                        "_priority": priority,
                     }
                 )
+
+    # Dedupe by eurio_id: highest priority wins (design_group > standalone).
+    deduped: dict[str, dict] = {}
+    collisions: list[str] = []
+    for row in coin_embeddings_rows:
+        eid = row["eurio_id"]
+        existing = deduped.get(eid)
+        if existing is None or row["_priority"] > existing["_priority"]:
+            if existing is not None:
+                collisions.append(eid)
+            deduped[eid] = row
+        elif row["_priority"] < existing["_priority"]:
+            collisions.append(eid)
+    coin_embeddings_rows = [
+        {k: v for k, v in row.items() if k != "_priority"}
+        for row in deduped.values()
+    ]
+    if collisions:
+        print(
+            f"  Deduped {len(collisions)} coin_embeddings collisions "
+            f"(design_group centroids kept): {', '.join(sorted(set(collisions)))}"
+        )
 
     print(
         f"\n{len(model_classes_rows)} model_classes rows · "

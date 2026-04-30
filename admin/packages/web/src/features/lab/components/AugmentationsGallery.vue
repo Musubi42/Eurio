@@ -3,10 +3,9 @@ import { ML_API } from '@/features/training/composables/useTrainingApi'
 import {
   useAugmentationsQuery,
   usePurgeAugmentationsMutation,
-  useRegenerateAugmentationsMutation,
 } from '@/features/lab/composables/useLabQueries'
 import type { IterationStatus } from '@/features/lab/types'
-import { Loader2, RotateCcw, Trash2 } from 'lucide-vue-next'
+import { Loader2, Trash2 } from 'lucide-vue-next'
 import { computed, ref } from 'vue'
 
 const props = defineProps<{
@@ -23,35 +22,27 @@ const cohortId = computed(() => props.cohortId)
 const iterationId = computed(() => props.iterationId)
 
 const augQuery = useAugmentationsQuery(cohortId, iterationId)
-const regenerate = useRegenerateAugmentationsMutation(cohortId, iterationId)
 const purge = usePurgeAugmentationsMutation(cohortId, iterationId)
 const isLocked = computed(() =>
-  props.status === 'training' || props.status === 'benchmarking',
+  props.status === 'training' || props.status === 'benchmarking' || props.status === 'completed',
 )
 
-const isPending = computed(() => props.status === 'pending')
 const data = computed(() => augQuery.data.value ?? null)
 const total = computed(() => data.value?.total_samples ?? 0)
 const seed = computed(() => data.value?.augmentations_seed)
 
+// Cache-bust image URLs after each successful refetch — the filenames
+// (sample_001.jpg …) are stable across regenerations so without this
+// the browser serves the old cached file.
 function imgUrl(relPath: string): string {
   // Backend returns paths like 'datasets/<nid>/augmentations/<iid>/sample_NNN.jpg'.
   // The static endpoint is /datasets/<nid>/augmentations/<iid>/<filename>.
-  return `${ML_API}/${relPath}`
+  return `${ML_API}/${relPath}?v=${augQuery.dataUpdatedAt.value}`
 }
 
 const zoom = ref<string | null>(null)
 function openZoom(url: string) { zoom.value = url }
 function closeZoom() { zoom.value = null }
-
-async function handleRegenerate() {
-  if (!confirm('Régénérer les augmentations effacera les samples actuels. Continuer ?')) return
-  try {
-    await regenerate.mutateAsync()
-  } catch (e) {
-    alert(`Régénération échouée : ${(e as Error).message}`)
-  }
-}
 
 async function handlePurge() {
   if (!confirm(
@@ -85,18 +76,6 @@ async function handlePurge() {
         </p>
       </div>
       <div class="flex items-center gap-2">
-        <button
-          v-if="isPending"
-          class="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs transition-colors hover:bg-[var(--surface-2)]"
-          style="border-color: var(--surface-3); color: var(--ink);"
-          :disabled="regenerate.isPending.value"
-          title="Efface et régénère depuis la recipe + seed"
-          @click="handleRegenerate"
-        >
-          <Loader2 v-if="regenerate.isPending.value" class="h-3 w-3 animate-spin" />
-          <RotateCcw v-else class="h-3 w-3" />
-          Régénérer
-        </button>
         <button
           v-if="!isLocked && total > 0"
           class="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs transition-colors hover:bg-[var(--surface-2)]"
@@ -132,7 +111,7 @@ async function handlePurge() {
       class="rounded-lg border-2 border-dashed px-6 py-8 text-center text-sm"
       style="border-color: var(--surface-3); color: var(--ink-500);"
     >
-      Aucune augmentation sur disque. {{ isPending ? 'Clique « Régénérer » pour en créer.' : 'Le snapshot sera baked au lancement du training.' }}
+      Aucune augmentation sur disque. Clique « Générer » dans §0 pour bake les samples.
     </div>
 
     <div v-else class="space-y-5">

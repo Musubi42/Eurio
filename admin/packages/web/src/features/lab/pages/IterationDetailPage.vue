@@ -6,11 +6,13 @@ import LiveTestsSection from '@/features/lab/components/LiveTestsSection.vue'
 import InputDiffChip from '@/features/lab/components/InputDiffChip.vue'
 import PerConditionTable from '@/features/lab/components/PerConditionTable.vue'
 import VerdictBadge from '@/features/lab/components/VerdictBadge.vue'
+import RecipeConfigurator from '@/features/augmentation/components/RecipeConfigurator.vue'
 import { fetchRecipes } from '@/features/augmentation/composables/useAugmentationApi'
 import type { RecipeRow } from '@/features/augmentation/types'
 import {
   deleteIteration,
   fetchBenchmarkRunDetail,
+  fetchCohort,
   fetchIteration,
   fetchIterationAugmentations,
   updateIteration,
@@ -23,11 +25,12 @@ import {
 } from '@/features/lab/composables/useLabQueries'
 import type {
   BenchmarkRunDetail,
+  CohortSummary,
   IterationAugmentations,
   IterationDetail,
   Verdict,
 } from '@/features/lab/types'
-import { ArrowLeft, ExternalLink, Loader2, Play, Save, Square, Trash2, Wand2 } from 'lucide-vue-next'
+import { ArrowLeft, ChevronDown, ChevronUp, ExternalLink, Loader2, Play, Save, Sparkles, Square, Trash2, Wand2 } from 'lucide-vue-next'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
@@ -41,8 +44,13 @@ const iteration = ref<IterationDetail | null>(null)
 const benchmark = ref<BenchmarkRunDetail | null>(null)
 const augmentations = ref<IterationAugmentations | null>(null)
 const recipes = ref<RecipeRow[]>([])
+const cohort = ref<CohortSummary | null>(null)
 const loading = ref(true)
 const error = ref<string | null>(null)
+
+// Inline recipe configurator state (§0)
+const configuratorOpen = ref(false)
+const previewEurioId = ref<string | null>(null)
 
 const notesDraft = ref<string>('')
 const verdictOverrideDraft = ref<Verdict | null>(null)
@@ -64,7 +72,7 @@ const stopMut = useStopIterationMutation(cohortId)
 let pollInterval: ReturnType<typeof setInterval> | null = null
 
 onMounted(async () => {
-  await Promise.all([reload(), loadRecipes()])
+  await Promise.all([reload(), loadRecipes(), loadCohort()])
   pollInterval = setInterval(() => {
     if (iteration.value && (iteration.value.status === 'training' || iteration.value.status === 'benchmarking')) {
       reload()
@@ -82,6 +90,22 @@ async function loadRecipes() {
   } catch {
     recipes.value = []
   }
+}
+
+async function loadCohort() {
+  try {
+    cohort.value = await fetchCohort(cohortId.value)
+    if (cohort.value?.eurio_ids?.length) {
+      previewEurioId.value = cohort.value.eurio_ids[0]
+    }
+  } catch {
+    cohort.value = null
+  }
+}
+
+function onRecipeSaved(recipeId: string) {
+  recipeDraft.value = recipeId
+  void loadRecipes()
 }
 
 async function reload() {
@@ -390,15 +414,19 @@ watch(iteration, (it) => {
                   {{ r.name }}{{ r.zone ? ` (${r.zone})` : '' }}
                 </option>
               </select>
-              <a
-                href="/augmentation"
-                target="_blank"
+              <button
                 class="inline-flex items-center gap-1 rounded-md border px-2 py-2 text-xs"
-                style="border-color: var(--surface-3); color: var(--indigo-700);"
-                title="Éditer dans Studio"
+                :style="{
+                  borderColor: configuratorOpen ? 'var(--indigo-700)' : 'var(--surface-3)',
+                  color: configuratorOpen ? 'var(--indigo-700)' : 'var(--ink-400)',
+                }"
+                title="Créer / éditer une recette inline"
+                @click="configuratorOpen = !configuratorOpen"
               >
-                <ExternalLink class="h-3 w-3" />
-              </a>
+                <Sparkles class="h-3 w-3" />
+                <ChevronUp v-if="configuratorOpen" class="h-3 w-3" />
+                <ChevronDown v-else class="h-3 w-3" />
+              </button>
             </div>
           </label>
 
@@ -417,6 +445,36 @@ watch(iteration, (it) => {
               </span>
             </div>
           </div>
+        </div>
+
+        <!-- Inline recipe configurator (toggle) -->
+        <div
+          v-if="configuratorOpen"
+          class="mt-4 rounded-md border p-4"
+          style="border-color: var(--surface-3); background: var(--surface);"
+        >
+          <div class="mb-3 flex items-center justify-between gap-2">
+            <p class="text-[10px] font-medium uppercase" style="color: var(--ink-400); letter-spacing: var(--tracking-eyebrow);">
+              Configurateur de recette
+            </p>
+            <div class="flex items-center gap-2">
+              <label class="text-[10px]" style="color: var(--ink-500);">Pièce de preview :</label>
+              <select
+                v-model="previewEurioId"
+                class="rounded border px-2 py-1 text-xs"
+                style="background: var(--surface-1); border-color: var(--surface-3); color: var(--ink);"
+              >
+                <option v-for="eid in cohort?.eurio_ids ?? []" :key="eid" :value="eid">
+                  {{ eid }}
+                </option>
+              </select>
+            </div>
+          </div>
+          <RecipeConfigurator
+            :eurio-id="previewEurioId"
+            :initial-recipe-id="recipeDraft"
+            @recipe-saved="onRecipeSaved"
+          />
         </div>
 
         <div class="mt-4 flex flex-wrap items-center justify-between gap-3 border-t pt-4" style="border-color: var(--surface-3);">

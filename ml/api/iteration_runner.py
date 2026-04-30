@@ -183,18 +183,24 @@ class IterationRunner:
         if cohort is None:
             raise ValueError("cohort introuvable")
 
-        # Verify augmentations exist on disk for at least one coin —
-        # otherwise the chain would just bake them inline (idempotent path
-        # in `iteration_augmentations.generate_for_iteration`) which
-        # defeats the whole "explicit generate then launch" UX.
+        # Require ALL cohort coins to be fully baked (>= variant_count samples
+        # each) before training starts. This ensures the user always sees
+        # exactly which augmentations will be used — no silent inline bake.
         per_coin = list_for_iteration(
             iteration_id=iteration_id, store=self._store,
         )
-        total = sum(len(c.get("samples", [])) for c in per_coin)
-        if total == 0:
+        target = iteration.variant_count
+        missing = [
+            c["eurio_id"]
+            for c in per_coin
+            if len(c.get("samples", [])) < target
+        ]
+        if missing:
             raise RuntimeError(
-                "Aucune augmentation bakée pour cette itération — "
-                "clique « Générer » avant de lancer le training."
+                f"Augmentations manquantes ou incomplètes pour "
+                f"{len(missing)} pièce(s) : {', '.join(missing[:5])}"
+                + (f" (+ {len(missing) - 5} autres)" if len(missing) > 5 else "")
+                + " — clique « Générer » avant de lancer le training."
             )
 
         if self.is_busy():
