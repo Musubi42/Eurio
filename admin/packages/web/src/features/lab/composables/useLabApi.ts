@@ -4,16 +4,20 @@
 
 import { ML_API } from '@/features/training/composables/useTrainingApi'
 import type {
+  AugVsRealReport,
   CohortCaptureManifest,
   CohortCreatePayload,
   CohortCsvResult,
   CohortStatus,
   CohortSummary,
   CohortSyncResult,
+  IterationAugmentations,
   IterationCreatePayload,
   IterationDetail,
+  RegenerateAugmentationsResult,
   RunnerStatus,
   SensitivityEntry,
+  StopIterationResult,
   TrajectoryPoint,
 } from '../types'
 
@@ -158,11 +162,26 @@ export async function createIteration(
 export async function updateIteration(
   cohortId: string,
   iterationId: string,
-  patch: { notes?: string | null; verdict_override?: string | null },
+  patch: {
+    notes?: string | null
+    verdict_override?: string | null
+    recipe_id?: string | null
+    variant_count?: number | null
+  },
 ): Promise<IterationDetail> {
   return json<IterationDetail>(
     `/lab/cohorts/${encodeURIComponent(cohortId)}/iterations/${encodeURIComponent(iterationId)}`,
     { method: 'PUT', body: JSON.stringify(patch) },
+  )
+}
+
+export async function launchIterationTraining(
+  cohortId: string,
+  iterationId: string,
+): Promise<IterationDetail> {
+  return json<IterationDetail>(
+    `/lab/cohorts/${encodeURIComponent(cohortId)}/iterations/${encodeURIComponent(iterationId)}/launch-training`,
+    { method: 'POST', body: '{}' },
   )
 }
 
@@ -189,4 +208,149 @@ export async function fetchSensitivity(cohortId: string): Promise<SensitivityEnt
 
 export async function fetchRunnerStatus(): Promise<RunnerStatus> {
   return json<RunnerStatus>('/lab/runner/status')
+}
+
+// ─── Augmentations (Sprint 1) ───────────────────────────────────────────
+
+export async function fetchIterationAugmentations(
+  cohortId: string,
+  iterationId: string,
+): Promise<IterationAugmentations> {
+  return json<IterationAugmentations>(
+    `/lab/cohorts/${encodeURIComponent(cohortId)}/iterations/${encodeURIComponent(iterationId)}/augmentations`,
+  )
+}
+
+export async function regenerateIterationAugmentations(
+  cohortId: string,
+  iterationId: string,
+): Promise<RegenerateAugmentationsResult> {
+  return json<RegenerateAugmentationsResult>(
+    `/lab/cohorts/${encodeURIComponent(cohortId)}/iterations/${encodeURIComponent(iterationId)}/augmentations/regenerate`,
+    { method: 'POST', body: '{}' },
+  )
+}
+
+export async function stopIteration(
+  cohortId: string,
+  iterationId: string,
+): Promise<StopIterationResult> {
+  return json<StopIterationResult>(
+    `/lab/cohorts/${encodeURIComponent(cohortId)}/iterations/${encodeURIComponent(iterationId)}/stop`,
+    { method: 'POST', body: '{}' },
+  )
+}
+
+export interface PreviewIterationResult {
+  iteration_id: string
+  name: string
+  augmentations_seed: number | null
+  recipe_id: string | null
+  variant_count: number
+  per_coin: Array<{
+    eurio_id: string
+    numista_id: number | null
+    written: number
+    skipped_reason: string | null
+  }>
+}
+
+export async function previewIteration(
+  cohortId: string,
+  payload: { recipe_id: string | null; variant_count?: number },
+): Promise<PreviewIterationResult> {
+  return json<PreviewIterationResult>(
+    `/lab/cohorts/${encodeURIComponent(cohortId)}/preview-iteration`,
+    { method: 'POST', body: JSON.stringify(payload) },
+  )
+}
+
+// ─── Aug ↔ réelles (Sprint 2) ───────────────────────────────────────────
+
+export async function fetchAugVsReal(
+  cohortId: string,
+  iterationId: string,
+): Promise<AugVsRealReport> {
+  return json<AugVsRealReport>(
+    `/lab/cohorts/${encodeURIComponent(cohortId)}/iterations/${encodeURIComponent(iterationId)}/aug-vs-real`,
+  )
+}
+
+export async function recomputeAugVsReal(
+  cohortId: string,
+  iterationId: string,
+): Promise<AugVsRealReport> {
+  return json<AugVsRealReport>(
+    `/lab/cohorts/${encodeURIComponent(cohortId)}/iterations/${encodeURIComponent(iterationId)}/aug-vs-real/recompute`,
+    { method: 'POST', body: '{}' },
+  )
+}
+
+// ─── Cohort test app build info (Sprint 3) ──────────────────────────────
+
+export async function fetchCohortTestBuildInfo(
+  cohortId: string,
+  iterationId: string,
+): Promise<import('../types').CohortTestBuildInfo> {
+  return json<import('../types').CohortTestBuildInfo>(
+    `/lab/cohorts/${encodeURIComponent(cohortId)}/iterations/${encodeURIComponent(iterationId)}/test-app/build-info`,
+  )
+}
+
+// ─── Live tests (Sprint 4) ───────────────────────────────────────────────
+
+export async function fetchLiveTests(
+  cohortId: string,
+  iterationId: string,
+): Promise<import('../types').LiveTestsReport> {
+  return json<import('../types').LiveTestsReport>(
+    `/lab/cohorts/${encodeURIComponent(cohortId)}/iterations/${encodeURIComponent(iterationId)}/live-tests`,
+  )
+}
+
+export async function syncLiveTests(
+  iterationId: string,
+): Promise<import('../types').LiveTestsSyncResult> {
+  // Cohort wildcard ``_`` — the iteration carries its own cohort_id, so the
+  // pull task doesn't need to thread it through. The backend resolves both.
+  return json<import('../types').LiveTestsSyncResult>(
+    `/lab/cohorts/_/iterations/${encodeURIComponent(iterationId)}/live-tests/sync`,
+    { method: 'POST', body: '{}' },
+  )
+}
+
+// ─── Benchmark detail (migrated from features/benchmark/, Sprint 5) ─────
+
+export async function fetchBenchmarkRunDetail(
+  runId: string,
+): Promise<import('../types').BenchmarkRunDetail> {
+  return json<import('../types').BenchmarkRunDetail>(
+    `/benchmark/runs/${encodeURIComponent(runId)}`,
+  )
+}
+
+// ─── Dashboard + GC (Sprint 5) ──────────────────────────────────────────
+
+export async function fetchDashboard(): Promise<import('../types').DashboardReport> {
+  return json<import('../types').DashboardReport>('/lab/dashboard')
+}
+
+export async function purgeIterationAugmentations(
+  cohortId: string,
+  iterationId: string,
+): Promise<import('../types').PurgeAugmentationsResult> {
+  return json<import('../types').PurgeAugmentationsResult>(
+    `/lab/cohorts/${encodeURIComponent(cohortId)}/iterations/${encodeURIComponent(iterationId)}/augmentations`,
+    { method: 'DELETE' },
+  )
+}
+
+export async function purgeIterationTestBundle(
+  cohortId: string,
+  iterationId: string,
+): Promise<import('../types').PurgeTestBundleResult> {
+  return json<import('../types').PurgeTestBundleResult>(
+    `/lab/cohorts/${encodeURIComponent(cohortId)}/iterations/${encodeURIComponent(iterationId)}/test-bundle`,
+    { method: 'DELETE' },
+  )
 }

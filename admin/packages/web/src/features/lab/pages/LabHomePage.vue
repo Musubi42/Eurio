@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { checkMlApi } from '@/features/training/composables/useTrainingApi'
 import CohortCard from '@/features/lab/components/CohortCard.vue'
+import DashboardSection from '@/features/lab/components/DashboardSection.vue'
 import { useCohortsQuery, useRunnerStatusQuery } from '@/features/lab/composables/useLabQueries'
 import type { CohortSummary } from '@/features/lab/types'
 import { FlaskConical, Loader2, Plus, Wifi, WifiOff } from 'lucide-vue-next'
@@ -162,6 +163,9 @@ function formatPct(v: number | null): string {
         </p>
       </article>
     </section>
+
+    <!-- Dashboard cross-cohort (Sprint 5) -->
+    <DashboardSection />
 
     <!-- Filter + list -->
     <section>

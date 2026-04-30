@@ -18,7 +18,7 @@ import type {
   IterationDetail,
 } from '@/features/lab/types'
 import { ArrowLeft, Copy as CopyIcon, Loader2, Plus, Trash2, X } from 'lucide-vue-next'
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 const route = useRoute()
@@ -29,12 +29,23 @@ const cohortId = computed(() => String(route.params.id))
 const cohortQuery = useCohortQuery(cohortId)
 const cohort = computed(() => cohortQuery.data.value ?? null)
 
+// `pollWhileBusy` is read synchronously during useQuery setup, so it must
+// not reference `iterations` (which is declared below — TDZ). Hold the
+// flag in a plain ref and let a watcher update it once query data lands.
+const pollIterations = ref(false)
 const iterationsQuery = useIterationsQuery(cohortId, {
-  pollWhileBusy: () => iterations.value.some(
-    it => it.status === 'training' || it.status === 'benchmarking',
-  ),
+  pollWhileBusy: pollIterations,
 })
 const iterations = computed<IterationDetail[]>(() => iterationsQuery.data.value ?? [])
+watch(
+  iterations,
+  (its) => {
+    pollIterations.value = its.some(
+      it => it.status === 'training' || it.status === 'benchmarking',
+    )
+  },
+  { immediate: true },
+)
 
 const trajectoryQuery = useTrajectoryQuery(cohortId)
 const trajectory = computed(() => trajectoryQuery.data.value ?? [])
@@ -291,6 +302,19 @@ function formatPct(v: number | null): string {
           :cohort-status="cohort.status"
         />
       </section>
+
+      <!-- Sprint 5 — soft cleanup banner: ≥5 iterations + ≥2 failed -->
+      <div
+        v-if="iterations.length >= 5 && iterations.filter(i => i.status === 'failed').length >= 2"
+        class="mb-6 rounded-md border px-4 py-3 text-xs"
+        style="border-color: var(--warning); background: color-mix(in srgb, var(--warning) 8%, var(--surface)); color: var(--ink);"
+      >
+        Cette cohort a {{ iterations.length }} itérations dont
+        {{ iterations.filter(i => i.status === 'failed').length }} en échec.
+        Tu peux purger leurs augmentations pour récupérer du disque — ouvre
+        l'iteration concernée puis clique « Purger » dans la section
+        Augmentations.
+      </div>
 
       <!-- Trajectory -->
       <section class="mb-8">

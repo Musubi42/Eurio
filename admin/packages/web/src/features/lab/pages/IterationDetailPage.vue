@@ -1,16 +1,33 @@
 <script setup lang="ts">
+import AugmentationsGallery from '@/features/lab/components/AugmentationsGallery.vue'
+import AugVsRealSection from '@/features/lab/components/AugVsRealSection.vue'
+import BuildTestAppSection from '@/features/lab/components/BuildTestAppSection.vue'
+import LiveTestsSection from '@/features/lab/components/LiveTestsSection.vue'
 import InputDiffChip from '@/features/lab/components/InputDiffChip.vue'
 import PerConditionTable from '@/features/lab/components/PerConditionTable.vue'
 import VerdictBadge from '@/features/lab/components/VerdictBadge.vue'
+import { fetchRecipes } from '@/features/augmentation/composables/useAugmentationApi'
+import type { RecipeRow } from '@/features/augmentation/types'
 import {
   deleteIteration,
+  fetchBenchmarkRunDetail,
   fetchIteration,
+  fetchIterationAugmentations,
   updateIteration,
 } from '@/features/lab/composables/useLabApi'
-import { fetchBenchmarkRun } from '@/features/benchmark/composables/useBenchmarkApi'
-import type { BenchmarkRunDetail } from '@/features/benchmark/types'
-import type { IterationDetail, Verdict } from '@/features/lab/types'
-import { ArrowLeft, ExternalLink, Loader2, Save, Trash2 } from 'lucide-vue-next'
+import {
+  useLaunchTrainingMutation,
+  useRegenerateAugmentationsMutation,
+  useRunnerStatusQuery,
+  useStopIterationMutation,
+} from '@/features/lab/composables/useLabQueries'
+import type {
+  BenchmarkRunDetail,
+  IterationAugmentations,
+  IterationDetail,
+  Verdict,
+} from '@/features/lab/types'
+import { ArrowLeft, ExternalLink, Loader2, Play, Save, Square, Trash2, Wand2 } from 'lucide-vue-next'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
@@ -22,6 +39,8 @@ const iterationId = computed(() => String(route.params.iterationId))
 
 const iteration = ref<IterationDetail | null>(null)
 const benchmark = ref<BenchmarkRunDetail | null>(null)
+const augmentations = ref<IterationAugmentations | null>(null)
+const recipes = ref<RecipeRow[]>([])
 const loading = ref(true)
 const error = ref<string | null>(null)
 
@@ -29,10 +48,23 @@ const notesDraft = ref<string>('')
 const verdictOverrideDraft = ref<Verdict | null>(null)
 const savingNotes = ref(false)
 
+// Two-phase pipeline drafts (editable while status === 'pending')
+const recipeDraft = ref<string | null>(null)
+const variantCountDraft = ref<number>(100)
+const savingPipeline = ref(false)
+const pipelineError = ref<string | null>(null)
+
+const runnerQuery = useRunnerStatusQuery()
+const runnerBusy = computed(() => runnerQuery.data.value?.busy ?? false)
+
+const regenerateMut = useRegenerateAugmentationsMutation(cohortId, iterationId)
+const launchMut = useLaunchTrainingMutation(cohortId, iterationId)
+const stopMut = useStopIterationMutation(cohortId)
+
 let pollInterval: ReturnType<typeof setInterval> | null = null
 
 onMounted(async () => {
-  await reload()
+  await Promise.all([reload(), loadRecipes()])
   pollInterval = setInterval(() => {
     if (iteration.value && (iteration.value.status === 'training' || iteration.value.status === 'benchmarking')) {
       reload()
@@ -44,6 +76,14 @@ onUnmounted(() => {
   if (pollInterval) clearInterval(pollInterval)
 })
 
+async function loadRecipes() {
+  try {
+    recipes.value = await fetchRecipes()
+  } catch {
+    recipes.value = []
+  }
+}
+
 async function reload() {
   loading.value = true
   error.value = null
@@ -52,11 +92,16 @@ async function reload() {
     iteration.value = it
     notesDraft.value = it.notes || ''
     verdictOverrideDraft.value = it.verdict_override
+    recipeDraft.value = it.recipe_id
+    variantCountDraft.value = it.variant_count
     if (it.benchmark_run_id) {
-      benchmark.value = await fetchBenchmarkRun(it.benchmark_run_id).catch(() => null)
+      benchmark.value = await fetchBenchmarkRunDetail(it.benchmark_run_id).catch(() => null)
     } else {
       benchmark.value = null
     }
+    augmentations.value = await fetchIterationAugmentations(
+      cohortId.value, iterationId.value,
+    ).catch(() => null)
   } catch (e) {
     error.value = (e as Error).message
   } finally {
@@ -77,6 +122,68 @@ async function saveNotes() {
     alert(`Sauvegarde échouée : ${(e as Error).message}`)
   } finally {
     savingNotes.value = false
+  }
+}
+
+const isPending = computed(() => iteration.value?.status === 'pending')
+
+const pipelineDirty = computed(() => {
+  if (!iteration.value) return false
+  return recipeDraft.value !== iteration.value.recipe_id
+    || variantCountDraft.value !== iteration.value.variant_count
+})
+
+const augTotal = computed(() => augmentations.value?.total_samples ?? 0)
+const augReady = computed(() => augTotal.value > 0 && !pipelineDirty.value)
+
+async function savePipeline() {
+  if (!iteration.value || !pipelineDirty.value) return
+  savingPipeline.value = true
+  pipelineError.value = null
+  try {
+    await updateIteration(cohortId.value, iterationId.value, {
+      recipe_id: recipeDraft.value,
+      variant_count: variantCountDraft.value,
+    })
+    await reload()
+  } catch (e) {
+    pipelineError.value = (e as Error).message
+  } finally {
+    savingPipeline.value = false
+  }
+}
+
+async function generateAugmentations() {
+  if (!iteration.value) return
+  pipelineError.value = null
+  try {
+    if (pipelineDirty.value) await savePipeline()
+    await regenerateMut.mutateAsync()
+    await reload()
+  } catch (e) {
+    pipelineError.value = (e as Error).message
+  }
+}
+
+async function launchTraining() {
+  if (!iteration.value) return
+  pipelineError.value = null
+  try {
+    await launchMut.mutateAsync()
+    await reload()
+  } catch (e) {
+    pipelineError.value = (e as Error).message
+  }
+}
+
+async function handleStop() {
+  if (!iteration.value) return
+  if (!confirm('Stopper cette itération ? Le training en cours sera interrompu.')) return
+  try {
+    await stopMut.mutateAsync(iteration.value.id)
+    await reload()
+  } catch (e) {
+    alert(`Stop échoué : ${(e as Error).message}`)
   }
 }
 
@@ -202,6 +309,22 @@ watch(iteration, (it) => {
 
           <div class="flex flex-shrink-0 items-start gap-2">
             <button
+              v-if="inProgress"
+              class="flex items-center gap-1.5 rounded-md border px-3 py-2 text-sm font-medium"
+              :style="{
+                borderColor: 'var(--danger)',
+                color: stopMut.isPending.value ? 'var(--ink-400)' : 'var(--danger)',
+                cursor: stopMut.isPending.value ? 'wait' : 'pointer',
+              }"
+              :disabled="stopMut.isPending.value"
+              title="Stopper l'itération en cours"
+              @click="handleStop"
+            >
+              <Loader2 v-if="stopMut.isPending.value" class="h-3.5 w-3.5 animate-spin" />
+              <Square v-else class="h-3.5 w-3.5" />
+              Stopper
+            </button>
+            <button
               v-if="!inProgress"
               class="rounded-md border p-2"
               style="border-color: var(--surface-3); color: var(--ink-400);"
@@ -237,6 +360,141 @@ watch(iteration, (it) => {
         <p class="font-medium" style="color: var(--danger);">Itération en échec</p>
         <p class="mt-1 font-mono text-xs">{{ iteration.error || 'aucun détail' }}</p>
       </div>
+
+      <!-- §0 Two-phase pipeline (status=pending only) -->
+      <section
+        v-if="isPending"
+        class="mb-10 rounded-lg border p-5"
+        style="border-color: var(--indigo-700); background: color-mix(in srgb, var(--indigo-700) 4%, var(--surface));"
+      >
+        <p
+          class="mb-4 text-[10px] font-medium uppercase"
+          style="color: var(--indigo-700); letter-spacing: var(--tracking-eyebrow);"
+        >
+          §0 Pipeline · 1) Recette → 2) Bake augmentations → 3) Lancer training
+        </p>
+
+        <div class="grid grid-cols-2 gap-4">
+          <label class="block">
+            <span class="mb-1 block text-[10px] font-medium uppercase" style="color: var(--ink-500);">
+              Recette d'augmentation
+            </span>
+            <div class="flex items-center gap-2">
+              <select
+                v-model="recipeDraft"
+                class="flex-1 rounded-md border px-3 py-2 text-sm"
+                style="border-color: var(--surface-3);"
+              >
+                <option :value="null">— aucune —</option>
+                <option v-for="r in recipes" :key="r.id" :value="r.id">
+                  {{ r.name }}{{ r.zone ? ` (${r.zone})` : '' }}
+                </option>
+              </select>
+              <a
+                href="/augmentation"
+                target="_blank"
+                class="inline-flex items-center gap-1 rounded-md border px-2 py-2 text-xs"
+                style="border-color: var(--surface-3); color: var(--indigo-700);"
+                title="Éditer dans Studio"
+              >
+                <ExternalLink class="h-3 w-3" />
+              </a>
+            </div>
+          </label>
+
+          <div>
+            <p class="mb-1 text-[10px] font-medium uppercase" style="color: var(--ink-500);">
+              Variant count (images / classe)
+            </p>
+            <div class="flex items-center gap-4">
+              <input
+                v-model.number="variantCountDraft"
+                type="range" min="50" max="500" step="10"
+                class="flex-1"
+              />
+              <span class="w-12 text-right font-mono tabular-nums" style="color: var(--indigo-700);">
+                {{ variantCountDraft }}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div class="mt-4 flex flex-wrap items-center justify-between gap-3 border-t pt-4" style="border-color: var(--surface-3);">
+          <p class="text-xs" style="color: var(--ink-500);">
+            <template v-if="pipelineDirty">
+              <span style="color: var(--warning);">Config modifiée</span> — sauver effacera les augmentations bakées.
+            </template>
+            <template v-else-if="augTotal > 0">
+              <span style="color: var(--success);">{{ augTotal }} augmentations bakées</span>
+              ({{ augmentations?.per_coin.length ?? 0 }} pièces × {{ iteration.variant_count }})
+            </template>
+            <template v-else>
+              Aucune augmentation bakée — clique « Générer ».
+            </template>
+          </p>
+
+          <div class="flex items-center gap-2">
+            <button
+              v-if="pipelineDirty"
+              class="flex items-center gap-1.5 rounded-md border px-3 py-2 text-xs font-medium"
+              :style="{
+                borderColor: 'var(--surface-3)',
+                color: savingPipeline ? 'var(--ink-400)' : 'var(--ink)',
+                cursor: savingPipeline ? 'wait' : 'pointer',
+              }"
+              :disabled="savingPipeline"
+              @click="savePipeline"
+            >
+              <Loader2 v-if="savingPipeline" class="h-3 w-3 animate-spin" />
+              <Save v-else class="h-3 w-3" />
+              Sauver config
+            </button>
+            <button
+              class="flex items-center gap-1.5 rounded-md px-3 py-2 text-xs font-medium"
+              :style="{
+                background: regenerateMut.isPending.value ? 'var(--surface-2)' : 'var(--gold)',
+                color: regenerateMut.isPending.value ? 'var(--ink-400)' : 'var(--ink)',
+                cursor: regenerateMut.isPending.value ? 'wait' : 'pointer',
+              }"
+              :disabled="regenerateMut.isPending.value"
+              @click="generateAugmentations"
+            >
+              <Loader2 v-if="regenerateMut.isPending.value" class="h-3 w-3 animate-spin" />
+              <Wand2 v-else class="h-3 w-3" />
+              {{ augTotal > 0 ? 'Régénérer' : 'Générer' }}
+            </button>
+            <button
+              class="flex items-center gap-1.5 rounded-md px-4 py-2 text-sm font-medium"
+              :style="{
+                background: (augReady && !runnerBusy && !launchMut.isPending.value) ? 'var(--indigo-700)' : 'var(--surface-2)',
+                color: (augReady && !runnerBusy && !launchMut.isPending.value) ? 'white' : 'var(--ink-400)',
+                cursor: (augReady && !runnerBusy && !launchMut.isPending.value) ? 'pointer' : 'not-allowed',
+                boxShadow: (augReady && !runnerBusy && !launchMut.isPending.value) ? 'var(--shadow-sm)' : 'none',
+              }"
+              :disabled="!augReady || runnerBusy || launchMut.isPending.value"
+              :title="
+                runnerBusy ? 'Une itération tourne déjà' :
+                pipelineDirty ? 'Sauvegarde la config et regénère d\'abord' :
+                augTotal === 0 ? 'Génère les augmentations d\'abord' :
+                'Lancer training + benchmark'
+              "
+              @click="launchTraining"
+            >
+              <Loader2 v-if="launchMut.isPending.value" class="h-3.5 w-3.5 animate-spin" />
+              <Play v-else class="h-3.5 w-3.5" />
+              Lancer training
+            </button>
+          </div>
+        </div>
+
+        <div
+          v-if="pipelineError"
+          class="mt-3 rounded-md border px-3 py-2 text-xs"
+          style="border-color: var(--danger); color: var(--ink);"
+        >
+          {{ pipelineError }}
+        </div>
+      </section>
 
       <!-- Metrics + delta grid -->
       <section class="mb-10 grid grid-cols-2 gap-4 md:grid-cols-4">
@@ -411,6 +669,38 @@ watch(iteration, (it) => {
             </p>
             <PerConditionTable :per-condition="benchmark.per_condition ?? {}" />
           </section>
+
+          <!-- Augmentations snapshot (Sprint 1 / D-004) -->
+          <section v-if="iteration">
+            <AugmentationsGallery
+              :cohort-id="cohortId"
+              :iteration-id="iteration.id"
+              :status="iteration.status"
+              :per-coin-limit="12"
+            />
+          </section>
+
+          <!-- §4 Aug ↔ réelles (Sprint 2 / D-006) -->
+          <AugVsRealSection
+            v-if="iteration"
+            :cohort-id="cohortId"
+            :iteration-id="iteration.id"
+          />
+
+          <!-- §5 Test app (Sprint 3) -->
+          <BuildTestAppSection
+            v-if="iteration"
+            :cohort-id="cohortId"
+            :iteration-id="iteration.id"
+            :status="iteration.status"
+          />
+
+          <!-- §5 (suite) Live tests (Sprint 4) -->
+          <LiveTestsSection
+            v-if="iteration"
+            :cohort-id="cohortId"
+            :iteration-id="iteration.id"
+          />
         </div>
 
         <!-- Notes + verdict override sidebar -->

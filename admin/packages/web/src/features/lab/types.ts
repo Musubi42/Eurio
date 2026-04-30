@@ -112,11 +112,70 @@ export interface IterationDetail {
   diff_from_parent: Record<string, { before: unknown; after: unknown }>
   notes: string | null
   error: string | null
+  augmentations_seed: number | null
   created_at: string | null
   started_at: string | null
   finished_at: string | null
   benchmark_summary: BenchmarkSummary | null
   training_summary: TrainingSummary | null
+}
+
+export interface IterationAugmentationCoin {
+  eurio_id: string
+  numista_id: number | null
+  samples: string[]
+}
+
+export interface IterationAugmentations {
+  iteration_id: string
+  augmentations_seed: number | null
+  variant_count: number
+  total_samples: number
+  per_coin: IterationAugmentationCoin[]
+}
+
+export interface RegenerateAugmentationsResult {
+  iteration_id: string
+  regenerated: boolean
+  per_coin: Array<{
+    eurio_id: string
+    numista_id: number | null
+    written: number
+    skipped_reason: string | null
+  }>
+}
+
+export interface StopIterationResult {
+  iteration_id: string
+  outcome: 'graceful' | 'forced' | 'idle'
+  marked_failed: boolean
+}
+
+export interface AugVsRealCoin {
+  eurio_id: string
+  numista_id: number | null
+  num_real: number
+  num_aug: number
+  cosine: number | null
+  distance: number | null
+  real_samples: string[]
+  aug_samples: string[]
+  skipped_reason: string | null
+}
+
+export interface AugVsRealSummary {
+  num_coins: number
+  mean_cosine: number | null
+  min_cosine: number | null
+  max_cosine: number | null
+}
+
+export interface AugVsRealReport {
+  iteration_id: string
+  dino_version: string
+  computed_at: string | null
+  summary: AugVsRealSummary
+  per_coin: AugVsRealCoin[]
 }
 
 export interface TrajectoryPoint {
@@ -137,6 +196,171 @@ export interface SensitivityEntry {
 
 export interface RunnerStatus {
   busy: boolean
+}
+
+export interface CohortTestBuildInfo {
+  cohort_name: string
+  iteration_id: string
+  iteration_name: string
+  model_ready: boolean
+  command: string | null
+  bundle_path: string
+  tflite_present: boolean
+  reason: string | null
+}
+
+// ─── Live tests (Sprint 4) ─────────────────────────────────────────────────
+
+export type LiveTestCondition = 'bright' | 'dim' | 'tilt'
+
+export interface LiveTestTopMatch {
+  eurio_id: string
+  similarity: number
+}
+
+export interface LiveTestEntry {
+  iteration_id: string
+  test_idx: number
+  expected_eurio_id: string
+  condition: LiveTestCondition
+  predicted_top3: LiveTestTopMatch[]
+  predicted_top1: string | null
+  similarity_top1: number | null
+  is_correct: boolean
+  error: string | null
+  ts: string
+  synced_at: string | null
+}
+
+export interface LiveTestsSummary {
+  total: number
+  correct: number
+  recall_at_1: number | null
+  studio_r_at_1: number | null
+  delta: number | null
+}
+
+export interface LiveTestsReport {
+  iteration_id: string
+  cohort_id: string
+  cohort_name: string
+  conditions: LiveTestCondition[]
+  tests: LiveTestEntry[]
+  matrix: Record<string, Partial<Record<LiveTestCondition, LiveTestEntry>>>
+  summary: LiveTestsSummary
+  log_present: boolean
+  log_path: string
+}
+
+export interface LiveTestsSyncResult {
+  iteration_id: string
+  cohort_id: string
+  log_path: string
+  inserted: number
+  skipped_dupe: number
+  parse_errors: string[]
+  summary: LiveTestsSummary
+}
+
+// ─── Benchmark run detail (ex-features/benchmark, kept here only for IterationDetailPage) ─
+
+export interface BenchmarkPerCoin {
+  eurio_id: string
+  zone: string | null
+  num_photos: number
+  r_at_1: number
+  r_at_3: number
+  r_at_5: number
+}
+
+export interface BenchmarkTopConfusion {
+  photo_path: string
+  ground_truth: string
+  zone: string | null
+  spread: number
+  top_3: { class_id: string; similarity: number }[]
+}
+
+export interface BenchmarkRunDetail {
+  id: string
+  model_path: string
+  model_name: string
+  training_run_id: string | null
+  recipe_id: string | null
+  zones: string[]
+  num_photos: number
+  num_coins: number
+  num_zones: number
+  r_at_1: number | null
+  r_at_3: number | null
+  r_at_5: number | null
+  mean_spread: number | null
+  per_zone: Record<string, { r_at_1: number; r_at_3: number; r_at_5: number; num_photos: number }>
+  report_path: string
+  status: 'running' | 'completed' | 'failed'
+  error: string | null
+  started_at: string | null
+  finished_at: string | null
+  eurio_ids: string[]
+  per_coin: BenchmarkPerCoin[]
+  per_condition: Record<string, Record<string, { r_at_1: number; r_at_3: number; num_photos: number }>>
+  confusion: Record<string, Record<string, number>>
+  top_confusions: BenchmarkTopConfusion[]
+}
+
+// ─── Dashboard (Sprint 5) ──────────────────────────────────────────────────
+
+export interface DashboardTopRecipe {
+  recipe_id: string
+  recipe_name: string | null
+  zone: 'green' | 'orange' | 'red' | null
+  n_iterations: number
+  mean_live_r_at_1: number | null
+  mean_studio_r_at_1: number | null
+  iteration_ids: string[]
+}
+
+export interface DashboardDifficultCoin {
+  eurio_id: string
+  mean_live_r_at_1: number
+  n_iterations: number
+  iteration_ids: string[]
+}
+
+export interface DashboardDistanceBin {
+  range: string
+  count: number
+}
+
+export interface DashboardReport {
+  top_recipes: DashboardTopRecipe[]
+  difficult_coins: DashboardDifficultCoin[]
+  distance_distribution: {
+    total: number
+    bins: DashboardDistanceBin[]
+    threshold_difficult_r_at_1: number
+    min_iterations_for_difficult: number
+  }
+  totals: {
+    n_cohorts: number
+    n_iterations: number
+    n_completed: number
+  }
+}
+
+export interface PurgeAugmentationsResult {
+  iteration_id: string
+  cohort_id: string
+  removed_dirs: string[]
+  staging_root_removed: boolean
+  skipped: string[]
+}
+
+export interface PurgeTestBundleResult {
+  iteration_id: string
+  cohort_id: string
+  bundle_path: string
+  removed: boolean
 }
 
 export interface CohortCreatePayload {

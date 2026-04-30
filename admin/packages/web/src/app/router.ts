@@ -69,18 +69,6 @@ const router = createRouter({
           component: () => import('@/features/augmentation/pages/AugmentationStudioPage.vue'),
         },
         {
-          path: 'benchmark',
-          component: () => import('@/features/benchmark/pages/BenchmarkPage.vue'),
-        },
-        {
-          path: 'benchmark/runs/:id',
-          component: () => import('@/features/benchmark/pages/BenchmarkRunDetailPage.vue'),
-        },
-        {
-          path: 'benchmark/compare',
-          component: () => import('@/features/benchmark/pages/BenchmarkComparePage.vue'),
-        },
-        {
           path: 'lab',
           component: () => import('@/features/lab/pages/LabHomePage.vue'),
         },

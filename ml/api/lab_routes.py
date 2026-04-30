@@ -7,6 +7,7 @@ views (trajectory, sensitivity).
 
 from __future__ import annotations
 
+import json
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -19,6 +20,7 @@ from pydantic import BaseModel
 from state import (
     ExperimentCohortRow,
     ExperimentIterationRow,
+    IterationLiveTestRow,
     Store,
 )
 
@@ -43,10 +45,16 @@ CAPTURE_STEPS: tuple[str, ...] = (
 # is the single point to update.
 _ML_DIR = Path(__file__).resolve().parent.parent
 CAPTURES_BASE = _ML_DIR / "datasets"
+AUGMENTATIONS_BASE = _ML_DIR / "datasets"
 
 
 def _captures_dir_for(numista_id: int) -> Path:
     return CAPTURES_BASE / str(numista_id) / "captures"
+
+
+def augmentations_dir_for(numista_id: int, iteration_id: str) -> Path:
+    """Canonical on-disk location of an iteration's augmentations for a coin."""
+    return AUGMENTATIONS_BASE / str(numista_id) / "augmentations" / iteration_id
 
 logger = logging.getLogger(__name__)
 
@@ -117,9 +125,17 @@ class IterationCreatePayload(BaseModel):
     training_config: dict = {}
 
 
+class IterationPreviewPayload(BaseModel):
+    recipe_id: str | None = None
+    variant_count: int = 9
+
+
 class IterationUpdatePayload(BaseModel):
     notes: str | None = None
     verdict_override: str | None = None
+    # Mutable on `pending` iterations only — see `update_iteration` route.
+    recipe_id: str | None = None
+    variant_count: int | None = None
 
 
 # ─── Helpers ───────────────────────────────────────────────────────────────
@@ -406,13 +422,8 @@ def create_iteration(cohort_id: str, payload: IterationCreatePayload) -> dict:
             status_code=400, detail="variant_count doit être entre 1 et 2000"
         )
     runner = _get_runner()
-    if runner.is_busy():
-        raise HTTPException(
-            status_code=409,
-            detail="Une itération est déjà en cours — une seule à la fois.",
-        )
     try:
-        row = runner.create_and_launch(
+        row = runner.create_iteration(
             cohort_id=cohort.id,
             name=payload.name.strip(),
             hypothesis=payload.hypothesis,
@@ -425,13 +436,37 @@ def create_iteration(cohort_id: str, payload: IterationCreatePayload) -> dict:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    # Auto-freeze the cohort the first time an iteration successfully launches.
-    # Frozen cohorts can no longer mutate eurio_ids/recipe — guarantees that
-    # every benchmark from now on is comparable.
+    # Auto-freeze the cohort the first time an iteration is created.
+    # Frozen cohorts can no longer mutate eurio_ids — guarantees that
+    # every benchmark from now on is comparable. Recipe stays editable
+    # at iteration level (PUT /iterations/{iid}).
     if cohort.status == "draft":
         _get_store().update_cohort(
             cohort.id, status="frozen", frozen_at=_iso_now()
         )
+    return _iteration_with_run_metrics(row)
+
+
+@router.post("/cohorts/{cohort_id}/iterations/{iteration_id}/launch-training")
+def launch_iteration_training(cohort_id: str, iteration_id: str) -> dict:
+    """Trigger the training → benchmark → verdict chain on a pending iteration.
+
+    Pre-conditions enforced by :meth:`IterationRunner.launch_training`:
+    iteration is in status ``pending`` AND has augmentations baked on disk
+    AND the runner is free.
+    """
+    cohort = _get_store().get_cohort(cohort_id)
+    if cohort is None:
+        raise HTTPException(status_code=404, detail="Cohort introuvable")
+    iteration = _get_store().get_iteration(iteration_id)
+    if iteration is None or iteration.cohort_id != cohort.id:
+        raise HTTPException(status_code=404, detail="Itération introuvable")
+    try:
+        row = _get_runner().launch_training(iteration_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return _iteration_with_run_metrics(row)
 
 
@@ -451,11 +486,58 @@ def update_iteration(
     if it is None or it.cohort_id != cohort_id:
         raise HTTPException(status_code=404, detail="Itération introuvable")
     _validate_verdict(payload.verdict_override)
-    _get_store().update_iteration(
-        iteration_id,
-        notes=payload.notes,
-        verdict_override=payload.verdict_override,
+
+    patch: dict[str, object] = {}
+    if payload.notes is not None:
+        patch["notes"] = payload.notes
+    if payload.verdict_override is not None:
+        patch["verdict_override"] = payload.verdict_override
+
+    # Recipe + variant_count are mutable only while the iteration is still
+    # pending — once a training has run on a given (recipe, variant_count)
+    # the row is the audit trail of what was actually trained, mutating it
+    # would lie. If either field actually changes, we auto-invalidate the
+    # baked augmentation samples on disk so the user must explicitly
+    # regenerate before launching training (no stale samples mixed with
+    # new recipe choices).
+    recipe_changed = (
+        payload.recipe_id is not None
+        and payload.recipe_id != (it.recipe_id or "")
+        and payload.recipe_id != it.recipe_id
     )
+    variant_count_changed = (
+        payload.variant_count is not None
+        and payload.variant_count != it.variant_count
+    )
+    if recipe_changed or variant_count_changed:
+        if it.status != "pending":
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Iteration en status '{it.status}' — recipe/variant_count "
+                    "ne sont modifiables que sur les itérations 'pending'."
+                ),
+            )
+        if payload.recipe_id is not None:
+            if payload.recipe_id and _get_store().get_recipe(payload.recipe_id) is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Recipe {payload.recipe_id!r} introuvable",
+                )
+            patch["recipe_id"] = payload.recipe_id or None
+        if payload.variant_count is not None:
+            if payload.variant_count <= 0 or payload.variant_count > 2000:
+                raise HTTPException(
+                    status_code=400,
+                    detail="variant_count doit être entre 1 et 2000",
+                )
+            patch["variant_count"] = payload.variant_count
+        # Wipe baked augmentations so the user re-bakes against the new config.
+        from training.iteration_augmentations import clear_for_iteration
+        clear_for_iteration(iteration_id=iteration_id, store=_get_store())
+
+    if patch:
+        _get_store().update_iteration(iteration_id, **patch)
     updated = _get_store().get_iteration(iteration_id)
     return _iteration_with_run_metrics(updated) if updated else {}
 
@@ -724,9 +806,797 @@ def cohort_captures_sync(cohort_id: str, payload: CohortSyncPayload) -> dict:
     return report.to_dict()
 
 
+# ─── Augmentations (Sprint 1) ──────────────────────────────────────────────
+
+
+@router.post("/cohorts/{cohort_id}/preview-iteration")
+def preview_iteration(cohort_id: str, payload: IterationPreviewPayload) -> dict:
+    """Create a ``pending`` iteration without launching training, then bake
+    a small augmentations preview for the §3 Recipe section.
+
+    Idempotent per (cohort, recipe): if a ``pending`` iteration already
+    exists for the cohort+recipe combo, that one is returned instead of
+    spawning a new draft. Frozen cohorts are still allowed — previewing
+    doesn't mutate the cohort itself.
+    """
+    cohort = _get_store().get_cohort(cohort_id)
+    if cohort is None:
+        raise HTTPException(status_code=404, detail="Cohort introuvable")
+    if not cohort.eurio_ids:
+        raise HTTPException(
+            status_code=400,
+            detail="Cohort vide — impossible de prévisualiser sans pièces.",
+        )
+    if payload.variant_count < 1 or payload.variant_count > 64:
+        raise HTTPException(
+            status_code=400, detail="variant_count doit être entre 1 et 64"
+        )
+    if payload.recipe_id is not None and _get_store().get_recipe(payload.recipe_id) is None:
+        raise HTTPException(status_code=400, detail="recipe_id introuvable")
+
+    # Reuse a draft preview iteration if one already exists for this cohort
+    # (avoids piling up draft rows). Match by name prefix + recipe + pending.
+    existing = [
+        it for it in _get_store().list_iterations(cohort_id=cohort.id, status="pending")
+        if it.name.startswith("preview-") and it.recipe_id == payload.recipe_id
+    ]
+
+    import random as _random
+    import uuid as _uuid
+
+    if existing and existing[0].variant_count == payload.variant_count:
+        it = existing[0]
+    else:
+        # Drop any stale preview rows (e.g. variant_count changed) so we
+        # don't accumulate orphaned drafts. Recipe-bound previews are scoped
+        # so deleting only matches preview-<recipe>* rows.
+        for stale in existing:
+            from training.iteration_augmentations import clear_for_iteration as _clear
+            _clear(iteration_id=stale.id, store=_get_store())
+            _get_store().delete_iteration(stale.id)
+
+        seed = _random.randint(0, 2**31 - 1)
+        iid = _uuid.uuid4().hex[:12]
+        suffix = (payload.recipe_id or "default")[:8]
+        row = ExperimentIterationRow(
+            id=iid,
+            cohort_id=cohort.id,
+            name=f"preview-{suffix}",
+            hypothesis=None,
+            recipe_id=payload.recipe_id,
+            variant_count=payload.variant_count,
+            status="pending",
+            verdict="pending",
+            augmentations_seed=seed,
+        )
+        _get_store().create_iteration(row)
+        it = _get_store().get_iteration(iid)
+
+    # Bake (or refresh) the snapshot. Clear first so a recipe change
+    # produces fresh samples rather than mixing old and new.
+    from training.iteration_augmentations import (
+        clear_for_iteration,
+        generate_for_iteration,
+    )
+
+    clear_for_iteration(iteration_id=it.id, store=_get_store())
+    reports = generate_for_iteration(iteration_id=it.id, store=_get_store())
+    return {
+        "iteration_id": it.id,
+        "name": it.name,
+        "augmentations_seed": it.augmentations_seed,
+        "recipe_id": it.recipe_id,
+        "variant_count": it.variant_count,
+        "per_coin": [
+            {
+                "eurio_id": r.eurio_id,
+                "numista_id": r.numista_id,
+                "written": r.written,
+                "skipped_reason": r.skipped_reason,
+            }
+            for r in reports
+        ],
+    }
+
+
+@router.get("/cohorts/{cohort_id}/iterations/{iteration_id}/augmentations")
+def list_iteration_augmentations(cohort_id: str, iteration_id: str) -> dict:
+    it = _get_store().get_iteration(iteration_id)
+    if it is None or it.cohort_id != cohort_id:
+        raise HTTPException(status_code=404, detail="Itération introuvable")
+    from training.iteration_augmentations import list_for_iteration
+
+    per_coin = list_for_iteration(iteration_id=iteration_id, store=_get_store())
+    total = sum(len(c["samples"]) for c in per_coin)
+    return {
+        "iteration_id": iteration_id,
+        "augmentations_seed": it.augmentations_seed,
+        "variant_count": it.variant_count,
+        "total_samples": total,
+        "per_coin": per_coin,
+    }
+
+
+@router.post("/cohorts/{cohort_id}/iterations/{iteration_id}/augmentations/regenerate")
+def regenerate_iteration_augmentations(cohort_id: str, iteration_id: str) -> dict:
+    it = _get_store().get_iteration(iteration_id)
+    if it is None or it.cohort_id != cohort_id:
+        raise HTTPException(status_code=404, detail="Itération introuvable")
+    if it.status != "pending":
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Itération en status '{it.status}' — la régénération n'est "
+                "autorisée que pour les itérations 'pending'."
+            ),
+        )
+    from training.iteration_augmentations import (
+        clear_for_iteration,
+        generate_for_iteration,
+    )
+
+    clear_for_iteration(iteration_id=iteration_id, store=_get_store())
+    reports = generate_for_iteration(iteration_id=iteration_id, store=_get_store())
+    return {
+        "iteration_id": iteration_id,
+        "regenerated": True,
+        "per_coin": [
+            {
+                "eurio_id": r.eurio_id,
+                "numista_id": r.numista_id,
+                "written": r.written,
+                "skipped_reason": r.skipped_reason,
+            }
+            for r in reports
+        ],
+    }
+
+
+# ─── Aug ↔ réelles (Sprint 2 / D-006) ──────────────────────────────────────
+
+
+def _aug_vs_real_payload(iteration_id: str, *, force: bool = False) -> dict:
+    from . import distance_logic
+
+    rows, dino_version = distance_logic.compute_aug_vs_real(
+        iteration_id=iteration_id, store=_get_store(), force=force,
+    )
+    summary = distance_logic.summarize(rows)
+    paths = distance_logic.list_paths_for_iteration(
+        iteration_id=iteration_id, store=_get_store(),
+    )
+    paths_by_eid = {p["eurio_id"]: p for p in paths}
+    rows_by_eid = {r.eurio_id: r for r in rows}
+
+    it = _get_store().get_iteration(iteration_id)
+    cohort = _get_store().get_cohort(it.cohort_id)
+    per_coin: list[dict] = []
+    for eurio_id in cohort.eurio_ids:
+        p = paths_by_eid.get(
+            eurio_id,
+            {"numista_id": None, "real_samples": [], "aug_samples": []},
+        )
+        r = rows_by_eid.get(eurio_id)
+        per_coin.append({
+            "eurio_id": eurio_id,
+            "numista_id": p.get("numista_id"),
+            "num_real": len(p["real_samples"]),
+            "num_aug": len(p["aug_samples"]),
+            "cosine": r.cosine if r else None,
+            "distance": (1.0 - r.cosine) if r else None,
+            "real_samples": p["real_samples"],
+            "aug_samples": p["aug_samples"],
+            "skipped_reason": (
+                "no captures" if not p["real_samples"]
+                else "no augmentations" if not p["aug_samples"]
+                else None
+            ),
+        })
+    computed_at = max(
+        (r.computed_at for r in rows if r.computed_at), default=None
+    )
+    return {
+        "iteration_id": iteration_id,
+        "dino_version": dino_version,
+        "computed_at": computed_at,
+        "summary": summary,
+        "per_coin": per_coin,
+    }
+
+
+@router.get("/cohorts/{cohort_id}/iterations/{iteration_id}/aug-vs-real")
+def get_aug_vs_real(cohort_id: str, iteration_id: str) -> dict:
+    it = _get_store().get_iteration(iteration_id)
+    if it is None or it.cohort_id != cohort_id:
+        raise HTTPException(status_code=404, detail="Itération introuvable")
+    return _aug_vs_real_payload(iteration_id, force=False)
+
+
+@router.post("/cohorts/{cohort_id}/iterations/{iteration_id}/aug-vs-real/recompute")
+def recompute_aug_vs_real(cohort_id: str, iteration_id: str) -> dict:
+    it = _get_store().get_iteration(iteration_id)
+    if it is None or it.cohort_id != cohort_id:
+        raise HTTPException(status_code=404, detail="Itération introuvable")
+    _get_store().clear_aug_vs_real(iteration_id)
+    return _aug_vs_real_payload(iteration_id, force=True)
+
+
+# ─── Stop training (Sprint 1 / D-009) ──────────────────────────────────────
+
+
+@router.post("/cohorts/{cohort_id}/iterations/{iteration_id}/stop")
+def stop_iteration(cohort_id: str, iteration_id: str) -> dict:
+    it = _get_store().get_iteration(iteration_id)
+    if it is None or it.cohort_id != cohort_id:
+        raise HTTPException(status_code=404, detail="Itération introuvable")
+    if it.status not in ("training", "benchmarking"):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Itération en status '{it.status}' — stop n'est valide que pour "
+                "training/benchmarking."
+            ),
+        )
+    runner = _get_runner()
+    outcome = runner.stop(iteration_id)
+    return {"iteration_id": iteration_id, **outcome}
+
+
 # ─── Runner status (for frontend polling) ──────────────────────────────────
 
 
 @router.get("/runner/status")
 def runner_status() -> dict:
     return {"busy": _get_runner().is_busy()}
+
+
+# ─── Cohort test app build info (Sprint 3) ─────────────────────────────────
+
+
+_REPO_ROOT = _ML_DIR.parent
+_TFLITE_PATH = _ML_DIR / "output" / "eurio_embedder_v1.tflite"
+
+
+@router.get("/cohorts/{cohort_id}/iterations/{iteration_id}/test-app/build-info")
+def cohort_test_build_info(cohort_id: str, iteration_id: str) -> dict:
+    """Return the copy-paste command + readiness flags for the cohortTest APK.
+
+    The frontend (`BuildTestAppSection.vue`) renders ``command`` verbatim
+    in a ``<pre>`` block. ``model_ready`` gates the UI.
+    """
+    store = _get_store()
+    cohort = store.get_cohort(cohort_id)
+    if cohort is None:
+        raise HTTPException(status_code=404, detail="Cohort introuvable")
+    iteration = store.get_iteration(iteration_id)
+    if iteration is None or iteration.cohort_id != cohort.id:
+        raise HTTPException(status_code=404, detail="Itération introuvable")
+
+    bundle_path = (
+        _ML_DIR / "output" / f"cohort_test_{iteration.id}"
+    ).relative_to(_REPO_ROOT).as_posix()
+
+    if iteration.status != "completed":
+        return {
+            "cohort_name": cohort.name,
+            "iteration_id": iteration.id,
+            "iteration_name": iteration.name,
+            "model_ready": False,
+            "command": None,
+            "bundle_path": bundle_path,
+            "tflite_present": _TFLITE_PATH.exists(),
+            "reason": (
+                f"L'itération est en status '{iteration.status}'. "
+                "Lance d'abord le training jusqu'à completion."
+            ),
+        }
+
+    if not _TFLITE_PATH.exists():
+        return {
+            "cohort_name": cohort.name,
+            "iteration_id": iteration.id,
+            "iteration_name": iteration.name,
+            "model_ready": False,
+            "command": None,
+            "bundle_path": bundle_path,
+            "tflite_present": False,
+            "reason": (
+                f"{_TFLITE_PATH.relative_to(_REPO_ROOT)} manque — lance "
+                "`python -m training.export_tflite` après le training."
+            ),
+        }
+
+    command = (
+        "go-task -t app-android/Taskfile.yml cohort-test:install "
+        f"COHORT={cohort.name} ITERATION={iteration.id}"
+    )
+    return {
+        "cohort_name": cohort.name,
+        "iteration_id": iteration.id,
+        "iteration_name": iteration.name,
+        "model_ready": True,
+        "command": command,
+        "bundle_path": bundle_path,
+        "tflite_present": True,
+        "reason": None,
+    }
+
+
+# ─── Live tests (Sprint 4) ─────────────────────────────────────────────────
+#
+# Wire :
+#   1. user runs the cohortTest APK, takes the 9 prescribed snaps
+#   2. ``LiveTestLogger.kt`` writes
+#      ``/sdcard/Android/data/com.musubi.eurio.cohorttest/files/Documents/eurio_live_tests/<iid>.jsonl``
+#   3. ``go-task -t app-android/Taskfile.yml cohort-test:pull-tests
+#      ITERATION=<iid>`` pulls that file under
+#      ``ml/state/live_test_logs/<iid>.jsonl`` then POSTs ``/sync``
+#   4. ``GET .../live-tests`` exposes the matrix + studio↔live delta
+#
+# Schema versioning : ``schema_version`` is required on every line and rejected
+# if missing. Keeps the JSONL forward-compat — Sprint 5+ may add fields and
+# bump the version.
+
+LIVE_TEST_LOGS_DIR = _ML_DIR / "state" / "live_test_logs"
+LIVE_TEST_SCHEMA_VERSION = 1
+LIVE_TEST_CONDITIONS = {"bright", "dim", "tilt"}
+
+
+def _safe_repo_relative(p: Path) -> str:
+    """Return ``p`` relative to the repo root if possible, else absolute.
+
+    Tests patch ``LIVE_TEST_LOGS_DIR`` to a tmpdir that lives outside the
+    repo, so ``relative_to`` would raise. The user-facing string is purely
+    informational.
+    """
+    try:
+        return p.relative_to(_REPO_ROOT).as_posix()
+    except ValueError:
+        return p.as_posix()
+
+
+class LiveTestsSyncPayload(BaseModel):
+    """Body of ``POST /lab/cohorts/_/iterations/{iid}/live-tests/sync``.
+
+    The path uses ``_`` because we look up the iteration by id alone — pulling
+    the file on the client side already knows which iteration we mean.
+    """
+
+    pass
+
+
+def _parse_live_test_line(
+    raw: str, *, expected_iteration_id: str, line_idx: int,
+) -> tuple[IterationLiveTestRow | None, str | None]:
+    """Validate one JSONL line, return (row, error_msg).
+
+    Skips empty lines silently. Otherwise returns either a parsed row or a
+    human-readable validation error (caller surfaces these in the response so
+    the user sees what went wrong without grepping logs).
+    """
+    if not raw.strip():
+        return None, None
+    try:
+        obj = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        return None, f"line {line_idx}: invalid JSON ({exc.msg})"
+    schema_version = obj.get("schema_version")
+    if schema_version != LIVE_TEST_SCHEMA_VERSION:
+        return None, (
+            f"line {line_idx}: schema_version={schema_version!r} "
+            f"!= {LIVE_TEST_SCHEMA_VERSION}"
+        )
+    iteration_id = obj.get("iteration_id")
+    if iteration_id != expected_iteration_id:
+        return None, (
+            f"line {line_idx}: iteration_id={iteration_id!r} "
+            f"!= {expected_iteration_id!r}"
+        )
+    test_idx = obj.get("test_idx")
+    if not isinstance(test_idx, int) or test_idx < 1:
+        return None, f"line {line_idx}: test_idx must be a positive int"
+    expected_eid = obj.get("expected_eurio_id")
+    if not isinstance(expected_eid, str) or not expected_eid:
+        return None, f"line {line_idx}: expected_eurio_id required"
+    condition = obj.get("condition")
+    if condition not in LIVE_TEST_CONDITIONS:
+        return None, (
+            f"line {line_idx}: condition={condition!r} "
+            f"not in {sorted(LIVE_TEST_CONDITIONS)}"
+        )
+    raw_top3 = obj.get("predicted_top3", [])
+    if not isinstance(raw_top3, list):
+        return None, f"line {line_idx}: predicted_top3 must be a list"
+    top3: list[dict] = []
+    for entry in raw_top3:
+        if not isinstance(entry, dict):
+            return None, f"line {line_idx}: predicted_top3 entry must be dict"
+        eid = entry.get("eurio_id")
+        sim = entry.get("similarity")
+        if not isinstance(eid, str) or eid == "":
+            return None, f"line {line_idx}: predicted_top3.eurio_id required"
+        if not isinstance(sim, (int, float)):
+            return None, f"line {line_idx}: predicted_top3.similarity must be a number"
+        top3.append({"eurio_id": eid, "similarity": float(sim)})
+    predicted_top1 = obj.get("predicted_top1")
+    if predicted_top1 is not None and not isinstance(predicted_top1, str):
+        return None, f"line {line_idx}: predicted_top1 must be str or null"
+    similarity_top1 = obj.get("similarity_top1")
+    if similarity_top1 is not None and not isinstance(similarity_top1, (int, float)):
+        return None, f"line {line_idx}: similarity_top1 must be a number or null"
+    is_correct = bool(obj.get("is_correct"))
+    error = obj.get("error")
+    if error is not None and not isinstance(error, str):
+        return None, f"line {line_idx}: error must be str or null"
+    ts = obj.get("ts")
+    if not isinstance(ts, str) or not ts:
+        return None, f"line {line_idx}: ts required"
+    row = IterationLiveTestRow(
+        iteration_id=iteration_id,
+        test_idx=test_idx,
+        expected_eurio_id=expected_eid,
+        condition=condition,
+        predicted_top3=top3,
+        predicted_top1=predicted_top1,
+        similarity_top1=(
+            float(similarity_top1) if similarity_top1 is not None else None
+        ),
+        is_correct=is_correct,
+        error=error,
+        ts=ts,
+    )
+    return row, None
+
+
+def _live_tests_summary(
+    rows: list[IterationLiveTestRow], iteration: ExperimentIterationRow,
+) -> dict:
+    total = len(rows)
+    correct = sum(1 for r in rows if r.is_correct)
+    live_r1 = correct / total if total > 0 else None
+    studio_r1: float | None = None
+    if iteration.benchmark_run_id:
+        bench = _get_store().get_benchmark_run(iteration.benchmark_run_id)
+        if bench is not None:
+            studio_r1 = bench.r_at_1
+    delta = (
+        live_r1 - studio_r1
+        if (live_r1 is not None and studio_r1 is not None)
+        else None
+    )
+    return {
+        "total": total,
+        "correct": correct,
+        "recall_at_1": live_r1,
+        "studio_r_at_1": studio_r1,
+        "delta": delta,
+    }
+
+
+@router.post("/cohorts/_/iterations/{iteration_id}/live-tests/sync")
+def sync_live_tests(
+    iteration_id: str, payload: LiveTestsSyncPayload | None = None,
+) -> dict:
+    """Parse the pulled JSONL log and upsert into ``iteration_live_tests``.
+
+    The cohort wildcard ``_`` is intentional — the iteration carries the
+    cohort_id, so the task that pulls the JSONL doesn't need to thread it
+    through. We still resolve+return the cohort name in the response so the
+    front can update its cache key.
+    """
+    store = _get_store()
+    iteration = store.get_iteration(iteration_id)
+    if iteration is None:
+        raise HTTPException(status_code=404, detail="Itération introuvable")
+    log_path = LIVE_TEST_LOGS_DIR / f"{iteration_id}.jsonl"
+    if not log_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"Log JSONL absent: {_safe_repo_relative(log_path)}. "
+                "Lance d'abord `go-task -t app-android/Taskfile.yml "
+                f"cohort-test:pull-tests ITERATION={iteration_id}`."
+            ),
+        )
+    inserted = 0
+    skipped_dupe = 0
+    parse_errors: list[str] = []
+    with log_path.open("r", encoding="utf-8") as fh:
+        for line_idx, raw in enumerate(fh, start=1):
+            row, err = _parse_live_test_line(
+                raw, expected_iteration_id=iteration_id, line_idx=line_idx,
+            )
+            if err is not None:
+                parse_errors.append(err)
+                continue
+            if row is None:
+                continue
+            if store.upsert_live_test(row):
+                inserted += 1
+            else:
+                skipped_dupe += 1
+
+    rows = store.list_live_tests(iteration_id)
+    summary = _live_tests_summary(rows, iteration)
+    return {
+        "iteration_id": iteration_id,
+        "cohort_id": iteration.cohort_id,
+        "log_path": _safe_repo_relative(log_path),
+        "inserted": inserted,
+        "skipped_dupe": skipped_dupe,
+        "parse_errors": parse_errors,
+        "summary": summary,
+    }
+
+
+@router.get("/cohorts/{cohort_id}/iterations/{iteration_id}/live-tests")
+def get_live_tests(cohort_id: str, iteration_id: str) -> dict:
+    """Return all parsed live tests + studio↔live delta for §5 admin."""
+    store = _get_store()
+    cohort = store.get_cohort(cohort_id)
+    if cohort is None:
+        raise HTTPException(status_code=404, detail="Cohort introuvable")
+    iteration = store.get_iteration(iteration_id)
+    if iteration is None or iteration.cohort_id != cohort.id:
+        raise HTTPException(status_code=404, detail="Itération introuvable")
+
+    rows = store.list_live_tests(iteration_id)
+    summary = _live_tests_summary(rows, iteration)
+
+    # Group by (eurio_id, condition) for the matrix view. The bundle's
+    # live_tests_manifest.json has the full prescription; we only need the
+    # entries that survived sync here.
+    matrix: dict[str, dict[str, dict]] = {}
+    for r in rows:
+        per_coin = matrix.setdefault(r.expected_eurio_id, {})
+        per_coin[r.condition] = r.to_dict()
+
+    # Manifest path is informational — the Vue side doesn't read it.
+    log_path = LIVE_TEST_LOGS_DIR / f"{iteration_id}.jsonl"
+    return {
+        "iteration_id": iteration_id,
+        "cohort_id": cohort.id,
+        "cohort_name": cohort.name,
+        "conditions": sorted(LIVE_TEST_CONDITIONS),
+        "tests": [r.to_dict() for r in rows],
+        "matrix": matrix,
+        "summary": summary,
+        "log_present": log_path.exists(),
+        "log_path": _safe_repo_relative(log_path),
+    }
+
+
+# ─── Garbage collect (Sprint 5) ────────────────────────────────────────────
+
+
+_OUTPUT_DIR = _ML_DIR / "output"
+
+
+def _cohort_test_bundle_dir(iteration_id: str) -> Path:
+    """Mirror the path produced by `cohort-test:bundle` (sprint 3)."""
+    return _OUTPUT_DIR / f"cohort_test_{iteration_id}"
+
+
+@router.delete("/cohorts/{cohort_id}/iterations/{iteration_id}/augmentations")
+def purge_iteration_augmentations(cohort_id: str, iteration_id: str) -> dict:
+    """Wipe baked augmentations for one iteration (per-numista_id dirs).
+
+    Refuses on running iterations to avoid yanking the rug from under a
+    training subprocess. The iteration row + benchmark history stay intact;
+    only the augmentation samples + per-iteration symlink staging root go.
+    """
+    import shutil
+
+    store = _get_store()
+    cohort = store.get_cohort(cohort_id)
+    if cohort is None:
+        raise HTTPException(status_code=404, detail="Cohort introuvable")
+    iteration = store.get_iteration(iteration_id)
+    if iteration is None or iteration.cohort_id != cohort.id:
+        raise HTTPException(status_code=404, detail="Itération introuvable")
+    if iteration.status in ("training", "benchmarking"):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Itération en status '{iteration.status}' — purger les "
+                "augmentations casserait le subprocess en cours. Stop d'abord."
+            ),
+        )
+
+    removed_dirs: list[str] = []
+    skipped: list[str] = []
+    for eurio_id in cohort.eurio_ids:
+        nid = coin_lookup.numista_id_for(eurio_id)
+        if nid is None:
+            skipped.append(f"{eurio_id} (numista_id missing)")
+            continue
+        path = augmentations_dir_for(nid, iteration_id)
+        if path.exists():
+            shutil.rmtree(path)
+            removed_dirs.append(_safe_repo_relative(path))
+    # The per-iteration symlink staging root used as ImageFolder dataset.
+    staging_root = _ML_DIR / "datasets" / "iterations" / iteration_id
+    staging_removed = False
+    if staging_root.exists():
+        shutil.rmtree(staging_root)
+        staging_removed = True
+    return {
+        "iteration_id": iteration_id,
+        "cohort_id": cohort.id,
+        "removed_dirs": removed_dirs,
+        "staging_root_removed": staging_removed,
+        "skipped": skipped,
+    }
+
+
+@router.delete("/cohorts/{cohort_id}/iterations/{iteration_id}/test-bundle")
+def purge_iteration_test_bundle(cohort_id: str, iteration_id: str) -> dict:
+    """Wipe the cohortTest bundle dir produced by `cohort-test:bundle`.
+
+    Doesn't touch the staged copy under
+    `app-android/src/cohortTest/assets/cohort_bundle/` — that's overwritten
+    on the next bundle anyway and is part of the build tree.
+    """
+    import shutil
+
+    store = _get_store()
+    cohort = store.get_cohort(cohort_id)
+    if cohort is None:
+        raise HTTPException(status_code=404, detail="Cohort introuvable")
+    iteration = store.get_iteration(iteration_id)
+    if iteration is None or iteration.cohort_id != cohort.id:
+        raise HTTPException(status_code=404, detail="Itération introuvable")
+
+    path = _cohort_test_bundle_dir(iteration_id)
+    if not path.exists():
+        return {
+            "iteration_id": iteration_id,
+            "cohort_id": cohort.id,
+            "bundle_path": _safe_repo_relative(path),
+            "removed": False,
+        }
+    shutil.rmtree(path)
+    return {
+        "iteration_id": iteration_id,
+        "cohort_id": cohort.id,
+        "bundle_path": _safe_repo_relative(path),
+        "removed": True,
+    }
+
+
+# ─── Dashboard cross-cohort (Sprint 5) ─────────────────────────────────────
+
+
+# OQ-2 — "difficult coin" = live R@1 mean under this threshold across at
+# least DIFFICULT_MIN_ITERATIONS distinct iterations. Tweakable here.
+_DIFFICULT_R1_THRESHOLD = 0.5
+_DIFFICULT_MIN_ITERATIONS = 3
+_DISTANCE_BINS = (
+    (0.0, 0.5),
+    (0.5, 0.7),
+    (0.7, 0.85),
+    (0.85, 0.95),
+    (0.95, 1.0),
+)
+
+
+def _cosine_bin(cosine: float) -> str:
+    for lo, hi in _DISTANCE_BINS:
+        if cosine < hi or (hi == 1.0 and cosine <= 1.0):
+            return f"{lo:.2f}-{hi:.2f}"
+    return "out-of-range"
+
+
+@router.get("/dashboard")
+def dashboard() -> dict:
+    """Cross-cohort aggregations. Should stay <1s even with 5+ cohorts."""
+    store = _get_store()
+    iterations = store.list_iterations()
+    completed = [it for it in iterations if it.status == "completed"]
+
+    # ── Top recipes (recipe_id × mean live R@1) ────────────────────────
+    # We use *live* R@1 when available (prefers reality over studio); fall
+    # back to studio R@1 otherwise so a recipe with no live tests yet still
+    # shows up.
+    by_recipe: dict[str, dict] = {}
+    for it in completed:
+        if it.recipe_id is None:
+            continue
+        live_rows = store.list_live_tests(it.id)
+        live_r1: float | None = None
+        if live_rows:
+            live_r1 = sum(1 for r in live_rows if r.is_correct) / len(live_rows)
+        studio_r1: float | None = None
+        if it.benchmark_run_id:
+            bench = store.get_benchmark_run(it.benchmark_run_id)
+            if bench is not None:
+                studio_r1 = bench.r_at_1
+        bucket = by_recipe.setdefault(
+            it.recipe_id,
+            {"recipe_id": it.recipe_id, "live_r1s": [], "studio_r1s": [], "iteration_ids": []},
+        )
+        if live_r1 is not None:
+            bucket["live_r1s"].append(live_r1)
+        if studio_r1 is not None:
+            bucket["studio_r1s"].append(studio_r1)
+        bucket["iteration_ids"].append(it.id)
+
+    top_recipes = []
+    for recipe_id, bucket in by_recipe.items():
+        recipe = store.get_recipe(recipe_id)
+        live = bucket["live_r1s"]
+        studio = bucket["studio_r1s"]
+        top_recipes.append({
+            "recipe_id": recipe_id,
+            "recipe_name": recipe.name if recipe else None,
+            "zone": recipe.zone if recipe else None,
+            "n_iterations": len(bucket["iteration_ids"]),
+            "mean_live_r_at_1": sum(live) / len(live) if live else None,
+            "mean_studio_r_at_1": sum(studio) / len(studio) if studio else None,
+            "iteration_ids": bucket["iteration_ids"],
+        })
+    # Sort: prefer live R@1 ranking, fallback to studio.
+    top_recipes.sort(
+        key=lambda r: (
+            r["mean_live_r_at_1"] if r["mean_live_r_at_1"] is not None
+            else (r["mean_studio_r_at_1"] if r["mean_studio_r_at_1"] is not None else -1.0)
+        ),
+        reverse=True,
+    )
+
+    # ── Difficult coins (live R@1 < threshold over ≥N iterations) ──────
+    by_coin: dict[str, list[float]] = {}
+    coin_iterations: dict[str, set[str]] = {}
+    for it in completed:
+        rows = store.list_live_tests(it.id)
+        if not rows:
+            continue
+        per_coin: dict[str, list[bool]] = {}
+        for r in rows:
+            per_coin.setdefault(r.expected_eurio_id, []).append(r.is_correct)
+        for eid, results in per_coin.items():
+            r1 = sum(1 for ok in results if ok) / len(results)
+            by_coin.setdefault(eid, []).append(r1)
+            coin_iterations.setdefault(eid, set()).add(it.id)
+
+    difficult_coins = []
+    for eid, r1s in by_coin.items():
+        n_iter = len(coin_iterations[eid])
+        if n_iter < _DIFFICULT_MIN_ITERATIONS:
+            continue
+        mean_r1 = sum(r1s) / len(r1s)
+        if mean_r1 >= _DIFFICULT_R1_THRESHOLD:
+            continue
+        difficult_coins.append({
+            "eurio_id": eid,
+            "mean_live_r_at_1": mean_r1,
+            "n_iterations": n_iter,
+            "iteration_ids": sorted(coin_iterations[eid]),
+        })
+    difficult_coins.sort(key=lambda c: c["mean_live_r_at_1"])
+
+    # ── Distance distribution (cosine aug↔réel) ────────────────────────
+    bins: dict[str, int] = {f"{lo:.2f}-{hi:.2f}": 0 for lo, hi in _DISTANCE_BINS}
+    total = 0
+    for it in completed:
+        for row in store.list_aug_vs_real(it.id):
+            if row.cosine is None:
+                continue
+            bins[_cosine_bin(row.cosine)] += 1
+            total += 1
+
+    return {
+        "top_recipes": top_recipes,
+        "difficult_coins": difficult_coins,
+        "distance_distribution": {
+            "total": total,
+            "bins": [{"range": k, "count": v} for k, v in bins.items()],
+            "threshold_difficult_r_at_1": _DIFFICULT_R1_THRESHOLD,
+            "min_iterations_for_difficult": _DIFFICULT_MIN_ITERATIONS,
+        },
+        "totals": {
+            "n_cohorts": len(store.list_cohorts()),
+            "n_iterations": len(iterations),
+            "n_completed": len(completed),
+        },
+    }

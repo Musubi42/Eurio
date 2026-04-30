@@ -209,6 +209,52 @@ CREATE INDEX IF NOT EXISTS idx_experiment_iterations_parent ON experiment_iterat
 CREATE INDEX IF NOT EXISTS idx_experiment_iterations_created ON experiment_iterations(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_experiment_iterations_status ON experiment_iterations(status);
 
+-- ─── Aug ↔ réelles cache (Sprint 2) ──────────────────────────────────────
+-- DINO cosine distance per (iteration, eurio_id). Cache key includes
+-- dino_version + counts so a model swap or capture/aug delta forces
+-- recompute (see `ml/api/distance_logic.py`).
+
+CREATE TABLE IF NOT EXISTS iteration_aug_vs_real (
+  iteration_id    TEXT NOT NULL REFERENCES experiment_iterations(id) ON DELETE CASCADE,
+  eurio_id        TEXT NOT NULL,
+  num_real        INTEGER NOT NULL,
+  num_aug         INTEGER NOT NULL,
+  cosine          REAL NOT NULL,
+  dino_version    TEXT NOT NULL,
+  computed_at     TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (iteration_id, eurio_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_iteration_aug_vs_real_iter
+  ON iteration_aug_vs_real(iteration_id);
+
+-- ─── Live tests (Sprint 4) ───────────────────────────────────────────────
+-- Per-test result for the cohortTest live-test flow. One row per (iteration,
+-- test_idx) — the JSONL log written on-device by `LiveTestLogger.kt` and
+-- pulled into `ml/state/live_test_logs/<iteration_id>.jsonl` is the raw
+-- source of truth; this table holds the parsed/dedup'd view used by §5
+-- in the admin iteration detail page. Resync of the same JSONL is idempotent
+-- (the (iteration_id, test_idx) PK absorbs duplicates — see route's
+-- skipped_dupe counter).
+
+CREATE TABLE IF NOT EXISTS iteration_live_tests (
+  iteration_id        TEXT NOT NULL REFERENCES experiment_iterations(id) ON DELETE CASCADE,
+  test_idx            INTEGER NOT NULL,
+  expected_eurio_id   TEXT NOT NULL,
+  condition           TEXT NOT NULL CHECK (condition IN ('bright','dim','tilt')),
+  predicted_top3_json TEXT NOT NULL,        -- [{eurio_id, similarity}, ...]
+  predicted_top1      TEXT,                  -- denormalized for fast queries
+  similarity_top1     REAL,
+  is_correct          INTEGER NOT NULL,      -- 1 if predicted_top1 == expected, else 0
+  error               TEXT,                  -- non-null when on-device inference failed (OQ-1)
+  ts                  TEXT NOT NULL,         -- ISO8601 from device
+  synced_at           TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (iteration_id, test_idx)
+);
+
+CREATE INDEX IF NOT EXISTS idx_live_tests_iter
+  ON iteration_live_tests(iteration_id);
+
 -- Additive migrations for existing tables — SQLite has no `ADD COLUMN IF NOT
 -- EXISTS`, so Store._bootstrap runs these via a PRAGMA-guarded Python helper
 -- (see `state/store.py::_ensure_column`). Keeping them here as reference only.
