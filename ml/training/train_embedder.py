@@ -7,6 +7,7 @@ Supports two modes:
 
 import argparse
 import json
+import signal
 import sys
 from pathlib import Path
 
@@ -19,6 +20,25 @@ from torch.utils.data import DataLoader
 from torchvision import models, transforms
 from torchvision.models import MobileNet_V3_Small_Weights
 from tqdm import tqdm
+
+# ---------------------------------------------------------------------------
+# Cooperative stop (SIGTERM) — Sprint 1 / D-009
+# ---------------------------------------------------------------------------
+# The Lab runner sends SIGTERM via subprocess.terminate() when the user clicks
+# Stop. We finish the current epoch, write a *.partial checkpoint, and exit
+# with a sentinel code (2) so the runner can mark the iteration as "Stopped
+# by user (graceful)". After 30s the runner escalates to SIGKILL.
+_STOP_REQUESTED = False
+_STOP_EXIT_CODE = 2
+
+
+def _on_term(_signum, _frame) -> None:
+    global _STOP_REQUESTED
+    _STOP_REQUESTED = True
+    print("[stop] SIGTERM received — will exit at end of epoch", flush=True)
+
+
+signal.signal(signal.SIGTERM, _on_term)
 
 ML_DIR = Path(__file__).parent.parent
 if str(ML_DIR) not in sys.path:
@@ -161,12 +181,27 @@ def get_train_transforms() -> transforms.Compose:
 def _build_train_dataset(args) -> EurioCoinDataset:
     """Build the training Dataset with zone-resolved on-the-fly augmentation.
 
-    If ``args.aug_recipe`` is set (advanced override), that single recipe is
-    applied to all classes. Otherwise each class is mapped to a zone
-    (green/orange/red) and the matching ZONE_RECIPES entry is applied.
+    If ``args.prebaked_augmentations`` is set, the on-disk dataset is already
+    augmented (see ``training/iteration_augmentations.py``) — apply only the
+    legacy torchvision transforms (rotation, color jitter, normalize) and
+    skip the recipe layer.
+
+    Otherwise: if ``args.aug_recipe`` is set (advanced override), that single
+    recipe is applied to all classes. Otherwise each class is mapped to a
+    zone (green/orange/red) and the matching ZONE_RECIPES entry is applied.
     """
-    override = getattr(args, "_resolved_aug_recipe", None)
     legacy = get_train_transforms()
+    if getattr(args, "prebaked_augmentations", False):
+        # Recipe is baked into the on-disk samples — pass an empty pipeline
+        # so EurioCoinDataset.__getitem__ short-circuits to the legacy
+        # transform stack only.
+        return EurioCoinDataset(
+            args.dataset,
+            class_zones={},
+            legacy_transform=legacy,
+            recipe_override={"layers": []},
+        )
+    override = getattr(args, "_resolved_aug_recipe", None)
     if override is not None:
         return EurioCoinDataset(
             args.dataset,
@@ -776,6 +811,21 @@ def train_arcface(args):
             print(f"  → Saved best model (R@1: {best_recall:.2%}) → "
                   f"{(output_dir / 'best_model.pth').resolve()}")
 
+        if _STOP_REQUESTED:
+            partial_path = output_dir / "best_model.partial.pth"
+            torch.save({
+                "epoch": epoch,
+                "mode": "arcface",
+                "model_state_dict": model.state_dict(),
+                "embedding_dim": args.embedding_dim,
+                "num_classes": num_classes,
+                "classes": train_dataset.classes,
+                "model_version": args.model_version,
+                "stopped_at_epoch": epoch,
+            }, partial_path)
+            print(f"[stop] graceful exit after epoch {epoch}; partial → {partial_path.resolve()}")
+            sys.exit(_STOP_EXIT_CODE)
+
     with open(output_dir / "training_log.json", "w") as f:
         json.dump(training_log, f, indent=2)
 
@@ -812,6 +862,13 @@ def main():
         default=None,
         help="Optional: id or name of an augmentation recipe stored in state/training.db. "
              "When set, the pipeline runs in addition to legacy torchvision transforms.",
+    )
+    parser.add_argument(
+        "--prebaked-augmentations",
+        action="store_true",
+        help="Read pre-augmented samples directly from the dataset root "
+             "(see training/iteration_augmentations.py). When set, the recipe "
+             "layer is bypassed; only legacy torchvision transforms apply.",
     )
     args = parser.parse_args()
 

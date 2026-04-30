@@ -16,16 +16,29 @@ import {
   addCoinsToCohort,
   cloneCohort,
   createIteration,
+  fetchAugVsReal,
   fetchCohort,
   fetchCohortCaptures,
+  fetchCohortTestBuildInfo,
   fetchCohorts,
+  fetchDashboard,
+  fetchIterationAugmentations,
   fetchIterations,
+  fetchLiveTests,
   fetchRunnerStatus,
   fetchSensitivity,
   fetchTrajectory,
   generateCohortCsv,
+  launchIterationTraining,
+  purgeIterationAugmentations,
+  purgeIterationTestBundle,
+  recomputeAugVsReal,
+  regenerateIterationAugmentations,
   removeCoinFromCohort,
+  stopIteration,
   syncCohortCaptures,
+  syncLiveTests,
+  updateIteration,
 } from './useLabApi'
 import type {
   CohortStatus,
@@ -40,6 +53,15 @@ export const LAB_KEYS = {
   trajectory: (cohortId: string) => ['lab', 'cohort', cohortId, 'trajectory'] as const,
   sensitivity: (cohortId: string) => ['lab', 'cohort', cohortId, 'sensitivity'] as const,
   captures: (cohortId: string) => ['lab', 'cohort', cohortId, 'captures'] as const,
+  augmentations: (cohortId: string, iterationId: string) =>
+    ['lab', 'cohort', cohortId, 'iterations', iterationId, 'augmentations'] as const,
+  augVsReal: (cohortId: string, iterationId: string) =>
+    ['lab', 'cohort', cohortId, 'iterations', iterationId, 'aug-vs-real'] as const,
+  buildInfo: (cohortId: string, iterationId: string) =>
+    ['lab', 'cohort', cohortId, 'iterations', iterationId, 'build-info'] as const,
+  liveTests: (cohortId: string, iterationId: string) =>
+    ['lab', 'cohort', cohortId, 'iterations', iterationId, 'live-tests'] as const,
+  dashboard: ['lab', 'dashboard'] as const,
   runner: ['lab', 'runner'] as const,
 }
 
@@ -165,6 +187,111 @@ export function useSyncCapturesMutation(cohortId: MaybeRefOrGetter<string>) {
   })
 }
 
+// ─── Augmentations + Stop (Sprint 1) ────────────────────────────────────
+
+export function useAugmentationsQuery(
+  cohortId: MaybeRefOrGetter<string>,
+  iterationId: MaybeRefOrGetter<string | null | undefined>,
+) {
+  return useQuery({
+    queryKey: computed(() =>
+      LAB_KEYS.augmentations(toValue(cohortId), toValue(iterationId) ?? ''),
+    ),
+    queryFn: () =>
+      fetchIterationAugmentations(toValue(cohortId), toValue(iterationId) as string),
+    enabled: computed(() => !!toValue(cohortId) && !!toValue(iterationId)),
+    // Snapshot is immutable for a given (cohort, iteration) until regenerate;
+    // no need to re-poll while the user is browsing the gallery.
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+export function useRegenerateAugmentationsMutation(
+  cohortId: MaybeRefOrGetter<string>,
+  iterationId: MaybeRefOrGetter<string>,
+) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () =>
+      regenerateIterationAugmentations(toValue(cohortId), toValue(iterationId)),
+    onSuccess: () => {
+      qc.invalidateQueries({
+        queryKey: LAB_KEYS.augmentations(toValue(cohortId), toValue(iterationId)),
+      })
+    },
+  })
+}
+
+export function useAugVsRealQuery(
+  cohortId: MaybeRefOrGetter<string>,
+  iterationId: MaybeRefOrGetter<string | null | undefined>,
+) {
+  return useQuery({
+    queryKey: computed(() =>
+      LAB_KEYS.augVsReal(toValue(cohortId), toValue(iterationId) ?? ''),
+    ),
+    queryFn: () =>
+      fetchAugVsReal(toValue(cohortId), toValue(iterationId) as string),
+    enabled: computed(() => !!toValue(cohortId) && !!toValue(iterationId)),
+    // Distance computation hits DINO; cache aggressively. The backend
+    // already invalidates rows whose counts/version drift, so we trust
+    // the server-side cache here.
+    staleTime: 60 * 60 * 1000,
+  })
+}
+
+export function useRecomputeAugVsRealMutation(
+  cohortId: MaybeRefOrGetter<string>,
+  iterationId: MaybeRefOrGetter<string>,
+) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () =>
+      recomputeAugVsReal(toValue(cohortId), toValue(iterationId)),
+    onSuccess: () => {
+      qc.invalidateQueries({
+        queryKey: LAB_KEYS.augVsReal(toValue(cohortId), toValue(iterationId)),
+      })
+    },
+  })
+}
+
+// ─── Cohort test app (Sprint 3) ─────────────────────────────────────────
+
+export function useBuildInfoQuery(
+  cohortId: MaybeRefOrGetter<string>,
+  iterationId: MaybeRefOrGetter<string | null | undefined>,
+  opts?: { iterationStatus?: MaybeRefOrGetter<string | null | undefined> },
+) {
+  return useQuery({
+    queryKey: computed(() =>
+      LAB_KEYS.buildInfo(toValue(cohortId), toValue(iterationId) ?? ''),
+    ),
+    queryFn: () =>
+      fetchCohortTestBuildInfo(toValue(cohortId), toValue(iterationId) as string),
+    enabled: computed(() => !!toValue(cohortId) && !!toValue(iterationId)),
+    // Re-poll while the iteration is still running so the user sees
+    // model_ready flip without a manual refresh.
+    refetchInterval: computed(() => {
+      const status = toValue(opts?.iterationStatus)
+      return status === 'training' || status === 'benchmarking' ? 5000 : false
+    }),
+  })
+}
+
+export function useStopIterationMutation(cohortId: MaybeRefOrGetter<string>) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (iterationId: string) => stopIteration(toValue(cohortId), iterationId),
+    onSuccess: () => {
+      const id = toValue(cohortId)
+      qc.invalidateQueries({ queryKey: LAB_KEYS.iterations(id) })
+      qc.invalidateQueries({ queryKey: LAB_KEYS.cohort(id) })
+      qc.invalidateQueries({ queryKey: LAB_KEYS.runner })
+    },
+  })
+}
+
 export function useCreateIterationMutation(cohortId: MaybeRefOrGetter<string>) {
   const qc = useQueryClient()
   return useMutation({
@@ -177,6 +304,125 @@ export function useCreateIterationMutation(cohortId: MaybeRefOrGetter<string>) {
       qc.invalidateQueries({ queryKey: LAB_KEYS.iterations(id) })
       qc.invalidateQueries({ queryKey: LAB_KEYS.trajectory(id) })
       qc.invalidateQueries({ queryKey: ['lab', 'cohorts'] })
+    },
+  })
+}
+
+export function useUpdateIterationMutation(
+  cohortId: MaybeRefOrGetter<string>,
+  iterationId: MaybeRefOrGetter<string>,
+) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (patch: {
+      notes?: string | null
+      verdict_override?: string | null
+      recipe_id?: string | null
+      variant_count?: number | null
+    }) => updateIteration(toValue(cohortId), toValue(iterationId), patch),
+    onSuccess: () => {
+      const cid = toValue(cohortId)
+      const iid = toValue(iterationId)
+      qc.invalidateQueries({ queryKey: LAB_KEYS.iterations(cid) })
+      // Recipe/variant_count changes wipe baked augmentations server-side —
+      // refresh the gallery query too so the user sees the cleared state.
+      qc.invalidateQueries({ queryKey: LAB_KEYS.augmentations(cid, iid) })
+    },
+  })
+}
+
+export function useLaunchTrainingMutation(
+  cohortId: MaybeRefOrGetter<string>,
+  iterationId: MaybeRefOrGetter<string>,
+) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => launchIterationTraining(toValue(cohortId), toValue(iterationId)),
+    onSuccess: () => {
+      const id = toValue(cohortId)
+      qc.invalidateQueries({ queryKey: LAB_KEYS.iterations(id) })
+      qc.invalidateQueries({ queryKey: LAB_KEYS.cohort(id) })
+      qc.invalidateQueries({ queryKey: LAB_KEYS.runner })
+    },
+  })
+}
+
+// ─── Live tests (Sprint 4) ──────────────────────────────────────────────
+
+export function useLiveTestsQuery(
+  cohortId: MaybeRefOrGetter<string>,
+  iterationId: MaybeRefOrGetter<string | null | undefined>,
+) {
+  return useQuery({
+    queryKey: computed(() =>
+      LAB_KEYS.liveTests(toValue(cohortId), toValue(iterationId) ?? ''),
+    ),
+    queryFn: () =>
+      fetchLiveTests(toValue(cohortId), toValue(iterationId) as string),
+    enabled: computed(() => !!toValue(cohortId) && !!toValue(iterationId)),
+    // 5 min — the sync mutation invalidates explicitly, so the staleTime
+    // is just there to keep tab-switches snappy.
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+export function useSyncLiveTestsMutation(
+  cohortId: MaybeRefOrGetter<string>,
+  iterationId: MaybeRefOrGetter<string>,
+) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => syncLiveTests(toValue(iterationId)),
+    onSuccess: () => {
+      qc.invalidateQueries({
+        queryKey: LAB_KEYS.liveTests(toValue(cohortId), toValue(iterationId)),
+      })
+    },
+  })
+}
+
+// ─── Dashboard + GC (Sprint 5) ──────────────────────────────────────────
+
+export function useDashboardQuery() {
+  return useQuery({
+    queryKey: LAB_KEYS.dashboard,
+    queryFn: () => fetchDashboard(),
+    // Cross-cohort aggregations only change when iterations finish or
+    // live-tests sync. Keep stale-while-revalidate semantics with 30s
+    // freshness — cheap to recompute backend-side.
+    staleTime: 30 * 1000,
+  })
+}
+
+export function usePurgeAugmentationsMutation(
+  cohortId: MaybeRefOrGetter<string>,
+  iterationId: MaybeRefOrGetter<string>,
+) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () =>
+      purgeIterationAugmentations(toValue(cohortId), toValue(iterationId)),
+    onSuccess: () => {
+      qc.invalidateQueries({
+        queryKey: LAB_KEYS.augmentations(toValue(cohortId), toValue(iterationId)),
+      })
+      qc.invalidateQueries({ queryKey: LAB_KEYS.dashboard })
+    },
+  })
+}
+
+export function usePurgeTestBundleMutation(
+  cohortId: MaybeRefOrGetter<string>,
+  iterationId: MaybeRefOrGetter<string>,
+) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () =>
+      purgeIterationTestBundle(toValue(cohortId), toValue(iterationId)),
+    onSuccess: () => {
+      qc.invalidateQueries({
+        queryKey: LAB_KEYS.buildInfo(toValue(cohortId), toValue(iterationId)),
+      })
     },
   })
 }

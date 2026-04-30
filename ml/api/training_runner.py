@@ -93,6 +93,7 @@ class TrainingRunner:
     def __init__(self, store: Store) -> None:
         self._store = store
         self._active: ActiveState | None = None
+        self._active_proc: subprocess.Popen | None = None
         self._lock = threading.Lock()
         self._device = "auto"  # forwarded to train_embedder.py --device; resolves to cuda/mps/cpu per host
         self._rehydrate()
@@ -346,13 +347,14 @@ class TrainingRunner:
             if self._active is not None:
                 self._active.epoch = 0
                 self._active.epochs_total = int(cfg.get("epochs", 40))
+        dataset_path = cfg.get("dataset_override") or str(EURIO_POC / "train")
         cmd: list[str] = [
             VENV_PYTHON,
             str(ML_DIR / "training" / "train_embedder.py"),
             "--mode",
             cfg.get("mode", "arcface"),
             "--dataset",
-            str(EURIO_POC / "train"),
+            dataset_path,
             "--val-dataset",
             str(EURIO_POC / "val"),
             "--epochs",
@@ -367,10 +369,17 @@ class TrainingRunner:
             version_str,
         ]
         aug_recipe = cfg.get("aug_recipe") or row.aug_recipe_id
-        if aug_recipe:
+        prebaked = bool(cfg.get("prebaked_augmentations"))
+        if prebaked:
+            cmd.append("--prebaked-augmentations")
+        elif aug_recipe:
             cmd.extend(["--aug-recipe", str(aug_recipe)])
         self._run_subprocess(row.id, cmd, parse_training_output=True)
-        suffix = f" + recipe={aug_recipe}" if aug_recipe else ""
+        suffix = ""
+        if prebaked:
+            suffix = " + prebaked"
+        elif aug_recipe:
+            suffix = f" + recipe={aug_recipe}"
         return f"{cfg['epochs']} epochs ({version_str}){suffix}"
 
     def _compute_embeddings(self, row: RunRow, version_str: str) -> str:
@@ -475,17 +484,54 @@ class TrainingRunner:
             stderr=subprocess.STDOUT,
             text=True,
         )
+        with self._lock:
+            self._active_proc = proc
         assert proc.stdout is not None
-        for raw in proc.stdout:
-            line = raw.rstrip()
-            self._log(run_id, line)
-            if parse_training_output:
-                self._parse_epoch_line(run_id, line)
-        rc = proc.wait()
+        try:
+            for raw in proc.stdout:
+                line = raw.rstrip()
+                self._log(run_id, line)
+                if parse_training_output:
+                    self._parse_epoch_line(run_id, line)
+            rc = proc.wait()
+        finally:
+            with self._lock:
+                if self._active_proc is proc:
+                    self._active_proc = None
         if rc != 0:
+            # Exit code 2 is the cooperative stop sentinel from
+            # train_embedder.py — treat it as a graceful abort, not a crash.
+            if rc == 2:
+                raise RuntimeError("Stopped by user (graceful)")
             raise RuntimeError(
                 f"Command failed (exit {rc}): {' '.join(cmd)}"
             )
+
+    def stop_active(self, *, graceful_timeout: float = 30.0) -> str:
+        """Send SIGTERM to the active subprocess, escalate to SIGKILL on timeout.
+
+        Returns ``'graceful'`` if the process exited within
+        ``graceful_timeout`` seconds, ``'forced'`` if SIGKILL was needed, or
+        ``'idle'`` if there was nothing to stop.
+        """
+        with self._lock:
+            proc = self._active_proc
+        if proc is None or proc.poll() is not None:
+            return "idle"
+        try:
+            proc.terminate()
+        except ProcessLookupError:
+            return "idle"
+        try:
+            proc.wait(timeout=graceful_timeout)
+            return "graceful"
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                pass
+            return "forced"
 
     def _log(self, run_id: str, line: str) -> None:
         with self._lock:

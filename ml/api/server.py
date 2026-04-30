@@ -491,6 +491,54 @@ def get_augmented_image(numista_id: int, filename: str):
     return FileResponse(resolved, media_type="image/jpeg")
 
 
+@app.get("/datasets/{numista_id}/captures/{filename}")
+def get_capture_image(numista_id: int, filename: str):
+    """Serve a device-side capture (Sprint 2 — needed for aug-vs-real
+    side-by-side gallery). Captures come from the cohort capture flow and
+    are immutable once synced — same Cache-Control as augmentations."""
+    if ".." in filename or "/" in filename or "\\" in filename:
+        raise HTTPException(status_code=400, detail="Chemin invalide")
+    expected_parent = (DATASETS_DIR / str(numista_id) / "captures").resolve()
+    resolved = (expected_parent / filename).resolve()
+    if not str(resolved).startswith(str(expected_parent)):
+        raise HTTPException(status_code=400, detail="Chemin invalide")
+    if not resolved.exists():
+        raise HTTPException(status_code=404, detail="Image non trouvée")
+    return FileResponse(
+        resolved,
+        media_type="image/jpeg",
+        headers={"Cache-Control": "max-age=86400"},
+    )
+
+
+@app.get("/datasets/{numista_id}/augmentations/{iteration_id}/{filename}")
+def get_iteration_augmentation_image(
+    numista_id: int, iteration_id: str, filename: str
+):
+    """Serve a per-iteration augmentation snapshot image (Sprint 1 / D-004).
+
+    Cache-Control is aggressive — once an iteration is created with a fixed
+    seed, ``sample_NNN.jpg`` for that ``(numista_id, iteration_id)`` is
+    immutable until the user explicitly regenerates.
+    """
+    for piece in (iteration_id, filename):
+        if ".." in piece or "/" in piece or "\\" in piece:
+            raise HTTPException(status_code=400, detail="Chemin invalide")
+    expected_parent = (
+        DATASETS_DIR / str(numista_id) / "augmentations" / iteration_id
+    ).resolve()
+    resolved = (expected_parent / filename).resolve()
+    if not str(resolved).startswith(str(expected_parent)):
+        raise HTTPException(status_code=400, detail="Chemin invalide")
+    if not resolved.exists():
+        raise HTTPException(status_code=404, detail="Image non trouvée")
+    return FileResponse(
+        resolved,
+        media_type="image/jpeg",
+        headers={"Cache-Control": "max-age=86400"},
+    )
+
+
 # ─── Training ───
 
 

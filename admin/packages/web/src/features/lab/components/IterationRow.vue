@@ -2,7 +2,8 @@
 import type { IterationDetail } from '../types'
 import InputDiffChip from './InputDiffChip.vue'
 import VerdictBadge from './VerdictBadge.vue'
-import { Loader2 } from 'lucide-vue-next'
+import { useStopIterationMutation } from '@/features/lab/composables/useLabQueries'
+import { Loader2, Square } from 'lucide-vue-next'
 import { computed } from 'vue'
 
 const props = defineProps<{
@@ -13,6 +14,21 @@ const props = defineProps<{
 defineEmits<{
   (e: 'click'): void
 }>()
+
+const stopMutation = useStopIterationMutation(() => props.iteration.cohort_id)
+
+async function handleStop(event: Event) {
+  // Prevent the row click from racing the navigation.
+  event.stopPropagation()
+  if (!confirm(`Stopper l'itération « ${props.iteration.name} » ?\nLe training termine l'epoch en cours puis sort proprement (timeout 30s sinon SIGKILL).`)) {
+    return
+  }
+  try {
+    await stopMutation.mutateAsync(props.iteration.id)
+  } catch (e) {
+    alert(`Stop échoué : ${(e as Error).message}`)
+  }
+}
 
 function formatPct(v: number | null | undefined): string {
   if (v == null) return '—'
@@ -68,10 +84,23 @@ const deltaR1 = computed(() => props.iteration.delta_vs_parent?.r_at_1)
     </td>
     <td class="px-4 py-2 text-right align-top">
       <template v-if="inProgress">
-        <span class="inline-flex items-center gap-1 text-xs" style="color: var(--warning);">
-          <Loader2 class="h-3 w-3 animate-spin" />
-          {{ iteration.status === 'training' ? 'training' : 'bench' }}
-        </span>
+        <div class="flex items-center justify-end gap-2">
+          <span class="inline-flex items-center gap-1 text-xs" style="color: var(--warning);">
+            <Loader2 class="h-3 w-3 animate-spin" />
+            {{ iteration.status === 'training' ? 'training' : 'bench' }}
+          </span>
+          <button
+            class="inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] uppercase transition-colors hover:bg-[var(--surface-2)]"
+            style="border-color: var(--danger); color: var(--danger); letter-spacing: var(--tracking-eyebrow);"
+            :disabled="stopMutation.isPending.value"
+            title="Stopper proprement (SIGTERM, 30s puis SIGKILL)"
+            @click="handleStop"
+          >
+            <Loader2 v-if="stopMutation.isPending.value" class="h-2.5 w-2.5 animate-spin" />
+            <Square v-else class="h-2.5 w-2.5" />
+            Stop
+          </button>
+        </div>
       </template>
       <template v-else>
         <span class="font-mono tabular-nums" style="color: var(--indigo-700);">

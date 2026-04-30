@@ -71,6 +71,24 @@ android {
             buildConfigField("Boolean", "IS_QA", "true")
         }
     }
+
+    // Sprint 3 — training-pipeline cohort test app.
+    // `full`       = the production app (default behavior).
+    // `cohortTest` = the per-cohort scan harness, signed with the same debug
+    // keystore so it cohabits with `full` on the device. Bundle (model.tflite,
+    // filtered catalog, manifests) is dropped into src/cohortTest/assets/cohort_bundle/
+    // by `go-task -t app-android/Taskfile.yml cohort-test:bundle`.
+    flavorDimensions += "scope"
+    productFlavors {
+        create("full") {
+            dimension = "scope"
+        }
+        create("cohortTest") {
+            dimension = "scope"
+            applicationIdSuffix = ".cohorttest"
+            versionNameSuffix = "-cohorttest"
+        }
+    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11

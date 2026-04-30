@@ -1,5 +1,15 @@
 # Augmentation & Benchmark — Plan d'outillage
 
+> ⚠️ **Legacy depuis 2026-04-29 (Sprint 2 training-pipeline)**. La pipeline
+> a été unifiée dans `docs/training-pipeline/` autour des cohorts du Lab.
+> `/benchmark` n'est plus dans le menu admin et sera retiré au sprint 5.
+> Cette doc reste pour historique des décisions PRD01-04 ; ne pas en
+> tirer de nouvelles règles.
+>
+> **Pipeline actuelle** : voir [`docs/training-pipeline/README.md`](../training-pipeline/README.md).
+>
+> ---
+>
 > Outils pour construire, calibrer et valider le pipeline d'augmentation synthétique qui génère des variantes de pièces à partir d'un scan Numista "parfait". Objectif : équiper Eurio pour scaler ArcFace de 7 designs à 300-500 designs de manière **calibrée et mesurée**, pas à l'aveugle.
 >
 > Session de planification : 2026-04-19.

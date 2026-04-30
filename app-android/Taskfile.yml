@@ -137,3 +137,60 @@ tasks:
     dir: '{{.ROOT_DIR}}/ml'
     cmds:
       - .venv/bin/python -m export.export_catalog_snapshot --dry-run
+
+  cohort-test:bundle:
+    desc: "Build the cohortTest APK bundle (model + filtered catalog + manifests). COHORT + ITERATION required."
+    summary: |
+      Usage: go-task -t app-android/Taskfile.yml cohort-test:bundle COHORT=<name> ITERATION=<iid>
+      Drops 6 files into app-android/src/cohortTest/assets/cohort_bundle/ so the
+      next assembleCohortTestDebug picks them up. Cf. docs/training-pipeline/sprint-3-cohort-test-app.md.
+    vars:
+      COHORT: '{{.COHORT}}'
+      ITERATION: '{{.ITERATION}}'
+      OUT: '{{.ROOT_DIR}}/ml/output/cohort_test_{{.ITERATION}}'
+      BUNDLE_DIR: '{{.ROOT_DIR}}/app-android/src/cohortTest/assets/cohort_bundle'
+    preconditions:
+      - sh: 'test -n "{{.COHORT}}" && test -n "{{.ITERATION}}"'
+        msg: "COHORT and ITERATION required (e.g. COHORT=green-v1 ITERATION=8a92f1b3)"
+    cmds:
+      - cd {{.ROOT_DIR}}/ml && .venv/bin/python -m scripts.build_cohort_bundle --cohort {{.COHORT}} --iteration {{.ITERATION}} --out {{.OUT}}
+      - rm -rf {{.BUNDLE_DIR}}
+      - mkdir -p {{.BUNDLE_DIR}}
+      - cp {{.OUT}}/* {{.BUNDLE_DIR}}/
+      - echo "Bundle staged at {{.BUNDLE_DIR}}"
+
+  cohort-test:install:
+    desc: "Bundle + build + install the cohortTest APK on the device. COHORT + ITERATION required."
+    summary: |
+      Usage: go-task -t app-android/Taskfile.yml cohort-test:install COHORT=<name> ITERATION=<iid>
+      Runs cohort-test:bundle then assembles + installs the cohortTest debug APK.
+      The cohortTest applicationId is com.musubi.eurio.cohorttest, which cohabits
+      with the prod com.musubi.eurio install on the same device.
+    deps: [cohort-test:bundle]
+    dir: '{{.ROOT_DIR}}'
+    cmds:
+      - ./gradlew :app-android:installCohortTestDebug
+      - adb shell am force-stop {{.APP_ID}}.cohorttest
+      - echo "Installed. Open 'Eurio Test' on the device."
+
+  cohort-test:pull-tests:
+    desc: "Pull the live-test JSONL log from the device + sync to admin DB. ITERATION required."
+    summary: |
+      Usage: go-task -t app-android/Taskfile.yml cohort-test:pull-tests ITERATION=<iid>
+      Pulls /sdcard/.../com.musubi.eurio.cohorttest/files/Documents/eurio_live_tests/<iid>.jsonl
+      to ml/state/live_test_logs/<iid>.jsonl, then POSTs /lab/cohorts/_/iterations/<iid>/live-tests/sync
+      so the admin §5 picks up the fresh results. The ML API must be running
+      (e.g. `go-task ml:api:dev`).
+    vars:
+      ITERATION: '{{.ITERATION}}'
+      LOGS_DIR_DEVICE: /sdcard/Android/data/{{.APP_ID}}.cohorttest/files/Documents/eurio_live_tests
+      LOGS_DIR_LOCAL: '{{.ROOT_DIR}}/ml/state/live_test_logs'
+      ML_API: 'http://127.0.0.1:8042'
+    preconditions:
+      - sh: 'test -n "{{.ITERATION}}"'
+        msg: "ITERATION required (e.g. ITERATION=8a92f1b3)"
+    cmds:
+      - mkdir -p {{.LOGS_DIR_LOCAL}}
+      - adb pull {{.LOGS_DIR_DEVICE}}/{{.ITERATION}}.jsonl {{.LOGS_DIR_LOCAL}}/{{.ITERATION}}.jsonl
+      - 'curl -fsS -X POST {{.ML_API}}/lab/cohorts/_/iterations/{{.ITERATION}}/live-tests/sync -H "Content-Type: application/json" -d "{}"'
+      - echo "\nSynced. Refresh §5 in /lab/cohorts/<name>/iterations/{{.ITERATION}}."
