@@ -152,6 +152,18 @@ class TrainingRunner:
                 return list(self._active.log_lines)
         return self._store.load_logs(run_id)
 
+    def tail_logs(self, n: int = 30) -> list[str]:
+        """Return up to ``n`` most recent stdout lines of the active subprocess.
+
+        Empty list when no run is active. Thread-safe: reads under the runner's
+        lock (the writer in ``_run_subprocess`` also takes it).
+        """
+        with self._lock:
+            if self._active is None:
+                return []
+            lines = self._active.log_lines
+            return list(lines[-n:])
+
     def current_classes(self) -> list[ClassRef]:
         return _read_current_classes()
 
@@ -374,6 +386,11 @@ class TrainingRunner:
             cmd.append("--prebaked-augmentations")
         elif aug_recipe:
             cmd.extend(["--aug-recipe", str(aug_recipe)])
+        # Phase 5 — wire the iteration_id so train_embedder.py writes
+        # ml/state/training_progress/<iid>.json that the Lab UI tails.
+        iteration_id = cfg.get("iteration_id")
+        if iteration_id:
+            cmd.extend(["--iteration-id", str(iteration_id)])
         self._run_subprocess(row.id, cmd, parse_training_output=True)
         suffix = ""
         if prebaked:

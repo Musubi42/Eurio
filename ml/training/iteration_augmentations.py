@@ -31,10 +31,12 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import os
 import shutil
 import sys
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
 ML_DIR = Path(__file__).resolve().parent.parent
@@ -158,8 +160,12 @@ def generate_for_iteration(
         out_dir = DATASETS_DIR / str(nid) / "augmentations" / iteration_id
         out_dir.mkdir(parents=True, exist_ok=True)
         existing = sorted(out_dir.glob("sample_*.jpg"))
+        manifest_samples: list[dict] = []
         if len(existing) >= target:
             written = len(existing)
+            for i, f in enumerate(existing[:target]):
+                src_path = sources[i % len(sources)]
+                manifest_samples.append({"file": f.name, "source": src_path.name})
         else:
             # Always start clean when we need to (re)generate so we don't end
             # up with a mix of partial old + new samples.
@@ -175,7 +181,27 @@ def generate_for_iteration(
                     img = pipeline.generate(base, count=1)[0]
                 out_path = out_dir / f"sample_{i + 1:03d}.jpg"
                 img.save(out_path, "JPEG", quality=92)
+                manifest_samples.append({
+                    "file": out_path.name,
+                    "source": src_path.name,
+                })
                 written += 1
+
+        # Audit trail: explicit per-coin manifest of which obverse fed which
+        # baked sample. Cheap (≤target rows, plain dicts), and the only way
+        # to verify "obverse uniquement" without re-reading the source code.
+        manifest = {
+            "iteration_id": iteration_id,
+            "eurio_id": eurio_id,
+            "numista_id": nid,
+            "recipe_id": it.recipe_id,
+            "seed": _per_coin_seed(it.augmentations_seed, nid),
+            "samples": manifest_samples,
+            "generated_at": datetime.now(timezone.utc)
+                .isoformat(timespec="seconds")
+                .replace("+00:00", "Z"),
+        }
+        (out_dir / "_manifest.json").write_text(json.dumps(manifest, indent=2))
 
         # Stage symlinks under the iteration training root so that the
         # standard ImageFolder layout works — one subdir per class.

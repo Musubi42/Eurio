@@ -95,6 +95,7 @@ export interface IterationDetail {
   name: string
   hypothesis: string | null
   recipe_id: string | null
+  recipe_name: string | null
   variant_count: number
   training_config: Record<string, unknown>
   status: IterationStatus
@@ -196,6 +197,154 @@ export interface SensitivityEntry {
 
 export interface RunnerStatus {
   busy: boolean
+}
+
+export type TrainingProgressPhase =
+  | 'unknown'
+  | 'bake'
+  | 'training'
+  | 'training_done'
+  | 'export'
+  | 'benchmark'
+  | 'done'
+  | 'failed'
+
+export interface TrainingProgress {
+  schema_version: number
+  iteration_id: string
+  phase: TrainingProgressPhase
+  epoch_current?: number | null
+  epochs_total?: number | null
+  loss_current?: number | null
+  loss_best?: number | null
+  started_at?: string | null
+  elapsed_seconds?: number | null
+  eta_seconds?: number | null
+  device?: string | null
+  augmentations_runtime?: 'disabled' | 'legacy_compose' | null
+  updated_at?: string | null
+  log_tail: string[]
+  error?: string | null
+}
+
+export interface RuntimeInfo {
+  host_os: string
+  arch: string
+  cpu_brand: string
+  torch_version: string
+  backend: 'cuda' | 'mps' | 'cpu'
+  device: string
+  num_cuda_devices: number
+  gpu_name: string | null
+  cuda_version: string | null
+  dataloader_workers: number
+  hint: string
+}
+
+export type DrawerState = 'empty' | 'partial' | 'ready' | 'running'
+
+export interface CohortProgressC1 {
+  state: DrawerState
+  total_coins: number
+  missing_obverse: string[]
+}
+
+export interface CohortProgressC2 {
+  state: DrawerState
+  expected_per_coin: number
+  fully_captured: number
+  partial: number
+  missing: number
+  per_coin_missing: Array<{ eurio_id: string, missing_steps: string[] }>
+}
+
+export interface CohortProgress {
+  c1: CohortProgressC1
+  c2: CohortProgressC2
+}
+
+export interface IterationProgressI1 {
+  state: DrawerState
+  recipe_id: string | null
+  recipe_name: string | null
+  variant_count: number
+}
+
+export interface IterationProgressI2Coin {
+  eurio_id: string
+  numista_id: number | null
+  baked: number
+  expected: number
+  skipped_reason: string | null
+}
+
+export interface IterationProgressI2 {
+  state: DrawerState
+  total_expected: number
+  total_baked: number
+  per_coin: IterationProgressI2Coin[]
+}
+
+export interface IterationProgressI3 {
+  state: DrawerState
+  status: IterationStatus
+  training_run_id: string | null
+  benchmark_run_id: string | null
+  started_at: string | null
+  finished_at: string | null
+  failure_reason: string | null
+}
+
+export interface IterationProgressI4Studio {
+  state: DrawerState
+  r_at_1: number | null
+}
+
+export interface IterationProgressI4AugVsReal {
+  state: DrawerState
+  computed_at: string | null
+  mean_cosine: number | null
+}
+
+export interface IterationProgressI4TestApp {
+  state: DrawerState
+  model_ready: boolean
+  tflite_present: boolean
+}
+
+export interface IterationProgressI4LiveTests {
+  state: DrawerState
+  total: number
+  recall_at_1: number | null
+}
+
+export interface IterationProgressI4 {
+  state: DrawerState
+  studio: IterationProgressI4Studio
+  aug_vs_real: IterationProgressI4AugVsReal
+  test_app: IterationProgressI4TestApp
+  live_tests: IterationProgressI4LiveTests
+}
+
+export interface IterationProgress {
+  i1: IterationProgressI1
+  i2: IterationProgressI2
+  i3: IterationProgressI3
+  i4: IterationProgressI4
+}
+
+export interface BakeReport {
+  eurio_id: string
+  numista_id: number | null
+  written: number
+  sources_used: number
+  skipped_reason: string | null
+}
+
+export interface BakeResult {
+  ok: boolean
+  total_baked: number
+  reports: BakeReport[]
 }
 
 export interface CohortTestBuildInfo {
