@@ -2,6 +2,7 @@
 import { checkMlApi } from '@/features/training/composables/useTrainingApi'
 import CohortCard from '@/features/lab/components/CohortCard.vue'
 import DashboardSection from '@/features/lab/components/DashboardSection.vue'
+import RuntimeBadge from '@/features/lab/components/RuntimeBadge.vue'
 import { useCohortsQuery, useRunnerStatusQuery } from '@/features/lab/composables/useLabQueries'
 import type { CohortSummary } from '@/features/lab/types'
 import { FlaskConical, Loader2, Plus, Wifi, WifiOff } from 'lucide-vue-next'
@@ -85,6 +86,7 @@ function formatPct(v: number | null): string {
         </div>
 
         <div class="flex flex-shrink-0 items-center gap-3">
+          <RuntimeBadge compact />
           <div
             class="flex items-center gap-2 rounded-full border px-3 py-1.5"
             :style="{

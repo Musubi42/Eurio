@@ -9,6 +9,7 @@ import argparse
 import json
 import signal
 import sys
+import time
 from pathlib import Path
 
 import torch
@@ -132,7 +133,85 @@ def _resolve_recipe(id_or_name: str) -> dict:
     return row.config
 
 
-def get_train_transforms() -> transforms.Compose:
+PROGRESS_DIR = ML_DIR / "state" / "training_progress"
+
+
+def _iso_now_utc() -> str:
+    from datetime import datetime, timezone
+    return (
+        datetime.now(timezone.utc)
+        .isoformat(timespec="seconds")
+        .replace("+00:00", "Z")
+    )
+
+
+def _write_progress(iteration_id: str | None, payload: dict) -> None:
+    """Atomic write of the per-iteration progress JSON.
+
+    No-op when ``iteration_id`` is empty (legacy /training/run path).
+    """
+    if not iteration_id:
+        return
+    try:
+        PROGRESS_DIR.mkdir(parents=True, exist_ok=True)
+        tmp = PROGRESS_DIR / f"{iteration_id}.json.tmp"
+        final = PROGRESS_DIR / f"{iteration_id}.json"
+        tmp.write_text(json.dumps(payload), encoding="utf-8")
+        tmp.replace(final)
+    except Exception as exc:  # pragma: no cover — best-effort log file
+        print(f"[progress] write failed: {exc}", flush=True)
+
+
+def _log_runtime_contract(args, device, n_train: int, n_classes: int) -> None:
+    """Single-line JSON banner — phase 5 grep target, also doubles as audit
+    trail of what runtime augmentation policy is in effect."""
+    try:
+        from training.runtime import detect as detect_runtime, to_dict
+        info = to_dict(detect_runtime())
+    except Exception:
+        info = {}
+    payload = {
+        "event": "runtime",
+        "mode": args.mode,
+        "device": str(device),
+        "torch_version": torch.__version__,
+        "augmentations_runtime": (
+            "disabled"
+            if getattr(args, "prebaked_augmentations", False)
+            else "legacy_compose"
+        ),
+        "dataset_size": n_train,
+        "num_classes": n_classes,
+        "epochs": args.epochs,
+        "batch_size": args.batch_size,
+        "runtime": info,
+    }
+    print("RUNTIME " + json.dumps(payload), flush=True)
+
+
+def _log_tensor_check(model) -> None:
+    print(
+        f"TENSOR_CHECK model.device={next(model.parameters()).device}",
+        flush=True,
+    )
+
+
+def get_prebaked_transforms() -> transforms.Compose:
+    """Preprocessing for prebaked iteration datasets.
+
+    Strict contract: NO random augmentation here. The bake step
+    (``training/iteration_augmentations.py``) is the *only* source of
+    visual variability — anything random added below would secretly
+    inflate the recipe and break the audit trail "obverse uniquement".
+    """
+    return transforms.Compose([
+        transforms.Resize((224, 224)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    ])
+
+
+def get_legacy_train_transforms() -> transforms.Compose:
     """Phase-2 augmentation stack — applied on the already-normalized
     224×224 tight coin crop produced by ``scan.normalize_snap``.
 
@@ -182,25 +261,24 @@ def _build_train_dataset(args) -> EurioCoinDataset:
     """Build the training Dataset with zone-resolved on-the-fly augmentation.
 
     If ``args.prebaked_augmentations`` is set, the on-disk dataset is already
-    augmented (see ``training/iteration_augmentations.py``) — apply only the
-    legacy torchvision transforms (rotation, color jitter, normalize) and
-    skip the recipe layer.
+    augmented (see ``training/iteration_augmentations.py``) — apply only
+    Resize+ToTensor+Normalize, no random transforms.
 
     Otherwise: if ``args.aug_recipe`` is set (advanced override), that single
     recipe is applied to all classes. Otherwise each class is mapped to a
     zone (green/orange/red) and the matching ZONE_RECIPES entry is applied.
     """
-    legacy = get_train_transforms()
     if getattr(args, "prebaked_augmentations", False):
         # Recipe is baked into the on-disk samples — pass an empty pipeline
-        # so EurioCoinDataset.__getitem__ short-circuits to the legacy
-        # transform stack only.
+        # AND a no-randomness transform stack so the only variability
+        # the model sees comes from disk.
         return EurioCoinDataset(
             args.dataset,
             class_zones={},
-            legacy_transform=legacy,
+            legacy_transform=get_prebaked_transforms(),
             recipe_override={"layers": []},
         )
+    legacy = get_legacy_train_transforms()
     override = getattr(args, "_resolved_aug_recipe", None)
     if override is not None:
         return EurioCoinDataset(
@@ -411,6 +489,8 @@ def train_classifier(args):
     # Model
     model = CoinClassifier(num_classes=num_classes).to(device)
     print(f"Model parameters: {sum(p.numel() for p in model.parameters()):,}")
+    _log_runtime_contract(args, device, len(train_dataset), num_classes)
+    _log_tensor_check(model)
 
     loss_fn = nn.CrossEntropyLoss()
 
@@ -546,6 +626,8 @@ def train_embedder(args):
 
     model = CoinEmbedder(embedding_dim=args.embedding_dim).to(device)
     print(f"Model parameters: {sum(p.numel() for p in model.parameters()):,}")
+    _log_runtime_contract(args, device, len(train_dataset), len(train_dataset.classes))
+    _log_tensor_check(model)
 
     loss_fn = TripletMarginLoss(margin=args.margin)
     miner = BatchHardMiner()
@@ -698,6 +780,8 @@ def train_arcface(args):
     # Model: same CoinEmbedder backbone + projection → L2-normalized embeddings
     model = CoinEmbedder(embedding_dim=args.embedding_dim).to(device)
     print(f"Model parameters: {sum(p.numel() for p in model.parameters()):,}")
+    _log_runtime_contract(args, device, len(train_dataset), num_classes)
+    _log_tensor_check(model)
 
     # ArcFace loss has its own weight matrix W (num_classes × embedding_dim)
     # It needs a SEPARATE optimizer
@@ -719,7 +803,27 @@ def train_arcface(args):
     scheduler = CosineAnnealingLR(model_optimizer, T_max=args.epochs, eta_min=args.lr * 0.01)
 
     best_recall = 0.0
+    best_loss = float("inf")
     training_log = []
+    training_started_at = time.monotonic()
+    training_started_iso = _iso_now_utc()
+    iid = getattr(args, "iteration_id", None)
+    augm = "disabled" if getattr(args, "prebaked_augmentations", False) else "legacy_compose"
+    _write_progress(iid, {
+        "schema_version": 1,
+        "iteration_id": iid,
+        "phase": "training",
+        "epoch_current": 0,
+        "epochs_total": args.epochs,
+        "loss_current": None,
+        "loss_best": None,
+        "started_at": training_started_iso,
+        "elapsed_seconds": 0,
+        "eta_seconds": None,
+        "device": str(device),
+        "augmentations_runtime": augm,
+        "updated_at": training_started_iso,
+    })
 
     for epoch in range(1, args.epochs + 1):
         if epoch == args.freeze_epochs + 1:
@@ -783,6 +887,27 @@ def train_arcface(args):
         )
         print(f"  Epoch {epoch:>2} — loss: {avg_loss:.4f}  {val_str}{frozen_str}")
 
+        if avg_loss < best_loss:
+            best_loss = avg_loss
+        elapsed = time.monotonic() - training_started_at
+        mean_epoch_s = elapsed / epoch if epoch else 0.0
+        eta_s = int(mean_epoch_s * (args.epochs - epoch)) if epoch < args.epochs else 0
+        _write_progress(iid, {
+            "schema_version": 1,
+            "iteration_id": iid,
+            "phase": "training",
+            "epoch_current": epoch,
+            "epochs_total": args.epochs,
+            "loss_current": round(avg_loss, 4),
+            "loss_best": round(best_loss, 4),
+            "started_at": training_started_iso,
+            "elapsed_seconds": int(elapsed),
+            "eta_seconds": eta_s,
+            "device": str(device),
+            "augmentations_runtime": augm,
+            "updated_at": _iso_now_utc(),
+        })
+
         # Save when we improve val R@1 (real signal). When val is empty,
         # save on the final epoch — loss alone is too noisy a selector.
         save_now = (
@@ -833,6 +958,22 @@ def train_arcface(args):
     print(f"Training log: {(output_dir / 'training_log.json').resolve()}")
     print(f"Aug preview:  {(output_dir / 'aug_preview').resolve()}")
 
+    _write_progress(iid, {
+        "schema_version": 1,
+        "iteration_id": iid,
+        "phase": "training_done",
+        "epoch_current": args.epochs,
+        "epochs_total": args.epochs,
+        "loss_current": round(avg_loss, 4) if 'avg_loss' in locals() else None,
+        "loss_best": round(best_loss, 4) if best_loss != float("inf") else None,
+        "started_at": training_started_iso,
+        "elapsed_seconds": int(time.monotonic() - training_started_at),
+        "eta_seconds": 0,
+        "device": str(device),
+        "augmentations_runtime": augm,
+        "updated_at": _iso_now_utc(),
+    })
+
 
 # ---------------------------------------------------------------------------
 # Main
@@ -869,6 +1010,13 @@ def main():
         help="Read pre-augmented samples directly from the dataset root "
              "(see training/iteration_augmentations.py). When set, the recipe "
              "layer is bypassed; only legacy torchvision transforms apply.",
+    )
+    parser.add_argument(
+        "--iteration-id",
+        type=str,
+        default=None,
+        help="When set, write per-epoch progress JSON to "
+             "ml/state/training_progress/<iid>.json (consumed by the Lab UI).",
     )
     args = parser.parse_args()
 

@@ -5,19 +5,24 @@
 import { ML_API } from '@/features/training/composables/useTrainingApi'
 import type {
   AugVsRealReport,
+  BakeResult,
   CohortCaptureManifest,
   CohortCreatePayload,
   CohortCsvResult,
+  CohortProgress,
   CohortStatus,
   CohortSummary,
   CohortSyncResult,
   IterationAugmentations,
   IterationCreatePayload,
   IterationDetail,
+  IterationProgress,
   RegenerateAugmentationsResult,
   RunnerStatus,
+  RuntimeInfo,
   SensitivityEntry,
   StopIterationResult,
+  TrainingProgress,
   TrajectoryPoint,
 } from '../types'
 
@@ -112,6 +117,12 @@ export async function cloneCohort(
 
 // ─── Captures (cohort capture flow) ────────────────────────────────────
 
+export async function fetchCohortProgress(cohortId: string): Promise<CohortProgress> {
+  return json<CohortProgress>(
+    `/lab/cohorts/${encodeURIComponent(cohortId)}/progress`,
+  )
+}
+
 export async function fetchCohortCaptures(cohortId: string): Promise<CohortCaptureManifest> {
   return json<CohortCaptureManifest>(
     `/lab/cohorts/${encodeURIComponent(cohortId)}/captures/status`,
@@ -175,6 +186,25 @@ export async function updateIteration(
   )
 }
 
+export async function fetchIterationProgress(
+  cohortId: string,
+  iterationId: string,
+): Promise<IterationProgress> {
+  return json<IterationProgress>(
+    `/lab/cohorts/${encodeURIComponent(cohortId)}/iterations/${encodeURIComponent(iterationId)}/progress`,
+  )
+}
+
+export async function bakeIterationAugmentations(
+  cohortId: string,
+  iterationId: string,
+): Promise<BakeResult> {
+  return json<BakeResult>(
+    `/lab/cohorts/${encodeURIComponent(cohortId)}/iterations/${encodeURIComponent(iterationId)}/bake`,
+    { method: 'POST', body: '{}' },
+  )
+}
+
 export async function launchIterationTraining(
   cohortId: string,
   iterationId: string,
@@ -208,6 +238,18 @@ export async function fetchSensitivity(cohortId: string): Promise<SensitivityEnt
 
 export async function fetchRunnerStatus(): Promise<RunnerStatus> {
   return json<RunnerStatus>('/lab/runner/status')
+}
+
+export async function fetchRuntimeInfo(): Promise<RuntimeInfo> {
+  return json<RuntimeInfo>('/lab/runner/runtime-info')
+}
+
+export async function fetchTrainingProgress(
+  iterationId: string,
+): Promise<TrainingProgress> {
+  return json<TrainingProgress>(
+    `/lab/runner/training-progress/${encodeURIComponent(iterationId)}`,
+  )
 }
 
 // ─── Augmentations (Sprint 1) ───────────────────────────────────────────

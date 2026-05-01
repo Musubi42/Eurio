@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import CaptureSection from '@/features/lab/components/CaptureSection.vue'
+import CohortDrawerC1 from '@/features/lab/components/CohortDrawerC1.vue'
+import CohortDrawerC2 from '@/features/lab/components/CohortDrawerC2.vue'
 import IterationRow from '@/features/lab/components/IterationRow.vue'
 import SensitivityPanel from '@/features/lab/components/SensitivityPanel.vue'
 import TrajectoryChart from '@/features/lab/components/TrajectoryChart.vue'
@@ -7,9 +8,9 @@ import { useQueryClient } from '@tanstack/vue-query'
 import { deleteCohort } from '@/features/lab/composables/useLabApi'
 import {
   useCloneCohortMutation,
+  useCohortProgressQuery,
   useCohortQuery,
   useIterationsQuery,
-  useRemoveCoinMutation,
   useRunnerStatusQuery,
   useSensitivityQuery,
   useTrajectoryQuery,
@@ -17,7 +18,7 @@ import {
 import type {
   IterationDetail,
 } from '@/features/lab/types'
-import { ArrowLeft, Copy as CopyIcon, Loader2, Plus, Trash2, X } from 'lucide-vue-next'
+import { ArrowLeft, Copy as CopyIcon, Loader2, Plus, Trash2 } from 'lucide-vue-next'
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
@@ -47,6 +48,10 @@ watch(
   { immediate: true },
 )
 
+const progressQuery = useCohortProgressQuery(cohortId)
+const progress = computed(() => progressQuery.data.value ?? null)
+const c2Ready = computed(() => progress.value?.c2.state === 'ready')
+
 const trajectoryQuery = useTrajectoryQuery(cohortId)
 const trajectory = computed(() => trajectoryQuery.data.value ?? [])
 
@@ -60,22 +65,6 @@ const loading = computed(() => cohortQuery.isLoading.value && cohort.value === n
 const error = computed(() => (cohortQuery.error.value as Error | null)?.message ?? null)
 
 const isDraft = computed(() => cohort.value?.status === 'draft')
-
-const removeCoin = useRemoveCoinMutation(cohortId)
-async function handleRemoveCoin(eurioId: string) {
-  if (!cohort.value) return
-  if (!confirm(`Retirer ${eurioId} du cohort ?`)) return
-  try {
-    await removeCoin.mutateAsync(eurioId)
-  } catch (e) {
-    alert(`Échec : ${(e as Error).message}`)
-  }
-}
-
-function goAddCoins() {
-  if (!cohort.value) return
-  router.push({ path: '/coins', query: { cohort_attach: cohort.value.id } })
-}
 
 const cloneMut = useCloneCohortMutation()
 async function handleClone() {
@@ -218,15 +207,17 @@ function formatPct(v: number | null): string {
             <button
               class="flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-all"
               :style="{
-                background: runnerBusy ? 'var(--surface-2)' : 'var(--indigo-700)',
-                color: runnerBusy ? 'var(--ink-400)' : 'white',
-                cursor: runnerBusy ? 'not-allowed' : 'pointer',
-                boxShadow: runnerBusy ? 'none' : 'var(--shadow-sm)',
+                background: (runnerBusy || !c2Ready) ? 'var(--surface-2)' : 'var(--indigo-700)',
+                color: (runnerBusy || !c2Ready) ? 'var(--ink-400)' : 'white',
+                cursor: (runnerBusy || !c2Ready) ? 'not-allowed' : 'pointer',
+                boxShadow: (runnerBusy || !c2Ready) ? 'none' : 'var(--shadow-sm)',
               }"
-              :disabled="runnerBusy"
-              :title="isDraft
-                ? (runnerBusy ? 'Une itération tourne déjà' : 'Lancer figera le cohort')
-                : (runnerBusy ? 'Une itération tourne déjà' : 'Lance une nouvelle itération')"
+              :disabled="runnerBusy || !c2Ready"
+              :title="!c2Ready
+                ? 'Capture toutes les pièces avant de créer une iteration.'
+                : (isDraft
+                  ? (runnerBusy ? 'Une itération tourne déjà' : 'Lancer figera le cohort')
+                  : (runnerBusy ? 'Une itération tourne déjà' : 'Lance une nouvelle itération'))"
               @click="router.push(`/lab/cohorts/${cohort.id}/iterations/new`)"
             >
               <Plus class="h-3.5 w-3.5" />
@@ -255,53 +246,19 @@ function formatPct(v: number | null): string {
         <div class="mt-6 h-px w-16" style="background: var(--gold);" />
       </header>
 
-      <!-- §1 Pièces -->
-      <section class="mb-6">
-        <div class="mb-2 flex items-center justify-between">
-          <p
-            class="text-[10px] font-medium uppercase"
-            style="color: var(--ink-400); letter-spacing: var(--tracking-eyebrow);"
-          >
-            §1 Pièces ({{ cohort.eurio_ids.length }}) {{ isDraft ? '· éditable' : '· frozen' }}
-          </p>
-          <button
-            v-if="isDraft"
-            class="flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px]"
-            style="border-color: var(--surface-3); color: var(--ink);"
-            @click="goAddCoins"
-          >
-            <Plus class="h-3 w-3" />
-            Ajouter
-          </button>
-        </div>
-        <div class="flex flex-wrap gap-1.5">
-          <span
-            v-for="eid in cohort.eurio_ids"
-            :key="eid"
-            class="flex items-center gap-1 rounded-md border px-2 py-0.5 font-mono text-[11px]"
-            style="border-color: var(--surface-3); background: var(--surface); color: var(--ink);"
-          >
-            {{ eid }}
-            <button
-              v-if="isDraft"
-              class="rounded-full p-0.5 transition-colors hover:bg-[var(--danger-soft)]"
-              :title="`Retirer ${eid}`"
-              @click="handleRemoveCoin(eid)"
-            >
-              <X class="h-2.5 w-2.5" style="color: var(--ink-400);" />
-            </button>
-          </span>
-        </div>
-      </section>
-
-      <!-- §2 Captures -->
-      <section class="mb-6">
-        <CaptureSection
+      <!-- §C1 Sélection + §C2 Captures -->
+      <div class="mb-6 flex flex-col gap-3">
+        <CohortDrawerC1
           :cohort-id="cohort.id"
-          :cohort-name="cohort.name"
-          :cohort-status="cohort.status"
+          :cohort="cohort"
+          :progress="progress"
         />
-      </section>
+        <CohortDrawerC2
+          :cohort-id="cohort.id"
+          :cohort="cohort"
+          :progress="progress"
+        />
+      </div>
 
       <!-- Sprint 5 — soft cleanup banner: ≥5 iterations + ≥2 failed -->
       <div

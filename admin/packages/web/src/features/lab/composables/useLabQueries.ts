@@ -14,19 +14,24 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { computed, type MaybeRefOrGetter, toValue } from 'vue'
 import {
   addCoinsToCohort,
+  bakeIterationAugmentations,
   cloneCohort,
   createIteration,
   fetchAugVsReal,
   fetchCohort,
   fetchCohortCaptures,
+  fetchCohortProgress,
   fetchCohortTestBuildInfo,
   fetchCohorts,
   fetchDashboard,
   fetchIterationAugmentations,
+  fetchIterationProgress,
   fetchIterations,
   fetchLiveTests,
   fetchRunnerStatus,
+  fetchRuntimeInfo,
   fetchSensitivity,
+  fetchTrainingProgress,
   fetchTrajectory,
   generateCohortCsv,
   launchIterationTraining,
@@ -43,6 +48,7 @@ import {
 import type {
   CohortStatus,
   IterationCreatePayload,
+  IterationStatus,
 } from '../types'
 
 export const LAB_KEYS = {
@@ -53,6 +59,9 @@ export const LAB_KEYS = {
   trajectory: (cohortId: string) => ['lab', 'cohort', cohortId, 'trajectory'] as const,
   sensitivity: (cohortId: string) => ['lab', 'cohort', cohortId, 'sensitivity'] as const,
   captures: (cohortId: string) => ['lab', 'cohort', cohortId, 'captures'] as const,
+  progress: (cohortId: string) => ['lab', 'cohort', cohortId, 'progress'] as const,
+  iterationProgress: (cohortId: string, iterationId: string) =>
+    ['lab', 'cohort', cohortId, 'iterations', iterationId, 'progress'] as const,
   augmentations: (cohortId: string, iterationId: string) =>
     ['lab', 'cohort', cohortId, 'iterations', iterationId, 'augmentations'] as const,
   augVsReal: (cohortId: string, iterationId: string) =>
@@ -124,12 +133,53 @@ export function useCaptureManifestQuery(cohortId: MaybeRefOrGetter<string>) {
   })
 }
 
+export function useCohortProgressQuery(cohortId: MaybeRefOrGetter<string>) {
+  return useQuery({
+    queryKey: computed(() => LAB_KEYS.progress(toValue(cohortId))),
+    queryFn: () => fetchCohortProgress(toValue(cohortId)),
+    enabled: computed(() => !!toValue(cohortId)),
+    refetchInterval: 5000,
+    staleTime: 2000,
+  })
+}
+
 export function useRunnerStatusQuery() {
   return useQuery({
     queryKey: LAB_KEYS.runner,
     queryFn: () => fetchRunnerStatus(),
     refetchInterval: 5000,
     staleTime: 0,
+  })
+}
+
+export function useRuntimeInfoQuery() {
+  return useQuery({
+    queryKey: [...LAB_KEYS.runner, 'runtime-info'] as const,
+    queryFn: () => fetchRuntimeInfo(),
+    staleTime: 60 * 60 * 1000,
+  })
+}
+
+export function useTrainingProgressQuery(
+  iterationId: MaybeRefOrGetter<string>,
+  status: MaybeRefOrGetter<IterationStatus | null | undefined>,
+) {
+  return useQuery({
+    queryKey: computed(() => [
+      ...LAB_KEYS.runner,
+      'training-progress',
+      toValue(iterationId),
+    ] as const),
+    queryFn: () => fetchTrainingProgress(toValue(iterationId)),
+    enabled: computed(() => {
+      const s = toValue(status)
+      return !!toValue(iterationId) && (s === 'training' || s === 'benchmarking')
+    }),
+    refetchInterval: computed(() => {
+      const s = toValue(status)
+      return (s === 'training' || s === 'benchmarking') ? 2000 : false
+    }),
+    staleTime: 1000,
   })
 }
 
@@ -143,6 +193,7 @@ export function useAddCoinsMutation(cohortId: MaybeRefOrGetter<string>) {
       const id = toValue(cohortId)
       qc.invalidateQueries({ queryKey: LAB_KEYS.cohort(id) })
       qc.invalidateQueries({ queryKey: LAB_KEYS.captures(id) })
+      qc.invalidateQueries({ queryKey: LAB_KEYS.progress(id) })
       qc.invalidateQueries({ queryKey: ['lab', 'cohorts'] })
     },
   })
@@ -156,6 +207,7 @@ export function useRemoveCoinMutation(cohortId: MaybeRefOrGetter<string>) {
       const id = toValue(cohortId)
       qc.invalidateQueries({ queryKey: LAB_KEYS.cohort(id) })
       qc.invalidateQueries({ queryKey: LAB_KEYS.captures(id) })
+      qc.invalidateQueries({ queryKey: LAB_KEYS.progress(id) })
       qc.invalidateQueries({ queryKey: ['lab', 'cohorts'] })
     },
   })
@@ -182,7 +234,47 @@ export function useSyncCapturesMutation(cohortId: MaybeRefOrGetter<string>) {
     mutationFn: (opts: { pull_dir?: string; overwrite?: boolean } = {}) =>
       syncCohortCaptures(toValue(cohortId), opts),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: LAB_KEYS.captures(toValue(cohortId)) })
+      const id = toValue(cohortId)
+      qc.invalidateQueries({ queryKey: LAB_KEYS.captures(id) })
+      qc.invalidateQueries({ queryKey: LAB_KEYS.progress(id) })
+    },
+  })
+}
+
+export function useIterationProgressQuery(
+  cohortId: MaybeRefOrGetter<string>,
+  iterationId: MaybeRefOrGetter<string>,
+  status: MaybeRefOrGetter<IterationStatus | null | undefined>,
+) {
+  return useQuery({
+    queryKey: computed(() =>
+      LAB_KEYS.iterationProgress(toValue(cohortId), toValue(iterationId)),
+    ),
+    queryFn: () =>
+      fetchIterationProgress(toValue(cohortId), toValue(iterationId)),
+    enabled: computed(() => !!toValue(cohortId) && !!toValue(iterationId)),
+    refetchInterval: computed(() => {
+      const s = toValue(status)
+      if (s === 'training' || s === 'benchmarking') return 2000
+      return 5000
+    }),
+    staleTime: 1000,
+  })
+}
+
+export function useBakeIterationMutation(
+  cohortId: MaybeRefOrGetter<string>,
+  iterationId: MaybeRefOrGetter<string>,
+) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () =>
+      bakeIterationAugmentations(toValue(cohortId), toValue(iterationId)),
+    onSuccess: () => {
+      const cid = toValue(cohortId)
+      const iid = toValue(iterationId)
+      qc.invalidateQueries({ queryKey: LAB_KEYS.augmentations(cid, iid) })
+      qc.invalidateQueries({ queryKey: LAB_KEYS.iterationProgress(cid, iid) })
     },
   })
 }
@@ -215,9 +307,10 @@ export function useRegenerateAugmentationsMutation(
     mutationFn: () =>
       regenerateIterationAugmentations(toValue(cohortId), toValue(iterationId)),
     onSuccess: () => {
-      qc.invalidateQueries({
-        queryKey: LAB_KEYS.augmentations(toValue(cohortId), toValue(iterationId)),
-      })
+      const cid = toValue(cohortId)
+      const iid = toValue(iterationId)
+      qc.invalidateQueries({ queryKey: LAB_KEYS.augmentations(cid, iid) })
+      qc.invalidateQueries({ queryKey: LAB_KEYS.iterationProgress(cid, iid) })
     },
   })
 }
@@ -283,11 +376,12 @@ export function useStopIterationMutation(cohortId: MaybeRefOrGetter<string>) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (iterationId: string) => stopIteration(toValue(cohortId), iterationId),
-    onSuccess: () => {
+    onSuccess: (_data, iid) => {
       const id = toValue(cohortId)
       qc.invalidateQueries({ queryKey: LAB_KEYS.iterations(id) })
       qc.invalidateQueries({ queryKey: LAB_KEYS.cohort(id) })
       qc.invalidateQueries({ queryKey: LAB_KEYS.runner })
+      qc.invalidateQueries({ queryKey: LAB_KEYS.iterationProgress(id, iid) })
     },
   })
 }
@@ -327,6 +421,7 @@ export function useUpdateIterationMutation(
       // Recipe/variant_count changes wipe baked augmentations server-side —
       // refresh the gallery query too so the user sees the cleared state.
       qc.invalidateQueries({ queryKey: LAB_KEYS.augmentations(cid, iid) })
+      qc.invalidateQueries({ queryKey: LAB_KEYS.iterationProgress(cid, iid) })
     },
   })
 }
@@ -340,9 +435,11 @@ export function useLaunchTrainingMutation(
     mutationFn: () => launchIterationTraining(toValue(cohortId), toValue(iterationId)),
     onSuccess: () => {
       const id = toValue(cohortId)
+      const iid = toValue(iterationId)
       qc.invalidateQueries({ queryKey: LAB_KEYS.iterations(id) })
       qc.invalidateQueries({ queryKey: LAB_KEYS.cohort(id) })
       qc.invalidateQueries({ queryKey: LAB_KEYS.runner })
+      qc.invalidateQueries({ queryKey: LAB_KEYS.iterationProgress(id, iid) })
     },
   })
 }

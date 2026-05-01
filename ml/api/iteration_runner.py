@@ -11,6 +11,7 @@ checkpoint path), so parallel iterations would collide.
 
 from __future__ import annotations
 
+import json
 import logging
 import random
 import shutil
@@ -47,6 +48,37 @@ def _generate_seed() -> int:
     return random.randint(0, _SEED_MAX)
 
 
+PROGRESS_DIR = ML_DIR / "state" / "training_progress"
+
+
+def _set_progress_phase(iteration_id: str, phase: str, **extra: object) -> None:
+    """Patch ``ml/state/training_progress/<iid>.json`` with a new phase.
+
+    Used by the runner around training (bake/export/benchmark/done/failed).
+    Inside the training loop, ``train_embedder.py`` writes per-epoch payloads
+    with ``phase=training``. We merge into whatever exists so we don't drop
+    metrics already written by the subprocess.
+    """
+    fp = PROGRESS_DIR / f"{iteration_id}.json"
+    payload: dict = {}
+    if fp.exists():
+        try:
+            payload = json.loads(fp.read_text())
+        except Exception:
+            payload = {}
+    payload.update({
+        "schema_version": payload.get("schema_version", 1),
+        "iteration_id": iteration_id,
+        "phase": phase,
+        "updated_at": _iso_now(),
+        **extra,
+    })
+    fp.parent.mkdir(parents=True, exist_ok=True)
+    tmp = fp.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(payload))
+    tmp.replace(fp)
+
+
 def _iso_now() -> str:
     return (
         datetime.now(timezone.utc)
@@ -71,6 +103,11 @@ class IterationRunner:
         self._global_lock = threading.Lock()  # only one iteration at a time
 
     # ─── Public API ────────────────────────────────────────────────────
+
+    @property
+    def training_runner(self) -> TrainingRunner:
+        """Public accessor — used by lab_routes for log tailing (phase 5)."""
+        return self._training_runner
 
     def is_busy(self) -> bool:
         return self._global_lock.locked()
@@ -263,6 +300,7 @@ class IterationRunner:
         self._store.update_iteration(
             iteration_id, started_at=_iso_now(),
         )
+        _set_progress_phase(iteration_id, "bake")
 
         # Phase 1 — Training
         training_run_id = it.training_run_id
@@ -296,6 +334,7 @@ class IterationRunner:
         # step from the loop. We don't fail the iteration on export failure
         # — the training is still valid, the user can re-export by hand and
         # bundle later.
+        _set_progress_phase(iteration_id, "export")
         try:
             self._export_tflite(iteration_id)
         except Exception as exc:  # noqa: BLE001
@@ -306,6 +345,7 @@ class IterationRunner:
             )
 
         # Phase 2 — Benchmark
+        _set_progress_phase(iteration_id, "benchmark")
         benchmark_run_id = self._store.get_iteration(iteration_id).benchmark_run_id
         if benchmark_run_id is None:
             try:
@@ -334,6 +374,7 @@ class IterationRunner:
 
         # Phase 3 — Verdict + delta
         self._finalize(iteration_id)
+        _set_progress_phase(iteration_id, "done")
 
     # ─── Training ───────────────────────────────────────────────────────
 
@@ -351,7 +392,24 @@ class IterationRunner:
         from training.iteration_augmentations import (
             ITERATION_TRAIN_ROOTS,
             generate_for_iteration,
+            list_for_iteration,
         )
+
+        # Belt-and-suspenders : the front locks I3 until I2 is ready, and
+        # IterationRunner.launch_training already enforces this. Re-check
+        # here so internal callers (e.g. tests, scripts) can't bypass it.
+        per_coin = list_for_iteration(iteration_id=iteration.id, store=self._store)
+        target = max(int(iteration.variant_count), 1)
+        incomplete = [
+            c["eurio_id"]
+            for c in per_coin
+            if len(c.get("samples", [])) < target
+        ]
+        if incomplete:
+            raise RuntimeError(
+                f"I2 incomplete : {len(incomplete)} pièce(s) sans bake — "
+                "génère les augmentations via le tiroir I2 avant de lancer."
+            )
 
         reports = generate_for_iteration(iteration_id=iteration.id, store=self._store)
         skipped = [r for r in reports if r.skipped_reason]
@@ -371,6 +429,7 @@ class IterationRunner:
         config["target_augmented"] = iteration.variant_count
         config["prebaked_augmentations"] = True
         config["dataset_override"] = str(ITERATION_TRAIN_ROOTS / iteration.id)
+        config["iteration_id"] = iteration.id
         if iteration.recipe_id:
             config["aug_recipe"] = iteration.recipe_id
 
@@ -589,6 +648,7 @@ class IterationRunner:
             error=error,
             finished_at=_iso_now(),
         )
+        _set_progress_phase(iteration_id, "failed", error=error)
 
 
 # ─── Module-level bind (same pattern as augmentation/benchmark routes) ─────

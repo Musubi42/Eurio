@@ -214,6 +214,11 @@ def _cohort_summary(cohort: ExperimentCohortRow) -> dict:
 def _iteration_with_run_metrics(it: ExperimentIterationRow) -> dict:
     """Enrich an iteration row with a compact summary of its benchmark."""
     d = it.to_dict()
+    if it.recipe_id:
+        recipe = _get_store().get_recipe(it.recipe_id)
+        d["recipe_name"] = recipe.name if recipe else None
+    else:
+        d["recipe_name"] = None
     bench_summary: dict | None = None
     if it.benchmark_run_id:
         bench = _get_store().get_benchmark_run(it.benchmark_run_id)
@@ -293,6 +298,84 @@ def get_cohort(id_or_name: str) -> dict:
     if c is None:
         raise HTTPException(status_code=404, detail="Cohort introuvable")
     return _cohort_summary(c)
+
+
+_OBVERSE_NAMES = ("obverse.jpg", "obverse.png")
+
+
+def _has_obverse(numista_id: int | None) -> bool:
+    if numista_id is None:
+        return False
+    coin_dir = CAPTURES_BASE / str(numista_id)
+    return any((coin_dir / name).is_file() for name in _OBVERSE_NAMES)
+
+
+def _drawer_state_c1(total_coins: int, missing_obverse: list[str]) -> str:
+    if total_coins == 0:
+        return "empty"
+    if missing_obverse:
+        return "partial"
+    return "ready"
+
+
+def _drawer_state_c2(
+    total_coins: int, fully: int, partial: int, missing: int
+) -> str:
+    if total_coins == 0:
+        return "empty"
+    if fully == total_coins:
+        return "ready"
+    if fully == 0 and partial == 0:
+        return "empty"
+    return "partial"
+
+
+@router.get("/cohorts/{cohort_id}/progress")
+def cohort_progress(cohort_id: str) -> dict:
+    cohort = _get_store().get_cohort(cohort_id)
+    if cohort is None:
+        raise HTTPException(status_code=404, detail="Cohort introuvable")
+
+    # ── C1 — selection ────────────────────────────────────────────────
+    missing_obverse: list[str] = []
+    for eid in cohort.eurio_ids:
+        nid = coin_lookup.numista_id_for(eid)
+        if nid is None:
+            logger.warning(
+                "cohort %s: %s has no numista_id mapping", cohort.id, eid
+            )
+            missing_obverse.append(eid)
+            continue
+        if not _has_obverse(nid):
+            missing_obverse.append(eid)
+    total_coins = len(cohort.eurio_ids)
+    c1 = {
+        "state": _drawer_state_c1(total_coins, missing_obverse),
+        "total_coins": total_coins,
+        "missing_obverse": missing_obverse,
+    }
+
+    # ── C2 — captures ─────────────────────────────────────────────────
+    expected_n = len(CAPTURE_STEPS)
+    per_coin = [_coin_capture_status(eid) for eid in cohort.eurio_ids]
+    fully = sum(1 for c in per_coin if c["num_files"] >= expected_n)
+    partial_n = sum(1 for c in per_coin if 0 < c["num_files"] < expected_n)
+    missing_n = sum(1 for c in per_coin if c["num_files"] == 0)
+    per_coin_missing = [
+        {"eurio_id": c["eurio_id"], "missing_steps": c["missing_steps"]}
+        for c in per_coin
+        if c["missing_steps"]
+    ]
+    c2 = {
+        "state": _drawer_state_c2(total_coins, fully, partial_n, missing_n),
+        "expected_per_coin": expected_n,
+        "fully_captured": fully,
+        "partial": partial_n,
+        "missing": missing_n,
+        "per_coin_missing": per_coin_missing,
+    }
+
+    return {"c1": c1, "c2": c2}
 
 
 @router.put("/cohorts/{cohort_id}")
@@ -476,6 +559,209 @@ def get_iteration(cohort_id: str, iteration_id: str) -> dict:
     if it is None or it.cohort_id != cohort_id:
         raise HTTPException(status_code=404, detail="Itération introuvable")
     return _iteration_with_run_metrics(it)
+
+
+def _i1_state(recipe_id: str | None) -> str:
+    return "ready" if recipe_id else "empty"
+
+
+def _i2_state(total_baked: int, total_expected: int) -> str:
+    if total_expected == 0 or total_baked == 0:
+        return "empty"
+    if total_baked >= total_expected:
+        return "ready"
+    return "partial"
+
+
+def _i3_state(status: str) -> str:
+    if status in ("training", "benchmarking"):
+        return "running"
+    if status == "completed":
+        return "ready"
+    if status == "failed":
+        return "partial"
+    return "empty"
+
+
+def _i4_substate_studio(it: ExperimentIterationRow) -> dict:
+    r_at_1: float | None = None
+    if it.benchmark_run_id:
+        bench = _get_store().get_benchmark_run(it.benchmark_run_id)
+        if bench is not None:
+            r_at_1 = bench.r_at_1
+    return {
+        "state": "ready" if r_at_1 is not None else "empty",
+        "r_at_1": r_at_1,
+    }
+
+
+def _i4_substate_aug_vs_real(iteration_id: str) -> dict:
+    rows = _get_store().list_aug_vs_real(iteration_id)
+    if not rows:
+        return {"state": "empty", "computed_at": None, "mean_cosine": None}
+    cosines = [r.cosine for r in rows if r.cosine is not None]
+    mean = sum(cosines) / len(cosines) if cosines else None
+    computed_at = max((r.computed_at for r in rows if r.computed_at), default=None)
+    return {
+        "state": "ready" if mean is not None else "partial",
+        "computed_at": computed_at,
+        "mean_cosine": mean,
+    }
+
+
+def _i4_substate_test_app(it: ExperimentIterationRow) -> dict:
+    if it.status != "completed":
+        return {"state": "empty", "model_ready": False, "tflite_present": _TFLITE_PATH.exists()}
+    tflite_present = _TFLITE_PATH.exists()
+    if not tflite_present:
+        return {"state": "partial", "model_ready": False, "tflite_present": False}
+    return {"state": "ready", "model_ready": True, "tflite_present": True}
+
+
+def _i4_substate_live_tests(iteration_id: str) -> dict:
+    rows = _get_store().list_live_tests(iteration_id)
+    total = len(rows)
+    if total == 0:
+        return {"state": "empty", "total": 0, "recall_at_1": None}
+    correct = sum(1 for r in rows if r.is_correct)
+    return {
+        "state": "ready",
+        "total": total,
+        "recall_at_1": correct / total if total else None,
+    }
+
+
+def _i4_aggregate(states: list[str]) -> str:
+    n_ready = sum(1 for s in states if s == "ready")
+    n_started = sum(1 for s in states if s != "empty")
+    if n_started == 0:
+        return "empty"
+    if n_ready == len(states):
+        return "ready"
+    return "partial"
+
+
+def _iteration_progress(it: ExperimentIterationRow) -> dict:
+    # ── I1 ────────────────────────────────────────────────────────────
+    recipe_name: str | None = None
+    if it.recipe_id:
+        recipe = _get_store().get_recipe(it.recipe_id)
+        recipe_name = recipe.name if recipe else None
+    i1 = {
+        "state": _i1_state(it.recipe_id),
+        "recipe_id": it.recipe_id,
+        "recipe_name": recipe_name,
+        "variant_count": it.variant_count,
+    }
+
+    # ── I2 ────────────────────────────────────────────────────────────
+    from training.iteration_augmentations import list_for_iteration
+    per_coin_aug = list_for_iteration(iteration_id=it.id, store=_get_store())
+    cohort = _get_store().get_cohort(it.cohort_id)
+    total_coins = len(cohort.eurio_ids) if cohort else 0
+    target = max(int(it.variant_count), 1)
+    total_expected = total_coins * target
+    per_coin_i2: list[dict] = []
+    total_baked = 0
+    for c in per_coin_aug:
+        baked = len(c.get("samples", []))
+        total_baked += baked
+        skipped: str | None = None
+        if c.get("numista_id") is None:
+            skipped = "no numista_id mapping"
+        elif baked == 0 and not _has_obverse(c["numista_id"]):
+            skipped = "no obverse image"
+        per_coin_i2.append({
+            "eurio_id": c["eurio_id"],
+            "numista_id": c.get("numista_id"),
+            "baked": baked,
+            "expected": target,
+            "skipped_reason": skipped,
+        })
+    i2 = {
+        "state": _i2_state(total_baked, total_expected),
+        "total_expected": total_expected,
+        "total_baked": total_baked,
+        "per_coin": per_coin_i2,
+    }
+
+    # ── I3 ────────────────────────────────────────────────────────────
+    i3 = {
+        "state": _i3_state(it.status),
+        "status": it.status,
+        "training_run_id": it.training_run_id,
+        "benchmark_run_id": it.benchmark_run_id,
+        "started_at": it.started_at,
+        "finished_at": it.finished_at,
+        "failure_reason": it.error if it.status == "failed" else None,
+    }
+
+    # ── I4 ────────────────────────────────────────────────────────────
+    studio = _i4_substate_studio(it)
+    avr = _i4_substate_aug_vs_real(it.id)
+    test_app = _i4_substate_test_app(it)
+    live = _i4_substate_live_tests(it.id)
+    i4 = {
+        "state": _i4_aggregate(
+            [studio["state"], avr["state"], test_app["state"], live["state"]]
+        ),
+        "studio": studio,
+        "aug_vs_real": avr,
+        "test_app": test_app,
+        "live_tests": live,
+    }
+
+    return {"i1": i1, "i2": i2, "i3": i3, "i4": i4}
+
+
+@router.get("/cohorts/{cohort_id}/iterations/{iteration_id}/progress")
+def iteration_progress(cohort_id: str, iteration_id: str) -> dict:
+    it = _get_store().get_iteration(iteration_id)
+    if it is None or it.cohort_id != cohort_id:
+        raise HTTPException(status_code=404, detail="Itération introuvable")
+    return _iteration_progress(it)
+
+
+@router.post("/cohorts/{cohort_id}/iterations/{iteration_id}/bake")
+def bake_iteration(cohort_id: str, iteration_id: str) -> dict:
+    """Idempotent bake — fills missing samples without wiping the rest.
+
+    Distinct from ``regenerate`` which clears + rebakes from scratch.
+    """
+    it = _get_store().get_iteration(iteration_id)
+    if it is None or it.cohort_id != cohort_id:
+        raise HTTPException(status_code=404, detail="Itération introuvable")
+    if it.status != "pending":
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Itération en status '{it.status}' — bake autorisé seulement "
+                "sur 'pending'."
+            ),
+        )
+    if not it.recipe_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Aucune recipe — sélectionne une recipe avant de baker.",
+        )
+    from training.iteration_augmentations import generate_for_iteration
+
+    reports = generate_for_iteration(iteration_id=iteration_id, store=_get_store())
+    total = sum(r.written for r in reports)
+    return {
+        "ok": True,
+        "total_baked": total,
+        "reports": [
+            {
+                "eurio_id": r.eurio_id,
+                "numista_id": r.numista_id,
+                "written": r.written,
+                "sources_used": r.sources_used,
+                "skipped_reason": r.skipped_reason,
+            }
+            for r in reports
+        ],
+    }
 
 
 @router.put("/cohorts/{cohort_id}/iterations/{iteration_id}")
@@ -1048,6 +1334,46 @@ def stop_iteration(cohort_id: str, iteration_id: str) -> dict:
 @router.get("/runner/status")
 def runner_status() -> dict:
     return {"busy": _get_runner().is_busy()}
+
+
+@router.get("/runner/runtime-info")
+def runner_runtime_info() -> dict:
+    from training.runtime import detect, to_dict
+    return to_dict(detect())
+
+
+_TRAINING_PROGRESS_DIR = _ML_DIR / "state" / "training_progress"
+
+
+@router.get("/runner/training-progress/{iteration_id}")
+def runner_training_progress(iteration_id: str) -> dict:
+    """Live training progress for a running iteration.
+
+    Combines the on-disk JSON written by ``train_embedder.py`` (per-epoch loss,
+    ETA, device) with the runtime-only stdout tail of the active subprocess.
+    Front-end polls this every ~2s while ``iteration.status`` is
+    ``training`` or ``benchmarking``.
+    """
+    fp = _TRAINING_PROGRESS_DIR / f"{iteration_id}.json"
+    payload: dict
+    if fp.exists():
+        try:
+            payload = json.loads(fp.read_text())
+        except Exception:
+            payload = {"error": "progress file unreadable"}
+    else:
+        payload = {
+            "schema_version": 1,
+            "iteration_id": iteration_id,
+            "phase": "unknown",
+        }
+    log_tail: list[str] = []
+    try:
+        log_tail = _get_runner().training_runner.tail_logs(n=30)
+    except Exception:
+        log_tail = []
+    payload["log_tail"] = log_tail
+    return payload
 
 
 # ─── Cohort test app build info (Sprint 3) ─────────────────────────────────

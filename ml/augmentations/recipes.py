@@ -7,7 +7,7 @@ time and over phone snaps at inference. With train/inference perfectly
 geometrically aligned, the augmentation pipeline only needs to cover camera
 nuisance variability — rotation, color, blur, perspective residue, scale
 residue. All of that is now expressed at the torchvision-transform level
-(``train_embedder.get_train_transforms``).
+(``train_embedder.get_legacy_train_transforms``).
 
 The legacy recipe layers (background palette, relighting, overlays) are
 removed:
