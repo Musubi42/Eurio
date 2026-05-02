@@ -177,3 +177,63 @@ promu vers `coin_market_quotes`.
   `face`, `quality_score`, etc.
 
 Détails : voir `schema.md`.
+
+## D-16 — Pas de batch review par multi-select manuel
+
+Le batch review **ne se construit jamais à la main** par sélection
+d'items consécutifs dans le flow single-item. Raison : en single-item,
+le reviewer ne voit qu'un crop à la fois, il ne peut donc pas
+*anticiper* la similarité avec les items suivants pour les grouper.
+
+Le batch est **toujours suggéré par la machine**, jamais composé par
+l'humain. Deux mécanismes admis (V2+, gated sur backend) :
+
+1. **Cluster pHash** (cf. D-07) — au moment de la décision sur l'item A,
+   le backend renvoie la liste des images avec pHash identique
+   (Hamming ≤ 4). Une bascule "Appliquer la même décision aux N
+   semblables" permet de propager en 1 clic.
+2. **Vue grille parallèle** — alternative au single-item. N items
+   visibles d'un coup avec multi-select visuel pour les rejects
+   massifs sur trash visible. Endpoint batch
+   (`POST /review-queue/batch/...`) requis.
+
+V1 livre **uniquement** le single-item. Aucune UI de multi-select
+préparatoire (ni checkbox, ni mode "ajouter au batch") — ça induirait
+en erreur sur la sémantique du flow.
+
+## D-17 — Pas de fallback silencieux dans `detect_crop`
+
+L'étape 4 du pipeline (`scan.normalize_studio_path`) appelée par
+`steps/detect_crop.py` **n'a pas de fallback de récupération**. Si la
+détection échoue (ni `contour` ni `hough` ne trouvent un cercle), on :
+
+1. logge l'erreur explicitement (`logger.error` avec `source_ref`,
+   `method` final et `debug` du résultat) ;
+2. bump `source_runs.n_errors` ;
+3. laisse l'item à `discovery_log.pipeline_state='downloaded'` —
+   reprocessable sur la prochaine run sans intervention.
+
+**Raison** : un fallback bidon (Hough lâche) qui sort un crop random
+pollue silencieusement le training set. Mieux vaut une erreur visible
+qu'une donnée pourrie. R0 (pas de dette technique) tranche : on
+réutilise `scan.normalize_studio` directement, on n'invente pas une
+détection alternative.
+
+## D-18 — Pas d'auto-name en V1
+
+Initialement prévu en `steps/resolve.py` avec un seuil de confiance
+≥ 0.85, l'auto-name regex (extraction pays/année/dénom du title eBay
++ lookup `coins`) est **différé**. Tous les crops vont en
+`needs_review`.
+
+**Raison** : extraire des features fiables d'un titre eBay est
+notoirement bruité ; à 0.85 on auto-namerait régulièrement des trucs
+faux, ce qui pollue le training set et oblige un audit manuel
+ex-post. Mieux vaut 100 % en review humaine pour V1, puis réintroduire
+l'auto-name une fois qu'on a des stats sur de vraies données pour
+calibrer un seuil défendable.
+
+**Conséquence** : `n_auto_resolved` ne grimpe que via `auto_phash`
+(dédup C4), jamais via `auto_name`, tant que ce chunk n'est pas
+re-livré. Le couplage `priority -30 if target_eurio_id` reste actif
+(les fetchs ciblés sortent en haut de la queue).
