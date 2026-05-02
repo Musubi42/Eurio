@@ -146,11 +146,16 @@ GET    /coins/search?country=BE&denomination=2&year=        # sélecteur libre
 
 ## Évolutions futures (hors phase 1)
 
-- **Batch labeling** : sélection multiple → tag commun (utile pour
-  les listings d'un même vendeur ou les pHash-clusters).
-- **Suggestions de pHash-cluster** : "vous avez résolu cette image
-  vers BE-2EUR-2002 ; voici 12 autres images avec le même pHash,
-  voulez-vous propager ?".
+- **Cluster pHash propagation** *(le seul vrai pattern batch)* —
+  au moment de la décision sur l'item A, le backend renvoie la liste
+  des images avec pHash identique (Hamming ≤ 4 ; cf. D-07). Une
+  bascule "Appliquer la même décision aux N semblables" permet de
+  propager en 1 clic. Le batch est **toujours suggéré par la
+  machine**, jamais composé par l'humain (cf. D-16).
+- **Vue grille parallèle** — alternative au single-item, N items
+  visibles d'un coup avec multi-select visuel pour les rejects
+  massifs sur trash évidente. Toggle `Single / Grid` en top bar.
+  Requiert un endpoint batch (`POST /review-queue/batch/reject`).
 - **Active learning** : prioriser les rows dont la décision
   apporterait le plus d'info à DinoV2 (cf. uncertainty sampling).
 - **Mobile-friendly** : review en swipe sur téléphone pendant les
