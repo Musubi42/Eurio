@@ -315,6 +315,41 @@ class IterationLiveTestRow:
         }
 
 
+def _register_phash_udfs(conn: sqlite3.Connection) -> None:
+    """Register UDFs for perceptual-hash dedup queries (D-07).
+
+    SQLite < 3.43 has no native bit_count, and even on newer versions the
+    function is not exposed by stock Python sqlite3 builds. We register two
+    deterministic Python UDFs:
+
+      - ``hamming(a, b)``     → Hamming distance between two 64-bit ints
+      - ``phash_match(a,b,t)``→ 1 if Hamming(a, b) ≤ t, else 0
+
+    Use ``phash_match(phash, ?, 4)`` in WHERE clauses for cluster lookups
+    (cf. D-07 Hamming ≤ 4). Both functions tolerate NULL inputs by
+    returning NULL / 0 respectively.
+    """
+
+    def _hamming(a: int | None, b: int | None) -> int | None:
+        if a is None or b is None:
+            return None
+        # Python ints are arbitrary precision; mask to 64 bits to stay
+        # consistent with the schema (`phash INTEGER` = signed 64-bit).
+        x = (int(a) ^ int(b)) & 0xFFFFFFFFFFFFFFFF
+        return x.bit_count()  # Python 3.10+
+
+    def _phash_match(a: int | None, b: int | None, threshold: int) -> int:
+        d = _hamming(a, b)
+        if d is None:
+            return 0
+        return 1 if d <= int(threshold) else 0
+
+    # `deterministic=True` lets SQLite use these in indexed expressions and
+    # query optimizations (see https://www.sqlite.org/c3ref/create_function.html).
+    conn.create_function("hamming", 2, _hamming, deterministic=True)
+    conn.create_function("phash_match", 3, _phash_match, deterministic=True)
+
+
 class Store:
     def __init__(self, db_path: Path) -> None:
         self._db_path = Path(db_path)
@@ -340,6 +375,7 @@ class Store:
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("PRAGMA foreign_keys=ON")
             conn.execute("PRAGMA synchronous=NORMAL")
+            _register_phash_udfs(conn)
             self._local.conn = conn
         return conn
 

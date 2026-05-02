@@ -376,3 +376,24 @@ tasks:
     desc: "Validate structure of ml/data/real_photos/ and regenerate _manifest.json"
     cmds:
       - "{{.VENV}}/python eval/check_real_photos.py {{.CLI_ARGS}}"
+
+  # ---------- Sources orchestrator (docs/sources-refacto/) ----------
+  src:run:
+    desc: "Run the 6-step ingestion pipeline. Usage: go-task ml:src:run -- --source mock [--country FR --limit 5]"
+    cmds:
+      - "{{.VENV}}/python -m sources.cli {{.CLI_ARGS}}"
+
+  src:run-dry:
+    desc: "Same as src:run but stops after Discover. Usage: go-task ml:src:run-dry -- --source mock"
+    cmds:
+      - "{{.VENV}}/python -m sources.cli --dry-run {{.CLI_ARGS}}"
+
+  src:mock:run:
+    desc: "Shortcut: full mock pipeline run on the 5 fixture coins."
+    cmds:
+      - "{{.VENV}}/python -m sources.cli --source mock {{.CLI_ARGS}}"
+
+  src:mock:dry:
+    desc: "Shortcut: dry-run on the mock fixtures (Discover only)."
+    cmds:
+      - "{{.VENV}}/python -m sources.cli --source mock --dry-run {{.CLI_ARGS}}"

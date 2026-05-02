@@ -11,6 +11,7 @@ import {
 } from '@/features/training/composables/useTrainingApi'
 import {
   fetchSourcesStatus,
+  getPipelineMeta,
   type SourcesStatusResponse,
   type SourceStatus,
 } from '../composables/useSourcesApi'
@@ -38,20 +39,16 @@ async function refreshSources() {
   }
 }
 
-// ─── Derived: split sources by section ─────────────────────────────────
+// ─── Derived: split sources by pipeline role ───────────────────────────
+// Référentiel canonique = ce qui détermine *quoi* existe (Numista, futurs).
+// Enrichissement        = ce qui *associe* aux eurio_id existants images,
+//                         prix, métadonnées (eBay, MdP, BCE, Wikipedia, …).
 
-const numistaSources = computed<SourceStatus[]>(() =>
-  data.value?.sources.filter((s) => s.quota_group === 'numista') ?? [],
+const referentialSources = computed<SourceStatus[]>(() =>
+  data.value?.sources.filter((s) => getPipelineMeta(s.id)?.role === 'referential') ?? [],
 )
-const marketSources = computed<SourceStatus[]>(() =>
-  data.value?.sources.filter((s) => s.id === 'ebay') ?? [],
-)
-const editorialSources = computed<SourceStatus[]>(() =>
-  data.value?.sources.filter(
-    (s) =>
-      s.quota_group !== 'numista' &&
-      s.id !== 'ebay',
-  ) ?? [],
+const enrichmentSources = computed<SourceStatus[]>(() =>
+  data.value?.sources.filter((s) => getPipelineMeta(s.id)?.role === 'enrichment') ?? [],
 )
 
 const numistaQuota = computed(() => data.value?.quota_groups.numista ?? null)
@@ -161,18 +158,18 @@ onUnmounted(() => {
 
     <template v-if="data">
       <!-- ════════════════════════════════════════════════════════════ -->
-      <!-- ═══  Section 1 — NUMISTA (3 cartes, quota partagé)        ═══ -->
+      <!-- ═══  Section 1 — RÉFÉRENTIEL CANONIQUE                     ═══ -->
       <!-- ════════════════════════════════════════════════════════════ -->
       <section class="mb-8">
         <h2
           class="mb-3 flex items-baseline gap-2 font-mono text-xs uppercase tracking-wider"
           style="color: var(--ink-500);"
         >
-          <span style="color: var(--indigo-700);">Numista</span>
-          <span class="opacity-60">· quota mensuel partagé</span>
+          <span style="color: var(--indigo-700);">Référentiel canonique</span>
+          <span class="opacity-60">· source de vérité des pièces qui existent</span>
         </h2>
 
-        <!-- Shared quota banner -->
+        <!-- Bandeau quota partagé Numista (les 3 cards référentielles partagent le quota) -->
         <div
           v-if="numistaQuota"
           class="mb-4 rounded-lg border px-5 py-4"
@@ -181,10 +178,9 @@ onUnmounted(() => {
           <QuotaProgressBar :quota="numistaQuota" />
         </div>
 
-        <!-- 3 Numista cards -->
         <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <SourceCard
-            v-for="src in numistaSources"
+            v-for="src in referentialSources"
             :key="src.id"
             :source="src"
           />
@@ -192,39 +188,19 @@ onUnmounted(() => {
       </section>
 
       <!-- ════════════════════════════════════════════════════════════ -->
-      <!-- ═══  Section 2 — MARCHÉ                                    ═══ -->
-      <!-- ════════════════════════════════════════════════════════════ -->
-      <section class="mb-8">
-        <h2
-          class="mb-3 font-mono text-xs uppercase tracking-wider"
-          style="color: var(--ink-500);"
-        >
-          <span style="color: var(--indigo-700);">Marché</span>
-          <span class="opacity-60">· prix actifs</span>
-        </h2>
-        <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <SourceCard
-            v-for="src in marketSources"
-            :key="src.id"
-            :source="src"
-          />
-        </div>
-      </section>
-
-      <!-- ════════════════════════════════════════════════════════════ -->
-      <!-- ═══  Section 3 — ÉDITORIAL & RÉFÉRENCE                     ═══ -->
+      <!-- ═══  Section 2 — ENRICHISSEMENT                            ═══ -->
       <!-- ════════════════════════════════════════════════════════════ -->
       <section class="mb-6">
         <h2
-          class="mb-3 font-mono text-xs uppercase tracking-wider"
+          class="mb-3 flex items-baseline gap-2 font-mono text-xs uppercase tracking-wider"
           style="color: var(--ink-500);"
         >
-          <span style="color: var(--indigo-700);">Éditorial &amp; référence</span>
-          <span class="opacity-60">· scrapes HTML</span>
+          <span style="color: var(--indigo-700);">Enrichissement</span>
+          <span class="opacity-60">· images, prix et métadonnées par eurio_id</span>
         </h2>
         <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <SourceCard
-            v-for="src in editorialSources"
+            v-for="src in enrichmentSources"
             :key="src.id"
             :source="src"
           />

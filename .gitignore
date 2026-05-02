@@ -53,6 +53,11 @@ ml/state/sources_runs.json
 ml/state/quotas/
 ml/state/price_snapshots/
 ml/datasets/sources/
+# Runtime: raws + crops downloaded by the orchestrator (D-13).
+ml/state/sources/
+
+# Claude Code internal worktrees
+.claude/worktrees/
 ml/cache/dinov2_inputs/*.webp
 
 # Real-photo benchmark hold-out — NEVER committed. These photos are the

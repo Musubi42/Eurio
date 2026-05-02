@@ -1,0 +1,280 @@
+// Review queue API composable — mocks for /review (V1).
+//
+// Endpoints futurs (cf. docs/sources-refacto/review-queue.md §"Endpoints API attendus") :
+//   GET    /review-queue?status=open&limit=20&order=priority
+//   GET    /review-queue/:id
+//   POST   /review-queue/:id/decide
+//   POST   /review-queue/:id/skip
+//   POST   /review-queue/:id/reject
+//   GET    /review-queue/stats
+//
+// Tant que le backend n'est pas câblé, on génère 30 reviews variés couvrant
+// les cas critiques : top-5 propre, top-5 moisi, lot multi-coin, image trash.
+
+export type ReviewFace = 'obverse' | 'reverse' | 'unknown'
+export type ReviewSource = 'ebay' | 'catawiki' | 'mdp' | 'lmdlp' | 'numista'
+
+export interface ReviewCandidate {
+  eurio_id: string
+  score: number
+  label: string
+  country: string
+  denomination: string
+  year: number | null
+  canonical_thumb_url: string
+}
+
+export interface ReviewItem {
+  id: string
+  crop_url: string
+  bbox: { x: number; y: number; w: number; h: number } | null
+  source: ReviewSource
+  source_ref: string
+  listing_title: string
+  listing_url: string | null
+  listing_price: number | null
+  candidates: ReviewCandidate[]
+  face_detected: ReviewFace | null
+  priority: number
+  is_multi_coin_lot: boolean
+  quality_score: number
+  enqueued_at: string
+}
+
+export interface ReviewDecision {
+  eurio_id: string
+  face: ReviewFace
+  variant_kind?: string
+  notes?: string
+}
+
+export interface ReviewStats {
+  n_pending: number
+  n_done_today: number
+  median_seconds_per_decision: number
+  n_done_this_week: number
+}
+
+// ─── Public API ─────────────────────────────────────────────────────────
+
+export async function fetchReviewQueue(opts: { limit?: number } = {}): Promise<ReviewItem[]> {
+  await delay(120)
+  const limit = opts.limit ?? 30
+  return MOCK_QUEUE.slice(0, limit)
+}
+
+export async function fetchReviewItem(id: string): Promise<ReviewItem> {
+  await delay(60)
+  const item = MOCK_QUEUE.find((r) => r.id === id)
+  if (!item) throw new Error(`Review introuvable : ${id}`)
+  return item
+}
+
+export async function fetchReviewStats(): Promise<ReviewStats> {
+  await delay(60)
+  return {
+    n_pending: 1247,
+    n_done_today: 47,
+    median_seconds_per_decision: 8.3,
+    n_done_this_week: 314,
+  }
+}
+
+export async function decideReviewItem(id: string, _payload: ReviewDecision): Promise<void> {
+  await delay(40)
+  // mock — no-op
+  console.info('[V1 mock] decide', id, _payload)
+}
+
+export async function skipReviewItem(id: string): Promise<void> {
+  await delay(20)
+  console.info('[V1 mock] skip', id)
+}
+
+export async function rejectReviewItem(id: string): Promise<void> {
+  await delay(20)
+  console.info('[V1 mock] reject', id)
+}
+
+// ─── Mock data ──────────────────────────────────────────────────────────
+
+function delay(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms))
+}
+
+function thumb(seed: string, w = 224, h = 224): string {
+  const palette = ['EDEDF5/1A1B4B', 'F5EBD3/8F7637', 'D8D9E8/0E0E1F', 'E2E0D6/55566C']
+  const c = palette[seed.charCodeAt(0) % palette.length]
+  return `https://placehold.co/${w}x${h}/${c}?text=${encodeURIComponent(seed)}`
+}
+
+const COUNTRY_LABEL: Record<string, string> = {
+  BE: 'Belgique', FR: 'France', DE: 'Allemagne', IT: 'Italie', ES: 'Espagne',
+  NL: 'Pays-Bas', LU: 'Luxembourg', IE: 'Irlande', PT: 'Portugal', FI: 'Finlande',
+  GR: 'Grèce', AT: 'Autriche', CY: 'Chypre', MT: 'Malte', SK: 'Slovaquie',
+  SI: 'Slovénie', EE: 'Estonie', LV: 'Lettonie', LT: 'Lituanie', HR: 'Croatie',
+  BG: 'Bulgarie',
+}
+
+function makeCandidate(country: string, denom: string, year: number | null, score: number): ReviewCandidate {
+  const id = `${country}-${denom.toLowerCase().replace(/\s/g, '')}-${year ?? 'na'}`
+  return {
+    eurio_id: id,
+    score,
+    label: `${COUNTRY_LABEL[country] ?? country} · ${denom}${year ? ` · ${year}` : ''}`,
+    country,
+    denomination: denom,
+    year,
+    canonical_thumb_url: thumb(id, 160, 160),
+  }
+}
+
+// 30 reviews variés couvrant les cas typiques.
+export const MOCK_QUEUE: ReviewItem[] = [
+  {
+    id: 'rev-001',
+    crop_url: thumb('crop-be-2002-a', 480, 480),
+    bbox: { x: 120, y: 80, w: 224, h: 224 },
+    source: 'ebay',
+    source_ref: 'ebay/195832104221',
+    listing_title: '2 euros belgique 2002 albert II rare !!',
+    listing_url: 'https://ebay.example/item/195832104221',
+    listing_price: 4.5,
+    candidates: [
+      makeCandidate('BE', '2 EUR', 2002, 0.87),
+      makeCandidate('BE', '2 EUR', 2008, 0.74),
+      makeCandidate('NL', '2 EUR', 2002, 0.41),
+      makeCandidate('LU', '2 EUR', 2002, 0.39),
+      makeCandidate('FR', '2 EUR', 2002, 0.32),
+    ],
+    face_detected: 'obverse',
+    priority: 30,
+    is_multi_coin_lot: false,
+    quality_score: 0.78,
+    enqueued_at: '2026-04-26T10:14:02Z',
+  },
+  {
+    id: 'rev-002',
+    crop_url: thumb('crop-de-2020', 480, 480),
+    bbox: null,
+    source: 'catawiki',
+    source_ref: 'catawiki/auction-9912',
+    listing_title: 'Allemagne 2 € commémorative Brandebourg 2020',
+    listing_url: null,
+    listing_price: 12.0,
+    candidates: [
+      makeCandidate('DE', '2 EUR Brandebourg', 2020, 0.94),
+      makeCandidate('DE', '2 EUR', 2020, 0.61),
+      makeCandidate('DE', '2 EUR Saxe', 2020, 0.42),
+      makeCandidate('DE', '2 EUR Bavière', 2020, 0.39),
+      makeCandidate('AT', '2 EUR', 2020, 0.18),
+    ],
+    face_detected: 'reverse',
+    priority: 20,
+    is_multi_coin_lot: false,
+    quality_score: 0.88,
+    enqueued_at: '2026-04-26T11:02:18Z',
+  },
+  {
+    id: 'rev-003',
+    crop_url: thumb('crop-trash', 480, 480),
+    bbox: null,
+    source: 'ebay',
+    source_ref: 'ebay/195999999111',
+    listing_title: 'lot pieces euros - vrac voir photos',
+    listing_url: 'https://ebay.example/item/195999999111',
+    listing_price: null,
+    candidates: [
+      makeCandidate('FR', '1 EUR', 2010, 0.18),
+      makeCandidate('IT', '1 EUR', null, 0.16),
+      makeCandidate('BE', '50c', null, 0.14),
+    ],
+    face_detected: null,
+    priority: 80,
+    is_multi_coin_lot: true,
+    quality_score: 0.21,
+    enqueued_at: '2026-04-26T12:30:11Z',
+  },
+  {
+    id: 'rev-004',
+    crop_url: thumb('crop-fr-2019', 480, 480),
+    bbox: { x: 60, y: 40, w: 280, h: 280 },
+    source: 'mdp',
+    source_ref: 'mdp/2019-mona-lisa',
+    listing_title: 'Pièce de 2 € Léonard de Vinci 500e anniversaire',
+    listing_url: null,
+    listing_price: 28.5,
+    candidates: [
+      makeCandidate('FR', '2 EUR Léonard', 2019, 0.96),
+      makeCandidate('IT', '2 EUR Léonard', 2019, 0.52),
+      makeCandidate('FR', '2 EUR', 2019, 0.31),
+      makeCandidate('FR', '2 EUR Mitterrand', 2016, 0.18),
+      makeCandidate('FR', '2 EUR Rugby', 2023, 0.12),
+    ],
+    face_detected: 'reverse',
+    priority: 10,
+    is_multi_coin_lot: false,
+    quality_score: 0.93,
+    enqueued_at: '2026-04-26T13:45:50Z',
+  },
+  {
+    id: 'rev-005',
+    crop_url: thumb('crop-bad-meta', 480, 480),
+    bbox: null,
+    source: 'ebay',
+    source_ref: 'ebay/195111222333',
+    listing_title: 'piece rare ancienne collection',
+    listing_url: 'https://ebay.example/item/195111222333',
+    listing_price: 8.0,
+    candidates: [
+      makeCandidate('XX', '?', null, 0.22),
+      makeCandidate('XX', '?', null, 0.19),
+    ],
+    face_detected: 'unknown',
+    priority: 70,
+    is_multi_coin_lot: false,
+    quality_score: 0.45,
+    enqueued_at: '2026-04-26T14:01:30Z',
+  },
+  // Ajout de 25 entrées plus variées (boucle pour densité)
+  ...Array.from({ length: 25 }, (_, i): ReviewItem => {
+    const idx = i + 6
+    const countries = ['IT', 'ES', 'NL', 'PT', 'GR', 'AT', 'IE', 'FI', 'LU', 'SI']
+    const country = countries[i % countries.length]
+    const year = 2002 + (i % 24)
+    const denoms = ['2 EUR', '1 EUR', '50c', '2 EUR commémo']
+    const denom = denoms[i % denoms.length]
+    const goodTop5 = i % 4 !== 3
+    const isLot = i % 8 === 5
+    return {
+      id: `rev-${String(idx).padStart(3, '0')}`,
+      crop_url: thumb(`crop-${country}-${year}-${i}`, 480, 480),
+      bbox: i % 3 === 0 ? null : { x: 80 + (i % 5) * 12, y: 60 + (i % 4) * 10, w: 240, h: 240 },
+      source: (['ebay', 'catawiki', 'mdp', 'lmdlp'] as ReviewSource[])[i % 4],
+      source_ref: `${(['ebay', 'catawiki', 'mdp', 'lmdlp'] as ReviewSource[])[i % 4]}/${100000 + idx}`,
+      listing_title:
+        goodTop5
+          ? `${COUNTRY_LABEL[country]} ${denom} ${year}${i % 5 === 0 ? ' SUP' : ''}`
+          : `lot pieces - vrac collection`,
+      listing_url: i % 2 === 0 ? `https://example/${idx}` : null,
+      listing_price: i % 3 === 0 ? null : 3 + (i % 18),
+      candidates: goodTop5
+        ? [
+            makeCandidate(country, denom, year, 0.7 + (i % 25) / 100),
+            makeCandidate(country, denom, year + 1, 0.42),
+            makeCandidate(country, denom, year - 1, 0.35),
+            makeCandidate(country, denom, null, 0.22),
+            makeCandidate(country, '1 EUR', year, 0.14),
+          ]
+        : [
+            makeCandidate(country, denom, year, 0.25),
+            makeCandidate(country, '1 EUR', year, 0.18),
+          ],
+      face_detected: (['obverse', 'reverse', 'unknown', null] as (ReviewFace | null)[])[i % 4],
+      priority: 30 + (i % 60),
+      is_multi_coin_lot: isLot,
+      quality_score: 0.4 + (i % 50) / 100,
+      enqueued_at: new Date(Date.parse('2026-04-26T08:00:00Z') + idx * 600 * 1000).toISOString(),
+    }
+  }),
+]

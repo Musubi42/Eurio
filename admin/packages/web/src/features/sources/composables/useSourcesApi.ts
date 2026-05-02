@@ -108,6 +108,39 @@ export interface SourcesStatusResponse {
   quota_groups: Record<string, SourceQuota>
 }
 
+// ─── Pipeline metadata (identity, not runtime) ──────────────────────────
+//
+// Une source occupe un rôle figé dans la pipeline d'ingestion :
+//   - `referential` : produit la liste canonique des eurio_id qui existent
+//                     (Numista aujourd'hui ; futures sources de vérité ensuite)
+//   - `enrichment`  : pour chaque eurio_id du référentiel, fournit images,
+//                     prix ou métadonnées (eBay, Catawiki, MdP, …)
+//
+// `produces` liste, en français court, les artefacts que la source dépose
+// dans la pipeline. Affiché en pill `PRODUIT` sur la card pour auto-doc.
+
+export type PipelineRole = 'referential' | 'enrichment'
+
+export interface PipelineMeta {
+  role: PipelineRole
+  produces: string[]
+}
+
+export const SOURCE_PIPELINE_META: Record<SourceId, PipelineMeta> = {
+  numista_match: { role: 'referential', produces: ['liste eurio_id'] },
+  numista_enrich: { role: 'referential', produces: ['métadonnées canoniques'] },
+  numista_images: { role: 'referential', produces: ['images canoniques'] },
+  ebay: { role: 'enrichment', produces: ['images in-the-wild', 'prix'] },
+  lmdlp: { role: 'enrichment', produces: ['images studio', 'cotation'] },
+  mdp: { role: 'enrichment', produces: ['images studio', 'fiches'] },
+  bce: { role: 'enrichment', produces: ['annonces commémo'] },
+  wikipedia: { role: 'enrichment', produces: ['métadonnées par pays'] },
+}
+
+export function getPipelineMeta(id: SourceId): PipelineMeta {
+  return SOURCE_PIPELINE_META[id]
+}
+
 // ─── Real fetch (used once backend endpoint exists) ──────────────────────
 
 export async function fetchSourcesStatus(): Promise<SourcesStatusResponse> {

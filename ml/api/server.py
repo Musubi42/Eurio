@@ -107,6 +107,26 @@ def _benchmark_startup() -> None:
 
 
 @app.on_event("startup")
+def _sources_startup() -> None:
+    """Reset orphan `source_runs` rows left in `status='running'` from a
+    previous process. Without this, the anti-double-run guard would
+    refuse new runs forever for any source whose previous run died with
+    uvicorn (Ctrl-C, crash, kill -9)."""
+    try:
+        n = sources_routes.reset_orphan_runs(_store)
+        if n:
+            import logging
+            logging.getLogger(__name__).info(
+                "Sources orchestrator: marked %d orphan run(s) as failed at startup", n,
+            )
+    except Exception as exc:  # noqa: BLE001
+        import logging
+        logging.getLogger(__name__).warning(
+            "Sources orphan reset failed at startup: %s", exc
+        )
+
+
+@app.on_event("startup")
 def _lab_startup() -> None:
     """Cleanup any Lab iteration left mid-flight by a previous process.
 

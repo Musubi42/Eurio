@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import {
   AlertTriangle,
   CheckCircle2,
+  ChevronRight,
   Clock,
   Construction,
   Database,
@@ -16,12 +17,18 @@ import {
   XCircle,
 } from 'lucide-vue-next'
 import type { Component } from 'vue'
-import type { HealthState, SourceStatus } from '../composables/useSourcesApi'
+import {
+  getPipelineMeta,
+  type HealthState,
+  type SourceStatus,
+} from '../composables/useSourcesApi'
 import QuotaProgressBar from './QuotaProgressBar.vue'
 import DeltaIndicator from './DeltaIndicator.vue'
 import CliHintsBlock from './CliHintsBlock.vue'
 
 const props = defineProps<{ source: SourceStatus }>()
+
+const pipelineMeta = computed(() => getPipelineMeta(props.source.id))
 
 const SOURCE_ICON: Record<string, Component> = {
   numista_match: Search,
@@ -134,11 +141,35 @@ const overdueRatio = computed(() => {
           <p class="mt-0.5 text-[11px]" style="color: var(--ink-500);">
             {{ source.subtitle }}
           </p>
+          <p
+            v-if="pipelineMeta"
+            class="mt-1.5 font-mono text-[10px] uppercase tracking-wider"
+            style="color: var(--ink-500);"
+          >
+            <span style="color: var(--ink-400);">Produit&nbsp;·&nbsp;</span>
+            <span
+              class="normal-case tracking-normal"
+              :style="source.is_future ? 'color: var(--ink-400);' : 'color: var(--indigo-700);'"
+            >
+              {{ pipelineMeta.produces.join(' · ') }}
+            </span>
+          </p>
         </div>
       </div>
 
       <!-- Status pill : "à venir" en mode future, sinon health pill + overdue -->
       <div class="flex shrink-0 flex-col items-end gap-1">
+        <router-link
+          v-if="!source.is_future"
+          :to="`/sources/${source.id}`"
+          class="inline-flex items-center gap-0.5 text-[11px] transition-colors"
+          style="color: var(--ink-400);"
+          @mouseenter="(e) => ((e.currentTarget as HTMLElement).style.color = 'var(--indigo-700)')"
+          @mouseleave="(e) => ((e.currentTarget as HTMLElement).style.color = 'var(--ink-400)')"
+        >
+          Détails
+          <ChevronRight class="h-3 w-3" />
+        </router-link>
         <div
           v-if="source.is_future"
           class="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium"
