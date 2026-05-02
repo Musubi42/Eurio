@@ -48,6 +48,11 @@ ml/state/training.db
 ml/state/training.db-wal
 ml/state/training.db-shm
 ml/state/cohort_csvs/
+# Sources refacto — local-only, each machine autonomous (decisions.md D-06)
+ml/state/sources_runs.json
+ml/state/quotas/
+ml/state/price_snapshots/
+ml/datasets/sources/
 ml/cache/dinov2_inputs/*.webp
 
 # Real-photo benchmark hold-out — NEVER committed. These photos are the

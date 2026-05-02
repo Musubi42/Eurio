@@ -42,8 +42,20 @@ from ml.sources._base import RunContext, FetchResult
 
 def run(ctx: RunContext, filters: Filters) -> FetchResult:
     """
-    Fetch complet ou filtré, écrit dans image_assets / coin_market_quotes.
-    Retourne un FetchResult avec n_images, n_quotes, n_errors, n_calls.
+    Fetch complet ou filtré.
+
+    Pour chaque listing/lot trouvé :
+      1. ctx.upsert_source_image(...)   # row raw
+      2. (optionnel) ctx.add_pending_quote(...) si listing porte un prix
+         et n'est pas un lot. Promu vers coin_market_quotes plus tard.
+      3. ctx.detect_and_crop(source_image_id) → list[crop_id]
+         (utilise YOLO + Hough, écrit image_assets en pending_match)
+      4. ctx.try_resolve_name(crop_id) → resolution_status
+         (auto_name si confiance haute, sinon enqueue review)
+      5. ctx.try_propagate_phash(crop_id) (best-effort, peut promouvoir)
+
+    Retourne FetchResult avec n_raws, n_crops, n_quotes_pending,
+    n_quotes, n_auto_resolved, n_review_enqueued, n_errors, n_calls.
     Lève QuotaExhausted si quota épuisé en cours.
     """
 ```
@@ -113,40 +125,45 @@ Pas de drift toléré.
 
 ## Quota guard
 
-`_base/quota_guard.py` lit/écrit `ml/state/quotas/<source>.json` :
-
-```json
-{
-  "window": "monthly",
-  "period": "2026-05",
-  "limit": 1800,
-  "calls": 1247,
-  "per_key": [
-    {"slot": 1, "key_hash": "a3b9c1f24e8d", "calls": 1247, "exhausted": false},
-    {"slot": 2, "key_hash": "d8e2f4901abc", "calls": 0, "exhausted": false}
-  ]
-}
-```
+`_base/quota_guard.py` est un wrapper léger sur **`ml/api_quota.py`
+existant** (SQLite, table `api_call_log` dans `ml/state/training.db`).
+Voir D-05 dans `decisions.md`.
 
 Avant chaque call API : `quota.check_and_decrement(weight=1)`. Si
 épuisé, raise `QuotaExhausted`, le run logger marque `status='partial'`
 et logge ce qui a été récolté avant l'arrêt.
 
 Pour les scrapes HTML sans quota dur (LMDLP, MdP, Catawiki…), le
-quota guard impose un **rate limit** configurable par source (calls/s)
-mais ne bloque pas.
+quota guard impose un **rate limit** configurable par source
+(calls/s) mais ne bloque pas. Le rate-limit state vit dans une table
+SQLite dédiée (`source_rate_limits` ou colonne dans `api_call_log`,
+trancher à l'implém).
+
+⚠️ **Pas de fichiers JSON pour les quotas.** L'ancien plan
+`ml/state/quotas/<source>.json` est abandonné — SQLite est la seule
+source de vérité.
 
 ## Dédup
 
-`_base/dedup.py.upsert_image(row)` :
+Voir D-07 + `schema.md`. La dédup opère à 3 niveaux :
 
-1. Calcule `source_ref` selon la convention (cf. `schema.md`).
-2. `INSERT … ON CONFLICT (source, source_ref) DO UPDATE SET fetched_at = now(), raw_payload = excluded.raw_payload`.
-3. **Le fichier disque n'est pas réécrit** si déjà présent (vérifie
-   par hash). On ne re-télécharge pas si le fichier existe et que sa
-   taille matche.
+1. **`source_images`** par `(source, source_ref)` : un même listing
+   eBay ne crée qu'un seul row raw, même réfétché.
+2. **`image_assets`** par `(source_image_id, crop_index)` : un même
+   crop n'est pas dupliqué.
+3. **pHash cross-row** : avant d'enqueue en review, on cherche
+   `image_assets WHERE phash <-> ? <= 4`. Si match avec une row déjà
+   `manual` ou `auto_*`, on propage le label
+   (`resolution_status='auto_phash'`).
 
-Pour `coin_market_quotes`, l'unicité est `(source, eurio_id, period_start, condition_normalized)` — un re-fetch dans le même mois met à jour, pas crée.
+`_base/dedup.py` expose :
+- `upsert_source_image(row) -> id` (ON CONFLICT sur `(source, source_ref)`)
+- `upsert_crop(row) -> id` (ON CONFLICT sur `(source_image_id, crop_index)`)
+- `upsert_quote(row)` (ON CONFLICT sur `(source, eurio_id, period_start, condition_raw)` — voir schema.md note sur condition_raw vs normalized)
+- `try_propagate_phash(crop_id) -> bool` (pHash → label propagation)
+
+**Le fichier disque n'est pas réécrit** si déjà présent (vérifie par
+hash). On ne re-télécharge pas si fichier existe et taille matche.
 
 ## Storage
 

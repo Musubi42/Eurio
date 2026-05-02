@@ -3,34 +3,18 @@
 > Questions identifiées pendant cette refacto qu'on **ne résout pas
 > ici**. À traiter dans des refactos séparées.
 
-## OP-1 — Résolution `listing → eurio_id`
+## OP-1 — Résolution `listing → eurio_id` *(adressée par D-02)*
 
-### Le problème
+**Statut** : la stratégie est désormais actée dans `decisions.md`
+D-02 → résolution à 3 niveaux (`auto_name` v1, `auto_dino` futur,
+`manual` toujours dispo via `review-queue.md`). `eurio_id` est
+nullable, données jamais détruites.
 
-Quand on récupère un listing eBay ou Catawiki, on a un titre
-("2 euros Allemagne 2020 Kniefall von Warschau UNC"), parfois un
-pays, une année. Pas de `numista_id` ni de `eurio_id` propre.
-
-L'approche actuelle (matching naïf sur titre + filtres pays/année) :
-- rate les variantes de wording (FR/EN/DE)
-- assigne au mauvais `eurio_id` quand titres ambigus
-- ignore les listings de lots
-
-### Pourquoi c'est hors scope ici
-
-C'est un problème de **résolution / NLP** orthogonal au refacto
-ingestion. La refacto actuelle déplace simplement le problème : peu
-importe que le matching soit imparfait, les rows `image_assets` et
-`coin_market_quotes` peuvent être **réassignées** plus tard via une
-update sur `eurio_id` sans toucher au reste du schéma.
-
-### Pistes futures
-
-- LLM léger sur les titres pour extraire (pays, année, programme,
-  dénomination).
-- Matching image-side : utiliser le modèle ArcFace existant pour
-  matcher l'image listing à un cluster d'`eurio_id` connus.
-- Review queue admin pour corriger à la main les bas-confiance.
+Restent en suspens :
+- **DinoV2 cousinage** comme étage 2 — chantier propre à part.
+  Attention au data leakage (D-08 + critique #7).
+- **LLM extraction de titres** — non prévu V1, à ré-évaluer si
+  `auto_name` plafonne sous 50 % de réussite.
 
 ## OP-2 — eBay sold listings (Marketplace Insights API)
 
