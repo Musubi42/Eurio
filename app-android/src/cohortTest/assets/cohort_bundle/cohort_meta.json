@@ -1,0 +1,10 @@
+{
+  "cohort_id": "510f658ecee4",
+  "cohort_name": "mix-zone-7-cls-v2",
+  "iteration_id": "8ac508b062da",
+  "iteration_name": "test-1",
+  "model_version": "v13-arcface",
+  "trained_at": "2026-05-02T15:01:37Z",
+  "generated_at": "2026-05-02T15:03:20Z",
+  "num_coins": 7
+}

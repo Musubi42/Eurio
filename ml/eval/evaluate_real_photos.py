@@ -37,6 +37,7 @@ ML_DIR = Path(__file__).parent.parent
 if str(ML_DIR) not in sys.path:
     sys.path.insert(0, str(ML_DIR))
 
+from eval.equivalence import EquivalenceMap, build_equivalence_map  # noqa: E402
 from eval.real_photo_meta import AXES, parse_filename  # noqa: E402
 from state import BenchmarkRunRow, Store  # noqa: E402
 
@@ -99,7 +100,10 @@ class TorchEmbedder:
 
     def __init__(self, checkpoint_path: Path):
         import torch
-        from train_embedder import CoinEmbedder, get_val_transforms
+        # Module path migrated from `train_embedder` (top-level) to
+        # `training.train_embedder` in commit 9d78509 ("restructure flat
+        # scripts into domain sub-packages"). This import was missed.
+        from training.train_embedder import CoinEmbedder, get_val_transforms
 
         self._torch = torch
         self._device = torch.device("cpu")  # CPU is fast enough for the bench volume
@@ -244,7 +248,8 @@ class PhotoResult:
     ground_truth: str
     zone: str | None
     top5: list[tuple[str, float]]  # (class_id, similarity)
-    hit_at: dict[int, bool]  # {1: True, 3: True, 5: True}
+    hit_at: dict[int, bool]  # strict (eurio_id == ground_truth or covers)
+    hit_at_eq: dict[int, bool]  # equivalence (same design_group_id allowed)
     conditions: dict = None  # type: ignore[assignment]  # populated post-init
 
     def __post_init__(self) -> None:
@@ -263,17 +268,39 @@ def _centroid_by_class_id(centroids: list[Centroid]) -> dict[str, Centroid]:
     return {c.class_id: c for c in centroids}
 
 
-def compute_hits(top5: list[tuple[str, float]], ground_truth: str, centroids_by_id: dict[str, Centroid]) -> dict[int, bool]:
+def compute_hits(
+    top5: list[tuple[str, float]],
+    ground_truth: str,
+    centroids_by_id: dict[str, Centroid],
+    equivalence: "EquivalenceMap | None" = None,
+) -> tuple[dict[int, bool], dict[int, bool]]:
+    """Return (strict_hits, equivalence_hits) per k ∈ {1, 3, 5}.
+
+    Strict : centroid's coverage set contains the ground_truth (eurio_id
+    or design_group_id member).
+
+    Equivalence (Option B, phase 3) : strict OR predicted top-k contains
+    an eurio_id sharing a non-null `design_group_id` with ground_truth.
+    Returns identical dicts when ``equivalence`` is None.
+    """
     hits: dict[int, bool] = {}
+    hits_eq: dict[int, bool] = {}
     for k in (1, 3, 5):
         covered = False
+        covered_eq = False
         for cls_id, _ in top5[:k]:
             c = centroids_by_id.get(cls_id)
             if c is not None and c.covers(ground_truth):
                 covered = True
+                covered_eq = True
                 break
+            if equivalence is not None and equivalence.are_equivalent(
+                cls_id, ground_truth,
+            ):
+                covered_eq = True
         hits[k] = covered
-    return hits
+        hits_eq[k] = covered_eq if equivalence is not None else covered
+    return hits, hits_eq
 
 
 # ─── Photo library ─────────────────────────────────────────────────────────
@@ -375,30 +402,52 @@ def run_benchmark(args: argparse.Namespace) -> int:
     centroids_by_id = _centroid_by_class_id(centroids)
     logger.info("Loaded %d centroids from %s", len(centroids), centroids_path)
 
+    # Phase 3 (lab-prod-refacto, Option B) : équivalence design_group
+    # appliquée pour calculer R@k_eq en parallèle de R@k strict. Best-effort :
+    # en cas d'erreur (pas de Supabase, etc.), on retombe sur la métrique
+    # stricte uniquement (R@k_eq == R@k).
+    equivalence: EquivalenceMap | None = None
+    try:
+        equivalence = build_equivalence_map()
+        logger.info(
+            "Loaded equivalence map: %d eurio_ids, %d with design_group_id",
+            len(equivalence.eurio_to_group),
+            sum(1 for v in equivalence.eurio_to_group.values() if v is not None),
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Equivalence map unavailable (%s) — R@k_eq = R@k", exc)
+
     embedder = load_embedder(model_path)
     logger.info("Loaded model %s (%s)", embedder.model_name, model_path.suffix)
 
     detector_path = Path(args.detector) if args.detector else DEFAULT_DETECTOR
     cropper = CoinCropper(detector_path if detector_path.exists() else None)
 
-    # Seed a "running" row so the API can surface progress.
+    # Seed a "running" row so the API can surface progress. Idempotent
+    # against the runner-side stub: when called from IterationRunner the
+    # parent already inserted a placeholder row (so iteration's
+    # benchmark_run_id FK can be set before spawn). The final
+    # update_benchmark_run call at the end of the run fills in metrics
+    # regardless of which path created the row, so we just skip the
+    # create when a row exists.
     report_path = reports_dir / f"benchmark_{embedder.model_name}_{run_id}.json"
-    store.create_benchmark_run(
-        BenchmarkRunRow(
-            id=run_id,
-            model_path=str(model_path.relative_to(ML_DIR.parent) if model_path.is_relative_to(ML_DIR.parent) else model_path),
-            model_name=embedder.model_name,
-            training_run_id=None,
-            recipe_id=resolved_recipe_id,
-            eurio_ids=[],
-            zones=sorted(zone_filter) if zone_filter else [],
-            num_photos=0,
-            num_coins=0,
-            report_path=str(report_path.relative_to(ML_DIR.parent) if report_path.is_relative_to(ML_DIR.parent) else report_path),
-            status="running",
-            started_at=started_at,
+    if store.get_benchmark_run(run_id) is None:
+        store.create_benchmark_run(
+            BenchmarkRunRow(
+                id=run_id,
+                model_path=str(model_path.relative_to(ML_DIR.parent) if model_path.is_relative_to(ML_DIR.parent) else model_path),
+                model_name=embedder.model_name,
+                training_run_id=None,
+                recipe_id=resolved_recipe_id,
+                eurio_ids=[],
+                zones=sorted(zone_filter) if zone_filter else [],
+                num_photos=0,
+                num_coins=0,
+                report_path=str(report_path.relative_to(ML_DIR.parent) if report_path.is_relative_to(ML_DIR.parent) else report_path),
+                status="running",
+                started_at=started_at,
+            )
         )
-    )
 
     t0 = time.time()
     try:
@@ -409,6 +458,7 @@ def run_benchmark(args: argparse.Namespace) -> int:
             centroids=centroids,
             centroids_by_id=centroids_by_id,
             zones_from_manifest=zones_from_manifest,
+            equivalence=equivalence,
         )
     except Exception as exc:  # noqa: BLE001
         store.update_benchmark_run(
@@ -486,6 +536,7 @@ def _evaluate_all(
     centroids: list[Centroid],
     centroids_by_id: dict[str, Centroid],
     zones_from_manifest: dict[str, str],
+    equivalence: "EquivalenceMap | None" = None,
 ) -> list[PhotoResult]:
     results: list[PhotoResult] = []
     for idx, (path, eurio_id) in enumerate(photos):
@@ -498,7 +549,7 @@ def _evaluate_all(
             if norm > 0:
                 vec = vec / norm
             top5 = match_topk(vec, centroids, k=5)
-            hits = compute_hits(top5, eurio_id, centroids_by_id)
+            hits, hits_eq = compute_hits(top5, eurio_id, centroids_by_id, equivalence)
         except Exception as exc:  # noqa: BLE001
             logger.warning("Skipping %s: %s", path, exc)
             continue
@@ -510,6 +561,7 @@ def _evaluate_all(
                 zone=zones_from_manifest.get(eurio_id),
                 top5=top5,
                 hit_at=hits,
+                hit_at_eq=hits_eq,
                 conditions=conditions,
             )
         )
@@ -522,7 +574,11 @@ def _aggregate(results: list[PhotoResult], *, top_n: int) -> tuple[dict, dict, l
     n = len(results)
     if n == 0:
         return (
-            {"r_at_1": 0.0, "r_at_3": 0.0, "r_at_5": 0.0, "mean_spread": 0.0, "median_spread": 0.0},
+            {
+                "r_at_1": 0.0, "r_at_3": 0.0, "r_at_5": 0.0,
+                "r_at_1_eq": 0.0, "r_at_3_eq": 0.0, "r_at_5_eq": 0.0,
+                "mean_spread": 0.0, "median_spread": 0.0,
+            },
             {},
             [],
             {},
@@ -533,6 +589,9 @@ def _aggregate(results: list[PhotoResult], *, top_n: int) -> tuple[dict, dict, l
     def _mean_hit(k: int) -> float:
         return float(sum(1 for r in results if r.hit_at.get(k)) / n)
 
+    def _mean_hit_eq(k: int) -> float:
+        return float(sum(1 for r in results if r.hit_at_eq.get(k)) / n)
+
     spreads = [
         (r.top5[0][1] - r.top5[1][1]) if len(r.top5) >= 2 else r.top5[0][1]
         for r in results
@@ -541,6 +600,12 @@ def _aggregate(results: list[PhotoResult], *, top_n: int) -> tuple[dict, dict, l
         "r_at_1": round(_mean_hit(1), 6),
         "r_at_3": round(_mean_hit(3), 6),
         "r_at_5": round(_mean_hit(5), 6),
+        # Phase 3 (lab-prod-refacto, Option B) : équivalence design_group
+        # — la métrique qui correspond au comportement matcher prod.
+        # Égale à la stricte si l'équivalence map n'a pas été chargée.
+        "r_at_1_eq": round(_mean_hit_eq(1), 6),
+        "r_at_3_eq": round(_mean_hit_eq(3), 6),
+        "r_at_5_eq": round(_mean_hit_eq(5), 6),
         "mean_spread": round(float(np.mean(spreads)), 6),
         "median_spread": round(float(np.median(spreads)), 6),
     }

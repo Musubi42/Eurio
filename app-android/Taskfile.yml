@@ -5,18 +5,18 @@ vars:
   MAIN_ACTIVITY: '{{.APP_ID}}/.MainActivity'
   DEBUG_DIR_DEVICE: /sdcard/Android/data/{{.APP_ID}}/files/Documents/eurio_debug
   CAPTURE_DIR_DEVICE: /sdcard/Android/data/{{.APP_ID}}/files/Documents/eurio_capture
-  DEBUG_PULL_ROOT: '{{.ROOT_DIR}}/debug_pull'
+  DEBUG_PULL_ROOT: '{{.TASKFILE_DIR}}/../debug_pull'
 
 tasks:
   build:
     desc: Assemble the debug APK
-    dir: '{{.ROOT_DIR}}'
+    dir: '{{.TASKFILE_DIR}}/..'
     cmds:
       - ./gradlew :app-android:assembleDebug
 
   install:
     desc: Build + push APK to the connected device
-    dir: '{{.ROOT_DIR}}'
+    dir: '{{.TASKFILE_DIR}}/..'
     cmds:
       - ./gradlew :app-android:installDebug
 
@@ -33,13 +33,13 @@ tasks:
 
   build-qa:
     desc: Assemble the QA APK (with parity state injection)
-    dir: '{{.ROOT_DIR}}'
+    dir: '{{.TASKFILE_DIR}}/..'
     cmds:
       - ./gradlew :app-android:assembleQa
 
   install-qa:
     desc: Build + push QA APK to the connected device
-    dir: '{{.ROOT_DIR}}'
+    dir: '{{.TASKFILE_DIR}}/..'
     cmds:
       - ./gradlew :app-android:installQa
 
@@ -101,7 +101,7 @@ tasks:
 
   clean:
     desc: Gradle clean for app-android
-    dir: '{{.ROOT_DIR}}'
+    dir: '{{.TASKFILE_DIR}}/..'
     cmds:
       - ./gradlew :app-android:clean
 
@@ -112,7 +112,7 @@ tasks:
 
   parity:capture:
     desc: Run all Maestro parity flows and capture screenshots
-    dir: '{{.ROOT_DIR}}'
+    dir: '{{.TASKFILE_DIR}}/..'
     deps: [install-qa]
     cmds:
       - |
@@ -122,21 +122,42 @@ tasks:
 
   parity:capture-scene:
     desc: Capture a single scene (go-task android:parity:capture-scene -- vault-home)
-    dir: '{{.ROOT_DIR}}'
+    dir: '{{.TASKFILE_DIR}}/..'
     cmds:
       - maestro test --test-output-dir admin/packages/parity/screenshots/android admin/packages/parity/flows/{{.CLI_ARGS}}.yaml
 
   snapshot:
     desc: Export a fresh catalog_snapshot.json from Supabase into assets/
-    dir: '{{.ROOT_DIR}}/ml'
+    # TASKFILE_DIR is always app-android/ regardless of how this file is
+    # invoked (root taskfile include vs `-t app-android/Taskfile.yml`).
+    # ROOT_DIR varies, so don't use it here.
+    dir: '{{.TASKFILE_DIR}}/../ml'
     cmds:
       - .venv/bin/python -m export.export_catalog_snapshot
 
   snapshot-dry:
     desc: Preview the catalog snapshot (counts + size) without writing
-    dir: '{{.ROOT_DIR}}/ml'
+    dir: '{{.TASKFILE_DIR}}/../ml'
     cmds:
       - .venv/bin/python -m export.export_catalog_snapshot --dry-run
+
+  prod:assets:promote:
+    desc: "Refresh prod APK assets from ml/prod/current/ (post-promotion). Phase 4."
+    summary: |
+      Usage: go-task -t app-android/Taskfile.yml prod:assets:promote
+      Copies the model + embeddings + meta from ml/prod/current/ into
+      app-android/src/main/assets/{models,data}/. Refuses with a clear
+      error if no promotion has happened yet (run `python -m
+      scripts.promote_iteration <iid>` first).
+    dir: '{{.TASKFILE_DIR}}/../ml'
+    cmds:
+      - .venv/bin/python -m scripts.promote_prod_assets
+
+  prod:assets:promote-dry:
+    desc: Preview prod:assets:promote without touching the filesystem
+    dir: '{{.TASKFILE_DIR}}/../ml'
+    cmds:
+      - .venv/bin/python -m scripts.promote_prod_assets --dry-run
 
   cohort-test:bundle:
     desc: "Build the cohortTest APK bundle (model + filtered catalog + manifests). COHORT + ITERATION required."
@@ -147,17 +168,42 @@ tasks:
     vars:
       COHORT: '{{.COHORT}}'
       ITERATION: '{{.ITERATION}}'
-      OUT: '{{.ROOT_DIR}}/ml/output/cohort_test_{{.ITERATION}}'
-      BUNDLE_DIR: '{{.ROOT_DIR}}/app-android/src/cohortTest/assets/cohort_bundle'
+      # Use TASKFILE_DIR (always app-android/) instead of ROOT_DIR
+      # (varies: monorepo-root when invoked via `go-task android:...`,
+      # app-android/ when invoked via `-t app-android/Taskfile.yml`).
+      OUT: '{{.TASKFILE_DIR}}/../ml/output/cohort_test_{{.ITERATION}}'
+      BUNDLE_DIR: '{{.TASKFILE_DIR}}/src/cohortTest/assets/cohort_bundle'
     preconditions:
       - sh: 'test -n "{{.COHORT}}" && test -n "{{.ITERATION}}"'
         msg: "COHORT and ITERATION required (e.g. COHORT=green-v1 ITERATION=8a92f1b3)"
     cmds:
-      - cd {{.ROOT_DIR}}/ml && .venv/bin/python -m scripts.build_cohort_bundle --cohort {{.COHORT}} --iteration {{.ITERATION}} --out {{.OUT}}
+      - cd {{.TASKFILE_DIR}}/../ml && .venv/bin/python -m scripts.build_cohort_bundle --source lab --cohort {{.COHORT}} --iteration {{.ITERATION}} --out {{.OUT}}
       - rm -rf {{.BUNDLE_DIR}}
       - mkdir -p {{.BUNDLE_DIR}}
       - cp {{.OUT}}/* {{.BUNDLE_DIR}}/
       - echo "Bundle staged at {{.BUNDLE_DIR}}"
+
+  cohort-test:bundle:prod:
+    desc: "Build the cohortTest APK bundle from prod/current/ (no iteration). COHORT required."
+    summary: |
+      Usage: go-task -t app-android/Taskfile.yml cohort-test:bundle:prod COHORT=<name>
+      Build a bundle that mirrors what the prod APK ships, scoped to the
+      given cohort. Useful to A/B-test prod vs a candidate iteration on
+      device. Reads from ml/prod/current/ (run `python -m scripts.promote_iteration`
+      first if it doesn't exist). Phase 4 (lab-prod-refacto).
+    vars:
+      COHORT: '{{.COHORT}}'
+      OUT: '{{.TASKFILE_DIR}}/../ml/output/cohort_test_prod_{{.COHORT}}'
+      BUNDLE_DIR: '{{.TASKFILE_DIR}}/src/cohortTest/assets/cohort_bundle'
+    preconditions:
+      - sh: 'test -n "{{.COHORT}}"'
+        msg: "COHORT required (e.g. COHORT=green-v1)"
+    cmds:
+      - cd {{.TASKFILE_DIR}}/../ml && .venv/bin/python -m scripts.build_cohort_bundle --source prod --cohort {{.COHORT}} --out {{.OUT}}
+      - rm -rf {{.BUNDLE_DIR}}
+      - mkdir -p {{.BUNDLE_DIR}}
+      - cp {{.OUT}}/* {{.BUNDLE_DIR}}/
+      - echo "Prod bundle staged at {{.BUNDLE_DIR}}"
 
   cohort-test:install:
     desc: "Bundle + build + install the cohortTest APK on the device. COHORT + ITERATION required."
@@ -167,7 +213,7 @@ tasks:
       The cohortTest applicationId is com.musubi.eurio.cohorttest, which cohabits
       with the prod com.musubi.eurio install on the same device.
     deps: [cohort-test:bundle]
-    dir: '{{.ROOT_DIR}}'
+    dir: '{{.TASKFILE_DIR}}/..'
     cmds:
       - ./gradlew :app-android:installCohortTestDebug
       - adb shell am force-stop {{.APP_ID}}.cohorttest
@@ -184,7 +230,7 @@ tasks:
     vars:
       ITERATION: '{{.ITERATION}}'
       LOGS_DIR_DEVICE: /sdcard/Android/data/{{.APP_ID}}.cohorttest/files/Documents/eurio_live_tests
-      LOGS_DIR_LOCAL: '{{.ROOT_DIR}}/ml/state/live_test_logs'
+      LOGS_DIR_LOCAL: '{{.TASKFILE_DIR}}/../ml/state/live_test_logs'
       ML_API: 'http://127.0.0.1:8042'
     preconditions:
       - sh: 'test -n "{{.ITERATION}}"'

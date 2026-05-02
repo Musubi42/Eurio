@@ -38,6 +38,7 @@ const phaseLabel: Record<TrainingProgressPhase, string> = {
   training_done: 'Training terminé · export TFLite…',
   export: 'Export TFLite…',
   benchmark: 'Benchmark en cours…',
+  benchmark_failed: 'Training OK · benchmark en échec',
   done: 'Terminé',
   failed: 'Échec',
 }
@@ -188,9 +189,9 @@ const tail = computed<string[]>(() => progress.value?.log_tail ?? [])
 </span><span v-if="tail.length === 0" style="color: var(--ink-400);">(aucune ligne capturée)</span></pre>
     </details>
 
-    <!-- Failure detail -->
+    <!-- Failure detail (training failure or benchmark failure) -->
     <p
-      v-if="phase === 'failed' && progress?.error"
+      v-if="(phase === 'failed' || phase === 'benchmark_failed') && progress?.error"
       class="mt-3 rounded-md border px-3 py-2 text-xs"
       style="border-color: var(--danger); background: color-mix(in srgb, var(--danger) 6%, var(--surface)); color: var(--ink);"
     >

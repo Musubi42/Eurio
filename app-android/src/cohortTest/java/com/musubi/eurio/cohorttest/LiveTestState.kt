@@ -13,11 +13,32 @@ import kotlinx.serialization.Serializable
  * fields — there's no ViewModel here, the cohortTest flavor stays
  * deliberately bare-bones (no Hilt/Koin, no Room, no DataStore).
  */
+
+/**
+ * UI-ready display block emitted by `ml/utils/i18n.coin_display`. Embedded
+ * per-test in v2 of `live_tests_manifest.json` so the Android client never
+ * parses an eurio_id slug or formats a face value on device. Same shape
+ * also appears in the top-level `coins_display` map keyed by eurio_id, used
+ * to render "Le modèle a vu" when the predicted top-1 ≠ expected.
+ */
+@Serializable
+data class CoinDisplay(
+    val title: String,
+    val country_iso: String,
+    val country_fr: String,
+    val flag_emoji: String,
+    val year: Int? = null,
+    val face_value_label: String,
+    val image_obverse_url: String? = null,
+    val eyebrow_compact: String,
+)
+
 @Serializable
 data class TestPrescription(
     val idx: Int,
     val expected_eurio_id: String,
     val condition: String,
+    val display: CoinDisplay,
 )
 
 /**
@@ -33,6 +54,12 @@ data class TestResult(
     val predictedTop1: String?,
     val similarityTop1: Float?,
     val isCorrect: Boolean,
+    /**
+     * R@1 under the design-group equivalence rule (cf. [EquivalenceMap]).
+     * Strict `eurio_id` match → true ; same non-null `design_group_id` →
+     * true ; otherwise false. Always >= [isCorrect].
+     */
+    val isCorrectEq: Boolean,
     val error: String?,
     val ts: String,
 )

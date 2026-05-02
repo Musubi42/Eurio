@@ -151,10 +151,12 @@ def split_dataset(
     raw_dir: Path,
     output_dir: Path,
     resolver: Resolver,
+    class_kind: str,
     train_ratio: float = 0.7,
     val_ratio: float = 0.2,
     seed: int = 42,
     only_classes: set[str] | None = None,
+    skip_train_split: bool = False,
 ) -> None:
     random.seed(seed)
 
@@ -166,8 +168,21 @@ def split_dataset(
             "(now removed) and seed steps succeeded for the staged classes."
         )
 
-    for split in ("train", "val", "test"):
+    splits = ("val",) if skip_train_split else ("train", "val", "test")
+    for split in splits:
         (output_dir / split).mkdir(parents=True, exist_ok=True)
+
+    if skip_train_split:
+        # Lab iteration mode : train/ vient des bakes symlinkés (cf.
+        # iteration_runner). On n'écrit que val/ (eval_real_norm override
+        # ci-dessous) + manifest. Pas de scan studio train/test.
+        manifest_path = output_dir / MANIFEST_FILENAME
+        write_manifest(manifest_path, descriptors)
+        print(f"Manifest: {manifest_path} ({len(descriptors)} classes)")
+        _override_val_with_eval_real(
+            raw_dir, output_dir, descriptors, class_kind,
+        )
+        return
 
     header = f"{'Class':<55} {'Total':>5} {'Train':>5} {'Val':>5} {'Test':>5}"
     print(header)
@@ -231,37 +246,61 @@ def split_dataset(
     write_manifest(manifest_path, descriptors)
     print(f"Manifest: {manifest_path} ({len(descriptors)} classes)")
 
-    # Override val/ with the device golden set when available. The device
-    # snaps (eval_real_norm/<class>/<step>.jpg) are real photos taken on the
-    # phone and pushed through `normalize_device` — they are the only val
-    # set whose metric correlates with on-device behavior. With n_sources=1
-    # the studio-derived val/ is empty anyway (everything fell into train),
-    # so overriding it is lossless.
+    _override_val_with_eval_real(raw_dir, output_dir, descriptors, class_kind)
+
+
+def _override_val_with_eval_real(
+    raw_dir: Path,
+    output_dir: Path,
+    descriptors: list[ClassDescriptor],
+    class_kind: str,
+) -> None:
+    """Replace val/ with device snaps (eval_real_norm/<class>/*).
+
+    Device snaps run through ``normalize_device`` so their distribution
+    aligns with on-device inference — the only val set whose metric
+    correlates with deployed behavior. In ``eurio_id`` lab mode, a class
+    without device snaps is a fail-explicit (silent skip used to mask
+    the test-2/test-3 collapse).
+    """
     eval_real_dir = raw_dir.parent / "datasets" / "eval_real_norm"
     if not eval_real_dir.exists():
         eval_real_dir = Path(__file__).parent.parent / "datasets" / "eval_real_norm"
-    if eval_real_dir.exists():
-        print(f"\nDevice val set: {eval_real_dir}")
-        device_val_total = 0
-        for descriptor in descriptors:
-            cls_src = eval_real_dir / descriptor.class_id
-            if not cls_src.is_dir():
-                continue
-            cls_dst = output_dir / "val" / descriptor.class_id
-            if cls_dst.exists():
-                shutil.rmtree(cls_dst)
-            cls_dst.mkdir(parents=True, exist_ok=True)
-            n = 0
-            for f in sorted(cls_src.iterdir()):
-                if f.is_file() and f.suffix.lower() in (".jpg", ".jpeg", ".png"):
-                    shutil.copy2(f, cls_dst / f.name)
-                    n += 1
-            print(f"  {descriptor.class_id:<55} {n:>3} device snaps → val/")
-            device_val_total += n
-        print(f"Device val total: {device_val_total} images")
-    else:
+    if not eval_real_dir.exists():
         print(f"\n(no eval_real_norm/ found — val stays studio-derived; "
               f"run `python -m scan.sync_eval_real <debug_pull>` to populate)")
+        return
+
+    (output_dir / "val").mkdir(parents=True, exist_ok=True)
+    print(f"\nDevice val set: {eval_real_dir}")
+    device_val_total = 0
+    missing: list[str] = []
+    for descriptor in descriptors:
+        cls_src = eval_real_dir / descriptor.class_id
+        if not cls_src.is_dir():
+            if class_kind == "eurio_id":
+                missing.append(descriptor.class_id)
+            continue
+        cls_dst = output_dir / "val" / descriptor.class_id
+        if cls_dst.exists():
+            shutil.rmtree(cls_dst)
+        cls_dst.mkdir(parents=True, exist_ok=True)
+        n = 0
+        for f in sorted(cls_src.iterdir()):
+            if f.is_file() and f.suffix.lower() in (".jpg", ".jpeg", ".png"):
+                shutil.copy2(f, cls_dst / f.name)
+                n += 1
+        print(f"  {descriptor.class_id:<55} {n:>3} device snaps → val/")
+        device_val_total += n
+    if missing:
+        raise SystemExit(
+            "Missing eval_real_norm/<eurio_id>/ for "
+            f"{len(missing)} class(es): {', '.join(missing)}. "
+            f"Expected under {eval_real_dir}/. Capture device snaps for "
+            "these eurio_ids before relaunching, or remove them from the "
+            "iteration cohort."
+        )
+    print(f"Device val total: {device_val_total} images")
 
 
 def main():
@@ -285,19 +324,50 @@ def main():
              "any other class are skipped. Used by the runner to scope a "
              "training run to its classes_after.",
     )
+    parser.add_argument(
+        "--class-kind",
+        choices=["eurio_id", "design_group"],
+        required=True,
+        help="Label space pour cette préparation. 'eurio_id' (mode lab "
+             "iteration) force chaque coin à être sa propre classe, ignore "
+             "design_group_id. 'design_group' (mode legacy) coalesce sur "
+             "design_group_id quand présent. Cf. "
+             "docs/lab-prod-refacto/phase-1-label-space.md.",
+    )
+    parser.add_argument(
+        "--skip-train-split",
+        action="store_true",
+        help="Mode lab iteration : ne génère que val/ + manifest. train/ "
+             "vient des symlinks bakés (cf. iteration_runner). N'efface pas "
+             "output_dir préexistant pour préserver le symlink train/.",
+    )
     args = parser.parse_args()
 
-    from train_embedder import _assert_no_real_photos
+    from training.train_embedder import _assert_no_real_photos
 
     _assert_no_real_photos(str(args.raw_dir), role="raw")
     _assert_no_real_photos(str(args.output_dir), role="prepared-output")
 
-    if args.output_dir.exists():
+    if args.output_dir.exists() and not args.skip_train_split:
         print(f"Output directory {args.output_dir} already exists. Removing...")
         shutil.rmtree(args.output_dir)
+    elif args.skip_train_split:
+        # Only refresh val/ + manifest ; preserve the train/ symlink set up
+        # by iteration_runner.
+        val_dir = args.output_dir / "val"
+        if val_dir.exists():
+            shutil.rmtree(val_dir)
+        manifest = args.output_dir / "class_manifest.json"
+        if manifest.exists():
+            manifest.unlink()
+        args.output_dir.mkdir(parents=True, exist_ok=True)
 
-    resolver = build_resolver()
-    print(f"Resolver: {len(resolver.classes)} known classes from Supabase")
+    force_eurio_id = args.class_kind == "eurio_id"
+    resolver = build_resolver(force_eurio_id=force_eurio_id)
+    print(
+        f"Resolver: {len(resolver.classes)} known classes from Supabase "
+        f"(class_kind={args.class_kind})"
+    )
 
     only_classes: set[str] | None = None
     if args.only_classes:
@@ -308,8 +378,10 @@ def main():
         args.raw_dir,
         args.output_dir,
         resolver,
+        class_kind=args.class_kind,
         seed=args.seed,
         only_classes=only_classes,
+        skip_train_split=args.skip_train_split,
     )
 
 

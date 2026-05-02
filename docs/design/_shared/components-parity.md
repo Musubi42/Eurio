@@ -86,6 +86,21 @@
 | `.u-mono` | `MonoFamily` FontFamily | — | 🟢 |
 | `.scene-placeholder` | `EurioEmptyState` | — | ⏳ |
 
+## Cohort test (lab tooling)
+
+Composants spécifiques à la scène `cohort-test-live/index.html` — vivent
+sous `app-android/src/cohortTest/java/com/musubi/eurio/cohorttest/components/`,
+pas dans `ui/components/` (scope flavor `cohortTest` uniquement).
+
+| Proto | Compose | Delta | Status |
+|---|---|---|---|
+| `.progress-strip` + segments | `ProgressStrip` (`components/ProgressStrip.kt`) | InfiniteTransition pour le pulse Indigo700 du segment courant | 🟢 |
+| `.hero` + `.coin-thumb` + `.chip-row` | `HeroCoinCard` (`components/HeroCoinCard.kt`) | Coil `AsyncImage` pour le thumb (vs SVG du proto), fallback gold-gradient | 🟢 |
+| `.viewfinder` (vignette + ring + pill + brackets) | `DetectionViewfinder` (`components/DetectionViewfinder.kt`) | Réutilise `PhotoGuideOverlay` du flavor full pour vignette+ring (DRY) | 🟢 |
+| `.snap-btn` + `.snap-helper` | `SnapCta` (`components/SnapCta.kt`) | Gated sur `detectionFlow` (fix bug clavier-matché) | 🟢 |
+| `.sheet` + `.verdict-band` + `.compare-row` + `.top3-list` + CTAs | `ResultSheet` (`components/ResultSheet.kt`) | Pattern `slideInVertically(spring())` (mirror `ScanAcceptedCard`), pas `ModalBottomSheet` | 🟢 |
+| `.detect-pill` (live state badge) | inline dans `DetectionViewfinder` | `AnimatedVisibility(fadeIn + slideInHorizontally)` | 🟢 |
+
 ## Notes générales
 
 - **`backdrop-filter: blur()`** n'est pas supporté par Compose et est fondamentalement coûteux sur Android. Tous les composants `.card-glass`, `.btn-icon`, `.pill--ghost-dark` utilisent un fond semi-opaque comme fallback. Marqué ⚠️ divergent.

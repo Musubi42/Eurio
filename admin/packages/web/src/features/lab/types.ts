@@ -206,6 +206,7 @@ export type TrainingProgressPhase =
   | 'training_done'
   | 'export'
   | 'benchmark'
+  | 'benchmark_failed'
   | 'done'
   | 'failed'
 
@@ -298,6 +299,7 @@ export interface IterationProgressI3 {
 export interface IterationProgressI4Studio {
   state: DrawerState
   r_at_1: number | null
+  error: string | null
 }
 
 export interface IterationProgressI4AugVsReal {

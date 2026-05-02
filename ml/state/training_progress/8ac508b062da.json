@@ -1,0 +1,1 @@
+{"schema_version": 1, "iteration_id": "8ac508b062da", "phase": "done", "epoch_current": 40, "epochs_total": 40, "loss_current": 0.0, "loss_best": 0.0, "started_at": "2026-05-02T14:30:15Z", "elapsed_seconds": 1832, "eta_seconds": 0, "device": "cuda", "augmentations_runtime": "disabled", "updated_at": "2026-05-02T15:01:45Z"}

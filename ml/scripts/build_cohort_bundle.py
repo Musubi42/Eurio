@@ -1,19 +1,32 @@
-"""Bundle generator for the per-cohort test app (Sprint 3).
+"""Bundle generator for the per-cohort test app.
 
-Reads a cohort + iteration from the training SQLite store, copies the freshly
-trained TFLite model + per-class embeddings, filters the prod catalog
-snapshot to the cohort's eurio_ids, and emits two metadata files describing
-the bundle and the prescribed live-test sequence.
+Reads a cohort + a model source (lab iteration OR prod current), copies
+the trained TFLite + per-class embeddings, filters the prod catalog
+snapshot to the cohort's eurio_ids, and emits metadata describing the
+bundle, the prescribed live-test sequence, and the equivalence map.
+
+Phase 4 (lab-prod-refacto) — `--source` est explicit :
+
+    --source lab --iteration <iid>
+        Reads from ``ml/lab/iterations/<iid>/{embeddings,tflite}/``.
+        Used to A/B-test a candidate iteration on device.
+    --source prod
+        Reads from ``ml/prod/current/{embeddings,tflite}/`` (built by
+        ``scripts.promote_iteration``). ``--iteration`` is optional ;
+        when omitted, resolves the iteration that was promoted via
+        ``prod/current/promoted_from.json``.
 
 Layout produced (under ``--out``)::
 
     cohort_bundle/
-      eurio_embedder_v1.tflite   ← from ml/output/
+      eurio_embedder_v1.tflite
       embeddings_v1.json         ← filtered to cohort eurio_ids
-      model_meta.json            ← from ml/output/
+      model_meta.json
       catalog_snapshot.json      ← filtered to cohort eurio_ids
-      cohort_meta.json           ← cohort + iteration identity
-      live_tests_manifest.json   ← test prescription (sprint 4 will read this)
+      cohort_meta.json           ← cohort + iteration identity (legacy)
+      bundle_meta.json           ← phase 4 : source + sha256 + identity
+      live_tests_manifest.json
+      equivalence_map.json       ← {eurio_id → design_group_id|null}
 
 Invoked from ``app-android/Taskfile.yml`` via ``cohort-test:bundle``.
 """
@@ -21,6 +34,7 @@ Invoked from ``app-android/Taskfile.yml`` via ``cohort-test:bundle``.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import shutil
 import sys
@@ -31,13 +45,12 @@ from typing import Any
 ML_DIR = Path(__file__).resolve().parent.parent
 REPO_ROOT = ML_DIR.parent
 STATE_DB = ML_DIR / "state" / "training.db"
-OUTPUT_DIR = ML_DIR / "output"
-TFLITE_PATH = OUTPUT_DIR / "eurio_embedder_v1.tflite"
-EMBEDDINGS_PATH = OUTPUT_DIR / "embeddings_v1.json"
-MODEL_META_PATH = OUTPUT_DIR / "model_meta.json"
+LAB_ITERATIONS_DIR = ML_DIR / "lab" / "iterations"
+PROD_CURRENT = ML_DIR / "prod" / "current"
 PROD_SNAPSHOT_PATH = (
     REPO_ROOT / "app-android" / "src" / "main" / "assets" / "catalog_snapshot.json"
 )
+BUNDLE_META_VERSION = 2
 
 # OQ-4 — when the cohort holds many coins (≥30) the prescribed test list
 # (one per coin × 3 conditions) becomes unmanageable. Cap at 9 tests
@@ -48,7 +61,11 @@ SAMPLE_COIN_THRESHOLD = 30
 SAMPLED_COIN_COUNT = 3
 
 sys.path.insert(0, str(ML_DIR))
+from eval.equivalence import build_equivalence_map  # noqa: E402
 from state import Store  # noqa: E402
+from utils.i18n import coin_display  # noqa: E402
+
+LIVE_TESTS_MANIFEST_VERSION = 2
 
 
 def _iso_now() -> str:
@@ -105,8 +122,15 @@ def _filter_embeddings(
     }
 
 
-def _build_test_list(eurio_ids: list[str]) -> tuple[list[dict[str, Any]], bool]:
+def _build_test_list(
+    eurio_ids: list[str],
+    coin_by_id: dict[str, dict[str, Any]],
+) -> tuple[list[dict[str, Any]], bool]:
     """Generate the prescribed test sequence.
+
+    Each test entry carries a precomputed ``display`` block so the Android
+    client renders human metadata (country FR, year, denom, image URL,
+    title) without parsing the eurio_id slug on device.
 
     Returns ``(tests, sampled)`` where ``sampled`` is True when the cohort
     was big enough to trigger OQ-4 stratification.
@@ -120,35 +144,126 @@ def _build_test_list(eurio_ids: list[str]) -> tuple[list[dict[str, Any]], bool]:
     tests: list[dict[str, Any]] = []
     idx = 1
     for eid in coins:
+        coin = coin_by_id.get(eid, {"eurio_id": eid})
+        display = coin_display(coin)
         for condition in TEST_CONDITIONS:
             tests.append(
                 {
                     "idx": idx,
                     "expected_eurio_id": eid,
                     "condition": condition,
+                    "display": display,
                 }
             )
             idx += 1
     return tests, sampled
 
 
+def _build_coins_display(
+    coin_by_id: dict[str, dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """Per-cohort lookup map used by the Android sheet's "Le modèle a vu".
+
+    Predictions stay inside the cohort's embedding bank, so this covers
+    every reachable ``predicted_top1`` candidate. If that ever changes
+    (full prod ranking from cohortTest), add a network fallback client-side.
+    """
+    return {eid: coin_display(coin) for eid, coin in coin_by_id.items()}
+
+
+def _infer_class_kind(embeddings: dict[str, Any]) -> str:
+    """Heuristic : majority class_kind across the bundled centroids.
+
+    Lab iterations sortent toujours en eurio_id (cf. phase 1). La prod
+    pourrait, hypothétiquement, mixer (option fusion). On reporte le
+    plus fréquent, falling back sur 'eurio_id' si le manifest est vide
+    ou ne porte pas l'info.
+    """
+    coins = embeddings.get("coins", {})
+    counts: dict[str, int] = {}
+    for v in coins.values():
+        if isinstance(v, dict):
+            kind = v.get("class_kind") or "eurio_id"
+        else:
+            kind = "eurio_id"
+        counts[kind] = counts.get(kind, 0) + 1
+    if not counts:
+        return "eurio_id"
+    return max(counts.items(), key=lambda kv: kv[1])[0]
+
+
+def _sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _resolve_source(
+    args: argparse.Namespace, store: Store,
+) -> tuple[Path, Path, Path, str | None]:
+    """Resolve (tflite_path, embeddings_path, model_meta_path, iteration_id_or_none)
+    based on ``--source``. Exits with a clear error if the source is incomplete.
+    """
+    if args.source == "lab":
+        if not args.iteration:
+            raise SystemExit(
+                "error: --source lab requires --iteration <iid>",
+            )
+        iter_dir = LAB_ITERATIONS_DIR / args.iteration
+        if not iter_dir.is_dir():
+            raise SystemExit(
+                f"error: lab iteration dir missing: {iter_dir}. "
+                "Re-run training under the iteration runner."
+            )
+        return (
+            iter_dir / "tflite" / "eurio_embedder_v1.tflite",
+            iter_dir / "embeddings" / "embeddings_v1.json",
+            iter_dir / "tflite" / "model_meta.json",
+            args.iteration,
+        )
+
+    # --source prod
+    if not PROD_CURRENT.is_dir():
+        raise SystemExit(
+            f"error: prod/current/ missing at {PROD_CURRENT}. "
+            "Run `python -m scripts.promote_iteration <iid>` to populate "
+            "it from a completed lab iteration before bundling --source prod."
+        )
+    promoted_meta = PROD_CURRENT / "promoted_from.json"
+    iteration_id: str | None = args.iteration
+    if iteration_id is None and promoted_meta.exists():
+        try:
+            iteration_id = json.loads(promoted_meta.read_text()).get("iteration_id")
+        except (json.JSONDecodeError, OSError):
+            iteration_id = None
+    return (
+        PROD_CURRENT / "tflite" / "eurio_embedder_v1.tflite",
+        PROD_CURRENT / "embeddings" / "embeddings_v1.json",
+        PROD_CURRENT / "tflite" / "model_meta.json",
+        iteration_id,
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--source", required=True, choices=["lab", "prod"],
+        help="Where to read the model artefacts from. Phase 4 (lab-prod-refacto).",
+    )
     parser.add_argument(
         "--cohort", required=True,
         help="Cohort id or name (passed verbatim to Store.get_cohort)",
     )
-    parser.add_argument("--iteration", required=True, help="Iteration id")
+    parser.add_argument(
+        "--iteration", default=None,
+        help="Iteration id. Required with --source lab. Optional with --source "
+             "prod (defaults to the iteration recorded in promoted_from.json).",
+    )
     parser.add_argument(
         "--out", required=True,
         help="Destination directory (created if missing)",
-    )
-    parser.add_argument(
-        "--allow-stale-tflite", action="store_true",
-        help=(
-            "Skip the mtime check that warns when the TFLite is older than "
-            "the iteration's finished_at. Use with care."
-        ),
     )
     args = parser.parse_args()
 
@@ -158,44 +273,49 @@ def main() -> int:
         print(f"error: cohort {args.cohort!r} not found", file=sys.stderr)
         return 2
 
-    iteration = store.get_iteration(args.iteration)
-    if iteration is None:
-        print(f"error: iteration {args.iteration!r} not found", file=sys.stderr)
-        return 2
-    if iteration.cohort_id != cohort.id:
-        print(
-            f"error: iteration {iteration.id} belongs to cohort "
-            f"{iteration.cohort_id!r}, not {cohort.id!r}",
-            file=sys.stderr,
-        )
-        return 2
-    if iteration.status != "completed":
-        print(
-            f"error: iteration {iteration.id} status is {iteration.status!r}, "
-            "expected 'completed'. Bundle the model only after the run finishes.",
-            file=sys.stderr,
-        )
-        return 2
+    tflite_path, embeddings_path, model_meta_path, iteration_id = (
+        _resolve_source(args, store)
+    )
 
-    if not TFLITE_PATH.exists():
-        print(
-            f"error: {TFLITE_PATH.relative_to(REPO_ROOT)} missing. "
-            "Run `python -m training.export_tflite` after training.",
-            file=sys.stderr,
-        )
-        return 3
-    if not EMBEDDINGS_PATH.exists():
-        print(
-            f"error: {EMBEDDINGS_PATH.relative_to(REPO_ROOT)} missing.",
-            file=sys.stderr,
-        )
-        return 3
-    if not MODEL_META_PATH.exists():
-        print(
-            f"error: {MODEL_META_PATH.relative_to(REPO_ROOT)} missing.",
-            file=sys.stderr,
-        )
-        return 3
+    # When we have an iteration_id, validate it exists, belongs to the cohort,
+    # and is completed. Tolerated only for --source prod when promoted_from.json
+    # is missing — bundle the prod state without a strict iteration link.
+    iteration = None
+    if iteration_id is not None:
+        iteration = store.get_iteration(iteration_id)
+        if iteration is None:
+            print(
+                f"error: iteration {iteration_id!r} not found in {STATE_DB}",
+                file=sys.stderr,
+            )
+            return 2
+        if iteration.cohort_id != cohort.id:
+            print(
+                f"error: iteration {iteration.id} belongs to cohort "
+                f"{iteration.cohort_id!r}, not {cohort.id!r}",
+                file=sys.stderr,
+            )
+            return 2
+        if args.source == "lab" and iteration.status != "completed":
+            print(
+                f"error: iteration {iteration.id} status is {iteration.status!r}, "
+                "expected 'completed'. Bundle the model only after the run finishes.",
+                file=sys.stderr,
+            )
+            return 2
+
+    for label, p in (
+        ("tflite", tflite_path),
+        ("embeddings", embeddings_path),
+        ("model_meta", model_meta_path),
+    ):
+        if not p.exists():
+            print(
+                f"error: {label} missing at {p} (source={args.source}). "
+                "Check that training + export ran for this source.",
+                file=sys.stderr,
+            )
+            return 3
     if not PROD_SNAPSHOT_PATH.exists():
         print(
             f"error: {PROD_SNAPSHOT_PATH.relative_to(REPO_ROOT)} missing. "
@@ -204,41 +324,19 @@ def main() -> int:
         )
         return 3
 
-    # Sanity check on TFLite freshness — the file is a global export, so a
-    # stale one would silently bundle the wrong weights. Compare mtime to
-    # iteration.finished_at when available.
-    if iteration.finished_at and not args.allow_stale_tflite:
-        try:
-            finished_dt = datetime.fromisoformat(
-                iteration.finished_at.replace("Z", "+00:00")
-            )
-            tflite_dt = datetime.fromtimestamp(
-                TFLITE_PATH.stat().st_mtime, tz=timezone.utc,
-            )
-            if tflite_dt < finished_dt:
-                print(
-                    f"warning: {TFLITE_PATH.name} mtime ({tflite_dt.isoformat()}) "
-                    f"is older than iteration.finished_at ({iteration.finished_at}). "
-                    "Re-run `python -m training.export_tflite` or pass --allow-stale-tflite.",
-                    file=sys.stderr,
-                )
-                return 4
-        except ValueError:
-            pass
-
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     eurio_ids = set(cohort.eurio_ids)
 
     # Copy raw model artefacts.
-    shutil.copy2(TFLITE_PATH, out_dir / TFLITE_PATH.name)
-    shutil.copy2(MODEL_META_PATH, out_dir / MODEL_META_PATH.name)
+    shutil.copy2(tflite_path, out_dir / tflite_path.name)
+    shutil.copy2(model_meta_path, out_dir / model_meta_path.name)
 
     # Filter embeddings to the cohort.
-    embeddings = json.loads(EMBEDDINGS_PATH.read_text())
+    embeddings = json.loads(embeddings_path.read_text())
     filtered_embeddings = _filter_embeddings(embeddings, eurio_ids)
-    (out_dir / EMBEDDINGS_PATH.name).write_text(
+    (out_dir / embeddings_path.name).write_text(
         json.dumps(filtered_embeddings, ensure_ascii=False, indent=2)
     )
 
@@ -249,14 +347,14 @@ def main() -> int:
         json.dumps(filtered_snapshot, ensure_ascii=False, indent=2)
     )
 
-    # Identity card.
+    # Identity card (legacy : conservé pour rétrocompat Android pré-phase-4).
     cohort_meta = {
         "cohort_id": cohort.id,
         "cohort_name": cohort.name,
-        "iteration_id": iteration.id,
-        "iteration_name": iteration.name,
+        "iteration_id": iteration.id if iteration else None,
+        "iteration_name": iteration.name if iteration else None,
         "model_version": embeddings.get("model") or "unknown",
-        "trained_at": iteration.finished_at,
+        "trained_at": iteration.finished_at if iteration else None,
         "generated_at": _iso_now(),
         "num_coins": len(cohort.eurio_ids),
     }
@@ -264,18 +362,59 @@ def main() -> int:
         json.dumps(cohort_meta, ensure_ascii=False, indent=2)
     )
 
+    # Phase 4 — bundle_meta.json : source + identity + sha256. C'est la
+    # source canonique côté Android pour l'écran "status / source du
+    # bundle". cohort_meta.json reste pour rétrocompat.
+    bundle_meta = {
+        "schema_version": BUNDLE_META_VERSION,
+        "source": args.source,
+        "cohort_id": cohort.id,
+        "cohort_name": cohort.name,
+        "iteration_id": iteration_id,
+        "iteration_name": iteration.name if iteration else None,
+        "training_run_id": iteration.training_run_id if iteration else None,
+        "model_version": embeddings.get("model") or "unknown",
+        "num_classes": len(filtered_embeddings.get("coins", {})),
+        "class_kind": _infer_class_kind(filtered_embeddings),
+        "built_at": _iso_now(),
+        "sha256": {
+            tflite_path.name: _sha256(out_dir / tflite_path.name),
+            embeddings_path.name: _sha256(out_dir / embeddings_path.name),
+            model_meta_path.name: _sha256(out_dir / model_meta_path.name),
+        },
+    }
+    (out_dir / "bundle_meta.json").write_text(
+        json.dumps(bundle_meta, ensure_ascii=False, indent=2)
+    )
+
     # Live tests prescription.
-    tests, sampled = _build_test_list(cohort.eurio_ids)
+    coin_by_id = {c["eurio_id"]: c for c in filtered_snapshot["coins"]}
+    tests, sampled = _build_test_list(cohort.eurio_ids, coin_by_id)
+    coins_display = _build_coins_display(coin_by_id)
     manifest = {
-        "version": 1,
+        "version": LIVE_TESTS_MANIFEST_VERSION,
         "cohort_id": cohort.id,
         "iteration_id": iteration.id,
         "conditions": list(TEST_CONDITIONS),
         "sampled": sampled,
         "tests": tests,
+        "coins_display": coins_display,
     }
     (out_dir / "live_tests_manifest.json").write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2)
+    )
+
+    # Equivalence map (design_group_id) for the cohort. Pulled from Supabase
+    # via the canonical builder so the Android client and the Python bench
+    # stay in lock-step on the same source-of-truth (cf.
+    # ml/eval/equivalence.py, ml/tests/test_equivalence.py and the Kotlin
+    # mirror EquivalenceMap.kt).
+    full_map = build_equivalence_map()
+    cohort_map = {
+        eid: full_map.eurio_to_group.get(eid) for eid in sorted(eurio_ids)
+    }
+    (out_dir / "equivalence_map.json").write_text(
+        json.dumps(cohort_map, ensure_ascii=False, indent=2, sort_keys=True)
     )
 
     print(

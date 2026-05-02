@@ -34,6 +34,14 @@ import java.util.TimeZone
 class LiveTestLogger(
     private val context: Context,
     private val iterationId: String,
+    /**
+     * Phase 4 — provenance of the bundle that produced these results.
+     * Wire value : `"lab"`, `"prod"`, or `"legacy"` (pre-phase-4 bundle
+     * with no `bundle_meta.json`). Persisted on every JSONL line as
+     * `bundle_source` so downstream pipelines can split prod vs lab runs
+     * without joining on the iteration_id.
+     */
+    private val bundleSource: String = "legacy",
 ) {
     private val isoFormat = SimpleDateFormat(
         "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US,
@@ -79,6 +87,10 @@ class LiveTestLogger(
                     predictedTop1 = nullableString(obj["predicted_top1"]),
                     similarityTop1 = nullableFloat(obj["similarity_top1"]),
                     isCorrect = (obj["is_correct"] as JsonPrimitive).boolean,
+                    // Pre-phase-3 logs don't have `is_correct_eq`; fall back
+                    // to strict so the resume path stays consistent.
+                    isCorrectEq = (obj["is_correct_eq"] as? JsonPrimitive)?.boolean
+                        ?: (obj["is_correct"] as JsonPrimitive).boolean,
                     error = nullableString(obj["error"]),
                     ts = (obj["ts"] as JsonPrimitive).content,
                 )
@@ -111,6 +123,7 @@ class LiveTestLogger(
             append("\"schema_version\":1")
             append(",\"test_idx\":${result.testIdx}")
             append(",\"iteration_id\":${esc(iterationId)}")
+            append(",\"bundle_source\":${esc(bundleSource)}")
             append(",\"expected_eurio_id\":${esc(result.expectedEurioId)}")
             append(",\"condition\":${esc(result.condition)}")
             append(",\"predicted_top3\":[")
@@ -125,6 +138,7 @@ class LiveTestLogger(
             append(",\"similarity_top1\":")
             append(result.similarityTop1?.let { formatFloat(it) } ?: "null")
             append(",\"is_correct\":${result.isCorrect}")
+            append(",\"is_correct_eq\":${result.isCorrectEq}")
             append(",\"error\":${result.error?.let { esc(it) } ?: "null"}")
             append(",\"ts\":${esc(result.ts)}")
             append('}')
