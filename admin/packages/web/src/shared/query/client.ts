@@ -39,12 +39,33 @@ const storage = {
   removeItem: (key: string) => del(`eurio.query.${key}`),
 }
 
+// Default JSON.stringify drops Set/Map structure (Set → {}, Map → {}), so
+// queries returning those types lose `.has()` / `.get()` after a reload.
+// Tag them on the way out and rehydrate on the way in.
+type Tagged = { __t: 'Set' | 'Map'; v: unknown[] }
+const isTagged = (v: unknown): v is Tagged =>
+  !!v && typeof v === 'object' && '__t' in v && '__t' in (v as Record<string, unknown>)
+
+const replacer = (_key: string, value: unknown) => {
+  if (value instanceof Set) return { __t: 'Set', v: [...value] } satisfies Tagged
+  if (value instanceof Map) return { __t: 'Map', v: [...value] } satisfies Tagged
+  return value
+}
+
+const reviver = (_key: string, value: unknown) => {
+  if (isTagged(value)) {
+    if (value.__t === 'Set') return new Set(value.v)
+    if (value.__t === 'Map') return new Map(value.v as [unknown, unknown][])
+  }
+  return value
+}
+
 const persister = createAsyncStoragePersister({
   storage,
   key: 'cache',
-  // Bust the persisted cache when the bundle changes — avoids serving
-  // stale shapes after a schema update. Bumped manually on breaking changes.
   throttleTime: 1000,
+  serialize: data => JSON.stringify(data, replacer),
+  deserialize: data => JSON.parse(data, reviver),
 })
 
 persistQueryClient({
@@ -53,7 +74,8 @@ persistQueryClient({
   // 7 days. After that the persisted snapshot is considered too old and
   // dropped on cold start; in-memory fetches still populate normally.
   maxAge: 7 * TWENTY_FOUR_HOURS,
-  buster: 'v1',
+  // Bumped to v2 to drop pre-fix snapshots where Set/Map were stored as `{}`.
+  buster: 'v2',
 })
 
 // Manual escape hatch — call from devtools as `window.__clearAdminCache()`.

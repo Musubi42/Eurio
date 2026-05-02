@@ -82,6 +82,12 @@
 |---|---|---|---|---|
 | `marketplace-soon.html` | — | Futur | — | Pas de Marketplace en v1. Proto conservé pour référence future. |
 
+### Cohort test (lab tooling)
+
+| Proto scene | Android destination | Phase | Status | Notes |
+|---|---|---|---|---|
+| `cohort-test-live/index.html` | `LiveTestsScreen` (flavor `cohortTest`) | Lab | 🟢 | Standalone proto (pas chargé par le router prototype — chrome propre, design-toggle console). Hero card + ProgressStrip + DetectionViewfinder (réutilise `PhotoGuideOverlay`) + SnapCta gaté sur Hough live (fix bug clavier-matché) + ResultSheet slide-up. Backend: bundle v2 enrichi via `ml/utils/i18n.py`. |
+
 ## Récapitulatif gaps bloquants
 
 **Session 2026-04-16 rev 2 — tous les gaps bloquants sont résolus.** Les 4 scènes manquantes pour les Phases 3 et 4 ont été livrées et sont prêtes pour le portage Compose.

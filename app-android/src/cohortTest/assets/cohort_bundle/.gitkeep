@@ -1,9 +1,0 @@
-# Populated by `go-task -t app-android/Taskfile.yml cohort-test:bundle`.
-# At build time this dir holds 4 files:
-#   - eurio_embedder_v1.tflite
-#   - embeddings_v1.json
-#   - model_meta.json
-#   - catalog_snapshot.json
-#   - cohort_meta.json
-#   - live_tests_manifest.json
-# The .gitkeep itself ships in the APK; harmless.

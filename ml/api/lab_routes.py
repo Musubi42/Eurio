@@ -553,6 +553,33 @@ def launch_iteration_training(cohort_id: str, iteration_id: str) -> dict:
     return _iteration_with_run_metrics(row)
 
 
+@router.post("/cohorts/{cohort_id}/iterations/{iteration_id}/launch-benchmark")
+def launch_iteration_benchmark(cohort_id: str, iteration_id: str) -> dict:
+    """(Re)run the studio benchmark on a 'completed' iteration.
+
+    Used when the training succeeded but the chained benchmark crashed,
+    or when the user wants a fresh measurement (new device captures, etc.)
+    without re-training.
+
+    Pre-conditions enforced by :meth:`IterationRunner.launch_benchmark`:
+    iteration is in status ``completed`` (training+export OK), has a
+    ``training_run_id``, and the runner is free.
+    """
+    cohort = _get_store().get_cohort(cohort_id)
+    if cohort is None:
+        raise HTTPException(status_code=404, detail="Cohort introuvable")
+    iteration = _get_store().get_iteration(iteration_id)
+    if iteration is None or iteration.cohort_id != cohort.id:
+        raise HTTPException(status_code=404, detail="Itération introuvable")
+    try:
+        row = _get_runner().launch_benchmark(iteration_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return _iteration_with_run_metrics(row)
+
+
 @router.get("/cohorts/{cohort_id}/iterations/{iteration_id}")
 def get_iteration(cohort_id: str, iteration_id: str) -> dict:
     it = _get_store().get_iteration(iteration_id)
@@ -584,15 +611,46 @@ def _i3_state(status: str) -> str:
 
 
 def _i4_substate_studio(it: ExperimentIterationRow) -> dict:
-    r_at_1: float | None = None
-    if it.benchmark_run_id:
-        bench = _get_store().get_benchmark_run(it.benchmark_run_id)
-        if bench is not None:
-            r_at_1 = bench.r_at_1
-    return {
-        "state": "ready" if r_at_1 is not None else "empty",
-        "r_at_1": r_at_1,
-    }
+    """State of the studio benchmark sub-tiroir.
+
+    Decoupled from ``iteration.status``:
+      - ``empty`` : no benchmark has been run yet (incl. iteration not yet
+        trained, or iteration trained but benchmark never started).
+      - ``running`` : iteration.status='benchmarking', or the benchmark
+        row is in 'queued'/'running' state.
+      - ``ready`` : benchmark row 'completed' with a non-null R@1.
+      - ``partial`` : benchmark row 'failed' (training succeeded but
+        benchmark didn't); ``error`` carries the message so the front
+        can surface it.
+    """
+    if it.benchmark_run_id is None:
+        # Distinguish "iteration still training" (status=training/benchmarking)
+        # from "trained, benchmark never run yet" (status=completed without
+        # benchmark_run_id) — both render as 'empty' but the front uses
+        # iteration.status to decide whether to show a "Relancer" button.
+        return {"state": "empty", "r_at_1": None, "error": None}
+
+    bench = _get_store().get_benchmark_run(it.benchmark_run_id)
+    if bench is None:
+        return {
+            "state": "partial",
+            "r_at_1": None,
+            "error": "benchmark row missing",
+        }
+
+    if bench.status == "completed" and bench.r_at_1 is not None:
+        return {"state": "ready", "r_at_1": bench.r_at_1, "error": None}
+    if bench.status == "failed":
+        return {
+            "state": "partial",
+            "r_at_1": None,
+            "error": bench.error or "benchmark failed",
+        }
+    # queued / running on the benchmark side, OR iteration toggled into
+    # 'benchmarking' by the chain orchestrator.
+    if it.status == "benchmarking" or bench.status in ("queued", "running"):
+        return {"state": "running", "r_at_1": None, "error": None}
+    return {"state": "partial", "r_at_1": None, "error": "état inconnu"}
 
 
 def _i4_substate_aug_vs_real(iteration_id: str) -> dict:
@@ -1350,9 +1408,9 @@ def runner_training_progress(iteration_id: str) -> dict:
     """Live training progress for a running iteration.
 
     Combines the on-disk JSON written by ``train_embedder.py`` (per-epoch loss,
-    ETA, device) with the runtime-only stdout tail of the active subprocess.
-    Front-end polls this every ~2s while ``iteration.status`` is
-    ``training`` or ``benchmarking``.
+    ETA, device) with the per-iteration log buffer (training stdout, TFLite
+    export stdout, benchmark stdout — all phases). Front-end polls this every
+    ~2s while ``iteration.status`` is ``training`` or ``benchmarking``.
     """
     fp = _TRAINING_PROGRESS_DIR / f"{iteration_id}.json"
     payload: dict
@@ -1369,7 +1427,7 @@ def runner_training_progress(iteration_id: str) -> dict:
         }
     log_tail: list[str] = []
     try:
-        log_tail = _get_runner().training_runner.tail_logs(n=30)
+        log_tail = _get_runner().tail_logs(iteration_id, n=500)
     except Exception:
         log_tail = []
     payload["log_tail"] = log_tail

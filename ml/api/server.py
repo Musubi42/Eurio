@@ -108,17 +108,22 @@ def _benchmark_startup() -> None:
 
 @app.on_event("startup")
 def _lab_startup() -> None:
-    """Re-queue any Lab iteration stuck in training/benchmarking.
+    """Cleanup any Lab iteration left mid-flight by a previous process.
 
-    Without this, a CLI restart (`go-task ml:api` reload) would orphan
-    iterations mid-flight — we'd never mark them completed.
+    The runner does NOT auto-retry stuck iterations (auto-retry was
+    found to be more dangerous than helpful — it could re-bake mid-flight
+    or duplicate a training). Instead :meth:`recover_on_boot` marks
+    training-stuck iterations as ``failed`` and benchmarking-stuck ones
+    as ``completed`` with a partial benchmark row, so the user can
+    re-launch explicitly.
     """
     try:
-        resumed = _iteration_runner.recover_on_boot()
-        if resumed:
+        cleaned = _iteration_runner.recover_on_boot()
+        if cleaned:
             import logging
             logging.getLogger(__name__).info(
-                "Lab runner recovered %d iteration(s) at startup", resumed
+                "Lab runner cleaned up %d stuck iteration(s) at startup",
+                cleaned,
             )
     except Exception as exc:  # noqa: BLE001
         import logging

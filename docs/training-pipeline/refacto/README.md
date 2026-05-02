@@ -57,6 +57,11 @@ Et un point matos :
 | Le récit complet du flow cible | [`vision.md`](./vision.md) |
 | Implémenter | `phase-N-*.md` dans l'ordre |
 
+> **Refacto orthogonal** — l'enchevêtrement lab ↔ prod (artefacts
+> partagés, label space ambigu, absence de step promote) est traité
+> séparément dans [`docs/lab-prod-refacto/`](../../lab-prod-refacto/).
+> Ses phases peuvent être livrées indépendamment de celles ci-dessous.
+
 ## Phases
 
 | # | Titre | Périmètre | Statut |

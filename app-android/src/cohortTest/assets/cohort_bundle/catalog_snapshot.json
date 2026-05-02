@@ -1,0 +1,258 @@
+{
+  "catalog_version": "2026-04-29T16:01:23.330572+00:00",
+  "generated_at": "2026-04-29T16:01:23.330572+00:00",
+  "coins": [
+    {
+      "eurio_id": "es-1999-2eur-standard",
+      "numista_id": 88,
+      "country": "ES",
+      "year": 1999,
+      "face_value": 2.0,
+      "issue_type": "circulation",
+      "series_id": "es-juan-carlos",
+      "name_fr": null,
+      "name_en": null,
+      "image_obverse_url": "https://ettxkixkxrzchbnohgfm.supabase.co/storage/v1/object/public/coin-images/es-1999-2eur-standard/obverse_numista.webp",
+      "image_reverse_url": "https://ettxkixkxrzchbnohgfm.supabase.co/storage/v1/object/public/coin-images/es-1999-2eur-standard/reverse_numista.webp",
+      "obverse_meta": {
+        "cx_uv": 0.49982,
+        "cy_uv": 0.49982,
+        "radius_uv": 0.49982
+      },
+      "reverse_meta": {
+        "cx_uv": 0.49981,
+        "cy_uv": 0.49981,
+        "radius_uv": 0.49981
+      },
+      "mintage": null,
+      "is_withdrawn": false,
+      "withdrawal_reason": null,
+      "design_description": null,
+      "theme_code": null
+    },
+    {
+      "eurio_id": "ad-2014-2eur-standard",
+      "numista_id": 68395,
+      "country": "AD",
+      "year": 2014,
+      "face_value": 2.0,
+      "issue_type": "circulation",
+      "series_id": "ad-circ",
+      "name_fr": null,
+      "name_en": null,
+      "image_obverse_url": "https://ettxkixkxrzchbnohgfm.supabase.co/storage/v1/object/public/coin-images/ad-2014-2eur-standard/obverse_numista.webp",
+      "image_reverse_url": "https://ettxkixkxrzchbnohgfm.supabase.co/storage/v1/object/public/coin-images/ad-2014-2eur-standard/reverse_numista.webp",
+      "obverse_meta": {
+        "cx_uv": 0.49967,
+        "cy_uv": 0.49967,
+        "radius_uv": 0.49967
+      },
+      "reverse_meta": {
+        "cx_uv": 0.49967,
+        "cy_uv": 0.49967,
+        "radius_uv": 0.49967
+      },
+      "mintage": null,
+      "is_withdrawn": false,
+      "withdrawal_reason": null,
+      "design_description": null,
+      "theme_code": null
+    },
+    {
+      "eurio_id": "fr-2016-2eur-100-years-since-the-birth-of-francois-mitterrand",
+      "numista_id": 91431,
+      "country": "FR",
+      "year": 2016,
+      "face_value": 2.0,
+      "issue_type": "commemo-national",
+      "series_id": null,
+      "name_fr": "100 years since the birth of François Mitterrand",
+      "name_en": "100 years since the birth of François Mitterrand",
+      "image_obverse_url": "https://ettxkixkxrzchbnohgfm.supabase.co/storage/v1/object/public/coin-images/fr-2016-2eur-100-years-since-the-birth-of-francois-mitterrand/obverse_numista.webp",
+      "image_reverse_url": "https://ettxkixkxrzchbnohgfm.supabase.co/storage/v1/object/public/coin-images/fr-2016-2eur-100-years-since-the-birth-of-francois-mitterrand/reverse_numista.webp",
+      "obverse_meta": {
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998
+      },
+      "reverse_meta": {
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998
+      },
+      "mintage": 10000000,
+      "is_withdrawn": false,
+      "withdrawal_reason": null,
+      "design_description": "The design shows a profile of a pensive François Mitterrand. Adjacent is his personal emblem of a half oak/half olive tree. Above are the dates marking the centenary of his birth ('1916' and '2016') and his name. At the bottom, the indication of the issuing country 'RF'. The coin's outer ring depicts the 12 stars of the European flag.",
+      "theme_code": null
+    },
+    {
+      "eurio_id": "fi-2017-2eur-100-years-of-independence",
+      "numista_id": 113429,
+      "country": "FI",
+      "year": 2017,
+      "face_value": 2.0,
+      "issue_type": "commemo-national",
+      "series_id": null,
+      "name_fr": "100 years of independence",
+      "name_en": "100 years of independence",
+      "image_obverse_url": "https://ettxkixkxrzchbnohgfm.supabase.co/storage/v1/object/public/coin-images/fi-2017-2eur-100-years-of-independence/obverse_numista.webp",
+      "image_reverse_url": "https://ettxkixkxrzchbnohgfm.supabase.co/storage/v1/object/public/coin-images/fi-2017-2eur-100-years-of-independence/reverse_numista.webp",
+      "obverse_meta": {
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998
+      },
+      "reverse_meta": {
+        "cx_uv": 0.4998,
+        "cy_uv": 0.4998,
+        "radius_uv": 0.4998
+      },
+      "mintage": 2500000,
+      "is_withdrawn": false,
+      "withdrawal_reason": null,
+      "design_description": "The inner part of the coin has a mosaic design, with the more sparsely set pieces on the right forming a cartographic likeness of Finland. The text 'SUOMI FINLAND', the year of independence '1917' and the year of issuance '2017' are placed vertically one below another at the left. In the middle right is the indication of the issuing country 'FI' and the mint mark. The coin's outer ring depicts the 12 stars of the European flag.",
+      "theme_code": null
+    },
+    {
+      "eurio_id": "at-2002-2eur-standard",
+      "numista_id": 64,
+      "country": "AT",
+      "year": 2002,
+      "face_value": 2.0,
+      "issue_type": "circulation",
+      "series_id": "at-circ",
+      "name_fr": null,
+      "name_en": null,
+      "image_obverse_url": "https://ettxkixkxrzchbnohgfm.supabase.co/storage/v1/object/public/coin-images/at-2002-2eur-standard/obverse_numista.webp",
+      "image_reverse_url": "https://ettxkixkxrzchbnohgfm.supabase.co/storage/v1/object/public/coin-images/at-2002-2eur-standard/reverse_numista.webp",
+      "obverse_meta": {
+        "cx_uv": 0.49968,
+        "cy_uv": 0.49968,
+        "radius_uv": 0.49968
+      },
+      "reverse_meta": {
+        "cx_uv": 0.49968,
+        "cy_uv": 0.49968,
+        "radius_uv": 0.49968
+      },
+      "mintage": null,
+      "is_withdrawn": false,
+      "withdrawal_reason": null,
+      "design_description": null,
+      "theme_code": null
+    },
+    {
+      "eurio_id": "be-2007-2eur-standard",
+      "numista_id": 6292,
+      "country": "BE",
+      "year": 2007,
+      "face_value": 2.0,
+      "issue_type": "circulation",
+      "series_id": "be-albert-ii",
+      "name_fr": null,
+      "name_en": null,
+      "image_obverse_url": "https://ettxkixkxrzchbnohgfm.supabase.co/storage/v1/object/public/coin-images/be-2007-2eur-standard/obverse_numista.webp",
+      "image_reverse_url": "https://ettxkixkxrzchbnohgfm.supabase.co/storage/v1/object/public/coin-images/be-2007-2eur-standard/reverse_numista.webp",
+      "obverse_meta": {
+        "cx_uv": 0.49968,
+        "cy_uv": 0.49968,
+        "radius_uv": 0.49968
+      },
+      "reverse_meta": {
+        "cx_uv": 0.49968,
+        "cy_uv": 0.49968,
+        "radius_uv": 0.49968
+      },
+      "mintage": null,
+      "is_withdrawn": false,
+      "withdrawal_reason": null,
+      "design_description": null,
+      "theme_code": null
+    },
+    {
+      "eurio_id": "it-2016-2eur-550-years-since-the-death-of-donatello",
+      "numista_id": 82330,
+      "country": "IT",
+      "year": 2016,
+      "face_value": 2.0,
+      "issue_type": "commemo-national",
+      "series_id": null,
+      "name_fr": "550 years since the death of Donatello",
+      "name_en": "550 years since the death of Donatello",
+      "image_obverse_url": "https://ettxkixkxrzchbnohgfm.supabase.co/storage/v1/object/public/coin-images/it-2016-2eur-550-years-since-the-death-of-donatello/obverse_numista.webp",
+      "image_reverse_url": "https://ettxkixkxrzchbnohgfm.supabase.co/storage/v1/object/public/coin-images/it-2016-2eur-550-years-since-the-death-of-donatello/reverse_numista.webp",
+      "obverse_meta": {
+        "cx_uv": 0.49976,
+        "cy_uv": 0.49976,
+        "radius_uv": 0.49868
+      },
+      "reverse_meta": {
+        "cx_uv": 0.49967,
+        "cy_uv": 0.49967,
+        "radius_uv": 0.49867
+      },
+      "mintage": null,
+      "is_withdrawn": false,
+      "withdrawal_reason": null,
+      "design_description": "Head of the David by Donatello (detail of the bronze sculpture kept in Florence, National Museum of Bargello): on the left the logo of the Italian Republic 'RI'; below on two lines, '1466' and '2016'; on the right 'C.M.', the initials of the author Claudia Momoni; below 'DONATELLO'. The coin's outer ring depicts the 12 stars of the European flag.",
+      "theme_code": null
+    }
+  ],
+  "coin_series": [
+    {
+      "id": "at-circ",
+      "country": "at",
+      "designation": "Type 2002",
+      "designation_i18n": {
+        "en": "Type 2002",
+        "fr": "Type 2002"
+      },
+      "minting_started_at": "1999-01-01",
+      "minting_ended_at": null,
+      "minting_end_reason": null,
+      "supersedes_series_id": null
+    },
+    {
+      "id": "be-albert-ii",
+      "country": "be",
+      "designation": "Albert II",
+      "designation_i18n": {
+        "en": "Albert II",
+        "fr": "Albert II"
+      },
+      "minting_started_at": "1999-01-01",
+      "minting_ended_at": "2013-12-31",
+      "minting_end_reason": "ruler_change",
+      "supersedes_series_id": null
+    },
+    {
+      "id": "ad-circ",
+      "country": "ad",
+      "designation": "Type 2014",
+      "designation_i18n": {
+        "en": "Type 2014",
+        "fr": "Type 2014"
+      },
+      "minting_started_at": "2014-01-01",
+      "minting_ended_at": null,
+      "minting_end_reason": null,
+      "supersedes_series_id": null
+    },
+    {
+      "id": "es-juan-carlos",
+      "country": "es",
+      "designation": "Juan Carlos Ier",
+      "designation_i18n": {
+        "en": "Juan Carlos I",
+        "fr": "Juan Carlos Ier"
+      },
+      "minting_started_at": "1999-01-01",
+      "minting_ended_at": "2014-12-31",
+      "minting_end_reason": "ruler_change",
+      "supersedes_series_id": null
+    }
+  ],
+  "sets": [],
+  "set_members": []
+}

@@ -9,12 +9,17 @@ import DrawerSection from '@/features/lab/components/DrawerSection.vue'
 import LiveTestsSection from '@/features/lab/components/LiveTestsSection.vue'
 import PerConditionTable from '@/features/lab/components/PerConditionTable.vue'
 import { fetchBenchmarkRunDetail } from '@/features/lab/composables/useLabApi'
+import {
+  useLaunchBenchmarkMutation,
+  useRunnerStatusQuery,
+} from '@/features/lab/composables/useLabQueries'
 import type {
   BenchmarkRunDetail,
   IterationDetail,
   IterationProgressI4,
 } from '@/features/lab/types'
-import { computed, ref, watch } from 'vue'
+import { Loader2, RotateCcw } from 'lucide-vue-next'
+import { computed, ref, toRefs, watch } from 'vue'
 
 const props = defineProps<{
   cohortId: string
@@ -23,6 +28,33 @@ const props = defineProps<{
   locked: boolean
   lockReason: string
 }>()
+
+const { cohortId } = toRefs(props)
+const iterationId = computed(() => props.iteration.id)
+const launchBenchmarkMut = useLaunchBenchmarkMutation(cohortId, iterationId)
+const runnerQuery = useRunnerStatusQuery()
+const runnerBusy = computed(() => runnerQuery.data.value?.busy ?? false)
+const launchError = ref<string | null>(null)
+
+// "Relancer benchmark" is offered when the iteration has finished its
+// training phase (status='completed') AND the studio sub-tiroir is either
+// empty (never run) or partial (previous attempt failed). When the runner
+// is busy on another iteration, the button is disabled with a tooltip.
+const canRelaunchBenchmark = computed(() => {
+  if (props.iteration.status !== 'completed') return false
+  const s = props.progress?.studio.state
+  return s === 'empty' || s === 'partial'
+})
+
+async function relaunchBenchmark() {
+  launchError.value = null
+  try {
+    await launchBenchmarkMut.mutateAsync()
+  }
+  catch (e) {
+    launchError.value = (e as Error).message
+  }
+}
 
 const benchmark = ref<BenchmarkRunDetail | null>(null)
 
@@ -116,6 +148,76 @@ function deltaColor(v: number | undefined): string {
           :summary="studioSummary"
         >
           <template #body>
+            <!-- Banner: empty or partial → offer to (re)run benchmark.
+                 Visible only on a `completed` iteration (training+export
+                 OK); on still-training iterations, the I4a state is just
+                 the natural early state and no button is needed. -->
+            <section
+              v-if="canRelaunchBenchmark"
+              class="mb-3 rounded-md border px-3 py-2 text-xs"
+              :style="{
+                borderColor: progress?.studio.state === 'partial' ? 'var(--danger)' : 'var(--surface-3)',
+                background: progress?.studio.state === 'partial'
+                  ? 'color-mix(in srgb, var(--danger) 6%, var(--surface))'
+                  : 'var(--surface)',
+              }"
+            >
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0 flex-1">
+                  <p
+                    v-if="progress?.studio.state === 'partial'"
+                    class="font-medium"
+                    style="color: var(--danger);"
+                  >
+                    Benchmark précédent en échec
+                  </p>
+                  <p
+                    v-else
+                    class="font-medium"
+                    style="color: var(--ink);"
+                  >
+                    Aucun benchmark studio
+                  </p>
+                  <p
+                    v-if="progress?.studio.error"
+                    class="mt-1 break-words font-mono"
+                    style="color: var(--ink-500);"
+                  >
+                    {{ progress.studio.error }}
+                  </p>
+                  <p
+                    v-else-if="progress?.studio.state === 'empty'"
+                    class="mt-1"
+                    style="color: var(--ink-500);"
+                  >
+                    Le training a réussi mais le benchmark n'a pas été lancé. Mesure le R@1 sur les captures device de la cohort.
+                  </p>
+                </div>
+                <button
+                  class="flex shrink-0 items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium"
+                  :style="{
+                    borderColor: 'var(--surface-3)',
+                    color: (runnerBusy || launchBenchmarkMut.isPending.value) ? 'var(--ink-400)' : 'var(--ink)',
+                    cursor: (runnerBusy || launchBenchmarkMut.isPending.value) ? 'not-allowed' : 'pointer',
+                  }"
+                  :disabled="runnerBusy || launchBenchmarkMut.isPending.value"
+                  :title="runnerBusy ? 'Une itération tourne déjà' : 'Relancer evaluate_real_photos.py'"
+                  @click="relaunchBenchmark"
+                >
+                  <Loader2 v-if="launchBenchmarkMut.isPending.value" class="h-3 w-3 animate-spin" />
+                  <RotateCcw v-else class="h-3 w-3" />
+                  {{ progress?.studio.state === 'partial' ? 'Relancer benchmark' : 'Lancer benchmark' }}
+                </button>
+              </div>
+              <p
+                v-if="launchError"
+                class="mt-2 font-mono"
+                style="color: var(--danger);"
+              >
+                {{ launchError }}
+              </p>
+            </section>
+
             <section class="grid grid-cols-2 gap-3 md:grid-cols-4">
               <article
                 v-for="{ label, value, delta } in [

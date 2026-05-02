@@ -179,7 +179,11 @@ def fetch_coin_refs(
     return coins
 
 
-def build_resolver(env: dict[str, str] | None = None) -> Resolver:
+def build_resolver(
+    env: dict[str, str] | None = None,
+    *,
+    force_eurio_id: bool = False,
+) -> Resolver:
     env = env or load_env()
     url = env.get("SUPABASE_URL", "")
     key = env.get("SUPABASE_SERVICE_ROLE_KEY", "")
@@ -188,6 +192,11 @@ def build_resolver(env: dict[str, str] | None = None) -> Resolver:
             "SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY required to build class resolver"
         )
     coins = fetch_coin_refs(supabase_url=url, supabase_key=key)
+    if force_eurio_id:
+        coins = [
+            CoinRef(eurio_id=c.eurio_id, numista_id=c.numista_id, design_group_id=None)
+            for c in coins
+        ]
     return Resolver(coins)
 
 

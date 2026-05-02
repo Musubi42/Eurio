@@ -495,3 +495,195 @@ de la doc qui mentionnait `bright_perturbed`/`dim_perturbed`/
 - Si tout marche, on peut considérer le refacto entièrement livré.
 
 ---
+
+## 2026-05-01 · Hotfix · Découplage training / benchmark dans l'orchestrateur
+
+> Bug constaté en live : itération `4be0cb425881` figée. Training OK
+> (artefacts à 21:45, epoch 40/40), JSON progress `phase=benchmark`,
+> mais aucun process `evaluate_real_photos.py` actif et iteration en DB
+> `status='training'`, `benchmark_run_id=null`. Le thread daemon
+> orchestrateur a disparu silencieusement entre `_set_progress_phase("benchmark")`
+> et `_launch_benchmark()`. Front : `Logs (0 dernière ligne)` parce que
+> `tail_logs()` lisait `TrainingRunner._active`, déjà clear à ce stade.
+
+**Done** :
+
+- **Itération bloquée** : marquée `failed` directement en DB (status,
+  error, finished_at) + JSON progress patché `phase=failed`.
+- **Per-iteration log buffer** dans `IterationRunner` :
+  - `dict[str, deque[str]]` cappé à 500 lignes par iteration.
+  - `tail_logs(iteration_id, n)` public, accumulé par toutes les phases
+    (training via callback, export et benchmark via le helper streamé).
+  - `_reset_logs(iteration_id)` appelé au début d'une nouvelle phase
+    training pour ne pas polluer avec un run précédent.
+- **Streaming des subprocess** :
+  - Helper `_run_subprocess_streamed(iteration_id, cmd, *, label)` :
+    `Popen` line-buffered, registers `_active_subprocess` pour le stop,
+    pousse chaque ligne préfixée `[label]` dans le buffer.
+  - `_export_tflite` et `_launch_benchmark` migrés depuis
+    `subprocess.run(capture_output=True)`. Plus de mort silencieuse.
+- **Bridge TrainingRunner → IterationRunner** :
+  - `ActiveState.log_sink: Callable[[str], None] | None` (champ optionnel).
+  - `start_run(..., log_sink=...)` : kwarg public.
+  - `_log()` appelle le sink hors lock, exceptions catch + ignorées
+    (logging side-channel, ne doit jamais propager).
+  - Côté iteration : closure `_sink(line) → _append_log(iid, "[training] " + line)`.
+- **Split orchestration** :
+  - `_chain_steps` éliminé. À la place, deux phases publiques :
+    - `_do_training_phase(iid)` : bake → training subprocess → export TFLite.
+      Sortie sur succès = iteration `status='completed'`. Échec = `_fail`.
+    - `_do_benchmark_phase(iid)` : `evaluate_real_photos.py` streamé
+      synchrone, finalize verdict. Échec = `_record_benchmark_phase_failure`
+      (n'altère PAS `iteration.status`, marque seulement `benchmark_run.status='failed'`
+      + `phase=benchmark_failed`).
+  - `_run_full_chain` : orchestrateur original (training+benchmark
+    enchaînés, un clic). Wrap try/except ULTIME au niveau chain — si quoi
+    que ce soit échappe à `_do_training_phase`, `_fail` est appelé.
+  - `_run_benchmark_chain` : benchmark seul, sur une iteration `completed`.
+- **Endpoints** :
+  - `POST /lab/cohorts/{cid}/iterations/{iid}/launch-benchmark` (nouveau).
+    Validation 409 si status≠`completed`, 400 si `training_run_id` absent.
+  - `GET /lab/runner/training-progress/{iid}` : utilise
+    `_get_runner().tail_logs(iid)` (per-iteration) au lieu de
+    `training_runner.tail_logs()` (per-run, ephemeral).
+- **State machine durci** :
+  - `update_iteration(status=...)` toujours appelé **avant** spawn
+    subprocess (atomicité). Le DB reflète la vérité même si le thread
+    crash.
+  - `recover_on_boot` : ne retry plus, **cleanup only**. Iterations
+    `training`-stuck → `failed`. `benchmarking`-stuck → `completed`
+    + benchmark_run `failed` (modèle utilisable, juste pas de R@1).
+  - `stop()` étendu : tente d'abord `TrainingRunner.stop_active`, puis
+    son propre `_active_subprocess` (export ou benchmark).
+- **Sémantique `i4.studio.state` enrichie** dans `_i4_substate_studio` :
+  - `empty` (no benchmark_run_id), `running` (bench in flight),
+    `ready` (`completed` + R@1), `partial` (failed avec error).
+  - Champ `error: string | null` ajouté pour surface au front.
+- **Front** :
+  - Type `TrainingProgressPhase` étendu avec `benchmark_failed`.
+  - `phaseLabel.benchmark_failed = "Training OK · benchmark en échec"`.
+  - Detail d'erreur affiché aussi pour `benchmark_failed` (pas que `failed`).
+  - `IterationProgressI4Studio.error: string | null` ajouté.
+  - `useLaunchBenchmarkMutation` + `launchIterationBenchmark` API call.
+  - Bandeau "Relancer benchmark" / "Lancer benchmark" dans I4a quand
+    iteration `completed` ET studio.state ∈ {empty, partial}. Affiche
+    l'erreur + bouton, gère runner busy + spinner.
+
+**Working** :
+- `pnpm exec vite build` : clean (IterationDetailPage 69.18 KB).
+- `pnpm typecheck` : 0 erreur sur les fichiers touchés (les TS errors
+  préexistants dans `audit/`, `sets/` ne sont pas liés).
+- `python -m py_compile` : clean sur les 3 fichiers Python touchés.
+- `curl /lab/runner/training-progress/4be0cb425881` retourne phase=failed
+  + log_tail=[] (cohérent : pas de chain en mémoire pour cette iteration).
+- `curl /lab/cohorts/.../iterations/.../progress` (failed iter) →
+  i3.state=partial, i4.studio={state:empty, r_at_1:null, error:null}.
+- `curl -X POST .../launch-benchmark` (failed iter) → 409
+  "Iteration en status 'failed'…".
+- `curl -X POST` sur cohort inexistant → 404 "Cohort introuvable".
+
+**Broken / partial** :
+- Pas testé un full chain end-to-end (training + benchmark) sur cette
+  session. À valider lors de la prochaine itération réelle. Le wiring
+  est statiquement OK.
+- L'itération `8270574cd55e` (autre `failed` historique) reste comme
+  test de non-régression du i4.studio.state="empty".
+
+**Deviations from phase doc** :
+- Ce hotfix n'est pas une phase formelle du refacto initial — il
+  fixe un bug que la phase 5 a *exposé* (le tail vide pendant benchmark
+  était un side-effect de l'archi pré-tiroir où `TrainingRunner._active`
+  servait pour le tail). Il complète la phase 5 plutôt qu'il ne s'en
+  écarte.
+- Sémantique `iteration.status='completed'` légèrement modifiée :
+  signifie maintenant "training+export OK" (benchmark séparé). Les
+  iterations historiques avaient toutes `benchmark_run_id` set au
+  moment du completed, donc `i4.studio.state='ready'` continue de
+  s'afficher correctement pour elles.
+
+**Decisions taken** :
+- **Pas de nouveau status `trained` ni de migration DB**. Garde les
+  5 valeurs existantes (`pending|training|benchmarking|completed|failed`),
+  modifie juste leur sémantique côté runner. Permet un rollback rapide
+  si on découvre un edge case.
+- **Benchmark failure ne taint plus l'iteration**. Décision UX/produit :
+  un training réussi est un asset (le model est sur disque, le tflite
+  est exporté, on peut bundler). Le benchmark est une mesure
+  *secondaire*. Surface la nuance dans I4a, mais le statut global reste
+  `completed`.
+- **Recover-on-boot = cleanup, pas retry**. Auto-retry était dangereux
+  (re-bake possiblement partiel, doublon training). Le user re-launch
+  manuellement, l'erreur est explicite.
+- **Log buffer 500 lignes**. Suffit pour 40 epochs de training (~150
+  lignes) + export (~30) + benchmark (~50). Si on déborde, le ringbuffer
+  drop les anciennes — acceptable, le tail est seulement les 30
+  dernières.
+
+**Handoff** :
+- Pour tester end-to-end : créer une nouvelle iteration sur la cohort
+  `dceb9f44ba8f`, "Générer" en I2, "Lancer training" en I3. Vérifier
+  que le tail montre des lignes `[training] ...` pendant le training,
+  `[export] ...` pendant l'export TFLite, `[benchmark] ...` pendant
+  le benchmark.
+- Tester aussi le path "benchmark seulement" : sur une iteration
+  `completed` avec `i4.studio.state ∈ {empty, partial}`, cliquer
+  "Lancer benchmark" / "Relancer benchmark" dans I4a.
+- Si une iteration redevient stuck (improbable maintenant), l'API
+  restart la marquera `failed` ou `completed` + benchmark partial via
+  `recover_on_boot` — plus jamais de zombie.
+
+**Review pass (agent indépendant) — fixes appliqués** :
+
+Une code review indépendante a remonté 27 findings dont 5 HIGH/MEDIUM
+qui méritaient un fix immédiat. Tous appliqués dans le même pass :
+
+- **#1 (HIGH)** `stop()` race fix — ne marque plus `failed` une iteration
+  déjà en état terminal. Si subprocess `idle` ET `iteration.status` ∉
+  {training, benchmarking}, on ne touche pas (évite de défaire un
+  `completed` qui vient juste d'être set par le chain thread).
+- **#6 (HIGH)** Stub benchmark row **avant** spawn. `_do_benchmark_phase`
+  génère le `run_id`, link à l'iteration via `update_iteration`, puis
+  spawn. `_record_benchmark_phase_failure` crée maintenant un row
+  `failed` stub si `it.benchmark_run_id` set mais row inexistante (cas
+  où le subprocess crash avant son propre `create_benchmark_run`).
+- **#11 (MEDIUM)** `_run_benchmark_chain` reset le buffer logs à
+  l'entrée. Sinon les relaunch successifs accumulaient des lignes du
+  run précédent.
+- **#14 (MEDIUM)** `PYTHONUNBUFFERED=1` env var sur tous les subprocess
+  streamés + flag `-u` sur les invocations Python (`evaluate_real_photos`,
+  `export_tflite`). Sans ça, child print buffers en 4KB et le
+  streaming ne stream pas pour les crashs rapides — exactement le cas
+  où le user a besoin de voir des logs.
+- **#21 (MEDIUM)** `server.py` docstring corrigé : "Re-queue any Lab
+  iteration stuck" → "Cleanup any Lab iteration left mid-flight". Le
+  log message aussi : "recovered N iteration(s)" → "cleaned up N stuck
+  iteration(s)".
+
+**Bonus surface lors de la review** : le path
+`ml/evaluate_real_photos.py` était hardcodé dans `_launch_benchmark`
+mais le fichier a été déplacé vers `ml/eval/evaluate_real_photos.py`
+au commit 9d78509 (refactor sub-packages). Donc le benchmark
+chaîné n'avait probablement jamais marché depuis ce refactor — c'est
+plausiblement la racine ultime du "stuck iteration" du user. Path corrigé.
+
+**Améliorations cosmétiques aussi appliquées** :
+- `tail_logs` : `itertools.islice` au lieu de `list(buf)[-n:]` (perf
+  négligeable mais évite de matérialiser 500 lignes sous lock).
+- `_run_benchmark_chain` : revalidation `status='completed'` après
+  `_global_lock.acquire()` — si deux requêtes `launch_benchmark`
+  passent la pré-validation simultanément, le perdant verra
+  `'benchmarking'` et bail au lieu d'écraser un benchmark_run_id frais.
+- Module docstring + `_do_benchmark_phase` docstring mises à jour pour
+  ne pas overclaim sur l'atomicité des transitions (review #7, #22, #23).
+
+**Findings non addressés (LOW + NIT)** :
+- #2/#5/#10 (lock granularity, leaf locks, log buffer growth) : OK
+  comme tels en mode single-user dev tool.
+- #17 (TS error field — pas de Pydantic) : pas de schema upstream à
+  ajouter, on accepte le risque.
+- #19 (toast d'erreur sur mutation) : nice-to-have hors scope.
+- #24 (gitignore `ml/state/training_progress/*.json`) : à faire dans
+  un commit séparé.
+- #25 (factor lock-acquire pattern) : duplication minime, pas urgent.
+
+---

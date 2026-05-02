@@ -28,12 +28,10 @@ import androidx.compose.ui.unit.dp
 import com.musubi.eurio.ml.CoinAnalyzer
 import com.musubi.eurio.ml.CoinAnalyzerFactory
 import com.musubi.eurio.ui.theme.EurioTheme
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.int
-import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.opencv.android.OpenCVLoader
@@ -85,7 +83,39 @@ data class CohortBundle(
     val trainedAt: String?,
     val numCoins: Int,
     val tests: List<TestPrescription>,
+    val coinsDisplay: Map<String, CoinDisplay>,
+    /**
+     * Design-group equivalence map for the cohort, loaded from
+     * `cohort_bundle/equivalence_map.json` (built by
+     * `ml/scripts/build_cohort_bundle.py`). Empty when the bundle predates
+     * phase 3 — strict-only verdicts apply in that case.
+     */
+    val equivalence: EquivalenceMap,
+    /**
+     * Phase 4 — provenance card. `null` for pre-phase-4 bundles that
+     * shipped without `bundle_meta.json` ; UI renders [BundleMeta.LEGACY_LABEL]
+     * in that case and downstream consumers (logger, header) degrade
+     * gracefully.
+     */
+    val bundleMeta: BundleMeta?,
 )
+
+private const val LIVE_TESTS_MANIFEST_VERSION = 2
+
+@Serializable
+private data class LiveTestsManifest(
+    val version: Int,
+    val cohort_id: String,
+    val iteration_id: String,
+    val sampled: Boolean = false,
+    val tests: List<TestPrescription>,
+    val coins_display: Map<String, CoinDisplay> = emptyMap(),
+)
+
+private val bundleJson = Json {
+    ignoreUnknownKeys = true
+    explicitNulls = false
+}
 
 @Composable
 private fun CohortTestRoot() {
@@ -114,8 +144,13 @@ private fun CohortTestRoot() {
 private fun RunFlow(bundle: CohortBundle) {
     val context = LocalContext.current
     val relay = remember { LiveTestRelay() }
-    val logger = remember(bundle.iterationId) {
-        LiveTestLogger(context, bundle.iterationId)
+    val detectionFlow = remember { kotlinx.coroutines.flow.MutableStateFlow(false) }
+    val logger = remember(bundle.iterationId, bundle.bundleMeta?.source) {
+        LiveTestLogger(
+            context = context,
+            iterationId = bundle.iterationId,
+            bundleSource = bundle.bundleMeta?.source?.wire ?: "legacy",
+        )
     }
     val initialResults = remember(bundle.iterationId) {
         runCatching { logger.readAll() }
@@ -144,6 +179,23 @@ private fun RunFlow(bundle: CohortBundle) {
          .onFailure { initError = it.message ?: it::class.java.simpleName }
     }
 
+    // Wire the live-detect callback HERE rather than in the LaunchedEffect
+    // .also block so setup and teardown stay paired and capture the analyzer
+    // by local val (the lambda would otherwise re-read the state at dispose
+    // time and clear the callback we just installed).
+    androidx.compose.runtime.DisposableEffect(analyzer) {
+        val a = analyzer
+        if (a != null) {
+            a.onPhotoLiveDetection = { det ->
+                detectionFlow.value = det != null
+            }
+        }
+        onDispose {
+            a?.onPhotoLiveDetection = null
+            detectionFlow.value = false
+        }
+    }
+
     when {
         initError != null -> ErrorState("Init analyzer: $initError")
         analyzer == null -> Box(
@@ -157,6 +209,8 @@ private fun RunFlow(bundle: CohortBundle) {
             relay = relay,
             logger = logger,
             initialResults = initialResults,
+            detectionFlow = detectionFlow,
+            equivalence = bundle.equivalence,
         )
     }
 }
@@ -191,23 +245,18 @@ private fun ErrorState(msg: String) {
 private fun loadBundle(assets: android.content.res.AssetManager): CohortBundle {
     val meta = assets.open("cohort_bundle/cohort_meta.json").bufferedReader()
         .use { it.readText() }
-    val manifest = assets.open("cohort_bundle/live_tests_manifest.json").bufferedReader()
-        .use { it.readText() }
-    val catalog = assets.open("cohort_bundle/catalog_snapshot.json").bufferedReader()
+    val manifestRaw = assets.open("cohort_bundle/live_tests_manifest.json").bufferedReader()
         .use { it.readText() }
 
     val metaJson = Json.parseToJsonElement(meta).jsonObject
-    val manifestJson = Json.parseToJsonElement(manifest).jsonObject
-    val catalogJson = Json.parseToJsonElement(catalog).jsonObject
-
-    val tests = manifestJson["tests"]?.jsonArray?.map { el ->
-        val obj = el.jsonObject
-        TestPrescription(
-            idx = obj["idx"]!!.jsonPrimitive.int,
-            expected_eurio_id = obj["expected_eurio_id"]!!.jsonPrimitive.content,
-            condition = obj["condition"]!!.jsonPrimitive.content,
+    val manifest = bundleJson.decodeFromString<LiveTestsManifest>(manifestRaw)
+    if (manifest.version != LIVE_TESTS_MANIFEST_VERSION) {
+        throw IllegalStateException(
+            "Bundle manifest is version ${manifest.version}; this build expects " +
+                "$LIVE_TESTS_MANIFEST_VERSION. Regenerate via " +
+                "`go-task -t app-android/Taskfile.yml cohort-test:bundle`."
         )
-    } ?: emptyList()
+    }
 
     return CohortBundle(
         cohortName = metaJson.str("cohort_name") ?: "?",
@@ -215,8 +264,11 @@ private fun loadBundle(assets: android.content.res.AssetManager): CohortBundle {
         iterationName = metaJson.str("iteration_name") ?: "?",
         modelVersion = metaJson.str("model_version") ?: "?",
         trainedAt = metaJson.str("trained_at"),
-        numCoins = catalogJson["coins"]?.jsonArray?.size ?: 0,
-        tests = tests,
+        numCoins = manifest.coins_display.size,
+        tests = manifest.tests,
+        coinsDisplay = manifest.coins_display,
+        equivalence = EquivalenceMap.fromAssets(assets),
+        bundleMeta = BundleMeta.fromAssets(assets),
     )
 }
 

@@ -34,6 +34,7 @@ import {
   fetchTrainingProgress,
   fetchTrajectory,
   generateCohortCsv,
+  launchIterationBenchmark,
   launchIterationTraining,
   purgeIterationAugmentations,
   purgeIterationTestBundle,
@@ -433,6 +434,24 @@ export function useLaunchTrainingMutation(
   const qc = useQueryClient()
   return useMutation({
     mutationFn: () => launchIterationTraining(toValue(cohortId), toValue(iterationId)),
+    onSuccess: () => {
+      const id = toValue(cohortId)
+      const iid = toValue(iterationId)
+      qc.invalidateQueries({ queryKey: LAB_KEYS.iterations(id) })
+      qc.invalidateQueries({ queryKey: LAB_KEYS.cohort(id) })
+      qc.invalidateQueries({ queryKey: LAB_KEYS.runner })
+      qc.invalidateQueries({ queryKey: LAB_KEYS.iterationProgress(id, iid) })
+    },
+  })
+}
+
+export function useLaunchBenchmarkMutation(
+  cohortId: MaybeRefOrGetter<string>,
+  iterationId: MaybeRefOrGetter<string>,
+) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => launchIterationBenchmark(toValue(cohortId), toValue(iterationId)),
     onSuccess: () => {
       const id = toValue(cohortId)
       const iid = toValue(iterationId)

@@ -24,6 +24,7 @@ Pipeline steps:
 from __future__ import annotations
 
 import json
+import logging
 import os
 import shutil
 import statistics
@@ -34,6 +35,9 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+from typing import Callable
+
+logger = logging.getLogger(__name__)
 
 import httpx
 
@@ -87,6 +91,10 @@ class ActiveState:
     epochs_total: int = 0
     log_lines: list[str] = field(default_factory=list)
     epoch_start_ts: float | None = None
+    # Optional sink invoked for every line read from the training subprocess.
+    # Used by IterationRunner to mirror lines into its per-iteration buffer
+    # (so the live monitor sees logs regardless of which phase is active).
+    log_sink: Callable[[str], None] | None = None
 
 
 class TrainingRunner:
@@ -175,8 +183,16 @@ class TrainingRunner:
         added: list[ClassRef],
         removed: list[ClassRef],
         config: dict | None = None,
+        log_sink: Callable[[str], None] | None = None,
     ) -> RunRow:
-        """Create and kick off a training run covering `added` + `removed`."""
+        """Create and kick off a training run covering `added` + `removed`.
+
+        ``log_sink`` (optional) is invoked for every line of subprocess
+        output. The runner still keeps its own ``log_lines`` buffer (used
+        for the post-run archive); the sink is purely a mirror for live
+        consumers that outlive the ``ActiveState`` (e.g. ``IterationRunner``
+        which needs logs to survive into the benchmark phase).
+        """
         cfg = dict(DEFAULT_CONFIG)
         if config:
             cfg.update({k: v for k, v in config.items() if v is not None})
@@ -216,7 +232,9 @@ class TrainingRunner:
                     run_id, StepRow(step_index=i, name=name, status="pending")
                 )
             self._active = ActiveState(
-                run_id=run_id, epochs_total=int(cfg.get("epochs", 40))
+                run_id=run_id,
+                epochs_total=int(cfg.get("epochs", 40)),
+                log_sink=log_sink,
             )
 
         thread = threading.Thread(
@@ -314,6 +332,11 @@ class TrainingRunner:
     # ─── Steps ───────────────────────────────────────────────────────────
 
     def _delete(self, row: RunRow) -> str:
+        # Phase 2 (lab-prod-refacto) : avec iter_dir, chaque itération vit
+        # dans son propre univers ; il n'y a plus rien à purger inter-run.
+        # Cf. docs/lab-prod-refacto/phase-2-isolation-artefacts.md.
+        if _iter_dir(row) is not None:
+            return "skipped (iter_dir self-contained)"
         if not row.classes_removed:
             return "skipped (no removed classes)"
         # If the same class is also being added (e.g. user removed all old
@@ -345,8 +368,23 @@ class TrainingRunner:
         if row.classes_after:
             only = ",".join(sorted({c.class_id for c in row.classes_after}))
             cmd.extend(["--only-classes", only])
-        self._run_subprocess(row.id, cmd)
-        manifest_path = EURIO_POC / "class_manifest.json"
+        # class_kind est requis par prepare_dataset.py. En lab iteration on
+        # force eurio_id (cf. iteration_runner._launch_training). Les runs
+        # legacy hors-iteration tombent sur design_group (COALESCE historique).
+        class_kind = row.config.get("class_kind", "design_group")
+        cmd.extend(["--class-kind", class_kind])
+        iter_dir = _iter_dir(row)
+        if iter_dir is not None:
+            dataset_dir = iter_dir / "dataset"
+            cmd.extend([
+                "--output-dir", str(dataset_dir),
+                "--skip-train-split",
+            ])
+            self._run_subprocess(row.id, cmd)
+            manifest_path = dataset_dir / "class_manifest.json"
+        else:
+            self._run_subprocess(row.id, cmd)
+            manifest_path = EURIO_POC / "class_manifest.json"
         if manifest_path.exists():
             payload = json.loads(manifest_path.read_text())
             n = len(payload.get("classes", []))
@@ -359,7 +397,12 @@ class TrainingRunner:
             if self._active is not None:
                 self._active.epoch = 0
                 self._active.epochs_total = int(cfg.get("epochs", 40))
+        iter_dir = _iter_dir(row)
         dataset_path = cfg.get("dataset_override") or str(EURIO_POC / "train")
+        val_path = (
+            str(iter_dir / "dataset" / "val") if iter_dir is not None
+            else str(EURIO_POC / "val")
+        )
         cmd: list[str] = [
             VENV_PYTHON,
             str(ML_DIR / "training" / "train_embedder.py"),
@@ -368,7 +411,7 @@ class TrainingRunner:
             "--dataset",
             dataset_path,
             "--val-dataset",
-            str(EURIO_POC / "val"),
+            val_path,
             "--epochs",
             str(cfg["epochs"]),
             "--batch-size",
@@ -380,6 +423,8 @@ class TrainingRunner:
             "--model-version",
             version_str,
         ]
+        if iter_dir is not None:
+            cmd.extend(["--output", str(iter_dir / "checkpoints")])
         aug_recipe = cfg.get("aug_recipe") or row.aug_recipe_id
         prebaked = bool(cfg.get("prebaked_augmentations"))
         if prebaked:
@@ -400,34 +445,56 @@ class TrainingRunner:
         return f"{cfg['epochs']} epochs ({version_str}){suffix}"
 
     def _compute_embeddings(self, row: RunRow, version_str: str) -> str:
-        self._run_subprocess(
-            row.id,
-            [
-                VENV_PYTHON,
-                str(ML_DIR / "training" / "compute_embeddings.py"),
-                "--model-version",
-                version_str,
-            ],
-        )
-        emb_path = OUTPUT_DIR / "embeddings_v1.json"
+        cmd = [
+            VENV_PYTHON,
+            str(ML_DIR / "training" / "compute_embeddings.py"),
+            "--model-version",
+            version_str,
+        ]
+        iter_dir = _iter_dir(row)
+        if iter_dir is not None:
+            cmd.extend([
+                "--model", str(iter_dir / "checkpoints" / "best_model.pth"),
+                "--dataset", str(iter_dir / "dataset"),
+                "--output-dir", str(iter_dir / "embeddings"),
+            ])
+            emb_path = iter_dir / "embeddings" / "embeddings_v1.json"
+        else:
+            emb_path = OUTPUT_DIR / "embeddings_v1.json"
+        self._run_subprocess(row.id, cmd)
         if emb_path.exists():
             n = len(json.loads(emb_path.read_text()).get("coins", {}))
             return f"{n} class embeddings"
         return "embeddings computed"
 
     def _seed(self, row: RunRow) -> str:
+        # Phase 2 (lab-prod-refacto) : en mode iteration, on n'écrit plus
+        # Supabase ici. Le push vers `coin_embeddings` / `model_classes`
+        # devient l'effet exclusif de la promotion (phase 3).
+        if _iter_dir(row) is not None:
+            return "skipped (iter_dir = no Supabase write before promote)"
         self._run_subprocess(
             row.id, [VENV_PYTHON, str(ML_DIR / "bootstrap" / "seed_supabase.py")]
         )
         return "synced to Supabase"
 
     def _validate_per_class(self, row: RunRow) -> str:
-        self._run_subprocess(
-            row.id, [VENV_PYTHON, str(ML_DIR / "training" / "validate_per_class.py")]
-        )
-        if not PER_CLASS_METRICS.exists():
+        cmd = [VENV_PYTHON, str(ML_DIR / "training" / "validate_per_class.py")]
+        iter_dir = _iter_dir(row)
+        if iter_dir is not None:
+            metrics_path = iter_dir / "metrics" / "per_class_metrics.json"
+            metrics_path.parent.mkdir(parents=True, exist_ok=True)
+            cmd.extend([
+                "--model", str(iter_dir / "checkpoints" / "best_model.pth"),
+                "--dataset", str(iter_dir / "dataset"),
+                "--output", str(metrics_path),
+            ])
+        else:
+            metrics_path = PER_CLASS_METRICS
+        self._run_subprocess(row.id, cmd)
+        if not metrics_path.exists():
             return "no metrics written"
-        data = json.loads(PER_CLASS_METRICS.read_text())
+        data = json.loads(metrics_path.read_text())
         classes = data.get("classes", [])
         rows = [
             ClassMetricRow(
@@ -445,7 +512,12 @@ class TrainingRunner:
     # ─── Finalization ────────────────────────────────────────────────────
 
     def _finalize_run(self, run_id: str) -> None:
-        log_path = CHECKPOINTS_DIR / "training_log.json"
+        row = self._store.get_run(run_id)
+        iter_dir = _iter_dir(row) if row else None
+        log_path = (
+            iter_dir / "checkpoints" / "training_log.json" if iter_dir is not None
+            else CHECKPOINTS_DIR / "training_log.json"
+        )
         if not log_path.exists():
             return
         try:
@@ -555,6 +627,15 @@ class TrainingRunner:
             if self._active is None or self._active.run_id != run_id:
                 return
             self._active.log_lines.append(line)
+            sink = self._active.log_sink
+        # Call the sink outside the runner lock so a slow consumer can't
+        # block the subprocess reader thread. Failures must NEVER propagate
+        # — this is a logging side-channel, not the source of truth.
+        if sink is not None:
+            try:
+                sink(line)
+            except Exception:  # noqa: BLE001
+                logger.exception("Training log_sink raised — ignoring")
 
     def _parse_epoch_line(self, run_id: str, line: str) -> None:
         if "Epoch" not in line or "loss:" not in line:
@@ -634,6 +715,19 @@ def _safe_pct(s: str | None) -> float | None:
         return float(s.rstrip("%")) / 100
     except ValueError:
         return None
+
+
+def _iter_dir(row: RunRow | None) -> Path | None:
+    """Resolve the per-iteration root, when this run is owned by an iteration.
+
+    Set by :class:`IterationRunner` via ``config["iter_dir"]`` ; absent for
+    legacy direct ``start_run`` callers (which keep the singleton paths under
+    ``ml/datasets/eurio-poc`` and ``ml/checkpoints/``).
+    """
+    if row is None or not row.config:
+        return None
+    raw = row.config.get("iter_dir")
+    return Path(raw) if raw else None
 
 
 def _read_current_classes() -> list[ClassRef]:

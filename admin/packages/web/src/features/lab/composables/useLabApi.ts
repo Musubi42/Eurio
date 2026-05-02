@@ -215,6 +215,16 @@ export async function launchIterationTraining(
   )
 }
 
+export async function launchIterationBenchmark(
+  cohortId: string,
+  iterationId: string,
+): Promise<IterationDetail> {
+  return json<IterationDetail>(
+    `/lab/cohorts/${encodeURIComponent(cohortId)}/iterations/${encodeURIComponent(iterationId)}/launch-benchmark`,
+    { method: 'POST', body: '{}' },
+  )
+}
+
 export async function deleteIteration(cohortId: string, iterationId: string): Promise<void> {
   await json<{ deleted: boolean }>(
     `/lab/cohorts/${encodeURIComponent(cohortId)}/iterations/${encodeURIComponent(iterationId)}`,

@@ -2,9 +2,12 @@ package com.musubi.eurio.ml
 
 import android.content.Context
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.float
 import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.math.sqrt
 
@@ -16,6 +19,16 @@ data class CoinMatch(
 /**
  * Loads reference coin embeddings from a JSON asset and matches query embeddings
  * via cosine similarity.
+ *
+ * Two on-disk schemas are supported transparently:
+ *   - Flat (prod, `data/coin_embeddings.json`): `{ <key>: [floats] }`,
+ *     produced by `ml/training/compute_embeddings.py`.
+ *   - Cohort bundle (`cohort_bundle/embeddings_v1.json`): the richer
+ *     `{ version, model, embedding_dim, coins: { <eurio_id>: { embedding: [floats], ... } } }`,
+ *     produced by `ml/scripts/build_cohort_bundle.py`.
+ *
+ * The class name returned by [match] is the JSON key — numista_id for prod,
+ * eurio_id for cohort bundles.
  */
 class EmbeddingMatcher(context: Context, dataPath: String = "data/coin_embeddings.json") {
 
@@ -23,11 +36,24 @@ class EmbeddingMatcher(context: Context, dataPath: String = "data/coin_embedding
 
     init {
         val jsonText = context.assets.open(dataPath).bufferedReader().use { it.readText() }
-        val jsonObject = Json.parseToJsonElement(jsonText) as JsonObject
+        val root = Json.parseToJsonElement(jsonText).jsonObject
+        val coinsMap = (root["coins"] as? JsonObject) ?: root
 
-        referenceEmbeddings = jsonObject.mapValues { (_, value) ->
-            value.jsonArray.map { it.jsonPrimitive.float }.toFloatArray()
+        referenceEmbeddings = coinsMap.entries
+            .mapNotNull { (key, value) ->
+                val embedding = value.toEmbeddingArrayOrNull() ?: return@mapNotNull null
+                key to embedding
+            }
+            .toMap()
+    }
+
+    private fun JsonElement.toEmbeddingArrayOrNull(): FloatArray? {
+        val arr: JsonArray = when (this) {
+            is JsonArray -> this
+            is JsonObject -> (this["embedding"] as? JsonArray) ?: return null
+            else -> return null
         }
+        return arr.map { it.jsonPrimitive.float }.toFloatArray()
     }
 
     /**
