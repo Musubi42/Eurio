@@ -45,10 +45,12 @@ admin expose une carte + une page détail uniformes pour chacune.**
 
 | Si tu veux… | Lis… |
 |---|---|
+| **Voir les choix figés (à lire en premier)** | [`decisions.md`](./decisions.md) |
 | Comprendre l'état actuel par source | [`analysis.md`](./analysis.md) |
 | Voir le schéma DB cible (DDL) | [`schema.md`](./schema.md) |
 | Écrire un nouveau module source | [`module-contract.md`](./module-contract.md) |
 | Comprendre le filtrage qualité photos | [`quality-pipeline.md`](./quality-pipeline.md) |
+| Designer la review queue humaine | [`review-queue.md`](./review-queue.md) |
 | Designer la page admin détail | [`admin-ux.md`](./admin-ux.md) |
 | Implémenter la phase 1 (fondations) | [`phase-1-foundations.md`](./phase-1-foundations.md) |
 | Implémenter la phase 2 (nouvelles sources) | [`phase-2-new-sources.md`](./phase-2-new-sources.md) |
@@ -61,7 +63,7 @@ admin expose une carte + une page détail uniformes pour chacune.**
 
 | # | Titre | Périmètre court | Bloque les suivantes ? | Statut |
 |---|---|---|---|---|
-| 1 | [Fondations](./phase-1-foundations.md) | Tables, base modulaire, refacto eBay vers nouveau contrat | **Oui** — toutes les phases en dépendent | 🔲 |
+| 1 | [Fondations](./phase-1-foundations.md) | Tables, base modulaire, refacto eBay, **review queue V0** | **Oui** — toutes les phases en dépendent | 🔲 |
 | 2 | [Nouvelles sources](./phase-2-new-sources.md) | Catawiki, NumisCorner, CGB | Non | 🔲 |
 | 3 | [Pipeline qualité photos](./phase-3-quality-pipeline.md) | Score + flag `training_eligible`, intégration dataset prepare | Non, parallélisable à phase 2 | 🔲 |
 | 4 | [Admin UX](./phase-4-admin-ux.md) | Page détail `/sources/:id`, cards enrichies | Non | 🔲 |
@@ -70,31 +72,29 @@ admin expose une carte + une page détail uniformes pour chacune.**
 n'est pas faite, ajouter une nouvelle source ou enrichir l'admin
 revient à empiler de la dette.
 
-## Décisions actées (2026-05-02)
+## Décisions actées
 
-- 2 nouvelles tables : `image_assets` + `coin_market_quotes`,
-  séparées du référentiel canonique.
-- **Pas de cross-source averaging.** Chaque source garde ses propres
-  prix et ses propres images.
-- **Dédup intra-source uniquement** via `(source, source_ref)`.
-  Deux annonces eBay distinctes pour la même pièce = deux rows
-  distinctes, deux images distinctes consommées par le training.
-- **Stockage images local** au début (`ml/datasets/sources/<source>/...`),
-  champ `storage_path` pourra pointer S3 plus tard.
-- **`condition`** stockée brute (string libre source) + colonne
-  `condition_normalized` enum optionnelle.
-- **Images Catawiki/eBay** : téléchargement local, `license` tagué,
-  flag `redistributable = false` pour ne jamais sortir du training.
-- **Résolution `listing → eurio_id`** : problème documenté à part
-  (cf. [`open-problems.md`](./open-problems.md)), pas dans cette refacto.
-- **Pipeline qualité photos** avec `quality_score` + `training_eligible`,
-  un seul filtre stable conditionne l'entrée dans un dataset lab.
-- **Convention modulaire** `ml/sources/<source>/` + go-task uniformes
-  `ml:src:<source>:{run,dry,limit,status}`.
-- **Page détail `/sources/:id`** avec onglets Runs / Données /
-  Couverture / Commandes.
-- **Nouvelles sources prioritaires** : Catawiki, NumisCorner, CGB.
-- **Capture images eBay** au passage des runs prix existants.
+Le détail figé se trouve dans [`decisions.md`](./decisions.md). Vue
+résumée :
+
+- **D-01** Label space = `eurio_id` (pas `design_group`).
+- **D-02** `eurio_id` nullable post-fetch ; résolution 3 niveaux
+  (`auto_name` v1, `auto_dino` futur, `manual` toujours dispo).
+- **D-03** Multi-coin lots : on capture, on splitte en N crops, pas
+  de quote pour les lots.
+- **D-04** Quotes non résolues stockées dans `pending_quotes`,
+  promues vers `coin_market_quotes` à la résolution image.
+- **D-05** Quotas + runs en SQLite (`ml/state/training.db`), pas de
+  fichiers JSON.
+- **D-06** Mac (dev) ↔ PC (training) : pas de DB partagée, sync
+  via export.
+- **D-07** Dédup pHash, propagation auto de label.
+- **D-08** Anti-leakage DinoV2 : bench protégé.
+- **D-09** Review queue minimale dès phase 1.
+- **D-10** Filtre `redistributable=false` codé dès phase 3.
+- **D-11** `face='obverse'` only pour le training.
+- **D-12** Schéma split `source_images` (raw) + `image_assets`
+  (crops).
 
 ## Hors-scope explicite
 

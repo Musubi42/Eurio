@@ -27,7 +27,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["referential*", "market*", "export*", "training*", "eval*", "bootstrap*", "api*", "augmentations*", "scan*", "state*", "tests*"]
+include = ["referential*", "market*", "export*", "training*", "eval*", "bootstrap*", "api*", "augmentations*", "scan*", "sources*", "state*", "tests*"]
 
 # Top-level modules (single .py files at ml/ root). setuptools.packages.find
 # only picks up packages, so any new sibling .py needs to be listed here too

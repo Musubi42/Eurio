@@ -263,3 +263,178 @@ CREATE INDEX IF NOT EXISTS idx_live_tests_iter
 --   REFERENCES augmentation_recipes(id) ON DELETE SET NULL;
 -- ALTER TABLE training_staging ADD COLUMN aug_recipe_id TEXT
 --   REFERENCES augmentation_recipes(id) ON DELETE SET NULL;
+
+-- ─── Sources refacto (docs/sources-refacto/) ─────────────────────────────
+-- Two-table image split (source_images = raw download, image_assets = crops)
+-- with deferred eurio_id resolution via review_queue. See decisions.md
+-- D-01..D-15 and schema.md for the rationale of each column.
+
+CREATE TABLE IF NOT EXISTS source_runs (
+  id              TEXT PRIMARY KEY,
+  source          TEXT NOT NULL,
+  kind            TEXT NOT NULL
+                  CHECK (kind IN ('run','dry','limit','reset')),
+  started_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  ended_at        TEXT,
+  status          TEXT NOT NULL DEFAULT 'running'
+                  CHECK (status IN ('running','success','failed','partial')),
+  current_step    TEXT,                                -- 'discover'|'persist'|'download'|'detect'|'resolve'|'enqueue'
+  n_calls            INTEGER NOT NULL DEFAULT 0,
+  n_raws_added       INTEGER NOT NULL DEFAULT 0,
+  n_crops_added      INTEGER NOT NULL DEFAULT 0,
+  n_quotes_added     INTEGER NOT NULL DEFAULT 0,
+  n_pending_added    INTEGER NOT NULL DEFAULT 0,
+  n_auto_resolved    INTEGER NOT NULL DEFAULT 0,
+  n_review_enqueued  INTEGER NOT NULL DEFAULT 0,
+  n_errors           INTEGER NOT NULL DEFAULT 0,
+  filters_json    TEXT,
+  log_path        TEXT,
+  error_summary   TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_source_runs_source_started
+  ON source_runs(source, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_source_runs_status ON source_runs(status);
+
+CREATE TABLE IF NOT EXISTS source_images (
+  id               TEXT PRIMARY KEY,
+  source           TEXT NOT NULL,
+  source_ref       TEXT NOT NULL,
+  source_url       TEXT,
+  target_eurio_id  TEXT,
+  listing_title    TEXT,
+  listing_country  TEXT,
+  listing_year     INTEGER,
+  listing_price    REAL,
+  listing_currency TEXT NOT NULL DEFAULT 'EUR',
+  condition_raw    TEXT,
+  seller_id        TEXT,
+  storage_path     TEXT,
+  width            INTEGER,
+  height           INTEGER,
+  bytes            INTEGER,
+  sha256           TEXT,
+  n_crops_detected INTEGER NOT NULL DEFAULT 0,
+  license          TEXT NOT NULL DEFAULT 'unknown',
+  redistributable  INTEGER NOT NULL DEFAULT 0,
+  fetched_at       TEXT NOT NULL DEFAULT (datetime('now')),
+  raw_payload_json TEXT,
+  run_id           TEXT REFERENCES source_runs(id) ON DELETE SET NULL,
+  UNIQUE (source, source_ref)
+);
+
+CREATE INDEX IF NOT EXISTS idx_source_images_source ON source_images(source);
+CREATE INDEX IF NOT EXISTS idx_source_images_target ON source_images(target_eurio_id);
+CREATE INDEX IF NOT EXISTS idx_source_images_run ON source_images(run_id);
+
+CREATE TABLE IF NOT EXISTS image_assets (
+  id                       TEXT PRIMARY KEY,
+  source_image_id          TEXT NOT NULL REFERENCES source_images(id) ON DELETE CASCADE,
+  crop_index               INTEGER NOT NULL DEFAULT 0,
+  bbox_json                TEXT,                       -- {x,y,w,h,conf}
+  detection_method         TEXT,                       -- 'yolo'|'hough'|'merged'|'manual'
+
+  eurio_id                 TEXT,
+  resolution_status        TEXT NOT NULL DEFAULT 'pending_match'
+                           CHECK (resolution_status IN (
+                             'pending_crop','pending_match',
+                             'auto_name','auto_phash',
+                             'needs_review','manual','rejected'
+                           )),
+  resolution_confidence    REAL,
+  resolution_attempts_json TEXT,
+  candidate_eurio_ids_json TEXT,
+
+  face                     TEXT
+                           CHECK (face IS NULL OR face IN ('obverse','reverse','unknown')),
+  variant_kind             TEXT NOT NULL DEFAULT 'unknown'
+                           CHECK (variant_kind IN (
+                             'canonical','official_press','merchant_catalog',
+                             'auction_listing','in_hand','macro','reverse_only','unknown'
+                           )),
+
+  quality_score            REAL,
+  training_eligible        INTEGER NOT NULL DEFAULT 0,
+  quality_reason           TEXT,
+  quality_pipeline_version INTEGER,
+
+  phash                    INTEGER,                    -- 64-bit perceptual hash
+
+  storage_path             TEXT NOT NULL,
+  width                    INTEGER,
+  height                   INTEGER,
+  sha256                   TEXT,
+
+  fetched_at               TEXT NOT NULL DEFAULT (datetime('now')),
+  resolved_at              TEXT,
+  run_id                   TEXT REFERENCES source_runs(id) ON DELETE SET NULL,
+
+  UNIQUE (source_image_id, crop_index)
+);
+
+CREATE INDEX IF NOT EXISTS idx_image_assets_eurio    ON image_assets(eurio_id);
+CREATE INDEX IF NOT EXISTS idx_image_assets_status   ON image_assets(resolution_status);
+CREATE INDEX IF NOT EXISTS idx_image_assets_training ON image_assets(training_eligible)
+  WHERE training_eligible = 1;
+CREATE INDEX IF NOT EXISTS idx_image_assets_phash    ON image_assets(phash);
+CREATE INDEX IF NOT EXISTS idx_image_assets_run      ON image_assets(run_id);
+CREATE INDEX IF NOT EXISTS idx_image_assets_face     ON image_assets(face);
+
+CREATE TABLE IF NOT EXISTS coin_market_quotes (
+  id                   TEXT PRIMARY KEY,
+  eurio_id             TEXT NOT NULL,
+  source               TEXT NOT NULL,
+  condition_raw        TEXT,
+  condition_normalized TEXT NOT NULL DEFAULT 'unknown',
+  currency             TEXT NOT NULL DEFAULT 'EUR',
+  p10                  REAL,
+  p50                  REAL,
+  p90                  REAL,
+  sample_size          INTEGER NOT NULL DEFAULT 1,
+  period_start         TEXT NOT NULL,
+  period_end           TEXT NOT NULL,
+  fetched_at           TEXT NOT NULL DEFAULT (datetime('now')),
+  raw_payload_json     TEXT,
+  run_id               TEXT REFERENCES source_runs(id) ON DELETE SET NULL,
+  UNIQUE (source, eurio_id, period_start, condition_raw)
+);
+
+CREATE INDEX IF NOT EXISTS idx_cmq_eurio  ON coin_market_quotes(eurio_id);
+CREATE INDEX IF NOT EXISTS idx_cmq_source ON coin_market_quotes(source);
+CREATE INDEX IF NOT EXISTS idx_cmq_period ON coin_market_quotes(period_start DESC);
+CREATE INDEX IF NOT EXISTS idx_cmq_run    ON coin_market_quotes(run_id);
+
+CREATE TABLE IF NOT EXISTS pending_quotes (
+  id               TEXT PRIMARY KEY,
+  source_image_id  TEXT NOT NULL REFERENCES source_images(id) ON DELETE CASCADE,
+  source           TEXT NOT NULL,
+  price            REAL,
+  currency         TEXT NOT NULL DEFAULT 'EUR',
+  condition_raw    TEXT,
+  observed_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  raw_payload_json TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_pending_quotes_source_image
+  ON pending_quotes(source_image_id);
+
+CREATE TABLE IF NOT EXISTS review_queue (
+  id                       TEXT PRIMARY KEY,
+  image_asset_id           TEXT NOT NULL REFERENCES image_assets(id) ON DELETE CASCADE,
+  priority                 INTEGER NOT NULL DEFAULT 100,
+  candidate_eurio_ids_json TEXT,
+  status                   TEXT NOT NULL DEFAULT 'open'
+                           CHECK (status IN ('open','in_progress','done','skipped')),
+  assigned_to              TEXT,
+  decided_eurio_id         TEXT,
+  decided_face             TEXT,
+  decided_variant_kind     TEXT,
+  decided_at               TEXT,
+  decided_by               TEXT,
+  decision_notes           TEXT,
+  enqueued_at              TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (image_asset_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_review_queue_status_priority
+  ON review_queue(status, priority);
