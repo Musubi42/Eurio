@@ -1,6 +1,6 @@
-// Review queue API composable — mocks for /review (V1).
+// Review queue API composable — backed by ml/api/review_queue_routes.py.
 //
-// Endpoints futurs (cf. docs/sources-refacto/review-queue.md §"Endpoints API attendus") :
+// Endpoints (cf. docs/sources-refacto/review-queue.md §"Endpoints API attendus") :
 //   GET    /review-queue?status=open&limit=20&order=priority
 //   GET    /review-queue/:id
 //   POST   /review-queue/:id/decide
@@ -8,8 +8,12 @@
 //   POST   /review-queue/:id/reject
 //   GET    /review-queue/stats
 //
-// Tant que le backend n'est pas câblé, on génère 30 reviews variés couvrant
-// les cas critiques : top-5 propre, top-5 moisi, lot multi-coin, image trash.
+// Network-down fallback: returns the embedded MOCK_QUEUE so the page
+// stays usable in pure-front dev (no FastAPI running). When a real
+// backend with no review items returns an empty array, we surface the
+// empty state truthfully (no mock substitution).
+
+import { ML_API } from '@/features/training/composables/useTrainingApi'
 
 export type ReviewFace = 'obverse' | 'reverse' | 'unknown'
 export type ReviewSource = 'ebay' | 'catawiki' | 'mdp' | 'lmdlp' | 'numista'
@@ -57,13 +61,54 @@ export interface ReviewStats {
 
 // ─── Public API ─────────────────────────────────────────────────────────
 
+/** Returns null on network error so callers can mock-fallback. */
+async function safeFetch<T>(path: string, init?: RequestInit): Promise<T | null> {
+  try {
+    const resp = await fetch(`${ML_API}${path}`, init)
+    if (!resp.ok) {
+      // 4xx/5xx with a real backend: surface the error to the caller.
+      const detail = await resp.json().catch(() => ({ detail: `HTTP ${resp.status}` }))
+      throw new ReviewApiError(resp.status, typeof detail === 'object' && detail && 'detail' in detail
+        ? String((detail as { detail: unknown }).detail)
+        : `HTTP ${resp.status}`)
+    }
+    return (await resp.json()) as T
+  } catch (err) {
+    if (err instanceof TypeError) return null  // network down → fallback
+    throw err
+  }
+}
+
+export class ReviewApiError extends Error {
+  constructor(public readonly status: number, message: string) {
+    super(message)
+  }
+}
+
 export async function fetchReviewQueue(opts: { limit?: number } = {}): Promise<ReviewItem[]> {
-  await delay(120)
   const limit = opts.limit ?? 30
+  const real = await safeFetch<ReviewItem[]>(`/review-queue?limit=${limit}&order=priority`)
+  if (real !== null) {
+    // Prepend ML_API to crop_url since backend returns relative paths.
+    return real.map((r) => ({
+      ...r,
+      crop_url: r.crop_url.startsWith('http') ? r.crop_url : `${ML_API}${r.crop_url}`,
+    }))
+  }
+
+  await delay(120)
   return MOCK_QUEUE.slice(0, limit)
 }
 
 export async function fetchReviewItem(id: string): Promise<ReviewItem> {
+  const real = await safeFetch<ReviewItem>(`/review-queue/${encodeURIComponent(id)}`)
+  if (real !== null) {
+    return {
+      ...real,
+      crop_url: real.crop_url.startsWith('http') ? real.crop_url : `${ML_API}${real.crop_url}`,
+    }
+  }
+
   await delay(60)
   const item = MOCK_QUEUE.find((r) => r.id === id)
   if (!item) throw new Error(`Review introuvable : ${id}`)
@@ -71,6 +116,9 @@ export async function fetchReviewItem(id: string): Promise<ReviewItem> {
 }
 
 export async function fetchReviewStats(): Promise<ReviewStats> {
+  const real = await safeFetch<ReviewStats>('/review-queue/stats')
+  if (real !== null) return real
+
   await delay(60)
   return {
     n_pending: 1247,
@@ -80,20 +128,36 @@ export async function fetchReviewStats(): Promise<ReviewStats> {
   }
 }
 
-export async function decideReviewItem(id: string, _payload: ReviewDecision): Promise<void> {
-  await delay(40)
-  // mock — no-op
-  console.info('[V1 mock] decide', id, _payload)
+export async function decideReviewItem(id: string, payload: ReviewDecision): Promise<void> {
+  const real = await safeFetch<unknown>(`/review-queue/${encodeURIComponent(id)}/decide`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  if (real === null) {
+    await delay(40)
+    console.info('[mock fallback] decide', id, payload)
+  }
 }
 
 export async function skipReviewItem(id: string): Promise<void> {
-  await delay(20)
-  console.info('[V1 mock] skip', id)
+  const real = await safeFetch<unknown>(`/review-queue/${encodeURIComponent(id)}/skip`, {
+    method: 'POST',
+  })
+  if (real === null) {
+    await delay(20)
+    console.info('[mock fallback] skip', id)
+  }
 }
 
 export async function rejectReviewItem(id: string): Promise<void> {
-  await delay(20)
-  console.info('[V1 mock] reject', id)
+  const real = await safeFetch<unknown>(`/review-queue/${encodeURIComponent(id)}/reject`, {
+    method: 'POST',
+  })
+  if (real === null) {
+    await delay(20)
+    console.info('[mock fallback] reject', id)
+  }
 }
 
 // ─── Mock data ──────────────────────────────────────────────────────────

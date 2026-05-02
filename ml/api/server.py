@@ -27,6 +27,7 @@ from . import augmentation_routes
 from . import benchmark_routes
 from . import iteration_runner as iteration_runner_module
 from . import lab_routes
+from . import review_queue_routes
 from . import sources_routes
 
 ML_DIR = Path(__file__).parent.parent
@@ -80,6 +81,10 @@ app.include_router(lab_routes.router)
 
 # Wire /sources/status — quota + temporal + coverage aggregation.
 app.include_router(sources_routes.router)
+
+# Wire /review-queue — single-item review flow over the queue populated
+# by the orchestrator's `enqueue` step.
+app.include_router(review_queue_routes.router)
 
 
 @app.on_event("startup")
