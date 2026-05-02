@@ -330,6 +330,72 @@ def insert_pending_quote(conn: sqlite3.Connection, row: PendingQuoteRow) -> str:
     return pid
 
 
+def upsert_discovery_log(
+    conn: sqlite3.Connection,
+    *,
+    source: str,
+    source_ref: str,
+    query_signature: str | None,
+    run_id: str | None,
+) -> tuple[str, bool]:
+    """Insert or refresh a `discovery_log` row.
+
+    Returns `(row_id, is_new)` so the caller can count truly new
+    discoveries vs re-discoveries. Preserves `first_seen_at` and
+    `pipeline_state` on update — only `last_seen_at`, `last_run_id`
+    and `query_signature` are refreshed.
+    """
+    existing = conn.execute(
+        "SELECT id FROM discovery_log WHERE source = ? AND source_ref = ?",
+        (source, source_ref),
+    ).fetchone()
+    if existing:
+        rid = existing["id"] if isinstance(existing, sqlite3.Row) else existing[0]
+        conn.execute(
+            """
+            UPDATE discovery_log
+               SET last_seen_at = datetime('now'),
+                   last_run_id = ?,
+                   query_signature = COALESCE(?, query_signature)
+             WHERE id = ?
+            """,
+            (run_id, query_signature, rid),
+        )
+        return rid, False
+
+    rid = uuid.uuid4().hex
+    conn.execute(
+        """
+        INSERT INTO discovery_log (id, source, source_ref, query_signature, last_run_id)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (rid, source, source_ref, query_signature, run_id),
+    )
+    return rid, True
+
+
+def set_discovery_pipeline_state(
+    conn: sqlite3.Connection,
+    *,
+    source: str,
+    source_ref: str,
+    state: str,
+) -> None:
+    """Advance `discovery_log.pipeline_state` for one item.
+
+    Valid states are enforced by the table CHECK constraint
+    ('discovered'|'persisted'|'downloaded'|'cropped'|'resolved'|'rejected').
+    """
+    conn.execute(
+        """
+        UPDATE discovery_log
+           SET pipeline_state = ?
+         WHERE source = ? AND source_ref = ?
+        """,
+        (state, source, source_ref),
+    )
+
+
 def delete_pending_quotes_for(conn: sqlite3.Connection, source_image_id: str) -> int:
     """Used when promoting a pending_quote to coin_market_quotes after review."""
     cur = conn.execute(

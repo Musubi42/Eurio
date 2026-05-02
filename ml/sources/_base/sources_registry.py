@@ -31,6 +31,17 @@ class SourceSpec:
 
 
 SOURCES: dict[str, SourceSpec] = {
+    "mock": SourceSpec(
+        id="mock",
+        label="Mock (test fixture)",
+        kind="api",
+        default_variant_kind="unknown",
+        default_license="unknown",
+        redistributable=False,
+        expected_cadence_days=0,
+        is_future=True,
+        notes="Used by ml/tests/test_orchestrator.py — not a real source.",
+    ),
     "numista": SourceSpec(
         id="numista",
         label="Numista",

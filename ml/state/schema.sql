@@ -438,3 +438,44 @@ CREATE TABLE IF NOT EXISTS review_queue (
 
 CREATE INDEX IF NOT EXISTS idx_review_queue_status_priority
   ON review_queue(status, priority);
+
+-- ─── Discovery log (cross-runs dedup, layer 1) ───────────────────────────
+-- L'orchestrateur D-13 §"Discover" inscrit ici tout listing rencontré
+-- pendant un fetch (avant même d'aller le télécharger). Permet de
+-- détecter "j'ai déjà vu ce listing récemment, skip" sans avoir à
+-- charger source_images en mémoire. Voir docs/sources-refacto/schema.md
+-- §"Dédup en 5 couches".
+--
+-- Une row par (source, source_ref) globalement (pas par run). Re-discovery
+-- du même listing = UPDATE last_seen_at + run_id, conserve first_seen_at.
+-- query_signature = hash stable de la requête qui a trouvé le listing,
+-- utile pour invalider proprement (ex: re-scrape une cohorte ciblée).
+
+CREATE TABLE IF NOT EXISTS discovery_log (
+  id              TEXT PRIMARY KEY,
+  source          TEXT NOT NULL,
+  source_ref      TEXT NOT NULL,
+  query_signature TEXT,
+  first_seen_at   TEXT NOT NULL DEFAULT (datetime('now')),
+  last_seen_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  last_run_id     TEXT REFERENCES source_runs(id) ON DELETE SET NULL,
+  -- Statut local d'avancement dans la pipeline en aval (utile pour
+  -- l'idempotence : si déjà persisté/téléchargé, on saute des étapes)
+  pipeline_state  TEXT NOT NULL DEFAULT 'discovered'
+                  CHECK (pipeline_state IN (
+                    'discovered',     -- vu, pas encore persisté
+                    'persisted',      -- ligne source_images existe
+                    'downloaded',     -- fichier raw sur disque
+                    'cropped',        -- crops dans image_assets
+                    'resolved',       -- au moins 1 crop résolu
+                    'rejected'        -- listing inutilisable (au-delà du raw)
+                  )),
+  UNIQUE (source, source_ref)
+);
+
+CREATE INDEX IF NOT EXISTS idx_discovery_log_source_seen
+  ON discovery_log(source, last_seen_at DESC);
+CREATE INDEX IF NOT EXISTS idx_discovery_log_state
+  ON discovery_log(pipeline_state);
+CREATE INDEX IF NOT EXISTS idx_discovery_log_query
+  ON discovery_log(query_signature);

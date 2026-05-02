@@ -49,6 +49,14 @@ const router = createRouter({
           component: () => import('@/features/sources/pages/SourcesPage.vue'),
         },
         {
+          path: 'sources/:id',
+          component: () => import('@/features/sources/pages/SourceDetailPage.vue'),
+        },
+        {
+          path: 'review',
+          component: () => import('@/features/review/pages/ReviewPage.vue'),
+        },
+        {
           path: 'audit',
           component: () => import('@/features/audit/pages/AuditPage.vue'),
         },
