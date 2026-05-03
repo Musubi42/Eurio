@@ -44,15 +44,32 @@ router = APIRouter(prefix="/sources", tags=["sources"])
 # Real sources land here as they get implemented. Until then, only `mock`
 # can be triggered (CLI/front will get a clear 501 otherwise).
 
-def _load_adapter(source_id: str):
+def _load_adapter(source_id: str, *, store: "Store" | None = None):
     if source_id == "mock":
         from sources._mock import MockAdapter
         return MockAdapter()
+    if source_id == "ebay":
+        import os
+        from market.ebay_client import EbayClient, get_app_token
+        from sources.ebay import EbayAdapter
+
+        client_id = os.environ.get("EBAY_CLIENT_ID")
+        client_secret = os.environ.get("EBAY_CLIENT_SECRET")
+        if not client_id or not client_secret:
+            raise HTTPException(
+                status_code=503,
+                detail="EBAY_CLIENT_ID / EBAY_CLIENT_SECRET not set in env (.envrc).",
+            )
+        token = get_app_token(client_id, client_secret)
+        client = EbayClient(token)
+        s = store or _store()
+        conn = s._connection()  # noqa: SLF001
+        return EbayAdapter(client=client, conn=conn)
     raise HTTPException(
         status_code=501,
         detail=(
             f"Source '{source_id}' has no orchestrator adapter yet. "
-            "Available: mock. Real sources land as their adapters are written."
+            "Available: mock, ebay. Real sources land as their adapters are written."
         ),
     )
 
@@ -83,8 +100,15 @@ class RunQueryBody(BaseModel):
     denomination: str | None = None
     year: int | None = None
     target_eurio_id: str | None = None
+    target_eurio_ids: list[str] | None = None
     limit: int | None = Field(default=None, ge=1, le=10_000)
     extra: dict[str, Any] = Field(default_factory=dict)
+
+    def to_source_query(self, source_id: str) -> SourceQuery:
+        d = self.model_dump()
+        if d.get("target_eurio_ids") is not None:
+            d["target_eurio_ids"] = tuple(d["target_eurio_ids"])
+        return SourceQuery(source_id=source_id, **d)
 
 
 class TriggerResponse(BaseModel):
@@ -101,10 +125,33 @@ def trigger_run(
     dry_run: bool = Query(default=False),
     force: bool = Query(default=False),
 ) -> TriggerResponse:
-    adapter = _load_adapter(source_id)
     payload = body or RunQueryBody()
-    query = SourceQuery(source_id=source_id, **payload.model_dump())
     store = _store()
+    adapter = _load_adapter(source_id, store=store)
+    if dry_run and hasattr(adapter, "dry_run"):
+        adapter.dry_run = True
+    query = payload.to_source_query(source_id)
+
+    # Pre-flight quota check (D-27) — eBay only, skip if dry_run.
+    if source_id == "ebay" and not dry_run:
+        n = len(query.target_eurio_ids or ([query.target_eurio_id] if query.target_eurio_id else []))
+        if n > 0:
+            preflight = check_ebay_quota(store, n_eurio_ids=n)
+            if not preflight["ok"]:
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "code": "quota_insufficient",
+                        "estimate": preflight["estimate"],
+                        "remaining": preflight["remaining"],
+                        "max_safe_batch": preflight["max_safe_batch"],
+                        "message": (
+                            f"Estimated {preflight['estimate']} calls × 1.3 safety > "
+                            f"{preflight['remaining']} remaining today. "
+                            f"Reduce batch to ≤{preflight['max_safe_batch']} or wait."
+                        ),
+                    },
+                )
 
     # Pre-flight: open the run synchronously so the caller gets a real
     # run_id (and a clean 409 if anti-double-run trips). The actual
@@ -262,6 +309,291 @@ def _row_to_snapshot(row: sqlite3.Row) -> RunSnapshot:
         error_summary=row["error_summary"],
         log_path=row["log_path"],
     )
+
+
+# ── Run breakdown (per-eurio_id drill-down) ───────────────────────────────
+#
+# Cf. docs/sources-refacto/run-breakdown-kickoff.md.
+#
+# Pure aggregation over existing FK (source_images.run_id, image_assets.run_id,
+# coin_market_quotes.run_id, review_queue joined via image_asset_id). No
+# schema change. ONE flat list `per_eurio`, ordered: was_targeted=True first
+# (preserving user-provided order), then discovered eurios alphabetical.
+#
+# Counter semantics — designed to leave NO ambiguity, no double-count.
+# Each crop belongs to exactly ONE listing with ONE target_eurio_id, so we
+# split stats into two strictly disjoint axes per eurio_id E:
+#
+#   - Search axis (joined via si.target_eurio_id = E): "what came back when
+#     we searched for E?" Crops in those listings are partitioned by
+#     resolution status — n_searched_auto + n_searched_review_single +
+#     n_searched_review_lot + n_searched_pending + n_searched_rejected
+#     equals n_crops_searched (the partition is exhaustive).
+#
+#   - Attribution axis (joined via ia.eurio_id = E AND si.target_eurio_id
+#     != E or NULL): "crops attributed to E from listings searched for
+#     something else" — typical lot routing case. Disjoint from search axis
+#     by construction.
+#
+# Total crops "ever attributed to E this run" = n_searched_auto + n_attributed_from_other.
+# Total crops "in searches for E"             = n_crops_searched.
+
+
+_AUTO_STATUSES = ("auto_name", "auto_phash", "manual")
+_PENDING_STATUSES = ("pending_match", "pending_crop", "needs_review")
+
+
+class RunBreakdownEntry(BaseModel):
+    eurio_id: str
+    was_targeted: bool
+
+    # ── Search axis (si.target_eurio_id = E) ──────────────────────────
+    n_listings: int                # source_images cherchés pour E
+    n_crops_searched: int          # crops dans ces listings
+
+    # Partition exhaustive de n_crops_searched par statut :
+    n_searched_auto: int           # status IN auto_name|auto_phash|manual
+    n_searched_review_single: int  # rq.kind='single' AND rq.status='open'
+    n_searched_review_lot: int     # rq.kind='lot'    AND rq.status='open'
+    n_searched_pending: int        # status IN pending_match|pending_crop|needs_review
+                                   # ET pas d'entrée review_queue open
+    n_searched_rejected: int       # status = 'rejected'
+
+    # ── Attribution axis (ia.eurio_id = E AND si.target_eurio_id != E) ──
+    n_attributed_from_other: int   # crops résolus à E depuis un listing
+                                   # cherché pour autre chose (cas lot)
+    via_lot: bool                  # au moins un de ces crops vient d'un
+                                   # listing is_lot_suspected ou multi-crop
+
+    # ── Output ────────────────────────────────────────────────────────
+    n_quotes: int                  # coin_market_quotes.eurio_id = E
+
+
+class RunBreakdown(BaseModel):
+    run_id: str
+    source_id: str
+    started_at: str
+    status: str
+    filters: dict[str, Any]
+    per_eurio: list[RunBreakdownEntry]
+
+
+def _search_axis_stats(
+    conn: sqlite3.Connection, *, run_id: str, eurio_id: str,
+) -> dict[str, int]:
+    """Stats joined on si.target_eurio_id = eurio_id."""
+    n_listings = conn.execute(
+        "SELECT COUNT(*) AS n FROM source_images "
+        "WHERE run_id = ? AND target_eurio_id = ?",
+        (run_id, eurio_id),
+    ).fetchone()["n"]
+
+    crops = conn.execute(
+        """
+        SELECT ia.id, ia.resolution_status
+          FROM image_assets ia
+          JOIN source_images si ON si.id = ia.source_image_id
+         WHERE ia.run_id = ? AND si.target_eurio_id = ?
+        """,
+        (run_id, eurio_id),
+    ).fetchall()
+
+    n_auto = 0
+    n_pending = 0
+    n_rejected = 0
+    review_assets: list[str] = []
+    for c in crops:
+        st = c["resolution_status"]
+        if st in _AUTO_STATUSES:
+            n_auto += 1
+        elif st == "rejected":
+            n_rejected += 1
+        else:
+            # pending_*, needs_review — review_queue may or may not have a row
+            review_assets.append(c["id"])
+            if st in _PENDING_STATUSES:
+                n_pending += 1
+
+    n_rev_single = 0
+    n_rev_lot = 0
+    if review_assets:
+        placeholders = ",".join("?" * len(review_assets))
+        rows = conn.execute(
+            f"SELECT kind, COUNT(*) AS n FROM review_queue "
+            f"WHERE status = 'open' AND image_asset_id IN ({placeholders}) "
+            f"GROUP BY kind",
+            review_assets,
+        ).fetchall()
+        for r in rows:
+            if r["kind"] == "single":
+                n_rev_single = r["n"]
+            elif r["kind"] == "lot":
+                n_rev_lot = r["n"]
+        # Anything in review_queue moves out of "pending" bucket — review
+        # is the active state. Pending = needs the resolver/reviewer but
+        # not yet enqueued.
+        n_pending = max(0, n_pending - (n_rev_single + n_rev_lot))
+
+    return {
+        "n_listings": n_listings,
+        "n_crops_searched": len(crops),
+        "n_searched_auto": n_auto,
+        "n_searched_review_single": n_rev_single,
+        "n_searched_review_lot": n_rev_lot,
+        "n_searched_pending": n_pending,
+        "n_searched_rejected": n_rejected,
+    }
+
+
+def _attribution_axis_stats(
+    conn: sqlite3.Connection, *, run_id: str, eurio_id: str,
+) -> int:
+    """Crops resolved to `eurio_id` from listings searched for OTHER eurios."""
+    n = conn.execute(
+        """
+        SELECT COUNT(*) AS n
+          FROM image_assets ia
+          JOIN source_images si ON si.id = ia.source_image_id
+         WHERE ia.run_id = ?
+           AND ia.eurio_id = ?
+           AND (si.target_eurio_id IS NULL OR si.target_eurio_id != ?)
+        """,
+        (run_id, eurio_id, eurio_id),
+    ).fetchone()["n"]
+    return int(n or 0)
+
+
+def _has_lot_context(
+    conn: sqlite3.Connection, *, run_id: str, eurio_id: str,
+) -> bool:
+    """True if any source_image touched by `eurio_id` (via search axis OR
+    attribution axis) is is_lot_suspected OR multi-crop.
+
+    Search axis  : si.target_eurio_id = E
+    Attribution  : ia.eurio_id = E (ia.run_id = run, ia inside si)
+    """
+    row = conn.execute(
+        """
+        SELECT 1
+          FROM source_images si
+         WHERE si.run_id = ?
+           AND (
+             si.target_eurio_id = ?
+             OR EXISTS (
+               SELECT 1 FROM image_assets ia
+                WHERE ia.source_image_id = si.id
+                  AND ia.run_id = ?
+                  AND ia.eurio_id = ?
+             )
+           )
+           AND (
+             si.is_lot_suspected = 1
+             OR (
+               SELECT COUNT(*) FROM image_assets ia2
+                WHERE ia2.source_image_id = si.id
+             ) > 1
+           )
+         LIMIT 1
+        """,
+        (run_id, eurio_id, run_id, eurio_id),
+    ).fetchone()
+    return row is not None
+
+
+def _quotes_for(
+    conn: sqlite3.Connection, *, run_id: str, eurio_id: str,
+) -> int:
+    return conn.execute(
+        "SELECT COUNT(*) AS n FROM coin_market_quotes "
+        "WHERE run_id = ? AND eurio_id = ?",
+        (run_id, eurio_id),
+    ).fetchone()["n"]
+
+
+def compute_run_breakdown(
+    conn: sqlite3.Connection, *, run_id: str, source_id: str,
+) -> RunBreakdown:
+    """Build the per-eurio_id breakdown for a single run.
+
+    Raises HTTPException(404) if the run doesn't exist.
+    """
+    row = conn.execute(
+        "SELECT * FROM source_runs WHERE id = ? AND source = ?",
+        (run_id, source_id),
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found.")
+
+    filters: dict[str, Any] = {}
+    if row["filters_json"]:
+        try:
+            filters = json.loads(row["filters_json"])
+        except json.JSONDecodeError:
+            filters = {"_raw": row["filters_json"]}
+
+    raw_targets = filters.get("target_eurio_ids") or []
+    if not isinstance(raw_targets, list):
+        raw_targets = []
+    targeted_set: set[str] = set()
+    targeted_ordered: list[str] = []
+    for eid in raw_targets:
+        if isinstance(eid, str) and eid not in targeted_set:
+            targeted_set.add(eid)
+            targeted_ordered.append(eid)
+
+    # Discovered eurios = resolved this run AND not in targets.
+    resolved_rows = conn.execute(
+        """
+        SELECT DISTINCT eurio_id
+          FROM image_assets
+         WHERE run_id = ? AND eurio_id IS NOT NULL
+        """,
+        (run_id,),
+    ).fetchall()
+    discovered_ordered = sorted(
+        r["eurio_id"] for r in resolved_rows
+        if r["eurio_id"] not in targeted_set
+    )
+
+    def _build_entry(eid: str, *, was_targeted: bool) -> RunBreakdownEntry:
+        search_stats = _search_axis_stats(conn, run_id=run_id, eurio_id=eid)
+        attr_count = _attribution_axis_stats(
+            conn, run_id=run_id, eurio_id=eid,
+        )
+        via_lot = _has_lot_context(conn, run_id=run_id, eurio_id=eid)
+        n_quotes = _quotes_for(conn, run_id=run_id, eurio_id=eid)
+        return RunBreakdownEntry(
+            eurio_id=eid,
+            was_targeted=was_targeted,
+            n_attributed_from_other=attr_count,
+            via_lot=via_lot,
+            n_quotes=n_quotes,
+            **search_stats,
+        )
+
+    per_eurio = [
+        _build_entry(eid, was_targeted=True) for eid in targeted_ordered
+    ] + [
+        _build_entry(eid, was_targeted=False) for eid in discovered_ordered
+    ]
+
+    return RunBreakdown(
+        run_id=row["id"],
+        source_id=row["source"],
+        started_at=row["started_at"],
+        status=row["status"],
+        filters=filters,
+        per_eurio=per_eurio,
+    )
+
+
+@router.get(
+    "/{source_id}/runs/{run_id}/breakdown",
+    response_model=RunBreakdown,
+)
+def get_run_breakdown(source_id: str, run_id: str) -> RunBreakdown:
+    conn = _store()._connection()  # noqa: SLF001
+    return compute_run_breakdown(conn, run_id=run_id, source_id=source_id)
 
 
 # ── Startup hook: reset orphan 'running' rows ─────────────────────────────
@@ -608,6 +940,201 @@ def get_asset_file(source_id: str, asset_id: str):
     if not p.is_file():
         raise HTTPException(status_code=410, detail="Asset file missing on disk.")
     return FileResponse(p, media_type="image/png")
+
+
+# ── eBay-specific: quota status + freshness queue (D-19/D-20/D-27) ───────
+
+
+EBAY_DAILY_QUOTA = 5000
+ESTIMATE_BOOTSTRAP = 7         # calls/eurio_id avant 3 runs réussis
+ESTIMATE_SAFETY_FACTOR = 1.3   # marge appliquée au pre-flight
+
+
+def _today_period() -> str:
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
+def ebay_calls_today(store: Store) -> int:
+    """Total calls eBay sur la période 'daily' du jour courant."""
+    conn = store._connection()  # noqa: SLF001
+    row = conn.execute(
+        """
+        SELECT COALESCE(SUM(calls), 0) AS n
+          FROM api_call_log
+         WHERE source = 'ebay' AND window = 'daily' AND period = ?
+        """,
+        (_today_period(),),
+    ).fetchone()
+    return int(row["n"] or 0)
+
+
+def estimate_calls_per_eurio_id(store: Store) -> float:
+    """Moyenne mobile sur les 5 derniers runs eBay terminés.
+
+    Fallback à `ESTIMATE_BOOTSTRAP` (= 7) si moins de 3 runs ont
+    abouti (success ou partial). On compte `n_calls / max(targets, 1)`
+    par run, où `targets` = len(filters_json.target_eurio_ids) ou 1.
+    """
+    conn = store._connection()  # noqa: SLF001
+    rows = conn.execute(
+        """
+        SELECT n_calls, filters_json
+          FROM source_runs
+         WHERE source = 'ebay'
+           AND status IN ('success', 'partial')
+           AND n_calls > 0
+         ORDER BY started_at DESC
+         LIMIT 5
+        """
+    ).fetchall()
+    if len(rows) < 3:
+        return float(ESTIMATE_BOOTSTRAP)
+
+    ratios: list[float] = []
+    for r in rows:
+        targets = 1
+        if r["filters_json"]:
+            try:
+                f = json.loads(r["filters_json"])
+                if f.get("target_eurio_ids"):
+                    targets = max(len(f["target_eurio_ids"]), 1)
+                elif f.get("target_eurio_id"):
+                    targets = 1
+            except json.JSONDecodeError:
+                pass
+        ratios.append(r["n_calls"] / targets)
+    return sum(ratios) / len(ratios)
+
+
+def check_ebay_quota(store: Store, *, n_eurio_ids: int) -> dict[str, Any]:
+    """Pre-flight quota check (D-27).
+
+    Returns a dict with `ok`, `estimate`, `remaining`, `max_safe_batch`.
+    """
+    avg = estimate_calls_per_eurio_id(store)
+    estimate = int(round(avg * n_eurio_ids))
+    remaining = max(EBAY_DAILY_QUOTA - ebay_calls_today(store), 0)
+    safe_threshold = estimate * ESTIMATE_SAFETY_FACTOR
+    ok = remaining >= safe_threshold
+    max_safe = int(remaining / (avg * ESTIMATE_SAFETY_FACTOR)) if avg > 0 else 0
+    return {
+        "ok": ok,
+        "estimate": estimate,
+        "remaining": remaining,
+        "limit": EBAY_DAILY_QUOTA,
+        "avg_calls_per_eurio_id": round(avg, 2),
+        "max_safe_batch": max_safe,
+    }
+
+
+class EbayQuotaStatus(BaseModel):
+    calls_today: int
+    limit: int
+    remaining: int
+    exhausted: bool
+    period: str
+    avg_calls_per_eurio_id: float
+
+
+@router.get("/ebay/quota-status", response_model=EbayQuotaStatus)
+def ebay_quota_status() -> EbayQuotaStatus:
+    store = _store()
+    calls = ebay_calls_today(store)
+    return EbayQuotaStatus(
+        calls_today=calls,
+        limit=EBAY_DAILY_QUOTA,
+        remaining=max(EBAY_DAILY_QUOTA - calls, 0),
+        exhausted=calls >= EBAY_DAILY_QUOTA,
+        period=_today_period(),
+        avg_calls_per_eurio_id=round(estimate_calls_per_eurio_id(store), 2),
+    )
+
+
+class FreshnessItem(BaseModel):
+    eurio_id: str
+    country: str
+    year: int
+    last_enriched_at: str | None
+    n_images: int
+    n_crops: int
+    status: str   # 'never' | 'stale' | 'fresh'
+
+
+class FreshnessBuckets(BaseModel):
+    never: int
+    stale_90d: int
+    fresh: int
+    total: int
+
+
+class EbayFreshnessResponse(BaseModel):
+    items: list[FreshnessItem]
+    buckets: FreshnessBuckets
+
+
+def _classify_freshness(last_enriched_at: str | None, stale_days: int = 90) -> str:
+    if last_enriched_at is None:
+        return "never"
+    from datetime import datetime, timedelta, timezone
+    try:
+        dt = datetime.fromisoformat(last_enriched_at.replace(" ", "T"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+    except ValueError:
+        return "never"
+    if datetime.now(timezone.utc) - dt > timedelta(days=stale_days):
+        return "stale"
+    return "fresh"
+
+
+@router.get("/ebay/freshness", response_model=EbayFreshnessResponse)
+def ebay_freshness(
+    limit: int = Query(default=50, ge=1, le=500),
+) -> EbayFreshnessResponse:
+    """Freshness queue : eurio_ids commémo 2€ non-EU triés par `last_enriched_at ASC NULLS FIRST`.
+
+    Lit la vue SQL `v_ebay_freshness` (D-20). Buckets calculés sur
+    l'ensemble (pas le slice `limit`).
+    """
+    conn = _store()._connection()  # noqa: SLF001
+
+    all_rows = conn.execute(
+        """
+        SELECT eurio_id, country, year, last_enriched_at, n_images, n_crops
+          FROM v_ebay_freshness
+         ORDER BY last_enriched_at ASC NULLS FIRST, eurio_id
+        """
+    ).fetchall()
+
+    buckets = {"never": 0, "stale": 0, "fresh": 0}
+    classified: list[tuple[Any, str]] = []
+    for r in all_rows:
+        status = _classify_freshness(r["last_enriched_at"])
+        buckets[status] += 1
+        classified.append((r, status))
+
+    items = [
+        FreshnessItem(
+            eurio_id=r["eurio_id"],
+            country=r["country"],
+            year=r["year"],
+            last_enriched_at=r["last_enriched_at"],
+            n_images=r["n_images"] or 0,
+            n_crops=r["n_crops"] or 0,
+            status=status,
+        )
+        for r, status in classified[:limit]
+    ]
+    return EbayFreshnessResponse(
+        items=items,
+        buckets=FreshnessBuckets(
+            never=buckets["never"],
+            stale_90d=buckets["stale"],
+            fresh=buckets["fresh"],
+            total=len(all_rows),
+        ),
+    )
 
 
 # ── Startup hook ──────────────────────────────────────────────────────────

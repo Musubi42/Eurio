@@ -10,9 +10,13 @@ Priority (review-queue.md §"Priorisation"):
     -30 if the source_image had a target_eurio_id (the fetch was
         targeted, the human just needs to confirm)
 
-The other modifiers (commemorative, rare, multi-coin, quality_score)
-need joins / signals we don't compute yet — they'll plug in when
-those signals exist.
+D-26 / phase 3.F — kind:
+    'lot'    si source_images.is_lot_suspected (titre suggère lot)
+             OU si N crops > 1 sur cette source_image (multi-coin photo)
+    'single' sinon
+
+Les `lot` rows sont visibles dans /review mais l'UI dédiée
+(/review/lots) viendra en V1.5 (parking lot kickoff).
 """
 
 from __future__ import annotations
@@ -34,6 +38,7 @@ _BONUS_TARGETED = 30
 class EnqueueResult:
     n_enqueued: int
     n_skipped_already_queued: int
+    n_kind_lot: int
 
 
 def _compute_priority(*, target_eurio_id: str | None) -> int:
@@ -41,6 +46,23 @@ def _compute_priority(*, target_eurio_id: str | None) -> int:
     if target_eurio_id:
         p -= _BONUS_TARGETED
     return p
+
+
+def _kind_for_source_image(
+    conn: sqlite3.Connection, *, source_image_id: str, is_lot_suspected: bool
+) -> str:
+    """D-26 — résout 'single' vs 'lot' pour cette source_image.
+
+    Niveau 1 : titre suggère lot → 'lot'.
+    Niveau 2 : >1 crops détectés sur cette image → 'lot' (multi-coin photo).
+    """
+    if is_lot_suspected:
+        return "lot"
+    n_crops = conn.execute(
+        "SELECT count(*) AS n FROM image_assets WHERE source_image_id = ?",
+        (source_image_id,),
+    ).fetchone()["n"]
+    return "lot" if (n_crops or 0) > 1 else "single"
 
 
 def run_enqueue(
@@ -52,15 +74,26 @@ def run_enqueue(
 ) -> EnqueueResult:
     n_enqueued = 0
     n_skipped = 0
+    n_lot = 0
 
     for sid in source_image_ids.values():
+        si_meta = conn.execute(
+            "SELECT is_lot_suspected, target_eurio_id FROM source_images WHERE id = ?",
+            (sid,),
+        ).fetchone()
+        if si_meta is None:
+            continue
+        kind = _kind_for_source_image(
+            conn,
+            source_image_id=sid,
+            is_lot_suspected=bool(si_meta["is_lot_suspected"]),
+        )
+
         rows = conn.execute(
             """
             SELECT a.id AS asset_id,
-                   a.candidate_eurio_ids_json,
-                   s.target_eurio_id
+                   a.candidate_eurio_ids_json
               FROM image_assets a
-              JOIN source_images s ON s.id = a.source_image_id
              WHERE a.source_image_id = ?
                AND a.resolution_status = 'needs_review'
             """,
@@ -75,21 +108,25 @@ def run_enqueue(
                 n_skipped += 1
                 continue
 
-            priority = _compute_priority(target_eurio_id=r["target_eurio_id"])
+            priority = _compute_priority(target_eurio_id=si_meta["target_eurio_id"])
             candidates = r["candidate_eurio_ids_json"]
             conn.execute(
                 """
                 INSERT INTO review_queue (
-                  id, image_asset_id, priority, candidate_eurio_ids_json
-                ) VALUES (?, ?, ?, ?)
+                  id, image_asset_id, priority, candidate_eurio_ids_json, kind
+                ) VALUES (?, ?, ?, ?, ?)
                 """,
-                (uuid.uuid4().hex, r["asset_id"], priority, candidates),
+                (uuid.uuid4().hex, r["asset_id"], priority, candidates, kind),
             )
             n_enqueued += 1
+            if kind == "lot":
+                n_lot += 1
 
     run.bump(n_review_enqueued=n_enqueued)
     logger.info(
-        "[%s] enqueue → %d new / %d already-queued",
-        source_id, n_enqueued, n_skipped,
+        "[%s] enqueue → %d new (%d lot / %d single) / %d already-queued",
+        source_id, n_enqueued, n_lot, n_enqueued - n_lot, n_skipped,
     )
-    return EnqueueResult(n_enqueued=n_enqueued, n_skipped_already_queued=n_skipped)
+    return EnqueueResult(
+        n_enqueued=n_enqueued, n_skipped_already_queued=n_skipped, n_kind_lot=n_lot,
+    )

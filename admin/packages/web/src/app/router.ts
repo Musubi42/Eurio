@@ -53,6 +53,10 @@ const router = createRouter({
           component: () => import('@/features/sources/pages/SourceDetailPage.vue'),
         },
         {
+          path: 'sources/:id/runs/:run_id',
+          component: () => import('@/features/sources/pages/SourceRunDetailPage.vue'),
+        },
+        {
           path: 'review',
           component: () => import('@/features/review/pages/ReviewPage.vue'),
         },

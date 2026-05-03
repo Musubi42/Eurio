@@ -237,3 +237,206 @@ calibrer un seuil défendable.
 (dédup C4), jamais via `auto_name`, tant que ce chunk n'est pas
 re-livré. Le couplage `priority -30 if target_eurio_id` reste actif
 (les fetchs ciblés sortent en haut de la queue).
+
+## D-19 — Sources d'enrichissement pilotées par `eurio_id`
+
+Les sources d'enrichissement (eBay, MdP, BCE, LMDLP, Catawiki,
+NumisCorner, CGB, Wikipedia) **n'utilisent pas les cohorts**. Leur
+seul axe de pilotage est la liste des `eurio_id` du référentiel
+canonique (issu de Numista).
+
+**Pourquoi** : la dichotomie "Référentiel canonique" / "Enrichissement"
+de la page `/sources` admin reflète la séparation produit. Une cohort
+est un concept *training-side* (sélection figée pour entraîner un
+modèle, capturer manuellement) ; mélanger les deux confond ingestion
+et entraînement.
+
+**Conséquence sur `SourceQuery`** : pour ces sources, `country`,
+`year`, `denomination` sont **inertes**. Seul `target_eurio_ids`
+(pluriel, ajout 3.A) compte. L'ergonomie front (page `/sources/ebay`)
+expose une freshness queue, pas un sélecteur cohort.
+
+## D-20 — Freshness queue en vue SQL pure (V1) — pré-requis : table `coins` SQLite
+
+Le référentiel canonique vit aujourd'hui dans `ml/datasets/eurio_referential.json`
+(2628 entrées dont 466 commémos 2€ non-EU). Pour rendre une **vraie vue SQL**
+possible, on canonicalise le référentiel dans une table SQLite `coins` :
+
+```sql
+CREATE TABLE coins (
+  eurio_id          TEXT PRIMARY KEY,
+  country           TEXT NOT NULL,         -- ISO2
+  country_name      TEXT,
+  year              INTEGER NOT NULL,
+  face_value        REAL NOT NULL,
+  is_commemorative  INTEGER NOT NULL DEFAULT 0,
+  theme             TEXT,
+  numista_id        INTEGER,
+  raw_payload_json  TEXT,                  -- entrée JSON complète pour audit
+  imported_at       TEXT NOT NULL DEFAULT (datetime('now'))
+);
+```
+
+Bootstrap explicite via **`go-task ml:bootstrap-coins`** (pas auto au boot du
+Store : éviter "la DB se modifie toute seule"). Le script lit
+`eurio_referential.json` et fait `INSERT OR REPLACE` par `eurio_id`. Idempotent.
+Le `Store._bootstrap()` vérifie `SELECT count(*) FROM coins` et logge un warning
+si vide (pas un raise — l'orchestrateur peut tourner sur du mock sans le
+référentiel canonique chargé).
+
+Vue freshness :
+
+```sql
+CREATE VIEW v_ebay_freshness AS
+SELECT
+  c.eurio_id,
+  c.country,
+  c.year,
+  MAX(si.fetched_at) AS last_enriched_at,
+  COUNT(DISTINCT si.id) AS n_images,
+  COUNT(DISTINCT ia.id) AS n_crops
+FROM coins c
+LEFT JOIN source_images si
+  ON si.target_eurio_id = c.eurio_id AND si.source = 'ebay'
+LEFT JOIN image_assets ia ON ia.source_image_id = si.id
+WHERE c.face_value = 2.0 AND c.is_commemorative = 1 AND c.country != 'eu'
+GROUP BY c.eurio_id;
+```
+
+`ORDER BY last_enriched_at ASC NULLS FIRST` est appliqué au `SELECT` qui
+consomme la vue, pas dans la vue elle-même (compat SQLite).
+
+**Pourquoi** : O(N) sur ~500 commemos = négligeable. La table `coins`
+canonicalise une donnée déjà canonique mais qui vivait en JSON ;
+sans elle, chaque consommateur rechargeait le JSON en RAM (11+ modules
+dans le repo). Bénéfice cross-cutting au-delà d'eBay.
+
+**Limite admise** : si on monte à 10k+ eurio_ids, la vue devient
+lente, on bascule sur une table matérialisée
+`source_enrichment_state(source, eurio_id, last_enriched_at, n_*)`.
+
+## D-21 — 1 run = 1 batch de N eurio_ids (default 10)
+
+Un run eBay traite un *batch* de N eurio_ids ; `source_runs.filters_json`
+archive la liste exacte. Default `N = 10`, configurable via
+`--batch` CLI ou slider front (range 5-30).
+
+**Pourquoi 10** : compromis entre granularité (audit facile dans
+`source_runs`), durée (~1 min visible dans le live counter), et risque
+de blast radius (si fail mid-batch, on perd au pire 9 eurio_ids
+partiellement fetchés — récupérables par idempotence).
+
+**Pourquoi pas plus** : 50 eurio_ids × ~10 images chacun × ~5 secondes
+download = ~40 min. Trop long pour un run interactif, et risque
+"comportement spam" côté CDN ebayimg.
+
+## D-22 — Tout télécharger en HD
+
+Pour chaque listing eBay accepté, on récupère **toutes les images
+disponibles en HD** :
+- 1 call `item/{id}?fieldgroups=PRODUCT` pour avoir `image.imageUrl`
+  + `additionalImages[*].imageUrl` en pleine résolution
+- N downloads CDN ebayimg (hors quota Browse, gratuits)
+
+**Pourquoi** : les images sont le gisement training. Filtrer en V1
+serait prématuré ; on stocke tout, le filtre qualité (quality_score
++ training_eligible) opère en aval.
+
+**Coût** : multiplie par ~7 le quota par eurio_id vs legacy
+(1 search + 1 item/{id} + parfois 1 group expansion = ~3 calls/eurio
+en moyenne empirique attendue). Estimation pour batch de 10 : ~30 calls.
+
+## D-23 — Pagination `limit=50` no-paginate (V1)
+
+Chaque search eBay capture les 50 premiers résultats triés par
+`bestMatch`. Pas de pagination. Si `total > 50`, on logge le `total`
+dans `source_runs.filters_json` pour audit ("on a vu 47 sur 132").
+
+**Pourquoi** : paginer pousse le coût à `(total/50) × calls`, on n'a
+pas le quota. Les 50 premiers résultats `bestMatch` couvrent les cas
+courants (commémos populaires).
+
+## D-24 — Velocity weighting → vue SQL post-hoc
+
+Le legacy `scrape_ebay.py` calculait P25/P50/P75 pondérés au moment
+du fetch (`listing_weight = log(1 + sales/year) × seller_trust`).
+Le nouveau flow stocke 1 row brute par listing dans `coin_market_quotes`
+(price + sold_count + seller_id + seller_fb_pct + listed_at + fetched_at)
+et calcule les percentiles dans une vue SQL `v_coin_market_quotes_weighted`
+à la lecture.
+
+**Pourquoi** : schéma de pondération évolutif sans re-scraper.
+Granularité maximale conservée. Cohérent avec D-15 et la décision
+"max granularité" du user.
+
+**Statut V1** : la vue n'est PAS livrée en V1 (parking lot). On stocke
+brut, le consommateur (admin/app) calcule sa propre agrégation en
+attendant.
+
+## D-25 — Quota stop = run partial, recovery par idempotence
+
+Si `EbayClient.QuotaTracker` lève `QuotaExhausted` au milieu d'un
+batch, l'orchestrateur :
+1. attrape l'exception, marque le run `status='partial'`,
+   `error_summary='quota_exhausted_mid_batch'`
+2. ne nettoie rien — les rows partielles restent en place
+
+Le lendemain (quota reset), un nouveau batch lit la freshness queue,
+les eurio_ids partiellement fetchés sont en tête (`MAX(fetched_at)`
+peu avancé), discover() re-yield les listings, les 5 couches de dédup
+(C1-C5 prouvées en session 2026-05-03) skippent ce qui existe et
+fetchent uniquement le manquant.
+
+**Pas de SAVEPOINT, pas de rollback explicite.** L'idempotence du
+pipeline suffit.
+
+## D-26 — Lot detection à 2 niveaux
+
+Un listing eBay peut vendre 1 ou N pièces. Le legacy résolvait le
+problème par rejet pur (regex `lot|coffret|série|rouleau` →
+`accept_listing` retourne False). Pour le nouveau flow on garde la
+data — c'est un gisement training — mais on la route correctement.
+
+**Niveau 1 — Heuristique titre** : `is_lot_suspected(title) -> bool`
+basée sur regex `lot|coffret|série\b|collection complète|rouleau|set\b`.
+Le résultat est stocké dans `source_images.is_lot_suspected` (nouvelle
+colonne, default `false`).
+
+**Niveau 2 — Détection par image** : `detect_crop` produit N crops
+par source_image. Si N > 1 sur une image donnée, **cette image
+spécifique** bascule en review `kind='lot'` (pas tout le listing —
+les autres images du même listing avec N=1 restent en review normale).
+
+**Quote eligibility** : `is_lot_suspected = false` ⇒ pending_quote
+créée pour le listing (1 prix attribuable à `target_eurio_id`).
+`is_lot_suspected = true` ⇒ pas de pending_quote (prix coffret non
+décomposable).
+
+**Routage review** : la table `review_queue.kind text default 'single'`
+(nouvelle colonne) prend `'single'` ou `'lot'`. La page `/review`
+existante affiche les `single` ; une page `/review/lots` dédiée
+(parking lot V1.5) affichera les `lot`.
+
+## D-27 — Pre-flight quota check avant batch
+
+`POST /sources/ebay/runs` exécute un check **avant** de spawn le thread :
+
+```
+estimate = avg_calls_per_eurio_id_last_5_runs × len(target_eurio_ids)
+remaining = 5000 - api_call_log.count_today('ebay')
+if remaining < estimate × 1.3:   # marge sécurité 30%
+    return 409 { error: "quota_insufficient",
+                 estimate, remaining,
+                 max_safe_batch: floor(remaining / avg / 1.3) }
+```
+
+Bootstrap (avant 3 runs eBay terminés en historique) : `avg = 7`
+hardcodé.
+
+**Pourquoi** : impossible de fail un batch *par épuisement quota*
+en cours de route. Le user voit côté front la décision (refuse +
+suggestion `max_safe_batch`) avant de déclencher.
+
+**Conséquence** : les fails restants en cours de batch sont uniquement
+HTTP 5xx eBay / timeout réseau / listing pourri — gérés par
+`n_errors` non bloquant (continuer les autres items).

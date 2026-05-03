@@ -8,12 +8,15 @@ from __future__ import annotations
 
 import gzip
 import json
+import logging
 import sqlite3
 import threading
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator
+
+logger = logging.getLogger(__name__)
 
 _SCHEMA_PATH = Path(__file__).parent / "schema.sql"
 
@@ -420,6 +423,24 @@ class Store:
                 column="augmentations_seed",
                 decl="INTEGER",
             )
+            self._ensure_column(
+                conn,
+                table="source_images",
+                column="is_lot_suspected",
+                decl="INTEGER NOT NULL DEFAULT 0",
+            )
+            self._ensure_column(
+                conn,
+                table="review_queue",
+                column="kind",
+                decl="TEXT NOT NULL DEFAULT 'single'",
+            )
+            n_coins = conn.execute("SELECT count(*) AS n FROM coins").fetchone()["n"]
+            if n_coins == 0:
+                logger.warning(
+                    "coins table is empty — run `go-task ml:bootstrap-coins` to mirror "
+                    "eurio_referential.json (required for v_ebay_freshness and freshness queue)"
+                )
 
     @staticmethod
     def _ensure_column(

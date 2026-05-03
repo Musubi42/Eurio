@@ -305,3 +305,115 @@ def test_mock_fixtures_have_real_files() -> None:
         assert (root / str(nid) / "obverse.jpg").is_file(), (
             f"missing fixture obverse for numista_id={nid}"
         )
+
+
+# ─── Phase 3.A: target_eurio_ids (plural) batching ──────────────────────────
+
+
+def test_source_query_rejects_both_singular_and_plural_target() -> None:
+    """target_eurio_id and target_eurio_ids are mutually exclusive (D-19)."""
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        SourceQuery(
+            source_id="mock",
+            target_eurio_id="x",
+            target_eurio_ids=("y", "z"),
+        )
+
+
+def test_source_query_accepts_list_for_target_eurio_ids() -> None:
+    """Ergonomics: callers pass a list; __post_init__ coerces to tuple."""
+    q = SourceQuery(source_id="mock", target_eurio_ids=["a", "b"])  # type: ignore[arg-type]
+    assert q.target_eurio_ids == ("a", "b")
+
+
+def test_query_signature_order_independent_for_target_eurio_ids() -> None:
+    from sources._base.query_sig import compute_query_signature
+
+    q1 = SourceQuery(source_id="mock", target_eurio_ids=("a", "b", "c"))
+    q2 = SourceQuery(source_id="mock", target_eurio_ids=("c", "a", "b"))
+    assert compute_query_signature(q1) == compute_query_signature(q2)
+
+    q3 = SourceQuery(source_id="mock", target_eurio_ids=("a", "b"))
+    assert compute_query_signature(q1) != compute_query_signature(q3)
+
+
+class _RecordingMockAdapter:
+    """Tracks every SourceQuery passed to discover() — used to verify
+    the orchestrator synthesizes one sub-query per eurio_id (D-21)."""
+
+    source_id = "mock"
+
+    def __init__(self) -> None:
+        self.calls: list[SourceQuery] = []
+
+    def discover(self, query: SourceQuery):
+        self.calls.append(query)
+        # Yield the matching mock fixture if numista_id matches; else nothing.
+        # Map target_eurio_id "mock-fixture-<nid>" → that fixture.
+        if query.target_eurio_id and query.target_eurio_id.startswith("mock-fixture-"):
+            nid = int(query.target_eurio_id.split("-")[-1])
+            for fid, country, year, price, title in MOCK_FIXTURES:
+                if fid == nid:
+                    from sources._base.adapter import DiscoveredItem
+
+                    yield DiscoveredItem(
+                        source_ref=f"mock-{nid}",
+                        source_url=f"mock://numista/{nid}/obverse",
+                        listing_title=title,
+                        listing_country=country,
+                        listing_year=year,
+                        listing_price=price,
+                        listing_currency="EUR",
+                        target_eurio_id=query.target_eurio_id,
+                        raw_payload={"numista_id": nid, "fixture": True},
+                    )
+
+    def download_raw(self, item, dest):  # pragma: no cover — not exercised here
+        raise NotImplementedError
+
+
+def test_target_eurio_ids_loops_one_subquery_per_eurio_id(store: Store, tmp_path, monkeypatch) -> None:
+    """Orchestrator unfolds a batch query into N sub-queries at the Discover step.
+
+    Verified by giving the adapter 3 eurio_ids, and asserting it
+    received 3 mono-eurio_id calls. Two of the eurio_ids match real
+    mock fixtures (so we get 2 items), the third doesn't match
+    (no item yielded) — proving the loop runs even when one returns 0.
+    """
+    # Reroute storage so we don't pollute the repo's ml/datasets/sources.
+    from sources._base import storage
+
+    monkeypatch.setattr(storage, "_STORAGE_ROOT", tmp_path / "sources")
+
+    adapter = _RecordingMockAdapter()
+    run_pipeline(
+        adapter,
+        SourceQuery(
+            source_id="mock",
+            target_eurio_ids=(
+                "mock-fixture-64",
+                "mock-fixture-80",
+                "mock-fixture-9999",  # no match
+            ),
+        ),
+        store=store,
+    )
+
+    assert len(adapter.calls) == 3
+    # Each sub-query has a single target_eurio_id, plural cleared.
+    seen_targets = {c.target_eurio_id for c in adapter.calls}
+    assert seen_targets == {
+        "mock-fixture-64",
+        "mock-fixture-80",
+        "mock-fixture-9999",
+    }
+    for c in adapter.calls:
+        assert c.target_eurio_ids is None
+
+    # 2 fixtures matched → 2 source_images persisted.
+    n_si = (
+        store._connection()  # noqa: SLF001
+        .execute("SELECT count(*) FROM source_images WHERE source = 'mock'")
+        .fetchone()[0]
+    )
+    assert n_si == 2

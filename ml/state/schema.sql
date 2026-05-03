@@ -479,3 +479,54 @@ CREATE INDEX IF NOT EXISTS idx_discovery_log_state
   ON discovery_log(pipeline_state);
 CREATE INDEX IF NOT EXISTS idx_discovery_log_query
   ON discovery_log(query_signature);
+
+-- ─── Canonical coin referential (D-20) ────────────────────────────────────
+-- Mirror SQLite de ml/datasets/eurio_referential.json. Bootstrappé via
+-- `go-task ml:bootstrap-coins` (script ml/scripts/bootstrap_coins_from_referential.py).
+-- Table source de vérité pour toutes les vues d'enrichissement (v_ebay_freshness,
+-- futures v_*_freshness cross-source). Voir docs/sources-refacto/decisions.md D-20.
+
+CREATE TABLE IF NOT EXISTS coins (
+  eurio_id          TEXT PRIMARY KEY,
+  country           TEXT NOT NULL,            -- ISO2 ('FR','DE',...,'eu' pour joint)
+  country_name      TEXT,
+  year              INTEGER NOT NULL,
+  face_value        REAL NOT NULL,            -- 0.01 → 2.0
+  is_commemorative  INTEGER NOT NULL DEFAULT 0,
+  theme             TEXT,
+  numista_id        INTEGER,
+  raw_payload_json  TEXT,                     -- entrée JSON complète, pour audit
+  imported_at       TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_coins_country_year
+  ON coins(country, year);
+CREATE INDEX IF NOT EXISTS idx_coins_face_value
+  ON coins(face_value);
+CREATE INDEX IF NOT EXISTS idx_coins_commemorative
+  ON coins(is_commemorative) WHERE is_commemorative = 1;
+CREATE INDEX IF NOT EXISTS idx_coins_numista
+  ON coins(numista_id) WHERE numista_id IS NOT NULL;
+
+-- ─── Freshness view eBay (D-20) ───────────────────────────────────────────
+-- Driver de la freshness queue : pour chaque commémo 2€ non-EU, expose
+-- last_enriched_at, n_images, n_crops via JOIN avec source_images. NULLS
+-- FIRST au consommateur (SELECT ORDER BY ... NULLS FIRST), pas dans la vue.
+
+CREATE VIEW IF NOT EXISTS v_ebay_freshness AS
+SELECT
+  c.eurio_id,
+  c.country,
+  c.year,
+  MAX(si.fetched_at)        AS last_enriched_at,
+  COUNT(DISTINCT si.id)     AS n_images,
+  COUNT(DISTINCT ia.id)     AS n_crops
+FROM coins c
+LEFT JOIN source_images si
+  ON si.target_eurio_id = c.eurio_id AND si.source = 'ebay'
+LEFT JOIN image_assets ia
+  ON ia.source_image_id = si.id
+WHERE c.face_value = 2.0
+  AND c.is_commemorative = 1
+  AND c.country != 'eu'
+GROUP BY c.eurio_id;

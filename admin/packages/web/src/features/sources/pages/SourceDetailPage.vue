@@ -39,6 +39,7 @@ import {
   type HealthState,
   type SourceId,
 } from '../composables/useSourcesApi'
+import EbayPilotPanel from '../components/EbayPilotPanel.vue'
 
 // ─── Route + state ──────────────────────────────────────────────────────
 
@@ -199,32 +200,56 @@ function showToast(
   }, 4700)
 }
 
-async function triggerRun(mode: RunMode) {
+async function triggerRun(
+  mode: RunMode,
+  opts: { target_eurio_ids?: string[] } = {},
+) {
   if (inflight.value) return
   inflight.value = mode
   liveRun.value = null
   try {
-    const trig = await triggerSourceRun(id.value, { dryRun: mode === 'dry' })
+    const trig = await triggerSourceRun(id.value, {
+      dryRun: mode === 'dry',
+      filters: opts.target_eurio_ids ? { target_eurio_ids: opts.target_eurio_ids } : undefined,
+    })
     const final = await pollSourceRun(id.value, trig.run_id, {
       onTick: (snap) => { liveRun.value = snap },
     })
     const tone = final.status === 'success' ? 'success' : final.status === 'partial' ? 'warning' : 'danger'
     const summary = mode === 'dry'
       ? `${final.n_calls} discover call · ${final.error_summary ?? 'OK'}`
-      : `+${final.n_raws_added} raws · +${final.n_crops_added} crops · +${final.n_review_enqueued} review · ${final.n_errors} errors`
+      : `+${final.n_calls} calls · +${final.n_raws_added} raws · +${final.n_crops_added} crops · +${final.n_review_enqueued} review · ${final.n_errors} errors`
     showToast(mode, tone, `${mode === 'dry' ? 'Dry run' : 'Run'} ${final.status} — ${summary}`)
     // Refresh runs table so the new row shows up.
     runs.value = await fetchSourceRuns(id.value, { limit: 50 })
+    // Refresh eBay quota panel (if visible).
+    ebayPanelRef.value?.refresh()
   } catch (err) {
     if (err instanceof TriggerError) {
-      const tone = err.status === 501 ? 'warning' : 'danger'
-      showToast(mode, tone, err.message)
+      const tone = err.status === 501 ? 'warning' : err.status === 409 ? 'warning' : 'danger'
+      let msg = err.message
+      // 409 quota_insufficient — render detailed payload
+      if (err.status === 409 && typeof err.detail === 'object' && err.detail) {
+        const d = err.detail as { detail?: { code?: string; estimate?: number; remaining?: number; max_safe_batch?: number; message?: string } }
+        const inner = d.detail
+        if (inner?.code === 'quota_insufficient') {
+          msg = inner.message ?? `Quota insuffisant (estimate ${inner.estimate}, restant ${inner.remaining}, max safe ${inner.max_safe_batch})`
+        }
+      }
+      showToast(mode, tone, msg)
     } else {
       showToast(mode, 'danger', String(err))
     }
   } finally {
     inflight.value = null
   }
+}
+
+// Ref pour rafraîchir le panneau eBay après un run.
+const ebayPanelRef = ref<InstanceType<typeof EbayPilotPanel> | null>(null)
+
+function onEbayRequestRun(payload: { dryRun: boolean; target_eurio_ids: string[] }) {
+  triggerRun(payload.dryRun ? 'dry' : 'run', { target_eurio_ids: payload.target_eurio_ids })
 }
 
 const RUN_STATUS_TONE: Record<SourceRun['status'], string> = {
@@ -438,6 +463,15 @@ const RUN_STATUS_TONE: Record<SourceRun['status'], string> = {
         </p>
       </header>
 
+      <!-- ═══ eBay pilot panel (D-19/D-20/D-27) ═══ -->
+      <div v-if="id === 'ebay'" class="mb-6">
+        <EbayPilotPanel
+          ref="ebayPanelRef"
+          :inflight="inflight"
+          @request-run="onEbayRequestRun"
+        />
+      </div>
+
       <!-- ═══ Tabs ═══ -->
       <nav
         class="mb-5 flex items-center gap-1 border-b"
@@ -559,8 +593,11 @@ const RUN_STATUS_TONE: Record<SourceRun['status'], string> = {
               <tr
                 v-for="r in runs"
                 :key="r.id"
-                class="border-t"
+                class="cursor-pointer border-t transition-colors"
                 style="border-color: var(--surface-2);"
+                @mouseenter="(e) => ((e.currentTarget as HTMLElement).style.background = 'var(--surface-1)')"
+                @mouseleave="(e) => ((e.currentTarget as HTMLElement).style.background = 'transparent')"
+                @click="(ev) => { if (!(ev.target as HTMLElement).closest('button')) router.push(`/sources/${id}/runs/${r.id}`) }"
               >
                 <td class="px-4 py-2 font-mono text-[12px] tabular-nums" style="color: var(--ink);">
                   {{ formatAbsolute(r.started_at) }}

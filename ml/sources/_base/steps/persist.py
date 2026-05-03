@@ -68,6 +68,7 @@ def run_persist(
                 seller_id=item.seller_id,
                 license=spec.default_license,
                 redistributable=spec.redistributable,
+                is_lot_suspected=item.is_lot_suspected,
                 raw_payload=item.raw_payload,
                 run_id=run.run_id,
             ),
