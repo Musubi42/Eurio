@@ -27,14 +27,68 @@ from state.store import Store
 _DEFAULT_DB = Path(__file__).resolve().parents[1] / "state" / "training.db"
 
 
-def _load_adapter(source_id: str):
+def _load_adapter(source_id: str, *, store=None):
     if source_id == "mock":
         from sources._mock import MockAdapter
         return MockAdapter()
+    if source_id == "ebay":
+        import os
+
+        from market.ebay_client import EbayClient, get_app_token
+        from sources.ebay import EbayAdapter
+
+        client_id = os.environ.get("EBAY_CLIENT_ID")
+        client_secret = os.environ.get("EBAY_CLIENT_SECRET")
+        if not client_id or not client_secret:
+            raise SystemExit(
+                "EBAY_CLIENT_ID / EBAY_CLIENT_SECRET not set in env. "
+                "Run inside a directory with .envrc loaded (direnv allow)."
+            )
+        token = get_app_token(client_id, client_secret)
+        client = EbayClient(token)
+        if store is None:
+            raise SystemExit("ebay adapter requires a Store (internal: pass store=).")
+        return EbayAdapter(client=client, conn=store._connection())
     raise SystemExit(
-        f"Unknown source '{source_id}'. Available: mock. "
-        "Real sources (ebay, numista...) will be added as their adapters land."
+        f"Unknown source '{source_id}'. Available: mock, ebay. "
+        "Real sources will be added as their adapters land."
     )
+
+
+def _resolve_ebay_targets(store, *, batch: int, explicit: list[str] | None) -> list[str]:
+    """Resolve `target_eurio_ids` for an eBay run.
+
+    Priority: explicit `--eurio-ids a,b,c` > freshness queue head (top-N
+    of `v_ebay_freshness` ordered NULLS FIRST). Default batch size = 10
+    (D-21).
+    """
+    if explicit:
+        return list(explicit)
+    rows = store._connection().execute(
+        """
+        SELECT eurio_id FROM v_ebay_freshness
+         ORDER BY last_enriched_at ASC NULLS FIRST, eurio_id
+         LIMIT ?
+        """,
+        (batch,),
+    ).fetchall()
+    return [r["eurio_id"] for r in rows]
+
+
+def _ebay_preflight_or_die(store, *, n_eurio_ids: int) -> None:
+    from api.sources_routes import check_ebay_quota
+
+    check = check_ebay_quota(store, n_eurio_ids=n_eurio_ids)
+    print(
+        f"[pre-flight] avg={check['avg_calls_per_eurio_id']} calls/eurio_id, "
+        f"estimate={check['estimate']} calls, remaining={check['remaining']}/{check['limit']}"
+    )
+    if not check["ok"]:
+        raise SystemExit(
+            f"Quota insufficient: estimate {check['estimate']} × 1.3 > "
+            f"remaining {check['remaining']}. Reduce batch to "
+            f"≤{check['max_safe_batch']} or wait for tomorrow."
+        )
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -53,6 +107,10 @@ def _build_parser() -> argparse.ArgumentParser:
                    help="Filter by face value (e.g. '2eur', '0.50').")
     p.add_argument("--target-eurio-id", default=None,
                    help="Pin the fetch to a single eurio_id (raises priority).")
+    p.add_argument("--target-eurio-ids", default=None,
+                   help="Comma-separated eurio_ids (overrides freshness queue for ebay).")
+    p.add_argument("--batch", type=int, default=10,
+                   help="Batch size for ebay freshness queue (default: 10, D-21).")
     p.add_argument("--limit", type=int, default=None, help="Cap discovered items.")
     p.add_argument("--db", type=Path, default=_DEFAULT_DB,
                    help=f"Path to the SQLite store (default: {_DEFAULT_DB}).")
@@ -67,17 +125,40 @@ def main(argv: list[str] | None = None) -> int:
         format="%(message)s",
     )
 
-    adapter = _load_adapter(args.source)
+    store = Store(args.db)
+
+    target_eurio_ids: tuple[str, ...] | None = None
+    if args.source == "ebay" and not args.target_eurio_id:
+        explicit = (
+            [s.strip() for s in args.target_eurio_ids.split(",") if s.strip()]
+            if args.target_eurio_ids else None
+        )
+        ids = _resolve_ebay_targets(store, batch=args.batch, explicit=explicit)
+        if not ids:
+            raise SystemExit(
+                "No eurio_ids found in freshness queue. "
+                "Run `go-task ml:bootstrap-coins` first."
+            )
+        if not args.dry_run:
+            _ebay_preflight_or_die(store, n_eurio_ids=len(ids))
+        target_eurio_ids = tuple(ids)
+        print(f"[ebay] batch of {len(ids)} eurio_ids: {ids[:3]}{'...' if len(ids) > 3 else ''}")
+    elif args.target_eurio_ids:
+        target_eurio_ids = tuple(s.strip() for s in args.target_eurio_ids.split(",") if s.strip())
+
+    adapter = _load_adapter(args.source, store=store)
+    if args.dry_run and hasattr(adapter, "dry_run"):
+        adapter.dry_run = True
     query = SourceQuery(
         source_id=args.source,
         country=args.country,
         denomination=args.denomination,
         year=args.year,
         target_eurio_id=args.target_eurio_id,
+        target_eurio_ids=target_eurio_ids,
         limit=args.limit,
     )
 
-    store = Store(args.db)
     run_id = run_pipeline(adapter, query, store=store, dry_run=args.dry_run, force=args.force)
 
     row = store._connection().execute(

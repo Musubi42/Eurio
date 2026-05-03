@@ -46,6 +46,7 @@ class SourceImageRow:
     n_crops_detected: int = 0
     license: str = "unknown"
     redistributable: bool = False
+    is_lot_suspected: bool = False
     raw_payload: dict[str, Any] | None = None
     run_id: str | None = None
 
@@ -128,6 +129,7 @@ def upsert_source_image(conn: sqlite3.Connection, row: SourceImageRow) -> str:
               width=COALESCE(?, width), height=COALESCE(?, height),
               bytes=COALESCE(?, bytes), sha256=COALESCE(?, sha256),
               n_crops_detected=?, license=?, redistributable=?,
+              is_lot_suspected=?,
               raw_payload_json=COALESCE(?, raw_payload_json),
               run_id=COALESCE(?, run_id),
               fetched_at=datetime('now')
@@ -140,6 +142,7 @@ def upsert_source_image(conn: sqlite3.Connection, row: SourceImageRow) -> str:
                 row.storage_path,
                 row.width, row.height, row.bytes, row.sha256,
                 row.n_crops_detected, row.license, int(row.redistributable),
+                int(row.is_lot_suspected),
                 payload,
                 row.run_id,
                 sid,
@@ -155,9 +158,9 @@ def upsert_source_image(conn: sqlite3.Connection, row: SourceImageRow) -> str:
           listing_title, listing_country, listing_year,
           listing_price, listing_currency, condition_raw, seller_id,
           storage_path, width, height, bytes, sha256,
-          n_crops_detected, license, redistributable,
+          n_crops_detected, license, redistributable, is_lot_suspected,
           raw_payload_json, run_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             sid, row.source, row.source_ref, row.source_url, row.target_eurio_id,
@@ -165,6 +168,7 @@ def upsert_source_image(conn: sqlite3.Connection, row: SourceImageRow) -> str:
             row.listing_price, row.listing_currency, row.condition_raw, row.seller_id,
             row.storage_path, row.width, row.height, row.bytes, row.sha256,
             row.n_crops_detected, row.license, int(row.redistributable),
+            int(row.is_lot_suspected),
             payload, row.run_id,
         ),
     )

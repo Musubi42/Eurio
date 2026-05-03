@@ -311,9 +311,52 @@ export interface TriggerRunOptions {
     denomination?: string
     year?: number
     target_eurio_id?: string
+    target_eurio_ids?: string[]
     limit?: number
     extra?: Record<string, unknown>
   }
+}
+
+// ─── eBay-specific endpoints (phase 3.C) ──────────────────────────────────
+
+export interface EbayQuotaStatus {
+  calls_today: number
+  limit: number
+  remaining: number
+  exhausted: boolean
+  period: string
+  avg_calls_per_eurio_id: number
+}
+
+export interface EbayFreshnessItem {
+  eurio_id: string
+  country: string
+  year: number
+  last_enriched_at: string | null
+  n_images: number
+  n_crops: number
+  status: 'never' | 'stale' | 'fresh'
+}
+
+export interface EbayFreshnessResponse {
+  items: EbayFreshnessItem[]
+  buckets: { never: number; stale_90d: number; fresh: number; total: number }
+}
+
+export async function fetchEbayQuotaStatus(): Promise<EbayQuotaStatus | null> {
+  try {
+    const resp = await fetch(`${ML_API}/sources/ebay/quota-status`)
+    if (!resp.ok) return null
+    return await resp.json()
+  } catch { return null }
+}
+
+export async function fetchEbayFreshness(limit = 50): Promise<EbayFreshnessResponse | null> {
+  try {
+    const resp = await fetch(`${ML_API}/sources/ebay/freshness?limit=${limit}`)
+    if (!resp.ok) return null
+    return await resp.json()
+  } catch { return null }
 }
 
 export class TriggerError extends Error {

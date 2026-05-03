@@ -600,3 +600,276 @@ mid-flight ou un mode "fork & detach" plus tard.
    du vrai data.
 4. Pour eBay : nouveau kickoff doc à rédiger (cf. `orchestrator-kickoff.md`
    pour le format), ouvrir une session dédiée.
+
+## 2026-05-03 — Brainstorm eBay + kickoff étape 3
+
+Suite directe à la session précédente. Brainstorm long avec
+l'utilisateur sur la stratégie eBay, dissipation d'un malentendu de
+fond sur le pilotage des sources d'enrichissement, et rédaction du
+kickoff doc avant toute ligne de code.
+
+### Le malentendu dissipé
+
+J'avais en tête un modèle "SourceQuery par cohort country/year/denom"
+hérité de la session précédente. **Faux modèle.** eBay (et toute
+source d'enrichissement) est pilotée par la **liste des `eurio_id`
+du référentiel canonique** (issu de Numista). Pas de cohort dans
+cette boucle — les cohorts sont un concept training-side, sans rapport
+avec l'ingestion source.
+
+La page `/sources` admin a même déjà figé la dichotomie "Référentiel
+canonique" / "Enrichissement" en chunk 1 de la session frontend
+précédente. J'aurais dû y prêter attention.
+
+### Décisions actées (D-19 → D-27)
+
+Cf. `decisions.md` pour les explications complètes :
+
+- **D-19** Sources d'enrichissement pilotées par `eurio_id`, pas
+  cohort. Conséquence : `SourceQuery.country/year/denomination`
+  inertes pour eBay. Ajout `target_eurio_ids: list[str] | None`
+  (pluriel) en chunk 3.A.
+- **D-20** Freshness queue en vue SQL pure (`v_ebay_freshness`),
+  ordonnée `last_enriched_at ASC NULLS FIRST`.
+- **D-21** 1 run = 1 batch de N eurio_ids (default **10**), pas 50
+  (durée + spam risk).
+- **D-22** Tout télécharger en HD (`item/{id}` systématique pour
+  `additionalImages`). Coût quota assumé, rendu visible front.
+- **D-23** Pagination `limit=50` no-paginate V1.
+- **D-24** Velocity weighting → vue SQL post-hoc (parking lot V1.5).
+- **D-25** Quota stop = `partial`, recovery par idempotence des 5
+  couches. Pas de SAVEPOINT.
+- **D-26** Lot detection à **2 niveaux** : (a) heuristique titre →
+  `source_images.is_lot_suspected` ; (b) `n_crops > 1` sur une image →
+  cette image en `review_queue.kind='lot'`. Quote éligible **uniquement
+  si** `is_lot_suspected = false`.
+- **D-27** Pre-flight quota check avant batch : refuse 409 si
+  `estimate × 1.3 > remaining`, suggère `max_safe_batch`.
+
+### Doc créée / mise à jour
+
+- `ebay-kickoff.md` (NEW) — brief auto-suffisant pour la session 3,
+  ~300 lignes : malentendu cohort, décisions, archi, découpage 3.A→3.G,
+  parking lot V1.5+, endpoints eBay.
+- `decisions.md` (UPDATE) — append D-19 → D-27.
+
+### Plan d'attaque session 3 (chunks)
+
+- **3.A** Schema (`is_lot_suspected`, `review_queue.kind`,
+  `v_ebay_freshness`) + `SourceQuery.target_eurio_ids` pluriel +
+  loop orchestrator. Tests 17/17 verts à conserver.
+- **3.B** EbayAdapter core — `discover()` itère eurio_ids, search +
+  `item/{id}` HD + group expansion ; `download_raw()` CDN. Tests httpx
+  mocked.
+- **3.C** API quota + freshness — `GET /sources/ebay/quota-status`,
+  `GET /sources/ebay/freshness`, pre-flight 409 dans `POST /runs`.
+- **3.D** CLI eBay — `ml:src:ebay:{run,dry,limit,status}` qui lit la
+  freshness queue.
+- **3.E** Front — `EbayQuotaKPI`, `EbayFreshnessWidget`, `EbayRunDialog`
+  pré-run avec estimation. Audit visuel chunk-par-chunk.
+- **3.F** Quote + lot routing dans `steps/resolve.py`.
+- **3.G** Smoke run réel sur 5 commemos, audit visuel images, doc
+  des stats observées (calls/eurio_id, taux lots, etc.).
+
+### Parking lot — V1.5+ documentés dans le kickoff pour ne rien perdre
+
+- Lot review page (`/review/lots`) — UI dédiée à la décomposition
+  des coffrets, pré-requis 200+ rows accumulées
+- Auto-name calibré sur vraies données (D-18 a différé)
+- Velocity weighting view (D-24)
+- Pagination > 50 (V2)
+- `item/{id}` paresseux si `additionalImages` déjà HD dans summary
+- Scheduled re-fetch via `/schedule` agent
+- `v_enrichment_freshness` cross-source (multi-source pivot)
+
+### Comment reprendre en début de session 3
+
+1. Lire `ebay-kickoff.md` en entier (10 min).
+2. `cd ml && .venv/bin/python -m pytest tests/test_sources_base.py tests/test_orchestrator.py -q`
+   → doit afficher **17 passed**.
+3. Vérifier token eBay : `.venv/bin/python -c "import os; from market.ebay_client import get_app_token; print(get_app_token(os.environ['EBAY_CLIENT_ID'], os.environ['EBAY_CLIENT_SECRET'])[:20])"`.
+4. Attaquer 3.A (schema + SourceQuery extension).
+
+## 2026-05-03 — Étape 3 livrée (eBay bout-en-bout, 3.A.0 → 3.G)
+
+Suite directe au kickoff. 7 chunks livrés sans interruption après
+le « Je valide tu peux continuer » de l'utilisateur. Pipeline réel
+fonctionnel sur la vraie API eBay.
+
+### Découverte cours-route + correction
+
+Le kickoff initial supposait une table `coins` en SQLite. **Faux** :
+le référentiel canonique vit en JSON (`ml/datasets/eurio_referential.json`,
+2628 entrées dont 466 commémos 2€ non-EU). Pause + escalation au user :
+il a tranché Option B (canonicaliser en SQLite). Chunk **3.A.0** ajouté
+au plan pour bootstrapper la table avant 3.A.
+
+D-20 mis à jour dans decisions.md pour refléter (table `coins` +
+`go-task ml:bootstrap-coins` + vue SQL pure désormais possible).
+
+### Chunks livrés
+
+- **3.A.0** Table `coins` SQLite + script bootstrap idempotent
+  (`scripts/bootstrap_coins_from_referential.py`) + tasks `ml:bootstrap-coins{,-dry}` +
+  warning au boot du Store si vide. Vue `v_ebay_freshness` ajoutée.
+  4 tests verts.
+- **3.A** Extension `SourceQuery.target_eurio_ids: tuple[str, ...]`
+  (pluriel, mutually exclusive avec singular). Boucle dans
+  `steps/discover.py::_iter_subqueries` : 1 batch query → N sub-queries
+  mono-eurio_id (l'adapter ne voit jamais le batching). Signature
+  query stable indépendamment de l'ordre. Colonnes
+  `source_images.is_lot_suspected` et `review_queue.kind` ajoutées.
+  4 tests dédiés.
+- **3.B** Module `ml/sources/ebay/` complet : `queries.py`
+  (build_query depuis SQLite), `filters.py` (accept_listing,
+  is_lot_suspected D-26 niveau 1, listing_row), `adapter.py`
+  (EbayAdapter implémente SourceAdapter), `__init__.py`, `README.md`.
+  Convention `source_ref = ebay_<itemId>_img<N>` (1 row par image).
+  Fallback gracieux si `item/{id}` plante. **24 tests httpx-mocked verts**.
+- **3.C** API : `GET /sources/ebay/quota-status`, `GET /sources/ebay/freshness`,
+  pre-flight check 409 dans `POST /sources/ebay/runs` (D-27, marge 30%).
+  `EbayAdapter` chargé dans `_load_adapter` via env vars + token cache.
+  8 tests d'intégration FastAPI verts.
+- **3.D** CLI : `--target-eurio-ids` + `--batch N` (default 10) +
+  `_resolve_ebay_targets()` (lit `v_ebay_freshness`) + pre-flight
+  print + tasks `ml:src:ebay:{run,dry,limit,status}`. Sub-cmd
+  `status_cli.py` pour le snapshot quota/freshness. **Adapter
+  `dry_run` flag** pour skip `item/{id}` en preview (1 call/eurio_id
+  au lieu de ~10) — propagé via CLI/API.
+- **3.E** Front : `EbayPilotPanel.vue` (KPI quota + buckets + slider
+  batch + estimation pré-run + preview prochaines pièces +
+  warning insufficient quota). Composables étendus
+  (`fetchEbayQuotaStatus`, `fetchEbayFreshness`,
+  `triggerSourceRun({target_eurio_ids})`). Injecté dans
+  `SourceDetailPage.vue` avec `v-if="id === 'ebay'"`. Toast 409
+  affiche `max_safe_batch`. Typecheck `features/sources/` clean
+  (les erreurs `features/sets|audit|lab` sont pré-existantes hors scope).
+- **3.F** `steps/resolve.py` : pending_quote créée pour single
+  non-lot avec prix > 0 ET `image_index == 0` (1 quote par listing,
+  pas par image). `steps/enqueue.py` : `kind = 'lot'` si
+  `is_lot_suspected` OU si N crops > 1 sur la source_image
+  (D-26 niveaux 1+2). 9 tests verts.
+- **3.G** Smoke run réel sur `it-2017-2eur-2000-years-since-the-death-of-titus-livius`
+  (commémo ambiguë → peu de résultats → cheap). Pipeline bout-en-bout :
+  - 3 raws JPEG 1500×1500 téléchargés depuis `ebayimg.com`
+  - 3 crops PNG 224×224 produits (normalize_snap, **0 errors**)
+  - 2 pending_quotes (10.74€ + 10.95€ EUR)
+  - 3 review_queue rows en `kind='single'`
+  - **Re-run = 0 nouveau row, 0 fichier téléchargé** (idempotence
+    parfaite des 5 couches dédup C1→C5)
+
+### Bilan tests
+
+```
+tests/test_sources_base.py        8/8
+tests/test_orchestrator.py       12/12   (8 existants + 4 nouveaux 3.A)
+tests/test_bootstrap_coins.py     4/4   (3.A.0)
+tests/test_ebay_adapter.py       24/24  (3.B, httpx-mocked)
+tests/test_ebay_api.py            8/8   (3.C, FastAPI integration)
+tests/test_resolve_lot_quote.py   9/9   (3.F)
+                                ────
+                                 65/65 ✅
+```
+
+(le 66e ‘test_query_signature_is_stable’ déjà présent avant 3.A reste vert)
+
+### Décisions techniques en cours de session
+
+- **Storage_path eBay contient des `|`** (du format itemId `v1|336075712778|0`).
+  Pas un bug — ces caractères sont valides en POSIX, juste salissant
+  visuellement dans les outputs sqlite3 default-pipe-separator. Aucun
+  impact fonctionnel.
+- **`source_runs.n_calls` sous-évalue les calls réels** : le compteur
+  bump une fois par sub-query dans `discover.py` mais l'adapter fait
+  N calls par sub-query (1 search + N item/{id}). Le vrai compteur quota
+  est `api_call_log` (lu par `/sources/ebay/quota-status`). Acceptable
+  V1, à raffiner si besoin (V1.5).
+- **Image index canonicality pour pending_quote** : 1 listing = N
+  source_images (1 par photo). On insère la pending_quote uniquement
+  pour `image_index == 0` (extracted from `raw_payload`) — sinon on
+  créerait N doublons de la même quote.
+- **Dry-run cheap** : EbayAdapter.dry_run flag skip `item/{id}` →
+  1 call/eurio_id au lieu de ~10. Fix livré en 3.D quand le first
+  dry-run a consommé 33 calls inutilement.
+
+### Fichiers ajoutés / modifiés
+
+```
+docs/sources-refacto/
+  ebay-kickoff.md                NEW (3.A.0 + 3.A § corrigés post-discovery coins)
+  decisions.md                   D-19 → D-27 (D-20 corrigé : table coins SQLite)
+  progress.md                    cette entrée
+
+ml/state/
+  schema.sql                     +coins table, +v_ebay_freshness view
+  store.py                       +ALTERs (is_lot_suspected, kind), +warning si coins vide
+
+ml/scripts/
+  bootstrap_coins_from_referential.py   NEW (idempotent INSERT OR REPLACE)
+
+ml/sources/_base/
+  adapter.py                     +target_eurio_ids tuple, +is_lot_suspected
+  query_sig.py                   stable hash sur sorted(target_eurio_ids)
+  dedup.py                       SourceImageRow.is_lot_suspected propagé
+  steps/discover.py              _iter_subqueries (1 sub-query par eurio_id)
+  steps/persist.py               propage is_lot_suspected
+  steps/resolve.py               pending_quote pour single canonical
+  steps/enqueue.py               kind='lot' (titre OU n_crops>1)
+
+ml/sources/ebay/                 NEW (1 module entier)
+  __init__.py · adapter.py · queries.py · filters.py · status_cli.py · README.md
+
+ml/api/sources_routes.py         +EbayQuotaStatus + EbayFreshness + pre-flight 409
+ml/sources/cli.py                +ebay loader + freshness queue + pre-flight print
+ml/Taskfile.yml                  +bootstrap-coins{,-dry} + src:ebay:{run,dry,limit,status}
+
+admin/packages/web/src/features/sources/
+  composables/useSourceDetail.ts +fetchEbayQuotaStatus, fetchEbayFreshness, target_eurio_ids
+  components/EbayPilotPanel.vue  NEW (KPI + freshness + slider + estimation)
+  pages/SourceDetailPage.vue     intégration v-if="id === 'ebay'" + toast 409 max_safe_batch
+
+ml/tests/
+  test_bootstrap_coins.py        NEW (4)
+  test_ebay_adapter.py           NEW (24)
+  test_ebay_api.py               NEW (8)
+  test_resolve_lot_quote.py      NEW (9)
+  test_orchestrator.py           +4 tests target_eurio_ids
+```
+
+### Reste à faire (V1.5+, parking lot)
+
+Documenté dans `ebay-kickoff.md` §"Parking lot" :
+- Lot review page (`/review/lots`) — UI dédiée à la décomposition
+  des coffrets, pré-requis 200+ rows kind='lot' accumulées
+- Auto-name calibré sur vraies données (D-18 différé)
+- Vue `v_coin_market_quotes_weighted` (velocity weighting post-hoc, D-24)
+- Pagination > 50 (V2)
+- `item/{id}` paresseux si `additionalImages` déjà HD dans summary
+- Scheduled re-fetch via `/schedule` agent
+- `v_enrichment_freshness` cross-source (multi-source pivot)
+- Suppression du legacy `ml/market/scrape_ebay.py` (chunk séparé après audit V1.5)
+
+### Comment reprendre dans une nouvelle session
+
+```bash
+cd ml && .venv/bin/python -m pytest \
+  tests/test_sources_base.py tests/test_orchestrator.py \
+  tests/test_bootstrap_coins.py tests/test_ebay_adapter.py \
+  tests/test_ebay_api.py tests/test_resolve_lot_quote.py -q
+# → 65 passed
+
+# Bootstrap canonical coins (1× par machine ou après update du JSON)
+go-task ml:bootstrap-coins
+
+# Status quota + freshness
+go-task ml:src:ebay:status
+
+# Lance un batch eBay réel (default 10 prochains de la freshness queue)
+go-task ml:src:ebay:run
+
+# Ou dry-run 5 next (cheap, 1 call/eurio_id)
+go-task ml:src:ebay:dry -- --batch 5
+```
+
+Ou via le front : `cd admin/packages/web && pnpm dev` →
+`/sources/ebay` → panneau pilot → slider 1-30 → bouton Run/Dry.

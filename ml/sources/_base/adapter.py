@@ -26,9 +26,16 @@ class SourceQuery:
     """Filter spec passed to `adapter.discover()`.
 
     Strict named fields cover the common case (cohort scoped by
-    country/denomination/year, optional pin to a single eurio_id).
+    country/denomination/year, optional pin to a single eurio_id, or
+    a batch of eurio_ids for enrichment sources — see D-19/D-21).
     `extra` is the escape hatch for source-specific filters (eBay
     category, Catawiki auction subtype, ...).
+
+    `target_eurio_id` (singular) and `target_eurio_ids` (plural)
+    sont mutuellement exclusifs. Le pluriel signale un batch
+    d'enrichissement piloté par freshness queue ; l'orchestrateur
+    boucle dessus à l'étape Discover et synthétise une SourceQuery
+    par eurio_id avant d'appeler l'adapter.
     """
 
     source_id: str
@@ -36,8 +43,21 @@ class SourceQuery:
     denomination: str | None = None
     year: int | None = None
     target_eurio_id: str | None = None
+    target_eurio_ids: tuple[str, ...] | None = None
     limit: int | None = None
     extra: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if self.target_eurio_id and self.target_eurio_ids:
+            raise ValueError(
+                "SourceQuery: target_eurio_id (singular) and target_eurio_ids "
+                "(plural) are mutually exclusive — pick one."
+            )
+        if self.target_eurio_ids is not None and not isinstance(
+            self.target_eurio_ids, tuple
+        ):
+            # Allow callers to pass list/iterable for ergonomics.
+            object.__setattr__(self, "target_eurio_ids", tuple(self.target_eurio_ids))
 
 
 @dataclass
@@ -60,6 +80,7 @@ class DiscoveredItem:
     listing_currency: str = "EUR"
     condition_raw: str | None = None
     seller_id: str | None = None
+    is_lot_suspected: bool = False
     raw_payload: dict[str, Any] | None = None
 
 
