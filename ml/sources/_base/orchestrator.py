@@ -1,9 +1,10 @@
-"""Generic 6-step ingestion pipeline (D-13).
+"""Generic 8-step ingestion pipeline (D-13).
 
-Drives any `SourceAdapter` through Discover → Persist → Download →
-Detect → Resolve → Enqueue, writing to `source_runs` after each step.
-Chunks 2.B → 2.D progressively replace the stubs below with real
-step implementations under `ml/sources/_base/steps/`.
+Drives any `SourceAdapter` through Discover → Persist → Text-signal →
+Download → Detect → Resolve → Auto-validate → Enqueue, writing to
+`source_runs` after each step. Step implementations live under
+`ml/sources/_base/steps/`. The canonical step list is
+`PIPELINE_STEPS` in `run_logger.py`.
 
 Idempotence is the contract: a re-run must produce zero new rows /
 zero new files / zero new crops. Each step owns its upserts; the
@@ -17,20 +18,22 @@ from dataclasses import asdict
 from typing import TYPE_CHECKING
 
 from sources._base.adapter import SourceAdapter, SourceQuery
-from sources._base.run_logger import start_run
+from sources._base.run_logger import PIPELINE_STEPS, start_run
+
+__all__ = ["PIPELINE_STEPS", "run_pipeline"]
+from sources._base.steps.auto_validate import run_auto_validate_dino
 from sources._base.steps.detect_crop import run_detect_crop
 from sources._base.steps.discover import run_discover
 from sources._base.steps.download import run_download
 from sources._base.steps.enqueue import run_enqueue
 from sources._base.steps.persist import run_persist
 from sources._base.steps.resolve import run_resolve
+from sources._base.steps.text_signal import run_text_signal_extract
 
 if TYPE_CHECKING:
     from state.store import Store
 
 logger = logging.getLogger(__name__)
-
-PIPELINE_STEPS = ("discover", "persist", "download", "detect", "resolve", "enqueue")
 
 
 def run_pipeline(
@@ -41,7 +44,7 @@ def run_pipeline(
     dry_run: bool = False,
     force: bool = False,
 ) -> str:
-    """Execute the 6-step pipeline for one source.
+    """Execute the 8-step pipeline for one source.
 
     `dry_run=True` runs Discover only and writes nothing past the
     `source_runs` row (kind='dry') and the `discovery_log` upserts.
@@ -81,6 +84,18 @@ def run_pipeline(
             source_id=adapter.source_id,
         )
 
+        # ── 2.5. Text-signal extraction (chunk 5 auto-validation) ────
+        # Pure regex/dict, no I/O on the listing API. Persiste 1 row par
+        # source_image dans listing_text_signals. Pas un step de
+        # décision en V1 — le filtre dur arrivera au chunk 6.
+        run.set_step("text_signal")
+        run_text_signal_extract(
+            conn=conn,
+            run=run,
+            source_image_ids=persist_result.source_image_ids,
+            store=store,
+        )
+
         # ── 3. Download ──────────────────────────────────────────────
         run.set_step("download")
         run_download(
@@ -102,6 +117,18 @@ def run_pipeline(
         # ── 5. Resolve ───────────────────────────────────────────────
         run.set_step("resolve")
         run_resolve(
+            conn=conn,
+            run=run,
+            source_id=adapter.source_id,
+            source_image_ids=persist_result.source_image_ids,
+        )
+
+        # ── 5.5. Auto-validate via DINOv2 ────────────────────────────
+        # Suggestion layer (V1, no decision). Skipped if anchor bank
+        # missing — does not fail the pipeline. See
+        # docs/sources-refacto/auto-validation/.
+        run.set_step("auto_validate")
+        run_auto_validate_dino(
             conn=conn,
             run=run,
             source_id=adapter.source_id,

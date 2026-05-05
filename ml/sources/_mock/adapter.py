@@ -32,13 +32,21 @@ MOCK_FIXTURES: tuple[tuple[int, str, int, float, str], ...] = (
 class MockAdapter:
     source_id: str = "mock"
 
-    def discover(self, query: SourceQuery) -> Iterable[DiscoveredItem]:
+    def discover(
+        self,
+        query: SourceQuery,
+        *,
+        record_search=None,
+        record_discarded=None,
+    ) -> Iterable[DiscoveredItem]:
         limit = query.limit if query.limit is not None else len(MOCK_FIXTURES)
+        items_emitted = 0
         for nid, country, year, price, title in MOCK_FIXTURES[:limit]:
             if query.country and query.country != country:
                 continue
             if query.year and query.year != year:
                 continue
+            items_emitted += 1
             yield DiscoveredItem(
                 source_ref=f"mock-{nid}",
                 source_url=f"mock://numista/{nid}/obverse",

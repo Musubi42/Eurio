@@ -94,7 +94,7 @@ def _ebay_preflight_or_die(store, *, n_eurio_ids: int) -> None:
 def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="sources.cli",
-        description="Run the 6-step ingestion pipeline for one source.",
+        description="Run the 8-step ingestion pipeline for one source.",
     )
     p.add_argument("--source", required=True, help="Source id (e.g. 'mock', 'ebay').")
     p.add_argument("--dry-run", action="store_true",

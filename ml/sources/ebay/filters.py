@@ -18,7 +18,6 @@ le legacy rejetait les lots en bloc ; ici on les **route**.
 from __future__ import annotations
 
 import re
-from collections import defaultdict
 from typing import Any
 
 # ── Patterns ─────────────────────────────────────────────────────────────────
@@ -48,6 +47,9 @@ NOISE_PATTERNS = re.compile(
 
 FACE_VALUE_FACTOR_LOW = 0.8
 FACE_VALUE_FACTOR_HIGH = 500.0
+
+# Years within sane range to accept as "year-of-coin" in the title.
+YEAR_IN_TITLE_RE = re.compile(r"\b(19|20)\d{2}\b")
 
 
 # ── Listing normalisation ────────────────────────────────────────────────────
@@ -104,12 +106,24 @@ def is_lot_suspected(title: str | None) -> bool:
     return bool(LOT_PATTERNS.search(title))
 
 
-def accept_listing(row: dict, face_value: float) -> tuple[bool, str]:
-    """Filtre prix / devise / noise. Retourne (kept, reason).
+def accept_listing(
+    row: dict,
+    face_value: float,
+    *,
+    expected_year: int | None = None,
+    is_commemorative: bool = False,
+) -> tuple[bool, str]:
+    """Filtre prix / devise / noise / millésime. Retourne (kept, reason).
 
     Note : ``is_lot_suspected`` n'apparaît PAS ici — un lot est *gardé*
-    (on veut ses images) mais flaggé. Cette fonction ne rejette que
-    les noises hors-scope (proof, métaux précieux, fautées…).
+    (on veut ses images) mais flaggé. Cette fonction ne rejette que les
+    noises hors-scope (proof, métaux précieux, fautées…) et, depuis le
+    bloc 1 (2026-05-05), les listings commémoratifs dont le titre
+    contient une année différente de celle attendue.
+
+    Policy year-in-title : *accept-on-missing*. Si on ne trouve aucune
+    année dans le titre, on accepte (les vendeurs n'écrivent pas tous
+    l'année — éviter de crasher le recall sur ce pattern).
     """
     title = row.get("title") or ""
     if NOISE_PATTERNS.search(title):
@@ -123,15 +137,8 @@ def accept_listing(row: dict, face_value: float) -> tuple[bool, str]:
         return False, "below_face"
     if price > face_value * FACE_VALUE_FACTOR_HIGH:
         return False, "above_extreme"
+    if is_commemorative and expected_year is not None:
+        years_in_title = {int(m.group(0)) for m in YEAR_IN_TITLE_RE.finditer(title)}
+        if years_in_title and expected_year not in years_in_title:
+            return False, "year_mismatch"
     return True, "ok"
-
-
-def filter_listings(rows: list[dict], face_value: float) -> tuple[list[dict], dict[str, int]]:
-    kept: list[dict] = []
-    reasons: dict[str, int] = defaultdict(int)
-    for r in rows:
-        ok, reason = accept_listing(r, face_value)
-        if ok:
-            kept.append(r)
-        reasons[reason] += 1
-    return kept, dict(reasons)

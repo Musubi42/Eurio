@@ -133,7 +133,9 @@ def test_build_query_uses_french_country_name_and_year(tmp_path):
     q = build_query(coin)
     assert q.q == "2 euro France 2015"
     assert "categoryId:32650" in q.aspect_filter
-    assert "{2015}" in q.aspect_filter
+    # Bloc 1 (2026-05-05) : on a drop l'aspect Année:{...} pour ne plus
+    # crasher le recall sur les vendeurs qui ne remplissent pas l'aspect.
+    assert "{2015}" not in q.aspect_filter
     assert q.theme_tokens == ["paix"]
 
 
@@ -212,6 +214,41 @@ def test_accept_listing_keeps_lot_titles():
     """Important — lots are kept (only flagged), not rejected. Cf. D-26."""
     row = listing_row(_summary("128", "Lot de 5 pièces 2 euro France 2015", price=15.0))
     ok, reason = accept_listing(row, face_value=2.0)
+    assert ok and reason == "ok"
+
+
+def test_accept_listing_rejects_year_mismatch_for_commemoratives():
+    """Bloc 1 (2026-05-05) — post-filter year-in-title pour les commémos."""
+    row = listing_row(_summary("129", "2 euro France 2014 commémorative", price=5.0))
+    ok, reason = accept_listing(
+        row, face_value=2.0, expected_year=2015, is_commemorative=True,
+    )
+    assert not ok and reason == "year_mismatch"
+
+
+def test_accept_listing_accepts_year_match():
+    row = listing_row(_summary("130", "2 euro France 2015 commémorative", price=5.0))
+    ok, reason = accept_listing(
+        row, face_value=2.0, expected_year=2015, is_commemorative=True,
+    )
+    assert ok and reason == "ok"
+
+
+def test_accept_listing_accepts_when_year_missing_in_title():
+    """Policy accept-on-missing : pas d'année dans le titre → on accepte."""
+    row = listing_row(_summary("131", "2 euro France commémorative", price=5.0))
+    ok, reason = accept_listing(
+        row, face_value=2.0, expected_year=2015, is_commemorative=True,
+    )
+    assert ok and reason == "ok"
+
+
+def test_accept_listing_skips_year_check_for_standards():
+    """Standards (non-commémoratifs) : pas de check year-in-title."""
+    row = listing_row(_summary("132", "2 euro France 2010 standard", price=5.0))
+    ok, reason = accept_listing(
+        row, face_value=2.0, expected_year=2015, is_commemorative=False,
+    )
     assert ok and reason == "ok"
 
 

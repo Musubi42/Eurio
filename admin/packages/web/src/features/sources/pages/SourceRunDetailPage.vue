@@ -101,25 +101,31 @@ function formatAbsolute(iso: string): string {
 }
 
 function gotoReview(entry: RunBreakdownEntry) {
-  // Phase 2 (review unifié) câblera les query params. Pour l'instant
-  // on atterrit sur /review global — l'utilisateur scrollera.
-  router.push({
-    path: '/review',
-    query: {
-      run_id: runId.value,
-      eurio_id: entry.eurio_id,
-    },
-  })
+  // Toggle deep-link : si la row a uniquement du review_lot → mode=lot,
+  // si uniquement du review_single → default (single), sinon default
+  // (single visible mais l'utilisateur peut pivoter via le toggle).
+  const hasLot = entry.n_searched_review_lot > 0
+  const hasSingle = entry.n_searched_review_single > 0
+  const mode: 'single' | 'lot' = hasLot && !hasSingle ? 'lot' : 'single'
+  const query: Record<string, string> = {
+    run_id: runId.value,
+    eurio_id: entry.eurio_id,
+  }
+  if (mode === 'lot') query.mode = 'lot'
+  router.push({ path: '/review', query })
 }
 
-function gotoCoin(eurio_id: string) {
-  router.push(`/coins/${eurio_id}`)
+function gotoListings(eurio_id: string) {
+  router.push({
+    path: `/sources/${sourceId.value}/runs/${runId.value}/listings`,
+    query: { eurio_id },
+  })
 }
 
 function onRowClick(ev: MouseEvent, eurio_id: string) {
   // Exclude clicks on interactive children (buttons, links).
   if ((ev.target as HTMLElement).closest('button, a')) return
-  gotoCoin(eurio_id)
+  gotoListings(eurio_id)
 }
 </script>
 
@@ -250,7 +256,7 @@ function onRowClick(ev: MouseEvent, eurio_id: string) {
                 :key="row.eurio_id"
                 class="cursor-pointer border-t transition-colors"
                 style="border-color: var(--surface-2);"
-                :title="`Voir la fiche ${row.eurio_id}`"
+                :title="`Voir les listings pour ${row.eurio_id}`"
                 @mouseenter="(e) => ((e.currentTarget as HTMLElement).style.background = 'var(--surface-1)')"
                 @mouseleave="(e) => ((e.currentTarget as HTMLElement).style.background = 'transparent')"
                 @click="(ev) => onRowClick(ev, row.eurio_id)"
@@ -309,7 +315,7 @@ function onRowClick(ev: MouseEvent, eurio_id: string) {
                     @mouseenter="(e) => { const el = e.currentTarget as HTMLElement; el.style.borderColor = 'var(--gold-600)'; el.style.background = 'color-mix(in srgb, var(--gold-600) 8%, var(--surface))'; }"
                     @mouseleave="(e) => { const el = e.currentTarget as HTMLElement; el.style.borderColor = 'var(--surface-3)'; el.style.background = 'var(--surface)'; }"
                     @click.stop="gotoReview(row)"
-                    title="Reviewer (Phase 2 câblera le filtre run_id+eurio_id)"
+                    title="Reviewer ce run (atterrit sur la file Single ou Lot selon les compteurs)"
                   >
                     <Search class="h-2.5 w-2.5" /> review
                     <ExternalLink class="h-2.5 w-2.5" />
@@ -378,7 +384,7 @@ function onRowClick(ev: MouseEvent, eurio_id: string) {
                 :key="row.eurio_id"
                 class="cursor-pointer border-t transition-colors"
                 style="border-color: var(--surface-2);"
-                :title="`Voir la fiche ${row.eurio_id}`"
+                :title="`Voir les listings pour ${row.eurio_id}`"
                 @mouseenter="(e) => ((e.currentTarget as HTMLElement).style.background = 'var(--surface-1)')"
                 @mouseleave="(e) => ((e.currentTarget as HTMLElement).style.background = 'transparent')"
                 @click="(ev) => onRowClick(ev, row.eurio_id)"
@@ -411,7 +417,7 @@ function onRowClick(ev: MouseEvent, eurio_id: string) {
                     @mouseenter="(e) => { const el = e.currentTarget as HTMLElement; el.style.borderColor = 'var(--gold-600)'; el.style.background = 'color-mix(in srgb, var(--gold-600) 8%, var(--surface))'; }"
                     @mouseleave="(e) => { const el = e.currentTarget as HTMLElement; el.style.borderColor = 'var(--surface-3)'; el.style.background = 'var(--surface)'; }"
                     @click.stop="gotoReview(row)"
-                    title="Reviewer (Phase 2 câblera le filtre run_id+eurio_id)"
+                    title="Reviewer ce run (atterrit sur la file Single ou Lot selon les compteurs)"
                   >
                     <Search class="h-2.5 w-2.5" /> review
                     <ExternalLink class="h-2.5 w-2.5" />

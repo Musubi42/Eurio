@@ -1,8 +1,12 @@
 // Coin search composable — backs the /coins/search modal.
 //
-// Endpoint futur : GET /coins/search?country=BE&denomination=2&year=&limit=24
-// (cf. docs/sources-refacto/review-queue.md §"Endpoints API attendus").
-// V1 mock — génère 24 entrées par filtre.
+// Source = table `coins` Supabase (même source que /coins page).
+// Le selector UI manipule un `denomination` synthétique ('1c'…'2eur-comm')
+// qui se traduit en {face_value, is_commemorative} pour la requête.
+
+import { supabase } from '@/shared/supabase/client'
+import type { Coin } from '@/shared/supabase/types'
+import { firstImageUrl } from '@/shared/utils/coin-images'
 
 export interface CoinSearchEntry {
   eurio_id: string
@@ -10,7 +14,7 @@ export interface CoinSearchEntry {
   denomination: string
   year: number
   label: string
-  canonical_thumb_url: string
+  canonical_thumb_url: string | null
   is_commemorative: boolean
 }
 
@@ -22,109 +26,99 @@ export interface CoinSearchFilters {
 }
 
 // ─── Constantes UX ──────────────────────────────────────────────────────
+//
+// 21 pays eurozone + 4 micro-États (AD, MC, SM, VA), triés alphabétiquement
+// par code ISO — comme la liste `COUNTRIES` de CoinsPage.vue.
 
 export const EURO_COUNTRIES: { code: string; label: string; flag: string }[] = [
-  { code: 'BE', label: 'Belgique', flag: '🇧🇪' },
-  { code: 'DE', label: 'Allemagne', flag: '🇩🇪' },
-  { code: 'FR', label: 'France', flag: '🇫🇷' },
-  { code: 'IT', label: 'Italie', flag: '🇮🇹' },
-  { code: 'ES', label: 'Espagne', flag: '🇪🇸' },
-  { code: 'NL', label: 'Pays-Bas', flag: '🇳🇱' },
-  { code: 'LU', label: 'Luxembourg', flag: '🇱🇺' },
-  { code: 'IE', label: 'Irlande', flag: '🇮🇪' },
-  { code: 'PT', label: 'Portugal', flag: '🇵🇹' },
-  { code: 'FI', label: 'Finlande', flag: '🇫🇮' },
-  { code: 'GR', label: 'Grèce', flag: '🇬🇷' },
-  { code: 'AT', label: 'Autriche', flag: '🇦🇹' },
-  { code: 'CY', label: 'Chypre', flag: '🇨🇾' },
-  { code: 'MT', label: 'Malte', flag: '🇲🇹' },
-  { code: 'SK', label: 'Slovaquie', flag: '🇸🇰' },
-  { code: 'SI', label: 'Slovénie', flag: '🇸🇮' },
-  { code: 'EE', label: 'Estonie', flag: '🇪🇪' },
-  { code: 'LV', label: 'Lettonie', flag: '🇱🇻' },
-  { code: 'LT', label: 'Lituanie', flag: '🇱🇹' },
-  { code: 'HR', label: 'Croatie', flag: '🇭🇷' },
-  { code: 'BG', label: 'Bulgarie', flag: '🇧🇬' },
+  { code: 'AD', label: 'Andorre',     flag: '🇦🇩' },
+  { code: 'AT', label: 'Autriche',    flag: '🇦🇹' },
+  { code: 'BE', label: 'Belgique',    flag: '🇧🇪' },
+  { code: 'BG', label: 'Bulgarie',    flag: '🇧🇬' },
+  { code: 'CY', label: 'Chypre',      flag: '🇨🇾' },
+  { code: 'DE', label: 'Allemagne',   flag: '🇩🇪' },
+  { code: 'EE', label: 'Estonie',     flag: '🇪🇪' },
+  { code: 'ES', label: 'Espagne',     flag: '🇪🇸' },
+  { code: 'FI', label: 'Finlande',    flag: '🇫🇮' },
+  { code: 'FR', label: 'France',      flag: '🇫🇷' },
+  { code: 'GR', label: 'Grèce',       flag: '🇬🇷' },
+  { code: 'HR', label: 'Croatie',     flag: '🇭🇷' },
+  { code: 'IE', label: 'Irlande',     flag: '🇮🇪' },
+  { code: 'IT', label: 'Italie',      flag: '🇮🇹' },
+  { code: 'LT', label: 'Lituanie',    flag: '🇱🇹' },
+  { code: 'LU', label: 'Luxembourg',  flag: '🇱🇺' },
+  { code: 'LV', label: 'Lettonie',    flag: '🇱🇻' },
+  { code: 'MC', label: 'Monaco',      flag: '🇲🇨' },
+  { code: 'MT', label: 'Malte',       flag: '🇲🇹' },
+  { code: 'NL', label: 'Pays-Bas',    flag: '🇳🇱' },
+  { code: 'PT', label: 'Portugal',    flag: '🇵🇹' },
+  { code: 'SI', label: 'Slovénie',    flag: '🇸🇮' },
+  { code: 'SK', label: 'Slovaquie',   flag: '🇸🇰' },
+  { code: 'SM', label: 'Saint-Marin', flag: '🇸🇲' },
+  { code: 'VA', label: 'Vatican',     flag: '🇻🇦' },
 ]
 
-export const DENOMINATIONS: { value: string; label: string }[] = [
-  { value: '1c', label: '1 cent' },
-  { value: '2c', label: '2 cents' },
-  { value: '5c', label: '5 cents' },
-  { value: '10c', label: '10 cents' },
-  { value: '20c', label: '20 cents' },
-  { value: '50c', label: '50 cents' },
-  { value: '1eur', label: '1 €' },
-  { value: '2eur', label: '2 €' },
-  { value: '2eur-comm', label: '2 € commémo' },
+export const DENOMINATIONS: { value: string; label: string; faceValue: number; commemorative: boolean }[] = [
+  { value: '1c',        label: '1 cent',      faceValue: 0.01, commemorative: false },
+  { value: '2c',        label: '2 cents',     faceValue: 0.02, commemorative: false },
+  { value: '5c',        label: '5 cents',     faceValue: 0.05, commemorative: false },
+  { value: '10c',       label: '10 cents',    faceValue: 0.10, commemorative: false },
+  { value: '20c',       label: '20 cents',    faceValue: 0.20, commemorative: false },
+  { value: '50c',       label: '50 cents',    faceValue: 0.50, commemorative: false },
+  { value: '1eur',      label: '1 €',         faceValue: 1,    commemorative: false },
+  { value: '2eur',      label: '2 €',         faceValue: 2,    commemorative: false },
+  { value: '2eur-comm', label: '2 € commémo', faceValue: 2,    commemorative: true  },
 ]
 
 export const YEAR_RANGE = { min: 1999, max: 2026 }
 
-// ─── Mock fetcher ───────────────────────────────────────────────────────
+// ─── Fetcher Supabase ───────────────────────────────────────────────────
 
 export async function searchCoins(filters: CoinSearchFilters): Promise<CoinSearchEntry[]> {
-  await new Promise((r) => setTimeout(r, 100))
-  const limit = filters.limit ?? 24
   if (!filters.country) return []
   if (!filters.denomination) return []
-
-  const results: CoinSearchEntry[] = []
-  const countryMeta = EURO_COUNTRIES.find((c) => c.code === filters.country)
-  if (!countryMeta) return []
 
   const denomMeta = DENOMINATIONS.find((d) => d.value === filters.denomination)
   if (!denomMeta) return []
 
-  const yearsCandidate =
-    filters.year !== null
-      ? [filters.year]
-      : range(YEAR_RANGE.min, YEAR_RANGE.max + 1).filter((y) => coinExists(filters.country!, filters.denomination!, y))
+  const limit = filters.limit ?? 60
 
-  for (const y of yearsCandidate.slice(0, limit)) {
-    const isComm = filters.denomination === '2eur-comm'
-    const eurio = `${filters.country.toLowerCase()}-${filters.denomination}-${y}`
-    results.push({
-      eurio_id: eurio,
-      country: filters.country,
-      denomination: filters.denomination,
-      year: y,
-      label: `${countryMeta.label} · ${denomMeta.label} · ${y}`,
-      canonical_thumb_url: `https://placehold.co/160x160/EDEDF5/1A1B4B?text=${encodeURIComponent(eurio)}`,
-      is_commemorative: isComm,
-    })
-  }
-  return results
-}
+  let q = supabase
+    .from('coins')
+    .select('eurio_id, country, year, face_value, is_commemorative, theme, images')
+    .eq('country', filters.country)
+    .eq('face_value', denomMeta.faceValue)
+    .eq('is_commemorative', denomMeta.commemorative)
+    .order('year', { ascending: true })
+    .order('eurio_id', { ascending: true })
+    .limit(limit)
 
-// Heuristique simple : 2€ commémo seulement à partir de 2004, autres à partir
-// de l'entrée du pays dans l'eurozone.
-function coinExists(country: string, denom: string, year: number): boolean {
-  const entryYear: Record<string, number> = {
-    BE: 1999, DE: 1999, FR: 1999, IT: 1999, ES: 1999, NL: 1999, LU: 1999,
-    IE: 1999, PT: 1999, FI: 1999, GR: 2002, AT: 1999, CY: 2008, MT: 2008,
-    SK: 2009, SI: 2007, EE: 2011, LV: 2014, LT: 2015, HR: 2023, BG: 2026,
-  }
-  const start = entryYear[country] ?? 2002
-  if (year < start) return false
-  if (denom === '2eur-comm' && year < 2004) return false
-  return true
-}
+  if (filters.year !== null) q = q.eq('year', filters.year)
 
-function range(start: number, end: number): number[] {
-  const out: number[] = []
-  for (let i = start; i < end; i++) out.push(i)
-  return out
+  const { data, error } = await q
+  if (error) throw error
+
+  const countryMeta = EURO_COUNTRIES.find((c) => c.code === filters.country)
+  return (data ?? []).map((row) => {
+    const coin = row as unknown as Coin
+    return {
+      eurio_id: coin.eurio_id,
+      country: coin.country,
+      denomination: filters.denomination!,
+      year: coin.year,
+      label: `${countryMeta?.label ?? coin.country} · ${denomMeta.label} · ${coin.year}`,
+      canonical_thumb_url: firstImageUrl(coin),
+      is_commemorative: coin.is_commemorative,
+    }
+  })
 }
 
 // ─── Fuzzy search (combobox `/`) ────────────────────────────────────────
 
 export async function fuzzySearchCoins(query: string): Promise<CoinSearchEntry[]> {
-  await new Promise((r) => setTimeout(r, 60))
   const q = query.trim().toLowerCase()
   if (q.length < 2) return []
 
-  // Parse "BE 2 2002", "fr 50c", etc. — simple heuristique.
   const tokens = q.split(/\s+/)
   let country: string | null = null
   let denomination: string | null = null
@@ -163,5 +157,5 @@ export async function fuzzySearchCoins(query: string): Promise<CoinSearchEntry[]
 
   if (!country) return []
   if (!denomination) denomination = '2eur'
-  return searchCoins({ country, denomination, year, limit: 24 })
+  return searchCoins({ country, denomination, year, limit: 60 })
 }

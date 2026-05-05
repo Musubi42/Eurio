@@ -1,4 +1,4 @@
-"""Per-step implementations of the 6-step pipeline (D-13).
+"""Per-step implementations of the 8-step pipeline (D-13).
 
 Each module owns one step and is callable from `orchestrator.py`.
 Steps are deliberately thin and idempotent — they delegate persistence

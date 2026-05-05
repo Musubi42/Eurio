@@ -8,7 +8,7 @@ specifically:
 - [`decisions.md`](../../../docs/sources-refacto/decisions.md) — the 15
   frozen decisions
 - [`orchestration.md`](../../../docs/sources-refacto/orchestration.md) — 4
-  layers + 6-step pipeline
+  layers + 8-step pipeline
 - [`schema.md`](../../../docs/sources-refacto/schema.md) — DDL of the
   new tables (mirrored in [`ml/state/schema.sql`](../../state/schema.sql))
 

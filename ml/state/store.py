@@ -318,6 +318,111 @@ class IterationLiveTestRow:
         }
 
 
+@dataclass
+class DinoPredictionRow:
+    """One DINOv2 top-K result for a scraped crop, versioned by encoder + scope.
+
+    Stored in `image_asset_dino_predictions` (PK composée). Allows multiple
+    encoder versions / anchor scopes to coexist for the same asset. The
+    asset's own `resolution_status` stays in `needs_review` — Dino is an
+    aid signal, not a decision.
+    """
+
+    asset_id: str
+    encoder_version: str
+    anchors_kind: str
+    anchors_count: int
+    top_k: list[dict]
+    top1_eurio_id: str | None = None
+    top1_sim: float | None = None
+    top2_eurio_id: str | None = None
+    top2_sim: float | None = None
+    spread: float | None = None
+    # Country-restricted re-rank (chunk 3.5). Populated when the source
+    # crop carries a target country signal (eBay query target). NULL on
+    # rows without a country signal — front degrades gracefully.
+    target_country: str | None = None
+    country_anchors_count: int | None = None
+    top_k_country: list[dict] | None = None
+    top1_country_eurio_id: str | None = None
+    top1_country_sim: float | None = None
+    top2_country_eurio_id: str | None = None
+    top2_country_sim: float | None = None
+    country_spread: float | None = None
+    duration_ms: int | None = None
+    computed_at: str | None = None
+
+    def to_dict(self) -> dict:
+        return {
+            "asset_id": self.asset_id,
+            "encoder_version": self.encoder_version,
+            "anchors_kind": self.anchors_kind,
+            "anchors_count": self.anchors_count,
+            "top_k": self.top_k,
+            "top1_eurio_id": self.top1_eurio_id,
+            "top1_sim": self.top1_sim,
+            "top2_eurio_id": self.top2_eurio_id,
+            "top2_sim": self.top2_sim,
+            "spread": self.spread,
+            "target_country": self.target_country,
+            "country_anchors_count": self.country_anchors_count,
+            "top_k_country": self.top_k_country,
+            "top1_country_eurio_id": self.top1_country_eurio_id,
+            "top1_country_sim": self.top1_country_sim,
+            "top2_country_eurio_id": self.top2_country_eurio_id,
+            "top2_country_sim": self.top2_country_sim,
+            "country_spread": self.country_spread,
+            "duration_ms": self.duration_ms,
+            "computed_at": self.computed_at,
+        }
+
+
+@dataclass
+class ListingTextSignalsRow:
+    """Persisted output of ``ml/sources/text_signals/`` for one source_image.
+
+    1 row per source_image (= 1 per listing image, partagée entre toutes
+    les images d'un même listing eBay puisque le titre est identique).
+    Pas de comparaison vs target ici (chunk 6) : on ne stocke que ce
+    que le titre dit.
+    """
+
+    source_image_id: str
+    extractor_version: str = "v1"
+    countries: list[str] = field(default_factory=list)
+    years: list[int] = field(default_factory=list)
+    denominations: list[float] = field(default_factory=list)
+    theme_tokens: list[str] = field(default_factory=list)
+    rejected_markers: list[str] = field(default_factory=list)
+    is_lot: bool = False
+    coverage: str = "empty"
+    matched: dict[str, list[str]] = field(default_factory=dict)
+    # Chunk 6 — verdict vs target_eurio_id. None quand le target n'est
+    # pas connu (pas de target_eurio_id, ou absent de la table coins).
+    vs_target_verdict: str | None = None
+    contradictions: list[str] = field(default_factory=list)
+    convergences: list[str] = field(default_factory=list)
+    computed_at: str | None = None
+
+    def to_dict(self) -> dict:
+        return {
+            "source_image_id": self.source_image_id,
+            "extractor_version": self.extractor_version,
+            "countries": list(self.countries),
+            "years": list(self.years),
+            "denominations": list(self.denominations),
+            "theme_tokens": list(self.theme_tokens),
+            "rejected_markers": list(self.rejected_markers),
+            "is_lot": self.is_lot,
+            "coverage": self.coverage,
+            "matched": dict(self.matched),
+            "vs_target_verdict": self.vs_target_verdict,
+            "contradictions": list(self.contradictions),
+            "convergences": list(self.convergences),
+            "computed_at": self.computed_at,
+        }
+
+
 def _register_phash_udfs(conn: sqlite3.Connection) -> None:
     """Register UDFs for perceptual-hash dedup queries (D-07).
 
@@ -434,6 +539,78 @@ class Store:
                 table="review_queue",
                 column="kind",
                 decl="TEXT NOT NULL DEFAULT 'single'",
+            )
+            for column, decl in (
+                ("target_country", "TEXT"),
+                ("country_anchors_count", "INTEGER"),
+                ("top_k_country_json", "TEXT"),
+                ("top1_country_eurio_id", "TEXT"),
+                ("top1_country_sim", "REAL"),
+                ("top2_country_eurio_id", "TEXT"),
+                ("top2_country_sim", "REAL"),
+                ("country_spread", "REAL"),
+            ):
+                self._ensure_column(
+                    conn,
+                    table="image_asset_dino_predictions",
+                    column=column,
+                    decl=decl,
+                )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_dino_pred_top1_country "
+                "ON image_asset_dino_predictions(top1_country_eurio_id)"
+            )
+            for column, decl in (
+                ("download_endpoint", "TEXT"),
+                ("download_status", "TEXT"),
+                ("download_error", "TEXT"),
+                ("download_http_status", "INTEGER"),
+                ("crop_status", "TEXT"),
+                ("crop_error", "TEXT"),
+                ("n_crops_detected", "INTEGER"),
+                ("route_decision", "TEXT"),
+                ("route_reason", "TEXT"),
+            ):
+                self._ensure_column(
+                    conn,
+                    table="source_images",
+                    column=column,
+                    decl=decl,
+                )
+            # Funnel ventilé sur discovery_searches (chunk 0 auto-validation) :
+            # N0 itemSummaries → N1 post-groups → N2 post-theme → N3 kept.
+            for column, decl in (
+                ("n_summaries", "INTEGER"),
+                ("n_after_groups", "INTEGER"),
+            ):
+                self._ensure_column(
+                    conn,
+                    table="discovery_searches",
+                    column=column,
+                    decl=decl,
+                )
+            # Verdict vs target_eurio_id (chunk 6 auto-validation).
+            # CHECK column-level avec NULL autorisé pour les rows backfillées
+            # avant chunk 6 ou sans target connu.
+            for column, decl in (
+                (
+                    "vs_target_verdict",
+                    "TEXT CHECK (vs_target_verdict IS NULL "
+                    "OR vs_target_verdict IN "
+                    "('convergent','partial','absent','contradict'))",
+                ),
+                ("contradictions_json", "TEXT NOT NULL DEFAULT '[]'"),
+                ("convergences_json", "TEXT NOT NULL DEFAULT '[]'"),
+            ):
+                self._ensure_column(
+                    conn,
+                    table="listing_text_signals",
+                    column=column,
+                    decl=decl,
+                )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_listing_text_signals_verdict "
+                "ON listing_text_signals(vs_target_verdict)"
             )
             n_coins = conn.execute("SELECT count(*) AS n FROM coins").fetchone()["n"]
             if n_coins == 0:
@@ -1662,6 +1839,227 @@ class Store:
                 (iteration_id,),
             )
             return cur.rowcount
+
+    # ─── Dino predictions on scraped crops ───────────────────────────────
+
+    def upsert_dino_predictions(self, rows: list[DinoPredictionRow]) -> int:
+        if not rows:
+            return 0
+        with self._writing() as c:
+            c.executemany(
+                """
+                INSERT INTO image_asset_dino_predictions (
+                  asset_id, encoder_version, anchors_kind, anchors_count,
+                  top_k_json, top1_eurio_id, top1_sim, top2_eurio_id,
+                  top2_sim, spread,
+                  target_country, country_anchors_count, top_k_country_json,
+                  top1_country_eurio_id, top1_country_sim,
+                  top2_country_eurio_id, top2_country_sim, country_spread,
+                  computed_at, duration_ms
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                          ?, ?, ?, ?, ?, ?, ?, ?,
+                          datetime('now'), ?)
+                ON CONFLICT(asset_id, encoder_version, anchors_kind) DO UPDATE SET
+                  anchors_count          = excluded.anchors_count,
+                  top_k_json             = excluded.top_k_json,
+                  top1_eurio_id          = excluded.top1_eurio_id,
+                  top1_sim               = excluded.top1_sim,
+                  top2_eurio_id          = excluded.top2_eurio_id,
+                  top2_sim               = excluded.top2_sim,
+                  spread                 = excluded.spread,
+                  target_country         = excluded.target_country,
+                  country_anchors_count  = excluded.country_anchors_count,
+                  top_k_country_json     = excluded.top_k_country_json,
+                  top1_country_eurio_id  = excluded.top1_country_eurio_id,
+                  top1_country_sim       = excluded.top1_country_sim,
+                  top2_country_eurio_id  = excluded.top2_country_eurio_id,
+                  top2_country_sim       = excluded.top2_country_sim,
+                  country_spread         = excluded.country_spread,
+                  duration_ms            = excluded.duration_ms,
+                  computed_at            = datetime('now')
+                """,
+                [
+                    (
+                        r.asset_id,
+                        r.encoder_version,
+                        r.anchors_kind,
+                        r.anchors_count,
+                        json.dumps(r.top_k),
+                        r.top1_eurio_id,
+                        r.top1_sim,
+                        r.top2_eurio_id,
+                        r.top2_sim,
+                        r.spread,
+                        r.target_country,
+                        r.country_anchors_count,
+                        json.dumps(r.top_k_country) if r.top_k_country is not None else None,
+                        r.top1_country_eurio_id,
+                        r.top1_country_sim,
+                        r.top2_country_eurio_id,
+                        r.top2_country_sim,
+                        r.country_spread,
+                        r.duration_ms,
+                    )
+                    for r in rows
+                ],
+            )
+        return len(rows)
+
+    def get_dino_prediction(
+        self,
+        asset_id: str,
+        encoder_version: str,
+        anchors_kind: str,
+    ) -> DinoPredictionRow | None:
+        row = self._connection().execute(
+            """
+            SELECT * FROM image_asset_dino_predictions
+             WHERE asset_id = ? AND encoder_version = ? AND anchors_kind = ?
+            """,
+            (asset_id, encoder_version, anchors_kind),
+        ).fetchone()
+        return _row_to_dino_prediction(row) if row else None
+
+    def list_dino_predictions_for_asset(
+        self, asset_id: str
+    ) -> list[DinoPredictionRow]:
+        rows = self._connection().execute(
+            "SELECT * FROM image_asset_dino_predictions WHERE asset_id = ? "
+            "ORDER BY computed_at DESC",
+            (asset_id,),
+        ).fetchall()
+        return [_row_to_dino_prediction(r) for r in rows]
+
+    # ─── Listing text signals (chunk 5 auto-validation) ──────────────────
+
+    def upsert_listing_text_signals(
+        self, rows: list[ListingTextSignalsRow]
+    ) -> int:
+        if not rows:
+            return 0
+        with self._writing() as c:
+            c.executemany(
+                """
+                INSERT INTO listing_text_signals (
+                  source_image_id, extractor_version,
+                  countries_json, years_json, denominations_json,
+                  theme_tokens_json, rejected_markers_json,
+                  is_lot, coverage, matched_json,
+                  vs_target_verdict, contradictions_json, convergences_json,
+                  computed_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                ON CONFLICT(source_image_id) DO UPDATE SET
+                  extractor_version     = excluded.extractor_version,
+                  countries_json        = excluded.countries_json,
+                  years_json            = excluded.years_json,
+                  denominations_json    = excluded.denominations_json,
+                  theme_tokens_json     = excluded.theme_tokens_json,
+                  rejected_markers_json = excluded.rejected_markers_json,
+                  is_lot                = excluded.is_lot,
+                  coverage              = excluded.coverage,
+                  matched_json          = excluded.matched_json,
+                  vs_target_verdict     = excluded.vs_target_verdict,
+                  contradictions_json   = excluded.contradictions_json,
+                  convergences_json     = excluded.convergences_json,
+                  computed_at           = datetime('now')
+                """,
+                [
+                    (
+                        r.source_image_id,
+                        r.extractor_version,
+                        json.dumps(r.countries),
+                        json.dumps(r.years),
+                        json.dumps(r.denominations),
+                        json.dumps(r.theme_tokens),
+                        json.dumps(r.rejected_markers),
+                        int(r.is_lot),
+                        r.coverage,
+                        json.dumps(r.matched),
+                        r.vs_target_verdict,
+                        json.dumps(r.contradictions),
+                        json.dumps(r.convergences),
+                    )
+                    for r in rows
+                ],
+            )
+        return len(rows)
+
+    def get_listing_text_signals(
+        self, source_image_id: str
+    ) -> ListingTextSignalsRow | None:
+        row = self._connection().execute(
+            "SELECT * FROM listing_text_signals WHERE source_image_id = ?",
+            (source_image_id,),
+        ).fetchone()
+        return _row_to_text_signals(row) if row else None
+
+    def has_listing_text_signals(
+        self, source_image_id: str, *, extractor_version: str = "v1"
+    ) -> bool:
+        row = self._connection().execute(
+            "SELECT 1 FROM listing_text_signals "
+            "WHERE source_image_id = ? AND extractor_version = ?",
+            (source_image_id, extractor_version),
+        ).fetchone()
+        return row is not None
+
+
+def _row_to_text_signals(r: sqlite3.Row) -> ListingTextSignalsRow:
+    cols = r.keys()
+    verdict = r["vs_target_verdict"] if "vs_target_verdict" in cols else None
+    contradictions_raw = (
+        r["contradictions_json"] if "contradictions_json" in cols else None
+    )
+    convergences_raw = (
+        r["convergences_json"] if "convergences_json" in cols else None
+    )
+    return ListingTextSignalsRow(
+        source_image_id=r["source_image_id"],
+        extractor_version=r["extractor_version"],
+        countries=json.loads(r["countries_json"] or "[]"),
+        years=json.loads(r["years_json"] or "[]"),
+        denominations=json.loads(r["denominations_json"] or "[]"),
+        theme_tokens=json.loads(r["theme_tokens_json"] or "[]"),
+        rejected_markers=json.loads(r["rejected_markers_json"] or "[]"),
+        is_lot=bool(r["is_lot"]),
+        coverage=r["coverage"],
+        matched=json.loads(r["matched_json"] or "{}"),
+        vs_target_verdict=verdict,
+        contradictions=json.loads(contradictions_raw or "[]"),
+        convergences=json.loads(convergences_raw or "[]"),
+        computed_at=r["computed_at"],
+    )
+
+
+def _row_to_dino_prediction(r: sqlite3.Row) -> DinoPredictionRow:
+    cols = r.keys()
+
+    def _maybe(name: str):
+        return r[name] if name in cols else None
+
+    raw_country_json = _maybe("top_k_country_json")
+    return DinoPredictionRow(
+        asset_id=r["asset_id"],
+        encoder_version=r["encoder_version"],
+        anchors_kind=r["anchors_kind"],
+        anchors_count=r["anchors_count"],
+        top_k=json.loads(r["top_k_json"]) if r["top_k_json"] else [],
+        top1_eurio_id=r["top1_eurio_id"],
+        top1_sim=r["top1_sim"],
+        top2_eurio_id=r["top2_eurio_id"],
+        top2_sim=r["top2_sim"],
+        spread=r["spread"],
+        target_country=_maybe("target_country"),
+        country_anchors_count=_maybe("country_anchors_count"),
+        top_k_country=json.loads(raw_country_json) if raw_country_json else None,
+        top1_country_eurio_id=_maybe("top1_country_eurio_id"),
+        top1_country_sim=_maybe("top1_country_sim"),
+        top2_country_eurio_id=_maybe("top2_country_eurio_id"),
+        top2_country_sim=_maybe("top2_country_sim"),
+        country_spread=_maybe("country_spread"),
+        duration_ms=r["duration_ms"],
+        computed_at=r["computed_at"],
+    )
 
 
 def _dump_refs(refs: list[ClassRef]) -> str:

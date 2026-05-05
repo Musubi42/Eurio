@@ -31,6 +31,7 @@ class PersistResult:
     source_image_ids: dict[str, str]   # source_ref -> source_images.id
 
 
+# Called by: ml/sources/_base/orchestrator.py (step 2/8 — after discover)
 def run_persist(
     items: list[DiscoveredItem],
     *,

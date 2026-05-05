@@ -1,0 +1,538 @@
+[
+  {
+    "eurio_id": "ad-2025-2eur-bearded-vulture",
+    "variant": "V1_baseline",
+    "description": "FR name + year-in-q + Année:{year} aspect + EBAY_FR",
+    "marketplace": "EBAY_FR",
+    "q": "2 euro Andorre 2025",
+    "aspect_filter": "categoryId:32650,Année:{2025}",
+    "http_status": 200,
+    "n_results": 49,
+    "duration_ms": 1205,
+    "top_titles": [
+      "2 x 2 EURO ANDORRE 2025 GYPAETE + JEUX PETITS ETATS COMMEMORATIVE DISPO DE SUITE",
+      "DUO 2 EURO ANDORRE 2025 - GYPAETE + MICRO ETAT",
+      "BE 2 EURO ANDORRE 2025 JEUX DES PETITS ETATS D'EUROPE PP PROOF EPREUVE DISPO",
+      "2 EURO ANDORRE 2025 GYPAETE COMMEMORATIVE DISPO DE SUITE",
+      "2 EURO ANDORRE 2025 JEUX DES PETITS ETATS D'EUROPE COMMEMORATIVE DISPO DE SUITE"
+    ],
+    "error": null
+  },
+  {
+    "eurio_id": "ad-2025-2eur-bearded-vulture",
+    "variant": "V2_name_en",
+    "description": "EN name + year-in-q + Année:{year} aspect + EBAY_FR",
+    "marketplace": "EBAY_FR",
+    "q": "2 euro Andorra 2025",
+    "aspect_filter": "categoryId:32650,Année:{2025}",
+    "http_status": 200,
+    "n_results": 53,
+    "duration_ms": 902,
+    "top_titles": [
+      "Andorra 2025 2 Euro Proof",
+      "2 x 2 EURO ANDORRE 2025 GYPAETE + JEUX PETITS ETATS COMMEMORATIVE DISPO DE SUITE",
+      "Andorra 2025 2 Euro PACK",
+      "#RM# BLISTER 2 EURO COMMEMORATIVE ANDORRA (2014-2025) ALL PIECES - PLEASE CHOOSE",
+      "BE 2 EURO ANDORRE 2025 JEUX DES PETITS ETATS D'EUROPE PP PROOF EPREUVE DISPO"
+    ],
+    "error": null
+  },
+  {
+    "eurio_id": "ad-2025-2eur-bearded-vulture",
+    "variant": "V3_no_aspect",
+    "description": "EN name + no year + no aspect + EBAY_FR",
+    "marketplace": "EBAY_FR",
+    "q": "2 euro Andorra",
+    "aspect_filter": "categoryId:32650",
+    "http_status": 200,
+    "n_results": 778,
+    "duration_ms": 856,
+    "top_titles": [
+      "2 Euro Andorra 2015 2018 2019 2021 ",
+      "Andorra 2025 2 Euro Proof",
+      "Andorra 2025 2 Euro PACK",
+      "2 x 2 EURO ANDORRE 2025 GYPAETE + JEUX PETITS ETATS COMMEMORATIVE DISPO DE SUITE",
+      "#RM# BLISTER 2 EURO COMMEMORATIVE ANDORRA (2014-2025) ALL PIECES - PLEASE CHOOSE"
+    ],
+    "error": null
+  },
+  {
+    "eurio_id": "ad-2025-2eur-bearded-vulture",
+    "variant": "V4_theme",
+    "description": "EN name + EN theme tokens + EBAY_FR",
+    "marketplace": "EBAY_FR",
+    "q": "2 euro Andorra bearded vulture",
+    "aspect_filter": "categoryId:32650",
+    "http_status": 200,
+    "n_results": 0,
+    "duration_ms": 729,
+    "top_titles": [],
+    "error": null
+  },
+  {
+    "eurio_id": "ad-2025-2eur-bearded-vulture",
+    "variant": "V5_gb",
+    "description": "EN name + no year + no aspect + EBAY_GB",
+    "marketplace": "EBAY_GB",
+    "q": "2 euro Andorra",
+    "aspect_filter": "categoryId:32650",
+    "http_status": 200,
+    "n_results": 1128,
+    "duration_ms": 1242,
+    "top_titles": [
+      "2 EURO 2024 ANDORRA COTE AND ARM",
+      "Andorra coin 1 2 5 10 20 50 cents 1 2 euro 2014 2016 2017 2018 2019 2021 2022",
+      "Andorra 2014/2024 2 Euro Commemorative Coin in BU - YOUR CHOICE VINTAGE",
+      "Andorra Coin Mint (Choose from 2014 - 2025 and 1 Cent - 2 Euro)",
+      "Andorra 🇦🇩 coin 2€ euro 2023 UNC from roll sgield of arms coat ribbons"
+    ],
+    "error": null
+  },
+  {
+    "eurio_id": "ad-2025-2eur-bearded-vulture",
+    "variant": "V6_de",
+    "description": "EN name + no year + no aspect + EBAY_DE",
+    "marketplace": "EBAY_DE",
+    "q": "2 euro Andorra",
+    "aspect_filter": "categoryId:32650",
+    "http_status": 200,
+    "n_results": 1426,
+    "duration_ms": 884,
+    "top_titles": [
+      "ANDORRA 2 EURO 2025 BARTGEIER, KLEINSTAATENSPIELE UND FRÜHERE ZUR AUSWAHL",
+      "2€-Münzen Sammlerbox für Coincards - Vatikan, San Marino, Andorra *3D-Druck*",
+      "Coincard  mit 2 Euro Gedenkmünze Andorra 2017 BU / Blister Pyrenäen",
+      "2 Euro Andorra 2022 Gedenkmünze - 10 Jahre Währungsabkommen EU - Coincard OVP",
+      "Andorra 2 Euro 2025 \"Bartgeier\" Coincard, NEU, sofort"
+    ],
+    "error": null
+  },
+  {
+    "eurio_id": "be-2006-2eur-renovation-of-the-atomium-in-brussels",
+    "variant": "V1_baseline",
+    "description": "FR name + year-in-q + Année:{year} aspect + EBAY_FR",
+    "marketplace": "EBAY_FR",
+    "q": "2 euro Belgique 2006",
+    "aspect_filter": "categoryId:32650,Année:{2006}",
+    "http_status": 200,
+    "n_results": 83,
+    "duration_ms": 776,
+    "top_titles": [
+      "2 EURO BELGIQUE 2006 ATOMIUM COMMEMORATIVE NEUVE",
+      "Pièce commémorative d'occasion de 2 euro ( Belgique 2006 )",
+      "Belgique  2006  2 Euro   \" Atomium \"  Pièce Neuve UNC Issue de Rouleau",
+      "Pièce de 2 euro Belgique 2006 neuve de rouleau +++ RARE+++",
+      "Belgique 2006 2 euro BU FDC provenant du coffret BU 28012 exemplaires Belgium"
+    ],
+    "error": null
+  },
+  {
+    "eurio_id": "be-2006-2eur-renovation-of-the-atomium-in-brussels",
+    "variant": "V2_name_en",
+    "description": "EN name + year-in-q + Année:{year} aspect + EBAY_FR",
+    "marketplace": "EBAY_FR",
+    "q": "2 euro Belgium 2006",
+    "aspect_filter": "categoryId:32650,Année:{2006}",
+    "http_status": 200,
+    "n_results": 7,
+    "duration_ms": 793,
+    "top_titles": [
+      "Belgique 2006 2 euro BU FDC provenant du coffret BU 28012 exemplaires Belgium",
+      "Belgique 2006 2 centimes d'euro SUP SPL Pièce neuve de rouleau - Belgium",
+      "2 euro Commémo Belgique 2006 AtnoniumBruxelles Belgium SUP SPL de rouleau",
+      "2 euro Commémo Couleur Color Belgique 2006 AtnoniumBruxelles Belgium SUP SPL",
+      "Belgique 2006 2 centime d'euro SUP SPL provenant coffret d'un rouleau - Belgium"
+    ],
+    "error": null
+  },
+  {
+    "eurio_id": "be-2006-2eur-renovation-of-the-atomium-in-brussels",
+    "variant": "V3_no_aspect",
+    "description": "EN name + no year + no aspect + EBAY_FR",
+    "marketplace": "EBAY_FR",
+    "q": "2 euro Belgium",
+    "aspect_filter": "categoryId:32650",
+    "http_status": 200,
+    "n_results": 75,
+    "duration_ms": 842,
+    "top_titles": [
+      "Belgique - Belgium 2014  2 Euro Commemorative  - UNC - neuve",
+      "#RM# 2 EURO COMMEMORATIVE BELGIUM (2005-2025) -  ALL PIECES - PLEASE CHOOSE",
+      "2 EURO BELGIQUE 2016 TEAM BELGIUM JO RIO VERSION FRANCAISE COMMEMORATIVE NEUVE",
+      "Belgique 2010 2 centime d'euro SUP SPL provenant coffret d'un rouleau - Belgium",
+      "2 euro Commémo Belgique 2012 SUP SPL 10 Ans de L'Euro Belgium"
+    ],
+    "error": null
+  },
+  {
+    "eurio_id": "be-2006-2eur-renovation-of-the-atomium-in-brussels",
+    "variant": "V4_theme",
+    "description": "EN name + EN theme tokens + EBAY_FR",
+    "marketplace": "EBAY_FR",
+    "q": "2 euro Belgium renovation atomium brussels",
+    "aspect_filter": "categoryId:32650",
+    "http_status": 200,
+    "n_results": 0,
+    "duration_ms": 755,
+    "top_titles": [],
+    "error": null
+  },
+  {
+    "eurio_id": "be-2006-2eur-renovation-of-the-atomium-in-brussels",
+    "variant": "V5_gb",
+    "description": "EN name + no year + no aspect + EBAY_GB",
+    "marketplace": "EBAY_GB",
+    "q": "2 euro Belgium",
+    "aspect_filter": "categoryId:32650",
+    "http_status": 200,
+    "n_results": 2609,
+    "duration_ms": 821,
+    "top_titles": [
+      "Belgium 2 Euro 2014 150 Years Red Cross Proof & Belgium 2 Euro 2016 Rio CoinCard",
+      "2 EURO Commemorative Coins of BELGIUM, NETHERLANDS (Variation)",
+      "Commemorative 2 euro Coins - UNC - Uncirculated",
+      "Belgium Lot 2005 To 2025 - 35 Pieces - 2 Euro Commemorative Coins New",
+      "Belgium 🇧🇪 2€ Euro Coincard 2015 Commemorative European Development Year UNC"
+    ],
+    "error": null
+  },
+  {
+    "eurio_id": "be-2006-2eur-renovation-of-the-atomium-in-brussels",
+    "variant": "V6_de",
+    "description": "EN name + no year + no aspect + EBAY_DE",
+    "marketplace": "EBAY_DE",
+    "q": "2 euro Belgium",
+    "aspect_filter": "categoryId:32650",
+    "http_status": 200,
+    "n_results": 98,
+    "duration_ms": 900,
+    "top_titles": [
+      "Belgien Belgium Belgique 2 Euro 2005 - 2025 Gedenkmünzen, bankfrisch, AUSWAHL",
+      "2 Euro Belgien Belgium Belgique Gedenkmünze bis 2025 UNC BU Coincard PP Auswahl",
+      "BELGIEN BELGIUM 2 Euro 2017   University of Gent  Unc Colored 6355# ❇️❇️",
+      "BELGIEN  BELGIUM  2 Euro 2015  Coin Card  6695#❇️❇️",
+      "BELGIEN  BELGIUM  2 Euro 2024  Coin Card  6795# ❇️❇️"
+    ],
+    "error": null
+  },
+  {
+    "eurio_id": "fr-2012-2eur-100th-birthday-of-abbe-pierre",
+    "variant": "V1_baseline",
+    "description": "FR name + year-in-q + Année:{year} aspect + EBAY_FR",
+    "marketplace": "EBAY_FR",
+    "q": "2 euro France 2012",
+    "aspect_filter": "categoryId:32650,Année:{2012}",
+    "http_status": 200,
+    "n_results": 316,
+    "duration_ms": 759,
+    "top_titles": [
+      "2 EURO FRANCE 2012 ABBE PIERRE COMMEMORATIVE NEUVE",
+      "2 EURO FRANCE 2012 TYE 10 ANS EURO FIDUCIAIRE COMMEMORATIVE NEUVE",
+      "2 EURO COMMEMORATIVE UNC FRANCE 2012 ABBE PIERRE/SACHET ZIP - LIVRAISON OFFERTE!",
+      "PIECE 2 EURO  FRANCE 2012 - CENTENAIRE NAISSANCE ABBE PIERRE NEUVE",
+      "2 euro Commémo France 2012 Centenaire de la Naissance de L'Abbé Pierre"
+    ],
+    "error": null
+  },
+  {
+    "eurio_id": "fr-2012-2eur-100th-birthday-of-abbe-pierre",
+    "variant": "V2_name_en",
+    "description": "EN name + year-in-q + Année:{year} aspect + EBAY_FR",
+    "marketplace": "EBAY_FR",
+    "q": "2 euro France 2012",
+    "aspect_filter": "categoryId:32650,Année:{2012}",
+    "http_status": 200,
+    "n_results": 316,
+    "duration_ms": 779,
+    "top_titles": [
+      "2 EURO FRANCE 2012 ABBE PIERRE COMMEMORATIVE NEUVE",
+      "2 EURO FRANCE 2012 TYE 10 ANS EURO FIDUCIAIRE COMMEMORATIVE NEUVE",
+      "2 EURO COMMEMORATIVE UNC FRANCE 2012 ABBE PIERRE/SACHET ZIP - LIVRAISON OFFERTE!",
+      "PIECE 2 EURO  FRANCE 2012 - CENTENAIRE NAISSANCE ABBE PIERRE NEUVE",
+      "2 euro Commémo France 2012 Centenaire de la Naissance de L'Abbé Pierre"
+    ],
+    "error": null
+  },
+  {
+    "eurio_id": "fr-2012-2eur-100th-birthday-of-abbe-pierre",
+    "variant": "V3_no_aspect",
+    "description": "EN name + no year + no aspect + EBAY_FR",
+    "marketplace": "EBAY_FR",
+    "q": "2 euro France",
+    "aspect_filter": "categoryId:32650",
+    "http_status": 200,
+    "n_results": 16356,
+    "duration_ms": 1038,
+    "top_titles": [
+      "2 EURO FRANCE 2013 PIERRE DE COUBERTIN COMMEMORATIVE NEUVE",
+      "2 EURO FRANCE 2012 ABBE PIERRE COMMEMORATIVE NEUVE",
+      "DISPO 2 euro FRANCE 2022 Commémo Programme Erasmus. Envoi en suivi",
+      "FRANCE 2 Euro commémorative Notre Dame de Paris 2025 FdC Direct Du Rouleau",
+      "France - TOUTES ANNÉES DISPONIBLES 2007 / 2025 - 2 Euro Commemorative  - UNC"
+    ],
+    "error": null
+  },
+  {
+    "eurio_id": "fr-2012-2eur-100th-birthday-of-abbe-pierre",
+    "variant": "V4_theme",
+    "description": "EN name + EN theme tokens + EBAY_FR",
+    "marketplace": "EBAY_FR",
+    "q": "2 euro France birthday abbe pierre",
+    "aspect_filter": "categoryId:32650",
+    "http_status": 200,
+    "n_results": 0,
+    "duration_ms": 981,
+    "top_titles": [],
+    "error": null
+  },
+  {
+    "eurio_id": "fr-2012-2eur-100th-birthday-of-abbe-pierre",
+    "variant": "V5_gb",
+    "description": "EN name + no year + no aspect + EBAY_GB",
+    "marketplace": "EBAY_GB",
+    "q": "2 euro France",
+    "aspect_filter": "categoryId:32650",
+    "http_status": 200,
+    "n_results": 7874,
+    "duration_ms": 985,
+    "top_titles": [
+      "Commemorative 2 euro Coins - UNC - Uncirculated",
+      "2 EURO coins of France, Italy, Germany, Austria, Greece",
+      "2017 2 Euro France 🇫🇷",
+      "France coin 2€ euro 2025 Notre Dame cathedral Paris Rose Window reopening year",
+      "France coin 2€ euro 2022 UNC President Jacques Chirac looking towards future EU "
+    ],
+    "error": null
+  },
+  {
+    "eurio_id": "fr-2012-2eur-100th-birthday-of-abbe-pierre",
+    "variant": "V6_de",
+    "description": "EN name + no year + no aspect + EBAY_DE",
+    "marketplace": "EBAY_DE",
+    "q": "2 euro France",
+    "aspect_filter": "categoryId:32650",
+    "http_status": 200,
+    "n_results": 2302,
+    "duration_ms": 859,
+    "top_titles": [
+      "2 Euro Frankreich France Gedenkmünze 2007 - 2026 UNC BU Coincard PP Auswahl",
+      "Frankreich 2 Euro Münze France 2023 Umlaufmünze Sammelmünze Kursmünze Rugby",
+      "Seltene 2 Euro France 2000.  ",
+      "2 Euro 2017 France Prešeren Berühmte Persönlichkeit Bi-Metall Stempelglanz",
+      "2  EURO  FRANKREICH  FRANCE   2025  Unc.  NOTRE DAME  6275#❇️❇️"
+    ],
+    "error": null
+  },
+  {
+    "eurio_id": "de-2024-2eur-175th-anniversary-of-the-paulskirche-constitution",
+    "variant": "V1_baseline",
+    "description": "FR name + year-in-q + Année:{year} aspect + EBAY_FR",
+    "marketplace": "EBAY_FR",
+    "q": "2 euro Allemagne 2024",
+    "aspect_filter": "categoryId:32650,Année:{2024}",
+    "http_status": 200,
+    "n_results": 184,
+    "duration_ms": 1350,
+    "top_titles": [
+      "ALLEMAGNE 2 EURO COMMÉMORATIVE 2024 \" MECKLEMBURG \" ATELIERS G - UNC -",
+      "SERIE 5 ATELIERS X 2 EURO ALLEMAGNE 2024 CONSTITUTION A D F G J COMMEMORATIVE",
+      "ALLEMAGNE 2 EURO COMMÉMORATIVE 2024 \" MECKLEMBURG \" ATELIERS D - UNC -",
+      "ALLEMAGNE 2 Euro 175 Anniversaire Constitution Eglise St Paul 2024 UNC",
+      "SERIE 5 ATELIERS X 2 EURO ALLEMAGNE 2024 CHATEAU A D F G J COMMEMORATIVE"
+    ],
+    "error": null
+  },
+  {
+    "eurio_id": "de-2024-2eur-175th-anniversary-of-the-paulskirche-constitution",
+    "variant": "V2_name_en",
+    "description": "EN name + year-in-q + Année:{year} aspect + EBAY_FR",
+    "marketplace": "EBAY_FR",
+    "q": "2 euro Germany 2024",
+    "aspect_filter": "categoryId:32650,Année:{2024}",
+    "http_status": 200,
+    "n_results": 3,
+    "duration_ms": 812,
+    "top_titles": [
+      "#RM# 5x 2 EURO COMMEMORATIVE GERMANY (2006-2026) -  ALL PIECES - PLEASE CHOOSE",
+      "#RM# 2 EURO COMMEMORATIVE GERMANY (2006-2026) -  ALL PIECES - PLEASE CHOOSE",
+      "2 euros Germany 2024, 175th Anniversary - Constitution of St. Paul’s Church"
+    ],
+    "error": null
+  },
+  {
+    "eurio_id": "de-2024-2eur-175th-anniversary-of-the-paulskirche-constitution",
+    "variant": "V3_no_aspect",
+    "description": "EN name + no year + no aspect + EBAY_FR",
+    "marketplace": "EBAY_FR",
+    "q": "2 euro Germany",
+    "aspect_filter": "categoryId:32650",
+    "http_status": 200,
+    "n_results": 205,
+    "duration_ms": 908,
+    "top_titles": [
+      "#RM# 5x 2 EURO COMMEMORATIVE GERMANY (2006-2026) -  ALL PIECES - PLEASE CHOOSE",
+      "2 EURO COIN GERMANY 2002 J with EDGE/ MINTING ERROR..",
+      "2011 GERMANY  A   EAGLE , RARE  2 EURO COIN with MINT ERROR  Condition..",
+      "2 EURO COIN GERMANY 2002 D with VERY RARE MINTED ERROR- BI-Metallic..",
+      "2 euro Commémo Allemagne 2015 J Réunification J Hambourg Germany"
+    ],
+    "error": null
+  },
+  {
+    "eurio_id": "de-2024-2eur-175th-anniversary-of-the-paulskirche-constitution",
+    "variant": "V4_theme",
+    "description": "EN name + EN theme tokens + EBAY_FR",
+    "marketplace": "EBAY_FR",
+    "q": "2 euro Germany paulskirche constitution",
+    "aspect_filter": "categoryId:32650",
+    "http_status": 200,
+    "n_results": 0,
+    "duration_ms": 1104,
+    "top_titles": [],
+    "error": null
+  },
+  {
+    "eurio_id": "de-2024-2eur-175th-anniversary-of-the-paulskirche-constitution",
+    "variant": "V5_gb",
+    "description": "EN name + no year + no aspect + EBAY_GB",
+    "marketplace": "EBAY_GB",
+    "q": "2 euro Germany",
+    "aspect_filter": "categoryId:32650",
+    "http_status": 200,
+    "n_results": 81323,
+    "duration_ms": 1599,
+    "top_titles": [
+      "Germany coin 2€ Euro 2025 Deutschland Reunification Unity 35y fall Berlin wall",
+      "2 euro coins with cold enamel",
+      "2 Euro Commemorative Coin Slovakia - 2012 - \"10th years euro cash in payments\"",
+      "2 EURO coins of France, Italy, Germany, Austria, Greece",
+      "Euro Coin Error 2 €"
+    ],
+    "error": null
+  },
+  {
+    "eurio_id": "de-2024-2eur-175th-anniversary-of-the-paulskirche-constitution",
+    "variant": "V6_de",
+    "description": "EN name + no year + no aspect + EBAY_DE",
+    "marketplace": "EBAY_DE",
+    "q": "2 euro Germany",
+    "aspect_filter": "categoryId:32650",
+    "http_status": 200,
+    "n_results": 1698,
+    "duration_ms": 860,
+    "top_titles": [
+      "2 Euro BRD Deutschland Germany Gedenkmünze 2006 - 2026 UNC BU PP Proof Auswahl",
+      "DEUTSCHLAND / GERMANY_2 Euro 2023_Hamburg_Elbphilharmonie_F_Bi-Metall_lose",
+      "Deutschland 2 -Euro Münze Satz 2002 A D G F J Umlaufmünze Kursmünze Germany Coin",
+      "Deutschland 2- Euro Münze Satz 2020 A D G F J Umlaufmünze Kursmünze Germany Coin",
+      "DEUTSCHLAND  2 Euro vergoldet + Emaille Koloration Germany Unc. 6450#❇️❇️"
+    ],
+    "error": null
+  },
+  {
+    "eurio_id": "sk-2024-2eur-100-years-of-kosice-peace-marathon",
+    "variant": "V1_baseline",
+    "description": "FR name + year-in-q + Année:{year} aspect + EBAY_FR",
+    "marketplace": "EBAY_FR",
+    "q": "2 euro Slovaquie 2024",
+    "aspect_filter": "categoryId:32650,Année:{2024}",
+    "http_status": 200,
+    "n_results": 65,
+    "duration_ms": 871,
+    "top_titles": [
+      "DISPO 2 euro SLOVAQUIE 2024 Commémo. Marathon. Envoi en suivi.",
+      "SLOVAQUIE COMMÉMORATIVE 2024 \" 100 ANS MARATHON \" 2 EURO - NEUVE - UNC",
+      "2 Euro Slovaquie 2024 'Marathon '",
+      "SLOVAQUIE 2 Euro 100 Ans du Marathon de Kosice 2024",
+      "2 Euro Slovaquie 2024 100 ans du marathon international de Košice DISPONIBLE"
+    ],
+    "error": null
+  },
+  {
+    "eurio_id": "sk-2024-2eur-100-years-of-kosice-peace-marathon",
+    "variant": "V2_name_en",
+    "description": "EN name + year-in-q + Année:{year} aspect + EBAY_FR",
+    "marketplace": "EBAY_FR",
+    "q": "2 euro Slovakia 2024",
+    "aspect_filter": "categoryId:32650,Année:{2024}",
+    "http_status": 200,
+    "n_results": 3,
+    "duration_ms": 845,
+    "top_titles": [
+      "#RM# 2 EURO SLOVAKIA 2024 - UNC",
+      "1 Monnaie 2024  - Marathon - 2 Euro Slovaquie UNC Slovakia Slowakei",
+      "#RM# 2 EURO COMMEMORATIVE SLOVAKIA (2009-2026) - ALL PIECES - PLEASE CHOOSE"
+    ],
+    "error": null
+  },
+  {
+    "eurio_id": "sk-2024-2eur-100-years-of-kosice-peace-marathon",
+    "variant": "V3_no_aspect",
+    "description": "EN name + no year + no aspect + EBAY_FR",
+    "marketplace": "EBAY_FR",
+    "q": "2 euro Slovakia",
+    "aspect_filter": "categoryId:32650",
+    "http_status": 200,
+    "n_results": 18,
+    "duration_ms": 738,
+    "top_titles": [
+      "Slovakia 2025 Trenčín 2 Euro Coincard",
+      "#RM# 2 EURO SLOVAKIA 2026 - UNC",
+      "#RM# 2 EURO SLOVAKIA 2025 - UNC",
+      "#RM# 2 EURO SLOVAKIA 2024 - UNC",
+      "#RM# 2 EURO COMMEMORATIVE SLOVAKIA (2009-2026) - ALL PIECES - PLEASE CHOOSE"
+    ],
+    "error": null
+  },
+  {
+    "eurio_id": "sk-2024-2eur-100-years-of-kosice-peace-marathon",
+    "variant": "V4_theme",
+    "description": "EN name + EN theme tokens + EBAY_FR",
+    "marketplace": "EBAY_FR",
+    "q": "2 euro Slovakia kosice peace marathon",
+    "aspect_filter": "categoryId:32650",
+    "http_status": 200,
+    "n_results": 0,
+    "duration_ms": 739,
+    "top_titles": [],
+    "error": null
+  },
+  {
+    "eurio_id": "sk-2024-2eur-100-years-of-kosice-peace-marathon",
+    "variant": "V5_gb",
+    "description": "EN name + no year + no aspect + EBAY_GB",
+    "marketplace": "EBAY_GB",
+    "q": "2 euro Slovakia",
+    "aspect_filter": "categoryId:32650",
+    "http_status": 200,
+    "n_results": 1622,
+    "duration_ms": 981,
+    "top_titles": [
+      "UNC 2 EURO Commemorative Coins of SLOVAKIA  (2016-2026) Variation",
+      "UNC 2 EURO Commemorative Coins of Slovakia 2023-2026 (Set of x4 coins)",
+      "Coincard 2 Euro Commemorative Coin Trencin. Slovakia Slovakia Slovakia Eslovaquia 2026",
+      "2 Euro Slovakia 2026 * Trenčín – European Capital of Culture 2026 * Unc",
+      "Slovakian 2025 €2 Coin - 2 Euro Coin - Slovakia"
+    ],
+    "error": null
+  },
+  {
+    "eurio_id": "sk-2024-2eur-100-years-of-kosice-peace-marathon",
+    "variant": "V6_de",
+    "description": "EN name + no year + no aspect + EBAY_DE",
+    "marketplace": "EBAY_DE",
+    "q": "2 euro Slovakia",
+    "aspect_filter": "categoryId:32650",
+    "http_status": 200,
+    "n_results": 285,
+    "duration_ms": 985,
+    "top_titles": [
+      "Coincard 2 Euro Gedenkmünze Trencin. Slowakei Slovakien Slovakia Eslovaquia 2026",
+      "Slowakei Slovakia 2 Euro 2009 2011 2012 2013 2014 2015 - 2023 2024 2025, AUSWAHL",
+      "2 Euro Slowakei 2018 25. Jahrestag der Slowakei / 25 Years of Slovakia, bfr / bu",
+      "Slowakei 2 Euro 2020 Slovakia OECD Coincard",
+      "SLOWAKEI  SLOVAKIA 2 Euro  2018  Rep. Slövakia  Unc. Colored   6395#❇️❇️"
+    ],
+    "error": null
+  }
+]

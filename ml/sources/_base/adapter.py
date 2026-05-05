@@ -4,7 +4,7 @@ Every source under `ml/sources/<id>/` provides a `SourceAdapter`
 implementation. The orchestrator only knows about this Protocol — it
 never imports a concrete adapter directly. See
 `docs/sources-refacto/orchestration.md` (4 layers) and `decisions.md`
-D-13 (6-step pipeline).
+D-13 (8-step pipeline).
 
 A source adapter is responsible for the *source-specific* steps:
 - `discover(query)` : enumerate listings/items matching a query
@@ -18,7 +18,30 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable, Protocol, runtime_checkable
+from typing import Any, Callable, Iterable, Protocol, runtime_checkable
+
+from sources._base.dedup import DiscoverySearchRecord
+
+RecordSearchFn = Callable[[DiscoverySearchRecord], None]
+
+
+@dataclass
+class DiscardedListingRecord:
+    """One listing rejected by accept_listing before ingestion.
+
+    Used to trace rejection causes for audit. `run_id` and `source` are
+    filled by the discover step; the adapter only fills the listing-level
+    fields it has under hand.
+    """
+
+    source_ref: str
+    target_eurio_id: str | None = None
+    reason: str = ""
+    title: str | None = None
+    raw_payload: dict[str, Any] | None = None
+
+
+RecordDiscardedFn = Callable[[DiscardedListingRecord], None]
 
 
 @dataclass(frozen=True)
@@ -93,16 +116,34 @@ class RawDownloadResult:
     sha256: str
     width: int | None = None
     height: int | None = None
+    endpoint_url: str | None = None
+    http_status: int | None = None
 
 
 @runtime_checkable
 class SourceAdapter(Protocol):
     source_id: str
 
-    def discover(self, query: SourceQuery) -> Iterable[DiscoveredItem]:
+    def discover(
+        self,
+        query: SourceQuery,
+        *,
+        record_search: RecordSearchFn | None = None,
+        record_discarded: RecordDiscardedFn | None = None,
+    ) -> Iterable[DiscoveredItem]:
         """Enumerate items for a query. Should be a generator when
         the source paginates — the orchestrator drains it eagerly per
-        run."""
+        run.
+
+        `record_search` (optional) is a callback the adapter calls once
+        per logical search. Persists query + result counters into
+        `discovery_searches` for debug.
+
+        `record_discarded` (optional) is a callback the adapter calls
+        once per listing rejected before ingestion (year_mismatch,
+        non_eur, noise_title, …). Persists into `discarded_listings`
+        for audit (assouplissement futur des règles). Adapters qui ne
+        l'appellent pas restent valides — la table est juste vide."""
         ...
 
     def download_raw(self, item: DiscoveredItem, dest: Path) -> RawDownloadResult:

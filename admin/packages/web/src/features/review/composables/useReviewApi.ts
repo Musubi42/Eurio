@@ -43,6 +43,12 @@ export interface ReviewItem {
   is_multi_coin_lot: boolean
   quality_score: number
   enqueued_at: string
+  // eurio_id qui a piloté le scrape (parent source_image). 80 % des
+  // reviews sont la cible — le drawer la pré-sélectionne au top de la
+  // colonne suggestions pour gagner en vélocité. Optionnels car les
+  // mocks legacy + sources sans target les laissent à null.
+  target_eurio_id?: string | null
+  target_candidate?: ReviewCandidate | null
 }
 
 export interface ReviewDecision {
@@ -85,15 +91,29 @@ export class ReviewApiError extends Error {
   }
 }
 
+function promoteUrl(url: string): string {
+  if (!url) return url
+  return url.startsWith('http') ? url : `${ML_API}${url}`
+}
+
+function promoteItemUrls(r: ReviewItem): ReviewItem {
+  return {
+    ...r,
+    crop_url: promoteUrl(r.crop_url),
+    target_candidate: r.target_candidate
+      ? {
+          ...r.target_candidate,
+          canonical_thumb_url: promoteUrl(r.target_candidate.canonical_thumb_url),
+        }
+      : r.target_candidate,
+  }
+}
+
 export async function fetchReviewQueue(opts: { limit?: number } = {}): Promise<ReviewItem[]> {
   const limit = opts.limit ?? 30
   const real = await safeFetch<ReviewItem[]>(`/review-queue?limit=${limit}&order=priority`)
   if (real !== null) {
-    // Prepend ML_API to crop_url since backend returns relative paths.
-    return real.map((r) => ({
-      ...r,
-      crop_url: r.crop_url.startsWith('http') ? r.crop_url : `${ML_API}${r.crop_url}`,
-    }))
+    return real.map(promoteItemUrls)
   }
 
   await delay(120)
@@ -103,10 +123,7 @@ export async function fetchReviewQueue(opts: { limit?: number } = {}): Promise<R
 export async function fetchReviewItem(id: string): Promise<ReviewItem> {
   const real = await safeFetch<ReviewItem>(`/review-queue/${encodeURIComponent(id)}`)
   if (real !== null) {
-    return {
-      ...real,
-      crop_url: real.crop_url.startsWith('http') ? real.crop_url : `${ML_API}${real.crop_url}`,
-    }
+    return promoteItemUrls(real)
   }
 
   await delay(60)

@@ -278,7 +278,7 @@ CREATE TABLE IF NOT EXISTS source_runs (
   ended_at        TEXT,
   status          TEXT NOT NULL DEFAULT 'running'
                   CHECK (status IN ('running','success','failed','partial')),
-  current_step    TEXT,                                -- 'discover'|'persist'|'download'|'detect'|'resolve'|'enqueue'
+  current_step    TEXT,                                -- 'discover'|'persist'|'download'|'detect'|'resolve'|'auto_validate'|'enqueue'
   n_calls            INTEGER NOT NULL DEFAULT 0,
   n_raws_added       INTEGER NOT NULL DEFAULT 0,
   n_crops_added      INTEGER NOT NULL DEFAULT 0,
@@ -380,6 +380,90 @@ CREATE INDEX IF NOT EXISTS idx_image_assets_phash    ON image_assets(phash);
 CREATE INDEX IF NOT EXISTS idx_image_assets_run      ON image_assets(run_id);
 CREATE INDEX IF NOT EXISTS idx_image_assets_face     ON image_assets(face);
 
+-- ─── Auto-validation: Dino predictions per crop ───────────────────────────
+-- Voir docs/sources-refacto/auto-validation/dino-verifier-kickoff.md.
+-- 1 row par (asset_id, encoder_version, anchors_kind). DINOv2 ViT-S/14
+-- encode chaque crop puis compare aux ancres obverse Numista du catalog
+-- (bank cachée dans ml/state/foundation_anchors_<kind>.npz). Le résultat
+-- top-K + spread sert d'aide visuelle au reviewer humain en V1, et de
+-- base pour l'auto-accept ultérieur (chunk futur). L'asset reste en
+-- 'needs_review' tant que l'humain n'a pas tranché.
+
+CREATE TABLE IF NOT EXISTS image_asset_dino_predictions (
+  asset_id        TEXT NOT NULL REFERENCES image_assets(id) ON DELETE CASCADE,
+  encoder_version TEXT NOT NULL,        -- 'dinov2-vits14'
+  anchors_kind    TEXT NOT NULL,        -- '2eur_commemo' (namespace)
+  anchors_count   INTEGER NOT NULL,
+  top_k_json      TEXT NOT NULL,        -- [{eurio_id, sim}, ...] desc par sim
+  top1_eurio_id   TEXT,
+  top1_sim        REAL,
+  top2_eurio_id   TEXT,
+  top2_sim        REAL,
+  spread          REAL,                 -- top1_sim - top2_sim
+  -- Country-restricted re-rank: même crop, même bank, mais on masque
+  -- aux ancres dont l'eurio_id préfixe = pays cible (ISO2 dérivé du
+  -- target_eurio_id de la query eBay parente). NULL si pas de target
+  -- pays connu (e.g. crop sans target_eurio_id sur le source_image).
+  -- Mesuré chunk 3.5 : R@1 10% → 34%, R@5 21% → 66%.
+  target_country         TEXT,
+  country_anchors_count  INTEGER,
+  top_k_country_json     TEXT,
+  top1_country_eurio_id  TEXT,
+  top1_country_sim       REAL,
+  top2_country_eurio_id  TEXT,
+  top2_country_sim       REAL,
+  country_spread         REAL,
+  computed_at     TEXT NOT NULL DEFAULT (datetime('now')),
+  duration_ms     INTEGER,
+  PRIMARY KEY (asset_id, encoder_version, anchors_kind)
+);
+
+CREATE INDEX IF NOT EXISTS idx_dino_pred_asset
+  ON image_asset_dino_predictions(asset_id);
+CREATE INDEX IF NOT EXISTS idx_dino_pred_top1
+  ON image_asset_dino_predictions(top1_eurio_id);
+-- idx_dino_pred_top1_country est créé dans Store._bootstrap après que
+-- la colonne soit ajoutée via _ensure_column (sinon executescript()
+-- pète sur les bases pré-existantes qui n'ont pas encore la colonne).
+
+-- ─── Listing text signals (chunk 5 auto-validation) ───────────────────────
+-- Sortie de l'extracteur ml/sources/text_signals/ pour chaque source_image.
+-- 1 row par source_image_id. Pas de comparaison vs target ici (chunk 6) :
+-- on stocke juste ce que le titre dit explicitement (countries, years,
+-- denominations, theme tokens, markers de rejet, lot flag, coverage).
+
+CREATE TABLE IF NOT EXISTS listing_text_signals (
+  source_image_id        TEXT PRIMARY KEY REFERENCES source_images(id) ON DELETE CASCADE,
+  extractor_version      TEXT NOT NULL DEFAULT 'v1',
+  countries_json         TEXT NOT NULL DEFAULT '[]',  -- ["FR","BE"]
+  years_json             TEXT NOT NULL DEFAULT '[]',  -- [2014]
+  denominations_json     TEXT NOT NULL DEFAULT '[]',  -- [2.0]
+  theme_tokens_json      TEXT NOT NULL DEFAULT '[]',  -- ["radio","tele"]
+  rejected_markers_json  TEXT NOT NULL DEFAULT '[]',  -- ["proof"]
+  is_lot                 INTEGER NOT NULL DEFAULT 0,
+  coverage               TEXT NOT NULL CHECK (coverage IN ('rich','sparse','empty')),
+  matched_json           TEXT NOT NULL DEFAULT '{}',  -- debug ListingTextSignals.matched
+  -- Verdict vs target_eurio_id (chunk 6 auto-validation). NULL quand le
+  -- target n'est pas connu (pas de target_eurio_id sur source_images, ou
+  -- absent de coins). Cf. docs/sources-refacto/auto-validation/
+  -- chunk-06-text-comparator-kickoff.md.
+  vs_target_verdict      TEXT
+                         CHECK (vs_target_verdict IS NULL
+                                OR vs_target_verdict IN
+                                  ('convergent','partial','absent','contradict')),
+  contradictions_json    TEXT NOT NULL DEFAULT '[]',  -- ["country"]
+  convergences_json      TEXT NOT NULL DEFAULT '[]',  -- ["year","denomination"]
+  computed_at            TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_listing_text_signals_coverage
+  ON listing_text_signals(coverage);
+CREATE INDEX IF NOT EXISTS idx_listing_text_signals_lot
+  ON listing_text_signals(is_lot) WHERE is_lot = 1;
+-- idx_listing_text_signals_verdict est créé dans Store._bootstrap après que
+-- la colonne vs_target_verdict soit ajoutée via _ensure_column (sinon
+-- executescript() pète sur les bases pré-existantes).
+
 CREATE TABLE IF NOT EXISTS coin_market_quotes (
   id                   TEXT PRIMARY KEY,
   eurio_id             TEXT NOT NULL,
@@ -479,6 +563,67 @@ CREATE INDEX IF NOT EXISTS idx_discovery_log_state
   ON discovery_log(pipeline_state);
 CREATE INDEX IF NOT EXISTS idx_discovery_log_query
   ON discovery_log(query_signature);
+
+-- ─── Discovery searches (per-call API debug log) ──────────────────────────
+-- 1 row par appel logique adapter.discover() pour un (run_id, target_eurio_id).
+-- Permet de distinguer "vraiment 0 résultat" de "scrape pas exécuté / failed /
+-- post-filter trop strict". Cf. docs/sources-refacto/listing-debug-view-kickoff.md.
+--
+-- n_raw_results : ce que l'API source a renvoyé brut (avant nos filtres).
+-- n_kept_results : après nos filtres applicatifs (accept_listing, theme tokens).
+-- query_filters_json : aspect_filter, theme_tokens, ambiguous, search_limit, etc.
+
+CREATE TABLE IF NOT EXISTS discovery_searches (
+  id                  TEXT PRIMARY KEY,
+  run_id              TEXT NOT NULL REFERENCES source_runs(id) ON DELETE CASCADE,
+  source              TEXT NOT NULL,
+  target_eurio_id     TEXT,
+  endpoint            TEXT,
+  query_q             TEXT,
+  query_filters_json  TEXT,
+  status              TEXT NOT NULL CHECK (status IN ('success', 'empty', 'failed')),
+  http_status         INTEGER,
+  -- Funnel ventilé (chunk 0 auto-validation : "visibilité du stream") :
+  -- N0 = itemSummaries renvoyés brut par Browse search (sans groups).
+  -- N1 = après expansion getItemsByGroup top-K (DEFAULT_GROUP_EXPAND_TOP_K).
+  -- N2 = après theme-token drop (si ambigu (country, year)) — alias historique
+  --      n_raw_results pour la rétro-compat front.
+  -- N3 = après filtres applicatifs accept_listing — alias n_kept_results.
+  n_summaries         INTEGER,    -- N0
+  n_after_groups      INTEGER,    -- N1
+  n_raw_results       INTEGER,    -- N2 (post-theme, alias historique)
+  n_kept_results      INTEGER,    -- N3 (post-accept_listing)
+  duration_ms         INTEGER,
+  error               TEXT,
+  created_at          TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_discovery_searches_run
+  ON discovery_searches(run_id);
+CREATE INDEX IF NOT EXISTS idx_discovery_searches_eurio
+  ON discovery_searches(target_eurio_id);
+
+-- ─── Discarded listings (audit trail des rejets accept_listing) ───────────
+-- 1 row par listing rejeté avant ingestion (year_mismatch, wrong_currency,
+-- noise_title, ...). But : auditer si un assouplissement futur récupèrerait
+-- des listings utiles. Cf. ebay-postfilter-year-kickoff.md.
+
+CREATE TABLE IF NOT EXISTS discarded_listings (
+  id              TEXT PRIMARY KEY,
+  run_id          TEXT REFERENCES source_runs(id) ON DELETE CASCADE,
+  source          TEXT NOT NULL,
+  source_ref      TEXT NOT NULL,
+  target_eurio_id TEXT,
+  reason          TEXT NOT NULL,
+  title           TEXT,
+  raw_payload     TEXT,
+  created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_discarded_listings_run
+  ON discarded_listings(run_id);
+CREATE INDEX IF NOT EXISTS idx_discarded_listings_reason
+  ON discarded_listings(reason);
 
 -- ─── Canonical coin referential (D-20) ────────────────────────────────────
 -- Mirror SQLite de ml/datasets/eurio_referential.json. Bootstrappé via

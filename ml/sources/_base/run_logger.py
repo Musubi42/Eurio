@@ -21,7 +21,10 @@ from dataclasses import dataclass
 from typing import Any
 
 _VALID_KINDS = ("run", "dry", "limit", "reset")
-_VALID_STEPS = ("discover", "persist", "download", "detect", "resolve", "enqueue")
+PIPELINE_STEPS: tuple[str, ...] = (
+    "discover", "persist", "text_signal", "download", "detect",
+    "resolve", "auto_validate", "enqueue",
+)
 _VALID_END_STATUSES = ("success", "failed", "partial")
 
 
@@ -36,8 +39,8 @@ class RunHandle:
     _conn: sqlite3.Connection
 
     def set_step(self, step: str) -> None:
-        if step not in _VALID_STEPS:
-            raise ValueError(f"Unknown step '{step}', expected one of {_VALID_STEPS}")
+        if step not in PIPELINE_STEPS:
+            raise ValueError(f"Unknown step '{step}', expected one of {PIPELINE_STEPS}")
         self._conn.execute(
             "UPDATE source_runs SET current_step = ? WHERE id = ?",
             (step, self.run_id),

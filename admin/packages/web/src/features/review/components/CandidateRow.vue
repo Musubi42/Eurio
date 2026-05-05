@@ -5,6 +5,9 @@ defineProps<{
   candidate: ReviewCandidate
   index: number
   focused: boolean
+  /** Override le numéro raccourci par un libellé court (ex. "★" pour la
+   *  cible eBay). Le score à droite est masqué quand un badge est posé. */
+  badge?: string | null
 }>()
 
 defineEmits<{
@@ -25,7 +28,7 @@ defineEmits<{
     }"
     @click="$emit('focus')"
   >
-    <!-- Numero raccourci -->
+    <!-- Numero raccourci ou badge spécial -->
     <span
       class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md font-mono text-[11px] font-semibold"
       :style="{
@@ -33,7 +36,7 @@ defineEmits<{
         color: focused ? 'var(--surface)' : 'var(--ink-500)',
       }"
     >
-      {{ index + 1 }}
+      {{ badge ?? index + 1 }}
     </span>
 
     <!-- Thumb canonique -->
@@ -54,8 +57,9 @@ defineEmits<{
       </p>
     </div>
 
-    <!-- Score -->
-    <div class="shrink-0 text-right">
+    <!-- Score (masqué quand un badge est posé — la "cible" n'a pas de
+         score Dino, ce serait trompeur de l'afficher) -->
+    <div v-if="!badge" class="shrink-0 text-right">
       <p
         class="font-mono text-[14px] font-semibold tabular-nums"
         :style="{
@@ -72,5 +76,19 @@ defineEmits<{
         score
       </p>
     </div>
+
+    <!-- Pill "Sélec." (visuel uniquement, le clic est capté par la row
+         entière) — affiché quand badge est posé pour parité visuelle
+         avec DinoSuggestions. -->
+    <span
+      v-else
+      class="flex shrink-0 items-center rounded-md px-2 font-mono text-[10px] uppercase tracking-wider"
+      :style="{
+        background: 'var(--indigo-700)',
+        color: 'var(--surface)',
+      }"
+    >
+      Sélec.
+    </span>
   </button>
 </template>

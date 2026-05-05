@@ -147,7 +147,12 @@ def build_query(coin: CoinIdentity) -> EbayQuery:
     name_fr = ISO2_TO_NAME_FR.get(iso2, coin.country_name or iso2)
     denom_label = "2 euro" if coin.face_value == 2.0 else f"{coin.face_value} euro"
     q = f"{denom_label} {name_fr} {coin.year}".strip()
-    aspect_filter = f"categoryId:{CATEGORY_EURO_COINS},Année:{{{coin.year}}}"
+    # Note (bloc 1, 2026-05-05) : on a drop le segment `Année:{...}` du
+    # aspect_filter — beaucoup de vendeurs ne remplissent pas l'aspect année,
+    # ce qui crashait le recall (×16-50 sur AD/FR mesurés en probe S3). Le
+    # tagging year vit désormais en post-filter applicatif côté
+    # `accept_listing` (cf. filters.py).
+    aspect_filter = f"categoryId:{CATEGORY_EURO_COINS}"
     return EbayQuery(
         q=q,
         aspect_filter=aspect_filter,

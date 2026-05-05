@@ -92,6 +92,28 @@ class NormalizationResult:
     debug: dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass
+class CircleDetection:
+    """Output of `detect_circles_multi` — one circle, accepted or rejected.
+
+    Coordinates are in **native pixel** space (input BGR image).
+    `accepted=True` means the circle passes the strict criteria and will
+    be cropped by `normalize_listing`. `accepted=False` is reported for
+    the debug view (Stage 2 of the lot review) so the human can see what
+    the pipeline considered and rejected.
+
+    `votes` carries the YOLO confidence (0..1) for `yolo+*` methods, or
+    `0.0` for legacy Hough-only methods.
+    """
+    cx: int
+    cy: int
+    r: int
+    method: str               # "yolo+hough" | "yolo+bbox" | legacy "hough_*"
+    votes: float = 0.0        # YOLO confidence (yolo+*) or 0 (hough-only)
+    accepted: bool = True
+    reject_reason: str | None = None  # "radius_too_small" | "radius_too_large" | "off_edge" | "low_structure"
+
+
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
@@ -351,6 +373,376 @@ def normalize_studio(bgr: np.ndarray) -> NormalizationResult:
 def normalize_studio_path(path: Path) -> NormalizationResult:
     bgr = cv2.imread(str(path), cv2.IMREAD_COLOR)
     return normalize_studio(bgr)
+
+
+# ---------------------------------------------------------------------------
+# Listing pipeline (eBay & co — multi-coin tolerant, multi-Hough)
+# ---------------------------------------------------------------------------
+
+# Listing pipeline = YOLO prior + Hough refine intra-ROI.
+#
+# Pourquoi pas Hough nu : sur fonds hétérogènes (coincard avec texte +
+# motifs décoratifs, blisters, mosaïques eBay), la passe Hough loose vote
+# sur les lettres et patterns circulaires, produisant des dizaines de
+# faux candidats inacceptables pour la review. YOLOv8-nano single-class
+# entraîné sur des pièces (`ml/output/detection/coin_detector/weights/best.pt`)
+# fournit un prior "où se trouvent les pièces", et Hough raffine le rim
+# sub-pixel intra-ROI — même contrat que la pipeline unifiée du device
+# (`docs/research/detection-pipeline-unified.md`).
+#
+# Reject criteria (post-refine) restent strictes : radius_too_small/large/off_edge.
+# Pas de seuil "low_confidence" séparé — `_YOLO_CONF_THRESHOLD` filtre déjà à la source.
+_YOLO_MODEL_PATH = (
+    Path(__file__).resolve().parents[1]
+    / "output" / "detection" / "coin_detector" / "weights" / "best.pt"
+)
+_YOLO_CONF_THRESHOLD = 0.35
+_YOLO_IOU_THRESHOLD = 0.45
+_YOLO_IMGSZ = 640
+_YOLO_BBOX_MARGIN_FRAC = 0.00  # ROI = bbox strict. +15% laissait Hough voir capsule/arches autour
+                                # → votes parasites pour cercles non-rim sur coincards Meritxell-style.
+
+_LISTING_RMIN_FRAC_STRICT = 0.08   # calibré sur distrib corpus eBay (n=3664 bboxes) :
+                                    # cassure naturelle p75=0.047 → p90=0.091, vraies pièces ≥ 0.08
+_LISTING_RMAX_FRAC_STRICT = 0.55
+_LISTING_EDGE_MARGIN_FRAC = 0.005
+
+# Pré-filtre bbox YOLO. Sur des coincards/blisters, YOLO confond souvent
+# lettres ("O"/"D"/"R") et motifs décoratifs avec des pièces lointaines —
+# bboxes minuscules (r << rmin_strict) qui ne contiennent aucune info
+# utile pour le debug humain et qui créent juste du bruit visuel rouge
+# dans la review UI. On les drop avant Hough refine. 0.7×rmin_strict garde
+# les "presque" (vraie pièce mal cadrée) ; calibré sur la distrib pour
+# couper sous le pic de bruit massif (65% des bboxes ont r/short < 0.04).
+_YOLO_BBOX_MIN_RADIUS_FRAC = 0.7  # ratio de rmin_strict
+
+# Hough refine intra-ROI : params plus tolérants car ROI propre (pas de BG bruyant).
+_REFINE_HOUGH_PARAM1 = 80.0
+_REFINE_HOUGH_PARAM2 = 18.0
+_REFINE_RMIN_FRAC = 0.30  # fraction du min(roi_w, roi_h)
+_REFINE_RMAX_FRAC = 0.60
+
+# Polish par gradient radial. Voir docs/sources-refacto/listing-crop-roadmap.md
+# Piste 1. Sur les pièces capsulées / coincards, le candidat (Hough ou bbox)
+# tombe souvent sur le bord de la capsule plastique au lieu du rim métallique.
+# On scanne r ∈ [0.70·r₀, min(1.05·r₀, r_max_clamp)] et on sélectionne le
+# rayon qui maximise la moyenne du gradient radial (= |∂I/∂n| le long du
+# cercle). Le rim métal/fond a un gradient typiquement 2-4× plus fort que
+# le bord plastique transparent → max-gradient discrimine.
+_POLISH_SEARCH_LOW_FRAC  = 0.70
+_POLISH_SEARCH_HIGH_FRAC = 1.05
+_POLISH_N_RADII   = 30
+_POLISH_N_ANGLES  = 64
+_POLISH_MIN_GAIN  = 1.05  # accepter le polish ssi score(r_best)/score(r₀) > 1.05
+
+# Garde structure intra-disque. YOLO classe parfois des stickers / hologrammes
+# carrés (`SAMMLERPOSTEN`, sceaux, codes-barres) comme pièces, ce qui produit
+# un crop quasi uniforme (pas de design, pas de texte, pas de relief).
+# Mesure : moyenne(|Laplacian|) sur le disque inscrit à 0.95·r en pixels natifs.
+# Calibré sur golden set (n=19 crops) : hologramme observé = 27, min vraie pièce = 49.
+# Threshold 32 = 1.18× au-dessus de l'outlier, 0.65× sous le min légitime.
+# À surveiller si une pièce mate sur fond uniforme se fait rejeter — le métrique
+# dépend du contraste local, pas seulement du design.
+_STRUCTURE_METRIC_DISC_FRAC = 0.95   # disque utilisé : 0.95·r (évite le rim lui-même)
+_STRUCTURE_MIN_LAP_MEANABS  = 32.0   # mean(|Laplacian|) min pour un crop coin-like
+
+
+_yolo_model_cache: Any = None
+
+
+def _get_yolo_model() -> Any:
+    global _yolo_model_cache
+    if _yolo_model_cache is None:
+        from ultralytics import YOLO
+        _yolo_model_cache = YOLO(str(_YOLO_MODEL_PATH))
+    return _yolo_model_cache
+
+
+def _yolo_detect_bboxes(bgr: np.ndarray) -> list[tuple[float, float, float, float, float]]:
+    """Run YOLO on a listing image. Returns a list of
+    `(x1, y1, x2, y2, conf)` in **native pixel** space, ordered by
+    descending confidence."""
+    model = _get_yolo_model()
+    res = model.predict(
+        bgr, imgsz=_YOLO_IMGSZ,
+        conf=_YOLO_CONF_THRESHOLD, iou=_YOLO_IOU_THRESHOLD,
+        verbose=False,
+    )
+    if not res:
+        return []
+    boxes = res[0].boxes
+    if boxes is None or len(boxes) == 0:
+        return []
+    xyxy = boxes.xyxy.cpu().numpy()
+    confs = boxes.conf.cpu().numpy()
+    out: list[tuple[float, float, float, float, float]] = []
+    for i in range(len(boxes)):
+        x1, y1, x2, y2 = xyxy[i].tolist()
+        out.append((float(x1), float(y1), float(x2), float(y2), float(confs[i])))
+    out.sort(key=lambda t: t[4], reverse=True)
+    return out
+
+
+def _hough_refine_in_roi(bgr: np.ndarray,
+                          x1: float, y1: float, x2: float, y2: float,
+                          r_max_clamp: float
+                          ) -> tuple[float, float, float] | None:
+    """Run Hough inside `bgr[y1:y2, x1:x2]` and return the most centred
+    circle in **native pixel** coordinates. None if Hough finds nothing
+    or all candidates exceed `r_max_clamp` (= bbox half-side, the YOLO
+    anchor of trust — Hough must not "expand past" the YOLO bbox onto
+    background concentric arcs).
+
+    Scoring = pure centred (min distance² to ROI center). No size bonus —
+    that bias was previously letting Hough vote on background arches
+    (coincard backgrounds with arches/curves) over the actual rim."""
+    h_img, w_img = bgr.shape[:2]
+    x1i = max(0, int(round(x1)))
+    y1i = max(0, int(round(y1)))
+    x2i = min(w_img, int(round(x2)))
+    y2i = min(h_img, int(round(y2)))
+    if x2i - x1i < 16 or y2i - y1i < 16:
+        return None
+    roi = bgr[y1i:y2i, x1i:x2i]
+    rh, rw = roi.shape[:2]
+    short = min(rh, rw)
+    gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+    gray = cv2.medianBlur(gray, 5)
+    circles = cv2.HoughCircles(
+        gray, cv2.HOUGH_GRADIENT, dp=1.0, minDist=short,
+        param1=_REFINE_HOUGH_PARAM1, param2=_REFINE_HOUGH_PARAM2,
+        minRadius=int(short * _REFINE_RMIN_FRAC),
+        maxRadius=int(short * _REFINE_RMAX_FRAC),
+    )
+    if circles is None or len(circles[0]) == 0:
+        return None
+    valid = [c for c in circles[0] if c[2] <= r_max_clamp]
+    if not valid:
+        return None
+    rcx, rcy = rw / 2.0, rh / 2.0
+    best = min(valid, key=lambda c: (c[0] - rcx) ** 2 + (c[1] - rcy) ** 2)
+    return float(x1i + best[0]), float(y1i + best[1]), float(best[2])
+
+
+def _disc_lap_meanabs(lap: np.ndarray, cx: int, cy: int, r: int) -> float:
+    """Moyenne de |Laplacian| sur le disque (cx, cy, 0.95·r). Renvoie +inf si
+    le disque sort trop de l'image — on n'écarte alors pas (l'`off_edge` filter
+    capturera ce cas si pertinent)."""
+    h, w = lap.shape
+    r_use = max(1, int(r * _STRUCTURE_METRIC_DISC_FRAC))
+    y0 = max(0, cy - r_use)
+    y1 = min(h, cy + r_use + 1)
+    x0 = max(0, cx - r_use)
+    x1 = min(w, cx + r_use + 1)
+    if y1 - y0 < 4 or x1 - x0 < 4:
+        return float("inf")
+    sub = lap[y0:y1, x0:x1]
+    sh, sw = sub.shape
+    yy, xx = np.ogrid[:sh, :sw]
+    lcx = cx - x0
+    lcy = cy - y0
+    mask = (xx - lcx) ** 2 + (yy - lcy) ** 2 < r_use * r_use
+    if not mask.any():
+        return float("inf")
+    return float(np.abs(sub[mask]).mean())
+
+
+def _bilinear_sample(field: np.ndarray, xs: np.ndarray, ys: np.ndarray) -> np.ndarray:
+    """Bilinear sample of a 2D `field` at sub-pixel coords `(xs, ys)`.
+    Out-of-bounds samples → 0. Vectorised."""
+    h, w = field.shape
+    x0 = np.floor(xs).astype(np.int32)
+    y0 = np.floor(ys).astype(np.int32)
+    valid = (x0 >= 0) & (y0 >= 0) & (x0 < w - 1) & (y0 < h - 1)
+    x0c = np.clip(x0, 0, w - 2)
+    y0c = np.clip(y0, 0, h - 2)
+    fx = xs - x0c
+    fy = ys - y0c
+    v00 = field[y0c, x0c]
+    v10 = field[y0c, x0c + 1]
+    v01 = field[y0c + 1, x0c]
+    v11 = field[y0c + 1, x0c + 1]
+    out = (v00 * (1 - fx) * (1 - fy) + v10 * fx * (1 - fy)
+           + v01 * (1 - fx) * fy + v11 * fx * fy)
+    out[~valid] = 0.0
+    return out
+
+
+def _radial_gradient_polish(bgr: np.ndarray,
+                             cx: float, cy: float, r0: float,
+                             r_max_clamp: float
+                             ) -> tuple[float, float, float, float, str]:
+    """Refine the radius `r0` of a candidate circle by maximising the mean
+    radial gradient along the circle. Returns `(cx, cy, r_best, gain, status)`
+    where `gain = score(r_best)/score(r₀)`. Center is left untouched —
+    Hough/bbox center is reliable; only `r` carries the capsule-vs-rim bias.
+
+    `status` ∈ `{"applied", "skipped:low_gain", "skipped:degenerate"}`.
+    """
+    h, w = bgr.shape[:2]
+    pad = int(r0 * 1.10) + 4
+    x0 = max(0, int(cx) - pad)
+    y0 = max(0, int(cy) - pad)
+    x1 = min(w, int(cx) + pad)
+    y1 = min(h, int(cy) + pad)
+    if x1 - x0 < 8 or y1 - y0 < 8:
+        return cx, cy, r0, 1.0, "skipped:degenerate"
+
+    roi = bgr[y0:y1, x0:x1]
+    gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+    gray = cv2.GaussianBlur(gray, (3, 3), 0)
+    gx = cv2.Sobel(gray, cv2.CV_32F, 1, 0, ksize=3)
+    gy = cv2.Sobel(gray, cv2.CV_32F, 0, 1, ksize=3)
+
+    lcx = float(cx - x0)
+    lcy = float(cy - y0)
+
+    angles = np.linspace(0.0, 2.0 * np.pi, _POLISH_N_ANGLES,
+                          endpoint=False, dtype=np.float32)
+    cos_t = np.cos(angles)
+    sin_t = np.sin(angles)
+
+    def score_at(r_test: float) -> float:
+        xs = lcx + r_test * cos_t
+        ys = lcy + r_test * sin_t
+        gxs = _bilinear_sample(gx, xs, ys)
+        gys = _bilinear_sample(gy, xs, ys)
+        radial = np.abs(gxs * cos_t + gys * sin_t)
+        return float(np.mean(radial))
+
+    r_high = min(r0 * _POLISH_SEARCH_HIGH_FRAC, r_max_clamp)
+    r_low = r0 * _POLISH_SEARCH_LOW_FRAC
+    if r_high <= r_low:
+        return cx, cy, r0, 1.0, "skipped:degenerate"
+
+    radii = np.linspace(r_low, r_high, _POLISH_N_RADII, dtype=np.float32)
+    score_r0 = score_at(r0)
+    best_score = score_r0
+    best_r = r0
+    for r_test in radii:
+        s = score_at(float(r_test))
+        if s > best_score:
+            best_score = s
+            best_r = float(r_test)
+
+    gain = best_score / max(1e-6, score_r0)
+    if gain < _POLISH_MIN_GAIN:
+        return cx, cy, r0, gain, "skipped:low_gain"
+    return cx, cy, best_r, gain, "applied"
+
+
+def detect_circles_multi(bgr: np.ndarray) -> list[CircleDetection]:
+    """Detect ALL coins in a listing image (1..N), with accept/reject reasons.
+
+    YOLO produces N bbox candidates above `_YOLO_CONF_THRESHOLD`. For each
+    bbox we expand a small margin and run Hough inside the ROI to get a
+    sub-pixel rim — that's `method="yolo+hough"`. If Hough finds nothing
+    (rim invisible, capsule reflection, …) we fall back to the inscribed
+    circle of the bbox — `method="yolo+bbox"`. Either way, the same
+    `radius_too_small / radius_too_large / off_edge` post-filter applies.
+
+    Returns detections ordered by YOLO confidence descending. Rejected
+    circles are reported only for the admin debug view (Stage 2). No
+    persistence — recompute is cheap.
+    """
+    if bgr is None or bgr.size == 0:
+        return []
+    h_img, w_img = bgr.shape[:2]
+    short = min(h_img, w_img)
+    rmin_strict = int(short * _LISTING_RMIN_FRAC_STRICT)
+    rmax_strict = int(short * _LISTING_RMAX_FRAC_STRICT)
+    edge_margin = max(0, int(short * _LISTING_EDGE_MARGIN_FRAC))
+
+    bbox_min_r = _YOLO_BBOX_MIN_RADIUS_FRAC * rmin_strict
+    bboxes = _yolo_detect_bboxes(bgr)
+    # Pré-calcul du Laplacian pour le structure guard. Une seule passe par image,
+    # puis on échantillonne par détection. Coût ~5-10ms sur 1600x1600.
+    _gray_full = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
+    _lap_full = cv2.Laplacian(_gray_full, cv2.CV_32F, ksize=3)
+    detections: list[CircleDetection] = []
+    for x1, y1, x2, y2, conf in bboxes:
+        bw = x2 - x1
+        bh = y2 - y1
+        if min(bw, bh) / 2.0 < bbox_min_r:
+            continue  # bbox trop petite pour mériter d'être affichée
+        mx = bw * _YOLO_BBOX_MARGIN_FRAC
+        my = bh * _YOLO_BBOX_MARGIN_FRAC
+        # YOLO anchor : Hough refine must stay inside the bbox half-side.
+        r_max_clamp = max(bw, bh) / 2.0
+
+        refined = _hough_refine_in_roi(bgr, x1 - mx, y1 - my, x2 + mx, y2 + my,
+                                        r_max_clamp=r_max_clamp)
+        if refined is not None:
+            cx_f, cy_f, r_f = refined
+            method = "yolo+hough"
+        else:
+            cx_f = (x1 + x2) / 2.0
+            cy_f = (y1 + y2) / 2.0
+            r_f = min(bw, bh) / 2.0
+            method = "yolo+bbox"
+
+        cx_f, cy_f, r_f, _gain, polish_status = _radial_gradient_polish(
+            bgr, cx_f, cy_f, r_f, r_max_clamp=r_max_clamp,
+        )
+        if polish_status == "applied":
+            method = method + "+polish"
+
+        cx_n = int(round(cx_f))
+        cy_n = int(round(cy_f))
+        r_n = int(round(r_f))
+
+        accepted = True
+        reason: str | None = None
+        if r_n < rmin_strict:
+            accepted = False
+            reason = "radius_too_small"
+        elif r_n > rmax_strict:
+            accepted = False
+            reason = "radius_too_large"
+        elif (cx_n - r_n < edge_margin or cy_n - r_n < edge_margin
+              or cx_n + r_n > w_img - edge_margin
+              or cy_n + r_n > h_img - edge_margin):
+            accepted = False
+            reason = "off_edge"
+        elif _disc_lap_meanabs(_lap_full, cx_n, cy_n, r_n) < _STRUCTURE_MIN_LAP_MEANABS:
+            accepted = False
+            reason = "low_structure"
+
+        detections.append(CircleDetection(
+            cx=cx_n, cy=cy_n, r=r_n,
+            method=method, votes=conf,
+            accepted=accepted, reject_reason=reason,
+        ))
+
+    return detections
+
+
+def normalize_listing(bgr: np.ndarray) -> list[NormalizationResult]:
+    """Normalize a listing image (eBay etc.) into 0..N tight 224×224 coin crops.
+
+    One result per **accepted** circle from `detect_circles_multi`. Order
+    matches the detection order (Hough vote descending). Returns ``[]``
+    when no coin is detected — the caller decides how to handle that
+    (currently `detect_crop.py` flags it as an error, leaves the
+    source_image at `'downloaded'` for re-processing).
+    """
+    if bgr is None or bgr.size == 0:
+        return []
+    detections = detect_circles_multi(bgr)
+    results: list[NormalizationResult] = []
+    for det in detections:
+        if not det.accepted:
+            continue
+        result = _crop_mask_resize_int(bgr, det.cx, det.cy, det.r, method=det.method)
+        if result.image is None:
+            continue
+        results.append(result)
+    return results
+
+
+def normalize_listing_path(path: Path) -> list[NormalizationResult]:
+    bgr = cv2.imread(str(path), cv2.IMREAD_COLOR)
+    return normalize_listing(bgr)
 
 
 # ---------------------------------------------------------------------------

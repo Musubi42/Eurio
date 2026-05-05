@@ -7,50 +7,65 @@
 
 @import '../../../../../shared/tokens.css';
 
+/* ───────── Admin parchment override ─────────
+ * On override les surfaces pour donner à l'admin un feel "specimen sheet /
+ * forensic cabinet" — plus chaud et éditorial que le blanc neutre des
+ * tokens partagés. Ne touche pas au tokens.css global : Android Compose
+ * dépend de `--surface` via la génération Color.kt et doit rester sur
+ * son blanc paper. Ici on n'override QUE l'admin (importé via Vite).
+ */
+:root {
+  --surface:    #F5F1E7;   /* parchment cream (was #FAFAF8) */
+  --surface-1:  #EDE8DA;   /* aged paper      (was #F4F3EE) */
+  --surface-2:  #E2DBC8;   /* deeper recess   (was #ECEBE4) */
+  --surface-3:  #D0C7B2;   /* hairline borders (was #E2E0D6) */
+  --paper:      #F5F1E7;   /* hero variant    (was #F5F3EC) */
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 /* ───────── Mappings shadcn-vue ─────────
  * shadcn-vue s'attend à des CSS vars en HSL brutes (sans hsl()).
- * On les dérive des tokens Eurio.
+ * On les dérive des tokens Eurio + de l'override parchment ci-dessus.
  *
  * Conversion HEX → HSL :
- *   #1A1B4B (indigo-700)  → 238° 48% 20%
- *   #C8A864 (gold)        → 40°  50% 59%
- *   #FAFAF8 (surface)     → 60°  11% 98%
- *   #0E0E1F (ink)         → 238° 52%  9%
- *   #F4F3EE (surface-1)   → 55°   9% 94%
- *   #ECEBE4 (surface-2)   → 50°  10% 90%
- *   #E2E0D6 (surface-3)   → 50°  10% 86%
- *   #55566C (ink-500)     → 237° 13% 38%
- *   #D14343 (danger)      → 0°   58% 54%
+ *   #1A1B4B (indigo-700)        → 238° 48% 20%
+ *   #C8A864 (gold)              → 40°  50% 59%
+ *   #F5F1E7 (surface parchment) → 43°  33% 93%
+ *   #0E0E1F (ink)               → 238° 52%  9%
+ *   #EDE8DA (surface-1)         → 43°  27% 89%
+ *   #E2DBC8 (surface-2)         → 43°  31% 84%
+ *   #D0C7B2 (surface-3)         → 40°  26% 76%
+ *   #55566C (ink-500)           → 237° 13% 38%
+ *   #D14343 (danger)            → 0°   58% 54%
  */
 @layer base {
   :root {
-    --background:              60 11% 98%;
+    --background:              43 33% 93%;
     --foreground:              238 52% 9%;
 
-    --card:                    60 11% 98%;
+    --card:                    43 33% 93%;
     --card-foreground:         238 52% 9%;
 
     --primary:                 238 48% 20%;
-    --primary-foreground:      60 11% 98%;
+    --primary-foreground:      43 33% 93%;
 
-    --secondary:               55 9% 94%;
+    --secondary:               43 27% 89%;
     --secondary-foreground:    238 52% 9%;
 
-    --muted:                   50 10% 90%;
+    --muted:                   43 31% 84%;
     --muted-foreground:        237 13% 38%;
 
     --accent:                  40 50% 59%;
     --accent-foreground:       238 52% 9%;
 
     --destructive:             0 58% 54%;
-    --destructive-foreground:  60 11% 98%;
+    --destructive-foreground:  43 33% 93%;
 
-    --border:                  50 10% 86%;
-    --input:                   50 10% 86%;
+    --border:                  40 26% 76%;
+    --input:                   40 26% 76%;
     --ring:                    238 48% 20%;
   }
 }

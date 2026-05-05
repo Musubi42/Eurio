@@ -46,7 +46,7 @@ _device: torch.device | None = None
 
 def _get_encoder() -> tuple[torch.nn.Module, torch.device, str]:
     global _encoder, _device
-    from eval.confusion_map import (
+    from foundation.encoder import (
         DEFAULT_ENCODER_VERSION,
         load_encoder,
         pick_device,
@@ -54,7 +54,7 @@ def _get_encoder() -> tuple[torch.nn.Module, torch.device, str]:
 
     if _encoder is None:
         _device = pick_device()
-        _encoder = load_encoder(_device)
+        _encoder, _device = load_encoder(_device)
         logger.info("DINO encoder ready on %s (version=%s)", _device, DEFAULT_ENCODER_VERSION)
     return _encoder, _device, DEFAULT_ENCODER_VERSION
 
@@ -124,7 +124,7 @@ def compute_aug_vs_real(
     if cohort is None:
         raise ValueError(f"Cohort {it.cohort_id!r} not found")
 
-    from eval.confusion_map import DEFAULT_ENCODER_VERSION
+    from foundation.encoder import DEFAULT_ENCODER_VERSION
 
     if not force:
         cached = {r.eurio_id: r for r in store.list_aug_vs_real(iteration_id)}
@@ -153,8 +153,8 @@ def compute_aug_vs_real(
                 return list(cached.values()), DEFAULT_ENCODER_VERSION
 
     encoder, device, version = _get_encoder()
-    from eval.confusion_map import _build_transform
-    transform = _build_transform()
+    from foundation.encoder import build_transform
+    transform = build_transform()
 
     rows: list[AugVsRealRow] = []
     for eurio_id in cohort.eurio_ids:
