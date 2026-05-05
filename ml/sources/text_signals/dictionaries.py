@@ -1,0 +1,227 @@
+"""Dictionnaires & patterns du text-signal extractor.
+
+Source : observations sur ~50 titres réels eBay FR + DE + EN
+échantillonnés depuis ``source_images.listing_title`` (cf.
+``docs/sources-refacto/auto-validation/progress.md`` chunk 4).
+
+On reste strict sur le périmètre :
+- 21 pays Eurozone (incluant Bulgarie, entrée 2026-01-01) + 4
+  micro-états (AD, MC, SM, VA) qui frappent leurs propres euros.
+- Variantes linguistiques observées en pratique (FR principalement,
+  EN/DE/IT/ES en second). Pas de transliteration ni de fuzzy match :
+  on liste explicitement ce qu'on rencontre.
+- Pas de codes ISO2 nus dans les dicos (ex. "FR", "DE") — trop de
+  faux positifs (sigles, abréviations). Les flags emoji sont
+  acceptés en revanche, ils sont sans ambiguïté.
+
+Conventions :
+- Tous les tokens sont en minuscules dans les dicos. Le matcher
+  lowercase le titre avant lookup.
+- ``COUNTRY_NAMES``     : noms canoniques (substantif), priorité haute.
+- ``COUNTRY_ADJECTIVES``: adjectifs (féminin singulier suffit, on
+  matche en suffixe-souple via mots-frontières).
+- ``COUNTRY_FLAGS``     : flag emoji → ISO2.
+"""
+
+from __future__ import annotations
+
+import re
+from typing import Iterable
+
+# ── Pays & micro-états ───────────────────────────────────────────────────────
+
+# Noms substantifs. Une variante par token (mots multiples = "saint marin",
+# "pays bas", l'extractor les normalise en gérant les espaces multiples).
+COUNTRY_NAMES: dict[str, frozenset[str]] = {
+    "AD": frozenset({"andorre", "andorra"}),
+    "AT": frozenset({"autriche", "austria", "österreich", "osterreich"}),
+    "BE": frozenset({"belgique", "belgium", "belgien", "belgio"}),
+    "BG": frozenset({"bulgarie", "bulgaria", "bulgarien"}),
+    "CY": frozenset({"chypre", "cyprus", "zypern"}),
+    "DE": frozenset({"allemagne", "germany", "deutschland", "germania"}),
+    "EE": frozenset({"estonie", "estonia", "estland"}),
+    "ES": frozenset({"espagne", "spain", "españa", "espana", "spanien"}),
+    "FI": frozenset({"finlande", "finland", "finnland", "suomi"}),
+    "FR": frozenset({"france", "frankreich", "francia"}),
+    "GR": frozenset({"grèce", "grece", "greece", "griechenland", "ellada"}),
+    "HR": frozenset({"croatie", "croatia", "kroatien", "hrvatska"}),
+    "IE": frozenset({"irlande", "ireland", "irland", "eire"}),
+    "IT": frozenset({"italie", "italy", "italia", "italien"}),
+    "LT": frozenset({"lituanie", "lithuania", "litauen", "lietuva"}),
+    "LU": frozenset({"luxembourg", "luxemburg", "lussemburgo"}),
+    "LV": frozenset({"lettonie", "latvia", "lettland", "latvija"}),
+    "MC": frozenset({"monaco"}),
+    "MT": frozenset({"malte", "malta"}),
+    "NL": frozenset({"pays-bas", "pays bas", "netherlands", "niederlande", "olanda", "holland"}),
+    "PT": frozenset({"portugal"}),
+    "SI": frozenset({"slovénie", "slovenie", "slovenia", "slowenien", "slovenija"}),
+    "SK": frozenset({"slovaquie", "slovakia", "slowakei", "slovensko"}),
+    "SM": frozenset({"saint-marin", "saint marin", "san marino"}),
+    "VA": frozenset({"vatican", "vaticano", "vatikan"}),
+}
+
+# Adjectifs (utilisé séparément des noms : tons légèrement plus faibles
+# pour Coverage, mais comptent comme "pays détecté"). Forme féminine
+# singulier — on matche en mots-frontières donc "française" capture
+# aussi "francaise" si le titre est sans accents (matcher normalisé).
+COUNTRY_ADJECTIVES: dict[str, frozenset[str]] = {
+    "AT": frozenset({"autrichienne", "autrichien"}),
+    "BE": frozenset({"belge"}),
+    "DE": frozenset({"allemande", "allemand"}),
+    "ES": frozenset({"espagnole", "espagnol"}),
+    "FI": frozenset({"finlandaise", "finlandais"}),
+    "FR": frozenset({"française", "francaise", "français", "francais"}),
+    "GR": frozenset({"grecque", "grec"}),
+    "IT": frozenset({"italienne", "italien"}),
+    "LU": frozenset({"luxembourgeoise", "luxembourgeois"}),
+    "NL": frozenset({"néerlandaise", "neerlandaise", "néerlandais", "neerlandais", "hollandaise", "hollandais"}),
+    "PT": frozenset({"portugaise", "portugais"}),
+}
+
+# Flag emojis → ISO2. Sans ambiguïté.
+COUNTRY_FLAGS: dict[str, str] = {
+    "🇦🇩": "AD",
+    "🇦🇹": "AT",
+    "🇧🇪": "BE",
+    "🇧🇬": "BG",
+    "🇨🇾": "CY",
+    "🇩🇪": "DE",
+    "🇪🇪": "EE",
+    "🇪🇸": "ES",
+    "🇫🇮": "FI",
+    "🇫🇷": "FR",
+    "🇬🇷": "GR",
+    "🇭🇷": "HR",
+    "🇮🇪": "IE",
+    "🇮🇹": "IT",
+    "🇱🇹": "LT",
+    "🇱🇺": "LU",
+    "🇱🇻": "LV",
+    "🇲🇨": "MC",
+    "🇲🇹": "MT",
+    "🇳🇱": "NL",
+    "🇵🇹": "PT",
+    "🇸🇮": "SI",
+    "🇸🇰": "SK",
+    "🇸🇲": "SM",
+    "🇻🇦": "VA",
+}
+
+ALL_COUNTRY_ISO2: frozenset[str] = frozenset(COUNTRY_NAMES.keys())
+
+
+# ── Années ───────────────────────────────────────────────────────────────────
+
+# Eurozone : 1999 = première frappe (lancement 2002), commémo depuis 2004.
+# Borne haute large pour absorber les listings prospectifs et garder la
+# regex simple.
+YEAR_RE = re.compile(r"\b(199[9]|20[0-3]\d)\b")
+YEAR_MIN, YEAR_MAX = 1999, 2039
+
+
+# ── Dénominations ────────────────────────────────────────────────────────────
+
+# Capture "2 €", "2 EUR", "2 euros", "2EUR", "2,50 euros", "0.50 €", etc.
+# Le groupe 1 = montant (avec virgule ou point décimal).
+# Note : pas de `\b` final — `€` n'est pas un word-char donc le boundary
+# casse les matches "2€" / "0,50 €". On ferme proprement le mot "euro"
+# avec `\b` interne, pas de boundary après le symbole monétaire.
+DENOMINATION_RE = re.compile(
+    r"\b(\d+(?:[.,]\d{1,2})?)\s*(?:€|eur(?:os?)?\b)",
+    re.IGNORECASE,
+)
+
+# Subset face-values reconnues comme valides (autres = dropped, ex. "10 euros"
+# = un montant prix, pas une dénomination de pièce).
+VALID_FACE_VALUES: frozenset[float] = frozenset({
+    0.01, 0.02, 0.05, 0.10, 0.20, 0.50,
+    1.0, 2.0,
+})
+
+
+# ── Markers de rejet (cohérents avec NOISE_PATTERNS de filters.py) ───────────
+
+# Liste typée par catégorie. Chaque marker capture une raison potentielle
+# de hors-scope. Le filtre amont accept_listing rejette en bloc sur
+# ``noise_title`` ; ici on garde la granularité par catégorie pour
+# auditer.
+REJECTION_MARKERS: dict[str, re.Pattern[str]] = {
+    "proof": re.compile(r"\b(proof|épreuve|epreuve|belle\s*épreuve|belle\s*epreuve|bu\b)\b", re.IGNORECASE),
+    "metal": re.compile(r"\b(argent|silver|or\s|gold|plaqu[eé]e?|silbermünze)\b", re.IGNORECASE),
+    "colored": re.compile(r"\b(coloris[eé]e?|colored|farbig)\b", re.IGNORECASE),
+    "error_struck": re.compile(r"\b(faut[eé]e?|erreur\s*de\s*frappe|mint\s*error|d[eé]sax[eé]e?|mal\s*frapp[eé]e?)\b", re.IGNORECASE),
+    "replica": re.compile(r"\b(replica|copy|reproduction|fake|copie|nachbildung)\b", re.IGNORECASE),
+    "fantasy": re.compile(r"\b(souvenir|fantasy|fantaisie|jeton|token)\b", re.IGNORECASE),
+}
+
+
+# ── Lot detection (mots-clefs et compteurs explicites) ───────────────────────
+
+# Cohérent avec LOT_PATTERNS de filters.py mais retournant la liste des
+# matches plutôt qu'un boolean.
+LOT_KEYWORDS_RE = re.compile(
+    r"\b("
+    r"lot|coffret|s[eé]rie|collection\s*compl[eè]te|"
+    r"rouleau|roll|set\s+of|sets?\b|"
+    r"bundle|konvolut|sammlung"
+    r")\b",
+    re.IGNORECASE,
+)
+
+# Compteurs numériques explicites — deux patterns complémentaires :
+# 1. "2 x 2 EURO", "3x pièce" — "N x QQchose" indique multiplication.
+# 2. "Lot de 3 pièces", "5 coins" — quantité explicite avec mot tête.
+COUNT_X_RE = re.compile(r"\b(\d+)\s*x\s+\S", re.IGNORECASE)
+COUNT_PIECES_RE = re.compile(
+    r"\b(?:lot\s*de\s+)?(\d+)\s*(?:pi[eè]ces?|coins?|m[oü]nzen?)\b",
+    re.IGNORECASE,
+)
+
+
+# ── Stop-words pour les theme tokens ─────────────────────────────────────────
+
+# Multilingue volontairement minimal — on garde tout token ≥ 4 chars
+# qui n'est pas dans la liste, après avoir retiré les années et
+# dénominations. Le but est de produire des tokens qui pourront servir
+# de signal positif/négatif quand on les croisera avec le slug du
+# target_eurio_id (chunk 6).
+STOP_WORDS: frozenset[str] = frozenset({
+    # FR
+    "avec", "sans", "pour", "dans", "vers", "chez", "entre",
+    "tous", "toute", "toutes", "tout", "très", "tres", "plus", "moins",
+    "neuf", "neuve", "occasion", "circulé", "circulee", "rare",
+    "envoi", "rapide", "livrée", "livré", "voir", "photos", "photo",
+    "choix", "choisissez", "choisir", "disponible", "disponibles", "dispo",
+    "année", "annee", "années", "annees", "millésime", "millesime",
+    "pièce", "piece", "pièces", "pieces", "coin", "coins",
+    "edition", "édition", "tranche", "atelier", "frappe",
+    # EN
+    "with", "without", "from", "this", "that", "these", "those",
+    "available", "please", "choose", "between",
+    "mint", "uncirculated", "used", "year", "years",
+    # Quality grades — on les capture en rejection_markers ou on
+    # les ignore comme tokens.
+    "fdc", "unc", "spl", "ttb", "sup",
+    # Identifiants Numista (KM#xxx, KM:xxx) — dropés au tokenize.
+    # Stop courts (≥4 chars exigé) ne s'applique pas ici, mais on
+    # garde par sécurité.
+    "euro", "euros",
+})
+
+
+# ── Helpers ──────────────────────────────────────────────────────────────────
+
+
+def all_country_tokens() -> Iterable[tuple[str, str]]:
+    """Yield (token, ISO2) pour chaque alias pays/adjectif/flag.
+
+    Ordre stable utile au tie-breaking (substantif > adjectif > flag).
+    """
+    for iso2, names in COUNTRY_NAMES.items():
+        for n in names:
+            yield (n, iso2)
+    for iso2, adjs in COUNTRY_ADJECTIVES.items():
+        for a in adjs:
+            yield (a, iso2)
+    for flag, iso2 in COUNTRY_FLAGS.items():
+        yield (flag, iso2)

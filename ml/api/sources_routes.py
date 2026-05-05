@@ -85,6 +85,7 @@ def _store() -> Store:
 # ── Status (existing) ─────────────────────────────────────────────────────
 
 
+# Consumed by: admin/packages/web/src/features/sources/composables/useSourcesApi.ts (fetchSourcesStatus)
 @router.get("/status")
 def sources_status() -> dict:
     return sources_aggregator.build_status()
@@ -118,6 +119,7 @@ class TriggerResponse(BaseModel):
     kind: str
 
 
+# Consumed by: admin/packages/web/src/features/sources/composables/useSourceDetail.ts (triggerSourceRun)
 @router.post("/{source_id}/runs", response_model=TriggerResponse, status_code=202)
 def trigger_run(
     source_id: str,
@@ -256,6 +258,7 @@ class RunSnapshot(BaseModel):
     log_path: str | None
 
 
+# Consumed by: admin/packages/web/src/features/sources/composables/useSourceDetail.ts (fetchSourceRun, pollSourceRun)
 @router.get("/{source_id}/runs/{run_id}", response_model=RunSnapshot)
 def get_run(source_id: str, run_id: str) -> RunSnapshot:
     conn = _store()._connection()  # noqa: SLF001
@@ -587,6 +590,7 @@ def compute_run_breakdown(
     )
 
 
+# Consumed by: admin/packages/web/src/features/sources/composables/useRunBreakdown.ts (fetchRunBreakdown)
 @router.get(
     "/{source_id}/runs/{run_id}/breakdown",
     response_model=RunBreakdown,
@@ -594,6 +598,352 @@ def compute_run_breakdown(
 def get_run_breakdown(source_id: str, run_id: str) -> RunBreakdown:
     conn = _store()._connection()  # noqa: SLF001
     return compute_run_breakdown(conn, run_id=run_id, source_id=source_id)
+
+
+# ── Run listings (per-listing pipeline-decision drill-down) ───────────────
+#
+# Cf. docs/sources-refacto/listing-debug-view-kickoff.md.
+# Lecture seule, orientée debug : pour chaque source_image du run on retourne
+# les verdicts persistés par les steps (download/crop/route) + la trace par
+# crop (image_assets + review_queue).
+
+
+class ListingCropAsset(BaseModel):
+    asset_id: str
+    crop_index: int
+    resolution_status: str | None = None
+    eurio_id: str | None = None
+    review_id: str | None = None
+    review_kind: str | None = None  # 'lot' | 'single' (review_queue.kind)
+
+
+class ListingDetail(BaseModel):
+    source_image_id: str
+    source_ref: str
+    source_url: str | None = None
+    target_eurio_id: str | None = None
+    listing_title: str | None = None
+    listing_country: str | None = None
+    listing_year: int | None = None
+    listing_price: float | None = None
+    listing_currency: str | None = None
+    seller_id: str | None = None
+    is_lot_suspected: bool = False
+    fetched_at: str | None = None
+
+    download_endpoint: str | None = None
+    download_status: str | None = None
+    download_http_status: int | None = None
+    download_error: str | None = None
+
+    crop_status: str | None = None
+    crop_error: str | None = None
+    n_crops_detected: int | None = None
+
+    route_decision: str | None = None
+    route_reason: str | None = None
+
+    crops: list[ListingCropAsset] = []
+
+
+class RunListings(BaseModel):
+    run_id: str
+    source_id: str
+    listings: list[ListingDetail]
+
+
+# Consumed by: admin/packages/web/src/features/sources/composables/useRunListings.ts (fetchRunListings)
+@router.get(
+    "/{source_id}/runs/{run_id}/listings",
+    response_model=RunListings,
+)
+def get_run_listings(
+    source_id: str,
+    run_id: str,
+    eurio_id: str | None = Query(default=None, description="Filtrer sur un eurio_id ciblé"),
+) -> RunListings:
+    conn = _store()._connection()  # noqa: SLF001
+
+    sql = """
+        SELECT id AS source_image_id, source_ref, source_url, target_eurio_id,
+               listing_title, listing_country, listing_year, listing_price,
+               listing_currency, seller_id, is_lot_suspected, fetched_at,
+               download_endpoint, download_status, download_http_status, download_error,
+               crop_status, crop_error, n_crops_detected,
+               route_decision, route_reason
+          FROM source_images
+         WHERE source = ? AND run_id = ?
+    """
+    params: list[Any] = [source_id, run_id]
+    if eurio_id is not None:
+        sql += " AND target_eurio_id = ?"
+        params.append(eurio_id)
+    sql += " ORDER BY fetched_at ASC, source_ref ASC"
+
+    rows = conn.execute(sql, params).fetchall()
+    if not rows:
+        return RunListings(run_id=run_id, source_id=source_id, listings=[])
+
+    sids = [r["source_image_id"] for r in rows]
+    placeholders = ",".join("?" * len(sids))
+    asset_rows = conn.execute(
+        f"""
+        SELECT a.id AS asset_id, a.source_image_id, a.crop_index,
+               a.resolution_status, a.eurio_id,
+               rq.id AS review_id, rq.kind AS review_kind
+          FROM image_assets a
+          LEFT JOIN review_queue rq ON rq.image_asset_id = a.id
+         WHERE a.source_image_id IN ({placeholders})
+         ORDER BY a.source_image_id, a.crop_index
+        """,
+        sids,
+    ).fetchall()
+
+    crops_by_sid: dict[str, list[ListingCropAsset]] = {}
+    for ar in asset_rows:
+        crops_by_sid.setdefault(ar["source_image_id"], []).append(
+            ListingCropAsset(
+                asset_id=ar["asset_id"],
+                crop_index=ar["crop_index"],
+                resolution_status=ar["resolution_status"],
+                eurio_id=ar["eurio_id"],
+                review_id=ar["review_id"],
+                review_kind=ar["review_kind"],
+            )
+        )
+
+    listings = [
+        ListingDetail(
+            source_image_id=r["source_image_id"],
+            source_ref=r["source_ref"],
+            source_url=r["source_url"],
+            target_eurio_id=r["target_eurio_id"],
+            listing_title=r["listing_title"],
+            listing_country=r["listing_country"],
+            listing_year=r["listing_year"],
+            listing_price=r["listing_price"],
+            listing_currency=r["listing_currency"],
+            seller_id=r["seller_id"],
+            is_lot_suspected=bool(r["is_lot_suspected"]),
+            fetched_at=r["fetched_at"],
+            download_endpoint=r["download_endpoint"],
+            download_status=r["download_status"],
+            download_http_status=r["download_http_status"],
+            download_error=r["download_error"],
+            crop_status=r["crop_status"],
+            crop_error=r["crop_error"],
+            n_crops_detected=r["n_crops_detected"],
+            route_decision=r["route_decision"],
+            route_reason=r["route_reason"],
+            crops=crops_by_sid.get(r["source_image_id"], []),
+        )
+        for r in rows
+    ]
+    return RunListings(run_id=run_id, source_id=source_id, listings=listings)
+
+
+# ── Discovery searches (per-call API debug log) ───────────────────────────
+#
+# Cf. docs/sources-refacto/listing-debug-view-kickoff.md.
+# 1 row par appel adapter.discover() pour un (run, target_eurio_id). Permet
+# de distinguer "vraiment 0 résultat" de "scrape pas exécuté / failed /
+# post-filter trop strict".
+
+
+class DiscoverySearchItem(BaseModel):
+    id: str
+    target_eurio_id: str | None = None
+    endpoint: str | None = None
+    query_q: str | None = None
+    query_filters: dict[str, Any] | None = None
+    status: str
+    http_status: int | None = None
+    # Funnel ventilé (chunk 0 auto-validation : "visibilité du stream") :
+    # n_summaries → n_after_groups → n_raw_results → n_kept_results.
+    n_summaries: int | None = None
+    n_after_groups: int | None = None
+    n_raw_results: int | None = None
+    n_kept_results: int | None = None
+    duration_ms: int | None = None
+    error: str | None = None
+    created_at: str
+
+
+class RunSearches(BaseModel):
+    run_id: str
+    source_id: str
+    searches: list[DiscoverySearchItem]
+
+
+# Consumed by: admin/packages/web/src/features/sources/composables/useRunSearches.ts (fetchRunSearches)
+@router.get(
+    "/{source_id}/runs/{run_id}/searches",
+    response_model=RunSearches,
+)
+def get_run_searches(
+    source_id: str,
+    run_id: str,
+    eurio_id: str | None = Query(default=None, description="Filtrer sur un eurio_id ciblé"),
+) -> RunSearches:
+    conn = _store()._connection()  # noqa: SLF001
+
+    sql = """
+        SELECT id, target_eurio_id, endpoint, query_q, query_filters_json,
+               status, http_status,
+               n_summaries, n_after_groups, n_raw_results, n_kept_results,
+               duration_ms, error, created_at
+          FROM discovery_searches
+         WHERE source = ? AND run_id = ?
+    """
+    params: list[Any] = [source_id, run_id]
+    if eurio_id is not None:
+        sql += " AND target_eurio_id = ?"
+        params.append(eurio_id)
+    sql += " ORDER BY created_at ASC"
+
+    rows = conn.execute(sql, params).fetchall()
+    searches = [
+        DiscoverySearchItem(
+            id=r["id"],
+            target_eurio_id=r["target_eurio_id"],
+            endpoint=r["endpoint"],
+            query_q=r["query_q"],
+            query_filters=json.loads(r["query_filters_json"]) if r["query_filters_json"] else None,
+            status=r["status"],
+            http_status=r["http_status"],
+            n_summaries=r["n_summaries"],
+            n_after_groups=r["n_after_groups"],
+            n_raw_results=r["n_raw_results"],
+            n_kept_results=r["n_kept_results"],
+            duration_ms=r["duration_ms"],
+            error=r["error"],
+            created_at=r["created_at"],
+        )
+        for r in rows
+    ]
+    return RunSearches(run_id=run_id, source_id=source_id, searches=searches)
+
+
+# ── Discarded listings (audit trail des rejets pré-ingestion) ─────────────
+#
+# Chunk 0 auto-validation ("visibilité du stream") : expose les rejets
+# accept_listing + theme_mismatch déjà persistés en `discarded_listings`
+# pour les rendre lisibles côté admin. Le but est de comprendre pourquoi
+# le funnel raw → kept rétrécit, raison par raison.
+
+
+class DiscardedListingItem(BaseModel):
+    id: str
+    source_ref: str
+    target_eurio_id: str | None = None
+    reason: str
+    title: str | None = None
+    item_id: str | None = None
+    item_web_url: str | None = None
+    price: float | None = None
+    currency: str | None = None
+    raw_payload: dict[str, Any] | None = None
+    created_at: str
+
+
+class DiscardedReasonGroup(BaseModel):
+    reason: str
+    count: int
+
+
+class RunDiscarded(BaseModel):
+    run_id: str
+    source_id: str
+    total: int
+    by_reason: list[DiscardedReasonGroup]
+    listings: list[DiscardedListingItem]
+
+
+# Consumed by: admin/packages/web/src/features/sources/composables/useRunDiscarded.ts (fetchRunDiscarded)
+@router.get(
+    "/{source_id}/runs/{run_id}/discarded",
+    response_model=RunDiscarded,
+)
+def get_run_discarded(
+    source_id: str,
+    run_id: str,
+    eurio_id: str | None = Query(default=None, description="Filtrer sur un eurio_id ciblé"),
+    reason: str | None = Query(default=None, description="Filtrer sur une raison de rejet"),
+) -> RunDiscarded:
+    """Retourne les listings rejetés pré-ingestion pour un run.
+
+    Sources des rejets : `accept_listing` (`noise_title`, `year_mismatch`,
+    `non_eur`, `below_face`, `above_extreme`, `no_price`) et le filtre
+    theme-tokens (`theme_mismatch`, depuis chunk 0).
+    """
+    conn = _store()._connection()  # noqa: SLF001
+
+    sql = """
+        SELECT id, source_ref, target_eurio_id, reason, title,
+               raw_payload, created_at
+          FROM discarded_listings
+         WHERE source = ? AND run_id = ?
+    """
+    params: list[Any] = [source_id, run_id]
+    if eurio_id is not None:
+        sql += " AND target_eurio_id = ?"
+        params.append(eurio_id)
+    if reason is not None:
+        sql += " AND reason = ?"
+        params.append(reason)
+    sql += " ORDER BY created_at ASC"
+
+    rows = conn.execute(sql, params).fetchall()
+
+    listings: list[DiscardedListingItem] = []
+    for r in rows:
+        payload: dict[str, Any] | None = None
+        if r["raw_payload"]:
+            try:
+                payload = json.loads(r["raw_payload"])
+            except (TypeError, ValueError):
+                payload = None
+        item_id = (payload or {}).get("item_id") if payload else None
+        item_web_url = (payload or {}).get("item_web_url") if payload else None
+        price = (payload or {}).get("price") if payload else None
+        currency = (payload or {}).get("currency") if payload else None
+        listings.append(DiscardedListingItem(
+            id=r["id"],
+            source_ref=r["source_ref"],
+            target_eurio_id=r["target_eurio_id"],
+            reason=r["reason"],
+            title=r["title"],
+            item_id=str(item_id) if item_id is not None else None,
+            item_web_url=item_web_url if isinstance(item_web_url, str) else None,
+            price=float(price) if isinstance(price, (int, float)) else None,
+            currency=currency if isinstance(currency, str) else None,
+            raw_payload=payload,
+            created_at=r["created_at"],
+        ))
+
+    by_reason_rows = conn.execute(
+        """
+        SELECT reason, COUNT(*) AS n
+          FROM discarded_listings
+         WHERE source = ? AND run_id = ?
+         GROUP BY reason
+         ORDER BY n DESC, reason ASC
+        """,
+        (source_id, run_id),
+    ).fetchall()
+    by_reason = [
+        DiscardedReasonGroup(reason=r["reason"], count=int(r["n"]))
+        for r in by_reason_rows
+    ]
+    total = sum(g.count for g in by_reason)
+
+    return RunDiscarded(
+        run_id=run_id,
+        source_id=source_id,
+        total=total,
+        by_reason=by_reason,
+        listings=listings,
+    )
 
 
 # ── Startup hook: reset orphan 'running' rows ─────────────────────────────
@@ -657,6 +1007,7 @@ class SourceDetailHeader(BaseModel):
     coverage_label: str
 
 
+# Consumed by: admin/packages/web/src/features/sources/composables/useSourceDetail.ts (fetchSourceDetail)
 @router.get("/{source_id}", response_model=SourceDetailHeader)
 def source_detail(source_id: str) -> SourceDetailHeader:
     src = _aggregator_source(source_id)
@@ -723,6 +1074,7 @@ class SourceRunListItem(BaseModel):
     log_path: str | None
 
 
+# Consumed by: admin/packages/web/src/features/sources/composables/useSourceDetail.ts (listSourceRuns)
 @router.get("/{source_id}/runs", response_model=list[SourceRunListItem])
 def list_runs(
     source_id: str,
@@ -774,6 +1126,7 @@ class PaginatedImages(BaseModel):
     total: int
 
 
+# Consumed by: admin/packages/web/src/features/sources/composables/useSourceDetail.ts (fetchSourceImages)
 @router.get("/{source_id}/images", response_model=PaginatedImages)
 def list_images(
     source_id: str,
@@ -840,6 +1193,7 @@ class PaginatedQuotes(BaseModel):
     total: int
 
 
+# Consumed by: admin/packages/web/src/features/sources/composables/useSourceDetail.ts (fetchSourceQuotes)
 @router.get("/{source_id}/quotes", response_model=PaginatedQuotes)
 def list_quotes(
     source_id: str,
@@ -899,6 +1253,7 @@ class SourceCoverage(BaseModel):
         populate_by_name = True
 
 
+# Consumed by: admin/packages/web/src/features/sources/composables/useSourceDetail.ts (fetchSourceCoverage)
 @router.get("/{source_id}/coverage", response_model=SourceCoverage)
 def get_coverage(source_id: str) -> SourceCoverage:
     src = _aggregator_source(source_id)
@@ -922,6 +1277,7 @@ def get_coverage(source_id: str) -> SourceCoverage:
 # ── File serving (image_assets crops) ─────────────────────────────────────
 
 
+# Consumed by: admin/packages/web/src/features/sources/composables/useRunListings.ts (assetFileUrl, URL builder for <img src>)
 @router.get("/{source_id}/assets/{asset_id}/file")
 def get_asset_file(source_id: str, asset_id: str):
     conn = _store()._connection()  # noqa: SLF001
@@ -940,6 +1296,28 @@ def get_asset_file(source_id: str, asset_id: str):
     if not p.is_file():
         raise HTTPException(status_code=410, detail="Asset file missing on disk.")
     return FileResponse(p, media_type="image/png")
+
+
+# Consumed by: admin/packages/web/src/features/sources/composables/useRunListings.ts (rawFileUrl, URL builder for <img src>)
+@router.get("/{source_id}/raws/{source_image_id}/file")
+def get_raw_file(source_id: str, source_image_id: str):
+    """Sert le fichier original (raw) d'un source_image.
+
+    Différent de `/assets/<asset_id>/file` qui sert un crop. Utile pour
+    afficher la photo originale d'un listing dans la lot review (pour
+    contextualiser les crops). Cf. lot-review-kickoff.md §L.A.
+    """
+    conn = _store()._connection()  # noqa: SLF001
+    row = conn.execute(
+        "SELECT storage_path FROM source_images WHERE id = ? AND source = ?",
+        (source_image_id, source_id),
+    ).fetchone()
+    if row is None or not row["storage_path"]:
+        raise HTTPException(status_code=404, detail="Raw image not found.")
+    p = Path(row["storage_path"])
+    if not p.is_file():
+        raise HTTPException(status_code=410, detail="Raw file missing on disk.")
+    return FileResponse(p, media_type="image/jpeg")
 
 
 # ── eBay-specific: quota status + freshness queue (D-19/D-20/D-27) ───────
@@ -1037,6 +1415,7 @@ class EbayQuotaStatus(BaseModel):
     avg_calls_per_eurio_id: float
 
 
+# Consumed by: admin/packages/web/src/features/sources/composables/useSourceDetail.ts (fetchEbayQuotaStatus)
 @router.get("/ebay/quota-status", response_model=EbayQuotaStatus)
 def ebay_quota_status() -> EbayQuotaStatus:
     store = _store()
@@ -1088,6 +1467,7 @@ def _classify_freshness(last_enriched_at: str | None, stale_days: int = 90) -> s
     return "fresh"
 
 
+# Consumed by: admin/packages/web/src/features/sources/composables/useSourceDetail.ts (fetchEbayFreshness)
 @router.get("/ebay/freshness", response_model=EbayFreshnessResponse)
 def ebay_freshness(
     limit: int = Query(default=50, ge=1, le=500),

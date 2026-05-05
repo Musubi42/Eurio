@@ -45,22 +45,31 @@ IMAGE_CACHE_DIR = CACHE_DIR / "dinov2_inputs"
 
 sys.path.insert(0, str(ML_DIR))
 from api.supabase_client import SupabaseClient, load_env  # noqa: E402
+from foundation.encoder import (  # noqa: E402
+    DEFAULT_ENCODER_VERSION,
+    DINOV2_MODEL,
+    DINOV2_REPO,
+    IMAGENET_MEAN,
+    IMAGENET_STD,
+    INPUT_SIZE,
+    build_transform,
+    load_encoder as _load_encoder,
+    pick_device,
+)
 
 logger = logging.getLogger("confusion_map")
 
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
+# Backward-compat alias for callers that still import `_build_transform`
+# from this module (notably api/distance_logic.py during the refacto
+# transition window).
+_build_transform = build_transform
 
-DEFAULT_ENCODER_VERSION = "dinov2-vits14"
-DINOV2_REPO = "facebookresearch/dinov2"
-DINOV2_MODEL = "dinov2_vits14"
 
-# DINOv2 was pretrained with ImageNet normalization and 14-multiple input sizes.
-# 224 is divisible by 14 and matches the standard eval resolution.
-INPUT_SIZE = 224
-IMAGENET_MEAN = (0.485, 0.456, 0.406)
-IMAGENET_STD = (0.229, 0.224, 0.225)
+def load_encoder(device: torch.device) -> torch.nn.Module:
+    """Backward-compat shim: returns just the model (foundation returns (model, device))."""
+    model, _ = _load_encoder(device)
+    return model
+
 
 TOP_K = 5
 BATCH_SIZE = 32
@@ -201,16 +210,8 @@ def _download_image(url: str, client: httpx.Client) -> Path | None:
     return path
 
 
-def _build_transform() -> transforms.Compose:
-    return transforms.Compose([
-        transforms.Resize(INPUT_SIZE, interpolation=transforms.InterpolationMode.BICUBIC),
-        transforms.CenterCrop(INPUT_SIZE),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
-    ])
-
-
 def _load_image_tensor(path: Path, transform: transforms.Compose) -> torch.Tensor | None:
+    """Load + transform an image into a (3, H, W) tensor, returning None on failure."""
     try:
         with Image.open(path) as img:
             img = img.convert("RGB")
@@ -218,24 +219,6 @@ def _load_image_tensor(path: Path, transform: transforms.Compose) -> torch.Tenso
     except (OSError, ValueError) as exc:
         logger.warning("Failed to load %s: %s", path, exc)
         return None
-
-
-def pick_device() -> torch.device:
-    """CUDA on NixOS+NVIDIA, MPS on Apple Silicon, CPU otherwise."""
-    if torch.cuda.is_available():
-        return torch.device("cuda")
-    if torch.backends.mps.is_available():
-        return torch.device("mps")
-    return torch.device("cpu")
-
-
-def load_encoder(device: torch.device) -> torch.nn.Module:
-    """Load DINOv2 ViT-S/14 via torch.hub. First call downloads weights."""
-    logger.info("Loading DINOv2 encoder (%s)…", DINOV2_MODEL)
-    model = torch.hub.load(DINOV2_REPO, DINOV2_MODEL, pretrained=True)
-    model.eval()
-    model.to(device)
-    return model
 
 
 @torch.no_grad()

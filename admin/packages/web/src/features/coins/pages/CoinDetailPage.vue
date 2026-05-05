@@ -28,6 +28,7 @@ import {
 } from 'lucide-vue-next'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import EnrichmentGallery from '../components/EnrichmentGallery.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -37,6 +38,10 @@ const series = ref<CoinSeries | null>(null)
 const loading = ref(true)
 const error = ref<string | null>(null)
 const selectedImage = ref<CoinImage | null>(null)
+
+function onEnrichmentSelect(img: CoinImage) {
+  selectedImage.value = img
+}
 const trainedModelVersion = ref<string | null>(null)
 
 // Training enqueue
@@ -436,6 +441,13 @@ const crossRefLinks = computed(() => {
             <img :src="img.url" :alt="img.role" class="h-full w-full object-contain p-1" />
           </button>
         </div>
+
+        <!-- Enrichment gallery (sous les thumbs référentiels) -->
+        <EnrichmentGallery
+          :eurio-id="coin.eurio_id"
+          :selected-url="selectedImage?.url ?? null"
+          @select="onEnrichmentSelect"
+        />
       </div>
 
       <!-- ═══ RIGHT : Metadata ═══ -->

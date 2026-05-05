@@ -1,10 +1,10 @@
-"""End-to-end smoke test for the 6-step pipeline skeleton (chunk 2.A).
+"""End-to-end smoke test for the 8-step pipeline skeleton (chunk 2.A).
 
 At this stage the steps Persist..Enqueue are stubs — we only validate
 that the orchestrator wires the run lifecycle correctly:
 
 - a `source_runs` row is created with status='partial' (skeleton)
-- `current_step` reaches 'enqueue' (= it walked all 6 steps)
+- `current_step` reaches 'enqueue' (= it walked all 8 steps)
 - discover() actually consumed the mock fixtures (n_calls=1)
 - dry_run=True stops after discover with status='success'
 - re-runs are allowed (anti-double-run only triggers on 'running')
@@ -346,7 +346,7 @@ class _RecordingMockAdapter:
     def __init__(self) -> None:
         self.calls: list[SourceQuery] = []
 
-    def discover(self, query: SourceQuery):
+    def discover(self, query: SourceQuery, *, record_search=None, record_discarded=None):
         self.calls.append(query)
         # Yield the matching mock fixture if numista_id matches; else nothing.
         # Map target_eurio_id "mock-fixture-<nid>" → that fixture.

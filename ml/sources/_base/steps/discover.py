@@ -19,8 +19,18 @@ import logging
 import sqlite3
 from dataclasses import dataclass
 
-from sources._base.adapter import DiscoveredItem, SourceAdapter, SourceQuery
-from sources._base.dedup import upsert_discovery_log
+from sources._base.adapter import (
+    DiscardedListingRecord,
+    DiscoveredItem,
+    SourceAdapter,
+    SourceQuery,
+)
+from sources._base.dedup import (
+    DiscoverySearchRecord,
+    record_discarded_listing,
+    record_discovery_search,
+    upsert_discovery_log,
+)
 from sources._base.query_sig import compute_query_signature
 from sources._base.run_logger import RunHandle
 
@@ -46,6 +56,7 @@ def _iter_subqueries(query: SourceQuery) -> list[SourceQuery]:
     return [dataclasses.replace(base, target_eurio_id=eid) for eid in query.target_eurio_ids]
 
 
+# Called by: ml/sources/_base/orchestrator.py (step 1/8 — first step in pipeline)
 def run_discover(
     adapter: SourceAdapter,
     query: SourceQuery,
@@ -60,9 +71,28 @@ def run_discover(
     n_new = 0
     n_seen = 0
 
+    def _record(rec: DiscoverySearchRecord) -> None:
+        rec.run_id = run.run_id
+        rec.source = adapter.source_id
+        record_discovery_search(conn, rec)
+
+    def _record_discarded(rec: DiscardedListingRecord) -> None:
+        record_discarded_listing(
+            conn,
+            run_id=run.run_id,
+            source=adapter.source_id,
+            source_ref=rec.source_ref,
+            target_eurio_id=rec.target_eurio_id,
+            reason=rec.reason,
+            title=rec.title,
+            raw_payload=rec.raw_payload,
+        )
+
     subqueries = _iter_subqueries(query)
     for subq in subqueries:
-        for item in adapter.discover(subq):
+        for item in adapter.discover(
+            subq, record_search=_record, record_discarded=_record_discarded,
+        ):
             items.append(item)
             _, is_new = upsert_discovery_log(
                 conn,

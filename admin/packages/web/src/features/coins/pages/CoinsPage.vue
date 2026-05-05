@@ -10,7 +10,8 @@ import { supabase } from '@/shared/supabase/client'
 import type { Coin, ConfusionZone, IssueType } from '@/shared/supabase/types'
 import { firstImageUrl } from '@/shared/utils/coin-images'
 import { useDebounceFn } from '@vueuse/core'
-import { Brain, Check, Copy, FlaskConical, HandHelping, ImageOff, Layers, Play, Search, Sparkles, Wallet } from 'lucide-vue-next'
+import { Brain, Check, Copy, FlaskConical, HandHelping, Image as ImageIcon, ImageOff, Layers, Play, Search, Sparkles, Wallet } from 'lucide-vue-next'
+import { fetchEnrichmentCounts } from '../composables/useCoinAssets'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
@@ -255,6 +256,18 @@ watch(
   () => router.replace({ query: buildUrlQuery() }),
   { deep: true },
 )
+// Counts d'enrichment par eurio_id — chargé en parallèle de la liste,
+// dégrade en {} si l'API ML est down (le badge affichera 0 partout).
+const enrichmentCounts = ref<Record<string, number>>({})
+
+async function loadEnrichmentCounts() {
+  try {
+    enrichmentCounts.value = await fetchEnrichmentCounts()
+  } catch {
+    enrichmentCounts.value = {}
+  }
+}
+
 onMounted(() => {
   // Lookups (trained, zones, source counts) auto-fetch via their useQuery
   // composables — see useCoinLookups.ts. They're cached in IDB across
@@ -263,6 +276,7 @@ onMounted(() => {
   // matching filter is active.
   fetchCoins()
   checkMlApi()
+  void loadEnrichmentCounts()
   mlApiInterval = setInterval(checkMlApi, 30_000)
 })
 
@@ -1108,6 +1122,22 @@ function copyToClipboard(value: string, label: string, event: Event) {
           >
             <Layers class="h-2.5 w-2.5" />
             DG
+          </span>
+
+          <!-- Enrichment count badge — toujours présent, 0 si aucune.
+               Aide à scanner d'un coup d'œil quelles pièces ont déjà
+               été enrichies par les scrapes. -->
+          <span
+            class="absolute right-2 flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-mono font-medium"
+            :class="coin.design_group_id ? 'top-16' : 'top-9'"
+            :style="{
+              background: 'rgba(255,255,255,0.92)',
+              color: (enrichmentCounts[coin.eurio_id] ?? 0) > 0 ? 'var(--ink)' : 'var(--ink-400)',
+            }"
+            :title="`${enrichmentCounts[coin.eurio_id] ?? 0} image(s) d'enrichment validée(s)`"
+          >
+            <ImageIcon class="h-2.5 w-2.5" />
+            {{ enrichmentCounts[coin.eurio_id] ?? 0 }}
           </span>
 
           <!-- EurioID label (always present, click to copy full slug) -->

@@ -313,14 +313,22 @@ const showCascadeHint = computed(
             @click="pickResult(r)"
           >
             <div
-              class="aspect-square overflow-hidden"
+              class="flex aspect-square items-center justify-center overflow-hidden"
               style="background: var(--surface-1);"
             >
               <img
+                v-if="r.canonical_thumb_url"
                 :src="r.canonical_thumb_url"
                 :alt="r.eurio_id"
                 class="h-full w-full object-cover transition-transform group-hover:scale-105"
               />
+              <span
+                v-else
+                class="font-mono text-[9px] uppercase tracking-wider"
+                style="color: var(--ink-400);"
+              >
+                pas d'image
+              </span>
             </div>
             <div class="px-2 pb-2">
               <p class="truncate font-mono text-[10px]" style="color: var(--ink-700);">

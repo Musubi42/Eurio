@@ -1,0 +1,1784 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=1440" />
+  <title>Eurio · Lot Review — Specimen Plate (proto)</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500;1,600&family=Manrope:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ─────────────────────────────────────────────────────────────────
+     * TOKENS — mapped to Eurio's shared/tokens.css canonical names.
+     * Aesthetic: "Specimen plate / forensic cabinet". Cream parchment,
+     * ink charcoal, honey gold accents, deep indigo, fine hairlines.
+     * ─────────────────────────────────────────────────────────────── */
+    :root {
+      --surface:     #f6f1e7;   /* parchment cream */
+      --surface-1:   #ede7d8;   /* aged paper */
+      --surface-2:   #e2dac8;   /* deeper recess */
+      --surface-3:   #c9bfa8;   /* hairline borders */
+      --ink:         #1a1612;   /* near-black, warm */
+      --ink-700:     #2f2820;
+      --ink-500:     #6e6450;
+      --ink-400:     #8e8470;
+      --gold-600:    #a07a26;   /* deep honey */
+      --gold-500:    #c0952f;   /* brighter honey */
+      --indigo-700:  #2d3263;
+      --success:     #4d7a3f;
+      --danger:      #a8331f;
+      --warning:     #b87614;
+
+      --font-display: "Cormorant Garamond", ui-serif, Georgia, serif;
+      --font-ui:      "Manrope", ui-sans-serif, system-ui, sans-serif;
+      --font-mono:    "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      background: var(--surface);
+      color: var(--ink);
+      font-family: var(--font-ui);
+      font-size: 14px;
+      line-height: 1.4;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      letter-spacing: 0.005em;
+    }
+
+    /* Subtle parchment grain — only adds character, not noise */
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      opacity: 0.35;
+      mix-blend-mode: multiply;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.05 0 0 0 0 0.04 0 0 0 0 0.03 0 0 0 0.06 0'/></filter><rect width='240' height='240' filter='url(%23n)'/></svg>");
+      z-index: 0;
+    }
+
+    .kicker {
+      font-family: var(--font-ui);
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.18em;
+      color: var(--ink-500);
+    }
+    .kicker--gold  { color: var(--gold-600); }
+    .kicker--ink   { color: var(--ink); }
+
+    .mono {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: 0.01em;
+    }
+
+    .display {
+      font-family: var(--font-display);
+      font-style: italic;
+      font-weight: 500;
+    }
+
+    kbd {
+      display: inline-block;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      padding: 1px 5px;
+      border-radius: 3px;
+      background: var(--surface-1);
+      border: 0.5px solid var(--surface-3);
+      color: var(--ink-700);
+      line-height: 1.4;
+    }
+
+    /* ─────────────────────────────────────────────────────────────────
+     * PAGE SHELL
+     * ─────────────────────────────────────────────────────────────── */
+    .page {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 56px 32px 96px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .page > .doc-meta {
+      max-width: 720px;
+      margin-bottom: 48px;
+      border-left: 2px solid var(--gold-600);
+      padding-left: 20px;
+    }
+    .page > .doc-meta .ref {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--gold-600);
+    }
+    .page > .doc-meta h1 {
+      font-family: var(--font-display);
+      font-style: italic;
+      font-weight: 500;
+      font-size: 38px;
+      line-height: 1.05;
+      color: var(--ink);
+      margin: 6px 0 10px;
+    }
+    .page > .doc-meta p {
+      color: var(--ink-500);
+      font-size: 13px;
+      max-width: 600px;
+    }
+
+    /* ─────────────────────────────────────────────────────────────────
+     * CASE FILE (one specimen plate per listing)
+     * ─────────────────────────────────────────────────────────────── */
+    .case-file {
+      background: var(--surface);
+      border: 0.5px solid var(--surface-3);
+      box-shadow: 0 1px 0 var(--surface-2);
+      margin-bottom: 64px;
+      position: relative;
+    }
+
+    /* Corner brackets — old-school cabinet card registration marks */
+    .case-file::before,
+    .case-file::after,
+    .case-file > .corner-tl,
+    .case-file > .corner-tr,
+    .case-file > .corner-bl,
+    .case-file > .corner-br {
+      pointer-events: none;
+    }
+    .case-file > .corner-tl, .case-file > .corner-tr,
+    .case-file > .corner-bl, .case-file > .corner-br {
+      position: absolute;
+      width: 14px; height: 14px;
+      border-color: var(--gold-600);
+      border-style: solid;
+    }
+    .corner-tl { top: 6px; left: 6px;     border-width: 1px 0 0 1px; }
+    .corner-tr { top: 6px; right: 6px;    border-width: 1px 1px 0 0; }
+    .corner-bl { bottom: 6px; left: 6px;  border-width: 0 0 1px 1px; }
+    .corner-br { bottom: 6px; right: 6px; border-width: 0 1px 1px 0; }
+
+    /* ─── Header band ─────────────────────────────────────────── */
+    .case-header {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: end;
+      gap: 24px;
+      padding: 28px 36px 20px;
+      border-bottom: 0.5px solid var(--surface-3);
+    }
+    .case-header .case-meta {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .case-header .meta-row-1 {
+      display: flex;
+      align-items: baseline;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .case-header .case-no {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: 0.18em;
+      color: var(--gold-600);
+      text-transform: uppercase;
+    }
+    .case-header .case-id {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--ink-700);
+    }
+    .case-header .case-tags {
+      display: inline-flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 1px 8px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      border: 0.5px solid var(--surface-3);
+      border-radius: 999px;
+      color: var(--ink-500);
+      background: var(--surface);
+    }
+    .tag--gold { color: var(--gold-600); border-color: var(--gold-600); }
+    .tag--indigo { color: var(--indigo-700); border-color: var(--indigo-700); }
+    .tag--warn { color: var(--warning); border-color: var(--warning); }
+
+    .case-title {
+      font-family: var(--font-display);
+      font-style: italic;
+      font-weight: 500;
+      font-size: 32px;
+      line-height: 1.05;
+      color: var(--ink);
+      margin-top: 4px;
+      max-width: 880px;
+    }
+    .case-title .quotes {
+      color: var(--gold-600);
+      margin-right: 6px;
+    }
+
+    .case-source-line {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--ink-500);
+      margin-top: 10px;
+      display: flex;
+      gap: 18px;
+      flex-wrap: wrap;
+    }
+    .case-source-line span strong { color: var(--ink-700); font-weight: 500; }
+
+    .case-nav {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+    .nav-btn {
+      width: 32px; height: 32px;
+      border: 0.5px solid var(--surface-3);
+      background: var(--surface);
+      color: var(--ink-500);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center; justify-content: center;
+      transition: all 140ms ease;
+      font-family: var(--font-mono);
+      font-size: 11px;
+    }
+    .nav-btn:hover {
+      color: var(--gold-600);
+      border-color: var(--gold-600);
+      background: color-mix(in srgb, var(--gold-600) 6%, var(--surface));
+    }
+    .nav-btn--text {
+      width: auto;
+      padding: 0 12px;
+      gap: 6px;
+    }
+
+    /* ─── Body grid: examination plate (left) + isolates (right) ─ */
+    .case-body {
+      display: grid;
+      grid-template-columns: 1fr 460px;
+      gap: 0;
+      align-items: stretch;
+    }
+    .case-file--dense .case-body {
+      grid-template-columns: 1fr 540px;
+    }
+
+    /* ═════ STAGE 1+2 — EXAMINATION PLATE ═════ */
+    .examination {
+      padding: 24px 28px 20px;
+      border-right: 0.5px solid var(--surface-3);
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .examination-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    .examination-head .label {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .examination-head .label::before {
+      content: "";
+      width: 18px; height: 1px;
+      background: var(--gold-600);
+    }
+    .examination-head .controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      user-select: none;
+      font-size: 11px;
+      color: var(--ink-500);
+    }
+    .toggle input { display: none; }
+    .toggle .switch {
+      width: 28px; height: 16px;
+      border-radius: 999px;
+      background: var(--surface-2);
+      border: 0.5px solid var(--surface-3);
+      position: relative;
+      transition: all 160ms ease;
+    }
+    .toggle .switch::after {
+      content: "";
+      position: absolute;
+      top: 1.5px; left: 1.5px;
+      width: 11px; height: 11px;
+      border-radius: 50%;
+      background: var(--ink-400);
+      transition: all 160ms ease;
+    }
+    .toggle input:checked + .switch {
+      background: color-mix(in srgb, var(--gold-600) 22%, var(--surface));
+      border-color: var(--gold-600);
+    }
+    .toggle input:checked + .switch::after {
+      left: 14px;
+      background: var(--gold-600);
+    }
+
+    /* ─── Raw selector strip ─── */
+    .raw-strip {
+      display: flex;
+      gap: 6px;
+      overflow-x: auto;
+      padding-bottom: 4px;
+    }
+    .raw-thumb {
+      flex: 0 0 auto;
+      width: 64px; height: 64px;
+      border: 0.5px solid var(--surface-3);
+      background: var(--surface-1);
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+      transition: border-color 140ms ease;
+      padding: 0;
+    }
+    .raw-thumb img,
+    .raw-thumb svg.fake-img {
+      width: 100%; height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .raw-thumb .raw-tag {
+      position: absolute;
+      top: 2px; left: 4px;
+      font-family: var(--font-mono);
+      font-size: 9px;
+      color: var(--surface);
+      text-shadow: 0 1px 2px rgba(0,0,0,.6);
+    }
+    .raw-thumb .raw-count {
+      position: absolute;
+      bottom: 2px; right: 4px;
+      font-family: var(--font-mono);
+      font-size: 9px;
+      color: var(--surface);
+      text-shadow: 0 1px 2px rgba(0,0,0,.6);
+    }
+    .raw-thumb:hover { border-color: var(--ink-500); }
+    .raw-thumb.active {
+      border-color: var(--gold-600);
+      box-shadow: 0 0 0 1.5px var(--gold-600);
+    }
+
+    /* ─── Plate frame (stage 1 + stage 2 superposed) ─── */
+    .plate-frame {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 4 / 3;
+      background: var(--surface-2);
+      border: 0.5px solid var(--surface-3);
+      overflow: hidden;
+      cursor: zoom-in;
+    }
+    .plate-frame .plate-img,
+    .plate-frame .plate-svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+    .plate-frame .plate-img { object-fit: cover; }
+    .plate-frame .plate-svg { pointer-events: none; }
+    .plate-frame .plate-svg .interactive { pointer-events: auto; cursor: pointer; }
+
+    /* Detected circle styling */
+    .plate-svg circle.detected {
+      fill: none;
+      stroke: var(--gold-500);
+      stroke-width: 2;
+      filter: drop-shadow(0 0 4px rgba(160,122,38,.45));
+      transition: all 180ms ease;
+    }
+    .plate-svg circle.detected.dim {
+      stroke: color-mix(in srgb, var(--gold-500) 60%, transparent);
+      filter: none;
+    }
+    .plate-svg circle.detected.active {
+      stroke: var(--gold-500);
+      stroke-width: 3;
+      filter: drop-shadow(0 0 8px rgba(192,149,47,.7));
+    }
+    .plate-svg circle.detected.pulse {
+      animation: pulse-ring 1100ms ease-out 2;
+    }
+    @keyframes pulse-ring {
+      0%   { stroke-width: 3; filter: drop-shadow(0 0 6px rgba(192,149,47,.6)); }
+      50%  { stroke-width: 6; filter: drop-shadow(0 0 18px rgba(192,149,47,.95)); }
+      100% { stroke-width: 3; filter: drop-shadow(0 0 6px rgba(192,149,47,.6)); }
+    }
+
+    /* Rejected circle */
+    .plate-svg circle.rejected {
+      fill: none;
+      stroke: var(--danger);
+      stroke-width: 1.5;
+      stroke-dasharray: 6 4;
+      opacity: 0.7;
+    }
+
+    /* Tag badge */
+    .plate-svg .tag-badge {
+      transition: transform 180ms ease;
+    }
+    .plate-svg .tag-badge.active circle {
+      fill: var(--gold-600);
+    }
+    .plate-svg .tag-badge text {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 600;
+      fill: var(--surface);
+    }
+
+    .plate-overlay-hidden circle.detected,
+    .plate-overlay-hidden circle.rejected,
+    .plate-overlay-hidden .tag-badge {
+      opacity: 0 !important;
+      transition: opacity 200ms ease;
+    }
+
+    /* Plate footnote */
+    .plate-footnote {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      align-items: baseline;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--ink-500);
+      letter-spacing: 0.04em;
+    }
+    .plate-footnote .dot { color: var(--surface-3); }
+    .plate-footnote strong {
+      color: var(--ink-700);
+      font-weight: 500;
+    }
+    .plate-footnote .ok { color: var(--success); }
+    .plate-footnote .warn { color: var(--danger); }
+
+
+    /* ═════ STAGE 3 — ISOLATES ═════ */
+    .isolates {
+      display: flex;
+      flex-direction: column;
+      background: var(--surface-1);
+      max-height: 720px;
+    }
+    .case-file--dense .isolates {
+      max-height: 720px;
+    }
+    .isolates-head {
+      padding: 22px 24px 14px;
+      border-bottom: 0.5px solid var(--surface-3);
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .isolates-head .progress {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 0.06em;
+      color: var(--ink-500);
+    }
+    .isolates-head .progress strong {
+      color: var(--gold-600);
+      font-weight: 600;
+    }
+
+    .isolates-list {
+      list-style: none;
+      padding: 14px;
+      overflow-y: auto;
+      display: grid;
+      gap: 10px;
+      grid-template-columns: 1fr;
+    }
+    .case-file--dense .isolates-list {
+      grid-template-columns: 1fr 1fr;
+    }
+
+    /* ─── Crop card ─── */
+    .crop {
+      position: relative;
+      background: var(--surface);
+      border: 0.5px solid var(--surface-3);
+      padding: 12px 14px 12px 14px;
+      display: grid;
+      grid-template-columns: 64px 1fr;
+      gap: 12px;
+      transition: all 160ms ease;
+      cursor: pointer;
+    }
+    .crop:hover {
+      border-color: var(--ink-500);
+    }
+    .crop.active {
+      border-color: var(--gold-600);
+      box-shadow: inset 0 0 0 1px var(--gold-600);
+    }
+    .crop.decided-assign  { border-color: var(--success); background: color-mix(in srgb, var(--success) 4%, var(--surface)); }
+    .crop.decided-reject  { border-color: var(--danger);  background: color-mix(in srgb, var(--danger) 4%, var(--surface)); }
+    .crop.decided-skip    { border-color: var(--ink-400); }
+    .crop.selected        { border-color: var(--indigo-700); background: color-mix(in srgb, var(--indigo-700) 4%, var(--surface)); }
+
+    .crop-tag {
+      position: absolute;
+      top: -7px; left: -7px;
+      width: 22px; height: 22px;
+      border-radius: 50%;
+      background: var(--ink);
+      color: var(--surface);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 1px 0 var(--surface-2);
+    }
+    .crop.active .crop-tag,
+    .crop.decided-assign .crop-tag {
+      background: var(--gold-600);
+    }
+    .crop.decided-reject .crop-tag {
+      background: var(--danger);
+    }
+
+    .crop-checkbox {
+      position: absolute;
+      top: 8px; right: 8px;
+      width: 16px; height: 16px;
+      border: 0.5px solid var(--surface-3);
+      background: var(--surface);
+      cursor: pointer;
+      transition: all 140ms ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .crop-checkbox:hover { border-color: var(--ink-500); }
+    .crop.selected .crop-checkbox {
+      background: var(--indigo-700);
+      border-color: var(--indigo-700);
+    }
+    .crop-checkbox svg { width: 11px; height: 11px; color: var(--surface); display: none; }
+    .crop.selected .crop-checkbox svg { display: block; }
+
+    .crop-thumb {
+      width: 64px; height: 64px;
+      background: var(--surface-1);
+      border: 0.5px solid var(--surface-3);
+      border-radius: 50%;
+      overflow: hidden;
+      position: relative;
+    }
+    .crop-thumb svg.fake-coin {
+      width: 100%; height: 100%;
+      display: block;
+    }
+
+    .crop-body {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .crop-meta {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--ink-500);
+      letter-spacing: 0.04em;
+    }
+    .crop-decision {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      padding: 1px 6px;
+      border-radius: 3px;
+      align-self: flex-start;
+    }
+    .crop-decision.assign  { color: var(--success); border: 0.5px solid var(--success); background: color-mix(in srgb, var(--success) 6%, transparent); }
+    .crop-decision.reject  { color: var(--danger);  border: 0.5px solid var(--danger); background: color-mix(in srgb, var(--danger) 6%, transparent); }
+    .crop-decision.skip    { color: var(--ink-400); border: 0.5px solid var(--ink-400); }
+
+    .crop-cands {
+      display: flex;
+      gap: 4px;
+      flex-wrap: wrap;
+    }
+    .cand {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 4px;
+      padding: 1px 7px;
+      border: 0.5px solid var(--surface-3);
+      background: var(--surface-1);
+      border-radius: 999px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--ink-700);
+      cursor: pointer;
+      transition: all 140ms ease;
+    }
+    .cand:hover {
+      border-color: var(--gold-600);
+      color: var(--gold-600);
+    }
+    .cand .score {
+      color: var(--ink-400);
+      font-size: 9px;
+    }
+    .cand.picked {
+      border-color: var(--success);
+      color: var(--success);
+      background: color-mix(in srgb, var(--success) 8%, var(--surface));
+    }
+
+    .crop-actions {
+      display: flex;
+      gap: 4px;
+      flex-wrap: wrap;
+      margin-top: 2px;
+    }
+    .action {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 7px;
+      border: 0.5px solid var(--surface-3);
+      background: var(--surface);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      cursor: pointer;
+      transition: all 140ms ease;
+      color: var(--ink-700);
+    }
+    .action:hover { border-color: var(--ink); }
+    .action svg { width: 10px; height: 10px; }
+    .action--assign { color: var(--indigo-700); }
+    .action--assign:hover { border-color: var(--indigo-700); }
+    .action--reject { color: var(--danger); }
+    .action--reject:hover { border-color: var(--danger); }
+    .action--skip   { color: var(--ink-500); }
+    .action--flag   { color: var(--warning); }
+    .action--flag:hover { border-color: var(--warning); }
+    .action .key {
+      color: var(--ink-400);
+      margin-left: 2px;
+      font-size: 9px;
+    }
+
+    .crop-flag {
+      margin-top: 6px;
+      padding: 4px 8px;
+      background: color-mix(in srgb, var(--warning) 8%, var(--surface));
+      border: 0.5px solid var(--warning);
+      color: var(--warning);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 0.04em;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* ─── Footer band ─── */
+    .case-footer {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 24px;
+      align-items: center;
+      padding: 14px 36px;
+      border-top: 0.5px solid var(--surface-3);
+      background: var(--surface);
+    }
+    .case-footer .progress-block {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .progress-bar {
+      flex: 0 0 220px;
+      height: 5px;
+      background: var(--surface-2);
+      position: relative;
+      overflow: hidden;
+    }
+    .progress-fill {
+      position: absolute;
+      inset: 0 auto 0 0;
+      background: linear-gradient(90deg, var(--gold-600), var(--gold-500));
+      transition: width 240ms ease;
+    }
+    .progress-counter {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--ink-500);
+    }
+    .progress-counter strong { color: var(--ink); font-weight: 600; }
+
+    .footer-hints {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--ink-400);
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-left: 24px;
+    }
+
+    .footer-actions {
+      display: flex;
+      gap: 8px;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      font-family: var(--font-ui);
+      font-weight: 600;
+      font-size: 12px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      border: 0.5px solid var(--surface-3);
+      background: var(--surface);
+      color: var(--ink-700);
+      cursor: pointer;
+      transition: all 160ms ease;
+    }
+    .btn:hover { border-color: var(--ink); }
+    .btn--primary {
+      background: var(--ink);
+      color: var(--surface);
+      border-color: var(--ink);
+    }
+    .btn--primary:hover {
+      background: var(--gold-600);
+      border-color: var(--gold-600);
+    }
+    .btn:disabled,
+    .btn[aria-disabled="true"] {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    /* ─── Bulk selection sub-footer ─── */
+    .case-bulk-bar {
+      grid-column: 1 / -1;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 36px;
+      background: color-mix(in srgb, var(--indigo-700) 8%, var(--surface));
+      border-top: 0.5px solid var(--indigo-700);
+      animation: slide-up 200ms ease-out;
+    }
+    @keyframes slide-up {
+      from { opacity: 0; transform: translateY(8px); }
+    }
+    .case-bulk-bar .count {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--indigo-700);
+    }
+    .case-bulk-bar .count strong { font-weight: 600; }
+    .case-bulk-bar .actions {
+      display: flex;
+      gap: 6px;
+    }
+
+    /* ─────────────────────────────────────────────────────────────────
+     * NOTES + ANNOTATIONS
+     * ─────────────────────────────────────────────────────────────── */
+    .note {
+      max-width: 720px;
+      margin: 0 auto 32px;
+      font-size: 13px;
+      color: var(--ink-500);
+      padding: 12px 16px;
+      border-left: 2px solid var(--gold-600);
+      background: color-mix(in srgb, var(--gold-600) 5%, var(--surface));
+    }
+    .note strong { color: var(--ink); font-weight: 600; }
+    .note code {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      background: var(--surface);
+      padding: 1px 4px;
+      border-radius: 2px;
+      border: 0.5px solid var(--surface-3);
+    }
+
+    .case-divider {
+      max-width: 720px;
+      margin: 0 auto 48px;
+      text-align: center;
+      font-family: var(--font-display);
+      font-style: italic;
+      font-size: 28px;
+      color: var(--ink-400);
+      position: relative;
+    }
+    .case-divider::before, .case-divider::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      width: 40%;
+      height: 1px;
+      background: var(--surface-3);
+    }
+    .case-divider::before { left: 0; }
+    .case-divider::after { right: 0; }
+  </style>
+</head>
+<body>
+
+<div class="page">
+
+  <!-- ═══ DOC HEADER ═══ -->
+  <header class="doc-meta">
+    <div class="ref">EURIO · ADMIN · DESIGN PROTO 2026-05-04</div>
+    <h1>Specimen Plate</h1>
+    <p>
+      Vue debug 3-stages pour la review d'un listing scrapé. Architecture
+      <strong>plein-écran route</strong> (drawer 85vw trop étroit pour les raws
+      eBay 2K-3K). Stage 1+2 superposés via toggle (clé <kbd>D</kbd>),
+      tags numérotés liant cercles détectés ↔ crop cards. Esthétique
+      <em>specimen sheet / forensic cabinet</em>, parchment + ink + honey
+      gold + indigo.
+    </p>
+  </header>
+
+  <!-- ═════════════════════════════════════════════════════════════════
+       CASE A — Standard listing (2 raws, 4 crops)
+       ═════════════════════════════════════════════════════════════ -->
+
+  <div class="note">
+    <strong>Cas A · standard.</strong> 2 raws · 4 crops · pipeline propre.
+    Layout par défaut : raw strip horizontal (~60px), examination plate
+    en aspect 4/3, isolates en colonne unique (460px).
+  </div>
+
+  <article class="case-file" data-case="A">
+    <span class="corner-tl"></span><span class="corner-tr"></span>
+    <span class="corner-bl"></span><span class="corner-br"></span>
+
+    <header class="case-header">
+      <div class="case-meta">
+        <div class="meta-row-1">
+          <span class="case-no">Case №&nbsp;001</span>
+          <span class="case-id">ebay_v1_185234901672</span>
+          <span class="case-tags">
+            <span class="tag tag--gold">⌗ multi-crop</span>
+            <span class="tag tag--indigo">→ FR-2002-1E</span>
+            <span class="tag">src · ebay</span>
+            <span class="tag">€&nbsp;6.80</span>
+          </span>
+        </div>
+        <h2 class="case-title">
+          <span class="quotes">«</span>1€ France 2002 — état SUP, lot 2 pièces avers/revers<span class="quotes">»</span>
+        </h2>
+        <div class="case-source-line">
+          <span><strong>seller</strong> coins-collector-fr</span>
+          <span><strong>ended</strong> 2026-05-02</span>
+          <span><strong>raws</strong> 2</span>
+          <span><strong>crops</strong> 4 (4 to review)</span>
+          <span><strong>quality</strong> 0.81</span>
+        </div>
+      </div>
+      <nav class="case-nav">
+        <button class="nav-btn" title="Listing précédent (←)">←</button>
+        <button class="nav-btn nav-btn--text" title="Aide (?)">
+          <span>aide</span><kbd>?</kbd>
+        </button>
+        <button class="nav-btn" title="Listing suivant (→)">→</button>
+        <button class="nav-btn" title="Fermer (Esc)" style="margin-left: 8px;">✕</button>
+      </nav>
+    </header>
+
+    <div class="case-body">
+
+      <!-- ═════ EXAMINATION PLATE ═════ -->
+      <section class="examination">
+        <div class="examination-head">
+          <div class="label">
+            <span class="kicker kicker--gold">Examination plate</span>
+            <span class="mono" style="color: var(--ink-400);">img 1 / 2</span>
+          </div>
+          <div class="controls">
+            <label class="toggle">
+              <input type="checkbox" checked data-overlay-toggle />
+              <span class="switch"></span>
+              <span>Détections</span>
+              <kbd>D</kbd>
+            </label>
+            <button class="action" title="Zoom">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.3-4.3"></path>
+              </svg>
+              zoom
+            </button>
+          </div>
+        </div>
+
+        <!-- Raw selector strip -->
+        <div class="raw-strip">
+          <button class="raw-thumb active" data-raw="0">
+            <svg class="fake-img" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice">
+              <defs>
+                <radialGradient id="bg-a-0" cx="50%" cy="50%" r="60%">
+                  <stop offset="0%" stop-color="#5a4f3b"/>
+                  <stop offset="100%" stop-color="#2a2317"/>
+                </radialGradient>
+                <radialGradient id="coin-a-0-1" cx="40%" cy="40%">
+                  <stop offset="0%" stop-color="#e8c764"/><stop offset="55%" stop-color="#a07a26"/><stop offset="100%" stop-color="#6c4f17"/>
+                </radialGradient>
+                <radialGradient id="coin-a-0-2" cx="60%" cy="40%">
+                  <stop offset="0%" stop-color="#d6c79f"/><stop offset="55%" stop-color="#8a7a4d"/><stop offset="100%" stop-color="#4a3e22"/>
+                </radialGradient>
+              </defs>
+              <rect width="100" height="100" fill="url(#bg-a-0)"/>
+              <circle cx="34" cy="50" r="22" fill="url(#coin-a-0-1)"/>
+              <circle cx="68" cy="50" r="22" fill="url(#coin-a-0-2)"/>
+            </svg>
+            <span class="raw-tag">1</span>
+            <span class="raw-count">2 cr.</span>
+          </button>
+          <button class="raw-thumb" data-raw="1">
+            <svg class="fake-img" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice">
+              <defs>
+                <radialGradient id="bg-a-1" cx="40%" cy="60%" r="80%">
+                  <stop offset="0%" stop-color="#867963"/>
+                  <stop offset="100%" stop-color="#403828"/>
+                </radialGradient>
+                <radialGradient id="coin-a-1-1" cx="40%" cy="40%">
+                  <stop offset="0%" stop-color="#f0d680"/><stop offset="60%" stop-color="#a07a26"/><stop offset="100%" stop-color="#5a4116"/>
+                </radialGradient>
+                <radialGradient id="coin-a-1-2" cx="50%" cy="50%">
+                  <stop offset="0%" stop-color="#cfc294"/><stop offset="60%" stop-color="#8a7a4d"/><stop offset="100%" stop-color="#3d3320"/>
+                </radialGradient>
+              </defs>
+              <rect width="100" height="100" fill="url(#bg-a-1)"/>
+              <circle cx="36" cy="50" r="24" fill="url(#coin-a-1-1)"/>
+              <circle cx="72" cy="55" r="20" fill="url(#coin-a-1-2)"/>
+            </svg>
+            <span class="raw-tag">2</span>
+            <span class="raw-count">2 cr.</span>
+          </button>
+        </div>
+
+        <!-- Plate frame: stage 1 image + stage 2 SVG overlay -->
+        <div class="plate-frame">
+          <svg class="plate-img" viewBox="0 0 1000 750" preserveAspectRatio="xMidYMid slice">
+            <defs>
+              <radialGradient id="bg-a-main" cx="50%" cy="55%" r="65%">
+                <stop offset="0%" stop-color="#6c5e44"/>
+                <stop offset="60%" stop-color="#3c3322"/>
+                <stop offset="100%" stop-color="#1f1a10"/>
+              </radialGradient>
+              <radialGradient id="coin-a-main-1" cx="40%" cy="40%">
+                <stop offset="0%"  stop-color="#f5d784"/>
+                <stop offset="50%" stop-color="#c0952f"/>
+                <stop offset="85%" stop-color="#7a5a1c"/>
+                <stop offset="100%" stop-color="#4a3811"/>
+              </radialGradient>
+              <radialGradient id="coin-a-main-2" cx="55%" cy="40%">
+                <stop offset="0%"  stop-color="#dcd0a8"/>
+                <stop offset="50%" stop-color="#8a7a4d"/>
+                <stop offset="85%" stop-color="#564a2c"/>
+                <stop offset="100%" stop-color="#312a18"/>
+              </radialGradient>
+              <filter id="grain-a">
+                <feTurbulence baseFrequency="0.9" numOctaves="2" stitchTiles="stitch"/>
+                <feColorMatrix values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.08 0"/>
+                <feComposite in2="SourceGraphic" operator="in"/>
+              </filter>
+            </defs>
+            <rect width="1000" height="750" fill="url(#bg-a-main)"/>
+            <!-- Coin 1 (avers, gold) -->
+            <circle cx="340" cy="380" r="180" fill="url(#coin-a-main-1)"/>
+            <circle cx="340" cy="380" r="180" fill="none" stroke="rgba(0,0,0,0.18)" stroke-width="3"/>
+            <!-- inscription hint -->
+            <text x="340" y="390" text-anchor="middle" font-family="serif" font-size="32" fill="rgba(0,0,0,0.35)" font-style="italic">1 €</text>
+            <!-- Coin 2 (revers, silver-bronze) -->
+            <circle cx="700" cy="380" r="180" fill="url(#coin-a-main-2)"/>
+            <circle cx="700" cy="380" r="180" fill="none" stroke="rgba(0,0,0,0.18)" stroke-width="3"/>
+            <text x="700" y="390" text-anchor="middle" font-family="serif" font-size="22" fill="rgba(0,0,0,0.35)" font-style="italic">RF · 2002</text>
+            <!-- subtle grain overlay -->
+            <rect width="1000" height="750" fill="black" opacity="0.06"/>
+          </svg>
+
+          <svg class="plate-svg" viewBox="0 0 1000 750" preserveAspectRatio="xMidYMid slice">
+            <!-- Detected circles -->
+            <circle class="detected interactive" cx="340" cy="380" r="186" data-target-crop="a-1" />
+            <circle class="detected interactive" cx="700" cy="380" r="186" data-target-crop="a-2" />
+            <!-- Number tags -->
+            <g class="tag-badge interactive" data-target-crop="a-1" transform="translate(495 222)">
+              <circle r="20" fill="var(--ink)" stroke="var(--surface)" stroke-width="2"/>
+              <text text-anchor="middle" dominant-baseline="central" y="1">1</text>
+            </g>
+            <g class="tag-badge interactive" data-target-crop="a-2" transform="translate(855 222)">
+              <circle r="20" fill="var(--ink)" stroke="var(--surface)" stroke-width="2"/>
+              <text text-anchor="middle" dominant-baseline="central" y="1">2</text>
+            </g>
+          </svg>
+        </div>
+
+        <!-- Plate footnote -->
+        <div class="plate-footnote">
+          <span><strong>2048 × 1536</strong></span>
+          <span class="dot">·</span>
+          <span><strong>2</strong> cercles détectés <span class="ok">2 retenus</span></span>
+          <span class="dot">·</span>
+          <span>method <strong>hough_strict</strong></span>
+          <span class="dot">·</span>
+          <span>r ∈ [186, 186] px · short=750</span>
+          <span class="dot">·</span>
+          <span style="margin-left: auto;" class="kicker">Hover un crop → cercle pulse</span>
+        </div>
+      </section>
+
+      <!-- ═════ ISOLATES (Stage 3) ═════ -->
+      <section class="isolates">
+        <div class="isolates-head">
+          <div>
+            <span class="kicker kicker--gold">Isolates</span>
+            <span class="mono" style="color: var(--ink-400); margin-left: 8px;">specimens à résoudre</span>
+          </div>
+          <div class="progress"><strong>2</strong> / 4 décidées</div>
+        </div>
+
+        <ul class="isolates-list">
+          <li class="crop active decided-assign" data-crop-id="a-1">
+            <div class="crop-tag">1</div>
+            <div class="crop-checkbox">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+            </div>
+            <div class="crop-thumb">
+              <svg class="fake-coin" viewBox="0 0 100 100">
+                <defs>
+                  <radialGradient id="ct-a-1" cx="40%" cy="40%">
+                    <stop offset="0%" stop-color="#f5d784"/><stop offset="55%" stop-color="#c0952f"/><stop offset="100%" stop-color="#5a4116"/>
+                  </radialGradient>
+                </defs>
+                <circle cx="50" cy="50" r="48" fill="url(#ct-a-1)"/>
+                <text x="50" y="58" text-anchor="middle" font-family="serif" font-size="22" fill="rgba(0,0,0,.35)" font-style="italic">1€</text>
+              </svg>
+            </div>
+            <div class="crop-body">
+              <div class="crop-meta">img 1 · crop 1 · ⌀ 372 px</div>
+              <div class="crop-cands">
+                <button class="cand picked">FR-2002-1E-AVR <span class="score">98%</span></button>
+                <button class="cand">FR-2007-1E-AVR <span class="score">76%</span></button>
+                <button class="cand">FR-1999-1E-AVR <span class="score">61%</span></button>
+              </div>
+              <div class="crop-actions">
+                <button class="action action--assign"><span>F · Assigner</span><span class="key">F</span></button>
+                <button class="action action--reject"><span>R · Rejeter ▾</span><span class="key">R</span></button>
+                <button class="action action--skip"><span>Skip</span><span class="key">N</span></button>
+                <button class="action action--flag" title="Signaler une détection foireuse">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 22V4h12l-2 5h6l-3 7H6"/></svg>
+                  flag
+                </button>
+              </div>
+              <span class="crop-decision assign">→ FR-2002-1E-AVR · O</span>
+            </div>
+          </li>
+
+          <li class="crop decided-assign" data-crop-id="a-2">
+            <div class="crop-tag">2</div>
+            <div class="crop-checkbox">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+            </div>
+            <div class="crop-thumb">
+              <svg class="fake-coin" viewBox="0 0 100 100">
+                <defs>
+                  <radialGradient id="ct-a-2" cx="55%" cy="40%">
+                    <stop offset="0%" stop-color="#dcd0a8"/><stop offset="55%" stop-color="#8a7a4d"/><stop offset="100%" stop-color="#3d3320"/>
+                  </radialGradient>
+                </defs>
+                <circle cx="50" cy="50" r="48" fill="url(#ct-a-2)"/>
+                <text x="50" y="58" text-anchor="middle" font-family="serif" font-size="14" fill="rgba(0,0,0,.35)" font-style="italic">RF·2002</text>
+              </svg>
+            </div>
+            <div class="crop-body">
+              <div class="crop-meta">img 1 · crop 2 · ⌀ 372 px</div>
+              <div class="crop-cands">
+                <button class="cand picked">FR-2002-1E-REV <span class="score">96%</span></button>
+                <button class="cand">FR-2007-1E-REV <span class="score">74%</span></button>
+              </div>
+              <div class="crop-actions">
+                <button class="action action--assign">F · Assigner</button>
+                <button class="action action--reject">R · Rejeter ▾</button>
+                <button class="action action--skip">Skip</button>
+                <button class="action action--flag">flag</button>
+              </div>
+              <span class="crop-decision assign">→ FR-2002-1E-REV · V</span>
+            </div>
+          </li>
+
+          <li class="crop" data-crop-id="a-3">
+            <div class="crop-tag">3</div>
+            <div class="crop-checkbox">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+            </div>
+            <div class="crop-thumb">
+              <svg class="fake-coin" viewBox="0 0 100 100">
+                <defs>
+                  <radialGradient id="ct-a-3" cx="42%" cy="40%">
+                    <stop offset="0%" stop-color="#f0d680"/><stop offset="60%" stop-color="#a07a26"/><stop offset="100%" stop-color="#5a4116"/>
+                  </radialGradient>
+                </defs>
+                <circle cx="50" cy="50" r="48" fill="url(#ct-a-3)"/>
+                <text x="50" y="58" text-anchor="middle" font-family="serif" font-size="22" fill="rgba(0,0,0,.35)" font-style="italic">1€</text>
+              </svg>
+            </div>
+            <div class="crop-body">
+              <div class="crop-meta">img 2 · crop 1 · ⌀ 408 px</div>
+              <div class="crop-cands">
+                <button class="cand">FR-2002-1E-AVR <span class="score">82%</span></button>
+                <button class="cand">FR-2007-1E-AVR <span class="score">79%</span></button>
+                <button class="cand">FR-1999-1E-AVR <span class="score">71%</span></button>
+              </div>
+              <div class="crop-actions">
+                <button class="action action--assign">F · Assigner</button>
+                <button class="action action--reject">R · Rejeter ▾</button>
+                <button class="action action--skip">Skip</button>
+                <button class="action action--flag">flag</button>
+              </div>
+            </div>
+          </li>
+
+          <li class="crop" data-crop-id="a-4">
+            <div class="crop-tag">4</div>
+            <div class="crop-checkbox">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+            </div>
+            <div class="crop-thumb">
+              <svg class="fake-coin" viewBox="0 0 100 100">
+                <defs>
+                  <radialGradient id="ct-a-4" cx="45%" cy="40%">
+                    <stop offset="0%" stop-color="#cfc294"/><stop offset="60%" stop-color="#8a7a4d"/><stop offset="100%" stop-color="#3d3320"/>
+                  </radialGradient>
+                </defs>
+                <circle cx="50" cy="50" r="48" fill="url(#ct-a-4)"/>
+                <text x="50" y="58" text-anchor="middle" font-family="serif" font-size="14" fill="rgba(0,0,0,.35)" font-style="italic">RF·2002</text>
+              </svg>
+            </div>
+            <div class="crop-body">
+              <div class="crop-meta">img 2 · crop 2 · ⌀ 340 px</div>
+              <div class="crop-cands">
+                <button class="cand">FR-2002-1E-REV <span class="score">88%</span></button>
+                <button class="cand">FR-2007-1E-REV <span class="score">71%</span></button>
+              </div>
+              <div class="crop-actions">
+                <button class="action action--assign">F · Assigner</button>
+                <button class="action action--reject">R · Rejeter ▾</button>
+                <button class="action action--skip">Skip</button>
+                <button class="action action--flag">flag</button>
+              </div>
+            </div>
+          </li>
+        </ul>
+      </section>
+    </div>
+
+    <footer class="case-footer">
+      <div class="progress-block">
+        <div class="progress-bar"><div class="progress-fill" style="width: 50%;"></div></div>
+        <div class="progress-counter"><strong>2</strong> / 4 décisions</div>
+        <div class="footer-hints">
+          <span><kbd>J</kbd>/<kbd>K</kbd> nav</span>
+          <span><kbd>1-5</kbd> assign</span>
+          <span><kbd>F</kbd> search</span>
+          <span><kbd>D</kbd> détections</span>
+          <span><kbd>?</kbd> aide</span>
+        </div>
+      </div>
+      <div class="footer-actions">
+        <button class="btn">Annuler</button>
+        <button class="btn btn--primary" aria-disabled="true">Valider listing →</button>
+      </div>
+    </footer>
+  </article>
+
+  <!-- ═════════════════════════════════════════════════════════════════
+       CASE B — Dense BU coffret (1 raw, 8 crops, 1 rejected detection)
+       ═════════════════════════════════════════════════════════════ -->
+
+  <div class="case-divider">＊　＊　＊</div>
+
+  <div class="note">
+    <strong>Cas B · dense.</strong> 1 raw · 8 crops + 1 cercle écarté
+    par le pipeline (radius hors range). Démontre comment le layout
+    s'adapte : la raw strip se réduit (1 thumb), l'examination plate
+    devient plus large, les isolates passent en grille 2 colonnes
+    (<code>grid-template-columns: 1fr 1fr</code>) pour limiter le
+    scroll. Affiche aussi un état <em>flagged</em> sur un crop foireux.
+  </div>
+
+  <article class="case-file case-file--dense" data-case="B">
+    <span class="corner-tl"></span><span class="corner-tr"></span>
+    <span class="corner-bl"></span><span class="corner-br"></span>
+
+    <header class="case-header">
+      <div class="case-meta">
+        <div class="meta-row-1">
+          <span class="case-no">Case №&nbsp;002</span>
+          <span class="case-id">ebay_v1_293485103884</span>
+          <span class="case-tags">
+            <span class="tag tag--gold">⌗ lot suspected</span>
+            <span class="tag tag--indigo">→ DE-EU-FLAG</span>
+            <span class="tag">src · ebay</span>
+            <span class="tag">€&nbsp;48.00</span>
+            <span class="tag tag--warn">⚠ détection à valider</span>
+          </span>
+        </div>
+        <h2 class="case-title">
+          <span class="quotes">«</span>Coffret BU 8 pièces 2€ commémoratives Allemagne 2008-2015 — état FDC<span class="quotes">»</span>
+        </h2>
+        <div class="case-source-line">
+          <span><strong>seller</strong> munzen-fachhandel-de</span>
+          <span><strong>ended</strong> 2026-04-29</span>
+          <span><strong>raws</strong> 1</span>
+          <span><strong>crops</strong> 8 detected (1 rejected)</span>
+          <span><strong>quality</strong> 0.74</span>
+        </div>
+      </div>
+      <nav class="case-nav">
+        <button class="nav-btn">←</button>
+        <button class="nav-btn nav-btn--text"><span>aide</span><kbd>?</kbd></button>
+        <button class="nav-btn">→</button>
+        <button class="nav-btn" style="margin-left: 8px;">✕</button>
+      </nav>
+    </header>
+
+    <div class="case-body">
+
+      <section class="examination">
+        <div class="examination-head">
+          <div class="label">
+            <span class="kicker kicker--gold">Examination plate</span>
+            <span class="mono" style="color: var(--ink-400);">img 1 / 1</span>
+          </div>
+          <div class="controls">
+            <label class="toggle">
+              <input type="checkbox" checked data-overlay-toggle />
+              <span class="switch"></span>
+              <span>Détections</span>
+              <kbd>D</kbd>
+            </label>
+            <button class="action">zoom</button>
+          </div>
+        </div>
+
+        <div class="raw-strip">
+          <button class="raw-thumb active">
+            <svg class="fake-img" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice">
+              <defs>
+                <linearGradient id="bg-b-thumb" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#1d1c2e"/><stop offset="100%" stop-color="#0d0c18"/>
+                </linearGradient>
+              </defs>
+              <rect width="100" height="100" fill="url(#bg-b-thumb)"/>
+              <g fill="#a07a26">
+                <circle cx="22" cy="28" r="9"/><circle cx="50" cy="28" r="9"/><circle cx="78" cy="28" r="9"/>
+                <circle cx="22" cy="55" r="9"/><circle cx="50" cy="55" r="9"/><circle cx="78" cy="55" r="9"/>
+                <circle cx="36" cy="82" r="9"/><circle cx="64" cy="82" r="9"/>
+              </g>
+            </svg>
+            <span class="raw-tag">1</span>
+            <span class="raw-count">8 cr.</span>
+          </button>
+        </div>
+
+        <div class="plate-frame">
+          <svg class="plate-img" viewBox="0 0 1200 900" preserveAspectRatio="xMidYMid slice">
+            <defs>
+              <radialGradient id="bg-b-main" cx="50%" cy="50%" r="80%">
+                <stop offset="0%" stop-color="#3a3854"/>
+                <stop offset="60%" stop-color="#1d1c2e"/>
+                <stop offset="100%" stop-color="#0a0a14"/>
+              </radialGradient>
+              <radialGradient id="coin-b" cx="40%" cy="40%">
+                <stop offset="0%"  stop-color="#f4d680"/>
+                <stop offset="50%" stop-color="#b08530"/>
+                <stop offset="85%" stop-color="#6c4d1a"/>
+                <stop offset="100%" stop-color="#2c1f08"/>
+              </radialGradient>
+              <radialGradient id="coin-b-bi" cx="40%" cy="40%">
+                <stop offset="0%"  stop-color="#e8d8a4"/>
+                <stop offset="60%" stop-color="#9a824a"/>
+                <stop offset="78%" stop-color="#5e4d28"/>
+                <stop offset="78.5%" stop-color="#7a5d24"/>
+                <stop offset="100%" stop-color="#3a2c0e"/>
+              </radialGradient>
+            </defs>
+            <rect width="1200" height="900" fill="url(#bg-b-main)"/>
+            <!-- 8 coins arranged in 3+3+2 grid (BU coffret) -->
+            <!-- row 1 -->
+            <circle cx="280" cy="240" r="120" fill="url(#coin-b-bi)"/>
+            <circle cx="600" cy="240" r="120" fill="url(#coin-b-bi)"/>
+            <circle cx="920" cy="240" r="120" fill="url(#coin-b-bi)"/>
+            <!-- row 2 -->
+            <circle cx="280" cy="500" r="120" fill="url(#coin-b-bi)"/>
+            <circle cx="600" cy="500" r="120" fill="url(#coin-b-bi)"/>
+            <circle cx="920" cy="500" r="120" fill="url(#coin-b-bi)"/>
+            <!-- row 3 (2 coins centered) -->
+            <circle cx="440" cy="760" r="120" fill="url(#coin-b-bi)"/>
+            <circle cx="760" cy="760" r="120" fill="url(#coin-b-bi)"/>
+            <!-- engraved hints -->
+            <g font-family="serif" font-size="20" fill="rgba(0,0,0,.35)" font-style="italic" text-anchor="middle">
+              <text x="280" y="248">2€·08</text><text x="600" y="248">2€·09</text><text x="920" y="248">2€·10</text>
+              <text x="280" y="508">2€·11</text><text x="600" y="508">2€·12</text><text x="920" y="508">2€·13</text>
+              <text x="440" y="768">2€·14</text><text x="760" y="768">2€·15</text>
+            </g>
+            <!-- decorative parasitic shape that pipeline mistakenly considered -->
+            <ellipse cx="1080" cy="820" rx="48" ry="45" fill="rgba(180,160,90,.15)" />
+            <rect width="1200" height="900" fill="black" opacity="0.06"/>
+          </svg>
+
+          <svg class="plate-svg" viewBox="0 0 1200 900" preserveAspectRatio="xMidYMid slice">
+            <!-- Detected (8 retained) -->
+            <circle class="detected interactive" cx="280" cy="240" r="125" data-target-crop="b-1" />
+            <circle class="detected interactive" cx="600" cy="240" r="125" data-target-crop="b-2" />
+            <circle class="detected interactive" cx="920" cy="240" r="125" data-target-crop="b-3" />
+            <circle class="detected interactive" cx="280" cy="500" r="125" data-target-crop="b-4" />
+            <circle class="detected interactive" cx="600" cy="500" r="125" data-target-crop="b-5" />
+            <circle class="detected interactive" cx="920" cy="500" r="125" data-target-crop="b-6" />
+            <circle class="detected interactive" cx="440" cy="760" r="125" data-target-crop="b-7" />
+            <circle class="detected interactive" cx="760" cy="760" r="125" data-target-crop="b-8" />
+            <!-- Rejected (parasitic, radius too small) -->
+            <circle class="rejected" cx="1080" cy="820" r="48" />
+            <text x="1080" y="822" text-anchor="middle" dominant-baseline="central" font-family="JetBrains Mono" font-size="11" fill="var(--danger)" opacity="0.85">r=48 · ↓</text>
+            <!-- Tags -->
+            <g class="tag-badge interactive" data-target-crop="b-1" transform="translate(385 165)"><circle r="18" fill="var(--ink)" stroke="var(--surface)" stroke-width="2"/><text text-anchor="middle" dominant-baseline="central" y="1">1</text></g>
+            <g class="tag-badge interactive" data-target-crop="b-2" transform="translate(705 165)"><circle r="18" fill="var(--ink)" stroke="var(--surface)" stroke-width="2"/><text text-anchor="middle" dominant-baseline="central" y="1">2</text></g>
+            <g class="tag-badge interactive" data-target-crop="b-3" transform="translate(1025 165)"><circle r="18" fill="var(--ink)" stroke="var(--surface)" stroke-width="2"/><text text-anchor="middle" dominant-baseline="central" y="1">3</text></g>
+            <g class="tag-badge interactive" data-target-crop="b-4" transform="translate(385 425)"><circle r="18" fill="var(--ink)" stroke="var(--surface)" stroke-width="2"/><text text-anchor="middle" dominant-baseline="central" y="1">4</text></g>
+            <g class="tag-badge interactive" data-target-crop="b-5" transform="translate(705 425)"><circle r="18" fill="var(--ink)" stroke="var(--surface)" stroke-width="2"/><text text-anchor="middle" dominant-baseline="central" y="1">5</text></g>
+            <g class="tag-badge interactive" data-target-crop="b-6" transform="translate(1025 425)"><circle r="18" fill="var(--ink)" stroke="var(--surface)" stroke-width="2"/><text text-anchor="middle" dominant-baseline="central" y="1">6</text></g>
+            <g class="tag-badge interactive" data-target-crop="b-7" transform="translate(545 685)"><circle r="18" fill="var(--ink)" stroke="var(--surface)" stroke-width="2"/><text text-anchor="middle" dominant-baseline="central" y="1">7</text></g>
+            <g class="tag-badge interactive" data-target-crop="b-8" transform="translate(865 685)"><circle r="18" fill="var(--ink)" stroke="var(--surface)" stroke-width="2"/><text text-anchor="middle" dominant-baseline="central" y="1">8</text></g>
+          </svg>
+        </div>
+
+        <div class="plate-footnote">
+          <span><strong>2400 × 1800</strong></span>
+          <span class="dot">·</span>
+          <span><strong>9</strong> cercles · <span class="ok">8 retenus</span> · <span class="warn">1 écarté</span></span>
+          <span class="dot">·</span>
+          <span>method <strong>hough_strict + hough_loose</strong></span>
+          <span class="dot">·</span>
+          <span>r ∈ [125, 125] · rejeté: r=48 (&lt; rmin · 0.10·short)</span>
+        </div>
+      </section>
+
+      <section class="isolates">
+        <div class="isolates-head">
+          <div>
+            <span class="kicker kicker--gold">Isolates</span>
+            <span class="mono" style="color: var(--ink-400); margin-left: 8px;">8 specimens</span>
+          </div>
+          <div class="progress"><strong>3</strong> / 8 décidées</div>
+        </div>
+
+        <ul class="isolates-list">
+          <!-- crops generated below; using helper approach -->
+
+          <li class="crop active decided-assign" data-crop-id="b-1">
+            <div class="crop-tag">1</div>
+            <div class="crop-checkbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>
+            <div class="crop-thumb">
+              <svg class="fake-coin" viewBox="0 0 100 100">
+                <defs><radialGradient id="ct-b-1" cx="40%" cy="40%"><stop offset="0%" stop-color="#f4d680"/><stop offset="55%" stop-color="#b08530"/><stop offset="100%" stop-color="#5a4116"/></radialGradient></defs>
+                <circle cx="50" cy="50" r="48" fill="url(#ct-b-1)"/>
+                <text x="50" y="55" text-anchor="middle" font-family="serif" font-size="11" fill="rgba(0,0,0,.4)" font-style="italic">2€·08</text>
+              </svg>
+            </div>
+            <div class="crop-body">
+              <div class="crop-meta">crop 1 · ⌀ 250 px</div>
+              <div class="crop-cands">
+                <button class="cand picked">DE-2008-EU-FLAG <span class="score">94%</span></button>
+              </div>
+              <div class="crop-actions">
+                <button class="action action--assign">F · Assigner</button>
+                <button class="action action--reject">R · Rej</button>
+                <button class="action action--skip">Skip</button>
+              </div>
+              <span class="crop-decision assign">→ DE-2008-EU-FLAG · O</span>
+            </div>
+          </li>
+
+          <li class="crop decided-assign" data-crop-id="b-2">
+            <div class="crop-tag">2</div>
+            <div class="crop-checkbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>
+            <div class="crop-thumb">
+              <svg class="fake-coin" viewBox="0 0 100 100">
+                <defs><radialGradient id="ct-b-2" cx="40%" cy="40%"><stop offset="0%" stop-color="#f4d680"/><stop offset="55%" stop-color="#b08530"/><stop offset="100%" stop-color="#5a4116"/></radialGradient></defs>
+                <circle cx="50" cy="50" r="48" fill="url(#ct-b-2)"/>
+                <text x="50" y="55" text-anchor="middle" font-family="serif" font-size="11" fill="rgba(0,0,0,.4)" font-style="italic">2€·09</text>
+              </svg>
+            </div>
+            <div class="crop-body">
+              <div class="crop-meta">crop 2 · ⌀ 250 px</div>
+              <div class="crop-cands">
+                <button class="cand picked">DE-2009-EMU-10Y <span class="score">91%</span></button>
+              </div>
+              <div class="crop-actions">
+                <button class="action action--assign">F · Assigner</button>
+                <button class="action action--reject">R · Rej</button>
+                <button class="action action--skip">Skip</button>
+              </div>
+              <span class="crop-decision assign">→ DE-2009-EMU-10Y · O</span>
+            </div>
+          </li>
+
+          <li class="crop decided-skip" data-crop-id="b-3">
+            <div class="crop-tag">3</div>
+            <div class="crop-checkbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>
+            <div class="crop-thumb">
+              <svg class="fake-coin" viewBox="0 0 100 100">
+                <defs><radialGradient id="ct-b-3" cx="40%" cy="40%"><stop offset="0%" stop-color="#f4d680"/><stop offset="55%" stop-color="#b08530"/><stop offset="100%" stop-color="#5a4116"/></radialGradient></defs>
+                <circle cx="50" cy="50" r="48" fill="url(#ct-b-3)"/>
+                <text x="50" y="55" text-anchor="middle" font-family="serif" font-size="11" fill="rgba(0,0,0,.4)" font-style="italic">2€·10</text>
+              </svg>
+            </div>
+            <div class="crop-body">
+              <div class="crop-meta">crop 3 · ⌀ 250 px</div>
+              <div class="crop-cands">
+                <button class="cand">DE-2010-BREMEN <span class="score">68%</span></button>
+                <button class="cand">DE-2011-NRW <span class="score">52%</span></button>
+              </div>
+              <div class="crop-actions">
+                <button class="action action--assign">F · Assigner</button>
+                <button class="action action--reject">R · Rej</button>
+                <button class="action action--skip">Skip</button>
+              </div>
+              <span class="crop-decision skip">reporté</span>
+            </div>
+          </li>
+
+          <li class="crop selected" data-crop-id="b-4">
+            <div class="crop-tag">4</div>
+            <div class="crop-checkbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>
+            <div class="crop-thumb">
+              <svg class="fake-coin" viewBox="0 0 100 100">
+                <defs><radialGradient id="ct-b-4" cx="40%" cy="40%"><stop offset="0%" stop-color="#f4d680"/><stop offset="55%" stop-color="#b08530"/><stop offset="100%" stop-color="#5a4116"/></radialGradient></defs>
+                <circle cx="50" cy="50" r="48" fill="url(#ct-b-4)"/>
+                <text x="50" y="55" text-anchor="middle" font-family="serif" font-size="11" fill="rgba(0,0,0,.4)" font-style="italic">2€·11</text>
+              </svg>
+            </div>
+            <div class="crop-body">
+              <div class="crop-meta">crop 4 · ⌀ 250 px</div>
+              <div class="crop-cands">
+                <button class="cand">DE-2011-NRW <span class="score">88%</span></button>
+                <button class="cand">DE-2012-NRW <span class="score">62%</span></button>
+              </div>
+              <div class="crop-actions">
+                <button class="action action--assign">F · Assigner</button>
+                <button class="action action--reject">R · Rej</button>
+                <button class="action action--skip">Skip</button>
+              </div>
+            </div>
+          </li>
+
+          <li class="crop selected" data-crop-id="b-5">
+            <div class="crop-tag">5</div>
+            <div class="crop-checkbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>
+            <div class="crop-thumb">
+              <svg class="fake-coin" viewBox="0 0 100 100">
+                <defs><radialGradient id="ct-b-5" cx="40%" cy="40%"><stop offset="0%" stop-color="#f4d680"/><stop offset="55%" stop-color="#b08530"/><stop offset="100%" stop-color="#5a4116"/></radialGradient></defs>
+                <circle cx="50" cy="50" r="48" fill="url(#ct-b-5)"/>
+                <text x="50" y="55" text-anchor="middle" font-family="serif" font-size="11" fill="rgba(0,0,0,.4)" font-style="italic">2€·12</text>
+              </svg>
+            </div>
+            <div class="crop-body">
+              <div class="crop-meta">crop 5 · ⌀ 250 px</div>
+              <div class="crop-cands">
+                <button class="cand">DE-2012-NRW <span class="score">85%</span></button>
+              </div>
+              <div class="crop-actions">
+                <button class="action action--assign">F · Assigner</button>
+                <button class="action action--reject">R · Rej</button>
+                <button class="action action--skip">Skip</button>
+              </div>
+            </div>
+          </li>
+
+          <li class="crop" data-crop-id="b-6">
+            <div class="crop-tag">6</div>
+            <div class="crop-checkbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>
+            <div class="crop-thumb" style="filter: blur(0.4px);">
+              <svg class="fake-coin" viewBox="0 0 100 100">
+                <defs><radialGradient id="ct-b-6" cx="40%" cy="40%"><stop offset="0%" stop-color="#a07a26"/><stop offset="55%" stop-color="#3c2e10"/><stop offset="100%" stop-color="#1a1408"/></radialGradient></defs>
+                <circle cx="50" cy="50" r="48" fill="url(#ct-b-6)"/>
+                <ellipse cx="60" cy="50" rx="35" ry="22" fill="#1a1408" opacity="0.6"/>
+              </svg>
+            </div>
+            <div class="crop-body">
+              <div class="crop-meta">crop 6 · ⌀ 250 px <span style="color: var(--warning);">· low quality</span></div>
+              <div class="crop-cands">
+                <button class="cand">DE-2013-BW <span class="score">42%</span></button>
+                <button class="cand">DE-2014-NS <span class="score">38%</span></button>
+              </div>
+              <div class="crop-actions">
+                <button class="action action--assign">F · Assigner</button>
+                <button class="action action--reject">R · Rej</button>
+                <button class="action action--skip">Skip</button>
+                <button class="action action--flag">flag</button>
+              </div>
+              <div class="crop-flag">
+                <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 22V4h12l-2 5h6l-3 7H6"/></svg>
+                <span>Détection partielle — la pièce est <em>obstruée</em>.
+                  <kbd>F</kbd> assigner manuel ou <kbd>N</kbd> skip.
+                </span>
+              </div>
+            </div>
+          </li>
+
+          <li class="crop" data-crop-id="b-7">
+            <div class="crop-tag">7</div>
+            <div class="crop-checkbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>
+            <div class="crop-thumb">
+              <svg class="fake-coin" viewBox="0 0 100 100">
+                <defs><radialGradient id="ct-b-7" cx="40%" cy="40%"><stop offset="0%" stop-color="#f4d680"/><stop offset="55%" stop-color="#b08530"/><stop offset="100%" stop-color="#5a4116"/></radialGradient></defs>
+                <circle cx="50" cy="50" r="48" fill="url(#ct-b-7)"/>
+                <text x="50" y="55" text-anchor="middle" font-family="serif" font-size="11" fill="rgba(0,0,0,.4)" font-style="italic">2€·14</text>
+              </svg>
+            </div>
+            <div class="crop-body">
+              <div class="crop-meta">crop 7 · ⌀ 250 px</div>
+              <div class="crop-cands">
+                <button class="cand">DE-2014-NS <span class="score">81%</span></button>
+                <button class="cand">DE-2013-BW <span class="score">59%</span></button>
+              </div>
+              <div class="crop-actions">
+                <button class="action action--assign">F · Assigner</button>
+                <button class="action action--reject">R · Rej</button>
+                <button class="action action--skip">Skip</button>
+              </div>
+            </div>
+          </li>
+
+          <li class="crop" data-crop-id="b-8">
+            <div class="crop-tag">8</div>
+            <div class="crop-checkbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>
+            <div class="crop-thumb">
+              <svg class="fake-coin" viewBox="0 0 100 100">
+                <defs><radialGradient id="ct-b-8" cx="40%" cy="40%"><stop offset="0%" stop-color="#f4d680"/><stop offset="55%" stop-color="#b08530"/><stop offset="100%" stop-color="#5a4116"/></radialGradient></defs>
+                <circle cx="50" cy="50" r="48" fill="url(#ct-b-8)"/>
+                <text x="50" y="55" text-anchor="middle" font-family="serif" font-size="11" fill="rgba(0,0,0,.4)" font-style="italic">2€·15</text>
+              </svg>
+            </div>
+            <div class="crop-body">
+              <div class="crop-meta">crop 8 · ⌀ 250 px</div>
+              <div class="crop-cands">
+                <button class="cand">DE-2015-HE <span class="score">86%</span></button>
+              </div>
+              <div class="crop-actions">
+                <button class="action action--assign">F · Assigner</button>
+                <button class="action action--reject">R · Rej</button>
+                <button class="action action--skip">Skip</button>
+              </div>
+            </div>
+          </li>
+        </ul>
+      </section>
+
+      <!-- BULK SUB-FOOTER (visible because crops 4 & 5 selected) -->
+      <div class="case-bulk-bar">
+        <div class="count">
+          <strong>2</strong> crops sélectionnés · appliquer la même décision
+        </div>
+        <div class="actions">
+          <button class="action action--assign">Assigner…</button>
+          <button class="action action--reject">Rejeter ▾</button>
+          <button class="action action--skip">Skip</button>
+          <button class="action">✕ Désélec.</button>
+        </div>
+      </div>
+    </div>
+
+    <footer class="case-footer">
+      <div class="progress-block">
+        <div class="progress-bar"><div class="progress-fill" style="width: 37.5%;"></div></div>
+        <div class="progress-counter"><strong>3</strong> / 8 décisions</div>
+        <div class="footer-hints">
+          <span><kbd>J</kbd>/<kbd>K</kbd> nav</span>
+          <span><kbd>1-5</kbd> assign</span>
+          <span><kbd>F</kbd> search</span>
+          <span><kbd>D</kbd> détections</span>
+          <span><kbd>R</kbd> reject</span>
+          <span><kbd>?</kbd> aide</span>
+        </div>
+      </div>
+      <div class="footer-actions">
+        <button class="btn">Annuler</button>
+        <button class="btn btn--primary" aria-disabled="true">Valider listing →</button>
+      </div>
+    </footer>
+  </article>
+
+
+  <!-- Footer note explaining design choices -->
+  <section class="note" style="max-width: 880px; margin: 56px auto 0;">
+    <div class="kicker kicker--gold" style="margin-bottom: 8px;">Notes design</div>
+    <ul style="list-style: none; padding-left: 0; display: grid; gap: 8px;">
+      <li>
+        <strong>Pourquoi full-page</strong> — un drawer 85vw rend les raws eBay
+        (1500-3000px de large) trop petits pour vérifier visuellement les
+        détections. Le user fait un listing à la fois → pas besoin de voir la
+        grille derrière. Esc/<kbd>←</kbd> retourne à la grille.
+      </li>
+      <li>
+        <strong>Pourquoi stage 1+2 superposés (et pas tabs/accordion)</strong> —
+        l'overlay de cercles n'a aucune utilité sans le raw dessous. Toggle
+        d'opacité (<kbd>D</kbd>) permet de basculer rapidement entre "voir la
+        photo" et "voir l'analyse". Tabs forcerait un changement contextuel,
+        accordéon doublerait la hauteur. La superposition garde la lecture
+        cohérente.
+      </li>
+      <li>
+        <strong>Tags numérotés</strong> — chaque cercle détecté a un tag (1-N)
+        qui apparaît aussi sur le crop card correspondant. Hover crop → cercle
+        pulse 2× ; hover cercle → crop highlights. C'est le micro-mécanisme qui
+        permet de remonter une mauvaise détection sans réflexion ("le crop
+        flou en n°6, c'est lequel sur le raw ?").
+      </li>
+      <li>
+        <strong>Cercles rejetés (rouge dashed)</strong> — montrer ce que le
+        pipeline a considéré et écarté = pure transparence. Évite que le user
+        se demande "pourquoi cette pièce n'a pas été détectée". Annotation
+        inline donne la raison (<code>r &lt; rmin</code>, <code>off_centre</code>, etc.).
+      </li>
+      <li>
+        <strong>Bouton flag par crop</strong> — quand la détection est OK
+        mais le crop foireux (cas <em>b-6</em>), l'utilisateur flag avec
+        l'icône drapeau. État visuel inline. V1 = flag local ; V2 enverra
+        ces flags à un endpoint pour collecter les cas où la pipeline doit
+        s'améliorer.
+      </li>
+      <li>
+        <strong>Bulk via checkboxes</strong> — checkbox top-right du crop
+        card. Sélection ≥1 → sub-footer indigo apparaît au-dessus du footer
+        principal. Cohérent avec le drawer L.B+L.C actuel.
+      </li>
+      <li>
+        <strong>Layout adaptatif</strong> — case A (≤6 crops) = isolates
+        en colonne unique 460px. Case B (≥7 crops) = isolates en grille
+        2 colonnes (540px), évite le scroll vertical infini. Le breakpoint
+        peut être déclenché soit sur le nombre de crops soit sur la
+        viewport disponible (à choisir, je préconise N&gt;6).
+      </li>
+    </ul>
+  </section>
+
+</div>
+
+<!-- ─── Interactivity ─── -->
+<script>
+  // Toggle overlay (stage 2)
+  document.querySelectorAll('[data-overlay-toggle]').forEach(input => {
+    const file = input.closest('.case-file');
+    input.addEventListener('change', () => {
+      const plate = file.querySelector('.plate-frame');
+      plate.classList.toggle('plate-overlay-hidden', !input.checked);
+    });
+  });
+
+  // Hover crop ↔ highlight circle (and inverse)
+  document.querySelectorAll('.case-file').forEach(file => {
+    const crops = file.querySelectorAll('.crop[data-crop-id]');
+    const circles = file.querySelectorAll('.plate-svg .interactive[data-target-crop]');
+
+    function setActive(cropId, on) {
+      crops.forEach(c => {
+        if (c.dataset.cropId === cropId) c.classList.toggle('hover-link', on);
+      });
+      circles.forEach(c => {
+        if (c.dataset.targetCrop === cropId) {
+          c.classList.toggle('active', on);
+          // For tag-badge groups
+          if (c.tagName === 'g') c.querySelector('circle')?.setAttribute('fill', on ? 'var(--gold-600)' : 'var(--ink)');
+        }
+      });
+    }
+
+    crops.forEach(c => {
+      c.addEventListener('mouseenter', () => setActive(c.dataset.cropId, true));
+      c.addEventListener('mouseleave', () => setActive(c.dataset.cropId, false));
+      c.addEventListener('click', () => {
+        // Pulse the corresponding circle
+        circles.forEach(circ => {
+          if (circ.dataset.targetCrop === c.dataset.cropId && circ.classList.contains('detected')) {
+            circ.classList.remove('pulse');
+            // force reflow
+            void circ.getBoundingClientRect();
+            circ.classList.add('pulse');
+          }
+        });
+      });
+    });
+
+    circles.forEach(c => {
+      c.addEventListener('mouseenter', () => setActive(c.dataset.targetCrop, true));
+      c.addEventListener('mouseleave', () => setActive(c.dataset.targetCrop, false));
+    });
+  });
+
+  // Keyboard shortcut : D to toggle overlay (proto demo on case A only)
+  document.addEventListener('keydown', e => {
+    if (e.key === 'd' || e.key === 'D') {
+      const input = document.querySelector('.case-file [data-overlay-toggle]');
+      if (input) {
+        input.checked = !input.checked;
+        input.dispatchEvent(new Event('change'));
+      }
+    }
+  });
+</script>
+
+</body>
+</html>

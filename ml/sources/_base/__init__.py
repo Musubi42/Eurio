@@ -15,7 +15,7 @@ Phase 1 surface to be added next session:
 - `storage`           — disk paths + hashing
 - `http`              — shared session
 - `license_map`, `condition_map`
-- `orchestrator`      — the 6-step generic runner
+- `orchestrator`      — the 8-step generic runner
 """
 
 from .run_logger import RunHandle, start_run

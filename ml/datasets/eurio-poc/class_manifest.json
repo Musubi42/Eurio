@@ -2,6 +2,16 @@
   "version": 1,
   "classes": [
     {
+      "class_id": "ad-2014-2eur-20-years-in-the-council-of-europe",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        68396
+      ],
+      "eurio_ids": [
+        "ad-2014-2eur-20-years-in-the-council-of-europe"
+      ]
+    },
+    {
       "class_id": "ad-2014-2eur-standard",
       "class_kind": "eurio_id",
       "numista_ids": [
@@ -12,33 +22,1345 @@
       ]
     },
     {
-      "class_id": "at-2002-2eur-standard",
+      "class_id": "ad-2015-2eur-25-years-of-customs-union-with-the-eu",
       "class_kind": "eurio_id",
       "numista_ids": [
-        64
+        82007
       ],
       "eurio_ids": [
-        "at-2002-2eur-standard"
+        "ad-2015-2eur-25-years-of-customs-union-with-the-eu"
       ]
     },
     {
-      "class_id": "be-2007-2eur-standard",
+      "class_id": "ad-2016-2eur-150-years-of-the-new-reform-1866",
       "class_kind": "eurio_id",
       "numista_ids": [
-        6292
+        96327
       ],
       "eurio_ids": [
-        "be-2007-2eur-standard"
+        "ad-2016-2eur-150-years-of-the-new-reform-1866"
       ]
     },
     {
-      "class_id": "es-1999-2eur-standard",
+      "class_id": "ad-2016-2eur-25th-anniversary-of-the-radio-and-television-of-andorra",
       "class_kind": "eurio_id",
       "numista_ids": [
-        88
+        96326
       ],
       "eurio_ids": [
-        "es-1999-2eur-standard"
+        "ad-2016-2eur-25th-anniversary-of-the-radio-and-television-of-andorra"
+      ]
+    },
+    {
+      "class_id": "ad-2017-2eur-100-years-of-the-anthem-of-andorra",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        124386
+      ],
+      "eurio_ids": [
+        "ad-2017-2eur-100-years-of-the-anthem-of-andorra"
+      ]
+    },
+    {
+      "class_id": "ad-2017-2eur-andorra-the-pyrenean-country",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        124387
+      ],
+      "eurio_ids": [
+        "ad-2017-2eur-andorra-the-pyrenean-country"
+      ]
+    },
+    {
+      "class_id": "ad-2018-2eur-25th-anniversary-of-the-andorran-constitution",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        133778
+      ],
+      "eurio_ids": [
+        "ad-2018-2eur-25th-anniversary-of-the-andorran-constitution"
+      ]
+    },
+    {
+      "class_id": "ad-2018-2eur-70th-anniversary-of-the-universal-declaration-of-human",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        152661
+      ],
+      "eurio_ids": [
+        "ad-2018-2eur-70th-anniversary-of-the-universal-declaration-of-human"
+      ]
+    },
+    {
+      "class_id": "ad-2019-2eur-2019-fis-alpine-ski-world-cup-final",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        162097
+      ],
+      "eurio_ids": [
+        "ad-2019-2eur-2019-fis-alpine-ski-world-cup-final"
+      ]
+    },
+    {
+      "class_id": "ad-2019-2eur-600-years-since-the-constitution-of-the-general-council-of",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        184042
+      ],
+      "eurio_ids": [
+        "ad-2019-2eur-600-years-since-the-constitution-of-the-general-council-of"
+      ]
+    },
+    {
+      "class_id": "ad-2020-2eur-27th-ibero-american-summit-in-andorra",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        215401
+      ],
+      "eurio_ids": [
+        "ad-2020-2eur-27th-ibero-american-summit-in-andorra"
+      ]
+    },
+    {
+      "class_id": "ad-2020-2eur-50-years-since-andorras-introduction-of-womens-suffrage",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        232060
+      ],
+      "eurio_ids": [
+        "ad-2020-2eur-50-years-since-andorras-introduction-of-womens-suffrage"
+      ]
+    },
+    {
+      "class_id": "ad-2021-2eur-100-years-since-the-coronation-of-our-lady-of-meritxell",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        302815
+      ],
+      "eurio_ids": [
+        "ad-2021-2eur-100-years-since-the-coronation-of-our-lady-of-meritxell"
+      ]
+    },
+    {
+      "class_id": "ad-2022-2eur-andorra-european-union-relations",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        344732
+      ],
+      "eurio_ids": [
+        "ad-2022-2eur-andorra-european-union-relations"
+      ]
+    },
+    {
+      "class_id": "ad-2023-2eur-30-years-of-the-entry-of-the-principality-of-andorra-into",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        372758
+      ],
+      "eurio_ids": [
+        "ad-2023-2eur-30-years-of-the-entry-of-the-principality-of-andorra-into"
+      ]
+    },
+    {
+      "class_id": "ad-2023-2eur-summer-solstice-fire-festivals-in-the-pyrenees",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        372756
+      ],
+      "eurio_ids": [
+        "ad-2023-2eur-summer-solstice-fire-festivals-in-the-pyrenees"
+      ]
+    },
+    {
+      "class_id": "ad-2024-2eur-100-years-of-skiing-in-andorra",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        427530
+      ],
+      "eurio_ids": [
+        "ad-2024-2eur-100-years-of-skiing-in-andorra"
+      ]
+    },
+    {
+      "class_id": "ad-2024-2eur-uci-mountain-bike-mtb-world-championships",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        427536
+      ],
+      "eurio_ids": [
+        "ad-2024-2eur-uci-mountain-bike-mtb-world-championships"
+      ]
+    },
+    {
+      "class_id": "ad-2025-2eur-bearded-vulture",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        482937
+      ],
+      "eurio_ids": [
+        "ad-2025-2eur-bearded-vulture"
+      ]
+    },
+    {
+      "class_id": "ad-2025-2eur-small-states-games",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        482934
+      ],
+      "eurio_ids": [
+        "ad-2025-2eur-small-states-games"
+      ]
+    },
+    {
+      "class_id": "at-2005-2eur-50th-anniversary-of-the-austrian-state-treaty",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        2193
+      ],
+      "eurio_ids": [
+        "at-2005-2eur-50th-anniversary-of-the-austrian-state-treaty"
+      ]
+    },
+    {
+      "class_id": "at-2016-2eur-200th-anniversary-of-the-founding-of-austrias-central-bank",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        80926
+      ],
+      "eurio_ids": [
+        "at-2016-2eur-200th-anniversary-of-the-founding-of-austrias-central-bank"
+      ]
+    },
+    {
+      "class_id": "at-2018-2eur-100-years-since-the-foundation-of-the-republic-of-austria",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        131199
+      ],
+      "eurio_ids": [
+        "at-2018-2eur-100-years-since-the-foundation-of-the-republic-of-austria"
+      ]
+    },
+    {
+      "class_id": "at-2eur-standard-2002",
+      "class_kind": "design_group_id",
+      "numista_ids": [
+        64,
+        9761
+      ],
+      "eurio_ids": [
+        "at-2002-2eur-standard",
+        "at-2008-2eur-standard"
+      ]
+    },
+    {
+      "class_id": "be-2005-2eur-belgium-luxembourg-economic-union",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        2165
+      ],
+      "eurio_ids": [
+        "be-2005-2eur-belgium-luxembourg-economic-union"
+      ]
+    },
+    {
+      "class_id": "be-2006-2eur-renovation-of-the-atomium-in-brussels",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        2166
+      ],
+      "eurio_ids": [
+        "be-2006-2eur-renovation-of-the-atomium-in-brussels"
+      ]
+    },
+    {
+      "class_id": "be-2008-2eur-60th-anniversary-of-the-universal-declaration-of-human",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        3196
+      ],
+      "eurio_ids": [
+        "be-2008-2eur-60th-anniversary-of-the-universal-declaration-of-human"
+      ]
+    },
+    {
+      "class_id": "be-2009-2eur-200th-birthday-of-louis-braille",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        8070
+      ],
+      "eurio_ids": [
+        "be-2009-2eur-200th-birthday-of-louis-braille"
+      ]
+    },
+    {
+      "class_id": "be-2010-2eur-belgian-presidency-of-the-council-of-the-european-union",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        11550
+      ],
+      "eurio_ids": [
+        "be-2010-2eur-belgian-presidency-of-the-council-of-the-european-union"
+      ]
+    },
+    {
+      "class_id": "be-2011-2eur-1st-centenary-of-the-international-womens-day",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        19734
+      ],
+      "eurio_ids": [
+        "be-2011-2eur-1st-centenary-of-the-international-womens-day"
+      ]
+    },
+    {
+      "class_id": "be-2012-2eur-75th-anniversary-of-the-queen-elisabeth-music-competition",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        32526
+      ],
+      "eurio_ids": [
+        "be-2012-2eur-75th-anniversary-of-the-queen-elisabeth-music-competition"
+      ]
+    },
+    {
+      "class_id": "be-2013-2eur-100-years-of-royal-meteorological-institute",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        49339
+      ],
+      "eurio_ids": [
+        "be-2013-2eur-100-years-of-royal-meteorological-institute"
+      ]
+    },
+    {
+      "class_id": "be-2014-2eur-150-years-of-the-belgian-red-cross",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        59828
+      ],
+      "eurio_ids": [
+        "be-2014-2eur-150-years-of-the-belgian-red-cross"
+      ]
+    },
+    {
+      "class_id": "be-2015-2eur-european-year-for-development",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        77181
+      ],
+      "eurio_ids": [
+        "be-2015-2eur-european-year-for-development"
+      ]
+    },
+    {
+      "class_id": "be-2016-2eur-2016-summer-olympics-rio-de-janeiro",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        84609
+      ],
+      "eurio_ids": [
+        "be-2016-2eur-2016-summer-olympics-rio-de-janeiro"
+      ]
+    },
+    {
+      "class_id": "be-2016-2eur-international-missing-childrens-day",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        87173
+      ],
+      "eurio_ids": [
+        "be-2016-2eur-international-missing-childrens-day"
+      ]
+    },
+    {
+      "class_id": "be-2017-2eur-200-years-ghent-university",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        108778
+      ],
+      "eurio_ids": [
+        "be-2017-2eur-200-years-ghent-university"
+      ]
+    },
+    {
+      "class_id": "be-2018-2eur-50-years-since-the-launch-of-european-satellite-esro-2b",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        150281
+      ],
+      "eurio_ids": [
+        "be-2018-2eur-50-years-since-the-launch-of-european-satellite-esro-2b"
+      ]
+    },
+    {
+      "class_id": "be-2018-2eur-50th-anniversary-of-may-1968-events-in-belgium",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        140149
+      ],
+      "eurio_ids": [
+        "be-2018-2eur-50th-anniversary-of-may-1968-events-in-belgium"
+      ]
+    },
+    {
+      "class_id": "be-2019-2eur-25-years-since-the-creation-of-the-european-monetary",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        155935
+      ],
+      "eurio_ids": [
+        "be-2019-2eur-25-years-since-the-creation-of-the-european-monetary"
+      ]
+    },
+    {
+      "class_id": "be-2019-2eur-450-years-since-the-death-of-pieter-bruegel-the-elder",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        155931
+      ],
+      "eurio_ids": [
+        "be-2019-2eur-450-years-since-the-death-of-pieter-bruegel-the-elder"
+      ]
+    },
+    {
+      "class_id": "be-2020-2eur-international-year-of-plant-health",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        176636
+      ],
+      "eurio_ids": [
+        "be-2020-2eur-international-year-of-plant-health"
+      ]
+    },
+    {
+      "class_id": "be-2020-2eur-jan-van-eyck",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        176637
+      ],
+      "eurio_ids": [
+        "be-2020-2eur-jan-van-eyck"
+      ]
+    },
+    {
+      "class_id": "be-2021-2eur-100-years-since-the-signing-of-the-belgium-luxembourg",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        299176
+      ],
+      "eurio_ids": [
+        "be-2021-2eur-100-years-since-the-signing-of-the-belgium-luxembourg"
+      ]
+    },
+    {
+      "class_id": "be-2021-2eur-500-years-since-the-issuance-of-the-carolus-guilder",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        309301
+      ],
+      "eurio_ids": [
+        "be-2021-2eur-500-years-since-the-issuance-of-the-carolus-guilder"
+      ]
+    },
+    {
+      "class_id": "be-2022-2eur-the-healthcare-sector-in-recognition-of-the-exceptional",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        331208
+      ],
+      "eurio_ids": [
+        "be-2022-2eur-the-healthcare-sector-in-recognition-of-the-exceptional"
+      ]
+    },
+    {
+      "class_id": "be-2023-2eur-75-years-of-womens-voting-rights-in-belgium",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        383352
+      ],
+      "eurio_ids": [
+        "be-2023-2eur-75-years-of-womens-voting-rights-in-belgium"
+      ]
+    },
+    {
+      "class_id": "be-2023-2eur-the-year-of-art-nouveau-which-takes-place-during-2023-in",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        368766
+      ],
+      "eurio_ids": [
+        "be-2023-2eur-the-year-of-art-nouveau-which-takes-place-during-2023-in"
+      ]
+    },
+    {
+      "class_id": "be-2024-2eur-fight-against-cancer",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        415044
+      ],
+      "eurio_ids": [
+        "be-2024-2eur-fight-against-cancer"
+      ]
+    },
+    {
+      "class_id": "be-2024-2eur-the-belgian-presidency-of-the-council-of-the-eu",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        395552
+      ],
+      "eurio_ids": [
+        "be-2024-2eur-the-belgian-presidency-of-the-council-of-the-eu"
+      ]
+    },
+    {
+      "class_id": "be-2025-2eur-f1-circuit-of-spa-francorchamps",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        477994
+      ],
+      "eurio_ids": [
+        "be-2025-2eur-f1-circuit-of-spa-francorchamps"
+      ]
+    },
+    {
+      "class_id": "be-2025-2eur-national-lottery",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        451966
+      ],
+      "eurio_ids": [
+        "be-2025-2eur-national-lottery"
+      ]
+    },
+    {
+      "class_id": "be-2eur-standard-2007",
+      "class_kind": "design_group_id",
+      "numista_ids": [
+        6292,
+        6293
+      ],
+      "eurio_ids": [
+        "be-2007-2eur-standard",
+        "be-2008-2eur-standard"
+      ]
+    },
+    {
+      "class_id": "cy-2008-2eur-standard",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        2180
+      ],
+      "eurio_ids": [
+        "cy-2008-2eur-standard"
+      ]
+    },
+    {
+      "class_id": "cy-2017-2eur-paphos-2017-european-capital-of-culture",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        112816
+      ],
+      "eurio_ids": [
+        "cy-2017-2eur-paphos-2017-european-capital-of-culture"
+      ]
+    },
+    {
+      "class_id": "cy-2020-2eur-30-years-since-the-foundation-of-the-cyprus-institute-of",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        225688
+      ],
+      "eurio_ids": [
+        "cy-2020-2eur-30-years-since-the-foundation-of-the-cyprus-institute-of"
+      ]
+    },
+    {
+      "class_id": "cy-2024-2eur-twenty-years-of-eu-accession",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        431867
+      ],
+      "eurio_ids": [
+        "cy-2024-2eur-twenty-years-of-eu-accession"
+      ]
+    },
+    {
+      "class_id": "de-2006-2eur-holstentor-in-lubeck-schleswig-holstein",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        2169
+      ],
+      "eurio_ids": [
+        "de-2006-2eur-holstentor-in-lubeck-schleswig-holstein"
+      ]
+    },
+    {
+      "class_id": "de-2007-2eur-schwerin-castle-mecklenburg-vorpommern",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        2201
+      ],
+      "eurio_ids": [
+        "de-2007-2eur-schwerin-castle-mecklenburg-vorpommern"
+      ]
+    },
+    {
+      "class_id": "de-2008-2eur-st-michaelis-church-hamburg",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        327881
+      ],
+      "eurio_ids": [
+        "de-2008-2eur-st-michaelis-church-hamburg"
+      ]
+    },
+    {
+      "class_id": "de-2009-2eur-ludwigskirche-in-saarbrucken-saarland",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        5054
+      ],
+      "eurio_ids": [
+        "de-2009-2eur-ludwigskirche-in-saarbrucken-saarland"
+      ]
+    },
+    {
+      "class_id": "de-2010-2eur-city-hall-and-roland-bremen",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        10069
+      ],
+      "eurio_ids": [
+        "de-2010-2eur-city-hall-and-roland-bremen"
+      ]
+    },
+    {
+      "class_id": "de-2011-2eur-cologne-cathedral-north-rhine-westphalia",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        18666
+      ],
+      "eurio_ids": [
+        "de-2011-2eur-cologne-cathedral-north-rhine-westphalia"
+      ]
+    },
+    {
+      "class_id": "de-2012-2eur-neuschwanstein-castle-near-fussen-bavaria",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        28321
+      ],
+      "eurio_ids": [
+        "de-2012-2eur-neuschwanstein-castle-near-fussen-bavaria"
+      ]
+    },
+    {
+      "class_id": "de-2013-2eur-50th-anniversary-of-the-signing-of-the-elysee-treaty-joint",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        41786
+      ],
+      "eurio_ids": [
+        "de-2013-2eur-50th-anniversary-of-the-signing-of-the-elysee-treaty-joint"
+      ]
+    },
+    {
+      "class_id": "de-2013-2eur-maulbronn-abbey-in-baden-wurttemberg",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        42149
+      ],
+      "eurio_ids": [
+        "de-2013-2eur-maulbronn-abbey-in-baden-wurttemberg"
+      ]
+    },
+    {
+      "class_id": "de-2014-2eur-st-michaels-church-in-hildesheim-lower-saxony",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        53570
+      ],
+      "eurio_ids": [
+        "de-2014-2eur-st-michaels-church-in-hildesheim-lower-saxony"
+      ]
+    },
+    {
+      "class_id": "de-2015-2eur-25-years-of-german-unity",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        284594
+      ],
+      "eurio_ids": [
+        "de-2015-2eur-25-years-of-german-unity"
+      ]
+    },
+    {
+      "class_id": "de-2016-2eur-zwinger-palace-in-dresden",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        80927
+      ],
+      "eurio_ids": [
+        "de-2016-2eur-zwinger-palace-in-dresden"
+      ]
+    },
+    {
+      "class_id": "de-2017-2eur-porta-nigra-in-trier",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        102445
+      ],
+      "eurio_ids": [
+        "de-2017-2eur-porta-nigra-in-trier"
+      ]
+    },
+    {
+      "class_id": "de-2018-2eur-100-years-since-the-birth-of-helmut-schmidt",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        132935
+      ],
+      "eurio_ids": [
+        "de-2018-2eur-100-years-since-the-birth-of-helmut-schmidt"
+      ]
+    },
+    {
+      "class_id": "de-2019-2eur-30-years-since-the-fall-of-the-berlin-wall-joint-issue-with",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        139058
+      ],
+      "eurio_ids": [
+        "de-2019-2eur-30-years-since-the-fall-of-the-berlin-wall-joint-issue-with"
+      ]
+    },
+    {
+      "class_id": "de-2020-2eur-50-years-since-the-kniefall-von-warschau",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        226447
+      ],
+      "eurio_ids": [
+        "de-2020-2eur-50-years-since-the-kniefall-von-warschau"
+      ]
+    },
+    {
+      "class_id": "de-2021-2eur-saxony-anhalt-s-cathedral-of-magdeburg",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        267621
+      ],
+      "eurio_ids": [
+        "de-2021-2eur-saxony-anhalt-s-cathedral-of-magdeburg"
+      ]
+    },
+    {
+      "class_id": "de-2022-2eur-thuringia-s-wartburg-castle-in-eisenach",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        324867
+      ],
+      "eurio_ids": [
+        "de-2022-2eur-thuringia-s-wartburg-castle-in-eisenach"
+      ]
+    },
+    {
+      "class_id": "de-2023-2eur-1275-birthday-of-charlemagne",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        352712
+      ],
+      "eurio_ids": [
+        "de-2023-2eur-1275-birthday-of-charlemagne"
+      ]
+    },
+    {
+      "class_id": "de-2024-2eur-175th-anniversary-of-the-paulskirche-constitution",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        394629
+      ],
+      "eurio_ids": [
+        "de-2024-2eur-175th-anniversary-of-the-paulskirche-constitution"
+      ]
+    },
+    {
+      "class_id": "de-2025-2eur-35-years-of-german-unity",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        439766
+      ],
+      "eurio_ids": [
+        "de-2025-2eur-35-years-of-german-unity"
+      ]
+    },
+    {
+      "class_id": "de-2026-2eur-konrad-adenauer",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        474550
+      ],
+      "eurio_ids": [
+        "de-2026-2eur-konrad-adenauer"
+      ]
+    },
+    {
+      "class_id": "de-2eur-standard-2002",
+      "class_kind": "design_group_id",
+      "numista_ids": [
+        112,
+        6323
+      ],
+      "eurio_ids": [
+        "de-2002-2eur-standard",
+        "de-2008-2eur-standard"
+      ]
+    },
+    {
+      "class_id": "ee-2011-2eur-standard",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        16593
+      ],
+      "eurio_ids": [
+        "ee-2011-2eur-standard"
+      ]
+    },
+    {
+      "class_id": "ee-2016-2eur-100-years-since-the-birth-of-paul-keres",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        80919
+      ],
+      "eurio_ids": [
+        "ee-2016-2eur-100-years-since-the-birth-of-paul-keres"
+      ]
+    },
+    {
+      "class_id": "ee-2017-2eur-estonias-road-to-independence",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        115286
+      ],
+      "eurio_ids": [
+        "ee-2017-2eur-estonias-road-to-independence"
+      ]
+    },
+    {
+      "class_id": "ee-2019-2eur-100-years-since-the-foundation-of-the-estonian-language",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        183116
+      ],
+      "eurio_ids": [
+        "ee-2019-2eur-100-years-since-the-foundation-of-the-estonian-language"
+      ]
+    },
+    {
+      "class_id": "ee-2019-2eur-150th-anniversary-of-the-first-estonian-song-festival",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        168218
+      ],
+      "eurio_ids": [
+        "ee-2019-2eur-150th-anniversary-of-the-first-estonian-song-festival"
+      ]
+    },
+    {
+      "class_id": "ee-2020-2eur-200-years-since-the-discovery-of-the-antarctic",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        193396
+      ],
+      "eurio_ids": [
+        "ee-2020-2eur-200-years-since-the-discovery-of-the-antarctic"
+      ]
+    },
+    {
+      "class_id": "ee-2021-2eur-wolf-the-national-mammal-of-estonia",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        287622
+      ],
+      "eurio_ids": [
+        "ee-2021-2eur-wolf-the-national-mammal-of-estonia"
+      ]
+    },
+    {
+      "class_id": "ee-2022-2eur-150-years-since-the-founding-of-the-society-of-estonian",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        321860
+      ],
+      "eurio_ids": [
+        "ee-2022-2eur-150-years-since-the-founding-of-the-society-of-estonian"
+      ]
+    },
+    {
+      "class_id": "ee-2022-2eur-glory-to-ukraine",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        332623
+      ],
+      "eurio_ids": [
+        "ee-2022-2eur-glory-to-ukraine"
+      ]
+    },
+    {
+      "class_id": "ee-2023-2eur-barn-swallow-the-national-bird-of-estonia",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        364450
+      ],
+      "eurio_ids": [
+        "ee-2023-2eur-barn-swallow-the-national-bird-of-estonia"
+      ]
+    },
+    {
+      "class_id": "ee-2024-2eur-cornflower-the-national-flower-of-estonia",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        415214
+      ],
+      "eurio_ids": [
+        "ee-2024-2eur-cornflower-the-national-flower-of-estonia"
+      ]
+    },
+    {
+      "class_id": "ee-2025-2eur-500-years-of-estonian-written-language",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        451746
+      ],
+      "eurio_ids": [
+        "ee-2025-2eur-500-years-of-estonian-written-language"
+      ]
+    },
+    {
+      "class_id": "es-2005-2eur-4th-centenary-of-the-first-edition-of-miguel-de-cervantes",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        2168
+      ],
+      "eurio_ids": [
+        "es-2005-2eur-4th-centenary-of-the-first-edition-of-miguel-de-cervantes"
+      ]
+    },
+    {
+      "class_id": "es-2010-2eur-historic-centre-of-cordoba",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        10364
+      ],
+      "eurio_ids": [
+        "es-2010-2eur-historic-centre-of-cordoba"
+      ]
+    },
+    {
+      "class_id": "es-2011-2eur-patio-de-los-leones-of-the-alhambra-generalife-and-albayzin",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        19979
+      ],
+      "eurio_ids": [
+        "es-2011-2eur-patio-de-los-leones-of-the-alhambra-generalife-and-albayzin"
+      ]
+    },
+    {
+      "class_id": "es-2012-2eur-burgos-cathedral",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        28193
+      ],
+      "eurio_ids": [
+        "es-2012-2eur-burgos-cathedral"
+      ]
+    },
+    {
+      "class_id": "es-2013-2eur-monastery-and-site-of-the-escorial-madrid",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        42976
+      ],
+      "eurio_ids": [
+        "es-2013-2eur-monastery-and-site-of-the-escorial-madrid"
+      ]
+    },
+    {
+      "class_id": "es-2014-2eur-king-felipe-vi-s-accession-to-the-throne",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        67019
+      ],
+      "eurio_ids": [
+        "es-2014-2eur-king-felipe-vi-s-accession-to-the-throne"
+      ]
+    },
+    {
+      "class_id": "es-2014-2eur-park-guell-work-of-antoni-gaudi",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        57612
+      ],
+      "eurio_ids": [
+        "es-2014-2eur-park-guell-work-of-antoni-gaudi"
+      ]
+    },
+    {
+      "class_id": "es-2015-2eur-cave-of-altamira-and-paleolithic-cave-art-of-northern-spain",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        69425
+      ],
+      "eurio_ids": [
+        "es-2015-2eur-cave-of-altamira-and-paleolithic-cave-art-of-northern-spain"
+      ]
+    },
+    {
+      "class_id": "es-2016-2eur-old-city-of-segovia-and-its-aqueduct",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        81058
+      ],
+      "eurio_ids": [
+        "es-2016-2eur-old-city-of-segovia-and-its-aqueduct"
+      ]
+    },
+    {
+      "class_id": "es-2017-2eur-monuments-of-oviedo-and-the-kingdom-of-asturias-santa-maria",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        101994
+      ],
+      "eurio_ids": [
+        "es-2017-2eur-monuments-of-oviedo-and-the-kingdom-of-asturias-santa-maria"
+      ]
+    },
+    {
+      "class_id": "es-2018-2eur-old-town-of-santiago-de-compostela",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        131882
+      ],
+      "eurio_ids": [
+        "es-2018-2eur-old-town-of-santiago-de-compostela"
+      ]
+    },
+    {
+      "class_id": "es-2019-2eur-old-town-of-avila-with-its-extra-muros-churches",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        155939
+      ],
+      "eurio_ids": [
+        "es-2019-2eur-old-town-of-avila-with-its-extra-muros-churches"
+      ]
+    },
+    {
+      "class_id": "es-2020-2eur-mudejar-architecture-of-aragon",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        193508
+      ],
+      "eurio_ids": [
+        "es-2020-2eur-mudejar-architecture-of-aragon"
+      ]
+    },
+    {
+      "class_id": "es-2021-2eur-historic-city-of-toledo",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        264789
+      ],
+      "eurio_ids": [
+        "es-2021-2eur-historic-city-of-toledo"
+      ]
+    },
+    {
+      "class_id": "es-2022-2eur-500-years-since-the-completion-of-the-first-circumnavigation",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        323480
+      ],
+      "eurio_ids": [
+        "es-2022-2eur-500-years-since-the-completion-of-the-first-circumnavigation"
+      ]
+    },
+    {
+      "class_id": "es-2022-2eur-garajonay-national-park-la-gomera",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        323476
+      ],
+      "eurio_ids": [
+        "es-2022-2eur-garajonay-national-park-la-gomera"
+      ]
+    },
+    {
+      "class_id": "es-2023-2eur-old-town-of-caceres",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        357033
+      ],
+      "eurio_ids": [
+        "es-2023-2eur-old-town-of-caceres"
+      ]
+    },
+    {
+      "class_id": "es-2023-2eur-the-spanish-presidency-of-the-council-of-the-eu",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        368770
+      ],
+      "eurio_ids": [
+        "es-2023-2eur-the-spanish-presidency-of-the-council-of-the-eu"
+      ]
+    },
+    {
+      "class_id": "es-2024-2eur-200th-anniversary-of-the-founding-of-national-police-as-a",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        401375
+      ],
+      "eurio_ids": [
+        "es-2024-2eur-200th-anniversary-of-the-founding-of-national-police-as-a"
+      ]
+    },
+    {
+      "class_id": "es-2024-2eur-cathedral-alcazar-and-general-archive-of-the-indies-in",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        401373
+      ],
+      "eurio_ids": [
+        "es-2024-2eur-cathedral-alcazar-and-general-archive-of-the-indies-in"
+      ]
+    },
+    {
+      "class_id": "es-2025-2eur-old-city-of-salamanca",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        457922
+      ],
+      "eurio_ids": [
+        "es-2025-2eur-old-city-of-salamanca"
+      ]
+    },
+    {
+      "class_id": "es-2026-2eur-monastery-of-poblet",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        557309
+      ],
+      "eurio_ids": [
+        "es-2026-2eur-monastery-of-poblet"
+      ]
+    },
+    {
+      "class_id": "es-2026-2eur-protection-rights-and-inclusion",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        557310
+      ],
+      "eurio_ids": [
+        "es-2026-2eur-protection-rights-and-inclusion"
+      ]
+    },
+    {
+      "class_id": "es-2eur-standard-1999",
+      "class_kind": "design_group_id",
+      "numista_ids": [
+        88,
+        6364,
+        10862,
+        69470
+      ],
+      "eurio_ids": [
+        "es-1999-2eur-standard",
+        "es-2007-2eur-standard",
+        "es-2010-2eur-standard",
+        "es-2015-2eur-standard"
+      ]
+    },
+    {
+      "class_id": "fi-2004-2eur-fifth-enlargement-of-the-european-union-in-2004",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        2189
+      ],
+      "eurio_ids": [
+        "fi-2004-2eur-fifth-enlargement-of-the-european-union-in-2004"
+      ]
+    },
+    {
+      "class_id": "fi-2005-2eur-60th-anniversary-of-the-establishment-of-the-united-nations",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        2194
+      ],
+      "eurio_ids": [
+        "fi-2005-2eur-60th-anniversary-of-the-establishment-of-the-united-nations"
+      ]
+    },
+    {
+      "class_id": "fi-2006-2eur-1st-centenary-of-the-introduction-of-universal-and-equal",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        2198
+      ],
+      "eurio_ids": [
+        "fi-2006-2eur-1st-centenary-of-the-introduction-of-universal-and-equal"
+      ]
+    },
+    {
+      "class_id": "fi-2007-2eur-90th-anniversary-of-finlands-independence",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        2203
+      ],
+      "eurio_ids": [
+        "fi-2007-2eur-90th-anniversary-of-finlands-independence"
+      ]
+    },
+    {
+      "class_id": "fi-2007-2eur-standard",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        8714
+      ],
+      "eurio_ids": [
+        "fi-2007-2eur-standard"
+      ]
+    },
+    {
+      "class_id": "fi-2008-2eur-60th-anniversary-of-the-universal-declaration-of-human",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        4292
+      ],
+      "eurio_ids": [
+        "fi-2008-2eur-60th-anniversary-of-the-universal-declaration-of-human"
+      ]
+    },
+    {
+      "class_id": "fi-2009-2eur-200th-anniversary-of-finnish-autonomy",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        9174
+      ],
+      "eurio_ids": [
+        "fi-2009-2eur-200th-anniversary-of-finnish-autonomy"
+      ]
+    },
+    {
+      "class_id": "fi-2010-2eur-currency-decree-of-1860-granting-finland-the-right-to-issue",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        16111
+      ],
+      "eurio_ids": [
+        "fi-2010-2eur-currency-decree-of-1860-granting-finland-the-right-to-issue"
+      ]
+    },
+    {
+      "class_id": "fi-2011-2eur-200th-anniversary-of-the-bank-of-finland",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        26165
+      ],
+      "eurio_ids": [
+        "fi-2011-2eur-200th-anniversary-of-the-bank-of-finland"
+      ]
+    },
+    {
+      "class_id": "fi-2012-2eur-150-years-helene-schjerfbeck",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        38356
+      ],
+      "eurio_ids": [
+        "fi-2012-2eur-150-years-helene-schjerfbeck"
+      ]
+    },
+    {
+      "class_id": "fi-2013-2eur-125th-anniversary-of-the-birth-of-nobel-prize-winning",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        51670
+      ],
+      "eurio_ids": [
+        "fi-2013-2eur-125th-anniversary-of-the-birth-of-nobel-prize-winning"
+      ]
+    },
+    {
+      "class_id": "fi-2013-2eur-150th-anniversary-of-the-parliament-of-1863-when-regular",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        48329
+      ],
+      "eurio_ids": [
+        "fi-2013-2eur-150th-anniversary-of-the-parliament-of-1863-when-regular"
+      ]
+    },
+    {
+      "class_id": "fi-2014-2eur-100-years-since-the-birth-of-ilmari-tapiovaara",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        66921
+      ],
+      "eurio_ids": [
+        "fi-2014-2eur-100-years-since-the-birth-of-ilmari-tapiovaara"
+      ]
+    },
+    {
+      "class_id": "fi-2014-2eur-100-years-since-the-birth-of-tove-jansson",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        61715
+      ],
+      "eurio_ids": [
+        "fi-2014-2eur-100-years-since-the-birth-of-tove-jansson"
+      ]
+    },
+    {
+      "class_id": "fi-2015-2eur-150-years-since-the-birth-of-akseli-gallen-kallela",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        77165
+      ],
+      "eurio_ids": [
+        "fi-2015-2eur-150-years-since-the-birth-of-akseli-gallen-kallela"
+      ]
+    },
+    {
+      "class_id": "fi-2015-2eur-150-years-since-the-birth-of-jean-sibelius",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        69852
+      ],
+      "eurio_ids": [
+        "fi-2015-2eur-150-years-since-the-birth-of-jean-sibelius"
+      ]
+    },
+    {
+      "class_id": "fi-2016-2eur-100th-anniversary-of-the-birth-of-georg-henrik-von-wright",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        93999
+      ],
+      "eurio_ids": [
+        "fi-2016-2eur-100th-anniversary-of-the-birth-of-georg-henrik-von-wright"
+      ]
+    },
+    {
+      "class_id": "fi-2016-2eur-90th-anniversary-of-the-death-of-eino-leino",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        86837
+      ],
+      "eurio_ids": [
+        "fi-2016-2eur-90th-anniversary-of-the-death-of-eino-leino"
       ]
     },
     {
@@ -52,6 +1374,238 @@
       ]
     },
     {
+      "class_id": "fi-2017-2eur-finnish-nature",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        124447
+      ],
+      "eurio_ids": [
+        "fi-2017-2eur-finnish-nature"
+      ]
+    },
+    {
+      "class_id": "fi-2018-2eur-finnish-sauna-culture",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        143884
+      ],
+      "eurio_ids": [
+        "fi-2018-2eur-finnish-sauna-culture"
+      ]
+    },
+    {
+      "class_id": "fi-2018-2eur-koli-national-park",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        141243
+      ],
+      "eurio_ids": [
+        "fi-2018-2eur-koli-national-park"
+      ]
+    },
+    {
+      "class_id": "fi-2019-2eur-constitution-act-of-1919",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        182638
+      ],
+      "eurio_ids": [
+        "fi-2019-2eur-constitution-act-of-1919"
+      ]
+    },
+    {
+      "class_id": "fi-2020-2eur-100-years-since-the-birth-of-vaino-linna",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        241918
+      ],
+      "eurio_ids": [
+        "fi-2020-2eur-100-years-since-the-birth-of-vaino-linna"
+      ]
+    },
+    {
+      "class_id": "fi-2020-2eur-100-years-since-the-foundation-of-the-university-of-turku",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        220248
+      ],
+      "eurio_ids": [
+        "fi-2020-2eur-100-years-since-the-foundation-of-the-university-of-turku"
+      ]
+    },
+    {
+      "class_id": "fi-2021-2eur-journalism-and-open-communication-in-support-of-finnish",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        284816
+      ],
+      "eurio_ids": [
+        "fi-2021-2eur-journalism-and-open-communication-in-support-of-finnish"
+      ]
+    },
+    {
+      "class_id": "fi-2022-2eur-100th-anniversary-of-the-finnish-national-ballet",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        331204
+      ],
+      "eurio_ids": [
+        "fi-2022-2eur-100th-anniversary-of-the-finnish-national-ballet"
+      ]
+    },
+    {
+      "class_id": "fi-2023-2eur-first-finnish-nature-conservation-act",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        353329
+      ],
+      "eurio_ids": [
+        "fi-2023-2eur-first-finnish-nature-conservation-act"
+      ]
+    },
+    {
+      "class_id": "fi-2023-2eur-social-and-health-services",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        371497
+      ],
+      "eurio_ids": [
+        "fi-2023-2eur-social-and-health-services"
+      ]
+    },
+    {
+      "class_id": "fi-2024-2eur-elections-and-democracy",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        401377
+      ],
+      "eurio_ids": [
+        "fi-2024-2eur-elections-and-democracy"
+      ]
+    },
+    {
+      "class_id": "fi-2024-2eur-finnish-architecture",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        432150
+      ],
+      "eurio_ids": [
+        "fi-2024-2eur-finnish-architecture"
+      ]
+    },
+    {
+      "class_id": "fi-2025-2eur-finland-sweden-athletics-international-100-years",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        481105
+      ],
+      "eurio_ids": [
+        "fi-2025-2eur-finland-sweden-athletics-international-100-years"
+      ]
+    },
+    {
+      "class_id": "fi-2025-2eur-finnish-state-visits-diplomacy-and-foreign-policy",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        467198
+      ],
+      "eurio_ids": [
+        "fi-2025-2eur-finnish-state-visits-diplomacy-and-foreign-policy"
+      ]
+    },
+    {
+      "class_id": "fi-2eur-standard-1999",
+      "class_kind": "design_group_id",
+      "numista_ids": [
+        96,
+        259433
+      ],
+      "eurio_ids": [
+        "fi-1999-2eur-standard",
+        "fi-2006-2eur-standard"
+      ]
+    },
+    {
+      "class_id": "fr-2008-2eur-french-presidency-of-the-council-of-the-european-union",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        3561
+      ],
+      "eurio_ids": [
+        "fr-2008-2eur-french-presidency-of-the-council-of-the-european-union"
+      ]
+    },
+    {
+      "class_id": "fr-2010-2eur-appeal-of-18-june",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        11526
+      ],
+      "eurio_ids": [
+        "fr-2010-2eur-appeal-of-18-june"
+      ]
+    },
+    {
+      "class_id": "fr-2011-2eur-30th-anniversary-of-fete-de-la-musique",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        22431
+      ],
+      "eurio_ids": [
+        "fr-2011-2eur-30th-anniversary-of-fete-de-la-musique"
+      ]
+    },
+    {
+      "class_id": "fr-2012-2eur-100th-birthday-of-abbe-pierre",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        35856
+      ],
+      "eurio_ids": [
+        "fr-2012-2eur-100th-birthday-of-abbe-pierre"
+      ]
+    },
+    {
+      "class_id": "fr-2013-2eur-150th-anniversary-of-the-birth-of-pierre-de-coubertin",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        45827
+      ],
+      "eurio_ids": [
+        "fr-2013-2eur-150th-anniversary-of-the-birth-of-pierre-de-coubertin"
+      ]
+    },
+    {
+      "class_id": "fr-2013-2eur-50th-anniversary-of-the-signing-of-the-elysee-treaty-joint",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        41904
+      ],
+      "eurio_ids": [
+        "fr-2013-2eur-50th-anniversary-of-the-signing-of-the-elysee-treaty-joint"
+      ]
+    },
+    {
+      "class_id": "fr-2014-2eur-world-aids-day",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        67424
+      ],
+      "eurio_ids": [
+        "fr-2014-2eur-world-aids-day"
+      ]
+    },
+    {
+      "class_id": "fr-2015-2eur-70-years-of-peace-in-europe",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        77126
+      ],
+      "eurio_ids": [
+        "fr-2015-2eur-70-years-of-peace-in-europe"
+      ]
+    },
+    {
       "class_id": "fr-2016-2eur-100-years-since-the-birth-of-francois-mitterrand",
       "class_kind": "eurio_id",
       "numista_ids": [
@@ -62,6 +1616,710 @@
       ]
     },
     {
+      "class_id": "fr-2016-2eur-xv-european-football-championship",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        82237
+      ],
+      "eurio_ids": [
+        "fr-2016-2eur-xv-european-football-championship"
+      ]
+    },
+    {
+      "class_id": "fr-2017-2eur-100-years-since-the-death-of-auguste-rodin",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        124498
+      ],
+      "eurio_ids": [
+        "fr-2017-2eur-100-years-since-the-death-of-auguste-rodin"
+      ]
+    },
+    {
+      "class_id": "fr-2018-2eur-bleuet-de-france",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        134283
+      ],
+      "eurio_ids": [
+        "fr-2018-2eur-bleuet-de-france"
+      ]
+    },
+    {
+      "class_id": "fr-2018-2eur-simone-veil",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        141382
+      ],
+      "eurio_ids": [
+        "fr-2018-2eur-simone-veil"
+      ]
+    },
+    {
+      "class_id": "fr-2019-2eur-30-years-since-the-fall-of-the-berlin-wall-joint-issue-with",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        160246
+      ],
+      "eurio_ids": [
+        "fr-2019-2eur-30-years-since-the-fall-of-the-berlin-wall-joint-issue-with"
+      ]
+    },
+    {
+      "class_id": "fr-2019-2eur-60-years-since-the-creation-of-asterix",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        167978
+      ],
+      "eurio_ids": [
+        "fr-2019-2eur-60-years-since-the-creation-of-asterix"
+      ]
+    },
+    {
+      "class_id": "fr-2020-2eur-charles-de-gaulle",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        192990
+      ],
+      "eurio_ids": [
+        "fr-2020-2eur-charles-de-gaulle"
+      ]
+    },
+    {
+      "class_id": "fr-2020-2eur-medical-research",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        239405
+      ],
+      "eurio_ids": [
+        "fr-2020-2eur-medical-research"
+      ]
+    },
+    {
+      "class_id": "fr-2021-2eur-75-years-since-the-foundation-of-unicef",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        304119
+      ],
+      "eurio_ids": [
+        "fr-2021-2eur-75-years-since-the-foundation-of-unicef"
+      ]
+    },
+    {
+      "class_id": "fr-2022-2eur-90th-anniversary-of-president-jacques-chirac-s-birth",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        341320
+      ],
+      "eurio_ids": [
+        "fr-2022-2eur-90th-anniversary-of-president-jacques-chirac-s-birth"
+      ]
+    },
+    {
+      "class_id": "fr-2022-2eur-standard",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        314962
+      ],
+      "eurio_ids": [
+        "fr-2022-2eur-standard"
+      ]
+    },
+    {
+      "class_id": "fr-2023-2eur-2023-rugby-world-cup",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        352565
+      ],
+      "eurio_ids": [
+        "fr-2023-2eur-2023-rugby-world-cup"
+      ]
+    },
+    {
+      "class_id": "fr-2024-2eur-summer-olympics-in-paris-2024",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        419643
+      ],
+      "eurio_ids": [
+        "fr-2024-2eur-summer-olympics-in-paris-2024"
+      ]
+    },
+    {
+      "class_id": "fr-2025-2eur-louvre-museum",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        455096
+      ],
+      "eurio_ids": [
+        "fr-2025-2eur-louvre-museum"
+      ]
+    },
+    {
+      "class_id": "fr-2025-2eur-notre-dame-paris",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        521871
+      ],
+      "eurio_ids": [
+        "fr-2025-2eur-notre-dame-paris"
+      ]
+    },
+    {
+      "class_id": "fr-2026-2eur-antoine-de-saint-exupery",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        556437
+      ],
+      "eurio_ids": [
+        "fr-2026-2eur-antoine-de-saint-exupery"
+      ]
+    },
+    {
+      "class_id": "fr-2eur-standard-1999",
+      "class_kind": "design_group_id",
+      "numista_ids": [
+        104,
+        6376
+      ],
+      "eurio_ids": [
+        "fr-1999-2eur-standard",
+        "fr-2007-2eur-standard"
+      ]
+    },
+    {
+      "class_id": "gr-2002-2eur-standard",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        120
+      ],
+      "eurio_ids": [
+        "gr-2002-2eur-standard"
+      ]
+    },
+    {
+      "class_id": "gr-2004-2eur-summer-olympics-in-athens-2004",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        2190
+      ],
+      "eurio_ids": [
+        "gr-2004-2eur-summer-olympics-in-athens-2004"
+      ]
+    },
+    {
+      "class_id": "gr-2010-2eur-25th-centenary-of-the-battle-of-marathon",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        16063
+      ],
+      "eurio_ids": [
+        "gr-2010-2eur-25th-centenary-of-the-battle-of-marathon"
+      ]
+    },
+    {
+      "class_id": "gr-2011-2eur-2011-special-olympics-world-summer-games",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        22333
+      ],
+      "eurio_ids": [
+        "gr-2011-2eur-2011-special-olympics-world-summer-games"
+      ]
+    },
+    {
+      "class_id": "gr-2013-2eur-100th-anniversary-of-the-union-of-crete-with-greece",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        49944
+      ],
+      "eurio_ids": [
+        "gr-2013-2eur-100th-anniversary-of-the-union-of-crete-with-greece"
+      ]
+    },
+    {
+      "class_id": "gr-2013-2eur-2400th-anniversary-of-the-founding-of-the-platonic-academy",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        49903
+      ],
+      "eurio_ids": [
+        "gr-2013-2eur-2400th-anniversary-of-the-founding-of-the-platonic-academy"
+      ]
+    },
+    {
+      "class_id": "gr-2014-2eur-150th-anniversary-of-the-union-of-the-ionian-islands-with",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        65017
+      ],
+      "eurio_ids": [
+        "gr-2014-2eur-150th-anniversary-of-the-union-of-the-ionian-islands-with"
+      ]
+    },
+    {
+      "class_id": "gr-2015-2eur-75-years-since-the-death-of-spyridon-louis",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        76636
+      ],
+      "eurio_ids": [
+        "gr-2015-2eur-75-years-since-the-death-of-spyridon-louis"
+      ]
+    },
+    {
+      "class_id": "gr-2016-2eur-120-years-since-the-birth-of-dimitri-mitropoulos",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        86465
+      ],
+      "eurio_ids": [
+        "gr-2016-2eur-120-years-since-the-birth-of-dimitri-mitropoulos"
+      ]
+    },
+    {
+      "class_id": "gr-2016-2eur-150-years-since-the-arkadi-monastery-torching",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        86464
+      ],
+      "eurio_ids": [
+        "gr-2016-2eur-150-years-since-the-arkadi-monastery-torching"
+      ]
+    },
+    {
+      "class_id": "gr-2017-2eur-60-years-since-the-death-of-nikos-kazantzakis",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        117572
+      ],
+      "eurio_ids": [
+        "gr-2017-2eur-60-years-since-the-death-of-nikos-kazantzakis"
+      ]
+    },
+    {
+      "class_id": "gr-2017-2eur-archaeological-site-of-philippi",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        118557
+      ],
+      "eurio_ids": [
+        "gr-2017-2eur-archaeological-site-of-philippi"
+      ]
+    },
+    {
+      "class_id": "gr-2018-2eur-70th-anniversary-of-the-union-of-the-dodecanese-with-greece",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        141389
+      ],
+      "eurio_ids": [
+        "gr-2018-2eur-70th-anniversary-of-the-union-of-the-dodecanese-with-greece"
+      ]
+    },
+    {
+      "class_id": "gr-2018-2eur-75-years-since-the-death-of-kostis-palamas",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        141403
+      ],
+      "eurio_ids": [
+        "gr-2018-2eur-75-years-since-the-death-of-kostis-palamas"
+      ]
+    },
+    {
+      "class_id": "gr-2019-2eur-100-years-since-the-birth-of-manolis-andronikos",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        169092
+      ],
+      "eurio_ids": [
+        "gr-2019-2eur-100-years-since-the-birth-of-manolis-andronikos"
+      ]
+    },
+    {
+      "class_id": "gr-2019-2eur-150-years-since-the-death-of-andreas-kalvos",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        169094
+      ],
+      "eurio_ids": [
+        "gr-2019-2eur-150-years-since-the-death-of-andreas-kalvos"
+      ]
+    },
+    {
+      "class_id": "gr-2020-2eur-100th-anniversary-of-the-union-of-thrace-with-greece",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        214727
+      ],
+      "eurio_ids": [
+        "gr-2020-2eur-100th-anniversary-of-the-union-of-thrace-with-greece"
+      ]
+    },
+    {
+      "class_id": "gr-2020-2eur-25th-centenary-of-the-battle-of-thermopylae",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        198590
+      ],
+      "eurio_ids": [
+        "gr-2020-2eur-25th-centenary-of-the-battle-of-thermopylae"
+      ]
+    },
+    {
+      "class_id": "gr-2021-2eur-200-years-since-the-greek-revolution",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        261607
+      ],
+      "eurio_ids": [
+        "gr-2021-2eur-200-years-since-the-greek-revolution"
+      ]
+    },
+    {
+      "class_id": "gr-2022-2eur-200-years-since-the-first-greek-constitution",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        331432
+      ],
+      "eurio_ids": [
+        "gr-2022-2eur-200-years-since-the-first-greek-constitution"
+      ]
+    },
+    {
+      "class_id": "gr-2023-2eur-100th-anniversary-of-the-birth-of-maria-callas",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        365351
+      ],
+      "eurio_ids": [
+        "gr-2023-2eur-100th-anniversary-of-the-birth-of-maria-callas"
+      ]
+    },
+    {
+      "class_id": "gr-2023-2eur-150th-anniversary-the-birth-of-constantin-caratheodory",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        365354
+      ],
+      "eurio_ids": [
+        "gr-2023-2eur-150th-anniversary-the-birth-of-constantin-caratheodory"
+      ]
+    },
+    {
+      "class_id": "gr-2024-2eur-100th-anniversary-of-the-birth-of-childrens-book-author",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        421064
+      ],
+      "eurio_ids": [
+        "gr-2024-2eur-100th-anniversary-of-the-birth-of-childrens-book-author"
+      ]
+    },
+    {
+      "class_id": "gr-2024-2eur-50th-anniversary-of-the-restoration-of-democracy",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        421060
+      ],
+      "eurio_ids": [
+        "gr-2024-2eur-50th-anniversary-of-the-restoration-of-democracy"
+      ]
+    },
+    {
+      "class_id": "gr-2025-2eur-100th-anniversary-of-the-birth-of-mikis-theodorakis",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        481973
+      ],
+      "eurio_ids": [
+        "gr-2025-2eur-100th-anniversary-of-the-birth-of-mikis-theodorakis"
+      ]
+    },
+    {
+      "class_id": "gr-2025-2eur-200th-anniversary-of-the-death-of-laskarina-bouboulina",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        481971
+      ],
+      "eurio_ids": [
+        "gr-2025-2eur-200th-anniversary-of-the-death-of-laskarina-bouboulina"
+      ]
+    },
+    {
+      "class_id": "hr-2023-2eur-standard",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        338339
+      ],
+      "eurio_ids": [
+        "hr-2023-2eur-standard"
+      ]
+    },
+    {
+      "class_id": "hr-2023-2eur-the-introduction-of-the-euro-as-the-official-currency-of",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        373926
+      ],
+      "eurio_ids": [
+        "hr-2023-2eur-the-introduction-of-the-euro-as-the-official-currency-of"
+      ]
+    },
+    {
+      "class_id": "hr-2024-2eur-marko-marulic",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        437781
+      ],
+      "eurio_ids": [
+        "hr-2024-2eur-marko-marulic"
+      ]
+    },
+    {
+      "class_id": "hr-2024-2eur-varazdin-stari-grad-varazdin-the-old-town-of-varazdin",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        400974
+      ],
+      "eurio_ids": [
+        "hr-2024-2eur-varazdin-stari-grad-varazdin-the-old-town-of-varazdin"
+      ]
+    },
+    {
+      "class_id": "hr-2025-2eur-1-100th-anniversary-of-the-croatian-kingdom-and-the",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        474230
+      ],
+      "eurio_ids": [
+        "hr-2025-2eur-1-100th-anniversary-of-the-croatian-kingdom-and-the"
+      ]
+    },
+    {
+      "class_id": "hr-2025-2eur-pula-grad-pula-arena",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        514512
+      ],
+      "eurio_ids": [
+        "hr-2025-2eur-pula-grad-pula-arena"
+      ]
+    },
+    {
+      "class_id": "ie-2016-2eur-100-years-since-easter-rising",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        80921
+      ],
+      "eurio_ids": [
+        "ie-2016-2eur-100-years-since-easter-rising"
+      ]
+    },
+    {
+      "class_id": "ie-2019-2eur-centenary-of-the-first-sitting-of-dail-eireann",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        151940
+      ],
+      "eurio_ids": [
+        "ie-2019-2eur-centenary-of-the-first-sitting-of-dail-eireann"
+      ]
+    },
+    {
+      "class_id": "ie-2023-2eur-50th-anniversary-of-irelands-membership-of-the-european",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        368762
+      ],
+      "eurio_ids": [
+        "ie-2023-2eur-50th-anniversary-of-irelands-membership-of-the-european"
+      ]
+    },
+    {
+      "class_id": "ie-2eur-standard-2002",
+      "class_kind": "design_group_id",
+      "numista_ids": [
+        128,
+        6334
+      ],
+      "eurio_ids": [
+        "ie-2002-2eur-standard",
+        "ie-2007-2eur-standard"
+      ]
+    },
+    {
+      "class_id": "it-2002-2eur-standard",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        136
+      ],
+      "eurio_ids": [
+        "it-2002-2eur-standard"
+      ]
+    },
+    {
+      "class_id": "it-2004-2eur-fifth-decade-of-the-world-food-programme",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        2191
+      ],
+      "eurio_ids": [
+        "it-2004-2eur-fifth-decade-of-the-world-food-programme"
+      ]
+    },
+    {
+      "class_id": "it-2005-2eur-1st-anniversary-of-the-signing-of-the-european-constitution",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        2195
+      ],
+      "eurio_ids": [
+        "it-2005-2eur-1st-anniversary-of-the-signing-of-the-european-constitution"
+      ]
+    },
+    {
+      "class_id": "it-2006-2eur-winter-olympics-in-turin-2006",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        2199
+      ],
+      "eurio_ids": [
+        "it-2006-2eur-winter-olympics-in-turin-2006"
+      ]
+    },
+    {
+      "class_id": "it-2008-2eur-60th-anniversary-of-the-universal-declaration-of-human",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        3731
+      ],
+      "eurio_ids": [
+        "it-2008-2eur-60th-anniversary-of-the-universal-declaration-of-human"
+      ]
+    },
+    {
+      "class_id": "it-2008-2eur-standard",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        6384
+      ],
+      "eurio_ids": [
+        "it-2008-2eur-standard"
+      ]
+    },
+    {
+      "class_id": "it-2009-2eur-200th-birthday-of-louis-braille",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        5070
+      ],
+      "eurio_ids": [
+        "it-2009-2eur-200th-birthday-of-louis-braille"
+      ]
+    },
+    {
+      "class_id": "it-2010-2eur-200th-birthday-of-camillo-benso-conte-di-cavour",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        14445
+      ],
+      "eurio_ids": [
+        "it-2010-2eur-200th-birthday-of-camillo-benso-conte-di-cavour"
+      ]
+    },
+    {
+      "class_id": "it-2011-2eur-150th-anniversary-of-italian-unification",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        20892
+      ],
+      "eurio_ids": [
+        "it-2011-2eur-150th-anniversary-of-italian-unification"
+      ]
+    },
+    {
+      "class_id": "it-2012-2eur-100-years-since-the-death-of-giovanni-pascoli",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        38359
+      ],
+      "eurio_ids": [
+        "it-2012-2eur-100-years-since-the-death-of-giovanni-pascoli"
+      ]
+    },
+    {
+      "class_id": "it-2013-2eur-200-years-since-the-birth-of-giuseppe-verdi",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        45254
+      ],
+      "eurio_ids": [
+        "it-2013-2eur-200-years-since-the-birth-of-giuseppe-verdi"
+      ]
+    },
+    {
+      "class_id": "it-2013-2eur-700th-birthday-of-giovanni-boccaccio",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        50746
+      ],
+      "eurio_ids": [
+        "it-2013-2eur-700th-birthday-of-giovanni-boccaccio"
+      ]
+    },
+    {
+      "class_id": "it-2014-2eur-200th-anniversary-of-the-carabinieri",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        61828
+      ],
+      "eurio_ids": [
+        "it-2014-2eur-200th-anniversary-of-the-carabinieri"
+      ]
+    },
+    {
+      "class_id": "it-2014-2eur-450-years-since-the-birth-of-galileo-galilei",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        64092
+      ],
+      "eurio_ids": [
+        "it-2014-2eur-450-years-since-the-birth-of-galileo-galilei"
+      ]
+    },
+    {
+      "class_id": "it-2015-2eur-750-years-since-the-birth-of-dante-alighieri",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        74627
+      ],
+      "eurio_ids": [
+        "it-2015-2eur-750-years-since-the-birth-of-dante-alighieri"
+      ]
+    },
+    {
+      "class_id": "it-2015-2eur-universal-exposition-expo-2015-in-milan",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        72035
+      ],
+      "eurio_ids": [
+        "it-2015-2eur-universal-exposition-expo-2015-in-milan"
+      ]
+    },
+    {
+      "class_id": "it-2016-2eur-2200-years-since-the-death-of-plautus",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        84714
+      ],
+      "eurio_ids": [
+        "it-2016-2eur-2200-years-since-the-death-of-plautus"
+      ]
+    },
+    {
       "class_id": "it-2016-2eur-550-years-since-the-death-of-donatello",
       "class_kind": "eurio_id",
       "numista_ids": [
@@ -69,6 +2327,1730 @@
       ],
       "eurio_ids": [
         "it-2016-2eur-550-years-since-the-death-of-donatello"
+      ]
+    },
+    {
+      "class_id": "it-2017-2eur-400-years-since-the-completion-of-st-marks-basilica",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        107086
+      ],
+      "eurio_ids": [
+        "it-2017-2eur-400-years-since-the-completion-of-st-marks-basilica"
+      ]
+    },
+    {
+      "class_id": "it-2018-2eur-60-years-since-the-formation-of-the-ministry-of-health",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        132892
+      ],
+      "eurio_ids": [
+        "it-2018-2eur-60-years-since-the-formation-of-the-ministry-of-health"
+      ]
+    },
+    {
+      "class_id": "it-2022-2eur-30th-anniversary-of-the-death-of-giovanni-falcone-and-paolo",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        331445
+      ],
+      "eurio_ids": [
+        "it-2022-2eur-30th-anniversary-of-the-death-of-giovanni-falcone-and-paolo"
+      ]
+    },
+    {
+      "class_id": "lt-2018-2eur-lithuanias-independence-centenary-song-celebration",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        132495
+      ],
+      "eurio_ids": [
+        "lt-2018-2eur-lithuanias-independence-centenary-song-celebration"
+      ]
+    },
+    {
+      "class_id": "lt-2025-2eur-lithuania-minor",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        461086
+      ],
+      "eurio_ids": [
+        "lt-2025-2eur-lithuania-minor"
+      ]
+    },
+    {
+      "class_id": "lu-2014-2eur-175th-anniversary-of-the-luxembourgs-independence",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        65439
+      ],
+      "eurio_ids": [
+        "lu-2014-2eur-175th-anniversary-of-the-luxembourgs-independence"
+      ]
+    },
+    {
+      "class_id": "lu-2019-2eur-100th-anniversary-of-grand-duchess-charlottes-accession-to",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        180495
+      ],
+      "eurio_ids": [
+        "lu-2019-2eur-100th-anniversary-of-grand-duchess-charlottes-accession-to"
+      ]
+    },
+    {
+      "class_id": "lu-2020-2eur-birth-of-prince-charles-of-luxembourg",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        196798
+      ],
+      "eurio_ids": [
+        "lu-2020-2eur-birth-of-prince-charles-of-luxembourg"
+      ]
+    },
+    {
+      "class_id": "lv-2015-2eur-stork",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        69614
+      ],
+      "eurio_ids": [
+        "lv-2015-2eur-stork"
+      ]
+    },
+    {
+      "class_id": "lv-2016-2eur-vidzeme",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        85889
+      ],
+      "eurio_ids": [
+        "lv-2016-2eur-vidzeme"
+      ]
+    },
+    {
+      "class_id": "lv-2018-2eur-zemgale",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        132943
+      ],
+      "eurio_ids": [
+        "lv-2018-2eur-zemgale"
+      ]
+    },
+    {
+      "class_id": "mc-2007-2eur-25th-anniversary-of-the-death-of-grace-kelly",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        5036
+      ],
+      "eurio_ids": [
+        "mc-2007-2eur-25th-anniversary-of-the-death-of-grace-kelly"
+      ]
+    },
+    {
+      "class_id": "mc-2011-2eur-wedding-of-prince-albert-and-charlene-wittstock",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        24307
+      ],
+      "eurio_ids": [
+        "mc-2011-2eur-wedding-of-prince-albert-and-charlene-wittstock"
+      ]
+    },
+    {
+      "class_id": "mc-2012-2eur-500th-anniversary-of-the-foundation-of-monacos-sovereignty",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        35946
+      ],
+      "eurio_ids": [
+        "mc-2012-2eur-500th-anniversary-of-the-foundation-of-monacos-sovereignty"
+      ]
+    },
+    {
+      "class_id": "mc-2013-2eur-20th-anniversary-of-its-accession-to-the-onu-on-28-may-1993",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        49385
+      ],
+      "eurio_ids": [
+        "mc-2013-2eur-20th-anniversary-of-its-accession-to-the-onu-on-28-may-1993"
+      ]
+    },
+    {
+      "class_id": "mc-2015-2eur-800th-anniversary-of-the-construction-of-the-first-fortress",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        77312
+      ],
+      "eurio_ids": [
+        "mc-2015-2eur-800th-anniversary-of-the-construction-of-the-first-fortress"
+      ]
+    },
+    {
+      "class_id": "mc-2016-2eur-150th-anniversary-of-the-founding-of-monte-carlo-by-charles",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        87722
+      ],
+      "eurio_ids": [
+        "mc-2016-2eur-150th-anniversary-of-the-founding-of-monte-carlo-by-charles"
+      ]
+    },
+    {
+      "class_id": "mc-2017-2eur-200-years-since-the-establishment-of-the-compagnie-des",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        127894
+      ],
+      "eurio_ids": [
+        "mc-2017-2eur-200-years-since-the-establishment-of-the-compagnie-des"
+      ]
+    },
+    {
+      "class_id": "mc-2018-2eur-250-years-since-the-birth-of-francois-joseph-bosio",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        142707
+      ],
+      "eurio_ids": [
+        "mc-2018-2eur-250-years-since-the-birth-of-francois-joseph-bosio"
+      ]
+    },
+    {
+      "class_id": "mc-2019-2eur-200th-anniversary-of-honores-v-accession-to-the-throne",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        169095
+      ],
+      "eurio_ids": [
+        "mc-2019-2eur-200th-anniversary-of-honores-v-accession-to-the-throne"
+      ]
+    },
+    {
+      "class_id": "mc-2020-2eur-300-years-since-the-birth-of-honore-iii",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        215229
+      ],
+      "eurio_ids": [
+        "mc-2020-2eur-300-years-since-the-birth-of-honore-iii"
+      ]
+    },
+    {
+      "class_id": "mc-2021-2eur-10-years-since-the-wedding-of-albert-ii-prince-of-monaco",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        303851
+      ],
+      "eurio_ids": [
+        "mc-2021-2eur-10-years-since-the-wedding-of-albert-ii-prince-of-monaco"
+      ]
+    },
+    {
+      "class_id": "mc-2022-2eur-100-years-since-the-death-of-albert-i-prince-of-monaco",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        340051
+      ],
+      "eurio_ids": [
+        "mc-2022-2eur-100-years-since-the-death-of-albert-i-prince-of-monaco"
+      ]
+    },
+    {
+      "class_id": "mc-2023-2eur-the-centenary-of-the-birth-of-prince-rainier-iii",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        367729
+      ],
+      "eurio_ids": [
+        "mc-2023-2eur-the-centenary-of-the-birth-of-prince-rainier-iii"
+      ]
+    },
+    {
+      "class_id": "mc-2024-2eur-500-years-of-the-contract-with-charles-v",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        421052
+      ],
+      "eurio_ids": [
+        "mc-2024-2eur-500-years-of-the-contract-with-charles-v"
+      ]
+    },
+    {
+      "class_id": "mc-2025-2eur-carlades-county",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        472551
+      ],
+      "eurio_ids": [
+        "mc-2025-2eur-carlades-county"
+      ]
+    },
+    {
+      "class_id": "mc-2025-2eur-marquisate-of-baux",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        526353
+      ],
+      "eurio_ids": [
+        "mc-2025-2eur-marquisate-of-baux"
+      ]
+    },
+    {
+      "class_id": "mc-2eur-standard-2001",
+      "class_kind": "design_group_id",
+      "numista_ids": [
+        211,
+        15757
+      ],
+      "eurio_ids": [
+        "mc-2001-2eur-standard",
+        "mc-2009-2eur-standard"
+      ]
+    },
+    {
+      "class_id": "mt-2024-2eur-maltese-honey-bee",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        429280
+      ],
+      "eurio_ids": [
+        "mt-2024-2eur-maltese-honey-bee"
+      ]
+    },
+    {
+      "class_id": "mt-2025-2eur-city-walls-of-mdina",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        470466
+      ],
+      "eurio_ids": [
+        "mt-2025-2eur-city-walls-of-mdina"
+      ]
+    },
+    {
+      "class_id": "mt-2025-2eur-maltese-ox",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        470460
+      ],
+      "eurio_ids": [
+        "mt-2025-2eur-maltese-ox"
+      ]
+    },
+    {
+      "class_id": "nl-2011-2eur-500th-anniversary-of-the-publication-of-the-praise-of-folly",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        19021
+      ],
+      "eurio_ids": [
+        "nl-2011-2eur-500th-anniversary-of-the-publication-of-the-praise-of-folly"
+      ]
+    },
+    {
+      "class_id": "nl-2013-2eur-200th-anniversary-of-the-kingdom-of-the-netherlands",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        50013
+      ],
+      "eurio_ids": [
+        "nl-2013-2eur-200th-anniversary-of-the-kingdom-of-the-netherlands"
+      ]
+    },
+    {
+      "class_id": "nl-2014-2eur-king-willem-alexander-and-princess-beatrix",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        59483
+      ],
+      "eurio_ids": [
+        "nl-2014-2eur-king-willem-alexander-and-princess-beatrix"
+      ]
+    },
+    {
+      "class_id": "nl-2014-2eur-standard",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        54960
+      ],
+      "eurio_ids": [
+        "nl-2014-2eur-standard"
+      ]
+    },
+    {
+      "class_id": "nl-2eur-standard-1999",
+      "class_kind": "design_group_id",
+      "numista_ids": [
+        152,
+        6481
+      ],
+      "eurio_ids": [
+        "nl-1999-2eur-standard",
+        "nl-2007-2eur-standard"
+      ]
+    },
+    {
+      "class_id": "pt-2002-2eur-standard",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        160
+      ],
+      "eurio_ids": [
+        "pt-2002-2eur-standard"
+      ]
+    },
+    {
+      "class_id": "pt-2007-2eur-portuguese-presidency-of-the-council-of-the-european-union",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        2206
+      ],
+      "eurio_ids": [
+        "pt-2007-2eur-portuguese-presidency-of-the-council-of-the-european-union"
+      ]
+    },
+    {
+      "class_id": "pt-2008-2eur-60th-anniversary-of-the-universal-declaration-of-human",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        3911
+      ],
+      "eurio_ids": [
+        "pt-2008-2eur-60th-anniversary-of-the-universal-declaration-of-human"
+      ]
+    },
+    {
+      "class_id": "pt-2009-2eur-2009-lusophony-games",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        5074
+      ],
+      "eurio_ids": [
+        "pt-2009-2eur-2009-lusophony-games"
+      ]
+    },
+    {
+      "class_id": "pt-2010-2eur-centenary-of-the-portuguese-republic",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        15315
+      ],
+      "eurio_ids": [
+        "pt-2010-2eur-centenary-of-the-portuguese-republic"
+      ]
+    },
+    {
+      "class_id": "pt-2011-2eur-500th-birthday-of-fernao-mendes-pinto",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        22490
+      ],
+      "eurio_ids": [
+        "pt-2011-2eur-500th-birthday-of-fernao-mendes-pinto"
+      ]
+    },
+    {
+      "class_id": "pt-2012-2eur-guimaraes-european-capital-of-culture-2012",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        28329
+      ],
+      "eurio_ids": [
+        "pt-2012-2eur-guimaraes-european-capital-of-culture-2012"
+      ]
+    },
+    {
+      "class_id": "pt-2013-2eur-250th-anniversary-of-the-clerigos-tower-porto",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        42726
+      ],
+      "eurio_ids": [
+        "pt-2013-2eur-250th-anniversary-of-the-clerigos-tower-porto"
+      ]
+    },
+    {
+      "class_id": "pt-2014-2eur-40-years-since-the-carnation-revolution",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        59474
+      ],
+      "eurio_ids": [
+        "pt-2014-2eur-40-years-since-the-carnation-revolution"
+      ]
+    },
+    {
+      "class_id": "pt-2014-2eur-international-year-of-family-farming",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        66314
+      ],
+      "eurio_ids": [
+        "pt-2014-2eur-international-year-of-family-farming"
+      ]
+    },
+    {
+      "class_id": "pt-2015-2eur-150-years-portuguese-red-cross",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        71656
+      ],
+      "eurio_ids": [
+        "pt-2015-2eur-150-years-portuguese-red-cross"
+      ]
+    },
+    {
+      "class_id": "pt-2015-2eur-500-years-since-first-contact-with-timor",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        74264
+      ],
+      "eurio_ids": [
+        "pt-2015-2eur-500-years-since-first-contact-with-timor"
+      ]
+    },
+    {
+      "class_id": "pt-2016-2eur-50-years-since-inauguration-of-25-april-bridge",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        87329
+      ],
+      "eurio_ids": [
+        "pt-2016-2eur-50-years-since-inauguration-of-25-april-bridge"
+      ]
+    },
+    {
+      "class_id": "pt-2016-2eur-portuguese-athletes-participating-in-the-2016-summer",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        84061
+      ],
+      "eurio_ids": [
+        "pt-2016-2eur-portuguese-athletes-participating-in-the-2016-summer"
+      ]
+    },
+    {
+      "class_id": "pt-2017-2eur-150-years-of-public-security-psp",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        105040
+      ],
+      "eurio_ids": [
+        "pt-2017-2eur-150-years-of-public-security-psp"
+      ]
+    },
+    {
+      "class_id": "pt-2017-2eur-150-years-since-the-birth-of-raul-brandao",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        117220
+      ],
+      "eurio_ids": [
+        "pt-2017-2eur-150-years-since-the-birth-of-raul-brandao"
+      ]
+    },
+    {
+      "class_id": "pt-2018-2eur-250-years-since-the-foundation-of-ajuda-botanical-garden",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        133675
+      ],
+      "eurio_ids": [
+        "pt-2018-2eur-250-years-since-the-foundation-of-ajuda-botanical-garden"
+      ]
+    },
+    {
+      "class_id": "pt-2018-2eur-250-years-since-the-foundation-of-the-imprensa-nacional",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        133674
+      ],
+      "eurio_ids": [
+        "pt-2018-2eur-250-years-since-the-foundation-of-the-imprensa-nacional"
+      ]
+    },
+    {
+      "class_id": "pt-2019-2eur-500-years-since-the-circumnavigation-of-magellan",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        157844
+      ],
+      "eurio_ids": [
+        "pt-2019-2eur-500-years-since-the-circumnavigation-of-magellan"
+      ]
+    },
+    {
+      "class_id": "pt-2019-2eur-600-years-since-the-discovery-of-madeira-and-porto-santo",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        157845
+      ],
+      "eurio_ids": [
+        "pt-2019-2eur-600-years-since-the-discovery-of-madeira-and-porto-santo"
+      ]
+    },
+    {
+      "class_id": "pt-2020-2eur-730-years-since-the-foundation-of-the-university-of-coimbra",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        227198
+      ],
+      "eurio_ids": [
+        "pt-2020-2eur-730-years-since-the-foundation-of-the-university-of-coimbra"
+      ]
+    },
+    {
+      "class_id": "pt-2020-2eur-75-years-since-the-formation-of-the-united-nations",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        197919
+      ],
+      "eurio_ids": [
+        "pt-2020-2eur-75-years-since-the-formation-of-the-united-nations"
+      ]
+    },
+    {
+      "class_id": "pt-2021-2eur-participation-in-tokyo-summer-olympics",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        274850
+      ],
+      "eurio_ids": [
+        "pt-2021-2eur-participation-in-tokyo-summer-olympics"
+      ]
+    },
+    {
+      "class_id": "pt-2021-2eur-portuguese-presidency-of-the-council-of-the-european-union",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        258832
+      ],
+      "eurio_ids": [
+        "pt-2021-2eur-portuguese-presidency-of-the-council-of-the-european-union"
+      ]
+    },
+    {
+      "class_id": "pt-2022-2eur-100th-anniversary-since-the-first-southern-transatlantic",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        321378
+      ],
+      "eurio_ids": [
+        "pt-2022-2eur-100th-anniversary-since-the-first-southern-transatlantic"
+      ]
+    },
+    {
+      "class_id": "pt-2023-2eur-peace-among-nations",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        380885
+      ],
+      "eurio_ids": [
+        "pt-2023-2eur-peace-among-nations"
+      ]
+    },
+    {
+      "class_id": "pt-2023-2eur-world-youth-day-2023",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        368994
+      ],
+      "eurio_ids": [
+        "pt-2023-2eur-world-youth-day-2023"
+      ]
+    },
+    {
+      "class_id": "pt-2024-2eur-dedicated-to-the-olympic-team-of-portugal-paris-2024",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        422020
+      ],
+      "eurio_ids": [
+        "pt-2024-2eur-dedicated-to-the-olympic-team-of-portugal-paris-2024"
+      ]
+    },
+    {
+      "class_id": "pt-2025-2eur-sustainable-development",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        485977
+      ],
+      "eurio_ids": [
+        "pt-2025-2eur-sustainable-development"
+      ]
+    },
+    {
+      "class_id": "pt-2025-2eur-world-scouting-and-youth-movements",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        471903
+      ],
+      "eurio_ids": [
+        "pt-2025-2eur-world-scouting-and-youth-movements"
+      ]
+    },
+    {
+      "class_id": "si-2007-2eur-standard",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        243
+      ],
+      "eurio_ids": [
+        "si-2007-2eur-standard"
+      ]
+    },
+    {
+      "class_id": "si-2008-2eur-500th-birthday-of-primoz-trubar",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        3728
+      ],
+      "eurio_ids": [
+        "si-2008-2eur-500th-birthday-of-primoz-trubar"
+      ]
+    },
+    {
+      "class_id": "si-2010-2eur-200th-anniversary-of-the-botanical-garden-of-ljubljana",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        11131
+      ],
+      "eurio_ids": [
+        "si-2010-2eur-200th-anniversary-of-the-botanical-garden-of-ljubljana"
+      ]
+    },
+    {
+      "class_id": "si-2011-2eur-100th-birthday-of-franc-rozman-stane",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        19959
+      ],
+      "eurio_ids": [
+        "si-2011-2eur-100th-birthday-of-franc-rozman-stane"
+      ]
+    },
+    {
+      "class_id": "si-2013-2eur-800-years-since-the-discovery-of-the-postojna-cave-10",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        42230
+      ],
+      "eurio_ids": [
+        "si-2013-2eur-800-years-since-the-discovery-of-the-postojna-cave-10"
+      ]
+    },
+    {
+      "class_id": "si-2014-2eur-600th-anniversary-since-the-coronation-of-barbara-of-cilli",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        65438
+      ],
+      "eurio_ids": [
+        "si-2014-2eur-600th-anniversary-since-the-coronation-of-barbara-of-cilli"
+      ]
+    },
+    {
+      "class_id": "si-2015-2eur-2000th-anniversary-of-the-founding-of-emona",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        76645
+      ],
+      "eurio_ids": [
+        "si-2015-2eur-2000th-anniversary-of-the-founding-of-emona"
+      ]
+    },
+    {
+      "class_id": "si-2016-2eur-the-25th-anniversary-of-independence-of-the-republic-of",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        80936
+      ],
+      "eurio_ids": [
+        "si-2016-2eur-the-25th-anniversary-of-independence-of-the-republic-of"
+      ]
+    },
+    {
+      "class_id": "si-2017-2eur-10th-anniversary-of-the-adoption-of-the-euro",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        102652
+      ],
+      "eurio_ids": [
+        "si-2017-2eur-10th-anniversary-of-the-adoption-of-the-euro"
+      ]
+    },
+    {
+      "class_id": "si-2018-2eur-world-bees-day",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        140068
+      ],
+      "eurio_ids": [
+        "si-2018-2eur-world-bees-day"
+      ]
+    },
+    {
+      "class_id": "si-2019-2eur-100-years-since-the-foundation-of-the-university-of",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        168180
+      ],
+      "eurio_ids": [
+        "si-2019-2eur-100-years-since-the-foundation-of-the-university-of"
+      ]
+    },
+    {
+      "class_id": "si-2020-2eur-500-years-since-the-birth-of-adam-bohoric",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        236689
+      ],
+      "eurio_ids": [
+        "si-2020-2eur-500-years-since-the-birth-of-adam-bohoric"
+      ]
+    },
+    {
+      "class_id": "si-2021-2eur-200-years-since-the-foundation-of-the-provincial-museum-of",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        284827
+      ],
+      "eurio_ids": [
+        "si-2021-2eur-200-years-since-the-foundation-of-the-provincial-museum-of"
+      ]
+    },
+    {
+      "class_id": "si-2022-2eur-150-years-since-the-birth-of-joze-plecnik",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        319629
+      ],
+      "eurio_ids": [
+        "si-2022-2eur-150-years-since-the-birth-of-joze-plecnik"
+      ]
+    },
+    {
+      "class_id": "si-2023-2eur-150th-anniversary-of-the-birth-of-josip-plemelj",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        389797
+      ],
+      "eurio_ids": [
+        "si-2023-2eur-150th-anniversary-of-the-birth-of-josip-plemelj"
+      ]
+    },
+    {
+      "class_id": "si-2024-2eur-250-years-of-the-national-and-university-library-of-slovenia",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        413387
+      ],
+      "eurio_ids": [
+        "si-2024-2eur-250-years-of-the-national-and-university-library-of-slovenia"
+      ]
+    },
+    {
+      "class_id": "si-2025-2eur-100th-birthday-of-miki-muster",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        529145
+      ],
+      "eurio_ids": [
+        "si-2025-2eur-100th-birthday-of-miki-muster"
+      ]
+    },
+    {
+      "class_id": "sk-2009-2eur-20th-anniversary-of-the-start-of-the-velvet-revolution",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        5092
+      ],
+      "eurio_ids": [
+        "sk-2009-2eur-20th-anniversary-of-the-start-of-the-velvet-revolution"
+      ]
+    },
+    {
+      "class_id": "sk-2009-2eur-standard",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        5091
+      ],
+      "eurio_ids": [
+        "sk-2009-2eur-standard"
+      ]
+    },
+    {
+      "class_id": "sk-2011-2eur-20th-anniversary-of-foundation-of-the-visegrad-group",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        18189
+      ],
+      "eurio_ids": [
+        "sk-2011-2eur-20th-anniversary-of-foundation-of-the-visegrad-group"
+      ]
+    },
+    {
+      "class_id": "sk-2013-2eur-1150-years-from-the-byzantine-advent-of-advent-of-the",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        46328
+      ],
+      "eurio_ids": [
+        "sk-2013-2eur-1150-years-from-the-byzantine-advent-of-advent-of-the"
+      ]
+    },
+    {
+      "class_id": "sk-2014-2eur-10-years-of-slovak-membership-in-the-european-union",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        58412
+      ],
+      "eurio_ids": [
+        "sk-2014-2eur-10-years-of-slovak-membership-in-the-european-union"
+      ]
+    },
+    {
+      "class_id": "sk-2015-2eur-200-years-since-the-birth-of-ludovit-stur",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        76913
+      ],
+      "eurio_ids": [
+        "sk-2015-2eur-200-years-since-the-birth-of-ludovit-stur"
+      ]
+    },
+    {
+      "class_id": "sk-2016-2eur-slovak-presidency-of-the-council-of-the-european-union",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        80931
+      ],
+      "eurio_ids": [
+        "sk-2016-2eur-slovak-presidency-of-the-council-of-the-european-union"
+      ]
+    },
+    {
+      "class_id": "sk-2017-2eur-universitas-istropolitana-550-years-since-the-start-of",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        100159
+      ],
+      "eurio_ids": [
+        "sk-2017-2eur-universitas-istropolitana-550-years-since-the-start-of"
+      ]
+    },
+    {
+      "class_id": "sk-2018-2eur-25th-anniversary-of-the-establishment-of-the-slovak-republic",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        131970
+      ],
+      "eurio_ids": [
+        "sk-2018-2eur-25th-anniversary-of-the-establishment-of-the-slovak-republic"
+      ]
+    },
+    {
+      "class_id": "sk-2019-2eur-100-years-since-the-death-of-milan-rastislav-stefanik",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        166064
+      ],
+      "eurio_ids": [
+        "sk-2019-2eur-100-years-since-the-death-of-milan-rastislav-stefanik"
+      ]
+    },
+    {
+      "class_id": "sk-2020-2eur-20-years-of-slovakian-membership-in-the-oecd",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        239451
+      ],
+      "eurio_ids": [
+        "sk-2020-2eur-20-years-of-slovakian-membership-in-the-oecd"
+      ]
+    },
+    {
+      "class_id": "sk-2021-2eur-100-years-since-the-birth-of-alexander-dubcek",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        310190
+      ],
+      "eurio_ids": [
+        "sk-2021-2eur-100-years-since-the-birth-of-alexander-dubcek"
+      ]
+    },
+    {
+      "class_id": "sk-2022-2eur-300-years-since-the-first-steam-engine-for-pumping-pit-water",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        331026
+      ],
+      "eurio_ids": [
+        "sk-2022-2eur-300-years-since-the-first-steam-engine-for-pumping-pit-water"
+      ]
+    },
+    {
+      "class_id": "sk-2023-2eur-100-years-since-the-first-blood-transfusion-in-slovakia",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        380024
+      ],
+      "eurio_ids": [
+        "sk-2023-2eur-100-years-since-the-first-blood-transfusion-in-slovakia"
+      ]
+    },
+    {
+      "class_id": "sk-2024-2eur-100-years-of-kosice-peace-marathon",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        434097
+      ],
+      "eurio_ids": [
+        "sk-2024-2eur-100-years-of-kosice-peace-marathon"
+      ]
+    },
+    {
+      "class_id": "sk-2025-2eur-100-years-since-the-ice-hockey-european-championships-in",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        449752
+      ],
+      "eurio_ids": [
+        "sk-2025-2eur-100-years-since-the-ice-hockey-european-championships-in"
+      ]
+    },
+    {
+      "class_id": "sk-2026-2eur-trencin-european-capital-of-culture-2026",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        551775
+      ],
+      "eurio_ids": [
+        "sk-2026-2eur-trencin-european-capital-of-culture-2026"
+      ]
+    },
+    {
+      "class_id": "sm-2002-2eur-standard",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        203
+      ],
+      "eurio_ids": [
+        "sm-2002-2eur-standard"
+      ]
+    },
+    {
+      "class_id": "sm-2004-2eur-bartolomeo-borghesi",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        5075
+      ],
+      "eurio_ids": [
+        "sm-2004-2eur-bartolomeo-borghesi"
+      ]
+    },
+    {
+      "class_id": "sm-2005-2eur-world-year-of-physics-2005",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        5076
+      ],
+      "eurio_ids": [
+        "sm-2005-2eur-world-year-of-physics-2005"
+      ]
+    },
+    {
+      "class_id": "sm-2006-2eur-500th-anniversary-of-the-death-of-christopher-columbus",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        5077
+      ],
+      "eurio_ids": [
+        "sm-2006-2eur-500th-anniversary-of-the-death-of-christopher-columbus"
+      ]
+    },
+    {
+      "class_id": "sm-2007-2eur-200th-birthday-of-giuseppe-garibaldi",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        3729
+      ],
+      "eurio_ids": [
+        "sm-2007-2eur-200th-birthday-of-giuseppe-garibaldi"
+      ]
+    },
+    {
+      "class_id": "sm-2008-2eur-european-year-of-intercultural-dialogue",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        5078
+      ],
+      "eurio_ids": [
+        "sm-2008-2eur-european-year-of-intercultural-dialogue"
+      ]
+    },
+    {
+      "class_id": "sm-2009-2eur-european-year-of-creativity-and-innovation",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        8109
+      ],
+      "eurio_ids": [
+        "sm-2009-2eur-european-year-of-creativity-and-innovation"
+      ]
+    },
+    {
+      "class_id": "sm-2010-2eur-500th-anniversary-of-the-death-of-sandro-botticelli",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        15244
+      ],
+      "eurio_ids": [
+        "sm-2010-2eur-500th-anniversary-of-the-death-of-sandro-botticelli"
+      ]
+    },
+    {
+      "class_id": "sm-2011-2eur-500th-birthday-of-giorgio-vasari",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        22596
+      ],
+      "eurio_ids": [
+        "sm-2011-2eur-500th-birthday-of-giorgio-vasari"
+      ]
+    },
+    {
+      "class_id": "sm-2012-2eur-10th-anniversary-of-euro-coins-and-banknotes",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        30276
+      ],
+      "eurio_ids": [
+        "sm-2012-2eur-10th-anniversary-of-euro-coins-and-banknotes"
+      ]
+    },
+    {
+      "class_id": "sm-2013-2eur-500th-anniversary-of-the-death-of-pinturicchio",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        49933
+      ],
+      "eurio_ids": [
+        "sm-2013-2eur-500th-anniversary-of-the-death-of-pinturicchio"
+      ]
+    },
+    {
+      "class_id": "sm-2014-2eur-500th-anniversary-since-the-death-of-donato-bramante",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        62346
+      ],
+      "eurio_ids": [
+        "sm-2014-2eur-500th-anniversary-since-the-death-of-donato-bramante"
+      ]
+    },
+    {
+      "class_id": "sm-2014-2eur-90th-anniversary-since-the-death-of-giacomo-puccini",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        65624
+      ],
+      "eurio_ids": [
+        "sm-2014-2eur-90th-anniversary-since-the-death-of-giacomo-puccini"
+      ]
+    },
+    {
+      "class_id": "sm-2015-2eur-25-years-of-german-unity",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        77154
+      ],
+      "eurio_ids": [
+        "sm-2015-2eur-25-years-of-german-unity"
+      ]
+    },
+    {
+      "class_id": "sm-2015-2eur-750-years-since-the-birth-of-dante-alighieri",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        72183
+      ],
+      "eurio_ids": [
+        "sm-2015-2eur-750-years-since-the-birth-of-dante-alighieri"
+      ]
+    },
+    {
+      "class_id": "sm-2016-2eur-400-years-since-the-death-of-william-shakespeare",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        93489
+      ],
+      "eurio_ids": [
+        "sm-2016-2eur-400-years-since-the-death-of-william-shakespeare"
+      ]
+    },
+    {
+      "class_id": "sm-2016-2eur-550-years-since-the-death-of-donatello",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        85982
+      ],
+      "eurio_ids": [
+        "sm-2016-2eur-550-years-since-the-death-of-donatello"
+      ]
+    },
+    {
+      "class_id": "sm-2017-2eur-750-years-since-the-birth-of-giotto",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        109247
+      ],
+      "eurio_ids": [
+        "sm-2017-2eur-750-years-since-the-birth-of-giotto"
+      ]
+    },
+    {
+      "class_id": "sm-2017-2eur-international-year-of-sustainable-tourism",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        117668
+      ],
+      "eurio_ids": [
+        "sm-2017-2eur-international-year-of-sustainable-tourism"
+      ]
+    },
+    {
+      "class_id": "sm-2017-2eur-standard",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        117669
+      ],
+      "eurio_ids": [
+        "sm-2017-2eur-standard"
+      ]
+    },
+    {
+      "class_id": "sm-2018-2eur-420-years-since-the-birth-of-gian-lorenzo-bernini",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        150444
+      ],
+      "eurio_ids": [
+        "sm-2018-2eur-420-years-since-the-birth-of-gian-lorenzo-bernini"
+      ]
+    },
+    {
+      "class_id": "sm-2018-2eur-500-years-since-the-birth-of-tintoretto",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        139561
+      ],
+      "eurio_ids": [
+        "sm-2018-2eur-500-years-since-the-birth-of-tintoretto"
+      ]
+    },
+    {
+      "class_id": "sm-2019-2eur-500-years-since-the-death-of-leonardo-da-vinci",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        165371
+      ],
+      "eurio_ids": [
+        "sm-2019-2eur-500-years-since-the-death-of-leonardo-da-vinci"
+      ]
+    },
+    {
+      "class_id": "sm-2019-2eur-550-years-since-the-death-of-filippo-lippi",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        176691
+      ],
+      "eurio_ids": [
+        "sm-2019-2eur-550-years-since-the-death-of-filippo-lippi"
+      ]
+    },
+    {
+      "class_id": "sm-2020-2eur-250-years-since-the-death-of-giovanni-battista-tiepolo",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        196799
+      ],
+      "eurio_ids": [
+        "sm-2020-2eur-250-years-since-the-death-of-giovanni-battista-tiepolo"
+      ]
+    },
+    {
+      "class_id": "sm-2021-2eur-450-years-since-the-birth-of-caravaggio",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        275497
+      ],
+      "eurio_ids": [
+        "sm-2021-2eur-450-years-since-the-birth-of-caravaggio"
+      ]
+    },
+    {
+      "class_id": "sm-2021-2eur-550-years-since-the-birth-of-albrecht-durer",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        303127
+      ],
+      "eurio_ids": [
+        "sm-2021-2eur-550-years-since-the-birth-of-albrecht-durer"
+      ]
+    },
+    {
+      "class_id": "sm-2022-2eur-200-years-since-the-death-of-antonio-canova",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        340366
+      ],
+      "eurio_ids": [
+        "sm-2022-2eur-200-years-since-the-death-of-antonio-canova"
+      ]
+    },
+    {
+      "class_id": "sm-2022-2eur-530-years-since-the-death-of-piero-della-francesca",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        325609
+      ],
+      "eurio_ids": [
+        "sm-2022-2eur-530-years-since-the-death-of-piero-della-francesca"
+      ]
+    },
+    {
+      "class_id": "sm-2023-2eur-500th-anniversary-of-the-death-of-luca-signorelli",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        371625
+      ],
+      "eurio_ids": [
+        "sm-2023-2eur-500th-anniversary-of-the-death-of-luca-signorelli"
+      ]
+    },
+    {
+      "class_id": "sm-2023-2eur-500th-anniversary-of-the-death-of-pietro-perugino",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        362268
+      ],
+      "eurio_ids": [
+        "sm-2023-2eur-500th-anniversary-of-the-death-of-pietro-perugino"
+      ]
+    },
+    {
+      "class_id": "sm-2024-2eur-50th-anniversary-of-the-declaration-of-civil-rights-and-the",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        410295
+      ],
+      "eurio_ids": [
+        "sm-2024-2eur-50th-anniversary-of-the-declaration-of-civil-rights-and-the"
+      ]
+    },
+    {
+      "class_id": "sm-2024-2eur-530th-anniversary-of-the-death-of-domenico-ghirlandaio",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        412344
+      ],
+      "eurio_ids": [
+        "sm-2024-2eur-530th-anniversary-of-the-death-of-domenico-ghirlandaio"
+      ]
+    },
+    {
+      "class_id": "sm-2025-2eur-jubilee-holy-year-2025-pilgrims-of-hope",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        461228
+      ],
+      "eurio_ids": [
+        "sm-2025-2eur-jubilee-holy-year-2025-pilgrims-of-hope"
+      ]
+    },
+    {
+      "class_id": "sm-2025-2eur-the-550th-anniversary-of-the-birth-of-michelangelo",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        462617
+      ],
+      "eurio_ids": [
+        "sm-2025-2eur-the-550th-anniversary-of-the-birth-of-michelangelo"
+      ]
+    },
+    {
+      "class_id": "sm-2026-2eur-450th-anniversary-of-the-death-of-titian",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        569329
+      ],
+      "eurio_ids": [
+        "sm-2026-2eur-450th-anniversary-of-the-death-of-titian"
+      ]
+    },
+    {
+      "class_id": "va-2002-2eur-standard",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        219
+      ],
+      "eurio_ids": [
+        "va-2002-2eur-standard"
+      ]
+    },
+    {
+      "class_id": "va-2004-2eur-75th-anniversary-of-the-foundation-of-the-vatican-city-state",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        5080
+      ],
+      "eurio_ids": [
+        "va-2004-2eur-75th-anniversary-of-the-foundation-of-the-vatican-city-state"
+      ]
+    },
+    {
+      "class_id": "va-2005-2eur-20th-world-youth-day-held-in-cologne-in-august-2005",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        5081
+      ],
+      "eurio_ids": [
+        "va-2005-2eur-20th-world-youth-day-held-in-cologne-in-august-2005"
+      ]
+    },
+    {
+      "class_id": "va-2006-2eur-500th-anniversary-of-the-swiss-guard",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        5082
+      ],
+      "eurio_ids": [
+        "va-2006-2eur-500th-anniversary-of-the-swiss-guard"
+      ]
+    },
+    {
+      "class_id": "va-2007-2eur-80th-birthday-of-pope-benedict-xvi",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        3910
+      ],
+      "eurio_ids": [
+        "va-2007-2eur-80th-birthday-of-pope-benedict-xvi"
+      ]
+    },
+    {
+      "class_id": "va-2008-2eur-2008-year-of-saint-paul-the-apostle",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        5083
+      ],
+      "eurio_ids": [
+        "va-2008-2eur-2008-year-of-saint-paul-the-apostle"
+      ]
+    },
+    {
+      "class_id": "va-2008-2eur-standard",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        10001
+      ],
+      "eurio_ids": [
+        "va-2008-2eur-standard"
+      ]
+    },
+    {
+      "class_id": "va-2009-2eur-international-year-of-astronomy",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        14914
+      ],
+      "eurio_ids": [
+        "va-2009-2eur-international-year-of-astronomy"
+      ]
+    },
+    {
+      "class_id": "va-2010-2eur-year-for-priests",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        15840
+      ],
+      "eurio_ids": [
+        "va-2010-2eur-year-for-priests"
+      ]
+    },
+    {
+      "class_id": "va-2011-2eur-26th-world-youth-day",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        24658
+      ],
+      "eurio_ids": [
+        "va-2011-2eur-26th-world-youth-day"
+      ]
+    },
+    {
+      "class_id": "va-2012-2eur-7th-world-meeting-of-families",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        38505
+      ],
+      "eurio_ids": [
+        "va-2012-2eur-7th-world-meeting-of-families"
+      ]
+    },
+    {
+      "class_id": "va-2013-2eur-28th-world-youth-day-rio-de-janeiro",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        50603
+      ],
+      "eurio_ids": [
+        "va-2013-2eur-28th-world-youth-day-rio-de-janeiro"
+      ]
+    },
+    {
+      "class_id": "va-2013-2eur-sede-vacante",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        46032
+      ],
+      "eurio_ids": [
+        "va-2013-2eur-sede-vacante"
+      ]
+    },
+    {
+      "class_id": "va-2014-2eur-25-years-since-the-fall-of-the-berlin-wall",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        65941
+      ],
+      "eurio_ids": [
+        "va-2014-2eur-25-years-since-the-fall-of-the-berlin-wall"
+      ]
+    },
+    {
+      "class_id": "va-2015-2eur-viii-world-meeting-of-families-philadelphia-2015",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        76911
+      ],
+      "eurio_ids": [
+        "va-2015-2eur-viii-world-meeting-of-families-philadelphia-2015"
+      ]
+    },
+    {
+      "class_id": "va-2016-2eur-holy-year-of-mercy",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        94537
+      ],
+      "eurio_ids": [
+        "va-2016-2eur-holy-year-of-mercy"
+      ]
+    },
+    {
+      "class_id": "va-2016-2eur-the-200th-anniversary-of-the-vatican-guard",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        87772
+      ],
+      "eurio_ids": [
+        "va-2016-2eur-the-200th-anniversary-of-the-vatican-guard"
+      ]
+    },
+    {
+      "class_id": "va-2017-2eur-100-years-since-the-visions-of-fatima",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        124385
+      ],
+      "eurio_ids": [
+        "va-2017-2eur-100-years-since-the-visions-of-fatima"
+      ]
+    },
+    {
+      "class_id": "va-2017-2eur-1950-years-since-the-death-of-the-martyrs-saint-peter-and",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        114887
+      ],
+      "eurio_ids": [
+        "va-2017-2eur-1950-years-since-the-death-of-the-martyrs-saint-peter-and"
+      ]
+    },
+    {
+      "class_id": "va-2018-2eur-50-years-since-the-death-of-padre-pio",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        150440
+      ],
+      "eurio_ids": [
+        "va-2018-2eur-50-years-since-the-death-of-padre-pio"
+      ]
+    },
+    {
+      "class_id": "va-2018-2eur-european-year-of-cultural-heritage",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        141147
+      ],
+      "eurio_ids": [
+        "va-2018-2eur-european-year-of-cultural-heritage"
+      ]
+    },
+    {
+      "class_id": "va-2019-2eur-25-years-since-the-restoration-of-the-sistine-chapel",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        179823
+      ],
+      "eurio_ids": [
+        "va-2019-2eur-25-years-since-the-restoration-of-the-sistine-chapel"
+      ]
+    },
+    {
+      "class_id": "va-2019-2eur-90th-anniversary-of-the-foundation-of-the-vatican-city-state",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        167210
+      ],
+      "eurio_ids": [
+        "va-2019-2eur-90th-anniversary-of-the-foundation-of-the-vatican-city-state"
+      ]
+    },
+    {
+      "class_id": "va-2020-2eur-100-years-since-the-birth-of-pope-john-paul-ii",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        214516
+      ],
+      "eurio_ids": [
+        "va-2020-2eur-100-years-since-the-birth-of-pope-john-paul-ii"
+      ]
+    },
+    {
+      "class_id": "va-2020-2eur-500-years-since-the-death-of-raphael",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        236691
+      ],
+      "eurio_ids": [
+        "va-2020-2eur-500-years-since-the-death-of-raphael"
+      ]
+    },
+    {
+      "class_id": "va-2021-2eur-450-years-since-the-birth-of-caravaggio",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        297633
+      ],
+      "eurio_ids": [
+        "va-2021-2eur-450-years-since-the-birth-of-caravaggio"
+      ]
+    },
+    {
+      "class_id": "va-2021-2eur-700-years-since-the-death-of-dante-alighieri",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        307109
+      ],
+      "eurio_ids": [
+        "va-2021-2eur-700-years-since-the-death-of-dante-alighieri"
+      ]
+    },
+    {
+      "class_id": "va-2022-2eur-125-years-since-the-birth-of-pope-paul-vi",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        335775
+      ],
+      "eurio_ids": [
+        "va-2022-2eur-125-years-since-the-birth-of-pope-paul-vi"
+      ]
+    },
+    {
+      "class_id": "va-2022-2eur-25-years-since-the-death-of-mother-teresa",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        335772
+      ],
+      "eurio_ids": [
+        "va-2022-2eur-25-years-since-the-death-of-mother-teresa"
+      ]
+    },
+    {
+      "class_id": "va-2023-2eur-150th-anniversary-of-the-death-of-alessandro-manzoni",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        365224
+      ],
+      "eurio_ids": [
+        "va-2023-2eur-150th-anniversary-of-the-death-of-alessandro-manzoni"
+      ]
+    },
+    {
+      "class_id": "va-2023-2eur-the-5th-centenary-of-the-death-of-pietro-perugino",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        365229
+      ],
+      "eurio_ids": [
+        "va-2023-2eur-the-5th-centenary-of-the-death-of-pietro-perugino"
+      ]
+    },
+    {
+      "class_id": "va-2024-2eur-150th-birthday-of-guglielmo-marconi",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        431862
+      ],
+      "eurio_ids": [
+        "va-2024-2eur-150th-birthday-of-guglielmo-marconi"
+      ]
+    },
+    {
+      "class_id": "va-2024-2eur-750th-anniversary-of-the-death-of-thomas-aquinas",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        421091
+      ],
+      "eurio_ids": [
+        "va-2024-2eur-750th-anniversary-of-the-death-of-thomas-aquinas"
+      ]
+    },
+    {
+      "class_id": "va-2025-2eur-jubilee-holy-year-2025",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        565521
+      ],
+      "eurio_ids": [
+        "va-2025-2eur-jubilee-holy-year-2025"
+      ]
+    },
+    {
+      "class_id": "va-2025-2eur-sede-vacante-2025",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        476025
+      ],
+      "eurio_ids": [
+        "va-2025-2eur-sede-vacante-2025"
+      ]
+    },
+    {
+      "class_id": "va-2025-2eur-the-550th-anniversary-of-the-birth-of-michelangelo",
+      "class_kind": "eurio_id",
+      "numista_ids": [
+        565516
+      ],
+      "eurio_ids": [
+        "va-2025-2eur-the-550th-anniversary-of-the-birth-of-michelangelo"
       ]
     }
   ]

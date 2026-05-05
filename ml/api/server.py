@@ -86,6 +86,12 @@ app.include_router(sources_routes.router)
 # by the orchestrator's `enqueue` step.
 app.include_router(review_queue_routes.router)
 
+# Wire /coins/{eurio_id}/assets — enrichment gallery on CoinDetailPage.
+from api import coin_assets_routes  # noqa: E402
+
+coin_assets_routes.bind(_store)
+app.include_router(coin_assets_routes.router)
+
 
 @app.on_event("startup")
 def _augmentation_startup() -> None:

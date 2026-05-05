@@ -34,6 +34,7 @@ import logging
 import os
 import sqlite3
 import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -41,7 +42,15 @@ from typing import Iterable
 import httpx
 
 from market.ebay_client import EbayClient
-from sources._base.adapter import DiscoveredItem, RawDownloadResult, SourceQuery
+from sources._base.adapter import (
+    DiscardedListingRecord,
+    DiscoveredItem,
+    RawDownloadResult,
+    RecordDiscardedFn,
+    RecordSearchFn,
+    SourceQuery,
+)
+from sources._base.dedup import DiscoverySearchRecord
 from sources.ebay.filters import (
     accept_listing,
     is_lot_suspected,
@@ -61,6 +70,26 @@ logger = logging.getLogger(__name__)
 DEFAULT_GROUP_EXPAND_TOP_K = 2
 DEFAULT_SEARCH_LIMIT = 50              # D-23 — no pagination V1
 DEFAULT_DOWNLOAD_TIMEOUT_SEC = 30
+
+
+@dataclass
+class SearchExpandResult:
+    """Funnel ventilé du `_search_and_expand` (chunk 0 auto-validation).
+
+    - ``rows``           : liste finale, post theme-token drop, prête pour
+                           `accept_listing`.
+    - ``n_summaries``    : N0 — `itemSummaries` retournés brut par Browse.
+    - ``n_after_groups`` : N1 — N0 + lignes ajoutées par expansion
+                           `getItemsByGroup` (top-K limité).
+    - ``theme_dropped``  : rows écartées par le filtre theme-tokens (vide
+                           si non ambigu). Persistées en discarded_listings
+                           avec reason='theme_mismatch' par discover().
+    """
+
+    rows: list[dict]
+    n_summaries: int
+    n_after_groups: int
+    theme_dropped: list[dict]
 
 
 @dataclass
@@ -86,7 +115,13 @@ class EbayAdapter:
 
     # ── Discover ────────────────────────────────────────────────────────────
 
-    def discover(self, query: SourceQuery) -> Iterable[DiscoveredItem]:
+    def discover(
+        self,
+        query: SourceQuery,
+        *,
+        record_search: "RecordSearchFn | None" = None,
+        record_discarded: "RecordDiscardedFn | None" = None,
+    ) -> Iterable[DiscoveredItem]:
         """Yield 1 DiscoveredItem per image of each accepted listing.
 
         The orchestrator already unfolded a batch into per-eurio_id
@@ -107,19 +142,112 @@ class EbayAdapter:
             coin.eurio_id, ebay_q.q, ebay_q.aspect_filter, ambiguous, ebay_q.theme_tokens,
         )
 
-        listings = self._search_and_expand(ebay_q, ambiguous=ambiguous)
+        filters_meta = {
+            "aspect_filter": ebay_q.aspect_filter,
+            "theme_tokens": ebay_q.theme_tokens,
+            "ambiguous": ambiguous,
+            "search_limit": self.search_limit,
+            "category_id": ebay_q.category_id,
+        }
+
+        t0 = time.monotonic()
+        try:
+            expand = self._search_and_expand(ebay_q, ambiguous=ambiguous)
+        except Exception as exc:  # noqa: BLE001 — record then re-raise
+            duration_ms = int((time.monotonic() - t0) * 1000)
+            http_status: int | None = None
+            if isinstance(exc, httpx.HTTPStatusError):
+                http_status = exc.response.status_code
+            if record_search is not None:
+                record_search(DiscoverySearchRecord(
+                    run_id="",  # filled by step
+                    source="",
+                    target_eurio_id=coin.eurio_id,
+                    endpoint="ebay.browse.search",
+                    query_q=ebay_q.q,
+                    query_filters=filters_meta,
+                    status="failed",
+                    http_status=http_status,
+                    duration_ms=duration_ms,
+                    error=str(exc)[:500],
+                ))
+            raise
+
+        # Persist theme-token drops (silencieux jusqu'au chunk 0
+        # auto-validation). Reason='theme_mismatch' rejoint les autres rejets
+        # listés dans accept_listing pour un audit unifié.
+        if expand.theme_dropped and record_discarded is not None:
+            for row in expand.theme_dropped:
+                if not row.get("item_id"):
+                    continue
+                record_discarded(DiscardedListingRecord(
+                    source_ref=f"ebay_listing_{row['item_id']}",
+                    target_eurio_id=coin.eurio_id,
+                    reason="theme_mismatch",
+                    title=row.get("title"),
+                    raw_payload={
+                        "item_id": row.get("item_id"),
+                        "price": row.get("price"),
+                        "currency": row.get("currency"),
+                        "item_web_url": row.get("item_web_url"),
+                        "theme_tokens": ebay_q.theme_tokens,
+                    },
+                ))
+
+        listings = expand.rows
+
         kept: list[dict] = []
         for row in listings:
-            ok, reason = accept_listing(row, coin.face_value)
+            ok, reason = accept_listing(
+                row,
+                coin.face_value,
+                expected_year=coin.year,
+                is_commemorative=coin.is_commemorative,
+            )
             if not ok:
                 logger.debug("[ebay] reject item_id=%s reason=%s", row.get("item_id"), reason)
+                if record_discarded is not None and row.get("item_id"):
+                    record_discarded(DiscardedListingRecord(
+                        source_ref=f"ebay_listing_{row['item_id']}",
+                        target_eurio_id=coin.eurio_id,
+                        reason=reason,
+                        title=row.get("title"),
+                        raw_payload={
+                            "item_id": row.get("item_id"),
+                            "price": row.get("price"),
+                            "currency": row.get("currency"),
+                            "item_web_url": row.get("item_web_url"),
+                        },
+                    ))
                 continue
             kept.append(row)
 
+        duration_ms = int((time.monotonic() - t0) * 1000)
         logger.info(
-            "[ebay] eurio=%s search_raw=%d kept=%d",
-            coin.eurio_id, len(listings), len(kept),
+            "[ebay] eurio=%s funnel summaries=%d → groups=%d → theme=%d → kept=%d",
+            coin.eurio_id,
+            expand.n_summaries,
+            expand.n_after_groups,
+            len(listings),
+            len(kept),
         )
+
+        if record_search is not None:
+            record_search(DiscoverySearchRecord(
+                run_id="",  # filled by step
+                source="",
+                target_eurio_id=coin.eurio_id,
+                endpoint="ebay.browse.search",
+                query_q=ebay_q.q,
+                query_filters=filters_meta,
+                status="success" if listings else "empty",
+                http_status=200,
+                n_summaries=expand.n_summaries,
+                n_after_groups=expand.n_after_groups,
+                n_raw_results=len(listings),
+                n_kept_results=len(kept),
+                duration_ms=duration_ms,
+            ))
 
         # D-22 — fetch HD images via item/{id}, then yield one DiscoveredItem
         # per image (image[0] + additionalImages[*]).
@@ -138,6 +266,7 @@ class EbayAdapter:
         dest.parent.mkdir(parents=True, exist_ok=True)
         with httpx.Client(timeout=self.download_timeout, follow_redirects=True) as cl:
             resp = cl.get(url)
+            http_status = resp.status_code
             resp.raise_for_status()
             data = resp.content
 
@@ -162,6 +291,8 @@ class EbayAdapter:
             sha256=sha,
             width=width,
             height=height,
+            endpoint_url=url,
+            http_status=http_status,
         )
 
     # ── Internals ──────────────────────────────────────────────────────────
@@ -186,15 +317,26 @@ class EbayAdapter:
         ).fetchone()["n"]
         return n > 1
 
-    def _search_and_expand(self, ebay_q: EbayQuery, *, ambiguous: bool) -> list[dict]:
+    def _search_and_expand(self, ebay_q: EbayQuery, *, ambiguous: bool) -> "SearchExpandResult":
+        """Search + group expansion + theme drop, avec ventilation N0/N1/N2.
+
+        Retourne un :class:`SearchExpandResult` qui porte la liste finale
+        (post-theme drop) ET les compteurs intermédiaires + les rows
+        explicitement filtrées par theme drop, pour audit.
+        """
+        # Note (bloc 1, 2026-05-05) : on a drop le `filter_expr` qui contenait
+        # `price:[1..500],priceCurrency:EUR`. Le filtre eBay sur `priceCurrency`
+        # crashait le recall (49→0 mesuré sur bearded-vulture en probe S3).
+        # Les contraintes prix/devise vivent désormais en post-filter
+        # applicatif côté `accept_listing` (filters.py).
         search = self.client.search(
             ebay_q.q,
             category_ids=ebay_q.category_id,
             aspect_filter=ebay_q.aspect_filter,
-            filter_expr="price:[1..500],priceCurrency:EUR",
             limit=self.search_limit,
         )
         summaries = search.get("itemSummaries") or []
+        n_summaries = len(summaries)
 
         rows: list[dict] = []
         group_ids: list[str] = []
@@ -216,11 +358,25 @@ class EbayAdapter:
             except httpx.HTTPError as exc:
                 logger.warning("[ebay] group %s failed: %s", gid, exc)
 
-        # Theme filter applied only when (country, year) has multiple commemos.
-        if ambiguous:
-            rows = [r for r in rows if title_matches_theme(r.get("title") or "", ebay_q.theme_tokens)]
+        n_after_groups = len(rows)
 
-        return rows
+        # Theme filter applied only when (country, year) has multiple commemos.
+        theme_dropped: list[dict] = []
+        if ambiguous:
+            kept_rows: list[dict] = []
+            for r in rows:
+                if title_matches_theme(r.get("title") or "", ebay_q.theme_tokens):
+                    kept_rows.append(r)
+                else:
+                    theme_dropped.append(r)
+            rows = kept_rows
+
+        return SearchExpandResult(
+            rows=rows,
+            n_summaries=n_summaries,
+            n_after_groups=n_after_groups,
+            theme_dropped=theme_dropped,
+        )
 
     def _yield_listing_images(self, *, row: dict, coin) -> Iterable[DiscoveredItem]:
         """Fetch HD images via ``item/{id}`` and yield 1 item per image.

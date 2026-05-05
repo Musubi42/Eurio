@@ -69,6 +69,7 @@ def _is_canonical_image(raw_payload_json: str | None) -> bool:
     return idx is None or idx == 0
 
 
+# Called by: ml/sources/_base/orchestrator.py (step 6/8 — after detect_crop, writes pending_quotes for canonical images)
 def run_resolve(
     *,
     conn: sqlite3.Connection,

@@ -57,8 +57,16 @@ const router = createRouter({
           component: () => import('@/features/sources/pages/SourceRunDetailPage.vue'),
         },
         {
+          path: 'sources/:id/runs/:run_id/listings',
+          component: () => import('@/features/sources/pages/SourceRunListingsPage.vue'),
+        },
+        {
           path: 'review',
           component: () => import('@/features/review/pages/ReviewPage.vue'),
+        },
+        {
+          path: 'review/lot/:listing_key',
+          component: () => import('@/features/review/pages/LotReviewDetailPage.vue'),
         },
         {
           path: 'audit',

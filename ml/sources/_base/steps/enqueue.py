@@ -48,6 +48,53 @@ def _compute_priority(*, target_eurio_id: str | None) -> int:
     return p
 
 
+def _route_decision_for_source_image(
+    conn: sqlite3.Connection,
+    *,
+    source_image_id: str,
+    kind: str,
+    is_lot_suspected: bool,
+) -> tuple[str, str]:
+    """Agrège les statuts des crops en un verdict listing-level pour debug.
+
+    Priorité (du plus saillant au plus discret) :
+        needs_review > rejected > auto_* > manual > pending
+    """
+    rows = conn.execute(
+        "SELECT resolution_status FROM image_assets WHERE source_image_id = ?",
+        (source_image_id,),
+    ).fetchall()
+    if not rows:
+        return ("pending", "no_crops_yet")
+
+    statuses = {r["resolution_status"] for r in rows}
+    n_crops = len(rows)
+
+    if "needs_review" in statuses:
+        decision = "review_lot" if kind == "lot" else "review_single"
+        if is_lot_suspected:
+            reason = "is_lot_suspected"
+        elif n_crops > 1:
+            reason = "multi_coin_photo"
+        else:
+            reason = "single_unmatched"
+        return (decision, reason)
+
+    if statuses == {"rejected"}:
+        return ("rejected", "all_crops_rejected")
+
+    if statuses <= {"auto_phash", "auto_name", "manual", "rejected"}:
+        if "auto_phash" in statuses:
+            return ("auto_resolved", "auto_phash_match")
+        if "auto_name" in statuses:
+            return ("auto_resolved", "auto_name_match")
+        if "manual" in statuses:
+            return ("auto_resolved", "manual")
+        return ("auto_resolved", "auto")
+
+    return ("pending", "mixed_status")
+
+
 def _kind_for_source_image(
     conn: sqlite3.Connection, *, source_image_id: str, is_lot_suspected: bool
 ) -> str:
@@ -65,6 +112,7 @@ def _kind_for_source_image(
     return "lot" if (n_crops or 0) > 1 else "single"
 
 
+# Called by: ml/sources/_base/orchestrator.py (step 8/8 — final step; decides single vs lot kind, sets review_queue rows)
 def run_enqueue(
     *,
     conn: sqlite3.Connection,
@@ -83,10 +131,11 @@ def run_enqueue(
         ).fetchone()
         if si_meta is None:
             continue
+        is_lot_suspected = bool(si_meta["is_lot_suspected"])
         kind = _kind_for_source_image(
             conn,
             source_image_id=sid,
-            is_lot_suspected=bool(si_meta["is_lot_suspected"]),
+            is_lot_suspected=is_lot_suspected,
         )
 
         rows = conn.execute(
@@ -121,6 +170,14 @@ def run_enqueue(
             n_enqueued += 1
             if kind == "lot":
                 n_lot += 1
+
+        decision, reason = _route_decision_for_source_image(
+            conn, source_image_id=sid, kind=kind, is_lot_suspected=is_lot_suspected,
+        )
+        conn.execute(
+            "UPDATE source_images SET route_decision=?, route_reason=? WHERE id=?",
+            (decision, reason, sid),
+        )
 
     run.bump(n_review_enqueued=n_enqueued)
     logger.info(

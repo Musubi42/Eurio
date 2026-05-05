@@ -1,0 +1,200 @@
+// Composable pour /review-queue/lots* (V1.5).
+//
+// Backend : ml/api/review_queue_routes.py — endpoints list_lots / get_lot
+// / decide_lot. Doc : docs/sources-refacto/lot-review-kickoff.md §L.A.
+
+import { ML_API } from '@/features/training/composables/useTrainingApi'
+
+// ─── Types alignés sur Pydantic ───────────────────────────────────────
+
+export interface LotListItem {
+  listing_key: string
+  source: string
+  target_eurio_id: string | null
+  listing_title: string | null
+  listing_price: number | null
+  listing_currency: string
+  is_lot_suspected: boolean
+  n_images: number
+  n_crops_in_review: number
+  oldest_enqueued_at: string
+  thumb_url: string | null
+}
+
+export interface LotListResponse {
+  items: LotListItem[]
+  total: number
+}
+
+export interface LotCandidate {
+  eurio_id: string
+  score: number
+  label: string
+  country: string
+  denomination: string
+  year: number | null
+  canonical_thumb_url: string
+}
+
+export interface LotBbox {
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
+export interface LotCrop {
+  asset_id: string
+  review_id: string
+  crop_url: string
+  crop_index: number
+  phash: number | null
+  current_eurio_id: string | null
+  candidate_eurio_ids: LotCandidate[]
+  bbox: LotBbox | null
+}
+
+export interface LotDetection {
+  cx: number
+  cy: number
+  r: number
+  accepted: boolean
+  reject_reason: string | null
+  method: string
+  crop_index: number | null
+}
+
+export interface LotImage {
+  source_image_id: string
+  image_index: number | null
+  raw_url: string
+  raw_width: number | null
+  raw_height: number | null
+  detections: LotDetection[]
+  crops: LotCrop[]
+}
+
+export interface LotDetail {
+  listing_key: string
+  source: string
+  target_eurio_id: string | null
+  listing_title: string | null
+  listing_price: number | null
+  listing_currency: string
+  is_lot_suspected: boolean
+  is_multi_crop_single: boolean
+  images: LotImage[]
+  prev_listing_key: string | null
+  next_listing_key: string | null
+}
+
+export type LotRejectReason =
+  | 'not_a_coin'
+  | 'out_of_scope'
+  | 'duplicate_in_listing'
+  | 'unreadable'
+  | 'other'
+
+export interface LotAssignment {
+  asset_id: string
+  eurio_id?: string
+  face?: 'obverse' | 'reverse' | 'unknown'
+  variant_kind?: string
+  reject_reason?: LotRejectReason
+  skip?: boolean
+}
+
+export interface LotDecideResponse {
+  done: number
+  rejected: number
+  skipped: number
+  errors: string[]
+}
+
+// ─── HTTP helpers ─────────────────────────────────────────────────────
+
+export class LotReviewError extends Error {
+  status: number
+  detail: unknown
+  constructor(status: number, message: string, detail?: unknown) {
+    super(message)
+    this.status = status
+    this.detail = detail
+    this.name = 'LotReviewError'
+  }
+}
+
+async function parseError(resp: Response): Promise<LotReviewError> {
+  let detail: unknown = null
+  let msg = `HTTP ${resp.status}`
+  try {
+    detail = await resp.json()
+    if (detail && typeof detail === 'object' && 'detail' in detail) {
+      msg = String((detail as { detail: unknown }).detail)
+    }
+  } catch {
+    // ignore
+  }
+  return new LotReviewError(resp.status, msg, detail)
+}
+
+function withMlApi(url: string | null): string | null {
+  if (!url) return null
+  return url.startsWith('http') ? url : `${ML_API}${url}`
+}
+
+// ─── Public API ───────────────────────────────────────────────────────
+
+export async function fetchLots(
+  opts: { limit?: number; offset?: number } = {},
+): Promise<LotListResponse> {
+  const params = new URLSearchParams()
+  if (opts.limit) params.set('limit', String(opts.limit))
+  if (opts.offset) params.set('offset', String(opts.offset))
+  const qs = params.size ? `?${params.toString()}` : ''
+  const resp = await fetch(`${ML_API}/review-queue/lots${qs}`)
+  if (!resp.ok) throw await parseError(resp)
+  const body = (await resp.json()) as LotListResponse
+  return {
+    ...body,
+    items: body.items.map((it) => ({
+      ...it,
+      thumb_url: withMlApi(it.thumb_url),
+    })),
+  }
+}
+
+export async function fetchLot(listingKey: string): Promise<LotDetail> {
+  const resp = await fetch(
+    `${ML_API}/review-queue/lots/${encodeURIComponent(listingKey)}`,
+  )
+  if (!resp.ok) throw await parseError(resp)
+  const body = (await resp.json()) as LotDetail
+  return {
+    ...body,
+    images: body.images.map((im) => ({
+      ...im,
+      raw_url: withMlApi(im.raw_url) ?? '',
+      crops: im.crops.map((c) => ({
+        ...c,
+        crop_url: withMlApi(c.crop_url) ?? '',
+      })),
+    })),
+  }
+}
+
+export async function decideLot(
+  listingKey: string,
+  assignments: LotAssignment[],
+): Promise<LotDecideResponse> {
+  const resp = await fetch(
+    `${ML_API}/review-queue/lots/${encodeURIComponent(listingKey)}/decide`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ assignments }),
+    },
+  )
+  if (!resp.ok) throw await parseError(resp)
+  return (await resp.json()) as LotDecideResponse
+}

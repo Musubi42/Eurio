@@ -406,3 +406,96 @@ def delete_pending_quotes_for(conn: sqlite3.Connection, source_image_id: str) ->
         "DELETE FROM pending_quotes WHERE source_image_id = ?", (source_image_id,)
     )
     return cur.rowcount or 0
+
+
+# ── Discovery searches (per-call API debug log) ─────────────────────────────
+
+
+@dataclass
+class DiscoverySearchRecord:
+    """One adapter.discover() logical call, persisted for debug.
+
+    Funnel ventilé (chunk 0 auto-validation — "visibilité du stream") :
+
+    - ``n_summaries``    — N0 : ``itemSummaries`` retournés brut par la
+                           search API, avant toute expansion ou filtre.
+    - ``n_after_groups`` — N1 : N0 + lignes ajoutées par expansion type
+                           ``getItemsByGroup`` (top-K limité).
+    - ``n_raw_results``  — N2 : après theme-token drop (silencieux si non
+                           ambigu). Alias historique.
+    - ``n_kept_results`` — N3 : après ``accept_listing`` (noise_title,
+                           year_mismatch, prix, devise…).
+
+    Pour les sources sans étape ``groups`` ou ``theme drop`` (ex. mock,
+    numista), N0 = N1 = N2. Quand l'API errored out, tous les compteurs
+    restent NULL.
+    """
+
+    run_id: str
+    source: str
+    target_eurio_id: str | None = None
+    endpoint: str | None = None
+    query_q: str | None = None
+    query_filters: dict[str, Any] | None = None
+    status: str = "success"  # 'success' | 'empty' | 'failed'
+    http_status: int | None = None
+    n_summaries: int | None = None
+    n_after_groups: int | None = None
+    n_raw_results: int | None = None
+    n_kept_results: int | None = None
+    duration_ms: int | None = None
+    error: str | None = None
+
+
+def record_discarded_listing(
+    conn: sqlite3.Connection,
+    *,
+    run_id: str | None,
+    source: str,
+    source_ref: str,
+    target_eurio_id: str | None,
+    reason: str,
+    title: str | None = None,
+    raw_payload: dict[str, Any] | None = None,
+) -> str:
+    """Trace un listing rejeté par accept_listing avant ingestion.
+
+    But : audit. Si on assouplit une règle plus tard, on peut interroger
+    cette table pour évaluer combien de listings auraient passé le filtre.
+    """
+    rid = uuid.uuid4().hex
+    payload_json = json.dumps(raw_payload) if raw_payload is not None else None
+    conn.execute(
+        """
+        INSERT INTO discarded_listings (
+          id, run_id, source, source_ref, target_eurio_id,
+          reason, title, raw_payload
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (rid, run_id, source, source_ref, target_eurio_id, reason, title, payload_json),
+    )
+    return rid
+
+
+def record_discovery_search(conn: sqlite3.Connection, rec: DiscoverySearchRecord) -> str:
+    """Insert one row in discovery_searches. Returns its id."""
+    rid = uuid.uuid4().hex
+    filters_json = json.dumps(rec.query_filters) if rec.query_filters is not None else None
+    conn.execute(
+        """
+        INSERT INTO discovery_searches (
+          id, run_id, source, target_eurio_id, endpoint,
+          query_q, query_filters_json, status, http_status,
+          n_summaries, n_after_groups, n_raw_results, n_kept_results,
+          duration_ms, error
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            rid, rec.run_id, rec.source, rec.target_eurio_id, rec.endpoint,
+            rec.query_q, filters_json, rec.status, rec.http_status,
+            rec.n_summaries, rec.n_after_groups,
+            rec.n_raw_results, rec.n_kept_results,
+            rec.duration_ms, rec.error,
+        ),
+    )
+    return rid

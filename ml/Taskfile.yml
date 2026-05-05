@@ -71,6 +71,27 @@ tasks:
     cmds:
       - "{{.VENV}}/python -m pytest tests/test_normalize_dispatch.py -v"
 
+  # ---------- Foundation (DINOv2 anchors for auto-validation) ----------
+  dino-anchors:build:
+    desc: "Build DINOv2 obverse anchor bank for the auto-validation pipeline (default scope: 2eur_commemo). Reads coins from training.db and ml/datasets/<numista>/obverse.jpg. Writes ml/state/foundation_anchors_<kind>.npz. Usage: go-task ml:dino-anchors:build [-- --force] [-- --kind 2eur_commemo]"
+    cmds:
+      - "{{.VENV}}/python -m scripts.build_dino_anchors -v {{.CLI_ARGS}}"
+
+  dino-anchors:test:
+    desc: "Unit tests for ml/foundation/ (encoder + anchors + matcher, smoke + roundtrip)."
+    cmds:
+      - "{{.VENV}}/python -m pytest tests/test_foundation.py -v"
+
+  dino-predictions:backfill:
+    desc: "Compute DINOv2 top-K predictions for every existing crop in scope (default: 2€ commémo) that doesn't yet have a row in image_asset_dino_predictions. Idempotent. Usage: go-task ml:dino-predictions:backfill [-- --force] [-- --limit 50]"
+    cmds:
+      - "{{.VENV}}/python -m scripts.backfill_dino_predictions -v {{.CLI_ARGS}}"
+
+  text-signals:backfill:
+    desc: "Extract listing text signals (countries/years/denoms/themes/markers/lot/coverage) for every source_image without a row in listing_text_signals. Pure regex/dict, no I/O. Idempotent. Usage: go-task ml:text-signals:backfill [-- --force] [-- --limit 50] [-- --source ebay]"
+    cmds:
+      - "{{.VENV}}/python -m scripts.backfill_text_signals -v {{.CLI_ARGS}}"
+
   # ---------- Individual steps ----------
   prepare:
     desc: Resize images and split into train/val/test (legacy design_group label space)
@@ -379,7 +400,7 @@ tasks:
 
   # ---------- Sources orchestrator (docs/sources-refacto/) ----------
   src:run:
-    desc: "Run the 6-step ingestion pipeline. Usage: go-task ml:src:run -- --source mock [--country FR --limit 5]"
+    desc: "Run the 8-step ingestion pipeline. Usage: go-task ml:src:run -- --source mock [--country FR --limit 5]"
     cmds:
       - "{{.VENV}}/python -m sources.cli {{.CLI_ARGS}}"
 
