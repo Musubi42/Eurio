@@ -448,3 +448,42 @@ tasks:
     desc: "Preview bootstrap-coins without writing."
     cmds:
       - "{{.VENV}}/python -m scripts.bootstrap_coins_from_referential --dry-run"
+
+  # ---------- Storage migration (fs → MinIO) ----------
+  # Spec: docs/harmonisation-images/chunk-3-migration-script.md
+  migrate-inventory:
+    desc: "Build migration manifest (sha256 + target S3 keys for canonical/raw/crop)."
+    cmds:
+      - "{{.VENV}}/python -m scripts.migrate_to_minio inventory"
+
+  migrate-upload:
+    desc: "Upload all manifest entries to MinIO (idempotent). Override: -- --workers 16 --category crop"
+    cmds:
+      - "{{.VENV}}/python -m scripts.migrate_to_minio upload {{.CLI_ARGS}}"
+
+  migrate-db:
+    desc: "Rewrite storage_path → S3 key in DB, archive original in storage_path_legacy."
+    cmds:
+      - "{{.VENV}}/python -m scripts.migrate_to_minio db"
+
+  migrate-verify:
+    desc: "sha256 sample audit against MinIO. Override: -- --sample-pct 10"
+    cmds:
+      - "{{.VENV}}/python -m scripts.migrate_to_minio verify {{.CLI_ARGS}}"
+
+  migrate-lock-fs:
+    desc: "chmod a-w on ml/datasets and ml/state/sources/*/{raw,crops} (7-day safety)."
+    cmds:
+      - "{{.VENV}}/python -m scripts.migrate_to_minio lock-fs"
+
+  # ---------- Local cache ----------
+  cache-stats:
+    desc: "Show local cache size + n_files (~/.cache/eurio)."
+    cmds:
+      - "{{.VENV}}/python -c 'from ml.storage.local_cache import cache_stats; import json; print(json.dumps(cache_stats(), indent=2))'"
+
+  cache-purge:
+    desc: "Wipe local cache root."
+    prompt: "This will delete ~/.cache/eurio/. Continue?"
+    cmds:
+      - "{{.VENV}}/python -c 'from ml.storage.local_cache import purge_cache; purge_cache()'"

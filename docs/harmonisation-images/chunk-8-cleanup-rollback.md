@@ -1,95 +1,119 @@
-# Chunk 8 — Cleanup + rollback procedures
+# Chunk 8 — Cleanup + rollback
 
 > Documenter et automatiser : suppression définitive du filesystem
-> local après le délai de safety, et procédures de rollback en cas
-> de désastre. Pré-requis : chunks 3, 4, 5 livrés et stables.
+> local + colonne `storage_path_legacy` après le délai de safety, et
+> procédure de rollback. Pré-requis : chunks 3, 4, 5 livrés et stables.
 
 ## Objectif
 
 À la fin du chunk :
-- Procédure documentée pour supprimer `ml/datasets/` local après les 7 jours de safety.
+
+- Procédure documentée pour supprimer les dossiers locaux après les 7 jours de safety.
 - Procédure de rollback documentée + script si désastre découvert pendant le délai.
-- Procédure d'orphan cleanup côté MinIO (objets sans ligne DB) automatisée.
+- Procédure d'orphan cleanup côté MinIO (objets sans ligne DB).
+- Vérif sha256 périodique (drift detection).
 
 ## Composantes
 
-### 8.1 Cleanup filesystem local (J+7 ou J+30)
+### 8.1 Cleanup filesystem local (J+7)
 
-Après chunk 3, le filesystem local `ml/datasets/` est en read-only pendant 7 jours (configurable). À J+7, si rien n'a explosé :
+Après chunk 3, les dossiers source sont en read-only pendant 7 jours. À J+7, si rien n'a explosé :
 
 ```bash
 go-task ml:migrate-cleanup-local
 ```
 
 Wraps :
+
 ```bash
 # 1. Vérif : aucune ligne DB ne pointe vers fs absolu
-sqlite3 ml/state/training.db \
-  "SELECT COUNT(*) FROM image_assets WHERE storage_key LIKE '/%'"
-# attendu : 0
+sqlite3 ml/state/training.db <<EOF
+SELECT COUNT(*) FROM image_assets   WHERE storage_path LIKE '/%';
+SELECT COUNT(*) FROM source_images  WHERE storage_path LIKE '/%';
+EOF
+# attendu : 0, 0
 
 # 2. Vérif : MinIO contient bien tout (sample 5%)
 go-task ml:migrate-verify -- --sample-pct=5
 
-# 3. Supprime le filesystem local
-chmod -R u+w ml/datasets
-rm -rf ml/datasets
+# 3. Drop la colonne legacy
+sqlite3 ml/state/training.db <<EOF
+ALTER TABLE image_assets   DROP COLUMN storage_path_legacy;
+ALTER TABLE source_images  DROP COLUMN storage_path_legacy;
+EOF
 
-# 4. Mark dans migrations_log
+# 4. Supprime le filesystem local
+chmod -R u+w ml/datasets ml/state/sources
+rm -rf ml/datasets ml/state/sources/*/raw ml/state/sources/*/crops
+
+# 5. Mark dans migrations_log
 sqlite3 ml/state/training.db \
-  "UPDATE migrations_log SET notes = 'fs cleanup done $(date)' WHERE name = 'fs_to_minio_2026_05'"
+  "UPDATE migrations_log SET notes = 'fs cleanup done $(date -u +%FT%TZ)' \
+   WHERE name = 'fs_to_minio_2026_05'"
 ```
 
-Avec un `prompt: yes` du go-task pour éviter les exécutions accidentelles.
+Avec `prompt: yes` du go-task pour éviter les exécutions accidentelles.
 
-### 8.2 Rollback complet (urgence)
+### 8.2 Rollback complet (urgence ≤ J+7)
 
-Si dans les 7 jours après chunk 3 on découvre une catastrophe (corruption MinIO, perte de fichiers, etc.) et que le filesystem local existe encore :
+Si dans les 7 jours après chunk 3 on découvre une catastrophe et que `storage_path_legacy` + filesystem sont encore là :
 
 ```bash
 go-task ml:migrate-rollback
 ```
 
-Wraps un script `ml/scripts/migrate_rollback.py` qui :
-1. Re-écrit en DB les `storage_key` legacy → chemins filesystem absolus
-2. `chmod -R u+w ml/datasets` (relâche le lock read-only)
-3. Marque dans `migrations_log` : `rolled_back_at = now()`
-4. Le code Eurio repose sur fs comme avant.
+Wraps :
 
-Note importante : le rollback **n'efface pas MinIO**. Les buckets restent là, on peut re-tenter la migration plus tard une fois le bug fixé.
+```sql
+BEGIN;
+UPDATE image_assets   SET storage_path = storage_path_legacy
+  WHERE storage_path_legacy IS NOT NULL;
+UPDATE source_images  SET storage_path = storage_path_legacy
+  WHERE storage_path_legacy IS NOT NULL;
+UPDATE migrations_log SET notes = 'rolled back at ' || datetime('now')
+  WHERE name = 'fs_to_minio_2026_05';
+COMMIT;
+```
+
+Puis :
+
+```bash
+chmod -R u+w ml/datasets ml/state/sources
+```
+
+Le code Eurio repose à nouveau sur fs comme avant. **MinIO reste intact** — on peut re-tenter la migration plus tard une fois le bug fixé.
 
 Pré-requis pour que le rollback marche :
-- `ml/datasets/` encore présent et lisible
-- Le manifeste `migration-manifest.jsonl` du chunk 3 a été conservé (il contient le mapping `storage_key` ↔ `fs_path`).
+- `ml/datasets/` + `ml/state/sources/` encore présents et lisibles
+- `storage_path_legacy` non drop
+- Manifest `migration-manifest.jsonl` conservé (commit dans git, sert de vérif)
 
 ### 8.3 Orphan cleanup MinIO
 
-Au fil du temps, des objets MinIO peuvent devenir orphelins (pas de ligne DB qui y réfère) :
-- Asset rejected → supprimé en DB → fichier MinIO traîne
-- Run cancelled mid-write → fichier uploadé mais ligne DB jamais commit
+Au fil du temps, des objets MinIO peuvent devenir orphelins :
+- Asset rejected → DELETE en DB → fichier MinIO traîne
+- Run cancelled mid-write
 - Bug pipeline qui upload puis crash
 
-Script mensuel `ml/scripts/orphan_cleanup.py` :
+Script `ml/scripts/orphan_cleanup.py` :
 
 ```python
-def find_orphans(bucket: str, store: Store) -> list[str]:
-    """Liste les keys MinIO qui n'ont pas de ligne DB correspondante."""
+def find_orphans(bucket: str, store) -> list[str]:
     minio_keys = set(_list_all_keys(bucket))
     db_keys = set(_list_db_keys_for_bucket(bucket, store))
     return list(minio_keys - db_keys)
 
-def delete_orphans(bucket: str, keys: list[str], dry_run: bool = True):
-    if dry_run:
-        for k in keys: print(f"[DRY] would delete {bucket}/{k}")
-        return
-    # Délai de safety : ne supprime que les orphelins > 7 jours
+def delete_orphans(bucket: str, keys: list[str], dry_run: bool = True, age_days: int = 7):
     for k in keys:
         meta = _stat(bucket, k)
-        if (now - meta.last_modified).days < 7: continue
-        _delete(bucket, k)
+        if (datetime.utcnow() - meta.last_modified).days < age_days:
+            continue   # safety : ne supprime pas les jeunes
+        if dry_run:
+            print(f"[DRY] would delete {bucket}/{k}")
+        else:
+            _delete(bucket, k)
 ```
 
-Tâche go-task :
 ```yaml
 ml:minio-orphans:list:
   cmds: [python -m ml.scripts.orphan_cleanup list]
@@ -98,7 +122,7 @@ ml:minio-orphans:delete:
   prompt: "Sure ?"
 ```
 
-Pas de timer auto en V1 — on tourne à la main, on observe pendant 2-3 mois, on automatise quand on a confiance.
+Pas de timer auto V1. On tourne à la main, on observe 2-3 mois, on automatise quand on a confiance.
 
 ### 8.4 Vérif sha256 périodique (drift detection)
 
@@ -108,30 +132,30 @@ Une fois par mois :
 go-task ml:minio-verify -- --sample-pct=2
 ```
 
-Tire 2% des `image_assets`, recompute sha256 du contenu MinIO, compare avec `image_assets.sha256` (déjà en DB selon schéma). Si mismatch → alerte ntfy.sh comme pour le backup.
+Tire 2 % des `image_assets`, recompute sha256 du contenu MinIO, compare avec `image_assets.sha256` (déjà en DB selon schéma). Si mismatch → alerte ntfy.sh.
 
-C'est le filet de sécurité contre la corruption silencieuse côté MinIO ou pCloud.
+C'est le filet de sécurité contre la corruption silencieuse côté MinIO ou pCloud restore.
 
 ## Critères d'acceptation
 
-- [ ] `go-task ml:migrate-cleanup-local` testé en dry-run, supprime bien `ml/datasets/` quand confirmé
-- [ ] `go-task ml:migrate-rollback` documenté + script écrit (mais pas exécuté tant que pas de désastre)
-- [ ] `go-task ml:minio-orphans:list` retourne 0 orphelins juste après chunk 3
-- [ ] `go-task ml:minio-verify -- --sample-pct=2` passe sans mismatch
+- [ ] `ml:migrate-cleanup-local` testé en dry-run, supprime bien dossiers source quand confirmé, drop la colonne legacy
+- [ ] `ml:migrate-rollback` documenté + script écrit (pas exécuté tant que pas de désastre)
+- [ ] `ml:minio-orphans:list` retourne 0 orphelins juste après chunk 3
+- [ ] `ml:minio-verify --sample-pct=2` passe sans mismatch
 
 ## Gotchas
 
-- **Filesystem fantôme** : sur Mac, parfois `rm -rf` ne libère pas l'espace disque immédiatement (Time Machine snapshots). Si le disque reste plein, `tmutil deletelocalsnapshots /`.
-- **Manifest persistance** : le `migration-manifest.jsonl` du chunk 3 doit être versionné (commit dans git, ~1 MB). C'est le seul moyen de rollback proprement.
-- **Rollback partiel** : si on rollback une fois mais qu'on re-tente la migration ensuite, le DB doit être ré-aligné. Le script `migrate_to_minio.py upload` est idempotent → re-tourner le pipeline complet (inventory → upload → seal-db) est safe.
-- **Orphan cleanup et race condition** : si une pipeline upload un fichier puis prend 30s pour commit la ligne DB, et qu'on tourne `orphan_cleanup` entre les deux, on supprime un fichier valide. Le délai 7j de safety couvre largement ce cas.
+- **Filesystem fantôme Mac** : `rm -rf` peut ne pas libérer l'espace immédiatement (Time Machine snapshots). Si le disque reste plein : `tmutil deletelocalsnapshots /`.
+- **Manifest persistance** : `migration-manifest.jsonl` doit rester commité dans `docs/harmonisation-images/`. C'est la trace historique de la migration et le double check du rollback.
+- **Rollback partiel** : si on rollback puis re-migre plus tard, le pipeline complet (inventory → upload → db) est idempotent → safe à re-tourner.
+- **Orphan cleanup race condition** : si une pipeline upload puis prend 30 s pour commit la ligne DB, et qu'on tourne `orphan_cleanup` entre les deux, on supprime un fichier valide. Le `--age-days=7` couvre largement ce cas.
 
 ## Anti-objectifs
 
-- ❌ Pas d'auto-cleanup orphelins en V1. On observe d'abord.
-- ❌ Pas de rollback "hot" (sans interruption). Si on rollback, on stoppe les pipelines, on re-écrit la DB, on relance.
-- ❌ Pas de "soft delete" en MinIO. Quand on supprime, c'est définitif (la rétention est aux snapshots pCloud).
-- ❌ Pas de vérification 100% sha256 à chaque cleanup — sample 2 %. Au-delà ça coûte trop cher en bande passante VPS.
+- ❌ Pas d'auto-cleanup orphelins en V1.
+- ❌ Pas de rollback "hot" (sans interruption). Si rollback : stop pipelines, ré-écrit DB, relance.
+- ❌ Pas de "soft delete" en MinIO. Suppression définitive (la rétention est dans le tar pCloud).
+- ❌ Pas de vérification 100 % sha256 à chaque cleanup. Sample 2 %.
 
 ## Quand exécuter les procédures
 
@@ -146,4 +170,4 @@ C'est le filet de sécurité contre la corruption silencieuse côté MinIO ou pC
 ## Mémoires liées
 
 - `feedback_no_debt` — pas de soft migration, hard cut puis cleanup ferme
-- `feedback_chunk_audit_flow` — chunk 8 ne ferme la boucle que quand 4 et 5 sont stables
+- `feedback_chunk_audit_flow` — chunk 8 ferme la boucle quand 4 et 5 sont stables

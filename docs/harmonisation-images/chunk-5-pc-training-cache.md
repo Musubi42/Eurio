@@ -1,122 +1,131 @@
-# Chunk 5 — PC training cache run-scoped
+# Chunk 5 — Pre-fetch run-scoped training
 
 > Sur le PC fixe, l'entraînement ne doit jamais bloquer sur le réseau.
-> En début de run, on télécharge tous les fichiers nécessaires dans un
-> cache local scoped par `run_id`. À la fin (ou au début du run suivant),
-> on nettoie. Pré-requis : chunk 3 livré.
+> En début de run, on pré-fetch tous les crops nécessaires dans un cache
+> scoped par `run_id`. Sweep des runs morts au démarrage.
+> Pré-requis : chunk 4 livré.
 
 ## Objectif
 
 À la fin du chunk, un run d'entraînement :
 
-1. Démarre, récupère sa liste d'`image_assets` à utiliser (selon la stratégie de training).
-2. Sweep les caches orphelins (runs cancelled / failed) **avant** de pré-fetch.
-3. Pré-fetch tous les fichiers vers `~/.cache/eurio/runs/<run_id>/` en parallèle.
+1. Démarre, récupère sa liste de crops à utiliser (training = obverse uniquement, cf. `feedback_training_source_obverse_only`).
+2. Sweep les caches orphelins (runs `done|failed|cancelled`) **avant** de pré-fetch.
+3. Pré-fetch tous les crops vers `~/.cache/eurio/runs/<run_id>/` en parallèle (réutilise `local_cache.local_path` mais avec `EURIO_CACHE_ROOT` overridé sur le run).
 4. Lance l'entraînement (PyTorch DataLoader pointe vers ce path).
-5. À la fin : `try/finally` qui nettoie ce cache run.
+5. À la fin (`try/finally`) : `shutil.rmtree(cache_dir, ignore_errors=True)`.
 
-Le PC a typiquement plusieurs centaines de GB de SSD, donc 50–100 GB par run cache est OK.
+Les augmentations vivent dans `ml/cache/augmentation_sources/<run_id>/` (déjà existant), elles ne sont **jamais** uploadées en S3 (vision §P5).
+
+## Volumétrie réelle
+
+Training actuel = **obverses uniquement**. ~5k coins × ~200 KB ≈ **1 GB par run**, pas 50 GB. Le pré-fetch est rapide même sur connexion VPS↔PC modeste.
+
+Si jamais on entraîne aussi sur les crops scrapés (futur), recalibrer.
 
 ## Pré-requis
 
-- Chunk 3 livré.
-- Module `ml/storage/` avec un client S3 (`boto3` ou `minio-py`) configuré.
-- Le runner d'entraînement (`ml/api/training_runner.py` ou équivalent) connaît son `run_id`.
+- Chunk 4 livré (lib `ml/storage/local_cache.py`).
+- Le runner d'entraînement connaît son `run_id` et sa liste d'assets.
 
-## Décisions à acter
+## Décisions actées
 
-1. **Path du cache** : `~/.cache/eurio/runs/<run_id>/<bucket>/<storage_key>` (préserve la hiérarchie pour debug).
-2. **Pool de workers download** : 16 (le PC a probablement plus de CPU + meilleur réseau que le Mac).
-3. **Augmentation lit depuis le cache** : oui, l'augmentation est parallélisée dans la pipeline existante et lit déjà depuis disque. Aucun changement de code augmentation.
-4. **Inclure les images Numista canoniques dans le cache run-scoped** ? Discussion :
-   - Pro : 100% local, jamais bloquant.
-   - Contre : Numista canonique change rarement → un cache permanent dédié serait plus efficace.
-   - **Reco V1** : on les met dans le cache run-scoped aussi, c'est plus simple. Si ça devient un goulot d'étranglement, on fera un cache Numista permanent en V2.
+1. **Cache root override par run** : `EURIO_CACHE_ROOT=~/.cache/eurio/runs/<run_id>` au moment du pré-fetch, pour réutiliser exactement la même lib que le Mac (zéro duplication de code).
+2. **Workers** : 16 (PC a plus de CPU + meilleur réseau).
+3. **Sweep** : compare les dossiers `~/.cache/eurio/runs/*` aux runs `running` en DB, supprime tout le reste.
+4. **Cleanup post-run** : `try/finally` rmtree. Si crash, le sweep du run suivant rattrape.
 
 ## Implémentation
 
 ### 5.1 Sweep des orphelins
 
-Au démarrage du runner :
-
 ```python
 # ml/storage/training_cache.py
-def sweep_orphan_runs(store: Store, cache_root: Path) -> int:
+import shutil
+from pathlib import Path
+from ml.state.store import Store
+
+def sweep_orphan_runs(store: Store, runs_root: Path) -> int:
     """Supprime les caches de runs qui ne sont plus 'running' en DB."""
-    if not cache_root.exists():
+    if not runs_root.exists():
         return 0
-    n_deleted = 0
-    for run_dir in cache_root.iterdir():
-        if not run_dir.is_dir(): continue
+    n = 0
+    for run_dir in runs_root.iterdir():
+        if not run_dir.is_dir():
+            continue
         run_id = run_dir.name
         row = store._connection().execute(
-            "SELECT status FROM training_runs WHERE id = ?",
-            (run_id,)
+            "SELECT status FROM training_runs WHERE id = ?", (run_id,),
         ).fetchone()
         if row is None or row["status"] in ("done", "failed", "cancelled"):
-            shutil.rmtree(run_dir)
-            n_deleted += 1
-    return n_deleted
+            shutil.rmtree(run_dir, ignore_errors=True)
+            n += 1
+    return n
 ```
-
-Appelé une fois par `runner.start()`, avant le pre-fetch.
 
 ### 5.2 Pre-fetch parallèle
 
 ```python
+import os
+from concurrent.futures import ThreadPoolExecutor
+from tqdm import tqdm
+from ml.storage.local_cache import local_path
+
 def prefetch_for_run(
     run_id: str,
-    storage_keys: list[tuple[str, str]],  # [(bucket, key), ...]
-    cache_root: Path,
+    items: list[tuple[str, str]],   # [(bucket, storage_key), ...]
+    runs_root: Path,
     workers: int = 16,
 ) -> Path:
-    run_dir = cache_root / run_id
-    run_dir.mkdir(parents=True, exist_ok=True)
+    run_dir = runs_root / run_id
+    # Override le cache root pour ce run uniquement
+    os.environ["EURIO_CACHE_ROOT"] = str(run_dir)
+    os.environ["EURIO_CACHE_MAX_GB"] = "0"   # unbounded inside the run
+    # Reset le client S3 module-level si déjà instancié dans un autre contexte
+    # (en pratique le runner tourne dans son propre process).
+
     with ThreadPoolExecutor(max_workers=workers) as pool:
         list(tqdm(
-            pool.map(
-                lambda bk: _download_one(run_dir, *bk),
-                storage_keys
-            ),
-            total=len(storage_keys),
+            pool.map(lambda bk: local_path(bk[0], bk[1]), items),
+            total=len(items),
             desc=f"prefetch run {run_id}",
         ))
     return run_dir
 ```
 
-Idempotent : `_download_one` skip si le fichier existe déjà avec la bonne taille (pas de sha256 ici, on suppose MinIO immuable côté object store).
-
 ### 5.3 Wiring dans le runner
 
 ```python
-# ml/api/training_runner.py (extrait)
+# ml/api/training_runner.py
+from pathlib import Path
+import shutil
+
 def start_run(self, run_id: str, ...):
-    cache_root = Path("~/.cache/eurio/runs").expanduser()
-    sweep_orphan_runs(self.store, cache_root)
+    runs_root = Path("~/.cache/eurio/runs").expanduser()
+    sweep_orphan_runs(self.store, runs_root)
 
-    # Build asset list selon la stratégie de training
-    assets = self._select_training_assets(run_id)
-    keys = [(bucket_for_asset(a.source), a.storage_key) for a in assets]
+    assets = self._select_training_assets(run_id)   # obverses only
+    items = [(bucket_for_asset(a.source), a.storage_path) for a in assets]
 
-    cache_dir = prefetch_for_run(run_id, keys, cache_root)
+    cache_dir = prefetch_for_run(run_id, items, runs_root)
 
     try:
-        # PyTorch DataLoader pointe vers cache_dir/<bucket>/<storage_key>
-        self._train_with_local_dir(cache_dir, ...)
+        # PyTorch DataLoader résout via local_path() qui hit le cache run-scoped
+        self._train_with_local(cache_dir, ...)
     finally:
-        # Best-effort cleanup ; le sweep du run suivant rattrape si exception
         shutil.rmtree(cache_dir, ignore_errors=True)
 ```
 
-### 5.4 PyTorch DataLoader path resolution
+### 5.4 Disque garde-fou
 
-Helper :
+Avant pre-fetch :
+
 ```python
-def asset_local_path(cache_dir: Path, bucket: str, storage_key: str) -> Path:
-    return cache_dir / bucket / storage_key
+import shutil as sh
+free_gb = sh.disk_usage(runs_root).free / 1024**3
+if free_gb < 5:
+    raise RuntimeError(f"Disk free {free_gb:.1f}GB < 5GB safety threshold")
 ```
-
-Le Dataset construit ce path en lieu et place de l'ancien `image_assets.storage_path`.
 
 ### 5.5 Tâches go-task
 
@@ -128,28 +137,29 @@ ml:cache-runs:sweep:
   desc: Manually sweep orphan run caches
   cmds: [python -m ml.storage.training_cache sweep]
 ml:cache-runs:purge-all:
-  desc: Nuke all run caches (use after experiments)
+  desc: Nuke all run caches
   cmds: [rm -rf ~/.cache/eurio/runs]
   prompt: "Sure ?"
 ```
 
 ## Critères d'acceptation
 
-- [ ] Un run d'entraînement complet tourne contre le cache run-scoped, pas de query MinIO pendant la boucle.
-- [ ] Au démarrage d'un run, les caches de runs précédents `done|failed|cancelled` sont nettoyés automatiquement.
-- [ ] Si on `Ctrl+C` un run, le cache reste ; le prochain run le nettoie.
-- [ ] Pre-fetch sur 10k images < 5 min sur la connexion VPS↔PC (Hetzner ou OVH typique).
+- [ ] Run training complet tourne contre le cache run-scoped, 0 query MinIO pendant la boucle
+- [ ] Au démarrage d'un run, les caches `done|failed|cancelled` sont purgés
+- [ ] Si on `Ctrl+C` un run, le cache reste ; le prochain run le nettoie
+- [ ] Pre-fetch sur ~5k crops < 1 min sur réseau VPS↔PC standard
+- [ ] Disque garde-fou abort si < 5 GB libre
 
 ## Gotchas
 
-- **Disque plein** : si plusieurs runs s'enchaînent, leurs caches peuvent s'accumuler si le sweep ne marche pas. Garde-fou : avant pre-fetch, vérifier `shutil.disk_usage()` et abort si < 20 GB libre. Affiche un warning clair.
-- **Fichiers manquants** : si un asset dispare en MinIO entre la query DB et le pre-fetch (rare, mais possible si quelqu'un a purgé un bucket), le download foire. Le runner doit `raise` → le run start est marqué failed → le sweep du suivant nettoie. Ne pas swallow l'erreur.
-- **PyTorch num_workers** : si le DataLoader est en multi-process, plusieurs procs pointent vers le même `cache_dir/...` en read. OK, tant que le pre-fetch est terminé avant le DataLoader.start.
-- **Augmentation écrit aussi dans le cache** : oui, l'augmentation crée des fichiers à côté des originaux. Tout vit dans `cache_dir/`. À la fin, on nuke tout.
+- **Augmentations** : produites dans `ml/cache/augmentation_sources/<run_id>/`, lues depuis ce path par le DataLoader. Pas dans le run-cache S3, pas dans le sweep. Cycle de vie séparé (et déjà géré par le code training existant).
+- **DataLoader multi-process** : si `num_workers > 0`, plusieurs procs lisent `cache_dir/...` en read. OK tant que le pre-fetch est fini avant `DataLoader.start()`.
+- **Asset dispare en MinIO entre query DB et pre-fetch** : `local_path` raise → run failed → sweep rattrape. Ne pas swallow.
+- **Reset du client boto3 dans le runner** : le module-level `_s3` peut hériter d'un autre cache root si réutilisé. En pratique le runner tourne dans son propre process — pas de souci. Si jamais tests in-process : appeler `ml.storage.local_cache._s3 = None` après reset env.
 
 ## Anti-objectifs
 
-- ❌ Pas de cache "global persistent" sur le PC partagé entre runs (sauf cache Numista en V2 si avéré nécessaire).
+- ❌ Pas de cache "global persistent" inter-runs sur le PC. Chaque run a son cache, jeté à la fin.
 - ❌ Pas de download streaming pendant le training. Pre-fetch d'abord, training ensuite.
-- ❌ Pas de retry policy infinie sur le pre-fetch. 3 retries par fichier, sinon échec du run.
-- ❌ Pas de deduplication des fichiers entre runs. Si run A et run B utilisent les mêmes images, elles seront téléchargées 2 fois. Simplicité > économie de bande passante (le réseau VPS↔PC est gratuit dans ce cas).
+- ❌ Pas de retry policy infinie sur le pre-fetch. boto3 retry par défaut (3), au-delà → fail run.
+- ❌ Pas de dedup inter-runs. Si run A et B téléchargent le même asset, c'est OK — coût négligeable, complexité évitée.

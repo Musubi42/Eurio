@@ -67,6 +67,10 @@
           # ML API (FastAPI)
           fastapi
           uvicorn
+          # S3-compatible storage client (MinIO via boto3).
+          # See docs/harmonisation-images/.
+          boto3
+          botocore
         ]);
       in
       {
