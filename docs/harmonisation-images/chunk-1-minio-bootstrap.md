@@ -1,159 +1,182 @@
-# Chunk 1 — MinIO bootstrap (VPS)
+# Chunk 1 — MinIO docker bootstrap (VPS NixOS)
 
-> Faire vivre une instance MinIO sur le VPS, avec 3 buckets et les ACL
-> qu'il faut. Ne touche ni la DB, ni le code Eurio. Pré-requis pour les
-> chunks 3, 6, 7.
+> Faire vivre une instance MinIO dockerisée sur le VPS perso, avec 3
+> buckets et les ACL voulues. Ne touche ni la DB, ni le code Eurio.
+> Pré-requis pour les chunks 3, 6, 7.
 
 ## Objectif
 
 À la fin du chunk, depuis Mac et PC, on peut :
 
 ```bash
-mc alias set eurio https://minio.eurio.lan ACCESS SECRET
+mc alias set eurio https://s3.eurio.musubi.dev $APP_USER $APP_PWD
 mc ls eurio/numista-canonical
-mc ls eurio/enrichment
-mc ls eurio/source-images
+mc ls eurio/enrichment-raws
+mc ls eurio/enrichment-crops
 ```
 
-Et un `curl https://images.eurio.com/test.png` (Cloudflare → MinIO) renvoie un objet test (preuve que le bucket public est servable). Les 2 autres buckets répondent 403 sans signed URL.
+Et `curl https://images.eurio.musubi.dev/numista/68395/obverse.jpg` (Cloudflare → MinIO) renvoie 200 sur un objet de test. Les buckets privés répondent 403 sans signed URL.
 
 ## Pré-requis
 
-- VPS NixOS ou Linux générique up & reachable.
-- Domaine `eurio.com` (ou autre) avec DNS contrôlable pour pointer sur le VPS.
-- Reverse proxy Traefik déjà installé sur le VPS (acquis selon mémoire utilisateur).
+- VPS perso NixOS up, accessible.
+- Docker installé via NixOS (`virtualisation.docker.enable = true`).
+- Traefik installé sur le VPS (acquis selon utilisateur ; sinon, étape préliminaire).
+- Sous-domaine `*.eurio.musubi.dev` pointable sur le VPS via Cloudflare.
 
-## Décisions à acter avant de coder
+## Décisions actées
 
-1. **NixOS module vs docker-compose** ?
-   - Si `nixos-rebuild`-managé : `services.minio` du module officiel + `services.traefik` route. Reproductible, propre.
-   - Sinon : `docker-compose.yml` avec MinIO + Traefik label routes.
-   - **Reco** : NixOS module si possible (le VPS est NixOS d'après l'utilisateur).
-2. **Sous-domaines** :
-   - `images.eurio.com` → bucket public `numista-canonical` via Cloudflare (chunk 6)
-   - `s3.eurio.com` → endpoint S3 (signed URLs pour `enrichment`, `source-images`)
-   - `console.eurio.com` → console MinIO admin (basic auth Traefik en plus)
-3. **Credentials** : root MinIO via `pass` ou `agenix` côté VPS, pas en clair dans le flake.
+1. **Docker, pas service NixOS natif** (cf. vision §"Décisions actées" #1). MinIO container officiel.
+2. **3 buckets** : `numista-canonical` (public), `enrichment-raws` (privé), `enrichment-crops` (privé).
+3. **2 sous-domaines** : `s3.eurio.musubi.dev` (endpoint S3) + `images.eurio.musubi.dev` (CDN public devant `numista-canonical`).
+4. **User dédié** `eurio-app` pour le code (pas le root).
+5. **Credentials** via fichier monté dans le container, jamais en clair dans le compose ni le flake.
 
-## Implémentation — étapes
+## Implémentation
 
-### 1.1 Installation
+### 1.1 Docker compose
 
-**NixOS** (recommandé) :
-```nix
-# /etc/nixos/services/minio.nix
-{ config, ... }: {
-  services.minio = {
-    enable = true;
-    region = "eu-west-1";
-    rootCredentialsFile = "/run/secrets/minio-root-creds";
-    dataDir = [ "/var/lib/minio/data" ];
-    listenAddress = "127.0.0.1:9000";
-    consoleAddress = "127.0.0.1:9001";
-  };
-}
-```
+`/etc/eurio/minio/docker-compose.yml` :
 
-Puis Traefik labels pour exposer `s3.eurio.com` → `127.0.0.1:9000`.
-
-**Docker-compose** (alternative) :
 ```yaml
 services:
   minio:
     image: minio/minio:latest
+    container_name: eurio-minio
+    restart: unless-stopped
     command: server /data --console-address :9001
     volumes:
-      - /var/lib/minio/data:/data
+      - /var/lib/eurio-minio/data:/data
+      - /etc/eurio/minio/secrets:/run/secrets:ro
     environment:
-      MINIO_ROOT_USER_FILE: /run/secrets/minio_user
-      MINIO_ROOT_PASSWORD_FILE: /run/secrets/minio_password
+      MINIO_ROOT_USER_FILE: /run/secrets/minio_root_user
+      MINIO_ROOT_PASSWORD_FILE: /run/secrets/minio_root_password
     labels:
-      - traefik.http.routers.minio-s3.rule=Host(`s3.eurio.com`)
+      - traefik.enable=true
+      # S3 endpoint (signed URL access)
+      - traefik.http.routers.minio-s3.rule=Host(`s3.eurio.musubi.dev`)
+      - traefik.http.routers.minio-s3.entrypoints=websecure
+      - traefik.http.routers.minio-s3.tls.certresolver=cf
+      - traefik.http.routers.minio-s3.service=minio-s3
       - traefik.http.services.minio-s3.loadbalancer.server.port=9000
+      # Public CDN for numista-canonical bucket
+      - traefik.http.routers.minio-images.rule=Host(`images.eurio.musubi.dev`)
+      - traefik.http.routers.minio-images.entrypoints=websecure
+      - traefik.http.routers.minio-images.tls.certresolver=cf
+      - traefik.http.routers.minio-images.middlewares=images-prefix
+      - traefik.http.routers.minio-images.service=minio-s3
+      - traefik.http.middlewares.images-prefix.addprefix.prefix=/numista-canonical
 ```
 
-### 1.2 Création des buckets
+`/etc/eurio/minio/secrets/minio_root_user` et `minio_root_password` : fichiers texte (mode 0400), root MinIO.
 
-Via `mc` (MinIO Client) depuis le VPS, après que MinIO soit up :
+### 1.2 NixOS wiring
+
+`/etc/nixos/eurio-minio.nix` :
+
+```nix
+{ pkgs, ... }: {
+  systemd.services.eurio-minio = {
+    description = "Eurio MinIO (docker compose)";
+    after = [ "docker.service" "network-online.target" ];
+    wants = [ "docker.service" "network-online.target" ];
+    wantedBy = [ "multi-user.target" ];
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+      ExecStart = "${pkgs.docker}/bin/docker compose -f /etc/eurio/minio/docker-compose.yml up -d";
+      ExecStop  = "${pkgs.docker}/bin/docker compose -f /etc/eurio/minio/docker-compose.yml down";
+    };
+  };
+}
+```
+
+### 1.3 Cloudflare DNS
+
+Sous-domaines à créer dans la zone `musubi.dev` :
+
+```
+s3.eurio        CNAME    <vps-host>      proxied: ON
+images.eurio    CNAME    <vps-host>      proxied: ON
+```
+
+Cloudflare en mode "Full (strict)" pour valider le certificat Let's Encrypt côté Traefik.
+
+### 1.4 Création des buckets
+
+Depuis le VPS, après que MinIO soit up :
 
 ```bash
-mc alias set local https://s3.eurio.com $ROOT_USER $ROOT_PWD
+mc alias set local https://s3.eurio.musubi.dev "$ROOT_USER" "$ROOT_PWD"
 mc mb local/numista-canonical
-mc mb local/enrichment
-mc mb local/source-images
+mc mb local/enrichment-raws
+mc mb local/enrichment-crops
 
-# Numista : public read (anonyme)
+# Public read pour numista-canonical
 mc anonymous set download local/numista-canonical
-
-# Enrichment + source-images : privé par défaut, pas de policy anonyme
 ```
 
-### 1.3 Création d'un user "eurio-app"
-
-Le code Eurio (Mac dev, PC dev) ne doit jamais utiliser le root user.
+### 1.5 User `eurio-app`
 
 ```bash
-mc admin user add local eurio-app $APP_PWD
+mc admin user add local eurio-app "$APP_PWD"
 mc admin policy create local eurio-app-policy /tmp/policy.json
 mc admin policy attach local eurio-app-policy --user eurio-app
 ```
 
-Policy `eurio-app-policy` (read+write sur les 3 buckets, pas d'admin) :
+`policy.json` :
+
 ```json
 {
   "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": ["s3:GetObject","s3:PutObject","s3:DeleteObject","s3:ListBucket"],
-      "Resource": [
-        "arn:aws:s3:::numista-canonical/*",
-        "arn:aws:s3:::numista-canonical",
-        "arn:aws:s3:::enrichment/*",
-        "arn:aws:s3:::enrichment",
-        "arn:aws:s3:::source-images/*",
-        "arn:aws:s3:::source-images"
-      ]
-    }
-  ]
+  "Statement": [{
+    "Effect": "Allow",
+    "Action": ["s3:GetObject","s3:PutObject","s3:DeleteObject","s3:ListBucket"],
+    "Resource": [
+      "arn:aws:s3:::numista-canonical/*", "arn:aws:s3:::numista-canonical",
+      "arn:aws:s3:::enrichment-raws/*",   "arn:aws:s3:::enrichment-raws",
+      "arn:aws:s3:::enrichment-crops/*",  "arn:aws:s3:::enrichment-crops"
+    ]
+  }]
 }
 ```
 
-### 1.4 Smoke test
+### 1.6 Smoke test
 
-Depuis Mac :
 ```bash
-mc alias set eurio https://s3.eurio.com $APP_USER $APP_PWD
-echo "hello" > /tmp/test.txt
-mc cp /tmp/test.txt eurio/enrichment/test.txt
-mc ls eurio/enrichment
-mc rm eurio/enrichment/test.txt
-```
+# Mac
+mc alias set eurio https://s3.eurio.musubi.dev "$APP_USER" "$APP_PWD"
+echo hello > /tmp/test.txt
+mc cp /tmp/test.txt eurio/enrichment-crops/test.txt
+mc cat eurio/enrichment-crops/test.txt   # → hello
+mc rm eurio/enrichment-crops/test.txt
 
-Depuis browser (test public read) :
-```bash
-mc cp /tmp/cat.png eurio/numista-canonical/cat.png
-curl https://s3.eurio.com/numista-canonical/cat.png > /tmp/cat-back.png
-diff /tmp/cat.png /tmp/cat-back.png  # exit 0
+# Public read
+mc cp /tmp/cat.png eurio/numista-canonical/test.png
+curl -sf https://images.eurio.musubi.dev/test.png -o /tmp/cat-back.png
+diff /tmp/cat.png /tmp/cat-back.png      # exit 0
 ```
 
 ## Critères d'acceptation
 
-- [ ] MinIO up sur le VPS, restart à reboot OK
+- [ ] `eurio-minio.service` actif, restart à reboot OK
 - [ ] 3 buckets créés avec les ACL voulues
 - [ ] User `eurio-app` peut R+W sur les 3 buckets, pas d'admin
-- [ ] `curl https://s3.eurio.com/numista-canonical/<key>` répond 200 sans auth
-- [ ] `curl https://s3.eurio.com/enrichment/<key>` répond 403 sans signed URL
-- [ ] Credentials root + app-user stockés dans le secret-store du VPS, **jamais commit**
+- [ ] `curl https://images.eurio.musubi.dev/<key>` répond 200 sans auth pour un objet test
+- [ ] `curl https://s3.eurio.musubi.dev/enrichment-crops/<key>` répond 403 sans signed URL
+- [ ] Credentials root + app stockés dans `/etc/eurio/minio/secrets/` (mode 0400, owner root), jamais commit
+- [ ] Cloudflare proxy ON sur les deux sous-domaines, TLS Full (strict)
 
 ## Gotchas
 
-- **CORS** : si jamais le front admin (`admin.eurio.com`) doit lire un objet privé via fetch (signed URL), MinIO doit avoir CORS configuré pour autoriser l'origine. À ajouter dans la policy bucket si besoin avéré.
-- **Reverse proxy headers** : Traefik doit forward `Host` correctement, sinon MinIO refuse les multipart uploads. Bien tester un upload de gros fichier (500 MB+) avant de déclarer le chunk done.
-- **Versioning S3** : ne PAS l'activer (cf. vision §"Décisions actées" point 7). Si activé par erreur, désactiver avant migration.
+- **Cloudflare free + images** : risque TOS si on dépasse plusieurs TB d'egress public/mois. À surveiller via le dashboard CF. Plan B (B2 + bandwidth alliance) documenté en vision §"Ce qui peut faire pivoter le plan".
+- **Reverse proxy headers** : Traefik doit forward `Host` correctement, sinon MinIO refuse les multipart uploads. Tester upload de gros fichier (~100 MB) avant de déclarer done.
+- **Versioning S3** : NE PAS l'activer (vision §8). Si activé par erreur, désactiver avant chunk 3.
+- **CORS** : pas requis V1 (les `<img>` ne déclenchent pas CORS). Si un script JS fait `fetch()` sur signed URL, ajouter `Access-Control-Allow-Origin` au bucket policy.
 
 ## Anti-objectifs
 
-- ❌ Pas de write public sur le bucket Numista (read-only).
-- ❌ Pas de bucket par-source (`ebay`, `catawiki`) pour l'enrichment. Un seul bucket, le préfixe de la clé porte la source (cf. chunk 2).
-- ❌ Pas de policy "à plat" sur le user root. Un user dédié pour l'app, principle of least privilege.
+- ❌ Pas de write public sur `numista-canonical`.
+- ❌ Pas de bucket par-source (`ebay`, `catawiki`). Un seul bucket `enrichment-crops`, le préfixe de la clé porte la source.
+- ❌ Pas d'utilisation du root user dans le code applicatif.
+- ❌ Pas de service NixOS natif `services.minio`. Docker compose, point.

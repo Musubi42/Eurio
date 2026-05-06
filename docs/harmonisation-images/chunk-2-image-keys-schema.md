@@ -1,124 +1,87 @@
-# Chunk 2 — Schéma DB clés storage
+# Chunk 2 — Schéma DB + format storage_key
 
-> Définir le format des clés S3 et adapter le schéma DB. Ne touche pas
-> encore aux données — c'est purement structurel. Pré-requis pour
-> chunks 3, 6.
+> Définir le format des clés S3 et préparer le code à les consommer.
+> La colonne reste nommée `storage_path` (cosmétique), seule sa
+> sémantique change. Pré-requis pour chunks 3, 6.
 
 ## Objectif
 
 À la fin du chunk :
-- `image_assets.storage_path` est renommé `storage_key` et porte une **clé S3** (chemin relatif au bucket), pas un chemin filesystem absolu.
-- Le bucket associé est dérivable de la sémantique de la ligne (pas une colonne séparée → pas de désynchro possible).
-- Une fonction utilitaire `storage_url(storage_key, kind)` génère l'URL absolue (signed ou publique selon le bucket).
+
+- Le format des clés S3 est figé pour les 3 catégories (canonique, crops, raws).
+- Un module `ml/storage/` expose deux fonctions : `bucket_for(...)` (donne le bucket d'une ligne DB) et `local_path(...)` (renvoie un path filesystem local, downloadant depuis MinIO si besoin).
+- La colonne DB `storage_path` est documentée comme portant désormais une **clé S3 relative au bucket**, pas un chemin fs absolu.
 
 Aucune donnée n'est encore migrée — c'est le sujet du chunk 3.
 
-## Convention de nommage des clés
+## Format des clés (figé)
 
-Format général : `<source>/<group>/<asset>.<ext>`
-
-Le bucket est implicite selon la source.
-
-### `numista-canonical` (bucket public)
+### `numista-canonical` (public)
 
 ```
-numista/<numista_id>/<face>.png
-ex : numista/68395/obverse.png
-     numista/68395/reverse.png
-     numista/68395/edge.png      (rare)
+numista/<numista_id>/<face>.jpg
 ```
 
-`numista_id` est stable (ne change jamais). `face` ∈ {obverse, reverse, edge, detail}. Toutes les images du référentiel Numista vivent ici.
+- `numista_id` : stable, jamais réutilisé.
+- `face` ∈ `{obverse, reverse}` (le CHECK actuel du schéma reste tel quel).
+- Extension `.jpg` (les canoniques sont en JPG aujourd'hui).
 
-### `enrichment` (bucket privé, signed URLs)
+### `enrichment-crops` (privé)
 
 ```
-<source>/<run_id>/<asset_id>.<ext>
-ex : ebay/2026-04-12_andorra-2eur/611c7bb820d746ea8b85cf8047170e1b.png
-     catawiki/2026-04-15_silent-run/9d7e...
-     mock/dev-2026-05-01/abc123.png
+<source>/<run_id>/<asset_id>.png
 ```
 
-`source` = `image_assets.source` (ebay, catawiki, mdp, lmdlp, mock). `run_id` = `source_runs.id` ou date+slug si pas de run formel. `asset_id` = `image_assets.id` (UUID).
+- `source` ∈ `{ebay, catawiki, mdp, lmdlp, mock, ...}` = `source_images.source`
+- `run_id` = `image_assets.run_id` (UUID) ou `'no-run'` si null
+- `asset_id` = `image_assets.id` (UUID)
+- Extension `.png` (les crops sont en PNG, normalisés via le pipeline).
 
-**Pourquoi `run_id` dans la clé** : permet `mc rm --recursive eurio/enrichment/ebay/<run_id>/` pour purger un run entier sans toucher au reste. Aussi : grouping naturel pour debug et backup-by-prefix.
-
-### `source-images` (bucket privé)
-
-Photos originales avant crop (raw downloads) :
+### `enrichment-raws` (privé)
 
 ```
 <source>/<run_id>/<source_image_id>.<ext>
-ex : ebay/2026-04-12_andorra-2eur/raw-uuid-xyz.jpg
 ```
 
-Une `source_image` peut avoir N `image_assets` (crops) — la liaison est en DB (`image_assets.source_image_id`). Le bucket sépare les raws des crops pour permettre une suppression sélective des raws si besoin de reclaim de l'espace plus tard (les crops suffisent au training).
+- `source_image_id` = `source_images.id`
+- `ext` dérivée du content-type d'origine (`.jpg`, `.png`, `.webp`).
 
-## Migration du schéma
+## Mapping ligne DB → bucket
 
-### Avant (aujourd'hui)
+| Ligne | Bucket | Comment |
+|---|---|---|
+| `image_assets` avec `source_images.source = 'numista'` | `numista-canonical` | rare en pratique, edge case |
+| `image_assets` (autres sources) | `enrichment-crops` | cas courant |
+| `source_images` | `enrichment-raws` | toutes |
 
-```sql
-CREATE TABLE image_assets (
-  ...
-  storage_path TEXT NOT NULL,  -- chemin filesystem absolu, machine-spécifique
-  ...
-);
+Un asset Numista canonique typique (référentiel `ml/datasets/`) **n'a pas** de ligne `image_assets` aujourd'hui — il est référencé via `coin_catalog` côté admin/Android. Le chunk 3 traite cette catégorie séparément (inventaire dédié).
 
-CREATE TABLE source_images (
-  ...
-  storage_path TEXT,  -- idem
-  ...
-);
-```
+## Module `ml/storage/`
 
-### Après
-
-```sql
-ALTER TABLE image_assets RENAME COLUMN storage_path TO storage_key;
-ALTER TABLE source_images RENAME COLUMN storage_path TO storage_key;
-```
-
-Sémantique de `storage_key` :
-- Format `<source>/<run_id>/<asset_id_or_face>.<ext>` (cf. ci-dessus)
-- Pas de slash en tête ni en queue
-- Pas d'URL absolue (pas de `https://...`, pas de `s3://...`)
-
-Le bucket est dérivé :
-- `image_assets` → bucket `enrichment`, sauf si `source = 'numista'` → `numista-canonical`
-- `source_images` → bucket `source-images`
-
-## Fonction utilitaire `storage_url`
-
-Côté Python (`ml/storage/`, nouveau module) :
+### `ml/storage/__init__.py`
 
 ```python
-# ml/storage/__init__.py
 from typing import Literal
+from pathlib import Path
 
-BucketKind = Literal["numista-canonical", "enrichment", "source-images"]
+Bucket = Literal["numista-canonical", "enrichment-crops", "enrichment-raws"]
 
-def bucket_for_asset(source: str) -> BucketKind:
+def bucket_for_asset(source: str) -> Bucket:
     if source == "numista":
         return "numista-canonical"
-    return "enrichment"
+    return "enrichment-crops"
 
-def storage_url(
-    storage_key: str,
-    bucket: BucketKind,
-    *,
-    signed: bool = False,
-    expires_seconds: int = 3600,
-) -> str:
-    """Construit l'URL absolue pour un storage_key.
+def bucket_for_source_image() -> Bucket:
+    return "enrichment-raws"
 
-    - bucket public (numista-canonical) → URL CDN directe via images.eurio.com
-    - bucket privé → URL signée (signed=True requis)
-    """
+def public_url(storage_key: str) -> str:
+    """Pour les objets `numista-canonical` uniquement. Pas de signature."""
+    return f"https://images.eurio.musubi.dev/{storage_key}"
+
+def signed_url(bucket: Bucket, storage_key: str, expires_seconds: int = 21600) -> str:
+    """6 h par défaut. Pour les buckets privés."""
     if bucket == "numista-canonical":
-        return f"https://images.eurio.com/{storage_key}"
-    if not signed:
-        raise ValueError(f"bucket {bucket} requires signed=True")
+        raise ValueError("Use public_url() for numista-canonical")
     return _s3_client().generate_presigned_url(
         "get_object",
         Params={"Bucket": bucket, "Key": storage_key},
@@ -126,31 +89,45 @@ def storage_url(
     )
 ```
 
-Côté API ML, l'endpoint qui sert un asset (aujourd'hui `GET /sources/{source}/assets/{asset_id}/file`) doit basculer :
-- soit redirect 302 vers l'URL signée (front suit le redirect, browser cache HTTP fait le job)
-- soit retourner une réponse JSON `{ url: "..." }` que le front consomme (plus de boulot front)
+### `ml/storage/local_cache.py` (read-through)
 
-**Reco V1** : redirect 302 — pas de breaking change côté front, tous les `<img src="">` continuent de marcher.
+Détaillé au chunk 4. La signature publique est :
+
+```python
+def local_path(bucket: Bucket, storage_key: str) -> Path:
+    """Renvoie un path local. Download depuis MinIO si pas en cache.
+    Throw si MinIO inaccessible. Aucun fallback fs legacy."""
+```
+
+Tout le code applicatif (training, admin API ML, scripts) appelle `local_path(...)`. Aucun appel direct boto3 dans la business logic.
+
+## Schéma DB — pas de migration de schéma V1
+
+**Décision** : on **ne renomme pas** la colonne. `storage_path` reste son nom. Sa valeur change de forme (chemin fs absolu → clé S3 relative). C'est purement sémantique.
+
+Pourquoi : 17 fichiers Python lisent/écrivent `storage_path`. Un rename = bruit massif sans gain (le nom reste lisible, la doc explicite la sémantique). On évite la double-écriture transitoire que P6 interdit.
+
+`docs/design/_shared/data-contracts.md` (à mettre à jour au chunk 3 quand la migration est sealed) :
+
+> `image_assets.storage_path` : clé S3 relative au bucket, format `<source>/<run_id>/<asset_id>.png`. Le bucket est dérivé via `bucket_for_asset(source_images.source)`. Ne contient ni `/` en tête, ni `https://`, ni `s3://`.
 
 ## Critères d'acceptation
 
-- [ ] Migration SQL appliquée sur la DB locale (training.db)
-- [ ] `state/schema.sql` mis à jour pour refléter `storage_key`
-- [ ] Module `ml/storage/` créé avec `bucket_for_asset` + `storage_url`
-- [ ] Tests unitaires sur `storage_url` (3 cas : Numista public, enrichment signé, missing-signed-flag → raise)
-- [ ] Aucun chemin absolu en DB (vérification : `SELECT storage_key FROM image_assets WHERE storage_key LIKE '/%'` doit retourner 0 rows après chunk 3)
+- [ ] Module `ml/storage/__init__.py` exporte `bucket_for_asset`, `bucket_for_source_image`, `public_url`, `signed_url`
+- [ ] Tests unitaires : 3 cas pour `bucket_for_asset` (numista, ebay, mock), assertion `signed_url("numista-canonical", ...)` raise
+- [ ] `local_path()` stub en place avec signature, impl complète au chunk 4
+- [ ] Aucun changement à la table SQL — schéma identique, seule la sémantique de `storage_path` change
+- [ ] `docs/design/_shared/data-contracts.md` mentionne la nouvelle sémantique (à valider au chunk 3 cleanup, mais le wording est préparé ici)
 
 ## Gotchas
 
-- **SQLite ALTER TABLE RENAME COLUMN** est OK depuis 3.25.0 (2018). Vérifier la version embarquée.
-- **Le code existant** qui lit `storage_path` casse — donc cette migration doit être faite **avant** que la migration de chunk 3 ne tourne, sinon l'app down. Ordre :
-  1. Branche : ajout colonne `storage_key`, copie `storage_path` → `storage_key`, code lit les 2.
-  2. Tourner chunk 3 (migration).
-  3. Drop `storage_path`.
-- **JSON dans `bbox_json`, `candidate_eurio_ids_json`** etc. : ces colonnes ne contiennent PAS de chemin storage à priori. Vérifier avec un grep avant migration. Si jamais oui → liste à part dans le script de migration.
+- **`run_id` peut être NULL** dans `image_assets` (legacy). Convention : utiliser le sentinel `'no-run'` dans la clé S3 pour ces lignes. Documenté dans la fonction qui construit la clé (au chunk 3).
+- **Asset_id avec caractères spéciaux** : `image_assets.id` est un UUID, donc safe. Pas de besoin d'escape.
+- **`source_images.source` peut diverger** d'une convention attendue (typo, casse). Au chunk 3 on normalise toutes les sources en lowercase avant de construire la clé.
 
 ## Anti-objectifs
 
-- ❌ Pas de colonne `bucket` séparée dans `image_assets`. Le bucket est dérivé de `source`, sinon désynchro garantie.
-- ❌ Pas d'URL absolue stockée en DB. La DB porte la clé, le code construit l'URL. Si on swap MinIO→AWS, on ne touche pas la DB.
-- ❌ Pas de format de clé "à la main" (genre concat eurio_id + timestamp). Toujours dériver d'identifiants stables existants (`numista_id`, `run_id`, `asset_id`).
+- ❌ Pas de colonne `bucket` séparée. Le bucket est dérivé de `source`.
+- ❌ Pas d'URL absolue stockée en DB.
+- ❌ Pas de rename SQL. La colonne reste `storage_path`.
+- ❌ Pas de format de clé "à la main". Toujours dériver d'identifiants stables existants.

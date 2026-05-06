@@ -1,69 +1,103 @@
-# Chunk 3 — Script one-shot migration fs → MinIO
+# Chunk 3 — Migration scripts (3 inventaires)
 
-> Le jour J : on déplace toutes les images locales vers MinIO, on ré-écrit
-> les `storage_key` en DB, on vérifie l'intégrité, on bascule le code en
-> mode "MinIO only". Hard cut. Pré-requis : chunks 1 et 2 livrés.
+> Le jour J : on déplace toutes les images locales vers MinIO, on
+> ré-écrit les `storage_path` en DB, on vérifie l'intégrité, on bascule
+> le code en mode "MinIO only". Hard cut. Pré-requis : chunks 1 et 2
+> livrés.
 
 ## Objectif
 
-Un script `ml/scripts/migrate_to_minio.py` qui, en une commande :
+À la fin du chunk :
 
-1. Inventorie tous les fichiers locaux et leurs lignes DB associées.
-2. Upload vers MinIO en parallèle (pool de workers).
-3. Met à jour les `storage_key` en DB (transactionnel).
-4. Vérifie l'intégrité par sha256 sur N% des fichiers (sample).
-5. Produit un rapport (combien de fichiers, total bytes, durée, échecs).
+- Les 3 catégories d'images sont dans MinIO (canonique → `numista-canonical`, raws → `enrichment-raws`, crops → `enrichment-crops`).
+- DB : tous les `storage_path` portent une clé S3 relative au bucket. 0 chemin fs absolu.
+- Filesystem local en read-only pendant 7 jours, puis supprimé (chunk 8).
+- Le code Eurio (API ML, scrape, training) lit MinIO via `local_path()` (cache read-through, chunk 4).
 
-À la fin :
-- DB pointe vers MinIO uniquement.
-- Filesystem local conservé en lecture-seule pendant 7 jours (sécurité).
-- Le code Eurio (API ML, scrape, training) parle MinIO.
+## Trois inventaires distincts
+
+| Catégorie | Source filesystem | Bucket cible | Clé cible |
+|---|---|---|---|
+| **Canonique Numista** | `ml/datasets/<numista_id>/{obverse,reverse}.jpg` | `numista-canonical` | `numista/<numista_id>/<face>.jpg` |
+| **Enrichment crops** | `ml/state/sources/<src>/crops/<shard>/<source_ref>__c<idx>.png` | `enrichment-crops` | `<source>/<run_id>/<asset_id>.png` |
+| **Enrichment raws** | `ml/state/sources/<src>/raw/<shard>/<source_ref>.<ext>` | `enrichment-raws` | `<source>/<run_id>/<source_image_id>.<ext>` |
+
+**Hors scope** : `ml/cache/augmentation_sources/`, `ml/debug_captures/`. Ces dossiers restent locaux (vision §P5).
 
 ## Pré-requis
 
-- Chunk 1 livré (MinIO + buckets up).
-- Chunk 2 livré (`storage_key` en place dans le schéma, module `ml/storage/`).
-- Backup pCloud existe avant de tourner (au cas où le script foire avant la fin).
-- Credentials MinIO `eurio-app` configurés via direnv (`.envrc` / `pass`).
+- Chunk 1 livré (MinIO + 3 buckets up).
+- Chunk 2 livré (module `ml/storage/`, format des clés figé).
+- Backup VPS existant avant de tourner (au cas où le script foire).
+- Credentials MinIO `eurio-app` configurés via direnv.
+- Plus aucun pipeline scrape / training en cours (lock manuel sur les machines).
 
-## Décisions à acter
+## Décisions actées
 
-1. **Upload parallèle** : combien de workers ? Default 8. Sur un VPS Hetzner ça sature pas le réseau du Mac.
-2. **Sample size pour vérif sha256** : 5 % avec un floor à 100 fichiers. Au-delà de 1000 fichiers vérifiés, le coût n'apporte plus rien.
-3. **Délai de safety filesystem** : 7 jours avant suppression — pendant ces 7 jours le code lit MinIO (donc tout fonctionne) mais le fs local reste là, on peut rollback en re-rewritant les `storage_key`.
+1. **Ordre** : canonique d'abord (le plus simple), puis raws, puis crops. Si crops foire on a déjà la base.
+2. **Workers parallèle** : 8 (default). Ne sature pas le réseau Mac.
+3. **Sample sha256 verify** : 5 % avec floor 100 fichiers, ceil 1000.
+4. **Lock fs** : 7 jours.
+5. **Pas de migration "lazy"** : tout en une session, fail-fast si erreur globale.
 
 ## Implémentation
 
-### 3.1 Inventaire (dry-run)
+Le tout vit dans `ml/scripts/migrate_to_minio.py` avec sous-commandes :
+
+```bash
+go-task ml:migrate-inventory   # build le manifest
+go-task ml:migrate-upload      # push vers MinIO (idempotent)
+go-task ml:migrate-db          # réécrit storage_path en DB
+go-task ml:migrate-verify      # sample sha256
+go-task ml:migrate-lock-fs     # chmod a-w sur les dossiers source
+```
+
+### 3.1 Inventaire (one-shot, génère le manifest)
 
 ```bash
 go-task ml:migrate-inventory
 ```
 
-Lit la DB, liste tous les `(table, id, storage_key, fs_path_legacy)` où `fs_path_legacy` est le chemin filesystem absolu calculé depuis `storage_key` + base path `ml/datasets` (ou ce qui était la convention legacy).
+Le script :
 
-Output : `migration-manifest.jsonl`, une ligne par fichier :
+1. Scanne `ml/datasets/` → ajoute lignes `category=canonical`.
+2. SELECT `source_images` → ajoute lignes `category=raw`.
+3. SELECT `image_assets` → ajoute lignes `category=crop`.
+4. Pour chaque entrée, calcule sha256 + size, dérive la clé S3 cible.
+5. Détecte les divergences :
+   - Fichier absent sur disque → `--report-missing`
+   - Fichier sur disque sans ligne DB → `--report-orphans`
+6. Output : `docs/harmonisation-images/migration-manifest.jsonl` (commit dans git).
+
+Format :
+
 ```json
-{"table": "image_assets", "id": "abc...", "storage_key": "ebay/run-1/abc.png",
- "fs_path": "/Users/musubi42/.../ebay/run-1/abc.png", "size": 184392, "sha256": "..."}
+{"category": "canonical", "numista_id": "68395", "face": "obverse",
+ "fs_path": "/Users/.../ml/datasets/68395/obverse.jpg",
+ "bucket": "numista-canonical", "storage_key": "numista/68395/obverse.jpg",
+ "size": 184392, "sha256": "abc..."}
+
+{"category": "crop", "table": "image_assets", "id": "uuid-...",
+ "fs_path": "/Users/.../ml/state/sources/ebay/crops/ab/xxx__c0.png",
+ "bucket": "enrichment-crops", "storage_key": "ebay/run-uuid/uuid-....png",
+ "size": 12345, "sha256": "..."}
 ```
 
-Calcule sha256 à ce moment (long, mais une seule fois). Détecte aussi :
-- Fichiers en DB mais absents sur disque → `--report-missing`
-- Fichiers sur disque mais pas en DB → `--report-orphans`
+Le manifest sert de **source de vérité du mapping fs → S3** et de **filet de rollback** (chunk 8).
 
-### 3.2 Upload (parallèle, idempotent)
+### 3.2 Upload (idempotent, parallèle)
 
 ```bash
-go-task ml:migrate-upload -- --workers=8 --manifest=migration-manifest.jsonl
+go-task ml:migrate-upload
 ```
 
-Pour chaque entrée du manifeste :
-- Si `mc stat eurio/<bucket>/<storage_key>` existe et que sha256 match → skip (idempotent : le script peut tourner 2 fois si interrompu).
-- Sinon, `boto3.upload_file()` avec ContentType correct, ContentLength = size.
-- Marque `uploaded_at` dans le manifeste enrichi.
+Pour chaque entrée du manifest :
 
-Rapport en cours : `tqdm` avec ETA, nombre de fichiers/sec, bytes/sec.
+- Si l'objet existe en MinIO **et** son metadata `x-amz-meta-sha256` matche le manifest → skip.
+- Sinon, `boto3.upload_file()` en single-part (force `Config(multipart_threshold=10*1024**3)` pour rester en single-part jusqu'à 10 GB), avec `Metadata={'sha256': ...}` et `ContentType` correct.
+- Pour `numista-canonical` : ajouter `Metadata={'cache-control': 'public, max-age=604800, immutable'}`.
+
+Idempotent : si le script crash, on relance, ça reprend.
 
 ### 3.3 DB update (transactionnel)
 
@@ -71,24 +105,33 @@ Rapport en cours : `tqdm` avec ETA, nombre de fichiers/sec, bytes/sec.
 go-task ml:migrate-db
 ```
 
-Une seule transaction SQL :
+Une seule transaction :
+
 ```sql
 BEGIN;
--- Vérifie qu'aucun storage_key n'est NULL ou n'a un chemin fs absolu
-SELECT COUNT(*) FROM image_assets WHERE storage_key LIKE '/%' OR storage_key IS NULL;
--- (doit être 0 — sinon ABORT)
 
--- Tag de migration (pour rollback)
-CREATE TABLE IF NOT EXISTS migrations_log (
-  name TEXT PRIMARY KEY,
-  applied_at TEXT NOT NULL,
-  rows_affected INTEGER NOT NULL
-);
-INSERT INTO migrations_log VALUES ('fs_to_minio_2026_05', datetime('now'), 0);
+-- Backup safety : copier storage_path actuel dans une colonne archive
+ALTER TABLE image_assets   ADD COLUMN storage_path_legacy TEXT;
+ALTER TABLE source_images  ADD COLUMN storage_path_legacy TEXT;
+UPDATE image_assets   SET storage_path_legacy = storage_path;
+UPDATE source_images  SET storage_path_legacy = storage_path;
+
+-- Réécrire storage_path en clé S3
+-- (les UPDATE sont générés depuis le manifest, batch par 500)
+UPDATE image_assets  SET storage_path = '<storage_key>' WHERE id = '<id>';
+UPDATE source_images SET storage_path = '<storage_key>' WHERE id = '<id>';
+
+-- Sanity check
+SELECT COUNT(*) FROM image_assets   WHERE storage_path LIKE '/%';  -- doit être 0
+SELECT COUNT(*) FROM source_images  WHERE storage_path LIKE '/%';  -- doit être 0
+
+INSERT INTO migrations_log (name, applied_at, rows_affected)
+  VALUES ('fs_to_minio_2026_05', datetime('now'), <total>);
+
 COMMIT;
 ```
 
-(En réalité les `storage_key` ont déjà été ré-écrits par chunk 2 ; cette étape ne fait que sceller la migration.)
+`storage_path_legacy` reste 7 jours puis est dropé au chunk 8.
 
 ### 3.4 Vérification sha256 (sample)
 
@@ -96,82 +139,73 @@ COMMIT;
 go-task ml:migrate-verify -- --sample-pct=5
 ```
 
-Tire 5 % des assets aléatoirement, télécharge depuis MinIO, recompute sha256, compare avec le manifeste. Si mismatch → ALERTE rouge, rollback prep.
+Tire 5 % du manifest, télécharge depuis MinIO, recompute sha256, compare. Si mismatch → ALERTE rouge, rollback prep.
 
-### 3.5 Sécurité fs lock
+### 3.5 Lock filesystem
 
 ```bash
 go-task ml:migrate-lock-fs
 ```
 
-Fait `chmod -R a-w /Users/musubi42/Documents/Musubi42/Eurio/ml/datasets` (read-only sur le filesystem local). Le code MinIO continue de tourner. Si on a oublié quelque chose dans 7 jours, le filesystem est encore lisible.
-
-### 3.6 Cleanup final (J+7)
-
 ```bash
-go-task ml:migrate-cleanup
+chmod -R a-w ml/datasets
+chmod -R a-w ml/state/sources/*/raw
+chmod -R a-w ml/state/sources/*/crops
 ```
 
-`rm -rf ml/datasets/`. Définitif. À tourner manuellement après validation que rien n'est cassé pendant 7 jours.
+Le code MinIO continue de tourner. Si on a oublié quelque chose dans 7 jours, le filesystem est encore lisible (juste pas écrivable).
 
 ## Tâches go-task à ajouter
 
 ```yaml
-# ml/Taskfile.yml (extrait)
-tasks:
-  migrate-inventory:
-    desc: Build migration manifest with sha256
-    cmds: [python ml/scripts/migrate_to_minio.py inventory]
-  migrate-upload:
-    desc: Upload all images to MinIO (idempotent)
-    cmds: [python ml/scripts/migrate_to_minio.py upload {{.CLI_ARGS}}]
-  migrate-db:
-    desc: Seal storage_key migration in DB
-    cmds: [python ml/scripts/migrate_to_minio.py seal-db]
-  migrate-verify:
-    desc: sha256 sample verification (default 5%)
-    cmds: [python ml/scripts/migrate_to_minio.py verify {{.CLI_ARGS}}]
-  migrate-lock-fs:
-    desc: chmod a-w on local datasets (7-day safety)
-    cmds: [chmod -R a-w {{.ROOT}}/ml/datasets]
-  migrate-cleanup:
-    desc: Final delete of local datasets (run J+7 after verify)
-    cmds: [rm -rf {{.ROOT}}/ml/datasets]
-    prompt: "Sure ? This deletes the local datasets folder. Type yes."
+ml:migrate-inventory:
+  desc: Build migration manifest with sha256 (3 categories)
+  cmds: [python -m ml.scripts.migrate_to_minio inventory]
+ml:migrate-upload:
+  desc: Upload all images to MinIO (idempotent)
+  cmds: [python -m ml.scripts.migrate_to_minio upload {{.CLI_ARGS}}]
+ml:migrate-db:
+  desc: Rewrite storage_path → S3 key, archive legacy
+  cmds: [python -m ml.scripts.migrate_to_minio db]
+ml:migrate-verify:
+  desc: sha256 sample verification (default 5%)
+  cmds: [python -m ml.scripts.migrate_to_minio verify {{.CLI_ARGS}}]
+ml:migrate-lock-fs:
+  desc: chmod a-w on local dirs (7-day safety)
+  cmds: [python -m ml.scripts.migrate_to_minio lock-fs]
 ```
 
 ## Critères d'acceptation
 
-- [ ] Manifest généré pour 100 % des `image_assets.storage_key` non-null + tous les `source_images.storage_key`
-- [ ] Upload : 100 % des fichiers du manifeste présents en MinIO avec sha256 match
-- [ ] DB : 0 `storage_key` avec `/` en tête, 0 NULL
+- [ ] Manifest généré pour les 3 catégories, commité dans `docs/harmonisation-images/migration-manifest.jsonl`
+- [ ] Upload : 100 % des entrées présentes en MinIO avec `x-amz-meta-sha256` qui matche
+- [ ] DB : 0 `storage_path` avec `/` en tête, 0 NULL non-attendu
+- [ ] `storage_path_legacy` archive les anciens chemins
 - [ ] Verify sample 5 % : 0 mismatch
 - [ ] Code Eurio (API ML, scrape, training) tourne contre MinIO sans erreur pendant ≥ 24h
-- [ ] Filesystem local en read-only après lock-fs
-- [ ] Migration_log row inséré
+- [ ] Filesystem source en read-only après lock-fs
+- [ ] `migrations_log` row inséré
 
 ## Gotchas
 
-- **Idempotence cruciale** : le script doit pouvoir reprendre après interruption (Mac qui dort, réseau qui tombe). Stratégie : skip si `mc stat` existe + sha256 match. Sinon réupload.
-- **Ordering** : si `image_assets.source_image_id` pointe vers une `source_image` dont l'image n'a pas encore été uploadée, c'est OK — la DB peut faire référence à un objet MinIO qui n'est pas encore visible. Mais il faut s'assurer qu'à la fin, **tout** est uploadé avant de marquer la migration sealed.
-- **Chemins legacy** : si certains `storage_path` legacy contiennent des espaces, accents, etc., bien tester la roundtrip Path → key → URL.
-- **Pas de retry infini** : si un fichier échoue 3 fois, on log et on continue. Rapport final liste les échecs. L'humain décide.
-- **Si MinIO down pendant le upload** : le script s'arrête, repren­dre quand MinIO est back. NE PAS tenter de fallback filesystem.
+- **Idempotence** : skip si objet existe **et** sha256 metadata matche. Pas de skip basé sur ETag (multipart casse l'égalité ETag = MD5).
+- **`run_id` NULL** : convention `'no-run'` dans la clé S3, documenté dans le code.
+- **Source case-sensitivity** : normaliser `source_images.source` en lowercase avant de construire la clé.
+- **Caractères spéciaux dans `source_ref`** : on n'utilise jamais `source_ref` dans la clé S3 (on prend `source_images.id` ou `image_assets.id`, qui sont des UUIDs). Donc safe par construction.
+- **Si MinIO down pendant upload** : le script s'arrête, reprendre quand back. Pas de fallback fs.
 
-## Procédure de rollback (si désastre)
-
-Si dans les 7 jours qui suivent on découvre une catastrophe :
+## Procédure de rollback (si désastre ≤ J+7)
 
 1. Le filesystem local est encore là (lecture seule).
-2. Re-ré-écrire `storage_key` → chemin filesystem absolu via un petit script inverse.
-3. `chmod -R u+w ml/datasets` pour relâcher le lock.
+2. `UPDATE ... SET storage_path = storage_path_legacy` (un seul SQL).
+3. `chmod -R u+w ml/datasets ml/state/sources` pour relâcher le lock.
 4. Continuer comme avant le J.
 
-C'est la raison du délai 7 jours.
+C'est la raison du `storage_path_legacy` + délai 7 jours.
 
 ## Anti-objectifs
 
-- ❌ Pas de migration "lente" (1 fichier/sec) — pool de workers en parallèle.
-- ❌ Pas de mode dry-run mock-only. Le manifeste est réel + uploads réels (juste idempotents).
+- ❌ Pas de migration "lente" (1 fichier/sec). Pool de workers parallèle.
 - ❌ Pas de double écriture pendant la migration. Le code n'écrit nulle part jusqu'à ce que la migration soit sealed.
-- ❌ Pas de tentative de "sync continu" entre fs et MinIO post-migration. Hard cut.
+- ❌ Pas de "sync continu" entre fs et MinIO post-migration. Hard cut.
+- ❌ Pas de migration des augmentations (`ml/cache/`) ni des debug captures (`ml/debug_captures/`).

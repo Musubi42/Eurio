@@ -1,121 +1,83 @@
-# Chunk 7 — Backup pCloud (systemd.timer)
+# Chunk 7 — Backup pCloud (tar hebdo écrasé)
 
-> Snapshot hebdomadaire des 3 buckets MinIO vers pCloud, avec rétention
-> 4 semaines glissantes. Pré-requis : chunk 1 livré.
+> Snapshot hebdomadaire des 3 buckets MinIO vers pCloud.
+> 1 tarball complet écrasé chaque dimanche. Pas de versioning.
+> Pré-requis : chunk 1 livré.
 
 ## Objectif
 
 À la fin du chunk :
-- Tous les dimanches à 03:00 UTC, le VPS pousse l'état complet de MinIO vers pCloud.
-- 2 niveaux de backup : `latest/` (mirror synced) et `snapshots/<YYYY-MM-DD>/` (datés).
-- Rétention auto : `snapshots/` plus vieux que 28 jours sont supprimés.
-- En cas d'échec, alerte (email ou ntfy.sh).
+
+- Tous les dimanches à 03:00 UTC, le VPS produit `eurio-minio.tar` qui contient les 3 buckets MinIO et le pousse vers pCloud, **écrasant** le tar de la semaine précédente.
+- En cas d'échec, alerte ntfy.sh.
+- Test de restauration documenté (manuel, mensuel).
+
+Décision (vision §"Décisions actées" #7) : **pas de rétention multi-semaine**, pas de snapshots datés. Une seule archive vivante. La data sur S3 ne contient pas d'user data ; le risque de découvrir une corruption 4 semaines après est faible vs la simplicité opérationnelle gagnée.
 
 ## Pré-requis
 
-- Chunk 1 livré (MinIO opérationnel).
-- Compte pCloud actif avec credentials (`rclone config` configuré).
-- Décision sur la nature du VPS : NixOS module-able ou Linux générique.
+- Chunk 1 livré (MinIO opérationnel, dockerisé).
+- Compte pCloud actif, `rclone config` fait sur le VPS.
+- Disque VPS avec ~50 GB libres temporairement (création du tar local avant push).
 
-## Décisions à acter
+## Décisions actées
 
-1. **NixOS module vs systemd.timer user** :
-   - Si VPS NixOS `nixos-rebuild`-managé → module Nix.
-   - Sinon → service systemd "system-level" classique.
-2. **Taux de rétention** : 4 snapshots hebdo (1 mois). Suffit pour rattraper une corruption qu'on n'aurait pas détectée pendant 3 semaines.
-3. **Type de backup** :
-   - Option A : `rclone sync` direct MinIO → pCloud (chaque image individuelle copiée). Lent à 100k fichiers.
-   - Option B : tarball par bucket (`tar` puis upload). Rapide, mais restauration partielle = pénible.
-   - **Reco** : Option A pour `latest/` (sync incrémental rapide après le premier). Option B (tarball) pour les snapshots datés (1 archive / dimanche, atomique, restore complet trivial).
-4. **Alerte** : ntfy.sh (gratuit, simple POST HTTP). Email via mailgun aussi possible.
+1. **1 tarball complet** (les 3 buckets ensemble), pas par-bucket. Restauration trivialement complète.
+2. **Écrasement** : `pcloud:eurio-backup/eurio-minio.tar` est overwrite chaque semaine. Pas de timestamp dans le nom.
+3. **Encryption** : pas en V1. Si jamais sensible plus tard, ajouter `crypt:` rclone.
+4. **Alerte** : ntfy.sh sur succès et échec.
 
 ## Implémentation
 
-### 7.1 Config rclone
-
-Sur le VPS :
-
-```bash
-rclone config
-# > minio
-#   type: s3
-#   provider: Minio
-#   endpoint: http://localhost:9000
-#   access_key_id: $ROOT_USER
-#   secret_access_key: $ROOT_PWD
-#
-# > pcloud
-#   type: pcloud
-#   token: ...
-```
-
-Test :
-```bash
-rclone ls minio:numista-canonical | head
-rclone ls pcloud:eurio-backup
-```
-
-### 7.2 Script de backup
+### 7.1 Script `/etc/eurio/backup.sh`
 
 ```bash
 #!/usr/bin/env bash
-# /etc/eurio/backup.sh
 set -euo pipefail
 
-DATE=$(date +%F)
-LOG=/var/log/eurio-backup/$DATE.log
-mkdir -p $(dirname $LOG)
+DATE=$(date -u +%FT%TZ)
+LOG=/var/log/eurio-backup.log
+TAR=/var/tmp/eurio-minio.tar
+NTFY_URL="https://ntfy.sh/${NTFY_TOPIC:?}"
 
-NTFY_URL="https://ntfy.sh/eurio-backup-secret-channel"
-
-notify() {
-  curl -s -d "$1" "$NTFY_URL" || true
-}
-
-trap 'notify "❌ Backup eurio FAILED $(date)"; exit 1' ERR
+notify() { curl -sf -d "$1" "$NTFY_URL" >/dev/null || true; }
+trap 'notify "❌ Backup eurio FAILED $DATE"; exit 1' ERR
 
 {
   echo "=== Backup start $DATE ==="
 
-  # 1. latest/ — sync incrémental (rapide après la 1ère fois)
-  for bucket in numista-canonical enrichment source-images; do
-    rclone sync "minio:$bucket" "pcloud:eurio-backup/latest/$bucket" \
-      --transfers=8 --checkers=16 --stats=1m
-  done
+  # tar les 3 buckets MinIO directement depuis le filesystem du container
+  # (le volume MinIO est /var/lib/eurio-minio/data)
+  tar cf "$TAR" -C /var/lib/eurio-minio/data \
+      numista-canonical enrichment-raws enrichment-crops
 
-  # 2. snapshots/<date> — tarball atomique par bucket
-  for bucket in numista-canonical enrichment source-images; do
-    rclone tarball "minio:$bucket" \
-      "pcloud:eurio-backup/snapshots/$DATE/$bucket.tar" || \
-    {
-      # rclone tarball n'existe pas : workaround via local tar + upload
-      TMPTAR=/tmp/$bucket-$DATE.tar
-      rclone copy "minio:$bucket" /tmp/$bucket-$DATE/
-      tar cf $TMPTAR -C /tmp/$bucket-$DATE/ .
-      rclone copyto $TMPTAR "pcloud:eurio-backup/snapshots/$DATE/$bucket.tar"
-      rm -rf /tmp/$bucket-$DATE/ $TMPTAR
-    }
-  done
+  ls -lh "$TAR"
 
-  # 3. rétention : delete snapshots > 28 jours
-  rclone delete "pcloud:eurio-backup/snapshots/" --min-age 28d
+  # Push vers pCloud, écrase le précédent
+  rclone copyto "$TAR" "pcloud:eurio-backup/eurio-minio.tar" \
+      --progress --stats=30s
 
+  rm -f "$TAR"
   echo "=== Backup done $DATE ==="
-  notify "✅ Backup eurio OK $DATE"
-} >> $LOG 2>&1
+  notify "✅ Backup eurio OK $DATE ($(rclone size pcloud:eurio-backup/eurio-minio.tar | grep -oP '[0-9.]+ [KMG]?B'))"
+} >> "$LOG" 2>&1
 ```
 
-### 7.3 Wiring NixOS (si NixOS module)
+**Pourquoi tar du filesystem MinIO directement** : MinIO stocke les objets de façon transparente sous `<data>/<bucket>/<key>`. Tar du data dir = backup fidèle, pas besoin d'API S3 pour itérer. Restauration = `tar xf` dans un dir, puis MinIO repointé dessus.
+
+### 7.2 NixOS wiring
+
+`/etc/nixos/eurio-backup.nix` :
 
 ```nix
-# /etc/nixos/modules/eurio-backup.nix
-{ config, pkgs, ... }: {
+{ pkgs, ... }: {
   systemd.services.eurio-backup = {
-    description = "Backup MinIO buckets to pCloud";
+    description = "Backup MinIO to pCloud";
     serviceConfig = {
       Type = "oneshot";
-      User = "eurio";
+      User = "root";   # tar du data dir nécessite root
       ExecStart = "/etc/eurio/backup.sh";
+      EnvironmentFile = "/etc/eurio/backup.env";  # NTFY_TOPIC
     };
     path = [ pkgs.rclone pkgs.curl pkgs.gnutar ];
   };
@@ -131,74 +93,60 @@ trap 'notify "❌ Backup eurio FAILED $(date)"; exit 1' ERR
 }
 ```
 
-`Persistent = true` rejoue si le VPS était down au moment prévu.
+`Persistent = true` rejoue si VPS down au moment prévu.
 
-### 7.4 Wiring systemd classique (si pas NixOS)
-
-`/etc/systemd/system/eurio-backup.service` :
-```ini
-[Unit]
-Description=Backup MinIO to pCloud
-
-[Service]
-Type=oneshot
-User=eurio
-ExecStart=/etc/eurio/backup.sh
-```
-
-`/etc/systemd/system/eurio-backup.timer` :
-```ini
-[Unit]
-Description=Weekly backup
-
-[Timer]
-OnCalendar=Sun 03:00 UTC
-Persistent=true
-
-[Install]
-WantedBy=timers.target
-```
+### 7.3 Test de restauration (manuel, mensuel)
 
 ```bash
-systemctl enable --now eurio-backup.timer
+# 1. Download le tar depuis pCloud
+mkdir -p /tmp/eurio-restore-test
+rclone copy pcloud:eurio-backup/eurio-minio.tar /tmp/eurio-restore-test/
+
+# 2. Extract dans un dir temporaire
+tar xf /tmp/eurio-restore-test/eurio-minio.tar -C /tmp/eurio-restore-test/extracted/
+
+# 3. Sanity check
+du -sh /tmp/eurio-restore-test/extracted/*
+# Doit lister les 3 buckets avec une taille cohérente
+
+# 4. Vérifier qu'un objet random est lisible
+file /tmp/eurio-restore-test/extracted/numista-canonical/numista/*/obverse.jpg | head
 ```
 
-### 7.5 Test de restauration (mensuel)
+Si jamais ça échoue → on sait avant le désastre.
 
-Une fois par mois, test que le backup est restorable :
+### 7.4 Procédure de restore en désastre
 
-```bash
-# Choisir un snapshot aléatoire
-SNAP=$(rclone lsf pcloud:eurio-backup/snapshots/ | shuf -n 1)
-mkdir -p /tmp/restore-test
-rclone copy pcloud:eurio-backup/snapshots/$SNAP /tmp/restore-test/
+Si le VPS perd MinIO :
 
-# Vérif : tar tf et taille raisonnable
-tar tf /tmp/restore-test/*.tar | head
-du -sh /tmp/restore-test/
-```
-
-Si jamais ça échoue, on sait avant le désastre.
+1. Réinstaller MinIO docker (chunk 1).
+2. Stopper le container : `docker compose -f /etc/eurio/minio/docker-compose.yml down`.
+3. Vider `/var/lib/eurio-minio/data/`.
+4. `tar xf eurio-minio.tar -C /var/lib/eurio-minio/data/`.
+5. Restart : `docker compose up -d`.
+6. Vérifier `mc ls`.
 
 ## Critères d'acceptation
 
-- [ ] Premier run manuel du backup termine sans erreur (peut prendre plusieurs heures à la 1ère fois selon la taille).
-- [ ] Snapshots `latest/` et `snapshots/<YYYY-MM-DD>/` présents en pCloud.
-- [ ] systemd.timer actif et planifié hebdo.
-- [ ] Notification ntfy.sh reçue à la fin.
-- [ ] Test de restauration : on peut télécharger un snapshot et lire des fichiers dedans.
+- [ ] Premier run manuel termine sans erreur (peut prendre 1-2h pour ~50 GB)
+- [ ] `rclone ls pcloud:eurio-backup/` montre `eurio-minio.tar` avec date récente
+- [ ] systemd.timer actif, `systemctl list-timers` affiche prochaine exécution dimanche
+- [ ] Notification ntfy.sh reçue à la fin
+- [ ] Test de restauration : tar extractable, objets lisibles
 
 ## Gotchas
 
-- **Bandwidth pCloud** : la 1ère fois c'est tout le contenu (~50 GB+). Ensuite c'est incrémental sur `latest/` mais les snapshots tarballs sont chacun la totalité → coût bandwidth récurrent. Vérifier le quota pCloud (premium = 2 TB).
-- **Token pCloud** : se révoque parfois. Renouveler tous les ~6 mois ou utiliser un token permanent (à demander à pCloud).
-- **Atomicité** : si MinIO reçoit un upload pendant le backup, c'est OK — le sync incrémental rattrape la semaine suivante. Pas de lock global.
-- **Disk space VPS pour tarballs intermédiaires** : si MinIO fait 50 GB, le tarball aussi. Vérifier que `/tmp` (ou le disque local) a la place. Sinon, mode "stream tar to rclone copyto" sans fichier intermédiaire.
-- **Encryption** : le contenu MinIO n'est pas chiffré sur pCloud. Si tu veux du chiffrement at-rest pCloud, ajouter `crypt:` dans rclone (passphrase). Reco : pas en V1, pas critique pour des images.
+- **Disque VPS pour tar intermédiaire** : si les 3 buckets pèsent 50 GB, le tar pèse pareil → 50 GB libres requis. Surveiller `df -h /var/tmp`. Si saturation : pipe direct `tar cf - ... | rclone rcat ...` (pas de fichier intermédiaire).
+- **Token pCloud rotation** : se révoque parfois. Regen tous les ~6 mois ou utiliser un token long-lived.
+- **Atomicité** : un upload MinIO concurrent au tar produit un fichier potentiellement partiel dans le backup. Acceptable (la semaine suivante rattrape, et un upload partiel d'un .png se voit immédiatement).
+- **Egress pCloud** : pCloud Premium a un download cap (~500 GB/mois). Si on doit restorer, vérifier avant.
+- **Container MinIO running pendant tar** : OK, MinIO n'a pas de fichier `.lock` exclusif sur les objets. Lecture concurrente safe.
 
 ## Anti-objectifs
 
-- ❌ Pas de backup quotidien. Hebdo suffit pour ce type de data (le risque d'écrire une image et de la perdre dans les 7 jours est très faible).
-- ❌ Pas de "real-time replication" vers pCloud. Trop coûteux en bandwidth, pas le bon problème.
-- ❌ Pas de backup sur 2 destinations différentes (pCloud + un autre). Une suffit V1.
-- ❌ Pas de versioning à l'intérieur des tarballs. La rétention 4 semaines fait office.
+- ❌ Pas de backup quotidien. Hebdo suffit.
+- ❌ Pas de rétention multi-semaine, pas de snapshots datés. 1 archive vivante.
+- ❌ Pas de "real-time replication". Trop coûteux, pas le bon problème.
+- ❌ Pas de backup secondaire (autre cloud). Une destination V1.
+- ❌ Pas d'encryption V1 (data non sensible).
+- ❌ Pas de tar par-bucket. Une archive globale.

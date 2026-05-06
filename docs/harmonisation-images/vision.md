@@ -3,158 +3,191 @@
 > Cible end-state, principes, scope V1, anti-objectifs.
 > Doit être lu avant tout chunk d'implémentation dans ce dossier.
 
+## Problème
+
+Aujourd'hui les images vivent éparpillées sur le filesystem local du Mac :
+
+| Dossier | Contenu | Taille | Lifecycle |
+|---|---|---|---|
+| `ml/datasets/<numista_id>/{obverse,reverse}.jpg` | Référentiel canonique Numista | ~270 MB / 694 coins | Stable, géré par bootstrap |
+| `ml/state/sources/<src>/raw/<shard>/...` | Photos originales scrapées (eBay, etc.) | ~400 MB | Source → un crop |
+| `ml/state/sources/<src>/crops/<shard>/...` | Crops normalisés = actif training | (inclus) | Le vrai actif training |
+| `ml/cache/augmentation_sources/` | Augmentations transient | variable | Vie = un run training |
+| `ml/debug_captures/` | Captures device pour cohort/bench | petit | Local validation |
+
+Conséquences :
+- Mac et PC fixe ne voient pas la même donnée.
+- Une perte du Mac = perte des crops scrapés (ce qui prendra le plus de temps à reconstituer).
+- Pas de chemin clair pour servir les images Numista canoniques à l'app Android.
+
 ## Cible end-state
 
-Trois lieux distincts, trois rôles non-recouvrants :
+**Trois lieux distincts, trois rôles non-recouvrants.**
 
 | Lieu | Rôle | Contenu |
 |---|---|---|
-| **Supabase** | Prod Android | Métadonnées coins, sets, audit. **Aucune image.** |
-| **Vercel** | Admin web (build statique) | UI seulement. **Aucune image.** |
-| **VPS NixOS** | Source de vérité images + compute scrape | MinIO buckets : `numista-canonical` (public), `enrichment` (privé) |
-| **pCloud** | Backup hebdo offsite | Snapshots datés du VPS |
-| **Mac (dev)** | Admin live + review | Pas de cache permanent — LRU borné 5 GB |
-| **PC fixe (dev)** | Entraînement | Cache `run_id`-scoped, sweep des orphelins |
+| **MinIO sur VPS perso** | Source de vérité dev (scrape + training + admin) | Buckets `numista-canonical`, `enrichment-raws`, `enrichment-crops` |
+| **Supabase Storage** | Images servies à l'app Android prod | Bucket `app-coins-public` (obverses optimisés) |
+| **pCloud** | Backup hebdo offsite du VPS | 1 tarball écrasé chaque dimanche |
+| **Mac (dev)** | Admin web + review humaine | Cache local read-through, LRU borné |
+| **PC fixe (dev)** | Entraînement | Cache run-scoped, sweep des orphelins |
 
-Les images **ne sont plus dans git**. Le repo conserve uniquement le code et les docs.
+Les images **ne sont plus dans git** ni mélangées au repo après migration.
 
 ## Architecture cible
 
 ```
-┌─ VPS NixOS ─────────────────────────────────────────────┐
+┌─ VPS perso NixOS (docker) ──────────────────────────────┐
 │                                                         │
-│   MinIO ── bucket: numista-canonical ─── public-read ───┼──► Cloudflare
-│        └── bucket: enrichment ────────── signed URLs ───┼──► Mac / PC
-│        └── bucket: source-images ─────── signed URLs ───┤    (à la
-│                                                         │    demande)
-│   /etc/nixos/eurio-backup.nix                           │
-│     systemd.timer (hebdo)                               │
-│     rclone sync minio: → pcloud:eurio-backup/           │
+│   MinIO ── numista-canonical  (public via CF)           │
+│        ── enrichment-raws     (privé, signed URL)       │
+│        ── enrichment-crops    (privé, signed URL)       │
+│                                                         │
+│   rclone (systemd.timer hebdo) ──► pCloud:eurio.tar     │
+└────────────────────────┬────────────────────────────────┘
+                         │
+        ┌────────────────┼─────────────────┐
+        │                │                 │
+   Mac (admin)      PC (training)    Vercel (admin web)
+   read-through     pre-fetch         lit signed URL via API
+   LRU 5 GB         run_id-scoped     ML proxy
+        │
+        │  augmentations transient locales (jamais S3)
+        │
+        └─ ml/cache/augmentation_sources/ (vit le run, supprimé après)
+
+
+┌─ Supabase Storage (chaîne app prod, indépendante) ──────┐
+│                                                         │
+│   Bucket app-coins-public                               │
+│   peuplé par script depuis ml/datasets/                 │
+│   Servi à l'app Android via SDK Supabase                │
 └─────────────────────────────────────────────────────────┘
-                                                            │
-                  ┌─────────────────────────────────────────┤
-                  │                                         │
-            ┌─────┴─────┐                          ┌────────┴────────┐
-            │   Mac     │                          │   PC fixe       │
-            │  (dev)    │                          │  (entraînement) │
-            ├───────────┤                          ├─────────────────┤
-            │ Admin web │                          │ Pré-fetch run   │
-            │ Review qu │                          │  → cache run_id │
-            │ LRU 5 GB  │                          │  → train        │
-            │           │                          │  → sweep orph.  │
-            └───────────┘                          └─────────────────┘
-                  │                                         │
-                  │          ┌─ Vercel ─────┐               │
-                  └──────────│ admin static │◄──────────────┘
-                             │ build        │ (build deploy
-                             └──────────────┘  asynchrone)
 ```
+
+**Deux chaînes indépendantes** : la chaîne dev (MinIO) et la chaîne prod (Supabase). Les deux ne se parlent pas en runtime — seul le script de publication pousse périodiquement de l'un vers l'autre.
 
 ## Principes non négociables
 
-### P1 — Une seule source de vérité par catégorie d'image
+### P1 — Trois groupes d'images, trois lifecycles
 
-- **Numista canonique** → bucket `numista-canonical`, public-read, fronté Cloudflare.
-- **Enrichment scrapé** (eBay, etc.) → bucket `enrichment`, privé, accédé par URL signée temporaire.
-- **Raw downloads** (photos originales avant crop) → bucket `source-images`, privé.
+1. **Canonique** (Numista référentiel) : stable, push une fois, modifié rarement (correction, ajout de coin). Bucket `numista-canonical` (public). **Aussi publié vers Supabase Storage** (chaîne prod).
+2. **Enrichment crops** : actif training. Produit par le pipeline scrape, persiste indéfiniment. Bucket `enrichment-crops` (privé).
+3. **Enrichment raws** : sources des crops. Persistent V1 (peut servir à un retrain futur), candidat à purge sélective V2. Bucket `enrichment-raws` (privé).
 
-Pas de duplication entre buckets. La DB porte la clé S3 unique de chaque image. Si l'image existe ailleurs (Vercel, Supabase), c'est un bug.
+**Hors S3** : augmentations (`ml/cache/augmentation_sources/`) et captures de bench (`ml/debug_captures/`). Ces images sont locales, transient, jamais uploadées.
 
-### P2 — Lecture jamais bloquée par la latence réseau côté entraînement
+### P2 — Chaîne dev MinIO, chaîne prod Supabase
 
-- **PC en entraînement** : pré-fetch synchrone en début de run vers un cache local, puis lecture filesystem pour tous les batches. Aucune query MinIO pendant la boucle d'entraînement.
-- **Mac en review** : LRU disque borné (5 GB par défaut), évince le moins récemment utilisé. Premier hit = download MinIO, hits suivants = filesystem. Si LRU plein → évincer + télécharger.
-- **Front (admin)** : `<img src="">` pointe vers MinIO (URL signée pour `enrichment`, URL publique CDN pour `numista-canonical`). Le browser cache HTTP fait son travail, on ne réinvente rien.
+- **MinIO** = backend dev, training, admin. Egress gratuit côté VPS, coûte rien.
+- **Supabase Storage** = backend app Android prod. Plan Pro $25/mois (250 GB egress, 100 GB storage). Couvre largement 270 MB de canonique + thumbnails.
+- **Vercel admin** lit MinIO (signed URL via API ML), **jamais Supabase**, pour ne pas brûler l'egress Supabase prod.
+- **App Android** lit Supabase, jamais MinIO. Le VPS n'est pas dans le chemin prod — pas de SLA à tenir, pas de monitoring 24/7 nécessaire.
 
-Cf. `chunk-4-mac-on-demand-fetch.md` et `chunk-5-pc-training-cache.md`.
+### P3 — Read-through cache local partout
 
-### P3 — Backup non-aligné géographiquement
+Le code applicatif n'appelle jamais MinIO directement pour lire un fichier. Il appelle une fonction `local_path(asset)` qui :
 
-- **VPS** = source de vérité (Hetzner / OVH / autre).
-- **pCloud** = backup hebdomadaire (data center tiers, autre juridiction).
-- Aucun chemin où la perte d'un seul lieu = la perte de la donnée.
-- Rétention : `latest/` (synced) + `snapshots/<YYYY-MM-DD>/` hebdo, gardés 4 semaines.
+1. Cherche dans le cache local. Si présent → retourne le path.
+2. Sinon download depuis MinIO vers le cache, puis retourne le path.
 
-### P4 — `storage_path` n'est plus un chemin filesystem
+Conséquences :
+- **PyTorch DataLoader** lit du fs local. Aucune latence réseau pendant la boucle training.
+- **Scripts admin Python** marchent transparent.
+- **Mac admin** : LRU 5 GB par défaut, évince le moins récemment utilisé.
+- **PC training** : cache run-scoped, pre-fetch en début de run, sweep des runs morts.
 
-Aujourd'hui `image_assets.storage_path` = `/Users/musubi42/.../crop.png`. Bug par construction sur 2 machines.
+### P4 — `storage_key` est une clé S3 relative au bucket
 
-Demain : **clé S3** type `enrichment/ebay/run-abc/asset-123.png`. Machine-agnostique. Le code construit l'URL absolue à la demande (URL signée pour privé, URL publique pour Numista).
+Aujourd'hui `image_assets.storage_path` = chemin filesystem absolu, machine-spécifique.
 
-Migration : un script one-shot (`chunk-3-migration-script.md`), hard cut, sans phase de coexistence (cf. `feedback_no_debt`).
+Demain : **clé S3** type :
 
-### P5 — La pipeline d'entraînement ne sait pas qu'on est en S3
+| Type | Format | Bucket |
+|---|---|---|
+| Canonique | `numista/<numista_id>/<face>.jpg` | `numista-canonical` |
+| Crop | `<source>/<run_id>/<asset_id>.png` | `enrichment-crops` |
+| Raw | `<source>/<run_id>/<source_image_id>.<ext>` | `enrichment-raws` |
 
-Le code training PyTorch lit toujours des fichiers locaux. Le DataLoader ne change pas. Ce qui change : l'étape de pré-requis du runner instancie le cache, télécharge, écrit sous `~/.cache/eurio/runs/<run_id>/`, puis appelle l'entraînement avec ce path local.
+Le path local cache est dérivé : `~/.cache/eurio/<bucket>/<storage_key>`. Aucune table de mapping additionnelle.
 
-Si jamais on swap MinIO → AWS S3 ou Backblaze B2, **rien ne bouge dans la pipeline d'entraînement**. Le seul code qui change est la fonction de pré-fetch (un client S3 qui parle au nouvel endpoint).
+La colonne reste nommée `storage_path` dans le schéma DB (cosmétique, on évite un rename qui touche 17 fichiers Python). Sa **sémantique change** : au lieu d'un chemin fs absolu, elle porte une clé S3 relative au bucket. Le bucket est dérivé de la sémantique de la ligne (cf. chunk 2), pas une colonne séparée.
 
-### P6 — Hard cut, jamais de double écriture
+### P5 — Augmentations restent locales
 
-On ne maintient pas filesystem + MinIO en parallèle "le temps de la migration". Le jour J :
+Les augmentations sont produites à la volée dans `ml/cache/augmentation_sources/<run_id>/` pendant l'entraînement, lues une fois, jetées à la fin du run. Elles ne sont **jamais** uploadées vers S3. Un nouveau run = nouvelles augmentations (le générateur est déterministe par seed).
 
-1. Plus de pipelines actives sur les machines locales.
+### P6 — Hard cut sur la migration
+
+On ne maintient pas filesystem + MinIO en parallèle. Le jour J :
+
+1. Plus de pipelines actives sur le Mac.
 2. Script de migration upload tout, vérifie sha256, met à jour la DB.
-3. Le filesystem local devient lecture seule pour 7 jours (sécurité), puis supprimé.
-4. À partir du jour J+1, toute nouvelle image écrit directement en MinIO.
+3. Le filesystem local devient lecture seule pendant 7 jours (sécurité).
+4. Le code lit MinIO via cache local read-through dès J+1.
+5. À J+7 audit OK → suppression définitive du filesystem local.
 
-Pas de `try local then S3 fallback`. Pas de feature flag `STORAGE_BACKEND=s3|fs`. Le code parle MinIO, point.
+Pas de feature flag `STORAGE_BACKEND=s3|fs`. Le code parle `local_path(asset)`, point — l'impl appelle MinIO derrière.
 
 ## Décisions actées
 
-1. **MinIO sur VPS** (pas AWS S3, pas Cloudflare R2, pas Backblaze B2). Tu le maîtrises déjà, gratuit, ré-versible.
-2. **Cloudflare CDN devant le bucket public Numista** (pas Vercel).
-3. **Pas de FUSE mount** (pas de `rclone mount`). Trop d'effets de bord, debug pénible. Code Python parle directement à `boto3` ou `minio-py`.
-4. **Cache LRU 5 GB sur Mac** via `diskcache` ou impl maison simple (1 fichier `~/.cache/eurio/lru/index.json` + dossier `objects/`).
-5. **Cache training scoped par `run_id`** sous `~/.cache/eurio/runs/<run_id>/`. Sweep au démarrage du run suivant.
-6. **Backup hebdo pCloud** via `rclone` + systemd.timer (NixOS module ou user-level selon la nature du VPS — à confirmer).
-7. **Pas de versioning S3 actif sur les buckets**. Versioning = explose la facture stockage et complique la restauration. La protection vient des snapshots pCloud datés.
-8. **Naming des clés S3** : voir `chunk-2-image-keys-schema.md`. Format `<bucket>/<source>/<run_id ou stable_key>/<asset_id ou face>.<ext>`.
+1. **MinIO dockerisé sur le VPS perso NixOS** (pas Hetzner, pas AWS, pas R2). Container `minio/minio` géré via `docker-compose`, Traefik côté host fait le TLS et le routing.
+2. **Domaines** : `s3.eurio.musubi.dev` (signed URL endpoints) + `images.eurio.musubi.dev` (CDN public Cloudflare). Sous-domaines de `musubi.dev`, déjà sur Cloudflare. Pas d'achat de `eurio.com` en V1.
+3. **3 buckets MinIO** : `numista-canonical` (public), `enrichment-raws` (privé), `enrichment-crops` (privé).
+4. **Pas de FUSE mount**. Le code parle directement à `boto3` (lib standard).
+5. **Cache LRU Mac** : 5 GB, eviction par `os.atime`, pas de DB sidecar.
+6. **Cache training PC** : scoped par `run_id` sous `~/.cache/eurio/runs/<run_id>/`. Sweep au démarrage du run suivant.
+7. **Backup hebdo pCloud** : 1 tarball complet écrasé chaque dimanche. Pas de versioning, pas de rétention multi-semaine. Simple.
+8. **Pas de versioning S3** sur les buckets MinIO. La protection vient du backup pCloud.
+9. **Chaîne app prod = Supabase Storage** ($25/mois Pro plan). Peuplée par un script de publication depuis `ml/datasets/`. Vercel admin et VPS ne touchent jamais à Supabase Storage en runtime.
+10. **Signed URL TTL** : 6 h (compromis entre rotation et cacheabilité du browser HTTP).
 
 ## Décisions à confirmer
 
-1. **Nature du VPS** : NixOS (`nixos-rebuild switch`-managé) ou Linux générique avec flake user-level via direnv ? Influence chunks 1 et 7.
-2. **Domaine Cloudflare** : `images.eurio.com` ou autre ? Doit être enregistré avant chunk 6.
-3. **Nettoyage filesystem post-migration** : J+7 ou J+30 avant `rm -rf ml/datasets/` local ?
-4. **Stratégie thumbnail** : on génère des thumbs (256, 512px) à la persistence dans MinIO, ou on sert l'original et on laisse Cloudflare faire l'image-resizing (payant) ? Default V1 : pas de thumbs, on sert l'original 1:1.
+1. **Optimisation des canoniques avant push Supabase** : Numista actuel = 270 MB. Avec WebP + resize 1024 max, on descend probablement à <80 MB. À tester au chunk de publication.
+2. **Délai filesystem lock-fs post-migration** : 7 jours par défaut, configurable. Plus long = plus safe, coût marginal nul.
+3. **Embarquement des coins les plus communs dans l'APK** : V2. V1 = tout fetch via Supabase Storage.
 
 ## Anti-objectifs
 
-- ❌ **Pas de Supabase Storage** pour les images training. Supabase reste réservé prod Android (1 GB free, 5 GB egress free → grillé instantanément avec 100k images training).
-- ❌ **Pas de versioning git** des images (`ml/datasets/` ne doit plus contenir de `.png` après migration).
-- ❌ **Pas de Syncthing** ou autre P2P. Pas de "source de vérité" claire = catastrophe à 100k fichiers.
-- ❌ **Pas de cache permanent sur Mac** (le LRU est borné, pas un mirror).
-- ❌ **Pas de `rclone mount`** (FUSE). On appelle l'API S3 directement.
-- ❌ **Pas de double écriture** (fs + MinIO). Hard cut.
-- ❌ **Pas de feature flag** `STORAGE_BACKEND`. Une seule implémentation, qui parle MinIO.
-- ❌ **Pas d'image-resizing on-the-fly côté serveur ML**. Si besoin de thumbs, on les génère à l'écriture (chunk futur, pas V1).
-- ❌ **Pas d'écriture concurrente Mac+PC sur le même bucket**. Seul le code de scrape écrit (sur la machine où il tourne, qui upload vers MinIO). La review humaine ne crée pas d'images, elle reclasse des images existantes.
+- ❌ Pas de Supabase Storage pour scrape / training / admin. Trop coûteux en egress vu le volume scrape.
+- ❌ Pas de versioning git des images. Le repo conserve uniquement code + docs + 1 manifest de migration.
+- ❌ Pas de Syncthing / P2P. Pas de "source de vérité" claire = catastrophe.
+- ❌ Pas de cache permanent sur Mac (LRU borné).
+- ❌ Pas de FUSE mount.
+- ❌ Pas de double écriture fs+MinIO. Hard cut.
+- ❌ Pas de feature flag `STORAGE_BACKEND`.
+- ❌ Pas d'image-resizing on-the-fly côté serveur dev. Si besoin de thumbs, on les génère à l'écriture (chunk publication Supabase).
+- ❌ Pas d'écriture concurrente Mac+PC sur le même bucket. Seul le code de scrape écrit (sur la machine où il tourne).
+- ❌ Pas d'augmentation uploadée en S3. Local et transient, point.
+- ❌ Pas de Hetzner ni autre VPS managé. VPS perso uniquement.
 
 ## Glossaire
 
 | Terme | Définition |
 |---|---|
-| **Bucket** | Espace de stockage MinIO indépendant, avec ses propres ACL. Trois buckets V1 : `numista-canonical`, `enrichment`, `source-images`. |
-| **Storage key** | Clé S3, équivalent d'un chemin relatif dans un bucket. Format défini dans chunk 2. |
-| **Signed URL** | URL S3 temporaire (~1h) qui donne un accès direct à un objet privé sans exposer les credentials. |
-| **Public bucket** | Bucket en lecture publique sans signature. Réservé à Numista canonique (catalogue, OK d'être public). |
-| **LRU disk cache** | Cache local qui garde les N derniers Go d'objets accédés, évince le moins récemment utilisé quand plein. |
-| **Run-scoped cache** | Cache dont la durée de vie est égale à la durée d'un run d'entraînement, identifié par son `run_id`. |
-| **Hard cut** | Migration sans phase de coexistence : à un instant T, on bascule, pas de retour arrière simple. |
-| **Sweep** | Nettoyage automatique des caches orphelins (runs cancelled / failed) au démarrage du run suivant. |
+| **Bucket** | Espace de stockage MinIO indépendant, avec ses propres ACL. |
+| **Storage key** | Chemin relatif dans un bucket. Format défini en P4. |
+| **Signed URL** | URL S3 temporaire (TTL 6h) qui donne accès à un objet privé sans exposer les credentials. |
+| **Public bucket** | Bucket en lecture publique sans signature. Réservé à `numista-canonical`. |
+| **Read-through cache** | Cache qui télécharge à la demande au premier accès, puis sert depuis le local. |
+| **Run-scoped cache** | Cache dont la durée de vie est égale à la durée d'un run d'entraînement. |
+| **Hard cut** | Migration sans phase de coexistence. |
+| **Sweep** | Nettoyage automatique des caches orphelins au démarrage du run suivant. |
+| **Chaîne dev** | MinIO + Vercel admin + Mac/PC. |
+| **Chaîne prod** | Supabase Storage + app Android. |
 
 ## Ce qui peut faire pivoter le plan
 
-1. **Coût bande passante VPS** : si le PC en entraînement download 100 GB par run et que le VPS est limité (Hetzner 20 TB/mois OK, OVH attention), faut mesurer après chunk 5.
-2. **Latence MinIO sur Mac en review** : si > 500 ms par image en cold cache, il faudra peut-être pré-fetch les premiers crops de la review queue côté MinIO (background prefetch).
-3. **Cloudflare gratuit suffit** ? Il a un cap "non-HTML files via free plan" théoriquement, en pratique c'est OK si on reste sous quelques TB/mois de bande passante. Si jamais on dépasse → Backblaze B2 + Cloudflare bandwidth alliance (free egress).
-4. **NixOS module vs flake user** : la décision sur le VPS conditionne la propreté du chunk 7.
+1. **Volume crops scrapés** : si on dépasse 100 GB, vérifier que le disque VPS suit + que le tarball pCloud reste viable.
+2. **Supabase egress** : si le plan Pro 250 GB ne suffit plus (Android prod scale), passer à Backblaze B2 + Cloudflare bandwidth alliance pour la chaîne prod. La chaîne dev reste MinIO.
+3. **Latence MinIO sur Mac** : si > 500 ms par image en cold cache, prefetch en background les premiers items de la review queue.
 
 ## Mémoires liées
 
 - `feedback_no_debt` — pas de shortcut, hard cut sur la migration
-- `feedback_nix_devshell` — toutes les deps via flake.nix (côté Mac/PC dev, MinIO côté VPS)
+- `feedback_nix_devshell` — toutes les deps via flake.nix (côté Mac/PC dev)
 - `feedback_chunk_audit_flow` — chunk-par-chunk, audit visuel avant d'avancer
-- `project_eurio_stack` — Kotlin natif Android, no VPS prod (le VPS ici est dev/scrape, pas prod)
+- `project_eurio_stack` — VPS = dev/scrape, **Supabase Storage = images app prod**
 - `project_monorepo_structure` — secrets via direnv
-- `reference_supabase_free_tier` — pourquoi pas Supabase Storage (1 GB DB, 1 GB Storage, 5 GB egress)
+- `feedback_training_source_obverse_only` — training = obverse uniquement, dimensionner les caches en conséquence
