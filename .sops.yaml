@@ -20,7 +20,7 @@ creation_rules:
     key_groups:
       - age:
           # TODO mac — coller pubkey générée par `age-keygen` sur le Mac
-
+          - age1j3hz72ya5ljs7s5p69uaj4yxegxltuz4cuep9duezh3l98mdrd5sus2ksw
           # TODO pc — coller pubkey générée par `age-keygen` sur le PC 1080ti
 
           # VPS
