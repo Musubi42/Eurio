@@ -27,7 +27,7 @@ Aujourd'hui les images training/scrape vivent sur le filesystem du Mac dev. On m
 - NixOS, géré via `nixos-rebuild switch`
 - Traefik déjà installé et fonctionnel (TLS via Cloudflare DNS challenge, certResolver `cf` configuré)
 - Docker activé (`virtualisation.docker.enable = true`)
-- Sous-domaines DNS déjà créés : `s3.eurio.musubi.dev` + `images.eurio.musubi.dev` (CNAME proxied vers le VPS)
+- Sous-domaines DNS déjà créés : `eurio-s3.musubi.dev` + `eurio-images.musubi.dev` (CNAME proxied vers le VPS)
 
 ## Mission
 
@@ -35,16 +35,16 @@ Aujourd'hui les images training/scrape vivent sur le filesystem du Mac dev. On m
 
 ```bash
 # 1. mc client peut lister les 3 buckets
-mc alias set eurio https://s3.eurio.musubi.dev $APP_USER $APP_PWD
+mc alias set eurio https://eurio-s3.musubi.dev $APP_USER $APP_PWD
 mc ls eurio/numista-canonical eurio/enrichment-raws eurio/enrichment-crops
 
 # 2. Bucket public lisible sans auth via le sous-domaine images
 echo "test-public" > /tmp/t.txt
 mc cp /tmp/t.txt eurio/numista-canonical/test.txt
-curl -sf https://images.eurio.musubi.dev/test.txt           # → "test-public"
+curl -sf https://eurio-images.musubi.dev/test.txt           # → "test-public"
 
 # 3. Buckets privés rejettent les requêtes anonymes
-curl -I https://s3.eurio.musubi.dev/enrichment-crops/anything   # → 403
+curl -I https://eurio-s3.musubi.dev/enrichment-crops/anything   # → 403
 ```
 
 Et sur le VPS :
@@ -62,7 +62,7 @@ Internet ─► Cloudflare (proxy ON) ─► VPS:443 ─► Traefik
                                                   │
                                 ┌─────────────────┼─────────────────┐
                                 │                                   │
-                  Host(s3.eurio.musubi.dev)            Host(images.eurio.musubi.dev)
+                  Host(eurio-s3.musubi.dev)            Host(eurio-images.musubi.dev)
                                 │                                   │
                                 │           middleware addPrefix=/numista-canonical
                                 │                                   │
@@ -75,10 +75,10 @@ Internet ─► Cloudflare (proxy ON) ─► VPS:443 ─► Traefik
                                             └── enrichment-crops/    (privé)
 ```
 
-**Pourquoi le middleware addPrefix sur images.eurio.musubi.dev** :
+**Pourquoi le middleware addPrefix sur eurio-images.musubi.dev** :
 - Le bucket public `numista-canonical` est servi via un sous-domaine dédié pour caching CDN propre.
-- Côté code applicatif, l'URL est `https://images.eurio.musubi.dev/numista/12345/obverse.jpg`
-- Traefik réécrit en `https://s3.eurio.musubi.dev/numista-canonical/numista/12345/obverse.jpg` côté MinIO
+- Côté code applicatif, l'URL est `https://eurio-images.musubi.dev/numista/12345/obverse.jpg`
+- Traefik réécrit en `https://eurio-s3.musubi.dev/numista-canonical/numista/12345/obverse.jpg` côté MinIO
 - Donc le client n'a jamais besoin de connaître le nom du bucket, et MinIO sait routeur.
 
 ## Décisions actées (ne pas re-débattre)
@@ -138,15 +138,15 @@ services:
       - traefik.docker.network=traefik
 
       # ── S3 endpoint (signed URL access for private buckets) ──
-      - traefik.http.routers.minio-s3.rule=Host(`s3.eurio.musubi.dev`)
+      - traefik.http.routers.minio-s3.rule=Host(`eurio-s3.musubi.dev`)
       - traefik.http.routers.minio-s3.entrypoints=websecure
       - traefik.http.routers.minio-s3.tls.certresolver=cf
       - traefik.http.routers.minio-s3.service=minio-s3
       - traefik.http.services.minio-s3.loadbalancer.server.port=9000
 
-      # ── Public CDN: images.eurio.musubi.dev → numista-canonical bucket ──
+      # ── Public CDN: eurio-images.musubi.dev → numista-canonical bucket ──
       - traefik.http.middlewares.images-prefix.addprefix.prefix=/numista-canonical
-      - traefik.http.routers.minio-images.rule=Host(`images.eurio.musubi.dev`)
+      - traefik.http.routers.minio-images.rule=Host(`eurio-images.musubi.dev`)
       - traefik.http.routers.minio-images.entrypoints=websecure
       - traefik.http.routers.minio-images.tls.certresolver=cf
       - traefik.http.routers.minio-images.middlewares=images-prefix
@@ -220,7 +220,7 @@ nix-shell -p minio-client --run '
 '
 ```
 
-> Si `mc` ne peut pas joindre `localhost:9000`, c'est que le port n'est pas exposé sur le host. Soit ajouter `ports: ["127.0.0.1:9000:9000"]` au compose, soit faire la config via le réseau Docker (`docker exec` dans le container, ou un alias mc qui passe par `s3.eurio.musubi.dev`).
+> Si `mc` ne peut pas joindre `localhost:9000`, c'est que le port n'est pas exposé sur le host. Soit ajouter `ports: ["127.0.0.1:9000:9000"]` au compose, soit faire la config via le réseau Docker (`docker exec` dans le container, ou un alias mc qui passe par `eurio-s3.musubi.dev`).
 
 ### Étape 5 — User applicatif `eurio-app`
 
@@ -268,13 +268,13 @@ APP_USER=$(cat /etc/eurio/minio/secrets/eurio_app_user)
 APP_PWD=$(cat /etc/eurio/minio/secrets/eurio_app_password)
 
 nix-shell -p minio-client --run "
-  mc alias set eurio https://s3.eurio.musubi.dev '$APP_USER' '$APP_PWD'
+  mc alias set eurio https://eurio-s3.musubi.dev '$APP_USER' '$APP_PWD'
   mc ls eurio/
 "
 # Doit lister les 3 buckets
 ```
 
-#### 6.2 — Bucket public servi via images.eurio.musubi.dev
+#### 6.2 — Bucket public servi via eurio-images.musubi.dev
 
 ```bash
 # Upload un fichier test dans numista-canonical
@@ -282,7 +282,7 @@ echo "smoke-test-$(date)" > /tmp/smoke.txt
 mc cp /tmp/smoke.txt eurio/numista-canonical/smoke.txt
 
 # Curl anonyme
-curl -sf https://images.eurio.musubi.dev/smoke.txt
+curl -sf https://eurio-images.musubi.dev/smoke.txt
 # Doit afficher le contenu
 
 # Cleanup
@@ -296,7 +296,7 @@ echo "private" > /tmp/priv.txt
 mc cp /tmp/priv.txt eurio/enrichment-crops/priv.txt
 
 # Anonyme → 403
-curl -I https://s3.eurio.musubi.dev/enrichment-crops/priv.txt
+curl -I https://eurio-s3.musubi.dev/enrichment-crops/priv.txt
 # HTTP/2 403
 
 mc rm eurio/enrichment-crops/priv.txt
@@ -335,7 +335,7 @@ mc ls eurio/
 
 2. **Cloudflare timeout sur uploads longs** : Cloudflare free tier coupe les requêtes après 100 s. Si on upload 500 MB sur une connexion modeste, ça peut couper. Pour les uploads massifs (migration future), passer par MinIO direct via IP/port temporaire ou monter la limite Cloudflare (plan payant). En V1 on n'a pas ce problème (objets < 10 MB).
 
-3. **Cloudflare "Full (strict)" SSL** : si Traefik a un cert valide via Let's Encrypt DNS challenge, Cloudflare peut être en Full strict. Si jamais Cloudflare répond 525/526 → revérifier le cert via `curl -v https://s3.eurio.musubi.dev` directement (sans CF en proxy en mode dev) puis remettre proxy ON.
+3. **Cloudflare "Full (strict)" SSL** : si Traefik a un cert valide via Let's Encrypt DNS challenge, Cloudflare peut être en Full strict. Si jamais Cloudflare répond 525/526 → revérifier le cert via `curl -v https://eurio-s3.musubi.dev` directement (sans CF en proxy en mode dev) puis remettre proxy ON.
 
 4. **Versioning S3 activé par accident** : ne PAS faire `mc version enable`. Si activé par erreur, `mc version suspend` immédiatement.
 
@@ -352,7 +352,7 @@ mc ls eurio/
 - [ ] 3 buckets créés, `numista-canonical` en `anonymous=download`
 - [ ] User `eurio-app` créé avec policy R/W sur les 3 buckets
 - [ ] Smoke test 6.1 (`mc ls eurio/` depuis le VPS) → liste les 3 buckets
-- [ ] Smoke test 6.2 (`curl images.eurio.musubi.dev/smoke.txt`) → 200 + contenu
+- [ ] Smoke test 6.2 (`curl eurio-images.musubi.dev/smoke.txt`) → 200 + contenu
 - [ ] Smoke test 6.3 (curl anonyme sur enrichment-crops) → 403
 - [ ] Smoke test 6.4 (multipart 100 MB) → success
 - [ ] Smoke test 6.5 (restart service) → tout remarche
@@ -386,7 +386,7 @@ mc ls eurio/
 
 - **Container ne démarre pas** : `docker logs eurio-minio` puis `journalctl -u eurio-minio.service`.
 - **TLS échoue** : vérifier le certResolver Traefik, regarder les logs Traefik (`docker logs traefik` ou équivalent).
-- **404 sur s3.eurio.musubi.dev** : router pas matché, vérifier les labels et `docker inspect eurio-minio | grep traefik`.
+- **404 sur eurio-s3.musubi.dev** : router pas matché, vérifier les labels et `docker inspect eurio-minio | grep traefik`.
 - **403 systématique sur le bucket public** : `mc anonymous get local/numista-canonical` doit retourner `download`. Si vide, refaire `mc anonymous set download local/numista-canonical`.
 - **Reboot et MinIO ne remonte pas** : vérifier `systemctl is-enabled eurio-minio`, et que docker.service est `wantedBy = multi-user.target`.
 

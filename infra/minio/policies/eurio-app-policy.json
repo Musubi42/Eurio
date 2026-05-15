@@ -1,0 +1,30 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ListAllBuckets",
+      "Effect": "Allow",
+      "Action": ["s3:ListAllMyBuckets", "s3:GetBucketLocation"],
+      "Resource": ["arn:aws:s3:::*"]
+    },
+    {
+      "Sid": "BucketRW",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject",
+        "s3:ListBucket",
+        "s3:GetObjectAttributes"
+      ],
+      "Resource": [
+        "arn:aws:s3:::numista-canonical",
+        "arn:aws:s3:::numista-canonical/*",
+        "arn:aws:s3:::enrichment-raws",
+        "arn:aws:s3:::enrichment-raws/*",
+        "arn:aws:s3:::enrichment-crops",
+        "arn:aws:s3:::enrichment-crops/*"
+      ]
+    }
+  ]
+}

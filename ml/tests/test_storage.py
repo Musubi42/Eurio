@@ -42,9 +42,9 @@ def test_bucket_for_source_image():
 
 def test_public_url_strips_leading_slash():
     assert public_url("numista/68395/obverse.jpg") == \
-        "https://images.eurio.musubi.dev/numista/68395/obverse.jpg"
+        "https://eurio-images.musubi.dev/numista/68395/obverse.jpg"
     assert public_url("/numista/68395/obverse.jpg") == \
-        "https://images.eurio.musubi.dev/numista/68395/obverse.jpg"
+        "https://eurio-images.musubi.dev/numista/68395/obverse.jpg"
 
 
 # ─── signed_url ─────────────────────────────────────────────────────────────

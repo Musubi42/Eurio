@@ -8,6 +8,9 @@ Lis [`vision.md`](vision.md) en premier. Les chunks numérotés sont des
 briques implémentables séparément, dans l'ordre indiqué. Aucun chunk ne
 doit être attaqué sans que ses pré-requis soient livrés et audités.
 
+L'avancement réel + décisions hors-doc + smoke tests passés vivent dans
+[`PROGRESS.md`](PROGRESS.md). Tenir à jour à chaque session.
+
 ## Plan
 
 | # | Chunk | Pré-req | Statut |
@@ -20,14 +23,15 @@ doit être attaqué sans que ses pré-requis soient livrés et audités.
 | 6 | [Publication Supabase Storage (chaîne prod)](chunk-6-supabase-publication.md) | 1, 2 | À faire |
 | 7 | [Backup pCloud (tar hebdo écrasé)](chunk-7-pcloud-backup.md) | 1 | À faire |
 | 8 | [Cleanup + rollback](chunk-8-cleanup-rollback.md) | 3, 4, 5 | À faire |
+| 9 | [Cascade sync MinIO ↔ DB ↔ cache](chunk-9-cascade-sync.md) | 2, 4 | À faire |
 
 ## Ordre d'implémentation conseillé
 
 ```
 1 (MinIO docker) ──┐
                    ├──> 3 (migration) ──┬──> 4 (cache lib) ──> 5 (training)
-2 (DB schema)    ──┘                    │
-                                        │
+2 (DB schema)    ──┘                    │       │
+                                        │       └──> 9 (cascade sync MinIO↔DB↔cache)
 6 (Supabase publication) ←─ peut partir en parallèle de 3
 7 (backup) ←─ dès que 1 est live
 8 (cleanup) ←─ ferme la boucle quand 4 et 5 sont stables

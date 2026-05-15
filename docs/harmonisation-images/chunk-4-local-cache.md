@@ -31,7 +31,7 @@ Application code (training, admin scripts, API ML proxy)
 │      return path                        │
 └──────────┬──────────────────────────────┘
            ▼
-   MinIO via s3.eurio.musubi.dev
+   MinIO via eurio-s3.musubi.dev
 ```
 
 **Browser admin** (Vercel) : pas de cache local Python. L'API ML redirect 302 vers signed URL ; browser cache HTTP fait le job.
@@ -76,7 +76,7 @@ def _client():
     if _s3 is None:
         _s3 = boto3.client(
             "s3",
-            endpoint_url="https://s3.eurio.musubi.dev",
+            endpoint_url="https://eurio-s3.musubi.dev",
             aws_access_key_id=os.environ["MINIO_ACCESS_KEY"],
             aws_secret_access_key=os.environ["MINIO_SECRET_KEY"],
         )

@@ -76,7 +76,7 @@ def bucket_for_source_image() -> Bucket:
 
 def public_url(storage_key: str) -> str:
     """Pour les objets `numista-canonical` uniquement. Pas de signature."""
-    return f"https://images.eurio.musubi.dev/{storage_key}"
+    return f"https://eurio-images.musubi.dev/{storage_key}"
 
 def signed_url(bucket: Bucket, storage_key: str, expires_seconds: int = 21600) -> str:
     """6 h par défaut. Pour les buckets privés."""

@@ -1,0 +1,27 @@
+# SOPS — règles de chiffrement.
+#
+# Chaque machine perso a sa propre clé age. La clé publique de chaque machine
+# est listée ici comme recipient ; n'importe laquelle des clés privées
+# correspondantes peut déchiffrer `secrets/dev.env`.
+#
+# Bootstrap d'une nouvelle machine :
+#   1. age-keygen -o ~/.config/sops/age/keys.txt
+#   2. Coller la pubkey ci-dessous (la ligne `# public key: age1...`).
+#   3. Depuis une machine déjà autorisée : `sops updatekeys secrets/dev.env`.
+#   4. git commit .sops.yaml + secrets/dev.env.
+#
+# Rotation (machine compromise) :
+#   - Retirer sa pubkey ci-dessous.
+#   - `sops updatekeys secrets/dev.env` (re-chiffre sans le recipient retiré).
+#   - Idéalement, rotater aussi les secrets eux-mêmes côté providers.
+
+creation_rules:
+  - path_regex: secrets/.*\.env$
+    key_groups:
+      - age:
+          # TODO mac — coller pubkey générée par `age-keygen` sur le Mac
+
+          # TODO pc — coller pubkey générée par `age-keygen` sur le PC 1080ti
+
+          # VPS
+          - age1cm56zg38frl5cak0kdhvefpm827vtw5z57crn9cwzl3xnxrqqy5s28dhg8

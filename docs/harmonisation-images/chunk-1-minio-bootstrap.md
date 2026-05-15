@@ -9,13 +9,13 @@
 À la fin du chunk, depuis Mac et PC, on peut :
 
 ```bash
-mc alias set eurio https://s3.eurio.musubi.dev $APP_USER $APP_PWD
+mc alias set eurio https://eurio-s3.musubi.dev $APP_USER $APP_PWD
 mc ls eurio/numista-canonical
 mc ls eurio/enrichment-raws
 mc ls eurio/enrichment-crops
 ```
 
-Et `curl https://images.eurio.musubi.dev/numista/68395/obverse.jpg` (Cloudflare → MinIO) renvoie 200 sur un objet de test. Les buckets privés répondent 403 sans signed URL.
+Et `curl https://eurio-images.musubi.dev/numista/68395/obverse.jpg` (Cloudflare → MinIO) renvoie 200 sur un objet de test. Les buckets privés répondent 403 sans signed URL.
 
 ## Pré-requis
 
@@ -28,7 +28,7 @@ Et `curl https://images.eurio.musubi.dev/numista/68395/obverse.jpg` (Cloudflare 
 
 1. **Docker, pas service NixOS natif** (cf. vision §"Décisions actées" #1). MinIO container officiel.
 2. **3 buckets** : `numista-canonical` (public), `enrichment-raws` (privé), `enrichment-crops` (privé).
-3. **2 sous-domaines** : `s3.eurio.musubi.dev` (endpoint S3) + `images.eurio.musubi.dev` (CDN public devant `numista-canonical`).
+3. **2 sous-domaines** : `eurio-s3.musubi.dev` (endpoint S3) + `eurio-images.musubi.dev` (CDN public devant `numista-canonical`).
 4. **User dédié** `eurio-app` pour le code (pas le root).
 5. **Credentials** via fichier monté dans le container, jamais en clair dans le compose ni le flake.
 
@@ -54,13 +54,13 @@ services:
     labels:
       - traefik.enable=true
       # S3 endpoint (signed URL access)
-      - traefik.http.routers.minio-s3.rule=Host(`s3.eurio.musubi.dev`)
+      - traefik.http.routers.minio-s3.rule=Host(`eurio-s3.musubi.dev`)
       - traefik.http.routers.minio-s3.entrypoints=websecure
       - traefik.http.routers.minio-s3.tls.certresolver=cf
       - traefik.http.routers.minio-s3.service=minio-s3
       - traefik.http.services.minio-s3.loadbalancer.server.port=9000
       # Public CDN for numista-canonical bucket
-      - traefik.http.routers.minio-images.rule=Host(`images.eurio.musubi.dev`)
+      - traefik.http.routers.minio-images.rule=Host(`eurio-images.musubi.dev`)
       - traefik.http.routers.minio-images.entrypoints=websecure
       - traefik.http.routers.minio-images.tls.certresolver=cf
       - traefik.http.routers.minio-images.middlewares=images-prefix
@@ -107,7 +107,7 @@ Cloudflare en mode "Full (strict)" pour valider le certificat Let's Encrypt côt
 Depuis le VPS, après que MinIO soit up :
 
 ```bash
-mc alias set local https://s3.eurio.musubi.dev "$ROOT_USER" "$ROOT_PWD"
+mc alias set local https://eurio-s3.musubi.dev "$ROOT_USER" "$ROOT_PWD"
 mc mb local/numista-canonical
 mc mb local/enrichment-raws
 mc mb local/enrichment-crops
@@ -145,7 +145,7 @@ mc admin policy attach local eurio-app-policy --user eurio-app
 
 ```bash
 # Mac
-mc alias set eurio https://s3.eurio.musubi.dev "$APP_USER" "$APP_PWD"
+mc alias set eurio https://eurio-s3.musubi.dev "$APP_USER" "$APP_PWD"
 echo hello > /tmp/test.txt
 mc cp /tmp/test.txt eurio/enrichment-crops/test.txt
 mc cat eurio/enrichment-crops/test.txt   # → hello
@@ -153,7 +153,7 @@ mc rm eurio/enrichment-crops/test.txt
 
 # Public read
 mc cp /tmp/cat.png eurio/numista-canonical/test.png
-curl -sf https://images.eurio.musubi.dev/test.png -o /tmp/cat-back.png
+curl -sf https://eurio-images.musubi.dev/test.png -o /tmp/cat-back.png
 diff /tmp/cat.png /tmp/cat-back.png      # exit 0
 ```
 
@@ -162,8 +162,8 @@ diff /tmp/cat.png /tmp/cat-back.png      # exit 0
 - [ ] `eurio-minio.service` actif, restart à reboot OK
 - [ ] 3 buckets créés avec les ACL voulues
 - [ ] User `eurio-app` peut R+W sur les 3 buckets, pas d'admin
-- [ ] `curl https://images.eurio.musubi.dev/<key>` répond 200 sans auth pour un objet test
-- [ ] `curl https://s3.eurio.musubi.dev/enrichment-crops/<key>` répond 403 sans signed URL
+- [ ] `curl https://eurio-images.musubi.dev/<key>` répond 200 sans auth pour un objet test
+- [ ] `curl https://eurio-s3.musubi.dev/enrichment-crops/<key>` répond 403 sans signed URL
 - [ ] Credentials root + app stockés dans `/etc/eurio/minio/secrets/` (mode 0400, owner root), jamais commit
 - [ ] Cloudflare proxy ON sur les deux sous-domaines, TLS Full (strict)
 

@@ -1,0 +1,53 @@
+services:
+  minio:
+    image: minio/minio:latest
+    container_name: eurio-minio
+    restart: unless-stopped
+    command: server /data --console-address :9001
+    volumes:
+      # Data volume lives inside the repo (gitignored). See infra/minio/README.md.
+      - ./data:/data
+      # Root credentials mounted read-only as files (never in env in clear).
+      - ./secrets:/run/secrets:ro
+    environment:
+      MINIO_ROOT_USER_FILE: /run/secrets/minio_root_user
+      MINIO_ROOT_PASSWORD_FILE: /run/secrets/minio_root_password
+      # Public-facing scheme so MinIO returns correct redirect URLs.
+      MINIO_SERVER_URL: https://eurio-s3.musubi.dev
+      MINIO_BROWSER_REDIRECT_URL: https://eurio-s3.musubi.dev/console
+    networks:
+      - traefik
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik
+
+      # ── S3 endpoint (signed URL access for private buckets) ──
+      - traefik.http.routers.eurio-minio-s3.rule=Host(`eurio-s3.musubi.dev`)
+      - traefik.http.routers.eurio-minio-s3.entrypoints=websecure
+      - traefik.http.routers.eurio-minio-s3.tls=true
+      - traefik.http.routers.eurio-minio-s3.tls.certresolver=letsencryptresolver
+      - traefik.http.routers.eurio-minio-s3.service=eurio-minio-s3
+      - traefik.http.services.eurio-minio-s3.loadbalancer.server.port=9000
+
+      # ── Public CDN: eurio-images.musubi.dev → numista-canonical bucket ──
+      # The middleware addPrefix lets the client see clean URLs like
+      # https://eurio-images.musubi.dev/numista/12345/obverse.jpg without
+      # exposing the bucket name in the URL.
+      - traefik.http.middlewares.eurio-images-prefix.addprefix.prefix=/numista-canonical
+      - traefik.http.routers.eurio-minio-images.rule=Host(`eurio-images.musubi.dev`)
+      - traefik.http.routers.eurio-minio-images.entrypoints=websecure
+      - traefik.http.routers.eurio-minio-images.tls=true
+      - traefik.http.routers.eurio-minio-images.tls.certresolver=letsencryptresolver
+      - traefik.http.routers.eurio-minio-images.middlewares=eurio-images-prefix
+      - traefik.http.routers.eurio-minio-images.service=eurio-minio-s3
+
+      # ── Multipart upload safety: lift Traefik's default body size cap ──
+      # MinIO accepts up to 5 GiB per single PUT; without this label, Traefik's
+      # default 1 MiB buffering would break uploads of crops > 1 MiB.
+      - traefik.http.middlewares.eurio-minio-upload.buffering.maxRequestBodyBytes=5368709120
+      - traefik.http.middlewares.eurio-minio-upload.buffering.memRequestBodyBytes=10485760
+      - traefik.http.routers.eurio-minio-s3.middlewares=eurio-minio-upload
+
+networks:
+  traefik:
+    external: true
