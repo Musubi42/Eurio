@@ -23,8 +23,8 @@ from typing import Literal
 
 Bucket = Literal["numista-canonical", "enrichment-raws", "enrichment-crops"]
 
-PUBLIC_HOST = "https://images.eurio.musubi.dev"
-S3_ENDPOINT = "https://s3.eurio.musubi.dev"
+PUBLIC_HOST = "https://eurio-images.musubi.dev"
+S3_ENDPOINT = "https://eurio-s3.musubi.dev"
 
 # Default presigned URL TTL (vision §"Décisions actées" #10).
 DEFAULT_SIGNED_URL_TTL_SECONDS = 6 * 3600

@@ -1,0 +1,27 @@
+# MinIO data volume
+
+This directory is the **MinIO storage volume** mounted into the
+`eurio-minio` Docker container as `/data`.
+
+⚠️ **DO NOT DELETE** ⚠️
+
+What's in here:
+
+```
+data/
+├── numista-canonical/   ← public Numista referential (jpg, ~1 GB)
+├── enrichment-raws/     ← raw scraped photos (eBay, etc.)
+└── enrichment-crops/    ← normalised 224×224 crops fed to training
+```
+
+This data is the **source of truth for the dev chain** (vision §"Cible
+end-state"). The only safety net is the weekly tarball pushed to
+pCloud by the systemd timer (see `infra/backup/`). There is no
+versioning at the bucket level.
+
+If you accidentally `git clean -fdx` or `rm -rf` this directory, you
+lose up to 1 week of new uploads. The `.gitignore` keeps the actual
+contents out of git but versioning **this file** ensures the
+directory exists at clone time and gives you this warning.
+
+Restore procedure: see `infra/minio/README.md` §"Restore from pCloud".

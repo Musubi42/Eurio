@@ -96,6 +96,36 @@ go-task tokens:generate          # Regen Color/Shape/Spacing depuis tokens.css
 go-task tokens:check             # Vérifier que la génération est à jour (CI)
 ```
 
+### Dev shell (Nix + direnv)
+
+`flake.nix` expose 4 devShells :
+
+- `mac` — full stack (Android + ML CPU + admin web + maestro)
+- `pc` — idem `mac` + `LD_LIBRARY_PATH` NVIDIA pour CUDA/OpenCV
+- `vps` — léger : `go-task` + `minio-client` (`mc`) uniquement (Minio tourne en docker natif côté système)
+- `default` — alias de `mac`, fallback pour `nix develop` hors direnv
+
+Le `.envrc` dispatche automatiquement via `hostname -s` :
+
+| Hostname | Profil |
+|---|---|
+| `Musubi42s-MacBook-Air-Oim` | `mac` |
+| `desktop` | `pc` |
+| `nixos` | `vps` |
+
+Un hostname inconnu fait échouer `direnv allow` avec un message d'aide listant les options (ajouter au `case`, ou créer un `.envrc.local` avec `use flake .#<profil>`).
+
+**Ne jamais avoir un `use flake` nu dans `.envrc`** en plus du `case` — sinon les deux shells se chargent en séquence et le premier est gaspillé.
+
+### Secrets (SOPS + age)
+
+Les secrets vivent **chiffrés dans le repo** (`secrets/dev.env`) via [SOPS](https://github.com/getsops/sops) + [age](https://github.com/FiloSottile/age). Chaque machine perso a sa propre clé age ; les pubkeys sont listées dans `.sops.yaml`.
+
+- `.envrc` (committé, template `.envrc.example`) déchiffre `secrets/dev.env` au chargement du shell via `sops -d`.
+- Clés privées : `~/.config/sops/age/keys.txt` sur chaque machine, jamais committées. Backup dans le password manager perso.
+- Éditer un secret : `sops secrets/dev.env` (ouvre dans `$EDITOR`, re-chiffre à la sauvegarde).
+- Bootstrap d'une nouvelle machine : voir `README.md §Secrets`.
+
 ### Supabase
 
 - Accès via clé API (Postgrest) pour l'admin et l'export snapshot
@@ -139,5 +169,5 @@ Voir `docs/research/detection-pipeline-unified.md`. Pipeline actuelle : YOLO11-n
 - ❌ Hardcoder des couleurs dans du Compose (toujours passer par `MaterialTheme.colorScheme.*` ou les vals générées)
 - ❌ Créer des `TODO:` dans le code (la dette est explicite via docs ou tasks, pas enfouie dans le code)
 - ❌ Utiliser `git add -A` ou `git add .` (staging explicite par fichier pour éviter les fuites de secrets)
-- ❌ Éditer `.envrc` ou `.env` (secrets, protégés par shhh)
+- ❌ Éditer `secrets/dev.env` directement (fichier chiffré — utiliser `sops secrets/dev.env`)
 - ❌ Utiliser `task` au lieu de `go-task` dans les commandes ou les docs

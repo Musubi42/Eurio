@@ -21,7 +21,7 @@ import os
 import time
 from pathlib import Path
 
-from storage import Bucket, _client
+from . import Bucket, _client
 
 
 def _cache_root() -> Path:
@@ -40,6 +40,11 @@ def local_path(bucket: Bucket, storage_key: str) -> Path:
 
     Downloads from MinIO on first call, touches atime on subsequent calls.
     Raises FileNotFoundError if the object is missing or MinIO is down.
+
+    Cascade: when MinIO confirms the object no longer exists (404), every
+    DB row pointing at this key is marked `storage_status='missing_in_storage'`
+    via `cascade.mark_missing_in_storage()`. Transient network errors do
+    NOT trigger the mark — only an explicit "key not found" response does.
     """
     target = _cache_root() / bucket / storage_key
     if target.exists():
@@ -58,11 +63,35 @@ def local_path(bucket: Bucket, storage_key: str) -> Path:
         # Wipe the half-written tmp; surface as FileNotFoundError so callers
         # don't have to catch boto-specific exceptions.
         tmp.unlink(missing_ok=True)
+        if _is_not_found(e):
+            # MinIO confirms the object is gone — propagate to DB + cache.
+            from . import cascade  # lazy import (avoids circular)
+            cascade.mark_missing_in_storage(bucket, storage_key)
         raise FileNotFoundError(
             f"Cannot fetch {bucket}/{storage_key}: {e}"
         ) from e
     os.replace(tmp, target)
     return target
+
+
+def _is_not_found(exc: BaseException) -> bool:
+    """True iff the exception is a MinIO/S3 "key not found" response.
+
+    Network errors, transient 5xx, auth failures, etc. all return False —
+    they are not signals to mark the row as missing.
+    """
+    # botocore.exceptions.ClientError carries the error code in .response.
+    response = getattr(exc, "response", None)
+    if isinstance(response, dict):
+        code = response.get("Error", {}).get("Code")
+        if code in ("404", "NoSuchKey", "NotFound"):
+            return True
+    # boto3.s3.transfer wraps download errors; the .__cause__ holds the
+    # underlying ClientError. Recurse one level.
+    cause = getattr(exc, "__cause__", None)
+    if cause is not None and cause is not exc:
+        return _is_not_found(cause)
+    return False
 
 
 def _evict_if_needed() -> None:

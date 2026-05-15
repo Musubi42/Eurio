@@ -320,12 +320,20 @@ CREATE TABLE IF NOT EXISTS source_images (
   fetched_at       TEXT NOT NULL DEFAULT (datetime('now')),
   raw_payload_json TEXT,
   run_id           TEXT REFERENCES source_runs(id) ON DELETE SET NULL,
+  -- Cascade sync (chunk 9): is the MinIO object behind storage_path still present?
+  -- 'present'             : nominal (default)
+  -- 'missing_in_storage'  : MinIO returned 404 → drift, investigate
+  -- 'removed_via_admin'   : intentional admin deletion, do not auto-repair
+  storage_status   TEXT NOT NULL DEFAULT 'present'
+                   CHECK (storage_status IN ('present', 'missing_in_storage', 'removed_via_admin')),
   UNIQUE (source, source_ref)
 );
 
 CREATE INDEX IF NOT EXISTS idx_source_images_source ON source_images(source);
 CREATE INDEX IF NOT EXISTS idx_source_images_target ON source_images(target_eurio_id);
 CREATE INDEX IF NOT EXISTS idx_source_images_run ON source_images(run_id);
+CREATE INDEX IF NOT EXISTS idx_source_images_storage_status
+  ON source_images(storage_status) WHERE storage_status != 'present';
 
 CREATE TABLE IF NOT EXISTS image_assets (
   id                       TEXT PRIMARY KEY,
@@ -369,6 +377,10 @@ CREATE TABLE IF NOT EXISTS image_assets (
   resolved_at              TEXT,
   run_id                   TEXT REFERENCES source_runs(id) ON DELETE SET NULL,
 
+  -- Cascade sync (chunk 9): same semantics as source_images.storage_status.
+  storage_status           TEXT NOT NULL DEFAULT 'present'
+                           CHECK (storage_status IN ('present', 'missing_in_storage', 'removed_via_admin')),
+
   UNIQUE (source_image_id, crop_index)
 );
 
@@ -379,6 +391,8 @@ CREATE INDEX IF NOT EXISTS idx_image_assets_training ON image_assets(training_el
 CREATE INDEX IF NOT EXISTS idx_image_assets_phash    ON image_assets(phash);
 CREATE INDEX IF NOT EXISTS idx_image_assets_run      ON image_assets(run_id);
 CREATE INDEX IF NOT EXISTS idx_image_assets_face     ON image_assets(face);
+CREATE INDEX IF NOT EXISTS idx_image_assets_storage_status
+  ON image_assets(storage_status) WHERE storage_status != 'present';
 
 -- ─── Auto-validation: Dino predictions per crop ───────────────────────────
 -- Voir docs/sources-refacto/auto-validation/dino-verifier-kickoff.md.

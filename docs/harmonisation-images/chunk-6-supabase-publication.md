@@ -55,7 +55,7 @@ import boto3, hashlib, os
 from supabase import create_client
 
 # MinIO source
-s3 = boto3.client("s3", endpoint_url="https://s3.eurio.musubi.dev", ...)
+s3 = boto3.client("s3", endpoint_url="https://eurio-s3.musubi.dev", ...)
 
 # Supabase target
 sb = create_client(
@@ -174,7 +174,7 @@ ml:publish-supabase:
 ## Anti-objectifs
 
 - ❌ Pas de Vercel pour les images. Cf. push-back acté en vision.
-- ❌ Pas de Cloudflare CDN devant MinIO pour l'app prod. La chaîne dev `images.eurio.musubi.dev` reste pour l'admin/Vercel, pas pour Android.
+- ❌ Pas de Cloudflare CDN devant MinIO pour l'app prod. La chaîne dev `eurio-images.musubi.dev` reste pour l'admin/Vercel, pas pour Android.
 - ❌ Pas d'image-resizing on-the-fly Supabase (payant). Tout est pré-généré au push.
 - ❌ Pas de R2 / B2 pour V1.
 - ❌ Pas de publication automatique sur write MinIO. Manuel pour V1.

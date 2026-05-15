@@ -487,3 +487,27 @@ tasks:
     prompt: "This will delete ~/.cache/eurio/. Continue?"
     cmds:
       - "{{.VENV}}/python -c 'from ml.storage.local_cache import purge_cache; purge_cache()'"
+
+  # ---------- Cascade sync (MinIO ↔ DB ↔ cache) ----------
+  # Spec: docs/harmonisation-images/chunk-9-cascade-sync.md
+  cascade-sync:migrate:
+    desc: "Add storage_status column on image_assets + source_images (idempotent)."
+    cmds:
+      - "{{.VENV}}/python -m scripts.cascade_sync migrate-schema"
+
+  cascade-sync:audit:
+    desc: "List drifts MinIO ↔ DB ↔ cache (read-only). Pass -- --check-cache to also walk the cache."
+    cmds:
+      - "{{.VENV}}/python -m scripts.cascade_sync audit {{.CLI_ARGS}}"
+
+  cascade-sync:repair:
+    desc: "Mark DB rows missing + (optionally) purge stale cache. MinIO orphans untouched."
+    prompt: "This will mark DB rows as missing_in_storage. Continue?"
+    cmds:
+      - "{{.VENV}}/python -m scripts.cascade_sync repair {{.CLI_ARGS}}"
+
+  cascade-sync:purge-cache:
+    desc: "Walk cache, drop files whose sha256 no longer matches MinIO."
+    prompt: "This will drop stale cache files. Continue?"
+    cmds:
+      - "{{.VENV}}/python -m scripts.cascade_sync purge-cache"

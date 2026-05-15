@@ -72,61 +72,105 @@
           boto3
           botocore
         ]);
-      in
-      {
-        devShells.default = pkgs.mkShell {
-          buildInputs = [
-            # Android
-            pkgs.jdk17
-            androidSdk
-            pkgs.gradle
-            pkgs.kotlin
 
-            # ML / Python
-            pythonEnv
-            pkgs.uv
+        # ─── Profile building blocks ──────────────────────────────────────────
+        baseInputs = [
+          pkgs.go-task
+          # Secrets : SOPS + age. Voir README.md §Secrets.
+          pkgs.sops
+          pkgs.age
+        ];
 
-            # Task runner
-            pkgs.go-task
+        androidInputs = [
+          pkgs.jdk17
+          androidSdk
+          pkgs.gradle
+          pkgs.kotlin
+          maestro
+        ];
 
-            # Parity viewer — Maestro UI automation
-            maestro
+        mlInputs = [
+          pythonEnv
+          pkgs.uv
+        ];
 
-            # Admin web (Vue 3 + Vite)
-            # Node 22 LTS — nodejs_25 n'est plus disponible dans nixpkgs (EOL avril 2025).
-            # Prochaine version disponible : nodejs_22 (LTS jusqu'en 2027).
-            pkgs.nodejs_22
-            pkgs.pnpm
-          ];
+        adminInputs = [
+          pkgs.nodejs_22
+          pkgs.pnpm
+        ];
 
+        vpsInputs = [
+          pkgs.minio-client
+        ];
+
+        fullInputs = androidInputs ++ mlInputs ++ adminInputs;
+
+        commonEnv = {
           JAVA_HOME = "${pkgs.jdk17}";
           ANDROID_HOME = "${androidSdk}/libexec/android-sdk";
           ANDROID_SDK_ROOT = "${androidSdk}/libexec/android-sdk";
+        };
 
+        bannerHook = profile: ''
+          echo "Eurio dev shell [${profile}]"
+        '';
+
+        fullBannerHook = profile: ''
+          ${bannerHook profile}
+          echo "  Java:    $(java -version 2>&1 | head -1)"
+          echo "  Gradle:  $(gradle --version 2>/dev/null | grep '^Gradle' || echo 'available')"
+          echo "  Android: $ANDROID_HOME"
+          echo "  Python:  $(python3 --version)"
+          echo "  Node:    $(node --version)"
+          echo "  pnpm:    $(pnpm --version)"
+          echo "  Maestro: $(maestro --version 2>/dev/null || echo 'not available')"
+          echo ""
+          echo "  Secrets admin : exporter via .envrc (direnv) :"
+          echo "    export VITE_SUPABASE_URL=..."
+          echo "    export VITE_SUPABASE_ANON_KEY=..."
+          echo "  Aucun .env file — Vite lit VITE_* depuis l'environnement shell."
+        '';
+
+        # NixOS uniquement : expose le driver NVIDIA (/run/opengl-driver/lib,
+        # libcuda.so.1) + les libs C++ servies par nix-ld (libstdc++.so.6, …)
+        # via LD_LIBRARY_PATH, pour que les wheels PyPI chargés via dlopen
+        # (torch+cu121, opencv-python-headless, …) trouvent ce qu'il leur faut.
+        nvidiaHook = ''
+          if [ -d /run/opengl-driver/lib ]; then
+            export LD_LIBRARY_PATH="/run/opengl-driver/lib:''${NIX_LD_LIBRARY_PATH:-}:''${LD_LIBRARY_PATH:-}"
+          fi
+        '';
+
+        # ─── Profiles ─────────────────────────────────────────────────────────
+        macShell = pkgs.mkShell (commonEnv // {
+          buildInputs = baseInputs ++ fullInputs;
+          shellHook = fullBannerHook "mac";
+        });
+
+        pcShell = pkgs.mkShell (commonEnv // {
+          buildInputs = baseInputs ++ fullInputs;
           shellHook = ''
-            # NixOS uniquement : expose le driver NVIDIA (/run/opengl-driver/lib,
-            # libcuda.so.1) + les libs C++ servies par nix-ld (libstdc++.so.6, …)
-            # via LD_LIBRARY_PATH, pour que les wheels PyPI chargés via dlopen
-            # (torch+cu121, opencv-python-headless, …) trouvent ce qu'il leur faut.
-            # Sur nix-darwin le test sur /run/opengl-driver est faux, le bloc skip.
-            if [ -d /run/opengl-driver/lib ]; then
-              export LD_LIBRARY_PATH="/run/opengl-driver/lib:''${NIX_LD_LIBRARY_PATH:-}:''${LD_LIBRARY_PATH:-}"
-            fi
-
-            echo "Eurio dev shell loaded"
-            echo "  Java:    $(java -version 2>&1 | head -1)"
-            echo "  Gradle:  $(gradle --version 2>/dev/null | grep '^Gradle' || echo 'available')"
-            echo "  Android: $ANDROID_HOME"
-            echo "  Python:  $(python3 --version)"
-            echo "  Node:    $(node --version)"
-            echo "  pnpm:    $(pnpm --version)"
-            echo "  Maestro: $(maestro --version 2>/dev/null || echo 'not available')"
-            echo ""
-            echo "  Secrets admin : exporter via .envrc (direnv) :"
-            echo "    export VITE_SUPABASE_URL=..."
-            echo "    export VITE_SUPABASE_ANON_KEY=..."
-            echo "  Aucun .env file — Vite lit VITE_* depuis l'environnement shell."
+            ${nvidiaHook}
+            ${fullBannerHook "pc"}
           '';
+        });
+
+        vpsShell = pkgs.mkShell {
+          buildInputs = baseInputs ++ vpsInputs;
+          shellHook = ''
+            ${bannerHook "vps"}
+            echo "  go-task: $(go-task --version 2>/dev/null || echo 'available')"
+            echo "  mc:      $(mc --version 2>/dev/null | head -1 || echo 'available')"
+          '';
+        };
+      in
+      {
+        devShells = {
+          mac = macShell;
+          pc = pcShell;
+          vps = vpsShell;
+          # Fallback pour `nix develop` hors direnv : full stack sans bits NVIDIA.
+          default = macShell;
         };
       }
     );

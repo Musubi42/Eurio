@@ -1,0 +1,15 @@
+# Example rclone config for the pCloud backup destination.
+#
+# Copy this file to /root/.config/rclone/rclone.conf on the VPS, then
+# replace the placeholder values via:
+#
+#   sudo rclone config            (interactive — choose `pcloud`)
+#
+# rclone will OAuth-authenticate against pCloud and write the real token
+# to that file. Do NOT commit the populated rclone.conf — it contains
+# the OAuth token.
+
+[pcloud]
+type = pcloud
+hostname = eapi.pcloud.com
+# token = {"access_token":"…","token_type":"…","expiry":"…"}

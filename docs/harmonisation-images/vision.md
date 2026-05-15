@@ -132,7 +132,7 @@ Pas de feature flag `STORAGE_BACKEND=s3|fs`. Le code parle `local_path(asset)`, 
 ## Décisions actées
 
 1. **MinIO dockerisé sur le VPS perso NixOS** (pas Hetzner, pas AWS, pas R2). Container `minio/minio` géré via `docker-compose`, Traefik côté host fait le TLS et le routing.
-2. **Domaines** : `s3.eurio.musubi.dev` (signed URL endpoints) + `images.eurio.musubi.dev` (CDN public Cloudflare). Sous-domaines de `musubi.dev`, déjà sur Cloudflare. Pas d'achat de `eurio.com` en V1.
+2. **Domaines** : `eurio-s3.musubi.dev` (signed URL endpoints) + `eurio-images.musubi.dev` (CDN public Cloudflare). Sous-domaines de `musubi.dev`, déjà sur Cloudflare. Pas d'achat de `eurio.com` en V1.
 3. **3 buckets MinIO** : `numista-canonical` (public), `enrichment-raws` (privé), `enrichment-crops` (privé).
 4. **Pas de FUSE mount**. Le code parle directement à `boto3` (lib standard).
 5. **Cache LRU Mac** : 5 GB, eviction par `os.atime`, pas de DB sidecar.
