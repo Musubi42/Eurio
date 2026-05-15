@@ -1,0 +1,31 @@
+# Ce fichier est committé. Aucun secret en clair ne doit y être écrit ;
+# les secrets vivent dans `secrets/dev.env` (chiffré via SOPS+age) et sont
+# déchiffrés au chargement du shell.
+
+# 1) Charge le devShell Nix selon le hostname.
+case "$(hostname -s)" in
+  Musubi42s-MacBook-Air-Oim) use flake .#mac ;;
+  desktop)                   use flake .#pc  ;;
+  nixos)                     use flake .#vps ;;
+  *)
+    echo "" >&2
+    echo "❌ Hostname inconnu pour Eurio : $(hostname -s)" >&2
+    echo "" >&2
+    echo "Profils disponibles : mac | pc | vps" >&2
+    echo "" >&2
+    echo "Pour cette machine, soit :" >&2
+    echo "  1. Ajouter '$(hostname -s)' au case dans .envrc" >&2
+    echo "  2. Forcer un profil ponctuellement (gitignore conseillé) :" >&2
+    echo "       echo 'use flake .#vps' > .envrc.local && direnv allow" >&2
+    echo "" >&2
+    exit 1
+    ;;
+esac
+
+# 2) Déchiffre les secrets et les exporte dans le shell.
+#    Lit ~/.config/sops/age/keys.txt automatiquement (clé privée de la machine).
+if [ -f secrets/dev.env ]; then
+  eval "$(set -a / . <(...) / set +a)"
+else
+  echo "⚠️  secrets/dev.env absent — voir README.md §Secrets pour le bootstrap." >&2
+fi

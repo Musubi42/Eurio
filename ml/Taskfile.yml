@@ -314,6 +314,26 @@ tasks:
     cmds:
       - "{{.VENV}}/python referential/apply_3f_standards.py --apply"
 
+  apply-3e-flag-dry:
+    desc: "Chunk 3e.1 — Preview flagging des 7 IN_REF_UNCERTAIN non-absorbés en needs_review=true"
+    cmds:
+      - "{{.VENV}}/python referential/apply_3e_flag_uncertain.py --dry-run"
+
+  apply-3e-flag:
+    desc: "Chunk 3e.1 — Apply needs_review=true sur 7 V1 slots (UNCERTAIN audit, non absorbés par 3c)"
+    cmds:
+      - "{{.VENV}}/python referential/apply_3e_flag_uncertain.py --apply"
+
+  apply-3e-enrich-dry:
+    desc: "Chunk 3e.2 — Preview backfill review_action_hint + review_payload pour les 32 needs_review coins"
+    cmds:
+      - "{{.VENV}}/python referential/apply_3e_enrich_context.py --dry-run"
+
+  apply-3e-enrich:
+    desc: "Chunk 3e.2 — Apply review_action_hint + review_payload (suppose migration 20260516 appliquée)"
+    cmds:
+      - "{{.VENV}}/python referential/apply_3e_enrich_context.py --apply"
+
   # ---------- Market & editorial scrapes ----------
   scrape-ebay:
     desc: "Enrich referential with eBay market prices (passes through CLI args, e.g. --countries=FR,DE --limit 5)"
