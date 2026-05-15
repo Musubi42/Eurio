@@ -25,15 +25,13 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.unit.dp
 import com.musubi.eurio.ui.theme.EurioRadii
 import com.musubi.eurio.ui.theme.EurioSpacing
 import kotlinx.coroutines.delay
 
 /**
  * Compact heads-up display rendered at the top of the scan screen in debug
- * builds. Lecture seule — it never mutates state, it just shows what the
- * pipeline currently sees.
+ * builds. Lecture seule — never mutates state.
  *
  * Caller is responsible for gating on [com.musubi.eurio.BuildConfig.DEBUG];
  * this composable assumes "should render" once invoked.
@@ -51,6 +49,10 @@ fun ScanHud(
         animationSpec = tween(durationMillis = 200),
         label = "hudAlpha",
     )
+    // Quality badges fade out when no frame was just scored — they'd
+    // otherwise display stale numbers from the last detection.
+    val isIdle = state.machineState == "Idle"
+    val qualityAlpha = if (isIdle || state.lastFrameScore == null) 0.4f else 1f
 
     Column(
         modifier = modifier
@@ -58,8 +60,6 @@ fun ScanHud(
             .padding(horizontal = EurioSpacing.s3)
             .alpha(alpha)
             .pointerInput(Unit) {
-                // Single press toggles dim — quick way to peek behind the HUD
-                // without losing the readings.
                 awaitPointerEventScope {
                     while (true) {
                         val ev = awaitPointerEvent()
@@ -72,21 +72,19 @@ fun ScanHud(
             },
         verticalArrangement = Arrangement.spacedBy(EurioSpacing.s1),
     ) {
-        // Primary row: state + frame score + trigger timer.
-        StatePulseRow(state)
+        StatePulseRow(state, qualityAlpha)
 
-        // Secondary row: ArcFace top-3 + timings, only when there's something
-        // to show. Avoids reserving vertical space when the pipeline is idle.
-        if (state.arcfaceTop3.isNotEmpty() || state.timings.totalMs() > 0) {
+        if (state.arcfaceTop3.isNotEmpty() ||
+            state.timings.totalMs() > 0 ||
+            state.bufferCapacity > 0
+        ) {
             SecondaryRow(state)
         }
     }
 }
 
 @Composable
-private fun StatePulseRow(state: ScanHudState) {
-    // Subtle pulse on state transition: animate alpha 0.7 → 1.0 on every
-    // distinct machineState value so the eye catches the change.
+private fun StatePulseRow(state: ScanHudState, qualityAlpha: Float) {
     var pulse by remember { mutableStateOf(false) }
     LaunchedEffect(state.machineState) {
         pulse = true
@@ -98,6 +96,8 @@ private fun StatePulseRow(state: ScanHudState) {
         animationSpec = tween(durationMillis = 200),
         label = "statePulse",
     )
+
+    val score = state.lastFrameScore
 
     Row(
         modifier = Modifier
@@ -117,21 +117,39 @@ private fun StatePulseRow(state: ScanHudState) {
             style = MaterialTheme.typography.labelMedium,
         )
         Dot()
-        Text(
-            text = state.lastFrameScore?.let { "sharp ${it.sharpness.toInt()}" } ?: "sharp —",
-            color = Color.White,
-            style = MaterialTheme.typography.labelSmall,
+        QualityBadge(
+            label = "sharp",
+            value = score?.let { "${it.sharpnessRaw.toInt()}" } ?: "—",
+            pass = score?.passes?.sharpness,
+            baseAlpha = qualityAlpha,
         )
         Dot()
-        Text(
-            text = state.lastFrameScore?.let { "exp %.2f".format(it.exposure) } ?: "exp —",
-            color = Color.White,
-            style = MaterialTheme.typography.labelSmall,
+        QualityBadge(
+            label = "exp",
+            value = score?.let { "%.2f".format(it.meanLuminance) } ?: "—",
+            pass = score?.passes?.exposure,
+            baseAlpha = qualityAlpha,
         )
         Dot()
+        QualityBadge(
+            label = "comp",
+            value = score?.let { "%.2f".format(it.completeness) } ?: "—",
+            pass = score?.passes?.completeness,
+            baseAlpha = qualityAlpha,
+        )
+        if (score?.motion != null) {
+            Dot()
+            QualityBadge(
+                label = "mot",
+                value = "%.2f".format(score.motion),
+                pass = score.passes.motion,
+                baseAlpha = qualityAlpha,
+            )
+        }
+        Dot()
         Text(
-            text = state.lastFrameScore?.let { "comp %.2f".format(it.completeness) } ?: "comp —",
-            color = Color.White,
+            text = score?.let { "agg %.2f".format(it.aggregate) } ?: "agg —",
+            color = Color.White.copy(alpha = qualityAlpha),
             style = MaterialTheme.typography.labelSmall,
         )
         state.bestFrameIndex?.let {
@@ -146,7 +164,40 @@ private fun StatePulseRow(state: ScanHudState) {
             Dot()
             Text(
                 text = "t+${"%.1f".format(ms / 1000f)}s",
-                color = Color.White,
+                color = Color.White.copy(alpha = qualityAlpha),
+                style = MaterialTheme.typography.labelSmall,
+            )
+        }
+    }
+}
+
+@Composable
+private fun QualityBadge(
+    label: String,
+    value: String,
+    pass: Boolean?,
+    baseAlpha: Float,
+) {
+    val passMark = when (pass) {
+        true -> "✓"
+        false -> "✗"
+        null -> ""
+    }
+    val passColor = when (pass) {
+        true -> MaterialTheme.colorScheme.tertiary
+        false -> MaterialTheme.colorScheme.error
+        null -> Color.White
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text = "$label $value",
+            color = Color.White.copy(alpha = baseAlpha),
+            style = MaterialTheme.typography.labelSmall,
+        )
+        if (passMark.isNotEmpty()) {
+            Text(
+                text = passMark,
+                color = passColor.copy(alpha = baseAlpha),
                 style = MaterialTheme.typography.labelSmall,
             )
         }
@@ -180,6 +231,14 @@ private fun SecondaryRow(state: ScanHudState) {
             if (state.arcfaceTop3.isNotEmpty()) Dot()
             Text(
                 text = "det${t.detectMs} nrm${t.normalizeMs} arc${t.arcfaceMs} scr${t.scoreMs}",
+                color = Color.White.copy(alpha = 0.8f),
+                style = MaterialTheme.typography.labelSmall,
+            )
+        }
+        if (state.bufferCapacity > 0) {
+            if (state.arcfaceTop3.isNotEmpty() || t.totalMs() > 0) Dot()
+            Text(
+                text = "buf ${state.bufferSize}/${state.bufferCapacity}",
                 color = Color.White.copy(alpha = 0.8f),
                 style = MaterialTheme.typography.labelSmall,
             )

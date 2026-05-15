@@ -9,17 +9,23 @@ import com.musubi.eurio.data.repository.CoinRepository
 import com.musubi.eurio.data.repository.SetRepository
 import com.musubi.eurio.data.repository.StreakRepository
 import com.musubi.eurio.data.repository.VaultRepository
+import com.musubi.eurio.domain.scan.quality.ScoringPolicy
 import com.musubi.eurio.features.scan.components.DebugViewData
+import com.musubi.eurio.features.scan.debug.ArcfaceMatch
 import com.musubi.eurio.features.scan.debug.DebugScanConfig
 import com.musubi.eurio.features.scan.debug.DebugScanConfigStore
 import com.musubi.eurio.features.scan.debug.ScanHudState
+import com.musubi.eurio.features.scan.debug.TimingBreakdown
 import com.musubi.eurio.ml.CoinAnalyzer
 import com.musubi.eurio.ml.ScanResult
+import com.musubi.eurio.ml.trigger.BestFrameSelector
+import com.musubi.eurio.ml.trigger.TriggerStrategyFactory
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /**
@@ -172,7 +178,48 @@ class ScanViewModel(
         coinAnalyzer.onPhotoLiveDetection = { detection ->
             _photoLiveCircleFound.value = detection != null
         }
+
+        // Push the initial policy + keep it in sync with debug-bar sliders.
+        // In release this flow emits a single defaults snapshot (chunk-1),
+        // so the analyzer reads frozen ScoringPolicy defaults.
+        coinAnalyzer.scoringPolicy = ScoringPolicy.fromDebugConfig(debugConfig.value)
+        coinAnalyzer.triggerStrategy = TriggerStrategyFactory.create(debugConfig.value)
+        coinAnalyzer.rollingBuffer.setCapacity(debugConfig.value.burstSize.coerceIn(1, 20))
+
+        viewModelScope.launch {
+            debugConfig.collect { config ->
+                coinAnalyzer.scoringPolicy = ScoringPolicy.fromDebugConfig(config)
+                // Fresh trigger instance on every config change (cf. P3): new
+                // strategy class on mode switch, otherwise the same class
+                // with parameters re-baked. Either way state resets cleanly.
+                coinAnalyzer.triggerStrategy = TriggerStrategyFactory.create(config)
+                coinAnalyzer.rollingBuffer.setCapacity(config.burstSize.coerceIn(1, 20))
+            }
+        }
+
+        // Mirror state-machine label into the HUD so it always reflects the
+        // current ScanState — chunk-2 only knows Idle/Detecting/Accepted, the
+        // best-frame state machine (Locking/Capturing/Identifying/Aborted)
+        // lands at chunk-6.
+        viewModelScope.launch {
+            _state.collect { st ->
+                val label = when (st) {
+                    is ScanState.Idle -> "Idle"
+                    is ScanState.Detecting -> "Detecting"
+                    is ScanState.Accepted -> "Accepted"
+                    is ScanState.NotIdentified -> "NotIdentified"
+                    is ScanState.Failure -> "Failure"
+                }
+                _hudState.update { it.copy(machineState = label) }
+            }
+        }
     }
+
+    /**
+     * Selects the best frame after a trigger fires. Shared across calls — it
+     * has no state of its own, just the D8 logic.
+     */
+    private val bestFrameSelector = BestFrameSelector()
 
     private var cooldownClass: String? = null
     private var cooldownUntilMs: Long = 0L
@@ -208,6 +255,26 @@ class ScanViewModel(
 
         // Populate debug data for the overlay
         updateDebugData(result)
+
+        // Best-frame capture (chunk-2): publish the scored frame + arcface
+        // top-3 + per-stage timings into the HUD flow. machineState is mirrored
+        // separately from the _state collector above.
+        _hudState.update { current ->
+            current.copy(
+                lastFrameScore = result.frameScore,
+                arcfaceTop3 = result.matches.take(3).map {
+                    ArcfaceMatch(className = it.className, similarity = it.similarity)
+                },
+                timings = TimingBreakdown(
+                    detectMs = result.yoloTotalMs,
+                    normalizeMs = result.normalizeMs,
+                    arcfaceMs = result.rerankMs,
+                    scoreMs = result.scoreMs,
+                ),
+                bufferSize = result.bufferSize,
+                bufferCapacity = result.bufferCapacity,
+            )
+        }
 
         if (_recordMode.value) {
             _recordedFrameCount.value = coinAnalyzer.recordedFrameCount

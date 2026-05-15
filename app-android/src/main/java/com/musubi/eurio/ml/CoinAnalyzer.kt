@@ -14,6 +14,16 @@ import android.graphics.YuvImage
 import android.util.Log
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
+import com.musubi.eurio.domain.scan.quality.FrameScore
+import com.musubi.eurio.domain.scan.quality.ScoringPolicy
+import com.musubi.eurio.ml.quality.FrameQualityScorer
+import com.musubi.eurio.ml.trigger.BboxF
+import com.musubi.eurio.ml.trigger.BufferedFrame
+import com.musubi.eurio.ml.trigger.FrameContext
+import com.musubi.eurio.ml.trigger.NoOpTriggerStrategy
+import com.musubi.eurio.ml.trigger.RollingFrameBuffer
+import com.musubi.eurio.ml.trigger.TriggerEvent
+import com.musubi.eurio.ml.trigger.TriggerStrategy
 import java.io.ByteArrayOutputStream
 
 /**
@@ -54,6 +64,21 @@ data class ScanResult(
     // Null in continuous mode. UI displays this exact image so the user can
     // see what the model actually saw.
     val photoSnapCropPath: String? = null,
+    // Best-frame capture (chunk-2): quality score on the normalized 224 crop
+    // computed once per analyzed frame. Null when no detection / normalize
+    // failed. Drives the debug HUD; does not yet influence pipeline decisions
+    // (chunk-3+).
+    val frameScore: FrameScore? = null,
+    // Normalization (Hough + mask + 224 resize) timing — separate from yolo
+    // since it runs independently of the detector's own Hough.
+    val normalizeMs: Long = 0,
+    // Quality scoring (Laplacian + exposure + completeness + motion) timing.
+    val scoreMs: Long = 0,
+    // Best-frame capture (chunk-3a): rolling buffer occupancy after the
+    // current frame's push. Drives the debug HUD `buf N/M` badge; downstream
+    // selection (chunk-3b) reads the buffer snapshot directly.
+    val bufferSize: Int = 0,
+    val bufferCapacity: Int = 0,
 ) {
     val detected: Boolean get() = detections.isNotEmpty() && selectedDetectionIndex >= 0
     val bestDetection: Detection? get() = detections.getOrNull(selectedDetectionIndex)
@@ -178,6 +203,42 @@ class CoinAnalyzer(
 
     private var lastAnalyzedTimestamp = 0L
     private var lastPhotoLiveDetectMs = 0L
+
+    /**
+     * Active scoring policy. Mutated by [com.musubi.eurio.features.scan.ScanViewModel]
+     * whenever the debug-bar (chunk-1) sliders change — atomic write, the
+     * scorer reads `.value` snapshot per frame.
+     */
+    @Volatile
+    var scoringPolicy: ScoringPolicy = ScoringPolicy()
+
+    /**
+     * Pre-trigger rolling buffer (chunk-3a). Owned by the analyzer because
+     * the bitmap lifecycle is bound to the analyzer thread — eviction
+     * recycles the crop. ScanViewModel can mutate capacity through
+     * [RollingFrameBuffer.setCapacity] from the main thread.
+     */
+    val rollingBuffer: RollingFrameBuffer = RollingFrameBuffer(
+        initialCapacity = 5,
+        onEvict = { it.crop?.recycle() },
+    )
+
+    /**
+     * Active trigger strategy. Swapped by [com.musubi.eurio.features.scan.ScanViewModel]
+     * when the debug-bar triggerMode/parameters change (cf. P3 — fresh
+     * instance each time, so internal counters reset for free).
+     */
+    @Volatile
+    var triggerStrategy: TriggerStrategy = NoOpTriggerStrategy()
+
+    /**
+     * Hough center of the previous successfully-scored frame, used for the
+     * motion sub-score. Reset to null when a frame produces no detection.
+     */
+    private var previousScoredCenter: Pair<Float, Float>? = null
+
+    /** Monotonic counter for [BufferedFrame.sequenceId]. */
+    private var bufferSequenceCounter: Int = 0
 
     override fun analyze(imageProxy: ImageProxy) {
         // Photo mode: drop full pipeline (YOLO + Hough + ArcFace) and only
@@ -471,6 +532,61 @@ class CoinAnalyzer(
             lbPadY = batch.letterboxPadY
         }
 
+        // -------- Stage 1b: Best-frame quality scoring (chunk-2) --------
+        // Independent of the detector/rerank path: we re-run SnapNormalizer
+        // here to obtain the 224 masked disc that the scorer expects. Cost is
+        // one extra Hough pass per frame (~25-40 ms on Pixel 9a). The score
+        // does not influence rerank/consensus at this chunk — observability
+        // only (chunk-3 will wire decisions on top).
+        //
+        // chunk-3a: when scoring succeeds, the normalized bitmap is handed
+        // over to [rollingBuffer] — the buffer owns the recycle lifecycle
+        // from there. Failed scores drop both the motion baseline and any
+        // bitmap that may have been allocated.
+        var frameScore: FrameScore? = null
+        var normalizeMs = 0L
+        var scoreMs = 0L
+        var scoredFrame: BufferedFrame? = null
+        if (detections.isNotEmpty()) {
+            val tNorm0 = System.currentTimeMillis()
+            val norm = SnapNormalizer.normalize(bitmap)
+            normalizeMs = System.currentTimeMillis() - tNorm0
+            val normImage = norm.image
+            if (normImage != null && norm.r > 0) {
+                val tScore0 = System.currentTimeMillis()
+                frameScore = FrameQualityScorer.score(
+                    normalizedCrop = normImage,
+                    houghCx = norm.cx,
+                    houghCy = norm.cy,
+                    houghR = norm.r,
+                    sourceFrameW = frameW,
+                    sourceFrameH = frameH,
+                    previousCenter = previousScoredCenter,
+                    policy = scoringPolicy,
+                )
+                scoreMs = System.currentTimeMillis() - tScore0
+                previousScoredCenter = norm.cx.toFloat() to norm.cy.toFloat()
+                // The strongest detection at this point is the first item —
+                // detections come sorted by confidence desc out of CoinDetector.
+                val primaryForBuffer = detections.first()
+                scoredFrame = BufferedFrame(
+                    sequenceId = bufferSequenceCounter++,
+                    timestampNs = System.nanoTime(),
+                    crop = normImage,
+                    score = frameScore,
+                    bbox = BboxF.fromRectF(primaryForBuffer.bbox),
+                    detectionConfidence = primaryForBuffer.confidence,
+                    detectionSource = primaryForBuffer.source,
+                    arcfaceTop3 = emptyList(),    // filled below once rerank ran
+                )
+            } else {
+                normImage?.recycle()
+                previousScoredCenter = null
+            }
+        } else {
+            previousScoredCenter = null
+        }
+
         // -------- Stage 2: Rerank ALL merged candidates via ArcFace --------
         var selectedIndex = -1
         var matches: List<CoinMatch> = emptyList()
@@ -535,6 +651,16 @@ class CoinAnalyzer(
                 rerankRejectedAll = true
                 Log.d("CoinAnalyzer", "Rerank: $rerankDecisionReason → miss")
             }
+        }
+
+        // -------- Stage 2b: Push the scored frame to the rolling buffer --------
+        // We re-attach the top-3 ArcFace matches of the *primary* detection
+        // (highest YOLO+Hough confidence — same one the scorer's normalized
+        // crop is built from) so the trigger strategies in chunk-3b can read
+        // them without re-running the matcher.
+        scoredFrame?.let { draft ->
+            val topThreeForPrimary = perCandidateMatches.firstOrNull().orEmpty().take(3)
+            rollingBuffer.push(draft.copy(arcfaceTop3 = topThreeForPrimary))
         }
 
         // -------- Stage 3: Produce crop + capture debug frames --------
@@ -613,6 +739,11 @@ class CoinAnalyzer(
             letterboxScale = lbScale,
             letterboxPadX = lbPadX,
             letterboxPadY = lbPadY,
+            frameScore = frameScore,
+            normalizeMs = normalizeMs,
+            scoreMs = scoreMs,
+            bufferSize = rollingBuffer.size,
+            bufferCapacity = rollingBuffer.capacity,
         )
     }
 
