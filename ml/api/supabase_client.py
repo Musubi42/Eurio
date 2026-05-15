@@ -89,6 +89,39 @@ class SupabaseClient:
             all_results.extend(resp.json())
         return all_results
 
+    def patch(
+        self,
+        table: str,
+        *,
+        filters: dict,
+        payload: dict,
+    ) -> list[dict]:
+        """PATCH rows matching `filters` with `payload`.
+
+        `filters` are PostgREST query params, e.g. {"eurio_id": "eq.fr-2017-..."}.
+        Returns the patched rows (Prefer: return=representation).
+        """
+        resp = self._client.patch(
+            f"{self.rest_base}/{table}",
+            params=filters,
+            json=payload,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def delete(
+        self,
+        table: str,
+        *,
+        filters: dict,
+    ) -> None:
+        """DELETE rows matching `filters`."""
+        resp = self._client.delete(
+            f"{self.rest_base}/{table}",
+            params=filters,
+        )
+        resp.raise_for_status()
+
     def count(self, table: str, *, params: dict | None = None) -> int:
         """Count rows with optional filters."""
         p = {"select": "*", **(params or {})}

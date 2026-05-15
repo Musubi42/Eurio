@@ -254,6 +254,66 @@ tasks:
     cmds:
       - "{{.VENV}}/python referential/import_numista.py --dry-run"
 
+  migrate-v2:
+    desc: "V1→V2 referential migration: deverse coins.cross_refs into coin_source_refs (Chunk 2c)"
+    cmds:
+      - "{{.VENV}}/python referential/migrate_to_v2.py --apply"
+
+  migrate-v2-dry:
+    desc: "Preview V1→V2 migration counts without writing (cf. docs/research/referential-v2.md)"
+    cmds:
+      - "{{.VENV}}/python referential/migrate_to_v2.py --dry-run"
+
+  apply-3a-dry:
+    desc: "Chunk 3a — Preview creating ~99 new commemo Types (joint-issues design_groups bootstrap)"
+    cmds:
+      - "{{.VENV}}/python referential/apply_3a_new_types.py --dry-run"
+
+  apply-3a:
+    desc: "Chunk 3a — Apply CREATE_NEW_TYPE × 99 commemos (uses Supabase upsert, idempotent)"
+    cmds:
+      - "{{.VENV}}/python referential/apply_3a_new_types.py --apply"
+
+  apply-3b-dry:
+    desc: "Chunk 3b — Preview rematch of IN_REF_WRONG (47 rematches + 21 null+needs_review)"
+    cmds:
+      - "{{.VENV}}/python referential/apply_3b_rematch.py --dry-run"
+
+  apply-3b:
+    desc: "Chunk 3b — Apply rematch + null+needs_review (PATCH coins, swap coin_source_refs)"
+    cmds:
+      - "{{.VENV}}/python referential/apply_3b_rematch.py --apply"
+
+  apply-3c-dry:
+    desc: "Chunk 3c — Preview MOVE_TO_VARIANT × 15 + UNCERTAIN absorbed × 2 (3 buckets, peuple coin_variants)"
+    cmds:
+      - "{{.VENV}}/python referential/apply_3c_move_to_variant.py --dry-run"
+
+  apply-3c:
+    desc: "Chunk 3c — Apply Bucket A (rematch+variant ×8), Bucket B (variant ×7), Bucket C (UNCERTAIN rematch ×2)"
+    cmds:
+      - "{{.VENV}}/python referential/apply_3c_move_to_variant.py --apply"
+
+  apply-3d-dry:
+    desc: "Chunk 3d — Preview ADD_AS_VARIANT × 25 (re-match parents via overlap_score, B2 parent creation)"
+    cmds:
+      - "{{.VENV}}/python referential/apply_3d_add_as_variant.py --dry-run"
+
+  apply-3d:
+    desc: "Chunk 3d — Apply Bucket A (variant + bascule cross_refs si classic), B1 (NL EU Flag variants), B2 (parent + variant)"
+    cmds:
+      - "{{.VENV}}/python referential/apply_3d_add_as_variant.py --apply"
+
+  apply-3f-dry:
+    desc: "Chunk 3f — Preview standards orphans × 15 (Numista redesigns non capturés par V1)"
+    cmds:
+      - "{{.VENV}}/python referential/apply_3f_standards.py --dry-run"
+
+  apply-3f:
+    desc: "Chunk 3f — Apply standards orphans × 15 (nouveaux Types pour redesigns portrait/carte)"
+    cmds:
+      - "{{.VENV}}/python referential/apply_3f_standards.py --apply"
+
   # ---------- Market & editorial scrapes ----------
   scrape-ebay:
     desc: "Enrich referential with eBay market prices (passes through CLI args, e.g. --countries=FR,DE --limit 5)"

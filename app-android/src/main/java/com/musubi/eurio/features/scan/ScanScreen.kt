@@ -58,6 +58,8 @@ import com.musubi.eurio.features.scan.components.PhotoSnapResultLayer
 import com.musubi.eurio.features.scan.components.ScanDetectingLayer
 import com.musubi.eurio.features.scan.components.ScanFailureLayer
 import com.musubi.eurio.features.scan.components.ScanIdleLayer
+import com.musubi.eurio.features.scan.debug.DebugBarLauncher
+import com.musubi.eurio.features.scan.debug.ScanHud
 import androidx.compose.ui.graphics.Brush
 import com.musubi.eurio.BuildConfig
 import com.musubi.eurio.ParityFlags
@@ -275,6 +277,24 @@ fun ScanScreen(
                         }
                     }
                 }
+            }
+
+            // Best-frame capture chunk-1 — debug-only HUD + DBG FAB. Compiled
+            // out (dead-code-eliminated by R8 when min-enabled) in release via
+            // the BuildConfig.DEBUG guard. See docs/best-frame-capture/chunk-1.
+            if (BuildConfig.DEBUG) {
+                val hudState by viewModel.hudState.collectAsStateWithLifecycle()
+                ScanHud(
+                    state = hudState,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 120.dp),
+                )
+                DebugBarLauncher(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = EurioSpacing.s3, bottom = EurioSpacing.s3),
+                )
             }
 
             if (debugMode && !carouselMode) {
