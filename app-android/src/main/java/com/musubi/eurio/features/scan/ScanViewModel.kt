@@ -10,6 +10,9 @@ import com.musubi.eurio.data.repository.SetRepository
 import com.musubi.eurio.data.repository.StreakRepository
 import com.musubi.eurio.data.repository.VaultRepository
 import com.musubi.eurio.features.scan.components.DebugViewData
+import com.musubi.eurio.features.scan.debug.DebugScanConfig
+import com.musubi.eurio.features.scan.debug.DebugScanConfigStore
+import com.musubi.eurio.features.scan.debug.ScanHudState
 import com.musubi.eurio.ml.CoinAnalyzer
 import com.musubi.eurio.ml.ScanResult
 import kotlinx.coroutines.Job
@@ -55,6 +58,23 @@ class ScanViewModel(
 
     private val _debugMode = MutableStateFlow(false)
     val debugMode: StateFlow<Boolean> = _debugMode.asStateFlow()
+
+    // ── Best-frame capture observability (chunk-1) ───────────────────────────
+    // In debug builds, mirrors the shared in-memory store. In release the
+    // store reference is wrapped in a BuildConfig.DEBUG guard so the pipeline
+    // reads frozen defaults — see [debugConfig].
+    val debugConfig: StateFlow<DebugScanConfig> =
+        if (BuildConfig.DEBUG) {
+            DebugScanConfigStore.config
+        } else {
+            MutableStateFlow(DebugScanConfig()).asStateFlow()
+        }
+
+    // HUD state is exposed regardless of build type so future chunks (2-6)
+    // can update it unconditionally; only the debug build composes the HUD
+    // that observes it.
+    private val _hudState = MutableStateFlow(ScanHudState())
+    val hudState: StateFlow<ScanHudState> = _hudState.asStateFlow()
 
     // ── Debug carousel mode (Phase 4) ───────────────────────────────────────
     // When ON (debugMode required), the camera/ML pipeline is bypassed and the
