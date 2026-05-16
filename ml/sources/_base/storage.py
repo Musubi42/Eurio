@@ -1,50 +1,55 @@
-"""Canonical on-disk paths for source ingestion artifacts.
+"""S3 keys + local cache paths for source ingestion artifacts.
 
-Layout under `ml/state/sources/<source>/`:
+Le scrape pousse directement dans MinIO via le write-through cache
+(`ml.storage.local_cache.upload_through`). Plus de `ml/state/sources/`
+filesystem — tout vit dans `~/.cache/eurio/<bucket>/<key>` côté local
+et dans MinIO côté autorité.
 
-    raw/<sharded>/<source_ref>.<ext>           # one per source_image
-    crops/<sharded>/<source_ref>__c<idx>.png   # one per image_asset
+Convention de clés (alignée sur scripts/migrate_to_minio.py qui reste
+en outil utility) :
 
-Sharding: first 2 hex chars of sha1(source_ref) — keeps directory
-fan-out manageable (256 buckets) without forcing the source to know
-about it. Atomic writes via `.tmp` + `os.replace`.
+  raws  : enrichment-raws/{source}/{run_id}/{source_image_id}.{ext}
+  crops : enrichment-crops/{source}/{run_id}/{asset_id}.png
+
+Le format des chemins n'a pas vocation à changer après bascule — toute
+modification casse les rows DB existantes.
 """
 
 from __future__ import annotations
 
-import hashlib
-import os
 from pathlib import Path
 
-_STORAGE_ROOT = Path(__file__).resolve().parents[2] / "state" / "sources"
+from storage import Bucket  # noqa: E402
+from storage.local_cache import cache_path_for  # noqa: E402
 
 
-def _shard(source_ref: str) -> str:
-    return hashlib.sha1(source_ref.encode("utf-8")).hexdigest()[:2]
+def raw_key(source: str, run_id: str, source_image_id: str,
+            ext: str = "jpg") -> str:
+    """S3 key for an enrichment-raws object."""
+    return f"{source}/{run_id}/{source_image_id}.{ext}"
 
 
-def _safe_ref(source_ref: str) -> str:
-    """Strip path separators so a malicious source_ref can't escape."""
-    return source_ref.replace("/", "_").replace("\\", "_").replace("..", "_")
+def crop_key(source: str, run_id: str, asset_id: str) -> str:
+    """S3 key for an enrichment-crops object."""
+    return f"{source}/{run_id}/{asset_id}.png"
 
 
-def storage_root() -> Path:
-    return _STORAGE_ROOT
+def raw_cache_path(source: str, run_id: str, source_image_id: str,
+                   ext: str = "jpg") -> Path:
+    """Local cache path corresponding to raw_key()."""
+    return cache_path_for("enrichment-raws",
+                          raw_key(source, run_id, source_image_id, ext))
 
 
-def raw_path(source: str, source_ref: str, ext: str = "jpg") -> Path:
-    return _STORAGE_ROOT / source / "raw" / _shard(source_ref) / f"{_safe_ref(source_ref)}.{ext}"
+def crop_cache_path(source: str, run_id: str, asset_id: str) -> Path:
+    """Local cache path corresponding to crop_key()."""
+    return cache_path_for("enrichment-crops",
+                          crop_key(source, run_id, asset_id))
 
 
-def crop_path(source: str, source_ref: str, crop_index: int = 0) -> Path:
-    return (
-        _STORAGE_ROOT / source / "crops" / _shard(source_ref)
-        / f"{_safe_ref(source_ref)}__c{crop_index}.png"
-    )
+def bucket_for_raws() -> Bucket:
+    return "enrichment-raws"
 
 
-def write_atomic(dest: Path, data: bytes) -> None:
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    tmp = dest.with_suffix(dest.suffix + ".tmp")
-    tmp.write_bytes(data)
-    os.replace(tmp, dest)
+def bucket_for_crops() -> Bucket:
+    return "enrichment-crops"

@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -30,7 +31,8 @@ import cv2
 from sources._base.dedup import ImageAssetRow, set_discovery_pipeline_state, upsert_image_asset
 from sources._base.phash import compute_phash
 from sources._base.run_logger import RunHandle
-from sources._base.storage import crop_path
+from sources._base.storage import crop_cache_path, crop_key
+from storage.local_cache import local_path, upload_through
 from scan.normalize_snap import (
     NormalizationResult, normalize_listing_path, normalize_studio_path,
 )
@@ -82,50 +84,58 @@ def run_detect_crop(
 
     for source_ref, sid in source_image_ids.items():
         row = conn.execute(
-            "SELECT id, storage_path FROM source_images WHERE id = ?", (sid,)
+            "SELECT id, storage_path, storage_status FROM source_images WHERE id = ?",
+            (sid,),
         ).fetchone()
         if row is None or not row["storage_path"]:
             continue
-        raw = Path(row["storage_path"])
-        if not raw.is_file():
+        # storage_path is now an S3 key in `enrichment-raws`. local_path()
+        # downloads to cache on demand (no-op if already cached by download
+        # step in the same run).
+        try:
+            raw = local_path("enrichment-raws", row["storage_path"])
+        except FileNotFoundError as e:
             logger.error(
-                "[%s] detect: missing raw on disk for source_ref=%s path=%s",
-                source_id, source_ref, raw,
+                "[%s] detect: missing raw in MinIO for source_ref=%s key=%s: %s",
+                source_id, source_ref, row["storage_path"], e,
             )
             conn.execute(
                 "UPDATE source_images SET crop_status='error', crop_error=? WHERE id=?",
-                (f"raw missing on disk: {raw}", sid),
+                (f"raw missing in MinIO: {row['storage_path']}", sid),
             )
             n_errors += 1
             run.bump(n_errors=1)
             continue
 
         # Idempotence : skip si au moins un image_asset existe déjà pour ce
-        # source_image (avec son fichier sur disque). Le multi-crop émet
-        # crop_index=0..N-1 ; on ne re-detect pas une image déjà processée.
+        # source_image avec storage_status='present'. Plus de check FS — la DB
+        # est l'autorité (MinIO + local_path cache pour la lecture).
         existing_count = conn.execute(
             """
             SELECT COUNT(*) AS n FROM image_assets
-             WHERE source_image_id = ? AND storage_path IS NOT NULL
+             WHERE source_image_id = ?
+               AND storage_path IS NOT NULL
+               AND storage_status = 'present'
             """,
             (sid,),
         ).fetchone()
         if existing_count and existing_count["n"] > 0:
-            # Verify at least one file exists on disk before claiming skip.
             paths_row = conn.execute(
                 "SELECT storage_path FROM image_assets WHERE source_image_id = ?",
                 (sid,),
             ).fetchall()
-            on_disk = [Path(r["storage_path"]) for r in paths_row
-                       if r["storage_path"] and Path(r["storage_path"]).is_file()]
-            if on_disk:
-                n_skipped += 1
-                crop_paths.extend(on_disk)
-                conn.execute(
-                    "UPDATE source_images SET crop_status=COALESCE(crop_status,'success') WHERE id=?",
-                    (sid,),
-                )
-                continue
+            for r in paths_row:
+                if r["storage_path"]:
+                    try:
+                        crop_paths.append(local_path("enrichment-crops", r["storage_path"]))
+                    except FileNotFoundError:
+                        pass
+            n_skipped += 1
+            conn.execute(
+                "UPDATE source_images SET crop_status=COALESCE(crop_status,'success') WHERE id=?",
+                (sid,),
+            )
+            continue
 
         if _crop_strategy(source_id) == "studio":
             single = normalize_studio_path(raw)
@@ -153,13 +163,30 @@ def run_detect_crop(
 
         crops_for_image = 0
         for crop_index, result in enumerate(results):
-            crop_p = crop_path(source_id, source_ref, crop_index=crop_index)
-            crop_p.parent.mkdir(parents=True, exist_ok=True)
-            ok = cv2.imwrite(str(crop_p), result.image)
+            # Pre-generate asset_id so we can compute the S3 key BEFORE
+            # the INSERT (write-through requires storage_path = S3 key at
+            # insert time, not a post-hoc UPDATE).
+            asset_id = uuid.uuid4().hex
+            storage_key = crop_key(source_id, run.run_id, asset_id)
+            cache_p = crop_cache_path(source_id, run.run_id, asset_id)
+            cache_p.parent.mkdir(parents=True, exist_ok=True)
+            ok = cv2.imwrite(str(cache_p), result.image)
             if not ok:
                 logger.error(
                     "[%s] cv2.imwrite FAILED source_ref=%s crop_index=%d path=%s",
-                    source_id, source_ref, crop_index, crop_p,
+                    source_id, source_ref, crop_index, cache_p,
+                )
+                n_errors += 1
+                run.bump(n_errors=1)
+                continue
+
+            # Write-through to MinIO (block-until-reconnect inside).
+            try:
+                upload_through("enrichment-crops", storage_key, cache_p.read_bytes())
+            except Exception as exc:  # noqa: BLE001
+                logger.error(
+                    "[%s] minio upload FAILED source_ref=%s crop_index=%d key=%s: %s",
+                    source_id, source_ref, crop_index, storage_key, exc,
                 )
                 n_errors += 1
                 run.bump(n_errors=1)
@@ -187,21 +214,29 @@ def run_detect_crop(
             upsert_image_asset(
                 conn,
                 ImageAssetRow(
+                    id=asset_id,
                     source_image_id=sid,
                     crop_index=crop_index,
                     detection_method=result.method,
                     eurio_id=eurio_id,
                     resolution_status=status,
                     phash=phash_value,
-                    storage_path=str(crop_p),
+                    storage_path=storage_key,
                     width=result.image.shape[1],
                     height=result.image.shape[0],
                     run_id=run.run_id,
                 ),
             )
+            # Also mark storage_status='present' since upsert_image_asset
+            # doesn't include it (legacy schema). Defer to a separate
+            # UPDATE to keep dedup.py change-minimal.
+            conn.execute(
+                "UPDATE image_assets SET storage_status='present' WHERE id = ?",
+                (asset_id,),
+            )
             n_crops_added += 1
             crops_for_image += 1
-            crop_paths.append(crop_p)
+            crop_paths.append(cache_p)
 
         if crops_for_image > 0:
             conn.execute(

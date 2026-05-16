@@ -1,9 +1,17 @@
-"""Step 3 — Download.
+"""Step 3 — Download (write-through MinIO).
 
-Asks the adapter to write the raw file to its canonical path. Skips
-when the row already has a `storage_path` and the file is on disk
-(dedup layer 3). Errors on a single item don't abort the run — the
-item is counted in `n_errors`, the rest of the batch keeps going.
+Asks the adapter to fetch the raw image bytes (to a local cache path),
+then uploads them to MinIO `enrichment-raws`. The DB row's
+`source_images.storage_path` ends up holding the S3 key (NOT a local FS
+path) and `storage_status='present'`.
+
+Idempotence : skip rows where `storage_status='present'` and
+`storage_path` is set — the bytes are already in MinIO.
+
+Errors on a single item don't abort the run — the item is counted in
+`n_errors`, the rest of the batch keeps going. A MinIO outage triggers
+exponential backoff inside `upload_through` (~17 min total) — beyond
+that the item errors out cleanly.
 """
 
 from __future__ import annotations
@@ -11,14 +19,14 @@ from __future__ import annotations
 import logging
 import sqlite3
 from dataclasses import dataclass
-from pathlib import Path
 
 import httpx
 
 from sources._base.adapter import SourceAdapter
 from sources._base.dedup import set_discovery_pipeline_state
 from sources._base.run_logger import RunHandle
-from sources._base.storage import raw_path
+from sources._base.storage import raw_cache_path, raw_key
+from storage.local_cache import upload_through
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +38,8 @@ class DownloadResult:
     n_errors: int
 
 
-# Called by: ml/sources/_base/orchestrator.py (step 4/8 — after text_signal, skips rows with route_decision='rejected_text')
+# Called by: ml/sources/_base/orchestrator.py (step 4/8 — after text_signal,
+# skips rows with route_decision='rejected_text')
 def run_download(
     *,
     conn: sqlite3.Connection,
@@ -44,7 +53,8 @@ def run_download(
 
     for source_ref, sid in source_image_ids.items():
         row = conn.execute(
-            "SELECT id, source_url, listing_title, storage_path, route_decision "
+            "SELECT id, source_url, listing_title, storage_path, storage_status, "
+            "       route_decision "
             "FROM source_images WHERE id = ?",
             (sid,),
         ).fetchone()
@@ -61,8 +71,9 @@ def run_download(
             n_skipped += 1
             continue
 
-        existing = row["storage_path"]
-        if existing and Path(existing).is_file():
+        # Idempotence : already uploaded to MinIO (DB authority — trust it,
+        # downstream local_path() does cache-or-fetch).
+        if row["storage_path"] and row["storage_status"] == "present":
             n_skipped += 1
             conn.execute(
                 """
@@ -74,11 +85,12 @@ def run_download(
             )
             continue
 
-        dest = raw_path(adapter.source_id, source_ref)
+        storage_key = raw_key(adapter.source_id, run.run_id, sid)
+        cache_dest = raw_cache_path(adapter.source_id, run.run_id, sid)
+        cache_dest.parent.mkdir(parents=True, exist_ok=True)
+
         payload = _load_payload(conn, sid)
         attempted_url = (payload or {}).get("image_url") if payload else None
-        # Re-hydrate the minimal DiscoveredItem the adapter needs for
-        # download; we only carry through what's strictly required.
         from sources._base.adapter import DiscoveredItem
         item = DiscoveredItem(
             source_ref=source_ref,
@@ -87,8 +99,9 @@ def run_download(
             raw_payload=payload,
         )
         try:
-            res = adapter.download_raw(item, dest)
-        except Exception as exc:  # noqa: BLE001 — bubbled to source_runs.error_summary via counter
+            # Adapter writes to local cache (atomic). We then push to MinIO.
+            res = adapter.download_raw(item, cache_dest)
+        except Exception as exc:  # noqa: BLE001
             logger.error(
                 "[%s] download FAILED source_ref=%s: %s",
                 adapter.source_id, source_ref, exc,
@@ -111,11 +124,37 @@ def run_download(
             run.bump(n_errors=1)
             continue
 
+        # Write-through to MinIO. Blocks (~17 min retry) if MinIO transient
+        # outage; raises RuntimeError beyond that.
+        try:
+            upload_through("enrichment-raws", storage_key, cache_dest.read_bytes())
+        except Exception as exc:  # noqa: BLE001
+            logger.error(
+                "[%s] minio upload FAILED source_ref=%s key=%s: %s",
+                adapter.source_id, source_ref, storage_key, exc,
+            )
+            conn.execute(
+                """
+                UPDATE source_images
+                   SET download_status = 'failed',
+                       download_error  = ?
+                 WHERE id = ?
+                """,
+                (f"minio upload: {str(exc)[:400]}", sid),
+            )
+            n_errors += 1
+            run.bump(n_errors=1)
+            continue
+
         conn.execute(
             """
             UPDATE source_images
-               SET storage_path = ?, bytes = ?, sha256 = ?,
-                   width = COALESCE(?, width), height = COALESCE(?, height),
+               SET storage_path         = ?,
+                   storage_status       = 'present',
+                   bytes                = ?,
+                   sha256               = ?,
+                   width                = COALESCE(?, width),
+                   height               = COALESCE(?, height),
                    download_endpoint    = ?,
                    download_status      = 'success',
                    download_http_status = ?,
@@ -123,7 +162,7 @@ def run_download(
              WHERE id = ?
             """,
             (
-                str(res.storage_path), res.bytes, res.sha256, res.width, res.height,
+                storage_key, res.bytes, res.sha256, res.width, res.height,
                 res.endpoint_url or attempted_url,
                 res.http_status,
                 sid,
