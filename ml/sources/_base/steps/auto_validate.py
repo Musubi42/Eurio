@@ -353,10 +353,20 @@ def _run_inner(
         target_country = (
             target_eid[:2].lower() if target_eid and len(target_eid) >= 2 else None
         )
+        # storage_path is the S3 key in enrichment-crops. local_path()
+        # does read-through cache (no-op if cached by same-run detect_crop).
+        from storage.local_cache import local_path as _local_path
+        try:
+            crop_p = _local_path("enrichment-crops", r["storage_path"])
+        except FileNotFoundError as exc:
+            logger.error("auto_validate: missing crop in MinIO asset=%s key=%s: %s",
+                         aid, r["storage_path"], exc)
+            n_errors += 1
+            continue
         try:
             prediction = _predict_one(
                 asset_id=aid,
-                crop_path=Path(r["storage_path"]),
+                crop_path=crop_p,
                 bank=bank,
                 encoder=encoder,
                 device=device,

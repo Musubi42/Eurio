@@ -55,6 +55,9 @@ class SourceImageRow:
 class ImageAssetRow:
     source_image_id: str
     crop_index: int = 0
+    # Pre-generated id (write-through caller computes the S3 key before
+    # upserting). If None, upsert_image_asset generates a fresh uuid.hex.
+    id: str | None = None
     bbox: dict[str, float] | None = None
     detection_method: str | None = None
     eurio_id: str | None = None
@@ -240,7 +243,7 @@ def upsert_image_asset(conn: sqlite3.Connection, row: ImageAssetRow) -> str:
         )
         return aid
 
-    aid = uuid.uuid4().hex
+    aid = row.id or uuid.uuid4().hex
     conn.execute(
         """
         INSERT INTO image_assets (

@@ -31,7 +31,6 @@ if str(_ML_DIR) not in sys.path:
 
 from sources._base.run_logger import start_run  # noqa: E402
 from sources._base.steps.detect_crop import run_detect_crop  # noqa: E402
-from sources._base.storage import storage_root  # noqa: E402
 from state import Store  # noqa: E402
 
 _SOURCE_ID = "ebay"
@@ -58,33 +57,15 @@ def _list_orphans(conn) -> dict[str, str]:
 
 
 def _cleanup_orphan_crop_files(conn) -> int:
-    """Supprime les .png crops sur disque qui ne référencent plus d'image_asset.
+    """DEPRECATED post-SS-1 (write-through MinIO).
 
-    Le SQL cleanup a vidé image_assets non-manual mais a laissé les fichiers
-    .png orphelins sur disque. On les enlève ici. ``image_assets.storage_path``
-    est la source de vérité — tout fichier .png absent de cette colonne est
-    orphelin.
+    L'ancien comportement scannait `ml/state/sources/ebay/crops/*.png` pour
+    supprimer les fichiers orphelins (non référencés en DB). Avec le
+    write-through, plus de FS local — les crops vivent dans le bucket
+    `enrichment-crops`. Le cleanup orphan MinIO se fait via
+    `scripts/cascade_sync.py audit`, pas ici.
     """
-    crops_dir = storage_root() / _SOURCE_ID / "crops"
-    if not crops_dir.is_dir():
-        return 0
-    referenced = {
-        Path(row["storage_path"]).resolve()
-        for row in conn.execute(
-            """
-            SELECT ia.storage_path FROM image_assets ia
-              JOIN source_images si ON si.id = ia.source_image_id
-             WHERE si.source = ? AND ia.storage_path IS NOT NULL
-            """,
-            (_SOURCE_ID,),
-        ).fetchall()
-    }
-    removed = 0
-    for f in crops_dir.rglob("*.png"):
-        if f.resolve() not in referenced:
-            f.unlink()
-            removed += 1
-    return removed
+    return 0
 
 
 def main() -> int:
@@ -110,13 +91,8 @@ def main() -> int:
     print(f"[ebay-recrop] {len(orphans)} source_images at state='downloaded' to recrop")
 
     if not args.no_fs_cleanup:
-        if args.dry:
-            crops_dir = storage_root() / _SOURCE_ID / "crops"
-            n_files = sum(1 for _ in crops_dir.rglob("*.png")) if crops_dir.is_dir() else 0
-            print(f"[ebay-recrop] would scan {n_files} crop .png files for orphan cleanup")
-        else:
-            removed = _cleanup_orphan_crop_files(conn)
-            print(f"[ebay-recrop] removed {removed} orphan crop .png files")
+        print("[ebay-recrop] FS cleanup skipped (post SS-1 write-through MinIO — "
+              "use cascade_sync audit for orphan cleanup)")
 
     if args.dry:
         print("[ebay-recrop] DRY RUN — no detect_crop calls.")

@@ -1292,9 +1292,12 @@ def get_asset_file(source_id: str, asset_id: str):
     ).fetchone()
     if row is None or not row["storage_path"]:
         raise HTTPException(status_code=404, detail="Asset not found.")
-    p = Path(row["storage_path"])
-    if not p.is_file():
-        raise HTTPException(status_code=410, detail="Asset file missing on disk.")
+    from storage.local_cache import local_path as _local_path
+    try:
+        p = _local_path("enrichment-crops", row["storage_path"])
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=410,
+                            detail=f"Asset missing in MinIO: {exc}") from exc
     return FileResponse(p, media_type="image/png")
 
 
@@ -1314,9 +1317,12 @@ def get_raw_file(source_id: str, source_image_id: str):
     ).fetchone()
     if row is None or not row["storage_path"]:
         raise HTTPException(status_code=404, detail="Raw image not found.")
-    p = Path(row["storage_path"])
-    if not p.is_file():
-        raise HTTPException(status_code=410, detail="Raw file missing on disk.")
+    from storage.local_cache import local_path as _local_path
+    try:
+        p = _local_path("enrichment-raws", row["storage_path"])
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=410,
+                            detail=f"Raw missing in MinIO: {exc}") from exc
     return FileResponse(p, media_type="image/jpeg")
 
 

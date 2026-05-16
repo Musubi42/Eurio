@@ -482,7 +482,7 @@ def _parse_bbox(json_str: str | None) -> ReviewBbox | None:
     )
 
 
-def _compute_detections(raw_path: str | None,
+def _compute_detections(raw_storage_key: str | None,
                          crop_indices_in_db: list[int]) -> list[LotDetection]:
     """Re-run `detect_circles_multi` on the raw — used for the Stage 2 debug view.
 
@@ -491,11 +491,16 @@ def _compute_detections(raw_path: str | None,
     detections are matched to the existing `image_assets` rows by order
     (the pipeline is deterministic so accepted-detection-order ==
     crop_index order).
+
+    `raw_storage_key` is the S3 key in `enrichment-raws` (since SS-1
+    write-through MinIO). local_path() does read-through cache fetch.
     """
-    if not raw_path:
+    if not raw_storage_key:
         return []
-    p = Path(raw_path)
-    if not p.is_file():
+    from storage.local_cache import local_path as _local_path
+    try:
+        p = _local_path("enrichment-raws", raw_storage_key)
+    except FileNotFoundError:
         return []
     bgr = cv2.imread(str(p), cv2.IMREAD_COLOR)
     if bgr is None or bgr.size == 0:

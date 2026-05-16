@@ -94,6 +94,75 @@ def _is_not_found(exc: BaseException) -> bool:
     return False
 
 
+def cache_path_for(bucket: Bucket, storage_key: str) -> Path:
+    """Local cache path for a (bucket, key) — does NOT download.
+
+    Useful when you're about to write through (upload_through) and want
+    to know where the file will live locally first.
+    """
+    return _cache_root() / bucket / storage_key
+
+
+def upload_through(
+    bucket: Bucket,
+    storage_key: str,
+    data: bytes,
+    *,
+    block_on_disconnect: bool = True,
+    max_attempts: int = 8,
+) -> Path:
+    """Write bytes to local cache AND upload to MinIO.
+
+    After return : the bytes are guaranteed present in BOTH places (cache +
+    MinIO). Downstream callers can use `local_path(bucket, storage_key)`
+    immediately and get a cache hit (no re-download from MinIO).
+
+    On MinIO failure with `block_on_disconnect=True` (default), retries
+    with exponential backoff up to ~17 min total. On exhaustion, raises
+    RuntimeError. With `block_on_disconnect=False`, raises immediately.
+
+    The cache write is atomic (.tmp + os.replace). If the MinIO upload
+    fails, the cache file is left in place — re-running the same call is
+    idempotent (skips the redundant cache write, retries the upload).
+    """
+    import time
+    target = cache_path_for(bucket, storage_key)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if not target.exists():
+        tmp = target.with_suffix(target.suffix + ".tmp")
+        try:
+            tmp.write_bytes(data)
+            os.replace(tmp, target)
+        except Exception:
+            tmp.unlink(missing_ok=True)
+            raise
+
+    # Exponential backoff schedule. Total ~17 min — enough to ride out a
+    # VPS reboot but not infinite.
+    delays = [2, 5, 15, 30, 60, 120, 300, 600]
+    attempts = min(max_attempts, len(delays))
+    last_exc: BaseException | None = None
+    for i in range(attempts):
+        try:
+            _client().put_object(Bucket=bucket, Key=storage_key, Body=data)
+            return target
+        except Exception as e:  # noqa: BLE001
+            last_exc = e
+            if not block_on_disconnect or i == attempts - 1:
+                break
+            delay = delays[i]
+            import logging
+            logging.getLogger(__name__).warning(
+                "MinIO put_object retry %d/%d in %ds for %s/%s: %s",
+                i + 1, attempts, delay, bucket, storage_key, e,
+            )
+            time.sleep(delay)
+    raise RuntimeError(
+        f"MinIO upload failed after {attempts} attempts for "
+        f"{bucket}/{storage_key}: {last_exc}"
+    ) from last_exc
+
+
 def _evict_if_needed() -> None:
     """LRU eviction: remove oldest-atime files until under MAX_GB."""
     root = _cache_root()
