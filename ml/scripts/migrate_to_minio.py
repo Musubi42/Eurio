@@ -445,7 +445,22 @@ def cmd_lock_fs(args: argparse.Namespace) -> int:
 # ─── Argparse ───────────────────────────────────────────────────────────────
 
 
+_DEPRECATED_BANNER = """\
+╔══════════════════════════════════════════════════════════════════════════╗
+║  DEPRECATED — migrate_to_minio.py                                        ║
+║                                                                          ║
+║  Le scrape écrit désormais directement dans MinIO via le write-through   ║
+║  cache (ml/sources/_base/steps/download.py + detect_crop.py). Ce script  ║
+║  reste disponible comme utility de récup ou de réindexation batch,       ║
+║  mais n'est plus appelé par le pipeline normal.                          ║
+║                                                                          ║
+║  Référence : docs/harmonisation-images/scrape-write-through-kickoff.md   ║
+╚══════════════════════════════════════════════════════════════════════════╝
+"""
+
+
 def main(argv: list[str] | None = None) -> int:
+    print(_DEPRECATED_BANNER, file=sys.stderr)
     p = argparse.ArgumentParser(prog="migrate_to_minio")
     sub = p.add_subparsers(dest="cmd", required=True)
 

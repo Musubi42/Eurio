@@ -48,8 +48,10 @@ def local_path(bucket: Bucket, storage_key: str) -> Path:
     """
     target = _cache_root() / bucket / storage_key
     if target.exists():
-        # Touch atime for LRU eviction; keep mtime untouched.
-        os.utime(target, (time.time(), target.stat().st_mtime))
+        # Touch atime for LRU eviction; keep mtime byte-identical (use the
+        # nanosecond-precision API so we don't lose precision via float).
+        st = target.stat()
+        os.utime(target, ns=(time.time_ns(), st.st_mtime_ns))
         return target
 
     if _max_gb() > 0:
@@ -146,6 +148,13 @@ def upload_through(
         try:
             _client().put_object(Bucket=bucket, Key=storage_key, Body=data)
             return target
+        except ImportError as e:
+            # boto3/botocore manquant dans l'env — pas une panne MinIO, pas
+            # de retry utile. Fail-fast pour qu'on installe la dépendance.
+            raise RuntimeError(
+                f"MinIO upload unavailable: {e}. Install boto3 in the "
+                f"current Python environment (Nix devShell or pip install)."
+            ) from e
         except Exception as e:  # noqa: BLE001
             last_exc = e
             if not block_on_disconnect or i == attempts - 1:

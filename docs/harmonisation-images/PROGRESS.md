@@ -9,9 +9,9 @@
 | Chunk | Statut | Notes |
 |---|---|---|
 | 1 — MinIO docker bootstrap | **✅ live** | Container `eurio-minio` running, 3 buckets, user `eurio-app`. Smoke tests 1-4 verts. Hostnames : `eurio-s3.musubi.dev` / `eurio-images.musubi.dev` (renommés vs doc d'origine pour rester sous CF Universal SSL). |
-| 2 — Schéma DB + format storage_key | **🟡 partial** | `ml/storage/__init__.py` + `local_cache.py` en place. Pas encore de tests E2E avec un asset réel. |
-| 3 — Migration scripts | **🟡 code prêt** | `ml/scripts/migrate_to_minio.py` existe, jamais exécuté. À lancer après rsync Mac→VPS. |
-| 4 — Cache local read-through | **🟡 code prêt** | Lib en place. Cascade 404 pas encore intégrée (chunk 9). |
+| 2 — Schéma DB + format storage_key | **✅ live** | `storage_path` = S3 key partout dans les paths scrape (SS-1/SS-2 commit `b8977b9`). |
+| 3 — Migration scripts | **⚠️ DEPRECATED** | `ml/scripts/migrate_to_minio.py` conservé en utility récup mais affiche un banner DEPRECATED — le scrape écrit désormais write-through. |
+| 4 — Cache local read-through | **✅ live** | `local_path()` + `upload_through()` actifs. Hook 404 chunk 9 intégré. |
 | 5 — Pre-fetch run-scoped training | ⏳ pending | Dépend de 4 stable. |
 | 6 — Publication Supabase | ⏳ pending | Indépendant de 3, peut partir en parallèle. |
 | 7 — Backup pCloud | **🟡 script + module Nix prêts** | `infra/backup/backup-minio-to-pcloud.sh` + `nix/eurio-vps.nix`. Manque : `rclone config` interactif côté VPS + `/etc/eurio/backup.env` avec NTFY_TOPIC. |
@@ -19,6 +19,33 @@
 | 9 — Cascade sync MinIO ↔ DB ↔ cache | **🟢 code prêt, à tester** | `ml/storage/cascade.py` + hook 404 dans `local_cache.py` + script `ml/scripts/cascade_sync.py` + tests `tests/test_storage_cascade.py` + colonne `storage_status` dans `schema.sql`. À tester E2E quand il y aura des assets dans MinIO. |
 
 ## Décisions hors-doc actées en session
+
+### 2026-05-16 — SS-0/1/2 scrape write-through (commit `b8977b9`)
+
+- **SS-0 (wipe)** : `ml/state/sources/` rm -rf (407 MB), 6657 rows DELETE
+  dans `source_images`/`image_assets`/`discovery_log`/`source_runs`. On
+  repart greenfield, plus de legacy FS à migrer.
+- **SS-1 (write-through)** : `ml/sources/_base/steps/download.py` et
+  `detect_crop.py` poussent directement dans MinIO via
+  `storage.local_cache.upload_through()`. `storage_path` = S3 key (jamais
+  un FS path absolu). Pré-génération de `asset_id` côté code pour bâtir
+  la S3 key avant l'INSERT (idempotent).
+- **SS-2 (read-through)** : tous les `Path(storage_path)` downstream
+  sont devenus `local_path(bucket, key)`. Concerne `detect_crop.py`,
+  `auto_validate.py`, `api/sources_routes.py`, `api/review_queue_routes.py`.
+  `recrop_ebay_orphans.py` → stub déprécié (cascade_sync gère).
+- **SS-3 (cette session)** : tests réparés (conftest stube `_s3_client`
+  en MagicMock par défaut, test_storage_cascade skip si botocore absent,
+  test_orchestrator passe au cache root au lieu de `_STORAGE_ROOT`),
+  `migrate_to_minio.py` banner DEPRECATED sur stderr, fix bootstrap
+  store.py (skip ALTER si table absente — fresh DB), fix nanoseconde
+  dans `local_path()` (atime touch ne corrompait l'mtime que via
+  float→ns).
+- **Block-until-reconnect** : `upload_through()` retry exponential
+  backoff 17 min (delays 2/5/15/30/60/120/300/600s). Au-delà,
+  RuntimeError → l'orchestrateur compte l'item en `n_errors`.
+- **`migrate_to_minio.py`** garde sa CLI complète mais imprime un banner
+  DEPRECATED sur stderr à chaque invocation. Utility récup uniquement.
 
 ### 2026-05-15
 

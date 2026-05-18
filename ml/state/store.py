@@ -491,6 +491,29 @@ class Store:
         schema = _SCHEMA_PATH.read_text()
         with self._write_lock:
             conn = self._connection()
+            # Pre-bootstrap: colonnes que les CREATE INDEX du schema référencent
+            # mais qui n'existent pas sur les DB antérieures au chunk 9 (cascade
+            # sync). Doit tourner AVANT executescript, sinon les CREATE INDEX
+            # idx_*_storage_status plantent sur "no such column: storage_status".
+            _STORAGE_STATUS_DECL = (
+                "TEXT NOT NULL DEFAULT 'present' CHECK "
+                "(storage_status IN ('present', 'missing_in_storage', 'removed_via_admin'))"
+            )
+            for table in ("source_images", "image_assets"):
+                # Fresh DB: la table n'existe pas encore — executescript la
+                # créera avec storage_status déjà dans CREATE TABLE. Skip ALTER.
+                exists = conn.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+                    (table,),
+                ).fetchone()
+                if not exists:
+                    continue
+                self._ensure_column(
+                    conn,
+                    table=table,
+                    column="storage_status",
+                    decl=_STORAGE_STATUS_DECL,
+                )
             conn.executescript(schema)
             self._ensure_column(
                 conn,

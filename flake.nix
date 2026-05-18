@@ -131,6 +131,28 @@
           echo "  Aucun .env file — Vite lit VITE_* depuis l'environnement shell."
         '';
 
+        # Si ml/.venv existe mais a été créé contre un Nix env précédent
+        # (flake.nix a bougé depuis), pyvenv.cfg pointe vers un store path
+        # stale et `include-system-site-packages = true` charge des deps
+        # fantômes. Ça se traduit par des `ModuleNotFoundError` cryptiques
+        # à l'exécution (ex. boto3 missing alors que le devShell l'a).
+        # Détection : compare le `home` de pyvenv.cfg avec le bin du python
+        # actuel. Si différent → warning + suggère go-task ml:venv-rebuild.
+        staleVenvCheckHook = ''
+          if [ -f ml/.venv/pyvenv.cfg ]; then
+            venv_home=$(awk -F'= ' '/^home = / {print $2}' ml/.venv/pyvenv.cfg)
+            current_home=$(dirname "$(command -v python3)")
+            if [ -n "$venv_home" ] && [ "$venv_home" != "$current_home" ]; then
+              echo ""
+              echo "  ⚠️  ml/.venv est STALE — créé contre un Nix env précédent."
+              echo "      pyvenv.cfg home: $venv_home"
+              echo "      current python:  $current_home"
+              echo "      Rebuild :  go-task ml:venv-rebuild"
+              echo ""
+            fi
+          fi
+        '';
+
         # NixOS uniquement : expose le driver NVIDIA (/run/opengl-driver/lib,
         # libcuda.so.1) + les libs C++ servies par nix-ld (libstdc++.so.6, …)
         # via LD_LIBRARY_PATH, pour que les wheels PyPI chargés via dlopen
@@ -144,7 +166,10 @@
         # ─── Profiles ─────────────────────────────────────────────────────────
         macShell = pkgs.mkShell (commonEnv // {
           buildInputs = baseInputs ++ fullInputs;
-          shellHook = fullBannerHook "mac";
+          shellHook = ''
+            ${fullBannerHook "mac"}
+            ${staleVenvCheckHook}
+          '';
         });
 
         pcShell = pkgs.mkShell (commonEnv // {
@@ -152,6 +177,7 @@
           shellHook = ''
             ${nvidiaHook}
             ${fullBannerHook "pc"}
+            ${staleVenvCheckHook}
           '';
         });
 
