@@ -2,8 +2,10 @@ package com.musubi.eurio.features.scan
 
 import android.Manifest
 import android.content.pm.PackageManager
+import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.ImageCapture
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
@@ -58,8 +60,11 @@ import com.musubi.eurio.features.scan.components.PhotoSnapResultLayer
 import com.musubi.eurio.features.scan.components.ScanDetectingLayer
 import com.musubi.eurio.features.scan.components.ScanFailureLayer
 import com.musubi.eurio.features.scan.components.ScanIdleLayer
+import com.musubi.eurio.features.scan.debug.BenchProtocolActions
+import com.musubi.eurio.features.scan.debug.BenchProtocolHeader
 import com.musubi.eurio.features.scan.debug.DebugBarLauncher
 import com.musubi.eurio.features.scan.debug.ScanHud
+import com.musubi.eurio.features.scan.debug.ScanLockOverlay
 import androidx.compose.ui.graphics.Brush
 import com.musubi.eurio.BuildConfig
 import com.musubi.eurio.ParityFlags
@@ -99,6 +104,7 @@ fun ScanScreen(
     val photoLiveCircleFound by viewModel.photoLiveCircleFound.collectAsStateWithLifecycle()
     val captureMode by viewModel.captureMode.collectAsStateWithLifecycle()
     val captureProgress by viewModel.captureProgress.collectAsStateWithLifecycle()
+    val benchProtocol by viewModel.benchProtocolState.collectAsStateWithLifecycle()
 
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -112,10 +118,31 @@ fun ScanScreen(
     // with alreadyOwned=true.
     LaunchedEffect(state) {
         val s = state
-        if (s is ScanState.Accepted && s.alreadyOwned) {
+        if (s is ScanUiState.Accepted && s.alreadyOwned) {
             snackbarHostState.showSnackbar(
                 message = "Déjà dans ton coffre — continue",
             )
+        }
+    }
+
+    // Chunk-5d — D17 "Belle prise" snackbar with one-tap revert.
+    // ShowSnackbar suspends until the user dismisses or taps the action;
+    // viewModel.onRevertPromotion is called only on the action branch.
+    LaunchedEffect(viewModel) {
+        viewModel.snackbarEvents.collect { event ->
+            when (event) {
+                is ScanSnackbarEvent.PrimaryPromoted -> {
+                    val result = snackbarHostState.showSnackbar(
+                        message = "Belle prise · en faire la photo de référence ?",
+                        actionLabel = "Annuler",
+                        withDismissAction = true,
+                        duration = androidx.compose.material3.SnackbarDuration.Long,
+                    )
+                    if (result == androidx.compose.material3.SnackbarResult.ActionPerformed) {
+                        viewModel.onRevertPromotion(event)
+                    }
+                }
+            }
         }
     }
 
@@ -145,15 +172,19 @@ fun ScanScreen(
             if (!carouselMode) {
                 CameraPreview(
                     onFrame = { image -> viewModel.onFrame(image) },
+                    onCameraReady = { camera, imageCapture ->
+                        viewModel.attachCamera(camera, imageCapture)
+                    },
+                    onCameraReleased = { viewModel.detachCamera() },
                     modifier = Modifier.fillMaxSize(),
                 )
             }
 
             // State-driven layer (suppressed when a snap result is on screen).
             if (!showSnapResult) when (val s = state) {
-                is ScanState.Idle -> ScanIdleLayer()
-                is ScanState.Detecting -> ScanDetectingLayer()
-                is ScanState.Accepted -> {
+                is ScanUiState.Idle -> ScanIdleLayer()
+                is ScanUiState.Detecting -> ScanDetectingLayer()
+                is ScanUiState.Accepted -> {
                     // Discovery moment (Phase 5) : the 3D viewer fills the
                     // screen behind the AcceptedCard and plays a flip on every
                     // new coin. The card slides in 400 ms later — the flip is
@@ -188,13 +219,13 @@ fun ScanScreen(
                         )
                     }
                 }
-                is ScanState.NotIdentified -> {
+                is ScanUiState.NotIdentified -> {
                     // UX decision: scan is continuous like a QR scanner.
                     // NotIdentified is never emitted by the VM — this branch
                     // is kept as a no-op for sealed class exhaustiveness.
                     ScanIdleLayer()
                 }
-                is ScanState.Failure -> {
+                is ScanUiState.Failure -> {
                     ScanFailureLayer(
                         reason = s.reason,
                         onRetry = { viewModel.onDismissCard() },
@@ -255,7 +286,7 @@ fun ScanScreen(
 
             // Already-owned inline hint (small thumbnail near the top bar) —
             // suppressed in carousel mode where the vault state is irrelevant.
-            (state as? ScanState.Accepted)?.takeIf { it.alreadyOwned && !carouselMode }?.let { s ->
+            (state as? ScanUiState.Accepted)?.takeIf { it.alreadyOwned && !carouselMode }?.let { s ->
                 Row(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
@@ -284,6 +315,20 @@ fun ScanScreen(
             // the BuildConfig.DEBUG guard. See docs/best-frame-capture/chunk-1.
             if (BuildConfig.DEBUG) {
                 val hudState by viewModel.hudState.collectAsStateWithLifecycle()
+                val shadowState by viewModel.scanMachineState.collectAsStateWithLifecycle()
+                // Chunk-6.3 — graphical overlay reads the shadow state
+                // machine so each sub-state renders with a distinct color
+                // (Locking pulse / Capturing fill / Identifying secondary
+                // / Aborted error). The legacy abortEvents flow still
+                // drives the per-frame red flash for trigger aborts.
+                if (!carouselMode) {
+                    ScanLockOverlay(
+                        bbox = debugData.bbox,
+                        shadowState = shadowState,
+                        abortEvents = viewModel.abortEvents,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
                 ScanHud(
                     state = hudState,
                     modifier = Modifier
@@ -294,7 +339,31 @@ fun ScanScreen(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .padding(end = EurioSpacing.s3, bottom = EurioSpacing.s3),
+                    onStartBenchProtocol = { viewModel.startBenchProtocol() },
                 )
+
+                // Chunk-7b — guided bench protocol overlay. Top band shows
+                // the current cell (coin × condition); bottom band exposes
+                // Start / Done / Skip. Rendered above the debug HUD so
+                // controls stay tappable.
+                benchProtocol?.let { state ->
+                    BenchProtocolHeader(
+                        state = state,
+                        onQuit = { viewModel.endBenchProtocol() },
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = 200.dp),
+                    )
+                    BenchProtocolActions(
+                        state = state,
+                        onStart = { viewModel.startCurrentBenchCell() },
+                        onDone = { viewModel.markCurrentBenchCellDone() },
+                        onSkip = { viewModel.skipCurrentBenchCell() },
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = 80.dp),
+                    )
+                }
             }
 
             if (debugMode && !carouselMode) {
@@ -311,7 +380,7 @@ fun ScanScreen(
                     } else {
                         PhotoSnapResultLayer(snap = snap)
                     }
-                } else if (photoMode && state !is ScanState.Accepted) {
+                } else if (photoMode && state !is ScanUiState.Accepted) {
                     PhotoGuideOverlay(circleFound = photoLiveCircleFound)
                 }
                 if (captureMode && progress != null && !showSnapResult) {
@@ -338,6 +407,8 @@ fun ScanScreen(
 @Composable
 private fun CameraPreview(
     onFrame: (androidx.camera.core.ImageProxy) -> Unit,
+    onCameraReady: (Camera, ImageCapture?) -> Unit = { _, _ -> },
+    onCameraReleased: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     if (BuildConfig.IS_QA && ParityFlags.mockCamera) {
@@ -385,18 +456,51 @@ private fun CameraPreview(
                             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                             .build()
                             .also { it.setAnalyzer(executor) { image -> onFrame(image) } }
+                        // Chunk-5c — try the full 3-usecase combo (Preview +
+                        // ImageAnalysis + ImageCapture). On devices where
+                        // that's unsupported, fall back to 2-usecase and
+                        // signal the YUV path via imageCapture = null.
+                        val imageCapture = ImageCapture.Builder()
+                            .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
+                            .setJpegQuality(95)
+                            .build()
                         try {
                             provider.unbindAll()
-                            provider.bindToLifecycle(
-                                lifecycleOwner,
-                                CameraSelector.DEFAULT_BACK_CAMERA,
-                                preview,
-                                analysis,
-                            )
+                            val camera = try {
+                                provider.bindToLifecycle(
+                                    lifecycleOwner,
+                                    CameraSelector.DEFAULT_BACK_CAMERA,
+                                    preview,
+                                    analysis,
+                                    imageCapture,
+                                )
+                            } catch (e: IllegalArgumentException) {
+                                // 3-usecase combo unsupported → fall back to
+                                // 2-usecase (YUV fallback wired in 5d).
+                                provider.unbindAll()
+                                provider.bindToLifecycle(
+                                    lifecycleOwner,
+                                    CameraSelector.DEFAULT_BACK_CAMERA,
+                                    preview,
+                                    analysis,
+                                ).also { _ ->
+                                    android.util.Log.w(
+                                        "Eurio",
+                                        "3-usecase bind failed (${e.message}), YUV fallback active",
+                                    )
+                                }
+                            }
+                            val boundImageCapture =
+                                if (provider.isBound(imageCapture)) imageCapture else null
+                            // Hand the Camera instance to the ViewModel so the
+                            // best-frame lock controller (chunk-4) can drive
+                            // AE/AF/AWB lock via Camera2Interop. Released in
+                            // DisposableEffect.onDispose below.
+                            onCameraReady(camera, boundImageCapture)
                         } catch (_: Exception) {
                             // Swallow — the outer Scaffold will re-render on
                             // next composition and retry. A persistent bind
-                            // failure should surface via ScanState.Failure,
+                            // failure should surface via ScanUiState.Failure,
                             // but that plumbing lives at integration time.
                         }
                     },
@@ -408,6 +512,7 @@ private fun CameraPreview(
 
     DisposableEffect(lifecycleOwner) {
         onDispose {
+            onCameraReleased()
             executor.shutdown()
             ProcessCameraProvider.getInstance(context).get().unbindAll()
         }

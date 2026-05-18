@@ -25,6 +25,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import com.musubi.eurio.ml.camera.LockState
 import com.musubi.eurio.ui.theme.EurioRadii
 import com.musubi.eurio.ui.theme.EurioSpacing
 import kotlinx.coroutines.delay
@@ -74,6 +75,10 @@ fun ScanHud(
     ) {
         StatePulseRow(state, qualityAlpha)
 
+        if (state.triggerFireReason != null || state.lockState !is LockState.Idle) {
+            FiredRow(state)
+        }
+
         if (state.arcfaceTop3.isNotEmpty() ||
             state.timings.totalMs() > 0 ||
             state.bufferCapacity > 0
@@ -116,6 +121,13 @@ private fun StatePulseRow(state: ScanHudState, qualityAlpha: Float) {
             color = Color.White.copy(alpha = pulseAlpha),
             style = MaterialTheme.typography.labelMedium,
         )
+        if (state.shadowState != state.machineState) {
+            Text(
+                text = "→${state.shadowState}",
+                color = MaterialTheme.colorScheme.tertiary.copy(alpha = pulseAlpha),
+                style = MaterialTheme.typography.labelSmall,
+            )
+        }
         Dot()
         QualityBadge(
             label = "sharp",
@@ -240,6 +252,82 @@ private fun SecondaryRow(state: ScanHudState) {
             Text(
                 text = "buf ${state.bufferSize}/${state.bufferCapacity}",
                 color = Color.White.copy(alpha = 0.8f),
+                style = MaterialTheme.typography.labelSmall,
+            )
+        }
+    }
+}
+
+@Composable
+private fun FiredRow(state: ScanHudState) {
+    Row(
+        modifier = Modifier
+            .horizontalScroll(rememberScrollState())
+            .background(
+                color = Color.Black.copy(alpha = 0.55f),
+                shape = RoundedCornerShape(EurioRadii.sm),
+            )
+            .clip(RoundedCornerShape(EurioRadii.sm))
+            .padding(horizontal = EurioSpacing.s3, vertical = EurioSpacing.s1),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(EurioSpacing.s2),
+    ) {
+        state.triggerFireReason?.let { reason ->
+            Text(
+                text = "Fired: $reason",
+                color = MaterialTheme.colorScheme.tertiary,
+                style = MaterialTheme.typography.labelMedium,
+            )
+        }
+        state.bestSelectionReason?.let { reason ->
+            Dot()
+            Text(
+                text = "→ $reason",
+                color = Color.White,
+                style = MaterialTheme.typography.labelSmall,
+            )
+        }
+        state.bestFrameIndex?.let { idx ->
+            Dot()
+            val agg = state.bestFrameScore?.aggregate
+            Text(
+                text = if (agg != null) "best#$idx agg ${"%.2f".format(agg)}" else "best#$idx",
+                color = Color.White,
+                style = MaterialTheme.typography.labelSmall,
+            )
+        }
+        LockBadge(state.lockState)
+    }
+}
+
+@Composable
+private fun LockBadge(lockState: LockState) {
+    when (lockState) {
+        LockState.Idle, LockState.Released -> Unit
+        LockState.Acquiring -> {
+            Dot()
+            Text(
+                text = "Locking…",
+                color = MaterialTheme.colorScheme.primary,
+                style = MaterialTheme.typography.labelSmall,
+            )
+        }
+        is LockState.Locked -> {
+            Dot()
+            val af = if (lockState.afConverged) "AF✓" else "AF✗"
+            val ae = if (lockState.aeLocked) "AE✓" else "AE·"
+            val awb = if (lockState.awbLocked) "AWB✓" else "AWB·"
+            Text(
+                text = "Locked · $af ${lockState.durationMs}ms · $ae · $awb",
+                color = MaterialTheme.colorScheme.primary,
+                style = MaterialTheme.typography.labelSmall,
+            )
+        }
+        is LockState.Failed -> {
+            Dot()
+            Text(
+                text = "Lock failed · ${lockState.reason.take(28)} (${lockState.durationMs}ms)",
+                color = MaterialTheme.colorScheme.error,
                 style = MaterialTheme.typography.labelSmall,
             )
         }

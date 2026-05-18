@@ -9,4 +9,5 @@ Requires-Dist: pytorch-metric-learning
 Requires-Dist: pyyaml
 Requires-Dist: torch
 Requires-Dist: torchvision
+Requires-Dist: ultralytics
 Requires-Dist: typing-extensions>=4.13

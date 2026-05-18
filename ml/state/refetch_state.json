@@ -1,0 +1,224 @@
+{
+  "timestamp": "2026-05-16T00:49:36.499437+00:00",
+  "countries": [
+    "DE"
+  ],
+  "dry_run": false,
+  "stats": {
+    "api_search": 2,
+    "api_type_details": 60,
+    "skipped_out_of_scope": 20,
+    "needs_review_variant": 3,
+    "api_issues": 37,
+    "mint_releases_built": 788,
+    "api_prices": 788,
+    "price_rows_built": 1993,
+    "img_dl_obverse": 37,
+    "img_uploaded_obverse": 37,
+    "img_dl_reverse": 37,
+    "img_uploaded_reverse": 37,
+    "coins_built": 37
+  },
+  "needs_review": [
+    {
+      "nid": 284509,
+      "slug": {
+        "eurio_id": "de-2002-2eur-standard-1st-type",
+        "country": "DE",
+        "year": 2002,
+        "face_value": 2.0,
+        "is_commemorative": false,
+        "is_variant": true,
+        "variant_finish": "pattern",
+        "is_joint_issue": false,
+        "design_group_id": null,
+        "joint_theme": null,
+        "joint_designation": null,
+        "theme": null,
+        "catalog_name": "2 Euro (Pattern)",
+        "used_override": false
+      },
+      "reason": "variant_finish detected, parent classic not yet bound (chunk 4 handles)"
+    },
+    {
+      "nid": 327881,
+      "slug": {
+        "eurio_id": "de-2008-2eur-bundeslander-hamburg",
+        "country": "DE",
+        "year": 2008,
+        "face_value": 2.0,
+        "is_commemorative": true,
+        "is_variant": true,
+        "variant_finish": "mule",
+        "is_joint_issue": false,
+        "design_group_id": null,
+        "joint_theme": null,
+        "joint_designation": null,
+        "theme": "Bundesländer - \"Hamburg\"",
+        "catalog_name": "2 Euros Bundesländer - \"Hamburg\" (Mule)",
+        "used_override": false
+      },
+      "reason": "variant_finish detected, parent classic not yet bound (chunk 4 handles)"
+    },
+    {
+      "nid": 284594,
+      "slug": {
+        "eurio_id": "de-2015-2eur-bundeslander-hessen",
+        "country": "DE",
+        "year": 2015,
+        "face_value": 2.0,
+        "is_commemorative": true,
+        "is_variant": true,
+        "variant_finish": "pattern",
+        "is_joint_issue": false,
+        "design_group_id": null,
+        "joint_theme": null,
+        "joint_designation": null,
+        "theme": "Bundesländer - \"Hessen\" -",
+        "catalog_name": "2 Euros (Bundesländer - \"Hessen\" - Pattern)",
+        "used_override": false
+      },
+      "reason": "variant_finish detected, parent classic not yet bound (chunk 4 handles)"
+    }
+  ],
+  "skipped": [
+    {
+      "nid": 4675,
+      "reason": "out_of_scope (non-2€ or missing field)",
+      "title": "2 Deutsche Mark"
+    },
+    {
+      "nid": 105,
+      "reason": "out_of_scope (non-2€ or missing field)",
+      "title": "1 Euro Cent"
+    },
+    {
+      "nid": 106,
+      "reason": "out_of_scope (non-2€ or missing field)",
+      "title": "2 Euro Cents"
+    },
+    {
+      "nid": 107,
+      "reason": "out_of_scope (non-2€ or missing field)",
+      "title": "5 Euro Cents"
+    },
+    {
+      "nid": 108,
+      "reason": "out_of_scope (non-2€ or missing field)",
+      "title": "10 Euro Cents (1st map)"
+    },
+    {
+      "nid": 111,
+      "reason": "out_of_scope (non-2€ or missing field)",
+      "title": "1 Euro (1st map)"
+    },
+    {
+      "nid": 284596,
+      "reason": "out_of_scope (non-2€ or missing field)",
+      "title": "5 Euro (Planet Earth - Pattern)"
+    },
+    {
+      "nid": 82985,
+      "reason": "out_of_scope (non-2€ or missing field)",
+      "title": "5 Euros (Planet Earth)"
+    },
+    {
+      "nid": 13204,
+      "reason": "out_of_scope (non-2€ or missing field)",
+      "title": "10 Euros (IAAF World Championships)"
+    },
+    {
+      "nid": 16603,
+      "reason": "out_of_scope (non-2€ or missing field)",
+      "title": "10 Euros (FIS-Alpine Ski WM)"
+    },
+    {
+      "nid": 43767,
+      "reason": "out_of_scope (non-2€ or missing field)",
+      "title": "10 Euros (Schneewittchen)"
+    },
+    {
+      "nid": 46501,
+      "reason": "out_of_scope (non-2€ or missing field)",
+      "title": "10 Euros (Schneewittchen; Silver Proof Issue)"
+    },
+    {
+      "nid": 60030,
+      "reason": "out_of_scope (non-2€ or missing field)",
+      "title": "10 Euros (Johann Gottfried Schadow)"
+    },
+    {
+      "nid": 62525,
+      "reason": "out_of_scope (non-2€ or missing field)",
+      "title": "10 Euros (Johann Gottfried Schadow; Silver Proof Issue)"
+    },
+    {
+      "nid": 187269,
+      "reason": "out_of_scope (non-2€ or missing field)",
+      "title": "10 Euros (An Land)"
+    },
+    {
+      "nid": 295253,
+      "reason": "out_of_scope (non-2€ or missing field)",
+      "title": "10 Euros (Auf dem Wasser)"
+    },
+    {
+      "nid": 324871,
+      "reason": "out_of_scope (non-2€ or missing field)",
+      "title": "20 Euros (Deutsches Kinderhilfswerk)"
+    },
+    {
+      "nid": 443713,
+      "reason": "out_of_scope (non-2€ or missing field)",
+      "title": "25 Euros (Advent wreath)"
+    },
+    {
+      "nid": 449064,
+      "reason": "out_of_scope (non-2€ or missing field)",
+      "title": "50 Euros (Biblical Magi, proof issue)"
+    },
+    {
+      "nid": 570281,
+      "reason": "out_of_scope (non-2€ or missing field)",
+      "title": "50 Euros (Biblical Magi)"
+    }
+  ],
+  "design_groups_count": 5,
+  "coins_count": 37,
+  "mint_releases_count": 788,
+  "prices_count": 1993,
+  "quota_status": [
+    {
+      "slot": 1,
+      "key_hash": "58bbe217b2a7",
+      "calls_this_month": 1549,
+      "remaining": 251,
+      "exhausted": false,
+      "month": "2026-05"
+    },
+    {
+      "slot": 2,
+      "key_hash": "20121f6002f8",
+      "calls_this_month": 1549,
+      "remaining": 251,
+      "exhausted": false,
+      "month": "2026-05"
+    },
+    {
+      "slot": 3,
+      "key_hash": "4669cb5197d6",
+      "calls_this_month": 1549,
+      "remaining": 251,
+      "exhausted": false,
+      "month": "2026-05"
+    },
+    {
+      "slot": 4,
+      "key_hash": "563b0aebb487",
+      "calls_this_month": 1548,
+      "remaining": 252,
+      "exhausted": false,
+      "month": "2026-05"
+    }
+  ]
+}

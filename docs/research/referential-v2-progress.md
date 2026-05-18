@@ -34,11 +34,11 @@ Décisions architecturales actées (D1–D8) : voir `referential-v2.md` §7.
 | **3b**| REMATCH × 37 + unresolved × 21 (needs_review=true)       | ✅ appliquée | `ml/referential/apply_3b_rematch.py` + `go-task ml:apply-3b[-dry]`       |
 | **3c**| MOVE_TO_VARIANT × 15 + UNCERTAIN absorbed × 2 (3 buckets) | ✅ appliquée | `ml/referential/apply_3c_move_to_variant.py` + `go-task ml:apply-3c[-dry]` |
 | **3d**| ADD_AS_VARIANT × 25 (4 buckets : A/B1/B2/B3)              | ✅ appliquée | `ml/referential/apply_3d_add_as_variant.py` + `go-task ml:apply-3d[-dry]` |
-| **3e**| REVIEW QUEUE × ?? (29 needs_review actuels — voir §6)    | ❌ todo      | `ml/referential/apply_3e_review_queue.py`                                 |
+| **3e**| REVIEW QUEUE infra × 32 cas (script + table + API + UI)  | ✅ livré     | `apply_3e_flag_uncertain.py` + `apply_3e_enrich_context.py` + migration `20260516_coins_review_context.sql` + `ml/api/coins_review_routes.py` + UI `admin/.../CoinsNeedsReviewPage.vue` |
 | **3f**| Standards orphans × 15 (1st/2nd map, MT/VA portraits)    | ✅ appliquée | `ml/referential/apply_3f_standards.py` + `go-task ml:apply-3f[-dry]`     |
-| 4     | Refetch Numista (nouveautés 2025/2026)                   | ❌ todo      | Relancer `import_numista`, ~50–100 calls API                              |
+| 4     | **Refetch Numista propre (greenfield 2€)**               | ❌ todo      | Voir `docs/research/numista-clean-refetch-kickoff.md` — annule l'ancien Phase 4 « nouveautés 2025/2026 ». Couvre wipe full 2€ + slug deterministe + prices via /issues/{id}/prices + multi-key quota rotation |
 | 5     | Multi-source ingestion (MdP/LMDLP/BCE → Type Candidates) | ❌ todo      | Refactor scrapers + dedup service                                         |
-| 6     | UI admin review queue                                    | ❌ todo      | Page Vue dans `admin/packages/web`                                        |
+| 6     | Adaptations UI needs-review post-refetch propre          | ❌ todo      | Voir kickoff Phase 6 — ajustements ~100 lignes attendus                   |
 
 ---
 
@@ -217,10 +217,27 @@ en 3f, à surveiller en Phase 4).
      pour 3d ; à la place, re-match local contre tous les coins du même
      `(country, year, is_commemorative)` bucket.
 
-3. **3e (review queue)** : 7 IN_REF_UNCERTAIN non-absorbés + 21 needs_review
-   WRONG (3b) + 4 needs_review nouveaux parents (3d B2/B3) = ~32 cas à
-   pousser dans `review_queue` Supabase. UI admin n'existe pas encore (à
-   coder ou réutiliser la review_queue Vue existante de Numista matching).
+3. **3e (review queue)** — ✅ infra livrée 2026-05-16 :
+   - `apply_3e_flag_uncertain.py` a flaggé les 7 IN_REF_UNCERTAIN non-absorbés
+     → 32 coins needs_review=true (21 du 3b + 4 du 3d B2/B3 + 7 du 3e.1).
+   - Migration `20260516_coins_review_context.sql` ajoute `coins.review_action_hint TEXT`
+     (CHECK: rebind|verify_parent|confirm_or_rematch_uncertain) + `coins.review_payload JSONB`
+     + index partiels.
+   - `apply_3e_enrich_context.py` a backfillé ces 2 colonnes pour les 32 cas
+     (distribution : 21 rebind / 4 verify_parent / 7 confirm_or_rematch_uncertain).
+   - `ml/api/coins_review_routes.py` expose 5 endpoints `/coins-review/*` :
+     `GET /queue`, `GET /search-numista` (local catalog + Numista live API
+     fallback avec ASCII fold), `POST /{eid}/rebind`, `POST /{eid}/no-coverage`,
+     `POST /{eid}/delete-redirect`.
+   - UI Vue `/coins/needs-review` dans `admin/packages/web/src/features/coins/`
+     avec composable `useCoinsReview.ts`. 2-pane, panneaux adaptés au hint,
+     keyboard `j/k 1-9 c r n d`. Tokens.css canonical.
+   - **Résolution des 32 cas reportée** : voir
+     `docs/research/numista-clean-refetch-kickoff.md`. L'analyse pendant la
+     session 3e a montré que la plupart des cas viennent d'un script V1
+     bancal de génération d'eurio_id. Plutôt que de patcher 32 cas, on repart
+     d'un refetch Numista propre (greenfield 2€). Ces 32 coins seront wipés
+     dans Phase 1 du kickoff (chunk dédié, confirmation utilisateur requise).
 
 4. **3f — décisions actées 2026-05-15 (3f.0)** :
    - **D-3f-1** Approche = nouveaux TYPE entries (Option A, comme 3a

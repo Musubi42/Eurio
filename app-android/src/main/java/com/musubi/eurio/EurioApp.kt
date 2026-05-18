@@ -22,7 +22,7 @@ import com.musubi.eurio.ml.CoinRecognizer
 import com.musubi.eurio.ml.EmbeddingMatcher
 import com.musubi.eurio.domain.AppEvent
 import com.musubi.eurio.features.scan.CaptureProtocol
-import com.musubi.eurio.features.scan.ScanState
+import com.musubi.eurio.features.scan.ScanUiState
 import com.musubi.eurio.ml.ScanResult
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -57,14 +57,14 @@ class ScanCallbackRelay {
 }
 
 class ScanStateRelay {
-    private val _pending = MutableStateFlow<ScanState?>(null)
-    val pending: StateFlow<ScanState?> = _pending.asStateFlow()
+    private val _pending = MutableStateFlow<ScanUiState?>(null)
+    val pending: StateFlow<ScanUiState?> = _pending.asStateFlow()
 
-    fun post(state: ScanState) {
+    fun post(state: ScanUiState) {
         _pending.value = state
     }
 
-    fun consume(): ScanState? {
+    fun consume(): ScanUiState? {
         val current = _pending.value
         _pending.value = null
         return current
@@ -98,6 +98,24 @@ class EurioApp : Application() {
 
     val vaultRepository: VaultRepository by lazy {
         RoomVaultRepository(database.vaultDao())
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // Best-frame archive (chunk-5c) — owns the JPEG filesystem under
+    // filesDir/vault and the archive/promote logic. The buffer between
+    // takePicture and consensus lives on the ScanViewModel scope, not
+    // here, so it gets reset cleanly across destinations.
+    // ─────────────────────────────────────────────────────────────────
+
+    val vaultFilesystemWriter: com.musubi.eurio.data.vault.VaultFilesystemWriter by lazy {
+        com.musubi.eurio.data.vault.VaultFilesystemWriter(this)
+    }
+
+    val vaultCaptureRepository: com.musubi.eurio.data.vault.VaultCaptureRepository by lazy {
+        com.musubi.eurio.data.vault.VaultCaptureRepository(
+            dao = database.vaultDao(),
+            filesystem = vaultFilesystemWriter,
+        )
     }
 
     val streakRepository: StreakRepository by lazy {

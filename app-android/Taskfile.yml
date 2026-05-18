@@ -75,6 +75,18 @@ tasks:
       - adb pull {{.DEBUG_DIR_DEVICE}}/ {{.DEBUG_PULL_ROOT}}/{{.TS}}/
       - echo "Pulled to {{.DEBUG_PULL_ROOT}}/{{.TS}}/"
 
+  bench:pull:
+    desc: Pull bench sessions (chunk-7) from the device into ml/bench/sessions/<device>/
+    vars:
+      DEVICE_MODEL:
+        sh: adb shell getprop ro.product.model | tr -d ' \r'
+      DEVICE_DIR: '/sdcard/Android/data/{{.APP_ID}}/files/bench/sessions'
+      LOCAL_DIR: '{{.TASKFILE_DIR}}/../ml/bench/sessions/{{.DEVICE_MODEL}}'
+    cmds:
+      - mkdir -p {{.LOCAL_DIR}}
+      - adb pull {{.DEVICE_DIR}}/ {{.LOCAL_DIR}}/ || echo "no bench sessions on device"
+      - echo "Pulled bench sessions to {{.LOCAL_DIR}}/"
+
   push-capture-csv:
     desc: Push a cohort capture CSV to the device, then force-stop the app so the new list is picked up on next launch
     summary: |

@@ -3,7 +3,9 @@
 Spec: docs/harmonisation-images/chunk-9-cascade-sync.md.
 
 Sub-commands:
-  migrate-schema   add the storage_status column on the 2 tables (idempotent)
+  migrate-schema   add the storage_status column on the 2 tables (idempotent).
+                   Also runs automatically in Store._bootstrap; kept here as a
+                   manual repair tool for DBs touched outside the normal flow.
   audit            list drifts (read-only)
   repair           apply corrections (mark DB rows missing, purge stale cache)
   purge-cache      drop cache files whose sha256 no longer matches MinIO

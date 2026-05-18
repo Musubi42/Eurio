@@ -36,7 +36,7 @@ class CatalogCountryViewModel(
 
     fun manualAdd(eurioId: String) {
         viewModelScope.launch {
-            vaultRepository.addCoin(eurioId, confidence = 0f)
+            vaultRepository.confirmPossession(eurioId)
         }
     }
 }

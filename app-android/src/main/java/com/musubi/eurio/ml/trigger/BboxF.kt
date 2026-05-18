@@ -25,3 +25,20 @@ data class BboxF(
         fun fromRectF(r: RectF): BboxF = BboxF(r.left, r.top, r.right, r.bottom)
     }
 }
+
+/**
+ * Intersection-over-union between two boxes. Returns 0 for empty/degenerate
+ * boxes — never NaN. Used by [BoxStabilityTrigger] to measure temporal
+ * stability of the primary detection.
+ */
+fun iou(a: BboxF, b: BboxF): Float {
+    val interLeft = maxOf(a.left, b.left)
+    val interTop = maxOf(a.top, b.top)
+    val interRight = minOf(a.right, b.right)
+    val interBottom = minOf(a.bottom, b.bottom)
+    val interW = (interRight - interLeft).coerceAtLeast(0f)
+    val interH = (interBottom - interTop).coerceAtLeast(0f)
+    val interArea = interW * interH
+    val unionArea = a.area + b.area - interArea
+    return if (unionArea <= 0f) 0f else interArea / unionArea
+}

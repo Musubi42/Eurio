@@ -77,6 +77,8 @@ fun EurioNavHost(
                     coinAnalyzer = app.coinAnalyzer,
                     setRepository = app.setRepository,
                     onAppEvent = app::emitEvent,
+                    vaultCaptureRepository = app.vaultCaptureRepository,
+                    applicationContext = app.applicationContext,
                 ),
             )
 
@@ -273,6 +275,8 @@ private class ScanViewModelFactory(
     private val coinAnalyzer: CoinAnalyzer,
     private val setRepository: SetRepository,
     private val onAppEvent: (com.musubi.eurio.domain.AppEvent) -> Unit,
+    private val vaultCaptureRepository: com.musubi.eurio.data.vault.VaultCaptureRepository,
+    private val applicationContext: android.content.Context,
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         @Suppress("UNCHECKED_CAST")
@@ -283,6 +287,8 @@ private class ScanViewModelFactory(
             coinAnalyzer = coinAnalyzer,
             setRepository = setRepository,
             onAppEvent = onAppEvent,
+            vaultCaptureRepository = vaultCaptureRepository,
+            applicationContext = applicationContext,
         ) as T
     }
 }

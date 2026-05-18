@@ -20,7 +20,6 @@ data class CoinDetailUiState(
     val sets: List<SetWithProgress> = emptyList(),
     val error: String? = null,
     val showRemoveDialog: Boolean = false,
-    val entryId: Long? = null,
 )
 
 class CoinDetailViewModel(
@@ -62,7 +61,7 @@ class CoinDetailViewModel(
         val coin = _state.value.coin ?: return
         if (_state.value.alreadyOwned) return
         viewModelScope.launch {
-            vaultRepository.addCoin(coin.eurioId, confidence = 1f)
+            vaultRepository.confirmPossession(coin.eurioId)
             _state.value = _state.value.copy(alreadyOwned = true)
         }
     }
@@ -76,15 +75,12 @@ class CoinDetailViewModel(
     }
 
     fun confirmRemove() {
-        val entryId = _state.value.entryId
+        val coin = _state.value.coin ?: return
         viewModelScope.launch {
-            if (entryId != null) {
-                vaultRepository.removeEntry(entryId)
-            }
+            vaultRepository.removeCoin(coin.eurioId)
             _state.value = _state.value.copy(
                 alreadyOwned = false,
                 showRemoveDialog = false,
-                entryId = null,
             )
         }
     }

@@ -190,7 +190,7 @@ private fun CoinTile(
         }
 
         // Multiplicity badge
-        if (item.count > 1) {
+        if (item.declaredCount > 1) {
             Box(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
@@ -199,7 +199,7 @@ private fun CoinTile(
                     .padding(horizontal = 6.dp, vertical = 2.dp),
             ) {
                 Text(
-                    text = "×${item.count}",
+                    text = "×${item.declaredCount}",
                     style = MonoBadgeStyle,
                     color = PaperSurface,
                 )
@@ -238,7 +238,7 @@ fun buildGroupedItems(items: List<VaultCoinItem>, sort: VaultSort): List<CoinGro
         }
         VaultSort.SCAN_DATE -> {
             val fmt = SimpleDateFormat("MMMM yyyy", Locale.FRENCH)
-            items.groupBy { fmt.format(Date(it.scannedAt)) }
+            items.groupBy { fmt.format(Date(it.firstCapturedAt)) }
                 .map { (month, coins) ->
                     CoinGroup(
                         label = month.replaceFirstChar { it.titlecase(Locale.FRENCH) },

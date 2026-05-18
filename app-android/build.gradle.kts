@@ -146,6 +146,8 @@ dependencies {
     implementation("androidx.room:room-runtime:$roomVersion")
     implementation("androidx.room:room-ktx:$roomVersion")
     ksp("androidx.room:room-compiler:$roomVersion")
+    // Migration / DAO test support — used by VaultMigrationTest (chunk-5a).
+    androidTestImplementation("androidx.room:room-testing:$roomVersion")
 
     // Supabase
     implementation(platform("io.github.jan-tennert.supabase:bom:3.1.1"))
@@ -162,9 +164,18 @@ dependencies {
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    // Adapts CameraX ListenableFuture<T> → suspend via .await() — needed by
+    // CameraLockController.lock() (chunk-4 AE/AF/AWB lock).
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-guava:1.9.0")
 
     // Coil (async image loading for Compose)
     implementation("io.coil-kt:coil-compose:2.7.0")
+
+    // EXIF metadata writer — used by ExifStripper (chunk-5b) to drop GPS
+    // and device-fingerprint tags from raw JPEG inputs (out-of-pipeline
+    // imports). Bitmap.compress(JPEG) already drops EXIF for the normal
+    // capture path.
+    implementation("androidx.exifinterface:exifinterface:1.3.7")
 
     // Koin (DI)
     implementation("io.insert-koin:koin-androidx-compose:4.0.0")

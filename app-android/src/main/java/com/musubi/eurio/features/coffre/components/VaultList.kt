@@ -137,7 +137,7 @@ private fun CoinRow(
             modifier = Modifier.weight(1f),
         ) {
             Text(
-                text = item.coin.nameFr + if (item.count > 1) " ×${item.count}" else "",
+                text = item.coin.nameFr + if (item.declaredCount > 1) " ×${item.declaredCount}" else "",
                 style = MaterialTheme.typography.bodyLarge,
                 color = Ink,
                 maxLines = 1,

@@ -5,4 +5,5 @@ pytorch-metric-learning
 pyyaml
 torch
 torchvision
+ultralytics
 typing-extensions>=4.13

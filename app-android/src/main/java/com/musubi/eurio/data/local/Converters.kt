@@ -3,7 +3,6 @@ package com.musubi.eurio.data.local
 import android.util.Log
 import androidx.room.TypeConverter
 import com.musubi.eurio.domain.IssueType
-import com.musubi.eurio.domain.ScanSource
 import com.musubi.eurio.domain.SetKind
 
 // Converters Room — uniquement ce qu'on stocke vraiment côté local.
@@ -26,12 +25,6 @@ class Converters {
         }
         return parsed ?: SetKind.CURATED
     }
-
-    @TypeConverter
-    fun scanSourceToString(value: ScanSource): String = value.wireValue
-
-    @TypeConverter
-    fun stringToScanSource(value: String): ScanSource = ScanSource.fromWire(value)
 
     private companion object {
         const val TAG = "EurioConverters"
