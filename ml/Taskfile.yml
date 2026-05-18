@@ -9,6 +9,14 @@ vars:
 
 tasks:
   # ---------- Bootstrap ----------
+  venv-rebuild:
+    desc: "Force-rebuild .venv from scratch (use when the Nix devShell hash changed and the venv's pyvenv.cfg points to a stale store path)."
+    cmds:
+      - rm -rf .venv
+      - uv venv --system-site-packages
+      - uv pip install --python .venv/bin/python -e .
+      - "{{.VENV}}/python -c 'import boto3, sys; print(f\"boto3 {boto3.__version__}  exe={sys.executable}\")'"
+
   setup:
     desc: "Bootstrap .venv (idempotent). Creates a system-site-packages venv inheriting Nix devShell deps, then installs editable package + per-platform torch."
     cmds:

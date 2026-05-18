@@ -14,6 +14,11 @@ dependencies = [
   "pyyaml",
   "torch",
   "torchvision",
+  # YOLO11 detector — runtime dep du scrape. `scan/normalize_snap.py`
+  # appelle `ultralytics.YOLO` pour détecter les pièces sur les images
+  # eBay/Numista avant crop. Pas training-only : la pipeline detect_crop
+  # l'invoque sur chaque listing.
+  "ultralytics",
   # `xdsl` (transitive de litert-torch) pin typing-extensions<4.13, mais
   # le `pydantic-core` servi par le devShell Nix importe `Sentinel` qui
   # n'existe qu'à partir de 4.13. On force >=4.13 ici — xdsl tourne très

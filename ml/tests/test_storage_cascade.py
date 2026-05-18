@@ -15,6 +15,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+# 404-hook tests construct a botocore ClientError directly. Skip the whole
+# module on environments without botocore (e.g. the bare venv without the
+# Nix devShell) rather than fail every test in the file at collection time.
+pytest.importorskip("botocore")
+
 import storage
 from storage import cascade
 

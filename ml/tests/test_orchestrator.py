@@ -140,16 +140,10 @@ def test_download_and_detect_crop_idempotent(store: Store, tmp_path, monkeypatch
     """Run #1: 5 raws on disk + 5 image_assets with phash. Run #2: 0
     new files, 0 new crops. Audit visuel: chemins imprimés en stdout.
     """
-    # Redirect storage root inside tmp_path so we can inspect cleanly.
-    from sources._base import storage
-    monkeypatch.setattr(storage, "_STORAGE_ROOT", tmp_path / "sources")
-    # Reload the modules that captured the path at import-time.
-    import importlib
-    from sources._base.steps import download as dl_mod, detect_crop as dc_mod
-    importlib.reload(dl_mod)
-    importlib.reload(dc_mod)
+    # Redirect the read-through cache root inside tmp_path so we can inspect
+    # the on-disk artifacts the orchestrator writes through to MinIO.
+    monkeypatch.setenv("EURIO_CACHE_ROOT", str(tmp_path / "cache"))
     from sources._base import orchestrator as orch_mod
-    importlib.reload(orch_mod)
 
     adapter = MockAdapter()
     query = SourceQuery(source_id="mock")
@@ -157,12 +151,12 @@ def test_download_and_detect_crop_idempotent(store: Store, tmp_path, monkeypatch
     run1 = orch_mod.run_pipeline(adapter, query, store=store)
     conn = store._connection()
 
-    # 5 raws on disk
-    raws = list((tmp_path / "sources" / "mock" / "raw").rglob("*.jpg"))
+    # 5 raws materialized in the cache (upload_through writes both places).
+    raws = list((tmp_path / "cache" / "enrichment-raws" / "mock").rglob("*.jpg"))
     assert len(raws) == 5, f"expected 5 raws, got {len(raws)}: {raws}"
 
-    # 5 crops on disk
-    crops = sorted((tmp_path / "sources" / "mock" / "crops").rglob("*.png"))
+    # 5 crops in the cache (write-through to enrichment-crops bucket).
+    crops = sorted((tmp_path / "cache" / "enrichment-crops" / "mock").rglob("*.png"))
     assert len(crops) == 5, f"expected 5 crops, got {len(crops)}: {crops}"
 
     # 5 image_assets with phash, all status='pending_match' (no prior data).
@@ -380,10 +374,8 @@ def test_target_eurio_ids_loops_one_subquery_per_eurio_id(store: Store, tmp_path
     mock fixtures (so we get 2 items), the third doesn't match
     (no item yielded) — proving the loop runs even when one returns 0.
     """
-    # Reroute storage so we don't pollute the repo's ml/datasets/sources.
-    from sources._base import storage
-
-    monkeypatch.setattr(storage, "_STORAGE_ROOT", tmp_path / "sources")
+    # Reroute the read-through cache so we don't pollute ~/.cache/eurio.
+    monkeypatch.setenv("EURIO_CACHE_ROOT", str(tmp_path / "cache"))
 
     adapter = _RecordingMockAdapter()
     run_pipeline(
