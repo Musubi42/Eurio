@@ -14,7 +14,7 @@ services:
       MINIO_ROOT_PASSWORD_FILE: /run/secrets/minio_root_password
       # Public-facing scheme so MinIO returns correct redirect URLs.
       MINIO_SERVER_URL: https://eurio-s3.musubi.dev
-      MINIO_BROWSER_REDIRECT_URL: https://eurio-s3.musubi.dev/console
+      MINIO_BROWSER_REDIRECT_URL: https://eurio-s3-console.musubi.dev
     networks:
       - traefik
     labels:
@@ -28,6 +28,14 @@ services:
       - traefik.http.routers.eurio-minio-s3.tls.certresolver=letsencryptresolver
       - traefik.http.routers.eurio-minio-s3.service=eurio-minio-s3
       - traefik.http.services.eurio-minio-s3.loadbalancer.server.port=9000
+
+      # ── Console (admin UI, port 9001) ──
+      - traefik.http.routers.eurio-minio-console.rule=Host(`eurio-s3-console.musubi.dev`)
+      - traefik.http.routers.eurio-minio-console.entrypoints=websecure
+      - traefik.http.routers.eurio-minio-console.tls=true
+      - traefik.http.routers.eurio-minio-console.tls.certresolver=letsencryptresolver
+      - traefik.http.routers.eurio-minio-console.service=eurio-minio-console
+      - traefik.http.services.eurio-minio-console.loadbalancer.server.port=9001
 
       # ── Public CDN: eurio-images.musubi.dev → numista-canonical bucket ──
       # The middleware addPrefix lets the client see clean URLs like
