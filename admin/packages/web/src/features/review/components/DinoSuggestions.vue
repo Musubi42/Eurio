@@ -1,8 +1,8 @@
 <script setup lang="ts">
 // Affiche le top-K DINOv2 pour un crop (asset). V1 = aide visuelle, pas
 // de décision. Cliquer une suggestion émet `select` ; le parent
-// (SingleReviewView ou LotDetailDrawer) traduit en focus candidat /
-// pré-remplissage modal.
+// (SingleReviewView ou LotReviewDetailPage via ReviewRightColumn)
+// traduit en assign sur le crop actif.
 //
 // Le chargement est lazy : passer `reviewId` OU `assetId` selon le
 // contexte du drawer. 404 = no-op silencieux (Dino n'a pas tourné sur

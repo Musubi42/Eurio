@@ -1,17 +1,14 @@
 <script setup lang="ts">
-// Variante inline du sélecteur libre — vit dans la colonne droite du
-// SingleReviewView quand le mode est "free", remplaçant les Top N
-// candidats + DinoSuggestions. Cascade pays → dénom → année + résultats
-// en liste de rows (même style que DinoSuggestions standard) avec hover
-// preview au-dessus.
-//
-// Le modal CoinSearchModal continue d'exister pour LotReviewDetailPage,
-// où la place dans la colonne droite est déjà prise par les crop cards.
+// Sélecteur libre canonique — utilisé inline dans SingleReviewView
+// (colonne droite quand mode='free') et dans les pages lot
+// (LotReviewDetailPage / LotDetailDrawer) en remplacement de la liste
+// Isolates quand un assign est en cours. Cascade pays → dénom → année
+// par défaut, ou mode texte fuzzy via raccourci `/`.
 
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Search } from 'lucide-vue-next'
 import {
-  DENOMINATIONS, EURO_COUNTRIES, searchCoins, YEAR_RANGE,
+  DENOMINATIONS, EURO_COUNTRIES, fuzzySearchCoins, searchCoins, YEAR_RANGE,
   type CoinSearchEntry,
 } from '../composables/useCoinsSearch'
 import CoinHoverPreview from './CoinHoverPreview.vue'
@@ -28,6 +25,12 @@ const year = ref<number | null>(null)
 const results = ref<CoinSearchEntry[]>([])
 const loading = ref(false)
 
+// ─── State fuzzy ────────────────────────────────────────────────────────
+
+const fuzzyMode = ref(false)
+const fuzzyQuery = ref('')
+const fuzzyInput = ref<HTMLInputElement | null>(null)
+
 const COMMON_YEARS = computed<(number | null)[]>(() => {
   const out: (number | null)[] = [null]
   for (let y = YEAR_RANGE.max; y >= YEAR_RANGE.min; y--) out.push(y)
@@ -39,10 +42,14 @@ const selectedCountryMeta = computed(
 )
 
 const showCascadeHint = computed(
-  () => (!country.value || !denomination.value) && results.value.length === 0,
+  () => !fuzzyMode.value && (!country.value || !denomination.value) && results.value.length === 0,
+)
+const showFuzzyHint = computed(
+  () => fuzzyMode.value && fuzzyQuery.value.trim().length < 2 && results.value.length === 0,
 )
 
 watch([country, denomination, year], async () => {
+  if (fuzzyMode.value) return
   if (!country.value || !denomination.value) {
     results.value = []
     return
@@ -60,9 +67,24 @@ watch([country, denomination, year], async () => {
   }
 })
 
+watch(fuzzyQuery, async (q) => {
+  if (!fuzzyMode.value) return
+  if (q.trim().length < 2) {
+    results.value = []
+    return
+  }
+  loading.value = true
+  try {
+    results.value = await fuzzySearchCoins(q)
+  } finally {
+    loading.value = false
+  }
+})
+
 // ─── Pickers ────────────────────────────────────────────────────────────
 
 function pickCountry(code: string) {
+  if (fuzzyMode.value) exitFuzzyMode()
   country.value = country.value === code ? null : code
 }
 function pickDenomination(value: string) {
@@ -71,6 +93,40 @@ function pickDenomination(value: string) {
 function pickYear(y: number | null) {
   year.value = year.value === y ? null : y
 }
+
+// ─── Fuzzy toggle ───────────────────────────────────────────────────────
+
+function enterFuzzyMode() {
+  fuzzyMode.value = true
+  country.value = null
+  denomination.value = null
+  year.value = null
+  results.value = []
+  fuzzyQuery.value = ''
+  void nextTick(() => fuzzyInput.value?.focus())
+}
+
+function exitFuzzyMode() {
+  fuzzyMode.value = false
+  fuzzyQuery.value = ''
+  results.value = []
+}
+
+// ─── Keyboard ───────────────────────────────────────────────────────────
+// `/` active le mode fuzzy. Ignoré si l'utilisateur tape dans un input
+// (sinon impossible d'écrire un slash dans une textbox ailleurs sur la page).
+
+function handleKeydown(e: KeyboardEvent) {
+  if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+  if (e.metaKey || e.ctrlKey || e.altKey) return
+  if (e.key === '/' && !fuzzyMode.value) {
+    enterFuzzyMode()
+    e.preventDefault()
+  }
+}
+
+onMounted(() => window.addEventListener('keydown', handleKeydown))
+onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
 
 // ─── Hover preview ──────────────────────────────────────────────────────
 
@@ -111,17 +167,54 @@ function onRowLeave(eurioId: string) {
         <Search class="h-3 w-3" />
         Sélection libre
       </p>
+      <button
+        v-if="fuzzyMode"
+        type="button"
+        class="font-mono text-[10px] uppercase tracking-wider"
+        style="color: var(--ink-500);"
+        @click="exitFuzzyMode"
+      >
+        ← cascade
+      </button>
       <p
-        v-if="selectedCountryMeta"
+        v-else-if="selectedCountryMeta"
         class="font-mono text-[10px]"
         style="color: var(--ink-500);"
       >
         {{ selectedCountryMeta.code }} · {{ selectedCountryMeta.label }}
       </p>
+      <button
+        v-else
+        type="button"
+        class="inline-flex items-center gap-1 font-mono text-[10px]"
+        style="color: var(--ink-500);"
+        title="Recherche texte"
+        @click="enterFuzzyMode"
+      >
+        <kbd class="rounded px-1 py-0.5" style="background: var(--surface-1); border: 0.5px solid var(--surface-3); color: var(--ink-700);">/</kbd>
+        texte
+      </button>
     </header>
 
+    <!-- Mode fuzzy : input texte plein largeur -->
+    <div
+      v-if="fuzzyMode"
+      class="mt-3 flex items-center gap-2 rounded-md border px-2 py-1.5"
+      :style="{ borderColor: 'var(--surface-3)', background: 'var(--surface)' }"
+    >
+      <Search class="h-3.5 w-3.5 shrink-0" style="color: var(--ink-500);" />
+      <input
+        ref="fuzzyInput"
+        v-model="fuzzyQuery"
+        type="text"
+        placeholder="ex : BE 2 2002 · fr 50c · DE comm 2020"
+        class="flex-1 bg-transparent font-mono text-[11px] outline-none"
+        style="color: var(--ink);"
+      />
+    </div>
+
     <!-- 1. Pays — grille code-only, 7 cols × 4 rangées -->
-    <div class="mt-3">
+    <div v-if="!fuzzyMode" class="mt-3">
       <p
         class="mb-1.5 font-mono text-[9px] uppercase tracking-wider"
         style="color: var(--ink-500);"
@@ -218,11 +311,20 @@ function onRowLeave(eurioId: string) {
       </p>
 
       <p
+        v-else-if="showFuzzyHint"
+        class="rounded-md border-2 border-dashed px-3 py-4 text-center text-[11px]"
+        style="border-color: var(--surface-3); color: var(--ink-400);"
+      >
+        Tape au moins 2 caractères.
+      </p>
+
+      <p
         v-else-if="showCascadeHint"
         class="rounded-md border-2 border-dashed px-3 py-4 text-center text-[11px]"
         style="border-color: var(--surface-3); color: var(--ink-400);"
       >
-        Sélectionne un pays puis une dénomination.
+        Sélectionne un pays puis une dénomination<br />
+        ou tape <kbd class="mx-1 inline-block rounded px-1 py-0.5 font-mono text-[10px]" style="background: var(--surface-1); border: 0.5px solid var(--surface-3); color: var(--ink-700);">/</kbd> pour la recherche texte.
       </p>
 
       <p

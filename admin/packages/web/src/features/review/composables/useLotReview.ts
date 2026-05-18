@@ -78,6 +78,11 @@ export interface LotDetail {
   listing_key: string
   source: string
   target_eurio_id: string | null
+  /** ReviewCandidate enrichi de la cible eBay (image, label, pays/année).
+   *  Sert à pré-sélectionner la cible par défaut côté front lot, comme
+   *  ReviewItem.target_candidate côté single. null si target_eurio_id
+   *  est null ou la coin n'est pas dans le catalog. */
+  target_candidate: LotCandidate | null
   listing_title: string | null
   listing_price: number | null
   listing_currency: string
@@ -164,6 +169,10 @@ export async function fetchLots(
   }
 }
 
+function promoteCandidate(c: LotCandidate): LotCandidate {
+  return { ...c, canonical_thumb_url: withMlApi(c.canonical_thumb_url) ?? '' }
+}
+
 export async function fetchLot(listingKey: string): Promise<LotDetail> {
   const resp = await fetch(
     `${ML_API}/review-queue/lots/${encodeURIComponent(listingKey)}`,
@@ -172,12 +181,14 @@ export async function fetchLot(listingKey: string): Promise<LotDetail> {
   const body = (await resp.json()) as LotDetail
   return {
     ...body,
+    target_candidate: body.target_candidate ? promoteCandidate(body.target_candidate) : null,
     images: body.images.map((im) => ({
       ...im,
       raw_url: withMlApi(im.raw_url) ?? '',
       crops: im.crops.map((c) => ({
         ...c,
         crop_url: withMlApi(c.crop_url) ?? '',
+        candidate_eurio_ids: c.candidate_eurio_ids.map(promoteCandidate),
       })),
     })),
   }

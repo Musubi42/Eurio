@@ -1,21 +1,39 @@
-// Keyboard handler for lot drawer review.
-// Nomenclature alignée sur useReviewKeybinds (single) — mêmes touches, sémantique
-// adaptée au contexte multi-crop : il y a un "crop actif" dans la liste, J/K
-// déplacent le curseur, les actions s'appliquent au crop actif.
+// Keyboard handler for lot review.
+// Aligné sur useReviewKeybinds (single) avec deux spécificités lot :
+//   - J/K (et ↓/↑) naviguent entre crops actionables ;
+//   - ←/→ naviguent entre raws (multi-image listing) ;
+//   - 1-5 focusent un candidat (pas d'assign immédiat → cohérent single).
+//
+// Enter = validate (assigne le focused au crop actif puis advance, ou
+// submit le listing si toutes les décisions sont prises). Esc remonte
+// la cascade onCloseOverlay (help / free mode / page).
 
 import { onMounted, onUnmounted, type Ref } from 'vue'
 
 export interface LotReviewKeybindHandlers {
-  onAssignCandidate: (index: number) => void  // 1-5
-  onSubmit: () => void                         // Enter (submit listing si allDecided)
-  onRejectActive: () => void                   // R (reject reason="other")
-  onSkipActive: () => void                     // N
-  onOpenSearch: () => void                     // F
-  onSetFaceActive: (face: 'obverse' | 'reverse' | 'unknown') => void  // O/V/U
-  onNextCrop: () => void                       // J / ↓
-  onPrevCrop: () => void                       // K / ↑
-  onToggleHelp: () => void                     // ?
-  onCloseOverlay: () => void                   // Esc
+  /** 1-5 : focus un candidat Top N du crop actif (pas d'assign). */
+  onCandidateFocus: (index: number) => void
+  /** Enter : assigne le focused candidate au crop actif puis advance,
+   *  ou submit le listing si allDecided. */
+  onValidate: () => void
+  /** R : reject le crop actif (raison "other"). */
+  onRejectActive: () => void
+  /** N : skip le crop actif. */
+  onSkipActive: () => void
+  /** F : entre en mode 'free' (FreeSelectorPanel inline). */
+  onOpenSearch: () => void
+  /** O / V / U : face du crop actif (sur assign). */
+  onSetFaceActive: (face: 'obverse' | 'reverse' | 'unknown') => void
+  /** J / K / ↓ / ↑ : crop suivant / précédent. */
+  onNextCrop: () => void
+  onPrevCrop: () => void
+  /** ← / → : raw suivant / précédent (multi-image listing). */
+  onNextRaw: () => void
+  onPrevRaw: () => void
+  /** ? : toggle help overlay. */
+  onToggleHelp: () => void
+  /** Esc : cascade fermeture (help → free → bulk → page). */
+  onCloseOverlay: () => void
 }
 
 function isTypingTarget(el: EventTarget | null): boolean {
@@ -34,8 +52,7 @@ export function useLotReviewKeybinds(
     if (isTypingTarget(e.target)) return
     if (e.metaKey || e.ctrlKey || e.altKey) return
 
-    // Esc passe TOUJOURS — la cascade onCloseOverlay gère la priorité
-    // (help → search → bulk reject → bulk → drawer).
+    // Esc passe TOUJOURS — la cascade onCloseOverlay gère la priorité.
     if (e.key === 'Escape') {
       handlers.onCloseOverlay()
       return
@@ -46,12 +63,12 @@ export function useLotReviewKeybinds(
     switch (e.key) {
       case '1': case '2': case '3': case '4': case '5': {
         const idx = parseInt(e.key, 10) - 1
-        handlers.onAssignCandidate(idx)
+        handlers.onCandidateFocus(idx)
         e.preventDefault()
         break
       }
       case 'Enter':
-        handlers.onSubmit()
+        handlers.onValidate()
         e.preventDefault()
         break
       case 'r': case 'R':
@@ -86,6 +103,14 @@ export function useLotReviewKeybinds(
       case 'k': case 'K':
       case 'ArrowUp':
         handlers.onPrevCrop()
+        e.preventDefault()
+        break
+      case 'ArrowLeft':
+        handlers.onPrevRaw()
+        e.preventDefault()
+        break
+      case 'ArrowRight':
+        handlers.onNextRaw()
         e.preventDefault()
         break
       case '?':
