@@ -60,6 +60,25 @@ STOP_WORDS = {
     "th", "st", "nd", "rd",
 }
 
+# Country slug tokens that can appear inside an eurio_id slug
+# (eurio_id format: ``<iso2>-<year>-<denom>-<theme...>``). Numista
+# often repeats the country name inside the theme — e.g.
+# ``ad-2017-2eur-100-years-of-the-anthem-of-andorra``. These tokens
+# describe WHERE the coin is from, not WHAT the commemo celebrates,
+# so they don't discriminate sibling commemos within the same
+# (country, year). Dropping them avoids accepting a "Pays des Pyrénées"
+# listing under an "anthem" target just because both titles mention
+# Andorre (V-1 anomaly A4, 2026-05-18).
+COUNTRY_SLUG_TOKENS: set[str] = {
+    "andorra", "austria", "belgium", "bulgaria", "croatia", "cyprus",
+    "estonia", "finland", "france", "germany", "greece", "ireland",
+    "italy", "latvia", "lithuania", "luxembourg", "malta", "monaco",
+    "netherlands", "portugal", "slovakia", "slovenia", "spain",
+    "vatican",
+    # San Marino is hyphenated → its components appear as separate tokens.
+    "san", "marino",
+}
+
 # eurio_id slugs are English; eBay FR titles are French. Without a
 # bilingual matcher, theme tokens like ``anthem`` never match titles
 # like ``"100 ans de l'hymne d'Andorre"`` → 80%+ false reject rate
@@ -175,6 +194,8 @@ def _theme_keywords(eurio_id: str, max_words: int = 4) -> list[str]:
         if not tok:
             continue
         if tok in STOP_WORDS:
+            continue
+        if tok in COUNTRY_SLUG_TOKENS:
             continue
         if re.match(r"^\d+th$", tok) or re.match(r"^\d{3,4}$", tok):
             continue

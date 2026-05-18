@@ -122,6 +122,10 @@ def upsert_source_image(conn: sqlite3.Connection, row: SourceImageRow) -> str:
     payload = json.dumps(row.raw_payload, ensure_ascii=False) if row.raw_payload else None
     if existing:
         sid = existing["id"] if isinstance(existing, sqlite3.Row) else existing[0]
+        # Note (V-1 anomaly A3 fix 2026-05-18) : `n_crops_detected` is
+        # owned by the detect_crop step — every other writer leaves it
+        # alone. persist.py always passes the dataclass default (0) so
+        # listing it here used to reset the count to 0 on every rerun.
         conn.execute(
             """
             UPDATE source_images SET
@@ -131,7 +135,7 @@ def upsert_source_image(conn: sqlite3.Connection, row: SourceImageRow) -> str:
               storage_path=COALESCE(?, storage_path),
               width=COALESCE(?, width), height=COALESCE(?, height),
               bytes=COALESCE(?, bytes), sha256=COALESCE(?, sha256),
-              n_crops_detected=?, license=?, redistributable=?,
+              license=?, redistributable=?,
               is_lot_suspected=?,
               raw_payload_json=COALESCE(?, raw_payload_json),
               run_id=COALESCE(?, run_id),
@@ -144,7 +148,7 @@ def upsert_source_image(conn: sqlite3.Connection, row: SourceImageRow) -> str:
                 row.listing_price, row.listing_currency, row.condition_raw, row.seller_id,
                 row.storage_path,
                 row.width, row.height, row.bytes, row.sha256,
-                row.n_crops_detected, row.license, int(row.redistributable),
+                row.license, int(row.redistributable),
                 int(row.is_lot_suspected),
                 payload,
                 row.run_id,
