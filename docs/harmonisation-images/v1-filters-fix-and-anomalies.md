@@ -76,36 +76,43 @@ au sens qui déclenche un upload. Le run post-fix peuple
 
 ---
 
-## 3. Anomalies encore ouvertes (à traiter plus tard)
+## 3. Anomalies traitées dans un second chunk (fix V-1.b, 2026-05-18)
 
-### A3 — `n_crops_detected` affiché à 0 même quand `crops[]` est non-vide
+### A3 — `n_crops_detected` reset à 0 par persist.py *(fixé)*
 
-**Reproduction** : `GET /sources/ebay/runs/<id>/listings` retourne, pour
-chaque listing, à la fois `n_crops_detected: 0` et `crops: [...]` avec
-1-2 entrées. Le compteur n'est pas câblé au tableau.
+**Root cause** : `dedup.upsert_source_image` listait `n_crops_detected=?`
+dans son UPDATE branch et bindait la valeur à `row.n_crops_detected`.
+Or `persist.py` ne calcule jamais ce champ (default 0 sur la dataclass),
+donc chaque idempotent rerun du step persist réécrivait le compteur à 0,
+écrasant ce que `detect_crop.py` venait de poser.
 
-**Impact** : confusion debug, pas de bug fonctionnel.
+**Fix** : retirer `n_crops_detected` de l'UPDATE dans `dedup.py`. Le
+step `detect_crop` reste la seule autorité pour ce champ (il fait un
+UPDATE direct après chaque crop détecté). L'INSERT garde la colonne
+avec son default 0, ce qui est neutre.
 
-**Piste** : agrégation côté endpoint dans `ml/api/` (probablement le route
-qui construit la response /listings) ou compteur côté `detect_crop.py`
-qui n'est jamais mis à jour. À grepper sur `n_crops_detected`.
+**Migration** : one-shot SQL pour rebackfiller les 56 rows déjà
+corrompues à partir de `COUNT(*) FROM image_assets WHERE
+source_image_id = …`. Toutes les rows réalignées.
 
-### A4 — `theme_tokens` inclut le pays → accepte des sibling commemos
+### A4 — `theme_tokens` incluait le pays → acceptait sibling commemos *(fixé)*
 
-**Reproduction** : pour `ad-2017-2eur-100-years-of-the-anthem-of-andorra`,
-`_theme_keywords` retient `["anthem", "andorra"]`. Conséquence : une
-annonce "2 Euro Andorre 2017 Pays des Pyrénées" (autre commémo AD 2017)
-match sur "andorra"→"andorre" et passe `title_matches_theme`. La
-discrimination de commémos siblings repose alors uniquement sur le step
-`text_signal` en aval.
+**Root cause** : pour `ad-2017-2eur-100-years-of-the-anthem-of-andorra`,
+`_theme_keywords` retenait `["anthem", "andorra"]`. Une annonce
+"2 Euro Andorre 2017 Pays des Pyrénées" (autre commémo AD 2017)
+matchait sur "andorra"→"andorre" via le mapping FR du fix V-1.a, et
+passait à tort `title_matches_theme`. La discrimination siblings
+reposait alors uniquement sur `text_signal` en aval.
 
-**Impact** : faux positifs en review (un humain devra rejeter). Pas de
-contamination silencieuse car `text_signal` doit catch.
+**Fix** : ajout d'un set `COUNTRY_SLUG_TOKENS` (25 noms anglais des
+pays eurozone + microstates + "san"/"marino" pour San Marino) skippé
+en plus des `STOP_WORDS` dans `_theme_keywords`. Smoke test :
+`anthem` tokens ne matchent plus le titre "Pays des Pyrénées", et
+matchent toujours le titre "100 ans de l'hymne".
 
-**Piste** : `_theme_keywords` devrait dropper les tokens égaux au nom du
-pays (`coin.country_name` ou les valeurs de `ISO2_TO_NAME_FR`). Le pays
-est déjà couvert par la query — il n'apporte aucune discrimination
-intra-(country, year).
+**Impact attendu sur la précision** : sur ad-2017, ~30-40 listings
+"Pays des Pyrénées" passaient en review humain alors qu'ils n'auraient
+pas dû. Ils seront désormais `theme_mismatch` au scrape suivant.
 
 ### Bug-non-bug — 23 "errors" reportées dans `error_summary`
 
