@@ -34,7 +34,7 @@ import com.musubi.eurio.ui.nav.EurioNavHost
 import com.musubi.eurio.ui.theme.EurioTheme
 import kotlinx.coroutines.flow.first
 import com.musubi.eurio.data.repository.CoinViewData
-import com.musubi.eurio.features.scan.ScanState
+import com.musubi.eurio.features.scan.ScanUiState
 import org.json.JSONObject
 
 // Host activity unique. Phase 0 = nav shell M3 notched :
@@ -197,10 +197,10 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun resolveMockScanState(key: String): ScanState? = when (key) {
-        "idle" -> ScanState.Idle
-        "detecting" -> ScanState.Detecting
-        "matched" -> ScanState.Accepted(
+    private fun resolveMockScanState(key: String): ScanUiState? = when (key) {
+        "idle" -> ScanUiState.Idle
+        "detecting" -> ScanUiState.Detecting
+        "matched" -> ScanUiState.Accepted(
             coin = CoinViewData(
                 eurioId = "mock-2eur-fr-2024",
                 nameFr = "Jeux Olympiques Paris 2024",
@@ -214,8 +214,8 @@ class MainActivity : ComponentActivity() {
             confidence = 0.94f,
             alreadyOwned = false,
         )
-        "not-identified" -> ScanState.NotIdentified(top5 = emptyList())
-        "failure" -> ScanState.Failure(reason = "Pipeline error (mock)")
+        "not-identified" -> ScanUiState.NotIdentified(top5 = emptyList())
+        "failure" -> ScanUiState.Failure(reason = "Pipeline error (mock)")
         else -> null
     }
 
@@ -224,20 +224,27 @@ class MainActivity : ComponentActivity() {
         val jsonText = assets.open(path).bufferedReader().readText()
         val root = JSONObject(jsonText)
         val collection = root.getJSONArray("collection")
-        val entries = (0 until collection.length()).map { i ->
-            val item = collection.getJSONObject(i)
-            com.musubi.eurio.data.local.entities.VaultEntryEntity(
-                coinEurioId = item.getString("eurioId"),
-                scannedAt = item.getLong("addedAt"),
-                source = com.musubi.eurio.domain.ScanSource.MANUAL_ADD,
-                confidence = null,
-                notes = if (item.isNull("note")) null else item.getString("note"),
+        // Post-D24: one row per coin in `coin_in_vault`. The fixture may
+        // repeat the same eurioId across `collection[]` (legacy multi-scan
+        // semantics) — we collapse to MIN(addedAt) per coin and use the
+        // count as declared_count so the parity screenshots keep their
+        // multiplicity badges.
+        val grouped = (0 until collection.length())
+            .map { i -> collection.getJSONObject(i) }
+            .groupBy { it.getString("eurioId") }
+        val entries = grouped.map { (eurioId, items) ->
+            com.musubi.eurio.data.local.entities.CoinInVaultEntity(
+                eurioId = eurioId,
+                firstCapturedAt = items.minOf { it.getLong("addedAt") },
+                primaryCaptureId = null,
+                declaredCount = items.size,
+                notes = items.firstNotNullOfOrNull { it.takeIf { obj -> !obj.isNull("note") }?.getString("note") },
             )
         }
         val dao = app.database.vaultDao()
         dao.clearAll()
-        dao.insertAll(entries)
-        Log.i("Eurio", "[parity] Seeded vault with ${entries.size} entries from '$fixtureName'")
+        dao.upsertVaultAll(entries)
+        Log.i("Eurio", "[parity] Seeded vault with ${entries.size} coins from '$fixtureName'")
     }
 
     companion object {

@@ -232,6 +232,21 @@ class CoinAnalyzer(
     var triggerStrategy: TriggerStrategy = NoOpTriggerStrategy()
 
     /**
+     * Last analyzed full-res bitmap (display-oriented) held via a
+     * [java.lang.ref.SoftReference] so the JVM can reclaim it under
+     * memory pressure. Used by [com.musubi.eurio.features.scan.ScanViewModel]'s
+     * chunk-5d YUV fallback path: when the 3-usecase bind failed,
+     * `ImageCapture` is null and the archive draws from this reference
+     * instead. Replaced on every analyzed frame (peak footprint = one
+     * bitmap, ~8 MB on Pixel 9a).
+     *
+     * Null when no frame has been analyzed yet or the reference was
+     * cleared by the GC. Caller must null-check.
+     */
+    @Volatile
+    var lastAnalyzedFullResBitmap: java.lang.ref.SoftReference<android.graphics.Bitmap>? = null
+
+    /**
      * Hough center of the previous successfully-scored frame, used for the
      * motion sub-score. Reset to null when a frame produces no detection.
      */
@@ -297,7 +312,14 @@ class CoinAnalyzer(
                 val elapsed = System.currentTimeMillis() - start
 
                 onResult(result.copy(totalInferenceMs = elapsed))
-                bitmap.recycle()
+                // Chunk-5d — replace the SoftReference slot with the current
+                // frame and recycle the previous one. Holding the analyzed
+                // bitmap is safe here because analyzeBitmap returned;
+                // downstream consumers (YUV fallback in archive path) only
+                // *read* it, never recycle.
+                val previous = lastAnalyzedFullResBitmap?.get()
+                lastAnalyzedFullResBitmap = java.lang.ref.SoftReference(bitmap)
+                previous?.recycle()
             }
         } catch (e: Exception) {
             Log.e("CoinAnalyzer", "Analysis failed", e)

@@ -38,9 +38,9 @@ class RoomCatalogRepository(
     override fun observeCountryProgress(): Flow<List<CountryProgress>> {
         return combine(
             coinDao.observeAll(),
-            vaultDao.observeAll(),
-        ) { coins, vaultEntries ->
-            val ownedIds = vaultEntries.map { it.coinEurioId }.toSet()
+            vaultDao.observeAllEurioIds(),
+        ) { coins, ownedList ->
+            val ownedIds = ownedList.toSet()
             val eurozoneCodes = EUROZONE_COUNTRIES.keys
             coins
                 .filter { it.country.lowercase() in eurozoneCodes.map { c -> c.lowercase() } }
@@ -63,9 +63,9 @@ class RoomCatalogRepository(
     ): Flow<List<CoinWithOwnership>> {
         return combine(
             coinDao.observeAll(),
-            vaultDao.observeAll(),
-        ) { coins, vaultEntries ->
-            val ownedIds = vaultEntries.map { it.coinEurioId }.toSet()
+            vaultDao.observeAllEurioIds(),
+        ) { coins, ownedList ->
+            val ownedIds = ownedList.toSet()
             coins
                 .filter { it.country.equals(country, ignoreCase = true) }
                 .let { list ->

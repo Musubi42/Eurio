@@ -42,6 +42,7 @@ fun DebugBar(
     sheetState: SheetState,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
+    onStartBenchProtocol: (() -> Unit)? = null,
 ) {
     val config by DebugScanConfigStore.config.collectAsStateWithLifecycle()
 
@@ -81,6 +82,11 @@ fun DebugBar(
             SectionDivider()
             SectionHeader("Record")
             RecordSection(config)
+            if (onStartBenchProtocol != null) {
+                TextButton(onClick = onStartBenchProtocol) {
+                    Text("▶ Lancer le protocole bench (chunk-7b)")
+                }
+            }
 
             SectionDivider()
             Row(

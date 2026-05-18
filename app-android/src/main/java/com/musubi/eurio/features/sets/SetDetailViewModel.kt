@@ -52,7 +52,7 @@ class SetDetailViewModel(
 
     fun manualAdd(eurioId: String) {
         viewModelScope.launch {
-            vaultRepository.addCoin(eurioId, confidence = 0f)
+            vaultRepository.confirmPossession(eurioId)
             load() // refresh after adding
         }
     }

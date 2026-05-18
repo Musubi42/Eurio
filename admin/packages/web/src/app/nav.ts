@@ -1,4 +1,4 @@
-import { Brain, CircleAlert, ClipboardCheck, ClipboardList, Coins, Database, Eye, FlaskConical, LayoutDashboard, Layers, Network, Scale } from 'lucide-vue-next'
+import { Brain, CircleAlert, ClipboardCheck, ClipboardList, Coins, Database, Eye, FlaskConical, LayoutDashboard, Layers, Network, Scale, ShieldQuestion } from 'lucide-vue-next'
 import type { Component } from 'vue'
 
 export interface NavItem {
@@ -46,6 +46,12 @@ export const navSections: NavSection[] = [
         label: 'Revue Numista',
         icon: CircleAlert,
         route: '/coins/numista-review',
+      },
+      {
+        id: 'needs-review',
+        label: 'Revue référentiel',
+        icon: ShieldQuestion,
+        route: '/coins/needs-review',
       },
     ],
   },

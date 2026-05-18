@@ -132,7 +132,7 @@ private fun MesPiecesContent(
             .padding(horizontal = EurioSpacing.s5),
     ) {
         // Value total (face value sum)
-        val totalCents = coins.sumOf { it.coin.faceValueCents * it.count }
+        val totalCents = coins.sumOf { it.coin.faceValueCents * it.declaredCount }
         val euros = totalCents / 100
         val cents = totalCents % 100
         Text(

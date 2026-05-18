@@ -8,6 +8,9 @@ export
 market
 referential
 scan
+scripts
+sources
 state
+storage
 tests
 training

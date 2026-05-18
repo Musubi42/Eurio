@@ -54,9 +54,8 @@ interface SetDao {
     @Query(
         """
         SELECT sm.coin_eurio_id FROM set_members sm
-        INNER JOIN vault_entries v ON v.coin_eurio_id = sm.coin_eurio_id
+        INNER JOIN coin_in_vault v ON v.eurio_id = sm.coin_eurio_id
         WHERE sm.set_id = :setId
-        GROUP BY sm.coin_eurio_id
         """
     )
     suspend fun getOwnedMemberEurioIds(setId: String): List<String>
