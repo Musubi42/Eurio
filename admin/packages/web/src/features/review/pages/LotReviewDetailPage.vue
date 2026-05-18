@@ -17,17 +17,19 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  ArrowLeft, ArrowRight, Check, CheckCircle2, CheckSquare, ChevronDown,
-  Keyboard, Loader2, RotateCcw, Search, SkipForward, Square,
+  ArrowLeft, ArrowRight, Check, CheckCircle2, ChevronDown,
+  Keyboard, Loader2, RotateCcw, SkipForward,
   Trash2, X,
 } from 'lucide-vue-next'
 import {
   decideLot, fetchLot, LotReviewError,
-  type LotAssignment, type LotDetail, type LotRejectReason,
+  type LotAssignment, type LotCandidate, type LotDetail, type LotRejectReason,
 } from '../composables/useLotReview'
 import { useLotReviewKeybinds } from '../composables/useLotReviewKeybinds'
-import CoinSearchModal from '../components/CoinSearchModal.vue'
+import ReviewRightColumn from '../components/ReviewRightColumn.vue'
+import SplitCompare from '../components/SplitCompare.vue'
 import type { CoinSearchEntry } from '../composables/useCoinsSearch'
+import type { DinoSuggestion } from '../composables/useDinoSuggestions'
 
 const route = useRoute()
 const router = useRouter()
@@ -50,21 +52,24 @@ type PendingDecision =
   | { kind: 'skip' }
 const decisions = ref<Record<string, PendingDecision>>({})
 
-// Bulk selection.
-const selected = ref<Set<string>>(new Set())
-const bulkMode = computed(() => selected.value.size > 0)
-const bulkRejectOpen = ref(false)
-
-// Search modal target (single ou bulk).
-type SearchTarget = { kind: 'single'; assetId: string } | { kind: 'bulk' } | null
-const searchTarget = ref<SearchTarget>(null)
-
 // Active raw (image index) — défaut première image.
 const activeRawIndex = ref(0)
 
 // Active crop (cursor clavier) — index dans `actionableCrops`.
 const activeCropIndex = ref(0)
 const cropRowRefs = ref<Record<string, HTMLElement | null>>({})
+
+// ─── Colonne droite — state aligné single ──────────────────────────────
+// `mode` = 'auto' (Top N + Dino) ou 'free' (FreeSelectorPanel inline).
+// `focusedCandidateIdx` = quel candidat Top N est focused (null = aucun
+// ou la cible eBay l'est). `freeSearchCandidate` = sélection libre
+// pending (badge affiché en mode auto si ≠ cible).
+//
+// Reset à chaque changement de crop actif pour repartir sur un état
+// propre (la cible est de nouveau focused par défaut visuellement).
+const mode = ref<'auto' | 'free'>('auto')
+const focusedCandidateIdx = ref<number | null>(null)
+const freeSearchCandidate = ref<{ eurio_id: string; label: string } | null>(null)
 
 const REJECT_REASONS: { value: LotRejectReason; label: string }[] = [
   { value: 'not_a_coin', label: 'Pas une pièce' },
@@ -127,6 +132,29 @@ const overlayViewBox = computed(() => {
   return `0 0 ${im.raw_width} ${im.raw_height}`
 })
 
+// Candidat actuellement "focused" pour le crop actif. Sert à alimenter
+// SplitCompare (la canonique à droite). Ordre de priorité :
+//   1. freeSearchCandidate (sélection libre pending)
+//   2. Top N à focusedCandidateIdx
+//   3. cible eBay du listing (par défaut, comme single)
+//   4. null (aucun visuel canonique)
+const focusedCandidate = computed<LotCandidate | { eurio_id: string; label: string; canonical_thumb_url?: string } | null>(() => {
+  if (freeSearchCandidate.value) return freeSearchCandidate.value
+  const a = activeCrop.value
+  if (a && focusedCandidateIdx.value !== null) {
+    const c = a.crop.candidate_eurio_ids[focusedCandidateIdx.value]
+    if (c) return c
+  }
+  if (detail.value?.target_candidate) return detail.value.target_candidate
+  return null
+})
+
+const focusedCanonicalUrl = computed<string | null>(() => {
+  const f = focusedCandidate.value
+  if (!f) return null
+  return ('canonical_thumb_url' in f && f.canonical_thumb_url) || null
+})
+
 // ─── Loaders ───────────────────────────────────────────────────────────
 
 async function load(key: string) {
@@ -134,12 +162,12 @@ async function load(key: string) {
   error.value = null
   detail.value = null
   decisions.value = {}
-  selected.value = new Set()
-  bulkRejectOpen.value = false
   activeCropIndex.value = 0
   activeRawIndex.value = 0
   showHelp.value = false
-  searchTarget.value = null
+  mode.value = 'auto'
+  focusedCandidateIdx.value = null
+  freeSearchCandidate.value = null
   try {
     detail.value = await fetchLot(key)
   } catch (err) {
@@ -175,63 +203,45 @@ function clearDecision(assetId: string) {
   decisions.value = next
 }
 
-function openSearchFor(assetId: string) {
-  searchTarget.value = { kind: 'single', assetId }
+// ─── Handlers de la colonne droite (ReviewRightColumn) ─────────────────
+// Click = FOCUS uniquement (visuel), pas d'assign. Aligné sur single :
+// l'utilisateur presse Enter pour valider le focused candidate. Dino et
+// FreeSelectorPanel sont des actions explicites → assign immédiat.
+
+function enterFreeMode() {
+  mode.value = 'free'
 }
 
-function openBulkSearch() {
-  searchTarget.value = { kind: 'bulk' }
+function exitFreeMode() {
+  mode.value = 'auto'
 }
 
-function onSearchSelect(entry: CoinSearchEntry) {
-  const target = searchTarget.value
-  if (!target) return
-  const next = { ...decisions.value }
-  const apply = (id: string) => {
-    next[id] = { kind: 'assign', eurio_id: entry.eurio_id, label: entry.label, face: 'obverse' }
-  }
-  if (target.kind === 'single') apply(target.assetId)
-  else { for (const id of selected.value) apply(id); selected.value = new Set() }
-  decisions.value = next
-  searchTarget.value = null
+function onTargetFocus() {
+  // La cible eBay est le focus implicite quand focusedCandidateIdx est
+  // null et qu'aucune sélection libre n'est en attente. Cliquer la cible
+  // remet juste cet état "défaut" — pas d'assign.
+  focusedCandidateIdx.value = null
+  freeSearchCandidate.value = null
 }
 
-// ─── Bulk selection ────────────────────────────────────────────────────
-
-function toggleSelected(assetId: string) {
-  const next = new Set(selected.value)
-  if (next.has(assetId)) next.delete(assetId); else next.add(assetId)
-  selected.value = next
+function onCandidateFocus(idx: number) {
+  focusedCandidateIdx.value = idx
+  freeSearchCandidate.value = null
 }
 
-function clearSelection() {
-  selected.value = new Set()
-  bulkRejectOpen.value = false
+function onDinoSelect(s: DinoSuggestion) {
+  const a = activeCrop.value
+  if (!a) return
+  const label = `${s.eurio_id} (Dino · ${(s.sim * 100).toFixed(0)}%)`
+  assignToCandidate(a.crop.asset_id, s.eurio_id, label)
 }
 
-function bulkReject(reason: LotRejectReason) {
-  const next = { ...decisions.value }
-  for (const id of selected.value) next[id] = { kind: 'reject', reason }
-  decisions.value = next
-  bulkRejectOpen.value = false
-  selected.value = new Set()
-}
-
-function bulkSkip() {
-  const next = { ...decisions.value }
-  for (const id of selected.value) next[id] = { kind: 'skip' }
-  decisions.value = next
-  selected.value = new Set()
-}
-
-const allActionableSelected = computed(() => {
-  if (!totalActionable.value) return false
-  return actionableCrops.value.every(({ crop }) => selected.value.has(crop.asset_id))
-})
-
-function toggleAllSelection() {
-  if (allActionableSelected.value) clearSelection()
-  else selected.value = new Set(actionableCrops.value.map(({ crop }) => crop.asset_id))
+function onFreeSelect(entry: CoinSearchEntry) {
+  const a = activeCrop.value
+  if (!a) return
+  assignToCandidate(a.crop.asset_id, entry.eurio_id, entry.label)
+  freeSearchCandidate.value = { eurio_id: entry.eurio_id, label: entry.label }
+  exitFreeMode()
 }
 
 // ─── Active crop nav ───────────────────────────────────────────────────
@@ -241,6 +251,12 @@ function setActiveIndex(idx: number) {
   const max = actionableCrops.value.length - 1
   const clamped = Math.max(0, Math.min(max, idx))
   activeCropIndex.value = clamped
+  // Reset focus state pour repartir avec la cible eBay comme défaut
+  // visuel sur le nouveau crop (évite focusedCandidateIdx qui pointe sur
+  // un index inexistant si le crop précédent avait plus de candidats).
+  focusedCandidateIdx.value = null
+  freeSearchCandidate.value = null
+  if (mode.value === 'free') mode.value = 'auto'
   // Activate the matching raw (image_index) for visual sync with overlay.
   const target = actionableCrops.value[clamped]
   if (target && detail.value) {
@@ -304,27 +320,30 @@ function closePage() {
 
 // ─── Keyboard ──────────────────────────────────────────────────────────
 
-function kbAssignCandidate(idx: number) {
+function kbCandidateFocus(idx: number) {
+  // 1-5 : focus le Top N idx du crop actif (pas d'assign — l'utilisateur
+  // valide ensuite avec Enter, comme single).
   const a = activeCrop.value
   if (!a) return
-  const cand = a.crop.candidate_eurio_ids[idx]
-  if (!cand) return
-  assignToCandidate(a.crop.asset_id, cand.eurio_id, cand.label)
+  if (idx < 0 || idx >= a.crop.candidate_eurio_ids.length) return
+  focusedCandidateIdx.value = idx
+  freeSearchCandidate.value = null
 }
 function kbRejectActive() {
   const id = activeAssetId.value
   if (!id) return
   rejectCrop(id, 'other')
+  nextCrop()
 }
 function kbSkipActive() {
   const id = activeAssetId.value
   if (!id) return
   skipCrop(id)
+  nextCrop()
 }
 function kbOpenSearchActive() {
-  const id = activeAssetId.value
-  if (!id) return
-  openSearchFor(id)
+  if (!activeAssetId.value) return
+  enterFreeMode()
 }
 function kbSetFaceActive(face: 'obverse' | 'reverse' | 'unknown') {
   const id = activeAssetId.value
@@ -333,47 +352,77 @@ function kbSetFaceActive(face: 'obverse' | 'reverse' | 'unknown') {
   if (!cur || cur.kind !== 'assign') return
   decisions.value = { ...decisions.value, [id]: { ...cur, face } }
 }
-function kbSubmit() { if (allDecided.value && !submitting.value) void submit() }
+
+// Enter : si le listing est complètement décidé, submit. Sinon, assigne
+// le focused candidate (cible eBay par défaut) au crop actif et advance.
+// Si le crop actif a déjà une décision, on advance sans toucher.
+function kbValidate() {
+  if (!detail.value) return
+  if (allDecided.value && !submitting.value) {
+    void submit()
+    return
+  }
+  const a = activeCrop.value
+  if (!a) return
+  // Crop déjà décidé → on advance simplement
+  if (decisions.value[a.crop.asset_id]) {
+    nextCrop()
+    return
+  }
+  // Sinon assigne le focused
+  const f = focusedCandidate.value
+  if (!f) return
+  assignToCandidate(a.crop.asset_id, f.eurio_id, f.label)
+  nextCrop()
+}
+
+function nextRaw() {
+  if (!detail.value || detail.value.images.length < 2) return
+  const max = detail.value.images.length - 1
+  activeRawIndex.value = Math.min(max, activeRawIndex.value + 1)
+}
+function prevRaw() {
+  if (!detail.value || detail.value.images.length < 2) return
+  activeRawIndex.value = Math.max(0, activeRawIndex.value - 1)
+}
+
 function toggleHelp() { showHelp.value = !showHelp.value }
 function toggleOverlay() { showOverlay.value = !showOverlay.value }
 
 function closeOverlay() {
   if (showHelp.value) { showHelp.value = false; return }
-  if (searchTarget.value) { searchTarget.value = null; return }
-  if (bulkRejectOpen.value) { bulkRejectOpen.value = false; return }
-  if (bulkMode.value) { clearSelection(); return }
+  if (mode.value === 'free') { exitFreeMode(); return }
   closePage()
 }
 
+// En mode free l'input texte du FreeSelectorPanel peut capter `/` — on
+// désactive les autres raccourcis pour éviter le double-effet.
 const keyboardEnabled = computed(
-  () => !showHelp.value && searchTarget.value === null,
+  () => !showHelp.value && mode.value !== 'free',
 )
 
 useLotReviewKeybinds(keyboardEnabled, {
-  onAssignCandidate: kbAssignCandidate,
-  onSubmit: kbSubmit,
+  onCandidateFocus: kbCandidateFocus,
+  onValidate: kbValidate,
   onRejectActive: kbRejectActive,
   onSkipActive: kbSkipActive,
   onOpenSearch: kbOpenSearchActive,
   onSetFaceActive: kbSetFaceActive,
   onNextCrop: nextCrop,
   onPrevCrop: prevCrop,
+  onNextRaw: nextRaw,
+  onPrevRaw: prevRaw,
   onToggleHelp: toggleHelp,
   onCloseOverlay: closeOverlay,
 })
 
-// Additional global keybinds beyond the composable (D, ←, →).
+// D toggle reste géré ici (pas dans le composable car spécifique à
+// l'examination plate du lot).
 function onKeydown(e: KeyboardEvent) {
   if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
   if (e.metaKey || e.ctrlKey || e.altKey) return
-  if (showHelp.value || searchTarget.value) return
+  if (showHelp.value || mode.value === 'free') return
   if (e.key === 'd' || e.key === 'D') { toggleOverlay(); e.preventDefault() }
-  else if (e.key === 'ArrowLeft' && !actionableCrops.value.length) {
-    // Don't shadow if J/K context: arrows already used by composable for crop nav.
-    gotoPrev(); e.preventDefault()
-  } else if (e.key === 'ArrowRight' && !actionableCrops.value.length) {
-    gotoNext(); e.preventDefault()
-  }
 }
 onMounted(() => window.addEventListener('keydown', onKeydown))
 import { onUnmounted } from 'vue'
@@ -398,11 +447,6 @@ function cropDecisionTone(assetId: string): string {
   if (d.kind === 'reject') return 'var(--danger)'
   return 'var(--ink-500)'
 }
-function isAssignedTo(assetId: string, eurio_id: string): boolean {
-  const d = decisions.value[assetId]
-  return !!d && d.kind === 'assign' && d.eurio_id === eurio_id
-}
-
 function detectionTagPos(det: { cx: number; cy: number; r: number }) {
   // Place tag in the top-right of the circle (offset by ~r/√2).
   const off = det.r * 0.7
@@ -486,31 +530,36 @@ function detectionTagPos(det: { cx: number; cy: number; r: number }) {
       {{ error }}
     </div>
 
-    <!-- ═══ BODY (2 cols) ═══ -->
-    <div v-else-if="detail" class="grid flex-1 overflow-hidden" style="grid-template-columns: 1fr 480px;">
+    <!-- ═══ BODY (2 cols + footer span) ═══ -->
+    <div v-else-if="detail" class="flex flex-1 min-h-0 flex-col overflow-hidden">
+      <div class="grid flex-1 min-h-0 overflow-hidden" style="grid-template-columns: 1fr 560px;">
 
-      <!-- ─── EXAMINATION PLATE (Stage 1+2) ─── -->
-      <section class="flex flex-col gap-3 overflow-y-auto border-r px-7 py-5" style="border-color: var(--surface-3);">
-        <div class="flex items-baseline justify-between gap-4">
+      <!-- ─── LEFT : raws strip + central view + crops strip ─── -->
+      <section class="flex flex-col gap-3 overflow-hidden border-r px-7 py-5" style="border-color: var(--surface-3);">
+        <div class="flex items-baseline justify-between gap-4 shrink-0">
           <div class="flex items-center gap-2.5">
             <span class="kicker-line"></span>
-            <span class="kicker" style="color: var(--gold-600);">Examination plate</span>
+            <span class="kicker" style="color: var(--gold-600);">
+              {{ showOverlay ? 'Examination plate' : 'Crop ↔ canonique' }}
+            </span>
             <span class="font-mono text-[10px]" style="color: var(--ink-400);">
-              img {{ activeRawIndex + 1 }} / {{ detail.images.length }}
+              <template v-if="showOverlay">img {{ activeRawIndex + 1 }} / {{ detail.images.length }}</template>
+              <template v-else-if="activeCrop">crop {{ tagNumberByAssetId[activeCrop.crop.asset_id] ?? '?' }} / {{ totalActionable }}</template>
             </span>
           </div>
-          <div class="flex items-center gap-3">
-            <label class="inline-flex items-center gap-1.5 cursor-pointer text-[11px]" style="color: var(--ink-500);">
-              <input v-model="showOverlay" type="checkbox" class="hidden" />
-              <span class="switch" :class="{ on: showOverlay }"></span>
-              <span>Détections</span>
-              <kbd>D</kbd>
-            </label>
-          </div>
+          <label class="inline-flex items-center gap-1.5 cursor-pointer text-[11px]" style="color: var(--ink-500);">
+            <input v-model="showOverlay" type="checkbox" class="hidden" />
+            <span class="switch" :class="{ on: showOverlay }"></span>
+            <span>Détections</span>
+            <kbd>D</kbd>
+          </label>
         </div>
 
-        <!-- Raw selector strip -->
-        <div v-if="detail.images.length > 0" class="flex gap-1.5 overflow-x-auto pb-1">
+        <!-- Raw selector strip — visible quand >1 raws OU mode plate -->
+        <div
+          v-if="detail.images.length > 1 || showOverlay"
+          class="flex gap-1.5 overflow-x-auto pb-1 shrink-0"
+        >
           <button
             v-for="(im, idx) in detail.images"
             :key="im.source_image_id"
@@ -525,70 +574,77 @@ function detectionTagPos(det: { cx: number; cy: number; r: number }) {
           </button>
         </div>
 
-        <!-- Plate frame: raw + SVG overlay -->
-        <div
-          v-if="activeImage"
-          class="relative w-full overflow-hidden border"
-          :style="{ borderColor: 'var(--surface-3)', background: 'var(--surface-2)', aspectRatio: activeImage.raw_width && activeImage.raw_height ? `${activeImage.raw_width} / ${activeImage.raw_height}` : '4 / 3' }"
-        >
-          <img
-            :src="activeImage.raw_url"
-            :alt="`raw ${activeRawIndex + 1}`"
-            class="absolute inset-0 h-full w-full object-contain"
-          />
-          <svg
-            class="absolute inset-0 h-full w-full pointer-events-none"
-            :viewBox="overlayViewBox"
-            preserveAspectRatio="xMidYMid meet"
-            :style="{ opacity: showOverlay ? 1 : 0, transition: 'opacity 200ms ease' }"
+        <!-- Central view : examination plate (D ON) OU SplitCompare (D OFF) -->
+        <div class="flex-1 min-h-0 overflow-y-auto">
+          <!-- Examination plate : raw + SVG overlay (cercles détectés) -->
+          <div
+            v-if="showOverlay && activeImage"
+            class="relative w-full overflow-hidden border"
+            :style="{ borderColor: 'var(--surface-3)', background: 'var(--surface-2)', aspectRatio: activeImage.raw_width && activeImage.raw_height ? `${activeImage.raw_width} / ${activeImage.raw_height}` : '4 / 3' }"
           >
-            <!-- Detected (accepted) circles -->
-            <g>
-              <circle
-                v-for="(det, i) in activeImage.detections.filter(d => d.accepted)"
-                :key="`a-${i}`"
-                :cx="det.cx" :cy="det.cy" :r="det.r"
-                fill="none"
-                :stroke="det.crop_index !== null && assetIdByCropIndex[det.crop_index] === activeAssetId ? 'var(--gold-500)' : 'var(--gold-600)'"
-                :stroke-width="det.crop_index !== null && assetIdByCropIndex[det.crop_index] === activeAssetId ? 6 : 3"
-              />
-              <!-- Tag badges (number = crop_index + 1) -->
-              <g v-for="(det, i) in activeImage.detections.filter(d => d.accepted)" :key="`tag-${i}`">
+            <img
+              :src="activeImage.raw_url"
+              :alt="`raw ${activeRawIndex + 1}`"
+              class="absolute inset-0 h-full w-full object-contain"
+            />
+            <svg
+              class="absolute inset-0 h-full w-full pointer-events-none"
+              :viewBox="overlayViewBox"
+              preserveAspectRatio="xMidYMid meet"
+            >
+              <g>
                 <circle
-                  :cx="detectionTagPos(det).x"
-                  :cy="detectionTagPos(det).y"
-                  r="22" fill="var(--ink)" stroke="var(--surface)" stroke-width="3"
+                  v-for="(det, i) in activeImage.detections.filter(d => d.accepted)"
+                  :key="`a-${i}`"
+                  :cx="det.cx" :cy="det.cy" :r="det.r"
+                  fill="none"
+                  :stroke="det.crop_index !== null && assetIdByCropIndex[det.crop_index] === activeAssetId ? 'var(--gold-500)' : 'var(--gold-600)'"
+                  :stroke-width="det.crop_index !== null && assetIdByCropIndex[det.crop_index] === activeAssetId ? 6 : 3"
+                />
+                <g v-for="(det, i) in activeImage.detections.filter(d => d.accepted)" :key="`tag-${i}`">
+                  <circle
+                    :cx="detectionTagPos(det).x"
+                    :cy="detectionTagPos(det).y"
+                    r="22" fill="var(--ink)" stroke="var(--surface)" stroke-width="3"
+                  />
+                  <text
+                    :x="detectionTagPos(det).x" :y="detectionTagPos(det).y + 1"
+                    text-anchor="middle" dominant-baseline="central"
+                    font-family="JetBrains Mono" font-size="20" font-weight="600"
+                    fill="var(--surface)"
+                  >{{ (det.crop_index ?? 0) + 1 }}</text>
+                </g>
+              </g>
+              <g>
+                <circle
+                  v-for="(det, i) in activeImage.detections.filter(d => !d.accepted)"
+                  :key="`r-${i}`"
+                  :cx="det.cx" :cy="det.cy" :r="det.r"
+                  fill="none" stroke="var(--danger)" stroke-width="2"
+                  stroke-dasharray="8 6" opacity="0.7"
                 />
                 <text
-                  :x="detectionTagPos(det).x" :y="detectionTagPos(det).y + 1"
-                  text-anchor="middle" dominant-baseline="central"
-                  font-family="JetBrains Mono" font-size="20" font-weight="600"
-                  fill="var(--surface)"
-                >{{ (det.crop_index ?? 0) + 1 }}</text>
+                  v-for="(det, i) in activeImage.detections.filter(d => !d.accepted)"
+                  :key="`rt-${i}`"
+                  :x="det.cx" :y="det.cy + 4" text-anchor="middle"
+                  font-family="JetBrains Mono" font-size="14"
+                  fill="var(--danger)" opacity="0.8"
+                >{{ det.reject_reason }}</text>
               </g>
-            </g>
-            <!-- Rejected circles (red dashed) -->
-            <g>
-              <circle
-                v-for="(det, i) in activeImage.detections.filter(d => !d.accepted)"
-                :key="`r-${i}`"
-                :cx="det.cx" :cy="det.cy" :r="det.r"
-                fill="none" stroke="var(--danger)" stroke-width="2"
-                stroke-dasharray="8 6" opacity="0.7"
-              />
-              <text
-                v-for="(det, i) in activeImage.detections.filter(d => !d.accepted)"
-                :key="`rt-${i}`"
-                :x="det.cx" :y="det.cy + 4" text-anchor="middle"
-                font-family="JetBrains Mono" font-size="14"
-                fill="var(--danger)" opacity="0.8"
-              >{{ det.reject_reason }}</text>
-            </g>
-          </svg>
+            </svg>
+          </div>
+
+          <!-- SplitCompare : crop actif ↔ canonique du candidat focused -->
+          <SplitCompare
+            v-else-if="!showOverlay && activeCrop"
+            :crop-url="activeCrop.crop.crop_url"
+            :canonical-url="focusedCanonicalUrl"
+            :bbox="activeCrop.crop.bbox"
+          />
         </div>
 
-        <!-- Plate footnote -->
-        <div v-if="activeImage" class="flex flex-wrap items-baseline gap-3 font-mono text-[10px]" style="color: var(--ink-500);">
+        <!-- Plate footnote (D ON uniquement) -->
+        <div v-if="showOverlay && activeImage" class="flex flex-wrap items-baseline gap-3 font-mono text-[10px] shrink-0" style="color: var(--ink-500);">
           <span v-if="activeImage.raw_width && activeImage.raw_height">
             <strong style="color: var(--ink-700); font-weight: 500;">{{ activeImage.raw_width }} × {{ activeImage.raw_height }}</strong>
           </span>
@@ -602,263 +658,154 @@ function detectionTagPos(det: { cx: number; cy: number; r: number }) {
             </template>
           </span>
         </div>
-      </section>
 
-      <!-- ─── ISOLATES (Stage 3) ─── -->
-      <section class="flex flex-col overflow-hidden" style="background: var(--surface-1);">
-        <div class="flex items-baseline justify-between gap-3 px-6 py-4 border-b" style="border-color: var(--surface-3);">
-          <div>
-            <span class="kicker" style="color: var(--gold-600);">Isolates</span>
-            <span class="ml-2 font-mono text-[10px]" style="color: var(--ink-400);">
-              {{ totalActionable }} specimen{{ totalActionable > 1 ? 's' : '' }} à résoudre
-            </span>
-          </div>
-          <div class="flex items-center gap-2">
+        <!-- Crops strip : cards horizontal, click → setActiveIndex -->
+        <div v-if="actionableCrops.length" class="shrink-0">
+          <p class="mb-1.5 font-mono text-[10px] uppercase tracking-wider" style="color: var(--ink-500);">
+            Crops · <span style="color: var(--gold-600);">{{ decidedCount }}</span> / {{ totalActionable }} décidés
+          </p>
+          <div class="flex gap-2 overflow-x-auto pb-1">
             <button
-              v-if="totalActionable > 0"
-              class="inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 font-mono text-[10px] transition-colors"
+              v-for="({ crop, image }, idx) in actionableCrops"
+              :key="crop.asset_id"
+              :ref="(el) => setRowRef(crop.asset_id, el)"
+              type="button"
+              class="crop-strip-card relative flex shrink-0 flex-col items-stretch gap-1 rounded-md border p-1.5 transition-all"
               :style="{
-                borderColor: 'var(--surface-3)',
-                background: allActionableSelected ? 'color-mix(in srgb, var(--indigo-700) 8%, var(--surface-1))' : 'var(--surface-1)',
-                color: allActionableSelected ? 'var(--indigo-700)' : 'var(--ink-500)',
+                width: '88px',
+                borderColor: decisions[crop.asset_id] ? cropDecisionTone(crop.asset_id) : 'var(--surface-3)',
+                background: idx === activeCropIndex
+                  ? 'color-mix(in srgb, var(--gold-600) 8%, var(--surface))'
+                  : decisions[crop.asset_id]
+                    ? `color-mix(in srgb, ${cropDecisionTone(crop.asset_id)} 5%, var(--surface))`
+                    : 'var(--surface)',
+                boxShadow: idx === activeCropIndex ? '0 0 0 2px var(--gold-600)' : 'none',
               }"
-              :title="allActionableSelected ? 'Tout désélectionner' : 'Tout sélectionner'"
-              @click="toggleAllSelection"
+              :title="`img ${image.image_index ?? '?'} · crop ${crop.crop_index}`"
+              @click="setActiveIndex(idx)"
             >
-              <CheckSquare v-if="allActionableSelected" class="h-3 w-3" />
-              <Square v-else class="h-3 w-3" />
-              {{ allActionableSelected ? 'tout désélec.' : 'tout sélec.' }}
+              <!-- Tag badge top-left -->
+              <span
+                class="absolute -top-1.5 -left-1.5 flex h-5 w-5 items-center justify-center rounded-full font-mono text-[10px] font-semibold"
+                :style="{
+                  background: idx === activeCropIndex || decisions[crop.asset_id]?.kind === 'assign'
+                    ? 'var(--gold-600)'
+                    : decisions[crop.asset_id]?.kind === 'reject'
+                      ? 'var(--danger)'
+                      : 'var(--ink)',
+                  color: 'var(--surface)',
+                }"
+              >{{ tagNumberByAssetId[crop.asset_id] ?? idx + 1 }}</span>
+
+              <!-- Thumbnail -->
+              <div class="aspect-square overflow-hidden rounded border" style="border-color: var(--surface-3); background: var(--surface-1);">
+                <img :src="crop.crop_url" :alt="`crop ${crop.crop_index}`" class="h-full w-full object-cover" loading="lazy" />
+              </div>
+
+              <!-- Decision badge -->
+              <p
+                v-if="cropDecisionLabel(crop.asset_id)"
+                class="truncate font-mono text-[9px]"
+                :style="{ color: cropDecisionTone(crop.asset_id) }"
+                :title="cropDecisionLabel(crop.asset_id) ?? ''"
+              >
+                {{ cropDecisionLabel(crop.asset_id) }}
+              </p>
+              <p v-else class="font-mono text-[9px] opacity-50" style="color: var(--ink-500);">en attente</p>
             </button>
-            <span class="font-mono text-[10px]" style="color: var(--ink-500);">
-              <strong style="color: var(--gold-600);">{{ decidedCount }}</strong> / {{ totalActionable }}
-            </span>
           </div>
         </div>
-
-        <ul class="flex-1 overflow-y-auto p-3 space-y-2">
-          <li v-if="!actionableCrops.length" class="rounded-md border-2 border-dashed px-4 py-8 text-center text-sm" style="border-color: var(--surface-3); color: var(--ink-400);">
-            Aucun crop en review pour ce listing.
-          </li>
-
-          <li
-            v-for="({ crop, image }, idx) in actionableCrops"
-            :key="crop.asset_id"
-            :ref="(el) => setRowRef(crop.asset_id, el)"
-            class="relative flex gap-3 rounded-md border px-3 py-2 transition-shadow cursor-pointer"
-            :style="{
-              borderColor: selected.has(crop.asset_id)
-                ? 'var(--indigo-700)'
-                : decisions[crop.asset_id] ? cropDecisionTone(crop.asset_id) : 'var(--surface-3)',
-              background: selected.has(crop.asset_id)
-                ? 'color-mix(in srgb, var(--indigo-700) 5%, var(--surface))'
-                : decisions[crop.asset_id]
-                  ? `color-mix(in srgb, ${cropDecisionTone(crop.asset_id)} 5%, var(--surface))`
-                  : 'var(--surface)',
-              boxShadow: idx === activeCropIndex ? '0 0 0 2px var(--gold-600)' : 'none',
-            }"
-            @click="setActiveIndex(idx)"
-          >
-            <!-- Crop tag (number, top-left) -->
-            <div
-              class="absolute -top-2 -left-2 flex h-6 w-6 items-center justify-center rounded-full font-mono text-[11px] font-semibold"
-              :style="{
-                background: idx === activeCropIndex || decisions[crop.asset_id]?.kind === 'assign'
-                  ? 'var(--gold-600)'
-                  : decisions[crop.asset_id]?.kind === 'reject'
-                    ? 'var(--danger)'
-                    : 'var(--ink)',
-                color: 'var(--surface)',
-              }"
-            >{{ tagNumberByAssetId[crop.asset_id] ?? idx + 1 }}</div>
-
-            <!-- Bulk checkbox (top-right) -->
-            <button
-              type="button"
-              class="absolute top-2 right-2 flex h-4 w-4 items-center justify-center rounded border transition-colors"
-              :style="{
-                borderColor: selected.has(crop.asset_id) ? 'var(--indigo-700)' : 'var(--surface-3)',
-                background: selected.has(crop.asset_id) ? 'var(--indigo-700)' : 'var(--surface-1)',
-                color: 'var(--surface)',
-              }"
-              :title="selected.has(crop.asset_id) ? 'Désélectionner' : 'Sélectionner'"
-              @click.stop="toggleSelected(crop.asset_id)"
-            >
-              <Check v-if="selected.has(crop.asset_id)" class="h-3 w-3" />
-            </button>
-
-            <!-- Crop thumb -->
-            <div class="h-16 w-16 shrink-0 overflow-hidden rounded-full border" style="border-color: var(--surface-3); background: var(--surface-1);">
-              <img :src="crop.crop_url" :alt="`crop ${crop.crop_index}`" class="h-full w-full object-cover" loading="lazy" />
-            </div>
-
-            <!-- Crop body -->
-            <div class="flex min-w-0 flex-1 flex-col gap-1.5">
-              <div class="flex items-baseline justify-between pr-6">
-                <p class="font-mono text-[10px]" style="color: var(--ink-500);">
-                  img {{ image.image_index ?? '?' }} · crop {{ crop.crop_index }}
-                </p>
-                <p
-                  v-if="cropDecisionLabel(crop.asset_id)"
-                  class="font-mono text-[10px]"
-                  :style="{ color: cropDecisionTone(crop.asset_id) }"
-                >
-                  {{ cropDecisionLabel(crop.asset_id) }}
-                </p>
-              </div>
-
-              <!-- Top candidates -->
-              <div v-if="crop.candidate_eurio_ids.length" class="flex flex-wrap gap-1">
-                <button
-                  v-for="cand in crop.candidate_eurio_ids.slice(0, 3)"
-                  :key="cand.eurio_id"
-                  type="button"
-                  class="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[10px] transition-colors"
-                  :style="{
-                    borderColor: isAssignedTo(crop.asset_id, cand.eurio_id) ? 'var(--success)' : 'var(--surface-3)',
-                    color: isAssignedTo(crop.asset_id, cand.eurio_id) ? 'var(--success)' : 'var(--ink-700)',
-                    background: 'var(--surface-1)',
-                  }"
-                  :title="cand.label"
-                  @click.stop="assignToCandidate(crop.asset_id, cand.eurio_id, cand.label)"
-                >
-                  {{ cand.eurio_id }}
-                  <span style="color: var(--ink-400);">{{ (cand.score * 100).toFixed(0) }}%</span>
-                </button>
-              </div>
-
-              <!-- Actions -->
-              <div class="flex flex-wrap items-center gap-1.5">
-                <button
-                  type="button"
-                  class="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 font-mono text-[10px] transition-colors"
-                  style="border-color: var(--surface-3); color: var(--indigo-700); background: var(--surface);"
-                  @click.stop="openSearchFor(crop.asset_id)"
-                >
-                  <Search class="h-2.5 w-2.5" /> Assigner…
-                </button>
-                <details class="relative" @click.stop>
-                  <summary
-                    class="inline-flex cursor-pointer items-center gap-1 rounded-md border px-2 py-0.5 font-mono text-[10px] list-none"
-                    style="border-color: var(--surface-3); color: var(--danger); background: var(--surface);"
-                  >
-                    <Trash2 class="h-2.5 w-2.5" /> Rejeter
-                    <ChevronDown class="h-2.5 w-2.5 opacity-60" />
-                  </summary>
-                  <div
-                    class="absolute right-0 z-10 mt-1 flex flex-col rounded-md border shadow-lg"
-                    style="border-color: var(--surface-3); background: var(--surface); min-width: 180px;"
-                  >
-                    <button
-                      v-for="r in REJECT_REASONS"
-                      :key="r.value"
-                      type="button"
-                      class="px-3 py-1.5 text-left text-[11px] transition-colors"
-                      style="color: var(--ink-700);"
-                      @mouseenter="(e) => ((e.currentTarget as HTMLElement).style.background = 'var(--surface-1)')"
-                      @mouseleave="(e) => ((e.currentTarget as HTMLElement).style.background = 'transparent')"
-                      @click="(e) => { rejectCrop(crop.asset_id, r.value); ((e.currentTarget as HTMLElement).closest('details') as HTMLDetailsElement).open = false }"
-                    >
-                      {{ r.label }}
-                    </button>
-                  </div>
-                </details>
-                <button
-                  type="button"
-                  class="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 font-mono text-[10px] transition-colors"
-                  style="border-color: var(--surface-3); color: var(--ink-500); background: var(--surface);"
-                  @click.stop="skipCrop(crop.asset_id)"
-                >
-                  <SkipForward class="h-2.5 w-2.5" /> Skip
-                </button>
-                <button
-                  v-if="decisions[crop.asset_id]"
-                  type="button"
-                  class="inline-flex items-center gap-1 rounded-md px-2 py-0.5 font-mono text-[10px] transition-colors"
-                  style="color: var(--ink-400);"
-                  title="Annuler la décision"
-                  @click.stop="clearDecision(crop.asset_id)"
-                >
-                  <RotateCcw class="h-2.5 w-2.5" />
-                </button>
-              </div>
-            </div>
-          </li>
-        </ul>
-
-        <!-- Bulk sub-footer -->
-        <Transition name="bulk">
-          <div
-            v-if="bulkMode"
-            class="flex flex-wrap items-center justify-between gap-3 border-t px-5 py-2.5"
-            style="
-              border-color: var(--indigo-700);
-              background: color-mix(in srgb, var(--indigo-700) 6%, var(--surface));
-            "
-          >
-            <p class="font-mono text-[11px]" style="color: var(--indigo-700);">
-              <strong>{{ selected.size }}</strong>
-              <span class="ml-1 uppercase tracking-wider opacity-80">crop{{ selected.size > 1 ? 's' : '' }} sélectionné{{ selected.size > 1 ? 's' : '' }}</span>
-            </p>
-            <div class="flex flex-wrap items-center gap-1.5">
-              <button class="bulk-btn" style="border-color: var(--indigo-700); color: var(--indigo-700);" @click="openBulkSearch">
-                <Search class="h-3 w-3" /> Assigner…
-              </button>
-              <details class="relative" :open="bulkRejectOpen" @toggle="(e) => (bulkRejectOpen = (e.currentTarget as HTMLDetailsElement).open)">
-                <summary class="bulk-btn" style="border-color: var(--danger); color: var(--danger);">
-                  <Trash2 class="h-3 w-3" /> Rejeter <ChevronDown class="h-3 w-3 opacity-60" />
-                </summary>
-                <div
-                  class="absolute right-0 bottom-full z-10 mb-1 flex flex-col rounded-md border shadow-lg"
-                  style="border-color: var(--surface-3); background: var(--surface); min-width: 180px;"
-                >
-                  <button
-                    v-for="r in REJECT_REASONS" :key="r.value"
-                    type="button"
-                    class="px-3 py-1.5 text-left text-[11px]"
-                    style="color: var(--ink-700);"
-                    @mouseenter="(e) => ((e.currentTarget as HTMLElement).style.background = 'var(--surface-1)')"
-                    @mouseleave="(e) => ((e.currentTarget as HTMLElement).style.background = 'transparent')"
-                    @click="bulkReject(r.value)"
-                  >{{ r.label }}</button>
-                </div>
-              </details>
-              <button class="bulk-btn" style="border-color: var(--surface-3); color: var(--ink-700);" @click="bulkSkip">
-                <SkipForward class="h-3 w-3" /> Skip
-              </button>
-              <button class="bulk-btn" style="color: var(--ink-500); border: none;" @click="clearSelection">
-                <X class="h-3 w-3" /> Désélec.
-              </button>
-            </div>
-          </div>
-        </Transition>
-
-        <!-- Footer principal -->
-        <footer class="flex items-center justify-between gap-4 border-t px-5 py-3" style="border-color: var(--surface-3); background: var(--surface);">
-          <div class="flex-1">
-            <div class="h-1 overflow-hidden" style="background: var(--surface-2);">
-              <div class="h-full transition-all duration-300" :style="{
-                width: totalActionable ? `${(decidedCount / totalActionable) * 100}%` : '0%',
-                background: 'linear-gradient(90deg, var(--gold-600), var(--gold-500))',
-              }"></div>
-            </div>
-            <p class="mt-1.5 font-mono text-[10px]" style="color: var(--ink-400);">
-              <kbd>J</kbd>/<kbd>K</kbd> nav · <kbd>1-5</kbd> assign · <kbd>F</kbd> search · <kbd>D</kbd> détections · <kbd>?</kbd> aide
-            </p>
-          </div>
-          <div class="flex items-center gap-2">
-            <button class="btn" @click="closePage">Annuler</button>
-            <button
-              class="btn btn--primary"
-              :disabled="!allDecided || submitting"
-              @click="submit"
-            >
-              <Loader2 v-if="submitting" class="h-3 w-3 animate-spin" />
-              <Check v-else class="h-3 w-3" />
-              Valider listing →
-            </button>
-          </div>
-        </footer>
       </section>
+
+      <!-- ─── RIGHT : ReviewRightColumn (partagée avec single) ─── -->
+      <section class="flex flex-col overflow-hidden p-4" style="background: var(--surface-1);">
+        <ReviewRightColumn
+          :target="detail.target_candidate ?? null"
+          :candidates="activeCrop?.crop.candidate_eurio_ids ?? []"
+          :mode="mode"
+          :focused-candidate-idx="focusedCandidateIdx"
+          :free-search-candidate="freeSearchCandidate"
+          :asset-id="activeAssetId"
+          class="flex-1 min-h-0"
+          @target-focus="onTargetFocus"
+          @candidate-focus="onCandidateFocus"
+          @dino-select="onDinoSelect"
+          @free-select="onFreeSelect"
+        />
+      </section>
+      </div>
+
+      <!-- Footer principal -->
+      <footer class="flex items-center justify-between gap-4 border-t px-5 py-3 shrink-0" style="border-color: var(--surface-3); background: var(--surface);">
+        <!-- Actions sur le crop actif (clavier-first, mais cliquable aussi) -->
+        <div v-if="activeCrop" class="flex items-center gap-1.5">
+          <details class="relative" @click.stop>
+            <summary
+              class="inline-flex cursor-pointer items-center gap-1 rounded-md border px-2 py-1 font-mono text-[10px] list-none"
+              style="border-color: var(--surface-3); color: var(--danger); background: var(--surface);"
+            >
+              <Trash2 class="h-3 w-3" /> Rejeter <kbd>R</kbd> <ChevronDown class="h-3 w-3 opacity-60" />
+            </summary>
+            <div
+              class="absolute left-0 bottom-full z-10 mb-1 flex flex-col rounded-md border shadow-lg"
+              style="border-color: var(--surface-3); background: var(--surface); min-width: 180px;"
+            >
+              <button
+                v-for="r in REJECT_REASONS"
+                :key="r.value"
+                type="button"
+                class="px-3 py-1.5 text-left text-[11px]"
+                style="color: var(--ink-700);"
+                @mouseenter="(e) => ((e.currentTarget as HTMLElement).style.background = 'var(--surface-1)')"
+                @mouseleave="(e) => ((e.currentTarget as HTMLElement).style.background = 'transparent')"
+                @click="(e) => { kbRejectActive(); rejectCrop(activeAssetId!, r.value); ((e.currentTarget as HTMLElement).closest('details') as HTMLDetailsElement).open = false }"
+              >{{ r.label }}</button>
+            </div>
+          </details>
+          <button
+            type="button"
+            class="inline-flex items-center gap-1 rounded-md border px-2 py-1 font-mono text-[10px]"
+            style="border-color: var(--surface-3); color: var(--ink-500); background: var(--surface);"
+            @click="kbSkipActive"
+          >
+            <SkipForward class="h-3 w-3" /> Skip <kbd>N</kbd>
+          </button>
+          <button
+            v-if="activeAssetId && decisions[activeAssetId]"
+            type="button"
+            class="inline-flex items-center gap-1 rounded-md px-2 py-1 font-mono text-[10px]"
+            style="color: var(--ink-400);"
+            title="Annuler la décision sur ce crop"
+            @click="clearDecision(activeAssetId)"
+          >
+            <RotateCcw class="h-3 w-3" /> Annuler
+          </button>
+        </div>
+
+        <div class="flex-1 mx-4">
+          <div class="h-1 overflow-hidden" style="background: var(--surface-2);">
+            <div class="h-full transition-all duration-300" :style="{
+              width: totalActionable ? `${(decidedCount / totalActionable) * 100}%` : '0%',
+              background: 'linear-gradient(90deg, var(--gold-600), var(--gold-500))',
+            }"></div>
+          </div>
+          <p class="mt-1.5 font-mono text-[10px]" style="color: var(--ink-400);">
+            <kbd>J</kbd>/<kbd>K</kbd> crop · <kbd>←</kbd>/<kbd>→</kbd> raw · <kbd>1-5</kbd> focus · <kbd>⏎</kbd> valider · <kbd>F</kbd> free · <kbd>D</kbd> détections · <kbd>?</kbd> aide
+          </p>
+        </div>
+        <div class="flex items-center gap-2">
+          <button class="btn" @click="closePage">Annuler</button>
+          <button
+            class="btn btn--primary"
+            :disabled="!allDecided || submitting"
+            @click="submit"
+          >
+            <Loader2 v-if="submitting" class="h-3 w-3 animate-spin" />
+            <Check v-else class="h-3 w-3" />
+            Valider listing →
+          </button>
+        </div>
+      </footer>
     </div>
 
     <!-- ═══ Toast décision ═══ -->
@@ -878,13 +825,6 @@ function detectionTagPos(det: { cx: number; cy: number; r: number }) {
       </div>
     </Transition>
 
-    <!-- ═══ Search modal ═══ -->
-    <CoinSearchModal
-      :open="searchTarget !== null"
-      @close="searchTarget = null"
-      @select="onSearchSelect"
-    />
-
     <!-- ═══ Help overlay ═══ -->
     <div
       v-if="showHelp"
@@ -903,22 +843,24 @@ function detectionTagPos(det: { cx: number; cy: number; r: number }) {
         <dl class="mt-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
           <dt class="font-mono text-[12px]" style="color: var(--ink-700);">J / K · ↓ ↑</dt>
           <dd style="color: var(--ink-500);">Crop actif suivant / précédent</dd>
+          <dt class="font-mono text-[12px]" style="color: var(--ink-700);">← / →</dt>
+          <dd style="color: var(--ink-500);">Raw suivant / précédent (multi-image)</dd>
           <dt class="font-mono text-[12px]" style="color: var(--ink-700);">1 – 5</dt>
-          <dd style="color: var(--ink-500);">Assigner le candidat top-N au crop actif</dd>
+          <dd style="color: var(--ink-500);">Focus le candidat Top N du crop actif</dd>
+          <dt class="font-mono text-[12px]" style="color: var(--ink-700);">⏎</dt>
+          <dd style="color: var(--ink-500);">Valider crop (assigne focused + advance) ou submit listing si tout décidé</dd>
           <dt class="font-mono text-[12px]" style="color: var(--ink-700);">F</dt>
-          <dd style="color: var(--ink-500);">Sélecteur libre (CoinSearchModal)</dd>
+          <dd style="color: var(--ink-500);">Sélection libre (FreeSelectorPanel inline)</dd>
           <dt class="font-mono text-[12px]" style="color: var(--ink-700);">R</dt>
-          <dd style="color: var(--ink-500);">Rejeter le crop actif (raison <em>other</em>)</dd>
+          <dd style="color: var(--ink-500);">Rejeter le crop actif (raison <em>other</em>) + advance</dd>
           <dt class="font-mono text-[12px]" style="color: var(--ink-700);">N</dt>
-          <dd style="color: var(--ink-500);">Skip le crop actif</dd>
+          <dd style="color: var(--ink-500);">Skip le crop actif + advance</dd>
           <dt class="font-mono text-[12px]" style="color: var(--ink-700);">O / V / U</dt>
           <dd style="color: var(--ink-500);">Face : avers / revers / inconnu (sur assign)</dd>
           <dt class="font-mono text-[12px]" style="color: var(--ink-700);">D</dt>
-          <dd style="color: var(--ink-500);">Toggle overlay détections (Stage 2)</dd>
-          <dt class="font-mono text-[12px]" style="color: var(--ink-700);">⏎</dt>
-          <dd style="color: var(--ink-500);">Valider le listing (si toutes décidées)</dd>
+          <dd style="color: var(--ink-500);">Toggle examination plate (raw + cercles)</dd>
           <dt class="font-mono text-[12px]" style="color: var(--ink-700);">Esc</dt>
-          <dd style="color: var(--ink-500);">Fermer overlay / désélec. / page</dd>
+          <dd style="color: var(--ink-500);">Fermer overlay / quitter mode free / page</dd>
           <dt class="font-mono text-[12px]" style="color: var(--ink-700);">?</dt>
           <dd style="color: var(--ink-500);">Toggle cette aide</dd>
         </dl>

@@ -20,13 +20,11 @@ import {
 } from '../composables/useReviewApi'
 import { useReviewKeybinds } from '../composables/useReviewKeybinds'
 import type { CoinSearchEntry } from '../composables/useCoinsSearch'
-import CandidateRow from '../components/CandidateRow.vue'
 import SplitCompare from '../components/SplitCompare.vue'
 import ReviewActionBar from '../components/ReviewActionBar.vue'
-import DinoSuggestions from '../components/DinoSuggestions.vue'
 import DinoVerdict from '../components/DinoVerdict.vue'
 import AutoValidateVerdict from '../components/AutoValidateVerdict.vue'
-import FreeSelectorPanel from '../components/FreeSelectorPanel.vue'
+import ReviewRightColumn from '../components/ReviewRightColumn.vue'
 import TextSignals from '../components/TextSignals.vue'
 import type { DinoSuggestion } from '../composables/useDinoSuggestions'
 
@@ -386,102 +384,19 @@ useReviewKeybinds(keyboardEnabled, {
             />
           </div>
 
-          <!-- ── COLONNE DROITE ── -->
-          <aside class="flex min-h-0 flex-col overflow-hidden">
-            <!-- Cible eBay : la pièce que la query a cherchée. Toujours
-                 affichée (mode-agnostic), pré-sélectionnée par défaut.
-                 ~80 % des reviews valident la cible → un clic gagné. -->
-            <section
-              v-if="currentItem.target_candidate"
-              class="mb-3 flex flex-col gap-1.5"
-            >
-              <p
-                class="flex items-baseline justify-between font-mono text-[10px] uppercase tracking-wider"
-                style="color: var(--gold-600);"
-              >
-                <span>Cible eBay</span>
-                <span class="opacity-60">scrape par eurio_id</span>
-              </p>
-              <CandidateRow
-                :candidate="currentItem.target_candidate"
-                :index="0"
-                badge="★"
-                :focused="freeSearchCandidate?.eurio_id === currentItem.target_candidate.eurio_id"
-                @focus="selectTarget"
-              />
-            </section>
-
-            <!-- Mode AUTO : Top N + Dino + freeSearchCandidate banner -->
-            <template v-if="mode === 'auto'">
-              <div class="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
-                <p
-                  class="flex items-baseline justify-between font-mono text-[10px] uppercase tracking-wider"
-                  style="color: var(--ink-500);"
-                >
-                  <span>
-                    <span style="color: var(--indigo-700);">Top {{ currentItem.candidates.length }}</span>
-                    <span class="ml-1 opacity-60">candidats auto-name</span>
-                  </span>
-                  <span class="opacity-60">1 – 5</span>
-                </p>
-
-                <div class="flex flex-col gap-2">
-                  <CandidateRow
-                    v-for="(c, idx) in currentItem.candidates"
-                    :key="c.eurio_id + idx"
-                    :candidate="c"
-                    :index="idx"
-                    :focused="focusedCandidateIdx === idx && !freeSearchCandidate"
-                    :style="{ animation: `fade-in 200ms ease-out ${idx * 30}ms backwards` }"
-                    @focus="focusCandidate(idx)"
-                  />
-                </div>
-
-                <DinoSuggestions
-                  v-if="currentItem"
-                  :review-id="currentItem.id"
-                  variant="standard"
-                  @select="onDinoSelect"
-                />
-
-                <article
-                  v-if="freeSearchCandidate && freeSearchCandidate.eurio_id !== currentItem.target_candidate?.eurio_id"
-                  class="mt-2 rounded-md border-2 border-dashed px-3 py-2"
-                  :style="{
-                    borderColor: 'var(--gold-600)',
-                    background: 'color-mix(in srgb, var(--gold-600) 6%, var(--surface))',
-                  }"
-                >
-                  <p class="font-mono text-[10px] uppercase tracking-wider" style="color: var(--gold-600);">
-                    Sélection libre
-                  </p>
-                  <p class="mt-1 font-mono text-[12px]" style="color: var(--ink);">
-                    {{ freeSearchCandidate.eurio_id }}
-                  </p>
-                  <p class="mt-0.5 text-[11px]" style="color: var(--ink-500);">
-                    {{ freeSearchCandidate.label }}
-                  </p>
-                </article>
-
-                <p
-                  v-if="!currentItem.candidates.length"
-                  class="rounded-md border-2 border-dashed px-4 py-6 text-center text-[12px]"
-                  style="border-color: var(--surface-3); color: var(--ink-400);"
-                >
-                  Pas de candidat auto.<br />
-                  Touche <kbd
-                    class="mx-1 inline-block rounded px-1.5 py-0.5 font-mono text-[10px]"
-                    style="background: var(--surface-1); border: 1px solid var(--surface-3);"
-                  >F</kbd> pour la sélection libre.
-                </p>
-              </div>
-            </template>
-
-            <!-- Mode LIBRE : cascade pays/dénom/année + résultats inline -->
-            <template v-else>
-              <FreeSelectorPanel class="min-h-0 flex-1" @select="onSearchSelect" />
-            </template>
-          </aside>
+          <!-- ── COLONNE DROITE (composant partagé avec lot) ── -->
+          <ReviewRightColumn
+            :target="currentItem.target_candidate ?? null"
+            :candidates="currentItem.candidates"
+            :mode="mode"
+            :focused-candidate-idx="focusedCandidateIdx"
+            :free-search-candidate="freeSearchCandidate"
+            :review-id="currentItem.id"
+            @target-focus="selectTarget"
+            @candidate-focus="focusCandidate"
+            @dino-select="onDinoSelect"
+            @free-select="onSearchSelect"
+          />
       </div>
 
       <ReviewActionBar

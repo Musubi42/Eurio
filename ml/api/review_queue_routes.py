@@ -103,6 +103,44 @@ class ReviewItem(BaseModel):
     target_candidate: ReviewCandidate | None = None
 
 
+def _build_target_candidate(
+    row: sqlite3.Row,
+    target_eurio_id: str | None,
+) -> ReviewCandidate | None:
+    """Construit le ReviewCandidate enrichi de la cible eBay à partir
+    d'une row SQL où on a JOIN coins. Attendu en colonnes :
+    t_eurio_id, t_country, t_country_name, t_year, t_theme,
+    t_face_value, t_numista_id. None si target_eurio_id absent ou la
+    coin n'est pas dans le catalog. Partagé entre /review-queue (queue
+    single) et /review-queue/lots/{key} (détail lot)."""
+    if not target_eurio_id or "t_eurio_id" not in row.keys() or not row["t_eurio_id"]:
+        return None
+    label_bits = [
+        row["t_country_name"],
+        str(row["t_year"]) if row["t_year"] else None,
+        row["t_theme"],
+    ]
+    denom = (
+        f"{float(row['t_face_value']):.2f} EUR"
+        if row["t_face_value"] is not None
+        else ""
+    )
+    thumb = (
+        f"/images/{int(row['t_numista_id'])}/source"
+        if row["t_numista_id"]
+        else ""
+    )
+    return ReviewCandidate(
+        eurio_id=row["t_eurio_id"],
+        score=1.0,  # prior — pas un score Dino, juste un marqueur "défaut"
+        label=" · ".join([b for b in label_bits if b]) or row["t_eurio_id"],
+        country=row["t_country"] or "",
+        denomination=denom,
+        year=row["t_year"],
+        canonical_thumb_url=thumb,
+    )
+
+
 def _row_to_item(row: sqlite3.Row) -> ReviewItem:
     bbox: ReviewBbox | None = None
     if row["bbox_json"]:
@@ -135,32 +173,7 @@ def _row_to_item(row: sqlite3.Row) -> ReviewItem:
     target_eurio_id: str | None = (
         row["target_eurio_id"] if "target_eurio_id" in row.keys() else None
     )
-    target_candidate: ReviewCandidate | None = None
-    if target_eurio_id and "t_eurio_id" in row.keys() and row["t_eurio_id"]:
-        label_bits = [
-            row["t_country_name"],
-            str(row["t_year"]) if row["t_year"] else None,
-            row["t_theme"],
-        ]
-        denom = (
-            f"{float(row['t_face_value']):.2f} EUR"
-            if row["t_face_value"] is not None
-            else ""
-        )
-        thumb = (
-            f"/images/{int(row['t_numista_id'])}/source"
-            if row["t_numista_id"]
-            else ""
-        )
-        target_candidate = ReviewCandidate(
-            eurio_id=row["t_eurio_id"],
-            score=1.0,  # prior — pas un score Dino, juste un marqueur "défaut"
-            label=" · ".join([b for b in label_bits if b]) or row["t_eurio_id"],
-            country=row["t_country"] or "",
-            denomination=denom,
-            year=row["t_year"],
-            canonical_thumb_url=thumb,
-        )
+    target_candidate = _build_target_candidate(row, target_eurio_id)
 
     return ReviewItem(
         id=row["id"],
@@ -433,6 +446,11 @@ class LotDetail(BaseModel):
     listing_key: str
     source: str
     target_eurio_id: str | None
+    # ReviewCandidate enrichi de la cible (idem ReviewItem.target_candidate).
+    # Permet au front lot de pré-sélectionner la cible eBay comme défaut,
+    # exactement comme la page single. None si target_eurio_id est None ou
+    # la coin n'est pas dans le catalog.
+    target_candidate: ReviewCandidate | None = None
     listing_title: str | None
     listing_price: float | None
     listing_currency: str
@@ -555,11 +573,20 @@ def _siblings(conn: sqlite3.Connection, listing_key: str
 def get_lot(listing_key: str) -> LotDetail:
     conn = _store()._connection()  # noqa: SLF001
     # Header (depuis n'importe quelle source_image du listing).
+    # JOIN coins pour enrichir target_candidate (idem _row_to_item).
     header = conn.execute(
         f"""
         SELECT si.source, si.target_eurio_id, si.listing_title,
-               si.listing_price, si.listing_currency, si.is_lot_suspected
+               si.listing_price, si.listing_currency, si.is_lot_suspected,
+               t.eurio_id     AS t_eurio_id,
+               t.country      AS t_country,
+               t.country_name AS t_country_name,
+               t.year         AS t_year,
+               t.theme        AS t_theme,
+               t.face_value   AS t_face_value,
+               t.numista_id   AS t_numista_id
           FROM source_images si
+          LEFT JOIN coins t ON t.eurio_id = si.target_eurio_id
          WHERE {_LISTING_KEY_SQL} = ?
          LIMIT 1
         """,
@@ -654,6 +681,7 @@ def get_lot(listing_key: str) -> LotDetail:
         listing_key=listing_key,
         source=header["source"],
         target_eurio_id=header["target_eurio_id"],
+        target_candidate=_build_target_candidate(header, header["target_eurio_id"]),
         listing_title=header["listing_title"],
         listing_price=header["listing_price"],
         listing_currency=header["listing_currency"] or "EUR",
