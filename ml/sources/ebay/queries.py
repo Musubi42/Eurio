@@ -60,6 +60,59 @@ STOP_WORDS = {
     "th", "st", "nd", "rd",
 }
 
+# eurio_id slugs are English; eBay FR titles are French. Without a
+# bilingual matcher, theme tokens like ``anthem`` never match titles
+# like ``"100 ans de l'hymne d'Andorre"`` → 80%+ false reject rate
+# measured V-1 (2026-05-18). Map English theme tokens to a list of
+# French aliases (substring-matched, case-insensitive). Add new
+# entries as we encounter coins where matching fails — keep narrow.
+THEME_TOKEN_FR_ALIASES: dict[str, list[str]] = {
+    # Toponymes / pays (utiles quand le pays apparaît aussi dans le thème)
+    "andorra":   ["andorre"],
+    "germany":   ["allemagne"],
+    "france":    ["france"],
+    "italy":     ["italie"],
+    "spain":     ["espagne"],
+    "belgium":   ["belgique"],
+    "austria":   ["autriche"],
+    "portugal":  ["portugal"],
+    "greece":    ["grèce", "grece"],
+    "ireland":   ["irlande"],
+    "finland":   ["finlande"],
+    "luxembourg": ["luxembourg"],
+    "monaco":    ["monaco"],
+    "vatican":   ["vatican"],
+
+    # Concepts récurrents sur les commémos 2€
+    "anthem":    ["hymne"],
+    "world":     ["monde", "mondiale", "mondial"],
+    "cup":       ["coupe"],
+    "alpine":    ["alpin", "alpine"],
+    "peace":     ["paix"],
+    "treaty":    ["traité", "traite"],
+    "history":   ["histoire", "historique"],
+    "museum":    ["musée", "musee"],
+    "century":   ["siècle", "siecle"],
+    "olympic":   ["olympique"],
+    "olympics":  ["olympiques", "olympique"],
+    "king":      ["roi"],
+    "queen":     ["reine"],
+    "republic":  ["république", "republique"],
+    "constitution": ["constitution"],
+    "independence": ["indépendance", "independance"],
+    "european":  ["européen", "europeen", "européenne", "europeenne"],
+    "europe":    ["europe"],
+    "union":     ["union"],
+    "flag":      ["drapeau"],
+    "national":  ["national", "nationale"],
+    "centenary": ["centenaire"],
+    "bicentenary": ["bicentenaire"],
+    "millennium": ["millénaire", "millenaire"],
+    "founding":  ["fondation"],
+    "death":     ["mort", "décès", "deces"],
+    "birth":     ["naissance"],
+}
+
 
 @dataclass(frozen=True)
 class CoinIdentity:
@@ -167,8 +220,18 @@ def title_matches_theme(title: str, theme_tokens: list[str]) -> bool:
     same country/year). When `theme_tokens` is empty (only theme is
     "standard" or there's a single commemo), the function permissively
     returns True — the aspect filter alone is enough to pin the coin.
+
+    Bilingual matching (V-1 fix 2026-05-18) : tokens come from the
+    English eurio_id slug, but EBAY_FR titles are French. We also
+    check each token's French aliases via ``THEME_TOKEN_FR_ALIASES``.
     """
     if not theme_tokens:
         return True
     low = title.lower()
-    return any(tok in low for tok in theme_tokens)
+    for tok in theme_tokens:
+        if tok in low:
+            return True
+        for alias in THEME_TOKEN_FR_ALIASES.get(tok, ()):
+            if alias in low:
+                return True
+    return False

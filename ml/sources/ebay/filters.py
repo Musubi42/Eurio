@@ -35,9 +35,15 @@ LOT_PATTERNS = re.compile(
 # Mots-clefs qui indiquent une pièce hors-scope (variantes spéciales,
 # erreurs de frappe, métaux précieux, colorisée). On rejette ces
 # listings entièrement — pas de pieces standard 2€ là-dedans.
+#
+# Note (V-1 fix 2026-05-18) : on a retiré ``bu\b`` qui faisait rejeter
+# des pièces standard parfaitement valides ("Andorre 2017 BU FDC"). En
+# numismatique francophone, BU = Brillant Universel = qualité de frappe
+# d'une pièce de circulation, pas une variante hors-scope. ``be\b``
+# (Belle Épreuve = proof) reste rejeté à juste titre.
 NOISE_PATTERNS = re.compile(
     r"\b("
-    r"bu\b|proof|[eé]preuve|belle\s*[eé]preuve|be\b|"
+    r"proof|[eé]preuve|belle\s*[eé]preuve|be\b|"
     r"argent|or\b|silver|gold|plaqu[eé]|"
     r"coloris[eé]e?|color|"
     r"erreur\s*de\s*frappe|faut[eé]e?"
