@@ -174,6 +174,14 @@ opérations destructives, ré-ajouter le flag dans `.mcp.json`.
 | `ba136d8` | SS-3+SS-4 — tests verts + ultralytics + env hardening |
 | `12843bd` | MCP minio-eurio ajouté |
 
+## 8.5 V-1 status au 2026-05-18 — done
+
+V-1 a tourné sur `ad-2017-2eur-100-years-of-the-anthem-of-andorra` +
+`ad-2019-2eur-2019-fis-alpine-ski-world-cup-final`. Deux bugs filtres
+identifiés et fixés ; trois anomalies aval (A1/A2 cascade-résolues, A3/A4
+ouvertes). **Run de référence pour V-2 : `5a166018a19c4e50b4cc383b4342f298`
+— 70 reviews ouvertes sur ebay.** Détail complet : `v1-filters-fix-and-anomalies.md`.
+
 ## 9. Quick-start (à exécuter au début de la prochaine session)
 
 ```bash
