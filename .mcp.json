@@ -3,6 +3,26 @@
     "supabase": {
       "type": "http",
       "url": "https://mcp.supabase.com/mcp?project_ref=ettxkixkxrzchbnohgfm"
+    },
+    "minio-eurio": {
+      "type": "stdio",
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "-e",
+        "MINIO_ENDPOINT",
+        "-e",
+        "MINIO_ACCESS_KEY",
+        "-e",
+        "MINIO_SECRET_KEY",
+        "-e",
+        "MINIO_USE_SSL=true",
+        "quay.io/minio/aistor/mcp-server-aistor:latest",
+        "--container-mode"
+      ],
+      "env": {}
     }
   }
 }
