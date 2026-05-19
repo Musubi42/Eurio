@@ -348,15 +348,15 @@ def run_full(
     items = payload["items"]
     LOGGER.info("loaded worklist %s — %d items", worklist_path, len(items))
 
-    # Build skip set from existing JSONL artifacts (results + failures both
-    # count: we don't retry failures within the same logical run; "autre
-    # méthode" handles them later).
-    done_ok = _load_jsonl_keys(results_path)
-    done_fail = _load_jsonl_keys(failures_path)
-    done = done_ok | done_fail
+    # Skip-set: only already-succeeded entries. Past failures get retried
+    # automatically on re-run (fresh TOR circuits between runs ≈ free retry).
+    # The failures.jsonl stays as append-only forensic log; delete it
+    # manually if you want a clean slate.
+    done = _load_jsonl_keys(results_path)
+    n_prior_failures = len(_load_jsonl_keys(failures_path))
     LOGGER.info(
-        "skip set: %d already-ok + %d already-failed = %d",
-        len(done_ok), len(done_fail), len(done),
+        "skip set: %d already-ok (prior failures %d → will be retried)",
+        len(done), n_prior_failures,
     )
 
     # Expand items × langs, filter out already-done.
@@ -400,37 +400,73 @@ def run_full(
     results_path.parent.mkdir(parents=True, exist_ok=True)
     failures_path.parent.mkdir(parents=True, exist_ok=True)
 
+    def _is_success(r: dict[str, Any]) -> bool:
+        return bool(
+            r["error"] is None
+            and r["http_status"] == 200
+            and not r["challenge_detected"]
+            and not r["redirected_to_other_lang"]
+            and r["h1_text"]
+        )
+
+    def _is_burnt(r: dict[str, Any]) -> bool:
+        """403 / challenge / 5xx → circuit (or rather: its exit pool) is
+        likely banned by Numista. Worth a fresh username to escape."""
+        if r["challenge_detected"]:
+            return True
+        st = r["http_status"]
+        if st is None:
+            return False  # network error, not a ban
+        return st == 403 or st == 429 or (500 <= st < 600)
+
     def worker(circuit_idx: int, queue: list[tuple[str, int, str]]) -> None:
-        batch = 0
-        username = f"circuit{circuit_idx}_b{batch}"
-        client = _build_client(proxy_url, username)
-        reqs_in_batch = 0
+        # Mutable so inner helpers can rotate.
+        state: dict[str, Any] = {
+            "batch": 0,
+            "username": f"circuit{circuit_idx}_b0",
+            "client": _build_client(proxy_url, f"circuit{circuit_idx}_b0"),
+            "reqs_in_batch": 0,
+        }
+
+        def rotate(reason: str) -> None:
+            state["client"].close()
+            state["batch"] += 1
+            state["username"] = f"circuit{circuit_idx}_b{state['batch']}"
+            state["client"] = _build_client(proxy_url, state["username"])
+            state["reqs_in_batch"] = 0
+            LOGGER.info("[c%d] rotated to %s (%s)",
+                        circuit_idx, state["username"], reason)
+
         first = True
         try:
             for eurio_id, numista_id, lang in queue:
-                # Rotate circuit by bumping username.
-                if reqs_in_batch >= rotate_every:
-                    client.close()
-                    batch += 1
-                    username = f"circuit{circuit_idx}_b{batch}"
-                    client = _build_client(proxy_url, username)
-                    reqs_in_batch = 0
-                    LOGGER.info("[c%d] rotated to %s", circuit_idx, username)
+                # Scheduled rotation (every N reqs)
+                if state["reqs_in_batch"] >= rotate_every:
+                    rotate("scheduled")
 
                 if not first:
                     time.sleep(per_circuit_sleep)
                 first = False
 
-                result = fetch_one(client, lang, numista_id)
-                reqs_in_batch += 1
+                result = fetch_one(state["client"], lang, numista_id)
+                state["reqs_in_batch"] += 1
+                attempts = 1
 
-                if (
-                    result["error"] is None
-                    and result["http_status"] == 200
-                    and not result["challenge_detected"]
-                    and not result["redirected_to_other_lang"]
-                    and result["h1_text"]
-                ):
+                # Emergency rotate + retry once on 403/challenge/5xx.
+                if _is_burnt(result) and not _is_success(result):
+                    LOGGER.info(
+                        "[%s] BURNT on %s [%s] status=%s chl=%s → rotate + retry",
+                        state["username"], eurio_id, lang,
+                        result["http_status"], result["challenge_detected"],
+                    )
+                    rotate(f"burnt by {result['http_status']}")
+                    # Let the new circuit settle before retrying.
+                    time.sleep(per_circuit_sleep)
+                    result = fetch_one(state["client"], lang, numista_id)
+                    state["reqs_in_batch"] += 1
+                    attempts = 2
+
+                if _is_success(result):
                     _append_jsonl(results_path, results_lock, {
                         "eurio_id": eurio_id,
                         "lang": lang,
@@ -438,7 +474,8 @@ def run_full(
                         "source": "numista",
                         "confidence": "canon",
                         "fetched_at": _now(),
-                        "circuit": username,
+                        "circuit": state["username"],
+                        "attempts": attempts,
                         "elapsed_ms": result["elapsed_ms"],
                     })
                     with progress_lock:
@@ -453,16 +490,18 @@ def run_full(
                         "challenge_detected": result["challenge_detected"],
                         "redirected_to_other_lang": result["redirected_to_other_lang"],
                         "error": result["error"],
-                        "circuit": username,
+                        "circuit": state["username"],
+                        "attempts": attempts,
                         "attempt_at": _now(),
                     })
                     with progress_lock:
                         progress["fail"] += 1
                     LOGGER.warning(
-                        "[%s] FAIL %s [%s] status=%s chl=%s rdr=%s err=%s",
-                        username, eurio_id, lang,
+                        "[%s] FAIL %s [%s] status=%s chl=%s rdr=%s err=%s (attempts=%d)",
+                        state["username"], eurio_id, lang,
                         result["http_status"], result["challenge_detected"],
                         result["redirected_to_other_lang"], result["error"],
+                        attempts,
                     )
 
                 # Periodic progress
@@ -478,7 +517,7 @@ def run_full(
                         rate, round(eta_s / 60),
                     )
         finally:
-            client.close()
+            state["client"].close()
 
     with ThreadPoolExecutor(max_workers=n_circuits) as pool:
         futures = [

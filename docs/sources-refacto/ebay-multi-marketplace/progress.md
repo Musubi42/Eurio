@@ -12,16 +12,19 @@ Overview de l'avancement chunk-par-chunk. Mis à jour à chaque livraison.
 | B | B4 — adapter discover multi-call | ✅ done | `2c290d3` |
 | B | B5 — API `/marketplace-map` | ✅ done | (pending) |
 | B | B6 — API `/filter-config` | ✅ done | (pending) |
-| I (i18n) | I1 — bootstrap Numista i18n | ⏳ kickoff écrit | — |
-| I | I2 — theme matcher multilingue | ⏳ | — |
+| I (i18n) | I1 — bootstrap Numista i18n (FR+EN) | ✅ done | (pending) |
+| I | I2 — theme matcher multilingue | ⏳ kickoff écrit | — |
 | F (front) | F1 → F4 — pilote / run-detail / règles / coin-detail | ⏳ | — |
 | V (validation) | V1 — probe langues + PT routing | ⏳ | — |
 | V | V2 — cutover legacy | ⏳ | — |
 
-**6/14 chunks livrés.** Toute la phase B (backend) est en place — la
+**7/14 chunks livrés.** Toute la phase B (backend) est en place — la
 chaîne multi-mkt tourne, les 2 APIs front (marketplace-map +
-filter-config) sont prêtes à être consommées. Reste à brancher la i18n
-(I1/I2) et le front (F1-F4) puis valider/cutover (V1/V2).
+filter-config) sont prêtes à être consommées. **I1 livré** : ~1156
+titres FR+EN scraped via TOR + importés en DB. Reste à brancher le
+matcher (I2) et le front (F1-F4) puis valider/cutover (V1/V2). Les
+4 langues restantes (de/it/es/nl) viendront via LLM batch (chunk séparé
+`i18n-llm-translation.md`) si I2 en a besoin.
 
 ## Ce qui fonctionne
 
@@ -76,18 +79,50 @@ filter-config) sont prêtes à être consommées. Reste à brancher la i18n
   hors-scope du chantier — `background` layer ajouté sans update du test.
   Non bloquant pour B4.
 
+## I1 livré (2026-05-20)
+
+Pivot vs kickoff initial (qui visait 9 langues via sous-domaines) :
+la probe `i18n-probe.md` a montré que **seuls FR et EN sont vraiment
+traduits** par Numista. Les autres sous-domaines servent l'UI traduite
+mais conservent le titre EN. Stratégie refondue dans `i18n-strategy.md` :
+
+- **FR + EN scraped** via TOR (ce chunk) → `confidence='canon'`
+- **DE/IT/ES/NL via LLM** (chunk séparé `i18n-llm-translation.md`,
+  pas livré) → `confidence='llm'`
+
+Architecture livrée (cf. `i18n-scrape-numista.md` à jour) :
+
+- **TOR proxy Docker** : `ml/infrastructure/tor/{torrc,docker-compose.yml}`,
+  pattern `IsolateSOCKSAuth` (1 circuit par username SOCKS5, rotation
+  par bump du suffixe `_b`)
+- **3 scripts, 2 machines** (VPS stateless ML-wise) :
+  - `export_i18n_worklist.py` (PC) → `state/i18n_worklist.json`
+  - `bootstrap_coin_names_i18n.py` (VPS, modes `--poc` et full)
+    → `state/i18n_{results,failures}.jsonl` append-only
+  - `import_i18n_results.py` (PC) → `coin_names_i18n` via
+    `INSERT OR IGNORE`
+- **Schema étendu** : `coin_names_i18n` gagne `confidence` (`'canon'`/
+  `'llm'`/`'manual'`) + `model` (TEXT, NULL pour canon). Migration
+  additive via `_ensure_column` (pas de recreate-and-copy).
+- **Résilience burnt-circuit** : rotation immédiate du username +
+  1 retry sur 403/429/5xx/challenge. Skip-set basé uniquement sur
+  `results.jsonl` → les failures sont re-tentées au prochain run.
+
+Run réel : ~58 min en background nohup, couverture ~95% en 1 run,
+~100% après 1 relance sur les failures (TOR circuits rafraîchis).
+
 ## Reste à faire
 
-1. **I1** (bootstrap Numista i18n) — session dédiée. Scope verrouillé
-   2026-05-19 : scrape HTML 9 langues, ~578 coins, ~1h27 de run, 0
-   quota API. Kickoff complet : `i18n-bootstrap-kickoff.md`.
-2. **I2** — refacto theme matcher (cf. `language-probe.md` §"Étape 2bis"
-   — stop-words par langue, extraction depuis titre Numista localisé,
-   `MARKETPLACE_ACTIVE_LANGS`).
-3. **F1 → F4** — front (pilote bandeau strat, run-detail badges,
+1. **I2** — refacto theme matcher multilingue. **Kickoff dédié** :
+   `i18n-theme-matcher-kickoff.md`. Consomme `coin_names_i18n`
+   (FR+EN dispo aujourd'hui, autres langues facultatives → fallback
+   si manquant).
+2. **F1 → F4** — front (pilote bandeau strat, run-detail badges,
    règles panel, coin-detail thumbs). Consommer `useMarketplaceMap.ts`
    et `useFilterConfig.ts` (à créer côté admin/web).
-4. **V1** — probe langues marketplaces, **inclut décision PT routing**
+3. **V1** — probe langues marketplaces, **inclut décision PT routing**
    (cf. `marketplace-map.md` §"Routage PT provisoire" — TODO en code).
-5. **V2** — cutover legacy : retrait `THEME_TOKEN_FR_ALIASES`, smoke
+4. **V2** — cutover legacy : retrait `THEME_TOKEN_FR_ALIASES`, smoke
    run sur 10 eurio_ids, mesure recall vs baseline (KPI ≥ ×3).
+5. **Optionnel** — `i18n-llm-translation` (DE/IT/ES/NL) si I2 mesure
+   une perte de recall sur les marketplaces DE/IT/ES/BE-NL.
