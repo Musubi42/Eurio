@@ -100,7 +100,8 @@ echo "Buckets:"
 docker exec eurio-minio mc ls local/ | sed 's/^/  /'
 echo
 echo "App credentials (put these in your direnv .envrc):"
-echo "  export MINIO_ENDPOINT=https://eurio-s3.musubi.dev"
+echo "  export MINIO_ENDPOINT=eurio-s3.musubi.dev"
+echo "  export MINIO_USE_SSL=true"
 echo "  export MINIO_ACCESS_KEY=${APP_USER}"
 echo "  export MINIO_SECRET_KEY=${APP_PWD}"
 echo

@@ -1,0 +1,37 @@
+{
+  "probed_at": "2026-05-19T16:46:51.075692Z",
+  "throttle_seconds": 1.0,
+  "user_agent": "Eurio probe (https://github.com/Musubi42/Eurio)",
+  "results": [
+    {
+      "eurio_id": "de-2020-2eur-50-years-since-the-kniefall-von-warschau",
+      "numista_id": 226447,
+      "langs": {
+        "en": {
+          "url": "https://en.numista.com/226447",
+          "final_url": "https://en.numista.com/226447",
+          "redirected_to_other_lang": false,
+          "http_status": 200,
+          "elapsed_ms": 614,
+          "raw_h1_html": "<h1>2 Euros <span style=\"font-size:50%;\">Kneeling to Warsaw</span></h1>",
+          "h1_text": "2 Euros Kneeling to Warsaw",
+          "h1_main_text": "2 Euros",
+          "h1_span_text": "Kneeling to Warsaw",
+          "error": null
+        },
+        "de": {
+          "url": "https://de.numista.com/226447",
+          "final_url": "https://de.numista.com/226447",
+          "redirected_to_other_lang": false,
+          "http_status": 200,
+          "elapsed_ms": 544,
+          "raw_h1_html": "<h1>2 Euros <span style=\"font-size:50%;\">Kneeling to Warsaw</span></h1>",
+          "h1_text": "2 Euros Kneeling to Warsaw",
+          "h1_main_text": "2 Euros",
+          "h1_span_text": "Kneeling to Warsaw",
+          "error": null
+        }
+      }
+    }
+  ]
+}

@@ -1,5 +1,23 @@
 # Kickoff — bootstrap Numista i18n (session dédiée)
 
+> ⚠️ **PÉRIMÉ — 2026-05-19** ⚠️
+>
+> Cette doc supposait que Numista exposait des titres traduits par
+> langue via ses sous-domaines (`<lang>.numista.com`). La probe
+> empirique (`i18n-probe.md`) a montré que **seuls FR et EN sont
+> vraiment traduits** ; les autres sous-domaines servent l'UI traduite
+> mais conservent le titre EN du coin.
+>
+> La stratégie a été refondue : voir **`i18n-strategy.md`** pour les
+> décisions actées, et les chunks exécutables associés :
+> - `i18n-scrape-numista.md` (scrape FR+EN via TOR sur VPS)
+> - `i18n-llm-translation.md` (LLM batch DE/IT/ES/NL sur PC)
+>
+> Le contenu ci-dessous est conservé comme archive de la décision
+> originale (utile pour la traçabilité).
+>
+> ---
+>
 > Brief auto-suffisant pour la session qui livre **I1** du chantier
 > `ebay-multi-marketplace`. Lire en premier, puis aller voir
 > `language-probe.md` §"Étape 2bis" pour le matcher consommateur (I2).
