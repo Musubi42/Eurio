@@ -564,7 +564,9 @@ def main() -> None:
     log_entries: list[dict] = []
     touched = 0
 
-    with EbayClient(token) as client:
+    # Legacy single-mkt scrape (pré-orchestrator). Reste sur EBAY_FR comme
+    # avant — ce script sera retiré ou réécrit sur le multi-mkt en V2.
+    with EbayClient(token, marketplace="EBAY_FR") as client:
         for idx, entry in enumerate(targets, 1):
             q, _, theme_tokens = build_search_query(entry)
             key = (entry["identity"]["country"], entry["identity"]["year"])

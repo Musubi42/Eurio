@@ -45,7 +45,10 @@ def _load_adapter(source_id: str, *, store=None):
                 "Run inside a directory with .envrc loaded (direnv allow)."
             )
         token = get_app_token(client_id, client_secret)
-        client = EbayClient(token)
+        # B3 — transitionnel : un seul client EBAY_FR comme avant (le legacy
+        # MARKETPLACE hardcodé). B4 refactore l'adapter pour instancier ses
+        # propres clients par marketplace selon route_for(coin.country).
+        client = EbayClient(token, marketplace="EBAY_FR")
         if store is None:
             raise SystemExit("ebay adapter requires a Store (internal: pass store=).")
         return EbayAdapter(client=client, conn=store._connection())
