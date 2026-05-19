@@ -61,13 +61,16 @@ def _load_adapter(source_id: str, *, store: "Store" | None = None):
                 detail="EBAY_CLIENT_ID / EBAY_CLIENT_SECRET not set in env (.envrc).",
             )
         token = get_app_token(client_id, client_secret)
-        # B3 — transitionnel : un seul client EBAY_FR comme avant (le legacy
-        # MARKETPLACE hardcodé). B4 refactore l'adapter pour instancier ses
-        # propres clients par marketplace selon route_for(coin.country).
-        client = EbayClient(token, marketplace="EBAY_FR")
         s = store or _store()
         conn = s._connection()  # noqa: SLF001
-        return EbayAdapter(client=client, conn=conn)
+        # B4 — factory pour les N clients par mkt avec tracker partagé.
+        from api_quota import QuotaTracker
+        from market.ebay_client import EBAY_DAILY_LIMIT
+        shared_tracker = QuotaTracker("ebay", "daily", EBAY_DAILY_LIMIT)
+        make_client = lambda mkt: EbayClient(  # noqa: E731
+            token, marketplace=mkt, tracker=shared_tracker,
+        )
+        return EbayAdapter(make_client=make_client, conn=conn)
     raise HTTPException(
         status_code=501,
         detail=(

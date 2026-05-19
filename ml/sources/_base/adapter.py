@@ -39,6 +39,9 @@ class DiscardedListingRecord:
     reason: str = ""
     title: str | None = None
     raw_payload: dict[str, Any] | None = None
+    # eBay multi-mkt (B4) : marketplace qui a yieldé puis rejeté ce listing.
+    # None pour les sources sans notion de marketplace (mock, numista, ...).
+    marketplace: str | None = None
 
 
 RecordDiscardedFn = Callable[[DiscardedListingRecord], None]
@@ -105,6 +108,12 @@ class DiscoveredItem:
     seller_id: str | None = None
     is_lot_suspected: bool = False
     raw_payload: dict[str, Any] | None = None
+    # eBay multi-mkt (B4). `marketplace` = mkt qui a yieldé le listing en
+    # premier dans l'ordre primary→global. `marketplace_found` = liste
+    # complète après merge en RAM. None pour les sources sans notion de
+    # marketplace.
+    marketplace: str | None = None
+    marketplace_found: tuple[str, ...] | None = None
 
 
 @dataclass

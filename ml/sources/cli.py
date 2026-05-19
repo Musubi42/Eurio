@@ -45,13 +45,19 @@ def _load_adapter(source_id: str, *, store=None):
                 "Run inside a directory with .envrc loaded (direnv allow)."
             )
         token = get_app_token(client_id, client_secret)
-        # B3 — transitionnel : un seul client EBAY_FR comme avant (le legacy
-        # MARKETPLACE hardcodé). B4 refactore l'adapter pour instancier ses
-        # propres clients par marketplace selon route_for(coin.country).
-        client = EbayClient(token, marketplace="EBAY_FR")
         if store is None:
             raise SystemExit("ebay adapter requires a Store (internal: pass store=).")
-        return EbayAdapter(client=client, conn=store._connection())
+        # B4 — factory partagée pour les N clients par mkt. Tracker partagé
+        # via QuotaTracker singleton (table api_call_log côté SQLite),
+        # passé explicitement pour éviter qu'EbayClient n'instancie un
+        # tracker par mkt (sinon le quota daily compterait à part par mkt).
+        from api_quota import QuotaTracker
+        from market.ebay_client import EBAY_DAILY_LIMIT
+        shared_tracker = QuotaTracker("ebay", "daily", EBAY_DAILY_LIMIT)
+        make_client = lambda mkt: EbayClient(  # noqa: E731
+            token, marketplace=mkt, tracker=shared_tracker,
+        )
+        return EbayAdapter(make_client=make_client, conn=store._connection())
     raise SystemExit(
         f"Unknown source '{source_id}'. Available: mock, ebay. "
         "Real sources will be added as their adapters land."

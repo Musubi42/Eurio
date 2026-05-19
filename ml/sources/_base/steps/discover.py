@@ -86,6 +86,7 @@ def run_discover(
             reason=rec.reason,
             title=rec.title,
             raw_payload=rec.raw_payload,
+            marketplace=rec.marketplace,
         )
 
     subqueries = _iter_subqueries(query)

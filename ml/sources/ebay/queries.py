@@ -19,9 +19,11 @@ from dataclasses import dataclass
 
 CATEGORY_EURO_COINS = "32650"
 
-# Country ISO2 → French name (used in the search query because EBAY_FR
-# titles are mostly in French). Mirror of ml/referential/eurio_referential.py
-# pour éviter un import cross-module sur un dict statique.
+# Country ISO2 → noms localisés. Utilisé pour construire la query eBay
+# dans la langue native du marketplace ciblé (cf. vision.md §P3 :
+# "EBAY_DE → `2 euro Deutschland 2024`, EBAY_IT → `2 euro Germania 2024`,
+# etc."). 6 langues alignées sur SUPPORTED_MARKETPLACES + Numista
+# sub-domains.
 ISO2_TO_NAME_FR: dict[str, str] = {
     "AD": "Andorre",
     "AT": "Autriche",
@@ -49,6 +51,65 @@ ISO2_TO_NAME_FR: dict[str, str] = {
     "SM": "Saint-Marin",
     "VA": "Vatican",
     "eu": "zone euro",
+}
+
+ISO2_TO_NAME_EN: dict[str, str] = {
+    "AD": "Andorra", "AT": "Austria", "BE": "Belgium", "BG": "Bulgaria",
+    "CY": "Cyprus", "DE": "Germany", "EE": "Estonia", "ES": "Spain",
+    "FI": "Finland", "FR": "France", "GR": "Greece", "HR": "Croatia",
+    "IE": "Ireland", "IT": "Italy", "LT": "Lithuania", "LU": "Luxembourg",
+    "LV": "Latvia", "MC": "Monaco", "MT": "Malta", "NL": "Netherlands",
+    "PT": "Portugal", "SI": "Slovenia", "SK": "Slovakia",
+    "SM": "San Marino", "VA": "Vatican", "eu": "eurozone",
+}
+
+ISO2_TO_NAME_DE: dict[str, str] = {
+    "AD": "Andorra", "AT": "Österreich", "BE": "Belgien", "BG": "Bulgarien",
+    "CY": "Zypern", "DE": "Deutschland", "EE": "Estland", "ES": "Spanien",
+    "FI": "Finnland", "FR": "Frankreich", "GR": "Griechenland", "HR": "Kroatien",
+    "IE": "Irland", "IT": "Italien", "LT": "Litauen", "LU": "Luxemburg",
+    "LV": "Lettland", "MC": "Monaco", "MT": "Malta", "NL": "Niederlande",
+    "PT": "Portugal", "SI": "Slowenien", "SK": "Slowakei",
+    "SM": "San Marino", "VA": "Vatikan", "eu": "Eurozone",
+}
+
+ISO2_TO_NAME_IT: dict[str, str] = {
+    "AD": "Andorra", "AT": "Austria", "BE": "Belgio", "BG": "Bulgaria",
+    "CY": "Cipro", "DE": "Germania", "EE": "Estonia", "ES": "Spagna",
+    "FI": "Finlandia", "FR": "Francia", "GR": "Grecia", "HR": "Croazia",
+    "IE": "Irlanda", "IT": "Italia", "LT": "Lituania", "LU": "Lussemburgo",
+    "LV": "Lettonia", "MC": "Monaco", "MT": "Malta", "NL": "Paesi Bassi",
+    "PT": "Portogallo", "SI": "Slovenia", "SK": "Slovacchia",
+    "SM": "San Marino", "VA": "Vaticano", "eu": "Eurozona",
+}
+
+ISO2_TO_NAME_ES: dict[str, str] = {
+    "AD": "Andorra", "AT": "Austria", "BE": "Bélgica", "BG": "Bulgaria",
+    "CY": "Chipre", "DE": "Alemania", "EE": "Estonia", "ES": "España",
+    "FI": "Finlandia", "FR": "Francia", "GR": "Grecia", "HR": "Croacia",
+    "IE": "Irlanda", "IT": "Italia", "LT": "Lituania", "LU": "Luxemburgo",
+    "LV": "Letonia", "MC": "Mónaco", "MT": "Malta", "NL": "Países Bajos",
+    "PT": "Portugal", "SI": "Eslovenia", "SK": "Eslovaquia",
+    "SM": "San Marino", "VA": "Vaticano", "eu": "Eurozona",
+}
+
+ISO2_TO_NAME_NL: dict[str, str] = {
+    "AD": "Andorra", "AT": "Oostenrijk", "BE": "België", "BG": "Bulgarije",
+    "CY": "Cyprus", "DE": "Duitsland", "EE": "Estland", "ES": "Spanje",
+    "FI": "Finland", "FR": "Frankrijk", "GR": "Griekenland", "HR": "Kroatië",
+    "IE": "Ierland", "IT": "Italië", "LT": "Litouwen", "LU": "Luxemburg",
+    "LV": "Letland", "MC": "Monaco", "MT": "Malta", "NL": "Nederland",
+    "PT": "Portugal", "SI": "Slovenië", "SK": "Slowakije",
+    "SM": "San Marino", "VA": "Vaticaan", "eu": "Eurozone",
+}
+
+NAMES_BY_LANG: dict[str, dict[str, str]] = {
+    "fr": ISO2_TO_NAME_FR,
+    "en": ISO2_TO_NAME_EN,
+    "de": ISO2_TO_NAME_DE,
+    "it": ISO2_TO_NAME_IT,
+    "es": ISO2_TO_NAME_ES,
+    "nl": ISO2_TO_NAME_NL,
 }
 
 # Stop words dropped when extracting theme tokens from the eurio_id slug.
@@ -208,19 +269,25 @@ def _theme_keywords(eurio_id: str, max_words: int = 4) -> list[str]:
     return [t for t in kept if len(t) >= 4]
 
 
-def build_query(coin: CoinIdentity) -> EbayQuery:
-    """Build (q, aspect_filter, theme_tokens) for a coin search on EBAY_FR.
+def build_query(coin: CoinIdentity, query_lang: str = "fr") -> EbayQuery:
+    """Build (q, aspect_filter, theme_tokens) for a coin search.
 
-    We cast a wide net with country + year only — adding full theme
+    `query_lang` choisit la table de noms-pays utilisée — il doit
+    correspondre à la langue native du marketplace ciblé (cf. vision.md
+    §P3). Défaut "fr" pour compat avec le code legacy mono-marketplace ;
+    l'adapter multi-mkt (B4) passe la lang explicite.
+
+    On cast a wide net with country + year only — adding full theme
     keywords crushes recall because eBay titles are short and use
     different phrasings. The theme tokens are returned separately so
     the caller can apply a title keyword filter on the response when
     multiple commemos share the same (country, year).
     """
     iso2 = coin.country
-    name_fr = ISO2_TO_NAME_FR.get(iso2, coin.country_name or iso2)
+    names = NAMES_BY_LANG.get(query_lang, ISO2_TO_NAME_FR)
+    country_name = names.get(iso2, coin.country_name or iso2)
     denom_label = "2 euro" if coin.face_value == 2.0 else f"{coin.face_value} euro"
-    q = f"{denom_label} {name_fr} {coin.year}".strip()
+    q = f"{denom_label} {country_name} {coin.year}".strip()
     # Note (bloc 1, 2026-05-05) : on a drop le segment `Année:{...}` du
     # aspect_filter — beaucoup de vendeurs ne remplissent pas l'aspect année,
     # ce qui crashait le recall (×16-50 sur AD/FR mesurés en probe S3). Le

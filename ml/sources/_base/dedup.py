@@ -49,6 +49,11 @@ class SourceImageRow:
     is_lot_suspected: bool = False
     raw_payload: dict[str, Any] | None = None
     run_id: str | None = None
+    # eBay multi-mkt (B4). Voir docs/sources-refacto/ebay-multi-marketplace/
+    # schema.md §"Stratégie d'écriture" — merge en RAM avant INSERT, pas
+    # de ON CONFLICT DO UPDATE.
+    marketplace: str | None = None
+    marketplace_found_json: str | None = None
 
 
 @dataclass
@@ -126,6 +131,9 @@ def upsert_source_image(conn: sqlite3.Connection, row: SourceImageRow) -> str:
         # owned by the detect_crop step — every other writer leaves it
         # alone. persist.py always passes the dataclass default (0) so
         # listing it here used to reset the count to 0 on every rerun.
+        # B4 — marketplace/marketplace_found via COALESCE : sur refresh,
+        # on garde la valeur du first-insert (pas d'écrasement). Le merge
+        # cross-run sera adressé en V2 (V1 : merge en RAM intra-run).
         conn.execute(
             """
             UPDATE source_images SET
@@ -139,6 +147,8 @@ def upsert_source_image(conn: sqlite3.Connection, row: SourceImageRow) -> str:
               is_lot_suspected=?,
               raw_payload_json=COALESCE(?, raw_payload_json),
               run_id=COALESCE(?, run_id),
+              marketplace=COALESCE(marketplace, ?),
+              marketplace_found_json=COALESCE(marketplace_found_json, ?),
               fetched_at=datetime('now')
             WHERE id=?
             """,
@@ -152,6 +162,7 @@ def upsert_source_image(conn: sqlite3.Connection, row: SourceImageRow) -> str:
                 int(row.is_lot_suspected),
                 payload,
                 row.run_id,
+                row.marketplace, row.marketplace_found_json,
                 sid,
             ),
         )
@@ -166,8 +177,9 @@ def upsert_source_image(conn: sqlite3.Connection, row: SourceImageRow) -> str:
           listing_price, listing_currency, condition_raw, seller_id,
           storage_path, width, height, bytes, sha256,
           n_crops_detected, license, redistributable, is_lot_suspected,
-          raw_payload_json, run_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          raw_payload_json, run_id,
+          marketplace, marketplace_found_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             sid, row.source, row.source_ref, row.source_url, row.target_eurio_id,
@@ -177,6 +189,7 @@ def upsert_source_image(conn: sqlite3.Connection, row: SourceImageRow) -> str:
             row.n_crops_detected, row.license, int(row.redistributable),
             int(row.is_lot_suspected),
             payload, row.run_id,
+            row.marketplace, row.marketplace_found_json,
         ),
     )
     return sid
@@ -452,6 +465,9 @@ class DiscoverySearchRecord:
     n_kept_results: int | None = None
     duration_ms: int | None = None
     error: str | None = None
+    # eBay multi-mkt (B4). Identifie le marketplace ciblé par cette
+    # discovery search (1 row par run × eurio × marketplace).
+    marketplace: str | None = None
 
 
 def record_discarded_listing(
@@ -464,6 +480,7 @@ def record_discarded_listing(
     reason: str,
     title: str | None = None,
     raw_payload: dict[str, Any] | None = None,
+    marketplace: str | None = None,
 ) -> str:
     """Trace un listing rejeté par accept_listing avant ingestion.
 
@@ -476,10 +493,11 @@ def record_discarded_listing(
         """
         INSERT INTO discarded_listings (
           id, run_id, source, source_ref, target_eurio_id,
-          reason, title, raw_payload
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          reason, title, raw_payload, marketplace
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (rid, run_id, source, source_ref, target_eurio_id, reason, title, payload_json),
+        (rid, run_id, source, source_ref, target_eurio_id, reason, title,
+         payload_json, marketplace),
     )
     return rid
 
@@ -494,15 +512,15 @@ def record_discovery_search(conn: sqlite3.Connection, rec: DiscoverySearchRecord
           id, run_id, source, target_eurio_id, endpoint,
           query_q, query_filters_json, status, http_status,
           n_summaries, n_after_groups, n_raw_results, n_kept_results,
-          duration_ms, error
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          duration_ms, error, marketplace
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             rid, rec.run_id, rec.source, rec.target_eurio_id, rec.endpoint,
             rec.query_q, filters_json, rec.status, rec.http_status,
             rec.n_summaries, rec.n_after_groups,
             rec.n_raw_results, rec.n_kept_results,
-            rec.duration_ms, rec.error,
+            rec.duration_ms, rec.error, rec.marketplace,
         ),
     )
     return rid
