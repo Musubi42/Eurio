@@ -25,7 +25,28 @@ SEARCH_URL = "https://api.ebay.com/buy/browse/v1/item_summary/search"
 ITEM_URL = "https://api.ebay.com/buy/browse/v1/item/{item_id}"
 GROUP_URL = "https://api.ebay.com/buy/browse/v1/item/get_items_by_item_group"
 SCOPE = "https://api.ebay.com/oauth/api_scope"
-MARKETPLACE = "EBAY_FR"
+
+# Marketplaces supportés par le chantier eBay multi-mkt (B2). EBAY_GB est
+# le catch-all V1 ; les autres sont activés via route_for(country).
+SUPPORTED_MARKETPLACES = frozenset({
+    "EBAY_GB", "EBAY_FR", "EBAY_DE", "EBAY_IT", "EBAY_ES",
+    "EBAY_NL", "EBAY_AT", "EBAY_BE", "EBAY_IE",
+})
+
+# Mapping marketplace → header Accept-Language. eBay accepte les codes
+# régionaux ISO (en-GB, fr-FR…) ; le format strict améliore la cohérence
+# des locales (prix, devises affichées, langue d'interface).
+MARKETPLACE_ACCEPT_LANGUAGE = {
+    "EBAY_GB": "en-GB",
+    "EBAY_FR": "fr-FR",
+    "EBAY_DE": "de-DE",
+    "EBAY_IT": "it-IT",
+    "EBAY_ES": "es-ES",
+    "EBAY_NL": "nl-NL",
+    "EBAY_AT": "de-AT",
+    "EBAY_BE": "fr-BE",   # bilingue, V1 = FR (cf. D-MM5)
+    "EBAY_IE": "en-IE",
+}
 
 TOKEN_CACHE_PATH = Path(__file__).parent.parent / ".ebay_token_cache.json"
 
@@ -71,8 +92,39 @@ EBAY_DAILY_LIMIT = 5000
 
 
 class EbayClient:
-    def __init__(self, token: str, tracker: QuotaTracker | None = None):
+    def __init__(
+        self,
+        token: str,
+        *,
+        marketplace: str,
+        tracker: QuotaTracker | None = None,
+        accept_language: str | None = None,
+    ):
+        """Browse API client lié à un marketplace eBay donné.
+
+        Une instance == 1 marketplace. Pour interroger plusieurs mkts
+        (multi-mkt discover B4), instancier plusieurs clients distincts
+        (ils partagent le même tracker côté SQLite, le ``call_count``
+        local reste par-client).
+
+        Args:
+            token: Application token obtenu via ``get_app_token``.
+            marketplace: ID marketplace (ex. ``"EBAY_GB"``, ``"EBAY_DE"``).
+                Doit appartenir à ``SUPPORTED_MARKETPLACES``.
+            tracker: Optionnel — tracker de quota partagé. Si None,
+                instancie un tracker daily.
+            accept_language: Optionnel — override du header
+                Accept-Language. Si None, dérivé de ``marketplace`` via
+                ``MARKETPLACE_ACCEPT_LANGUAGE``.
+        """
+        if marketplace not in SUPPORTED_MARKETPLACES:
+            raise ValueError(
+                f"Marketplace {marketplace!r} not in SUPPORTED_MARKETPLACES "
+                f"({sorted(SUPPORTED_MARKETPLACES)})."
+            )
         self.token = token
+        self.marketplace = marketplace
+        self.accept_language = accept_language or MARKETPLACE_ACCEPT_LANGUAGE[marketplace]
         self.call_count = 0
         self._tracker = tracker if tracker is not None else QuotaTracker(
             "ebay", "daily", EBAY_DAILY_LIMIT
@@ -80,7 +132,8 @@ class EbayClient:
         self._client = httpx.Client(
             headers={
                 "Authorization": f"Bearer {token}",
-                "X-EBAY-C-MARKETPLACE-ID": MARKETPLACE,
+                "X-EBAY-C-MARKETPLACE-ID": self.marketplace,
+                "Accept-Language": self.accept_language,
             },
             timeout=30,
         )
