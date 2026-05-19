@@ -60,9 +60,17 @@ def _client():
         import boto3
         from botocore.client import Config
 
+        endpoint = os.environ.get("MINIO_ENDPOINT", S3_ENDPOINT)
+        # MINIO_ENDPOINT is host-only (e.g. "eurio-s3.musubi.dev") for SDK
+        # compatibility (MinIO Go SDK rejects URLs with scheme/path). boto3
+        # however needs a full URL — reconstruct it here from MINIO_USE_SSL.
+        if "://" not in endpoint:
+            use_ssl = os.environ.get("MINIO_USE_SSL", "true").lower() == "true"
+            endpoint = f"{'https' if use_ssl else 'http'}://{endpoint}"
+
         _s3_client = boto3.client(
             "s3",
-            endpoint_url=os.environ.get("MINIO_ENDPOINT", S3_ENDPOINT),
+            endpoint_url=endpoint,
             aws_access_key_id=os.environ["MINIO_ACCESS_KEY"],
             aws_secret_access_key=os.environ["MINIO_SECRET_KEY"],
             # Force path-style addressing — virtual-host style requires a
