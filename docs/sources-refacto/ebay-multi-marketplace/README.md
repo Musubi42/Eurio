@@ -29,6 +29,9 @@
    panel "règles actives" (NOISE_PATTERNS, prix×face, year policy, theme).
 6. [`rollout.md`](./rollout.md) — chunks ordonnés, dépendances, critères
    de validation chunk-par-chunk.
+7. [`i18n-bootstrap-kickoff.md`](./i18n-bootstrap-kickoff.md) — brief
+   auto-suffisant pour la session qui livre I1 (scrape Numista 9 langues
+   → `coin_names_i18n`). À lire avant d'attaquer la session i18n.
 
 ## Contexte amont (à lire si besoin)
 
@@ -59,9 +62,12 @@
   (à confirmer par mini-probe en chunk V1, défaut GB-only sinon — cf.
   `marketplace-map.md` §"Routage PT provisoire"). Si pas de marketplace
   dans la langue native (GR, BG, EE, FI, …) → GB-only.
-- **D-MM3** Source i18n des théme-tokens = scraping **Numista sub-domains
-  fr/en/de/it/es/nl** (cf. `ebay-strategy-v2-kickoff.md` §2.A étendu à
-  NL pour EBAY_NL/BE).
+- **D-MM3** Source i18n des théme-tokens = scraping HTML
+  **`<lang>.numista.com/<id>`** en **9 langues**
+  (`fr,en,de,it,es,nl,ru,pt,el`). Le `<h1>` est extrait, le tokenizer
+  I2 fait le filtrage. **API Numista non utilisée** pour cette tâche
+  — voir `i18n-bootstrap-kickoff.md` §"Décisions actées" pour la
+  rationale (quota précieux, scrape future-proof).
 - **D-MM4** Dédup cross-marketplace : `(source, source_ref)` UNIQUE
   existante suffit pour empêcher les doublons, **MAIS** le merge des
   `marketplace_found_json` est fait **en mémoire avant INSERT** par

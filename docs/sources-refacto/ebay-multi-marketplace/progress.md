@@ -12,7 +12,7 @@ Overview de l'avancement chunk-par-chunk. Mis à jour à chaque livraison.
 | B | B4 — adapter discover multi-call | ✅ done | `2c290d3` |
 | B | B5 — API `/marketplace-map` | ✅ done | (pending) |
 | B | B6 — API `/filter-config` | ✅ done | (pending) |
-| I (i18n) | I1 — bootstrap Numista i18n | ⏳ | — |
+| I (i18n) | I1 — bootstrap Numista i18n | ⏳ kickoff écrit | — |
 | I | I2 — theme matcher multilingue | ⏳ | — |
 | F (front) | F1 → F4 — pilote / run-detail / règles / coin-detail | ⏳ | — |
 | V (validation) | V1 — probe langues + PT routing | ⏳ | — |
@@ -78,8 +78,9 @@ filter-config) sont prêtes à être consommées. Reste à brancher la i18n
 
 ## Reste à faire
 
-1. **I1** (bootstrap Numista i18n) à lancer en background pendant les
-   chunks front — ~3-4 h de run, ~3000 coins × 6 langues.
+1. **I1** (bootstrap Numista i18n) — session dédiée. Scope verrouillé
+   2026-05-19 : scrape HTML 9 langues, ~578 coins, ~1h27 de run, 0
+   quota API. Kickoff complet : `i18n-bootstrap-kickoff.md`.
 2. **I2** — refacto theme matcher (cf. `language-probe.md` §"Étape 2bis"
    — stop-words par langue, extraction depuis titre Numista localisé,
    `MARKETPLACE_ACTIVE_LANGS`).
