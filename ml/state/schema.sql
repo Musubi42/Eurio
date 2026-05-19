@@ -667,6 +667,24 @@ CREATE INDEX IF NOT EXISTS idx_coins_commemorative
 CREATE INDEX IF NOT EXISTS idx_coins_numista
   ON coins(numista_id) WHERE numista_id IS NOT NULL;
 
+-- ─── Coin names i18n (eBay multi-marketplace) ─────────────────────────────
+-- Titres Numista localisés (fr/en/de/it/es/nl) bootstrappés une fois pour
+-- toutes via `ml/scripts/bootstrap_coin_names_i18n.py`. Consommés par le
+-- matcher theme multilingue (`ml/sources/ebay/queries.py` post-I2). Cf.
+-- docs/sources-refacto/ebay-multi-marketplace/language-probe.md §"Étape 2bis".
+
+CREATE TABLE IF NOT EXISTS coin_names_i18n (
+  eurio_id   TEXT NOT NULL REFERENCES coins(eurio_id) ON DELETE CASCADE,
+  lang       TEXT NOT NULL CHECK (lang IN ('fr','en','de','it','es','nl')),
+  title      TEXT NOT NULL,
+  source     TEXT NOT NULL DEFAULT 'numista',
+  fetched_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (eurio_id, lang)
+);
+
+CREATE INDEX IF NOT EXISTS idx_coin_names_i18n_lang
+  ON coin_names_i18n(lang);
+
 -- ─── Freshness view eBay (D-20) ───────────────────────────────────────────
 -- Driver de la freshness queue : pour chaque commémo 2€ non-EU, expose
 -- last_enriched_at, n_images, n_crops via JOIN avec source_images. NULLS

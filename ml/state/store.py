@@ -612,6 +612,26 @@ class Store:
                     column=column,
                     decl=decl,
                 )
+            # eBay multi-marketplace (B1). marketplace = mkt qui a yieldé
+            # le listing/search en premier ; marketplace_found_json = liste
+            # complète (dédup cross-mkt). Cf. docs/sources-refacto/
+            # ebay-multi-marketplace/schema.md.
+            for table, column, decl in (
+                ("source_images", "marketplace", "TEXT"),
+                ("source_images", "marketplace_found_json", "TEXT"),
+                ("discovery_searches", "marketplace", "TEXT"),
+                ("discarded_listings", "marketplace", "TEXT"),
+            ):
+                self._ensure_column(conn, table=table, column=column, decl=decl)
+            for index_sql in (
+                "CREATE INDEX IF NOT EXISTS idx_source_images_marketplace "
+                "ON source_images(marketplace) WHERE marketplace IS NOT NULL",
+                "CREATE INDEX IF NOT EXISTS idx_discovery_searches_marketplace "
+                "ON discovery_searches(marketplace) WHERE marketplace IS NOT NULL",
+                "CREATE INDEX IF NOT EXISTS idx_discarded_listings_marketplace "
+                "ON discarded_listings(marketplace) WHERE marketplace IS NOT NULL",
+            ):
+                conn.execute(index_sql)
             # Verdict vs target_eurio_id (chunk 6 auto-validation).
             # CHECK column-level avec NULL autorisé pour les rows backfillées
             # avant chunk 6 ou sans target connu.
