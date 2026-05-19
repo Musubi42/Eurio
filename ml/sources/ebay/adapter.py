@@ -37,7 +37,7 @@ import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
+from typing import Callable, Iterable
 
 import httpx
 
@@ -56,12 +56,19 @@ from sources.ebay.filters import (
     is_lot_suspected,
     listing_row,
 )
+from sources.ebay.marketplaces import MarketplaceRoute, route_for
 from sources.ebay.queries import (
     EbayQuery,
     build_query,
     load_coin,
     title_matches_theme,
 )
+
+# Factory invoked by the adapter to materialize a client for a given
+# marketplace. Callers wire it as e.g.
+# `lambda mkt: EbayClient(token, marketplace=mkt, tracker=shared_tracker)`
+# so the multiple per-mkt clients share the same daily quota counter.
+MakeClientFn = Callable[[str], EbayClient]
 
 logger = logging.getLogger(__name__)
 
@@ -93,16 +100,36 @@ class SearchExpandResult:
 
 
 @dataclass
-class EbayAdapter:
-    """Glue between the EbayClient and the orchestrator's SourceAdapter contract.
+class _MergedItem:
+    """Listing dé-dupliqué cross-marketplace pour 1 eurio_id (B4).
 
-    Pas de state interne : on prend ``client`` (déjà avec token + tracker)
-    et ``conn`` (pour résoudre eurio_id → coin via la table ``coins``).
-    Une instance == un run, mais le tracker ``EbayClient`` survit
-    cross-run (table SQLite).
+    `first_mkt` = mkt qui a vu l'item en premier (ordre primary→global).
+    `found` = set des mkts où l'item est apparu (= base du JSON persisté).
+    `client` = EbayClient associé à `first_mkt` (utilisé pour le call
+    item/{id} HD ; les détails images sont stables cross-mkt, donc tirer
+    via le premier client est OK et plus simple).
     """
 
+    first_mkt: str
+    found: set[str]
+    row: dict
     client: EbayClient
+
+
+@dataclass
+class EbayAdapter:
+    """Glue between EbayClient(s) and the orchestrator's SourceAdapter contract.
+
+    Multi-marketplace (B4) : reçoit une **factory** ``make_client`` qui
+    construit un EbayClient pour un marketplace donné. L'adapter
+    instancie 1 à 2 clients par eurio_id selon ``route_for(country)``
+    (primary + GB, ou GB seul), partage le quota tracker entre eux via
+    la closure côté caller.
+
+    Une instance == un run ; les clients vivent le temps du run.
+    """
+
+    make_client: MakeClientFn
     conn: sqlite3.Connection
     source_id: str = "ebay"
     search_limit: int = DEFAULT_SEARCH_LIMIT
@@ -112,6 +139,19 @@ class EbayAdapter:
     # propagated through CLI/API). Skip item/{id} HD expansion to keep the
     # preview cheap : 1 search call per eurio_id instead of ~10.
     dry_run: bool = False
+
+    def __post_init__(self) -> None:
+        # Cache des clients par mkt — évite de re-instancier (donc de
+        # re-checker le token, de re-créer un httpx.Client) à chaque
+        # eurio_id du batch. Réinitialisé par instance d'adapter.
+        self._client_cache: dict[str, EbayClient] = {}
+
+    def _client_for(self, marketplace: str) -> EbayClient:
+        cli = self._client_cache.get(marketplace)
+        if cli is None:
+            cli = self.make_client(marketplace)
+            self._client_cache[marketplace] = cli
+        return cli
 
     # ── Discover ────────────────────────────────────────────────────────────
 
@@ -124,8 +164,11 @@ class EbayAdapter:
     ) -> Iterable[DiscoveredItem]:
         """Yield 1 DiscoveredItem per image of each accepted listing.
 
-        The orchestrator already unfolded a batch into per-eurio_id
-        sub-queries — we expect ``query.target_eurio_id`` to be set.
+        B4 — Multi-marketplace : appelle ``route_for(coin.country)`` pour
+        décider du couple (primary, GB). Boucle sur les mkts (1 ou 2),
+        agrège les rows par item_id en mémoire (1ʳᵉ occurrence wins pour
+        ``marketplace``, set complet pour ``marketplace_found``), puis
+        yield 1 DiscoveredItem par image de chaque listing accepté.
         """
         if not query.target_eurio_id:
             raise ValueError(
@@ -134,125 +177,167 @@ class EbayAdapter:
             )
 
         coin = load_coin(self.conn, query.target_eurio_id)
-        ebay_q = build_query(coin)
+        route = route_for(coin.country)
         ambiguous = self._is_ambiguous_country_year(coin.country, coin.year)
 
-        logger.info(
-            "[ebay] eurio=%s q=%r aspect=%r ambiguous=%s theme_tokens=%s",
-            coin.eurio_id, ebay_q.q, ebay_q.aspect_filter, ambiguous, ebay_q.theme_tokens,
-        )
+        # Ordre des marketplaces : primary natif d'abord, GB ensuite. Si
+        # primary == None ou primary == GB, on ne fait qu'un appel (GB).
+        marketplaces: list[tuple[str, str]] = []  # (mkt, query_lang)
+        if route.primary is not None and route.primary != route.global_:
+            marketplaces.append((route.primary, route.query_lang))
+        marketplaces.append((route.global_, "en"))
 
-        filters_meta = {
-            "aspect_filter": ebay_q.aspect_filter,
-            "theme_tokens": ebay_q.theme_tokens,
-            "ambiguous": ambiguous,
-            "search_limit": self.search_limit,
-            "category_id": ebay_q.category_id,
-        }
+        merged: dict[str, _MergedItem] = {}
 
-        t0 = time.monotonic()
-        try:
-            expand = self._search_and_expand(ebay_q, ambiguous=ambiguous)
-        except Exception as exc:  # noqa: BLE001 — record then re-raise
-            duration_ms = int((time.monotonic() - t0) * 1000)
-            http_status: int | None = None
-            if isinstance(exc, httpx.HTTPStatusError):
-                http_status = exc.response.status_code
-            if record_search is not None:
-                record_search(DiscoverySearchRecord(
-                    run_id="",  # filled by step
-                    source="",
-                    target_eurio_id=coin.eurio_id,
-                    endpoint="ebay.browse.search",
-                    query_q=ebay_q.q,
-                    query_filters=filters_meta,
-                    status="failed",
-                    http_status=http_status,
-                    duration_ms=duration_ms,
-                    error=str(exc)[:500],
-                ))
-            raise
-
-        # Persist theme-token drops (silencieux jusqu'au chunk 0
-        # auto-validation). Reason='theme_mismatch' rejoint les autres rejets
-        # listés dans accept_listing pour un audit unifié.
-        if expand.theme_dropped and record_discarded is not None:
-            for row in expand.theme_dropped:
-                if not row.get("item_id"):
-                    continue
-                record_discarded(DiscardedListingRecord(
-                    source_ref=f"ebay_listing_{row['item_id']}",
-                    target_eurio_id=coin.eurio_id,
-                    reason="theme_mismatch",
-                    title=row.get("title"),
-                    raw_payload={
-                        "item_id": row.get("item_id"),
-                        "price": row.get("price"),
-                        "currency": row.get("currency"),
-                        "item_web_url": row.get("item_web_url"),
-                        "theme_tokens": ebay_q.theme_tokens,
-                    },
-                ))
-
-        listings = expand.rows
-
-        kept: list[dict] = []
-        for row in listings:
-            ok, reason = accept_listing(
-                row,
-                coin.face_value,
-                expected_year=coin.year,
-                is_commemorative=coin.is_commemorative,
+        for mkt, lang in marketplaces:
+            client = self._client_for(mkt)
+            ebay_q = build_query(coin, query_lang=lang)
+            filters_meta = {
+                "marketplace": mkt,
+                "query_lang": lang,
+                "aspect_filter": ebay_q.aspect_filter,
+                "theme_tokens": ebay_q.theme_tokens,
+                "ambiguous": ambiguous,
+                "search_limit": self.search_limit,
+                "category_id": ebay_q.category_id,
+            }
+            logger.info(
+                "[ebay] eurio=%s mkt=%s lang=%s q=%r ambiguous=%s",
+                coin.eurio_id, mkt, lang, ebay_q.q, ambiguous,
             )
-            if not ok:
-                logger.debug("[ebay] reject item_id=%s reason=%s", row.get("item_id"), reason)
-                if record_discarded is not None and row.get("item_id"):
+
+            t0 = time.monotonic()
+            try:
+                expand = self._search_and_expand(
+                    client, ebay_q, ambiguous=ambiguous
+                )
+            except Exception as exc:  # noqa: BLE001
+                duration_ms = int((time.monotonic() - t0) * 1000)
+                http_status: int | None = None
+                if isinstance(exc, httpx.HTTPStatusError):
+                    http_status = exc.response.status_code
+                if record_search is not None:
+                    record_search(DiscoverySearchRecord(
+                        run_id="",
+                        source="",
+                        target_eurio_id=coin.eurio_id,
+                        endpoint="ebay.browse.search",
+                        query_q=ebay_q.q,
+                        query_filters=filters_meta,
+                        status="failed",
+                        http_status=http_status,
+                        duration_ms=duration_ms,
+                        error=str(exc)[:500],
+                        marketplace=mkt,
+                    ))
+                # Un mkt qui plante ne doit pas casser l'autre. On log et
+                # on continue ; le run repart sur le mkt suivant ou yield
+                # ce qu'on a déjà mergé.
+                logger.warning(
+                    "[ebay] mkt=%s search failed for %s: %s",
+                    mkt, coin.eurio_id, exc,
+                )
+                continue
+
+            # Persist theme-token drops (mkt-aware).
+            if expand.theme_dropped and record_discarded is not None:
+                for row in expand.theme_dropped:
+                    if not row.get("item_id"):
+                        continue
                     record_discarded(DiscardedListingRecord(
                         source_ref=f"ebay_listing_{row['item_id']}",
                         target_eurio_id=coin.eurio_id,
-                        reason=reason,
+                        reason="theme_mismatch",
                         title=row.get("title"),
                         raw_payload={
                             "item_id": row.get("item_id"),
                             "price": row.get("price"),
                             "currency": row.get("currency"),
                             "item_web_url": row.get("item_web_url"),
+                            "theme_tokens": ebay_q.theme_tokens,
                         },
+                        marketplace=mkt,
                     ))
-                continue
-            kept.append(row)
 
-        duration_ms = int((time.monotonic() - t0) * 1000)
-        logger.info(
-            "[ebay] eurio=%s funnel summaries=%d → groups=%d → theme=%d → kept=%d",
-            coin.eurio_id,
-            expand.n_summaries,
-            expand.n_after_groups,
-            len(listings),
-            len(kept),
-        )
+            # accept_listing per mkt — les reject reasons sont attribuées
+            # au mkt qui a yieldé le listing rejeté.
+            kept: list[dict] = []
+            for row in expand.rows:
+                ok, reason = accept_listing(
+                    row,
+                    coin.face_value,
+                    expected_year=coin.year,
+                    is_commemorative=coin.is_commemorative,
+                )
+                if not ok:
+                    if record_discarded is not None and row.get("item_id"):
+                        record_discarded(DiscardedListingRecord(
+                            source_ref=f"ebay_listing_{row['item_id']}",
+                            target_eurio_id=coin.eurio_id,
+                            reason=reason,
+                            title=row.get("title"),
+                            raw_payload={
+                                "item_id": row.get("item_id"),
+                                "price": row.get("price"),
+                                "currency": row.get("currency"),
+                                "item_web_url": row.get("item_web_url"),
+                            },
+                            marketplace=mkt,
+                        ))
+                    continue
+                kept.append(row)
 
-        if record_search is not None:
-            record_search(DiscoverySearchRecord(
-                run_id="",  # filled by step
-                source="",
-                target_eurio_id=coin.eurio_id,
-                endpoint="ebay.browse.search",
-                query_q=ebay_q.q,
-                query_filters=filters_meta,
-                status="success" if listings else "empty",
-                http_status=200,
-                n_summaries=expand.n_summaries,
-                n_after_groups=expand.n_after_groups,
-                n_raw_results=len(listings),
-                n_kept_results=len(kept),
-                duration_ms=duration_ms,
-            ))
+            duration_ms = int((time.monotonic() - t0) * 1000)
+            logger.info(
+                "[ebay] eurio=%s mkt=%s funnel summaries=%d → groups=%d → theme=%d → kept=%d",
+                coin.eurio_id, mkt,
+                expand.n_summaries, expand.n_after_groups,
+                len(expand.rows), len(kept),
+            )
 
-        # D-22 — fetch HD images via item/{id}, then yield one DiscoveredItem
-        # per image (image[0] + additionalImages[*]).
-        for row in kept:
-            yield from self._yield_listing_images(row=row, coin=coin)
+            if record_search is not None:
+                record_search(DiscoverySearchRecord(
+                    run_id="",
+                    source="",
+                    target_eurio_id=coin.eurio_id,
+                    endpoint="ebay.browse.search",
+                    query_q=ebay_q.q,
+                    query_filters=filters_meta,
+                    status="success" if expand.rows else "empty",
+                    http_status=200,
+                    n_summaries=expand.n_summaries,
+                    n_after_groups=expand.n_after_groups,
+                    n_raw_results=len(expand.rows),
+                    n_kept_results=len(kept),
+                    duration_ms=duration_ms,
+                    marketplace=mkt,
+                ))
+
+            # Merge en mémoire : 1ʳᵉ occurrence d'un item_id fixe
+            # `first_mkt` (l'ordre primary→GB de la boucle garantit
+            # cette sémantique). Les suivantes étendent le set `found`.
+            for row in kept:
+                iid = row.get("item_id")
+                if not iid:
+                    continue
+                if iid in merged:
+                    merged[iid].found.add(mkt)
+                else:
+                    merged[iid] = _MergedItem(
+                        first_mkt=mkt, found={mkt}, row=row, client=client,
+                    )
+
+        # D-22 — fetch HD images via item/{id} sur le client du first_mkt,
+        # puis yield 1 DiscoveredItem par image avec marketplace +
+        # marketplace_found renseignés.
+        for iid, item in merged.items():
+            yield from self._yield_listing_images(
+                row=item.row,
+                coin=coin,
+                marketplace=item.first_mkt,
+                marketplace_found=tuple(sorted(item.found)),
+                client=item.client,
+            )
 
     # ── Download ───────────────────────────────────────────────────────────
 
@@ -317,7 +402,9 @@ class EbayAdapter:
         ).fetchone()["n"]
         return n > 1
 
-    def _search_and_expand(self, ebay_q: EbayQuery, *, ambiguous: bool) -> "SearchExpandResult":
+    def _search_and_expand(
+        self, client: EbayClient, ebay_q: EbayQuery, *, ambiguous: bool,
+    ) -> "SearchExpandResult":
         """Search + group expansion + theme drop, avec ventilation N0/N1/N2.
 
         Retourne un :class:`SearchExpandResult` qui porte la liste finale
@@ -329,7 +416,7 @@ class EbayAdapter:
         # crashait le recall (49→0 mesuré sur bearded-vulture en probe S3).
         # Les contraintes prix/devise vivent désormais en post-filter
         # applicatif côté `accept_listing` (filters.py).
-        search = self.client.search(
+        search = client.search(
             ebay_q.q,
             category_ids=ebay_q.category_id,
             aspect_filter=ebay_q.aspect_filter,
@@ -352,7 +439,7 @@ class EbayAdapter:
         # Expansion limitée — coût quota maîtrisé.
         for gid in group_ids[: self.group_expand_top_k]:
             try:
-                data = self.client.get_items_by_group(gid)
+                data = client.get_items_by_group(gid)
                 for it in data.get("items") or []:
                     rows.append(listing_row(it))
             except httpx.HTTPError as exc:
@@ -378,12 +465,22 @@ class EbayAdapter:
             theme_dropped=theme_dropped,
         )
 
-    def _yield_listing_images(self, *, row: dict, coin) -> Iterable[DiscoveredItem]:
+    def _yield_listing_images(
+        self,
+        *,
+        row: dict,
+        coin,
+        marketplace: str,
+        marketplace_found: tuple[str, ...],
+        client: EbayClient,
+    ) -> Iterable[DiscoveredItem]:
         """Fetch HD images via ``item/{id}`` and yield 1 item per image.
 
         En mode ``dry_run`` on saute le call ``item/{id}`` pour ne pas
         consommer de quota inutilement (preview cheap) — on yield seulement
-        les images du summary (basse-déf).
+        les images du summary (basse-déf). Le ``client`` reçu est celui
+        du first_mkt (B4 : un item_id étant stable cross-mkt, peu importe
+        quel mkt sert le item/{id} ; on prend le first par convention).
         """
         item_id = row["item_id"]
         title = row["title"]
@@ -396,7 +493,7 @@ class EbayAdapter:
             logger.debug("[ebay] dry_run: skip item/{id} for %s", item_id)
         else:
             try:
-                detail = self.client.get_item(item_id, fieldgroups="PRODUCT")
+                detail = client.get_item(item_id, fieldgroups="PRODUCT")
             except httpx.HTTPError as exc:
                 logger.warning("[ebay] item/{id} failed for %s, falling back to summary: %s", item_id, exc)
                 detail = None
@@ -448,6 +545,8 @@ class EbayAdapter:
                     "origin_date": row.get("origin_date"),
                     "aspects": row.get("aspects"),
                 },
+                marketplace=marketplace,
+                marketplace_found=marketplace_found,
             )
 
 

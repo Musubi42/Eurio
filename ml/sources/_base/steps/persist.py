@@ -53,6 +53,14 @@ def run_persist(
         ).fetchone()
         is_new = existing is None
 
+        # eBay multi-mkt (B4) : sérialise la liste des mkts où l'item a
+        # été vu en JSON pour la colonne dédiée. None si l'adapter ne
+        # remplit pas le champ (sources non-eBay).
+        if item.marketplace_found is not None:
+            import json as _json
+            mkt_found_json = _json.dumps(list(item.marketplace_found))
+        else:
+            mkt_found_json = None
         sid = upsert_source_image(
             conn,
             SourceImageRow(
@@ -72,6 +80,8 @@ def run_persist(
                 is_lot_suspected=item.is_lot_suspected,
                 raw_payload=item.raw_payload,
                 run_id=run.run_id,
+                marketplace=item.marketplace,
+                marketplace_found_json=mkt_found_json,
             ),
         )
         ids[item.source_ref] = sid
