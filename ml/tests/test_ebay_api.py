@@ -236,3 +236,54 @@ def test_trigger_run_503_if_no_ebay_creds(client: TestClient, monkeypatch):
     )
     assert resp.status_code == 503
     assert "EBAY_CLIENT_ID" in resp.json()["detail"]
+
+
+# ── B5 — /sources/ebay/marketplace-map ──────────────────────────────────────
+
+
+def test_marketplace_map_lists_eurozone_plus_eu(client: TestClient):
+    resp = client.get("/sources/ebay/marketplace-map")
+    assert resp.status_code == 200
+    payload = resp.json()
+    countries = {e["country"] for e in payload["entries"]}
+    # 21 eurozone + 4 micro-États + 'eu' joint
+    assert {"FR", "DE", "BG", "AD", "SM", "eu"}.issubset(countries)
+    assert len(payload["entries"]) >= 26
+
+
+def test_marketplace_map_payload_shape(client: TestClient):
+    resp = client.get("/sources/ebay/marketplace-map")
+    by_country = {e["country"]: e for e in resp.json()["entries"]}
+    fr = by_country["FR"]
+    assert fr["primary"] == "EBAY_FR"
+    assert fr["global_"] == "EBAY_GB"
+    assert fr["query_lang"] == "fr"
+    bg = by_country["BG"]
+    assert bg["primary"] is None
+    assert bg["global_"] == "EBAY_GB"
+
+
+# ── B6 — /sources/ebay/filter-config ────────────────────────────────────────
+
+
+def test_filter_config_lists_expected_rules(client: TestClient):
+    resp = client.get("/sources/ebay/filter-config")
+    assert resp.status_code == 200
+    payload = resp.json()
+    names = {r["name"] for r in payload["rules"]}
+    assert {
+        "noise_title", "below_face", "above_extreme", "non_eur",
+        "year_mismatch", "theme_mismatch", "is_lot_suspected",
+    }.issubset(names)
+    assert payload["source_path"] == "ml/sources/ebay/filters.py"
+
+
+def test_filter_config_thresholds_match_runtime(client: TestClient):
+    """Endpoint reflète bien les constantes courantes — pas de chiffres figés."""
+    from sources.ebay import filters
+    by_name = {r["name"]: r for r in client.get("/sources/ebay/filter-config").json()["rules"]}
+    assert by_name["below_face"]["threshold"] == filters.FACE_VALUE_FACTOR_LOW
+    assert by_name["above_extreme"]["threshold"] == filters.FACE_VALUE_FACTOR_HIGH
+    assert by_name["year_mismatch"]["policy"] == "accept-on-missing"
+    assert by_name["is_lot_suspected"]["kind"] == "flag"
+    assert by_name["noise_title"]["kind"] == "reject"

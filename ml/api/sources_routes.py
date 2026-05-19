@@ -1529,6 +1529,137 @@ def ebay_freshness(
     )
 
 
+# ── eBay multi-marketplace (B5/B6) ────────────────────────────────────────
+
+
+class MarketplaceMapEntry(BaseModel):
+    country: str           # ISO2 ou 'eu' (joint issues)
+    primary: str | None    # ex: 'EBAY_DE' ; None si GB-only
+    global_: str           # toujours 'EBAY_GB' en V1
+    query_lang: str        # langue de la query primary; 'en' si GB-only
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "country": "DE",
+                "primary": "EBAY_DE",
+                "global_": "EBAY_GB",
+                "query_lang": "de",
+            }
+        }
+    }
+
+
+class MarketplaceMapResponse(BaseModel):
+    """Routage canonique pays → marketplaces eBay (cf. marketplace-map.md)."""
+
+    entries: list[MarketplaceMapEntry]
+
+
+# Consumed by: admin/.../sources/composables/useMarketplaceMap.ts (B5 client).
+@router.get("/ebay/marketplace-map", response_model=MarketplaceMapResponse)
+def ebay_marketplace_map() -> MarketplaceMapResponse:
+    """Renvoie le dict statique de `ml/sources/ebay/marketplaces.py`."""
+    from sources.ebay.marketplaces import all_routes
+    entries = [
+        MarketplaceMapEntry(
+            country=country,
+            primary=route.primary,
+            global_=route.global_,
+            query_lang=route.query_lang,
+        )
+        for country, route in sorted(all_routes().items())
+    ]
+    return MarketplaceMapResponse(entries=entries)
+
+
+class FilterRule(BaseModel):
+    name: str               # 'noise_title' | 'below_face' | …
+    kind: str               # 'reject' | 'flag'
+    description: str
+    pattern: str | None = None     # regex source si pertinent
+    threshold: float | None = None  # seuil numérique si pertinent
+    policy: str | None = None       # ex: 'accept-on-missing' pour year
+
+
+class EbayFilterConfig(BaseModel):
+    """Snapshot lisible des règles de filtrage actives (cf. front-ux.md §3.B).
+
+    Reflète les constantes de `ml/sources/ebay/filters.py`. V1 lecture
+    seule — toute modif passe par PR.
+    """
+
+    rules: list[FilterRule]
+    source_path: str        # chemin du fichier code pour le "Source" link
+
+
+# Consumed by: admin/.../sources/composables/useFilterConfig.ts (B6 client).
+@router.get("/ebay/filter-config", response_model=EbayFilterConfig)
+def ebay_filter_config() -> EbayFilterConfig:
+    from sources.ebay import filters as ebay_filters
+    return EbayFilterConfig(
+        rules=[
+            FilterRule(
+                name="noise_title",
+                kind="reject",
+                description="Reject si le titre matche un mot-clé hors-scope (proof, argent, plaqué, …).",
+                pattern=ebay_filters.NOISE_PATTERNS.pattern,
+            ),
+            FilterRule(
+                name="below_face",
+                kind="reject",
+                description=(
+                    f"Reject si prix < face × {ebay_filters.FACE_VALUE_FACTOR_LOW} "
+                    "(= 1.60 € pour les 2 €)."
+                ),
+                threshold=ebay_filters.FACE_VALUE_FACTOR_LOW,
+            ),
+            FilterRule(
+                name="above_extreme",
+                kind="reject",
+                description=(
+                    f"Reject si prix > face × {ebay_filters.FACE_VALUE_FACTOR_HIGH} "
+                    "(= 1000 € pour les 2 €)."
+                ),
+                threshold=ebay_filters.FACE_VALUE_FACTOR_HIGH,
+            ),
+            FilterRule(
+                name="non_eur",
+                kind="reject",
+                description="Reject si currency != EUR.",
+            ),
+            FilterRule(
+                name="year_mismatch",
+                kind="reject",
+                description=(
+                    "Reject si une année trouvée dans le titre ≠ année attendue "
+                    "(commémos uniquement)."
+                ),
+                pattern=ebay_filters.YEAR_IN_TITLE_RE.pattern,
+                policy="accept-on-missing",
+            ),
+            FilterRule(
+                name="theme_mismatch",
+                kind="reject",
+                description=(
+                    "Reject si aucun théme-token (multilingue) n'apparaît dans le "
+                    "titre — appliqué seulement quand (country, year) a plusieurs commémos."
+                ),
+            ),
+            FilterRule(
+                name="is_lot_suspected",
+                kind="flag",
+                description=(
+                    "Flag (pas reject) : titre matche lot|coffret|série|rouleau|set. "
+                    "Le listing est gardé mais routé vers review_queue.kind='lot'."
+                ),
+                pattern=ebay_filters.LOT_PATTERNS.pattern,
+            ),
+        ],
+        source_path="ml/sources/ebay/filters.py",
+    )
+
+
 # ── Startup hook ──────────────────────────────────────────────────────────
 
 

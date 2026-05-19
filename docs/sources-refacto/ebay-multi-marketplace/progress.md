@@ -9,19 +9,19 @@ Overview de l'avancement chunk-par-chunk. Mis à jour à chaque livraison.
 | B (back) | B1 — schema migrations + i18n table | ✅ done | `5ebc9a0` |
 | B | B2 — marketplace map module | ✅ done | `ed421a1` |
 | B | B3 — EbayClient marketplace-param | ✅ done | `ed421a1` |
-| B | B4 — adapter discover multi-call | ✅ done | (pending) |
-| B | B5 — API `/marketplace-map` | ⏳ next | — |
-| B | B6 — API `/filter-config` | ⏳ | — |
+| B | B4 — adapter discover multi-call | ✅ done | `2c290d3` |
+| B | B5 — API `/marketplace-map` | ✅ done | (pending) |
+| B | B6 — API `/filter-config` | ✅ done | (pending) |
 | I (i18n) | I1 — bootstrap Numista i18n | ⏳ | — |
 | I | I2 — theme matcher multilingue | ⏳ | — |
 | F (front) | F1 → F4 — pilote / run-detail / règles / coin-detail | ⏳ | — |
 | V (validation) | V1 — probe langues + PT routing | ⏳ | — |
 | V | V2 — cutover legacy | ⏳ | — |
 
-**4/14 chunks livrés.** Tous les chunks back-pipeline core (B1-B4) sont en
-place — la chaîne multi-mkt est fonctionnelle de bout en bout côté
-backend, il reste à exposer le tout (B5/B6) puis brancher la i18n (I1/I2)
-et le front (F1-F4).
+**6/14 chunks livrés.** Toute la phase B (backend) est en place — la
+chaîne multi-mkt tourne, les 2 APIs front (marketplace-map +
+filter-config) sont prêtes à être consommées. Reste à brancher la i18n
+(I1/I2) et le front (F1-F4) puis valider/cutover (V1/V2).
 
 ## Ce qui fonctionne
 
@@ -43,8 +43,14 @@ et le front (F1-F4).
     `discovery_searches` par (eurio × mkt), 1 row `discarded_listings`
     par rejet avec le mkt d'origine.
   - Échec d'1 mkt ne casse pas l'autre (log warning + continue).
-- **Tests** : 71/71 verts sur scope eBay (adapter, queries, filters,
-  client, storage, run-breakdown, bootstrap_coins).
+- **Tests** : 75/75 verts sur scope eBay (adapter, queries, filters,
+  client, storage, run-breakdown, bootstrap_coins, API B5/B6).
+- **APIs front** : `GET /sources/ebay/marketplace-map` sérialise le
+  routage canonique (26 entrées). `GET /sources/ebay/filter-config`
+  reflète les constantes de `filters.py` (7 règles : 6 reject + 1 flag)
+  avec valeurs `threshold` / `pattern` / `policy` lues runtime, pas
+  hardcodées côté API → si quelqu'un modifie `filters.py`, la réponse
+  bouge sans toucher au front.
 
 ## Décisions actées en cours de route
 
@@ -72,16 +78,15 @@ et le front (F1-F4).
 
 ## Reste à faire
 
-1. **B5 + B6** — APIs front (`/marketplace-map`, `/filter-config`).
-   Petits chunks (30 min + 1 h).
-2. **I1** (bootstrap Numista i18n) à lancer en background pendant les
-   chunks suivants — ~3-4 h de run, ~3000 coins × 6 langues.
-3. **I2** — refacto theme matcher (cf. `language-probe.md` §"Étape 2bis"
+1. **I1** (bootstrap Numista i18n) à lancer en background pendant les
+   chunks front — ~3-4 h de run, ~3000 coins × 6 langues.
+2. **I2** — refacto theme matcher (cf. `language-probe.md` §"Étape 2bis"
    — stop-words par langue, extraction depuis titre Numista localisé,
    `MARKETPLACE_ACTIVE_LANGS`).
-4. **F1 → F4** — front (pilote bandeau strat, run-detail badges,
-   règles panel, coin-detail thumbs).
-5. **V1** — probe langues marketplaces, **inclut décision PT routing**
+3. **F1 → F4** — front (pilote bandeau strat, run-detail badges,
+   règles panel, coin-detail thumbs). Consommer `useMarketplaceMap.ts`
+   et `useFilterConfig.ts` (à créer côté admin/web).
+4. **V1** — probe langues marketplaces, **inclut décision PT routing**
    (cf. `marketplace-map.md` §"Routage PT provisoire" — TODO en code).
-6. **V2** — cutover legacy : retrait `THEME_TOKEN_FR_ALIASES`, smoke
+5. **V2** — cutover legacy : retrait `THEME_TOKEN_FR_ALIASES`, smoke
    run sur 10 eurio_ids, mesure recall vs baseline (KPI ≥ ×3).
