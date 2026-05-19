@@ -599,3 +599,63 @@ tasks:
     prompt: "This will drop stale cache files. Continue?"
     cmds:
       - "{{.VENV}}/python -m scripts.cascade_sync purge-cache"
+
+  # ---------- i18n bootstrap (Numista scrape via TOR) ----------
+  # Spec: docs/sources-refacto/ebay-multi-marketplace/i18n-scrape-numista.md
+  tor:up:
+    desc: "Start TOR SOCKS5 proxy (127.0.0.1:9050) for Numista scrape."
+    cmds:
+      - docker compose -f infrastructure/tor/docker-compose.yml up -d
+      - |
+        echo "Waiting for TOR bootstrap (up to 60s)..."
+        for i in $(seq 1 12); do
+          if curl -s --max-time 5 --socks5-hostname 127.0.0.1:9050 \
+              https://check.torproject.org/api/ip 2>/dev/null \
+              | grep -q '"IsTor":true'; then
+            echo "TOR ready:"
+            curl -s --socks5-hostname 127.0.0.1:9050 https://check.torproject.org/api/ip
+            exit 0
+          fi
+          echo "  ...not ready (attempt $i/12)"; sleep 5
+        done
+        echo "TOR did not become ready in 60s. Check: docker logs eurio-scrape-tor"
+        exit 1
+
+  tor:down:
+    desc: "Stop TOR SOCKS5 proxy."
+    cmds:
+      - docker compose -f infrastructure/tor/docker-compose.yml down
+
+  tor:logs:
+    desc: "Tail TOR container logs."
+    cmds:
+      - docker logs -f eurio-scrape-tor
+
+  bootstrap-coin-names-i18n:poc:
+    desc: "POC: scrape 5 coins × FR+EN via TOR, dump JSON, no DB write."
+    cmds:
+      # Prefer .venv (mac/pc), fall back to nix-provided python (vps profile).
+      - |
+        if [ -x "{{.VENV}}/python" ]; then PY="{{.VENV}}/python"; else PY="python"; fi
+        $PY -m scripts.bootstrap_coin_names_i18n --poc {{.CLI_ARGS}}
+
+  # --- Full i18n pipeline (PC ⇄ VPS) ---
+  # Step 1 (PC): export worklist from coins table.
+  export-i18n-worklist:
+    desc: "Export i18n scrape worklist (2eur coins × FR+EN) to state/i18n_worklist.json. Run on PC."
+    cmds:
+      - "{{.VENV}}/python -m scripts.export_i18n_worklist {{.CLI_ARGS}}"
+
+  # Step 2 (VPS): full scrape via TOR, appends to results/failures JSONL.
+  bootstrap-coin-names-i18n:
+    desc: "Full scrape: read state/i18n_worklist.json, write state/i18n_{results,failures}.jsonl. Run on VPS (TOR up)."
+    cmds:
+      - |
+        if [ -x "{{.VENV}}/python" ]; then PY="{{.VENV}}/python"; else PY="python"; fi
+        $PY -m scripts.bootstrap_coin_names_i18n {{.CLI_ARGS}}
+
+  # Step 3 (PC): import the results JSONL into the DB.
+  import-i18n-results:
+    desc: "Import state/i18n_results.jsonl into coin_names_i18n. Idempotent (INSERT OR IGNORE). Run on PC."
+    cmds:
+      - "{{.VENV}}/python -m scripts.import_i18n_results {{.CLI_ARGS}}"

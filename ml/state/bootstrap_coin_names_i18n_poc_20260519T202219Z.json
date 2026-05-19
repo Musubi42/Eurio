@@ -1,0 +1,175 @@
+{
+  "probed_at": "2026-05-19T20:22:52.909303Z",
+  "mode": "poc",
+  "proxy_url": "socks5h://127.0.0.1:9050",
+  "tor_exit_ip": "185.220.101.13",
+  "per_circuit_sleep": 30.0,
+  "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+  "results": [
+    {
+      "eurio_id": "fr-1999-2eur-standard",
+      "numista_id": 104,
+      "circuit_username": "circuit0",
+      "langs": {
+        "fr": {
+          "url": "https://fr.numista.com/104",
+          "final_url": "https://fr.numista.com/104",
+          "http_status": 200,
+          "elapsed_ms": 1636,
+          "raw_h1_html": null,
+          "h1_text": null,
+          "h1_main_text": null,
+          "h1_span_text": null,
+          "redirected_to_other_lang": false,
+          "challenge_detected": false,
+          "error": null
+        },
+        "en": {
+          "url": "https://en.numista.com/104",
+          "final_url": "https://en.numista.com/104",
+          "http_status": 200,
+          "elapsed_ms": 874,
+          "raw_h1_html": null,
+          "h1_text": null,
+          "h1_main_text": null,
+          "h1_span_text": null,
+          "redirected_to_other_lang": false,
+          "challenge_detected": false,
+          "error": null
+        }
+      }
+    },
+    {
+      "eurio_id": "de-2020-2eur-50-years-since-the-kniefall-von-warschau",
+      "numista_id": 226447,
+      "circuit_username": "circuit1",
+      "langs": {
+        "fr": {
+          "url": "https://fr.numista.com/226447",
+          "final_url": "https://fr.numista.com/226447",
+          "http_status": 403,
+          "elapsed_ms": 462,
+          "raw_h1_html": null,
+          "h1_text": null,
+          "h1_main_text": null,
+          "h1_span_text": null,
+          "redirected_to_other_lang": false,
+          "challenge_detected": false,
+          "error": null
+        },
+        "en": {
+          "url": "https://en.numista.com/226447",
+          "final_url": "https://en.numista.com/226447",
+          "http_status": 200,
+          "elapsed_ms": 1083,
+          "raw_h1_html": null,
+          "h1_text": null,
+          "h1_main_text": null,
+          "h1_span_text": null,
+          "redirected_to_other_lang": false,
+          "challenge_detected": false,
+          "error": null
+        }
+      }
+    },
+    {
+      "eurio_id": "ad-2025-2eur-bearded-vulture",
+      "numista_id": 482937,
+      "circuit_username": "circuit2",
+      "langs": {
+        "fr": {
+          "url": "https://fr.numista.com/482937",
+          "final_url": "https://fr.numista.com/482937",
+          "http_status": 200,
+          "elapsed_ms": 1177,
+          "raw_h1_html": null,
+          "h1_text": null,
+          "h1_main_text": null,
+          "h1_span_text": null,
+          "redirected_to_other_lang": false,
+          "challenge_detected": false,
+          "error": null
+        },
+        "en": {
+          "url": "https://en.numista.com/482937",
+          "final_url": "https://en.numista.com/482937",
+          "http_status": 200,
+          "elapsed_ms": 689,
+          "raw_h1_html": null,
+          "h1_text": null,
+          "h1_main_text": null,
+          "h1_span_text": null,
+          "redirected_to_other_lang": false,
+          "challenge_detected": false,
+          "error": null
+        }
+      }
+    },
+    {
+      "eurio_id": "mc-2007-2eur-25th-anniversary-of-the-death-of-grace-kelly",
+      "numista_id": 5036,
+      "circuit_username": "circuit3",
+      "langs": {
+        "fr": {
+          "url": "https://fr.numista.com/5036",
+          "final_url": "https://fr.numista.com/5036",
+          "http_status": 200,
+          "elapsed_ms": 1367,
+          "raw_h1_html": null,
+          "h1_text": null,
+          "h1_main_text": null,
+          "h1_span_text": null,
+          "redirected_to_other_lang": false,
+          "challenge_detected": false,
+          "error": null
+        },
+        "en": {
+          "url": "https://en.numista.com/5036",
+          "final_url": "https://en.numista.com/5036",
+          "http_status": 200,
+          "elapsed_ms": 1673,
+          "raw_h1_html": null,
+          "h1_text": null,
+          "h1_main_text": null,
+          "h1_span_text": null,
+          "redirected_to_other_lang": false,
+          "challenge_detected": false,
+          "error": null
+        }
+      }
+    },
+    {
+      "eurio_id": "sm-2005-2eur-world-year-of-physics-2005",
+      "numista_id": 5076,
+      "circuit_username": "circuit4",
+      "langs": {
+        "fr": {
+          "url": "https://fr.numista.com/5076",
+          "final_url": "https://fr.numista.com/5076",
+          "http_status": 200,
+          "elapsed_ms": 1188,
+          "raw_h1_html": null,
+          "h1_text": null,
+          "h1_main_text": null,
+          "h1_span_text": null,
+          "redirected_to_other_lang": false,
+          "challenge_detected": false,
+          "error": null
+        },
+        "en": {
+          "url": "https://en.numista.com/5076",
+          "final_url": "https://en.numista.com/5076",
+          "http_status": 200,
+          "elapsed_ms": 1825,
+          "raw_h1_html": null,
+          "h1_text": null,
+          "h1_main_text": null,
+          "h1_span_text": null,
+          "redirected_to_other_lang": false,
+          "challenge_detected": false,
+          "error": null
+        }
+      }
+    }
+  ]
+}

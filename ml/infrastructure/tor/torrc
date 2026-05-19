@@ -1,0 +1,40 @@
+# Eurio scrape — TOR config for bootstrap_coin_names_i18n.
+#
+# Strategy: per-username circuit isolation via IsolateSOCKSAuth. Each
+# Python worker uses a distinct SOCKS5 username (circuit0..circuit9),
+# TOR gives each one its own circuit pool. To rotate, the worker
+# bumps its username suffix (circuit0_batch2, etc.).
+#
+# Adapted from privateHub torrc-isolation-socks-auth.
+
+# ============ SOCKS Port ============
+SocksPort 0.0.0.0:9050 IsolateSOCKSAuth IsolateDestAddr
+
+# Access control happens at the Docker port-mapping layer (we publish to
+# 127.0.0.1:9050 only), so the container itself can accept any source IP
+# from the Docker bridge — the bridge subnet varies per host (e.g. some
+# Docker installs use 172.80.x.x which is outside the RFC1918 172.16/12
+# block, even though it looks private).
+SocksPolicy accept *
+
+# ============ Circuit Optimization ============
+MaxCircuitDirtiness 1800
+CircuitBuildTimeout 60
+LearnCircuitBuildTimeout 1
+PathsNeededToBuildCircuits 0.6
+
+# ============ Exit Node Selection ============
+# Avoid problematic countries (heavy WAF / often-blocked exits).
+ExcludeExitNodes {RU},{CN},{IR},{KP},{SY}
+
+# Exit policy: HTTPS only (Numista is https).
+ExitPolicy accept *:443
+ExitPolicy reject *:*
+
+# ============ Client Configuration ============
+DataDirectory /var/lib/tor
+ClientOnly 1
+ConnLimit 1000
+
+# ============ Logging ============
+Log notice stdout

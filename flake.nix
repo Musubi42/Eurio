@@ -61,6 +61,7 @@
           tqdm
           # Referential bootstrap (Phase 2C)
           httpx
+          socksio  # SOCKS5 support for httpx (Numista scrape via TOR)
           beautifulsoup4
           lxml
           anyascii
@@ -101,6 +102,8 @@
 
         vpsInputs = [
           pkgs.minio-client
+          # Python env for Numista scrape (no torch — runs CPU-only Python).
+          pythonEnv
         ];
 
         fullInputs = androidInputs ++ mlInputs ++ adminInputs;
