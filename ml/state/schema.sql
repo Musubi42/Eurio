@@ -678,6 +678,8 @@ CREATE TABLE IF NOT EXISTS coin_names_i18n (
   lang       TEXT NOT NULL CHECK (lang IN ('fr','en','de','it','es','nl')),
   title      TEXT NOT NULL,
   source     TEXT NOT NULL DEFAULT 'numista',
+  confidence TEXT NOT NULL DEFAULT 'canon',  -- 'canon' (scraped) | 'llm' | 'manual'
+  model      TEXT,                            -- LLM model id when confidence='llm'
   fetched_at TEXT NOT NULL DEFAULT (datetime('now')),
   PRIMARY KEY (eurio_id, lang)
 );

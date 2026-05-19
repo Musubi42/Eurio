@@ -621,6 +621,13 @@ class Store:
                 ("source_images", "marketplace_found_json", "TEXT"),
                 ("discovery_searches", "marketplace", "TEXT"),
                 ("discarded_listings", "marketplace", "TEXT"),
+                # i18n bootstrap (Numista scrape + LLM translation). Cf.
+                # docs/sources-refacto/ebay-multi-marketplace/i18n-strategy.md.
+                # 'confidence' = 'canon' (scraped) | 'llm' | 'manual'.
+                # 'model' carries the LLM id for confidence='llm', else NULL.
+                ("coin_names_i18n", "confidence",
+                 "TEXT NOT NULL DEFAULT 'canon'"),
+                ("coin_names_i18n", "model", "TEXT"),
             ):
                 self._ensure_column(conn, table=table, column=column, decl=decl)
             for index_sql in (

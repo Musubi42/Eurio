@@ -1,0 +1,27 @@
+# TOR SOCKS5 proxy for Numista scrape (bootstrap_coin_names_i18n).
+#
+# Single instance, Alpine-based. Per-username circuit isolation via
+# the mounted torrc (IsolateSOCKSAuth). Port published to 127.0.0.1
+# only so the Python script (running outside Docker) can connect.
+#
+# Usage:
+#   docker compose -f ml/infrastructure/tor/docker-compose.yml up -d
+#   # verify exit IP:
+#   curl --socks5-hostname 127.0.0.1:9050 https://check.torproject.org/api/ip
+#   docker compose -f ml/infrastructure/tor/docker-compose.yml down
+
+services:
+  tor:
+    image: osminogin/tor-simple
+    container_name: eurio-scrape-tor
+    restart: unless-stopped
+    volumes:
+      - ./torrc:/etc/tor/torrc:ro
+    ports:
+      - "127.0.0.1:9050:9050"
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "9050"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
