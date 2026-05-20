@@ -60,10 +60,6 @@ _ROUTES: dict[str, MarketplaceRoute] = {
     "AD": MarketplaceRoute(primary="EBAY_ES", query_lang="es"),
     "LU": MarketplaceRoute(primary="EBAY_FR", query_lang="fr"),
     "MC": MarketplaceRoute(primary="EBAY_FR", query_lang="fr"),
-    # TODO(V1-probe): confirmer PT→ES vs GB-only. Si recall ES < ×2 GB,
-    # basculer en MarketplaceRoute(primary=None). Cf. marketplace-map.md
-    # §"Routage PT provisoire".
-    "PT": MarketplaceRoute(primary="EBAY_ES", query_lang="es"),
     "SM": MarketplaceRoute(primary="EBAY_IT", query_lang="it"),
     "VA": MarketplaceRoute(primary="EBAY_IT", query_lang="it"),
 
@@ -77,6 +73,10 @@ _ROUTES: dict[str, MarketplaceRoute] = {
     "LT": MarketplaceRoute(primary=None),
     "LV": MarketplaceRoute(primary=None),
     "MT": MarketplaceRoute(primary=None),  # en couvert par EBAY_GB
+    # PT : probe V1 (2026-05-20) → recall EBAY_ES / EBAY_GB = 1.68×,
+    # sous le seuil ×2 documenté → GB-only (pas de 2ᵉ call EBAY_ES).
+    # Cf. marketplace-map.md §"Routage PT".
+    "PT": MarketplaceRoute(primary=None),
     "SI": MarketplaceRoute(primary=None),
     "SK": MarketplaceRoute(primary=None),
 
@@ -94,22 +94,31 @@ _ROUTES: dict[str, MarketplaceRoute] = {
 #   apparaître dans les titres de listings retournés par ce marketplace
 #
 # EBAY_BE est bilingue FR+NL ; EBAY_GB est anglo mais peut porter des
-# listings expédiés EU avec titres FR/DE/IT/ES/NL (catch-all V1). À
-# reconfirmer empiriquement en V1 probe sur les marketplaces secondaires.
+# listings expédiés EU avec titres FR/DE/IT/ES/NL (catch-all V1).
 #
 # Ordre des langues = priorité du matcher (langue native d'abord, EN
 # en fallback). Le matcher s'arrête au premier hit, donc l'ordre influence
 # le coût SQLite mais pas la sémantique.
+#
+# Calibré par le probe V1 (2026-05-20, scripts/probe_marketplace_languages.py,
+# 8 coins × 9 mkts, ~3500 titres, classifieur heuristique) :
+# - EBAY_ES : +it (vendeurs italiens cross-listent, ~19 % des titres)
+# - EBAY_IE : +it (~16 %)
+# - EBAY_NL : +fr (DOMINANT à ~44 %, eBay.nl est Benelux) +it (~14 %)
+# `en` conservé partout même quand mesuré < 10 % : sous-détecté par le
+# classifieur (titres EN courts → unknown) et coût quasi nul (titre i18n
+# EN canon toujours présent). Asymétrie : faux lang actif = 1 lookup,
+# lang manquant = perte de recall.
 MARKETPLACE_ACTIVE_LANGS: dict[str, list[str]] = {
     "EBAY_AT": ["de", "en"],
     "EBAY_BE": ["fr", "nl", "en"],
     "EBAY_DE": ["de", "en"],
-    "EBAY_ES": ["es", "en"],
+    "EBAY_ES": ["es", "en", "it"],
     "EBAY_FR": ["fr", "en"],
     "EBAY_GB": ["en", "fr", "de", "it", "es", "nl"],
-    "EBAY_IE": ["en"],
+    "EBAY_IE": ["en", "it"],
     "EBAY_IT": ["it", "en"],
-    "EBAY_NL": ["nl", "en"],
+    "EBAY_NL": ["nl", "fr", "en", "it"],
 }
 
 

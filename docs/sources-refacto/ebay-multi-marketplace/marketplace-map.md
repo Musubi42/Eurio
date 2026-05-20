@@ -132,14 +132,20 @@ Le dict de routage est explicité dans le module, **pas une vue SQL** —
 c'est de la config produit qui appartient au code, pas au schéma. On
 veut la pouvoir grepper et modifier en review code.
 
-### Routage PT provisoire
+### Routage PT — tranché V1 (2026-05-20)
 
-En V1, `route_for("PT")` renvoie `MarketplaceRoute(primary="EBAY_ES",
-query_lang="es")` mais ce choix est **marqué TODO/probe** dans le code
-(commentaire explicite). Le chunk V1 (probe langues) doit mesurer le
-recall PT sur EBAY_ES vs EBAY_GB. Si EBAY_ES n'apporte pas ≥ ×2 le recall
-GB-only, on retire PT du natif et on retourne sur GB-only. Décision
-documentée dans la PR de validation V1.
+`route_for("PT")` renvoie `MarketplaceRoute(primary=None)` → **GB-only**.
+
+Le probe V1 (`scripts/probe_marketplace_languages.py`, sous-probe PT
+recall) a mesuré, sur le coin `pt-2021-2eur-portuguese-presidency…`,
+le `total` eBay : **EBAY_ES = 608, EBAY_GB = 362**, soit un ratio
+**1.68×** (stable sur 5 runs consécutifs). Le critère documenté
+exigeait ≥ ×2 pour justifier le 2ᵉ call EBAY_ES. 1.68 < 2.0 → PT
+repasse en GB-only : un seul call discovery, pas de doublement du
+coût quota pour un gain de recall modéré.
+
+Décision réversible : si une mesure ultérieure (autre coin PT, autre
+période) montre ≥ ×2, ré-router `PT` vers `EBAY_ES`.
 
 ### Convention `endpoint` vs colonne `marketplace`
 
