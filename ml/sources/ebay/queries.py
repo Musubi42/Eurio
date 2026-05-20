@@ -301,17 +301,17 @@ def build_query(coin: CoinIdentity, query_lang: str = "fr") -> EbayQuery:
     )
 
 
-def title_matches_theme(title: str, theme_tokens: list[str]) -> bool:
-    """Return True if any theme token is found in the title (case-insensitive).
+def _legacy_title_matches_theme(title: str, theme_tokens: list[str]) -> bool:
+    """Legacy matcher : tokens issus du slug EN + aliases FR hand-curated.
 
-    Used only when the query is ambiguous (multiple commemos for the
-    same country/year). When `theme_tokens` is empty (only theme is
-    "standard" or there's a single commemo), the function permissively
-    returns True — the aspect filter alone is enough to pin the coin.
+    Conservé pour le **fallback compat** quand ``coin_names_i18n`` est
+    vide pour un eurio_id (run avant I1, ou couverture incomplète).
+    Sera **retiré en V2** (cutover) une fois la couverture i18n
+    confirmée > 95 % et le matcher multilingue validé empiriquement.
 
-    Bilingual matching (V-1 fix 2026-05-18) : tokens come from the
-    English eurio_id slug, but EBAY_FR titles are French. We also
-    check each token's French aliases via ``THEME_TOKEN_FR_ALIASES``.
+    Quand ``theme_tokens`` est vide (standard ou commémo unique pour
+    (country, year)), retourne ``True`` permissivement — l'aspect
+    filter seul suffit à épingler le coin.
     """
     if not theme_tokens:
         return True
@@ -322,4 +322,62 @@ def title_matches_theme(title: str, theme_tokens: list[str]) -> bool:
         for alias in THEME_TOKEN_FR_ALIASES.get(tok, ()):
             if alias in low:
                 return True
+    return False
+
+
+def title_matches_theme(
+    title: str,
+    eurio_id: str,
+    *,
+    marketplace: str,
+    conn: sqlite3.Connection,
+) -> bool:
+    """Theme-match multilingue conscient du marketplace courant.
+
+    Pour chaque langue active du marketplace (cf.
+    ``MARKETPLACE_ACTIVE_LANGS``), charge le titre Numista localisé
+    et extrait des tokens discriminants (cf. ``theme_tokens``). Match
+    si ≥ 1 token apparaît dans le titre seller normalisé.
+
+    Fallback compat (deprecated, retiré en V2) : si aucun titre i18n
+    n'est dispo pour ``(eurio_id, langs actives)``, retombe sur
+    ``_legacy_title_matches_theme`` avec les tokens issus du slug EN.
+
+    Sémantique permissive :
+    - Si au moins un titre i18n est trouvé MAIS qu'aucun ne produit
+      de tokens (cas standard avec titre court), retourne ``True`` —
+      même comportement que legacy quand ``theme_tokens=[]``.
+    - Si aucun titre i18n n'est trouvé pour aucune lang active,
+      fallback complet sur le matcher legacy.
+    """
+    from .marketplaces import MARKETPLACE_ACTIVE_LANGS
+    from .theme_tokens import extract_tokens, load_i18n_title, normalize
+
+    active_langs = MARKETPLACE_ACTIVE_LANGS.get(marketplace, ["en"])
+    title_norm = normalize(title)
+
+    any_title_found = False
+    any_token_extracted = False
+
+    for lang in active_langs:
+        numista_title = load_i18n_title(conn, eurio_id, lang)
+        if numista_title is None:
+            continue
+        any_title_found = True
+        tokens = extract_tokens(numista_title, lang)
+        if tokens:
+            any_token_extracted = True
+        for tok in tokens:
+            if tok in title_norm:
+                return True
+
+    if not any_title_found:
+        # Fallback compat : pas de couverture i18n → matcher legacy.
+        return _legacy_title_matches_theme(title, _theme_keywords(eurio_id))
+
+    if not any_token_extracted:
+        # i18n présent mais tokens vides partout (standard ou titre
+        # trop court). Permissif comme le legacy sur theme_tokens=[].
+        return True
+
     return False

@@ -86,6 +86,33 @@ _ROUTES: dict[str, MarketplaceRoute] = {
 }
 
 
+# Langues servies par chaque marketplace, pour matcher des titres
+# sellers multi-langues (cf. I2 — ``theme_tokens.py`` + ``title_matches_theme``).
+# Distinct de ``query_lang`` (qui construit la query côté discovery) :
+# - ``query_lang`` choisit la langue de la requête envoyée à eBay
+# - ``MARKETPLACE_ACTIVE_LANGS`` couvre les langues qu'on peut voir
+#   apparaître dans les titres de listings retournés par ce marketplace
+#
+# EBAY_BE est bilingue FR+NL ; EBAY_GB est anglo mais peut porter des
+# listings expédiés EU avec titres FR/DE/IT/ES/NL (catch-all V1). À
+# reconfirmer empiriquement en V1 probe sur les marketplaces secondaires.
+#
+# Ordre des langues = priorité du matcher (langue native d'abord, EN
+# en fallback). Le matcher s'arrête au premier hit, donc l'ordre influence
+# le coût SQLite mais pas la sémantique.
+MARKETPLACE_ACTIVE_LANGS: dict[str, list[str]] = {
+    "EBAY_AT": ["de", "en"],
+    "EBAY_BE": ["fr", "nl", "en"],
+    "EBAY_DE": ["de", "en"],
+    "EBAY_ES": ["es", "en"],
+    "EBAY_FR": ["fr", "en"],
+    "EBAY_GB": ["en", "fr", "de", "it", "es", "nl"],
+    "EBAY_IE": ["en"],
+    "EBAY_IT": ["it", "en"],
+    "EBAY_NL": ["nl", "en"],
+}
+
+
 class UnknownCountry(KeyError):
     """Pays absent du routage canonique."""
 

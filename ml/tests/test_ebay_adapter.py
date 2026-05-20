@@ -28,7 +28,11 @@ from market.ebay_client import EbayClient
 from sources._base.adapter import SourceQuery
 from sources.ebay.adapter import EbayAdapter
 from sources.ebay.filters import accept_listing, is_lot_suspected, listing_row
-from sources.ebay.queries import build_query, load_coin, title_matches_theme
+from sources.ebay.queries import (
+    _legacy_title_matches_theme,
+    build_query,
+    load_coin,
+)
 from state.store import Store
 
 
@@ -162,13 +166,140 @@ def test_theme_tokens_drop_stop_words_and_short_tokens(tmp_path):
     assert "of" not in q.theme_tokens
 
 
-def test_title_matches_theme_permissive_if_no_tokens():
-    assert title_matches_theme("Anything goes", []) is True
+def test_legacy_title_matches_theme_permissive_if_no_tokens():
+    # Legacy matcher : kept for fallback path, retiré en V2.
+    assert _legacy_title_matches_theme("Anything goes", []) is True
 
 
-def test_title_matches_theme_case_insensitive():
-    assert title_matches_theme("2 EURO Paix Allemagne 2015", ["paix"]) is True
-    assert title_matches_theme("2 euro Allemagne 2015", ["paix"]) is False
+def test_legacy_title_matches_theme_case_insensitive():
+    assert _legacy_title_matches_theme("2 EURO Paix Allemagne 2015", ["paix"]) is True
+    assert _legacy_title_matches_theme("2 euro Allemagne 2015", ["paix"]) is False
+
+
+# ── matcher I2 multilingue ──────────────────────────────────────────────────
+
+
+@pytest.fixture
+def conn_i18n():
+    """Connection SQLite avec quelques rows coin_names_i18n + coins."""
+    import sqlite3
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.executescript(
+        """
+        CREATE TABLE coins (
+          eurio_id TEXT PRIMARY KEY,
+          country TEXT NOT NULL, country_name TEXT, year INTEGER NOT NULL,
+          face_value REAL NOT NULL, is_commemorative INTEGER NOT NULL DEFAULT 0,
+          theme TEXT, numista_id INTEGER, raw_payload_json TEXT,
+          imported_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE TABLE coin_names_i18n (
+          eurio_id TEXT NOT NULL, lang TEXT NOT NULL, title TEXT NOT NULL,
+          source TEXT NOT NULL DEFAULT 'numista',
+          confidence TEXT NOT NULL DEFAULT 'canon',
+          model TEXT, fetched_at TEXT NOT NULL DEFAULT (datetime('now')),
+          PRIMARY KEY (eurio_id, lang)
+        );
+        INSERT INTO coins (eurio_id, country, year, face_value, is_commemorative, theme, numista_id) VALUES
+          ('ad-2025-2eur-bearded-vulture', 'AD', 2025, 2.0, 1, 'Bearded vulture', 482937),
+          ('de-2020-2eur-50-years-since-the-kniefall-von-warschau', 'DE', 2020, 2.0, 1, '50 years Kniefall', 226447),
+          ('fr-1999-2eur-standard', 'FR', 1999, 2.0, 0, NULL, 104),
+          ('xx-2030-2eur-no-i18n-data', 'XX', 2030, 2.0, 1, 'helmut schmidt', NULL),
+          ('zz-2000-2eur-bare', 'ZZ', 2000, 2.0, 0, NULL, 999);
+        INSERT INTO coin_names_i18n (eurio_id, lang, title) VALUES
+          ('ad-2025-2eur-bearded-vulture', 'fr', '2 euros Gypaète barbu'),
+          ('ad-2025-2eur-bearded-vulture', 'en', '2 Euros Bearded vulture'),
+          ('de-2020-2eur-50-years-since-the-kniefall-von-warschau', 'fr', '2 euros Génuflexion de Varsovie'),
+          ('de-2020-2eur-50-years-since-the-kniefall-von-warschau', 'en', '2 Euros Kneeling to Warsaw'),
+          ('fr-1999-2eur-standard', 'fr', '2 euros 1re carte'),
+          ('fr-1999-2eur-standard', 'en', '2 Euros 1st map'),
+          ('zz-2000-2eur-bare', 'fr', '2 Euro'),
+          ('zz-2000-2eur-bare', 'en', '2 Euro');
+        """
+    )
+    yield conn
+    conn.close()
+
+
+def test_title_matches_theme_via_fr_title(conn_i18n):
+    from sources.ebay.queries import title_matches_theme
+
+    # Listing FR avec "gypaète" → match via titre FR Numista
+    assert title_matches_theme(
+        "Pièce 2€ Andorre 2025 Gypaète barbu", "ad-2025-2eur-bearded-vulture",
+        marketplace="EBAY_FR", conn=conn_i18n,
+    ) is True
+
+
+def test_title_matches_theme_via_en_title_on_fr_mkt(conn_i18n):
+    from sources.ebay.queries import title_matches_theme
+
+    # Listing EN sur EBAY_FR (langues actives = fr + en) → match via titre EN
+    assert title_matches_theme(
+        "Andorra 2 Euros 2025 Bearded vulture coin", "ad-2025-2eur-bearded-vulture",
+        marketplace="EBAY_FR", conn=conn_i18n,
+    ) is True
+
+
+def test_title_matches_theme_accent_insensitive(conn_i18n):
+    from sources.ebay.queries import title_matches_theme
+
+    # "Genuflexion" (sans accent) doit matcher le titre FR "Génuflexion"
+    assert title_matches_theme(
+        "2 Euros Allemagne 2020 - Genuflexion Varsovie", "de-2020-2eur-50-years-since-the-kniefall-von-warschau",
+        marketplace="EBAY_FR", conn=conn_i18n,
+    ) is True
+
+
+def test_title_matches_theme_no_match_returns_false(conn_i18n):
+    from sources.ebay.queries import title_matches_theme
+
+    # Titre seller sans aucun token discriminant
+    assert title_matches_theme(
+        "2 euros Andorre 2025 pièce de monnaie", "ad-2025-2eur-bearded-vulture",
+        marketplace="EBAY_FR", conn=conn_i18n,
+    ) is False
+
+
+def test_title_matches_theme_permissive_when_tokens_empty(conn_i18n):
+    from sources.ebay.queries import title_matches_theme
+
+    # zz-2000-2eur-bare a "2 Euro" en FR et EN → 0 tokens partout.
+    # i18n trouvé mais aucun token discriminant → return True (permissif
+    # comme legacy quand theme_tokens=[]).
+    assert title_matches_theme(
+        "Random title here", "zz-2000-2eur-bare",
+        marketplace="EBAY_FR", conn=conn_i18n,
+    ) is True
+
+
+def test_title_matches_theme_fallback_legacy_when_no_i18n(conn_i18n):
+    from sources.ebay.queries import title_matches_theme
+
+    # Coin sans aucune row i18n → fallback _theme_keywords + legacy matcher.
+    # Le slug contient "no-i18n-data" → tokens kept = ['data'] (len≥4, pas stop).
+    # Listing contient "data" → match via legacy.
+    assert title_matches_theme(
+        "2 euros 2030 some data here", "xx-2030-2eur-no-i18n-data",
+        marketplace="EBAY_GB", conn=conn_i18n,
+    ) is True
+    # Listing sans "data" → no match via legacy.
+    assert title_matches_theme(
+        "2 euros 2030 nothing relevant", "xx-2030-2eur-no-i18n-data",
+        marketplace="EBAY_GB", conn=conn_i18n,
+    ) is False
+
+
+def test_title_matches_theme_unknown_mkt_falls_back_to_en(conn_i18n):
+    from sources.ebay.queries import title_matches_theme
+
+    # Marketplace inconnu → default lang = ["en"]. Match si EN i18n présent.
+    assert title_matches_theme(
+        "Bearded vulture coin", "ad-2025-2eur-bearded-vulture",
+        marketplace="EBAY_UNKNOWN", conn=conn_i18n,
+    ) is True
 
 
 # ── filters ──────────────────────────────────────────────────────────────────
