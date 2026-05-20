@@ -377,6 +377,10 @@ class RunBreakdownEntry(BaseModel):
     # ── Output ────────────────────────────────────────────────────────
     n_quotes: int                  # coin_market_quotes.eurio_id = E
 
+    # ── Marketplaces (B4 multi-mkt) ─────────────────────────────────────
+    marketplaces: list[str]        # mkts ayant produit ≥1 listing pour E
+                                   # (source_images.marketplace distinct)
+
 
 class RunBreakdown(BaseModel):
     run_id: str
@@ -519,6 +523,27 @@ def _quotes_for(
     ).fetchone()["n"]
 
 
+def _marketplaces_for(
+    conn: sqlite3.Connection, *, run_id: str, eurio_id: str,
+) -> list[str]:
+    """Marketplaces ayant produit ≥ 1 listing cherché pour cet eurio_id.
+
+    Lit ``source_images.marketplace`` (renseigné par l'adapter multi-mkt
+    B4). Les rows pré-bascule ont ``marketplace`` NULL → exclues. Tri
+    alphabétique pour un rendu stable des badges côté front.
+    """
+    rows = conn.execute(
+        """
+        SELECT DISTINCT marketplace
+          FROM source_images
+         WHERE run_id = ? AND target_eurio_id = ? AND marketplace IS NOT NULL
+         ORDER BY marketplace
+        """,
+        (run_id, eurio_id),
+    ).fetchall()
+    return [r["marketplace"] for r in rows]
+
+
 def compute_run_breakdown(
     conn: sqlite3.Connection, *, run_id: str, source_id: str,
 ) -> RunBreakdown:
@@ -571,12 +596,14 @@ def compute_run_breakdown(
         )
         via_lot = _has_lot_context(conn, run_id=run_id, eurio_id=eid)
         n_quotes = _quotes_for(conn, run_id=run_id, eurio_id=eid)
+        marketplaces = _marketplaces_for(conn, run_id=run_id, eurio_id=eid)
         return RunBreakdownEntry(
             eurio_id=eid,
             was_targeted=was_targeted,
             n_attributed_from_other=attr_count,
             via_lot=via_lot,
             n_quotes=n_quotes,
+            marketplaces=marketplaces,
             **search_stats,
         )
 

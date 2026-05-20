@@ -19,6 +19,7 @@ import {
   type RunBreakdownEntry,
 } from '../composables/useRunBreakdown'
 import type { SourceId } from '../composables/useSourcesApi'
+import MarketplaceBadge from '../components/MarketplaceBadge.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -233,6 +234,7 @@ function onRowClick(ev: MouseEvent, eurio_id: string) {
                 style="background: var(--surface-1); color: var(--ink-500);"
               >
                 <th class="px-3 py-2.5 font-medium" title="Identifiant canonique de la pièce — clic ligne ouvre la fiche">eurio_id</th>
+                <th class="px-2 py-2.5 font-medium" title="Marketplaces ayant produit ≥1 listing pour cet eurio (drapeau du pays)">Mkts</th>
                 <th class="px-2 py-2.5 text-right font-medium" title="source_images cherchés pour cet eurio (axe search)">List.</th>
                 <th class="px-2 py-2.5 text-right font-medium" title="Crops dans ces listings — somme exacte de Auto + Rev.S + Rev.L + Pend. + Rej.">Crops</th>
                 <th class="px-2 py-2.5 text-right font-medium" title="Crops résolus automatiquement (auto_phash | auto_name | manual)">Auto</th>
@@ -263,6 +265,16 @@ function onRowClick(ev: MouseEvent, eurio_id: string) {
               >
                 <td class="px-3 py-2 font-mono text-[11px]" style="color: var(--ink);">
                   {{ row.eurio_id }}
+                </td>
+                <td class="px-2 py-2">
+                  <span v-if="row.marketplaces.length" class="inline-flex flex-wrap gap-1">
+                    <MarketplaceBadge
+                      v-for="mkt in row.marketplaces"
+                      :key="mkt"
+                      :marketplace="mkt"
+                    />
+                  </span>
+                  <span v-else style="color: var(--ink-400);">·</span>
                 </td>
                 <td class="px-2 py-2 text-right font-mono text-[12px] tabular-nums" style="color: var(--ink-700);">
                   {{ row.n_listings || '·' }}
@@ -330,6 +342,7 @@ function onRowClick(ev: MouseEvent, eurio_id: string) {
                 <td class="px-3 py-2 font-mono text-[10px] uppercase tracking-wider" style="color: var(--ink-500);">
                   Total
                 </td>
+                <td class="px-2 py-2"></td>
                 <td class="px-2 py-2 text-right font-mono text-[12px] tabular-nums" style="color: var(--ink);">{{ totalsTargeted.n_listings }}</td>
                 <td class="px-2 py-2 text-right font-mono text-[12px] tabular-nums" style="color: var(--ink);">{{ totalsTargeted.n_crops_searched }}</td>
                 <td class="px-2 py-2 text-right font-mono text-[12px] tabular-nums" style="color: var(--ink);">{{ totalsTargeted.n_searched_auto }}</td>
