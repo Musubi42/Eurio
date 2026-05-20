@@ -13,18 +13,19 @@ Overview de l'avancement chunk-par-chunk. Mis à jour à chaque livraison.
 | B | B5 — API `/marketplace-map` | ✅ done | (pending) |
 | B | B6 — API `/filter-config` | ✅ done | (pending) |
 | I (i18n) | I1 — bootstrap Numista i18n (FR+EN) | ✅ done | (pending) |
-| I | I2 — theme matcher multilingue | ⏳ kickoff écrit | — |
+| I | I2 — theme matcher multilingue | ✅ done | (pending) |
 | F (front) | F1 → F4 — pilote / run-detail / règles / coin-detail | ⏳ | — |
 | V (validation) | V1 — probe langues + PT routing | ⏳ | — |
 | V | V2 — cutover legacy | ⏳ | — |
 
-**7/14 chunks livrés.** Toute la phase B (backend) est en place — la
+**8/14 chunks livrés.** Toute la phase B (backend) est en place — la
 chaîne multi-mkt tourne, les 2 APIs front (marketplace-map +
-filter-config) sont prêtes à être consommées. **I1 livré** : ~1156
-titres FR+EN scraped via TOR + importés en DB. Reste à brancher le
-matcher (I2) et le front (F1-F4) puis valider/cutover (V1/V2). Les
-4 langues restantes (de/it/es/nl) viendront via LLM batch (chunk séparé
-`i18n-llm-translation.md`) si I2 en a besoin.
+filter-config) sont prêtes à être consommées. **I1 + I2 livrés** :
+~1016 titres FR+EN scraped via TOR + importés en DB, et le matcher
+theme branché dessus en multilingue. Reste le front (F1-F4) puis
+valider/cutover (V1/V2). Les 4 langues restantes (de/it/es/nl)
+viendront via LLM batch (chunk séparé `i18n-llm-translation.md`) si la
+mesure de recall sur les marketplaces DE/IT/ES/BE-NL le justifie.
 
 ## Ce qui fonctionne
 
@@ -111,18 +112,60 @@ Architecture livrée (cf. `i18n-scrape-numista.md` à jour) :
 Run réel : ~58 min en background nohup, couverture ~95% en 1 run,
 ~100% après 1 relance sur les failures (TOR circuits rafraîchis).
 
+## I2 livré (2026-05-20)
+
+Theme matcher multilingue branché sur `coin_names_i18n` (508 FR +
+508 EN importés depuis `i18n_results.jsonl`).
+
+Architecture livrée :
+
+- **Module `ml/sources/ebay/theme_tokens.py`** : `STOP_WORDS_BY_LANG`
+  (6 langues), `COUNTRY_TOKENS_BY_LANG` (25 pays × 6 langues),
+  `normalize` (NFKD drop-accents), `extract_tokens`, `load_i18n_title`.
+- **`MARKETPLACE_ACTIVE_LANGS`** dans `marketplaces.py` : langues à
+  matcher par marketplace (distinct de `query_lang`).
+- **`title_matches_theme(title, eurio_id, *, marketplace, conn)`** :
+  nouvelle signature, boucle sur les langues actives, charge le titre
+  Numista localisé, matche les tokens discriminants. Permissif quand
+  i18n présent mais 0 token (standards). Fallback `_legacy_title_matches_theme`
+  (ancien matcher renommé) quand aucun titre i18n trouvé — deprecated,
+  retiré en V2.
+- **Plomberie `adapter.py`** : `_search_and_expand` reçoit `eurio_id`
+  + `marketplace`, le matcher utilise `self.conn`.
+- **Tests** : 82 verts sur scope eBay (75 baseline + 7 intégration
+  matcher). Anciens tests sur la signature legacy renommés `_legacy_*`.
+
+Validation empirique :
+
+- **Stop-words** (`scripts/probe_i18n_tokens.py`) : médiane tokens
+  utiles = 2.0 sur FR et EN, dans la cible [2,6]. Pas de tuning requis.
+- **Smoke recall** (`scripts/probe_i18n_recall.py`) : rejoué sur les
+  921 listings `theme_mismatch` rejetés par le matcher legacy →
+  **105 recover** (11%), tous vrais positifs à l'audit visuel (titres
+  FR sellers que le slug EN ne traduisait pas : "Nouvelle Réforme",
+  "Pays des Pyrénées", "Gypaète", "Jeux des Petits États", etc.).
+  Baseline legacy sur cet échantillon = 0 par construction.
+
+### Limite connue — thèmes courts (< 4 chars)
+
+2 coins sur 508 ont un thème FR qui tient en un mot < 4 lettres :
+`ad-2023-…UN` ("ONU") et `ad-2024-…skiing` ("Ski"). `extract_tokens`
+les drop via `min_len=4` → 0 token FR. Le token EN (`admission`,
+`skiing`) ne matche pas les titres FR sellers → faux négatifs
+résiduels. Choix V1 : **ne pas baisser `min_len`** (risque de faux
+positifs type "war"⊂"warm" sur 506 autres coins). Documenté, à
+reconsidérer en V2 si la perte de recall est jugée significative
+(min_len adaptatif possible).
+
 ## Reste à faire
 
-1. **I2** — refacto theme matcher multilingue. **Kickoff dédié** :
-   `i18n-theme-matcher-kickoff.md`. Consomme `coin_names_i18n`
-   (FR+EN dispo aujourd'hui, autres langues facultatives → fallback
-   si manquant).
-2. **F1 → F4** — front (pilote bandeau strat, run-detail badges,
+1. **F1 → F4** — front (pilote bandeau strat, run-detail badges,
    règles panel, coin-detail thumbs). Consommer `useMarketplaceMap.ts`
    et `useFilterConfig.ts` (à créer côté admin/web).
-3. **V1** — probe langues marketplaces, **inclut décision PT routing**
+2. **V1** — probe langues marketplaces, **inclut décision PT routing**
    (cf. `marketplace-map.md` §"Routage PT provisoire" — TODO en code).
-4. **V2** — cutover legacy : retrait `THEME_TOKEN_FR_ALIASES`, smoke
-   run sur 10 eurio_ids, mesure recall vs baseline (KPI ≥ ×3).
-5. **Optionnel** — `i18n-llm-translation` (DE/IT/ES/NL) si I2 mesure
+3. **V2** — cutover legacy : retrait `THEME_TOKEN_FR_ALIASES` +
+   `_legacy_title_matches_theme` + `_theme_keywords`, smoke run sur
+   10 eurio_ids, mesure recall vs baseline (KPI ≥ ×3).
+4. **Optionnel** — `i18n-llm-translation` (DE/IT/ES/NL) si I2 mesure
    une perte de recall sur les marketplaces DE/IT/ES/BE-NL.
