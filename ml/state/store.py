@@ -402,6 +402,12 @@ class ListingTextSignalsRow:
     vs_target_verdict: str | None = None
     contradictions: list[str] = field(default_factory=list)
     convergences: list[str] = field(default_factory=list)
+    # Chunk C2 — taxonomie listing & état numismatique extraits du titre.
+    # None sur les rows produites avant C2 (extractor_version < v2).
+    listing_kind: str | None = None
+    listing_kind_confidence: float | None = None
+    condition_normalized: str | None = None
+    condition_confidence: float | None = None
     computed_at: str | None = None
 
     def to_dict(self) -> dict:
@@ -419,6 +425,10 @@ class ListingTextSignalsRow:
             "vs_target_verdict": self.vs_target_verdict,
             "contradictions": list(self.contradictions),
             "convergences": list(self.convergences),
+            "listing_kind": self.listing_kind,
+            "listing_kind_confidence": self.listing_kind_confidence,
+            "condition_normalized": self.condition_normalized,
+            "condition_confidence": self.condition_confidence,
             "computed_at": self.computed_at,
         }
 
@@ -662,6 +672,26 @@ class Store:
                 "CREATE INDEX IF NOT EXISTS idx_listing_text_signals_verdict "
                 "ON listing_text_signals(vs_target_verdict)"
             )
+            # Pipeline prix & état (chunk C1). Sur source_images : signaux
+            # de vélocité (date de mise en ligne, quantité vendue) pour la
+            # pondération de l'agrégation prix. Sur listing_text_signals :
+            # taxonomie du listing (single/lot/coffret/graded_slab) + état
+            # numismatique, extraits du titre par l'étape text_signals (C2).
+            # NULL sur les rows antérieures. Cf. docs/sources-refacto/
+            # ebay-multi-marketplace/.
+            for table, column, decl in (
+                ("source_images", "listing_origin_date", "TEXT"),
+                ("source_images", "sold_qty", "INTEGER"),
+                ("listing_text_signals", "listing_kind",
+                 "TEXT CHECK (listing_kind IS NULL OR listing_kind IN "
+                 "('single','lot','coffret','graded_slab'))"),
+                ("listing_text_signals", "listing_kind_confidence", "REAL"),
+                ("listing_text_signals", "condition_normalized",
+                 "TEXT CHECK (condition_normalized IS NULL OR "
+                 "condition_normalized IN ('UNC','TTB','TB','unknown'))"),
+                ("listing_text_signals", "condition_confidence", "REAL"),
+            ):
+                self._ensure_column(conn, table=table, column=column, decl=decl)
             n_coins = conn.execute("SELECT count(*) AS n FROM coins").fetchone()["n"]
             if n_coins == 0:
                 logger.warning(
@@ -1996,8 +2026,10 @@ class Store:
                   theme_tokens_json, rejected_markers_json,
                   is_lot, coverage, matched_json,
                   vs_target_verdict, contradictions_json, convergences_json,
+                  listing_kind, listing_kind_confidence,
+                  condition_normalized, condition_confidence,
                   computed_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
                 ON CONFLICT(source_image_id) DO UPDATE SET
                   extractor_version     = excluded.extractor_version,
                   countries_json        = excluded.countries_json,
@@ -2011,6 +2043,10 @@ class Store:
                   vs_target_verdict     = excluded.vs_target_verdict,
                   contradictions_json   = excluded.contradictions_json,
                   convergences_json     = excluded.convergences_json,
+                  listing_kind            = excluded.listing_kind,
+                  listing_kind_confidence = excluded.listing_kind_confidence,
+                  condition_normalized    = excluded.condition_normalized,
+                  condition_confidence    = excluded.condition_confidence,
                   computed_at           = datetime('now')
                 """,
                 [
@@ -2028,6 +2064,10 @@ class Store:
                         r.vs_target_verdict,
                         json.dumps(r.contradictions),
                         json.dumps(r.convergences),
+                        r.listing_kind,
+                        r.listing_kind_confidence,
+                        r.condition_normalized,
+                        r.condition_confidence,
                     )
                     for r in rows
                 ],
@@ -2063,6 +2103,10 @@ def _row_to_text_signals(r: sqlite3.Row) -> ListingTextSignalsRow:
     convergences_raw = (
         r["convergences_json"] if "convergences_json" in cols else None
     )
+
+    def _opt(name: str):
+        return r[name] if name in cols else None
+
     return ListingTextSignalsRow(
         source_image_id=r["source_image_id"],
         extractor_version=r["extractor_version"],
@@ -2077,6 +2121,10 @@ def _row_to_text_signals(r: sqlite3.Row) -> ListingTextSignalsRow:
         vs_target_verdict=verdict,
         contradictions=json.loads(contradictions_raw or "[]"),
         convergences=json.loads(convergences_raw or "[]"),
+        listing_kind=_opt("listing_kind"),
+        listing_kind_confidence=_opt("listing_kind_confidence"),
+        condition_normalized=_opt("condition_normalized"),
+        condition_confidence=_opt("condition_confidence"),
         computed_at=r["computed_at"],
     )
 

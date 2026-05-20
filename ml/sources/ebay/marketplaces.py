@@ -1,89 +1,54 @@
-"""Routage pays → marketplaces eBay pour le discover multi-mkt.
+"""Marketplaces eBay interrogés en discovery.
 
-Source de vérité du mapping ISO2 → (primary marketplace, langue de query,
-catch-all global = EBAY_GB). Le routage est explicite — chaque pays
-eurozone (et `'eu'` joint-issues) a son entrée dictée par
-``docs/sources-refacto/ebay-multi-marketplace/marketplace-map.md``.
+**Décision actée 2026-05-21** (benchmark routing itération 3, cf.
+``docs/sources-refacto/ebay-multi-marketplace/research/marketplace-routing-benchmark.md``) :
+le discovery interroge ``{EBAY_DE, EBAY_ES}`` pour **toutes** les
+origines — plus de routage per-pays.
 
-Pourquoi un dict statique en code et pas une vue SQL : c'est de la
-config produit qui doit être grep-able et reviewable en PR, pas un état
-de DB qui mute. Toute évolution passe par une PR + un probe (cf.
-``language-probe.md``).
+Pourquoi un routage uniforme et non une table per-origine :
+
+- Le marketplace est un **canal de découverte**, pas un segment de prix
+  ni d'images : les rows sont dédupliquées par ``item_id`` en aval.
+- Le benchmark (24 origines × 9 marketplaces × 112 coins, theme-match)
+  a montré que ``{DE, ES}`` est le **top-2 de recall sur ~22/24
+  origines**. Une table per-origine hand-maintenue n'apporterait qu'un
+  gain marginal sur 2 niches bruitées (MC, PT), au prix d'une
+  maintenance et d'un risque de drift.
+- ``EBAY_GB`` est **retiré** : 0 listing EUR exploitable (annonces
+  eBay.co.uk en GBP, rejetées par le filtre ``non_eur``).
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-EBAY_GB = "EBAY_GB"
-
 
 @dataclass(frozen=True)
-class MarketplaceRoute:
-    """Marketplaces eBay à interroger pour un pays donné.
+class MarketplaceCall:
+    """Un appel discovery : un marketplace eBay + la langue de sa query.
 
-    Sémantique :
+    Chaque marketplace est interrogé dans **sa langue native** — la
+    configuration sous laquelle ``{DE, ES}`` a gagné le benchmark. Les
+    vendeurs titrent dans la langue de leur marketplace.
 
-    - ``primary`` : marketplace natif si applicable, sinon fallback langue.
-      ``None`` quand le pays n'a ni marketplace natif ni langue couverte
-      (GB seul suffit alors).
-    - ``global_`` : EBAY_GB, toujours présent (P1 — catch-all V1).
-    - ``query_lang`` : langue dans laquelle on construit la query pour
-      ``primary`` (cf. P3). Pour ``global_``, la query est toujours en EN.
-
-    Quand ``primary is None``, un seul call discovery est effectué (GB).
-    Sinon 2 calls (primary + GB), avec merge en mémoire (cf. schema.md
-    §"Stratégie d'écriture").
+    À ne pas confondre avec ``MARKETPLACE_ACTIVE_LANGS`` : ``query_lang``
+    construit la requête envoyée à eBay, ``MARKETPLACE_ACTIVE_LANGS``
+    couvre les langues contre lesquelles ``title_matches_theme`` matche
+    les titres seller retournés. Deux réglages séparés.
     """
 
-    primary: str | None
-    global_: str = EBAY_GB
-    query_lang: str = "en"  # langue de la query primary; "en" si GB-only
+    marketplace: str
+    query_lang: str
 
 
-# Routage canonique. Ordre des entries = ordre alphabétique pour faciliter
-# le grep et la review. Chaque entrée est justifiée dans marketplace-map.md.
-#
-# ⚠️ PT→ES est marqué provisoire (D-MM2) : à confirmer/retirer en V1 probe.
-_ROUTES: dict[str, MarketplaceRoute] = {
-    # Pays avec marketplace eBay natif
-    "AT": MarketplaceRoute(primary="EBAY_AT", query_lang="de"),
-    "BE": MarketplaceRoute(primary="EBAY_BE", query_lang="fr"),  # bilingue, FR V1
-    "DE": MarketplaceRoute(primary="EBAY_DE", query_lang="de"),
-    "ES": MarketplaceRoute(primary="EBAY_ES", query_lang="es"),
-    "FR": MarketplaceRoute(primary="EBAY_FR", query_lang="fr"),
-    "IE": MarketplaceRoute(primary="EBAY_IE", query_lang="en"),
-    "IT": MarketplaceRoute(primary="EBAY_IT", query_lang="it"),
-    "NL": MarketplaceRoute(primary="EBAY_NL", query_lang="nl"),
-
-    # Fallback par langue principale (pas de marketplace natif)
-    "AD": MarketplaceRoute(primary="EBAY_ES", query_lang="es"),
-    "LU": MarketplaceRoute(primary="EBAY_FR", query_lang="fr"),
-    "MC": MarketplaceRoute(primary="EBAY_FR", query_lang="fr"),
-    "SM": MarketplaceRoute(primary="EBAY_IT", query_lang="it"),
-    "VA": MarketplaceRoute(primary="EBAY_IT", query_lang="it"),
-
-    # GB-only (pas de marketplace natif, langue non couverte par les mkts EU)
-    "BG": MarketplaceRoute(primary=None),
-    "CY": MarketplaceRoute(primary=None),
-    "EE": MarketplaceRoute(primary=None),
-    "FI": MarketplaceRoute(primary=None),
-    "GR": MarketplaceRoute(primary=None),
-    "HR": MarketplaceRoute(primary=None),
-    "LT": MarketplaceRoute(primary=None),
-    "LV": MarketplaceRoute(primary=None),
-    "MT": MarketplaceRoute(primary=None),  # en couvert par EBAY_GB
-    # PT : probe V1 (2026-05-20) → recall EBAY_ES / EBAY_GB = 1.68×,
-    # sous le seuil ×2 documenté → GB-only (pas de 2ᵉ call EBAY_ES).
-    # Cf. marketplace-map.md §"Routage PT".
-    "PT": MarketplaceRoute(primary=None),
-    "SI": MarketplaceRoute(primary=None),
-    "SK": MarketplaceRoute(primary=None),
-
-    # Joint issues (commémos communes émises par les 21 pays eurozone) —
-    # GB catch-all suffit, tirer sur 21 mkts n'est pas tenable côté quota.
-    "eu": MarketplaceRoute(primary=None),
-}
+# Routage discovery — uniforme, toutes origines confondues.
+# Ordre : EBAY_DE d'abord (meilleur recall sur 13/24 origines au
+# benchmark → c'est ce premier marketplace qui sert le fetch HD image
+# first-seen), EBAY_ES ensuite.
+DISCOVERY_MARKETPLACES: tuple[MarketplaceCall, ...] = (
+    MarketplaceCall("EBAY_DE", "de"),
+    MarketplaceCall("EBAY_ES", "es"),
+)
 
 
 # Langues servies par chaque marketplace, pour matcher des titres
@@ -93,22 +58,19 @@ _ROUTES: dict[str, MarketplaceRoute] = {
 # - ``MARKETPLACE_ACTIVE_LANGS`` couvre les langues qu'on peut voir
 #   apparaître dans les titres de listings retournés par ce marketplace
 #
-# EBAY_BE est bilingue FR+NL ; EBAY_GB est anglo mais peut porter des
-# listings expédiés EU avec titres FR/DE/IT/ES/NL (catch-all V1).
-#
 # Ordre des langues = priorité du matcher (langue native d'abord, EN
 # en fallback). Le matcher s'arrête au premier hit, donc l'ordre influence
 # le coût SQLite mais pas la sémantique.
 #
-# Calibré par le probe V1 (2026-05-20, scripts/probe_marketplace_languages.py,
-# 8 coins × 9 mkts, ~3500 titres, classifieur heuristique) :
+# Seuls EBAY_DE et EBAY_ES sont interrogés en discovery (cf.
+# DISCOVERY_MARKETPLACES) ; les autres entrées restent comme référence
+# de calibration (probe V1 2026-05-20, scripts/probe_marketplace_languages.py)
+# au cas où le routage évoluerait.
 # - EBAY_ES : +it (vendeurs italiens cross-listent, ~19 % des titres)
 # - EBAY_IE : +it (~16 %)
 # - EBAY_NL : +fr (DOMINANT à ~44 %, eBay.nl est Benelux) +it (~14 %)
 # `en` conservé partout même quand mesuré < 10 % : sous-détecté par le
-# classifieur (titres EN courts → unknown) et coût quasi nul (titre i18n
-# EN canon toujours présent). Asymétrie : faux lang actif = 1 lookup,
-# lang manquant = perte de recall.
+# classifieur et coût quasi nul (titre i18n EN canon toujours présent).
 MARKETPLACE_ACTIVE_LANGS: dict[str, list[str]] = {
     "EBAY_AT": ["de", "en"],
     "EBAY_BE": ["fr", "nl", "en"],
@@ -122,29 +84,10 @@ MARKETPLACE_ACTIVE_LANGS: dict[str, list[str]] = {
 }
 
 
-class UnknownCountry(KeyError):
-    """Pays absent du routage canonique."""
+def discovery_marketplaces() -> tuple[MarketplaceCall, ...]:
+    """Renvoie les marketplaces à interroger en discovery (DE puis ES).
 
-
-def route_for(country: str) -> MarketplaceRoute:
-    """Renvoie la route pour le pays ISO2 (ou ``'eu'`` joint).
-
-    Lève ``UnknownCountry`` plutôt que de retourner un fallback GB-only
-    silencieux — un pays inconnu signale un bug en amont (référentiel,
-    bootstrap), pas un cas à masquer.
+    Routage uniforme : la même paire pour toutes les origines. Le pays
+    du coin n'entre plus dans la décision (cf. docstring du module).
     """
-    try:
-        return _ROUTES[country]
-    except KeyError as exc:
-        raise UnknownCountry(
-            f"No marketplace route for country={country!r}. "
-            "Add it to ml/sources/ebay/marketplaces.py after a probe."
-        ) from exc
-
-
-def all_routes() -> dict[str, MarketplaceRoute]:
-    """Renvoie une copie du dict pour exposition front (cf. B5 API).
-
-    Copie pour éviter qu'un caller mute le routage canonique.
-    """
-    return dict(_ROUTES)
+    return DISCOVERY_MARKETPLACES

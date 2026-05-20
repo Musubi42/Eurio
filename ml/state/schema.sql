@@ -467,6 +467,25 @@ CREATE TABLE IF NOT EXISTS listing_text_signals (
                                   ('convergent','partial','absent','contradict')),
   contradictions_json    TEXT NOT NULL DEFAULT '[]',  -- ["country"]
   convergences_json      TEXT NOT NULL DEFAULT '[]',  -- ["year","denomination"]
+  -- Taxonomie listing & état numismatique (chunk C1 — pipeline prix).
+  -- NULL = pas encore extrait. Renseignés par l'étape text_signals (C2).
+  -- listing_kind : nature du listing → détermine la règle de prix.
+  --   'single'      : pièce nue vendue seule → entre dans le prix de réf.
+  --   'lot'         : N pièces → prix ÷ N non fiable → exclu.
+  --   'coffret'     : coincard/blister → premium emballage → exclu du prix nu.
+  --   'graded_slab' : slab gradé PCGS/NGC → on paie le grade → exclu.
+  listing_kind            TEXT
+                          CHECK (listing_kind IS NULL
+                                 OR listing_kind IN
+                                   ('single','lot','coffret','graded_slab')),
+  listing_kind_confidence REAL,  -- 0..1 — confiance de l'heuristique
+  -- condition_normalized : état numismatique extrait du titre. Tiers
+  -- alignés sur coin_market_quotes.condition_normalized.
+  condition_normalized    TEXT
+                          CHECK (condition_normalized IS NULL
+                                 OR condition_normalized IN
+                                   ('UNC','TTB','TB','unknown')),
+  condition_confidence    REAL,  -- 0..1 — confiance de l'heuristique
   computed_at            TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

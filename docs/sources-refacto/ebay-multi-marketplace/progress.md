@@ -16,6 +16,7 @@ Overview de l'avancement chunk-par-chunk. Mis à jour à chaque livraison.
 | I | I2 — theme matcher multilingue | ✅ done | (pending) |
 | F (front) | F1 → F4 — pilote / run-detail / règles / coin-detail | ⏳ | — |
 | V (validation) | V1 — probe langues + PT routing | ✅ done | (pending) |
+| I | I3 — traduction LLM DE/IT/ES/NL (112 coins) | ✅ done | (pending) |
 | V | V2 — cutover legacy | ⏳ | — |
 
 **9/14 chunks livrés.** Toute la phase B (backend) est en place — la
@@ -187,13 +188,81 @@ Caveat : `unknown` reste 25-45 % (titres bruts non-discriminants type
 "2 EURO FRANCIA 2022"). Les pourcentages d'actives sont calculés sur le
 sous-ensemble classé — suffisant pour le seuil 10 %.
 
+Findings consolidés → `research/marketplace-language-distribution.md`.
+
+## F1-F2 livrés (2026-05-20)
+
+Surfaces front-ux.md :
+- **F1** — bandeau "Stratégie d'extraction" dans le pilote eBay
+  (`EbayPilotPanel`) : composable `useMarketplaceMap` (B5), coût quota
+  moyen calculé live, modal table de routage, badges marketplace.
+- **F2** — colonne `Mkts` dans le run breakdown : `MarketplaceBadge.vue`
+  (drapeau SVG en fond + scrim + code), backend `RunBreakdownEntry.marketplaces`.
+
+Reste **F3** (run listings — discovery searches enrichies + panel
+règles) et **F4** (coin-detail — badge marketplace par thumb).
+
+## Benchmark routing marketplace — concluant (2026-05-20/21)
+
+Probe empirique : quel marketplace maximise le recall par pays
+d'origine ? Itération 3 (theme-match réactivé, débloquée par I3) →
+**concluant**. Findings + matrice 24×9 →
+`research/marketplace-routing-benchmark.md` §Itération 3.
+
+**Décision actée (2026-05-21)** : routage **uniforme** `{EBAY_DE,
+EBAY_ES}` pour toutes les origines (DE primary query `de`, ES second
+query `es`). Plus de table per-origine, `EBAY_GB` retiré (0 listing
+EUR exploitable). Le marketplace est un canal de découverte (dédup par
+`item_id`), pas un segment — `{DE,ES}` est le top-2 mesuré sur ~22/24
+origines.
+
+→ Implémenté (chunk **C0**) : `marketplaces.py` simplifié
+(`DISCOVERY_MARKETPLACES` + `discovery_marketplaces()`, suppression de
+`_ROUTES`/`route_for`/`MarketplaceRoute`/`UnknownCountry`), `adapter.py`
++ B5 API + front pilote (`useMarketplaceMap`, modal, bandeau) alignés.
+81 tests eBay/marketplace verts.
+
+## I3 livré (2026-05-20)
+
+Traduction LLM DE/IT/ES/NL des 112 coins du benchmark, faite par
+Claude Code lui-même en un go (4 agents parallèles + rattrapage +
+review). Cf. `i18n-llm-translation.md` §Done.
+
+- **448 lignes** dans `ml/state/i18n_llm_results.jsonl`,
+  `import_llm_translations` → `coin_names_i18n` (112 rows `llm_v1`
+  par lang de/it/es/nl).
+- **0 % uncertain** ; audit qualité par agent de review → verdict OK,
+  aucune hallucination, 1 ajustement stylistique nl appliqué.
+- 2 anomalies remontées côté worklist (typo `title_en` `ee-2022`,
+  `title_fr` non traduit `hr-2025-pula`) — hors périmètre, n'affectent
+  pas l'import.
+
 ## Reste à faire
 
-1. **F1 → F4** — front (pilote bandeau strat, run-detail badges,
-   règles panel, coin-detail thumbs). Consommer `useMarketplaceMap.ts`
-   et `useFilterConfig.ts` (à créer côté admin/web).
+1. **F3 → F4** — front (run listings, coin-detail thumbs).
 2. **V2** — cutover legacy : retrait `THEME_TOKEN_FR_ALIASES` +
    `_legacy_title_matches_theme` + `_theme_keywords`, smoke run sur
    10 eurio_ids, mesure recall vs baseline (KPI ≥ ×3).
-4. **Optionnel** — `i18n-llm-translation` (DE/IT/ES/NL) si I2 mesure
-   une perte de recall sur les marketplaces DE/IT/ES/BE-NL.
+3. **Pipeline prix & état** (chantier suivant, plan C0-C4) :
+   - **C0** routing `{DE,ES}` — ✅ livré.
+   - **C1** migration + taxonomie — ✅ livré : colonnes `listing_origin_date`
+     + `sold_qty` (source_images, vélocité), `listing_kind`
+     (single/lot/coffret/graded_slab) + `condition_normalized`
+     (UNC/TTB/TB) + confidences (listing_text_signals). Migrations
+     additives idempotentes, CHECK sur `listing_kind`. `is_lot_suspected`
+     conservé tant que `listing_kind` n'est pas peuplé (C2) — retrait
+     une fois les consommateurs (lot review) migrés.
+   - **C2** extraction signaux — ✅ livré : l'extracteur `text_signals`
+     produit `listing_kind` (graded_slab > lot > coffret > single) +
+     `condition` (UNC/TTB/TB, défaut UNC faible confiance) + confiances.
+     Dictionnaires multilingues fr/en/de/es/it. `EXTRACTOR_VERSION` v1→v2
+     (force la ré-extraction). 28 tests extracteur + step `discarded`
+     fixture resync (drift B1 corrigé).
+   - **C3** agrégation prix — ✅ livré : module pur `sources/pricing`
+     (pondération vélocité = récence × bonus ventes, percentiles
+     p10/p50/p90 pondérés, nettoyage outliers ±×4) + step
+     `price_aggregate` (filtre `listing_kind='single'`, dédup par
+     listing, écrit `coin_market_quotes` une ligne par coin×tier×période).
+     Câblé en step 9 de l'orchestrateur → un snapshot prix par run,
+     l'historique s'accumule. 17 tests.
+   - **C4** upgrade review — à venir.

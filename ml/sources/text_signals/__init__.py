@@ -21,13 +21,17 @@ from .comparator import (
     load_target_identity,
 )
 from .extractor import (
+    ConditionTier,
     Coverage,
+    ListingKind,
     ListingTextSignals,
     extract_listing_text_signals,
 )
 
 __all__ = [
+    "ConditionTier",
     "Coverage",
+    "ListingKind",
     "ListingTextSignals",
     "TargetIdentity",
     "VsTargetComparison",

@@ -26,8 +26,10 @@ ITEM_URL = "https://api.ebay.com/buy/browse/v1/item/{item_id}"
 GROUP_URL = "https://api.ebay.com/buy/browse/v1/item/get_items_by_item_group"
 SCOPE = "https://api.ebay.com/oauth/api_scope"
 
-# Marketplaces supportés par le chantier eBay multi-mkt (B2). EBAY_GB est
-# le catch-all V1 ; les autres sont activés via route_for(country).
+# Marketplaces eBay reconnus par le client (validés à l'init). Le
+# discovery n'en interroge que 2 (EBAY_DE + EBAY_ES, cf.
+# marketplaces.py DISCOVERY_MARKETPLACES) ; les autres restent acceptés
+# par le client pour les usages hors-discovery (probes, scripts).
 SUPPORTED_MARKETPLACES = frozenset({
     "EBAY_GB", "EBAY_FR", "EBAY_DE", "EBAY_IT", "EBAY_ES",
     "EBAY_NL", "EBAY_AT", "EBAY_BE", "EBAY_IE",

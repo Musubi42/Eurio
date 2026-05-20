@@ -37,6 +37,9 @@ def conn() -> sqlite3.Connection:
         "ADD COLUMN contradictions_json TEXT NOT NULL DEFAULT '[]'",
         "ALTER TABLE listing_text_signals "
         "ADD COLUMN convergences_json TEXT NOT NULL DEFAULT '[]'",
+        # marketplace : ajoutée via _ensure_column (B1), pas dans
+        # schema.sql — nécessaire au write discarded_listings du step.
+        "ALTER TABLE discarded_listings ADD COLUMN marketplace TEXT",
     ):
         try:
             conn.execute(stmt)

@@ -1,16 +1,18 @@
-"""Tests pour les migrations B1 du chantier ebay-multi-marketplace.
+"""Tests pour les migrations du chantier ebay-multi-marketplace.
 
 Couvre :
-- Bootstrap sur DB neuve → colonnes `marketplace` présentes sur
-  source_images / discovery_searches / discarded_listings, table
-  `coin_names_i18n` créée, index partiels présents.
+- B1 — bootstrap DB neuve → colonnes `marketplace`, table
+  `coin_names_i18n`, index partiels.
+- C1 — bootstrap → colonnes du pipeline prix (`listing_origin_date`,
+  `sold_qty` sur source_images ; `listing_kind`, `condition_normalized`
+  + confidences sur listing_text_signals), CHECK sur `listing_kind`.
 - Bootstrap sur DB existante (double-instanciation Store) → idempotent,
   aucune erreur "duplicate column", données préexistantes intactes.
 - Insertion d'une row source_images avec marketplace NULL → OK
   (backward-compat avec runs pré-bascule).
 - Insertion avec marketplace renseigné → OK, lecture cohérente.
 
-Cf. docs/sources-refacto/ebay-multi-marketplace/rollout.md chunk B1.
+Cf. docs/sources-refacto/ebay-multi-marketplace/.
 """
 
 from __future__ import annotations
@@ -58,7 +60,11 @@ def test_fresh_bootstrap_has_coin_names_i18n(tmp_path: Path) -> None:
     conn.row_factory = sqlite3.Row
 
     cols = _columns(conn, "coin_names_i18n")
-    assert cols == {"eurio_id", "lang", "title", "source", "fetched_at"}
+    # `confidence` + `model` ajoutées au chunk I1 (scrape Numista + LLM).
+    assert cols == {
+        "eurio_id", "lang", "title", "source", "fetched_at",
+        "confidence", "model",
+    }
     assert "idx_coin_names_i18n_lang" in _indexes(conn, "coin_names_i18n")
 
     with pytest.raises(sqlite3.IntegrityError):
@@ -138,3 +144,71 @@ def test_insert_with_marketplace_roundtrips(tmp_path: Path) -> None:
     ).fetchone()
     assert row["marketplace"] == "EBAY_DE"
     assert row["marketplace_found_json"] == '["EBAY_DE","EBAY_GB"]'
+
+
+# ── C1 — pipeline prix : taxonomie listing + état ───────────────────────────
+
+_PRICING_SOURCE_IMAGE_COLS = {"listing_origin_date", "sold_qty"}
+_PRICING_TEXT_SIGNAL_COLS = {
+    "listing_kind", "listing_kind_confidence",
+    "condition_normalized", "condition_confidence",
+}
+
+
+def test_fresh_bootstrap_has_pricing_columns(tmp_path: Path) -> None:
+    store = Store(tmp_path / "fresh.db")
+    conn = sqlite3.connect(store.db_path)
+    conn.row_factory = sqlite3.Row
+
+    assert _PRICING_SOURCE_IMAGE_COLS <= _columns(conn, "source_images")
+    assert _PRICING_TEXT_SIGNAL_COLS <= _columns(conn, "listing_text_signals")
+
+
+def test_pricing_columns_added_on_existing_db(tmp_path: Path) -> None:
+    """DB antérieure au chunk C1 → colonnes ajoutées, row préexistante intacte."""
+    db = tmp_path / "preserve.db"
+    Store(db)
+
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "INSERT INTO source_images (id, source, source_ref, storage_path) "
+        "VALUES (?, ?, ?, ?)",
+        ("img-c1", "ebay", "ebay_999_img0", "/tmp/fake.jpg"),
+    )
+    conn.commit()
+    conn.close()
+
+    Store(db)  # rebootstrap → migration C1
+
+    conn = sqlite3.connect(db)
+    conn.row_factory = sqlite3.Row
+    assert _PRICING_SOURCE_IMAGE_COLS <= _columns(conn, "source_images")
+    assert _PRICING_TEXT_SIGNAL_COLS <= _columns(conn, "listing_text_signals")
+    row = conn.execute(
+        "SELECT source_ref, listing_origin_date, sold_qty "
+        "FROM source_images WHERE id = ?",
+        ("img-c1",),
+    ).fetchone()
+    assert row["source_ref"] == "ebay_999_img0"
+    assert row["listing_origin_date"] is None  # NULL sur les rows pré-C1
+    assert row["sold_qty"] is None
+
+
+def test_listing_kind_check_constraint(tmp_path: Path) -> None:
+    """`listing_kind` n'accepte que single/lot/coffret/graded_slab (ou NULL)."""
+    store = Store(tmp_path / "check.db")
+    conn = sqlite3.connect(store.db_path)
+
+    def _insert(sid: str, kind: str | None) -> None:
+        conn.execute(
+            "INSERT INTO listing_text_signals "
+            "(source_image_id, coverage, listing_kind) VALUES (?, 'empty', ?)",
+            (sid, kind),
+        )
+
+    for i, kind in enumerate(("single", "lot", "coffret", "graded_slab", None)):
+        _insert(f"ok-{i}", kind)  # valeurs valides + NULL → OK
+    conn.commit()
+
+    with pytest.raises(sqlite3.IntegrityError):
+        _insert("bad", "boxed")  # hors CHECK

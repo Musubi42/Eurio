@@ -178,6 +178,86 @@ COUNT_PIECES_RE = re.compile(
 )
 
 
+# ── Taxonomie listing : listing_kind (chunk C2 — pipeline prix) ──────────────
+#
+# listing_kind ∈ single | lot | coffret | graded_slab. Détermine la règle
+# de prix en aval : seul `single` (pièce nue vendue seule) entre dans le
+# prix de référence. Précédence de détection :
+#   graded_slab > lot > coffret > single.
+# Patterns appliqués sur le titre normalisé SANS accents.
+
+# Slab gradé (PCGS/NGC/…) ou note de grade encapsulée : on paie le grade,
+# pas la pièce → exclu du prix nu.
+GRADED_SLAB_RE = re.compile(
+    r"\b("
+    r"pcgs|ngc|anacs|icg|"                    # services de gradation
+    r"(?:ms|pf|pr|sp)[\s-]?\d{2}|"             # MS67, PF-69, SP 70…
+    r"grad(?:ed|ing|ee?)|slab(?:bed)?|"
+    r"encapsul(?:ated|ee?)"
+    r")\b",
+    re.IGNORECASE,
+)
+
+# Emballage d'origine d'UNE pièce (coincard, blister, folder) — premium
+# d'emballage → exclu du prix nu. Distinct du lot multi-pièces.
+COFFRET_RE = re.compile(
+    r"\b("
+    r"coincard|coin\s*card|coffret|blister|folder|infocard|munzkarte"
+    r")\b",
+    re.IGNORECASE,
+)
+
+# Lot multi-pièces (mots-clefs). 'coffret' est volontairement absent —
+# traité par COFFRET_RE. Les compteurs explicites (COUNT_X_RE,
+# COUNT_PIECES_RE) et le seuil ≥2 pays comptent aussi comme lot.
+LOT_KIND_RE = re.compile(
+    r"\b("
+    r"lot|serie|collection\s*complete|rouleau|roll|set\s+of|sets?|"
+    r"bundle|konvolut|sammlung"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+# ── État numismatique : condition_normalized (chunk C2) ──────────────────────
+#
+# Tiers Eurio : UNC (neuve / non-circulée) > TTB (bien conservée) >
+# TB (circulée / usée). Patterns sur titre normalisé SANS accents,
+# multilingues (fr/en/de/es/it — langues observées sur EBAY_DE + EBAY_ES).
+# Le grade réel vit dans le titre : le champ `condition` d'eBay est
+# inexploitable (les vendeurs mettent « Neuf » partout).
+
+# UNC — non-circulée / fleur de coin / brilliant uncirculated.
+CONDITION_UNC_RE = re.compile(
+    r"\b("
+    r"unc|uncirculated|fdc|fleur de coin|bu|brilliant uncirculated|"
+    r"stempelglanz|stgl|bankfrisch|pragefrisch|mint state|"
+    r"fior di conio|fds|sin circular|neuf|neuve|neuwertig"
+    r")\b",
+    re.IGNORECASE,
+)
+# TTB — bien conservée (≈ VF/XF, superbe).
+CONDITION_TTB_RE = re.compile(
+    r"\b("
+    r"ttb|superbe|sup|sehr schon|ss|vorzuglich|vz|"
+    r"extremely fine|very fine|xf|ef|vf|"
+    r"ebc|muy bien conservada|mbc|bellissimo|bb"
+    r")\b",
+    re.IGNORECASE,
+)
+# TB — circulée / usée (bas de gamme).
+CONDITION_TB_RE = re.compile(
+    r"\b("
+    r"tb|tres beau|gebraucht|worn|used|abgegriffen|"
+    r"bien conservada|circulata|molto bello"
+    r")\b",
+    re.IGNORECASE,
+)
+# Famille 'circulé/circulada/circulated' → TB, MAIS exclue quand préfixée
+# 'un' (uncirculated) ou 'non ' (non circulée).
+CONDITION_CIRCULATED_RE = re.compile(r"(?<!un)(?<!non )circul", re.IGNORECASE)
+
+
 # ── Stop-words pour les theme tokens ─────────────────────────────────────────
 
 # Multilingue volontairement minimal — on garde tout token ≥ 4 chars

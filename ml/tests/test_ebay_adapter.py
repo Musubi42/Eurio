@@ -106,9 +106,9 @@ class _MockEbayClient:
 
     def search(self, query, **kwargs):
         self.calls.append(("search", {"query": query, **kwargs}))
-        # B4 — l'adapter fait jusqu'à 2 search calls par eurio_id (primary
-        # + GB). Pour ne pas casser les tests legacy qui ne fournissaient
-        # qu'1 response, on garde la dernière "sticky" : 1 response → les
+        # L'adapter fait 2 search calls par eurio_id (EBAY_DE + EBAY_ES).
+        # Pour ne pas casser les tests legacy qui ne fournissaient qu'1
+        # response, on garde la dernière "sticky" : 1 response → les
         # 2 mkts voient les mêmes items → merge dedup → résultat unique.
         if not self.search_responses:
             return {"itemSummaries": []}
@@ -407,12 +407,11 @@ def _make_adapter(store, *, search, items, groups=None) -> tuple[EbayAdapter, _M
     """Construit un adapter B4 avec une factory qui retourne TOUJOURS le
     même mock client, quel que soit le marketplace demandé.
 
-    Cas : la plupart des tests legacy n'avaient qu'un eurio_id FR donc
-    2 mkts seront appelés (EBAY_FR + EBAY_GB). Le mock partage donc ses
-    `search_responses` entre les 2 calls — tests qui ne fournissent qu'1
-    response retournent {itemSummaries:[]} pour le 2nd mkt (fallback du
-    mock). Les tests qui veulent contrôler chaque mkt utilisent
-    `_FactoryMockAdapter` plus bas.
+    Routage uniforme : 2 mkts seront appelés (EBAY_DE + EBAY_ES). Le
+    mock partage donc ses `search_responses` entre les 2 calls — tests
+    qui ne fournissent qu'1 response retournent {itemSummaries:[]} pour
+    le 2nd mkt (fallback du mock). Les tests qui veulent contrôler
+    chaque mkt utilisent `_PerMktMockClient` plus bas.
     """
     client = _MockEbayClient(search_responses=search, item_responses=items, group_responses=groups)
     adapter = EbayAdapter(
@@ -458,7 +457,7 @@ def test_discover_yields_one_item_per_image(store_with_seeded_coin):
         assert it.listing_price == 5.0
         assert it.is_lot_suspected is False
         assert it.raw_payload["ebay_item_id"] == "ITEM_1"
-    # B4 — 2 search (primary FR + GB) + 1 item/{id} = 3 API calls. Le
+    # 2 search (EBAY_DE + EBAY_ES) + 1 item/{id} = 3 API calls. Le
     # même item_id revient sur les 2 mkts (mock sticky) → merge dedup
     # → 1 seul get_item.
     assert len(client.calls) == 3
@@ -584,24 +583,24 @@ def _per_mkt_factory(mocks: dict[str, _PerMktMockClient]):
     return make
 
 
-def test_discover_two_marketplaces_called_for_native_country(tmp_path):
-    """FR coin → 2 search calls : EBAY_FR + EBAY_GB."""
+def test_discover_calls_de_and_es(tmp_path):
+    """N'importe quel coin → 2 search calls : EBAY_DE + EBAY_ES (routage uniforme)."""
     store = Store(tmp_path / "t.db")
     conn = store._connection()
     _seed_coin(conn, eurio_id="fr-2015-2eur-paix", country="FR", year=2015, theme="paix")
 
-    s1 = _summary("FR_ONLY", "2 euro France 2015 Paix", price=5.0)
-    s2 = _summary("GB_ONLY", "2 euros France 2015 peace", price=6.0)
+    s1 = _summary("DE_ONLY", "2 euro Frankreich 2015 Paix", price=5.0)
+    s2 = _summary("ES_ONLY", "2 euros Francia 2015 paz", price=6.0)
     mocks = {
-        "EBAY_FR": _PerMktMockClient(
-            "EBAY_FR",
+        "EBAY_DE": _PerMktMockClient(
+            "EBAY_DE",
             search_responses=[{"itemSummaries": [s1]}],
-            item_responses={"FR_ONLY": _detail("FR_ONLY", additional=[])},
+            item_responses={"DE_ONLY": _detail("DE_ONLY", additional=[])},
         ),
-        "EBAY_GB": _PerMktMockClient(
-            "EBAY_GB",
+        "EBAY_ES": _PerMktMockClient(
+            "EBAY_ES",
             search_responses=[{"itemSummaries": [s2]}],
-            item_responses={"GB_ONLY": _detail("GB_ONLY", additional=[])},
+            item_responses={"ES_ONLY": _detail("ES_ONLY", additional=[])},
         ),
     }
     adapter = EbayAdapter(make_client=_per_mkt_factory(mocks), conn=conn)
@@ -611,27 +610,32 @@ def test_discover_two_marketplaces_called_for_native_country(tmp_path):
     )))
 
     # 2 mkts × 1 item unique chacun = 2 DiscoveredItems
-    assert {it.raw_payload["ebay_item_id"] for it in items} == {"FR_ONLY", "GB_ONLY"}
-    # Le first_mkt reflète l'ordre d'appel (primary FR avant GB).
+    assert {it.raw_payload["ebay_item_id"] for it in items} == {"DE_ONLY", "ES_ONLY"}
+    # Le first_mkt reflète l'ordre d'appel (EBAY_DE avant EBAY_ES).
     by_id = {it.raw_payload["ebay_item_id"]: it for it in items}
-    assert by_id["FR_ONLY"].marketplace == "EBAY_FR"
-    assert by_id["FR_ONLY"].marketplace_found == ("EBAY_FR",)
-    assert by_id["GB_ONLY"].marketplace == "EBAY_GB"
-    assert by_id["GB_ONLY"].marketplace_found == ("EBAY_GB",)
+    assert by_id["DE_ONLY"].marketplace == "EBAY_DE"
+    assert by_id["DE_ONLY"].marketplace_found == ("EBAY_DE",)
+    assert by_id["ES_ONLY"].marketplace == "EBAY_ES"
+    assert by_id["ES_ONLY"].marketplace_found == ("EBAY_ES",)
 
 
-def test_discover_gb_only_for_country_without_native_marketplace(tmp_path):
-    """BG coin (sans marketplace natif) → 1 seul search call sur EBAY_GB."""
+def test_discover_routing_is_uniform_across_countries(tmp_path):
+    """Un coin d'origine sans marketplace natif (BG) → toujours EBAY_DE + EBAY_ES."""
     store = Store(tmp_path / "t.db")
     conn = store._connection()
     _seed_coin(conn, eurio_id="bg-2026-2eur-membership", country="BG", year=2026, theme="membership")
 
-    s1 = _summary("BG_1", "2 euro Bulgaria 2026 membership", price=8.0)
+    s1 = _summary("BG_1", "2 euro Bulgarien 2026 membership", price=8.0)
     mocks = {
-        "EBAY_GB": _PerMktMockClient(
-            "EBAY_GB",
+        "EBAY_DE": _PerMktMockClient(
+            "EBAY_DE",
             search_responses=[{"itemSummaries": [s1]}],
             item_responses={"BG_1": _detail("BG_1", additional=[])},
+        ),
+        "EBAY_ES": _PerMktMockClient(
+            "EBAY_ES",
+            search_responses=[{"itemSummaries": []}],
+            item_responses={},
         ),
     }
     adapter = EbayAdapter(make_client=_per_mkt_factory(mocks), conn=conn)
@@ -641,31 +645,30 @@ def test_discover_gb_only_for_country_without_native_marketplace(tmp_path):
     )))
 
     assert len(items) == 1
-    assert items[0].marketplace == "EBAY_GB"
-    assert items[0].marketplace_found == ("EBAY_GB",)
-    # 1 seul mkt câblé dans le factory → KeyError si l'adapter tentait EBAY_BG.
-    assert all(c[1]["marketplace"] == "EBAY_GB" for c in mocks["EBAY_GB"].calls)
+    assert items[0].marketplace == "EBAY_DE"
+    # Les 2 marketplaces ont bien été interrogés malgré l'origine BG.
+    assert mocks["EBAY_DE"].calls and mocks["EBAY_ES"].calls
 
 
 def test_discover_dedup_overlap_across_marketplaces(tmp_path):
-    """Item_id partagé entre EBAY_FR et EBAY_GB → 1 DiscoveredItem dédupliqué.
+    """Item_id partagé entre EBAY_DE et EBAY_ES → 1 DiscoveredItem dédupliqué.
 
-    `marketplace` = first-seen (EBAY_FR, primary). `marketplace_found`
-    contient les 2.
+    `marketplace` = first-seen (EBAY_DE, interrogé en premier).
+    `marketplace_found` contient les 2.
     """
     store = Store(tmp_path / "t.db")
     conn = store._connection()
     _seed_coin(conn, eurio_id="fr-2015-2eur-paix", country="FR", year=2015, theme="paix")
 
-    s_shared = _summary("SHARED_42", "2 euro France 2015 Paix", price=5.0)
+    s_shared = _summary("SHARED_42", "2 euro Frankreich 2015 Paix", price=5.0)
     mocks = {
-        "EBAY_FR": _PerMktMockClient(
-            "EBAY_FR",
+        "EBAY_DE": _PerMktMockClient(
+            "EBAY_DE",
             search_responses=[{"itemSummaries": [s_shared]}],
             item_responses={"SHARED_42": _detail("SHARED_42", additional=[])},
         ),
-        "EBAY_GB": _PerMktMockClient(
-            "EBAY_GB",
+        "EBAY_ES": _PerMktMockClient(
+            "EBAY_ES",
             search_responses=[{"itemSummaries": [s_shared]}],
             item_responses={"SHARED_42": _detail("SHARED_42", additional=[])},
         ),
@@ -677,19 +680,19 @@ def test_discover_dedup_overlap_across_marketplaces(tmp_path):
     )))
 
     assert len(items) == 1, "dedup en RAM doit produire 1 seul DiscoveredItem"
-    assert items[0].marketplace == "EBAY_FR"
-    assert items[0].marketplace_found == ("EBAY_FR", "EBAY_GB")
-    # 2 search (1 par mkt) mais 1 seul get_item (sur le first_mkt FR).
-    fr_calls = mocks["EBAY_FR"].calls
-    gb_calls = mocks["EBAY_GB"].calls
-    assert sum(1 for c in fr_calls if c[0] == "search") == 1
-    assert sum(1 for c in gb_calls if c[0] == "search") == 1
-    assert sum(1 for c in fr_calls if c[0] == "get_item") == 1
-    assert sum(1 for c in gb_calls if c[0] == "get_item") == 0
+    assert items[0].marketplace == "EBAY_DE"
+    assert items[0].marketplace_found == ("EBAY_DE", "EBAY_ES")
+    # 2 search (1 par mkt) mais 1 seul get_item (sur le first_mkt DE).
+    de_calls = mocks["EBAY_DE"].calls
+    es_calls = mocks["EBAY_ES"].calls
+    assert sum(1 for c in de_calls if c[0] == "search") == 1
+    assert sum(1 for c in es_calls if c[0] == "search") == 1
+    assert sum(1 for c in de_calls if c[0] == "get_item") == 1
+    assert sum(1 for c in es_calls if c[0] == "get_item") == 0
 
 
 def test_discover_query_lang_per_marketplace(tmp_path):
-    """DE coin → query 'Deutschland' sur EBAY_DE, 'Germany' sur EBAY_GB."""
+    """DE coin → query allemande sur EBAY_DE, espagnole sur EBAY_ES."""
     store = Store(tmp_path / "t.db")
     conn = store._connection()
     _seed_coin(
@@ -703,8 +706,8 @@ def test_discover_query_lang_per_marketplace(tmp_path):
             search_responses=[{"itemSummaries": []}],
             item_responses={},
         ),
-        "EBAY_GB": _PerMktMockClient(
-            "EBAY_GB",
+        "EBAY_ES": _PerMktMockClient(
+            "EBAY_ES",
             search_responses=[{"itemSummaries": []}],
             item_responses={},
         ),
@@ -716,9 +719,9 @@ def test_discover_query_lang_per_marketplace(tmp_path):
     )))
 
     de_query = next(c[1]["query"] for c in mocks["EBAY_DE"].calls if c[0] == "search")
-    gb_query = next(c[1]["query"] for c in mocks["EBAY_GB"].calls if c[0] == "search")
+    es_query = next(c[1]["query"] for c in mocks["EBAY_ES"].calls if c[0] == "search")
     assert de_query == "2 euro Deutschland 2024"
-    assert gb_query == "2 euro Germany 2024"
+    assert es_query == "2 euro Alemania 2024"
 
 
 # ── adapter.download_raw ─────────────────────────────────────────────────────

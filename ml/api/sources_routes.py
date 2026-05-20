@@ -1559,45 +1559,38 @@ def ebay_freshness(
 # ── eBay multi-marketplace (B5/B6) ────────────────────────────────────────
 
 
-class MarketplaceMapEntry(BaseModel):
-    country: str           # ISO2 ou 'eu' (joint issues)
-    primary: str | None    # ex: 'EBAY_DE' ; None si GB-only
-    global_: str           # toujours 'EBAY_GB' en V1
-    query_lang: str        # langue de la query primary; 'en' si GB-only
+class MarketplaceCallEntry(BaseModel):
+    marketplace: str       # ex: 'EBAY_DE'
+    query_lang: str        # langue native de la query, ex: 'de'
 
     model_config = {
         "json_schema_extra": {
-            "example": {
-                "country": "DE",
-                "primary": "EBAY_DE",
-                "global_": "EBAY_GB",
-                "query_lang": "de",
-            }
+            "example": {"marketplace": "EBAY_DE", "query_lang": "de"}
         }
     }
 
 
 class MarketplaceMapResponse(BaseModel):
-    """Routage canonique pays → marketplaces eBay (cf. marketplace-map.md)."""
+    """Marketplaces eBay interrogés en discovery.
 
-    entries: list[MarketplaceMapEntry]
+    Routage uniforme (cf. `ml/sources/ebay/marketplaces.py`) : la même
+    paire `{EBAY_DE, EBAY_ES}` pour toutes les origines, dans l'ordre.
+    """
+
+    marketplaces: list[MarketplaceCallEntry]
 
 
 # Consumed by: admin/.../sources/composables/useMarketplaceMap.ts (B5 client).
 @router.get("/ebay/marketplace-map", response_model=MarketplaceMapResponse)
 def ebay_marketplace_map() -> MarketplaceMapResponse:
-    """Renvoie le dict statique de `ml/sources/ebay/marketplaces.py`."""
-    from sources.ebay.marketplaces import all_routes
-    entries = [
-        MarketplaceMapEntry(
-            country=country,
-            primary=route.primary,
-            global_=route.global_,
-            query_lang=route.query_lang,
-        )
-        for country, route in sorted(all_routes().items())
-    ]
-    return MarketplaceMapResponse(entries=entries)
+    """Renvoie les marketplaces discovery de `ml/sources/ebay/marketplaces.py`."""
+    from sources.ebay.marketplaces import discovery_marketplaces
+    return MarketplaceMapResponse(
+        marketplaces=[
+            MarketplaceCallEntry(marketplace=c.marketplace, query_lang=c.query_lang)
+            for c in discovery_marketplaces()
+        ]
+    )
 
 
 class FilterRule(BaseModel):

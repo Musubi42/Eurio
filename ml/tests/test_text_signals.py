@@ -330,3 +330,99 @@ def test_signals_is_hashable():
     assert isinstance(sig.years, frozenset)
     assert isinstance(sig.theme_tokens, tuple)
     assert isinstance(sig.rejected_markers, tuple)
+
+
+# ── listing_kind (chunk C2) ─────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("title, expected_kind", [
+    # graded_slab — service de gradation ou note encapsulée.
+    ("2 Euro Deutschland 2016 PCGS MS67", "graded_slab"),
+    ("2 euros France 2012 NGC", "graded_slab"),
+    ("2 euro Italia 2004 graded PF69", "graded_slab"),
+    ("2 Euro Allemagne 2015 slab", "graded_slab"),
+    # lot — mots-clefs, compteurs, multi-pays.
+    ("Lot de 5 pièces 2 euros", "lot"),
+    ("3x 2 Euro Deutschland", "lot"),
+    ("2 euros série complète 2014", "lot"),
+    ("Rouleau 2 euro Espagne", "lot"),
+    ("2 Euro Andorre & France 2023", "lot"),
+    # coffret — emballage d'origine d'une pièce.
+    ("2 euros France 2012 coincard", "coffret"),
+    ("2 Euro Deutschland 2016 im Blister", "coffret"),
+    ("2 euros Monaco coffret BE", "coffret"),
+    # single — défaut, aucun signal.
+    ("2 euros Allemagne 2015 Helmut Schmidt", "single"),
+    ("2 Euro Saint-Marin 2017", "single"),
+])
+def test_listing_kind_classification(title, expected_kind):
+    assert extract_listing_text_signals(title).listing_kind == expected_kind
+
+
+def test_listing_kind_precedence_graded_over_lot():
+    """Un slab gradé prime même dans un lot."""
+    sig = extract_listing_text_signals("Lot 3x 2 Euro PCGS MS66")
+    assert sig.listing_kind == "graded_slab"
+
+
+def test_listing_kind_precedence_lot_over_coffret():
+    """Un compteur multi-pièces prime le mot 'coffret'."""
+    sig = extract_listing_text_signals("Coffret 5x 2 euros France")
+    assert sig.listing_kind == "lot"
+
+
+def test_listing_kind_confidence_in_range():
+    sig = extract_listing_text_signals("2 euros France 2012 coincard")
+    assert 0.0 <= sig.listing_kind_confidence <= 1.0
+
+
+# ── condition (chunk C2) ────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("title, expected_tier", [
+    # UNC — non-circulée.
+    ("2 Euro Saint-Marin 2017 FDC", "UNC"),
+    ("2 euros France 2012 BU", "UNC"),
+    ("2 Euro Deutschland 2015 stempelglanz", "UNC"),
+    ("2 euros Espagne 2010 sin circular", "UNC"),
+    ("2 euro Italia 2004 fior di conio", "UNC"),
+    # TTB — bien conservée.
+    ("2 Euro Allemagne 2002 TTB", "TTB"),
+    ("2 euros France 2008 superbe", "TTB"),
+    ("2 Euro Deutschland 2003 sehr schön", "TTB"),
+    # TB — circulée / usée.
+    ("2 Euro Italia 2004 circulée", "TB"),
+    ("2 euros Grèce 2002 used", "TB"),
+    ("2 Euro Deutschland 2002 gebraucht", "TB"),
+])
+def test_condition_classification(title, expected_tier):
+    assert extract_listing_text_signals(title).condition == expected_tier
+
+
+def test_condition_defaults_to_unc_when_no_marker():
+    """Aucun marqueur d'état → défaut UNC, faible confiance."""
+    sig = extract_listing_text_signals("2 euros Allemagne 2015")
+    assert sig.condition == "UNC"
+    assert sig.condition_confidence < 0.5
+
+
+def test_condition_uncirculated_not_misread_as_tb():
+    """'uncirculated' contient 'circul' mais ne doit PAS donner TB."""
+    sig = extract_listing_text_signals("2 Euro France 2012 uncirculated")
+    assert sig.condition == "UNC"
+
+
+def test_condition_non_circulee_not_misread_as_tb():
+    sig = extract_listing_text_signals("2 euros Espagne 2010 non circulée")
+    assert sig.condition != "TB"
+
+
+def test_condition_explicit_marker_is_confident():
+    sig = extract_listing_text_signals("2 Euro Saint-Marin 2017 FDC")
+    assert sig.condition_confidence >= 0.7
+
+
+def test_condition_and_kind_in_matched_debug():
+    sig = extract_listing_text_signals("Lot 2 euros France 2012 circulée")
+    assert "listing_kind" in sig.matched
+    assert "condition" in sig.matched

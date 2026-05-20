@@ -1,4 +1,4 @@
-"""Generic 8-step ingestion pipeline (D-13).
+"""Generic 9-step ingestion pipeline (D-13 ; +price_aggregate, chunk C3).
 
 Drives any `SourceAdapter` through Discover → Persist → Text-signal →
 Download → Detect → Resolve → Auto-validate → Enqueue, writing to
@@ -27,6 +27,7 @@ from sources._base.steps.discover import run_discover
 from sources._base.steps.download import run_download
 from sources._base.steps.enqueue import run_enqueue
 from sources._base.steps.persist import run_persist
+from sources._base.steps.price_aggregate import run_price_aggregate
 from sources._base.steps.resolve import run_resolve
 from sources._base.steps.text_signal import run_text_signal_extract
 
@@ -44,7 +45,7 @@ def run_pipeline(
     dry_run: bool = False,
     force: bool = False,
 ) -> str:
-    """Execute the 8-step pipeline for one source.
+    """Execute the 9-step pipeline for one source.
 
     `dry_run=True` runs Discover only and writes nothing past the
     `source_runs` row (kind='dry') and the `discovery_log` upserts.
@@ -142,6 +143,16 @@ def run_pipeline(
             run=run,
             source_id=adapter.source_id,
             source_image_ids=persist_result.source_image_ids,
+        )
+
+        # ── 7. Agrégation prix (chunk C3) ────────────────────────────
+        # Agrège les annonces single du run en prix de référence par
+        # tier d'état → coin_market_quotes. Cf. steps/price_aggregate.
+        run.set_step("price_aggregate")
+        run_price_aggregate(
+            conn=conn,
+            run_id=run.run_id,
+            source=adapter.source_id,
         )
 
         n_errors = conn.execute(

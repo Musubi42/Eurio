@@ -1,0 +1,1131 @@
+{
+  "langs": [
+    "de",
+    "it",
+    "es",
+    "nl"
+  ],
+  "n_coins": 112,
+  "coins": [
+    {
+      "eurio_id": "ad-2020-2eur-27th-ibero-american-summit-in-andorra",
+      "country": "AD",
+      "country_name": "Andorra",
+      "year": 2020,
+      "is_commemorative": true,
+      "theme_en": "27th Ibero-American Summit in Andorra",
+      "title_en": "2 Euros Ibero-American Summit",
+      "title_fr": "2 euros Sommet ibéro-américain"
+    },
+    {
+      "eurio_id": "ad-2021-2eur-100-years-since-the-coronation-of-our-lady-of-meritxell",
+      "country": "AD",
+      "country_name": "Andorra",
+      "year": 2021,
+      "is_commemorative": true,
+      "theme_en": "100 years since the coronation of Our Lady of Meritxell",
+      "title_en": "2 Euros Old People in Covid-19 Pandemic",
+      "title_fr": "2 euros Prenons soin de nos aînés"
+    },
+    {
+      "eurio_id": "ad-2022-2eur-andorra-european-union-relations",
+      "country": "AD",
+      "country_name": "Andorra",
+      "year": 2022,
+      "is_commemorative": true,
+      "theme_en": "Andorra–European Union relations",
+      "title_en": "2 Euros The Legend of Charlemagne",
+      "title_fr": "2 euros La Légende de Charlemagne"
+    },
+    {
+      "eurio_id": "ad-2023-2eur-30-years-of-the-entry-of-the-principality-of-andorra-into",
+      "country": "AD",
+      "country_name": "Andorra",
+      "year": 2023,
+      "is_commemorative": true,
+      "theme_en": "30 years of the entry of the Principality of Andorra into the United Nations",
+      "title_en": "2 Euros Admission of Andorra to the UN",
+      "title_fr": "2 euros ONU"
+    },
+    {
+      "eurio_id": "ad-2023-2eur-summer-solstice-fire-festivals-in-the-pyrenees",
+      "country": "AD",
+      "country_name": "Andorra",
+      "year": 2023,
+      "is_commemorative": true,
+      "theme_en": "Summer solstice fire festivals in the Pyrenees",
+      "title_en": "2 Euros Summer solstice fire festival",
+      "title_fr": "2 euros Festival du feu du solstice d'été"
+    },
+    {
+      "eurio_id": "at-2005-2eur-50th-anniversary-of-the-austrian-state-treaty",
+      "country": "AT",
+      "country_name": "Austria",
+      "year": 2005,
+      "is_commemorative": true,
+      "theme_en": "50th anniversary of the Austrian State Treaty",
+      "title_en": "2 Euros Austrian State Treaty",
+      "title_fr": "2 euros Traité d'État autrichien"
+    },
+    {
+      "eurio_id": "at-2016-2eur-200th-anniversary-of-the-founding-of-austrias-central-bank",
+      "country": "AT",
+      "country_name": "Austria",
+      "year": 2016,
+      "is_commemorative": true,
+      "theme_en": "200th anniversary of the founding of Austria's central bank Oesterreichische Nationalbank",
+      "title_en": "2 Euros Anniversary of the National Bank",
+      "title_fr": "2 euros Banque Nationale d'Autriche"
+    },
+    {
+      "eurio_id": "at-2018-2eur-100-years-since-the-foundation-of-the-republic-of-austria",
+      "country": "AT",
+      "country_name": "Austria",
+      "year": 2018,
+      "is_commemorative": true,
+      "theme_en": "100 years since the foundation of the Republic of Austria",
+      "title_en": "2 Euros Republic of Austria",
+      "title_fr": "2 euros République d'Autriche"
+    },
+    {
+      "eurio_id": "be-2021-2eur-100-years-since-the-signing-of-the-belgium-luxembourg",
+      "country": "BE",
+      "country_name": "Belgium",
+      "year": 2021,
+      "is_commemorative": true,
+      "theme_en": "100 years since the signing of the Belgium–Luxembourg Economic Union",
+      "title_en": "2 Euros - Philippe Economic Union",
+      "title_fr": "2 euros Union économique belgo-luxembourgeoise"
+    },
+    {
+      "eurio_id": "be-2021-2eur-500-years-since-the-issuance-of-the-carolus-guilder",
+      "country": "BE",
+      "country_name": "Belgium",
+      "year": 2021,
+      "is_commemorative": true,
+      "theme_en": "500 years since the issuance of the Carolus guilder",
+      "title_en": "2 Euros - Carolus V Coins",
+      "title_fr": "2 euros Pièces de Charles V"
+    },
+    {
+      "eurio_id": "be-2022-2eur-the-healthcare-sector-in-recognition-of-the-exceptional",
+      "country": "BE",
+      "country_name": "Belgium",
+      "year": 2022,
+      "is_commemorative": true,
+      "theme_en": "The healthcare sector in recognition of the exceptional commitment during the COVID-19 pandemic",
+      "title_en": "2 Euros - Philippe Erasmus Programme",
+      "title_fr": "2 euros Programme Erasmus"
+    },
+    {
+      "eurio_id": "be-2023-2eur-75-years-of-womens-voting-rights-in-belgium",
+      "country": "BE",
+      "country_name": "Belgium",
+      "year": 2023,
+      "is_commemorative": true,
+      "theme_en": "75 Years of Women's Voting Rights in Belgium",
+      "title_en": "2 Euros - Philippe Women's suffrage",
+      "title_fr": "2 euros Suffrage universel féminin"
+    },
+    {
+      "eurio_id": "be-2023-2eur-the-year-of-art-nouveau-which-takes-place-during-2023-in",
+      "country": "BE",
+      "country_name": "Belgium",
+      "year": 2023,
+      "is_commemorative": true,
+      "theme_en": "The 'year of art nouveau ', which takes place during 2023 in Belgium",
+      "title_en": "2 Euros - Philippe Art Nouveau",
+      "title_fr": "2 euros Art nouveau"
+    },
+    {
+      "eurio_id": "cy-2017-2eur-paphos-2017-european-capital-of-culture",
+      "country": "CY",
+      "country_name": "Cyprus",
+      "year": 2017,
+      "is_commemorative": true,
+      "theme_en": "Paphos 2017 – European Capital of Culture",
+      "title_en": "2 Euros Paphos",
+      "title_fr": "2 euros Paphos"
+    },
+    {
+      "eurio_id": "cy-2020-2eur-30-years-since-the-foundation-of-the-cyprus-institute-of",
+      "country": "CY",
+      "country_name": "Cyprus",
+      "year": 2020,
+      "is_commemorative": true,
+      "theme_en": "30 years since the foundation of the Cyprus Institute of Neurology and Genetics",
+      "title_en": "2 Euros Institute of Neurology and Genetics",
+      "title_fr": "2 euros Institut de neurologie et de génétique"
+    },
+    {
+      "eurio_id": "cy-2024-2eur-twenty-years-of-eu-accession",
+      "country": "CY",
+      "country_name": "Cyprus",
+      "year": 2024,
+      "is_commemorative": true,
+      "theme_en": "Twenty years of EU accession",
+      "title_en": "2 Euros EU Membership",
+      "title_fr": "2 euros Adhésion de Chypre à l'Union européenne"
+    },
+    {
+      "eurio_id": "de-2019-2eur-30-years-since-the-fall-of-the-berlin-wall-joint-issue-with",
+      "country": "DE",
+      "country_name": "Germany",
+      "year": 2019,
+      "is_commemorative": true,
+      "theme_en": "30 years since the Fall of the Berlin Wall Joint issue with France",
+      "title_en": "2 Euros Bundesrat",
+      "title_fr": "2 euros Bundesrat"
+    },
+    {
+      "eurio_id": "de-2020-2eur-50-years-since-the-kniefall-von-warschau",
+      "country": "DE",
+      "country_name": "Germany",
+      "year": 2020,
+      "is_commemorative": true,
+      "theme_en": "50 years since the Kniefall von Warschau",
+      "title_en": "2 Euros Kneeling to Warsaw",
+      "title_fr": "2 euros Genuflexion de Varsovie"
+    },
+    {
+      "eurio_id": "de-2021-2eur-saxony-anhalt-s-cathedral-of-magdeburg",
+      "country": "DE",
+      "country_name": "Germany",
+      "year": 2021,
+      "is_commemorative": true,
+      "theme_en": "Saxony-Anhalt 's Cathedral of Magdeburg",
+      "title_en": "2 Euros Bundesländer - \"Sachsen-Anhalt\"",
+      "title_fr": "2 euros Saxe-Anhalt"
+    },
+    {
+      "eurio_id": "de-2022-2eur-thuringia-s-wartburg-castle-in-eisenach",
+      "country": "DE",
+      "country_name": "Germany",
+      "year": 2022,
+      "is_commemorative": true,
+      "theme_en": "Thuringia 's Wartburg Castle in Eisenach",
+      "title_en": "2 Euros Erasmus Programme",
+      "title_fr": "2 euros Programme Erasmus"
+    },
+    {
+      "eurio_id": "de-2023-2eur-1275-birthday-of-charlemagne",
+      "country": "DE",
+      "country_name": "Germany",
+      "year": 2023,
+      "is_commemorative": true,
+      "theme_en": "1275 birthday of Charlemagne",
+      "title_en": "2 Euros Bundesländer II - \"Hamburg\"",
+      "title_fr": "2 euros Philharmonie de l'Elbe"
+    },
+    {
+      "eurio_id": "ee-2020-2eur-200-years-since-the-discovery-of-the-antarctic",
+      "country": "EE",
+      "country_name": "Estonia",
+      "year": 2020,
+      "is_commemorative": true,
+      "theme_en": "200 years since the discovery of the Antarctic",
+      "title_en": "2 Euros Discovery of Antarctica",
+      "title_fr": "2 euros Antarctique"
+    },
+    {
+      "eurio_id": "ee-2021-2eur-wolf-the-national-mammal-of-estonia",
+      "country": "EE",
+      "country_name": "Estonia",
+      "year": 2021,
+      "is_commemorative": true,
+      "theme_en": "Wolf , the national mammal of Estonia",
+      "title_en": "2 Euros Finno-Ugric people",
+      "title_fr": "2 euros Peuples finno-ougriens"
+    },
+    {
+      "eurio_id": "ee-2022-2eur-150-years-since-the-founding-of-the-society-of-estonian",
+      "country": "EE",
+      "country_name": "Estonia",
+      "year": 2022,
+      "is_commemorative": true,
+      "theme_en": "150 years since the founding of the Society of Estonian Literati",
+      "title_en": "2 Euros Society of Estonian Literaty",
+      "title_fr": "2 euros Société des lettrés estoniens"
+    },
+    {
+      "eurio_id": "ee-2022-2eur-glory-to-ukraine",
+      "country": "EE",
+      "country_name": "Estonia",
+      "year": 2022,
+      "is_commemorative": true,
+      "theme_en": "Glory to Ukraine",
+      "title_en": "2 Euros For Ukraine",
+      "title_fr": "2 euros Gloire à l'Ukraine"
+    },
+    {
+      "eurio_id": "ee-2023-2eur-barn-swallow-the-national-bird-of-estonia",
+      "country": "EE",
+      "country_name": "Estonia",
+      "year": 2023,
+      "is_commemorative": true,
+      "theme_en": "Barn swallow , the national bird of Estonia",
+      "title_en": "2 Euros Barn Swallow",
+      "title_fr": "2 euros Hirondelle rustique"
+    },
+    {
+      "eurio_id": "es-2021-2eur-historic-city-of-toledo",
+      "country": "ES",
+      "country_name": "Spain",
+      "year": 2021,
+      "is_commemorative": true,
+      "theme_en": "Historic city of Toledo",
+      "title_en": "2 Euros Historic City of Toledo",
+      "title_fr": "2 euros Tolède"
+    },
+    {
+      "eurio_id": "es-2022-2eur-500-years-since-the-completion-of-the-first-circumnavigation",
+      "country": "ES",
+      "country_name": "Spain",
+      "year": 2022,
+      "is_commemorative": true,
+      "theme_en": "500 years since the completion of the first circumnavigation",
+      "title_en": "2 Euros Circumnavigation",
+      "title_fr": "2 euros Tour du monde"
+    },
+    {
+      "eurio_id": "es-2022-2eur-garajonay-national-park-la-gomera",
+      "country": "ES",
+      "country_name": "Spain",
+      "year": 2022,
+      "is_commemorative": true,
+      "theme_en": "Garajonay National Park ( La Gomera )",
+      "title_en": "2 Euros Garajonay National Park",
+      "title_fr": "2 euros Parc national de Garajonay"
+    },
+    {
+      "eurio_id": "es-2023-2eur-old-town-of-caceres",
+      "country": "ES",
+      "country_name": "Spain",
+      "year": 2023,
+      "is_commemorative": true,
+      "theme_en": "Old Town of Cáceres",
+      "title_en": "2 Euros Old City of Cáceres",
+      "title_fr": "2 euros Cáceres"
+    },
+    {
+      "eurio_id": "es-2023-2eur-the-spanish-presidency-of-the-council-of-the-eu",
+      "country": "ES",
+      "country_name": "Spain",
+      "year": 2023,
+      "is_commemorative": true,
+      "theme_en": "The Spanish Presidency of the Council of the EU",
+      "title_en": "2 Euros Presidency of the Council of the EU",
+      "title_fr": "2 euros Présidence de l'UE 2023"
+    },
+    {
+      "eurio_id": "fi-2020-2eur-100-years-since-the-birth-of-vaino-linna",
+      "country": "FI",
+      "country_name": "Finland",
+      "year": 2020,
+      "is_commemorative": true,
+      "theme_en": "100 years since the birth of Väinö Linna",
+      "title_en": "2 Euros Väinö Linna",
+      "title_fr": "2 euros Väinö Linna"
+    },
+    {
+      "eurio_id": "fi-2021-2eur-journalism-and-open-communication-in-support-of-finnish",
+      "country": "FI",
+      "country_name": "Finland",
+      "year": 2021,
+      "is_commemorative": true,
+      "theme_en": "Journalism and Open Communication in Support of Finnish Democracy",
+      "title_en": "2 Euros Autonomy of the Åland Islands",
+      "title_fr": "2 euros Îles Åland"
+    },
+    {
+      "eurio_id": "fi-2022-2eur-100th-anniversary-of-the-finnish-national-ballet",
+      "country": "FI",
+      "country_name": "Finland",
+      "year": 2022,
+      "is_commemorative": true,
+      "theme_en": "100th anniversary of the Finnish National Ballet",
+      "title_en": "2 Euros Erasmus Programme",
+      "title_fr": "2 euros Programme Erasmus"
+    },
+    {
+      "eurio_id": "fi-2023-2eur-first-finnish-nature-conservation-act",
+      "country": "FI",
+      "country_name": "Finland",
+      "year": 2023,
+      "is_commemorative": true,
+      "theme_en": "First Finnish Nature Conservation Act",
+      "title_en": "2 Euros First Finnish Nature Conservation Act",
+      "title_fr": "2 euros Protection de la nature"
+    },
+    {
+      "eurio_id": "fi-2023-2eur-social-and-health-services",
+      "country": "FI",
+      "country_name": "Finland",
+      "year": 2023,
+      "is_commemorative": true,
+      "theme_en": "Social and Health Services",
+      "title_en": "2 Euros Social and Health Services",
+      "title_fr": "2 euros Services sociaux et de santé"
+    },
+    {
+      "eurio_id": "fr-2020-2eur-charles-de-gaulle",
+      "country": "FR",
+      "country_name": "France",
+      "year": 2020,
+      "is_commemorative": true,
+      "theme_en": "Charles de Gaulle",
+      "title_en": "2 Euros General Charles de Gaulle",
+      "title_fr": "2 euros Charles de Gaulle"
+    },
+    {
+      "eurio_id": "fr-2020-2eur-medical-research",
+      "country": "FR",
+      "country_name": "France",
+      "year": 2020,
+      "is_commemorative": true,
+      "theme_en": "Medical Research",
+      "title_en": "2 Euros Medical Research",
+      "title_fr": "2 euros Recherche médicale"
+    },
+    {
+      "eurio_id": "fr-2021-2eur-75-years-since-the-foundation-of-unicef",
+      "country": "FR",
+      "country_name": "France",
+      "year": 2021,
+      "is_commemorative": true,
+      "theme_en": "75 years since the foundation of UNICEF",
+      "title_en": "2 Euros Olympic Games, Paris 2024 - France 2021",
+      "title_fr": "2 euros JO 2024 Paris Marianne"
+    },
+    {
+      "eurio_id": "fr-2022-2eur-90th-anniversary-of-president-jacques-chirac-s-birth",
+      "country": "FR",
+      "country_name": "France",
+      "year": 2022,
+      "is_commemorative": true,
+      "theme_en": "90th anniversary of President Jacques Chirac 's birth",
+      "title_en": "2 Euros Olympic Games, Paris 2024 - France 2022",
+      "title_fr": "2 euros JO 2024 Paris Génie de la liberté"
+    },
+    {
+      "eurio_id": "fr-2023-2eur-2023-rugby-world-cup",
+      "country": "FR",
+      "country_name": "France",
+      "year": 2023,
+      "is_commemorative": true,
+      "theme_en": "2023 Rugby World Cup",
+      "title_en": "2 Euros Olympic Games, Paris 2024 - France 2023",
+      "title_fr": "2 euros JO 2024 Paris Semeuse"
+    },
+    {
+      "eurio_id": "gr-2020-2eur-100th-anniversary-of-the-union-of-thrace-with-greece",
+      "country": "GR",
+      "country_name": "Greece",
+      "year": 2020,
+      "is_commemorative": true,
+      "theme_en": "100th anniversary of the union of Thrace with Greece",
+      "title_en": "2 Euros Union of Thrace with Greece",
+      "title_fr": "2 euros Union de la Thrace avec la Grèce"
+    },
+    {
+      "eurio_id": "gr-2021-2eur-200-years-since-the-greek-revolution",
+      "country": "GR",
+      "country_name": "Greece",
+      "year": 2021,
+      "is_commemorative": true,
+      "theme_en": "200 years since the Greek Revolution",
+      "title_en": "2 Euros 1821 Greek Revolution",
+      "title_fr": "2 euros Révolution grecque"
+    },
+    {
+      "eurio_id": "gr-2022-2eur-200-years-since-the-first-greek-constitution",
+      "country": "GR",
+      "country_name": "Greece",
+      "year": 2022,
+      "is_commemorative": true,
+      "theme_en": "200 years since the first Greek Constitution",
+      "title_en": "2 Euros Erasmus Programme",
+      "title_fr": "2 euros Programme Erasmus"
+    },
+    {
+      "eurio_id": "gr-2023-2eur-100th-anniversary-of-the-birth-of-maria-callas",
+      "country": "GR",
+      "country_name": "Greece",
+      "year": 2023,
+      "is_commemorative": true,
+      "theme_en": "100th anniversary of the birth of Maria Callas",
+      "title_en": "2 Euros Maria Callas",
+      "title_fr": "2 euros Maria Callas"
+    },
+    {
+      "eurio_id": "gr-2023-2eur-150th-anniversary-the-birth-of-constantin-caratheodory",
+      "country": "GR",
+      "country_name": "Greece",
+      "year": 2023,
+      "is_commemorative": true,
+      "theme_en": "150th anniversary the birth of Constantin Carathéodory",
+      "title_en": "2 Euros Constantin Carathéodory",
+      "title_fr": "2 euros Constantin Carathéodory"
+    },
+    {
+      "eurio_id": "hr-2023-2eur-the-introduction-of-the-euro-as-the-official-currency-of",
+      "country": "HR",
+      "country_name": "Croatia",
+      "year": 2023,
+      "is_commemorative": true,
+      "theme_en": "The introduction of the euro as the official currency of Croatia",
+      "title_en": "2 Euros Member of the Euro Area",
+      "title_fr": "2 euros Introduction de l’euro"
+    },
+    {
+      "eurio_id": "hr-2024-2eur-marko-marulic",
+      "country": "HR",
+      "country_name": "Croatia",
+      "year": 2024,
+      "is_commemorative": true,
+      "theme_en": "Marko Marulić",
+      "title_en": "2 Euros Marko Marulić",
+      "title_fr": "2 euros Marko Marulić"
+    },
+    {
+      "eurio_id": "hr-2024-2eur-varazdin-stari-grad-varazdin-the-old-town-of-varazdin",
+      "country": "HR",
+      "country_name": "Croatia",
+      "year": 2024,
+      "is_commemorative": true,
+      "theme_en": "Varaždin (Stari grad Varaždin – the Old Town of Varaždin)",
+      "title_en": "2 Euros Old Town of Varaždin",
+      "title_fr": "2 euros Varaždin"
+    },
+    {
+      "eurio_id": "hr-2025-2eur-1-100th-anniversary-of-the-croatian-kingdom-and-the",
+      "country": "HR",
+      "country_name": "Croatia",
+      "year": 2025,
+      "is_commemorative": true,
+      "theme_en": "1,100th anniversary of the Croatian Kingdom and the coronation of King Tomislav",
+      "title_en": "2 Euros King Tomislav",
+      "title_fr": "2 euros Tomislav Ier"
+    },
+    {
+      "eurio_id": "hr-2025-2eur-pula-grad-pula-arena",
+      "country": "HR",
+      "country_name": "Croatia",
+      "year": 2025,
+      "is_commemorative": true,
+      "theme_en": "Pula (Grad Pula – Arena )",
+      "title_en": "2 Euros City of Pula",
+      "title_fr": "2 Euros City of Pula"
+    },
+    {
+      "eurio_id": "ie-2016-2eur-100-years-since-easter-rising",
+      "country": "IE",
+      "country_name": "Ireland",
+      "year": 2016,
+      "is_commemorative": true,
+      "theme_en": "100 years since Easter Rising",
+      "title_en": "2 Euros Easter Rising",
+      "title_fr": "2 euros Soulèvement de Pâques"
+    },
+    {
+      "eurio_id": "ie-2019-2eur-centenary-of-the-first-sitting-of-dail-eireann",
+      "country": "IE",
+      "country_name": "Ireland",
+      "year": 2019,
+      "is_commemorative": true,
+      "theme_en": "Centenary of the first sitting of Dáil Éireann",
+      "title_en": "2 Euros First meeting of Dáil Éireann",
+      "title_fr": "2 euros Dáil Éireann"
+    },
+    {
+      "eurio_id": "ie-2023-2eur-50th-anniversary-of-irelands-membership-of-the-european",
+      "country": "IE",
+      "country_name": "Ireland",
+      "year": 2023,
+      "is_commemorative": true,
+      "theme_en": "50th anniversary of Ireland's membership of the European Union",
+      "title_en": "2 Euros EU Membership",
+      "title_fr": "2 euros Adhésion de l'Irlande à l'UE"
+    },
+    {
+      "eurio_id": "it-2021-2eur-150th-anniversary-of-the-proclamation-of-rome-as-the",
+      "country": "IT",
+      "country_name": "Italy",
+      "year": 2021,
+      "is_commemorative": true,
+      "theme_en": "150th anniversary of the proclamation of Rome as the capital of Italy",
+      "title_en": "2 Euros Rome",
+      "title_fr": "2 euros Rome"
+    },
+    {
+      "eurio_id": "it-2021-2eur-healthcare-professionals",
+      "country": "IT",
+      "country_name": "Italy",
+      "year": 2021,
+      "is_commemorative": true,
+      "theme_en": "Healthcare professionals",
+      "title_en": "2 Euros Health Professions",
+      "title_fr": "2 euros Métiers de la santé"
+    },
+    {
+      "eurio_id": "it-2022-2eur-30th-anniversary-of-the-death-of-giovanni-falcone-and-paolo",
+      "country": "IT",
+      "country_name": "Italy",
+      "year": 2022,
+      "is_commemorative": true,
+      "theme_en": "30th anniversary of the death of Giovanni Falcone and Paolo Borsellino",
+      "title_en": "2 Euros Erasmus Programme",
+      "title_fr": "2 euros Programme Erasmus"
+    },
+    {
+      "eurio_id": "it-2023-2eur-150th-anniversary-of-the-death-of-alessandro-manzoni",
+      "country": "IT",
+      "country_name": "Italy",
+      "year": 2023,
+      "is_commemorative": true,
+      "theme_en": "150th anniversary of the death of Alessandro Manzoni",
+      "title_en": "2 Euros Alessandro Manzoni",
+      "title_fr": "2 euros Alessandro Manzoni"
+    },
+    {
+      "eurio_id": "it-2023-2eur-italy-100-years-of-the-italian-air-force",
+      "country": "IT",
+      "country_name": "Italy",
+      "year": 2023,
+      "is_commemorative": true,
+      "theme_en": "Italy\t100 Years of the Italian Air Force",
+      "title_en": "2 Euros Italian Air Force",
+      "title_fr": "2 euros Aeronautica Militare"
+    },
+    {
+      "eurio_id": "lt-2021-2eur-dzukija",
+      "country": "LT",
+      "country_name": "Lithuania",
+      "year": 2021,
+      "is_commemorative": true,
+      "theme_en": "Dzūkija",
+      "title_en": "2 Euros Dzūkija",
+      "title_fr": "2 euros Dzūkija"
+    },
+    {
+      "eurio_id": "lt-2021-2eur-zuvintas-biosphere-reserve",
+      "country": "LT",
+      "country_name": "Lithuania",
+      "year": 2021,
+      "is_commemorative": true,
+      "theme_en": "Žuvintas biosphere reserve",
+      "title_en": "2 Euros Žuvintas Biosphere Reserve",
+      "title_fr": "2 euros Réserve de biosphère de Žuvintas"
+    },
+    {
+      "eurio_id": "lt-2022-2eur-100-years-of-basketball-in-lithuania",
+      "country": "LT",
+      "country_name": "Lithuania",
+      "year": 2022,
+      "is_commemorative": true,
+      "theme_en": "100 years of basketball in Lithuania",
+      "title_en": "2 Euros Basketball in Lithuania",
+      "title_fr": "2 euros Basket-ball"
+    },
+    {
+      "eurio_id": "lt-2022-2eur-suvalkija",
+      "country": "LT",
+      "country_name": "Lithuania",
+      "year": 2022,
+      "is_commemorative": true,
+      "theme_en": "Suvalkija",
+      "title_en": "2 Euros Suvalkija",
+      "title_fr": "2 euros Région ethnographique de Suvalkija"
+    },
+    {
+      "eurio_id": "lt-2023-2eur-together-with-ukraine",
+      "country": "LT",
+      "country_name": "Lithuania",
+      "year": 2023,
+      "is_commemorative": true,
+      "theme_en": "Together with Ukraine",
+      "title_en": "2 Euros Together with Ukraine",
+      "title_fr": "2 euros Ensemble avec l'Ukraine"
+    },
+    {
+      "eurio_id": "lu-2021-2eur-100-years-since-the-birth-of-jean-grand-duke-of-luxembourg",
+      "country": "LU",
+      "country_name": "Luxembourg",
+      "year": 2021,
+      "is_commemorative": true,
+      "theme_en": "100 years since the birth of Jean, Grand Duke of Luxembourg",
+      "title_en": "2 Euros - Henri I Grand Duke Jean - classic version",
+      "title_fr": "2 euros Grand-Duc Jean version classique"
+    },
+    {
+      "eurio_id": "lu-2022-2eur-10-years-since-the-wedding-of-hereditary-grand-duke",
+      "country": "LU",
+      "country_name": "Luxembourg",
+      "year": 2022,
+      "is_commemorative": true,
+      "theme_en": "10 years since the wedding of Hereditary Grand Duke Guillaume and Hereditary Grand Duchess Stéphanie",
+      "title_en": "2 Euros - Henri I 10th Anniversary of the Wedding of the Grand-Ducal couple",
+      "title_fr": "2 euros Mariage du grand-duc héritier"
+    },
+    {
+      "eurio_id": "lu-2022-2eur-50-years-since-the-flag-of-luxembourg",
+      "country": "LU",
+      "country_name": "Luxembourg",
+      "year": 2022,
+      "is_commemorative": true,
+      "theme_en": "50 years since the Flag of Luxembourg",
+      "title_en": "2 Euros - Henri I Flag of Luxembourg",
+      "title_fr": "2 euros Drapeau du Luxembourg"
+    },
+    {
+      "eurio_id": "lu-2023-2eur-175th-anniversary-of-the-chamber-of-deputies-and-the-first",
+      "country": "LU",
+      "country_name": "Luxembourg",
+      "year": 2023,
+      "is_commemorative": true,
+      "theme_en": "175th Anniversary of the Chamber of Deputies and the First Constitution",
+      "title_en": "2 Euros - Henri I Chamber of Deputies - Hologram version",
+      "title_fr": "2 euros Chambre des Députés version hologramme"
+    },
+    {
+      "eurio_id": "lu-2023-2eur-25th-anniversary-of-the-admission-of-grand-duke-henri-as-a",
+      "country": "LU",
+      "country_name": "Luxembourg",
+      "year": 2023,
+      "is_commemorative": true,
+      "theme_en": "25th anniversary of the admission of Grand Duke Henri as a member of the International Olympic Committee",
+      "title_en": "2 Euros - Henri I Grand Duke Henri as a member of the International Olympic Committee - hologram version",
+      "title_fr": "2 euros Grand-Duc Henri membre du CIO version hologramme"
+    },
+    {
+      "eurio_id": "lv-2019-2eur-coat-of-arms-of-latvia-s-rising-sun",
+      "country": "LV",
+      "country_name": "Latvia",
+      "year": 2019,
+      "is_commemorative": true,
+      "theme_en": "Coat of arms of Latvia 's rising sun",
+      "title_en": "2 Euros The Rising Sun",
+      "title_fr": "2 euros Soleil levant"
+    },
+    {
+      "eurio_id": "lv-2020-2eur-latgalian-ceramics",
+      "country": "LV",
+      "country_name": "Latvia",
+      "year": 2020,
+      "is_commemorative": true,
+      "theme_en": "Latgalian ceramics",
+      "title_en": "2 Euros Latgalian Ceramics",
+      "title_fr": "2 euros Céramique latgalienne"
+    },
+    {
+      "eurio_id": "lv-2021-2eur-100th-anniversary-of-the-de-jure-recognition-of-the",
+      "country": "LV",
+      "country_name": "Latvia",
+      "year": 2021,
+      "is_commemorative": true,
+      "theme_en": "100th anniversary of the de jure recognition of the Republic of Latvia",
+      "title_en": "2 Euros De iure recognition",
+      "title_fr": "2 euros République de Lettonie"
+    },
+    {
+      "eurio_id": "lv-2022-2eur-100th-anniversary-of-the-bank-of-latvia-financial-literacy",
+      "country": "LV",
+      "country_name": "Latvia",
+      "year": 2022,
+      "is_commemorative": true,
+      "theme_en": "100th anniversary of the Bank of Latvia . Financial literacy",
+      "title_en": "2 Euros Erasmus Programme",
+      "title_fr": "2 euros Programme Erasmus"
+    },
+    {
+      "eurio_id": "lv-2023-2eur-the-ukraine-sunflower",
+      "country": "LV",
+      "country_name": "Latvia",
+      "year": 2023,
+      "is_commemorative": true,
+      "theme_en": "The Ukraine Sunflower",
+      "title_en": "2 Euros Sunflower for Ukraine",
+      "title_fr": "2 euros Tournesol ukrainien"
+    },
+    {
+      "eurio_id": "mc-2019-2eur-200th-anniversary-of-honores-v-accession-to-the-throne",
+      "country": "MC",
+      "country_name": "Monaco",
+      "year": 2019,
+      "is_commemorative": true,
+      "theme_en": "200th anniversary of Honoré's V accession to the throne",
+      "title_en": "2 Euros - Albert II Prince Honoré V",
+      "title_fr": "2 euros - Honoré V"
+    },
+    {
+      "eurio_id": "mc-2020-2eur-300-years-since-the-birth-of-honore-iii",
+      "country": "MC",
+      "country_name": "Monaco",
+      "year": 2020,
+      "is_commemorative": true,
+      "theme_en": "300 years since the birth of Honoré III",
+      "title_en": "2 Euros - Albert II Prince Honoré III",
+      "title_fr": "2 euros - Honoré III"
+    },
+    {
+      "eurio_id": "mc-2021-2eur-10-years-since-the-wedding-of-albert-ii-prince-of-monaco",
+      "country": "MC",
+      "country_name": "Monaco",
+      "year": 2021,
+      "is_commemorative": true,
+      "theme_en": "10 years since the wedding of Albert II, Prince of Monaco and Charlene, Princess of Monaco",
+      "title_en": "2 Euros - Albert II 10th anniversary of the Royal Wedding",
+      "title_fr": "2 euros - Albert II 10e anniversaire de mariage"
+    },
+    {
+      "eurio_id": "mc-2022-2eur-100-years-since-the-death-of-albert-i-prince-of-monaco",
+      "country": "MC",
+      "country_name": "Monaco",
+      "year": 2022,
+      "is_commemorative": true,
+      "theme_en": "100 years since the death of Albert I, Prince of Monaco",
+      "title_en": "2 Euros - Albert II Prince Albert I of Monaco",
+      "title_fr": "2 euros - Albert Ier"
+    },
+    {
+      "eurio_id": "mc-2023-2eur-the-centenary-of-the-birth-of-prince-rainier-iii",
+      "country": "MC",
+      "country_name": "Monaco",
+      "year": 2023,
+      "is_commemorative": true,
+      "theme_en": "The centenary of the birth of Prince Rainier III",
+      "title_en": "2 Euros - Albert II Rainier III, Prince of Monaco",
+      "title_fr": "2 euros - Rainier III"
+    },
+    {
+      "eurio_id": "mt-2021-2eur-heroes-of-the-pandemic",
+      "country": "MT",
+      "country_name": "Malta",
+      "year": 2021,
+      "is_commemorative": true,
+      "theme_en": "Heroes of the pandemic",
+      "title_en": "2 Euros - Heroes of the Pandemic",
+      "title_fr": "2 euros Héros de la pandémie"
+    },
+    {
+      "eurio_id": "mt-2022-2eur-hypogeum-of-hal-saflieni",
+      "country": "MT",
+      "country_name": "Malta",
+      "year": 2022,
+      "is_commemorative": true,
+      "theme_en": "Hypogeum of Ħal-Saflieni",
+      "title_en": "2 Euros Hypogeum of Ħal-Saflieni",
+      "title_fr": "2 euros Hypogée de Ħal Saflieni"
+    },
+    {
+      "eurio_id": "mt-2022-2eur-united-nations-security-council-resolution-1325-on-women",
+      "country": "MT",
+      "country_name": "Malta",
+      "year": 2022,
+      "is_commemorative": true,
+      "theme_en": "United Nations Security Council Resolution 1325 on women, peace and security",
+      "title_en": "2 Euros Council Resolution on Women, Peace and Security",
+      "title_fr": "2 euros Conseil et sécurité des femmes"
+    },
+    {
+      "eurio_id": "mt-2023-2eur-225th-anniversary-of-the-french-invasion-of-malta",
+      "country": "MT",
+      "country_name": "Malta",
+      "year": 2023,
+      "is_commemorative": true,
+      "theme_en": "225th anniversary of the French invasion of Malta",
+      "title_en": "2 Euros The arrival of the French in Malta",
+      "title_fr": "2 euros Occupation française de Malte"
+    },
+    {
+      "eurio_id": "mt-2023-2eur-550th-anniversary-of-the-birth-of-nicolaus-copernicus",
+      "country": "MT",
+      "country_name": "Malta",
+      "year": 2023,
+      "is_commemorative": true,
+      "theme_en": "550th anniversary of the birth of Nicolaus Copernicus",
+      "title_en": "2 Euros Nicolaus Copernicus",
+      "title_fr": "2 euros Nicolas Copernic"
+    },
+    {
+      "eurio_id": "nl-2011-2eur-500th-anniversary-of-the-publication-of-the-praise-of-folly",
+      "country": "NL",
+      "country_name": "Netherlands",
+      "year": 2011,
+      "is_commemorative": true,
+      "theme_en": "500th anniversary of the Publication of The Praise of Folly by Desiderius Erasmus",
+      "title_en": "2 Euros - Beatrix Erasmus",
+      "title_fr": "2 euros Érasme"
+    },
+    {
+      "eurio_id": "nl-2013-2eur-200th-anniversary-of-the-kingdom-of-the-netherlands",
+      "country": "NL",
+      "country_name": "Netherlands",
+      "year": 2013,
+      "is_commemorative": true,
+      "theme_en": "200th anniversary of the Kingdom of the Netherlands",
+      "title_en": "2 Euros - Willem-Alexander 200 Years of the Kingdom",
+      "title_fr": "2 euros Royaume des Pays-Bas non colorée"
+    },
+    {
+      "eurio_id": "nl-2014-2eur-king-willem-alexander-and-princess-beatrix",
+      "country": "NL",
+      "country_name": "Netherlands",
+      "year": 2014,
+      "is_commemorative": true,
+      "theme_en": "King Willem-Alexander and Princess Beatrix",
+      "title_en": "2 Euros - Willem-Alexander Accession",
+      "title_fr": "2 euros Double portrait non colorée"
+    },
+    {
+      "eurio_id": "pt-2021-2eur-participation-in-tokyo-summer-olympics",
+      "country": "PT",
+      "country_name": "Portugal",
+      "year": 2021,
+      "is_commemorative": true,
+      "theme_en": "Participation in Tokyo Summer Olympics",
+      "title_en": "2 Euros Tokyo Olympic Games",
+      "title_fr": "2 euros JO 2021 Tokyo"
+    },
+    {
+      "eurio_id": "pt-2021-2eur-portuguese-presidency-of-the-council-of-the-european-union",
+      "country": "PT",
+      "country_name": "Portugal",
+      "year": 2021,
+      "is_commemorative": true,
+      "theme_en": "Portuguese Presidency of the Council of the European Union",
+      "title_en": "2 Euros Presidency European Union",
+      "title_fr": "2 euros Présidence de l'UE"
+    },
+    {
+      "eurio_id": "pt-2022-2eur-100th-anniversary-since-the-first-southern-transatlantic",
+      "country": "PT",
+      "country_name": "Portugal",
+      "year": 2022,
+      "is_commemorative": true,
+      "theme_en": "100th anniversary since the first southern transatlantic crossing by plane",
+      "title_en": "2 Euros Crossing of the South Atlantic by plane",
+      "title_fr": "2 euros Traversée aérienne de l'Atlantique Sud"
+    },
+    {
+      "eurio_id": "pt-2023-2eur-peace-among-nations",
+      "country": "PT",
+      "country_name": "Portugal",
+      "year": 2023,
+      "is_commemorative": true,
+      "theme_en": "Peace among nations",
+      "title_en": "2 Euros Peace Among Nations",
+      "title_fr": "2 euros Paix entre les nations"
+    },
+    {
+      "eurio_id": "pt-2023-2eur-world-youth-day-2023",
+      "country": "PT",
+      "country_name": "Portugal",
+      "year": 2023,
+      "is_commemorative": true,
+      "theme_en": "World Youth Day 2023",
+      "title_en": "2 Euros World Youth Day",
+      "title_fr": "2 euros JMJ Lisbonne 2023"
+    },
+    {
+      "eurio_id": "si-2019-2eur-100-years-since-the-foundation-of-the-university-of",
+      "country": "SI",
+      "country_name": "Slovenia",
+      "year": 2019,
+      "is_commemorative": true,
+      "theme_en": "100 years since the foundation of the University of Ljubljana",
+      "title_en": "2 Euros University of Ljubljana",
+      "title_fr": "2 euros Université de Ljubljana"
+    },
+    {
+      "eurio_id": "si-2020-2eur-500-years-since-the-birth-of-adam-bohoric",
+      "country": "SI",
+      "country_name": "Slovenia",
+      "year": 2020,
+      "is_commemorative": true,
+      "theme_en": "500 years since the birth of Adam Bohorič",
+      "title_en": "2 Euros Adam Bohorič",
+      "title_fr": "2 euros Adam Bohorič"
+    },
+    {
+      "eurio_id": "si-2021-2eur-200-years-since-the-foundation-of-the-provincial-museum-of",
+      "country": "SI",
+      "country_name": "Slovenia",
+      "year": 2021,
+      "is_commemorative": true,
+      "theme_en": "200 years since the foundation of the provincial museum of Carniola",
+      "title_en": "2 Euros Provincial Museum for Carniola",
+      "title_fr": "2 euros Musée national slovène"
+    },
+    {
+      "eurio_id": "si-2022-2eur-150-years-since-the-birth-of-joze-plecnik",
+      "country": "SI",
+      "country_name": "Slovenia",
+      "year": 2022,
+      "is_commemorative": true,
+      "theme_en": "150 years since the birth of Jože Plečnik",
+      "title_en": "2 Euros Jože Plečnik",
+      "title_fr": "2 euros Jože Plečnik"
+    },
+    {
+      "eurio_id": "si-2023-2eur-150th-anniversary-of-the-birth-of-josip-plemelj",
+      "country": "SI",
+      "country_name": "Slovenia",
+      "year": 2023,
+      "is_commemorative": true,
+      "theme_en": "150th anniversary of the birth of Josip Plemelj",
+      "title_en": "2 Euros Josip Plemelj",
+      "title_fr": "2 euros Josip Plemelj"
+    },
+    {
+      "eurio_id": "sk-2019-2eur-100-years-since-the-death-of-milan-rastislav-stefanik",
+      "country": "SK",
+      "country_name": "Slovakia",
+      "year": 2019,
+      "is_commemorative": true,
+      "theme_en": "100 years since the death of Milan Rastislav Štefánik",
+      "title_en": "2 Euros Milan Rastislav Štefánik",
+      "title_fr": "2 euros Milan Rastislav Štefánik"
+    },
+    {
+      "eurio_id": "sk-2020-2eur-20-years-of-slovakian-membership-in-the-oecd",
+      "country": "SK",
+      "country_name": "Slovakia",
+      "year": 2020,
+      "is_commemorative": true,
+      "theme_en": "20 years of Slovakian membership in the OECD",
+      "title_en": "2 Euros OECD",
+      "title_fr": "2 euros OCDE"
+    },
+    {
+      "eurio_id": "sk-2021-2eur-100-years-since-the-birth-of-alexander-dubcek",
+      "country": "SK",
+      "country_name": "Slovakia",
+      "year": 2021,
+      "is_commemorative": true,
+      "theme_en": "100 years since the birth of Alexander Dubček",
+      "title_en": "2 Euros Alexander Dubček",
+      "title_fr": "2 euros Alexander Dubček"
+    },
+    {
+      "eurio_id": "sk-2022-2eur-300-years-since-the-first-steam-engine-for-pumping-pit-water",
+      "country": "SK",
+      "country_name": "Slovakia",
+      "year": 2022,
+      "is_commemorative": true,
+      "theme_en": "300 years since the first steam engine for pumping pit water",
+      "title_en": "2 Euros Erasmus Programme",
+      "title_fr": "2 euros Programme Erasmus"
+    },
+    {
+      "eurio_id": "sk-2023-2eur-100-years-since-the-first-blood-transfusion-in-slovakia",
+      "country": "SK",
+      "country_name": "Slovakia",
+      "year": 2023,
+      "is_commemorative": true,
+      "theme_en": "100 years since the first blood transfusion in Slovakia",
+      "title_en": "2 Euros Express Mail Between Vienna and Bratislava",
+      "title_fr": "2 euros Service postal express Vienne - Bratislava"
+    },
+    {
+      "eurio_id": "sm-2021-2eur-450-years-since-the-birth-of-caravaggio",
+      "country": "SM",
+      "country_name": "San Marino",
+      "year": 2021,
+      "is_commemorative": true,
+      "theme_en": "450 years since the birth of Caravaggio",
+      "title_en": "2 Euros Caravaggio",
+      "title_fr": "2 euros Le Caravage"
+    },
+    {
+      "eurio_id": "sm-2022-2eur-200-years-since-the-death-of-antonio-canova",
+      "country": "SM",
+      "country_name": "San Marino",
+      "year": 2022,
+      "is_commemorative": true,
+      "theme_en": "200 years since the death of Antonio Canova",
+      "title_en": "2 Euros Antonio Canova",
+      "title_fr": "2 euros Antonio Canova"
+    },
+    {
+      "eurio_id": "sm-2022-2eur-530-years-since-the-death-of-piero-della-francesca",
+      "country": "SM",
+      "country_name": "San Marino",
+      "year": 2022,
+      "is_commemorative": true,
+      "theme_en": "530 years since the death of Piero della Francesca",
+      "title_en": "2 Euros Piero Della Francesca",
+      "title_fr": "2 euros Piero Della Francesca"
+    },
+    {
+      "eurio_id": "sm-2023-2eur-500th-anniversary-of-the-death-of-luca-signorelli",
+      "country": "SM",
+      "country_name": "San Marino",
+      "year": 2023,
+      "is_commemorative": true,
+      "theme_en": "500th anniversary of the death of Luca Signorelli",
+      "title_en": "2 Euros Signorelli",
+      "title_fr": "2 euros Luca Signorelli"
+    },
+    {
+      "eurio_id": "sm-2023-2eur-500th-anniversary-of-the-death-of-pietro-perugino",
+      "country": "SM",
+      "country_name": "San Marino",
+      "year": 2023,
+      "is_commemorative": true,
+      "theme_en": "500th anniversary of the death of Pietro Perugino",
+      "title_en": "2 Euros Perugino",
+      "title_fr": "2 euros Le Pérugin"
+    },
+    {
+      "eurio_id": "va-2021-2eur-450-years-since-the-birth-of-caravaggio",
+      "country": "VA",
+      "country_name": "Vatican",
+      "year": 2021,
+      "is_commemorative": true,
+      "theme_en": "450 years since the birth of Caravaggio",
+      "title_en": "2 Euros - Francis Caravaggio",
+      "title_fr": "2 euros Le Caravage"
+    },
+    {
+      "eurio_id": "va-2022-2eur-125-years-since-the-birth-of-pope-paul-vi",
+      "country": "VA",
+      "country_name": "Vatican",
+      "year": 2022,
+      "is_commemorative": true,
+      "theme_en": "125 years since the birth of Pope Paul VI",
+      "title_en": "2 Euros - Francis Paul VI",
+      "title_fr": "2 euros Paul VI"
+    },
+    {
+      "eurio_id": "va-2022-2eur-25-years-since-the-death-of-mother-teresa",
+      "country": "VA",
+      "country_name": "Vatican",
+      "year": 2022,
+      "is_commemorative": true,
+      "theme_en": "25 years since the death of Mother Teresa",
+      "title_en": "2 Euros - Francis Mother Teresa of Calcutta",
+      "title_fr": "2 euros Mère Teresa"
+    },
+    {
+      "eurio_id": "va-2023-2eur-150th-anniversary-of-the-death-of-alessandro-manzoni",
+      "country": "VA",
+      "country_name": "Vatican",
+      "year": 2023,
+      "is_commemorative": true,
+      "theme_en": "150th anniversary of the death of Alessandro Manzoni",
+      "title_en": "2 Euros - Francis Alessandro Manzoni",
+      "title_fr": "2 euros Alessandro Manzoni"
+    },
+    {
+      "eurio_id": "va-2023-2eur-the-5th-centenary-of-the-death-of-pietro-perugino",
+      "country": "VA",
+      "country_name": "Vatican",
+      "year": 2023,
+      "is_commemorative": true,
+      "theme_en": "The 5th Centenary of the death of Pietro Perugino",
+      "title_en": "2 Euros - Francis Pietro Perugino",
+      "title_fr": "2 euros Le Pérugin"
+    }
+  ]
+}
