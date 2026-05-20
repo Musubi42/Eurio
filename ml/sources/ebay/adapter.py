@@ -209,7 +209,10 @@ class EbayAdapter:
             t0 = time.monotonic()
             try:
                 expand = self._search_and_expand(
-                    client, ebay_q, ambiguous=ambiguous
+                    client, ebay_q,
+                    ambiguous=ambiguous,
+                    eurio_id=coin.eurio_id,
+                    marketplace=mkt,
                 )
             except Exception as exc:  # noqa: BLE001
                 duration_ms = int((time.monotonic() - t0) * 1000)
@@ -403,13 +406,22 @@ class EbayAdapter:
         return n > 1
 
     def _search_and_expand(
-        self, client: EbayClient, ebay_q: EbayQuery, *, ambiguous: bool,
+        self,
+        client: EbayClient,
+        ebay_q: EbayQuery,
+        *,
+        ambiguous: bool,
+        eurio_id: str,
+        marketplace: str,
     ) -> "SearchExpandResult":
         """Search + group expansion + theme drop, avec ventilation N0/N1/N2.
 
         Retourne un :class:`SearchExpandResult` qui porte la liste finale
         (post-theme drop) ET les compteurs intermédiaires + les rows
         explicitement filtrées par theme drop, pour audit.
+
+        ``eurio_id`` + ``marketplace`` sont passés à ``title_matches_theme``
+        pour le matching multilingue I2 (cf. ``theme_tokens.py``).
         """
         # Note (bloc 1, 2026-05-05) : on a drop le `filter_expr` qui contenait
         # `price:[1..500],priceCurrency:EUR`. Le filtre eBay sur `priceCurrency`
@@ -452,7 +464,12 @@ class EbayAdapter:
         if ambiguous:
             kept_rows: list[dict] = []
             for r in rows:
-                if title_matches_theme(r.get("title") or "", ebay_q.theme_tokens):
+                if title_matches_theme(
+                    r.get("title") or "",
+                    eurio_id,
+                    marketplace=marketplace,
+                    conn=self.conn,
+                ):
                     kept_rows.append(r)
                 else:
                     theme_dropped.append(r)
