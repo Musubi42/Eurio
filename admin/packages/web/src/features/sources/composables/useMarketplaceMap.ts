@@ -28,6 +28,31 @@ export function mktShort(mkt: string): string {
   return mkt.startsWith('EBAY_') ? mkt.slice(5) : mkt
 }
 
+/** 'EBAY_ES' → 'es' (code ISO2 minuscule, pour le drapeau). */
+export function mktIso2(mkt: string): string {
+  return mktShort(mkt).toLowerCase()
+}
+
+// Drapeaux SVG (flag-icons, 4x3). Import direct des assets — URL résolue
+// par Vite, pas de dépendance aux classes CSS internes de la lib. Sert
+// de fond aux badges marketplace (cf. MarketplaceBadge.vue).
+import fr from 'flag-icons/flags/4x3/fr.svg'
+import gb from 'flag-icons/flags/4x3/gb.svg'
+import de from 'flag-icons/flags/4x3/de.svg'
+import it from 'flag-icons/flags/4x3/it.svg'
+import es from 'flag-icons/flags/4x3/es.svg'
+import nl from 'flag-icons/flags/4x3/nl.svg'
+import at from 'flag-icons/flags/4x3/at.svg'
+import ie from 'flag-icons/flags/4x3/ie.svg'
+import be from 'flag-icons/flags/4x3/be.svg'
+
+const FLAG_SVG: Record<string, string> = { fr, gb, de, it, es, nl, at, ie, be }
+
+/** URL du drapeau SVG pour un marketplace, ou null si non mappé. */
+export function mktFlagUrl(mkt: string): string | null {
+  return FLAG_SVG[mktIso2(mkt)] ?? null
+}
+
 /**
  * Marketplaces effectivement appelés en discovery pour un coin de ce pays.
  *

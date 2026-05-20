@@ -22,6 +22,9 @@ export interface RunBreakdownEntry {
   via_lot: boolean
   // Output
   n_quotes: number
+  // Marketplaces ayant produit ≥1 listing pour cet eurio_id (B4 multi-mkt).
+  // Vide pour les runs pré-bascule (source_images.marketplace NULL).
+  marketplaces: string[]
 }
 
 export interface RunBreakdown {
