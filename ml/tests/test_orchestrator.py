@@ -27,7 +27,7 @@ def store(tmp_path) -> Store:
     return Store(tmp_path / "t.db")
 
 
-def test_pipeline_skeleton_runs_all_six_steps(store: Store, caplog) -> None:
+def test_pipeline_skeleton_runs_all_steps(store: Store, caplog) -> None:
     caplog.set_level(logging.INFO)
     adapter = MockAdapter()
     run_id = run_pipeline(adapter, SourceQuery(source_id="mock"), store=store)
@@ -40,7 +40,8 @@ def test_pipeline_skeleton_runs_all_six_steps(store: Store, caplog) -> None:
     assert row["source"] == "mock"
     assert row["kind"] == "run"
     assert row["status"] == "success"
-    assert row["current_step"] == "enqueue"
+    # Dernier step du pipeline (price_aggregate ajouté au chunk C3).
+    assert row["current_step"] == "price_aggregate"
     assert row["n_calls"] == 1
     assert row["n_raws_added"] == 5
     assert row["n_review_enqueued"] == 5

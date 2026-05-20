@@ -241,26 +241,23 @@ def test_trigger_run_503_if_no_ebay_creds(client: TestClient, monkeypatch):
 # ── B5 — /sources/ebay/marketplace-map ──────────────────────────────────────
 
 
-def test_marketplace_map_lists_eurozone_plus_eu(client: TestClient):
+def test_marketplace_map_lists_de_and_es(client: TestClient):
     resp = client.get("/sources/ebay/marketplace-map")
     assert resp.status_code == 200
     payload = resp.json()
-    countries = {e["country"] for e in payload["entries"]}
-    # 21 eurozone + 4 micro-États + 'eu' joint
-    assert {"FR", "DE", "BG", "AD", "SM", "eu"}.issubset(countries)
-    assert len(payload["entries"]) >= 26
+    # Routage uniforme : EBAY_DE puis EBAY_ES, pour toutes les origines.
+    assert [m["marketplace"] for m in payload["marketplaces"]] == [
+        "EBAY_DE", "EBAY_ES",
+    ]
 
 
 def test_marketplace_map_payload_shape(client: TestClient):
     resp = client.get("/sources/ebay/marketplace-map")
-    by_country = {e["country"]: e for e in resp.json()["entries"]}
-    fr = by_country["FR"]
-    assert fr["primary"] == "EBAY_FR"
-    assert fr["global_"] == "EBAY_GB"
-    assert fr["query_lang"] == "fr"
-    bg = by_country["BG"]
-    assert bg["primary"] is None
-    assert bg["global_"] == "EBAY_GB"
+    by_mkt = {m["marketplace"]: m for m in resp.json()["marketplaces"]}
+    assert by_mkt["EBAY_DE"]["query_lang"] == "de"
+    assert by_mkt["EBAY_ES"]["query_lang"] == "es"
+    # GB retiré du routage (0 listing EUR exploitable).
+    assert "EBAY_GB" not in by_mkt
 
 
 # ── B6 — /sources/ebay/filter-config ────────────────────────────────────────

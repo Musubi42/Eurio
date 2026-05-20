@@ -23,7 +23,7 @@ from typing import Any
 _VALID_KINDS = ("run", "dry", "limit", "reset")
 PIPELINE_STEPS: tuple[str, ...] = (
     "discover", "persist", "text_signal", "download", "detect",
-    "resolve", "auto_validate", "enqueue",
+    "resolve", "auto_validate", "enqueue", "price_aggregate",
 )
 _VALID_END_STATUSES = ("success", "failed", "partial")
 

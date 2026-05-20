@@ -8,8 +8,8 @@ import {
   type EbayQuotaStatus,
 } from '../composables/useSourceDetail'
 import {
-  avgCallsForBatch,
-  marketplacesForCountry,
+  discoveryCallCount,
+  discoveryMarketplaces,
   useMarketplaceMap,
 } from '../composables/useMarketplaceMap'
 import MarketplaceMapModal from './MarketplaceMapModal.vue'
@@ -73,20 +73,13 @@ const previewItems = computed<EbayFreshnessItem[]>(
   () => (freshness.value?.items ?? []).slice(0, Math.min(batchSize.value, 10)),
 )
 
-// Estimation a priori du coût quota moyen — calculée sur le mix pays du
-// batch réel (batchSize pièces), pas seulement les 10 affichées en preview.
-// Cf. front-ux.md §"Source du chiffre ~1.7".
-const batchCountries = computed<string[]>(
-  () => (freshness.value?.items ?? []).slice(0, batchSize.value).map((i) => i.country),
-)
-const avgCallsPerEurio = computed(() =>
-  avgCallsForBatch(marketplaceMap.value, batchCountries.value),
-)
+// Coût quota par pièce — constant : routage uniforme {EBAY_DE, EBAY_ES}
+// → 2 search calls quelle que soit l'origine. Cf. front-ux.md §"Source
+// du chiffre".
+const callsPerEurio = computed(() => discoveryCallCount(marketplaceMap.value))
 
-/** Marketplaces (ex. ['EBAY_ES','EBAY_GB']) appelés pour un pays donné. */
-function mktsForCountry(country: string): string[] {
-  return marketplacesForCountry(marketplaceMap.value, country)
-}
+/** Marketplaces appelés en discovery (['EBAY_DE','EBAY_ES'], uniforme). */
+const discoveryMkts = computed(() => discoveryMarketplaces(marketplaceMap.value))
 
 const estimateCalls = computed(() => {
   if (!quota.value) return 0
@@ -154,16 +147,17 @@ function onClickRun(dryRun: boolean) {
         Stratégie d'extraction
       </div>
       <p class="text-xs leading-relaxed" style="color: var(--ink);">
-        Marketplace global <span class="font-mono">EBAY_GB</span> (catch-all)
-        <span style="color: var(--ink-500);">+ marketplace natif selon le pays d'origine du coin
-        (FR→EBAY_FR, DE→EBAY_DE, …). Les pays sans marketplace natif ni langue couverte
-        ne tirent que sur EBAY_GB.</span>
+        Routage uniforme <span class="font-mono">EBAY_DE</span> +
+        <span class="font-mono">EBAY_ES</span>
+        <span style="color: var(--ink-500);"> pour toutes les origines — chaque
+        marketplace queryé dans sa langue native. Choix validé par le benchmark
+        de recall (2026-05-20).</span>
       </p>
       <div class="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1">
         <span class="text-xs" style="color: var(--ink-500);">
-          Coût quota moyen du batch :
+          Coût quota fixe :
           <strong class="tabular-nums" style="color: var(--ink);">
-            {{ marketplaceMap ? '~' + avgCallsPerEurio.toFixed(1) : '—' }}
+            {{ marketplaceMap ? callsPerEurio : '—' }}
           </strong>
           search calls/pièce
           <span style="color: var(--ink-400);">(vs 1.0 en mono-marketplace)</span>
@@ -340,7 +334,7 @@ function onClickRun(dryRun: boolean) {
             </span>
             <span class="inline-flex gap-0.5">
               <MarketplaceBadge
-                v-for="mkt in mktsForCountry(item.country)"
+                v-for="mkt in discoveryMkts"
                 :key="mkt"
                 :marketplace="mkt"
                 size="sm"

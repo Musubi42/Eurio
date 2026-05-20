@@ -42,7 +42,9 @@ from state.store import ListingTextSignalsRow
 
 logger = logging.getLogger(__name__)
 
-EXTRACTOR_VERSION = "v1"
+# v2 (chunk C2) : ajoute listing_kind + condition_normalized. Le bump
+# force la ré-extraction des rows v1 (l'idempotence est clé sur version).
+EXTRACTOR_VERSION = "v2"
 
 
 @dataclass
@@ -189,6 +191,10 @@ def run_text_signal_extract(
             vs_target_verdict=verdict,
             contradictions=contradictions,
             convergences=convergences,
+            listing_kind=sig.listing_kind,
+            listing_kind_confidence=sig.listing_kind_confidence,
+            condition_normalized=sig.condition,
+            condition_confidence=sig.condition_confidence,
         ))
         n_extracted += 1
 
@@ -290,8 +296,10 @@ def _flush_rows_direct(
           theme_tokens_json, rejected_markers_json,
           is_lot, coverage, matched_json,
           vs_target_verdict, contradictions_json, convergences_json,
+          listing_kind, listing_kind_confidence,
+          condition_normalized, condition_confidence,
           computed_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
         ON CONFLICT(source_image_id) DO UPDATE SET
           extractor_version     = excluded.extractor_version,
           countries_json        = excluded.countries_json,
@@ -305,6 +313,10 @@ def _flush_rows_direct(
           vs_target_verdict     = excluded.vs_target_verdict,
           contradictions_json   = excluded.contradictions_json,
           convergences_json     = excluded.convergences_json,
+          listing_kind            = excluded.listing_kind,
+          listing_kind_confidence = excluded.listing_kind_confidence,
+          condition_normalized    = excluded.condition_normalized,
+          condition_confidence    = excluded.condition_confidence,
           computed_at           = datetime('now')
         """,
         [
@@ -322,6 +334,10 @@ def _flush_rows_direct(
                 r.vs_target_verdict,
                 _json.dumps(r.contradictions),
                 _json.dumps(r.convergences),
+                r.listing_kind,
+                r.listing_kind_confidence,
+                r.condition_normalized,
+                r.condition_confidence,
             )
             for r in rows
         ],

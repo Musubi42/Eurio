@@ -24,13 +24,20 @@ from typing import Literal
 
 from .dictionaries import (
     ALL_COUNTRY_ISO2,
+    CONDITION_CIRCULATED_RE,
+    CONDITION_TB_RE,
+    CONDITION_TTB_RE,
+    CONDITION_UNC_RE,
+    COFFRET_RE,
     COUNTRY_ADJECTIVES,
     COUNTRY_FLAGS,
     COUNTRY_NAMES,
     COUNT_PIECES_RE,
     COUNT_X_RE,
     DENOMINATION_RE,
+    GRADED_SLAB_RE,
     LOT_KEYWORDS_RE,
+    LOT_KIND_RE,
     REJECTION_MARKERS,
     STOP_WORDS,
     VALID_FACE_VALUES,
@@ -40,6 +47,20 @@ from .dictionaries import (
 )
 
 Coverage = Literal["rich", "sparse", "empty"]
+ListingKind = Literal["single", "lot", "coffret", "graded_slab"]
+ConditionTier = Literal["UNC", "TTB", "TB"]
+
+# Confiances de l'heuristique (0..1). Constantes — l'agrégation prix (C3)
+# et le panel review (C4) s'en servent pour pondérer / signaler.
+_KIND_CONFIDENCE: dict[str, float] = {
+    "graded_slab": 0.9,
+    "lot": 0.85,
+    "coffret": 0.8,
+    "single": 0.7,  # défaut par absence de signal — raisonnablement fiable
+}
+_CONDITION_CONF_EXPLICIT = 0.85  # un seul tier matché explicitement
+_CONDITION_CONF_CONFLICT = 0.4   # plusieurs tiers en conflit
+_CONDITION_CONF_DEFAULT = 0.2    # aucun marqueur → défaut UNC
 
 
 @dataclass(frozen=True)
@@ -67,6 +88,15 @@ class ListingTextSignals:
     - ``matched``          : debug — pour chaque axe, les tokens
                              bruts qui ont matché. Utile au panel
                              review front (chunk 7).
+    - ``listing_kind``     : taxonomie du listing (chunk C2) —
+                             ``single`` / ``lot`` / ``coffret`` /
+                             ``graded_slab``. Seul ``single`` entre
+                             dans le prix de référence (C3).
+    - ``listing_kind_confidence`` : 0..1, confiance de la classification.
+    - ``condition``        : état numismatique extrait du titre —
+                             ``UNC`` / ``TTB`` / ``TB``. Défaut ``UNC``
+                             (faible confiance) en l'absence de marqueur.
+    - ``condition_confidence``    : 0..1, confiance de l'état.
     """
 
     countries: frozenset[str]
@@ -77,6 +107,10 @@ class ListingTextSignals:
     is_lot: bool
     coverage: Coverage
     matched: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    listing_kind: ListingKind = "single"
+    listing_kind_confidence: float = _KIND_CONFIDENCE["single"]
+    condition: ConditionTier = "UNC"
+    condition_confidence: float = _CONDITION_CONF_DEFAULT
 
 
 # ── Normalisation ───────────────────────────────────────────────────────────
@@ -233,6 +267,79 @@ def _extract_lot(
     return is_lot, raw
 
 
+def _safe_int(s: str) -> int:
+    try:
+        return int(s)
+    except ValueError:
+        return 0
+
+
+def _classify_listing_kind(
+    text_na: str, text_accented: str, *, n_countries: int,
+) -> tuple[ListingKind, float, list[str]]:
+    """Classe le listing : single / lot / coffret / graded_slab.
+
+    Précédence : graded_slab > lot > coffret > single. Un slab gradé
+    prime même conditionné ; un lot prime un coffret (lot de coffrets).
+    Patterns sur le titre sans accents ; compteurs sur le titre accentué
+    (la regex compteur reconnaît « münzen »).
+    """
+    graded = [m.group(0).strip() for m in GRADED_SLAB_RE.finditer(text_na)]
+    if graded:
+        return "graded_slab", _KIND_CONFIDENCE["graded_slab"], graded
+
+    lot_raw = [m.group(0).strip() for m in LOT_KIND_RE.finditer(text_na)]
+    for m in COUNT_X_RE.finditer(text_accented):
+        if _safe_int(m.group(1)) >= 2:
+            lot_raw.append(m.group(0).strip())
+    for m in COUNT_PIECES_RE.finditer(text_accented):
+        if _safe_int(m.group(1)) >= 2:
+            lot_raw.append(m.group(0).strip())
+    if n_countries >= 2:
+        lot_raw.append(f"{n_countries}-countries")
+    if lot_raw:
+        return "lot", _KIND_CONFIDENCE["lot"], lot_raw
+
+    coffret = [m.group(0).strip() for m in COFFRET_RE.finditer(text_na)]
+    if coffret:
+        return "coffret", _KIND_CONFIDENCE["coffret"], coffret
+
+    return "single", _KIND_CONFIDENCE["single"], []
+
+
+def _extract_condition(
+    text_na: str,
+) -> tuple[ConditionTier, float, list[str]]:
+    """Extrait l'état numismatique du titre : UNC / TTB / TB.
+
+    Défaut ``UNC`` (faible confiance) en l'absence de marqueur — la
+    majorité des annonces 2€ commémo sont non-circulées, et le panel
+    review (C4) permet la correction manuelle. Conflit multi-tiers →
+    ``UNC`` aussi, mais confiance abaissée.
+    """
+    hits: dict[str, list[str]] = {}
+    for tier, rx in (
+        ("UNC", CONDITION_UNC_RE),
+        ("TTB", CONDITION_TTB_RE),
+        ("TB", CONDITION_TB_RE),
+    ):
+        ms = [m.group(0).strip() for m in rx.finditer(text_na)]
+        if ms:
+            hits[tier] = ms
+    circ = [m.group(0) for m in CONDITION_CIRCULATED_RE.finditer(text_na)]
+    if circ:
+        hits.setdefault("TB", []).extend(circ)
+
+    if not hits:
+        return "UNC", _CONDITION_CONF_DEFAULT, []
+    if len(hits) == 1:
+        tier = next(iter(hits))
+        return tier, _CONDITION_CONF_EXPLICIT, hits[tier]  # type: ignore[return-value]
+    # Conflit : plusieurs tiers matchés → on ne tranche pas, défaut UNC.
+    all_raw = [r for raws in hits.values() for r in raws]
+    return "UNC", _CONDITION_CONF_CONFLICT, all_raw
+
+
 def _extract_theme_tokens(
     text: str,
     *,
@@ -332,6 +439,10 @@ def extract_listing_text_signals(
             is_lot=False,
             coverage="empty",
             matched={},
+            listing_kind="single",
+            listing_kind_confidence=_KIND_CONFIDENCE["single"],
+            condition="UNC",
+            condition_confidence=_CONDITION_CONF_DEFAULT,
         )
 
     text = title
@@ -361,12 +472,19 @@ def extract_listing_text_signals(
         denominations=denoms,
     )
 
+    listing_kind, kind_conf, kind_raw = _classify_listing_kind(
+        title_lower_noaccents, title_lower, n_countries=len(countries),
+    )
+    condition, cond_conf, cond_raw = _extract_condition(title_lower_noaccents)
+
     matched = {
         "countries": tuple(countries_raw),
         "years": tuple(years_raw),
         "denominations": tuple(denoms_raw),
         "rejected_markers": tuple(rej_raw),
         "lot": tuple(lot_raw),
+        "listing_kind": tuple(kind_raw),
+        "condition": tuple(cond_raw),
     }
 
     # Vérification interne de cohérence : si tous les ISO2 trouvés ne
@@ -385,4 +503,8 @@ def extract_listing_text_signals(
         is_lot=is_lot,
         coverage=coverage,
         matched=matched,
+        listing_kind=listing_kind,
+        listing_kind_confidence=kind_conf,
+        condition=condition,
+        condition_confidence=cond_conf,
     )

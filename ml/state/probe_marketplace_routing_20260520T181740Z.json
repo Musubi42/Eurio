@@ -1,0 +1,648 @@
+{
+  "generated_at": "2026-05-20T18:17:40.171222Z",
+  "coins_per_origin": 5,
+  "margin": 1.3,
+  "metric": "survivors (accept_listing : prix/EUR/noise/millésime) sur 200, médiane sur K coins",
+  "results": [
+    {
+      "origin": "AD",
+      "n_coins": 5,
+      "coins": [
+        "ad-2023-2eur-30-years-of-the-entry-of-the-principality-of-andorra-into",
+        "ad-2023-2eur-summer-solstice-fire-festivals-in-the-pyrenees",
+        "ad-2022-2eur-andorra-european-union-relations",
+        "ad-2021-2eur-100-years-since-the-coronation-of-our-lady-of-meritxell",
+        "ad-2020-2eur-27th-ibero-american-summit-in-andorra"
+      ],
+      "recall_median": {
+        "EBAY_AT": 117,
+        "EBAY_BE": 30,
+        "EBAY_DE": 116,
+        "EBAY_ES": 147,
+        "EBAY_FR": 63,
+        "EBAY_GB": 0,
+        "EBAY_IE": 115,
+        "EBAY_IT": 46,
+        "EBAY_NL": 42
+      },
+      "best_non_gb": "EBAY_ES",
+      "best_non_gb_recall": 147,
+      "gb_recall": 0,
+      "recommended_primary": "EBAY_ES",
+      "recommended_query_lang": "es"
+    },
+    {
+      "origin": "AT",
+      "n_coins": 3,
+      "coins": [
+        "at-2018-2eur-100-years-since-the-foundation-of-the-republic-of-austria",
+        "at-2016-2eur-200th-anniversary-of-the-founding-of-austrias-central-bank",
+        "at-2005-2eur-50th-anniversary-of-the-austrian-state-treaty"
+      ],
+      "recall_median": {
+        "EBAY_AT": 113,
+        "EBAY_BE": 55,
+        "EBAY_DE": 180,
+        "EBAY_ES": 161,
+        "EBAY_FR": 61,
+        "EBAY_GB": 0,
+        "EBAY_IE": 176,
+        "EBAY_IT": 75,
+        "EBAY_NL": 41
+      },
+      "best_non_gb": "EBAY_DE",
+      "best_non_gb_recall": 180,
+      "gb_recall": 0,
+      "recommended_primary": "EBAY_DE",
+      "recommended_query_lang": "de"
+    },
+    {
+      "origin": "BE",
+      "n_coins": 5,
+      "coins": [
+        "be-2023-2eur-75-years-of-womens-voting-rights-in-belgium",
+        "be-2023-2eur-the-year-of-art-nouveau-which-takes-place-during-2023-in",
+        "be-2022-2eur-the-healthcare-sector-in-recognition-of-the-exceptional",
+        "be-2021-2eur-100-years-since-the-signing-of-the-belgium-luxembourg",
+        "be-2021-2eur-500-years-since-the-issuance-of-the-carolus-guilder"
+      ],
+      "recall_median": {
+        "EBAY_AT": 87,
+        "EBAY_BE": 91,
+        "EBAY_DE": 141,
+        "EBAY_ES": 133,
+        "EBAY_FR": 97,
+        "EBAY_GB": 0,
+        "EBAY_IE": 119,
+        "EBAY_IT": 69,
+        "EBAY_NL": 65
+      },
+      "best_non_gb": "EBAY_DE",
+      "best_non_gb_recall": 141,
+      "gb_recall": 0,
+      "recommended_primary": "EBAY_DE",
+      "recommended_query_lang": "de"
+    },
+    {
+      "origin": "CY",
+      "n_coins": 3,
+      "coins": [
+        "cy-2020-2eur-30-years-since-the-foundation-of-the-cyprus-institute-of",
+        "cy-2017-2eur-paphos-2017-european-capital-of-culture",
+        "cy-2024-2eur-twenty-years-of-eu-accession"
+      ],
+      "recall_median": {
+        "EBAY_AT": 56,
+        "EBAY_BE": 31,
+        "EBAY_DE": 87,
+        "EBAY_ES": 83,
+        "EBAY_FR": 44,
+        "EBAY_GB": 0,
+        "EBAY_IE": 50,
+        "EBAY_IT": 31,
+        "EBAY_NL": 19
+      },
+      "best_non_gb": "EBAY_DE",
+      "best_non_gb_recall": 87,
+      "gb_recall": 0,
+      "recommended_primary": "EBAY_DE",
+      "recommended_query_lang": "de"
+    },
+    {
+      "origin": "DE",
+      "n_coins": 5,
+      "coins": [
+        "de-2023-2eur-1275-birthday-of-charlemagne",
+        "de-2022-2eur-thuringia-s-wartburg-castle-in-eisenach",
+        "de-2021-2eur-saxony-anhalt-s-cathedral-of-magdeburg",
+        "de-2020-2eur-50-years-since-the-kniefall-von-warschau",
+        "de-2019-2eur-30-years-since-the-fall-of-the-berlin-wall-joint-issue-with"
+      ],
+      "recall_median": {
+        "EBAY_AT": 175,
+        "EBAY_BE": 119,
+        "EBAY_DE": 182,
+        "EBAY_ES": 172,
+        "EBAY_FR": 149,
+        "EBAY_GB": 0,
+        "EBAY_IE": 159,
+        "EBAY_IT": 182,
+        "EBAY_NL": 98
+      },
+      "best_non_gb": "EBAY_DE",
+      "best_non_gb_recall": 182,
+      "gb_recall": 0,
+      "recommended_primary": "EBAY_DE",
+      "recommended_query_lang": "de"
+    },
+    {
+      "origin": "EE",
+      "n_coins": 5,
+      "coins": [
+        "ee-2023-2eur-barn-swallow-the-national-bird-of-estonia",
+        "ee-2022-2eur-150-years-since-the-founding-of-the-society-of-estonian",
+        "ee-2022-2eur-glory-to-ukraine",
+        "ee-2021-2eur-wolf-the-national-mammal-of-estonia",
+        "ee-2020-2eur-200-years-since-the-discovery-of-the-antarctic"
+      ],
+      "recall_median": {
+        "EBAY_AT": 89,
+        "EBAY_BE": 57,
+        "EBAY_DE": 129,
+        "EBAY_ES": 167,
+        "EBAY_FR": 77,
+        "EBAY_GB": 0,
+        "EBAY_IE": 95,
+        "EBAY_IT": 81,
+        "EBAY_NL": 18
+      },
+      "best_non_gb": "EBAY_ES",
+      "best_non_gb_recall": 167,
+      "gb_recall": 0,
+      "recommended_primary": "EBAY_ES",
+      "recommended_query_lang": "es"
+    },
+    {
+      "origin": "ES",
+      "n_coins": 5,
+      "coins": [
+        "es-2023-2eur-old-town-of-caceres",
+        "es-2023-2eur-the-spanish-presidency-of-the-council-of-the-eu",
+        "es-2022-2eur-500-years-since-the-completion-of-the-first-circumnavigation",
+        "es-2022-2eur-garajonay-national-park-la-gomera",
+        "es-2021-2eur-historic-city-of-toledo"
+      ],
+      "recall_median": {
+        "EBAY_AT": 64,
+        "EBAY_BE": 50,
+        "EBAY_DE": 140,
+        "EBAY_ES": 167,
+        "EBAY_FR": 65,
+        "EBAY_GB": 0,
+        "EBAY_IE": 76,
+        "EBAY_IT": 69,
+        "EBAY_NL": 37
+      },
+      "best_non_gb": "EBAY_ES",
+      "best_non_gb_recall": 167,
+      "gb_recall": 0,
+      "recommended_primary": "EBAY_ES",
+      "recommended_query_lang": "es"
+    },
+    {
+      "origin": "FI",
+      "n_coins": 5,
+      "coins": [
+        "fi-2023-2eur-first-finnish-nature-conservation-act",
+        "fi-2023-2eur-social-and-health-services",
+        "fi-2022-2eur-100th-anniversary-of-the-finnish-national-ballet",
+        "fi-2021-2eur-journalism-and-open-communication-in-support-of-finnish",
+        "fi-2020-2eur-100-years-since-the-birth-of-vaino-linna"
+      ],
+      "recall_median": {
+        "EBAY_AT": 64,
+        "EBAY_BE": 45,
+        "EBAY_DE": 99,
+        "EBAY_ES": 118,
+        "EBAY_FR": 63,
+        "EBAY_GB": 0,
+        "EBAY_IE": 73,
+        "EBAY_IT": 91,
+        "EBAY_NL": 37
+      },
+      "best_non_gb": "EBAY_ES",
+      "best_non_gb_recall": 118,
+      "gb_recall": 0,
+      "recommended_primary": "EBAY_ES",
+      "recommended_query_lang": "es"
+    },
+    {
+      "origin": "FR",
+      "n_coins": 5,
+      "coins": [
+        "fr-2023-2eur-2023-rugby-world-cup",
+        "fr-2022-2eur-90th-anniversary-of-president-jacques-chirac-s-birth",
+        "fr-2021-2eur-75-years-since-the-foundation-of-unicef",
+        "fr-2020-2eur-charles-de-gaulle",
+        "fr-2020-2eur-medical-research"
+      ],
+      "recall_median": {
+        "EBAY_AT": 175,
+        "EBAY_BE": 165,
+        "EBAY_DE": 181,
+        "EBAY_ES": 174,
+        "EBAY_FR": 171,
+        "EBAY_GB": 0,
+        "EBAY_IE": 161,
+        "EBAY_IT": 172,
+        "EBAY_NL": 164
+      },
+      "best_non_gb": "EBAY_DE",
+      "best_non_gb_recall": 181,
+      "gb_recall": 0,
+      "recommended_primary": "EBAY_DE",
+      "recommended_query_lang": "de"
+    },
+    {
+      "origin": "GR",
+      "n_coins": 5,
+      "coins": [
+        "gr-2023-2eur-100th-anniversary-of-the-birth-of-maria-callas",
+        "gr-2023-2eur-150th-anniversary-the-birth-of-constantin-caratheodory",
+        "gr-2022-2eur-200-years-since-the-first-greek-constitution",
+        "gr-2021-2eur-200-years-since-the-greek-revolution",
+        "gr-2020-2eur-100th-anniversary-of-the-union-of-thrace-with-greece"
+      ],
+      "recall_median": {
+        "EBAY_AT": 63,
+        "EBAY_BE": 47,
+        "EBAY_DE": 122,
+        "EBAY_ES": 171,
+        "EBAY_FR": 64,
+        "EBAY_GB": 0,
+        "EBAY_IE": 95,
+        "EBAY_IT": 75,
+        "EBAY_NL": 36
+      },
+      "best_non_gb": "EBAY_ES",
+      "best_non_gb_recall": 171,
+      "gb_recall": 0,
+      "recommended_primary": "EBAY_ES",
+      "recommended_query_lang": "es"
+    },
+    {
+      "origin": "HR",
+      "n_coins": 5,
+      "coins": [
+        "hr-2023-2eur-the-introduction-of-the-euro-as-the-official-currency-of",
+        "hr-2025-2eur-1-100th-anniversary-of-the-croatian-kingdom-and-the",
+        "hr-2025-2eur-pula-grad-pula-arena",
+        "hr-2024-2eur-marko-marulic",
+        "hr-2024-2eur-varazdin-stari-grad-varazdin-the-old-town-of-varazdin"
+      ],
+      "recall_median": {
+        "EBAY_AT": 70,
+        "EBAY_BE": 56,
+        "EBAY_DE": 109,
+        "EBAY_ES": 165,
+        "EBAY_FR": 78,
+        "EBAY_GB": 0,
+        "EBAY_IE": 135,
+        "EBAY_IT": 62,
+        "EBAY_NL": 62
+      },
+      "best_non_gb": "EBAY_ES",
+      "best_non_gb_recall": 165,
+      "gb_recall": 0,
+      "recommended_primary": "EBAY_ES",
+      "recommended_query_lang": "es"
+    },
+    {
+      "origin": "IE",
+      "n_coins": 3,
+      "coins": [
+        "ie-2023-2eur-50th-anniversary-of-irelands-membership-of-the-european",
+        "ie-2019-2eur-centenary-of-the-first-sitting-of-dail-eireann",
+        "ie-2016-2eur-100-years-since-easter-rising"
+      ],
+      "recall_median": {
+        "EBAY_AT": 40,
+        "EBAY_BE": 31,
+        "EBAY_DE": 51,
+        "EBAY_ES": 59,
+        "EBAY_FR": 28,
+        "EBAY_GB": 0,
+        "EBAY_IE": 57,
+        "EBAY_IT": 24,
+        "EBAY_NL": 19
+      },
+      "best_non_gb": "EBAY_ES",
+      "best_non_gb_recall": 59,
+      "gb_recall": 0,
+      "recommended_primary": "EBAY_ES",
+      "recommended_query_lang": "es"
+    },
+    {
+      "origin": "IT",
+      "n_coins": 5,
+      "coins": [
+        "it-2023-2eur-150th-anniversary-of-the-death-of-alessandro-manzoni",
+        "it-2023-2eur-italy-100-years-of-the-italian-air-force",
+        "it-2022-2eur-30th-anniversary-of-the-death-of-giovanni-falcone-and-paolo",
+        "it-2021-2eur-150th-anniversary-of-the-proclamation-of-rome-as-the",
+        "it-2021-2eur-healthcare-professionals"
+      ],
+      "recall_median": {
+        "EBAY_AT": 144,
+        "EBAY_BE": 89,
+        "EBAY_DE": 169,
+        "EBAY_ES": 139,
+        "EBAY_FR": 120,
+        "EBAY_GB": 0,
+        "EBAY_IE": 136,
+        "EBAY_IT": 139,
+        "EBAY_NL": 52
+      },
+      "best_non_gb": "EBAY_DE",
+      "best_non_gb_recall": 169,
+      "gb_recall": 0,
+      "recommended_primary": "EBAY_DE",
+      "recommended_query_lang": "de"
+    },
+    {
+      "origin": "LT",
+      "n_coins": 5,
+      "coins": [
+        "lt-2023-2eur-together-with-ukraine",
+        "lt-2022-2eur-100-years-of-basketball-in-lithuania",
+        "lt-2022-2eur-suvalkija",
+        "lt-2021-2eur-dzukija",
+        "lt-2021-2eur-zuvintas-biosphere-reserve"
+      ],
+      "recall_median": {
+        "EBAY_AT": 69,
+        "EBAY_BE": 39,
+        "EBAY_DE": 117,
+        "EBAY_ES": 154,
+        "EBAY_FR": 54,
+        "EBAY_GB": 0,
+        "EBAY_IE": 59,
+        "EBAY_IT": 59,
+        "EBAY_NL": 17
+      },
+      "best_non_gb": "EBAY_ES",
+      "best_non_gb_recall": 154,
+      "gb_recall": 0,
+      "recommended_primary": "EBAY_ES",
+      "recommended_query_lang": "es"
+    },
+    {
+      "origin": "LU",
+      "n_coins": 5,
+      "coins": [
+        "lu-2023-2eur-175th-anniversary-of-the-chamber-of-deputies-and-the-first",
+        "lu-2023-2eur-25th-anniversary-of-the-admission-of-grand-duke-henri-as-a",
+        "lu-2022-2eur-10-years-since-the-wedding-of-hereditary-grand-duke",
+        "lu-2022-2eur-50-years-since-the-flag-of-luxembourg",
+        "lu-2021-2eur-100-years-since-the-birth-of-jean-grand-duke-of-luxembourg"
+      ],
+      "recall_median": {
+        "EBAY_AT": 111,
+        "EBAY_BE": 67,
+        "EBAY_DE": 170,
+        "EBAY_ES": 141,
+        "EBAY_FR": 104,
+        "EBAY_GB": 0,
+        "EBAY_IE": 153,
+        "EBAY_IT": 80,
+        "EBAY_NL": 50
+      },
+      "best_non_gb": "EBAY_DE",
+      "best_non_gb_recall": 170,
+      "gb_recall": 0,
+      "recommended_primary": "EBAY_DE",
+      "recommended_query_lang": "de"
+    },
+    {
+      "origin": "LV",
+      "n_coins": 5,
+      "coins": [
+        "lv-2023-2eur-the-ukraine-sunflower",
+        "lv-2022-2eur-100th-anniversary-of-the-bank-of-latvia-financial-literacy",
+        "lv-2021-2eur-100th-anniversary-of-the-de-jure-recognition-of-the",
+        "lv-2020-2eur-latgalian-ceramics",
+        "lv-2019-2eur-coat-of-arms-of-latvia-s-rising-sun"
+      ],
+      "recall_median": {
+        "EBAY_AT": 53,
+        "EBAY_BE": 24,
+        "EBAY_DE": 70,
+        "EBAY_ES": 72,
+        "EBAY_FR": 38,
+        "EBAY_GB": 0,
+        "EBAY_IE": 36,
+        "EBAY_IT": 48,
+        "EBAY_NL": 9
+      },
+      "best_non_gb": "EBAY_ES",
+      "best_non_gb_recall": 72,
+      "gb_recall": 0,
+      "recommended_primary": "EBAY_ES",
+      "recommended_query_lang": "es"
+    },
+    {
+      "origin": "MC",
+      "n_coins": 5,
+      "coins": [
+        "mc-2023-2eur-the-centenary-of-the-birth-of-prince-rainier-iii",
+        "mc-2022-2eur-100-years-since-the-death-of-albert-i-prince-of-monaco",
+        "mc-2021-2eur-10-years-since-the-wedding-of-albert-ii-prince-of-monaco",
+        "mc-2020-2eur-300-years-since-the-birth-of-honore-iii",
+        "mc-2019-2eur-200th-anniversary-of-honores-v-accession-to-the-throne"
+      ],
+      "recall_median": {
+        "EBAY_AT": 57,
+        "EBAY_BE": 38,
+        "EBAY_DE": 30,
+        "EBAY_ES": 34,
+        "EBAY_FR": 53,
+        "EBAY_GB": 0,
+        "EBAY_IE": 60,
+        "EBAY_IT": 46,
+        "EBAY_NL": 37
+      },
+      "best_non_gb": "EBAY_IE",
+      "best_non_gb_recall": 60,
+      "gb_recall": 0,
+      "recommended_primary": "EBAY_IE",
+      "recommended_query_lang": "en"
+    },
+    {
+      "origin": "MT",
+      "n_coins": 5,
+      "coins": [
+        "mt-2023-2eur-225th-anniversary-of-the-french-invasion-of-malta",
+        "mt-2023-2eur-550th-anniversary-of-the-birth-of-nicolaus-copernicus",
+        "mt-2022-2eur-hypogeum-of-hal-saflieni",
+        "mt-2022-2eur-united-nations-security-council-resolution-1325-on-women",
+        "mt-2021-2eur-heroes-of-the-pandemic"
+      ],
+      "recall_median": {
+        "EBAY_AT": 181,
+        "EBAY_BE": 66,
+        "EBAY_DE": 179,
+        "EBAY_ES": 159,
+        "EBAY_FR": 98,
+        "EBAY_GB": 0,
+        "EBAY_IE": 173,
+        "EBAY_IT": 76,
+        "EBAY_NL": 92
+      },
+      "best_non_gb": "EBAY_AT",
+      "best_non_gb_recall": 181,
+      "gb_recall": 0,
+      "recommended_primary": "EBAY_AT",
+      "recommended_query_lang": "de"
+    },
+    {
+      "origin": "NL",
+      "n_coins": 3,
+      "coins": [
+        "nl-2014-2eur-king-willem-alexander-and-princess-beatrix",
+        "nl-2013-2eur-200th-anniversary-of-the-kingdom-of-the-netherlands",
+        "nl-2011-2eur-500th-anniversary-of-the-publication-of-the-praise-of-folly"
+      ],
+      "recall_median": {
+        "EBAY_AT": 87,
+        "EBAY_BE": 58,
+        "EBAY_DE": 161,
+        "EBAY_ES": 99,
+        "EBAY_FR": 63,
+        "EBAY_GB": 0,
+        "EBAY_IE": 52,
+        "EBAY_IT": 24,
+        "EBAY_NL": 60
+      },
+      "best_non_gb": "EBAY_DE",
+      "best_non_gb_recall": 161,
+      "gb_recall": 0,
+      "recommended_primary": "EBAY_DE",
+      "recommended_query_lang": "de"
+    },
+    {
+      "origin": "PT",
+      "n_coins": 5,
+      "coins": [
+        "pt-2023-2eur-peace-among-nations",
+        "pt-2023-2eur-world-youth-day-2023",
+        "pt-2022-2eur-100th-anniversary-since-the-first-southern-transatlantic",
+        "pt-2021-2eur-participation-in-tokyo-summer-olympics",
+        "pt-2021-2eur-portuguese-presidency-of-the-council-of-the-european-union"
+      ],
+      "recall_median": {
+        "EBAY_AT": 156,
+        "EBAY_BE": 63,
+        "EBAY_DE": 125,
+        "EBAY_ES": 165,
+        "EBAY_FR": 86,
+        "EBAY_GB": 0,
+        "EBAY_IE": 139,
+        "EBAY_IT": 78,
+        "EBAY_NL": 61
+      },
+      "best_non_gb": "EBAY_ES",
+      "best_non_gb_recall": 165,
+      "gb_recall": 0,
+      "recommended_primary": "EBAY_ES",
+      "recommended_query_lang": "es"
+    },
+    {
+      "origin": "SI",
+      "n_coins": 5,
+      "coins": [
+        "si-2023-2eur-150th-anniversary-of-the-birth-of-josip-plemelj",
+        "si-2022-2eur-150-years-since-the-birth-of-joze-plecnik",
+        "si-2021-2eur-200-years-since-the-foundation-of-the-provincial-museum-of",
+        "si-2020-2eur-500-years-since-the-birth-of-adam-bohoric",
+        "si-2019-2eur-100-years-since-the-foundation-of-the-university-of"
+      ],
+      "recall_median": {
+        "EBAY_AT": 41,
+        "EBAY_BE": 36,
+        "EBAY_DE": 80,
+        "EBAY_ES": 73,
+        "EBAY_FR": 47,
+        "EBAY_GB": 0,
+        "EBAY_IE": 66,
+        "EBAY_IT": 108,
+        "EBAY_NL": 30
+      },
+      "best_non_gb": "EBAY_IT",
+      "best_non_gb_recall": 108,
+      "gb_recall": 0,
+      "recommended_primary": "EBAY_IT",
+      "recommended_query_lang": "it"
+    },
+    {
+      "origin": "SK",
+      "n_coins": 5,
+      "coins": [
+        "sk-2023-2eur-100-years-since-the-first-blood-transfusion-in-slovakia",
+        "sk-2022-2eur-300-years-since-the-first-steam-engine-for-pumping-pit-water",
+        "sk-2021-2eur-100-years-since-the-birth-of-alexander-dubcek",
+        "sk-2020-2eur-20-years-of-slovakian-membership-in-the-oecd",
+        "sk-2019-2eur-100-years-since-the-death-of-milan-rastislav-stefanik"
+      ],
+      "recall_median": {
+        "EBAY_AT": 49,
+        "EBAY_BE": 27,
+        "EBAY_DE": 82,
+        "EBAY_ES": 94,
+        "EBAY_FR": 36,
+        "EBAY_GB": 0,
+        "EBAY_IE": 74,
+        "EBAY_IT": 37,
+        "EBAY_NL": 9
+      },
+      "best_non_gb": "EBAY_ES",
+      "best_non_gb_recall": 94,
+      "gb_recall": 0,
+      "recommended_primary": "EBAY_ES",
+      "recommended_query_lang": "es"
+    },
+    {
+      "origin": "SM",
+      "n_coins": 5,
+      "coins": [
+        "sm-2023-2eur-500th-anniversary-of-the-death-of-luca-signorelli",
+        "sm-2023-2eur-500th-anniversary-of-the-death-of-pietro-perugino",
+        "sm-2022-2eur-200-years-since-the-death-of-antonio-canova",
+        "sm-2022-2eur-530-years-since-the-death-of-piero-della-francesca",
+        "sm-2021-2eur-450-years-since-the-birth-of-caravaggio"
+      ],
+      "recall_median": {
+        "EBAY_AT": 169,
+        "EBAY_BE": 42,
+        "EBAY_DE": 136,
+        "EBAY_ES": 173,
+        "EBAY_FR": 65,
+        "EBAY_GB": 0,
+        "EBAY_IE": 158,
+        "EBAY_IT": 113,
+        "EBAY_NL": 93
+      },
+      "best_non_gb": "EBAY_ES",
+      "best_non_gb_recall": 173,
+      "gb_recall": 0,
+      "recommended_primary": "EBAY_ES",
+      "recommended_query_lang": "es"
+    },
+    {
+      "origin": "VA",
+      "n_coins": 5,
+      "coins": [
+        "va-2023-2eur-150th-anniversary-of-the-death-of-alessandro-manzoni",
+        "va-2023-2eur-the-5th-centenary-of-the-death-of-pietro-perugino",
+        "va-2022-2eur-125-years-since-the-birth-of-pope-paul-vi",
+        "va-2022-2eur-25-years-since-the-death-of-mother-teresa",
+        "va-2021-2eur-450-years-since-the-birth-of-caravaggio"
+      ],
+      "recall_median": {
+        "EBAY_AT": 84,
+        "EBAY_BE": 54,
+        "EBAY_DE": 128,
+        "EBAY_ES": 138,
+        "EBAY_FR": 75,
+        "EBAY_GB": 0,
+        "EBAY_IE": 67,
+        "EBAY_IT": 112,
+        "EBAY_NL": 5
+      },
+      "best_non_gb": "EBAY_ES",
+      "best_non_gb_recall": 138,
+      "gb_recall": 0,
+      "recommended_primary": "EBAY_ES",
+      "recommended_query_lang": "es"
+    }
+  ]
+}

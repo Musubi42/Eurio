@@ -1,96 +1,50 @@
-"""Tests du routage marketplace eBay (chunk B2).
+"""Tests du routage marketplace eBay.
 
-Vérifie que chaque pays eurozone + 'eu' a une entrée explicite, que les
-profils (natif, fallback langue, GB-only) respectent marketplace-map.md,
-et que les pays inconnus lèvent UnknownCountry plutôt que de retourner
-un défaut silencieux.
+Le routage est uniforme depuis le benchmark itération 3 (2026-05-21) :
+``{EBAY_DE, EBAY_ES}`` pour toutes les origines, chacun queryé dans sa
+langue native. Cf. ``marketplaces.py`` et
+``docs/sources-refacto/ebay-multi-marketplace/research/marketplace-routing-benchmark.md``.
 """
 
 from __future__ import annotations
 
-import pytest
-
 from sources.ebay.marketplaces import (
-    EBAY_GB,
-    MarketplaceRoute,
-    UnknownCountry,
-    all_routes,
-    route_for,
+    DISCOVERY_MARKETPLACES,
+    MarketplaceCall,
+    discovery_marketplaces,
 )
 
 
-# Source de vérité — alignée sur marketplace-map.md (commit B1).
-EUROZONE_21 = {
-    "AT", "BE", "BG", "CY", "DE", "EE", "ES", "FI", "FR", "GR", "HR",
-    "IE", "IT", "LT", "LU", "LV", "MT", "NL", "PT", "SI", "SK",
-}
-NATIVE_MARKETPLACES = {
-    "AT": ("EBAY_AT", "de"),
-    "BE": ("EBAY_BE", "fr"),
-    "DE": ("EBAY_DE", "de"),
-    "ES": ("EBAY_ES", "es"),
-    "FR": ("EBAY_FR", "fr"),
-    "IE": ("EBAY_IE", "en"),
-    "IT": ("EBAY_IT", "it"),
-    "NL": ("EBAY_NL", "nl"),
-}
-LANG_FALLBACK = {
-    "AD": ("EBAY_ES", "es"),
-    "LU": ("EBAY_FR", "fr"),
-    "MC": ("EBAY_FR", "fr"),
-    "SM": ("EBAY_IT", "it"),
-    "VA": ("EBAY_IT", "it"),
-}
-# PT : probe V1 (2026-05-20) → recall ES/GB = 1.68× < seuil ×2 → GB-only.
-GB_ONLY = {"BG", "CY", "EE", "FI", "GR", "HR", "LT", "LV", "MT", "PT", "SI", "SK", "eu"}
+def test_discovery_is_de_then_es() -> None:
+    """Discovery interroge EBAY_DE puis EBAY_ES, dans cet ordre."""
+    calls = discovery_marketplaces()
+    assert [c.marketplace for c in calls] == ["EBAY_DE", "EBAY_ES"]
 
 
-def test_native_marketplaces() -> None:
-    for country, (mkt, lang) in NATIVE_MARKETPLACES.items():
-        r = route_for(country)
-        assert r.primary == mkt, (country, r)
-        assert r.query_lang == lang, (country, r)
-        assert r.global_ == EBAY_GB
+def test_each_marketplace_queried_in_native_lang() -> None:
+    """DE → query 'de', ES → query 'es' (config gagnante du benchmark)."""
+    langs = {c.marketplace: c.query_lang for c in discovery_marketplaces()}
+    assert langs == {"EBAY_DE": "de", "EBAY_ES": "es"}
 
 
-def test_lang_fallback() -> None:
-    for country, (mkt, lang) in LANG_FALLBACK.items():
-        r = route_for(country)
-        assert r.primary == mkt, (country, r)
-        assert r.query_lang == lang, (country, r)
+def test_gb_removed() -> None:
+    """EBAY_GB est retiré du routage (0 listing EUR exploitable)."""
+    assert "EBAY_GB" not in {c.marketplace for c in discovery_marketplaces()}
 
 
-def test_gb_only_countries() -> None:
-    for country in GB_ONLY:
-        r = route_for(country)
-        assert r.primary is None, (country, r)
-        assert r.global_ == EBAY_GB
-        assert r.query_lang == "en"
+def test_marketplace_call_is_frozen() -> None:
+    call = DISCOVERY_MARKETPLACES[0]
+    try:
+        call.marketplace = "EBAY_GB"  # type: ignore[misc]
+    except Exception:
+        return
+    raise AssertionError("MarketplaceCall doit être frozen")
 
 
-def test_eurozone_21_plus_eu_all_mapped() -> None:
-    """Aucun pays eurozone (+ 'eu' joint + 6 micro-États) ne tombe en KeyError."""
-    must_map = EUROZONE_21 | {"AD", "MC", "SM", "VA", "eu"}
-    for country in must_map:
-        route_for(country)  # ne lève pas
-
-
-def test_unknown_country_raises() -> None:
-    with pytest.raises(UnknownCountry):
-        route_for("XX")
-    with pytest.raises(UnknownCountry):
-        route_for("us")  # case-sensitive, on n'accepte pas us minuscule
-
-
-def test_routes_are_frozen() -> None:
-    r = route_for("FR")
-    with pytest.raises(Exception):
-        r.primary = "EBAY_DE"  # type: ignore[misc]
-
-
-def test_all_routes_returns_copy() -> None:
-    snapshot = all_routes()
-    snapshot["XX"] = MarketplaceRoute(primary=None)
-    # Le dict canonique ne doit pas être muté
-    with pytest.raises(UnknownCountry):
-        route_for("XX")
+def test_discovery_marketplaces_is_stable() -> None:
+    """Routage uniforme : la même paire quelle que soit l'origine."""
+    assert discovery_marketplaces() is DISCOVERY_MARKETPLACES
+    assert discovery_marketplaces() == (
+        MarketplaceCall("EBAY_DE", "de"),
+        MarketplaceCall("EBAY_ES", "es"),
+    )

@@ -56,7 +56,7 @@ from sources.ebay.filters import (
     is_lot_suspected,
     listing_row,
 )
-from sources.ebay.marketplaces import MarketplaceRoute, route_for
+from sources.ebay.marketplaces import discovery_marketplaces
 from sources.ebay.queries import (
     EbayQuery,
     build_query,
@@ -122,9 +122,9 @@ class EbayAdapter:
 
     Multi-marketplace (B4) : reçoit une **factory** ``make_client`` qui
     construit un EbayClient pour un marketplace donné. L'adapter
-    instancie 1 à 2 clients par eurio_id selon ``route_for(country)``
-    (primary + GB, ou GB seul), partage le quota tracker entre eux via
-    la closure côté caller.
+    instancie 1 client par marketplace de ``DISCOVERY_MARKETPLACES``
+    (EBAY_DE + EBAY_ES, routage uniforme), partage le quota tracker
+    entre eux via la closure côté caller.
 
     Une instance == un run ; les clients vivent le temps du run.
     """
@@ -164,11 +164,12 @@ class EbayAdapter:
     ) -> Iterable[DiscoveredItem]:
         """Yield 1 DiscoveredItem per image of each accepted listing.
 
-        B4 — Multi-marketplace : appelle ``route_for(coin.country)`` pour
-        décider du couple (primary, GB). Boucle sur les mkts (1 ou 2),
-        agrège les rows par item_id en mémoire (1ʳᵉ occurrence wins pour
-        ``marketplace``, set complet pour ``marketplace_found``), puis
-        yield 1 DiscoveredItem par image de chaque listing accepté.
+        Multi-marketplace : interroge ``DISCOVERY_MARKETPLACES``
+        (EBAY_DE puis EBAY_ES, routage uniforme — cf. ``marketplaces.py``).
+        Boucle sur les 2 mkts, agrège les rows par item_id en mémoire
+        (1ʳᵉ occurrence wins pour ``marketplace``, set complet pour
+        ``marketplace_found``), puis yield 1 DiscoveredItem par image de
+        chaque listing accepté.
         """
         if not query.target_eurio_id:
             raise ValueError(
@@ -177,15 +178,13 @@ class EbayAdapter:
             )
 
         coin = load_coin(self.conn, query.target_eurio_id)
-        route = route_for(coin.country)
         ambiguous = self._is_ambiguous_country_year(coin.country, coin.year)
 
-        # Ordre des marketplaces : primary natif d'abord, GB ensuite. Si
-        # primary == None ou primary == GB, on ne fait qu'un appel (GB).
-        marketplaces: list[tuple[str, str]] = []  # (mkt, query_lang)
-        if route.primary is not None and route.primary != route.global_:
-            marketplaces.append((route.primary, route.query_lang))
-        marketplaces.append((route.global_, "en"))
+        # Routage uniforme : EBAY_DE puis EBAY_ES, chacun queryé dans sa
+        # langue native (cf. marketplaces.py — décision benchmark).
+        marketplaces: list[tuple[str, str]] = [
+            (c.marketplace, c.query_lang) for c in discovery_marketplaces()
+        ]
 
         merged: dict[str, _MergedItem] = {}
 
