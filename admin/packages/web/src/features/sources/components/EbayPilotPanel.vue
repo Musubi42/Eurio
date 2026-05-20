@@ -10,10 +10,10 @@ import {
 import {
   avgCallsForBatch,
   marketplacesForCountry,
-  mktShort,
   useMarketplaceMap,
 } from '../composables/useMarketplaceMap'
 import MarketplaceMapModal from './MarketplaceMapModal.vue'
+import MarketplaceBadge from './MarketplaceBadge.vue'
 
 /**
  * EbayPilotPanel — page /sources/ebay : KPI quota + freshness queue
@@ -83,9 +83,9 @@ const avgCallsPerEurio = computed(() =>
   avgCallsForBatch(marketplaceMap.value, batchCountries.value),
 )
 
-/** Tags marketplace courts (ex. ['ES','GB']) appelés pour un pays donné. */
-function mktTagsForCountry(country: string): string[] {
-  return marketplacesForCountry(marketplaceMap.value, country).map(mktShort)
+/** Marketplaces (ex. ['EBAY_ES','EBAY_GB']) appelés pour un pays donné. */
+function mktsForCountry(country: string): string[] {
+  return marketplacesForCountry(marketplaceMap.value, country)
 }
 
 const estimateCalls = computed(() => {
@@ -328,7 +328,7 @@ function onClickRun(dryRun: boolean) {
           class="flex items-baseline justify-between rounded border px-3 py-1.5 text-xs"
           style="border-color: var(--surface-2); background: var(--surface-1);"
         >
-          <div class="flex items-baseline gap-2">
+          <div class="flex items-center gap-2">
             <span
               class="rounded px-1.5 py-0.5 text-[9px] uppercase font-mono"
               :style="{
@@ -338,23 +338,19 @@ function onClickRun(dryRun: boolean) {
             >
               {{ item.status }}
             </span>
+            <span class="inline-flex gap-0.5">
+              <MarketplaceBadge
+                v-for="mkt in mktsForCountry(item.country)"
+                :key="mkt"
+                :marketplace="mkt"
+                size="sm"
+              />
+            </span>
             <span class="font-mono" style="color: var(--ink);">{{ item.eurio_id }}</span>
           </div>
-          <div class="flex items-baseline gap-2">
-            <span class="flex gap-0.5">
-              <span
-                v-for="mkt in mktTagsForCountry(item.country)"
-                :key="mkt"
-                class="rounded px-1 py-0.5 text-[9px] font-mono"
-                style="background: var(--surface-3); color: var(--ink-500);"
-              >
-                {{ mkt }}
-              </span>
-            </span>
-            <span style="color: var(--ink-500);" class="tabular-nums">
-              {{ item.n_images }} img · {{ item.n_crops }} crops
-            </span>
-          </div>
+          <span style="color: var(--ink-500);" class="tabular-nums">
+            {{ item.n_images }} img · {{ item.n_crops }} crops
+          </span>
         </li>
       </ul>
       <div v-else class="text-xs" style="color: var(--ink-400);">
