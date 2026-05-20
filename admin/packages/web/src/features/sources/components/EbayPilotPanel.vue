@@ -7,6 +7,13 @@ import {
   type EbayFreshnessResponse,
   type EbayQuotaStatus,
 } from '../composables/useSourceDetail'
+import {
+  avgCallsForBatch,
+  marketplacesForCountry,
+  mktShort,
+  useMarketplaceMap,
+} from '../composables/useMarketplaceMap'
+import MarketplaceMapModal from './MarketplaceMapModal.vue'
 
 /**
  * EbayPilotPanel — page /sources/ebay : KPI quota + freshness queue
@@ -33,6 +40,11 @@ const loadError = ref<string | null>(null)
 
 const batchSize = ref(10)
 
+// Routage marketplaces (B5) — alimente le bandeau stratégie + l'estimation
+// de coût quota a priori + les tags marketplace du preview batch.
+const { map: marketplaceMap, load: loadMarketplaceMap } = useMarketplaceMap()
+const mapModalOpen = ref(false)
+
 async function loadAll() {
   loading.value = true
   loadError.value = null
@@ -48,7 +60,10 @@ async function loadAll() {
   }
 }
 
-onMounted(loadAll)
+onMounted(() => {
+  loadAll()
+  loadMarketplaceMap()
+})
 watch(batchSize, () => loadAll())
 
 // Re-fetch quota après chaque run (parent peut appeler cette méthode via ref).
@@ -57,6 +72,21 @@ defineExpose({ refresh: loadAll })
 const previewItems = computed<EbayFreshnessItem[]>(
   () => (freshness.value?.items ?? []).slice(0, Math.min(batchSize.value, 10)),
 )
+
+// Estimation a priori du coût quota moyen — calculée sur le mix pays du
+// batch réel (batchSize pièces), pas seulement les 10 affichées en preview.
+// Cf. front-ux.md §"Source du chiffre ~1.7".
+const batchCountries = computed<string[]>(
+  () => (freshness.value?.items ?? []).slice(0, batchSize.value).map((i) => i.country),
+)
+const avgCallsPerEurio = computed(() =>
+  avgCallsForBatch(marketplaceMap.value, batchCountries.value),
+)
+
+/** Tags marketplace courts (ex. ['ES','GB']) appelés pour un pays donné. */
+function mktTagsForCountry(country: string): string[] {
+  return marketplacesForCountry(marketplaceMap.value, country).map(mktShort)
+}
 
 const estimateCalls = computed(() => {
   if (!quota.value) return 0
@@ -113,6 +143,39 @@ function onClickRun(dryRun: boolean) {
 
     <div v-if="loadError" class="mb-3 text-xs" style="color: var(--danger);">
       {{ loadError }} — assurez-vous que l'API ML tourne ({{ '`go-task ml:api`' }}).
+    </div>
+
+    <!-- ═══ Bandeau : Stratégie d'extraction multi-marketplace ═══ -->
+    <div
+      class="mb-5 rounded-md border px-4 py-3"
+      style="border-color: var(--surface-2); background: var(--surface-1);"
+    >
+      <div class="mb-1.5 text-[10px] uppercase tracking-wider" style="color: var(--ink-500);">
+        Stratégie d'extraction
+      </div>
+      <p class="text-xs leading-relaxed" style="color: var(--ink);">
+        Marketplace global <span class="font-mono">EBAY_GB</span> (catch-all)
+        <span style="color: var(--ink-500);">+ marketplace natif selon le pays d'origine du coin
+        (FR→EBAY_FR, DE→EBAY_DE, …). Les pays sans marketplace natif ni langue couverte
+        ne tirent que sur EBAY_GB.</span>
+      </p>
+      <div class="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1">
+        <span class="text-xs" style="color: var(--ink-500);">
+          Coût quota moyen du batch :
+          <strong class="tabular-nums" style="color: var(--ink);">
+            {{ marketplaceMap ? '~' + avgCallsPerEurio.toFixed(1) : '—' }}
+          </strong>
+          search calls/pièce
+          <span style="color: var(--ink-400);">(vs 1.0 en mono-marketplace)</span>
+        </span>
+        <button
+          class="text-xs underline"
+          style="color: var(--indigo-700);"
+          @click="mapModalOpen = true"
+        >
+          voir la table complète
+        </button>
+      </div>
     </div>
 
     <!-- ═══ Row 1 : KPI quota + buckets ═══ -->
@@ -277,14 +340,32 @@ function onClickRun(dryRun: boolean) {
             </span>
             <span class="font-mono" style="color: var(--ink);">{{ item.eurio_id }}</span>
           </div>
-          <span style="color: var(--ink-500);" class="tabular-nums">
-            {{ item.n_images }} img · {{ item.n_crops }} crops
-          </span>
+          <div class="flex items-baseline gap-2">
+            <span class="flex gap-0.5">
+              <span
+                v-for="mkt in mktTagsForCountry(item.country)"
+                :key="mkt"
+                class="rounded px-1 py-0.5 text-[9px] font-mono"
+                style="background: var(--surface-3); color: var(--ink-500);"
+              >
+                {{ mkt }}
+              </span>
+            </span>
+            <span style="color: var(--ink-500);" class="tabular-nums">
+              {{ item.n_images }} img · {{ item.n_crops }} crops
+            </span>
+          </div>
         </li>
       </ul>
       <div v-else class="text-xs" style="color: var(--ink-400);">
         Aucune pièce. Lance d'abord <code style="background: var(--surface-1); padding: 1px 4px;">go-task ml:bootstrap-coins</code>.
       </div>
     </div>
+
+    <MarketplaceMapModal
+      :open="mapModalOpen"
+      :map="marketplaceMap"
+      @close="mapModalOpen = false"
+    />
   </section>
 </template>
