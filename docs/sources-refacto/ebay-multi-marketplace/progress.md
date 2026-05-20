@@ -15,17 +15,18 @@ Overview de l'avancement chunk-par-chunk. Mis à jour à chaque livraison.
 | I (i18n) | I1 — bootstrap Numista i18n (FR+EN) | ✅ done | (pending) |
 | I | I2 — theme matcher multilingue | ✅ done | (pending) |
 | F (front) | F1 → F4 — pilote / run-detail / règles / coin-detail | ⏳ | — |
-| V (validation) | V1 — probe langues + PT routing | ⏳ | — |
+| V (validation) | V1 — probe langues + PT routing | ✅ done | (pending) |
 | V | V2 — cutover legacy | ⏳ | — |
 
-**8/14 chunks livrés.** Toute la phase B (backend) est en place — la
+**9/14 chunks livrés.** Toute la phase B (backend) est en place — la
 chaîne multi-mkt tourne, les 2 APIs front (marketplace-map +
-filter-config) sont prêtes à être consommées. **I1 + I2 livrés** :
-~1016 titres FR+EN scraped via TOR + importés en DB, et le matcher
-theme branché dessus en multilingue. Reste le front (F1-F4) puis
-valider/cutover (V1/V2). Les 4 langues restantes (de/it/es/nl)
-viendront via LLM batch (chunk séparé `i18n-llm-translation.md`) si la
-mesure de recall sur les marketplaces DE/IT/ES/BE-NL le justifie.
+filter-config) sont prêtes à être consommées. **I1 + I2 + V1 livrés** :
+~1016 titres FR+EN scraped via TOR + importés en DB, le matcher theme
+branché dessus en multilingue, et le probe langues marketplaces a
+calibré `MARKETPLACE_ACTIVE_LANGS` + tranché le routing PT. Reste le
+front (F1-F4) puis le cutover legacy (V2). Les 4 langues restantes
+(de/it/es/nl) viendront via LLM batch (chunk séparé
+`i18n-llm-translation.md`) si la mesure de recall le justifie.
 
 ## Ce qui fonctionne
 
@@ -157,14 +158,41 @@ positifs type "war"⊂"warm" sur 506 autres coins). Documenté, à
 reconsidérer en V2 si la perte de recall est jugée significative
 (min_len adaptatif possible).
 
+## V1 livré (2026-05-20)
+
+Probe empirique des langues de titres par marketplace + décision PT.
+
+Script `scripts/probe_marketplace_languages.py` (jetable) : 8 commémos
+circulées × 9 marketplaces, ~3500 titres tirés, ~74 calls eBay.
+
+- **Détection de langue** : `langdetect` essayé puis **abandonné** — il
+  smear systématiquement IT/ES vers `pt` sur les titres courts en
+  majuscules (FRANCIA, EURO, FDC, COINCARD). Remplacé par un classifieur
+  heuristique maison (mots-marqueurs numismatiques + noms de pays
+  distinctifs + function-words). Le JSON embarque tous les titres bruts
+  → mode `--reclassify` pour itérer le classifieur sans re-taper l'API.
+- **Piège écarté** : `UNC`/`BU`/`FDC`/`COINCARD` sont du boilerplate
+  international — les inclure comme marqueurs EN gonflait le bucket `en`
+  de titres FR/IT évidents. Retirés.
+- **Résultat** `MARKETPLACE_ACTIVE_LANGS` recalibré :
+  - `EBAY_ES` → `+it` (vendeurs IT cross-listent, ~19 % des titres)
+  - `EBAY_IE` → `+it` (~16 %)
+  - `EBAY_NL` → `+fr` (DOMINANT ~44 %, eBay.nl est Benelux) `+it` (~14 %)
+  - `en` conservé partout (sous-détecté par le classifieur, coût ≈ 0).
+- **Routing PT** : recall `total` eBay = ES 608 / GB 362 = **1.68×**
+  (stable sur 5 runs), sous le seuil ×2 → `route_for("PT")` repasse en
+  `primary=None` (GB-only). Cf. `marketplace-map.md` §"Routage PT".
+
+Caveat : `unknown` reste 25-45 % (titres bruts non-discriminants type
+"2 EURO FRANCIA 2022"). Les pourcentages d'actives sont calculés sur le
+sous-ensemble classé — suffisant pour le seuil 10 %.
+
 ## Reste à faire
 
 1. **F1 → F4** — front (pilote bandeau strat, run-detail badges,
    règles panel, coin-detail thumbs). Consommer `useMarketplaceMap.ts`
    et `useFilterConfig.ts` (à créer côté admin/web).
-2. **V1** — probe langues marketplaces, **inclut décision PT routing**
-   (cf. `marketplace-map.md` §"Routage PT provisoire" — TODO en code).
-3. **V2** — cutover legacy : retrait `THEME_TOKEN_FR_ALIASES` +
+2. **V2** — cutover legacy : retrait `THEME_TOKEN_FR_ALIASES` +
    `_legacy_title_matches_theme` + `_theme_keywords`, smoke run sur
    10 eurio_ids, mesure recall vs baseline (KPI ≥ ×3).
 4. **Optionnel** — `i18n-llm-translation` (DE/IT/ES/NL) si I2 mesure

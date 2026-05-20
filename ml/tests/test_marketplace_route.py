@@ -38,11 +38,11 @@ LANG_FALLBACK = {
     "AD": ("EBAY_ES", "es"),
     "LU": ("EBAY_FR", "fr"),
     "MC": ("EBAY_FR", "fr"),
-    "PT": ("EBAY_ES", "es"),  # provisoire — cf. TODO module
     "SM": ("EBAY_IT", "it"),
     "VA": ("EBAY_IT", "it"),
 }
-GB_ONLY = {"BG", "CY", "EE", "FI", "GR", "HR", "LT", "LV", "MT", "SI", "SK", "eu"}
+# PT : probe V1 (2026-05-20) → recall ES/GB = 1.68× < seuil ×2 → GB-only.
+GB_ONLY = {"BG", "CY", "EE", "FI", "GR", "HR", "LT", "LV", "MT", "PT", "SI", "SK", "eu"}
 
 
 def test_native_marketplaces() -> None:
