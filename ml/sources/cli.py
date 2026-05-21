@@ -20,7 +20,7 @@ import logging
 import sys
 from pathlib import Path
 
-from sources._base.adapter import SourceQuery
+from sources._base.adapter import DiscoveryGroup, SourceQuery
 from sources._base.orchestrator import run_pipeline
 from state.store import Store
 
@@ -64,24 +64,40 @@ def _load_adapter(source_id: str, *, store=None):
     )
 
 
-def _resolve_ebay_targets(store, *, batch: int, explicit: list[str] | None) -> list[str]:
-    """Resolve `target_eurio_ids` for an eBay run.
+def _resolve_ebay_groups(
+    store, *, batch: int, country: str | None, year: int | None,
+) -> list[tuple[float, str, int, int]]:
+    """Resolve discovery groups for an eBay run.
 
-    Priority: explicit `--eurio-ids a,b,c` > freshness queue head (top-N
-    of `v_ebay_freshness` ordered NULLS FIRST). Default batch size = 10
-    (D-21).
+    Renvoie une liste de ``(denomination, country, year, n_coins)``.
+    Priorité : ``--country`` + ``--year`` épingle un groupe unique ;
+    sinon, tête de la freshness queue groupée (top-N des groupes les
+    plus stale de ``v_ebay_freshness_groups``).
     """
-    if explicit:
-        return list(explicit)
-    rows = store._connection().execute(
-        """
-        SELECT eurio_id FROM v_ebay_freshness
-         ORDER BY last_enriched_at ASC NULLS FIRST, eurio_id
-         LIMIT ?
-        """,
-        (batch,),
-    ).fetchall()
-    return [r["eurio_id"] for r in rows]
+    conn = store._connection()
+    if country and year:
+        rows = conn.execute(
+            """
+            SELECT denomination, country, year, n_coins
+              FROM v_ebay_freshness_groups
+             WHERE country = ? AND year = ?
+            """,
+            (country, year),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            """
+            SELECT denomination, country, year, n_coins
+              FROM v_ebay_freshness_groups
+             ORDER BY last_enriched_at ASC NULLS FIRST, country, year
+             LIMIT ?
+            """,
+            (batch,),
+        ).fetchall()
+    return [
+        (r["denomination"], r["country"], r["year"], r["n_coins"])
+        for r in rows
+    ]
 
 
 def _ebay_preflight_or_die(store, *, n_eurio_ids: int) -> None:
@@ -115,11 +131,11 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--denomination", default=None,
                    help="Filter by face value (e.g. '2eur', '0.50').")
     p.add_argument("--target-eurio-id", default=None,
-                   help="Pin the fetch to a single eurio_id (raises priority).")
+                   help="Pin the eBay fetch to one eurio_id's group (debug).")
     p.add_argument("--target-eurio-ids", default=None,
-                   help="Comma-separated eurio_ids (overrides freshness queue for ebay).")
+                   help="Comma-separated eurio_ids (per-coin discovery — generic sources).")
     p.add_argument("--batch", type=int, default=10,
-                   help="Batch size for ebay freshness queue (default: 10, D-21).")
+                   help="Number of discovery groups for the ebay freshness queue (default: 10).")
     p.add_argument("--limit", type=int, default=None, help="Cap discovered items.")
     p.add_argument("--db", type=Path, default=_DEFAULT_DB,
                    help=f"Path to the SQLite store (default: {_DEFAULT_DB}).")
@@ -137,34 +153,48 @@ def main(argv: list[str] | None = None) -> int:
     store = Store(args.db)
 
     target_eurio_ids: tuple[str, ...] | None = None
-    if args.source == "ebay" and not args.target_eurio_id:
-        explicit = (
-            [s.strip() for s in args.target_eurio_ids.split(",") if s.strip()]
-            if args.target_eurio_ids else None
+    discovery_groups: tuple[DiscoveryGroup, ...] | None = None
+
+    if args.target_eurio_ids:
+        target_eurio_ids = tuple(
+            s.strip() for s in args.target_eurio_ids.split(",") if s.strip()
         )
-        ids = _resolve_ebay_targets(store, batch=args.batch, explicit=explicit)
-        if not ids:
+    elif args.source == "ebay" and not args.target_eurio_id:
+        # Découverte groupée : un run = un batch de groupes (denom, pays,
+        # année). Sans --country/--year explicites, on prend la tête de la
+        # freshness queue groupée.
+        groups = _resolve_ebay_groups(
+            store, batch=args.batch, country=args.country, year=args.year,
+        )
+        if not groups:
             raise SystemExit(
-                "No eurio_ids found in freshness queue. "
+                "No discovery group found in freshness queue. "
                 "Run `go-task ml:bootstrap-coins` first."
             )
+        discovery_groups = tuple(
+            DiscoveryGroup(denomination=d, country=c, year=y)
+            for d, c, y, _ in groups
+        )
+        n_coins = sum(n for *_, n in groups)
         if not args.dry_run:
-            _ebay_preflight_or_die(store, n_eurio_ids=len(ids))
-        target_eurio_ids = tuple(ids)
-        print(f"[ebay] batch of {len(ids)} eurio_ids: {ids[:3]}{'...' if len(ids) > 3 else ''}")
-    elif args.target_eurio_ids:
-        target_eurio_ids = tuple(s.strip() for s in args.target_eurio_ids.split(",") if s.strip())
+            _ebay_preflight_or_die(store, n_eurio_ids=n_coins)
+        labels = ", ".join(f"{c}/{y}" for _, c, y, _ in groups[:4])
+        print(
+            f"[ebay] batch of {len(groups)} group(s) / {n_coins} coin(s): "
+            f"{labels}{'...' if len(groups) > 4 else ''}"
+        )
 
     adapter = _load_adapter(args.source, store=store)
     if args.dry_run and hasattr(adapter, "dry_run"):
         adapter.dry_run = True
     query = SourceQuery(
         source_id=args.source,
-        country=args.country,
+        country=args.country if discovery_groups is None else None,
         denomination=args.denomination,
-        year=args.year,
+        year=args.year if discovery_groups is None else None,
         target_eurio_id=args.target_eurio_id,
         target_eurio_ids=target_eurio_ids,
+        discovery_groups=discovery_groups,
         limit=args.limit,
     )
 

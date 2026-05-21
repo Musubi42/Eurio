@@ -6,13 +6,18 @@
 // Single | Lot et le titre.
 
 import { computed, onMounted, ref } from 'vue'
-import { Keyboard, Search, Sparkles, Undo2 } from 'lucide-vue-next'
+import { AlertTriangle, Keyboard, Search, Sparkles, Undo2 } from 'lucide-vue-next'
 import {
+  correctListing,
   decideReviewItem,
+  fetchMarketQuotes,
   fetchReviewQueue,
   fetchReviewStats,
   rejectReviewItem,
   skipReviewItem,
+  type ConditionTier,
+  type ListingKind,
+  type MarketQuote,
   type ReviewCandidate,
   type ReviewFace,
   type ReviewItem,
@@ -25,7 +30,12 @@ import ReviewActionBar from '../components/ReviewActionBar.vue'
 import DinoVerdict from '../components/DinoVerdict.vue'
 import AutoValidateVerdict from '../components/AutoValidateVerdict.vue'
 import ReviewRightColumn from '../components/ReviewRightColumn.vue'
+import ListingContextCard from '../components/ListingContextCard.vue'
 import TextSignals from '../components/TextSignals.vue'
+
+// Ordre de cycle des corrections clavier (K / C).
+const KIND_CYCLE: ListingKind[] = ['single', 'lot', 'coffret', 'graded_slab']
+const CONDITION_CYCLE: ConditionTier[] = ['UNC', 'TTB', 'TB']
 import type { DinoSuggestion } from '../composables/useDinoSuggestions'
 
 // ─── State ──────────────────────────────────────────────────────────────
@@ -44,6 +54,19 @@ const mode = ref<'auto' | 'free'>('auto')
 const undoToast = ref<{ id: string; action: 'reject' | 'skip' } | null>(null)
 let undoTimer: ReturnType<typeof setTimeout> | null = null
 
+// Bandeau d'alerte qui descend du haut de l'écran — feedback quand on
+// presse ⏎ alors que la validation est bloquée.
+const topNotice = ref<string | null>(null)
+let topNoticeTimer: ReturnType<typeof setTimeout> | null = null
+
+// Correction opt-in du contexte listing (C4). `null` = on garde la
+// valeur heuristique C2 ; sinon = valeur corrigée à la main. Reset à
+// chaque item. Flushé vers l'API au passage à l'item suivant.
+const correctedKind = ref<ListingKind | null>(null)
+const correctedCondition = ref<ConditionTier | null>(null)
+// Quotes marché des candidats de l'item courant (clé = eurio_id).
+const marketQuotes = ref<Record<string, MarketQuote[]>>({})
+
 // ─── Derived ────────────────────────────────────────────────────────────
 
 const currentItem = computed<ReviewItem | null>(
@@ -58,6 +81,41 @@ const focusedCandidate = computed<ReviewCandidate | null>(() => {
 
 const isQueueEmpty = computed(() => currentIndex.value >= queue.value.length)
 
+// Valeurs affichées sur la carte listing : correction manuelle si elle
+// existe, sinon l'heuristique C2.
+const effectiveKind = computed<ListingKind | null>(
+  () => correctedKind.value ?? currentItem.value?.listing_kind ?? null,
+)
+const effectiveCondition = computed<ConditionTier | null>(
+  () => correctedCondition.value ?? currentItem.value?.condition ?? null,
+)
+
+// Quote marché pour la pièce du candidat focusé + l'état courant du
+// listing — alimente le cross-check prix de la carte.
+const focusedMarketQuote = computed<MarketQuote | null>(() => {
+  const eid = focusedCandidate.value?.eurio_id
+  const cond = effectiveCondition.value
+  if (!eid || !cond) return null
+  return (marketQuotes.value[eid] ?? []).find((q) => q.condition === cond) ?? null
+})
+
+// Valider exige un candidat ET un type/état renseignés : on ne fige pas
+// une attribution sans avoir tranché le contexte listing (C4).
+const canValidate = computed(
+  () => !!focusedCandidate.value
+    && effectiveKind.value !== null
+    && effectiveCondition.value !== null,
+)
+const validateBlockedReason = computed<string | null>(() => {
+  if (!focusedCandidate.value) {
+    return 'Sélectionne un candidat (1-5) ou le sélecteur libre (F)'
+  }
+  if (effectiveKind.value === null || effectiveCondition.value === null) {
+    return 'Renseigne le type (K) et l’état (C) du listing'
+  }
+  return null
+})
+
 // ─── Loaders ────────────────────────────────────────────────────────────
 
 async function load() {
@@ -70,6 +128,9 @@ async function load() {
 function resetForCurrent() {
   freeSearchCandidate.value = null
   mode.value = 'auto'
+  correctedKind.value = null
+  correctedCondition.value = null
+  void loadMarketQuotes()
   // Pré-sélection : la cible eBay (target_candidate) bat le top-1
   // auto-name. ~80 % des reviews valident la cible — pré-sélectionner
   // évite un clic dans la majorité des cas.
@@ -109,12 +170,69 @@ function setFace(f: ReviewFace) {
 }
 
 function advance() {
+  flushCorrection()
   currentIndex.value += 1
   resetForCurrent()
 }
 
+/** Charge les quotes marché des candidats de l'item courant. */
+async function loadMarketQuotes() {
+  marketQuotes.value = {}
+  const item = currentItem.value
+  if (!item) return
+  const ids = new Set<string>()
+  if (item.target_candidate) ids.add(item.target_candidate.eurio_id)
+  item.candidates.forEach((c) => ids.add(c.eurio_id))
+  if (ids.size === 0) return
+  marketQuotes.value = await fetchMarketQuotes([...ids])
+}
+
+/** POST la correction listing si l'utilisateur a touché K / C. */
+function flushCorrection() {
+  const item = currentItem.value
+  if (!item) return
+  if (correctedKind.value === null && correctedCondition.value === null) return
+  // Fire-and-forget : une correction d'audit ne bloque pas le flow.
+  void correctListing(item.id, {
+    listing_kind: correctedKind.value ?? undefined,
+    condition: correctedCondition.value ?? undefined,
+  })
+}
+
+function cycleKind() {
+  if (!currentItem.value) return
+  // Première frappe sur un listing sans type (—) → 1ʳᵉ valeur, pas le
+  // cran suivant. Ensuite, cycle normal.
+  const cur = effectiveKind.value
+  correctedKind.value = cur === null
+    ? KIND_CYCLE[0]
+    : KIND_CYCLE[(KIND_CYCLE.indexOf(cur) + 1) % KIND_CYCLE.length]
+}
+
+function cycleCondition() {
+  if (!currentItem.value) return
+  const cur = effectiveCondition.value
+  correctedCondition.value = cur === null
+    ? CONDITION_CYCLE[0]
+    : CONDITION_CYCLE[(CONDITION_CYCLE.indexOf(cur) + 1) % CONDITION_CYCLE.length]
+}
+
+function flashTopNotice(message: string) {
+  if (topNoticeTimer) clearTimeout(topNoticeTimer)
+  topNotice.value = message
+  topNoticeTimer = setTimeout(() => {
+    topNotice.value = null
+  }, 2800)
+}
+
 async function validateCurrent() {
-  if (!currentItem.value || !focusedCandidate.value) return
+  if (!currentItem.value) return
+  if (!canValidate.value) {
+    // ⏎ pressé mais validation bloquée → feedback visible.
+    flashTopNotice(validateBlockedReason.value ?? 'Validation bloquée')
+    return
+  }
+  if (!focusedCandidate.value) return  // garanti par canValidate — narrowing TS
   await decideReviewItem(currentItem.value.id, {
     eurio_id: focusedCandidate.value.eurio_id,
     face: face.value,
@@ -216,6 +334,8 @@ useReviewKeybinds(keyboardEnabled, {
   onOpenSearch: toggleMode,
   onCloseOverlay: closeSearchOverlay,
   onSetFace: setFace,
+  onCycleKind: cycleKind,
+  onCycleCondition: cycleCondition,
 })
 </script>
 
@@ -324,47 +444,20 @@ useReviewKeybinds(keyboardEnabled, {
               :bbox="currentItem.bbox"
             />
 
-            <article
-              class="rounded-lg border px-4 py-3"
-              style="border-color: var(--surface-3); background: var(--surface);"
-            >
-              <p
-                class="font-mono text-[10px] uppercase tracking-wider"
-                style="color: var(--ink-500);"
-              >
-                Listing source
-              </p>
-              <p
-                class="mt-1 font-display text-sm italic"
-                style="color: var(--ink);"
-              >
-                « {{ currentItem.listing_title }} »
-              </p>
-              <div
-                class="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1 font-mono text-[11px]"
-                style="color: var(--ink-500);"
-              >
-                <span>
-                  <span class="opacity-70">source&nbsp;·</span>
-                  <span class="ml-1" style="color: var(--ink-700);">{{ currentItem.source }}</span>
-                </span>
-                <span>
-                  <span class="opacity-70">ref&nbsp;·</span>
-                  <span class="ml-1" style="color: var(--ink-700);">{{ currentItem.source_ref }}</span>
-                </span>
-                <span v-if="currentItem.listing_price !== null">
-                  <span class="opacity-70">prix&nbsp;·</span>
-                  <span class="ml-1" style="color: var(--ink-700);">{{ currentItem.listing_price.toFixed(2) }}€</span>
-                </span>
-                <span v-if="currentItem.is_multi_coin_lot">
-                  <span style="color: var(--warning);">lot multi-pièces</span>
-                </span>
-                <span>
-                  <span class="opacity-70">qualité&nbsp;·</span>
-                  <span class="ml-1" style="color: var(--ink-700);">{{ currentItem.quality_score.toFixed(2) }}</span>
-                </span>
-              </div>
-            </article>
+            <ListingContextCard
+              :title="currentItem.listing_title"
+              :source="currentItem.source"
+              :price="currentItem.listing_price"
+              :kind="effectiveKind"
+              :kind-confidence="currentItem.listing_kind_confidence ?? null"
+              :kind-corrected="correctedKind !== null"
+              :condition="effectiveCondition"
+              :condition-confidence="currentItem.condition_confidence ?? null"
+              :condition-corrected="correctedCondition !== null"
+              :origin-date="currentItem.listing_origin_date ?? null"
+              :sold-qty="currentItem.sold_qty ?? null"
+              :market-quote="focusedMarketQuote"
+            />
 
             <AutoValidateVerdict
               v-if="currentItem"
@@ -401,7 +494,8 @@ useReviewKeybinds(keyboardEnabled, {
 
       <ReviewActionBar
         :face="face"
-        :can-validate="!!focusedCandidate"
+        :can-validate="canValidate"
+        :validate-hint="validateBlockedReason"
         :focused-eurio-id="focusedCandidate?.eurio_id ?? null"
         @face="setFace"
         @validate="validateCurrent"
@@ -409,6 +503,18 @@ useReviewKeybinds(keyboardEnabled, {
         @skip="skipCurrent"
       />
     </section>
+
+    <!-- ═══ Bandeau d'alerte (descend du haut) ═══ -->
+    <Transition name="topnotice">
+      <div
+        v-if="topNotice"
+        class="fixed left-1/2 top-0 z-40 -translate-x-1/2 inline-flex items-center gap-2.5 rounded-b-xl px-7 py-3.5 text-[14px] font-semibold shadow-xl"
+        style="background: var(--warning); color: var(--ink);"
+      >
+        <AlertTriangle class="h-5 w-5" />
+        {{ topNotice }}
+      </div>
+    </Transition>
 
     <!-- ═══ Undo toast ═══ -->
     <Transition name="toast">
@@ -459,6 +565,10 @@ useReviewKeybinds(keyboardEnabled, {
           <dd style="color: var(--ink-500);">Bascule mode Auto / Sélection libre</dd>
           <dt class="font-mono text-[12px]" style="color: var(--ink-700);">O / V / U</dt>
           <dd style="color: var(--ink-500);">Face : avers / revers / inconnu</dd>
+          <dt class="font-mono text-[12px]" style="color: var(--ink-700);">K</dt>
+          <dd style="color: var(--ink-500);">Corriger le type de listing (cycle)</dd>
+          <dt class="font-mono text-[12px]" style="color: var(--ink-700);">C</dt>
+          <dd style="color: var(--ink-500);">Corriger l'état de la pièce (cycle)</dd>
           <dt class="font-mono text-[12px]" style="color: var(--ink-700);">Esc</dt>
           <dd style="color: var(--ink-500);">Fermer overlay</dd>
         </dl>
@@ -494,6 +604,17 @@ useReviewKeybinds(keyboardEnabled, {
 .toast-leave-to {
   opacity: 0;
   transform: translate(-50%, 8px);
+}
+
+/* Bandeau d'alerte : glisse depuis au-dessus de l'écran, s'arrête au top. */
+.topnotice-enter-active,
+.topnotice-leave-active {
+  transition: opacity 220ms ease-out, transform 260ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.topnotice-enter-from,
+.topnotice-leave-to {
+  opacity: 0;
+  transform: translate(-50%, -100%);
 }
 
 kbd {

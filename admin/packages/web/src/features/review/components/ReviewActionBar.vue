@@ -6,6 +6,8 @@ defineProps<{
   face: ReviewFace
   canValidate: boolean
   focusedEurioId: string | null
+  // Raison du blocage quand canValidate est faux (tooltip + ligne d'aide).
+  validateHint?: string | null
 }>()
 
 defineEmits<{
@@ -60,6 +62,13 @@ const FACE_ITEMS: { key: ReviewFace; label: string; hint: string }[] = [
 
     <!-- Actions principales -->
     <div class="flex items-center gap-2">
+      <span
+        v-if="!canValidate && validateHint"
+        class="mr-1 text-[10px] italic"
+        style="color: var(--ink-400);"
+      >
+        {{ validateHint }}
+      </span>
       <button
         type="button"
         class="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] transition-all"
@@ -93,7 +102,7 @@ const FACE_ITEMS: { key: ReviewFace; label: string; hint: string }[] = [
           color: canValidate ? 'var(--surface)' : 'var(--ink-400)',
           cursor: canValidate ? 'pointer' : 'not-allowed',
         }"
-        :title="canValidate ? `Valider avec ${focusedEurioId}` : 'Sélectionne un candidat (1-5) ou ouvre le sélecteur libre (F)'"
+        :title="canValidate ? `Valider avec ${focusedEurioId}` : (validateHint ?? 'Sélection requise')"
         @click="$emit('validate')"
       >
         Validate

@@ -26,12 +26,14 @@ import {
   fetchSourceRuns,
   pollSourceRun,
   triggerSourceRun,
+  type DiscoveryGroupSpec,
   type RunSnapshot,
   type SourceCoverageDetail,
   type SourceDetailHeader,
   type SourceImage,
   type SourceQuote,
   type SourceRun,
+  type TriggerRunOptions,
 } from '../composables/useSourceDetail'
 import {
   getPipelineMeta,
@@ -202,15 +204,18 @@ function showToast(
 
 async function triggerRun(
   mode: RunMode,
-  opts: { target_eurio_ids?: string[] } = {},
+  opts: { target_eurio_ids?: string[]; discovery_groups?: DiscoveryGroupSpec[] } = {},
 ) {
   if (inflight.value) return
   inflight.value = mode
   liveRun.value = null
   try {
+    let filters: TriggerRunOptions['filters']
+    if (opts.discovery_groups) filters = { discovery_groups: opts.discovery_groups }
+    else if (opts.target_eurio_ids) filters = { target_eurio_ids: opts.target_eurio_ids }
     const trig = await triggerSourceRun(id.value, {
       dryRun: mode === 'dry',
-      filters: opts.target_eurio_ids ? { target_eurio_ids: opts.target_eurio_ids } : undefined,
+      filters,
     })
     const final = await pollSourceRun(id.value, trig.run_id, {
       onTick: (snap) => { liveRun.value = snap },
@@ -226,15 +231,13 @@ async function triggerRun(
     ebayPanelRef.value?.refresh()
   } catch (err) {
     if (err instanceof TriggerError) {
-      const tone = err.status === 501 ? 'warning' : err.status === 409 ? 'warning' : 'danger'
+      const tone = [400, 409, 501].includes(err.status) ? 'warning' : 'danger'
       let msg = err.message
-      // 409 quota_insufficient — render detailed payload
-      if (err.status === 409 && typeof err.detail === 'object' && err.detail) {
-        const d = err.detail as { detail?: { code?: string; estimate?: number; remaining?: number; max_safe_batch?: number; message?: string } }
-        const inner = d.detail
-        if (inner?.code === 'quota_insufficient') {
-          msg = inner.message ?? `Quota insuffisant (estimate ${inner.estimate}, restant ${inner.remaining}, max safe ${inner.max_safe_batch})`
-        }
+      // Les erreurs métier (quota, périmètre vide…) portent un detail
+      // structuré {code, message} — on affiche le message lisible.
+      if (typeof err.detail === 'object' && err.detail) {
+        const inner = (err.detail as { detail?: { message?: string } }).detail
+        if (inner?.message) msg = inner.message
       }
       showToast(mode, tone, msg)
     } else {
@@ -248,8 +251,8 @@ async function triggerRun(
 // Ref pour rafraîchir le panneau eBay après un run.
 const ebayPanelRef = ref<InstanceType<typeof EbayPilotPanel> | null>(null)
 
-function onEbayRequestRun(payload: { dryRun: boolean; target_eurio_ids: string[] }) {
-  triggerRun(payload.dryRun ? 'dry' : 'run', { target_eurio_ids: payload.target_eurio_ids })
+function onEbayRequestRun(payload: { dryRun: boolean; discovery_groups: DiscoveryGroupSpec[] }) {
+  triggerRun(payload.dryRun ? 'dry' : 'run', { discovery_groups: payload.discovery_groups })
 }
 
 const RUN_STATUS_TONE: Record<SourceRun['status'], string> = {

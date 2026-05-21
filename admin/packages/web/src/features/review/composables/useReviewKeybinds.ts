@@ -12,6 +12,10 @@ export interface ReviewKeybindHandlers {
   onOpenSearch: () => void
   onCloseOverlay: () => void
   onSetFace: (face: 'obverse' | 'reverse' | 'unknown') => void
+  // Chunk C4 — correction opt-in du contexte listing. Cycle la valeur
+  // du badge ; n'interfère pas avec le ⏎ d'attribution.
+  onCycleKind: () => void
+  onCycleCondition: () => void
 }
 
 function isTypingTarget(el: EventTarget | null): boolean {
@@ -80,6 +84,16 @@ export function useReviewKeybinds(
       case 'u':
       case 'U':
         handlers.onSetFace('unknown')
+        e.preventDefault()
+        break
+      case 'k':
+      case 'K':
+        handlers.onCycleKind()
+        e.preventDefault()
+        break
+      case 'c':
+      case 'C':
+        handlers.onCycleCondition()
         e.preventDefault()
         break
     }

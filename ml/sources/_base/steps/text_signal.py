@@ -97,6 +97,18 @@ def run_text_signal_extract(
 
     t0 = time.monotonic()
     for source_ref, sid in source_image_ids.items():
+        # Garde-fou correction manuelle (chunk C4) : une row marquée
+        # extractor_version='manual' a été corrigée à la main dans la
+        # review — on ne la ré-extrait jamais, même en force.
+        manual = conn.execute(
+            "SELECT 1 FROM listing_text_signals "
+            "WHERE source_image_id = ? AND extractor_version = 'manual'",
+            (sid,),
+        ).fetchone()
+        if manual:
+            n_skipped_existing += 1
+            continue
+
         # Idempotence
         if not force:
             existing = conn.execute(

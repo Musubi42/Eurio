@@ -5,7 +5,7 @@ réel n'est émis vers eBay (pas de token requis).
 
 Couverture :
 - queries.build_query depuis la table coins SQLite
-- queries.title_matches_theme + STOP_WORDS
+- queries.title_matches_theme (matcher multilingue I2)
 - filters.is_lot_suspected (D-26 niveau 1) sur titres FR
 - filters.accept_listing : prix bornes, noise, devise
 - adapter.discover : 1 listing → N DiscoveredItems (un par image)
@@ -28,11 +28,7 @@ from market.ebay_client import EbayClient
 from sources._base.adapter import SourceQuery
 from sources.ebay.adapter import EbayAdapter
 from sources.ebay.filters import accept_listing, is_lot_suspected, listing_row
-from sources.ebay.queries import (
-    _legacy_title_matches_theme,
-    build_query,
-    load_coin,
-)
+from sources.ebay.queries import build_query, load_coin
 from state.store import Store
 
 
@@ -146,34 +142,6 @@ def test_build_query_uses_french_country_name_and_year(tmp_path):
     # Bloc 1 (2026-05-05) : on a drop l'aspect Année:{...} pour ne plus
     # crasher le recall sur les vendeurs qui ne remplissent pas l'aspect.
     assert "{2015}" not in q.aspect_filter
-    assert q.theme_tokens == ["paix"]
-
-
-def test_theme_tokens_drop_stop_words_and_short_tokens(tmp_path):
-    store = Store(tmp_path / "t.db")
-    conn = store._connection()
-    _seed_coin(
-        conn,
-        eurio_id="fr-2008-2eur-french-presidency-of-the-council-of-the-european-union",
-        country="FR", year=2008,
-    )
-    coin = load_coin(conn, "fr-2008-2eur-french-presidency-of-the-council-of-the-european-union")
-    q = build_query(coin)
-    # 'of', 'the' dropped; 'french', 'presidency', 'council', 'european' kept
-    assert "french" in q.theme_tokens
-    assert "presidency" in q.theme_tokens
-    assert "the" not in q.theme_tokens
-    assert "of" not in q.theme_tokens
-
-
-def test_legacy_title_matches_theme_permissive_if_no_tokens():
-    # Legacy matcher : kept for fallback path, retiré en V2.
-    assert _legacy_title_matches_theme("Anything goes", []) is True
-
-
-def test_legacy_title_matches_theme_case_insensitive():
-    assert _legacy_title_matches_theme("2 EURO Paix Allemagne 2015", ["paix"]) is True
-    assert _legacy_title_matches_theme("2 euro Allemagne 2015", ["paix"]) is False
 
 
 # ── matcher I2 multilingue ──────────────────────────────────────────────────
@@ -229,17 +197,32 @@ def test_title_matches_theme_via_fr_title(conn_i18n):
     # Listing FR avec "gypaète" → match via titre FR Numista
     assert title_matches_theme(
         "Pièce 2€ Andorre 2025 Gypaète barbu", "ad-2025-2eur-bearded-vulture",
-        marketplace="EBAY_FR", conn=conn_i18n,
+        conn=conn_i18n,
     ) is True
 
 
-def test_title_matches_theme_via_en_title_on_fr_mkt(conn_i18n):
+def test_title_matches_theme_via_en_title(conn_i18n):
     from sources.ebay.queries import title_matches_theme
 
-    # Listing EN sur EBAY_FR (langues actives = fr + en) → match via titre EN
+    # Listing EN → match via titre EN
     assert title_matches_theme(
         "Andorra 2 Euros 2025 Bearded vulture coin", "ad-2025-2eur-bearded-vulture",
-        marketplace="EBAY_FR", conn=conn_i18n,
+        conn=conn_i18n,
+    ) is True
+
+
+def test_title_matches_theme_pools_all_langs(conn_i18n):
+    from sources.ebay.queries import title_matches_theme
+
+    # Piste C : les tokens de toutes les langues sont poolés, sans
+    # dépendre d'un marketplace. Le même coin matche aussi bien via son
+    # titre EN que via son titre FR.
+    eurio_id = "de-2020-2eur-50-years-since-the-kniefall-von-warschau"
+    assert title_matches_theme(
+        "2 Euro Deutschland 2020 Kneeling to Warsaw", eurio_id, conn=conn_i18n,
+    ) is True
+    assert title_matches_theme(
+        "2 Euros Allemagne 2020 Génuflexion de Varsovie", eurio_id, conn=conn_i18n,
     ) is True
 
 
@@ -249,7 +232,7 @@ def test_title_matches_theme_accent_insensitive(conn_i18n):
     # "Genuflexion" (sans accent) doit matcher le titre FR "Génuflexion"
     assert title_matches_theme(
         "2 Euros Allemagne 2020 - Genuflexion Varsovie", "de-2020-2eur-50-years-since-the-kniefall-von-warschau",
-        marketplace="EBAY_FR", conn=conn_i18n,
+        conn=conn_i18n,
     ) is True
 
 
@@ -259,7 +242,7 @@ def test_title_matches_theme_no_match_returns_false(conn_i18n):
     # Titre seller sans aucun token discriminant
     assert title_matches_theme(
         "2 euros Andorre 2025 pièce de monnaie", "ad-2025-2eur-bearded-vulture",
-        marketplace="EBAY_FR", conn=conn_i18n,
+        conn=conn_i18n,
     ) is False
 
 
@@ -267,38 +250,25 @@ def test_title_matches_theme_permissive_when_tokens_empty(conn_i18n):
     from sources.ebay.queries import title_matches_theme
 
     # zz-2000-2eur-bare a "2 Euro" en FR et EN → 0 tokens partout.
-    # i18n trouvé mais aucun token discriminant → return True (permissif
-    # comme legacy quand theme_tokens=[]).
+    # i18n trouvé mais aucun token discriminant → return True (permissif).
     assert title_matches_theme(
-        "Random title here", "zz-2000-2eur-bare",
-        marketplace="EBAY_FR", conn=conn_i18n,
+        "Random title here", "zz-2000-2eur-bare", conn=conn_i18n,
     ) is True
 
 
-def test_title_matches_theme_fallback_legacy_when_no_i18n(conn_i18n):
+def test_title_matches_theme_permissive_when_no_i18n(conn_i18n):
     from sources.ebay.queries import title_matches_theme
 
-    # Coin sans aucune row i18n → fallback _theme_keywords + legacy matcher.
-    # Le slug contient "no-i18n-data" → tokens kept = ['data'] (len≥4, pas stop).
-    # Listing contient "data" → match via legacy.
+    # Coin sans aucune row i18n (cutover V2 : plus de fallback legacy).
+    # Sans titre localisé on ne peut pas theme-matcher → permissif (True),
+    # quel que soit le titre seller — on ne filtre pas le listing.
     assert title_matches_theme(
         "2 euros 2030 some data here", "xx-2030-2eur-no-i18n-data",
-        marketplace="EBAY_GB", conn=conn_i18n,
+        conn=conn_i18n,
     ) is True
-    # Listing sans "data" → no match via legacy.
     assert title_matches_theme(
         "2 euros 2030 nothing relevant", "xx-2030-2eur-no-i18n-data",
-        marketplace="EBAY_GB", conn=conn_i18n,
-    ) is False
-
-
-def test_title_matches_theme_unknown_mkt_falls_back_to_en(conn_i18n):
-    from sources.ebay.queries import title_matches_theme
-
-    # Marketplace inconnu → default lang = ["en"]. Match si EN i18n présent.
-    assert title_matches_theme(
-        "Bearded vulture coin", "ad-2025-2eur-bearded-vulture",
-        marketplace="EBAY_UNKNOWN", conn=conn_i18n,
+        conn=conn_i18n,
     ) is True
 
 
@@ -497,31 +467,114 @@ def test_discover_filters_proof_listings_before_yielding(store_with_seeded_coin)
     assert sum(1 for c in client.calls if c[0] == "get_item") == 1
 
 
-def test_discover_ambiguous_country_year_filters_by_theme(tmp_path):
-    """Quand 2 commemos partagent (country, year), filtre par theme tokens."""
+def _seed_group_be_2002(conn) -> None:
+    """Groupe BE/2002 = 2 commémos-sœurs, chacune avec un titre i18n."""
+    _seed_coin(conn, eurio_id="be-2002-2eur-albert", country="BE", year=2002, theme="albert")
+    _seed_coin(conn, eurio_id="be-2002-2eur-erasmus", country="BE", year=2002, theme="erasmus")
+    conn.executemany(
+        "INSERT INTO coin_names_i18n (eurio_id, lang, title) VALUES (?, 'en', ?)",
+        [
+            ("be-2002-2eur-albert", "2 Euros Albert II"),
+            ("be-2002-2eur-erasmus", "2 Euros Erasmus journey"),
+        ],
+    )
+
+
+def test_discover_group_attributes_listings_to_sibling_coins(tmp_path):
+    """Groupe de 2 commémos-sœurs : chaque listing est attribué à SA pièce
+    via le theme-match — les deux sœurs sont servies par la même recherche.
+    """
     store = Store(tmp_path / "t.db")
     conn = store._connection()
-    _seed_coin(conn, eurio_id="be-2002-2eur-albert", country="BE", year=2002, theme="albert")
-    _seed_coin(conn, eurio_id="be-2002-2eur-other-theme", country="BE", year=2002, theme="other")
+    _seed_group_be_2002(conn)
 
-    s_match = _summary("ALB_1", "2 euro Belgique 2002 Albert II", price=8.0)
-    s_unrelated = _summary("UNR_1", "2 euro Belgique 2002 Other commemo theme", price=8.0)
-
+    s_albert = _summary("ALB_1", "2 euro Belgique 2002 Albert II", price=8.0)
+    s_erasmus = _summary("ERA_1", "2 euro Belgique 2002 Erasmus", price=8.0)
     client = _MockEbayClient(
-        search_responses=[{"itemSummaries": [s_match, s_unrelated]}],
-        item_responses={"ALB_1": _detail("ALB_1", additional=[])},
+        search_responses=[{"itemSummaries": [s_albert, s_erasmus]}],
+        item_responses={
+            "ALB_1": _detail("ALB_1", additional=[]),
+            "ERA_1": _detail("ERA_1", additional=[]),
+        },
     )
-    adapter = EbayAdapter(
-        make_client=lambda mkt: client, conn=conn,  # noqa: ARG005
-    )
+    adapter = EbayAdapter(make_client=lambda mkt: client, conn=conn)  # noqa: ARG005
 
     items = list(adapter.discover(SourceQuery(
         source_id="ebay", target_eurio_id="be-2002-2eur-albert",
     )))
-    refs = [it.source_ref for it in items]
-    assert refs == ["ebay_ALB_1_img0"]
-    # UNR_1 should NOT be probed — title didn't match theme tokens.
-    assert all(c[1].get("item_id") != "UNR_1" for c in client.calls if c[0] == "get_item")
+    by_item = {it.raw_payload["ebay_item_id"]: it for it in items}
+    assert by_item["ALB_1"].target_eurio_id == "be-2002-2eur-albert"
+    assert by_item["ERA_1"].target_eurio_id == "be-2002-2eur-erasmus"
+    assert by_item["ALB_1"].is_lot_suspected is False
+
+
+def test_discover_no_match_listing_is_discarded(tmp_path):
+    """Listing dont le titre ne matche aucune sœur du groupe → discard."""
+    store = Store(tmp_path / "t.db")
+    conn = store._connection()
+    _seed_group_be_2002(conn)
+
+    s_albert = _summary("ALB_1", "2 euro Belgique 2002 Albert II", price=8.0)
+    s_noise = _summary("NOI_1", "2 euro Belgique 2002 Erasmus", price=8.0)
+    # NOI_1 réécrit pour ne matcher ni albert ni erasmus :
+    s_noise["title"] = "2 euro Belgique 2002 commemorative"
+    client = _MockEbayClient(
+        search_responses=[{"itemSummaries": [s_albert, s_noise]}],
+        item_responses={"ALB_1": _detail("ALB_1", additional=[])},
+    )
+    discarded: list = []
+    adapter = EbayAdapter(make_client=lambda mkt: client, conn=conn)  # noqa: ARG005
+
+    items = list(adapter.discover(
+        SourceQuery(source_id="ebay", target_eurio_id="be-2002-2eur-albert"),
+        record_discarded=discarded.append,
+    ))
+    assert [it.raw_payload["ebay_item_id"] for it in items] == ["ALB_1"]
+    assert any(d.reason == "theme_mismatch" for d in discarded)
+
+
+def test_discover_lot_listing_matches_multiple_siblings(tmp_path):
+    """Listing citant 2 sœurs → verdict lot, is_lot_suspected propagé."""
+    store = Store(tmp_path / "t.db")
+    conn = store._connection()
+    _seed_group_be_2002(conn)
+
+    s_both = _summary("BOTH_1", "2 euro Belgique 2002 Albert II + Erasmus", price=20.0)
+    client = _MockEbayClient(
+        search_responses=[{"itemSummaries": [s_both]}],
+        item_responses={"BOTH_1": _detail("BOTH_1", additional=[])},
+    )
+    adapter = EbayAdapter(make_client=lambda mkt: client, conn=conn)  # noqa: ARG005
+
+    items = list(adapter.discover(SourceQuery(
+        source_id="ebay", target_eurio_id="be-2002-2eur-albert",
+    )))
+    assert len(items) == 1
+    assert items[0].is_lot_suspected is True
+    # target = 1ʳᵉ pièce matchée (ordre catalogue).
+    assert items[0].target_eurio_id == "be-2002-2eur-albert"
+
+
+def test_discover_variable_search_limit_by_group_size(tmp_path):
+    """La limite eBay passée au search varie avec la taille du groupe."""
+    from sources.ebay.queries import search_limit_for_group
+
+    assert search_limit_for_group(1) == 75
+    assert search_limit_for_group(2) == 75
+    assert search_limit_for_group(4) == 100
+    assert search_limit_for_group(10) == 200
+
+    store = Store(tmp_path / "t.db")
+    conn = store._connection()
+    _seed_group_be_2002(conn)  # 2 coins → limit 75
+    client = _MockEbayClient(search_responses=[{"itemSummaries": []}], item_responses={})
+    adapter = EbayAdapter(make_client=lambda mkt: client, conn=conn)  # noqa: ARG005
+
+    list(adapter.discover(SourceQuery(
+        source_id="ebay", target_eurio_id="be-2002-2eur-albert",
+    )))
+    limits = [c[1]["limit"] for c in client.calls if c[0] == "search"]
+    assert limits and all(lim == 75 for lim in limits)
 
 
 def test_discover_falls_back_to_summary_images_if_item_call_fails(store_with_seeded_coin):

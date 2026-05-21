@@ -48,6 +48,22 @@ RecordDiscardedFn = Callable[[DiscardedListingRecord], None]
 
 
 @dataclass(frozen=True)
+class DiscoveryGroup:
+    """A discovery scope = all coins sharing (denomination, country, year).
+
+    The natural unit of an eBay search: the query string is a pure
+    function of these three fields, so two commemos of the same
+    country/year would otherwise trigger byte-identical searches. One
+    group fans out to K eurio_ids; the listing→coin attribution happens
+    at resolution time via the multilingual theme matcher.
+    """
+
+    denomination: float
+    country: str
+    year: int
+
+
+@dataclass(frozen=True)
 class SourceQuery:
     """Filter spec passed to `adapter.discover()`.
 
@@ -57,11 +73,18 @@ class SourceQuery:
     `extra` is the escape hatch for source-specific filters (eBay
     category, Catawiki auction subtype, ...).
 
-    `target_eurio_id` (singular) and `target_eurio_ids` (plural)
-    sont mutuellement exclusifs. Le pluriel signale un batch
-    d'enrichissement piloté par freshness queue ; l'orchestrateur
-    boucle dessus à l'étape Discover et synthétise une SourceQuery
-    par eurio_id avant d'appeler l'adapter.
+    Two discovery modes, mutually exclusive per the singular/plural
+    pattern below:
+    - `discovery_group` / `discovery_groups` : group-scoped discovery
+      (eBay — one search per (denom, country, year), listings attributed
+      to coins post-hoc by the theme matcher).
+    - `target_eurio_id` / `target_eurio_ids` : per-coin discovery
+      (generic enrichment sources / mock). For eBay a singular
+      `target_eurio_id` is still accepted and resolved to *its* group.
+
+    The plural in each pair signals a batch; the orchestrator loops over
+    it at the Discover step and synthesises one mono-scoped SourceQuery
+    before calling the adapter.
     """
 
     source_id: str
@@ -70,6 +93,8 @@ class SourceQuery:
     year: int | None = None
     target_eurio_id: str | None = None
     target_eurio_ids: tuple[str, ...] | None = None
+    discovery_group: DiscoveryGroup | None = None
+    discovery_groups: tuple[DiscoveryGroup, ...] | None = None
     limit: int | None = None
     extra: dict[str, Any] = field(default_factory=dict)
 
@@ -79,11 +104,20 @@ class SourceQuery:
                 "SourceQuery: target_eurio_id (singular) and target_eurio_ids "
                 "(plural) are mutually exclusive — pick one."
             )
+        if self.discovery_group and self.discovery_groups:
+            raise ValueError(
+                "SourceQuery: discovery_group (singular) and discovery_groups "
+                "(plural) are mutually exclusive — pick one."
+            )
         if self.target_eurio_ids is not None and not isinstance(
             self.target_eurio_ids, tuple
         ):
             # Allow callers to pass list/iterable for ergonomics.
             object.__setattr__(self, "target_eurio_ids", tuple(self.target_eurio_ids))
+        if self.discovery_groups is not None and not isinstance(
+            self.discovery_groups, tuple
+        ):
+            object.__setattr__(self, "discovery_groups", tuple(self.discovery_groups))
 
 
 @dataclass

@@ -17,6 +17,19 @@ import { ML_API } from '@/features/training/composables/useTrainingApi'
 
 export type ReviewFace = 'obverse' | 'reverse' | 'unknown'
 export type ReviewSource = 'ebay' | 'catawiki' | 'mdp' | 'lmdlp' | 'numista'
+// Chunk C4 — taxonomie listing + état numismatique (cf. C2).
+export type ListingKind = 'single' | 'lot' | 'coffret' | 'graded_slab'
+export type ConditionTier = 'UNC' | 'TTB' | 'TB'
+
+/** Prix de référence agrégé (coin_market_quotes) pour un tier d'état. */
+export interface MarketQuote {
+  condition: string
+  p10: number | null
+  p50: number | null
+  p90: number | null
+  sample_size: number
+  period_start: string
+}
 
 export interface ReviewCandidate {
   eurio_id: string
@@ -49,6 +62,15 @@ export interface ReviewItem {
   // mocks legacy + sources sans target les laissent à null.
   target_eurio_id?: string | null
   target_candidate?: ReviewCandidate | null
+  // Chunk C4 — contexte listing pour la carte d'audit « Listing & marché ».
+  // Issu de C1 (source_images) + C2 (listing_text_signals). Optionnels :
+  // null sur les rows antérieures / les mocks.
+  listing_kind?: ListingKind | null
+  listing_kind_confidence?: number | null
+  condition?: ConditionTier | null
+  condition_confidence?: number | null
+  listing_origin_date?: string | null
+  sold_qty?: number | null
 }
 
 export interface ReviewDecision {
@@ -175,6 +197,41 @@ export async function rejectReviewItem(id: string): Promise<void> {
     await delay(20)
     console.info('[mock fallback] reject', id)
   }
+}
+
+/**
+ * Corrige manuellement listing_kind et/ou condition d'un listing (C4).
+ * Se propage à toutes les photos du listing côté backend. Fire-and-forget
+ * côté appelant : un échec ne bloque pas le flow d'attribution.
+ */
+export async function correctListing(
+  id: string,
+  payload: { listing_kind?: ListingKind; condition?: ConditionTier },
+): Promise<void> {
+  const real = await safeFetch<unknown>(
+    `/review-queue/${encodeURIComponent(id)}/correct-listing`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    },
+  )
+  if (real === null) {
+    await delay(20)
+    console.info('[mock fallback] correct-listing', id, payload)
+  }
+}
+
+/** Derniers prix de référence par pièce (un par tier d'état). C4. */
+export async function fetchMarketQuotes(
+  eurioIds: string[],
+): Promise<Record<string, MarketQuote[]>> {
+  if (eurioIds.length === 0) return {}
+  const qs = encodeURIComponent(eurioIds.join(','))
+  const real = await safeFetch<{ quotes: Record<string, MarketQuote[]> }>(
+    `/sources/ebay/market-quotes?eurio_ids=${qs}`,
+  )
+  return real?.quotes ?? {}
 }
 
 // ─── Mock data ──────────────────────────────────────────────────────────
