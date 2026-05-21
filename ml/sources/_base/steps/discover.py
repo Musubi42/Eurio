@@ -46,14 +46,25 @@ class DiscoverResult:
 
 
 def _iter_subqueries(query: SourceQuery) -> list[SourceQuery]:
-    """Develop a batch query into per-eurio_id sub-queries.
+    """Develop a batch query into mono-scoped sub-queries.
 
-    Returns `[query]` if no batching is needed.
+    Two batch axes (group-scoped discovery, per-eurio_id discovery);
+    the adapter only ever sees a mono-scoped query. Returns `[query]`
+    if no batching is needed.
     """
-    if not query.target_eurio_ids:
-        return [query]
-    base = dataclasses.replace(query, target_eurio_ids=None)
-    return [dataclasses.replace(base, target_eurio_id=eid) for eid in query.target_eurio_ids]
+    if query.discovery_groups:
+        base = dataclasses.replace(query, discovery_groups=None)
+        return [
+            dataclasses.replace(base, discovery_group=g)
+            for g in query.discovery_groups
+        ]
+    if query.target_eurio_ids:
+        base = dataclasses.replace(query, target_eurio_ids=None)
+        return [
+            dataclasses.replace(base, target_eurio_id=eid)
+            for eid in query.target_eurio_ids
+        ]
+    return [query]
 
 
 # Called by: ml/sources/_base/orchestrator.py (step 1/8 — first step in pipeline)

@@ -29,7 +29,7 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-from sources._base.adapter import SourceQuery
+from sources._base.adapter import DiscoveryGroup, SourceQuery
 from sources._base.orchestrator import run_pipeline
 from sources._base.run_logger import RunAlreadyRunning
 from state import Store
@@ -100,14 +100,29 @@ def sources_status() -> dict:
 # ── Trigger a run (background thread) ─────────────────────────────────────
 
 
+class GroupSpec(BaseModel):
+    """Un groupe de découverte (dénomination, pays, année)."""
+
+    denomination: float
+    country: str
+    year: int
+
+
 class RunQueryBody(BaseModel):
-    """Filters forwarded to `SourceAdapter.discover()`."""
+    """Filters forwarded to `SourceAdapter.discover()`.
+
+    `discovery_groups` est le mode de découverte eBay (une recherche par
+    groupe). `target_eurio_id(s)` reste le mode per-pièce des sources
+    génériques ; pour eBay un `target_eurio_id` singulier est résolu vers
+    *son* groupe.
+    """
 
     country: str | None = None
     denomination: str | None = None
     year: int | None = None
     target_eurio_id: str | None = None
     target_eurio_ids: list[str] | None = None
+    discovery_groups: list[GroupSpec] | None = None
     limit: int | None = Field(default=None, ge=1, le=10_000)
     extra: dict[str, Any] = Field(default_factory=dict)
 
@@ -115,6 +130,16 @@ class RunQueryBody(BaseModel):
         d = self.model_dump()
         if d.get("target_eurio_ids") is not None:
             d["target_eurio_ids"] = tuple(d["target_eurio_ids"])
+        groups = d.pop("discovery_groups", None)
+        if groups:
+            d["discovery_groups"] = tuple(
+                DiscoveryGroup(
+                    denomination=g["denomination"],
+                    country=g["country"],
+                    year=g["year"],
+                )
+                for g in groups
+            )
         return SourceQuery(source_id=source_id, **d)
 
 
@@ -135,14 +160,37 @@ def trigger_run(
 ) -> TriggerResponse:
     payload = body or RunQueryBody()
     store = _store()
+    query = payload.to_source_query(source_id)
+
+    # Garde-fou : un run eBay sans périmètre de découverte ne ferait
+    # qu'échouer au step Discover. On rejette tôt et clairement plutôt
+    # que de créer un run condamné (cas typique : front périmé qui POST
+    # un body vide). Validé avant même de charger l'adapter. Chunk 1/3.
+    if source_id == "ebay":
+        has_scope = bool(
+            query.discovery_groups or query.discovery_group
+            or query.target_eurio_ids or query.target_eurio_id
+        )
+        if not has_scope:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "code": "empty_discovery_scope",
+                    "message": (
+                        "Run eBay sans périmètre : aucun discovery_groups reçu. "
+                        "Le front est probablement périmé — recharge la page "
+                        "(hard reload) ou rebuild l'admin."
+                    ),
+                },
+            )
+
     adapter = _load_adapter(source_id, store=store)
     if dry_run and hasattr(adapter, "dry_run"):
         adapter.dry_run = True
-    query = payload.to_source_query(source_id)
 
     # Pre-flight quota check (D-27) — eBay only, skip if dry_run.
     if source_id == "ebay" and not dry_run:
-        n = len(query.target_eurio_ids or ([query.target_eurio_id] if query.target_eurio_id else []))
+        n = _count_query_coins(store, query)
         if n > 0:
             preflight = check_ebay_quota(store, n_eurio_ids=n)
             if not preflight["ok"]:
@@ -979,6 +1027,159 @@ def get_run_discarded(
     )
 
 
+# ── Run funnel — page Logs/Entonnoir du run-detail ────────────────────────
+
+
+class FunnelStep(BaseModel):
+    name: str               # id du step (PIPELINE_STEPS)
+    status: str             # done | running | pending | failed
+
+
+class RunFunnel(BaseModel):
+    """Vue entonnoir d'un run : steps + funnel discovery→détection→review.
+
+    Tout est dérivé de `source_runs` + `discovery_searches` +
+    `source_images` + `discarded_listings` — aucune capture de log texte.
+    """
+
+    run_id: str
+    source_id: str
+    status: str
+    current_step: str | None
+    duration_s: float | None
+    n_errors: int
+    error_summary: str | None
+    steps: list[FunnelStep]
+    # Discovery
+    n_searches: int
+    n_summaries: int
+    n_after_groups: int
+    n_kept: int
+    # Détection (crop)
+    n_images: int
+    n_cropped: int
+    n_zero_crops: int
+    n_crop_pending: int
+    # Rejets pré-ingestion
+    n_discarded: int
+    discards: list[DiscardedReasonGroup]
+    # Sortie
+    n_review_enqueued: int
+    n_pending_quotes: int
+    n_quotes: int
+
+
+def _funnel_steps(current_step: str | None, run_status: str) -> list[FunnelStep]:
+    """Statut de chaque step du pipeline, dérivé de current_step + status.
+
+    - run terminé (success/partial) → tous les steps `done` ;
+    - run `running` → steps avant le courant `done`, le courant
+      `running`, les suivants `pending` ;
+    - run `failed` → steps avant `done`, le courant `failed`, suivants
+      `pending` (non atteints).
+    """
+    from sources._base.run_logger import PIPELINE_STEPS
+
+    if run_status in ("success", "partial"):
+        return [FunnelStep(name=s, status="done") for s in PIPELINE_STEPS]
+
+    idx = PIPELINE_STEPS.index(current_step) if current_step in PIPELINE_STEPS else -1
+    out: list[FunnelStep] = []
+    for i, step in enumerate(PIPELINE_STEPS):
+        if i < idx:
+            status = "done"
+        elif i == idx:
+            status = "failed" if run_status == "failed" else "running"
+        else:
+            status = "pending"
+        out.append(FunnelStep(name=step, status=status))
+    return out
+
+
+# Consumed by: admin/.../sources/composables/useRunFunnel.ts
+@router.get(
+    "/{source_id}/runs/{run_id}/funnel",
+    response_model=RunFunnel,
+)
+def get_run_funnel(source_id: str, run_id: str) -> RunFunnel:
+    conn = _store()._connection()  # noqa: SLF001
+    run = conn.execute(
+        "SELECT * FROM source_runs WHERE id = ? AND source = ?",
+        (run_id, source_id),
+    ).fetchone()
+    if run is None:
+        raise HTTPException(status_code=404, detail=f"Run {run_id} introuvable.")
+
+    duration_s: float | None = None
+    if run["started_at"] and run["ended_at"]:
+        from datetime import datetime as _dt
+        try:
+            t0 = _dt.fromisoformat(run["started_at"].replace(" ", "T"))
+            t1 = _dt.fromisoformat(run["ended_at"].replace(" ", "T"))
+            duration_s = (t1 - t0).total_seconds()
+        except ValueError:
+            duration_s = None
+
+    disc = conn.execute(
+        """
+        SELECT COUNT(*) n, COALESCE(SUM(n_summaries),0) s0,
+               COALESCE(SUM(n_after_groups),0) s1,
+               COALESCE(SUM(n_kept_results),0) s3
+          FROM discovery_searches WHERE source = ? AND run_id = ?
+        """,
+        (source_id, run_id),
+    ).fetchone()
+
+    crop_rows = conn.execute(
+        "SELECT crop_status, COUNT(*) n FROM source_images "
+        "WHERE source = ? AND run_id = ? GROUP BY crop_status",
+        (source_id, run_id),
+    ).fetchall()
+    n_cropped = n_zero = n_crop_pending = 0
+    for r in crop_rows:
+        if r["crop_status"] == "success":
+            n_cropped = r["n"]
+        elif r["crop_status"] == "zero_crops":
+            n_zero = r["n"]
+        else:  # NULL ou erreur de crop → en attente / non abouti
+            n_crop_pending += r["n"]
+    n_images = n_cropped + n_zero + n_crop_pending
+
+    by_reason_rows = conn.execute(
+        "SELECT reason, COUNT(*) n FROM discarded_listings "
+        "WHERE source = ? AND run_id = ? GROUP BY reason ORDER BY n DESC, reason ASC",
+        (source_id, run_id),
+    ).fetchall()
+    discards = [
+        DiscardedReasonGroup(reason=r["reason"], count=int(r["n"]))
+        for r in by_reason_rows
+    ]
+
+    return RunFunnel(
+        run_id=run_id,
+        source_id=source_id,
+        status=run["status"],
+        current_step=run["current_step"],
+        duration_s=duration_s,
+        n_errors=run["n_errors"] or 0,
+        error_summary=run["error_summary"],
+        steps=_funnel_steps(run["current_step"], run["status"]),
+        n_searches=int(disc["n"]),
+        n_summaries=int(disc["s0"]),
+        n_after_groups=int(disc["s1"]),
+        n_kept=int(disc["s3"]),
+        n_images=n_images,
+        n_cropped=n_cropped,
+        n_zero_crops=n_zero,
+        n_crop_pending=n_crop_pending,
+        n_discarded=sum(g.count for g in discards),
+        discards=discards,
+        n_review_enqueued=run["n_review_enqueued"] or 0,
+        n_pending_quotes=run["n_pending_added"] or 0,
+        n_quotes=run["n_quotes_added"] or 0,
+    )
+
+
 # ── Startup hook: reset orphan 'running' rows ─────────────────────────────
 
 
@@ -1386,12 +1587,65 @@ def ebay_calls_today(store: Store) -> int:
     return int(row["n"] or 0)
 
 
+def _count_group_coins(
+    conn: sqlite3.Connection, denomination: float, country: str, year: int,
+) -> int:
+    """Nombre de commémos d'un groupe (dénomination, pays, année)."""
+    row = conn.execute(
+        "SELECT count(*) AS n FROM coins "
+        "WHERE face_value = ? AND country = ? AND year = ? "
+        "AND is_commemorative = 1",
+        (denomination, country, year),
+    ).fetchone()
+    return int(row["n"] or 0)
+
+
+def _filters_targets_count(conn: sqlite3.Connection, filters_json: str | None) -> int:
+    """Nombre de pièces visées par une run, depuis son `filters_json`.
+
+    Gère les deux modes de découverte : `discovery_groups` (somme des
+    commémos de chaque groupe) et `target_eurio_id(s)`.
+    """
+    if not filters_json:
+        return 1
+    try:
+        f = json.loads(filters_json)
+    except json.JSONDecodeError:
+        return 1
+    groups = f.get("discovery_groups")
+    if groups:
+        total = sum(
+            _count_group_coins(conn, g["denomination"], g["country"], g["year"])
+            for g in groups
+        )
+        return max(total, 1)
+    if f.get("target_eurio_ids"):
+        return max(len(f["target_eurio_ids"]), 1)
+    return 1
+
+
+def _count_query_coins(store: Store, query: SourceQuery) -> int:
+    """Nombre de commémos visées par une SourceQuery (pre-flight quota)."""
+    conn = store._connection()  # noqa: SLF001
+    if query.discovery_groups:
+        return sum(
+            _count_group_coins(conn, g.denomination, g.country, g.year)
+            for g in query.discovery_groups
+        )
+    if query.target_eurio_ids:
+        return len(query.target_eurio_ids)
+    if query.target_eurio_id:
+        return 1
+    return 0
+
+
 def estimate_calls_per_eurio_id(store: Store) -> float:
     """Moyenne mobile sur les 5 derniers runs eBay terminés.
 
     Fallback à `ESTIMATE_BOOTSTRAP` (= 7) si moins de 3 runs ont
     abouti (success ou partial). On compte `n_calls / max(targets, 1)`
-    par run, où `targets` = len(filters_json.target_eurio_ids) ou 1.
+    par run — l'unité reste « par pièce » même pour les runs groupés,
+    où `targets` = somme des commémos des groupes interrogés.
     """
     conn = store._connection()  # noqa: SLF001
     rows = conn.execute(
@@ -1408,19 +1662,10 @@ def estimate_calls_per_eurio_id(store: Store) -> float:
     if len(rows) < 3:
         return float(ESTIMATE_BOOTSTRAP)
 
-    ratios: list[float] = []
-    for r in rows:
-        targets = 1
-        if r["filters_json"]:
-            try:
-                f = json.loads(r["filters_json"])
-                if f.get("target_eurio_ids"):
-                    targets = max(len(f["target_eurio_ids"]), 1)
-                elif f.get("target_eurio_id"):
-                    targets = 1
-            except json.JSONDecodeError:
-                pass
-        ratios.append(r["n_calls"] / targets)
+    ratios = [
+        r["n_calls"] / _filters_targets_count(conn, r["filters_json"])
+        for r in rows
+    ]
     return sum(ratios) / len(ratios)
 
 
@@ -1556,6 +1801,135 @@ def ebay_freshness(
     )
 
 
+# ── eBay freshness queue par GROUPE (chunk 2 — découverte groupée) ────────
+
+
+class FreshnessGroupItem(BaseModel):
+    denomination: float
+    country: str
+    year: int
+    n_coins: int
+    last_enriched_at: str | None
+    n_images: int
+    n_crops: int
+    status: str   # 'never' | 'stale' | 'fresh'
+
+
+class EbayFreshnessGroupsResponse(BaseModel):
+    items: list[FreshnessGroupItem]
+    buckets: FreshnessBuckets
+
+
+# Consumed by: admin/packages/web/src/features/sources/composables/useSourceDetail.ts (fetchEbayFreshnessGroups)
+@router.get("/ebay/freshness-groups", response_model=EbayFreshnessGroupsResponse)
+def ebay_freshness_groups(
+    limit: int = Query(default=200, ge=1, le=2000),
+) -> EbayFreshnessGroupsResponse:
+    """Freshness queue à la maille GROUPE (dénomination, pays, année).
+
+    Lit `v_ebay_freshness_groups`, triée stalest-first. C'est l'unité de
+    rafraîchissement du modèle de découverte groupée : une recherche eBay
+    couvre tout un groupe.
+    """
+    conn = _store()._connection()  # noqa: SLF001
+    all_rows = conn.execute(
+        """
+        SELECT denomination, country, year, n_coins,
+               last_enriched_at, n_images, n_crops
+          FROM v_ebay_freshness_groups
+         ORDER BY last_enriched_at ASC NULLS FIRST, country, year
+        """
+    ).fetchall()
+
+    buckets = {"never": 0, "stale": 0, "fresh": 0}
+    classified: list[tuple[Any, str]] = []
+    for r in all_rows:
+        status = _classify_freshness(r["last_enriched_at"])
+        buckets[status] += 1
+        classified.append((r, status))
+
+    items = [
+        FreshnessGroupItem(
+            denomination=r["denomination"],
+            country=r["country"],
+            year=r["year"],
+            n_coins=r["n_coins"] or 0,
+            last_enriched_at=r["last_enriched_at"],
+            n_images=r["n_images"] or 0,
+            n_crops=r["n_crops"] or 0,
+            status=status,
+        )
+        for r, status in classified[:limit]
+    ]
+    return EbayFreshnessGroupsResponse(
+        items=items,
+        buckets=FreshnessBuckets(
+            never=buckets["never"],
+            stale_90d=buckets["stale"],
+            fresh=buckets["fresh"],
+            total=len(all_rows),
+        ),
+    )
+
+
+# ── eBay run preview (chunk 2 — « ce groupe = N pièces = N appels ») ──────
+
+
+class RunPreviewBody(BaseModel):
+    discovery_groups: list[GroupSpec]
+
+
+class RunPreviewGroup(BaseModel):
+    denomination: float
+    country: str
+    year: int
+    n_coins: int
+
+
+class RunPreviewResponse(BaseModel):
+    groups: list[RunPreviewGroup]
+    n_groups: int
+    total_coins: int
+    estimate_calls: int
+    avg_calls_per_eurio_id: float
+    remaining: int
+    limit: int
+    ok: bool
+    max_safe_coins: int
+
+
+# Consumed by: admin/packages/web/src/features/sources/composables/useSourceDetail.ts (fetchEbayRunPreview)
+@router.post("/ebay/run-preview", response_model=RunPreviewResponse)
+def ebay_run_preview(body: RunPreviewBody) -> RunPreviewResponse:
+    """Estime, avant lancement, ce que coûtera un run groupé.
+
+    Pour chaque groupe (dénomination, pays, année) : combien de commémos
+    il couvre. Total des pièces + estimation d'appels API + check quota.
+    """
+    store = _store()
+    conn = store._connection()  # noqa: SLF001
+    groups: list[RunPreviewGroup] = []
+    total_coins = 0
+    for g in body.discovery_groups:
+        n = _count_group_coins(conn, g.denomination, g.country, g.year)
+        total_coins += n
+        groups.append(RunPreviewGroup(
+            denomination=g.denomination, country=g.country, year=g.year, n_coins=n,
+        ))
+    quota = check_ebay_quota(store, n_eurio_ids=total_coins)
+    return RunPreviewResponse(
+        groups=groups,
+        n_groups=len(groups),
+        total_coins=total_coins,
+        estimate_calls=quota["estimate"],
+        avg_calls_per_eurio_id=quota["avg_calls_per_eurio_id"],
+        remaining=quota["remaining"],
+        limit=quota["limit"],
+        ok=quota["ok"],
+        max_safe_coins=quota["max_safe_batch"],
+    )
+
+
 # ── eBay multi-marketplace (B5/B6) ────────────────────────────────────────
 
 
@@ -1591,6 +1965,65 @@ def ebay_marketplace_map() -> MarketplaceMapResponse:
             for c in discovery_marketplaces()
         ]
     )
+
+
+# ── Prix de référence marché (chunk C4 — cross-check review) ──────────────
+
+
+class MarketQuoteEntry(BaseModel):
+    condition: str             # tier d'état : 'UNC' | 'TTB' | 'TB'
+    p10: float | None
+    p50: float | None
+    p90: float | None
+    sample_size: int
+    period_start: str
+
+
+class MarketQuotesResponse(BaseModel):
+    """Derniers prix de référence par pièce (un par tier d'état).
+
+    Clé = eurio_id ; valeur = liste des quotes les plus récentes
+    (`coin_market_quotes`, source ebay). Une pièce sans agrégation n'a
+    pas d'entrée — le front dégrade proprement.
+    """
+
+    quotes: dict[str, list[MarketQuoteEntry]]
+
+
+# Consumed by: admin/.../review/composables/useReviewApi.ts (fetchMarketQuotes)
+@router.get("/ebay/market-quotes", response_model=MarketQuotesResponse)
+def ebay_market_quotes(
+    eurio_ids: str = Query(..., description="CSV d'eurio_id"),
+) -> MarketQuotesResponse:
+    """Renvoie le dernier `coin_market_quotes` par (pièce, tier d'état)."""
+    ids = [e.strip() for e in eurio_ids.split(",") if e.strip()]
+    if not ids:
+        return MarketQuotesResponse(quotes={})
+
+    conn = _store()._connection()  # noqa: SLF001
+    placeholders = ",".join("?" * len(ids))
+    rows = conn.execute(
+        f"""
+        SELECT eurio_id, condition_raw, p10, p50, p90, sample_size, period_start
+          FROM coin_market_quotes c
+         WHERE source = 'ebay' AND eurio_id IN ({placeholders})
+           AND period_start = (
+               SELECT MAX(period_start) FROM coin_market_quotes c2
+                WHERE c2.source = c.source AND c2.eurio_id = c.eurio_id
+                  AND COALESCE(c2.condition_raw, '') = COALESCE(c.condition_raw, '')
+           )
+        """,  # noqa: S608 — placeholders = '?' répétés, pas d'injection
+        ids,
+    ).fetchall()
+
+    quotes: dict[str, list[MarketQuoteEntry]] = {}
+    for r in rows:
+        quotes.setdefault(r["eurio_id"], []).append(MarketQuoteEntry(
+            condition=r["condition_raw"] or "unknown",
+            p10=r["p10"], p50=r["p50"], p90=r["p90"],
+            sample_size=r["sample_size"], period_start=r["period_start"],
+        ))
+    return MarketQuotesResponse(quotes=quotes)
 
 
 class FilterRule(BaseModel):

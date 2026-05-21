@@ -728,3 +728,30 @@ WHERE c.face_value = 2.0
   AND c.is_commemorative = 1
   AND c.country != 'eu'
 GROUP BY c.eurio_id;
+
+-- ─── Freshness view eBay par GROUPE de découverte ─────────────────────────
+-- Une recherche eBay = un groupe (dénomination, pays, année), pas une
+-- pièce : deux commémos-sœurs partagent une requête byte-identique.
+-- Cette vue agrège v_ebay_freshness à la maille groupe — c'est elle qui
+-- pilote la freshness queue groupée. `last_enriched_at` = la pièce la
+-- plus récemment enrichie du groupe : si une sœur a été rafraîchie, le
+-- groupe l'est (la même requête les a toutes ramenées).
+
+CREATE VIEW IF NOT EXISTS v_ebay_freshness_groups AS
+SELECT
+  c.face_value               AS denomination,
+  c.country                  AS country,
+  c.year                     AS year,
+  COUNT(DISTINCT c.eurio_id)  AS n_coins,
+  MAX(si.fetched_at)          AS last_enriched_at,
+  COUNT(DISTINCT si.id)       AS n_images,
+  COUNT(DISTINCT ia.id)       AS n_crops
+FROM coins c
+LEFT JOIN source_images si
+  ON si.target_eurio_id = c.eurio_id AND si.source = 'ebay'
+LEFT JOIN image_assets ia
+  ON ia.source_image_id = si.id
+WHERE c.face_value = 2.0
+  AND c.is_commemorative = 1
+  AND c.country != 'eu'
+GROUP BY c.face_value, c.country, c.year;

@@ -303,6 +303,12 @@ export interface RunSnapshot {
   log_path: string | null
 }
 
+export interface DiscoveryGroupSpec {
+  denomination: number
+  country: string
+  year: number
+}
+
 export interface TriggerRunOptions {
   dryRun?: boolean
   force?: boolean
@@ -312,6 +318,7 @@ export interface TriggerRunOptions {
     year?: number
     target_eurio_id?: string
     target_eurio_ids?: string[]
+    discovery_groups?: DiscoveryGroupSpec[]
     limit?: number
     extra?: Record<string, unknown>
   }
@@ -328,18 +335,23 @@ export interface EbayQuotaStatus {
   avg_calls_per_eurio_id: number
 }
 
-export interface EbayFreshnessItem {
-  eurio_id: string
+/**
+ * Freshness queue à la maille GROUPE de découverte (denom, pays, année).
+ * Une recherche eBay couvre tout un groupe — c'est l'unité de run.
+ */
+export interface EbayFreshnessGroupItem {
+  denomination: number
   country: string
   year: number
+  n_coins: number
   last_enriched_at: string | null
   n_images: number
   n_crops: number
   status: 'never' | 'stale' | 'fresh'
 }
 
-export interface EbayFreshnessResponse {
-  items: EbayFreshnessItem[]
+export interface EbayFreshnessGroupsResponse {
+  items: EbayFreshnessGroupItem[]
   buckets: { never: number; stale_90d: number; fresh: number; total: number }
 }
 
@@ -351,9 +363,11 @@ export async function fetchEbayQuotaStatus(): Promise<EbayQuotaStatus | null> {
   } catch { return null }
 }
 
-export async function fetchEbayFreshness(limit = 50): Promise<EbayFreshnessResponse | null> {
+export async function fetchEbayFreshnessGroups(
+  limit = 200,
+): Promise<EbayFreshnessGroupsResponse | null> {
   try {
-    const resp = await fetch(`${ML_API}/sources/ebay/freshness?limit=${limit}`)
+    const resp = await fetch(`${ML_API}/sources/ebay/freshness-groups?limit=${limit}`)
     if (!resp.ok) return null
     return await resp.json()
   } catch { return null }

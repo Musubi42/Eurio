@@ -154,6 +154,34 @@ def test_force_recomputes(conn):
     assert res.n_skipped_existing == 0
 
 
+def test_manual_correction_is_not_overwritten_even_with_force(conn):
+    """Garde-fou C4 : une row extractor_version='manual' (corrigée à la
+    main dans la review) n'est jamais ré-extraite, même en force."""
+    _, ref = _insert_run_and_image(
+        conn, source_image_id="sid1",
+        title="2 euros Andorre 2016 TV Radio",
+    )
+    run_text_signal_extract(conn=conn, run=None, source_image_ids={ref: "sid1"})
+    # Simule une correction manuelle (endpoint correct-listing).
+    conn.execute(
+        "UPDATE listing_text_signals SET extractor_version='manual', "
+        "listing_kind='coffret' WHERE source_image_id='sid1'",
+    )
+    conn.commit()
+
+    res = run_text_signal_extract(
+        conn=conn, run=None, source_image_ids={ref: "sid1"}, force=True,
+    )
+    assert res.n_extracted == 0
+    assert res.n_skipped_existing == 1
+    row = conn.execute(
+        "SELECT extractor_version, listing_kind FROM listing_text_signals "
+        "WHERE source_image_id='sid1'",
+    ).fetchone()
+    assert row["extractor_version"] == "manual"
+    assert row["listing_kind"] == "coffret"  # correction préservée
+
+
 def test_empty_title_persisted_as_empty_coverage(conn):
     _, ref = _insert_run_and_image(
         conn, source_image_id="sid1", title="",

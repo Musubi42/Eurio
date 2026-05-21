@@ -110,6 +110,26 @@ def test_aggregate_empty_returns_no_quotes():
     assert aggregate_priced_listings([]) == []
 
 
+def test_aggregate_drops_tier_far_above_unc():
+    """Un tier circulé au p50 >> UNC = échantillon contaminé → supprimé."""
+    ls = (
+        [PricedListing(5.0, "UNC", origin_date="2026-04-01")] * 4
+        + [PricedListing(50.0, "TB", origin_date="2026-04-01")] * 3
+    )
+    conds = {q.condition for q in aggregate_priced_listings(ls, now=NOW)}
+    assert conds == {"UNC"}  # TB (50 € >> 3×5) écarté
+
+
+def test_aggregate_keeps_tier_within_unc_bound():
+    """Un tier circulé à un prix plausible (≤ 3× UNC) est conservé."""
+    ls = (
+        [PricedListing(10.0, "UNC", origin_date="2026-04-01")] * 4
+        + [PricedListing(8.0, "TB", origin_date="2026-04-01")] * 3
+    )
+    conds = {q.condition for q in aggregate_priced_listings(ls, now=NOW)}
+    assert conds == {"UNC", "TB"}
+
+
 # ── Step DB ─────────────────────────────────────────────────────────────────
 
 
@@ -235,3 +255,22 @@ def test_step_separates_condition_tiers(tmp_path: Path):
     q = _quotes(conn, "es-2010-2eur-w")
     assert q["UNC"]["p50"] == 5.0
     assert q["TB"]["p50"] == 2.5
+
+
+def test_step_bumps_quotes_counter(tmp_path: Path):
+    """Le step écrit n_quotes_added sur source_runs (colonne QUOTES UI)."""
+    store = Store(tmp_path / "agg.db")
+    conn = sqlite3.connect(store.db_path)
+    conn.row_factory = sqlite3.Row
+    run_id = "run-5"
+    _seed_run(conn, run_id)
+    for i, price in enumerate([4.0, 5.0, 5.0, 6.0]):
+        _seed_listing(conn, run_id=run_id, eurio_id="fr-2012-2eur-x",
+                      item_id=f"it{i}", price=price)
+
+    res = run_price_aggregate(conn=conn, run_id=run_id, source="ebay")
+    n = conn.execute(
+        "SELECT n_quotes_added FROM source_runs WHERE id = ?", (run_id,)
+    ).fetchone()[0]
+    assert n == res.n_quotes
+    assert n >= 1

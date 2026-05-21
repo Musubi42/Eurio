@@ -85,6 +85,15 @@ class ReviewItem(BaseModel):
     listing_title: str | None
     listing_url: str | None
     listing_price: float | None
+    # Chunk C4 — contexte listing pour la carte d'audit « Listing & marché ».
+    # Issu de listing_text_signals (C2) + source_images (C1). None sur les
+    # rows antérieures aux chunks C1/C2.
+    listing_kind: str | None = None
+    listing_kind_confidence: float | None = None
+    condition: str | None = None
+    condition_confidence: float | None = None
+    listing_origin_date: str | None = None
+    sold_qty: int | None = None
     candidates: list[ReviewCandidate]
     face_detected: str | None
     priority: int
@@ -175,6 +184,11 @@ def _row_to_item(row: sqlite3.Row) -> ReviewItem:
     )
     target_candidate = _build_target_candidate(row, target_eurio_id)
 
+    cols = row.keys()
+
+    def _opt(name: str):
+        return row[name] if name in cols else None
+
     return ReviewItem(
         id=row["id"],
         crop_url=f"/sources/{row['source']}/assets/{row['image_asset_id']}/file",
@@ -184,6 +198,12 @@ def _row_to_item(row: sqlite3.Row) -> ReviewItem:
         listing_title=row["listing_title"],
         listing_url=row["source_url"],
         listing_price=row["listing_price"],
+        listing_kind=_opt("listing_kind"),
+        listing_kind_confidence=_opt("listing_kind_confidence"),
+        condition=_opt("condition_normalized"),
+        condition_confidence=_opt("condition_confidence"),
+        listing_origin_date=_opt("listing_origin_date"),
+        sold_qty=_opt("sold_qty"),
         candidates=candidates,
         face_detected=row["face"],
         priority=row["priority"],
@@ -227,6 +247,9 @@ def list_queue(
                a.bbox_json, a.candidate_eurio_ids_json, a.face, a.quality_score,
                s.source, s.source_ref, s.listing_title, s.source_url,
                s.listing_price, s.target_eurio_id,
+               s.listing_origin_date, s.sold_qty,
+               lts.listing_kind, lts.listing_kind_confidence,
+               lts.condition_normalized, lts.condition_confidence,
                t.eurio_id     AS t_eurio_id,
                t.country      AS t_country,
                t.country_name AS t_country_name,
@@ -237,6 +260,7 @@ def list_queue(
           FROM review_queue rq
           JOIN image_assets a ON a.id = rq.image_asset_id
           JOIN source_images s ON s.id = a.source_image_id
+          LEFT JOIN listing_text_signals lts ON lts.source_image_id = s.id
           LEFT JOIN coins t   ON t.eurio_id = s.target_eurio_id
          WHERE {where}
          ORDER BY {order_clause}
@@ -873,6 +897,9 @@ def get_review(review_id: str) -> ReviewItem:
                a.bbox_json, a.candidate_eurio_ids_json, a.face, a.quality_score,
                s.source, s.source_ref, s.listing_title, s.source_url,
                s.listing_price, s.target_eurio_id,
+               s.listing_origin_date, s.sold_qty,
+               lts.listing_kind, lts.listing_kind_confidence,
+               lts.condition_normalized, lts.condition_confidence,
                t.eurio_id     AS t_eurio_id,
                t.country      AS t_country,
                t.country_name AS t_country_name,
@@ -883,6 +910,7 @@ def get_review(review_id: str) -> ReviewItem:
           FROM review_queue rq
           JOIN image_assets a ON a.id = rq.image_asset_id
           JOIN source_images s ON s.id = a.source_image_id
+          LEFT JOIN listing_text_signals lts ON lts.source_image_id = s.id
           LEFT JOIN coins t   ON t.eurio_id = s.target_eurio_id
          WHERE rq.id = ?
         """,
@@ -966,6 +994,100 @@ def decide_review(review_id: str, payload: DecidePayload) -> dict[str, str]:
     logger.info("[review] decided id=%s eurio_id=%s face=%s",
                 review_id, payload.eurio_id, payload.face)
     return {"status": "done", "id": review_id}
+
+
+# ── Correction listing_kind / condition (chunk C4) ────────────────────────
+
+_VALID_LISTING_KINDS = ("single", "lot", "coffret", "graded_slab")
+_VALID_CONDITIONS = ("UNC", "TTB", "TB")
+
+
+class CorrectListingPayload(BaseModel):
+    listing_kind: str | None = None
+    condition: str | None = None
+
+
+# Consumed by: admin/.../review/composables/useReviewApi.ts (correctListing)
+@router.post("/{review_id}/correct-listing", status_code=200)
+def correct_listing(review_id: str, payload: CorrectListingPayload) -> dict[str, Any]:
+    """Corrige manuellement listing_kind et/ou condition d'un listing.
+
+    La correction se propage à **toutes** les source_images du listing
+    (N photos → N rows) et marque ``extractor_version='manual'`` : le
+    step C2 ``text_signal`` ne ré-écrasera plus ces signaux. Indépendant
+    de la décision d'attribution — la review reste ``open``.
+    """
+    if payload.listing_kind is None and payload.condition is None:
+        raise HTTPException(
+            status_code=422, detail="Provide listing_kind and/or condition.",
+        )
+    if payload.listing_kind is not None and payload.listing_kind not in _VALID_LISTING_KINDS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"listing_kind must be one of {_VALID_LISTING_KINDS}",
+        )
+    if payload.condition is not None and payload.condition not in _VALID_CONDITIONS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"condition must be one of {_VALID_CONDITIONS}",
+        )
+
+    conn = _store()._connection()  # noqa: SLF001
+    si = conn.execute(
+        """
+        SELECT s.id AS sid, s.source, s.source_url
+          FROM review_queue rq
+          JOIN image_assets a ON a.id = rq.image_asset_id
+          JOIN source_images s ON s.id = a.source_image_id
+         WHERE rq.id = ?
+        """,
+        (review_id,),
+    ).fetchone()
+    if si is None:
+        raise HTTPException(status_code=404, detail="Review item not found.")
+
+    # Toutes les source_images du même listing — identité = source_url
+    # (page de l'annonce, partagée par les N photos). Fallback : la row
+    # seule si l'URL est absente.
+    if si["source_url"]:
+        sibling_ids = [
+            r["id"] for r in conn.execute(
+                "SELECT id FROM source_images WHERE source = ? AND source_url = ?",
+                (si["source"], si["source_url"]),
+            ).fetchall()
+        ]
+    else:
+        sibling_ids = [si["sid"]]
+
+    sets = ["extractor_version = 'manual'", "computed_at = datetime('now')"]
+    args: list[Any] = []
+    if payload.listing_kind is not None:
+        sets.append("listing_kind = ?")
+        sets.append("listing_kind_confidence = 1.0")
+        args.append(payload.listing_kind)
+    if payload.condition is not None:
+        sets.append("condition_normalized = ?")
+        sets.append("condition_confidence = 1.0")
+        args.append(payload.condition)
+
+    placeholders = ",".join("?" * len(sibling_ids))
+    conn.execute(
+        f"UPDATE listing_text_signals SET {', '.join(sets)} "  # noqa: S608
+        f"WHERE source_image_id IN ({placeholders})",
+        (*args, *sibling_ids),
+    )
+    conn.commit()
+    logger.info(
+        "[review] correct-listing id=%s kind=%s condition=%s → %d images",
+        review_id, payload.listing_kind, payload.condition, len(sibling_ids),
+    )
+    return {
+        "status": "ok",
+        "id": review_id,
+        "n_images": len(sibling_ids),
+        "listing_kind": payload.listing_kind,
+        "condition": payload.condition,
+    }
 
 
 # Consumed by: admin/packages/web/src/features/review/composables/useReviewApi.ts (rejectReview)

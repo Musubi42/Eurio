@@ -237,13 +237,35 @@ review). Cf. `i18n-llm-translation.md` §Done.
   `title_fr` non traduit `hr-2025-pula`) — hors périmètre, n'affectent
   pas l'import.
 
+## V2 — cutover legacy livré (2026-05-21)
+
+Retrait du matcher theme legacy maintenant que le matcher multilingue I2
+(`coin_names_i18n`, couverture ~100 % après I1+I3) est validé :
+
+- `queries.py` : suppression de `THEME_TOKEN_FR_ALIASES`,
+  `_legacy_title_matches_theme`, `_theme_keywords`, `STOP_WORDS`,
+  `COUNTRY_SLUG_TOKENS`, et du champ `EbayQuery.theme_tokens`.
+- `title_matches_theme` : le fallback legacy (slug EN + aliases FR)
+  est remplacé par un **retour permissif `True`** quand aucun titre
+  i18n n'est disponible — sans titre localisé, on ne peut pas
+  theme-matcher, on ne filtre donc pas le listing.
+- `adapter.py` : `theme_tokens` retiré des métadonnées `filters_meta`
+  et `raw_payload` des `discovery_searches`/`discarded_listings`.
+- Tests : suppression des tests legacy, `test_discover_ambiguous_*`
+  re-seedé avec un titre `coin_names_i18n` (le theme-match s'appuie
+  désormais sur l'i18n, plus sur les tokens de slug). 98 tests
+  eBay/marketplace/pricing verts, 0 régression.
+
+**Reste empirique** : un smoke run réel (10 eurio_ids, recall vs
+baseline) reste à faire pour confirmer que la couverture i18n est
+assez haute pour que le retrait du fallback ne coûte pas de recall —
+c'est un run eBay (quota), à faire avec un run discovery réel.
+
 ## Reste à faire
 
 1. **F3 → F4** — front (run listings, coin-detail thumbs).
-2. **V2** — cutover legacy : retrait `THEME_TOKEN_FR_ALIASES` +
-   `_legacy_title_matches_theme` + `_theme_keywords`, smoke run sur
-   10 eurio_ids, mesure recall vs baseline (KPI ≥ ×3).
-3. **Pipeline prix & état** (chantier suivant, plan C0-C4) :
+2. **Smoke run V2** — discovery réel sur 10 eurio_ids, recall vs baseline.
+3. **Pipeline prix & état** (plan C0-C4) :
    - **C0** routing `{DE,ES}` — ✅ livré.
    - **C1** migration + taxonomie — ✅ livré : colonnes `listing_origin_date`
      + `sold_qty` (source_images, vélocité), `listing_kind`
@@ -265,4 +287,20 @@ review). Cf. `i18n-llm-translation.md` §Done.
      listing, écrit `coin_market_quotes` une ligne par coin×tier×période).
      Câblé en step 9 de l'orchestrateur → un snapshot prix par run,
      l'historique s'accumule. 17 tests.
-   - **C4** upgrade review — à venir.
+     - **Fixes audit run 85bd…** (2026-05-21) : `MIN_SAMPLES_FOR_OUTLIER`
+       4→3 (la médiane à n=3 résiste à un outlier unique) ; garde-fou
+       inter-tier `MAX_TIER_RATIO_VS_UNC=3.0` (un TTB/TB au p50 > 3× le
+       p50 UNC = échantillon contaminé → quote supprimée — tuait le cas
+       `be-2008 TB p50=222€`) ; le step écrit `n_quotes_added` sur
+       `source_runs` (colonne QUOTES du run-detail).
+   - **C4** upgrade review — ✅ livré.
+     - **C4a** backend : payload `ReviewItem` enrichi (kind/condition/âge),
+       `GET /sources/ebay/market-quotes` (prix réf par tier), `POST
+       /review-queue/{id}/correct-listing` (propage à tout le listing,
+       marque `extractor_version='manual'`). Garde-fou : le step C2
+       skippe les rows `'manual'` même en `force`. 11 tests.
+     - **C4b** front : composant `ListingContextCard.vue` (carte
+       « Listing & marché » — badges type/état + confiance, ambre si
+       faible confiance, ligne marché + anomalie prix). Touches `K`/`C`
+       (cycle, opt-in) dans `useReviewKeybinds`, prefetch des quotes
+       marché des candidats. `⏎` d'attribution inchangé.

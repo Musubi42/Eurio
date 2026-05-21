@@ -87,8 +87,7 @@ def main() -> None:
 
         recovered = []
         for title in titles:
-            i2 = title_matches_theme(title, eurio_id,
-                                     marketplace=args.marketplace, conn=conn)
+            i2 = title_matches_theme(title, eurio_id, conn=conn)
             # legacy = _legacy par construction False ; on revérifie pour sûreté.
             legacy = _legacy_title_matches_theme(title, legacy_tok)
             if i2 and not legacy:

@@ -2,13 +2,15 @@
 
 Implements ``SourceAdapter`` (sources/_base/adapter.py). Two methods :
 
-* ``discover(query)`` — receives a SourceQuery with **a single**
-  ``target_eurio_id`` (the orchestrator unfolds batches at the
-  Discover step). Builds a tightly scoped Browse API search, optionally
-  expands item groups (multi-year variations), fetches per-listing HD
-  images via ``item/{id}`` (D-22), and yields one ``DiscoveredItem``
-  per *image* of each accepted listing. ``source_ref`` follows the
-  pattern ``ebay_<itemId>_img<N>`` to keep the "1 source_image = 1 file"
+* ``discover(query)`` — receives a SourceQuery scoped to **a single
+  discovery group** ``(dénomination, pays, année)`` — the orchestrator
+  unfolds group batches at the Discover step. Runs one Browse API search
+  per marketplace, optionally expands item groups (multi-year
+  variations), attributes each listing to a coin of the group via the
+  multilingual theme matcher, fetches per-listing HD images via
+  ``item/{id}`` (D-22), and yields one ``DiscoveredItem`` per *image* of
+  each accepted listing. ``source_ref`` follows the pattern
+  ``ebay_<itemId>_img<N>`` to keep the "1 source_image = 1 file"
   contract (cf. schema.md / ebay-kickoff.md §"Convention source_ref").
 
 * ``download_raw(item, dest)`` — fetches the image file from the eBay
@@ -45,6 +47,7 @@ from market.ebay_client import EbayClient
 from sources._base.adapter import (
     DiscardedListingRecord,
     DiscoveredItem,
+    DiscoveryGroup,
     RawDownloadResult,
     RecordDiscardedFn,
     RecordSearchFn,
@@ -59,9 +62,11 @@ from sources.ebay.filters import (
 from sources.ebay.marketplaces import discovery_marketplaces
 from sources.ebay.queries import (
     EbayQuery,
-    build_query,
+    build_group_query,
     load_coin,
-    title_matches_theme,
+    load_group_coins,
+    match_listing_to_group,
+    search_limit_for_group,
 )
 
 # Factory invoked by the adapter to materialize a client for a given
@@ -81,22 +86,18 @@ DEFAULT_DOWNLOAD_TIMEOUT_SEC = 30
 
 @dataclass
 class SearchExpandResult:
-    """Funnel ventilé du `_search_and_expand` (chunk 0 auto-validation).
+    """Funnel ventilé du `_search_and_expand`.
 
-    - ``rows``           : liste finale, post theme-token drop, prête pour
-                           `accept_listing`.
+    - ``rows``           : listings bruts (post-expansion groupes), prêts
+                           pour `accept_listing` + `match_listing_to_group`.
     - ``n_summaries``    : N0 — `itemSummaries` retournés brut par Browse.
     - ``n_after_groups`` : N1 — N0 + lignes ajoutées par expansion
                            `getItemsByGroup` (top-K limité).
-    - ``theme_dropped``  : rows écartées par le filtre theme-tokens (vide
-                           si non ambigu). Persistées en discarded_listings
-                           avec reason='theme_mismatch' par discover().
     """
 
     rows: list[dict]
     n_summaries: int
     n_after_groups: int
-    theme_dropped: list[dict]
 
 
 @dataclass
@@ -164,21 +165,29 @@ class EbayAdapter:
     ) -> Iterable[DiscoveredItem]:
         """Yield 1 DiscoveredItem per image of each accepted listing.
 
-        Multi-marketplace : interroge ``DISCOVERY_MARKETPLACES``
-        (EBAY_DE puis EBAY_ES, routage uniforme — cf. ``marketplaces.py``).
-        Boucle sur les 2 mkts, agrège les rows par item_id en mémoire
-        (1ʳᵉ occurrence wins pour ``marketplace``, set complet pour
-        ``marketplace_found``), puis yield 1 DiscoveredItem par image de
-        chaque listing accepté.
-        """
-        if not query.target_eurio_id:
-            raise ValueError(
-                "EbayAdapter.discover requires query.target_eurio_id set "
-                "(orchestrator should unfold target_eurio_ids)."
-            )
+        Découverte par **groupe** ``(dénomination, pays, année)`` : une
+        seule recherche eBay par marketplace couvre toutes les commémos-
+        sœurs du groupe. Chaque listing retourné est attribué à une pièce
+        du groupe par ``match_listing_to_group``. ``target_eurio_id`` de
+        chaque ``DiscoveredItem`` porte donc la pièce *résolue* par le
+        theme-match — pas la pièce cherchée (il n'y a plus de pièce
+        cherchée, juste un groupe). ``None`` pour les listings ambigus.
 
-        coin = load_coin(self.conn, query.target_eurio_id)
-        ambiguous = self._is_ambiguous_country_year(coin.country, coin.year)
+        Multi-marketplace : interroge ``DISCOVERY_MARKETPLACES`` (EBAY_DE
+        puis EBAY_ES, routage uniforme). Les rows sont agrégées par item_id
+        en mémoire (1ʳᵉ occurrence wins pour ``marketplace``, set complet
+        pour ``marketplace_found``).
+        """
+        group = self._resolve_group(query)
+        coins = load_group_coins(
+            self.conn, group.denomination, group.country, group.year,
+        )
+        if not coins:
+            raise ValueError(
+                f"No commemorative coin for group {group} — nothing to discover."
+            )
+        coin_ids = [c.eurio_id for c in coins]
+        limit = search_limit_for_group(len(coins))
 
         # Routage uniforme : EBAY_DE puis EBAY_ES, chacun queryé dans sa
         # langue native (cf. marketplaces.py — décision benchmark).
@@ -190,29 +199,31 @@ class EbayAdapter:
 
         for mkt, lang in marketplaces:
             client = self._client_for(mkt)
-            ebay_q = build_query(coin, query_lang=lang)
+            ebay_q = build_group_query(
+                group.denomination, group.country, group.year, query_lang=lang,
+            )
             filters_meta = {
                 "marketplace": mkt,
                 "query_lang": lang,
                 "aspect_filter": ebay_q.aspect_filter,
-                "theme_tokens": ebay_q.theme_tokens,
-                "ambiguous": ambiguous,
-                "search_limit": self.search_limit,
+                "group": {
+                    "denomination": group.denomination,
+                    "country": group.country,
+                    "year": group.year,
+                },
+                "n_coins_in_group": len(coins),
+                "search_limit": limit,
                 "category_id": ebay_q.category_id,
             }
             logger.info(
-                "[ebay] eurio=%s mkt=%s lang=%s q=%r ambiguous=%s",
-                coin.eurio_id, mkt, lang, ebay_q.q, ambiguous,
+                "[ebay] group=%s/%s/%s mkt=%s lang=%s q=%r n_coins=%d limit=%d",
+                group.denomination, group.country, group.year,
+                mkt, lang, ebay_q.q, len(coins), limit,
             )
 
             t0 = time.monotonic()
             try:
-                expand = self._search_and_expand(
-                    client, ebay_q,
-                    ambiguous=ambiguous,
-                    eurio_id=coin.eurio_id,
-                    marketplace=mkt,
-                )
+                expand = self._search_and_expand(client, ebay_q, limit=limit)
             except Exception as exc:  # noqa: BLE001
                 duration_ms = int((time.monotonic() - t0) * 1000)
                 http_status: int | None = None
@@ -222,7 +233,7 @@ class EbayAdapter:
                     record_search(DiscoverySearchRecord(
                         run_id="",
                         source="",
-                        target_eurio_id=coin.eurio_id,
+                        target_eurio_id=None,
                         endpoint="ebay.browse.search",
                         query_q=ebay_q.q,
                         query_filters=filters_meta,
@@ -232,80 +243,54 @@ class EbayAdapter:
                         error=str(exc)[:500],
                         marketplace=mkt,
                     ))
-                # Un mkt qui plante ne doit pas casser l'autre. On log et
-                # on continue ; le run repart sur le mkt suivant ou yield
-                # ce qu'on a déjà mergé.
+                # Un mkt qui plante ne doit pas casser l'autre.
                 logger.warning(
-                    "[ebay] mkt=%s search failed for %s: %s",
-                    mkt, coin.eurio_id, exc,
+                    "[ebay] mkt=%s search failed for group %s/%s: %s",
+                    mkt, group.country, group.year, exc,
                 )
                 continue
 
-            # Persist theme-token drops (mkt-aware).
-            if expand.theme_dropped and record_discarded is not None:
-                for row in expand.theme_dropped:
-                    if not row.get("item_id"):
-                        continue
-                    record_discarded(DiscardedListingRecord(
-                        source_ref=f"ebay_listing_{row['item_id']}",
-                        target_eurio_id=coin.eurio_id,
-                        reason="theme_mismatch",
-                        title=row.get("title"),
-                        raw_payload={
-                            "item_id": row.get("item_id"),
-                            "price": row.get("price"),
-                            "currency": row.get("currency"),
-                            "item_web_url": row.get("item_web_url"),
-                            "theme_tokens": ebay_q.theme_tokens,
-                        },
-                        marketplace=mkt,
-                    ))
-
-            # accept_listing per mkt — les reject reasons sont attribuées
-            # au mkt qui a yieldé le listing rejeté.
+            # Par listing : accept_listing (anti-bruit) puis attribution
+            # theme-match à une pièce du groupe.
             kept: list[dict] = []
             for row in expand.rows:
                 ok, reason = accept_listing(
                     row,
-                    coin.face_value,
-                    expected_year=coin.year,
-                    is_commemorative=coin.is_commemorative,
+                    group.denomination,
+                    expected_year=group.year,
+                    is_commemorative=True,
                 )
                 if not ok:
-                    if record_discarded is not None and row.get("item_id"):
-                        record_discarded(DiscardedListingRecord(
-                            source_ref=f"ebay_listing_{row['item_id']}",
-                            target_eurio_id=coin.eurio_id,
-                            reason=reason,
-                            title=row.get("title"),
-                            raw_payload={
-                                "item_id": row.get("item_id"),
-                                "price": row.get("price"),
-                                "currency": row.get("currency"),
-                                "item_web_url": row.get("item_web_url"),
-                            },
-                            marketplace=mkt,
-                        ))
+                    self._record_discard(record_discarded, row, reason, mkt)
                     continue
+                gm = match_listing_to_group(
+                    row.get("title") or "", coin_ids, conn=self.conn,
+                )
+                if gm.verdict == "no_match":
+                    self._record_discard(
+                        record_discarded, row, "theme_mismatch", mkt,
+                    )
+                    continue
+                row["_resolved_eurio_id"] = gm.target_eurio_id
+                row["_group_verdict"] = gm.verdict
                 kept.append(row)
 
             duration_ms = int((time.monotonic() - t0) * 1000)
             logger.info(
-                "[ebay] eurio=%s mkt=%s funnel summaries=%d → groups=%d → theme=%d → kept=%d",
-                coin.eurio_id, mkt,
-                expand.n_summaries, expand.n_after_groups,
-                len(expand.rows), len(kept),
+                "[ebay] group=%s/%s mkt=%s funnel summaries=%d → groups=%d → kept=%d",
+                group.country, group.year, mkt,
+                expand.n_summaries, expand.n_after_groups, len(kept),
             )
 
             if record_search is not None:
                 record_search(DiscoverySearchRecord(
                     run_id="",
                     source="",
-                    target_eurio_id=coin.eurio_id,
+                    target_eurio_id=None,
                     endpoint="ebay.browse.search",
                     query_q=ebay_q.q,
                     query_filters=filters_meta,
-                    status="success" if expand.rows else "empty",
+                    status="success" if kept else "empty",
                     http_status=200,
                     n_summaries=expand.n_summaries,
                     n_after_groups=expand.n_after_groups,
@@ -316,8 +301,8 @@ class EbayAdapter:
                 ))
 
             # Merge en mémoire : 1ʳᵉ occurrence d'un item_id fixe
-            # `first_mkt` (l'ordre primary→GB de la boucle garantit
-            # cette sémantique). Les suivantes étendent le set `found`.
+            # `first_mkt` (ordre DE→ES de la boucle). Les suivantes
+            # étendent le set `found`.
             for row in kept:
                 iid = row.get("item_id")
                 if not iid:
@@ -330,12 +315,12 @@ class EbayAdapter:
                     )
 
         # D-22 — fetch HD images via item/{id} sur le client du first_mkt,
-        # puis yield 1 DiscoveredItem par image avec marketplace +
-        # marketplace_found renseignés.
+        # puis yield 1 DiscoveredItem par image.
         for iid, item in merged.items():
             yield from self._yield_listing_images(
                 row=item.row,
-                coin=coin,
+                group=group,
+                resolved_eurio_id=item.row.get("_resolved_eurio_id"),
                 marketplace=item.first_mkt,
                 marketplace_found=tuple(sorted(item.found)),
                 client=item.client,
@@ -384,54 +369,80 @@ class EbayAdapter:
 
     # ── Internals ──────────────────────────────────────────────────────────
 
-    def _is_ambiguous_country_year(self, country: str, year: int) -> bool:
-        """True if more than one 2€ commemo exists for this (country, year).
+    def _resolve_group(self, query: SourceQuery) -> DiscoveryGroup:
+        """Détermine le groupe de découverte d'une SourceQuery.
 
-        When ambiguous, listings whose title doesn't match the theme tokens
-        are dropped (otherwise we'd ingest images of a sibling commemo
-        under the wrong eurio_id label).
+        Accepte soit un ``discovery_group`` explicite, soit un
+        ``target_eurio_id`` (résolu vers *son* groupe — pratique pour
+        re-scrape une pièce précise / debug). Une SourceQuery sans
+        l'un ni l'autre est une erreur de l'orchestrateur.
         """
-        n = self.conn.execute(
-            """
-            SELECT count(*) AS n
-              FROM coins
-             WHERE country = ?
-               AND year = ?
-               AND face_value = 2.0
-               AND is_commemorative = 1
-            """,
-            (country, year),
-        ).fetchone()["n"]
-        return n > 1
+        if query.discovery_group is not None:
+            return query.discovery_group
+        if query.target_eurio_id:
+            coin = load_coin(self.conn, query.target_eurio_id)
+            return DiscoveryGroup(
+                denomination=coin.face_value,
+                country=coin.country,
+                year=coin.year,
+            )
+        raise ValueError(
+            "EbayAdapter.discover requires query.discovery_group "
+            "(or a target_eurio_id to resolve into its group)."
+        )
+
+    def _record_discard(
+        self,
+        record_discarded: "RecordDiscardedFn | None",
+        row: dict,
+        reason: str,
+        marketplace: str,
+    ) -> None:
+        """Persiste un rejet de listing (audit ``discarded_listings``).
+
+        ``target_eurio_id`` est ``None`` : un listing rejeté n'est attribué
+        à aucune pièce (il a échoué accept_listing ou n'a matché aucune
+        commémo du groupe).
+        """
+        if record_discarded is None or not row.get("item_id"):
+            return
+        record_discarded(DiscardedListingRecord(
+            source_ref=f"ebay_listing_{row['item_id']}",
+            target_eurio_id=None,
+            reason=reason,
+            title=row.get("title"),
+            raw_payload={
+                "item_id": row.get("item_id"),
+                "price": row.get("price"),
+                "currency": row.get("currency"),
+                "item_web_url": row.get("item_web_url"),
+            },
+            marketplace=marketplace,
+        ))
 
     def _search_and_expand(
         self,
         client: EbayClient,
         ebay_q: EbayQuery,
         *,
-        ambiguous: bool,
-        eurio_id: str,
-        marketplace: str,
+        limit: int,
     ) -> "SearchExpandResult":
-        """Search + group expansion + theme drop, avec ventilation N0/N1/N2.
+        """Search + expansion getItemsByGroup, avec ventilation N0/N1.
 
-        Retourne un :class:`SearchExpandResult` qui porte la liste finale
-        (post-theme drop) ET les compteurs intermédiaires + les rows
-        explicitement filtrées par theme drop, pour audit.
+        Retourne les listings bruts (post-expansion) + les compteurs du
+        funnel. L'attribution theme-match et accept_listing vivent en
+        aval, dans ``discover()``.
 
-        ``eurio_id`` + ``marketplace`` sont passés à ``title_matches_theme``
-        pour le matching multilingue I2 (cf. ``theme_tokens.py``).
+        Note (bloc 1, 2026-05-05) : pas de `filter_expr` prix/devise — le
+        filtre eBay sur `priceCurrency` crashait le recall (49→0 sur
+        bearded-vulture en probe S3). Prix/devise vivent en post-filter
+        applicatif côté `accept_listing`.
         """
-        # Note (bloc 1, 2026-05-05) : on a drop le `filter_expr` qui contenait
-        # `price:[1..500],priceCurrency:EUR`. Le filtre eBay sur `priceCurrency`
-        # crashait le recall (49→0 mesuré sur bearded-vulture en probe S3).
-        # Les contraintes prix/devise vivent désormais en post-filter
-        # applicatif côté `accept_listing` (filters.py).
         search = client.search(
             ebay_q.q,
             category_ids=ebay_q.category_id,
             aspect_filter=ebay_q.aspect_filter,
-            limit=self.search_limit,
+            limit=limit,
         )
         summaries = search.get("itemSummaries") or []
         n_summaries = len(summaries)
@@ -456,41 +467,27 @@ class EbayAdapter:
             except httpx.HTTPError as exc:
                 logger.warning("[ebay] group %s failed: %s", gid, exc)
 
-        n_after_groups = len(rows)
-
-        # Theme filter applied only when (country, year) has multiple commemos.
-        theme_dropped: list[dict] = []
-        if ambiguous:
-            kept_rows: list[dict] = []
-            for r in rows:
-                if title_matches_theme(
-                    r.get("title") or "",
-                    eurio_id,
-                    marketplace=marketplace,
-                    conn=self.conn,
-                ):
-                    kept_rows.append(r)
-                else:
-                    theme_dropped.append(r)
-            rows = kept_rows
-
         return SearchExpandResult(
             rows=rows,
             n_summaries=n_summaries,
-            n_after_groups=n_after_groups,
-            theme_dropped=theme_dropped,
+            n_after_groups=len(rows),
         )
 
     def _yield_listing_images(
         self,
         *,
         row: dict,
-        coin,
+        group: DiscoveryGroup,
+        resolved_eurio_id: str | None,
         marketplace: str,
         marketplace_found: tuple[str, ...],
         client: EbayClient,
     ) -> Iterable[DiscoveredItem]:
         """Fetch HD images via ``item/{id}`` and yield 1 item per image.
+
+        ``resolved_eurio_id`` est la pièce attribuée au listing par le
+        theme-match (``None`` si verdict ambigu) — il devient le
+        ``target_eurio_id`` de chaque ``DiscoveredItem``.
 
         En mode ``dry_run`` on saute le call ``item/{id}`` pour ne pas
         consommer de quota inutilement (preview cheap) — on yield seulement
@@ -500,7 +497,7 @@ class EbayAdapter:
         """
         item_id = row["item_id"]
         title = row["title"]
-        lot_flag = is_lot_suspected(title)
+        lot_flag = is_lot_suspected(title) or row.get("_group_verdict") == "lot"
 
         # D-22 — call item/{id} to get full additionalImages list at HD.
         urls: list[str] = []
@@ -542,10 +539,10 @@ class EbayAdapter:
             yield DiscoveredItem(
                 source_ref=f"ebay_{item_id}_img{idx}",
                 source_url=row.get("item_web_url"),
-                target_eurio_id=coin.eurio_id,
+                target_eurio_id=resolved_eurio_id,
                 listing_title=title,
-                listing_country=coin.country,
-                listing_year=coin.year,
+                listing_country=group.country,
+                listing_year=group.year,
                 listing_price=row.get("price"),
                 listing_currency=row.get("currency") or "EUR",
                 condition_raw=condition_raw,

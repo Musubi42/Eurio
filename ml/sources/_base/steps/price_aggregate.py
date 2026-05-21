@@ -129,6 +129,12 @@ def run_price_aggregate(
                 raw_payload={"n_raw": q.n_raw, "n_after_outlier": q.sample_size},
             ))
             n_quotes += 1
+
+    # Compteur du run (la colonne QUOTES du tableau run-detail le lit).
+    conn.execute(
+        "UPDATE source_runs SET n_quotes_added = ? WHERE id = ?",
+        (n_quotes, run_id),
+    )
     conn.commit()
 
     logger.info(

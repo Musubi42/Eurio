@@ -1,19 +1,17 @@
 """Build eBay Browse API queries from a canonical eurio_id.
 
 Reads coin metadata from the SQLite ``coins`` table (D-20, bootstrappée
-via ``go-task ml:bootstrap-coins``). Returns the search query string,
-the aspect filter, and the theme keyword tokens used for ambiguity
-resolution.
+via ``go-task ml:bootstrap-coins``). Returns the search query string +
+l'aspect filter eBay.
 
-Largement extrait du legacy ``ml/market/scrape_ebay.py`` (build_search_query,
-_theme_keywords, STOP_WORDS) avec deux changements :
-- la source des métadonnées passe de JSON à SQLite (table ``coins``)
-- on retourne aussi la category eBay pour faciliter le câblage adapter
+La désambiguïsation des commémos-sœurs (même pays/année) ne se fait plus
+sur des tokens de slug : elle vit dans ``title_matches_theme`` (matcher
+multilingue I2 adossé à ``coin_names_i18n``). Le matcher legacy par
+slug EN + aliases FR a été retiré au cutover V2 (2026-05-21).
 """
 
 from __future__ import annotations
 
-import re
 import sqlite3
 from dataclasses import dataclass
 
@@ -112,88 +110,6 @@ NAMES_BY_LANG: dict[str, dict[str, str]] = {
     "nl": ISO2_TO_NAME_NL,
 }
 
-# Stop words dropped when extracting theme tokens from the eurio_id slug.
-# Adding country-specific filler words keeps theme matching crisp.
-STOP_WORDS = {
-    "of", "the", "in", "and", "a", "an", "to", "for", "with", "on",
-    "de", "la", "le", "les", "du", "des", "et", "au", "aux",
-    "anniversary", "years", "since", "birth", "death", "founding",
-    "th", "st", "nd", "rd",
-}
-
-# Country slug tokens that can appear inside an eurio_id slug
-# (eurio_id format: ``<iso2>-<year>-<denom>-<theme...>``). Numista
-# often repeats the country name inside the theme — e.g.
-# ``ad-2017-2eur-100-years-of-the-anthem-of-andorra``. These tokens
-# describe WHERE the coin is from, not WHAT the commemo celebrates,
-# so they don't discriminate sibling commemos within the same
-# (country, year). Dropping them avoids accepting a "Pays des Pyrénées"
-# listing under an "anthem" target just because both titles mention
-# Andorre (V-1 anomaly A4, 2026-05-18).
-COUNTRY_SLUG_TOKENS: set[str] = {
-    "andorra", "austria", "belgium", "bulgaria", "croatia", "cyprus",
-    "estonia", "finland", "france", "germany", "greece", "ireland",
-    "italy", "latvia", "lithuania", "luxembourg", "malta", "monaco",
-    "netherlands", "portugal", "slovakia", "slovenia", "spain",
-    "vatican",
-    # San Marino is hyphenated → its components appear as separate tokens.
-    "san", "marino",
-}
-
-# eurio_id slugs are English; eBay FR titles are French. Without a
-# bilingual matcher, theme tokens like ``anthem`` never match titles
-# like ``"100 ans de l'hymne d'Andorre"`` → 80%+ false reject rate
-# measured V-1 (2026-05-18). Map English theme tokens to a list of
-# French aliases (substring-matched, case-insensitive). Add new
-# entries as we encounter coins where matching fails — keep narrow.
-THEME_TOKEN_FR_ALIASES: dict[str, list[str]] = {
-    # Toponymes / pays (utiles quand le pays apparaît aussi dans le thème)
-    "andorra":   ["andorre"],
-    "germany":   ["allemagne"],
-    "france":    ["france"],
-    "italy":     ["italie"],
-    "spain":     ["espagne"],
-    "belgium":   ["belgique"],
-    "austria":   ["autriche"],
-    "portugal":  ["portugal"],
-    "greece":    ["grèce", "grece"],
-    "ireland":   ["irlande"],
-    "finland":   ["finlande"],
-    "luxembourg": ["luxembourg"],
-    "monaco":    ["monaco"],
-    "vatican":   ["vatican"],
-
-    # Concepts récurrents sur les commémos 2€
-    "anthem":    ["hymne"],
-    "world":     ["monde", "mondiale", "mondial"],
-    "cup":       ["coupe"],
-    "alpine":    ["alpin", "alpine"],
-    "peace":     ["paix"],
-    "treaty":    ["traité", "traite"],
-    "history":   ["histoire", "historique"],
-    "museum":    ["musée", "musee"],
-    "century":   ["siècle", "siecle"],
-    "olympic":   ["olympique"],
-    "olympics":  ["olympiques", "olympique"],
-    "king":      ["roi"],
-    "queen":     ["reine"],
-    "republic":  ["république", "republique"],
-    "constitution": ["constitution"],
-    "independence": ["indépendance", "independance"],
-    "european":  ["européen", "europeen", "européenne", "europeenne"],
-    "europe":    ["europe"],
-    "union":     ["union"],
-    "flag":      ["drapeau"],
-    "national":  ["national", "nationale"],
-    "centenary": ["centenaire"],
-    "bicentenary": ["bicentenaire"],
-    "millennium": ["millénaire", "millenaire"],
-    "founding":  ["fondation"],
-    "death":     ["mort", "décès", "deces"],
-    "birth":     ["naissance"],
-}
-
-
 @dataclass(frozen=True)
 class CoinIdentity:
     """Subset of `coins` columns needed to build an eBay query."""
@@ -210,7 +126,6 @@ class CoinIdentity:
 class EbayQuery:
     q: str                              # search keyword string
     aspect_filter: str                  # eBay aspect filter
-    theme_tokens: list[str]             # keywords for title disambiguation
     category_id: str = CATEGORY_EURO_COINS
 
 
@@ -242,124 +157,117 @@ def load_coin(conn: sqlite3.Connection, eurio_id: str) -> CoinIdentity:
     )
 
 
-def _theme_keywords(eurio_id: str, max_words: int = 4) -> list[str]:
-    """Extract theme tokens from the slug part of an eurio_id.
-
-    eurio_id format: ``<country>-<year>-<denom>-<theme...>``. We drop
-    the first 3 segments (country/year/denom) and filter out stop words
-    and ordinal/year noise (`100th`, stray `1992`).
-    """
-    slug_tokens = eurio_id.split("-")[3:]
-    kept: list[str] = []
-    for tok in slug_tokens:
-        if not tok:
-            continue
-        if tok in STOP_WORDS:
-            continue
-        if tok in COUNTRY_SLUG_TOKENS:
-            continue
-        if re.match(r"^\d+th$", tok) or re.match(r"^\d{3,4}$", tok):
-            continue
-        kept.append(tok)
-        if len(kept) >= max_words:
-            break
-    # Only words ≥ 4 chars are useful for title-matching (avoids "war"
-    # matching "warm" etc.). 3-char tokens stay in `q` but not in the
-    # discriminator list.
-    return [t for t in kept if len(t) >= 4]
+# ── Limite de résultats variable selon la taille du groupe ───────────────
+# eBay Browse `item_summary/search` plafonne `limit` à 200 par appel.
+# On vise ~25 résultats/pièce : un groupe de K coins partage la même
+# requête, donc plus K est grand, plus on veut large pour ne pas noyer
+# une commémo-sœur rare. Au-delà de 200 → pagination (V2).
+SEARCH_LIMIT_MIN = 75
+SEARCH_LIMIT_MAX = 200
+SEARCH_LIMIT_PER_COIN = 25
 
 
-def build_query(coin: CoinIdentity, query_lang: str = "fr") -> EbayQuery:
-    """Build (q, aspect_filter, theme_tokens) for a coin search.
-
-    `query_lang` choisit la table de noms-pays utilisée — il doit
-    correspondre à la langue native du marketplace ciblé (cf. vision.md
-    §P3). Défaut "fr" pour compat avec le code legacy mono-marketplace ;
-    l'adapter multi-mkt (B4) passe la lang explicite.
-
-    On cast a wide net with country + year only — adding full theme
-    keywords crushes recall because eBay titles are short and use
-    different phrasings. The theme tokens are returned separately so
-    the caller can apply a title keyword filter on the response when
-    multiple commemos share the same (country, year).
-    """
-    iso2 = coin.country
-    names = NAMES_BY_LANG.get(query_lang, ISO2_TO_NAME_FR)
-    country_name = names.get(iso2, coin.country_name or iso2)
-    denom_label = "2 euro" if coin.face_value == 2.0 else f"{coin.face_value} euro"
-    q = f"{denom_label} {country_name} {coin.year}".strip()
-    # Note (bloc 1, 2026-05-05) : on a drop le segment `Année:{...}` du
-    # aspect_filter — beaucoup de vendeurs ne remplissent pas l'aspect année,
-    # ce qui crashait le recall (×16-50 sur AD/FR mesurés en probe S3). Le
-    # tagging year vit désormais en post-filter applicatif côté
-    # `accept_listing` (cf. filters.py).
-    aspect_filter = f"categoryId:{CATEGORY_EURO_COINS}"
-    return EbayQuery(
-        q=q,
-        aspect_filter=aspect_filter,
-        theme_tokens=_theme_keywords(coin.eurio_id, max_words=4),
+def search_limit_for_group(n_coins: int) -> int:
+    """Limite de résultats eBay pour un groupe de `n_coins` pièces."""
+    return max(
+        SEARCH_LIMIT_MIN,
+        min(SEARCH_LIMIT_MAX, SEARCH_LIMIT_PER_COIN * max(n_coins, 1)),
     )
 
 
-def _legacy_title_matches_theme(title: str, theme_tokens: list[str]) -> bool:
-    """Legacy matcher : tokens issus du slug EN + aliases FR hand-curated.
+def build_group_query(
+    denomination: float,
+    country: str,
+    year: int,
+    query_lang: str = "fr",
+) -> EbayQuery:
+    """Build (q, aspect_filter) for a (denomination, country, year) group.
 
-    Conservé pour le **fallback compat** quand ``coin_names_i18n`` est
-    vide pour un eurio_id (run avant I1, ou couverture incomplète).
-    Sera **retiré en V2** (cutover) une fois la couverture i18n
-    confirmée > 95 % et le matcher multilingue validé empiriquement.
+    `query_lang` choisit la table de noms-pays utilisée — il doit
+    correspondre à la langue native du marketplace ciblé (cf. vision.md
+    §P3). La requête ratisse large (denom + pays + année) ; l'attribution
+    de chaque listing à une pièce du groupe se fait en aval via
+    ``match_listing_to_group`` (matcher multilingue sur ``coin_names_i18n``).
 
-    Quand ``theme_tokens`` est vide (standard ou commémo unique pour
-    (country, year)), retourne ``True`` permissivement — l'aspect
-    filter seul suffit à épingler le coin.
+    Note (bloc 1, 2026-05-05) : le segment `Année:{...}` de l'aspect_filter
+    a été drop — beaucoup de vendeurs ne remplissent pas l'aspect année, ce
+    qui crashait le recall (×16-50 sur AD/FR en probe S3). Le tagging year
+    vit désormais en post-filter applicatif côté ``accept_listing``.
     """
-    if not theme_tokens:
-        return True
-    low = title.lower()
-    for tok in theme_tokens:
-        if tok in low:
-            return True
-        for alias in THEME_TOKEN_FR_ALIASES.get(tok, ()):
-            if alias in low:
-                return True
-    return False
+    names = NAMES_BY_LANG.get(query_lang, ISO2_TO_NAME_FR)
+    country_name = names.get(country, country)
+    denom_label = "2 euro" if denomination == 2.0 else f"{denomination} euro"
+    q = f"{denom_label} {country_name} {year}".strip()
+    return EbayQuery(q=q, aspect_filter=f"categoryId:{CATEGORY_EURO_COINS}")
 
 
-def title_matches_theme(
+def build_query(coin: CoinIdentity, query_lang: str = "fr") -> EbayQuery:
+    """Build (q, aspect_filter) for the discovery group containing `coin`."""
+    return build_group_query(coin.face_value, coin.country, coin.year, query_lang)
+
+
+def load_group_coins(
+    conn: sqlite3.Connection,
+    denomination: float,
+    country: str,
+    year: int,
+) -> list[CoinIdentity]:
+    """Toutes les commémos d'un groupe (denomination, pays, année).
+
+    Le groupe est l'unité de découverte eBay : une recherche, K pièces.
+    Périmètre identique à la freshness queue — commémos uniquement
+    (``is_commemorative=1``).
+    """
+    rows = conn.execute(
+        """
+        SELECT eurio_id, country, country_name, year, face_value, is_commemorative
+          FROM coins
+         WHERE face_value = ? AND country = ? AND year = ?
+           AND is_commemorative = 1
+         ORDER BY eurio_id
+        """,
+        (denomination, country, year),
+    ).fetchall()
+    return [
+        CoinIdentity(
+            eurio_id=row["eurio_id"],
+            country=row["country"],
+            country_name=row["country_name"],
+            year=int(row["year"]),
+            face_value=float(row["face_value"]),
+            is_commemorative=bool(row["is_commemorative"]),
+        )
+        for row in rows
+    ]
+
+
+def _theme_match_state(
     title: str,
     eurio_id: str,
     *,
-    marketplace: str,
     conn: sqlite3.Connection,
-) -> bool:
-    """Theme-match multilingue conscient du marketplace courant.
+) -> str:
+    """État du theme-match d'un titre seller vs un eurio_id.
 
-    Pour chaque langue active du marketplace (cf.
-    ``MARKETPLACE_ACTIVE_LANGS``), charge le titre Numista localisé
-    et extrait des tokens discriminants (cf. ``theme_tokens``). Match
-    si ≥ 1 token apparaît dans le titre seller normalisé.
+    Renvoie l'un de :
+    - ``"hit"`` : un token discriminant (toutes langues poolées) apparaît
+      dans le titre seller ;
+    - ``"undiscriminable"`` : aucun titre i18n trouvé, OU titres trouvés
+      mais zéro token discriminant (commémo à titre court / standard) —
+      on ne peut pas trancher ;
+    - ``"miss"`` : des tokens discriminants existent, aucun n'apparaît.
 
-    Fallback compat (deprecated, retiré en V2) : si aucun titre i18n
-    n'est dispo pour ``(eurio_id, langs actives)``, retombe sur
-    ``_legacy_title_matches_theme`` avec les tokens issus du slug EN.
-
-    Sémantique permissive :
-    - Si au moins un titre i18n est trouvé MAIS qu'aucun ne produit
-      de tokens (cas standard avec titre court), retourne ``True`` —
-      même comportement que legacy quand ``theme_tokens=[]``.
-    - Si aucun titre i18n n'est trouvé pour aucune lang active,
-      fallback complet sur le matcher legacy.
+    Pool de toutes les langues de ``coin_names_i18n`` (et pas seulement
+    la langue native du marketplace) : couvre le cross-listing et le
+    faux rejet quand la couverture i18n est partielle.
     """
-    from .marketplaces import MARKETPLACE_ACTIVE_LANGS
     from .theme_tokens import extract_tokens, load_i18n_title, normalize
 
-    active_langs = MARKETPLACE_ACTIVE_LANGS.get(marketplace, ["en"])
     title_norm = normalize(title)
-
     any_title_found = False
     any_token_extracted = False
 
-    for lang in active_langs:
+    for lang in NAMES_BY_LANG:
         numista_title = load_i18n_title(conn, eurio_id, lang)
         if numista_title is None:
             continue
@@ -369,15 +277,80 @@ def title_matches_theme(
             any_token_extracted = True
         for tok in tokens:
             if tok in title_norm:
-                return True
+                return "hit"
 
-    if not any_title_found:
-        # Fallback compat : pas de couverture i18n → matcher legacy.
-        return _legacy_title_matches_theme(title, _theme_keywords(eurio_id))
+    if not any_title_found or not any_token_extracted:
+        return "undiscriminable"
+    return "miss"
 
-    if not any_token_extracted:
-        # i18n présent mais tokens vides partout (standard ou titre
-        # trop court). Permissif comme le legacy sur theme_tokens=[].
-        return True
 
-    return False
+def title_matches_theme(
+    title: str,
+    eurio_id: str,
+    *,
+    conn: sqlite3.Connection,
+) -> bool:
+    """Vrai si le titre seller n'est PAS un non-match franc de l'eurio_id.
+
+    Sémantique permissive : ``True`` sur ``"hit"`` et ``"undiscriminable"``
+    (on ne filtre pas tant qu'on ne peut pas trancher), ``False`` seulement
+    sur un vrai ``"miss"``.
+    """
+    return _theme_match_state(title, eurio_id, conn=conn) != "miss"
+
+
+@dataclass(frozen=True)
+class GroupMatch:
+    """Attribution d'un listing aux commémos d'un groupe de découverte.
+
+    - ``matched`` : eurio_ids retenus (ordre catalogue).
+    - ``verdict`` :
+        - ``"single"``  : 1 pièce — attribution nette.
+        - ``"lot"``     : ≥2 pièces touchées — listing multi-pièces.
+        - ``"ambiguous"``: aucun hit franc mais ≥1 pièce indiscriminable —
+          on garde le listing mais sans cible auto (→ review).
+        - ``"no_match"``: toutes les pièces du groupe sont des miss francs
+          — listing hors-sujet, à discarder.
+    """
+
+    matched: tuple[str, ...]
+    verdict: str
+
+    @property
+    def target_eurio_id(self) -> str | None:
+        """Pièce à pré-attribuer au listing (1ʳᵉ du set ; None si ambigu)."""
+        return self.matched[0] if self.matched else None
+
+
+def match_listing_to_group(
+    title: str,
+    group_eurio_ids: list[str],
+    *,
+    conn: sqlite3.Connection,
+) -> GroupMatch:
+    """Route un listing eBay vers une (ou des) commémo(s) de son groupe.
+
+    Un groupe de 1 seule pièce est trivial : la recherche eBay scope déjà
+    le pays/année, donc tout listing retenu EST cette pièce — pas de
+    discrimination de thème nécessaire.
+    """
+    ids = list(group_eurio_ids)
+    if len(ids) == 1:
+        return GroupMatch((ids[0],), "single")
+
+    hits: list[str] = []
+    any_undiscriminable = False
+    for eid in ids:
+        state = _theme_match_state(title, eid, conn=conn)
+        if state == "hit":
+            hits.append(eid)
+        elif state == "undiscriminable":
+            any_undiscriminable = True
+
+    if len(hits) == 1:
+        return GroupMatch((hits[0],), "single")
+    if len(hits) >= 2:
+        return GroupMatch(tuple(hits), "lot")
+    if any_undiscriminable:
+        return GroupMatch(tuple(ids), "ambiguous")
+    return GroupMatch((), "no_match")

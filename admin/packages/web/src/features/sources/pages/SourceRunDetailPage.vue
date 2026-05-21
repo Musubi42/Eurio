@@ -20,6 +20,7 @@ import {
 } from '../composables/useRunBreakdown'
 import type { SourceId } from '../composables/useSourcesApi'
 import MarketplaceBadge from '../components/MarketplaceBadge.vue'
+import RunFunnelPanel from '../components/RunFunnelPanel.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -30,6 +31,7 @@ const runId = computed(() => route.params.run_id as string)
 const data = ref<RunBreakdown | null>(null)
 const loading = ref(true)
 const error = ref<string | null>(null)
+const tab = ref<'breakdown' | 'logs'>('breakdown')
 
 async function load() {
   loading.value = true
@@ -128,6 +130,14 @@ function onRowClick(ev: MouseEvent, eurio_id: string) {
   if ((ev.target as HTMLElement).closest('button, a')) return
   gotoListings(eurio_id)
 }
+
+function tabStyle(t: 'breakdown' | 'logs') {
+  const active = tab.value === t
+  return {
+    background: active ? 'var(--ink)' : 'var(--surface)',
+    color: active ? 'var(--surface)' : 'var(--ink-500)',
+  }
+}
 </script>
 
 <template>
@@ -205,8 +215,38 @@ function onRowClick(ev: MouseEvent, eurio_id: string) {
         </div>
       </header>
 
+      <!-- Onglets : breakdown ↔ logs/entonnoir -->
+      <div
+        class="mb-6 inline-flex overflow-hidden rounded-md border"
+        style="border-color: var(--surface-3);"
+      >
+        <button
+          type="button"
+          class="px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider transition-colors"
+          :style="tabStyle('breakdown')"
+          @click="tab = 'breakdown'"
+        >
+          Breakdown
+        </button>
+        <button
+          type="button"
+          class="border-l px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider transition-colors"
+          style="border-color: var(--surface-3);"
+          :style="tabStyle('logs')"
+          @click="tab = 'logs'"
+        >
+          Logs · entonnoir
+        </button>
+      </div>
+
+      <RunFunnelPanel
+        v-if="tab === 'logs'"
+        :source-id="sourceId"
+        :run-id="runId"
+      />
+
       <!-- Section : ciblés -->
-      <section class="mb-8">
+      <section v-if="tab === 'breakdown'" class="mb-8">
         <h2
           class="mb-3 inline-flex items-center gap-2 font-mono text-[11px] uppercase tracking-wider"
           style="color: var(--indigo-700);"
@@ -361,7 +401,7 @@ function onRowClick(ev: MouseEvent, eurio_id: string) {
       </section>
 
       <!-- Section : découverts -->
-      <section v-if="discovered.length">
+      <section v-if="tab === 'breakdown' && discovered.length">
         <h2
           class="mb-3 inline-flex items-center gap-2 font-mono text-[11px] uppercase tracking-wider"
           style="color: var(--gold-600);"
@@ -455,7 +495,11 @@ function onRowClick(ev: MouseEvent, eurio_id: string) {
       </section>
 
       <!-- Légende -->
-      <p class="mt-6 max-w-3xl font-mono text-[10px] leading-relaxed" style="color: var(--ink-400);">
+      <p
+        v-if="tab === 'breakdown'"
+        class="mt-6 max-w-3xl font-mono text-[10px] leading-relaxed"
+        style="color: var(--ink-400);"
+      >
         <strong style="color: var(--ink-500);">Légende&nbsp;</strong> ·
         <em>List.</em>&nbsp;= source_images cherchés pour cet eurio
         · <em>Crops</em>&nbsp;= crops dans ces listings (somme exacte de Auto + Rev.S + Rev.L + Pend. + Rej.)

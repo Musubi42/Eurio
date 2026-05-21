@@ -26,7 +26,13 @@ from datetime import datetime, timezone
 OUTLIER_RATIO = 4.0
 # En dessous de ce nombre d'annonces, l'échantillon est trop mince pour
 # distinguer un outlier d'une vraie dispersion → on ne nettoie pas.
-MIN_SAMPLES_FOR_OUTLIER = 4
+# À 3, la médiane (élément central) reste robuste à un outlier unique.
+MIN_SAMPLES_FOR_OUTLIER = 3
+# Garde-fou inter-tier : une pièce circulée (TTB/TB) ne vaut pas plus
+# qu'une neuve (UNC). Un tier non-UNC dont le p50 dépasse ce facteur ×
+# le p50 UNC a un échantillon contaminé (annonce gradée/coffret mal
+# taguée, ou mauvaise attribution) → sa quote est supprimée.
+MAX_TIER_RATIO_VS_UNC = 3.0
 
 
 @dataclass(frozen=True)
@@ -156,4 +162,15 @@ def aggregate_priced_listings(
             sample_size=len(cleaned),
             n_raw=len(group),
         ))
+
+    # Garde-fou inter-tier : on supprime un tier circulé dont le p50
+    # dépasse nettement le p50 UNC — son échantillon est contaminé
+    # (un TTB/TB ne vaut pas 3× une pièce neuve).
+    unc = next((q for q in quotes if q.condition == "UNC"), None)
+    if unc is not None and unc.p50:
+        ceiling = MAX_TIER_RATIO_VS_UNC * unc.p50
+        quotes = [
+            q for q in quotes
+            if q.condition == "UNC" or q.p50 is None or q.p50 <= ceiling
+        ]
     return quotes
