@@ -592,6 +592,11 @@ tasks:
     cmds:
       - "{{.VENV}}/python -m scripts.audit_referential {{.CLI_ARGS}}"
 
+  generate-missing-coins:
+    desc: "Harmonisation chunk 2b — génère les commémo 2€ manquantes depuis referential_catalog + corrige le cas BE 2017. Backup auto, idempotent."
+    cmds:
+      - "{{.VENV}}/python -m scripts.generate_missing_coins {{.CLI_ARGS}}"
+
   # ---------- Storage migration (fs → MinIO) ----------
   # Spec: docs/harmonisation-images/chunk-3-migration-script.md
   migrate-inventory:

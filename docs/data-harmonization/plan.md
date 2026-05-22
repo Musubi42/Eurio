@@ -60,21 +60,32 @@ re-scrape Numista. 625 types Numista vs 466 pièces `coins`. 132 groupes
 (pays, année) en écart, tous dans le sens Numista > coins. 0 orphelin,
 0 pièce sans `numista_id`. **BE 2017 = 1 cas parmi 159** (Numista 2, coins 1).
 
-### 2b — Génération des pièces manquantes + corrections d'identité (à venir)
+### 2b — Génération des pièces manquantes + cas BE 2017 ✅ (livré 2026-05-23)
 
-- Règle de dérivation du slug `eurio_id` (réutiliser `compute_eurio_id` /
-  `slugify` de `referential/eurio_referential.py`).
-- Générer/ajouter les 159 commémo manquantes depuis `referential_catalog`.
-- Corriger les liens erronés dans les groupes en `count_mismatch` — dont
-  **BE 2017** : la pièce `…-ghent-university` porte le `numista_id` 108778
-  (= Liège) ; corriger son lien (→ 124813 Ghent) + créer `…-of-liege` (108778).
-- Journal `eurio_id_migrations` exercé pour la 1re fois.
-- Retrait de `batch_match_numista.py` (matcher flou) une fois `coins` aligné.
+- [x] `scripts/generate_missing_coins.py` (+ go-task) : génère une pièce
+      canonique pour chaque type Numista 2 € commémo absent de `coins`
+      (slug via `compute_eurio_id` / `slugify`), images dans
+      `coin_canonical_images`. Backup auto, idempotent.
+- [x] **148 commémo générées** (sur 159). Les **11 restantes** sont des
+      *doublons de variante* : Numista a 2 type-ids pour une même pièce déjà
+      présente (ex. 131881/131882 Saint-Jacques-de-Compostelle) → détectés
+      en collision, **non générés** (relève du référentiel V2 Type/Variant).
+- [x] **Cas BE 2017 réglé** : la pièce `…-ghent-university` (numista 108778 =
+      Liège) renommée en `…-of-the-university-of-liege` (ses tables filles
+      re-pointées) ; le type Ghent (124813) créé par la génération en
+      `…-of-the-university-of-ghent`. 3 lignes au journal `eurio_id_migrations`
+      (retire + 2 split, `needs_rematch`). `foreign_key_check` CLEAN.
+- [x] Audit post-génération : `count_mismatch` 132 → **11** (les variantes).
+      Zéro régression (101 tests verts, 1 échec pré-existant).
 
-> La génération **complète** depuis Numista (notamment l'éclatement par
-> millésime des pièces de circulation — 1 type Numista = N années) est gated
-> sur un scrape de l'endpoint Numista « issues » : chantier distinct, hors
-> de ce plan d'harmonisation.
+**Reste pour clore le worklist BE 2017** (kickoff) : re-juger les ~28 entrées
+2017 du gold du bench (`needs_rematch`), re-pointer `coin_aliases`, re-bencher.
+Et : retrait de `batch_match_numista.py` (matcher flou désormais inutile).
+
+> La génération **complète** depuis Numista (éclatement par millésime des
+> pièces de circulation — 1 type Numista = N années ; doublons de variante)
+> est gated sur un scrape de l'endpoint Numista « issues » et le référentiel
+> V2 : chantiers distincts, hors de ce plan d'harmonisation.
 
 ## Chunk 3 — Couche cycle de vie
 
