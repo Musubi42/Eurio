@@ -267,15 +267,9 @@ tasks:
     cmds:
       - "{{.VENV}}/python referential/enrich_from_numista.py --dry-run"
 
-  batch-match:
-    desc: "Batch-match coin_catalog.json 2EUR types to referential (0 API calls)"
-    cmds:
-      - "{{.VENV}}/python referential/batch_match_numista.py --review"
-
-  batch-match-dry:
-    desc: "Preview batch matching without writing"
-    cmds:
-      - "{{.VENV}}/python referential/batch_match_numista.py --dry-run --review"
+  # batch-match / batch-match-dry retirés 2026-05-23 : la génération directe
+  # referential_catalog → coins (chunk 2 harmonisation) a rendu le matcher
+  # flou inutile. Cf. docs/data-harmonization/.
 
   batch-images:
     desc: "Fetch/resize/upload images for all coins with numista_id but no images"

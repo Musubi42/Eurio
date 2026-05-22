@@ -445,9 +445,10 @@ def discover_existing_mappings(
 ) -> list[dict[str, Any]]:
     """Build a mapping list from numista_ids already present in the referential.
 
-    Use this with `--scan-referential` to fetch images for coins that have been
-    matched to a Numista type by previous runs of `batch_match_numista.py`,
-    without needing a hardcoded `NUMISTA_MAPPING` entry.
+    Use this with `--scan-referential` to fetch images for coins liées à un
+    type Numista (aujourd'hui via la génération directe `referential_catalog`
+    → `coins`, cf. docs/data-harmonization/), sans table `NUMISTA_MAPPING`
+    en dur.
     """
     seen: set[int] = set()
     out: list[dict[str, Any]] = []
