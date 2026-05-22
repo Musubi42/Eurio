@@ -294,14 +294,24 @@ def test_is_lot_suspected(title, expected):
     assert is_lot_suspected(title) is expected
 
 
-def test_accept_listing_rejects_proof_and_silver():
-    row = listing_row(_summary("123", "2 euro France 2015 PROOF", price=12.0))
-    ok, reason = accept_listing(row, face_value=2.0)
-    assert not ok and reason == "noise_title"
-
+def test_accept_listing_rejects_precious_metal():
     row = listing_row(_summary("124", "2 euro France 2015 argent", price=80.0))
     ok, reason = accept_listing(row, face_value=2.0)
     assert not ok and reason == "noise_title"
+
+
+def test_accept_listing_keeps_proof_and_color():
+    """C1b — une finition (proof/BE, colorisée) n'est pas du bruit : la
+    pièce est la même, on la garde. Avant C1b ces titres étaient rejetés
+    en ``noise_title`` (14/14 des faux rejets du bench gold)."""
+    for title in (
+        "2 euro Belgien 2018 ESRO-2B Satellit in PP / Proof",
+        "BELGIEN 2 EURO 2018 BE 393 Studentenrevolte",
+        "2 euro 2019 Belgien Peter Bruegel Color ST",
+    ):
+        row = listing_row(_summary("c1b", title, price=12.0))
+        ok, reason = accept_listing(row, face_value=2.0)
+        assert ok, f"devrait être accepté : {title!r} → {reason}"
 
 
 def test_accept_listing_rejects_below_face_and_above_extreme():
@@ -455,20 +465,21 @@ def test_discover_propagates_lot_flag_to_all_images(store_with_seeded_coin):
     assert all(it.is_lot_suspected is True for it in items)
 
 
-def test_discover_filters_proof_listings_before_yielding(store_with_seeded_coin):
-    """Listing rejeté par accept_listing (proof) → pas de item/{id} call."""
-    proof = _summary("PROOF_1", "2 euro France 2015 PROOF Paix", price=15.0)
+def test_discover_filters_noise_listings_before_yielding(store_with_seeded_coin):
+    """Listing rejeté par accept_listing (métal précieux) → pas de
+    item/{id} call. NB : un proof n'est plus du bruit depuis C1b."""
+    noise = _summary("NOISE_1", "2 euro France 2015 argent Paix", price=80.0)
     good = _summary("GOOD_1", "2 euro France 2015 Paix", price=5.0)
     adapter, client = _make_adapter(
         store_with_seeded_coin,
-        search=[{"itemSummaries": [proof, good]}],
+        search=[{"itemSummaries": [noise, good]}],
         items={"GOOD_1": _detail("GOOD_1", additional=[])},
     )
     items = list(adapter.discover(SourceQuery(
         source_id="ebay", target_eurio_id="fr-2015-2eur-paix",
     )))
     assert len(items) == 1
-    # 1 search + 1 item/{id} (only for GOOD_1) — proof skipped.
+    # 1 search + 1 item/{id} (only for GOOD_1) — noise skipped.
     assert sum(1 for c in client.calls if c[0] == "get_item") == 1
 
 
