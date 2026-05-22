@@ -43,7 +43,12 @@ Bench fidèle (`accept_listing` + theme-matcher) sur le gold gelé v1
 | Baseline | 34,3 % | 65,7 % | 65,7 % | 0 % | 2,4 % |
 | C1 | 14,1 % | 85,9 % | 65,7 % | 20,2 % | 42,4 % |
 | C2a-1 | 14,1 % | 85,9 % | **68,7 %** | 17,2 % | 42,4 % |
-| **C2a-2** | _cible_ | _cible_ | **↑ à mesurer** | ↓ | = |
+| **C2a-2** | 14,1 % | 85,9 % | **73,7 %** | 12,1 % | 42,4 % |
+
+C2a-2 livré : 43 alias `source='llm'` pour BE 2017-2021, 0 collision.
+Auto-attribution **+5,0 pts** (68→73 ; 5 listings review→auto), 0 auto
+erronée (précision 93,2→93,6 %). Faux rejet et junk false-keep inchangés
+comme attendu.
 
 **Étoile polaire = taux d'auto-attribution.** C2a-2 doit le faire
 monter (faire matcher « Studentenrevolte » & co → review → auto).

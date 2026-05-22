@@ -11,7 +11,7 @@
 | P0 — socle de mesure (gold bench + replay harness + LLM-juge) | ✅ livré (baseline mesurée) |
 | C1 — couche 1 (`no_match` → `ambiguous`) | ✅ livré (faux rejet 34→14 %) |
 | C2a-1 — `coin_aliases` + mining acronymes | ✅ livré (auto-attrib 66→69 %) |
-| C2a-2 — alias colloquiaux (LLM ancré) | ⏳ kickoff dédié : `c2a-2-llm-aliases-kickoff.md` |
+| C2a-2 — alias colloquiaux (LLM ancré) | ✅ livré (auto-attrib 69→74 %) |
 | C2b — scoreur sémantique LaBSE + fusion | ⏳ |
 | C2c — matcher LLM (conditionnel) | ⏳ |
 | C3 — calibration seuils + runbook audit | ⏳ |
@@ -28,9 +28,13 @@ Bench fidèle (`accept_listing` + theme-matcher) sur le gold gelé v1
 | Baseline | 34,3 % | 65,7 % | 65,7 % | 0 % | 2,4 % | 92,9 % |
 | C1 | 14,1 % | 85,9 % | 65,7 % | 20,2 % | 42,4 % | 92,9 % |
 | C2a-1 | 14,1 % | 85,9 % | **68,7 %** | 17,2 % | 42,4 % | 93,2 % |
+| C2a-2 | 14,1 % | 85,9 % | **73,7 %** | 12,1 % | 42,4 % | 93,6 % |
 
 > Reproduire un point : `go-task ml:bench:theme-match`. A/B d'un
 > changement de code : `git stash` → replay → `git stash pop` → replay.
+> A/B d'un changement de donnée (C2a-2) : replay → `go-task
+> ml:aliases:ingest` → replay (ou `DELETE FROM coin_aliases WHERE
+> source='llm'` pour revenir en arrière).
 
 ---
 
@@ -214,3 +218,58 @@ ne crée aucun hit, il ne fait que ne plus jeter.
   pas plus. Le gros du vocab de marché (« Studentenrevolte », « Iris »,
   « BLEU »…) n'est PAS en parenthèses → ne sera couvert que par C2a-2
   (alias colloquiaux générés par LLM).
+
+---
+
+## C2a-2 — alias colloquiaux (LLM ancré)
+
+### Changements
+
+- `scripts/llm_coin_aliases.py` — workflow export/ingest sur le pattern
+  du LLM-juge du bench :
+  - `export-batch` (go-task `ml:aliases:export-batch`) sort, pour un
+    périmètre (défaut BE 2017-2021), un JSONL par coin : `eurio_id`,
+    `theme`, 6 titres i18n, et **les sœurs du groupe** comme contexte
+    anti-collision.
+  - Claude Code lit le batch et écrit `aliases_llm.jsonl` (vocab de
+    marché / surnoms réellement employés par les vendeurs, toutes
+    langues).
+  - `ingest` (go-task `ml:aliases:ingest`) ré-ingère dans `coin_aliases`
+    avec `source='llm'`, idempotent. **Garde-fou anti-collision** : un
+    candidat est rejeté s'il matche en limite de mot un titre i18n ou un
+    alias d'une sœur du groupe (loggué).
+- Artefacts dans `ml/state/discovery_bench/` (cohésion du chantier) :
+  `aliases_batch.jsonl`, `aliases_llm.jsonl`.
+- **Le matcher n'est PAS touché** — il poole déjà `coin_aliases` (C2a-1).
+- Tests : `tests/test_llm_coin_aliases.py` (12 — `collides`, limite de
+  mot vs sous-chaîne, alias LLM → hit du matcher).
+
+### 📊 C2a-2 — effet sur le bench (A/B replay avant/après ingest)
+
+| Métrique | C2a-1 | C2a-2 |
+|---|---|---|
+| Auto-attribution ★ | 68,7 % | **73,7 %** (+5,0 ; 5 listings review→auto) |
+| Review | 17,2 % | 12,1 % |
+| Faux rejet | 14,1 % | 14,1 % (inchangé — attendu) |
+| Précision | 93,2 % | 93,6 % (0 auto erronée) |
+| Junk false-keep | 42,4 % | 42,4 % (inchangé — chunk séparé) |
+
+43 alias `source='llm'` ingérés pour les 9 coins BE 2017-2021, **0
+collision** rejetée sur le périmètre réel.
+
+### Découvertes / contraintes
+
+- **`confidence` est métadonnée pure, pas un poids.** Le matcher
+  (`load_aliases`) charge tous les alias quelle que soit la confidence —
+  un `low` (`bleu`, `iris`, `quint`) tape comme un `high`. Choix assumé,
+  aligné « rester large » : un alias trop large ne *perd pas* de donnée
+  (au pire mal-attribue → garde-fou anti-collision + verdict `lot`/
+  `ambiguous` → review). `confidence` reste honnête pour l'audit et la
+  future calibration (C3) ; on garde le bouton sans l'actionner.
+- **2017 Ghent : alias générés sans effet bench.** Groupe mono-pièce
+  (`len(ids)==1 → single`), le theme-check est court-circuité. Alias
+  `ghent`/`gent`/`gand`/`gante` ingérés pour cohérence catalogue (cf.
+  l'incohérence slug Ghent vs i18n Liège), gain mesuré nul attendu.
+- **Effet ciblé propre** : C2a-2 ne bouge que l'auto-attribution
+  (review→auto). Faux rejet et junk false-keep strictement inchangés,
+  conformément à la séparation des chunks.
