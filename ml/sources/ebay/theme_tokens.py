@@ -335,3 +335,25 @@ def load_i18n_title(
         return row["title"]
     except (TypeError, IndexError):
         return row[0]
+
+
+def load_aliases(conn: sqlite3.Connection, eurio_id: str) -> set[str]:
+    """Alias de thème d'une commémo — acronymes, termes de marché, surnoms.
+
+    Toutes langues poolées (le matcher poole déjà toutes les langues),
+    déjà normalisés (lowercase, sans accents). Table ``coin_aliases``
+    (chunk C2a). Set vide si la table n'existe pas (DB antérieure).
+    """
+    try:
+        rows = conn.execute(
+            "SELECT alias FROM coin_aliases WHERE eurio_id=?", (eurio_id,)
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return set()
+    out: set[str] = set()
+    for row in rows:
+        try:
+            out.add(row["alias"])
+        except (TypeError, IndexError):
+            out.add(row[0])
+    return out
