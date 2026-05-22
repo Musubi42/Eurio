@@ -292,7 +292,12 @@ post-filtre `theme_mismatch` jetait les listings de la sœur non ciblée
 
 ## Reste à faire
 
-1. **F3 → F4** — front (run listings, coin-detail thumbs).
+1. **F3** — front run listings : discovery searches recadrées maille
+   groupe (label de groupe + tag marketplace sur la row, `browse_url`
+   d'appel Browse persisté et copiable). *F4 (badge marketplace par
+   thumb coin-detail) abandonné — routing uniforme `{DE,ES}`, overlap
+   mesuré à 1,6 % → le badge n'a plus de valeur. Cf. `front-ux.md`
+   Surface 4.*
 2. **Smoke run V2** — discovery réel sur 10 eurio_ids, recall vs baseline.
 3. **Pipeline prix & état** (plan C0-C4) :
    - **C0** routing `{DE,ES}` — ✅ livré.
