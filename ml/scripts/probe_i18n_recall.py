@@ -39,7 +39,7 @@ from sources.ebay.queries import (  # noqa: E402
 )
 from sources.ebay.theme_tokens import extract_tokens, load_i18n_title  # noqa: E402
 
-DB_PATH = ROOT / "state" / "training.db"
+DB_PATH = ROOT / "state" / "eurio.db"
 
 
 def main() -> None:

@@ -101,7 +101,7 @@ def generate_for_iteration(
     Callers that want a forced rebuild should clear the directory first
     (the regenerate endpoint does that).
     """
-    store = store or Store(ML_DIR / "state" / "training.db")
+    store = store or Store(ML_DIR / "state" / "eurio.db")
     it = store.get_iteration(iteration_id)
     if it is None:
         raise ValueError(f"Iteration {iteration_id!r} not found")
@@ -233,7 +233,7 @@ def clear_for_iteration(*, iteration_id: str, store: Store | None = None) -> int
     Returns the number of per-coin snapshots removed. Used by the regenerate
     endpoint to force a clean rebuild.
     """
-    store = store or Store(ML_DIR / "state" / "training.db")
+    store = store or Store(ML_DIR / "state" / "eurio.db")
     it = store.get_iteration(iteration_id)
     if it is None:
         raise ValueError(f"Iteration {iteration_id!r} not found")
@@ -262,7 +262,7 @@ def list_for_iteration(
     store: Store | None = None,
 ) -> list[dict]:
     """Return per-coin lists of augmentation paths (relative to ``ml/``)."""
-    store = store or Store(ML_DIR / "state" / "training.db")
+    store = store or Store(ML_DIR / "state" / "eurio.db")
     it = store.get_iteration(iteration_id)
     if it is None:
         raise ValueError(f"Iteration {iteration_id!r} not found")

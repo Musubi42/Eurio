@@ -18,7 +18,7 @@
 #
 # What does NOT get synced:
 #   ml/cache/                     ← transient augmentation outputs (vision §P5)
-#   ml/state/training.db*         ← per-machine, never shared
+#   ml/state/eurio.db*         ← per-machine, never shared
 #   ml/state/sources_runs.json    ← per-machine state (sources-refacto D-06)
 #   anything else under ml/state/
 #

@@ -313,7 +313,7 @@ def main() -> int:
         marketplaces = [m.strip() for m in args.limit_mkt.split(",") if m.strip()]
 
     token = get_app_token(client_id, client_secret)
-    store = Store(db_path=ROOT / "state" / "training.db")
+    store = Store(db_path=ROOT / "state" / "eurio.db")
     conn = store._connection()  # noqa: SLF001
 
     print(f"# Probe langues : {len(DEFAULT_SAMPLE)} eurio × {len(marketplaces)} mkts")

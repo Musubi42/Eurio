@@ -6,7 +6,7 @@ centre-crop), computes the embedding, matches it against the centroids persisted
 in ``ml/output/embeddings_v1.json``, and aggregates R@1/R@3/R@5, per-zone
 metrics, per-coin metrics, a confusion matrix and the top-N confusions.
 
-The resulting row is persisted in ``benchmark_runs`` (shared training.db) and
+The resulting row is persisted in ``benchmark_runs`` (shared eurio.db) and
 a full JSON report is written under ``ml/reports/``.
 
 Strict hold-out: the photos consumed here MUST NOT appear in any training set —
@@ -47,7 +47,7 @@ DEFAULT_REAL_PHOTOS = ML_DIR / "data" / "real_photos"
 DEFAULT_REPORTS_DIR = ML_DIR / "reports"
 DEFAULT_CENTROIDS = ML_DIR / "output" / "embeddings_v1.json"
 DEFAULT_DETECTOR = ML_DIR / "output" / "detection" / "coin_detector" / "weights" / "best.pt"
-STATE_DB = ML_DIR / "state" / "training.db"
+STATE_DB = ML_DIR / "state" / "eurio.db"
 
 
 # ─── Centroids ──────────────────────────────────────────────────────────────
@@ -392,7 +392,7 @@ def run_benchmark(args: argparse.Namespace) -> int:
         r = store.get_recipe(args.recipe_id)
         if r is None:
             logger.warning(
-                "Recipe %r not found in training.db — proceeding without link",
+                "Recipe %r not found in eurio.db — proceeding without link",
                 args.recipe_id,
             )
         else:

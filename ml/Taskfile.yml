@@ -81,7 +81,7 @@ tasks:
 
   # ---------- Foundation (DINOv2 anchors for auto-validation) ----------
   dino-anchors:build:
-    desc: "Build DINOv2 obverse anchor bank for the auto-validation pipeline (default scope: 2eur_commemo). Reads coins from training.db and ml/datasets/<numista>/obverse.jpg. Writes ml/state/foundation_anchors_<kind>.npz. Usage: go-task ml:dino-anchors:build [-- --force] [-- --kind 2eur_commemo]"
+    desc: "Build DINOv2 obverse anchor bank for the auto-validation pipeline (default scope: 2eur_commemo). Reads coins from eurio.db and ml/datasets/<numista>/obverse.jpg. Writes ml/state/foundation_anchors_<kind>.npz. Usage: go-task ml:dino-anchors:build [-- --force] [-- --kind 2eur_commemo]"
     cmds:
       - "{{.VENV}}/python -m scripts.build_dino_anchors -v {{.CLI_ARGS}}"
 

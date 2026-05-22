@@ -65,7 +65,7 @@ app.add_middleware(
 
 _env: dict[str, str] = {}
 _supabase: SupabaseClient | None = None
-_store = Store(STATE_DIR / "training.db")
+_store = Store(STATE_DIR / "eurio.db")
 _runner = TrainingRunner(_store)
 
 # Wire augmentation routes to the shared store + a lazy supabase fetcher.

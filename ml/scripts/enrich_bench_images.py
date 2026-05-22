@@ -35,7 +35,7 @@ sys.path.insert(0, str(ML_DIR))
 from scripts.bench_theme_match import GOLD_PATH, _norm_listing_id  # noqa: E402
 from state import Store  # noqa: E402
 
-DB_PATH = ML_DIR / "state" / "training.db"
+DB_PATH = ML_DIR / "state" / "eurio.db"
 IMAGES_PATH = ML_DIR / "state" / "discovery_bench" / "gold_images.jsonl"
 
 

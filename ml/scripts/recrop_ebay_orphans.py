@@ -76,7 +76,7 @@ def main() -> int:
                     help="skip orphan crop file deletion")
     args = ap.parse_args()
 
-    db_path = _ML_DIR / "state" / "training.db"
+    db_path = _ML_DIR / "state" / "eurio.db"
     if not db_path.is_file():
         print(f"ERROR: DB not found at {db_path}", file=sys.stderr)
         return 1

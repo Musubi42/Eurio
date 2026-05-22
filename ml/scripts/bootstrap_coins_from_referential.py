@@ -34,7 +34,7 @@ from state.store import Store  # noqa: E402
 logger = logging.getLogger("bootstrap_coins")
 
 REFERENTIAL_PATH = ROOT / "datasets" / "eurio_referential.json"
-DEFAULT_DB = ROOT / "state" / "training.db"
+DEFAULT_DB = ROOT / "state" / "eurio.db"
 
 
 def _row_from_entry(entry: dict) -> tuple:
@@ -106,7 +106,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--db",
         type=Path,
         default=DEFAULT_DB,
-        help="Chemin DB alternatif (défaut: ml/state/training.db).",
+        help="Chemin DB alternatif (défaut: ml/state/eurio.db).",
     )
     ap.add_argument(
         "--json",

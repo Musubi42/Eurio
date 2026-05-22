@@ -29,7 +29,7 @@ from foundation.anchors import (  # noqa: E402
 )
 from state import Store  # noqa: E402
 
-DB_PATH = ML_DIR / "state" / "training.db"
+DB_PATH = ML_DIR / "state" / "eurio.db"
 
 
 def _build_dispatcher(kind: str, store: Store, force: bool):
@@ -59,7 +59,7 @@ def main() -> int:
     parser.add_argument(
         "--db",
         default=str(DB_PATH),
-        help="Path to the training SQLite DB (default: ml/state/training.db).",
+        help="Path to the training SQLite DB (default: ml/state/eurio.db).",
     )
     parser.add_argument("--verbose", "-v", action="store_true")
     args = parser.parse_args()

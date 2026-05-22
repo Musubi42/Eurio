@@ -248,7 +248,7 @@ def build_argparser() -> argparse.ArgumentParser:
         "--recipe",
         type=str,
         default=None,
-        help="Id or name of a recipe stored in state/training.db. "
+        help="Id or name of a recipe stored in state/eurio.db. "
              "When set, --zone is ignored.",
     )
     p.add_argument(
@@ -301,10 +301,10 @@ def main(argv: Iterable[str] | None = None) -> int:
         sb.close()
 
     if args.recipe:
-        store = Store(ML_DIR / "state" / "training.db")
+        store = Store(ML_DIR / "state" / "eurio.db")
         row = store.get_recipe(args.recipe)
         if row is None:
-            raise SystemExit(f"Recipe {args.recipe!r} not found in state/training.db")
+            raise SystemExit(f"Recipe {args.recipe!r} not found in state/eurio.db")
         recipe = row.config
         zone = row.zone or (args.zone or resolved_zone)
         logger.info(

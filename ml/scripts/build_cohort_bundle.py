@@ -44,7 +44,7 @@ from typing import Any
 
 ML_DIR = Path(__file__).resolve().parent.parent
 REPO_ROOT = ML_DIR.parent
-STATE_DB = ML_DIR / "state" / "training.db"
+STATE_DB = ML_DIR / "state" / "eurio.db"
 LAB_ITERATIONS_DIR = ML_DIR / "lab" / "iterations"
 PROD_CURRENT = ML_DIR / "prod" / "current"
 PROD_SNAPSHOT_PATH = (

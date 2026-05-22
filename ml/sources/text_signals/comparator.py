@@ -11,7 +11,7 @@ et retourne un verdict typé :
 
 Pas de décision pipeline ici (chunk 6.c). Pas de DB I/O dans le compareur
 lui-même — la fonction est pure et testable. ``load_target_identity`` est
-le helper DB qui lit la table ``coins`` du training.db.
+le helper DB qui lit la table ``coins`` du eurio.db.
 
 Normalisation des pays : l'extracteur produit les ISO2 en majuscules
 (``"AD"``, ``"FR"``) alors que la table ``coins`` les stocke également en

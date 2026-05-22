@@ -125,7 +125,7 @@ def _resolve_recipe(id_or_name: str) -> dict:
     """
     from state import Store
 
-    store = Store(ML_DIR / "state" / "training.db")
+    store = Store(ML_DIR / "state" / "eurio.db")
     row = store.get_recipe(id_or_name)
     if row is None:
         raise SystemExit(f"aug_recipe {id_or_name!r} introuvable en SQLite")
@@ -1001,7 +1001,7 @@ def main():
         "--aug-recipe",
         type=str,
         default=None,
-        help="Optional: id or name of an augmentation recipe stored in state/training.db. "
+        help="Optional: id or name of an augmentation recipe stored in state/eurio.db. "
              "When set, the pipeline runs in addition to legacy torchvision transforms.",
     )
     parser.add_argument(

@@ -30,7 +30,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 MODEL = "claude-opus-4-7"
 RESULTS = ROOT / "state" / "i18n_llm_results.jsonl"
-DB_PATH = ROOT / "state" / "training.db"
+DB_PATH = ROOT / "state" / "eurio.db"
 
 VALID_LANGS = {"de", "it", "es", "nl"}
 VALID_CONFIDENCE = {"assisted", "uncertain"}

@@ -44,7 +44,7 @@ PROD_DIR = ML_DIR / "prod"
 PROD_CURRENT = PROD_DIR / "current"
 PROD_ARCHIVE = PROD_DIR / "archive"
 PROD_LOCK = PROD_DIR / ".promote.lock"
-STATE_DB = ML_DIR / "state" / "training.db"
+STATE_DB = ML_DIR / "state" / "eurio.db"
 VENV_PYTHON = str(ML_DIR / ".venv" / "bin" / "python")
 
 VALID_VERDICTS = {"baseline", "better"}

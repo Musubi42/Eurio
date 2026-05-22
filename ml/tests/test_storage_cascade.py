@@ -2,7 +2,7 @@
 
 Spec: docs/harmonisation-images/chunk-9-cascade-sync.md.
 
-We isolate from a real MinIO and a real training.db. The DB is a tmp
+We isolate from a real MinIO and a real eurio.db. The DB is a tmp
 SQLite with the minimal schema needed (image_assets, source_images +
 storage_status column).
 """
@@ -48,7 +48,7 @@ CREATE TABLE image_assets (
 
 @pytest.fixture
 def tmp_db(tmp_path, monkeypatch):
-    db = tmp_path / "training.db"
+    db = tmp_path / "eurio.db"
     conn = sqlite3.connect(str(db))
     conn.executescript(_MIN_SCHEMA)
     conn.executemany(
@@ -68,7 +68,7 @@ def tmp_db(tmp_path, monkeypatch):
     conn.commit()
     conn.close()
 
-    monkeypatch.setenv("EURIO_TRAINING_DB", str(db))
+    monkeypatch.setenv("EURIO_DB", str(db))
     yield db
 
 
@@ -99,7 +99,7 @@ def test_mark_missing_no_matching_row_returns_zero(tmp_db):
 
 
 def test_mark_missing_swallows_db_errors(tmp_path, monkeypatch):
-    monkeypatch.setenv("EURIO_TRAINING_DB", str(tmp_path / "absent.db"))
+    monkeypatch.setenv("EURIO_DB", str(tmp_path / "absent.db"))
     # No DB file → should return 0 and not raise.
     assert cascade.mark_missing_in_storage("enrichment-crops", "anything") == 0
 

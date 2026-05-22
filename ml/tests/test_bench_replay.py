@@ -1,6 +1,6 @@
 """Tests du replay structuré du bench theme-matcher (studio bench, chunk 1).
 
-`replay_bench` lit le gold gelé + le `training.db` local. Les deux sont
+`replay_bench` lit le gold gelé + le `eurio.db` local. Les deux sont
 des artefacts locaux (le gold est committé, la DB non) → test
 d'intégration *skippé* si l'un manque, plutôt que de fabriquer un faux
 gold (le gold EST la référence — on veut tester dessus).
@@ -13,7 +13,7 @@ import pytest
 from scripts.bench_theme_match import DB_PATH, GOLD_PATH, replay_bench
 from state import Store
 
-_REASON = "gold gelé ou training.db absent (artefacts locaux)"
+_REASON = "gold gelé ou eurio.db absent (artefacts locaux)"
 pytestmark = pytest.mark.skipif(
     not GOLD_PATH.exists() or not DB_PATH.exists(), reason=_REASON
 )
