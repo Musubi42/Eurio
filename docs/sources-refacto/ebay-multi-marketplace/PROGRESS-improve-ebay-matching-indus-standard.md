@@ -11,10 +11,26 @@
 | P0 — socle de mesure (gold bench + replay harness + LLM-juge) | ✅ livré (baseline mesurée) |
 | C1 — couche 1 (`no_match` → `ambiguous`) | ✅ livré (faux rejet 34→14 %) |
 | C2a-1 — `coin_aliases` + mining acronymes | ✅ livré (auto-attrib 66→69 %) |
-| C2a-2 — alias colloquiaux (LLM ancré) | ⏳ |
+| C2a-2 — alias colloquiaux (LLM ancré) | ⏳ kickoff dédié : `c2a-2-llm-aliases-kickoff.md` |
 | C2b — scoreur sémantique LaBSE + fusion | ⏳ |
 | C2c — matcher LLM (conditionnel) | ⏳ |
 | C3 — calibration seuils + runbook audit | ⏳ |
+
+## 📊 Tableau de bord — évolution du bench
+
+Bench fidèle (`accept_listing` + theme-matcher) sur le gold gelé v1
+(196 listings réels, run `b6bede99`, BE 2017-2021).
+**Étoile polaire = taux d'auto-attribution.** Une ligne par chunk livré
+— ne jamais écraser, on veut voir l'évolution.
+
+| Étape | Faux rejet | Recall | **Auto-attribution ★** | Review | Junk false-keep | Précision |
+|---|---|---|---|---|---|---|
+| Baseline | 34,3 % | 65,7 % | 65,7 % | 0 % | 2,4 % | 92,9 % |
+| C1 | 14,1 % | 85,9 % | 65,7 % | 20,2 % | 42,4 % | 92,9 % |
+| C2a-1 | 14,1 % | 85,9 % | **68,7 %** | 17,2 % | 42,4 % | 93,2 % |
+
+> Reproduire un point : `go-task ml:bench:theme-match`. A/B d'un
+> changement de code : `git stash` → replay → `git stash pop` → replay.
 
 ---
 

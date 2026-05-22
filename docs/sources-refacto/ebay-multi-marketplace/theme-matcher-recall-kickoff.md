@@ -237,14 +237,18 @@ Idéalement, à chaque scrape réel, snapshotter les `itemSummaries` bruts
 
 ## Ordre de livraison proposé
 
-| Chunk | Contenu | Dépend de |
-|---|---|---|
-| **P0** | Gold benchmark (I1) + replay harness (I2) + LLM-juge (I3) | — |
-| **C1** | Couche 1 — `no_match` → `ambiguous` | P0 (pour mesurer l'effet) |
-| **C2a** | Couche 2a — `coin_aliases` + mining + matcher enrichi | P0, C1 |
-| **C2b** | Couche 2b — scoreur LaBSE + fusion RRF + marge top-2 | P0, C2a |
-| **C2c?** | Couche 2c — matcher LLM, **si** le bench le justifie | mesure C2a+C2b |
-| **C3** | Calibration des seuils (`τ_high`, `τ_low`, `δ`) par cohorte + audit narratif (I4) en runbook | C2b |
+| Chunk | Contenu | Dépend de | Statut |
+|---|---|---|---|
+| **P0** | Gold benchmark (I1) + replay harness (I2) + LLM-juge (I3) | — | ✅ livré |
+| **C1** | Couche 1 — `no_match` → `ambiguous` | P0 | ✅ livré |
+| **C2a-1** | `coin_aliases` + mining acronymes + matcher enrichi | P0, C1 | ✅ livré |
+| **C2a-2** | Alias colloquiaux générés par LLM ancré → `c2a-2-llm-aliases-kickoff.md` | C2a-1 | ⏳ |
+| **C2b** | Couche 2b — scoreur LaBSE + fusion RRF + marge top-2 | C2a | ⏳ |
+| **C2c?** | Couche 2c — matcher LLM, **si** le bench le justifie | mesure C2a+C2b | ⏳ |
+| **C3** | Calibration des seuils (`τ_high`, `τ_low`, `δ`) par cohorte + audit narratif (I4) en runbook | C2b | ⏳ |
+
+Suivi vivant + tableau de bord du bench :
+`PROGRESS-improve-ebay-matching-indus-standard.md`.
 
 Découpage chunk-by-chunk avec audit visuel entre chaque (cf. règle de
 travail) : livrer une couche, relancer le harness, lire l'évolution,
