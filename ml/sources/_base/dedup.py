@@ -468,6 +468,9 @@ class DiscoverySearchRecord:
     # eBay multi-mkt (B4). Identifie le marketplace ciblé par cette
     # discovery search (1 row par run × eurio × marketplace).
     marketplace: str | None = None
+    # F3 — URL d'appel Browse exacte (q + params résolus). NULL si l'appel
+    # n'a pas atteint le serveur (erreur réseau).
+    browse_url: str | None = None
 
 
 def record_discarded_listing(
@@ -512,15 +515,15 @@ def record_discovery_search(conn: sqlite3.Connection, rec: DiscoverySearchRecord
           id, run_id, source, target_eurio_id, endpoint,
           query_q, query_filters_json, status, http_status,
           n_summaries, n_after_groups, n_raw_results, n_kept_results,
-          duration_ms, error, marketplace
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          duration_ms, error, marketplace, browse_url
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             rid, rec.run_id, rec.source, rec.target_eurio_id, rec.endpoint,
             rec.query_q, filters_json, rec.status, rec.http_status,
             rec.n_summaries, rec.n_after_groups,
             rec.n_raw_results, rec.n_kept_results,
-            rec.duration_ms, rec.error, rec.marketplace,
+            rec.duration_ms, rec.error, rec.marketplace, rec.browse_url,
         ),
     )
     return rid

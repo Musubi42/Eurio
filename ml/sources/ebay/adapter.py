@@ -93,11 +93,13 @@ class SearchExpandResult:
     - ``n_summaries``    : N0 — `itemSummaries` retournés brut par Browse.
     - ``n_after_groups`` : N1 — N0 + lignes ajoutées par expansion
                            `getItemsByGroup` (top-K limité).
+    - ``browse_url``     : URL d'appel Browse exacte de la search (F3).
     """
 
     rows: list[dict]
     n_summaries: int
     n_after_groups: int
+    browse_url: str | None = None
 
 
 @dataclass
@@ -242,6 +244,7 @@ class EbayAdapter:
                         duration_ms=duration_ms,
                         error=str(exc)[:500],
                         marketplace=mkt,
+                        browse_url=client.last_request_url,
                     ))
                 # Un mkt qui plante ne doit pas casser l'autre.
                 logger.warning(
@@ -298,6 +301,7 @@ class EbayAdapter:
                     n_kept_results=len(kept),
                     duration_ms=duration_ms,
                     marketplace=mkt,
+                    browse_url=expand.browse_url,
                 ))
 
             # Merge en mémoire : 1ʳᵉ occurrence d'un item_id fixe
@@ -444,6 +448,9 @@ class EbayAdapter:
             aspect_filter=ebay_q.aspect_filter,
             limit=limit,
         )
+        # URL de la search elle-même — capturée avant les appels
+        # getItemsByGroup qui écraseraient `last_request_url`.
+        browse_url = client.last_request_url
         summaries = search.get("itemSummaries") or []
         n_summaries = len(summaries)
 
@@ -471,6 +478,7 @@ class EbayAdapter:
             rows=rows,
             n_summaries=n_summaries,
             n_after_groups=len(rows),
+            browse_url=browse_url,
         )
 
     def _yield_listing_images(
