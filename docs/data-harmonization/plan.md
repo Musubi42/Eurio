@@ -80,12 +80,22 @@ re-scrape Numista. 625 types Numista vs 466 pièces `coins`. 132 groupes
 
 **Worklist BE 2017** (kickoff) :
 - [x] `groups.json` du studio bench régénéré (`scripts/regen_bench_groups.py`
-      + go-task) : l'année 2017 montre désormais les 2 bons candidats
-      (Gand + Liège) au lieu de l'entrée corrompue.
+      + go-task).
+- [x] **i18n + aliases de `…-of-ghent` patchés** (`scripts/patch_be2017_ghent_i18n.py`).
+      Au passage, découverte : les 4 « aliases » de Liège étaient en fait
+      `gent/ghent/gand/gante` (héritées de l'ancien slug) — migrées vers le
+      coin Ghent où elles ont du sens. Le matcher distingue maintenant
+      Gand/Liège.
+- [x] **Studio bench — affichage des raisons** : sous chaque filtre du funnel,
+      la ventilation par motif ; sur chaque carte annonce, une ligne
+      « Filtre 1 — <motif> » / « Match → <tokens> » / « Contradiction : … »
+      (la donnée existait déjà dans `accept.reason` / `matcher.matched`,
+      pas affichée).
 - [ ] Ré-juger les 17 entrées gold / 13 labels 2017 (`needs_rematch`) — tâche
-      **humaine** dans le studio bench (le kickoff le pose ainsi). Puis
-      `ingest` + `replay` pour re-bencher.
-- [ ] i18n manquant pour `…-of-ghent` (numista 124813) — scrape Numista.
+      **humaine** dans le studio bench. Puis `ingest` + `replay`.
+- [ ] **i18n manquant pour les 147 autres pièces générées au Chunk 2b** —
+      session multi-agent dédiée (la stratégie i18n du repo l'autorise via
+      LLM source='llm_v1' + scrape Numista FR/EN).
 - [ ] Retrait de `batch_match_numista.py` (matcher flou désormais inutile).
 
 > La génération **complète** depuis Numista (éclatement par millésime des

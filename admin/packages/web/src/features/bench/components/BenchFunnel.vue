@@ -71,6 +71,17 @@ const isActive = (id: string) => props.selectedNodeId === id
             : 'background: #dcefe4; color: var(--success);'"
         >{{ acceptWrong > 0 ? `⚠ ${acceptWrong} à tort` : '✓ 0 à tort' }}</span>
       </div>
+      <!-- Ventilation des motifs de rejet — c'est ce qui rend le filtre jugeable. -->
+      <ul
+        v-if="search.acceptDrops.length"
+        class="mt-1.5 space-y-0.5 text-[10.5px]"
+        style="font-family: var(--font-mono); color: var(--ink-500);"
+      >
+        <li v-for="d in search.acceptDrops" :key="d.key" class="flex items-baseline gap-1.5">
+          <span>{{ d.label }}</span>
+          <span class="ml-auto" style="color: var(--ink);">{{ d.listings.length }}</span>
+        </li>
+      </ul>
     </button>
 
     <!-- Plaque : passé le filtre 1 -->
@@ -120,6 +131,17 @@ const isActive = (id: string) => props.selectedNodeId === id
             : 'background: #dcefe4; color: var(--success);'"
         >{{ matcherWrong > 0 ? `⚠ ${matcherWrong} à tort` : '✓ 0 à tort' }}</span>
       </div>
+      <!-- Tokens / signaux qui ont contredit le matcher (même motif Filtre 1). -->
+      <ul
+        v-if="search.matcherDrops.length"
+        class="mt-1.5 space-y-0.5 text-[10.5px]"
+        style="font-family: var(--font-mono); color: var(--ink-500);"
+      >
+        <li v-for="d in search.matcherDrops" :key="d.key" class="flex items-baseline gap-1.5">
+          <span>{{ d.label }}</span>
+          <span class="ml-auto" style="color: var(--ink);">{{ d.listings.length }}</span>
+        </li>
+      </ul>
     </button>
 
     <!-- Plaque : retenu -->
