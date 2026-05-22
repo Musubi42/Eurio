@@ -356,6 +356,52 @@ def test_accept_listing_accepts_year_match():
     assert ok and reason == "ok"
 
 
+def test_accept_listing_accepts_year_range_covering_target():
+    """Lot multi-millésimes (« BE 2005-2025 ») : accepter quand l'année cible
+    tombe dans l'intervalle — le pipeline multi-crop éclatera ensuite. Cf.
+    discussion 2026-05-23 (lots de commémos par pays)."""
+    titles = [
+        "Belgique 2 euros commémorative 2005-2025 ALLE JAHRE",
+        "BE 2 Euros 2005 – 2025 UNC",
+        "Belgique 2€ 2005 à 2025 collection",
+        "2 Euro Gedenkmünzen 2005 bis 2025",
+    ]
+    for title in titles:
+        row = listing_row(_summary("132", title, price=25.0))
+        ok, reason = accept_listing(
+            row, face_value=2.0, expected_year=2017, is_commemorative=True,
+        )
+        assert ok and reason == "ok_year_range", f"{title!r} → {ok=} {reason=}"
+
+
+def test_accept_listing_rejects_year_range_not_covering_target():
+    row = listing_row(_summary("133", "Belgique 2€ commémo 2005-2015", price=25.0))
+    ok, reason = accept_listing(
+        row, face_value=2.0, expected_year=2017, is_commemorative=True,
+    )
+    assert not ok and reason == "year_mismatch"
+
+
+def test_accept_listing_year_range_without_coin_context_still_rejects():
+    """Range présent mais titre sans contexte pièce (ex. pièce auto) → on ne
+    bypass pas le year-mismatch."""
+    row = listing_row(_summary("133b", "Catalizado AUDI A1 1.4 TFSI 2011-2017", price=120.0))
+    ok, reason = accept_listing(
+        row, face_value=2.0, expected_year=2014, is_commemorative=True,
+    )
+    assert not ok and reason == "year_mismatch"
+
+
+def test_accept_listing_two_isolated_years_still_rejects():
+    """Deux années isolées (« 2005 et 2025 ») ≠ intervalle. Comportement
+    historique inchangé : year_mismatch si la cible n'est ni l'une ni l'autre."""
+    row = listing_row(_summary("134", "2 euros 2005 et 2025 commémorative", price=5.0))
+    ok, reason = accept_listing(
+        row, face_value=2.0, expected_year=2017, is_commemorative=True,
+    )
+    assert not ok and reason == "year_mismatch"
+
+
 def test_accept_listing_accepts_when_year_missing_in_title():
     """Policy accept-on-missing : pas d'année dans le titre → on accepte."""
     row = listing_row(_summary("131", "2 euro France commémorative", price=5.0))
