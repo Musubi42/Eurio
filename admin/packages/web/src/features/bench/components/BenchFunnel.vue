@@ -65,13 +65,24 @@ const maxBranch = computed(
           style="border-color: var(--surface-3); background: var(--surface);"
         >
           <button
-            class="flex w-full items-center gap-2 px-3 py-2 text-left"
+            class="flex w-full items-center gap-2.5 px-3 py-2 text-left"
             @click="toggle('coin:' + coin.eurio_id)"
           >
             <component
               :is="isOpen('coin:' + coin.eurio_id) ? ChevronDown : ChevronRight"
               class="h-3.5 w-3.5 flex-shrink-0" style="color: var(--ink-400);"
             />
+            <span
+              class="h-9 w-9 flex-shrink-0 overflow-hidden rounded-full border"
+              style="border-color: var(--surface-3); background: var(--surface-2);"
+            >
+              <img
+                v-if="coin.obverse_url"
+                :src="coin.obverse_url"
+                :alt="coin.theme ?? coin.eurio_id"
+                class="h-full w-full object-cover"
+              />
+            </span>
             <span
               class="text-[12px]"
               style="font-family: var(--font-mono); color: var(--indigo-700);"
@@ -178,7 +189,8 @@ const maxBranch = computed(
                     style="color: var(--danger);">{{ drop.wrong }} pièce(s) valide(s) jetée(s)</span>
             </div>
             <BenchListingItem
-              v-for="l in drop.listings" :key="l.listing_id" :listing="l"
+              v-for="l in drop.listings" :key="l.listing_id"
+              :listing="l" :coins="search.coins"
             />
           </div>
         </div>
@@ -249,7 +261,8 @@ const maxBranch = computed(
                     style="color: var(--danger);">{{ drop.wrong }} valide(s) jetée(s)</span>
             </div>
             <BenchListingItem
-              v-for="l in drop.listings" :key="l.listing_id" :listing="l"
+              v-for="l in drop.listings" :key="l.listing_id"
+              :listing="l" :coins="search.coins"
             />
           </div>
         </div>
@@ -327,7 +340,8 @@ const maxBranch = computed(
             class="border-t" style="border-color: var(--surface-3); background: var(--surface-1);"
           >
             <BenchListingItem
-              v-for="l in branch.listings" :key="l.listing_id" :listing="l"
+              v-for="l in branch.listings" :key="l.listing_id"
+              :listing="l" :coins="search.coins"
             />
           </div>
         </div>

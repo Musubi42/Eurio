@@ -115,6 +115,11 @@ tasks:
     cmds:
       - "{{.VENV}}/python -m scripts.bench_theme_match replay {{.CLI_ARGS}}"
 
+  bench:enrich-images:
+    desc: "Studio bench — enrich the frozen gold with each listing's eBay image URL into gold_images.jsonl (kept listings free from source_images, rejected re-fetched via Browse API getItem). One-time, idempotent. Usage: go-task ml:bench:enrich-images [-- --dry]"
+    cmds:
+      - "{{.VENV}}/python -m scripts.enrich_bench_images {{.CLI_ARGS}}"
+
   aliases:mine-acronyms:
     desc: "Theme-matcher C2a — mine acronym aliases from i18n titles' parentheses into coin_aliases (e.g. 'European Monetary Institute (EMI)' → emi). Idempotent. Usage: go-task ml:aliases:mine-acronyms [-- --dry]"
     cmds:
