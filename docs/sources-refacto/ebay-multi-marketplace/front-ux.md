@@ -195,6 +195,17 @@ de chaque listing rejeté :
 
 ## Surface 4 — Coin detail (`CoinDetailPage.vue` + `EnrichmentGallery.vue`)
 
+> **❌ ABANDONNÉE (2026-05-22).** Cette surface (badge marketplace par
+> thumbnail enrichment) supposait le routing per-origine de la spec
+> initiale (9 marketplaces). Le chunk C0 (2026-05-21) a basculé sur un
+> routing **uniforme `{EBAY_DE, EBAY_ES}`** : le marketplace n'est plus
+> qu'un canal de découverte 50/50, pas une info produit. Mesure sur
+> `training.db` : un listing n'est vu sur les 2 marketplaces que dans
+> **1,6 %** des cas (requêtes DE/ES en langues différentes → résultats
+> quasi-disjoints). Un badge per-thumb serait soit quasi-constant, soit
+> quasi-invisible — sans valeur. La section ci-dessous est conservée pour
+> mémoire mais n'est pas implémentée.
+
 ### État actuel
 
 Galerie enrichment sous les thumbs canoniques. Chaque thumb affiche le
