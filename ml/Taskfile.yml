@@ -100,6 +100,21 @@ tasks:
     cmds:
       - "{{.VENV}}/python -m scripts.backfill_text_signals -v {{.CLI_ARGS}}"
 
+  bench:export-batch:
+    desc: "Theme-matcher bench (P0) — sample listings from a real run into a JSONL batch to label + a groups.json context file. Usage: go-task ml:bench:export-batch [-- --run b6bede99 --sample 200]"
+    cmds:
+      - "{{.VENV}}/python -m scripts.bench_theme_match export {{.CLI_ARGS}}"
+
+  bench:ingest-labels:
+    desc: "Theme-matcher bench (P0) — merge batch.jsonl + labels.jsonl into the frozen gold theme_match_gold.jsonl."
+    cmds:
+      - "{{.VENV}}/python -m scripts.bench_theme_match ingest {{.CLI_ARGS}}"
+
+  bench:theme-match:
+    desc: "Theme-matcher bench (P0) — replay the current matcher on the frozen gold, print recall / precision / false-discard / auto-attribution. Quota-free. Usage: go-task ml:bench:theme-match [-- -v]"
+    cmds:
+      - "{{.VENV}}/python -m scripts.bench_theme_match replay {{.CLI_ARGS}}"
+
   # ---------- Individual steps ----------
   prepare:
     desc: Resize images and split into train/val/test (legacy design_group label space)
