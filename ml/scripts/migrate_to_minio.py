@@ -47,7 +47,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 ML_ROOT = REPO_ROOT / "ml"
 DATASETS_DIR = ML_ROOT / "datasets"
 SOURCES_DIR = ML_ROOT / "state" / "sources"
-DB_PATH = ML_ROOT / "state" / "training.db"
+DB_PATH = ML_ROOT / "state" / "eurio.db"
 MANIFEST_PATH = REPO_ROOT / "docs" / "harmonisation-images" / "migration-manifest.jsonl"
 
 CONTENT_TYPES = {

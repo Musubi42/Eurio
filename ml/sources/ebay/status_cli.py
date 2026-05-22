@@ -22,7 +22,7 @@ from state import Store
 
 
 def main() -> int:
-    db_path = ML_DIR / "state" / "training.db"
+    db_path = ML_DIR / "state" / "eurio.db"
     store = Store(db_path)
     conn = store._connection()  # noqa: SLF001
 

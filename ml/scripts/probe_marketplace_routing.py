@@ -245,7 +245,7 @@ def main() -> int:
         return 2
 
     token = get_app_token(client_id, client_secret)
-    store = Store(db_path=ROOT / "state" / "training.db")
+    store = Store(db_path=ROOT / "state" / "eurio.db")
     conn = store._connection()  # noqa: SLF001
     conn.row_factory = sqlite3.Row
 

@@ -13,7 +13,7 @@ Two surfaces:
   UPDATE row (storage_status=reason). Idempotent.
 
 The shared `_db_path()` resolves the SQLite location (defaults to
-`ml/state/training.db`, override via `EURIO_TRAINING_DB`).
+`ml/state/eurio.db`, override via `EURIO_DB`).
 """
 
 from __future__ import annotations
@@ -37,18 +37,18 @@ STATUS_REMOVED = "removed_via_admin"
 
 
 def _db_path() -> Path:
-    """Locate the training.db. Override via EURIO_TRAINING_DB env var."""
-    env = os.environ.get("EURIO_TRAINING_DB")
+    """Locate the eurio.db. Override via EURIO_DB env var."""
+    env = os.environ.get("EURIO_DB")
     if env:
         return Path(env)
-    # ml/storage/cascade.py → parents[1] = ml/, then state/training.db
-    return Path(__file__).resolve().parents[1] / "state" / "training.db"
+    # ml/storage/cascade.py → parents[1] = ml/, then state/eurio.db
+    return Path(__file__).resolve().parents[1] / "state" / "eurio.db"
 
 
 def _connect(timeout: float = 5.0) -> sqlite3.Connection:
     db = _db_path()
     if not db.exists():
-        raise FileNotFoundError(f"training.db not found at {db}")
+        raise FileNotFoundError(f"eurio.db not found at {db}")
     conn = sqlite3.connect(str(db), timeout=timeout)
     conn.row_factory = sqlite3.Row
     return conn

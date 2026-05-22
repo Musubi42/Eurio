@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 
-DEFAULT_DB = Path(__file__).parent / "state" / "training.db"
+DEFAULT_DB = Path(__file__).parent / "state" / "eurio.db"
 
 Window = Literal["monthly", "daily"]
 

@@ -34,7 +34,7 @@ from sources.ebay.filters import accept_listing  # noqa: E402
 from sources.ebay.queries import match_listing_to_group  # noqa: E402
 from state import Store  # noqa: E402
 
-DB_PATH = ML_DIR / "state" / "training.db"
+DB_PATH = ML_DIR / "state" / "eurio.db"
 BENCH_DIR = ML_DIR / "state" / "discovery_bench"
 
 BATCH_PATH = BENCH_DIR / "batch.jsonl"

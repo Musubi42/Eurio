@@ -1,7 +1,7 @@
 """Export / import / prune the training state archive.
 
 Two export modes:
-  - lite : training.db only (~few MB, history + staging).
+  - lite : eurio.db only (~few MB, history + staging).
   - full : lite + datasets/eurio-poc/ + checkpoints/best_model.pth
            + output/{embeddings_v1,model_meta,coin_embeddings,per_class_metrics}.json
            + datasets/{numista_id}/augmented/ for every numista member of a
@@ -32,7 +32,7 @@ DATASETS_DIR = ML_DIR / "datasets"
 EURIO_POC = DATASETS_DIR / "eurio-poc"
 CHECKPOINTS_DIR = ML_DIR / "checkpoints"
 OUTPUT_DIR = ML_DIR / "output"
-DB_PATH = STATE_DIR / "training.db"
+DB_PATH = STATE_DIR / "eurio.db"
 
 
 # ─── Export ──────────────────────────────────────────────────────────────
@@ -59,7 +59,7 @@ def export_lite(dest: Path | None = None) -> Path:
     out = dest or _default_archive_name("lite")
     with tarfile.open(out, "w:gz") as tar:
         if DB_PATH.exists():
-            tar.add(DB_PATH, arcname="state/training.db")
+            tar.add(DB_PATH, arcname="state/eurio.db")
     return out
 
 
@@ -95,7 +95,7 @@ def export_full(dest: Path | None = None) -> Path:
 
     with tarfile.open(out, "w:gz") as tar:
         if DB_PATH.exists():
-            tar.add(DB_PATH, arcname="state/training.db")
+            tar.add(DB_PATH, arcname="state/eurio.db")
 
         if EURIO_POC.exists():
             tar.add(EURIO_POC, arcname="datasets/eurio-poc")
@@ -157,7 +157,7 @@ def import_archive(archive_path: Path) -> dict:
         _safe_extract(tar, ML_DIR)
 
     restored = {
-        "db": any(n.endswith("state/training.db") for n in names),
+        "db": any(n.endswith("state/eurio.db") for n in names),
         "dataset": any(n.startswith("datasets/eurio-poc") for n in names),
         "checkpoint": any(n.endswith("checkpoints/best_model.pth") for n in names),
         "embeddings": any(n.endswith("output/embeddings_v1.json") for n in names),

@@ -36,7 +36,7 @@ from state.store import Store  # noqa: E402
 
 LOGGER = logging.getLogger("import_i18n_results")
 
-DEFAULT_DB = ROOT / "state" / "training.db"
+DEFAULT_DB = ROOT / "state" / "eurio.db"
 DEFAULT_RESULTS = ROOT / "state" / "i18n_results.jsonl"
 
 REQUIRED_FIELDS = ("eurio_id", "lang", "title")

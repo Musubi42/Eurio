@@ -46,7 +46,7 @@ from state.store import Store  # noqa: E402  (after sys.path tweak)
 LOG = logging.getLogger("migrate_sources_runs")
 
 DEFAULT_JSON = ROOT / "state" / "sources_runs.json"
-DEFAULT_DB = ROOT / "state" / "training.db"
+DEFAULT_DB = ROOT / "state" / "eurio.db"
 
 
 def migrate(json_path: Path, db_path: Path, *, dry_run: bool) -> dict:

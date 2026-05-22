@@ -1007,7 +1007,7 @@ def _coin_capture_status(eurio_id: str) -> dict:
 
 
 # Where generated cohort CSVs live on disk (gitignored). Same convention as
-# the rest of ml/state/ — sits next to training.db.
+# the rest of ml/state/ — sits next to eurio.db.
 COHORT_CSVS_DIR = _ML_DIR / "state" / "cohort_csvs"
 
 # App-scoped path on the Android device. Pushing here works without any

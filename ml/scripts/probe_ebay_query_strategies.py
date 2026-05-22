@@ -198,7 +198,7 @@ def main() -> int:
 
     token = get_app_token(client_id, client_secret)
 
-    store = Store(db_path=Path(__file__).resolve().parents[1] / "state" / "training.db")
+    store = Store(db_path=Path(__file__).resolve().parents[1] / "state" / "eurio.db")
     conn = store._connection()  # noqa: SLF001
 
     rows: list[dict[str, Any]] = []

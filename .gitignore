@@ -47,9 +47,9 @@ ml/output/
 ml/yolov8n.pt
 ml/.ebay_token_cache.json
 ml/.dataset_cache/
-ml/state/training.db
-ml/state/training.db-wal
-ml/state/training.db-shm
+ml/state/eurio.db
+ml/state/eurio.db-wal
+ml/state/eurio.db-shm
 ml/state/cohort_csvs/
 # Sources refacto — local-only, each machine autonomous (decisions.md D-06)
 ml/state/sources_runs.json

@@ -7,7 +7,7 @@ that reality:
   - `start_run(added, removed)` creates a single `TrainingRun` that covers
     all requested mutations in one pipeline execution.
   - Only one run may be active at a time; a second `start_run` raises.
-  - Persistence lives in the SQLite Store (`state/training.db`). History,
+  - Persistence lives in the SQLite Store (`state/eurio.db`). History,
     logs, per-epoch metrics, and per-class metrics all survive process
     restarts.
 

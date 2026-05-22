@@ -29,7 +29,7 @@ sys.path.insert(0, str(ML_DIR))
 from sources.ebay.theme_tokens import normalize  # noqa: E402
 from state import Store  # noqa: E402
 
-DB_PATH = ML_DIR / "state" / "training.db"
+DB_PATH = ML_DIR / "state" / "eurio.db"
 
 _PAREN_RE = re.compile(r"\(([^)]+)\)")
 # Un acronyme : un seul token, 2-6 lettres, MAJUSCULES dans l'original.

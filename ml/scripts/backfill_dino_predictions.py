@@ -29,7 +29,7 @@ sys.path.insert(0, str(ML_DIR))
 from sources._base.steps.auto_validate import run_auto_validate_dino_backfill  # noqa: E402
 from state import Store  # noqa: E402
 
-DB_PATH = ML_DIR / "state" / "training.db"
+DB_PATH = ML_DIR / "state" / "eurio.db"
 
 
 def main() -> int:
@@ -54,7 +54,7 @@ def main() -> int:
     parser.add_argument(
         "--db",
         default=str(DB_PATH),
-        help="Path to the training SQLite DB (default: ml/state/training.db).",
+        help="Path to the training SQLite DB (default: ml/state/eurio.db).",
     )
     parser.add_argument("--verbose", "-v", action="store_true")
     args = parser.parse_args()

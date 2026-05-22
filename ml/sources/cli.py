@@ -24,7 +24,7 @@ from sources._base.adapter import DiscoveryGroup, SourceQuery
 from sources._base.orchestrator import run_pipeline
 from state.store import Store
 
-_DEFAULT_DB = Path(__file__).resolve().parents[1] / "state" / "training.db"
+_DEFAULT_DB = Path(__file__).resolve().parents[1] / "state" / "eurio.db"
 
 
 def _load_adapter(source_id: str, *, store=None):

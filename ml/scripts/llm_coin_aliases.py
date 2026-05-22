@@ -56,7 +56,7 @@ sys.path.insert(0, str(ML_DIR))
 from sources.ebay.theme_tokens import normalize  # noqa: E402
 from state import Store  # noqa: E402
 
-DB_PATH = ML_DIR / "state" / "training.db"
+DB_PATH = ML_DIR / "state" / "eurio.db"
 BENCH_DIR = ML_DIR / "state" / "discovery_bench"
 BATCH_PATH = BENCH_DIR / "aliases_batch.jsonl"
 ALIASES_PATH = BENCH_DIR / "aliases_llm.jsonl"

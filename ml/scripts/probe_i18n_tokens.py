@@ -35,7 +35,7 @@ if str(ROOT) not in sys.path:
 
 from sources.ebay.theme_tokens import extract_tokens  # noqa: E402
 
-DB_PATH = ROOT / "state" / "training.db"
+DB_PATH = ROOT / "state" / "eurio.db"
 
 
 def _percentile(sorted_vals: list[int], pct: float) -> float:

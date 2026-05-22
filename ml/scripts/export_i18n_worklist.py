@@ -1,6 +1,6 @@
 """Export the i18n scrape worklist from ``coins`` table to JSON.
 
-Runs on **PC** (where ``training.db`` lives). Produces a small JSON file
+Runs on **PC** (where ``eurio.db`` lives). Produces a small JSON file
 that gets rsync'd to the VPS for the actual scrape (which has no DB).
 
 Filter: ``face_value=2.0 AND numista_id IS NOT NULL`` — the ~578
@@ -38,7 +38,7 @@ from state.store import Store  # noqa: E402
 
 LOGGER = logging.getLogger("export_i18n_worklist")
 
-DEFAULT_DB = ROOT / "state" / "training.db"
+DEFAULT_DB = ROOT / "state" / "eurio.db"
 DEFAULT_OUT = ROOT / "state" / "i18n_worklist.json"
 DEFAULT_LANGS = ("fr", "en")
 
