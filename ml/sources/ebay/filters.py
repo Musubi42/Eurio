@@ -63,6 +63,47 @@ FACE_VALUE_FACTOR_HIGH = 500.0
 # Years within sane range to accept as "year-of-coin" in the title.
 YEAR_IN_TITLE_RE = re.compile(r"\b(19|20)\d{2}\b")
 
+# Intervalle d'années — « 2005-2025 », « 2005 – 2025 », « 2005 à 2025 »,
+# « 2005 to 2025 », « 2005 bis 2025 ». Capte spécifiquement les lots
+# couvrant une fourchette (vendeurs proposant toutes les commémos d'un pays
+# entre deux dates). Distinct de deux années isolées (« 2005 et 2017 »).
+YEAR_RANGE_RE = re.compile(
+    r"\b(20\d{2})\s*[-–—]\s*(20\d{2})\b"
+    r"|\b(20\d{2})\s+(?:à|to|bis|al)\s+(20\d{2})\b",
+    re.IGNORECASE,
+)
+
+
+# Marqueurs de contexte numismatique — au moins un de ces tokens doit
+# apparaître pour qu'un range d'années qualifie un titre de « lot de pièces »
+# (et pas une pièce auto « 2011-2017 » qui aurait été ramenée par bruit eBay).
+COIN_CONTEXT_RE = re.compile(
+    r"(?:\b(?:"
+    r"euros?|cents?|centimes?|"
+    r"(?:gedenk|kurs|sonder)?m[üu]nzen?|"
+    r"pi[eè]ces?|monnaies?|"
+    r"moneda[s]?|monete?|"
+    r"coins?"
+    r")\b|€|¢)",
+    re.IGNORECASE,
+)
+
+
+def year_range_in_title(title: str | None) -> tuple[int, int] | None:
+    """Détecte un intervalle d'années dans le titre. Retourne (a, b) avec a≤b,
+    ou None si pas d'intervalle (b doit être strictement > a — sinon c'est
+    juste la même année écrite deux fois)."""
+    if not title:
+        return None
+    m = YEAR_RANGE_RE.search(title)
+    if not m:
+        return None
+    a_s, b_s = (m.group(1), m.group(2)) if m.group(1) else (m.group(3), m.group(4))
+    a, b = int(a_s), int(b_s)
+    if a > b:
+        a, b = b, a
+    return (a, b) if b > a else None
+
 
 # ── Listing normalisation ────────────────────────────────────────────────────
 
@@ -112,10 +153,19 @@ def listing_row(item: dict) -> dict:
 
 
 def is_lot_suspected(title: str | None) -> bool:
-    """D-26 niveau 1 : titre suggère un lot/coffret/série."""
+    """D-26 niveau 1 : titre suggère un lot/coffret/série.
+
+    Un intervalle d'années (« 2005-2025 ») est aussi un signal de lot — c'est
+    le schéma classique des vendeurs proposant toutes les commémos d'un pays
+    entre deux dates.
+    """
     if not title:
         return False
-    return bool(LOT_PATTERNS.search(title))
+    if LOT_PATTERNS.search(title):
+        return True
+    if year_range_in_title(title):
+        return True
+    return False
 
 
 def accept_listing(
@@ -151,6 +201,15 @@ def accept_listing(
     if price > face_value * FACE_VALUE_FACTOR_HIGH:
         return False, "above_extreme"
     if is_commemorative and expected_year is not None:
+        # Intervalle (« 2005-2025 ») couvrant l'année cible : c'est un lot
+        # multi-millésimes, on le garde — le pipeline multi-crop l'éclatera
+        # par crop. Garde-fou : on n'applique le bypass que sur des titres
+        # à *contexte pièce* (euro/münze/pièce/…) — sinon on laisserait
+        # passer des annonces non-numismatiques qui ont juste un range
+        # d'années (ex. pièces auto « 2011-2017 »).
+        rng = year_range_in_title(title)
+        if rng and rng[0] <= expected_year <= rng[1] and COIN_CONTEXT_RE.search(title):
+            return True, "ok_year_range"
         years_in_title = {int(m.group(0)) for m in YEAR_IN_TITLE_RE.finditer(title)}
         if years_in_title and expected_year not in years_in_title:
             return False, "year_mismatch"
