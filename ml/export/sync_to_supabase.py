@@ -1,34 +1,24 @@
-"""Push the canonical referential JSON to Supabase — Phase 2C.7.
+"""Push `eurio.db` → Supabase — Chunk 4 harmonisation.
 
-Reads `ml/datasets/eurio_referential.json` and the supporting state files
-(`review_queue.json`, `matching_log.jsonl`), then upserts everything into the
-6 canonical tables : `coins`, `source_observations`, `matching_decisions`,
-`review_queue`, `coin_embeddings`, `user_collections`.
+Voir docs/data-harmonization/{architecture,plan}.md.
 
-Flattening rules (referential → DB) :
+Avant ce chunk : ce script lisait `eurio_referential.json` (devenu périmé
+depuis le Chunk 1b où `coins` est devenu canonique en SQLite). Maintenant :
+projection strictement descendante **`eurio.db` → Supabase**, sur les 3
+tables consommées par l'app — `coins`, `source_observations`,
+`coin_market_prices`. Idempotent (upsert sur clé naturelle), jamais de
+delete (les orphelins éventuels côté Supabase sont remontés par la commande
+de détection de dérive, `scripts/detect_supabase_drift.py`).
 
-    coins                  : one row per eurio_id with identity + images + cross_refs
-    source_observations    : one row per (eurio_id, source, source_native_id, type)
-                             where type ∈ {variant, issue_price, market_stats, mintage, image}
-    matching_decisions     : one row per jsonl line in matching_log.jsonl
-    review_queue           : one row per item in review_queue.json
+Le matcher flou ayant été retiré, on ne synchronise plus `matching_decisions`
+ni `review_queue` — ce sont des artefacts historiques figés côté Supabase.
 
-The sync is idempotent :
-- `coins` upserts on `eurio_id` PK
-- `source_observations` upserts on the (eurio_id, source, source_native_id,
-  observation_type) unique constraint
-- `review_queue` upserts on (source, source_native_id, reason) unique
-- `matching_decisions` is append-only and uses `--full` to reset before
-  re-inserting from the log (otherwise it accumulates endlessly)
+Usage::
 
-Uses the **service role** key so RLS is bypassed; the app will use the
-anon key for reads, which is allowed by the public-read policies.
-
-Usage :
-    python ml/sync_to_supabase.py              # sync everything
-    python ml/sync_to_supabase.py --dry-run    # just print stats
-    python ml/sync_to_supabase.py --coins-only
-    python ml/sync_to_supabase.py --no-reset-decisions
+    python -m export.sync_to_supabase                  # tout
+    python -m export.sync_to_supabase --dry-run        # juste les compteurs
+    python -m export.sync_to_supabase --coins-only     # coins seulement
+    python -m export.sync_to_supabase --verify         # post-sync : contrôle
 """
 
 from __future__ import annotations
@@ -36,30 +26,25 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
+import sqlite3
 import sys
 from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 import httpx
 
-from referential.eurio_referential import load_referential
-from referential.review_core import (
-    MATCHING_LOG_PATH,
-    REVIEW_QUEUE_PATH,
-    load_queue,
-)
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
-DATASETS_DIR = Path(__file__).parent.parent / "datasets"
+from state.store import Store  # noqa: E402
 
-# Batch size used for every upsert — PostgREST caps large payloads, 500 is
-# a safe middle ground that keeps the number of HTTP round-trips small.
+DEFAULT_DB = ROOT / "state" / "eurio.db"
 UPSERT_BATCH_SIZE = 500
 
 
 # ---------- env ----------
-
 
 def load_env() -> dict[str, str]:
     env: dict[str, str] = {}
@@ -79,9 +64,8 @@ def load_env() -> dict[str, str]:
 
 # ---------- PostgREST client ----------
 
-
 class PostgrestClient:
-    """Minimal PostgREST client with upsert and delete helpers."""
+    """Minimal PostgREST client avec upsert / count."""
 
     def __init__(self, url: str, service_key: str):
         self.base = url.rstrip("/") + "/rest/v1"
@@ -104,14 +88,7 @@ class PostgrestClient:
     def __exit__(self, *exc: Any) -> None:
         self.close()
 
-    def upsert(
-        self,
-        table: str,
-        rows: list[dict],
-        *,
-        on_conflict: str | None = None,
-    ) -> None:
-        """Upsert rows into a table. PostgREST supports batching natively."""
+    def upsert(self, table: str, rows: list[dict], *, on_conflict: str | None = None) -> None:
         if not rows:
             return
         for i in range(0, len(rows), UPSERT_BATCH_SIZE):
@@ -121,28 +98,12 @@ class PostgrestClient:
             if on_conflict:
                 params["on_conflict"] = on_conflict
             resp = self._client.post(
-                f"{self.base}/{table}",
-                json=batch,
-                headers=headers,
-                params=params,
+                f"{self.base}/{table}", json=batch, headers=headers, params=params,
             )
             if resp.status_code >= 400:
                 print(f"  FAIL batch {i}-{i+len(batch)}: HTTP {resp.status_code}")
                 print(f"  {resp.text[:400]}")
                 resp.raise_for_status()
-
-    def delete_all(self, table: str) -> None:
-        """Wipe a whole table. PostgREST requires a filter, we pass a tautology."""
-        resp = self._client.delete(
-            f"{self.base}/{table}",
-            params={"id": "gt.0"},  # works for bigserial PK
-        )
-        if resp.status_code >= 400:
-            raise httpx.HTTPStatusError(
-                f"delete_all {table} failed: {resp.text}",
-                request=resp.request,
-                response=resp,
-            )
 
     def count(self, table: str) -> int:
         resp = self._client.get(
@@ -152,378 +113,249 @@ class PostgrestClient:
         )
         resp.raise_for_status()
         hdr = resp.headers.get("content-range") or ""
-        if "/" in hdr:
-            return int(hdr.rsplit("/", 1)[1])
-        return 0
+        return int(hdr.rsplit("/", 1)[1]) if "/" in hdr else 0
+
+    def get(self, table: str, params: dict[str, str]) -> list[dict]:
+        resp = self._client.get(f"{self.base}/{table}", params=params)
+        resp.raise_for_status()
+        return resp.json()
 
 
-# ---------- flatteners ----------
+# ---------- eurio.db → Supabase row shapes ----------
 
+def db_coins_rows(conn: sqlite3.Connection) -> list[dict]:
+    """`coins` + tables filles → forme attendue par `coins` Supabase."""
+    cross_by_eid: dict[str, dict[str, Any]] = {}
+    for r in conn.execute("SELECT eurio_id, ref_type, ref_value FROM coin_cross_refs"):
+        cross_by_eid.setdefault(r["eurio_id"], {})[r["ref_type"]] = r["ref_value"]
 
-_BCE_VOLUME_RX = re.compile(r"(\d+(?:\.\d+)?)\s*(million|billion)?")
+    img_by_eid: dict[str, dict[str, Any]] = {}
+    for r in conn.execute(
+        "SELECT eurio_id, source, role, url FROM coin_canonical_images WHERE url IS NOT NULL"
+    ):
+        d = img_by_eid.setdefault(r["eurio_id"], {})
+        # Format historique attendu par bench_routes et catalog_snapshot :
+        # {obverse: url, obverse_source: 'numista', reverse: url, …}
+        d[r["role"]] = r["url"]
+        d[f"{r['role']}_source"] = r["source"]
 
+    nat_by_eid: dict[str, list[str]] = {}
+    for r in conn.execute(
+        "SELECT eurio_id, country_iso2 FROM coin_national_variants ORDER BY country_iso2"
+    ):
+        nat_by_eid.setdefault(r["eurio_id"], []).append(r["country_iso2"])
 
-def parse_bce_mintage(issuing_volume: str | None) -> int | None:
-    """Convert a BCE 'issuing_volume' string ('1 million coins') to an integer.
+    sources_by_eid: dict[str, list[str]] = {}
+    for r in conn.execute("SELECT DISTINCT eurio_id, source FROM coin_observations"):
+        sources_by_eid.setdefault(r["eurio_id"], []).append(r["source"])
 
-    Returns None when the string can't be parsed. The match is intentionally
-    permissive: the BCE writes things like '1 million', '1,000,000 coins',
-    '500.000', etc. We strip separators then look for a leading number with an
-    optional 'million'/'billion' suffix.
-    """
-    if not issuing_volume:
-        return None
-    s = issuing_volume.lower().replace(",", "").replace(" ", "")
-    m = _BCE_VOLUME_RX.search(s)
-    if not m:
-        return None
-    try:
-        val = float(m.group(1))
-    except ValueError:
-        return None
-    if m.group(2) == "million":
-        val *= 1_000_000
-    elif m.group(2) == "billion":
-        val *= 1_000_000_000
-    return int(val)
-
-
-def resolve_mintage(entry: dict) -> int | None:
-    """Pick the best mintage from the available sources.
-
-    Numista (precise integer in identity.mintage) wins over a BCE string
-    parsed from observations.bce_comm.issuing_volume. LMDLP mintage is a
-    third fallback (also a precise integer).
-    """
-    ident = entry.get("identity") or {}
-    direct = ident.get("mintage")
-    if isinstance(direct, int) and direct > 0:
-        return direct
-    obs = entry.get("observations") or {}
-    lmdlp = obs.get("lmdlp_mintage")
-    if isinstance(lmdlp, dict) and isinstance(lmdlp.get("value"), int):
-        return lmdlp["value"]
-    bce = obs.get("bce_comm")
-    if isinstance(bce, dict):
-        parsed = parse_bce_mintage(bce.get("issuing_volume"))
-        if parsed:
-            return parsed
-    return None
-
-
-def referential_to_coins_rows(referential: dict[str, dict]) -> list[dict]:
     rows: list[dict] = []
-    for entry in referential.values():
-        ident = entry["identity"]
-        prov = entry.get("provenance") or {}
-        rows.append(
-            {
-                "eurio_id": entry["eurio_id"],
-                "country": ident["country"],
-                "year": ident["year"],
-                "face_value": float(ident["face_value"]),
-                "currency": ident.get("currency") or "EUR",
-                "is_commemorative": bool(ident.get("is_commemorative")),
-                "collector_only": bool(ident.get("collector_only")),
-                "theme": ident.get("theme"),
-                "design_description": ident.get("design_description"),
-                "national_variants": ident.get("national_variants"),
-                "mintage": resolve_mintage(entry),
-                "images": entry.get("images") or [],
-                "cross_refs": entry.get("cross_refs") or {},
-                "sources_used": prov.get("sources_used") or [],
-                "needs_review": bool(prov.get("needs_review")),
-                "review_reason": prov.get("review_reason"),
-                "first_seen": prov.get("first_seen") or date.today().isoformat(),
-                "last_updated": prov.get("last_updated") or date.today().isoformat(),
-            }
-        )
+    for c in conn.execute("SELECT * FROM coins"):
+        eid = c["eurio_id"]
+        cross = dict(cross_by_eid.get(eid, {}))
+        if c["numista_id"] is not None:
+            cross["numista_id"] = c["numista_id"]
+        imported = (c["imported_at"] or "")[:10] or date.today().isoformat()
+        updated = (c["updated_at"] or c["imported_at"] or "")[:10] or date.today().isoformat()
+        rows.append({
+            "eurio_id": eid,
+            "country": c["country"],
+            "year": c["year"],
+            "face_value": float(c["face_value"]),
+            "currency": c["currency"] or "EUR",
+            "is_commemorative": bool(c["is_commemorative"]),
+            "collector_only": bool(c["collector_only"]),
+            "theme": c["theme"],
+            "design_description": c["design_description"],
+            "design_group_id": c["design_group_id"],
+            "national_variants": nat_by_eid.get(eid) or None,
+            "mintage": c["mintage"],
+            "images": img_by_eid.get(eid) or {},
+            "cross_refs": cross,
+            "sources_used": sorted(sources_by_eid.get(eid, [])),
+            "needs_review": bool(c["needs_review"]),
+            "review_reason": c["review_reason"],
+            "first_seen": imported,
+            "last_updated": updated,
+        })
     return rows
 
 
-def referential_to_observations_rows(referential: dict[str, dict]) -> list[dict]:
-    """Flatten observations into one row per (source, source_native_id, type).
+# Mapping source-de-blob → (source canonique, observation_type) côté Supabase.
+# Hérité de l'ancien flatten JSON → conserve l'unicité (eurio_id, source,
+# source_native_id, observation_type) côté DB cible.
+_OBS_MAPPING = {
+    "wikipedia":     ("wikipedia", "mintage"),
+    "lmdlp_mintage": ("lmdlp",     "mintage"),
+    "ebay_market":   ("ebay",      "market_stats"),
+    "bce_comm":      ("bce_comm",  "coin_info"),
+}
 
-    We explicitly enumerate the known observation shapes rather than dumping
-    the whole `observations` dict, so the DB rows stay queryable per-type.
+
+def db_observations_rows(conn: sqlite3.Connection) -> list[dict]:
+    """`coin_observations` → forme `source_observations` Supabase.
+
+    Re-éclate les listes (lmdlp_variants, mdp_issue) en N lignes par variante
+    pour coller à la contrainte unique côté Supabase.
     """
     rows: list[dict] = []
-    for entry in referential.values():
-        eurio_id = entry["eurio_id"]
-        obs = entry.get("observations") or {}
-
-        wiki = obs.get("wikipedia")
-        if isinstance(wiki, dict):
-            rows.append(
-                {
-                    "eurio_id": eurio_id,
-                    "source": "wikipedia",
-                    "source_native_id": None,
-                    "observation_type": "mintage",
-                    "payload": wiki,
-                }
-            )
-
-        lmdlp_variants = obs.get("lmdlp_variants") or []
-        for v in lmdlp_variants:
-            rows.append(
-                {
-                    "eurio_id": eurio_id,
-                    "source": "lmdlp",
-                    "source_native_id": v.get("sku"),
-                    "observation_type": "variant",
-                    "payload": v,
-                }
-            )
-
-        lmdlp_mintage = obs.get("lmdlp_mintage")
-        if isinstance(lmdlp_mintage, dict):
-            rows.append(
-                {
-                    "eurio_id": eurio_id,
-                    "source": "lmdlp",
-                    "source_native_id": None,
-                    "observation_type": "mintage",
-                    "payload": lmdlp_mintage,
-                }
-            )
-
-        mdp_issue = obs.get("mdp_issue") or []
-        for v in mdp_issue:
-            rows.append(
-                {
-                    "eurio_id": eurio_id,
-                    "source": "mdp",
-                    "source_native_id": v.get("sku"),
-                    "observation_type": "issue_price",
-                    "payload": v,
-                }
-            )
-
-        ebay_market = obs.get("ebay_market")
-        if isinstance(ebay_market, dict):
-            rows.append(
-                {
-                    "eurio_id": eurio_id,
-                    "source": "ebay",
-                    "source_native_id": None,
-                    "observation_type": "market_stats",
-                    "payload": ebay_market,
-                }
-            )
-
-        bce_comm = obs.get("bce_comm")
-        if isinstance(bce_comm, dict):
-            rows.append(
-                {
-                    "eurio_id": eurio_id,
-                    "source": "bce_comm",
-                    "source_native_id": None,
-                    "observation_type": "coin_info",
-                    "payload": bce_comm,
-                }
-            )
+    for r in conn.execute(
+        "SELECT eurio_id, source, payload_json FROM coin_observations"
+    ):
+        eid, src = r["eurio_id"], r["source"]
+        try:
+            payload = json.loads(r["payload_json"])
+        except (json.JSONDecodeError, TypeError):
+            continue
+        # Listes : 1 ligne par item.
+        if src == "lmdlp_variants" and isinstance(payload, list):
+            for v in payload:
+                if isinstance(v, dict):
+                    rows.append({
+                        "eurio_id": eid, "source": "lmdlp",
+                        "source_native_id": v.get("sku"),
+                        "observation_type": "variant", "payload": v,
+                    })
+        elif src == "mdp_issue" and isinstance(payload, list):
+            for v in payload:
+                if isinstance(v, dict):
+                    rows.append({
+                        "eurio_id": eid, "source": "mdp",
+                        "source_native_id": v.get("sku"),
+                        "observation_type": "issue_price", "payload": v,
+                    })
+        elif src in _OBS_MAPPING and isinstance(payload, dict):
+            sup_src, obs_type = _OBS_MAPPING[src]
+            rows.append({
+                "eurio_id": eid, "source": sup_src, "source_native_id": None,
+                "observation_type": obs_type, "payload": payload,
+            })
+        # autres clés inconnues → passe générique
+        elif isinstance(payload, dict):
+            rows.append({
+                "eurio_id": eid, "source": src, "source_native_id": None,
+                "observation_type": "legacy_import", "payload": payload,
+            })
     return rows
 
 
-def referential_to_market_prices_rows(referential: dict[str, dict]) -> list[dict]:
-    """Flatten LMDLP catalogue prices into coin_market_prices rows.
-
-    LMDLP quotes one catalogue price per (coin × quality), so there's no
-    distribution: we put the catalogue price in `p50` and leave p25/p75 NULL,
-    `samples_count = 1`. The variant's `sampled_at` becomes `fetched_at` so
-    re-running the sync on the same snapshot upserts in place (matches the
-    unique constraint on (eurio_id, source, quality, fetched_at)).
-
-    eBay rows are produced by `scrape_ebay.py` directly — not from the
-    referential — so they aren't emitted here.
-    """
+def db_market_prices_rows(conn: sqlite3.Connection) -> list[dict]:
+    """Variantes LMDLP → `coin_market_prices` (1 ligne par variante avec prix)."""
     rows: list[dict] = []
-    for entry in referential.values():
-        eurio_id = entry["eurio_id"]
-        for v in (entry.get("observations") or {}).get("lmdlp_variants") or []:
+    for r in conn.execute(
+        "SELECT eurio_id, payload_json FROM coin_observations WHERE source='lmdlp_variants'"
+    ):
+        try:
+            variants = json.loads(r["payload_json"])
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if not isinstance(variants, list):
+            continue
+        for v in variants:
+            if not isinstance(v, dict):
+                continue
             price = v.get("price_eur")
             if price is None:
                 continue
             quality = v.get("quality") or "unknown"
             sampled_at = v.get("sampled_at") or datetime.now(timezone.utc).isoformat()
-            rows.append(
-                {
-                    "eurio_id": eurio_id,
-                    "source": "lmdlp",
-                    "quality": quality,
-                    "p25": None,
-                    "p50": float(price),
-                    "p75": None,
-                    "samples_count": 1,
-                    "with_sales_count": 1 if v.get("in_stock") else 0,
-                    "query_used": v.get("sku"),
-                    "fetched_at": sampled_at,
-                }
-            )
+            rows.append({
+                "eurio_id": r["eurio_id"],
+                "source": "lmdlp",
+                "quality": quality,
+                "p25": None, "p50": float(price), "p75": None,
+                "samples_count": 1,
+                "with_sales_count": 1 if v.get("in_stock") else 0,
+                "query_used": v.get("sku"),
+                "fetched_at": sampled_at,
+            })
     return rows
 
 
-def matching_log_to_rows(path: Path) -> list[dict]:
-    """Parse matching_log.jsonl into matching_decisions rows."""
-    if not path.exists():
-        return []
-    rows: list[dict] = []
-    with path.open() as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                rec = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            stage = rec.get("stage")
-            method = f"stage{stage}_{rec.get('reason', 'unknown')}" if stage else "unknown"
-            # Human-review entries carry action=pick|skip|no_match instead of stage
-            if stage == "human_review" or rec.get("stage") == "human_review":
-                method = f"stage5_human_{rec.get('action', 'unknown')}"
-            rows.append(
-                {
-                    "source": rec.get("source"),
-                    "source_native_id": rec.get("sku") or rec.get("source_native_id") or rec.get("url"),
-                    "eurio_id": rec.get("eurio_id"),
-                    "method": method,
-                    "confidence": rec.get("confidence"),
-                    "runner_up": rec.get("runner_up"),
-                    "decided_at": rec.get("sampled_at") or datetime.now(timezone.utc).isoformat(),
-                }
-            )
-    return rows
+# ---------- verify ----------
 
+def verify(client: PostgrestClient, db_coins: list[dict]) -> dict:
+    """Compare les compteurs Supabase à eurio.db + spot-check 5 coins."""
+    sb_counts = {t: client.count(t) for t in ("coins", "source_observations", "coin_market_prices")}
+    report = {"supabase_counts": sb_counts, "db_coins": len(db_coins), "samples": []}
 
-def queue_to_review_rows(queue: list[dict]) -> list[dict]:
-    rows: list[dict] = []
-    for item in queue:
-        rows.append(
-            {
-                "source": item.get("source"),
-                "source_native_id": item.get("source_native_id"),
-                "raw_payload": item.get("raw_payload") or {},
-                "candidates": item.get("candidates"),
-                "reason": item.get("reason") or "unknown",
-                "created_at": item.get("queued_at") or datetime.now(timezone.utc).isoformat(),
-                "resolved": bool(item.get("resolved")),
-                "resolution": item.get("resolution"),
-            }
-        )
-    return rows
+    if not db_coins:
+        return report
+    sample_ids = [db_coins[i]["eurio_id"] for i in range(0, len(db_coins), max(1, len(db_coins) // 5))][:5]
+    in_filter = ",".join(f'"{e}"' for e in sample_ids)
+    sb_rows = client.get(
+        "coins",
+        {"select": "eurio_id,country,year,theme,design_group_id", "eurio_id": f"in.({in_filter})"},
+    )
+    sb_by_eid = {r["eurio_id"]: r for r in sb_rows}
+    db_by_eid = {r["eurio_id"]: r for r in db_coins if r["eurio_id"] in sample_ids}
+    for eid in sample_ids:
+        d, s = db_by_eid.get(eid), sb_by_eid.get(eid)
+        match = bool(s) and all(s.get(k) == d.get(k) for k in ("country", "year", "theme", "design_group_id"))
+        report["samples"].append({"eurio_id": eid, "in_supabase": bool(s), "match": match})
+    return report
 
 
 # ---------- main ----------
 
-
 def parse_args() -> argparse.Namespace:
-    ap = argparse.ArgumentParser(description="Sync Eurio referential JSON to Supabase")
-    ap.add_argument("--dry-run", action="store_true", help="Print stats but don't hit the DB")
-    ap.add_argument("--coins-only", action="store_true", help="Only sync coins (skip obs/queue/decisions)")
-    ap.add_argument(
-        "--no-reset-decisions",
-        action="store_true",
-        help="Don't wipe matching_decisions before re-inserting (default is to reset)",
-    )
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--coins-only", action="store_true")
+    ap.add_argument("--verify", action="store_true", help="post-sync : count + spot-check")
+    ap.add_argument("--db", type=Path, default=DEFAULT_DB)
     return ap.parse_args()
-
-
-def chunks(it: Iterable[Any], size: int) -> Iterable[list[Any]]:
-    buf: list[Any] = []
-    for x in it:
-        buf.append(x)
-        if len(buf) >= size:
-            yield buf
-            buf = []
-    if buf:
-        yield buf
 
 
 def main() -> None:
     args = parse_args()
+    store = Store(args.db)
+    conn = store._connection()  # noqa: SLF001
 
-    referential = load_referential()
-    coins_rows = referential_to_coins_rows(referential)
-    obs_rows = referential_to_observations_rows(referential)
-    market_rows = referential_to_market_prices_rows(referential)
-    queue = load_queue()
-    queue_rows = queue_to_review_rows(queue)
-    raw_decisions = matching_log_to_rows(MATCHING_LOG_PATH)
+    coins_rows = db_coins_rows(conn)
+    obs_rows = db_observations_rows(conn)
+    market_rows = db_market_prices_rows(conn)
 
-    # Drop matching_decisions rows whose eurio_id no longer exists in the
-    # referential — the JSONL log is append-only and accumulates references
-    # to slugs that have since been renamed or pruned, which would trip the
-    # foreign key on insert.
-    known_ids = set(referential.keys())
-    decisions_rows = [
-        r for r in raw_decisions
-        if r.get("eurio_id") is None or r["eurio_id"] in known_ids
-    ]
-    dropped = len(raw_decisions) - len(decisions_rows)
-
-    print("Source counts :")
-    print(f"  coins            : {len(coins_rows)}")
-    print(f"  observations     : {len(obs_rows)}")
-    print(f"  market_prices    : {len(market_rows)} (lmdlp)")
-    print(f"  review_queue     : {len(queue_rows)}")
-    print(f"  matching_decisions: {len(decisions_rows)}"
-          + (f" (dropped {dropped} stale)" if dropped else ""))
+    print("Source counts (eurio.db) :")
+    print(f"  coins         : {len(coins_rows)}")
+    print(f"  observations  : {len(obs_rows)}")
+    print(f"  market_prices : {len(market_rows)}")
 
     if args.dry_run:
-        print("\n[dry-run] no HTTP calls.")
+        print("\n[dry-run] aucun appel HTTP.")
         return
 
     env = load_env()
-    url = env.get("SUPABASE_URL")
-    key = env.get("SUPABASE_SERVICE_ROLE_KEY")
+    url, key = env.get("SUPABASE_URL"), env.get("SUPABASE_SERVICE_ROLE_KEY")
     if not url or not key:
-        print("ERROR: SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY missing from .env")
+        print("ERROR : SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY manquants", file=sys.stderr)
         sys.exit(1)
 
     with PostgrestClient(url, key) as client:
-        print("\nUpserting coins...")
+        print("\nUpsert coins...")
         client.upsert("coins", coins_rows, on_conflict="eurio_id")
-        print(f"  coins upserted: {client.count('coins')}")
+        print(f"  Supabase coins now : {client.count('coins')}")
 
-        if args.coins_only:
-            return
+        if not args.coins_only:
+            print("\nUpsert source_observations...")
+            client.upsert(
+                "source_observations", obs_rows,
+                on_conflict="eurio_id,source,source_native_id,observation_type",
+            )
+            print(f"  Supabase source_observations now : {client.count('source_observations')}")
 
-        print("\nUpserting source_observations...")
-        client.upsert(
-            "source_observations",
-            obs_rows,
-            on_conflict="eurio_id,source,source_native_id,observation_type",
-        )
-        print(f"  source_observations now: {client.count('source_observations')}")
+            print("\nUpsert coin_market_prices...")
+            client.upsert(
+                "coin_market_prices", market_rows,
+                on_conflict="eurio_id,source,quality,fetched_at",
+            )
+            print(f"  Supabase coin_market_prices now : {client.count('coin_market_prices')}")
 
-        print("\nUpserting coin_market_prices (lmdlp)...")
-        client.upsert(
-            "coin_market_prices",
-            market_rows,
-            on_conflict="eurio_id,source,quality,fetched_at",
-        )
-        print(f"  coin_market_prices now: {client.count('coin_market_prices')}")
+        if args.verify:
+            print("\nVerify...")
+            print(json.dumps(verify(client, coins_rows), indent=2, ensure_ascii=False))
 
-        print("\nUpserting review_queue...")
-        client.upsert(
-            "review_queue",
-            queue_rows,
-            on_conflict="source,source_native_id,reason",
-        )
-        print(f"  review_queue now: {client.count('review_queue')}")
-
-        if not args.no_reset_decisions:
-            print("\nResetting matching_decisions table...")
-            client.delete_all("matching_decisions")
-        print("Upserting matching_decisions...")
-        client.upsert("matching_decisions", decisions_rows)
-        print(f"  matching_decisions now: {client.count('matching_decisions')}")
-
-    print("\n" + "=" * 60)
-    print("Sync complete.")
-    print("=" * 60)
+    print("\n" + "=" * 60 + "\nSync OK.\n" + "=" * 60)
 
 
 if __name__ == "__main__":

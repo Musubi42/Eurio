@@ -606,6 +606,11 @@ tasks:
     cmds:
       - "{{.VENV}}/python -m scripts.regen_bench_groups {{.CLI_ARGS}}"
 
+  detect-supabase-drift:
+    desc: "Harmonisation chunk 4 — détecte les dérives eurio.db ↔ Supabase (orphelins, champs divergents). Lecture seule."
+    cmds:
+      - "{{.VENV}}/python -m scripts.detect_supabase_drift {{.CLI_ARGS}}"
+
   # ---------- Storage migration (fs → MinIO) ----------
   # Spec: docs/harmonisation-images/chunk-3-migration-script.md
   migrate-inventory:

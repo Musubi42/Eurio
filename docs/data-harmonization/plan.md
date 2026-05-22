@@ -122,13 +122,27 @@ re-scrape Numista. 625 types Numista vs 466 pièces `coins`. 132 groupes
 > partout ; l'accrocher à la complétion d'un run dans `training_runner` est un
 > ajout d'une ligne, à faire quand on touchera ce flux.
 
-## Chunk 4 — Projections descendantes rebranchées sur `eurio.db`
+## Chunk 4 — Projections descendantes ✅ (livré 2026-05-23)
 
-- `sync_to_supabase` lit `eurio.db` au lieu du JSON.
-- `export_catalog_snapshot` inchangé en aval mais cohérent avec le nouveau
-  `coins` ; embarque le `status`.
-- `eurio_referential.json` devient un export généré optionnel.
-- Détection de dérive : commande comparant Supabase / snapshot au canonique.
+- [x] `export/sync_to_supabase.py` réécrit : lit `eurio.db` (au lieu de
+      `eurio_referential.json` périmé). Flatten coins + tables filles →
+      `coins`/`source_observations`/`coin_market_prices`. Upsert idempotent,
+      jamais de delete. `--verify` post-sync spot-check 5 coins.
+- [x] `scripts/detect_supabase_drift.py` (+ go-task) : compare lecture seule
+      eurio.db ↔ Supabase, remonte 3 buckets (`supabase_only`, `eurio_only`,
+      `field_drift`).
+- [x] Matcher flou retiré (`batch_match_numista.py` + go-tasks), `sync` ne
+      pousse plus `matching_decisions`/`review_queue` (artefacts historiques
+      figés côté Supabase).
+- [x] **Vérifié** : sync OK (coins 2776, observations 3963, market_prices 624),
+      0 dérive de valeur, 460 orphelines Supabase pré-Chunk 2 (slug drift,
+      sans risque — l'architecture pose `sync` upsert-only).
+- [ ] `export_catalog_snapshot` : lit déjà Supabase qui est maintenant à jour →
+      pas de refonte nécessaire ce chunk.
+- [ ] Cleanup des 460 orphelines Supabase : optionnel, à décider plus tard.
+
+> `eurio_referential.json` n'est plus la vérité. Si on veut le garder comme
+> export portable (architecture), c'est un `SELECT → JSON` à écrire un jour.
 
 ## Chunk 5 — Migration d'identité + ré-épinglage des dérivés
 
