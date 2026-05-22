@@ -5,7 +5,7 @@
 // overlay + sélecteur libre. Le shell ReviewPage gère le toggle
 // Single | Lot et le titre.
 
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { AlertTriangle, Keyboard, Search, Sparkles, Undo2 } from 'lucide-vue-next'
 import {
   correctListing,
@@ -19,6 +19,7 @@ import {
   type ListingKind,
   type MarketQuote,
   type ReviewCandidate,
+  type ReviewDecision,
   type ReviewFace,
   type ReviewItem,
   type ReviewStats,
@@ -51,8 +52,37 @@ const showHelp = ref(false)
 // 'free' = FreeSelectorPanel inline (cascade pays/dénom/année).
 // Reset à 'auto' à chaque changement d'item.
 const mode = ref<'auto' | 'free'>('auto')
-const undoToast = ref<{ id: string; action: 'reject' | 'skip' } | null>(null)
-let undoTimer: ReturnType<typeof setTimeout> | null = null
+// ─── Commit différé (modèle « undo Send ») ──────────────────────────────
+// Une action (validate / reject / skip) n'est PAS POSTée immédiatement :
+// elle devient une décision « en attente » et n'est commitée qu'après
+// COMMIT_WINDOW_MS. Pendant la fenêtre, « Annuler » la supprime sans
+// qu'aucune écriture serveur n'ait eu lieu — donc plus de re-décision
+// d'un item déjà `done` (cf. bug 409). Au plus une décision en attente :
+// une nouvelle action flush la précédente avant de s'armer.
+const COMMIT_WINDOW_MS = 10_000
+
+type PendingKind = 'decide' | 'reject' | 'skip'
+
+interface PendingCommit {
+  kind: PendingKind
+  reviewId: string
+  /** Index de l'item dans `queue` — sert au rewind exact de l'undo. */
+  itemIndex: number
+  /** Payload de décision (kind='decide' uniquement). */
+  payload?: ReviewDecision
+}
+
+const PENDING_LABEL: Record<PendingKind, string> = {
+  decide: 'Pièce validée',
+  reject: 'Image rejetée',
+  skip: 'Review reportée',
+}
+
+const pendingCommit = ref<PendingCommit | null>(null)
+let commitTimer: ReturnType<typeof setTimeout> | null = null
+// Bumpé à chaque action — sert de `key` au toast pour relancer son
+// animation de compte à rebours même sur deux actions consécutives.
+const toastNonce = ref(0)
 
 // Bandeau d'alerte qui descend du haut de l'écran — feedback quand on
 // presse ⏎ alors que la validation est bloquée.
@@ -152,8 +182,22 @@ function selectTarget() {
   focusedCandidateIdx.value = null
 }
 
+// Commit garanti même si l'onglet se ferme pendant la fenêtre d'undo :
+// `keepalive` laisse le POST se terminer après l'unload.
+function flushBeforeUnload() {
+  flushPending({ keepalive: true })
+}
+
 onMounted(() => {
   void load()
+  window.addEventListener('beforeunload', flushBeforeUnload)
+})
+
+// Démontage = changement de route OU bascule Single→Lot (v-if dans
+// ReviewPage) : on flush la décision en attente plutôt que la perdre.
+onBeforeUnmount(() => {
+  window.removeEventListener('beforeunload', flushBeforeUnload)
+  flushPending()
 })
 
 // ─── Actions ────────────────────────────────────────────────────────────
@@ -226,7 +270,7 @@ function flashTopNotice(message: string) {
   }, 2800)
 }
 
-async function validateCurrent() {
+function validateCurrent() {
   if (!currentItem.value) return
   if (!canValidate.value) {
     // ⏎ pressé mais validation bloquée → feedback visible.
@@ -234,48 +278,76 @@ async function validateCurrent() {
     return
   }
   if (!focusedCandidate.value) return  // garanti par canValidate — narrowing TS
-  await decideReviewItem(currentItem.value.id, {
+  scheduleCommit('decide', currentItem.value.id, {
     eurio_id: focusedCandidate.value.eurio_id,
     face: face.value,
   })
   advance()
 }
 
-async function rejectCurrent() {
+function rejectCurrent() {
   if (!currentItem.value) return
-  const id = currentItem.value.id
-  await rejectReviewItem(id)
-  showUndoToast(id, 'reject')
+  scheduleCommit('reject', currentItem.value.id)
   advance()
 }
 
-async function skipCurrent() {
+function skipCurrent() {
   if (!currentItem.value) return
-  const id = currentItem.value.id
-  await skipReviewItem(id)
-  showUndoToast(id, 'skip')
+  scheduleCommit('skip', currentItem.value.id)
   advance()
 }
 
-function showUndoToast(id: string, action: 'reject' | 'skip') {
-  if (undoTimer) clearTimeout(undoTimer)
-  undoToast.value = { id, action }
-  undoTimer = setTimeout(() => {
-    undoToast.value = null
-  }, 5000)
-}
+// ─── Commit différé : scheduling / flush / undo ─────────────────────────
 
-function undoLast() {
-  // V1 mock — on remet l'item au début de la queue (pas de vrai rollback API)
-  if (!undoToast.value) return
-  const id = undoToast.value.id
-  const item = queue.value.find((r) => r.id === id)
-  if (item) {
-    currentIndex.value = Math.max(0, currentIndex.value - 1)
-    resetForCurrent()
+/** POST réel d'une décision. Tout échec est surfacé via le bandeau —
+ *  jamais d'exception non catchée (cf. bug 409 décrit en aparté). */
+async function commitPending(p: PendingCommit, opts: { keepalive?: boolean } = {}) {
+  try {
+    if (p.kind === 'decide' && p.payload) {
+      await decideReviewItem(p.reviewId, p.payload, opts)
+    } else if (p.kind === 'reject') {
+      await rejectReviewItem(p.reviewId, opts)
+    } else if (p.kind === 'skip') {
+      await skipReviewItem(p.reviewId, opts)
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    flashTopNotice(`Échec de l'enregistrement : ${msg}`)
   }
-  undoToast.value = null
-  if (undoTimer) clearTimeout(undoTimer)
+}
+
+/** Commit immédiat de la décision en attente (timer écoulé, nouvelle
+ *  action, démontage de la vue). Idempotent : sans pending, no-op. */
+function flushPending(opts: { keepalive?: boolean } = {}) {
+  if (!pendingCommit.value) return
+  if (commitTimer) { clearTimeout(commitTimer); commitTimer = null }
+  const p = pendingCommit.value
+  pendingCommit.value = null
+  void commitPending(p, opts)
+}
+
+/** Diffère une action : flush la précédente, arme le timer de commit. */
+function scheduleCommit(kind: PendingKind, reviewId: string, payload?: ReviewDecision) {
+  flushPending()
+  pendingCommit.value = { kind, reviewId, itemIndex: currentIndex.value, payload }
+  toastNonce.value++
+  commitTimer = setTimeout(() => {
+    commitTimer = null
+    const p = pendingCommit.value
+    pendingCommit.value = null
+    if (p) void commitPending(p)
+  }, COMMIT_WINDOW_MS)
+}
+
+/** Annule la décision en attente — aucune écriture n'a eu lieu, on
+ *  rembobine simplement le curseur sur l'item concerné. */
+function undoLast() {
+  const p = pendingCommit.value
+  if (!p) return
+  if (commitTimer) { clearTimeout(commitTimer); commitTimer = null }
+  pendingCommit.value = null
+  currentIndex.value = p.itemIndex
+  resetForCurrent()
 }
 
 function toggleMode() {
@@ -527,15 +599,17 @@ useReviewKeybinds(keyboardEnabled, {
       </div>
     </Transition>
 
-    <!-- ═══ Undo toast ═══ -->
+    <!-- ═══ Toast undo — fenêtre de COMMIT_WINDOW_MS avant écriture ═══ -->
     <Transition name="toast">
       <div
-        v-if="undoToast"
-        class="fixed bottom-20 left-1/2 z-20 -translate-x-1/2 inline-flex items-center gap-3 rounded-full border px-4 py-2 text-[12px] shadow-lg"
+        v-if="pendingCommit"
+        :key="toastNonce"
+        class="fixed bottom-20 left-1/2 z-20 -translate-x-1/2 inline-flex items-center gap-3 overflow-hidden rounded-full border px-4 py-2 text-[12px] shadow-lg"
         style="border-color: var(--surface-3); background: var(--ink); color: var(--surface);"
       >
         <span>
-          Action <strong>{{ undoToast.action }}</strong> effectuée
+          <strong>{{ PENDING_LABEL[pendingCommit.kind] }}</strong>
+          <span class="opacity-60">· enregistrement dans {{ COMMIT_WINDOW_MS / 1000 }} s</span>
         </span>
         <button
           type="button"
@@ -545,6 +619,11 @@ useReviewKeybinds(keyboardEnabled, {
         >
           <Undo2 class="h-3 w-3" /> Annuler
         </button>
+        <!-- Compte à rebours CSS pur — aucun timer JS à nettoyer. -->
+        <span
+          class="undo-countdown"
+          :style="{ animationDuration: COMMIT_WINDOW_MS + 'ms' }"
+        />
       </div>
     </Transition>
 
@@ -630,6 +709,29 @@ useReviewKeybinds(keyboardEnabled, {
 
 kbd {
   font-family: ui-monospace, SFMono-Regular, monospace;
+}
+
+/* Compte à rebours du toast undo : barre qui se vide en COMMIT_WINDOW_MS
+   (durée posée inline). CSS pur — aucun timer JS à nettoyer. */
+.undo-countdown {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  width: 100%;
+  background: var(--gold-soft);
+  transform-origin: left;
+  animation-name: undo-countdown;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+@keyframes undo-countdown {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
 }
 
 .mode-btn {

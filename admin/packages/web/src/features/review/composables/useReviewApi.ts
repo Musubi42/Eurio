@@ -172,11 +172,23 @@ export async function fetchReviewStats(): Promise<ReviewStats> {
   }
 }
 
-export async function decideReviewItem(id: string, payload: ReviewDecision): Promise<void> {
+// `keepalive` permet au POST de survivre à un unload de page (fermeture
+// d'onglet pendant la fenêtre d'undo). Cf. SingleReviewView — commit
+// différé.
+export interface CommitOpts {
+  keepalive?: boolean
+}
+
+export async function decideReviewItem(
+  id: string,
+  payload: ReviewDecision,
+  opts: CommitOpts = {},
+): Promise<void> {
   const real = await safeFetch<unknown>(`/review-queue/${encodeURIComponent(id)}/decide`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
+    keepalive: opts.keepalive,
   })
   if (real === null) {
     await delay(40)
@@ -184,9 +196,10 @@ export async function decideReviewItem(id: string, payload: ReviewDecision): Pro
   }
 }
 
-export async function skipReviewItem(id: string): Promise<void> {
+export async function skipReviewItem(id: string, opts: CommitOpts = {}): Promise<void> {
   const real = await safeFetch<unknown>(`/review-queue/${encodeURIComponent(id)}/skip`, {
     method: 'POST',
+    keepalive: opts.keepalive,
   })
   if (real === null) {
     await delay(20)
@@ -194,9 +207,10 @@ export async function skipReviewItem(id: string): Promise<void> {
   }
 }
 
-export async function rejectReviewItem(id: string): Promise<void> {
+export async function rejectReviewItem(id: string, opts: CommitOpts = {}): Promise<void> {
   const real = await safeFetch<unknown>(`/review-queue/${encodeURIComponent(id)}/reject`, {
     method: 'POST',
+    keepalive: opts.keepalive,
   })
   if (real === null) {
     await delay(20)
