@@ -242,10 +242,20 @@ Idéalement, à chaque scrape réel, snapshotter les `itemSummaries` bruts
 | **P0** | Gold benchmark (I1) + replay harness (I2) + LLM-juge (I3) | — | ✅ livré |
 | **C1** | Couche 1 — `no_match` → `ambiguous` | P0 | ✅ livré |
 | **C2a-1** | `coin_aliases` + mining acronymes + matcher enrichi | P0, C1 | ✅ livré |
-| **C2a-2** | Alias colloquiaux générés par LLM ancré → `c2a-2-llm-aliases-kickoff.md` | C2a-1 | ⏳ |
-| **C2b** | Couche 2b — scoreur LaBSE + fusion RRF + marge top-2 | C2a | ⏳ |
-| **C2c?** | Couche 2c — matcher LLM, **si** le bench le justifie | mesure C2a+C2b | ⏳ |
-| **C3** | Calibration des seuils (`τ_high`, `τ_low`, `δ`) par cohorte + audit narratif (I4) en runbook | C2b | ⏳ |
+| **C2a-2** | Alias colloquiaux générés par LLM ancré → `c2a-2-llm-aliases-kickoff.md` | C2a-1 | ✅ livré |
+| **C1b** | Déparasiter `accept_listing` (proof/color ≠ bruit) — hors plan, ouvert par le bilan | bilan | ✅ livré |
+| **Cc** | Garde-fou de contradiction niveau groupe (+ 2½€ extracteur) — hors plan | bilan | ✅ livré |
+| **C2b** | Couche 2b — scoreur LaBSE + fusion RRF + marge top-2 | C2a | ⏸️ différé — ROI faible |
+| **C2c?** | Couche 2c — matcher LLM, **si** le bench le justifie | mesure C2a+C2b | ⏸️ non requis |
+| **C3** | Calibration des seuils (`τ_high`, `τ_low`, `δ`) par cohorte + audit narratif (I4) en runbook | C2b | ⏸️ différé |
+
+> **Chantier clôturé 2026-05-22** après P0/C1/C2a/C1b/Cc. Bilan de
+> clôture + chiffres dans `PROGRESS-improve-ebay-matching-indus-standard.md`.
+> Le plan d'origine visait le matcher comme goulot de recall ; le bench a
+> montré que le recall était d'abord un problème de filtre legacy
+> (`accept_listing`) — d'où les chunks hors-plan C1b/Cc. Couches
+> sémantiques C2b/C2c différées : recall déjà à 100 %, auto-attribution à
+> 89 %, leur ROI mesuré est faible.
 
 Suivi vivant + tableau de bord du bench :
 `PROGRESS-improve-ebay-matching-indus-standard.md`.

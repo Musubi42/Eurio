@@ -14,9 +14,11 @@
 | C2a-2 — alias colloquiaux (LLM ancré) | ✅ livré (auto-attrib 69→74 %) |
 | C1b — déparasiter `accept_listing` (proof/color ≠ bruit) | ✅ livré (faux rejet 14→0 %) |
 | Cc — garde-fou de contradiction (niveau groupe) | ✅ livré (junk false-keep 44→28 %) |
-| C2b — scoreur sémantique LaBSE + fusion | ⏳ |
-| C2c — matcher LLM (conditionnel) | ⏳ |
-| C3 — calibration seuils + runbook audit | ⏳ |
+| C2b — scoreur sémantique LaBSE + fusion | ⏸️ différé (ROI faible — cf. bilan de clôture) |
+| C2c — matcher LLM (conditionnel) | ⏸️ non requis |
+| C3 — calibration seuils + runbook audit | ⏸️ différé |
+
+> **Chantier clôturé 2026-05-22.** Bilan de clôture ci-dessous.
 
 ## 📊 Tableau de bord — évolution du bench
 
@@ -40,6 +42,49 @@ Bench fidèle (`accept_listing` + theme-matcher) sur le gold gelé v1
 > A/B d'un changement de donnée (C2a-2) : replay → `go-task
 > ml:aliases:ingest` → replay (ou `DELETE FROM coin_aliases WHERE
 > source='llm'` pour revenir en arrière).
+
+## 🏁 Bilan de clôture (2026-05-22)
+
+Baseline → état final, sur le gold gelé v1 (99 pièces valides, 85 junk) :
+
+| Métrique | Baseline | Final | Δ |
+|---|---|---|---|
+| Faux rejet | 34,3 % | **0,0 %** | −34 pts |
+| Recall | 65,7 % | **100,0 %** | +34 pts |
+| Auto-attribution ★ | 65,7 % | **88,9 %** | +23 pts |
+| Junk false-keep | 2,4 % | 28,2 % | +26 pts ⚠️ |
+| Précision | 92,9 % | 94,6 % | +2 pts, **0 auto erronée** |
+
+**Ce qui a marché.** Recall à 100 %, auto-attribution à 89 %, zéro
+attribution erronée sur tout le parcours. Les leviers décisifs n'étaient
+pas ceux du plan : C1b (filtre legacy `accept_listing` mal scopé) et Cc
+(garde-fou de contradiction au niveau groupe) — tous deux **ouverts par
+le bench**, pas par le plan. Leçon : décomposer le bench par listing,
+jamais se fier aux moyennes.
+
+**Le junk false-keep monté à 28 %** est le revers assumé de C1 : le
+matcher ne jette plus en aveugle, donc le junk qui le traverse part en
+review au lieu d'être supprimé. Descendu de 44 % (post-C1) à 28 % par Cc.
+Le résidu (24 items) est diffus : lots multi-pays, billets « 0 EURO »,
+pièces auto, et un coin au mauvais thème — pas de bloc homogène, donc
+pas de « un levier = un gain » net. La file de review reste le filet
+prévu par les findings (jamais de discard silencieux).
+
+**Pourquoi on s'arrête là.** Les couches sémantiques (C2b LaBSE, C2c
+matcher LLM) visaient le recall et la longue traîne du vocab gap. Or le
+recall est à 100 % et il ne reste que ~11 listings en review, dont ~6
+réellement indiscriminables (titres sans thème « 2 € BÉLGICA S/C »).
+Le ROI mesuré d'un scoreur sémantique est donc faible. C3 (calibration
+de seuils) suppose des scores continus que le matcher lexical actuel ne
+produit pas — sans C2b, pas de matière à calibrer.
+
+**Reste ouvert si besoin un jour** (aucun bloquant) :
+- `is_lot` est calculé mais le bench ne le rejoue pas — le câbler
+  rejetterait les lots multi-pays restants.
+- Spot-check humain d'une tranche ~40 du gold (validation du juge LLM) —
+  dernier reliquat P0, non bloquant.
+- C2b/C2c/C3 réactivables si un futur run montre une longue traîne de
+  vocab gap que les alias ne couvrent pas.
 
 ---
 
