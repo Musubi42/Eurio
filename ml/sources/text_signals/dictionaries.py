@@ -133,9 +133,15 @@ DENOMINATION_RE = re.compile(
 
 # Subset face-values reconnues comme valides (autres = dropped, ex. "10 euros"
 # = un montant prix, pas une dénomination de pièce).
+#
+# 2.5 inclus : la Belgique frappe des **2½ euro** (format collector hors
+# circulation). Ce n'est PAS une pièce de notre scope 2 € — mais il faut
+# la *reconnaître* comme dénomination pour que le garde-fou de
+# contradiction (`compare_to_group`) la rejette d'un groupe 2 €. La
+# capturer = pouvoir la contredire ; la dropper = la laisser passer.
 VALID_FACE_VALUES: frozenset[float] = frozenset({
     0.01, 0.02, 0.05, 0.10, 0.20, 0.50,
-    1.0, 2.0,
+    1.0, 2.0, 2.5,
 })
 
 

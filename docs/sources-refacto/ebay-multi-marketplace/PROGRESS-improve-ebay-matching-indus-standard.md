@@ -13,7 +13,7 @@
 | C2a-1 — `coin_aliases` + mining acronymes | ✅ livré (auto-attrib 66→69 %) |
 | C2a-2 — alias colloquiaux (LLM ancré) | ✅ livré (auto-attrib 69→74 %) |
 | C1b — déparasiter `accept_listing` (proof/color ≠ bruit) | ✅ livré (faux rejet 14→0 %) |
-| Cc — garde-fou de contradiction (niveau groupe) | ✅ livré (junk false-keep 44→39 %) |
+| Cc — garde-fou de contradiction (niveau groupe) | ✅ livré (junk false-keep 44→28 %) |
 | C2b — scoreur sémantique LaBSE + fusion | ⏳ |
 | C2c — matcher LLM (conditionnel) | ⏳ |
 | C3 — calibration seuils + runbook audit | ⏳ |
@@ -33,6 +33,7 @@ Bench fidèle (`accept_listing` + theme-matcher) sur le gold gelé v1
 | C2a-2 | 14,1 % | 85,9 % | **73,7 %** | 12,1 % | 42,4 % | 93,6 % |
 | C1b   |  0,0 % | 100,0 % | **88,9 %** | 11,1 % | 43,5 % | 94,6 % |
 | Cc    |  0,0 % | 100,0 % | **88,9 %** | 11,1 % | 38,8 % | 94,6 % |
+| Cc·2½€ |  0,0 % | 100,0 % | **88,9 %** | 11,1 % | 28,2 % | 94,6 % |
 
 > Reproduire un point : `go-task ml:bench:theme-match`. A/B d'un
 > changement de code : `git stash` → replay → `git stash pop` → replay.
@@ -371,20 +372,34 @@ la sœur.
 
 ### 📊 Cc — A/B sur bench fidèle
 
-| Métrique | C1b | Cc |
-|---|---|---|
-| Junk false-keep | 43,5 % | **38,8 %** (37→33, 4 junk + 1 lot jetés) |
-| Faux rejet | 0,0 % | **0,0 %** (0 pièce valide contredite) |
-| Recall / Auto ★ / Précision | — | inchangés (100 % / 88,9 % / 94,6 %) |
+| Métrique | C1b | Cc | Cc·2½€ |
+|---|---|---|---|
+| Junk false-keep | 43,5 % | 38,8 % | **28,2 %** |
+| Faux rejet | 0,0 % | 0,0 % | **0,0 %** |
+| Recall / Auto ★ / Précision | — | inchangés | inchangés |
+
+- **Cc** (garde-fou seul) : 37→33 false-keep, 4 junk + 1 lot jetés.
+- **Cc·2½€** (extracteur) : 33→24, le bloc des 2½ euro belges entier.
+
+### Le 2½ euro — extracteur (sous-livraison de Cc)
+
+Le garde-fou ne tape que ce qui *produit* un signal contradictoire. Or
+`extract_listing_text_signals` ne reconnaissait pas le **2½ euro** belge
+(format collector hors circulation) :
+
+- `VALID_FACE_VALUES` filtrait `2.5` (absent du set) → « 2,5 Euros »
+  produisait zéro signal de dénomination.
+- pire, « 2 1/2 Euro » faisait matcher le « 2 Euro » interne via
+  `DENOMINATION_RE` → lu comme **2,0 €** → convergent à tort.
+
+Fix : `2.5` ajouté à `VALID_FACE_VALUES` (le reconnaître = pouvoir le
+contredire) ; `_HALF_EURO_RE` normalise « 2 1/2 », « 2-1/2 », « 2½ » →
+« 2.5 » avant capture. Résultat : les 9 false-keep 2½ € du gold sont
+désormais rejetés en `group_contradict_denomination`. Tests :
+`test_extract_denomination` étendu + `test_half_euro_fraction_not_
+misread_as_two`.
 
 ### Découvertes / contraintes
-
-- **Effet réel mais borné par l'extracteur.** Le garde-fou ne tape que
-  ce qui produit un *signal* contradictoire. Or `extract_listing_text_
-  signals` ne reconnaît que les dénominations euro standard (0,01→2 €) :
-  les **« 2,5 Euro » / « 2 1/2 Euro »** belges (~9 false-keep du gold)
-  ne génèrent aucun signal de dénomination → pas de contradiction → pas
-  jetés. C'est le prochain levier : apprendre `2.5` à l'extracteur.
 - **0 faux rejet** confirme la sûreté du garde-fou : aucun titre de
   pièce valide ne produit de contradiction franche sur ce gold.
 - **Reste hors d'atteinte de la contradiction d'axe** : lots

@@ -111,10 +111,25 @@ def test_year_multiple_in_text():
     ("0,50 € Allemagne", {0.50}),
     ("0.50 euro NL 2002", {0.50}),
     ("2 euros + 1 euro Andorre", {2.0, 1.0}),
+    # 2½ euro belge — décimal et fractionnaire ; reconnu pour pouvoir
+    # être contredit d'un groupe 2 € (garde-fou de contradiction).
+    ("BELGICA 2,5 EUROS 2020 BU", {2.5}),
+    ("Belgica 2020 moneda 2,5€ Euros", {2.5}),
+    ("Belgien 2 1/2 Euro 2020", {2.5}),
+    ("[#1160522] Bélgica, 2-1/2 Euro, 2020", {2.5}),
+    ("Belgien 2½ Euro 2021", {2.5}),
 ])
 def test_extract_denomination(title: str, expected: set[float]):
     sig = extract_listing_text_signals(title)
     assert set(sig.denominations) == expected
+
+
+def test_half_euro_fraction_not_misread_as_two():
+    # « 2 1/2 Euro » ne doit PAS produire 2,0 € (le « 2 Euro » interne) —
+    # sinon il convergerait à tort avec un groupe 2 €.
+    sig = extract_listing_text_signals("Belgien 2 1/2 Euro 2019 Manneken Pis")
+    assert sig.denominations == frozenset({2.5})
+    assert 2.0 not in sig.denominations
 
 
 def test_denomination_drops_arbitrary_amounts():

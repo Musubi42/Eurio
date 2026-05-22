@@ -150,10 +150,21 @@ def _extract_years(text: str) -> tuple[frozenset[int], list[str]]:
     return frozenset(years), raw
 
 
+# Forme fractionnaire du 2½ euro : « 2 1/2 », « 2-1/2 », « 2½ », « 2 ½ ».
+# DENOMINATION_RE ne lit que les décimaux ; sans cette normalisation,
+# « 2 1/2 Euro » ferait matcher le « 2 Euro » interne → lu comme 2,0 €
+# (convergent avec un groupe 2 €) au lieu de 2,5 € (contradiction).
+_HALF_EURO_RE = re.compile(r"\b2[\s-]*(?:1\s*/\s*2|½)")
+
+
 def _extract_denominations(text: str) -> tuple[frozenset[float], list[str]]:
     """Capture les nombres + 'euro|€|EUR'. Filtre sur les face values
     connues pour éviter d'absorber des prix ("12 euros", "5 €"
-    seuls = pas une dénomination de pièce eurozone)."""
+    seuls = pas une dénomination de pièce eurozone).
+
+    Normalise d'abord la forme fractionnaire « 2 1/2 » → « 2.5 » pour
+    que le 2½ euro belge soit reconnu (et donc contredisable)."""
+    text = _HALF_EURO_RE.sub("2.5", text)
     denoms: set[float] = set()
     raw: list[str] = []
     for m in DENOMINATION_RE.finditer(text):
