@@ -30,6 +30,7 @@ from pathlib import Path
 ML_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ML_DIR))
 
+from sources.ebay.filters import accept_listing  # noqa: E402
 from sources.ebay.queries import match_listing_to_group  # noqa: E402
 from state import Store  # noqa: E402
 
@@ -104,7 +105,8 @@ def cmd_export(args: argparse.Namespace) -> int:
 
     # Listings GARDÉS — 1 row par image, dédup par listing_id.
     for r in conn.execute(
-        "SELECT source_ref, listing_title, marketplace, target_eurio_id "
+        "SELECT source_ref, listing_title, marketplace, target_eurio_id, "
+        "listing_price, listing_currency "
         "FROM source_images WHERE run_id LIKE ? AND source='ebay'",
         (run_like,),
     ).fetchall():
@@ -120,6 +122,8 @@ def cmd_export(args: argparse.Namespace) -> int:
             "marketplace": r["marketplace"],
             "group_year": year,
             "bucket": "kept",
+            "price": r["listing_price"],
+            "currency": r["listing_currency"],
             "pipeline_outcome": f"kept→{r['target_eurio_id']}",
         }
 
@@ -132,12 +136,12 @@ def cmd_export(args: argparse.Namespace) -> int:
         lid = _norm_listing_id(r["source_ref"])
         if lid in listings or not r["title"]:
             continue
-        url = None
+        payload: dict = {}
         try:
-            url = (json.loads(r["raw_payload"]) or {}).get("item_web_url")
+            payload = json.loads(r["raw_payload"]) or {}
         except (json.JSONDecodeError, TypeError):
             pass
-        year = _year_from_skw(url)
+        year = _year_from_skw(payload.get("item_web_url"))
         if year is None:
             continue
         bucket = "theme_mismatch" if r["reason"] == "theme_mismatch" else "other_discard"
@@ -147,6 +151,8 @@ def cmd_export(args: argparse.Namespace) -> int:
             "marketplace": r["marketplace"],
             "group_year": year,
             "bucket": bucket,
+            "price": payload.get("price"),
+            "currency": payload.get("currency"),
             "pipeline_outcome": f"discarded:{r['reason']}",
         }
 
@@ -266,64 +272,69 @@ def cmd_replay(args: argparse.Namespace) -> int:
     n_kept_review = 0
     n_junk = n_correct_discard = n_false_keep = 0
     n_auto_total = 0
+    n_accept_rej = n_matcher_rej = 0
     lot_outcomes: Counter = Counter()
     rows_report: list[tuple] = []
 
     for g in gold:
         verdict = g["verdict"]
         ids = group_coins.get(g["group_year"], [])
-        gm = match_listing_to_group(g["title"], ids, conn=conn)
-        mv = gm.verdict
-        if mv == "single":
-            n_auto_total += 1
+        # Réplique fidèle du pipeline : accept_listing PUIS le matcher.
+        ok, reason = accept_listing(
+            {"title": g["title"], "price": g.get("price"),
+             "currency": g.get("currency")},
+            2.0, expected_year=g["group_year"], is_commemorative=True,
+        )
+        if not ok:
+            mv = f"accept:{reason}"
+            discarded = True
+            n_accept_rej += 1
+        else:
+            gm = match_listing_to_group(g["title"], ids, conn=conn)
+            mv = gm.verdict
+            discarded = mv == "no_match"
+            if discarded:
+                n_matcher_rej += 1
+            if mv == "single":
+                n_auto_total += 1
 
-        if verdict.startswith("coin:"):
+        if verdict.startswith("coin:") or verdict == "ambiguous":
             n_valid += 1
-            want = verdict.split(":", 1)[1]
-            if mv == "no_match":
+            want = verdict.split(":", 1)[1] if ":" in verdict else None
+            if discarded:
                 n_false_discard += 1
                 outcome = "FALSE_DISCARD"
-            elif mv == "single" and gm.matched == (want,):
+            elif mv == "single" and want and gm.matched == (want,):
                 n_auto_correct += 1
                 outcome = "auto_ok"
             elif mv == "single":
                 n_auto_wrong += 1
                 outcome = "auto_WRONG"
-            else:  # ambiguous / lot — gardé sans auto-attribution
-                n_kept_review += 1
-                outcome = "review"
-        elif verdict == "ambiguous":
-            n_valid += 1
-            if mv == "no_match":
-                n_false_discard += 1
-                outcome = "FALSE_DISCARD"
-            elif mv == "single":
-                n_auto_wrong += 1  # auto-attribue un cas réellement ambigu
-                outcome = "auto_WRONG(amb)"
-            else:
+            else:  # ambiguous / lot — gardé, routé en review
                 n_kept_review += 1
                 outcome = "review"
         elif verdict in ("not-a-coin", "wrong-scope"):
             n_junk += 1
-            if mv == "no_match":
+            if discarded:
                 n_correct_discard += 1
                 outcome = "junk_discarded"
             else:
                 n_false_keep += 1
                 outcome = "FALSE_KEEP"
         else:  # lot
-            lot_outcomes[mv] += 1
-            outcome = f"lot→{mv}"
+            lot_outcomes["discarded" if discarded else mv] += 1
+            outcome = f"lot→{'discarded' if discarded else mv}"
 
-        rows_report.append((g["group_year"], verdict, mv, outcome, g["title"][:54]))
+        rows_report.append((g["group_year"], verdict, mv, outcome, g["title"][:52]))
 
     # Métriques.
     def pct(num: int, den: int) -> str:
         return f"{100*num/den:5.1f}%  ({num}/{den})" if den else "   n/a"
 
-    print("=" * 66)
-    print(f"REPLAY theme-matcher — gold {GOLD_PATH.name}  ({len(gold)} entrées)")
-    print("=" * 66)
+    print("=" * 68)
+    print(f"REPLAY pipeline (accept_listing + theme-matcher) — {GOLD_PATH.name}"
+          f"  ({len(gold)} entrées)")
+    print("=" * 68)
     print(f"  pièces valides du périmètre        {n_valid}")
     print(f"  TAUX DE FAUX REJET                 {pct(n_false_discard, n_valid)}")
     print(f"  recall (gardé quelque part)        {pct(n_valid - n_false_discard, n_valid)}")
@@ -335,13 +346,14 @@ def cmd_replay(args: argparse.Namespace) -> int:
     print(f"    correctement rejeté              {pct(n_correct_discard, n_junk)}")
     print(f"    FALSE KEEP (junk gardé)          {pct(n_false_keep, n_junk)}")
     if lot_outcomes:
-        print(f"  lots — verdicts matcher : {dict(lot_outcomes)}")
-    print("-" * 66)
+        print(f"  lots — verdicts : {dict(lot_outcomes)}")
+    print(f"  rejets : accept_listing {n_accept_rej} · matcher {n_matcher_rej}")
+    print("-" * 68)
 
     if args.verbose:
         for year, gv, mv, outcome, title in sorted(rows_report):
-            flag = "  ⚠" if outcome.isupper() or "WRONG" in outcome or "FALSE" in outcome else "   "
-            print(f"{flag} {year} {gv:28s} → {mv:10s} {outcome:16s} {title}")
+            flag = "  ⚠" if "WRONG" in outcome or "FALSE" in outcome else "   "
+            print(f"{flag} {year} {gv:30s} → {mv:14s} {outcome:15s} {title}")
     return 0
 
 
