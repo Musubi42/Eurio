@@ -13,6 +13,7 @@ Sous-dossier des **probes, benchmarks et findings** du chantier
 |---|---|---|
 | [marketplace-language-distribution.md](marketplace-language-distribution.md) | Quelle langue de titres domine sur chaque marketplace eBay (chunk V1) → `MARKETPLACE_ACTIVE_LANGS` | ✅ livré |
 | [marketplace-routing-benchmark.md](marketplace-routing-benchmark.md) | Quel marketplace maximise le recall par pays d'origine → `_ROUTES` | ✅ concluant — routing `{DE, ES}` fixe acté |
+| [entity-matching-standards.md](entity-matching-standards.md) | Standards industriels — entity matching, triage HITL, vocab gap. Suite à l'audit du run `b6bede99…` (164 `theme_mismatch`, ~⅔ faux rejets) → plan `../theme-matcher-recall-kickoff.md` | 📋 findings |
 
 ## Probes connexes (dossier parent)
 
