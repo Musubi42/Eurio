@@ -1,4 +1,4 @@
-import { Brain, CircleAlert, ClipboardCheck, ClipboardList, Coins, Database, Eye, FlaskConical, LayoutDashboard, Layers, Network, Scale, ShieldQuestion } from 'lucide-vue-next'
+import { Brain, CircleAlert, ClipboardCheck, ClipboardList, Coins, Database, Eye, FlaskConical, Gavel, LayoutDashboard, Layers, Network, Scale, ShieldQuestion } from 'lucide-vue-next'
 import type { Component } from 'vue'
 
 export interface NavItem {
@@ -110,6 +110,12 @@ export const navSections: NavSection[] = [
         label: 'Lab',
         icon: FlaskConical,
         route: '/lab',
+      },
+      {
+        id: 'bench',
+        label: 'Studio bench',
+        icon: Gavel,
+        route: '/bench',
       },
     ],
   },
