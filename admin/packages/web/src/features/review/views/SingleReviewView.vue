@@ -131,9 +131,9 @@ function resetForCurrent() {
   correctedKind.value = null
   correctedCondition.value = null
   void loadMarketQuotes()
-  // Pré-sélection : la cible eBay (target_candidate) bat le top-1
-  // auto-name. ~80 % des reviews valident la cible — pré-sélectionner
-  // évite un clic dans la majorité des cas.
+  // Pré-sélection : la pièce proposée (target_candidate, theme-match) bat
+  // le top-1 auto-name. ~80 % des reviews valident la proposition —
+  // pré-sélectionner évite un clic dans la majorité des cas.
   const target = currentItem.value?.target_candidate ?? null
   if (target) {
     freeSearchCandidate.value = target
@@ -183,6 +183,7 @@ async function loadMarketQuotes() {
   const ids = new Set<string>()
   if (item.target_candidate) ids.add(item.target_candidate.eurio_id)
   item.candidates.forEach((c) => ids.add(c.eurio_id))
+  ;(item.group_candidates ?? []).forEach((c) => ids.add(c.eurio_id))
   if (ids.size === 0) return
   marketQuotes.value = await fetchMarketQuotes([...ids])
 }
@@ -305,6 +306,14 @@ function onSearchSelect(entry: CoinSearchEntry) {
   // Une pièce a été pickée → repasse en mode auto pour montrer le banner
   // freeSearchCandidate + permettre la validation immédiate (⏎).
   mode.value = 'auto'
+}
+
+function onGroupSelect(c: ReviewCandidate) {
+  // Pièce du groupe pickée (listing ambigu, pas de proposition) — même
+  // voie que la sélection libre : devient le candidat focusé, validable
+  // immédiatement (⏎).
+  freeSearchCandidate.value = c
+  focusedCandidateIdx.value = null
 }
 
 function onDinoSelect(s: DinoSuggestion) {
@@ -481,6 +490,7 @@ useReviewKeybinds(keyboardEnabled, {
           <ReviewRightColumn
             :target="currentItem.target_candidate ?? null"
             :candidates="currentItem.candidates"
+            :group-candidates="currentItem.group_candidates ?? []"
             :mode="mode"
             :focused-candidate-idx="focusedCandidateIdx"
             :free-search-candidate="freeSearchCandidate"
@@ -489,6 +499,7 @@ useReviewKeybinds(keyboardEnabled, {
             @candidate-focus="focusCandidate"
             @dino-select="onDinoSelect"
             @free-select="onSearchSelect"
+            @group-select="onGroupSelect"
           />
       </div>
 

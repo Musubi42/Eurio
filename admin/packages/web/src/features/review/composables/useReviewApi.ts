@@ -62,6 +62,11 @@ export interface ReviewItem {
   // mocks legacy + sources sans target les laissent à null.
   target_eurio_id?: string | null
   target_candidate?: ReviewCandidate | null
+  // Chunk 5b — pièces du groupe de découverte (2 € commémo, même pays +
+  // année). Non vide seulement quand le theme-match n'a pas tranché
+  // (target_candidate null, verdict ambigu) : le reviewer choisit la
+  // sœur d'un clic au lieu de passer par la recherche libre.
+  group_candidates?: ReviewCandidate[]
   // Chunk C4 — contexte listing pour la carte d'audit « Listing & marché ».
   // Issu de C1 (source_images) + C2 (listing_text_signals). Optionnels :
   // null sur les rows antérieures / les mocks.

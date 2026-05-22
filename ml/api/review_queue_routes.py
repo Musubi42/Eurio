@@ -110,6 +110,12 @@ class ReviewItem(BaseModel):
     # à consommer côté front comme une suggestion par défaut. None quand
     # target_eurio_id est None ou que la coin n'est pas dans le catalog.
     target_candidate: ReviewCandidate | None = None
+    # Chunk 5b — pièces du groupe de découverte (dénom, pays, année) :
+    # toutes les 2 € commémoratives du même pays/année. Peuplé seulement
+    # quand le theme-match n'a pas tranché (target_candidate is None,
+    # verdict ambigu) — le reviewer choisit la sœur d'un clic sans passer
+    # par la recherche libre. Vide sinon.
+    group_candidates: list[ReviewCandidate] = []
 
 
 def _build_target_candidate(
@@ -150,7 +156,57 @@ def _build_target_candidate(
     )
 
 
-def _row_to_item(row: sqlite3.Row) -> ReviewItem:
+def _fetch_group_candidates(
+    conn: sqlite3.Connection,
+    pairs: set[tuple[str, int]],
+) -> dict[tuple[str, int], list[ReviewCandidate]]:
+    """Pour chaque groupe `(pays, année)`, les pièces 2 € commémoratives —
+    candidats sélectionnables quand le theme-match n'a pas tranché (chunk
+    5b). `pairs` est petit (≤ nb de groupes du run), une requête par paire
+    reste cheap. Clé du dict : `(country, year)`."""
+    out: dict[tuple[str, int], list[ReviewCandidate]] = {}
+    for country, year in pairs:
+        rows = conn.execute(
+            """
+            SELECT eurio_id, country, country_name, year, theme,
+                   face_value, numista_id
+              FROM coins
+             WHERE country = ? AND year = ?
+               AND face_value = 2.0 AND is_commemorative = 1
+             ORDER BY theme
+            """,
+            (country, year),
+        ).fetchall()
+        cands: list[ReviewCandidate] = []
+        for r in rows:
+            label_bits = [
+                r["country_name"],
+                str(r["year"]) if r["year"] else None,
+                r["theme"],
+            ]
+            cands.append(ReviewCandidate(
+                eurio_id=r["eurio_id"],
+                score=0.0,  # pas un score — juste un membre du groupe
+                label=" · ".join([b for b in label_bits if b]) or r["eurio_id"],
+                country=r["country"] or "",
+                denomination=(
+                    f"{float(r['face_value']):.2f} EUR"
+                    if r["face_value"] is not None else ""
+                ),
+                year=r["year"],
+                canonical_thumb_url=(
+                    f"/images/{int(r['numista_id'])}/source"
+                    if r["numista_id"] else ""
+                ),
+            ))
+        out[(country, year)] = cands
+    return out
+
+
+def _row_to_item(
+    row: sqlite3.Row,
+    group_map: dict[tuple[str, int], list[ReviewCandidate]] | None = None,
+) -> ReviewItem:
     bbox: ReviewBbox | None = None
     if row["bbox_json"]:
         try:
@@ -189,6 +245,15 @@ def _row_to_item(row: sqlite3.Row) -> ReviewItem:
     def _opt(name: str):
         return row[name] if name in cols else None
 
+    # Pièces du groupe : seulement quand le theme-match n'a pas tranché
+    # (pas de proposition) et que pays/année du listing sont connus.
+    group_candidates: list[ReviewCandidate] = []
+    if target_candidate is None and group_map is not None:
+        gc_country = _opt("listing_country")
+        gc_year = _opt("listing_year")
+        if gc_country and gc_year is not None:
+            group_candidates = group_map.get((gc_country, gc_year), [])
+
     return ReviewItem(
         id=row["id"],
         crop_url=f"/sources/{row['source']}/assets/{row['image_asset_id']}/file",
@@ -212,6 +277,7 @@ def _row_to_item(row: sqlite3.Row) -> ReviewItem:
         enqueued_at=row["enqueued_at"],
         target_eurio_id=target_eurio_id,
         target_candidate=target_candidate,
+        group_candidates=group_candidates,
     )
 
 
@@ -247,6 +313,7 @@ def list_queue(
                a.bbox_json, a.candidate_eurio_ids_json, a.face, a.quality_score,
                s.source, s.source_ref, s.listing_title, s.source_url,
                s.listing_price, s.target_eurio_id,
+               s.listing_country, s.listing_year,
                s.listing_origin_date, s.sold_qty,
                lts.listing_kind, lts.listing_kind_confidence,
                lts.condition_normalized, lts.condition_confidence,
@@ -268,7 +335,20 @@ def list_queue(
         """,
         args,
     ).fetchall()
-    return [_row_to_item(r) for r in rows]
+
+    # Chunk 5b — batch-fetch des pièces du groupe pour les seuls items
+    # sans proposition (target_eurio_id NULL → verdict ambigu). Une
+    # requête par (pays, année) distinct ; l'ensemble est petit.
+    pairs: set[tuple[str, int]] = set()
+    for r in rows:
+        if r["target_eurio_id"]:
+            continue
+        c, y = r["listing_country"], r["listing_year"]
+        if c and y is not None:
+            pairs.add((c, y))
+    group_map = _fetch_group_candidates(conn, pairs)
+
+    return [_row_to_item(r, group_map) for r in rows]
 
 
 # Consumed by: admin/packages/web/src/features/review/composables/useReviewApi.ts (fetchReviewStats)
@@ -897,6 +977,7 @@ def get_review(review_id: str) -> ReviewItem:
                a.bbox_json, a.candidate_eurio_ids_json, a.face, a.quality_score,
                s.source, s.source_ref, s.listing_title, s.source_url,
                s.listing_price, s.target_eurio_id,
+               s.listing_country, s.listing_year,
                s.listing_origin_date, s.sold_qty,
                lts.listing_kind, lts.listing_kind_confidence,
                lts.condition_normalized, lts.condition_confidence,
