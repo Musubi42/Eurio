@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // Colonne droite partagée par SingleReviewView et les pages lot.
-// Affiche : cible eBay (target_eurio_id de la query) en haut, puis selon
+// Affiche : la pièce proposée (theme-match, source_images.target_eurio_id)
+// en haut, puis selon
 // le mode : (auto) Top N candidats + DinoSuggestions + badge sélection
 // libre + hint si aucun candidat ; (free) FreeSelectorPanel inline.
 //
@@ -15,11 +16,16 @@ import DinoSuggestions from './DinoSuggestions.vue'
 import FreeSelectorPanel from './FreeSelectorPanel.vue'
 
 defineProps<{
-  /** Cible eBay (pré-sélectionnée par défaut). Null si la source ne
-   *  pilote pas par eurio_id (legacy, scans manuels). */
+  /** Pièce proposée par le theme-match (pré-sélectionnée par défaut).
+   *  Null si le matcher n'a pas tranché (verdict ambigu) ou source legacy
+   *  (scans manuels). */
   target: ReviewCandidate | null
   /** Top N candidats auto-name. */
   candidates: ReviewCandidate[]
+  /** Pièces du groupe (2 € commémo, même pays + année) — affichées
+   *  quand il n'y a pas de proposition (verdict theme-match ambigu).
+   *  Optionnel : la page lot ne les passe pas. */
+  groupCandidates?: ReviewCandidate[]
   /** Mode de la colonne — 'auto' affiche Top N + Dino, 'free' affiche
    *  le FreeSelectorPanel inline. */
   mode: 'auto' | 'free'
@@ -40,14 +46,15 @@ const emit = defineEmits<{
   (e: 'candidate-focus', idx: number): void
   (e: 'dino-select', suggestion: DinoSuggestion): void
   (e: 'free-select', entry: CoinSearchEntry): void
+  (e: 'group-select', candidate: ReviewCandidate): void
 }>()
 </script>
 
 <template>
   <aside class="flex min-h-0 flex-col overflow-hidden">
-    <!-- Cible eBay : la pièce que la query a cherchée. Toujours
-         affichée (mode-agnostic), pré-sélectionnée par défaut.
-         ~80 % des reviews valident la cible → un clic gagné. -->
+    <!-- Pièce proposée : la pièce attribuée au listing par le theme-match.
+         Toujours affichée (mode-agnostic), pré-sélectionnée par défaut.
+         ~80 % des reviews valident la proposition → un clic gagné. -->
     <section
       v-if="target"
       class="mb-3 flex flex-col gap-1.5"
@@ -56,8 +63,8 @@ const emit = defineEmits<{
         class="flex items-baseline justify-between font-mono text-[10px] uppercase tracking-wider"
         style="color: var(--gold-600);"
       >
-        <span>Cible eBay</span>
-        <span class="opacity-60">scrape par eurio_id</span>
+        <span>Pièce proposée</span>
+        <span class="opacity-60">attribuée au listing</span>
       </p>
       <CandidateRow
         :candidate="target"
@@ -71,6 +78,32 @@ const emit = defineEmits<{
     <!-- Mode AUTO : Top N + Dino + freeSearchCandidate banner -->
     <template v-if="mode === 'auto'">
       <div class="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
+        <!-- Pièces du groupe : quand le theme-match n'a pas tranché
+             (verdict ambigu → pas de proposition), toutes les sœurs
+             commémo du groupe (dénom, pays, année) sont sélectionnables
+             d'un clic — évite la recherche libre. -->
+        <section
+          v-if="!target && (groupCandidates?.length ?? 0) > 0"
+          class="flex flex-col gap-2"
+        >
+          <p
+            class="flex items-baseline justify-between font-mono text-[10px] uppercase tracking-wider"
+            style="color: var(--gold-600);"
+          >
+            <span>Pièces du groupe</span>
+            <span class="opacity-60">theme-match indécis</span>
+          </p>
+          <CandidateRow
+            v-for="c in groupCandidates"
+            :key="'grp-' + c.eurio_id"
+            :candidate="c"
+            :index="0"
+            badge="◆"
+            :focused="freeSearchCandidate?.eurio_id === c.eurio_id"
+            @focus="emit('group-select', c)"
+          />
+        </section>
+
         <p
           class="flex items-baseline justify-between font-mono text-[10px] uppercase tracking-wider"
           style="color: var(--ink-500);"
