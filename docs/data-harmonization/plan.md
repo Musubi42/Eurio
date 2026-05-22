@@ -16,16 +16,25 @@ Pas de changement de sémantique de données — renommage + docs.
 - [x] Docs `architecture.md` + `plan.md` + kickoff déplacé dans
       `docs/data-harmonization/`.
 
-## Chunk 1 — Schéma SQLite canonique + migration des JSON → tables
+## Chunk 1 — Schéma SQLite canonique
 
-- Spécifier le schéma cible : `coins` canonique (champs manquants : `currency`,
-  `collector_only`, `design_description`, `national_variants`, provenance…) +
-  tables filles (observations, images, cross-refs) à la place de
-  `raw_payload_json` ; `numista_catalog` ; `cohort_members` ; colonne `status`
-  de cycle de vie ; `image_assets.origin`.
-- Spécifier la forme de l'`eurio_id` dérivé + la carte versionnée.
-- Script de migration **idempotent**, **dry-run d'abord**, des JSON existants
-  vers les tables. Aucune destruction sans backup.
+### 1a — Conception du schéma ✅ (livré 2026-05-22)
+
+- [x] Spec `schema-design.md` rédigée, **auditée par un expert DB**, finalisée :
+      `referential_catalog`, `coins` (refonte), `design_groups`,
+      `coin_national_variants`, `coin_cross_refs`, `coin_observations`,
+      `coin_canonical_images`, `cohort_members`, `eurio_id_migrations`,
+      `image_assets.origin`, vue QA `v_orphan_eurio_refs`.
+- [x] Séquence de migration one-shot guardée définie (rebuild `coins`).
+
+### 1b — Implémentation schéma + migration (à venir)
+
+- Écrire le DDL dans `schema.sql` + le script de migration one-shot guardé
+  (détection ancien schéma, rebuild `coins`, backfill `cohort_members`).
+- **Dry-run d'abord**, backup avant tout. Aucune destruction sans backup.
+- `PRAGMA foreign_key_check` après migration.
+
+> La règle de dérivation du slug `eurio_id` est traitée au Chunk 2 (génération).
 
 ## Chunk 2 — Génération `numista_catalog → coins`, retrait du matcher flou
 
