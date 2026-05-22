@@ -30,6 +30,7 @@ from . import lab_routes
 from . import review_queue_routes
 from . import sources_routes
 from . import coins_review_routes
+from . import bench_routes
 
 ML_DIR = Path(__file__).parent.parent
 VENV_PYTHON = str(ML_DIR / ".venv" / "bin" / "python")
@@ -96,6 +97,9 @@ app.include_router(coin_assets_routes.router)
 # Wire /coins-review — review queue UI (chunk 3e).
 coins_review_routes.bind(lambda: get_supabase())
 app.include_router(coins_review_routes.router)
+
+# Wire /bench — studio bench du theme-matcher (local-only, lecture seule).
+app.include_router(bench_routes.router)
 
 
 @app.on_event("startup")

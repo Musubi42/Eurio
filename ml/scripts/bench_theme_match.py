@@ -257,24 +257,32 @@ def cmd_ingest(args: argparse.Namespace) -> int:
 
 # ── replay ────────────────────────────────────────────────────────────────
 
-def cmd_replay(args: argparse.Namespace) -> int:
-    if not GOLD_PATH.exists():
-        print(f"gold absent : {GOLD_PATH} — lancer ingest d'abord", file=sys.stderr)
-        return 1
-    store = Store(DB_PATH)
-    conn = store._connection()  # noqa: SLF001
-    group_coins = _be_group_coins(conn)
+def replay_bench(conn) -> dict:
+    """Rejoue le pipeline (accept_listing + theme-matcher) sur le gold gelé.
 
+    Source de vérité unique du bench, partagée par le CLI (``cmd_replay``)
+    et l'API (``api/bench_routes.py``). Renvoie un dict :
+
+    - ``listings`` : une entrée structurée par listing du gold — donnée,
+      label humain, sorties étape par étape, issue, flag d'accord ;
+    - ``metrics``  : les agrégats (faux rejet, recall, auto-attribution…).
+
+    Déterministe, hors quota. Lève ``FileNotFoundError`` si le gold manque.
+    """
+    if not GOLD_PATH.exists():
+        raise FileNotFoundError(
+            f"gold absent : {GOLD_PATH} — lancer ingest d'abord"
+        )
+    group_coins = _be_group_coins(conn)
     gold = [json.loads(ln) for ln in GOLD_PATH.read_text().splitlines() if ln.strip()]
 
-    # Compteurs.
     n_valid = n_false_discard = n_auto_correct = n_auto_wrong = 0
     n_kept_review = 0
     n_junk = n_correct_discard = n_false_keep = 0
     n_auto_total = 0
     n_accept_rej = n_matcher_rej = 0
     lot_outcomes: Counter = Counter()
-    rows_report: list[tuple] = []
+    listings: list[dict] = []
 
     for g in gold:
         verdict = g["verdict"]
@@ -285,6 +293,8 @@ def cmd_replay(args: argparse.Namespace) -> int:
              "currency": g.get("currency")},
             2.0, expected_year=g["group_year"], is_commemorative=True,
         )
+        matcher: dict | None = None
+        gm = None
         if not ok:
             mv = f"accept:{reason}"
             discarded = True
@@ -293,6 +303,11 @@ def cmd_replay(args: argparse.Namespace) -> int:
             gm = match_listing_to_group(g["title"], ids, conn=conn)
             mv = gm.verdict
             discarded = mv == "no_match"
+            matcher = {
+                "verdict": gm.verdict,
+                "matched": list(gm.matched),
+                "contradictions": list(gm.contradictions),
+            }
             if discarded:
                 n_matcher_rej += 1
             if mv == "single":
@@ -304,7 +319,7 @@ def cmd_replay(args: argparse.Namespace) -> int:
             if discarded:
                 n_false_discard += 1
                 outcome = "FALSE_DISCARD"
-            elif mv == "single" and want and gm.matched == (want,):
+            elif mv == "single" and want and gm and gm.matched == (want,):
                 n_auto_correct += 1
                 outcome = "auto_ok"
             elif mv == "single":
@@ -325,35 +340,92 @@ def cmd_replay(args: argparse.Namespace) -> int:
             lot_outcomes["discarded" if discarded else mv] += 1
             outcome = f"lot→{'discarded' if discarded else mv}"
 
-        rows_report.append((g["group_year"], verdict, mv, outcome, g["title"][:52]))
+        listings.append({
+            "listing_id": g["listing_id"],
+            "title": g["title"],
+            "marketplace": g.get("marketplace"),
+            "group_year": g["group_year"],
+            "price": g.get("price"),
+            "currency": g.get("currency"),
+            "bucket": g.get("bucket"),
+            "note": g.get("note"),
+            "verdict": verdict,
+            "accept": {"ok": ok, "reason": reason},
+            "matcher": matcher,
+            "outcome": outcome,
+            "agreement": "WRONG" not in outcome and "FALSE" not in outcome,
+        })
 
-    # Métriques.
-    def pct(num: int, den: int) -> str:
-        return f"{100*num/den:5.1f}%  ({num}/{den})" if den else "   n/a"
+    def rate(num: int, den: int) -> float | None:
+        return num / den if den else None
+
+    metrics = {
+        "total": len(gold),
+        "n_valid": n_valid,
+        "n_false_discard": n_false_discard,
+        "false_discard_rate": rate(n_false_discard, n_valid),
+        "recall_rate": rate(n_valid - n_false_discard, n_valid),
+        "n_auto_correct": n_auto_correct,
+        "auto_attribution_rate": rate(n_auto_correct, n_valid),
+        "n_kept_review": n_kept_review,
+        "review_rate": rate(n_kept_review, n_valid),
+        "n_auto_total": n_auto_total,
+        "precision": rate(n_auto_correct, n_auto_total),
+        "n_auto_wrong": n_auto_wrong,
+        "n_junk": n_junk,
+        "n_correct_discard": n_correct_discard,
+        "n_false_keep": n_false_keep,
+        "false_keep_rate": rate(n_false_keep, n_junk),
+        "lot_outcomes": dict(lot_outcomes),
+        "n_accept_rej": n_accept_rej,
+        "n_matcher_rej": n_matcher_rej,
+    }
+    return {"listings": listings, "metrics": metrics}
+
+
+def cmd_replay(args: argparse.Namespace) -> int:
+    store = Store(DB_PATH)
+    conn = store._connection()  # noqa: SLF001
+    try:
+        result = replay_bench(conn)
+    except FileNotFoundError as exc:
+        print(exc, file=sys.stderr)
+        return 1
+    m = result["metrics"]
+
+    def pct(num: int, den: int | None) -> str:
+        if not den:
+            return "   n/a"
+        return f"{100*num/den:5.1f}%  ({num}/{den})"
 
     print("=" * 68)
     print(f"REPLAY pipeline (accept_listing + theme-matcher) — {GOLD_PATH.name}"
-          f"  ({len(gold)} entrées)")
+          f"  ({m['total']} entrées)")
     print("=" * 68)
-    print(f"  pièces valides du périmètre        {n_valid}")
-    print(f"  TAUX DE FAUX REJET                 {pct(n_false_discard, n_valid)}")
-    print(f"  recall (gardé quelque part)        {pct(n_valid - n_false_discard, n_valid)}")
-    print(f"  TAUX D'AUTO-ATTRIBUTION  ★         {pct(n_auto_correct, n_valid)}")
-    print(f"    dont en review (pas auto)        {pct(n_kept_review, n_valid)}")
-    print(f"  précision des auto-attributions    {pct(n_auto_correct, n_auto_total)}")
-    print(f"    auto-attributions erronées       {n_auto_wrong}")
-    print(f"  junk (not-a-coin / wrong-scope)    {n_junk}")
-    print(f"    correctement rejeté              {pct(n_correct_discard, n_junk)}")
-    print(f"    FALSE KEEP (junk gardé)          {pct(n_false_keep, n_junk)}")
-    if lot_outcomes:
-        print(f"  lots — verdicts : {dict(lot_outcomes)}")
-    print(f"  rejets : accept_listing {n_accept_rej} · matcher {n_matcher_rej}")
+    print(f"  pièces valides du périmètre        {m['n_valid']}")
+    print(f"  TAUX DE FAUX REJET                 {pct(m['n_false_discard'], m['n_valid'])}")
+    print(f"  recall (gardé quelque part)        "
+          f"{pct(m['n_valid'] - m['n_false_discard'], m['n_valid'])}")
+    print(f"  TAUX D'AUTO-ATTRIBUTION  ★         {pct(m['n_auto_correct'], m['n_valid'])}")
+    print(f"    dont en review (pas auto)        {pct(m['n_kept_review'], m['n_valid'])}")
+    print(f"  précision des auto-attributions    "
+          f"{pct(m['n_auto_correct'], m['n_auto_total'])}")
+    print(f"    auto-attributions erronées       {m['n_auto_wrong']}")
+    print(f"  junk (not-a-coin / wrong-scope)    {m['n_junk']}")
+    print(f"    correctement rejeté              {pct(m['n_correct_discard'], m['n_junk'])}")
+    print(f"    FALSE KEEP (junk gardé)          {pct(m['n_false_keep'], m['n_junk'])}")
+    if m["lot_outcomes"]:
+        print(f"  lots — verdicts : {m['lot_outcomes']}")
+    print(f"  rejets : accept_listing {m['n_accept_rej']} · matcher {m['n_matcher_rej']}")
     print("-" * 68)
 
     if args.verbose:
-        for year, gv, mv, outcome, title in sorted(rows_report):
-            flag = "  ⚠" if "WRONG" in outcome or "FALSE" in outcome else "   "
-            print(f"{flag} {year} {gv:30s} → {mv:14s} {outcome:15s} {title}")
+        for r in sorted(result["listings"],
+                        key=lambda x: (x["group_year"], x["listing_id"])):
+            mv = r["matcher"]["verdict"] if r["matcher"] else r["accept"]["reason"]
+            flag = "  ⚠" if not r["agreement"] else "   "
+            print(f"{flag} {r['group_year']} {r['verdict']:30s} → {mv:14s} "
+                  f"{r['outcome']:15s} {r['title'][:52]}")
     return 0
 
 
