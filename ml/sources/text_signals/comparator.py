@@ -47,6 +47,20 @@ class TargetIdentity:
 
 
 @dataclass(frozen=True)
+class GroupIdentity:
+    """Identité partagée par toutes les sœurs d'un groupe de découverte.
+
+    Un groupe eBay = ``(pays, année, dénomination)`` ; les N commémos-
+    sœurs partagent ces trois axes. Sert au garde-fou de contradiction
+    *avant* l'attribution à une sœur précise (``compare_to_group``).
+    """
+
+    country: str          # ISO2 lowercase ('be', 'fr', ...)
+    year: int
+    face_value: float
+
+
+@dataclass(frozen=True)
 class VsTargetComparison:
     """Résultat typé de :func:`compare_to_target`.
 
@@ -164,6 +178,35 @@ def compare_to_target(
         target_country=target.country,
         target_year=target.year,
         target_face_value=target.face_value,
+    )
+
+
+def compare_to_group(
+    signals: ListingTextSignals,
+    group: GroupIdentity,
+) -> tuple[str, ...]:
+    """Axes où le titre **contredit fermement** le groupe de découverte.
+
+    Renvoie le tuple des axes (``country`` / ``year`` / ``denomination``)
+    en contradiction franche — vide si aucun. Réutilise les trois axes de
+    :func:`compare_to_target` : les sœurs partageant pays/année/dénom, un
+    axe qui contredit le groupe les contredit toutes.
+
+    À la différence de ``compare_to_target`` on ne mesure QUE la
+    contradiction : pas de ``convergent`` / ``partial`` au niveau groupe
+    (on ne sait pas encore quelle sœur — c'est le rôle du theme-match).
+    Sémantique « contradiction positive ≠ absence d'évidence » : un axe
+    *absent* ne contredit pas (Finding 3 de la recherche entity-matching).
+    """
+    axis_results = {
+        "country": _country_axis(signals.countries, group.country),
+        "year": _year_axis(signals.years, group.year),
+        "denomination": _denomination_axis(
+            signals.denominations, group.face_value
+        ),
+    }
+    return tuple(
+        a for a in _AXIS_ORDER if axis_results[a] == "contradict"
     )
 
 

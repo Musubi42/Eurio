@@ -325,17 +325,58 @@ class GroupMatch:
           auto, le listing part en review. **Jamais jeté** (chunk C1) :
           le listing a déjà passé ``accept_listing`` (millésime/prix/
           devise OK) → il est cohérent avec le groupe.
-        - ``"no_match"``: réservé à une future contradiction explicite
-          (V2). Non produit par ce module depuis C1.
+        - ``"no_match"``: **contradiction franche** — le titre contredit
+          un axe dur du groupe (pays / année / dénomination). Discard
+          légitime : c'est une contradiction *positive*, pas une absence
+          d'évidence (cf. garde-fou de contradiction, ``compare_to_group``).
+          ``contradictions`` porte le(s) axe(s) fautif(s).
+
+    - ``contradictions`` : axes en contradiction franche quand
+      ``verdict == "no_match"`` ; vide sinon.
     """
 
     matched: tuple[str, ...]
     verdict: str
+    contradictions: tuple[str, ...] = ()
 
     @property
     def target_eurio_id(self) -> str | None:
         """Pièce à pré-attribuer au listing (1ʳᵉ du set ; None si ambigu)."""
         return self.matched[0] if self.matched else None
+
+
+def _group_contradiction(
+    title: str,
+    group_eurio_id: str,
+    *,
+    conn: sqlite3.Connection,
+) -> tuple[str, ...]:
+    """Axes durs (pays/année/dénom) où le titre seller contredit le groupe.
+
+    Charge l'identité du groupe depuis ``coins`` — les sœurs la partagent,
+    donc n'importe quel eurio_id du groupe suffit — extrait les signaux du
+    titre et délègue à ``compare_to_group`` (source de vérité des axes,
+    partagée avec le step pipeline ``text_signal``). Tuple vide si
+    l'identité du groupe est introuvable (défensif).
+    """
+    from sources.text_signals import (
+        GroupIdentity,
+        compare_to_group,
+        extract_listing_text_signals,
+    )
+
+    row = conn.execute(
+        "SELECT country, year, face_value FROM coins WHERE eurio_id=?",
+        (group_eurio_id,),
+    ).fetchone()
+    if row is None:
+        return ()
+    group = GroupIdentity(
+        country=(row["country"] or "").lower(),
+        year=int(row["year"]),
+        face_value=float(row["face_value"]),
+    )
+    return compare_to_group(extract_listing_text_signals(title), group)
 
 
 def match_listing_to_group(
@@ -350,13 +391,25 @@ def match_listing_to_group(
     le pays/année, donc tout listing retenu EST cette pièce — pas de
     discrimination de thème nécessaire.
 
-    Chunk C1 — verdict de sortie ∈ {single, lot, ambiguous}. Quand aucun
-    thème ne matche, le verdict est ``ambiguous`` (review), jamais
-    ``no_match`` (discard) : « évidence absente ≠ contradiction » — le
-    listing a passé ``accept_listing`` en amont, il est cohérent avec le
-    groupe, on ne le jette pas.
+    Chunk C1 — verdict ∈ {single, lot, ambiguous} quand le thème ne
+    tranche pas : « évidence absente ≠ contradiction », le listing a
+    passé ``accept_listing``, on ne le jette pas.
+
+    Garde-fou de contradiction — AVANT le theme-match, on confronte le
+    titre aux axes durs du groupe (pays / année / dénomination) via
+    ``compare_to_group``. Une contradiction franche (« 2,5 Euro »,
+    « Eslovenia ») → ``no_match`` (discard) : c'est une contradiction
+    *positive*, pas une absence d'évidence. Tourne aussi sur les groupes
+    mono-pièce (le junk hors-scope y arrive aussi).
     """
     ids = list(group_eurio_ids)
+    if not ids:
+        return GroupMatch((), "ambiguous")
+
+    contradictions = _group_contradiction(title, ids[0], conn=conn)
+    if contradictions:
+        return GroupMatch((), "no_match", contradictions=contradictions)
+
     if len(ids) == 1:
         return GroupMatch((ids[0],), "single")
 
