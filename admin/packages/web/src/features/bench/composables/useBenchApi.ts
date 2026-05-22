@@ -60,6 +60,7 @@ export interface BenchListing {
   matcher: BenchMatcher | null // null ssi accept a rejeté
   outcome: string // FALSE_DISCARD | auto_ok | auto_WRONG | review | junk_discarded | FALSE_KEEP | lot→…
   agreement: boolean
+  image_url: string | null // photo de l'annonce eBay (CDN public)
 }
 
 export interface BenchGroupCoin {
@@ -67,6 +68,7 @@ export interface BenchGroupCoin {
   theme: string | null
   i18n: Record<string, string>
   aliases: string[]
+  obverse_url: string | null // face de la pièce (URL publique)
 }
 
 export interface BenchReplay {

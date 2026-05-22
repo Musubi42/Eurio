@@ -15,7 +15,9 @@ Le replay est déterministe et hors quota — recalculé à chaque appel
 
 from __future__ import annotations
 
+import json
 import sqlite3
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -23,6 +25,12 @@ from pydantic import BaseModel
 from scripts.bench_theme_match import SEED_YEARS, replay_bench
 
 router = APIRouter(prefix="/bench", tags=["bench"])
+
+# Sidecar images du gold (cf. scripts/enrich_bench_images.py).
+_IMAGES_PATH = (
+    Path(__file__).resolve().parent.parent
+    / "state" / "discovery_bench" / "gold_images.jsonl"
+)
 
 
 def _store():
@@ -38,6 +46,7 @@ class BenchGroupCoin(BaseModel):
     theme: str | None
     i18n: dict[str, str]          # {lang: titre}
     aliases: list[str]            # alias normalisés (coin_aliases)
+    obverse_url: str | None       # face de la pièce (URL publique Supabase)
 
 
 class BenchReplayResponse(BaseModel):
@@ -48,15 +57,27 @@ class BenchReplayResponse(BaseModel):
 
 # ── Contexte des groupes ───────────────────────────────────────────────────
 
+def _obverse_url(raw_payload_json: str | None) -> str | None:
+    """URL de la face (obverse) depuis `coins.raw_payload_json.images`."""
+    if not raw_payload_json:
+        return None
+    try:
+        payload = json.loads(raw_payload_json)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    return (payload.get("images") or {}).get("obverse")
+
+
 def _groups_context(conn: sqlite3.Connection) -> dict[str, list[BenchGroupCoin]]:
     """Pour chaque année du gold, les commémos-sœurs avec leur thème,
-    leurs titres i18n et leurs alias — le contexte de jugement du front."""
+    leurs titres i18n, leurs alias et la face de la pièce — le contexte
+    de jugement du front."""
     out: dict[str, list[BenchGroupCoin]] = {}
     for year in SEED_YEARS:
         rows = conn.execute(
-            "SELECT eurio_id, theme FROM coins WHERE country='BE' "
-            "AND face_value=2.0 AND is_commemorative=1 AND year=? "
-            "ORDER BY eurio_id",
+            "SELECT eurio_id, theme, raw_payload_json FROM coins WHERE "
+            "country='BE' AND face_value=2.0 AND is_commemorative=1 "
+            "AND year=? ORDER BY eurio_id",
             (year,),
         ).fetchall()
         coins: list[BenchGroupCoin] = []
@@ -83,8 +104,23 @@ def _groups_context(conn: sqlite3.Connection) -> dict[str, list[BenchGroupCoin]]
                 theme=r["theme"],
                 i18n=i18n,
                 aliases=aliases,
+                obverse_url=_obverse_url(r["raw_payload_json"]),
             ))
         out[str(year)] = coins
+    return out
+
+
+def _gold_image_urls() -> dict[str, str]:
+    """{listing_id → image_url} depuis le sidecar gold_images.jsonl."""
+    if not _IMAGES_PATH.exists():
+        return {}
+    out: dict[str, str] = {}
+    for ln in _IMAGES_PATH.read_text().splitlines():
+        if not ln.strip():
+            continue
+        rec = json.loads(ln)
+        if rec.get("image_url"):
+            out[rec["listing_id"]] = rec["image_url"]
     return out
 
 
@@ -99,6 +135,9 @@ def get_theme_match_bench() -> BenchReplayResponse:
         result = replay_bench(conn)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    images = _gold_image_urls()
+    for ls in result["listings"]:
+        ls["image_url"] = images.get(ls["listing_id"])
     return BenchReplayResponse(
         metrics=result["metrics"],
         listings=result["listings"],
