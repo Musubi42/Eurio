@@ -24,6 +24,24 @@ const OUTCOME_LABEL: Record<string, string> = {
 const outcomeText = computed(
   () => OUTCOME_LABEL[props.listing.outcome] ?? props.listing.outcome,
 )
+
+// Raison du verdict — surface les signaux que le matcher / le filtre ont vus.
+// `accept.ok=false` : motif de rejet du filtre 1.
+// `matcher.matched`/`contradictions` : tokens qui ont déclenché l'attribution
+//   (ou qui la contredisent). Sans ça, le badge « erronée » est injugeable.
+const reason = computed<{ label: string; tone: 'filter' | 'match' | 'warn' } | null>(() => {
+  const l = props.listing
+  if (!l.accept.ok) return { label: `Filtre 1 — ${l.accept.reason}`, tone: 'filter' }
+  if (!l.matcher) return null
+  if (l.matcher.contradictions.length) {
+    return { label: `Contradiction : ${l.matcher.contradictions.join(', ')}`, tone: 'warn' }
+  }
+  if (l.matcher.verdict === 'no_match') return { label: 'Aucun match', tone: 'warn' }
+  if (l.matcher.matched.length) {
+    return { label: `Match → ${l.matcher.matched.join(', ')}`, tone: 'match' }
+  }
+  return null
+})
 </script>
 
 <template>
@@ -65,6 +83,17 @@ const outcomeText = computed(
         class="text-[12px] leading-snug"
         style="color: var(--ink); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;"
       >{{ listing.title }}</p>
+
+      <!-- Raison du verdict (cf. composable : accept.reason / matcher.matched). -->
+      <p
+        v-if="reason"
+        class="truncate text-[11px]"
+        :title="reason.label"
+        :style="`font-family: var(--font-mono); color: ${
+          reason.tone === 'filter' ? 'var(--danger)' :
+          reason.tone === 'warn'   ? 'var(--gold-700)' :
+          'var(--indigo-700)'};`"
+      >{{ reason.label }}</p>
 
       <div class="mt-auto flex items-center gap-1.5 pt-1">
         <span
