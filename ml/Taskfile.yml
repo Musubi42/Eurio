@@ -120,6 +120,16 @@ tasks:
     cmds:
       - "{{.VENV}}/python -m scripts.mine_coin_aliases {{.CLI_ARGS}}"
 
+  aliases:export-batch:
+    desc: "Theme-matcher C2a-2 — export the coin batch (i18n titles + group sisters) to enrich with LLM market-vocabulary aliases. Default scope BE 2017-2021. Usage: go-task ml:aliases:export-batch [-- --country BE --years 2017-2021]"
+    cmds:
+      - "{{.VENV}}/python -m scripts.llm_coin_aliases export-batch {{.CLI_ARGS}}"
+
+  aliases:ingest:
+    desc: "Theme-matcher C2a-2 — ingest aliases_llm.jsonl into coin_aliases (source='llm') with anti-collision guard against group sisters. Idempotent. Usage: go-task ml:aliases:ingest [-- --dry]"
+    cmds:
+      - "{{.VENV}}/python -m scripts.llm_coin_aliases ingest {{.CLI_ARGS}}"
+
   # ---------- Individual steps ----------
   prepare:
     desc: Resize images and split into train/val/test (legacy design_group label space)
