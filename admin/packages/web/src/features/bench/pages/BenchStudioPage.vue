@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { Gavel, RefreshCw, ScanLine } from 'lucide-vue-next'
+import { Coins, Gavel, RefreshCw, ScanLine } from 'lucide-vue-next'
 import {
   type BenchReplay,
   type SearchFunnel,
@@ -12,6 +12,7 @@ import BenchMetricsBar from '../components/BenchMetricsBar.vue'
 import BenchSearchTabs from '../components/BenchSearchTabs.vue'
 import BenchFunnel from '../components/BenchFunnel.vue'
 import BenchDetailPanel from '../components/BenchDetailPanel.vue'
+import BenchCoinCard from '../components/BenchCoinCard.vue'
 
 const data = ref<BenchReplay | null>(null)
 const loading = ref(true)
@@ -145,11 +146,35 @@ onMounted(load)
             </span>
           </div>
 
-          <div class="flex">
-            <!-- Entonnoir — sélecteur -->
+          <div class="flex" style="height: min(80vh, 940px); min-height: 540px;">
+            <!-- Colonne 1 — pièces canoniques, toujours visibles -->
             <div
-              class="flex-shrink-0 border-r px-5 py-6"
-              style="width: 330px; border-color: var(--surface-3); background: var(--surface-1);"
+              class="flex w-[300px] flex-shrink-0 flex-col border-r"
+              style="border-color: var(--surface-3);"
+            >
+              <div class="flex flex-shrink-0 items-center gap-2 border-b px-5 py-3"
+                   style="border-color: var(--surface-3);">
+                <Coins class="h-4 w-4" style="color: var(--ink-400);" />
+                <h3 class="text-[13px] font-semibold" style="color: var(--ink);">
+                  Pièces visées
+                </h3>
+                <span class="text-[12px]" style="color: var(--ink-400);">
+                  {{ selected.coins.length }}
+                </span>
+              </div>
+              <div class="flex-1 space-y-4 overflow-y-auto px-4 py-4">
+                <BenchCoinCard
+                  v-for="coin in selected.coins"
+                  :key="coin.eurio_id"
+                  :coin="coin"
+                />
+              </div>
+            </div>
+
+            <!-- Colonne 2 — entonnoir, sélecteur -->
+            <div
+              class="w-[326px] flex-shrink-0 overflow-y-auto border-r px-5 py-6"
+              style="border-color: var(--surface-3); background: var(--surface-1);"
             >
               <BenchFunnel
                 :search="selected"
@@ -157,9 +182,10 @@ onMounted(load)
                 @select="selectedNodeId = selectedNodeId === $event ? null : $event"
               />
             </div>
-            <!-- Panneau de détail -->
-            <div class="min-w-0 flex-1">
-              <BenchDetailPanel :search="selected" :node="selectedNode" />
+
+            <!-- Colonne 3 — annonces du nœud sélectionné -->
+            <div class="min-w-0 flex-1 overflow-hidden">
+              <BenchDetailPanel :node="selectedNode" />
             </div>
           </div>
         </section>
