@@ -597,6 +597,16 @@ tasks:
     cmds:
       - "{{.VENV}}/python -m scripts.generate_missing_coins {{.CLI_ARGS}}"
 
+  port-design-groups:
+    desc: "Harmonisation chunk 3 — rapatrie les design_groups Supabase → eurio.db (table + coins.design_group_id). Idempotent, tolère les orphelins."
+    cmds:
+      - "{{.VENV}}/python -m scripts.port_design_groups {{.CLI_ARGS}}"
+
+  recompute-coin-status:
+    desc: "Harmonisation chunk 3 — recalcule coins.status (referenced/trained) depuis les runs réussis. Idempotent, à déclencher en fin de run."
+    cmds:
+      - "{{.VENV}}/python -m scripts.recompute_coin_status {{.CLI_ARGS}}"
+
   # ---------- Storage migration (fs → MinIO) ----------
   # Spec: docs/harmonisation-images/chunk-3-migration-script.md
   migrate-inventory:

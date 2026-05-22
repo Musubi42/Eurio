@@ -87,11 +87,24 @@ Et : retrait de `batch_match_numista.py` (matcher flou désormais inutile).
 > est gated sur un scrape de l'endpoint Numista « issues » et le référentiel
 > V2 : chantiers distincts, hors de ce plan d'harmonisation.
 
-## Chunk 3 — Couche cycle de vie
+## Chunk 3 — Couche cycle de vie ✅ (livré 2026-05-23)
 
-- Colonne `status` matérialisée sur `coins` (`referenced` / `trained`).
-- Commande idempotente de recalcul, déclenchée sur événement (fin de run, sync).
-- Condition calculée « éligible cohorte » (assez d'images).
+- [x] `scripts/port_design_groups.py` (+ go-task) : rapatrie les
+      `design_groups` Supabase → `eurio.db` (18 groupes, 115 affectations
+      `coins.design_group_id` ; 21 orphelins logués). Prérequis du recalcul —
+      et harmonisation : `design_groups` rentre dans le store canonique.
+- [x] `scripts/recompute_coin_status.py` (+ go-task) : recalcul **total et
+      idempotent** de `coins.status`. Une pièce est `trained` si elle est
+      classe d'un run réussi, en direct (`class_kind='eurio_id'`) ou via son
+      `design_group`. Peut promouvoir *et* rétrograder. → **68 pièces
+      `trained`** (19 en direct + 49 via design_group), 2708 `referenced`.
+- [x] Vue `v_coin_training_readiness` : base de la « condition d'éligibilité
+      cohorte » (nb d'images d'entraînement par pièce ; seuil au consommateur).
+- [x] `foreign_key_check` CLEAN, idempotent, zéro régression.
+
+> Wiring « recalcul en fin de run » : la commande est idempotente et appelable
+> partout ; l'accrocher à la complétion d'un run dans `training_runner` est un
+> ajout d'une ligne, à faire quand on touchera ce flux.
 
 ## Chunk 4 — Projections descendantes rebranchées sur `eurio.db`
 
