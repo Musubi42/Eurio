@@ -694,6 +694,51 @@ class Store:
                 ("listing_text_signals", "condition_confidence", "REAL"),
             ):
                 self._ensure_column(conn, table=table, column=column, decl=decl)
+            # ─── Harmonisation des données (docs/data-harmonization/) ──────
+            # Colonnes canoniques + cycle de vie sur `coins`. Les DB fraîches
+            # les ont via schema.sql ; ici on rattrape les DB existantes. Les
+            # index sur ces colonnes suivent : executescript tourne AVANT ces
+            # ALTER et ne peut donc pas les créer.
+            for column, decl in (
+                ("ref_source", "TEXT"),
+                ("ref_native_id", "TEXT"),
+                ("currency", "TEXT NOT NULL DEFAULT 'EUR'"),
+                ("collector_only", "INTEGER NOT NULL DEFAULT 0"),
+                ("design_description", "TEXT"),
+                ("mintage", "INTEGER"),
+                ("mintage_source", "TEXT"),
+                ("design_group_id",
+                 "TEXT REFERENCES design_groups(id) ON DELETE SET NULL"),
+                ("status",
+                 "TEXT NOT NULL DEFAULT 'referenced' "
+                 "CHECK (status IN ('referenced','trained'))"),
+                ("status_computed_at", "TEXT"),
+                ("needs_review", "INTEGER NOT NULL DEFAULT 0"),
+                ("review_reason", "TEXT"),
+                ("last_seen_in_catalog_at", "TEXT"),
+                ("updated_at", "TEXT"),
+            ):
+                self._ensure_column(conn, table="coins", column=column, decl=decl)
+            self._ensure_column(
+                conn,
+                table="image_assets",
+                column="origin",
+                decl="TEXT CHECK (origin IS NULL OR "
+                "origin IN ('canonical','collected','synthetic'))",
+            )
+            # Index NON unique : un numista_id de circulation est partagé par
+            # N millésimes (ex. nid 135 = 23 pièces) → (ref_source,ref_native_id)
+            # n'est pas unique. L'unicité réelle relève de la génération (Chunk 2).
+            for index_sql in (
+                "CREATE INDEX IF NOT EXISTS idx_coins_ref "
+                "ON coins(ref_source, ref_native_id)",
+                "CREATE INDEX IF NOT EXISTS idx_coins_status ON coins(status)",
+                "CREATE INDEX IF NOT EXISTS idx_coins_design_group "
+                "ON coins(design_group_id) WHERE design_group_id IS NOT NULL",
+                "CREATE INDEX IF NOT EXISTS idx_coins_needs_review "
+                "ON coins(needs_review) WHERE needs_review = 1",
+            ):
+                conn.execute(index_sql)
             n_coins = conn.execute("SELECT count(*) AS n FROM coins").fetchone()["n"]
             if n_coins == 0:
                 logger.warning(

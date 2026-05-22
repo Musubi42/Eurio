@@ -572,6 +572,16 @@ tasks:
     cmds:
       - "{{.VENV}}/python -m scripts.bootstrap_coins_from_referential --dry-run"
 
+  migrate-canonical-schema:
+    desc: "Harmonisation chunk 1b — backfill des colonnes canoniques de coins + tables filles depuis raw_payload_json + cohort_members. Idempotent, backup auto. Cf. docs/data-harmonization/."
+    cmds:
+      - "{{.VENV}}/python -m scripts.migrate_canonical_schema {{.CLI_ARGS}}"
+
+  migrate-canonical-schema-dry:
+    desc: "Preview de la migration chunk 1b sans écrire (le schéma reste appliqué par Store)."
+    cmds:
+      - "{{.VENV}}/python -m scripts.migrate_canonical_schema --dry-run"
+
   # ---------- Storage migration (fs → MinIO) ----------
   # Spec: docs/harmonisation-images/chunk-3-migration-script.md
   migrate-inventory:

@@ -27,12 +27,21 @@ Pas de changement de sémantique de données — renommage + docs.
       `image_assets.origin`, vue QA `v_orphan_eurio_refs`.
 - [x] Séquence de migration one-shot guardée définie (rebuild `coins`).
 
-### 1b — Implémentation schéma + migration (à venir)
+### 1b — Implémentation schéma + migration ✅ (livré 2026-05-22)
 
-- Écrire le DDL dans `schema.sql` + le script de migration one-shot guardé
-  (détection ancien schéma, rebuild `coins`, backfill `cohort_members`).
-- **Dry-run d'abord**, backup avant tout. Aucune destruction sans backup.
-- `PRAGMA foreign_key_check` après migration.
+- [x] DDL des nouvelles tables dans `schema.sql` + colonnes canoniques de
+      `coins` + vue QA `v_orphan_eurio_refs`.
+- [x] `Store._bootstrap` : `_ensure_column` des colonnes nouvelles + index —
+      **pas de rebuild de `coins`** (migration non destructive, ALTER seulement,
+      cf. `schema-design.md` §Ajustements Chunk 1b).
+- [x] Script `scripts/migrate_canonical_schema.py` (+ go-task) : backfill des
+      colonnes depuis `raw_payload_json`, remplissage des tables filles,
+      backfill `cohort_members` (tolère les orphelins), `image_assets.origin`.
+- [x] Dry-run, backup auto, idempotent. **Appliqué** : 2628 coins backfillées,
+      3233 cross-refs + 3606 observations + 877 images décomposées, 24
+      cohort_members, 1961 `origin='collected'`. `foreign_key_check` CLEAN.
+      Zéro régression (78 tests coins/store/ebay verts ; 19 échecs pré-existants
+      indépendants).
 
 > La règle de dérivation du slug `eurio_id` est traitée au Chunk 2 (génération).
 

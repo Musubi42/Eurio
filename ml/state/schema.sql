@@ -381,6 +381,12 @@ CREATE TABLE IF NOT EXISTS image_assets (
   storage_status           TEXT NOT NULL DEFAULT 'present'
                            CHECK (storage_status IN ('present', 'missing_in_storage', 'removed_via_admin')),
 
+  -- Harmonisation : origine de l'image. 'collected' = scrapée (défaut
+  -- historique), 'synthetic' = augmentée depuis le canonique, 'canonical' =
+  -- image de référence. Ajoutée aux DB existantes via Store._ensure_column.
+  origin                   TEXT
+                           CHECK (origin IS NULL OR origin IN ('canonical','collected','synthetic')),
+
   UNIQUE (source_image_id, crop_index)
 );
 
@@ -661,23 +667,76 @@ CREATE INDEX IF NOT EXISTS idx_discarded_listings_run
 CREATE INDEX IF NOT EXISTS idx_discarded_listings_reason
   ON discarded_listings(reason);
 
--- ─── Canonical coin referential (D-20) ────────────────────────────────────
--- Mirror SQLite de ml/datasets/eurio_referential.json. Bootstrappé via
--- `go-task ml:bootstrap-coins` (script ml/scripts/bootstrap_coins_from_referential.py).
--- Table source de vérité pour toutes les vues d'enrichissement (v_ebay_freshness,
--- futures v_*_freshness cross-source). Voir docs/sources-refacto/decisions.md D-20.
+-- ════════════════════════════════════════════════════════════════════════
+-- Référentiel canonique — harmonisation des données (docs/data-harmonization/)
+-- ════════════════════════════════════════════════════════════════════════
+-- `coins` n'est plus un miroir d'un JSON : c'est la table CANONIQUE. Voir
+-- docs/data-harmonization/{architecture,schema-design}.md.
 
+-- ─── referential_catalog — provenance brute du scrape référentiel ─────────
+-- Remplace coin_catalog.json. 1 ligne = 1 pièce telle que la source
+-- référentielle (Numista aujourd'hui, BCE demain) la décrit. Table mince :
+-- raw_json est la vérité, les colonnes typées ne servent qu'au QA pré-`coins`.
+CREATE TABLE IF NOT EXISTS referential_catalog (
+  source              TEXT NOT NULL,          -- 'numista' (demain 'bce', …)
+  source_native_id    TEXT NOT NULL,          -- ID natif, TEXT
+  country_name        TEXT,
+  year                INTEGER,
+  face_value          REAL,
+  type                TEXT,                   -- 'commemorative' | 'circulation'
+  raw_json            TEXT NOT NULL,          -- payload complet (provenance)
+  scrape_snapshot_ref TEXT,                   -- fichier sources/ immuable
+  scraped_at          TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (source, source_native_id)
+);
+
+-- ─── design_groups — groupement de pièces partageant un design ────────────
+-- Porté de Supabase (20260418_design_groups.sql). Unité de classe ArcFace.
+CREATE TABLE IF NOT EXISTS design_groups (
+  id                    TEXT PRIMARY KEY,     -- slug stable
+  designation           TEXT NOT NULL,
+  designation_i18n_json TEXT,
+  description           TEXT,
+  shared_obverse_url    TEXT,
+  created_at            TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at            TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- ─── coins — référentiel canonique ────────────────────────────────────────
+-- Colonnes nouvelles (harmonisation) ajoutées aux DB existantes via
+-- Store._ensure_column ; les index sur ces colonnes sont créés dans
+-- Store._bootstrap APRÈS les ALTER (sinon executescript pète sur les DB
+-- antérieures). raw_payload_json/imported_at conservés transitoirement
+-- (lecteurs : bench_routes, bootstrap_coins) — retirés dans un chunk ultérieur.
 CREATE TABLE IF NOT EXISTS coins (
-  eurio_id          TEXT PRIMARY KEY,
-  country           TEXT NOT NULL,            -- ISO2 ('FR','DE',...,'eu' pour joint)
-  country_name      TEXT,
-  year              INTEGER NOT NULL,
-  face_value        REAL NOT NULL,            -- 0.01 → 2.0
-  is_commemorative  INTEGER NOT NULL DEFAULT 0,
-  theme             TEXT,
-  numista_id        INTEGER,
-  raw_payload_json  TEXT,                     -- entrée JSON complète, pour audit
-  imported_at       TEXT NOT NULL DEFAULT (datetime('now'))
+  eurio_id            TEXT PRIMARY KEY,
+  country             TEXT NOT NULL,          -- ISO2 ('FR',…,'eu' pour joint)
+  country_name        TEXT,
+  year                INTEGER NOT NULL,
+  face_value          REAL NOT NULL,          -- 0.01 → 2.0
+  is_commemorative    INTEGER NOT NULL DEFAULT 0,
+  theme               TEXT,
+  numista_id          INTEGER,
+  -- Ancrage à la source référentielle. NULLABLE tant que toutes les pièces
+  -- ne sont pas générées depuis Numista (cf. schema-design.md §Chunk 1b).
+  ref_source          TEXT,
+  ref_native_id       TEXT,
+  currency            TEXT NOT NULL DEFAULT 'EUR',
+  collector_only      INTEGER NOT NULL DEFAULT 0,
+  design_description  TEXT,
+  mintage             INTEGER,
+  mintage_source      TEXT,
+  design_group_id     TEXT REFERENCES design_groups(id) ON DELETE SET NULL,
+  -- Cycle de vie (matérialisé, recalculé sur événement — Chunk 3).
+  status              TEXT NOT NULL DEFAULT 'referenced'
+                        CHECK (status IN ('referenced','trained')),
+  status_computed_at  TEXT,
+  needs_review        INTEGER NOT NULL DEFAULT 0,
+  review_reason       TEXT,
+  last_seen_in_catalog_at TEXT,               -- détection « disparue d'un re-scrape »
+  raw_payload_json    TEXT,                   -- transitoire — décomposé en tables filles
+  imported_at         TEXT NOT NULL DEFAULT (datetime('now')),  -- = date de création
+  updated_at          TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_coins_country_year
@@ -688,6 +747,74 @@ CREATE INDEX IF NOT EXISTS idx_coins_commemorative
   ON coins(is_commemorative) WHERE is_commemorative = 1;
 CREATE INDEX IF NOT EXISTS idx_coins_numista
   ON coins(numista_id) WHERE numista_id IS NOT NULL;
+-- Index sur les colonnes nouvelles : créés dans Store._bootstrap.
+
+-- ─── Tables filles du référentiel ─────────────────────────────────────────
+-- Pays participants d'une émission commune (1 ligne `coins` country='eu').
+CREATE TABLE IF NOT EXISTS coin_national_variants (
+  eurio_id     TEXT NOT NULL REFERENCES coins(eurio_id) ON DELETE CASCADE,
+  country_iso2 TEXT NOT NULL,
+  PRIMARY KEY (eurio_id, country_iso2)
+) WITHOUT ROWID;
+
+-- Références externes non-référentielles (wikipedia_url, lmdlp_url, …).
+CREATE TABLE IF NOT EXISTS coin_cross_refs (
+  eurio_id  TEXT NOT NULL REFERENCES coins(eurio_id) ON DELETE CASCADE,
+  ref_type  TEXT NOT NULL,
+  ref_value TEXT NOT NULL,
+  PRIMARY KEY (eurio_id, ref_type)
+);
+CREATE INDEX IF NOT EXISTS idx_coin_cross_refs_value
+  ON coin_cross_refs(ref_type, ref_value);
+
+-- Observations hétérogènes par source (payload semi-structuré volontaire).
+CREATE TABLE IF NOT EXISTS coin_observations (
+  id               INTEGER PRIMARY KEY,
+  eurio_id         TEXT NOT NULL REFERENCES coins(eurio_id) ON DELETE CASCADE,
+  source           TEXT NOT NULL,
+  observation_type TEXT NOT NULL,
+  payload_json     TEXT NOT NULL,
+  recorded_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (eurio_id, source, observation_type)
+);
+CREATE INDEX IF NOT EXISTS idx_coin_observations_eurio
+  ON coin_observations(eurio_id);
+
+-- Images de référence (Numista obverse/reverse) — distinctes de image_assets.
+CREATE TABLE IF NOT EXISTS coin_canonical_images (
+  eurio_id   TEXT NOT NULL REFERENCES coins(eurio_id) ON DELETE CASCADE,
+  source     TEXT NOT NULL,
+  role       TEXT NOT NULL CHECK (role IN ('obverse','reverse')),
+  url        TEXT,
+  local_path TEXT,
+  PRIMARY KEY (eurio_id, source, role)
+) WITHOUT ROWID;
+
+-- Appartenance d'une pièce à une cohorte (remplace experiment_cohorts.eurio_ids_json).
+CREATE TABLE IF NOT EXISTS cohort_members (
+  cohort_id TEXT NOT NULL REFERENCES experiment_cohorts(id) ON DELETE CASCADE,
+  eurio_id  TEXT NOT NULL REFERENCES coins(eurio_id) ON DELETE CASCADE,
+  PRIMARY KEY (cohort_id, eurio_id)
+) WITHOUT ROWID;
+
+-- Journal de migration d'identité (rename/split/merge/retire). Exportable en
+-- JSON versionné git — cf. docs/data-harmonization/schema-design.md.
+CREATE TABLE IF NOT EXISTS eurio_id_migrations (
+  id           INTEGER PRIMARY KEY,
+  batch_id     TEXT NOT NULL,
+  kind         TEXT NOT NULL CHECK (kind IN ('rename','split','merge','retire')),
+  old_eurio_id TEXT NOT NULL,
+  new_eurio_id TEXT,
+  resolution   TEXT NOT NULL CHECK (resolution IN ('deterministic','needs_rematch')),
+  status       TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','applied')),
+  reason       TEXT,
+  decided_by   TEXT,
+  created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_eurio_id_migrations_old
+  ON eurio_id_migrations(old_eurio_id);
+CREATE INDEX IF NOT EXISTS idx_eurio_id_migrations_new
+  ON eurio_id_migrations(new_eurio_id);
 
 -- ─── Coin names i18n (eBay multi-marketplace) ─────────────────────────────
 -- Titres Numista localisés (fr/en/de/it/es/nl) bootstrappés une fois pour
@@ -791,3 +918,34 @@ JOIN v_ebay_freshness_groups g
 WHERE c.face_value = 2.0
   AND c.is_commemorative = 1
   AND c.country != 'eu';
+
+-- ─── QA : références eurio_id orphelines ──────────────────────────────────
+-- Plusieurs colonnes pointent un eurio_id sans contrainte FK (par design :
+-- target_eurio_id est une *hypothèse* de match, autorisée à être fausse).
+-- Cette vue les OBSERVE — elle ne les contraint pas. Cf. schema-design.md §Q7.
+DROP VIEW IF EXISTS v_orphan_eurio_refs;
+CREATE VIEW v_orphan_eurio_refs AS
+  SELECT 'source_images.target_eurio_id' AS ref, si.target_eurio_id AS eurio_id,
+         COUNT(*) AS n
+    FROM source_images si
+    LEFT JOIN coins c ON c.eurio_id = si.target_eurio_id
+   WHERE si.target_eurio_id IS NOT NULL AND c.eurio_id IS NULL
+   GROUP BY si.target_eurio_id
+  UNION ALL
+  SELECT 'image_assets.eurio_id', ia.eurio_id, COUNT(*)
+    FROM image_assets ia
+    LEFT JOIN coins c ON c.eurio_id = ia.eurio_id
+   WHERE ia.eurio_id IS NOT NULL AND c.eurio_id IS NULL
+   GROUP BY ia.eurio_id
+  UNION ALL
+  SELECT 'training_run_classes.class_id', trc.class_id, COUNT(*)
+    FROM training_run_classes trc
+    LEFT JOIN coins c ON c.eurio_id = trc.class_id
+   WHERE trc.class_kind = 'eurio_id' AND c.eurio_id IS NULL
+   GROUP BY trc.class_id
+  UNION ALL
+  SELECT 'coin_market_quotes.eurio_id', cmq.eurio_id, COUNT(*)
+    FROM coin_market_quotes cmq
+    LEFT JOIN coins c ON c.eurio_id = cmq.eurio_id
+   WHERE cmq.eurio_id IS NOT NULL AND c.eurio_id IS NULL
+   GROUP BY cmq.eurio_id;
