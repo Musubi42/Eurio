@@ -8,6 +8,7 @@ import {
   ExternalLink,
   Loader2,
   Package,
+  RefreshCw,
   Search,
   Target,
   XCircle,
@@ -18,9 +19,16 @@ import {
   type RunBreakdown,
   type RunBreakdownEntry,
 } from '../composables/useRunBreakdown'
+import {
+  fetchSourceRun,
+  pollSourceRun,
+  retryRunDownloads,
+  type RunSnapshot,
+} from '../composables/useSourceDetail'
 import type { SourceId } from '../composables/useSourcesApi'
 import MarketplaceBadge from '../components/MarketplaceBadge.vue'
 import RunFunnelPanel from '../components/RunFunnelPanel.vue'
+import FilterRulesPanel from '../components/FilterRulesPanel.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -29,15 +37,32 @@ const sourceId = computed(() => route.params.id as SourceId)
 const runId = computed(() => route.params.run_id as string)
 
 const data = ref<RunBreakdown | null>(null)
+const snapshot = ref<RunSnapshot | null>(null)
 const loading = ref(true)
 const error = ref<string | null>(null)
 const tab = ref<'breakdown' | 'logs'>('breakdown')
+
+const retrying = ref(false)
+const retryError = ref<string | null>(null)
+// Bumpé après un retry pour forcer le re-fetch du panneau funnel/logs.
+const funnelNonce = ref(0)
 
 async function load() {
   loading.value = true
   error.value = null
   try {
-    data.value = await fetchRunBreakdown(sourceId.value, runId.value)
+    // Le breakdown est l'info principale ; le snapshot (compteurs live,
+    // dont n_downloads_failed) est secondaire — un échec ne casse pas la page.
+    const [bd, snap] = await Promise.allSettled([
+      fetchRunBreakdown(sourceId.value, runId.value),
+      fetchSourceRun(sourceId.value, runId.value),
+    ])
+    // Le snapshot (dont n_downloads_failed → bouton retry) est posé AVANT
+    // de propager une éventuelle erreur du breakdown : le bouton retry doit
+    // rester accessible même si le breakdown ne charge pas.
+    snapshot.value = snap.status === 'fulfilled' ? snap.value : null
+    if (bd.status === 'rejected') throw bd.reason
+    data.value = bd.value
   } catch (err) {
     if (err instanceof RunBreakdownError && err.status === 404) {
       error.value = `Run introuvable : ${runId.value}`
@@ -47,6 +72,28 @@ async function load() {
     data.value = null
   } finally {
     loading.value = false
+  }
+}
+
+/** Relance les téléchargements échoués puis suit le run jusqu'à la fin. */
+async function onRetryDownloads() {
+  if (retrying.value) return
+  retrying.value = true
+  retryError.value = null
+  // Bascule sur l'onglet Logs : l'utilisateur voit le run tourner plutôt
+  // qu'un bouton silencieux.
+  tab.value = 'logs'
+  try {
+    await retryRunDownloads(sourceId.value, runId.value)
+    await pollSourceRun(sourceId.value, runId.value, {
+      onTick: (s) => { snapshot.value = s },
+    })
+    await load()
+    funnelNonce.value++
+  } catch (err) {
+    retryError.value = err instanceof Error ? err.message : String(err)
+  } finally {
+    retrying.value = false
   }
 }
 
@@ -62,8 +109,11 @@ const discovered = computed(() =>
   (data.value?.per_eurio ?? []).filter((e) => !e.was_targeted),
 )
 
-const targetIds = computed(
-  () => (data.value?.filters?.target_eurio_ids as string[] | undefined) ?? [],
+const discoveryGroups = computed(
+  () =>
+    (data.value?.filters?.discovery_groups as
+      | Array<{ denomination: number; country: string; year: number }>
+      | undefined) ?? [],
 )
 
 const totalsTargeted = computed(() => sumRows(targeted.value))
@@ -153,6 +203,44 @@ function tabStyle(t: 'breakdown' | 'logs') {
       Retour à {{ sourceId }}
     </button>
 
+    <!-- Bandeau retry — indépendant du breakdown : reste visible même si
+         le breakdown échoue à charger. -->
+    <div
+      v-if="snapshot && snapshot.n_downloads_failed > 0"
+      class="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-md border px-4 py-3"
+      style="border-color: color-mix(in srgb, var(--warning) 40%, var(--surface-3));
+             background: color-mix(in srgb, var(--warning) 8%, var(--surface));"
+    >
+      <div class="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-sm">
+        <span class="inline-flex items-center gap-1.5" style="color: var(--ink);">
+          <AlertTriangle class="h-4 w-4" style="color: var(--warning);" />
+          <strong class="tabular-nums">{{ snapshot.n_downloads_failed }}</strong>
+          téléchargement(s) en échec
+        </span>
+        <span class="text-xs" style="color: var(--ink-500);">
+          — connexion instable au moment du run : images, crops et prix
+          correspondants manquent. Relance pour les rattraper.
+        </span>
+      </div>
+      <button
+        type="button"
+        class="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors"
+        :style="{
+          background: retrying ? 'var(--surface-3)' : 'var(--indigo-700)',
+          color: retrying ? 'var(--ink-400)' : 'white',
+          cursor: retrying ? 'wait' : 'pointer',
+        }"
+        :disabled="retrying"
+        @click="onRetryDownloads"
+      >
+        <RefreshCw class="h-3.5 w-3.5" :class="{ 'animate-spin': retrying }" />
+        {{ retrying ? 'Téléchargement en cours…' : 'Réessayer les téléchargements' }}
+      </button>
+    </div>
+    <div v-if="retryError" class="mb-4 text-xs" style="color: var(--danger);">
+      Échec du retry : {{ retryError }}
+    </div>
+
     <div
       v-if="loading"
       class="flex items-center gap-2 py-16 text-sm"
@@ -191,8 +279,17 @@ function tabStyle(t: 'breakdown' | 'logs') {
               {{ data.run_id }}
             </h1>
             <p class="mt-2 font-mono text-[11px]" style="color: var(--ink-500);">
-              <span style="color: var(--ink-400);">Ciblés&nbsp;:</span>
-              {{ targetIds.length }}
+              <template v-if="discoveryGroups.length">
+                <span style="color: var(--ink-400);">Groupes&nbsp;:</span>
+                {{ discoveryGroups.length }}
+                <span class="mx-2 opacity-40">|</span>
+                <span style="color: var(--ink-400);">Pièces&nbsp;:</span>
+                {{ targeted.length }}
+              </template>
+              <template v-else>
+                <span style="color: var(--ink-400);">Ciblés&nbsp;:</span>
+                {{ targeted.length }}
+              </template>
               <span class="mx-2 opacity-40">|</span>
               <span style="color: var(--ink-400);">Découverts&nbsp;:</span>
               {{ discovered.length }}
@@ -239,11 +336,23 @@ function tabStyle(t: 'breakdown' | 'logs') {
         </button>
       </div>
 
-      <RunFunnelPanel
-        v-if="tab === 'logs'"
-        :source-id="sourceId"
-        :run-id="runId"
-      />
+      <div v-if="tab === 'logs'">
+        <div
+          v-if="retrying"
+          class="mb-4 flex items-center gap-2 rounded-md border px-4 py-2.5 text-xs"
+          style="border-color: var(--indigo-500); background: color-mix(in srgb, var(--indigo-500) 8%, var(--surface)); color: var(--ink);"
+        >
+          <Loader2 class="h-3.5 w-3.5 animate-spin" style="color: var(--indigo-500);" />
+          Retry des téléchargements en cours — le run rejoue download →
+          detect → resolve → prix. Cette page se rafraîchit à la fin.
+        </div>
+        <RunFunnelPanel
+          :key="funnelNonce"
+          :source-id="sourceId"
+          :run-id="runId"
+        />
+        <FilterRulesPanel class="mt-6" />
+      </div>
 
       <!-- Section : ciblés -->
       <section v-if="tab === 'breakdown'" class="mb-8">
@@ -252,7 +361,8 @@ function tabStyle(t: 'breakdown' | 'logs') {
           style="color: var(--indigo-700);"
         >
           <Target class="h-3 w-3" />
-          Ciblés <span style="color: var(--ink-400);">·</span>
+          {{ discoveryGroups.length ? 'Pièces des groupes' : 'Ciblés' }}
+          <span style="color: var(--ink-400);">·</span>
           <span style="color: var(--ink-500);">{{ targeted.length }}</span>
         </h2>
         <div
@@ -260,7 +370,7 @@ function tabStyle(t: 'breakdown' | 'logs') {
           class="rounded-lg border-2 border-dashed px-6 py-8 text-center text-sm"
           style="border-color: var(--surface-3); color: var(--ink-400);"
         >
-          Aucun eurio_id ciblé pour ce run.
+          Aucune pièce dans le périmètre de ce run.
         </div>
         <div
           v-else

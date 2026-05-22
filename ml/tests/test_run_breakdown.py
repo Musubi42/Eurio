@@ -288,3 +288,29 @@ def test_breakdown_dry_run_no_filters(tmp_path):
         assert x.via_lot is False  # 1 seul crop, pas de lot
         assert x.n_listings == 0
         assert x.n_crops_searched == 0
+
+
+def test_breakdown_grouped_run_targets_group_coins(tmp_path):
+    """Run en découverte groupée : « ciblé » = toutes les commémos des
+    groupes (denom, pays, année) — même celles sans listing."""
+    store = Store(tmp_path / "t.db")
+    conn = store._connection()
+    for i in range(2):
+        conn.execute(
+            "INSERT INTO coins (eurio_id, country, country_name, year, face_value, "
+            "is_commemorative, theme, raw_payload_json) VALUES (?,?,?,?,?,?,?,'{}')",
+            (f"be-2099-2eur-sib-{i}", "BE", "Belgique", 2099, 2.0, 1, f"t{i}"),
+        )
+    with start_run(
+        conn, source="ebay", kind="run",
+        filters={"discovery_groups": [
+            {"denomination": 2.0, "country": "BE", "year": 2099},
+        ]},
+        force=True,
+    ) as run:
+        bd = compute_run_breakdown(conn, run_id=run.run_id, source_id="ebay")
+
+    assert [e.eurio_id for e in bd.per_eurio] == [
+        "be-2099-2eur-sib-0", "be-2099-2eur-sib-1",
+    ]
+    assert all(e.was_targeted for e in bd.per_eurio)

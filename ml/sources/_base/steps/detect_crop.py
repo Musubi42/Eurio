@@ -66,6 +66,7 @@ class DetectCropResult:
     n_errors: int
     n_auto_phash: int
     crop_paths: list[Path]
+    n_zero_crops: int = 0    # images sans pièce détectable (pas une erreur)
 
 
 # Called by: ml/sources/_base/orchestrator.py (step 5/8 — after download, dispatches studio vs listing crop strategy)
@@ -80,6 +81,7 @@ def run_detect_crop(
     n_skipped = 0
     n_errors = 0
     n_auto_phash = 0
+    n_zero_crops = 0
     crop_paths: list[Path] = []
 
     for source_ref, sid in source_image_ids.items():
@@ -143,7 +145,12 @@ def run_detect_crop(
         else:
             results = normalize_listing_path(raw)
         if not results:
-            logger.error(
+            # 0 crop n'est PAS une erreur : beaucoup de photos de listing
+            # ne montrent pas de pièce détectable (certificat, emballage,
+            # photo de lot où les pièces sont minuscules…). On trace l'état
+            # via `crop_status='zero_crops'` sans gonfler `n_errors` — sinon
+            # un run sain bascule en `partial` avec un compteur alarmant.
+            logger.info(
                 "[%s] detect (%s) returned 0 crops source_ref=%s",
                 source_id, _crop_strategy(source_id), source_ref,
             )
@@ -157,8 +164,7 @@ def run_detect_crop(
                 """,
                 (f"normalize_{_crop_strategy(source_id)} returned 0 crops", sid),
             )
-            n_errors += 1
-            run.bump(n_errors=1)
+            n_zero_crops += 1
             continue
 
         crops_for_image = 0
@@ -255,8 +261,8 @@ def run_detect_crop(
 
     run.bump(n_crops_added=n_crops_added, n_auto_resolved=n_auto_phash)
     logger.info(
-        "[%s] detect → %d crops / %d skipped / %d errors / %d auto_phash",
-        source_id, n_crops_added, n_skipped, n_errors, n_auto_phash,
+        "[%s] detect → %d crops / %d skipped / %d zero-crops / %d errors / %d auto_phash",
+        source_id, n_crops_added, n_skipped, n_zero_crops, n_errors, n_auto_phash,
     )
     return DetectCropResult(
         n_crops_added=n_crops_added,
@@ -264,4 +270,5 @@ def run_detect_crop(
         n_errors=n_errors,
         n_auto_phash=n_auto_phash,
         crop_paths=crop_paths,
+        n_zero_crops=n_zero_crops,
     )

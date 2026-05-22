@@ -420,3 +420,43 @@ def test_trigger_run_400_on_empty_discovery_scope(client: TestClient):
     resp = client.post("/sources/ebay/runs", json={})
     assert resp.status_code == 400
     assert resp.json()["detail"]["code"] == "empty_discovery_scope"
+
+
+# ── chunk 4 — retry des téléchargements échoués ─────────────────────────────
+
+
+def test_run_snapshot_exposes_n_downloads_failed(client: TestClient):
+    conn = client.test_store._connection()  # type: ignore[attr-defined]
+    conn.execute(
+        "INSERT INTO source_runs (id, source, kind, started_at, status) "
+        "VALUES ('dlrun-1', 'ebay', 'run', datetime('now'), 'partial')"
+    )
+    for i, st in enumerate(["failed", "failed", "success"]):
+        conn.execute(
+            "INSERT INTO source_images (id, source, source_ref, run_id, target_eurio_id, "
+            "storage_path, fetched_at, license, download_status) "
+            "VALUES (?,?,?,?,?,?,datetime('now'),'fair_use_research',?)",
+            (f"si-dl-{i}", "ebay", f"ebay_DL_{i}_img0", "dlrun-1",
+             "de-2000-2eur-never-0", f"/tmp/{i}.jpg", st),
+        )
+    conn.commit()
+
+    snap = client.get("/sources/ebay/runs/dlrun-1").json()
+    assert snap["n_downloads_failed"] == 2
+
+
+def test_retry_downloads_404_on_unknown_run(client: TestClient):
+    resp = client.post("/sources/ebay/runs/does-not-exist/retry-downloads")
+    assert resp.status_code == 404
+
+
+def test_retry_downloads_400_when_nothing_failed(client: TestClient):
+    conn = client.test_store._connection()  # type: ignore[attr-defined]
+    conn.execute(
+        "INSERT INTO source_runs (id, source, kind, started_at, status) "
+        "VALUES ('cleanrun-1', 'ebay', 'run', datetime('now'), 'success')"
+    )
+    conn.commit()
+    resp = client.post("/sources/ebay/runs/cleanrun-1/retry-downloads")
+    assert resp.status_code == 400
+    assert resp.json()["detail"]["code"] == "nothing_to_retry"
