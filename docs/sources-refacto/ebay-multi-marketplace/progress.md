@@ -261,6 +261,35 @@ baseline) reste à faire pour confirmer que la couverture i18n est
 assez haute pour que le retrait du fallback ne coûte pas de recall —
 c'est un run eBay (quota), à faire avec un run discovery réel.
 
+## Découverte groupée — chunks 1-6 livrés (2026-05-22)
+
+Bascule de la maille de découverte : `(dénom, pays, année)` au lieu de
+`eurio_id`. Une recherche eBay ramène toutes les commémos-sœurs d'un
+groupe ; chaque listing est attribué à sa pièce par le theme-match
+multilingue. L'`eurio_id` reste la maille de stockage / review / prix.
+Motivation : `build_query` ne tenait pas compte du thème → deux sœurs
+de la même année déclenchaient deux requêtes byte-identiques et le
+post-filtre `theme_mismatch` jetait les listings de la sœur non ciblée
+(149 faux rejets sur un run mesuré).
+
+- **Chunks 1-3** — cœur backend (`DiscoveryGroup`, `match_listing_to_group`
+  routeur 4 verdicts, `build_group_query`), vue `v_ebay_freshness_groups`
+  + endpoints `freshness-groups` / `run-preview`, quota group-aware,
+  front `EbayPilotPanel` groupé.
+- **Chunk 4** (`cc25c01`) — run-detail : retry des téléchargements
+  échoués (`resume_failed_downloads`), `zero_crops` n'est plus une
+  erreur, breakdown relu pour runs groupés, panneau « Règles de
+  filtrage ».
+- **Chunk 5** (`d3a149e`) — review : relabel « Cible eBay » → « Pièce
+  proposée », candidats du groupe sélectionnables pour les listings sans
+  proposition (verdict ambigu).
+- **Commit différé** (`2c515db`) — décisions review POSTées après une
+  fenêtre undo de 10 s (fix re-décision 409).
+- **Chunk 6** — `v_ebay_freshness` devient la projection per-eurio_id de
+  `v_ebay_freshness_groups` (cohérence des deux vues) ; docstrings
+  « cible eBay » alignées sur la sémantique theme-match. Détail dans
+  `discovery-groupee-handoff.md`.
+
 ## Reste à faire
 
 1. **F3 → F4** — front (run listings, coin-detail thumbs).
