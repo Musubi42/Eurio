@@ -32,20 +32,26 @@ LOT_PATTERNS = re.compile(
     re.IGNORECASE,
 )
 
-# Mots-clefs qui indiquent une pièce hors-scope (variantes spéciales,
-# erreurs de frappe, métaux précieux, colorisée). On rejette ces
-# listings entièrement — pas de pieces standard 2€ là-dedans.
+# Mots-clefs qui indiquent une pièce VRAIMENT hors-scope : métaux
+# précieux (variante souvenir dorée/argentée) et erreurs de frappe
+# (collectible distinct). On rejette ces listings entièrement.
 #
 # Note (V-1 fix 2026-05-18) : on a retiré ``bu\b`` qui faisait rejeter
-# des pièces standard parfaitement valides ("Andorre 2017 BU FDC"). En
-# numismatique francophone, BU = Brillant Universel = qualité de frappe
-# d'une pièce de circulation, pas une variante hors-scope. ``be\b``
-# (Belle Épreuve = proof) reste rejeté à juste titre.
+# des pièces standard valides ("Andorre 2017 BU FDC"). BU = Brillant
+# Universel = qualité de frappe, pas une variante hors-scope.
+#
+# Note (C1b fix 2026-05-22) : on a retiré ``proof|épreuve|belle épreuve|
+# be|color|colorisée``. Une **finition** (proof/BE, colorisée) n'est pas
+# du bruit — c'est la MÊME pièce, autre finition/grade (cf. référentiel
+# V2, grading UNC/TTB/TB). Les rejeter perdait 14/14 des faux rejets du
+# bench gold, tous des commémos valides ("ESRO-2B Satellit in PP",
+# "Carolus Gulden in PP", "Peter Bruegel Color"). En prime ``\bbe\b``
+# matchait le code-pays BE et les réfs catalogue ("BE 410") — fatal sur
+# des pièces belges. La finition est un attribut, géré en aval, pas un
+# motif de discard.
 NOISE_PATTERNS = re.compile(
     r"\b("
-    r"proof|[eé]preuve|belle\s*[eé]preuve|be\b|"
     r"argent|or\b|silver|gold|plaqu[eé]|"
-    r"coloris[eé]e?|color|"
     r"erreur\s*de\s*frappe|faut[eé]e?"
     r")\b",
     re.IGNORECASE,
@@ -123,9 +129,10 @@ def accept_listing(
 
     Note : ``is_lot_suspected`` n'apparaît PAS ici — un lot est *gardé*
     (on veut ses images) mais flaggé. Cette fonction ne rejette que les
-    noises hors-scope (proof, métaux précieux, fautées…) et, depuis le
-    bloc 1 (2026-05-05), les listings commémoratifs dont le titre
-    contient une année différente de celle attendue.
+    noises hors-scope (métaux précieux, fautées — pas les finitions
+    proof/colorisée, cf. C1b) et, depuis le bloc 1 (2026-05-05), les
+    listings commémoratifs dont le titre contient une année différente
+    de celle attendue.
 
     Policy year-in-title : *accept-on-missing*. Si on ne trouve aucune
     année dans le titre, on accepte (les vendeurs n'écrivent pas tous

@@ -12,6 +12,7 @@
 | C1 — couche 1 (`no_match` → `ambiguous`) | ✅ livré (faux rejet 34→14 %) |
 | C2a-1 — `coin_aliases` + mining acronymes | ✅ livré (auto-attrib 66→69 %) |
 | C2a-2 — alias colloquiaux (LLM ancré) | ✅ livré (auto-attrib 69→74 %) |
+| C1b — déparasiter `accept_listing` (proof/color ≠ bruit) | ✅ livré (faux rejet 14→0 %) |
 | C2b — scoreur sémantique LaBSE + fusion | ⏳ |
 | C2c — matcher LLM (conditionnel) | ⏳ |
 | C3 — calibration seuils + runbook audit | ⏳ |
@@ -29,6 +30,7 @@ Bench fidèle (`accept_listing` + theme-matcher) sur le gold gelé v1
 | C1 | 14,1 % | 85,9 % | 65,7 % | 20,2 % | 42,4 % | 92,9 % |
 | C2a-1 | 14,1 % | 85,9 % | **68,7 %** | 17,2 % | 42,4 % | 93,2 % |
 | C2a-2 | 14,1 % | 85,9 % | **73,7 %** | 12,1 % | 42,4 % | 93,6 % |
+| C1b   |  0,0 % | 100,0 % | **88,9 %** | 11,1 % | 43,5 % | 94,6 % |
 
 > Reproduire un point : `go-task ml:bench:theme-match`. A/B d'un
 > changement de code : `git stash` → replay → `git stash pop` → replay.
@@ -273,3 +275,63 @@ collision** rejetée sur le périmètre réel.
 - **Effet ciblé propre** : C2a-2 ne bouge que l'auto-attribution
   (review→auto). Faux rejet et junk false-keep strictement inchangés,
   conformément à la séparation des chunks.
+
+---
+
+## C1b — déparasiter `accept_listing` (proof/color ≠ bruit)
+
+Chunk **non prévu au plan d'origine**, ouvert par le bilan d'étape. Le
+bilan a montré que les 14 faux rejets résiduels étaient 14/14 rejetés
+par `accept_listing` motif `noise_title` — le theme-matcher (poli sur 3
+chunks) ne les voyait jamais. Et c'étaient des commémos **manifestement
+valides** ("ESRO-2B Satellit in PP", "Carolus Gulden in PP", "Peter
+Bruegel Color"). Le recall n'était plus un problème de matcher.
+
+### Changements
+
+- `NOISE_PATTERNS` (`sources/ebay/filters.py`) — retrait de
+  `proof|épreuve|belle épreuve|be|color|colorisée`. Une **finition**
+  (proof/BE, colorisée) n'est pas du bruit : c'est la même pièce, autre
+  finition/grade (cf. référentiel V2). En prime `\bbe\b` matchait le
+  **code-pays BE** et les réfs catalogue ("BE 410") — fatal sur des
+  pièces belges. Restent rejetés : métaux précieux
+  (`argent|or|silver|gold|plaqué`) et erreurs de frappe (`fautée`) —
+  vrais hors-scope (produits distincts).
+- Quick-win alias : 3 alias manqués en C2a-2 ajoutés à `aliases_llm.jsonl`
+  (`maiaufstande`, `mai 1968` — la FR « mai 1968 » produit zéro token car
+  `mai`<4 chars et `1968` est un chiffre —, `studentenrevolution`).
+- Tests : `test_accept_listing_keeps_proof_and_color` (nouveau),
+  `test_accept_listing_rejects_precious_metal` +
+  `test_discover_filters_noise_listings_before_yielding` (mis à jour —
+  un proof n'est plus du bruit).
+
+### 📊 C1b — A/B sur bench fidèle
+
+| Métrique | C2a-2 | C1b |
+|---|---|---|
+| Faux rejet | 14,1 % | **0,0 %** (14 pièces récupérées) |
+| Recall | 85,9 % | **100,0 %** |
+| Auto-attribution ★ | 73,7 % | **88,9 %** (+15,2) |
+| Review | 12,1 % | 11,1 % |
+| Précision | 93,6 % | 94,6 % (0 auto erronée) |
+| Junk false-keep | 42,4 % | 43,5 % (+1 junk) |
+
+Les 14 récupérés filent en quasi-totalité direct en auto : les titres
+proof contiennent le vocab de marché (`Satellit`, `Carolus Gulden`) que
+C2a-1/C2a-2 ont injecté dans `coin_aliases` → l'alias rattrape la pièce
+dès qu'`accept_listing` la laisse passer. Le travail alias était plafonné
+par cette règle legacy.
+
+### Découvertes / contraintes
+
+- **Le bench a réorienté le chantier.** Le plan supposait le matcher
+  goulot de recall ; le bench a prouvé que c'était une règle legacy
+  d'`accept_listing`. Toujours décomposer le bench par listing, pas se
+  fier aux moyennes.
+- **Junk false-keep +1 (36→37)** : retirer le filtre noise laisse passer
+  un junk de plus. Attendu, marginal — le vrai traitement du junk
+  false-keep (43,5 %) reste le chunk « garde-fou de contradiction ».
+- **Reste 11 en review** : ~6 titres sans aucun thème
+  (« 2 EUROS BÉLGICA 2021 S/C ») = review *correcte*, indiscriminables ;
+  le reste = titres tronqués / typos. Plafond d'auto-attribution proche
+  sur ce gold sans scoreur sémantique.
