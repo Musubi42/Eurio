@@ -14,13 +14,13 @@ orchestrator only sequences them.
 from __future__ import annotations
 
 import logging
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING
 
 from sources._base.adapter import SourceAdapter, SourceQuery
-from sources._base.run_logger import PIPELINE_STEPS, start_run
+from sources._base.run_logger import PIPELINE_STEPS, RunHandle, start_run
 
-__all__ = ["PIPELINE_STEPS", "run_pipeline"]
+__all__ = ["PIPELINE_STEPS", "run_pipeline", "resume_failed_downloads", "ResumeResult"]
 from sources._base.steps.auto_validate import run_auto_validate_dino
 from sources._base.steps.detect_crop import run_detect_crop
 from sources._base.steps.discover import run_discover
@@ -163,3 +163,121 @@ def run_pipeline(
         else:
             run.end("success")
         return run.run_id
+
+
+@dataclass
+class ResumeResult:
+    """Bilan d'un `resume_failed_downloads`."""
+
+    run_id: str
+    n_failed_before: int   # source_images en download_status='failed' avant
+    n_recovered: int       # téléchargements réussis cette fois
+    n_still_failed: int    # toujours en échec après le resume
+
+
+def resume_failed_downloads(
+    adapter: SourceAdapter,
+    *,
+    store: "Store",
+    run_id: str,
+) -> ResumeResult:
+    """Rejoue download → … → price_aggregate pour les listings échoués d'un run.
+
+    Pensé pour les connexions instables : le download initial échoue
+    « simplement » (1 tentative, état persisté en DB via
+    ``source_images.download_status='failed'``). Ce resume reprend les
+    seuls listings échoués, les re-télécharge, puis enchaîne detect →
+    resolve → auto_validate → enqueue sur ceux récupérés et ré-agrège les
+    prix du run. Idempotent : les images déjà en MinIO sont sautées.
+
+    Le resume s'attache au **même** ``source_runs`` (pas de nouveau run) :
+    les compteurs cumulent, le statut final est recalculé (success si plus
+    aucun échec, partial sinon).
+    """
+    conn = store._connection()  # noqa: SLF001
+    run_row = conn.execute(
+        "SELECT id, source, status FROM source_runs WHERE id = ?", (run_id,)
+    ).fetchone()
+    if run_row is None:
+        raise ValueError(f"Unknown run_id {run_id!r}")
+    if run_row["status"] == "running":
+        raise ValueError(f"Run {run_id!r} is still running — wait for it to finish.")
+    source = run_row["source"]
+
+    failed = conn.execute(
+        "SELECT id, source_ref FROM source_images "
+        "WHERE run_id = ? AND download_status = 'failed'",
+        (run_id,),
+    ).fetchall()
+    n_failed_before = len(failed)
+    if not failed:
+        return ResumeResult(run_id, 0, 0, 0)
+
+    source_image_ids = {r["source_ref"]: r["id"] for r in failed}
+    run = RunHandle(run_id=run_id, source=source, _conn=conn)
+    conn.execute(
+        "UPDATE source_runs SET status='running', ended_at=NULL, error_summary=NULL "
+        "WHERE id = ?",
+        (run_id,),
+    )
+    conn.commit()
+    logger.info(
+        "[%s] resume run=%s — retrying %d failed download(s)",
+        source, run_id, n_failed_before,
+    )
+
+    try:
+        run.set_step("download")
+        run_download(
+            conn=conn, run=run, adapter=adapter, source_image_ids=source_image_ids,
+        )
+
+        # Quels listings ont effectivement été récupérés ce coup-ci ?
+        recovered = {
+            sref: sid for sref, sid in source_image_ids.items()
+            if (conn.execute(
+                "SELECT download_status FROM source_images WHERE id = ?", (sid,)
+            ).fetchone() or {})["download_status"] == "success"
+        }
+
+        if recovered:
+            run.set_step("detect")
+            run_detect_crop(
+                conn=conn, run=run, source_id=source, source_image_ids=recovered,
+            )
+            run.set_step("resolve")
+            run_resolve(
+                conn=conn, run=run, source_id=source, source_image_ids=recovered,
+            )
+            run.set_step("auto_validate")
+            run_auto_validate_dino(
+                conn=conn, run=run, source_id=source, source_image_ids=recovered,
+            )
+            run.set_step("enqueue")
+            run_enqueue(
+                conn=conn, run=run, source_id=source, source_image_ids=recovered,
+            )
+
+        run.set_step("price_aggregate")
+        run_price_aggregate(conn=conn, run_id=run_id, source=source)
+
+        n_still_failed = conn.execute(
+            "SELECT count(*) AS n FROM source_images "
+            "WHERE run_id = ? AND download_status = 'failed'",
+            (run_id,),
+        ).fetchone()["n"]
+        run.end(
+            "success" if n_still_failed == 0 else "partial",
+            error_summary=None if n_still_failed == 0
+            else f"{n_still_failed} download(s) toujours en échec — réessayer",
+        )
+        conn.commit()
+        logger.info(
+            "[%s] resume run=%s done — recovered %d / still failed %d",
+            source, run_id, len(recovered), n_still_failed,
+        )
+        return ResumeResult(run_id, n_failed_before, len(recovered), n_still_failed)
+    except Exception as exc:  # noqa: BLE001
+        run.end("failed", error_summary=f"resume_failed_downloads crashed: {exc}")
+        conn.commit()
+        raise

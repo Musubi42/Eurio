@@ -298,6 +298,8 @@ export interface RunSnapshot {
   n_auto_resolved: number
   n_review_enqueued: number
   n_errors: number
+  /** Compteur live des listings dont le téléchargement a échoué (retry-able). */
+  n_downloads_failed: number
   filters: Record<string, unknown>
   error_summary: string | null
   log_path: string | null
@@ -408,6 +410,30 @@ export async function triggerSourceRun(
 export async function fetchSourceRun(id: SourceId, runId: string): Promise<RunSnapshot> {
   const resp = await fetch(`${ML_API}/sources/${id}/runs/${runId}`)
   if (!resp.ok) throw new TriggerError(resp.status, `HTTP ${resp.status}`)
+  return resp.json()
+}
+
+/**
+ * Relance les téléchargements échoués d'un run (connexion instable).
+ * Le backend rejoue download → … → price_aggregate en tâche de fond ;
+ * suivre la progression via `pollSourceRun`.
+ */
+export async function retryRunDownloads(
+  id: SourceId,
+  runId: string,
+): Promise<{ run_id: string; status: string; n_downloads_failed: number }> {
+  const resp = await fetch(`${ML_API}/sources/${id}/runs/${runId}/retry-downloads`, {
+    method: 'POST',
+  })
+  if (!resp.ok) {
+    let detail: unknown = null
+    try { detail = await resp.json() } catch { /* ignore */ }
+    const msg = typeof detail === 'object' && detail && 'detail' in detail
+      && typeof (detail as { detail: { message?: string } }).detail === 'object'
+      ? (detail as { detail: { message?: string } }).detail.message ?? `HTTP ${resp.status}`
+      : `HTTP ${resp.status}`
+    throw new TriggerError(resp.status, msg, detail)
+  }
   return resp.json()
 }
 

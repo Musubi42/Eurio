@@ -307,9 +307,22 @@ class RunSnapshot(BaseModel):
     n_auto_resolved: int
     n_review_enqueued: int
     n_errors: int
+    # Compteur LIVE (recalculé à chaque lecture) des listings dont le
+    # téléchargement a échoué — c'est l'erreur actionnable : un bouton
+    # « réessayer » la cible. Distinct de `n_errors` (cumulatif historique).
+    n_downloads_failed: int = 0
     filters: dict[str, Any]
     error_summary: str | None
     log_path: str | None
+
+
+def _count_downloads_failed(conn: sqlite3.Connection, run_id: str) -> int:
+    row = conn.execute(
+        "SELECT count(*) AS n FROM source_images "
+        "WHERE run_id = ? AND download_status = 'failed'",
+        (run_id,),
+    ).fetchone()
+    return int(row["n"] or 0)
 
 
 # Consumed by: admin/packages/web/src/features/sources/composables/useSourceDetail.ts (fetchSourceRun, pollSourceRun)
@@ -322,10 +335,10 @@ def get_run(source_id: str, run_id: str) -> RunSnapshot:
     ).fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found.")
-    return _row_to_snapshot(row)
+    return _row_to_snapshot(row, n_downloads_failed=_count_downloads_failed(conn, run_id))
 
 
-def _row_to_snapshot(row: sqlite3.Row) -> RunSnapshot:
+def _row_to_snapshot(row: sqlite3.Row, *, n_downloads_failed: int = 0) -> RunSnapshot:
     started = row["started_at"]
     ended = row["ended_at"]
     duration: float | None = None
@@ -362,9 +375,72 @@ def _row_to_snapshot(row: sqlite3.Row) -> RunSnapshot:
         n_auto_resolved=row["n_auto_resolved"],
         n_review_enqueued=row["n_review_enqueued"],
         n_errors=row["n_errors"],
+        n_downloads_failed=n_downloads_failed,
         filters=filters,
         error_summary=row["error_summary"],
         log_path=row["log_path"],
+    )
+
+
+# ── Retry des téléchargements échoués d'un run ────────────────────────────
+
+
+class RetryDownloadsResponse(BaseModel):
+    run_id: str
+    status: str               # 'started'
+    n_downloads_failed: int   # nombre de DL en échec relancés
+
+
+# Consumed by: admin/packages/web/src/features/sources/composables/useSourceDetail.ts (retryRunDownloads)
+@router.post(
+    "/{source_id}/runs/{run_id}/retry-downloads",
+    response_model=RetryDownloadsResponse,
+    status_code=202,
+)
+def retry_run_downloads(source_id: str, run_id: str) -> RetryDownloadsResponse:
+    """Relance les téléchargements échoués d'un run (connexion instable).
+
+    Rejoue download → detect → resolve → enqueue sur les seuls listings
+    dont le DL avait échoué, puis ré-agrège les prix. Exécuté en thread
+    daemon ; le front suit la progression via ``GET /runs/{run_id}``.
+    """
+    store = _store()
+    conn = store._connection()  # noqa: SLF001
+    row = conn.execute(
+        "SELECT id, status FROM source_runs WHERE id = ? AND source = ?",
+        (run_id, source_id),
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found.")
+    if row["status"] == "running":
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "run_running", "message": "Run en cours — attends la fin."},
+        )
+    n_failed = _count_downloads_failed(conn, run_id)
+    if n_failed == 0:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "nothing_to_retry",
+                "message": "Aucun téléchargement en échec sur ce run.",
+            },
+        )
+
+    adapter = _load_adapter(source_id, store=store)
+
+    def _runner() -> None:
+        try:
+            from sources._base.orchestrator import resume_failed_downloads
+            resume_failed_downloads(adapter, store=store, run_id=run_id)
+        except Exception:  # noqa: BLE001
+            logger.exception("[%s] retry-downloads crashed run=%s", source_id, run_id)
+
+    threading.Thread(
+        target=_runner, name=f"retry-dl-{run_id}", daemon=True,
+    ).start()
+    return RetryDownloadsResponse(
+        run_id=run_id, status="started", n_downloads_failed=n_failed,
     )
 
 
@@ -613,15 +689,41 @@ def compute_run_breakdown(
         except json.JSONDecodeError:
             filters = {"_raw": row["filters_json"]}
 
-    raw_targets = filters.get("target_eurio_ids") or []
-    if not isinstance(raw_targets, list):
-        raw_targets = []
+    # Périmètre « ciblé » du run. Deux modes :
+    # - découverte groupée (`discovery_groups`) : ciblé = toute commémo
+    #   d'un groupe (denom, pays, année) interrogé — y compris celles sans
+    #   listing, pour rendre visibles les trous de couverture ;
+    # - découverte per-pièce (`target_eurio_ids`) : ciblé = la liste brute.
     targeted_set: set[str] = set()
     targeted_ordered: list[str] = []
-    for eid in raw_targets:
-        if isinstance(eid, str) and eid not in targeted_set:
-            targeted_set.add(eid)
-            targeted_ordered.append(eid)
+
+    groups = filters.get("discovery_groups")
+    if isinstance(groups, list) and groups:
+        for g in groups:
+            if not isinstance(g, dict):
+                continue
+            try:
+                coin_rows = conn.execute(
+                    "SELECT eurio_id FROM coins "
+                    "WHERE face_value = ? AND country = ? AND year = ? "
+                    "AND is_commemorative = 1 ORDER BY eurio_id",
+                    (g["denomination"], g["country"], g["year"]),
+                ).fetchall()
+            except (KeyError, sqlite3.Error):
+                continue
+            for r in coin_rows:
+                eid = r["eurio_id"]
+                if eid not in targeted_set:
+                    targeted_set.add(eid)
+                    targeted_ordered.append(eid)
+    else:
+        raw_targets = filters.get("target_eurio_ids") or []
+        if not isinstance(raw_targets, list):
+            raw_targets = []
+        for eid in raw_targets:
+            if isinstance(eid, str) and eid not in targeted_set:
+                targeted_set.add(eid)
+                targeted_ordered.append(eid)
 
     # Discovered eurios = resolved this run AND not in targets.
     resolved_rows = conn.execute(
@@ -878,8 +980,24 @@ def get_run_searches(
     """
     params: list[Any] = [source_id, run_id]
     if eurio_id is not None:
-        sql += " AND target_eurio_id = ?"
-        params.append(eurio_id)
+        # Une recherche groupée n'a pas de target_eurio_id (NULL) : elle
+        # couvre un groupe (denom, pays, année). On résout l'eurio_id vers
+        # son groupe et on matche aussi les searches de ce groupe.
+        coin = conn.execute(
+            "SELECT face_value, country, year FROM coins WHERE eurio_id = ?",
+            (eurio_id,),
+        ).fetchone()
+        if coin is not None:
+            sql += (
+                " AND ( target_eurio_id = ?"
+                "       OR ( json_extract(query_filters_json, '$.group.denomination') = ?"
+                "            AND json_extract(query_filters_json, '$.group.country') = ?"
+                "            AND json_extract(query_filters_json, '$.group.year') = ? ) )"
+            )
+            params += [eurio_id, coin["face_value"], coin["country"], coin["year"]]
+        else:
+            sql += " AND target_eurio_id = ?"
+            params.append(eurio_id)
     sql += " ORDER BY created_at ASC"
 
     rows = conn.execute(sql, params).fetchall()
@@ -2095,8 +2213,20 @@ def ebay_filter_config() -> EbayFilterConfig:
                 name="theme_mismatch",
                 kind="reject",
                 description=(
-                    "Reject si aucun théme-token (multilingue) n'apparaît dans le "
-                    "titre — appliqué seulement quand (country, year) a plusieurs commémos."
+                    "Découverte groupée : chaque listing est attribué à une "
+                    "commémo de son groupe (denom, pays, année) via le matcher "
+                    "de thème multilingue. Reject si le titre ne matche AUCUNE "
+                    "commémo du groupe (sinon : attribué, ou routé en review si "
+                    "ambigu / multi-pièces)."
+                ),
+            ),
+            FilterRule(
+                name="text_contradict_*",
+                kind="reject",
+                description=(
+                    "Filtre dur du step text_signal : reject si le titre "
+                    "contredit franchement la pièce attendue sur un axe "
+                    "(pays / année / dénomination). Suffixe = l'axe en cause."
                 ),
             ),
             FilterRule(
