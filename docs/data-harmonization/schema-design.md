@@ -270,8 +270,58 @@ Ordre des `CREATE` dans `schema.sql` : `referential_catalog`, `design_groups`,
 `coins`, tables filles, `eurio_id_migrations`. Supprimer l'ancien bloc
 `CREATE TABLE coins` (pas deux définitions dans le fichier).
 
+## Ajustements d'implémentation — Chunk 1b (migration sûre)
+
+L'audit prévoyait un **rebuild 12-étapes** de `coins` (RENAME → CREATE → COPY →
+DROP) pour imposer `NOT NULL` + supprimer le blob. À l'implémentation, deux
+faits ont fait choisir une migration **non destructive** (ALTER seulement) —
+nettement plus sûre, conforme à la consigne « s'assurer que la migration se
+passe bien » :
+
+1. **2071 / 2628 pièces n'ont pas de `numista_id`** (référentiel actuel
+   bootstrappé depuis Wikipédia ; seules ~688 sont matchées Numista). Donc
+   `ref_source` / `ref_native_id` **doivent être NULLABLE** aujourd'hui — la
+   contrainte `NOT NULL` est l'état cible *après* la génération Numista
+   (Chunk 2), pas l'état transitoire. La contrainte d'unicité est posée via
+   `CREATE UNIQUE INDEX` (les NULL sont distincts en SQLite) — ALTERable, pas
+   besoin de rebuild.
+
+2. **`raw_payload_json` et `imported_at` sont conservés transitoirement.** La
+   migration **décompose** le blob dans les tables filles (`coin_cross_refs`,
+   `coin_observations`, `coin_canonical_images`, `coin_national_variants`)
+   mais **ne le supprime pas** : `api/bench_routes.py` et
+   `bootstrap_coins_from_referential.py` le lisent encore. Le blob sera retiré
+   dans un chunk ultérieur, une fois ces lecteurs rebranchés sur les tables
+   filles. Décomposer-et-garder = migration étagée, pas de la dette.
+
+3. **`numista_id` reste une colonne simple** (pas `GENERATED`) : une colonne
+   générée casse tout `INSERT` qui la mentionne (tests, outillage). Pendant la
+   transition, `numista_id` et `ref_native_id` sont posés ensemble par la
+   migration puis par la génération Chunk 2 — un seul write-path, pas de
+   dérive. Le passage en colonne générée est un durcissement pour Chunk 2+.
+
+4. **`(ref_source, ref_native_id)` n'est PAS unique** — découvert en vérifiant
+   avant de créer l'index. Une pièce de **circulation** réutilise un seul
+   `numista_id` sur N millésimes (ex. nid 135 = 23 pièces, nid 87 = 16). Le
+   « 1:1 sur numista_id » de l'architecture ne vaut que pour les
+   **commémoratives** ; la circulation est `(numista_id, année) → eurio_id`.
+   Donc index **non unique** ici ; l'unicité réelle est gérée par la logique
+   de génération (Chunk 2).
+
+Conséquence : **pas de rebuild de `coins`** — que des `ALTER TABLE ADD COLUMN`
+(idempotents via `_ensure_column`) + `CREATE … IF NOT EXISTS` pour les tables
+filles + un `CREATE UNIQUE INDEX`. Le piège n°1 de l'audit (le `CREATE TABLE
+IF NOT EXISTS` no-op) **disparaît** : on ne redéfinit jamais `coins`. La
+migration one-shot devient une pure **migration de données** (backfill des
+nouvelles colonnes + remplissage des tables filles + backfill
+`cohort_members`), idempotente et re-jouable, le schéma lui-même étant posé par
+`Store._bootstrap`.
+
 ## Reste à spécifier (Chunk 2)
 
 - La **règle de dérivation du slug `eurio_id`** depuis une entrée
   `referential_catalog` (pays + année + valeur + slug de thème) et sa
   stabilité face à un re-scrape — c'est le cœur de la génération.
+- Durcissement : `ref_source` / `ref_native_id` en `NOT NULL`, `numista_id` en
+  colonne générée — une fois toutes les pièces ancrées à une source
+  référentielle (rebuild propre de `coins` à ce moment-là).
