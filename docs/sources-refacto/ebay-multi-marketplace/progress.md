@@ -292,13 +292,18 @@ post-filtre `theme_mismatch` jetait les listings de la sœur non ciblée
 
 ## Reste à faire
 
-1. **F3** — front run listings : discovery searches recadrées maille
-   groupe (label de groupe + tag marketplace sur la row, `browse_url`
-   d'appel Browse persisté et copiable). *F4 (badge marketplace par
-   thumb coin-detail) abandonné — routing uniforme `{DE,ES}`, overlap
-   mesuré à 1,6 % → le badge n'a plus de valeur. Cf. `front-ux.md`
-   Surface 4.*
-2. **Smoke run V2** — discovery réel sur 10 eurio_ids, recall vs baseline.
+1. **Recall du theme-matcher** — l'audit du run réel `b6bede99…` a
+   montré 164 `theme_mismatch` dont ~⅔ de **faux rejets** (pièces
+   valides du groupe jetées) : les traductions i18n sont littérales,
+   les vendeurs emploient le vocabulaire de marché. Chantier dédié :
+   `research/entity-matching-standards.md` (findings industriels) +
+   `theme-matcher-recall-kickoff.md` (plan : P0 socle de mesure →
+   couche 1 `no_match`→`ambiguous` → couches 2a/2b enrichissement).
+   *Remplace l'ancien « smoke run V2 » par une mesure outillée (gold
+   benchmark gelé + replay harness).*
+2. **F3 livré** (`2327cc4`) — discovery searches recadrées maille
+   groupe + `browse_url`. *F4 abandonné — routing uniforme `{DE,ES}`,
+   overlap 1,6 % → badge sans valeur (cf. `front-ux.md` Surface 4).*
 3. **Pipeline prix & état** (plan C0-C4) :
    - **C0** routing `{DE,ES}` — ✅ livré.
    - **C1** migration + taxonomie — ✅ livré : colonnes `listing_origin_date`
