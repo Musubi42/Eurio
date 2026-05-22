@@ -1869,15 +1869,18 @@ def _classify_freshness(last_enriched_at: str | None, stale_days: int = 90) -> s
     return "fresh"
 
 
-# Consumed by: admin/packages/web/src/features/sources/composables/useSourceDetail.ts (fetchEbayFreshness)
+# Consumed by: ml/sources/ebay/status_cli.py (go-task ml:src:ebay:status).
+# Vue per-eurio_id ; la découverte groupée passe par /ebay/freshness-groups.
 @router.get("/ebay/freshness", response_model=EbayFreshnessResponse)
 def ebay_freshness(
     limit: int = Query(default=50, ge=1, le=500),
 ) -> EbayFreshnessResponse:
     """Freshness queue : eurio_ids commémo 2€ non-EU triés par `last_enriched_at ASC NULLS FIRST`.
 
-    Lit la vue SQL `v_ebay_freshness` (D-20). Buckets calculés sur
-    l'ensemble (pas le slice `limit`).
+    Lit la vue SQL `v_ebay_freshness` (D-20). Depuis chunk 6 cette vue est
+    la projection per-eurio_id de `v_ebay_freshness_groups` : chaque pièce
+    porte la freshness de SON groupe de découverte (cf. schema.sql).
+    Buckets calculés sur l'ensemble (pas le slice `limit`).
     """
     conn = _store()._connection()  # noqa: SLF001
 

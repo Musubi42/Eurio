@@ -706,38 +706,30 @@ CREATE TABLE IF NOT EXISTS coin_names_i18n (
 CREATE INDEX IF NOT EXISTS idx_coin_names_i18n_lang
   ON coin_names_i18n(lang);
 
--- ─── Freshness view eBay (D-20) ───────────────────────────────────────────
--- Driver de la freshness queue : pour chaque commémo 2€ non-EU, expose
--- last_enriched_at, n_images, n_crops via JOIN avec source_images. NULLS
--- FIRST au consommateur (SELECT ORDER BY ... NULLS FIRST), pas dans la vue.
+-- ─── Freshness views eBay (D-20 ; maille groupe — chunk 6) ────────────────
+-- Une recherche eBay = un groupe de découverte (dénomination, pays,
+-- année), pas une pièce : deux commémos-sœurs partagent une requête
+-- byte-identique, et chaque listing est attribué à l'une d'elles — ou à
+-- aucune (verdict ambigu) — par le theme-match (source_images.target_eurio_id).
+--
+-- `v_ebay_freshness_groups` est la vue canonique : elle pilote la
+-- freshness queue (une recherche couvre tout un groupe). `v_ebay_freshness`
+-- en est la PROJECTION à la maille eurio_id (une ligne par pièce) : chaque
+-- pièce hérite de la freshness de SON groupe, jamais de ses seuls listings
+-- attribués. C'est la cohérence voulue (chunk 6) — sinon une pièce dont le
+-- groupe a bien été cherché apparaît « never enriched » dès lors qu'aucun
+-- listing ne lui a été attribué (toutes les sœurs ont capté, ou verdict
+-- ambigu → target_eurio_id NULL), et la queue la re-cible indéfiniment.
+--
+-- Vues drop+create (pas `IF NOT EXISTS`) : une vue n'a pas de données,
+-- les redéfinir à chaque bootstrap garde leur définition toujours à jour
+-- sur les DB existantes. NULLS FIRST est posé au consommateur
+-- (ORDER BY … NULLS FIRST), pas dans la vue.
 
-CREATE VIEW IF NOT EXISTS v_ebay_freshness AS
-SELECT
-  c.eurio_id,
-  c.country,
-  c.year,
-  MAX(si.fetched_at)        AS last_enriched_at,
-  COUNT(DISTINCT si.id)     AS n_images,
-  COUNT(DISTINCT ia.id)     AS n_crops
-FROM coins c
-LEFT JOIN source_images si
-  ON si.target_eurio_id = c.eurio_id AND si.source = 'ebay'
-LEFT JOIN image_assets ia
-  ON ia.source_image_id = si.id
-WHERE c.face_value = 2.0
-  AND c.is_commemorative = 1
-  AND c.country != 'eu'
-GROUP BY c.eurio_id;
+DROP VIEW IF EXISTS v_ebay_freshness;
+DROP VIEW IF EXISTS v_ebay_freshness_groups;
 
--- ─── Freshness view eBay par GROUPE de découverte ─────────────────────────
--- Une recherche eBay = un groupe (dénomination, pays, année), pas une
--- pièce : deux commémos-sœurs partagent une requête byte-identique.
--- Cette vue agrège v_ebay_freshness à la maille groupe — c'est elle qui
--- pilote la freshness queue groupée. `last_enriched_at` = la pièce la
--- plus récemment enrichie du groupe : si une sœur a été rafraîchie, le
--- groupe l'est (la même requête les a toutes ramenées).
-
-CREATE VIEW IF NOT EXISTS v_ebay_freshness_groups AS
+CREATE VIEW v_ebay_freshness_groups AS
 SELECT
   c.face_value               AS denomination,
   c.country                  AS country,
@@ -755,3 +747,20 @@ WHERE c.face_value = 2.0
   AND c.is_commemorative = 1
   AND c.country != 'eu'
 GROUP BY c.face_value, c.country, c.year;
+
+CREATE VIEW v_ebay_freshness AS
+SELECT
+  c.eurio_id,
+  c.country,
+  c.year,
+  g.last_enriched_at,
+  g.n_images,
+  g.n_crops
+FROM coins c
+JOIN v_ebay_freshness_groups g
+  ON g.denomination = c.face_value
+ AND g.country      = c.country
+ AND g.year         = c.year
+WHERE c.face_value = 2.0
+  AND c.is_commemorative = 1
+  AND c.country != 'eu';

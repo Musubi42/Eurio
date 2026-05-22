@@ -151,3 +151,47 @@ def test_v_ebay_freshness_returns_2eur_commemos_non_eu(tmp_path: Path) -> None:
     assert row["eurio_id"] == "fr-2eur-2015-paix"
     assert row["last_enriched_at"] is None
     assert row["n_images"] == 0
+
+
+def test_v_ebay_freshness_inherits_group_freshness(tmp_path: Path) -> None:
+    """Chunk 6 — `v_ebay_freshness` est la projection per-eurio_id de
+    `v_ebay_freshness_groups` : une pièce hérite de la freshness de SON
+    groupe. Si un listing du groupe est attribué à UNE sœur seulement, les
+    DEUX sœurs sont « enrichies » — la pièce non attribuée n'est pas
+    re-ciblée indéfiniment par la freshness queue."""
+    store = Store(tmp_path / "test.db")
+    entries = [
+        {
+            "eurio_id": f"be-2eur-2099-sis-{i}",
+            "identity": {
+                "country": "BE", "year": 2099, "face_value": 2.0,
+                "is_commemorative": True, "theme": f"sister {i}",
+            },
+            "cross_refs": {},
+        }
+        for i in (0, 1)
+    ]
+    bootstrap(store, json_path=_fixture_referential(tmp_path, entries))
+    conn = store._connection()  # noqa: SLF001
+
+    # Un seul listing du groupe (BE, 2099), attribué à la sœur 1 uniquement.
+    conn.execute(
+        "INSERT INTO source_images (id, source, source_ref, target_eurio_id, "
+        "storage_path, fetched_at, license) "
+        "VALUES ('si-grp-0', 'ebay', 'ebay_GRP_0_img0', 'be-2eur-2099-sis-1', "
+        "'/tmp/x.jpg', '2026-05-22 10:00:00', 'fair_use_research')"
+    )
+    conn.commit()
+
+    rows = {
+        r["eurio_id"]: r
+        for r in conn.execute(
+            "SELECT eurio_id, last_enriched_at, n_images FROM v_ebay_freshness"
+        ).fetchall()
+    }
+    # La sœur non attribuée hérite quand même de la freshness du groupe.
+    assert rows["be-2eur-2099-sis-0"]["last_enriched_at"] == "2026-05-22 10:00:00"
+    assert rows["be-2eur-2099-sis-1"]["last_enriched_at"] == "2026-05-22 10:00:00"
+    # n_images est la maille groupe — identique pour les deux sœurs.
+    assert rows["be-2eur-2099-sis-0"]["n_images"] == 1
+    assert rows["be-2eur-2099-sis-1"]["n_images"] == 1

@@ -100,15 +100,16 @@ class ReviewItem(BaseModel):
     is_multi_coin_lot: bool
     quality_score: float
     enqueued_at: str
-    # eurio_id qui a piloté le scrape (parent source_images.target_eurio_id).
-    # Sert au front à afficher la "cible eBay" tout en haut de la colonne
-    # de droite, pré-sélectionnée par défaut — 80% des reviews sont la
-    # cible (le scrape a retourné le bon résultat). None pour les sources
-    # legacy (mock, scans manuels).
+    # eurio_id attribué au listing par le theme-match
+    # (source_images.target_eurio_id). Sert au front à afficher la « pièce
+    # proposée » en haut de la colonne de droite, pré-sélectionnée par
+    # défaut — ~80 % des reviews valident la proposition. None quand le
+    # matcher n'a pas tranché (verdict ambigu) ou pour les sources legacy
+    # (mock, scans manuels).
     target_eurio_id: str | None = None
-    # ReviewCandidate enrichi (image, label, pays/année) du target — prêt
-    # à consommer côté front comme une suggestion par défaut. None quand
-    # target_eurio_id est None ou que la coin n'est pas dans le catalog.
+    # ReviewCandidate enrichi (image, label, pays/année) de la pièce
+    # proposée — prêt à consommer côté front comme suggestion par défaut.
+    # None quand target_eurio_id est None ou que la coin n'est pas dans le catalog.
     target_candidate: ReviewCandidate | None = None
     # Chunk 5b — pièces du groupe de découverte (dénom, pays, année) :
     # toutes les 2 € commémoratives du même pays/année. Peuplé seulement
@@ -122,8 +123,9 @@ def _build_target_candidate(
     row: sqlite3.Row,
     target_eurio_id: str | None,
 ) -> ReviewCandidate | None:
-    """Construit le ReviewCandidate enrichi de la cible eBay à partir
-    d'une row SQL où on a JOIN coins. Attendu en colonnes :
+    """Construit le ReviewCandidate enrichi de la pièce proposée (attribuée
+    au listing par le theme-match) à partir d'une row SQL où on a JOIN
+    coins. Attendu en colonnes :
     t_eurio_id, t_country, t_country_name, t_year, t_theme,
     t_face_value, t_numista_id. None si target_eurio_id absent ou la
     coin n'est pas dans le catalog. Partagé entre /review-queue (queue
@@ -550,10 +552,10 @@ class LotDetail(BaseModel):
     listing_key: str
     source: str
     target_eurio_id: str | None
-    # ReviewCandidate enrichi de la cible (idem ReviewItem.target_candidate).
-    # Permet au front lot de pré-sélectionner la cible eBay comme défaut,
-    # exactement comme la page single. None si target_eurio_id est None ou
-    # la coin n'est pas dans le catalog.
+    # ReviewCandidate enrichi de la pièce proposée (idem
+    # ReviewItem.target_candidate). Permet au front lot de la
+    # pré-sélectionner comme défaut, exactement comme la page single. None
+    # si target_eurio_id est None ou la coin n'est pas dans le catalog.
     target_candidate: ReviewCandidate | None = None
     listing_title: str | None
     listing_price: float | None
