@@ -120,11 +120,19 @@ export interface FunnelDrop {
 
 // Une branche d'attribution finale : auto vers une pièce, ou review.
 export interface FunnelBranch {
+  id: string // 'branch:<eurioId>' | 'branch:review'
   kind: 'auto' | 'review'
   eurioId: string | null
   label: string
   listings: BenchListing[]
   wrong: number // auto erronées, ou junk en review
+}
+
+// Un nœud sélectionnable de l'entonnoir → un jeu d'annonces à afficher.
+export interface FunnelNode {
+  id: string
+  label: string
+  listings: BenchListing[]
 }
 
 export interface SearchFunnel {
@@ -136,12 +144,12 @@ export interface SearchFunnel {
   total: number
   // Étape 1 — accept_listing
   acceptDrops: FunnelDrop[]
-  nRejectedAccept: number
-  nAccepted: number
+  rejectedAccept: BenchListing[]
+  accepted: BenchListing[]
   // Étape 2 — theme-matcher + garde-fou de contradiction
   matcherDrops: FunnelDrop[]
-  nContradicted: number
-  nRetained: number
+  contradicted: BenchListing[]
+  retained: BenchListing[]
   // Étape 3 — attribution
   branches: FunnelBranch[]
   // Synthèse
@@ -218,6 +226,7 @@ export function buildSearchFunnels(replay: BenchReplay): SearchFunnel[] {
             && l.matcher.matched[0] === coin.eurio_id,
         )
         branches.push({
+          id: `branch:${coin.eurio_id}`,
           kind: 'auto',
           eurioId: coin.eurio_id,
           label: shortEurio(coin.eurio_id),
@@ -229,6 +238,7 @@ export function buildSearchFunnels(replay: BenchReplay): SearchFunnel[] {
         l => l.matcher?.verdict === 'ambiguous' || l.matcher?.verdict === 'lot',
       )
       branches.push({
+        id: 'branch:review',
         kind: 'review',
         eurioId: null,
         label: 'Review',
@@ -248,19 +258,53 @@ export function buildSearchFunnels(replay: BenchReplay): SearchFunnel[] {
           l => l.accept.reason,
           k => ACCEPT_LABELS[k] ?? k,
         ),
-        nRejectedAccept: rejectedAccept.length,
-        nAccepted: accepted.length,
+        rejectedAccept,
+        accepted,
         matcherDrops: groupDrops(
           contradicted,
           l => l.matcher?.contradictions[0] ?? 'inconnu',
           k => AXIS_LABELS[k] ?? k,
         ),
-        nContradicted: contradicted.length,
-        nRetained: retained.length,
+        contradicted,
+        retained,
         branches,
         nDisagreements: listings.filter(l => !l.agreement).length,
       }
     })
+}
+
+// Résout un nœud sélectionné de l'entonnoir → les annonces à afficher.
+// `id` stable entre recherches (changer d'année garde le nœud courant).
+export function resolveFunnelNode(
+  search: SearchFunnel,
+  id: string | null,
+): FunnelNode | null {
+  if (id == null) return null
+  switch (id) {
+    case 'raw':
+      return { id, label: 'Annonces brutes', listings: search.listings }
+    case 'accept-drop':
+      return { id, label: 'Rejetées — filtre 1', listings: search.rejectedAccept }
+    case 'accepted':
+      return { id, label: 'Passé le filtre 1', listings: search.accepted }
+    case 'matcher-drop':
+      return { id, label: 'Contredites — filtre 2', listings: search.contradicted }
+    case 'retained':
+      return { id, label: 'Retenu pour attribution', listings: search.retained }
+    default: {
+      const b = search.branches.find(br => br.id === id)
+      return b
+        ? { id, label: b.kind === 'auto' ? `Auto → ${b.label}` : 'Review', listings: b.listings }
+        : null
+    }
+  }
+}
+
+// URL de l'annonce eBay d'origine, reconstruite depuis l'item_id
+// (`v1|<numericId>|<var>`). ebay.com/itm/<id> redirige vers le bon TLD.
+export function ebayItemUrl(listingId: string): string | null {
+  const numericId = listingId.split('|')[1]
+  return numericId ? `https://www.ebay.com/itm/${numericId}` : null
 }
 
 // ── Présentation ───────────────────────────────────────────────────────────
