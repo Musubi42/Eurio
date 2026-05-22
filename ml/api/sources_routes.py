@@ -949,6 +949,12 @@ class DiscoverySearchItem(BaseModel):
     n_kept_results: int | None = None
     duration_ms: int | None = None
     error: str | None = None
+    # eBay multi-mkt : marketplace ciblé par cette search (distingue les
+    # 2 rows DE/ES d'un même groupe). NULL pour les sources mono-mkt.
+    marketplace: str | None = None
+    # F3 — URL d'appel Browse exacte (rejouable). NULL si l'appel n'a pas
+    # atteint le serveur, ou sur les runs antérieurs au chunk F3.
+    browse_url: str | None = None
     created_at: str
 
 
@@ -974,7 +980,7 @@ def get_run_searches(
         SELECT id, target_eurio_id, endpoint, query_q, query_filters_json,
                status, http_status,
                n_summaries, n_after_groups, n_raw_results, n_kept_results,
-               duration_ms, error, created_at
+               duration_ms, error, marketplace, browse_url, created_at
           FROM discovery_searches
          WHERE source = ? AND run_id = ?
     """
@@ -1016,6 +1022,8 @@ def get_run_searches(
             n_kept_results=r["n_kept_results"],
             duration_ms=r["duration_ms"],
             error=r["error"],
+            marketplace=r["marketplace"],
+            browse_url=r["browse_url"],
             created_at=r["created_at"],
         )
         for r in rows

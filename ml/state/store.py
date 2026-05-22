@@ -612,9 +612,11 @@ class Store:
                 )
             # Funnel ventilé sur discovery_searches (chunk 0 auto-validation) :
             # N0 itemSummaries → N1 post-groups → N2 post-theme → N3 kept.
+            # `browse_url` (F3) : URL d'appel Browse exacte pour le débug.
             for column, decl in (
                 ("n_summaries", "INTEGER"),
                 ("n_after_groups", "INTEGER"),
+                ("browse_url", "TEXT"),
             ):
                 self._ensure_column(
                     conn,

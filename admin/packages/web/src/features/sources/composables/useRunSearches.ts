@@ -24,6 +24,12 @@ export interface DiscoverySearchItem {
   n_kept_results: number | null
   duration_ms: number | null
   error: string | null
+  // Marketplace ciblé par la search (distingue les 2 rows DE/ES d'un
+  // même groupe). null pour les sources mono-marketplace.
+  marketplace: string | null
+  // F3 — URL d'appel Browse exacte, rejouable. null si l'appel n'a pas
+  // atteint le serveur, ou sur les runs antérieurs au chunk F3.
+  browse_url: string | null
   created_at: string
 }
 

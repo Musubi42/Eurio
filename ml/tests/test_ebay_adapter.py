@@ -99,9 +99,14 @@ class _MockEbayClient:
         self.item_responses = item_responses
         self.group_responses = group_responses or {}
         self.calls: list[tuple[str, dict]] = []
+        # Mime le vrai EbayClient : URL résolue du dernier appel (F3).
+        self.last_request_url: str | None = None
 
     def search(self, query, **kwargs):
         self.calls.append(("search", {"query": query, **kwargs}))
+        self.last_request_url = (
+            f"https://api.ebay.com/buy/browse/v1/item_summary/search?q={query}"
+        )
         # L'adapter fait 2 search calls par eurio_id (EBAY_DE + EBAY_ES).
         # Pour ne pas casser les tests legacy qui ne fournissaient qu'1
         # response, on garde la dernière "sticky" : 1 response → les
@@ -617,6 +622,10 @@ class _PerMktMockClient(_MockEbayClient):
 
     def search(self, query, **kwargs):
         self.calls.append(("search", {"marketplace": self.marketplace, "query": query, **kwargs}))
+        self.last_request_url = (
+            f"https://api.ebay.com/buy/browse/v1/item_summary/search"
+            f"?q={query}&mkt={self.marketplace}"
+        )
         if not self.search_responses:
             return {"itemSummaries": []}
         if len(self.search_responses) == 1:
@@ -670,6 +679,47 @@ def test_discover_calls_de_and_es(tmp_path):
     assert by_id["DE_ONLY"].marketplace_found == ("EBAY_DE",)
     assert by_id["ES_ONLY"].marketplace == "EBAY_ES"
     assert by_id["ES_ONLY"].marketplace_found == ("EBAY_ES",)
+
+
+def test_discover_records_browse_url_per_search(tmp_path):
+    """F3 — chaque DiscoverySearchRecord porte le browse_url de SA search
+    (capturé avant les appels getItemsByGroup qui écrasent
+    `last_request_url`), et son marketplace."""
+    store = Store(tmp_path / "t.db")
+    conn = store._connection()
+    _seed_coin(conn, eurio_id="fr-2015-2eur-paix", country="FR", year=2015, theme="paix")
+
+    s1 = _summary("DE_ONLY", "2 euro Frankreich 2015 Paix", price=5.0)
+    s2 = _summary("ES_ONLY", "2 euros Francia 2015 paz", price=6.0)
+    mocks = {
+        "EBAY_DE": _PerMktMockClient(
+            "EBAY_DE",
+            search_responses=[{"itemSummaries": [s1]}],
+            item_responses={"DE_ONLY": _detail("DE_ONLY", additional=[])},
+        ),
+        "EBAY_ES": _PerMktMockClient(
+            "EBAY_ES",
+            search_responses=[{"itemSummaries": [s2]}],
+            item_responses={"ES_ONLY": _detail("ES_ONLY", additional=[])},
+        ),
+    }
+    adapter = EbayAdapter(make_client=_per_mkt_factory(mocks), conn=conn)
+
+    records: list = []
+    list(adapter.discover(
+        SourceQuery(source_id="ebay", target_eurio_id="fr-2015-2eur-paix"),
+        record_search=records.append,
+    ))
+
+    assert len(records) == 2
+    by_mkt = {r.marketplace: r for r in records}
+    assert by_mkt.keys() == {"EBAY_DE", "EBAY_ES"}
+    for mkt, rec in by_mkt.items():
+        assert rec.browse_url is not None
+        assert rec.browse_url.startswith(
+            "https://api.ebay.com/buy/browse/v1/item_summary/search"
+        )
+        assert f"mkt={mkt}" in rec.browse_url
 
 
 def test_discover_routing_is_uniform_across_countries(tmp_path):

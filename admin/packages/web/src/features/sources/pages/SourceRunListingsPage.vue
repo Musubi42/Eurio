@@ -133,6 +133,31 @@ const SEARCH_TONE: Record<DiscoverySearchItem['status'], string> = {
   failed: 'var(--danger)',
 }
 
+/** Périmètre d'une discovery search : groupe `(dénom · pays · année)`
+ *  pour la découverte groupée, sinon l'eurio_id ciblé (legacy per-pièce),
+ *  sinon '—'. Le groupe vit dans `query_filters.group` (cf. adapter eBay). */
+function searchScopeLabel(s: DiscoverySearchItem): string {
+  const g = (s.query_filters?.group ?? null) as
+    | { denomination?: number; country?: string; year?: number }
+    | null
+  if (g && g.country && g.year != null) {
+    const denom = g.denomination != null ? `${g.denomination}€` : '?'
+    return `${denom} · ${g.country} · ${g.year}`
+  }
+  return s.target_eurio_id || '—'
+}
+
+// Feedback éphémère du bouton « copier » sur le browse_url.
+const copiedUrlSearchId = ref<string | null>(null)
+async function copyBrowseUrl(s: DiscoverySearchItem) {
+  if (!s.browse_url) return
+  await navigator.clipboard.writeText(s.browse_url)
+  copiedUrlSearchId.value = s.id
+  setTimeout(() => {
+    if (copiedUrlSearchId.value === s.id) copiedUrlSearchId.value = null
+  }, 1500)
+}
+
 // ─── Discarded listings helpers ──────────────────────────────────────────
 
 const discardedOpen = ref(false)
@@ -427,7 +452,13 @@ function clearFilter() {
               >
                 {{ s.status }}
               </span>
-              <span style="color: var(--gold-600);">{{ s.target_eurio_id || '—' }}</span>
+              <span style="color: var(--gold-600);">{{ searchScopeLabel(s) }}</span>
+              <span
+                v-if="s.marketplace"
+                class="rounded px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wider"
+                style="color: var(--ink-500); background: var(--surface-2);"
+                :title="`Marketplace : ${s.marketplace}`"
+              >{{ s.marketplace.replace('EBAY_', '') }}</span>
               <span style="color: var(--ink-400);">·</span>
               <span
                 v-if="s.n_summaries != null"
@@ -470,6 +501,30 @@ function clearFilter() {
                     class="rounded border px-2 py-1"
                     style="border-color: var(--surface-3); background: var(--surface-1); white-space: pre-wrap; word-break: break-word;"
                   >{{ JSON.stringify(s.query_filters, null, 2) }}</dd>
+                </template>
+                <template v-if="s.browse_url">
+                  <dt style="color: var(--ink-400);">browse_url</dt>
+                  <dd class="flex items-start gap-2">
+                    <span class="min-w-0 flex-1" style="word-break: break-all;">{{ s.browse_url }}</span>
+                    <button
+                      type="button"
+                      class="shrink-0 rounded border px-1.5 py-0.5 text-[10px] transition-colors"
+                      style="border-color: var(--surface-3); color: var(--ink-500);"
+                      @click.stop="copyBrowseUrl(s)"
+                    >
+                      {{ copiedUrlSearchId === s.id ? '✓ copié' : 'copier' }}
+                    </button>
+                    <a
+                      :href="s.browse_url"
+                      target="_blank"
+                      rel="noopener"
+                      class="shrink-0 rounded border px-1.5 py-0.5 text-[10px] transition-colors"
+                      style="border-color: var(--surface-3); color: var(--indigo-700);"
+                      @click.stop
+                    >
+                      ouvrir
+                    </a>
+                  </dd>
                 </template>
                 <template v-if="s.http_status != null">
                   <dt style="color: var(--ink-400);">http_status</dt>

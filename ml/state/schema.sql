@@ -628,6 +628,9 @@ CREATE TABLE IF NOT EXISTS discovery_searches (
   n_kept_results      INTEGER,    -- N3 (post-accept_listing)
   duration_ms         INTEGER,
   error               TEXT,
+  -- URL d'appel Browse exacte (q + params résolus) — débug F3 : rejouer
+  -- la requête. NULL si l'appel n'a pas atteint le serveur.
+  browse_url          TEXT,
   created_at          TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

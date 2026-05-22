@@ -128,6 +128,10 @@ class EbayClient:
         self.marketplace = marketplace
         self.accept_language = accept_language or MARKETPLACE_ACCEPT_LANGUAGE[marketplace]
         self.call_count = 0
+        # URL résolue (q + params) du dernier appel HTTP — utilisé par
+        # l'adapter pour persister `discovery_searches.browse_url` (F3).
+        # Posée même quand la requête échoue avec un statut HTTP.
+        self.last_request_url: str | None = None
         self._tracker = tracker if tracker is not None else QuotaTracker(
             "ebay", "daily", EBAY_DAILY_LIMIT
         )
@@ -151,6 +155,8 @@ class EbayClient:
 
     def _request(self, url: str, params: dict[str, Any] | None) -> dict:
         resp = self._client.get(url, params=params)
+        # Posé avant raise_for_status : un appel 4xx/5xx garde son URL.
+        self.last_request_url = str(resp.request.url)
         if resp.status_code == 429:
             self._tracker.mark_exhausted()
             resp.raise_for_status()
