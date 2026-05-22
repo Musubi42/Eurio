@@ -97,6 +97,10 @@ const router = createRouter({
           component: () => import('@/features/lab/pages/LabHomePage.vue'),
         },
         {
+          path: 'bench',
+          component: () => import('@/features/bench/pages/BenchStudioPage.vue'),
+        },
+        {
           path: 'lab/cohorts/new',
           component: () => import('@/features/lab/pages/CohortNewPage.vue'),
         },
