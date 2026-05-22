@@ -45,14 +45,36 @@ Pas de changement de sémantique de données — renommage + docs.
 
 > La règle de dérivation du slug `eurio_id` est traitée au Chunk 2 (génération).
 
-## Chunk 2 — Génération `numista_catalog → coins`, retrait du matcher flou
+## Chunk 2 — Réconciliation `referential_catalog ↔ coins`
 
-- Ingestion : catalogue source référentielle → table `numista_catalog`.
-- Génération directe 1:1 `numista_catalog → coins` sur `numista_id`.
-- Retrait de `batch_match_numista.py` (matcher flou) et de la couche
-  d'arbitrage devenue inutile.
-- **Fix BE 2017** : `be-2017-2eur-…-ghent-university` (numista 124813) +
-  création de `be-2017-2eur-…-university-of-liege` (numista 108778).
+### 2a — Ingestion + audit ✅ (livré 2026-05-23)
+
+- [x] `scripts/ingest_referential_catalog.py` (+ go-task) : `coin_catalog.json`
+      → table `referential_catalog` (688 types Numista : 625 commémo, 63 circ).
+- [x] `scripts/audit_referential.py` (+ go-task) : audit **lecture seule**
+      `referential_catalog ↔ coins`.
+
+**Résultat de l'audit (2 € commémoratives)** — le diagnostic du kickoff,
+quantifié : le référentiel est **159 commémoratives en retard** sur le
+re-scrape Numista. 625 types Numista vs 466 pièces `coins`. 132 groupes
+(pays, année) en écart, tous dans le sens Numista > coins. 0 orphelin,
+0 pièce sans `numista_id`. **BE 2017 = 1 cas parmi 159** (Numista 2, coins 1).
+
+### 2b — Génération des pièces manquantes + corrections d'identité (à venir)
+
+- Règle de dérivation du slug `eurio_id` (réutiliser `compute_eurio_id` /
+  `slugify` de `referential/eurio_referential.py`).
+- Générer/ajouter les 159 commémo manquantes depuis `referential_catalog`.
+- Corriger les liens erronés dans les groupes en `count_mismatch` — dont
+  **BE 2017** : la pièce `…-ghent-university` porte le `numista_id` 108778
+  (= Liège) ; corriger son lien (→ 124813 Ghent) + créer `…-of-liege` (108778).
+- Journal `eurio_id_migrations` exercé pour la 1re fois.
+- Retrait de `batch_match_numista.py` (matcher flou) une fois `coins` aligné.
+
+> La génération **complète** depuis Numista (notamment l'éclatement par
+> millésime des pièces de circulation — 1 type Numista = N années) est gated
+> sur un scrape de l'endpoint Numista « issues » : chantier distinct, hors
+> de ce plan d'harmonisation.
 
 ## Chunk 3 — Couche cycle de vie
 

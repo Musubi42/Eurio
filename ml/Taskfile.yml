@@ -582,6 +582,16 @@ tasks:
     cmds:
       - "{{.VENV}}/python -m scripts.migrate_canonical_schema --dry-run"
 
+  ingest-referential-catalog:
+    desc: "Harmonisation chunk 2 — ingère coin_catalog.json (scrape Numista) → table referential_catalog. Idempotent."
+    cmds:
+      - "{{.VENV}}/python -m scripts.ingest_referential_catalog {{.CLI_ARGS}}"
+
+  audit-referential:
+    desc: "Harmonisation chunk 2 — audit lecture seule referential_catalog ↔ coins (écarts 2€ commémo, worklist Chunk 2b)."
+    cmds:
+      - "{{.VENV}}/python -m scripts.audit_referential {{.CLI_ARGS}}"
+
   # ---------- Storage migration (fs → MinIO) ----------
   # Spec: docs/harmonisation-images/chunk-3-migration-script.md
   migrate-inventory:
