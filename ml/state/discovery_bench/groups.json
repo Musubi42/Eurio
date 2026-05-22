@@ -1,8 +1,13 @@
 {
   "2017": [
     {
-      "eurio_id": "be-2017-2eur-200-years-ghent-university",
-      "theme": "200 years Ghent University",
+      "eurio_id": "be-2017-2eur-200-years-of-the-university-of-ghent",
+      "theme": "200 years of the University of Ghent",
+      "i18n": {}
+    },
+    {
+      "eurio_id": "be-2017-2eur-200-years-of-the-university-of-liege",
+      "theme": "200 years of the University of Liège",
       "i18n": {
         "fr": "2 euros Université de Liège",
         "en": "2 Euros - Philippe 200 years of the University of Liège",

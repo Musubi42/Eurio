@@ -78,9 +78,15 @@ re-scrape Numista. 625 types Numista vs 466 pièces `coins`. 132 groupes
 - [x] Audit post-génération : `count_mismatch` 132 → **11** (les variantes).
       Zéro régression (101 tests verts, 1 échec pré-existant).
 
-**Reste pour clore le worklist BE 2017** (kickoff) : re-juger les ~28 entrées
-2017 du gold du bench (`needs_rematch`), re-pointer `coin_aliases`, re-bencher.
-Et : retrait de `batch_match_numista.py` (matcher flou désormais inutile).
+**Worklist BE 2017** (kickoff) :
+- [x] `groups.json` du studio bench régénéré (`scripts/regen_bench_groups.py`
+      + go-task) : l'année 2017 montre désormais les 2 bons candidats
+      (Gand + Liège) au lieu de l'entrée corrompue.
+- [ ] Ré-juger les 17 entrées gold / 13 labels 2017 (`needs_rematch`) — tâche
+      **humaine** dans le studio bench (le kickoff le pose ainsi). Puis
+      `ingest` + `replay` pour re-bencher.
+- [ ] i18n manquant pour `…-of-ghent` (numista 124813) — scrape Numista.
+- [ ] Retrait de `batch_match_numista.py` (matcher flou désormais inutile).
 
 > La génération **complète** depuis Numista (éclatement par millésime des
 > pièces de circulation — 1 type Numista = N années ; doublons de variante)

@@ -607,6 +607,11 @@ tasks:
     cmds:
       - "{{.VENV}}/python -m scripts.recompute_coin_status {{.CLI_ARGS}}"
 
+  regen-bench-groups:
+    desc: "Harmonisation — régénère discovery_bench/groups.json (contexte de jugement) depuis coins, après un changement du référentiel (ex. split BE 2017)."
+    cmds:
+      - "{{.VENV}}/python -m scripts.regen_bench_groups {{.CLI_ARGS}}"
+
   # ---------- Storage migration (fs → MinIO) ----------
   # Spec: docs/harmonisation-images/chunk-3-migration-script.md
   migrate-inventory:
