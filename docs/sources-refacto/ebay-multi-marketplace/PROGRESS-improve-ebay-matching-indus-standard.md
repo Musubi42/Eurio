@@ -9,7 +9,7 @@
 | Chunk | Statut |
 |---|---|
 | P0 — socle de mesure (gold bench + replay harness + LLM-juge) | ✅ livré (baseline mesurée) |
-| C1 — couche 1 (`no_match` → `ambiguous`) | ⏳ |
+| C1 — couche 1 (`no_match` → `ambiguous`) | ✅ livré (faux rejet 34→14 %) |
 | C2a — `coin_aliases` + mining | ⏳ |
 | C2b — scoreur sémantique LaBSE + fusion | ⏳ |
 | C2c — matcher LLM (conditionnel) | ⏳ |
@@ -102,3 +102,63 @@
 
 - Spot-check humain d'une tranche ~40 du gold (validation du juge) —
   à la main, hors session.
+
+---
+
+## C1 — couche 1 : `no_match` → `ambiguous`
+
+### Changements
+
+- `match_listing_to_group` (`queries.py`) : le verdict de sortie est
+  désormais ∈ {`single`, `lot`, `ambiguous`}. Quand aucun thème ne
+  matche, verdict = `ambiguous` (`matched` vide → target None → review),
+  jamais `no_match`. `no_match` réservé à une future contradiction
+  explicite (V2), plus produit par ce module.
+- `GroupMatch` : `ambiguous` renvoie `matched=()` → `target_eurio_id`
+  None → le listing part en review (group_candidates, chunk 5b).
+- `adapter.py` : suppression de la branche `if verdict == "no_match":
+  discard theme_mismatch`. `ambiguous` flue dans `kept` avec target None.
+- **Bench rendu fidèle** : `replay` rejoue maintenant `accept_listing`
+  PUIS le matcher (le pipeline réel). Export enrichi de `price` /
+  `currency`. Sinon le bench mesurait le matcher seul et imputait au
+  matcher du junk que `accept_listing` filtre en amont.
+- Test : `test_discover_no_theme_match_routed_to_review_not_discarded`
+  (ex-`..._is_discarded`, sémantique inversée).
+
+### 📊 C1 — A/B sur bench fidèle (accept_listing + matcher)
+
+| Métrique | PRE-C1 | POST-C1 |
+|---|---|---|
+| Taux de faux rejet | 34,3 % | **14,1 %** ✅ |
+| Recall | 65,7 % | **85,9 %** ✅ |
+| Auto-attribution ★ | 65,7 % | 65,7 % (inchangé — attendu) |
+| Routage en review | 0 % | 20,2 % ✅ |
+| Précision auto-attrib. | 92,9 % (0 erronée) | 92,9 % (0 erronée) |
+| Junk false-keep | 2,4 % | **42,4 %** ⚠️ |
+
+C1 sauve **20 pièces valides** du discard (elles passent en review). Le
+recall grimpe de 20 pts. L'auto-attribution est inchangée — normal, C1
+ne crée aucun hit, il ne fait que ne plus jeter.
+
+### Découvertes / contraintes C1
+
+1. **C1 troque le discard contre la review** — 34 junk qui étaient
+   `no_match`→discardés passent maintenant en `ambiguous`→review
+   (false-keep 2,4 % → 42,4 %). Attendu et conforme aux findings (« never
+   silently discard »), mais **C2 doit faire redescendre ce junk** : le
+   garde-fou de contradiction (pays/dénom via `text_signal`) ou un filtre
+   junk avant le matcher. Le junk en review reste rejetable en 1 clic ;
+   les 20 pièces valides, elles, étaient perdues.
+2. **Les 14 faux rejets restants ne sont PAS le fait du matcher** —
+   `matcher_rej = 0`, `accept_listing_rej = 70`. Les 14 pièces valides
+   encore jetées le sont toutes par `accept_listing` (year-in-title /
+   noise). → la précision d'`accept_listing` est le prochain levier
+   au-delà du theme-matcher.
+3. **`text_signal` tourne APRÈS `discover`** dans le pipeline
+   (`PIPELINE_STEPS`). Donc au moment où `match_listing_to_group`
+   s'exécute, seul `accept_listing` a filtré — PAS la détection de
+   contradiction. La prémisse du kickoff (« aucune contradiction garantie
+   à ce stade ») est partiellement fausse : `accept_listing` couvre
+   millésime/prix/devise/bruit, pas pays ni dénomination.
+4. Le garde-fou des groupes mono-pièce (découverte P0 #2) reste différé :
+   le groupe BE-2017 auto-attribue toujours tout (catalyseurs inclus).

@@ -513,8 +513,9 @@ def test_discover_group_attributes_listings_to_sibling_coins(tmp_path):
     assert by_item["ALB_1"].is_lot_suspected is False
 
 
-def test_discover_no_match_listing_is_discarded(tmp_path):
-    """Listing dont le titre ne matche aucune sœur du groupe → discard."""
+def test_discover_no_theme_match_routed_to_review_not_discarded(tmp_path):
+    """C1 — un listing qui ne matche aucun thème du groupe n'est PLUS
+    discardé : verdict `ambiguous` → gardé, target None → review."""
     store = Store(tmp_path / "t.db")
     conn = store._connection()
     _seed_group_be_2002(conn)
@@ -525,7 +526,10 @@ def test_discover_no_match_listing_is_discarded(tmp_path):
     s_noise["title"] = "2 euro Belgique 2002 commemorative"
     client = _MockEbayClient(
         search_responses=[{"itemSummaries": [s_albert, s_noise]}],
-        item_responses={"ALB_1": _detail("ALB_1", additional=[])},
+        item_responses={
+            "ALB_1": _detail("ALB_1", additional=[]),
+            "NOI_1": _detail("NOI_1", additional=[]),
+        },
     )
     discarded: list = []
     adapter = EbayAdapter(make_client=lambda mkt: client, conn=conn)  # noqa: ARG005
@@ -534,8 +538,13 @@ def test_discover_no_match_listing_is_discarded(tmp_path):
         SourceQuery(source_id="ebay", target_eurio_id="be-2002-2eur-albert"),
         record_discarded=discarded.append,
     ))
-    assert [it.raw_payload["ebay_item_id"] for it in items] == ["ALB_1"]
-    assert any(d.reason == "theme_mismatch" for d in discarded)
+    by_id = {it.raw_payload["ebay_item_id"]: it for it in items}
+    # NOI_1 est gardé (plus de discard `theme_mismatch`)…
+    assert set(by_id) == {"ALB_1", "NOI_1"}
+    assert not any(d.reason == "theme_mismatch" for d in discarded)
+    # …mais sans cible auto : target None → review.
+    assert by_id["NOI_1"].target_eurio_id is None
+    assert by_id["ALB_1"].target_eurio_id == "be-2002-2eur-albert"
 
 
 def test_discover_lot_listing_matches_multiple_siblings(tmp_path):

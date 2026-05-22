@@ -269,11 +269,10 @@ class EbayAdapter:
                 gm = match_listing_to_group(
                     row.get("title") or "", coin_ids, conn=self.conn,
                 )
-                if gm.verdict == "no_match":
-                    self._record_discard(
-                        record_discarded, row, "theme_mismatch", mkt,
-                    )
-                    continue
+                # C1 — le theme-matcher ne jette plus : single / lot /
+                # ambiguous sont tous gardés. `ambiguous` → target None
+                # → le listing part en review avec ses group_candidates
+                # (chunk 5b) au lieu d'être discardé en `theme_mismatch`.
                 row["_resolved_eurio_id"] = gm.target_eurio_id
                 row["_group_verdict"] = gm.verdict
                 kept.append(row)

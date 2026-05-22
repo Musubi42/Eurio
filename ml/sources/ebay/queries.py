@@ -307,10 +307,14 @@ class GroupMatch:
     - ``verdict`` :
         - ``"single"``  : 1 pièce — attribution nette.
         - ``"lot"``     : ≥2 pièces touchées — listing multi-pièces.
-        - ``"ambiguous"``: aucun hit franc mais ≥1 pièce indiscriminable —
-          on garde le listing mais sans cible auto (→ review).
-        - ``"no_match"``: toutes les pièces du groupe sont des miss francs
-          — listing hors-sujet, à discarder.
+        - ``"ambiguous"``: aucun hit franc — le theme-match ne tranche pas
+          (titre court indiscriminable OU thème non reconnu, ex. vocab de
+          marché absent de l'i18n). ``matched`` est vide : pas de cible
+          auto, le listing part en review. **Jamais jeté** (chunk C1) :
+          le listing a déjà passé ``accept_listing`` (millésime/prix/
+          devise OK) → il est cohérent avec le groupe.
+        - ``"no_match"``: réservé à une future contradiction explicite
+          (V2). Non produit par ce module depuis C1.
     """
 
     matched: tuple[str, ...]
@@ -333,24 +337,23 @@ def match_listing_to_group(
     Un groupe de 1 seule pièce est trivial : la recherche eBay scope déjà
     le pays/année, donc tout listing retenu EST cette pièce — pas de
     discrimination de thème nécessaire.
+
+    Chunk C1 — verdict de sortie ∈ {single, lot, ambiguous}. Quand aucun
+    thème ne matche, le verdict est ``ambiguous`` (review), jamais
+    ``no_match`` (discard) : « évidence absente ≠ contradiction » — le
+    listing a passé ``accept_listing`` en amont, il est cohérent avec le
+    groupe, on ne le jette pas.
     """
     ids = list(group_eurio_ids)
     if len(ids) == 1:
         return GroupMatch((ids[0],), "single")
 
-    hits: list[str] = []
-    any_undiscriminable = False
-    for eid in ids:
-        state = _theme_match_state(title, eid, conn=conn)
-        if state == "hit":
-            hits.append(eid)
-        elif state == "undiscriminable":
-            any_undiscriminable = True
-
+    hits = [
+        eid for eid in ids
+        if _theme_match_state(title, eid, conn=conn) == "hit"
+    ]
     if len(hits) == 1:
         return GroupMatch((hits[0],), "single")
     if len(hits) >= 2:
         return GroupMatch(tuple(hits), "lot")
-    if any_undiscriminable:
-        return GroupMatch(tuple(ids), "ambiguous")
-    return GroupMatch((), "no_match")
+    return GroupMatch((), "ambiguous")
