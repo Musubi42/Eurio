@@ -485,6 +485,30 @@ def _seed_group_be_2002(conn) -> None:
     )
 
 
+def test_match_listing_via_alias_word_boundary(tmp_path):
+    """C2a — un alias (coin_aliases) produit un `hit`, matché en limite
+    de mot : un acronyme court ne matche pas en sous-chaîne."""
+    from sources.ebay.queries import match_listing_to_group
+
+    store = Store(tmp_path / "t.db")
+    conn = store._connection()
+    _seed_group_be_2002(conn)
+    conn.execute(
+        "INSERT INTO coin_aliases (eurio_id, lang, alias, source, confidence) "
+        "VALUES ('be-2002-2eur-albert', 'xx', 'abc', 'acronym', 'high')"
+    )
+    ids = ["be-2002-2eur-albert", "be-2002-2eur-erasmus"]
+
+    # L'alias en mot entier → hit → attribution nette.
+    gm = match_listing_to_group("2 euro Belgique 2002 ABC", ids, conn=conn)
+    assert gm.verdict == "single"
+    assert gm.matched == ("be-2002-2eur-albert",)
+
+    # L'alias en sous-chaîne d'un mot plus long → PAS de hit → ambiguous.
+    gm2 = match_listing_to_group("2 euro Belgique 2002 abcdefgh", ids, conn=conn)
+    assert gm2.verdict == "ambiguous"
+
+
 def test_discover_group_attributes_listings_to_sibling_coins(tmp_path):
     """Groupe de 2 commémos-sœurs : chaque listing est attribué à SA pièce
     via le theme-match — les deux sœurs sont servies par la même recherche.

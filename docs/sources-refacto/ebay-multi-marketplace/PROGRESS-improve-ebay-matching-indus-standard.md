@@ -10,7 +10,8 @@
 |---|---|
 | P0 — socle de mesure (gold bench + replay harness + LLM-juge) | ✅ livré (baseline mesurée) |
 | C1 — couche 1 (`no_match` → `ambiguous`) | ✅ livré (faux rejet 34→14 %) |
-| C2a — `coin_aliases` + mining | ⏳ |
+| C2a-1 — `coin_aliases` + mining acronymes | ✅ livré (auto-attrib 66→69 %) |
+| C2a-2 — alias colloquiaux (LLM ancré) | ⏳ |
 | C2b — scoreur sémantique LaBSE + fusion | ⏳ |
 | C2c — matcher LLM (conditionnel) | ⏳ |
 | C3 — calibration seuils + runbook audit | ⏳ |
@@ -162,3 +163,38 @@ ne crée aucun hit, il ne fait que ne plus jeter.
    millésime/prix/devise/bruit, pas pays ni dénomination.
 4. Le garde-fou des groupes mono-pièce (découverte P0 #2) reste différé :
    le groupe BE-2017 auto-attribue toujours tout (catalyseurs inclus).
+
+---
+
+## C2a-1 — alias acronymes
+
+### Changements
+
+- Table `coin_aliases` (eurio_id, lang, alias, source, confidence) —
+  modèle `altLabel` de Wikidata. Migration additive (schema.sql).
+- `scripts/mine_coin_aliases.py` — extrait les acronymes des parenthèses
+  des titres i18n (« European Monetary Institute **(EMI)** » → `emi`).
+  Go-task `ml:aliases:mine-acronyms`, idempotent.
+- `theme_tokens.load_aliases()` + intégration `_theme_match_state` : les
+  alias sont poolés avec les tokens i18n, **matchés en limite de mot**
+  (un acronyme court ne doit pas matcher en sous-chaîne — `emi` ∉
+  `akademie`).
+- Test : `test_match_listing_via_alias_word_boundary`.
+
+### 📊 C2a-1 — effet sur le bench
+
+| Métrique | C1 | C2a-1 |
+|---|---|---|
+| Auto-attribution ★ | 65,7 % | **68,7 %** (+3) |
+| Faux rejet | 14,1 % | 14,1 % (inchangé) |
+| Review | 20,2 % | 17,2 % |
+| Précision | 92,9 % | 93,2 % (0 erronée) |
+
+### Découvertes / contraintes
+
+- **Les acronymes-en-parenthèses sont rares** : 5 alias seulement sur
+  3042 titres i18n, tous pour la pièce EMI (`emi`/`ewi`/`ime`). C2a-1
+  corrige donc précisément les faux rejets EMI (+3 auto-attributions),
+  pas plus. Le gros du vocab de marché (« Studentenrevolte », « Iris »,
+  « BLEU »…) n'est PAS en parenthèses → ne sera couvert que par C2a-2
+  (alias colloquiaux générés par LLM).

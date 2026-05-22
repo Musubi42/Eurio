@@ -709,6 +709,30 @@ CREATE TABLE IF NOT EXISTS coin_names_i18n (
 CREATE INDEX IF NOT EXISTS idx_coin_names_i18n_lang
   ON coin_names_i18n(lang);
 
+-- ─── Alias de thème (chunk C2a — recall theme-matcher) ────────────────────
+-- Modèle `altLabel` de Wikidata : en plus du titre canonique i18n, des
+-- surface forms supplémentaires d'une commémo — acronymes (« EMI »),
+-- termes de marché / surnoms (« Studentenrevolte », « Iris »). Le
+-- theme-matcher poole ces alias avec les tokens i18n.
+--
+-- `alias` est stocké NORMALISÉ (lowercase, sans accents — cf.
+-- theme_tokens.normalize). `source` : 'acronym' (extrait des parenthèses
+-- d'un titre i18n), 'llm' (généré par LLM ancré), 'manual'. Matching en
+-- limite de mot (un acronyme court ne doit pas matcher en sous-chaîne).
+
+CREATE TABLE IF NOT EXISTS coin_aliases (
+  eurio_id   TEXT NOT NULL REFERENCES coins(eurio_id) ON DELETE CASCADE,
+  lang       TEXT NOT NULL,   -- ISO 639-1, ou 'xx' si language-agnostic
+  alias      TEXT NOT NULL,   -- forme normalisée
+  source     TEXT NOT NULL DEFAULT 'mined',
+  confidence TEXT NOT NULL DEFAULT 'high',
+  fetched_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (eurio_id, lang, alias)
+);
+
+CREATE INDEX IF NOT EXISTS idx_coin_aliases_eurio
+  ON coin_aliases(eurio_id);
+
 -- ─── Freshness views eBay (D-20 ; maille groupe — chunk 6) ────────────────
 -- Une recherche eBay = un groupe de découverte (dénomination, pays,
 -- année), pas une pièce : deux commémos-sœurs partagent une requête

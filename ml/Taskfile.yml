@@ -115,6 +115,11 @@ tasks:
     cmds:
       - "{{.VENV}}/python -m scripts.bench_theme_match replay {{.CLI_ARGS}}"
 
+  aliases:mine-acronyms:
+    desc: "Theme-matcher C2a — mine acronym aliases from i18n titles' parentheses into coin_aliases (e.g. 'European Monetary Institute (EMI)' → emi). Idempotent. Usage: go-task ml:aliases:mine-acronyms [-- --dry]"
+    cmds:
+      - "{{.VENV}}/python -m scripts.mine_coin_aliases {{.CLI_ARGS}}"
+
   # ---------- Individual steps ----------
   prepare:
     desc: Resize images and split into train/val/test (legacy design_group label space)

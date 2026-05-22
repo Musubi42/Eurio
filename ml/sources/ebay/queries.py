@@ -12,6 +12,7 @@ slug EN + aliases FR a été retiré au cutover V2 (2026-05-21).
 
 from __future__ import annotations
 
+import re
 import sqlite3
 from dataclasses import dataclass
 
@@ -261,11 +262,22 @@ def _theme_match_state(
     la langue native du marketplace) : couvre le cross-listing et le
     faux rejet quand la couverture i18n est partielle.
     """
-    from .theme_tokens import extract_tokens, load_i18n_title, normalize
+    from .theme_tokens import (
+        extract_tokens, load_aliases, load_i18n_title, normalize,
+    )
 
     title_norm = normalize(title)
+
+    # Alias de thème (acronymes, termes de marché — chunk C2a). Match en
+    # limite de mot : un acronyme court (« emi ») ne doit pas matcher en
+    # sous-chaîne (« akademie »).
+    aliases = load_aliases(conn, eurio_id)
+    for alias in aliases:
+        if re.search(rf"\b{re.escape(alias)}\b", title_norm):
+            return "hit"
+
     any_title_found = False
-    any_token_extracted = False
+    any_token_extracted = bool(aliases)
 
     for lang in NAMES_BY_LANG:
         numista_title = load_i18n_title(conn, eurio_id, lang)
