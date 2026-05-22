@@ -13,6 +13,7 @@
 | C2a-1 — `coin_aliases` + mining acronymes | ✅ livré (auto-attrib 66→69 %) |
 | C2a-2 — alias colloquiaux (LLM ancré) | ✅ livré (auto-attrib 69→74 %) |
 | C1b — déparasiter `accept_listing` (proof/color ≠ bruit) | ✅ livré (faux rejet 14→0 %) |
+| Cc — garde-fou de contradiction (niveau groupe) | ✅ livré (junk false-keep 44→39 %) |
 | C2b — scoreur sémantique LaBSE + fusion | ⏳ |
 | C2c — matcher LLM (conditionnel) | ⏳ |
 | C3 — calibration seuils + runbook audit | ⏳ |
@@ -31,6 +32,7 @@ Bench fidèle (`accept_listing` + theme-matcher) sur le gold gelé v1
 | C2a-1 | 14,1 % | 85,9 % | **68,7 %** | 17,2 % | 42,4 % | 93,2 % |
 | C2a-2 | 14,1 % | 85,9 % | **73,7 %** | 12,1 % | 42,4 % | 93,6 % |
 | C1b   |  0,0 % | 100,0 % | **88,9 %** | 11,1 % | 43,5 % | 94,6 % |
+| Cc    |  0,0 % | 100,0 % | **88,9 %** | 11,1 % | 38,8 % | 94,6 % |
 
 > Reproduire un point : `go-task ml:bench:theme-match`. A/B d'un
 > changement de code : `git stash` → replay → `git stash pop` → replay.
@@ -335,3 +337,58 @@ par cette règle legacy.
   (« 2 EUROS BÉLGICA 2021 S/C ») = review *correcte*, indiscriminables ;
   le reste = titres tronqués / typos. Plafond d'auto-attribution proche
   sur ce gold sans scoreur sémantique.
+
+---
+
+## Cc — garde-fou de contradiction (niveau groupe)
+
+Le bilan a montré que la file de review était à ~75 % de junk. La
+machinerie de contradiction (`compare_to_target` + step `text_signal`)
+existait déjà, mais : (a) le bench ne rejoue pas ce step ; (b) elle
+exige un `target_eurio_id` unique — or le junk part en `ambiguous`
+(pas de target) → jamais confronté. La contradiction se vérifiait
+pièce-à-pièce alors qu'elle doit se vérifier **au niveau groupe** : un
+« 2,5 Euro » ou un « Eslovenia » contredit le groupe entier, peu importe
+la sœur.
+
+### Changements
+
+- `text_signals/comparator.py` — `GroupIdentity` + `compare_to_group()` :
+  réutilise les 3 axes durs (`_country_axis` / `_year_axis` /
+  `_denomination_axis`) de `compare_to_target`. **Source de vérité
+  unique** des axes, partageable avec le step `text_signal`. Ne mesure
+  que la contradiction (pas `convergent`/`partial` — on ne sait pas
+  encore quelle sœur).
+- `queries.py` — `match_listing_to_group` lance `_group_contradiction`
+  AVANT le theme-match : contradiction franche → `GroupMatch((),
+  "no_match", contradictions=axes)`. `no_match` reprend son rôle (réservé
+  par C1 « pour une future contradiction explicite ») — discard légitime,
+  contradiction *positive* ≠ absence d'évidence.
+- `adapter.py` — verdict `no_match` → `discarded_listings(reason=
+  'group_contradict_<axe>')`, le listing n'est plus gardé.
+- Tests : `compare_to_group` (7), `match_listing_group_contradiction`
+  (1). 120 verts.
+
+### 📊 Cc — A/B sur bench fidèle
+
+| Métrique | C1b | Cc |
+|---|---|---|
+| Junk false-keep | 43,5 % | **38,8 %** (37→33, 4 junk + 1 lot jetés) |
+| Faux rejet | 0,0 % | **0,0 %** (0 pièce valide contredite) |
+| Recall / Auto ★ / Précision | — | inchangés (100 % / 88,9 % / 94,6 %) |
+
+### Découvertes / contraintes
+
+- **Effet réel mais borné par l'extracteur.** Le garde-fou ne tape que
+  ce qui produit un *signal* contradictoire. Or `extract_listing_text_
+  signals` ne reconnaît que les dénominations euro standard (0,01→2 €) :
+  les **« 2,5 Euro » / « 2 1/2 Euro »** belges (~9 false-keep du gold)
+  ne génèrent aucun signal de dénomination → pas de contradiction → pas
+  jetés. C'est le prochain levier : apprendre `2.5` à l'extracteur.
+- **0 faux rejet** confirme la sûreté du garde-fou : aucun titre de
+  pièce valide ne produit de contradiction franche sur ce gold.
+- **Reste hors d'atteinte de la contradiction d'axe** : lots
+  « TODOS LOS PAISES », billets « 0 EURO », pièces auto (« BM
+  CATALYSTS »), et le coin Erasmus 2021 (vrai 2 € BE mais mauvais thème
+  — convergent sur tous les axes durs). Le junk « not-a-coin » pur et le
+  mauvais-thème relèvent d'autres signaux (lot-flag, theme-contradiction).

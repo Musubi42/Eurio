@@ -269,6 +269,16 @@ class EbayAdapter:
                 gm = match_listing_to_group(
                     row.get("title") or "", coin_ids, conn=self.conn,
                 )
+                # Garde-fou de contradiction — un titre qui contredit un
+                # axe dur du groupe (pays/année/dénom) → `no_match` →
+                # discard. Contradiction *positive*, pas une absence
+                # d'évidence : on jette à juste titre.
+                if gm.verdict == "no_match":
+                    axe = gm.contradictions[0] if gm.contradictions else "unknown"
+                    self._record_discard(
+                        record_discarded, row, f"group_contradict_{axe}", mkt,
+                    )
+                    continue
                 # C1 — le theme-matcher ne jette plus : single / lot /
                 # ambiguous sont tous gardés. `ambiguous` → target None
                 # → le listing part en review avec ses group_candidates

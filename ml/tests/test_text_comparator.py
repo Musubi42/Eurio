@@ -7,8 +7,10 @@ dans test_text_signal_step.py via une fixture coins.
 from __future__ import annotations
 
 from sources.text_signals import (
+    GroupIdentity,
     ListingTextSignals,
     TargetIdentity,
+    compare_to_group,
     compare_to_target,
 )
 
@@ -177,3 +179,47 @@ def test_target_identity_carried_in_result():
     assert cmp.target_country == "fr"
     assert cmp.target_year == 2014
     assert cmp.target_face_value == 2.0
+
+
+# ── compare_to_group (garde-fou de contradiction) ───────────────────────────
+
+def _group(country: str = "be", year: int = 2018, fv: float = 2.0) -> GroupIdentity:
+    return GroupIdentity(country=country, year=year, face_value=fv)
+
+
+def test_group_no_contradiction_when_convergent():
+    sig = _signals(countries={"BE"}, years={2018}, denominations={2.0})
+    assert compare_to_group(sig, _group()) == ()
+
+
+def test_group_no_contradiction_when_signals_absent():
+    # « évidence absente ≠ contradiction » — un titre muet ne contredit pas
+    assert compare_to_group(_signals(), _group()) == ()
+
+
+def test_group_contradiction_on_country():
+    # « Eslovenia 2€ 2018 » dans un groupe BE
+    sig = _signals(countries={"SI"}, years={2018}, denominations={2.0})
+    assert compare_to_group(sig, _group()) == ("country",)
+
+
+def test_group_contradiction_on_denomination():
+    # un 5 € dans un groupe 2 €
+    sig = _signals(countries={"BE"}, years={2018}, denominations={5.0})
+    assert compare_to_group(sig, _group()) == ("denomination",)
+
+
+def test_group_contradiction_on_year():
+    sig = _signals(countries={"BE"}, years={2010}, denominations={2.0})
+    assert compare_to_group(sig, _group()) == ("year",)
+
+
+def test_group_contradiction_multi_axis_ordered():
+    sig = _signals(countries={"SI"}, years={2010}, denominations={5.0})
+    assert compare_to_group(sig, _group()) == ("country", "year", "denomination")
+
+
+def test_group_year_range_does_not_contradict():
+    # un titre « 2000-2025 » n'invalide pas un groupe 2018 (plage englobante)
+    sig = _signals(countries={"BE"}, years={2000, 2025}, denominations={2.0})
+    assert compare_to_group(sig, _group()) == ()

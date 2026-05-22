@@ -14,9 +14,11 @@ Cf. docs/sources-refacto/auto-validation/vision.md — chunk 4.
 """
 
 from .comparator import (
+    GroupIdentity,
     TargetIdentity,
     VsTargetComparison,
     VsTargetVerdict,
+    compare_to_group,
     compare_to_target,
     load_target_identity,
 )
@@ -33,9 +35,11 @@ __all__ = [
     "Coverage",
     "ListingKind",
     "ListingTextSignals",
+    "GroupIdentity",
     "TargetIdentity",
     "VsTargetComparison",
     "VsTargetVerdict",
+    "compare_to_group",
     "compare_to_target",
     "extract_listing_text_signals",
     "load_target_identity",

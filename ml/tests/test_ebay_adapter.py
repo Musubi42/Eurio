@@ -520,6 +520,26 @@ def test_match_listing_via_alias_word_boundary(tmp_path):
     assert gm2.verdict == "ambiguous"
 
 
+def test_match_listing_group_contradiction_rejects(tmp_path):
+    """Garde-fou de contradiction — un titre qui contredit un axe dur du
+    groupe (ici l'année) → verdict `no_match`, contradictions renseignées."""
+    from sources.ebay.queries import match_listing_to_group
+
+    store = Store(tmp_path / "t.db")
+    conn = store._connection()
+    _seed_group_be_2002(conn)
+    ids = ["be-2002-2eur-albert", "be-2002-2eur-erasmus"]
+
+    gm = match_listing_to_group("2 euro Belgique 2010 Albert II", ids, conn=conn)
+    assert gm.verdict == "no_match"
+    assert gm.contradictions == ("year",)
+    assert gm.matched == ()
+
+    # Un titre cohérent avec le groupe n'est jamais `no_match`.
+    gm_ok = match_listing_to_group("2 euro Belgique 2002 Albert II", ids, conn=conn)
+    assert gm_ok.verdict != "no_match"
+
+
 def test_discover_group_attributes_listings_to_sibling_coins(tmp_path):
     """Groupe de 2 commémos-sœurs : chaque listing est attribué à SA pièce
     via le theme-match — les deux sœurs sont servies par la même recherche.
