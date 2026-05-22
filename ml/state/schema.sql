@@ -949,3 +949,19 @@ CREATE VIEW v_orphan_eurio_refs AS
     LEFT JOIN coins c ON c.eurio_id = cmq.eurio_id
    WHERE cmq.eurio_id IS NOT NULL AND c.eurio_id IS NULL
    GROUP BY cmq.eurio_id;
+
+-- ─── Cycle de vie : readiness à l'entraînement (Chunk 3) ──────────────────
+-- Base de la « condition d'éligibilité à une cohorte » : nombre d'images
+-- d'entraînement par pièce. Le seuil (« assez d'images ») est appliqué par
+-- le consommateur, pas figé ici.
+DROP VIEW IF EXISTS v_coin_training_readiness;
+CREATE VIEW v_coin_training_readiness AS
+SELECT
+  c.eurio_id,
+  c.status,
+  c.design_group_id,
+  COUNT(ia.id)                                              AS n_images,
+  SUM(CASE WHEN ia.training_eligible = 1 THEN 1 ELSE 0 END)  AS n_training_eligible
+FROM coins c
+LEFT JOIN image_assets ia ON ia.eurio_id = c.eurio_id
+GROUP BY c.eurio_id;
