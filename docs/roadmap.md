@@ -1,84 +1,173 @@
-# Eurio — Status
+# Eurio — Roadmap J1→J7
 
-> **À quoi sert ce doc** : reprendre une session froide sans faire d'erreur. Photo instantanée de où on en est. Pas de détail, pas de journal — juste ce qui est fait, ce qui reste, et les gotchas à connaître.
+> **À quoi sert ce doc** : reprendre une session froide en 5 min. Photo de la trajectoire vers le premier modèle ArcFace utile et son déploiement Android, dans le bon ordre, avec les dépendances explicites.
 >
-> **Dernière mise à jour** : 2026-04-13
-> **Pour l'overview complète** : [`ARCHITECTURE.md`](./ARCHITECTURE.md)
+> **Dernière mise à jour** : 2026-05-23
+>
+> **Pour l'historique des phases ML/data antérieures** : voir `docs/phases/` et `docs/archive/`.
+> **Pour la doc app Android** : voir `docs/app-implem-phases/`.
 
 ---
 
-## Où on en est
+## TL;DR
 
-**La data layer est production-ready.** Le référentiel canonique (2 938 pièces euro) est bootstrapped, enrichi par 6 sources, et synchronisé vers Supabase. Le tooling de review humaine est en place. **Ce qui reste bloquant pour la beta** : entraîner le modèle ML pour le scan utilisateur (Phase 2B) et construire les écrans Android pour le coffre (Phase 3).
+L'infrastructure data + scrape + matching est en place. Il reste à passer en cadence routine sur le scrape eBay, **accumuler des images** sur les 510/614 classes encore à vide, **entraîner** ArcFace sur la masse résultante (Numista canon augmenté + wild eBay+autres), et **bench** sur les cohortes capture physiques.
+
+Le dashboard `/operations` est le tableau de bord qui orchestre la décision "OK je peux lancer le training".
 
 ---
 
-## ✅ Fait
+## Acquis solides (les "pipes" sont construits)
 
-| Phase | Résumé | Doc de référence |
+| Brique | État | Référence |
 |---|---|---|
-| **Phase 0 — Setup** | flake.nix, projet Android Kotlin+Compose, CameraX, LiteRT, Supabase projet | [`ARCHITECTURE.md`](./ARCHITECTURE.md) §6 |
-| **Phase 1 — ML v1 POC** | Classification 5 classes MobileNetV3, 80% val accuracy, TFLite exporté, scan Android fonctionnel | mémoire `project_phase1_decisions.md` |
-| **Phase 1B — YOLO détection** | Tentative YOLOv8n, faux positifs massifs sur dataset réel, **à retravailler** ou abandonner | `docs/research/yolo-detection-findings.md` (ancien) |
-| **Phase 2B.1 — ArcFace 5 classes** | Validation de l'approche metric learning : R@1 100% sur 5 pièces | journal historique ci-dessous |
-| **Phase 2C.1a — Bootstrap commémoratives** | 517 entrées 2€ commemo depuis Wikipedia | [`phase-2c1-review.md`](./research/phase-2c1-review.md) |
-| **Phase 2C.1b — Bootstrap circulation** | 2 374 entrées circulation 24 pays depuis Wikipedia | idem |
-| **Phase 2C.1c — DE Auflagen** | 122 entrées DE 2002-2024 depuis de.wikipedia (détail par mint A/D/F/G/J) | [`phase-2c-referential.md`](./phases/phase-2c-referential.md) §2C.1c |
-| **Phase 2C.2 — Scraper lmdlp** | 268 coins enrichis via WooCommerce Store API, 73% match auto | [`phase-2c2-lmdlp-run.md`](./research/phase-2c2-lmdlp-run.md) |
-| **Phase 2C.3 — Scraper Monnaie de Paris** | 5 coins enrichis avec prix d'émission officiel, 100% match | [`phase-2c3-mdp-run.md`](./research/phase-2c3-mdp-run.md) |
-| **Phase 2C.4 — Scraper eBay** | 30 coins enrichis avec P25/P50/P75 velocity-weighted, 30 API calls | [`phase-2c4-ebay-run.md`](./research/phase-2c4-ebay-run.md) |
-| **Phase 2C.5 — Review tool** | Web server local avec images BCE side-by-side + 419 images canoniques scrapées | [`phase-2c5-review-tool-run.md`](./research/phase-2c5-review-tool-run.md) |
-| **Phase 2C.7 — Sync Supabase** | Drop legacy schema + 6 tables canoniques + RLS + script idempotent | [`phase-2c7-supabase-sync-run.md`](./research/phase-2c7-supabase-sync-run.md) |
-
-**Datum référentiel** : 2 938 coins · 3 695 observations · 419 avec images BCE · 197 items en review queue · 1 771 matching decisions · 83 tests unitaires verts.
+| Référentiel V2 (coins / variants / mint_releases / source_refs) | Live Supabase + eurio.db canonique | `docs/research/referential-v2*.md` |
+| Harmonisation eurio.db ↔ Supabase, sync descendant | Chunks 0-4 livrés | `docs/data-harmonization/` |
+| i18n 614 commémo 2 € × 6 langs + 563 alias | Live, synchro Supabase | commit `9b5a7db` |
+| Theme-matcher recall 100 %, auto-attrib ~89 % | Stable | memory `project_theme_matcher_recall` |
+| Découverte eBay par groupe (denom × pays × année) | 6 chunks livrés, routing DE+ES acté | memory `project_discovery_groupee` |
+| Listing detection pipeline (YOLO+Hough+polish) | Livré 2026-05-04 | memory `project_listing_detection_pipeline` |
+| Scan normalisé Android | Phases 0-4 livrées | `docs/scan-normalization/README.md` |
+| Cohort capture flow (admin pilote, app Android `cohortTest`) | Live | `docs/admin/cohort-capture-flow/`, memory `project_cohort_capture_flow` |
+| Admin coin details : section "Localisation" i18n + alias | Live | commit `9b5a7db` |
+| Cascade-sync MinIO write-through | Chunks 1-4 livrés | `docs/harmonisation-images/` |
 
 ---
 
-## 🔄 En cours
+## Trajectoire J1 → J7
 
-- **Phase 2A — Classification bridge** (fine-tuning MobileNetV3-Small sur ~500 classes du catalogue) — travail ML actif avant de passer à ArcFace 500+.
+```
+J0 (catalogue Numista + canonicals obverse/reverse)
+  │
+  └─► J1 ──────────────────► J2 ──┐
+      (scrape eBay routine)       │
+                                  ├─► J3 ──► J4 ──► J5 ──► J6 ──► J7
+                                  │
+      Futures sources scrap ──────┘
+
+J0 : Acquis (déjà fait, en grande partie)
+J1 : Scrape eBay intensif (manuel, user-piloté)
+J2 : Review humaine systématique des listings flaggés
+J3 : Image capture qualité depuis listings reviewés → MinIO
+J4 : Quota training-ready atteint par classe (instrumentation dashboard)
+J5 : Training ArcFace v2 sur (Numista augmenté ∪ wild scrap)
+J6 : Bench sur cohortes capture physiques (hold-out)
+J7 : Déploiement Android du nouveau modèle (LiteRT)
+```
+
+### Détail par jalon
+
+#### J0 — Référentiel + canonicals Numista (acquis)
+
+- **Définition** : 614 commémo 2 € catalogués + 977 `coin_canonical_images` (obverse / reverse).
+- **État** : ~100 % du catalogue, ~half des canonical images.
+- **Reste** : enrichir les obverses manquants (classes sans canonical). Tâche d'enrichissement catalogue, séparée du scrape eBay.
+- **Done quand** : couverture canonical proche de 100 % pour toutes les commémo 2 €.
+
+#### J1 — Scrape eBay intensif
+
+- **Définition** : passes eBay régulières sur les 385 groupes (denom × pays × année), routage DE+ES uniforme (décision benchmark 2026-05-21).
+- **Cadence** : **manuelle, pilotée par Raphaël** quand quota + temps de review sont dispo. ~770 calls API par passage complet, 15 % du quota dev Browse API.
+- **Sortie attendue** : `source_images` qui grossit + couverture wild qui monte sur les 510 classes encore à zéro.
+- **Dépend de** : J0 (catalog complet), i18n ✅, theme-matcher ✅, listing detection ✅.
+- **Done quand** : ne se "termine" pas. Métrique de pilotage = pulse 7j dans le dashboard `/operations`.
+
+#### J2 — Review humaine systématique
+
+- **Définition** : reviewer les listings auto-attribués flagged (~11 % du recall actuel) + ceux où le theme-matcher hésite.
+- **Outils existants** : `/review`, `/coins/needs-review` côté admin.
+- **Goulot** : humain (Raphaël). ~500 listings / passe eBay, pas faisable en un jour.
+- **Dépend de** : J1 alimente la queue.
+- **Done quand** : ne se termine pas non plus. Métrique = backlog visible dans `/operations` Section 3.
+
+#### J3 — Image capture qualité depuis listings
+
+- **Définition** : les listings reviewés OK ont leurs images promues en `image_assets` via la pipeline existante (YOLO+Hough+polish, déjà câblé).
+- **Pipeline** : `source_images` → crops détectés → `image_assets` → MinIO write-through.
+- **Dépend de** : J2 (un listing pas reviewé ne passe pas en `image_assets`).
+- **Done quand** : se mesure indirectement par croissance de `image_assets` par classe.
+
+#### J4 — Quota training-ready atteint
+
+- **Définition** : assez d'images sources / classe pour entraîner ArcFace en confiance.
+- **Seuil acté** : **30 sources / classe** (≈ 2 canonical Numista + 28 wild ; avec augmentation ×10 → 300 samples training).
+- **Tiers** : 🔴 < 5, ⚠️ 5-29, ✅ ≥ 30.
+- **Instrumentation** : dashboard `/operations` Section 2 (cf. `docs/operations/dashboard-j1.md`).
+- **Dépend de** : J3 alimente les images.
+- **Done quand** : un nombre suffisant de classes en zone verte ≥ 30. Le seuil "nombre suffisant" reste à arbitrer (50 % ? 80 % ?).
+
+#### J5 — Training ArcFace v2
+
+- **Définition** : entraîner le modèle sur (Numista canonical augmenté) + (wild eBay scrap) fusionnés.
+- **Pipeline** : `training-pipeline/` (déjà câblé, Sprint 1 vert).
+- **Compute** : GPU 1080 Ti perso.
+- **Dépend de** : J4 (sinon training non significatif).
+- **Done quand** : run terminé, `model_classes` populées, métriques training internes correctes.
+
+#### J6 — Bench sur cohortes capture
+
+- **Définition** : évaluer le modèle entraîné sur les captures physiques cohort (hold-out par construction).
+- **Pipeline** : `evaluate_*.py` sur les `ml/datasets/<numista_id>/captures/` (transférées par `adb pull` depuis le device, app build variant `cohortTest`).
+- **Conditions** : 5 conditions standardisées (bright_plain, bright_textured, dim, oblique, partial_shadow) — voir `BenchProtocol.kt`.
+- **Dépend de** : J5 (modèle à évaluer) + cohorte capturée suffisamment.
+- **Done quand** : metric R@1 publiée, écart avec R@1 studio acceptable.
+
+#### J7 — Déploiement Android
+
+- **Définition** : exporter le modèle en LiteRT (.tflite), packager dans l'APK Eurio, pré-calculer `coin_embeddings.npy`.
+- **Dépend de** : J6 verdict positif (sinon on retourne en J4/J5).
+- **Done quand** : nouvelle version Android shippable, scan fonctionnel.
 
 ---
 
-## ⏳ À faire ensuite (ordre recommandé)
+## Dépendances et bottlenecks
 
-1. **Phase 2B — ArcFace 500+ classes** — training + export TFLite + `coin_embeddings.npy` pré-calculé. Bloque le scan utilisateur réel ET la Phase 2C.6 (Stage 4 visual matching).
-2. **Phase 3 — Coffre Android** — écrans Kotlin Compose, branchement Supabase via supabase-kt, collection user. Peut avancer en parallèle de 2B.
-3. **Phase 2C.6 — Stage 4 visual** — brancher ArcFace dans `matching.py::match()` pour résoudre les escalades FR↔EN restantes. Dépend de Phase 2B.
-4. **Phase 2C.8 — Enrichissement multi-sources + admin** — URL BCE cross_refs, sync bce_comm → Supabase, mintage BCE+Numista, images BCE download, LMDLP prix avec qualité, filtres cumulables `/coins`. Voir [`docs/phases/phase-2c8-enrichment-admin.md`](./phases/phase-2c8-enrichment-admin.md).
-5. **Phase 2C — Review manuelle de la queue** — 121 groupes uniques à trancher dans le web tool, ~20 min. Optionnel, pas bloquant.
-6. **Phase 4 — Gamification** — achievements, series completion, streak. Dépend de Phase 3.
-7. **Phase 5 — Polish + beta** — UI finale, onboarding, beta closed puis ouverte.
-
----
-
-## ⚠️ Gotchas — à NE PAS oublier en reprenant
-
-1. **Le référentiel canonique est la source de vérité, pas Numista.** L'ancienne approche (Numista IDs comme PK, `coin_catalog.json`) est **superseded** depuis le 13 avril. Utiliser `eurio_id` partout.
-2. **Supabase schema a été reset le 13 avril.** Les anciennes tables (`coins UUID`, `price_history`, ...) n'existent plus. Les 6 tables canoniques sont : `coins`, `source_observations`, `matching_decisions`, `review_queue`, `coin_embeddings`, `user_collections`. Voir [`ARCHITECTURE.md`](./ARCHITECTURE.md) §6.2.
-3. **Bootstrap merge pattern** — les 3 scripts `bootstrap_*.py` préservent maintenant `images`, `design_description` et `sources_used` sur re-run. Quand on ajoute un nouveau champ enrichi au schema canonique, il faut étendre le merge (bug corrigé en 2C.7, à surveiller).
-4. **scrape_lmdlp filtre les bundles et multipacks** au scrape time (`^N x 2 euros` et ` + ` entre thèmes). Ne pas re-introduire.
-5. **Tests = stdlib `unittest`** uniquement, pas de pytest. Lancer `python ml/test_eurio_referential.py`.
-6. **Scan UX = QR scanner** — continuous auto-scan, zéro bouton, zéro guide visuel. Style Yuka.
-7. **Ne jamais créer d'entrée canonique automatiquement** depuis un scraper. Seul le bootstrap officiel peut. Les collisions vont dans `review_queue`, pas en auto-suffixe `-v2`.
-8. **eBay Finding API est morte** (décommissionnée février 2025). Utiliser Browse API + velocity weighting (`ebay_client.py` + `scrape_ebay.py`).
-9. **Numista API a un rate limit 2000 calls/mois** (plan gratuit, épuisé en avril 2026) et **n'expose aucun prix**. Ne pas compter dessus pour le live.
-10. **Toutes les deps passent par `flake.nix`** — pas de `brew install`, pas de `pip install` hors `ml/.venv/`. Si un package manque, ajouter à `flake.nix`.
+| Bottleneck | Pourquoi | Mitigation |
+|---|---|---|
+| **Review humaine (J2)** | 500 listings / passe eBay, capacité limitée | Ergonomie review (raccourcis clavier, bulk actions) — pas de spec dédiée encore |
+| **Couverture wild (J3→J4)** | 510/614 classes à 0 wild images | Plusieurs passes eBay successives, sur plusieurs semaines |
+| **Compute training (J5)** | GPU 1080 Ti ≠ cloud, durée d'un run | Calibrer le scope d'entraînement |
+| **Cohorte capture suffisante (J6)** | Captures à la main, conditions variées | Cohorte minimum définie (à valider — cf. suspens) |
 
 ---
 
-## Docs de référence par niveau de profondeur
+## Suspens ouverts (à arbitrer)
 
-- **Overview 15 min** → [`ARCHITECTURE.md`](./ARCHITECTURE.md)
-- **Vision produit** → [`PRD.md`](../PRD.md) (en cours d'absorption vers ARCHITECTURE.md)
-- **Data model spec** → [`docs/research/data-referential-architecture.md`](./research/data-referential-architecture.md)
-- **Phase 2C plan & sous-phases** → [`docs/phases/phase-2c-referential.md`](./phases/phase-2c-referential.md)
-- **Run reports détaillés** → `docs/research/phase-2c{1..7}-*.md` (un par sous-phase)
-- **Décisions écosystème** → `docs/research/euro-ecosystem-map.md`, `ebay-api-strategy.md`, `referential-bootstrap-research.md`
-- **Mémoires Claude** → `~/.claude/projects/-Users-musubi42-Documents-Musubi42-Eurio/memory/MEMORY.md`
+| Suspens | Sévérité | Où le trancher |
+|---|---|---|
+| **Re-bench routing marketplaces** (i18n LLM livré → re-run benchmark pourrait inclure FR/IT/NL) | 🟠 | Memory `project_marketplace_routing_benchmark` mentionne déjà ce todo |
+| **Seuil 30 fondé sur quel bench ?** (estimation, pas data) | 🟠 | Run un mini-training sur classes déjà bien dotées (BE 2012 à 279) avec 10/30/100 pour comparer R@1 |
+| **`coin_canonical_images` vs `image_assets`** : différence concrète, ce que la pipeline ingest exactement | 🟠 | Spot-read `training-pipeline/sprint-1*` ou code `iteration_augmentations.py` |
+| **Comptage captures cohort** dans dashboard Section 4 | ⚪ | Soit endpoint ML API local, soit table d'index `cohort_captures`. Chunk séparé après MVP. |
+| **Enrichissement obverses Numista manquants** | ⚪ | Sourcer les classes sans canonical. Independent de J1-J7 mais nécessaire à J0/J5. |
+| **Chart lib pour dashboard** | ⚪ | À choisir lors du build dashboard. Démarrer en tableaux + sparklines custom si pas de lib en place. |
 
 ---
 
-## Journal historique (avant 2026-04-13)
+## Prochains livrables (sans ordre forcé)
 
-Le contenu retrospective détaillé de Phase 0, Phase 1, Phase 1B, Phase 2B.1 (ArcFace 5 classes) était dans ce fichier jusqu'au 13 avril — avec les métriques, les décisions prises, les écarts par rapport au plan. Tout est archivé côté mémoire Claude (`project_phase1_decisions.md`) et référencé dans les mémoires du projet. On garde ce doc focalisé **présent + futur** pour ne pas le laisser grossir indéfiniment.
+1. **Build du dashboard `/operations`** — spec prête dans `docs/operations/dashboard-j1.md` (~4 h).
+2. **Re-bench routing marketplaces** avec i18n LLM activée (~2 h).
+3. **Mini-benchmark seuil training** (10 vs 30 vs 100 sources / classe sur classes déjà riches).
+4. **Spec ergonomie review** (rendre J2 plus rapide).
+
+---
+
+## Liens canoniques
+
+- **Roadmap stratégique 3 leviers** : `docs/features/README.md`
+- **Architecture globale** : `docs/ARCHITECTURE.md`
+- **Plan harmonisation data** : `docs/data-harmonization/plan.md`, `architecture.md`
+- **Pipeline training** : `docs/training-pipeline/`
+- **Détection scan (ML)** : `docs/research/detection-pipeline-unified.md`
+- **Cohort capture flow** : `docs/admin/cohort-capture-flow/`
+- **Dashboard spec** : `docs/operations/dashboard-j1.md`
+- **App Android par phases** : `docs/app-implem-phases/README.md`
+
+---
+
+## Notes de lecture
+
+- Les ✓ markers ne sont pas des dates de "tout terminé pour toujours" — beaucoup de jalons (J1, J2, J3) sont **en routine continue**, pas en mode "livré one-shot".
+- L'eBay scrape (J1) est **piloté manuellement** par Raphaël. Ne pas proposer d'automatisation cron / scheduler. Le bottleneck est ailleurs (J2 review).
+- Les phases Android (UX écrans coffre / sets / profile) avancent **en parallèle** de J1-J7. Voir `docs/app-implem-phases/`.
