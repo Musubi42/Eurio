@@ -239,6 +239,43 @@ def db_observations_rows(conn: sqlite3.Connection) -> list[dict]:
     return rows
 
 
+def db_i18n_rows(conn: sqlite3.Connection) -> list[dict]:
+    """`coin_names_i18n` SQLite → Supabase rows."""
+    rows: list[dict] = []
+    for r in conn.execute(
+        "SELECT eurio_id, lang, title, source, confidence, model, fetched_at "
+        "FROM coin_names_i18n"
+    ):
+        rows.append({
+            "eurio_id": r["eurio_id"],
+            "lang": r["lang"],
+            "title": r["title"],
+            "source": r["source"],
+            "confidence": r["confidence"],
+            "model": r["model"],
+            "fetched_at": r["fetched_at"],
+        })
+    return rows
+
+
+def db_aliases_rows(conn: sqlite3.Connection) -> list[dict]:
+    """`coin_aliases` SQLite → Supabase rows."""
+    rows: list[dict] = []
+    for r in conn.execute(
+        "SELECT eurio_id, lang, alias, source, confidence, fetched_at "
+        "FROM coin_aliases"
+    ):
+        rows.append({
+            "eurio_id": r["eurio_id"],
+            "lang": r["lang"],
+            "alias": r["alias"],
+            "source": r["source"],
+            "confidence": r["confidence"],
+            "fetched_at": r["fetched_at"],
+        })
+    return rows
+
+
 def db_market_prices_rows(conn: sqlite3.Connection) -> list[dict]:
     """Variantes LMDLP → `coin_market_prices` (1 ligne par variante avec prix)."""
     rows: list[dict] = []
@@ -315,11 +352,15 @@ def main() -> None:
     coins_rows = db_coins_rows(conn)
     obs_rows = db_observations_rows(conn)
     market_rows = db_market_prices_rows(conn)
+    i18n_rows = db_i18n_rows(conn)
+    aliases_rows = db_aliases_rows(conn)
 
     print("Source counts (eurio.db) :")
     print(f"  coins         : {len(coins_rows)}")
     print(f"  observations  : {len(obs_rows)}")
     print(f"  market_prices : {len(market_rows)}")
+    print(f"  coin_names_i18n : {len(i18n_rows)}")
+    print(f"  coin_aliases    : {len(aliases_rows)}")
 
     if args.dry_run:
         print("\n[dry-run] aucun appel HTTP.")
@@ -350,6 +391,20 @@ def main() -> None:
                 on_conflict="eurio_id,source,quality,fetched_at",
             )
             print(f"  Supabase coin_market_prices now : {client.count('coin_market_prices')}")
+
+            print("\nUpsert coin_names_i18n...")
+            client.upsert(
+                "coin_names_i18n", i18n_rows,
+                on_conflict="eurio_id,lang",
+            )
+            print(f"  Supabase coin_names_i18n now : {client.count('coin_names_i18n')}")
+
+            print("\nUpsert coin_aliases...")
+            client.upsert(
+                "coin_aliases", aliases_rows,
+                on_conflict="eurio_id,lang,alias",
+            )
+            print(f"  Supabase coin_aliases now : {client.count('coin_aliases')}")
 
         if args.verify:
             print("\nVerify...")

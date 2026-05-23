@@ -6,7 +6,7 @@
  * Ou :
  *   supabase gen types typescript --project-id <id>
  *
- * Dernière regen : 2026-04-20
+ * Dernière regen : 2026-05-23
  */
 
 export type Json =
@@ -25,6 +25,41 @@ export type Database = {
   }
   public: {
     Tables: {
+      coin_aliases: {
+        Row: {
+          alias: string
+          confidence: string
+          eurio_id: string
+          fetched_at: string
+          lang: string
+          source: string
+        }
+        Insert: {
+          alias: string
+          confidence?: string
+          eurio_id: string
+          fetched_at?: string
+          lang: string
+          source?: string
+        }
+        Update: {
+          alias?: string
+          confidence?: string
+          eurio_id?: string
+          fetched_at?: string
+          lang?: string
+          source?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coin_aliases_eurio_id_fkey"
+            columns: ["eurio_id"]
+            isOneToOne: false
+            referencedRelation: "coins"
+            referencedColumns: ["eurio_id"]
+          },
+        ]
+      }
       coin_confusion_map: {
         Row: {
           computed_at: string
@@ -102,6 +137,141 @@ export type Database = {
           },
         ]
       }
+      coin_market_prices: {
+        Row: {
+          eurio_id: string
+          fetched_at: string
+          id: number
+          p25: number | null
+          p50: number | null
+          p75: number | null
+          quality: string | null
+          query_used: string | null
+          samples_count: number | null
+          source: string
+          with_sales_count: number | null
+        }
+        Insert: {
+          eurio_id: string
+          fetched_at?: string
+          id?: number
+          p25?: number | null
+          p50?: number | null
+          p75?: number | null
+          quality?: string | null
+          query_used?: string | null
+          samples_count?: number | null
+          source: string
+          with_sales_count?: number | null
+        }
+        Update: {
+          eurio_id?: string
+          fetched_at?: string
+          id?: number
+          p25?: number | null
+          p50?: number | null
+          p75?: number | null
+          quality?: string | null
+          query_used?: string | null
+          samples_count?: number | null
+          source?: string
+          with_sales_count?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coin_market_prices_eurio_id_fkey"
+            columns: ["eurio_id"]
+            isOneToOne: false
+            referencedRelation: "coins"
+            referencedColumns: ["eurio_id"]
+          },
+        ]
+      }
+      coin_mint_releases: {
+        Row: {
+          created_at: string
+          id: string
+          issue_type: string
+          mint_mark: string | null
+          mint_year: number
+          mintage: number | null
+          notes: string | null
+          parent_type_id: string
+          released_on: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id: string
+          issue_type: string
+          mint_mark?: string | null
+          mint_year: number
+          mintage?: number | null
+          notes?: string | null
+          parent_type_id: string
+          released_on?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          issue_type?: string
+          mint_mark?: string | null
+          mint_year?: number
+          mintage?: number | null
+          notes?: string | null
+          parent_type_id?: string
+          released_on?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coin_mint_releases_parent_type_id_fkey"
+            columns: ["parent_type_id"]
+            isOneToOne: false
+            referencedRelation: "coins"
+            referencedColumns: ["eurio_id"]
+          },
+        ]
+      }
+      coin_names_i18n: {
+        Row: {
+          confidence: string
+          eurio_id: string
+          fetched_at: string
+          lang: string
+          model: string | null
+          source: string
+          title: string
+        }
+        Insert: {
+          confidence?: string
+          eurio_id: string
+          fetched_at?: string
+          lang: string
+          model?: string | null
+          source?: string
+          title: string
+        }
+        Update: {
+          confidence?: string
+          eurio_id?: string
+          fetched_at?: string
+          lang?: string
+          model?: string | null
+          source?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coin_names_i18n_eurio_id_fkey"
+            columns: ["eurio_id"]
+            isOneToOne: false
+            referencedRelation: "coins"
+            referencedColumns: ["eurio_id"]
+          },
+        ]
+      }
       coin_series: {
         Row: {
           country: string
@@ -162,6 +332,82 @@ export type Database = {
           },
         ]
       }
+      coin_source_refs: {
+        Row: {
+          coin_type_id: string
+          fetched_at: string
+          id: number
+          native_id: string
+          native_url: string | null
+          source: string
+        }
+        Insert: {
+          coin_type_id: string
+          fetched_at?: string
+          id?: number
+          native_id: string
+          native_url?: string | null
+          source: string
+        }
+        Update: {
+          coin_type_id?: string
+          fetched_at?: string
+          id?: number
+          native_id?: string
+          native_url?: string | null
+          source?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coin_source_refs_coin_type_id_fkey"
+            columns: ["coin_type_id"]
+            isOneToOne: false
+            referencedRelation: "coins"
+            referencedColumns: ["eurio_id"]
+          },
+        ]
+      }
+      coin_variants: {
+        Row: {
+          created_at: string
+          finish: string
+          id: string
+          notes: string | null
+          obverse_url: string | null
+          parent_type_id: string
+          reverse_url: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          finish: string
+          id: string
+          notes?: string | null
+          obverse_url?: string | null
+          parent_type_id: string
+          reverse_url?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          finish?: string
+          id?: string
+          notes?: string | null
+          obverse_url?: string | null
+          parent_type_id?: string
+          reverse_url?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coin_variants_parent_type_id_fkey"
+            columns: ["parent_type_id"]
+            isOneToOne: false
+            referencedRelation: "coins"
+            referencedColumns: ["eurio_id"]
+          },
+        ]
+      }
       coins: {
         Row: {
           collector_only: boolean
@@ -184,9 +430,10 @@ export type Database = {
           last_updated: string
           mintage: number | null
           national_variants: Json | null
-          lent_to_me: boolean
           needs_review: boolean
           personal_owned: boolean
+          review_action_hint: string | null
+          review_payload: Json | null
           review_reason: string | null
           series_id: string | null
           sources_used: string[]
@@ -214,11 +461,12 @@ export type Database = {
           is_withdrawn?: boolean
           issue_type?: string | null
           last_updated?: string
-          lent_to_me?: boolean
           mintage?: number | null
           national_variants?: Json | null
           needs_review?: boolean
           personal_owned?: boolean
+          review_action_hint?: string | null
+          review_payload?: Json | null
           review_reason?: string | null
           series_id?: string | null
           sources_used?: string[]
@@ -246,11 +494,12 @@ export type Database = {
           is_withdrawn?: boolean
           issue_type?: string | null
           last_updated?: string
-          lent_to_me?: boolean
           mintage?: number | null
           national_variants?: Json | null
           needs_review?: boolean
           personal_owned?: boolean
+          review_action_hint?: string | null
+          review_payload?: Json | null
           review_reason?: string | null
           series_id?: string | null
           sources_used?: string[]
@@ -350,6 +599,47 @@ export type Database = {
           },
         ]
       }
+      mint_release_prices: {
+        Row: {
+          currency: string
+          fetched_at: string
+          grade_eurio: string | null
+          grade_raw: string
+          id: number
+          mint_release_id: string
+          price: number
+          source: string
+        }
+        Insert: {
+          currency?: string
+          fetched_at?: string
+          grade_eurio?: string | null
+          grade_raw: string
+          id?: number
+          mint_release_id: string
+          price: number
+          source: string
+        }
+        Update: {
+          currency?: string
+          fetched_at?: string
+          grade_eurio?: string | null
+          grade_raw?: string
+          id?: number
+          mint_release_id?: string
+          price?: number
+          source?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mint_release_prices_mint_release_id_fkey"
+            columns: ["mint_release_id"]
+            isOneToOne: false
+            referencedRelation: "coin_mint_releases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       model_classes: {
         Row: {
           class_id: string
@@ -385,56 +675,6 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
-      }
-      coin_market_prices: {
-        Row: {
-          id: number
-          eurio_id: string
-          source: string
-          quality: string | null
-          p25: number | null
-          p50: number | null
-          p75: number | null
-          samples_count: number | null
-          with_sales_count: number | null
-          query_used: string | null
-          fetched_at: string
-        }
-        Insert: {
-          id?: number
-          eurio_id: string
-          source: string
-          quality?: string | null
-          p25?: number | null
-          p50?: number | null
-          p75?: number | null
-          samples_count?: number | null
-          with_sales_count?: number | null
-          query_used?: string | null
-          fetched_at?: string
-        }
-        Update: {
-          id?: number
-          eurio_id?: string
-          source?: string
-          quality?: string | null
-          p25?: number | null
-          p50?: number | null
-          p75?: number | null
-          samples_count?: number | null
-          with_sales_count?: number | null
-          query_used?: string | null
-          fetched_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "coin_market_prices_eurio_id_fkey"
-            columns: ["eurio_id"]
-            isOneToOne: false
-            referencedRelation: "coins"
-            referencedColumns: ["eurio_id"]
-          },
-        ]
       }
       review_queue: {
         Row: {
@@ -670,7 +910,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      coins_set_source_flag: {
+        Args: { _eurio_id: string; _source: string }
+        Returns: undefined
+      }
     }
     Enums: {
       [_ in never]: never

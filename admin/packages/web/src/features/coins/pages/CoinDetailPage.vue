@@ -73,6 +73,28 @@ interface LmdlpPrice {
 }
 const lmdlpPrices = ref<LmdlpPrice[] | null | undefined>(undefined)
 
+// i18n titles + aliases (audit i18n-147)
+interface I18nRow {
+  lang: string
+  title: string
+  source: string
+  confidence: string
+  model: string | null
+}
+interface AliasRow {
+  lang: string
+  alias: string
+  source: string
+  confidence: string
+}
+const i18nRows = ref<I18nRow[] | undefined>(undefined)
+const aliasesRows = ref<AliasRow[] | undefined>(undefined)
+const I18N_LANG_ORDER = ['fr', 'en', 'de', 'it', 'es', 'nl'] as const
+const I18N_LANG_LABEL: Record<string, string> = {
+  fr: 'Français', en: 'English', de: 'Deutsch',
+  it: 'Italiano', es: 'Español', nl: 'Nederlands', xx: 'Universel',
+}
+
 const issueLabel: Record<IssueType, string> = {
   'circulation':       'Circulation',
   'commemo-national':  'Commémo nationale',
@@ -177,6 +199,32 @@ async function fetchCoin(eurioId: string) {
   loadConfusion(coin.value.eurio_id)
   // eBay market prices — non-blocking
   loadMarketPrice(coin.value.eurio_id)
+  // i18n titles + aliases — non-blocking
+  loadI18nAndAliases(coin.value.eurio_id)
+}
+
+async function loadI18nAndAliases(eurioId: string) {
+  i18nRows.value = undefined
+  aliasesRows.value = undefined
+  const [{ data: i18n }, { data: aliases }] = await Promise.all([
+    supabase
+      .from('coin_names_i18n')
+      .select('lang, title, source, confidence, model')
+      .eq('eurio_id', eurioId),
+    supabase
+      .from('coin_aliases')
+      .select('lang, alias, source, confidence')
+      .eq('eurio_id', eurioId),
+  ])
+  const i18nByLang = new Map<string, I18nRow>()
+  for (const r of (i18n ?? []) as I18nRow[]) i18nByLang.set(r.lang, r)
+  const ordered: I18nRow[] = []
+  for (const l of I18N_LANG_ORDER) {
+    const row = i18nByLang.get(l)
+    if (row) ordered.push(row)
+  }
+  i18nRows.value = ordered
+  aliasesRows.value = (aliases ?? []) as AliasRow[]
 }
 
 async function loadConfusion(eurioId: string) {
@@ -341,6 +389,33 @@ const confusionOtherNeighbors = computed(() => {
     n => n.eurio_id !== confusionNearest.value!.eurio_id,
   )
 })
+
+const aliasesByLang = computed(() => {
+  const map = new Map<string, AliasRow[]>()
+  for (const a of aliasesRows.value ?? []) {
+    if (!map.has(a.lang)) map.set(a.lang, [])
+    map.get(a.lang)!.push(a)
+  }
+  const langOrder = [...I18N_LANG_ORDER, 'xx']
+  return langOrder
+    .map(l => ({ lang: l, items: map.get(l) ?? [] }))
+    .filter(g => g.items.length > 0)
+})
+
+function i18nSourceStyle(source: string, confidence: string): { bg: string; fg: string; label: string } {
+  if (source === 'numista') return { bg: 'var(--success-soft, #e8f5e9)', fg: 'var(--success, #2e7d32)', label: 'Numista · canon' }
+  if (source === 'manual')  return { bg: 'var(--indigo-100, #e8eaf6)', fg: 'var(--indigo-700, #3f51b5)', label: 'Manuel · canon' }
+  if (source === 'llm_v1' && confidence === 'uncertain') return { bg: 'var(--warning-soft, #fff8e1)', fg: 'var(--warning, #f57f17)', label: 'LLM · incertain' }
+  if (source === 'llm_v1') return { bg: 'var(--surface-1)', fg: 'var(--ink-500)', label: 'LLM · assisté' }
+  return { bg: 'var(--surface-1)', fg: 'var(--ink-500)', label: source }
+}
+
+function aliasSourceStyle(source: string, confidence: string): { bg: string; fg: string } {
+  if (source === 'llm' && confidence === 'low') return { bg: 'var(--warning-soft, #fff8e1)', fg: 'var(--warning, #f57f17)' }
+  if (source === 'llm') return { bg: 'var(--surface-1)', fg: 'var(--ink-500)' }
+  if (source === 'acronym') return { bg: 'var(--indigo-100, #e8eaf6)', fg: 'var(--indigo-700, #3f51b5)' }
+  return { bg: 'var(--surface-1)', fg: 'var(--ink-500)' }
+}
 
 const crossRefLinks = computed(() => {
   if (!coin.value) return []
@@ -849,6 +924,116 @@ const crossRefLinks = computed(() => {
         </div>
       </Transition>
     </Teleport>
+
+    <!-- ═══ Localisation : titres traduits & alias ═══ -->
+    <div v-if="coin" class="mt-12">
+      <div class="mb-5 flex items-end justify-between border-b pb-3"
+           style="border-color: var(--surface-3);">
+        <div>
+          <p class="text-[10px] uppercase"
+             style="color: var(--ink-500); letter-spacing: var(--tracking-eyebrow);">
+            Localisation
+          </p>
+          <h2 class="mt-0.5 font-display text-2xl italic font-semibold"
+              style="color: var(--indigo-700);">
+            Titres traduits & alias
+          </h2>
+        </div>
+        <span v-if="i18nRows && i18nRows.length > 0"
+              class="font-mono text-[10px] uppercase"
+              style="color: var(--ink-400); letter-spacing: var(--tracking-eyebrow);">
+          {{ i18nRows.length }} langs · {{ aliasesRows?.length ?? 0 }} alias
+        </span>
+      </div>
+
+      <!-- Loading -->
+      <div v-if="i18nRows === undefined"
+           class="h-32 animate-pulse rounded-lg"
+           style="background: var(--surface-1);" />
+
+      <!-- Empty -->
+      <div v-else-if="i18nRows.length === 0"
+           class="flex items-center gap-3 rounded-lg border px-5 py-4"
+           style="border-color: var(--surface-3); background: var(--surface);">
+        <Info class="h-5 w-5" style="color: var(--ink-400);" />
+        <p class="text-sm" style="color: var(--ink-500);">
+          Aucune traduction enregistrée pour cette pièce.
+        </p>
+      </div>
+
+      <!-- Content -->
+      <template v-else>
+        <!-- Localized titles (6 cards) -->
+        <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div
+            v-for="row in i18nRows"
+            :key="row.lang"
+            class="flex flex-col gap-2 rounded-lg border p-4"
+            style="border-color: var(--surface-3); background: var(--surface);"
+          >
+            <div class="flex items-center justify-between">
+              <span class="font-mono text-xs font-semibold uppercase"
+                    style="color: var(--ink-500); letter-spacing: var(--tracking-eyebrow);">
+                {{ row.lang }} · {{ I18N_LANG_LABEL[row.lang] ?? row.lang }}
+              </span>
+              <span
+                class="rounded-full px-2 py-0.5 text-[10px] font-medium uppercase"
+                :style="{
+                  background: i18nSourceStyle(row.source, row.confidence).bg,
+                  color: i18nSourceStyle(row.source, row.confidence).fg,
+                  letterSpacing: 'var(--tracking-eyebrow)',
+                }"
+              >
+                {{ i18nSourceStyle(row.source, row.confidence).label }}
+              </span>
+            </div>
+            <p class="font-display text-sm leading-snug" style="color: var(--ink);">
+              {{ row.title }}
+            </p>
+            <p v-if="row.model"
+               class="font-mono text-[10px]"
+               style="color: var(--ink-400);">
+              {{ row.model }}
+            </p>
+          </div>
+        </div>
+
+        <!-- Aliases grouped by lang -->
+        <div v-if="aliasesByLang.length > 0" class="mt-8">
+          <p class="mb-3 text-[10px] uppercase"
+             style="color: var(--ink-500); letter-spacing: var(--tracking-eyebrow);">
+            Alias colloquiaux (theme-matcher)
+          </p>
+          <div class="space-y-3">
+            <div
+              v-for="group in aliasesByLang"
+              :key="group.lang"
+              class="flex items-baseline gap-3 rounded-lg border px-4 py-3"
+              style="border-color: var(--surface-3); background: var(--surface);"
+            >
+              <span class="w-12 shrink-0 font-mono text-xs font-semibold uppercase"
+                    style="color: var(--ink-500); letter-spacing: var(--tracking-eyebrow);">
+                {{ group.lang }}
+              </span>
+              <div class="flex flex-wrap gap-1.5">
+                <span
+                  v-for="a in group.items"
+                  :key="a.alias"
+                  class="rounded-md px-2 py-0.5 font-mono text-xs"
+                  :style="{
+                    background: aliasSourceStyle(a.source, a.confidence).bg,
+                    color: aliasSourceStyle(a.source, a.confidence).fg,
+                  }"
+                  :title="`${a.source} · ${a.confidence}`"
+                >
+                  {{ a.alias }}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </template>
+    </div>
 
     <!-- ═══ Cartographie de confusion (Phase 1 ML scalability) — pleine largeur ═══ -->
     <div v-if="coin" class="mt-12">
