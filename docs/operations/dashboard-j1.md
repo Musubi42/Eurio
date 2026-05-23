@@ -193,9 +193,16 @@ Avancement des cohortes physiques capturées dans l'app Android.
   encore la donnée centralisée. Sinon `image_assets` filtré sur un tag
   `cohort_capture` ? → **À résoudre avant build** (cf. open questions).
 
-**Open question** : où sont stockées les captures cohort ? Si elles ne
-sont pas accessibles via Supabase / eurio.db, la 4e section doit se
-limiter au statut des cohortes (members count, frozen/draft).
+**Réponse open question (2026-05-23)** : les captures cohort vivent sur
+le PC dans `ml/datasets/<numista_id>/captures/`, transférées par `adb pull`
+depuis le build variant `cohortTest`. Pas MinIO, pas Supabase, pas
+centralisé. Index par CSV : `ml/state/cohort_csvs/<cohort_slug>.csv`.
+
+→ **Section 4 MVP** se limite donc au statut des cohortes (members count,
+frozen/draft) requêtable depuis Supabase. Le **comptage de captures**
+nécessiterait soit un endpoint ML API local (FastAPI ml/), soit la
+création d'une table d'index `cohort_captures` synchronisée depuis le
+filesystem. C'est un chunk séparé.
 
 ## Effort estimé
 
