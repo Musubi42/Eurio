@@ -31,6 +31,8 @@ from . import review_queue_routes
 from . import sources_routes
 from . import coins_review_routes
 from . import bench_routes
+from . import operations_routes
+from . import referential_routes
 
 ML_DIR = Path(__file__).parent.parent
 VENV_PYTHON = str(ML_DIR / ".venv" / "bin" / "python")
@@ -100,6 +102,12 @@ app.include_router(coins_review_routes.router)
 
 # Wire /bench — studio bench du theme-matcher (local-only, lecture seule).
 app.include_router(bench_routes.router)
+
+# Wire /operations — dashboard d'opérations J1/J4 (pulse, readiness, diversity, cohorts).
+app.include_router(operations_routes.router)
+
+# Wire /referential — gestion du référentiel coin (images canoniques locales + à venir).
+app.include_router(referential_routes.router)
 
 
 @app.on_event("startup")

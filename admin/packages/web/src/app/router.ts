@@ -66,7 +66,15 @@ const router = createRouter({
         },
         {
           path: 'review',
+          component: () => import('@/features/review/pages/ReviewDashboardPage.vue'),
+        },
+        {
+          path: 'review/manual',
           component: () => import('@/features/review/pages/ReviewPage.vue'),
+        },
+        {
+          path: 'review/auto-accept',
+          component: () => import('@/features/review/pages/AutoAcceptReviewPage.vue'),
         },
         {
           path: 'review/lot/:listing_key',
@@ -75,6 +83,14 @@ const router = createRouter({
         {
           path: 'audit',
           component: () => import('@/features/audit/pages/AuditPage.vue'),
+        },
+        {
+          path: 'operations',
+          component: () => import('@/features/operations/pages/OperationsPage.vue'),
+        },
+        {
+          path: 'referential',
+          component: () => import('@/features/referential/pages/ReferentialPage.vue'),
         },
         {
           path: 'parity',
