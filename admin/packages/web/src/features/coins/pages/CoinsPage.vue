@@ -8,7 +8,7 @@ import {
 import { zoneStyle } from '@/features/confusion/composables/useConfusionZone'
 import { supabase } from '@/shared/supabase/client'
 import type { Coin, ConfusionZone, IssueType } from '@/shared/supabase/types'
-import { firstImageUrl } from '@/shared/utils/coin-images'
+import { firstImageUrl, loadCanonicalIndex } from '@/shared/utils/coin-images'
 import { useDebounceFn } from '@vueuse/core'
 import { Brain, Check, Copy, FlaskConical, HandHelping, Image as ImageIcon, ImageOff, Layers, Play, Search, Sparkles, Wallet } from 'lucide-vue-next'
 import { fetchEnrichmentCounts } from '../composables/useCoinAssets'
@@ -274,7 +274,9 @@ onMounted(() => {
   // reloads with a 5-min staleTime, so most navigations don't hit Supabase.
   // fetchCoins lazy-awaits trainedIds/zones via .suspense() when the
   // matching filter is active.
-  fetchCoins()
+  // Load canonical image index first so firstImageUrl can gate dev rewrites
+  // on its presence (avoids 404s on zombie coins not in eurio.db).
+  loadCanonicalIndex().then(() => fetchCoins())
   checkMlApi()
   void loadEnrichmentCounts()
   mlApiInterval = setInterval(checkMlApi, 30_000)

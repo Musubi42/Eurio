@@ -47,6 +47,9 @@ ml/output/
 ml/yolov8n.pt
 ml/.ebay_token_cache.json
 ml/.dataset_cache/
+# Images canoniques générées localement par scripts/migrate_canonical_images_local.py.
+# Régénérables depuis eurio.db (coin_canonical_images.url) — pas besoin de versionner.
+ml/canonical_images/
 ml/state/eurio.db
 ml/state/eurio.db-wal
 ml/state/eurio.db-shm

@@ -2,7 +2,7 @@
 
 > **À quoi sert ce doc** : reprendre une session froide en 5 min. Photo de la trajectoire vers le premier modèle ArcFace utile et son déploiement Android, dans le bon ordre, avec les dépendances explicites.
 >
-> **Dernière mise à jour** : 2026-05-23
+> **Dernière mise à jour** : 2026-05-25
 >
 > **Pour l'historique des phases ML/data antérieures** : voir `docs/phases/` et `docs/archive/`.
 > **Pour la doc app Android** : voir `docs/app-implem-phases/`.
@@ -14,6 +14,47 @@
 L'infrastructure data + scrape + matching est en place. Il reste à passer en cadence routine sur le scrape eBay, **accumuler des images** sur les 510/614 classes encore à vide, **entraîner** ArcFace sur la masse résultante (Numista canon augmenté + wild eBay+autres), et **bench** sur les cohortes capture physiques.
 
 Le dashboard `/operations` est le tableau de bord qui orchestre la décision "OK je peux lancer le training".
+
+---
+
+## Snapshot quantitatif (2026-05-25, post-livraison Référentiel A/B/C)
+
+**Catalogue & classes**
+- 614 commémo 2 € en catalogue, 553 classes distinctes (après design_group merge)
+- **0 classes à payload vide** (148 enrichies via Numista per-coin, livré 2026-05-24)
+- **14 classes à 0 image** (Numista n'a pas non plus d'images) — cible du chunk BCE dédié
+- 600/614 ont une image canonique locale (98 %)
+
+**Training readiness vs seuil 30** (inchangé — l'enrichissement Numista ajoute des canonicals mais pas du wild)
+| Tier | n | % |
+|---|---|---|
+| ✅ ≥ 30 sources | 30 | 5 % |
+| ⚠️ 5-29 | 13 | 2 % |
+| 🔴 < 5 | 510 | **92 %** |
+
+**Référentiel — état post-Discover live 2026-05-25**
+- **6 nouvelles pièces 2026** découvertes via Numista oracle (CY/HR/EE/IE/DE/LT)
+- 459 zombies Supabase supprimés
+- Images locales : 1185 rows en `coin_canonical_images`, 100 % avec `local_path`
+- Push Supabase aligné : 2782 coins, 0 zombie, 2370 fichiers Storage à jour
+
+**Joint issues — 20 variants nationaux manquants détectés** :
+- Treaty of Rome 2007 (PT), EMU 2009 (5), Euro cash 2012 (3), EU flag 2015 (4), Erasmus 2022 (7)
+
+**Scrape eBay (7 derniers jours)** — inchangé
+- 44 passes (22 DE + 22 ES), 2 920 items kept, recall 72-76 %
+- 528 classes sans wild, scrape convergent sur les stars
+
+**Cohortes bench** — inchangé
+- 3 frozen / 2 draft. `green-v1` à 1 membre. `mix-zone-17` à 16.
+
+### Lecture stratégique
+
+1. **Référentiel data quality est à un palier solide** (Chunks A/B/C livrés 2026-05-24/25). On a maintenant : images locales canoniques (Chunk A), page `/referential` avec Heal + Discover + Push (Chunks B/C), joint issues tracés, sync Supabase idempotent.
+2. **Trust model acté** : confiance par provenance tracée (cf. memory `project_trust_model_referential`). Aucune source n'est "totale" ; on agrège.
+3. Le bottleneck training reste la **couverture wild eBay** des 510 rouges. Pas changé.
+4. Le seuil 30 reste à valider via mini-bench. Pas changé.
+5. Nouveau chantier majeur identifié : **Source BCE complète** (orchestrator dans `/sources` + crop + multi-source UI + review divergences). Session dédiée — gros morceau.
 
 ---
 
@@ -31,6 +72,10 @@ Le dashboard `/operations` est le tableau de bord qui orchestre la décision "OK
 | Cohort capture flow (admin pilote, app Android `cohortTest`) | Live | `docs/admin/cohort-capture-flow/`, memory `project_cohort_capture_flow` |
 | Admin coin details : section "Localisation" i18n + alias | Live | commit `9b5a7db` |
 | Cascade-sync MinIO write-through | Chunks 1-4 livrés | `docs/harmonisation-images/` |
+| Stockage local images canoniques `ml/canonical_images/` | Livré 2026-05-24 (Chunk A) | `ml/referential/canonical_image_local.py` |
+| Dashboard `/operations` (pulse + readiness + diversité + cohorts) | Livré 2026-05-24 | `docs/operations/dashboard-j1.md` |
+| Page `/referential` (Heal + Discover + Push + Joint issues) | Livrée 2026-05-25 (Chunks B/C) | `ml/api/referential_routes.py` |
+| Trust model par provenance tracée | Acté 2026-05-25 | memory `project_trust_model_referential` |
 
 ---
 
@@ -135,21 +180,41 @@ J7 : Déploiement Android du nouveau modèle (LiteRT)
 
 | Suspens | Sévérité | Où le trancher |
 |---|---|---|
-| **Re-bench routing marketplaces** (i18n LLM livré → re-run benchmark pourrait inclure FR/IT/NL) | 🟠 | Memory `project_marketplace_routing_benchmark` mentionne déjà ce todo |
+| **Source BCE complète** (orchestrator + crop + multi-source UI + review divergences) | 🔴 | Session dédiée, voir item #5 ci-dessus. Discussion archi déjà actée 2026-05-25. |
+| **`confidence_level` dérivé de `coin_observations`** : vue SQL ou colonne backfilled ? | 🟠 | Décider au moment d'implémenter le badge UI sur `/coins`. |
 | **Seuil 30 fondé sur quel bench ?** (estimation, pas data) | 🟠 | Run un mini-training sur classes déjà bien dotées (BE 2012 à 279) avec 10/30/100 pour comparer R@1 |
-| **`coin_canonical_images` vs `image_assets`** : différence concrète, ce que la pipeline ingest exactement | 🟠 | Spot-read `training-pipeline/sprint-1*` ou code `iteration_augmentations.py` |
+| **Re-bench routing marketplaces** (i18n LLM livré → re-run benchmark pourrait inclure FR/IT/NL) | 🟠 | Memory `project_marketplace_routing_benchmark` mentionne déjà ce todo |
+| **Joint issues — 20 variants manquants** (PT Rome 2007, etc.) | 🟠 | À résoudre via Discover ciblé par numista_id ou ajout manuel via UI Référentiel. |
+| **JOUE série C comme backstop d'autorité** | 🟢 | Mentionné dans le trust model, à explorer seulement si Numista+BCE laissent passer une pièce. |
+| **`coin_canonical_images` vs `image_assets`** : différence concrète, ce que la pipeline ingest exactement | 🟢 | Spot-read `training-pipeline/sprint-1*` ou code `iteration_augmentations.py` |
 | **Comptage captures cohort** dans dashboard Section 4 | ⚪ | Soit endpoint ML API local, soit table d'index `cohort_captures`. Chunk séparé après MVP. |
-| **Enrichissement obverses Numista manquants** | ⚪ | Sourcer les classes sans canonical. Independent de J1-J7 mais nécessaire à J0/J5. |
-| **Chart lib pour dashboard** | ⚪ | À choisir lors du build dashboard. Démarrer en tableaux + sparklines custom si pas de lib en place. |
 
 ---
 
-## Prochains livrables (sans ordre forcé)
+## Prochains livrables
 
-1. **Build du dashboard `/operations`** — spec prête dans `docs/operations/dashboard-j1.md` (~4 h).
-2. **Re-bench routing marketplaces** avec i18n LLM activée (~2 h).
-3. **Mini-benchmark seuil training** (10 vs 30 vs 100 sources / classe sur classes déjà riches).
-4. **Spec ergonomie review** (rendre J2 plus rapide).
+### Référentiel / data quality (en cours)
+
+1. ~~Build du dashboard `/operations`~~ — **livré 2026-05-24**.
+2. ~~Combler J0 — Numista per-coin enrichment (58 classes)~~ — **livré 2026-05-24**.
+3. ~~Storage local `ml/canonical_images/` + endpoints `/referential/canonical/*`~~ — **livré 2026-05-24 (Chunk A)**.
+4. ~~Page `/referential` Heal/Discover/Push + Joint issues~~ — **livrée 2026-05-25 (Chunks B/C)**.
+5. **Session dédiée Source BCE — gros chunk** (acté 2026-05-25, à faire en session séparée) :
+   - BCE comme Source orchestrée dans `/sources` (runs, status, cadence, idempotence)
+   - Cropping intelligent des images BCE (réutilise Hough circle du pipeline scan)
+   - Affichage multi-source dans `/coins/:id` (Numista + BCE + eBay side-by-side)
+   - Workflow review éditorial pour les divergences BCE↔Numista (slug, theme, date…)
+   - Objectif image : combler les 14 zero-canon résiduels (it-2009-louis-braille, etc.) avec source officielle BCE
+   - Voir trust model en memory `project_trust_model_referential`
+6. **Implémenter `confidence_level` sur les coins** (dérivé de `coin_observations`, badge UI sur `/coins`). Issue du trust model.
+7. **Joint issues — combler les 20 variants manquants** (PT/DE/IT/LU/SK/etc.) via Discover ciblé ou ajout manuel.
+
+### Training pipeline (en attente que la data soit propre)
+
+8. **Mini-benchmark seuil training** (10 vs 30 vs 100 sources / classe sur classes déjà riches).
+9. **Spec scrape sweep coverage-first** (prioriser 510 rouges plutôt que stars).
+10. **Re-bench routing marketplaces** avec i18n LLM activée (~2 h).
+11. **Spec ergonomie review** (rendre J2 plus rapide).
 
 ---
 
@@ -163,6 +228,9 @@ J7 : Déploiement Android du nouveau modèle (LiteRT)
 - **Cohort capture flow** : `docs/admin/cohort-capture-flow/`
 - **Dashboard spec** : `docs/operations/dashboard-j1.md`
 - **App Android par phases** : `docs/app-implem-phases/README.md`
+- **Analyse J0 + référentiel** : `docs/operations/j0-gap-analysis.md`
+- **Trust model référentiel** : memory `project_trust_model_referential`
+- **Architecture stockage** : memory `feedback_architecture_eurio_db_vs_supabase`
 
 ---
 

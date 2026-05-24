@@ -1,4 +1,4 @@
-import { Brain, CircleAlert, ClipboardCheck, ClipboardList, Coins, Database, Eye, FlaskConical, Gavel, LayoutDashboard, Layers, Network, Scale, ShieldQuestion } from 'lucide-vue-next'
+import { Activity, BookOpen, Brain, CircleAlert, ClipboardCheck, ClipboardList, Coins, Database, Eye, FlaskConical, Gavel, LayoutDashboard, Layers, Network, Scale, ShieldQuestion } from 'lucide-vue-next'
 import type { Component } from 'vue'
 
 export interface NavItem {
@@ -75,6 +75,18 @@ export const navSections: NavSection[] = [
         label: 'Audit log',
         icon: ClipboardList,
         route: '/audit',
+      },
+      {
+        id: 'operations',
+        label: 'Operations',
+        icon: Activity,
+        route: '/operations',
+      },
+      {
+        id: 'referential',
+        label: 'Référentiel',
+        icon: BookOpen,
+        route: '/referential',
       },
     ],
   },
