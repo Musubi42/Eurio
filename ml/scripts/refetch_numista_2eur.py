@@ -42,12 +42,192 @@ Sous-étapes prévues post-P.7a — résumées ici pour mémoire ::
 from __future__ import annotations
 
 import argparse
+import json
 import sys
+import time
+from collections import Counter
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
+
+import httpx
 
 ML_DIR = Path(__file__).resolve().parent.parent
 if str(ML_DIR) not in sys.path:
     sys.path.insert(0, str(ML_DIR))
+
+
+API_BASE = "https://api.numista.com/v3"
+REQUEST_DELAY_S = 0.4   # politeness — Numista WAF tolère mais 1+/s vaut mieux
+HTTP_TIMEOUT = 20
+
+
+# ─── Numista API wrappers (key injected by KeyManager.call) ────────────────
+
+
+def api_type_details(api_key: str, nid: int) -> dict:
+    resp = httpx.get(
+        f"{API_BASE}/types/{nid}",
+        params={"lang": "en"},
+        headers={"Numista-API-Key": api_key},
+        timeout=HTTP_TIMEOUT,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+def api_type_issues(api_key: str, nid: int) -> dict | list:
+    resp = httpx.get(
+        f"{API_BASE}/types/{nid}/issues",
+        params={"lang": "en"},
+        headers={"Numista-API-Key": api_key},
+        timeout=HTTP_TIMEOUT,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+def api_issue_prices(api_key: str, nid: int, iid: int) -> dict:
+    resp = httpx.get(
+        f"{API_BASE}/types/{nid}/issues/{iid}/prices",
+        params={"currency": "EUR", "lang": "en"},
+        headers={"Numista-API-Key": api_key},
+        timeout=HTTP_TIMEOUT,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+# ─── Cache helpers ────────────────────────────────────────────────────────
+
+
+def _cache_paths(cache_dir: Path, nid: int) -> dict[str, Path]:
+    """Layout : {cache_dir}/{nid}/type.json, issues.json, prices_{iid}.json."""
+    nid_dir = cache_dir / str(nid)
+    return {
+        "dir": nid_dir,
+        "type": nid_dir / "type.json",
+        "issues": nid_dir / "issues.json",
+    }
+
+
+def _price_cache_path(cache_dir: Path, nid: int, iid: int) -> Path:
+    return cache_dir / str(nid) / f"prices_{iid}.json"
+
+
+def _read_json(path: Path) -> Any:
+    return json.loads(path.read_text())
+
+
+def _write_json(path: Path, payload: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False))
+
+
+def _extract_issues(payload: Any) -> list[dict]:
+    """Numista /issues retourne parfois une list, parfois {'issues': [...]}.
+    Normalise."""
+    if isinstance(payload, list):
+        return payload
+    if isinstance(payload, dict):
+        return payload.get("issues", []) or []
+    return []
+
+
+# ─── Fetcher — orchestrate API + cache ───────────────────────────────────
+
+
+@dataclass
+class FetchBundle:
+    """Snapshot des 3 endpoints Numista pour un NID."""
+    nid: int
+    type_payload: dict
+    issues_payload: Any
+    # iid -> prices_payload. Vide si --skip-prices ou si pas d'issues.
+    prices_by_iid: dict[int, dict] = field(default_factory=dict)
+
+
+@dataclass
+class FetchStats:
+    api_calls: int = 0
+    cache_hits: int = 0
+    cache_misses: int = 0
+    errors: list[tuple[int, str]] = field(default_factory=list)
+
+
+class Fetcher:
+    """Orchestre les calls Numista pour un NID avec cache disque idempotent.
+
+    Politique :
+    - Si le fichier cache existe et que ``refresh=False`` → load disk, no API.
+    - Sinon → call API via ``KeyManager.call`` (rotation 429 automatique),
+      write to cache.
+    - ``time.sleep(REQUEST_DELAY_S)`` entre 2 calls API (pas entre 2 cache hits).
+    """
+
+    def __init__(self, km, cache_dir: Path, *, refresh: bool = False) -> None:
+        self.km = km
+        self.cache_dir = cache_dir
+        self.refresh = refresh
+        self.stats = FetchStats()
+
+    def _get_cached_or_fetch(
+        self, cache_path: Path, fn, *args
+    ) -> Any:
+        if cache_path.exists() and not self.refresh:
+            self.stats.cache_hits += 1
+            return _read_json(cache_path)
+        # Politeness delay between API calls.
+        if self.stats.api_calls > 0:
+            time.sleep(REQUEST_DELAY_S)
+        payload = self.km.call(fn, *args)
+        self.stats.api_calls += 1
+        self.stats.cache_misses += 1
+        _write_json(cache_path, payload)
+        return payload
+
+    def fetch_nid(self, nid: int, *, skip_prices: bool = False) -> FetchBundle | None:
+        """Return FetchBundle for one NID, or None on fatal error."""
+        paths = _cache_paths(self.cache_dir, nid)
+        try:
+            type_payload = self._get_cached_or_fetch(
+                paths["type"], api_type_details, nid
+            )
+            issues_payload = self._get_cached_or_fetch(
+                paths["issues"], api_type_issues, nid
+            )
+        except Exception as e:
+            self.stats.errors.append((nid, f"meta fetch failed: {e}"))
+            return None
+
+        bundle = FetchBundle(
+            nid=nid,
+            type_payload=type_payload,
+            issues_payload=issues_payload,
+        )
+
+        if skip_prices:
+            return bundle
+
+        for issue in _extract_issues(issues_payload):
+            iid = issue.get("id")
+            if iid is None:
+                continue
+            cache_path = _price_cache_path(self.cache_dir, nid, iid)
+            try:
+                prices = self._get_cached_or_fetch(
+                    cache_path, api_issue_prices, nid, iid
+                )
+                bundle.prices_by_iid[int(iid)] = prices
+            except httpx.HTTPStatusError as e:
+                # 404 = pas de prices pour cette issue (cas connu Numista).
+                if e.response.status_code == 404:
+                    continue
+                self.stats.errors.append((nid, f"prices iid={iid}: {e}"))
+            except Exception as e:
+                self.stats.errors.append((nid, f"prices iid={iid}: {e}"))
+
+        return bundle
 
 
 def parse_nids_file(path: Path) -> list[int]:
@@ -140,8 +320,7 @@ def print_plan(nids: list[int], cache_dir: Path, *,
     if n > 5:
         print(f"    ... +{n - 5} more")
 
-    print("\n⚠️  P.7a SCAFFOLD — HTTP fetch + DB writes ne sont pas encore implémentés.")
-    print("    Voir P.7b/c/d (cf. module docstring).")
+    print("\n⚠️  P.7b SCAFFOLD — HTTP fetch + cache OK. DB writes arrivent en P.7c.")
 
 
 def main() -> int:
@@ -163,11 +342,15 @@ def main() -> int:
     mode.add_argument("--dry-run", action="store_true", default=True,
                       help="Plan only, no HTTP, no DB writes (default).")
     mode.add_argument("--apply", action="store_true",
-                      help="Execute refetch. (NB: P.7a scaffold ne fait rien live)")
+                      help="Execute fetch + cache to disk. DB writes arrivent en P.7c (no-op pour l'instant).")
     parser.add_argument("--skip-prices", action="store_true",
                         help="Skip /issues/{iid}/prices (~75%% quota saving).")
     parser.add_argument("--skip-images", action="store_true",
                         help="Skip image URL capture (deferred to V.2/V.3).")
+    parser.add_argument("--refresh-cache", action="store_true",
+                        help="Force re-fetch même si le cache disque est présent.")
+    parser.add_argument("--max-nids", type=int, default=None,
+                        help="Safety throttle : ne traite que les N premiers NIDs (utile pour smoke tests, ex: --max-nids 1).")
     args = parser.parse_args()
 
     try:
@@ -180,13 +363,60 @@ def main() -> int:
         print(f"⚠️  No NIDs found in {args.nids_file} (empty or all comments).")
         return 1
 
+    if args.max_nids is not None and args.max_nids > 0:
+        original_count = len(nids)
+        nids = nids[: args.max_nids]
+        print(f"ℹ️  --max-nids={args.max_nids} : throttle {original_count} → {len(nids)} NIDs")
+
     print_plan(
         nids, args.cache_dir,
         apply=args.apply,
         skip_prices=args.skip_prices,
         skip_images=args.skip_images,
     )
-    return 0
+
+    if not args.apply:
+        return 0
+
+    # ── P.7b execution : fetch + cache (DB writes deferred to P.7c) ──
+    km = _load_keymanager_safe()
+    if km is None:
+        print("\n❌ Cannot --apply without NUMISTA_API_KEY_MUSUBI* in env.", file=sys.stderr)
+        return 1
+
+    print("\n" + "═" * 60)
+    print("FETCH + CACHE")
+    print("═" * 60)
+
+    fetcher = Fetcher(km, args.cache_dir, refresh=args.refresh_cache)
+    bundles: dict[int, FetchBundle] = {}
+    for nid in nids:
+        print(f"▶ NID {nid} ...", end="", flush=True)
+        bundle = fetcher.fetch_nid(nid, skip_prices=args.skip_prices)
+        if bundle is None:
+            print(" ❌ FAILED")
+            continue
+        n_issues = len(_extract_issues(bundle.issues_payload))
+        n_prices = len(bundle.prices_by_iid)
+        title = bundle.type_payload.get("title", "?")
+        print(f" OK  ({n_issues} issues, {n_prices} prices)  «{title}»")
+        bundles[nid] = bundle
+
+    print("\n" + "═" * 60)
+    print("FETCH STATS")
+    print("═" * 60)
+    print(f"  Bundles collected : {len(bundles)} / {len(nids)}")
+    print(f"  API calls         : {fetcher.stats.api_calls}")
+    print(f"  Cache hits        : {fetcher.stats.cache_hits}")
+    print(f"  Cache misses      : {fetcher.stats.cache_misses}")
+    if fetcher.stats.errors:
+        print(f"  Errors ({len(fetcher.stats.errors)}) :")
+        for nid, msg in fetcher.stats.errors:
+            print(f"    {nid}: {msg}")
+
+    print("\n⚠️  P.7b — DB writes pas encore implémentés (P.7c). "
+          "Les payloads sont cachés sur disque pour P.7c.")
+    return 0 if bundles else 1
 
 
 if __name__ == "__main__":
