@@ -1194,3 +1194,78 @@ CREATE TABLE IF NOT EXISTS coin_edge_variants (
   notes    TEXT,
   PRIMARY KEY (eurio_id, variant)
 );
+
+-- ─── coin_series — séries fermées (Bundesländer, etc.) ──────────────────
+-- Concept éditorial : un Type appartient (au plus) à une série. Une série
+-- regroupe des Types qui partagent un theme curaté + une fenêtre temporelle
+-- (Bundesländer 2006-2022, etc.). Distinct de design_groups qui lie des
+-- pays autour d'un même design (joint-issues).
+--
+-- Migré depuis Supabase en P.8a (doctrine SQLite-only). minting_end_reason :
+-- 'completed' (série terminée), 'merged' (fusionnée), 'abandoned'.
+CREATE TABLE IF NOT EXISTS coin_series (
+  id                      TEXT PRIMARY KEY,
+  country                 TEXT NOT NULL,
+  designation             TEXT NOT NULL,
+  designation_i18n_json   TEXT,
+  description             TEXT,
+  minting_started_at      TEXT NOT NULL,
+  minting_ended_at        TEXT,
+  minting_end_reason      TEXT,
+  superseded_by_series_id TEXT REFERENCES coin_series(id) ON DELETE SET NULL,
+  supersedes_series_id    TEXT REFERENCES coin_series(id) ON DELETE SET NULL,
+  created_at              TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at              TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_coin_series_country ON coin_series(country);
+
+-- ─── coin_embeddings — vecteur ArcFace par eurio_id × model_version ─────
+-- Stocké comme BLOB float32 raw (numpy.tobytes()). Permet de répondre à la
+-- question "ce coin est-il dans le set d'entraînement du modèle vX ?" sans
+-- requêter training_run_classes (qui est run-keyed, pas model-version-keyed).
+--
+-- PK composite : un coin peut avoir plusieurs embeddings (re-trained sur N
+-- versions de modèle). En pratique, le frontend lit juste model_version =
+-- "le coin existe-t-il" (cf. useCoinLookups.useTrainedEurioIds).
+CREATE TABLE IF NOT EXISTS coin_embeddings (
+  eurio_id      TEXT NOT NULL REFERENCES coins(eurio_id) ON DELETE CASCADE,
+  model_version TEXT NOT NULL,
+  embedding     BLOB,
+  dim           INTEGER,
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (eurio_id, model_version)
+);
+CREATE INDEX IF NOT EXISTS idx_coin_embeddings_model
+  ON coin_embeddings(model_version);
+
+-- ─── sets / set_members — collections éditoriales ───────────────────────
+-- Concept produit : une "set" est une collection thématique (ex: "Premiers
+-- millésimes", "Capitales européennes") affichée dans l'app comme un défi.
+-- Migré depuis Supabase en P.8a. name_i18n JSON contient les libellés par
+-- langue ({fr: "...", en: "..."}).
+CREATE TABLE IF NOT EXISTS sets (
+  id                TEXT PRIMARY KEY,
+  name_i18n         TEXT NOT NULL,     -- JSON {lang: title}
+  description_i18n  TEXT,              -- JSON
+  category          TEXT NOT NULL,     -- ex: 'theme', 'country', 'year'
+  kind              TEXT NOT NULL,     -- ex: 'static', 'dynamic'
+  param_key         TEXT,              -- pour les sets dynamiques
+  criteria          TEXT,              -- JSON (filtres dynamiques)
+  display_order     INTEGER NOT NULL DEFAULT 0,
+  expected_count    INTEGER,
+  icon              TEXT,
+  reward            TEXT,              -- JSON
+  active            INTEGER NOT NULL DEFAULT 1,
+  created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at        TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_sets_active ON sets(active) WHERE active = 1;
+CREATE INDEX IF NOT EXISTS idx_sets_category ON sets(category);
+
+CREATE TABLE IF NOT EXISTS set_members (
+  set_id   TEXT NOT NULL REFERENCES sets(id) ON DELETE CASCADE,
+  eurio_id TEXT NOT NULL REFERENCES coins(eurio_id) ON DELETE CASCADE,
+  position INTEGER,
+  PRIMARY KEY (set_id, eurio_id)
+);
+CREATE INDEX IF NOT EXISTS idx_set_members_eurio ON set_members(eurio_id);

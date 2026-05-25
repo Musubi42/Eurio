@@ -96,6 +96,15 @@ from api import coin_assets_routes  # noqa: E402
 coin_assets_routes.bind(_store)
 app.include_router(coin_assets_routes.router)
 
+# Wire /coins/* (detail, lookups, prices, i18n, embedding, series, patch) —
+# P.8a doctrine SQLite-only, remplace les reads Supabase du frontend.
+from api import coins_routes, sets_routes  # noqa: E402
+
+coins_routes.bind(_store)
+app.include_router(coins_routes.router)
+sets_routes.bind(_store)
+app.include_router(sets_routes.router)
+
 # Wire /coins-review — review queue UI (chunk 3e).
 coins_review_routes.bind(lambda: get_supabase())
 app.include_router(coins_review_routes.router)
