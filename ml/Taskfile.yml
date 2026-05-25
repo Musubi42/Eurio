@@ -745,3 +745,9 @@ tasks:
     desc: "Vérifie qu'un backup eurio.db est restaurable et fidèle à la DB courante (P.5). Lecture-seule, copie le backup dans /tmp avant inspection."
     cmds:
       - "{{.VENV}}/python -m scripts.verify_backup_restore {{.CLI_ARGS}}"
+
+  # ─── Coin richness — P.6 wipe referential ────────────────────────────────
+  wipe-referential:
+    desc: "Wipe le référentiel + drop/recreate des 6 tables source-aware avec FK source. Par défaut --dry-run (lecture-seule). Pass --apply pour exécution sous confirmation interactive. ACTE DESTRUCTIF."
+    cmds:
+      - "{{.VENV}}/python -m scripts.wipe_referential {{.CLI_ARGS}}"
