@@ -32,24 +32,27 @@ from eval.class_resolver import (
     build_resolver,
     write_manifest,
 )
-from scan.normalize_snap import OUTPUT_SIZE, normalize_studio_path
+from scan.normalize_snap import CropConfig, OUTPUT_SIZE, normalize_studio_path
 
 
-def normalize_and_save(src: Path, dst: Path) -> bool:
-    """Run `normalize_studio` on src and write the 224×224 tight crop to dst.
+def normalize_and_save(src: Path, dst: Path,
+                       config: CropConfig | None = None) -> bool:
+    """Run `normalize_studio` on src and write the tight crop to dst.
 
     Studio pipeline (Otsu + minEnclosingCircle at WR=1024) — sub-pixel rim
-    capture and bimétal-aware. The 224×224 contract is identical to the
-    device pipeline (`normalize_device`) so train and inference distributions
-    align. Returns True on success; False if both contour and Hough fallback
-    failed — caller then falls back to a plain LANCZOS resize so the source
-    isn't dropped.
+    capture and bimétal-aware. The output size + crop format are governed by
+    `config` ; when None (default), behavior is legacy (224 × hard mask × 2%
+    margin) — bit-identique au comportement avant introduction de CropConfig.
+
+    Returns True on success; False if both contour and Hough fallback failed —
+    caller then falls back to a plain LANCZOS resize so the source isn't dropped.
     """
-    result = normalize_studio_path(src)
+    result = normalize_studio_path(src, config=config)
     if result.image is None:
+        size = config.output_size if config is not None else OUTPUT_SIZE
         print(f"  ! normalize_studio failed on {src} ({result.debug}), falling back to resize")
         with Image.open(src) as img:
-            img.convert("RGB").resize((OUTPUT_SIZE, OUTPUT_SIZE), Image.LANCZOS).save(
+            img.convert("RGB").resize((size, size), Image.LANCZOS).save(
                 dst, "JPEG", quality=95,
             )
         return False
@@ -157,6 +160,7 @@ def split_dataset(
     seed: int = 42,
     only_classes: set[str] | None = None,
     skip_train_split: bool = False,
+    crop_config: CropConfig | None = None,
 ) -> None:
     random.seed(seed)
 
@@ -227,7 +231,7 @@ def split_dataset(
             # Prefix with source numista dir to avoid collisions when multiple
             # numista members share a class.
             dst = split_dir / f"{img_path.parent.name}__{img_path.stem}.jpg"
-            normalize_and_save(img_path, dst)
+            normalize_and_save(img_path, dst, config=crop_config)
             totals[split] += 1
 
         print(
@@ -341,7 +345,46 @@ def main():
              "vient des symlinks bakés (cf. iteration_runner). N'efface pas "
              "output_dir préexistant pour préserver le symlink train/.",
     )
+    # CropConfig ablation : laisser None pour comportement legacy (2% / hard / 224)
+    parser.add_argument(
+        "--crop-margin-frac", type=float, default=None,
+        help="CropConfig margin_frac (fraction du rayon détecté). Défaut "
+             "legacy 0.02. Utiliser ≥0.05 pour préserver le rim/chanfrein.",
+    )
+    parser.add_argument(
+        "--crop-edge-mode", choices=["hard", "feathered", "none"], default=None,
+        help="CropConfig edge_mode. Défaut legacy 'hard' (masque circulaire "
+             "noir net). 'feathered' = transition douce, 'none' = pas de masque.",
+    )
+    parser.add_argument(
+        "--crop-feather-width-frac", type=float, default=None,
+        help="CropConfig feather_width_frac. Largeur du blur du masque "
+             "feathered, fraction du rayon. Ignoré si edge_mode != 'feathered'.",
+    )
+    parser.add_argument(
+        "--crop-output-size", type=int, default=None,
+        help="CropConfig output_size. Défaut legacy 224. Utiliser 160 ou 128 "
+             "pour benchmark résolution mobile (style ArcFace face 112).",
+    )
     args = parser.parse_args()
+
+    # Construire CropConfig seulement si AU MOINS un override CLI a été fourni.
+    # Sinon None → comportement legacy bit-identique (zero régression).
+    crop_config: CropConfig | None = None
+    if any(v is not None for v in (
+        args.crop_margin_frac, args.crop_edge_mode,
+        args.crop_feather_width_frac, args.crop_output_size,
+    )):
+        defaults = CropConfig()
+        crop_config = CropConfig(
+            margin_frac=args.crop_margin_frac if args.crop_margin_frac is not None else defaults.margin_frac,
+            edge_mode=args.crop_edge_mode if args.crop_edge_mode is not None else defaults.edge_mode,
+            feather_width_frac=(args.crop_feather_width_frac
+                                if args.crop_feather_width_frac is not None
+                                else defaults.feather_width_frac),
+            output_size=args.crop_output_size if args.crop_output_size is not None else defaults.output_size,
+        )
+        print(f"\n[ablation] Using non-default CropConfig: {crop_config}\n")
 
     from training.train_embedder import _assert_no_real_photos
 
@@ -382,6 +425,7 @@ def main():
         seed=args.seed,
         only_classes=only_classes,
         skip_train_split=args.skip_train_split,
+        crop_config=crop_config,
     )
 
 
