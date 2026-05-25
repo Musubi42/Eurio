@@ -98,22 +98,23 @@ def _now() -> str:
 
 
 def coin_row(slug: NumistaSlugResult, payload: dict) -> dict:
-    """Row pour ``coins``. Champs minimaux NOT NULL satisfaits + métadonnées."""
-    value = payload.get("value") or {}
-    composition = (payload.get("composition") or {}).get("text")
+    """Row pour ``coins``. Champs minimaux NOT NULL satisfaits + métadonnées.
+
+    NB: la composition est stockée en observation (cf. coin_observation_rows),
+    pas dans coins (la table n'a pas de colonne dédiée — c'est volontaire,
+    composition est variable et appartient à la couche provenance)."""
     return {
         "eurio_id": slug.eurio_id,
         "country": slug.country,
         "country_name": (payload.get("issuer") or {}).get("name"),
         "year": slug.year,
         "face_value": slug.face_value,
-        "currency": (value.get("currency") or {}).get("name", "EUR") if isinstance(value.get("currency"), dict) else "EUR",
+        "currency": "EUR",
         "is_commemorative": 1 if slug.is_commemorative else 0,
         "theme": slug.theme,
         "numista_id": int(payload["id"]),
         "design_description": slug.catalog_name,
         "design_group_id": slug.design_group_id,
-        "composition": composition,
         "ref_source": NUMISTA_SOURCE,
         "ref_native_id": str(payload["id"]),
     }

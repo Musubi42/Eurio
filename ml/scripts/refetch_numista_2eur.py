@@ -338,6 +338,12 @@ def main() -> int:
         default=ML_DIR / "state" / "numista_cache",
         help="Directory to cache Numista API payloads (default: ml/state/numista_cache/)",
     )
+    parser.add_argument(
+        "--db",
+        type=Path,
+        default=ML_DIR / "state" / "eurio.db",
+        help="Path to eurio.db (default: ml/state/eurio.db)",
+    )
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--dry-run", action="store_true", default=True,
                       help="Plan only, no HTTP, no DB writes (default).")
@@ -414,9 +420,102 @@ def main() -> int:
         for nid, msg in fetcher.stats.errors:
             print(f"    {nid}: {msg}")
 
-    print("\n⚠️  P.7b — DB writes pas encore implémentés (P.7c). "
-          "Les payloads sont cachés sur disque pour P.7c.")
-    return 0 if bundles else 1
+    if not bundles:
+        return 1
+
+    # ── P.7c.3 — Transform + Write to SQLite ──────────────────────────
+    return _apply_to_db(bundles, args.db)
+
+
+def _apply_to_db(bundles: dict[int, "FetchBundle"], db_path: Path) -> int:
+    """Transform payloads → rows → UPSERT vers eurio.db. Transaction par NID.
+
+    Skipped NIDs (slug=None, out-of-scope) sont reportés. Erreurs DB par NID
+    → rollback de ce NID seul, autres NIDs continuent.
+    """
+    from referential.numista_eurio_id import eurio_id_from_numista_payload
+    from referential.numista_writer import NumistaWriter
+    from state.store import Store
+
+    print("\n" + "═" * 60)
+    print(f"WRITE TO SQLite — {db_path}")
+    print("═" * 60)
+
+    store = Store(db_path)
+    conn = store._connection()
+    mint_resolver = _make_mint_resolver(conn)
+
+    total_stats = {
+        "ok": 0, "skipped_out_of_scope": 0, "skipped_variant_or_jointly": 0,
+        "db_errors": 0,
+    }
+    writer = NumistaWriter(conn)
+
+    for nid, bundle in bundles.items():
+        slug = eurio_id_from_numista_payload(bundle.type_payload)
+        if slug is None:
+            print(f"  [{nid}] ⏭  out_of_scope (non-2€ ou champ manquant)")
+            total_stats["skipped_out_of_scope"] += 1
+            continue
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            writer.write_bundle(
+                slug=slug,
+                payload=bundle.type_payload,
+                issues=_extract_issues(bundle.issues_payload),
+                prices_by_iid=bundle.prices_by_iid,
+                mint_resolver=mint_resolver,
+            )
+            conn.execute("COMMIT")
+            print(f"  [{nid}] ✓ {slug.eurio_id}")
+            total_stats["ok"] += 1
+        except Exception as e:
+            conn.execute("ROLLBACK")
+            print(f"  [{nid}] ❌ {e}")
+            total_stats["db_errors"] += 1
+
+    print("\n" + "═" * 60)
+    print("WRITE STATS")
+    print("═" * 60)
+    print(f"  Bundles written     : {total_stats['ok']} OK / {total_stats['db_errors']} errors / {total_stats['skipped_out_of_scope']} skipped")
+    print(f"  Total rows by table :")
+    s = writer.stats
+    for table, n in [
+        ("coins", s.coins), ("coin_source_refs", s.source_refs),
+        ("coin_cross_refs", s.cross_refs), ("coin_mint_releases", s.mint_releases),
+        ("mint_release_prices", s.prices), ("coin_market_quotes", s.market_quotes),
+        ("coin_canonical_images", s.images), ("coin_credits", s.credits),
+        ("coin_observations", s.observations), ("design_groups", s.design_groups),
+        ("coin_variants", s.variants),
+    ]:
+        print(f"    {table:<28} {n:>4}")
+    return 0 if total_stats["ok"] else 1
+
+
+def _make_mint_resolver(conn):
+    """Construit un mint_resolver depuis la table mints (cached lookup)."""
+    cache: dict[tuple[str, str | None], str | None] = {}
+    rows = conn.execute("SELECT id, country, mark FROM mints").fetchall()
+    for row in rows:
+        # row[0]=id, row[1]=country, row[2]=mark
+        cache[(row[1], row[2])] = row[0]
+        # Fallback : si une seule mint NON-mark existe pour ce pays, accepte
+        # mark=None comme alias.
+
+    def _resolve(country: str, mark: str | None) -> str | None:
+        # Exact match
+        if (country, mark) in cache:
+            return cache[(country, mark)]
+        # Fallback : mark=None requested mais on n'a que des marks pour ce pays
+        # — pick le premier slug du pays. NB: ne se produit pas pour DE/IT/ES
+        # qui ont la mark requise.
+        if mark is None:
+            for (c, m), slug in cache.items():
+                if c == country and m is None:
+                    return slug
+        return None
+
+    return _resolve
 
 
 if __name__ == "__main__":
