@@ -757,3 +757,9 @@ tasks:
     desc: "Refetch Numista 2€ → SQLite via --nids-file. P.7a scaffold = plan only. P.7b/c/d ajouteront fetch HTTP + transforms + tests."
     cmds:
       - "{{.VENV}}/python -m scripts.refetch_numista_2eur {{.CLI_ARGS}}"
+
+  # ─── Coin richness — P.7c.1 seed mints eurozone ──────────────────────────
+  seed-mints:
+    desc: "Seed mints avec les 29 ateliers canoniques eurozone (DE A/D/F/G/J + autres pays). Idempotent. --update pour upsert, --check pour audit."
+    cmds:
+      - "{{.VENV}}/python -m scripts.seed_mints {{.CLI_ARGS}}"

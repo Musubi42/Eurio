@@ -144,6 +144,31 @@ Stocker à **deux niveaux** (confirmé brainstorm 2026-05-26) :
 - Les prix sont en EUR (param `currency=EUR`), conversion gérée par
   Numista. Stocker `currency='EUR'` brut.
 
+### 2.4 **BU et Proof exposent uniquement le grade `unc`** (finding 2026-05-26)
+
+Confirmé en P.7c.2 sur le cache Bremen complet : seules les issues CIRC
+exposent les 7 grades. Les issues BU et Proof retournent **1 seul prix**
+(`unc`).
+
+Distribution réelle Bremen (15 issues, 30 calls /prices au total) :
+
+| Issue type | Grades exposés                         | # rows /prices/issue |
+|------------|----------------------------------------|----------------------|
+| CIRC       | `g`, `vg`, `f`, `vf`, `xf`, `au`, `unc` | 7                    |
+| BU set     | `unc`                                  | 1                    |
+| Proof      | `unc`                                  | 1                    |
+
+**Conséquences agrégation Type-level** (`coin_market_quotes`) :
+- UNC bucket : N_circ + N_bu + N_proof prix (= N_issues total)
+- TTB bucket : N_circ × 2 grades (au + xf)
+- TB bucket  : N_circ × 3 grades (vf + f + vg)
+
+Bremen exemple : UNC=15, TTB=10, TB=15.
+
+**Cette asymétrie est logique** — BU et Proof sont des pièces neuves
+sans gradation TTB/TB applicable. Ne pas tenter de "compléter" leurs
+prix par interpolation.
+
 ---
 
 ## 3. Endpoint `/types/{nid}` — payload metadata
