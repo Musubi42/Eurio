@@ -749,6 +749,21 @@ class Store:
             self._ensure_column(
                 conn, table="coin_aliases", column="method", decl="TEXT",
             )
+            # Coin richness P.8a : colonnes Supabase rapatriées sur `coins`.
+            # personal_owned/lent_to_me sont des flags admin (peu utilisés,
+            # remplaceront le coffre utilisateur en Phase 5+). series_id FK
+            # vers coin_series (table créée par schema.sql en P.8a).
+            self._ensure_column(
+                conn, table="coins", column="personal_owned",
+                decl="INTEGER NOT NULL DEFAULT 0",
+            )
+            self._ensure_column(
+                conn, table="coins", column="lent_to_me",
+                decl="INTEGER NOT NULL DEFAULT 0",
+            )
+            self._ensure_column(
+                conn, table="coins", column="series_id", decl="TEXT",
+            )
             # Index NON unique : un numista_id de circulation est partagé par
             # N millésimes (ex. nid 135 = 23 pièces) → (ref_source,ref_native_id)
             # n'est pas unique. L'unicité réelle relève de la génération (Chunk 2).
