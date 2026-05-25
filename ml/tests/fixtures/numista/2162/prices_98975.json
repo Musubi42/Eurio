@@ -1,0 +1,9 @@
+{
+  "currency": "EUR",
+  "prices": [
+    {
+      "grade": "unc",
+      "price": 10
+    }
+  ]
+}

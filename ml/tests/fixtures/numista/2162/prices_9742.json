@@ -1,0 +1,33 @@
+{
+  "currency": "EUR",
+  "prices": [
+    {
+      "grade": "g",
+      "price": 2
+    },
+    {
+      "grade": "vg",
+      "price": 2
+    },
+    {
+      "grade": "f",
+      "price": 2
+    },
+    {
+      "grade": "vf",
+      "price": 2
+    },
+    {
+      "grade": "xf",
+      "price": 2
+    },
+    {
+      "grade": "au",
+      "price": 4.19043
+    },
+    {
+      "grade": "unc",
+      "price": 4.19043
+    }
+  ]
+}

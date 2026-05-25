@@ -1,0 +1,146 @@
+{
+  "id": 2162,
+  "url": "https://en.numista.com/2162",
+  "title": "2 Euros (Treaty of Rome)",
+  "object_type": {
+    "id": 2,
+    "name": "Circulating commemorative coins"
+  },
+  "issuer": {
+    "code": "allemagne",
+    "name": "Germany, Federal Republic of"
+  },
+  "min_year": 2007,
+  "max_year": 2007,
+  "ruler": [
+    {
+      "id": 2860,
+      "name": "Federal Republic",
+      "wikidata_id": "Q183"
+    }
+  ],
+  "value": {
+    "text": "2 Euros",
+    "numeric_value": 2,
+    "currency": {
+      "id": 9007,
+      "name": "Euro",
+      "full_name": "Euro (2002-date)"
+    }
+  },
+  "demonetization": {
+    "is_demonetized": false
+  },
+  "size": 25.75,
+  "thickness": 2.2,
+  "shape": "Round",
+  "composition": {
+    "text": "Bimetallic: nickel brass clad nickel centre in copper-nickel ring"
+  },
+  "technique": {
+    "text": "Milled"
+  },
+  "obverse": {
+    "engravers": [
+      "Helmut Andexlinger"
+    ],
+    "description": "The coin shows the Treaty document signed by the six founding countries on a background evoking the paving (designed by Michelangelo) of the Piazza del Campidoglio in Rome, where the signing took place on 25 March 1957. ‘Treaty of Rome 50 years’, ‘EUROPE’ and the name of the issuing country appear in the respective languages of the euro area or in Latin. Thus, the legend differs from country to country, but the image is the same. The Treaty of Rome established the European Economic Community and ultimately led to the introduction of the euro in 1999 and the euro banknotes and coins in 2002. The anniversary was celebrated on 25 March 2007. The euro area countries have marked the occasion by jointly issuing this commemorative coin. Its design was selected following a competition organised by the European mints. The coin’s outer ring bears the 12 stars of the European Union.",
+    "lettering": "RÖMISCHE VERTRÄGE \r\n50 JAHRE\r\nEUROPA \r\n2007 G\r\nBUNDESREPUBLIK DEUTSCHLAND",
+    "lettering_scripts": [
+      {
+        "name": "Latin"
+      }
+    ],
+    "lettering_translation": "Treaty of Rome\r\n50 years\r\nEurope\r\n2007 D\r\nFederal Republic of Germany",
+    "picture": "https://en.numista.com/catalogue/photos/allemagne/6964d56127a4c5.51752617-original.jpg",
+    "thumbnail": "https://en.numista.com/catalogue/photos/allemagne/6964d56127a4c5.51752617-180.jpg",
+    "picture_copyright": "brismike",
+    "picture_license_name": "CC BY-NC",
+    "picture_license_url": "https://creativecommons.org/licenses/by-nc/4.0/deed.en"
+  },
+  "reverse": {
+    "engravers": [
+      "Luc Luycx"
+    ],
+    "description": "A map, next to the face value, shows the European continent without borders.",
+    "lettering": "2 EURO LL",
+    "lettering_scripts": [
+      {
+        "name": "Latin"
+      }
+    ],
+    "picture": "https://en.numista.com/catalogue/photos/allemagne/6964d562847006.63152249-original.jpg",
+    "thumbnail": "https://en.numista.com/catalogue/photos/allemagne/6964d562847006.63152249-180.jpg",
+    "picture_copyright": "brismike",
+    "picture_license_name": "CC BY-NC",
+    "picture_license_url": "https://creativecommons.org/licenses/by-nc/4.0/deed.en"
+  },
+  "series": "Treaty of Rome",
+  "commemorated_topic": "50th Anniversary of the Treaty of Rome",
+  "tags": [
+    "Map",
+    "Treaty"
+  ],
+  "references": [
+    {
+      "catalogue": {
+        "id": 3,
+        "code": "KM"
+      },
+      "number": "259"
+    },
+    {
+      "catalogue": {
+        "id": 80,
+        "code": "J"
+      },
+      "number": "528"
+    },
+    {
+      "catalogue": {
+        "id": 24,
+        "code": "Schön"
+      },
+      "number": "255"
+    }
+  ],
+  "weight": 8.5,
+  "orientation": "medal",
+  "edge": {
+    "description": "Reeded with inscription",
+    "lettering": "EINIGKEIT UND RECHT UND FREIHEIT",
+    "lettering_scripts": [
+      {
+        "name": "Latin"
+      }
+    ],
+    "lettering_translation": "Unity and Justice and Freedom",
+    "picture": "https://en.numista.com/catalogue/photos/allemagne/2030-original.jpg",
+    "thumbnail": "https://en.numista.com/catalogue/photos/allemagne/2030-180.jpg",
+    "picture_copyright": "Cyrillius"
+  },
+  "mints": [
+    {
+      "id": 5,
+      "name": "Berlin"
+    },
+    {
+      "id": 1,
+      "name": "Munich"
+    },
+    {
+      "id": 2,
+      "name": "State Mint of Stuttgart / State Mints of Baden-Württemberg"
+    },
+    {
+      "id": 3,
+      "name": "State Mint of Karlsruhe / State Mints of Baden-Württemberg"
+    },
+    {
+      "id": 4,
+      "name": "Hamburg Mint"
+    }
+  ],
+  "category": "coin",
+  "type": "Circulating commemorative coins"
+}

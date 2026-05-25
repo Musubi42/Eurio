@@ -1,0 +1,312 @@
+{
+  "id": 10069,
+  "url": "https://en.numista.com/10069",
+  "title": "2 Euros (Bundesländer - \"Bremen\")",
+  "object_type": {
+    "id": 2,
+    "name": "Circulating commemorative coins"
+  },
+  "issuer": {
+    "code": "allemagne",
+    "name": "Germany, Federal Republic of"
+  },
+  "min_year": 2010,
+  "max_year": 2010,
+  "ruler": [
+    {
+      "id": 2860,
+      "name": "Federal Republic",
+      "wikidata_id": "Q183"
+    }
+  ],
+  "value": {
+    "text": "2 Euros",
+    "numeric_value": 2,
+    "currency": {
+      "id": 9007,
+      "name": "Euro",
+      "full_name": "Euro (2002-date)"
+    }
+  },
+  "demonetization": {
+    "is_demonetized": false
+  },
+  "size": 25.75,
+  "thickness": 2.2,
+  "shape": "Round",
+  "composition": {
+    "text": "Bimetallic: nickel brass clad nickel centre in copper-nickel ring"
+  },
+  "technique": {
+    "text": "Milled"
+  },
+  "obverse": {
+    "engravers": [
+      "Bodo Broschat"
+    ],
+    "description": "The inner part of the coin features the Town Hall of Bremen, with the Roland statue in the foreground. The word “BREMEN” is inscribed beneath the Town Hall to the right of the statue. The mint mark, represented by the letter “A”, “D”, “F”, “G” or “J”, appears at the left above the Town Hall. The initials of the artist, Bodo Broschat, are given at the very bottom, immediately below the statue. The name of the issuing country, “D”, and the year, “2010”, are inserted at the top and bottom of the outer ring of the coin respectively, interspersed between the twelve stars of the European Union.",
+    "lettering": "D \r\nA \r\nBREMEN \r\n2010",
+    "lettering_scripts": [
+      {
+        "name": "Latin"
+      }
+    ],
+    "picture": "https://en.numista.com/catalogue/photos/allemagne/628c6c21ce8445.67279742-original.jpg",
+    "thumbnail": "https://en.numista.com/catalogue/photos/allemagne/628c6c21ce8445.67279742-180.jpg",
+    "picture_copyright": "Mike Bentley",
+    "picture_license_name": "CC BY-NC",
+    "picture_license_url": "https://creativecommons.org/licenses/by-nc/4.0/deed.en"
+  },
+  "reverse": {
+    "engravers": [
+      "Luc Luycx"
+    ],
+    "description": "A map, next to the face value, shows the European continent without borders.",
+    "lettering": "2 EURO\r\nLL",
+    "lettering_scripts": [
+      {
+        "name": "Latin"
+      }
+    ],
+    "picture": "https://en.numista.com/catalogue/photos/allemagne/628c6c23309d19.10989170-original.jpg",
+    "thumbnail": "https://en.numista.com/catalogue/photos/allemagne/628c6c23309d19.10989170-180.jpg",
+    "picture_copyright": "Mike Bentley",
+    "picture_license_name": "CC BY-NC",
+    "picture_license_url": "https://creativecommons.org/licenses/by-nc/4.0/deed.en"
+  },
+  "series": "German states",
+  "commemorated_topic": "State of Bremen",
+  "comments": "Set 1:<br /><br />\r\n<a href=\"https://en.numista.com/catalogue/images/5ab413902f787.jpg\"><img src=\"https://en.numista.com/catalogue/images/miniatures/5ab413902f787.jpg\" alt=\"\" width=\"200\" height=\"149\" /></a><br /><br />\r\n<a href=\"https://en.numista.com/catalogue/images/5ab413b48fdba.jpg\"><img src=\"https://en.numista.com/catalogue/images/miniatures/5ab413b48fdba.jpg\" alt=\"\" width=\"200\" height=\"147\" /></a><br /><br />\r\n<a href=\"https://en.numista.com/catalogue/images/5ab413cf81cbf.jpg\"><img src=\"https://en.numista.com/catalogue/images/miniatures/5ab413cf81cbf.jpg\" alt=\"\" width=\"149\" height=\"250\" /></a><br /><br />\r\nSet 2:<br /><br />\r\n<a href=\"https://en.numista.com/catalogue/images/5ab413e4b2bf8.jpg\"><img src=\"https://en.numista.com/catalogue/images/miniatures/5ab413e4b2bf8.jpg\" alt=\"\" width=\"200\" height=\"131\" /></a> <a href=\"https://en.numista.com/catalogue/images/5ab413f78b038.jpg\"><img src=\"https://en.numista.com/catalogue/images/miniatures/5ab413f78b038.jpg\" alt=\"\" width=\"200\" height=\"132\" /></a><br /><br />\r\nSet 3:<br /><br />\r\n<a href=\"https://en.numista.com/catalogue/images/5ab4140c7d0dc.jpg\"><img src=\"https://en.numista.com/catalogue/images/miniatures/5ab4140c7d0dc.jpg\" alt=\"\" width=\"200\" height=\"102\" /></a> <a href=\"https://en.numista.com/catalogue/images/5ab4141c5f0f0.jpg\"><img src=\"https://en.numista.com/catalogue/images/miniatures/5ab4141c5f0f0.jpg\" alt=\"\" width=\"200\" height=\"102\" /></a><br /><br />\r\nSet 4:<br /><br />\r\n<a href=\"https://en.numista.com/catalogue/images/5ab41430c02ce.jpg\"><img src=\"https://en.numista.com/catalogue/images/miniatures/5ab41430c02ce.jpg\" alt=\"\" width=\"200\" height=\"81\" /></a><br /><br />\r\n<a href=\"https://en.numista.com/catalogue/images/5ab4143ec6ff7.jpg\"><img src=\"https://en.numista.com/catalogue/images/miniatures/5ab4143ec6ff7.jpg\" alt=\"\" width=\"199\" height=\"80\" /></a><br /><br />\r\n<a href=\"https://en.numista.com/catalogue/images/5ab414559306f.jpg\"><img src=\"https://en.numista.com/catalogue/images/miniatures/5ab414559306f.jpg\" alt=\"\" width=\"200\" height=\"160\" /></a><br /><br />\r\nSet 5:<br /><br />\r\n<a href=\"https://en.numista.com/catalogue/images/5ab4146a96960.jpg\"><img src=\"https://en.numista.com/catalogue/images/miniatures/5ab4146a96960.jpg\" alt=\"\" width=\"200\" height=\"155\" /></a><br /><br />\r\n<a href=\"https://en.numista.com/catalogue/images/5ab4147c8adb5.jpg\"><img src=\"https://en.numista.com/catalogue/images/miniatures/5ab4147c8adb5.jpg\" alt=\"\" width=\"200\" height=\"155\" /></a><br /><br />\r\n<a href=\"https://en.numista.com/catalogue/images/5ab4149527501.jpg\"><img src=\"https://en.numista.com/catalogue/images/miniatures/5ab4149527501.jpg\" alt=\"\" width=\"200\" height=\"195\" /></a><br /><br />\r\n<a href=\"https://en.numista.com/catalogue/images/5ab414ac87ada.jpg\"><img src=\"https://en.numista.com/catalogue/images/miniatures/5ab414ac87ada.jpg\" alt=\"\" width=\"200\" height=\"200\" /></a><br /><br />\r\nSet 6:<br /><br />\r\n<a href=\"https://en.numista.com/catalogue/images/5ab414c177380.jpg\"><img src=\"https://en.numista.com/catalogue/images/miniatures/5ab414c177380.jpg\" alt=\"\" width=\"200\" height=\"159\" /></a> <a href=\"https://en.numista.com/catalogue/images/5ab414d3bf997.jpg\"><img src=\"https://en.numista.com/catalogue/images/miniatures/5ab414d3bf997.jpg\" alt=\"\" width=\"200\" height=\"163\" /></a><br /><br />\r\nSet 7:<br /><br />\r\n<a href=\"https://en.numista.com/catalogue/images/5ab414eb580fb.jpg\"><img src=\"https://en.numista.com/catalogue/images/miniatures/5ab414eb580fb.jpg\" alt=\"\" width=\"200\" height=\"137\" /></a> <a href=\"https://en.numista.com/catalogue/images/5ab414fd86b97.jpg\"><img src=\"https://en.numista.com/catalogue/images/miniatures/5ab414fd86b97.jpg\" alt=\"\" width=\"200\" height=\"138\" /></a><br /><br />\r\nSet 8:<br /><br />\r\n<a href=\"https://en.numista.com/catalogue/images/5fd0b5a73d7e6.jpg\"><img src=\"https://en.numista.com/catalogue/images/miniatures/5fd0b5a73d7e6.jpg\" alt=\"\" width=\"200\" height=\"98\" /></a> <a href=\"https://en.numista.com/catalogue/images/5fd0b5c14c059.jpg\"><img src=\"https://en.numista.com/catalogue/images/miniatures/5fd0b5c14c059.jpg\" alt=\"\" width=\"199\" height=\"101\" /></a><br /><br />\r\nSet 9:<br /><br />\r\n<a href=\"https://en.numista.com/catalogue/images/5fd0b5e7d4a10.jpg\"><img src=\"https://en.numista.com/catalogue/images/miniatures/5fd0b5e7d4a10.jpg\" alt=\"\" width=\"200\" height=\"150\" /></a> <a href=\"https://en.numista.com/catalogue/images/5fd0b6018052d.jpg\"><img src=\"https://en.numista.com/catalogue/images/miniatures/5fd0b6018052d.jpg\" alt=\"\" width=\"200\" height=\"150\" /></a>",
+  "related_types": [
+    {
+      "id": 2169,
+      "title": "2 Euros (Bundesländer - \"Schleswig-Holstein\")",
+      "category": "coin",
+      "country": {
+        "code": "allemagne",
+        "name": "Germany, Federal Republic of"
+      },
+      "minYear": 2006,
+      "maxYear": 2006
+    },
+    {
+      "id": 2201,
+      "title": "2 Euros (Bundesländer - \"Mecklenburg-Vorpommern\")",
+      "category": "coin",
+      "country": {
+        "code": "allemagne",
+        "name": "Germany, Federal Republic of"
+      },
+      "minYear": 2007,
+      "maxYear": 2007
+    },
+    {
+      "id": 2994,
+      "title": "2 Euros (Bundesländer - \"Hamburg\")",
+      "category": "coin",
+      "country": {
+        "code": "allemagne",
+        "name": "Germany, Federal Republic of"
+      },
+      "minYear": 2008,
+      "maxYear": 2008
+    },
+    {
+      "id": 5053,
+      "title": "2 Euros (Bundesländer - \"Saarland\")",
+      "category": "coin",
+      "country": {
+        "code": "allemagne",
+        "name": "Germany, Federal Republic of"
+      },
+      "minYear": 2009,
+      "maxYear": 2009
+    },
+    {
+      "id": 18666,
+      "title": "2 Euros (Bundesländer - \"Nordrhein-Westfalen\")",
+      "category": "coin",
+      "country": {
+        "code": "allemagne",
+        "name": "Germany, Federal Republic of"
+      },
+      "minYear": 2011,
+      "maxYear": 2011
+    },
+    {
+      "id": 29694,
+      "title": "2 Euros (Bundesländer - \"Bayern\")",
+      "category": "coin",
+      "country": {
+        "code": "allemagne",
+        "name": "Germany, Federal Republic of"
+      },
+      "minYear": 2012,
+      "maxYear": 2012
+    },
+    {
+      "id": 42149,
+      "title": "2 Euros (Bundesländer - \"Baden-Württemberg\")",
+      "category": "coin",
+      "country": {
+        "code": "allemagne",
+        "name": "Germany, Federal Republic of"
+      },
+      "minYear": 2013,
+      "maxYear": 2013
+    },
+    {
+      "id": 53570,
+      "title": "2 Euros (Bundesländer - \"Niedersachsen\")",
+      "category": "coin",
+      "country": {
+        "code": "allemagne",
+        "name": "Germany, Federal Republic of"
+      },
+      "minYear": 2014,
+      "maxYear": 2014
+    },
+    {
+      "id": 69263,
+      "title": "2 Euros (Bundesländer - \"Hessen\")",
+      "category": "coin",
+      "country": {
+        "code": "allemagne",
+        "name": "Germany, Federal Republic of"
+      },
+      "minYear": 2015,
+      "maxYear": 2015
+    },
+    {
+      "id": 80927,
+      "title": "2 Euros (Bundesländer - \"Sachsen\")",
+      "category": "coin",
+      "country": {
+        "code": "allemagne",
+        "name": "Germany, Federal Republic of"
+      },
+      "minYear": 2016,
+      "maxYear": 2016
+    },
+    {
+      "id": 102445,
+      "title": "2 Euros (Bundesländer - \"Rheinland-Pfalz\")",
+      "category": "coin",
+      "country": {
+        "code": "allemagne",
+        "name": "Germany, Federal Republic of"
+      },
+      "minYear": 2017,
+      "maxYear": 2017
+    },
+    {
+      "id": 132935,
+      "title": "2 Euros (Bundesländer - \"Berlin\")",
+      "category": "coin",
+      "country": {
+        "code": "allemagne",
+        "name": "Germany, Federal Republic of"
+      },
+      "minYear": 2018,
+      "maxYear": 2018
+    },
+    {
+      "id": 193506,
+      "title": "2 Euros (Bundesländer - \"Brandenburg\")",
+      "category": "coin",
+      "country": {
+        "code": "allemagne",
+        "name": "Germany, Federal Republic of"
+      },
+      "minYear": 2020,
+      "maxYear": 2020
+    },
+    {
+      "id": 267621,
+      "title": "2 Euros (Bundesländer - \"Sachsen-Anhalt\")",
+      "category": "coin",
+      "country": {
+        "code": "allemagne",
+        "name": "Germany, Federal Republic of"
+      },
+      "minYear": 2021,
+      "maxYear": 2021
+    },
+    {
+      "id": 314709,
+      "title": "2 Euros (Bundesländer - \"Thüringen\")",
+      "category": "coin",
+      "country": {
+        "code": "allemagne",
+        "name": "Germany, Federal Republic of"
+      },
+      "minYear": 2022,
+      "maxYear": 2022
+    }
+  ],
+  "tags": [
+    "Map"
+  ],
+  "references": [
+    {
+      "catalogue": {
+        "id": 3,
+        "code": "KM"
+      },
+      "number": "285"
+    },
+    {
+      "catalogue": {
+        "id": 80,
+        "code": "J"
+      },
+      "number": "549"
+    },
+    {
+      "catalogue": {
+        "id": 24,
+        "code": "Schön"
+      },
+      "number": "278"
+    }
+  ],
+  "weight": 8.5,
+  "orientation": "medal",
+  "edge": {
+    "description": "Reeded with inscription",
+    "lettering": "EINIGKEIT UND RECHT UND FREIHEIT",
+    "lettering_scripts": [
+      {
+        "name": "Latin"
+      }
+    ],
+    "lettering_translation": "Unity and Justice and Freedom",
+    "picture": "https://en.numista.com/catalogue/photos/allemagne/2024-original.jpg",
+    "thumbnail": "https://en.numista.com/catalogue/photos/allemagne/2024-180.jpg",
+    "picture_copyright": "Cyrillius"
+  },
+  "mints": [
+    {
+      "id": 5,
+      "name": "Berlin"
+    },
+    {
+      "id": 1,
+      "name": "Munich"
+    },
+    {
+      "id": 2,
+      "name": "State Mint of Stuttgart / State Mints of Baden-Württemberg"
+    },
+    {
+      "id": 3,
+      "name": "State Mint of Karlsruhe / State Mints of Baden-Württemberg"
+    },
+    {
+      "id": 4,
+      "name": "Hamburg Mint"
+    }
+  ],
+  "category": "coin",
+  "type": "Circulating commemorative coins"
+}
