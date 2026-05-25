@@ -169,6 +169,9 @@ class CoinAnalyzer(
         val stepId: String,
         val stepLabel: String,
         val stepIndex: Int,
+        // Index du photo dans la cellule (coin × step). 0 par défaut (LEGACY,
+        // 1 photo / cellule). En ABLATION : 0..photosPerStep-1.
+        val photoIndex: Int = 0,
     )
 
     @Volatile
@@ -485,14 +488,18 @@ class CoinAnalyzer(
 
             if (ctx != null) {
                 // Capture mode (Phase 0 golden-set): write under eval_real/<eurioId>/.
+                // Suffixe `_p<n>` ajouté seulement si photoIndex > 0 (= mode
+                // ABLATION) pour éviter collisions ; LEGACY (photoIndex=0) garde
+                // l'ancien naming `<step>_crop.jpg` (zero régression eval_real).
                 val dir = java.io.File(root, "eval_real/${ctx.eurioId}").apply { mkdirs() }
-                cropFile = java.io.File(dir, "${ctx.stepId}_crop.jpg")
-                rawFile = java.io.File(dir, "${ctx.stepId}_raw.jpg")
-                metaFile = java.io.File(dir, "${ctx.stepId}.json")
+                val suffix = if (ctx.photoIndex > 0) "_p${ctx.photoIndex}" else ""
+                cropFile = java.io.File(dir, "${ctx.stepId}${suffix}_crop.jpg")
+                rawFile = java.io.File(dir, "${ctx.stepId}${suffix}_raw.jpg")
+                metaFile = java.io.File(dir, "${ctx.stepId}${suffix}.json")
                 val safeLabel = ctx.stepLabel.replace("\"", "\\\"")
                 meta = """{"ts":"$ts","eurio_id":"${ctx.eurioId}",""" +
                     """"step_id":"${ctx.stepId}","step_label":"$safeLabel",""" +
-                    """"step_index":${ctx.stepIndex},""" +
+                    """"step_index":${ctx.stepIndex},"photo_index":${ctx.photoIndex},""" +
                     """"frame_size":[$frameW,$frameH],"crop_size":$cropSize,""" +
                     """"rerank_ms":$rerankMs,"normalize":$normJson,"matches":$matchesJson}"""
             } else {

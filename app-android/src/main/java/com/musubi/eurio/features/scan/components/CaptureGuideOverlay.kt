@@ -74,9 +74,13 @@ fun CaptureGuideOverlay(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
+                val photoLabel = if (progress.photosPerStep > 1) {
+                    " · PHOTO ${progress.photoIndex + 1}/${progress.photosPerStep}"
+                } else ""
                 Text(
                     text = "PIÈCE ${progress.coinIndex + 1}/${com.musubi.eurio.features.scan.CaptureProtocol.coins.size}" +
-                        " · STEP ${progress.stepIndex + 1}/${com.musubi.eurio.features.scan.CaptureProtocol.steps.size}",
+                        " · STEP ${progress.stepIndex + 1}/${com.musubi.eurio.features.scan.CaptureProtocol.steps.size}" +
+                        photoLabel,
                     style = MonoBadgeStyle,
                     color = Gold,
                 )
@@ -158,8 +162,11 @@ fun CaptureSnapResultLayer(
             style = MonoBadgeStyle,
             color = accent,
         )
+        val photoLabel = if (progress.photosPerStep > 1) {
+            " · Photo ${progress.photoIndex + 1}/${progress.photosPerStep}"
+        } else ""
         Text(
-            text = "${progress.coin.displayName} · Step ${progress.stepIndex + 1}/${com.musubi.eurio.features.scan.CaptureProtocol.steps.size}",
+            text = "${progress.coin.displayName} · Step ${progress.stepIndex + 1}/${com.musubi.eurio.features.scan.CaptureProtocol.steps.size}$photoLabel",
             style = MonoBadgeStyle,
             color = Color.White.copy(alpha = 0.85f),
         )

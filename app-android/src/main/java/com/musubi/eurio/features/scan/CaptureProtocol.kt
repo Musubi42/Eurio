@@ -18,8 +18,15 @@ import java.io.File
  *     Default debug capture set, ships with the APK. Used when no runtime
  *     override is present (demo mode).
  *
- * The step list stays hardcoded: it's the protocol itself (lighting +
- * background + tilt conditions), not a per-coin payload.
+ * Two protocols coexist :
+ *  - [Mode.LEGACY] (défaut) : 6 steps debug × 1 photo. Inchangé pour ne pas
+ *    casser le flow eval_real existant (cf. `ml/api/lab_routes.py`).
+ *  - [Mode.ABLATION] : 5 conditions alignées sur `BenchProtocol` × 4 photos.
+ *    Utilisé pour la capture hold-out d'ablation format crop (cf.
+ *    memory `project_crop_format_ablation`).
+ *
+ * Le mode est sélectionné par une **directive en première ligne du CSV** :
+ * `# mode=ablation`. Sans directive → LEGACY.
  *
  * See docs/scan-normalization/phase-0-capture.md and
  * docs/admin/cohort-capture-flow/design.md.
@@ -30,9 +37,30 @@ object CaptureProtocol {
     private const val ASSET_PATH = "capture_coins.csv"
     private const val OVERRIDE_RELATIVE_PATH = "eurio_capture/cohort.csv"
 
+    enum class Mode { LEGACY, ABLATION }
+
     data class Step(val id: String, val label: String)
 
     data class Coin(val eurioId: String, val displayName: String)
+
+    private val LEGACY_STEPS: List<Step> = listOf(
+        Step("bright_plain", "Intérieur lumineux, fond uni clair, centré"),
+        Step("dim_plain", "Lumière tamisée / chaude, fond uni, centré"),
+        Step("daylight_plain", "Plein jour ou proche fenêtre, fond uni"),
+        Step("bright_textured", "Intérieur lumineux, fond texturé (tissu/bois)"),
+        Step("tilt_plain", "Pièce inclinée ~10°, fond uni"),
+        Step("close_plain", "Distance proche, pièce remplit le mask"),
+    )
+
+    // Aligné sur BenchProtocol.conditions (chunk-7-bench-protocol).
+    // 5 conditions standardisées pour l'ablation format crop.
+    private val ABLATION_STEPS: List<Step> = listOf(
+        Step("bright_plain", "Lumière jour, fond uni"),
+        Step("bright_textured", "Lumière jour, fond bois ou tissu"),
+        Step("dim", "Intérieur soir, lampe loin"),
+        Step("oblique", "Caméra inclinée ~30°"),
+        Step("partial_shadow", "Moitié pièce ombrée"),
+    )
 
     /**
      * Coin list — loaded from assets at app startup via [init]. Reading
@@ -44,16 +72,18 @@ object CaptureProtocol {
     private var _coins: List<Coin> = emptyList()
     val coins: List<Coin> get() = _coins
 
-    val steps: List<Step> = listOf(
-        Step("bright_plain", "Intérieur lumineux, fond uni clair, centré"),
-        Step("dim_plain", "Lumière tamisée / chaude, fond uni, centré"),
-        Step("daylight_plain", "Plein jour ou proche fenêtre, fond uni"),
-        Step("bright_textured", "Intérieur lumineux, fond texturé (tissu/bois)"),
-        Step("tilt_plain", "Pièce inclinée ~10°, fond uni"),
-        Step("close_plain", "Distance proche, pièce remplit le mask"),
-    )
+    @Volatile
+    private var _mode: Mode = Mode.LEGACY
+    val mode: Mode get() = _mode
 
-    val totalSnaps: Int get() = _coins.size * steps.size
+    val steps: List<Step>
+        get() = if (_mode == Mode.ABLATION) ABLATION_STEPS else LEGACY_STEPS
+
+    /** Nombre de photos à shooter par cellule (coin × step) avant auto-advance. */
+    val photosPerStep: Int
+        get() = if (_mode == Mode.ABLATION) 4 else 1
+
+    val totalSnaps: Int get() = _coins.size * steps.size * photosPerStep
 
     /**
      * Load the coin list from the bundled CSV. Called once from
@@ -92,12 +122,28 @@ object CaptureProtocol {
         return parseCsv(lines, source = ASSET_PATH)
     }
 
-    private fun parseCsv(lines: List<String>, source: String): List<Coin> {
+    internal fun parseCsv(lines: List<String>, source: String): List<Coin> {
         val out = mutableListOf<Coin>()
         var sawHeader = false
+        var mode = Mode.LEGACY
         for ((idx, raw) in lines.withIndex()) {
             val line = raw.trim()
-            if (line.isEmpty() || line.startsWith("#")) continue
+            if (line.isEmpty()) continue
+            if (line.startsWith("#")) {
+                // Directive `# mode=ablation` ou `# mode=legacy`. Reconnue
+                // seulement avant la première ligne de données.
+                val directive = line.removePrefix("#").trim().lowercase()
+                if (directive.startsWith("mode=")) {
+                    when (directive.removePrefix("mode=").trim()) {
+                        "ablation" -> mode = Mode.ABLATION
+                        "legacy" -> mode = Mode.LEGACY
+                        else -> runCatching {
+                            Log.w(TAG, "$source:${idx + 1} unknown mode directive: $directive")
+                        }
+                    }
+                }
+                continue
+            }
             val parts = line.split(';').map { it.trim() }
             if (parts.size < 3) {
                 Log.w(TAG, "$source:${idx + 1} expects 3+ columns, got ${parts.size} → skipped")
@@ -118,6 +164,21 @@ object CaptureProtocol {
             }
             out.add(Coin(eurioId = eurioId, displayName = displayName))
         }
+        _mode = mode
         return out
+    }
+
+    // Visible pour les tests : reset l'état entre invocations.
+    internal fun resetForTests() {
+        _coins = emptyList()
+        _mode = Mode.LEGACY
+    }
+
+    // Visible pour les tests : applique un CSV inline (parse + commit _coins).
+    // Évite de devoir construire un Context Android pour les unit tests.
+    internal fun applyCsvForTests(lines: List<String>): List<Coin> {
+        val coins = parseCsv(lines, source = "test")
+        _coins = coins
+        return coins
     }
 }

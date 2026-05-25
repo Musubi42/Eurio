@@ -43,6 +43,59 @@ COIN_MARGIN = 0.02
 BG_COLOR = (0, 0, 0)
 WORKING_RES = 1024
 
+
+@dataclass(frozen=True)
+class CropConfig:
+    """Format de crop final (post-détection). Permet l'ablation du format
+    sans toucher la détection (Hough/YOLO/contour reste identique).
+
+    `margin_frac` : marge radiale autour du rim détecté, en fraction de r.
+    Le crop carré a un côté `2*(r + margin_frac*r) = 2r·(1+margin_frac)`.
+
+    `edge_mode` :
+      - "hard"     → masque circulaire net à rayon r, hors-disque = BG_COLOR
+      - "feathered"→ masque circulaire feathered (gaussian blur sur la frontière),
+                     contrôlé par `feather_width_frac` × r
+      - "none"     → pas de masque, on garde le fond original (cropped+resized)
+
+    `output_size` : côté carré en pixels du crop final.
+
+    Default = comportement legacy (margin 2%, hard mask, 224×224).
+    """
+    margin_frac: float = COIN_MARGIN
+    edge_mode: str = "hard"          # "hard" | "feathered" | "none"
+    feather_width_frac: float = 0.04  # ignoré si edge_mode != "feathered"
+    output_size: int = OUTPUT_SIZE
+
+
+_DEFAULT_CROP_CONFIG = CropConfig()
+
+
+def _apply_edge_mask(crop: np.ndarray, cx: int, cy: int, r: int,
+                     edge_mode: str, feather_width_px: int) -> np.ndarray:
+    """Applique le masque selon edge_mode. Retourne le crop modifié.
+    `crop` est l'image carrée déjà découpée ; (cx, cy) sont les coords du
+    centre dans l'espace de `crop`."""
+    if edge_mode == "none":
+        return crop
+    h, w = crop.shape[:2]
+    if edge_mode == "hard":
+        mask = np.zeros((h, w), dtype=np.uint8)
+        cv2.circle(mask, (cx, cy), r, 255, -1)
+        bg = np.full_like(crop, BG_COLOR, dtype=np.uint8)
+        return np.where(mask[..., None].astype(bool), crop, bg)
+    if edge_mode == "feathered":
+        # Masque float32 [0,1] : disque dur puis blur gaussien sur la frontière.
+        # Kernel impair, taille ~2× feather_width pour couvrir la transition.
+        mask = np.zeros((h, w), dtype=np.uint8)
+        cv2.circle(mask, (cx, cy), r, 255, -1)
+        k = max(3, feather_width_px | 1)  # force impair
+        mask_f = cv2.GaussianBlur(mask, (k, k), 0).astype(np.float32) / 255.0
+        bg = np.full_like(crop, BG_COLOR, dtype=np.uint8).astype(np.float32)
+        out = mask_f[..., None] * crop.astype(np.float32) + (1 - mask_f[..., None]) * bg
+        return np.clip(out, 0, 255).astype(np.uint8)
+    raise ValueError(f"unknown edge_mode: {edge_mode!r}")
+
 # Studio pipeline tuning.
 _STUDIO_FILL_RATIO_MIN = 0.70   # bimétal/ring guard: contour area / minEnclosingCircle area
 _STUDIO_AREA_RATIO_MAX = 0.85   # reject Otsu collapse where the binarisation swallowed the frame
@@ -134,12 +187,16 @@ def _downscale_to_working_res(bgr: np.ndarray) -> tuple[np.ndarray, float]:
 
 def _crop_mask_resize_float(bgr: np.ndarray, cx: float, cy: float, r: float,
                              method: str,
-                             extra_debug: dict | None = None) -> NormalizationResult:
+                             extra_debug: dict | None = None,
+                             config: CropConfig | None = None) -> NormalizationResult:
     """Sub-pixel-aware crop / mask / resize. Bounds maths in float; rounds to
     int only at the slicing boundary. Used by `normalize_studio` to preserve
-    the precision of `minEnclosingCircle`."""
+    the precision of `minEnclosingCircle`.
+
+    `config=None` → behavior identique au legacy (margin 0.02, hard mask, 224)."""
+    cfg = config if config is not None else _DEFAULT_CROP_CONFIG
     h, w = bgr.shape[:2]
-    margin = r * COIN_MARGIN
+    margin = r * cfg.margin_frac
     half = r + margin
     x0_f = max(0.0, cx - half)
     y0_f = max(0.0, cy - half)
@@ -161,16 +218,18 @@ def _crop_mask_resize_float(bgr: np.ndarray, cx: float, cy: float, r: float,
     crop_cx = int(round(cx - x0_f))
     crop_cy = int(round(cy - y0_f))
 
-    mask = np.zeros(crop.shape[:2], dtype=np.uint8)
-    cv2.circle(mask, (crop_cx, crop_cy), int(round(r)), 255, -1)
-    bg = np.full_like(crop, BG_COLOR, dtype=np.uint8)
-    crop = np.where(mask[..., None].astype(bool), crop, bg)
+    feather_px = int(round(cfg.feather_width_frac * r))
+    crop = _apply_edge_mask(crop, crop_cx, crop_cy, int(round(r)),
+                            cfg.edge_mode, feather_px)
 
-    out = cv2.resize(crop, (OUTPUT_SIZE, OUTPUT_SIZE), interpolation=cv2.INTER_AREA)
+    out = cv2.resize(crop, (cfg.output_size, cfg.output_size),
+                     interpolation=cv2.INTER_AREA)
     debug: dict[str, Any] = {
         "input_size": (w, h),
         "crop_side": int(round(side_f)),
         "margin_px": float(margin),
+        "edge_mode": cfg.edge_mode,
+        "output_size": cfg.output_size,
     }
     if extra_debug:
         debug.update(extra_debug)
@@ -181,11 +240,17 @@ def _crop_mask_resize_float(bgr: np.ndarray, cx: float, cy: float, r: float,
 
 
 def _crop_mask_resize_int(bgr: np.ndarray, cx: int, cy: int, r: int,
-                           method: str) -> NormalizationResult:
+                           method: str,
+                           config: CropConfig | None = None) -> NormalizationResult:
     """Integer-arithmetic crop / mask / resize. Used by `normalize_device` to
-    keep bit-for-bit parity with the Kotlin port (Mat.toInt() truncation)."""
+    keep bit-for-bit parity with the Kotlin port (Mat.toInt() truncation).
+
+    `config=None` → behavior identique au legacy (margin 0.02, hard mask, 224).
+    Quand un autre `config` est utilisé, la parité Kotlin n'est PAS garantie —
+    le port Kotlin doit être mis à jour symétriquement (Step 4 cutover)."""
+    cfg = config if config is not None else _DEFAULT_CROP_CONFIG
     h, w = bgr.shape[:2]
-    margin = int(r * COIN_MARGIN)
+    margin = int(r * cfg.margin_frac)
     half = r + margin
     x0 = max(0, cx - half)
     y0 = max(0, cy - half)
@@ -200,15 +265,15 @@ def _crop_mask_resize_int(bgr: np.ndarray, cx: int, cy: int, r: int,
 
     crop_cx = cx - x0
     crop_cy = cy - y0
-    mask = np.zeros(crop.shape[:2], dtype=np.uint8)
-    cv2.circle(mask, (crop_cx, crop_cy), r, 255, -1)
-    bg = np.full_like(crop, BG_COLOR, dtype=np.uint8)
-    crop = np.where(mask[..., None].astype(bool), crop, bg)
+    feather_px = int(r * cfg.feather_width_frac)
+    crop = _apply_edge_mask(crop, crop_cx, crop_cy, r, cfg.edge_mode, feather_px)
 
-    out = cv2.resize(crop, (OUTPUT_SIZE, OUTPUT_SIZE), interpolation=cv2.INTER_AREA)
+    out = cv2.resize(crop, (cfg.output_size, cfg.output_size),
+                     interpolation=cv2.INTER_AREA)
     return NormalizationResult(
         image=out, cx=cx, cy=cy, r=r, method=method,
-        debug={"input_size": (w, h), "crop_side": side, "margin_px": margin},
+        debug={"input_size": (w, h), "crop_side": side, "margin_px": margin,
+               "edge_mode": cfg.edge_mode, "output_size": cfg.output_size},
     )
 
 
@@ -258,21 +323,26 @@ def _detect_circle_hough(bgr: np.ndarray) -> tuple[int, int, int, str] | None:
     return None
 
 
-def normalize_device(bgr: np.ndarray) -> NormalizationResult:
-    """Normalize a camera frame (live or offline eval_real_norm) into a
-    224×224 tight coin crop. Bit-for-bit port to `SnapNormalizer.kt`."""
+def normalize_device(bgr: np.ndarray,
+                     config: CropConfig | None = None) -> NormalizationResult:
+    """Normalize a camera frame (live or offline eval_real_norm) into a tight
+    coin crop. Bit-for-bit port to `SnapNormalizer.kt` quand `config=None`.
+
+    `config` permet l'ablation format (margin, edge_mode, output_size). Quand
+    un config non-default est passé, la parité Kotlin n'est PAS garantie."""
     if bgr is None or bgr.size == 0:
         return NormalizationResult(image=None, debug={"error": "empty input"})
     detection = _detect_circle_hough(bgr)
     if detection is None:
         return NormalizationResult(image=None, debug={"error": "no circle"})
     cx, cy, r, method = detection
-    return _crop_mask_resize_int(bgr, cx, cy, r, method)
+    return _crop_mask_resize_int(bgr, cx, cy, r, method, config=config)
 
 
-def normalize_device_path(path: Path) -> NormalizationResult:
+def normalize_device_path(path: Path,
+                          config: CropConfig | None = None) -> NormalizationResult:
     bgr = cv2.imread(str(path), cv2.IMREAD_COLOR)
-    return normalize_device(bgr)
+    return normalize_device(bgr, config=config)
 
 
 # ---------------------------------------------------------------------------
@@ -348,18 +418,21 @@ def _detect_circle_contour(bgr: np.ndarray
     return (cx * scale, cy * scale, r * scale, debug), None
 
 
-def normalize_studio(bgr: np.ndarray) -> NormalizationResult:
-    """Normalize a Numista studio source (training pipeline) into a 224×224
-    tight coin crop. Falls back to `normalize_device` if the contour
-    detection fails — the reason (no_contour / off_centre / image_filling /
-    ring_contour) is reported in ``result.debug["fallback_reason"]``."""
+def normalize_studio(bgr: np.ndarray,
+                      config: CropConfig | None = None) -> NormalizationResult:
+    """Normalize a Numista studio source (training pipeline) into a tight coin
+    crop. Falls back to `normalize_device` if the contour detection fails — the
+    reason (no_contour / off_centre / image_filling / ring_contour) is reported
+    in ``result.debug["fallback_reason"]``.
+
+    `config` permet l'ablation format (margin, edge_mode, output_size)."""
     if bgr is None or bgr.size == 0:
         return NormalizationResult(image=None, debug={"error": "empty input"})
 
     det, reason = _detect_circle_contour(bgr)
     if det is None:
         # Fallback to device pipeline. Tag method so we can count fallback rate.
-        res = normalize_device(bgr)
+        res = normalize_device(bgr, config=config)
         if res.image is not None:
             res.method = f"contour_fallback:{res.method}"
         res.debug["fallback_reason"] = reason
@@ -367,12 +440,13 @@ def normalize_studio(bgr: np.ndarray) -> NormalizationResult:
 
     cx, cy, r, extra_debug = det
     return _crop_mask_resize_float(bgr, cx, cy, r, method="contour",
-                                    extra_debug=extra_debug)
+                                    extra_debug=extra_debug, config=config)
 
 
-def normalize_studio_path(path: Path) -> NormalizationResult:
+def normalize_studio_path(path: Path,
+                           config: CropConfig | None = None) -> NormalizationResult:
     bgr = cv2.imread(str(path), cv2.IMREAD_COLOR)
-    return normalize_studio(bgr)
+    return normalize_studio(bgr, config=config)
 
 
 # ---------------------------------------------------------------------------
@@ -717,14 +791,17 @@ def detect_circles_multi(bgr: np.ndarray) -> list[CircleDetection]:
     return detections
 
 
-def normalize_listing(bgr: np.ndarray) -> list[NormalizationResult]:
-    """Normalize a listing image (eBay etc.) into 0..N tight 224×224 coin crops.
+def normalize_listing(bgr: np.ndarray,
+                       config: CropConfig | None = None) -> list[NormalizationResult]:
+    """Normalize a listing image (eBay etc.) into 0..N tight coin crops.
 
     One result per **accepted** circle from `detect_circles_multi`. Order
     matches the detection order (Hough vote descending). Returns ``[]``
     when no coin is detected — the caller decides how to handle that
     (currently `detect_crop.py` flags it as an error, leaves the
     source_image at `'downloaded'` for re-processing).
+
+    `config` permet l'ablation format (margin, edge_mode, output_size).
     """
     if bgr is None or bgr.size == 0:
         return []
@@ -733,16 +810,18 @@ def normalize_listing(bgr: np.ndarray) -> list[NormalizationResult]:
     for det in detections:
         if not det.accepted:
             continue
-        result = _crop_mask_resize_int(bgr, det.cx, det.cy, det.r, method=det.method)
+        result = _crop_mask_resize_int(bgr, det.cx, det.cy, det.r,
+                                        method=det.method, config=config)
         if result.image is None:
             continue
         results.append(result)
     return results
 
 
-def normalize_listing_path(path: Path) -> list[NormalizationResult]:
+def normalize_listing_path(path: Path,
+                            config: CropConfig | None = None) -> list[NormalizationResult]:
     bgr = cv2.imread(str(path), cv2.IMREAD_COLOR)
-    return normalize_listing(bgr)
+    return normalize_listing(bgr, config=config)
 
 
 # ---------------------------------------------------------------------------
