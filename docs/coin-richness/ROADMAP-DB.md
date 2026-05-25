@@ -18,7 +18,12 @@
   - Bug V1 EMU NID 5054 documenté + figé en test golden.
   - Décision P.3b : **split `source` / `method`** sur `coin_aliases` + `coin_names_i18n` (la colonne `source` mélangeait source et méthode).
   - Mécanique drop+recreate des 6 tables source-aware **déplacée de P.3 vers P.6** (impossible dans `_bootstrap` sans perte de données).
-- ⏳ **Session 3 — prep destructive** (à venir) : P.5 (backup test) + P.6 (wipe script). Cf. `SESSION-KICKOFF-P5-P6.md`.
+- ✅ **Session 3 — prep destructive** (2026-05-26) : P.5 + P.6 livrés sur branche `coin-richness/p3-schema`.
+  - P.5 : `ml/scripts/verify_backup_restore.py` + `go-task ml:verify-backup`. Vert sur backup `eurio.db.bak-pre-p3-2026-05-25` (counts égaux bak↔cur sur 10 tables, integrity_check ok, FK clean, sample query Bremen identique).
+  - P.6 : `ml/scripts/wipe_referential.py` (`--dry-run` / `--apply`) + `go-task ml:wipe-referential`. Drop+recreate des 6 tables source-aware avec FK `source → source_registry(id) ON DELETE RESTRICT`. Garde-fou interactif `Type "WIPE"`. Backup auto pré-wipe. Smoke test FK enforcement (savepoint rollback) intégré.
+  - Gotcha capturé : `sqlite3.executescript()` commit implicitement la transaction pendante → on split sur `;` et exécute statement par statement en autocommit mode pour préserver le BEGIN IMMEDIATE / COMMIT manuel.
+  - Tests : `ml/tests/test_wipe_referential.py` (8 cas, copie DB → tmp_path, exerce apply complet + assertions FK + WITHOUT ROWID préservé + refus confirmation). 126/126 verts.
+  - ❌ Wipe **non exécuté** en `--apply` sur la DB réelle — décision produit ouverte (cf. SESSION-KICKOFF-P5-P6.md §8).
 
 ---
 
@@ -252,13 +257,13 @@ recomputés à chaque refetch, donc pas stables comme clé externe).
 | **P.3a** | `schema.sql` additif — 9 nouvelles tables. Bootstrap idempotent. | ~1 h | ✅ **DONE** | 9 tables vides : `source_registry`, `mints`, `coin_variants`, `coin_mint_releases`, `coin_source_refs`, `mint_release_prices`, `mint_release_observations`, `coin_credits`, `coin_edge_variants`. FK ON DELETE RESTRICT vers `source_registry` enforced (testé). |
 | **P.3b** | Alignement vocabulaire producers + split source/method sur `coin_aliases` + `coin_names_i18n` | ~2 h | ✅ **DONE** | `ml/sources/_base/registry_map.py` (`to_registry_source()`, 23 mappings) + `method TEXT` ajouté aux 2 tables i18n/aliases via `_ensure_column`. 8 producers patchés. `migrate_canonical_schema.py` marqué DEPRECATED. |
 | **P.4** | Seed `source_registry` (10 sources, script idempotent) | ~30 min | ✅ **DONE** | `ml/scripts/seed_source_registry.py` + `go-task ml:seed-source-registry`. 10 rows seedées (kind ∈ {official, reference, community, manual, derived}). |
-| **P.5** | **Backup test** : restauration dans fichier temporaire + vérif intégrité (counts + sample query) | ~30 min | ⏳ next | confiance backup |
-| **P.6** | Script `wipe_referential.py` (`--dry-run` / `--apply`) **incluant drop+recreate** des 6 tables source-aware avec FK source. Garde-fou interactif. NE PAS L'EXÉCUTER après écriture. | ~2 h | ⏳ next | script + go-task |
+| **P.5** | **Backup test** : restauration dans fichier temporaire + vérif intégrité (counts + sample query) | ~30 min | ✅ **DONE** 2026-05-26 | `ml/scripts/verify_backup_restore.py` + `go-task ml:verify-backup`. Backup pre-p3 vert. |
+| **P.6** | Script `wipe_referential.py` (`--dry-run` / `--apply`) **incluant drop+recreate** des 6 tables source-aware avec FK source. Garde-fou interactif. NE PAS L'EXÉCUTER après écriture. | ~2 h | ✅ **DONE** 2026-05-26 | `ml/scripts/wipe_referential.py` + `go-task ml:wipe-referential` + 8 tests pytest (126/126 verts). Wipe **non exécuté** en `--apply`. |
 | **P.7** | Refacto `refetch_numista_2eur.py` : Supabase → SQLite, `--nids-file`, écriture vers les 9 tables cibles via registry vocabulary | ~3 h | ⏳ | script |
 | **P.8** | Découplage admin Vue ← Supabase → API ml/ FastAPI : endpoints + remplacement clients Supabase | ~3-4 h | ⏳ | admin lit eurio.db |
 | **P.9** | Archivage scripts legacy : `apply_3*.py`, `bootstrap_coins_from_referential.py`, `migrate_canonical_schema.py` → `ml/referential/_legacy/` + `ml/scripts/_legacy/` | ~30 min | ⏳ | ménage |
 
-**Total prep réalisé** : ~7 h (P.1+P.2+P.3a+P.3b+P.4). **Reste** : ~9-10 h (P.5+P.6+P.7+P.8+P.9).
+**Total prep réalisé** : ~10 h (P.1+P.2+P.3a+P.3b+P.4+P.5+P.6). **Reste** : ~6-7 h (P.7+P.8+P.9).
 
 ### Checkpoint avant phase V — backup + audit pre-wipe
 
