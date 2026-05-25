@@ -70,15 +70,20 @@ def import_results(
     verb = "INSERT OR REPLACE" if replace else "INSERT OR IGNORE"
     sql = (
         f"{verb} INTO coin_names_i18n "
-        "(eurio_id, lang, title, source, confidence, model, fetched_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?)"
+        "(eurio_id, lang, title, source, method, confidence, model, fetched_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
     )
+    # P.3b : source = registry id (numista_api default), method = NULL pour
+    # un titre Numista direct. Legacy JSONL peut porter un `source` (string
+    # libre) → mappé vers `method`, source forcé à 'numista_api' (l'origine
+    # underlying du titre i18n est toujours Numista pour ce script).
     payload = [
         (
             r["eurio_id"],
             r["lang"],
             r["title"],
-            r.get("source", "numista"),
+            "numista_api",
+            r.get("source"),  # legacy field → moved to method
             r.get("confidence", "canon"),
             r.get("model"),
             r.get("fetched_at"),

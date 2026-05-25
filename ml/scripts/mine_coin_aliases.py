@@ -74,9 +74,11 @@ def main() -> int:
     n_ins = 0
     for eid, lang, alias in found:
         cur = conn.execute(
+            # P.3b : split source/method. L'acronyme est extrait d'un titre
+            # Numista i18n → source='numista_api', method='acronym'.
             "INSERT OR IGNORE INTO coin_aliases "
-            "(eurio_id, lang, alias, source, confidence) "
-            "VALUES (?, ?, ?, 'acronym', 'high')",
+            "(eurio_id, lang, alias, source, method, confidence) "
+            "VALUES (?, ?, ?, 'numista_api', 'acronym', 'high')",
             (eid, lang, alias),
         )
         n_ins += cur.rowcount

@@ -10,6 +10,18 @@
 
 ---
 
+## 0. Progress log (2026-05-25)
+
+- ✅ **Session 1 — cadrage** (matin) : doctrine SQLite-only + provenance, schéma cible, cohorte 19, audit cohérence docs/DB.
+- ✅ **Session 2 — implémentation prep** (après-midi) : P.1, P.2, P.3a, P.3b, P.4 livrés. ~7h codées sur branche `coin-richness/p3-schema`. Backup `state/eurio.db.bak-pre-p3-2026-05-25` posé.
+  - Finding majeur P.1 : **cohorte clé NID** (Numista renomme régulièrement → eurio_ids fragiles comme clé externe). Doc + fichier `cohort_validation_19.txt` réécrits NID-keyed.
+  - Bug V1 EMU NID 5054 documenté + figé en test golden.
+  - Décision P.3b : **split `source` / `method`** sur `coin_aliases` + `coin_names_i18n` (la colonne `source` mélangeait source et méthode).
+  - Mécanique drop+recreate des 6 tables source-aware **déplacée de P.3 vers P.6** (impossible dans `_bootstrap` sans perte de données).
+- ⏳ **Session 3 — prep destructive** (à venir) : P.5 (backup test) + P.6 (wipe script). Cf. `SESSION-KICKOFF-P5-P6.md`.
+
+---
+
 ## 1. TL;DR
 
 On reconstruit le référentiel Eurio depuis zéro, proprement :
@@ -171,11 +183,11 @@ Toutes vivent dans `ml/referential/` et doivent être :
 - couvertes par tests golden avec cas litigieux historiques,
 - **seule source canonique** de leur logique (suppression des doublons éparpillés).
 
-| Fonction | Fichier canonique | Doublons à supprimer | Golden cases |
+| Fonction | Fichier canonique | Doublons | Statut tests |
 |---|---|---|---|
-| `eurio_id_from_numista_payload(payload) -> str` | `numista_eurio_id.py` | `audit_apply_common.eurio_id_from_catalog`, `apply_3f_standards.standard_slug` | LV-2018 (Zemgale vs Baltic), BE-2017 (Gand vs Liège), FR-2010 (Appel vs Speech), DE-2009 Saarland, NL-2015 EU Flag, FR-2018 Bleuet (2 colored) |
-| `country_to_iso2(name) -> str \| None` | `eurio_referential.py:210` | aucune connue, mais à ré-vérifier | "Germany", "Germany, Federal Republic of", "Deutschland", "European Union", "Andorra", "Vatican City", "Monaco", "San Marino" |
-| `design_group_id_from_payload(payload) -> str \| None` | `numista_eurio_id.py` (intégré à la fct principale) | — | Treaty of Rome 2007, EMU 2009, 10 Years Euro Cash 2012, EU Flag 2015, Erasmus 2022 |
+| `eurio_id_from_numista_payload(payload) -> NumistaSlugResult \| None` | `ml/referential/numista_eurio_id.py:323` | `audit_apply_common.eurio_id_from_catalog` (DEPRECATED header), `apply_3f_standards.standard_slug` (DEPRECATED header). Suppression effective en P.9. | ✅ 86/86 verts (50 legacy + 9 cohort19 regression + 27 autres). Module `ml/tests/test_numista_eurio_id.py`. |
+| `country_to_iso2(name) -> str \| None` | `ml/referential/eurio_referential.py:210` | aucune | ✅ 23/23 verts. Module `ml/tests/test_country_iso2.py`. Fix : `"Germany, Federal Republic of": "DE"` ajouté au dict. |
+| `design_group_id_from_payload(payload) -> str \| None` | `numista_eurio_id.py` (intégré à la fct principale) | — | ✅ couvert via cas joint-issues du test cohort19 (Treaty of Rome 2007 DE) + 15 cas legacy. |
 
 ---
 
@@ -233,20 +245,20 @@ recomputés à chaque refetch, donc pas stables comme clé externe).
 
 ### Phase P — Préparation codebase
 
-| # | Chunk | Effort | Sortie | Bloqué par |
+| # | Chunk | Effort | Statut | Sortie |
 |---|---|---|---|---|
-| **P.1** | Audit `numista_eurio_id.py` + écriture golden tests (LV-2018, BE-2017, FR-2010, etc.) | ~2 h | `tests/referential/test_eurio_id.py` vert | — |
-| **P.2** | Audit `country_to_iso2()` + golden tests | ~1 h | `tests/referential/test_country_iso2.py` vert | — |
-| **P.3** | Migration `ml/state/schema.sql` : (a) ajout des 8 tables nouvelles ; (b) **drop + recreate** des 6 tables source-aware (cf. §3.2) pour porter la FK source → source_registry. SQLite ne supportant pas `ALTER ADD CONSTRAINT`, on profite du wipe imminent pour recréer proprement. Bootstrap via `store.py::_bootstrap`. | ~2.5 h | schema appliqué, bootstrap idempotent | — |
-| **P.3b** | **Alignement vocabulaire producers** : auditer tous les scripts qui écrivent `source='ebay'/'numista'/'mdp_issue'/...` et les patcher vers le vocabulaire registry (`ebay_browse`, `numista_api`, `mdp`, ...). Sans ce chunk, premier insert post-P.3 = FK violation. Cibles connues : `ml/sources/ebay/`, `ml/sources/bce/`, `ml/scripts/bootstrap_*`, `ml/scripts/refetch_numista_*`. | ~2 h | code source-aware aligné | P.3 |
-| **P.4** | Seed `source_registry` (10 sources : numista_api, bce_official, bundesbank, mdp, lmdlp, wikipedia, ebay_browse, 2euros_org, eurio_derived, manual). Script idempotent. | ~30 min | DB | P.3 |
-| **P.5** | **Backup test** : créer `eurio.db.bak-precoinrichness`, **restaurer dans un fichier temporaire** et vérifier intégrité (counts, sample queries) | ~30 min | confiance backup | P.3, P.4 |
-| **P.6** | Script `wipe_referential.py` avec : `--dry-run` (liste lignes), `--apply` (avec backup auto + check post-wipe). NE PAS L'EXÉCUTER, juste écrit. | ~1.5 h | script + go-task | P.3 |
-| **P.7** | Refacto `refetch_numista_2eur.py` : passer de Supabase UPSERT à SQLite (lecture seule de `referential_catalog`, écriture vers les 7 tables cibles) | ~3 h | script | P.3, P.4, P.1, P.2 |
-| **P.8** | Découplage admin Vue ← Supabase → API ml/ : endpoints + remplacement clients Supabase par fetch API | ~3-4 h | admin lit eurio.db | P.3 (les nouvelles tables doivent exister pour endpoints) |
-| **P.9** | Archivage scripts legacy : `mv apply_3*.py` + `bootstrap_coins_from_referential.py` vers `ml/referential/_legacy/` avec README de désaffectation | ~30 min | ménage | P.7 |
+| **P.1** | Audit `numista_eurio_id.py` + golden tests cohort 19 | ~2 h | ✅ **DONE** 2026-05-25 (branche `coin-richness/p3-schema`) | `ml/tests/test_numista_eurio_id.py` +9 cas (86/86 verts). Finding majeur : cohorte clé NID. V1 EMU bug NID 5054 figé en test. |
+| **P.2** | Audit `country_to_iso2()` + golden tests | ~1 h | ✅ **DONE** | `ml/tests/test_country_iso2.py` (23/23 verts). Ajout `"Germany, Federal Republic of": "DE"` dans `COUNTRY_NAME_TO_ISO2` (Numista long-form, 688 catalog rows). |
+| **P.3a** | `schema.sql` additif — 9 nouvelles tables. Bootstrap idempotent. | ~1 h | ✅ **DONE** | 9 tables vides : `source_registry`, `mints`, `coin_variants`, `coin_mint_releases`, `coin_source_refs`, `mint_release_prices`, `mint_release_observations`, `coin_credits`, `coin_edge_variants`. FK ON DELETE RESTRICT vers `source_registry` enforced (testé). |
+| **P.3b** | Alignement vocabulaire producers + split source/method sur `coin_aliases` + `coin_names_i18n` | ~2 h | ✅ **DONE** | `ml/sources/_base/registry_map.py` (`to_registry_source()`, 23 mappings) + `method TEXT` ajouté aux 2 tables i18n/aliases via `_ensure_column`. 8 producers patchés. `migrate_canonical_schema.py` marqué DEPRECATED. |
+| **P.4** | Seed `source_registry` (10 sources, script idempotent) | ~30 min | ✅ **DONE** | `ml/scripts/seed_source_registry.py` + `go-task ml:seed-source-registry`. 10 rows seedées (kind ∈ {official, reference, community, manual, derived}). |
+| **P.5** | **Backup test** : restauration dans fichier temporaire + vérif intégrité (counts + sample query) | ~30 min | ⏳ next | confiance backup |
+| **P.6** | Script `wipe_referential.py` (`--dry-run` / `--apply`) **incluant drop+recreate** des 6 tables source-aware avec FK source. Garde-fou interactif. NE PAS L'EXÉCUTER après écriture. | ~2 h | ⏳ next | script + go-task |
+| **P.7** | Refacto `refetch_numista_2eur.py` : Supabase → SQLite, `--nids-file`, écriture vers les 9 tables cibles via registry vocabulary | ~3 h | ⏳ | script |
+| **P.8** | Découplage admin Vue ← Supabase → API ml/ FastAPI : endpoints + remplacement clients Supabase | ~3-4 h | ⏳ | admin lit eurio.db |
+| **P.9** | Archivage scripts legacy : `apply_3*.py`, `bootstrap_coins_from_referential.py`, `migrate_canonical_schema.py` → `ml/referential/_legacy/` + `ml/scripts/_legacy/` | ~30 min | ⏳ | ménage |
 
-**Total prep : ~16-17h** (P.3b ajouté +2h).
+**Total prep réalisé** : ~7 h (P.1+P.2+P.3a+P.3b+P.4). **Reste** : ~9-10 h (P.5+P.6+P.7+P.8+P.9).
 
 ### Checkpoint avant phase V — backup + audit pre-wipe
 
@@ -350,6 +362,7 @@ Les `experiment_*`, `training_run_classes`, `cohort_members` référencent des `
 | 2026-05-25 | Source SDK différé post-cohorte | Cf. `docs/sources-refacto/sdk-kickoff.md`. Cohorte 19 sert de banc d'essai du contrat de données ; le SDK arrive quand on est sûr du contrat. Ordre de portage prévu : BCE → Numista → 2euros.org → Bundesbank → eBay. |
 | 2026-05-25 | Cohorte clé NID, pas eurio_id | P.1 finding : `MANUAL_NID_SLUG_OVERRIDES` vide + Numista renomme régulièrement ses titres → les slugs eurio_id sont fragiles comme clé externe. La cohorte stocke des NIDs, les eurio_ids sont une **sortie** du refetch. Rename détecté en V.4 → trace via `eurio_id_migrations(kind='rename')`. |
 | 2026-05-25 | V1 EMU bug NID 5054 | La pure function produit `de-2009-2eur-economic-and-monetary-union` (joint-issue détecté) sur le titre Numista actuel du Saarland Bundesland 2009. Bug couvert par un test golden qui assert le comportement courant. Fix prévu en P.7 (refetch hardening) via `MANUAL_NID_SLUG_OVERRIDES[5054]` ou acceptation du rename. |
+| 2026-05-25 | P.3 split P.3a / P.6.recreate | Le drop+recreate des 6 tables source-aware ne peut pas vivre dans `store.py::_bootstrap` (tournerait à chaque démarrage = perte de données). Déplacé dans le script wipe P.6, sous garde-fou interactif, atomique avec le wipe des données. P.3a reste purement additif (9 nouvelles tables, idempotent). |
 | 2026-05-25 | Backup obligatoirement testé | Pas d'action destructive sans check de restauration |
 | 2026-05-25 | Pas de rollback auto | Si validation échoue, on discute |
 | 2026-05-25 | Chantier A cote weekly snapshot-only | Bloqué par discovery (cf. `chantier-A-cote.md`) |

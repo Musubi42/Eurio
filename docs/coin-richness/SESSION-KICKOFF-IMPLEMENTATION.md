@@ -5,6 +5,12 @@
 > de toucher du code.
 >
 > Date de rédaction : **2026-05-25**. Auteur : session brainstorm Coin Richness.
+>
+> ⚠️ **Statut 2026-05-25 fin de session 2** : P.1 + P.2 + P.3a + P.3b + P.4
+> livrés sur branche `coin-richness/p3-schema` (non encore commité au moment
+> de la dernière édition de ce doc). Voir `ROADMAP-DB.md` §0 pour le progress
+> log complet. Le présent doc **reste valide pour le cadrage** ; pour la
+> prochaine session implémentation, lire d'abord `SESSION-KICKOFF-P5-P6.md`.
 
 ---
 
@@ -130,11 +136,12 @@ terrain (eBay, images, training) : rien ne bouge.
 | `coin_credits` | Graveur avers + graveur revers (Luycx stocké 524 fois OK) avec `source` en PK |
 | `coin_edge_variants` | Tranche A / B (DE 2007-2008) |
 
-### 5.2 — Tables existantes à MODIFIER (drop + recreate en P.3)
+### 5.2 — Tables existantes à MODIFIER (drop + recreate dans P.6, sous garde-fou)
 
-SQLite n'a pas `ALTER TABLE ADD CONSTRAINT` → on profite du wipe pour recréer
-les 6 tables source-aware proprement avec la FK `source → source_registry(id)`
-(`ON DELETE RESTRICT`).
+SQLite n'a pas `ALTER TABLE ADD CONSTRAINT`. Le drop+recreate des 6 tables
+source-aware ne peut pas vivre dans `_bootstrap` (tournerait à chaque
+démarrage = perte de données). Donc : **intégré au script wipe P.6**, sous
+garde-fou interactif, atomique avec le wipe des données.
 
 | Table | Modification |
 |---|---|

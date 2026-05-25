@@ -461,7 +461,7 @@ def _step_fetch_numista(conn: sqlite3.Connection, case: dict) -> dict:
                     """
                     INSERT OR REPLACE INTO coin_canonical_images
                         (eurio_id, source, role, url, local_path)
-                    VALUES (?, 'numista', 'obverse', NULL, ?)
+                    VALUES (?, 'numista_api', 'obverse', NULL, ?)
                     """,
                     (eurio_id, f"ml/canonical_images/{eurio_id}/obverse_numista.webp"),
                 )

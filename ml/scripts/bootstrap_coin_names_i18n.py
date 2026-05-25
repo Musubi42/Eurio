@@ -471,7 +471,11 @@ def run_full(
                         "eurio_id": eurio_id,
                         "lang": lang,
                         "title": result["h1_text"],
-                        "source": "numista",
+                        # P.3b : registry vocabulary. Le JSONL est ré-importé
+                        # par scripts/import_i18n_results.py qui ré-attribue
+                        # toujours source='numista_api' au final ; on aligne
+                        # ici pour cohérence d'archive.
+                        "source": "numista_api",
                         "confidence": "canon",
                         "fetched_at": _now(),
                         "circuit": state["username"],

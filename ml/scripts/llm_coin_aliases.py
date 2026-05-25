@@ -247,9 +247,11 @@ def cmd_ingest(args: argparse.Namespace) -> int:
                 n_ins += 1
                 continue
             cur = conn.execute(
+                # P.3b : split source/method. L'alias dérive d'un titre
+                # Numista via LLM → source='numista_api', method='llm'.
                 "INSERT OR IGNORE INTO coin_aliases "
-                "(eurio_id, lang, alias, source, confidence) "
-                "VALUES (?, ?, ?, 'llm', ?)",
+                "(eurio_id, lang, alias, source, method, confidence) "
+                "VALUES (?, ?, ?, 'numista_api', 'llm', ?)",
                 (eid, lang, alias, confidence),
             )
             if cur.rowcount:

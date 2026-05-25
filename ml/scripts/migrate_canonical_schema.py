@@ -1,5 +1,13 @@
 """Migration de données — Chunk 1b, harmonisation des données.
 
+⚠️ DEPRECATED (P.3b 2026-05-25). Ce script lit ``coins.raw_payload_json``
+qui sera droppé post-wipe (P.6). Il écrit aussi dans ``coin_observations``
+avec des valeurs ``source`` libres (legacy : 'wikipedia', 'lmdlp_variants',
+'mdp_issue', etc.) qui violeront la FK source_registry post-recreate.
+
+À ne PAS re-jouer après P.6. Conservé en lecture pour traçabilité ; sera
+archivé sous ``scripts/_legacy/`` en P.9.
+
 Voir docs/data-harmonization/{architecture,schema-design,plan}.md.
 
 Le SCHÉMA (colonnes canoniques de `coins`, tables filles, index) est posé
