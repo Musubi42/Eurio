@@ -261,9 +261,9 @@ recomputés à chaque refetch, donc pas stables comme clé externe).
 | **P.6** | Script `wipe_referential.py` (`--dry-run` / `--apply`) **incluant drop+recreate** des 6 tables source-aware avec FK source. Garde-fou interactif. NE PAS L'EXÉCUTER après écriture. | ~2 h | ✅ **DONE** 2026-05-26 | `ml/scripts/wipe_referential.py` + `go-task ml:wipe-referential` + 8 tests pytest (126/126 verts). Wipe **non exécuté** en `--apply`. |
 | **P.7** | Refacto `refetch_numista_2eur.py` : Supabase → SQLite, `--nids-file`, écriture vers les 9 tables cibles via registry vocabulary | ~3 h | ✅ **DONE** 2026-05-26 | Script SQLite-target + 4 sous-chunks (a scaffold, b fetch+cache, c.1 mints + c.2 transforms + c.3 writer, d fixtures cohort). 175/175 tests P-related. 3 live fetchs (Bremen 17 + Bleuet 3 + Treaty of Rome 17 = 37 calls). Fixtures committées `ml/tests/fixtures/numista/{10069,134283,2162}/`. Findings dans `findings-numista-api.md`. |
 | **P.8** | Découplage admin Vue ← Supabase → API ml/ FastAPI : endpoints + remplacement clients Supabase | ~3-4 h | ⏳ | admin lit eurio.db |
-| **P.9** | Archivage scripts legacy : `apply_3*.py`, `bootstrap_coins_from_referential.py`, `migrate_canonical_schema.py` → `ml/referential/_legacy/` + `ml/scripts/_legacy/` | ~30 min | ⏳ | ménage |
+| **P.9** | Archivage scripts legacy : `apply_3*.py`, `bootstrap_coins_from_referential.py`, `migrate_canonical_schema.py` → `ml/referential/_legacy/` + `ml/scripts/_legacy/` | ~30 min | ✅ **DONE** 2026-05-26 (partiel) | 12 fichiers archivés `ml/referential/_legacy/` (apply_3* cluster + audit_apply_common + migrate_to_v2 + wipe_2eur_for_refetch + clean_referential + bootstrap_design_groups_2eur). 4 résidus gardés (`refetch_numista_2eur` Supabase + `import_numista` + `migrate_canonical_schema` + `bootstrap_coins_from_referential`) car importers actifs (admin live + tests). Bouclage post-P.8 ou session P.10. README.md mapping legacy → moderne. 180/180 tests P-related verts. |
 
-**Total prep réalisé** : ~10 h (P.1+P.2+P.3a+P.3b+P.4+P.5+P.6). **Reste** : ~6-7 h (P.7+P.8+P.9).
+**Total prep réalisé** : ~16 h (P.1 → P.7 + P.9). **Reste** : ~3-4 h (P.8 + bouclage P.9).
 
 ### Checkpoint avant phase V — backup + audit pre-wipe
 
