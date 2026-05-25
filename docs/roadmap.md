@@ -2,7 +2,7 @@
 
 > **À quoi sert ce doc** : reprendre une session froide en 5 min. Photo de la trajectoire vers le premier modèle ArcFace utile et son déploiement Android, dans le bon ordre, avec les dépendances explicites.
 >
-> **Dernière mise à jour** : 2026-05-25
+> **Dernière mise à jour** : 2026-05-25 (session ablation format crop)
 >
 > **Pour l'historique des phases ML/data antérieures** : voir `docs/phases/` et `docs/archive/`.
 > **Pour la doc app Android** : voir `docs/app-implem-phases/`.
@@ -132,6 +132,11 @@ J7 : Déploiement Android du nouveau modèle (LiteRT)
 - **Dépend de** : J2 (un listing pas reviewé ne passe pas en `image_assets`).
 - **Done quand** : se mesure indirectement par croissance de `image_assets` par classe.
 
+> **Note 2026-05-25** — la session "améliorer la qualité du crop" a divergé vers un chantier
+> dédié *format crop ablation* (cf. section ci-dessous). J3 attend que ce chantier tranche le
+> format final ; sinon on entasse du crop sous-optimal dans MinIO. Voir
+> [Chantier ablation format crop](#chantier-en-cours--ablation-format-crop-2026-05-25).
+
 #### J4 — Quota training-ready atteint
 
 - **Définition** : assez d'images sources / classe pour entraîner ArcFace en confiance.
@@ -191,6 +196,52 @@ J7 : Déploiement Android du nouveau modèle (LiteRT)
 
 ---
 
+## Chantier en cours — ablation format crop (2026-05-25)
+
+Découvert pendant J3 : les crops eBay actuels sont sous-optimaux (12 % d'undercrop
+bimétal sur échantillon 2 € commémo, cf. `docs/operations/crop-bimetal-undercrop.md`).
+La discussion a remonté à une **question de fond** : quel format de crop est optimal
+pour entraîner ArcFace sur pièces, on-device ? La littérature est silencieuse
+sur l'ablation margin/edge (cf. memory `reference_crop_format_research`).
+
+**Décision** : ablation interne, hold-out = device captures (cohorte `mix-zone-17`,
+16 coins frozen) plutôt que crops eBay (biaisés par le bug Hough en amont).
+
+### Plan en 4 steps
+
+| Step | Statut | Sortie |
+|---|---|---|
+| **1 — Audit hold-out** | ✅ livré 2026-05-25 | Constat : 0 cohort capture en DB, ~500 photos cible nécessaires (sensibilité 5 pp R@1) |
+| **2 — `CropConfig` paramétrable** | ✅ livré 2026-05-25 | Dataclass `(margin_frac, edge_mode, output_size)` dans `ml/scan/normalize_snap.py`, defaults legacy bit-identiques (zero régression Kotlin parity). 14 tests verts. |
+| **2b — App cohortTest extension** | ✅ livré 2026-05-25 | `CaptureProtocol.Mode.{LEGACY, ABLATION}` via directive `# mode=ablation` en première ligne du CSV. 5 conditions BenchProtocol × 4 photos / step + auto-advance. 9 tests Kotlin verts. |
+| **3 — Sweep ablation** | ⏳ en attente captures | Sweep margin {2,5,10,15}% × edge {hard, feathered, none} à res 224 fixe. Mesure R@1/R@5 par combo sur le hold-out capture. ~12 runs × 5h GPU 1080 Ti. |
+| **4 — Cutover format gagnant** | ⏳ après 3 | Mirror du format gagnant dans `SnapNormalizer.kt` Kotlin, re-crop tous les `enrichment-raws`, re-train modèle prod, deploy LiteRT. |
+
+### Données d'entrée
+
+- **Training data** : eBay scrapings (existants en MinIO, hétérogènes, volume OK).
+- **Test data** : device captures cohort `mix-zone-17`, conditions standardisées
+  (`bright_plain, bright_textured, dim, oblique, partial_shadow` × 4 photos).
+- **Cible** : 17 coins × 5 conditions × 4 photos = **340 photos** obverse-only,
+  ~1h30 capture humaine.
+
+### Pour reprendre
+
+```bash
+# Push CSV (la directive #mode=ablation déclenche les 5 cond × 4 photos)
+go-task -t app-android/Taskfile.yml push-capture-csv CSV=ml/state/cohort_csvs/mix-zone-17.csv
+
+# Build + install
+go-task android:install
+
+# Shoot via debugMode + captureMode dans DebugBar. UI guide : "PIÈCE 3/17 · oblique · PHOTO 2/4"
+# Quand fini : go-task -t app-android/Taskfile.yml pull-debug
+```
+
+Memories pertinentes : `project_crop_format_ablation`, `reference_crop_format_research`.
+
+---
+
 ## Prochains livrables
 
 ### Référentiel / data quality (en cours)
@@ -211,10 +262,11 @@ J7 : Déploiement Android du nouveau modèle (LiteRT)
 
 ### Training pipeline (en attente que la data soit propre)
 
-8. **Mini-benchmark seuil training** (10 vs 30 vs 100 sources / classe sur classes déjà riches).
-9. **Spec scrape sweep coverage-first** (prioriser 510 rouges plutôt que stars).
-10. **Re-bench routing marketplaces** avec i18n LLM activée (~2 h).
-11. **Spec ergonomie review** (rendre J2 plus rapide).
+8. **Sweep ablation format crop** (Steps 3 + 4 du chantier ci-dessus) — bloque J3 pour ne pas entasser du sous-optimal.
+9. **Mini-benchmark seuil training** (10 vs 30 vs 100 sources / classe sur classes déjà riches).
+10. **Spec scrape sweep coverage-first** (prioriser 510 rouges plutôt que stars).
+11. **Re-bench routing marketplaces** avec i18n LLM activée (~2 h).
+12. **Spec ergonomie review** (rendre J2 plus rapide).
 
 ---
 

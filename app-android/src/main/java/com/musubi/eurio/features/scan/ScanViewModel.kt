@@ -296,6 +296,8 @@ class ScanViewModel(
     data class CaptureProgress(
         val coinIndex: Int,
         val stepIndex: Int,
+        val photoIndex: Int,       // 0..photosPerStep-1, idx du prochain snap dans la cellule
+        val photosPerStep: Int,    // 1 en LEGACY, 4 en ABLATION
         val coin: CaptureProtocol.Coin,
         val step: CaptureProtocol.Step,
         val captured: Int,
@@ -311,6 +313,7 @@ class ScanViewModel(
 
     private var captureCoinIdx = 0
     private var captureStepIdx = 0
+    private var capturePhotoIdx = 0  // 0..photosPerStep-1 dans la cellule courante
     private var captureCount = 0
     private var captureSessionDir: java.io.File? = null
 
@@ -939,9 +942,11 @@ class ScanViewModel(
                     val coin = CaptureProtocol.coins.getOrNull(captureCoinIdx)
                     val step = CaptureProtocol.steps.getOrNull(captureStepIdx)
                     if (coin != null && step != null) {
-                        appendCaptureManifest(coin, step, cropPath)
+                        appendCaptureManifest(coin, step, cropPath, capturePhotoIdx)
                         captureCount++
-                        updateCaptureProgress()
+                        // ABLATION : photo_idx avance, step auto-suivante après photosPerStep.
+                        // LEGACY (photosPerStep=1) : step suivante immédiatement.
+                        onCaptureSnapPersisted()
                     }
                 }
                 coinAnalyzer.captureContext = null
@@ -1325,6 +1330,7 @@ class ScanViewModel(
         if (turningOn) {
             captureCoinIdx = 0
             captureStepIdx = 0
+            capturePhotoIdx = 0
             captureCount = 0
             // Session dir: eval_real/ is the stable parent (so multiple sessions
             // overwrite cleanly per coin/step) — re-running a step replaces the file.
@@ -1360,10 +1366,20 @@ class ScanViewModel(
         _photoSnap.value = null
     }
 
-    /** Advance to the next step (or next coin, or completion). */
+    /**
+     * Advance après un snap. Comportement :
+     *  - LEGACY (photosPerStep=1) : 1 snap → step suivante (zero régression).
+     *  - ABLATION (photosPerStep=4) : 4 snaps dans la cellule → step suivante.
+     *
+     * Le compteur `capturePhotoIdx` est incrémenté côté `onCaptureSnapPersisted`
+     * (= après que le fichier est bien écrit), pas ici. `onCaptureNext` est le
+     * tap "Suivant" de l'utilisateur — il force l'avance même si on n'a pas
+     * encore atteint `photosPerStep` (skip de cellule).
+     */
     fun onCaptureNext() {
         if (!_captureMode.value) return
         _photoSnap.value = null
+        capturePhotoIdx = 0
         captureStepIdx++
         if (captureStepIdx >= CaptureProtocol.steps.size) {
             captureStepIdx = 0
@@ -1379,6 +1395,40 @@ class ScanViewModel(
         updateCaptureProgress()
     }
 
+    /**
+     * Appelé en interne après chaque snap effectivement persisté sur disque.
+     *
+     * - LEGACY : aucun auto-advance (zero régression). L'utilisateur voit la
+     *   result layer et tape "Suivant" manuellement (`onCaptureNext()`).
+     * - ABLATION : dismiss systématique de la result layer, incrémente
+     *   `capturePhotoIdx`. Quand `photosPerStep` atteint → step suivante auto.
+     */
+    private fun onCaptureSnapPersisted() {
+        if (!_captureMode.value) return
+        if (CaptureProtocol.mode == CaptureProtocol.Mode.LEGACY) {
+            updateCaptureProgress()
+            return
+        }
+        // ABLATION : dismiss + photo_idx++ + auto-step si cellule pleine
+        capturePhotoIdx++
+        _photoSnap.value = null
+        if (capturePhotoIdx >= CaptureProtocol.photosPerStep) {
+            capturePhotoIdx = 0
+            captureStepIdx++
+            if (captureStepIdx >= CaptureProtocol.steps.size) {
+                captureStepIdx = 0
+                captureCoinIdx++
+            }
+            if (captureCoinIdx >= CaptureProtocol.coins.size) {
+                updateCaptureProgress(complete = true)
+                coinAnalyzer.captureContext = null
+                Log.d(TAG, "capture session complete: $captureCount snaps")
+                return
+            }
+        }
+        updateCaptureProgress()
+    }
+
     private fun updateCaptureProgress(complete: Boolean = false) {
         val coin = CaptureProtocol.coins.getOrNull(captureCoinIdx)
         val step = CaptureProtocol.steps.getOrNull(captureStepIdx)
@@ -1386,6 +1436,8 @@ class ScanViewModel(
             _captureProgress.value = CaptureProgress(
                 coinIndex = CaptureProtocol.coins.size,
                 stepIndex = 0,
+                photoIndex = 0,
+                photosPerStep = CaptureProtocol.photosPerStep,
                 coin = CaptureProtocol.coins.last(),
                 step = CaptureProtocol.steps.last(),
                 captured = captureCount,
@@ -1397,6 +1449,8 @@ class ScanViewModel(
         _captureProgress.value = CaptureProgress(
             coinIndex = captureCoinIdx,
             stepIndex = captureStepIdx,
+            photoIndex = capturePhotoIdx,
+            photosPerStep = CaptureProtocol.photosPerStep,
             coin = coin,
             step = step,
             captured = captureCount,
@@ -1409,7 +1463,10 @@ class ScanViewModel(
      * Append one entry to the capture session manifest.jsonl. Append-style is
      * crash-resilient — partial sessions still leave a parsable trail.
      */
-    private fun appendCaptureManifest(coin: CaptureProtocol.Coin, step: CaptureProtocol.Step, cropPath: String) {
+    private fun appendCaptureManifest(coin: CaptureProtocol.Coin,
+                                       step: CaptureProtocol.Step,
+                                       cropPath: String,
+                                       photoIdx: Int) {
         val dir = captureSessionDir ?: return
         val manifest = java.io.File(dir, "manifest.jsonl")
         val ts = java.text.SimpleDateFormat("yyyyMMdd_HHmmss_SSS", java.util.Locale.US)
@@ -1417,6 +1474,8 @@ class ScanViewModel(
         val safeLabel = step.label.replace("\"", "\\\"")
         val line = """{"ts":"$ts","eurio_id":"${coin.eurioId}","step_id":"${step.id}",""" +
             """"step_label":"$safeLabel","step_index":${captureStepIdx},""" +
+            """"photo_index":${photoIdx},"photos_per_step":${CaptureProtocol.photosPerStep},""" +
+            """"protocol_mode":"${CaptureProtocol.mode.name.lowercase()}",""" +
             """"crop_path":"${cropPath.replace("\"", "\\\"")}"}"""
         try {
             manifest.appendText(line + "\n")
@@ -1458,6 +1517,7 @@ class ScanViewModel(
                     stepId = step.id,
                     stepLabel = step.label,
                     stepIndex = captureStepIdx,
+                    photoIndex = capturePhotoIdx,
                 )
             } else null
         } else {
