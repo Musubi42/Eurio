@@ -366,7 +366,7 @@ def coin_variant_row(slug: NumistaSlugResult, payload: dict) -> dict | None:
     """Row pour ``coin_variants`` si le payload détecte un variant
     (coloured/hologram/...). Le parent_type_id pointe vers le coin classic.
     """
-    if not slug.is_variant or not slug.finish:
+    if not slug.is_variant or not slug.variant_finish:
         return None
     nid = int(payload["id"])
     obverse_url = (payload.get("obverse") or {}).get("picture")
@@ -374,7 +374,7 @@ def coin_variant_row(slug: NumistaSlugResult, payload: dict) -> dict | None:
     return {
         "id": f"{slug.eurio_id}/variant-numista-{nid}",
         "parent_type_id": slug.eurio_id,
-        "finish": slug.finish,
+        "finish": slug.variant_finish,
         "obverse_url": obverse_url,
         "reverse_url": reverse_url,
         "notes": slug.catalog_name,

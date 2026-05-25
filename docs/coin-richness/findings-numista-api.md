@@ -212,21 +212,52 @@ continue.
 
 ---
 
-## 5. À documenter au fil des fetchs cohorte (V.1)
+## 5. Findings P.7d — Bleuet (variant) + Treaty of Rome (joint-issue)
 
-Quand le refetch sera lancé sur les 19 NIDs :
+### 5.1 — NID 134283 Bleuet de France 2018 Coloured — VARIANT
 
-- [ ] **Variants** : Bleuet NID 134283 — comment Numista distingue le
-      Type parent vs le variant coloured (séparé en NID distinct, ou
-      même NID avec finish dans le titre ?)
-- [ ] **Joint-issues** : Treaty of Rome NID 2162 — payload contient-il
-      `numista_design_group` ? Comment Numista lie les 13 NIDs ?
-- [ ] **Joint-issue + multi-ateliers** : Treaty of Rome DE expose-t-il
-      aussi 5 ateliers comme Bremen ?
+Live fetch 2026-05-26 (3 calls : 1 type + 1 issues + 1 prices ; en fait
+2 prices car 2 issues).
+
+**Structure issues** (différente de Bremen) :
+- **2 issues seulement** : 1 BU + 1 Proof. **Pas de CIRC.** Logique :
+  les pièces coloured sont des collector items, jamais mises en circulation.
+- 1 atelier seulement, `mint_letter = None` (Pessac, pas de lettre).
+- Prices : 1 grade `unc` par issue (cohérent avec finding §2.4).
+
+**Slug** : `eurio_id_from_numista_payload()` retourne
+``fr-2018-2eur-bleuet-de-france`` (le **parent** classique, pas le variant
+lui-même). `is_variant=True`, `variant_finish='coloured'`. Une row
+``coin_variants`` capture le finish.
+
+**Bug capturé P.7d** : l'attribut du dataclass est ``slug.variant_finish``,
+pas ``slug.finish`` — bug initial dans ``coin_variant_row()``. Fix appliqué.
+
+### 5.2 — NID 2162 Treaty of Rome 2007 DE — JOINT-ISSUE + MULTI-MINT
+
+Live fetch 2026-05-26 (17 calls : 1 + 1 + 15 prices).
+
+**Structure issues** (Bremen-like) :
+- **15 issues** : 5 ateliers (A/D/F/G/J) × 3 issue_types (CIRC/BU/Proof).
+- Confirme que la grille DE multi-ateliers s'applique aussi aux
+  commémorations non-Bundesländer.
+
+**Joint-issue** :
+- `slug.is_joint_issue=True`, `slug.design_group_id='eu-rome-2007'`.
+- ``design_groups`` row créée avec designation = "Treaty of Rome".
+- ``coins.design_group_id`` lié.
+- ⚠️ Le payload Numista n'expose **pas** ``numista_design_group``
+  (vérifié : `numista_design_group=None`). C'est la **pure function**
+  Eurio qui détecte le joint-issue depuis le titre ("Treaty of Rome").
+  Les autres NIDs des autres pays devront produire le même
+  `design_group_id` pour pointer vers la même row — testé via le slug.
+
+### 5.3 — À documenter au fil des fetchs cohorte restants (V.1)
+
 - [ ] **Standard circulation** : NID 64 (AT 2002 standard) — combien
       d'issues sur 25 ans d'émission ? Échelle des prix.
-- [ ] **Designer Luycx** : NID 64 — `designers` array contient-il
-      Luycx ? Format ? (cf. mémoire — 524 fois en DB legacy).
+- [ ] **Designer Luycx** : confirmer que `engravers` array contient
+      Luycx sur les reverse standards.
 - [ ] **JOUE** : un coin commémo (ex: BE 2011 NID 19734) expose-t-il un
       lien JOUE dans le payload ?
 - [ ] **Image license** : `picture_copyright` + `picture_license_name`
