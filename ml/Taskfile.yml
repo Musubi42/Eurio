@@ -751,3 +751,9 @@ tasks:
     desc: "Wipe le référentiel + drop/recreate des 6 tables source-aware avec FK source. Par défaut --dry-run (lecture-seule). Pass --apply pour exécution sous confirmation interactive. ACTE DESTRUCTIF."
     cmds:
       - "{{.VENV}}/python -m scripts.wipe_referential {{.CLI_ARGS}}"
+
+  # ─── Coin richness — P.7 refetch Numista (SQLite-target) ─────────────────
+  refetch-numista:
+    desc: "Refetch Numista 2€ → SQLite via --nids-file. P.7a scaffold = plan only. P.7b/c/d ajouteront fetch HTTP + transforms + tests."
+    cmds:
+      - "{{.VENV}}/python -m scripts.refetch_numista_2eur {{.CLI_ARGS}}"

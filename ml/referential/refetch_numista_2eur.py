@@ -1,4 +1,14 @@
-"""Orchestrateur refetch Numista 2€ → Supabase (chunk 3 bench AD, chunk 4 full).
+"""DEPRECATED — voir ml/scripts/refetch_numista_2eur.py (P.7).
+
+Cette version cible Supabase et est conservée temporairement pour référence
+historique (logique slug + variant + joint-issue + mapping prix). Sera
+archivée vers ``ml/referential/_legacy/`` en P.9. **Ne pas appeler depuis
+les chemins de production.** L'orchestrateur SQLite-target vit dans
+``ml/scripts/refetch_numista_2eur.py``.
+
+────────────────────────────────────────────────────────────────────────────
+
+Orchestrateur refetch Numista 2€ → Supabase (chunk 3 bench AD, chunk 4 full).
 
 Voir docs/research/numista-clean-refetch-kickoff.md §6 et
 docs/research/numista-clean-refetch-progress.md.
