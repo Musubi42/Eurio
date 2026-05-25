@@ -5,6 +5,7 @@ import { checkMlApi } from '@/features/training/composables/useTrainingApi'
 import {
   fetchCoverage,
   fetchJointIssues,
+  fetchZeroCanon,
   runDiscover,
   runHeal,
   runPush,
@@ -13,6 +14,7 @@ import {
   type HealResponse,
   type JointIssuesResponse,
   type PushResponse,
+  type ZeroCanonResponse,
 } from '../composables/useReferentialApi'
 
 // ─── State ─────────────────────────────────────────────────────────────
@@ -20,6 +22,7 @@ import {
 const apiStatus = ref<'checking' | 'online' | 'offline'>('checking')
 const coverage = ref<CoverageResponse | null>(null)
 const joints = ref<JointIssuesResponse | null>(null)
+const zeroCanon = ref<ZeroCanonResponse | null>(null)
 const loading = ref(false)
 const loadError = ref<string | null>(null)
 const healing = ref(false)
@@ -45,9 +48,12 @@ async function refreshCoverage() {
   loading.value = true
   loadError.value = null
   try {
-    const [cov, jts] = await Promise.all([fetchCoverage(), fetchJointIssues()])
+    const [cov, jts, zc] = await Promise.all([
+      fetchCoverage(), fetchJointIssues(), fetchZeroCanon(),
+    ])
     coverage.value = cov
     joints.value = jts
+    zeroCanon.value = zc
   } catch (err) {
     loadError.value = err instanceof Error ? err.message : 'Erreur de chargement'
   } finally {
@@ -524,6 +530,69 @@ function tabCount(tab: typeof activeTab.value): number {
               <tr v-if="!joints.joint_issues.length">
                 <td colspan="6" class="px-3 py-6 text-center text-xs" style="color: var(--ink-500);">
                   Aucune joint issue identifiée.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ═══ Zero-canon résiduels (BCE-aware) ═══ -->
+      <section v-if="zeroCanon" class="mb-6">
+        <h2 class="mb-3 flex items-baseline justify-between gap-2 font-mono text-xs uppercase tracking-wider" style="color: var(--ink-500);">
+          <span class="flex items-baseline gap-2">
+            <AlertCircle class="h-3.5 w-3.5" style="color: var(--indigo-700);" />
+            <span style="color: var(--indigo-700);">Zero-canon résiduels</span>
+            <span class="opacity-60">
+              · {{ zeroCanon.n_residuals }} sans aucune image (DB + BCE FS)
+              — couverts BCE : {{ zeroCanon.n_covered_by_bce_fs }}/{{ zeroCanon.n_db_zero_canon }}
+            </span>
+          </span>
+          <span class="flex items-baseline gap-2">
+            <router-link to="/referential/fixes"
+                         class="rounded-full border px-3 py-1 font-mono text-[10px] normal-case"
+                         style="border-color: var(--surface-3); color: var(--indigo-700);">
+              Fixes catalog_unlinked →
+            </router-link>
+            <router-link to="/referential/divergences"
+                         class="rounded-full border px-3 py-1 font-mono text-[10px] normal-case"
+                         style="border-color: var(--surface-3); color: var(--indigo-700);">
+              Voir divergences BCE ↔ Numista →
+            </router-link>
+          </span>
+        </h2>
+
+        <div class="rounded-lg border" style="border-color: var(--surface-3); background: var(--surface);">
+          <table class="w-full text-sm">
+            <thead class="text-xs uppercase font-mono" style="background: var(--surface-1); color: var(--ink-500);">
+              <tr>
+                <th class="px-3 py-2 text-left">Pays</th>
+                <th class="px-3 py-2 text-right">Année</th>
+                <th class="px-3 py-2 text-left">Thème</th>
+                <th class="px-3 py-2 text-right">Numista ID</th>
+                <th class="px-3 py-2 text-left">eurio_id</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="r in zeroCanon.residuals" :key="r.eurio_id"
+                  class="border-t" style="border-color: var(--surface-2);">
+                <td class="px-3 py-1.5 font-mono text-xs">{{ r.country }}</td>
+                <td class="px-3 py-1.5 text-right font-mono text-xs">{{ r.year }}</td>
+                <td class="px-3 py-1.5" style="color: var(--ink);">{{ r.theme }}</td>
+                <td class="px-3 py-1.5 text-right font-mono text-xs">
+                  <a v-if="r.numista_id" :href="`https://en.numista.com/catalogue/pieces${r.numista_id}.html`"
+                     target="_blank" rel="noopener" style="color: var(--indigo-700);">
+                    {{ r.numista_id }}
+                  </a>
+                  <span v-else style="color: var(--ink-500);">—</span>
+                </td>
+                <td class="px-3 py-1.5 font-mono text-[10px]" style="color: var(--ink-500);">
+                  {{ r.eurio_id }}
+                </td>
+              </tr>
+              <tr v-if="!zeroCanon.residuals.length">
+                <td colspan="5" class="px-3 py-6 text-center text-xs" style="color: var(--success);">
+                  ✓ Aucun résiduel — toutes les pièces ont au moins une image (DB ou BCE FS).
                 </td>
               </tr>
             </tbody>

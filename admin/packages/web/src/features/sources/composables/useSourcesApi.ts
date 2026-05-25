@@ -133,7 +133,7 @@ export const SOURCE_PIPELINE_META: Record<SourceId, PipelineMeta> = {
   ebay: { role: 'enrichment', produces: ['images in-the-wild', 'prix'] },
   lmdlp: { role: 'enrichment', produces: ['images studio', 'cotation'] },
   mdp: { role: 'enrichment', produces: ['images studio', 'fiches'] },
-  bce: { role: 'enrichment', produces: ['annonces commémo'] },
+  bce: { role: 'referential', produces: ['images canoniques officielles'] },
   wikipedia: { role: 'enrichment', produces: ['métadonnées par pays'] },
 }
 

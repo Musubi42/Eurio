@@ -388,9 +388,9 @@ tasks:
       - "{{.VENV}}/python referential/scrape_monnaiedeparis.py"
 
   scrape-bce:
-    desc: "Scrape BCE commémo announcements 2004→current year → ml/datasets/sources/bce_comm_<year>_<date>.html"
+    desc: "Pipeline BCE complet (fs-as-SOT) — fetch + crop + sidecar + manifest. Args : --year, --target, --country, --dry-run, --force."
     cmds:
-      - "{{.VENV}}/python referential/scrape_bce_images.py"
+      - "{{.VENV}}/python -m sources.bce.cli {{.CLI_ARGS}}"
 
   fetch-bce-images:
     desc: "Download + upload BCE coin images (always — coexists with Numista)"

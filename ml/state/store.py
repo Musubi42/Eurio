@@ -573,6 +573,19 @@ class Store:
                 column="kind",
                 decl="TEXT NOT NULL DEFAULT 'single'",
             )
+            # Chunk B 2026-05-25 — audit additive.
+            self._ensure_column(
+                conn,
+                table="review_queue",
+                column="decision_engine_version",
+                decl="TEXT",
+            )
+            self._ensure_column(
+                conn,
+                table="review_queue",
+                column="decision_metadata_json",
+                decl="TEXT NOT NULL DEFAULT '{}'",
+            )
             for column, decl in (
                 ("target_country", "TEXT"),
                 ("country_anchors_count", "INTEGER"),

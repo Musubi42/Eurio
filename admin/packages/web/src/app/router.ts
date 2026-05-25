@@ -77,6 +77,10 @@ const router = createRouter({
           component: () => import('@/features/review/pages/AutoAcceptReviewPage.vue'),
         },
         {
+          path: 'review/ccproxy',
+          component: () => import('@/features/review/pages/ClaudeReviewPage.vue'),
+        },
+        {
           path: 'review/lot/:listing_key',
           component: () => import('@/features/review/pages/LotReviewDetailPage.vue'),
         },
@@ -91,6 +95,14 @@ const router = createRouter({
         {
           path: 'referential',
           component: () => import('@/features/referential/pages/ReferentialPage.vue'),
+        },
+        {
+          path: 'referential/divergences',
+          component: () => import('@/features/referential/pages/DivergencesPage.vue'),
+        },
+        {
+          path: 'referential/fixes',
+          component: () => import('@/features/referential/pages/FixesPage.vue'),
         },
         {
           path: 'parity',

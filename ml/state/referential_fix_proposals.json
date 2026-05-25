@@ -1,0 +1,390 @@
+{
+  "generated_at": "2026-05-25T13:54:59.437481+00:00",
+  "n_proposals": 9,
+  "by_shape": {
+    "B": 9
+  },
+  "by_confidence": {
+    "high": 7,
+    "medium": 2
+  },
+  "proposals": [
+    {
+      "case_id": "es-2012-10-years-of-euro-cash",
+      "country": "ES",
+      "year": 2012,
+      "shape": "B",
+      "confidence": "high",
+      "reasoning": "Existing row es-2012-2eur-burgos-cathedral currently points to nid=28193 ('2 Euros (10 Years of Euro Cash)', sim=0.38). Orphan nid=30072 ('2 Euros (Burgos Cathedral)') matches its slug better (sim=1.00, gain=+0.62). Swap + create new row for displaced nid=28193 ('2 Euros (10 Years of Euro Cash)').",
+      "new_row": {
+        "eurio_id": "es-2012-2eur-10-years-of-euro-cash",
+        "country": "ES",
+        "year": 2012,
+        "face_value": 2.0,
+        "numista_id": 28193,
+        "theme": "10 Years of Euro Cash",
+        "design_description": "The world in the form of a euro symbol in the centre, showing how the euro has become a true global player over the last ten years. The surrounding elements symbolise the importance of the euro to ordinary people (represented by a family group), to the financial world (the Eurotower), to trade (a ship), to industry (a factory), and to the energy sector and research and development (two wind turbines). The coin’s outer ring bears the twelve stars of the European Union."
+      },
+      "swap": {
+        "eurio_id": "es-2012-2eur-burgos-cathedral",
+        "current_numista_id": 28193,
+        "new_numista_id": 30072,
+        "current_numista_title": "2 Euros (10 Years of Euro Cash)",
+        "new_numista_title": "2 Euros (Burgos Cathedral)",
+        "current_similarity": 0.378,
+        "new_similarity": 1.0
+      },
+      "source_attributions": [
+        {
+          "source": "bce_sidecar",
+          "current_holder": "es-2012-2eur-burgos-cathedral",
+          "feature_text": "Burgos Cathedral – UNESCO World Heritage series",
+          "sim_to_existing_slug": 0.525,
+          "sim_to_new_slug": 0.242,
+          "recommended_target": "existing"
+        }
+      ],
+      "warnings": [
+        "Le numista_id déplacé décrit possiblement une joint issue — vérifier si un design_group existe/manque."
+      ]
+    },
+    {
+      "case_id": "fr-2014-world-aids-day-coloured",
+      "country": "FR",
+      "year": 2014,
+      "shape": "B",
+      "confidence": "medium",
+      "reasoning": "Existing row fr-2014-2eur-world-aids-day currently points to nid=67424 ('2 Euros (World AIDS Day; Coloured)', sim=0.76). Orphan nid=67264 ('2 Euros (World AIDS Day)') matches its slug better (sim=1.00, gain=+0.24). Swap + create new row for displaced nid=67424 ('2 Euros (World AIDS Day; Coloured)').",
+      "new_row": {
+        "eurio_id": "fr-2014-2eur-world-aids-day-coloured",
+        "country": "FR",
+        "year": 2014,
+        "face_value": 2.0,
+        "numista_id": 67424,
+        "theme": "World AIDS Day; Coloured",
+        "design_description": "The red ribbon, symbolising the fight against AIDS, is featured in the coin’s central field. The ribbon was created by the Visual AIDS Artists Caucus and the US painter Frank Moore. It should be worn close to the heart to symbolise solidarity with AIDS sufferers and is in the shape of an upside-down V. The idea is for it to be worn as a V one day to signify victory over the disease. There are three ribbons in the central field. One is in the conventional position and will be coloured red for the brilliant uncirculated (BU) and proof (PRF) versions. The other two ribbons are inverted and associated with two Vs to strengthen the symbolism of the much-hoped-for victory over the disease. The date 1 December, Unesco World AIDS Day, appears at the top of the central field. The coin’s outer ring bears the 12 stars of the European Union."
+      },
+      "swap": {
+        "eurio_id": "fr-2014-2eur-world-aids-day",
+        "current_numista_id": 67424,
+        "new_numista_id": 67264,
+        "current_numista_title": "2 Euros (World AIDS Day; Coloured)",
+        "new_numista_title": "2 Euros (World AIDS Day)",
+        "current_similarity": 0.757,
+        "new_similarity": 1.0
+      },
+      "source_attributions": [
+        {
+          "source": "bce_sidecar",
+          "current_holder": "fr-2014-2eur-world-aids-day",
+          "feature_text": "The fight against AIDS by way of World AIDS Day",
+          "sim_to_existing_slug": 0.459,
+          "sim_to_new_slug": 0.4,
+          "recommended_target": "existing"
+        },
+        {
+          "source": "lmdlp_variants",
+          "current_holder": "fr-2014-2eur-world-aids-day",
+          "feature_text": "2 euros France 2014 – Journée Mondiale du sida BU FDC",
+          "sim_to_existing_slug": 0.277,
+          "sim_to_new_slug": 0.27,
+          "recommended_target": "unknown"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "case_id": "be-2015-philippe-30-years-of-european-union-flag",
+      "country": "BE",
+      "year": 2015,
+      "shape": "B",
+      "confidence": "high",
+      "reasoning": "Existing row be-2015-2eur-european-year-for-development currently points to nid=77181 ('2 Euros - Philippe (30 Years of European Union Flag)', sim=0.35). Orphan nid=76630 ('2 Euros - Philippe (European Year for Development)') matches its slug better (sim=0.87, gain=+0.52). Swap + create new row for displaced nid=77181 ('2 Euros - Philippe (30 Years of European Union Flag)').",
+      "new_row": {
+        "eurio_id": "be-2015-2eur-philippe-30-years-of-european-union-flag",
+        "country": "BE",
+        "year": 2015,
+        "face_value": 2.0,
+        "numista_id": 77181,
+        "theme": "Philippe (30 Years of European Union Flag",
+        "design_description": "The European Union flag as a symbol that unites people and cultures with shared visions and ideals for a better common future. Twelve stars that morph into human figures are embracing the birth of a new Europe. At the top right, in a semi-circle, are the issuing country and the years ‘1985-2015’. At the bottom right are the initials of the artist (Georgios Stamatopoulos). The coin’s outer ring bears the 12 stars of the European Union."
+      },
+      "swap": {
+        "eurio_id": "be-2015-2eur-european-year-for-development",
+        "current_numista_id": 77181,
+        "new_numista_id": 76630,
+        "current_numista_title": "2 Euros - Philippe (30 Years of European Union Flag)",
+        "new_numista_title": "2 Euros - Philippe (European Year for Development)",
+        "current_similarity": 0.348,
+        "new_similarity": 0.866
+      },
+      "source_attributions": [
+        {
+          "source": "bce_sidecar",
+          "current_holder": "be-2015-2eur-european-year-for-development",
+          "feature_text": "2015 – European Year for Development",
+          "sim_to_existing_slug": 0.921,
+          "sim_to_new_slug": 0.378,
+          "recommended_target": "existing"
+        },
+        {
+          "source": "lmdlp_variants",
+          "current_holder": "be-2015-2eur-european-year-for-development",
+          "feature_text": "2 euros Belgique 2015 – Année pour le Développement BU FDC Coincard FR",
+          "sim_to_existing_slug": 0.454,
+          "sim_to_new_slug": 0.241,
+          "recommended_target": "existing"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "case_id": "de-2015-bundeslander-hessen-pattern",
+      "country": "DE",
+      "year": 2015,
+      "shape": "B",
+      "confidence": "high",
+      "reasoning": "Existing row de-2015-2eur-25-years-of-german-unity currently points to nid=284594 ('2 Euros (Bundesländer - \"Hessen\" - Pattern)', sim=0.27). Orphan nid=69264 ('2 Euros (25 Years of German Unity)') matches its slug better (sim=1.00, gain=+0.73). Swap + create new row for displaced nid=284594 ('2 Euros (Bundesländer - \"Hessen\" - Pattern)').",
+      "new_row": {
+        "eurio_id": "de-2015-2eur-bundeslander-hessen-pattern",
+        "country": "DE",
+        "year": 2015,
+        "face_value": 2.0,
+        "numista_id": 284594,
+        "theme": "Bundesländer - \"Hessen\" - Pattern",
+        "design_description": "A classic perspective on St. Paul’s Church in Frankfurt (the ‘Paulskirche', the seat of Germany’s first freely elected legislative body in 1849 and is regarded as the cradle of German democracy) and is the perspective possessing the greatest recognition value. The design incisively brings out the tension between the dominant tower and the elliptical structure of the church. The slightly exaggerated flight of steps has an inviting quality while simultaneously offering support to the subjacent inscription ‘HESSEN’ (the Federal State of Hessen in which St. Paul’s Church is situated). The inner part also features the date and mintmark to the left and the engraver’s mark (the initials ‘HH’ — Heinz Hoyer) to the right. The coin’s outer ring depicts the 12 stars of the European flag."
+      },
+      "swap": {
+        "eurio_id": "de-2015-2eur-25-years-of-german-unity",
+        "current_numista_id": 284594,
+        "new_numista_id": 69264,
+        "current_numista_title": "2 Euros (Bundesländer - \"Hessen\" - Pattern)",
+        "new_numista_title": "2 Euros (25 Years of German Unity)",
+        "current_similarity": 0.275,
+        "new_similarity": 1.0
+      },
+      "source_attributions": [
+        {
+          "source": "bce_sidecar",
+          "current_holder": "de-2015-2eur-25-years-of-german-unity",
+          "feature_text": "25 years of German Unity",
+          "sim_to_existing_slug": 1.0,
+          "sim_to_new_slug": 0.118,
+          "recommended_target": "existing"
+        },
+        {
+          "source": "lmdlp_variants",
+          "current_holder": "de-2015-2eur-25-years-of-german-unity",
+          "feature_text": "2 euros Allemagne 2015 – J Réunification Allemande UNC",
+          "sim_to_existing_slug": 0.342,
+          "sim_to_new_slug": 0.228,
+          "recommended_target": "existing"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "case_id": "lt-2015-30-years-of-european-union-flag",
+      "country": "LT",
+      "year": 2015,
+      "shape": "B",
+      "confidence": "high",
+      "reasoning": "Existing row lt-2015-2eur-lithuanian-language currently points to nid=76640 ('2 Euros (30 Years of European Union Flag)', sim=0.28). Orphan nid=78191 ('2 Euros (Lithuanian Language)') matches its slug better (sim=1.00, gain=+0.72). Swap + create new row for displaced nid=76640 ('2 Euros (30 Years of European Union Flag)').",
+      "new_row": {
+        "eurio_id": "lt-2015-2eur-30-years-of-european-union-flag",
+        "country": "LT",
+        "year": 2015,
+        "face_value": 2.0,
+        "numista_id": 76640,
+        "theme": "30 Years of European Union Flag",
+        "design_description": "The European Union flag as a symbol that unites people and cultures with shared visions and ideals for a better common future. Twelve stars that morph into human figures are embracing the birth of a new Europe. At the top right, in semi-circle, are the issuing country, the years ‘1985-2015’, and the mintmark of the Lithuanian Mint. At the bottom right are the initials of the artist (Georgios Stamatopoulos). The coin’s outer ring bears the 12 stars of the European Union."
+      },
+      "swap": {
+        "eurio_id": "lt-2015-2eur-lithuanian-language",
+        "current_numista_id": 76640,
+        "new_numista_id": 78191,
+        "current_numista_title": "2 Euros (30 Years of European Union Flag)",
+        "new_numista_title": "2 Euros (Lithuanian Language)",
+        "current_similarity": 0.28,
+        "new_similarity": 1.0
+      },
+      "source_attributions": [
+        {
+          "source": "bce_sidecar",
+          "current_holder": "lt-2015-2eur-lithuanian-language",
+          "feature_text": "The Lithuanian language",
+          "sim_to_existing_slug": 0.905,
+          "sim_to_new_slug": 0.296,
+          "recommended_target": "existing"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "case_id": "lv-2016-latvian-farming-and-countryside",
+      "country": "LV",
+      "year": 2016,
+      "shape": "B",
+      "confidence": "high",
+      "reasoning": "Existing row lv-2016-2eur-vidzeme currently points to nid=85889 ('2 Euros (Latvian farming and countryside)', sim=0.21). Orphan nid=95462 ('2 Euros (Vidzeme)') matches its slug better (sim=1.00, gain=+0.79). Swap + create new row for displaced nid=85889 ('2 Euros (Latvian farming and countryside)').",
+      "new_row": {
+        "eurio_id": "lv-2016-2eur-latvian-farming-and-countryside",
+        "country": "LV",
+        "year": 2016,
+        "face_value": 2.0,
+        "numista_id": 85889,
+        "theme": "Latvian farming and countryside",
+        "design_description": "The design shows a Latvian brown cow which is one of the symbols of Latvian dairy farming both in folklore and in life. Underneath the design, at the left side there is the inscription of the year of issuance ‘2016’ and at the bottom of the inner circle the name of the issuing country ‘LATVIJA’. The coin’s outer ring bears the 12 stars of the European Union."
+      },
+      "swap": {
+        "eurio_id": "lv-2016-2eur-vidzeme",
+        "current_numista_id": 85889,
+        "new_numista_id": 95462,
+        "current_numista_title": "2 Euros (Latvian farming and countryside)",
+        "new_numista_title": "2 Euros (Vidzeme)",
+        "current_similarity": 0.211,
+        "new_similarity": 1.0
+      },
+      "source_attributions": [
+        {
+          "source": "bce_sidecar",
+          "current_holder": "lv-2016-2eur-vidzeme",
+          "feature_text": "Latvian agricultural industry",
+          "sim_to_existing_slug": 0.167,
+          "sim_to_new_slug": 0.567,
+          "recommended_target": "new"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "case_id": "fr-2018-bleuet-de-france-coloured",
+      "country": "FR",
+      "year": 2018,
+      "shape": "B",
+      "confidence": "medium",
+      "reasoning": "Existing row fr-2018-2eur-bleuet-de-france currently points to nid=134283 ('2 Euros (Bleuet de France; Coloured)', sim=0.78). Orphan nid=134685 ('2 Euros (Bleuet de France)') matches its slug better (sim=1.00, gain=+0.22). Swap + create new row for displaced nid=134283 ('2 Euros (Bleuet de France; Coloured)').",
+      "new_row": {
+        "eurio_id": "fr-2018-2eur-bleuet-de-france-coloured",
+        "country": "FR",
+        "year": 2018,
+        "face_value": 2.0,
+        "numista_id": 134283,
+        "theme": "Bleuet de France; Coloured",
+        "design_description": "The design features the coloured cornflower in the center of the coin. It is surrounded by the words ‘Le Bleuet de France, fleur de mémoire et de solidarité’ (Bleuet of France, flower of remembrance and solidarity). The dates ‘1918-2018’ as well as the letters RF for République Française (French Republic) and the mint marks are also included in the design."
+      },
+      "swap": {
+        "eurio_id": "fr-2018-2eur-bleuet-de-france",
+        "current_numista_id": 134283,
+        "new_numista_id": 134685,
+        "current_numista_title": "2 Euros (Bleuet de France; Coloured)",
+        "new_numista_title": "2 Euros (Bleuet de France)",
+        "current_similarity": 0.78,
+        "new_similarity": 1.0
+      },
+      "source_attributions": [
+        {
+          "source": "bce_sidecar",
+          "current_holder": "fr-2018-2eur-bleuet-de-france",
+          "feature_text": "Remembrance cornflower ( Bleuet de France )",
+          "sim_to_existing_slug": 0.582,
+          "sim_to_new_slug": 0.5,
+          "recommended_target": "existing"
+        },
+        {
+          "source": "lmdlp_variants",
+          "current_holder": "fr-2018-2eur-bleuet-de-france",
+          "feature_text": "2 euros France 2018 – Bleuet UNC",
+          "sim_to_existing_slug": 0.391,
+          "sim_to_new_slug": 0.4,
+          "recommended_target": "unknown"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "case_id": "lv-2018-100th-anniversary-of-the-baltic-states",
+      "country": "LV",
+      "year": 2018,
+      "shape": "B",
+      "confidence": "high",
+      "reasoning": "Existing row lv-2018-2eur-zemgale currently points to nid=132943 ('2 Euros (100th Anniversary of the Baltic States)', sim=0.18). Orphan nid=143883 ('2 Euros (Zemgale)') matches its slug better (sim=1.00, gain=+0.82). Swap + create new row for displaced nid=132943 ('2 Euros (100th Anniversary of the Baltic States)').",
+      "new_row": {
+        "eurio_id": "lv-2018-2eur-100th-anniversary-of-the-baltic-states",
+        "country": "LV",
+        "year": 2018,
+        "face_value": 2.0,
+        "numista_id": 132943,
+        "theme": "100th Anniversary of the Baltic States",
+        "design_description": "The coin features the three Baltic sisters (Estonia, Latvia and Lithuania) with braided hair. Above the coats of arms of the three Baltic countries; on the right the year of issue \"2018\"; on the left the word \"LATVIJA\". The coin’s outer ring bears the 12 stars of the European Union."
+      },
+      "swap": {
+        "eurio_id": "lv-2018-2eur-zemgale",
+        "current_numista_id": 132943,
+        "new_numista_id": 143883,
+        "current_numista_title": "2 Euros (100th Anniversary of the Baltic States)",
+        "new_numista_title": "2 Euros (Zemgale)",
+        "current_similarity": 0.178,
+        "new_similarity": 1.0
+      },
+      "source_attributions": [
+        {
+          "source": "bce_sidecar",
+          "current_holder": "lv-2018-2eur-zemgale",
+          "feature_text": "Estonia, Latvia and Lithuania jointly issued a commemorative euro coin with a common design in 2018, celebrating the establishment of the States of Estonia and Latvia and the re-establishment of the State of Lithuania",
+          "sim_to_existing_slug": 0.009,
+          "sim_to_new_slug": 0.024,
+          "recommended_target": "unknown"
+        },
+        {
+          "source": "lmdlp_variants",
+          "current_holder": "lv-2018-2eur-zemgale",
+          "feature_text": "2 euros Lettonie 2018 – 100 Ans Indépendance UNC",
+          "sim_to_existing_slug": 0.113,
+          "sim_to_new_slug": 0.286,
+          "recommended_target": "new"
+        }
+      ],
+      "warnings": [
+        "Le numista_id déplacé décrit possiblement une joint issue — vérifier si un design_group existe/manque."
+      ]
+    },
+    {
+      "case_id": "es-2018-felipe-vi-50th-birthday-of-king-felipe-vi",
+      "country": "ES",
+      "year": 2018,
+      "shape": "B",
+      "confidence": "high",
+      "reasoning": "Existing row es-2018-2eur-old-town-of-santiago-de-compostela currently points to nid=131882 ('2 Euros - Felipe VI (50th Birthday of King Felipe VI)', sim=0.27). Orphan nid=131881 ('2 Euros (Old Town of Santiago de Compostela)') matches its slug better (sim=1.00, gain=+0.73). Swap + create new row for displaced nid=131882 ('2 Euros - Felipe VI (50th Birthday of King Felipe VI)').",
+      "new_row": {
+        "eurio_id": "es-2018-2eur-felipe-vi-50th-birthday-of-king-felipe-vi",
+        "country": "ES",
+        "year": 2018,
+        "face_value": 2.0,
+        "numista_id": 131882,
+        "theme": "Felipe VI (50th Birthday of King Felipe VI",
+        "design_description": "Personal coat of arms of King Felipe VI of Spain. The coin’s outer ring bears the twelve stars of the European Union."
+      },
+      "swap": {
+        "eurio_id": "es-2018-2eur-old-town-of-santiago-de-compostela",
+        "current_numista_id": 131882,
+        "new_numista_id": 131881,
+        "current_numista_title": "2 Euros - Felipe VI (50th Birthday of King Felipe VI)",
+        "new_numista_title": "2 Euros (Old Town of Santiago de Compostela)",
+        "current_similarity": 0.267,
+        "new_similarity": 1.0
+      },
+      "source_attributions": [
+        {
+          "source": "bce_sidecar",
+          "current_holder": "es-2018-2eur-old-town-of-santiago-de-compostela",
+          "feature_text": "UNESCO's World Cultural and Natural Heritage Sites - Santiago",
+          "sim_to_existing_slug": 0.344,
+          "sim_to_new_slug": 0.22,
+          "recommended_target": "existing"
+        }
+      ],
+      "warnings": []
+    }
+  ]
+}

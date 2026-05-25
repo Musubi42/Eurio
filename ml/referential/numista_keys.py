@@ -37,20 +37,21 @@ class KeyManager:
 
     # ── Key loading ──────────────────────────────────────────────────────────
 
-    def _load_keys(self) -> list[tuple[str, str]]:
-        """Return [(key_hash, key_value), ...] from env, in slot order.
+    _MAX_SLOT = 64
 
-        Scans NUMISTA_API_KEY_MUSUBI00, NUMISTA_API_KEY_MUSUBI01, ...
-        Stops at the first missing slot.
+    def _load_keys(self) -> list[tuple[int, str, str]]:
+        """Return [(slot, key_hash, key_value), ...] from env, in slot order.
+
+        Scans NUMISTA_API_KEY_MUSUBI00..MUSUBI{_MAX_SLOT-1}. Gaps are allowed
+        (e.g. slot 04 missing between 03 and 05) — we don't stop at the first
+        missing index.
         """
-        keys: list[tuple[str, str]] = []
-        i = 0
-        while True:
+        keys: list[tuple[int, str, str]] = []
+        for i in range(self._MAX_SLOT):
             val = os.environ.get(f"NUMISTA_API_KEY_MUSUBI{i:02d}")
             if not val:
-                break
-            keys.append((_key_hash(val), val))
-            i += 1
+                continue
+            keys.append((i, _key_hash(val), val))
         return keys
 
     # ── Public API ───────────────────────────────────────────────────────────
@@ -64,7 +65,7 @@ class KeyManager:
         """
         per_key = {s.key_hash: s for s in self._tracker.status()}
         candidates: list[tuple[int, str]] = []
-        for key_hash, key_value in self._keys:
+        for _slot, key_hash, key_value in self._keys:
             s = per_key.get(key_hash)
             calls = s.calls if s else 0
             exhausted = s.exhausted if s else False
@@ -111,7 +112,7 @@ class KeyManager:
         per_key = {s.key_hash: s for s in self._tracker.status()}
         period = self._tracker._period()
         result = []
-        for slot, (key_hash, _) in enumerate(self._keys, 1):
+        for slot, key_hash, _ in self._keys:
             s = per_key.get(key_hash)
             calls = s.calls if s else 0
             exhausted = s.exhausted if s else False

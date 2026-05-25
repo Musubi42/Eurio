@@ -1,0 +1,561 @@
+{
+  "slice": 2,
+  "n_items": 37,
+  "items": [
+    {
+      "eurio_id": "ad-2022-2eur-currency-agreement-between-andorra-and-eu",
+      "country": "AD",
+      "country_name": "Andorra",
+      "year": 2022,
+      "theme_en": "Currency Agreement between Andorra and EU",
+      "title_en": "2 Euros Currency Agreement between Andorra and EU",
+      "title_fr": "2 euros Accord monétaire entre l'UE et Andorre",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "at-2015-2eur-european-union-flag",
+      "country": "AT",
+      "country_name": "Austria",
+      "year": 2015,
+      "theme_en": "European Union Flag",
+      "title_en": "2 Euros European Union Flag",
+      "title_fr": "2 euros Drapeau européen",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "be-2012-2eur-10-years-of-euro-cash",
+      "country": "BE",
+      "country_name": "Belgium",
+      "year": 2012,
+      "theme_en": "10 Years of Euro Cash",
+      "title_en": "2 Euros - Albert II 10 Years of Euro Cash",
+      "title_fr": "2 euros Introduction de l'euro 10 ans",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "cy-2012-2eur-euro-cash",
+      "country": "CY",
+      "country_name": "Cyprus",
+      "year": 2012,
+      "theme_en": "Euro Cash",
+      "title_en": "2 Euros Euro Cash",
+      "title_fr": "2 euros Introduction de l'euro 10 ans",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "de-2008-2eur-bundeslander-hamburg",
+      "country": "DE",
+      "country_name": "Germany",
+      "year": 2008,
+      "theme_en": "Bundesländer - \"Hamburg\"",
+      "title_en": "2 Euros Bundesländer - \"Hamburg\"",
+      "title_fr": "2 euros Hambourg",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "de-2015-2eur-bundeslander-hessen",
+      "country": "DE",
+      "country_name": "Germany",
+      "year": 2015,
+      "theme_en": "Bundesländer - \"Hessen\"",
+      "title_en": "2 Euros Bundesländer - \"Hessen\"",
+      "title_fr": "2 euros Hesse",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "de-2022-2eur-bundeslander-thuringen",
+      "country": "DE",
+      "country_name": "Germany",
+      "year": 2022,
+      "theme_en": "Bundesländer - \"Thüringen\"",
+      "title_en": "2 Euros Bundesländer - \"Thüringen\"",
+      "title_fr": "2 euros Thuringe",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "ee-2012-2eur-10-years-of-euro-cash",
+      "country": "EE",
+      "country_name": "Estonia",
+      "year": 2012,
+      "theme_en": "10 Years of Euro Cash",
+      "title_en": "2 Euros 10 Years of Euro Cash",
+      "title_fr": "2 euros Introduction de l'euro 10 ans",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "ee-2021-2eur-wolf",
+      "country": "EE",
+      "country_name": "Estonia",
+      "year": 2021,
+      "theme_en": "Wolf",
+      "title_en": "2 Euros Wolf",
+      "title_fr": "2 euros Le loup",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "es-2015-2eur-30-years-of-european-union-flag",
+      "country": "ES",
+      "country_name": "Spain",
+      "year": 2015,
+      "theme_en": "30 Years of European Union Flag",
+      "title_en": "2 Euros 30 Years of European Union Flag",
+      "title_fr": "2 euros Drapeau européen",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "fi-2010-2eur-currency-decree-of-1860-granting-finland-the-right-to-issue",
+      "country": "FI",
+      "country_name": "Finland",
+      "year": 2010,
+      "theme_en": "Currency Decree of 1860 granting Finland the right to issue banknotes and coins",
+      "title_en": "2 Euros Rahapaja - Mark",
+      "title_fr": "2 euros Création de la \"Rahapaja\"",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "fi-2022-2eur-ballet",
+      "country": "FI",
+      "country_name": "Finland",
+      "year": 2022,
+      "theme_en": "Ballet",
+      "title_en": "2 Euros Ballet",
+      "title_fr": "2 euros Ballet national de Finlande",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "fr-2009-2eur-economic-and-monetary-union",
+      "country": "FR",
+      "country_name": "France",
+      "year": 2009,
+      "theme_en": "Economic and Monetary Union",
+      "title_en": "2 Euros Economic and Monetary Union",
+      "title_fr": "2 euros Union économique et monétaire",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "fr-2015-2eur-30-years-of-european-union-flag-coloured",
+      "country": "FR",
+      "country_name": "France",
+      "year": 2015,
+      "theme_en": "30 Years of European Union Flag; Coloured",
+      "title_en": "2 Euros 30 Years of European Union Flag; Coloured",
+      "title_fr": "2 euros Drapeau européen colorée",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "fr-2017-2eur-auguste-rodin",
+      "country": "FR",
+      "country_name": "France",
+      "year": 2017,
+      "theme_en": "Auguste Rodin",
+      "title_en": "2 Euros Auguste Rodin",
+      "title_fr": "2 euros Auguste Rodin",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "fr-2022-2eur-jacques-chirac",
+      "country": "FR",
+      "country_name": "France",
+      "year": 2022,
+      "theme_en": "Jacques Chirac",
+      "title_en": "2 Euros Jacques Chirac",
+      "title_fr": "2 euros Jacques Chirac",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "gr-2007-2eur-treaty-of-rome",
+      "country": "GR",
+      "country_name": "Greece",
+      "year": 2007,
+      "theme_en": "Treaty of Rome",
+      "title_en": "2 Euros Treaty of Rome",
+      "title_fr": "2 euros Traité de Rome",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "gr-2015-2eur-spyridon-louis",
+      "country": "GR",
+      "country_name": "Greece",
+      "year": 2015,
+      "theme_en": "Spyridon Louis",
+      "title_en": "2 Euros Spyridon Louis",
+      "title_fr": "2 euros Spyrídon Loúis",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "ie-2007-2eur-treaty-of-rome",
+      "country": "IE",
+      "country_name": "Ireland",
+      "year": 2007,
+      "theme_en": "Treaty of Rome",
+      "title_en": "2 Euros Treaty of Rome",
+      "title_fr": "2 euros Traité de Rome",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "ie-2022-2eur-erasmus-programme",
+      "country": "IE",
+      "country_name": "Ireland",
+      "year": 2022,
+      "theme_en": "Erasmus Programme",
+      "title_en": "2 Euros Erasmus Programme",
+      "title_fr": "2 euros Programme Erasmus",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "it-2015-2eur-30-years-of-european-union-flag",
+      "country": "IT",
+      "country_name": "Italy",
+      "year": 2015,
+      "theme_en": "30 Years of European Union Flag",
+      "title_en": "2 Euros 30 Years of European Union Flag",
+      "title_fr": "2 euros Drapeau européen",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "lt-2018-2eur-song-and-dance-celebration",
+      "country": "LT",
+      "country_name": "Lithuania",
+      "year": 2018,
+      "theme_en": "Song and Dance Celebration",
+      "title_en": "2 Euros Song and Dance Celebration",
+      "title_fr": "2 euros Chants et danses lituaniennes",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "lu-2012-2eur-euro-cash",
+      "country": "LU",
+      "country_name": "Luxembourg",
+      "year": 2012,
+      "theme_en": "Euro Cash",
+      "title_en": "2 Euros - Henri I Euro Cash",
+      "title_fr": "2 euros Introduction de l'euro 10 ans",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "lu-2020-2eur-birth-of-prince-charles-classic-version",
+      "country": "LU",
+      "country_name": "Luxembourg",
+      "year": 2020,
+      "theme_en": "Birth of Prince Charles - classic version",
+      "title_en": "2 Euros - Henri I Birth of Prince Charles - classic version",
+      "title_fr": "2 euros Prince Charles version classique",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "lu-2022-2eur-erasmus-programme",
+      "country": "LU",
+      "country_name": "Luxembourg",
+      "year": 2022,
+      "theme_en": "Erasmus Programme",
+      "title_en": "2 Euros - Henri I Erasmus Programme",
+      "title_fr": "2 euros Programme Erasmus",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "lu-2024-2eur-guillaume-ii-classic-version",
+      "country": "LU",
+      "country_name": "Luxembourg",
+      "year": 2024,
+      "theme_en": "Guillaume II - classic version",
+      "title_en": "2 Euros - Henri I Guillaume II - classic version",
+      "title_fr": "2 euros Guillaume II version classique",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "lu-2025-2eur-schuman-declaration",
+      "country": "LU",
+      "country_name": "Luxembourg",
+      "year": 2025,
+      "theme_en": "Schuman Declaration",
+      "title_en": "2 Euro - Henri I Schuman Declaration",
+      "title_fr": "2 euros Déclaration Schuman version classique",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "lv-2022-2eur-financial-literacy",
+      "country": "LV",
+      "country_name": "Latvia",
+      "year": 2022,
+      "theme_en": "Financial Literacy",
+      "title_en": "2 Euros Financial Literacy",
+      "title_fr": "2 euros Culture financière",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "mt-2022-2eur-erasmus-programme",
+      "country": "MT",
+      "country_name": "Malta",
+      "year": 2022,
+      "theme_en": "Erasmus Programme",
+      "title_en": "2 Euros Erasmus Programme",
+      "title_fr": "2 euros Programme Erasmus",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "nl-2012-2eur-10-years-of-euro-cash",
+      "country": "NL",
+      "country_name": "Netherlands",
+      "year": 2012,
+      "theme_en": "10 Years of Euro Cash",
+      "title_en": "2 Euros - Beatrix 10 Years of Euro Cash",
+      "title_fr": "2 euros Introduction de l'euro 10 ans",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "nl-2015-2eur-30-years-of-european-union-flag",
+      "country": "NL",
+      "country_name": "Netherlands",
+      "year": 2015,
+      "theme_en": "30 Years of European Union Flag",
+      "title_en": "2 Euros - 30 Years of European Union Flag",
+      "title_fr": "2 euros Drapeau européen",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "nl-2017-2eur-50th-birthday-coloured",
+      "country": "NL",
+      "country_name": "Netherlands",
+      "year": 2017,
+      "theme_en": "50th Birthday; Coloured",
+      "title_en": "2 Euros - Willem-Alexander 50th Birthday; Coloured",
+      "title_fr": "2 euros Anniversaire du roi Willem-Alexander",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "pt-2009-2eur-lusophony-games",
+      "country": "PT",
+      "country_name": "Portugal",
+      "year": 2009,
+      "theme_en": "Lusophony Games",
+      "title_en": "2 Euros Lusophony Games",
+      "title_fr": "2 euros Jeux de la Lusophonie",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "pt-2022-2eur-erasmus-programme",
+      "country": "PT",
+      "country_name": "Portugal",
+      "year": 2022,
+      "theme_en": "Erasmus Programme",
+      "title_en": "2 Euros Erasmus Programme",
+      "title_fr": "2 euros Programme Erasmus",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "si-2007-2eur-treaty-of-rome",
+      "country": "SI",
+      "country_name": "Slovenia",
+      "year": 2007,
+      "theme_en": "Treaty of Rome",
+      "title_en": "2 Euros Treaty of Rome",
+      "title_fr": "2 euros Traité de Rome",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "si-2022-2eur-erasmus-programme",
+      "country": "SI",
+      "country_name": "Slovenia",
+      "year": 2022,
+      "theme_en": "Erasmus Programme",
+      "title_en": "2 Euros Erasmus Programme",
+      "title_fr": "2 euros Programme Erasmus",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "sk-2022-2eur-steam-engine",
+      "country": "SK",
+      "country_name": "Slovakia",
+      "year": 2022,
+      "theme_en": "Steam Engine",
+      "title_en": "2 Euros Steam Engine",
+      "title_fr": "2 euros Machine à vapeur atmosphérique",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    }
+  ]
+}

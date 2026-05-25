@@ -1,0 +1,36 @@
+# Cohorte de validation — 19 NIDs Numista
+#
+# Cf. docs/coin-richness/ROADMAP-DB.md §6 et docs/coin-richness/SESSION-KICKOFF-IMPLEMENTATION.md §7.
+#
+# Pourquoi NID et non eurio_id : les slugs eurio_id dépendent du titre Numista
+# courant, qui peut être renommé par Numista entre deux refetch (cf. P.1
+# findings 2026-05-25). Les NIDs Numista sont stables, les eurio_ids sont
+# recomputés à chaque refetch via numista_eurio_id.eurio_id_from_numista_payload.
+#
+# Format : un NID par ligne, commentaires `# ...` autorisés, lignes vides ignorées.
+#
+# Usage :
+#   ml/scripts/refetch_numista_2eur.py --nids-file ml/state/cohort_validation_19.txt
+
+# ─── mix-zone-17 (16 coins, cohort_id bdc640b9f9c6) ───────────────────────────
+68395    # ad-2014-2eur-standard
+64       # at-2002-2eur-standard
+2193     # at-2005-2eur-50th-anniversary-of-the-austrian-state-treaty
+6292     # be-2007-2eur-standard
+19734    # be-2011-2eur-1st-centenary-of-the-international-womens-day
+2201     # de-2007-2eur-schwerin-castle-mecklenburg-vorpommern
+226447   # de-2020-2eur-50-years-since-the-kniefall-von-warschau
+88       # es-1999-2eur-standard
+81058    # es-2016-2eur-old-city-of-segovia-and-its-aqueduct
+93999    # fi-2016-2eur-100th-anniversary-of-the-birth-of-georg-henrik-von-wright
+113429   # fi-2017-2eur-100-years-of-independence
+3561     # fr-2008-2eur-french-presidency-of-the-council-of-the-european-union
+91431    # fr-2016-2eur-100-years-since-the-birth-of-francois-mitterrand
+141382   # fr-2018-2eur-simone-veil
+84714    # it-2016-2eur-2200-years-since-the-death-of-plautus
+82330    # it-2016-2eur-550-years-since-the-death-of-donatello
+
+# ─── 3 ajouts ciblés ──────────────────────────────────────────────────────────
+10069    # de-2010-2eur-* (Bremen Bundesländer — cas-fil-rouge 5 ateliers × 3 issue_types)
+134283   # fr-2018-2eur-bleuet-de-france (variant ; Coloured — valide chaîne coin_variants)
+2162     # de-2007-2eur-treaty-of-rome (joint-issue 13 pays — valide design_groups + multi-mint DE)

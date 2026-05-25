@@ -1,0 +1,559 @@
+{
+  "slice": 3,
+  "n_items": 37,
+  "items": [
+    {
+      "eurio_id": "at-2007-2eur-treaty-of-rome",
+      "country": "AT",
+      "country_name": "Austria",
+      "year": 2007,
+      "theme_en": "Treaty of Rome",
+      "title_en": "2 Euros Treaty of Rome",
+      "title_fr": "2 euros Traité de Rome",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "at-2022-2eur-erasmus-programme",
+      "country": "AT",
+      "country_name": "Austria",
+      "year": 2022,
+      "theme_en": "Erasmus Programme",
+      "title_en": "2 Euros Erasmus Programme",
+      "title_fr": "2 euros Programme Erasmus",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "be-2014-2eur-belgian-red-cross",
+      "country": "BE",
+      "country_name": "Belgium",
+      "year": 2014,
+      "theme_en": "Belgian Red Cross",
+      "title_en": "2 Euros - Philippe Belgian Red Cross",
+      "title_fr": "2 euros Croix-Rouge de Belgique",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "cy-2015-2eur-european-union-flag",
+      "country": "CY",
+      "country_name": "Cyprus",
+      "year": 2015,
+      "theme_en": "European Union Flag",
+      "title_en": "2 Euros European Union Flag",
+      "title_fr": "2 euros Drapeau européen",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "de-2009-2eur-bundeslander-saarland",
+      "country": "DE",
+      "country_name": "Germany",
+      "year": 2009,
+      "theme_en": "Bundesländer - \"Saarland\"",
+      "title_en": "2 Euros Bundesländer - \"Saarland\"",
+      "title_fr": "2 euros Sarre",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "de-2018-2eur-helmut-schmidt",
+      "country": "DE",
+      "country_name": "Germany",
+      "year": 2018,
+      "theme_en": "Helmut Schmidt",
+      "title_en": "2 Euros Helmut Schmidt",
+      "title_fr": "2 euros Helmut Schmidt",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "de-2023-2eur-charlemagne",
+      "country": "DE",
+      "country_name": "Germany",
+      "year": 2023,
+      "theme_en": "Charlemagne",
+      "title_en": "2 Euros Charlemagne",
+      "title_fr": "2 euros Charlemagne",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "ee-2015-2eur-european-union-flag",
+      "country": "EE",
+      "country_name": "Estonia",
+      "year": 2015,
+      "theme_en": "European Union Flag",
+      "title_en": "2 Euros European Union Flag",
+      "title_fr": "2 euros Drapeau européen",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "ee-2022-2eur-erasmus-programme",
+      "country": "EE",
+      "country_name": "Estonia",
+      "year": 2022,
+      "theme_en": "Erasmus Programme",
+      "title_en": "2 Euros Erasmus Programme",
+      "title_fr": "2 euros Programme Erasmus",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "es-2022-2eur-erasmus-programme",
+      "country": "ES",
+      "country_name": "Spain",
+      "year": 2022,
+      "theme_en": "Erasmus Programme",
+      "title_en": "2 Euros Erasmus Programme",
+      "title_fr": "2 euros Programme Erasmus",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "fi-2012-2eur-10-years-of-euro-cash",
+      "country": "FI",
+      "country_name": "Finland",
+      "year": 2012,
+      "theme_en": "10 Years of Euro Cash",
+      "title_en": "2 Euros 10 Years of Euro Cash",
+      "title_fr": "2 euros Introduction de l'euro 10 ans",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "fi-2022-2eur-climate-research",
+      "country": "FI",
+      "country_name": "Finland",
+      "year": 2022,
+      "theme_en": "Climate Research",
+      "title_en": "2 Euros Climate Research",
+      "title_fr": "2 euros Recherche climatique",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "fr-2012-2eur-10-years-of-euro-cash",
+      "country": "FR",
+      "country_name": "France",
+      "year": 2012,
+      "theme_en": "10 Years of Euro Cash",
+      "title_en": "2 Euros 10 Years of Euro Cash",
+      "title_fr": "2 euros Introduction de l'euro 10 ans",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "fr-2015-2eur-70-years-of-peace-in-europe",
+      "country": "FR",
+      "country_name": "France",
+      "year": 2015,
+      "theme_en": "70 years of peace in Europe",
+      "title_en": "2 Euros Festival of the Federation; Coloured",
+      "title_fr": "2 euros Fête de la Fédération colorée",
+      "missing_langs": [
+        "de",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "fr-2017-2eur-pink-ribbon",
+      "country": "FR",
+      "country_name": "France",
+      "year": 2017,
+      "theme_en": "Pink ribbon",
+      "title_en": "2 Euros Pink ribbon",
+      "title_fr": "2 euros Ruban rose non colorée",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "fr-2023-2eur-rugby-world-cup-2023",
+      "country": "FR",
+      "country_name": "France",
+      "year": 2023,
+      "theme_en": "Rugby World Cup 2023",
+      "title_en": "2 Euros Rugby World Cup 2023",
+      "title_fr": "2 euros Coupe du monde de rugby 2023",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "gr-2009-2eur-economic-and-monetary-union",
+      "country": "GR",
+      "country_name": "Greece",
+      "year": 2009,
+      "theme_en": "Economic and Monetary Union",
+      "title_en": "2 Euros Economic and Monetary Union",
+      "title_fr": "2 euros Union économique et monétaire",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "gr-2022-2eur-greek-constitution",
+      "country": "GR",
+      "country_name": "Greece",
+      "year": 2022,
+      "theme_en": "Greek Constitution",
+      "title_en": "2 Euros Greek Constitution",
+      "title_fr": "2 euros Constitution grecque",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "ie-2009-2eur-10-years-of-emu",
+      "country": "IE",
+      "country_name": "Ireland",
+      "year": 2009,
+      "theme_en": "10 Years of EMU",
+      "title_en": "2 Euros 10 Years of EMU",
+      "title_fr": "2 euros Union économique et monétaire",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "it-2007-2eur-treaty-of-rome",
+      "country": "IT",
+      "country_name": "Italy",
+      "year": 2007,
+      "theme_en": "Treaty of Rome",
+      "title_en": "2 Euros Treaty of Rome",
+      "title_fr": "2 euros Traité de Rome",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "it-2018-2eur-ministry-of-health",
+      "country": "IT",
+      "country_name": "Italy",
+      "year": 2018,
+      "theme_en": "Ministry of Health",
+      "title_en": "2 Euros Ministry of Health",
+      "title_fr": "2 euros Ministère de la santé",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "lt-2022-2eur-erasmus-programme",
+      "country": "LT",
+      "country_name": "Lithuania",
+      "year": 2022,
+      "theme_en": "Erasmus Programme",
+      "title_en": "2 Euros Erasmus Programme",
+      "title_fr": "2 euros Programme Erasmus",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "lu-2014-2eur-175-years-of-the-nation",
+      "country": "LU",
+      "country_name": "Luxembourg",
+      "year": 2014,
+      "theme_en": "175 Years of the Nation",
+      "title_en": "2 Euros - Henri I 175 Years of the Nation",
+      "title_fr": "2 euros Traité de Londres",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "lu-2020-2eur-birth-of-prince-charles-hologram-version",
+      "country": "LU",
+      "country_name": "Luxembourg",
+      "year": 2020,
+      "theme_en": "Birth of Prince Charles - hologram version",
+      "title_en": "2 Euros - Henri I Birth of Prince Charles - hologram version",
+      "title_fr": "2 euros Prince Charles version hologramme",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "lu-2023-2eur-chamber-of-deputies-classic-version",
+      "country": "LU",
+      "country_name": "Luxembourg",
+      "year": 2023,
+      "theme_en": "Chamber of Deputies - classic version",
+      "title_en": "2 Euros - Henri I Chamber of Deputies - classic version",
+      "title_fr": "2 euros Chambre des Députés version classique",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "lu-2024-2eur-guillaume-ii-hologram-version",
+      "country": "LU",
+      "country_name": "Luxembourg",
+      "year": 2024,
+      "theme_en": "Guillaume II - hologram version",
+      "title_en": "2 Euros - Henri I Guillaume II - hologram version",
+      "title_fr": "2 euros Guillaume II version hologramme",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "lu-2025-2eur-schuman-declaration-coloured",
+      "country": "LU",
+      "country_name": "Luxembourg",
+      "year": 2025,
+      "theme_en": "Schuman Declaration; Coloured",
+      "title_en": "2 Euro - Henri I Schuman Declaration; Coloured",
+      "title_fr": "2 euros Déclaration Schuman colorée",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "mt-2009-2eur-economic-and-monetary-union",
+      "country": "MT",
+      "country_name": "Malta",
+      "year": 2009,
+      "theme_en": "Economic and Monetary Union",
+      "title_en": "2 Euros Economic and Monetary Union",
+      "title_fr": "2 euros Union économique et monétaire",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "nl-2007-2eur-treaty-of-rome",
+      "country": "NL",
+      "country_name": "Netherlands",
+      "year": 2007,
+      "theme_en": "Treaty of Rome",
+      "title_en": "2 Euros - Beatrix Treaty of Rome",
+      "title_fr": "2 euros Traité de Rome",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "nl-2013-2eur-200-years-of-the-kingdom-coloured",
+      "country": "NL",
+      "country_name": "Netherlands",
+      "year": 2013,
+      "theme_en": "200 Years of the Kingdom; Coloured",
+      "title_en": "2 Euros - Willem-Alexander 200 Years of the Kingdom; Coloured",
+      "title_fr": "2 euros Royaume des Pays-Bas colorée",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "nl-2015-2eur-30-years-of-european-union-flag-blue-and-yellow-coloured",
+      "country": "NL",
+      "country_name": "Netherlands",
+      "year": 2015,
+      "theme_en": "30 Years of European Union Flag; Blue and Yellow Coloured",
+      "title_en": "2 Euros 30 Years of European Union Flag; Blue and Yellow Coloured",
+      "title_fr": "2 euros Drapeau européen colorée, bleu et jaune",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "nl-2019-2eur-maastricht-red-star-coloured",
+      "country": "NL",
+      "country_name": "Netherlands",
+      "year": 2019,
+      "theme_en": "Maastricht red star; Coloured",
+      "title_en": "2 Euros - Willem-Alexander Maastricht red star; Coloured",
+      "title_fr": "2 euros Maastricht",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "pt-2012-2eur-guimaraes",
+      "country": "PT",
+      "country_name": "Portugal",
+      "year": 2012,
+      "theme_en": "Guimarães",
+      "title_en": "2 Euros Guimarães",
+      "title_fr": "2 euros Guimarães",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "pt-2024-2eur-25-de-abril",
+      "country": "PT",
+      "country_name": "Portugal",
+      "year": 2024,
+      "theme_en": "25 de Abril",
+      "title_en": "2 Euros 25 de Abril",
+      "title_fr": "2 euros Révolution des Œillets",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "si-2009-2eur-economic-and-monetary-union",
+      "country": "SI",
+      "country_name": "Slovenia",
+      "year": 2009,
+      "theme_en": "Economic and Monetary Union",
+      "title_en": "2 Euros Economic and Monetary Union",
+      "title_fr": "2 euros Union économique et monétaire",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "sk-2009-2eur-freedom",
+      "country": "SK",
+      "country_name": "Slovakia",
+      "year": 2009,
+      "theme_en": "Freedom",
+      "title_en": "2 Euros Freedom",
+      "title_fr": "2 euros Révolution de velours",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    },
+    {
+      "eurio_id": "sk-2023-2eur-first-blood-transfusion",
+      "country": "SK",
+      "country_name": "Slovakia",
+      "year": 2023,
+      "theme_en": "First Blood Transfusion",
+      "title_en": "2 Euros First Blood Transfusion",
+      "title_fr": "2 euros Transfusion sanguine",
+      "missing_langs": [
+        "de",
+        "it",
+        "es",
+        "nl"
+      ]
+    }
+  ]
+}

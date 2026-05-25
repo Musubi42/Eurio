@@ -171,6 +171,12 @@ async function fetchCoin(eurioId: string) {
     }
     coin.value.images = normalized
   }
+  // Fusion avec les canoniques locales SQLite (ml/canonical_images/).
+  // Le backend Supabase ne connaît que les images poussées via
+  // push_to_supabase.py — les images BCE écrites par le pipeline local
+  // n'y sont pas encore. On les fetch via l'API FastAPI pour les
+  // afficher côte-à-côte avec Numista.
+  await mergeLocalCanonicals(coin.value)
   const imgs = coin.value.images as CoinImage[]
   selectedImage.value = imgs[0] ?? null
 
@@ -201,6 +207,49 @@ async function fetchCoin(eurioId: string) {
   loadMarketPrice(coin.value.eurio_id)
   // i18n titles + aliases — non-blocking
   loadI18nAndAliases(coin.value.eurio_id)
+}
+
+/**
+ * Charge les images canoniques locales (`/referential/coin-canonicals/{eurio_id}`)
+ * et les fusionne avec ce que Supabase a déjà retourné. Permet d'afficher
+ * les images BCE (écrites par le pipeline local, pas encore pushées sur
+ * Supabase) à côté des Numista déjà présentes. Échec réseau silencieux :
+ * la galerie continue d'afficher les images Supabase.
+ */
+interface LocalCanonicalEntry {
+  source: string
+  role: string
+  detail_url: string
+  thumb_url: string
+  file_present: boolean
+}
+async function mergeLocalCanonicals(c: Coin): Promise<void> {
+  try {
+    const resp = await fetch(
+      `${ML_API}/referential/coin-canonicals/${encodeURIComponent(c.eurio_id)}`,
+    )
+    if (!resp.ok) return
+    const entries = (await resp.json()) as LocalCanonicalEntry[]
+    const existing = (c.images as CoinImage[] | undefined) ?? []
+    const seenKeys = new Set(
+      existing.map((i) => `${i.source}|${i.role}`),
+    )
+    const merged: CoinImage[] = [...existing]
+    for (const e of entries) {
+      if (!e.file_present) continue
+      const key = `${e.source}|${e.role}`
+      if (seenKeys.has(key)) continue
+      seenKeys.add(key)
+      merged.push({
+        url: `${ML_API}${e.detail_url}`,
+        role: e.role,
+        source: e.source,
+      })
+    }
+    c.images = merged
+  } catch {
+    // pas d'API locale joignable — on garde ce que Supabase a renvoyé.
+  }
 }
 
 async function loadI18nAndAliases(eurioId: string) {

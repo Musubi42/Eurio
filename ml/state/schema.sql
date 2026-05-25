@@ -555,12 +555,68 @@ CREATE TABLE IF NOT EXISTS review_queue (
   decided_at               TEXT,
   decided_by               TEXT,
   decision_notes           TEXT,
+  -- Audit additive (chunk B 2026-05-25). Source de vérité figée pour
+  -- chaque décision : version d'algo + snapshot du contexte qui a motivé
+  -- l'écriture. Permet de retrouver dans 6 mois pourquoi un item a été
+  -- décidé sans dépendre de tables annexes (image_asset_dino_predictions
+  -- est REPLACE-able, review_claude_verdicts peut être re-judgé).
+  --
+  -- Format ``decision_engine_version`` :
+  --   'human@v1'                            décision admin
+  --   'auto_dino@s{sim_min}-d{spread_min}'  ex: 'auto_dino@s0.55-d0.05'
+  --   'claude-sonnet-4-6'                   ack d'un verdict Claude
+  --
+  -- Format ``decision_metadata_json`` (libre, JSON validé côté code) :
+  --   admin     : {"notes": "..."} ou {"reject_reason": "..."}
+  --   auto_dino : {"sim": 0.71, "spread": 0.08, "top1": "...", "reason": "..."}
+  --   claude    : {"model": "claude-sonnet-4-6", "confidence": 0.92,
+  --                "face": "obverse", "raw_content": "...",
+  --                "tokens_in": ..., "tokens_out": ..., "cost_usd": ...}
+  decision_engine_version  TEXT,
+  decision_metadata_json   TEXT NOT NULL DEFAULT '{}',
   enqueued_at              TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE (image_asset_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_review_queue_status_priority
   ON review_queue(status, priority);
+
+-- ─── Verdicts Claude (chunk ccproxy) ─────────────────────────────────────
+-- Un verdict Claude vision par review_queue item. La pipeline batch
+-- ml/api/review_queue_routes.py (run_claude_batch) appelle ccproxy →
+-- Sonnet 4.6 et persiste ici. L'humain acquitte ensuite via la page
+-- /review/ccproxy (chunk 4), ce qui passe status à 'acked' ET commit la
+-- décision finale dans review_queue (decided_by='claude_ack_human').
+--
+-- Une row par review_id (unique) — ré-exécution = REPLACE pour rafraîchir.
+-- Le coût et les tokens sont stockés pour audit ; cf. bench
+-- chunk 2 (project_claude_vision_bench).
+
+CREATE TABLE IF NOT EXISTS review_claude_verdicts (
+  review_id      TEXT PRIMARY KEY REFERENCES review_queue(id) ON DELETE CASCADE,
+  model          TEXT NOT NULL,                    -- 'claude-sonnet-4-6' etc.
+  verdict        TEXT NOT NULL CHECK (verdict IN ('match','no_match','uncertain','error')),
+  face           TEXT CHECK (face IS NULL OR face IN ('obverse','reverse','unknown')),
+  confidence     REAL,                              -- 0..1 si renvoyé par Claude
+  raw_content    TEXT NOT NULL DEFAULT '',          -- réponse JSON brute (audit)
+  tokens_in      INTEGER NOT NULL DEFAULT 0,
+  tokens_out     INTEGER NOT NULL DEFAULT 0,
+  cache_read     INTEGER NOT NULL DEFAULT 0,
+  cost_usd       REAL NOT NULL DEFAULT 0,
+  duration_ms    INTEGER NOT NULL DEFAULT 0,
+  -- Cycle de vie côté humain :
+  --   pending  → en attente d'acquittement (batch livré, humain pas encore vu)
+  --   acked    → humain a validé la suggestion Claude (review_queue est passée à 'done')
+  --   rejected → humain a rejeté la suggestion (l'item reste/retourne en queue manuelle)
+  status         TEXT NOT NULL DEFAULT 'pending'
+                 CHECK (status IN ('pending','acked','rejected')),
+  computed_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  acked_at       TEXT,
+  error          TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_review_claude_verdicts_status
+  ON review_claude_verdicts(status, verdict);
 
 -- ─── Discovery log (cross-runs dedup, layer 1) ───────────────────────────
 -- L'orchestrateur D-13 §"Discover" inscrit ici tout listing rencontré

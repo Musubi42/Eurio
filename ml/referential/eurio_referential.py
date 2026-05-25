@@ -25,6 +25,7 @@ COUNTRY_NAME_TO_ISO2: dict[str, str] = {
     "Finland": "FI",
     "France": "FR",
     "Germany": "DE",
+    "Germany, Federal Republic of": "DE",  # Numista long-form (688 catalog rows)
     "Greece": "GR",
     "Ireland": "IE",
     "Italy": "IT",

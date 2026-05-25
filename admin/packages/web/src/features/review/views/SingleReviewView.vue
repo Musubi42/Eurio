@@ -6,7 +6,8 @@
 // Single | Lot et le titre.
 
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { AlertTriangle, Keyboard, Search, Sparkles, Undo2 } from 'lucide-vue-next'
+import { useRouter } from 'vue-router'
+import { AlertTriangle, Keyboard, Search, Sparkles, Undo2, Wand2 } from 'lucide-vue-next'
 import {
   correctListing,
   decideReviewItem,
@@ -350,6 +351,15 @@ function undoLast() {
   resetForCurrent()
 }
 
+// Auto-accept déterministe : navigation vers la page dédiée qui charge
+// la preview enrichie (crops + canonicals) et permet la sélection
+// granulaire avant écriture. Pas de confirm() natif — on ne valide pas
+// 100+ items à l'aveugle.
+const router = useRouter()
+function onClickAutoAccept() {
+  void router.push('/review/auto-accept')
+}
+
 function toggleMode() {
   mode.value = mode.value === 'auto' ? 'free' : 'auto'
 }
@@ -450,6 +460,16 @@ useReviewKeybinds(keyboardEnabled, {
       <div v-else />
 
       <div class="flex items-center gap-2">
+        <button
+          type="button"
+          class="inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-mono uppercase tracking-wider transition-colors"
+          style="border-color: var(--surface-3); color: var(--indigo-700); background: var(--surface-1);"
+          title="Auto-accept déterministe : Dino + texte convergent"
+          @click="onClickAutoAccept"
+        >
+          <Wand2 class="h-3 w-3" />
+          Auto-accept
+        </button>
         <div
           class="mode-toggle inline-flex overflow-hidden rounded-md border"
           style="border-color: var(--surface-3); background: var(--surface-1);"

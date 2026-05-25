@@ -12,10 +12,10 @@
     "last_run_added_coins": 104
   },
   "bce": {
-    "last_run_at": "2026-04-26T22:12:32.698055+00:00",
-    "last_run_kind": "scrape",
-    "last_run_calls": 0,
-    "last_run_added_coins": 82
+    "last_run_at": "2026-05-24T23:45:17.998683+00:00",
+    "last_run_kind": "run",
+    "last_run_calls": 416,
+    "last_run_added_coins": 401
   },
   "numista_enrich": {
     "last_run_at": "2026-04-26T22:24:23.135768+00:00",

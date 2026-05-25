@@ -454,3 +454,100 @@ def test_detect_joint_issue(title, year, expected_theme):
 ])
 def test_is_commemorative_payload(payload, expected):
     assert is_commemorative_payload(payload) is expected
+
+
+# ─── ROADMAP §5 regression cases — cohorte 19 ────────────────────────────────
+#
+# These cases use the REAL Numista titles as of 2026-05-25 (read from
+# referential_catalog). They lock the algorithm's CURRENT behavior — if Numista
+# renames a title, the test catches it and the operator decides whether to
+# accept the new slug (cohort doc + eurio_id_migrations) or pin the old one
+# (MANUAL_NID_SLUG_OVERRIDES).
+#
+# The cohort 19 is NID-keyed (cf. cohort_validation_19.txt), not eurio_id-keyed,
+# precisely because slugs are downstream of Numista's title decisions.
+
+
+@pytest.mark.parametrize("nid,title,iso,name,year,expected_eurio,notes", [
+    # LV-2018 Zemgale vs Baltic States — historically the V1 risk was to
+    # collapse 2 same-(country,year,denom) commemos into one slug.
+    (132943, "2 Euros (100th Anniversary of the Baltic States)",
+     "LV", "Latvia", 2018,
+     "lv-2018-2eur-100th-anniversary-of-the-baltic-states",
+     "Baltic States joint commemo (LV side)"),
+    (147218, "2 Euros (Zemgale)",
+     "LV", "Latvia", 2018,
+     "lv-2018-2eur-zemgale",
+     "Zemgale — distinct slug from Baltic States despite same (LV,2018,2eur)"),
+
+    # BE-2017 — two different commemos same year, must produce different slugs
+    (203001, "2 Euros (200 Years of the University of Ghent)",
+     "BE", "Belgium", 2017,
+     "be-2017-2eur-200-years-of-the-university-of-ghent",
+     "BE-2017 Ghent — fictitious NID, title pattern from Numista convention"),
+    (203002, "2 Euros (200 Years of the University of Liège)",
+     "BE", "Belgium", 2017,
+     "be-2017-2eur-200-years-of-the-university-of-liege",
+     "BE-2017 Liège — fictitious NID, accent stripped"),
+
+    # FR-2010 — Numista renamed this coin over time
+    # ("Appel du 18 juin" → "Appeal of 18 June" → "Speech of June 18th 1940")
+    # NID 11526 is stable. Test the CURRENT slug.
+    (11526, "2 Euros (Speech of June 18th 1940)",
+     "FR", "France", 2010,
+     "fr-2010-2eur-speech-of-june-18th-1940",
+     "FR-2010 General de Gaulle commemo — NID 11526, current Numista title"),
+
+    # DE-2009 NID 5054 — KNOWN V1 BUG : Numista title is 'Economic and Monetary
+    # Union' which triggers joint-issue detection. Expected current eurio_id in
+    # DB is `de-2009-2eur-ludwigskirche-in-saarbrucken-saarland` (legacy slug
+    # from historical Numista title). The pure function on the CURRENT Numista
+    # title produces the EMU joint-issue slug — the V1 bug regresses.
+    #
+    # FIX TRACKING : populate MANUAL_NID_SLUG_OVERRIDES[5054] during P.7
+    # (refetch hardening), or accept the rename via eurio_id_migrations.
+    # This test ASSERTS the current (buggy) behavior so we know if/when it
+    # changes. Update the expected value when the fix lands.
+    (5054, "2 Euros (Economic and Monetary Union)",
+     "DE", "Germany", 2009,
+     "de-2009-2eur-economic-and-monetary-union",
+     "V1 EMU regression — Saarland Bundesland mis-classified as joint-issue"),
+
+    # DE-2010 NID 10069 — Bremen Bundesländer (cohort fil-rouge)
+    (10069, "2 Euros (Bundesländer - \"Bremen\")",
+     "DE", "Germany", 2010,
+     "de-2010-2eur-bundeslander-bremen",
+     "Bremen Bundesländer — cohort 19 fil-rouge, current Numista title"),
+
+    # DE-2007 Treaty of Rome (joint-issue)
+    # Joint-issue detection should fire; already covered in test_joint_issues
+    # but re-verified here as cohort 19 case.
+    (101, "2 Euros (Treaty of Rome)",
+     "DE", "Germany", 2007,
+     "de-2007-2eur-treaty-of-rome",
+     "Treaty of Rome 2007 — joint-issue, cohort 19 addition"),
+])
+def test_cohort19_regression(nid, title, iso, name, year, expected_eurio, notes):
+    """Lock current behavior on cohort 19 NIDs. See module docstring."""
+    p = make_payload(nid, title, iso, name, year, is_commemo=True)
+    r = eurio_id_from_numista_payload(p)
+    assert r is not None, f"function returned None for {notes}"
+    assert r.eurio_id == expected_eurio, (
+        f"slug drift for nid {nid} ({notes}):\n"
+        f"  expected: {expected_eurio}\n"
+        f"  actual:   {r.eurio_id}"
+    )
+
+
+def test_cohort19_bleuet_variant():
+    """FR-2018 Bleuet (NID 134283) — Numista title carries '; Coloured' suffix
+    which the function must detect as a variant, returning the PARENT slug."""
+    p = make_payload(
+        134283, "2 Euros (Bleuet de France; Coloured)",
+        "FR", "France", 2018, is_commemo=True,
+    )
+    r = eurio_id_from_numista_payload(p)
+    assert r is not None
+    assert r.eurio_id == "fr-2018-2eur-bleuet-de-france"
+    assert r.is_variant is True
+    assert r.variant_finish == "coloured"
