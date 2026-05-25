@@ -88,19 +88,23 @@ def main() -> int:
         conn.execute(
             """
             INSERT OR REPLACE INTO coin_names_i18n
-                (eurio_id, lang, title, source, confidence, model)
-            VALUES (?, ?, ?, 'llm_v1', ?, ?)
+                (eurio_id, lang, title, source, method, confidence, model)
+            VALUES (?, ?, ?, 'numista_api', 'llm_v1', ?, ?)
             """,
+            # P.3b : split source/method. La source underlying du titre
+            # traduit reste Numista (le LLM traduit FROM the Numista title) ;
+            # 'llm_v1' devient un `method` capturant le pipeline de
+            # dérivation.
             (eurio_id, lang, title, confidence, MODEL),
         )
     conn.commit()
 
     cov = dict(conn.execute(
         "SELECT lang, count(*) FROM coin_names_i18n "
-        "WHERE source='llm_v1' GROUP BY lang"
+        "WHERE method='llm_v1' GROUP BY lang"
     ).fetchall())
     conn.close()
-    print(f"upserted {len(rows)} rows. Couverture llm_v1 par lang: {cov}")
+    print(f"upserted {len(rows)} rows. Couverture method='llm_v1' par lang: {cov}")
     return 0
 
 

@@ -739,6 +739,16 @@ class Store:
                 decl="TEXT CHECK (origin IS NULL OR "
                 "origin IN ('canonical','collected','synthetic'))",
             )
+            # Coin richness P.3b : split source/method on i18n + aliases.
+            # `source` reste TEXT libre tant que le recreate P.6 n'a pas posé
+            # la FK source_registry. `method` ajouté pour capturer la méthode
+            # de dérivation ('llm_v1', 'acronym', etc.) séparément.
+            self._ensure_column(
+                conn, table="coin_names_i18n", column="method", decl="TEXT",
+            )
+            self._ensure_column(
+                conn, table="coin_aliases", column="method", decl="TEXT",
+            )
             # Index NON unique : un numista_id de circulation est partagé par
             # N millésimes (ex. nid 135 = 23 pièces) → (ref_source,ref_native_id)
             # n'est pas unique. L'unicité réelle relève de la génération (Chunk 2).

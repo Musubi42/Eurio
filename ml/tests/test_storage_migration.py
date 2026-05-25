@@ -61,8 +61,9 @@ def test_fresh_bootstrap_has_coin_names_i18n(tmp_path: Path) -> None:
 
     cols = _columns(conn, "coin_names_i18n")
     # `confidence` + `model` ajoutées au chunk I1 (scrape Numista + LLM).
+    # `method` ajoutée au chunk P.3b (split source/method, doctrine provenance).
     assert cols == {
-        "eurio_id", "lang", "title", "source", "fetched_at",
+        "eurio_id", "lang", "title", "source", "method", "fetched_at",
         "confidence", "model",
     }
     assert "idx_coin_names_i18n_lang" in _indexes(conn, "coin_names_i18n")

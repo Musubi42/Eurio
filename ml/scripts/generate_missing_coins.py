@@ -91,7 +91,8 @@ def _canonical_image_rows(eurio_id: str, nid: str, entry: dict) -> list[tuple]:
             continue
         local = DATASETS / nid / f"{role}.jpg"
         rows.append(
-            (eurio_id, "numista", role, url, str(local.relative_to(ROOT)) if local.is_file() else None)
+            # P.3b : registry vocabulary (was 'numista').
+            (eurio_id, "numista_api", role, url, str(local.relative_to(ROOT)) if local.is_file() else None)
         )
     return rows
 

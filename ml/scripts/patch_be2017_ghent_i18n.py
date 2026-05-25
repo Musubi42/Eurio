@@ -35,12 +35,15 @@ LIEGE = "be-2017-2eur-200-years-of-the-university-of-liege"
 # Numista déjà présents sur Liège ; de/it/es/nl sont les traductions standards
 # acceptées (LLM-assisted, même pattern que les 2026 autres lignes assisted).
 GHENT_I18N = [
-    ("fr", "2 euros Université de Gand",                         "manual", "manual", None),
-    ("en", "2 Euros - Philippe 200 years of the University of Ghent", "numista", "canon", None),
-    ("de", "2 Euro Universität Gent",                            "llm_v1", "assisted", "claude-opus-4-7"),
-    ("es", "2 Euros Universidad de Gante",                       "llm_v1", "assisted", "claude-opus-4-7"),
-    ("it", "2 Euro Università di Gand",                          "llm_v1", "assisted", "claude-opus-4-7"),
-    ("nl", "2 Euro Universiteit Gent",                           "llm_v1", "assisted", "claude-opus-4-7"),
+    # (lang, title, source, method, confidence, model)
+    # P.3b : split source/method. Source = registry id (manual ou numista_api),
+    # method capture le pipeline ('llm_v1' pour les traductions LLM).
+    ("fr", "2 euros Université de Gand",                              "manual",      None,    "manual",   None),
+    ("en", "2 Euros - Philippe 200 years of the University of Ghent", "numista_api", None,    "canon",    None),
+    ("de", "2 Euro Universität Gent",                                  "numista_api", "llm_v1", "assisted", "claude-opus-4-7"),
+    ("es", "2 Euros Universidad de Gante",                             "numista_api", "llm_v1", "assisted", "claude-opus-4-7"),
+    ("it", "2 Euro Università di Gand",                                "numista_api", "llm_v1", "assisted", "claude-opus-4-7"),
+    ("nl", "2 Euro Universiteit Gent",                                 "numista_api", "llm_v1", "assisted", "claude-opus-4-7"),
 ]
 
 
@@ -68,9 +71,10 @@ def patch(store: Store, *, dry_run: bool) -> dict:
     try:
         conn.executemany(
             "INSERT OR IGNORE INTO coin_names_i18n "
-            "(eurio_id, lang, title, source, confidence, model) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            [(GHENT, lang, title, src, conf, model) for lang, title, src, conf, model in GHENT_I18N],
+            "(eurio_id, lang, title, source, method, confidence, model) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            [(GHENT, lang, title, src, method, conf, model)
+             for lang, title, src, method, conf, model in GHENT_I18N],
         )
         # Les aliases gent/ghent/gand/gante sont des surface forms du NOM GHENT
         # → migrent du coin Liège (où elles étaient mal posées) vers le coin Ghent.

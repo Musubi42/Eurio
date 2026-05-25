@@ -29,6 +29,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from sources._base.dedup import CoinMarketQuoteRow, upsert_coin_market_quote
+from sources._base.registry_map import to_registry_source
 from sources.pricing import PricedListing, aggregate_priced_listings
 
 logger = logging.getLogger(__name__)
@@ -108,6 +109,12 @@ def run_price_aggregate(
             origin_date=r["origin_date"],
         )
 
+    # `source` ici est le pipeline id (ex: 'ebay') utilisé pour filtrer
+    # source_images (infra TEXT libre). Pour l'écriture dans coin_market_quotes
+    # (data-aware, FK source_registry post-P.6), on traduit via le registry
+    # map → 'ebay_browse'.
+    registry_source = to_registry_source(source)
+
     n_quotes = 0
     n_listings = 0
     for eurio_id, listings in per_coin.items():
@@ -115,7 +122,7 @@ def run_price_aggregate(
         for q in aggregate_priced_listings(list(listings.values())):
             upsert_coin_market_quote(conn, CoinMarketQuoteRow(
                 eurio_id=eurio_id,
-                source=source,
+                source=registry_source,
                 period_start=period_start,
                 period_end=period_end,
                 condition_raw=q.condition,

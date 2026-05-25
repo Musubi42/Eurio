@@ -733,3 +733,9 @@ tasks:
     desc: "Import state/i18n_results.jsonl into coin_names_i18n. Idempotent (INSERT OR IGNORE). Run on PC."
     cmds:
       - "{{.VENV}}/python -m scripts.import_i18n_results {{.CLI_ARGS}}"
+
+  # ─── Coin richness — P.4 seed source_registry ────────────────────────────
+  seed-source-registry:
+    desc: "Seed source_registry with the 10 canonical sources. Idempotent (INSERT OR IGNORE). Pass --update for upsert, --check for read-only report."
+    cmds:
+      - "{{.VENV}}/python -m scripts.seed_source_registry {{.CLI_ARGS}}"

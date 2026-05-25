@@ -53,7 +53,8 @@ def _rows_from_catalog(catalog_path: Path) -> tuple[list[tuple], str]:
     for native_id, entry in coins.items():
         rows.append(
             (
-                "numista",
+                # P.3b : registry vocabulary (was 'numista').
+                "numista_api",
                 str(native_id),
                 entry.get("country"),
                 entry.get("year"),

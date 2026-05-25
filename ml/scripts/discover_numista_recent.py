@@ -268,7 +268,8 @@ def discover(
                             "INSERT INTO coin_canonical_images "
                             "(eurio_id, source, role, url, local_path) "
                             "VALUES (?, ?, ?, ?, ?)",
-                            (eid, "numista", role, url, None),
+                            # P.3b : registry vocabulary (was 'numista').
+                            (eid, "numista_api", role, url, None),
                         )
                 conn.commit()
                 known_nids.add(nid)
