@@ -241,6 +241,220 @@ export async function correctListing(
   }
 }
 
+// ─── Claude vision (ccproxy) ─────────────────────────────────────────────
+
+export type ClaudeVerdict = 'match' | 'no_match' | 'uncertain' | 'error'
+export type ClaudeAction = 'ack' | 'reject'
+
+export interface ClaudePendingItem {
+  review_id: string
+  image_asset_id: string
+  crop_url: string
+  listing_title: string
+  listing_url: string | null
+  source: string
+  target_eurio_id: string
+  target_label: string
+  target_thumb_url: string | null
+  verdict: ClaudeVerdict
+  confidence: number | null
+  face_detected: string | null
+  model: string
+  raw_content: string
+  computed_at: string
+}
+
+export interface ClaudePendingResult {
+  total_pending: number
+  by_verdict: Record<string, number>
+  items: ClaudePendingItem[]
+}
+
+export interface ClaudeBatchResult {
+  processed: number
+  judged: number
+  skipped_already_judged: number
+  skipped_no_canonical: number
+  skipped_not_open?: number   // chunk C : items décidés par une autre voie
+  by_verdict: Record<string, number>
+  errors: number
+  model: string
+}
+
+export interface ClaudeAckResult {
+  requested: number
+  committed: number
+  rejected: number
+  skipped: number
+}
+
+/** Liste les verdicts Claude en attente d'acquittement humain. */
+export async function fetchClaudePendingAcks(
+  opts: { verdict?: ClaudeVerdict; limit?: number } = {},
+): Promise<ClaudePendingResult> {
+  const verdict = opts.verdict ?? 'match'
+  const limit = opts.limit ?? 200
+  const qs = `verdict=${verdict}&limit=${limit}`
+  const real = await safeFetch<ClaudePendingResult>(
+    `/review-queue/claude/pending-acks?${qs}`,
+  )
+  if (real !== null) return real
+  return { total_pending: 0, by_verdict: {}, items: [] }
+}
+
+/**
+ * Lance un batch de jugement Claude sur la queue. Long : ~3-5 s par item
+ * en Sonnet via ccproxy. Par défaut idempotent (skip les items déjà jugés).
+ */
+export async function runClaudeBatch(
+  opts: {
+    limit?: number
+    scope?: Array<'partial' | 'divergent' | 'auto_candidate' | 'unknown'>
+    model?: 'haiku' | 'sonnet' | 'opus'
+    force?: boolean
+  } = {},
+): Promise<ClaudeBatchResult> {
+  const limit = opts.limit ?? 50
+  const qs = `limit=${limit}`
+  const body = {
+    scope: opts.scope ?? ['partial', 'divergent'],
+    model: opts.model ?? 'sonnet',
+    force: opts.force ?? false,
+  }
+  const real = await safeFetch<ClaudeBatchResult>(
+    `/review-queue/claude/batch?${qs}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    },
+  )
+  if (real !== null) return real
+  return {
+    processed: 0, judged: 0, skipped_already_judged: 0,
+    skipped_no_canonical: 0, by_verdict: {}, errors: 0,
+    model: 'claude-sonnet-4-6',
+  }
+}
+
+/**
+ * Acquitte ou rejette une sélection de verdicts Claude. ``ack`` écrit la
+ * décision finale dans review_queue (decided_by='claude_ack_human').
+ * ``reject`` marque juste le verdict Claude comme rejeté (l'item reste
+ * en queue manuelle classique).
+ */
+export async function ackClaudeVerdicts(
+  reviewIds: string[],
+  action: ClaudeAction,
+): Promise<ClaudeAckResult> {
+  const real = await safeFetch<ClaudeAckResult>(
+    '/review-queue/claude/acknowledge',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ review_ids: reviewIds, action }),
+    },
+  )
+  if (real !== null) return real
+  return { requested: reviewIds.length, committed: 0, rejected: 0, skipped: 0 }
+}
+
+// ─── Dashboard triage stats ──────────────────────────────────────────────
+
+export interface TriageVerdictCounts {
+  auto_candidate: number
+  partial: number
+  divergent: number
+  unknown: number
+}
+
+export interface TriageStats {
+  n_pending: number
+  n_done_today: number
+  n_done_today_auto_dino: number
+  n_done_this_week: number
+  by_verdict: TriageVerdictCounts
+}
+
+/**
+ * Agrégat unique pour le dashboard `/review` : compte total queue +
+ * répartition par verdict d'auto-validation (auto_candidate / partial /
+ * divergent / unknown). Source de vérité partagée avec `runAutoAccept`.
+ */
+export async function fetchTriageStats(): Promise<TriageStats> {
+  const real = await safeFetch<TriageStats>('/review-queue/triage-stats')
+  if (real !== null) return real
+  // Mock fallback (backend off) — zéros honnêtes.
+  return {
+    n_pending: 0,
+    n_done_today: 0,
+    n_done_today_auto_dino: 0,
+    n_done_this_week: 0,
+    by_verdict: { auto_candidate: 0, partial: 0, divergent: 0, unknown: 0 },
+  }
+}
+
+// ─── Auto-accept déterministe (Dino + texte, pas de Claude) ──────────────
+
+export interface AutoAcceptPreviewItem {
+  review_id: string
+  image_asset_id: string
+  crop_url: string
+  listing_title: string
+  listing_url: string | null
+  source: string
+  target_eurio_id: string
+  target_label: string
+  target_thumb_url: string | null
+  sim: number | null
+  spread: number | null
+  face_detected: string | null
+  reason: string
+}
+
+export interface AutoAcceptResult {
+  processed: number
+  accepted: number
+  by_category: Record<string, number>
+  dry_run: boolean
+  preview: AutoAcceptPreviewItem[]
+}
+
+/**
+ * Itère la queue open et auto-décide les items dont le verdict combiné
+ * (Dino + texte) est `auto_candidate`. En `dry_run=true`, ne touche à
+ * rien et retourne en plus la liste `preview[]` enrichie (crop, target
+ * canonical, sim/spread, listing) pour l'écran de revue manuelle.
+ *
+ * En `dry_run=false` avec `reviewIds`, seuls les IDs fournis sont auto-
+ * acceptés (re-validation du verdict côté serveur — un ID qui a glissé
+ * hors `auto_candidate` est silencieusement skip).
+ */
+export async function runAutoAccept(
+  opts: { limit?: number; dryRun?: boolean; reviewIds?: string[] } = {},
+): Promise<AutoAcceptResult> {
+  const limit = opts.limit ?? 2000
+  const dryRun = opts.dryRun ?? false
+  const qs = `limit=${limit}&dry_run=${dryRun}`
+  const real = await safeFetch<AutoAcceptResult>(
+    `/review-queue/auto-accept/run?${qs}`,
+    {
+      method: 'POST',
+      headers: opts.reviewIds ? { 'Content-Type': 'application/json' } : undefined,
+      body: opts.reviewIds ? JSON.stringify({ review_ids: opts.reviewIds }) : undefined,
+    },
+  )
+  if (real !== null) return real
+  // Mock fallback — backend off : retourne 0 partout, ne ment pas.
+  return {
+    processed: 0,
+    accepted: 0,
+    by_category: { auto_candidate: 0, partial: 0, divergent: 0, unknown: 0 },
+    dry_run: dryRun,
+    preview: [],
+  }
+}
+
 /** Derniers prix de référence par pièce (un par tier d'état). C4. */
 export async function fetchMarketQuotes(
   eurioIds: string[],

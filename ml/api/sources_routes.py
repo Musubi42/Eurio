@@ -71,11 +71,16 @@ def _load_adapter(source_id: str, *, store: "Store" | None = None):
             token, marketplace=mkt, tracker=shared_tracker,
         )
         return EbayAdapter(make_client=make_client, conn=conn)
+    if source_id == "bce":
+        from sources.bce import BceAdapter
+        s = store or _store()
+        conn = s._connection()  # noqa: SLF001
+        return BceAdapter(conn=conn)
     raise HTTPException(
         status_code=501,
         detail=(
             f"Source '{source_id}' has no orchestrator adapter yet. "
-            "Available: mock, ebay. Real sources land as their adapters are written."
+            "Available: mock, ebay, bce. Real sources land as their adapters are written."
         ),
     )
 
@@ -238,9 +243,18 @@ def trigger_run(
 
     def _runner() -> None:
         try:
-            rid = run_pipeline(
-                adapter, query, store=store, dry_run=dry_run, force=force,
-            )
+            # BCE a son pipeline dédié (pas de MinIO, pas de detect/resolve/
+            # price_aggregate — cible = coin_canonical_images). Cf.
+            # ml/sources/bce/pipeline.py.
+            if source_id == "bce":
+                from sources.bce.pipeline import run_bce_pipeline
+                rid = run_bce_pipeline(
+                    adapter, query, store=store, dry_run=dry_run, force=force,
+                )
+            else:
+                rid = run_pipeline(
+                    adapter, query, store=store, dry_run=dry_run, force=force,
+                )
             run_id_holder["run_id"] = rid
         except RunAlreadyRunning as exc:
             logger.warning("[%s] anti-double-run tripped: %s", source_id, exc)

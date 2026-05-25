@@ -16,15 +16,45 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+
+
+def _now_iso() -> str:
+    """Timestamp UTC ISO-8601 avec suffixe Z explicite.
+
+    Format unique pour les ``decided_at``, ``resolved_at``, ``acked_at``
+    écrits côté Python — garantit un tri lexicographique cohérent et
+    élimine l'ambiguïté de timezone (chunk F, GAP 9 de l'audit).
+
+    Exemple : ``2026-05-25T14:30:00Z``.
+    """
+    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace(
+        "+00:00", "Z"
+    )
 
 import cv2
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from foundation.auto_validate import (
+    compute_auto_validate_verdict,
+    compute_auto_validate_verdict_from_row,
+)
+from foundation.claude_review import DEFAULT_MODEL_ALIAS, MODELS, judge
 from foundation.thresholds import DINO_VERDICT_THRESHOLDS, DinoVerdictThresholds
+
+# Chunk B 2026-05-25 : engine version stables, écrits dans
+# ``review_queue.decision_engine_version`` pour permettre de retrouver
+# quelle version d'algorithme a tranché une décision passée. Bumper si on
+# change la logique du verdict ou les seuils — c'est la trace canonique
+# de la calibration en vigueur au moment de l'écriture.
+_HUMAN_ENGINE_VERSION = "human@v1"
+_AUTO_DINO_ENGINE_VERSION = (
+    f"auto_dino@s{DINO_VERDICT_THRESHOLDS['top1_country_sim_min']}"
+    f"-d{DINO_VERDICT_THRESHOLDS['country_spread_min']}"
+)
 from scan.normalize_snap import detect_circles_multi
 from state import Store
 
@@ -396,6 +426,87 @@ def queue_stats() -> dict[str, Any]:
         "n_done_today": n_done_today,
         "n_done_this_week": n_done_week,
         "median_seconds_per_decision": round(median, 1),
+    }
+
+
+# Consumed by: admin/.../review/composables/useReviewApi.ts (fetchTriageStats)
+@router.get("/triage-stats")
+def queue_triage_stats(kind: str = Query(default="single")) -> dict[str, Any]:
+    """Compteurs pour le dashboard /review : agrège le verdict
+    d'auto-validation sur la queue ``open`` en plus des stats temporelles
+    déjà fournies par ``/stats``. Un seul fetch côté front.
+
+    Une passe : ~5 ms pour 800 items (1 SQL scan + boucle pure-Python).
+    Pas de cache nécessaire à l'échelle actuelle.
+    """
+    if kind not in _VALID_KINDS:
+        raise HTTPException(
+            status_code=422, detail=f"kind must be one of {_VALID_KINDS}",
+        )
+
+    conn = _store()._connection()  # noqa: SLF001
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    week_start = (datetime.utcnow() - timedelta(days=7)).strftime("%Y-%m-%d")
+
+    where = "rq.status = 'open'"
+    args: list[Any] = []
+    if kind != "all":
+        where += " AND rq.kind = ?"
+        args.append(kind)
+
+    # Stats temporelles (mêmes valeurs que /stats).
+    n_pending = conn.execute(
+        f"SELECT COUNT(*) AS c FROM review_queue rq WHERE {where}", args,
+    ).fetchone()["c"]
+    n_done_today = conn.execute(
+        "SELECT COUNT(*) AS c FROM review_queue "
+        "WHERE status = 'done' AND decided_at >= ?",
+        (today,),
+    ).fetchone()["c"]
+    n_done_today_auto = conn.execute(
+        "SELECT COUNT(*) AS c FROM review_queue "
+        "WHERE decided_by = 'auto_dino' AND decided_at >= ?",
+        (today,),
+    ).fetchone()["c"]
+    n_done_week = conn.execute(
+        "SELECT COUNT(*) AS c FROM review_queue "
+        "WHERE status = 'done' AND decided_at >= ?",
+        (week_start,),
+    ).fetchone()["c"]
+
+    # Verdicts — un seul scan SQL puis pure Python.
+    rows = conn.execute(
+        f"""
+        SELECT a.face,
+               si.target_eurio_id,
+               p.top1_country_eurio_id, p.top1_country_sim, p.country_spread,
+               p.top1_eurio_id, p.top1_sim, p.spread,
+               lts.vs_target_verdict
+          FROM review_queue rq
+          JOIN image_assets a ON a.id = rq.image_asset_id
+          JOIN source_images si ON si.id = a.source_image_id
+          LEFT JOIN image_asset_dino_predictions p
+                 ON p.asset_id = a.id
+                AND p.encoder_version = 'dinov2-vits14'
+                AND p.anchors_kind = '2eur_commemo'
+          LEFT JOIN listing_text_signals lts
+                 ON lts.source_image_id = si.id
+         WHERE {where}
+        """,
+        args,
+    ).fetchall()
+
+    by_verdict = {"auto_candidate": 0, "partial": 0, "divergent": 0, "unknown": 0}
+    for r in rows:
+        v = compute_auto_validate_verdict_from_row(r)
+        by_verdict[v.level] = by_verdict.get(v.level, 0) + 1
+
+    return {
+        "n_pending": n_pending,
+        "n_done_today": n_done_today,
+        "n_done_today_auto_dino": n_done_today_auto,
+        "n_done_this_week": n_done_week,
+        "by_verdict": by_verdict,
     }
 
 
@@ -858,7 +969,7 @@ def decide_lot(listing_key: str, payload: LotDecidePayload) -> LotDecideResponse
     if not listing_assets:
         raise HTTPException(status_code=404, detail=f"Lot '{listing_key}' not found.")
 
-    now_iso = datetime.utcnow().isoformat(timespec="seconds")
+    now_iso = _now_iso()
     n_done = 0
     n_rejected = 0
     n_skipped = 0
@@ -898,17 +1009,27 @@ def decide_lot(listing_key: str, payload: LotDecidePayload) -> LotDecideResponse
                     """,
                     (asg.eurio_id, face, asg.variant_kind, now_iso, asg.asset_id),
                 )
-                conn.execute(
+                cur = conn.execute(
                     """
                     UPDATE review_queue
                        SET status = 'done',
                            decided_eurio_id = ?, decided_face = ?,
                            decided_variant_kind = ?, decided_at = ?,
-                           decided_by = 'admin'
-                     WHERE id = ?
+                           decided_by = 'admin',
+                           decision_engine_version = ?,
+                           decision_metadata_json = ?
+                     WHERE id = ? AND status = 'open'
                     """,
-                    (asg.eurio_id, face, asg.variant_kind, now_iso, review_id),
+                    (asg.eurio_id, face, asg.variant_kind, now_iso,
+                     _HUMAN_ENGINE_VERSION,
+                     json.dumps({"context": "lot_bulk", "face_chosen": face}),
+                     review_id),
                 )
+                if cur.rowcount != 1:
+                    errors.append(
+                        f"asset {asg.asset_id} decided concurrently — skipped"
+                    )
+                    continue
                 n_done += 1
 
             # Reject path
@@ -927,23 +1048,38 @@ def decide_lot(listing_key: str, payload: LotDecidePayload) -> LotDecideResponse
                     """,
                     (now_iso, asg.asset_id),
                 )
-                conn.execute(
+                cur = conn.execute(
                     """
                     UPDATE review_queue
                        SET status = 'done',
-                           decision_notes = ?, decided_at = ?, decided_by = 'admin'
-                     WHERE id = ?
+                           decision_notes = ?, decided_at = ?, decided_by = 'admin',
+                           decision_engine_version = ?,
+                           decision_metadata_json = ?
+                     WHERE id = ? AND status = 'open'
                     """,
-                    (asg.reject_reason, now_iso, review_id),
+                    (asg.reject_reason, now_iso, _HUMAN_ENGINE_VERSION,
+                     json.dumps({"reason": asg.reject_reason, "context": "lot_bulk"}),
+                     review_id),
                 )
+                if cur.rowcount != 1:
+                    errors.append(
+                        f"asset {asg.asset_id} decided concurrently — skipped"
+                    )
+                    continue
                 n_rejected += 1
 
             # Skip path
             elif asg.skip:
-                conn.execute(
-                    "UPDATE review_queue SET status = 'skipped' WHERE id = ?",
+                cur = conn.execute(
+                    "UPDATE review_queue SET status = 'skipped' "
+                    " WHERE id = ? AND status = 'open'",
                     (review_id,),
                 )
+                if cur.rowcount != 1:
+                    errors.append(
+                        f"asset {asg.asset_id} decided concurrently — skipped"
+                    )
+                    continue
                 n_skipped += 1
 
             else:
@@ -1035,10 +1171,14 @@ def decide_review(review_id: str, payload: DecidePayload) -> dict[str, str]:
             detail=f"Review already {rq['status']} — cannot decide twice.",
         )
 
-    now_iso = datetime.utcnow().isoformat(timespec="seconds")
+    now_iso = _now_iso()
     asset_id = rq["image_asset_id"]
 
     # Two-step transaction: image_assets + review_queue.
+    # Atomicité « premier-écrit-gagne » : l'UPDATE final de review_queue
+    # inclut `AND status='open'`. Si rowcount=0, une autre voie (auto_dino,
+    # claude_ack ou un autre onglet humain) a déjà tranché — on ROLLBACK
+    # et on renvoie 409 plutôt que d'écraser. Cf. docs/operations/.
     conn.execute("BEGIN")
     try:
         conn.execute(
@@ -1054,7 +1194,10 @@ def decide_review(review_id: str, payload: DecidePayload) -> dict[str, str]:
             """,
             (payload.eurio_id, payload.face, payload.variant_kind, now_iso, asset_id),
         )
-        conn.execute(
+        metadata = json.dumps({
+            k: v for k, v in {"notes": payload.notes}.items() if v is not None
+        })
+        cur = conn.execute(
             """
             UPDATE review_queue
                SET status = 'done',
@@ -1063,13 +1206,24 @@ def decide_review(review_id: str, payload: DecidePayload) -> dict[str, str]:
                    decided_variant_kind = ?,
                    decision_notes = ?,
                    decided_at = ?,
-                   decided_by = 'admin'
-             WHERE id = ?
+                   decided_by = 'admin',
+                   decision_engine_version = ?,
+                   decision_metadata_json = ?
+             WHERE id = ? AND status = 'open'
             """,
             (payload.eurio_id, payload.face, payload.variant_kind,
-             payload.notes, now_iso, review_id),
+             payload.notes, now_iso,
+             _HUMAN_ENGINE_VERSION, metadata, review_id),
         )
+        if cur.rowcount != 1:
+            conn.execute("ROLLBACK")
+            raise HTTPException(
+                status_code=409,
+                detail="Review already decided concurrently by another voie.",
+            )
         conn.execute("COMMIT")
+    except HTTPException:
+        raise
     except Exception:
         conn.execute("ROLLBACK")
         raise
@@ -1192,7 +1346,7 @@ def reject_review(review_id: str) -> dict[str, str]:
             detail=f"Review already {rq['status']} — cannot reject twice.",
         )
 
-    now_iso = datetime.utcnow().isoformat(timespec="seconds")
+    now_iso = _now_iso()
     conn.execute("BEGIN")
     try:
         conn.execute(
@@ -1203,18 +1357,29 @@ def reject_review(review_id: str) -> dict[str, str]:
             """,
             (now_iso, rq["image_asset_id"]),
         )
-        conn.execute(
+        cur = conn.execute(
             """
             UPDATE review_queue
                SET status = 'done',
                    decision_notes = 'rejected',
                    decided_at = ?,
-                   decided_by = 'admin'
-             WHERE id = ?
+                   decided_by = 'admin',
+                   decision_engine_version = ?,
+                   decision_metadata_json = ?
+             WHERE id = ? AND status = 'open'
             """,
-            (now_iso, review_id),
+            (now_iso, _HUMAN_ENGINE_VERSION,
+             json.dumps({"reason": "rejected"}), review_id),
         )
+        if cur.rowcount != 1:
+            conn.execute("ROLLBACK")
+            raise HTTPException(
+                status_code=409,
+                detail="Review already decided concurrently by another voie.",
+            )
         conn.execute("COMMIT")
+    except HTTPException:
+        raise
     except Exception:
         conn.execute("ROLLBACK")
         raise
@@ -1544,10 +1709,851 @@ def skip_review(review_id: str) -> dict[str, Any]:
             status_code=409,
             detail=f"Review is {rq['status']} — only open items can be skipped.",
         )
-    new_priority = rq["priority"] + _SKIP_PRIORITY_BUMP
-    conn.execute(
-        "UPDATE review_queue SET priority = ? WHERE id = ?",
-        (new_priority, review_id),
+    # Incrément atomique côté SQL pour éviter le lost-update si deux skips
+    # concurrents lisent la même priority et écrivent priority+50 chacun.
+    cur = conn.execute(
+        "UPDATE review_queue "
+        "   SET priority = priority + ? "
+        " WHERE id = ? AND status = 'open'",
+        (_SKIP_PRIORITY_BUMP, review_id),
     )
+    if cur.rowcount != 1:
+        # L'item a changé d'état entre temps (décidé par une autre voie) —
+        # le skip n'a plus de sens.
+        raise HTTPException(
+            status_code=409,
+            detail="Review is no longer open — cannot skip.",
+        )
+    new_priority = rq["priority"] + _SKIP_PRIORITY_BUMP
     logger.info("[review] skipped id=%s new_priority=%d", review_id, new_priority)
     return {"status": "skipped", "id": review_id, "new_priority": new_priority}
+
+
+# ── Auto-accept déterministe (Dino + texte, pas de Claude) ────────────────
+
+
+class AutoAcceptPreviewItem(BaseModel):
+    """Un item auto-acceptable, avec assez de contexte pour preview UI."""
+
+    review_id: str
+    image_asset_id: str
+    crop_url: str
+    listing_title: str
+    listing_url: str | None = None
+    source: str
+    target_eurio_id: str
+    target_label: str
+    target_thumb_url: str | None = None
+    sim: float | None = None
+    spread: float | None = None
+    face_detected: str | None = None
+    reason: str
+
+
+class AutoAcceptResult(BaseModel):
+    processed: int
+    accepted: int
+    # Items qui auraient été auto-acceptés mais ont été décidés par une
+    # autre voie entre le SELECT et l'UPDATE (race ; on skip silencieusement).
+    skipped_concurrent: int = 0
+    by_category: dict[str, int]
+    dry_run: bool
+    # Liste des items `auto_candidate` enrichis pour l'écran de preview.
+    # Non vide quand `dry_run=true` (l'admin pré-visualise). Vide sur
+    # `dry_run=false` (on retourne les compteurs après écriture).
+    preview: list[AutoAcceptPreviewItem] = []
+
+
+class AutoAcceptRunBody(BaseModel):
+    """Body optionnel : si `review_ids` est fourni, on n'auto-accepte que
+    ces IDs (et on re-valide le verdict avant écriture, donc un ID qui
+    a glissé hors `auto_candidate` est silencieusement skip)."""
+
+    review_ids: list[str] | None = None
+
+
+# Consumed by: admin/.../review/composables/useReviewApi.ts (runAutoAccept)
+@router.post("/auto-accept/run", response_model=AutoAcceptResult)
+def run_auto_accept(
+    body: AutoAcceptRunBody | None = None,
+    limit: int = Query(default=2000, ge=1, le=10000),
+    dry_run: bool = Query(default=False),
+    kind: str = Query(default="single"),
+) -> AutoAcceptResult:
+    """Itère la queue ``open`` et auto-décide les items ``auto_candidate``.
+
+    Mirror exact côté serveur du verdict affiché dans AutoValidateVerdict.
+    Un item auto-accepté est traité comme une décision humaine (mêmes
+    UPDATE sur ``image_assets`` + ``review_queue``) sauf ``decided_by=
+    'auto_dino'`` au lieu de ``'admin'``.
+
+    Modes :
+      - ``dry_run=true``  → aucune écriture, on retourne compteurs +
+        ``preview[]`` enrichi (crop, canonical, sim, spread, reason)
+        pour l'écran de revue manuelle avant validation.
+      - ``dry_run=false`` sans ``review_ids`` → auto-accepte tous les
+        ``auto_candidate`` rencontrés.
+      - ``dry_run=false`` avec ``review_ids`` → auto-accepte uniquement
+        les IDs fournis, en re-validant le verdict (les IDs qui ne sont
+        plus ``auto_candidate`` sont skip).
+    """
+    if kind not in _VALID_KINDS:
+        raise HTTPException(
+            status_code=422, detail=f"kind must be one of {_VALID_KINDS}",
+        )
+
+    selected_ids: set[str] | None = (
+        set(body.review_ids) if body and body.review_ids is not None else None
+    )
+
+    conn = _store()._connection()  # noqa: SLF001
+    where = "rq.status = 'open'"
+    args: list[Any] = []
+    if kind != "all":
+        where += " AND rq.kind = ?"
+        args.append(kind)
+    args.append(limit)
+
+    # Même JOIN que list_queue → on a le contexte preview (target, thumb,
+    # listing title) sans seconde requête par item.
+    rows = conn.execute(
+        f"""
+        SELECT rq.id AS review_id, rq.image_asset_id,
+               a.face AS asset_face,
+               s.source, s.source_url AS listing_url, s.listing_title,
+               s.target_eurio_id,
+               c.country_name AS t_country_name,
+               c.year         AS t_year,
+               c.theme        AS t_theme,
+               c.numista_id   AS t_numista_id,
+               p.top1_country_sim, p.top1_sim,
+               p.country_spread, p.spread
+          FROM review_queue rq
+          JOIN image_assets a ON a.id = rq.image_asset_id
+          JOIN source_images s ON s.id = a.source_image_id
+          LEFT JOIN coins c ON c.eurio_id = s.target_eurio_id
+          LEFT JOIN image_asset_dino_predictions p
+                 ON p.asset_id = a.id
+                AND p.encoder_version = 'dinov2-vits14'
+                AND p.anchors_kind = '2eur_commemo'
+         WHERE {where}
+         ORDER BY rq.priority ASC, rq.enqueued_at ASC
+         LIMIT ?
+        """,
+        args,
+    ).fetchall()
+
+    by_category: dict[str, int] = {
+        "auto_candidate": 0, "partial": 0, "divergent": 0, "unknown": 0,
+    }
+    preview: list[AutoAcceptPreviewItem] = []
+    accepted = 0
+    skipped_concurrent = 0
+    now_iso = _now_iso()
+
+    for row in rows:
+        verdict = compute_auto_validate_verdict(conn, row["image_asset_id"])
+        by_category[verdict.level] = by_category.get(verdict.level, 0) + 1
+
+        if verdict.level != "auto_candidate":
+            continue
+        if verdict.decided_eurio_id is None:
+            continue  # safety — ne devrait jamais arriver pour auto_candidate
+
+        # Build preview row commun (dry_run + écriture). Le coût d'un
+        # build supplémentaire en mode run-réel est négligeable et facilite
+        # l'observabilité.
+        label_bits = [
+            row["t_country_name"],
+            str(row["t_year"]) if row["t_year"] else None,
+            row["t_theme"],
+        ]
+        target_label = " · ".join(b for b in label_bits if b) \
+            or verdict.decided_eurio_id
+        thumb = (
+            f"/images/{int(row['t_numista_id'])}/source"
+            if row["t_numista_id"] else None
+        )
+        crop_url = f"/sources/{row['source']}/assets/{row['image_asset_id']}/file"
+        sim = row["top1_country_sim"] if row["top1_country_sim"] is not None \
+            else row["top1_sim"]
+        spread = row["country_spread"] if row["country_spread"] is not None \
+            else row["spread"]
+        item_preview = AutoAcceptPreviewItem(
+            review_id=row["review_id"],
+            image_asset_id=row["image_asset_id"],
+            crop_url=crop_url,
+            listing_title=row["listing_title"] or "",
+            listing_url=row["listing_url"],
+            source=row["source"],
+            target_eurio_id=verdict.decided_eurio_id,
+            target_label=target_label,
+            target_thumb_url=thumb,
+            sim=sim,
+            spread=spread,
+            face_detected=verdict.face_detected,
+            reason=verdict.reason,
+        )
+        if dry_run:
+            preview.append(item_preview)
+            continue
+
+        # Run réel : skip si l'utilisateur a désélectionné cet item.
+        if selected_ids is not None and row["review_id"] not in selected_ids:
+            continue
+
+        # G7 : ne pas masquer l'incertitude par un default obverse. Si la
+        # pipeline ML n'a pas détecté la face, on inscrit 'unknown' (valide
+        # dans le CHECK). L'admin pourra corriger via /review/manual si
+        # besoin — c'est explicite plutôt que silencieusement faux.
+        face = verdict.face_detected or "unknown"
+        conn.execute("BEGIN")
+        try:
+            # Atomicité « premier-écrit-gagne » : on n'écrase pas une
+            # décision déjà prise (admin ou claude_ack). Pour image_assets,
+            # `resolution_status NOT IN ('manual','rejected')` empêche
+            # l'écrasement d'une résolution finale ; pour review_queue,
+            # `status='open'` est le verrou principal.
+            conn.execute(
+                """
+                UPDATE image_assets
+                   SET eurio_id = ?,
+                       face = ?,
+                       resolution_status = 'manual',
+                       resolution_confidence = 1.0,
+                       resolved_at = ?
+                 WHERE id = ?
+                   AND resolution_status NOT IN ('manual','rejected')
+                """,
+                (verdict.decided_eurio_id, face, now_iso, row["image_asset_id"]),
+            )
+            # Snapshot des signaux Dino dans decision_metadata_json :
+            # ces valeurs sont fiables même si on re-encode les ancres ou
+            # qu'on bouge les seuils plus tard (cf. GAP 4 de l'audit chunk B).
+            auto_metadata = json.dumps({
+                "sim": verdict.sim,
+                "spread": verdict.spread,
+                "top1_eurio_id": verdict.top1_eurio_id,
+                "text_verdict": verdict.text_verdict,
+                "reason": verdict.reason,
+            })
+            cur = conn.execute(
+                """
+                UPDATE review_queue
+                   SET status = 'done',
+                       decided_eurio_id = ?,
+                       decided_face = ?,
+                       decision_notes = ?,
+                       decided_at = ?,
+                       decided_by = 'auto_dino',
+                       decision_engine_version = ?,
+                       decision_metadata_json = ?
+                 WHERE id = ? AND status = 'open'
+                """,
+                (verdict.decided_eurio_id, face, verdict.reason,
+                 now_iso, _AUTO_DINO_ENGINE_VERSION, auto_metadata,
+                 row["review_id"]),
+            )
+            if cur.rowcount != 1:
+                # Une autre voie a tranché entre notre SELECT et notre
+                # UPDATE — on annule notre tentative pour rester cohérent.
+                conn.execute("ROLLBACK")
+                skipped_concurrent += 1
+                continue
+            conn.execute("COMMIT")
+            accepted += 1
+        except Exception:
+            conn.execute("ROLLBACK")
+            logger.exception(
+                "[auto-accept] failed review_id=%s", row["review_id"],
+            )
+
+    logger.info(
+        "[auto-accept] processed=%d accepted=%d skipped_concurrent=%d "
+        "dry_run=%s by_category=%s",
+        len(rows), accepted, skipped_concurrent, dry_run, by_category,
+    )
+    return AutoAcceptResult(
+        processed=len(rows),
+        accepted=accepted,
+        skipped_concurrent=skipped_concurrent,
+        by_category=by_category,
+        dry_run=dry_run,
+        preview=preview,
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# ── ccproxy (Claude vision) : Claude propose, l'humain dispose ──────────
+# ─────────────────────────────────────────────────────────────────────────
+#
+# Flux :
+#   1. POST /claude/batch                → run Sonnet sur N items partial/divergent,
+#                                          persiste dans review_claude_verdicts (pending)
+#   2. GET  /claude/pending-acks         → liste les "match" pending pour acquittement
+#   3. POST /claude/acknowledge          → l'humain acquitte une sélection → décision
+#                                          finale écrite dans review_queue.
+#
+# Cf. memory project_claude_vision_bench (Sonnet 4.6 retenu, prec 92%).
+
+# Chemin disque canonical : ml/datasets/<numista_id>/obverse.jpg
+_ML_DIR = Path(__file__).resolve().parent.parent
+_DATASETS_DIR = _ML_DIR / "datasets"
+
+
+def _canonical_path(numista_id: int | None) -> Path | None:
+    if not numista_id:
+        return None
+    coin_dir = _DATASETS_DIR / str(numista_id)
+    if not coin_dir.exists():
+        return None
+    for name in ("obverse.jpg", "obverse.png", "obverse.jpeg"):
+        p = coin_dir / name
+        if p.exists():
+            return p
+    for f in sorted(coin_dir.iterdir()):
+        if f.is_file() and f.suffix.lower() in (".jpg", ".jpeg", ".png"):
+            return f
+    return None
+
+
+def _crop_path(storage_path: str) -> Path | None:
+    """Résout le chemin disque local d'un crop image_assets."""
+    try:
+        from storage.local_cache import local_path
+        return local_path("enrichment-crops", storage_path)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[claude] crop path resolution failed for %s: %s",
+                       storage_path, exc)
+        return None
+
+
+class ClaudeBatchResult(BaseModel):
+    processed: int
+    judged: int
+    skipped_already_judged: int
+    skipped_no_canonical: int
+    # Race entre SELECT initial du batch et call Claude : l'item a été décidé
+    # par une autre voie (admin/auto_dino/claude_ack) avant qu'on lance le LLM.
+    # On skip silencieusement — évite de payer Claude pour un orphan.
+    skipped_not_open: int = 0
+    by_verdict: dict[str, int]
+    errors: int
+    model: str
+
+
+class ClaudeBatchBody(BaseModel):
+    # Scope : sous-ensemble des verdicts éligibles. Defaults aux deux cas
+    # où Claude apporte le plus de valeur (cf. bench chunk 2).
+    scope: list[str] = Field(default_factory=lambda: ["partial", "divergent"])
+    # Alias modèle (haiku|sonnet|opus) — par défaut sonnet (cf. bench).
+    model: str = DEFAULT_MODEL_ALIAS
+    # ``force=True`` re-judge même les items qui ont déjà un verdict Claude.
+    force: bool = False
+
+
+# Consumed by: admin/.../review/composables/useReviewApi.ts (runClaudeBatch)
+@router.post("/claude/batch", response_model=ClaudeBatchResult)
+def run_claude_batch(
+    body: ClaudeBatchBody | None = None,
+    limit: int = Query(default=50, ge=1, le=500),
+    kind: str = Query(default="single"),
+    base_url: str = Query(default="http://127.0.0.1:3002"),
+) -> ClaudeBatchResult:
+    """Pull N items ``open`` dans le scope, appelle Claude vision sur chacun,
+    persiste les verdicts dans ``review_claude_verdicts`` (status='pending').
+
+    Idempotent par défaut : un item ayant déjà un verdict Claude est skip.
+    ``force=true`` pour re-judger (utile après changement de prompt/modèle).
+    """
+    if kind not in _VALID_KINDS:
+        raise HTTPException(
+            status_code=422, detail=f"kind must be one of {_VALID_KINDS}",
+        )
+    b = body or ClaudeBatchBody()
+    scope = set(b.scope) & {"partial", "divergent", "auto_candidate", "unknown"}
+    if not scope:
+        raise HTTPException(
+            status_code=422,
+            detail="scope must include at least one of partial|divergent|auto_candidate|unknown",
+        )
+    model_alias = b.model
+    if model_alias not in MODELS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"model must be one of {list(MODELS.keys())}",
+        )
+
+    conn = _store()._connection()  # noqa: SLF001
+    where = "rq.status = 'open'"
+    args: list[Any] = []
+    if kind != "all":
+        where += " AND rq.kind = ?"
+        args.append(kind)
+    args.append(limit)
+
+    rows = conn.execute(
+        f"""
+        SELECT rq.id AS review_id, rq.image_asset_id,
+               a.storage_path,
+               s.source, s.listing_title, s.target_eurio_id,
+               c.country_name AS t_country_name,
+               c.year         AS t_year,
+               c.theme        AS t_theme,
+               c.numista_id   AS t_numista_id
+          FROM review_queue rq
+          JOIN image_assets a ON a.id = rq.image_asset_id
+          JOIN source_images s ON s.id = a.source_image_id
+          LEFT JOIN coins c ON c.eurio_id = s.target_eurio_id
+         WHERE {where}
+         ORDER BY rq.priority ASC, rq.enqueued_at ASC
+         LIMIT ?
+        """,
+        args,
+    ).fetchall()
+
+    by_verdict: dict[str, int] = {
+        "match": 0, "no_match": 0, "uncertain": 0, "error": 0,
+    }
+    judged = 0
+    skipped_already = 0
+    skipped_no_canon = 0
+    skipped_not_open = 0
+    errors = 0
+
+    for row in rows:
+        verdict_dt = compute_auto_validate_verdict(conn, row["image_asset_id"])
+        if verdict_dt.level not in scope:
+            continue
+
+        # Idempotence
+        if not b.force:
+            existing = conn.execute(
+                "SELECT 1 FROM review_claude_verdicts WHERE review_id = ?",
+                (row["review_id"],),
+            ).fetchone()
+            if existing is not None:
+                skipped_already += 1
+                continue
+
+        # Pre-check : l'item est-il toujours open ? Le SELECT initial du
+        # batch peut être à jour de plusieurs secondes, et entre temps une
+        # autre voie peut avoir décidé l'item. Évite de payer Claude pour
+        # un verdict orphan. Cf. chunk C.
+        still_open = conn.execute(
+            "SELECT 1 FROM review_queue WHERE id = ? AND status = 'open'",
+            (row["review_id"],),
+        ).fetchone()
+        if still_open is None:
+            skipped_not_open += 1
+            continue
+
+        canonical = _canonical_path(row["t_numista_id"])
+        if canonical is None:
+            skipped_no_canon += 1
+            continue
+        crop = _crop_path(row["storage_path"]) if row["storage_path"] else None
+        if crop is None or not crop.exists():
+            skipped_no_canon += 1
+            continue
+
+        label_bits = [
+            row["t_country_name"],
+            str(row["t_year"]) if row["t_year"] else None,
+            row["t_theme"],
+        ]
+        target_label = " · ".join(b for b in label_bits if b) or row["target_eurio_id"]
+
+        j = judge(
+            crop_path=crop,
+            canonical_path=canonical,
+            target_label=target_label,
+            listing_title=row["listing_title"] or "",
+            model_alias=model_alias,
+            base_url=base_url,
+        )
+
+        # Upsert
+        verdict_str = j.verdict or "error"
+        by_verdict[verdict_str] = by_verdict.get(verdict_str, 0) + 1
+        if not j.parsed_ok:
+            errors += 1
+        conn.execute(
+            """
+            INSERT INTO review_claude_verdicts
+              (review_id, model, verdict, face, confidence, raw_content,
+               tokens_in, tokens_out, cache_read, cost_usd, duration_ms,
+               status, error, computed_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, datetime('now'))
+            ON CONFLICT(review_id) DO UPDATE SET
+              model       = excluded.model,
+              verdict     = excluded.verdict,
+              face        = excluded.face,
+              confidence  = excluded.confidence,
+              raw_content = excluded.raw_content,
+              tokens_in   = excluded.tokens_in,
+              tokens_out  = excluded.tokens_out,
+              cache_read  = excluded.cache_read,
+              cost_usd    = excluded.cost_usd,
+              duration_ms = excluded.duration_ms,
+              status      = 'pending',
+              error       = excluded.error,
+              computed_at = datetime('now'),
+              acked_at    = NULL
+            """,
+            (row["review_id"], j.model, verdict_str, j.face, j.confidence,
+             j.raw_content, j.tokens_in, j.tokens_out, j.cache_read_tokens,
+             j.cost_usd, j.duration_ms, j.error),
+        )
+        judged += 1
+
+    logger.info(
+        "[claude] batch model=%s scope=%s judged=%d skipped_already=%d "
+        "skipped_no_canon=%d skipped_not_open=%d errors=%d by_verdict=%s",
+        model_alias, sorted(scope), judged, skipped_already,
+        skipped_no_canon, skipped_not_open, errors, by_verdict,
+    )
+
+    return ClaudeBatchResult(
+        processed=len(rows),
+        judged=judged,
+        skipped_already_judged=skipped_already,
+        skipped_no_canonical=skipped_no_canon,
+        skipped_not_open=skipped_not_open,
+        by_verdict=by_verdict,
+        errors=errors,
+        model=MODELS[model_alias],
+    )
+
+
+class ClaudePendingItem(BaseModel):
+    review_id: str
+    image_asset_id: str
+    crop_url: str
+    listing_title: str
+    listing_url: str | None = None
+    source: str
+    target_eurio_id: str
+    target_label: str
+    target_thumb_url: str | None = None
+    # Verdict Claude
+    verdict: str
+    confidence: float | None = None
+    face_detected: str | None = None
+    model: str
+    raw_content: str
+    computed_at: str
+
+
+class ClaudePendingResult(BaseModel):
+    total_pending: int                          # tous status=pending, tous verdicts
+    by_verdict: dict[str, int]                  # match/no_match/uncertain/error
+    items: list[ClaudePendingItem]              # filtré au verdict demandé
+
+
+# Consumed by: admin/.../review/composables/useReviewApi.ts (fetchClaudePendingAcks)
+@router.get("/claude/pending-acks", response_model=ClaudePendingResult)
+def list_claude_pending(
+    verdict: str = Query(default="match"),
+    limit: int = Query(default=200, ge=1, le=1000),
+) -> ClaudePendingResult:
+    """Liste les items où Claude a tranché ``verdict`` et qui attendent
+    l'acquittement humain. Par défaut filtre sur ``match`` (le seul cas
+    qu'on veut auto-acquitter ; les autres restent en queue manuelle)."""
+    if verdict not in ("match", "no_match", "uncertain", "error"):
+        raise HTTPException(
+            status_code=422,
+            detail="verdict must be match|no_match|uncertain|error",
+        )
+
+    conn = _store()._connection()  # noqa: SLF001
+
+    by_verdict_rows = conn.execute(
+        """
+        SELECT verdict, COUNT(*) AS c FROM review_claude_verdicts
+         WHERE status = 'pending'
+         GROUP BY verdict
+        """
+    ).fetchall()
+    by_verdict = {r["verdict"]: r["c"] for r in by_verdict_rows}
+    total = sum(by_verdict.values())
+
+    rows = conn.execute(
+        """
+        SELECT v.review_id, v.model, v.verdict, v.confidence, v.face,
+               v.raw_content, v.computed_at,
+               rq.image_asset_id,
+               a.face AS asset_face,
+               s.source, s.source_url AS listing_url, s.listing_title,
+               s.target_eurio_id,
+               c.country_name AS t_country_name,
+               c.year         AS t_year,
+               c.theme        AS t_theme,
+               c.numista_id   AS t_numista_id
+          FROM review_claude_verdicts v
+          JOIN review_queue rq ON rq.id = v.review_id
+          JOIN image_assets a  ON a.id  = rq.image_asset_id
+          JOIN source_images s ON s.id  = a.source_image_id
+          LEFT JOIN coins c    ON c.eurio_id = s.target_eurio_id
+         WHERE v.status = 'pending' AND v.verdict = ? AND rq.status = 'open'
+         ORDER BY v.computed_at DESC
+         LIMIT ?
+        """,
+        (verdict, limit),
+    ).fetchall()
+
+    items: list[ClaudePendingItem] = []
+    for r in rows:
+        label_bits = [
+            r["t_country_name"],
+            str(r["t_year"]) if r["t_year"] else None,
+            r["t_theme"],
+        ]
+        label = " · ".join(b for b in label_bits if b) or r["target_eurio_id"]
+        thumb = (
+            f"/images/{int(r['t_numista_id'])}/source"
+            if r["t_numista_id"] else None
+        )
+        items.append(ClaudePendingItem(
+            review_id=r["review_id"],
+            image_asset_id=r["image_asset_id"],
+            crop_url=f"/sources/{r['source']}/assets/{r['image_asset_id']}/file",
+            listing_title=r["listing_title"] or "",
+            listing_url=r["listing_url"],
+            source=r["source"],
+            target_eurio_id=r["target_eurio_id"],
+            target_label=label,
+            target_thumb_url=thumb,
+            verdict=r["verdict"],
+            confidence=r["confidence"],
+            face_detected=r["face"] or r["asset_face"],
+            model=r["model"],
+            raw_content=r["raw_content"],
+            computed_at=r["computed_at"],
+        ))
+
+    return ClaudePendingResult(
+        total_pending=total,
+        by_verdict=by_verdict,
+        items=items,
+    )
+
+
+class ClaudeAckBody(BaseModel):
+    review_ids: list[str]
+    # 'ack'    → humain valide la suggestion Claude → écrit la décision
+    # 'reject' → humain rejette → l'item reste open en queue manuelle,
+    #            le verdict Claude passe juste à 'rejected' (audit)
+    action: str = "ack"
+
+
+class ClaudeAckResult(BaseModel):
+    requested: int
+    committed: int
+    rejected: int
+    skipped: int    # IDs invalides / déjà acquittés / verdict ≠ match
+    skipped_concurrent: int = 0   # tranchés par une autre voie pendant l'ack
+
+
+# Consumed by: admin/.../review/composables/useReviewApi.ts (ackClaudeVerdicts)
+@router.post("/claude/acknowledge", response_model=ClaudeAckResult)
+def acknowledge_claude(body: ClaudeAckBody) -> ClaudeAckResult:
+    """L'humain acquitte (ou rejette) une sélection de verdicts Claude.
+
+    ``ack`` : écrit la décision finale dans ``review_queue`` (
+    ``decided_by='claude_ack_human'``) ET ``image_assets``, et marque le
+    verdict Claude ``status='acked'``.
+
+    ``reject`` : ne touche pas à ``review_queue`` (l'item reste open et
+    sortira en queue manuelle classique), marque juste le verdict Claude
+    ``status='rejected'``.
+    """
+    if body.action not in ("ack", "reject"):
+        raise HTTPException(status_code=422, detail="action must be 'ack' or 'reject'")
+    if not body.review_ids:
+        return ClaudeAckResult(requested=0, committed=0, rejected=0, skipped=0)
+
+    conn = _store()._connection()  # noqa: SLF001
+    now_iso = _now_iso()
+    committed = 0
+    rejected = 0
+    skipped = 0
+    skipped_concurrent = 0
+
+    for review_id in body.review_ids:
+        # Charge le verdict + état rq pour valider qu'on peut acquitter.
+        # Note : ce SELECT est hors transaction et donc snapshot stale —
+        # la vraie garde est dans le `AND status='open'` du UPDATE final
+        # (pattern « premier-écrit-gagne »).
+        row = conn.execute(
+            """
+            SELECT v.verdict, v.face, v.status AS v_status,
+                   v.model, v.confidence, v.raw_content,
+                   v.tokens_in, v.tokens_out, v.cost_usd, v.duration_ms,
+                   rq.status AS rq_status, rq.image_asset_id,
+                   s.target_eurio_id
+              FROM review_claude_verdicts v
+              JOIN review_queue rq ON rq.id = v.review_id
+              JOIN image_assets a  ON a.id  = rq.image_asset_id
+              JOIN source_images s ON s.id  = a.source_image_id
+             WHERE v.review_id = ?
+            """,
+            (review_id,),
+        ).fetchone()
+
+        if row is None:
+            skipped += 1
+            continue
+        if row["v_status"] != "pending":
+            skipped += 1
+            continue
+
+        if body.action == "reject":
+            # Reject = action consultative côté humain : on archive le
+            # verdict Claude. La review_queue n'est pas touchée. Garde
+            # `AND status='pending'` pour éviter le double-write si la
+            # même row a déjà été rejetée concurremment.
+            cur = conn.execute(
+                "UPDATE review_claude_verdicts "
+                "SET status='rejected', acked_at=? "
+                "WHERE review_id=? AND status='pending'",
+                (now_iso, review_id),
+            )
+            if cur.rowcount == 1:
+                rejected += 1
+            else:
+                skipped += 1
+            continue
+
+        # action = 'ack' — nécessite verdict=match + queue open + target connu
+        if row["verdict"] != "match":
+            skipped += 1
+            continue
+        if row["rq_status"] != "open":
+            skipped += 1
+            continue
+        target = row["target_eurio_id"]
+        if not target:
+            skipped += 1
+            continue
+
+        # G7 : pareil qu'auto_dino — on n'écrase pas par un default 'obverse'.
+        # Claude renvoie 'unknown' explicitement quand la face est ambiguë.
+        face = row["face"] or "unknown"
+
+        conn.execute("BEGIN")
+        try:
+            conn.execute(
+                """
+                UPDATE image_assets
+                   SET eurio_id = ?, face = ?,
+                       resolution_status = 'manual',
+                       resolution_confidence = 1.0,
+                       resolved_at = ?
+                 WHERE id = ?
+                   AND resolution_status NOT IN ('manual','rejected')
+                """,
+                (target, face, now_iso, row["image_asset_id"]),
+            )
+            # Snapshot complet du verdict Claude au moment de l'ack —
+            # raw_content + tokens + coût figés sur la row review_queue
+            # pour que la trace survive à un re-batch force=true côté
+            # review_claude_verdicts (cf. GAP 5).
+            claude_metadata = json.dumps({
+                "model": row["model"],
+                "confidence": row["confidence"],
+                "face": row["face"],
+                "raw_content": row["raw_content"],
+                "tokens_in": row["tokens_in"],
+                "tokens_out": row["tokens_out"],
+                "cost_usd": row["cost_usd"],
+                "duration_ms": row["duration_ms"],
+            })
+            cur = conn.execute(
+                """
+                UPDATE review_queue
+                   SET status = 'done',
+                       decided_eurio_id = ?, decided_face = ?,
+                       decision_notes = ?,
+                       decided_at = ?, decided_by = 'claude_ack_human',
+                       decision_engine_version = ?,
+                       decision_metadata_json = ?
+                 WHERE id = ? AND status = 'open'
+                """,
+                (target, face, "Claude vision suggestion acquittée par humain",
+                 now_iso, row["model"], claude_metadata, review_id),
+            )
+            if cur.rowcount != 1:
+                # Race : une autre voie a tranché entre le SELECT et l'UPDATE.
+                # On annule tout (ROLLBACK) — le verdict Claude reste 'pending'
+                # et sera nettoyé en chunk C (stale verdicts).
+                conn.execute("ROLLBACK")
+                skipped_concurrent += 1
+                continue
+            # Le commit de l'ack n'est valide que si le UPDATE rq a écrit ;
+            # sinon on aurait passé le verdict à 'acked' sans avoir tranché.
+            conn.execute(
+                "UPDATE review_claude_verdicts "
+                "SET status='acked', acked_at=? "
+                "WHERE review_id=? AND status='pending'",
+                (now_iso, review_id),
+            )
+            conn.execute("COMMIT")
+            committed += 1
+        except Exception:
+            conn.execute("ROLLBACK")
+            logger.exception("[claude] ack failed for review_id=%s", review_id)
+            skipped += 1
+
+    logger.info(
+        "[claude] ack action=%s requested=%d committed=%d rejected=%d "
+        "skipped=%d skipped_concurrent=%d",
+        body.action, len(body.review_ids),
+        committed, rejected, skipped, skipped_concurrent,
+    )
+    return ClaudeAckResult(
+        requested=len(body.review_ids),
+        committed=committed,
+        rejected=rejected,
+        skipped=skipped,
+        skipped_concurrent=skipped_concurrent,
+    )
+
+
+class ClaudeCleanupResult(BaseModel):
+    deleted: int
+    inspected: int
+
+
+# Consumed by: admin/.../review/composables/useReviewApi.ts (cleanupClaudeOrphans)
+@router.post("/claude/cleanup-orphans", response_model=ClaudeCleanupResult)
+def cleanup_claude_orphans(dry_run: bool = Query(default=False)) -> ClaudeCleanupResult:
+    """Supprime les verdicts Claude ``status='pending'`` dont la
+    review_queue parente n'est plus ``status='open'``. Ce sont des
+    verdicts orphans nés des races chunk-A entre voies (auto_dino,
+    admin) et le batch Claude. Le SELECT côté /pending-acks les filtre
+    déjà, mais ils s'accumulent en table — cette route les expurge.
+
+    ``dry_run=true`` retourne juste le compteur. Pas d'écriture.
+    """
+    conn = _store()._connection()  # noqa: SLF001
+    rows = conn.execute(
+        """
+        SELECT v.review_id FROM review_claude_verdicts v
+          JOIN review_queue rq ON rq.id = v.review_id
+         WHERE v.status = 'pending' AND rq.status != 'open'
+        """
+    ).fetchall()
+    orphan_ids = [r["review_id"] for r in rows]
+
+    if dry_run or not orphan_ids:
+        return ClaudeCleanupResult(deleted=0, inspected=len(orphan_ids))
+
+    placeholders = ",".join("?" for _ in orphan_ids)
+    cur = conn.execute(
+        f"DELETE FROM review_claude_verdicts WHERE review_id IN ({placeholders})",
+        orphan_ids,
+    )
+    conn.commit()
+    logger.info("[claude] cleanup-orphans deleted=%d", cur.rowcount)
+    return ClaudeCleanupResult(deleted=cur.rowcount, inspected=len(orphan_ids))

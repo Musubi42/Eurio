@@ -8,7 +8,7 @@
 
 import { computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Layers, Package } from 'lucide-vue-next'
+import { ArrowLeft, Layers, Package } from 'lucide-vue-next'
 import SingleReviewView from '../views/SingleReviewView.vue'
 import LotReviewView from '../views/LotReviewView.vue'
 
@@ -29,6 +29,10 @@ function setMode(next: ReviewMode) {
   })
 }
 
+function backToCabinet() {
+  void router.push('/review')
+}
+
 // Reset focus state on mode swap if needed (currently each view is
 // fully self-contained, so nothing extra to do).
 watch(mode, () => {})
@@ -41,16 +45,27 @@ watch(mode, () => {})
       class="flex flex-wrap items-center justify-between gap-4 border-b px-8 py-3"
       style="border-color: var(--surface-3); background: var(--surface);"
     >
-      <div>
-        <h1
-          class="font-display text-lg italic font-semibold"
-          style="color: var(--indigo-700);"
+      <div class="flex items-center gap-4">
+        <button
+          type="button"
+          class="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-mono uppercase tracking-wider transition-colors"
+          style="border-color: var(--surface-3); color: var(--ink-500); background: var(--surface-1);"
+          @click="backToCabinet"
         >
-          Review queue
-        </h1>
-        <p class="mt-0.5 text-xs" style="color: var(--ink-500);">
-          Résolution humaine des images non auto-matchées
-        </p>
+          <ArrowLeft class="h-3 w-3" />
+          Cabinet
+        </button>
+        <div>
+          <h1
+            class="font-display text-lg italic font-semibold"
+            style="color: var(--indigo-700);"
+          >
+            Review queue
+          </h1>
+          <p class="mt-0.5 text-xs" style="color: var(--ink-500);">
+            Résolution humaine des images non auto-matchées
+          </p>
+        </div>
       </div>
 
       <!-- Toggle Single | Lot -->

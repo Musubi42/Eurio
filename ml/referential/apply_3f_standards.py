@@ -1,5 +1,10 @@
 """Chunk 3f — Standards orphans × 15.
 
+⚠️ DEPRECATED — voir docs/coin-richness/ROADMAP-DB.md P.9.
+Le `standard_slug` ci-dessous duplique `numista_eurio_id.standard_slug` (la
+version canonique). Ce fichier sera archivé sous `ml/referential/_legacy/`
+en P.9 ; aucun nouveau code ne doit l'importer.
+
 Refs:
   docs/research/referential-v2.md (decisions D1–D8)
   docs/research/referential-v2-progress.md §6 (D-3f-1 → D-3f-5)

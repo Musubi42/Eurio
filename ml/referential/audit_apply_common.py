@@ -1,5 +1,11 @@
 """Helpers partagés par les scripts apply_3a..3e d'application des audit decisions.
 
+⚠️ DEPRECATED — voir docs/coin-richness/ROADMAP-DB.md P.9.
+La fonction canonique de slug est `numista_eurio_id.eurio_id_from_numista_payload`.
+Le doublon `eurio_id_from_catalog` ci-dessous est conservé tant que les
+callers `apply_3a_new_types.py` et `apply_3d_add_as_variant.py` n'ont pas été
+archivés sous `ml/referential/_legacy/` en P.9.
+
 Module utilitaire — ne fait rien tout seul. Importé par :
   - apply_3a_new_types.py
   - apply_3b_rematch.py

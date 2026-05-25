@@ -25,7 +25,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
@@ -72,17 +72,19 @@ def _lookup_source(eurio_id: str, role: str) -> str | None:
     return row[0] if row else None
 
 
-def _serve_canonical(eurio_id: str, role: str, *, thumb: bool) -> FileResponse:
+def _serve_canonical(
+    eurio_id: str, role: str, *, thumb: bool, source: str | None = None,
+) -> FileResponse:
     role = _resolve_role(role)
-    source = _lookup_source(eurio_id, role)
-    if not source:
+    resolved_source = source or _lookup_source(eurio_id, role)
+    if not resolved_source:
         raise HTTPException(status_code=404, detail=f"no canonical image for {eurio_id}/{role}")
 
-    path: Path = canonical_path(eurio_id, role, source, thumb=thumb)
+    path: Path = canonical_path(eurio_id, role, resolved_source, thumb=thumb)
     if not path.is_file():
         raise HTTPException(
             status_code=404,
-            detail=f"canonical file missing on disk: {path.name} (source={source})",
+            detail=f"canonical file missing on disk: {path.name} (source={resolved_source})",
         )
 
     return FileResponse(
@@ -100,30 +102,131 @@ def _serve_canonical(eurio_id: str, role: str, *, thumb: bool) -> FileResponse:
 
 @router.get("/canonical-index")
 def canonical_index() -> dict:
-    """Set d'eurio_id ayant au moins un canonical_image local en eurio.db.
+    """Set d'eurio_id ayant au moins un canonical_image local.
 
-    L'admin Vue le récupère au mount de la grille ``/coins`` pour ne pas
-    demander d'images qu'on n'a pas (zombies Supabase) — éviter le bruit
-    log + les icônes cassées dans le navigateur.
+    Union DB (Numista, …) + filesystem scan (BCE depuis 2026-05-25, où
+    la source-of-truth a été déplacée hors DB). L'admin Vue le récupère
+    au mount de la grille ``/coins`` pour ne pas demander d'images qu'on
+    n'a pas (zombies Supabase).
     """
+    ids: set[str] = set()
+
     conn = _store()._connection()  # noqa: SLF001
-    rows = conn.execute(
+    for r in conn.execute(
         "SELECT DISTINCT eurio_id FROM coin_canonical_images "
         "WHERE local_path IS NOT NULL"
-    ).fetchall()
-    return {"eurio_ids": [r[0] for r in rows]}
+    ):
+        ids.add(r[0])
+
+    # Scan fs : tout dossier ml/canonical_images/{eurio_id}/ avec ≥1
+    # fichier *.webp est considéré comme ayant un canonical.
+    from referential.canonical_image_local import CANONICAL_DIR
+    if CANONICAL_DIR.is_dir():
+        for entry in CANONICAL_DIR.iterdir():
+            if entry.is_dir() and any(entry.glob("*.webp")):
+                ids.add(entry.name)
+
+    return {"eurio_ids": sorted(ids)}
 
 
 @router.get("/canonical/{eurio_id}/{role}")
-def canonical_detail(eurio_id: str, role: str) -> FileResponse:
-    """Image canonique 400 px WebP. Sert depuis ``ml/canonical_images/`` local."""
-    return _serve_canonical(eurio_id, role, thumb=False)
+def canonical_detail(
+    eurio_id: str, role: str,
+    source: str | None = Query(default=None, description="numista|bce_comm|unknown"),
+) -> FileResponse:
+    """Image canonique 400 px WebP. Sert depuis ``ml/canonical_images/`` local.
+
+    ``source`` optionnel : sans ce param on retourne la meilleure dispo
+    (numista > bce_comm > unknown). Avec ``source=bce_comm`` on cible
+    exactement le fichier BCE — utile pour la galerie multi-source.
+    """
+    return _serve_canonical(eurio_id, role, thumb=False, source=source)
 
 
 @router.get("/canonical/{eurio_id}/{role}/thumb")
-def canonical_thumb(eurio_id: str, role: str) -> FileResponse:
+def canonical_thumb(
+    eurio_id: str, role: str,
+    source: str | None = Query(default=None),
+) -> FileResponse:
     """Thumbnail 120 px WebP. Pour les grilles `/coins` admin."""
-    return _serve_canonical(eurio_id, role, thumb=True)
+    return _serve_canonical(eurio_id, role, thumb=True, source=source)
+
+
+class CanonicalImageEntry(BaseModel):
+    source: str          # 'numista' | 'bce_comm' | 'unknown'
+    role: str            # 'obverse' | 'reverse'
+    detail_url: str
+    thumb_url: str
+    file_present: bool
+
+
+_SOURCE_PRIORITY = {"numista": 1, "bce_comm": 2, "unknown": 3}
+_ROLE_PRIORITY = {"obverse": 1, "reverse": 2}
+
+
+@router.get(
+    "/coin-canonicals/{eurio_id}",
+    response_model=list[CanonicalImageEntry],
+)
+def coin_canonicals(eurio_id: str) -> list[CanonicalImageEntry]:
+    """Toutes les images canoniques disponibles pour ``eurio_id``.
+
+    Hybride DB + filesystem :
+    - Numista (et toute source qui peuple ``coin_canonical_images``) →
+      lecture SQL.
+    - BCE (source-of-truth = fs depuis 2026-05-25) → scan du dossier
+      ``ml/canonical_images/{eurio_id}/*_bce.webp``.
+
+    Consommé par ``CoinDetailPage.vue`` pour afficher Numista et BCE
+    côte-à-côte dans la galerie.
+    """
+    found: dict[tuple[str, str], CanonicalImageEntry] = {}
+
+    # ── DB sources (Numista, …) ──────────────────────────────────────────
+    conn = _store()._connection()  # noqa: SLF001
+    rows = conn.execute(
+        "SELECT source, role FROM coin_canonical_images WHERE eurio_id = ?",
+        (eurio_id,),
+    ).fetchall()
+    for r in rows:
+        src, role = r[0], r[1]
+        key = (src, role)
+        present = canonical_path(eurio_id, role, src).is_file()
+        found[key] = CanonicalImageEntry(
+            source=src, role=role,
+            detail_url=f"/referential/canonical/{eurio_id}/{role}?source={src}",
+            thumb_url=f"/referential/canonical/{eurio_id}/{role}/thumb?source={src}",
+            file_present=present,
+        )
+
+    # ── FS scan (BCE) ────────────────────────────────────────────────────
+    # Pattern: ml/canonical_images/{eurio_id}/{role}_{source_tag}.webp
+    # On accepte tous les rôles présents pour les sources que la DB ne
+    # connaît pas. Pour BCE, le source_tag court côté disque est 'bce'
+    # (cf. coin_image_storage.source_file_tag).
+    from referential.canonical_image_local import canonical_dir_for
+    from referential.coin_image_storage import source_file_tag
+    _FS_SOURCES = {"bce_comm"}  # sources qui vivent uniquement sur disque
+    coin_dir = canonical_dir_for(eurio_id)
+    if coin_dir.is_dir():
+        for src in _FS_SOURCES:
+            tag = source_file_tag(src)
+            for role in ("obverse", "reverse"):
+                webp = coin_dir / f"{role}_{tag}.webp"
+                key = (src, role)
+                if webp.is_file() and key not in found:
+                    found[key] = CanonicalImageEntry(
+                        source=src, role=role,
+                        detail_url=f"/referential/canonical/{eurio_id}/{role}?source={src}",
+                        thumb_url=f"/referential/canonical/{eurio_id}/{role}/thumb?source={src}",
+                        file_present=True,
+                    )
+
+    return sorted(
+        found.values(),
+        key=lambda e: (_SOURCE_PRIORITY.get(e.source, 9),
+                       _ROLE_PRIORITY.get(e.role, 9)),
+    )
 
 
 # ── Coverage (Chunk B) ────────────────────────────────────────────────────
@@ -441,6 +544,262 @@ def coverage() -> CoverageResponse:
     )
 
 
+# ── Zero-canon résiduels (BCE-aware) ──────────────────────────────────────
+
+
+class ZeroCanonEntry(BaseModel):
+    eurio_id: str
+    country: str
+    year: int
+    theme: str | None
+    numista_id: int | None
+
+
+class ZeroCanonResponse(BaseModel):
+    n_db_zero_canon: int        # coins commémo 2 € sans row dans coin_canonical_images
+    n_covered_by_bce_fs: int    # parmi eux, ceux qui ont obverse_bce.webp sur disque
+    n_residuals: int            # = n_db_zero_canon - n_covered_by_bce_fs
+    residuals: list[ZeroCanonEntry]
+
+
+@router.get("/zero-canon", response_model=ZeroCanonResponse)
+def zero_canon() -> ZeroCanonResponse:
+    """Coins commémo 2 € sans aucune image canonique, ni en DB ni sur disque BCE.
+
+    Croise ``coin_canonical_images`` (DB, alimenté par Numista) avec le FS
+    ``ml/canonical_images/{eurio_id}/obverse_bce.webp`` (BCE depuis 2026-05-25,
+    cf. ``ml/sources/bce/sidecar.py`` — FS = SOT pour BCE).
+
+    Exclut les joint issues (``design_groups.id LIKE 'eu-%'``) — comptés
+    séparément dans ``/joint-issues``.
+
+    Cible théorique : 14 résiduels (cf. ``docs/roadmap.md`` §J0). Cet endpoint
+    rend la cible mesurable et permet de pister la résolution (slug-aliases,
+    LLM matching, ajout manuel).
+    """
+    from referential.canonical_image_local import canonical_dir_for
+
+    conn = _store()._connection()  # noqa: SLF001
+    rows = conn.execute(
+        """
+        SELECT c.eurio_id, c.country, c.year, c.theme, c.numista_id
+        FROM coins c
+        WHERE c.face_value = 2.0 AND c.is_commemorative = 1
+          AND NOT EXISTS (
+            SELECT 1 FROM coin_canonical_images ci WHERE ci.eurio_id = c.eurio_id
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM design_groups dg
+            WHERE dg.id = c.design_group_id AND dg.id LIKE 'eu-%'
+          )
+        ORDER BY c.year, c.country, c.eurio_id
+        """
+    ).fetchall()
+
+    residuals: list[ZeroCanonEntry] = []
+    n_covered = 0
+    for r in rows:
+        eurio_id = r[0]
+        bce_webp = canonical_dir_for(eurio_id) / "obverse_bce.webp"
+        if bce_webp.is_file():
+            n_covered += 1
+        else:
+            residuals.append(ZeroCanonEntry(
+                eurio_id=eurio_id, country=r[1], year=r[2],
+                theme=r[3], numista_id=r[4],
+            ))
+
+    return ZeroCanonResponse(
+        n_db_zero_canon=len(rows),
+        n_covered_by_bce_fs=n_covered,
+        n_residuals=len(residuals),
+        residuals=residuals,
+    )
+
+
+# ── Divergences BCE ↔ Numista (lecture seule) ─────────────────────────────
+
+
+class DivergenceFieldDiff(BaseModel):
+    field: str           # 'country' | 'year' | 'theme'
+    numista_value: str | None
+    bce_value: str | None
+    similarity: float | None  # 0..1 pour theme (fuzzy), None pour exact
+
+
+class DivergenceEntry(BaseModel):
+    eurio_id: str
+    severity: str        # 'hard' | 'soft'
+    country: str
+    year: int
+    numista_theme: str | None
+    bce_feature: str | None
+    diffs: list[DivergenceFieldDiff]
+    bce_run_id: str | None
+    bce_page_url: str | None
+    numista_id: int | None
+
+
+class DivergencesResponse(BaseModel):
+    n_matched_bce: int
+    n_hard: int
+    n_soft: int
+    n_clean: int
+    soft_threshold: float
+    divergences: list[DivergenceEntry]
+
+
+def _normalize_text(s: str | None) -> str:
+    """Normalise pour comparaison fuzzy : lowercase + strip non-alphanum.
+
+    Garde uniquement [a-z0-9] et espaces (collapsed). Évite que la ponctuation
+    BCE (apostrophes typographiques, parenthèses) crée du bruit.
+    """
+    if not s:
+        return ""
+    import re
+    s = s.lower()
+    s = re.sub(r"[^a-z0-9]+", " ", s)
+    return " ".join(s.split())
+
+
+def _theme_similarity(a: str | None, b: str | None) -> float:
+    """Similarité 0..1 entre deux titres. SequenceMatcher sur texte normalisé."""
+    from difflib import SequenceMatcher
+    na, nb = _normalize_text(a), _normalize_text(b)
+    if not na or not nb:
+        return 0.0
+    return SequenceMatcher(None, na, nb).ratio()
+
+
+# Au-dessus = considéré "même titre". En dessous = divergence soft. Le seuil
+# 0.65 vient d'un test manuel : "Treaty of Rome 2007" vs "50e anniversaire du
+# traité de Rome" → 0.42 ; "Leonardo da Vinci" vs "500th anniversary of the
+# death of Leonardo da Vinci" → 0.55. Ajustable depuis le frontend si besoin.
+_SOFT_THRESHOLD_DEFAULT = 0.65
+
+
+@router.get("/divergences", response_model=DivergencesResponse)
+def divergences(
+    soft_threshold: float = Query(default=_SOFT_THRESHOLD_DEFAULT, ge=0.0, le=1.0),
+) -> DivergencesResponse:
+    """Liste les divergences métadonnées entre BCE (sidecar JSON) et Numista (DB)
+    pour les coins matched (cad ayant un ``obverse_bce.webp`` rattaché).
+
+    Classification :
+    - **hard** : country ou year différents → quasi toujours un bug de matcher
+      slug (mauvais rattachement BCE ↔ eurio_id). Geste de résolution
+      = détacher.
+    - **soft** : country/year OK mais titre (theme/feature) trop différents
+      (similarité < ``soft_threshold``). Généralement deux formulations
+      valides de la même chose. Geste de résolution = arbitrage éditorial
+      (Chunk 2).
+    """
+    from referential.canonical_image_local import CANONICAL_DIR
+
+    conn = _store()._connection()  # noqa: SLF001
+
+    # Index coins par eurio_id pour O(1) lookup.
+    coins_index: dict[str, tuple[str, int, str | None, int | None]] = {
+        r[0]: (r[1], r[2], r[3], r[4])
+        for r in conn.execute(
+            "SELECT eurio_id, country, year, theme, numista_id FROM coins"
+        )
+    }
+
+    if not CANONICAL_DIR.is_dir():
+        return DivergencesResponse(
+            n_matched_bce=0, n_hard=0, n_soft=0, n_clean=0,
+            soft_threshold=soft_threshold, divergences=[],
+        )
+
+    import json as _json
+    divs: list[DivergenceEntry] = []
+    n_matched = 0
+    n_clean = 0
+
+    for coin_dir in sorted(CANONICAL_DIR.iterdir()):
+        sidecar = coin_dir / "obverse_bce.json"
+        if not sidecar.is_file():
+            continue
+        try:
+            data = _json.loads(sidecar.read_text(encoding="utf-8"))
+        except (OSError, _json.JSONDecodeError):
+            continue
+
+        eurio_id = data.get("eurio_id") or coin_dir.name
+        coin = coins_index.get(eurio_id)
+        if coin is None:
+            # Sidecar BCE pour un eurio_id qui n'existe plus en DB — orphelin.
+            # Pas une divergence métadonnées, plutôt un nettoyage à part.
+            continue
+        n_matched += 1
+
+        db_country, db_year, db_theme, db_numista_id = coin
+        bce_country = data.get("country")
+        bce_year = data.get("year")
+        bce_feature = data.get("feature")
+
+        diffs: list[DivergenceFieldDiff] = []
+        is_hard = False
+
+        if bce_country and db_country and bce_country != db_country:
+            diffs.append(DivergenceFieldDiff(
+                field="country", numista_value=db_country,
+                bce_value=bce_country, similarity=None,
+            ))
+            is_hard = True
+        if bce_year and db_year and int(bce_year) != int(db_year):
+            diffs.append(DivergenceFieldDiff(
+                field="year", numista_value=str(db_year),
+                bce_value=str(bce_year), similarity=None,
+            ))
+            is_hard = True
+
+        sim = _theme_similarity(db_theme, bce_feature)
+        if sim < soft_threshold and (db_theme or bce_feature):
+            diffs.append(DivergenceFieldDiff(
+                field="theme", numista_value=db_theme,
+                bce_value=bce_feature, similarity=round(sim, 3),
+            ))
+
+        if not diffs:
+            n_clean += 1
+            continue
+
+        divs.append(DivergenceEntry(
+            eurio_id=eurio_id,
+            severity="hard" if is_hard else "soft",
+            country=db_country, year=db_year,
+            numista_theme=db_theme, bce_feature=bce_feature,
+            diffs=diffs,
+            bce_run_id=data.get("run_id"),
+            bce_page_url=data.get("bce_page_url"),
+            numista_id=db_numista_id,
+        ))
+
+    # Tri : hard d'abord, puis par similarité croissante (les plus différents en haut).
+    def _sort_key(d: DivergenceEntry) -> tuple[int, float]:
+        sev_rank = 0 if d.severity == "hard" else 1
+        # Plus petite similarité theme = plus intéressant en haut.
+        sim_min = min(
+            (df.similarity for df in d.diffs if df.similarity is not None),
+            default=1.0,
+        )
+        return (sev_rank, sim_min)
+
+    divs.sort(key=_sort_key)
+
+    n_hard = sum(1 for d in divs if d.severity == "hard")
+    n_soft = sum(1 for d in divs if d.severity == "soft")
+
+    return DivergencesResponse(
+        n_matched_bce=n_matched, n_hard=n_hard, n_soft=n_soft,
+        n_clean=n_clean, soft_threshold=soft_threshold,
+        divergences=divs,
+    )
+
+
 # ── Heal (Chunk B) ────────────────────────────────────────────────────────
 
 
@@ -590,4 +949,161 @@ def heal() -> HealResponse:
         enrich_payloads=enrich,
         migrate_canonical_schema=migrate_schema,
         migrate_local_images=migrate_local,
+    )
+
+
+# ── Fix proposals (cf. docs/operations/referential-fixes-kickoff.md) ────────
+
+_FIX_PROPOSALS_PATH = _ML_ROOT / "state" / "referential_fix_proposals.json"
+
+
+class FixProposalSummary(BaseModel):
+    case_id: str
+    country: str
+    year: int
+    shape: str
+    confidence: str
+    swap_eurio_id: str | None
+    swap_current_numista_id: int | None
+    swap_new_numista_id: int | None
+    new_row_eurio_id: str
+    new_row_numista_id: int
+    n_warnings: int
+
+
+class FixProposalsListResponse(BaseModel):
+    generated_at: str | None
+    n_proposals: int
+    by_shape: dict[str, int]
+    by_confidence: dict[str, int]
+    proposals: list[FixProposalSummary]
+
+
+def _read_fix_proposals() -> dict:
+    if not _FIX_PROPOSALS_PATH.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "referential_fix_proposals.json not found. "
+                "Run POST /referential/fix-proposals/refresh or "
+                "`python -m scripts.discover_referential_fixes`."
+            ),
+        )
+    import json
+    try:
+        return json.loads(_FIX_PROPOSALS_PATH.read_text())
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=500, detail=f"Corrupted proposals JSON: {e}")
+
+
+def _summarize_proposal(p: dict) -> FixProposalSummary:
+    swap = p.get("swap") or {}
+    new_row = p.get("new_row") or {}
+    return FixProposalSummary(
+        case_id=p["case_id"],
+        country=p["country"],
+        year=p["year"],
+        shape=p["shape"],
+        confidence=p["confidence"],
+        swap_eurio_id=swap.get("eurio_id"),
+        swap_current_numista_id=swap.get("current_numista_id"),
+        swap_new_numista_id=swap.get("new_numista_id"),
+        new_row_eurio_id=new_row.get("eurio_id", ""),
+        new_row_numista_id=new_row.get("numista_id", 0),
+        n_warnings=len(p.get("warnings") or []),
+    )
+
+
+@router.get("/fix-proposals", response_model=FixProposalsListResponse)
+def fix_proposals_list() -> FixProposalsListResponse:
+    """Liste les propositions de fix discovery (lecture seule de
+    ``ml/state/referential_fix_proposals.json``).
+
+    Pour le détail complet d'un cas, voir
+    ``GET /referential/fix-proposals/{case_id}``.
+    """
+    data = _read_fix_proposals()
+    return FixProposalsListResponse(
+        generated_at=data.get("generated_at"),
+        n_proposals=data.get("n_proposals", 0),
+        by_shape=data.get("by_shape", {}),
+        by_confidence=data.get("by_confidence", {}),
+        proposals=[_summarize_proposal(p) for p in data.get("proposals", [])],
+    )
+
+
+@router.get("/fix-proposals/{case_id}")
+def fix_proposal_detail(case_id: str) -> dict:
+    """Retourne la proposition complète (swap, new_row, source_attributions,
+    warnings, reasoning) pour ``case_id``.
+
+    Réponse : objet brut tel que stocké dans le JSON discovery.
+    """
+    data = _read_fix_proposals()
+    for p in data.get("proposals", []):
+        if p.get("case_id") == case_id:
+            return p
+    raise HTTPException(status_code=404, detail=f"case_id not found: {case_id}")
+
+
+@router.post("/fix-proposals/{case_id}/apply")
+def fix_proposal_apply(case_id: str) -> dict:
+    """Applique la cascade de fix pour ``case_id`` (cf.
+    ``docs/operations/referential-fixes-kickoff.md`` Chunk 2).
+
+    8 étapes : preflight → backup eurio.db → mutate DB → move BCE sidecars
+    → fetch Numista images → push Supabase → audit. Réponse :
+    ``{success, steps:[{name,status,diagnostic}], backup_path, ...}``.
+
+    Décision actée 2026-05-25 : push Supabase fail = non-fatal, l'opérateur
+    relance ``POST /referential/push`` séparément.
+    """
+    from .referential_fix_apply import ApplyError, apply_fix
+
+    try:
+        return apply_fix(case_id)
+    except ApplyError as e:
+        raise HTTPException(status_code=e.http_status, detail=str(e))
+
+
+class FixProposalsRefreshResponse(BaseModel):
+    started_at: str
+    finished_at: str
+    duration_sec: float
+    generated_at: str | None
+    n_proposals: int
+    by_shape: dict[str, int]
+    by_confidence: dict[str, int]
+
+
+@router.post("/fix-proposals/refresh", response_model=FixProposalsRefreshResponse)
+def fix_proposals_refresh() -> FixProposalsRefreshResponse:
+    """Re-run ``scripts.discover_referential_fixes`` et renvoie la nouvelle méta.
+
+    Le script écrit ``ml/state/referential_fix_proposals.json``. On le relit
+    après et on renvoie le sommaire (sans embarquer les 9 proposals).
+    """
+    started = datetime.now(timezone.utc)
+    proc = subprocess.run(
+        [sys.executable, "-m", "scripts.discover_referential_fixes"],
+        capture_output=True,
+        text=True,
+        cwd=_ML_ROOT,
+        timeout=300,
+    )
+    if proc.returncode != 0:
+        raise HTTPException(
+            status_code=500,
+            detail=f"discover_referential_fixes failed (rc={proc.returncode}): {proc.stderr[-2000:]}",
+        )
+    data = _read_fix_proposals()
+    finished = datetime.now(timezone.utc)
+    return FixProposalsRefreshResponse(
+        started_at=started.isoformat(),
+        finished_at=finished.isoformat(),
+        duration_sec=(finished - started).total_seconds(),
+        generated_at=data.get("generated_at"),
+        n_proposals=data.get("n_proposals", 0),
+        by_shape=data.get("by_shape", {}),
+        by_confidence=data.get("by_confidence", {}),
     )

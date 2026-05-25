@@ -123,6 +123,63 @@ export function fetchJointIssues(): Promise<JointIssuesResponse> {
   return json<JointIssuesResponse>('/referential/joint-issues')
 }
 
+// ─── Zero-canon résiduels (BCE-aware) ─────────────────────────────────
+
+export interface ZeroCanonEntry {
+  eurio_id: string
+  country: string
+  year: number
+  theme: string | null
+  numista_id: number | null
+}
+
+export interface ZeroCanonResponse {
+  n_db_zero_canon: number
+  n_covered_by_bce_fs: number
+  n_residuals: number
+  residuals: ZeroCanonEntry[]
+}
+
+export function fetchZeroCanon(): Promise<ZeroCanonResponse> {
+  return json<ZeroCanonResponse>('/referential/zero-canon')
+}
+
+// ─── Divergences BCE ↔ Numista ────────────────────────────────────────
+
+export interface DivergenceFieldDiff {
+  field: 'country' | 'year' | 'theme'
+  numista_value: string | null
+  bce_value: string | null
+  similarity: number | null
+}
+
+export interface DivergenceEntry {
+  eurio_id: string
+  severity: 'hard' | 'soft'
+  country: string
+  year: number
+  numista_theme: string | null
+  bce_feature: string | null
+  diffs: DivergenceFieldDiff[]
+  bce_run_id: string | null
+  bce_page_url: string | null
+  numista_id: number | null
+}
+
+export interface DivergencesResponse {
+  n_matched_bce: number
+  n_hard: number
+  n_soft: number
+  n_clean: number
+  soft_threshold: number
+  divergences: DivergenceEntry[]
+}
+
+export function fetchDivergences(softThreshold?: number): Promise<DivergencesResponse> {
+  const q = softThreshold != null ? `?soft_threshold=${softThreshold}` : ''
+  return json<DivergencesResponse>(`/referential/divergences${q}`)
+}
+
 // ─── Push to Supabase ──────────────────────────────────────────────────
 
 export interface PushResponse {
@@ -134,4 +191,115 @@ export interface PushResponse {
 
 export function runPush(): Promise<PushResponse> {
   return json<PushResponse>('/referential/push', { method: 'POST' })
+}
+
+// ─── Fix proposals (chunk apply référentiel) ──────────────────────────
+
+export interface FixProposalSummary {
+  case_id: string
+  country: string
+  year: number
+  shape: string
+  confidence: string
+  swap_eurio_id: string | null
+  swap_current_numista_id: number | null
+  swap_new_numista_id: number | null
+  new_row_eurio_id: string
+  new_row_numista_id: number
+  n_warnings: number
+}
+
+export interface FixProposalsListResponse {
+  generated_at: string | null
+  n_proposals: number
+  by_shape: Record<string, number>
+  by_confidence: Record<string, number>
+  proposals: FixProposalSummary[]
+}
+
+export interface FixProposalSwap {
+  eurio_id: string
+  current_numista_id: number
+  new_numista_id: number
+  current_numista_title: string
+  new_numista_title: string
+  current_similarity: number
+  new_similarity: number
+}
+
+export interface FixProposalNewRow {
+  eurio_id: string
+  country: string
+  year: number
+  face_value: number
+  numista_id: number
+  theme: string | null
+  design_description: string | null
+}
+
+export interface FixProposalSourceAttribution {
+  source: string
+  current_holder: string
+  feature_text: string | null
+  sim_to_existing_slug: number
+  sim_to_new_slug: number
+  recommended_target: 'existing' | 'new' | 'unknown'
+}
+
+export interface FixProposalDetail {
+  case_id: string
+  country: string
+  year: number
+  shape: string
+  confidence: string
+  reasoning: string
+  swap: FixProposalSwap | null
+  new_row: FixProposalNewRow
+  source_attributions: FixProposalSourceAttribution[]
+  warnings: string[]
+}
+
+export interface FixApplyStep {
+  name: string
+  status: 'ok' | 'failed' | 'skipped'
+  diagnostic: Record<string, unknown>
+}
+
+export interface FixApplyResponse {
+  case_id: string
+  success: boolean
+  started_at: string
+  finished_at: string
+  duration_sec: number
+  steps: FixApplyStep[]
+  backup_path: string | null
+}
+
+export interface FixProposalsRefreshResponse {
+  started_at: string
+  finished_at: string
+  duration_sec: number
+  generated_at: string | null
+  n_proposals: number
+  by_shape: Record<string, number>
+  by_confidence: Record<string, number>
+}
+
+export function fetchFixProposals(): Promise<FixProposalsListResponse> {
+  return json<FixProposalsListResponse>('/referential/fix-proposals')
+}
+
+export function fetchFixProposalDetail(caseId: string): Promise<FixProposalDetail> {
+  return json<FixProposalDetail>(`/referential/fix-proposals/${encodeURIComponent(caseId)}`)
+}
+
+export function refreshFixProposals(): Promise<FixProposalsRefreshResponse> {
+  return json<FixProposalsRefreshResponse>('/referential/fix-proposals/refresh', { method: 'POST' })
+}
+
+export function applyFixProposal(caseId: string): Promise<FixApplyResponse> {
+  return json<FixApplyResponse>(
+    `/referential/fix-proposals/${encodeURIComponent(caseId)}/apply`,
+    { method: 'POST' },
+  )
 }

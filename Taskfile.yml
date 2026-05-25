@@ -83,6 +83,35 @@ tasks:
     cmds:
       - ./.venv/bin/python -c 'from augmentations.overlays import sanity_check_textures; import sys; sys.exit(sanity_check_textures())'
 
+  ccproxy:build:
+    desc: "Compile le binaire ccproxy (proxy OpenAI-compat vers claude CLI). À relancer après chaque modif des sources Go."
+    dir: services/ccproxy
+    cmds:
+      - go build -o bin/ccproxy .
+      - echo "✓ ccproxy built → services/ccproxy/bin/ccproxy"
+
+  ccproxy:start:
+    desc: "Démarre ccproxy en avant-plan (port 3002). Logs visibles, Ctrl-C pour stopper. Requis pour /review/ccproxy et le bench Claude."
+    dir: services/ccproxy
+    cmds:
+      - |
+        if [ ! -x bin/ccproxy ]; then
+          echo "Binaire ccproxy absent — exécute d'abord : go-task ccproxy:build"
+          exit 1
+        fi
+      - ./bin/ccproxy --debug
+
+  ccproxy:health:
+    desc: "Ping rapide /health du ccproxy local (port 3002). Utile pour vérifier qu'il tourne avant un batch."
+    cmds:
+      - |
+        if curl -s --max-time 3 http://127.0.0.1:3002/health; then
+          echo ""
+        else
+          echo "ccproxy down — lance-le avec [go-task ccproxy:start]"
+          exit 1
+        fi
+
   loan:build-catalog:
     desc: "Génère catalog.json + télécharge images dans public/coins/ (local only, requires SUPABASE_SERVICE_ROLE_KEY)"
     dir: loan

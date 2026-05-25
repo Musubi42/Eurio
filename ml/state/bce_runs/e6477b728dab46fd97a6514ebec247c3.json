@@ -1,0 +1,38 @@
+{
+  "run_id": "e6477b728dab46fd97a6514ebec247c3",
+  "kind": "run",
+  "started_at": "2026-05-24T23:34:44.261703+00:00",
+  "ended_at": "2026-05-24T23:34:45.873435+00:00",
+  "status": "success",
+  "query": {
+    "source_id": "bce",
+    "country": null,
+    "denomination": null,
+    "year": null,
+    "target_eurio_id": null,
+    "target_eurio_ids": [
+      "it-2018-2eur-60-years-since-the-formation-of-the-ministry-of-health",
+      "gr-2013-2eur-2400th-anniversary-of-the-founding-of-the-platonic-academy"
+    ],
+    "discovery_group": null,
+    "discovery_groups": null,
+    "limit": null,
+    "extra": {}
+  },
+  "n_pages_fetched": 0,
+  "n_pages_cached": 0,
+  "n_downloaded": 1,
+  "n_promoted": 1,
+  "n_errors": 0,
+  "error_summary": null,
+  "matched": [
+    {
+      "eurio_id": "it-2018-2eur-60-years-since-the-formation-of-the-ministry-of-health",
+      "role": "obverse",
+      "image_url": "https://www.ecb.europa.eu/euro/coins/comm/html/comm_2018/comm_2018_italy_anniversary.jpg",
+      "feature": "The 70th Anniversary of the Coming into Force of the Italian Constitution",
+      "local_path": "ml/canonical_images/it-2018-2eur-60-years-since-the-formation-of-the-ministry-of-health/obverse_bce.webp"
+    }
+  ],
+  "unmatched": []
+}

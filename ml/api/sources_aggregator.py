@@ -32,6 +32,7 @@ if str(ML_DIR) not in sys.path:
     sys.path.insert(0, str(ML_DIR))
 
 from api_quota import QuotaTracker  # noqa: E402
+from referential.numista_keys import KeyManager as NumistaKeyManager  # noqa: E402
 from state.sources_runs import read_all as read_runs  # noqa: E402
 
 PRICE_SNAPSHOTS_DIR = ML_DIR / "state" / "price_snapshots"
@@ -198,11 +199,11 @@ SOURCES_REGISTRY: list[dict[str, Any]] = [
     {
         "id": "bce",
         "label": "BCE",
-        "subtitle": "Scrape HTML · annonces commémo officielles",
+        "subtitle": "Scrape HTML · images canoniques officielles",
         "kind": "scrape",
         "quota_group": None,
         "expected_cadence_days": 90,
-        "coverage_unit": "années couvertes",
+        "coverage_unit": "pièces avec image BCE",
         "cli_hints": [
             {
                 "kind": "run",
@@ -274,10 +275,31 @@ def _quota_payload(spec: dict) -> dict | None:
 
 
 def _numista_quota_payload() -> dict:
-    """Aggregate Numista quota across all keys for the response group banner."""
+    """Aggregate Numista quota across all keys for the response group banner.
+
+    Lists every registered key (env-loaded) even if it has zero calls this
+    month, so newly added keys appear in the admin UI immediately. Slot
+    numbers match the NUMISTA_API_KEY_MUSUBI{NN} suffix (gaps allowed).
+    """
     tracker = QuotaTracker("numista", "monthly", NUMISTA_MONTHLY_LIMIT)
-    per_key = tracker.status()
-    n_keys = max(len(per_key), 1)
+    tracked_by_hash = {s.key_hash: s for s in tracker.status()}
+    try:
+        km = NumistaKeyManager()
+        registered = [(slot, key_hash) for slot, key_hash, _ in km._keys]
+    except RuntimeError:
+        registered = []
+
+    per_key_payload = []
+    for slot, key_hash in registered:
+        s = tracked_by_hash.get(key_hash)
+        per_key_payload.append({
+            "slot": slot,
+            "key_hash": key_hash,
+            "calls": s.calls if s else 0,
+            "exhausted": s.exhausted if s else False,
+        })
+
+    n_keys = max(len(registered), 1)
     aggregate_limit = NUMISTA_MONTHLY_LIMIT * n_keys
     total = tracker.total()
     pct = (total.calls / aggregate_limit * 100) if aggregate_limit else 0.0
@@ -289,15 +311,7 @@ def _numista_quota_payload() -> dict:
         "remaining": max(0, aggregate_limit - total.calls),
         "pct_used": round(pct, 1),
         "exhausted": total.exhausted,
-        "per_key": [
-            {
-                "slot": i + 1,
-                "key_hash": s.key_hash,
-                "calls": s.calls,
-                "exhausted": s.exhausted,
-            }
-            for i, s in enumerate(per_key)
-        ],
+        "per_key": per_key_payload,
     }
 
 
@@ -469,8 +483,53 @@ def _compute_coverage() -> dict[str, dict[str, int]]:
     out["lmdlp"]["enriched"] = enriched_per["lmdlp"]
     out["mdp"]["total_target"] = commemo_total
     out["mdp"]["enriched"] = enriched_per["mdp"]
-    out["bce"]["enriched"] = enriched_per["bce"]
+
+    # BCE coverage = pièces avec ≥ 1 image canonique 'bce_comm' en eurio.db.
+    # On lit SQLite plutôt que le JSON legacy : le pipeline BCE écrit dans
+    # `coin_canonical_images`, pas dans le référentiel JSON.
+    bce_enriched = _count_bce_enriched_sqlite()
+    out["bce"]["total_target"] = commemo_total
+    out["bce"]["enriched"] = bce_enriched if bce_enriched is not None else enriched_per["bce"]
     return out
+
+
+def _count_bce_enriched_sqlite() -> int | None:
+    """Pièces commémo 2 € avec ≥1 image BCE canonique sur le **filesystem**.
+
+    Depuis 2026-05-25, BCE est fs-as-SOT : on ne stocke plus de row
+    ``coin_canonical_images.source='bce_comm'`` en eurio.db. On scanne
+    donc ``ml/canonical_images/{eurio_id}/{role}_bce.webp`` pour compter
+    les coins commémo 2€ avec image BCE.
+
+    Garde un nom historique pour minimiser le diff côté ``_compute_coverage``.
+    """
+    canonical_dir = ML_DIR / "canonical_images"
+    if not canonical_dir.is_dir():
+        return None
+
+    import sqlite3
+    db_path = ML_DIR / "state" / "eurio.db"
+    if not db_path.is_file():
+        return None
+    try:
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        commemo_ids = {
+            r[0] for r in conn.execute(
+                "SELECT eurio_id FROM coins "
+                "WHERE face_value = 2.0 AND is_commemorative = 1"
+            )
+        }
+        conn.close()
+    except sqlite3.Error:
+        return None
+
+    n = 0
+    for entry in canonical_dir.iterdir():
+        if not entry.is_dir() or entry.name not in commemo_ids:
+            continue
+        if any(entry.glob("*_bce.webp")):
+            n += 1
+    return n
 
 
 def _coverage_payload(spec: dict, coverage_map: dict) -> dict:
