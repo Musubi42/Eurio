@@ -739,3 +739,9 @@ tasks:
     desc: "Seed source_registry with the 10 canonical sources. Idempotent (INSERT OR IGNORE). Pass --update for upsert, --check for read-only report."
     cmds:
       - "{{.VENV}}/python -m scripts.seed_source_registry {{.CLI_ARGS}}"
+
+  # ─── Coin richness — P.5 verify backup ───────────────────────────────────
+  verify-backup:
+    desc: "Vérifie qu'un backup eurio.db est restaurable et fidèle à la DB courante (P.5). Lecture-seule, copie le backup dans /tmp avant inspection."
+    cmds:
+      - "{{.VENV}}/python -m scripts.verify_backup_restore {{.CLI_ARGS}}"
