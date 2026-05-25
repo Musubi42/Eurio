@@ -118,7 +118,7 @@ def test_coin_row_bremen() -> None:
     assert row["theme"] == 'Bundesländer - "Bremen"'
     assert row["ref_source"] == NUMISTA_SOURCE
     assert row["ref_native_id"] == "10069"
-    assert "Bimetallic" in row["composition"]
+    assert "composition" not in row  # capturé en observation, pas en coins
 
 
 def test_coin_source_ref_row_bremen() -> None:
