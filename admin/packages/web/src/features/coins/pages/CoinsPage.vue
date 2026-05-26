@@ -8,6 +8,7 @@ import {
 import { zoneStyle } from '@/features/confusion/composables/useConfusionZone'
 import { fetchCoinsList, patchCoin } from '@/features/coins/composables/useCoinsApi'
 import type { Coin, ConfusionZone, IssueType } from '@/shared/supabase/types'
+import { coinDisplayName } from '@/shared/utils/coin-display'
 import { firstImageUrl, loadCanonicalIndex } from '@/shared/utils/coin-images'
 import { useDebounceFn } from '@vueuse/core'
 import { Brain, Check, Copy, FlaskConical, HandHelping, Image as ImageIcon, ImageOff, Layers, Play, Search, Sparkles, Wallet } from 'lucide-vue-next'
@@ -1167,7 +1168,7 @@ function copyToClipboard(value: string, label: string, event: Event) {
               {{ coin.year }}
             </p>
             <p class="mt-0.5 line-clamp-2 text-xs font-medium leading-snug" style="color: var(--ink);">
-              {{ coin.theme ?? '—' }}
+              {{ coinDisplayName(coin as any) }}
             </p>
           </div>
           <p

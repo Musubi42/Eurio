@@ -34,6 +34,7 @@ import {
 } from 'lucide-vue-next'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { coinDisplayName } from '@/shared/utils/coin-display'
 import EnrichmentGallery from '../components/EnrichmentGallery.vue'
 
 const route = useRoute()
@@ -615,33 +616,31 @@ const bceTopic = computed(() => _pickTopic((coin.value as any)?.topics, 'bce_off
              style="color: var(--ink-500); letter-spacing: var(--tracking-eyebrow);">
             {{ coin.country }} · {{ coin.year }}
           </p>
-          <h1 class="font-display text-3xl italic font-semibold leading-tight"
-              style="color: var(--indigo-700);">
-            {{ coin.theme ?? formatFaceValue(coin.face_value) }}
-          </h1>
-          <p v-if="coin.theme" class="mt-1 font-mono text-sm" style="color: var(--ink-400);">
+          <div class="flex items-start gap-2">
+            <h1 class="font-display text-3xl italic font-semibold leading-tight"
+                style="color: var(--indigo-700);">
+              {{ coinDisplayName(coin as any) }}
+            </h1>
+            <span v-if="numistaTopic"
+                  class="mt-2 inline-flex flex-shrink-0 items-center rounded-full border px-2 py-0.5 text-[9px] font-medium uppercase tracking-wider"
+                  style="border-color: var(--indigo-300); color: var(--indigo-600); background: var(--indigo-50);">
+              Numista
+            </span>
+          </div>
+          <p class="mt-1 font-mono text-sm" style="color: var(--ink-400);">
             {{ formatFaceValue(coin.face_value) }}
           </p>
-          <!-- Topics multi-source (chantier D, E.6) -->
-          <div v-if="numistaTopic || bceTopic" class="mt-4 space-y-3">
-            <div v-if="numistaTopic" class="flex items-start gap-2">
-              <span class="mt-0.5 inline-flex flex-shrink-0 items-center rounded-full border px-2 py-0.5 text-[9px] font-medium uppercase tracking-wider"
-                    style="border-color: var(--indigo-300); color: var(--indigo-600); background: var(--indigo-50);">
-                Numista
-              </span>
-              <p class="text-sm leading-snug" style="color: var(--ink);">
-                {{ numistaTopic }}
-              </p>
-            </div>
-            <div v-if="bceTopic" class="flex items-start gap-2">
-              <span class="mt-0.5 inline-flex flex-shrink-0 items-center rounded-full border px-2 py-0.5 text-[9px] font-medium uppercase tracking-wider"
-                    style="border-color: var(--gold); color: var(--gold-700, var(--gold)); background: var(--gold-50, transparent);">
-                BCE
-              </span>
-              <p class="text-sm leading-snug" style="color: var(--ink);">
-                {{ bceTopic }}
-              </p>
-            </div>
+          <!-- BCE topic verbeux distinct (chantier D, E.6) — Numista déjà
+               porté par le H1 via coinDisplayName, on n'affiche que la
+               source-of-truth complémentaire. -->
+          <div v-if="bceTopic" class="mt-3 flex items-start gap-2">
+            <span class="mt-0.5 inline-flex flex-shrink-0 items-center rounded-full border px-2 py-0.5 text-[9px] font-medium uppercase tracking-wider"
+                  style="border-color: var(--gold); color: var(--gold-700, var(--gold)); background: var(--gold-50, transparent);">
+              BCE
+            </span>
+            <p class="text-sm leading-snug" style="color: var(--ink);">
+              {{ bceTopic }}
+            </p>
           </div>
         </div>
 
