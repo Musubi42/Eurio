@@ -61,6 +61,7 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173",
         "http://localhost:5174",  # Vite fallback quand 5173 occupé
+        "http://localhost:5175",  # Vite fallback secondaire
         "http://localhost:4173",
     ],
     allow_methods=["*"],
