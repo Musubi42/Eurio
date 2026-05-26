@@ -261,9 +261,15 @@ def _theme_match_state(
     Pool de toutes les langues de ``coin_names_i18n`` (et pas seulement
     la langue native du marketplace) : couvre le cross-listing et le
     faux rejet quand la couverture i18n est partielle.
+
+    F.1 (chantier D follow-up, 2026-05-26) : on pool aussi ``coin_topics``
+    (commemorated_topic Numista verbeux + feature BCE). Le topic apporte
+    des tokens distinctifs ("100", "anniversaire", "1917", "armistice",
+    "kniefall") absents du titre court — bump recall sur les listings
+    sellers verbeux.
     """
     from .theme_tokens import (
-        extract_tokens, load_aliases, load_i18n_title, normalize,
+        extract_tokens, load_aliases, load_i18n_title, load_topic, normalize,
     )
 
     title_norm = normalize(title)
@@ -276,22 +282,33 @@ def _theme_match_state(
         if re.search(rf"\b{re.escape(alias)}\b", title_norm):
             return "hit"
 
-    any_title_found = False
+    any_source_found = False
     any_token_extracted = bool(aliases)
 
     for lang in NAMES_BY_LANG:
+        # Numista title court (canon i18n)
         numista_title = load_i18n_title(conn, eurio_id, lang)
-        if numista_title is None:
-            continue
-        any_title_found = True
-        tokens = extract_tokens(numista_title, lang)
-        if tokens:
-            any_token_extracted = True
-        for tok in tokens:
-            if tok in title_norm:
-                return "hit"
+        if numista_title is not None:
+            any_source_found = True
+            tokens = extract_tokens(numista_title, lang)
+            if tokens:
+                any_token_extracted = True
+            for tok in tokens:
+                if tok in title_norm:
+                    return "hit"
 
-    if not any_title_found or not any_token_extracted:
+        # commemorated_topic verbeux (Numista + BCE poolés par lang)
+        topic = load_topic(conn, eurio_id, lang)
+        if topic is not None:
+            any_source_found = True
+            tokens = extract_tokens(topic, lang)
+            if tokens:
+                any_token_extracted = True
+            for tok in tokens:
+                if tok in title_norm:
+                    return "hit"
+
+    if not any_source_found or not any_token_extracted:
         return "undiscriminable"
     return "miss"
 

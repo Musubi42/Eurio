@@ -337,6 +337,40 @@ def load_i18n_title(
         return row[0]
 
 
+def load_topic(
+    conn: sqlite3.Connection,
+    eurio_id: str,
+    lang: str,
+) -> str | None:
+    """Renvoie le ``commemorated_topic`` localisé verbeux (chantier D).
+
+    Pool Numista + BCE pour la même lang : on concatène toutes les sources
+    en une string unique pour `extract_tokens` (qui dédupe en aval).
+    Renvoie ``None`` si aucune source n'a de topic pour ce (eurio_id, lang).
+
+    Multi-source rationale : le topic Numista ("100 years of Independence")
+    et BCE ("Independent Finland 100 years") apportent des tokens
+    complémentaires utiles au matcher (e.g. "independent" vs "independence"),
+    sans interférence puisqu'on dédupe sur l'output tokens.
+    """
+    try:
+        rows = conn.execute(
+            "SELECT topic FROM coin_topics WHERE eurio_id=? AND lang=?",
+            (eurio_id, lang),
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return None
+    if not rows:
+        return None
+    parts: list[str] = []
+    for row in rows:
+        try:
+            parts.append(row["topic"])
+        except (TypeError, IndexError):
+            parts.append(row[0])
+    return " ".join(parts) if parts else None
+
+
 def load_aliases(conn: sqlite3.Connection, eurio_id: str) -> set[str]:
     """Alias de thème d'une commémo — acronymes, termes de marché, surnoms.
 
