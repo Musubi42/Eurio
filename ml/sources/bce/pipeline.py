@@ -45,6 +45,7 @@ import dataclasses
 from sources._base.adapter import DiscoveredItem, SourceQuery
 from sources._base.dedup import upsert_discovery_log
 from sources._base.query_sig import compute_query_signature
+from sources._base.registry_map import to_registry_source
 from sources._base.run_logger import RunHandle, start_run
 from sources._base.steps.persist import run_persist
 from sources._base.storage import raw_cache_path
@@ -57,6 +58,8 @@ logger = logging.getLogger(__name__)
 
 # Aligné avec ``coin_image_storage.source_file_tag('bce_comm')`` qui retourne 'bce'.
 _BCE_SOURCE_LONG = "bce_comm"
+# Registry id écrit dans les tables data-aware (FK source_registry).
+_BCE_REGISTRY_SOURCE = to_registry_source("bce")  # → 'bce_official'
 
 
 def run_bce_pipeline(
@@ -316,11 +319,18 @@ def _bce_canonical_promote_fs(
     source_image_ids: dict[str, str],
     manifest: RunManifest,
 ) -> int:
-    """Pour chaque image téléchargée : cropper → write_variants → sidecar.
+    """Pour chaque image téléchargée : cropper → write_variants → sidecar +
+    upsert provenance DB.
 
-    Aucun write DB côté ``coin_canonical_images`` / ``coin_observations``.
-    Le filesystem est la source of truth ; les endpoints qui exposent les
-    canoniques BCE lisent ``ml/canonical_images/`` directement.
+    Le filesystem reste la source of truth (les binaires WebP vivent sous
+    ``ml/canonical_images/``). Mais on écrit aussi un index DB minimal :
+
+    - ``coin_canonical_images(eurio_id, source='bce_official', role, url,
+      local_path)`` — pour que les endpoints "has_bce" / source-counts
+      puissent agréger sans scanner le FS.
+    - ``coin_source_refs(target_kind='coin', target_id=eurio_id,
+      source='bce_official', source_native_id='{country}-{year}-{theme}',
+      source_url=bce_page_url)`` — provenance first-class (doctrine §2.2).
     """
     from referential.canonical_image_local import (
         canonical_path,
@@ -364,6 +374,13 @@ def _bce_canonical_promote_fs(
         feature = payload.get("feature") or row["listing_title"] or ""
         image_url = payload.get("image_url") or row["source_url"]
 
+        country = payload.get("country") or ""
+        year = payload.get("year")
+        theme_slug = payload.get("theme_slug") or ""
+        bce_page_url = payload.get("bce_page_url")
+        source_native_id = f"{country}-{year}-{theme_slug}" if theme_slug else f"{country}-{year}"
+        wrote_source_ref = False
+
         for crop in crops:
             try:
                 write_variants(eurio_id, crop.role, _BCE_SOURCE_LONG, crop.image_bytes)
@@ -374,6 +391,52 @@ def _bce_canonical_promote_fs(
                 )
                 run.bump(n_errors=1)
                 continue
+
+            # Provenance DB — coin_canonical_images (idempotent UPSERT).
+            try:
+                conn.execute(
+                    """
+                    INSERT INTO coin_canonical_images
+                      (eurio_id, source, role, url, local_path)
+                    VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT (eurio_id, source, role) DO UPDATE SET
+                      url        = excluded.url,
+                      local_path = excluded.local_path
+                    """,
+                    (
+                        eurio_id, _BCE_REGISTRY_SOURCE, crop.role,
+                        image_url, relative_path(eurio_id, crop.role, _BCE_SOURCE_LONG),
+                    ),
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "[bce] DB upsert coin_canonical_images FAILED eurio=%s: %s",
+                    eurio_id, exc,
+                )
+                run.bump(n_errors=1)
+
+            # 1 row coin_source_refs par (coin, source) — UPSERT idempotent.
+            if not wrote_source_ref:
+                try:
+                    conn.execute(
+                        """
+                        INSERT INTO coin_source_refs
+                          (target_kind, target_id, source, source_native_id, source_url)
+                        VALUES ('coin', ?, ?, ?, ?)
+                        ON CONFLICT (target_kind, target_id, source) DO UPDATE SET
+                          source_native_id = excluded.source_native_id,
+                          source_url       = excluded.source_url,
+                          fetched_at       = datetime('now')
+                        """,
+                        (eurio_id, _BCE_REGISTRY_SOURCE, source_native_id, bce_page_url),
+                    )
+                    wrote_source_ref = True
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning(
+                        "[bce] DB upsert coin_source_refs FAILED eurio=%s: %s",
+                        eurio_id, exc,
+                    )
+                    run.bump(n_errors=1)
 
             # Sidecar JSON à côté du WebP detail (1 par image).
             sidecar_meta = {

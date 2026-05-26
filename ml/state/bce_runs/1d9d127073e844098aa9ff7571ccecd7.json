@@ -1,0 +1,105 @@
+{
+  "run_id": "1d9d127073e844098aa9ff7571ccecd7",
+  "kind": "run",
+  "started_at": "2026-05-26T10:55:35.188736+00:00",
+  "ended_at": "2026-05-26T10:55:36.654346+00:00",
+  "status": "success",
+  "query": {
+    "source_id": "bce",
+    "country": null,
+    "denomination": null,
+    "year": null,
+    "target_eurio_id": null,
+    "target_eurio_ids": null,
+    "discovery_group": null,
+    "discovery_groups": null,
+    "limit": null,
+    "extra": {}
+  },
+  "n_pages_fetched": 0,
+  "n_pages_cached": 0,
+  "n_downloaded": 1,
+  "n_promoted": 11,
+  "n_errors": 0,
+  "error_summary": null,
+  "matched": [
+    {
+      "eurio_id": "at-2005-2eur-austrian-state-treaty",
+      "role": "obverse",
+      "image_url": "https://www.ecb.europa.eu/euro/coins/comm/html/comm_2005/comm_2005_at.jpg",
+      "feature": "50th anniversary of the Austrian State Treaty",
+      "local_path": "ml/canonical_images/at-2005-2eur-austrian-state-treaty/obverse_bce.webp"
+    },
+    {
+      "eurio_id": "de-2007-2eur-bundeslander-mecklenburg-vorpommern",
+      "role": "obverse",
+      "image_url": "https://www.ecb.europa.eu/euro/coins/comm/html/comm_2007/comm_2007_Germany.jpg",
+      "feature": "Mecklenburg-Vorpommern",
+      "local_path": "ml/canonical_images/de-2007-2eur-bundeslander-mecklenburg-vorpommern/obverse_bce.webp"
+    },
+    {
+      "eurio_id": "fr-2008-2eur-french-presidency-of-the-european-union",
+      "role": "obverse",
+      "image_url": "https://www.ecb.europa.eu/euro/coins/comm/html/comm_2008/comm_2008_France1.jpg",
+      "feature": "French Presidency of the Council of the European Union in the second half of 2008",
+      "local_path": "ml/canonical_images/fr-2008-2eur-french-presidency-of-the-european-union/obverse_bce.webp"
+    },
+    {
+      "eurio_id": "de-2010-2eur-bundeslander-bremen",
+      "role": "obverse",
+      "image_url": "https://www.ecb.europa.eu/euro/coins/comm/html/comm_2010/comm_2010_de.jpg",
+      "feature": "Federal state of Bremen",
+      "local_path": "ml/canonical_images/de-2010-2eur-bundeslander-bremen/obverse_bce.webp"
+    },
+    {
+      "eurio_id": "be-2011-2eur-100th-womens-day",
+      "role": "obverse",
+      "image_url": "https://www.ecb.europa.eu/euro/coins/comm/html/comm_2011/comm_2011_be.jpg",
+      "feature": "100th anniversary of International Women’s Day",
+      "local_path": "ml/canonical_images/be-2011-2eur-100th-womens-day/obverse_bce.webp"
+    },
+    {
+      "eurio_id": "fr-2016-2eur-francois-mitterrand",
+      "role": "obverse",
+      "image_url": "https://www.ecb.europa.eu/euro/coins/comm/html/comm_2016/comm_2016_france_mitterand.jpg",
+      "feature": "François Mitterrand",
+      "local_path": "ml/canonical_images/fr-2016-2eur-francois-mitterrand/obverse_bce.webp"
+    },
+    {
+      "eurio_id": "fi-2016-2eur-georg-henrik-von-wright",
+      "role": "obverse",
+      "image_url": "https://www.ecb.europa.eu/euro/coins/comm/html/comm_2016/comm_2016_finland_wright.jpg",
+      "feature": "The 100th anniversary of the birth of philosopher Georg Henrik von Wright",
+      "local_path": "ml/canonical_images/fi-2016-2eur-georg-henrik-von-wright/obverse_bce.webp"
+    },
+    {
+      "eurio_id": "it-2016-2eur-donatello",
+      "role": "obverse",
+      "image_url": "https://www.ecb.europa.eu/euro/coins/comm/html/comm_2016/comm_2016_italy_donatello_270.jpg",
+      "feature": "550th anniversary of the death of Donatello",
+      "local_path": "ml/canonical_images/it-2016-2eur-donatello/obverse_bce.webp"
+    },
+    {
+      "eurio_id": "fi-2017-2eur-independence",
+      "role": "obverse",
+      "image_url": "https://www.ecb.europa.eu/euro/coins/comm/html/comm_2017/comm_2017_finland_independence.jpg",
+      "feature": "Independent Finland 100 years",
+      "local_path": "ml/canonical_images/fi-2017-2eur-independence/obverse_bce.webp"
+    },
+    {
+      "eurio_id": "fr-2018-2eur-simone-veil",
+      "role": "obverse",
+      "image_url": "https://www.ecb.europa.eu/euro/coins/comm/html/comm_2018/comm_2018_france.jpg",
+      "feature": "Simone Veil",
+      "local_path": "ml/canonical_images/fr-2018-2eur-simone-veil/obverse_bce.webp"
+    },
+    {
+      "eurio_id": "fr-2018-2eur-bleuet-de-france",
+      "role": "obverse",
+      "image_url": "https://www.ecb.europa.eu/euro/coins/comm/html/comm_2018/comm_2018_france_cornflower.jpg",
+      "feature": "Remembrance cornflower ( Bleuet de France )",
+      "local_path": "ml/canonical_images/fr-2018-2eur-bleuet-de-france/obverse_bce.webp"
+    }
+  ],
+  "unmatched": []
+}
