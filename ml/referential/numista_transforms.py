@@ -295,6 +295,49 @@ def coin_market_quote_rows(
     return out
 
 
+# ─── coin_topics ──────────────────────────────────────────────────────────
+
+
+def coin_topic_rows(
+    slug: NumistaSlugResult, payload_en: dict, payload_fr: dict | None,
+) -> list[dict]:
+    """1 row par lang Numista native (en, fr) avec `commemorated_topic`.
+
+    Numista expose le contexte commémoratif verbeux dans le champ
+    `commemorated_topic` (ex: "100 years of Independence",
+    "550e anniversaire de la mort de Donatello"). C'est canon — beaucoup
+    plus distinctif que `title` court. Émet 1 row par lang dispo.
+
+    Pour les autres langues (de, it, es, nl), un agent LLM dérive depuis
+    EN+FR (cf. Phase E.5).
+    """
+    out: list[dict] = []
+    en_topic = (payload_en.get("commemorated_topic") or "").strip()
+    if en_topic:
+        out.append({
+            "eurio_id":   slug.eurio_id,
+            "source":     NUMISTA_SOURCE,
+            "lang":       "en",
+            "topic":      en_topic,
+            "method":     "api",
+            "model":      None,
+            "confidence": "canon",
+        })
+    if payload_fr:
+        fr_topic = (payload_fr.get("commemorated_topic") or "").strip()
+        if fr_topic:
+            out.append({
+                "eurio_id":   slug.eurio_id,
+                "source":     NUMISTA_SOURCE,
+                "lang":       "fr",
+                "topic":      fr_topic,
+                "method":     "api",
+                "model":      None,
+                "confidence": "canon",
+            })
+    return out
+
+
 # ─── coin_names_i18n ──────────────────────────────────────────────────────
 
 

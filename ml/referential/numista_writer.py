@@ -51,6 +51,7 @@ class WriteStats:
     design_groups: int = 0
     variants: int = 0
     i18n_names: int = 0
+    topics: int = 0
 
 
 class NumistaWriter:
@@ -276,6 +277,25 @@ class NumistaWriter:
         self.conn.execute(sql, row)
         self.stats.variants += 1
 
+    # ─── coin_topics ──────────────────────────────────────────────────
+
+    def write_topics(self, rows: list[dict]) -> None:
+        sql = """
+        INSERT INTO coin_topics
+          (eurio_id, source, lang, topic, method, model, confidence)
+        VALUES
+          (:eurio_id, :source, :lang, :topic, :method, :model, :confidence)
+        ON CONFLICT (eurio_id, source, lang) DO UPDATE SET
+          topic      = excluded.topic,
+          method     = excluded.method,
+          model      = excluded.model,
+          confidence = excluded.confidence,
+          fetched_at = datetime('now')
+        """
+        for row in rows:
+            self.conn.execute(sql, row)
+            self.stats.topics += 1
+
     # ─── coin_names_i18n ───────────────────────────────────────────────
 
     def write_i18n_names(self, rows: list[dict]) -> None:
@@ -309,8 +329,8 @@ class NumistaWriter:
         from referential.numista_transforms import (
             coin_canonical_image_rows, coin_credit_rows, coin_cross_ref_rows,
             coin_market_quote_rows, coin_name_i18n_rows, coin_observation_rows,
-            coin_row, coin_source_ref_row, coin_variant_row, design_group_row,
-            mint_release_price_rows, mint_release_rows,
+            coin_row, coin_source_ref_row, coin_topic_rows, coin_variant_row,
+            design_group_row, mint_release_price_rows, mint_release_rows,
         )
 
         # 1. design_groups d'abord (FK target depuis coins.design_group_id)
@@ -327,6 +347,7 @@ class NumistaWriter:
         self.write_observations(coin_observation_rows(slug, payload))
         self.write_variant(coin_variant_row(slug, payload))
         self.write_i18n_names(coin_name_i18n_rows(slug, payload, payload_fr))
+        self.write_topics(coin_topic_rows(slug, payload, payload_fr))
 
         # 4. mint_releases (FK depuis prices)
         mr_rows = mint_release_rows(slug, issues, mint_resolver)

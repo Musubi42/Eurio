@@ -47,15 +47,27 @@ def make_payload(
     is_commemo: bool = False,
     numeric: int = 2,
     currency: str = "Euro",
+    commemorated_topic: str | None = None,
 ) -> dict:
-    return {
+    """Build a synthetic Numista payload for tests.
+
+    Pour marquer une commemo SANS topic verbeux (mode legacy testant la
+    règle title-parens), on utilise object_type.name au lieu d'un
+    `commemorated_topic="x"` placeholder qui polluerait le nouveau
+    slug verbeux. `commemorated_topic` peut être fourni explicitement
+    pour tester la nouvelle règle.
+    """
+    payload: dict = {
         "id": nid,
         "title": title,
         "issuer": {"code": country_code, "name": country_name},
         "min_year": year,
         "value": {"numeric_value": numeric, "currency": {"name": currency}},
-        "commemorated_topic": "x" if is_commemo else None,
+        "commemorated_topic": commemorated_topic,
     }
+    if is_commemo and not commemorated_topic:
+        payload["object_type"] = {"name": "Circulating commemorative coins"}
+    return payload
 
 
 # ─── Standards (10) ──────────────────────────────────────────────────────────

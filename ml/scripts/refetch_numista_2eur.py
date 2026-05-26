@@ -509,6 +509,7 @@ def _apply_to_db(bundles: dict[int, "FetchBundle"], db_path: Path) -> int:
         ("coin_canonical_images", s.images), ("coin_credits", s.credits),
         ("coin_observations", s.observations), ("design_groups", s.design_groups),
         ("coin_variants", s.variants), ("coin_names_i18n", s.i18n_names),
+        ("coin_topics", s.topics),
     ]:
         print(f"    {table:<28} {n:>4}")
     return 0 if total_stats["ok"] else 1

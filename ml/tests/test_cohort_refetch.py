@@ -90,7 +90,7 @@ def db_copy(tmp_path: Path) -> sqlite3.Connection:
 def test_cohort_bremen_multi_mint(db_copy: sqlite3.Connection) -> None:
     payload, issues, prices = _load_bundle(10069)
     slug = eurio_id_from_numista_payload(payload)
-    assert slug.eurio_id == "de-2010-2eur-bundeslander-bremen"
+    assert slug.eurio_id == "de-2010-2eur-state-of-bremen"
 
     NumistaWriter(db_copy).write_bundle(
         slug=slug, payload=payload, issues=issues,
@@ -121,7 +121,7 @@ def test_cohort_bleuet_variant(db_copy: sqlite3.Connection) -> None:
     slug = eurio_id_from_numista_payload(payload)
 
     # Slug = parent classic
-    assert slug.eurio_id == "fr-2018-2eur-bleuet-de-france"
+    assert slug.eurio_id == "fr-2018-2eur-100th-anniversary-of-the-end-of-the-first-world-war-bleuet-de-france"
     assert slug.is_variant is True
     assert slug.variant_finish == "coloured"
 
