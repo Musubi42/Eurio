@@ -119,6 +119,7 @@ def run_price_aggregate(
     n_listings = 0
     for eurio_id, listings in per_coin.items():
         n_listings += len(listings)
+        coin_had_quote = False
         for q in aggregate_priced_listings(list(listings.values())):
             upsert_coin_market_quote(conn, CoinMarketQuoteRow(
                 eurio_id=eurio_id,
@@ -136,6 +137,23 @@ def run_price_aggregate(
                 raw_payload={"n_raw": q.n_raw, "n_after_outlier": q.sample_size},
             ))
             n_quotes += 1
+            coin_had_quote = True
+
+        # Marqueur de provenance : un row coin_source_refs par (coin, source)
+        # pour que /coins/{id}.sources_used + has_ebay (et compteur filtre
+        # /coins?source=ebay) reflètent l'enrichment marché. Mirror du pattern
+        # BCE (sources/bce/pipeline.py L418-432).
+        if coin_had_quote:
+            conn.execute(
+                """
+                INSERT INTO coin_source_refs
+                  (target_kind, target_id, source, source_native_id, source_url)
+                VALUES ('coin', ?, ?, ?, NULL)
+                ON CONFLICT (target_kind, target_id, source) DO UPDATE SET
+                  fetched_at = datetime('now')
+                """,
+                (eurio_id, registry_source, eurio_id),
+            )
 
     # Compteur du run (la colonne QUOTES du tableau run-detail le lit).
     conn.execute(
