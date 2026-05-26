@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { supabase } from '@/shared/supabase/client'
+import { fetchSets as apiFetchSets } from '@/features/sets/composables/useSetsApi'
 import type { Set, SetCategory, SetKind } from '@/shared/supabase/types'
 import { Plus, RefreshCw, Search, X } from 'lucide-vue-next'
 import { computed, onMounted, ref } from 'vue'
@@ -100,21 +100,18 @@ function resetFilters() {
 async function fetchSets() {
   loading.value = true
   error.value = null
-
-  const { data, error: err } = await supabase
-    .from('sets')
-    .select('*')
-    .order('category')
-    .order('display_order', { ascending: true })
-
-  loading.value = false
-
-  if (err) {
-    error.value = err.message
-    return
+  try {
+    // L'API ml/ trie déjà par display_order+id ; on re-sort par category
+    // pour préserver le grouping legacy si besoin d'affichage.
+    const rows = await apiFetchSets()
+    sets.value = (rows as unknown as Set[])
+      .slice()
+      .sort((a, b) => a.category.localeCompare(b.category) || a.display_order - b.display_order)
+  } catch (e) {
+    error.value = (e as Error).message
+  } finally {
+    loading.value = false
   }
-
-  sets.value = (data ?? []) as Set[]
 }
 
 onMounted(fetchSets)

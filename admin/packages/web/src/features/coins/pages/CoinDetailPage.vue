@@ -5,7 +5,13 @@ import {
   type CoinConfusionDetail,
 } from '@/features/confusion/composables/useConfusionMap'
 import { zoneCopy, zoneStyle } from '@/features/confusion/composables/useConfusionZone'
-import { supabase } from '@/shared/supabase/client'
+import {
+  fetchCoin as apiFetchCoin,
+  fetchCoinEmbedding,
+  fetchCoinI18n,
+  fetchCoinPrices,
+  fetchCoinSeries,
+} from '@/features/coins/composables/useCoinsApi'
 import type { Coin, CoinImage, CoinImageDict, CoinSeries, IssueType } from '@/shared/supabase/types'
 import {
   ArrowLeft,
@@ -118,16 +124,21 @@ async function fetchCoin(eurioId: string) {
   series.value = null
   selectedImage.value = null
 
-  const { data, error: err } = await supabase
-    .from('coins')
-    .select('*')
-    .eq('eurio_id', eurioId)
-    .maybeSingle()
-
-  if (err) { error.value = err.message; loading.value = false; return }
+  let data: Coin | null = null
+  try {
+    // L'API ml/ retourne un payload aligné sur la structure attendue par
+    // l'UI (cross_refs reconstitué, images dans le format flat, has_*
+    // booléens dérivés). On le cast en `Coin` Supabase pour minimiser
+    // l'impact sur le reste du composant (compat layer P.8b).
+    data = (await apiFetchCoin(eurioId)) as unknown as Coin
+  } catch (e) {
+    error.value = (e as Error).message
+    loading.value = false
+    return
+  }
   if (!data) { error.value = 'Pièce introuvable'; loading.value = false; return }
 
-  coin.value = data as Coin
+  coin.value = data
 
   // Normalize coins.images → flat CoinImage[] (the format the UI uses below).
   // Three possible inputs:
@@ -182,22 +193,18 @@ async function fetchCoin(eurioId: string) {
 
   // Fetch series si applicable
   if (coin.value.series_id) {
-    const { data: s } = await supabase
-      .from('coin_series')
-      .select('*')
-      .eq('id', coin.value.series_id)
-      .maybeSingle()
-    if (s) series.value = s as CoinSeries
+    try {
+      const s = await fetchCoinSeries(coin.value.eurio_id)
+      if (s) series.value = s as unknown as CoinSeries
+    } catch { /* non-blocking */ }
   }
 
-  // Check training status
+  // Check training status (embedding existence + model_version)
   trainedModelVersion.value = null
-  const { data: emb } = await supabase
-    .from('coin_embeddings')
-    .select('model_version')
-    .eq('eurio_id', coin.value.eurio_id)
-    .maybeSingle() as { data: { model_version: string } | null }
-  if (emb) trainedModelVersion.value = emb.model_version
+  try {
+    const emb = await fetchCoinEmbedding(coin.value.eurio_id)
+    if (emb.model_version) trainedModelVersion.value = emb.model_version
+  } catch { /* non-blocking */ }
 
   loading.value = false
 
@@ -255,25 +262,21 @@ async function mergeLocalCanonicals(c: Coin): Promise<void> {
 async function loadI18nAndAliases(eurioId: string) {
   i18nRows.value = undefined
   aliasesRows.value = undefined
-  const [{ data: i18n }, { data: aliases }] = await Promise.all([
-    supabase
-      .from('coin_names_i18n')
-      .select('lang, title, source, confidence, model')
-      .eq('eurio_id', eurioId),
-    supabase
-      .from('coin_aliases')
-      .select('lang, alias, source, confidence')
-      .eq('eurio_id', eurioId),
-  ])
-  const i18nByLang = new Map<string, I18nRow>()
-  for (const r of (i18n ?? []) as I18nRow[]) i18nByLang.set(r.lang, r)
-  const ordered: I18nRow[] = []
-  for (const l of I18N_LANG_ORDER) {
-    const row = i18nByLang.get(l)
-    if (row) ordered.push(row)
+  try {
+    const resp = await fetchCoinI18n(eurioId)
+    const i18nByLang = new Map<string, I18nRow>()
+    for (const r of resp.names as unknown as I18nRow[]) i18nByLang.set(r.lang, r)
+    const ordered: I18nRow[] = []
+    for (const l of I18N_LANG_ORDER) {
+      const row = i18nByLang.get(l)
+      if (row) ordered.push(row)
+    }
+    i18nRows.value = ordered
+    aliasesRows.value = resp.aliases as unknown as AliasRow[]
+  } catch {
+    i18nRows.value = []
+    aliasesRows.value = []
   }
-  i18nRows.value = ordered
-  aliasesRows.value = (aliases ?? []) as AliasRow[]
 }
 
 async function loadConfusion(eurioId: string) {
@@ -293,47 +296,60 @@ async function loadMarketPrice(eurioId: string) {
   marketPriceLoading.value = true
   marketPrice.value = undefined
   lmdlpPrices.value = undefined
-  const { data } = await supabase
-    .from('coin_market_prices')
-    .select('source, quality, p25, p50, p75, samples_count, with_sales_count, fetched_at, with_sales_count')
-    .eq('eurio_id', eurioId)
-    .order('fetched_at', { ascending: false })
 
-  const rows = (data ?? []) as unknown as Array<{
-    source: string
-    quality: string | null
-    p25: number | null
-    p50: number | null
-    p75: number | null
-    samples_count: number | null
-    with_sales_count: number | null
-    fetched_at: string
-  }>
+  // P.8b — Option B (cf. findings) : l'API renvoie deux structures :
+  //   - type_level : agrégation par condition (UNC/TTB/TB) — alimente le
+  //     bloc "marketPrice" (ebay) et "lmdlpPrices" (lmdlp). Mapping :
+  //       p10 → p25, p50 → p50, p90 → p75 (l'UI legacy parle quartiles ;
+  //       l'API V2 parle déciles. Mapping cosmétique, valeurs portées
+  //       directement.)
+  //   - mint_release_level : prix granulaires par atelier × grade. Pas
+  //     encore consommé par cette page (TODO follow-up : tableau riche
+  //     pour DE Bremen 5×3, etc.).
+  let prices: Awaited<ReturnType<typeof fetchCoinPrices>>
+  try {
+    prices = await fetchCoinPrices(eurioId)
+  } catch {
+    marketPrice.value = null
+    lmdlpPrices.value = null
+    marketPriceLoading.value = false
+    return
+  }
+  const tl = prices.type_level
 
-  // eBay: pick the most recent row (already DESC ordered)
-  const ebay = rows.find(r => r.source === 'ebay')
+  // eBay : pick le bucket UNC (legacy default) le plus récent
+  const ebay = tl
+    .filter(r => r.source === 'ebay_browse')
+    .sort((a, b) => b.period_start.localeCompare(a.period_start))[0]
   marketPrice.value = ebay
     ? {
-        p25: ebay.p25 ?? 0,
+        p25: ebay.p10 ?? 0,
         p50: ebay.p50 ?? 0,
-        p75: ebay.p75 ?? 0,
-        samples_count: ebay.samples_count ?? 0,
-        with_sales_count: ebay.with_sales_count ?? 0,
-        fetched_at: ebay.fetched_at,
+        p75: ebay.p90 ?? 0,
+        samples_count: ebay.sample_size,
+        // with_sales_count : pas exposé par coin_market_quotes V2 ;
+        // on prend sample_size comme proxy (les deux étaient égaux côté
+        // pipeline eBay legacy).
+        with_sales_count: ebay.sample_size,
+        fetched_at: ebay.period_end,
       }
     : null
 
-  // LMDLP: keep the latest row per quality (rows are DESC by fetched_at, so first wins)
+  // LMDLP : un row par condition (UNC/TTB/TB), latest per condition.
   const byQuality = new Map<string, LmdlpPrice>()
-  for (const r of rows) {
-    if (r.source !== 'lmdlp' || r.p50 == null) continue
-    const q = r.quality ?? 'unknown'
+  const lmdlpRows = tl
+    .filter(r => r.source === 'lmdlp' && r.p50 != null)
+    .sort((a, b) => b.period_start.localeCompare(a.period_start))
+  for (const r of lmdlpRows) {
+    const q = r.condition_normalized
     if (byQuality.has(q)) continue
     byQuality.set(q, {
       quality: q,
-      p50: r.p50,
-      in_stock: (r.with_sales_count ?? 0) > 0,
-      fetched_at: r.fetched_at,
+      p50: r.p50 ?? 0,
+      // coin_market_quotes V2 ne sépare pas "stock vs sold" ; on assume
+      // qu'une row présente avec sample_size > 0 implique du stock.
+      in_stock: r.sample_size > 0,
+      fetched_at: r.period_end,
     })
   }
   lmdlpPrices.value = byQuality.size > 0 ? [...byQuality.values()] : null
