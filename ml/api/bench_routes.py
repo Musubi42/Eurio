@@ -675,6 +675,7 @@ class BenchRunCropCard(BaseModel):
     listing_year: int | None
     listing_url: str | None
     fetched_at: str | None
+    composite_score: float | None    # score is_coin de crop_exp/score_crops (sidecar)
 
 
 class BenchRunCropsMethodBucket(BaseModel):
@@ -862,6 +863,37 @@ def _group_id(country: str | None, year: int | None, denom: float | None) -> str
 
 
 # Consumed by: admin/.../features/bench (Crop mode of BenchRunAuditPage)
+# Sidecar composite scores (crop_exp/score_crops.py) — cache mémoire par run_id.
+# Le fichier est petit (~1k records) et change rarement (re-généré sur demande).
+_CROP_SCORES_CACHE: dict[str, dict[str, float]] = {}
+
+
+def _load_composite_scores(run_id: str) -> dict[str, float]:
+    """``{asset_id → composite}`` depuis le sidecar JSON, ou ``{}`` si absent.
+
+    Cache en mémoire pour éviter de relire le fichier à chaque request.
+    Invalidé en redémarrant l'API (run_id-spécifique, pas global)."""
+    if run_id in _CROP_SCORES_CACHE:
+        return _CROP_SCORES_CACHE[run_id]
+    sidecar = (
+        Path(__file__).resolve().parents[1]
+        / "state" / "crop_scores" / f"{run_id}.json"
+    )
+    out: dict[str, float] = {}
+    if sidecar.exists():
+        try:
+            data = json.loads(sidecar.read_text())
+            for rec in data:
+                aid = rec.get("asset_id")
+                comp = rec.get("composite")
+                if aid and comp is not None:
+                    out[aid] = float(comp)
+        except (json.JSONDecodeError, OSError):
+            pass
+    _CROP_SCORES_CACHE[run_id] = out
+    return out
+
+
 @router.get("/runs/{run_id}/crops", response_model=BenchRunCropsResponse)
 def get_bench_run_crops(
     run_id: str,
@@ -872,8 +904,8 @@ def get_bench_run_crops(
     quality_min: float | None = Query(None, ge=0, le=1),
     quality_max: float | None = Query(None, ge=0, le=1),
     undercrop_only: bool = Query(False),
-    sort: str = Query("undercrop_first",
-                      pattern="^(undercrop_first|quality_asc|quality_desc|recent)$"),
+    sort: str = Query("score_desc",
+                      pattern="^(score_desc|score_asc|undercrop_first|quality_asc|quality_desc|recent)$"),
     undercrop_threshold: float = Query(UNDERCROP_AREA_RATIO_DEFAULT, ge=0, le=1),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
@@ -893,6 +925,8 @@ def get_bench_run_crops(
     if run_row is None:
         raise HTTPException(status_code=404, detail=f"Run {run_id} not found.")
     run_source = run_row["source"]
+
+    composite_scores = _load_composite_scores(run_id)
 
     # 2. Charger tous les image_assets du run + métadonnées raw associées.
     #    Filtres SQL "cheap" appliqués ici (country/year/method/status/quality).
@@ -1034,6 +1068,7 @@ def get_bench_run_crops(
             listing_year=r["listing_year"],
             listing_url=r["listing_url"],
             fetched_at=r["fetched_at"],
+            composite_score=composite_scores.get(r["asset_id"]),
         ))
 
     # 4. Aggregats globaux.
@@ -1105,7 +1140,25 @@ def get_bench_run_crops(
         if undercrop_only else cards
     )
 
-    if sort == "undercrop_first":
+    if sort == "score_desc":
+        # Composite is_coin descendant : haut-scorers en premier (cf. expé 01
+        # docs/crop-forensics/experiments/01-*.md : TOP 30 = 83 % cat D).
+        # Tie-break par fetched_at desc pour stabilité.
+        filtered.sort(
+            key=lambda c: (
+                -(c.composite_score if c.composite_score is not None else -1.0),
+                c.fetched_at or "",
+            ),
+        )
+    elif sort == "score_asc":
+        # Bas-scorers en premier — utile pour audit des cas suspects.
+        filtered.sort(
+            key=lambda c: (
+                c.composite_score if c.composite_score is not None else 2.0,
+                c.fetched_at or "",
+            ),
+        )
+    elif sort == "undercrop_first":
         # undercrops d'abord (True trie après False par défaut → reverse=True),
         # puis quality ascendante (les pires en haut).
         filtered.sort(
