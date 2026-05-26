@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute, useRouter, RouterLink } from 'vue-router'
 import {
   AlertTriangle,
   ArrowLeft,
@@ -295,19 +295,29 @@ function tabStyle(t: 'breakdown' | 'logs') {
               {{ discovered.length }}
             </p>
           </div>
-          <div
-            class="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium"
-            :style="{
-              borderColor: STATUS_TONE[data.status],
-              color: STATUS_TONE[data.status],
-              background: `color-mix(in srgb, ${STATUS_TONE[data.status]} 6%, var(--surface))`,
-            }"
-          >
-            <CheckCircle2 v-if="data.status === 'success'" class="h-3 w-3" />
-            <AlertTriangle v-else-if="data.status === 'partial'" class="h-3 w-3" />
-            <Loader2 v-else-if="data.status === 'running'" class="h-3 w-3 animate-spin" />
-            <XCircle v-else class="h-3 w-3" />
-            {{ data.status }}
+          <div class="flex items-center gap-2">
+            <RouterLink
+              v-if="data.source_id === 'ebay'"
+              :to="`/bench/runs/${data.run_id}`"
+              class="inline-flex items-center gap-1.5 rounded-md border px-3 py-1 text-xs font-medium transition-colors hover:bg-black/[0.03]"
+              style="border-color: var(--surface-3); color: var(--ink-500);"
+            >
+              Audit theme-match →
+            </RouterLink>
+            <div
+              class="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium"
+              :style="{
+                borderColor: STATUS_TONE[data.status],
+                color: STATUS_TONE[data.status],
+                background: `color-mix(in srgb, ${STATUS_TONE[data.status]} 6%, var(--surface))`,
+              }"
+            >
+              <CheckCircle2 v-if="data.status === 'success'" class="h-3 w-3" />
+              <AlertTriangle v-else-if="data.status === 'partial'" class="h-3 w-3" />
+              <Loader2 v-else-if="data.status === 'running'" class="h-3 w-3 animate-spin" />
+              <XCircle v-else class="h-3 w-3" />
+              {{ data.status }}
+            </div>
           </div>
         </div>
       </header>

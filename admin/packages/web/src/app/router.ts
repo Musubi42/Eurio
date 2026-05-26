@@ -129,6 +129,10 @@ const router = createRouter({
           component: () => import('@/features/bench/pages/BenchStudioPage.vue'),
         },
         {
+          path: 'bench/runs/:runId',
+          component: () => import('@/features/bench/pages/BenchRunAuditPage.vue'),
+        },
+        {
           path: 'lab/cohorts/new',
           component: () => import('@/features/lab/pages/CohortNewPage.vue'),
         },
