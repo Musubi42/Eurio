@@ -57,8 +57,20 @@ Aucun fichier markdown > ~200 lignes. Si une analyse grossit, splitter
 en plusieurs fichiers thématiques. Permet de feed un subagent avec juste
 le bout pertinent (pas tout le chantier).
 
+## Pilotage entre sessions
+
+**Tu démarres une nouvelle session Claude ?** Charge d'abord le cerveau
+d'orchestrateur :
+
+→ [`orchestrator/README.md`](./orchestrator/README.md)
+
+C'est lui qui décide la prochaine étape ; ce README n'est qu'un index
+descriptif.
+
 ## Index
 
+- **Orchestrateur**
+  - [orchestrator/](./orchestrator/) — cerveau persistant inter-sessions (5 files)
 - **Contexte**
   - [00-context.md](./00-context.md) — d'où on part (chunks 1-3)
   - [01-known-limits.md](./01-known-limits.md) — ce qu'on sait déjà cassé
