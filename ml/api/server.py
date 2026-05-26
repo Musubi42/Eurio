@@ -62,6 +62,8 @@ app.add_middleware(
         "http://localhost:5173",
         "http://localhost:5174",  # Vite fallback quand 5173 occupé
         "http://localhost:5175",  # Vite fallback secondaire
+        "http://localhost:5176",  # Vite fallback tertiaire
+        "http://localhost:5177",
         "http://localhost:4173",
     ],
     allow_methods=["*"],

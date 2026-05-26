@@ -114,6 +114,29 @@ export interface CoinPatch {
 
 export type SourceKey = 'numista' | 'bce' | 'wikipedia' | 'lmdlp' | 'ebay'
 
+export interface CoinListResponse {
+  items: CoinDetail[]
+  total: number
+}
+
+export interface CoinListFilters {
+  fv?: number
+  country?: string[]
+  commemo?: boolean
+  has_bce?: boolean
+  has_ebay?: boolean
+  has_lmdlp?: boolean
+  has_wikipedia?: boolean
+  has_numista?: boolean
+  in_design_group?: boolean
+  personal_owned?: boolean
+  lent_to_me?: boolean
+  search?: string
+  eurio_ids?: string[]
+  offset?: number
+  limit?: number
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────
 
 async function json<T>(path: string, init?: RequestInit): Promise<T> {
@@ -126,6 +149,29 @@ async function json<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error(`${resp.status} ${resp.statusText}: ${body}`)
   }
   return resp.json() as Promise<T>
+}
+
+// ─── List + filters ───────────────────────────────────────────────────────
+
+export function fetchCoinsList(filters: CoinListFilters = {}): Promise<CoinListResponse> {
+  const params = new URLSearchParams()
+  if (filters.fv != null) params.set('fv', String(filters.fv))
+  if (filters.country?.length) params.set('country', filters.country.join(','))
+  if (filters.commemo != null) params.set('commemo', filters.commemo ? '1' : '0')
+  if (filters.has_bce != null) params.set('has_bce', String(filters.has_bce))
+  if (filters.has_ebay != null) params.set('has_ebay', String(filters.has_ebay))
+  if (filters.has_lmdlp != null) params.set('has_lmdlp', String(filters.has_lmdlp))
+  if (filters.has_wikipedia != null) params.set('has_wikipedia', String(filters.has_wikipedia))
+  if (filters.has_numista != null) params.set('has_numista', String(filters.has_numista))
+  if (filters.in_design_group != null) params.set('in_design_group', String(filters.in_design_group))
+  if (filters.personal_owned != null) params.set('personal_owned', String(filters.personal_owned))
+  if (filters.lent_to_me != null) params.set('lent_to_me', String(filters.lent_to_me))
+  if (filters.search) params.set('search', filters.search)
+  if (filters.eurio_ids?.length) params.set('eurio_ids', filters.eurio_ids.join(','))
+  if (filters.offset != null) params.set('offset', String(filters.offset))
+  if (filters.limit != null) params.set('limit', String(filters.limit))
+  const qs = params.toString()
+  return json<CoinListResponse>(`/coins${qs ? '?' + qs : ''}`)
 }
 
 // ─── Lookups ──────────────────────────────────────────────────────────────
