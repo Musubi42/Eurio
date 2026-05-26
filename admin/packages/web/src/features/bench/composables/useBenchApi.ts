@@ -86,6 +86,150 @@ export class BenchApiError extends Error {
   }
 }
 
+// ── Run audit live (P10-F, 2026-05-26) ────────────────────────────────────
+//
+// Backend : GET /bench/runs/{run_id} (structure groups) + /listings (drill).
+// Layout mime /bench studio mais sans gold humain : pas de scoring, juste
+// l'entonnoir route_decision/route_reason persisté par le pipeline.
+
+export interface BenchRunListing {
+  source_image_id: string
+  listing_title: string | null
+  listing_year: number | null
+  listing_price: number | null
+  listing_currency: string | null
+  target_eurio_id: string | null
+  route_decision: string | null
+  route_reason: string | null
+  is_lot_suspected: boolean
+  image_url: string | null
+  source_url: string | null
+  marketplace: string | null
+}
+
+export interface BenchRunGroupDrop {
+  node_id: string
+  stage: 'matcher' | 'router' | string
+  label: string
+  reason: string | null
+  route_decision: string | null
+  count: number
+}
+
+export interface BenchRunGroup {
+  group_id: string
+  country: string
+  year: number
+  denomination: number
+  target_eurio_ids: string[]
+  total_listings: number
+  n_unmatched: number
+  n_pending: number
+  n_review_single: number
+  n_review_lot: number
+  n_auto: number
+  n_quotes: number
+  drops: BenchRunGroupDrop[]
+}
+
+export interface BenchRunSummary {
+  run_id: string
+  source: string
+  started_at: string | null
+  status: string
+  total_listings: number
+  total_unmatched: number
+  total_pending: number
+  total_review_single: number
+  total_review_lot: number
+  total_auto: number
+  total_quotes: number
+  n_groups: number
+}
+
+export interface BenchRunCoinContext {
+  eurio_id: string
+  display_name: string | null
+  is_commemorative: boolean
+  country: string | null
+  year: number | null
+  theme: string | null
+  obverse_url: string | null
+  i18n: Record<string, string>
+  topics: { source: string; lang: string; topic: string }[]
+  aliases: string[]
+}
+
+export interface BenchRunResponse {
+  summary: BenchRunSummary
+  groups: BenchRunGroup[]
+  coins: Record<string, BenchRunCoinContext>
+}
+
+export interface BenchRunListingsResponse {
+  listings: BenchRunListing[]
+  listings_total: number
+}
+
+export interface BenchRunListingsQuery {
+  country?: string | null
+  year?: number | null
+  eurio_id?: string | null
+  route_decision?: string | null
+  route_reason?: string | null
+  unmatched_only?: boolean
+  limit?: number
+  offset?: number
+}
+
+export async function fetchBenchRun(runId: string): Promise<BenchRunResponse> {
+  const url = `${ML_API}/bench/runs/${encodeURIComponent(runId)}`
+  let resp: Response
+  try {
+    resp = await fetch(url)
+  } catch {
+    throw new BenchApiError(0, 'Backend ML injoignable — lance `go-task ml:api`.')
+  }
+  if (!resp.ok) {
+    let detail = `HTTP ${resp.status}`
+    try {
+      const body = await resp.json()
+      if (body && typeof body === 'object' && 'detail' in body) {
+        detail = String((body as { detail: unknown }).detail)
+      }
+    } catch { /* ignore */ }
+    throw new BenchApiError(resp.status, detail)
+  }
+  return resp.json() as Promise<BenchRunResponse>
+}
+
+export async function fetchBenchRunListings(
+  runId: string, q: BenchRunListingsQuery = {},
+): Promise<BenchRunListingsResponse> {
+  const params = new URLSearchParams()
+  if (q.country) params.set('country', q.country)
+  if (q.year != null) params.set('year', String(q.year))
+  if (q.eurio_id) params.set('eurio_id', q.eurio_id)
+  if (q.route_decision) params.set('route_decision', q.route_decision)
+  if (q.route_reason) params.set('route_reason', q.route_reason)
+  if (q.unmatched_only) params.set('unmatched_only', 'true')
+  if (q.limit != null) params.set('limit', String(q.limit))
+  if (q.offset != null) params.set('offset', String(q.offset))
+  const qs = params.toString()
+  const url = `${ML_API}/bench/runs/${encodeURIComponent(runId)}/listings${qs ? `?${qs}` : ''}`
+  let resp: Response
+  try {
+    resp = await fetch(url)
+  } catch {
+    throw new BenchApiError(0, 'Backend ML injoignable.')
+  }
+  if (!resp.ok) {
+    throw new BenchApiError(resp.status, `HTTP ${resp.status}`)
+  }
+  return resp.json() as Promise<BenchRunListingsResponse>
+}
+
+
 export async function fetchThemeMatchBench(): Promise<BenchReplay> {
   let resp: Response
   try {

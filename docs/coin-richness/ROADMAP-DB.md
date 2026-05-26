@@ -45,9 +45,64 @@
       binaire FS.
   - **Audit visuel validé** : 19 cards, images coexistent Numista+BCE,
     badge DG sur Treaty of Rome, variant Bleuet, renames cohérents.
-- ⏳ **Session 4 — V.3 + V.4 + P.10** (à venir) : eBay branchement +
-  tour admin final + bouclage 8 fichiers Supabase résiduels +
-  3 commemos BCE non matchés. Cf. `SESSION-KICKOFF-V3-V4.md`.
+- ✅ **Session 5 — V.4 tour visuel + P10 partial** (2026-05-26 fin) :
+  Tour admin des 19 coins cohorte (7 snapshotées + 11 vérifiées via
+  API `/coins/{id}`). **Verdict GO scale 524** posé.
+  - **Pattern UI validé** : H1 verbeux FR commémos, badges NUMISTA+BCE
+    inline, 3 sections Localisation (titres/topics/aliases) avec
+    compteurs cohérents audit §2.1, images Numista+BCE coexistent,
+    prix eBay P25/P50/P75 avec count "N annonces analysées",
+    Design Group affiché sur treaty-of-rome, aliases marché pertinents
+    (kniefall/willy brandt, bleuet/armistice, rome treaty/1957).
+  - **A1 (P10-I) fix** : filtre `/coins?fv=2` montrait "eBay 0" car
+    `has_ebay` était dérivé de `coin_source_refs` (pas peuplé par
+    pipeline eBay). Fix `sources/_base/steps/price_aggregate.py` :
+    upsert `coin_source_refs` mirror du pattern BCE quand quote
+    écrit. Backfill 15 coins existants. Endpoint
+    `/coins/lookups/source-counts` retourne maintenant `ebay=15`.
+  - **A2 (P10-J) fix** : H1 standards `ad-2014` = eurio_id brut,
+    `at-2002` = "1st map" sans contexte. Fix
+    `shared/utils/coin-display.ts` : seuil 12 chars sur `theme`,
+    sinon synthèse `"<denom>€ standard (<variant>)"` extrait du slug
+    `-standard-`. ad-2014 → `2€ standard (1st type)`.
+  - **A3 noté** : enrichment fantôme `cb6139...` sur ad-2014 (run
+    pré-V.3 `5a166018`). Eurio_id valide → cleanup conservative ne le
+    purge pas. Hors-scope conservative ; relever pour cleanup
+    aggressive futur (drop image_assets non-V.3).
+  - **P10 cleanup orphans (conservative §2.3)** : DELETE 79
+    `image_assets` + 3662 `source_images` dont
+    `eurio_id NOT IN coins AND run_id != V.3`. Backup
+    `eurio.db.bak-pre-p10-cleanup-2026-05-26T16-03-59Z` posé. Tous
+    compteurs orphans = 0 post-cleanup (`coin_source_refs`,
+    `coin_market_quotes`, `image_assets`, `source_images`).
+  - **Findings non bloquants restants** :
+    - P10-F : `/bench` consomme gold frozen, non paramétrable run_id
+    - P10-G : DINO anchor bank pré-V.1 → thumbs review queue vides
+    - P10-H : BCE adapter scrape uniquement `.en.html`
+    - P10-C : 8 fichiers Vue résiduels Supabase
+    - 3 commemos BCE non matchés (Treaty of Rome, Kniefall, Plautus)
+    - Stretch cleanup : 1882 image_assets + 71 source_images
+      pré-V.3 non-orphelins encore en DB (incl. A3)
+
+- ✅ **Session 5b — P10-F bench audit live** (2026-05-26 suite) :
+  Refactor `bench_routes.py` pour accepter un `run_id` arbitraire.
+  Nouvelle page `BenchRunAuditPage` qui mime la layout `/bench` studio
+  (métriques top + tabs recherches + 3 colonnes pièces / entonnoir /
+  listings grid). Pas de scoring (pas de gold humain), on rend
+  visuellement les stages persistés du pipeline.
+  - Backend : 2 endpoints `GET /bench/runs/{run_id}` (structure par
+    discovery group + drops par route_decision×route_reason +
+    contexte coin via `coin_canonical_images`) +
+    `GET /bench/runs/{run_id}/listings` (drill paginé par groupe/nœud
+    avec image eBay externe via `raw_payload_json.image_url`).
+  - Frontend : layout studio (groups grid, entonnoir vertical Brut →
+    Matcher unmatched → Matchés → Routing 4 drops → Quotes, listings
+    panel grid 185px cards).
+  - Entrée : bouton "Audit theme-match →" sur la page
+    `/sources/ebay/runs/{run_id}` (eBay only).
+
+- ⏳ **Session 6 — Phase F scale 524 + P10 finish** (à venir) :
+  Scale eBay aux 524 commémos zone euro + cleanup résiduel.
   - P.5 : `ml/scripts/verify_backup_restore.py` + `go-task ml:verify-backup`. Vert sur backup `eurio.db.bak-pre-p3-2026-05-25` (counts égaux bak↔cur sur 10 tables, integrity_check ok, FK clean, sample query Bremen identique).
   - P.6 : `ml/scripts/wipe_referential.py` (`--dry-run` / `--apply`) + `go-task ml:wipe-referential`. Drop+recreate des 6 tables source-aware avec FK `source → source_registry(id) ON DELETE RESTRICT`. Garde-fou interactif `Type "WIPE"`. Backup auto pré-wipe. Smoke test FK enforcement (savepoint rollback) intégré.
   - Gotcha capturé : `sqlite3.executescript()` commit implicitement la transaction pendante → on split sur `;` et exécute statement par statement en autocommit mode pour préserver le BEGIN IMMEDIATE / COMMIT manuel.
