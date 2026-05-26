@@ -230,6 +230,173 @@ export async function fetchBenchRunListings(
 }
 
 
+// ── Run audit — CROP FORENSICS (P10-G, 2026-05-26) ────────────────────────
+//
+// Variante "Crop" du run audit. Backend : GET /bench/runs/{run_id}/crops.
+// On audite la sortie du pipeline crop (YOLO+Hough+polish) sur chaque
+// image_asset du run, pour traquer les undercrops (rim mangé). Pas d'eurio_id
+// résolu dans la majorité des cas → on entre par raw/bbox, pas par pièce.
+
+export interface BenchRunCropBbox {
+  x: number
+  y: number
+  w: number
+  h: number
+  conf: number | null
+}
+
+export interface BenchRunCropBboxPct {
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
+export interface BenchRunCropCard {
+  asset_id: string
+  source: string
+  source_image_id: string
+  crop_index: number
+  raw_url: string | null
+  crop_url: string | null
+  raw_width: number | null
+  raw_height: number | null
+  crop_width: number | null
+  crop_height: number | null
+  bbox: BenchRunCropBbox | null
+  bbox_pct: BenchRunCropBboxPct | null
+  detection_method: string | null
+  resolution_status: string | null
+  quality_score: number | null
+  is_undercrop_suspect: boolean
+  area_ratio: number | null
+  target_eurio_id: string | null
+  listing_title: string | null
+  listing_country: string | null
+  listing_year: number | null
+  listing_url: string | null
+  fetched_at: string | null
+}
+
+export interface BenchRunCropsMethodBucket {
+  method: string
+  n: number
+  n_undercrops: number
+  pct: number
+}
+
+export interface BenchRunCropsQualityBucket {
+  label: string
+  range_lo: number
+  range_hi: number
+  n: number
+}
+
+export interface BenchRunCropsStatusBucket {
+  status: string
+  n: number
+}
+
+export interface BenchRunCropsDiagnostic {
+  top_method_in_undercrops: string | null
+  top_method_share: number | null
+  note: string | null
+}
+
+export interface BenchRunCropsGroupSummary {
+  group_id: string
+  country: string | null
+  year: number | null
+  denomination: number | null
+  n_raws: number
+  n_crops: number
+  n_undercrops: number
+}
+
+export interface BenchRunCropsSummary {
+  run_id: string
+  n_groups: number
+  n_raws: number
+  n_crops: number
+  n_undercrops: number
+  pct_undercrops: number
+  quality_mean: number | null
+  quality_median: number | null
+  quality_std: number | null
+  methods: BenchRunCropsMethodBucket[]
+  quality_histogram: BenchRunCropsQualityBucket[]
+  statuses: BenchRunCropsStatusBucket[]
+  diagnostic: BenchRunCropsDiagnostic
+  undercrop_threshold: number
+}
+
+export interface BenchRunCropsResponse {
+  summary: BenchRunCropsSummary
+  groups: BenchRunCropsGroupSummary[]
+  cards: BenchRunCropCard[]
+  cards_total: number
+}
+
+export interface BenchRunCropsQuery {
+  country?: string | null
+  year?: number | null
+  method?: string | null
+  status?: string | null
+  quality_min?: number | null
+  quality_max?: number | null
+  undercrop_only?: boolean
+  sort?: 'undercrop_first' | 'quality_asc' | 'quality_desc' | 'recent'
+  undercrop_threshold?: number
+  limit?: number
+  offset?: number
+}
+
+export async function fetchBenchRunCrops(
+  runId: string, q: BenchRunCropsQuery = {},
+): Promise<BenchRunCropsResponse> {
+  const params = new URLSearchParams()
+  if (q.country) params.set('country', q.country)
+  if (q.year != null) params.set('year', String(q.year))
+  if (q.method) params.set('method', q.method)
+  if (q.status) params.set('status', q.status)
+  if (q.quality_min != null) params.set('quality_min', String(q.quality_min))
+  if (q.quality_max != null) params.set('quality_max', String(q.quality_max))
+  if (q.undercrop_only) params.set('undercrop_only', 'true')
+  if (q.sort) params.set('sort', q.sort)
+  if (q.undercrop_threshold != null) {
+    params.set('undercrop_threshold', String(q.undercrop_threshold))
+  }
+  if (q.limit != null) params.set('limit', String(q.limit))
+  if (q.offset != null) params.set('offset', String(q.offset))
+  const qs = params.toString()
+  const url = `${ML_API}/bench/runs/${encodeURIComponent(runId)}/crops${qs ? `?${qs}` : ''}`
+  let resp: Response
+  try {
+    resp = await fetch(url)
+  } catch {
+    throw new BenchApiError(0, 'Backend ML injoignable — lance `go-task ml:api`.')
+  }
+  if (!resp.ok) {
+    let detail = `HTTP ${resp.status}`
+    try {
+      const body = await resp.json()
+      if (body && typeof body === 'object' && 'detail' in body) {
+        detail = String((body as { detail: unknown }).detail)
+      }
+    } catch { /* ignore */ }
+    throw new BenchApiError(resp.status, detail)
+  }
+  return resp.json() as Promise<BenchRunCropsResponse>
+}
+
+// Resolve the raw/crop URLs to absolute ML_API URLs for <img src>.
+// Backend returns relative paths (/sources/{source}/raws/{id}/file).
+export function resolveBenchImageUrl(rel: string | null): string | null {
+  if (!rel) return null
+  return `${ML_API}${rel}`
+}
+
+
 export async function fetchThemeMatchBench(): Promise<BenchReplay> {
   let resp: Response
   try {
