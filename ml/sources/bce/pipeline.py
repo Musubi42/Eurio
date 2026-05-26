@@ -438,6 +438,34 @@ def _bce_canonical_promote_fs(
                     )
                     run.bump(n_errors=1)
 
+                # E.4 (chantier D) — coin_topics : capture le feature BCE
+                # verbeux ("100th anniversary of Finland's independence",
+                # "Bundesländer - 'Bremen'"). 1 row par (coin, source=bce_official,
+                # lang). Le scrape adapter actuel ne fetch que la page EN, donc
+                # on stocke lang='en'. Future amélioration : scrape .fr.html
+                # aussi pour avoir le FR canon BCE.
+                if feature:
+                    try:
+                        conn.execute(
+                            """
+                            INSERT INTO coin_topics
+                              (eurio_id, source, lang, topic, method, confidence)
+                            VALUES (?, ?, 'en', ?, 'scrape', 'canon')
+                            ON CONFLICT (eurio_id, source, lang) DO UPDATE SET
+                              topic      = excluded.topic,
+                              method     = excluded.method,
+                              confidence = excluded.confidence,
+                              fetched_at = datetime('now')
+                            """,
+                            (eurio_id, _BCE_REGISTRY_SOURCE, feature),
+                        )
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning(
+                            "[bce] DB upsert coin_topics FAILED eurio=%s: %s",
+                            eurio_id, exc,
+                        )
+                        run.bump(n_errors=1)
+
             # Sidecar JSON à côté du WebP detail (1 par image).
             sidecar_meta = {
                 "year": payload.get("year"),

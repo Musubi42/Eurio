@@ -1,8 +1,8 @@
 {
-  "run_id": "f601ab8d060843059f7c906472921ebe",
+  "run_id": "1fc523f8b8624654b1389bc7c9f7312e",
   "kind": "run",
-  "started_at": "2026-05-26T13:51:07.333853+00:00",
-  "ended_at": "2026-05-26T13:51:13.724793+00:00",
+  "started_at": "2026-05-26T13:53:38.519382+00:00",
+  "ended_at": "2026-05-26T13:53:39.413521+00:00",
   "status": "success",
   "query": {
     "source_id": "bce",
@@ -18,7 +18,7 @@
   },
   "n_pages_fetched": 0,
   "n_pages_cached": 0,
-  "n_downloaded": 12,
+  "n_downloaded": 0,
   "n_promoted": 12,
   "n_errors": 0,
   "error_summary": null,
