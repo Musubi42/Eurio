@@ -500,7 +500,7 @@ const crossRefLinks = computed(() => {
 // E.6 — Topic picker. Préfère FR puis EN comme lang display canonique.
 // Les autres langs (de/it/es/nl) sont en DB pour le theme matcher eBay
 // mais pas affichées ici (i18n switcher viendra plus tard si besoin).
-type Topic = { source: string; lang: string; topic: string }
+type Topic = { source: string; lang: string; topic: string; method?: string | null; confidence?: string }
 function _pickTopic(topics: Topic[] | undefined, source: string): string | null {
   if (!topics?.length) return null
   const candidates = topics.filter((t) => t.source === source)
@@ -513,6 +513,28 @@ function _pickTopic(topics: Topic[] | undefined, source: string): string | null 
 }
 const numistaTopic = computed(() => _pickTopic((coin.value as any)?.topics, 'numista_api'))
 const bceTopic = computed(() => _pickTopic((coin.value as any)?.topics, 'bce_official'))
+
+// F.2 — Liste complète des topics triée pour la section "Localisation".
+// Pool de toutes les sources (Numista 6 langs + BCE EN, future BCE FR),
+// tri stable : source priority numista > bce, puis lang priority
+// fr > en > de > it > es > nl.
+const TOPIC_LANG_ORDER: Record<string, number> = {
+  fr: 1, en: 2, de: 3, it: 4, es: 5, nl: 6,
+}
+const TOPIC_SOURCE_ORDER: Record<string, number> = {
+  numista_api: 1, bce_official: 2,
+}
+const coinTopicsList = computed(() => {
+  const all = ((coin.value as any)?.topics as Topic[] | undefined) ?? []
+  return [...all].sort((a, b) => {
+    const sa = TOPIC_SOURCE_ORDER[a.source] ?? 9
+    const sb = TOPIC_SOURCE_ORDER[b.source] ?? 9
+    if (sa !== sb) return sa - sb
+    const la = TOPIC_LANG_ORDER[a.lang] ?? 9
+    const lb = TOPIC_LANG_ORDER[b.lang] ?? 9
+    return la - lb
+  })
+})
 </script>
 
 <template>
@@ -1044,7 +1066,7 @@ const bceTopic = computed(() => _pickTopic((coin.value as any)?.topics, 'bce_off
         <span v-if="i18nRows && i18nRows.length > 0"
               class="font-mono text-[10px] uppercase"
               style="color: var(--ink-400); letter-spacing: var(--tracking-eyebrow);">
-          {{ i18nRows.length }} langs · {{ aliasesRows?.length ?? 0 }} alias
+          {{ i18nRows.length }} langs · {{ coinTopicsList.length }} topics · {{ aliasesRows?.length ?? 0 }} alias
         </span>
       </div>
 
@@ -1063,9 +1085,15 @@ const bceTopic = computed(() => _pickTopic((coin.value as any)?.topics, 'bce_off
         </p>
       </div>
 
-      <!-- Content -->
+      <!-- Content : 3 sections distinctes (F.2 — chantier D follow-up) :
+           Titres (i18n short Numista) / Topics (verbeux multi-source) /
+           Aliases (market vocab). Reflète le pool réel du theme matcher. -->
       <template v-else>
-        <!-- Localized titles (6 cards) -->
+        <!-- 1️⃣  TITRES — Numista i18n short titles (6 cards) -->
+        <p class="mb-3 text-[10px] uppercase tracking-wider"
+           style="color: var(--ink-500); letter-spacing: var(--tracking-eyebrow);">
+          Titres Numista (par langue)
+        </p>
         <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <div
             v-for="row in i18nRows"
@@ -1100,11 +1128,50 @@ const bceTopic = computed(() => _pickTopic((coin.value as any)?.topics, 'bce_off
           </div>
         </div>
 
-        <!-- Aliases grouped by lang -->
-        <div v-if="aliasesByLang.length > 0" class="mt-8">
-          <p class="mb-3 text-[10px] uppercase"
+        <!-- 2️⃣  TOPICS — verbose commemorated_topic multi-source (Numista + BCE) -->
+        <div v-if="coinTopicsList.length > 0" class="mt-8">
+          <p class="mb-3 text-[10px] uppercase tracking-wider"
              style="color: var(--ink-500); letter-spacing: var(--tracking-eyebrow);">
-            Alias colloquiaux (theme-matcher)
+            Topics verbeux (commemorated_topic Numista + feature BCE)
+          </p>
+          <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div
+              v-for="t in coinTopicsList"
+              :key="`${t.source}|${t.lang}`"
+              class="flex flex-col gap-2 rounded-lg border p-4"
+              style="border-color: var(--surface-3); background: var(--surface);"
+            >
+              <div class="flex items-center justify-between">
+                <span class="font-mono text-xs font-semibold uppercase"
+                      style="color: var(--ink-500); letter-spacing: var(--tracking-eyebrow);">
+                  {{ t.lang }} · {{ I18N_LANG_LABEL[t.lang] ?? t.lang }}
+                </span>
+                <span
+                  class="rounded-full border px-2 py-0.5 text-[9px] font-medium uppercase"
+                  :style="t.source === 'bce_official'
+                    ? 'border-color: var(--gold); color: var(--gold-700, var(--gold));'
+                    : 'border-color: var(--indigo-300); color: var(--indigo-600); background: var(--indigo-50);'"
+                >
+                  {{ t.source === 'bce_official' ? 'BCE' : 'Numista' }}
+                </span>
+              </div>
+              <p class="text-sm leading-snug" style="color: var(--ink);">
+                {{ t.topic }}
+              </p>
+              <p v-if="t.method && t.method.startsWith('llm')"
+                 class="font-mono text-[10px]"
+                 style="color: var(--ink-400);">
+                claude-opus-4-7
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3️⃣  ALIASES — market vocabulary grouped by lang -->
+        <div v-if="aliasesByLang.length > 0" class="mt-8">
+          <p class="mb-3 text-[10px] uppercase tracking-wider"
+             style="color: var(--ink-500); letter-spacing: var(--tracking-eyebrow);">
+            Alias colloquiaux (vocabulaire marché theme-matcher)
           </p>
           <div class="space-y-3">
             <div
