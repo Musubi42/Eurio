@@ -2,7 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import {
-  AlertTriangle, Coins, CornerDownRight, ExternalLink, Gavel,
+  AlertTriangle, Coins, CornerDownRight, Crop as CropIcon, ExternalLink, Gavel,
   ImageOff, Inbox, MousePointerClick, RefreshCw, ScanLine, Sparkles,
 } from 'lucide-vue-next'
 import {
@@ -13,9 +13,22 @@ import {
   fetchBenchRun,
   fetchBenchRunListings,
 } from '../composables/useBenchApi'
+import BenchRunAuditCropPanel from '../components/BenchRunAuditCropPanel.vue'
 
 const route = useRoute()
 const runId = computed(() => String(route.params.runId))
+
+// Mode toggle (Filter = audit theme-matcher | Crop = audit forensics crop).
+// Persisté en hash de l'URL pour partage et reload-stable.
+type AuditMode = 'filter' | 'crop'
+const mode = ref<AuditMode>(
+  (route.hash === '#crop' ? 'crop' : 'filter') as AuditMode,
+)
+function setMode(m: AuditMode) {
+  mode.value = m
+  // Update hash without triggering full navigation.
+  history.replaceState(history.state, '', m === 'crop' ? '#crop' : '#filter')
+}
 
 const data = ref<BenchRunResponse | null>(null)
 const loading = ref(true)
@@ -169,26 +182,65 @@ function markBroken(id: string) {
           class="flex items-center gap-2 text-[20px] italic"
           style="font-family: var(--font-display); font-weight: 600; color: var(--indigo-700);"
         >
-          <Gavel class="h-5 w-5" />
-          Audit run live — theme-matcher
+          <Gavel v-if="mode === 'filter'" class="h-5 w-5" />
+          <CropIcon v-else class="h-5 w-5" />
+          Audit run live — {{ mode === 'filter' ? 'theme-matcher' : 'crop forensics' }}
         </h1>
         <p class="mt-0.5 text-[12px]" style="color: var(--ink-400);">
-          Run <code class="font-mono text-[11px]">{{ runId.slice(0, 8) }}</code> rejoué groupe par groupe
-          — pas de scoring (pas de gold humain), tu juges visuellement chaque décision.
+          Run <code class="font-mono text-[11px]">{{ runId.slice(0, 8) }}</code>
+          <template v-if="mode === 'filter'">
+            rejoué groupe par groupe — pas de scoring (pas de gold humain),
+            tu juges visuellement chaque décision.
+          </template>
+          <template v-else>
+            — chaque <code class="font-mono text-[11px]">image_asset</code>
+            avec sa bbox sur le raw, pour repérer les undercrops (rim mangé).
+          </template>
         </p>
       </div>
-      <button
-        class="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[13px] transition-colors hover:bg-black/[0.03]"
-        style="border-color: var(--surface-3); color: var(--ink-500);"
-        :disabled="loading"
-        @click="load"
-      >
-        <RefreshCw class="h-3.5 w-3.5" :class="loading ? 'animate-spin' : ''" />
-        Recharger
-      </button>
+
+      <div class="flex items-center gap-3">
+        <!-- Mode toggle (Filter / Crop) -->
+        <div class="mode-toggle">
+          <button
+            :class="{ active: mode === 'filter' }"
+            @click="setMode('filter')"
+          >
+            <span class="mode-toggle__dot"></span>Filter
+          </button>
+          <button
+            :class="{ active: mode === 'crop' }"
+            @click="setMode('crop')"
+          >
+            <span class="mode-toggle__dot"></span>Crop
+          </button>
+        </div>
+
+        <button
+          v-if="mode === 'filter'"
+          class="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[13px] transition-colors hover:bg-black/[0.03]"
+          style="border-color: var(--surface-3); color: var(--ink-500);"
+          :disabled="loading"
+          @click="load"
+        >
+          <RefreshCw class="h-3.5 w-3.5" :class="loading ? 'animate-spin' : ''" />
+          Recharger
+        </button>
+      </div>
     </header>
 
-    <div v-if="loading && !data" class="flex flex-1 items-center justify-center">
+    <!-- ░ MODE CROP : panel forensics autonome ░ -->
+    <div
+      v-if="mode === 'crop'"
+      class="flex flex-1 flex-col overflow-y-auto"
+    >
+      <div class="mx-auto w-full max-w-[1500px] px-7 py-6">
+        <BenchRunAuditCropPanel :run-id="runId" />
+      </div>
+    </div>
+
+    <!-- ░ MODE FILTER : audit theme-matcher (existant) ░ -->
+    <div v-else-if="loading && !data" class="flex flex-1 items-center justify-center">
       <p class="italic" style="font-family: var(--font-display); color: var(--ink-400);">
         Chargement du run…
       </p>
@@ -683,3 +735,49 @@ function markBroken(id: string) {
     </div>
   </div>
 </template>
+
+<style scoped>
+/* Mode toggle pills (Filter / Crop) — design-system-aligned, editorial. */
+.mode-toggle {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px;
+  border: 1px solid var(--surface-3);
+  background: var(--surface-1);
+  border-radius: 999px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+.mode-toggle button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 16px 8px;
+  border-radius: 999px;
+  background: transparent;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 500;
+  font-size: 14px;
+  color: var(--ink-400);
+  letter-spacing: -0.005em;
+  transition: all 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.mode-toggle button:hover:not(.active) { color: var(--ink); }
+.mode-toggle button.active {
+  background: var(--ink);
+  color: var(--surface);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08),
+              0 6px 16px -8px var(--indigo-900);
+}
+.mode-toggle__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.5;
+}
+.mode-toggle button.active .mode-toggle__dot {
+  background: var(--gold-300);
+  opacity: 1;
+}
+</style>
