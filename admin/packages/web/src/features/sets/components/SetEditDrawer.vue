@@ -1,5 +1,13 @@
 <script setup lang="ts">
-import { supabase } from '@/shared/supabase/client'
+import {
+  createSet,
+  deleteSet,
+  fetchSet,
+  fetchSetMembers,
+  patchSetActive,
+  replaceSetMembers,
+  updateSet,
+} from '@/features/sets/composables/useSetsApi'
 import type {
   Coin,
   I18nField,
@@ -79,35 +87,36 @@ watch(
     // Edit mode — fetch the set
     loading.value = true
     kindPicked.value = true
-    const { data, error: err } = await supabase
-      .from('sets')
-      .select('*')
-      .eq('id', id)
-      .maybeSingle()
-
-    if (err) { loading.value = false; error.value = err.message; return }
-    if (!data) { loading.value = false; error.value = 'Set introuvable'; return }
-
-    original.value = data as Set
-    edited.value = { ...(data as Set) }
+    let data: Set
+    try {
+      data = (await fetchSet(id)) as unknown as Set
+    } catch (e) {
+      loading.value = false
+      error.value = (e as Error).message
+      return
+    }
+    original.value = data
+    edited.value = { ...data }
 
     // Si curated, fetch aussi les membres avec leur position + coin data
-    if ((data as Set).kind === 'curated') {
-      const { data: memberRows, error: memberErr } = await supabase
-        .from('set_members')
-        .select('position, coins(*)')
-        .eq('set_id', id)
-        .order('position', { ascending: true, nullsFirst: false })
-
-      if (memberErr) {
+    if (data.kind === 'curated') {
+      try {
+        const memberRows = await fetchSetMembers(id)
+        // L'API renvoie déjà les colonnes coin joinées (country, year, ...).
+        // On reconstitue le shape `Coin` minimal attendu par CuratedMembersPicker.
+        members.value = memberRows.map(m => ({
+          eurio_id: m.eurio_id,
+          country: m.country ?? '',
+          year: m.year ?? 0,
+          face_value: m.face_value ?? 0,
+          theme: m.theme,
+          is_commemorative: m.is_commemorative ?? false,
+        }) as unknown as Coin)
+      } catch (e) {
         loading.value = false
-        error.value = `Erreur chargement membres : ${memberErr.message}`
+        error.value = `Erreur chargement membres : ${(e as Error).message}`
         return
       }
-
-      members.value = (memberRows ?? [])
-        .map(r => (r as { coins: Coin }).coins)
-        .filter(Boolean)
     }
 
     loading.value = false
@@ -181,59 +190,36 @@ async function save() {
     updated_at: new Date().toISOString(),
   }
 
-  // Supabase JS typing conflicts with our narrowed JSONB shapes — cast pragmatiquement
-  const { data, error: err } = creating.value
-    ? await supabase.from('sets').insert(payload as never).select().single()
-    : await supabase.from('sets').update(payload as never).eq('id', s.id).select().single()
-
-  if (err) {
+  let data: Set
+  try {
+    data = (creating.value
+      ? await createSet(payload as never)
+      : await updateSet(s.id, payload as never)) as unknown as Set
+  } catch (e) {
     saving.value = false
-    error.value = err.message
+    error.value = (e as Error).message
     return
   }
 
-  // Sync set_members pour les sets curés (delete all + insert all)
+  // Sync set_members pour les sets curés (replace bulk côté backend)
   if (s.kind === 'curated') {
-    const { error: delErr } = await supabase
-      .from('set_members')
-      .delete()
-      .eq('set_id', s.id)
-
-    if (delErr) {
-      saving.value = false
-      error.value = `Erreur suppression membres : ${delErr.message}`
-      return
-    }
-
-    if (members.value.length > 0) {
-      const memberRows = members.value.map((coin, idx) => ({
-        set_id: s.id,
+    try {
+      await replaceSetMembers(s.id, members.value.map((coin, idx) => ({
         eurio_id: coin.eurio_id,
         position: idx,
-      }))
-      const { error: insErr } = await supabase
-        .from('set_members')
-        .insert(memberRows as never)
-
-      if (insErr) {
-        saving.value = false
-        error.value = `Erreur insertion membres : ${insErr.message}`
-        return
-      }
+      })))
+    } catch (e) {
+      saving.value = false
+      error.value = `Erreur sync membres : ${(e as Error).message}`
+      return
     }
   }
 
-  // Audit log
-  await supabase.from('sets_audit').insert({
-    set_id: s.id,
-    action: creating.value ? 'create' : 'update',
-    before: (original.value ?? null) as never,
-    after: data as never,
-    actor: 'admin-dev-bypass',
-  } as never)
+  // NB: sets_audit logging (Supabase only) retiré en P.8b. À ré-implémenter
+  // côté ml/api/ si besoin d'audit en SQLite.
 
   saving.value = false
-  emit('saved', data as Set)
+  emit('saved', data)
   emit('close')
 }
 
@@ -244,29 +230,17 @@ async function toggleArchive() {
   error.value = null
 
   const newActive = !original.value.active
-  const { data, error: err } = await supabase
-    .from('sets')
-    .update({ active: newActive, updated_at: new Date().toISOString() } as never)
-    .eq('id', original.value.id)
-    .select()
-    .single()
-
-  if (err) {
+  let data: Set
+  try {
+    data = (await patchSetActive(original.value.id, newActive)) as unknown as Set
+  } catch (e) {
     archiving.value = false
-    error.value = err.message
+    error.value = (e as Error).message
     return
   }
-
-  await supabase.from('sets_audit').insert({
-    set_id: original.value.id,
-    action: newActive ? 'activate' : 'deactivate',
-    before: original.value as never,
-    after: data as never,
-    actor: 'admin-dev-bypass',
-  } as never)
-
+  // sets_audit retiré (cf. save()).
   archiving.value = false
-  emit('saved', data as Set)
+  emit('saved', data)
   emit('close')
 }
 
@@ -276,24 +250,13 @@ async function hardDelete() {
   deleting.value = true
   error.value = null
 
-  // Audit FIRST car après DELETE la row n'existe plus
-  await supabase.from('sets_audit').insert({
-    set_id: original.value.id,
-    action: 'delete',
-    before: original.value as never,
-    after: null,
-    actor: 'admin-dev-bypass',
-  } as never)
-
-  // set_members sera cascade-deleted via FK ON DELETE CASCADE
-  const { error: err } = await supabase
-    .from('sets')
-    .delete()
-    .eq('id', original.value.id)
-
-  if (err) {
+  // sets_audit retiré (cf. save()).
+  // set_members cascade-deleted via FK ON DELETE CASCADE côté SQLite.
+  try {
+    await deleteSet(original.value.id)
+  } catch (e) {
     deleting.value = false
-    error.value = err.message
+    error.value = (e as Error).message
     return
   }
 
