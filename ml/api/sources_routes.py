@@ -532,21 +532,50 @@ class RunBreakdown(BaseModel):
 def _search_axis_stats(
     conn: sqlite3.Connection, *, run_id: str, eurio_id: str,
 ) -> dict[str, int]:
-    """Stats joined on si.target_eurio_id = eurio_id."""
+    """Stats par eurio_id : listings/crops attribués ou candidats.
+
+    Inclut deux cas :
+    - **target résolu** (verdict theme-match 'single') : `si.target_eurio_id
+      = eurio_id`. Attribution nette.
+    - **candidat ambigu** (verdict 'ambiguous' ou 'lot' multi-coin) :
+      `si.target_eurio_id IS NULL` mais l'eurio apparaît dans
+      `image_assets.candidate_eurio_ids_json` de l'une de ses crops.
+      Permet aux coins en groupes multi-coins (ex: FR/2018 Bleuet ↔
+      Simone Veil) d'afficher le pool de listings désambiguables côté
+      review. Conséquence : double-count entre coins sœurs — assumé.
+    """
+    cands_pattern = f'%"{eurio_id}"%'
+    # source_images : target résolu OU group_candidates contient l'eurio
+    # (couvre les listings zero-crops sans image_assets pour les multi-coin
+    # groups — la donnée existe côté raw_payload_json même si la crop n'a
+    # rien donné).
     n_listings = conn.execute(
-        "SELECT COUNT(*) AS n FROM source_images "
-        "WHERE run_id = ? AND target_eurio_id = ?",
-        (run_id, eurio_id),
+        """
+        SELECT COUNT(*) AS n
+          FROM source_images si
+         WHERE si.run_id = ?
+           AND (
+             si.target_eurio_id = ?
+             OR (si.target_eurio_id IS NULL
+                 AND si.raw_payload_json LIKE ?)
+           )
+        """,
+        (run_id, eurio_id, cands_pattern),
     ).fetchone()["n"]
 
     crops = conn.execute(
         """
-        SELECT ia.id, ia.resolution_status
+        SELECT DISTINCT ia.id, ia.resolution_status
           FROM image_assets ia
           JOIN source_images si ON si.id = ia.source_image_id
-         WHERE ia.run_id = ? AND si.target_eurio_id = ?
+         WHERE ia.run_id = ?
+           AND (
+             si.target_eurio_id = ?
+             OR (si.target_eurio_id IS NULL
+                 AND ia.candidate_eurio_ids_json LIKE ?)
+           )
         """,
-        (run_id, eurio_id),
+        (run_id, eurio_id, cands_pattern),
     ).fetchall()
 
     n_auto = 0
