@@ -83,23 +83,24 @@ async function load() {
   loading.value = true
   error.value = null
   try {
-    // 1) Base load — sans filtre, cardsLimit=1 (juste pour les agrégats).
+    // Charge uniquement la baseData (sans filtre) pour la metrics bar +
+    // la grid des recherches. Pas de groupe sélectionné par défaut —
+    // l'utilisateur choisit, comme en mode Filter.
     baseData.value = await fetchBenchRunCrops(props.runId, { limit: 1 })
-    // 2) Select default group + load filtered cards.
-    if (selectedGroupId.value == null && groups.value.length) {
-      selectedGroupId.value = groups.value[0].group_id
-    }
-    await reload()
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
     baseData.value = null
-    data.value = null
   } finally {
     loading.value = false
   }
 }
 
 async function reload() {
+  // Ne charge le scope du groupe que si un est sélectionné. Sinon, vide.
+  if (!selectedGroupId.value) {
+    data.value = null
+    return
+  }
   loading.value = true
   try {
     data.value = await fetchBenchRunCrops(props.runId, queryParams.value)
@@ -161,7 +162,7 @@ function prevPage() {
       </div>
     </div>
 
-    <div v-else-if="summary && globalSummary" class="crop-panel__body">
+    <div v-else-if="globalSummary" class="crop-panel__body">
       <!-- ░ METRICS BAR (globale — toujours sur baseData) ░ -->
       <section>
         <h2 class="eyebrow">
@@ -272,8 +273,17 @@ function prevPage() {
         </div>
       </section>
 
+      <!-- ░ Hint when no group selected ░ -->
+      <div v-if="!selectedGroup" class="hint">
+        <MousePointerClick class="h-6 w-6" style="color: var(--ink-300);" />
+        <p class="hint__msg">
+          Choisis une recherche ci-dessus<br>
+          pour voir ses crops en détail.
+        </p>
+      </div>
+
       <!-- ░ DETAIL PANEL ░ -->
-      <section v-if="selectedGroup" class="detail">
+      <section v-else class="detail">
         <header class="detail__header">
           <Crop class="h-4 w-4" style="color: var(--ink-400);" />
           <span class="detail__lbl">Recherche eBay</span>
@@ -290,8 +300,9 @@ function prevPage() {
         </header>
 
         <div class="detail__body">
-          <!-- Left: analytics -->
+          <!-- Left: analytics (summary garanti non-null par v-if) -->
           <BenchCropAnalytics
+            v-if="summary"
             :summary="summary"
             :selected-method="selectedMethod"
             :selected-status="selectedStatus"
@@ -300,6 +311,9 @@ function prevPage() {
             @select-status="onSelectStatus"
             @select-quality="onSelectQuality"
           />
+          <div v-else class="analytics-loading">
+            <p class="analytics-loading__msg">chargement…</p>
+          </div>
 
           <!-- Right: evidence grid -->
           <div class="evidence">
@@ -597,25 +611,32 @@ function prevPage() {
   background: var(--gold-700);
 }
 
+/* Pas de max-height : on laisse le panel s'étendre, la scroll se fait au
+   niveau du conteneur page (`<div class="overflow-y-auto">` parent). Ça
+   évite le double-scroll, et garde le panel "naturel" en hauteur. La
+   colonne analytics devient `position: sticky` pour rester visible quand
+   on scrolle la grid de cards. */
 .detail__body {
   display: grid;
   grid-template-columns: 312px 1fr;
-  min-height: 560px;
-  max-height: calc(100vh - 380px);
+  align-items: start;
 }
 
-/* Evidence column */
+/* Evidence column — pas d'overflow interne, on grow et la page scrolle. */
 .evidence {
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  min-width: 0;  /* défensif : empêche la grid de déborder */
 }
 .evidence__bar {
-  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  z-index: 5;
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 13px 22px;
+  background: var(--surface);
   border-bottom: 1px solid var(--surface-3);
 }
 .evidence__title {
@@ -659,8 +680,6 @@ function prevPage() {
 .sort-toggle button.active { background: var(--ink); color: var(--surface); }
 
 .evidence__body {
-  flex: 1;
-  overflow-y: auto;
   padding: 20px 22px 22px;
 }
 .evidence__grid {
@@ -686,11 +705,14 @@ function prevPage() {
 }
 
 .evidence__pager {
-  flex-shrink: 0;
+  position: sticky;
+  bottom: 0;
+  z-index: 4;
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 8px 22px;
+  background: var(--surface);
   border-top: 1px solid var(--surface-3);
   font-size: 11px;
   color: var(--ink-400);
@@ -705,4 +727,37 @@ function prevPage() {
   color: var(--ink-500);
 }
 .evidence__pager-btns button:disabled { opacity: 0.4; }
+
+/* Hint quand pas de groupe sélectionné */
+.hint {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 56px 24px;
+  text-align: center;
+  background: var(--surface);
+  border: 1px dashed var(--surface-3);
+  border-radius: 18px;
+}
+.hint__msg {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 14px;
+  color: var(--ink-400);
+  line-height: 1.4;
+}
+
+/* Loading placeholder in the analytics column slot. */
+.analytics-loading {
+  padding: 40px 24px;
+  background: var(--surface-1);
+  border-right: 1px solid var(--surface-3);
+}
+.analytics-loading__msg {
+  font-family: var(--font-display);
+  font-style: italic;
+  color: var(--ink-400);
+  font-size: 13px;
+}
 </style>

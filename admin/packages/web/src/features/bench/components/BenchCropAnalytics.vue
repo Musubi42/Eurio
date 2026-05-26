@@ -168,11 +168,14 @@ function toggleQuality(label: string) {
 
 <style scoped>
 .analytics {
+  position: sticky;
+  top: 0;                       /* sticky depuis le haut du grid parent */
+  max-height: calc(100vh - 60px);
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 22px;
   padding: 22px 22px 28px;
-  overflow-y: auto;
   background: var(--surface-1);
   border-right: 1px solid var(--surface-3);
 }
