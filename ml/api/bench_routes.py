@@ -593,6 +593,551 @@ def get_bench_run_listings(
     return BenchRunListingsResponse(listings=listings, listings_total=total)
 
 
+# ── Run audit — CROP FORENSICS (P10-G, 2026-05-26) ────────────────────────
+#
+# Variante "crop" du run audit : au lieu d'auditer les décisions du
+# theme-matcher (route_decision/route_reason sur les listings), on audit
+# le **résultat du crop** (YOLO+Hough+polish) sur chaque image_asset
+# produit pendant le run.
+#
+# Pas de notion d'eurio_id résolu ici : la majorité des image_assets d'un
+# run eBay sont en `pending_match`. L'axe d'entrée est le raw eBay + sa
+# bbox, pour que l'admin repère visuellement les undercrops (bug bimétal :
+# Hough vote le cercle intérieur or au lieu du rim extérieur silver).
+
+# Seuil par défaut undercrop : aire bbox / min(raw_w, raw_h)² < seuil.
+#
+# LIMITE CONNUE (sondage 2026-05-26 sur run 059dc8d9, 1 678 crops eBay) :
+# à 0.50 → 99 % flag, à 0.05 → 49 %, à 0.03 → 14 %. La distribution est
+# graduelle SANS palier méthode-spécifique — area_ratio ne distingue pas
+# un vrai undercrop bimétal (Hough qui vote l'inner ring) d'un crop OK
+# sur une photo eBay cadrée large (pièce légitimement petite dans le
+# cadre). Pour le vrai signal bimétal, il faut un oracle indépendant
+# (Otsu+contour, cf. scripts/bench_listing_bimetal.py), à brancher dans
+# un chunk dédié. En attendant, 0.10 donne un compromis utile : on flag
+# les pièces qui occupent < ~10 % de l'inscription max, ce qui couvre
+# les bimétal sévères + une partie du bruit. Toujours surridable côté
+# query via `?undercrop_threshold=X`.
+UNDERCROP_AREA_RATIO_DEFAULT = 0.10
+
+_QUALITY_BUCKETS: list[tuple[str, float, float]] = [
+    (".0–.2", 0.0, 0.2),
+    (".2–.4", 0.2, 0.4),
+    (".4–.6", 0.4, 0.6),
+    (".6–.8", 0.6, 0.8),
+    (".8–1.", 0.8, 1.0001),
+]
+
+
+class BenchRunCropBbox(BaseModel):
+    x: float
+    y: float
+    w: float
+    h: float
+    conf: float | None = None
+
+
+class BenchRunCropBboxPct(BaseModel):
+    """Bbox normalisée en % du raw (0..100), prête pour overlay CSS.
+
+    Calculée côté serveur dès qu'on a `source_images.width/height` et que
+    les valeurs de `bbox_json` ressemblent à des pixels (max(x+w, y+h) >
+    raw_dims*1.01 → skipped). Si l'amont passe déjà du normalisé 0..1, on
+    le détecte aussi (max ≤ 1.0).
+    """
+    x: float
+    y: float
+    w: float
+    h: float
+
+
+class BenchRunCropCard(BaseModel):
+    asset_id: str
+    source: str
+    source_image_id: str
+    crop_index: int
+    raw_url: str | None              # /sources/{source}/raws/{source_image_id}/file
+    crop_url: str | None             # /sources/{source}/assets/{asset_id}/file
+    raw_width: int | None
+    raw_height: int | None
+    crop_width: int | None
+    crop_height: int | None
+    bbox: BenchRunCropBbox | None
+    bbox_pct: BenchRunCropBboxPct | None
+    detection_method: str | None
+    resolution_status: str | None
+    quality_score: float | None
+    is_undercrop_suspect: bool
+    area_ratio: float | None         # aire bbox / min(raw_w,raw_h)² (debug)
+    target_eurio_id: str | None      # eurio_id visé par le listing (pas vérité)
+    listing_title: str | None
+    listing_country: str | None
+    listing_year: int | None
+    listing_url: str | None
+    fetched_at: str | None
+
+
+class BenchRunCropsMethodBucket(BaseModel):
+    method: str                      # 'yolo'|'hough'|'merged'|'manual'|'unknown'
+    n: int
+    n_undercrops: int
+    pct: float                       # 0..100 (part du total crops)
+
+
+class BenchRunCropsQualityBucket(BaseModel):
+    label: str                       # '.0–.2'
+    range_lo: float
+    range_hi: float
+    n: int
+
+
+class BenchRunCropsStatusBucket(BaseModel):
+    status: str
+    n: int
+
+
+class BenchRunCropsDiagnostic(BaseModel):
+    """Pépite humaine au-dessus de l'analytics. None si rien à dire."""
+    top_method_in_undercrops: str | None
+    top_method_share: float | None        # 0..1 — part des undercrops portée par cette méthode
+    note: str | None                      # phrase FR pour le bloc Diagnostic
+
+
+class BenchRunCropsGroupSummary(BaseModel):
+    """Une recherche eBay (groupe de découverte), version crop."""
+    group_id: str                    # 'DE-2007-2.0'
+    country: str | None
+    year: int | None
+    denomination: float | None
+    n_raws: int
+    n_crops: int
+    n_undercrops: int
+
+
+class BenchRunCropsSummary(BaseModel):
+    run_id: str
+    n_groups: int
+    n_raws: int
+    n_crops: int
+    n_undercrops: int
+    pct_undercrops: float            # 0..100
+    quality_mean: float | None
+    quality_median: float | None
+    quality_std: float | None
+    methods: list[BenchRunCropsMethodBucket]
+    quality_histogram: list[BenchRunCropsQualityBucket]
+    statuses: list[BenchRunCropsStatusBucket]
+    diagnostic: BenchRunCropsDiagnostic
+    # paramètre utilisé pour calculer is_undercrop_suspect (debug, replay)
+    undercrop_threshold: float
+
+
+class BenchRunCropsResponse(BaseModel):
+    summary: BenchRunCropsSummary
+    groups: list[BenchRunCropsGroupSummary]
+    cards: list[BenchRunCropCard]
+    cards_total: int                 # après filtres, avant pagination
+
+
+def _parse_bbox(bbox_json: str | None) -> BenchRunCropBbox | None:
+    if not bbox_json:
+        return None
+    try:
+        d = json.loads(bbox_json)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    if not isinstance(d, dict):
+        return None
+    try:
+        return BenchRunCropBbox(
+            x=float(d.get("x", 0)),
+            y=float(d.get("y", 0)),
+            w=float(d.get("w", 0)),
+            h=float(d.get("h", 0)),
+            conf=float(d["conf"]) if d.get("conf") is not None else None,
+        )
+    except (TypeError, ValueError):
+        return None
+
+
+def _bbox_pct_and_ratio(
+    bbox: BenchRunCropBbox | None,
+    raw_w: int | None,
+    raw_h: int | None,
+) -> tuple[BenchRunCropBboxPct | None, float | None]:
+    """Convertit la bbox en % du raw + calcule l'aire ratio bbox / min(raw)².
+
+    Accepte les bbox pixels ou déjà normalisées (0..1). Si raw_w/h manquent
+    ou que la bbox ne fait pas sens (négative, hors-cadre), renvoie None,
+    None — la carte sera affichée sans overlay côté front.
+    """
+    if bbox is None or not raw_w or not raw_h:
+        return None, None
+    if bbox.w <= 0 or bbox.h <= 0:
+        return None, None
+
+    # Détecte le format : si max coord ≤ 1.01, on est en normalisé [0,1].
+    max_coord = max(bbox.x + bbox.w, bbox.y + bbox.h)
+    if max_coord <= 1.01:
+        px_x, px_y, px_w, px_h = (bbox.x * raw_w, bbox.y * raw_h,
+                                  bbox.w * raw_w, bbox.h * raw_h)
+    else:
+        px_x, px_y, px_w, px_h = bbox.x, bbox.y, bbox.w, bbox.h
+
+    # bbox hors-cadre franchement → pas de pct
+    if px_x < -1 or px_y < -1 or px_x + px_w > raw_w + 1 or px_y + px_h > raw_h + 1:
+        return None, None
+
+    bbox_pct = BenchRunCropBboxPct(
+        x=max(0.0, px_x / raw_w * 100.0),
+        y=max(0.0, px_y / raw_h * 100.0),
+        w=min(100.0, px_w / raw_w * 100.0),
+        h=min(100.0, px_h / raw_h * 100.0),
+    )
+    ref = float(min(raw_w, raw_h))
+    area_ratio = (px_w * px_h) / (ref * ref) if ref > 0 else None
+    return bbox_pct, area_ratio
+
+
+def _median(values: list[float]) -> float | None:
+    if not values:
+        return None
+    s = sorted(values)
+    n = len(s)
+    mid = n // 2
+    if n % 2 == 1:
+        return float(s[mid])
+    return float((s[mid - 1] + s[mid]) / 2)
+
+
+def _stdev(values: list[float], mean: float) -> float | None:
+    if len(values) < 2:
+        return None
+    var = sum((v - mean) ** 2 for v in values) / (len(values) - 1)
+    return float(var ** 0.5)
+
+
+def _build_diagnostic(
+    methods: list[BenchRunCropsMethodBucket],
+    n_undercrops: int,
+) -> BenchRunCropsDiagnostic:
+    """Cherche la méthode qui concentre le plus d'undercrops. Si une seule
+    méthode pèse ≥ 50 % des undercrops ET a un taux undercrop > 30 % de
+    ses propres crops, on émet une note."""
+    if n_undercrops < 5:
+        return BenchRunCropsDiagnostic(
+            top_method_in_undercrops=None, top_method_share=None, note=None,
+        )
+    by_share = sorted(methods, key=lambda m: m.n_undercrops, reverse=True)
+    top = by_share[0] if by_share else None
+    if top is None or top.n_undercrops == 0:
+        return BenchRunCropsDiagnostic(
+            top_method_in_undercrops=None, top_method_share=None, note=None,
+        )
+    share = top.n_undercrops / n_undercrops
+    own_rate = top.n_undercrops / top.n if top.n else 0
+    if share >= 0.50 and own_rate >= 0.30:
+        note = (
+            f"{top.method} concentre {round(share * 100)} % des undercrops "
+            f"({top.n_undercrops}/{n_undercrops}) avec un taux interne de "
+            f"{round(own_rate * 100)} %. Probable bug bimétal — vote du "
+            f"cercle intérieur or au lieu du rim silver."
+        )
+    else:
+        note = None
+    return BenchRunCropsDiagnostic(
+        top_method_in_undercrops=top.method,
+        top_method_share=share,
+        note=note,
+    )
+
+
+def _group_id(country: str | None, year: int | None, denom: float | None) -> str:
+    parts = [
+        country or "?",
+        str(year) if year is not None else "?",
+        f"{denom:.1f}" if denom is not None else "?",
+    ]
+    return "-".join(parts)
+
+
+# Consumed by: admin/.../features/bench (Crop mode of BenchRunAuditPage)
+@router.get("/runs/{run_id}/crops", response_model=BenchRunCropsResponse)
+def get_bench_run_crops(
+    run_id: str,
+    country: str | None = Query(None),
+    year: int | None = Query(None),
+    method: str | None = Query(None, description="yolo|hough|merged|manual"),
+    status: str | None = Query(None, description="resolution_status filter"),
+    quality_min: float | None = Query(None, ge=0, le=1),
+    quality_max: float | None = Query(None, ge=0, le=1),
+    undercrop_only: bool = Query(False),
+    sort: str = Query("undercrop_first",
+                      pattern="^(undercrop_first|quality_asc|quality_desc|recent)$"),
+    undercrop_threshold: float = Query(UNDERCROP_AREA_RATIO_DEFAULT, ge=0, le=1),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+) -> BenchRunCropsResponse:
+    """Crops produits durant un run eBay, avec analytics + cartes paginées.
+
+    Le calcul d'undercrop est fait en Python (post-query) car il dépend de
+    la geometry bbox/raw qui n'est pas indexable utilement. Pour un run
+    eBay typique (~quelques milliers de crops max), c'est négligeable.
+    """
+    conn = _store()._connection()  # noqa: SLF001
+
+    # 1. Vérifier que le run existe (404 propre si pas).
+    run_row = conn.execute(
+        "SELECT id, source FROM source_runs WHERE id = ?", (run_id,),
+    ).fetchone()
+    if run_row is None:
+        raise HTTPException(status_code=404, detail=f"Run {run_id} not found.")
+    run_source = run_row["source"]
+
+    # 2. Charger tous les image_assets du run + métadonnées raw associées.
+    #    Filtres SQL "cheap" appliqués ici (country/year/method/status/quality).
+    #    L'undercrop_only et le sort sont appliqués après calcul Python.
+    where = ["a.run_id = ?"]
+    params: list = [run_id]
+    if country:
+        where.append("s.listing_country = ?")
+        params.append(country)
+    if year is not None:
+        where.append("s.listing_year = ?")
+        params.append(year)
+    if method:
+        where.append("a.detection_method = ?")
+        params.append(method)
+    if status:
+        where.append("a.resolution_status = ?")
+        params.append(status)
+    if quality_min is not None:
+        where.append("(a.quality_score IS NOT NULL AND a.quality_score >= ?)")
+        params.append(quality_min)
+    if quality_max is not None:
+        where.append("(a.quality_score IS NOT NULL AND a.quality_score <= ?)")
+        params.append(quality_max)
+    where_sql = " AND ".join(where)
+
+    rows = conn.execute(
+        f"""
+        SELECT
+            a.id              AS asset_id,
+            a.source_image_id AS source_image_id,
+            a.crop_index      AS crop_index,
+            a.bbox_json       AS bbox_json,
+            a.detection_method AS detection_method,
+            a.resolution_status AS resolution_status,
+            a.quality_score   AS quality_score,
+            a.width           AS crop_width,
+            a.height          AS crop_height,
+            a.fetched_at      AS fetched_at,
+            s.source          AS source,
+            s.source_url      AS listing_url,
+            s.target_eurio_id AS target_eurio_id,
+            s.listing_title   AS listing_title,
+            s.listing_country AS listing_country,
+            s.listing_year    AS listing_year,
+            s.width           AS raw_width,
+            s.height          AS raw_height
+          FROM image_assets a
+          JOIN source_images s ON s.id = a.source_image_id
+         WHERE {where_sql}
+        """,
+        params,
+    ).fetchall()
+
+    # 3. Construire les cartes (avec undercrop) et alimenter les agrégats.
+    cards: list[BenchRunCropCard] = []
+    method_counts: dict[str, int] = {}
+    method_undercrops: dict[str, int] = {}
+    status_counts: dict[str, int] = {}
+    quality_bucket_counts: list[int] = [0] * len(_QUALITY_BUCKETS)
+    group_raws: dict[str, set[str]] = {}        # group_id → set(source_image_id)
+    group_crops: dict[str, int] = {}
+    group_undercrops: dict[str, int] = {}
+    group_meta: dict[str, tuple[str | None, int | None, float | None]] = {}
+    quality_values: list[float] = []
+    n_undercrops_total = 0
+    raw_ids_total: set[str] = set()
+
+    for r in rows:
+        bbox = _parse_bbox(r["bbox_json"])
+        bbox_pct, area_ratio = _bbox_pct_and_ratio(
+            bbox, r["raw_width"], r["raw_height"],
+        )
+        is_undercrop = (
+            area_ratio is not None and area_ratio < undercrop_threshold
+        )
+
+        # Group bookkeeping. eBay groupe = (country, year). Denom dérivée
+        # si dispo (P10-F passe par listing meta) — pour le run audit
+        # crop on assume 2 € sur les recherches "année + pays + 2€"
+        # mais on garde None si pas inférable.
+        gid = _group_id(r["listing_country"], r["listing_year"], 2.0
+                         if r["listing_country"] else None)
+        group_meta.setdefault(gid, (r["listing_country"], r["listing_year"], 2.0))
+        group_raws.setdefault(gid, set()).add(r["source_image_id"])
+        group_crops[gid] = group_crops.get(gid, 0) + 1
+        if is_undercrop:
+            group_undercrops[gid] = group_undercrops.get(gid, 0) + 1
+            n_undercrops_total += 1
+
+        raw_ids_total.add(r["source_image_id"])
+
+        m = r["detection_method"] or "unknown"
+        method_counts[m] = method_counts.get(m, 0) + 1
+        if is_undercrop:
+            method_undercrops[m] = method_undercrops.get(m, 0) + 1
+
+        st = r["resolution_status"] or "unknown"
+        status_counts[st] = status_counts.get(st, 0) + 1
+
+        q = r["quality_score"]
+        if q is not None:
+            quality_values.append(float(q))
+            for i, (_, lo, hi) in enumerate(_QUALITY_BUCKETS):
+                if lo <= q < hi:
+                    quality_bucket_counts[i] += 1
+                    break
+
+        raw_url = (
+            f"/sources/{r['source']}/raws/{r['source_image_id']}/file"
+            if r["source"] and r["source_image_id"] else None
+        )
+        crop_url = (
+            f"/sources/{r['source']}/assets/{r['asset_id']}/file"
+            if r["source"] and r["asset_id"] else None
+        )
+
+        cards.append(BenchRunCropCard(
+            asset_id=r["asset_id"],
+            source=r["source"],
+            source_image_id=r["source_image_id"],
+            crop_index=int(r["crop_index"] or 0),
+            raw_url=raw_url,
+            crop_url=crop_url,
+            raw_width=r["raw_width"],
+            raw_height=r["raw_height"],
+            crop_width=r["crop_width"],
+            crop_height=r["crop_height"],
+            bbox=bbox,
+            bbox_pct=bbox_pct,
+            detection_method=r["detection_method"],
+            resolution_status=r["resolution_status"],
+            quality_score=float(q) if q is not None else None,
+            is_undercrop_suspect=is_undercrop,
+            area_ratio=area_ratio,
+            target_eurio_id=r["target_eurio_id"],
+            listing_title=r["listing_title"],
+            listing_country=r["listing_country"],
+            listing_year=r["listing_year"],
+            listing_url=r["listing_url"],
+            fetched_at=r["fetched_at"],
+        ))
+
+    # 4. Aggregats globaux.
+    n_crops = len(cards)
+    n_raws = len(raw_ids_total)
+
+    method_buckets: list[BenchRunCropsMethodBucket] = []
+    for m_name, m_n in sorted(method_counts.items(), key=lambda x: -x[1]):
+        method_buckets.append(BenchRunCropsMethodBucket(
+            method=m_name,
+            n=m_n,
+            n_undercrops=method_undercrops.get(m_name, 0),
+            pct=(m_n / n_crops * 100.0) if n_crops else 0.0,
+        ))
+
+    quality_buckets: list[BenchRunCropsQualityBucket] = [
+        BenchRunCropsQualityBucket(
+            label=lbl, range_lo=lo, range_hi=min(hi, 1.0), n=quality_bucket_counts[i],
+        )
+        for i, (lbl, lo, hi) in enumerate(_QUALITY_BUCKETS)
+    ]
+
+    status_buckets: list[BenchRunCropsStatusBucket] = [
+        BenchRunCropsStatusBucket(status=s, n=n)
+        for s, n in sorted(status_counts.items(), key=lambda x: -x[1])
+    ]
+
+    q_mean = (sum(quality_values) / len(quality_values)) if quality_values else None
+    q_median = _median(quality_values)
+    q_std = _stdev(quality_values, q_mean) if q_mean is not None else None
+    pct_undercrops = (n_undercrops_total / n_crops * 100.0) if n_crops else 0.0
+
+    diagnostic = _build_diagnostic(method_buckets, n_undercrops_total)
+
+    groups_summary: list[BenchRunCropsGroupSummary] = []
+    for gid, (gc, gy, gd) in group_meta.items():
+        groups_summary.append(BenchRunCropsGroupSummary(
+            group_id=gid,
+            country=gc,
+            year=gy,
+            denomination=gd,
+            n_raws=len(group_raws.get(gid, set())),
+            n_crops=group_crops.get(gid, 0),
+            n_undercrops=group_undercrops.get(gid, 0),
+        ))
+    # Tri pertinent : par nb undercrops desc puis n_crops desc.
+    groups_summary.sort(key=lambda g: (-g.n_undercrops, -g.n_crops))
+
+    summary = BenchRunCropsSummary(
+        run_id=run_id,
+        n_groups=len(group_meta),
+        n_raws=n_raws,
+        n_crops=n_crops,
+        n_undercrops=n_undercrops_total,
+        pct_undercrops=pct_undercrops,
+        quality_mean=q_mean,
+        quality_median=q_median,
+        quality_std=q_std,
+        methods=method_buckets,
+        quality_histogram=quality_buckets,
+        statuses=status_buckets,
+        diagnostic=diagnostic,
+        undercrop_threshold=undercrop_threshold,
+    )
+
+    # 5. Filtres post-calcul + tri + pagination des cartes.
+    filtered = (
+        [c for c in cards if c.is_undercrop_suspect]
+        if undercrop_only else cards
+    )
+
+    if sort == "undercrop_first":
+        # undercrops d'abord (True trie après False par défaut → reverse=True),
+        # puis quality ascendante (les pires en haut).
+        filtered.sort(
+            key=lambda c: (not c.is_undercrop_suspect,
+                           c.quality_score if c.quality_score is not None else 1.0),
+        )
+    elif sort == "quality_asc":
+        filtered.sort(
+            key=lambda c: c.quality_score if c.quality_score is not None else 1.0,
+        )
+    elif sort == "quality_desc":
+        filtered.sort(
+            key=lambda c: c.quality_score if c.quality_score is not None else 0.0,
+            reverse=True,
+        )
+    elif sort == "recent":
+        filtered.sort(key=lambda c: c.fetched_at or "", reverse=True)
+
+    cards_total = len(filtered)
+    paginated = filtered[offset:offset + limit]
+
+    # Silence linter (utile pour Pydantic v2 — pas de validation runtime).
+    _ = run_source
+
+    return BenchRunCropsResponse(
+        summary=summary,
+        groups=groups_summary,
+        cards=paginated,
+        cards_total=cards_total,
+    )
+
+
 # Consumed by: admin/.../features/bench
 @router.get("/theme-match", response_model=BenchReplayResponse)
 def get_theme_match_bench() -> BenchReplayResponse:
