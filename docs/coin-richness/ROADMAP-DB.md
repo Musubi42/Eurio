@@ -84,6 +84,20 @@
     - Stretch cleanup : 1882 image_assets + 71 source_images
       pré-V.3 non-orphelins encore en DB (incl. A3)
 
+- ✅ **Session 5c — P10-G DINO anchor bank rebuild** (2026-05-26 suite) :
+  `go-task ml:dino-anchors:build -- --force` sur `kind=2eur_commemo`.
+  Bank passe de 376 anchors pré-V.1 (cohorte legacy avec slugs renamed)
+  → 15 anchors fresh cohorte V.3. Backup
+  `foundation_anchors_2eur_commemo.npz.bak-pre-rebuild-...` posé.
+  - Détour : `datasets/226447/obverse.jpg` manquait pour
+    de-2020 (le dataset historique a `obverse.png` 1.4MB). Convert
+    PIL PNG→JPG pour respecter la convention du script.
+  - Numista CDN refuse les curl directs (anti-bot) — toujours
+    convertir depuis le local plutôt que re-fetch.
+  - Validation visuelle `/review/manual` : suggestions DINO avec
+    thumbs ronds peuplés (avant : placeholders vides quand l'anchor
+    pointait sur eurio_id pré-V.1 rename).
+
 - ✅ **Session 5b — P10-F bench audit live** (2026-05-26 suite) :
   Refactor `bench_routes.py` pour accepter un `run_id` arbitraire.
   Nouvelle page `BenchRunAuditPage` qui mime la layout `/bench` studio
