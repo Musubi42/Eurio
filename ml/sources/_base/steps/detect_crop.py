@@ -20,6 +20,7 @@ resolved `eurio_id`. On a hit we copy `eurio_id` and set
 
 from __future__ import annotations
 
+import json
 import logging
 import sqlite3
 import uuid
@@ -86,11 +87,26 @@ def run_detect_crop(
 
     for source_ref, sid in source_image_ids.items():
         row = conn.execute(
-            "SELECT id, storage_path, storage_status FROM source_images WHERE id = ?",
+            "SELECT id, storage_path, storage_status, raw_payload_json "
+            "FROM source_images WHERE id = ?",
             (sid,),
         ).fetchone()
         if row is None or not row["storage_path"]:
             continue
+        # group_candidates : extrait du raw_payload du source_image (eBay
+        # multi-coin groups). Permet à la review queue de désambiguïser
+        # entre les commémos-sœurs (ex: FR/2018 Bleuet vs Simone Veil).
+        # Liste vide / None → pas de candidats explicites (cas single-coin
+        # group ou sources non-eBay).
+        group_candidates: list[str] = []
+        if row["raw_payload_json"]:
+            try:
+                _payload = json.loads(row["raw_payload_json"])
+                _cands = _payload.get("group_candidates") if isinstance(_payload, dict) else None
+                if isinstance(_cands, list):
+                    group_candidates = [str(x) for x in _cands if isinstance(x, str)]
+            except (json.JSONDecodeError, TypeError, ValueError):
+                pass
         # storage_path is now an S3 key in `enrichment-raws`. local_path()
         # downloads to cache on demand (no-op if already cached by download
         # step in the same run).
@@ -226,6 +242,10 @@ def run_detect_crop(
                     detection_method=result.method,
                     eurio_id=eurio_id,
                     resolution_status=status,
+                    candidate_eurio_ids=(
+                        [{"eurio_id": eid} for eid in group_candidates]
+                        if group_candidates else None
+                    ),
                     phash=phash_value,
                     storage_path=storage_key,
                     width=result.image.shape[1],

@@ -285,6 +285,18 @@ class EbayAdapter:
                 # (chunk 5b) au lieu d'être discardé en `theme_mismatch`.
                 row["_resolved_eurio_id"] = gm.target_eurio_id
                 row["_group_verdict"] = gm.verdict
+                # Candidates pour la review queue : permet à l'admin de
+                # désambiguïser un listing 'ambiguous' parmi les sœurs du
+                # groupe (ex: FR/2018 Bleuet vs Simone Veil). Pour les
+                # verdicts 'lot' on garde le sous-ensemble matché par le
+                # theme-match. Pour 'single' on ne stocke rien (target est
+                # déjà résolu). Cf. P10-E (fix multi-coin groups 2026-05-26).
+                if gm.verdict == "ambiguous":
+                    row["_group_candidates"] = list(coin_ids)
+                elif gm.verdict == "lot":
+                    row["_group_candidates"] = list(gm.matched)
+                else:
+                    row["_group_candidates"] = None
                 kept.append(row)
 
             duration_ms = int((time.monotonic() - t0) * 1000)
@@ -334,6 +346,7 @@ class EbayAdapter:
                 row=item.row,
                 group=group,
                 resolved_eurio_id=item.row.get("_resolved_eurio_id"),
+                group_candidates=item.row.get("_group_candidates"),
                 marketplace=item.first_mkt,
                 marketplace_found=tuple(sorted(item.found)),
                 client=item.client,
@@ -496,6 +509,7 @@ class EbayAdapter:
         row: dict,
         group: DiscoveryGroup,
         resolved_eurio_id: str | None,
+        group_candidates: list[str] | None,
         marketplace: str,
         marketplace_found: tuple[str, ...],
         client: EbayClient,
@@ -574,6 +588,7 @@ class EbayAdapter:
                     "seller_fb_score": row.get("seller_fb_score"),
                     "origin_date": row.get("origin_date"),
                     "aspects": row.get("aspects"),
+                    "group_candidates": group_candidates,
                 },
                 marketplace=marketplace,
                 marketplace_found=marketplace_found,
