@@ -52,25 +52,24 @@ gros cercle plausible englobant un des bboxes par géométrie.
 
 → [experiments/04](../experiments/04-anti-b-inner-feature.md)
 
-### S6 ⬜ inner_feature_score × NOT is_lot_suspected (théorie 02 conditionnelle)
+### S6 ❌ inner_feature_score × singles (théorie 02 conditionnelle)
 
-**Objectif** : restreindre le signal S5 aux raws SINGLE (cat C exclue
-upstream), re-sampler TOP-30. Si cat B y monte ≥ 80 %, la théorie 02 est
-partiellement validée (anti-B uniquement sur singles).
+Verdict : marginal, refuted comme anti-B *strict*.
 
-**Setup** :
-- Lire le sidecar `_inner_de_2010.json`.
-- Joindre `source_images.is_lot_suspected = 0`.
-- TOP 30 et BOTTOM 30 du sous-ensemble single.
+Deux filtres testés sur DE/2010 :
+- `is_lot_suspected=0` (167 raws) : pas d'amélioration vs S5, collector
+  folders pas flaggés `lot` polluent toujours TOP-30 (~70 % cat C).
+- `n_crops_detected=1` (30 raws true singles) : signal plus propre, mais
+  TOP-30 cat B fort ≈ 33-40 %. Loin du seuil 80 %.
 
-**Mesure** : top-30 ≥ 80 % cat B authentique ? Si oui : signal viable
-comme post-filter anti-B sur les singles. Si non : théorie 02 morte
-définitivement, passer au backlog (OCR anti-A ou re-rank Hough upstream).
+Le score reste **un proxy d'undercrop général** (corrèle visuellement
+avec la qualité), pas un détecteur cat B spécifique.
 
-**Action si win** : intégrer le signal dans `_load_composite_scores` du
-backend bench comme `inner_feature_score` + UI sort/badge.
-**Action si lose** : marquer théorie 02 ❌ globalement, prioriser OCR
-anti-A ou explorer un signal "rim de la pièce" plus direct.
+→ [experiments/05](../experiments/05-anti-b-inner-feature-singles.md)
+
+**Théorie 02 archivée comme post-filter**. Pour fixer cat B sans
+modifier le producer il faudrait un signal "rim circulaire manquante à
+un radius supérieur au bbox" — plus sophistiqué, non priorisé.
 
 ### S7 ⬜ Reject auto à 2 thresholds indépendants
 
@@ -97,9 +96,34 @@ Marqué pausée : on a déjà appris en S3 que area_ratio est utile mais
 insuffisant seul. À reprendre seulement si on veut un seuil adaptatif
 par cat de raw (album vs single).
 
+## Sessions futures candidates
+
+### S10 ⬜ OCR léger sur bbox (anti-A)
+
+**Objectif** : tester un OCR ultra-léger (tesseract ou easyOCR) sur le
+crop pour détecter présence de digits → marqueur cat A (strip
+numérique). Cibler les crops avec composite bas + near_white_ratio
+moyen. Test ciblé sur ~50 cards visuellement identifiées cat A dans le
+run V.3.
+
+**Décision** : à valider avec Raphaël avant de coder (coût modéré,
+dépendance externe à installer dans le venv).
+
+### S11 ⬜ Décision produit — clore vs continuer
+
+Après S5+S6 refuted, théorie 02 morte, théorie 01 morte. Reste :
+- théorie 03 (area_ratio adaptive, paused)
+- théorie 02b (re-rank Hough upstream, hors-scope "post-filter")
+- OCR anti-A (S10)
+
+→ Discuter avec Raphaël : (a) on continue avec S10/théorie 02b, ou
+(b) on accepte le composite v1 (livré S2) comme état final et on clos
+le chantier, ou (c) on pivote vers un classifier ML léger
+(cat A/B/C/D) entraîné sur des labels Raphaël manuels.
+
 ## Backlog (idées non-priorisées)
 
-- OCR léger sur la bbox pour détecter cat A (digits = strip)
+- OCR léger sur la bbox pour détecter cat A (digits = strip) — voir S10
 - Couleur dominante : bronze/cuivre/argent → metal, sinon flag
 - Périodicité radiale : un strip a une période courte, une pièce non
 - Adaptive area_ratio threshold selon raw dimensions / aspect
