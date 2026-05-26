@@ -61,6 +61,27 @@ juge le **contenu** du crop ; area_ratio juge la **proportion** vs raw.
 
 ---
 
+## 2026-05-26 — Théorie 01 (anti-A fond/luminosité) refuted
+
+**Découverte** : deux proxies testés, les deux échouent.
+(1) `bg_uniformity` (std hors disque) = 0 pour 80.9 % des crops — normalize_snap
+masque toujours le fond en noir avant stockage, donc le signal est dégénéré.
+(2) `near_white_ratio` (V > 220 dans disque intérieur) — TOP-30 ≈ 10 % cat A,
+reste = pièces euro surexposées ou bimétal (cat D). Seuil win 80 % non atteint.
+
+**Cause racine** : les pièces euro photographiées avec flash/lightbox ont des
+zones métalliques spéculaires avec V >> 220, indiscernables du blanc papier d'un
+strip. Le signal luminosité est corrélé à l'exposition photographique, pas au
+type d'objet.
+
+**Impact plan** :
+- S4 marquée ❌ (refuted).
+- S5 (anti-B Hough on raw) reste la prochaine session prioritaire.
+- **Backlog anti-A** : OCR léger sur la bbox (présence de digits → cat A) reste
+  viable mais complexe ; reporté après S5.
+
+---
+
 ## Template pour futures entrées
 
 ```
