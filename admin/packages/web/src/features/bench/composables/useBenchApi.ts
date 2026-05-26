@@ -276,6 +276,7 @@ export interface BenchRunCropCard {
   listing_year: number | null
   listing_url: string | null
   fetched_at: string | null
+  composite_score: number | null   // is_coin (sidecar crop_exp/score_crops)
 }
 
 export interface BenchRunCropsMethodBucket {
@@ -345,7 +346,7 @@ export interface BenchRunCropsQuery {
   quality_min?: number | null
   quality_max?: number | null
   undercrop_only?: boolean
-  sort?: 'undercrop_first' | 'quality_asc' | 'quality_desc' | 'recent'
+  sort?: 'score_desc' | 'score_asc' | 'undercrop_first' | 'quality_asc' | 'quality_desc' | 'recent'
   undercrop_threshold?: number
   limit?: number
   offset?: number

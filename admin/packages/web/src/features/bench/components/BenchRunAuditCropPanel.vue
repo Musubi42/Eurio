@@ -30,7 +30,10 @@ const selectedMethod = ref<string | null>(null)
 const selectedStatus = ref<string | null>(null)
 const selectedQualityBucket = ref<string | null>(null)
 const undercropOnly = ref(false)
-const sort = ref<NonNullable<BenchRunCropsQuery['sort']>>('undercrop_first')
+// Tri par défaut : composite is_coin desc (expé 01 TOP 30 = 83 % cat D —
+// utile pour audit "les plus confiants d'abord", on rebascule sur score_asc
+// ou undercrop_first pour traquer les pires.).
+const sort = ref<NonNullable<BenchRunCropsQuery['sort']>>('score_desc')
 
 const LIMIT = 60
 const offset = ref(0)
@@ -328,6 +331,12 @@ function prevPage() {
               </label>
 
               <div class="sort-toggle">
+                <button :class="{ active: sort === 'score_desc' }"
+                        @click="setSort('score_desc')"
+                        title="composite is_coin descendant — best d'abord">score ↓</button>
+                <button :class="{ active: sort === 'score_asc' }"
+                        @click="setSort('score_asc')"
+                        title="composite is_coin ascendant — suspects d'abord">score ↑</button>
                 <button :class="{ active: sort === 'quality_asc' }"
                         @click="setSort('quality_asc')">q ↑</button>
                 <button :class="{ active: sort === 'undercrop_first' }"

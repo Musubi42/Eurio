@@ -43,6 +43,16 @@ const areaPct = computed(() => {
   const a = props.card.area_ratio
   return a == null ? null : (a * 100).toFixed(1)
 })
+
+// 3 tons sur le composite is_coin (cf. expé 01) : ≥ 0.5 = vert (confiant),
+// 0.2–0.5 = neutre, < 0.2 = rouge (suspect cat A/B/C).
+const scoreCls = computed(() => {
+  const s = props.card.composite_score
+  if (s == null) return 'score-unknown'
+  if (s >= 0.5) return 'score-good'
+  if (s >= 0.2) return 'score-mid'
+  return 'score-bad'
+})
 </script>
 
 <template>
@@ -133,6 +143,12 @@ const areaPct = computed(() => {
         </span>
         <span v-if="areaPct != null" class="area-ratio" :title="`bbox / min(raw)²`">
           ar <b>{{ areaPct }}%</b>
+        </span>
+        <span v-if="card.composite_score != null"
+              class="score-badge"
+              :class="scoreCls"
+              :title="`composite is_coin (crop_exp/score_crops)`">
+          s <b>{{ (card.composite_score * 100).toFixed(0) }}</b>
         </span>
         <span class="badge badge--status" :class="statusCls">
           {{ card.resolution_status ?? '—' }}
@@ -364,6 +380,23 @@ const areaPct = computed(() => {
 }
 .area-ratio b { color: var(--ink-700); font-weight: 500; }
 .card--warn .area-ratio b { color: var(--danger); }
+
+.score-badge {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-400);
+  font-variant-numeric: tabular-nums;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+.score-badge b { font-weight: 600; }
+.score-good { background: #dcefe4; color: var(--success); }
+.score-good b { color: var(--success); }
+.score-mid { background: var(--surface-2); color: var(--ink-500); }
+.score-mid b { color: var(--ink-700); }
+.score-bad { background: var(--danger-soft, #f6dcd6); color: var(--danger); }
+.score-bad b { color: var(--danger); }
+.score-unknown { color: var(--ink-300); }
 
 .card__title {
   font-size: 11.5px;
