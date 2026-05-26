@@ -50,6 +50,7 @@ class WriteStats:
     observations: int = 0
     design_groups: int = 0
     variants: int = 0
+    i18n_names: int = 0
 
 
 class NumistaWriter:
@@ -275,19 +276,40 @@ class NumistaWriter:
         self.conn.execute(sql, row)
         self.stats.variants += 1
 
+    # ─── coin_names_i18n ───────────────────────────────────────────────
+
+    def write_i18n_names(self, rows: list[dict]) -> None:
+        sql = """
+        INSERT INTO coin_names_i18n
+          (eurio_id, lang, title, source, method, model, confidence)
+        VALUES
+          (:eurio_id, :lang, :title, :source, :method, :model, :confidence)
+        ON CONFLICT (eurio_id, lang) DO UPDATE SET
+          title      = excluded.title,
+          source     = excluded.source,
+          method     = excluded.method,
+          model      = excluded.model,
+          confidence = excluded.confidence,
+          fetched_at = datetime('now')
+        """
+        for row in rows:
+            self.conn.execute(sql, row)
+            self.stats.i18n_names += 1
+
     # ─── Orchestration full bundle ─────────────────────────────────────
 
     def write_bundle(
         self, *, slug, payload: dict, issues: list[dict],
         prices_by_iid: dict[int, dict], mint_resolver,
+        payload_fr: dict | None = None,
     ) -> None:
         """Pipeline complet pour un Type : appelle les transforms puis chaque
         write_* dans le bon ordre (FK : coins avant tout, mint_releases avant
         prices)."""
         from referential.numista_transforms import (
             coin_canonical_image_rows, coin_credit_rows, coin_cross_ref_rows,
-            coin_market_quote_rows, coin_observation_rows, coin_row,
-            coin_source_ref_row, coin_variant_row, design_group_row,
+            coin_market_quote_rows, coin_name_i18n_rows, coin_observation_rows,
+            coin_row, coin_source_ref_row, coin_variant_row, design_group_row,
             mint_release_price_rows, mint_release_rows,
         )
 
@@ -297,13 +319,14 @@ class NumistaWriter:
         # 2. coins (FK target depuis tout le reste)
         self.write_coin(coin_row(slug, payload))
 
-        # 3. source_ref + cross_refs + images + credits + observations + variant
+        # 3. source_ref + cross_refs + images + credits + observations + variant + i18n
         self.write_source_ref(coin_source_ref_row(slug, payload))
         self.write_cross_refs(coin_cross_ref_rows(slug, payload))
         self.write_images(coin_canonical_image_rows(slug, payload))
         self.write_credits(coin_credit_rows(slug, payload))
         self.write_observations(coin_observation_rows(slug, payload))
         self.write_variant(coin_variant_row(slug, payload))
+        self.write_i18n_names(coin_name_i18n_rows(slug, payload, payload_fr))
 
         # 4. mint_releases (FK depuis prices)
         mr_rows = mint_release_rows(slug, issues, mint_resolver)

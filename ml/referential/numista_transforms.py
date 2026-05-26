@@ -295,6 +295,45 @@ def coin_market_quote_rows(
     return out
 
 
+# ─── coin_names_i18n ──────────────────────────────────────────────────────
+
+
+def coin_name_i18n_rows(
+    slug: NumistaSlugResult, payload_en: dict, payload_fr: dict | None,
+) -> list[dict]:
+    """1 row par lang dispo (en, fr). ``title`` lu sur le payload de la lang.
+
+    Numista expose la traduction native dans le champ ``title`` quand on
+    appelle ``/types/{nid}?lang=<x>``. Pour les autres langues
+    (de, it, es, nl), un agent LLM dérive depuis EN+FR (cf. P10-E).
+    """
+    out: list[dict] = []
+    en_title = payload_en.get("title")
+    if en_title:
+        out.append({
+            "eurio_id":   slug.eurio_id,
+            "lang":       "en",
+            "title":      en_title,
+            "source":     NUMISTA_SOURCE,
+            "method":     "api",
+            "model":      None,
+            "confidence": "canon",
+        })
+    if payload_fr:
+        fr_title = payload_fr.get("title")
+        if fr_title:
+            out.append({
+                "eurio_id":   slug.eurio_id,
+                "lang":       "fr",
+                "title":      fr_title,
+                "source":     NUMISTA_SOURCE,
+                "method":     "api",
+                "model":      None,
+                "confidence": "canon",
+            })
+    return out
+
+
 # ─── coin_canonical_images ─────────────────────────────────────────────────
 
 
