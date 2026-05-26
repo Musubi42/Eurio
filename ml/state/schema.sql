@@ -900,6 +900,35 @@ CREATE TABLE IF NOT EXISTS coin_names_i18n (
 CREATE INDEX IF NOT EXISTS idx_coin_names_i18n_lang
   ON coin_names_i18n(lang);
 
+-- ─── coin_topics — contexte verbeux multi-source per lang ─────────────────
+-- (chantier D, 2026-05-26) — Numista expose `commemorated_topic` (ex: "100
+-- years of Independence") qui contient l'info contextuelle absente du
+-- `title` court ("2 Euros (Independence)"). BCE expose le `feature`
+-- verbeux similaire ("Dessin commémoratif : 100e anniversaire...").
+--
+-- Cette table héberge ces topics avec leur source-of-truth + langue :
+-- 1 row par (eurio_id, source, lang). Permet :
+-- - le slug verbeux eurio_id (`commemorated_topic` Numista EN, slugifié)
+-- - l'affichage UI multi-source avec badges (numista/bce/...)
+-- - le theme-matcher eBay enrichi (tokens "100 years anniversary")
+-- - les traductions LLM dérivées des canon EN+FR
+CREATE TABLE IF NOT EXISTS coin_topics (
+  eurio_id   TEXT NOT NULL REFERENCES coins(eurio_id) ON DELETE CASCADE,
+  source     TEXT NOT NULL REFERENCES source_registry(id) ON DELETE RESTRICT,
+  lang       TEXT NOT NULL CHECK (lang IN ('fr','en','de','it','es','nl')),
+  topic      TEXT NOT NULL,
+  method     TEXT,                            -- 'api'|'scrape'|'llm_v1'|'manual'
+  model      TEXT,                            -- LLM model id when method LIKE 'llm%'
+  confidence TEXT NOT NULL DEFAULT 'canon',   -- 'canon' | 'assisted' | 'uncertain'
+  fetched_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (eurio_id, source, lang)
+);
+
+CREATE INDEX IF NOT EXISTS idx_coin_topics_source
+  ON coin_topics(source);
+CREATE INDEX IF NOT EXISTS idx_coin_topics_lang
+  ON coin_topics(lang);
+
 -- ─── Alias de thème (chunk C2a — recall theme-matcher) ────────────────────
 -- Modèle `altLabel` de Wikidata : en plus du titre canonique i18n, des
 -- surface forms supplémentaires d'une commémo — acronymes (« EMI »),
