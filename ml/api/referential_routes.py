@@ -76,16 +76,40 @@ def _serve_canonical(
     eurio_id: str, role: str, *, thumb: bool, source: str | None = None,
 ) -> FileResponse:
     role = _resolve_role(role)
-    resolved_source = source or _lookup_source(eurio_id, role)
-    if not resolved_source:
-        raise HTTPException(status_code=404, detail=f"no canonical image for {eurio_id}/{role}")
 
-    path: Path = canonical_path(eurio_id, role, resolved_source, thumb=thumb)
-    if not path.is_file():
+    # Fallback chain : si l'appelant spécifie `source`, on essaie celui-ci en
+    # priorité. Sinon, on essaie d'abord ce que la DB renvoie (numista_api
+    # = URL externe, fichier souvent absent en local), puis on scanne les
+    # tags FS connus (bce, numista, unknown). Une row coin_canonical_images
+    # avec source='numista_api' n'implique PAS qu'un fichier local existe
+    # (P.7c.3 stocke juste l'URL Numista en `url`, pas le binaire). Cf.
+    # finding P.8b.1 audit V.2 2026-05-26.
+    candidates: list[str] = []
+    if source:
+        candidates.append(source)
+    db_source = _lookup_source(eurio_id, role)
+    if db_source and db_source not in candidates:
+        candidates.append(db_source)
+    for fallback in ("bce_comm", "numista", "unknown"):
+        if fallback not in candidates:
+            candidates.append(fallback)
+
+    path: Path | None = None
+    chosen_source: str | None = None
+    for src in candidates:
+        p = canonical_path(eurio_id, role, src, thumb=thumb)
+        if p.is_file():
+            path = p
+            chosen_source = src
+            break
+
+    if path is None:
         raise HTTPException(
             status_code=404,
-            detail=f"canonical file missing on disk: {path.name} (source={resolved_source})",
+            detail=f"no canonical file on disk for {eurio_id}/{role} "
+                   f"(tried sources: {candidates})",
         )
+    _ = chosen_source  # noqa: F841 — kept for future logging/headers
 
     return FileResponse(
         path,
