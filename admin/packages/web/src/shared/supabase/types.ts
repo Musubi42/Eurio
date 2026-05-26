@@ -134,6 +134,15 @@ export interface Coin {
   lent_to_me: boolean
   first_seen: string
   last_updated: string
+  topics?: CoinTopic[]
+}
+
+export interface CoinTopic {
+  source: string       // 'numista_api' | 'bce_official' | …
+  lang: string         // 'fr' | 'en' | 'de' | 'it' | 'es' | 'nl'
+  topic: string
+  method?: string | null    // 'api' | 'scrape' | 'llm_v1' | 'manual'
+  confidence?: string       // 'canon' | 'assisted' | 'uncertain'
 }
 
 export interface CoinSeries {

@@ -40,6 +40,15 @@ export interface CoinDetail {
   has_ebay: boolean
   has_lmdlp: boolean
   has_wikipedia: boolean
+  topics?: CoinTopicDetail[]
+}
+
+export interface CoinTopicDetail {
+  source: string       // 'numista_api' | 'bce_official' | …
+  lang: string
+  topic: string
+  method?: string | null
+  confidence?: string
 }
 
 export interface I18nName {
