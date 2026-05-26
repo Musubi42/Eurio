@@ -82,6 +82,32 @@ type d'objet.
 
 ---
 
+## 2026-05-27 — Théorie 02 (anti-B via Hough on raw) refuted comme signal pur
+
+**Découverte** : sur DE/2 €/2010 (221 assets, 74 raws), `inner_feature_score`
+sature (99 % ≥ 1.3, médian 3.82). Le filtre "circle contient bbox center"
+écarte cat A mais ne distingue pas cat B (vrai inner feature undercrop)
+de cat C (album multi-pièces, où la géométrie garantit un grand cercle
+plausible englobant un bbox). TOP-30 ≈ 13 % cat B, ~70 % cat C → seuil
+80 % loin.
+
+**Cause racine** : un signal géométrique unique sur le raw ne peut pas
+discriminer B vs C — les deux ont un grand cercle Hough et un bbox petit
+à l'intérieur. Même antinomie que `composite × area_ratio` (refuted en
+S3). Pour séparer B et C il faut un attribut externe (lot-flag, count
+de coins détectés, ou OCR digits).
+
+**Impact plan** :
+- S5 marquée ❌ (refuted comme anti-B pur).
+- S6 nouvelle session ajoutée : restreindre `inner_feature_score` aux raws
+  `is_lot_suspected = 0` (singles), re-tester TOP-30 → ≥ 80 % cat B ?
+- Renumérotation S6→S7 (reject auto), S7→S8 (v2 default sort), S8→S9
+  (théorie 03).
+- Si S6 échoue aussi : théorie 02 morte globalement, retour au backlog
+  (OCR anti-A en priorité).
+
+---
+
 ## Template pour futures entrées
 
 ```
