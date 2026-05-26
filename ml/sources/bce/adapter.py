@@ -63,13 +63,21 @@ class _RefCoin:
 
 
 def _slug_score(a: str, b: str) -> float:
-    """Hybride : couverture de tokens + ratio caractère. Aligné avec
-    ``eval.matching.slug_score`` (matcher historique JSON)."""
+    """Score symétrique en couverture de tokens + ratio caractère.
+
+    BCE titres sont verbeux ("550th-anniversary-of-the-death-of-donatello")
+    alors que les slugs cohorte sont compacts ("donatello"). On prend
+    la couverture max sur les deux directions pour ne pas pénaliser
+    la dissymétrie inhérente.
+    """
     if not a or not b:
         return 0.0
     src_tokens = {t for t in a.split("-") if t}
     cand_tokens = {t for t in b.split("-") if t}
-    coverage = (len(src_tokens & cand_tokens) / len(src_tokens)) if src_tokens else 0.0
+    inter = src_tokens & cand_tokens
+    cov_a = (len(inter) / len(src_tokens)) if src_tokens else 0.0
+    cov_b = (len(inter) / len(cand_tokens)) if cand_tokens else 0.0
+    coverage = max(cov_a, cov_b)
     ratio = SequenceMatcher(None, a, b).ratio()
     return max(coverage, ratio * 0.7)
 
@@ -292,8 +300,6 @@ class BceAdapter:
         cands = ref_index.get((country, year), [])
         if not cands:
             return None
-        if len(cands) == 1:
-            return cands[0].eurio_id
         scored = sorted(
             ((_slug_score(theme_slug, c.theme_slug), c) for c in cands),
             key=lambda x: x[0],
