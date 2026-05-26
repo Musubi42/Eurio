@@ -39,24 +39,42 @@ réfléchissant → indiscernable de papier blanc.
 
 → [experiments/03](../experiments/03-anti-a-bg-uniformity.md)
 
-### S5 ⬜ Anti-B dédié — bbox_vs_max_hough_circle (théorie 02)
+### S5 ❌ Anti-B dédié — inner_feature_score (théorie 02)
 
-**Objectif** : tester si "relancer Hough sur le RAW entier et comparer
-au bbox courant" capture cat B (undercrop bimétal).
+Verdict : refuted comme anti-B *pur*.
+
+Scope : DE / 2 € / 2010 (221 assets, 74 raws). Distribution saturée
+(99 % ≥ 1.3). TOP-30 ≈ 13 % cat B (~22 cat C album, ~4 cat B macro,
+~3 cat D, 0 cat A — filtré par "circle contient bbox"). Seuil 80 % loin.
+
+Le filtre ne discrimine pas B vs C : un album multi-pièces a toujours un
+gros cercle plausible englobant un des bboxes par géométrie.
+
+→ [experiments/04](../experiments/04-anti-b-inner-feature.md)
+
+### S6 ⬜ inner_feature_score × NOT is_lot_suspected (théorie 02 conditionnelle)
+
+**Objectif** : restreindre le signal S5 aux raws SINGLE (cat C exclue
+upstream), re-sampler TOP-30. Si cat B y monte ≥ 80 %, la théorie 02 est
+partiellement validée (anti-B uniquement sur singles).
 
 **Setup** :
-- Pour chaque image_asset avec is_undercrop_suspect = True ET composite
-  haut (≥ 0.5), relancer Hough sur le raw.
-- Si le plus gros cercle plausible (radius >= max bbox dim × 1.3) existe,
-  on flag "probable inner feature".
-- Persister `inner_feature_score` dans `crop_scores/{run}_bbox.json`.
+- Lire le sidecar `_inner_de_2010.json`.
+- Joindre `source_images.is_lot_suspected = 0`.
+- TOP 30 et BOTTOM 30 du sous-ensemble single.
 
-**Mesure** : top-30 inner_feature_score → combien sont cat B
-authentiques (bimétal bien cropé sur intérieur) ? Cible ≥ 80 %.
+**Mesure** : top-30 ≥ 80 % cat B authentique ? Si oui : signal viable
+comme post-filter anti-B sur les singles. Si non : théorie 02 morte
+définitivement, passer au backlog (OCR anti-A ou re-rank Hough upstream).
 
-### S6 ⬜ Reject auto à 2 thresholds indépendants
+**Action si win** : intégrer le signal dans `_load_composite_scores` du
+backend bench comme `inner_feature_score` + UI sort/badge.
+**Action si lose** : marquer théorie 02 ❌ globalement, prioriser OCR
+anti-A ou explorer un signal "rim de la pièce" plus direct.
 
-Pré-requis : S4 OU S5 win.
+### S7 ⬜ Reject auto à 2 thresholds indépendants
+
+Pré-requis : S4 OU S5/S6 win.
 
 **Objectif** : poser un `auto_reject_reason` calculé côté backend en
 combinant les 2 signaux :
@@ -67,13 +85,13 @@ combinant les 2 signaux :
 **Pas de modification de la DB** (pas de status auto-rejected) — seulement
 calcul dérivé. Le pipeline ingère, l'orchestrateur affiche.
 
-### S7 ⬜ Adopter v2 comme default sort (au choix)
+### S8 ⬜ Adopter v2 comme default sort (au choix)
 
 Si on veut pousser le tri v2 (composite × area_ratio_factor) dans le
 backend. Petit changement : `_load_composite_scores` lit le sidecar
 `_v2.json` si présent, sinon `.json`. Pas urgent — v1 est déjà OK.
 
-### S8 ⏸ Théorie 03 — area_ratio noisy
+### S9 ⏸ Théorie 03 — area_ratio noisy
 
 Marqué pausée : on a déjà appris en S3 que area_ratio est utile mais
 insuffisant seul. À reprendre seulement si on veut un seuil adaptatif
