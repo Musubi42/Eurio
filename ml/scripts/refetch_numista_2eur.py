@@ -65,10 +65,10 @@ HTTP_TIMEOUT = 20
 # ─── Numista API wrappers (key injected by KeyManager.call) ────────────────
 
 
-def api_type_details(api_key: str, nid: int) -> dict:
+def api_type_details(api_key: str, nid: int, lang: str = "en") -> dict:
     resp = httpx.get(
         f"{API_BASE}/types/{nid}",
-        params={"lang": "en"},
+        params={"lang": lang},
         headers={"Numista-API-Key": api_key},
         timeout=HTTP_TIMEOUT,
     )
@@ -102,11 +102,12 @@ def api_issue_prices(api_key: str, nid: int, iid: int) -> dict:
 
 
 def _cache_paths(cache_dir: Path, nid: int) -> dict[str, Path]:
-    """Layout : {cache_dir}/{nid}/type.json, issues.json, prices_{iid}.json."""
+    """Layout : {cache_dir}/{nid}/type.json, type_fr.json, issues.json, prices_{iid}.json."""
     nid_dir = cache_dir / str(nid)
     return {
         "dir": nid_dir,
         "type": nid_dir / "type.json",
+        "type_fr": nid_dir / "type_fr.json",
         "issues": nid_dir / "issues.json",
     }
 
@@ -139,12 +140,18 @@ def _extract_issues(payload: Any) -> list[dict]:
 
 @dataclass
 class FetchBundle:
-    """Snapshot des 3 endpoints Numista pour un NID."""
+    """Snapshot des 3 endpoints Numista pour un NID.
+
+    ``type_payload`` est en EN (canon historique pour les writers existants).
+    ``type_payload_fr`` est en FR, fetché en plus pour alimenter
+    ``coin_names_i18n`` (titres traduits Numista natifs FR+EN).
+    """
     nid: int
     type_payload: dict
     issues_payload: Any
     # iid -> prices_payload. Vide si --skip-prices ou si pas d'issues.
     prices_by_iid: dict[int, dict] = field(default_factory=dict)
+    type_payload_fr: dict | None = None
 
 
 @dataclass
@@ -200,10 +207,24 @@ class Fetcher:
             self.stats.errors.append((nid, f"meta fetch failed: {e}"))
             return None
 
+        # FR i18n title : 1 extra call par NID, indispensable au theme-matcher
+        # eBay multi-marketplace (cf. project_i18n_strategy memory). EN reste
+        # le canon des autres writers (slug, theme, design). Failure ici n'est
+        # PAS fatal — on garde le bundle EN, l'i18n FR sera ré-essayé au
+        # prochain refetch.
+        type_payload_fr: dict | None = None
+        try:
+            type_payload_fr = self._get_cached_or_fetch(
+                paths["type_fr"], api_type_details, nid, "fr"
+            )
+        except Exception as e:
+            self.stats.errors.append((nid, f"i18n fr fetch failed: {e}"))
+
         bundle = FetchBundle(
             nid=nid,
             type_payload=type_payload,
             issues_payload=issues_payload,
+            type_payload_fr=type_payload_fr,
         )
 
         if skip_prices:
@@ -465,6 +486,7 @@ def _apply_to_db(bundles: dict[int, "FetchBundle"], db_path: Path) -> int:
                 issues=_extract_issues(bundle.issues_payload),
                 prices_by_iid=bundle.prices_by_iid,
                 mint_resolver=mint_resolver,
+                payload_fr=bundle.type_payload_fr,
             )
             conn.execute("COMMIT")
             print(f"  [{nid}] ✓ {slug.eurio_id}")
@@ -486,7 +508,7 @@ def _apply_to_db(bundles: dict[int, "FetchBundle"], db_path: Path) -> int:
         ("mint_release_prices", s.prices), ("coin_market_quotes", s.market_quotes),
         ("coin_canonical_images", s.images), ("coin_credits", s.credits),
         ("coin_observations", s.observations), ("design_groups", s.design_groups),
-        ("coin_variants", s.variants),
+        ("coin_variants", s.variants), ("coin_names_i18n", s.i18n_names),
     ]:
         print(f"    {table:<28} {n:>4}")
     return 0 if total_stats["ok"] else 1
