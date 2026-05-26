@@ -43,8 +43,12 @@ Source = Literal["numista", "bce_comm"]
 # `source` in the DB / observations is the long form (matches source_observations.source).
 # In storage paths we use a short tag because the BCE one is just clutter on disk.
 _SOURCE_FILE_TAG: dict[str, str] = {
-    "numista":  "numista",
-    "bce_comm": "bce",
+    # Legacy long forms (pre-registry doctrine).
+    "numista":      "numista",
+    "bce_comm":     "bce",
+    # Registry ids (post-2026-05-26 BCE-DB-write + Numista refetch SQLite).
+    "numista_api":  "numista",
+    "bce_official": "bce",
 }
 
 

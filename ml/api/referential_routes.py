@@ -60,9 +60,11 @@ def _lookup_source(eurio_id: str, role: str) -> str | None:
         SELECT source FROM coin_canonical_images
         WHERE eurio_id = ? AND role = ?
         ORDER BY CASE source
-                   WHEN 'numista'  THEN 1
-                   WHEN 'bce_comm' THEN 2
-                   WHEN 'unknown'  THEN 3
+                   WHEN 'numista'      THEN 1
+                   WHEN 'numista_api'  THEN 1
+                   WHEN 'bce_comm'     THEN 2
+                   WHEN 'bce_official' THEN 2
+                   WHEN 'unknown'      THEN 3
                    ELSE 9
                  END
         LIMIT 1
@@ -184,7 +186,11 @@ class CanonicalImageEntry(BaseModel):
     file_present: bool
 
 
-_SOURCE_PRIORITY = {"numista": 1, "bce_comm": 2, "unknown": 3}
+_SOURCE_PRIORITY = {
+    "numista": 1, "numista_api": 1,
+    "bce_comm": 2, "bce_official": 2,
+    "unknown": 3,
+}
 _ROLE_PRIORITY = {"obverse": 1, "reverse": 2}
 
 
@@ -195,18 +201,13 @@ _ROLE_PRIORITY = {"obverse": 1, "reverse": 2}
 def coin_canonicals(eurio_id: str) -> list[CanonicalImageEntry]:
     """Toutes les images canoniques disponibles pour ``eurio_id``.
 
-    Hybride DB + filesystem :
-    - Numista (et toute source qui peuple ``coin_canonical_images``) →
-      lecture SQL.
-    - BCE (source-of-truth = fs depuis 2026-05-25) → scan du dossier
-      ``ml/canonical_images/{eurio_id}/*_bce.webp``.
-
-    Consommé par ``CoinDetailPage.vue`` pour afficher Numista et BCE
-    côte-à-côte dans la galerie.
+    Source de vérité : ``coin_canonical_images`` côté SQLite.
+    BCE écrit en DB depuis 2026-05-26 (Chunk 1 V.3 prep), donc plus de
+    FS scan parallèle qui produisait des entrées `bce_comm` doublonnées
+    avec les rows `bce_official` post-doctrine registry.
     """
     found: dict[tuple[str, str], CanonicalImageEntry] = {}
 
-    # ── DB sources (Numista, …) ──────────────────────────────────────────
     conn = _store()._connection()  # noqa: SLF001
     rows = conn.execute(
         "SELECT source, role FROM coin_canonical_images WHERE eurio_id = ?",
@@ -222,29 +223,6 @@ def coin_canonicals(eurio_id: str) -> list[CanonicalImageEntry]:
             thumb_url=f"/referential/canonical/{eurio_id}/{role}/thumb?source={src}",
             file_present=present,
         )
-
-    # ── FS scan (BCE) ────────────────────────────────────────────────────
-    # Pattern: ml/canonical_images/{eurio_id}/{role}_{source_tag}.webp
-    # On accepte tous les rôles présents pour les sources que la DB ne
-    # connaît pas. Pour BCE, le source_tag court côté disque est 'bce'
-    # (cf. coin_image_storage.source_file_tag).
-    from referential.canonical_image_local import canonical_dir_for
-    from referential.coin_image_storage import source_file_tag
-    _FS_SOURCES = {"bce_comm"}  # sources qui vivent uniquement sur disque
-    coin_dir = canonical_dir_for(eurio_id)
-    if coin_dir.is_dir():
-        for src in _FS_SOURCES:
-            tag = source_file_tag(src)
-            for role in ("obverse", "reverse"):
-                webp = coin_dir / f"{role}_{tag}.webp"
-                key = (src, role)
-                if webp.is_file() and key not in found:
-                    found[key] = CanonicalImageEntry(
-                        source=src, role=role,
-                        detail_url=f"/referential/canonical/{eurio_id}/{role}?source={src}",
-                        thumb_url=f"/referential/canonical/{eurio_id}/{role}/thumb?source={src}",
-                        file_present=True,
-                    )
 
     return sorted(
         found.values(),
