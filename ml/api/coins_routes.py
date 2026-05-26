@@ -56,6 +56,14 @@ class CoinImage(BaseModel):
     local_path: str | None = None
 
 
+class CoinTopic(BaseModel):
+    source: str       # 'numista_api' | 'bce_official' | …
+    lang: str         # 'en'|'fr'|'de'|'it'|'es'|'nl'
+    topic: str        # verbose commemorated_topic / BCE feature
+    method: str | None = None      # 'api' | 'scrape' | 'llm_v1' | 'manual'
+    confidence: str = "canon"      # 'canon' | 'assisted' | 'uncertain'
+
+
 class CoinDetail(BaseModel):
     eurio_id: str
     country: str
@@ -75,6 +83,7 @@ class CoinDetail(BaseModel):
     images: list[CoinImage] = Field(default_factory=list)
     cross_refs: dict[str, str] = Field(default_factory=dict)
     sources_used: list[str] = Field(default_factory=list)
+    topics: list[CoinTopic] = Field(default_factory=list)
     has_bce: bool = False
     has_ebay: bool = False
     has_lmdlp: bool = False
@@ -341,6 +350,29 @@ def _build_coin_detail(conn: sqlite3.Connection, eurio_id: str) -> CoinDetail:
         "has_lmdlp":     "lmdlp"        in sources_used,
     }
 
+    # coin_topics — contexte commémoratif verbeux multi-source per lang
+    # (Numista commemorated_topic + BCE feature, en + fr + LLM DE/IT/ES/NL).
+    topic_rows = conn.execute(
+        """
+        SELECT source, lang, topic, method, confidence
+          FROM coin_topics
+         WHERE eurio_id = ?
+         ORDER BY CASE source
+                    WHEN 'numista_api'  THEN 1
+                    WHEN 'bce_official' THEN 2
+                    ELSE 9
+                  END,
+                  CASE lang
+                    WHEN 'fr' THEN 1 WHEN 'en' THEN 2
+                    WHEN 'de' THEN 3 WHEN 'it' THEN 4
+                    WHEN 'es' THEN 5 WHEN 'nl' THEN 6
+                    ELSE 9
+                  END
+        """,
+        (eurio_id,),
+    ).fetchall()
+    topics = [CoinTopic(**dict(r)) for r in topic_rows]
+
     return CoinDetail(
         eurio_id=d["eurio_id"],
         country=d["country"],
@@ -360,6 +392,7 @@ def _build_coin_detail(conn: sqlite3.Connection, eurio_id: str) -> CoinDetail:
         images=images,
         cross_refs=cross_refs,
         sources_used=sources_used,
+        topics=topics,
         **has_flags,
     )
 

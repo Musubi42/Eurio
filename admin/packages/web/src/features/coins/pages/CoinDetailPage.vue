@@ -495,6 +495,23 @@ const crossRefLinks = computed(() => {
   if (refs.bce_comm_url) links.push({ label: 'BCE', url: refs.bce_comm_url })
   return links
 })
+
+// E.6 — Topic picker. Préfère FR puis EN comme lang display canonique.
+// Les autres langs (de/it/es/nl) sont en DB pour le theme matcher eBay
+// mais pas affichées ici (i18n switcher viendra plus tard si besoin).
+type Topic = { source: string; lang: string; topic: string }
+function _pickTopic(topics: Topic[] | undefined, source: string): string | null {
+  if (!topics?.length) return null
+  const candidates = topics.filter((t) => t.source === source)
+  if (!candidates.length) return null
+  for (const lang of ['fr', 'en']) {
+    const hit = candidates.find((t) => t.lang === lang)
+    if (hit) return hit.topic
+  }
+  return candidates[0]?.topic ?? null
+}
+const numistaTopic = computed(() => _pickTopic((coin.value as any)?.topics, 'numista_api'))
+const bceTopic = computed(() => _pickTopic((coin.value as any)?.topics, 'bce_official'))
 </script>
 
 <template>
@@ -605,6 +622,27 @@ const crossRefLinks = computed(() => {
           <p v-if="coin.theme" class="mt-1 font-mono text-sm" style="color: var(--ink-400);">
             {{ formatFaceValue(coin.face_value) }}
           </p>
+          <!-- Topics multi-source (chantier D, E.6) -->
+          <div v-if="numistaTopic || bceTopic" class="mt-4 space-y-3">
+            <div v-if="numistaTopic" class="flex items-start gap-2">
+              <span class="mt-0.5 inline-flex flex-shrink-0 items-center rounded-full border px-2 py-0.5 text-[9px] font-medium uppercase tracking-wider"
+                    style="border-color: var(--indigo-300); color: var(--indigo-600); background: var(--indigo-50);">
+                Numista
+              </span>
+              <p class="text-sm leading-snug" style="color: var(--ink);">
+                {{ numistaTopic }}
+              </p>
+            </div>
+            <div v-if="bceTopic" class="flex items-start gap-2">
+              <span class="mt-0.5 inline-flex flex-shrink-0 items-center rounded-full border px-2 py-0.5 text-[9px] font-medium uppercase tracking-wider"
+                    style="border-color: var(--gold); color: var(--gold-700, var(--gold)); background: var(--gold-50, transparent);">
+                BCE
+              </span>
+              <p class="text-sm leading-snug" style="color: var(--ink);">
+                {{ bceTopic }}
+              </p>
+            </div>
+          </div>
         </div>
 
         <!-- Gold separator -->
