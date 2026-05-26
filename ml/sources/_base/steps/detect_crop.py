@@ -233,12 +233,28 @@ def run_detect_crop(
             if eurio_id:
                 n_auto_phash += 1
 
+            # Reconstruct the source bbox (in raw pixel coords) from the
+            # circle center+radius the normalizer kept. This is what the
+            # crop-forensics view in admin needs to draw the overlay on
+            # the raw image — without it, undercrops are invisible to the
+            # eye. Cf. docs/coin-richness/ chunk crop-forensics + bench
+            # `/runs/{id}/crops` endpoint.
+            bbox_dict: dict[str, float] | None = None
+            if result.r and result.r > 0:
+                bbox_dict = {
+                    "x": float(result.cx - result.r),
+                    "y": float(result.cy - result.r),
+                    "w": float(2 * result.r),
+                    "h": float(2 * result.r),
+                }
+
             upsert_image_asset(
                 conn,
                 ImageAssetRow(
                     id=asset_id,
                     source_image_id=sid,
                     crop_index=crop_index,
+                    bbox=bbox_dict,
                     detection_method=result.method,
                     eurio_id=eurio_id,
                     resolution_status=status,
