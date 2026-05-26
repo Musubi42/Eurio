@@ -18,7 +18,36 @@
   - Bug V1 EMU NID 5054 documenté + figé en test golden.
   - Décision P.3b : **split `source` / `method`** sur `coin_aliases` + `coin_names_i18n` (la colonne `source` mélangeait source et méthode).
   - Mécanique drop+recreate des 6 tables source-aware **déplacée de P.3 vers P.6** (impossible dans `_bootstrap` sans perte de données).
-- ✅ **Session 3 — prep complète** (2026-05-26) : **P.5 + P.6 + P.7 + P.7d + P.9 + P.8** livrés sur branche `coin-richness/p3-schema`. Toute la Phase P est verte (sauf bouclage 4 résidus legacy à P.10). 14 commits. 192/192 tests P-related verts. Validation MCP chrome OK sur admin Vue. Cf. commits `ee6d2ec` (P.5) → `336ad36` (P.8b).
+- ✅ **Session 3 — prep complète + acte destructif + V.1 + V.2** (2026-05-26) :
+  Toute la Phase P + le wipe effectif + V.1 cohorte 19 + V.2 BCE livrés
+  sur branche `coin-richness/p3-schema`. **15 commits** (`ee6d2ec` → `1e50877`).
+  192/192 tests P-related verts. Validation MCP chrome admin OK.
+
+  - **Prep P.5+P.6+P.7+P.9+P.8** : verify backup, wipe script, refetch
+    SQLite-target (scaffold/fetch/transforms/writer/fixtures cohort),
+    archive 12 fichiers legacy, schemas+endpoints+admin Vue refactor.
+  - **WIPE exécuté** (commit `5bb1739`) : 15 476 rows supprimées, 6 tables
+    FK source enforced, backup auto `eurio.db.bak-pre-wipe-2026-05-26T00-19-22Z`.
+    cohort_members CASCADE-deleted (24 rows, accepté).
+  - **V.1 refetch cohorte 19** : 149 calls live (38 cache hits) → 19/19 OK.
+    coins=19, mint_releases=149, prices=391, market_quotes=55, images=38,
+    credits=35, observations=153, design_groups=1 (eu-rome-2007),
+    variants=1 (Bleuet coloured). Plusieurs renames eurio_id capturés
+    (Bremen, Schwerin→Mecklenburg, etc.).
+  - **V.2 BCE branchement** : 22 années scrapées, 12 images promues sur FS
+    pour 12 coins de la cohorte (4 standards exclus, 3 commemos non matchés :
+    Treaty of Rome, Donatello, Plautus — à debugger en P.10).
+  - **Fixes pendant audit** :
+    - P.8b.1 (`77b3569`) — CoinsPage refactoré (avait raté en P.8b initial),
+      nouvel endpoint `GET /coins` paginated.
+    - P.8b.2 (`1e50877`) — `_serve_canonical` avec fallback chain pour
+      trouver thumbnails locales BCE/legacy quand `numista_api` n'a pas de
+      binaire FS.
+  - **Audit visuel validé** : 19 cards, images coexistent Numista+BCE,
+    badge DG sur Treaty of Rome, variant Bleuet, renames cohérents.
+- ⏳ **Session 4 — V.3 + V.4 + P.10** (à venir) : eBay branchement +
+  tour admin final + bouclage 8 fichiers Supabase résiduels +
+  3 commemos BCE non matchés. Cf. `SESSION-KICKOFF-V3-V4.md`.
   - P.5 : `ml/scripts/verify_backup_restore.py` + `go-task ml:verify-backup`. Vert sur backup `eurio.db.bak-pre-p3-2026-05-25` (counts égaux bak↔cur sur 10 tables, integrity_check ok, FK clean, sample query Bremen identique).
   - P.6 : `ml/scripts/wipe_referential.py` (`--dry-run` / `--apply`) + `go-task ml:wipe-referential`. Drop+recreate des 6 tables source-aware avec FK `source → source_registry(id) ON DELETE RESTRICT`. Garde-fou interactif `Type "WIPE"`. Backup auto pré-wipe. Smoke test FK enforcement (savepoint rollback) intégré.
   - Gotcha capturé : `sqlite3.executescript()` commit implicitement la transaction pendante → on split sur `;` et exécute statement par statement en autocommit mode pour préserver le BEGIN IMMEDIATE / COMMIT manuel.
@@ -288,10 +317,10 @@ Wipe la liste actée (cf. §8). NE PAS lancer avant que tous les ✅ du checkpoi
 
 | # | Chunk | Effort | Sortie |
 |---|---|---|---|
-| **V.1** | Refetch Numista cohorte 19 NIDs (`refetch_numista_2eur.py --nids-file ml/state/cohort_validation_19.txt`). ~160-220 calls. Le script lit les NIDs, fait `/coins/{nid}` + `/coins/{nid}/issues` + prices, et **calcule l'eurio_id canonique** via `eurio_id_from_numista_payload`. | ~1 h tournage + 1 h debug | coins + variants + mint_releases + prices Numista + credits + JOUE + design_groups pour 19 coins (eurio_ids = sortie, pas entrée) |
-| **V.2** | Branchement BCE sur la cohorte : `issuing_date` + image canonique → `coin_observations` + `coin_canonical_images` | ~1 h | observations BCE attachées |
-| **V.3** | Branchement eBay : discovery + price_aggregate sur les 19 coins | ~2 h (durée scrape) | `coin_market_quotes` peuplée pour les 19 |
-| **V.4** | **Tour admin par Raphaël** : ouvrir chaque page coin (19), vérifier rendu, divergences multi-source, absence de fallback Supabase, prix affichés, mintage par atelier (Bremen), variant (Bleuet), design_group (Treaty of Rome), JOUE link, designer. **Endpoint admin minimum à décider à ce moment** selon ce qu'il faut voir pour trancher (hypothèse de départ : page détail seule). | ~1 h (visuel) | go/no-go décision |
+| **V.1** | Refetch Numista cohorte 19 NIDs (`refetch_numista_2eur.py --nids-file ml/state/cohort_validation_19.txt`). ~160-220 calls. Le script lit les NIDs, fait `/coins/{nid}` + `/coins/{nid}/issues` + prices, et **calcule l'eurio_id canonique** via `eurio_id_from_numista_payload`. | ~1 h tournage + 1 h debug | ✅ **DONE** 2026-05-26 (commit `5bb1739`). 149 calls live + 38 cache. 19/19 OK. 391 prices, 149 mint_releases. 1 design_group, 1 variant. Renames eurio_id observés. |
+| **V.2** | Branchement BCE sur la cohorte : `issuing_date` + image canonique → `coin_observations` + `coin_canonical_images` | ~1 h | ✅ **DONE partiel** 2026-05-26 (run BCE all-years dans la foulée V.1). 12 images sur FS (4 standards exclus = OK). 3 commemos non matchés (Treaty of Rome, Donatello, Plautus) — fuzzy match BCE à debug en P.10. **Pipeline BCE n'écrit pas en DB** (FS-only) — finding `coin_source_refs.bce_official=0`, à reprendre P.10. |
+| **V.3** | Branchement eBay : discovery + price_aggregate sur les 19 coins | ~2 h (durée scrape) | ⏳ next session |
+| **V.4** | **Tour admin par Raphaël** : ouvrir chaque page coin (19), vérifier rendu, divergences multi-source, absence de fallback Supabase, prix affichés, mintage par atelier (Bremen), variant (Bleuet), design_group (Treaty of Rome), JOUE link, designer. **Endpoint admin minimum à décider à ce moment** selon ce qu'il faut voir pour trancher (hypothèse de départ : page détail seule). | ~1 h (visuel) | 🟡 **partiel 2026-05-26** : audit visuel V.1+V.2 sur Bremen / Treaty of Rome (DG OK) / Bleuet (variant OK) / liste 19 coins / source counts. Tour final post-V.3 (prix eBay). |
 
 ### — GO/NO-GO —
 
