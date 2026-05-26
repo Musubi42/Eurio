@@ -6,7 +6,7 @@ import {
   useTrainedEurioIds,
 } from '@/features/coins/composables/useCoinLookups'
 import { zoneStyle } from '@/features/confusion/composables/useConfusionZone'
-import { supabase } from '@/shared/supabase/client'
+import { fetchCoinsList, patchCoin } from '@/features/coins/composables/useCoinsApi'
 import type { Coin, ConfusionZone, IssueType } from '@/shared/supabase/types'
 import { firstImageUrl, loadCanonicalIndex } from '@/shared/utils/coin-images'
 import { useDebounceFn } from '@vueuse/core'
@@ -100,123 +100,91 @@ async function fetchCoins(search = '', append = false) {
   loading.value = true
   error.value = null
 
-  let q = supabase
-    .from('coins')
-    .select('*', { count: 'exact' })
-
-  if (search.trim()) {
-    const s = search.trim()
-    const clauses = [
-      `eurio_id.ilike.%${s}%`,
-      `theme.ilike.%${s}%`,
-      `country.ilike.${s}`,
-    ]
-    // Exact match on numista_id when the query is purely numeric.
-    if (/^\d+$/.test(s)) {
-      clauses.push(`cross_refs->>numista_id.eq.${s}`)
-    }
-    q = q.or(clauses.join(','))
-  }
-
-  // Apply filters
-  if (filterCountries.value.size > 0) {
-    q = q.in('country', [...filterCountries.value])
-  }
-  if (filterFaceValue.value != null) q = q.eq('face_value', filterFaceValue.value)
-  if (filterCommemo.value != null) q = q.eq('is_commemorative', filterCommemo.value)
-  if (filterNumista.value === 'with') q = q.not('cross_refs->numista_id', 'is', null)
-  if (filterNumista.value === 'without') q = q.is('cross_refs->numista_id', null)
-  if (filterImages.value === 'with') q = q.neq('images', '[]').not('images', 'is', null)
-  if (filterImages.value === 'without') q = q.or('images.eq.[],images.is.null')
-
-  // Multi-source filter — cumulative AND on pre-computed flags.
-  if (filterSources.value.has('numista')) q = q.not('cross_refs->numista_id', 'is', null)
-  if (filterSources.value.has('bce'))       q = q.eq('has_bce', true)
-  if (filterSources.value.has('wikipedia')) q = q.eq('has_wikipedia', true)
-  if (filterSources.value.has('lmdlp'))     q = q.eq('has_lmdlp', true)
-  if (filterSources.value.has('ebay'))      q = q.eq('has_ebay', true)
-
-  // Personal-collection filter — flat boolean column on `coins`.
-  if (filterPersonal.value === 'owned')     q = q.eq('personal_owned', true)
-  if (filterPersonal.value === 'not-owned') q = q.eq('personal_owned', false)
-
-  // Design-group filter — null vs not-null on design_group_id.
-  if (filterDesignGroup.value === 'in-group') q = q.not('design_group_id', 'is', null)
-  if (filterDesignGroup.value === 'solo')     q = q.is('design_group_id', null)
-
-  // Loan filter — coins.lent_to_me boolean.
-  if (filterLent.value === 'lent')     q = q.eq('lent_to_me', true)
-  if (filterLent.value === 'not-lent') q = q.eq('lent_to_me', false)
-
-  // Testable filter — personal_owned OR lent_to_me.
-  if (filterTestable.value === 'yes') q = q.or('personal_owned.eq.true,lent_to_me.eq.true')
-  if (filterTestable.value === 'no')  q = q.eq('personal_owned', false).eq('lent_to_me', false)
-
-  // Training filter — applies trainedEurioIds set fetched from coin_embeddings.
-  // Lazy: fetch the set only if the filter is active and we don't have it yet.
+  // Filtres restrict-by-eurio_ids résolus côté frontend (filtres lazy
+  // training/zone) — on calcule la short-list avant l'appel API.
+  let restrictIds: string[] | undefined
   if (filterTrained.value && trainedEurioIds.value.size === 0) {
-    // Wait for the in-flight Vue Query fetch (or kick one off) before applying.
     await trainedQuery.suspense()
   }
+  if (filterZone.value && confusionZones.value.size === 0) {
+    await zonesQuery.suspense()
+  }
   if (filterTrained.value === 'trained') {
-    const ids = [...trainedEurioIds.value]
-    if (ids.length === 0) {
+    restrictIds = [...trainedEurioIds.value]
+    if (restrictIds.length === 0) {
       coins.value = append ? coins.value : []
       total.value = append ? total.value : 0
       loading.value = false
       return
     }
-    q = q.in('eurio_id', ids)
-  } else if (filterTrained.value === 'not-trained') {
-    const ids = [...trainedEurioIds.value]
-    if (ids.length > 0 && ids.length < 1000) {
-      q = q.not('eurio_id', 'in', `(${ids.map(id => `"${id}"`).join(',')})`)
+  }
+  if (filterZone.value && filterZone.value !== 'unmapped') {
+    const zone = filterZone.value
+    const zoneIds = [...confusionZones.value.keys()].filter(
+      id => confusionZones.value.get(id)?.zone === zone,
+    )
+    if (zoneIds.length === 0) {
+      coins.value = append ? coins.value : []
+      total.value = append ? total.value : 0
+      loading.value = false
+      return
     }
+    restrictIds = restrictIds
+      ? restrictIds.filter(id => zoneIds.includes(id))
+      : zoneIds
   }
 
-  // Zone filter — uses pre-fetched confusionZones map and restricts via .in()/.not.in()
-  // Lazy: only fetch the zone map when this filter is active.
-  if (filterZone.value && confusionZones.value.size === 0) {
-    await zonesQuery.suspense()
-  }
-  if (filterZone.value) {
-    const mapped = [...confusionZones.value.keys()]
+  try {
+    const resp = await fetchCoinsList({
+      fv: filterFaceValue.value ?? undefined,
+      country: filterCountries.value.size > 0 ? [...filterCountries.value] : undefined,
+      commemo: filterCommemo.value != null ? !!filterCommemo.value : undefined,
+      has_numista: filterSources.value.has('numista') ? true
+        : (filterNumista.value === 'with' ? true
+          : filterNumista.value === 'without' ? false : undefined),
+      has_bce: filterSources.value.has('bce') ? true : undefined,
+      has_wikipedia: filterSources.value.has('wikipedia') ? true : undefined,
+      has_lmdlp: filterSources.value.has('lmdlp') ? true : undefined,
+      has_ebay: filterSources.value.has('ebay') ? true : undefined,
+      in_design_group: filterDesignGroup.value === 'in-group' ? true
+        : filterDesignGroup.value === 'solo' ? false : undefined,
+      personal_owned: filterPersonal.value === 'owned' ? true
+        : filterPersonal.value === 'not-owned' ? false : undefined,
+      lent_to_me: filterLent.value === 'lent' ? true
+        : filterLent.value === 'not-lent' ? false : undefined,
+      search: search.trim() || undefined,
+      eurio_ids: restrictIds,
+      offset: offset.value,
+      limit: PAGE,
+    })
+
+    // Post-filtre frontend pour les cas que l'API n'expose pas directement :
+    //   - filterTrained 'not-trained' (complément du set entraîné)
+    //   - filterZone 'unmapped'
+    //   - filterImages, filterTestable (OR composé)
+    let items = resp.items
+    if (filterTrained.value === 'not-trained') {
+      items = items.filter(c => !trainedEurioIds.value.has(c.eurio_id))
+    }
     if (filterZone.value === 'unmapped') {
-      // Coins NOT in confusion map. Avoid huge IN() lists: fallback to no-op if >1k mapped.
-      if (mapped.length > 0 && mapped.length < 1000) {
-        q = q.not('eurio_id', 'in', `(${mapped.map(id => `"${id}"`).join(',')})`)
-      }
-    } else {
-      const zone = filterZone.value
-      const ids = mapped.filter(id => confusionZones.value.get(id)?.zone === zone)
-      if (ids.length === 0) {
-        // Shortcut: no matches → empty list
-        coins.value = append ? coins.value : []
-        total.value = append ? total.value : 0
-        loading.value = false
-        return
-      }
-      q = q.in('eurio_id', ids)
+      items = items.filter(c => !confusionZones.value.has(c.eurio_id))
     }
+    if (filterImages.value === 'with') items = items.filter(c => (c.images?.length ?? 0) > 0)
+    if (filterImages.value === 'without') items = items.filter(c => (c.images?.length ?? 0) === 0)
+    if (filterTestable.value === 'yes') items = items.filter(c => c.personal_owned || c.lent_to_me)
+    if (filterTestable.value === 'no')  items = items.filter(c => !c.personal_owned && !c.lent_to_me)
+
+    if (append) {
+      coins.value = [...coins.value, ...(items as unknown as Coin[])]
+    } else {
+      coins.value = items as unknown as Coin[]
+    }
+    total.value = resp.total
+  } catch (e) {
+    error.value = (e as Error).message
+  } finally {
+    loading.value = false
   }
-
-  q = q
-    .order('country')
-    .order('year', { ascending: false })
-    .order('face_value', { ascending: false })
-    .range(offset.value, offset.value + PAGE - 1)
-
-  const { data, error: err, count } = await q
-
-  loading.value = false
-  if (err) { error.value = err.message; return }
-
-  if (append) {
-    coins.value = [...coins.value, ...(data ?? []) as Coin[]]
-  } else {
-    coins.value = (data ?? []) as Coin[]
-  }
-  total.value = count ?? 0
 }
 
 function loadMore() {
@@ -456,11 +424,7 @@ async function togglePersonal(coin: Coin, event: Event) {
   personalSaving.value = new Set([...personalSaving.value, coin.eurio_id])
 
   try {
-    const { error: err } = await supabase
-      .from('coins')
-      .update({ personal_owned: next })
-      .eq('eurio_id', coin.eurio_id)
-    if (err) throw err
+    await patchCoin(coin.eurio_id, { personal_owned: next })
   } catch (e) {
     // Revert on failure — the user sees the checkbox snap back to
     // its previous state and the error message at the top of the page.
@@ -485,11 +449,7 @@ async function toggleLent(coin: Coin, event: Event) {
   if (idx >= 0) coins.value[idx] = { ...coins.value[idx], lent_to_me: next }
   lentSaving.value = new Set([...lentSaving.value, coin.eurio_id])
   try {
-    const { error: err } = await supabase
-      .from('coins')
-      .update({ lent_to_me: next })
-      .eq('eurio_id', coin.eurio_id)
-    if (err) throw err
+    await patchCoin(coin.eurio_id, { lent_to_me: next })
   } catch (e) {
     if (idx >= 0) coins.value[idx] = { ...coins.value[idx], lent_to_me: prev }
     error.value = `Loan toggle failed: ${(e as Error).message}`

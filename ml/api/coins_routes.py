@@ -23,7 +23,7 @@ import logging
 import sqlite3
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from state import Store
@@ -153,6 +153,112 @@ class CoinSeries(BaseModel):
 class CoinPatch(BaseModel):
     personal_owned: bool | None = None
     lent_to_me: bool | None = None
+
+
+# ── List + filters ────────────────────────────────────────────────────────
+
+
+class CoinListResponse(BaseModel):
+    items: list[CoinDetail]
+    total: int
+
+
+@router.get("", response_model=CoinListResponse)
+def list_coins(
+    fv: float | None = Query(default=None, description="Filter face_value"),
+    country: str | None = Query(default=None, description="CSV ISO2 (ex: 'DE,FR')"),
+    commemo: int | None = Query(default=None, description="0 ou 1"),
+    has_bce: bool | None = None,
+    has_ebay: bool | None = None,
+    has_lmdlp: bool | None = None,
+    has_wikipedia: bool | None = None,
+    has_numista: bool | None = None,
+    in_design_group: bool | None = None,
+    personal_owned: bool | None = None,
+    lent_to_me: bool | None = None,
+    search: str | None = Query(default=None, description="ILIKE eurio_id/theme + numista_id exact"),
+    eurio_ids: str | None = Query(default=None, description="CSV restrict to these eurio_ids"),
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, ge=1, le=1000),
+) -> CoinListResponse:
+    """Liste paginée avec filtres pour CoinsPage.vue (P.8b.1)."""
+    conn = _conn()
+    where: list[str] = []
+    params: list[Any] = []
+
+    if fv is not None:
+        where.append("face_value = ?")
+        params.append(fv)
+    if country:
+        countries = [c.strip() for c in country.split(",") if c.strip()]
+        if countries:
+            placeholders = ",".join("?" * len(countries))
+            where.append(f"country IN ({placeholders})")
+            params.extend(countries)
+    if commemo is not None:
+        where.append("is_commemorative = ?")
+        params.append(1 if commemo else 0)
+    if personal_owned is not None:
+        where.append("personal_owned = ?")
+        params.append(1 if personal_owned else 0)
+    if lent_to_me is not None:
+        where.append("lent_to_me = ?")
+        params.append(1 if lent_to_me else 0)
+    if in_design_group is not None:
+        where.append("design_group_id IS NOT NULL" if in_design_group
+                     else "design_group_id IS NULL")
+
+    has_filter_map = [
+        ("bce_official", has_bce),
+        ("ebay_browse", has_ebay),
+        ("lmdlp", has_lmdlp),
+        ("wikipedia", has_wikipedia),
+    ]
+    for registry_id, want in has_filter_map:
+        if want is None:
+            continue
+        sub = (
+            "EXISTS (SELECT 1 FROM coin_source_refs r WHERE r.target_kind='coin' "
+            "AND r.target_id = c.eurio_id AND r.source = ?)"
+        )
+        where.append(sub if want else f"NOT {sub}")
+        params.append(registry_id)
+
+    if has_numista is not None:
+        sub = (
+            "(c.numista_id IS NOT NULL OR EXISTS (SELECT 1 FROM coin_source_refs r "
+            "WHERE r.target_kind='coin' AND r.target_id=c.eurio_id AND r.source='numista_api'))"
+        )
+        where.append(sub if has_numista else f"NOT {sub}")
+
+    if search:
+        s = search.strip()
+        like = f"%{s}%"
+        clauses = ["c.eurio_id LIKE ?", "c.theme LIKE ?", "c.country = ?"]
+        params.extend([like, like, s])
+        if s.isdigit():
+            clauses.append("c.numista_id = ?")
+            params.append(int(s))
+        where.append("(" + " OR ".join(clauses) + ")")
+
+    if eurio_ids:
+        ids = [e.strip() for e in eurio_ids.split(",") if e.strip()]
+        if ids:
+            placeholders = ",".join("?" * len(ids))
+            where.append(f"c.eurio_id IN ({placeholders})")
+            params.extend(ids)
+
+    where_clause = ("WHERE " + " AND ".join(where)) if where else ""
+    total = conn.execute(
+        f"SELECT COUNT(*) FROM coins c {where_clause}", params,
+    ).fetchone()[0]
+    rows = conn.execute(
+        f"SELECT c.eurio_id FROM coins c {where_clause} "
+        f"ORDER BY c.country, c.year DESC, c.face_value DESC LIMIT ? OFFSET ?",
+        params + [limit, offset],
+    ).fetchall()
+    items = [_build_coin_detail(conn, r[0]) for r in rows]
+    return CoinListResponse(items=items, total=total)
 
 
 # ── Lookups ───────────────────────────────────────────────────────────────
