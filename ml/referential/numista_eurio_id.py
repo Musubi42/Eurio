@@ -146,10 +146,14 @@ def is_commemorative_payload(payload: dict) -> bool:
 
     Precedence :
       1. `commemorated_topic` populated → commemorative
-      2. title contains 'commemorative' → commemorative
-      3. else → standard
+      2. `object_type.name` contains 'commemorative' → commemorative
+      3. title contains 'commemorative' → commemorative
+      4. else → standard
     """
     if payload.get("commemorated_topic"):
+        return True
+    obj_type_name = ((payload.get("object_type") or {}).get("name") or "").lower()
+    if "commemorative" in obj_type_name:
         return True
     title = (payload.get("title") or "").lower()
     if "commemorative" in title:
@@ -197,12 +201,30 @@ def _strip_variant_suffix(text: str) -> str:
     return text
 
 
-def commemo_slug(catalog_name: str) -> str:
-    """Slug for a commemorative coin.
+def commemo_slug(catalog_name: str, commemorated_topic: str | None = None) -> str:
+    """Slug for a commemorative coin — verbose strategy (chantier D, 2026-05-26).
 
-    Strategy : use parenthesized theme if present, else the leading text after
-    stripping '2 Euros [- Ruler]' prefix. Ruler/portrait noise removed.
+    Stratégie :
+    1. Si ``commemorated_topic`` Numista est présent (champ EN), on
+       l'utilise directement (slug verbeux). C'est le canon Numista du
+       contexte commémoratif ("100 years of Independence", "550th
+       Anniversary of the Death of Donatello"). Beaucoup plus distinctif
+       que le `title` court "(Independence)".
+    2. Fallback (topic absent OU vide après slugify) : ancienne logique
+       basée sur le contenu entre parenthèses du title.
+
+    Variant suffix + ruler/portrait noise stripped dans les 2 chemins.
     """
+    if commemorated_topic:
+        cleaned_topic = _strip_variant_suffix(commemorated_topic)
+        cleaned_topic = _NAME_NOISE_RX.sub(" ", cleaned_topic)
+        # Slug verbeux (chantier D 2026-05-26) — no cap. Override le default
+        # 60 chars de slugify pour préserver le contexte complet du topic
+        # ("100th-anniversary-of-the-end-of-the-first-world-war-bleuet-de-france").
+        slug = slugify(cleaned_topic, max_len=200)
+        if slug:
+            return slug
+
     if not catalog_name:
         return "unnamed"
     cleaned = _strip_variant_suffix(catalog_name)
@@ -381,8 +403,9 @@ def eurio_id_from_numista_payload(payload: dict) -> NumistaSlugResult | None:
 
     # 6. Commemo vs Standard → slug strategy
     is_commemo = is_commemorative_payload(payload)
+    commemorated_topic = payload.get("commemorated_topic")
     if is_commemo or ji:  # joint-issues are always commemo
-        slug = commemo_slug(catalog_name)
+        slug = commemo_slug(catalog_name, commemorated_topic)
         eurio_id = f"{country_lower}-{year}-2eur-{slug}"
         is_commemo = True
     else:

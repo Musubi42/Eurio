@@ -108,7 +108,7 @@ def test_coin_row_bremen() -> None:
     assert slug is not None
     row = coin_row(slug, payload)
 
-    assert row["eurio_id"] == "de-2010-2eur-bundeslander-bremen"
+    assert row["eurio_id"] == "de-2010-2eur-state-of-bremen"
     assert row["country"] == "DE"
     assert row["country_name"] == "Germany, Federal Republic of"
     assert row["year"] == 2010
@@ -126,7 +126,7 @@ def test_coin_source_ref_row_bremen() -> None:
     slug = eurio_id_from_numista_payload(payload)
     row = coin_source_ref_row(slug, payload)
     assert row["target_kind"] == "coin"
-    assert row["target_id"] == "de-2010-2eur-bundeslander-bremen"
+    assert row["target_id"] == "de-2010-2eur-state-of-bremen"
     assert row["source"] == NUMISTA_SOURCE
     assert row["source_native_id"] == "10069"
     assert "10069" in row["source_url"]
@@ -161,7 +161,7 @@ def test_mint_release_rows_bremen_15_issues() -> None:
     assert len(rows) == 15
 
     # Tous parent_type_id = eurio_id
-    assert {r["parent_type_id"] for r in rows} == {"de-2010-2eur-bundeslander-bremen"}
+    assert {r["parent_type_id"] for r in rows} == {"de-2010-2eur-state-of-bremen"}
 
     # Tous mint_year = 2010
     assert {r["mint_year"] for r in rows} == {2010}
@@ -183,7 +183,7 @@ def test_mint_release_rows_bremen_15_issues() -> None:
     ids = [r["id"] for r in rows]
     assert len(set(ids)) == 15
     for r in rows:
-        assert r["id"].startswith("de-2010-2eur-bundeslander-bremen/numista-")
+        assert r["id"].startswith("de-2010-2eur-state-of-bremen/numista-")
 
 
 def test_mint_release_rows_circ_atelier_a_mintage_6m() -> None:
@@ -232,7 +232,7 @@ def test_coin_market_quote_rows_bremen_aggregation() -> None:
     """
     prices = _bremen_prices_by_iid()
     rows = coin_market_quote_rows(
-        "de-2010-2eur-bundeslander-bremen",
+        "de-2010-2eur-state-of-bremen",
         prices,
         period_start="2026-05-26",
     )
