@@ -54,6 +54,20 @@ RATE_LIMIT_SEC = 1.0
 _SNAPSHOTS_DIR = Path(__file__).resolve().parents[2] / "datasets" / "sources"
 
 
+# Overrides manuels (country, year, bce_slug) → eurio_id pour les BCE
+# entries dont le vocabulaire diverge trop du slug Numista pour matcher
+# en fuzzy. P10 (2026-05-26) : 2 cas de translation BCE vs Numista, +
+# 1 cas hors-portée (Treaty of Rome = joint-issue absent de la page BCE
+# par-pays, géré sur une page séparée non scrapée).
+MANUAL_BCE_OVERRIDES: dict[tuple[str, int, str], str] = {
+    # BCE → Eurio
+    ("DE", 2020, "the-50th-anniversary-of-willy-brandts-kniefall-von-warschau"):
+        "de-2020-2eur-german-polish-reconciliation",
+    ("IT", 2016, "2200th-anniversary-of-the-death-of-tito-maccio-plauto"):
+        "it-2016-2eur-2200th-anniversary-of-the-death-of-plautus",
+}
+
+
 @dataclass(frozen=True)
 class _RefCoin:
     eurio_id: str
@@ -297,6 +311,16 @@ class BceAdapter:
         year: int,
         theme_slug: str,
     ) -> str | None:
+        # Override manuel — court-circuit le fuzzy quand la translation
+        # BCE/Numista diverge trop (cf. MANUAL_BCE_OVERRIDES). On vérifie
+        # que l'eurio_id existe encore dans le référentiel courant pour
+        # éviter de cibler un coin renamed/supprimé.
+        override = MANUAL_BCE_OVERRIDES.get((country, year, theme_slug))
+        if override is not None:
+            cands = ref_index.get((country, year), [])
+            if any(c.eurio_id == override for c in cands):
+                return override
+
         cands = ref_index.get((country, year), [])
         if not cands:
             return None

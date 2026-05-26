@@ -84,6 +84,24 @@
     - Stretch cleanup : 1882 image_assets + 71 source_images
       pré-V.3 non-orphelins encore en DB (incl. A3)
 
+- ✅ **Session 5d — P10 BCE manual overrides** (2026-05-26 suite) :
+  BCE coverage cohorte 2€ commémo : 12/15 → **14/15** (+2 fixes).
+  - `sources/bce/adapter.py` : nouveau `MANUAL_BCE_OVERRIDES` dict
+    `(country, year, bce_slug) → eurio_id`, court-circuit du fuzzy
+    `_match_entry` quand la translation BCE/Numista diverge trop. Avec
+    garde-fou : on saute l'override si l'eurio_id targeté n'existe
+    plus dans le référentiel courant (évite FK errors après rename).
+  - 2 entries ajoutées :
+    - DE 2020 : `the-50th-anniversary-of-willy-brandts-kniefall-von-warschau` → `de-2020-2eur-german-polish-reconciliation`
+    - IT 2016 : `2200th-anniversary-of-the-death-of-tito-maccio-plauto` → `it-2016-2eur-2200th-anniversary-of-the-death-of-plautus`
+  - **Hors portée** : `de-2007-2eur-50th-anniversary-of-the-treaty-of-rome`
+    n'est pas listé sur `comm_2007.en.html` (joint-issue → page BCE
+    séparée non scrapée). Coverage finale 14/15 attendue tant qu'on ne
+    branche pas un scraper joint-issues dédié.
+  - `tests/test_bce_adapter.py` (7 tests) : fuzzy single-candidate,
+    no-candidate, score-floor, override kniefall, override plautus,
+    bypass override si eurio_id absent, sanity keys.
+
 - ✅ **Session 5c — P10-G DINO anchor bank rebuild** (2026-05-26 suite) :
   `go-task ml:dino-anchors:build -- --force` sur `kind=2eur_commemo`.
   Bank passe de 376 anchors pré-V.1 (cohorte legacy avec slugs renamed)
