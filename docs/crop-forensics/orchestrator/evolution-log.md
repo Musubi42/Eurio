@@ -108,6 +108,34 @@ de coins détectés, ou OCR digits).
 
 ---
 
+## 2026-05-27 — Théorie 02 morte aussi sur singles (S6 refuted)
+
+**Découverte** : sur les vrais singles DE/2010 (`n_crops_detected=1`,
+30 raws), TOP-30 de `inner_feature_score` ≈ 33-40 % cat B fort. Filtre
+`is_lot_suspected=0` (167 raws) inutile car les collector folders ne
+sont pas flaggés `lot`. Le signal corrèle visuellement avec l'undercrop
+général mais ne discrimine pas cat B (inner ring bimétal) de cat D
+(single coin tight crop) ni de mild undercrop.
+
+**Cause racine** : `inner_feature_score` mesure "y a-t-il un cercle plus
+gros que le bbox dans le raw" — c'est saturé sur les macros (zoom fort
+sur la pièce → toujours un grand cercle contient le bbox). Pour
+discriminer cat B strict il faudrait mesurer "y a-t-il un rim
+circulaire à un radius > bbox_radius mais non capturé par le crop" —
+plus sophistiqué.
+
+**Impact plan** :
+- S6 marquée ❌.
+- Théorie 02 archivée globalement (refuted en post-filter ; reste
+  viable en upstream re-rank Hough mais hors-scope).
+- Sessions S10 (OCR anti-A) et S11 (décision produit) ajoutées comme
+  options de continuation.
+- Toutes les théories single-signal post-filter ont échoué (01 et 02).
+  Insight clé : la séparation A/B/C/D pourrait nécessiter soit un
+  upstream fix, soit un classifier supervisé léger.
+
+---
+
 ## Template pour futures entrées
 
 ```

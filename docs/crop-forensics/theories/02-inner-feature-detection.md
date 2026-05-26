@@ -45,4 +45,20 @@ marchaient). Test A/B nécessaire sur un set.
 
 ## Statut
 
-`pending`.
+❌ **Refuted comme post-filter** (S5 + S6, 2026-05-27).
+
+- S5 (full DE/2010, 221 assets) : TOP-30 ≈ 13 % cat B authentique,
+  dominé par cat C album. → [experiments/04](../experiments/04-anti-b-inner-feature.md)
+- S6 (true singles, n_crops_detected=1, 30 raws) : signal plus propre
+  mais TOP-30 cat B fort ≈ 33-40 %. Loin du seuil 80 %.
+  → [experiments/05](../experiments/05-anti-b-inner-feature-singles.md)
+
+Cause racine : le ratio max-circle/bbox est saturé sur tout macro shot
+(zoom fort → grand cercle plausible toujours trouvable). Pour
+discriminer cat B strict, il faudrait un signal "rim manquante à un
+radius > bbox" plutôt qu'une simple comparaison de tailles.
+
+Le fix prédit (re-rank Hough candidates *upstream* dans
+`_hough_refine_in_roi`) reste théoriquement viable mais hors-scope
+"post-filter pur" — à reprendre seulement si on autorise des modifs
+producer.
