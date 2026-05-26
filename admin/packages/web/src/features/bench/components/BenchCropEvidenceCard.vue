@@ -52,36 +52,66 @@ const areaPct = computed(() => {
       undercrop suspect
     </div>
 
-    <!-- Raw image with bbox overlay -->
+    <!-- Raw image with bbox overlay.
+
+         Important : la bbox est exprimée en % du raw NATIVE (raw_width ×
+         raw_height). Si on l'overlay sur un conteneur square avec image
+         object-fit: contain, les % seraient calculés du carré (faux quand
+         raw ≠ square). Solution : inner-frame `aspect-ratio: raw_w/raw_h`
+         centré dans le stage square, qui contient image + overlay en
+         position absolue. Les % matchent alors exactement les pixels du
+         raw, peu importe la forme. -->
     <div class="card__stage">
-      <img
-        v-if="rawUrl && !rawBroken"
-        :src="rawUrl"
-        class="card__raw"
-        loading="lazy"
-        alt="raw eBay"
-        @error="rawBroken = true"
-      />
+      <div v-if="rawUrl && !rawBroken && card.raw_width && card.raw_height"
+           class="card__frame"
+           :style="{ aspectRatio: `${card.raw_width} / ${card.raw_height}` }">
+        <img
+          :src="rawUrl"
+          class="card__raw"
+          loading="lazy"
+          alt="raw eBay"
+          @error="rawBroken = true"
+        />
+        <!-- Outside mask : 4 div sombres pour assombrir tout sauf la bbox.
+             Beaucoup plus lisible qu'un simple bord, surtout sur les photos
+             d'album denses (eBay) où la bbox se perd visuellement. -->
+        <template v-if="card.bbox_pct">
+          <div class="card__mask"
+               :style="{ top: 0, left: 0, width: '100%',
+                         height: `${card.bbox_pct.y}%` }"></div>
+          <div class="card__mask"
+               :style="{ top: `${card.bbox_pct.y}%`,
+                         left: 0, width: `${card.bbox_pct.x}%`,
+                         height: `${card.bbox_pct.h}%` }"></div>
+          <div class="card__mask"
+               :style="{ top: `${card.bbox_pct.y}%`,
+                         left: `${card.bbox_pct.x + card.bbox_pct.w}%`,
+                         right: 0,
+                         height: `${card.bbox_pct.h}%` }"></div>
+          <div class="card__mask"
+               :style="{ top: `${card.bbox_pct.y + card.bbox_pct.h}%`,
+                         left: 0, width: '100%', bottom: 0 }"></div>
+
+          <!-- Bbox border (highlight box) -->
+          <div
+            class="card__bbox"
+            :class="{ 'card__bbox--warn': card.is_undercrop_suspect }"
+            :data-dims="dims"
+            :style="{
+              left: `${card.bbox_pct.x}%`,
+              top: `${card.bbox_pct.y}%`,
+              width: `${card.bbox_pct.w}%`,
+              height: `${card.bbox_pct.h}%`,
+            }"
+          ></div>
+        </template>
+      </div>
       <div v-else class="card__fallback">
         <ImageOff class="h-7 w-7" style="color: var(--ink-300);" />
         <span class="text-[10px]" style="color: var(--ink-400);">raw absent</span>
       </div>
 
-      <!-- Bbox overlay (only if pct known) -->
-      <div
-        v-if="card.bbox_pct"
-        class="card__bbox"
-        :class="{ 'card__bbox--warn': card.is_undercrop_suspect }"
-        :data-dims="dims"
-        :style="{
-          left: `${card.bbox_pct.x}%`,
-          top: `${card.bbox_pct.y}%`,
-          width: `${card.bbox_pct.w}%`,
-          height: `${card.bbox_pct.h}%`,
-        }"
-      ></div>
-
-      <!-- Crop result chip in bottom-right -->
+      <!-- Crop result chip in bottom-right (positionné sur le stage, pas le frame) -->
       <div class="card__crop-chip" :title="`crop ${card.crop_width ?? '?'}×${card.crop_height ?? '?'}`">
         <span class="card__crop-chip-arrow">→</span>
         <img
@@ -187,10 +217,21 @@ const areaPct = computed(() => {
   padding-top: 22px;
 }
 
+/* Inner frame : porte l'aspect-ratio du raw natif, centré dans le stage.
+   max-w/h: 100% garantit qu'on rentre dans le stage square. bbox % sont
+   exacts par rapport à ce frame. */
+.card__frame {
+  position: relative;
+  max-width: 100%;
+  max-height: 100%;
+  display: flex;
+  /* aspect-ratio inline (raw_w/raw_h) injecté côté Vue. */
+}
 .card__raw {
-  width: 88%;
-  height: 88%;
-  object-fit: contain;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;  /* le frame a déjà l'aspect du raw → fill = pas de distortion */
   filter: drop-shadow(0 4px 12px rgba(14, 14, 31, 0.14));
 }
 .card__fallback {
@@ -200,36 +241,44 @@ const areaPct = computed(() => {
   gap: 4px;
 }
 
+/* Masque assombri à l'extérieur de la bbox — style outils CV pro. */
+.card__mask {
+  position: absolute;
+  background: rgba(14, 14, 31, 0.62);
+  pointer-events: none;
+}
+
 .card__bbox {
   position: absolute;
   pointer-events: none;
-  border: 1.5px dashed var(--gold-300);
-  box-shadow: 0 0 0 1px rgba(14, 14, 31, 0.18),
-              0 0 18px rgba(200, 168, 100, 0.4);
-  border-radius: 2px;
+  border: 2px solid var(--gold-300);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55),
+              inset 0 0 0 1px rgba(0, 0, 0, 0.55);
+  border-radius: 1px;
 }
 .card__bbox--warn {
-  border-color: var(--danger);
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.4),
-              0 0 22px rgba(209, 67, 67, 0.55);
+  border-color: #FF5959;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55),
+              inset 0 0 0 1px rgba(0, 0, 0, 0.55);
 }
 .card__bbox::after {
   content: attr(data-dims);
   position: absolute;
-  top: -18px;
-  left: 0;
-  padding: 1px 5px;
+  top: -20px;
+  left: -1px;
+  padding: 2px 6px;
   font-family: var(--font-mono);
-  font-size: 9px;
-  color: var(--gold-700);
-  background: var(--surface);
-  border-radius: 3px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--ink);
+  background: var(--gold-300);
+  border-radius: 3px 3px 3px 0;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
   white-space: nowrap;
 }
 .card__bbox--warn::after {
-  color: var(--danger);
-  font-weight: 600;
+  color: var(--surface);
+  background: #FF5959;
 }
 
 .card__crop-chip {
