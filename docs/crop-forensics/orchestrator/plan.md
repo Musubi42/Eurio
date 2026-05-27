@@ -121,6 +121,41 @@ Après S5+S6 refuted, théorie 02 morte, théorie 01 morte. Reste :
 le chantier, ou (c) on pivote vers un classifier ML léger
 (cat A/B/C/D) entraîné sur des labels Raphaël manuels.
 
+### S12 ✅ Claude vision comme juge — sweep format ablation
+
+Bench Claude Sonnet 4.6 via `ccproxy` sur une cohorte handpicked
+DE/2010 (30 assets) pour mesurer impact `margin_frac × edge_mode ×
+output_size` sur la qualité perçue.
+
+**Livré** :
+- `ml/scripts/crop_exp/cohort_selector.py` : HTML selector + auto-balance
+- `ml/scripts/crop_exp/ccproxy_judge.py` : sous-commandes
+  `smoke` / `test --cohort` / `compare --tests`, schéma JSON multi-axes,
+  markdown de suivi auto-update par cohorte.
+- 9 tests (T01-T09) sur la cohorte, $3.70 total ~30 min wall.
+- Audit indépendant (chunk 13) qui ré-analyse les 9 sidecars sans biais
+  d'auteur — `judge_tests/de2010-handpicked-2026-05-27/AUDIT_AGENT_INDEPENDANT.md`.
+
+**Verdict** : ⚠️ **Refuted comme arbitre du choix format crop**.
+- Bruit floor du juge : 10 % cat, 30 % margin, 5-7/30 face flips en
+  replay strict (T06 vs T01, T08 vs T02).
+- Le signal apparent T02 vs T01 (+4 ok margin) est NOYÉ dans le bruit
+  ±9 sur l'axe margin.
+- T07 edge=none = artefact (juge perd contexte multi-pièces), pas une
+  vraie découverte.
+- T09 output=192 régresse — 224 reste sweet spot.
+
+**Outils gardés** : l'infra `ccproxy_judge` reste utile pour
+**tri éditorial cat A/B/C/D ad-hoc** (10 % bruit acceptable hors décisions
+fines de format) et **audit ponctuel** de nouveaux scrapes eBay.
+
+**Décision format crop** : déléguée au **chantier ablation GPU
+mix-zone-17** (340 captures device + sweep `sweep_ablation.py`). Voir
+`docs/cohort-capture-ablation.md` + `docs/roadmap.md` §"Chantier
+ablation format crop".
+
+→ [experiments not committed — voir `judge_tests/de2010-handpicked-2026-05-27/`]
+
 ## Backlog (idées non-priorisées)
 
 - OCR léger sur la bbox pour détecter cat A (digits = strip) — voir S10
