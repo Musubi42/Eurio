@@ -235,7 +235,9 @@ def load_image_b64(path: Path, max_short_side: int | None = None) -> tuple[str, 
     return base64.b64encode(buf.getvalue()).decode(), "image/jpeg"
 
 
-def recrop_with_margin(pair: Pair, margin_frac: float, edge_mode: str = "hard") -> bytes:
+def recrop_with_margin(pair: Pair, margin_frac: float,
+                       edge_mode: str = "hard",
+                       output_size: int = 224) -> bytes:
     """Re-crop le raw avec un margin_frac alternatif, en réutilisant le
     bbox du producer (isole la variable margin de la détection). Retourne
     les bytes PNG du nouveau crop."""
@@ -249,10 +251,10 @@ def recrop_with_margin(pair: Pair, margin_frac: float, edge_mode: str = "hard") 
     bbox = pair.bbox
     cx = int(bbox["x"] + bbox["w"] / 2.0)
     cy = int(bbox["y"] + bbox["h"] / 2.0)
-    # bbox.w = 2 * r_rim * (1 + PRODUCER_MARGIN_FRAC) → r_rim = w / 2 / 1.02
     r_rim = int(round(bbox["w"] / 2.0 / (1.0 + PRODUCER_MARGIN_FRAC)))
 
-    cfg = CropConfig(margin_frac=margin_frac, edge_mode=edge_mode, output_size=224)
+    cfg = CropConfig(margin_frac=margin_frac, edge_mode=edge_mode,
+                     output_size=output_size)
     res = _crop_mask_resize_int(bgr, cx, cy, r_rim, method="recrop", config=cfg)
     if res.image is None:
         raise RuntimeError(f"recrop failed : {res.debug}")
@@ -267,7 +269,9 @@ def recrop_with_margin(pair: Pair, margin_frac: float, edge_mode: str = "hard") 
 # ---------------------------------------------------------------------------
 
 def build_user_content(pairs: list[Pair],
-                       recrop_margin: float | None = None) -> tuple[list[dict], str]:
+                       recrop_margin: float | None = None,
+                       edge_mode: str = "hard",
+                       output_size: int = 224) -> tuple[list[dict], str]:
     """Construit la liste content (alternance image raw / image crop /
     finalement texte). Retourne (content, user_text).
 
@@ -279,7 +283,9 @@ def build_user_content(pairs: list[Pair],
     for i, p in enumerate(pairs, start=1):
         raw_b64, raw_media = load_image_b64(p.raw_path, MAX_RAW_SHORT_SIDE)
         if recrop_margin is not None:
-            crop_bytes = recrop_with_margin(p, recrop_margin)
+            crop_bytes = recrop_with_margin(p, recrop_margin,
+                                             edge_mode=edge_mode,
+                                             output_size=output_size)
             crop_b64 = base64.b64encode(crop_bytes).decode()
             crop_media = "image/png"
         else:
@@ -315,8 +321,10 @@ def build_user_content(pairs: list[Pair],
     return content, user_text
 
 
-def call_ccproxy(pairs: list[Pair], recrop_margin: float | None = None) -> dict:
-    content, _ = build_user_content(pairs, recrop_margin=recrop_margin)
+def call_ccproxy(pairs: list[Pair], recrop_margin: float | None = None,
+                  edge_mode: str = "hard", output_size: int = 224) -> dict:
+    content, _ = build_user_content(pairs, recrop_margin=recrop_margin,
+                                     edge_mode=edge_mode, output_size=output_size)
     payload = {
         "model": MODEL,
         "messages": [
@@ -442,10 +450,14 @@ HTML_TPL = """<!DOCTYPE html>
 
 
 def render_pair_html(pair: Pair, verdict: dict | None,
-                     recrop_margin: float | None = None) -> str:
+                     recrop_margin: float | None = None,
+                     edge_mode: str = "hard",
+                     output_size: int = 224) -> str:
     raw_b64, raw_media = load_image_b64(pair.raw_path, MAX_RAW_SHORT_SIDE)
     if recrop_margin is not None:
-        crop_bytes = recrop_with_margin(pair, recrop_margin)
+        crop_bytes = recrop_with_margin(pair, recrop_margin,
+                                         edge_mode=edge_mode,
+                                         output_size=output_size)
         crop_b64 = base64.b64encode(crop_bytes).decode()
         crop_media = "image/png"
     else:
@@ -494,10 +506,14 @@ def render_pair_html(pair: Pair, verdict: dict | None,
 def write_html_debug(out_path: Path, *, title: str, pairs: list[Pair],
                      verdicts: list[dict] | None, raw_response: str,
                      user_text: str, usage: dict, latency_s: float,
-                     recrop_margin: float | None = None) -> None:
+                     recrop_margin: float | None = None,
+                     edge_mode: str = "hard",
+                     output_size: int = 224) -> None:
     pairs_html = "\n".join(
         render_pair_html(p, (verdicts[i] if verdicts else None),
-                          recrop_margin=recrop_margin)
+                          recrop_margin=recrop_margin,
+                          edge_mode=edge_mode,
+                          output_size=output_size)
         for i, p in enumerate(pairs)
     )
     meta = (
@@ -680,9 +696,14 @@ def cmd_test(args: argparse.Namespace) -> int:
     for bi in range(n_batches):
         batch = pairs[bi * args.batch_size:(bi + 1) * args.batch_size]
         try:
-            _, user_text = build_user_content(batch, recrop_margin=args.recrop_margin)
+            _, user_text = build_user_content(
+                batch, recrop_margin=args.recrop_margin,
+                edge_mode=args.edge_mode, output_size=args.output_size,
+            )
             last_user_text = user_text
-            resp = call_ccproxy(batch, recrop_margin=args.recrop_margin)
+            resp = call_ccproxy(batch, recrop_margin=args.recrop_margin,
+                                edge_mode=args.edge_mode,
+                                output_size=args.output_size)
             verdicts = parse_response(resp["raw_text"], batch)
             for p, v in zip(batch, verdicts):
                 v["asset_id"] = p.asset_id
@@ -713,6 +734,7 @@ def cmd_test(args: argparse.Namespace) -> int:
         "params": {
             "recrop_margin": args.recrop_margin,
             "edge_mode": args.edge_mode,
+            "output_size": args.output_size,
             "batch_size": args.batch_size,
             "model": MODEL,
         },
@@ -740,6 +762,8 @@ def cmd_test(args: argparse.Namespace) -> int:
         usage=last_usage,
         latency_s=total_latency,
         recrop_margin=args.recrop_margin,
+        edge_mode=args.edge_mode,
+        output_size=args.output_size,
     )
     print(f"[test] html    → {html_out}")
 
@@ -946,6 +970,8 @@ def main() -> int:
     sp.add_argument("--recrop-margin", type=float, default=None,
                     help="margin_frac alternatif pour re-crop. Si absent: crops legacy MinIO.")
     sp.add_argument("--edge-mode", choices=["hard", "feathered", "none"], default="hard")
+    sp.add_argument("--output-size", type=int, default=224,
+                    help="Taille du crop carré final (default 224).")
     sp.add_argument("--batch-size", type=int, default=10)
 
     sp = sub.add_parser("compare")
