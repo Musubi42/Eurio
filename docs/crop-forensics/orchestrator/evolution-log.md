@@ -136,6 +136,49 @@ plus sophistiqué.
 
 ---
 
+## 2026-05-27 — Claude vision comme juge format crop : refuted comme arbitre fin
+
+**Découverte** : sur 9 tests (T01-T09) menés avec une cohorte handpicked
+DE/2010 (30 assets) via `ccproxy_judge`, le bruit floor du juge Claude
+Sonnet 4.6 est :
+- 10 % sur la catégorie (3/30 verdicts varient en replay strict)
+- 30 % sur `margin_assessment` (9/30 — axe quasi-inutilisable seul)
+- 5-7/30 face flips entre replays — l'axe binaire le plus "objectif" varie
+  aussi.
+
+L'amélioration apparente T02 (margin 0.10) vs T01 (margin 0.02) = +4 ok est
+**dans le bruit ±9** mesuré par T06 (replay T01) et T08 (replay T02).
+T07 edge=none change radicalement la classif (D 6→11) mais c'est un
+artefact : le juge perd le contexte multi-pièces quand on retire le mask,
+pas une vraie amélioration. T09 output_size=192 régresse nettement.
+
+**Cause racine** : Claude vision est puissant pour la classification
+grossière (A/B/C/D distinguables), mais sa variance entre replays masque
+les deltas fins de format crop. La méthodologie n=30 + k=1 est sous-
+dimensionnée pour des décisions où le gain attendu < ~15 % des verdicts.
+
+**Audit indépendant** : un agent général-purpose lancé avec system prompt
+= mission produit Eurio + accès aux 9 sidecars JSON (sans contexte de la
+session) a confirmé le verdict. Rapport :
+`ml/state/crop_scores/judge_tests/de2010-handpicked-2026-05-27/AUDIT_AGENT_INDEPENDANT.md`.
+
+**Impact plan** :
+- Sous-chantier "Claude juge format ablation" marqué ⚠️ refuted dans
+  plan.md (S12).
+- `CropConfig.margin_frac=0.02` legacy reste défaut Python — PAS de
+  cutover sur cette base seule.
+- Décision format crop **déléguée au chantier ablation GPU mix-zone-17**
+  (340 captures device + sweep 12 combos sur GPU 1080 Ti). Plan opérationnel
+  `docs/cohort-capture-ablation.md` + `docs/roadmap.md` § "Chantier
+  ablation format crop".
+- Infrastructure `ccproxy_judge` gardée comme outil utile pour : tri
+  éditorial cat A/B/C/D ad-hoc, audit qualité ponctuel de nouveaux scrapes,
+  exploration cas-limites visuels.
+- **Méthodologie pour futurs tests juge** : k≥3 replays par condition,
+  n≥100 assets, val-set ArcFace étiqueté comme ground truth secondaire.
+
+---
+
 ## Template pour futures entrées
 
 ```
