@@ -139,6 +139,12 @@ fun Coin3DViewer(
     flipKey: Any? = null,
     /** Live PBR/exposure overrides — defaults reproduce the static rendering. */
     tuning: Coin3DTuning = Coin3DTuning.Default,
+    /**
+     * If `false`, Filament clears with transparent background and the skybox is
+     * dropped so the parent composable's background shows through. Used by the
+     * dev carousel so the flip rotation doesn't drag a visible black tile.
+     */
+    isOpaque: Boolean = true,
 ) {
     val context = LocalContext.current
     val engine = rememberEngine()
@@ -318,11 +324,12 @@ fun Coin3DViewer(
         },
         engine = engine,
         view = view,
+        isOpaque = isOpaque,
         cameraManipulator = rememberCameraManipulator(
             orbitHomePosition = Position(x = 0f, y = 0f, z = 80f),
             targetPosition = Position(0f, 0f, 0f),
         ),
-        environment = rememberEnvironment(environmentLoader),
+        environment = rememberEnvironment(environmentLoader, isOpaque = isOpaque),
         // Front key — proto's main light (intensity ratio 1.4 vs back's 1.0).
         mainLightNode = rememberMainLightNode(engine) {
             intensity = 110_000f

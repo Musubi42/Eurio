@@ -29,7 +29,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun DebugBarLauncher(
     modifier: Modifier = Modifier,
-    onStartBenchProtocol: (() -> Unit)? = null,
+    onOpenDevTool: ((DevTool) -> Unit)? = null,
 ) {
     var showSheet by rememberSaveable { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
@@ -51,11 +51,11 @@ fun DebugBarLauncher(
                 scope.launch { sheetState.hide() }
                 showSheet = false
             },
-            onStartBenchProtocol = onStartBenchProtocol?.let {
-                {
+            onOpenDevTool = onOpenDevTool?.let { handler ->
+                { tool ->
                     scope.launch { sheetState.hide() }
                     showSheet = false
-                    it()
+                    handler(tool)
                 }
             },
         )

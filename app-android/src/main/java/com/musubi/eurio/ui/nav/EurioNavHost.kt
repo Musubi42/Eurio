@@ -28,6 +28,14 @@ import com.musubi.eurio.features.coffre.CoffreViewModel
 import com.musubi.eurio.features.coindetail.CoinDetailScreen
 import com.musubi.eurio.features.coindetail.CoinDetailViewModel
 import com.musubi.eurio.features.dev.Coin3DSandboxScreen
+import com.musubi.eurio.features.dev.bench.BenchProtocolScreen
+import com.musubi.eurio.features.dev.bench.BenchProtocolViewModel
+import com.musubi.eurio.features.dev.capture.CaptureScreen
+import com.musubi.eurio.features.dev.capture.CaptureViewModel
+import com.musubi.eurio.features.dev.carousel.CarouselScreen
+import com.musubi.eurio.features.dev.carousel.CarouselViewModel
+import com.musubi.eurio.features.dev.photo.PhotoScreen
+import com.musubi.eurio.features.dev.photo.PhotoViewModel
 import com.musubi.eurio.features.onboarding.OnboardingScreen
 import com.musubi.eurio.features.onboarding.OnboardingViewModel
 import com.musubi.eurio.features.profil.ProfileViewModel
@@ -78,18 +86,26 @@ fun EurioNavHost(
                     setRepository = app.setRepository,
                     onAppEvent = app::emitEvent,
                     vaultCaptureRepository = app.vaultCaptureRepository,
-                    applicationContext = app.applicationContext,
+                    benchRecorder = app.benchRecorder,
                 ),
             )
 
-            // Bind the analyzer → VM callback BEFORE ScanScreen composes
-            // (CameraPreview starts CameraX in AndroidView.factory, which
-            // runs during composition — the delegate must be ready by then).
-            remember(scanVm) {
-                app.scanCallbackRelay.delegate = scanVm::onScanResult
-            }
+            // Bind the analyzer → VM callback à chaque ré-entrée. DisposableEffect
+            // (pas remember) parce que ScanScreen peut quitter+revenir en gardant
+            // le même scanVm (retour depuis /dev/* via popBackStack restaure le
+            // NavBackStackEntry et son ViewModelStoreOwner), et `remember(scanVm)`
+            // ne re-exécuterait pas son block dans ce cas. Le check `===` au
+            // onDispose évite d'effacer un delegate déjà pris par une autre route
+            // pendant la transition de nav (cas /scan → /dev/capture où les deux
+            // composables coexistent brièvement).
             DisposableEffect(scanVm) {
-                onDispose { app.scanCallbackRelay.delegate = null }
+                val handler: (com.musubi.eurio.ml.ScanResult) -> Unit = scanVm::onScanResult
+                app.scanCallbackRelay.delegate = handler
+                onDispose {
+                    if (app.scanCallbackRelay.delegate === handler) {
+                        app.scanCallbackRelay.delegate = null
+                    }
+                }
             }
 
             // QA: consume any pending forced scan state from the parity deep link
@@ -111,6 +127,17 @@ fun EurioNavHost(
                         EurioDestinations.coinDetail(eurioId, fromScan = true)
                     )
                 },
+                onOpenDevTool = if (BuildConfig.DEBUG) {
+                    { tool ->
+                        val route = when (tool) {
+                            com.musubi.eurio.features.scan.debug.DevTool.PHOTO -> EurioDestinations.DEV_PHOTO
+                            com.musubi.eurio.features.scan.debug.DevTool.CAPTURE -> EurioDestinations.DEV_CAPTURE
+                            com.musubi.eurio.features.scan.debug.DevTool.BENCH -> EurioDestinations.DEV_BENCH
+                            com.musubi.eurio.features.scan.debug.DevTool.CAROUSEL -> EurioDestinations.DEV_CAROUSEL
+                        }
+                        navController.navigate(route)
+                    }
+                } else null,
             )
         }
 
@@ -265,6 +292,53 @@ fun EurioNavHost(
         composable(EurioDestinations.DEV_COIN_3D_SANDBOX) {
             Coin3DSandboxScreen(onBack = { navController.popBackStack() })
         }
+
+        composable(EurioDestinations.DEV_PHOTO) {
+            val photoVm: PhotoViewModel = viewModel(
+                factory = PhotoViewModelFactory(coinAnalyzer = app.coinAnalyzer),
+            )
+            PhotoScreen(
+                viewModel = photoVm,
+                relay = app.scanCallbackRelay,
+                onBack = { navController.popBackStack() },
+            )
+        }
+
+        composable(EurioDestinations.DEV_CAPTURE) {
+            val captureVm: CaptureViewModel = viewModel(
+                factory = CaptureViewModelFactory(coinAnalyzer = app.coinAnalyzer),
+            )
+            CaptureScreen(
+                viewModel = captureVm,
+                relay = app.scanCallbackRelay,
+                onBack = { navController.popBackStack() },
+            )
+        }
+
+        composable(EurioDestinations.DEV_BENCH) {
+            val benchVm: BenchProtocolViewModel = viewModel(
+                factory = BenchProtocolViewModelFactory(
+                    coinAnalyzer = app.coinAnalyzer,
+                    benchRecorder = app.benchRecorder,
+                    debugConfigProvider = { com.musubi.eurio.features.scan.debug.DebugScanConfigStore.config.value },
+                ),
+            )
+            BenchProtocolScreen(
+                viewModel = benchVm,
+                relay = app.scanCallbackRelay,
+                onBack = { navController.popBackStack() },
+            )
+        }
+
+        composable(EurioDestinations.DEV_CAROUSEL) {
+            val carouselVm: CarouselViewModel = viewModel(
+                factory = CarouselViewModelFactory(coinRepository = app.coinRepository),
+            )
+            CarouselScreen(
+                viewModel = carouselVm,
+                onBack = { navController.popBackStack() },
+            )
+        }
     }
 }
 
@@ -276,7 +350,7 @@ private class ScanViewModelFactory(
     private val setRepository: SetRepository,
     private val onAppEvent: (com.musubi.eurio.domain.AppEvent) -> Unit,
     private val vaultCaptureRepository: com.musubi.eurio.data.vault.VaultCaptureRepository,
-    private val applicationContext: android.content.Context,
+    private val benchRecorder: com.musubi.eurio.ml.bench.BenchRecorder,
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         @Suppress("UNCHECKED_CAST")
@@ -288,7 +362,7 @@ private class ScanViewModelFactory(
             setRepository = setRepository,
             onAppEvent = onAppEvent,
             vaultCaptureRepository = vaultCaptureRepository,
-            applicationContext = applicationContext,
+            benchRecorder = benchRecorder,
         ) as T
     }
 }
@@ -392,5 +466,47 @@ private class OnboardingViewModelFactory(
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         @Suppress("UNCHECKED_CAST")
         return OnboardingViewModel(app = app) as T
+    }
+}
+
+private class CaptureViewModelFactory(
+    private val coinAnalyzer: CoinAnalyzer,
+) : ViewModelProvider.Factory {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        @Suppress("UNCHECKED_CAST")
+        return CaptureViewModel(coinAnalyzer = coinAnalyzer) as T
+    }
+}
+
+private class PhotoViewModelFactory(
+    private val coinAnalyzer: CoinAnalyzer,
+) : ViewModelProvider.Factory {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        @Suppress("UNCHECKED_CAST")
+        return PhotoViewModel(coinAnalyzer = coinAnalyzer) as T
+    }
+}
+
+private class CarouselViewModelFactory(
+    private val coinRepository: CoinRepository,
+) : ViewModelProvider.Factory {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        @Suppress("UNCHECKED_CAST")
+        return CarouselViewModel(coinRepository = coinRepository) as T
+    }
+}
+
+private class BenchProtocolViewModelFactory(
+    private val coinAnalyzer: CoinAnalyzer,
+    private val benchRecorder: com.musubi.eurio.ml.bench.BenchRecorder,
+    private val debugConfigProvider: () -> com.musubi.eurio.features.scan.debug.DebugScanConfig,
+) : ViewModelProvider.Factory {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        @Suppress("UNCHECKED_CAST")
+        return BenchProtocolViewModel(
+            coinAnalyzer = coinAnalyzer,
+            benchRecorder = benchRecorder,
+            debugConfigProvider = debugConfigProvider,
+        ) as T
     }
 }

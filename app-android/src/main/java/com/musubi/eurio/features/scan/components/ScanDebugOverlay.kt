@@ -91,42 +91,18 @@ fun ScanDebugOverlay(
     data: DebugViewData,
     recording: Boolean,
     recordedFrameCount: Int,
-    photoMode: Boolean,
-    hasSnapResult: Boolean,
-    captureMode: Boolean,
     onRecordToggle: () -> Unit,
-    onPhotoToggle: () -> Unit,
-    onSnap: () -> Unit,
-    onReset: () -> Unit,
-    onCaptureToggle: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Box(modifier = modifier.fillMaxSize()) {
-        // Capture mode hides every ArcFace-debug panel — those metrics are
-        // misleading during golden-set capture (the model is intentionally
-        // broken). Only the bottom tools strip stays.
-        if (!captureMode) {
-            ArcFaceDebugPanels(data = data)
-        }
+        ArcFaceDebugPanels(data = data)
 
-        // Tools strip (bottom): record | photo | snap-or-reset | capture.
-        // The middle button is contextual: "snap" when the user is framing,
-        // "reset" once a snap result is on screen — taps "reset" → live
-        // preview returns (camera was kept warm), user re-frames, then taps
-        // "snap" again. Splitting these two actions stops the previous
-        // single-button flow that re-snapped immediately on tap, before
-        // AF/AE could converge.
+        // Tools strip (bottom): record-only. Photo / capture / carousel
+        // sont sur leurs routes /dev/* dédiées (refacto 2026-05-28).
         DebugToolsStrip(
             recording = recording,
             recordedFrameCount = recordedFrameCount,
-            photoMode = photoMode,
-            hasSnapResult = hasSnapResult,
-            captureMode = captureMode,
             onRecordToggle = onRecordToggle,
-            onPhotoToggle = onPhotoToggle,
-            onSnap = onSnap,
-            onReset = onReset,
-            onCaptureToggle = onCaptureToggle,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .padding(
@@ -267,38 +243,6 @@ fun PhotoGuideOverlay(
     }
 }
 
-/**
- * Top-center mode switch shown whenever debug mode is on. Splits the debug
- * UI into two disjoint experiences: the full scan inspector (panels + bbox +
- * tools) and the clean 3D coin carousel (just the viewer + a bottom nav).
- */
-@Composable
-fun ScanDebugModeToggle(
-    carouselActive: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Row(
-        modifier = modifier
-            .clip(RoundedCornerShape(EurioRadii.sm))
-            .background(Color.Black.copy(alpha = 0.78f))
-            .border(
-                width = 1.dp,
-                color = Success.copy(alpha = 0.45f),
-                shape = RoundedCornerShape(EurioRadii.sm),
-            )
-            .clickable(onClick = onClick)
-            .padding(horizontal = EurioSpacing.s3, vertical = EurioSpacing.s2),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = if (carouselActive) "Scan coin debug" else "3D coin carrousel",
-            style = MonoBadgeStyle,
-            color = Success,
-        )
-    }
-}
-
 @Composable
 private fun BboxOverlay(bbox: DebugViewData.BboxInfo) {
     Canvas(modifier = Modifier.fillMaxSize()) {
@@ -429,14 +373,7 @@ private fun Top5Row(rank: Int, match: DebugViewData.DebugMatch, highlight: Boole
 private fun DebugToolsStrip(
     recording: Boolean,
     recordedFrameCount: Int,
-    photoMode: Boolean,
-    hasSnapResult: Boolean,
-    captureMode: Boolean,
     onRecordToggle: () -> Unit,
-    onPhotoToggle: () -> Unit,
-    onSnap: () -> Unit,
-    onReset: () -> Unit,
-    onCaptureToggle: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -450,33 +387,6 @@ private fun DebugToolsStrip(
             badge = if (recording || recordedFrameCount > 0) "$recordedFrameCount" else null,
             accent = if (recording) Warning else Success,
             onClick = onRecordToggle,
-            modifier = Modifier.weight(1f),
-        )
-        DebugStripButton(
-            glyph = "📷",
-            label = if (photoMode) "photo on" else "photo",
-            accent = if (photoMode) Gold else Success,
-            onClick = onPhotoToggle,
-            // Capture mode owns photoMode internally — disable manual photo toggle.
-            enabled = !captureMode,
-            modifier = Modifier.weight(1f),
-        )
-        DebugStripButton(
-            glyph = if (hasSnapResult) "↻" else "📸",
-            label = when {
-                hasSnapResult -> "reset"
-                else -> "snap"
-            },
-            accent = if (photoMode) Gold else Color.White.copy(alpha = 0.25f),
-            enabled = photoMode,
-            onClick = if (hasSnapResult) onReset else onSnap,
-            modifier = Modifier.weight(1f),
-        )
-        DebugStripButton(
-            glyph = "🎯",
-            label = if (captureMode) "capture on" else "capture",
-            accent = if (captureMode) Gold else Success,
-            onClick = onCaptureToggle,
             modifier = Modifier.weight(1f),
         )
     }

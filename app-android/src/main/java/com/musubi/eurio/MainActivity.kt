@@ -98,13 +98,18 @@ class MainActivity : ComponentActivity() {
 
                 val currentRoute = backStackEntry?.destination?.route
                 val onboardingActive = currentRoute == EurioDestinations.ONBOARDING
+                // Les écrans /dev/* sont plein écran (retour via back), on cache
+                // la bottom bar + FAB pour éviter qu'ils ne polluent la surface
+                // de debug et que le FAB ne re-route vers SCAN par accident.
+                val devRouteActive = currentRoute?.startsWith("dev/") == true
+                val chromeHidden = onboardingActive || devRouteActive
 
                 Box(modifier = Modifier.fillMaxSize()) {
                     Scaffold(
                         modifier = Modifier.fillMaxSize(),
                         snackbarHost = { SnackbarHost(snackbarHostState) },
                         bottomBar = {
-                            if (!onboardingActive) {
+                            if (!chromeHidden) {
                                 EurioBottomBar(
                                     currentRoute = currentRoute,
                                     onTabSelected = { route ->
@@ -133,7 +138,7 @@ class MainActivity : ComponentActivity() {
                     // l'onboarding pour que les slides soient full-bleed.
                     // offset vertical = -(BarHeight - FAB.radius - 4dp bottom inset)
                     //                 = -(76 - 32 - 4) = -40dp
-                    if (!onboardingActive) {
+                    if (!chromeHidden) {
                         ScanFab(
                             onClick = {
                                 navController.navigate(EurioDestinations.SCAN) {

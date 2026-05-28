@@ -35,6 +35,15 @@ object EurioDestinations {
     // 3D viewer — cf. docs/coin-3d-viewer/porting-android.md). Sera retirée à la
     // fin de Phase 4.
     const val DEV_COIN_3D_SANDBOX = "dev/coin-3d-sandbox"
+
+    // Dev tools — chaque mode debug a son écran propre, accessibles via le DBG
+    // bottom-sheet (BuildConfig.DEBUG uniquement). Pas d'overlay au-dessus du
+    // scan : la séparation par route élimine la stack de booléens qui faisait
+    // que les layers se marchaient dessus dans ScanScreen.
+    const val DEV_PHOTO = "dev/photo"
+    const val DEV_CAPTURE = "dev/capture"
+    const val DEV_BENCH = "dev/bench"
+    const val DEV_CAROUSEL = "dev/carousel"
 }
 
 enum class BottomNavTab(val route: String, val labelFr: String) {

@@ -20,6 +20,7 @@ import com.musubi.eurio.ml.CoinAnalyzer
 import com.musubi.eurio.ml.CoinDetector
 import com.musubi.eurio.ml.CoinRecognizer
 import com.musubi.eurio.ml.EmbeddingMatcher
+import com.musubi.eurio.ml.bench.BenchRecorder
 import com.musubi.eurio.domain.AppEvent
 import com.musubi.eurio.features.scan.CaptureProtocol
 import com.musubi.eurio.features.scan.ScanUiState
@@ -188,6 +189,14 @@ class EurioApp : Application() {
                 "eurio_debug",
             ).apply { mkdirs() }
         }
+    }
+
+    // BenchRecorder app-scoped singleton — partagé entre le record-mode (toggle
+    // dans DebugBar) et le bench protocol guidé (/dev/bench). Hoisté hors du
+    // ScanViewModel pour que les deux consommateurs aient le même cycle de
+    // session sans dupliquer le Channel. Cf. plan refacto 2026-05-28.
+    val benchRecorder: BenchRecorder by lazy {
+        BenchRecorder(applicationContext, appScope)
     }
 
     override fun onCreate() {
