@@ -18,8 +18,6 @@ import com.musubi.eurio.domain.scan.SourceMode
 import com.musubi.eurio.domain.scan.TimeoutScheduler
 import com.musubi.eurio.domain.scan.ScanState as DomainScanState
 import com.musubi.eurio.ml.bench.BenchEvent
-import com.musubi.eurio.ml.bench.BenchProtocol
-import com.musubi.eurio.ml.bench.BenchProtocolState
 import com.musubi.eurio.ml.bench.BenchRecorder
 import com.musubi.eurio.ml.bench.ArcfacePayload
 import com.musubi.eurio.ml.bench.toPayload
@@ -86,79 +84,11 @@ class ScanViewModel(
     private val vaultCaptureRepository: VaultCaptureRepository? = null,
     private val pendingArchiveBuffer: PendingArchiveBuffer = PendingArchiveBuffer(),
     /**
-     * App context used to construct the [BenchRecorder] (chunk-7a).
-     * Null in tests and in the parity/QA factory — the bench-wiring
-     * code below short-circuits when [benchRecorder] is null.
+     * App-scoped singleton (cf. EurioApp). Null en tests et dans la factory
+     * parity/QA — la wiring bench short-circuit quand null.
      */
-    applicationContext: android.content.Context? = null,
+    private val benchRecorder: BenchRecorder? = null,
 ) : ViewModel() {
-
-    private val benchRecorder: BenchRecorder? =
-        applicationContext?.let { BenchRecorder(it, viewModelScope) }
-
-    // ── Chunk-7b — guided bench protocol ──────────────────────────────────
-    private val _benchProtocolState = MutableStateFlow<BenchProtocolState?>(null)
-    val benchProtocolState: StateFlow<BenchProtocolState?> = _benchProtocolState.asStateFlow()
-
-    /**
-     * Open the guided bench protocol overlay. No-op when there are no
-     * coins in [CaptureProtocol] (= no cohort CSV loaded). The overlay
-     * takes over the bench recorder lifecycle while active.
-     */
-    fun startBenchProtocol() {
-        val cells = BenchProtocol.cells()
-        if (cells.isEmpty()) {
-            Log.w(TAG, "startBenchProtocol: no coins in CaptureProtocol — push cohort.csv first")
-            return
-        }
-        _benchProtocolState.value = BenchProtocolState.fresh(cells)
-        Log.d(TAG, "bench protocol started: ${cells.size} cells")
-    }
-
-    /** Begin recording the current cell. Marks the cell IN_PROGRESS. */
-    fun startCurrentBenchCell() {
-        val state = _benchProtocolState.value ?: return
-        val cell = state.currentCell ?: return
-        val rec = benchRecorder ?: return
-        if (rec.isActive) {
-            Log.w(TAG, "startCurrentBenchCell: recorder already active, ignoring")
-            return
-        }
-        rec.start(
-            config = debugConfig.value,
-            deviceInfo = buildDeviceInfo(),
-            coin = cell.coin.eurioId,
-            condition = cell.condition.id,
-        )
-        _benchProtocolState.value = state.withStatus(
-            state.currentIndex,
-            BenchProtocolState.CellStatus.IN_PROGRESS,
-        )
-    }
-
-    /** Stop the recorder and advance to the next cell, marking current DONE. */
-    fun markCurrentBenchCellDone() {
-        val state = _benchProtocolState.value ?: return
-        benchRecorder?.takeIf { it.isActive }?.stop()
-        _benchProtocolState.value = state
-            .withStatus(state.currentIndex, BenchProtocolState.CellStatus.DONE)
-            .copy(currentIndex = state.currentIndex + 1)
-    }
-
-    /** Skip the current cell. If a session was active, stop it (= still flushed). */
-    fun skipCurrentBenchCell() {
-        val state = _benchProtocolState.value ?: return
-        benchRecorder?.takeIf { it.isActive }?.stop()
-        _benchProtocolState.value = state
-            .withStatus(state.currentIndex, BenchProtocolState.CellStatus.SKIPPED)
-            .copy(currentIndex = state.currentIndex + 1)
-    }
-
-    /** Close the overlay, abandoning any in-flight session. */
-    fun endBenchProtocol() {
-        benchRecorder?.takeIf { it.isActive }?.stop()
-        _benchProtocolState.value = null
-    }
 
     companion object {
         private const val TAG = "ScanVM"
@@ -229,20 +159,6 @@ class ScanViewModel(
     )
     val snackbarEvents: SharedFlow<ScanSnackbarEvent> = _snackbarEvents.asSharedFlow()
 
-    // ── Debug carousel mode (Phase 4) ───────────────────────────────────────
-    // When ON (debugMode required), the camera/ML pipeline is bypassed and the
-    // user cycles through every 2 € coin via prev/next buttons. Each step
-    // emits ScanUiState.Accepted through the same path as a real detection so
-    // the UI/animation stays identical between fake and real flows.
-    private val _carouselMode = MutableStateFlow(false)
-    val carouselMode: StateFlow<Boolean> = _carouselMode.asStateFlow()
-
-    private val _carouselCurrent = MutableStateFlow<com.musubi.eurio.data.repository.CoinViewData?>(null)
-    val carouselCurrent: StateFlow<com.musubi.eurio.data.repository.CoinViewData?> = _carouselCurrent.asStateFlow()
-
-    private var carouselCoins: List<com.musubi.eurio.data.repository.CoinViewData> = emptyList()
-    private var carouselIndex: Int = 0
-
     private val _debugData = MutableStateFlow(DebugViewData())
     val debugData: StateFlow<DebugViewData> = _debugData.asStateFlow()
 
@@ -254,68 +170,7 @@ class ScanViewModel(
     private val _recordedFrameCount = MutableStateFlow(0)
     val recordedFrameCount: StateFlow<Int> = _recordedFrameCount.asStateFlow()
 
-    // Photo mode (debug bar): pauses continuous scan, shows a guide circle,
-    // user taps SNAP → one-shot analyze on a circular-masked centered crop.
-    private val _photoMode = MutableStateFlow(false)
-    val photoMode: StateFlow<Boolean> = _photoMode.asStateFlow()
-
-    /** Latest photo snap result — set after each snap, cleared on snap-again. */
-    private val _photoSnap = MutableStateFlow<PhotoSnap?>(null)
-    val photoSnap: StateFlow<PhotoSnap?> = _photoSnap.asStateFlow()
-
-    /**
-     * Live Hough probe state for the on-screen ring color. True when the
-     * analyzer's last cheap probe found a centered circle (= a snap taken
-     * now would normalize successfully); false otherwise. Updated at the
-     * analyzer's [com.musubi.eurio.ml.CoinAnalyzer.photoLiveDetectIntervalMs]
-     * cadence (5 fps default). Reset to false when leaving photo mode.
-     */
-    private val _photoLiveCircleFound = MutableStateFlow(false)
-    val photoLiveCircleFound: StateFlow<Boolean> = _photoLiveCircleFound.asStateFlow()
-
-    /**
-     * Outcome of one photo-mode snap. [cropPath] is null when normalization
-     * (Hough) failed — the layer renders a failure card in that case
-     * (no ArcFace ran, [matches] is empty, [decisionReason] carries the
-     * "NORMALIZE FAILED: …" reason from CoinAnalyzer).
-     */
-    data class PhotoSnap(
-        val cropPath: String?,
-        val accepted: Boolean,
-        val decisionReason: String,
-        val top1: Float,
-        val top2: Float,
-        val matches: List<com.musubi.eurio.ml.CoinMatch>,
-        val cropSize: Int,
-    )
-
-    // ── Capture mode (Phase 0 golden-set) ──────────────────────────────────
-    // Drives the user through CaptureProtocol.coins × CaptureProtocol.steps,
-    // writing each snap to eval_real/<eurio_id>/<step_id>_*. Auto-enables
-    // photoMode internally so the same circular guide + snap path is reused.
-    data class CaptureProgress(
-        val coinIndex: Int,
-        val stepIndex: Int,
-        val photoIndex: Int,       // 0..photosPerStep-1, idx du prochain snap dans la cellule
-        val photosPerStep: Int,    // 1 en LEGACY, 4 en ABLATION
-        val coin: CaptureProtocol.Coin,
-        val step: CaptureProtocol.Step,
-        val captured: Int,
-        val total: Int,
-        val isComplete: Boolean,
-    )
-
-    private val _captureMode = MutableStateFlow(false)
-    val captureMode: StateFlow<Boolean> = _captureMode.asStateFlow()
-
-    private val _captureProgress = MutableStateFlow<CaptureProgress?>(null)
-    val captureProgress: StateFlow<CaptureProgress?> = _captureProgress.asStateFlow()
-
-    private var captureCoinIdx = 0
-    private var captureStepIdx = 0
-    private var capturePhotoIdx = 0  // 0..photosPerStep-1 dans la cellule courante
-    private var captureCount = 0
-    private var captureSessionDir: java.io.File? = null
+    // Photo mode / capture cohort / carousel déplacés vers features/dev/* (refacto 2026-05-28).
 
     val streakCount: StateFlow<Int> = streakRepository.currentStreak
 
@@ -647,13 +502,6 @@ class ScanViewModel(
     }
 
     init {
-        // Wire the analyzer's cheap live-detection probe to the ring color
-        // state. The probe only fires while photoMode is on (analyzer-side
-        // gate), so the callback is implicitly silent in continuous mode.
-        coinAnalyzer.onPhotoLiveDetection = { detection ->
-            _photoLiveCircleFound.value = detection != null
-        }
-
         // Push the initial policy + keep it in sync with debug-bar sliders.
         // In release this flow emits a single defaults snapshot (chunk-1),
         // so the analyzer reads frozen ScoringPolicy defaults.
@@ -913,45 +761,6 @@ class ScanViewModel(
 
         if (_recordMode.value) {
             _recordedFrameCount.value = coinAnalyzer.recordedFrameCount
-        }
-
-        // Photo mode: bypass consensus and the 3D viewer entirely. Surface the
-        // exact masked crop the model saw, plus its top-K scores, so we can
-        // diagnose ArcFace misbehavior visually. When normalization fails
-        // (Hough finds no centered circle), cropPath is null — we still emit
-        // a PhotoSnap so the layer can render the failure card; ArcFace was
-        // not invoked and matches is empty.
-        if (_photoMode.value) {
-            val cropPath = result.photoSnapCropPath
-            _photoSnap.value = PhotoSnap(
-                cropPath = cropPath,
-                accepted = result.detected,
-                decisionReason = result.rerankDecisionReason,
-                top1 = result.rerankSimilaritiesTop1.firstOrNull() ?: 0f,
-                top2 = result.rerankSimilaritiesTop2.firstOrNull() ?: 0f,
-                matches = result.matches,
-                cropSize = result.cropWidth,
-            )
-            Log.d(TAG, "photo snap stored: ${cropPath ?: "<no crop>"} (${result.rerankDecisionReason})")
-            // Capture mode: only count snaps with a successful normalization.
-            // A failed snap does not advance the protocol — user taps "refaire"
-            // to retry the same step. Keeps the golden set strictly composed
-            // of usable inputs.
-            if (_captureMode.value) {
-                if (cropPath != null) {
-                    val coin = CaptureProtocol.coins.getOrNull(captureCoinIdx)
-                    val step = CaptureProtocol.steps.getOrNull(captureStepIdx)
-                    if (coin != null && step != null) {
-                        appendCaptureManifest(coin, step, cropPath, capturePhotoIdx)
-                        captureCount++
-                        // ABLATION : photo_idx avance, step auto-suivante après photosPerStep.
-                        // LEGACY (photosPerStep=1) : step suivante immédiatement.
-                        onCaptureSnapPersisted()
-                    }
-                }
-                coinAnalyzer.captureContext = null
-            }
-            return
         }
 
         val current = _state.value
@@ -1319,218 +1128,7 @@ class ScanViewModel(
         }
     }
 
-    /**
-     * Toggle capture mode (Phase 0 golden-set). Auto-enables photoMode so the
-     * circular guide + snap path are reused. Disabling capture mode also
-     * disables photoMode and clears any in-flight result.
-     */
-    fun onCaptureToggle() {
-        val turningOn = !_captureMode.value
-        _captureMode.value = turningOn
-        if (turningOn) {
-            captureCoinIdx = 0
-            captureStepIdx = 0
-            capturePhotoIdx = 0
-            captureCount = 0
-            // Session dir: eval_real/ is the stable parent (so multiple sessions
-            // overwrite cleanly per coin/step) — re-running a step replaces the file.
-            captureSessionDir = coinAnalyzer.debugRootDir?.let { java.io.File(it, "eval_real") }
-            captureSessionDir?.mkdirs()
-            if (!_photoMode.value) {
-                _photoMode.value = true
-                coinAnalyzer.photoMode = true
-            }
-            consensus.reset()
-            _photoSnap.value = null
-            if (_state.value !is ScanUiState.Accepted) _state.value = ScanUiState.Idle
-            updateCaptureProgress()
-            Log.d(TAG, "capture mode ON, dir=${captureSessionDir?.absolutePath}")
-        } else {
-            _captureProgress.value = null
-            coinAnalyzer.captureContext = null
-            if (_photoMode.value) {
-                _photoMode.value = false
-                coinAnalyzer.photoMode = false
-            }
-            _photoSnap.value = null
-            Log.d(TAG, "capture mode OFF")
-        }
-    }
-
-    /**
-     * Re-take the current step (clears the photo result, lets the user re-frame
-     * and tap snap again — file is overwritten because the path is deterministic).
-     */
-    fun onCaptureRedo() {
-        if (!_captureMode.value) return
-        _photoSnap.value = null
-    }
-
-    /**
-     * Advance après un snap. Comportement :
-     *  - LEGACY (photosPerStep=1) : 1 snap → step suivante (zero régression).
-     *  - ABLATION (photosPerStep=4) : 4 snaps dans la cellule → step suivante.
-     *
-     * Le compteur `capturePhotoIdx` est incrémenté côté `onCaptureSnapPersisted`
-     * (= après que le fichier est bien écrit), pas ici. `onCaptureNext` est le
-     * tap "Suivant" de l'utilisateur — il force l'avance même si on n'a pas
-     * encore atteint `photosPerStep` (skip de cellule).
-     */
-    fun onCaptureNext() {
-        if (!_captureMode.value) return
-        _photoSnap.value = null
-        capturePhotoIdx = 0
-        captureStepIdx++
-        if (captureStepIdx >= CaptureProtocol.steps.size) {
-            captureStepIdx = 0
-            captureCoinIdx++
-        }
-        if (captureCoinIdx >= CaptureProtocol.coins.size) {
-            // Session complete — keep mode on so the user sees the completion banner.
-            updateCaptureProgress(complete = true)
-            coinAnalyzer.captureContext = null
-            Log.d(TAG, "capture session complete: $captureCount snaps")
-            return
-        }
-        updateCaptureProgress()
-    }
-
-    /**
-     * Appelé en interne après chaque snap effectivement persisté sur disque.
-     *
-     * - LEGACY : aucun auto-advance (zero régression). L'utilisateur voit la
-     *   result layer et tape "Suivant" manuellement (`onCaptureNext()`).
-     * - ABLATION : dismiss systématique de la result layer, incrémente
-     *   `capturePhotoIdx`. Quand `photosPerStep` atteint → step suivante auto.
-     */
-    private fun onCaptureSnapPersisted() {
-        if (!_captureMode.value) return
-        if (CaptureProtocol.mode == CaptureProtocol.Mode.LEGACY) {
-            updateCaptureProgress()
-            return
-        }
-        // ABLATION : dismiss + photo_idx++ + auto-step si cellule pleine
-        capturePhotoIdx++
-        _photoSnap.value = null
-        if (capturePhotoIdx >= CaptureProtocol.photosPerStep) {
-            capturePhotoIdx = 0
-            captureStepIdx++
-            if (captureStepIdx >= CaptureProtocol.steps.size) {
-                captureStepIdx = 0
-                captureCoinIdx++
-            }
-            if (captureCoinIdx >= CaptureProtocol.coins.size) {
-                updateCaptureProgress(complete = true)
-                coinAnalyzer.captureContext = null
-                Log.d(TAG, "capture session complete: $captureCount snaps")
-                return
-            }
-        }
-        updateCaptureProgress()
-    }
-
-    private fun updateCaptureProgress(complete: Boolean = false) {
-        val coin = CaptureProtocol.coins.getOrNull(captureCoinIdx)
-        val step = CaptureProtocol.steps.getOrNull(captureStepIdx)
-        if (coin == null || step == null) {
-            _captureProgress.value = CaptureProgress(
-                coinIndex = CaptureProtocol.coins.size,
-                stepIndex = 0,
-                photoIndex = 0,
-                photosPerStep = CaptureProtocol.photosPerStep,
-                coin = CaptureProtocol.coins.last(),
-                step = CaptureProtocol.steps.last(),
-                captured = captureCount,
-                total = CaptureProtocol.totalSnaps,
-                isComplete = true,
-            )
-            return
-        }
-        _captureProgress.value = CaptureProgress(
-            coinIndex = captureCoinIdx,
-            stepIndex = captureStepIdx,
-            photoIndex = capturePhotoIdx,
-            photosPerStep = CaptureProtocol.photosPerStep,
-            coin = coin,
-            step = step,
-            captured = captureCount,
-            total = CaptureProtocol.totalSnaps,
-            isComplete = complete,
-        )
-    }
-
-    /**
-     * Append one entry to the capture session manifest.jsonl. Append-style is
-     * crash-resilient — partial sessions still leave a parsable trail.
-     */
-    private fun appendCaptureManifest(coin: CaptureProtocol.Coin,
-                                       step: CaptureProtocol.Step,
-                                       cropPath: String,
-                                       photoIdx: Int) {
-        val dir = captureSessionDir ?: return
-        val manifest = java.io.File(dir, "manifest.jsonl")
-        val ts = java.text.SimpleDateFormat("yyyyMMdd_HHmmss_SSS", java.util.Locale.US)
-            .format(java.util.Date())
-        val safeLabel = step.label.replace("\"", "\\\"")
-        val line = """{"ts":"$ts","eurio_id":"${coin.eurioId}","step_id":"${step.id}",""" +
-            """"step_label":"$safeLabel","step_index":${captureStepIdx},""" +
-            """"photo_index":${photoIdx},"photos_per_step":${CaptureProtocol.photosPerStep},""" +
-            """"protocol_mode":"${CaptureProtocol.mode.name.lowercase()}",""" +
-            """"crop_path":"${cropPath.replace("\"", "\\\"")}"}"""
-        try {
-            manifest.appendText(line + "\n")
-        } catch (e: Exception) {
-            Log.e(TAG, "manifest append failed", e)
-        }
-    }
-
-    /** Toggle the photo mode (single-shot, isolated coin via circular mask). */
-    fun onPhotoToggle() {
-        val turningOn = !_photoMode.value
-        _photoMode.value = turningOn
-        coinAnalyzer.photoMode = turningOn
-        coinAnalyzer.snapRequested = false
-        _photoSnap.value = null
-        // Reset the live-ring state so it doesn't carry over from a previous
-        // photo session. Stays false until the analyzer's next probe fires.
-        _photoLiveCircleFound.value = false
-        consensus.reset()
-        consecutiveNoDetection = 0
-        if (_state.value !is ScanUiState.Accepted) {
-            _state.value = ScanUiState.Idle
-        }
-        Log.d(TAG, "photo mode toggled: $turningOn")
-    }
-
-    /** Capture the next frame and run it through the photo pipeline. */
-    fun onSnap() {
-        if (!_photoMode.value) return
-        _photoSnap.value = null
-        // If capture mode is active, tag the next snap so the analyzer routes
-        // it under eval_real/<eurio_id>/<step_id>_*.
-        if (_captureMode.value) {
-            val coin = CaptureProtocol.coins.getOrNull(captureCoinIdx)
-            val step = CaptureProtocol.steps.getOrNull(captureStepIdx)
-            coinAnalyzer.captureContext = if (coin != null && step != null) {
-                com.musubi.eurio.ml.CoinAnalyzer.CaptureContext(
-                    eurioId = coin.eurioId,
-                    stepId = step.id,
-                    stepLabel = step.label,
-                    stepIndex = captureStepIdx,
-                    photoIndex = capturePhotoIdx,
-                )
-            } else null
-        } else {
-            coinAnalyzer.captureContext = null
-        }
-        coinAnalyzer.snapRequested = true
-        Log.d(TAG, "snap requested")
-    }
-
-    /** Clear the current photo snap result; UI returns to the guide circle. */
-    fun onSnapAgain() {
-        _photoSnap.value = null
-    }
+    // Capture cohort / photo / carousel : déplacés vers features/dev/* (refacto 2026-05-28).
 
     /**
      * Toggle the continuous record mode. Starting a session creates a fresh
@@ -1562,59 +1160,6 @@ class ScanViewModel(
 
     fun setDebugMode(enabled: Boolean) {
         _debugMode.value = enabled
-    }
-
-    /** Toggle the debug carousel. No-op if debug mode is off. */
-    fun toggleCarouselMode() {
-        if (!_debugMode.value) return
-        val turningOn = !_carouselMode.value
-        _carouselMode.value = turningOn
-        if (turningOn) {
-            viewModelScope.launch {
-                if (carouselCoins.isEmpty()) {
-                    carouselCoins = coinRepository.findAllByFaceValue(2.0)
-                    Log.d(TAG, "carousel loaded ${carouselCoins.size} 2€ coins")
-                }
-                if (carouselCoins.isNotEmpty()) {
-                    carouselIndex = 0
-                    showCarouselAt(carouselIndex)
-                }
-            }
-        } else {
-            // Leaving carousel mode — drop any Accepted state and return to Idle
-            // so the live camera resumes cleanly.
-            returnToIdle(cooldownClass = null)
-            _carouselCurrent.value = null
-        }
-    }
-
-    fun onCarouselNext() = stepCarousel(+1)
-    fun onCarouselPrev() = stepCarousel(-1)
-
-    private fun stepCarousel(delta: Int) {
-        if (!_carouselMode.value || carouselCoins.isEmpty()) return
-        carouselIndex = ((carouselIndex + delta) % carouselCoins.size + carouselCoins.size) % carouselCoins.size
-        Log.d(TAG, "carousel step delta=$delta → index=$carouselIndex/${carouselCoins.size} ${carouselCoins[carouselIndex].eurioId}")
-        showCarouselAt(carouselIndex)
-    }
-
-    private fun showCarouselAt(index: Int) {
-        val coin = carouselCoins[index]
-        viewModelScope.launch {
-            val alreadyOwned = vaultRepository.containsCoin(coin.eurioId)
-            _carouselCurrent.value = coin
-            // Chunk-6.2c — same emission path as a real consensus: fire the
-            // domain event so the shadow machine lands in Accepted, then
-            // update the UI state. The UI doesn't know the difference,
-            // which is the whole point of the debug carousel.
-            emitScanEvent(
-                ScanEvent.ConsensusReached(
-                    eurioId = coin.eurioId,
-                    topK = emptyList(),
-                )
-            )
-            _state.value = ScanUiState.Accepted(coin, confidence = 1.0f, alreadyOwned = alreadyOwned)
-        }
     }
 
     // ─────────────────────────────────────────────────────────────────────

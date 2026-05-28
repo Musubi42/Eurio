@@ -1,8 +1,7 @@
-package com.musubi.eurio.features.scan.components
+package com.musubi.eurio.features.dev.photo
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,7 +21,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
-import com.musubi.eurio.features.scan.ScanViewModel
 import com.musubi.eurio.ui.theme.EurioRadii
 import com.musubi.eurio.ui.theme.EurioSpacing
 import com.musubi.eurio.ui.theme.Gold
@@ -32,14 +30,13 @@ import com.musubi.eurio.ui.theme.Success
 import com.musubi.eurio.ui.theme.Warning
 
 /**
- * Photo-mode debug result. Replaces the 3D viewer + AcceptedCard flow when a
- * snap completes. Shows the exact masked square that ArcFace received, plus
- * the top-K matches and the decision reason — so the user can diagnose why
- * the model is returning what it returns.
+ * Photo-mode debug result. Affiche le crop carré qu'ArcFace a reçu + top-K +
+ * decision reason. Lecture par ScanScreen abandonnée le 2026-05-28 — vit
+ * désormais dans /dev/photo.
  */
 @Composable
 fun PhotoSnapResultLayer(
-    snap: ScanViewModel.PhotoSnap,
+    snap: PhotoViewModel.PhotoSnap,
     modifier: Modifier = Modifier,
 ) {
     val normalizeFailed = snap.cropPath == null
@@ -67,9 +64,6 @@ fun PhotoSnapResultLayer(
             color = accent,
         )
 
-        // The crop the model actually saw. Aspect ratio is 1:1 (square).
-        // When normalization failed there is no crop — render a placeholder
-        // tile with a brief retry hint instead.
         Box(
             modifier = Modifier
                 .fillMaxWidth(0.85f)
@@ -105,7 +99,6 @@ fun PhotoSnapResultLayer(
             color = Color.White.copy(alpha = 0.5f),
         )
 
-        // Decision + scores panel.
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -156,10 +149,5 @@ fun PhotoSnapResultLayer(
                 }
             }
         }
-
-        // The reset action lives in the debug bottom strip — SNAP becomes
-        // RESET while a result is on screen and clears the snap (without
-        // triggering a new one), keeping a single control point and avoiding
-        // a double-button conflict at the bottom edge.
     }
 }

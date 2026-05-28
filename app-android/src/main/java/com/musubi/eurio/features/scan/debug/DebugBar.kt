@@ -42,7 +42,7 @@ fun DebugBar(
     sheetState: SheetState,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
-    onStartBenchProtocol: (() -> Unit)? = null,
+    onOpenDevTool: ((DevTool) -> Unit)? = null,
 ) {
     val config by DebugScanConfigStore.config.collectAsStateWithLifecycle()
 
@@ -64,6 +64,15 @@ fun DebugBar(
                 color = MaterialTheme.colorScheme.onSurface,
             )
 
+            // Hub des outils dev — chaque entrée navigue vers son écran dédié
+            // (cf. refacto B 2026-05-28). Le DBG bottom-sheet est désormais le
+            // seul point d'entrée vers ces modes.
+            if (onOpenDevTool != null) {
+                SectionHeader("Outils dev")
+                DevToolsNav(onOpenDevTool = onOpenDevTool)
+                SectionDivider()
+            }
+
             SectionHeader("Trigger")
             TriggerSection(config)
 
@@ -82,11 +91,6 @@ fun DebugBar(
             SectionDivider()
             SectionHeader("Record")
             RecordSection(config)
-            if (onStartBenchProtocol != null) {
-                TextButton(onClick = onStartBenchProtocol) {
-                    Text("▶ Lancer le protocole bench (chunk-7b)")
-                }
-            }
 
             SectionDivider()
             Row(
@@ -100,6 +104,28 @@ fun DebugBar(
                 }
                 TextButton(onClick = onDismiss) { Text("Close") }
             }
+        }
+    }
+}
+
+// Identifie les écrans dev accessibles depuis le DBG bottom-sheet. Permet de
+// router vers une route nav sans coupler DebugBar à NavController.
+enum class DevTool { PHOTO, CAPTURE, BENCH, CAROUSEL }
+
+@Composable
+private fun DevToolsNav(onOpenDevTool: (DevTool) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(EurioSpacing.s1)) {
+        TextButton(onClick = { onOpenDevTool(DevTool.PHOTO) }) {
+            Text("▶ Photo (snap standalone)")
+        }
+        TextButton(onClick = { onOpenDevTool(DevTool.CAPTURE) }) {
+            Text("▶ Capture cohorte")
+        }
+        TextButton(onClick = { onOpenDevTool(DevTool.BENCH) }) {
+            Text("▶ Bench protocol")
+        }
+        TextButton(onClick = { onOpenDevTool(DevTool.CAROUSEL) }) {
+            Text("▶ Carousel 3D")
         }
     }
 }
