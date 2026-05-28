@@ -21,7 +21,7 @@ import sys
 from pathlib import Path
 
 from sources._base.adapter import DiscoveryGroup, SourceQuery
-from sources._base.orchestrator import run_pipeline
+from sources._base.orchestrator import process_downloaded, run_pipeline
 from state.store import Store
 
 _DEFAULT_DB = Path(__file__).resolve().parents[1] / "state" / "eurio.db"
@@ -124,6 +124,12 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--source", required=True, help="Source id (e.g. 'mock', 'ebay').")
     p.add_argument("--dry-run", action="store_true",
                    help="Stop after Discover; write nothing past discovery_log.")
+    p.add_argument("--download-only", action="store_true",
+                   help="Stop after Download; persist raws, defer crop (CPU). "
+                        "Crop later with --crop-pending <RUN_ID>.")
+    p.add_argument("--crop-pending", default=None, metavar="RUN_ID",
+                   help="Crop a previous --download-only run (detect→resolve→…→"
+                        "price). No re-download, no source credentials needed.")
     p.add_argument("--force", action="store_true",
                    help="Override anti-double-run guard.")
     p.add_argument("--country", default=None, help="Filter by ISO-2 country.")
@@ -151,6 +157,27 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     store = Store(args.db)
+
+    # Crop-on-demand path : crop a previous --download-only run. No adapter
+    # load (no eBay token needed), no discovery — just the deferred crop steps.
+    if args.crop_pending:
+        result = process_downloaded(store=store, run_id=args.crop_pending)
+        print()
+        print(f"run_id        {result.run_id}")
+        print(f"n_pending     {result.n_pending}")
+        print(f"n_crops_added {result.n_crops_added}")
+        row = store._connection().execute(  # noqa: SLF001
+            "SELECT status, current_step, n_crops_added, n_review_enqueued, "
+            "n_errors, error_summary FROM source_runs WHERE id = ?",
+            (args.crop_pending,),
+        ).fetchone()
+        if row is not None:
+            print(f"status        {row['status']}")
+            print(f"current_step  {row['current_step']}")
+            if row["error_summary"]:
+                print(f"error_summary {row['error_summary']}")
+            return 1 if row["status"] == "failed" else 0
+        return 0
 
     target_eurio_ids: tuple[str, ...] | None = None
     discovery_groups: tuple[DiscoveryGroup, ...] | None = None
@@ -198,7 +225,10 @@ def main(argv: list[str] | None = None) -> int:
         limit=args.limit,
     )
 
-    run_id = run_pipeline(adapter, query, store=store, dry_run=args.dry_run, force=args.force)
+    run_id = run_pipeline(
+        adapter, query, store=store,
+        dry_run=args.dry_run, download_only=args.download_only, force=args.force,
+    )
 
     row = store._connection().execute(
         "SELECT status, current_step, n_calls, n_raws_added, n_crops_added, "

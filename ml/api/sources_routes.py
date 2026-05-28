@@ -161,6 +161,7 @@ def trigger_run(
     source_id: str,
     body: RunQueryBody | None = None,
     dry_run: bool = Query(default=False),
+    download_only: bool = Query(default=False),
     force: bool = Query(default=False),
 ) -> TriggerResponse:
     payload = body or RunQueryBody()
@@ -253,7 +254,8 @@ def trigger_run(
                 )
             else:
                 rid = run_pipeline(
-                    adapter, query, store=store, dry_run=dry_run, force=force,
+                    adapter, query, store=store,
+                    dry_run=dry_run, download_only=download_only, force=force,
                 )
             run_id_holder["run_id"] = rid
         except RunAlreadyRunning as exc:
@@ -456,6 +458,83 @@ def retry_run_downloads(source_id: str, run_id: str) -> RetryDownloadsResponse:
     return RetryDownloadsResponse(
         run_id=run_id, status="started", n_downloads_failed=n_failed,
     )
+
+
+# ── Crop à la demande d'un run lancé en download-only ─────────────────────
+
+
+class CropPendingResponse(BaseModel):
+    run_id: str
+    status: str       # 'started'
+    n_pending: int    # source_images téléchargées en attente de crop
+
+
+def _count_downloaded_pending(conn: sqlite3.Connection, run_id: str) -> int:
+    """Images téléchargées du run pas encore croppées (aucun image_assets)."""
+    row = conn.execute(
+        """
+        SELECT count(*) AS n FROM source_images si
+         WHERE si.run_id = ?
+           AND si.download_status = 'success'
+           AND NOT EXISTS (
+                 SELECT 1 FROM image_assets ia
+                  WHERE ia.source_image_id = si.id
+                    AND ia.storage_path IS NOT NULL
+                    AND ia.storage_status = 'present'
+           )
+        """,
+        (run_id,),
+    ).fetchone()
+    return int(row["n"] or 0)
+
+
+# Consumed by: admin front /sources (bouton "Cropper" sur un run download-only)
+@router.post(
+    "/{source_id}/runs/{run_id}/crop",
+    response_model=CropPendingResponse,
+    status_code=202,
+)
+def crop_run_pending(source_id: str, run_id: str) -> CropPendingResponse:
+    """Déclenche le crop différé d'un run lancé en download-only.
+
+    Enchaîne detect → resolve → auto_validate → enqueue → price_aggregate sur
+    les raws du run, en thread daemon. Le front suit via ``GET /runs/{run_id}``.
+    Idempotent : les images déjà croppées sont sautées.
+    """
+    store = _store()
+    conn = store._connection()  # noqa: SLF001
+    row = conn.execute(
+        "SELECT id, status FROM source_runs WHERE id = ? AND source = ?",
+        (run_id, source_id),
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found.")
+    if row["status"] == "running":
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "run_running", "message": "Run en cours — attends la fin."},
+        )
+    n_pending = _count_downloaded_pending(conn, run_id)
+    if n_pending == 0:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "nothing_to_crop",
+                "message": "Aucune image téléchargée en attente de crop sur ce run.",
+            },
+        )
+
+    def _runner() -> None:
+        try:
+            from sources._base.orchestrator import process_downloaded
+            process_downloaded(store=store, run_id=run_id)
+        except Exception:  # noqa: BLE001
+            logger.exception("[%s] crop-pending crashed run=%s", source_id, run_id)
+
+    threading.Thread(
+        target=_runner, name=f"crop-{run_id}", daemon=True,
+    ).start()
+    return CropPendingResponse(run_id=run_id, status="started", n_pending=n_pending)
 
 
 # ── Run breakdown (per-eurio_id drill-down) ───────────────────────────────
