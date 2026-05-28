@@ -20,7 +20,14 @@ from typing import TYPE_CHECKING
 from sources._base.adapter import SourceAdapter, SourceQuery
 from sources._base.run_logger import PIPELINE_STEPS, RunHandle, start_run
 
-__all__ = ["PIPELINE_STEPS", "run_pipeline", "resume_failed_downloads", "ResumeResult"]
+__all__ = [
+    "PIPELINE_STEPS",
+    "run_pipeline",
+    "resume_failed_downloads",
+    "ResumeResult",
+    "process_downloaded",
+    "CropPendingResult",
+]
 from sources._base.steps.auto_validate import run_auto_validate_dino
 from sources._base.steps.detect_crop import run_detect_crop
 from sources._base.steps.discover import run_discover
@@ -43,12 +50,21 @@ def run_pipeline(
     *,
     store: "Store",
     dry_run: bool = False,
+    download_only: bool = False,
     force: bool = False,
 ) -> str:
     """Execute the 9-step pipeline for one source.
 
     `dry_run=True` runs Discover only and writes nothing past the
     `source_runs` row (kind='dry') and the `discovery_log` upserts.
+
+    `download_only=True` runs Discover → Persist → Text-signal → Download
+    then stops, leaving the raws in MinIO and the `source_images` rows at
+    `pipeline_state='downloaded'`. The crop (CPU-intensive Hough/YOLO) is
+    deferred — call [process_downloaded] on the returned run_id to crop on
+    demand. Lets a big scrape persist raws without burning the CPU on crops.
+    `dry_run` wins if both are set (it stops earlier).
+
     Returns the run_id either way so the caller (CLI / front) can
     fetch counters and the log.
     """
@@ -105,6 +121,23 @@ def run_pipeline(
             adapter=adapter,
             source_image_ids=persist_result.source_image_ids,
         )
+
+        if download_only:
+            # Stop here — raws persisted, crop deferred (see [process_downloaded]).
+            # Mirror the final n_errors check so a flaky download surfaces as
+            # 'partial' rather than a falsely-green 'success'.
+            n_errors = conn.execute(
+                "SELECT n_errors FROM source_runs WHERE id = ?", (run.run_id,)
+            ).fetchone()["n_errors"]
+            if n_errors > 0:
+                run.end("partial", error_summary=f"{n_errors} item(s) failed — see logs")
+            else:
+                run.end("success")
+            logger.info(
+                "[%s] download-only: stopping after download (crop deferred)",
+                adapter.source_id,
+            )
+            return run.run_id
 
         # ── 4. Detect & crop ─────────────────────────────────────────
         run.set_step("detect")
@@ -163,6 +196,109 @@ def run_pipeline(
         else:
             run.end("success")
         return run.run_id
+
+
+@dataclass
+class CropPendingResult:
+    """Bilan d'un `process_downloaded` (crop à la demande)."""
+
+    run_id: str
+    n_pending: int     # source_images téléchargées (download_status='success')
+    n_crops_added: int  # crops ajoutés cette passe (delta n_crops_added du run)
+
+
+def process_downloaded(
+    *,
+    store: "Store",
+    run_id: str,
+) -> CropPendingResult:
+    """Crop à la demande les raws d'un run lancé en `download_only`.
+
+    Reprend le **même** run et enchaîne detect → resolve → auto_validate →
+    enqueue → price_aggregate sur les images dont le download a réussi. Pensé
+    pour le mode scrape découplé : `run_pipeline(download_only=True)` persiste
+    les raws sans cropper (CPU économisé), ce process déclenche le crop quand on
+    le décide (front / CLI). Idempotent : `run_detect_crop` saute les images
+    déjà croppées, donc relancer ne double rien.
+
+    N'a pas besoin de l'adapter (les steps crop→… ne prennent qu'un `source_id`),
+    donc tourne sans credentials de la source (pas de token eBay requis).
+    """
+    conn = store._connection()  # noqa: SLF001
+    run_row = conn.execute(
+        "SELECT id, source, status, n_crops_added FROM source_runs WHERE id = ?",
+        (run_id,),
+    ).fetchone()
+    if run_row is None:
+        raise ValueError(f"Unknown run_id {run_id!r}")
+    if run_row["status"] == "running":
+        raise ValueError(f"Run {run_id!r} is still running — wait for it to finish.")
+    source = run_row["source"]
+    crops_before = run_row["n_crops_added"]
+
+    downloaded = conn.execute(
+        "SELECT id, source_ref FROM source_images "
+        "WHERE run_id = ? AND download_status = 'success'",
+        (run_id,),
+    ).fetchall()
+    n_pending = len(downloaded)
+    if not downloaded:
+        return CropPendingResult(run_id, 0, 0)
+
+    source_image_ids = {r["source_ref"]: r["id"] for r in downloaded}
+    run = RunHandle(run_id=run_id, source=source, _conn=conn)
+    conn.execute(
+        "UPDATE source_runs SET status='running', ended_at=NULL, error_summary=NULL "
+        "WHERE id = ?",
+        (run_id,),
+    )
+    conn.commit()
+    logger.info(
+        "[%s] crop-pending run=%s — cropping %d downloaded image(s)",
+        source, run_id, n_pending,
+    )
+
+    try:
+        run.set_step("detect")
+        run_detect_crop(
+            conn=conn, run=run, source_id=source, source_image_ids=source_image_ids,
+        )
+        run.set_step("resolve")
+        run_resolve(
+            conn=conn, run=run, source_id=source, source_image_ids=source_image_ids,
+        )
+        run.set_step("auto_validate")
+        run_auto_validate_dino(
+            conn=conn, run=run, source_id=source, source_image_ids=source_image_ids,
+        )
+        run.set_step("enqueue")
+        run_enqueue(
+            conn=conn, run=run, source_id=source, source_image_ids=source_image_ids,
+        )
+        run.set_step("price_aggregate")
+        run_price_aggregate(conn=conn, run_id=run_id, source=source)
+
+        row = conn.execute(
+            "SELECT n_errors, n_crops_added FROM source_runs WHERE id = ?", (run_id,)
+        ).fetchone()
+        n_errors = row["n_errors"]
+        run.end(
+            "success" if n_errors == 0 else "partial",
+            error_summary=None if n_errors == 0
+            else f"{n_errors} item(s) failed — see logs",
+        )
+        conn.commit()
+        logger.info(
+            "[%s] crop-pending run=%s done — crops_added=%d",
+            source, run_id, row["n_crops_added"] - crops_before,
+        )
+        return CropPendingResult(
+            run_id, n_pending, row["n_crops_added"] - crops_before,
+        )
+    except Exception as exc:  # noqa: BLE001
+        run.end("failed", error_summary=f"process_downloaded crashed: {exc}")
+        conn.commit()
+        raise
 
 
 @dataclass
