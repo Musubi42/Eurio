@@ -63,7 +63,7 @@ class CaptureProtocolTest {
         val csv = listOf("# mode=ablation", "fr;1;Test")
         CaptureProtocol.applyCsvForTests(csv)
         val expectedIds = listOf("bright_plain", "bright_textured", "dim",
-                                  "oblique", "partial_shadow")
+                                  "oblique", "glare_specular")
         assertEquals(expectedIds, CaptureProtocol.steps.map { it.id })
     }
 

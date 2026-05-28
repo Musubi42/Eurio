@@ -158,7 +158,7 @@ J7 : Déploiement Android du nouveau modèle (LiteRT)
 
 - **Définition** : évaluer le modèle entraîné sur les captures physiques cohort (hold-out par construction).
 - **Pipeline** : `evaluate_*.py` sur les `ml/datasets/<numista_id>/captures/` (transférées par `adb pull` depuis le device, app build variant `cohortTest`).
-- **Conditions** : 5 conditions standardisées (bright_plain, bright_textured, dim, oblique, partial_shadow) — voir `BenchProtocol.kt`.
+- **Conditions** : 5 conditions standardisées (bright_plain, bright_textured, dim, oblique, glare_specular) — voir `BenchProtocol.kt`.
 - **Dépend de** : J5 (modèle à évaluer) + cohorte capturée suffisamment.
 - **Done quand** : metric R@1 publiée, écart avec R@1 studio acceptable.
 
@@ -221,7 +221,7 @@ sur l'ablation margin/edge (cf. memory `reference_crop_format_research`).
 
 - **Training data** : eBay scrapings (existants en MinIO, hétérogènes, volume OK).
 - **Test data** : device captures cohort `mix-zone-17`, conditions standardisées
-  (`bright_plain, bright_textured, dim, oblique, partial_shadow` × 4 photos).
+  (`bright_plain, bright_textured, dim, oblique, glare_specular` × 4 photos).
 - **Cible** : 17 coins × 5 conditions × 4 photos = **340 photos** obverse-only,
   ~1h30 capture humaine.
 

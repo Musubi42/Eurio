@@ -26,7 +26,7 @@ object BenchProtocol {
         Condition("bright_textured", "Lumière jour, fond bois ou tissu"),
         Condition("dim", "Intérieur soir, lampe loin"),
         Condition("oblique", "Caméra inclinée ~30°"),
-        Condition("partial_shadow", "Moitié pièce ombrée"),
+        Condition("glare_specular", "Lampe directe au-dessus, reflet central"),
     )
 
     data class Cell(val coin: CaptureProtocol.Coin, val condition: Condition) {

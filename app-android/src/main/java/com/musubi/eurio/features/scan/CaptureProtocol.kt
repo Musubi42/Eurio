@@ -59,7 +59,7 @@ object CaptureProtocol {
         Step("bright_textured", "Lumière jour, fond bois ou tissu"),
         Step("dim", "Intérieur soir, lampe loin"),
         Step("oblique", "Caméra inclinée ~30°"),
-        Step("partial_shadow", "Moitié pièce ombrée"),
+        Step("glare_specular", "Lampe directe au-dessus, reflet central"),
     )
 
     /**
