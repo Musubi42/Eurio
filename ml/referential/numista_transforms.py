@@ -201,6 +201,33 @@ def mint_release_rows(
     return out
 
 
+# ─── mint_release_observations (mintage…) ──────────────────────────────────
+
+
+def mint_release_observation_rows(mr_rows: list[dict]) -> list[dict]:
+    """Observations par mint_release dérivées des carriers privés des mr_rows.
+
+    Aujourd'hui : ``mintage`` (fact_type='mintage'). Le mintage Numista vit sur
+    chaque issue ; ``mint_release_rows`` le porte dans ``_mintage`` (carrier
+    privé strippé avant l'INSERT de coin_mint_releases). Ce module le ré-émet
+    en observation provenance-first (UNIQUE (mint_release_id, fact_type,
+    source) côté writer). Bug 0.1 : avant, le mintage était fetché puis jeté.
+    """
+    import json
+    out: list[dict] = []
+    for r in mr_rows:
+        mintage = r.get("_mintage")
+        if mintage is None:
+            continue
+        out.append({
+            "mint_release_id": r["id"],
+            "fact_type": "mintage",
+            "value_json": json.dumps(mintage),
+            "source": NUMISTA_SOURCE,
+        })
+    return out
+
+
 # ─── mint_release_prices ───────────────────────────────────────────────────
 
 
@@ -401,27 +428,32 @@ def coin_canonical_image_rows(slug: NumistaSlugResult, payload: dict) -> list[di
 
 
 def coin_credit_rows(slug: NumistaSlugResult, payload: dict) -> list[dict]:
-    """Engravers depuis obverse.engravers + reverse.engravers. Numista n'a
-    qu'un seul rôle "graveur" par face — la distinction avers/revers est dans
-    la position du nom dans la liste, qu'on conserve via le ``position`` index
-    (0-based dans la liste de la face).
+    """Crédits (designers + engravers) depuis obverse/reverse de chaque face.
 
-    Tous mappés au role "engraver" (cf. mémoire — Luycx 524 fois OK).
+    Numista expose deux listes par face : ``designers`` (concepteur du dessin)
+    et ``engravers`` (graveur). La distinction avers/revers est conservée via
+    ``source_ref`` ('obverse'|'reverse') + le ``position`` index (0-based dans
+    la liste de la face).
+
+    Le UNIQUE de coin_credits est (eurio_id, role, name, source) : un même nom
+    présent sur les deux faces ou dans les deux rôles collapse proprement en
+    UPSERT (cf. Luycx, omniprésent sur les revers).
     """
     out: list[dict] = []
     for face in ("obverse", "reverse"):
         face_payload = payload.get(face) or {}
-        for idx, name in enumerate(face_payload.get("engravers") or []):
-            if not name:
-                continue
-            out.append({
-                "eurio_id": slug.eurio_id,
-                "role": "engraver",
-                "name": name,
-                "source": NUMISTA_SOURCE,
-                "source_ref": face,  # 'obverse' | 'reverse' — distingue les 2 faces
-                "position": idx,
-            })
+        for role, key in (("designer", "designers"), ("engraver", "engravers")):
+            for idx, name in enumerate(face_payload.get(key) or []):
+                if not name:
+                    continue
+                out.append({
+                    "eurio_id": slug.eurio_id,
+                    "role": role,
+                    "name": name,
+                    "source": NUMISTA_SOURCE,
+                    "source_ref": face,  # 'obverse' | 'reverse' — distingue les 2 faces
+                    "position": idx,
+                })
     return out
 
 
@@ -491,11 +523,38 @@ def coin_observation_rows(slug: NumistaSlugResult, payload: dict) -> list[dict]:
     add("theme", payload.get("commemorated_topic"))
     add("series", payload.get("series"))
     add("tags", payload.get("tags") or None)
-    add("edge", payload.get("edge"))
     add("shape", payload.get("shape"))
     add("orientation", payload.get("orientation"))
     add("weight_g", payload.get("weight"))
-    add("diameter_mm", payload.get("diameter"))
+    # Numista expose le diamètre dans ``size`` (le champ ``diameter`` est
+    # toujours null sur les payloads 2€). Bug 0.2.
+    add("diameter_mm", payload.get("size"))
     add("thickness_mm", payload.get("thickness"))
     add("composition", (payload.get("composition") or {}).get("text"))
+
+    # Edge structuré (Phase 1.3) : ``edge`` est un dict
+    # {description, lettering, lettering_translation, picture, ...}. On
+    # conserve description + lettering (+ traduction si présente) en
+    # observations dédiées plutôt que de jsonifier le dict brut.
+    edge = payload.get("edge")
+    if isinstance(edge, dict):
+        add("edge_description", edge.get("description"))
+        add("edge_lettering", edge.get("lettering"))
+        add("edge_lettering_translation", edge.get("lettering_translation"))
+
+    # Lettering / légende par face (Phase 1.2).
+    for face in ("obverse", "reverse"):
+        fp = payload.get(face) or {}
+        add(f"{face}_lettering", fp.get("lettering"))
+        add(f"{face}_unabridged_legend", fp.get("unabridged_legend"))
+        add(f"{face}_lettering_translation", fp.get("lettering_translation"))
+
+    # Démonétisation (Phase 1.4). ``coins.is_withdrawn`` n'existe que côté
+    # snapshot/Supabase, PAS dans eurio.db (source de vérité). On capture donc
+    # le fait en observation provenance-first (cohérent avec le reste) — true
+    # comme false sont enregistrés (false = a toujours cours légal).
+    demon = payload.get("demonetization")
+    if isinstance(demon, dict) and demon.get("is_demonetized") is not None:
+        add("demonetization", demon)
+
     return out

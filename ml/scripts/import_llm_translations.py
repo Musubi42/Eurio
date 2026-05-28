@@ -40,8 +40,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--results", default=str(RESULTS))
     parser.add_argument("--db", default=str(DB_PATH))
+    parser.add_argument("--model", default=MODEL,
+                        help=f"Identifiant modèle LLM enregistré en provenance (default: {MODEL})")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
+    model = args.model
 
     path = Path(args.results)
     if not path.exists():
@@ -98,8 +101,8 @@ def main() -> int:
                 # P.3b : split source/method. La source underlying du titre
                 # traduit reste Numista (le LLM traduit FROM the Numista title) ;
                 # 'llm_v1' devient un `method` capturant le pipeline de
-                # dérivation.
-                (eurio_id, lang, title, confidence, MODEL),
+                # dérivation. `model` = identifiant du LLM (cf. --model).
+                (eurio_id, lang, title, confidence, model),
             )
             n_inserted += 1
         except sqlite3.IntegrityError as e:

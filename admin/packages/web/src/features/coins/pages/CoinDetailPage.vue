@@ -7,10 +7,16 @@ import {
 import { zoneCopy, zoneStyle } from '@/features/confusion/composables/useConfusionZone'
 import {
   fetchCoin as apiFetchCoin,
+  fetchCoinCredits,
   fetchCoinEmbedding,
   fetchCoinI18n,
+  fetchCoinMintReleasesFull,
+  fetchCoinObservations,
   fetchCoinPrices,
   fetchCoinSeries,
+  type CreditsResponse,
+  type MintReleaseFull,
+  type ObservationsResponse,
 } from '@/features/coins/composables/useCoinsApi'
 import type { Coin, CoinImage, CoinImageDict, CoinSeries, IssueType } from '@/shared/supabase/types'
 import {
@@ -96,6 +102,12 @@ interface AliasRow {
 }
 const i18nRows = ref<I18nRow[] | undefined>(undefined)
 const aliasesRows = ref<AliasRow[] | undefined>(undefined)
+
+// Caractéristiques (observations + crédits) + Millésimes & tirages.
+// undefined = chargement, null = erreur réseau (fail-silent).
+const observations = ref<ObservationsResponse | null | undefined>(undefined)
+const credits = ref<CreditsResponse | null | undefined>(undefined)
+const mintReleases = ref<MintReleaseFull[] | null | undefined>(undefined)
 const I18N_LANG_ORDER = ['fr', 'en', 'de', 'it', 'es', 'nl'] as const
 const I18N_LANG_LABEL: Record<string, string> = {
   fr: 'Français', en: 'English', de: 'Deutsch',
@@ -215,6 +227,28 @@ async function fetchCoin(eurioId: string) {
   loadMarketPrice(coin.value.eurio_id)
   // i18n titles + aliases — non-blocking
   loadI18nAndAliases(coin.value.eurio_id)
+  // Caractéristiques + millésimes — non-blocking
+  loadCharacteristics(coin.value.eurio_id)
+}
+
+async function loadCharacteristics(eurioId: string) {
+  observations.value = undefined
+  credits.value = undefined
+  mintReleases.value = undefined
+  try {
+    const [obs, cr, mr] = await Promise.all([
+      fetchCoinObservations(eurioId),
+      fetchCoinCredits(eurioId),
+      fetchCoinMintReleasesFull(eurioId),
+    ])
+    observations.value = obs
+    credits.value = cr
+    mintReleases.value = mr.mint_releases
+  } catch {
+    observations.value = null
+    credits.value = null
+    mintReleases.value = null
+  }
 }
 
 /**
@@ -535,6 +569,68 @@ const coinTopicsList = computed(() => {
     return la - lb
   })
 })
+
+// ─── Caractéristiques & millésimes (extraction riche Numista) ──────────────
+
+const ISSUE_TYPE_LABEL: Record<string, string> = {
+  CIRC: 'Circulation', BU: 'BU', BE: 'Belle épreuve',
+  PROOF: 'Proof', COIN_CARD: 'Coincard', OTHER: 'Autre',
+}
+
+// Libellé court de provenance (registry vocab → humain).
+const SOURCE_LABEL: Record<string, string> = {
+  numista_api: 'Numista', bce_official: 'BCE', ebay_browse: 'eBay',
+  lmdlp: 'LMDLP', wikipedia: 'Wikipedia', manual: 'Manuel',
+}
+function sourceLabel(source: string): string {
+  return SOURCE_LABEL[source] ?? source
+}
+
+// Une ligne « caractéristique » : label, valeur, provenance.
+interface CharacRow { label: string; value: string; source: string }
+const characteristicsRows = computed<CharacRow[]>(() => {
+  const o = observations.value
+  if (!o) return []
+  // provenance par type d'observation (1re source rencontrée).
+  const srcByType = new Map<string, string>()
+  for (const ob of o.observations) {
+    if (!srcByType.has(ob.observation_type)) srcByType.set(ob.observation_type, ob.source)
+  }
+  const src = (t: string) => srcByType.get(t) ?? 'numista_api'
+  const rows: CharacRow[] = []
+  if (o.composition) rows.push({ label: 'Composition', value: o.composition, source: src('composition') })
+  if (o.weight_g != null) rows.push({ label: 'Poids', value: `${o.weight_g} g`, source: src('weight_g') })
+  if (o.diameter_mm != null) rows.push({ label: 'Diamètre', value: `${o.diameter_mm} mm`, source: src('diameter_mm') })
+  if (o.thickness_mm != null) rows.push({ label: 'Épaisseur', value: `${o.thickness_mm} mm`, source: src('thickness_mm') })
+  if (o.shape) rows.push({ label: 'Forme', value: o.shape, source: src('shape') })
+  if (o.orientation) rows.push({ label: 'Orientation', value: o.orientation, source: src('orientation') })
+  if (o.edge_description) rows.push({ label: 'Tranche', value: o.edge_description, source: src('edge_description') })
+  if (o.edge_lettering) rows.push({ label: 'Tranche — inscription', value: o.edge_lettering, source: src('edge_lettering') })
+  if (o.edge_lettering_translation) rows.push({ label: 'Tranche — traduction', value: o.edge_lettering_translation, source: src('edge_lettering_translation') })
+  if (o.obverse_lettering) rows.push({ label: 'Avers — légende', value: o.obverse_lettering, source: src('obverse_lettering') })
+  if (o.reverse_lettering) rows.push({ label: 'Revers — légende', value: o.reverse_lettering, source: src('reverse_lettering') })
+  if (o.is_demonetized != null) rows.push({ label: 'Démonétisée', value: o.is_demonetized ? 'Oui' : 'Non (cours légal)', source: src('demonetization') })
+  return rows
+})
+
+const hasCredits = computed(() => {
+  const c = credits.value
+  return Boolean(c && (c.designers.length || c.engravers.length || c.sculptors.length))
+})
+
+const hasCharacteristics = computed(
+  () => characteristicsRows.value.length > 0 || hasCredits.value,
+)
+
+function mintageOf(release: MintReleaseFull): number | null {
+  const obs = release.observations.find(o => o.fact_type === 'mintage')
+  if (!obs) return null
+  const v = obs.value
+  return typeof v === 'number' ? v : null
+}
+function formatMintage(n: number): string {
+  return n.toLocaleString('fr-FR')
+}
 </script>
 
 <template>
@@ -1202,6 +1298,169 @@ const coinTopicsList = computed(() => {
           </div>
         </div>
       </template>
+    </div>
+
+    <!-- ═══ Caractéristiques (observations + crédits) — pleine largeur ═══ -->
+    <div v-if="coin" class="mt-12">
+      <div class="mb-5 flex items-end justify-between border-b pb-3"
+           style="border-color: var(--surface-3);">
+        <div>
+          <p class="text-[10px] uppercase"
+             style="color: var(--ink-500); letter-spacing: var(--tracking-eyebrow);">
+            Référentiel
+          </p>
+          <h2 class="mt-0.5 font-display text-2xl italic font-semibold"
+              style="color: var(--indigo-700);">
+            Caractéristiques
+          </h2>
+        </div>
+      </div>
+
+      <!-- Loading -->
+      <div v-if="observations === undefined"
+           class="h-24 animate-pulse rounded-lg" style="background: var(--surface-1);" />
+
+      <!-- Empty -->
+      <div v-else-if="!hasCharacteristics"
+           class="rounded-lg border px-4 py-6 text-center text-sm"
+           style="border-color: var(--surface-3); background: var(--surface); color: var(--ink-500);">
+        Aucune caractéristique extraite (refetch Numista requis).
+      </div>
+
+      <!-- Content -->
+      <div v-else class="grid gap-6 lg:grid-cols-2">
+        <!-- Specs physiques + légendes -->
+        <div v-if="characteristicsRows.length"
+             class="rounded-lg border overflow-hidden"
+             style="border-color: var(--surface-3); background: var(--surface);">
+          <div v-for="(row, i) in characteristicsRows" :key="row.label"
+               class="flex items-start justify-between gap-3 px-4 py-2.5"
+               :class="i > 0 ? 'border-t' : ''" style="border-color: var(--surface-2);">
+            <span class="text-xs uppercase tracking-wider flex-shrink-0"
+                  style="color: var(--ink-500);">{{ row.label }}</span>
+            <span class="flex items-center gap-2 text-right">
+              <span class="text-sm" style="color: var(--ink);">{{ row.value }}</span>
+              <span class="rounded-full px-1.5 py-0.5 text-[9px] font-medium uppercase flex-shrink-0"
+                    style="background: var(--success-soft, #e8f5e9); color: var(--success, #2e7d32);"
+                    :title="row.source">{{ sourceLabel(row.source) }}</span>
+            </span>
+          </div>
+        </div>
+
+        <!-- Crédits (designers / graveurs / sculpteurs) -->
+        <div v-if="hasCredits"
+             class="rounded-lg border px-4 py-4 space-y-4"
+             style="border-color: var(--surface-3); background: var(--surface);">
+          <template v-for="grp in [
+            { label: 'Designers', items: credits!.designers },
+            { label: 'Graveurs', items: credits!.engravers },
+            { label: 'Sculpteurs', items: credits!.sculptors },
+          ]" :key="grp.label">
+            <div v-if="grp.items.length">
+              <p class="mb-1.5 text-[10px] uppercase tracking-wider" style="color: var(--ink-500);">
+                {{ grp.label }}
+              </p>
+              <div class="flex flex-wrap gap-2">
+                <span v-for="c in grp.items" :key="c.name + (c.source_ref ?? '')"
+                      class="flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs"
+                      style="border-color: var(--surface-3); color: var(--ink);">
+                  {{ c.name }}
+                  <span v-if="c.source_ref" class="text-[9px] uppercase" style="color: var(--ink-400);">
+                    {{ roleLabel[c.source_ref] ?? c.source_ref }}
+                  </span>
+                  <span class="rounded-full px-1.5 py-0.5 text-[9px] font-medium uppercase"
+                        style="background: var(--success-soft, #e8f5e9); color: var(--success, #2e7d32);"
+                        :title="c.source">{{ sourceLabel(c.source) }}</span>
+                </span>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ Millésimes & tirages (mint_releases + mintage + prix par grade) ═══ -->
+    <div v-if="coin" class="mt-12">
+      <div class="mb-5 flex items-end justify-between border-b pb-3"
+           style="border-color: var(--surface-3);">
+        <div>
+          <p class="text-[10px] uppercase"
+             style="color: var(--ink-500); letter-spacing: var(--tracking-eyebrow);">
+            Numista
+          </p>
+          <h2 class="mt-0.5 font-display text-2xl italic font-semibold"
+              style="color: var(--indigo-700);">
+            Millésimes &amp; tirages
+          </h2>
+        </div>
+        <span v-if="mintReleases && mintReleases.length"
+              class="text-xs" style="color: var(--ink-500);">
+          {{ mintReleases.length }} millésime(s)
+        </span>
+      </div>
+
+      <!-- Loading -->
+      <div v-if="mintReleases === undefined"
+           class="h-24 animate-pulse rounded-lg" style="background: var(--surface-1);" />
+
+      <!-- Empty -->
+      <div v-else-if="!mintReleases || mintReleases.length === 0"
+           class="rounded-lg border px-4 py-6 text-center text-sm"
+           style="border-color: var(--surface-3); background: var(--surface); color: var(--ink-500);">
+        Aucun millésime (refetch Numista requis).
+      </div>
+
+      <!-- Content : un bloc par mint_release -->
+      <div v-else class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div v-for="rel in mintReleases" :key="rel.id"
+             class="rounded-lg border px-4 py-3"
+             style="border-color: var(--surface-3); background: var(--surface);">
+          <!-- Header : année · atelier · format -->
+          <div class="flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+              <span class="font-mono text-base font-semibold" style="color: var(--ink);">
+                {{ rel.mint_year }}
+              </span>
+              <span v-if="rel.mint_id" class="text-xs" style="color: var(--ink-500);">
+                {{ rel.mint_id }}
+              </span>
+            </div>
+            <span class="rounded-full px-2 py-0.5 text-[10px] font-medium uppercase"
+                  style="background: var(--surface-1); color: var(--ink-500);">
+              {{ ISSUE_TYPE_LABEL[rel.issue_type] ?? rel.issue_type }}
+            </span>
+          </div>
+
+          <!-- Mintage -->
+          <div class="mt-2 flex items-center justify-between border-t pt-2"
+               style="border-color: var(--surface-2);">
+            <span class="text-[10px] uppercase tracking-wider" style="color: var(--ink-500);">Tirage</span>
+            <span class="font-mono text-sm tabular-nums" style="color: var(--ink);">
+              {{ mintageOf(rel) != null ? formatMintage(mintageOf(rel)!) : '—' }}
+            </span>
+          </div>
+
+          <!-- Prix par grade -->
+          <div v-if="rel.prices.length" class="mt-2 border-t pt-2" style="border-color: var(--surface-2);">
+            <p class="mb-1.5 text-[10px] uppercase tracking-wider" style="color: var(--ink-500);">
+              Cote par grade
+            </p>
+            <div class="flex flex-wrap gap-2">
+              <span v-for="p in rel.prices" :key="p.grade_raw"
+                    class="flex items-center gap-1 rounded-md px-2 py-1 text-xs"
+                    style="background: var(--surface-1);"
+                    :title="`${p.grade_raw} · ${sourceLabel(p.source)} · ${formatShortDate(p.fetched_at)}`">
+                <span class="font-medium uppercase" style="color: var(--ink-500);">
+                  {{ p.grade_eurio ?? p.grade_raw }}
+                </span>
+                <span class="font-mono tabular-nums" style="color: var(--ink);">
+                  {{ formatPrice(p.price) }} {{ p.currency === 'EUR' ? '€' : p.currency }}
+                </span>
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- ═══ Cartographie de confusion (Phase 1 ML scalability) — pleine largeur ═══ -->

@@ -121,6 +121,74 @@ export interface CoinPatch {
   lent_to_me?: boolean
 }
 
+// ─── Caractéristiques : observations + crédits (extraction riche Numista) ──
+
+export interface CoinObservation {
+  observation_type: string
+  value: unknown
+  source: string
+  source_ref: string | null
+  recorded_at: string | null
+}
+
+export interface ObservationsResponse {
+  observations: CoinObservation[]
+  composition: string | null
+  weight_g: number | null
+  diameter_mm: number | null
+  thickness_mm: number | null
+  shape: string | null
+  orientation: string | null
+  edge_description: string | null
+  edge_lettering: string | null
+  edge_lettering_translation: string | null
+  obverse_lettering: string | null
+  reverse_lettering: string | null
+  is_demonetized: boolean | null
+}
+
+export interface CreditEntry {
+  name: string
+  source: string
+  source_ref: string | null // 'obverse' | 'reverse'
+  position: number
+}
+
+export interface CreditsResponse {
+  designers: CreditEntry[]
+  engravers: CreditEntry[]
+  sculptors: CreditEntry[]
+}
+
+export interface MintReleaseObservation {
+  fact_type: string // 'mintage' | …
+  value: unknown
+  source: string
+}
+
+export interface MintReleasePriceEntry {
+  grade_raw: string
+  grade_eurio: string | null
+  price: number
+  currency: string
+  source: string
+  fetched_at: string
+}
+
+export interface MintReleaseFull {
+  id: string
+  mint_year: number
+  mint_id: string | null
+  issue_type: string
+  notes: string | null
+  observations: MintReleaseObservation[]
+  prices: MintReleasePriceEntry[]
+}
+
+export interface MintReleasesFullResponse {
+  mint_releases: MintReleaseFull[]
+}
+
 export type SourceKey = 'numista' | 'bce' | 'wikipedia' | 'lmdlp' | 'ebay'
 
 export interface CoinListResponse {
@@ -205,6 +273,18 @@ export function fetchCoinI18n(eurioId: string): Promise<I18nResponse> {
 
 export function fetchCoinPrices(eurioId: string): Promise<PricesResponse> {
   return json<PricesResponse>(`/coins/${encodeURIComponent(eurioId)}/prices`)
+}
+
+export function fetchCoinObservations(eurioId: string): Promise<ObservationsResponse> {
+  return json<ObservationsResponse>(`/coins/${encodeURIComponent(eurioId)}/observations`)
+}
+
+export function fetchCoinCredits(eurioId: string): Promise<CreditsResponse> {
+  return json<CreditsResponse>(`/coins/${encodeURIComponent(eurioId)}/credits`)
+}
+
+export function fetchCoinMintReleasesFull(eurioId: string): Promise<MintReleasesFullResponse> {
+  return json<MintReleasesFullResponse>(`/coins/${encodeURIComponent(eurioId)}/mint-releases-full`)
 }
 
 export function fetchCoinEmbedding(eurioId: string): Promise<{ model_version: string | null }> {

@@ -43,6 +43,7 @@ class WriteStats:
     source_refs: int = 0
     cross_refs: int = 0
     mint_releases: int = 0
+    mint_release_observations: int = 0
     prices: int = 0
     market_quotes: int = 0
     images: int = 0
@@ -153,6 +154,26 @@ class NumistaWriter:
             row_db = {k: v for k, v in row.items() if not k.startswith("_")}
             self.conn.execute(sql, row_db)
             self.stats.mint_releases += 1
+
+    # ─── mint_release_observations ─────────────────────────────────────
+
+    def write_mint_release_observations(self, rows: list[dict]) -> None:
+        """Mintage (et futurs facts par millésime) en provenance-first.
+
+        UPSERT idempotent sur UNIQUE (mint_release_id, fact_type, source) —
+        même pattern que write_observations (Type-level)."""
+        sql = """
+        INSERT INTO mint_release_observations
+          (mint_release_id, fact_type, value_json, source)
+        VALUES
+          (:mint_release_id, :fact_type, :value_json, :source)
+        ON CONFLICT (mint_release_id, fact_type, source) DO UPDATE SET
+          value_json = excluded.value_json,
+          observed_at = datetime('now')
+        """
+        for row in rows:
+            self.conn.execute(sql, row)
+            self.stats.mint_release_observations += 1
 
     # ─── mint_release_prices ───────────────────────────────────────────
 
@@ -330,7 +351,8 @@ class NumistaWriter:
             coin_canonical_image_rows, coin_credit_rows, coin_cross_ref_rows,
             coin_market_quote_rows, coin_name_i18n_rows, coin_observation_rows,
             coin_row, coin_source_ref_row, coin_topic_rows, coin_variant_row,
-            design_group_row, mint_release_price_rows, mint_release_rows,
+            design_group_row, mint_release_observation_rows,
+            mint_release_price_rows, mint_release_rows,
         )
 
         # 1. design_groups d'abord (FK target depuis coins.design_group_id)
@@ -349,13 +371,35 @@ class NumistaWriter:
         self.write_i18n_names(coin_name_i18n_rows(slug, payload, payload_fr))
         self.write_topics(coin_topic_rows(slug, payload, payload_fr))
 
-        # 4. mint_releases (FK depuis prices)
+        # 4. mint_releases (FK depuis prices) + leurs observations (mintage).
+        #
+        # Dédup sur la clé UNIQUE secondaire de coin_mint_releases
+        # (parent_type_id, mint_year, mint_id, issue_type) : Numista modélise
+        # des sous-variantes que notre granularité collapse (ex: « Proof » vs
+        # « Proof (inversed) », ou deux « Coincard » la même année). Sans
+        # dédup, le 2e INSERT viole la contrainte et fait rollback de TOUT le
+        # bundle (on perdait alors la pièce entière). On garde 1 release par
+        # clé et on redirige les iids des doublons vers le survivant — leurs
+        # prix/mintage s'y rattachent (INSERT OR IGNORE / UPSERT idempotents).
         mr_rows = mint_release_rows(slug, issues, mint_resolver)
-        self.write_mint_releases(mr_rows)
+        deduped_rows: list[dict] = []
+        iid_to_release_id: dict[int, str] = {}
+        by_unique_key: dict[tuple, dict] = {}
+        for r in mr_rows:
+            key = (r["parent_type_id"], r["mint_year"], r["mint_id"], r["issue_type"])
+            survivor = by_unique_key.get(key)
+            if survivor is None:
+                by_unique_key[key] = r
+                deduped_rows.append(r)
+                iid_to_release_id[r["_numista_iid"]] = r["id"]
+            else:
+                iid_to_release_id[r["_numista_iid"]] = survivor["id"]
+        self.write_mint_releases(deduped_rows)
+        self.write_mint_release_observations(
+            mint_release_observation_rows(deduped_rows))
 
-        # 5. prices par mint_release. Le mapping iid → mint_release_id est
-        # dans mr_rows (via _numista_iid privé).
-        iid_to_release_id = {r["_numista_iid"]: r["id"] for r in mr_rows}
+        # 5. prices par mint_release. iid_to_release_id couvre TOUS les iids
+        # (y compris les doublons redirigés vers leur survivant).
         all_prices: list[dict] = []
         for iid, prices_payload in prices_by_iid.items():
             release_id = iid_to_release_id.get(iid)
