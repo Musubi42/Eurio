@@ -164,6 +164,80 @@ class CoinPatch(BaseModel):
     lent_to_me: bool | None = None
 
 
+# ── Caractéristiques : observations + crédits (Phase 4 extraction riche) ────
+
+
+class CoinObservation(BaseModel):
+    observation_type: str
+    value: Any                       # payload_json déserialisé
+    source: str
+    source_ref: str | None = None
+    recorded_at: str | None = None
+
+
+class ObservationsResponse(BaseModel):
+    """Observations Type-level brutes + raccourcis aplatis pour l'affichage.
+
+    Les raccourcis prennent la 1re observation par type (toutes sources
+    confondues, priorité d'insertion). Le front peut afficher soit la liste
+    avec provenance, soit directement les raccourcis."""
+    observations: list[CoinObservation]
+    composition: str | None = None
+    weight_g: float | None = None
+    diameter_mm: float | None = None
+    thickness_mm: float | None = None
+    shape: str | None = None
+    orientation: str | None = None
+    edge_description: str | None = None
+    edge_lettering: str | None = None
+    edge_lettering_translation: str | None = None
+    obverse_lettering: str | None = None
+    reverse_lettering: str | None = None
+    is_demonetized: bool | None = None
+
+
+class CreditEntry(BaseModel):
+    name: str
+    source: str
+    source_ref: str | None = None    # 'obverse' | 'reverse'
+    position: int = 0
+
+
+class CreditsResponse(BaseModel):
+    designers: list[CreditEntry]
+    engravers: list[CreditEntry]
+    sculptors: list[CreditEntry]
+
+
+class MintReleaseObservation(BaseModel):
+    fact_type: str                   # 'mintage' | …
+    value: Any
+    source: str
+
+
+class MintReleasePriceEntry(BaseModel):
+    grade_raw: str
+    grade_eurio: str | None
+    price: float
+    currency: str
+    source: str
+    fetched_at: str
+
+
+class MintReleaseFull(BaseModel):
+    id: str
+    mint_year: int
+    mint_id: str | None = None
+    issue_type: str
+    notes: str | None = None
+    observations: list[MintReleaseObservation]
+    prices: list[MintReleasePriceEntry]
+
+
+class MintReleasesFullResponse(BaseModel):
+    mint_releases: list[MintReleaseFull]
+
+
 # ── List + filters ────────────────────────────────────────────────────────
 
 
@@ -453,6 +527,135 @@ def get_coin_prices(eurio_id: str) -> PricesResponse:
         type_level=[TypeLevelPrice(**dict(r)) for r in tl_rows],
         mint_release_level=[MintReleasePrice(**dict(r)) for r in mr_rows],
     )
+
+
+@router.get("/{eurio_id}/observations", response_model=ObservationsResponse)
+def get_coin_observations(eurio_id: str) -> ObservationsResponse:
+    """Observations Type-level (compo, poids, diamètre, épaisseur, edge,
+    lettering, forme, orientation, démonétisation…) avec provenance, plus des
+    raccourcis aplatis pour un affichage direct."""
+    conn = _conn()
+    rows = conn.execute(
+        "SELECT observation_type, payload_json, source, source_ref, recorded_at "
+        "FROM coin_observations WHERE eurio_id = ? "
+        "ORDER BY observation_type, source",
+        (eurio_id,),
+    ).fetchall()
+
+    observations: list[CoinObservation] = []
+    # 1re valeur par type (priorité d'insertion = ordre du SELECT).
+    flat: dict[str, Any] = {}
+    for r in rows:
+        d = dict(r)
+        try:
+            value = json.loads(d["payload_json"])
+        except (json.JSONDecodeError, TypeError):
+            value = d["payload_json"]
+        observations.append(CoinObservation(
+            observation_type=d["observation_type"], value=value,
+            source=d["source"], source_ref=d.get("source_ref"),
+            recorded_at=d.get("recorded_at"),
+        ))
+        flat.setdefault(d["observation_type"], value)
+
+    demon = flat.get("demonetization")
+    is_demonetized = (
+        demon.get("is_demonetized") if isinstance(demon, dict) else None
+    )
+    return ObservationsResponse(
+        observations=observations,
+        composition=flat.get("composition"),
+        weight_g=flat.get("weight_g"),
+        diameter_mm=flat.get("diameter_mm"),
+        thickness_mm=flat.get("thickness_mm"),
+        shape=flat.get("shape"),
+        orientation=flat.get("orientation"),
+        edge_description=flat.get("edge_description"),
+        edge_lettering=flat.get("edge_lettering"),
+        edge_lettering_translation=flat.get("edge_lettering_translation"),
+        obverse_lettering=flat.get("obverse_lettering"),
+        reverse_lettering=flat.get("reverse_lettering"),
+        is_demonetized=is_demonetized,
+    )
+
+
+@router.get("/{eurio_id}/credits", response_model=CreditsResponse)
+def get_coin_credits(eurio_id: str) -> CreditsResponse:
+    """Crédits regroupés par rôle (designers / engravers / sculptors)."""
+    conn = _conn()
+    rows = conn.execute(
+        "SELECT role, name, source, source_ref, position "
+        "FROM coin_credits WHERE eurio_id = ? ORDER BY role, position, name",
+        (eurio_id,),
+    ).fetchall()
+    buckets: dict[str, list[CreditEntry]] = {
+        "designer": [], "engraver": [], "sculptor": [],
+    }
+    for r in rows:
+        d = dict(r)
+        buckets.setdefault(d["role"], []).append(CreditEntry(
+            name=d["name"], source=d["source"],
+            source_ref=d.get("source_ref"), position=d.get("position") or 0,
+        ))
+    return CreditsResponse(
+        designers=buckets["designer"],
+        engravers=buckets["engraver"],
+        sculptors=buckets["sculptor"],
+    )
+
+
+@router.get("/{eurio_id}/mint-releases-full", response_model=MintReleasesFullResponse)
+def get_coin_mint_releases_full(eurio_id: str) -> MintReleasesFullResponse:
+    """Millésimes (coin_mint_releases) centralisés avec leurs observations
+    (mintage…) ET leurs prix par grade. Les prix étant historisés par
+    fetched_at, on ne renvoie que le snapshot le plus récent par millésime."""
+    conn = _conn()
+    releases = conn.execute(
+        "SELECT id, mint_year, mint_id, issue_type, notes "
+        "FROM coin_mint_releases WHERE parent_type_id = ? "
+        "ORDER BY mint_year, mint_id, issue_type",
+        (eurio_id,),
+    ).fetchall()
+
+    out: list[MintReleaseFull] = []
+    for rel in releases:
+        rid = rel["id"]
+        obs_rows = conn.execute(
+            "SELECT fact_type, value_json, source FROM mint_release_observations "
+            "WHERE mint_release_id = ? ORDER BY fact_type, source",
+            (rid,),
+        ).fetchall()
+        observations: list[MintReleaseObservation] = []
+        for o in obs_rows:
+            try:
+                value = json.loads(o["value_json"])
+            except (json.JSONDecodeError, TypeError):
+                value = o["value_json"]
+            observations.append(MintReleaseObservation(
+                fact_type=o["fact_type"], value=value, source=o["source"],
+            ))
+
+        # Snapshot prix le plus récent (max fetched_at) pour ce millésime.
+        latest = conn.execute(
+            "SELECT MAX(fetched_at) FROM mint_release_prices WHERE mint_release_id = ?",
+            (rid,),
+        ).fetchone()[0]
+        prices: list[MintReleasePriceEntry] = []
+        if latest is not None:
+            price_rows = conn.execute(
+                "SELECT grade_raw, grade_eurio, price, currency, source, fetched_at "
+                "FROM mint_release_prices WHERE mint_release_id = ? AND fetched_at = ? "
+                "ORDER BY grade_eurio, grade_raw",
+                (rid, latest),
+            ).fetchall()
+            prices = [MintReleasePriceEntry(**dict(p)) for p in price_rows]
+
+        out.append(MintReleaseFull(
+            id=rid, mint_year=rel["mint_year"], mint_id=rel["mint_id"],
+            issue_type=rel["issue_type"], notes=rel["notes"],
+            observations=observations, prices=prices,
+        ))
+    return MintReleasesFullResponse(mint_releases=out)
 
 
 @router.get("/{eurio_id}/embedding", response_model=EmbeddingResponse)

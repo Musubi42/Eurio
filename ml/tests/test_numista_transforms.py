@@ -30,18 +30,29 @@ from referential.numista_transforms import (  # noqa: E402
     coin_source_ref_row,
     coin_variant_row,
     design_group_row,
+    mint_release_observation_rows,
     mint_release_price_rows,
     mint_release_rows,
 )
 
 
-BREMEN_CACHE = ML_DIR / "state" / "numista_cache" / "10069"
+CACHE_DIR = ML_DIR / "state" / "numista_cache"
+BREMEN_CACHE = CACHE_DIR / "10069"
+# French Presidency of the EU (2008) — obverse designer 'Philippe Starck',
+# reverse engraver 'Luc Luycx'. Sert de fixture pour le rôle 'designer'.
+FR_PRESIDENCY_CACHE = CACHE_DIR / "3561"
 
 
 def _bremen_type() -> dict:
     if not BREMEN_CACHE.exists():
         pytest.skip(f"Bremen cache absent (run P.7b live fetch first): {BREMEN_CACHE}")
     return json.loads((BREMEN_CACHE / "type.json").read_text())
+
+
+def _fr_presidency_type() -> dict:
+    if not FR_PRESIDENCY_CACHE.exists():
+        pytest.skip(f"FR Presidency cache absent: {FR_PRESIDENCY_CACHE}")
+    return json.loads((FR_PRESIDENCY_CACHE / "type.json").read_text())
 
 
 def _bremen_issues() -> list[dict]:
@@ -308,3 +319,84 @@ def test_coin_variant_row_no_variant() -> None:
     payload = _bremen_type()
     slug = eurio_id_from_numista_payload(payload)
     assert coin_variant_row(slug, payload) is None
+
+
+# ─── Phase 0.2 — diameter lu sur `size` (pas `diameter`) ───────────────────
+
+
+def test_diameter_uses_size_field_bremen() -> None:
+    """Bug 0.2 : Numista expose le diamètre dans ``size`` (``diameter`` null).
+    Bremen 2€ → size=25.75 → diameter_mm non-null."""
+    payload = _bremen_type()
+    assert payload.get("diameter") is None  # le champ buggé d'origine
+    assert payload.get("size") == 25.75
+    slug = eurio_id_from_numista_payload(payload)
+    rows = coin_observation_rows(slug, payload)
+    by_type = {r["observation_type"]: r for r in rows}
+    assert "diameter_mm" in by_type
+    assert json.loads(by_type["diameter_mm"]["payload_json"]) == 25.75
+
+
+# ─── Phase 1.1 — designers captés ──────────────────────────────────────────
+
+
+def test_coin_credit_rows_captures_designers_fr() -> None:
+    """FR Presidency : obverse designer 'Philippe Starck' + reverse engraver
+    'Luc Luycx'. Le rôle 'designer' doit être émis (avant : engravers only)."""
+    payload = _fr_presidency_type()
+    slug = eurio_id_from_numista_payload(payload)
+    rows = coin_credit_rows(slug, payload)
+    by_role = {(r["role"], r["name"]) for r in rows}
+    assert ("designer", "Philippe Starck") in by_role
+    assert ("engraver", "Luc Luycx") in by_role
+
+
+# ─── Phase 1.2/1.3 — lettering + edge structuré ────────────────────────────
+
+
+def test_lettering_and_edge_observations_bremen() -> None:
+    """Bremen : obverse_lettering présent + edge éclaté en
+    edge_description / edge_lettering / edge_lettering_translation."""
+    payload = _bremen_type()
+    slug = eurio_id_from_numista_payload(payload)
+    by_type = {r["observation_type"]: json.loads(r["payload_json"])
+               for r in coin_observation_rows(slug, payload)}
+    assert "edge" not in by_type  # plus de dict brut
+    assert by_type.get("edge_description") == "Reeded with inscription"
+    assert by_type.get("edge_lettering") == "EINIGKEIT UND RECHT UND FREIHEIT"
+    assert by_type.get("edge_lettering_translation") == "Unity and Justice and Freedom"
+    assert "obverse_lettering" in by_type
+    assert "BREMEN" in by_type["obverse_lettering"]
+
+
+# ─── Phase 1.4 — démonétisation ────────────────────────────────────────────
+
+
+def test_demonetization_observation_bremen() -> None:
+    """is_demonetized=False capturé en observation (a toujours cours légal)."""
+    payload = _bremen_type()
+    slug = eurio_id_from_numista_payload(payload)
+    by_type = {r["observation_type"]: json.loads(r["payload_json"])
+               for r in coin_observation_rows(slug, payload)}
+    assert "demonetization" in by_type
+    assert by_type["demonetization"]["is_demonetized"] is False
+
+
+# ─── Phase 0.1 — mintage → mint_release_observations ───────────────────────
+
+
+def test_mint_release_observation_rows_mintage_bremen() -> None:
+    """Le mintage de chaque issue est ré-émis en observation (avant : jeté)."""
+    payload = _bremen_type()
+    issues = _bremen_issues()
+    slug = eurio_id_from_numista_payload(payload)
+    mr_rows = mint_release_rows(slug, issues, _fake_mint_resolver)
+    obs = mint_release_observation_rows(mr_rows)
+    assert obs, "au moins une observation mintage attendue"
+    assert all(o["fact_type"] == "mintage" for o in obs)
+    assert all(o["source"] == NUMISTA_SOURCE for o in obs)
+    # Bremen 2010 A circulation = 6M (cas fil-rouge findings §1.2)
+    a_circ = next(r for r in mr_rows
+                  if r["mint_id"] == "de-berlin-a" and r["issue_type"] == "CIRC")
+    a_obs = next(o for o in obs if o["mint_release_id"] == a_circ["id"])
+    assert json.loads(a_obs["value_json"]) == 6_000_000

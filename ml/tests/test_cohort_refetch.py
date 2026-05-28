@@ -141,15 +141,20 @@ def test_cohort_bleuet_variant(db_copy: sqlite3.Connection) -> None:
     assert "variant-numista-134283" in rows[0][0]
 
     # Finding §1.2 fixtures : Bleuet coloured = 2 issues (BU + Proof seulement,
-    # pas de CIRC car commémo collector coloured)
+    # pas de CIRC car commémo collector coloured). On scope aux iids de CE
+    # bundle : le parent classique (NID 134685, refetché séparément lors du
+    # pilote FR) ajoute sa propre row CIRC sous le même parent_type_id — hors
+    # périmètre de ce test variant.
+    variant_ids = [f"{slug.eurio_id}/numista-{i['id']}" for i in issues]
+    placeholders = ",".join("?" * len(variant_ids))
     assert db_copy.execute(
-        "SELECT COUNT(*) FROM coin_mint_releases WHERE parent_type_id = ?",
-        (slug.eurio_id,),
+        f"SELECT COUNT(*) FROM coin_mint_releases WHERE id IN ({placeholders})",
+        variant_ids,
     ).fetchone()[0] == 2
 
     types = sorted([r[0] for r in db_copy.execute(
-        "SELECT issue_type FROM coin_mint_releases WHERE parent_type_id = ?",
-        (slug.eurio_id,),
+        f"SELECT issue_type FROM coin_mint_releases WHERE id IN ({placeholders})",
+        variant_ids,
     )])
     assert types == ["BU", "PROOF"]
 

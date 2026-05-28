@@ -505,6 +505,7 @@ def _apply_to_db(bundles: dict[int, "FetchBundle"], db_path: Path) -> int:
     for table, n in [
         ("coins", s.coins), ("coin_source_refs", s.source_refs),
         ("coin_cross_refs", s.cross_refs), ("coin_mint_releases", s.mint_releases),
+        ("mint_release_observations", s.mint_release_observations),
         ("mint_release_prices", s.prices), ("coin_market_quotes", s.market_quotes),
         ("coin_canonical_images", s.images), ("coin_credits", s.credits),
         ("coin_observations", s.observations), ("design_groups", s.design_groups),
