@@ -76,7 +76,7 @@ Andorra 2014 standard
 | 2 | `bright_textured` | Lumière jour, fond bois ou tissu visible |
 | 3 | `dim` | Intérieur soir, lampe loin (lumière chaude faible) |
 | 4 | `oblique` | Caméra inclinée ~30° par rapport à la pièce |
-| 5 | `partial_shadow` | Moitié pièce ombrée (main qui projette une ombre) |
+| 5 | `glare_specular` | Lampe directe au-dessus de la pièce, reflet central spéculaire |
 
 Pour chaque pièce, l'app cycle 1→5 automatiquement, 4 photos par step puis
 auto-advance au step suivant. Quand step 5 photo 4 est faite, passage à la
