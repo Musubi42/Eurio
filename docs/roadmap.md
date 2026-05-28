@@ -2,7 +2,7 @@
 
 > **À quoi sert ce doc** : reprendre une session froide en 5 min. Photo de la trajectoire vers le premier modèle ArcFace utile et son déploiement Android, dans le bon ordre, avec les dépendances explicites.
 >
-> **Dernière mise à jour** : 2026-05-25 (session ablation format crop)
+> **Dernière mise à jour** : 2026-05-28 (re-séquencement crop / découplage scrape↔crop)
 >
 > **Pour l'historique des phases ML/data antérieures** : voir `docs/phases/` et `docs/archive/`.
 > **Pour la doc app Android** : voir `docs/app-implem-phases/`.
@@ -132,10 +132,22 @@ J7 : Déploiement Android du nouveau modèle (LiteRT)
 - **Dépend de** : J2 (un listing pas reviewé ne passe pas en `image_assets`).
 - **Done quand** : se mesure indirectement par croissance de `image_assets` par classe.
 
-> **Note 2026-05-25** — la session "améliorer la qualité du crop" a divergé vers un chantier
-> dédié *format crop ablation* (cf. section ci-dessous). J3 attend que ce chantier tranche le
-> format final ; sinon on entasse du crop sous-optimal dans MinIO. Voir
-> [Chantier ablation format crop](#chantier-en-cours--ablation-format-crop-2026-05-25).
+> **Note 2026-05-28 — pourquoi J3 reste bloqué (bonne raison, pas l'ancienne)** :
+> L'ancienne justification ("sinon on entasse du crop sous-optimal dans MinIO") est **fausse** :
+> les raws bruts sont conservés en permanence (MinIO `enrichment-raws`, séparé de
+> `enrichment-crops`), et `ml/scripts/recrop_ebay_orphans.py` re-croppe depuis les raws **sans
+> re-scraper**. On ne perd donc rien d'irrécupérable — le format crop est re-dérivable à volonté.
+>
+> **La vraie raison du blocage** : tant que le format crop n'est pas tranché par l'ablation
+> (qui attend les 340 captures device, prévues 2026-05-29), tout training / mini-bench / vérif de
+> seuil lancé maintenant tournerait sur un crop provisoire et serait **invalidé** dès que l'ablation
+> change le format → on referait tout. On ne brûle pas du GPU/CPU sur un bench jetable.
+>
+> **Corollaire opérationnel (crop = on-demand)** : le crop Hough/YOLO est CPU-intensif. On ne le
+> déclenche pas en masse tant que le format n'est pas figé. Le scrape doit pouvoir tourner
+> **download-only** (raws en base + MinIO) et **différer le crop**. Voir livrable #13 ci-dessous —
+> l'orchestrateur enchaîne actuellement `detect` (crop) juste après `download` sans option de skip,
+> à corriger. Voir [Chantier ablation format crop](#chantier-en-cours--ablation-format-crop-2026-05-25).
 
 #### J4 — Quota training-ready atteint
 
@@ -240,6 +252,12 @@ go-task android:install
 
 Memories pertinentes : `project_crop_format_ablation`, `reference_crop_format_research`.
 
+> **Échéance captures 2026-05-29** : les ~340 captures device de la cohorte `mix-zone-17`
+> (5 conditions × 4 photos × 17 coins) sont prévues demain. Une fois faites + pull-debug, on lance
+> le sweep ablation (Step 3) puis le cutover (Step 4). **Tout ce qui dépend du crop / du training
+> reste gelé jusqu'à cette échéance.** Si une session démarre avant que les captures soient là, la
+> bonne réponse est : *fais les captures d'abord*.
+
 ---
 
 ## Prochains livrables
@@ -260,10 +278,22 @@ Memories pertinentes : `project_crop_format_ablation`, `reference_crop_format_re
 6. **Implémenter `confidence_level` sur les coins** (dérivé de `coin_observations`, badge UI sur `/coins`). Issue du trust model.
 7. **Joint issues — combler les 20 variants manquants** (PT/DE/IT/LU/SK/etc.) via Discover ciblé ou ajout manuel.
 
-### Training pipeline (en attente que la data soit propre)
+### Infra scrape / crop (débloque le travail nocturne sans device)
 
-8. **Sweep ablation format crop** (Steps 3 + 4 du chantier ci-dessus) — bloque J3 pour ne pas entasser du sous-optimal.
-9. **Mini-benchmark seuil training** (10 vs 30 vs 100 sources / classe sur classes déjà riches).
+13. **Découpler scrape ↔ crop** — l'orchestrateur (`ml/sources/_base/orchestrator.py`) lance `detect`
+    (crop Hough/YOLO) automatiquement après `download`, sans option de skip. Ajouter un mode
+    **download-only** (s'arrête après download, raws persistés, `pipeline_state='downloaded'`) + un
+    déclencheur crop séparé (CLI/endpoint "crop-only" sur les items `downloaded`, idempotent). But :
+    pouvoir scraper en masse sans surchauffer le CPU, et différer le crop jusqu'à ce que le format
+    soit figé. Touche : `orchestrator.py`, `cli.py`, `ml/api/sources_routes.py`, front `/sources`.
+    **Pré-requis avant tout gros scrape.**
+
+### Training pipeline (GELÉ jusqu'aux captures 2026-05-29)
+
+8. **Sweep ablation format crop** (Steps 3 + 4 du chantier ci-dessus) — démarre dès que les 340
+   captures device sont là. **Bloque tout le reste du training.**
+9. **Mini-benchmark seuil training** (10 vs 30 vs 100 sources / classe) — **à faire APRÈS le cutover
+   crop**, sinon le bench est invalidé par un changement de format. Ne pas lancer avant.
 10. **Spec scrape sweep coverage-first** (prioriser 510 rouges plutôt que stars).
 11. **Re-bench routing marketplaces** avec i18n LLM activée (~2 h).
 12. **Spec ergonomie review** (rendre J2 plus rapide).
