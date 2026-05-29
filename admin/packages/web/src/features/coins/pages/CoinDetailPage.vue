@@ -14,9 +14,11 @@ import {
   fetchCoinObservations,
   fetchCoinPrices,
   fetchCoinSeries,
+  fetchCoinVariantGroup,
   type CreditsResponse,
   type MintReleaseFull,
   type ObservationsResponse,
+  type VariantGroupEntry,
 } from '@/features/coins/composables/useCoinsApi'
 import type { Coin, CoinImage, CoinImageDict, CoinSeries, IssueType } from '@/shared/supabase/types'
 import {
@@ -42,6 +44,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { coinDisplayName } from '@/shared/utils/coin-display'
 import EnrichmentGallery from '../components/EnrichmentGallery.vue'
+import VariantBadge from '../components/VariantBadge.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -108,6 +111,10 @@ const aliasesRows = ref<AliasRow[] | undefined>(undefined)
 const observations = ref<ObservationsResponse | null | undefined>(undefined)
 const credits = ref<CreditsResponse | null | undefined>(undefined)
 const mintReleases = ref<MintReleaseFull[] | null | undefined>(undefined)
+// Groupe de variantes (badges header). On ne montre les badges que si le
+// groupe a >1 membre (canonique + au moins une variante).
+const variantMembers = ref<VariantGroupEntry[]>([])
+const hasVariantGroup = computed(() => variantMembers.value.length > 1)
 const I18N_LANG_ORDER = ['fr', 'en', 'de', 'it', 'es', 'nl'] as const
 const I18N_LANG_LABEL: Record<string, string> = {
   fr: 'Français', en: 'English', de: 'Deutsch',
@@ -235,6 +242,7 @@ async function loadCharacteristics(eurioId: string) {
   observations.value = undefined
   credits.value = undefined
   mintReleases.value = undefined
+  variantMembers.value = []
   try {
     const [obs, cr, mr] = await Promise.all([
       fetchCoinObservations(eurioId),
@@ -249,6 +257,17 @@ async function loadCharacteristics(eurioId: string) {
     credits.value = null
     mintReleases.value = null
   }
+  // Groupe de variantes — non bloquant, fail-silent.
+  try {
+    const vg = await fetchCoinVariantGroup(eurioId)
+    variantMembers.value = vg.members.length > 1 ? vg.members : []
+  } catch {
+    variantMembers.value = []
+  }
+}
+
+function goToVariant(member: VariantGroupEntry) {
+  if (!member.is_self) router.push(`/coins/${encodeURIComponent(member.eurio_id)}`)
 }
 
 /**
@@ -748,6 +767,19 @@ function formatMintage(n: number): string {
           <p class="mt-1 font-mono text-sm" style="color: var(--ink-400);">
             {{ formatFaceValue(coin.face_value) }}
           </p>
+          <!-- Badges de variantes (canonique + coloured/hologram/mule/pattern).
+               ℹ au survol = libellé ; clic = navigue vers la variante. -->
+          <div v-if="hasVariantGroup" class="mt-3 flex flex-wrap items-center gap-1.5">
+            <VariantBadge
+              v-for="m in variantMembers"
+              :key="m.eurio_id"
+              :kind="m.variant_kind"
+              :label="m.variant_label"
+              :title="m.title"
+              :active="m.is_self"
+              @select="goToVariant(m)"
+            />
+          </div>
           <!-- BCE topic verbeux distinct (chantier D, E.6) — Numista déjà
                porté par le H1 via coinDisplayName, on n'affiche que la
                source-of-truth complémentaire. -->

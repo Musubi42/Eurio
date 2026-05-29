@@ -206,6 +206,7 @@ export interface CoinListFilters {
   has_wikipedia?: boolean
   has_numista?: boolean
   in_design_group?: boolean
+  include_variants?: boolean
   personal_owned?: boolean
   lent_to_me?: boolean
   search?: string
@@ -241,6 +242,7 @@ export function fetchCoinsList(filters: CoinListFilters = {}): Promise<CoinListR
   if (filters.has_wikipedia != null) params.set('has_wikipedia', String(filters.has_wikipedia))
   if (filters.has_numista != null) params.set('has_numista', String(filters.has_numista))
   if (filters.in_design_group != null) params.set('in_design_group', String(filters.in_design_group))
+  if (filters.include_variants) params.set('include_variants', 'true')
   if (filters.personal_owned != null) params.set('personal_owned', String(filters.personal_owned))
   if (filters.lent_to_me != null) params.set('lent_to_me', String(filters.lent_to_me))
   if (filters.search) params.set('search', filters.search)
@@ -285,6 +287,24 @@ export function fetchCoinCredits(eurioId: string): Promise<CreditsResponse> {
 
 export function fetchCoinMintReleasesFull(eurioId: string): Promise<MintReleasesFullResponse> {
   return json<MintReleasesFullResponse>(`/coins/${encodeURIComponent(eurioId)}/mint-releases-full`)
+}
+
+// ─── Variantes (chantier variantes) ─────────────────────────────────────────
+
+export interface VariantGroupEntry {
+  eurio_id: string
+  variant_kind: string
+  variant_label: string | null
+  title: string | null
+  is_self: boolean
+}
+export interface VariantGroupResponse {
+  canonical_eurio_id: string
+  members: VariantGroupEntry[]
+}
+
+export function fetchCoinVariantGroup(eurioId: string): Promise<VariantGroupResponse> {
+  return json<VariantGroupResponse>(`/coins/${encodeURIComponent(eurioId)}/variant-group`)
 }
 
 export function fetchCoinEmbedding(eurioId: string): Promise<{ model_version: string | null }> {

@@ -257,6 +257,11 @@ def list_coins(
     has_wikipedia: bool | None = None,
     has_numista: bool | None = None,
     in_design_group: bool | None = None,
+    include_variants: bool = Query(
+        default=False,
+        description="Inclure les variantes (coloured/hologram/mule/pattern). "
+                    "Par défaut la liste ne montre que les canoniques.",
+    ),
     personal_owned: bool | None = None,
     lent_to_me: bool | None = None,
     search: str | None = Query(default=None, description="ILIKE eurio_id/theme + numista_id exact"),
@@ -290,6 +295,11 @@ def list_coins(
     if in_design_group is not None:
         where.append("design_group_id IS NOT NULL" if in_design_group
                      else "design_group_id IS NULL")
+    if not include_variants:
+        # Chantier variantes : la liste ne montre que les canoniques ; les
+        # variantes (coloured/hologram/mule/pattern) sont accessibles via les
+        # badges de la page détail.
+        where.append("canonical_eurio_id IS NULL")
 
     has_filter_map = [
         ("bce_official", has_bce),
@@ -656,6 +666,60 @@ def get_coin_mint_releases_full(eurio_id: str) -> MintReleasesFullResponse:
             observations=observations, prices=prices,
         ))
     return MintReleasesFullResponse(mint_releases=out)
+
+
+# ─── Groupe de variantes (chantier variantes) ────────────────────────────
+
+class VariantGroupEntry(BaseModel):
+    eurio_id: str
+    variant_kind: str
+    variant_label: str | None = None
+    title: str | None = None          # titre EN (coin_names_i18n) pour affichage
+    is_self: bool = False             # True = la pièce courante
+
+
+class VariantGroupResponse(BaseModel):
+    canonical_eurio_id: str           # eurio_id de la canonique du groupe
+    members: list[VariantGroupEntry]  # canonique + variantes (None si pas de groupe)
+
+
+@router.get("/{eurio_id}/variant-group", response_model=VariantGroupResponse)
+def get_coin_variant_group(eurio_id: str) -> VariantGroupResponse:
+    """Groupe canonique + variantes pour les badges de la page détail.
+
+    Le groupe est défini par ``canonical_eurio_id`` : la canonique du groupe
+    est ``coin.canonical_eurio_id`` (si la pièce courante est une variante)
+    sinon son propre eurio_id. Les membres = la canonique + toutes les pièces
+    pointant vers elle. Renvoie un groupe à 1 membre si la pièce n'a aucune
+    variante (le front masque alors les badges)."""
+    conn = _conn()
+    row = conn.execute(
+        "SELECT canonical_eurio_id FROM coins WHERE eurio_id = ?", (eurio_id,),
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"coin {eurio_id} not found")
+    canonical = row["canonical_eurio_id"] or eurio_id
+
+    members_rows = conn.execute(
+        "SELECT eurio_id, variant_kind, variant_label FROM coins "
+        "WHERE eurio_id = ? OR canonical_eurio_id = ? "
+        "ORDER BY (variant_kind = 'classic') DESC, variant_kind, eurio_id",
+        (canonical, canonical),
+    ).fetchall()
+    members: list[VariantGroupEntry] = []
+    for m in members_rows:
+        t = conn.execute(
+            "SELECT title FROM coin_names_i18n WHERE eurio_id = ? AND lang = 'en'",
+            (m["eurio_id"],),
+        ).fetchone()
+        members.append(VariantGroupEntry(
+            eurio_id=m["eurio_id"],
+            variant_kind=m["variant_kind"],
+            variant_label=m["variant_label"],
+            title=t["title"] if t else None,
+            is_self=(m["eurio_id"] == eurio_id),
+        ))
+    return VariantGroupResponse(canonical_eurio_id=canonical, members=members)
 
 
 @router.get("/{eurio_id}/embedding", response_model=EmbeddingResponse)
