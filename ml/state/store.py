@@ -524,6 +524,20 @@ class Store:
                     column="storage_status",
                     decl=_STORAGE_STATUS_DECL,
                 )
+            # Chantier variantes : les vues v_ebay_freshness* et
+            # v_orphan_eurio_refs (recréées par executescript) référencent
+            # coins.canonical_eurio_id → la colonne doit exister AVANT
+            # executescript sur les DB antérieures. Fresh DB : coins n'existe
+            # pas encore, executescript la créera avec les 3 colonnes.
+            if conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='coins'"
+            ).fetchone():
+                for column, decl in (
+                    ("variant_kind", "TEXT NOT NULL DEFAULT 'classic'"),
+                    ("variant_label", "TEXT"),
+                    ("canonical_eurio_id", "TEXT"),
+                ):
+                    self._ensure_column(conn, table="coins", column=column, decl=decl)
             conn.executescript(schema)
             self._ensure_column(
                 conn,
@@ -775,6 +789,8 @@ class Store:
                 "ON coins(design_group_id) WHERE design_group_id IS NOT NULL",
                 "CREATE INDEX IF NOT EXISTS idx_coins_needs_review "
                 "ON coins(needs_review) WHERE needs_review = 1",
+                "CREATE INDEX IF NOT EXISTS idx_coins_canonical "
+                "ON coins(canonical_eurio_id) WHERE canonical_eurio_id IS NOT NULL",
             ):
                 conn.execute(index_sql)
             n_coins = conn.execute("SELECT count(*) AS n FROM coins").fetchone()["n"]

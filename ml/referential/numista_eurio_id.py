@@ -138,6 +138,59 @@ def detect_variant(catalog_name: str) -> tuple[bool, str | None]:
     return True, normalized
 
 
+# Libellé humain (FR) par variant_kind, pour `coins.variant_label` (affiché
+# dans le tooltip du badge variante côté admin). Le `classic` n'a pas de label
+# (c'est la pièce de référence). Map extensible avec le vocabulaire.
+VARIANT_KIND_LABEL: dict[str, str] = {
+    "coloured": "Version colorisée",
+    "hologram": "Version hologramme",
+    "gilded": "Version dorée",
+    "pattern": "Frappe d'essai (non circulante)",
+    "mule": "Mule — appariement de coins erroné",
+    "mis-strike": "Erreur de frappe",
+}
+
+
+def related_canonical_nid(payload: dict) -> tuple[int | None, bool]:
+    """Pour une variante, choisit le nid du Type **canonique** parmi
+    ``related_types`` (source primaire du groupage — cf. chantier variantes).
+
+    Numista donne souvent un ``commemorated_topic`` différent entre la pièce de
+    circulation et sa variante (hologram/coloured/mule/pattern), donc le slug de
+    base ne suffit pas à les relier. ``related_types`` liste explicitement les
+    Types frères → on y cherche le canonique.
+
+    Filtre : titres 2€ uniquement. Préfère un frère **même année + non-variant**.
+    Fallback (ex. mule hybride dont les frères sont d'autres millésimes) : 1er
+    frère classic par nid croissant, avec ``ambiguous=True`` (→ needs_review).
+
+    Returns ``(canonical_nid | None, ambiguous)``.
+    """
+    rts = payload.get("related_types") or []
+    year = payload.get("min_year")
+    two_euro: list[tuple[int, object, bool]] = []
+    for rt in rts:
+        title = rt.get("title") or ""
+        tl = title.lower()
+        if not tl.startswith("2 euro") or "cent" in tl:
+            continue
+        try:
+            rid = int(rt["id"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        is_var, _ = detect_variant(title)
+        two_euro.append((rid, rt.get("minYear"), is_var))
+    if not two_euro:
+        return None, False
+    same_year_classic = sorted(n for n, y, v in two_euro if y == year and not v)
+    if same_year_classic:
+        return same_year_classic[0], False
+    any_classic = sorted(n for n, _, v in two_euro if not v)
+    if any_classic:
+        return any_classic[0], True   # frère d'un autre millésime → flag
+    return sorted(n for n, _, _ in two_euro)[0], True  # que des variantes → flag
+
+
 # ─── Commemo vs Standard ─────────────────────────────────────────────────────
 
 
@@ -260,13 +313,17 @@ def standard_slug(catalog_name: str) -> str:
 
 @dataclass(frozen=True)
 class NumistaSlugResult:
-    eurio_id: str                       # canonical Eurio ID (Type level)
+    eurio_id: str                       # Eurio ID of THIS nid (canonical = base_slug; variant = base_slug-{kind})
     country: str                        # ISO2 uppercase
     year: int
     face_value: float                   # 2.0 for Phase 1
     is_commemorative: bool
     is_variant: bool                    # True → this nid is a finish variant
     variant_finish: str | None          # 'coloured'|'hologram'|'gilded'|'pattern'|'mule'|'mis-strike'
+    # ── Variantes first-class (chantier variantes) ──
+    variant_kind: str                   # 'classic' (canonique) | coloured | hologram | gilded | pattern | mule | mis-strike
+    canonical_eurio_id: str | None      # None si canonique ; sinon le base_slug (= eurio_id de la pièce de référence)
+    variant_label: str | None           # libellé humain (VARIANT_KIND_LABEL) ; None si classic
     is_joint_issue: bool
     design_group_id: str | None         # 'eu-{theme}-{year}' if joint
     joint_theme: str | None             # 'rome'|'emu'|'euro-cash'|'eu-flag'|'erasmus'
@@ -383,6 +440,9 @@ def eurio_id_from_numista_payload(payload: dict) -> NumistaSlugResult | None:
             is_commemorative=is_commemorative_payload(payload),
             is_variant=False,
             variant_finish=None,
+            variant_kind="classic",
+            canonical_eurio_id=None,
+            variant_label=None,
             is_joint_issue=False,
             design_group_id=None,
             joint_theme=None,
@@ -401,16 +461,34 @@ def eurio_id_from_numista_payload(payload: dict) -> NumistaSlugResult | None:
     joint_designation = ji[1] if ji else None
     design_group_id = joint_design_group_id(joint_theme, int(year)) if ji else None
 
-    # 6. Commemo vs Standard → slug strategy
+    # 6. Commemo vs Standard → slug strategy. Le slug est calculé sur le
+    #    catalog_name dont le suffixe de variante a déjà été retiré → c'est
+    #    le `base_slug` (= eurio_id de la pièce de référence du groupe).
     is_commemo = is_commemorative_payload(payload)
     commemorated_topic = payload.get("commemorated_topic")
     if is_commemo or ji:  # joint-issues are always commemo
         slug = commemo_slug(catalog_name, commemorated_topic)
-        eurio_id = f"{country_lower}-{year}-2eur-{slug}"
+        base_eurio_id = f"{country_lower}-{year}-2eur-{slug}"
         is_commemo = True
     else:
         slug = standard_slug(catalog_name)
-        eurio_id = f"{country_lower}-{year}-2eur-standard-{slug}"
+        base_eurio_id = f"{country_lower}-{year}-2eur-standard-{slug}"
+
+    # 7. Variantes first-class : la variante a son PROPRE eurio_id
+    #    (base_slug-{kind}) et pointe vers la canonique via canonical_eurio_id.
+    #    La canonique garde le base_slug nu (non-régression des 270 existantes).
+    #    Tiebreak (même kind ×2 dans un groupe) : géré au niveau écriture
+    #    (discover/writer), pas ici — le resolver reste pur et par-nid.
+    if is_variant:
+        variant_kind = finish or "other"
+        canonical_eurio_id = base_eurio_id
+        eurio_id = f"{base_eurio_id}-{variant_kind}"
+        variant_label = VARIANT_KIND_LABEL.get(variant_kind)
+    else:
+        variant_kind = "classic"
+        canonical_eurio_id = None
+        eurio_id = base_eurio_id
+        variant_label = None
 
     return NumistaSlugResult(
         eurio_id=eurio_id,
@@ -420,6 +498,9 @@ def eurio_id_from_numista_payload(payload: dict) -> NumistaSlugResult | None:
         is_commemorative=is_commemo,
         is_variant=is_variant,
         variant_finish=finish,
+        variant_kind=variant_kind,
+        canonical_eurio_id=canonical_eurio_id,
+        variant_label=variant_label,
         is_joint_issue=bool(ji),
         design_group_id=design_group_id,
         joint_theme=joint_theme,

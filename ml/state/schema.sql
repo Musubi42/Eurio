@@ -783,6 +783,14 @@ CREATE TABLE IF NOT EXISTS coins (
   mintage             INTEGER,
   mintage_source      TEXT,
   design_group_id     TEXT REFERENCES design_groups(id) ON DELETE SET NULL,
+  -- Variantes first-class (chantier variantes). Chaque variante (coloured,
+  -- hologram, gilded, mule, pattern…) est une pièce à part entière avec son
+  -- propre eurio_id (`base-{kind}`) et pointe vers la canonique via
+  -- `canonical_eurio_id`. Pas de contrainte FK sur le self-ref (insertion
+  -- variante-avant-canonique tolérée ; soft-enforce via v_orphan_eurio_refs).
+  variant_kind        TEXT NOT NULL DEFAULT 'classic',  -- classic|coloured|hologram|gilded|mule|mis-strike|pattern|other
+  variant_label       TEXT,                             -- libellé humain (NULL si classic)
+  canonical_eurio_id  TEXT,                             -- NULL si canonique ; sinon eurio_id de la canonique
   -- Cycle de vie (matérialisé, recalculé sur événement — Chunk 3).
   status              TEXT NOT NULL DEFAULT 'referenced'
                         CHECK (status IN ('referenced','trained')),
@@ -998,6 +1006,7 @@ LEFT JOIN image_assets ia
 WHERE c.face_value = 2.0
   AND c.is_commemorative = 1
   AND c.country != 'eu'
+  AND c.canonical_eurio_id IS NULL   -- canoniques seules (pas les variantes)
 GROUP BY c.face_value, c.country, c.year;
 
 CREATE VIEW v_ebay_freshness AS
@@ -1015,7 +1024,8 @@ JOIN v_ebay_freshness_groups g
  AND g.year         = c.year
 WHERE c.face_value = 2.0
   AND c.is_commemorative = 1
-  AND c.country != 'eu';
+  AND c.country != 'eu'
+  AND c.canonical_eurio_id IS NULL;  -- canoniques seules (pas les variantes)
 
 -- ─── QA : références eurio_id orphelines ──────────────────────────────────
 -- Plusieurs colonnes pointent un eurio_id sans contrainte FK (par design :
@@ -1046,7 +1056,14 @@ CREATE VIEW v_orphan_eurio_refs AS
     FROM coin_market_quotes cmq
     LEFT JOIN coins c ON c.eurio_id = cmq.eurio_id
    WHERE cmq.eurio_id IS NOT NULL AND c.eurio_id IS NULL
-   GROUP BY cmq.eurio_id;
+   GROUP BY cmq.eurio_id
+  UNION ALL
+  -- Variante pointant vers une canonique absente (canonique non découverte).
+  SELECT 'coins.canonical_eurio_id', cv.canonical_eurio_id, COUNT(*)
+    FROM coins cv
+    LEFT JOIN coins c ON c.eurio_id = cv.canonical_eurio_id
+   WHERE cv.canonical_eurio_id IS NOT NULL AND c.eurio_id IS NULL
+   GROUP BY cv.canonical_eurio_id;
 
 -- ─── Cycle de vie : readiness à l'entraînement (Chunk 3) ──────────────────
 -- Base de la « condition d'éligibilité à une cohorte » : nombre d'images
@@ -1106,9 +1123,12 @@ CREATE TABLE IF NOT EXISTS mints (
 );
 CREATE INDEX IF NOT EXISTS idx_mints_country ON mints(country);
 
--- ─── coin_variants — finition graphique d'un Type ────────────────────────
--- Une pièce peut avoir 0..N variants (classic / coloured / hologram / ...).
--- Rapatrié de Supabase referential-v2 (20260515 migration).
+-- ─── coin_variants — DÉPRÉCIÉ (chantier variantes) ───────────────────────
+-- ⚠ DÉPRÉCIÉ : les variantes sont désormais des pièces `coins` first-class
+-- (colonnes coins.variant_kind / variant_label / canonical_eurio_id). Cette
+-- table n'est plus alimentée par le writer ; conservée en lecture le temps de
+-- la migration (scripts/migrate_coin_variants_to_coins.py). DROP dans un
+-- chunk de nettoyage ultérieur.
 CREATE TABLE IF NOT EXISTS coin_variants (
   id              TEXT PRIMARY KEY,
   parent_type_id  TEXT NOT NULL REFERENCES coins(eurio_id) ON DELETE CASCADE,
