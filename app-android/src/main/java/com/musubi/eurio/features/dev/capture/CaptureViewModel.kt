@@ -3,6 +3,7 @@ package com.musubi.eurio.features.dev.capture
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import com.musubi.eurio.features.scan.CaptureProtocol
+import com.musubi.eurio.ml.CapturePaths
 import com.musubi.eurio.ml.CoinAnalyzer
 import com.musubi.eurio.ml.CoinMatch
 import com.musubi.eurio.ml.ScanResult
@@ -94,12 +95,16 @@ class CaptureViewModel(
      * Active photoMode analyzer + initialise le compteur.
      */
     fun enter() {
-        coinIdx = 0
-        stepIdx = 0
-        photoIdx = 0
-        captured = 0
-        sessionDir = coinAnalyzer.debugRootDir?.let { java.io.File(it, "eval_real") }
+        sessionDir = coinAnalyzer.debugRootDir?.let { java.io.File(it, CapturePaths.EVAL_REAL_DIR) }
         sessionDir?.mkdirs()
+        // Resume from disk instead of resetting to 0 : the crops already written
+        // under eval_real/ (+ skip lines in the manifest) rebuild the cursor, so
+        // the progression survives leaving/re-entering the screen and app restarts.
+        val scan = CaptureDiskReader.read(coinAnalyzer.debugRootDir)
+        coinIdx = scan.resumeCoinIndex
+        stepIdx = scan.resumeStepIndex
+        photoIdx = scan.resumePhotoIndex
+        captured = scan.captured
         coinAnalyzer.photoMode = true
         coinAnalyzer.snapRequested = false
         coinAnalyzer.captureContext = null
@@ -110,7 +115,11 @@ class CaptureViewModel(
         _photoSnap.value = null
         _photoLiveCircleFound.value = false
         updateProgress()
-        Log.d(TAG, "capture session started, dir=${sessionDir?.absolutePath}")
+        Log.d(
+            TAG,
+            "capture session resumed: captured=$captured cursor=($coinIdx,$stepIdx,$photoIdx) " +
+                "complete=${scan.isComplete}, dir=${sessionDir?.absolutePath}",
+        )
     }
 
     /**
@@ -123,6 +132,7 @@ class CaptureViewModel(
         coinAnalyzer.snapRequested = false
         coinAnalyzer.captureContext = null
         coinAnalyzer.onPhotoLiveDetection = null
+        coinAnalyzer.clearPhotoCache()
         _photoSnap.value = null
         _photoLiveCircleFound.value = false
         Log.d(TAG, "capture session ended, captured=$captured")
@@ -226,6 +236,11 @@ class CaptureViewModel(
     fun onSkipCell() {
         awaitingSnapResult = false
         _photoSnap.value = null
+        // Persist the skip so the resume scan knows this step was intentionally
+        // passed (no crop on disk) rather than "not yet captured".
+        val coin = CaptureProtocol.coins.getOrNull(coinIdx)
+        val step = CaptureProtocol.steps.getOrNull(stepIdx)
+        if (coin != null && step != null) appendSkip(coin, step)
         photoIdx = 0
         stepIdx++
         if (stepIdx >= CaptureProtocol.steps.size) {
@@ -285,7 +300,7 @@ class CaptureViewModel(
         photoIdx: Int,
     ) {
         val dir = sessionDir ?: return
-        val manifest = java.io.File(dir, "manifest.jsonl")
+        val manifest = java.io.File(dir, CapturePaths.MANIFEST_FILE)
         val ts = java.text.SimpleDateFormat("yyyyMMdd_HHmmss_SSS", java.util.Locale.US)
             .format(java.util.Date())
         val safeLabel = step.label.replace("\"", "\\\"")
@@ -301,6 +316,25 @@ class CaptureViewModel(
         }
     }
 
+    /**
+     * Append a `"event":"skip"` line for a step the user passed via "skip
+     * cellule". No crop is written for a skip — this manifest line is the only
+     * record, read back by [CaptureDiskReader] on resume.
+     */
+    private fun appendSkip(coin: CaptureProtocol.Coin, step: CaptureProtocol.Step) {
+        val dir = sessionDir ?: return
+        val manifest = java.io.File(dir, CapturePaths.MANIFEST_FILE)
+        val ts = java.text.SimpleDateFormat("yyyyMMdd_HHmmss_SSS", java.util.Locale.US)
+            .format(java.util.Date())
+        val line = """{"ts":"$ts","eurio_id":"${coin.eurioId}","step_id":"${step.id}",""" +
+            """"step_index":${stepIdx},"event":"skip"}"""
+        try {
+            manifest.appendText(line + "\n")
+        } catch (e: Exception) {
+            Log.e(TAG, "skip manifest append failed", e)
+        }
+    }
+
     /** Pipe les frames CameraX vers l'analyzer (qui les filtre via photoMode). */
     fun onFrame(image: androidx.camera.core.ImageProxy) {
         coinAnalyzer.analyze(image)
@@ -311,5 +345,6 @@ class CaptureViewModel(
         coinAnalyzer.photoMode = false
         coinAnalyzer.captureContext = null
         coinAnalyzer.onPhotoLiveDetection = null
+        coinAnalyzer.clearPhotoCache()
     }
 }

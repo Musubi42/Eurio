@@ -75,6 +75,32 @@ tasks:
       - adb pull {{.DEBUG_DIR_DEVICE}}/ {{.DEBUG_PULL_ROOT}}/{{.TS}}/
       - echo "Pulled to {{.DEBUG_PULL_ROOT}}/{{.TS}}/"
 
+  capture:pull:
+    desc: Pull only the capture-cohort data (eval_real/) into ./debug_pull/TIMESTAMP/eval_real/
+    vars:
+      TS:
+        sh: date +%Y%m%d_%H%M%S
+      # `adb pull <src>/eval_real/ <dest>/` recreates an `eval_real/` dir inside
+      # <dest>, so DEST is the timestamp folder (NOT .../eval_real/<ts>) to avoid
+      # a double eval_real/eval_real nesting. Mirrors pull-debug ; ml/sync_eval_real
+      # auto-detects eval_real/ inside the pulled folder.
+      DEST: '{{.DEBUG_PULL_ROOT}}/{{.TS}}'
+    cmds:
+      - mkdir -p {{.DEST}}
+      - adb pull {{.DEBUG_DIR_DEVICE}}/eval_real/ {{.DEST}}/ || echo "no eval_real/ on device"
+      - |
+        crops=$(find {{.DEST}} -name '*_crop.jpg' 2>/dev/null | wc -l | tr -d ' ')
+        coins=$(find {{.DEST}} -mindepth 2 -maxdepth 2 -type d 2>/dev/null | wc -l | tr -d ' ')
+        echo "✓ Pulled $crops crops · $coins coins → {{.DEST}}/"
+        echo "  Device unchanged. To free the phone once verified:"
+        echo "      go-task -t app-android/Taskfile.yml capture:clean"
+
+  capture:clean:
+    desc: Delete ONLY the capture-cohort data (eval_real/) on the device
+    cmds:
+      - adb shell rm -rf {{.DEBUG_DIR_DEVICE}}/eval_real
+      - echo "Device eval_real/ cleaned (other debug categories untouched)"
+
   bench:pull:
     desc: Pull bench sessions (chunk-7) from the device into ml/bench/sessions/<device>/
     vars:

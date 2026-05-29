@@ -178,6 +178,16 @@ class CoinAnalyzer(
     var captureContext: CaptureContext? = null
 
     /**
+     * Release the cached green-ring frame ([lastCircleFrame]). Call from the
+     * capture/photo screen's onDispose so a leftover frame isn't held between
+     * sessions. Safe to call from any thread (idempotent, single ref swap).
+     */
+    fun clearPhotoCache() {
+        lastCircleFrame?.recycle()
+        lastCircleFrame = null
+    }
+
+    /**
      * Diameter of the photo-mode on-screen guide circle, fraction of the
      * frame's short side. Purely a UX hint now ("aim your coin here roughly")
      * — the actual crop is determined by Hough in [SnapNormalizer], which
@@ -206,6 +216,19 @@ class CoinAnalyzer(
 
     private var lastAnalyzedTimestamp = 0L
     private var lastPhotoLiveDetectMs = 0L
+
+    /**
+     * Photo-mode only: the most recent frame on which the live Hough probe
+     * found a centered circle (the frame that turned the ring green). On SNAP
+     * we normalize THIS frame rather than a fresh post-tap one — the tap itself
+     * shakes the phone / re-triggers AF, so a fresh frame is often blurrier and
+     * fails Hough (the "NORMALIZE FAILED" 1/3 of the time). `detectCircleOnly`
+     * and `normalize` run the exact same detector, so a green ring on this frame
+     * guarantees the snap succeeds. Touched only from [analyze] (single
+     * ImageAnalysis thread) → no synchronization needed. Recycled on replace
+     * and via [clearPhotoCache]. Null when no circle is currently in view.
+     */
+    private var lastCircleFrame: android.graphics.Bitmap? = null
 
     /**
      * Active scoring policy. Mutated by [com.musubi.eurio.features.scan.ScanViewModel]
@@ -273,7 +296,19 @@ class CoinAnalyzer(
                         if (bitmap != null) {
                             val det = SnapNormalizer.detectCircleOnly(bitmap)
                             onPhotoLiveDetection?.invoke(det)
-                            bitmap.recycle()
+                            if (det != null) {
+                                // Cache the validated frame for the next SNAP;
+                                // drop the previous one.
+                                lastCircleFrame?.recycle()
+                                lastCircleFrame = bitmap
+                            } else {
+                                // No centered circle → stale cache, drop it so a
+                                // SNAP can only ever use a green-ring frame (or
+                                // fall back to a fresh frame).
+                                lastCircleFrame?.recycle()
+                                lastCircleFrame = null
+                                bitmap.recycle()
+                            }
                         }
                     } catch (e: Exception) {
                         Log.w("CoinAnalyzer", "Photo live-detect failed", e)
@@ -284,7 +319,12 @@ class CoinAnalyzer(
             }
             snapRequested = false
             try {
-                val bitmap = imageProxyToBitmap(imageProxy)
+                // Prefer the last frame the live ring validated (sharp, Hough
+                // already passed) ; fall back to the current frame if the cache
+                // is empty (e.g. circle lost between tap and dispatch).
+                val cached = lastCircleFrame
+                lastCircleFrame = null
+                val bitmap = cached ?: imageProxyToBitmap(imageProxy)
                 if (bitmap != null) {
                     val start = System.currentTimeMillis()
                     val result = analyzePhotoBitmap(bitmap)

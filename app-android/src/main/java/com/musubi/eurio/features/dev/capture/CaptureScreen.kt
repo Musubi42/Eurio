@@ -120,11 +120,16 @@ fun CaptureScreen(
 
             if (s == null) {
                 leftLabel = "skip cellule"
-                rightLabel = "● SNAP"
+                rightLabel = if (circleFound) "● SNAP" else "○ vise la pièce"
                 leftAccent = Color.White.copy(alpha = 0.6f)
                 rightAccent = Success
                 leftAction = { viewModel.onSkipCell() }
-                rightAction = { viewModel.onSnap() }
+                // Gate SNAP on a live centered circle : a green ring means the
+                // cached frame will normalize successfully. No ring → disabled,
+                // so the user reframes instead of producing a NORMALIZE FAILED.
+                rightAction = if (circleFound) {
+                    { viewModel.onSnap() }
+                } else null
             } else {
                 leftLabel = "↻ refaire"
                 rightLabel = "✓ suivant"

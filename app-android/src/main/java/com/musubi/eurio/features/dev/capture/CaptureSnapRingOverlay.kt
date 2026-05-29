@@ -2,6 +2,7 @@ package com.musubi.eurio.features.dev.capture
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -73,45 +75,66 @@ fun CaptureSnapRingOverlay(
             )
         }
 
-        // Contenu du disque centré.
-        Box(
-            modifier = Modifier
-                .align(Alignment.Center)
-                .size(diameter)
-                .clip(CircleShape),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (cropPath != null) {
-                AsyncImage(
-                    model = "file://$cropPath",
-                    contentDescription = "Captured crop",
-                    modifier = Modifier.fillMaxSize(),
-                )
-            } else {
+        // Contenu central.
+        if (cropPath != null) {
+            // Crop OK : on affiche le carré 224 RÉEL (le masque noir + le cadrage
+            // tangent Hough exactement comme envoyé au modèle), PAS clippé en
+            // cercle — c'est ce carré qui part dans eval_real/, donc c'est lui
+            // qu'on doit pouvoir juger avant de valider. Légende pour rappeler
+            // qu'on regarde la sortie normalize, pas la preview caméra.
+            Column(
+                modifier = Modifier.align(Alignment.Center),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
                 Box(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.75f))
-                        .padding(EurioSpacing.s3),
-                    contentAlignment = Alignment.Center,
+                        .size(diameter)
+                        .clip(RoundedCornerShape(8.dp))
+                        .border(
+                            width = 1.5.dp,
+                            color = Success.copy(alpha = 0.7f),
+                            shape = RoundedCornerShape(8.dp),
+                        ),
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = "▲ NORMALIZE FAILED",
-                            style = MonoBadgeStyle,
-                            color = Warning,
-                        )
-                        Text(
-                            text = "no centered circle",
-                            style = MonoBadgeStyle,
-                            color = Warning.copy(alpha = 0.7f),
-                        )
-                        Text(
-                            text = "tap refaire",
-                            style = MonoBadgeStyle,
-                            color = Color.White.copy(alpha = 0.5f),
-                        )
-                    }
+                    AsyncImage(
+                        model = "file://$cropPath",
+                        contentDescription = "Captured crop",
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+                Text(
+                    text = "crop 224 envoyé au modèle (tangent Hough)",
+                    style = MonoBadgeStyle,
+                    color = Color.White.copy(alpha = 0.6f),
+                    modifier = Modifier.padding(top = EurioSpacing.s2),
+                )
+            }
+        } else {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .size(diameter)
+                    .clip(CircleShape)
+                    .background(Color.Black.copy(alpha = 0.75f))
+                    .padding(EurioSpacing.s3),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = "▲ NORMALIZE FAILED",
+                        style = MonoBadgeStyle,
+                        color = Warning,
+                    )
+                    Text(
+                        text = "no centered circle",
+                        style = MonoBadgeStyle,
+                        color = Warning.copy(alpha = 0.7f),
+                    )
+                    Text(
+                        text = "tap refaire",
+                        style = MonoBadgeStyle,
+                        color = Color.White.copy(alpha = 0.5f),
+                    )
                 }
             }
         }

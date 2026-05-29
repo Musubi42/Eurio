@@ -44,6 +44,7 @@ object EurioDestinations {
     const val DEV_CAPTURE = "dev/capture"
     const val DEV_BENCH = "dev/bench"
     const val DEV_CAROUSEL = "dev/carousel"
+    const val DEV_STATUS = "dev/status"
 }
 
 enum class BottomNavTab(val route: String, val labelFr: String) {
