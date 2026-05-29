@@ -38,6 +38,7 @@ import logging
 import sqlite3
 import sys
 import time
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -45,7 +46,10 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from referential.numista_eurio_id import eurio_id_from_numista_payload  # noqa: E402
+from referential.numista_eurio_id import (  # noqa: E402
+    eurio_id_from_numista_payload,
+    related_canonical_nid,
+)
 from referential.numista_keys import KeyManager  # noqa: E402
 from referential.numista_transforms import (  # noqa: E402
     coin_canonical_image_rows,
@@ -187,12 +191,34 @@ def discover_standards(
                     skipped["year"] += 1
                     continue
 
+                # Chantier variantes : une variante a son propre eurio_id
+                # `base-{kind}`. Groupage via related_types (source primaire),
+                # puis tiebreak même-kind via compteur idempotent.
+                review_reason = None
+                if slug.canonical_eurio_id is not None:
+                    nid_can, ambiguous = related_canonical_nid(detail)
+                    resolved = (writer.resolve_eurio_for_nid(nid_can, cache_dir)
+                                if nid_can else None)
+                    if resolved and resolved != slug.eurio_id:
+                        slug = replace(slug, canonical_eurio_id=resolved)
+                    elif not resolved:
+                        review_reason = "variant_canonical_unresolved"
+                    if ambiguous:
+                        review_reason = "variant_canonical_ambiguous"
+                    unique = writer.unique_eurio_id(slug.eurio_id, nid)
+                    if unique != slug.eurio_id:
+                        slug = replace(slug, eurio_id=unique)
+
                 try:
                     conn.execute("BEGIN IMMEDIATE")
                     # Réutilise les transforms/writer du refetch → row coin
                     # bit-identique (même eurio_id, même shape, registry).
                     writer.write_design_group(design_group_row(slug))  # None pour standard
                     writer.write_coin(coin_row(slug, detail))
+                    if review_reason:
+                        conn.execute(
+                            "UPDATE coins SET needs_review = 1, review_reason = ? "
+                            "WHERE eurio_id = ?", (review_reason, slug.eurio_id))
                     writer.write_source_ref(coin_source_ref_row(slug, detail))
                     writer.write_images(coin_canonical_image_rows(slug, detail))
                     conn.execute("COMMIT")

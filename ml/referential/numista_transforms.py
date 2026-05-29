@@ -117,6 +117,11 @@ def coin_row(slug: NumistaSlugResult, payload: dict) -> dict:
         "design_group_id": slug.design_group_id,
         "ref_source": NUMISTA_SOURCE,
         "ref_native_id": str(payload["id"]),
+        # Variantes first-class (chantier variantes) : chaque variante est une
+        # pièce coins à part entière, reliée à sa canonique.
+        "variant_kind": slug.variant_kind,
+        "variant_label": slug.variant_label,
+        "canonical_eurio_id": slug.canonical_eurio_id,
     }
 
 

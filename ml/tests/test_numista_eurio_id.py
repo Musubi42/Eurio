@@ -263,11 +263,86 @@ def test_variants(nid, title, iso, name, year, expected_finish, expected_parent_
     assert r is not None
     assert r.is_variant is True
     assert r.variant_finish == expected_finish
-    # The slug should be the parent's (variant stripped)
+    assert r.variant_kind == expected_finish
+    # Chantier variantes : la variante a SON propre eurio_id (= base-{kind}),
+    # et pointe vers la canonique via canonical_eurio_id (= le base_slug nu).
     if expected_parent_slug == "philippe":
-        assert r.eurio_id == f"{iso.lower()}-{year}-2eur-standard-{expected_parent_slug}"
+        base = f"{iso.lower()}-{year}-2eur-standard-{expected_parent_slug}"
     else:
-        assert r.eurio_id == f"{iso.lower()}-{year}-2eur-{expected_parent_slug}"
+        base = f"{iso.lower()}-{year}-2eur-{expected_parent_slug}"
+    assert r.canonical_eurio_id == base
+    assert r.eurio_id == f"{base}-{expected_finish}"
+    assert r.variant_label is not None
+
+
+# ─── Variantes first-class — groupes de collision réels (cache) ──────────────
+#
+# Régression du bug découvert au rollout zone euro : 2+ types Numista
+# (même pays+année+thème) collisionnaient sur l'eurio_id parent. Désormais
+# chaque variante a son propre eurio_id `base-{kind}` + canonical_eurio_id.
+
+_CACHE_DIR = ML_DIR / "state" / "numista_cache"
+
+
+def _cached_payload(nid: int) -> dict | None:
+    import json
+    p = _CACHE_DIR / str(nid) / "type.json"
+    if not p.exists():
+        return None
+    return json.loads(p.read_text())
+
+
+@pytest.mark.parametrize("nid,expected_eurio,expected_kind,expected_canon", [
+    # DE 2008 Hamburg : canonique (circulation) vs Mule (erreur de frappe)
+    (2994, "de-2008-2eur-federal-state-of-hamburg", "classic", None),
+    (327881, "de-2008-2eur-federal-state-of-hamburg-mule", "mule",
+     "de-2008-2eur-federal-state-of-hamburg"),
+    # DE 2015 Hessen : canonique vs Pattern (essai)
+    (69263, "de-2015-2eur-state-of-hessen", "classic", None),
+    (284594, "de-2015-2eur-state-of-hessen-pattern", "pattern",
+     "de-2015-2eur-state-of-hessen"),
+    # LU 2020 Prince Charles : classic vs hologram
+    (243911, "lu-2020-2eur-birth-of-prince-charles-jean-phillipe-joseph-marie-guillaume-10-5-2020",
+     "classic", None),
+    (243914, "lu-2020-2eur-birth-of-prince-charles-jean-phillipe-joseph-marie-guillaume-10-5-2020-hologram",
+     "hologram",
+     "lu-2020-2eur-birth-of-prince-charles-jean-phillipe-joseph-marie-guillaume-10-5-2020"),
+    # LU 2025 accession Henri : classic vs coloured vs hologram (groupe ×3)
+    (467622, "lu-2025-2eur-25th-anniversary-of-the-accession-of-grand-duke-henri-to-the-throne",
+     "classic", None),
+    (467619, "lu-2025-2eur-25th-anniversary-of-the-accession-of-grand-duke-henri-to-the-throne-coloured",
+     "coloured",
+     "lu-2025-2eur-25th-anniversary-of-the-accession-of-grand-duke-henri-to-the-throne"),
+    (477676, "lu-2025-2eur-25th-anniversary-of-the-accession-of-grand-duke-henri-to-the-throne-hologram",
+     "hologram",
+     "lu-2025-2eur-25th-anniversary-of-the-accession-of-grand-duke-henri-to-the-throne"),
+])
+def test_real_collision_groups(nid, expected_eurio, expected_kind, expected_canon):
+    payload = _cached_payload(nid)
+    if payload is None:
+        pytest.skip(f"cache absent pour nid {nid}")
+    r = eurio_id_from_numista_payload(payload)
+    assert r is not None
+    assert r.eurio_id == expected_eurio
+    assert r.variant_kind == expected_kind
+    assert r.canonical_eurio_id == expected_canon
+    if expected_kind == "classic":
+        assert r.is_variant is False
+        assert r.variant_label is None
+    else:
+        assert r.is_variant is True
+        assert r.variant_label is not None
+
+
+def test_canonical_has_no_variant_fields():
+    """Non-régression : un commémo normal garde son slug exact, variant_kind=classic."""
+    p = make_payload(10069, '2 Euros (Bundesländer - "Bremen")', "DE", "Germany",
+                     2010, is_commemo=True)
+    r = eurio_id_from_numista_payload(p)
+    assert r is not None
+    assert r.variant_kind == "classic"
+    assert r.canonical_eurio_id is None
+    assert r.variant_label is None
 
 
 # ─── Determinism (5) ─────────────────────────────────────────────────────────
@@ -552,14 +627,17 @@ def test_cohort19_regression(nid, title, iso, name, year, expected_eurio, notes)
 
 
 def test_cohort19_bleuet_variant():
-    """FR-2018 Bleuet (NID 134283) — Numista title carries '; Coloured' suffix
-    which the function must detect as a variant, returning the PARENT slug."""
+    """FR-2018 Bleuet (NID 134283) — Numista title carries '; Coloured' suffix.
+    Chantier variantes : la variante a son propre eurio_id `…-coloured` et
+    pointe vers la canonique `fr-2018-2eur-bleuet-de-france`."""
     p = make_payload(
         134283, "2 Euros (Bleuet de France; Coloured)",
         "FR", "France", 2018, is_commemo=True,
     )
     r = eurio_id_from_numista_payload(p)
     assert r is not None
-    assert r.eurio_id == "fr-2018-2eur-bleuet-de-france"
+    assert r.canonical_eurio_id == "fr-2018-2eur-bleuet-de-france"
+    assert r.eurio_id == "fr-2018-2eur-bleuet-de-france-coloured"
     assert r.is_variant is True
     assert r.variant_finish == "coloured"
+    assert r.variant_kind == "coloured"

@@ -114,37 +114,44 @@ def test_cohort_bremen_multi_mint(db_copy: sqlite3.Connection) -> None:
 
 
 def test_cohort_bleuet_variant(db_copy: sqlite3.Connection) -> None:
-    """Bleuet est un variant coloured. Le slug pointe vers le **parent**
-    classique (``fr-2018-2eur-bleuet-de-france``), et une row coin_variants
-    capture le finish 'coloured'."""
+    """Bleuet coloured (chantier variantes) : pièce coins first-class avec son
+    propre eurio_id ``…-bleuet-de-france-coloured``, reliée à la canonique via
+    ``canonical_eurio_id``. Plus de row coin_variants."""
     payload, issues, prices = _load_bundle(134283)
     slug = eurio_id_from_numista_payload(payload)
 
-    # Slug = parent classic
-    assert slug.eurio_id == "fr-2018-2eur-100th-anniversary-of-the-end-of-the-first-world-war-bleuet-de-france"
+    base = "fr-2018-2eur-100th-anniversary-of-the-end-of-the-first-world-war-bleuet-de-france"
+    assert slug.canonical_eurio_id == base
+    assert slug.eurio_id == f"{base}-coloured"
     assert slug.is_variant is True
     assert slug.variant_finish == "coloured"
+    assert slug.variant_kind == "coloured"
+
+    # db_copy part de la vraie DB (peut contenir des lignes coin_variants
+    # legacy pré-migration) → on vérifie qu'AUCUNE nouvelle n'est écrite.
+    cv_before = db_copy.execute("SELECT COUNT(*) FROM coin_variants").fetchone()[0]
 
     NumistaWriter(db_copy).write_bundle(
         slug=slug, payload=payload, issues=issues,
         prices_by_iid=prices, mint_resolver=_de_mint_resolver,
     )
 
-    # 1 variant row, finish=coloured, parent=parent slug
-    rows = list(db_copy.execute(
-        "SELECT id, parent_type_id, finish FROM coin_variants WHERE parent_type_id = ?",
-        (slug.eurio_id,),
-    ))
-    assert len(rows) == 1
-    assert rows[0][1] == slug.eurio_id
-    assert rows[0][2] == "coloured"
-    assert "variant-numista-134283" in rows[0][0]
+    # La variante est une pièce coins first-class (variant_kind + canonical).
+    row = db_copy.execute(
+        "SELECT variant_kind, variant_label, canonical_eurio_id FROM coins "
+        "WHERE eurio_id = ?", (slug.eurio_id,),
+    ).fetchone()
+    assert row is not None
+    assert row[0] == "coloured"
+    assert row[1] is not None
+    assert row[2] == base
 
-    # Finding §1.2 fixtures : Bleuet coloured = 2 issues (BU + Proof seulement,
-    # pas de CIRC car commémo collector coloured). On scope aux iids de CE
-    # bundle : le parent classique (NID 134685, refetché séparément lors du
-    # pilote FR) ajoute sa propre row CIRC sous le même parent_type_id — hors
-    # périmètre de ce test variant.
+    # Table coin_variants dépréciée : write_bundle n'en écrit plus.
+    cv_after = db_copy.execute("SELECT COUNT(*) FROM coin_variants").fetchone()[0]
+    assert cv_after == cv_before
+
+    # Millésimes de la variante désormais sous SON propre eurio_id.
+    # Bleuet coloured = 2 issues (BU + Proof).
     variant_ids = [f"{slug.eurio_id}/numista-{i['id']}" for i in issues]
     placeholders = ",".join("?" * len(variant_ids))
     assert db_copy.execute(

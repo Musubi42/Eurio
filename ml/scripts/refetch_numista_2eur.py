@@ -445,10 +445,11 @@ def main() -> int:
         return 1
 
     # ── P.7c.3 — Transform + Write to SQLite ──────────────────────────
-    return _apply_to_db(bundles, args.db)
+    return _apply_to_db(bundles, args.db, cache_dir=args.cache_dir)
 
 
-def _apply_to_db(bundles: dict[int, "FetchBundle"], db_path: Path) -> int:
+def _apply_to_db(bundles: dict[int, "FetchBundle"], db_path: Path,
+                 cache_dir: Path | None = None) -> int:
     """Transform payloads → rows → UPSERT vers eurio.db. Transaction par NID.
 
     Skipped NIDs (slug=None, out-of-scope) sont reportés. Erreurs DB par NID
@@ -487,6 +488,7 @@ def _apply_to_db(bundles: dict[int, "FetchBundle"], db_path: Path) -> int:
                 prices_by_iid=bundle.prices_by_iid,
                 mint_resolver=mint_resolver,
                 payload_fr=bundle.type_payload_fr,
+                cache_dir=cache_dir,
             )
             conn.execute("COMMIT")
             print(f"  [{nid}] ✓ {slug.eurio_id}")

@@ -87,11 +87,13 @@ class NumistaWriter:
         INSERT INTO coins (
           eurio_id, country, country_name, year, face_value, currency,
           is_commemorative, theme, numista_id, design_description,
-          design_group_id, ref_source, ref_native_id
+          design_group_id, ref_source, ref_native_id,
+          variant_kind, variant_label, canonical_eurio_id
         ) VALUES (
           :eurio_id, :country, :country_name, :year, :face_value, :currency,
           :is_commemorative, :theme, :numista_id, :design_description,
-          :design_group_id, :ref_source, :ref_native_id
+          :design_group_id, :ref_source, :ref_native_id,
+          :variant_kind, :variant_label, :canonical_eurio_id
         )
         ON CONFLICT (eurio_id) DO UPDATE SET
           country_name = excluded.country_name,
@@ -101,6 +103,9 @@ class NumistaWriter:
           design_group_id = excluded.design_group_id,
           ref_source = excluded.ref_source,
           ref_native_id = excluded.ref_native_id,
+          variant_kind = excluded.variant_kind,
+          variant_label = excluded.variant_label,
+          canonical_eurio_id = excluded.canonical_eurio_id,
           updated_at = datetime('now')
         """
         self.conn.execute(sql, row)
@@ -278,7 +283,66 @@ class NumistaWriter:
         self.conn.execute(sql, row)
         self.stats.design_groups += 1
 
-    # ─── coin_variants ─────────────────────────────────────────────────
+    # ─── Résolution nid → eurio_id (groupage variantes via related_types) ─
+
+    def resolve_eurio_for_nid(self, nid: int | None, cache_dir=None) -> str | None:
+        """eurio_id du Type canonique pour un ``numista_id`` donné.
+
+        1) ligne ``coins`` canonique (canonical_eurio_id IS NULL) portant ce nid ;
+        2) sinon, si ``cache_dir`` fourni, résout depuis le payload caché
+           (``{cache_dir}/{nid}/type.json``) — utile quand le frère n'est pas
+           encore écrit dans le même run.
+        """
+        if not nid:
+            return None
+        row = self.conn.execute(
+            "SELECT eurio_id FROM coins WHERE numista_id = ? "
+            "AND canonical_eurio_id IS NULL ORDER BY eurio_id LIMIT 1",
+            (nid,),
+        ).fetchone()
+        if row:
+            return row[0]
+        if cache_dir is not None:
+            import json
+            from pathlib import Path
+
+            from referential.numista_eurio_id import eurio_id_from_numista_payload
+            p = Path(cache_dir) / str(nid) / "type.json"
+            if p.exists():
+                r = eurio_id_from_numista_payload(json.loads(p.read_text()))
+                return r.eurio_id if r else None
+        return None
+
+    # ─── Désambiguïsation eurio_id (tiebreak variantes même finish) ─────
+
+    def unique_eurio_id(self, base_eurio_id: str, numista_id: int) -> str:
+        """Garantit l'unicité du PK eurio_id quand 2+ nids du même groupe
+        partagent le même variant_kind (ex. deux « coloured » de la même pièce).
+
+        Retourne ``base_eurio_id`` s'il est libre OU déjà possédé par ce nid ;
+        sinon ``base-2``, ``base-3``… (compteur). Idempotent : la propriété est
+        vérifiée via ``numista_id`` → un re-run retrouve sa propre ligne. Cas
+        rare (aucune occurrence sur la zone euro actuelle) — filet anti-perte.
+        """
+        cur = self.conn.execute(
+            "SELECT numista_id FROM coins WHERE eurio_id = ?", (base_eurio_id,)
+        ).fetchone()
+        if cur is None or cur[0] == numista_id:
+            return base_eurio_id
+        k = 2
+        while True:
+            cand = f"{base_eurio_id}-{k}"
+            cur = self.conn.execute(
+                "SELECT numista_id FROM coins WHERE eurio_id = ?", (cand,)
+            ).fetchone()
+            if cur is None or cur[0] == numista_id:
+                return cand
+            k += 1
+
+    # ─── coin_variants — DÉPRÉCIÉ (chantier variantes) ──────────────────
+    # Les variantes sont désormais des pièces coins first-class. Conservé
+    # le temps de la migration (migrate_coin_variants_to_coins.py) ; plus
+    # appelé par write_bundle.
 
     def write_variant(self, row: dict | None) -> None:
         if not row:
@@ -343,31 +407,70 @@ class NumistaWriter:
         self, *, slug, payload: dict, issues: list[dict],
         prices_by_iid: dict[int, dict], mint_resolver,
         payload_fr: dict | None = None,
+        cache_dir=None,
     ) -> None:
         """Pipeline complet pour un Type : appelle les transforms puis chaque
         write_* dans le bon ordre (FK : coins avant tout, mint_releases avant
-        prices)."""
+        prices).
+
+        ``cache_dir`` (optionnel) : permet de résoudre le canonique d'une
+        variante via ``related_types`` même si le frère n'est pas encore en DB
+        (lecture du payload caché). DB-only si absent."""
+        from dataclasses import replace
+
         from referential.numista_transforms import (
             coin_canonical_image_rows, coin_credit_rows, coin_cross_ref_rows,
             coin_market_quote_rows, coin_name_i18n_rows, coin_observation_rows,
-            coin_row, coin_source_ref_row, coin_topic_rows, coin_variant_row,
+            coin_row, coin_source_ref_row, coin_topic_rows,
             design_group_row, mint_release_observation_rows,
             mint_release_price_rows, mint_release_rows,
         )
+
+        review_reason: str | None = None
+        if slug.canonical_eurio_id is not None:
+            # 0a. Groupage par related_types (source primaire) : le slug de base
+            #     ne suffit pas car le commemorated_topic diffère souvent entre
+            #     canonique et variante. On résout le vrai canonique via les
+            #     Types frères du payload.
+            from referential.numista_eurio_id import related_canonical_nid
+            nid_can, ambiguous = related_canonical_nid(payload)
+            resolved = self.resolve_eurio_for_nid(nid_can, cache_dir) if nid_can else None
+            if resolved and resolved != slug.eurio_id:
+                slug = replace(slug, canonical_eurio_id=resolved)
+            elif not resolved:
+                # Pas de canonique résoluble → garde le base_slug en fallback
+                # mais flag pour revue éditoriale.
+                review_reason = "variant_canonical_unresolved"
+            if ambiguous:
+                review_reason = "variant_canonical_ambiguous"
+
+            # 0b. Tiebreak : si 2+ nids du même groupe partagent le même
+            #     variant_kind, désambiguïse le PK eurio_id (base-2…) AVANT de
+            #     construire les rows filles (qui pointent slug.eurio_id).
+            unique = self.unique_eurio_id(slug.eurio_id, int(payload["id"]))
+            if unique != slug.eurio_id:
+                slug = replace(slug, eurio_id=unique)
 
         # 1. design_groups d'abord (FK target depuis coins.design_group_id)
         self.write_design_group(design_group_row(slug))
 
         # 2. coins (FK target depuis tout le reste)
         self.write_coin(coin_row(slug, payload))
+        if review_reason:
+            self.conn.execute(
+                "UPDATE coins SET needs_review = 1, review_reason = ? "
+                "WHERE eurio_id = ?",
+                (review_reason, slug.eurio_id),
+            )
 
-        # 3. source_ref + cross_refs + images + credits + observations + variant + i18n
+        # 3. source_ref + cross_refs + images + credits + observations + i18n
+        #    (chantier variantes : plus de write_variant — la variante EST une
+        #    pièce coins first-class, écrite en 2. ; coin_variants déprécié)
         self.write_source_ref(coin_source_ref_row(slug, payload))
         self.write_cross_refs(coin_cross_ref_rows(slug, payload))
         self.write_images(coin_canonical_image_rows(slug, payload))
         self.write_credits(coin_credit_rows(slug, payload))
         self.write_observations(coin_observation_rows(slug, payload))
-        self.write_variant(coin_variant_row(slug, payload))
         self.write_i18n_names(coin_name_i18n_rows(slug, payload, payload_fr))
         self.write_topics(coin_topic_rows(slug, payload, payload_fr))
 
@@ -394,6 +497,25 @@ class NumistaWriter:
                 iid_to_release_id[r["_numista_iid"]] = r["id"]
             else:
                 iid_to_release_id[r["_numista_iid"]] = survivor["id"]
+        # Idempotence cross-write : purge les mint_releases périmés de CE parent
+        # (id qui ne sera plus produit) — ex. millésimes hérités d'une collision
+        # passée (variante écrite sous le slug canonique) ou issue retirée chez
+        # Numista. Le ON CONFLICT(id) du writer couvre les ids stables ; la clé
+        # UNIQUE secondaire (parent,year,mint,issue_type) plantait sinon.
+        # ON DELETE CASCADE nettoie observations + prix des releases supprimés.
+        new_ids = [r["id"] for r in deduped_rows]
+        if new_ids:
+            ph = ",".join("?" * len(new_ids))
+            self.conn.execute(
+                f"DELETE FROM coin_mint_releases WHERE parent_type_id = ? "
+                f"AND id NOT IN ({ph})",
+                [slug.eurio_id, *new_ids],
+            )
+        else:
+            self.conn.execute(
+                "DELETE FROM coin_mint_releases WHERE parent_type_id = ?",
+                (slug.eurio_id,),
+            )
         self.write_mint_releases(deduped_rows)
         self.write_mint_release_observations(
             mint_release_observation_rows(deduped_rows))
