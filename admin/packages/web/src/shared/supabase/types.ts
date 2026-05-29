@@ -124,6 +124,7 @@ export interface Coin {
   is_withdrawn: boolean
   withdrawn_at: string | null
   withdrawal_reason: string | null
+  numista_id?: number | null
   images: CoinImages
   cross_refs: CoinCrossRefs
   national_variants: Record<string, unknown> | null

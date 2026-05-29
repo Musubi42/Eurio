@@ -567,6 +567,12 @@ function _pickTopic(topics: Topic[] | undefined, source: string): string | null 
 const numistaTopic = computed(() => _pickTopic((coin.value as any)?.topics, 'numista_api'))
 const bceTopic = computed(() => _pickTopic((coin.value as any)?.topics, 'bce_official'))
 
+// Numista ID : champ top-level `numista_id` fiable (colonne coins.numista_id),
+// fallback sur cross_refs (rarement peuplé). Sert au bloc Identifiants + lien.
+const numistaId = computed(
+  () => coin.value?.numista_id ?? coin.value?.cross_refs?.numista_id ?? null,
+)
+
 // F.2 — Liste complète des topics triée pour la section "Localisation".
 // Pool de toutes les sources (Numista 6 langs + BCE EN, future BCE FR),
 // tri stable : source priority numista > bce, puis lang priority
@@ -1113,21 +1119,27 @@ function formatMintage(n: number): string {
           </div>
 
           <div
-            v-if="coin.cross_refs?.numista_id"
+            v-if="numistaId"
             class="flex items-center justify-between gap-2 rounded-md border px-3 py-2"
             style="border-color: var(--surface-3); background: var(--surface-1);"
           >
             <div class="min-w-0 flex-1">
               <p class="text-[10px] uppercase tracking-wider" style="color: var(--ink-500);">Numista ID</p>
-              <p class="font-mono text-xs" style="color: var(--ink);">
-                N{{ coin.cross_refs.numista_id }}
-              </p>
+              <a
+                class="font-mono text-xs underline-offset-2 hover:underline"
+                style="color: var(--ink);"
+                :href="`https://en.numista.com/catalogue/pieces${numistaId}.html`"
+                target="_blank"
+                rel="noopener"
+              >
+                N{{ numistaId }}
+              </a>
             </div>
             <button
               class="flex shrink-0 items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium transition-colors hover:border-current"
               style="border-color: var(--surface-3); color: var(--ink-500);"
-              :title="`Copier ${coin.cross_refs.numista_id}`"
-              @click="copyToClipboard(String(coin.cross_refs.numista_id), 'NumistaID', $event)"
+              :title="`Copier ${numistaId}`"
+              @click="copyToClipboard(String(numistaId), 'NumistaID', $event)"
             >
               <Copy class="h-3 w-3" />
               Copier
