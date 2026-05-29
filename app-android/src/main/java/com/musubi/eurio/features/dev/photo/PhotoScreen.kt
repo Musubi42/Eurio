@@ -110,10 +110,19 @@ fun PhotoScreen(
                     bottom = EurioSpacing.s5,
                 ),
         ) {
+            // SNAP gated on a live centered circle (green ring) so we only ever
+            // snap a frame the cache validated → no NORMALIZE FAILED. Reset is
+            // always enabled.
+            val snapEnabled = hasSnap || liveCircleFound
             ToolButton(
-                label = if (hasSnap) "↻ reset" else "● SNAP",
+                label = when {
+                    hasSnap -> "↻ reset"
+                    liveCircleFound -> "● SNAP"
+                    else -> "○ vise la pièce"
+                },
                 accent = if (hasSnap) Gold else Success,
                 onClick = { if (hasSnap) viewModel.onReset() else viewModel.onSnap() },
+                enabled = snapEnabled,
                 modifier = Modifier.fillMaxWidth(),
             )
         }
@@ -126,21 +135,22 @@ private fun ToolButton(
     accent: Color,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
 ) {
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(EurioRadii.sm))
-            .background(Color.Black.copy(alpha = 0.82f))
+            .background(Color.Black.copy(alpha = if (enabled) 0.82f else 0.5f))
             .border(
                 width = 1.dp,
-                color = accent.copy(alpha = 0.55f),
+                color = accent.copy(alpha = if (enabled) 0.55f else 0.2f),
                 shape = RoundedCornerShape(EurioRadii.sm),
             )
-            .clickable(onClick = onClick)
+            .let { if (enabled) it.clickable(onClick = onClick) else it }
             .padding(horizontal = EurioSpacing.s3, vertical = EurioSpacing.s4),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text = label, style = MonoBadgeStyle, color = accent)
+        Text(text = label, style = MonoBadgeStyle, color = accent.copy(alpha = if (enabled) 1f else 0.35f))
     }
 }
 

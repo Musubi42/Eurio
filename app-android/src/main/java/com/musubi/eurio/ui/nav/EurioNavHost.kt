@@ -36,6 +36,7 @@ import com.musubi.eurio.features.dev.carousel.CarouselScreen
 import com.musubi.eurio.features.dev.carousel.CarouselViewModel
 import com.musubi.eurio.features.dev.photo.PhotoScreen
 import com.musubi.eurio.features.dev.photo.PhotoViewModel
+import com.musubi.eurio.features.dev.status.DebugStatusScreen
 import com.musubi.eurio.features.onboarding.OnboardingScreen
 import com.musubi.eurio.features.onboarding.OnboardingViewModel
 import com.musubi.eurio.features.profil.ProfileViewModel
@@ -134,6 +135,7 @@ fun EurioNavHost(
                             com.musubi.eurio.features.scan.debug.DevTool.CAPTURE -> EurioDestinations.DEV_CAPTURE
                             com.musubi.eurio.features.scan.debug.DevTool.BENCH -> EurioDestinations.DEV_BENCH
                             com.musubi.eurio.features.scan.debug.DevTool.CAROUSEL -> EurioDestinations.DEV_CAROUSEL
+                            com.musubi.eurio.features.scan.debug.DevTool.STATUS -> EurioDestinations.DEV_STATUS
                         }
                         navController.navigate(route)
                     }
@@ -336,6 +338,13 @@ fun EurioNavHost(
             )
             CarouselScreen(
                 viewModel = carouselVm,
+                onBack = { navController.popBackStack() },
+            )
+        }
+
+        composable(EurioDestinations.DEV_STATUS) {
+            DebugStatusScreen(
+                debugRootDir = app.coinAnalyzer.debugRootDir,
                 onBack = { navController.popBackStack() },
             )
         }

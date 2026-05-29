@@ -110,7 +110,7 @@ fun DebugBar(
 
 // Identifie les écrans dev accessibles depuis le DBG bottom-sheet. Permet de
 // router vers une route nav sans coupler DebugBar à NavController.
-enum class DevTool { PHOTO, CAPTURE, BENCH, CAROUSEL }
+enum class DevTool { PHOTO, CAPTURE, BENCH, CAROUSEL, STATUS }
 
 @Composable
 private fun DevToolsNav(onOpenDevTool: (DevTool) -> Unit) {
@@ -126,6 +126,9 @@ private fun DevToolsNav(onOpenDevTool: (DevTool) -> Unit) {
         }
         TextButton(onClick = { onOpenDevTool(DevTool.CAROUSEL) }) {
             Text("▶ Carousel 3D")
+        }
+        TextButton(onClick = { onOpenDevTool(DevTool.STATUS) }) {
+            Text("▶ Debug data status (read-only)")
         }
     }
 }

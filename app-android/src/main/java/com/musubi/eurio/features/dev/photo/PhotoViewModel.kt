@@ -58,6 +58,7 @@ class PhotoViewModel(
         coinAnalyzer.snapRequested = false
         coinAnalyzer.captureContext = null
         coinAnalyzer.onPhotoLiveDetection = null
+        coinAnalyzer.clearPhotoCache()
         _snap.value = null
         _liveCircleFound.value = false
         Log.d(TAG, "photo session ended")
@@ -99,5 +100,6 @@ class PhotoViewModel(
         coinAnalyzer.photoMode = false
         coinAnalyzer.snapRequested = false
         coinAnalyzer.onPhotoLiveDetection = null
+        coinAnalyzer.clearPhotoCache()
     }
 }
