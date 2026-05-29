@@ -16,7 +16,7 @@ from api_quota import DEFAULT_DB, QuotaTracker
 
 _SOURCE = "numista"
 _WINDOW = "monthly"
-_MONTHLY_LIMIT = 1800
+_MONTHLY_LIMIT = 2000
 
 
 def _key_hash(key: str) -> str:
