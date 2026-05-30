@@ -96,6 +96,27 @@ export function fetchJoCoverage(): Promise<JoCoverageResponse> {
   return json<JoCoverageResponse>('/referential/jo-coverage')
 }
 
+// ─── Matrice Wikipédia DE ───────────────────────────────────────────────
+
+export interface WikiMatrixCell {
+  e_count: number
+  e_planned: boolean
+  g_count: number
+  g_planned: boolean
+  n_db: number
+}
+
+export interface WikiMatrixResponse {
+  years: number[]
+  countries: string[]
+  cells: Record<string, Record<string, WikiMatrixCell>>
+  summary: { total_wiki_national: number; total_owned: number }
+}
+
+export function fetchWikipediaMatrix(): Promise<WikiMatrixResponse> {
+  return json<WikiMatrixResponse>('/referential/wikipedia-matrix')
+}
+
 // ─── Discover (Numista oracle sweep) ───────────────────────────────────
 
 export interface DiscoverRequest {

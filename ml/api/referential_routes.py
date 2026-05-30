@@ -1217,3 +1217,78 @@ def jo_coverage() -> JoCoverageResponse:
         summary={"total_coins": total_coins, "total_jo": total_jo,
                  "total_gap": total_coins - total_jo},
     )
+
+
+# ── Coverage Wikipédia DE (Chunk 4) ────────────────────────────────────────
+
+
+class WikiMatrixCell(BaseModel):
+    e_count: int        # émissions nationales (Wikipédia)
+    e_planned: bool
+    g_count: int        # émissions communes (joint issues)
+    g_planned: bool
+    n_db: int           # commémo 2€ qu'on possède en eurio.db pour (pays, année)
+
+
+class WikiMatrixResponse(BaseModel):
+    years: list[int]
+    countries: list[str]
+    cells: dict[str, dict[str, WikiMatrixCell]]
+    summary: dict[str, int]
+
+
+@router.get("/wikipedia-matrix", response_model=WikiMatrixResponse)
+def wikipedia_matrix() -> WikiMatrixResponse:
+    """Matrice Wikipédia DE (pays × année) + marqueur de possession eurio.db.
+
+    Source : table ``wikipedia_coverage`` (alimentée par
+    ``go-task ml:scrape-wikipedia-de``). Montre aussi le non-émis (count=0)
+    et le planifié — 2e couverture complémentaire du JO."""
+    conn = _store()._connection()  # noqa: SLF001
+
+    cells: dict[str, dict[str, WikiMatrixCell]] = {}
+    years: set[int] = set()
+    for r in conn.execute(
+        "SELECT country, year, kind, count, planned FROM wikipedia_coverage"
+    ):
+        country, year, kind, count, planned = r[0], r[1], r[2], r[3], bool(r[4])
+        years.add(year)
+        bucket = cells.setdefault(country, {})
+        cell = bucket.get(str(year))
+        if cell is None:
+            cell = WikiMatrixCell(e_count=0, e_planned=False, g_count=0,
+                                  g_planned=False, n_db=0)
+            bucket[str(year)] = cell
+        if kind == "E":
+            cell.e_count = count
+            cell.e_planned = planned
+        else:
+            cell.g_count = count
+            cell.g_planned = planned
+
+    # Possession : commémo 2€ en eurio.db par (country, year).
+    n_owned_total = 0
+    for r in conn.execute(
+        "SELECT country, year, COUNT(*) AS n FROM coins "
+        "WHERE face_value = 2.0 AND is_commemorative = 1 GROUP BY country, year"
+    ):
+        country, year, n = r[0], r[1], r[2]
+        bucket = cells.setdefault(country, {})
+        cell = bucket.get(str(year))
+        if cell is None:
+            cell = WikiMatrixCell(e_count=0, e_planned=False, g_count=0,
+                                  g_planned=False, n_db=0)
+            bucket[str(year)] = cell
+            years.add(year)
+        cell.n_db = n
+        n_owned_total += n
+
+    total_wiki = sum(
+        c.e_count for bucket in cells.values() for c in bucket.values()
+    )
+    return WikiMatrixResponse(
+        years=sorted(years),
+        countries=sorted(cells.keys()),
+        cells=cells,
+        summary={"total_wiki_national": total_wiki, "total_owned": n_owned_total},
+    )

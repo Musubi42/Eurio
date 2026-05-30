@@ -564,6 +564,11 @@ function tabCount(tab: typeof activeTab.value): number {
                          style="border-color: var(--surface-3); color: var(--indigo-700);">
               Couverture Journal Officiel →
             </router-link>
+            <router-link to="/referential/wikipedia-matrix"
+                         class="rounded-full border px-3 py-1 font-mono text-[10px] normal-case"
+                         style="border-color: var(--surface-3); color: var(--indigo-700);">
+              Matrice Wikipédia →
+            </router-link>
           </span>
         </h2>
 

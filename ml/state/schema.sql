@@ -1382,3 +1382,19 @@ CREATE TABLE IF NOT EXISTS set_members (
   PRIMARY KEY (set_id, eurio_id)
 );
 CREATE INDEX IF NOT EXISTS idx_set_members_eurio ON set_members(eurio_id);
+
+-- Couverture Wikipédia (DE) : matrice pays × année de la page
+-- « 2-Euro-Gedenkmünzen » (overview). Seconde source de couverture, qui
+-- montre aussi le NON-émis (count=0) et le planifié (planned=1) — cf.
+-- referential/scrape_wikipedia_de.py et memory project_eurlex_source.
+-- kind : 'E' = émission nationale individuelle, 'G' = émission commune.
+CREATE TABLE IF NOT EXISTS wikipedia_coverage (
+  country    TEXT NOT NULL,
+  year       INTEGER NOT NULL,
+  kind       TEXT NOT NULL CHECK (kind IN ('E','G')),
+  count      INTEGER NOT NULL DEFAULT 0,
+  planned    INTEGER NOT NULL DEFAULT 0,
+  source     TEXT NOT NULL DEFAULT 'wikipedia_de',
+  fetched_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (country, year, kind)
+) WITHOUT ROWID;
