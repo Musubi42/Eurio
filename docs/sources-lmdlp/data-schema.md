@@ -142,6 +142,29 @@ est un **prix boutique direct**, écrit tel quel. `period_start/end` = date du r
   (immutable, ré-parsable offline ; un refresh par coin le même jour réutilise le
   cache plutôt que re-paginer le shop — calque sur le cache HTML BCE).
 
+## 6bis. Taux de matching réel (dry-run 2026-05-30, Chunk 3)
+
+Sur les **851** produits 2 € → **748** single-commemo → **408 pièces distinctes**
+`(pays, année, thème)` :
+
+| Issue | n | % |
+|---|---|---|
+| **Matchées** (eurio_id) | 251 | 62 % |
+| Trou de référentiel (aucun candidat pour ce pays/année) | 5 | 1 % |
+| **Échec matching** (candidat présent, non apparié) | 152 | 37 % |
+
+Les 152 échecs ne sont **pas** un bug : le `SlugGroupMatcher` compare le slug
+LMDLP au slug de l'`eurio_id` (dérivé de l'anglais), or LMDLP emploie des
+libellés **FR abrégés/familiers** (`10-ans-uem`, `seniors`, `uebl`,
+`consell-de-la-terra`) qui ne recouvrent ni le slug EN ni le titre Numista FR
+formel (`union-economique-et-monetaire`, `prenons-soin-de-nos-aines`). Pousser
+au-delà de ~62 % = un mini-chantier matching dédié (alias/abréviations FR,
+possiblement LLM — calque du chantier theme-matcher recall), pas un quick win.
+
+Comportement actuel : une pièce non matchée n'a **pas** de quote LMDLP
+(dégradation propre, jamais de prix attaché au mauvais eurio_id). Pas de cap
+silencieux : le manifest du run liste les eurio_id matchés.
+
 ## 7. Observabilité (déjà pré-câblé)
 
 - `backfill_coin_source_status.py:derive_lmdlp` → axes `quotes` + `refs` (déjà écrit,
