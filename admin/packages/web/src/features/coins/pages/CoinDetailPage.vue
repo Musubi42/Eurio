@@ -10,6 +10,8 @@ import {
   fetchCoinCredits,
   fetchCoinDescriptions,
   fetchCoinSourceStatus,
+  postCoinRefresh,
+  fetchRunSnapshot,
   fetchCoinEmbedding,
   fetchCoinI18n,
   fetchCoinMintReleasesFull,
@@ -42,6 +44,7 @@ import {
   MapPin,
   Network,
   Play,
+  RefreshCw,
   ShieldAlert,
   TrendingUp,
 } from 'lucide-vue-next'
@@ -270,6 +273,80 @@ async function loadSourceStatus(eurioId: string) {
     sourceStatus.value = await fetchCoinSourceStatus(eurioId)
   } catch {
     sourceStatus.value = null
+  }
+}
+
+// ─── Disponibilité par source : badges + refresh + polling ─────────────────
+const refreshingSource = ref<string | null>(null)
+const refreshError = ref<string | null>(null)
+
+// registry id → source courte refreshable (les autres = lecture seule).
+const SOURCE_REFRESH: Record<string, 'bce' | 'numista'> = {
+  bce_official: 'bce', numista_api: 'numista',
+}
+const SOURCE_AXES: Record<string, string[]> = {
+  bce_official: ['description', 'mintage', 'issuing_date', 'images'],
+  numista_api: ['identity', 'mint_releases', 'prices', 'i18n', 'observations'],
+  ebay_browse: ['quotes', 'listings'],
+  lmdlp: ['quotes', 'refs'],
+  wikipedia: ['url'],
+}
+const SOURCE_AXIS_LABELS: Record<string, string> = {
+  description: 'Description', mintage: 'Tirage', issuing_date: 'Date', images: 'Image',
+  identity: 'ID', mint_releases: 'Millésimes', prices: 'Cote', i18n: 'Titres',
+  observations: 'Caractéristiques', quotes: 'Cote', listings: 'Annonces',
+  refs: 'Réf', url: 'Lien',
+}
+const SOURCE_STATE_LABEL: Record<string, string> = {
+  never: 'Jamais récupéré', ok: 'Présent',
+  empty_upstream: 'Pas encore publié', error: 'Échec du fetch',
+}
+function sourceAxes(source: string): string[] {
+  return SOURCE_AXES[source] ?? []
+}
+function sourceStateStyle(state: string): string {
+  if (state === 'ok') return 'border-color: var(--success); color: var(--success); background: var(--success-soft, transparent);'
+  if (state === 'empty_upstream') return 'border-color: var(--gold); color: var(--gold-700, var(--gold)); background: var(--gold-50, transparent);'
+  if (state === 'error') return 'border-color: var(--danger); color: var(--danger); background: color-mix(in srgb, var(--danger) 8%, transparent);'
+  return 'border-color: var(--surface-3); color: var(--ink-400); background: var(--surface-1);'
+}
+function stateMessage(state: string): string {
+  if (state === 'empty_upstream') return 'La source ne publie pas (encore) cette pièce.'
+  if (state === 'error') return 'Le dernier fetch a échoué — réessaie.'
+  return 'Aucune tentative — clique Rafraîchir pour récupérer.'
+}
+
+const bceState = computed(
+  () => sourceStatus.value?.sources.find(s => s.source === 'bce_official')?.state ?? null,
+)
+
+async function refreshSource(short: 'bce' | 'numista') {
+  if (!coin.value || refreshingSource.value) return
+  const eid = coin.value.eurio_id
+  refreshingSource.value = short
+  refreshError.value = null
+  try {
+    const { run_id } = await postCoinRefresh(eid, short)
+    // Poll le run jusqu'à fin (max ~6min @2s).
+    for (let i = 0; i < 180; i++) {
+      const snap = await fetchRunSnapshot(short, run_id).catch(() => null)
+      if (!snap || snap.status !== 'running') break
+      await new Promise(r => setTimeout(r, 2000))
+    }
+    // Recharge le statut + les données potentiellement modifiées.
+    await loadSourceStatus(eid)
+    await Promise.all([loadCharacteristics(eid), loadI18nAndAliases(eid)])
+    if (coin.value) {
+      await mergeLocalCanonicals(coin.value)
+      const imgs = coin.value.images as CoinImage[]
+      if (!selectedImage.value) selectedImage.value = imgs[0] ?? null
+    }
+  } catch (e) {
+    refreshError.value = (e as Error).message?.includes('409')
+      ? 'Un run est déjà en cours pour cette source.'
+      : 'Échec du refresh.'
+  } finally {
+    refreshingSource.value = null
   }
 }
 
@@ -979,6 +1056,20 @@ const numistaTotalMintage = computed<number | null>(() => {
               {{ selectedDescription.description }}
             </p>
           </div>
+          <!-- Encart : description BCE indisponible (pas encore publiée / échec) -->
+          <div v-else-if="bceState === 'empty_upstream' || bceState === 'error'"
+               class="mt-4 flex items-center gap-2 rounded-lg border border-dashed p-3"
+               style="border-color: var(--surface-3); background: var(--surface);">
+            <span class="inline-flex flex-shrink-0 items-center rounded-full border px-2 py-0.5 text-[9px] font-medium uppercase tracking-wider"
+                  style="border-color: var(--gold); color: var(--gold-700, var(--gold)); background: var(--gold-50, transparent);">
+              BCE
+            </span>
+            <p class="text-xs" style="color: var(--ink-500);">
+              {{ bceState === 'empty_upstream'
+                ? 'Description officielle pas encore publiée côté BCE.'
+                : 'Échec du dernier fetch BCE — réessaie via « Disponibilité des sources ».' }}
+            </p>
+          </div>
         </div>
 
         <!-- Gold separator -->
@@ -1369,6 +1460,81 @@ const numistaTotalMintage = computed<number | null>(() => {
         </div>
       </Transition>
     </Teleport>
+
+    <!-- ═══ Disponibilité des sources (état + refresh) ═══ -->
+    <div v-if="coin" class="mt-12">
+      <div class="mb-5 flex items-end justify-between border-b pb-3"
+           style="border-color: var(--surface-3);">
+        <div>
+          <p class="text-[10px] uppercase"
+             style="color: var(--ink-500); letter-spacing: var(--tracking-eyebrow);">
+            Référentiel
+          </p>
+          <h2 class="mt-0.5 font-display text-2xl italic font-semibold"
+              style="color: var(--indigo-700);">
+            Disponibilité des sources
+          </h2>
+        </div>
+        <p v-if="refreshError" class="text-xs" style="color: var(--danger);">{{ refreshError }}</p>
+      </div>
+
+      <div v-if="sourceStatus === undefined"
+           class="h-24 animate-pulse rounded-lg" style="background: var(--surface-1);" />
+
+      <div v-else-if="sourceStatus" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div v-for="s in sourceStatus.sources" :key="s.source"
+             class="flex flex-col rounded-lg border p-4"
+             style="border-color: var(--surface-3); background: var(--surface);">
+          <div class="flex items-center justify-between gap-2">
+            <span class="font-mono text-xs font-semibold uppercase"
+                  style="color: var(--ink); letter-spacing: var(--tracking-eyebrow);">
+              {{ sourceLabel(s.source) }}
+            </span>
+            <span class="rounded-full border px-2 py-0.5 text-[9px] font-medium uppercase tracking-wider"
+                  :style="sourceStateStyle(s.state)">
+              {{ SOURCE_STATE_LABEL[s.state] ?? s.state }}
+            </span>
+          </div>
+
+          <!-- Axes présents (état ok) -->
+          <div v-if="s.state === 'ok'" class="mt-2.5 flex flex-wrap gap-1">
+            <span v-for="ax in sourceAxes(s.source)" :key="ax"
+                  class="rounded px-1.5 py-0.5 text-[9px] font-medium"
+                  :style="s.axes[ax]
+                    ? 'background: var(--success-soft, #e8f5e9); color: var(--success, #2e7d32);'
+                    : 'background: var(--surface-1); color: var(--ink-400);'">
+              {{ SOURCE_AXIS_LABELS[ax] ?? ax }}
+            </span>
+          </div>
+          <!-- Message d'état (autres) -->
+          <p v-else class="mt-2.5 text-xs leading-snug" style="color: var(--ink-500);">
+            {{ stateMessage(s.state) }}
+          </p>
+
+          <!-- Footer : dernière vérif + refresh -->
+          <div class="mt-3 flex items-center justify-between gap-2 border-t pt-2.5"
+               style="border-color: var(--surface-2);">
+            <span class="font-mono text-[10px]" style="color: var(--ink-400);">
+              {{ s.last_checked_at ? s.last_checked_at.slice(0, 10) : '—' }}
+            </span>
+            <button
+              v-if="SOURCE_REFRESH[s.source]"
+              class="flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium transition-colors hover:border-current disabled:opacity-50"
+              style="border-color: var(--surface-3); color: var(--ink-500);"
+              :disabled="refreshingSource !== null"
+              @click="refreshSource(SOURCE_REFRESH[s.source])"
+            >
+              <RefreshCw class="h-3 w-3"
+                         :class="refreshingSource === SOURCE_REFRESH[s.source] ? 'animate-spin' : ''" />
+              {{ refreshingSource === SOURCE_REFRESH[s.source] ? 'Refresh…' : 'Rafraîchir' }}
+            </button>
+            <span v-else class="text-[10px] uppercase" style="color: var(--ink-400);">
+              lecture seule
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <!-- ═══ Localisation : titres traduits & alias ═══ -->
     <div v-if="coin" class="mt-12">

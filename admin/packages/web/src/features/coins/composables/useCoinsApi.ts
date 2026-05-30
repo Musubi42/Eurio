@@ -311,6 +311,31 @@ export function fetchCoinSourceStatus(eurioId: string): Promise<SourceStatusResp
   return json<SourceStatusResponse>(`/coins/${encodeURIComponent(eurioId)}/source-status`)
 }
 
+export interface RefreshResponse {
+  run_id: string
+  source: string
+  status: string
+}
+
+export function postCoinRefresh(eurioId: string, source: 'bce' | 'numista'): Promise<RefreshResponse> {
+  return json<RefreshResponse>(
+    `/coins/${encodeURIComponent(eurioId)}/refresh?source=${source}`,
+    { method: 'POST' },
+  )
+}
+
+// Snapshot léger d'un run pour le polling du refresh par coin (découplé du type
+// SourceId de la feature sources, qui ne couvre pas 'numista').
+export interface RunSnapshotLite {
+  status: 'running' | 'success' | 'partial' | 'failed'
+  current_step: string | null
+  error_summary: string | null
+}
+
+export function fetchRunSnapshot(source: string, runId: string): Promise<RunSnapshotLite> {
+  return json<RunSnapshotLite>(`/sources/${source}/runs/${encodeURIComponent(runId)}`)
+}
+
 export function fetchCoinPrices(eurioId: string): Promise<PricesResponse> {
   return json<PricesResponse>(`/coins/${encodeURIComponent(eurioId)}/prices`)
 }
