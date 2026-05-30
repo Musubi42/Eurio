@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import time
 from collections import defaultdict
 from datetime import date, datetime, timezone
@@ -94,62 +93,160 @@ def write_snapshot(year: int, html: str) -> Path:
 
 # ---------- BCE parser ----------
 
+# Les 24 langues officielles de l'UE — la BCE publie comm_{year}.{lang}.html
+# dans chacune. EN reste la langue d'ancrage (matching eurio_id via theme_slug).
+BCE_EU_LANGS: tuple[str, ...] = (
+    "bg", "cs", "da", "de", "el", "en", "es", "et", "fi", "fr", "ga", "hr",
+    "hu", "it", "lt", "lv", "mt", "nl", "pl", "pt", "ro", "sk", "sl", "sv",
+)
 
-PARAGRAPH_KEYS = {
-    "feature": re.compile(r"^Feature\s*:\s*(.*)$", re.IGNORECASE | re.S),
-    "description": re.compile(r"^Description\s*:\s*(.*)$", re.IGNORECASE | re.S),
-    "issuing_volume": re.compile(r"^Issuing\s+volume\s*:\s*(.*)$", re.IGNORECASE | re.S),
-    "issuing_date": re.compile(r"^Issuing\s+date\s*:\s*(.*)$", re.IGNORECASE | re.S),
+# Les 4 champs BCE, toujours dans cet ordre sur la page (validé sur 24 langues).
+_BCE_FIELDS: tuple[str, ...] = ("feature", "description", "issuing_volume", "issuing_date")
+
+# Caractères de séparation label/valeur à retirer en tête de valeur, une fois
+# le label <strong> enlevé : ':' (EN/FR/…), '.' (lv « Apraksts. »), nbsp, espaces.
+_LABEL_SEP_CHARS = " :. \t"
+
+
+def bce_lang_url(year: int, lang: str) -> str:
+    return BCE_BASE + f"comm_{year}.{lang}.html"
+
+
+def _strip_leading_strong(p: Any) -> str:
+    """Texte d'un <p> privé de son label <strong> en tête.
+
+    Chaque champ BCE est ``<p><strong>Label:</strong> valeur</p>``. Le label
+    est dans un ``<strong>`` (language-agnostic — fonctionne quel que soit le
+    séparateur : ':' EN, '.' letton, ou aucun en maltais « Volum tal-ħruġ »).
+    On retire le texte du strong en tête puis les séparateurs résiduels.
+    """
+    full = p.get_text(" ", strip=True)
+    strong = p.find("strong")
+    if strong is not None:
+        label = strong.get_text(" ", strip=True)
+        if full.startswith(label):
+            full = full[len(label):]
+    # Séparateurs résiduels (':' hors strong, espaces, nbsp) en TÊTE seulement —
+    # ne pas rogner la ponctuation de fin (point final d'une phrase = légitime).
+    return full.lstrip(_LABEL_SEP_CHARS).strip()
+
+
+def _p_starts_with_strong(p: Any) -> bool:
+    """True si le <p> commence par un <strong> (= nouveau champ labellisé).
+
+    Un <p> de continuation (description sur plusieurs paragraphes) n'a pas de
+    <strong> en tête et doit être rattaché au champ précédent.
+    """
+    for child in p.children:
+        name = getattr(child, "name", None)
+        if name is None:  # NavigableString
+            if str(child).strip():
+                return False  # texte avant le strong → pas un label
+            continue
+        return name == "strong"
+    return False
+
+
+# Labels EN du bloc BCE → nom de champ. Sert UNIQUEMENT sur la page EN
+# d'ancrage : on identifie chaque champ par son label anglais (fiable), ce
+# qui résiste aux anomalies de structure (ex. 2e coin LU 2023 sans `Feature`).
+# Les 23 autres langues réutilisent ce mapping par POSITION (cf. harvester).
+_EN_FIELD_LABELS: dict[str, str] = {
+    "feature": "feature",
+    "description": "description",
+    "issuing volume": "issuing_volume",
+    "issuing date": "issuing_date",
 }
 
 
-def _extract_text_block(h3: Any) -> dict[str, str]:
-    """Walk the <p> tags following an <h3> until the next <h3>, extract metadata."""
-    out: dict[str, str] = {}
+def _classify_en_label(label: str) -> str | None:
+    norm = label.strip().strip(_LABEL_SEP_CHARS).strip().lower()
+    for prefix, field in _EN_FIELD_LABELS.items():
+        if norm.startswith(prefix):
+            return field
+    return None
+
+
+def _block_image_url(h3: Any) -> str | None:
+    prev_img = h3.find_previous("img")
+    if not prev_img:
+        return None
+    src = prev_img.get("src") or ""
+    if not src or not src.lower().endswith((".jpg", ".jpeg", ".png")):
+        return None
+    if src.startswith("/"):
+        return "https://www.ecb.europa.eu" + src
+    if src.startswith("http"):
+        return src
+    return BCE_BASE + src
+
+
+def _iter_blocks(soup: BeautifulSoup):
+    """Yield ``(block_index, h3, image_url)`` pour chaque bloc-pièce, en ordre
+    document.
+
+    Le filtre (h3 non vide + image-pièce qui précède) est **language-invariant**
+    → le ``block_index`` désigne le même coin dans les 24 langues, ce qui permet
+    d'aligner les valeurs non-EN sur le mapping de champs détecté en EN.
+    """
+    idx = 0
+    for h3 in soup.find_all("h3"):
+        if not h3.get_text(" ", strip=True):
+            continue
+        image_url = _block_image_url(h3)
+        if image_url is None:
+            continue
+        yield idx, h3, image_url
+        idx += 1
+
+
+def _block_fields(h3: Any) -> list[tuple[str, str]]:
+    """Champs d'un bloc en ``[(label, value), …]`` dans l'ordre du document.
+
+    Chaque champ démarre par un <p> à <strong> en tête (``label`` = texte du
+    strong) ; les <p> sans <strong> prolongent la valeur courante (descriptions
+    multi-paragraphes, ex. France 2017 ruban rose).
+    """
+    groups: list[list[str]] = []
     for sib in h3.find_all_next():
         if sib.name == "h3":
             break
         if sib.name != "p":
             continue
         txt = sib.get_text(" ", strip=True)
-        for key, rx in PARAGRAPH_KEYS.items():
-            if key in out:
-                continue
-            m = rx.match(txt)
-            if m:
-                out[key] = m.group(1).strip()
-                break
-        if all(k in out for k in ("feature", "issuing_volume")):
-            # Got the essentials; the description is optional
-            break
-    return out
+        if not txt:
+            continue
+        if _p_starts_with_strong(sib):
+            strong = sib.find("strong")
+            label = strong.get_text(" ", strip=True) if strong else ""
+            groups.append([label, _strip_leading_strong(sib)])
+        elif groups:
+            groups[-1].append(txt)
+    return [(g[0], " ".join(g[1:]).strip()) for g in groups]
 
 
 def parse_bce_page(html: str, year: int) -> list[dict]:
-    """Return a list of {country_iso2, year, image_url, feature, description, ...} per coin."""
+    """Coins de la page BCE **EN** : champs identifiés par label anglais.
+
+    Chaque coin porte en plus ``_block_index`` (position document, stable
+    inter-langues) et ``_field_order`` (ordre des champs détectés) pour que le
+    harvester i18n puisse mapper les valeurs des 23 autres langues par position.
+    """
     soup = BeautifulSoup(html, "lxml")
     coins: list[dict] = []
-    for h3 in soup.find_all("h3"):
+    for idx, h3, image_url in _iter_blocks(soup):
         country_raw = h3.get_text(" ", strip=True)
-        if not country_raw:
-            continue
         iso2 = BCE_COUNTRY_OVERRIDES.get(country_raw) or country_to_iso2(country_raw)
         if not iso2:
             continue
-        prev_img = h3.find_previous("img")
-        if not prev_img:
-            continue
-        src = prev_img.get("src") or ""
-        if not src or not src.lower().endswith((".jpg", ".jpeg", ".png")):
-            continue
-        if src.startswith("/"):
-            image_url = "https://www.ecb.europa.eu" + src
-        elif src.startswith("http"):
-            image_url = src
-        else:
-            image_url = BCE_BASE + src
-        block = _extract_text_block(h3)
-        feature = block.get("feature") or ""
+        fields: dict[str, str] = {}
+        field_order: list[str] = []
+        for label, value in _block_fields(h3):
+            f = _classify_en_label(label)
+            if f and f not in fields:
+                fields[f] = value
+                field_order.append(f)
+        feature = fields.get("feature") or ""
         if not feature:
             continue
         coins.append(
@@ -158,14 +255,30 @@ def parse_bce_page(html: str, year: int) -> list[dict]:
                 "country_raw": country_raw,
                 "year": year,
                 "feature": feature,
-                "description": block.get("description"),
-                "issuing_volume": block.get("issuing_volume"),
-                "issuing_date": block.get("issuing_date"),
+                "description": fields.get("description"),
+                "issuing_volume": fields.get("issuing_volume"),
+                "issuing_date": fields.get("issuing_date"),
                 "image_url": image_url,
                 "theme_slug": slugify(feature),
+                "_block_index": idx,
+                "_field_order": field_order,
             }
         )
     return coins
+
+
+def parse_bce_lang_blocks(html: str) -> dict[int, list[str]]:
+    """``{block_index: [valeurs positionnelles]}`` pour une page non-EN.
+
+    On n'identifie pas les champs (labels localisés) : on récupère juste les
+    valeurs dans l'ordre. Le harvester les mappe via le ``_field_order`` détecté
+    sur la page EN au même ``block_index``.
+    """
+    soup = BeautifulSoup(html, "lxml")
+    out: dict[int, list[str]] = {}
+    for idx, h3, _image_url in _iter_blocks(soup):
+        out[idx] = [value for _label, value in _block_fields(h3)]
+    return out
 
 
 # ---------- enrichment ----------

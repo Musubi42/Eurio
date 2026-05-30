@@ -397,6 +397,16 @@ tasks:
     cmds:
       - "{{.VENV}}/python referential/fetch_bce_images.py {{.CLI_ARGS}}"
 
+  scrape-bce-i18n:
+    desc: "Récolte titres + descriptions officiels BCE dans les 24 langues UE → coin_descriptions_i18n. Args : --year, --langs, --dry-run."
+    cmds:
+      - "{{.VENV}}/python -m referential.scrape_bce_i18n {{.CLI_ARGS}}"
+
+  scrape-bce-facts:
+    desc: "Récolte tirage + date d'émission BCE (lang-invariants, page EN) → coin_observations (mintage_official, issuing_date) + cross-check vs Numista. Args : --year, --dry-run."
+    cmds:
+      - "{{.VENV}}/python -m referential.scrape_bce_facts {{.CLI_ARGS}}"
+
   migrate-storage-layout:
     desc: "One-shot: migrate coin-images bucket to per-eurio_id layout (--plan / --apply / --apply --prune)"
     cmds:

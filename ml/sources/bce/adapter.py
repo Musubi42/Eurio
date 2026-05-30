@@ -65,6 +65,23 @@ MANUAL_BCE_OVERRIDES: dict[tuple[str, int, str], str] = {
         "de-2020-2eur-german-polish-reconciliation",
     ("IT", 2016, "2200th-anniversary-of-the-death-of-tito-maccio-plauto"):
         "it-2016-2eur-2200th-anniversary-of-the-death-of-plautus",
+    # Anti sur-matching (2026-05-29) : 2nde pièce d'une (country, year) dont le
+    # libellé BCE diverge trop de son slug Numista (score < plancher) — sans
+    # override elle volait l'eurio_id de l'autre pièce. L'override la rattache
+    # à son vrai eurio_id, ce qui libère le candidat partagé pour la 1re.
+    # Cf. docs/referential-bce/i18n-descriptions.md §divergences.
+    ("LU", 2012, "grand-duke-henri-and-grand-duke-guillaume-iv-grand-ducal"):
+        "lu-2012-2eur-100th-anniversary-of-death-of-william-iv",
+    ("ES", 2014, "change-of-the-head-of-state"):
+        "es-2014-2eur-king-accession-to-spanish-throne",
+    ("LT", 2018, "estonia-latvia-and-lithuania-jointly-issued-a-commemorative"):
+        "lt-2018-2eur-centenary-of-independent-baltic-states",
+    ("EE", 2018, "estonia-latvia-and-lithuania-jointly-issued-a-commemorative"):
+        "ee-2018-2eur-centenary-of-independent-baltic-states",
+    ("AD", 2021, "taking-care-of-our-seniors"):
+        "ad-2021-2eur-recognition-of-the-elderly-during-the-covid-19-pandemic",
+    ("MT", 2024, "ic-cittadella-the-citadel"):
+        "mt-2024-2eur-maltese-walled-cities-gozo",
 }
 
 
@@ -94,6 +111,43 @@ def _slug_score(a: str, b: str) -> float:
     coverage = max(cov_a, cov_b)
     ratio = SequenceMatcher(None, a, b).ratio()
     return max(coverage, ratio * 0.7)
+
+
+def _max_assignment(scoremaps: list[dict[str, float]]) -> list[str | None]:
+    """Appariement injectif maximisant le score total (force brute, petits groupes).
+
+    ``scoremaps[i]`` = ``{eurio_id: score}`` des candidats acceptables (≥ plancher)
+    pour le bloc ``i``. Retourne l'eurio_id retenu (ou None) par bloc, sans qu'un
+    eurio_id soit utilisé deux fois. À égalité de total, le premier exploré gagne
+    (déterministe).
+    """
+    n = len(scoremaps)
+    best_total = -1.0
+    best_assign: list[str | None] = [None] * n
+
+    def rec(i: int, used: set[str], total: float, cur: list[str | None]) -> None:
+        nonlocal best_total, best_assign
+        if i == n:
+            if total > best_total:
+                best_total = total
+                best_assign = cur.copy()
+            return
+        # Laisser le bloc i non assigné.
+        cur.append(None)
+        rec(i + 1, used, total, cur)
+        cur.pop()
+        # Ou l'assigner à chaque candidat libre.
+        for eid, sc in scoremaps[i].items():
+            if eid in used:
+                continue
+            used.add(eid)
+            cur.append(eid)
+            rec(i + 1, used, total + sc, cur)
+            cur.pop()
+            used.discard(eid)
+
+    rec(0, set(), 0.0, [])
+    return best_assign
 
 
 @dataclass
@@ -161,12 +215,22 @@ class BceAdapter:
             n_summaries = len(entries)
             kept: list[DiscoveredItem] = []
 
-            for e in entries:
+            # Filtre pays puis assignation one-to-one par (country, year) :
+            # un eurio_id ne peut être réclamé que par un seul bloc BCE (évite
+            # le sur-matching où la 2e pièce d'une année vole l'eurio_id de la
+            # 1re — cf. match_group / ES 2014).
+            year_entries = [
+                e for e in entries
+                if not (query.country and query.country != e["country"])
+            ]
+            assignments = self.match_group(
+                ref_index,
+                [(e["country"], year, e["theme_slug"]) for e in year_entries],
+            )
+
+            for e, eurio_id in zip(year_entries, assignments):
                 country = e["country"]
-                if query.country and query.country != country:
-                    continue
                 theme_slug = e["theme_slug"]
-                eurio_id = self._match_entry(ref_index, country, year, theme_slug)
                 if eurio_id is None:
                     if record_discarded is not None:
                         record_discarded(DiscardedListingRecord(
@@ -304,28 +368,39 @@ class BceAdapter:
             ))
         return idx
 
-    def _match_entry(
+    def _assign_one(
         self,
-        ref_index: dict[tuple[str, int], list[_RefCoin]],
         country: str,
         year: int,
         theme_slug: str,
+        candidates: list[_RefCoin],
+        claimed: set[str],
     ) -> str | None:
+        """Matche un bloc BCE à un eurio_id parmi les candidats **non réclamés**.
+
+        ``claimed`` = eurio_id déjà attribués à un autre bloc de la même
+        (country, year) → exclus pour garantir le 1-pièce ↔ 1-eurio_id (cf.
+        ``match_group``). Avec un ``claimed`` vide, le comportement est
+        identique à l'ancien ``_match_entry`` (override → floor → gap).
+        """
         # Override manuel — court-circuit le fuzzy quand la translation
         # BCE/Numista diverge trop (cf. MANUAL_BCE_OVERRIDES). On vérifie
-        # que l'eurio_id existe encore dans le référentiel courant pour
-        # éviter de cibler un coin renamed/supprimé.
+        # que l'eurio_id existe encore dans le référentiel courant ET n'est
+        # pas déjà réclamé, pour éviter une FK error / un double-match.
         override = MANUAL_BCE_OVERRIDES.get((country, year, theme_slug))
-        if override is not None:
-            cands = ref_index.get((country, year), [])
-            if any(c.eurio_id == override for c in cands):
-                return override
+        if (
+            override is not None
+            and override not in claimed
+            and any(c.eurio_id == override for c in candidates)
+        ):
+            claimed.add(override)
+            return override
 
-        cands = ref_index.get((country, year), [])
-        if not cands:
+        avail = [c for c in candidates if c.eurio_id not in claimed]
+        if not avail:
             return None
         scored = sorted(
-            ((_slug_score(theme_slug, c.theme_slug), c) for c in cands),
+            ((_slug_score(theme_slug, c.theme_slug), c) for c in avail),
             key=lambda x: x[0],
             reverse=True,
         )
@@ -333,5 +408,86 @@ class BceAdapter:
         runner_score = scored[1][0] if len(scored) > 1 else 0.0
         has_gap = runner_score == 0 or best_score >= runner_score * self.gap_ratio
         if best_score >= self.score_floor and has_gap:
+            claimed.add(best.eurio_id)
             return best.eurio_id
         return None
+
+    def _match_entry(
+        self,
+        ref_index: dict[tuple[str, int], list[_RefCoin]],
+        country: str,
+        year: int,
+        theme_slug: str,
+    ) -> str | None:
+        """Match d'un bloc isolé (sans contrainte d'unicité). Conservé pour les
+        appels unitaires ; ``match_group`` est le chemin batch one-to-one."""
+        return self._assign_one(
+            country, year, theme_slug, ref_index.get((country, year), []), set()
+        )
+
+    def match_group(
+        self,
+        ref_index: dict[tuple[str, int], list[_RefCoin]],
+        items: list[tuple[str, int, str]],
+    ) -> list[str | None]:
+        """Assignation **1-to-1** par (country, year) sur N blocs BCE.
+
+        ``items`` = liste de ``(country, year, theme_slug)``. Retourne l'eurio_id
+        (ou None) par item, **dans le même ordre**. Aucun eurio_id n'est attribué
+        à deux blocs de la même (country, year).
+
+        - Groupe à **1 bloc** → ``_assign_one`` (override → floor → gap), comportement
+          historique inchangé (cas ultra-majoritaire).
+        - Groupe à **≥2 blocs** → overrides forcés d'abord, puis assignation
+          **optimale** (maximise le score total) sur les candidats restants, par
+          force brute (groupes minuscules). Un appariement sous le plancher est
+          rejeté (→ None). Évite le sur-matching où la 2e pièce vole l'eurio_id
+          de la 1re uniquement parce qu'elle score un poil plus haut dessus
+          (cf. ES 2014 : greedy se trompe, l'optimal récupère Park Güell).
+        """
+        results: list[str | None] = [None] * len(items)
+        groups: dict[tuple[str, int], list[int]] = {}
+        for i, (country, year, _slug) in enumerate(items):
+            groups.setdefault((country, year), []).append(i)
+
+        for (country, year), idxs in groups.items():
+            candidates = list(ref_index.get((country, year), []))
+            if len(idxs) == 1:
+                i = idxs[0]
+                results[i] = self._assign_one(
+                    country, year, items[i][2], candidates, set()
+                )
+                continue
+
+            claimed: set[str] = set()
+            free_idxs: list[int] = []
+            # 1) overrides forcés (claiment leur eurio_id en priorité).
+            for i in idxs:
+                slug = items[i][2]
+                override = MANUAL_BCE_OVERRIDES.get((country, year, slug))
+                if (
+                    override is not None
+                    and override not in claimed
+                    and any(c.eurio_id == override for c in candidates)
+                ):
+                    claimed.add(override)
+                    results[i] = override
+                else:
+                    free_idxs.append(i)
+
+            # 2) assignation optimale des blocs restants sur candidats libres.
+            avail = [c.eurio_id for c in candidates if c.eurio_id not in claimed]
+            score_of = {c.eurio_id: c.theme_slug for c in candidates}
+            scoremaps: list[dict[str, float]] = []
+            for i in free_idxs:
+                slug = items[i][2]
+                sm = {
+                    eid: _slug_score(slug, score_of[eid])
+                    for eid in avail
+                }
+                scoremaps.append({
+                    eid: sc for eid, sc in sm.items() if sc >= self.score_floor
+                })
+            for local, eid in enumerate(_max_assignment(scoremaps)):
+                results[free_idxs[local]] = eid
+        return results
