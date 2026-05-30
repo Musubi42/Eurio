@@ -317,7 +317,7 @@ export interface RefreshResponse {
   status: string
 }
 
-export function postCoinRefresh(eurioId: string, source: 'bce' | 'numista'): Promise<RefreshResponse> {
+export function postCoinRefresh(eurioId: string, source: 'bce' | 'numista' | 'jo'): Promise<RefreshResponse> {
   return json<RefreshResponse>(
     `/coins/${encodeURIComponent(eurioId)}/refresh?source=${source}`,
     { method: 'POST' },

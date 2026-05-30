@@ -28,6 +28,7 @@ from referential.scrape_bce_facts import harvest as facts_harvest
 from referential.scrape_bce_i18n import BCE_EU_LANGS, harvest as i18n_harvest
 from scripts.refetch_numista_2eur import refetch_nids
 from state.source_status import bce_axes as _bce_axes
+from state.source_status import jo_axes as _jo_axes
 from state.source_status import numista_axes as _numista_axes
 from state.source_status import upsert_source_status
 
@@ -36,9 +37,9 @@ logger = logging.getLogger(__name__)
 _ML_ROOT = Path(__file__).resolve().parents[1]
 NUMISTA_CACHE_DIR = _ML_ROOT / "state" / "numista_cache"
 
-VALID_SOURCES = ("bce", "numista")
+VALID_SOURCES = ("bce", "numista", "jo")
 # source court (endpoint/run) → registry id (coin_source_status.source)
-_REGISTRY = {"bce": "bce_official", "numista": "numista_api"}
+_REGISTRY = {"bce": "bce_official", "numista": "numista_api", "jo": "eurlex_jo"}
 
 
 def _set_step(conn: sqlite3.Connection, run_id: str, step: str) -> None:
@@ -161,9 +162,32 @@ def refresh_numista_coin(store, eurio_id: str, *, force: bool = False) -> str:
     return run.run_id
 
 
+def refresh_jo_coin(store, eurio_id: str, *, force: bool = False) -> str:
+    """Refresh JO/EUR-Lex d'un coin : rejoue le pipeline ciblé sur l'eurio_id.
+
+    Le pipeline écrit ``coin_source_status='ok'`` quand l'avis est trouvé +
+    promu. Si aucun avis ne matche (pièce absente du JO), on pose
+    ``empty_upstream`` — signal positif « la source n'a rien pour ce coin »."""
+    from sources.jo.adapter import JoAdapter
+    from sources.jo.pipeline import run_jo_pipeline
+
+    conn = store._connection()  # noqa: SLF001
+    adapter = JoAdapter(conn=conn)
+    q = SourceQuery(source_id="jo", target_eurio_ids=(eurio_id,))
+    run_id = run_jo_pipeline(adapter, q, store=store, force=force)
+
+    axes = _jo_axes(conn, eurio_id)
+    if not any(axes.values()):
+        upsert_source_status(conn, eurio_id=eurio_id, source="eurlex_jo",
+                             state="empty_upstream", axes=axes, run_id=run_id)
+    return run_id
+
+
 def refresh_coin(store, eurio_id: str, source: str, *, force: bool = False) -> str:
     if source == "bce":
         return refresh_bce_coin(store, eurio_id, force=force)
     if source == "numista":
         return refresh_numista_coin(store, eurio_id, force=force)
+    if source == "jo":
+        return refresh_jo_coin(store, eurio_id, force=force)
     raise ValueError(f"source non supportée: {source!r}")

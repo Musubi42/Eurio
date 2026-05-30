@@ -281,12 +281,13 @@ const refreshingSource = ref<string | null>(null)
 const refreshError = ref<string | null>(null)
 
 // registry id → source courte refreshable (les autres = lecture seule).
-const SOURCE_REFRESH: Record<string, 'bce' | 'numista'> = {
-  bce_official: 'bce', numista_api: 'numista',
+const SOURCE_REFRESH: Record<string, 'bce' | 'numista' | 'jo'> = {
+  bce_official: 'bce', numista_api: 'numista', eurlex_jo: 'jo',
 }
 const SOURCE_AXES: Record<string, string[]> = {
   bce_official: ['description', 'mintage', 'issuing_date', 'images'],
   numista_api: ['identity', 'mint_releases', 'prices', 'i18n', 'observations'],
+  eurlex_jo: ['images', 'issuing_date', 'notice'],
   ebay_browse: ['quotes', 'listings'],
   lmdlp: ['quotes', 'refs'],
   wikipedia: ['url'],
@@ -295,7 +296,7 @@ const SOURCE_AXIS_LABELS: Record<string, string> = {
   description: 'Description', mintage: 'Tirage', issuing_date: 'Date', images: 'Image',
   identity: 'ID', mint_releases: 'Millésimes', prices: 'Cote', i18n: 'Titres',
   observations: 'Caractéristiques', quotes: 'Cote', listings: 'Annonces',
-  refs: 'Réf', url: 'Lien',
+  refs: 'Réf', url: 'Lien', notice: 'Avis JO',
 }
 const SOURCE_STATE_LABEL: Record<string, string> = {
   never: 'Jamais récupéré', ok: 'Présent',
@@ -320,7 +321,7 @@ const bceState = computed(
   () => sourceStatus.value?.sources.find(s => s.source === 'bce_official')?.state ?? null,
 )
 
-async function refreshSource(short: 'bce' | 'numista') {
+async function refreshSource(short: 'bce' | 'numista' | 'jo') {
   if (!coin.value || refreshingSource.value) return
   const eid = coin.value.eurio_id
   refreshingSource.value = short
@@ -774,8 +775,8 @@ const ISSUE_TYPE_LABEL: Record<string, string> = {
 
 // Libellé court de provenance (registry vocab → humain).
 const SOURCE_LABEL: Record<string, string> = {
-  numista_api: 'Numista', bce_official: 'BCE', ebay_browse: 'eBay',
-  lmdlp: 'LMDLP', wikipedia: 'Wikipedia', manual: 'Manuel',
+  numista_api: 'Numista', bce_official: 'BCE', eurlex_jo: 'JO / EUR-Lex',
+  ebay_browse: 'eBay', lmdlp: 'LMDLP', wikipedia: 'Wikipedia', manual: 'Manuel',
 }
 function sourceLabel(source: string): string {
   return SOURCE_LABEL[source] ?? source

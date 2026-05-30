@@ -190,7 +190,8 @@ class CanonicalImageEntry(BaseModel):
 _SOURCE_PRIORITY = {
     "numista": 1, "numista_api": 1,
     "bce_comm": 2, "bce_official": 2,
-    "unknown": 3,
+    "eurlex_jo": 3,
+    "unknown": 4,
 }
 _ROLE_PRIORITY = {"obverse": 1, "reverse": 2}
 

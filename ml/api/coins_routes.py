@@ -147,7 +147,7 @@ class SourceStatusResponse(BaseModel):
 # mdp/manual/derived. Refresh actif seulement pour bce/numista (chunk 2) ;
 # les autres restent en lecture seule. Table générique : ajouter une source
 # ici suffit à l'afficher.
-DISPLAYED_SOURCES = ("bce_official", "numista_api", "ebay_browse", "lmdlp", "wikipedia")
+DISPLAYED_SOURCES = ("bce_official", "numista_api", "eurlex_jo", "ebay_browse", "lmdlp", "wikipedia")
 
 
 class TypeLevelPrice(BaseModel):
@@ -601,15 +601,15 @@ class RefreshResponse(BaseModel):
 @router.post("/{eurio_id}/refresh", response_model=RefreshResponse, status_code=202)
 def refresh_coin_source(
     eurio_id: str,
-    source: str = Query(..., description="bce | numista"),
+    source: str = Query(..., description="bce | numista | jo"),
     force: bool = Query(default=False),
 ) -> RefreshResponse:
     """Rejoue le fetch d'un coin pour une source (async). Lance un run dans un
     thread daemon (réutilise la plomberie source_runs), renvoie son run_id ; le
     front poll ``GET /sources/{source}/runs/{run_id}``. Le verdict est écrit
     dans ``coin_source_status`` à la fin du run."""
-    if source not in ("bce", "numista"):
-        raise HTTPException(status_code=400, detail="source must be 'bce' or 'numista'")
+    if source not in ("bce", "numista", "jo"):
+        raise HTTPException(status_code=400, detail="source must be 'bce', 'numista' or 'jo'")
     conn = _conn()
     if conn.execute("SELECT 1 FROM coins WHERE eurio_id = ?", (eurio_id,)).fetchone() is None:
         raise HTTPException(status_code=404, detail=f"coin {eurio_id} not found")
