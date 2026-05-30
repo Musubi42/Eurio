@@ -185,10 +185,16 @@ Comportement : une pièce non matchée n'a **pas** de quote LMDLP (dégradation
 propre, jamais de prix attaché au mauvais eurio_id). Pas de cap silencieux : le
 manifest du run liste les eurio_id matchés.
 
-## 7. Observabilité (déjà pré-câblé)
+## 7. Observabilité (livré, Chunk 4)
 
-- `backfill_coin_source_status.py:derive_lmdlp` → axes `quotes` + `refs` (déjà écrit,
-  valide ce data model).
-- `coins_routes.py` → `lmdlp` déjà dans `DISPLAYED_SOURCES` + `has_lmdlp` + panneau.
-- **Manque** (Chunks 3-4) : l'adapter `ml/sources/lmdlp/`, `lmdlp_axes()` dans
-  `source_status.py`, `refresh_lmdlp_coin` + dispatch `source=='lmdlp'`.
+- `source_status.py:lmdlp_axes(conn, eurio_id)` → axes `quotes` + `refs`
+  (cohérent avec `derive_lmdlp` du backfill).
+- `pipeline.py:_promote` instrumente le run : `upsert_source_status('ok', axes)`
+  par coin promu (verdict réseau horodaté).
+- `coin_refresh.py:refresh_lmdlp_coin` + dispatch `source=='lmdlp'` + endpoint
+  `POST /coins/{id}/refresh?source=lmdlp`. Coin sans produit → `empty_upstream`.
+- `coins_routes.py` → `lmdlp` dans `DISPLAYED_SOURCES`, `has_lmdlp`, panneau
+  Disponibilité. Front `CoinDetailPage.vue` : bloc « Prix catalogue » (lit les
+  quotes `source='lmdlp'`) + axes `lmdlp: ['quotes','refs']`.
+- Backfill : `go-task ml:backfill-source-status` marque `ok` les coins ayant
+  des quotes/refs LMDLP (337 au premier ingest 2026-05-30).

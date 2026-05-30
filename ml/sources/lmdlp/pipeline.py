@@ -35,6 +35,7 @@ from sources._base.dedup import CoinMarketQuoteRow, upsert_coin_market_quote
 from sources._base.registry_map import to_registry_source
 from sources._base.run_logger import RunHandle, start_run
 from sources.lmdlp.adapter import LmdlpAdapter
+from state.source_status import lmdlp_axes, upsert_source_status
 from state.sources_runs import record_run
 
 logger = logging.getLogger(__name__)
@@ -177,6 +178,17 @@ def _promote(
             logger.warning("[lmdlp] upsert source_ref FAILED eurio=%s: %s", eurio_id, exc)
             n_errors += 1
             run.bump(n_errors=1)
+
+    # Instrumentation disponibilité : marque ok (axes ré-dérivés depuis la DB)
+    # pour chaque coin promu. N'altère pas les axes des autres sources.
+    for eurio_id in coins_with_quote:
+        try:
+            upsert_source_status(
+                conn, eurio_id=eurio_id, source=_REGISTRY_SOURCE,
+                state="ok", axes=lmdlp_axes(conn, eurio_id), run_id=run.run_id,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[lmdlp] source_status upsert FAILED eurio=%s: %s", eurio_id, exc)
 
     run.bump(n_quotes_added=n_quotes)
     conn.commit()

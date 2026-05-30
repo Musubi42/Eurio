@@ -188,8 +188,9 @@ def test_coin_source_status_endpoint(seeded_store: Store, client: TestClient) ->
     assert resp.status_code == 200
     data = resp.json()
     by_src = {s["source"]: s for s in data["sources"]}
-    # Les 5 sources affichées sont présentes.
-    assert set(by_src) == {"bce_official", "numista_api", "ebay_browse", "lmdlp", "wikipedia"}
+    # Les 6 sources affichées (DISPLAYED_SOURCES) sont présentes.
+    assert set(by_src) == {"bce_official", "numista_api", "eurlex_jo",
+                           "ebay_browse", "lmdlp", "wikipedia"}
     assert by_src["bce_official"]["state"] == "ok"
     assert by_src["bce_official"]["axes"] == {"description": True}
     assert by_src["bce_official"]["last_checked_at"] == "2026-05-30T10:00:00"

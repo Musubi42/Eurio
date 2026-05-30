@@ -258,3 +258,29 @@ def test_promote_skips_priceless(tmp_path):
     with start_run(conn, source="lmdlp", kind="run", force=True) as run:
         res = _promote(conn, run, [_item("x-2026-2eur-y", "UNC", None, "a")])
     assert res.n_quotes == 0 and res.n_coins == 0
+
+
+def test_promote_instruments_source_status(tmp_path):
+    """Le run marque coin_source_status='ok' (axes quotes+refs) par coin promu."""
+    from state.source_status import lmdlp_axes
+    store = Store(tmp_path / "t.db")
+    conn = store._connection()
+    _seed_registry(conn)
+    conn.execute(
+        "INSERT OR IGNORE INTO coins (eurio_id, country, year, face_value, is_commemorative) "
+        "VALUES ('fr-2026-2eur-x', 'FR', 2026, 2.0, 1)"
+    )
+    with start_run(conn, source="lmdlp", kind="run", force=True) as run:
+        _promote(conn, run, [_item("fr-2026-2eur-x", "UNC", 3.95, "a")])
+    row = conn.execute(
+        "SELECT state, detail_json FROM coin_source_status "
+        "WHERE eurio_id='fr-2026-2eur-x' AND source='lmdlp'"
+    ).fetchone()
+    assert row["state"] == "ok"
+    assert lmdlp_axes(conn, "fr-2026-2eur-x") == {"quotes": True, "refs": True}
+
+
+def test_refresh_dispatch_supports_lmdlp():
+    from referential.coin_refresh import VALID_SOURCES, _REGISTRY
+    assert "lmdlp" in VALID_SOURCES
+    assert _REGISTRY["lmdlp"] == "lmdlp"

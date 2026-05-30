@@ -125,3 +125,18 @@ def jo_axes(conn: sqlite3.Connection, eurio_id: str) -> dict:
                      "WHERE target_kind='coin' AND target_id=? AND source='eurlex_jo' LIMIT 1", eurio_id):
         axes["notice"] = True
     return axes
+
+
+def lmdlp_axes(conn: sqlite3.Connection, eurio_id: str) -> dict:
+    """Axes LMDLP : prix boutique par qualité (quotes) + lien identité (refs).
+
+    Scope volontairement réduit (prix+qualité) — pas d'image/tirage. Cohérent
+    avec ``derive_lmdlp`` du backfill (mêmes deux axes)."""
+    axes: dict = {}
+    if _exists(conn, "SELECT 1 FROM coin_market_quotes "
+                     "WHERE eurio_id=? AND source='lmdlp' LIMIT 1", eurio_id):
+        axes["quotes"] = True
+    if _exists(conn, "SELECT 1 FROM coin_source_refs "
+                     "WHERE target_kind='coin' AND target_id=? AND source='lmdlp' LIMIT 1", eurio_id):
+        axes["refs"] = True
+    return axes
