@@ -733,6 +733,58 @@ function mintageOf(release: MintReleaseFull): number | null {
 function formatMintage(n: number): string {
   return n.toLocaleString('fr-FR')
 }
+
+// ─── Émission officielle BCE : tirage autorisé + date d'émission ───────────
+// Lus depuis les observations Type-level (source bce_official). Affichés en
+// regard du tableau Numista (par millésime) sans réconciliation.
+interface BceMintage { value: number | null; raw_text: string | null; source: string }
+const bceMintage = computed<BceMintage | null>(() => {
+  const ob = observations.value?.observations.find(x => x.observation_type === 'mintage_official')
+  if (!ob) return null
+  const v = ob.value as { value?: number; raw_text?: string } | null
+  return { value: typeof v?.value === 'number' ? v.value : null, raw_text: v?.raw_text ?? null, source: ob.source }
+})
+
+interface BceDate { year: number | null; month: number | null; day: number | null; raw_text: string | null; source: string }
+const bceIssuingDate = computed<BceDate | null>(() => {
+  const ob = observations.value?.observations.find(x => x.observation_type === 'issuing_date')
+  if (!ob) return null
+  const v = ob.value as { year?: number; month?: number; day?: number; raw_text?: string } | null
+  return {
+    year: v?.year ?? null, month: v?.month ?? null, day: v?.day ?? null,
+    raw_text: v?.raw_text ?? null, source: ob.source,
+  }
+})
+
+const hasBceEmission = computed(() => Boolean(bceMintage.value || bceIssuingDate.value))
+
+const FR_MONTHS = [
+  'janvier', 'février', 'mars', 'avril', 'mai', 'juin',
+  'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre',
+]
+// Date BCE normalisée selon la granularité dispo : « 15 mars 2007 » /
+// « mars 2007 » / « 2007 ». raw_text en repli (ex. « Fourth quarter 2022 »).
+function formatBceDate(d: BceDate): string {
+  if (!d.year) return d.raw_text ?? '—'
+  const m = d.month && d.month >= 1 && d.month <= 12 ? FR_MONTHS[d.month - 1] : null
+  if (d.day && m) return `${d.day} ${m} ${d.year}`
+  if (m) return `${m} ${d.year}`
+  return String(d.year)
+}
+
+// Somme des tirages Numista (par millésime) — situe la divergence avec le total
+// autorisé BCE, sans réconcilier (les deux restent affichés).
+const numistaTotalMintage = computed<number | null>(() => {
+  const rels = mintReleases.value
+  if (!rels?.length) return null
+  let sum = 0
+  let any = false
+  for (const r of rels) {
+    const m = mintageOf(r)
+    if (m != null) { sum += m; any = true }
+  }
+  return any ? sum : null
+})
 </script>
 
 <template>
@@ -1499,18 +1551,18 @@ function formatMintage(n: number): string {
       </div>
     </div>
 
-    <!-- ═══ Millésimes & tirages (mint_releases + mintage + prix par grade) ═══ -->
+    <!-- ═══ Tirages & émission (BCE total autorisé + Numista par millésime) ═══ -->
     <div v-if="coin" class="mt-12">
       <div class="mb-5 flex items-end justify-between border-b pb-3"
            style="border-color: var(--surface-3);">
         <div>
           <p class="text-[10px] uppercase"
              style="color: var(--ink-500); letter-spacing: var(--tracking-eyebrow);">
-            Numista
+            Référentiel
           </p>
           <h2 class="mt-0.5 font-display text-2xl italic font-semibold"
               style="color: var(--indigo-700);">
-            Millésimes &amp; tirages
+            Tirages &amp; émission
           </h2>
         </div>
         <span v-if="mintReleases && mintReleases.length"
@@ -1523,62 +1575,118 @@ function formatMintage(n: number): string {
       <div v-if="mintReleases === undefined"
            class="h-24 animate-pulse rounded-lg" style="background: var(--surface-1);" />
 
-      <!-- Empty -->
-      <div v-else-if="!mintReleases || mintReleases.length === 0"
+      <!-- Empty (ni BCE ni Numista) -->
+      <div v-else-if="!hasBceEmission && (!mintReleases || mintReleases.length === 0)"
            class="rounded-lg border px-4 py-6 text-center text-sm"
            style="border-color: var(--surface-3); background: var(--surface); color: var(--ink-500);">
-        Aucun millésime (refetch Numista requis).
+        Aucun tirage (refetch Numista / BCE requis).
       </div>
 
-      <!-- Content : un bloc par mint_release -->
-      <div v-else class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        <div v-for="rel in mintReleases" :key="rel.id"
-             class="rounded-lg border px-4 py-3"
+      <div v-else class="grid gap-6 xl:grid-cols-2">
+        <!-- ── Émission officielle BCE (total autorisé + date) ── -->
+        <div v-if="hasBceEmission"
+             class="self-start rounded-lg border overflow-hidden"
              style="border-color: var(--surface-3); background: var(--surface);">
-          <!-- Header : année · atelier · format -->
-          <div class="flex items-center justify-between gap-2">
-            <div class="flex items-center gap-2">
-              <span class="font-mono text-base font-semibold" style="color: var(--ink);">
-                {{ rel.mint_year }}
-              </span>
-              <span v-if="rel.mint_id" class="text-xs" style="color: var(--ink-500);">
-                {{ rel.mint_id }}
-              </span>
-            </div>
-            <span class="rounded-full px-2 py-0.5 text-[10px] font-medium uppercase"
-                  style="background: var(--surface-1); color: var(--ink-500);">
-              {{ ISSUE_TYPE_LABEL[rel.issue_type] ?? rel.issue_type }}
+          <div class="flex items-center gap-2 border-b px-4 py-2.5"
+               style="border-color: var(--surface-2); background: var(--surface-1);">
+            <span class="inline-flex items-center rounded-full border px-2 py-0.5 text-[9px] font-medium uppercase tracking-wider"
+                  style="border-color: var(--gold); color: var(--gold-700, var(--gold)); background: var(--gold-50, transparent);">
+              BCE
+            </span>
+            <span class="text-[10px] uppercase tracking-wider" style="color: var(--ink-500);">
+              Émission officielle
             </span>
           </div>
-
-          <!-- Mintage -->
-          <div class="mt-2 flex items-center justify-between border-t pt-2"
+          <div v-if="bceMintage" class="flex items-start justify-between gap-3 px-4 py-2.5">
+            <span class="text-xs uppercase tracking-wider" style="color: var(--ink-500);">Tirage autorisé</span>
+            <span class="text-right">
+              <span class="font-mono text-sm tabular-nums" style="color: var(--ink);">
+                {{ bceMintage.value != null ? `${formatMintage(bceMintage.value)} ex.` : '—' }}
+              </span>
+              <span v-if="bceMintage.raw_text" class="block font-mono text-[10px]" style="color: var(--ink-400);">
+                {{ bceMintage.raw_text }}
+              </span>
+            </span>
+          </div>
+          <div v-if="bceIssuingDate" class="flex items-start justify-between gap-3 border-t px-4 py-2.5"
                style="border-color: var(--surface-2);">
-            <span class="text-[10px] uppercase tracking-wider" style="color: var(--ink-500);">Tirage</span>
-            <span class="font-mono text-sm tabular-nums" style="color: var(--ink);">
-              {{ mintageOf(rel) != null ? formatMintage(mintageOf(rel)!) : '—' }}
+            <span class="text-xs uppercase tracking-wider" style="color: var(--ink-500);">Date d'émission</span>
+            <span class="text-right">
+              <span class="text-sm" style="color: var(--ink);">{{ formatBceDate(bceIssuingDate) }}</span>
+              <span v-if="bceIssuingDate.raw_text && bceIssuingDate.raw_text !== formatBceDate(bceIssuingDate)"
+                    class="block font-mono text-[10px]" style="color: var(--ink-400);">
+                {{ bceIssuingDate.raw_text }}
+              </span>
             </span>
           </div>
+        </div>
 
-          <!-- Prix par grade -->
-          <div v-if="rel.prices.length" class="mt-2 border-t pt-2" style="border-color: var(--surface-2);">
-            <p class="mb-1.5 text-[10px] uppercase tracking-wider" style="color: var(--ink-500);">
-              Cote par grade
-            </p>
-            <div class="flex flex-wrap gap-2">
-              <span v-for="p in rel.prices" :key="p.grade_raw"
-                    class="flex items-center gap-1 rounded-md px-2 py-1 text-xs"
-                    style="background: var(--surface-1);"
-                    :title="`${p.grade_raw} · ${sourceLabel(p.source)} · ${formatShortDate(p.fetched_at)}`">
-                <span class="font-medium uppercase" style="color: var(--ink-500);">
-                  {{ p.grade_eurio ?? p.grade_raw }}
-                </span>
-                <span class="font-mono tabular-nums" style="color: var(--ink);">
-                  {{ formatPrice(p.price) }} {{ p.currency === 'EUR' ? '€' : p.currency }}
-                </span>
-              </span>
-            </div>
+        <!-- ── Tableau Numista (par millésime) ── -->
+        <div v-if="mintReleases && mintReleases.length"
+             class="rounded-lg border overflow-hidden"
+             style="border-color: var(--surface-3); background: var(--surface);">
+          <div class="flex items-center gap-2 border-b px-4 py-2.5"
+               style="border-color: var(--surface-2); background: var(--surface-1);">
+            <span class="inline-flex items-center rounded-full border px-2 py-0.5 text-[9px] font-medium uppercase tracking-wider"
+                  style="border-color: var(--indigo-300); color: var(--indigo-600); background: var(--indigo-50);">
+              Numista
+            </span>
+            <span class="text-[10px] uppercase tracking-wider" style="color: var(--ink-500);">
+              Millésimes
+            </span>
           </div>
+          <table class="w-full border-collapse text-sm">
+            <thead>
+              <tr style="background: var(--surface-1);">
+                <th class="px-3 py-2 text-left text-[10px] font-medium uppercase tracking-wider" style="color: var(--ink-500);">Année</th>
+                <th class="px-3 py-2 text-left text-[10px] font-medium uppercase tracking-wider" style="color: var(--ink-500);">Atelier</th>
+                <th class="px-3 py-2 text-left text-[10px] font-medium uppercase tracking-wider" style="color: var(--ink-500);">Type</th>
+                <th class="px-3 py-2 text-right text-[10px] font-medium uppercase tracking-wider" style="color: var(--ink-500);">Tirage</th>
+                <th class="px-3 py-2 text-left text-[10px] font-medium uppercase tracking-wider" style="color: var(--ink-500);">Cote</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="rel in mintReleases" :key="rel.id"
+                  class="border-t align-top" style="border-color: var(--surface-2);">
+                <td class="px-3 py-2 font-mono font-semibold" style="color: var(--ink);">{{ rel.mint_year }}</td>
+                <td class="px-3 py-2" style="color: var(--ink-500);">{{ rel.mint_id ?? '—' }}</td>
+                <td class="px-3 py-2">
+                  <span class="rounded-full px-2 py-0.5 text-[10px] font-medium uppercase"
+                        style="background: var(--surface-1); color: var(--ink-500);">
+                    {{ ISSUE_TYPE_LABEL[rel.issue_type] ?? rel.issue_type }}
+                  </span>
+                </td>
+                <td class="px-3 py-2 text-right font-mono tabular-nums" style="color: var(--ink);">
+                  {{ mintageOf(rel) != null ? formatMintage(mintageOf(rel)!) : '—' }}
+                </td>
+                <td class="px-3 py-2">
+                  <div v-if="rel.prices.length" class="flex flex-wrap gap-1.5">
+                    <span v-for="p in rel.prices" :key="p.grade_raw"
+                          class="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs"
+                          style="background: var(--surface-1);"
+                          :title="`${p.grade_raw} · ${sourceLabel(p.source)} · ${formatShortDate(p.fetched_at)}`">
+                      <span class="font-medium uppercase" style="color: var(--ink-500);">{{ p.grade_eurio ?? p.grade_raw }}</span>
+                      <span class="font-mono tabular-nums" style="color: var(--ink);">
+                        {{ formatPrice(p.price) }} {{ p.currency === 'EUR' ? '€' : p.currency }}
+                      </span>
+                    </span>
+                  </div>
+                  <span v-else style="color: var(--ink-400);">—</span>
+                </td>
+              </tr>
+            </tbody>
+            <tfoot v-if="numistaTotalMintage != null">
+              <tr class="border-t" style="border-color: var(--surface-3); background: var(--surface-1);">
+                <td class="px-3 py-2 text-[10px] font-medium uppercase tracking-wider" style="color: var(--ink-500);" colspan="3">
+                  Total (somme millésimes)
+                </td>
+                <td class="px-3 py-2 text-right font-mono font-semibold tabular-nums" style="color: var(--ink);">
+                  {{ formatMintage(numistaTotalMintage) }}
+                </td>
+                <td class="px-3 py-2"></td>
+              </tr>
+            </tfoot>
+          </table>
         </div>
       </div>
     </div>
