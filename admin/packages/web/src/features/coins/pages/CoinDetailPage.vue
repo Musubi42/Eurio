@@ -1582,21 +1582,20 @@ const numistaTotalMintage = computed<number | null>(() => {
         Aucun tirage (refetch Numista / BCE requis).
       </div>
 
-      <div v-else class="grid gap-6 xl:grid-cols-2">
-        <!-- ── Émission officielle BCE (total autorisé + date) ── -->
-        <div v-if="hasBceEmission"
-             class="self-start rounded-lg border overflow-hidden"
-             style="border-color: var(--surface-3); background: var(--surface);">
-          <div class="flex items-center gap-2 border-b px-4 py-2.5"
-               style="border-color: var(--surface-2); background: var(--surface-1);">
+      <div v-else class="space-y-8">
+        <!-- ── BCE : émission officielle (total autorisé + date) ── -->
+        <div v-if="hasBceEmission">
+          <div class="mb-2 flex items-center gap-2">
             <span class="inline-flex items-center rounded-full border px-2 py-0.5 text-[9px] font-medium uppercase tracking-wider"
                   style="border-color: var(--gold); color: var(--gold-700, var(--gold)); background: var(--gold-50, transparent);">
               BCE
             </span>
-            <span class="text-[10px] uppercase tracking-wider" style="color: var(--ink-500);">
+            <h3 class="font-display text-lg italic font-semibold" style="color: var(--indigo-700);">
               Émission officielle
-            </span>
+            </h3>
           </div>
+          <div class="rounded-lg border overflow-hidden"
+               style="border-color: var(--surface-3); background: var(--surface);">
           <div v-if="bceMintage" class="flex items-start justify-between gap-3 px-4 py-2.5">
             <span class="text-xs uppercase tracking-wider" style="color: var(--ink-500);">Tirage autorisé</span>
             <span class="text-right">
@@ -1619,22 +1618,22 @@ const numistaTotalMintage = computed<number | null>(() => {
               </span>
             </span>
           </div>
+          </div>
         </div>
 
-        <!-- ── Tableau Numista (par millésime) ── -->
-        <div v-if="mintReleases && mintReleases.length"
-             class="rounded-lg border overflow-hidden"
-             style="border-color: var(--surface-3); background: var(--surface);">
-          <div class="flex items-center gap-2 border-b px-4 py-2.5"
-               style="border-color: var(--surface-2); background: var(--surface-1);">
+        <!-- ── Numista : millésimes (par atelier × type) ── -->
+        <div v-if="mintReleases && mintReleases.length">
+          <div class="mb-2 flex items-center gap-2">
             <span class="inline-flex items-center rounded-full border px-2 py-0.5 text-[9px] font-medium uppercase tracking-wider"
                   style="border-color: var(--indigo-300); color: var(--indigo-600); background: var(--indigo-50);">
               Numista
             </span>
-            <span class="text-[10px] uppercase tracking-wider" style="color: var(--ink-500);">
+            <h3 class="font-display text-lg italic font-semibold" style="color: var(--indigo-700);">
               Millésimes
-            </span>
+            </h3>
           </div>
+          <div class="rounded-lg border overflow-hidden"
+               style="border-color: var(--surface-3); background: var(--surface);">
           <table class="w-full border-collapse text-sm">
             <thead>
               <tr style="background: var(--surface-1);">
@@ -1687,6 +1686,7 @@ const numistaTotalMintage = computed<number | null>(() => {
               </tr>
             </tfoot>
           </table>
+          </div>
         </div>
       </div>
     </div>
