@@ -73,6 +73,20 @@ export interface I18nResponse {
   aliases: I18nAlias[]
 }
 
+export interface CoinDescription {
+  lang: string
+  title: string
+  description: string | null
+  source: string
+  method: string | null
+  confidence: string | null
+  model: string | null
+}
+
+export interface DescriptionsResponse {
+  descriptions: CoinDescription[]
+}
+
 export interface TypeLevelPrice {
   source: string
   condition_normalized: string
@@ -271,6 +285,10 @@ export function fetchCoin(eurioId: string): Promise<CoinDetail> {
 
 export function fetchCoinI18n(eurioId: string): Promise<I18nResponse> {
   return json<I18nResponse>(`/coins/${encodeURIComponent(eurioId)}/i18n`)
+}
+
+export function fetchCoinDescriptions(eurioId: string): Promise<DescriptionsResponse> {
+  return json<DescriptionsResponse>(`/coins/${encodeURIComponent(eurioId)}/descriptions`)
 }
 
 export function fetchCoinPrices(eurioId: string): Promise<PricesResponse> {
