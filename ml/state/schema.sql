@@ -937,6 +937,40 @@ CREATE INDEX IF NOT EXISTS idx_coin_topics_source
 CREATE INDEX IF NOT EXISTS idx_coin_topics_lang
   ON coin_topics(lang);
 
+-- ─── coin_descriptions_i18n — titre + description officiels BCE 24 langues ──
+-- (chantier BCE i18n, 2026-05-29) — La BCE publie chaque pièce commémorative
+-- dans les 24 langues officielles de l'UE (comm_{year}.{lang}.html), avec un
+-- titre (Feature) et une description officiels traduits par la BCE elle-même.
+--
+-- Différences avec les tables i18n existantes :
+-- - coin_names_i18n  = titres Numista, 6 langs app, 1 row/(eurio_id,lang).
+-- - coin_topics      = topic court multi-source, 6 langs, sans description.
+-- - coin_descriptions_i18n = source officielle BCE, **24 langues UE**, et garde
+--   TITRE + DESCRIPTION appariés (la BCE les fournit ensemble par langue).
+--
+-- 1 row par (eurio_id, source, lang). `source` = registry id ('bce_official').
+-- Les facts lang-invariants (tirage, date d'émission) ne vivent PAS ici — ils
+-- sont scrapés une seule fois (axes dédiés) ; cette table = texte localisé seul.
+-- `method` : 'scrape' (canon BCE) | 'llm_v1' | 'manual'. `confidence` aligné
+-- sur coin_topics ('canon' | 'assisted' | 'uncertain').
+CREATE TABLE IF NOT EXISTS coin_descriptions_i18n (
+  eurio_id    TEXT NOT NULL REFERENCES coins(eurio_id) ON DELETE CASCADE,
+  source      TEXT NOT NULL REFERENCES source_registry(id) ON DELETE RESTRICT,
+  lang        TEXT NOT NULL CHECK (lang IN (
+                'bg','cs','da','de','el','en','es','et','fi','fr','ga','hr',
+                'hu','it','lt','lv','mt','nl','pl','pt','ro','sk','sl','sv')),
+  title       TEXT NOT NULL,
+  description TEXT,
+  method      TEXT,                            -- 'scrape' | 'llm_v1' | 'manual'
+  model       TEXT,                            -- LLM model id when method LIKE 'llm%'
+  confidence  TEXT NOT NULL DEFAULT 'canon',   -- 'canon' | 'assisted' | 'uncertain'
+  fetched_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (eurio_id, source, lang)
+);
+
+CREATE INDEX IF NOT EXISTS idx_coin_descriptions_i18n_lang
+  ON coin_descriptions_i18n(lang);
+
 -- ─── Alias de thème (chunk C2a — recall theme-matcher) ────────────────────
 -- Modèle `altLabel` de Wikidata : en plus du titre canonique i18n, des
 -- surface forms supplémentaires d'une commémo — acronymes (« EMI »),

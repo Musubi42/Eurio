@@ -105,6 +105,68 @@ def test_manual_override_skipped_if_eurio_missing():
     ) is None
 
 
+def test_match_group_single_item_unchanged():
+    """Groupe à 1 bloc → comportement identique à _match_entry."""
+    idx = _index([_RefCoin(
+        eurio_id="de-2010-2eur-state-of-bremen",
+        country="DE", year=2010, theme_slug="state-of-bremen",
+    )])
+    assert _adapter().match_group(idx, [("DE", 2010, "federal-state-of-bremen")]) == [
+        "de-2010-2eur-state-of-bremen"
+    ]
+
+
+def test_match_group_one_to_one_no_double_claim():
+    """Deux blocs au-dessus du plancher sur le SEUL candidat : un seul l'obtient
+    (le plus fort), l'autre reste non-matché — jamais de double-claim."""
+    idx = _index([_RefCoin(
+        eurio_id="xx-1-2eur-common-words-here", country="XX", year=1,
+        theme_slug="common-words-here",
+    )])
+    res = _adapter().match_group(idx, [
+        ("XX", 1, "common-words-here"),   # score 1.0
+        ("XX", 1, "common-words-there"),  # ~0.67, au-dessus du plancher aussi
+    ])
+    assert res[0] == "xx-1-2eur-common-words-here"
+    assert res[1] is None  # candidat déjà réclamé → pas de double-claim
+    assert res.count("xx-1-2eur-common-words-here") == 1
+
+
+def test_match_group_optimal_beats_greedy():
+    """L'assignation optimale (score total max) bat le greedy : le bloc qui
+    score un poil plus haut sur un candidat partagé ne le monopolise pas si un
+    autre appariement global est meilleur."""
+    idx = _index([
+        _RefCoin(eurio_id="xx-1-2eur-alpha", country="XX", year=1, theme_slug="alpha-theme"),
+        _RefCoin(eurio_id="xx-1-2eur-beta", country="XX", year=1, theme_slug="beta-theme"),
+    ])
+    # bloc A: parfait sur alpha ; bloc B: moyen sur alpha, parfait sur beta.
+    res = _adapter().match_group(idx, [
+        ("XX", 1, "alpha-theme"),
+        ("XX", 1, "beta-theme"),
+    ])
+    assert res == ["xx-1-2eur-alpha", "xx-1-2eur-beta"]
+
+
+def test_match_group_override_frees_shared_candidate():
+    """Un override sur la pièce divergente la rattache à son vrai eurio_id, ce
+    qui libère le candidat partagé pour la pièce correcte."""
+    idx = _index([
+        _RefCoin(eurio_id="es-2014-2eur-park-guell-and-the-works-of-antoni-gaudi",
+                 country="ES", year=2014,
+                 theme_slug="park-guell-and-the-works-of-antoni-gaudi"),
+        _RefCoin(eurio_id="es-2014-2eur-king-accession-to-spanish-throne",
+                 country="ES", year=2014,
+                 theme_slug="king-accession-to-spanish-throne"),
+    ])
+    res = _adapter().match_group(idx, [
+        ("ES", 2014, "change-of-the-head-of-state"),  # a un override → king
+        ("ES", 2014, "unescos-world-cultural-and-natural-heritage-sites-park-guell"),
+    ])
+    assert res[0] == "es-2014-2eur-king-accession-to-spanish-throne"
+    assert res[1] == "es-2014-2eur-park-guell-and-the-works-of-antoni-gaudi"
+
+
 def test_manual_overrides_keys_are_canonical():
     """Sanity : les keys de MANUAL_BCE_OVERRIDES ont le format attendu
     (country UPPERCASE, year int, slug minuscule)."""
