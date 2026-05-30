@@ -142,28 +142,48 @@ est un **prix boutique direct**, écrit tel quel. `period_start/end` = date du r
   (immutable, ré-parsable offline ; un refresh par coin le même jour réutilise le
   cache plutôt que re-paginer le shop — calque sur le cache HTML BCE).
 
-## 6bis. Taux de matching réel (dry-run 2026-05-30, Chunk 3)
+## 6bis. Matching (mini-chantier 2026-05-30)
 
-Sur les **851** produits 2 € → **748** single-commemo → **408 pièces distinctes**
-`(pays, année, thème)` :
+### Leviers appliqués
+
+1. **Slugs candidats FR auxiliaires** (`RefCoin.aux_slugs`, additif au matcher
+   partagé) : LMDLP libelle en FR abrégé (`10-ans-uem`, `seniors`) là où
+   l'`eurio_id` est dérivé de l'anglais. On ajoute, par eurio_id, les slugs des
+   titres FR (`coin_names_i18n`), topics (`coin_topics`) et descriptions
+   (`coin_descriptions_i18n`) en `lang='fr%'`. Le score d'un candidat = max sur
+   tous ses slugs. → 62 % → ~82 %.
+2. **Normalisation marque d'atelier allemande** : les 5 ateliers A/D/F/G/J (et le
+   combo `ADFGJ`) sont la **même pièce canonique** (1 eurio_id, pas de variante
+   atelier au référentiel). On retire le marqueur (préfixe/suffixe) du thème pour
+   que tous les ateliers produisent la même clé `(pays, année, thème)` et
+   fusionnent leurs prix. → ~82 % → ~94 %.
+
+### Taux réel (one-to-one, dry-run 2026-05-30)
+
+**851** produits → **748** single-commemo → **351 pièces distinctes** (après
+fusion ateliers) :
 
 | Issue | n | % |
 |---|---|---|
-| **Matchées** (eurio_id) | 251 | 62 % |
-| Trou de référentiel (aucun candidat pour ce pays/année) | 5 | 1 % |
-| **Échec matching** (candidat présent, non apparié) | 152 | 37 % |
+| **Matchées** (eurio_id) | 332 | **94 %** |
+| Trou de référentiel (aucun candidat) | 5 | 1 % |
+| Échec matching (candidat présent) | 14 | 4 % |
 
-Les 152 échecs ne sont **pas** un bug : le `SlugGroupMatcher` compare le slug
-LMDLP au slug de l'`eurio_id` (dérivé de l'anglais), or LMDLP emploie des
-libellés **FR abrégés/familiers** (`10-ans-uem`, `seniors`, `uebl`,
-`consell-de-la-terra`) qui ne recouvrent ni le slug EN ni le titre Numista FR
-formel (`union-economique-et-monetaire`, `prenons-soin-de-nos-aines`). Pousser
-au-delà de ~62 % = un mini-chantier matching dédié (alias/abréviations FR,
-possiblement LLM — calque du chantier theme-matcher recall), pas un quick win.
+677/709 produits exploitables → quotes. Le matching est **one-to-one strict** :
+un eurio_id n'est réclamé que par une clé (pas de double-attribution).
 
-Comportement actuel : une pièce non matchée n'a **pas** de quote LMDLP
-(dégradation propre, jamais de prix attaché au mauvais eurio_id). Pas de cap
-silencieux : le manifest du run liste les eurio_id matchés.
+### Résidu (14 échecs) — irréductible au token-overlap
+
+Acronymes / libellés familiers FR sans recouvrement avec aucun candidat
+(EN *ni* FR formel) : `uebl`, `10-ans-uem`, `onu`, `seniors`, `erasme`,
+`autonomie`, `double-portrait`, `premier-vol`, `jeux-olympiques-tokyo`,
+`traite-de-tartu`, `presidence-conseil-ue`, `90-ans-cite-du-vatican`,
+`hambourg` (ambigu normal vs mule). → cible d'une petite table d'overrides
+manuels (`LmdlpAdapter.overrides`, déjà supportée) ou d'un pass LLM.
+
+Comportement : une pièce non matchée n'a **pas** de quote LMDLP (dégradation
+propre, jamais de prix attaché au mauvais eurio_id). Pas de cap silencieux : le
+manifest du run liste les eurio_id matchés.
 
 ## 7. Observabilité (déjà pré-câblé)
 

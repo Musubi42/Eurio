@@ -27,6 +27,7 @@ from sources.lmdlp.adapter import (  # noqa: E402
     extract_theme_slug,
     extract_year,
     is_single_commemo,
+    to_product,
 )
 from sources.lmdlp.pipeline import _promote  # noqa: E402
 from state import Store  # noqa: E402
@@ -76,6 +77,34 @@ def test_theme_slug_stable_across_qualities():
         extract_theme_slug(_product(f"{base} BE Proof colori", "c")),
     }
     assert slugs == {"marine-nationale"}
+
+
+@pytest.mark.parametrize("name,expected", [
+    # marque d'atelier allemande : lettre seule en tête → retirée
+    ("2 euros Allemagne 2006 – D Schleswig-Holstein UNC", "schleswig-holstein"),
+    ("2 euros Allemagne 2007 – F Traité de Rome UNC", "traite-de-rome"),
+    # combo 5 ateliers, préfixe et suffixe
+    ("2 euros Allemagne 2019 – ADFGJ Mur de Berlin UNC", "mur-de-berlin"),
+    ("2 euros Allemagne 2022 – Erasmus ADFGJ UNC", "erasmus"),
+])
+def test_german_mint_mark_stripped(name, expected):
+    assert extract_theme_slug(_product(name, "s", country_cat="Allemagne")) == expected
+
+
+def test_mint_mark_not_stripped_for_non_german():
+    # « A » initial sur une pièce non-allemande n'est pas une marque d'atelier.
+    slug = extract_theme_slug(_product("2 euros France 2020 – A Truc UNC", "s"))
+    assert slug == "a-truc"
+
+
+def test_german_mints_collapse_to_one_key():
+    raws = [
+        _product("2 euros Allemagne 2006 – D Schleswig-Holstein UNC", "d", country_cat="Allemagne", year_cat="2006"),
+        _product("2 euros Allemagne 2006 – F Schleswig-Holstein UNC", "f", country_cat="Allemagne", year_cat="2006"),
+        _product("2 euros Allemagne 2006 – G Schleswig-Holstein BU FDC", "g", country_cat="Allemagne", year_cat="2006"),
+    ]
+    keys = {(p.country, p.year, p.theme_slug) for p in (to_product(r) for r in raws)}
+    assert keys == {("DE", 2006, "schleswig-holstein")}
 
 
 def test_price_minor_unit():
@@ -192,6 +221,35 @@ def test_promote_writes_quotes_and_ref(tmp_path):
     ).fetchone()
     assert ref["source"] == "lmdlp"
     assert ref["source_url"].startswith("https://lamonnaiedelapiece.com")
+
+
+def test_load_fr_aux_slugs_and_match(tmp_path):
+    """_load_referential peuple aux_slugs depuis les signaux FR, et discover
+    matche un libellé FR abrégé via le titre i18n FR."""
+    store = Store(tmp_path / "t.db")
+    conn = store._connection()
+    conn.execute(
+        "INSERT OR IGNORE INTO coins (eurio_id, country, year, face_value, is_commemorative) "
+        "VALUES ('be-2009-2eur-economic-monetary-union', 'BE', 2009, 2.0, 1)"
+    )
+    conn.execute(
+        "INSERT INTO coin_names_i18n (eurio_id, lang, title, source, method) "
+        "VALUES ('be-2009-2eur-economic-monetary-union', 'fr', "
+        "'2 euros Union économique et monétaire', 'numista_api', 'scrape')"
+    )
+    adapter = LmdlpAdapter(conn=conn)
+    aux = adapter._load_fr_aux_slugs()
+    assert "union-economique-et-monetaire" in aux["be-2009-2eur-economic-monetary-union"]
+
+    # discover : un produit FR « Union économique et monétaire » matche.
+    raws = [_product("2 euros Belgique 2009 – Union économique et monétaire UNC",
+                     "be_uem", country_cat="Belgique", year_cat="2009")]
+    import pytest as _pt
+    monkeypatch = _pt.MonkeyPatch()
+    monkeypatch.setattr(adapter, "fetch_all_2eur", lambda: raws)
+    items = list(adapter.discover(SourceQuery(source_id="lmdlp")))
+    monkeypatch.undo()
+    assert [i.target_eurio_id for i in items] == ["be-2009-2eur-economic-monetary-union"]
 
 
 def test_promote_skips_priceless(tmp_path):

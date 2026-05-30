@@ -122,6 +122,26 @@ def test_match_group_optimal_beats_greedy():
     assert res == ["xx-1-2eur-beta", "xx-1-2eur-alpha"]
 
 
+def test_aux_slugs_match_via_alternate_label():
+    # Le slug principal (EN) ne recouvre pas le libellé source (FR), mais un
+    # aux_slug (titre FR) si → le candidat matche grâce au max sur ses slugs.
+    idx = _index([RefCoin(
+        "be-2009-2eur-economic-monetary-union", "BE", 2009,
+        "10th-anniversary-of-economic-and-monetary-union",
+        aux_slugs=frozenset({"union-economique-et-monetaire"}),
+    )])
+    m = SlugGroupMatcher()
+    assert m.match_entry(idx, "BE", 2009, "10th-anniversary-of-economic-and-monetary-union")  # EN
+    assert m.match_entry(idx, "BE", 2009, "union-economique-et-monetaire") == \
+        "be-2009-2eur-economic-monetary-union"  # FR via aux
+
+
+def test_aux_slugs_default_empty_unchanged():
+    # Sans aux_slugs (défaut) le comportement single-slug est identique.
+    c = RefCoin("x-1-2eur-a", "X", 1, "alpha")
+    assert c.all_slugs() == {"alpha"}
+
+
 def test_match_group_override_frees_shared_candidate():
     # bloc0 (override) prend son id ; bloc1 récupère le candidat libéré.
     overrides = {("ES", 2014, "head-of-state"): "es-2014-2eur-king"}

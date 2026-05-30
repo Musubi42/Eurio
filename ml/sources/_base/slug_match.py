@@ -23,12 +23,21 @@ from difflib import SequenceMatcher
 
 @dataclass(frozen=True)
 class RefCoin:
-    """Candidat référentiel : un eurio_id et son triplet d'identité."""
+    """Candidat référentiel : un eurio_id et son triplet d'identité.
+
+    ``aux_slugs`` = slugs alternatifs du même eurio_id (ex. titres i18n FR,
+    topics) ; le score d'un candidat est le **max** sur ``theme_slug`` ∪
+    ``aux_slugs``. Vide par défaut → comportement single-slug inchangé (BCE).
+    """
 
     eurio_id: str
     country: str
     year: int
     theme_slug: str
+    aux_slugs: frozenset[str] = frozenset()
+
+    def all_slugs(self) -> set[str]:
+        return {self.theme_slug, *self.aux_slugs}
 
 
 # Overrides : ``(country, year, source_slug) -> eurio_id``. Court-circuite le
@@ -105,6 +114,11 @@ class SlugGroupMatcher:
     score_floor: float = 0.25
     gap_ratio: float = 1.4
 
+    @staticmethod
+    def _cand_score(theme_slug: str, cand: RefCoin) -> float:
+        """Score d'un candidat = max du slug_score sur tous ses slugs (theme + aux)."""
+        return max(slug_score(theme_slug, s) for s in cand.all_slugs())
+
     def assign_one(
         self,
         country: str,
@@ -135,7 +149,7 @@ class SlugGroupMatcher:
         if not avail:
             return None
         scored = sorted(
-            ((slug_score(theme_slug, c.theme_slug), c) for c in avail),
+            ((self._cand_score(theme_slug, c), c) for c in avail),
             key=lambda x: x[0],
             reverse=True,
         )
@@ -210,12 +224,11 @@ class SlugGroupMatcher:
                     free_idxs.append(i)
 
             # 2) assignation optimale des blocs restants sur candidats libres.
-            avail = [c.eurio_id for c in candidates if c.eurio_id not in claimed]
-            slug_of = {c.eurio_id: c.theme_slug for c in candidates}
+            cand_by_eid = {c.eurio_id: c for c in candidates if c.eurio_id not in claimed}
             scoremaps: list[dict[str, float]] = []
             for i in free_idxs:
                 slug = items[i][2]
-                sm = {eid: slug_score(slug, slug_of[eid]) for eid in avail}
+                sm = {eid: self._cand_score(slug, cand) for eid, cand in cand_by_eid.items()}
                 scoremaps.append(
                     {eid: sc for eid, sc in sm.items() if sc >= self.score_floor}
                 )

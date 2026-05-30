@@ -57,6 +57,12 @@ YEAR_RX = re.compile(r"^(19|20)\d{2}$")
 # et on garde la partie thème, puis on retire un « 2 euros » résiduel en tête.
 NAME_SEP_RX = re.compile(r"\s[–—:-]\s")
 LEADING_2EUR_RX = re.compile(r"^\s*2\s*euros?\s+", re.IGNORECASE)
+# Marque d'atelier allemande, en tête OU en fin de thème : lettre seule
+# (« D Schleswig-Holstein », « F Traité de Rome ») ou combo des 5 ateliers
+# (« ADFGJ Mur de Berlin », « Erasmus ADFGJ »). Les ateliers A/D/F/G/J sont la
+# MÊME pièce canonique (1 eurio_id) — on retire le marqueur pour que tous
+# produisent la même clé (country, year, theme) et fusionnent leurs prix.
+DE_MINT_MARK_RX = re.compile(r"^[ADFGJ]{1,5}\s+|\s+[ADFGJ]{1,5}$")
 QUALITY_SUFFIX_RX = re.compile(
     r"\s+(UNC|BU(?:\s+FDC)?(?:\s+\w+)?|BE(?:\s+\w+)?|"
     r"FDC|Coincard|Blister|Rouleau)\b.*$",
@@ -120,6 +126,9 @@ def extract_theme_slug(product: dict) -> str:
     theme = parts[1] if len(parts) > 1 else raw
     theme = LEADING_2EUR_RX.sub("", theme)
     theme = QUALITY_SUFFIX_RX.sub("", theme)
+    # Marque d'atelier allemande (= même pièce canonique pour A/D/F/G/J).
+    if extract_country_iso2(product) == "DE":
+        theme = DE_MINT_MARK_RX.sub("", theme)
     return slugify(theme)
 
 
@@ -254,9 +263,36 @@ class LmdlpAdapter:
 
     # ── référentiel (index (country, year) → candidats) ──────────────────────
 
+    # Signaux FR ajoutés en slugs candidats auxiliaires : LMDLP libelle en FR
+    # abrégé (« 10 ans UEM », « Seniors ») là où l'eurio_id est dérivé de
+    # l'anglais. Matcher aussi sur les titres/topics FR fait passer le recall de
+    # ~62 % à ~91 % sans LLM (cf. docs/sources-lmdlp/data-schema.md §6bis).
+    _FR_SLUG_SOURCES = (
+        ("coin_names_i18n", "title"),
+        ("coin_topics", "topic"),
+        ("coin_descriptions_i18n", "title"),
+    )
+
+    def _load_fr_aux_slugs(self) -> dict[str, set[str]]:
+        """eurio_id → ensemble de slugs FR (titres i18n + topics + descriptions)."""
+        aux: dict[str, set[str]] = {}
+        for table, col in self._FR_SLUG_SOURCES:
+            rows = self.conn.execute(
+                f"SELECT eurio_id, {col} AS v FROM {table} "
+                f"WHERE lang LIKE 'fr%' AND {col} IS NOT NULL AND {col} != ''"
+            ).fetchall()
+            for r in rows:
+                # Les titres Numista FR commencent par « 2 euros » (dénomination,
+                # bruit) — on le retire comme pour le thème LMDLP.
+                slug = slugify(LEADING_2EUR_RX.sub("", r["v"]))
+                if slug:
+                    aux.setdefault(r["eurio_id"], set()).add(slug)
+        return aux
+
     def _load_referential(self) -> dict[tuple[str, int], list[RefCoin]]:
         if self.conn is None:
             raise RuntimeError("LmdlpAdapter.conn requis (connexion eurio.db).")
+        fr_aux = self._load_fr_aux_slugs()
         idx: dict[tuple[str, int], list[RefCoin]] = {}
         rows = self.conn.execute(
             "SELECT eurio_id, country, year FROM coins "
@@ -267,7 +303,10 @@ class LmdlpAdapter:
             parts = eid.split("-", 3)  # {country}-{year}-{denom}-{slug}
             slug = parts[3] if len(parts) == 4 else ""
             idx.setdefault((r["country"], r["year"]), []).append(
-                RefCoin(eurio_id=eid, country=r["country"], year=r["year"], theme_slug=slug)
+                RefCoin(
+                    eurio_id=eid, country=r["country"], year=r["year"],
+                    theme_slug=slug, aux_slugs=frozenset(fr_aux.get(eid, set())),
+                )
             )
         return idx
 
