@@ -114,7 +114,8 @@ def _upsert_observation(
 
 
 def harvest(
-    store: Store, *, years: list[int], write: bool = True
+    store: Store, *, years: list[int], write: bool = True,
+    target_eurio_ids: set[str] | None = None,
 ) -> FactStats:
     conn = store._connection()  # noqa: SLF001
     adapter = BceAdapter(conn=conn)
@@ -149,6 +150,8 @@ def harvest(
         )
         for coin, eurio_id in zip(coins, assignments):
             if eurio_id is None:
+                continue
+            if target_eurio_ids is not None and eurio_id not in target_eurio_ids:
                 continue
             stats.coins_matched += 1
             source_ref = f"{coin['country']}-{year}-{coin['theme_slug']}"
@@ -206,12 +209,29 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--db", type=Path, default=DEFAULT_DB)
     ap.add_argument("--year", type=int, default=None)
+    ap.add_argument(
+        "--target", action="append", default=None,
+        help="eurio_id à cibler (répétable). Scope les writes ; année dérivée du coin.",
+    )
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
 
-    years = [args.year] if args.year is not None else list(range(FIRST_BCE_YEAR, date.today().year))
+    target_eurio_ids = set(args.target) if args.target else None
     store = Store(args.db)
-    stats = harvest(store, years=years, write=not args.dry_run)
+    if args.year is not None:
+        years = [args.year]
+    elif target_eurio_ids:
+        rows = store._connection().execute(  # noqa: SLF001
+            f"SELECT DISTINCT year FROM coins WHERE eurio_id IN "
+            f"({','.join('?' * len(target_eurio_ids))})", tuple(target_eurio_ids)
+        ).fetchall()
+        years = sorted(r[0] for r in rows)
+    else:
+        years = list(range(FIRST_BCE_YEAR, date.today().year))
+    if not years:
+        ap.error("aucune année à traiter (targets introuvables ?)")
+    stats = harvest(store, years=years, write=not args.dry_run,
+                    target_eurio_ids=target_eurio_ids)
 
     print("\n" + "=" * 60)
     print(f"Années             : {years[0]}–{years[-1]} ({len(years)})")

@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
+import threading
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
@@ -589,6 +590,72 @@ def get_coin_source_status(eurio_id: str) -> SourceStatusResponse:
             updated_at=row["updated_at"],
         ))
     return SourceStatusResponse(eurio_id=eurio_id, sources=entries)
+
+
+class RefreshResponse(BaseModel):
+    run_id: str
+    source: str
+    status: str = "started"
+
+
+@router.post("/{eurio_id}/refresh", response_model=RefreshResponse, status_code=202)
+def refresh_coin_source(
+    eurio_id: str,
+    source: str = Query(..., description="bce | numista"),
+    force: bool = Query(default=False),
+) -> RefreshResponse:
+    """Rejoue le fetch d'un coin pour une source (async). Lance un run dans un
+    thread daemon (réutilise la plomberie source_runs), renvoie son run_id ; le
+    front poll ``GET /sources/{source}/runs/{run_id}``. Le verdict est écrit
+    dans ``coin_source_status`` à la fin du run."""
+    if source not in ("bce", "numista"):
+        raise HTTPException(status_code=400, detail="source must be 'bce' or 'numista'")
+    conn = _conn()
+    if conn.execute("SELECT 1 FROM coins WHERE eurio_id = ?", (eurio_id,)).fetchone() is None:
+        raise HTTPException(status_code=404, detail=f"coin {eurio_id} not found")
+
+    existing = conn.execute(
+        "SELECT id FROM source_runs WHERE source = ? AND status = 'running' LIMIT 1",
+        (source,),
+    ).fetchone()
+    if existing and not force:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "run_already_running",
+                "run_id": existing["id"],
+                "message": f"A run for '{source}' is already running. Pass ?force=true.",
+            },
+        )
+
+    store = _store
+    run_id_holder: dict[str, str] = {}
+    started = threading.Event()
+
+    def _runner() -> None:
+        try:
+            from referential.coin_refresh import refresh_coin
+            run_id_holder["run_id"] = refresh_coin(store, eurio_id, source, force=force)
+        except Exception:
+            logger.exception("[coin-refresh] %s/%s crashed", eurio_id, source)
+        finally:
+            started.set()
+
+    threading.Thread(target=_runner, name=f"coin-refresh-{source}", daemon=True).start()
+    # Le run est ouvert (start_run) dès l'entrée de l'orchestrateur (<2s) ; on
+    # attend brièvement puis on retombe sur la row running la plus récente.
+    started.wait(timeout=2.0)
+    rid = run_id_holder.get("run_id")
+    if rid is None:
+        row = conn.execute(
+            "SELECT id FROM source_runs WHERE source = ? ORDER BY started_at DESC LIMIT 1",
+            (source,),
+        ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=500,
+                                detail="refresh run did not register a source_runs row in time")
+        rid = row["id"]
+    return RefreshResponse(run_id=rid, source=source)
 
 
 @router.get("/{eurio_id}/prices", response_model=PricesResponse)

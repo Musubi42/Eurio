@@ -90,16 +90,9 @@ def run_bce_pipeline(
         manifest.run_id = run.run_id
         logger.info("[bce] run_id=%s kind=%s query=%s", run.run_id, kind, query)
 
-        # ── 1. Discover (BCE-spécifique, no DB spam) ────────────────────
-        # On fait notre propre discover plutôt que le générique pour ne
-        # PAS câbler les callbacks ``record_search`` (discovery_searches)
-        # et ``record_discarded`` (discarded_listings) qui spammaient à
-        # ~300 + 1000 rows par run sur 14 targets. Seul ``discovery_log``
-        # est upsert (dedup spine, 1 row/coin = trivial).
-        run.set_step("discover")
-        discover_result = _bce_discover(adapter, query, conn=conn, run=run)
-
         if dry_run:
+            run.set_step("discover")
+            discover_result = _bce_discover(adapter, query, conn=conn, run=run)
             logger.info("[bce] dry-run : on s'arrête après discover")
             manifest.status = "success"
             manifest.ended_at = datetime.now(timezone.utc).isoformat()
@@ -107,41 +100,13 @@ def run_bce_pipeline(
             run.end("success")
             return run.run_id
 
-        # ── 2. Persist ──────────────────────────────────────────────────
-        run.set_step("persist")
-        persist_result = run_persist(
-            discover_result.items,
-            conn=conn, run=run, source_id=adapter.source_id,
-        )
+        steps = run_bce_steps(adapter, query, conn=conn, run=run, manifest=manifest)
 
-        # ── 3. Download local ───────────────────────────────────────────
-        run.set_step("download")
-        n_downloaded = _bce_download_local(
-            conn=conn, run=run, adapter=adapter,
-            source_image_ids=persist_result.source_image_ids,
-        )
-        manifest.n_downloaded = n_downloaded
-
-        # ── 4. Canonical promote (fs only) ──────────────────────────────
-        conn.execute(
-            "UPDATE source_runs SET current_step = ? WHERE id = ?",
-            ("canonical_promote", run.run_id),
-        )
-        n_promoted = _bce_canonical_promote_fs(
-            conn=conn, run=run,
-            source_image_ids=persist_result.source_image_ids,
-            manifest=manifest,
-        )
-        manifest.n_promoted = n_promoted
-
-        n_errors = conn.execute(
-            "SELECT n_errors FROM source_runs WHERE id = ?", (run.run_id,)
-        ).fetchone()["n_errors"]
-        manifest.n_errors = n_errors
-        status = "partial" if n_errors > 0 else "success"
+        manifest.n_errors = steps.n_errors
+        status = "partial" if steps.n_errors > 0 else "success"
         manifest.status = status
         manifest.error_summary = (
-            f"{n_errors} item(s) failed — see logs" if n_errors else None
+            f"{steps.n_errors} item(s) failed — see logs" if steps.n_errors else None
         )
         manifest.ended_at = datetime.now(timezone.utc).isoformat()
         manifest_path = manifest.write()
@@ -150,13 +115,76 @@ def run_bce_pipeline(
         run.end(status, error_summary=manifest.error_summary)
         logger.info(
             "[bce] run %s done — discovered=%d persisted=%d downloaded=%d promoted=%d errors=%d",
-            run.run_id, len(discover_result.items),
-            persist_result.n_added + persist_result.n_updated,
-            n_downloaded, n_promoted, n_errors,
+            run.run_id, steps.n_discovered, steps.n_persisted,
+            steps.n_downloaded, steps.n_promoted, steps.n_errors,
         )
         # Marker partagé `/sources/status` (sources_runs.json).
-        record_run("bce", kind, calls=len(discover_result.items), added_coins=n_promoted)
+        record_run("bce", kind, calls=steps.n_discovered, added_coins=steps.n_promoted)
         return run.run_id
+
+
+@dataclasses.dataclass
+class BceStepsResult:
+    n_discovered: int
+    n_persisted: int
+    n_downloaded: int
+    n_promoted: int
+    n_errors: int
+
+
+def run_bce_steps(
+    adapter: BceAdapter,
+    query: SourceQuery,
+    *,
+    conn: sqlite3.Connection,
+    run: RunHandle,
+    manifest: RunManifest,
+) -> BceStepsResult:
+    """Steps non-dry du pipeline BCE (discover→persist→download→promote) sous
+    un ``run`` déjà ouvert. Factorisé pour être réutilisé par le refresh par
+    coin (1 run unique couvrant images + i18n + facts). N'ouvre PAS de run,
+    n'écrit PAS le manifest (laissé à l'appelant)."""
+    # 1. Discover (BCE-spécifique, no DB spam : pas de record_search/discarded,
+    # seul discovery_log est upsert comme dedup spine).
+    run.set_step("discover")
+    discover_result = _bce_discover(adapter, query, conn=conn, run=run)
+
+    # 2. Persist
+    run.set_step("persist")
+    persist_result = run_persist(
+        discover_result.items, conn=conn, run=run, source_id=adapter.source_id,
+    )
+
+    # 3. Download local
+    run.set_step("download")
+    n_downloaded = _bce_download_local(
+        conn=conn, run=run, adapter=adapter,
+        source_image_ids=persist_result.source_image_ids,
+    )
+    manifest.n_downloaded = n_downloaded
+
+    # 4. Canonical promote (fs only)
+    conn.execute(
+        "UPDATE source_runs SET current_step = ? WHERE id = ?",
+        ("canonical_promote", run.run_id),
+    )
+    n_promoted = _bce_canonical_promote_fs(
+        conn=conn, run=run,
+        source_image_ids=persist_result.source_image_ids,
+        manifest=manifest,
+    )
+    manifest.n_promoted = n_promoted
+
+    n_errors = conn.execute(
+        "SELECT n_errors FROM source_runs WHERE id = ?", (run.run_id,)
+    ).fetchone()["n_errors"]
+    return BceStepsResult(
+        n_discovered=len(discover_result.items),
+        n_persisted=persist_result.n_added + persist_result.n_updated,
+        n_downloaded=n_downloaded,
+        n_promoted=n_promoted,
+        n_errors=n_errors,
+    )
 
 
 # ── steps BCE-spécifiques ───────────────────────────────────────────────

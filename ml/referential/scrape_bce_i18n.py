@@ -184,6 +184,7 @@ def harvest_year(
     sleep: float,
     write: bool,
     stats: HarvestStats,
+    target_eurio_ids: set[str] | None = None,
 ) -> None:
     en_html = _fetch_lang_page(year, "en", sleep=sleep, stats=stats)
     if en_html is None:
@@ -204,6 +205,10 @@ def harvest_year(
             continue
         coin["eurio_id"] = eurio_id
         matched.append(coin)
+    # Refresh ciblé : ne garder (et n'écrire) que les coins demandés. La page
+    # complète reste scrapée (nécessaire au match), mais les writes sont scopés.
+    if target_eurio_ids is not None:
+        matched = [c for c in matched if c["eurio_id"] in target_eurio_ids]
     stats.en_coins_matched += len(matched)
     logger.info(
         "[bce-i18n] %s : %d coins EN, %d matchés",
@@ -269,6 +274,7 @@ def harvest(
     langs: list[str],
     sleep: float = RATE_LIMIT_SEC,
     write: bool = True,
+    target_eurio_ids: set[str] | None = None,
 ) -> HarvestStats:
     conn = store._connection()  # noqa: SLF001
     adapter = BceAdapter(conn=conn)
@@ -278,6 +284,7 @@ def harvest(
         harvest_year(
             conn, adapter, ref_index, year, langs,
             sleep=sleep, write=write, stats=stats,
+            target_eurio_ids=target_eurio_ids,
         )
     if write:
         conn.commit()
@@ -290,6 +297,10 @@ def main() -> None:
     ap.add_argument("--db", type=Path, default=DEFAULT_DB)
     ap.add_argument("--year", type=int, default=None, help="Une seule année (def: 2004→année-1)")
     ap.add_argument(
+        "--target", action="append", default=None,
+        help="eurio_id à cibler (répétable). Scope les writes ; l'année est dérivée du coin.",
+    )
+    ap.add_argument(
         "--langs", type=str, default=None,
         help="Liste CSV de langues (def: les 24 langues UE)",
     )
@@ -297,8 +308,17 @@ def main() -> None:
     ap.add_argument("--dry-run", action="store_true", help="Ne pas écrire en DB")
     args = ap.parse_args()
 
+    target_eurio_ids = set(args.target) if args.target else None
+    store = Store(args.db)
+
     if args.year is not None:
         years = [args.year]
+    elif target_eurio_ids:
+        rows = store._connection().execute(  # noqa: SLF001
+            f"SELECT DISTINCT year FROM coins WHERE eurio_id IN "
+            f"({','.join('?' * len(target_eurio_ids))})", tuple(target_eurio_ids)
+        ).fetchall()
+        years = sorted(r[0] for r in rows)
     else:
         years = list(range(FIRST_BCE_YEAR, date.today().year))
 
@@ -310,10 +330,12 @@ def main() -> None:
     else:
         langs = list(BCE_EU_LANGS)
 
-    store = Store(args.db)
+    if not years:
+        ap.error("aucune année à traiter (targets introuvables ?)")
     stats = harvest(
         store, years=years, langs=langs,
         sleep=args.sleep, write=not args.dry_run,
+        target_eurio_ids=target_eurio_ids,
     )
 
     print("\n" + "=" * 60)

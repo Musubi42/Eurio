@@ -405,47 +405,56 @@ def main() -> int:
     if not args.apply:
         return 0
 
-    # ── P.7b execution : fetch + cache (DB writes deferred to P.7c) ──
-    km = _load_keymanager_safe()
-    if km is None:
-        print("\n❌ Cannot --apply without NUMISTA_API_KEY_MUSUBI* in env.", file=sys.stderr)
-        return 1
-
-    print("\n" + "═" * 60)
-    print("FETCH + CACHE")
-    print("═" * 60)
-
-    fetcher = Fetcher(km, args.cache_dir, refresh=args.refresh_cache)
-    bundles: dict[int, FetchBundle] = {}
-    for nid in nids:
-        print(f"▶ NID {nid} ...", end="", flush=True)
-        bundle = fetcher.fetch_nid(nid, skip_prices=args.skip_prices)
-        if bundle is None:
-            print(" ❌ FAILED")
-            continue
-        n_issues = len(_extract_issues(bundle.issues_payload))
-        n_prices = len(bundle.prices_by_iid)
-        title = bundle.type_payload.get("title", "?")
-        print(f" OK  ({n_issues} issues, {n_prices} prices)  «{title}»")
-        bundles[nid] = bundle
-
+    result = refetch_nids(
+        nids, cache_dir=args.cache_dir, db_path=args.db,
+        skip_prices=args.skip_prices, refresh_cache=args.refresh_cache,
+    )
     print("\n" + "═" * 60)
     print("FETCH STATS")
     print("═" * 60)
-    print(f"  Bundles collected : {len(bundles)} / {len(nids)}")
-    print(f"  API calls         : {fetcher.stats.api_calls}")
-    print(f"  Cache hits        : {fetcher.stats.cache_hits}")
-    print(f"  Cache misses      : {fetcher.stats.cache_misses}")
-    if fetcher.stats.errors:
-        print(f"  Errors ({len(fetcher.stats.errors)}) :")
-        for nid, msg in fetcher.stats.errors:
+    print(f"  Bundles collected : {result['bundles_ok']} / {result['n_nids']}")
+    if result.get("api_errors"):
+        print(f"  Errors ({len(result['api_errors'])}) :")
+        for nid, msg in result["api_errors"]:
             print(f"    {nid}: {msg}")
+    return 0 if result["ok"] else 1
 
+
+def refetch_nids(
+    nids: list[int],
+    *,
+    cache_dir: Path,
+    db_path: Path,
+    skip_prices: bool = False,
+    refresh_cache: bool = False,
+) -> dict:
+    """Entrée programmatique du refetch Numista (toujours apply) pour les NIDs
+    donnés. Renvoie ``{ok, bundles_ok, n_nids, error?, api_errors, db_rc?}``.
+    Utilisé par le refresh par coin (sans les prints détaillés de ``main``).
+    """
+    km = _load_keymanager_safe()
+    if km is None:
+        return {"ok": False, "error": "no_api_key", "bundles_ok": 0,
+                "n_nids": len(nids), "api_errors": []}
+    fetcher = Fetcher(km, cache_dir, refresh=refresh_cache)
+    bundles: dict[int, "FetchBundle"] = {}
+    for nid in nids:
+        bundle = fetcher.fetch_nid(nid, skip_prices=skip_prices)
+        if bundle is not None:
+            bundles[nid] = bundle
+    out: dict = {
+        "ok": False, "bundles_ok": len(bundles), "n_nids": len(nids),
+        "api_errors": list(fetcher.stats.errors),
+    }
     if not bundles:
-        return 1
-
-    # ── P.7c.3 — Transform + Write to SQLite ──────────────────────────
-    return _apply_to_db(bundles, args.db, cache_dir=args.cache_dir)
+        out["error"] = "fetch_failed"
+        return out
+    rc = _apply_to_db(bundles, db_path, cache_dir=cache_dir)
+    out["db_rc"] = rc
+    out["ok"] = rc == 0
+    if rc != 0:
+        out["error"] = "db_errors"
+    return out
 
 
 def _apply_to_db(bundles: dict[int, "FetchBundle"], db_path: Path,

@@ -20,6 +20,7 @@ if str(ML_DIR) not in sys.path:
     sys.path.insert(0, str(ML_DIR))
 
 from api import coins_routes, sets_routes  # noqa: E402
+from state.source_status import upsert_source_status  # noqa: E402
 from state.store import Store  # noqa: E402
 
 
@@ -195,6 +196,103 @@ def test_coin_source_status_endpoint(seeded_store: Store, client: TestClient) ->
     # Source sans row → never.
     assert by_src["numista_api"]["state"] == "never"
     assert by_src["wikipedia"]["state"] == "never"
+
+
+# ── Refresh par source (chunk 2) ────────────────────────────────────────────
+
+
+def test_refresh_rejects_unknown_source(seeded_store: Store, client: TestClient) -> None:
+    resp = client.post("/coins/test-2025-2eur-fixture/refresh?source=wikipedia")
+    assert resp.status_code == 400
+
+
+def test_refresh_404_unknown_coin(seeded_store: Store, client: TestClient) -> None:
+    resp = client.post("/coins/nope/refresh?source=bce")
+    assert resp.status_code == 404
+
+
+def test_refresh_concurrent_returns_409(seeded_store: Store, client: TestClient) -> None:
+    # Un run numista 'running' → refresh numista sans force = 409.
+    seeded_store._connection().execute(
+        "INSERT INTO source_runs (id, source, kind, status) "
+        "VALUES ('run-x', 'numista', 'run', 'running')"
+    )
+    resp = client.post("/coins/test-2025-2eur-fixture/refresh?source=numista")
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["code"] == "run_already_running"
+
+
+def test_refresh_numista_no_id_sets_error(seeded_store: Store) -> None:
+    # Coin sans numista_id → verdict error 'no_numista_id', AUCUN réseau.
+    from referential.coin_refresh import refresh_numista_coin
+    conn = seeded_store._connection()
+    conn.execute(
+        "INSERT INTO coins (eurio_id, country, year, face_value, currency, is_commemorative) "
+        "VALUES ('no-nid-2025-2eur', 'eu', 2025, 2.0, 'EUR', 1)"
+    )
+    refresh_numista_coin(seeded_store, "no-nid-2025-2eur")
+    row = conn.execute(
+        "SELECT state, detail_json FROM coin_source_status "
+        "WHERE eurio_id='no-nid-2025-2eur' AND source='numista_api'"
+    ).fetchone()
+    assert row["state"] == "error"
+    assert json.loads(row["detail_json"])["error"] == "no_numista_id"
+
+
+def test_resolve_numista_id_variant_uses_canonical(seeded_store: Store) -> None:
+    from referential.coin_refresh import _resolve_numista_id
+    conn = seeded_store._connection()
+    # canonique avec numista_id, variante sans (pointe la canonique).
+    conn.execute("INSERT INTO coins (eurio_id, country, year, face_value, currency, "
+                 "is_commemorative, numista_id) VALUES ('canon-x','eu',2025,2.0,'EUR',1,12345)")
+    conn.execute("INSERT INTO coins (eurio_id, country, year, face_value, currency, "
+                 "is_commemorative, canonical_eurio_id) VALUES ('var-x','eu',2025,2.0,'EUR',1,'canon-x')")
+    assert _resolve_numista_id(conn, "var-x") == 12345
+
+
+def test_upsert_source_status_partial(seeded_store: Store) -> None:
+    conn = seeded_store._connection()
+    upsert_source_status(conn, eurio_id="test-2025-2eur-fixture", source="bce_official",
+                         state="ok", axes={"description": True}, partial=True,
+                         error="facts:boom")
+    row = conn.execute(
+        "SELECT state, detail_json, last_checked_at FROM coin_source_status "
+        "WHERE eurio_id='test-2025-2eur-fixture' AND source='bce_official'"
+    ).fetchone()
+    detail = json.loads(row["detail_json"])
+    assert row["state"] == "ok"
+    assert detail["partial"] is True
+    assert detail["error"] == "facts:boom"
+    assert row["last_checked_at"] is not None  # checked=True par défaut
+
+
+def test_bce_i18n_target_filters(seeded_store: Store, monkeypatch) -> None:
+    """harvest avec target_eurio_ids n'écrit QUE le coin ciblé (writes scopés)."""
+    import referential.scrape_bce_i18n as m
+    from sources.bce.adapter import BceAdapter
+    conn = seeded_store._connection()
+    for eid in ("t1-2024-2eur", "t2-2024-2eur"):
+        conn.execute("INSERT INTO coins (eurio_id, country, year, face_value, currency, "
+                     "is_commemorative) VALUES (?, 'fr', 2024, 2.0, 'EUR', 1)", (eid,))
+    conn.commit()
+    fake_coins = [
+        {"country": "FR", "theme_slug": "a", "feature": "Coin A", "description": "desc A",
+         "_field_order": ["feature", "description"], "_block_index": 0},
+        {"country": "FR", "theme_slug": "b", "feature": "Coin B", "description": "desc B",
+         "_field_order": ["feature", "description"], "_block_index": 1},
+    ]
+    monkeypatch.setattr(m, "_fetch_lang_page", lambda year, lang, **kw: "<html/>")
+    monkeypatch.setattr(m, "parse_bce_page", lambda html, year: fake_coins)
+    monkeypatch.setattr(m, "parse_bce_lang_blocks", lambda html: {0: [], 1: []})
+    monkeypatch.setattr(BceAdapter, "_load_referential", lambda self: {})
+    monkeypatch.setattr(BceAdapter, "match_group",
+                        lambda self, ref, items: ["t1-2024-2eur", "t2-2024-2eur"])
+
+    m.harvest(seeded_store, years=[2024], langs=["en"], target_eurio_ids={"t1-2024-2eur"})
+    rows = {r[0] for r in conn.execute(
+        "SELECT eurio_id FROM coin_descriptions_i18n WHERE source='bce_official'")}
+    assert "t1-2024-2eur" in rows
+    assert "t2-2024-2eur" not in rows
 
 
 def test_coin_detail_not_found(seeded_store: Store, client: TestClient) -> None:

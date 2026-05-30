@@ -105,6 +105,11 @@ tasks:
     cmds:
       - "{{.VENV}}/python -m scripts.backfill_coin_source_status -v {{.CLI_ARGS}}"
 
+  sweep-bce-empty:
+    desc: "Sème empty_upstream pour les commémos 2€ récentes que la BCE n'a pas (encore) publiées. Itère par année (respecte le rate-limit), idempotent, manuel. Usage: go-task ml:sweep-bce-empty [-- --min-year 2024 --dry-run]"
+    cmds:
+      - "{{.VENV}}/python -m scripts.sweep_bce_empty_upstream -v {{.CLI_ARGS}}"
+
   bench:export-batch:
     desc: "Theme-matcher bench (P0) — sample listings from a real run into a JSONL batch to label + a groups.json context file. Usage: go-task ml:bench:export-batch [-- --run b6bede99 --sample 200]"
     cmds:
