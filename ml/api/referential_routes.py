@@ -1129,3 +1129,91 @@ def fix_proposals_refresh() -> FixProposalsRefreshResponse:
         by_shape=data.get("by_shape", {}),
         by_confidence=data.get("by_confidence", {}),
     )
+
+
+# ── Coverage JO / EUR-Lex (Chunk 3) ────────────────────────────────────────
+
+
+class JoCoverageCell(BaseModel):
+    n_coins: int   # commémo 2€ en eurio.db pour (country, year)
+    n_jo: int      # celles ayant un avis JO (coin_source_refs eurlex_jo)
+    n_issued: int  # celles dont la date d'émission JO est <= année courante
+
+
+class JoCoverageResponse(BaseModel):
+    current_year: int
+    years: list[int]
+    countries: list[str]
+    # country → { "2024": cell, … } (clé année en str pour JSON).
+    cells: dict[str, dict[str, JoCoverageCell]]
+    summary: dict[str, int]
+
+
+@router.get("/jo-coverage", response_model=JoCoverageResponse)
+def jo_coverage() -> JoCoverageResponse:
+    """Couverture JO par (pays × année) sur les commémoratives 2 € d'eurio.db.
+
+    Pour chaque cellule : combien de pièces on référence, combien ont leur
+    avis JO officiel, et combien sont déjà émises (date d'émission JO passée).
+    C'est le filet de confiance « ai-je bien la fiche officielle de tout ce
+    que je référence ? » — cf. memory ``project_eurlex_source``."""
+    import json
+    import re
+
+    conn = _store()._connection()  # noqa: SLF001
+    current_year = datetime.now(timezone.utc).year
+    year_re = re.compile(r"\b(19|20)\d{2}\b")
+
+    coins = conn.execute(
+        "SELECT eurio_id, country, year FROM coins "
+        "WHERE face_value = 2.0 AND is_commemorative = 1"
+    ).fetchall()
+
+    jo_refs = {
+        r[0] for r in conn.execute(
+            "SELECT target_id FROM coin_source_refs "
+            "WHERE target_kind='coin' AND source='eurlex_jo'"
+        )
+    }
+    # eurio_id → année d'émission parsée depuis l'observation JO.
+    issued_year: dict[str, int] = {}
+    for r in conn.execute(
+        "SELECT eurio_id, payload_json FROM coin_observations "
+        "WHERE source='eurlex_jo' AND observation_type='issuing_date'"
+    ):
+        try:
+            payload = json.loads(r[1]) if r[1] else {}
+        except (ValueError, TypeError):
+            payload = {}
+        m = year_re.search(str(payload.get("date_of_issue") or ""))
+        if m:
+            issued_year[r[0]] = int(m.group(0))
+
+    cells: dict[str, dict[str, JoCoverageCell]] = {}
+    years: set[int] = set()
+    total_coins = total_jo = 0
+    for c in coins:
+        eid, country, year = c[0], c[1], c[2]
+        years.add(year)
+        bucket = cells.setdefault(country, {})
+        cell = bucket.get(str(year))
+        if cell is None:
+            cell = JoCoverageCell(n_coins=0, n_jo=0, n_issued=0)
+            bucket[str(year)] = cell
+        cell.n_coins += 1
+        total_coins += 1
+        if eid in jo_refs:
+            cell.n_jo += 1
+            total_jo += 1
+            iy = issued_year.get(eid)
+            if iy is not None and iy <= current_year:
+                cell.n_issued += 1
+
+    return JoCoverageResponse(
+        current_year=current_year,
+        years=sorted(years),
+        countries=sorted(cells.keys()),
+        cells=cells,
+        summary={"total_coins": total_coins, "total_jo": total_jo,
+                 "total_gap": total_coins - total_jo},
+    )

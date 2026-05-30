@@ -105,6 +105,10 @@ const router = createRouter({
           component: () => import('@/features/referential/pages/FixesPage.vue'),
         },
         {
+          path: 'referential/jo-coverage',
+          component: () => import('@/features/referential/pages/JoCoveragePage.vue'),
+        },
+        {
           path: 'parity',
           component: () => import('@/features/parity/pages/ParityPage.vue'),
         },

@@ -75,6 +75,27 @@ export function runHeal(): Promise<HealResponse> {
   return json<HealResponse>('/referential/heal', { method: 'POST' })
 }
 
+// ─── Coverage JO / EUR-Lex ─────────────────────────────────────────────
+
+export interface JoCoverageCell {
+  n_coins: number
+  n_jo: number
+  n_issued: number
+}
+
+export interface JoCoverageResponse {
+  current_year: number
+  years: number[]
+  countries: string[]
+  // country → { "2024": cell, … }
+  cells: Record<string, Record<string, JoCoverageCell>>
+  summary: { total_coins: number; total_jo: number; total_gap: number }
+}
+
+export function fetchJoCoverage(): Promise<JoCoverageResponse> {
+  return json<JoCoverageResponse>('/referential/jo-coverage')
+}
+
 // ─── Discover (Numista oracle sweep) ───────────────────────────────────
 
 export interface DiscoverRequest {
