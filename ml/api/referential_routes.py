@@ -30,6 +30,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from referential.canonical_image_local import (
+    canonical_dir_for,
     canonical_path,
 )
 from state import Store
@@ -201,12 +202,22 @@ _ROLE_PRIORITY = {"obverse": 1, "reverse": 2}
 def coin_canonicals(eurio_id: str) -> list[CanonicalImageEntry]:
     """Toutes les images canoniques disponibles pour ``eurio_id``.
 
-    Source de vérité : ``coin_canonical_images`` côté SQLite.
-    BCE écrit en DB depuis 2026-05-26 (Chunk 1 V.3 prep), donc plus de
-    FS scan parallèle qui produisait des entrées `bce_comm` doublonnées
-    avec les rows `bce_official` post-doctrine registry.
+    Découverte = union DB (``coin_canonical_images``) + scan filesystem, comme
+    ``canonical_index``. La SOT des images BCE est le FS (``canonical_images/
+    {eurio_id}/{role}_bce.webp``) : ~430 pièces ont leur webp sur disque mais
+    seule une poignée est enregistrée en DB. Sans le scan FS, la galerie admin
+    ne voyait que ces quelques rows. Le service (``_serve_canonical``) sait déjà
+    servir n'importe quel fichier disque ; on aligne la découverte dessus.
     """
     found: dict[tuple[str, str], CanonicalImageEntry] = {}
+
+    def _add(src: str, role: str, *, present: bool) -> None:
+        found[(src, role)] = CanonicalImageEntry(
+            source=src, role=role,
+            detail_url=f"/referential/canonical/{eurio_id}/{role}?source={src}",
+            thumb_url=f"/referential/canonical/{eurio_id}/{role}/thumb?source={src}",
+            file_present=present,
+        )
 
     conn = _store()._connection()  # noqa: SLF001
     rows = conn.execute(
@@ -215,14 +226,22 @@ def coin_canonicals(eurio_id: str) -> list[CanonicalImageEntry]:
     ).fetchall()
     for r in rows:
         src, role = r[0], r[1]
-        key = (src, role)
-        present = canonical_path(eurio_id, role, src).is_file()
-        found[key] = CanonicalImageEntry(
-            source=src, role=role,
-            detail_url=f"/referential/canonical/{eurio_id}/{role}?source={src}",
-            thumb_url=f"/referential/canonical/{eurio_id}/{role}/thumb?source={src}",
-            file_present=present,
-        )
+        _add(src, role, present=canonical_path(eurio_id, role, src).is_file())
+
+    # Scan FS : ramasse les webp BCE présents sur disque mais non enregistrés
+    # en DB (le gros du corpus BCE). Nom de fichier = ``{role}_{tag}.webp``.
+    # On se limite au tag ``bce`` : Numista est déjà servi via son URL CDN, et
+    # les éventuels webp ``unknown`` ont une provenance ambiguë (hors galerie).
+    coin_dir = canonical_dir_for(eurio_id)
+    if coin_dir.is_dir():
+        for f in coin_dir.glob("*_bce.webp"):
+            if f.stem.endswith("_thumb"):
+                continue
+            role, _, _tag = f.stem.partition("_")
+            if role not in _ROLE_PRIORITY:
+                continue
+            if ("bce_official", role) not in found:
+                _add("bce_official", role, present=True)
 
     return sorted(
         found.values(),

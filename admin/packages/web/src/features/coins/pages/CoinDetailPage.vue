@@ -291,21 +291,18 @@ async function mergeLocalCanonicals(c: Coin): Promise<void> {
     )
     if (!resp.ok) return
     const entries = (await resp.json()) as LocalCanonicalEntry[]
-    const existing = (c.images as CoinImage[] | undefined) ?? []
-    const seenKeys = new Set(
-      existing.map((i) => `${i.source}|${i.role}`),
-    )
-    const merged: CoinImage[] = [...existing]
+    const merged: CoinImage[] = [...((c.images as CoinImage[] | undefined) ?? [])]
     for (const e of entries) {
       if (!e.file_present) continue
-      const key = `${e.source}|${e.role}`
-      if (seenKeys.has(key)) continue
-      seenKeys.add(key)
-      merged.push({
-        url: `${ML_API}${e.detail_url}`,
-        role: e.role,
-        source: e.source,
-      })
+      const servedUrl = `${ML_API}${e.detail_url}`
+      const existing = merged.find((i) => i.source === e.source && i.role === e.role)
+      if (existing) {
+        // Un fichier canonique local existe : on sert notre webp (SOT) plutôt
+        // que l'URL d'origine — pour BCE c'est un hotlink ecb.europa.eu fragile.
+        existing.url = servedUrl
+      } else {
+        merged.push({ url: servedUrl, role: e.role, source: e.source })
+      }
     }
     c.images = merged
   } catch {
