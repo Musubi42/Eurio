@@ -23,7 +23,6 @@ import sqlite3
 import time
 from dataclasses import dataclass
 from datetime import date
-from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Iterable
 
@@ -38,6 +37,8 @@ from sources._base.adapter import (
     SourceQuery,
 )
 from sources._base.dedup import DiscoverySearchRecord
+from sources._base.slug_match import RefCoin as _RefCoin
+from sources._base.slug_match import SlugGroupMatcher
 
 logger = logging.getLogger(__name__)
 
@@ -85,69 +86,8 @@ MANUAL_BCE_OVERRIDES: dict[tuple[str, int, str], str] = {
 }
 
 
-@dataclass(frozen=True)
-class _RefCoin:
-    eurio_id: str
-    country: str
-    year: int
-    theme_slug: str
-
-
-def _slug_score(a: str, b: str) -> float:
-    """Score symétrique en couverture de tokens + ratio caractère.
-
-    BCE titres sont verbeux ("550th-anniversary-of-the-death-of-donatello")
-    alors que les slugs cohorte sont compacts ("donatello"). On prend
-    la couverture max sur les deux directions pour ne pas pénaliser
-    la dissymétrie inhérente.
-    """
-    if not a or not b:
-        return 0.0
-    src_tokens = {t for t in a.split("-") if t}
-    cand_tokens = {t for t in b.split("-") if t}
-    inter = src_tokens & cand_tokens
-    cov_a = (len(inter) / len(src_tokens)) if src_tokens else 0.0
-    cov_b = (len(inter) / len(cand_tokens)) if cand_tokens else 0.0
-    coverage = max(cov_a, cov_b)
-    ratio = SequenceMatcher(None, a, b).ratio()
-    return max(coverage, ratio * 0.7)
-
-
-def _max_assignment(scoremaps: list[dict[str, float]]) -> list[str | None]:
-    """Appariement injectif maximisant le score total (force brute, petits groupes).
-
-    ``scoremaps[i]`` = ``{eurio_id: score}`` des candidats acceptables (≥ plancher)
-    pour le bloc ``i``. Retourne l'eurio_id retenu (ou None) par bloc, sans qu'un
-    eurio_id soit utilisé deux fois. À égalité de total, le premier exploré gagne
-    (déterministe).
-    """
-    n = len(scoremaps)
-    best_total = -1.0
-    best_assign: list[str | None] = [None] * n
-
-    def rec(i: int, used: set[str], total: float, cur: list[str | None]) -> None:
-        nonlocal best_total, best_assign
-        if i == n:
-            if total > best_total:
-                best_total = total
-                best_assign = cur.copy()
-            return
-        # Laisser le bloc i non assigné.
-        cur.append(None)
-        rec(i + 1, used, total, cur)
-        cur.pop()
-        # Ou l'assigner à chaque candidat libre.
-        for eid, sc in scoremaps[i].items():
-            if eid in used:
-                continue
-            used.add(eid)
-            cur.append(eid)
-            rec(i + 1, used, total + sc, cur)
-            cur.pop()
-            used.discard(eid)
-
-    rec(0, set(), 0.0, [])
-    return best_assign
+# ``_RefCoin`` est désormais le ``RefCoin`` partagé (importé en tête) — l'alias
+# est conservé pour la compat des imports (tests, scripts BCE).
 
 
 @dataclass
@@ -368,49 +308,14 @@ class BceAdapter:
             ))
         return idx
 
-    def _assign_one(
-        self,
-        country: str,
-        year: int,
-        theme_slug: str,
-        candidates: list[_RefCoin],
-        claimed: set[str],
-    ) -> str | None:
-        """Matche un bloc BCE à un eurio_id parmi les candidats **non réclamés**.
-
-        ``claimed`` = eurio_id déjà attribués à un autre bloc de la même
-        (country, year) → exclus pour garantir le 1-pièce ↔ 1-eurio_id (cf.
-        ``match_group``). Avec un ``claimed`` vide, le comportement est
-        identique à l'ancien ``_match_entry`` (override → floor → gap).
-        """
-        # Override manuel — court-circuit le fuzzy quand la translation
-        # BCE/Numista diverge trop (cf. MANUAL_BCE_OVERRIDES). On vérifie
-        # que l'eurio_id existe encore dans le référentiel courant ET n'est
-        # pas déjà réclamé, pour éviter une FK error / un double-match.
-        override = MANUAL_BCE_OVERRIDES.get((country, year, theme_slug))
-        if (
-            override is not None
-            and override not in claimed
-            and any(c.eurio_id == override for c in candidates)
-        ):
-            claimed.add(override)
-            return override
-
-        avail = [c for c in candidates if c.eurio_id not in claimed]
-        if not avail:
-            return None
-        scored = sorted(
-            ((_slug_score(theme_slug, c.theme_slug), c) for c in avail),
-            key=lambda x: x[0],
-            reverse=True,
+    @property
+    def _matcher(self) -> SlugGroupMatcher:
+        """Matcher partagé câblé sur les overrides BCE + les seuils de l'adapter."""
+        return SlugGroupMatcher(
+            overrides=MANUAL_BCE_OVERRIDES,
+            score_floor=self.score_floor,
+            gap_ratio=self.gap_ratio,
         )
-        best_score, best = scored[0]
-        runner_score = scored[1][0] if len(scored) > 1 else 0.0
-        has_gap = runner_score == 0 or best_score >= runner_score * self.gap_ratio
-        if best_score >= self.score_floor and has_gap:
-            claimed.add(best.eurio_id)
-            return best.eurio_id
-        return None
 
     def _match_entry(
         self,
@@ -421,9 +326,7 @@ class BceAdapter:
     ) -> str | None:
         """Match d'un bloc isolé (sans contrainte d'unicité). Conservé pour les
         appels unitaires ; ``match_group`` est le chemin batch one-to-one."""
-        return self._assign_one(
-            country, year, theme_slug, ref_index.get((country, year), []), set()
-        )
+        return self._matcher.match_entry(ref_index, country, year, theme_slug)
 
     def match_group(
         self,
@@ -432,62 +335,7 @@ class BceAdapter:
     ) -> list[str | None]:
         """Assignation **1-to-1** par (country, year) sur N blocs BCE.
 
-        ``items`` = liste de ``(country, year, theme_slug)``. Retourne l'eurio_id
-        (ou None) par item, **dans le même ordre**. Aucun eurio_id n'est attribué
-        à deux blocs de la même (country, year).
-
-        - Groupe à **1 bloc** → ``_assign_one`` (override → floor → gap), comportement
-          historique inchangé (cas ultra-majoritaire).
-        - Groupe à **≥2 blocs** → overrides forcés d'abord, puis assignation
-          **optimale** (maximise le score total) sur les candidats restants, par
-          force brute (groupes minuscules). Un appariement sous le plancher est
-          rejeté (→ None). Évite le sur-matching où la 2e pièce vole l'eurio_id
-          de la 1re uniquement parce qu'elle score un poil plus haut dessus
-          (cf. ES 2014 : greedy se trompe, l'optimal récupère Park Güell).
-        """
-        results: list[str | None] = [None] * len(items)
-        groups: dict[tuple[str, int], list[int]] = {}
-        for i, (country, year, _slug) in enumerate(items):
-            groups.setdefault((country, year), []).append(i)
-
-        for (country, year), idxs in groups.items():
-            candidates = list(ref_index.get((country, year), []))
-            if len(idxs) == 1:
-                i = idxs[0]
-                results[i] = self._assign_one(
-                    country, year, items[i][2], candidates, set()
-                )
-                continue
-
-            claimed: set[str] = set()
-            free_idxs: list[int] = []
-            # 1) overrides forcés (claiment leur eurio_id en priorité).
-            for i in idxs:
-                slug = items[i][2]
-                override = MANUAL_BCE_OVERRIDES.get((country, year, slug))
-                if (
-                    override is not None
-                    and override not in claimed
-                    and any(c.eurio_id == override for c in candidates)
-                ):
-                    claimed.add(override)
-                    results[i] = override
-                else:
-                    free_idxs.append(i)
-
-            # 2) assignation optimale des blocs restants sur candidats libres.
-            avail = [c.eurio_id for c in candidates if c.eurio_id not in claimed]
-            score_of = {c.eurio_id: c.theme_slug for c in candidates}
-            scoremaps: list[dict[str, float]] = []
-            for i in free_idxs:
-                slug = items[i][2]
-                sm = {
-                    eid: _slug_score(slug, score_of[eid])
-                    for eid in avail
-                }
-                scoremaps.append({
-                    eid: sc for eid, sc in sm.items() if sc >= self.score_floor
-                })
-            for local, eid in enumerate(_max_assignment(scoremaps)):
-                results[free_idxs[local]] = eid
-        return results
+        Délègue au ``SlugGroupMatcher`` partagé (cf. ``sources._base.slug_match``) ;
+        la sémantique (override → floor → gap pour les groupes à 1 bloc,
+        assignation optimale pour les ≥2) est inchangée."""
+        return self._matcher.match_group(ref_index, items)
