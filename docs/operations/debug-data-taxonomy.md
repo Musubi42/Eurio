@@ -230,15 +230,41 @@ test `CaptureProgressScannerTest.kt`.
   (b) `adb shell ls …/eval_real`.
 - ✅ Si OK → rollout.
 
-### Chunk B — Rollout au reste
-- Renommer `snaps/` → `photo_snaps/`, `session_<ts>/` → `scan_sessions/…`
-  (Kotlin `CoinAnalyzer.kt` / `ScanViewModel`).
-- Tasks `photo:`/`scan:` `pull`/`clean` + `bench:clean` (+ rapatriement bench
-  décidé à ce moment).
-- Étendre `/dev/status` (dump générique) aux catégories éphémères.
-- Décider du sort des cohort live-tests (`com.musubi.eurio.cohorttest`) :
-  intégrer ou documenter comme flux distinct.
-- MAJ `docs/cohort-capture-ablation.md` (commandes).
+### Chunk B — Rollout au reste ✅ LIVRÉ (2026-05-29)
+- ✅ Renommé `snaps/` → `photo_snaps/`, `session_<ts>/` (à plat) →
+  `scan_sessions/session_<ts>/`. Noms single-sourcés dans `CapturePaths`
+  (`PHOTO_SNAPS_DIR`, `SCAN_SESSIONS_DIR`) ; writers `CoinAnalyzer.kt` /
+  `ScanViewModel.kt` patchés. Aucune ref Python/ML à ces dossiers (vérifié grep),
+  zéro régression pipeline.
+- ✅ Tasks `photo:pull`/`photo:clean`, `scan:pull`/`scan:clean`, `bench:clean`
+  (mêmes echos de fin que `capture:`). **Rapatriement bench** : `bench:pull`
+  existait déjà (→ `ml/bench/sessions/<device>/`), conservé tel quel ; seul
+  `bench:clean` manquait. Pas de re-routage.
+- ✅ `/dev/status` étendu : `DebugCategoryReader` (scan générique read-only,
+  count + taille + arbre plat, cap 30 lignes) → section « Catégories éphémères »
+  pour `photo_snaps` / `scan_sessions` / `bench`. Bench passé via `benchRootDir`
+  (autre racine `getExternalFilesDir(null)/bench/`) câblé dans `EurioNavHost`.
+- ✅ **Cohort live-tests** (`com.musubi.eurio.cohorttest`) : **documenté comme
+  flux distinct, hors taxonomie `eurio_debug`**. Raison : package + racine
+  séparés, déjà servi par sa propre task `cohort-test:pull-tests` (→
+  `ml/state/live_test_logs/`) couplée à un POST `/lab/.../live-tests/sync`. Le
+  fusionner dans `/dev/status` ou les tasks `*:pull` mélangerait deux apps ;
+  on le laisse autonome (cf. §1.1, ligne live-tests).
+- ✅ MAJ `docs/cohort-capture-ablation.md` (commandes par catégorie + resume).
+
+Fichiers : `features/dev/status/DebugCategoryReader.kt` (+ édits `CapturePaths.kt`,
+`CoinAnalyzer.kt`, `ScanViewModel.kt`, `DebugStatusScreen.kt`, `EurioNavHost.kt`,
+`app-android/Taskfile.yml`).
+
+### Chunk B — Test de validation (GATE device)
+- Renommage : faire 1 photo snap (`/dev/photo`) + 1 record scan → vérifier
+  `photo_snaps/snap_<ts>/` et `scan_sessions/session_<ts>/` sur device
+  (`adb shell ls …/eurio_debug`).
+- `/dev/status` : section « Catégories éphémères » montre les bons compteurs +
+  tailles (eval_real reste en vue structurée).
+- `photo:pull` / `scan:pull` → vérifier `debug_pull/<ts>/{photo_snaps,scan_sessions}/`.
+- `photo:clean` / `scan:clean` / `bench:clean` → device vide pour la catégorie
+  (contre-vérifié `/dev/status` + `adb shell ls`).
 
 ---
 

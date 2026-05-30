@@ -494,7 +494,7 @@ class CoinAnalyzer(
      * Persist a snap to disk. Always writes the raw frame and meta.json; the
      * normalized 224×224 crop is only written when [masked] is non-null
      * (Hough succeeded). Capture mode (eval_real/) and rolling snap mode
-     * (snaps/snap_<ts>/) share the same write logic — only the path layout
+     * (photo_snaps/snap_<ts>/) share the same write logic — only the path layout
      * differs. Returns the crop path for the UI, or null if no crop was
      * produced (failure path).
      */
@@ -543,7 +543,7 @@ class CoinAnalyzer(
                     """"frame_size":[$frameW,$frameH],"crop_size":$cropSize,""" +
                     """"rerank_ms":$rerankMs,"normalize":$normJson,"matches":$matchesJson}"""
             } else {
-                val dir = java.io.File(root, "snaps/snap_$ts").apply { mkdirs() }
+                val dir = java.io.File(root, "${CapturePaths.PHOTO_SNAPS_DIR}/snap_$ts").apply { mkdirs() }
                 cropFile = java.io.File(dir, "crop.jpg")
                 rawFile = java.io.File(dir, "raw.jpg")
                 metaFile = java.io.File(dir, "meta.json")
