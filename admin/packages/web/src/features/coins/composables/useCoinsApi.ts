@@ -87,6 +87,22 @@ export interface DescriptionsResponse {
   descriptions: CoinDescription[]
 }
 
+export type SourceState = 'never' | 'ok' | 'empty_upstream' | 'error'
+
+export interface SourceStatusEntry {
+  source: string
+  state: SourceState
+  axes: Record<string, unknown>
+  last_checked_at: string | null
+  last_run_id: string | null
+  updated_at: string | null
+}
+
+export interface SourceStatusResponse {
+  eurio_id: string
+  sources: SourceStatusEntry[]
+}
+
 export interface TypeLevelPrice {
   source: string
   condition_normalized: string
@@ -289,6 +305,10 @@ export function fetchCoinI18n(eurioId: string): Promise<I18nResponse> {
 
 export function fetchCoinDescriptions(eurioId: string): Promise<DescriptionsResponse> {
   return json<DescriptionsResponse>(`/coins/${encodeURIComponent(eurioId)}/descriptions`)
+}
+
+export function fetchCoinSourceStatus(eurioId: string): Promise<SourceStatusResponse> {
+  return json<SourceStatusResponse>(`/coins/${encodeURIComponent(eurioId)}/source-status`)
 }
 
 export function fetchCoinPrices(eurioId: string): Promise<PricesResponse> {

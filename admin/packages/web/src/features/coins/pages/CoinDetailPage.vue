@@ -9,6 +9,7 @@ import {
   fetchCoin as apiFetchCoin,
   fetchCoinCredits,
   fetchCoinDescriptions,
+  fetchCoinSourceStatus,
   fetchCoinEmbedding,
   fetchCoinI18n,
   fetchCoinMintReleasesFull,
@@ -17,6 +18,7 @@ import {
   fetchCoinSeries,
   fetchCoinVariantGroup,
   type CoinDescription,
+  type SourceStatusResponse,
   type CreditsResponse,
   type MintReleaseFull,
   type ObservationsResponse,
@@ -114,6 +116,9 @@ const aliasesRows = ref<AliasRow[] | undefined>(undefined)
 const descriptions = ref<CoinDescription[] | undefined>(undefined)
 const selectedLang = ref<string | null>(null)
 const langMenuOpen = ref(false)
+
+// Disponibilité de données par source (chunk 1 — chargement seul, rendu chunk 3).
+const sourceStatus = ref<SourceStatusResponse | null | undefined>(undefined)
 
 // Caractéristiques (observations + crédits) + Millésimes & tirages.
 // undefined = chargement, null = erreur réseau (fail-silent).
@@ -255,6 +260,17 @@ async function fetchCoin(eurioId: string) {
   loadI18nAndAliases(coin.value.eurio_id)
   // Caractéristiques + millésimes — non-blocking
   loadCharacteristics(coin.value.eurio_id)
+  // Disponibilité par source — non-blocking
+  loadSourceStatus(coin.value.eurio_id)
+}
+
+async function loadSourceStatus(eurioId: string) {
+  sourceStatus.value = undefined
+  try {
+    sourceStatus.value = await fetchCoinSourceStatus(eurioId)
+  } catch {
+    sourceStatus.value = null
+  }
 }
 
 async function loadCharacteristics(eurioId: string) {

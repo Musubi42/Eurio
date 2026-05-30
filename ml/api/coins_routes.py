@@ -128,6 +128,27 @@ class DescriptionsResponse(BaseModel):
     descriptions: list[CoinDescription]
 
 
+class SourceStatusEntry(BaseModel):
+    source: str                       # registry id (bce_official, numista_api, …)
+    state: str                        # never | ok | empty_upstream | error
+    axes: dict[str, Any] = Field(default_factory=dict)
+    last_checked_at: str | None = None
+    last_run_id: str | None = None
+    updated_at: str | None = None
+
+
+class SourceStatusResponse(BaseModel):
+    eurio_id: str
+    sources: list[SourceStatusEntry]
+
+
+# Sources exposées sur la fiche (ordre = priorité d'affichage). Exclut
+# mdp/manual/derived. Refresh actif seulement pour bce/numista (chunk 2) ;
+# les autres restent en lecture seule. Table générique : ajouter une source
+# ici suffit à l'afficher.
+DISPLAYED_SOURCES = ("bce_official", "numista_api", "ebay_browse", "lmdlp", "wikipedia")
+
+
 class TypeLevelPrice(BaseModel):
     source: str
     condition_normalized: str
@@ -534,6 +555,40 @@ def get_coin_descriptions(eurio_id: str) -> DescriptionsResponse:
     return DescriptionsResponse(
         descriptions=[CoinDescription(**dict(r)) for r in rows],
     )
+
+
+@router.get("/{eurio_id}/source-status", response_model=SourceStatusResponse)
+def get_coin_source_status(eurio_id: str) -> SourceStatusResponse:
+    """Disponibilité de données par source pour ce coin. Renvoie une entrée
+    pour CHAQUE source affichée (``DISPLAYED_SOURCES``), en défautant à
+    ``never`` quand ``coin_source_status`` n'a pas de row (l'absence vaut
+    never). ``axes`` = ``detail_json.axes``."""
+    conn = _conn()
+    rows = conn.execute(
+        "SELECT source, state, detail_json, last_checked_at, last_run_id, updated_at "
+        "FROM coin_source_status WHERE eurio_id = ?",
+        (eurio_id,),
+    ).fetchall()
+    by_source = {r["source"]: dict(r) for r in rows}
+    entries: list[SourceStatusEntry] = []
+    for src in DISPLAYED_SOURCES:
+        row = by_source.get(src)
+        if row is None:
+            entries.append(SourceStatusEntry(source=src, state="never"))
+            continue
+        try:
+            detail = json.loads(row["detail_json"] or "{}")
+        except (json.JSONDecodeError, TypeError):
+            detail = {}
+        entries.append(SourceStatusEntry(
+            source=src,
+            state=row["state"],
+            axes=detail.get("axes", {}),
+            last_checked_at=row["last_checked_at"],
+            last_run_id=row["last_run_id"],
+            updated_at=row["updated_at"],
+        ))
+    return SourceStatusResponse(eurio_id=eurio_id, sources=entries)
 
 
 @router.get("/{eurio_id}/prices", response_model=PricesResponse)

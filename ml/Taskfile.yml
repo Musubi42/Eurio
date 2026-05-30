@@ -100,6 +100,11 @@ tasks:
     cmds:
       - "{{.VENV}}/python -m scripts.backfill_text_signals -v {{.CLI_ARGS}}"
 
+  backfill-source-status:
+    desc: "Dérive coin_source_status (state=ok + axes) depuis la donnée existante, par source. Aucun réseau, idempotent, ne touche pas les verdicts réseau. Usage: go-task ml:backfill-source-status [-- --force] [-- --db PATH]"
+    cmds:
+      - "{{.VENV}}/python -m scripts.backfill_coin_source_status -v {{.CLI_ARGS}}"
+
   bench:export-batch:
     desc: "Theme-matcher bench (P0) — sample listings from a real run into a JSONL batch to label + a groups.json context file. Usage: go-task ml:bench:export-batch [-- --run b6bede99 --sample 200]"
     cmds:

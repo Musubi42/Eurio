@@ -175,6 +175,28 @@ def test_coin_descriptions_empty(seeded_store: Store, client: TestClient) -> Non
     assert resp.json()["descriptions"] == []
 
 
+def test_coin_source_status_endpoint(seeded_store: Store, client: TestClient) -> None:
+    # Pose un statut ok sur BCE pour le coin fixture ; les autres sources
+    # doivent défauter à never.
+    seeded_store._connection().execute(
+        "INSERT INTO coin_source_status (eurio_id, source, state, detail_json, last_checked_at) "
+        "VALUES ('test-2025-2eur-fixture', 'bce_official', 'ok', "
+        "'{\"axes\": {\"description\": true}}', '2026-05-30T10:00:00')"
+    )
+    resp = client.get("/coins/test-2025-2eur-fixture/source-status")
+    assert resp.status_code == 200
+    data = resp.json()
+    by_src = {s["source"]: s for s in data["sources"]}
+    # Les 5 sources affichées sont présentes.
+    assert set(by_src) == {"bce_official", "numista_api", "ebay_browse", "lmdlp", "wikipedia"}
+    assert by_src["bce_official"]["state"] == "ok"
+    assert by_src["bce_official"]["axes"] == {"description": True}
+    assert by_src["bce_official"]["last_checked_at"] == "2026-05-30T10:00:00"
+    # Source sans row → never.
+    assert by_src["numista_api"]["state"] == "never"
+    assert by_src["wikipedia"]["state"] == "never"
+
+
 def test_coin_detail_not_found(seeded_store: Store, client: TestClient) -> None:
     resp = client.get("/coins/nonexistent-id")
     assert resp.status_code == 404

@@ -1141,6 +1141,36 @@ CREATE TABLE IF NOT EXISTS source_registry (
   created_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- ─── coin_source_status — disponibilité de données par (coin × source) ────
+-- Chantier disponibilité (2026-05-30). 1 row par (eurio_id, source). `state`
+-- = verdict de la dernière tentative connue :
+--   'never'          : jamais tenté — en pratique l'ABSENCE de row vaut never,
+--                      on n'insère donc pas de rows vides (la lecture défaute).
+--   'ok'             : données présentes pour cette source.
+--   'empty_upstream' : tenté, mais la source ne publie (pas encore) la donnée
+--                      — signal POSITIF uniquement (404 page-année BCE, ou coin
+--                      absent des blocs d'une page existante). Ex : commémo
+--                      2025/2026 pas encore sur le site BCE.
+--   'error'          : tentative échouée (réseau/HTTP/parse/WAF). Toute
+--                      incertitude tombe ici, JAMAIS dans empty_upstream.
+-- `detail_json` : {axes:{...booléens/compteurs par axe}, error:str|null,
+-- partial:bool} — grain fin par source sans lignes par axe. `last_checked_at`
+-- NULL = jamais tenté (distingue never d'un verdict réseau). Table générique :
+-- vaut pour toute source du registry (BCE/Numista aujourd'hui, eBay/LMDLP/… demain).
+CREATE TABLE IF NOT EXISTS coin_source_status (
+  eurio_id        TEXT NOT NULL REFERENCES coins(eurio_id) ON DELETE CASCADE,
+  source          TEXT NOT NULL REFERENCES source_registry(id) ON DELETE RESTRICT,
+  state           TEXT NOT NULL DEFAULT 'never'
+                  CHECK (state IN ('never','ok','empty_upstream','error')),
+  detail_json     TEXT NOT NULL DEFAULT '{}',
+  last_run_id     TEXT REFERENCES source_runs(id) ON DELETE SET NULL,
+  last_checked_at TEXT,
+  updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (eurio_id, source)
+) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS idx_coin_source_status_source_state
+  ON coin_source_status(source, state);
+
 -- ─── mints — ateliers monétaires normalisés ──────────────────────────────
 -- Slug PK stable (`de-berlin-a`, `fr-pessac`, `it-roma-r`, ...). Référencé
 -- par coin_mint_releases.mint_id. NULL côté coin_mint_releases =

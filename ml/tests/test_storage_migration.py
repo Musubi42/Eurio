@@ -213,3 +213,105 @@ def test_listing_kind_check_constraint(tmp_path: Path) -> None:
 
     with pytest.raises(sqlite3.IntegrityError):
         _insert("bad", "boxed")  # hors CHECK
+
+
+# ── coin_source_status — disponibilité par source ───────────────────────────
+
+REAL_DB = Path(__file__).resolve().parents[1] / "state" / "eurio.db"
+
+_SOURCE_STATUS_COLS = {
+    "eurio_id", "source", "state", "detail_json",
+    "last_run_id", "last_checked_at", "updated_at",
+}
+
+
+def test_fresh_bootstrap_has_coin_source_status(tmp_path: Path) -> None:
+    store = Store(tmp_path / "fresh.db")
+    conn = sqlite3.connect(store.db_path)
+    conn.row_factory = sqlite3.Row
+    assert _columns(conn, "coin_source_status") == _SOURCE_STATUS_COLS
+    assert "idx_coin_source_status_source_state" in _indexes(conn, "coin_source_status")
+
+
+def test_coin_source_status_state_check_constraint(tmp_path: Path) -> None:
+    """`state` n'accepte que never/ok/empty_upstream/error."""
+    store = Store(tmp_path / "chk.db")
+    conn = sqlite3.connect(store.db_path)
+    for st in ("never", "ok", "empty_upstream", "error"):
+        conn.execute(
+            "INSERT INTO coin_source_status (eurio_id, source, state) VALUES (?, ?, ?)",
+            (f"c-{st}", "numista_api", st),  # FK off par défaut sur conn brute
+        )
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(
+            "INSERT INTO coin_source_status (eurio_id, source, state) VALUES (?, ?, ?)",
+            ("c-bad", "numista_api", "bogus"),
+        )
+
+
+def test_coin_source_status_fks_enforced(tmp_path: Path) -> None:
+    """Avec foreign_keys=ON : source hors registry et coin inexistant rejetés."""
+    store = Store(tmp_path / "fk.db")
+    conn = sqlite3.connect(store.db_path)
+    conn.execute("PRAGMA foreign_keys=ON")
+    conn.execute(
+        "INSERT INTO coins (eurio_id, country, year, face_value, currency, is_commemorative) "
+        "VALUES ('c1', 'eu', 2025, 2.0, 'EUR', 1)"
+    )
+    conn.execute(
+        "INSERT INTO source_registry (id, display_name, kind) "
+        "VALUES ('numista_api', 'Numista', 'reference')"
+    )
+    conn.commit()
+    # valide
+    conn.execute("INSERT INTO coin_source_status (eurio_id, source, state) "
+                 "VALUES ('c1', 'numista_api', 'ok')")
+    # source hors registry
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute("INSERT INTO coin_source_status (eurio_id, source, state) "
+                     "VALUES ('c1', 'bogus_source', 'ok')")
+    # coin inexistant
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute("INSERT INTO coin_source_status (eurio_id, source, state) "
+                     "VALUES ('nope', 'numista_api', 'ok')")
+
+
+def test_coin_source_status_survives_rebootstrap(tmp_path: Path) -> None:
+    """Un verdict réseau (empty_upstream) survit au rebootstrap idempotent."""
+    db = tmp_path / "preserve_css.db"
+    Store(db)
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "INSERT INTO coin_source_status (eurio_id, source, state, detail_json) "
+        "VALUES ('c1', 'bce_official', 'empty_upstream', '{}')"
+    )
+    conn.commit()
+    conn.close()
+    Store(db)  # rebootstrap
+    conn = sqlite3.connect(db)
+    conn.row_factory = sqlite3.Row
+    row = conn.execute(
+        "SELECT state FROM coin_source_status WHERE eurio_id='c1'"
+    ).fetchone()
+    assert row["state"] == "empty_upstream"
+
+
+def test_coin_source_status_migration_on_populated_db(tmp_path: Path) -> None:
+    """Migration sur une copie de l'eurio.db RÉELLE peuplée : la table
+    apparaît sans toucher les données existantes (exigence user)."""
+    if not REAL_DB.exists():
+        pytest.skip(f"eurio.db absent: {REAL_DB}")
+    import shutil
+    target = tmp_path / "populated.db"
+    shutil.copy2(REAL_DB, target)
+    conn = sqlite3.connect(target)
+    before = conn.execute("SELECT count(*) FROM coins").fetchone()[0]
+    conn.close()
+
+    Store(target)  # applique la migration sur DB peuplée
+
+    conn = sqlite3.connect(target)
+    assert conn.execute(
+        "SELECT name FROM sqlite_master WHERE name='coin_source_status'"
+    ).fetchone() is not None
+    assert conn.execute("SELECT count(*) FROM coins").fetchone()[0] == before
