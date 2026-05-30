@@ -131,3 +131,10 @@ infra/minio/secrets/*
 # rclone OAuth token for pCloud. The redacted template lives at
 # infra/backup/rclone.conf.example.
 infra/backup/rclone.conf
+
+# Artefacts runtime (ne pas committer — churn)
+build/
+ml/.task/
+ml/state/bce_runs/
+ml/state/*.log
+ml/state/*_worklist.json
