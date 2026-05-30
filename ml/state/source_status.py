@@ -107,3 +107,21 @@ def numista_axes(conn: sqlite3.Connection, eurio_id: str) -> dict:
     if _exists(conn, "SELECT 1 FROM coin_observations WHERE eurio_id=? AND source='numista_api' LIMIT 1", eurio_id):
         axes["observations"] = True
     return axes
+
+
+def jo_axes(conn: sqlite3.Connection, eurio_id: str) -> dict:
+    """Axes JO/EUR-Lex : image côté national, date d'émission, fiche (CELEX+URL).
+
+    Le JO ne porte volontairement ni mintage ni description (redondants BCE) —
+    cf. memory ``project_eurlex_source``."""
+    axes: dict = {}
+    if _exists(conn, "SELECT 1 FROM coin_canonical_images "
+                     "WHERE eurio_id=? AND source='eurlex_jo' LIMIT 1", eurio_id):
+        axes["images"] = True
+    if _exists(conn, "SELECT 1 FROM coin_observations WHERE eurio_id=? "
+                     "AND source='eurlex_jo' AND observation_type='issuing_date' LIMIT 1", eurio_id):
+        axes["issuing_date"] = True
+    if _exists(conn, "SELECT 1 FROM coin_source_refs "
+                     "WHERE target_kind='coin' AND target_id=? AND source='eurlex_jo' LIMIT 1", eurio_id):
+        axes["notice"] = True
+    return axes

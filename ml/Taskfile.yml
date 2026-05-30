@@ -402,6 +402,11 @@ tasks:
     cmds:
       - "{{.VENV}}/python -m sources.bce.cli {{.CLI_ARGS}}"
 
+  scrape-jo:
+    desc: "Pipeline JO/EUR-Lex — énumère les avis JO série C (pièces commémo 2€) via CELLAR SPARQL, parse, écrit image côté national + date d'émission + URL annonce. Args : --since, --country, --target, --dry-run, --force."
+    cmds:
+      - "{{.VENV}}/python -m sources.jo.cli {{.CLI_ARGS}}"
+
   fetch-bce-images:
     desc: "Download + upload BCE coin images (always — coexists with Numista)"
     cmds:

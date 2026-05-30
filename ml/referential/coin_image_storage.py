@@ -49,6 +49,8 @@ _SOURCE_FILE_TAG: dict[str, str] = {
     # Registry ids (post-2026-05-26 BCE-DB-write + Numista refetch SQLite).
     "numista_api":  "numista",
     "bce_official": "bce",
+    # JO / EUR-Lex (image côté national depuis l'avis JO série C).
+    "eurlex_jo":    "jo",
 }
 
 

@@ -96,6 +96,18 @@ SOURCES: dict[str, SourceSpec] = {
         expected_cadence_days=90,
         rate_limit_calls_per_sec=0.5,
     ),
+    "jo": SourceSpec(
+        id="jo",
+        label="Journal Officiel UE (EUR-Lex)",
+        kind="scrape",
+        default_variant_kind="official_press",
+        default_license="editorial_official",
+        redistributable=False,
+        expected_cadence_days=30,
+        rate_limit_calls_per_sec=1.0,
+        notes="Avis JO série C des pièces commémo 2€ via CELLAR SPARQL. "
+              "Image côté national + date émission + URL annonce. Pas mintage/description.",
+    ),
     "catawiki": SourceSpec(
         id="catawiki",
         label="Catawiki",

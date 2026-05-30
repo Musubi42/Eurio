@@ -37,6 +37,10 @@ SEED: list[tuple[str, str, str, str | None, str]] = [
     ("bce_official",  "BCE — pages officielles",  "official",
      "https://www.ecb.europa.eu/euro/coins/comm/",
      "Date émission, mintage total, image officielle (obverse)."),
+    ("eurlex_jo",     "Journal Officiel UE (EUR-Lex)", "official",
+     "https://eur-lex.europa.eu",
+     "JO série C — avis officiels pièces commémoratives 2€ : image côté national, "
+     "date d'émission, URL annonce. Référentiel de couverture (exhaustif par obligation légale)."),
     ("bundesbank",    "Deutsche Bundesbank",      "official",
      None,
      "Mintage DE par atelier (A/D/F/G/J) — PDFs annuels."),

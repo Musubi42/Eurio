@@ -35,6 +35,7 @@ PIPELINE_TO_REGISTRY: dict[str, str] = {
     # Adapters actifs
     "ebay":     "ebay_browse",
     "bce":      "bce_official",
+    "jo":       "eurlex_jo",
     # Mock adapter (sources/mock — utilisé en tests). Mappé vers 'manual'
     # plutôt que d'ajouter une row 'mock' au registry réel.
     "mock":     "manual",
@@ -64,6 +65,7 @@ PIPELINE_TO_REGISTRY: dict[str, str] = {
     "eurio_derived":   "eurio_derived",
     "manual":          "manual",
     "bundesbank":      "bundesbank",
+    "eurlex_jo":       "eurlex_jo",
 }
 
 
