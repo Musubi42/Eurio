@@ -283,7 +283,7 @@ INSERT INTO source_registry (id, display_name, kind, base_url, notes) VALUES
   ('bce_official',   'BCE — pages officielles',  'official',  'https://www.ecb.europa.eu/euro/coins/comm/', 'Date émission, mintage total, image officielle'),
   ('bundesbank',     'Deutsche Bundesbank',      'official',  NULL,                                       'Mintage DE par atelier (A/D/F/G/J)'),
   ('mdp',            'Monnaie de Paris',         'official',  'https://www.monnaiedeparis.fr',           'Prix BU/BE neufs, descriptions FR'),
-  ('lmdlp',          'Le Monde des Pieces Euros','community', 'https://www.lmdlp.com',                   'Prix marché secondaire FR, variants'),
+  ('lmdlp',          'La Monnaie de la Pièce','community', 'https://lamonnaiedelapiece.com',                   'Prix boutique 2€ par qualité (WooCommerce Store API)'),
   ('wikipedia',      'Wikipedia',                'community', NULL,                                       'Mintage, variants, contexte historique'),
   ('ebay_browse',    'eBay Browse API',          'community', NULL,                                       'Annonces actives — prix marché courant'),
   ('2euros_org',     '2euros.org',               'reference', 'https://www.2euros.org',                  'Compilation référentielle FR — mintage par atelier × qualité, rareté'),

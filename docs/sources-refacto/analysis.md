@@ -34,7 +34,7 @@
 - **Résolution `listing → eurio_id`** : aujourd'hui via matching naïf sur titre + filtres. Bruité. Cf. `open-problems.md`.
 - **Verdict** : c'est **la** source à élargir en priorité. Capture des images au passage = quasi gratuit.
 
-### LMDLP (La Maison de la Pièce)
+### LMDLP (La Monnaie de la Pièce)
 
 - **Capté** : cotation marchand FR par pièce, parfois condition (UNC/SUP/TTB).
 - **Manqué** : photos partiellement. À vérifier si le scraper en sauve.

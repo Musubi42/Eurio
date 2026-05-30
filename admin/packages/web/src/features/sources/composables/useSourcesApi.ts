@@ -353,8 +353,8 @@ export const MOCK_SOURCES_STATUS: SourcesStatusResponse = {
     // ─── Éditorial & référence ───────────────────────────────────────────
     {
       id: 'lmdlp',
-      label: 'La Maison de la Pièce',
-      subtitle: 'Scrape HTML · cotation FR',
+      label: 'La Monnaie de la Pièce',
+      subtitle: 'API WooCommerce · prix boutique FR',
       kind: 'scrape',
       quota_group: null,
       quota: null,

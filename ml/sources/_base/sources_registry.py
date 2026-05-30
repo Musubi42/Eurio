@@ -68,7 +68,7 @@ SOURCES: dict[str, SourceSpec] = {
     ),
     "lmdlp": SourceSpec(
         id="lmdlp",
-        label="La Maison de la Pièce",
+        label="La Monnaie de la Pièce",
         kind="scrape",
         default_variant_kind="merchant_catalog",
         default_license="fair_use_research",

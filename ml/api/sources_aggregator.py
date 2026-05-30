@@ -155,8 +155,8 @@ SOURCES_REGISTRY: list[dict[str, Any]] = [
     },
     {
         "id": "lmdlp",
-        "label": "La Maison de la Pièce",
-        "subtitle": "Scrape HTML · cotation FR",
+        "label": "La Monnaie de la Pièce",
+        "subtitle": "API WooCommerce · prix boutique FR",
         "kind": "scrape",
         "quota_group": None,
         "expected_cadence_days": 90,

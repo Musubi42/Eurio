@@ -1323,7 +1323,7 @@ const numistaTotalMintage = computed<number | null>(() => {
         <!-- Prix catalogue LMDLP — affiché séparément d'eBay -->
         <div v-if="lmdlpPrices && lmdlpPrices.length > 0" class="mt-6">
           <p class="mb-2 text-[10px] uppercase tracking-wider" style="color: var(--ink-500);">
-            Prix catalogue La Maison de la Pièce
+            Prix catalogue La Monnaie de la Pièce
           </p>
           <div
             class="rounded-lg border"
