@@ -37,6 +37,7 @@ from referential.eurio_referential import SOURCES_DIR
 from referential.scrape_bce_images import bce_lang_url, parse_bce_page
 from sources._base.registry_map import to_registry_source
 from sources.bce.adapter import BceAdapter
+from state.source_status import bce_axes, upsert_source_status
 from state.store import Store
 
 logger = logging.getLogger(__name__)
@@ -174,6 +175,11 @@ def harvest(
                         payload=dat, source_ref=source_ref,
                     )
                 stats.date_written += 1
+
+            # Instrumentation disponibilité : ok pour chaque coin matché écrit.
+            if write and (coin.get("issuing_volume") or coin.get("issuing_date")):
+                upsert_source_status(conn, eurio_id=eurio_id, source=BCE_SOURCE,
+                                     state="ok", axes=bce_axes(conn, eurio_id))
 
     if write:
         conn.commit()

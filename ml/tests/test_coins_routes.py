@@ -293,6 +293,26 @@ def test_bce_i18n_target_filters(seeded_store: Store, monkeypatch) -> None:
         "SELECT eurio_id FROM coin_descriptions_i18n WHERE source='bce_official'")}
     assert "t1-2024-2eur" in rows
     assert "t2-2024-2eur" not in rows
+    # Chunk 4 : le run bulk i18n upsert aussi coin_source_status ok (checked).
+    st = conn.execute(
+        "SELECT state, last_checked_at FROM coin_source_status "
+        "WHERE eurio_id='t1-2024-2eur' AND source='bce_official'").fetchone()
+    assert st is not None and st["state"] == "ok"
+    assert st["last_checked_at"] is not None
+    assert conn.execute(
+        "SELECT 1 FROM coin_source_status WHERE eurio_id='t2-2024-2eur'").fetchone() is None
+
+
+def test_bce_axes_derivation(seeded_store: Store) -> None:
+    from state.source_status import bce_axes
+    conn = seeded_store._connection()
+    conn.execute("INSERT INTO coins (eurio_id, country, year, face_value, currency, "
+                 "is_commemorative) VALUES ('ax-2024-2eur', 'fr', 2024, 2.0, 'EUR', 1)")
+    conn.execute("INSERT INTO coin_descriptions_i18n (eurio_id, source, lang, title) "
+                 "VALUES ('ax-2024-2eur', 'bce_official', 'fr', 'T')")
+    conn.execute("INSERT INTO coin_observations (eurio_id, source, observation_type, payload_json) "
+                 "VALUES ('ax-2024-2eur', 'bce_official', 'mintage_official', '{}')")
+    assert bce_axes(conn, "ax-2024-2eur") == {"description": True, "mintage": True}
 
 
 def test_coin_detail_not_found(seeded_store: Store, client: TestClient) -> None:

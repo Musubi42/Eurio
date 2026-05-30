@@ -27,6 +27,8 @@ from sources.bce.sidecar import RunManifest
 from referential.scrape_bce_facts import harvest as facts_harvest
 from referential.scrape_bce_i18n import BCE_EU_LANGS, harvest as i18n_harvest
 from scripts.refetch_numista_2eur import refetch_nids
+from state.source_status import bce_axes as _bce_axes
+from state.source_status import numista_axes as _numista_axes
 from state.source_status import upsert_source_status
 
 logger = logging.getLogger(__name__)
@@ -39,45 +41,10 @@ VALID_SOURCES = ("bce", "numista")
 _REGISTRY = {"bce": "bce_official", "numista": "numista_api"}
 
 
-def _exists(conn: sqlite3.Connection, sql: str, eurio_id: str) -> bool:
-    return conn.execute(sql, (eurio_id,)).fetchone() is not None
-
-
 def _set_step(conn: sqlite3.Connection, run_id: str, step: str) -> None:
     """current_step d'étapes hors PIPELINE_STEPS générique (i18n/facts/refetch)
     — via SQL direct, comme le pipeline BCE pour 'canonical_promote'."""
     conn.execute("UPDATE source_runs SET current_step = ? WHERE id = ?", (step, run_id))
-
-
-def _bce_axes(conn: sqlite3.Connection, eurio_id: str) -> dict:
-    axes: dict = {}
-    if _exists(conn, "SELECT 1 FROM coin_descriptions_i18n "
-                     "WHERE eurio_id=? AND source='bce_official' LIMIT 1", eurio_id):
-        axes["description"] = True
-    if _exists(conn, "SELECT 1 FROM coin_observations WHERE eurio_id=? "
-                     "AND source='bce_official' AND observation_type='mintage_official' LIMIT 1", eurio_id):
-        axes["mintage"] = True
-    if _exists(conn, "SELECT 1 FROM coin_observations WHERE eurio_id=? "
-                     "AND source='bce_official' AND observation_type='issuing_date' LIMIT 1", eurio_id):
-        axes["issuing_date"] = True
-    if _exists(conn, "SELECT 1 FROM coin_canonical_images "
-                     "WHERE eurio_id=? AND source='bce_official' LIMIT 1", eurio_id):
-        axes["images"] = True
-    return axes
-
-
-def _numista_axes(conn: sqlite3.Connection, eurio_id: str) -> dict:
-    axes: dict = {}
-    row = conn.execute("SELECT numista_id FROM coins WHERE eurio_id=?", (eurio_id,)).fetchone()
-    if row and row[0] is not None:
-        axes["identity"] = True
-    if _exists(conn, "SELECT 1 FROM coin_mint_releases WHERE parent_type_id=? LIMIT 1", eurio_id):
-        axes["mint_releases"] = True
-    if _exists(conn, "SELECT 1 FROM coin_names_i18n WHERE eurio_id=? AND source='numista_api' LIMIT 1", eurio_id):
-        axes["i18n"] = True
-    if _exists(conn, "SELECT 1 FROM coin_observations WHERE eurio_id=? AND source='numista_api' LIMIT 1", eurio_id):
-        axes["observations"] = True
-    return axes
 
 
 def _resolve_numista_id(conn: sqlite3.Connection, eurio_id: str) -> int | None:

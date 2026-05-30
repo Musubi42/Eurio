@@ -48,6 +48,7 @@ from sources._base.query_sig import compute_query_signature
 from sources._base.registry_map import to_registry_source
 from sources._base.run_logger import RunHandle, start_run
 from sources._base.steps.persist import run_persist
+from state.source_status import bce_axes, upsert_source_status
 from sources._base.storage import raw_cache_path
 from sources.bce.adapter import BceAdapter
 from sources.bce.cropper import crop_coins_from_bytes
@@ -367,6 +368,7 @@ def _bce_canonical_promote_fs(
     )
 
     n_promoted = 0
+    promoted_ids: set[str] = set()
 
     for source_ref, sid in source_image_ids.items():
         row = conn.execute(
@@ -526,7 +528,19 @@ def _bce_canonical_promote_fs(
                 local_path=relative_path(eurio_id, crop.role, _BCE_SOURCE_LONG),
             )
             n_promoted += 1
+            promoted_ids.add(eurio_id)
             run.bump(n_crops_added=1)
+
+    # Instrumentation disponibilité : marque ok (axes ré-dérivés depuis la DB,
+    # ne clobbe pas les axes d'autres sources) pour chaque coin promu.
+    for eid in promoted_ids:
+        try:
+            upsert_source_status(
+                conn, eurio_id=eid, source=_BCE_REGISTRY_SOURCE,
+                state="ok", axes=bce_axes(conn, eid), run_id=run.run_id,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[bce] source_status upsert FAILED eurio=%s: %s", eid, exc)
 
     conn.commit()
     return n_promoted

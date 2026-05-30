@@ -66,3 +66,44 @@ def get_network_verdicted_ids(conn: sqlite3.Connection, source: str) -> set[str]
         (source,),
     ).fetchall()
     return {r[0] for r in rows}
+
+
+# ── Dérivation d'axes par coin (source de vérité partagée) ──────────────────
+# Utilisée par le refresh (verdict après fetch) ET l'instrumentation des runs
+# bulk (upsert ok en continu). Une seule définition pour rester cohérent avec le
+# backfill (dont les requêtes GROUP BY couvrent les mêmes axes).
+
+
+def _exists(conn: sqlite3.Connection, sql: str, eurio_id: str) -> bool:
+    return conn.execute(sql, (eurio_id,)).fetchone() is not None
+
+
+def bce_axes(conn: sqlite3.Connection, eurio_id: str) -> dict:
+    axes: dict = {}
+    if _exists(conn, "SELECT 1 FROM coin_descriptions_i18n "
+                     "WHERE eurio_id=? AND source='bce_official' LIMIT 1", eurio_id):
+        axes["description"] = True
+    if _exists(conn, "SELECT 1 FROM coin_observations WHERE eurio_id=? "
+                     "AND source='bce_official' AND observation_type='mintage_official' LIMIT 1", eurio_id):
+        axes["mintage"] = True
+    if _exists(conn, "SELECT 1 FROM coin_observations WHERE eurio_id=? "
+                     "AND source='bce_official' AND observation_type='issuing_date' LIMIT 1", eurio_id):
+        axes["issuing_date"] = True
+    if _exists(conn, "SELECT 1 FROM coin_canonical_images "
+                     "WHERE eurio_id=? AND source='bce_official' LIMIT 1", eurio_id):
+        axes["images"] = True
+    return axes
+
+
+def numista_axes(conn: sqlite3.Connection, eurio_id: str) -> dict:
+    axes: dict = {}
+    row = conn.execute("SELECT numista_id FROM coins WHERE eurio_id=?", (eurio_id,)).fetchone()
+    if row and row[0] is not None:
+        axes["identity"] = True
+    if _exists(conn, "SELECT 1 FROM coin_mint_releases WHERE parent_type_id=? LIMIT 1", eurio_id):
+        axes["mint_releases"] = True
+    if _exists(conn, "SELECT 1 FROM coin_names_i18n WHERE eurio_id=? AND source='numista_api' LIMIT 1", eurio_id):
+        axes["i18n"] = True
+    if _exists(conn, "SELECT 1 FROM coin_observations WHERE eurio_id=? AND source='numista_api' LIMIT 1", eurio_id):
+        axes["observations"] = True
+    return axes

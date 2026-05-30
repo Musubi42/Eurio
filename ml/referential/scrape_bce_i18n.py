@@ -54,6 +54,7 @@ from referential.scrape_bce_images import (
 )
 from sources._base.registry_map import to_registry_source
 from sources.bce.adapter import BceAdapter
+from state.source_status import bce_axes, upsert_source_status
 from state.store import Store
 
 logger = logging.getLogger(__name__)
@@ -265,6 +266,13 @@ def harvest_year(
                 )
             stats.rows_written += 1
             stats.rows_by_lang[lang] += 1
+
+    # Instrumentation disponibilité : ok pour chaque coin écrit (axes re-dérivés
+    # depuis la DB — ne clobbe pas les axes facts/images d'autres runs).
+    if write:
+        for coin in matched:
+            upsert_source_status(conn, eurio_id=coin["eurio_id"], source=BCE_SOURCE,
+                                 state="ok", axes=bce_axes(conn, coin["eurio_id"]))
 
 
 def harvest(

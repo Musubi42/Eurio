@@ -466,6 +466,7 @@ def _apply_to_db(bundles: dict[int, "FetchBundle"], db_path: Path,
     """
     from referential.numista_eurio_id import eurio_id_from_numista_payload
     from referential.numista_writer import NumistaWriter
+    from state.source_status import numista_axes, upsert_source_status
     from state.store import Store
 
     print("\n" + "═" * 60)
@@ -502,6 +503,12 @@ def _apply_to_db(bundles: dict[int, "FetchBundle"], db_path: Path,
             conn.execute("COMMIT")
             print(f"  [{nid}] ✓ {slug.eurio_id}")
             total_stats["ok"] += 1
+            # Instrumentation disponibilité : ok (axes re-dérivés depuis la DB).
+            try:
+                upsert_source_status(conn, eurio_id=slug.eurio_id, source="numista_api",
+                                     state="ok", axes=numista_axes(conn, slug.eurio_id))
+            except Exception as exc:  # noqa: BLE001
+                print(f"  [{nid}] ⚠ source_status: {exc}")
         except Exception as e:
             conn.execute("ROLLBACK")
             print(f"  [{nid}] ❌ {e}")
