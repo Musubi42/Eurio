@@ -8,6 +8,7 @@ import { zoneCopy, zoneStyle } from '@/features/confusion/composables/useConfusi
 import {
   fetchCoin as apiFetchCoin,
   fetchCoinCredits,
+  fetchCoinDescriptions,
   fetchCoinEmbedding,
   fetchCoinI18n,
   fetchCoinMintReleasesFull,
@@ -15,6 +16,7 @@ import {
   fetchCoinPrices,
   fetchCoinSeries,
   fetchCoinVariantGroup,
+  type CoinDescription,
   type CreditsResponse,
   type MintReleaseFull,
   type ObservationsResponse,
@@ -27,6 +29,7 @@ import {
   Brain,
   Calendar,
   Check,
+  ChevronDown,
   Coins as CoinsIcon,
   Copy,
   ExternalLink,
@@ -106,6 +109,12 @@ interface AliasRow {
 const i18nRows = ref<I18nRow[] | undefined>(undefined)
 const aliasesRows = ref<AliasRow[] | undefined>(undefined)
 
+// Descriptions officielles BCE (titre + description, 24 langues UE) + sélecteur
+// de langue du header (chunk C — affichage données BCE).
+const descriptions = ref<CoinDescription[] | undefined>(undefined)
+const selectedLang = ref<string | null>(null)
+const langMenuOpen = ref(false)
+
 // Caractéristiques (observations + crédits) + Millésimes & tirages.
 // undefined = chargement, null = erreur réseau (fail-silent).
 const observations = ref<ObservationsResponse | null | undefined>(undefined)
@@ -119,6 +128,16 @@ const I18N_LANG_ORDER = ['fr', 'en', 'de', 'it', 'es', 'nl'] as const
 const I18N_LANG_LABEL: Record<string, string> = {
   fr: 'Français', en: 'English', de: 'Deutsch',
   it: 'Italiano', es: 'Español', nl: 'Nederlands', xx: 'Universel',
+}
+// 24 langues officielles UE (descriptions BCE). Sert le sélecteur du header :
+// ordre = 6 langues Eurio d'abord, puis le reste alphabétique.
+const EURIO_LANGS = ['fr', 'en', 'de', 'it', 'es', 'nl']
+const EU_LANG_LABEL: Record<string, string> = {
+  bg: 'Български', cs: 'Čeština', da: 'Dansk', de: 'Deutsch', el: 'Ελληνικά',
+  en: 'English', es: 'Español', et: 'Eesti', fi: 'Suomi', fr: 'Français',
+  ga: 'Gaeilge', hr: 'Hrvatski', hu: 'Magyar', it: 'Italiano', lt: 'Lietuvių',
+  lv: 'Latviešu', mt: 'Malti', nl: 'Nederlands', pl: 'Polski', pt: 'Português',
+  ro: 'Română', sk: 'Slovenčina', sl: 'Slovenščina', sv: 'Svenska',
 }
 
 const issueLabel: Record<IssueType, string> = {
@@ -313,8 +332,13 @@ async function mergeLocalCanonicals(c: Coin): Promise<void> {
 async function loadI18nAndAliases(eurioId: string) {
   i18nRows.value = undefined
   aliasesRows.value = undefined
+  descriptions.value = undefined
+  selectedLang.value = null
   try {
-    const resp = await fetchCoinI18n(eurioId)
+    const [resp, descResp] = await Promise.all([
+      fetchCoinI18n(eurioId),
+      fetchCoinDescriptions(eurioId),
+    ])
     const i18nByLang = new Map<string, I18nRow>()
     for (const r of resp.names as unknown as I18nRow[]) i18nByLang.set(r.lang, r)
     const ordered: I18nRow[] = []
@@ -324,9 +348,11 @@ async function loadI18nAndAliases(eurioId: string) {
     }
     i18nRows.value = ordered
     aliasesRows.value = resp.aliases as unknown as AliasRow[]
+    descriptions.value = descResp.descriptions
   } catch {
     i18nRows.value = []
     aliasesRows.value = []
+    descriptions.value = []
   }
 }
 
@@ -518,14 +544,6 @@ const aliasesByLang = computed(() => {
     .filter(g => g.items.length > 0)
 })
 
-function i18nSourceStyle(source: string, confidence: string): { bg: string; fg: string; label: string } {
-  if (source === 'numista') return { bg: 'var(--success-soft, #e8f5e9)', fg: 'var(--success, #2e7d32)', label: 'Numista · canon' }
-  if (source === 'manual')  return { bg: 'var(--indigo-100, #e8eaf6)', fg: 'var(--indigo-700, #3f51b5)', label: 'Manuel · canon' }
-  if (source === 'llm_v1' && confidence === 'uncertain') return { bg: 'var(--warning-soft, #fff8e1)', fg: 'var(--warning, #f57f17)', label: 'LLM · incertain' }
-  if (source === 'llm_v1') return { bg: 'var(--surface-1)', fg: 'var(--ink-500)', label: 'LLM · assisté' }
-  return { bg: 'var(--surface-1)', fg: 'var(--ink-500)', label: source }
-}
-
 function aliasSourceStyle(source: string, confidence: string): { bg: string; fg: string } {
   if (source === 'llm' && confidence === 'low') return { bg: 'var(--warning-soft, #fff8e1)', fg: 'var(--warning, #f57f17)' }
   if (source === 'llm') return { bg: 'var(--surface-1)', fg: 'var(--ink-500)' }
@@ -547,22 +565,7 @@ const crossRefLinks = computed(() => {
   return links
 })
 
-// E.6 — Topic picker. Préfère FR puis EN comme lang display canonique.
-// Les autres langs (de/it/es/nl) sont en DB pour le theme matcher eBay
-// mais pas affichées ici (i18n switcher viendra plus tard si besoin).
 type Topic = { source: string; lang: string; topic: string; method?: string | null; confidence?: string }
-function _pickTopic(topics: Topic[] | undefined, source: string): string | null {
-  if (!topics?.length) return null
-  const candidates = topics.filter((t) => t.source === source)
-  if (!candidates.length) return null
-  for (const lang of ['fr', 'en']) {
-    const hit = candidates.find((t) => t.lang === lang)
-    if (hit) return hit.topic
-  }
-  return candidates[0]?.topic ?? null
-}
-const numistaTopic = computed(() => _pickTopic((coin.value as any)?.topics, 'numista_api'))
-const bceTopic = computed(() => _pickTopic((coin.value as any)?.topics, 'bce_official'))
 
 // Numista ID : champ top-level `numista_id` fiable (colonne coins.numista_id),
 // fallback sur cross_refs (rarement peuplé). Sert au bloc Identifiants + lien.
@@ -591,6 +594,83 @@ const coinTopicsList = computed(() => {
     return la - lb
   })
 })
+
+// ─── Sélecteur de langue du header (titre + description BCE) ────────────────
+// Langues dispo = union (titres Numista + topics Numista/BCE + descriptions
+// BCE 24 langs). Ordre : 6 langues Eurio d'abord, puis le reste alphabétique.
+const availableLangs = computed<string[]>(() => {
+  const set = new Set<string>()
+  for (const r of i18nRows.value ?? []) set.add(r.lang)
+  for (const t of coinTopicsList.value) set.add(t.lang)
+  for (const d of descriptions.value ?? []) set.add(d.lang)
+  set.delete('xx')
+  const eurio = EURIO_LANGS.filter((l) => set.has(l))
+  const rest = [...set].filter((l) => !EURIO_LANGS.includes(l)).sort()
+  return [...eurio, ...rest]
+})
+
+// Défaut = fr → en → 1re dispo, recalé si la pièce change.
+watch(availableLangs, (langs) => {
+  if (!langs.length) { selectedLang.value = null; return }
+  if (selectedLang.value && langs.includes(selectedLang.value)) return
+  selectedLang.value = langs.includes('fr') ? 'fr' : langs.includes('en') ? 'en' : langs[0]
+}, { immediate: true })
+
+// Quelles sources ont un titre pour cette langue (tag court du menu).
+function langSourceTag(lang: string): string {
+  const hasNumista =
+    coinTopicsList.value.some((t) => t.source === 'numista_api' && t.lang === lang) ||
+    (i18nRows.value ?? []).some((r) => r.lang === lang)
+  const hasBce = (descriptions.value ?? []).some((d) => d.lang === lang)
+  if (hasNumista && hasBce) return 'NUM·BCE'
+  if (hasNumista) return 'NUM'
+  return 'BCE'
+}
+
+// Titre affiché pour la langue sélectionnée. Numista prioritaire (topic verbeux
+// > titre court), fallback BCE. `source` pilote le badge.
+const selectedTitle = computed<{ text: string; source: string } | null>(() => {
+  const l = selectedLang.value
+  if (!l) return null
+  const topic = coinTopicsList.value.find((t) => t.source === 'numista_api' && t.lang === l)
+  if (topic) return { text: topic.topic, source: 'numista' }
+  const name = (i18nRows.value ?? []).find((r) => r.lang === l)
+  if (name && (name.source === 'numista' || name.source === 'numista_api')) {
+    return { text: name.title, source: 'numista' }
+  }
+  const bce = (descriptions.value ?? []).find((d) => d.lang === l)
+  if (bce) return { text: bce.title, source: 'bce' }
+  if (name) return { text: name.title, source: name.source }  // i18n LLM (de/it/es/nl)
+  return null
+})
+
+// Description officielle BCE (texte long) pour la langue sélectionnée.
+const selectedDescription = computed<CoinDescription | null>(() => {
+  const l = selectedLang.value
+  if (!l) return null
+  return (descriptions.value ?? []).find((d) => d.lang === l && d.description) ?? null
+})
+
+function pickLang(l: string) {
+  selectedLang.value = l
+  langMenuOpen.value = false
+}
+
+// Style du badge de source du titre (Numista indigo / BCE or / LLM neutre).
+function titleBadgeStyle(source: string): string {
+  if (source === 'bce') {
+    return 'border-color: var(--gold); color: var(--gold-700, var(--gold)); background: var(--gold-50, transparent);'
+  }
+  if (source === 'numista') {
+    return 'border-color: var(--indigo-300); color: var(--indigo-600); background: var(--indigo-50);'
+  }
+  return 'border-color: var(--surface-3); color: var(--ink-500); background: var(--surface-1);'
+}
+function titleBadgeLabel(source: string): string {
+  if (source === 'bce') return 'BCE'
+  if (source === 'numista') return 'Numista'
+  return source.toUpperCase()
+}
 
 // ─── Caractéristiques & millésimes (extraction riche Numista) ──────────────
 
@@ -757,14 +837,44 @@ function formatMintage(n: number): string {
             {{ coin.country }} · {{ coin.year }}
           </p>
           <div class="flex items-start gap-2">
+            <!-- Sélecteur de langue (ISO-2, 24 langues UE) — pilote le titre + la description BCE -->
+            <div v-if="availableLangs.length > 1" class="relative mt-1.5 flex-shrink-0">
+              <button
+                class="flex items-center gap-1 rounded-md border px-2 py-1 font-mono text-xs font-semibold uppercase transition-colors hover:border-current"
+                style="border-color: var(--surface-3); color: var(--ink-500); letter-spacing: var(--tracking-eyebrow);"
+                :title="selectedLang ? (EU_LANG_LABEL[selectedLang] ?? selectedLang) : 'Langue'"
+                @click="langMenuOpen = !langMenuOpen"
+              >
+                {{ selectedLang }}
+                <ChevronDown class="h-3 w-3" />
+              </button>
+              <button v-if="langMenuOpen" class="fixed inset-0 z-10" @click="langMenuOpen = false" />
+              <div
+                v-if="langMenuOpen"
+                class="absolute left-0 top-full z-20 mt-1 grid max-h-72 w-48 grid-cols-2 gap-0.5 overflow-y-auto rounded-lg border p-1"
+                style="border-color: var(--surface-3); background: var(--surface); box-shadow: var(--shadow-md);"
+              >
+                <button
+                  v-for="l in availableLangs"
+                  :key="l"
+                  class="flex items-center justify-between gap-1 rounded px-2 py-1 text-left transition-colors hover:bg-surface-1"
+                  :style="l === selectedLang ? 'background: var(--surface-1);' : ''"
+                  :title="EU_LANG_LABEL[l] ?? l"
+                  @click="pickLang(l)"
+                >
+                  <span class="font-mono text-xs font-semibold uppercase" style="color: var(--ink);">{{ l }}</span>
+                  <span class="font-mono text-[9px]" style="color: var(--ink-400);">{{ langSourceTag(l) }}</span>
+                </button>
+              </div>
+            </div>
             <h1 class="font-display text-3xl italic font-semibold leading-tight"
                 style="color: var(--indigo-700);">
-              {{ coinDisplayName(coin as any) }}
+              {{ selectedTitle?.text ?? coinDisplayName(coin as any) }}
             </h1>
-            <span v-if="numistaTopic"
+            <span v-if="selectedTitle"
                   class="mt-2 inline-flex flex-shrink-0 items-center rounded-full border px-2 py-0.5 text-[9px] font-medium uppercase tracking-wider"
-                  style="border-color: var(--indigo-300); color: var(--indigo-600); background: var(--indigo-50);">
-              Numista
+                  :style="titleBadgeStyle(selectedTitle.source)">
+              {{ titleBadgeLabel(selectedTitle.source) }}
             </span>
           </div>
           <p class="mt-1 font-mono text-sm" style="color: var(--ink-400);">
@@ -783,16 +893,22 @@ function formatMintage(n: number): string {
               @select="goToVariant(m)"
             />
           </div>
-          <!-- BCE topic verbeux distinct (chantier D, E.6) — Numista déjà
-               porté par le H1 via coinDisplayName, on n'affiche que la
-               source-of-truth complémentaire. -->
-          <div v-if="bceTopic" class="mt-3 flex items-start gap-2">
-            <span class="mt-0.5 inline-flex flex-shrink-0 items-center rounded-full border px-2 py-0.5 text-[9px] font-medium uppercase tracking-wider"
-                  style="border-color: var(--gold); color: var(--gold-700, var(--gold)); background: var(--gold-50, transparent);">
-              BCE
-            </span>
-            <p class="text-sm leading-snug" style="color: var(--ink);">
-              {{ bceTopic }}
+          <!-- Description officielle BCE pour la langue sélectionnée (24 langs UE).
+               Pilotée par le sélecteur ; absente si la langue n'a pas de desc BCE. -->
+          <div v-if="selectedDescription"
+               class="mt-4 rounded-lg border p-4"
+               style="border-color: var(--surface-3); background: var(--surface);">
+            <div class="mb-2 flex items-center gap-2">
+              <span class="inline-flex flex-shrink-0 items-center rounded-full border px-2 py-0.5 text-[9px] font-medium uppercase tracking-wider"
+                    style="border-color: var(--gold); color: var(--gold-700, var(--gold)); background: var(--gold-50, transparent);">
+                BCE
+              </span>
+              <span class="text-[10px] uppercase" style="color: var(--ink-500); letter-spacing: var(--tracking-eyebrow);">
+                Description officielle · {{ (EU_LANG_LABEL[selectedLang!] ?? selectedLang) }}
+              </span>
+            </div>
+            <p class="text-sm leading-relaxed" style="color: var(--ink);">
+              {{ selectedDescription.description }}
             </p>
           </div>
         </div>
@@ -1200,10 +1316,10 @@ function formatMintage(n: number): string {
             Titres traduits & alias
           </h2>
         </div>
-        <span v-if="i18nRows && i18nRows.length > 0"
+        <span v-if="availableLangs.length > 0"
               class="font-mono text-[10px] uppercase"
               style="color: var(--ink-400); letter-spacing: var(--tracking-eyebrow);">
-          {{ i18nRows.length }} langs · {{ coinTopicsList.length }} topics · {{ aliasesRows?.length ?? 0 }} alias
+          {{ availableLangs.length }} langs · {{ coinTopicsList.length }} topics · {{ aliasesRows?.length ?? 0 }} alias
         </span>
       </div>
 
@@ -1226,47 +1342,10 @@ function formatMintage(n: number): string {
            Titres (i18n short Numista) / Topics (verbeux multi-source) /
            Aliases (market vocab). Reflète le pool réel du theme matcher. -->
       <template v-else>
-        <!-- 1️⃣  TITRES — Numista i18n short titles (6 cards) -->
-        <p class="mb-3 text-[10px] uppercase tracking-wider"
-           style="color: var(--ink-500); letter-spacing: var(--tracking-eyebrow);">
-          Titres Numista (par langue)
-        </p>
-        <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <div
-            v-for="row in i18nRows"
-            :key="row.lang"
-            class="flex flex-col gap-2 rounded-lg border p-4"
-            style="border-color: var(--surface-3); background: var(--surface);"
-          >
-            <div class="flex items-center justify-between">
-              <span class="font-mono text-xs font-semibold uppercase"
-                    style="color: var(--ink-500); letter-spacing: var(--tracking-eyebrow);">
-                {{ row.lang }} · {{ I18N_LANG_LABEL[row.lang] ?? row.lang }}
-              </span>
-              <span
-                class="rounded-full px-2 py-0.5 text-[10px] font-medium uppercase"
-                :style="{
-                  background: i18nSourceStyle(row.source, row.confidence).bg,
-                  color: i18nSourceStyle(row.source, row.confidence).fg,
-                  letterSpacing: 'var(--tracking-eyebrow)',
-                }"
-              >
-                {{ i18nSourceStyle(row.source, row.confidence).label }}
-              </span>
-            </div>
-            <p class="font-display text-sm leading-snug" style="color: var(--ink);">
-              {{ row.title }}
-            </p>
-            <p v-if="row.model"
-               class="font-mono text-[10px]"
-               style="color: var(--ink-400);">
-              {{ row.model }}
-            </p>
-          </div>
-        </div>
-
-        <!-- 2️⃣  TOPICS — verbose commemorated_topic multi-source (Numista + BCE) -->
-        <div v-if="coinTopicsList.length > 0" class="mt-8">
+        <!-- 1️⃣  TOPICS — verbose commemorated_topic multi-source (Numista + BCE).
+             Les titres courts par langue sont désormais portés par le sélecteur
+             du header ; ici on garde le contexte commémoratif verbeux. -->
+        <div v-if="coinTopicsList.length > 0">
           <p class="mb-3 text-[10px] uppercase tracking-wider"
              style="color: var(--ink-500); letter-spacing: var(--tracking-eyebrow);">
             Topics verbeux (commemorated_topic Numista + feature BCE)
