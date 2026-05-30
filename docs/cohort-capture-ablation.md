@@ -124,16 +124,38 @@ pièce suivante.
 
 ### Pull
 
+Préfère la task **par catégorie** `capture:pull` (ne ramasse que `eval_real/`,
+pas les `photo_snaps/` / `scan_sessions/` jetables — cf.
+`docs/operations/debug-data-taxonomy.md`) :
+
 ```bash
-go-task -t app-android/Taskfile.yml pull-debug
+go-task -t app-android/Taskfile.yml capture:pull
 # Output : debug_pull/<timestamp>/eval_real/{manifest.jsonl, <eid>/<step>_p<n>_*.jpg}
+# Le device reste intact ; nettoyage explicite via capture:clean (voir ci-dessous).
 ```
+
+`pull-debug` (ramasse tout `eurio_debug/` en vrac) reste dispo en fallback.
 
 Vérifier que tu as bien ~340 lignes dans `manifest.jsonl` :
 
 ```bash
 wc -l debug_pull/<ts>/eval_real/manifest.jsonl
 ```
+
+### Clean (après vérification du pull)
+
+Suppression **device** par catégorie, jamais automatique :
+
+```bash
+go-task -t app-android/Taskfile.yml capture:clean   # eval_real/ uniquement
+go-task -t app-android/Taskfile.yml photo:clean     # photo_snaps/
+go-task -t app-android/Taskfile.yml scan:clean      # scan_sessions/
+go-task -t app-android/Taskfile.yml bench:clean     # bench/ (autre racine)
+```
+
+Vérification visuelle on-device : `/dev/status` (bottom-sheet debug du scan) montre
+le compte + la taille par catégorie et doit afficher la catégorie **vide** après son
+clean.
 
 ### Sweep ablation (60h GPU 1080 Ti, à piloter en background)
 
@@ -166,7 +188,7 @@ Step 4 cutover (Kotlin SnapNormalizer + re-deploy).
 | L'app affiche « STEP 1/6 » au lieu de 1/5 | CSV legacy (sans directive `# mode=ablation`) | Re-push le CSV, force-stop l'app, relance |
 | « PHOTO 1/1 » sans incrémenter | Mode LEGACY actif | Idem ci-dessus |
 | Beaucoup de « NORMALIZE FAILED » | Pièce mal cadrée, Hough rate | Recule un peu, recentre, refais. Le rim doit être net |
-| `manifest.jsonl` n'a que ~100 lignes au lieu de 340 | Tu as tap "suivant" au lieu de continuer à snap | Reprends la session en mode capture, l'app garde l'état (à vérifier — sinon recommence depuis le coin manquant) |
+| `manifest.jsonl` n'a que ~100 lignes au lieu de 340 | Tu as tap "suivant" au lieu de continuer à snap | Reprends la session en mode capture : l'app reconstruit le curseur depuis le disque (crops présents + lignes skip), tu repars sur la 1re cellule ni capturée ni skippée. Vérifie sur `/dev/status`. |
 | `pull-debug` ne récupère rien | Mauvais device ID adb, ou chemin app changé | `adb devices` ; vérifier path dans `app-android/Taskfile.yml` `DEBUG_DIR_DEVICE` |
 
 ---

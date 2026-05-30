@@ -101,6 +101,48 @@ tasks:
       - adb shell rm -rf {{.DEBUG_DIR_DEVICE}}/eval_real
       - echo "Device eval_real/ cleaned (other debug categories untouched)"
 
+  photo:pull:
+    desc: Pull only the rolling photo snaps (photo_snaps/) into ./debug_pull/TIMESTAMP/photo_snaps/
+    vars:
+      TS:
+        sh: date +%Y%m%d_%H%M%S
+      DEST: '{{.DEBUG_PULL_ROOT}}/{{.TS}}'
+    cmds:
+      - mkdir -p {{.DEST}}
+      - adb pull {{.DEBUG_DIR_DEVICE}}/photo_snaps/ {{.DEST}}/ || echo "no photo_snaps/ on device"
+      - |
+        snaps=$(find {{.DEST}}/photo_snaps -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')
+        echo "✓ Pulled $snaps photo snaps → {{.DEST}}/photo_snaps/"
+        echo "  Device unchanged. To free the phone once verified:"
+        echo "      go-task -t app-android/Taskfile.yml photo:clean"
+
+  photo:clean:
+    desc: Delete ONLY the rolling photo snaps (photo_snaps/) on the device
+    cmds:
+      - adb shell rm -rf {{.DEBUG_DIR_DEVICE}}/photo_snaps
+      - echo "Device photo_snaps/ cleaned (other debug categories untouched)"
+
+  scan:pull:
+    desc: Pull only the scan record sessions (scan_sessions/) into ./debug_pull/TIMESTAMP/scan_sessions/
+    vars:
+      TS:
+        sh: date +%Y%m%d_%H%M%S
+      DEST: '{{.DEBUG_PULL_ROOT}}/{{.TS}}'
+    cmds:
+      - mkdir -p {{.DEST}}
+      - adb pull {{.DEBUG_DIR_DEVICE}}/scan_sessions/ {{.DEST}}/ || echo "no scan_sessions/ on device"
+      - |
+        sessions=$(find {{.DEST}}/scan_sessions -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')
+        echo "✓ Pulled $sessions scan sessions → {{.DEST}}/scan_sessions/"
+        echo "  Device unchanged. To free the phone once verified:"
+        echo "      go-task -t app-android/Taskfile.yml scan:clean"
+
+  scan:clean:
+    desc: Delete ONLY the scan record sessions (scan_sessions/) on the device
+    cmds:
+      - adb shell rm -rf {{.DEBUG_DIR_DEVICE}}/scan_sessions
+      - echo "Device scan_sessions/ cleaned (other debug categories untouched)"
+
   bench:pull:
     desc: Pull bench sessions (chunk-7) from the device into ml/bench/sessions/<device>/
     vars:
@@ -112,6 +154,14 @@ tasks:
       - mkdir -p {{.LOCAL_DIR}}
       - adb pull {{.DEVICE_DIR}}/ {{.LOCAL_DIR}}/ || echo "no bench sessions on device"
       - echo "Pulled bench sessions to {{.LOCAL_DIR}}/"
+      - echo "  Device unchanged. To free the phone once verified:"
+      - echo "      go-task -t app-android/Taskfile.yml bench:clean"
+
+  bench:clean:
+    desc: Delete ONLY the bench sessions (bench/) on the device — separate root from eurio_debug
+    cmds:
+      - adb shell rm -rf /sdcard/Android/data/{{.APP_ID}}/files/bench
+      - echo "Device bench/ cleaned (eurio_debug categories untouched)"
 
   push-capture-csv:
     desc: Push a cohort capture CSV to the device, then force-stop the app so the new list is picked up on next launch

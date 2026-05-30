@@ -345,6 +345,9 @@ fun EurioNavHost(
         composable(EurioDestinations.DEV_STATUS) {
             DebugStatusScreen(
                 debugRootDir = app.coinAnalyzer.debugRootDir,
+                // Bench lives on a different root than eurio_debug
+                // (getExternalFilesDir(null)/bench/, cf. BenchRecorder).
+                benchRootDir = java.io.File(app.getExternalFilesDir(null), "bench"),
                 onBack = { navController.popBackStack() },
             )
         }

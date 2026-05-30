@@ -28,6 +28,7 @@ import com.musubi.eurio.features.dev.capture.CaptureDiskReader
 import com.musubi.eurio.features.dev.capture.CaptureProgressScanner
 import com.musubi.eurio.features.dev.capture.CaptureProgressScanner.StepStatus
 import com.musubi.eurio.features.scan.CaptureProtocol
+import com.musubi.eurio.ml.CapturePaths
 import java.io.File
 
 /**
@@ -41,12 +42,31 @@ import java.io.File
 @Composable
 fun DebugStatusScreen(
     debugRootDir: File?,
+    benchRootDir: File?,
     onBack: () -> Unit,
 ) {
     var refreshKey by remember { mutableIntStateOf(0) }
     val scan = remember(refreshKey) { CaptureDiskReader.read(debugRootDir) }
     val coins = remember(refreshKey) { CaptureProtocol.coins }
     val steps = remember(refreshKey) { CaptureProtocol.steps }
+    // Ephemeral categories (flat dump). eval_real is shown structured above ;
+    // bench lives on a different root (getExternalFilesDir(null)/bench/).
+    val categories = remember(refreshKey) {
+        listOf(
+            DebugCategoryReader.read(
+                "photo_snaps",
+                debugRootDir?.let { File(it, CapturePaths.PHOTO_SNAPS_DIR) },
+            ),
+            DebugCategoryReader.read(
+                "scan_sessions",
+                debugRootDir?.let { File(it, CapturePaths.SCAN_SESSIONS_DIR) },
+            ),
+            DebugCategoryReader.read(
+                "bench",
+                benchRootDir?.let { File(it, "sessions") },
+            ),
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -80,17 +100,28 @@ fun DebugStatusScreen(
                         color = StatusColors.PENDING,
                     )
                 }
-                return@LazyColumn
+            } else {
+                items(scan.coins, key = { it.coinIndex }) { coinRow ->
+                    val coin = coins.getOrNull(coinRow.coinIndex)
+                    CoinBlock(
+                        title = coin?.let { "${it.displayName}  (${it.eurioId})" } ?: "coin #${coinRow.coinIndex}",
+                        steps = coinRow.steps,
+                        stepLabel = { idx -> steps.getOrNull(idx)?.id ?: "step#$idx" },
+                    )
+                }
             }
 
-            items(scan.coins, key = { it.coinIndex }) { coinRow ->
-                val coin = coins.getOrNull(coinRow.coinIndex)
-                CoinBlock(
-                    title = coin?.let { "${it.displayName}  (${it.eurioId})" } ?: "coin #${coinRow.coinIndex}",
-                    steps = coinRow.steps,
-                    stepLabel = { idx -> steps.getOrNull(idx)?.id ?: "step#$idx" },
+            item { HorizontalDivider(modifier = Modifier.padding(vertical = 6.dp)) }
+            item {
+                Text(
+                    "Catégories éphémères (read-only — pull/clean via go-task)",
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 12.sp,
+                    color = StatusColors.DIM,
+                    modifier = Modifier.padding(bottom = 2.dp),
                 )
             }
+            items(categories, key = { it.label }) { cat -> CategoryBlock(cat) }
         }
     }
 }
@@ -154,6 +185,44 @@ private fun CoinBlock(
         }
     }
 }
+
+@Composable
+private fun CategoryBlock(cat: DebugCategoryReader.Category) {
+    Column(modifier = Modifier.padding(top = 8.dp)) {
+        val header = if (!cat.present) {
+            "${cat.label}/  — vide"
+        } else {
+            "${cat.label}/  ${cat.fileCount} fichiers · ${DebugCategoryReader.formatBytes(cat.totalBytes)}"
+        }
+        Text(
+            header,
+            fontFamily = FontFamily.Monospace,
+            fontSize = 13.sp,
+            color = if (cat.present && cat.fileCount > 0) StatusColors.TEXT else StatusColors.DIM,
+        )
+        // Flat tree : one line per immediate child. Capped to keep the dump
+        // readable on a long-running session ; the count above stays exact.
+        cat.entries.take(MAX_ENTRY_LINES).forEach { entry ->
+            Text(
+                "  ${if (entry.isDirectory) "▸" else "·"} ${entry.name}" +
+                    "  (${entry.fileCount}f · ${DebugCategoryReader.formatBytes(entry.totalBytes)})",
+                fontFamily = FontFamily.Monospace,
+                fontSize = 12.sp,
+                color = StatusColors.DIM,
+            )
+        }
+        if (cat.entries.size > MAX_ENTRY_LINES) {
+            Text(
+                "  … +${cat.entries.size - MAX_ENTRY_LINES} autres",
+                fontFamily = FontFamily.Monospace,
+                fontSize = 12.sp,
+                color = StatusColors.DIM,
+            )
+        }
+    }
+}
+
+private const val MAX_ENTRY_LINES = 30
 
 private fun statusGlyph(status: StepStatus): String = when (status) {
     StepStatus.CAPTURED -> "✓"

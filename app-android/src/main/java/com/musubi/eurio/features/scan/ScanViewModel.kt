@@ -1149,7 +1149,10 @@ class ScanViewModel(
         }
         val ts = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US)
             .format(java.util.Date())
-        val sessionDir = java.io.File(root, "session_$ts").apply { mkdirs() }
+        val sessionDir = java.io.File(
+            root,
+            "${com.musubi.eurio.ml.CapturePaths.SCAN_SESSIONS_DIR}/session_$ts",
+        ).apply { mkdirs() }
         coinAnalyzer.resetRecordCounter()
         coinAnalyzer.recordSessionDir = sessionDir
         coinAnalyzer.recordMode = true
