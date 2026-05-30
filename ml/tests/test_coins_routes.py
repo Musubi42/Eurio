@@ -83,6 +83,18 @@ def seeded_store(tmp_store: Store) -> Store:
         "VALUES (?, 'fr', 'alias_test', 'numista_api')", (eurio_id,),
     )
     conn.execute(
+        "INSERT INTO coin_descriptions_i18n "
+        "(eurio_id, source, lang, title, description, method, confidence) "
+        "VALUES (?, 'bce_official', 'fr', 'Titre BCE', 'Description officielle BCE', "
+        "'scrape', 'canon')", (eurio_id,),
+    )
+    conn.execute(
+        "INSERT INTO coin_descriptions_i18n "
+        "(eurio_id, source, lang, title, description, method, confidence) "
+        "VALUES (?, 'bce_official', 'de', 'BCE Titel', 'Offizielle EZB-Beschreibung', "
+        "'scrape', 'canon')", (eurio_id,),
+    )
+    conn.execute(
         "INSERT INTO coin_market_quotes (id, eurio_id, source, condition_raw, "
         "condition_normalized, currency, p10, p50, p90, sample_size, period_start, period_end) "
         "VALUES ('q1', ?, 'numista_api', 'UNC', 'UNC', 'EUR', 5.0, 5.0, 5.0, 1, '2026-05-26', '2026-05-26')",
@@ -138,6 +150,29 @@ def test_coin_detail(seeded_store: Store, client: TestClient) -> None:
     assert data["has_ebay"] is False
     assert len(data["images"]) == 1
     assert data["images"][0]["role"] == "obverse"
+
+
+def test_coin_descriptions(seeded_store: Store, client: TestClient) -> None:
+    resp = client.get("/coins/test-2025-2eur-fixture/descriptions")
+    assert resp.status_code == 200
+    data = resp.json()
+    descs = {d["lang"]: d for d in data["descriptions"]}
+    assert set(descs) == {"fr", "de"}
+    assert descs["fr"]["title"] == "Titre BCE"
+    assert descs["fr"]["description"] == "Description officielle BCE"
+    assert descs["fr"]["source"] == "bce_official"
+    assert descs["de"]["title"] == "BCE Titel"
+
+
+def test_coin_descriptions_empty(seeded_store: Store, client: TestClient) -> None:
+    # Pièce sans description i18n → liste vide, pas d'erreur.
+    seeded_store._connection().execute(
+        "INSERT INTO coins (eurio_id, country, year, face_value, currency, "
+        "is_commemorative) VALUES ('bare-2025-2eur', 'eu', 2025, 2.0, 'EUR', 0)",
+    )
+    resp = client.get("/coins/bare-2025-2eur/descriptions")
+    assert resp.status_code == 200
+    assert resp.json()["descriptions"] == []
 
 
 def test_coin_detail_not_found(seeded_store: Store, client: TestClient) -> None:

@@ -112,6 +112,22 @@ class I18nResponse(BaseModel):
     aliases: list[I18nAlias]
 
 
+class CoinDescription(BaseModel):
+    """Titre + description officiels appariés par langue (source BCE 24 langues
+    UE). Distinct de I18nName (titres Numista 6 langs, sans description)."""
+    lang: str
+    title: str
+    description: str | None = None
+    source: str
+    method: str | None = None
+    confidence: str | None = None
+    model: str | None = None
+
+
+class DescriptionsResponse(BaseModel):
+    descriptions: list[CoinDescription]
+
+
 class TypeLevelPrice(BaseModel):
     source: str
     condition_normalized: str
@@ -501,6 +517,22 @@ def get_coin_i18n(eurio_id: str) -> I18nResponse:
     return I18nResponse(
         names=[I18nName(**dict(r)) for r in names_rows],
         aliases=[I18nAlias(**dict(r)) for r in aliases_rows],
+    )
+
+
+@router.get("/{eurio_id}/descriptions", response_model=DescriptionsResponse)
+def get_coin_descriptions(eurio_id: str) -> DescriptionsResponse:
+    """Titres + descriptions officiels BCE dans les 24 langues UE
+    (``coin_descriptions_i18n``). Une row par (eurio_id, source, lang) :
+    title + description appariés. Sert le sélecteur de langue de la fiche."""
+    conn = _conn()
+    rows = conn.execute(
+        "SELECT lang, title, description, source, method, confidence, model "
+        "FROM coin_descriptions_i18n WHERE eurio_id = ? ORDER BY lang",
+        (eurio_id,),
+    ).fetchall()
+    return DescriptionsResponse(
+        descriptions=[CoinDescription(**dict(r)) for r in rows],
     )
 
 
