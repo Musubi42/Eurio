@@ -1383,18 +1383,25 @@ CREATE TABLE IF NOT EXISTS set_members (
 );
 CREATE INDEX IF NOT EXISTS idx_set_members_eurio ON set_members(eurio_id);
 
--- Couverture Wikipédia (DE) : matrice pays × année de la page
--- « 2-Euro-Gedenkmünzen » (overview). Seconde source de couverture, qui
--- montre aussi le NON-émis (count=0) et le planifié (planned=1) — cf.
--- referential/scrape_wikipedia_de.py et memory project_eurlex_source.
--- kind : 'E' = émission nationale individuelle, 'G' = émission commune.
-CREATE TABLE IF NOT EXISTS wikipedia_coverage (
-  country    TEXT NOT NULL,
-  year       INTEGER NOT NULL,
-  kind       TEXT NOT NULL CHECK (kind IN ('E','G')),
-  count      INTEGER NOT NULL DEFAULT 0,
-  planned    INTEGER NOT NULL DEFAULT 0,
-  source     TEXT NOT NULL DEFAULT 'wikipedia_de',
-  fetched_at TEXT NOT NULL DEFAULT (datetime('now')),
-  PRIMARY KEY (country, year, kind)
+-- Énumération par pièce des 2 € commémoratives, source nl.wikipedia
+-- « Lijst van herdenkingsmunten van € 2 » (un tableau par année, une ligne
+-- par pièce : pays + thème néerlandais). Couche « attendu » du référentiel :
+-- donne le compteur ET l'identité (thème) de chaque pièce, matchée à un
+-- eurio_id quand on l'a en base (sinon matched_eurio_id NULL = manquante).
+-- Wikipédia reste overview/filet (doctrine official-only) : on ne stocke ni
+-- n'affiche son image, juste le thème pour l'identité. Les émissions communes
+-- (« Europese Unie », 2007/2009/2012/2015/2022) sont dépliées en une ligne par
+-- pays émetteur via le design_group eu-* de l'année (match direct exact).
+-- cf. referential/scrape_wikipedia_coins.py et memory project_eurlex_source.
+CREATE TABLE IF NOT EXISTS wikipedia_nl_coins (
+  country          TEXT NOT NULL,            -- ISO2
+  year             INTEGER NOT NULL,
+  theme            TEXT NOT NULL,            -- thème NL brut (nettoyé des notes)
+  theme_slug       TEXT NOT NULL,            -- slugify(strip_2eur(theme))
+  source_url       TEXT,                     -- ancre section, ex '#2007'
+  matched_eurio_id TEXT REFERENCES coins(eurio_id) ON DELETE SET NULL,
+  match_score      REAL,                     -- 1.0 = match direct (commune) ; NULL = fuzzy
+  planned          INTEGER NOT NULL DEFAULT 0,
+  fetched_at       TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (country, year, theme_slug)
 ) WITHOUT ROWID;

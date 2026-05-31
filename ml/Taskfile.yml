@@ -407,10 +407,10 @@ tasks:
     cmds:
       - "{{.VENV}}/python -m sources.jo.cli {{.CLI_ARGS}}"
 
-  scrape-wikipedia-de:
-    desc: "Parse la matrice de.wikipedia 2-Euro-Gedenkmünzen (pays × année, E/G, planifié) → table wikipedia_coverage. 2e source de couverture. Args : --dry-run."
+  scrape-wikipedia-coins:
+    desc: "Énumère par pièce les 2€ commémo de nl.wikipedia (Lijst, un tableau/année) → table wikipedia_nl_coins (pays, année, thème, eurio_id matché). Couche « attendu » de la matrice de couverture. Args : --dry-run, --unmatched."
     cmds:
-      - "{{.VENV}}/python -m referential.scrape_wikipedia_de {{.CLI_ARGS}}"
+      - "{{.VENV}}/python -m referential.scrape_wikipedia_coins {{.CLI_ARGS}}"
 
   fetch-bce-images:
     desc: "Download + upload BCE coin images (always — coexists with Numista)"
