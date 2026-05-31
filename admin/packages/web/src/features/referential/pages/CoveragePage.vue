@@ -3,11 +3,21 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   fetchCoverageMatrix,
+  discoverCoin,
+  discoverAll,
+  fetchDiscoveryQueue,
+  acceptDiscovery,
+  rejectDiscovery,
   type CoverageMatrixResponse,
   type CoverageCell,
   type CoinMarker,
+  type DiscoveryQueueItem,
 } from '../composables/useReferentialApi'
-import { fetchCoinCard, type CoinCard } from '@/features/coins/composables/useCoinsApi'
+import {
+  fetchCoinCard,
+  postCoinRefresh,
+  type CoinCard,
+} from '@/features/coins/composables/useCoinsApi'
 
 const ML_API = 'http://127.0.0.1:8042'
 
@@ -25,9 +35,17 @@ const COUNTRY_FR: Record<string, string> = {
   PT: 'Portugal', SI: 'Slovénie', SK: 'Slovaquie', SM: 'Saint-Marin', VA: 'Vatican',
 }
 
+const queue = ref<DiscoveryQueueItem[]>([])
+async function loadQueue() {
+  try { queue.value = await fetchDiscoveryQueue() } catch { /* file optionnelle */ }
+}
+async function reloadMatrix() {
+  data.value = await fetchCoverageMatrix()
+}
+
 onMounted(async () => {
   try {
-    data.value = await fetchCoverageMatrix()
+    await Promise.all([reloadMatrix(), loadQueue()])
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
   } finally {
@@ -92,8 +110,86 @@ function imgSrc(url: string | null): string | undefined {
   return url.startsWith('http') ? url : `${ML_API}${url}`
 }
 
-function onClick(m: CoinMarker) {
-  if (m.eurio_id) router.push(`/coins/${encodeURIComponent(m.eurio_id)}`)
+// ── Popover épinglé (actions) ───────────────────────────────────────────
+const pinned = ref<HoverInfo | null>(null)
+const busy = ref<string | null>(null) // message d'action en cours
+const flash = ref<string | null>(null)
+
+function onClick(m: CoinMarker, country: string, year: number, ev: MouseEvent) {
+  pinned.value = { marker: m, country, year, x: ev.clientX, y: ev.clientY }
+  hover.value = null
+  if (m.eurio_id && !cardCache.has(m.eurio_id)) onEnter(m, country, year, ev)
+}
+function unpin() { pinned.value = null }
+
+async function doDiscover(country: string, year: number) {
+  busy.value = `Recherche Numista ${country} ${year}…`
+  try {
+    const res = await discoverCoin(country, year)
+    flash.value = res.error
+      ? `Erreur : ${res.error}`
+      : res.queued > 0
+        ? `${res.queued} candidat(s) ajouté(s) à la review.`
+        : 'Rien trouvé sur Numista pour cette cellule.'
+    await loadQueue()
+  } catch (e) {
+    flash.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    busy.value = null
+    unpin()
+  }
+}
+
+async function doDiscoverAll() {
+  busy.value = 'Découverte de toutes les cellules manquantes…'
+  try {
+    const res = await discoverAll()
+    flash.value = `${res.queued} candidat(s) en review · ${res.not_found.length} cellule(s) sans candidat Numista.`
+    await loadQueue()
+  } catch (e) {
+    flash.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    busy.value = null
+  }
+}
+
+async function doRefresh(eurioId: string) {
+  busy.value = 'Complétion (Numista)…'
+  try {
+    await postCoinRefresh(eurioId, 'numista')
+    flash.value = 'Refetch lancé — recharge la page dans un instant.'
+  } catch (e) {
+    flash.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    busy.value = null
+    unpin()
+  }
+}
+
+async function doAccept(item: DiscoveryQueueItem) {
+  busy.value = `Ingest ${item.proposed_eurio_id}…`
+  try {
+    const res = await acceptDiscovery(item.id)
+    flash.value = res.ok ? 'Pièce ingérée et liée ✓' : 'Échec de l\'ingest.'
+    await Promise.all([reloadMatrix(), loadQueue()])
+  } catch (e) {
+    flash.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    busy.value = null
+  }
+}
+
+async function doReject(item: DiscoveryQueueItem) {
+  await rejectDiscovery(item.id)
+  await loadQueue()
+}
+
+function goToCoin(eurioId: string) {
+  router.push(`/coins/${encodeURIComponent(eurioId)}`)
+}
+function discoverImgSrc(url: string | null): string | undefined {
+  if (!url) return undefined
+  return url.startsWith('http') ? url : `${ML_API}${url}`
 }
 </script>
 
@@ -179,11 +275,11 @@ function onClick(m: CoinMarker) {
                   <span
                     v-for="(m, i) in cell(country, y)!.markers"
                     :key="i"
-                    class="dot"
-                    :class="[...markerClasses(m), m.eurio_id ? 'clickable' : '']"
+                    class="dot clickable"
+                    :class="markerClasses(m)"
                     @mouseenter="onEnter(m, country, y, $event)"
                     @mouseleave="onLeave"
-                    @click="onClick(m)"
+                    @click="onClick(m, country, y, $event)"
                   />
                 </div>
                 <span v-else-if="!cell(country, y)?.out_of_zone" class="none">–</span>
@@ -192,11 +288,82 @@ function onClick(m: CoinMarker) {
           </tbody>
         </table>
       </div>
+
+      <!-- Bandeau d'action en cours / résultat -->
+      <p v-if="busy" class="text-xs" style="color: var(--indigo-700);">⏳ {{ busy }}</p>
+      <p v-else-if="flash" class="text-xs" style="color: var(--ink-700);">{{ flash }}</p>
+
+      <!-- Section review des découvertes Numista -->
+      <section class="space-y-3">
+        <div class="flex items-center gap-3">
+          <h2 class="font-display text-lg italic font-semibold" style="color: var(--indigo-700);">
+            Review des découvertes
+          </h2>
+          <span class="font-mono text-xs" style="color: var(--ink-500);">{{ queue.length }} en attente</span>
+          <button
+            class="rounded-full border px-3 py-1 font-mono text-[10px]"
+            style="border-color: var(--surface-3); color: var(--indigo-700);"
+            :disabled="!!busy"
+            @click="doDiscoverAll"
+          >
+            Découvrir tout (Numista) →
+          </button>
+        </div>
+        <p class="text-xs" style="color: var(--ink-500);">
+          Candidats Numista pour les cellules rouges. Vérifie image + titre, puis
+          accepte (ingest complet) ou rejette. Clique aussi un point rouge de la
+          matrice pour lancer une recherche ciblée sur sa cellule.
+        </p>
+
+        <p v-if="!queue.length" class="text-sm" style="color: var(--ink-400);">
+          Aucun candidat en review. Lance « Découvrir tout » ou clique une cellule manquante.
+        </p>
+        <div v-else class="grid gap-3" style="grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));">
+          <div
+            v-for="item in queue"
+            :key="item.id"
+            class="flex gap-3 rounded-lg border p-3"
+            style="border-color: var(--surface-3); background: var(--surface);"
+          >
+            <div class="rc-img">
+              <img v-if="discoverImgSrc(item.image_url)" :src="discoverImgSrc(item.image_url)" alt="" />
+              <div v-else class="hc-img-ph">∅</div>
+            </div>
+            <div class="min-w-0 flex-1">
+              <div class="text-[13px] font-semibold" style="color: var(--ink-900);">{{ item.numista_title }}</div>
+              <div class="mt-0.5 font-mono text-[10px]" style="color: var(--ink-400);">
+                {{ item.country }} · {{ item.year }} · n°{{ item.numista_id }}
+                <span v-if="item.is_variant" style="color: var(--warning);"> · variante</span>
+              </div>
+              <div class="mt-1 text-[11px]" style="color: var(--ink-500);">
+                → <code>{{ item.proposed_eurio_id }}</code>
+              </div>
+              <div v-if="item.theme_wiki" class="mt-0.5 text-[11px]" style="color: var(--ink-400);">
+                comble : {{ item.theme_wiki }}
+              </div>
+              <div class="mt-2 flex gap-2">
+                <button
+                  class="rounded border px-2 py-1 text-[11px]"
+                  style="border-color: var(--success); color: var(--success);"
+                  :disabled="!!busy"
+                  @click="doAccept(item)"
+                >✓ Accepter</button>
+                <button
+                  class="rounded border px-2 py-1 text-[11px]"
+                  style="border-color: var(--danger); color: var(--danger);"
+                  :disabled="!!busy"
+                  @click="doReject(item)"
+                >✕ Rejeter</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
     </template>
 
-    <!-- Hover-card -->
+    <!-- Hover-card (aperçu, suit le curseur) -->
     <div
-      v-if="hover"
+      v-if="hover && !pinned"
       class="hovercard"
       :style="{ left: Math.min(hover.x + 16, 1100) + 'px', top: hover.y + 16 + 'px' }"
     >
@@ -229,6 +396,49 @@ function onClick(m: CoinMarker) {
         </div>
       </template>
     </div>
+
+    <!-- Popover épinglé (au clic) avec actions -->
+    <template v-if="pinned">
+      <div class="pin-backdrop" @click="unpin" />
+      <div
+        class="hovercard pinned"
+        :style="{ left: Math.min(pinned.x + 16, 1100) + 'px', top: pinned.y + 16 + 'px' }"
+      >
+        <div v-if="pinned.marker.eurio_id" class="hc-img">
+          <img
+            v-if="hoverCard && hoverCard !== 'loading' && hoverCard !== 'error' && imgSrc((hoverCard as CoinCard).image_url)"
+            :src="imgSrc((hoverCard as CoinCard).image_url)"
+            alt=""
+          />
+          <div v-else class="hc-img-ph">{{ hoverCard === 'loading' ? '…' : '∅' }}</div>
+        </div>
+        <div class="hc-body">
+          <div class="hc-title">
+            {{ pinned.marker.eurio_id && hoverCard && hoverCard !== 'loading' && hoverCard !== 'error'
+              ? ((hoverCard as CoinCard).title_fr || pinned.marker.theme)
+              : pinned.marker.theme }}
+          </div>
+          <div class="hc-meta">{{ pinned.country }} · {{ pinned.year }}</div>
+          <div class="mt-2 flex flex-col gap-1.5">
+            <button v-if="pinned.marker.eurio_id" class="pin-btn" @click="goToCoin(pinned.marker.eurio_id!)">
+              Ouvrir la fiche →
+            </button>
+            <button
+              v-if="pinned.marker.eurio_id && pinned.marker.state === 'partial'"
+              class="pin-btn"
+              :disabled="!!busy"
+              @click="doRefresh(pinned.marker.eurio_id!)"
+            >Compléter (Numista)</button>
+            <button
+              v-if="!pinned.marker.eurio_id"
+              class="pin-btn pin-btn-primary"
+              :disabled="!!busy"
+              @click="doDiscover(pinned.country, pinned.year)"
+            >Découvrir sur Numista</button>
+          </div>
+        </div>
+      </div>
+    </template>
   </div>
 </template>
 
@@ -316,4 +526,39 @@ td.oz {
 .hc-meta { font-size: 11px; color: var(--ink-500); margin-top: 2px; }
 .hc-jo { color: var(--indigo-700); }
 .hc-missing { color: var(--danger); }
+
+/* Popover épinglé : cliquable (boutons), au-dessus du backdrop. */
+.hovercard.pinned {
+  pointer-events: auto;
+  align-items: flex-start;
+  z-index: 60;
+}
+.pin-backdrop { position: fixed; inset: 0; z-index: 55; }
+.pin-btn {
+  border: 1px solid var(--surface-3);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 11px;
+  color: var(--ink-700);
+  background: var(--surface);
+  cursor: pointer;
+  text-align: left;
+}
+.pin-btn:hover { background: var(--surface-2); }
+.pin-btn:disabled { opacity: 0.5; cursor: default; }
+.pin-btn-primary { border-color: var(--indigo-700); color: var(--indigo-700); }
+
+/* Vignette des cartes de review. */
+.rc-img {
+  width: 64px;
+  height: 64px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  background: var(--paper);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.rc-img img { width: 100%; height: 100%; object-fit: contain; }
 </style>

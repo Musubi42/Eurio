@@ -1405,3 +1405,26 @@ CREATE TABLE IF NOT EXISTS wikipedia_nl_coins (
   fetched_at       TEXT NOT NULL DEFAULT (datetime('now')),
   PRIMARY KEY (country, year, theme_slug)
 ) WITHOUT ROWID;
+
+-- File de review des découvertes Numista ciblées (gap-fill de la matrice de
+-- couverture). Le bulk auto (discover_numista_recent) crée les liens sans
+-- review ; ce qui reste manquant sur la matrice est le résidu suspect → on
+-- propose les candidats Numista ici (phase légère : titre + image + eurio_id
+-- proposé) SANS rien écrire dans `coins`. L'éditeur accepte/rejette 1 à 1 ;
+-- l'accept déclenche l'ingest complet (refetch_nids). cf. referential/discovery.py.
+CREATE TABLE IF NOT EXISTS referential_discovery_queue (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  country           TEXT NOT NULL,            -- ISO2
+  year              INTEGER NOT NULL,
+  numista_id        INTEGER NOT NULL UNIQUE,
+  proposed_eurio_id TEXT,                      -- calculé via eurio_id_from_numista_payload
+  numista_title     TEXT,
+  image_url         TEXT,                      -- URL Numista (obverse), affichage review only
+  theme_wiki        TEXT,                      -- thème(s) wiki manquant(s) de la cellule (indice)
+  is_commemorative  INTEGER NOT NULL DEFAULT 1,
+  is_variant        INTEGER NOT NULL DEFAULT 0,
+  status            TEXT NOT NULL DEFAULT 'pending'
+                      CHECK (status IN ('pending', 'accepted', 'rejected')),
+  discovered_at     TEXT NOT NULL DEFAULT (datetime('now')),
+  resolved_at       TEXT
+);

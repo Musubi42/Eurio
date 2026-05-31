@@ -70,6 +70,32 @@ DUTCH_COUNTRY_TO_ISO2: dict[str, str] = {
 
 _EU_LAND = ("europese unie", "europa")
 
+# Overrides manuels (country, year, theme_slug_wiki) → eurio_id. Cas où le thème
+# nl.wikipedia emploie un EXONYME ou un descripteur différent de notre titre : la
+# pièce EST en base mais aucun slug ne peut matcher (Koerland≠Kurzeme, etc.). Pas
+# d'algo possible via nos traductions → mapping explicite, une ligne par cas.
+# Documenté dans docs/sources-refacto/exonym-matching.md.
+MANUAL_OVERRIDES: dict[tuple[str, int, str], str] = {
+    ("DE", 2014, "de-michaeliskirche-in-hildesheim-nedersaksen-negende-uit-de-bundeslander-serie"):
+        "de-2014-2eur-state-of-lower-saxony",            # Hildesheim/Michaeliskirche = Basse-Saxe
+    ("NL", 2014, "koningsdubbelportret"):
+        "nl-2014-2eur-accession-of-king",                # double portrait royal = accession (canonique, pas la variante coloured)
+    ("LV", 2015, "30-jarig-bestaan-van-de-letse-ornithologische-vereniging"):
+        "lv-2015-2eur-the-black-stork",                  # 30 ans société ornithologique = la cigogne noire
+    ("LV", 2016, "midden-lijfland-eerste-uit-de-historische-en-culturele-regios-serie"):
+        "lv-2016-2eur-vidzeme",                          # Midden-Lijfland (Moyenne-Livonie) = Vidzeme
+    ("ES", 2017, "de-kerk-van-santa-maria-del-naranco-achtste-uit-de-serie-unesco-wereld-erfgoedlijst"):
+        "es-2017-2eur-churches-of-the-kingdom-of-asturias",  # église précise = série « églises du royaume des Asturies »
+    ("LV", 2017, "koerland-tweede-uit-de-historische-en-culturele-regios-serie"):
+        "lv-2017-2eur-kurzeme",                          # Koerland (exonyme NL) = Kurzeme
+    ("LV", 2017, "letgallen-derde-uit-de-historische-en-culturele-regios-serie"):
+        "lv-2017-2eur-latgale",                          # Letgallen (exonyme NL) = Latgale
+    ("LT", 2018, "100-verjaardag-van-de-oprichting-van-de-onafhankelijke-staat"):
+        "lt-2018-2eur-centenary-of-independent-baltic-states",  # indépendance lituanienne = série commune États baltes
+    ("LV", 2025, "selonie-vijfde-en-laatste-uit-de-historische-en-culturele-regios-serie"):
+        "lv-2025-2eur-selija",                           # Selonië (NL) = Selija (Sélonie)
+}
+
 
 @dataclass
 class NlCoinRow:
@@ -241,7 +267,7 @@ def harvest(store, *, html: str | None = None, dry_run: bool = False) -> dict:
     ref_index = _load_referential(conn)
     for key, lst in ref_index.items():
         ref_index[key] = [c for c in lst if c.eurio_id not in joint_eids]
-    matcher = SlugGroupMatcher()
+    matcher = SlugGroupMatcher(overrides=MANUAL_OVERRIDES)
     items = [(iso2, rr.year, _theme_slug(rr.theme)) for iso2, rr in national]
     matched = matcher.match_group(ref_index, items)
 
@@ -253,13 +279,16 @@ def harvest(store, *, html: str | None = None, dry_run: bool = False) -> dict:
             matched_eurio_id=eid, match_score=None,
         ))
 
-    # Dédup sur la PK (country, year, theme_slug).
+    # Dédup sur la PK (country, year, theme_slug). En cas de collision, on garde
+    # la ligne MATCHÉE (ex. commune dépliée vs doublon national au même slug —
+    # cf. SM 2012 « 10 jaar euro ») : une ligne non matchée ne doit pas écraser
+    # une ligne matchée.
     by_pk: dict[tuple[str, int, str], NlCoinRow] = {}
     for row in (*joint_rows, *national_rows):
         pk = (row.country, row.year, row.theme_slug)
-        if pk in by_pk:
-            logger.warning("[wiki-nl] collision PK %s — %r écrase %r",
-                           pk, row.theme, by_pk[pk].theme)
+        existing = by_pk.get(pk)
+        if existing is not None and existing.matched_eurio_id and not row.matched_eurio_id:
+            continue
         by_pk[pk] = row
     rows = list(by_pk.values())
 
@@ -292,6 +321,41 @@ def harvest(store, *, html: str | None = None, dry_run: bool = False) -> dict:
         )
     conn.commit()
     return recap
+
+
+def rematch_cell(conn, country: str, year: int) -> int:
+    """Re-relie les lignes wiki non matchées d'une cellule après ajout d'un coin
+    (accept de découverte). Réutilise le matcher fuzzy, en respectant l'unicité
+    (les eurio_id déjà liés dans la cellule sont exclus). Retourne le nb de
+    nouveaux liens écrits."""
+    ref_index = _load_referential(conn)
+    candidates = list(ref_index.get((country, year), []))
+    claimed = {
+        r[0] for r in conn.execute(
+            "SELECT matched_eurio_id FROM wikipedia_nl_coins "
+            "WHERE country = ? AND year = ? AND matched_eurio_id IS NOT NULL",
+            (country, year),
+        )
+    }
+    rows = conn.execute(
+        "SELECT theme_slug FROM wikipedia_nl_coins "
+        "WHERE country = ? AND year = ? AND matched_eurio_id IS NULL",
+        (country, year),
+    ).fetchall()
+    matcher = SlugGroupMatcher(overrides=MANUAL_OVERRIDES)
+    n = 0
+    for r in rows:
+        eid = matcher.assign_one(country, year, r["theme_slug"], candidates, claimed)
+        if eid:
+            conn.execute(
+                "UPDATE wikipedia_nl_coins SET matched_eurio_id = ?, "
+                "fetched_at = datetime('now') "
+                "WHERE country = ? AND year = ? AND theme_slug = ?",
+                (eid, country, year, r["theme_slug"]),
+            )
+            n += 1
+    conn.commit()
+    return n
 
 
 def _fetch_html() -> str:

@@ -1248,3 +1248,90 @@ def coverage_matrix() -> CoverageMatrixResponse:
     return CoverageMatrixResponse(
         years=year_list, countries=country_list, cells=cells, summary=summary,
     )
+
+
+# ── Découverte ciblée Numista + file de review (gap-fill matrice) ───────────
+# cf. referential/discovery.py. Phase 1 (discover) alimente la file ; Phase 2
+# (accept) déclenche l'ingest complet. Synchrone (admin, à la demande).
+
+
+class DiscoverRequest(BaseModel):
+    country: str
+    year: int
+
+
+class DiscoveryQueueItem(BaseModel):
+    id: int
+    country: str
+    year: int
+    numista_id: int
+    proposed_eurio_id: str | None
+    numista_title: str | None
+    image_url: str | None
+    theme_wiki: str | None
+    is_commemorative: bool
+    is_variant: bool
+    status: str
+
+
+@router.post("/discover-coin")
+def discover_coin(req: DiscoverRequest) -> dict:
+    """Phase 1 ciblée sur une cellule (pays, année) : cherche les candidats
+    Numista neufs et les met en file de review (sans écrire dans coins)."""
+    from referential.discovery import run_discover
+    return run_discover(_store(), [(req.country, req.year)])
+
+
+@router.post("/discover-all")
+def discover_all() -> dict:
+    """Phase 1 sur toutes les cellules manquantes de la matrice (un search par
+    pays concerné). Peut consommer plusieurs appels Numista."""
+    from referential.discovery import run_discover
+
+    conn = _store()._connection()  # noqa: SLF001
+    targets = [
+        (r[0], r[1]) for r in conn.execute(
+            "SELECT DISTINCT country, year FROM wikipedia_nl_coins "
+            "WHERE matched_eurio_id IS NULL ORDER BY country, year"
+        )
+    ]
+    return run_discover(_store(), targets)
+
+
+@router.get("/discovery-queue", response_model=list[DiscoveryQueueItem])
+def discovery_queue(status: str = Query(default="pending")) -> list[DiscoveryQueueItem]:
+    """File de review (par défaut les ``pending``)."""
+    conn = _store()._connection()  # noqa: SLF001
+    rows = conn.execute(
+        "SELECT id, country, year, numista_id, proposed_eurio_id, numista_title, "
+        "image_url, theme_wiki, is_commemorative, is_variant, status "
+        "FROM referential_discovery_queue WHERE status = ? "
+        "ORDER BY country, year, numista_id",
+        (status,),
+    ).fetchall()
+    return [
+        DiscoveryQueueItem(
+            id=r["id"], country=r["country"], year=r["year"],
+            numista_id=r["numista_id"], proposed_eurio_id=r["proposed_eurio_id"],
+            numista_title=r["numista_title"], image_url=r["image_url"],
+            theme_wiki=r["theme_wiki"], is_commemorative=bool(r["is_commemorative"]),
+            is_variant=bool(r["is_variant"]), status=r["status"],
+        )
+        for r in rows
+    ]
+
+
+@router.post("/discovery-queue/{queue_id}/accept")
+def discovery_accept(queue_id: int) -> dict:
+    """Phase 2 : ingest complet (refetch_nids) + rematch de la cellule."""
+    from referential.discovery import run_accept
+    res = run_accept(_store(), queue_id)
+    if not res.get("ok"):
+        raise HTTPException(status_code=400, detail=res.get("error", "accept_failed"))
+    return res
+
+
+@router.post("/discovery-queue/{queue_id}/reject")
+def discovery_reject(queue_id: int) -> dict:
+    from referential.discovery import run_reject
+    return run_reject(_store(), queue_id)

@@ -113,6 +113,52 @@ export function fetchCoverageMatrix(): Promise<CoverageMatrixResponse> {
   return json<CoverageMatrixResponse>('/referential/coverage-matrix')
 }
 
+// ─── Découverte Numista ciblée + file de review (gap-fill) ───────────────
+
+export interface DiscoverResult {
+  queued: number
+  by_country: Record<string, number>
+  not_found: { country: string; year: number }[]
+  error?: string
+}
+
+export interface DiscoveryQueueItem {
+  id: number
+  country: string
+  year: number
+  numista_id: number
+  proposed_eurio_id: string | null
+  numista_title: string | null
+  image_url: string | null
+  theme_wiki: string | null
+  is_commemorative: boolean
+  is_variant: boolean
+  status: string
+}
+
+export function discoverCoin(country: string, year: number): Promise<DiscoverResult> {
+  return json<DiscoverResult>('/referential/discover-coin', {
+    method: 'POST',
+    body: JSON.stringify({ country, year }),
+  })
+}
+
+export function discoverAll(): Promise<DiscoverResult> {
+  return json<DiscoverResult>('/referential/discover-all', { method: 'POST' })
+}
+
+export function fetchDiscoveryQueue(): Promise<DiscoveryQueueItem[]> {
+  return json<DiscoveryQueueItem[]>('/referential/discovery-queue')
+}
+
+export function acceptDiscovery(id: number): Promise<{ ok: boolean; relinked?: number }> {
+  return json(`/referential/discovery-queue/${id}/accept`, { method: 'POST' })
+}
+
+export function rejectDiscovery(id: number): Promise<{ ok: boolean }> {
+  return json(`/referential/discovery-queue/${id}/reject`, { method: 'POST' })
+}
+
 // ─── Discover (Numista oracle sweep) ───────────────────────────────────
 
 export interface DiscoverRequest {
