@@ -559,15 +559,10 @@ function tabCount(tab: typeof activeTab.value): number {
                          style="border-color: var(--surface-3); color: var(--indigo-700);">
               Voir divergences BCE ↔ Numista →
             </router-link>
-            <router-link to="/referential/jo-coverage"
+            <router-link to="/referential/coverage"
                          class="rounded-full border px-3 py-1 font-mono text-[10px] normal-case"
                          style="border-color: var(--surface-3); color: var(--indigo-700);">
-              Couverture Journal Officiel →
-            </router-link>
-            <router-link to="/referential/wikipedia-matrix"
-                         class="rounded-full border px-3 py-1 font-mono text-[10px] normal-case"
-                         style="border-color: var(--surface-3); color: var(--indigo-700);">
-              Matrice Wikipédia →
+              Couverture 2 € commémoratives →
             </router-link>
           </span>
         </h2>

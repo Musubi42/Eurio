@@ -105,12 +105,8 @@ const router = createRouter({
           component: () => import('@/features/referential/pages/FixesPage.vue'),
         },
         {
-          path: 'referential/jo-coverage',
-          component: () => import('@/features/referential/pages/JoCoveragePage.vue'),
-        },
-        {
-          path: 'referential/wikipedia-matrix',
-          component: () => import('@/features/referential/pages/WikipediaMatrixPage.vue'),
+          path: 'referential/coverage',
+          component: () => import('@/features/referential/pages/CoveragePage.vue'),
         },
         {
           path: 'parity',

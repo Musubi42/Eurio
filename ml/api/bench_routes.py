@@ -22,6 +22,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
+from api._coin_helpers import canonical_obverse_url
 from scripts.bench_theme_match import SEED_YEARS, replay_bench
 
 router = APIRouter(prefix="/bench", tags=["bench"])
@@ -75,30 +76,8 @@ def _obverse_url(raw_payload_json: str | None) -> str | None:
 def _canonical_obverse_url(
     conn: sqlite3.Connection, eurio_id: str,
 ) -> str | None:
-    """URL servable de l'avers d'un coin via `coin_canonical_images`.
-
-    Préfère l'URL Numista externe (chargeable directement par l'admin).
-    Fallback : endpoint local ``/referential/canonical/{id}/obverse`` qui
-    sert le WebP BCE quand l'externe manque."""
-    row = conn.execute(
-        """
-        SELECT source, url, local_path FROM coin_canonical_images
-         WHERE eurio_id = ? AND role = 'obverse'
-         ORDER BY CASE source
-                    WHEN 'numista_api'  THEN 1
-                    WHEN 'bce_official' THEN 2
-                    ELSE 9 END
-         LIMIT 1
-        """,
-        (eurio_id,),
-    ).fetchone()
-    if row is None:
-        return None
-    if row["url"]:
-        return row["url"]
-    if row["local_path"]:
-        return f"/referential/canonical/{eurio_id}/obverse?source={row['source']}"
-    return None
+    """Délègue au helper partagé (cf. ``api._coin_helpers``)."""
+    return canonical_obverse_url(conn, eurio_id)
 
 
 def _groups_context(conn: sqlite3.Connection) -> dict[str, list[BenchGroupCoin]]:

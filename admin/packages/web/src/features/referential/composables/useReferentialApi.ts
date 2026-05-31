@@ -75,46 +75,42 @@ export function runHeal(): Promise<HealResponse> {
   return json<HealResponse>('/referential/heal', { method: 'POST' })
 }
 
-// ─── Coverage JO / EUR-Lex ─────────────────────────────────────────────
+// ─── Matrice de couverture 2€ commémoratives (nl.wikipedia par pièce) ────
+// Un marqueur par pièce attendue (nl.wikipedia), coloré par son état dans
+// eurio.db ; badge JO officiel + losange commune. cf. coverage-matrix endpoint.
 
-export interface JoCoverageCell {
-  n_coins: number
-  n_jo: number
-  n_issued: number
+export type CoinMarkerState = 'have' | 'partial' | 'missing' | 'planned'
+
+export interface CoinMarker {
+  eurio_id: string | null
+  theme: string
+  state: CoinMarkerState
+  jo: boolean
+  joint: boolean
 }
 
-export interface JoCoverageResponse {
-  current_year: number
+export interface CoverageCell {
+  markers: CoinMarker[]
+  out_of_zone: boolean
+}
+
+export interface CoverageMatrixResponse {
   years: number[]
   countries: string[]
-  // country → { "2024": cell, … }
-  cells: Record<string, Record<string, JoCoverageCell>>
-  summary: { total_coins: number; total_jo: number; total_gap: number }
+  cells: Record<string, Record<string, CoverageCell>>
+  summary: {
+    expected: number
+    owned: number
+    partial: number
+    missing: number
+    jo_official: number
+    referenced: number
+    coverage_pct: number
+  }
 }
 
-export function fetchJoCoverage(): Promise<JoCoverageResponse> {
-  return json<JoCoverageResponse>('/referential/jo-coverage')
-}
-
-// ─── Matrice Wikipédia DE ───────────────────────────────────────────────
-
-export interface WikiMatrixCell {
-  e_count: number
-  e_planned: boolean
-  g_count: number
-  g_planned: boolean
-  n_db: number
-}
-
-export interface WikiMatrixResponse {
-  years: number[]
-  countries: string[]
-  cells: Record<string, Record<string, WikiMatrixCell>>
-  summary: { total_wiki_national: number; total_owned: number }
-}
-
-export function fetchWikipediaMatrix(): Promise<WikiMatrixResponse> {
-  return json<WikiMatrixResponse>('/referential/wikipedia-matrix')
+export function fetchCoverageMatrix(): Promise<CoverageMatrixResponse> {
+  return json<CoverageMatrixResponse>('/referential/coverage-matrix')
 }
 
 // ─── Discover (Numista oracle sweep) ───────────────────────────────────

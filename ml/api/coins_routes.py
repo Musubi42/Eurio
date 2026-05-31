@@ -659,6 +659,45 @@ def refresh_coin_source(
     return RefreshResponse(run_id=rid, source=source)
 
 
+class CoinCardResponse(BaseModel):
+    eurio_id: str
+    image_url: str | None
+    title_fr: str | None
+    country: str
+    year: int
+    jo: bool
+    joint: bool
+
+
+@router.get("/{eurio_id}/card", response_model=CoinCardResponse)
+def get_coin_card(eurio_id: str) -> CoinCardResponse:
+    """Carte légère d'un coin pour le hover de la matrice de couverture :
+    image de base (avers) + titre FR par défaut + flags JO/commune."""
+    from api._coin_helpers import canonical_obverse_url, fr_title
+
+    conn = _conn()
+    row = conn.execute(
+        "SELECT country, year, design_group_id FROM coins WHERE eurio_id = ?",
+        (eurio_id,),
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"coin {eurio_id} not found")
+    jo = conn.execute(
+        "SELECT 1 FROM coin_source_refs WHERE target_kind='coin' "
+        "AND target_id=? AND source='eurlex_jo' LIMIT 1",
+        (eurio_id,),
+    ).fetchone() is not None
+    return CoinCardResponse(
+        eurio_id=eurio_id,
+        image_url=canonical_obverse_url(conn, eurio_id),
+        title_fr=fr_title(conn, eurio_id),
+        country=row["country"],
+        year=row["year"],
+        jo=jo,
+        joint=bool(row["design_group_id"] and str(row["design_group_id"]).startswith("eu-")),
+    )
+
+
 @router.get("/{eurio_id}/prices", response_model=PricesResponse)
 def get_coin_prices(eurio_id: str) -> PricesResponse:
     """Option B (cf. P.8 audit) — structure riche :

@@ -23,7 +23,7 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
@@ -1131,43 +1131,49 @@ def fix_proposals_refresh() -> FixProposalsRefreshResponse:
     )
 
 
-# ── Coverage JO / EUR-Lex (Chunk 3) ────────────────────────────────────────
+# ── Matrice de couverture 2€ commémoratives (nl.wikipedia par pièce) ────────
+# Source « attendu » = table wikipedia_nl_coins (une ligne/pièce, thème NL,
+# matched_eurio_id). État = couverture du RÉFÉRENTIEL (référencée en base), pas
+# possession physique. Remplace les ex-vues jo-coverage + wikipedia-matrix.
+
+_ALWAYS_IN_ZONE = {"AD", "MC", "SM", "VA"}
 
 
-class JoCoverageCell(BaseModel):
-    n_coins: int   # commémo 2€ en eurio.db pour (country, year)
-    n_jo: int      # celles ayant un avis JO (coin_source_refs eurlex_jo)
-    n_issued: int  # celles dont la date d'émission JO est <= année courante
+def _in_zone(country: str, year: int) -> bool:
+    if country in _ALWAYS_IN_ZONE:
+        return True
+    return country in eurozone_at(year)
 
 
-class JoCoverageResponse(BaseModel):
-    current_year: int
+class CoinMarker(BaseModel):
+    eurio_id: str | None
+    theme: str
+    state: Literal["have", "partial", "missing", "planned"]
+    jo: bool
+    joint: bool
+
+
+class CoverageCell(BaseModel):
+    markers: list[CoinMarker]
+    out_of_zone: bool
+
+
+class CoverageMatrixResponse(BaseModel):
     years: list[int]
     countries: list[str]
-    # country → { "2024": cell, … } (clé année en str pour JSON).
-    cells: dict[str, dict[str, JoCoverageCell]]
-    summary: dict[str, int]
+    cells: dict[str, dict[str, CoverageCell]]
+    summary: dict[str, float]
 
 
-@router.get("/jo-coverage", response_model=JoCoverageResponse)
-def jo_coverage() -> JoCoverageResponse:
-    """Couverture JO par (pays × année) sur les commémoratives 2 € d'eurio.db.
+@router.get("/coverage-matrix", response_model=CoverageMatrixResponse)
+def coverage_matrix() -> CoverageMatrixResponse:
+    """Matrice pays × année : un marqueur par pièce attendue (nl.wikipedia),
+    coloré par son état dans eurio.db, badge JO officiel, losange commune.
 
-    Pour chaque cellule : combien de pièces on référence, combien ont leur
-    avis JO officiel, et combien sont déjà émises (date d'émission JO passée).
-    C'est le filet de confiance « ai-je bien la fiche officielle de tout ce
-    que je référence ? » — cf. memory ``project_eurlex_source``."""
-    import json
-    import re
-
+    « possédée » = pièce référencée en base (matched_eurio_id) — couverture du
+    référentiel, pas vault perso. Le rouge (manquante : nl la liste, pas
+    d'eurio_id) = la worklist. cf. memory project_eurlex_source."""
     conn = _store()._connection()  # noqa: SLF001
-    current_year = datetime.now(timezone.utc).year
-    year_re = re.compile(r"\b(19|20)\d{2}\b")
-
-    coins = conn.execute(
-        "SELECT eurio_id, country, year FROM coins "
-        "WHERE face_value = 2.0 AND is_commemorative = 1"
-    ).fetchall()
 
     jo_refs = {
         r[0] for r in conn.execute(
@@ -1175,120 +1181,70 @@ def jo_coverage() -> JoCoverageResponse:
             "WHERE target_kind='coin' AND source='eurlex_jo'"
         )
     }
-    # eurio_id → année d'émission parsée depuis l'observation JO.
-    issued_year: dict[str, int] = {}
-    for r in conn.execute(
-        "SELECT eurio_id, payload_json FROM coin_observations "
-        "WHERE source='eurlex_jo' AND observation_type='issuing_date'"
-    ):
-        try:
-            payload = json.loads(r[1]) if r[1] else {}
-        except (ValueError, TypeError):
-            payload = {}
-        m = year_re.search(str(payload.get("date_of_issue") or ""))
-        if m:
-            issued_year[r[0]] = int(m.group(0))
+    has_obverse = {
+        r[0] for r in conn.execute(
+            "SELECT DISTINCT eurio_id FROM coin_canonical_images WHERE role='obverse'"
+        )
+    }
+    joint_eids = {
+        r[0] for r in conn.execute(
+            "SELECT eurio_id FROM coins WHERE design_group_id LIKE 'eu-%'"
+        )
+    }
 
-    cells: dict[str, dict[str, JoCoverageCell]] = {}
+    raw = conn.execute(
+        "SELECT country, year, theme, matched_eurio_id, planned "
+        "FROM wikipedia_nl_coins"
+    ).fetchall()
+
+    grid: dict[tuple[str, int], list[CoinMarker]] = {}
+    countries: set[str] = set()
     years: set[int] = set()
-    total_coins = total_jo = 0
-    for c in coins:
-        eid, country, year = c[0], c[1], c[2]
+    summ = {"expected": 0, "owned": 0, "partial": 0, "missing": 0, "jo_official": 0}
+    for r in raw:
+        country, year = r["country"], r["year"]
+        eid = r["matched_eurio_id"]
+        countries.add(country)
         years.add(year)
-        bucket = cells.setdefault(country, {})
-        cell = bucket.get(str(year))
-        if cell is None:
-            cell = JoCoverageCell(n_coins=0, n_jo=0, n_issued=0)
-            bucket[str(year)] = cell
-        cell.n_coins += 1
-        total_coins += 1
-        if eid in jo_refs:
-            cell.n_jo += 1
-            total_jo += 1
-            iy = issued_year.get(eid)
-            if iy is not None and iy <= current_year:
-                cell.n_issued += 1
-
-    return JoCoverageResponse(
-        current_year=current_year,
-        years=sorted(years),
-        countries=sorted(cells.keys()),
-        cells=cells,
-        summary={"total_coins": total_coins, "total_jo": total_jo,
-                 "total_gap": total_coins - total_jo},
-    )
-
-
-# ── Coverage Wikipédia DE (Chunk 4) ────────────────────────────────────────
-
-
-class WikiMatrixCell(BaseModel):
-    e_count: int        # émissions nationales (Wikipédia)
-    e_planned: bool
-    g_count: int        # émissions communes (joint issues)
-    g_planned: bool
-    n_db: int           # commémo 2€ qu'on possède en eurio.db pour (pays, année)
-
-
-class WikiMatrixResponse(BaseModel):
-    years: list[int]
-    countries: list[str]
-    cells: dict[str, dict[str, WikiMatrixCell]]
-    summary: dict[str, int]
-
-
-@router.get("/wikipedia-matrix", response_model=WikiMatrixResponse)
-def wikipedia_matrix() -> WikiMatrixResponse:
-    """Matrice Wikipédia DE (pays × année) + marqueur de possession eurio.db.
-
-    Source : table ``wikipedia_coverage`` (alimentée par
-    ``go-task ml:scrape-wikipedia-de``). Montre aussi le non-émis (count=0)
-    et le planifié — 2e couverture complémentaire du JO."""
-    conn = _store()._connection()  # noqa: SLF001
-
-    cells: dict[str, dict[str, WikiMatrixCell]] = {}
-    years: set[int] = set()
-    for r in conn.execute(
-        "SELECT country, year, kind, count, planned FROM wikipedia_coverage"
-    ):
-        country, year, kind, count, planned = r[0], r[1], r[2], r[3], bool(r[4])
-        years.add(year)
-        bucket = cells.setdefault(country, {})
-        cell = bucket.get(str(year))
-        if cell is None:
-            cell = WikiMatrixCell(e_count=0, e_planned=False, g_count=0,
-                                  g_planned=False, n_db=0)
-            bucket[str(year)] = cell
-        if kind == "E":
-            cell.e_count = count
-            cell.e_planned = planned
+        if eid is None:
+            state = "planned" if r["planned"] else "missing"
+        elif eid in has_obverse:
+            state = "have"
         else:
-            cell.g_count = count
-            cell.g_planned = planned
+            state = "partial"
+        is_jo = eid is not None and eid in jo_refs
+        grid.setdefault((country, year), []).append(CoinMarker(
+            eurio_id=eid, theme=r["theme"], state=state,
+            jo=is_jo, joint=(eid is not None and eid in joint_eids),
+        ))
+        summ["expected"] += 1
+        if state == "have":
+            summ["owned"] += 1
+        elif state == "partial":
+            summ["partial"] += 1
+        elif state == "missing":
+            summ["missing"] += 1
+        if is_jo:
+            summ["jo_official"] += 1
 
-    # Possession : commémo 2€ en eurio.db par (country, year).
-    n_owned_total = 0
-    for r in conn.execute(
-        "SELECT country, year, COUNT(*) AS n FROM coins "
-        "WHERE face_value = 2.0 AND is_commemorative = 1 GROUP BY country, year"
-    ):
-        country, year, n = r[0], r[1], r[2]
-        bucket = cells.setdefault(country, {})
-        cell = bucket.get(str(year))
-        if cell is None:
-            cell = WikiMatrixCell(e_count=0, e_planned=False, g_count=0,
-                                  g_planned=False, n_db=0)
-            bucket[str(year)] = cell
-            years.add(year)
-        cell.n_db = n
-        n_owned_total += n
+    year_list = sorted(years)
+    if year_list:
+        year_list = list(range(min(year_list), max(year_list) + 1))
+    country_list = sorted(countries)
+    cells: dict[str, dict[str, CoverageCell]] = {}
+    for country in country_list:
+        bucket: dict[str, CoverageCell] = {}
+        for year in year_list:
+            bucket[str(year)] = CoverageCell(
+                markers=grid.get((country, year), []),
+                out_of_zone=not _in_zone(country, year),
+            )
+        cells[country] = bucket
 
-    total_wiki = sum(
-        c.e_count for bucket in cells.values() for c in bucket.values()
-    )
-    return WikiMatrixResponse(
-        years=sorted(years),
-        countries=sorted(cells.keys()),
-        cells=cells,
-        summary={"total_wiki_national": total_wiki, "total_owned": n_owned_total},
+    referenced = summ["owned"] + summ["partial"]
+    coverage_pct = round(referenced / summ["expected"] * 100, 1) if summ["expected"] else 0.0
+    summary = {**{k: float(v) for k, v in summ.items()},
+               "referenced": float(referenced), "coverage_pct": coverage_pct}
+    return CoverageMatrixResponse(
+        years=year_list, countries=country_list, cells=cells, summary=summary,
     )

@@ -324,6 +324,21 @@ export function postCoinRefresh(eurioId: string, source: 'bce' | 'numista' | 'jo
   )
 }
 
+// Carte légère d'un coin pour le hover de la matrice de couverture.
+export interface CoinCard {
+  eurio_id: string
+  image_url: string | null
+  title_fr: string | null
+  country: string
+  year: number
+  jo: boolean
+  joint: boolean
+}
+
+export function fetchCoinCard(eurioId: string): Promise<CoinCard> {
+  return json<CoinCard>(`/coins/${encodeURIComponent(eurioId)}/card`)
+}
+
 // Snapshot léger d'un run pour le polling du refresh par coin (découplé du type
 // SourceId de la feature sources, qui ne couvre pas 'numista').
 export interface RunSnapshotLite {
