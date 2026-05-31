@@ -1,5 +1,10 @@
 # Eurio — Roadmap J1→J7
 
+> **⚠️ Couche stratégique = [`docs/mission/`](./mission/)** (depuis 2026-05-31). Ce
+> fichier est désormais le **tracker legacy ML/scan** : il sert de détail à la mission
+> [Scan](./mission/scan.md). Pour la vision produit, les paliers et la growth, voir
+> [`docs/mission/product-strategy.md`](./mission/product-strategy.md).
+>
 > **À quoi sert ce doc** : reprendre une session froide en 5 min. Photo de la trajectoire vers le premier modèle ArcFace utile et son déploiement Android, dans le bon ordre, avec les dépendances explicites.
 >
 > **Dernière mise à jour** : 2026-05-28 (re-séquencement crop / découplage scrape↔crop)
