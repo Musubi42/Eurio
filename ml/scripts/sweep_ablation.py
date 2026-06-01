@@ -218,6 +218,10 @@ def main() -> None:
                          required=True)
     parser.add_argument("--only-classes", type=str, default=None,
                          help="Limite training aux class_ids données (comma-separated).")
+    parser.add_argument("--cohort-csv", type=Path, default=None,
+                         help="Résout les classes depuis ce CSV cohort "
+                              "(eurio_id;numista_id;…) au lieu de Supabase. "
+                              "Bench offline : entraîne exactement les coins du CSV.")
 
     g = parser.add_mutually_exclusive_group()
     g.add_argument("--sweep-default", action="store_true",
@@ -271,6 +275,7 @@ def main() -> None:
             class_kind=args.class_kind,
             only_classes=args.only_classes,
             force=("recrop" in forced),
+            cohort_csv=args.cohort_csv,
         )
         ckpt = step_train(
             slug, dataset_dir,

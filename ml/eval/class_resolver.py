@@ -200,6 +200,54 @@ def build_resolver(
     return Resolver(coins)
 
 
+def coin_refs_from_cohort_csv(csv_path: Path) -> list[CoinRef]:
+    """Build a CoinRef list from a cohort CSV — offline, no Supabase.
+
+    A cohort CSV is the frozen source of truth for a capture cohort (the
+    eurio_id column is the on-device capture label, so train/val/eval share
+    one namespace). Format, one coin per line::
+
+        eurio_id;numista_id;display_name
+
+    ``#``-comment lines and the ``eurio_id;…`` header are skipped.
+    ``design_group_id`` is always None — cohort benches run class_kind=eurio_id.
+    """
+    coins: list[CoinRef] = []
+    for raw in Path(csv_path).read_text().splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or line.startswith("eurio_id"):
+            continue
+        parts = line.split(";")
+        if len(parts) < 2:
+            continue
+        eurio_id = parts[0].strip()
+        nid_raw = parts[1].strip()
+        if not eurio_id:
+            continue
+        coins.append(CoinRef(
+            eurio_id=eurio_id,
+            numista_id=int(nid_raw) if nid_raw else None,
+            design_group_id=None,
+        ))
+    return coins
+
+
+def build_resolver_from_cohort_csv(
+    csv_path: Path,
+    *,
+    force_eurio_id: bool = True,
+) -> Resolver:
+    """Offline Resolver from a cohort CSV (no Supabase).
+
+    ``force_eurio_id`` is accepted for API symmetry with :func:`build_resolver`;
+    the CSV carries no design_group anyway, so each coin is its own class.
+    """
+    coins = coin_refs_from_cohort_csv(csv_path)
+    if not coins:
+        raise RuntimeError(f"No coin rows parsed from cohort CSV {csv_path}")
+    return Resolver(coins)
+
+
 # ─── Manifest ──────────────────────────────────────────────────────────────
 #
 # The prepared dataset directory carries a `class_manifest.json` describing

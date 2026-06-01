@@ -291,14 +291,22 @@ def _build_train_dataset(args) -> EurioCoinDataset:
     # Resolve per-class zones from confusion_map. Classes are derived from
     # the on-disk train/ folder layout — no need to consult Supabase for the
     # class list itself, just for the zone of each class.
-    from eval.class_resolver import build_resolver
+    from training.zone_resolver import DEFAULT_ZONE
 
-    resolver = build_resolver()
     eurio_zones = fetch_eurio_zones()
     class_dirs = sorted(
         d.name for d in Path(args.dataset).iterdir() if d.is_dir()
     )
-    class_zones = resolve_class_zones(class_dirs, resolver, eurio_zones=eurio_zones)
+    if eurio_zones:
+        # Supabase reachable → map each class to its confusion zone.
+        from eval.class_resolver import build_resolver
+        resolver = build_resolver()
+        class_zones = resolve_class_zones(class_dirs, resolver, eurio_zones=eurio_zones)
+    else:
+        # No Supabase (offline bench) → every class defaults to orange, the
+        # same outcome resolve_class_zones would yield with empty zones, but
+        # without needing a resolver at all.
+        class_zones = {c: DEFAULT_ZONE for c in class_dirs}
     by_zone: dict[str, int] = {}
     for z in class_zones.values():
         by_zone[z] = by_zone.get(z, 0) + 1

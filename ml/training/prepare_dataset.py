@@ -30,6 +30,7 @@ from eval.class_resolver import (
     MANIFEST_FILENAME,
     Resolver,
     build_resolver,
+    build_resolver_from_cohort_csv,
     write_manifest,
 )
 from scan.normalize_snap import CropConfig, OUTPUT_SIZE, normalize_studio_path
@@ -339,6 +340,16 @@ def main():
              "docs/lab-prod-refacto/phase-1-label-space.md.",
     )
     parser.add_argument(
+        "--cohort-csv",
+        type=Path,
+        default=None,
+        help="Build the class resolver from this cohort CSV "
+             "(eurio_id;numista_id;display_name) instead of Supabase — offline "
+             "source of truth for a capture cohort. The run then trains exactly "
+             "the CSV's coins (every other datasets/<nid> dir is skipped). Cf. "
+             "docs/operations/crop-ablation-pc-runbook.md.",
+    )
+    parser.add_argument(
         "--skip-train-split",
         action="store_true",
         help="Mode lab iteration : ne génère que val/ + manifest. train/ "
@@ -406,9 +417,15 @@ def main():
         args.output_dir.mkdir(parents=True, exist_ok=True)
 
     force_eurio_id = args.class_kind == "eurio_id"
-    resolver = build_resolver(force_eurio_id=force_eurio_id)
+    if args.cohort_csv is not None:
+        resolver = build_resolver_from_cohort_csv(
+            args.cohort_csv, force_eurio_id=force_eurio_id)
+        source = f"cohort CSV {args.cohort_csv.name}"
+    else:
+        resolver = build_resolver(force_eurio_id=force_eurio_id)
+        source = "Supabase"
     print(
-        f"Resolver: {len(resolver.classes)} known classes from Supabase "
+        f"Resolver: {len(resolver.classes)} known classes from {source} "
         f"(class_kind={args.class_kind})"
     )
 

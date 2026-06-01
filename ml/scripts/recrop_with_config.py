@@ -85,7 +85,7 @@ def _existing_config(output_dir: Path) -> CropConfig | None:
 
 def _run_prepare(config: CropConfig, output_dir: Path, class_kind: str,
                   raw_dir: Path | None, only_classes: str | None,
-                  seed: int) -> int:
+                  seed: int, cohort_csv: Path | None) -> int:
     """Invoke prepare_dataset.py with CropConfig args. Returns exit code."""
     cmd = [
         sys.executable, "-m", "training.prepare_dataset",
@@ -101,6 +101,8 @@ def _run_prepare(config: CropConfig, output_dir: Path, class_kind: str,
         cmd += ["--raw-dir", str(raw_dir)]
     if only_classes:
         cmd += ["--only-classes", only_classes]
+    if cohort_csv is not None:
+        cmd += ["--cohort-csv", str(cohort_csv)]
     print(f"\n→ {' '.join(cmd)}\n")
     return subprocess.call(cmd, cwd=str(_ML_DIR))
 
@@ -111,7 +113,8 @@ def recrop_one(config: CropConfig, *,
                 only_classes: str | None = None,
                 seed: int = 42,
                 force: bool = False,
-                output_root: Path | None = None) -> Path:
+                output_root: Path | None = None,
+                cohort_csv: Path | None = None) -> Path:
     """Re-crop le dataset complet avec `config`. Retourne le path du dataset."""
     root = output_root or (_ML_DIR / "datasets")
     slug = _slug_for(config)
@@ -131,7 +134,8 @@ def recrop_one(config: CropConfig, *,
             print(f"[regen] config différente détectée → suppression de {output_dir}")
             shutil.rmtree(output_dir)
 
-    rc = _run_prepare(config, output_dir, class_kind, raw_dir, only_classes, seed)
+    rc = _run_prepare(config, output_dir, class_kind, raw_dir, only_classes,
+                      seed, cohort_csv)
     if rc != 0:
         raise SystemExit(f"prepare_dataset failed (rc={rc}) for slug={slug}")
     _write_crop_config_json(output_dir, config)
@@ -162,6 +166,11 @@ def main() -> None:
                          help="Regénère même si _crop_config.json matche.")
     parser.add_argument("--output-root", type=Path, default=None,
                          help="Override root output (défaut = ml/datasets/).")
+    parser.add_argument("--cohort-csv", type=Path, default=None,
+                         help="Résout les classes depuis ce CSV cohort "
+                              "(eurio_id;numista_id;…) au lieu de Supabase. "
+                              "Source de vérité offline ; entraîne exactement "
+                              "les coins du CSV.")
 
     g = parser.add_mutually_exclusive_group(required=True)
     g.add_argument("--sweep-default", action="store_true",
@@ -203,6 +212,7 @@ def main() -> None:
             seed=args.seed,
             force=args.force,
             output_root=args.output_root,
+            cohort_csv=args.cohort_csv,
         )
     print(f"\n✓ done — {len(configs)} dataset(s) sous "
           f"{(args.output_root or _ML_DIR / 'datasets')}/eurio-poc-*")

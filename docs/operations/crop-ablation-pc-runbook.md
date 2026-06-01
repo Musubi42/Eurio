@@ -1,39 +1,53 @@
-# Runbook PC — sweep ablation format crop (backend, 1080 Ti)
+# Runbook PC — sweep ablation format crop (offline, 1080 Ti)
 
-> **À donner tel quel à une session Claude Code fraîche sur le PC (`desktop`, profil
-> Nix `pc`, GPU 1080 Ti).** Objectif : lancer le sweep d'ablation format crop
-> 100 % backend (aucun passage par l'app Android / l'admin), stocker les sorties
-> proprement, et produire une table comparative pour désigner le format gagnant.
+> **À exécuter sur le PC (`desktop`, profil Nix `pc`, GPU 1080 Ti).** Objectif :
+> lancer le sweep d'ablation format crop **100 % offline** (aucun Supabase,
+> aucun passage par l'app Android / l'admin), et produire une table comparative
+> pour désigner le format de crop gagnant.
 >
 > Contexte stratégique : `docs/cohort-capture-ablation.md` (tracker capture) +
-> memory `project_crop_format_ablation`. Recherche SOTA : memory
+> memory `project_crop_format_ablation`. Décision offline : memory
+> `project_crop_ablation_offline_training`. Recherche SOTA : memory
 > `reference_crop_format_research`.
 
 ---
 
-## Ce qu'on fait (stratégie A, actée 2026-06-01)
+## Pourquoi offline (lis ça d'abord)
 
-On évalue **12 formats de crop** (4 margins × 3 edge_modes, résolution 224) en
-deux temps pour tenir dans ~45h GPU au lieu de ~60h :
+L'ancienne version de ce runbook construisait les **classes d'entraînement
+depuis Supabase**. Or `eurio.db` (SQLite local, source de vérité) a beaucoup
+**drifté** par rapport à Supabase sur les `eurio_id` : les labels Supabase ne
+matchaient plus les captures device → seulement 5/17 pièces alignées → R@1
+plafonné ~20 % quel que soit le crop. **On a abandonné Supabase pour ce bench.**
 
-1. **Screening** : entraîner les 12 combos à **8 epochs** (≈ 2.5h/combo ≈ **30h**),
-   lire la table triée par R@1, retenir les **2-3 finalistes**.
-2. **Finalisation** : ré-entraîner uniquement les finalistes à **20 epochs**
-   (≈ 5h/combo ≈ **15h**) pour le chiffre R@1 définitif.
+La source de vérité du bench est le **CSV cohort**
+`ml/state/cohort_csvs/mix-zone-17.csv` (`eurio_id;numista_id;display_name`). Sa
+colonne `eurio_id` EST le label des captures device, donc `train` ↔ `val` ↔
+`eval` partagent un seul namespace. On passe ce CSV via `--cohort-csv` ; le
+pipeline résout `numista_id → eurio_id` depuis le CSV (fonction
+`build_resolver_from_cohort_csv`, `ml/eval/class_resolver.py`) et entraîne
+**exactement les 17 coins du CSV** (closed-set 17 classes).
 
-Le hold-out d'éval = **337 captures device** (cohorte `mix-zone-17`, 17 pièces ×
-5 conditions d'éclairage). Pour chaque combo, le pipeline re-crope le dataset
-Numista d'entraînement avec le format candidat, ré-entraîne un embedder ArcFace,
-puis évalue le R@1 sur les **raws device re-cropés au même format**.
-
-> ⚠️ **À ne pas sur-interpréter** : les captures device servent à la fois de
-> val pendant le training (sélection du best_model) et de hold-out final. Le
-> classement *relatif* entre combos reste équitable (même val partout), mais le
-> R@1 *absolu* est optimiste.
+> ⚠️ **Bench relatif** : les captures device servent à la fois de val pendant le
+> training (sélection du best_model) et de hold-out final. Le classement
+> *relatif* entre combos reste équitable (même val partout), mais le R@1
+> *absolu* est optimiste (17-way closed set). C'est ce qu'on veut : choisir le
+> meilleur format de crop, pas mesurer la perf prod.
 
 ---
 
-## Matrice des 12 combos
+## Ce qu'on fait
+
+On évalue **12 formats de crop** (4 margins × 3 edge_modes, résolution 224), en
+**un seul passage à 12 epochs**. À 17 classes c'est rapide : **~1–2 h GPU pour
+les 12 combos** (plus besoin du découpage screen-8ep / finalize-20ep de
+l'ancienne stratégie, qui supposait un entraînement full-catalogue à ~45 h).
+
+Pour chaque combo, le pipeline re-crope les raws Numista des 17 coins au format
+candidat, ré-entraîne un embedder ArcFace, calcule les centroïdes, puis évalue
+le R@1 sur les **captures device re-cropées au même format**.
+
+### Matrice des 12 combos
 
 | margin \ edge | `hard` | `feathered` | `none` |
 |---|---|---|---|
@@ -43,8 +57,7 @@ puis évalue le R@1 sur les **raws device re-cropés au même format**.
 | **0.15** | m15-hard | m15-feathered | m15-none |
 
 (`edge_mode` : `hard` = masque noir net hors cercle · `feathered` = transition
-douce · `none` = pas de masque. Définition source :
-`ml/scripts/recrop_with_config.py:49`.)
+douce · `none` = pas de masque. Source : `ml/scripts/recrop_with_config.py`.)
 
 ---
 
@@ -53,92 +66,90 @@ douce · `none` = pas de masque. Définition source :
 > **Règle repo** : toujours `go-task` (jamais `task`). Staging git explicite par
 > fichier (jamais `git add -A`/`.`). Cf. `CLAUDE.md`.
 
-1. **Repo cloné + devShell `pc`** : `cd <repo>/Eurio && direnv allow`
-   (le `.envrc` dispatch sur hostname `desktop` → profil `pc`, qui pose le
-   `LD_LIBRARY_PATH` NVIDIA pour CUDA).
-2. **Les raws de training sont DÉJÀ là** : `ml/datasets/<numista_id>/{obverse,reverse}.jpg`
-   sont versionnés dans le repo (≈ 8900 fichiers). Le clone suffit, rien à
-   transférer côté training.
-3. **GPU visible** :
+1. **devShell `pc` chargé** : `cd <repo>/Eurio && direnv allow` (dispatch sur
+   hostname `desktop` → profil `pc`, qui pose le `LD_LIBRARY_PATH` NVIDIA).
+   *Pas besoin des secrets Supabase pour ce bench* — le training est offline.
+2. **GPU visible** :
    ```bash
-   go-task ml:check
-   # doit afficher : torch X.Y  cuda=True  mps=False
+   cd ml
+   .venv/bin/python -c "import torch; print('torch', torch.__version__, 'cuda=', torch.cuda.is_available(), torch.cuda.get_device_name(0) if torch.cuda.is_available() else '')"
+   # attendu : torch 2.9.x  cuda= True  NVIDIA GeForce GTX 1080 Ti
    ```
-   Si `cuda=False` → le devShell `pc` n'est pas chargé (vérifier `direnv`,
+   Si `cuda=False` → devShell `pc` pas chargé (vérifier `direnv`,
    `LD_LIBRARY_PATH`). **Stop tant que cuda≠True.**
+   Si le venv est signalé STALE par direnv : `go-task ml:venv-rebuild`.
+3. **Raws de training présents** : `ml/datasets/<numista_id>/obverse.jpg` sont
+   versionnés (les 17 `numista_id` du CSV sont couverts). Le clone suffit.
+4. **CSV cohort présent** : `ml/state/cohort_csvs/mix-zone-17.csv` (17 lignes
+   `eurio_id;numista_id;display_name`).
 
 ---
 
-## Étape 1 — Récupérer le pull device (les 337 captures)
+## Étape 1 — Récupérer le pull device (captures cohort)
 
-Le hold-out **n'est pas dans le repo** (gitignore `ml/datasets/*`, et le pull vit
-sous `debug_pull/`). Deux options :
-
-### Option A (recommandée) — copier le pull déjà vérifié depuis le Mac
-
-Le pull a été fait et réconcilié sur le Mac le 2026-06-01 (337/337 crops, 0
-manquant). Il pèse ~24 Mo. Depuis le PC :
-
-```bash
-# adapter user@mac-host et le chemin
-rsync -av musubi42@<mac-host>:'~/Documents/Musubi42/bizz/Eurio/debug_pull/20260601_154135/' \
-    <repo>/Eurio/debug_pull/20260601_154135/
-```
-
-### Option B — re-puller (téléphone branché au PC)
-
-Le device **n'a pas été cleané**, les captures y sont toujours :
+Le hold-out (captures device) **n'est pas dans le repo**. Le téléphone n'a pas
+été cleané, donc on peut (re)puller :
 
 ```bash
 go-task -t app-android/Taskfile.yml capture:pull
-# note le nouveau timestamp affiché → debug_pull/<NEW_TS>/eval_real/
+# → debug_pull/<TIMESTAMP>/eval_real/{manifest.jsonl, <eurio_id>/<step>_*.jpg}
+# Affiche "✓ Pulled 337 crops · 17 coins". Note le <TIMESTAMP>.
 ```
 
-### Fixer la variable de chemin
-
-Pour la suite, depuis le repo root :
+Fixe la variable de chemin (depuis le repo root) :
 
 ```bash
-export PULL=debug_pull/20260601_154135        # ou <NEW_TS> si option B
-ls "$PULL/eval_real/manifest.jsonl"           # doit exister
-find "$PULL" -name '*_raw.jpg' | wc -l        # doit afficher 337
+export PULL=debug_pull/20260601_162127     # ← remplace par TON timestamp
+ls "$PULL/eval_real/manifest.jsonl"        # doit exister
+find "$PULL" -name '*_raw.jpg' | wc -l     # ~337
 ```
 
 ---
 
-## Étape 2 — (Re)synchroniser le val-set `eval_real_norm`
+## Étape 2 — Synchroniser le val-set `eval_real_norm`
 
-`prepare_dataset` **remplace le val-set** par une version normalisée des captures
-device. Il faut la régénérer depuis CE pull (l'ancienne est périmée — le `--clear`
-de la task la vide d'abord) :
+Normalise les captures device (pipeline Hough, comme on-device) en 224×224 dans
+`ml/datasets/eval_real_norm/<eurio_id>/`. **Offline** (pas de Supabase). Le
+`--clear` (ajouté par la task) vide d'abord l'ancien val-set :
 
 ```bash
 go-task ml:eval-real:sync -- "../$PULL"
-# (la task tourne avec cwd=ml/, d'où le ../ ; elle ajoute --clear automatiquement)
+# (la task tourne avec cwd=ml/, d'où le ../)
 ```
 
-Vérifier en fin de run : `ls ml/datasets/eval_real_norm/` doit lister les 17
-`eurio_id` de la cohorte (ad-2014…, at-2002…, at-2005…, etc.) et **rien d'autre**.
+Vérifie en fin de run : `ls ml/datasets/eval_real_norm/` doit lister les **17
+`eurio_id`** de la cohorte (ad-2014…, at-2002…, at-2005…, etc.) et rien d'autre.
 
 ---
 
-## Étape 3 — Screening : 12 combos à 8 epochs
+## Étape 3 — Lancer le sweep (12 combos × 12 epochs, offline)
 
-Lance le sweep en arrière-plan (≈ 30h) — préfère `tmux`/`nohup` pour survivre à
-une déconnexion SSH. Le sweep est **ré-entrant** (skip ce qui est déjà produit).
+Lance en `tmux` pour survivre à une déconnexion. Le `env -u SUPABASE_*` **force
+le mode offline** (sinon, si tes secrets sont chargés par direnv, `train_embedder`
+irait interroger Supabase pour les zones d'augmentation — inutile ici, tout
+défaut à `orange`). Le sweep est **ré-entrant** (skip ce qui est déjà produit).
 
 ```bash
 cd ml
-tmux new -s ablation        # ou: nohup ... &
+tmux new -s ablation        # détacher : Ctrl-b d · réattacher : tmux attach -t ablation
+
+env -u SUPABASE_URL -u SUPABASE_SERVICE_ROLE_KEY -u SUPABASE_ANON_KEY -u SUPABASE_SERVICE_KEY \
 .venv/bin/python -m scripts.sweep_ablation \
     --device-pull "../$PULL" \
-    --sweep-default \
     --class-kind eurio_id \
-    --epochs 8
-# détacher tmux : Ctrl-b d   ·   réattacher : tmux attach -t ablation
+    --cohort-csv state/cohort_csvs/mix-zone-17.csv \
+    --sweep-default \
+    --epochs 12
 ```
 
-Sorties produites par combo (slug = `m<NN>-<edge>-s224`) :
+Ce que tu verras défiler, par combo (× 12) :
+- `Resolver: 17 known classes from cohort CSV mix-zone-17.csv` ← confirme l'offline
+- `prepare_dataset` → re-crop des 17 coins
+- `train_embedder` → 12 epochs, `Zone distribution: {'orange': 17}`, R@1 val par epoch
+- `compute_embeddings` → `17 classes, 256-dim centroids`
+- `eval_cohort_ablation` → `=== R@K summary ===` (R@1/R@5 global + par condition)
+
+Sorties produites par combo (slug = `m<NN>-<edge>-s224[-fw04]`) :
 
 | Quoi | Où |
 |---|---|
@@ -148,81 +159,46 @@ Sorties produites par combo (slug = `m<NN>-<edge>-s224`) :
 | Éval par combo | `ml/state/ablation_eval/<slug>.{csv,summary.json}` |
 | **Table agrégée** | `ml/state/ablation_eval/_sweep_results.{csv,md}` |
 
-> 💽 **Disque** : 12 datasets re-cropés cohabitent (le sweep ne nettoie pas, pour
-> la ré-entrance). Surveiller l'espace ; au besoin supprimer
+> 💽 **Disque** : les 12 datasets re-cropés cohabitent (le sweep ne nettoie pas,
+> pour la ré-entrance). À 17 coins c'est léger. Au besoin, supprimer
 > `ml/datasets/eurio-poc-<slug>/` d'un combo **après** que son `.summary.json`
-> existe (il sera regénéré si on relance ce combo).
+> existe (regénéré si on relance ce combo).
 
 Si interrompu : relancer **la même commande** (reprend où il s'est arrêté). Pour
-forcer une étape : `--force-from {recrop,train,embed,eval}`.
+forcer une étape : `--force-from {recrop,train,embed,eval}`. Pour un seul combo
+(debug) : remplacer `--sweep-default` par `--margin-frac 0.10 --edge-mode feathered`.
 
 ---
 
-## Étape 4 — Archiver la table de screening + choisir les finalistes
-
-**Avant** de full-trainer (qui écrase les entrées par slug), fige la table 8ep :
+## Étape 4 — Lire les résultats + choisir le gagnant
 
 ```bash
-cd ml
-cp state/ablation_eval/_sweep_results.csv state/ablation_eval/_sweep_results_screen8ep.csv
-cp state/ablation_eval/_sweep_results.md  state/ablation_eval/_sweep_results_screen8ep.md
-cat state/ablation_eval/_sweep_results_screen8ep.md   # triée par R@1 ↓
+cat ml/state/ablation_eval/_sweep_results.md   # trié par R@1 ↓
+# fige une copie horodatée si tu veux la garder :
+cp ml/state/ablation_eval/_sweep_results.csv ml/state/ablation_eval/_sweep_results_12ep.csv
+cp ml/state/ablation_eval/_sweep_results.md  ml/state/ablation_eval/_sweep_results_12ep.md
 ```
 
-Retiens les **2-3 meilleurs slugs** (ex. `m02-feathered`, `m05-hard`). Note-les :
-le slug exact donne `--margin-frac` (NN/100) et `--edge-mode`.
+Le **gagnant = meilleur R@1** dans la table (tous les combos sont à 12 epochs,
+donc directement comparables). Note son slug : il donne `--margin-frac` (NN/100)
+et `--edge-mode`.
 
-> Hypothèse de la stratégie A : le *classement* à 8 epochs ≈ celui à 20. Les
-> finalistes obtiennent ensuite leur vrai chiffre 20ep ci-dessous.
+> Repère de sanity : un combo correct sort ~75–90 % R@1 sur ce hold-out 17-way.
+> Tout combo < 50 % signale un souci (val vide, mismatch de classes) plutôt
+> qu'un mauvais format.
 
 ---
 
-## Étape 5 — Finaliser : full-train des 2-3 finalistes à 20 epochs
+## Étape 5 — Remonter les résultats / cutover
 
-Pour **chaque** finaliste, ré-entraîne à 20 epochs en forçant depuis `train`
-(réutilise le dataset re-cropé existant, ré-entraîne + ré-embed + ré-éval) :
-
-```bash
-cd ml
-# exemple finaliste m05-hard :
-.venv/bin/python -m scripts.sweep_ablation \
-    --device-pull "../$PULL" \
-    --class-kind eurio_id \
-    --margin-frac 0.05 --edge-mode hard \
-    --epochs 20 --force-from train
-# répéter pour chaque finaliste (adapter --margin-frac / --edge-mode)
-```
-
-Puis ré-agrège toutes les `summary.json` (mélange : finalistes en 20ep, le reste
-en 8ep) et fige la table finale :
+Seuls les fichiers de résultats (légers) reviennent côté Mac/repo ; les
+checkpoints (lourds) restent sur le PC.
 
 ```bash
-.venv/bin/python -m scripts.sweep_ablation --aggregate-only \
-    --device-pull "../$PULL" --class-kind eurio_id
-cp state/ablation_eval/_sweep_results.csv state/ablation_eval/_sweep_results_final.csv
-cp state/ablation_eval/_sweep_results.md  state/ablation_eval/_sweep_results_final.md
-cat state/ablation_eval/_sweep_results_final.md
-```
-
-> Dans `_sweep_results_final.md`, les finalistes sont à 20 epochs, les autres à 8.
-> Le **gagnant = meilleur R@1 parmi les finalistes 20ep** (ne pas comparer un 20ep
-> à un 8ep). La table 8ep complète reste dans `_sweep_results_screen8ep.md`.
-
----
-
-## Étape 6 — Remonter les résultats pour comparaison
-
-Seuls les fichiers de résultats (légers) doivent revenir côté Mac/repo ; les
-checkpoints (lourds) restent sur le PC. Depuis le Mac (ou commit côté PC) :
-
-```bash
-rsync -av musubi42@desktop:'<repo>/Eurio/ml/state/ablation_eval/_sweep_results_*' \
+# depuis le Mac :
+rsync -av musubi42@desktop:'<repo>/Eurio/ml/state/ablation_eval/_sweep_results*' \
     <repo>/Eurio/ml/state/ablation_eval/
 ```
-
-Artefacts de comparaison finaux :
-- `ml/state/ablation_eval/_sweep_results_screen8ep.{csv,md}` — grille complète 8ep
-- `ml/state/ablation_eval/_sweep_results_final.{csv,md}` — finalistes 20ep
 
 Le format gagnant (margin + edge_mode) → **Step 4 cutover** : reporter le
 `CropConfig` dans le `SnapNormalizer` Kotlin + re-deploy. Conserver
@@ -232,13 +208,12 @@ Le format gagnant (margin + edge_mode) → **Step 4 cutover** : reporter le
 
 ## Checklist
 
-- [ ] devShell `pc` chargé, `go-task ml:check` → `cuda=True`
-- [ ] pull device présent (`$PULL/eval_real/manifest.jsonl`, 337 raws)
+- [ ] devShell `pc` chargé, `cuda=True` (Prérequis #2)
+- [ ] CSV cohort présent (`ml/state/cohort_csvs/mix-zone-17.csv`, 17 lignes)
+- [ ] pull device présent (`$PULL/eval_real/manifest.jsonl`, ~337 raws)
 - [ ] `eval_real_norm/` resync (17 eurio_id de la cohorte, rien d'autre)
-- [ ] screening lancé (`--sweep-default --epochs 8`) en tmux
-- [ ] `_sweep_results_screen8ep.md` figé, 2-3 finalistes choisis
-- [ ] finalistes full-trainés (`--epochs 20 --force-from train`)
-- [ ] `_sweep_results_final.md` figé, gagnant identifié
+- [ ] sweep lancé offline (`env -u SUPABASE_* … --cohort-csv … --sweep-default --epochs 12`) en tmux
+- [ ] `_sweep_results.md` lu, gagnant identifié (meilleur R@1)
 - [ ] résultats remontés côté Mac/repo
 
 ---
@@ -247,19 +222,22 @@ Le format gagnant (margin + edge_mode) → **Step 4 cutover** : reporter le
 
 | Symptôme | Cause | Fix |
 |---|---|---|
-| `cuda=False` | devShell `mac`/`default` chargé au lieu de `pc` | `direnv reload`, vérifier hostname `desktop` dans `.envrc`, `LD_LIBRARY_PATH` NVIDIA |
-| `No source images found in datasets/` | clone partiel / LFS manquant | vérifier `ml/datasets/<numista_id>/obverse.jpg` présents |
-| `Missing eval_real_norm/<eurio_id>/` au prepare | sync pas faite / périmée | re-lancer Étape 2 (`go-task ml:eval-real:sync -- ../$PULL`) |
+| `cuda=False` | devShell `mac`/`default` au lieu de `pc` | `direnv reload`, vérifier hostname `desktop`, `LD_LIBRARY_PATH` NVIDIA |
+| `Resolver: … from Supabase` au lieu de `from cohort CSV` | `--cohort-csv` oublié | ré-ajouter `--cohort-csv state/cohort_csvs/mix-zone-17.csv` |
+| R@1 ~20 % sur tous les combos | val non aligné / mauvais namespace de classes | tu n'es probablement pas en mode CSV — vérifier le log `Resolver: 17 … from cohort CSV` |
+| `No source images found in datasets/` | clone partiel | vérifier `ml/datasets/<numista_id>/obverse.jpg` présents |
+| `Missing eval_real_norm/<eurio_id>/` au prepare | sync pas faite / périmée | relancer Étape 2 (`go-task ml:eval-real:sync -- ../$PULL`) |
 | `manifest.jsonl absent` | mauvais `$PULL` | pointer le dossier contenant `eval_real/manifest.jsonl` |
 | OOM GPU pendant train | batch trop gros pour 11 Go | ajouter `--batch-size 16` à la commande sweep |
-| Un combo a planté en cours | étape échouée | relancer la même commande (ré-entrant) ; sinon `--force-from train` sur ce combo |
+| venv STALE (warning direnv) | Nix env changé | `go-task ml:venv-rebuild` |
 
 ---
 
 ## Liens
 
 - Tracker capture : `docs/cohort-capture-ablation.md`
-- Orchestrateur : `ml/scripts/sweep_ablation.py`
-- Recrop : `ml/scripts/recrop_with_config.py` · Éval : `ml/scripts/eval_cohort_ablation.py`
+- Orchestrateur : `ml/scripts/sweep_ablation.py` · Recrop : `ml/scripts/recrop_with_config.py`
+- Résolveur offline : `ml/eval/class_resolver.py` (`build_resolver_from_cohort_csv`)
 - Sync val : `ml/scan/sync_eval_real.py` (task `go-task ml:eval-real:sync`)
-- Memory : `project_crop_format_ablation`, `reference_crop_format_research`, `project_training_bench_split`
+- Éval : `ml/scripts/eval_cohort_ablation.py`
+- Memory : `project_crop_ablation_offline_training`, `project_crop_format_ablation`, `reference_crop_format_research`
