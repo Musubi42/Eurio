@@ -1,0 +1,22 @@
+# mode=ablation
+# Push: adb push mix-zone-17.csv /sdcard/Android/data/com.musubi.eurio/files/Documents/eurio_capture/cohort.csv
+# Pour le mainApp debug build (capture mode dans DebugBar). cohortTest variant
+# n'utilise PAS ce CSV — il a son propre live_tests_manifest.json.
+eurio_id;numista_id;display_name
+ad-2014-2eur-standard-1st-type;68395;ad-2014-2eur-standard-1st-type
+at-2002-2eur-standard-1st-map;64;at-2002-2eur-standard-1st-map
+at-2005-2eur-50th-anniversary-of-the-austrian-state-treaty;2193;50th anniversary of the Austrian State Treaty
+be-2007-2eur-standard-albert-ii-2nd-map-1st-type-1st-portrait;6292;be-2007-2eur-standard-albert-ii-2nd-map-1st-type-1st-portrait
+be-2011-2eur-100th-international-womens-day;19734;100th International Women's Day
+de-2007-2eur-state-of-mecklenburg-vorpommern;2201;State of Mecklenburg-Vorpommern
+de-2020-2eur-german-polish-reconciliation;226447;German-Polish Reconciliation
+es-1999-2eur-standard-juan-carlos-i-1st-type-1st-map;88;es-1999-2eur-standard-juan-carlos-i-1st-type-1st-map
+es-2016-2eur-old-town-of-segovia-and-its-aqueduct;81058;Old Town of Segovia and its Aqueduct
+fi-2016-2eur-100th-anniversary-of-the-birth-of-georg-henrik-von-wright;93999;100th anniversary of the birth of Georg Henrik von Wright
+fi-2017-2eur-100-years-of-independence;113429;100 years of independence
+fr-2008-2eur-french-presidency-of-the-council-of-the-european-union;3561;French Presidency of the Council of the European Union
+fr-2016-2eur-100th-anniversary-of-the-birth-of-francois-mitterrand;91431;100th anniversary of the birth of François Mitterrand
+fr-2018-2eur-100th-anniversary-of-the-end-of-the-first-world-war-bleuet-de-france;134283;100th anniversary of the end of the First World War - Bleuet de France
+fr-2018-2eur-simone-veil;141382;Simone Veil
+it-2016-2eur-2200th-anniversary-of-the-death-of-plautus;84714;2200th anniversary of the death of Plautus
+it-2016-2eur-550th-anniversary-of-the-death-of-donatello;82330;550th anniversary of the death of Donatello
