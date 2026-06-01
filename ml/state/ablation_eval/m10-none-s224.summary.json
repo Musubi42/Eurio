@@ -1,0 +1,41 @@
+{
+  "crop_config": {
+    "margin_frac": 0.1,
+    "edge_mode": "none",
+    "feather_width_frac": 0.04,
+    "output_size": 224
+  },
+  "n_eval": 387,
+  "r_at_1": 0.7364341085271318,
+  "r_at_5": 0.9638242894056848,
+  "errors": {},
+  "per_step": {
+    "bright_plain": {
+      "n": 86,
+      "ok1": 58,
+      "ok5": 81
+    },
+    "bright_textured": {
+      "n": 73,
+      "ok1": 58,
+      "ok5": 69
+    },
+    "dim": {
+      "n": 77,
+      "ok1": 61,
+      "ok5": 75
+    },
+    "oblique": {
+      "n": 80,
+      "ok1": 58,
+      "ok5": 80
+    },
+    "glare_specular": {
+      "n": 71,
+      "ok1": 50,
+      "ok5": 68
+    }
+  },
+  "model": "/home/raphael/Documents/Musubi42/Eurio/ml/checkpoints/best_model_m10-none-s224.pth",
+  "device_pull": "../debug_pull/20260601_162127"
+}

@@ -1,0 +1,41 @@
+{
+  "crop_config": {
+    "margin_frac": 0.05,
+    "edge_mode": "hard",
+    "feather_width_frac": 0.04,
+    "output_size": 224
+  },
+  "n_eval": 387,
+  "r_at_1": 0.7803617571059431,
+  "r_at_5": 0.9844961240310077,
+  "errors": {},
+  "per_step": {
+    "bright_plain": {
+      "n": 86,
+      "ok1": 67,
+      "ok5": 86
+    },
+    "bright_textured": {
+      "n": 73,
+      "ok1": 59,
+      "ok5": 71
+    },
+    "dim": {
+      "n": 77,
+      "ok1": 68,
+      "ok5": 76
+    },
+    "oblique": {
+      "n": 80,
+      "ok1": 41,
+      "ok5": 77
+    },
+    "glare_specular": {
+      "n": 71,
+      "ok1": 67,
+      "ok5": 71
+    }
+  },
+  "model": "/home/raphael/Documents/Musubi42/Eurio/ml/checkpoints/best_model_m05-hard-s224.pth",
+  "device_pull": "../debug_pull/20260601_162127"
+}

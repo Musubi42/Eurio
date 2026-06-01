@@ -1,0 +1,130 @@
+Mode: arcface | Device: cuda
+[zone_resolver] Supabase env missing — defaulting all classes to orange
+Zone distribution: {'orange': 17}
+Train: 850 images, 17 classes
+Val:   337 images  ← /home/raphael/Documents/Musubi42/Eurio/ml/datasets/eurio-poc-m02-hard-s224/val
+Classes: ['ad-2014-2eur-standard-1st-type', 'at-2002-2eur-standard-1st-map', 'at-2005-2eur-50th-anniversary-of-the-austrian-state-treaty', 'be-2007-2eur-standard-albert-ii-2nd-map-1st-type-1st-portrait', 'be-2011-2eur-100th-international-womens-day', 'de-2007-2eur-state-of-mecklenburg-vorpommern', 'de-2020-2eur-german-polish-reconciliation', 'es-1999-2eur-standard-juan-carlos-i-1st-type-1st-map', 'es-2016-2eur-old-town-of-segovia-and-its-aqueduct', 'fi-2016-2eur-100th-anniversary-of-the-birth-of-georg-henrik-von-wright', 'fi-2017-2eur-100-years-of-independence', 'fr-2008-2eur-french-presidency-of-the-council-of-the-european-union', 'fr-2016-2eur-100th-anniversary-of-the-birth-of-francois-mitterrand', 'fr-2018-2eur-100th-anniversary-of-the-end-of-the-first-world-war-bleuet-de-france', 'fr-2018-2eur-simone-veil', 'it-2016-2eur-2200th-anniversary-of-the-death-of-plautus', 'it-2016-2eur-550th-anniversary-of-the-death-of-donatello']
+Augmentation preview: 102 images → /home/raphael/Documents/Musubi42/Eurio/ml/checkpoints/aug_preview
+Model parameters: 1,074,720
+RUNTIME {"event": "runtime", "mode": "arcface", "device": "cuda", "torch_version": "2.9.1+cu126", "augmentations_runtime": "legacy_compose", "dataset_size": 850, "num_classes": 17, "epochs": 12, "batch_size": 32, "runtime": {"host_os": "linux", "arch": "x86_64", "cpu_brand": "AMD Ryzen 7 2700X Eight-Core Processor", "torch_version": "2.9.1+cu126", "backend": "cuda", "device": "cuda:0", "num_cuda_devices": 1, "gpu_name": "NVIDIA GeForce GTX 1080 Ti", "cuda_version": "12.6", "dataloader_workers": 4, "hint": "PC + NVIDIA GeForce GTX 1080 Ti (CUDA 12.6) \u2014 fast"}}
+TENSOR_CHECK model.device=cuda:0
+ArcFace: margin=28.6°, scale=30.0
+  Epoch  1/12 — starting
+  Epoch  1 — loss: 7.2134  R@1: 94.66%  R@3: 98.81% [frozen]
+  → Saved best model (R@1: 94.66%) → /home/raphael/Documents/Musubi42/Eurio/ml/checkpoints/best_model.pth
+  Epoch  2/12 — starting
+  Epoch  2 — loss: 1.4345  R@1: 94.07%  R@3: 96.74% [frozen]
+  Epoch  3/12 — starting
+  Epoch  3 — loss: 0.9699  R@1: 92.88%  R@3: 97.03% [frozen]
+  Epoch  4/12 — starting
+  Epoch  4 — loss: 0.7801  R@1: 92.88%  R@3: 96.44% [frozen]
+  Epoch  5/12 — starting
+  Epoch  5 — loss: 0.7197  R@1: 93.18%  R@3: 97.03% [frozen]
+
+--- Unfreezing backbone at epoch 6 ---
+  Epoch  6/12 — starting
+  Epoch  6 — loss: 0.4054  R@1: 94.96%  R@3: 98.22%
+  → Saved best model (R@1: 94.96%) → /home/raphael/Documents/Musubi42/Eurio/ml/checkpoints/best_model.pth
+  Epoch  7/12 — starting
+  Epoch  7 — loss: 0.0465  R@1: 94.66%  R@3: 98.52%
+  Epoch  8/12 — starting
+  Epoch  8 — loss: 0.0475  R@1: 96.44%  R@3: 98.52%
+  → Saved best model (R@1: 96.44%) → /home/raphael/Documents/Musubi42/Eurio/ml/checkpoints/best_model.pth
+  Epoch  9/12 — starting
+  Epoch  9 — loss: 0.0591  R@1: 96.74%  R@3: 98.52%
+  → Saved best model (R@1: 96.74%) → /home/raphael/Documents/Musubi42/Eurio/ml/checkpoints/best_model.pth
+  Epoch 10/12 — starting
+  Epoch 10 — loss: 0.0149  R@1: 97.03%  R@3: 98.52%
+  → Saved best model (R@1: 97.03%) → /home/raphael/Documents/Musubi42/Eurio/ml/checkpoints/best_model.pth
+  Epoch 11/12 — starting
+  Epoch 11 — loss: 0.0165  R@1: 96.44%  R@3: 98.52%
+  Epoch 12/12 — starting
+  Epoch 12 — loss: 0.0132  R@1: 96.44%  R@3: 99.11%
+
+Training complete. Best Recall@1: 97.03%
+Training log: /home/raphael/Documents/Musubi42/Eurio/ml/checkpoints/training_log.json
+Aug preview:  /home/raphael/Documents/Musubi42/Eurio/ml/checkpoints/aug_preview
+Model from epoch 10, dim=256
+
+Centroid sources:
+  ad-2014-2eur-standard-1st-type                          val_mean(n=20)
+  at-2002-2eur-standard-1st-map                           val_mean(n=20)
+  at-2005-2eur-50th-anniversary-of-the-austrian-state-treaty val_mean(n=17)
+  be-2007-2eur-standard-albert-ii-2nd-map-1st-type-1st-portrait val_mean(n=20)
+  be-2011-2eur-100th-international-womens-day             val_mean(n=20)
+  de-2007-2eur-state-of-mecklenburg-vorpommern            val_mean(n=20)
+  de-2020-2eur-german-polish-reconciliation               val_mean(n=20)
+  es-1999-2eur-standard-juan-carlos-i-1st-type-1st-map    val_mean(n=20)
+  es-2016-2eur-old-town-of-segovia-and-its-aqueduct       val_mean(n=20)
+  fi-2016-2eur-100th-anniversary-of-the-birth-of-georg-henrik-von-wright val_mean(n=20)
+  fi-2017-2eur-100-years-of-independence                  val_mean(n=20)
+  fr-2008-2eur-french-presidency-of-the-council-of-the-european-union val_mean(n=20)
+  fr-2016-2eur-100th-anniversary-of-the-birth-of-francois-mitterrand val_mean(n=20)
+  fr-2018-2eur-100th-anniversary-of-the-end-of-the-first-world-war-bleuet-de-france val_mean(n=20)
+  fr-2018-2eur-simone-veil                                val_mean(n=20)
+  it-2016-2eur-2200th-anniversary-of-the-death-of-plautus val_mean(n=20)
+  it-2016-2eur-550th-anniversary-of-the-death-of-donatello val_mean(n=20)
+  ad-2014-2eur-standard-1st-type [eurio_id]: 20 imgs → centroid
+  at-2002-2eur-standard-1st-map [eurio_id]: 20 imgs → centroid
+  at-2005-2eur-50th-anniversary-of-the-austrian-state-treaty [eurio_id]: 17 imgs → centroid
+  be-2007-2eur-standard-albert-ii-2nd-map-1st-type-1st-portrait [eurio_id]: 20 imgs → centroid
+  be-2011-2eur-100th-international-womens-day [eurio_id]: 20 imgs → centroid
+  de-2007-2eur-state-of-mecklenburg-vorpommern [eurio_id]: 20 imgs → centroid
+  de-2020-2eur-german-polish-reconciliation [eurio_id]: 20 imgs → centroid
+  es-1999-2eur-standard-juan-carlos-i-1st-type-1st-map [eurio_id]: 20 imgs → centroid
+  es-2016-2eur-old-town-of-segovia-and-its-aqueduct [eurio_id]: 20 imgs → centroid
+  fi-2016-2eur-100th-anniversary-of-the-birth-of-georg-henrik-von-wright [eurio_id]: 20 imgs → centroid
+  fi-2017-2eur-100-years-of-independence [eurio_id]: 20 imgs → centroid
+  fr-2008-2eur-french-presidency-of-the-council-of-the-european-union [eurio_id]: 20 imgs → centroid
+  fr-2016-2eur-100th-anniversary-of-the-birth-of-francois-mitterrand [eurio_id]: 20 imgs → centroid
+  fr-2018-2eur-100th-anniversary-of-the-end-of-the-first-world-war-bleuet-de-france [eurio_id]: 20 imgs → centroid
+  fr-2018-2eur-simone-veil [eurio_id]: 20 imgs → centroid
+  it-2016-2eur-2200th-anniversary-of-the-death-of-plautus [eurio_id]: 20 imgs → centroid
+  it-2016-2eur-550th-anniversary-of-the-death-of-donatello [eurio_id]: 20 imgs → centroid
+
+Full embeddings: /home/raphael/Documents/Musubi42/Eurio/ml/output/_staging_m02-hard-s224/embeddings_v1.json
+Flat embeddings: /home/raphael/Documents/Musubi42/Eurio/ml/output/_staging_m02-hard-s224/coin_embeddings.json (44.3 KB)
+Eval config: CropConfig(margin_frac=0.02, edge_mode='hard', feather_width_frac=0.04, output_size=224)
+  slug: m02-hard-s224
+Device: cuda
+Loading model /home/raphael/Documents/Musubi42/Eurio/ml/checkpoints/best_model_m02-hard-s224.pth…
+  embedding_dim=256
+Loading embeddings /home/raphael/Documents/Musubi42/Eurio/ml/output/embeddings_v1_m02-hard-s224.json…
+  17 classes, 256-dim centroids
+Discovering captures under ../debug_pull/20260601_162127…
+  387 manifest entries from ../debug_pull/20260601_162127/eval_real
+
+→ /home/raphael/Documents/Musubi42/Eurio/ml/state/ablation_eval/m02-hard-s224.csv (387 rows)
+
+=== R@K summary ===
+  R@1 = 321/387 = 82.95 %
+  R@5 = 383/387 = 98.97 %
+
+Par condition (step) :
+  bright_plain         n= 86  R@1= 86.0%  R@5=100.0%
+  bright_textured      n= 73  R@1= 83.6%  R@5= 97.3%
+  dim                  n= 77  R@1= 90.9%  R@5=100.0%
+  glare_specular       n= 71  R@1= 95.8%  R@5=100.0%
+  oblique              n= 80  R@1= 60.0%  R@5= 97.5%
+
+Summary sidecar: /home/raphael/Documents/Musubi42/Eurio/ml/state/ablation_eval/m02-hard-s224.summary.json
+Sweep : 1 combo(s). forced steps = ['embed', 'eval', 'train']
+
+
+======================================================================
+=== [1/1] m02-hard-s224
+======================================================================
+✓ eurio-poc-m02-hard-s224 déjà à jour (config match) — skip (use --force pour regen).
+
+→ /home/raphael/Documents/Musubi42/Eurio/ml/.venv/bin/python -m training.train_embedder --mode arcface --dataset /home/raphael/Documents/Musubi42/Eurio/ml/datasets/eurio-poc-m02-hard-s224/train --val-dataset /home/raphael/Documents/Musubi42/Eurio/ml/datasets/eurio-poc-m02-hard-s224/val --epochs 12 --batch-size 32 --embedding-dim 256 --output /home/raphael/Documents/Musubi42/Eurio/ml/checkpoints --model-version v-ablation-m02-hard-s224
+
+
+→ /home/raphael/Documents/Musubi42/Eurio/ml/.venv/bin/python -m training.compute_embeddings --model /home/raphael/Documents/Musubi42/Eurio/ml/checkpoints/best_model_m02-hard-s224.pth --dataset /home/raphael/Documents/Musubi42/Eurio/ml/datasets/eurio-poc-m02-hard-s224 --output-dir /home/raphael/Documents/Musubi42/Eurio/ml/output/_staging_m02-hard-s224 --model-version v-ablation-m02-hard-s224
+
+
+→ /home/raphael/Documents/Musubi42/Eurio/ml/.venv/bin/python -m scripts.eval_cohort_ablation --device-pull ../debug_pull/20260601_162127 --model /home/raphael/Documents/Musubi42/Eurio/ml/checkpoints/best_model_m02-hard-s224.pth --embeddings /home/raphael/Documents/Musubi42/Eurio/ml/output/embeddings_v1_m02-hard-s224.json --crop-config-json /home/raphael/Documents/Musubi42/Eurio/ml/datasets/eurio-poc-m02-hard-s224/_crop_config.json --output /home/raphael/Documents/Musubi42/Eurio/ml/state/ablation_eval/m02-hard-s224.csv
+
+
+✓ Combo m02-hard-s224 terminé.
+
+→ Agrégat : /home/raphael/Documents/Musubi42/Eurio/ml/state/ablation_eval/_sweep_results.csv + /home/raphael/Documents/Musubi42/Eurio/ml/state/ablation_eval/_sweep_results.md

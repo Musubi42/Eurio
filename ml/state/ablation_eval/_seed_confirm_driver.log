@@ -1,0 +1,18 @@
+  m10-hard-s224 seed1: R@1=83.20%
+  m02-hard-s224 seed1: R@1=82.17%
+>>> m10-hard-s224 seed2 (margin=0.10 edge=hard)
+  m10-hard-s224 seed2: R@1=81.40%
+>>> m02-hard-s224 seed2 (margin=0.02 edge=hard)
+  m02-hard-s224 seed2: R@1=83.98%
+>>> m10-hard-s224 seed3 (margin=0.10 edge=hard)
+  m10-hard-s224 seed3: R@1=81.91%
+>>> m02-hard-s224 seed3 (margin=0.02 edge=hard)
+  m02-hard-s224 seed3: R@1=82.95%
+=== DONE ===
+slug	seed	r_at_1	r_at_5
+m10-hard-s224	seed1	0.8320	0.9897
+m02-hard-s224	seed1	0.8217	0.9845
+m10-hard-s224	seed2	0.8140	1.0000
+m02-hard-s224	seed2	0.8398	0.9948
+m10-hard-s224	seed3	0.8191	0.9845
+m02-hard-s224	seed3	0.8295	0.9897
