@@ -18,11 +18,9 @@ export function mount(ctx) {
   const debugOn = document.querySelector('.version-badge')?.dataset.debug === 'on';
   if (debugBtn) debugBtn.dataset.debug = debugOn ? 'on' : 'off';
 
-  // Force-match button picks a random coin (also waits for data readiness)
-  debugBtn?.addEventListener('click', async () => {
-    await data.init();
-    const coin = data.randomCoin();
-    if (coin) navigate(`#/scan/matched?id=${coin.eurioId}`);
+  // Force-match → the diégetic transition (it picks a random 3D coin itself).
+  debugBtn?.addEventListener('click', () => {
+    navigate('#/scan/transition');
   });
 
   // Auto-advance timer (mock ML inference)
@@ -31,20 +29,21 @@ export function mount(ctx) {
   let timer = null;
   let cancelled = false;
 
+  // Cancel the pending auto-advance only when the user actually LEAVES the scene
+  // (any hash navigation). NOT on `scene:mounted` — the router fires that for
+  // scan-idle's OWN mount, which would self-cancel the timer before it can run.
   const onLeave = () => {
     cancelled = true;
     if (timer) clearTimeout(timer);
-    window.removeEventListener('scene:mounted', onLeave);
     window.removeEventListener('hashchange', onLeave);
   };
-  window.addEventListener('scene:mounted', onLeave, { once: true });
   window.addEventListener('hashchange', onLeave, { once: true });
 
   data.init().then(() => {
     if (cancelled) return;
     timer = setTimeout(() => {
-      const coin = data.randomCoin();
-      if (coin) navigate(`#/scan/matched?id=${coin.eurioId}`);
+      // Mock ML inference resolved → play the diégetic transition → reveal.
+      navigate('#/scan/transition');
     }, AUTO_MATCH_DELAY_MS);
   });
 }

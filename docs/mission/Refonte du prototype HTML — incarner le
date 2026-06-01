@@ -1,0 +1,171 @@
+Refonte du prototype HTML — incarner le blueprint psycho
+
+Context
+
+On vient de clore une grosse passe stratégie : 8 recherches de psychologie de la
+collection (docs/mission/psychologie-*) + un blueprint complet « app dérivée de la
+psycho » (docs/mission/app-pont/). Ce travail définit un flow scan beaucoup plus
+riche (transition diégétique, reveal stratifié, économie des célébrations, carte à
+gratter, lentilles, défis sans streak) que ce que le proto incarne aujourd'hui.
+
+La règle R1 (proto-first) impose que tout nouveau design existe d'abord dans le
+prototype HTML (docs/design/prototype/) avant tout code Compose. Le handoff est
+listé dans docs/design/_shared/scene-parity.md §Refonte psycho : 8 scènes ❌ à proto'er + 3 🟡 deltas. Tant que ces scènes
+n'existent pas en proto, elles
+bloquent le code Android.
+
+Objectif : proto'er ces écrans/interactions, en réutilisant les composants et
+tokens existants, chunk par chunk avec audit visuel (livrer un écran, attendre la
+rétro, ne pas enchaîner sans « go »). On garde la palette et la vibe actuelles
+(shared/tokens.css — jamais édité à la main).
+
+Décisions actées avec le user :
+- Transition scan→3D = vrai 3D (réutilise le renderer Three.js de scan-coin-3d.js).
+- Célébrations = 4 fichiers séparés (celebration-1..4.html).
+- En suspens, non bloquant (on proto'e tout le reste d'abord) : emplacement des
+défis (defis.html) + critère de calcul du grade (Profil).
+
+Socle technique à réutiliser (ne pas réinventer)
+
+- Renderer 3D : scenes/scan-coin-3d.js — mesh bimétal PBR complet, OrbitControls,
+manifeste data/coin-3d/coins.json (obverse/reverse + métadonnées par pièce),
+lumières studio, normal-map Sobel. Three.js chargé via esm.sh (réseau, OK en proto).
+- Router : _shared/router.js — table ROUTES ({path, scene, nav, chrome}),
+fetch scenes/<name>.html + sidecar optionnel mount(ctx) recevant
+{params, query, state, data, navigate}. chrome: none|light|dark. Ajouter une scène
+= ajouter une route + un fichier.
+- Composants (_shared/components.css) : .planche/.disc, .btn-*
+(btn-gold/btn-ghost/btn-icon), .card/.card-glass/.card-dark, .badge*,
+.sheet/.sheet-handle, .progress-bar, .stat/.stat-row, .toast,
+.tabbed-nav, .coffre-header, .eyebrow.
+- Carte eurozone : scenes/vault-catalog-map.html — 21 paths pays SVG +
+micro-états pastilles + fill-by-opacité + peek-card + mode liste = base de la « belle
+carte » et de la carte à gratter.
+- Célébration plein-écran : scenes/profile-unlock.html (chrome: none) = référence
+pour la structure banderole/anim.
+- Reveal actuel : scenes/scan-matched.html (caméra figée + bottom-sheet 2 CTA) =
+point de départ conceptuel de reveal-stratifie.html.
+
+Règles transverses (à chaque chunk)
+
+- R1 / skill frontend-design pour chaque écran.
+- Tokens uniquement : couleurs/fonts/espacements via var(--…). ❌ jamais de hex/font
+hardcodé, ❌ jamais d'édition de tokens.css ni Color/Shape/Spacing.kt.
+- CSS scopé dans le <style> de la scène (préfixe = nom de fichier) ; promouvoir vers
+components.css seulement si réutilisé par ≥2 scènes.
+- Enregistrer la route dans _shared/router.js (ROUTES).
+- Pull éthique : zéro hasard / zéro near-miss, partout. Économie des célébrations :
+le pic réservé aux jalons (catégories distinctes, pas des niveaux).
+- Après livraison d'un chunk : mettre à jour le statut dans scene-parity.md §Refonte psycho (❌ → ⏳ prête, ou delta 🟡 → fait).
+- Livrer le chunk, fournir les routes/captures pour l'audit, ATTENDRE « go » avant le
+suivant.
+
+Découpage en chunks (ordre = valeur/risque décroissant)
+
+Chunk A — scan-transition-3d.html (+ .js) — le plus risqué, en premier
+
+Transition diégétique caméra→3D, vrai 3D.
+- Route : /scan/transition (nav: scan, chrome: dark).
+- Réutilise le setup Three.js de scan-coin-3d.js (renderer, env, buildCoin,
+coins.json). Fond = freeze-frame caméra (reprendre le radial sombre de
+scan-matched). Morph : la pièce 3D apparaît à la position/taille du match →
+flick-spin (vélocité du pointeur → vitesse angulaire) → décélération → settle
+(scale/ombre + navigator.vibrate(~400ms) + son « clink » WebAudio).
+- Garde-fous : rapide ~0,8–1,2 s + skippable (tap = poser) + version allégée
+pour doublons (?light=1). Au settle → navigation vers le reveal.
+- Leviers : anticipation/dopamine (incertitude épistémique), peak-end (settle = pic).
+
+Chunk B — reveal-stratifie.html (+ .js)
+
+Reveal stratifié (remplace/enrichit scan-matched).
+- Route : /scan/reveal (chrome: dark).
+- Héros 3D haut-centre (même pièce, rotatable — réutilise le renderer). Dessous :
+une carte-lentille swipeable (.card) feuilletable latéralement —
+Découverte (défaut) / Histoire / Rareté / Valeur / Complétion + points indicateurs.
+≤3 drives affichés (héros + ligne de complétion + 1 accent contextuel piloté
+par la pièce : rareté N-effect ou « complète X/Y » ou « ~12€ TTB »). Épingle
+(punaise) optionnelle ou mémoire du dernier-état. Tap/swipe-up → page pièce. CTA
+« Ajouter au coffre ». Variante doublon (toast « tu l'as déjà »).
+- Réutilise .card, .badge, .progress-bar, .disc, .stat.
+- Garde-fous : stratifier pas surcharger, valeur = info pas titre, défaut Découverte.
+
+Chunk C — celebration-1..4.html (4 fichiers + helper .js partagé)
+
+Les 4 catégories à plat (chrome: none, routes /celebration/...). Réf structure :
+profile-unlock.html.
+- celebration-1 — nouvelle pièce : le plus léger (accent discret, intégré au reveal).
+- celebration-2 — set complété : banderole + habillage du set.
+- celebration-3 — pays complété : annonce → enchaîne sur la carte à gratter
+(le grattage = le payoff, vit dans le Chunk D ; ce fichier = l'ouverture).
+- celebration-4 — exploit rareté/statut : 1ᵉʳ à compléter / légendaire / 1ᵉʳ à
+scanner ce mois (N-effect). Le pic spécial.
+- Garde-fous : économie des célébrations (4 thématiques distinctes, jamais inflationniste),
+zéro hasard. Si trop lourd à l'audit : splitter C en C1 (cat. 1-2) / C2 (cat. 3-4).
+
+Chunk D — carte-a-gratter.html (+ .js) — le différenciateur
+
+Redesign « belle carte » eurozone + scratch-reveal du pays complété.
+- Route : repointer /vault/catalog vers carte-a-gratter (conserver
+vault-catalog-map.html en référence). Géométrie de départ = les 21 paths de
+vault-catalog-map, upgradés visuellement (blobs/texture/fills or, plus « belle »).
+- Scratch : couche « feuille d'or » sur un pays complété, masque canvas effacé au
+pointeur → seuil → infos révélées dans le contour + bascule célébration « pays
+complété » (rejoint celebration-3).
+- Garde-fous : grattage réservé au pays complété (sinon le geste se dévalue), aucune
+pression/culpabilisation. Vise un asset partageable premium (futur share #1).
+
+Chunk E — onboarding-lentille.html + onboarding-demo.html (+ .js)
+
+- onboarding-lentille (/onboarding/lentille) : 3 chips Histoire / Valeur / Compléter
+→ défaut de reveal, skippable (« plus tard » = Découverte), réversible (autonomie
+SDT, pas de profiling).
+- onboarding-demo (/onboarding/demo) : scan guidé sans pièce physique (état
+distinct de scan-idle), utilise une pièce-échantillon de coins.json, accompagne le
+geste → 1ᵉʳ reveal célébré (lié à reveal + celebration-1), endowed progress (1 pièce
+crédite la barre).
+- Réutilise la structure des slides onboarding-1/2/3, .btn, chips.
+
+Chunk F — coin-detail.html enrichi (bloc récit) — delta 🟡
+
+- Ajouter le bloc récit (transportation) : layout en déroulé progressif (événement
+célébré, contexte historique, designers, monument/lieu) à hiérarchie visuelle
+
+  - Ajouter le bloc récit (transportation) : layout en déroulé progressif (événement
+  célébré, contexte historique, designers, monument/lieu) à hiérarchie visuelle
+  immersive. Garder ?ctx=scan|owned|reference. Cote par qualité (UNC/TTB/TB)
+  non-anxiogène, série entière, lien affilié « où acheter » sur case manquante.
+  - Garde-fous : récit authentique uniquement, sens proposé pas imposé (skippable
+  via la lentille), affiliation honnête (lien partenaire transparent).
+  - Différé (noter, ne pas construire) : scène 3D thématique du monument.
+
+  Chunk G — Deltas Profil + Sets — 🟡
+
+  - profile.html : retirer la 🔥 streak du hero (décisions #6/#8 obsolètes) ; section
+  badges « 3 prochains » max 3 (anti-surcharge Zeigarnik).
+  - profile-settings.html : ajouter le réglage lentille de reveal (+ noter le réglage
+  fréquence de notifs).
+  - vault-sets-detail.html : état post-complétion (célébration set complété cat. 2 —
+  banderole, lien vers celebration-2) + lien affilié sur case manquante.
+  - Vérifier que profile-unlock.html couvre la « transition identitaire / célébration
+  mesurée » ; sinon inscrire le delta.
+
+  Hors périmètre de cette passe (différé)
+
+  - defis.html — bloqué tant que l'emplacement n'est pas tranché (onglet / section
+  Profil / bandeau accueil) — décision produit du user.
+  - share-piece/completion/carte.html (×3) — pas dans les priorités de cette passe.
+  - Critère de calcul du grade (Profil) — question produit ouverte.
+  - Scène 3D thématique monument (Chunk F) — arbitrage coût/valeur différé.
+
+  Vérification (à chaque chunk)
+
+  1. Lancer le proto : docs/design/prototype/serve.sh (python3 -m http.server 8000),
+  ouvrir http://localhost:8000/docs/design/prototype/#/<route>.
+  2. Scènes 3D : vérifier que Three.js charge (esm.sh), que la pièce rend, que
+  flick-spin/settle/haptique (navigator.vibrate, mobile)/son fonctionnent, que la
+  transition reste courte + skippable.
+  3. Capturer chaque nouvelle route via le MCP chrome-devtools (navigate_page +
+  take_screenshot, viewport ~390×844) pour l'audit side-by-side.
+  4. Confirmer : aucune édition de tokens.css/Color/Shape/Spacing.kt, aucun hex/font
+  hardcodé ; scene-parity.md §Refonte psycho mis à jour pour la scène livrée.
+  5. Livrer → attendre la rétro du user → « go » avant le chunk suivant.

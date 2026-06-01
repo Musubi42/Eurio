@@ -1,0 +1,442 @@
+<!--
+  Scene : reveal-stratifie
+  ------------------------
+  Le REVEAL stratifié post-scan (02-reveal). Stratifie sans surcharger :
+    • Héros 3D (haut-centre, rotatable au doigt) — réutilise scenes/_coin3d.js
+    • UNE carte-lentille SWIPEABLE : Découverte (défaut) / Histoire / Rareté /
+      Valeur / Complétion — points indicateurs, épingle (dernier-état).
+    • ≤3 drives servis d'un coup sur Découverte : titre + 1 ligne d'histoire +
+      1 accent contextuel (piloté par la pièce, pas par profiling).
+    • Profondeur à la demande : tap « Voir la fiche » → page pièce.
+
+  Query :
+    ?id=<numista_id>  pièce révélée (défaut : 1ʳᵉ de coins.json)
+    ?owned=1          doublon : settle léger + « tu l'as déjà »
+
+  Garde-fous : valeur = info (pas un titre), défaut Découverte, économie des
+  célébrations (le pic est ailleurs), zéro hasard.
+-->
+
+<style>
+  .reveal-root {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    color: var(--surface);
+    background:
+      radial-gradient(120% 70% at 50% -8%, var(--indigo-700) 0%, transparent 55%),
+      radial-gradient(ellipse 70% 50% at 50% 30%, var(--ink-soft) 0%, var(--ink) 62%, #000 100%);
+    overflow: hidden;
+  }
+
+  /* ───────── Top bar ───────── */
+  .reveal-top {
+    flex: 0 0 auto;
+    position: relative;
+    z-index: 3;
+    padding: 58px var(--space-5) 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .reveal-top__eyebrow { display: flex; flex-direction: column; gap: 2px; }
+  .reveal-top__owned {
+    display: none;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 11px;
+    border-radius: var(--radius-full);
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--gold-300);
+  }
+  .reveal-root[data-owned="1"] .reveal-top__owned { display: inline-flex; }
+  .reveal-close {
+    width: 34px; height: 34px;
+    border-radius: var(--radius-full);
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 18px; line-height: 1;
+  }
+  .reveal-close:active { transform: scale(0.94); }
+
+  /* ───────── Hero 3D ───────── */
+  .reveal-hero {
+    flex: 1 1 auto;
+    position: relative;
+    min-height: 0;
+  }
+  .reveal-hero__canvas { position: absolute; inset: 0; z-index: 1; }
+  /* setSize(…, false) doesn't style the canvas → force it to fill, else it lays
+     out at the device-pixel buffer size (2× on retina) and overflows. */
+  .reveal-hero__canvas canvas {
+    display: block;
+    width: 100% !important;
+    height: 100% !important;
+    touch-action: none;
+    cursor: grab;
+  }
+  .reveal-hero__canvas canvas:active { cursor: grabbing; }
+  .reveal-hero__status {
+    position: absolute;
+    left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 2;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    color: rgba(255, 255, 255, 0.5);
+    transition: opacity var(--duration-base) ease;
+  }
+  .reveal-hero__status.is-hidden { opacity: 0; }
+  /* "Tourne-moi" affordance, fades after first drag */
+  .reveal-hero__hint {
+    position: absolute;
+    left: 50%; bottom: 6px;
+    transform: translateX(-50%);
+    z-index: 2;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.4);
+    transition: opacity var(--duration-base) ease;
+  }
+  .reveal-hero__hint svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.6; }
+  .reveal-root[data-rotated="1"] .reveal-hero__hint { opacity: 0; }
+
+  /* ───────── Lens deck (bottom) ───────── */
+  .reveal-deck {
+    flex: 0 0 auto;
+    position: relative;
+    z-index: 3;
+    padding-top: var(--space-3);
+    padding-bottom: 110px;   /* clear the bottom nav */
+  }
+  .reveal-deck::before {
+    content: "";
+    position: absolute;
+    left: var(--space-6); right: var(--space-6); top: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--gold) 22%, var(--gold) 78%, transparent);
+    opacity: 0.5;
+  }
+
+  .reveal-caption {
+    text-align: center;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.55);
+    margin: var(--space-4) 0 var(--space-3);
+  }
+  .reveal-caption b { color: var(--gold-300); font-weight: 400; }
+
+  /* Swipeable lens carousel */
+  .reveal-lenses {
+    display: flex;
+    gap: var(--space-3);
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    padding: 0 var(--space-5);
+    scrollbar-width: none;
+  }
+  .reveal-lenses::-webkit-scrollbar { display: none; }
+  .reveal-lens {
+    flex: 0 0 87%;
+    scroll-snap-align: center;
+    min-height: 150px;
+    padding: var(--space-4) var(--space-4) var(--space-5);
+    border-radius: var(--radius-lg);
+    background: rgba(255, 255, 255, 0.045);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    backdrop-filter: blur(6px);
+  }
+  .reveal-lens__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-3);
+  }
+  .reveal-lens__eyebrow {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: var(--tracking-eyebrow);
+    text-transform: uppercase;
+    color: var(--gold-300);
+  }
+  .reveal-pin {
+    width: 26px; height: 26px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: var(--radius-full);
+    color: rgba(255, 255, 255, 0.4);
+    border: 1px solid transparent;
+  }
+  .reveal-pin svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.5; }
+  .reveal-pin[aria-pressed="true"] {
+    color: var(--gold-300);
+    border-color: rgba(224, 198, 136, 0.35);
+    background: rgba(224, 198, 136, 0.12);
+  }
+  .reveal-pin[aria-pressed="true"] svg { fill: var(--gold-300); }
+
+  .reveal-lens__title {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-weight: 400;
+    font-size: var(--text-2xl);
+    line-height: var(--leading-tight);
+    color: var(--surface);
+    margin-bottom: var(--space-2);
+  }
+  .reveal-lens__line {
+    font-size: var(--text-sm);
+    line-height: var(--leading-base);
+    color: rgba(255, 255, 255, 0.72);
+  }
+  .reveal-lens__line + .reveal-lens__line { margin-top: var(--space-2); }
+  .reveal-lens__more {
+    display: inline-block;
+    margin-top: var(--space-3);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    color: var(--gold-300);
+  }
+
+  /* Drives row (Découverte) */
+  .reveal-drives {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin-top: var(--space-4);
+  }
+  .reveal-drive {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 11px;
+    border-radius: var(--radius-full);
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.04em;
+    color: rgba(255, 255, 255, 0.85);
+  }
+  .reveal-drive--accent {
+    background: rgba(224, 198, 136, 0.14);
+    border-color: rgba(224, 198, 136, 0.4);
+    color: var(--gold-300);
+  }
+  .reveal-drive--new {
+    background: var(--success-soft);
+    border-color: rgba(47, 169, 113, 0.5);
+    color: #6fe0a8;
+  }
+
+  /* Rarity / value mini layouts */
+  .reveal-tier {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: var(--text-xl);
+    color: var(--gold-300);
+    margin-bottom: var(--space-1);
+  }
+  .reveal-grades {
+    display: flex;
+    gap: var(--space-2);
+    margin-top: var(--space-3);
+  }
+  .reveal-grade {
+    flex: 1;
+    text-align: center;
+    padding: var(--space-2) 0;
+    border-radius: var(--radius-sm);
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+  .reveal-grade__g {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    color: rgba(255, 255, 255, 0.5);
+  }
+  .reveal-grade__v {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: var(--text-base);
+    color: var(--surface);
+    margin-top: 2px;
+  }
+
+  /* Completion */
+  .reveal-comp { display: flex; align-items: baseline; gap: var(--space-2); }
+  .reveal-comp__big {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: var(--text-2xl);
+    color: var(--surface);
+  }
+  .reveal-comp__total { font-family: var(--font-mono); font-size: var(--text-sm); color: rgba(255,255,255,0.55); }
+  .reveal-comp__bar { margin: var(--space-3) 0 var(--space-2); }
+  .reveal-comp__bar .progress-track { background: rgba(255,255,255,0.12); }
+  .reveal-comp__missing { font-size: var(--text-xs); color: rgba(255,255,255,0.6); }
+
+  /* Dots */
+  .reveal-dots {
+    display: flex;
+    justify-content: center;
+    gap: 7px;
+    margin: var(--space-4) 0 var(--space-2);
+  }
+  .reveal-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.25);
+    transition: width var(--duration-base) var(--ease-out), background var(--duration-base) var(--ease-out);
+  }
+  .reveal-dot[aria-current="true"] { width: 18px; border-radius: 3px; background: var(--gold-300); }
+
+  /* CTAs */
+  .reveal-cta {
+    display: flex;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-5) 0;
+  }
+  .reveal-cta .btn { flex: 1; }
+</style>
+
+<section class="reveal-root" data-scene="reveal-stratifie" data-rotated="0" data-owned="0">
+  <!-- Top bar -->
+  <div class="reveal-top">
+    <div class="reveal-top__eyebrow">
+      <span class="eyebrow eyebrow--gold" data-slot="kicker">Nouvelle pièce</span>
+    </div>
+    <span class="reveal-top__owned"><span aria-hidden="true">✓</span> Déjà au coffre</span>
+    <button type="button" class="reveal-close" data-action="close" aria-label="Fermer">&times;</button>
+  </div>
+
+  <!-- Hero 3D -->
+  <div class="reveal-hero">
+    <div class="reveal-hero__canvas" data-slot="canvas-wrap"></div>
+    <div class="reveal-hero__status" data-slot="status">Révélation…</div>
+    <div class="reveal-hero__hint" data-slot="hint">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v4h4"/></svg>
+      Tourne-la
+    </div>
+  </div>
+
+  <!-- Lens deck -->
+  <div class="reveal-deck">
+    <div class="reveal-caption"><span data-slot="cap-country">—</span> · <span data-slot="cap-year">—</span> · <b data-slot="cap-denom">2&nbsp;€</b></div>
+
+    <div class="reveal-lenses" data-slot="lenses">
+      <!-- Découverte (défaut) -->
+      <article class="reveal-lens" data-lens="decouverte">
+        <div class="reveal-lens__head">
+          <span class="reveal-lens__eyebrow">Découverte</span>
+          <button type="button" class="reveal-pin" data-pin="decouverte" aria-pressed="false" aria-label="Épingler cette lentille">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17v5M9 3h6l-1 6 3 3H7l3-3-1-6Z"/></svg>
+          </button>
+        </div>
+        <h2 class="reveal-lens__title" data-slot="d-title">—</h2>
+        <p class="reveal-lens__line" data-slot="d-history">—</p>
+        <div class="reveal-drives">
+          <span class="reveal-drive reveal-drive--new" data-slot="d-new">Nouvelle</span>
+          <span class="reveal-drive" data-slot="d-comp">—</span>
+          <span class="reveal-drive reveal-drive--accent" data-slot="d-accent">—</span>
+        </div>
+      </article>
+
+      <!-- Histoire -->
+      <article class="reveal-lens" data-lens="histoire">
+        <div class="reveal-lens__head">
+          <span class="reveal-lens__eyebrow">Histoire</span>
+          <button type="button" class="reveal-pin" data-pin="histoire" aria-pressed="false" aria-label="Épingler cette lentille">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17v5M9 3h6l-1 6 3 3H7l3-3-1-6Z"/></svg>
+          </button>
+        </div>
+        <p class="reveal-lens__line" data-slot="h-1">—</p>
+        <p class="reveal-lens__line" data-slot="h-2">—</p>
+        <a class="reveal-lens__more" data-action="details">Lire l'histoire →</a>
+      </article>
+
+      <!-- Rareté -->
+      <article class="reveal-lens" data-lens="rarete">
+        <div class="reveal-lens__head">
+          <span class="reveal-lens__eyebrow">Rareté</span>
+          <button type="button" class="reveal-pin" data-pin="rarete" aria-pressed="false" aria-label="Épingler cette lentille">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17v5M9 3h6l-1 6 3 3H7l3-3-1-6Z"/></svg>
+          </button>
+        </div>
+        <div class="reveal-tier" data-slot="r-tier">—</div>
+        <p class="reveal-lens__line" data-slot="r-mintage">—</p>
+        <div class="reveal-drives">
+          <span class="reveal-drive reveal-drive--accent" data-slot="r-neffect">—</span>
+        </div>
+      </article>
+
+      <!-- Valeur -->
+      <article class="reveal-lens" data-lens="valeur">
+        <div class="reveal-lens__head">
+          <span class="reveal-lens__eyebrow">Valeur · indicative</span>
+          <button type="button" class="reveal-pin" data-pin="valeur" aria-pressed="false" aria-label="Épingler cette lentille">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17v5M9 3h6l-1 6 3 3H7l3-3-1-6Z"/></svg>
+          </button>
+        </div>
+        <div class="reveal-tier" data-slot="v-headline">—</div>
+        <div class="reveal-grades">
+          <div class="reveal-grade"><div class="reveal-grade__g">UNC</div><div class="reveal-grade__v" data-slot="v-unc">—</div></div>
+          <div class="reveal-grade"><div class="reveal-grade__g">TTB</div><div class="reveal-grade__v" data-slot="v-ttb">—</div></div>
+          <div class="reveal-grade"><div class="reveal-grade__g">TB</div><div class="reveal-grade__v" data-slot="v-tb">—</div></div>
+        </div>
+      </article>
+
+      <!-- Complétion -->
+      <article class="reveal-lens" data-lens="completion">
+        <div class="reveal-lens__head">
+          <span class="reveal-lens__eyebrow">Complétion</span>
+          <button type="button" class="reveal-pin" data-pin="completion" aria-pressed="false" aria-label="Épingler cette lentille">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17v5M9 3h6l-1 6 3 3H7l3-3-1-6Z"/></svg>
+          </button>
+        </div>
+        <div class="reveal-comp">
+          <span class="reveal-comp__big" data-slot="c-owned">—</span>
+          <span class="reveal-comp__total" data-slot="c-total">/ —</span>
+        </div>
+        <div class="reveal-comp__bar progress-bar">
+          <div class="progress-track"><div class="progress-fill" data-slot="c-fill" style="width:0%"></div></div>
+        </div>
+        <p class="reveal-comp__missing" data-slot="c-missing">—</p>
+      </article>
+    </div>
+
+    <!-- Dots -->
+    <div class="reveal-dots" role="tablist" aria-label="Lentilles">
+      <span class="reveal-dot" data-dot="0" aria-current="true"></span>
+      <span class="reveal-dot" data-dot="1"></span>
+      <span class="reveal-dot" data-dot="2"></span>
+      <span class="reveal-dot" data-dot="3"></span>
+      <span class="reveal-dot" data-dot="4"></span>
+    </div>
+
+    <!-- CTAs -->
+    <div class="reveal-cta">
+      <button type="button" class="btn btn-ghost btn-ghost--on-dark" data-action="details">Voir la fiche</button>
+      <button type="button" class="btn btn-gold" data-action="add">Ajouter au coffre</button>
+    </div>
+  </div>
+</section>

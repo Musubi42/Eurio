@@ -42,6 +42,8 @@ const ROUTES = [
   { path: '/scan/not-identified',    scene: 'scan-not-identified',  nav: 'scan', chrome: 'dark' },
   { path: '/scan/debug',             scene: 'scan-debug',           nav: 'scan', chrome: 'dark' },
   { path: '/scan/coin-3d',           scene: 'scan-coin-3d',         nav: 'scan', chrome: 'dark' },
+  { path: '/scan/transition',        scene: 'scan-transition-3d',   nav: 'scan', chrome: 'dark' },
+  { path: '/scan/reveal',            scene: 'reveal-stratifie',     nav: 'scan', chrome: 'dark' },
 
   // Coin detail
   { path: '/coin/:eurioId',          scene: 'coin-detail',          nav: null, chrome: 'light' },

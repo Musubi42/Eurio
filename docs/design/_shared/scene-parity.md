@@ -109,3 +109,23 @@ Extraits dans `docs/design/prototype/_shared/components.css` :
 - `.disc` + variantes `--copper` / `--nordic` / `--silver` / `--bimetal` / `--missing` / `--xs` — médaillon CSS-only radial-gradient reposant dans une cavité planche
 
 `vault-home.html` a été refactoré en rev 2 pour partager le même segmented control (`.tabbed-nav`) que les 3 nouvelles sous-vues, garantissant la cohérence visuelle du header Coffre entre les 3 segments. Note : en empty state, le segmented control n'est pas visible — à revoir si on veut permettre la navigation Sets/Catalogue avant le premier scan.
+
+## Refonte psycho (blueprint `app-pont`, 2026-06-01)
+
+> Écrans/interactions **dérivés de la recherche psycho** ([`docs/mission/app-pont/`](../../mission/app-pont/)) — **plus riches que le proto actuel**. ❌ = bloque le code Compose tant que la scène proto n'existe pas (R1). Ces lignes sont le **handoff de la session « refonte proto »**. Garder la palette/vibe actuelle (`shared/tokens.css`).
+
+| Proto scene (à créer) | Sert | Doc-pont | Status | Notes |
+|---|---|---|---|---|
+| `onboarding-lentille.html` | question-lentille (Histoire/Valeur/Compléter) | `00-onboarding` | ❌ à proto'er | autonomie SDT ; pose le défaut de reveal |
+| `onboarding-demo.html` | mode démo (scan guidé sans pièce) | `00-onboarding` | ❌ à proto'er | acte guidé, état distinct de `scan-idle` |
+| `scan-transition-3d.html` | transition diégétique caméra→3D + settle | `01-scan` | ⏳ prête | livré chunk A : vrai 3D via `scenes/_coin3d.js` (moteur extrait de `scan-coin-3d`), morph → flick-spin → settle (halo + haptic + clink WebAudio) ; skippable + `?light=1` + reduced-motion. Route `#/scan/transition`. *Reste : settle → reveal stratifié (chunk B) ; câblage scan-idle→transition une fois B livré.* |
+| `reveal-stratifie.html` | héros 3D + carte-lentille **swipeable** + accent contextuel | `02-reveal` | ⏳ prête | livré chunk B : héros 3D rotatable (`_coin3d.js`) + carrousel 5 lentilles (Découverte défaut/Histoire/Rareté/Valeur/Complétion) + points + épingle (dernier-état) + variante doublon. Route `#/scan/reveal?id=`. Flux câblé `scan-idle → transition → reveal`. *Contenu lentilles = mock déterministe (vrai contrat data ultérieur) ; lien fiche → `coin-detail` (id à unifier).* |
+| `celebration-1..4.html` (×4) | nouvelle pièce / set complété / pays complété / exploit rareté | `02-reveal` | ❌ à proto'er | économie des célébrations **à plat** ; pic réservé aux jalons |
+| `coin-detail` (enrichir) | bloc **récit** (transportation narrative) | `03-page-piece` | 🟡 delta | enrichit `coin-detail.html` ; *(différé : scène 3D thématique)* |
+| `carte-a-gratter.html` | scratch-reveal du pays complété + **redesign belle carte** | `04c-coffre-carte` | ❌ à proto'er | **différenciateur n°1** ; carte actuelle « moche » à refaire |
+| `vault-sets-detail` (enrichir) | célébration set complété + lien affilié sur case manquante | `04b-coffre-sets` | 🟡 delta | dans `vault-sets-detail.html`, pas de nouveau fichier |
+| `defis.html` | surface défis adaptatifs | `05-defis` | ❌ à proto'er | ⚠️ **arbitrer l'emplacement** (onglet/Profil/bandeau) AVANT de proto'er |
+| `profile.html` / `profile-settings.html` (MàJ) | **retirer 🔥 streak** + ajouter réglage **lentille** | `06-profil` | 🟡 delta | + section badges « 3 prochains » (max 3, anti-surcharge Zeigarnik) |
+| `share-piece/completion/carte.html` (×3) | share cards (image générée) | `02-social-partage` | ❌ à proto'er | partage système possible dès v1 (sans compte) |
+
+**Bloquant connu avant de proto'er les défis** : trancher leur emplacement (question produit en suspens). Tous les autres écrans ci-dessus peuvent être proto'és sans dépendre des questions grade/défis.

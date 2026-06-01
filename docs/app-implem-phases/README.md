@@ -31,11 +31,29 @@
 | 13 | **Bootstrap catalogue packagé dans l'APK** : chaque build release embarque un snapshot JSON du catalogue (`coins`, `sets`, `set_members`, métadonnées hors images). L'app est utilisable à l'install sans connexion. Sync delta au premier démarrage si version packagée < version Supabase. | UX install→use sans latence. Couvre le cas avion / première ouverture. |
 | 14 | **Marketplace = hors v1**. Ne touche ni à la nav (prévue extensible), ni aux écrans actuels. | Priorité : boucle scan→vault→sets→progression. |
 
+## Mise à jour 2026-06-01 — recherche psycho & blueprint `app-pont`
+
+Une couche **design-intent** a été construite dans [`../mission/`](../mission/) : recherches psycho
+(`psychologie-documentation/01-08`), synthèse (`psychologie-consolidation.md`) et **blueprint par vue**
+(`app-pont/`, dérivé *purement* de la psycho). Elle **alimente ces phases** et **révise deux décisions** :
+
+- **Décisions #6 & #8 (streak) → SUPERSEDÉES.** La streak-scan quotidienne est **retirée** (supply-gated
+  → punitive → dark pattern, cf. `psychologie-documentation/04`). Remplacée par des **défis adaptatifs**
+  (asymétrie positive : rien à perdre, bonus à gagner). Conséquences : **pas de 🔥 en top-bar scan**, **pas
+  de streak au Profil**.
+- **Nouveaux écrans/interactions à proto'er (R1)** : listés dans
+  [`../design/_shared/scene-parity.md`](../design/_shared/scene-parity.md) §Refonte psycho — transition 3D
+  scan→reveal, reveal stratifié + lentilles, 4 catégories de célébration, carte à gratter, mode démo,
+  question-lentille, share cards…
+
+**Questions produit en suspens** (ne bloquent pas le proto des autres écrans) : critère de calcul du
+**grade** (Profil) ; **emplacement des défis** (probablement section Profil — à trancher).
+
 ## Framework UX (résumé visuel)
 
 ```
 ┌─────────────────────────────┐
-│ v0.1.0            🔥 7      │  ← top bar (version + streak)
+│ v0.1.0                     │  ← top bar (version ; plus de 🔥 streak — cf. MàJ 2026-06-01)
 │                             │
 │                             │
 │       VIEWFINDER            │  ← Scan plein écran par défaut
@@ -53,12 +71,12 @@
 2. **Sets** — liste des sets, mini-silhouette + `X/Y`, drill-down = grille complète silhouette
 3. **Catalogue** — carte eurozone interactive, drill-down par pays = liste avec silhouettes pour non-scannées
 
-**Profil** :
-- Grade / niveau
-- Streak (même valeur qu'au top scan)
+**Profil** (MàJ 2026-06-01) :
+- Grade / niveau (paliers de compétence non-comparatifs SDT ; *critère de calcul en suspens*)
+- ~~Streak~~ → **Défis adaptatifs** (asymétrie positive ; *emplacement en suspens*, probablement ici)
 - Badges débloqués + prochains
 - Stats (total scans, pays touchés, sets complétés)
-- Réglages (langue, debug log, à propos)
+- Réglages (langue, **lentille de reveal**, notifications, debug log, à propos)
 
 ## Phases d'implémentation
 

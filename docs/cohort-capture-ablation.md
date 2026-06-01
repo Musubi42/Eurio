@@ -21,13 +21,13 @@
 
 ## Progress
 
-- [ ] CSV pushé sur device
-- [ ] App buildée + installée
-- [ ] Capture démarrée (debugMode → captureMode dans DebugBar)
-- [ ] 340 captures atteintes (UI affiche « CAPTURE TERMINÉE »)
-- [ ] `pull-debug` exécuté
-- [ ] Sweep lancé (`sweep_ablation.py`)
-- [ ] Résultats lus dans `_sweep_results.md`
+- [x] CSV pushé sur device
+- [x] App buildée + installée
+- [x] Capture démarrée (debugMode → captureMode dans DebugBar)
+- [x] Captures atteintes — **337/340** (at-2005 `bright_textured` : skip volontaire après 1 photo)
+- [x] `capture:pull` exécuté → `debug_pull/20260601_154135/eval_real/` (réconcilié 337/337, 0 manquant). Device **non cleané** (filet de sécurité).
+- [ ] Sweep lancé — **délégué au PC (1080 Ti), stratégie A : screen 12 combos @ 8ep → full-train finalistes @ 20ep ≈ 45h**. Runbook autonome : `docs/operations/crop-ablation-pc-runbook.md`
+- [ ] Résultats lus dans `_sweep_results_final.md`
 
 ---
 
