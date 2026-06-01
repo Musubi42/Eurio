@@ -246,7 +246,7 @@ def main() -> int:
         print(f"Failures ({len(failures)}):")
         for f in failures:
             print(f"  ✗ {f}")
-    return 0 if not report.failures else 2
+    return 0 if not failures else 2
 
 
 if __name__ == "__main__":
