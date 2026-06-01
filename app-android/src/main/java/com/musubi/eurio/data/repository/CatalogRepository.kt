@@ -2,7 +2,6 @@ package com.musubi.eurio.data.repository
 
 import com.musubi.eurio.data.local.dao.CoinDao
 import com.musubi.eurio.data.local.dao.VaultDao
-import com.musubi.eurio.domain.IssueType
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 
@@ -66,33 +65,29 @@ class RoomCatalogRepository(
             vaultDao.observeAllEurioIds(),
         ) { coins, ownedList ->
             val ownedIds = ownedList.toSet()
+            val issueTypeOf: (Boolean) -> String = { isCommemorative ->
+                if (isCommemorative) "commemo" else "circulation"
+            }
             coins
                 .filter { it.country.equals(country, ignoreCase = true) }
                 .let { list ->
                     if (typeFilter == null) list
-                    else list.filter { mapIssueType(it.issueType) == typeFilter }
+                    else list.filter { issueTypeOf(it.isCommemorative) == typeFilter }
                 }
-                .sortedWith(compareBy({ it.year }, { it.faceValue }))
+                .sortedWith(compareBy({ it.year }, { it.faceValueCents }))
                 .map { coin ->
                     CoinWithOwnership(
                         eurioId = coin.eurioId,
                         nameFr = coin.nameFr ?: coin.nameEn ?: coin.eurioId,
                         country = coin.country,
                         year = coin.year ?: 0,
-                        faceValueCents = ((coin.faceValue ?: 0.0) * 100).toInt(),
-                        imageObverseUrl = coin.imageObverseUrl,
-                        issueType = mapIssueType(coin.issueType),
+                        faceValueCents = coin.faceValueCents,
+                        imageObverseUrl = obverseStorageUrl(coin.eurioId),
+                        issueType = issueTypeOf(coin.isCommemorative),
                         owned = coin.eurioId in ownedIds,
                     )
                 }
         }
-    }
-
-    private fun mapIssueType(type: IssueType?): String = when (type) {
-        IssueType.CIRCULATION, IssueType.STARTER_KIT -> "circulation"
-        IssueType.COMMEMO_NATIONAL, IssueType.COMMEMO_COMMON -> "commemo"
-        IssueType.BU_SET, IssueType.PROOF -> "circulation"
-        null -> "circulation"
     }
 
     companion object {

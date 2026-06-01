@@ -11,9 +11,10 @@
 // the real data contract is wired later — here we validate the *design*.
 
 import {
-  createStage, loadCoinsManifest, buildCoinFromEntry, buildProceduralEdgeTexture,
+  createStage, buildCoinFromUrls, buildProceduralEdgeTexture,
   disposeCoin, R_OUT,
 } from './_coin3d.js';
+import * as data from '../_shared/data.js';
 import { confetti, chime, haptic } from './_celebration.js';
 
 const HERO_FILL = 0.78;
@@ -221,18 +222,23 @@ export async function mount({ query, navigate }) {
 
   // ───────── boot ─────────
   try {
-    const manifest = await loadCoinsManifest();
-    const list = manifest.coins;
-    if (!list?.length) throw new Error('coins.json vide');
-    const entry = list.find((c) => c.numista_id === (query?.id || '').toString())
+    await data.init();
+    const list = data.allCoins().filter((c) => data.coinTextures(c));
+    if (!list?.length) throw new Error('app_core: aucune pièce avec textures');
+    const rec = list.find((c) => c.eurioId === (query?.id || '').toString())
       || list[Math.floor(Math.random() * list.length)];
-    ctx.coinId = entry.numista_id;
+    // Legacy display shim so fillContent() keeps its country/year/name contract.
+    const entry = {
+      eurioId: rec.eurioId, numista_id: rec.eurioId, country: rec.countryName,
+      year: rec.year, name: rec.theme || rec.designDescription || '',
+    };
+    ctx.coinId = rec.eurioId;
 
     fillContent(root, entry, owned, milestone);
     ctx.relayout?.();   // size the peek detent to the real summary height
 
     const edgeTex = buildProceduralEdgeTexture();
-    const coin = await buildCoinFromEntry(entry, { edgeTex });
+    const coin = await buildCoinFromUrls(data.coinTextures(rec), { edgeTex });
     if (active !== ctx) { disposeCoin(coin); return; }
     group = coin.group;
     ctx.coin = coin;

@@ -3,7 +3,6 @@ package com.musubi.eurio.data.repository
 import com.musubi.eurio.data.local.dao.VaultDao
 import com.musubi.eurio.data.local.entities.CoinInVaultEntity
 import com.musubi.eurio.data.local.entities.VaultCoinWithCoin
-import com.musubi.eurio.domain.IssueType
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -100,6 +99,7 @@ class RoomVaultRepository(
 
     private fun VaultCoinWithCoin.toItem(): VaultCoinItem {
         val coinEntity = coin
+        val issueType = if (coinEntity.isCommemorative) "commemo" else "circulation"
         return VaultCoinItem(
             eurioId = vault.eurioId,
             coin = CoinViewData(
@@ -107,9 +107,9 @@ class RoomVaultRepository(
                 nameFr = coinEntity.nameFr ?: coinEntity.nameEn ?: coinEntity.eurioId,
                 country = coinEntity.country,
                 year = coinEntity.year ?: 0,
-                faceValueCents = ((coinEntity.faceValue ?: 0.0) * 100).toInt(),
-                imageObverseUrl = coinEntity.imageObverseUrl,
-                issueType = mapIssueType(coinEntity.issueType),
+                faceValueCents = coinEntity.faceValueCents,
+                imageObverseUrl = obverseStorageUrl(coinEntity.eurioId),
+                issueType = issueType,
                 designDescription = coinEntity.designDescription,
             ),
             firstCapturedAt = vault.firstCapturedAt,
@@ -120,11 +120,9 @@ class RoomVaultRepository(
     private fun matchesFilter(row: VaultCoinWithCoin, filter: VaultFilter): Boolean {
         val coin = row.coin
         if (filter.countries.isNotEmpty() && coin.country !in filter.countries) return false
-        if (filter.issueTypes.isNotEmpty() && mapIssueType(coin.issueType) !in filter.issueTypes) return false
-        if (filter.faceValues.isNotEmpty()) {
-            val cents = ((coin.faceValue ?: 0.0) * 100).toInt()
-            if (cents !in filter.faceValues) return false
-        }
+        val issueType = if (coin.isCommemorative) "commemo" else "circulation"
+        if (filter.issueTypes.isNotEmpty() && issueType !in filter.issueTypes) return false
+        if (filter.faceValues.isNotEmpty() && coin.faceValueCents !in filter.faceValues) return false
         if (filter.yearRange != null) {
             val year = coin.year ?: 0
             if (year !in filter.yearRange) return false
@@ -151,12 +149,5 @@ class RoomVaultRepository(
             VaultSort.SCAN_DATE -> items.sortedByDescending { it.firstCapturedAt }
             VaultSort.YEAR -> items.sortedByDescending { it.coin.year }
         }
-    }
-
-    private fun mapIssueType(type: IssueType?): String = when (type) {
-        IssueType.CIRCULATION, IssueType.STARTER_KIT -> "circulation"
-        IssueType.COMMEMO_NATIONAL, IssueType.COMMEMO_COMMON -> "commemo"
-        IssueType.BU_SET, IssueType.PROOF -> "circulation"
-        null -> "circulation"
     }
 }

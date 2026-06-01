@@ -6,7 +6,7 @@
  * Ou :
  *   supabase gen types typescript --project-id <id>
  *
- * Dernière regen : 2026-05-23
+ * Dernière regen : 2026-06-01 (schéma app-facing v2, cf docs/research/supabase-app-schema-v2.md)
  */
 
 export type Json =
@@ -25,304 +25,380 @@ export type Database = {
   }
   public: {
     Tables: {
-      coin_aliases: {
+      coin: {
         Row: {
-          alias: string
-          confidence: string
+          canonical_eurio_id: string | null
+          collector_only: boolean
+          composition: string | null
+          country: string
+          country_name: string | null
+          demonetized: boolean | null
+          demonetized_on: string | null
+          design_description: string | null
+          design_group_id: string | null
+          diameter_mm: number | null
+          edge_description: string | null
+          edge_lettering: string | null
           eurio_id: string
-          fetched_at: string
-          lang: string
-          source: string
-        }
-        Insert: {
-          alias: string
-          confidence?: string
-          eurio_id: string
-          fetched_at?: string
-          lang: string
-          source?: string
-        }
-        Update: {
-          alias?: string
-          confidence?: string
-          eurio_id?: string
-          fetched_at?: string
-          lang?: string
-          source?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "coin_aliases_eurio_id_fkey"
-            columns: ["eurio_id"]
-            isOneToOne: false
-            referencedRelation: "coins"
-            referencedColumns: ["eurio_id"]
-          },
-        ]
-      }
-      coin_confusion_map: {
-        Row: {
-          computed_at: string
-          encoder_version: string
-          eurio_id: string
-          id: number
-          nearest_eurio_id: string | null
-          nearest_similarity: number
-          top_k_neighbors: Json
-          zone: string
-        }
-        Insert: {
-          computed_at?: string
-          encoder_version: string
-          eurio_id: string
-          id?: number
-          nearest_eurio_id?: string | null
-          nearest_similarity: number
-          top_k_neighbors: Json
-          zone: string
-        }
-        Update: {
-          computed_at?: string
-          encoder_version?: string
-          eurio_id?: string
-          id?: number
-          nearest_eurio_id?: string | null
-          nearest_similarity?: number
-          top_k_neighbors?: Json
-          zone?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "coin_confusion_map_eurio_id_fkey"
-            columns: ["eurio_id"]
-            isOneToOne: false
-            referencedRelation: "coins"
-            referencedColumns: ["eurio_id"]
-          },
-          {
-            foreignKeyName: "coin_confusion_map_nearest_eurio_id_fkey"
-            columns: ["nearest_eurio_id"]
-            isOneToOne: false
-            referencedRelation: "coins"
-            referencedColumns: ["eurio_id"]
-          },
-        ]
-      }
-      coin_embeddings: {
-        Row: {
-          created_at: string
-          embedding: number[]
-          eurio_id: string
-          model_version: string
-        }
-        Insert: {
-          created_at?: string
-          embedding: number[]
-          eurio_id: string
-          model_version: string
-        }
-        Update: {
-          created_at?: string
-          embedding?: number[]
-          eurio_id?: string
-          model_version?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "coin_embeddings_eurio_id_fkey"
-            columns: ["eurio_id"]
-            isOneToOne: true
-            referencedRelation: "coins"
-            referencedColumns: ["eurio_id"]
-          },
-        ]
-      }
-      coin_market_prices: {
-        Row: {
-          eurio_id: string
-          fetched_at: string
-          id: number
-          p25: number | null
-          p50: number | null
-          p75: number | null
-          quality: string | null
-          query_used: string | null
-          samples_count: number | null
-          source: string
-          with_sales_count: number | null
-        }
-        Insert: {
-          eurio_id: string
-          fetched_at?: string
-          id?: number
-          p25?: number | null
-          p50?: number | null
-          p75?: number | null
-          quality?: string | null
-          query_used?: string | null
-          samples_count?: number | null
-          source: string
-          with_sales_count?: number | null
-        }
-        Update: {
-          eurio_id?: string
-          fetched_at?: string
-          id?: number
-          p25?: number | null
-          p50?: number | null
-          p75?: number | null
-          quality?: string | null
-          query_used?: string | null
-          samples_count?: number | null
-          source?: string
-          with_sales_count?: number | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "coin_market_prices_eurio_id_fkey"
-            columns: ["eurio_id"]
-            isOneToOne: false
-            referencedRelation: "coins"
-            referencedColumns: ["eurio_id"]
-          },
-        ]
-      }
-      coin_mint_releases: {
-        Row: {
-          created_at: string
-          id: string
-          issue_type: string
-          mint_mark: string | null
-          mint_year: number
+          face_value_cents: number
+          is_commemorative: boolean
           mintage: number | null
-          notes: string | null
-          parent_type_id: string
-          released_on: string | null
+          obverse_lettering: string | null
+          orientation: string | null
+          reverse_lettering: string | null
+          series_id: string | null
+          shape: string | null
+          shared_reverse_id: string | null
+          theme: string | null
+          thickness_mm: number | null
           updated_at: string
+          variant_kind: string
+          weight_g: number | null
+          year: number
         }
         Insert: {
-          created_at?: string
-          id: string
-          issue_type: string
-          mint_mark?: string | null
-          mint_year: number
+          canonical_eurio_id?: string | null
+          collector_only?: boolean
+          composition?: string | null
+          country: string
+          country_name?: string | null
+          demonetized?: boolean | null
+          demonetized_on?: string | null
+          design_description?: string | null
+          design_group_id?: string | null
+          diameter_mm?: number | null
+          edge_description?: string | null
+          edge_lettering?: string | null
+          eurio_id: string
+          face_value_cents: number
+          is_commemorative?: boolean
           mintage?: number | null
-          notes?: string | null
-          parent_type_id: string
-          released_on?: string | null
+          obverse_lettering?: string | null
+          orientation?: string | null
+          reverse_lettering?: string | null
+          series_id?: string | null
+          shape?: string | null
+          shared_reverse_id?: string | null
+          theme?: string | null
+          thickness_mm?: number | null
           updated_at?: string
+          variant_kind?: string
+          weight_g?: number | null
+          year: number
         }
         Update: {
-          created_at?: string
-          id?: string
-          issue_type?: string
-          mint_mark?: string | null
-          mint_year?: number
+          canonical_eurio_id?: string | null
+          collector_only?: boolean
+          composition?: string | null
+          country?: string
+          country_name?: string | null
+          demonetized?: boolean | null
+          demonetized_on?: string | null
+          design_description?: string | null
+          design_group_id?: string | null
+          diameter_mm?: number | null
+          edge_description?: string | null
+          edge_lettering?: string | null
+          eurio_id?: string
+          face_value_cents?: number
+          is_commemorative?: boolean
           mintage?: number | null
-          notes?: string | null
-          parent_type_id?: string
-          released_on?: string | null
+          obverse_lettering?: string | null
+          orientation?: string | null
+          reverse_lettering?: string | null
+          series_id?: string | null
+          shape?: string | null
+          shared_reverse_id?: string | null
+          theme?: string | null
+          thickness_mm?: number | null
           updated_at?: string
+          variant_kind?: string
+          weight_g?: number | null
+          year?: number
         }
         Relationships: [
           {
-            foreignKeyName: "coin_mint_releases_parent_type_id_fkey"
-            columns: ["parent_type_id"]
+            foreignKeyName: "coin_canonical_eurio_id_fkey"
+            columns: ["canonical_eurio_id"]
             isOneToOne: false
-            referencedRelation: "coins"
+            referencedRelation: "coin"
+            referencedColumns: ["eurio_id"]
+          },
+          {
+            foreignKeyName: "coin_design_group_id_fkey"
+            columns: ["design_group_id"]
+            isOneToOne: false
+            referencedRelation: "design_group"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coin_series_id_fkey"
+            columns: ["series_id"]
+            isOneToOne: false
+            referencedRelation: "coin_series"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coin_shared_reverse_id_fkey"
+            columns: ["shared_reverse_id"]
+            isOneToOne: false
+            referencedRelation: "shared_reverse"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      coin_credit: {
+        Row: {
+          eurio_id: string
+          id: number
+          name: string
+          position: number | null
+          role: string
+        }
+        Insert: {
+          eurio_id: string
+          id?: never
+          name: string
+          position?: number | null
+          role: string
+        }
+        Update: {
+          eurio_id?: string
+          id?: never
+          name?: string
+          position?: number | null
+          role?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coin_credit_eurio_id_fkey"
+            columns: ["eurio_id"]
+            isOneToOne: false
+            referencedRelation: "coin"
             referencedColumns: ["eurio_id"]
           },
         ]
       }
-      coin_names_i18n: {
+      coin_description_i18n: {
         Row: {
-          confidence: string
+          description: string | null
           eurio_id: string
-          fetched_at: string
           lang: string
-          model: string | null
-          source: string
           title: string
         }
         Insert: {
-          confidence?: string
+          description?: string | null
           eurio_id: string
-          fetched_at?: string
           lang: string
-          model?: string | null
-          source?: string
           title: string
         }
         Update: {
-          confidence?: string
+          description?: string | null
           eurio_id?: string
-          fetched_at?: string
           lang?: string
-          model?: string | null
-          source?: string
           title?: string
         }
         Relationships: [
           {
-            foreignKeyName: "coin_names_i18n_eurio_id_fkey"
+            foreignKeyName: "coin_description_i18n_eurio_id_fkey"
             columns: ["eurio_id"]
             isOneToOne: false
-            referencedRelation: "coins"
+            referencedRelation: "coin"
+            referencedColumns: ["eurio_id"]
+          },
+        ]
+      }
+      coin_image: {
+        Row: {
+          eurio_id: string
+          height: number | null
+          id: number
+          license: string | null
+          role: string
+          source: string
+          storage_path: string
+          width: number | null
+        }
+        Insert: {
+          eurio_id: string
+          height?: number | null
+          id?: never
+          license?: string | null
+          role?: string
+          source: string
+          storage_path: string
+          width?: number | null
+        }
+        Update: {
+          eurio_id?: string
+          height?: number | null
+          id?: never
+          license?: string | null
+          role?: string
+          source?: string
+          storage_path?: string
+          width?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coin_image_eurio_id_fkey"
+            columns: ["eurio_id"]
+            isOneToOne: false
+            referencedRelation: "coin"
+            referencedColumns: ["eurio_id"]
+          },
+        ]
+      }
+      coin_mint_release: {
+        Row: {
+          id: string
+          issue_type: string | null
+          mint_id: string | null
+          mint_year: number | null
+          mintage: number | null
+          parent_type_id: string
+        }
+        Insert: {
+          id: string
+          issue_type?: string | null
+          mint_id?: string | null
+          mint_year?: number | null
+          mintage?: number | null
+          parent_type_id: string
+        }
+        Update: {
+          id?: string
+          issue_type?: string | null
+          mint_id?: string | null
+          mint_year?: number | null
+          mintage?: number | null
+          parent_type_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coin_mint_release_mint_id_fkey"
+            columns: ["mint_id"]
+            isOneToOne: false
+            referencedRelation: "mint"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coin_mint_release_parent_type_id_fkey"
+            columns: ["parent_type_id"]
+            isOneToOne: false
+            referencedRelation: "coin"
+            referencedColumns: ["eurio_id"]
+          },
+        ]
+      }
+      coin_name_i18n: {
+        Row: {
+          eurio_id: string
+          lang: string
+          title: string
+        }
+        Insert: {
+          eurio_id: string
+          lang: string
+          title: string
+        }
+        Update: {
+          eurio_id?: string
+          lang?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coin_name_i18n_eurio_id_fkey"
+            columns: ["eurio_id"]
+            isOneToOne: false
+            referencedRelation: "coin"
+            referencedColumns: ["eurio_id"]
+          },
+        ]
+      }
+      coin_price: {
+        Row: {
+          buy_url: string | null
+          currency: string
+          eurio_id: string
+          grade: string | null
+          id: number
+          kind: string
+          p_high: number | null
+          p_low: number | null
+          p_mid: number | null
+          sampled_at: string
+          source: string
+        }
+        Insert: {
+          buy_url?: string | null
+          currency?: string
+          eurio_id: string
+          grade?: string | null
+          id?: never
+          kind: string
+          p_high?: number | null
+          p_low?: number | null
+          p_mid?: number | null
+          sampled_at: string
+          source: string
+        }
+        Update: {
+          buy_url?: string | null
+          currency?: string
+          eurio_id?: string
+          grade?: string | null
+          id?: never
+          kind?: string
+          p_high?: number | null
+          p_low?: number | null
+          p_mid?: number | null
+          sampled_at?: string
+          source?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coin_price_eurio_id_fkey"
+            columns: ["eurio_id"]
+            isOneToOne: false
+            referencedRelation: "coin"
             referencedColumns: ["eurio_id"]
           },
         ]
       }
       coin_series: {
         Row: {
-          country: string
-          created_at: string
-          description: string | null
-          designation: string
-          designation_i18n: Json | null
+          country: string | null
+          designation: string | null
+          designation_i18n_json: Json | null
           id: string
           minting_end_reason: string | null
           minting_ended_at: string | null
-          minting_started_at: string
-          superseded_by_series_id: string | null
+          minting_started_at: string | null
           supersedes_series_id: string | null
-          updated_at: string
         }
         Insert: {
-          country: string
-          created_at?: string
-          description?: string | null
-          designation: string
-          designation_i18n?: Json | null
+          country?: string | null
+          designation?: string | null
+          designation_i18n_json?: Json | null
           id: string
           minting_end_reason?: string | null
           minting_ended_at?: string | null
-          minting_started_at: string
-          superseded_by_series_id?: string | null
+          minting_started_at?: string | null
           supersedes_series_id?: string | null
-          updated_at?: string
         }
         Update: {
-          country?: string
-          created_at?: string
-          description?: string | null
-          designation?: string
-          designation_i18n?: Json | null
+          country?: string | null
+          designation?: string | null
+          designation_i18n_json?: Json | null
           id?: string
           minting_end_reason?: string | null
           minting_ended_at?: string | null
-          minting_started_at?: string
-          superseded_by_series_id?: string | null
+          minting_started_at?: string | null
           supersedes_series_id?: string | null
-          updated_at?: string
         }
         Relationships: [
-          {
-            foreignKeyName: "coin_series_superseded_by_series_id_fkey"
-            columns: ["superseded_by_series_id"]
-            isOneToOne: false
-            referencedRelation: "coin_series"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "coin_series_supersedes_series_id_fkey"
             columns: ["supersedes_series_id"]
@@ -332,383 +408,74 @@ export type Database = {
           },
         ]
       }
-      coin_source_refs: {
+      coin_topic: {
         Row: {
-          coin_type_id: string
-          fetched_at: string
+          eurio_id: string
           id: number
-          native_id: string
-          native_url: string | null
-          source: string
+          lang: string
+          topic: string
         }
         Insert: {
-          coin_type_id: string
-          fetched_at?: string
-          id?: number
-          native_id: string
-          native_url?: string | null
-          source: string
-        }
-        Update: {
-          coin_type_id?: string
-          fetched_at?: string
-          id?: number
-          native_id?: string
-          native_url?: string | null
-          source?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "coin_source_refs_coin_type_id_fkey"
-            columns: ["coin_type_id"]
-            isOneToOne: false
-            referencedRelation: "coins"
-            referencedColumns: ["eurio_id"]
-          },
-        ]
-      }
-      coin_variants: {
-        Row: {
-          created_at: string
-          finish: string
-          id: string
-          notes: string | null
-          obverse_url: string | null
-          parent_type_id: string
-          reverse_url: string | null
-          updated_at: string
-        }
-        Insert: {
-          created_at?: string
-          finish: string
-          id: string
-          notes?: string | null
-          obverse_url?: string | null
-          parent_type_id: string
-          reverse_url?: string | null
-          updated_at?: string
-        }
-        Update: {
-          created_at?: string
-          finish?: string
-          id?: string
-          notes?: string | null
-          obverse_url?: string | null
-          parent_type_id?: string
-          reverse_url?: string | null
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "coin_variants_parent_type_id_fkey"
-            columns: ["parent_type_id"]
-            isOneToOne: false
-            referencedRelation: "coins"
-            referencedColumns: ["eurio_id"]
-          },
-        ]
-      }
-      coins: {
-        Row: {
-          collector_only: boolean
-          country: string
-          cross_refs: Json
-          currency: string
-          design_description: string | null
-          design_group_id: string | null
           eurio_id: string
-          face_value: number
-          first_seen: string
-          has_bce: boolean
-          has_ebay: boolean
-          has_lmdlp: boolean
-          has_wikipedia: boolean
-          images: Json
-          is_commemorative: boolean
-          is_withdrawn: boolean
-          issue_type: string | null
-          last_updated: string
-          mintage: number | null
-          national_variants: Json | null
-          needs_review: boolean
-          personal_owned: boolean
-          review_action_hint: string | null
-          review_payload: Json | null
-          review_reason: string | null
-          series_id: string | null
-          sources_used: string[]
-          theme: string | null
-          withdrawal_reason: string | null
-          withdrawn_at: string | null
-          year: number
-        }
-        Insert: {
-          collector_only?: boolean
-          country: string
-          cross_refs?: Json
-          currency?: string
-          design_description?: string | null
-          design_group_id?: string | null
-          eurio_id: string
-          face_value: number
-          first_seen?: string
-          has_bce?: boolean
-          has_ebay?: boolean
-          has_lmdlp?: boolean
-          has_wikipedia?: boolean
-          images?: Json
-          is_commemorative?: boolean
-          is_withdrawn?: boolean
-          issue_type?: string | null
-          last_updated?: string
-          mintage?: number | null
-          national_variants?: Json | null
-          needs_review?: boolean
-          personal_owned?: boolean
-          review_action_hint?: string | null
-          review_payload?: Json | null
-          review_reason?: string | null
-          series_id?: string | null
-          sources_used?: string[]
-          theme?: string | null
-          withdrawal_reason?: string | null
-          withdrawn_at?: string | null
-          year: number
+          id?: never
+          lang: string
+          topic: string
         }
         Update: {
-          collector_only?: boolean
-          country?: string
-          cross_refs?: Json
-          currency?: string
-          design_description?: string | null
-          design_group_id?: string | null
           eurio_id?: string
-          face_value?: number
-          first_seen?: string
-          has_bce?: boolean
-          has_ebay?: boolean
-          has_lmdlp?: boolean
-          has_wikipedia?: boolean
-          images?: Json
-          is_commemorative?: boolean
-          is_withdrawn?: boolean
-          issue_type?: string | null
-          last_updated?: string
-          mintage?: number | null
-          national_variants?: Json | null
-          needs_review?: boolean
-          personal_owned?: boolean
-          review_action_hint?: string | null
-          review_payload?: Json | null
-          review_reason?: string | null
-          series_id?: string | null
-          sources_used?: string[]
-          theme?: string | null
-          withdrawal_reason?: string | null
-          withdrawn_at?: string | null
-          year?: number
+          id?: never
+          lang?: string
+          topic?: string
         }
         Relationships: [
           {
-            foreignKeyName: "coins_design_group_id_fkey"
-            columns: ["design_group_id"]
-            isOneToOne: false
-            referencedRelation: "design_groups"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "coins_series_id_fkey"
-            columns: ["series_id"]
-            isOneToOne: false
-            referencedRelation: "coin_series"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      design_groups: {
-        Row: {
-          created_at: string
-          description: string | null
-          designation: string
-          designation_i18n: Json | null
-          id: string
-          shared_obverse_url: string | null
-          updated_at: string
-        }
-        Insert: {
-          created_at?: string
-          description?: string | null
-          designation: string
-          designation_i18n?: Json | null
-          id: string
-          shared_obverse_url?: string | null
-          updated_at?: string
-        }
-        Update: {
-          created_at?: string
-          description?: string | null
-          designation?: string
-          designation_i18n?: Json | null
-          id?: string
-          shared_obverse_url?: string | null
-          updated_at?: string
-        }
-        Relationships: []
-      }
-      matching_decisions: {
-        Row: {
-          confidence: number | null
-          decided_at: string
-          eurio_id: string | null
-          id: number
-          method: string
-          reviewer_notes: string | null
-          runner_up: string | null
-          source: string
-          source_native_id: string | null
-        }
-        Insert: {
-          confidence?: number | null
-          decided_at?: string
-          eurio_id?: string | null
-          id?: number
-          method: string
-          reviewer_notes?: string | null
-          runner_up?: string | null
-          source: string
-          source_native_id?: string | null
-        }
-        Update: {
-          confidence?: number | null
-          decided_at?: string
-          eurio_id?: string | null
-          id?: number
-          method?: string
-          reviewer_notes?: string | null
-          runner_up?: string | null
-          source?: string
-          source_native_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "matching_decisions_eurio_id_fkey"
+            foreignKeyName: "coin_topic_eurio_id_fkey"
             columns: ["eurio_id"]
             isOneToOne: false
-            referencedRelation: "coins"
+            referencedRelation: "coin"
             referencedColumns: ["eurio_id"]
           },
         ]
       }
-      mint_release_prices: {
+      design_group: {
         Row: {
-          currency: string
-          fetched_at: string
-          grade_eurio: string | null
-          grade_raw: string
-          id: number
-          mint_release_id: string
-          price: number
-          source: string
+          designation: string | null
+          designation_i18n_json: Json | null
+          id: string
         }
         Insert: {
-          currency?: string
-          fetched_at?: string
-          grade_eurio?: string | null
-          grade_raw: string
-          id?: number
-          mint_release_id: string
-          price: number
-          source: string
+          designation?: string | null
+          designation_i18n_json?: Json | null
+          id: string
         }
         Update: {
-          currency?: string
-          fetched_at?: string
-          grade_eurio?: string | null
-          grade_raw?: string
-          id?: number
-          mint_release_id?: string
-          price?: number
-          source?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "mint_release_prices_mint_release_id_fkey"
-            columns: ["mint_release_id"]
-            isOneToOne: false
-            referencedRelation: "coin_mint_releases"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      model_classes: {
-        Row: {
-          class_id: string
-          class_kind: string
-          created_at: string
-          embedding: number[]
-          model_version: string
-          n_train_images: number | null
-          n_val_images: number | null
-          recall_at_1: number | null
-          updated_at: string
-        }
-        Insert: {
-          class_id: string
-          class_kind: string
-          created_at?: string
-          embedding: number[]
-          model_version: string
-          n_train_images?: number | null
-          n_val_images?: number | null
-          recall_at_1?: number | null
-          updated_at?: string
-        }
-        Update: {
-          class_id?: string
-          class_kind?: string
-          created_at?: string
-          embedding?: number[]
-          model_version?: string
-          n_train_images?: number | null
-          n_val_images?: number | null
-          recall_at_1?: number | null
-          updated_at?: string
+          designation?: string | null
+          designation_i18n_json?: Json | null
+          id?: string
         }
         Relationships: []
       }
-      review_queue: {
+      mint: {
         Row: {
-          candidates: Json | null
-          created_at: string
-          id: number
-          raw_payload: Json
-          reason: string
-          resolution: Json | null
-          resolved: boolean
-          source: string
-          source_native_id: string | null
+          city: string | null
+          country: string | null
+          display_name: string | null
+          id: string
+          mark: string | null
         }
         Insert: {
-          candidates?: Json | null
-          created_at?: string
-          id?: number
-          raw_payload: Json
-          reason: string
-          resolution?: Json | null
-          resolved?: boolean
-          source: string
-          source_native_id?: string | null
+          city?: string | null
+          country?: string | null
+          display_name?: string | null
+          id: string
+          mark?: string | null
         }
         Update: {
-          candidates?: Json | null
-          created_at?: string
-          id?: number
-          raw_payload?: Json
-          reason?: string
-          resolution?: Json | null
-          resolved?: boolean
-          source?: string
-          source_native_id?: string | null
+          city?: string | null
+          country?: string | null
+          display_name?: string | null
+          id?: string
+          mark?: string | null
         }
         Relationships: []
       }
@@ -733,7 +500,7 @@ export type Database = {
             foreignKeyName: "set_members_eurio_id_fkey"
             columns: ["eurio_id"]
             isOneToOne: false
-            referencedRelation: "coins"
+            referencedRelation: "coin"
             referencedColumns: ["eurio_id"]
           },
           {
@@ -748,172 +515,78 @@ export type Database = {
       sets: {
         Row: {
           active: boolean
-          category: string
-          created_at: string
+          category: string | null
           criteria: Json | null
           description_i18n: Json | null
-          display_order: number
+          display_order: number | null
           expected_count: number | null
           icon: string | null
           id: string
-          kind: string
-          name_i18n: Json
+          kind: string | null
+          name_i18n: Json | null
           param_key: string | null
           reward: Json | null
-          updated_at: string
         }
         Insert: {
           active?: boolean
-          category: string
-          created_at?: string
+          category?: string | null
           criteria?: Json | null
           description_i18n?: Json | null
-          display_order?: number
+          display_order?: number | null
           expected_count?: number | null
           icon?: string | null
           id: string
-          kind: string
-          name_i18n: Json
+          kind?: string | null
+          name_i18n?: Json | null
           param_key?: string | null
           reward?: Json | null
-          updated_at?: string
         }
         Update: {
           active?: boolean
-          category?: string
-          created_at?: string
+          category?: string | null
           criteria?: Json | null
           description_i18n?: Json | null
-          display_order?: number
+          display_order?: number | null
           expected_count?: number | null
           icon?: string | null
           id?: string
-          kind?: string
-          name_i18n?: Json
+          kind?: string | null
+          name_i18n?: Json | null
           param_key?: string | null
           reward?: Json | null
-          updated_at?: string
         }
         Relationships: []
       }
-      sets_audit: {
+      shared_reverse: {
         Row: {
-          action: string
-          actor: string
-          after: Json | null
-          at: string
-          before: Json | null
-          id: number
-          set_id: string
+          applies_to: string | null
+          asset_name: string
+          id: string
+          label: string
+          map_version: number | null
         }
         Insert: {
-          action: string
-          actor: string
-          after?: Json | null
-          at?: string
-          before?: Json | null
-          id?: number
-          set_id: string
+          applies_to?: string | null
+          asset_name: string
+          id: string
+          label: string
+          map_version?: number | null
         }
         Update: {
-          action?: string
-          actor?: string
-          after?: Json | null
-          at?: string
-          before?: Json | null
-          id?: number
-          set_id?: string
+          applies_to?: string | null
+          asset_name?: string
+          id?: string
+          label?: string
+          map_version?: number | null
         }
         Relationships: []
-      }
-      source_observations: {
-        Row: {
-          eurio_id: string
-          id: number
-          observation_type: string
-          payload: Json
-          sampled_at: string
-          source: string
-          source_native_id: string | null
-        }
-        Insert: {
-          eurio_id: string
-          id?: number
-          observation_type: string
-          payload: Json
-          sampled_at?: string
-          source: string
-          source_native_id?: string | null
-        }
-        Update: {
-          eurio_id?: string
-          id?: number
-          observation_type?: string
-          payload?: Json
-          sampled_at?: string
-          source?: string
-          source_native_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "source_observations_eurio_id_fkey"
-            columns: ["eurio_id"]
-            isOneToOne: false
-            referencedRelation: "coins"
-            referencedColumns: ["eurio_id"]
-          },
-        ]
-      }
-      user_collections: {
-        Row: {
-          added_at: string
-          eurio_id: string
-          id: number
-          notes: string | null
-          quality: string | null
-          scan_image_url: string | null
-          user_id: string
-          value_at_addition: number | null
-        }
-        Insert: {
-          added_at?: string
-          eurio_id: string
-          id?: number
-          notes?: string | null
-          quality?: string | null
-          scan_image_url?: string | null
-          user_id: string
-          value_at_addition?: number | null
-        }
-        Update: {
-          added_at?: string
-          eurio_id?: string
-          id?: number
-          notes?: string | null
-          quality?: string | null
-          scan_image_url?: string | null
-          user_id?: string
-          value_at_addition?: number | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "user_collections_eurio_id_fkey"
-            columns: ["eurio_id"]
-            isOneToOne: false
-            referencedRelation: "coins"
-            referencedColumns: ["eurio_id"]
-          },
-        ]
       }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      coins_set_source_flag: {
-        Args: { _eurio_id: string; _source: string }
-        Returns: undefined
-      }
+      [_ in never]: never
     }
     Enums: {
       [_ in never]: never

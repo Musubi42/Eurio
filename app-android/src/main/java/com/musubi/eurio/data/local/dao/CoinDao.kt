@@ -4,13 +4,20 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Upsert
 import com.musubi.eurio.data.local.entities.CoinEntity
 import com.musubi.eurio.data.local.entities.CoinSeriesEntity
 import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface CoinDao {
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    // @Upsert (insert-or-UPDATE-in-place), NOT @Insert(REPLACE): REPLACE deletes
+    // the existing row before inserting, which fires coin_in_vault's
+    // `ON DELETE CASCADE` FK and would wipe the user's vault on every catalog
+    // refresh. Upsert updates columns in place — the eurio_id (referenced key)
+    // is untouched, so no cascade ever fires. Never call clearCoins() on the
+    // catalog-refresh path for the same reason.
+    @Upsert
     suspend fun insertAllCoins(coins: List<CoinEntity>)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -25,15 +32,12 @@ interface CoinDao {
     @Query("SELECT * FROM coins WHERE eurio_id = :eurioId LIMIT 1")
     suspend fun findByEurioId(eurioId: String): CoinEntity?
 
-    @Query("SELECT * FROM coins WHERE numista_id = :numistaId LIMIT 1")
-    suspend fun findByNumistaId(numistaId: Int): CoinEntity?
+    // Used by the debug carousel to cycle through every 2 € coin.
+    // faceValueCents is passed as cents (e.g. 200 for 2 €).
+    @Query("SELECT * FROM coins WHERE face_value_cents = :faceValueCents ORDER BY country, year, eurio_id")
+    suspend fun findAllByFaceValueCents(faceValueCents: Int): List<CoinEntity>
 
-    // Used by the debug carousel (Phase 4) to cycle through every 2 €
-    // commemorative + circulation coin without invoking the ML pipeline.
-    @Query("SELECT * FROM coins WHERE face_value = :faceValue ORDER BY country, year, eurio_id")
-    suspend fun findAllByFaceValue(faceValue: Double): List<CoinEntity>
-
-    @Query("SELECT * FROM coins ORDER BY country, year, face_value")
+    @Query("SELECT * FROM coins ORDER BY country, year, face_value_cents")
     fun observeAll(): Flow<List<CoinEntity>>
 
     @Query("DELETE FROM coins")

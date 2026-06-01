@@ -14,9 +14,10 @@
 // (which coin), never a gamble — there is no near-miss branch.
 
 import {
-  createStage, loadCoinsManifest, buildCoinFromEntry, buildProceduralEdgeTexture,
+  createStage, buildCoinFromUrls, buildProceduralEdgeTexture,
   disposeCoin, R_OUT,
 } from './_coin3d.js';
+import * as data from '../_shared/data.js';
 
 // ───────── Feel constants (audit-tunable) ─────────
 const MORPH_DUR = 0.24;        // s, ghost → hero scale-in
@@ -278,18 +279,23 @@ export async function mount({ query, navigate }) {
 
   // ───────── boot ─────────
   try {
-    const manifest = await loadCoinsManifest();
-    const list = manifest.coins;
-    if (!list?.length) throw new Error('coins.json vide');
+    await data.init();
+    const list = data.allCoins().filter((c) => data.coinTextures(c));
+    if (!list?.length) throw new Error('app_core: aucune pièce avec textures');
     const requestedId = (query?.id || '').toString();
     // No id → a random coin so each scan reveals something different (demo
     // liveliness only; the act itself is never a gamble — see garde-fous).
-    const entry = list.find((c) => c.numista_id === requestedId)
+    const rec = list.find((c) => c.eurioId === requestedId)
       || list[Math.floor(Math.random() * list.length)];
-    ctx.coinId = entry.numista_id;
+    // Legacy display shim so fillDone() keeps its country/year/name contract.
+    const entry = {
+      eurioId: rec.eurioId, numista_id: rec.eurioId, country: rec.countryName,
+      year: rec.year, name: rec.theme || rec.designDescription || '',
+    };
+    ctx.coinId = rec.eurioId;
 
     const edgeTex = buildProceduralEdgeTexture();
-    const coin = await buildCoinFromEntry(entry, { edgeTex });
+    const coin = await buildCoinFromUrls(data.coinTextures(rec), { edgeTex });
     if (active !== ctx) { disposeCoin(coin); return; }  // left during async load
     group = coin.group;
     ctx.coin = coin;

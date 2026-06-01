@@ -8,10 +8,11 @@
 
 import { OrbitControls } from 'https://esm.sh/three@0.160.0/examples/jsm/controls/OrbitControls.js';
 import {
-  createStage, loadCoinsManifest, buildCoinFromEntry, buildProceduralEdgeTexture,
+  createStage, buildCoinFromUrls, buildProceduralEdgeTexture,
   disposeCoin, DEFAULT_NORMAL_STRENGTH, DEFAULT_METALNESS, DEFAULT_ROUGHNESS,
   DEFAULT_EXPOSURE, REVERSE_RELIEF_BOOST,
 } from './_coin3d.js';
+import * as data from '../_shared/data.js';
 
 let activeContext = null;
 
@@ -63,12 +64,12 @@ export async function mount({ state, query }) {
 
   try {
     setStatus(statusEl, 'Chargement du catalogue…');
-    const manifest = await loadCoinsManifest();
-    const list = manifest.coins;
-    if (!list?.length) throw new Error('coins.json: empty list');
+    await data.init();
+    const list = data.allCoins().filter((c) => data.coinTextures(c));
+    if (!list?.length) throw new Error('app_core: no coins with textures');
 
     const requestedId = (query?.id || '').toString();
-    let idx = list.findIndex((c) => c.numista_id === requestedId);
+    let idx = list.findIndex((c) => c.eurioId === requestedId);
     if (idx < 0) idx = 0;
     ctx.coinIndex = idx;
     ctx.coinList = list;
@@ -84,9 +85,10 @@ export async function mount({ state, query }) {
 // ───────── Coin swapping ─────────
 
 async function loadAndBuildCoin(ctx, entry) {
-  setStatus(ctx.statusEl, `Chargement ${entry.country} ${entry.year}…`);
+  setStatus(ctx.statusEl, `Chargement ${entry.countryName} ${entry.year}…`);
   if (ctx.labelEl) {
-    ctx.labelEl.textContent = `${entry.country} · ${entry.year} · ${entry.name}`;
+    ctx.labelEl.textContent =
+      `${entry.countryName} · ${entry.year} · ${entry.theme || entry.designDescription || ''}`;
   }
 
   if (ctx.coin) {
@@ -95,7 +97,7 @@ async function loadAndBuildCoin(ctx, entry) {
     ctx.coin = null;
   }
 
-  const coin = await buildCoinFromEntry(entry, { edgeTex: ctx.edgeTex });
+  const coin = await buildCoinFromUrls(data.coinTextures(entry), { edgeTex: ctx.edgeTex });
   ctx.stage.scene.add(coin.group);
   ctx.coin = coin;
 
@@ -106,7 +108,7 @@ async function loadAndBuildCoin(ctx, entry) {
   }
 
   // Reflect the current coin in the URL without firing the router.
-  history.replaceState({}, '', `#/scan/coin-3d?id=${entry.numista_id}`);
+  history.replaceState({}, '', `#/scan/coin-3d?id=${entry.eurioId}`);
 
   setStatus(ctx.statusEl, '', { fadeOut: true });
 }

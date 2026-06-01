@@ -222,20 +222,8 @@ tasks:
     cmds:
       - maestro test --test-output-dir admin/packages/parity/screenshots/android admin/packages/parity/flows/{{.CLI_ARGS}}.yaml
 
-  snapshot:
-    desc: Export a fresh catalog_snapshot.json from Supabase into assets/
-    # TASKFILE_DIR is always app-android/ regardless of how this file is
-    # invoked (root taskfile include vs `-t app-android/Taskfile.yml`).
-    # ROOT_DIR varies, so don't use it here.
-    dir: '{{.TASKFILE_DIR}}/../ml'
-    cmds:
-      - .venv/bin/python -m export.export_catalog_snapshot
-
-  snapshot-dry:
-    desc: Preview the catalog snapshot (counts + size) without writing
-    dir: '{{.TASKFILE_DIR}}/../ml'
-    cmds:
-      - .venv/bin/python -m export.export_catalog_snapshot --dry-run
+  # catalog_snapshot.json has been replaced by app_core.db (P6).
+  # To rebuild the packaged catalog asset, use: go-task ml:build-app-core
 
   prod:assets:promote:
     desc: "Refresh prod APK assets from ml/prod/current/ (post-promotion). Phase 4."

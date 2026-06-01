@@ -4,7 +4,6 @@ import com.musubi.eurio.data.local.dao.CoinDao
 import com.musubi.eurio.data.local.dao.SetDao
 import com.musubi.eurio.data.local.dao.VaultDao
 import com.musubi.eurio.data.local.entities.SetEntity
-import com.musubi.eurio.domain.IssueType
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 
@@ -119,14 +118,9 @@ class RoomSetRepository(
                 nameFr = coin.nameFr ?: coin.nameEn ?: coin.eurioId,
                 country = coin.country,
                 year = coin.year ?: 0,
-                faceValueCents = ((coin.faceValue ?: 0.0) * 100).toInt(),
-                imageObverseUrl = coin.imageObverseUrl,
-                issueType = when (coin.issueType) {
-                    IssueType.CIRCULATION, IssueType.STARTER_KIT -> "circulation"
-                    IssueType.COMMEMO_NATIONAL, IssueType.COMMEMO_COMMON -> "commemo"
-                    IssueType.BU_SET, IssueType.PROOF -> "circulation"
-                    null -> "circulation"
-                },
+                faceValueCents = coin.faceValueCents,
+                imageObverseUrl = obverseStorageUrl(coin.eurioId),
+                issueType = if (coin.isCommemorative) "commemo" else "circulation",
                 owned = eurioId in ownedIds,
             )
         }

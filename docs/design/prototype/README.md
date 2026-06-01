@@ -6,10 +6,14 @@ européenne. Zéro framework, zéro build, servable par `python3 -m http.server`
 ## Setup en 2 commandes
 
 ```bash
+go-task ml:build-app-core    # génère data/app_core.json (offline core C3, gitignoré)
 cd docs/design/prototype
-./setup-data.sh     # copie ml/datasets/eurio_referential.json → data/ (gitignoré)
-./serve.sh          # python3 -m http.server 8000
+./serve.sh                   # python3 -m http.server 8000 (no-cache)
 ```
+
+Le proto mime l'app : il lit le **core offline** `data/app_core.json` (projeté depuis
+Supabase par `build-app-core`) et fetch **Supabase** à la demande (avers, prix frais,
+autres langues — voir `_shared/supabase.js`).
 
 Puis dans le navigateur : <http://localhost:8000>.
 
@@ -30,10 +34,9 @@ ton téléphone. Le shell passe automatiquement en plein écran en dessous de
 ```
 prototype/
 ├── index.html                 # shell : device frame + status bar + #view + bottom nav
-├── serve.sh                   # lance http.server:8000
-├── setup-data.sh              # copie eurio_referential.json depuis ml/datasets/
-├── .gitignore                 # exclut data/eurio_referential.json
-├── data/                      # populated par setup-data.sh (gitignored)
+├── serve.sh                   # lance http.server:8000 (no-cache)
+├── .gitignore                 # exclut data/app_core.json
+├── data/                      # app_core.json généré par go-task ml:build-app-core (gitignored)
 ├── _shared/
 │   ├── fonts.css              # Google Fonts : Fraunces + Inter Tight + JetBrains Mono
 │   ├── tokens.css             # toutes les variables CSS de design

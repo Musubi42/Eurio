@@ -2,18 +2,11 @@ package com.musubi.eurio.data.local
 
 import android.util.Log
 import androidx.room.TypeConverter
-import com.musubi.eurio.domain.IssueType
 import com.musubi.eurio.domain.SetKind
 
 // Converters Room — uniquement ce qu'on stocke vraiment côté local.
 // Les JSONB criteria de Supabase sont gardés en String brute et parsés à l'usage.
 class Converters {
-    @TypeConverter
-    fun issueTypeToString(value: IssueType?): String? = value?.wireValue
-
-    @TypeConverter
-    fun stringToIssueType(value: String?): IssueType? = IssueType.fromWire(value)
-
     @TypeConverter
     fun setKindToString(value: SetKind): String = value.wireValue
 

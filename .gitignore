@@ -28,6 +28,10 @@ tools/filament/
 # by `go-task filament:compile-materials` (auto-run by Gradle preBuild).
 app-android/src/main/assets/materials/
 
+# Offline core (C3) — generated from Supabase by `go-task ml:build-app-core`.
+# The Android prebuilt SQLite IS committed (packaged in the APK, reproducible
+# builds without Supabase access). The proto JSON copy stays gitignored.
+
 # ML artifacts
 # Heavy ML training datasets (images, embeddings, etc.) — keep referential and snapshots
 ml/datasets/*

@@ -257,6 +257,36 @@ tasks:
     cmds:
       - rm -rf {{.CHECKPOINTS}} {{.OUTPUT}} {{.DATASET}}
 
+  export-app-supabase:
+    desc: "Push the app-facing Supabase schema v2 (all tables, FK-safe order). Requires SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY."
+    cmds:
+      - "{{.VENV}}/python -m export.app_export.run --apply {{.CLI_ARGS}}"
+
+  export-app-supabase:dry:
+    desc: "Dry-run: print per-table row counts and a sample row (no network)."
+    cmds:
+      - "{{.VENV}}/python -m export.app_export.run --dry-run {{.CLI_ARGS}}"
+
+  export-app-obverse:
+    desc: "Upload each coin's avers (national side) to Storage + populate coin_image (empties bucket first)."
+    cmds:
+      - "{{.VENV}}/python -m export.upload_app_obverse --apply {{.CLI_ARGS}}"
+
+  export-app-obverse:dry:
+    desc: "Dry-run: resolve best obverse source per coin, print plan (no network)."
+    cmds:
+      - "{{.VENV}}/python -m export.upload_app_obverse --dry-run"
+
+  build-shared-reverse-assets:
+    desc: "Build the packaged common-side (carte v1/v2) WebP assets for the APK."
+    cmds:
+      - "{{.VENV}}/python -m export.build_shared_reverse_assets"
+
+  build-app-core:
+    desc: "Build the offline core (C3) from Supabase → app_core.json (proto) + app_core.db (Android prebuilt SQLite)."
+    cmds:
+      - "{{.VENV}}/python -m export.build_app_core {{.CLI_ARGS}}"
+
   sync-supabase:
     desc: "Push the canonical referential JSON to Supabase (coins, source_observations, coin_market_prices, …)"
     cmds:

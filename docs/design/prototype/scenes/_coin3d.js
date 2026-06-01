@@ -11,9 +11,8 @@
 //   - createStage()          — renderer + studio lighting + camera + RAF loop
 //                              with onFrame() hooks. NO controls (each scene owns
 //                              its own interaction model).
-//   - buildCoinFromEntry()   — loads a coins.json entry's textures and builds the
-//                              full bimetal mesh (ring + disc + rim + edge).
-//   - loadCoinsManifest()    — cached fetch of data/coin-3d/coins.json.
+//   - buildCoinFromUrls()    — loads avers (Supabase Storage) + revers (packaged
+//                              carte) textures and builds the full bimetal mesh.
 //   - buildProceduralEdgeTexture(), disposeCoin() — helpers shared across scenes.
 //
 // Geometry / lighting constants are the visually-validated values from the
@@ -41,18 +40,6 @@ export const DEFAULT_EXPOSURE = 0.80;
 // receives only the back-key light — boost its normal map so engraved lines stay
 // as "alive" as the obverse sculpt.
 export const REVERSE_RELIEF_BOOST = 1.33;
-
-// ───────── coins.json manifest (cached) ─────────
-
-let coinsManifest = null;
-
-export async function loadCoinsManifest() {
-  if (coinsManifest) return coinsManifest;
-  const r = await fetch('data/coin-3d/coins.json');
-  if (!r.ok) throw new Error(`coins.json: HTTP ${r.status}`);
-  coinsManifest = await r.json();
-  return coinsManifest;
-}
 
 // ───────── Stage : renderer + lighting + camera + RAF loop ─────────
 // Returns a handle each scene drives with its own interaction model. The loop
@@ -138,10 +125,17 @@ export function createStage(canvasWrap, opts = {}) {
 // builds the bimetal mesh. Returns { group, matSilver, matGold, ... } so the
 // caller can add group to the scene and tune materials.
 
-export async function buildCoinFromEntry(entry, { edgeTex } = {}) {
+// Build a coin from texture URLs (avers = Supabase Storage, revers = packaged
+// carte asset). The canonical avers crops are tight + centred (cx/cy≈0.5,
+// r≈0.5, σ≈0.001 measured over the catalogue), so UV mapping is FIXED — no
+// per-image measurement needed. This replaces the legacy coins.json manifest
+// (numista_id keyed, measured UV) now that images live in the app data layer.
+const FIXED_UV = { cx_uv: 0.5, cy_uv: 0.5, radius_uv: 0.5 };
+
+export async function buildCoinFromUrls({ obverse, reverse }, { edgeTex } = {}) {
   const [obverseTex, reverseTex] = await Promise.all([
-    loadTexture(entry.obverse.path),
-    loadTexture(entry.reverse.path),
+    loadTexture(obverse),
+    loadTexture(reverse),
   ]);
 
   await nextFrame();
@@ -150,16 +144,11 @@ export async function buildCoinFromEntry(entry, { edgeTex } = {}) {
   const obverseNormal = buildNormalMapFromImage(obverseTex.image, 1);
   const reverseNormal = buildNormalMapFromImage(reverseImgMirrored, 1);
 
-  // Reverse texture mirrored horizontally → its center x flips; cy/radius hold.
-  const obverseMeta = entry.obverse;
-  const reverseMeta = {
-    cx_uv: 1 - entry.reverse.cx_uv,
-    cy_uv: entry.reverse.cy_uv,
-    radius_uv: entry.reverse.radius_uv,
-  };
+  // Reverse mirrored horizontally → cx flips; with cx=0.5 it is unchanged.
+  const reverseMeta = { cx_uv: 1 - FIXED_UV.cx_uv, cy_uv: FIXED_UV.cy_uv, radius_uv: FIXED_UV.radius_uv };
 
   return buildCoin({
-    obverseTex, obverseNormal, obverseMeta,
+    obverseTex, obverseNormal, obverseMeta: FIXED_UV,
     reverseTex: reverseTexMirrored, reverseNormal, reverseMeta,
     edgeTex,
   });

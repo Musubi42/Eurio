@@ -1,49 +1,62 @@
-/* data.js — fetches eurio_referential.json and exposes queries
- * Loads data/eurio_referential.json (expected shape: { entry_count, entries: [...] })
- * The JSON is NOT tracked in git — it is copied by ./setup-data.sh.
+/* data.js — loads the offline core (C3) and exposes queries.
+ *
+ * Source: data/app_core.json — the offline core projected from Supabase by
+ * `go-task ml:build-app-core`. The JSON is NOT tracked in git (regenerable).
+ *
+ * Shape: { schema_version, coins: [ { eurio_id, country, year,
+ *   face_value_cents, is_commemorative, theme, design_description,
+ *   variant_kind, names:{fr,en}, descriptions, prices, credits, topics,
+ *   mint_releases, shared_reverse_id, ... } ], shared_reverse, mints, ... }
+ *
+ * On-demand data (obverse images, fresh prices, other languages) lives in
+ * Supabase — see _shared/supabase.js (the contact point for the typed api.js).
  */
+
+import { obverseUrl } from './supabase.js';
 
 let _loaded = false;
 let _byId = new Map();
 let _all = [];
 let _countries = [];
+let _sharedReverse = new Map();   // shared_reverse_id → { asset_name, ... }
 
 // ───────── Init / fetch ─────────
 
 export async function init() {
   if (_loaded) return;
   try {
-    const res = await fetch('data/eurio_referential.json', { cache: 'force-cache' });
+    const res = await fetch('data/app_core.json', { cache: 'force-cache' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const raw = await res.json();
-    const entries = Array.isArray(raw) ? raw : raw.entries ?? [];
-    _all = entries.map(normalise);
+    const coins = Array.isArray(raw) ? raw : raw.coins ?? [];
+    _all = coins.map(normalise);
     _byId = new Map(_all.map(c => [c.eurioId, c]));
     _countries = Array.from(new Set(_all.map(c => c.country).filter(Boolean))).sort();
+    _sharedReverse = new Map((raw.shared_reverse ?? []).map(s => [s.id, s]));
     _loaded = true;
-    console.info(`[data] loaded ${_all.length} coins`);
+    console.info(`[data] loaded ${_all.length} coins (app_core v${raw.schema_version ?? '?'})`);
   } catch (err) {
-    console.error('[data] load failed. Run ./setup-data.sh first.', err);
+    console.error('[data] load failed. Run `go-task ml:build-app-core` first.', err);
     _loaded = false;
   }
 }
 
-// Normalise raw entry into a friendlier flat shape used by scenes.
-function normalise(e) {
-  const id = e.identity || {};
-  const faceValue = id.face_value ?? 0;
+// Normalise an app_core coin into the friendly flat shape used by scenes.
+// The full record (names, descriptions, prices, credits, topics, releases,
+// shared_reverse_id) stays accessible via `.raw`.
+function normalise(c) {
+  const cents = c.face_value_cents ?? 0;
   return {
-    eurioId: e.eurio_id,
-    country: (id.country || '').toLowerCase(),
-    countryName: id.country_name || id.country || '?',
-    year: id.year ?? null,
-    faceValue,                                         // e.g. 2, 0.5
-    faceValueCents: Math.round((faceValue || 0) * 100),
-    isCommemorative: !!id.is_commemorative,
-    theme: id.theme ?? null,
-    designDescription: id.design_description ?? null,
-    nationalVariants: id.national_variants ?? null,
-    raw: e,
+    eurioId: c.eurio_id,
+    country: (c.country || '').toLowerCase(),
+    countryName: c.country_name || c.country || '?',
+    year: c.year ?? null,
+    faceValue: cents / 100,                            // e.g. 2, 0.5
+    faceValueCents: cents,
+    isCommemorative: !!c.is_commemorative,
+    theme: c.theme ?? null,
+    designDescription: c.design_description ?? null,
+    raw: c,
   };
 }
 
@@ -90,6 +103,26 @@ export function allCountries() {
 
 export function allCoins() {
   return _all.slice();
+}
+
+// ───────── 3D textures (avers Storage + carte packagée) ─────────
+
+export function getSharedReverse(id) {
+  return _sharedReverse.get(id) || null;
+}
+
+// Resolve the obverse (Supabase Storage) + reverse (packaged carte) texture URLs
+// for a coin. Returns null if the shared_reverse mapping is missing.
+export function coinTextures(coinOrId) {
+  const c = typeof coinOrId === 'string' ? getCoin(coinOrId) : coinOrId;
+  if (!c) return null;
+  const srId = c.raw?.shared_reverse_id;
+  const sr = srId ? _sharedReverse.get(srId) : null;
+  if (!sr) return null;
+  return {
+    obverse: obverseUrl(c.eurioId),
+    reverse: `data/shared_reverse/${sr.asset_name}`,
+  };
 }
 
 // ───────── Coin SVG renderer ─────────

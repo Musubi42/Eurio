@@ -55,7 +55,7 @@ class RoomProfileRepository(
             val countries = entriesWithCoin.map { it.coin.country }.distinct()
             val completedSets = sets.count { it.isComplete }
             val totalCents = entriesWithCoin.sumOf {
-                ((it.coin.faceValue ?: 0.0) * 100).toLong()
+                it.coin.faceValueCents.toLong()
             }
 
             val currentStreak = metaDao.getInt(KEY_STREAK_COUNT) ?: 0

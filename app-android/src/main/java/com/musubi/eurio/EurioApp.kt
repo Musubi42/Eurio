@@ -3,7 +3,7 @@ package com.musubi.eurio
 import android.app.Application
 import android.util.Log
 import com.musubi.eurio.data.local.EurioDatabase
-import com.musubi.eurio.data.local.bootstrap.CatalogBootstrapper
+import com.musubi.eurio.data.local.bootstrap.AppCoreBootstrapper
 import com.musubi.eurio.data.repository.CoinRepository
 import com.musubi.eurio.data.repository.MetaStreakRepository
 import com.musubi.eurio.data.repository.RoomCoinRepository
@@ -94,7 +94,7 @@ class EurioApp : Application() {
     // ─────────────────────────────────────────────────────────────────
 
     val coinRepository: CoinRepository by lazy {
-        RoomCoinRepository(database.coinDao())
+        RoomCoinRepository(database.coinDao(), database.sharedReverseDao())
     }
 
     val vaultRepository: VaultRepository by lazy {
@@ -221,7 +221,7 @@ class EurioApp : Application() {
         // observant bootstrapState.
         appScope.launch {
             runCatching {
-                CatalogBootstrapper(this@EurioApp, database).runIfNeeded()
+                AppCoreBootstrapper(this@EurioApp, database).runIfNeeded()
             }.onSuccess {
                 _bootstrapState.value = BootstrapState.Ready
             }.onFailure { t ->
