@@ -239,16 +239,19 @@ Détail par source : [`referential-bootstrap-research.md`](./research/referentia
 
 ### 6.2 Backend (Supabase)
 
-| Feature | Usage |
-|---|---|
-| **Postgres** | 6 tables en place depuis 2C.7 : `coins`, `source_observations`, `matching_decisions`, `review_queue`, `coin_embeddings`, `user_collections` |
-| **Auth** | Login email/password, Apple/Google plus tard |
-| **Storage** | Images BCE servies directement depuis la source (pas de proxy), Storage réservé à la v2 si on veut cacher |
-| **RLS** | Lecture publique (`anon` + `authenticated`) sur les 5 tables référentiel ; `user_collections` owner-only via `(select auth.uid()) = user_id` |
-| **Edge Functions** (TS/Deno) | À venir : cron scrapers, aggregation prix, trigger achievements. Types TS auto-générés dans `supabase/types/database.ts`. |
-| **Realtime** | Pas prévu v1 (synchro manuelle côté app suffit) |
+> **Refonte 2026-06-02 (V2)** : Supabase n'est plus un canon mais une **projection
+> read-only app-facing d'`eurio.db`**. Schéma rebâti (14 tables app-facing), images
+> en Storage. Voir ADR [`supabase-app-schema-v2.md`](./research/supabase-app-schema-v2.md).
 
-État après Phase 2C.7 : **2 938** coins, **3 695** observations, **197** items en review queue, **1 771** matching decisions, zéro advisor WARN/ERROR. Free tier 50k rows / 500 MB : usage <10% du quota, marge confortable pour la beta.
+| Feature | Usage (V2) |
+|---|---|
+| **Postgres** | Projection app-facing : `coin` (identité + caractéristiques à plat), `coin_image`, `coin_price`, `coin_name_i18n`, `coin_description_i18n`, `coin_credit`, `coin_topic`, `coin_mint_release`, `mint`, `shared_reverse`, `design_group`, `coin_series`, `sets`, `set_members`. Peuplé par `ml/export/app_export` (go-task `ml:export-app-supabase`). |
+| **Storage** | Bucket public `coin-images` : avers (côté national unique) en webp, fetch on-demand. Le côté commun (carte) est packagé dans l'APK (`shared_reverse`). |
+| **RLS** | Lecture publique (`anon` + `authenticated`) sur les 14 tables. Écriture = service_role (exporteur). |
+| **Auth** | Pas d'auth user v1 (coffre 100 % local Room). Apple/Google plus tard pour la sync cloud. |
+| **Edge Functions / Realtime** | Pas v1. Types TS auto-générés dans `supabase/types/database.ts`. |
+
+État V2 (set enrichi 1er passage) : **689** coins, 4126 titres i18n, 11345 descriptions (24 langues), 3298 prix, 689 avers en Storage (~25 MB). Free tier : usage très bas.
 
 ### 6.3 ML / data pipeline (local)
 
@@ -361,6 +364,9 @@ Ces décisions sont documentées en détail dans leurs propres fichiers. Ce tabl
 | Bootstrap merge doit préserver `images`, `design_description`, `sources_used` sur re-run | 2026-04-13 | [`phase-2c7-supabase-sync-run.md`](./research/phase-2c7-supabase-sync-run.md) §3 |
 | Postgres `NULLS NOT DISTINCT` sur `source_observations` unique constraint | 2026-04-13 | [`phase-2c7-supabase-sync-run.md`](./research/phase-2c7-supabase-sync-run.md) §2 |
 | RLS lecture publique sur référentiel, owner-only sur `user_collections` via `(select auth.uid())` | 2026-04-13 | [`phase-2c7-supabase-sync-run.md`](./research/phase-2c7-supabase-sync-run.md) §2 |
+| **Archi 3 couches** : `eurio.db` (canon dev) → Supabase (projection read-only app-facing) → core offline C3 (`app_core.db`/`.json`). Supabase = surensemble propre, pas un 2e canon | 2026-06-02 | [`supabase-app-schema-v2.md`](./research/supabase-app-schema-v2.md), mémoire `project_supabase_app_schema_v2` |
+| Android consomme `app_core.db` via bootstrapper→Room (pas `createFromAsset`) ; coffre préservé via `@Upsert` anti-cascade | 2026-06-02 | [`supabase-app-schema-v2.md`](./research/supabase-app-schema-v2.md) §5 |
+| Avers (côté national) en Storage on-demand ; carte (côté commun, 2 designs) packagée APK via `shared_reverse` ; UV 3D fixe (avers canoniques σ≈0.001) | 2026-06-02 | [`supabase-app-schema-v2.md`](./research/supabase-app-schema-v2.md) §3 |
 
 La convention : quand une décision non-triviale est prise, elle doit avoir un doc de référence quelque part (phase, research, run report, ou mémoire). Cette table est juste l'index.
 
@@ -445,5 +451,13 @@ gantt
 - Bug critique corrigé : les 3 scripts `bootstrap_*.py` ne préservaient pas `images` et `design_description` dans leur merge pattern de re-run, wipeant silencieusement les enrichments BCE. Fix appliqué.
 - **83 tests unitaires verts** (29 → 48 → 59 → 73 → 79 → 83 au fil des phases).
 - ADR index enrichi de 10 décisions supplémentaires (§9).
+
+### 2026-06-02 (refonte couche données — archi 3 couches)
+- **Supabase n'est plus un canon** mais une **projection read-only app-facing d'`eurio.db`** (doctrine SQLite-only). Schéma rebâti : 14 tables app-facing, RLS lecture publique, exporteur déterministe `ml/export/app_export` (full-refresh idempotent). ADR : [`supabase-app-schema-v2.md`](./research/supabase-app-schema-v2.md).
+- **Core offline C3** projeté depuis Supabase : `app_core.db` (SQLite pré-buildée, packagée APK) + `app_core.json` (proto). FR+EN packagés, autres langues = packs téléchargeables. Prix marché baseline figé, refresh on-demand.
+- **Images** : avers (côté national unique) en Storage public on-demand ; carte (côté commun, 2 designs) packagée APK via `shared_reverse`. UV 3D fixe (avers canoniques σ≈0.001).
+- **Proto repointé** : `data.js` lit `app_core.json`, `supabase.js` (on-demand), 3D sur Storage+carte. Suppression `coins.json`/`setup-data.sh`/pipeline `eurio_referential.json` côté proto.
+- **Android repointé** : `AppCoreBootstrapper` lit `app_core.db`→Room (CoinEntity V2, migration 3→4). **Bug data-loss corrigé** : FK `coin_in_vault → coins ON DELETE CASCADE` + bootstrap REPLACE vidait le coffre → fix `@Upsert` anti-cascade. Suppression `catalog_snapshot.json`/`export_catalog_snapshot.py`.
+- §5.4/§6.2 ci-dessus restent à rafraîchir (encore en formulation Phase 2C eurio_referential.json) — `eurio_referential.py` reste le module helper canonique, le store JSON est un chantier d'harmonisation séparé.
 
 **Datum référentiel** : 2 938 coins · 3 695 observations · 419 avec images · 197 review · 1 771 decisions · 0 advisor WARN.

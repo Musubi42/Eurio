@@ -1,8 +1,10 @@
 # Supabase app-facing schema (V2) — projection de `eurio.db`
 
-> **Statut** : proposition d'architecture (ADR), en attente de validation avant
-> migrations. Décidé en session du 2026-06-01 avec Raphaël.
-> **Supersede** (à terme) la partie Supabase de `docs/design/_shared/data-contracts.md`.
+> **Statut** : ✅ **IMPLÉMENTÉ** (P1-P6, 2026-06-02). Schéma migré, exporteur
+> `eurio.db → Supabase` en place, images en Storage, core offline `app_core.db`/
+> `app_core.json` généré, proto + Android repointés. Commit `feat(data): refonte
+> couche données app`. Décidé en session du 2026-06-01 avec Raphaël.
+> **Supersede** la partie Supabase de `docs/design/_shared/data-contracts.md`.
 
 ---
 

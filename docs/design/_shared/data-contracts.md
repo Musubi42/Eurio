@@ -1,8 +1,39 @@
-# Data contracts — Room local ↔ Supabase canonique
+# Data contracts — Room local ↔ Supabase
 
-> **Principe directeur** : le schema local Room est un miroir simplifié et typé du schema canonique Supabase (voir [`docs/research/data-referential-architecture.md`](../../research/data-referential-architecture.md)). Il permet le core loop 100% offline. La sync backend est un enrichissement opt-in, jamais une dépendance.
->
-> Décidé le 2026-04-13 : **Room + SQLite typé** (pas JSON-in-assets). Motivation : filtres/recherche dans le coffre, migrations propres, robustesse pour la marketplace future.
+> ⚠️ **MAJ 2026-06-02 — archi 3 couches (V2).** La doctrine a changé : `eurio.db`
+> (SQLite dev) est le **canon**, Supabase est une **projection read-only app-facing**,
+> et l'app embarque un **core offline C3**. Spec autoritaire :
+> [`docs/research/supabase-app-schema-v2.md`](../../research/supabase-app-schema-v2.md)
+> (implémentée P1-P6). Les §1-§6 ci-dessous décrivent le **design v1 original
+> (2026-04-13)** et sont conservés à titre historique — plusieurs tables (`user_collection`,
+> `coin_price_observation`) n'ont jamais été implémentées telles quelles.
+
+## 0. Réalité implémentée (V2, 2026-06-02)
+
+**Flux** : `eurio.db` → exporteur `ml/export/app_export` → **Supabase** (14 tables
+app-facing) → projection `ml/export/build_app_core.py` → **`app_core.db`** (SQLite
+packagée APK) + **`app_core.json`** (proto).
+
+**Côté Android** : `AppCoreBootstrapper` copie `app_core.db` (asset → cacheDir),
+l'ouvre en read-only, et **`@Upsert`** le catalogue dans Room (table `coins` V2 :
+`face_value_cents`, caractéristiques à plat, `shared_reverse_id`, `variant_kind`,
+`name_fr/en`, `desc_fr/en` ; + tables `coin_prices`, `shared_reverse`). Version-gate
+`APP_CORE_VERSION` dans `catalog_meta`. **Le coffre (`coin_in_vault`, `coin_captures`)
+est local-first et n'est JAMAIS touché par le refresh catalogue** — c'est pour ça
+que l'insert est `@Upsert` (pas `REPLACE`, qui cascaderait la FK `coin_in_vault →
+coins ON DELETE CASCADE` et viderait le coffre).
+
+**Images** : avers (côté national) = URL Storage dérivée de l'`eurio_id`
+(`obverseStorageUrl()`), fetch on-demand (Coil → viewer 3D Filament). Revers (côté
+commun) = asset carte packagé (`file:///android_asset/shared_reverse/<asset_name>`),
+résolu via `shared_reverse_id`.
+
+**i18n** : FR+EN dénormalisés sur `coins` (offline) ; autres langues = packs Supabase.
+**Prix** : `coin_prices` = baseline marché (eBay) par état, refresh on-demand.
+
+---
+
+> _Ci-dessous : design v1 historique (2026-04-13). Voir la bannière en tête._
 
 ---
 
