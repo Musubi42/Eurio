@@ -1,27 +1,29 @@
 // Scene : reveal-stratifie
 // =========================
-// The stratified post-scan reveal. Reuses the shared 3D engine (_coin3d.js) for
-// a rotatable hero, and a horizontally-snapping lens carousel for progressive
-// disclosure (Découverte default · Histoire · Rareté · Valeur · Complétion).
+// Stratified post-scan reveal — "bottom sheet à 2 crans" model.
+//   • 3D hero (rotatable) via the shared engine (_coin3d.js), stays visible.
+//   • Draggable bottom sheet with a handle :
+//       peek      → Découverte summary (≤3 drives) + CTAs
+//       expanded  → pull the handle up → Histoire / Rareté / Valeur / Complétion
+//   Vertical pull = depth ; "Voir la fiche" = ultimate depth (page pièce).
 //
-// Proto note : lens CONTENT is mocked deterministically from the 3D manifest
-// entry (numista_id → stable values). The real data contract (referential +
-// cote + completion) is wired later — here we validate the *design*.
+// Proto note : lens CONTENT is mocked deterministically from the manifest entry;
+// the real data contract is wired later — here we validate the *design*.
 
 import {
   createStage, loadCoinsManifest, buildCoinFromEntry, buildProceduralEdgeTexture,
   disposeCoin, R_OUT,
 } from './_coin3d.js';
 
-const HERO_FILL = 0.82;
-const IDLE_SPD = 0.2;      // rad/s gentle idle auto-rotation (calm, lets you read the design)
+const HERO_FILL = 0.78;
+const IDLE_SPD = 0.2;
 const DRAG_K = 0.011;
 const TILT_K = 0.006;
 const TILT_MAX = 0.55;
 
-const LENS_ORDER = ['decouverte', 'histoire', 'rarete', 'valeur', 'completion'];
-const PIN_KEY = 'eurio.reveal.pin';
-const LENS_PREF_KEY = 'eurio.lens';   // set by onboarding-lentille (chunk E)
+// Sheet detents, as fractions of the scene height.
+const SHEET_FRAC = 0.80;   // total sheet height (= expanded extent)
+const PEEK_FRAC = 0.56;    // how much of the sheet shows in peek (clears the nav)
 
 let active = null;
 
@@ -32,11 +34,13 @@ export async function mount({ query, navigate }) {
   if (!root) return;
   const canvasWrap = root.querySelector('[data-slot="canvas-wrap"]');
   const statusEl = root.querySelector('[data-slot="status"]');
-  const lensesEl = root.querySelector('[data-slot="lenses"]');
+  const sheet = root.querySelector('[data-slot="sheet"]');
+  const handle = root.querySelector('.reveal-sheet__handle');
 
   const owned = query?.owned === '1';
   root.dataset.owned = owned ? '1' : '0';
 
+  // ───────── 3D hero ─────────
   const stage = createStage(canvasWrap);
   function frameCoin() {
     const w = canvasWrap.clientWidth || 1;
@@ -49,7 +53,6 @@ export async function mount({ query, navigate }) {
   }
   frameCoin();
 
-  // ── teardown ──
   const ctx = {
     stage, coin: null, leaveOff: null,
     dispose() {
@@ -63,7 +66,6 @@ export async function mount({ query, navigate }) {
   window.addEventListener('hashchange', onLeave, { once: true });
   ctx.leaveOff = () => window.removeEventListener('hashchange', onLeave);
 
-  // ── hero rotation (drag + inertia decaying into a gentle idle) ──
   let group = null;
   let omega = IDLE_SPD;
   let dragging = false;
@@ -73,114 +75,115 @@ export async function mount({ query, navigate }) {
     if (!dragging) {
       group.rotation.y += omega * dt;
       omega += (IDLE_SPD - omega) * Math.min(1, dt * 2.5);
-      group.rotation.x += (0 - group.rotation.x) * Math.min(1, dt * 4); // ease tilt back
+      group.rotation.x += (0 - group.rotation.x) * Math.min(1, dt * 4);
     }
   });
   stage.start();
 
-  let down = null;
-  function onDown(ev) {
+  let hdown = null;
+  function heroDown(ev) {
     if (!group) return;
     canvasWrap.querySelector('canvas')?.setPointerCapture?.(ev.pointerId);
     dragging = true;
-    down = { lastX: ev.clientX, lastY: ev.clientY, lastT: performance.now(), vel: 0 };
+    hdown = { lastX: ev.clientX, lastY: ev.clientY, lastT: performance.now(), vel: 0 };
     root.dataset.rotated = '1';
   }
-  function onMove(ev) {
-    if (!down || !group) return;
-    const dx = ev.clientX - down.lastX;
-    const dy = ev.clientY - down.lastY;
-    const dt = Math.max((performance.now() - down.lastT) / 1000, 1 / 240);
+  function heroMove(ev) {
+    if (!hdown || !group) return;
+    const dx = ev.clientX - hdown.lastX;
+    const dy = ev.clientY - hdown.lastY;
+    const dt = Math.max((performance.now() - hdown.lastT) / 1000, 1 / 240);
     group.rotation.y += dx * DRAG_K;
     group.rotation.x = Math.max(-TILT_MAX, Math.min(TILT_MAX, group.rotation.x + dy * TILT_K));
-    down.vel = down.vel * 0.7 + ((dx * DRAG_K) / dt) * 0.3;
-    down.lastX = ev.clientX;
-    down.lastY = ev.clientY;
-    down.lastT = performance.now();
+    hdown.vel = hdown.vel * 0.7 + ((dx * DRAG_K) / dt) * 0.3;
+    hdown.lastX = ev.clientX; hdown.lastY = ev.clientY; hdown.lastT = performance.now();
   }
-  function onUp() {
-    if (!down) return;
+  function heroUp() {
+    if (!hdown) return;
     dragging = false;
-    omega = Math.max(-12, Math.min(12, down.vel || IDLE_SPD));
-    down = null;
+    omega = Math.max(-12, Math.min(12, hdown.vel || IDLE_SPD));
+    hdown = null;
   }
-  canvasWrap.addEventListener('pointerdown', onDown);
-  canvasWrap.addEventListener('pointermove', onMove);
-  canvasWrap.addEventListener('pointerup', onUp);
-  canvasWrap.addEventListener('pointercancel', onUp);
+  canvasWrap.addEventListener('pointerdown', heroDown);
+  canvasWrap.addEventListener('pointermove', heroMove);
+  canvasWrap.addEventListener('pointerup', heroUp);
+  canvasWrap.addEventListener('pointercancel', heroUp);
 
-  // ── lens carousel : dots sync + click-to-scroll ──
-  const dots = [...root.querySelectorAll('[data-dot]')];
-  const lensEls = [...lensesEl.querySelectorAll('.reveal-lens')];
-  let scrollRAF = 0;
-  function activeLensIndex() {
-    const mid = lensesEl.scrollLeft + lensesEl.clientWidth / 2;
-    let best = 0, bestD = Infinity;
-    lensEls.forEach((el, i) => {
-      const c = el.offsetLeft + el.clientWidth / 2;
-      const d = Math.abs(c - mid);
-      if (d < bestD) { bestD = d; best = i; }
-    });
-    return best;
+  // ───────── Bottom sheet (2 detents) ─────────
+  let sheetH = 0, peekTranslate = 0;
+  function measure() {
+    const rootH = root.clientHeight || 1;
+    sheetH = Math.round(rootH * SHEET_FRAC);
+    peekTranslate = Math.round(rootH * (SHEET_FRAC - PEEK_FRAC));
+    sheet.style.height = `${sheetH}px`;
   }
-  function syncDots() {
-    const i = activeLensIndex();
-    dots.forEach((d, k) => d.setAttribute('aria-current', String(k === i)));
+  function applyState(animate = true) {
+    sheet.style.transition = animate ? '' : 'none';
+    sheet.style.transform = `translateY(${root.dataset.state === 'expanded' ? 0 : peekTranslate}px)`;
+    if (!animate) requestAnimationFrame(() => { sheet.style.transition = ''; });
   }
-  lensesEl.addEventListener('scroll', () => {
-    cancelAnimationFrame(scrollRAF);
-    scrollRAF = requestAnimationFrame(syncDots);
+  function setSheet(state, animate = true) { root.dataset.state = state; applyState(animate); }
+  measure();
+  setSheet('peek', false);
+
+  const ro = new ResizeObserver(() => { measure(); if (!sdown) applyState(false); });
+  ro.observe(root);
+  ctx.leaveOff = ((prev) => () => { prev(); ro.disconnect(); })(ctx.leaveOff);
+
+  // Handle drag + tap-to-toggle
+  let sdown = null;
+  function curTranslate() {
+    const m = /translateY\(([-\d.]+)px\)/.exec(sheet.style.transform || '');
+    return m ? parseFloat(m[1]) : (root.dataset.state === 'expanded' ? 0 : peekTranslate);
+  }
+  handle.addEventListener('pointerdown', (ev) => {
+    handle.setPointerCapture?.(ev.pointerId);
+    sdown = { startY: ev.clientY, base: curTranslate(), moved: 0 };
+    sheet.style.transition = 'none';
   });
-  function scrollToLens(i, smooth = true) {
-    const el = lensEls[i];
-    if (!el) return;
-    const left = el.offsetLeft - (lensesEl.clientWidth - el.clientWidth) / 2;
-    lensesEl.scrollTo({ left, behavior: smooth ? 'smooth' : 'auto' });
+  handle.addEventListener('pointermove', (ev) => {
+    if (!sdown) return;
+    const dy = ev.clientY - sdown.startY;
+    sdown.moved += Math.abs(dy);
+    const ty = Math.max(0, Math.min(peekTranslate, sdown.base + dy));
+    sheet.style.transform = `translateY(${ty}px)`;
+  });
+  function endSheetDrag(ev) {
+    if (!sdown) return;
+    sheet.style.transition = '';
+    const ty = curTranslate();
+    if (sdown.moved < 6) {
+      setSheet(root.dataset.state === 'expanded' ? 'peek' : 'expanded');
+    } else {
+      setSheet(ty < peekTranslate * 0.5 ? 'expanded' : 'peek');
+    }
+    sdown = null;
   }
-  dots.forEach((d, i) => d.addEventListener('click', () => scrollToLens(i)));
+  handle.addEventListener('pointerup', endSheetDrag);
+  handle.addEventListener('pointercancel', endSheetDrag);
 
-  // ── pin (declared default lens) ──
-  const pins = [...root.querySelectorAll('[data-pin]')];
-  function readPin() { try { return localStorage.getItem(PIN_KEY); } catch (_) { return null; } }
-  function paintPins() {
-    const pinned = readPin();
-    pins.forEach((p) => p.setAttribute('aria-pressed', String(p.dataset.pin === pinned)));
-  }
-  pins.forEach((p) => p.addEventListener('click', (ev) => {
-    ev.stopPropagation();
-    const key = p.dataset.pin;
-    const next = readPin() === key ? null : key;
-    try { next ? localStorage.setItem(PIN_KEY, next) : localStorage.removeItem(PIN_KEY); } catch (_) {}
-    paintPins();
-  }));
-  paintPins();
-
-  // ── actions ──
+  // ───────── actions ─────────
   function toast(msg) {
     const t = document.createElement('div');
     t.className = 'toast toast--on-dark';
     t.textContent = msg;
-    t.style.zIndex = 'var(--z-toast)';
     document.querySelector('.screen')?.appendChild(t);
     requestAnimationFrame(() => t.setAttribute('data-visible', 'true'));
     setTimeout(() => { t.removeAttribute('data-visible'); setTimeout(() => t.remove(), 300); }, 2400);
   }
   root.querySelectorAll('[data-action]').forEach((el) => {
+    if (el.dataset.action === 'toggle') return;   // handled by the drag logic
     el.addEventListener('click', (ev) => {
       ev.stopPropagation();
       const a = el.dataset.action;
       if (a === 'close') navigate('#/scan');
       else if (a === 'details') navigate(`#/coin/${ctx.coinId || ''}`);
       else if (a === 'vault') navigate('#/vault');
-      else if (a === 'add') {
-        toast('Ajoutée au coffre ✓');
-        el.setAttribute('disabled', '');
-        el.textContent = 'Ajoutée ✓';
-      }
+      else if (a === 'add') { toast('Ajoutée au coffre ✓'); el.setAttribute('disabled', ''); el.textContent = 'Ajoutée ✓'; }
     });
   });
 
-  // ── boot ──
+  // ───────── boot ─────────
   try {
     const manifest = await loadCoinsManifest();
     const list = manifest.coins;
@@ -204,12 +207,6 @@ export async function mount({ query, navigate }) {
       const addBtn = root.querySelector('[data-action="add"]');
       if (addBtn) { addBtn.textContent = 'Voir au coffre'; addBtn.dataset.action = 'vault'; }
     }
-
-    // Default lens : pin > onboarding preference > Découverte.
-    let startKey = readPin();
-    if (!startKey) { try { startKey = localStorage.getItem(LENS_PREF_KEY); } catch (_) {} }
-    const startIdx = Math.max(0, LENS_ORDER.indexOf(startKey));
-    requestAnimationFrame(() => { scrollToLens(startIdx, false); syncDots(); });
   } catch (err) {
     console.error('[reveal-stratifie] init failed', err);
     if (statusEl) statusEl.textContent = `Erreur : ${err.message || err}`;
@@ -226,29 +223,24 @@ function fillContent(root, entry, owned) {
   set('cap-country', entry.country);
   set('cap-year', String(entry.year));
 
-  // Découverte
   set('d-title', entry.name);
   set('d-history', m.historyLine);
   set('d-new', owned ? 'Déjà' : 'Nouvelle');
   set('d-comp', `${entry.country} · ${m.owned}/${m.total}`);
   set('d-accent', m.accent);
 
-  // Histoire
   set('h-1', m.historyLine);
   set('h-2', m.historyLong);
 
-  // Rareté
   set('r-tier', m.tier);
   set('r-mintage', `Tirage ${m.mintage.toLocaleString('fr-FR')} ex.`);
   set('r-neffect', m.nEffect);
 
-  // Valeur
   set('v-headline', `≈ ${m.value.ttb} € en TTB`);
   set('v-unc', `${m.value.unc} €`);
   set('v-ttb', `${m.value.ttb} €`);
   set('v-tb', `${m.value.tb} €`);
 
-  // Complétion
   set('c-owned', String(m.owned));
   set('c-total', `/ ${m.total}`);
   set('c-missing', m.owned >= m.total ? 'Série complète 🎉' : `Il te manque ${m.total - m.owned} pièce(s)`);
