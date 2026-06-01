@@ -45,6 +45,9 @@ const ROUTES = [
   { path: '/scan/transition',        scene: 'scan-transition-3d',   nav: 'scan', chrome: 'dark' },
   { path: '/scan/reveal',            scene: 'reveal-stratifie',     nav: 'scan', chrome: 'dark' },
 
+  // Célébrations (refonte psycho) : PAS d'écran séparé — la fête est un OVERLAY
+  // superposé au reveal (reveal-stratifie ?milestone=set|feat|country).
+
   // Coin detail
   { path: '/coin/:eurioId',          scene: 'coin-detail',          nav: null, chrome: 'light' },
 
@@ -55,8 +58,9 @@ const ROUTES = [
   // Vault — Sets sub-view + detail
   { path: '/vault/sets',             scene: 'vault-sets-list',      nav: 'vault', chrome: 'light' },
   { path: '/vault/sets/:setId',      scene: 'vault-sets-detail',    nav: 'vault', chrome: 'light' },
-  // Vault — Catalogue sub-view (eurozone map) + country drill-down
-  { path: '/vault/catalog',          scene: 'vault-catalog-map',    nav: 'vault', chrome: 'light' },
+  // Vault — Catalogue sub-view (carte eurozone refondue, chunk D) + drill-down.
+  // vault-catalog-map.html reste en référence (plus de route).
+  { path: '/vault/catalog',          scene: 'carte-a-gratter',      nav: 'vault', chrome: 'light' },
   { path: '/vault/catalog/:iso',     scene: 'vault-catalog-country',nav: 'vault', chrome: 'light' },
 
   // Profile

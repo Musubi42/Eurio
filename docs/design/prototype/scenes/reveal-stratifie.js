@@ -14,6 +14,7 @@ import {
   createStage, loadCoinsManifest, buildCoinFromEntry, buildProceduralEdgeTexture,
   disposeCoin, R_OUT,
 } from './_coin3d.js';
+import { confetti, chime, haptic } from './_celebration.js';
 
 const HERO_FILL = 0.78;
 const IDLE_SPD = 0.2;
@@ -21,9 +22,10 @@ const DRAG_K = 0.011;
 const TILT_K = 0.006;
 const TILT_MAX = 0.55;
 
-// Sheet detents, as fractions of the scene height.
-const SHEET_FRAC = 0.80;   // total sheet height (= expanded extent)
-const PEEK_FRAC = 0.56;    // how much of the sheet shows in peek (clears the nav)
+// Sheet detents. peek is MEASURED (handle + summary + pinned CTAs + nav clearance)
+// so the summary always fits; expanded is capped so the coin stays fully visible.
+const NAV_PAD = 88;        // bottom padding reserved for the nav (matches CSS)
+const EXPANDED_FRAC = 0.60; // expanded sheet height → top ≈ 40% = coin band bottom
 
 let active = null;
 
@@ -39,6 +41,24 @@ export async function mount({ query, navigate }) {
 
   const owned = query?.owned === '1';
   root.dataset.owned = owned ? '1' : '0';
+
+  // Jalon (démo déterministe) : ?milestone=set|feat → le reveal passe en mode fête
+  // SANS changer d'écran : un overlay (banderole + confettis + rayons) se superpose
+  // et on ré-accentue ce qui est déjà là (héros, complétion/rareté). L'intensité
+  // monte avec le type (économie des célébrations : set < feat = le pic). En vrai,
+  // le jalon est détecté côté données. (country = chunk D, enchaîne carte à gratter.)
+  const milestone = owned ? '' : (query?.milestone || '').toLowerCase();
+  const MILESTONE = {
+    set:     { label: 'Série complète', confetti: 24, chime: [523.25, 659.25, 783.99],          toast: 'Série complétée ✓' },
+    country: { label: 'Pays complété',  confetti: 32, chime: [523.25, 659.25, 783.99, 880.00],  toast: 'Pays complété ✓' },
+    feat:    { label: 'Légendaire',     confetti: 44, chime: [523.25, 659.25, 783.99, 1046.50], toast: 'Pièce légendaire ajoutée ✓' },
+  };
+  const ms = MILESTONE[milestone] || null;
+  if (ms) {
+    root.dataset.milestone = milestone;
+    const label = root.querySelector('[data-slot="cel-label"]');
+    if (label) label.textContent = ms.label;
+  }
 
   // ───────── 3D hero ─────────
   const stage = createStage(canvasWrap);
@@ -109,53 +129,59 @@ export async function mount({ query, navigate }) {
   canvasWrap.addEventListener('pointerup', heroUp);
   canvasWrap.addEventListener('pointercancel', heroUp);
 
-  // ───────── Bottom sheet (2 detents) ─────────
-  let sheetH = 0, peekTranslate = 0;
-  function measure() {
+  // ───────── Bottom sheet (2 detents : peek / expanded) ─────────
+  const summaryEl = root.querySelector('[data-slot="summary"]');
+  const ctaEl = root.querySelector('.reveal-cta');
+  let peekH = 0, expandedH = 0;
+  let sdown = null;
+
+  function relayout() {
     const rootH = root.clientHeight || 1;
-    sheetH = Math.round(rootH * SHEET_FRAC);
-    peekTranslate = Math.round(rootH * (SHEET_FRAC - PEEK_FRAC));
-    sheet.style.height = `${sheetH}px`;
+    expandedH = Math.round(rootH * EXPANDED_FRAC);          // top ≈ 40% → coin stays full
+    const handleH = handle.offsetHeight || 30;
+    const sumH = summaryEl.offsetHeight || 180;
+    const ctaH = ctaEl.offsetHeight || 52;
+    peekH = handleH + sumH + ctaH + NAV_PAD + 16;           // fit summary + pinned CTAs
+    peekH = Math.max(Math.round(rootH * 0.30), Math.min(peekH, Math.round(rootH * 0.56)));
+    if (expandedH < peekH + 80) expandedH = peekH + 80;     // always a real expand
+    if (!sdown) applyHeight(false);
   }
-  function applyState(animate = true) {
+  function applyHeight(animate = true) {
     sheet.style.transition = animate ? '' : 'none';
-    sheet.style.transform = `translateY(${root.dataset.state === 'expanded' ? 0 : peekTranslate}px)`;
+    sheet.style.height = `${root.dataset.state === 'expanded' ? expandedH : peekH}px`;
     if (!animate) requestAnimationFrame(() => { sheet.style.transition = ''; });
   }
-  function setSheet(state, animate = true) { root.dataset.state = state; applyState(animate); }
-  measure();
-  setSheet('peek', false);
+  function setSheet(state) { root.dataset.state = state; applyHeight(true); }
 
-  const ro = new ResizeObserver(() => { measure(); if (!sdown) applyState(false); });
+  relayout();
+  applyHeight(false);
+
+  const ro = new ResizeObserver(() => relayout());
   ro.observe(root);
   ctx.leaveOff = ((prev) => () => { prev(); ro.disconnect(); })(ctx.leaveOff);
 
-  // Handle drag + tap-to-toggle
-  let sdown = null;
-  function curTranslate() {
-    const m = /translateY\(([-\d.]+)px\)/.exec(sheet.style.transform || '');
-    return m ? parseFloat(m[1]) : (root.dataset.state === 'expanded' ? 0 : peekTranslate);
-  }
+  ctx.relayout = relayout;   // boot re-runs this once content is filled
+
+  // Handle drag (up = grow) + tap-to-toggle
+  function curHeight() { return parseFloat(sheet.style.height) || peekH; }
   handle.addEventListener('pointerdown', (ev) => {
     handle.setPointerCapture?.(ev.pointerId);
-    sdown = { startY: ev.clientY, base: curTranslate(), moved: 0 };
+    sdown = { startY: ev.clientY, base: curHeight(), moved: 0 };
     sheet.style.transition = 'none';
   });
   handle.addEventListener('pointermove', (ev) => {
     if (!sdown) return;
-    const dy = ev.clientY - sdown.startY;
+    const dy = sdown.startY - ev.clientY;
     sdown.moved += Math.abs(dy);
-    const ty = Math.max(0, Math.min(peekTranslate, sdown.base + dy));
-    sheet.style.transform = `translateY(${ty}px)`;
+    sheet.style.height = `${Math.max(peekH, Math.min(expandedH, sdown.base + dy))}px`;
   });
-  function endSheetDrag(ev) {
+  function endSheetDrag() {
     if (!sdown) return;
     sheet.style.transition = '';
-    const ty = curTranslate();
     if (sdown.moved < 6) {
       setSheet(root.dataset.state === 'expanded' ? 'peek' : 'expanded');
     } else {
-      setSheet(ty < peekTranslate * 0.5 ? 'expanded' : 'peek');
+      setSheet(curHeight() > (peekH + expandedH) / 2 ? 'expanded' : 'peek');
     }
     sdown = null;
   }
@@ -179,7 +205,17 @@ export async function mount({ query, navigate }) {
       if (a === 'close') navigate('#/scan');
       else if (a === 'details') navigate(`#/coin/${ctx.coinId || ''}`);
       else if (a === 'vault') navigate('#/vault');
-      else if (a === 'add') { toast('Ajoutée au coffre ✓'); el.setAttribute('disabled', ''); el.textContent = 'Ajoutée ✓'; }
+      else if (a === 'add') {
+        toast(ms ? ms.toast : 'Ajoutée au coffre ✓');
+        if (milestone === 'country') {
+          // pays complété → le payoff est le grattage de la carte
+          el.textContent = 'Gratter la carte 🪙';
+          el.dataset.action = 'scratch';
+        } else {
+          el.setAttribute('disabled', ''); el.textContent = 'Ajoutée ✓';
+        }
+      }
+      else if (a === 'scratch') { navigate('#/vault/catalog?scratch=1'); }
     });
   });
 
@@ -192,7 +228,8 @@ export async function mount({ query, navigate }) {
       || list[Math.floor(Math.random() * list.length)];
     ctx.coinId = entry.numista_id;
 
-    fillContent(root, entry, owned);
+    fillContent(root, entry, owned, milestone);
+    ctx.relayout?.();   // size the peek detent to the real summary height
 
     const edgeTex = buildProceduralEdgeTexture();
     const coin = await buildCoinFromEntry(entry, { edgeTex });
@@ -201,6 +238,18 @@ export async function mount({ query, navigate }) {
     ctx.coin = coin;
     stage.scene.add(group);
     statusEl?.classList.add('is-hidden');
+
+    // Jalon : la fête se joue PAR-DESSUS le reveal (overlay déjà visible via le
+    // data-milestone) — on ajoute juste le juice après le settle de la pièce.
+    if (ms) {
+      const layer = root.querySelector('[data-slot="cel-confetti"]');
+      setTimeout(() => {
+        if (active !== ctx) return;
+        haptic([0, 35, 30, 80]);
+        chime(ms.chime);
+        if (layer) confetti(layer, { count: ms.confetti });
+      }, 650);
+    }
 
     if (owned) {
       toast("Tu l'as déjà — le scan continue");
@@ -215,9 +264,16 @@ export async function mount({ query, navigate }) {
 
 // ───────── mock lens content (deterministic from numista_id) ─────────
 
-function fillContent(root, entry, owned) {
+function fillContent(root, entry, owned, milestone) {
   const set = (slot, txt) => { const el = root.querySelector(`[data-slot="${slot}"]`); if (el) el.textContent = txt; };
   const m = mockReveal(entry);
+
+  // Jalon actif : l'overlay ré-accentue l'élément qui porte la fête.
+  // set  → complétion à l'état FINAL (la pièce boucle la série).
+  // feat → l'accent porte l'exploit de rareté (le pic), sans toucher la complétion.
+  if (milestone === 'set')     { m.owned = m.total; m.accent = 'Série complète 🎉'; }
+  if (milestone === 'country') { m.accent = '🗺️ Pays complété'; }
+  if (milestone === 'feat')    { m.accent = '★ Légendaire · 2% la détiennent'; }
 
   set('kicker', owned ? 'Doublon' : 'Nouvelle pièce');
   set('cap-country', entry.country);
