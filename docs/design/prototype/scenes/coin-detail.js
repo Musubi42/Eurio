@@ -132,6 +132,42 @@ function mockMarket(coin) {
 
 // ───────── Renderers ─────────
 
+// Récit (transportation) — narratif déroulé. Mock : ancré sur les champs réels
+// (thème, pays, année, description) + cadrage générique « authentique » (le vrai
+// récit sera sourcé). Sens proposé : si lentille = Valeur, replié en teaser.
+function renderRecit({ coin, lens }) {
+  const country = coin.countryName;
+  const year = coin.year ?? '—';
+  const theme = coin.theme;
+  const desc = coin.designDescription;
+  const headline = theme || (coin.isCommemorative ? `Une commémorative de ${country}` : `La face nationale · ${country}`);
+  const lead = theme
+    ? `Derrière ce motif, un fragment d'Europe que peu de gens prennent le temps de lire.`
+    : `Chaque pièce de circulation porte le récit que ${country} a choisi de graver dans la monnaie de tous les jours.`;
+
+  const chapters = [
+    { eyebrow: "L'événement", title: theme || 'Le motif',       body: desc || `Ce que ${country} a voulu célébrer sur cette frappe de ${year}.` },
+    { eyebrow: 'Le contexte', title: `${country}, ${year}`,      body: `Replacer la pièce dans son époque : pourquoi ce sujet, à ce moment, et ce qu'il dit du pays.` },
+    { eyebrow: 'Les créateurs', title: 'La main du graveur',     body: `Le dessin, l'atelier et les choix de composition derrière le relief que tu tiens.` },
+    { eyebrow: 'Le lieu',      title: 'Où ça se passe',          body: `Le monument, le paysage ou la figure représentée — et l'endroit réel auquel il renvoie.` },
+  ];
+
+  return `
+    <div class="coin-detail-recit__kicker">Le récit</div>
+    <h2 class="coin-detail-recit__headline">${headline}</h2>
+    <p class="coin-detail-recit__lead">${lead}</p>
+    <div class="coin-detail-recit__chapters">
+      ${chapters.map(c => `
+        <div class="coin-detail-recit__chapter">
+          <span class="coin-detail-recit__chapter-eyebrow">${c.eyebrow}</span>
+          <div class="coin-detail-recit__chapter-title">${c.title}</div>
+          <p class="coin-detail-recit__chapter-body">${c.body}</p>
+        </div>`).join('')}
+    </div>
+    <button type="button" class="coin-detail-recit__more" data-action="expand-recit">Lire le récit <span aria-hidden="true">↓</span></button>
+  `;
+}
+
 function renderHero({ coin, ctx, data, state }) {
   const svg = data.coinSvg(coin, { size: 200 });
   if (ctx === 'reference') {
@@ -338,6 +374,10 @@ function renderSets({ coin }) {
   }
   return sets.map(s => {
     const pctVal = Math.round((s.done / s.total) * 100);
+    const missing = s.total - s.done;
+    const affiliate = missing > 0
+      ? `<a class="coin-detail-set__affiliate" data-action="affiliate">Où trouver les ${missing} manquantes <span aria-hidden="true">→</span></a>`
+      : '';
     return `
       <div class="coin-detail-set">
         <div class="coin-detail-set__head">
@@ -345,6 +385,7 @@ function renderSets({ coin }) {
           <div class="coin-detail-set__count tabular">${s.done}/${s.total}</div>
         </div>
         <div class="progress-bar"><div class="progress-track"><div class="progress-fill" style="width:${pctVal}%"></div></div></div>
+        ${affiliate}
       </div>
     `;
   }).join('');
@@ -450,6 +491,12 @@ export function mount(ctx) {
   hero.dataset.ctx = validCtx;
   hero.innerHTML = renderHero({ coin, ctx: validCtx, data, state });
 
+  // Récit — emphase pilotée par la lentille (E) : Valeur → replié en teaser.
+  const lens = state?.state?.lens || 'discovery';
+  const recitEl = root.querySelector('[data-slot="recit"]');
+  recitEl.innerHTML = renderRecit({ coin, lens });
+  recitEl.dataset.collapsed = lens === 'valeur' ? 'true' : 'false';
+
   root.querySelector('[data-slot="identity"]').innerHTML = renderIdentity({ coin });
   root.querySelector('[data-slot="valuation"]').innerHTML = renderValuation({ coin });
   root.querySelector('[data-slot="history"]').innerHTML = renderHistory({ coin });
@@ -511,6 +558,16 @@ export function mount(ctx) {
       state.removeCoin(coin.eurioId);
       showToast(root, 'Retirée du coffre');
       setTimeout(() => navigate('#/vault'), 700);
+      return;
+    }
+
+    if (action === 'expand-recit') {
+      root.querySelector('[data-slot="recit"]').dataset.collapsed = 'false';
+      return;
+    }
+
+    if (action === 'affiliate') {
+      showToast(root, 'Lien partenaire · bientôt');
       return;
     }
 

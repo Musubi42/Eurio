@@ -300,6 +300,27 @@
     </div>
   </div>
 
+  <!-- 1bis. Reveal · lentille (chunk G — pose le défaut d'emphase du reveal) -->
+  <div class="profile-settings-group">
+    <div class="profile-settings-group__head">
+      <div class="eyebrow eyebrow--gold">Reveal</div>
+    </div>
+    <div class="profile-settings-row" style="flex-direction:column;align-items:stretch;gap:0;">
+      <div style="display:flex;align-items:center;width:100%;">
+        <div style="flex:1;">
+          <div class="profile-settings-row__label">Ta lentille</div>
+          <div class="profile-settings-row__help">Ce qu'on met en avant juste après un scan. Réversible à tout moment.</div>
+        </div>
+      </div>
+      <div class="profile-settings-seg" role="radiogroup" data-bind="pref-lens">
+        <button type="button" role="radio" data-value="discovery" aria-pressed="true">Découverte</button>
+        <button type="button" role="radio" data-value="histoire" aria-pressed="false">Histoire</button>
+        <button type="button" role="radio" data-value="valeur" aria-pressed="false">Valeur</button>
+        <button type="button" role="radio" data-value="completer" aria-pressed="false">Série</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 2. Notifications -->
   <div class="profile-settings-group">
     <div class="profile-settings-group__head">
@@ -327,6 +348,18 @@
       </div>
       <div class="profile-settings-toggle" aria-pressed="false"></div>
     </button>
+    <div class="profile-settings-row" style="flex-direction:column;align-items:stretch;gap:0;">
+      <div style="display:flex;align-items:center;width:100%;">
+        <div style="flex:1;">
+          <div class="profile-settings-row__label">Fréquence</div>
+          <div class="profile-settings-row__help">Un cadeau, pas du harcèlement — discrète par défaut.</div>
+        </div>
+      </div>
+      <div class="profile-settings-seg" role="radiogroup" data-bind="pref-notif-freq">
+        <button type="button" role="radio" data-value="discrete" aria-pressed="true">Discrète</button>
+        <button type="button" role="radio" data-value="normale" aria-pressed="false">Normale</button>
+      </div>
+    </div>
   </div>
 
   <!-- 3. Catalogue -->

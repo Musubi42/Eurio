@@ -1,0 +1,139 @@
+<!--
+  Scene : onboarding-demo  (Chunk E)
+  ----------------------------------
+  Scan GUIDÉ sans pièce physique — état distinct de scan-idle. On « prête » une
+  pièce-échantillon (coins.json), on accompagne le geste (réticule + cible de tap),
+  le tap lance la vraie transition 3D → reveal célébré (cat. 1). Endowed progress :
+  cette 1ʳᵉ pièce crédite déjà la collection.
+
+  Full-bleed (chrome:'none'). Scoped : .onb-demo-*. Reprend l'esthétique scan-idle.
+-->
+
+<style>
+  .onb-demo-root {
+    position: absolute; inset: 0;
+    background: radial-gradient(ellipse 70% 50% at 50% 50%, var(--ink-soft) 0%, var(--ink) 55%, #000 100%);
+    overflow: hidden; color: var(--surface);
+    cursor: pointer;
+  }
+  .onb-demo-noise { position: absolute; inset: 0; opacity: 0.14; mix-blend-mode: overlay; pointer-events: none; }
+
+  .onb-demo-skip {
+    position: absolute; top: 56px; right: 22px; z-index: 4;
+    background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.14);
+    color: rgba(255,255,255,0.85); padding: 8px 16px; border-radius: var(--radius-full);
+    font-size: var(--text-xs); font-weight: 500; min-height: 36px; backdrop-filter: blur(8px);
+  }
+  .onb-demo-header { position: absolute; top: 60px; left: 0; right: 0; text-align: center; z-index: 2; padding: 0 24px; }
+  .onb-demo-header .eyebrow { color: var(--gold-300); display: inline-flex; align-items: center; gap: 7px; }
+  .onb-demo-header .eyebrow::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--gold); }
+  .onb-demo-header__title {
+    font-family: var(--font-display); font-style: italic; font-weight: 400;
+    font-size: var(--text-xl); color: var(--surface); margin-top: var(--space-2);
+  }
+
+  /* Guide L-corners (comme scan-idle) */
+  .onb-demo-guide {
+    position: absolute; top: 47%; left: 50%; transform: translate(-50%, -50%);
+    width: 280px; height: 280px; pointer-events: none;
+    animation: onb-demo-pulse 2.2s var(--ease-in-out) infinite;
+  }
+  @keyframes onb-demo-pulse {
+    0%, 100% { opacity: 0.5; transform: translate(-50%, -50%) scale(1); }
+    50%      { opacity: 0.85; transform: translate(-50%, -50%) scale(1.03); }
+  }
+  .onb-demo-corner { position: absolute; width: 26px; height: 26px; border: 1.6px solid rgba(255,255,255,0.8); }
+  .onb-demo-corner--tl { top: 0; left: 0; border-right: 0; border-bottom: 0; border-top-left-radius: 6px; }
+  .onb-demo-corner--tr { top: 0; right: 0; border-left: 0; border-bottom: 0; border-top-right-radius: 6px; }
+  .onb-demo-corner--bl { bottom: 0; left: 0; border-right: 0; border-top: 0; border-bottom-left-radius: 6px; }
+  .onb-demo-corner--br { bottom: 0; right: 0; border-left: 0; border-top: 0; border-bottom-right-radius: 6px; }
+
+  /* Pièce « prêtée » au centre */
+  .onb-demo-coinwrap { position: absolute; top: 47%; left: 50%; transform: translate(-50%, -50%); z-index: 2; pointer-events: none; }
+  .onb-demo-loaner-tag {
+    position: absolute; top: -26px; left: 50%; transform: translateX(-50%);
+    white-space: nowrap;
+    font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--gold-300); padding: 3px 10px; border-radius: var(--radius-full);
+    background: rgba(200,168,100,0.12); border: 1px dashed rgba(200,168,100,0.45);
+  }
+  .onb-demo-coin {
+    width: 132px; height: 132px; border-radius: 50%;
+    background: radial-gradient(circle at 32% 28%, var(--gold-soft) 0%, var(--gold) 38%, var(--gold-deep) 52%, #b7b59a 60%, #6b6a52 100%);
+    box-shadow: 0 18px 40px -12px rgba(200,168,100,0.5), inset 0 2px 0 rgba(255,230,170,0.4), inset 0 -10px 18px rgba(0,0,0,0.3);
+    display: flex; align-items: center; justify-content: center;
+    animation: onb-demo-float 3.4s var(--ease-in-out) infinite;
+  }
+  @keyframes onb-demo-float { 0%,100% { transform: translateY(0) rotate(-3deg); } 50% { transform: translateY(-8px) rotate(3deg); } }
+  .onb-demo-coin__glyph { font-family: var(--font-display); font-style: italic; font-weight: 300; font-size: 40px; color: var(--gold-deep); text-shadow: 0 1px 0 rgba(255,230,170,0.4); }
+
+  /* Cible de tap : ripple + doigt */
+  .onb-demo-tap { position: absolute; top: 47%; left: 50%; transform: translate(-50%, -50%); z-index: 3; pointer-events: none; }
+  .onb-demo-tap__ring {
+    position: absolute; top: 50%; left: 50%; width: 132px; height: 132px; margin: -66px 0 0 -66px;
+    border-radius: 50%; border: 2px solid var(--gold);
+    animation: onb-demo-ripple 2s var(--ease-out) infinite;
+  }
+  @keyframes onb-demo-ripple { 0% { transform: scale(0.7); opacity: 0.8; } 100% { transform: scale(1.8); opacity: 0; } }
+
+  .onb-demo-hint {
+    position: absolute; left: 50%; transform: translateX(-50%); bottom: 188px; z-index: 3;
+    display: inline-flex; align-items: center; gap: var(--space-2);
+    padding: 11px 20px; max-width: 300px; text-align: center;
+    background: rgba(0,0,0,0.55); backdrop-filter: blur(14px);
+    border: 1px solid rgba(255,255,255,0.1); border-radius: var(--radius-full);
+    font-size: var(--text-sm); color: rgba(255,255,255,0.92);
+  }
+  .onb-demo-tapword { color: var(--gold-300); font-weight: 600; }
+
+  .onb-demo-endow {
+    position: absolute; left: 50%; transform: translateX(-50%); bottom: 120px; z-index: 3;
+    display: inline-flex; align-items: center; gap: 7px;
+    font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: rgba(255,255,255,0.55);
+  }
+  .onb-demo-endow svg { width: 13px; height: 13px; fill: none; stroke: var(--gold-300); stroke-width: 1.8; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .onb-demo-guide, .onb-demo-coin, .onb-demo-tap__ring { animation: none; }
+  }
+</style>
+
+<section class="onb-demo-root" data-scene="onboarding-demo" data-action="scan">
+  <svg class="onb-demo-noise" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+    <filter id="onb-demo-turb"><feTurbulence type="fractalNoise" baseFrequency="1.6" numOctaves="2" seed="7"/><feColorMatrix type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.55 0"/></filter>
+    <rect width="100%" height="100%" filter="url(#onb-demo-turb)"/>
+  </svg>
+
+  <button type="button" class="onb-demo-skip" data-action="skip">Passer</button>
+
+  <div class="onb-demo-header">
+    <span class="eyebrow">Démo · sans pièce</span>
+    <div class="onb-demo-header__title">Fais ton premier scan</div>
+  </div>
+
+  <div class="onb-demo-guide" aria-hidden="true">
+    <div class="onb-demo-corner onb-demo-corner--tl"></div>
+    <div class="onb-demo-corner onb-demo-corner--tr"></div>
+    <div class="onb-demo-corner onb-demo-corner--bl"></div>
+    <div class="onb-demo-corner onb-demo-corner--br"></div>
+  </div>
+
+  <div class="onb-demo-coinwrap" aria-hidden="true">
+    <span class="onb-demo-loaner-tag">Pièce prêtée</span>
+    <div class="onb-demo-coin"><span class="onb-demo-coin__glyph" data-slot="glyph">2€</span></div>
+  </div>
+
+  <div class="onb-demo-tap" aria-hidden="true">
+    <span class="onb-demo-tap__ring"></span>
+  </div>
+
+  <div class="onb-demo-hint">
+    <span>On t'en prête une — <span class="onb-demo-tapword">tape</span> pour la scanner</span>
+  </div>
+
+  <div class="onb-demo-endow">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+    Elle comptera dans ta collection
+  </div>
+</section>

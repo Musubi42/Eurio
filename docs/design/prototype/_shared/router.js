@@ -31,6 +31,8 @@ const ROUTES = [
   { path: '/onboarding/1',           scene: 'onboarding-1',         nav: null, chrome: 'none' },
   { path: '/onboarding/2',           scene: 'onboarding-2',         nav: null, chrome: 'none' },
   { path: '/onboarding/3',           scene: 'onboarding-3',         nav: null, chrome: 'none' },
+  { path: '/onboarding/lentille',    scene: 'onboarding-lentille',  nav: null, chrome: 'none' },
+  { path: '/onboarding/demo',        scene: 'onboarding-demo',      nav: null, chrome: 'none' },
   { path: '/onboarding/permission',  scene: 'onboarding-permission',nav: null, chrome: 'none' },
   { path: '/onboarding/replay',      scene: null,                   nav: null, chrome: 'none', action: 'replay-onboarding' },
 

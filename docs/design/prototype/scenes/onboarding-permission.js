@@ -7,10 +7,10 @@ export function mount(ctx) {
   const root = document.querySelector('[data-scene="onboarding-permission"]');
   if (!root) return;
 
+  // caméra accordée → on enchaîne sur le scan guidé (démo sans pièce)
   const finish = () => {
-    state.completeOnboarding?.();
     root.dataset.state = 'accepting';
-    setTimeout(() => navigate('#/scan'), FADE_MS);
+    setTimeout(() => navigate('#/onboarding/demo'), FADE_MS);
   };
 
   root.querySelector('[data-action="allow"]')?.addEventListener('click', finish);
@@ -21,6 +21,6 @@ export function mount(ctx) {
   });
 
   root.querySelector('[data-action="back"]')?.addEventListener('click', () => {
-    navigate('#/onboarding/3');
+    navigate('#/onboarding/lentille');
   });
 }

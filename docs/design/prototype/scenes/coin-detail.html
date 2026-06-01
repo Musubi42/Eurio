@@ -177,6 +177,71 @@
     cursor: not-allowed;
   }
 
+  /* ───────── Récit (transportation narrative, chunk F) ─────────
+     Bloc immersif sombre dans la page blanche : on emmène le lecteur dans
+     l'histoire de la pièce. Déroulé progressif (événement → contexte →
+     créateurs → lieu). Sens PROPOSÉ : si la lentille = Valeur, replié en teaser. */
+  .coin-detail-recit {
+    position: relative;
+    margin: var(--space-4) var(--space-5) 0;
+    padding: var(--space-6) var(--space-5) var(--space-5);
+    border-radius: var(--radius-xl);
+    background:
+      radial-gradient(130% 80% at 18% -10%, var(--indigo-600) 0%, transparent 58%),
+      linear-gradient(180deg, var(--indigo-800) 0%, var(--indigo-900) 100%);
+    color: var(--surface);
+    box-shadow: var(--shadow-indigo);
+    overflow: hidden;
+  }
+  .coin-detail-recit::before {
+    content: ""; position: absolute; inset: 0; pointer-events: none; border-radius: inherit;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 .06 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+    mix-blend-mode: overlay; opacity: 0.5;
+  }
+  .coin-detail-recit__kicker {
+    position: relative;
+    display: inline-flex; align-items: center; gap: 7px;
+    font-family: var(--font-mono); font-size: 9px; letter-spacing: var(--tracking-eyebrow);
+    text-transform: uppercase; color: var(--gold-300); margin-bottom: var(--space-3);
+  }
+  .coin-detail-recit__kicker::before { content: ""; width: 16px; height: 1px; background: var(--gold); opacity: 0.6; }
+  .coin-detail-recit__headline {
+    position: relative;
+    font-family: var(--font-display); font-style: italic; font-weight: 400;
+    font-size: var(--text-2xl); line-height: 1.12; letter-spacing: -0.01em;
+    color: var(--surface); margin-bottom: var(--space-3);
+  }
+  .coin-detail-recit__lead {
+    position: relative;
+    font-size: var(--text-sm); line-height: var(--leading-base);
+    color: rgba(255,255,255,0.72); margin-bottom: var(--space-5);
+  }
+  .coin-detail-recit__chapters { position: relative; display: flex; flex-direction: column; gap: var(--space-5); }
+  .coin-detail-recit__chapter { position: relative; padding-left: var(--space-5); }
+  .coin-detail-recit__chapter::before {
+    content: ""; position: absolute; left: 0; top: 4px; bottom: 4px; width: 2px;
+    border-radius: 2px; background: linear-gradient(180deg, var(--gold), transparent);
+  }
+  .coin-detail-recit__chapter-eyebrow {
+    font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--gold-300); display: block; margin-bottom: 6px;
+  }
+  .coin-detail-recit__chapter-title {
+    font-family: var(--font-display); font-style: italic; font-size: var(--text-lg);
+    color: var(--surface); margin-bottom: 4px; line-height: 1.15;
+  }
+  .coin-detail-recit__chapter-body { font-size: var(--text-sm); line-height: var(--leading-base); color: rgba(255,255,255,0.68); }
+  /* teaser replié (lentille = Valeur) */
+  .coin-detail-recit[data-collapsed="true"] .coin-detail-recit__chapters { display: none; }
+  .coin-detail-recit__more {
+    position: relative; margin-top: var(--space-4);
+    display: inline-flex; align-items: center; gap: 7px;
+    background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.16);
+    color: var(--surface); padding: 9px 16px; border-radius: var(--radius-full);
+    font-size: var(--text-xs); font-weight: 500;
+  }
+  .coin-detail-recit[data-collapsed="false"] .coin-detail-recit__more { display: none; }
+
   /* ───────── Sections (museum card) ───────── */
   .coin-detail-section {
     padding: var(--space-6) var(--space-5);
@@ -381,6 +446,12 @@
     font-variant-numeric: tabular-nums;
     color: var(--ink-400);
   }
+  .coin-detail-set__affiliate {
+    display: inline-flex; align-items: center; gap: 5px;
+    margin-top: var(--space-2);
+    font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.04em;
+    color: var(--gold-deep); cursor: pointer;
+  }
 
   /* 06 Details + common */
   .coin-detail-dl {
@@ -507,6 +578,9 @@
 
   <!-- Hero -->
   <div class="coin-detail-hero" data-slot="hero"></div>
+
+  <!-- Récit (transportation) -->
+  <div class="coin-detail-recit" data-slot="recit"></div>
 
   <!-- 01 Identité -->
   <section class="coin-detail-section">

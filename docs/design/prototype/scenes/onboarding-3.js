@@ -6,7 +6,7 @@ export function mount(ctx) {
   if (!root) return;
 
   root.querySelector('[data-action="next"]')?.addEventListener('click', () => {
-    navigate('#/onboarding/permission');
+    navigate('#/onboarding/lentille');
   });
   root.querySelector('[data-action="back"]')?.addEventListener('click', () => {
     navigate('#/onboarding/2');

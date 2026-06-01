@@ -85,6 +85,7 @@ export function mount(ctx) {
   renderMeta(root, detail);
   renderProgress(root, detail);
   renderPlanche(root, detail, navigate);
+  renderAffiliate(root, detail);
 
   // Long-press on missing cell (mock)
   wireLongPress(root);
@@ -186,6 +187,19 @@ function renderPlanche(root, detail, navigate) {
       navigate(`#/coin/${encodeURIComponent(cell.dataset.coinId)}`);
     });
   });
+}
+
+/* Lien affilié « où trouver les manquantes » — visible seulement s'il manque
+   des pièces. Honnête : libellé partenaire explicite (toast mock ici). */
+function renderAffiliate(root, detail) {
+  const link = root.querySelector('[data-role="affiliate"]');
+  if (!link) return;
+  const missing = detail.coins.filter(c => !c.owned).length;
+  if (missing === 0) { link.hidden = true; return; }
+  link.hidden = false;
+  const count = link.querySelector('[data-role="missing-count"]');
+  if (count) count.textContent = missing;
+  link.addEventListener('click', (e) => { e.preventDefault(); showToast(root, 'Lien partenaire · bientôt'); });
 }
 
 function wireLongPress(root) {

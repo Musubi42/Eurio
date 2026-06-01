@@ -312,8 +312,31 @@
     color: var(--ink-400);
   }
 
+  /* ───────── Affiliate (case manquante) ───────── */
+  .scene-vsd-affiliate {
+    display: inline-flex; align-items: center; gap: 6px;
+    margin-top: var(--space-4);
+    font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.04em;
+    color: var(--gold-deep); cursor: pointer;
+  }
+
   /* ───────── Completed state adjustments ───────── */
   .scene-vsd-root[data-completed="true"] .scene-vsd-progress__pct { color: var(--gold-deep); }
+  /* Banderole « Série complète » — affichée à l'état complété (cat. 2 vibe) */
+  .scene-vsd-banner {
+    display: none;
+    align-self: center;
+    margin: 0 auto var(--space-5);
+    padding: 7px 20px;
+    background: linear-gradient(180deg, var(--gold-300) 0%, var(--gold) 55%, var(--gold-deep) 100%);
+    color: var(--indigo-900);
+    font-family: var(--font-mono); font-size: var(--text-xs); font-weight: 600;
+    letter-spacing: 0.2em; text-transform: uppercase;
+    border-radius: var(--radius-sm);
+    box-shadow: 0 8px 20px -8px rgba(200,168,100,0.7);
+    width: fit-content;
+  }
+  .scene-vsd-root[data-completed="true"] .scene-vsd-banner { display: block; }
   .scene-vsd-completed-note {
     padding: var(--space-3) var(--space-5) 0;
     font-family: var(--font-display);
@@ -345,6 +368,7 @@
 
   <!-- Hero -->
   <header class="scene-vsd-hero">
+    <div class="scene-vsd-banner" aria-hidden="true">Série complète</div>
     <div class="scene-vsd-fan" aria-hidden="true" data-role="fan"></div>
 
     <div class="scene-vsd-hero__eyebrow">
@@ -393,6 +417,9 @@
     <div class="scene-vsd-planche planche" data-role="planche">
       <div class="planche__grid" data-role="planche-grid"></div>
     </div>
+    <a class="scene-vsd-affiliate" data-role="affiliate" hidden>
+      Où trouver les <span data-role="missing-count">—</span> manquantes <span aria-hidden="true">→</span>
+    </a>
   </section>
 
   <!-- Reward teaser -->

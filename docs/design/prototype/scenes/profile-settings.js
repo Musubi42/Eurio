@@ -86,6 +86,33 @@ export function mount(ctx) {
     });
   }
 
+  // ───── Reveal · lentille (segmented) → state.lens (même clé qu'onboarding + récit)
+  const lensGroup = root.querySelector('[data-bind="pref-lens"]');
+  if (lensGroup) {
+    initSegmented(lensGroup, state.state.lens || 'discovery');
+    lensGroup.querySelectorAll('button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        state.state.lens = btn.dataset.value;
+        initSegmented(lensGroup, state.state.lens);
+        state.save();
+        showToast(root, 'Lentille mise à jour');
+      });
+    });
+  }
+
+  // ───── Notifications · fréquence (segmented)
+  const freqGroup = root.querySelector('[data-bind="pref-notif-freq"]');
+  if (freqGroup) {
+    initSegmented(freqGroup, prefs.notifFreq || 'discrete');
+    freqGroup.querySelectorAll('button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        prefs.notifFreq = btn.dataset.value;
+        initSegmented(freqGroup, prefs.notifFreq);
+        state.save();
+      });
+    });
+  }
+
   // ───── Back
   const backBtn = root.querySelector('[data-action="back"]');
   if (backBtn) {

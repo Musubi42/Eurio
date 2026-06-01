@@ -233,8 +233,9 @@ export function mount(ctx) {
     if (valSub) valSub.textContent = 'Coffre vide';
   }
 
-  // Achievements
-  const chases = computeAchievements(col).filter(a => !a.unlocked && a.have > 0);
+  // Achievements — plafonné à 3 « prochains » (anti-surcharge Zeigarnik : ne pas
+  // ouvrir des dizaines de boucles ; on ne montre que les 3 plus proches).
+  const chases = computeAchievements(col).filter(a => !a.unlocked && a.have > 0).slice(0, 3);
   const chasesContainer = root.querySelector('[data-bind="chases-container"]');
   if (chasesContainer) {
     chasesContainer.className = 'profile-home-chases';
