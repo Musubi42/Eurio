@@ -1,0 +1,259 @@
+/* profile-settings.css — extrait VERBATIM de docs/design/prototype/scenes/profile-settings.html.
+   Source canonique du style de cette scène (proto-first). NE PAS éditer
+   à la main hors refonte design proto. */
+
+  .profile-settings-root {
+    position: absolute;
+    inset: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    background: var(--surface);
+    color: var(--ink);
+    /* Own scroll container overrides #view padding-bottom: 104px reclaims nav clearance. */
+    padding: 56px var(--space-5) 104px;
+  }
+
+  /* Header */
+  .profile-settings-head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin-bottom: var(--space-7);
+  }
+  .profile-settings-head__back {
+    width: 38px; height: 38px;
+    border-radius: var(--radius-full);
+    background: var(--surface-1);
+    border: 1px solid var(--gray-100);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--ink);
+  }
+  .profile-settings-head__back svg {
+    width: 16px; height: 16px;
+    stroke: currentColor; fill: none; stroke-width: 1.8;
+  }
+  .profile-settings-head__title {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-weight: 400;
+    font-size: var(--text-xl);
+    color: var(--ink);
+  }
+
+  /* Group */
+  .profile-settings-group {
+    background: var(--paper);
+    border: 1px solid var(--gray-100);
+    border-radius: var(--radius-lg);
+    padding: var(--space-4) var(--space-5);
+    margin-bottom: var(--space-5);
+  }
+  .profile-settings-group__head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin-bottom: var(--space-3);
+  }
+  .profile-settings-group__head::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(90deg, var(--gray-200), transparent);
+  }
+  .profile-settings-group__badge {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    padding: 2px 8px;
+    border-radius: var(--radius-full);
+    background: var(--gold);
+    color: var(--gold-deep);
+  }
+
+  /* Row */
+  .profile-settings-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3) 0;
+    border-top: 1px solid var(--gray-100);
+    font-size: var(--text-sm);
+    color: var(--ink);
+    width: 100%;
+    text-align: left;
+    min-height: 44px;
+  }
+  .profile-settings-row:first-of-type { border-top: 0; }
+  .profile-settings-row__label {
+    flex: 1;
+    color: var(--ink);
+    font-weight: 500;
+  }
+  .profile-settings-row__help {
+    font-size: 11px;
+    color: var(--ink-400);
+    margin-top: 2px;
+    font-weight: 400;
+  }
+  .profile-settings-row__arrow {
+    color: var(--ink-300);
+    font-family: var(--font-mono);
+  }
+
+  /* Toggle */
+  .profile-settings-toggle {
+    width: 42px; height: 24px;
+    border-radius: var(--radius-full);
+    background: var(--gray-200);
+    position: relative;
+    flex: 0 0 42px;
+    transition: background var(--duration-base) var(--ease-out);
+  }
+  .profile-settings-toggle::after {
+    content: "";
+    position: absolute;
+    top: 3px; left: 3px;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: var(--surface);
+    box-shadow: var(--shadow-sm);
+    transition: transform var(--duration-base) var(--ease-out);
+  }
+  .profile-settings-toggle[aria-pressed="true"] {
+    background: var(--indigo-700);
+  }
+  .profile-settings-toggle[aria-pressed="true"]::after {
+    transform: translateX(18px);
+  }
+
+  /* Segmented control */
+  .profile-settings-seg {
+    display: flex;
+    gap: 2px;
+    padding: 2px;
+    background: var(--gray-100);
+    border-radius: var(--radius-md);
+    margin-top: var(--space-3);
+  }
+  .profile-settings-seg button {
+    flex: 1;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    font-family: var(--font-ui);
+    font-size: var(--text-xs);
+    font-weight: 500;
+    color: var(--ink-500);
+    min-height: 32px;
+  }
+  .profile-settings-seg button[aria-pressed="true"] {
+    background: var(--surface);
+    color: var(--ink);
+    box-shadow: var(--shadow-sm);
+  }
+
+  /* Select (langue) */
+  .profile-settings-select {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--ink-700);
+    background: var(--surface-1);
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--gray-100);
+    letter-spacing: 0.04em;
+  }
+
+  /* Data buttons */
+  .profile-settings-btnrow {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin-top: var(--space-3);
+  }
+  .profile-settings-btnrow .btn { width: 100%; justify-content: space-between; }
+  .profile-settings-btnrow .btn svg {
+    width: 16px; height: 16px;
+    stroke: currentColor; fill: none; stroke-width: 1.6;
+  }
+
+  /* Debug subsection */
+  .profile-settings-debug {
+    margin-top: var(--space-5);
+    padding-top: var(--space-4);
+    border-top: 1px dashed var(--gray-200);
+  }
+  .profile-settings-debug__eyebrow {
+    color: var(--danger);
+    margin-bottom: var(--space-3);
+  }
+  /* Danger button → uses .btn-danger from components.css */
+
+  /* Sign-in row */
+  .profile-settings-signin {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-4);
+    border: 1px dashed var(--gray-200);
+    border-radius: var(--radius-md);
+    margin-top: var(--space-3);
+  }
+  .profile-settings-signin__logo {
+    width: 34px; height: 34px;
+    flex: 0 0 34px;
+    border-radius: 50%;
+    background: var(--surface-1);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-display);
+    font-style: italic;
+    font-weight: 500;
+    color: var(--ink-400);
+  }
+  .profile-settings-signin__label {
+    flex: 1;
+    font-size: var(--text-sm);
+    color: var(--ink);
+    font-weight: 500;
+  }
+
+  /* About */
+  .profile-settings-about {
+    text-align: center;
+    padding: var(--space-5) 0 0;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    color: var(--ink-400);
+    text-transform: uppercase;
+  }
+  .profile-settings-about b {
+    color: var(--ink);
+    font-weight: 600;
+  }
+  .profile-settings-about a {
+    color: var(--gold-700);
+    margin: 0 var(--space-2);
+  }
+
+  /* Toast → uses .toast from components.css */
+
+  /* Confirm inline */
+  .profile-settings-confirm {
+    margin-top: var(--space-3);
+    padding: var(--space-3);
+    border-radius: var(--radius-md);
+    background: var(--danger-soft);
+    color: var(--danger);
+    font-size: var(--text-xs);
+    display: none;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+  .profile-settings-confirm.is-on { display: flex; }
+  .profile-settings-confirm__row { display: flex; gap: var(--space-2); }
+  .profile-settings-confirm__row .btn { flex: 1; min-height: 36px; padding: 8px 12px; }

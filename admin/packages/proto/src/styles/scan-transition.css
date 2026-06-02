@@ -1,0 +1,254 @@
+/* scan-transition.css — extrait verbatim */
+
+.scan-tx-root {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    color: var(--surface);
+    background:
+      radial-gradient(ellipse 65% 45% at 50% 42%, var(--ink-soft) 0%, var(--ink) 55%, #000 100%);
+    touch-action: none;
+  }
+
+  /* The 3D stage is a band in the UPPER part of the screen; the coin renders
+     centred inside it (the settled panel owns the lower third). Keeping the
+     vertical placement in CSS — not in the camera — makes it device-robust. */
+  .scan-tx-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 60%;
+    z-index: 1;
+  }
+  /* Force the WebGL canvas to fill the band via CSS. renderer.setSize(…, false)
+     keeps the device-pixel buffer crisp but does NOT set canvas style, so without
+     this the canvas would lay out at its buffer size (2× on retina) and overflow. */
+  .scan-tx-canvas canvas {
+    display: block;
+    width: 100% !important;
+    height: 100% !important;
+    touch-action: none;
+  }
+
+  /* Camera-freeze grain — the "still" we morph out of. Fades as the coin lifts. */
+  .scan-tx-grain {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    opacity: 0.12;
+    mix-blend-mode: overlay;
+    pointer-events: none;
+    transition: opacity var(--duration-slow) var(--ease-out);
+  }
+  .scan-tx-root[data-phase="posed"] .scan-tx-grain { opacity: 0.05; }
+
+  /* Detected-coin ghost : the locked ring from the freeze-frame. The 3D coin
+     emerges from inside it, then it dissolves. */
+  .scan-tx-ghost {
+    position: absolute;
+    top: 30%;
+    left: 50%;
+    width: 168px;
+    height: 168px;
+    transform: translate(-50%, -50%);
+    z-index: 2;
+    pointer-events: none;
+    transition: opacity var(--duration-base) var(--ease-out);
+  }
+  .scan-tx-ghost__ring {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    border: 1.5px solid var(--scan-matched);
+    box-shadow:
+      0 0 26px rgba(47, 169, 113, 0.45),
+      inset 0 0 18px rgba(47, 169, 113, 0.22);
+  }
+  /* Four locked L-corners — echo of scan-idle's framing, now closed onto a match. */
+  .scan-tx-ghost__corner {
+    position: absolute;
+    width: 22px;
+    height: 22px;
+    border: 1.6px solid var(--scan-matched);
+  }
+  .scan-tx-ghost__corner--tl { top: -7px; left: -7px; border-right: 0; border-bottom: 0; }
+  .scan-tx-ghost__corner--tr { top: -7px; right: -7px; border-left: 0; border-bottom: 0; }
+  .scan-tx-ghost__corner--bl { bottom: -7px; left: -7px; border-right: 0; border-top: 0; }
+  .scan-tx-ghost__corner--br { bottom: -7px; right: -7px; border-left: 0; border-top: 0; }
+  .scan-tx-root[data-phase="spin"]  .scan-tx-ghost,
+  .scan-tx-root[data-phase="settle"] .scan-tx-ghost,
+  .scan-tx-root[data-phase="posed"] .scan-tx-ghost { opacity: 0; }
+
+  /* Header */
+  .scan-tx-header {
+    position: absolute;
+    top: 62px;
+    left: 0; right: 0;
+    text-align: center;
+    z-index: 4;
+    pointer-events: none;
+  }
+  .scan-tx-header__title {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-weight: 400;
+    font-size: var(--text-xl);
+    color: var(--surface);
+    letter-spacing: 0.01em;
+    margin-top: 2px;
+    transition: opacity var(--duration-base) var(--ease-out);
+  }
+
+  /* Skip — always reachable (anti-corvée). */
+  .scan-tx-skip {
+    position: absolute;
+    top: 58px;
+    right: var(--space-5);
+    z-index: 5;
+    padding: 7px 14px;
+    border-radius: var(--radius-full);
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    color: rgba(255, 255, 255, 0.75);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    backdrop-filter: blur(8px);
+    transition: opacity var(--duration-base) var(--ease-out);
+  }
+  .scan-tx-skip:active { transform: scale(0.95); }
+  .scan-tx-root[data-phase="posed"] .scan-tx-skip { opacity: 0; pointer-events: none; }
+
+  /* Settle FX — the peak. Soft flash + expanding gold halo, fired once. */
+  .scan-tx-flash {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    pointer-events: none;
+    opacity: 0;
+    background: radial-gradient(
+      ellipse 58% 40% at 50% 30%,
+      rgba(224, 198, 136, 0.45) 0%,
+      transparent 60%);
+  }
+  .scan-tx-flash.is-burst { animation: scan-tx-flash 0.7s var(--ease-out) forwards; }
+  @keyframes scan-tx-flash {
+    0%   { opacity: 0; }
+    18%  { opacity: 1; }
+    100% { opacity: 0; }
+  }
+  .scan-tx-halo {
+    position: absolute;
+    top: 30%;
+    left: 50%;
+    width: 220px;
+    height: 220px;
+    transform: translate(-50%, -50%) scale(0.6);
+    border-radius: 50%;
+    border: 1.5px solid var(--gold-300);
+    z-index: 3;
+    pointer-events: none;
+    opacity: 0;
+  }
+  .scan-tx-halo.is-burst { animation: scan-tx-halo 0.85s var(--ease-out) forwards; }
+  @keyframes scan-tx-halo {
+    0%   { opacity: 0;    transform: translate(-50%, -50%) scale(0.55); }
+    30%  { opacity: 0.85; }
+    100% { opacity: 0;    transform: translate(-50%, -50%) scale(1.5); }
+  }
+
+  /* Bottom hint — gesture invitation while spinning. */
+  .scan-tx-hint {
+    position: absolute;
+    left: 50%;
+    bottom: 168px;
+    transform: translateX(-50%);
+    z-index: 4;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: 9px 16px;
+    border-radius: var(--radius-full);
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(14px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    font-size: var(--text-xs);
+    color: rgba(255, 255, 255, 0.9);
+    white-space: nowrap;
+    pointer-events: none;
+    transition: opacity var(--duration-base) var(--ease-out);
+  }
+  .scan-tx-hint__spark {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--gold-300);
+    box-shadow: 0 0 10px rgba(224, 198, 136, 0.8);
+    animation: scan-tx-spark 1.5s var(--ease-in-out) infinite;
+  }
+  @keyframes scan-tx-spark { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+  .scan-tx-root[data-phase="settle"] .scan-tx-hint,
+  .scan-tx-root[data-phase="posed"] .scan-tx-hint { opacity: 0; }
+
+  /* Settled panel — minimal landing (the rich reveal is Chunk B). */
+  .scan-tx-done {
+    position: absolute;
+    left: var(--space-5);
+    right: var(--space-5);
+    bottom: 112px;
+    z-index: 5;
+    text-align: center;
+    opacity: 0;
+    transform: translateY(14px);
+    pointer-events: none;
+    transition:
+      opacity var(--duration-slow) var(--ease-out),
+      transform var(--duration-slow) var(--ease-out);
+  }
+  .scan-tx-root[data-phase="posed"] .scan-tx-done {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+  }
+  .scan-tx-done__country {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--gold-300);
+  }
+  .scan-tx-done__title {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-weight: 400;
+    font-size: var(--text-2xl);
+    color: var(--surface);
+    line-height: var(--leading-tight);
+    margin: var(--space-1) 0 var(--space-5);
+  }
+  .scan-tx-done__actions {
+    display: flex;
+    gap: var(--space-3);
+    justify-content: center;
+  }
+  .scan-tx-done__actions .btn { min-width: 130px; }
+
+  /* Loading status (engine warm-up) */
+  .scan-tx-status {
+    position: absolute;
+    left: 50%;
+    bottom: 200px;
+    transform: translateX(-50%);
+    z-index: 4;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    color: rgba(255, 255, 255, 0.55);
+    pointer-events: none;
+    transition: opacity var(--duration-base) ease;
+  }
+  .scan-tx-status.is-hidden { opacity: 0; }

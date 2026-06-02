@@ -1,0 +1,6 @@
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Fixture régénérable (go-task ml:build-app-core) — repointée au Chunk F
+public/data/app_core.json

@@ -1,0 +1,183 @@
+/* marketplace-soon.css — extrait VERBATIM de docs/design/prototype/scenes/marketplace-soon.html.
+   Source canonique du style de cette scène (proto-first). NE PAS éditer
+   à la main hors refonte design proto. */
+
+  .marketplace-root {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 60% 40% at 50% 20%, var(--indigo-700) 0%, transparent 65%),
+      var(--indigo-900);
+    overflow: hidden;
+  }
+
+  .marketplace-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(14, 14, 31, 0.55);
+    backdrop-filter: blur(2px);
+  }
+
+  .marketplace-close {
+    position: absolute;
+    top: 60px;
+    right: 20px;
+    z-index: 3;
+  }
+
+  .marketplace-hint {
+    position: absolute;
+    top: 74px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.55);
+    z-index: 3;
+  }
+
+  .marketplace-sheet {
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    height: 85%;
+    background: linear-gradient(180deg, var(--surface) 0%, var(--surface-1) 100%);
+    border-radius: var(--radius-2xl) var(--radius-2xl) 0 0;
+    padding: var(--space-3) var(--space-6) var(--space-9);
+    color: var(--ink);
+    box-shadow: var(--shadow-sheet);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    z-index: var(--z-sheet);
+    animation: marketplace-sheet-up 0.55s var(--ease-spring) forwards;
+  }
+  @keyframes marketplace-sheet-up {
+    0%   { transform: translateY(100%); }
+    100% { transform: translateY(0); }
+  }
+
+  .marketplace-badge {
+    display: inline-flex;
+    align-self: center;
+    margin-top: var(--space-5);
+    margin-bottom: var(--space-5);
+    padding: 4px 12px;
+    border-radius: var(--radius-full);
+    background: var(--gold);
+    color: var(--gold-deep);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    box-shadow: 0 4px 14px rgba(200, 168, 100, 0.35);
+  }
+
+  .marketplace-title {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-weight: 300;
+    font-size: var(--text-3xl);
+    line-height: 1.05;
+    letter-spacing: -0.025em;
+    color: var(--ink);
+    text-align: center;
+    margin-bottom: var(--space-5);
+    padding: 0 var(--space-3);
+  }
+
+  .marketplace-copy {
+    font-size: var(--text-sm);
+    line-height: 1.55;
+    color: var(--ink-500);
+    text-align: center;
+    max-width: 36ch;
+    margin: 0 auto var(--space-8);
+  }
+
+  .marketplace-features {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-3);
+    margin-bottom: var(--space-8);
+  }
+  .marketplace-feature {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-4) var(--space-2);
+    background: var(--surface);
+    border: 1px solid var(--gray-100);
+    border-radius: var(--radius-lg);
+    text-align: center;
+  }
+  .marketplace-feature__icon {
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 32% 28%, var(--gold-soft), var(--gold-300) 55%, var(--gold) 100%);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    color: var(--gold-deep);
+    box-shadow: var(--inner-highlight-gold);
+  }
+  .marketplace-feature__label {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-weight: 500;
+    font-size: 12px;
+    line-height: 1.2;
+    color: var(--ink);
+  }
+
+  .marketplace-cta {
+    margin: auto auto 0;
+    width: 100%;
+    max-width: 320px;
+    border: 1px solid var(--indigo-700);
+    color: var(--indigo-700);
+    background: transparent;
+  }
+  .marketplace-cta:hover { background: var(--indigo-50); }
+
+  .marketplace-fineprint {
+    text-align: center;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--ink-400);
+    margin-top: var(--space-4);
+  }
+  .marketplace-fineprint b {
+    color: var(--gold-deep);
+    font-weight: 600;
+  }
+
+  /* Toast */
+  .marketplace-toast {
+    position: fixed;
+    left: 50%;
+    bottom: var(--space-10);
+    transform: translate(-50%, 20px);
+    background: var(--ink);
+    color: var(--surface);
+    padding: 10px 16px;
+    border-radius: var(--radius-full);
+    font-size: var(--text-xs);
+    letter-spacing: 0.04em;
+    box-shadow: var(--shadow-lg);
+    opacity: 0;
+    pointer-events: none;
+    z-index: var(--z-toast);
+    transition: opacity var(--duration-base) var(--ease-out),
+                transform var(--duration-base) var(--ease-out);
+  }
+  .marketplace-toast.is-on {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }

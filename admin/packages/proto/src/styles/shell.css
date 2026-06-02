@@ -1,0 +1,176 @@
+/* Eurio proto — app shell (web app, PAS d'embed iPhone).
+ * Desktop : colonne centrée largeur-tel. Mobile : plein écran.
+ * Owns : surface app, bottom nav, version badge. Safe-area en bas (gesture bar).
+ */
+
+html, body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+#app { height: 100%; }
+
+/* ───────── App root (backdrop autour de la colonne sur desktop) ───────── */
+.app-root {
+  min-height: 100dvh;
+  width: 100%;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  background:
+    radial-gradient(ellipse 80% 60% at 50% 0%, #1F2057 0%, transparent 70%),
+    radial-gradient(ellipse 60% 50% at 50% 100%, #06071A 0%, transparent 70%),
+    var(--indigo-950);
+}
+
+/* ───────── Screen = surface de l'app ───────── */
+.screen {
+  position: relative;
+  width: 100%;
+  max-width: 440px;
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--surface);
+  isolation: isolate;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.05), 0 30px 80px -20px rgba(6, 7, 26, 0.6);
+}
+
+/* ───────── Scene viewport ───────── */
+#view {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ───────── Version badge (top-left, 7-tap debug) ───────── */
+.version-badge {
+  position: absolute;
+  top: calc(8px + env(safe-area-inset-top, 0px));
+  left: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  border-radius: var(--radius-full);
+  background: rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.8);
+  z-index: var(--z-badge);
+  cursor: pointer;
+  user-select: none;
+}
+.screen[data-chrome="light"] .version-badge {
+  background: rgba(14, 14, 31, 0.06);
+  color: var(--ink-400);
+  border-color: rgba(14, 14, 31, 0.08);
+}
+.version-badge__led {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--debug-red);
+  box-shadow: 0 0 8px var(--debug-red);
+  opacity: 0;
+  transition: opacity var(--duration-base) var(--ease-out);
+}
+.version-badge[data-debug="on"] .version-badge__led {
+  opacity: 1;
+  animation: led-blink 2.4s ease-in-out infinite;
+}
+@keyframes led-blink {
+  0%, 90%, 100% { opacity: 1; }
+  95% { opacity: 0.4; }
+}
+
+/* ───────── Bottom nav ───────── */
+.bottomnav {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: calc(84px + env(safe-area-inset-bottom, 0px));
+  padding: 14px 18px calc(14px + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-1);
+  background: linear-gradient(180deg, rgba(250, 250, 248, 0) 0%, rgba(250, 250, 248, 0.95) 40%, var(--surface) 100%);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  z-index: var(--z-nav);
+}
+.screen[data-chrome="dark"] .bottomnav {
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0.6) 40%, rgba(0, 0, 0, 0.88) 100%);
+}
+.bottomnav__tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 4px;
+  color: var(--ink-400);
+  font-family: var(--font-ui);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  font-weight: 500;
+  border-radius: var(--radius-md);
+  background: none;
+  border: 0;
+  min-height: 44px;
+  cursor: pointer;
+}
+.screen[data-chrome="dark"] .bottomnav__tab { color: rgba(255, 255, 255, 0.5); }
+.bottomnav__tab[aria-current="page"] { color: var(--indigo-700); }
+.screen[data-chrome="dark"] .bottomnav__tab[aria-current="page"] { color: var(--gold); }
+.bottomnav__tab--scan {
+  flex: 0 0 auto;
+  width: 64px;
+  height: 64px;
+  margin-top: -22px;
+  border-radius: var(--radius-full);
+  background: radial-gradient(circle at 35% 30%, var(--indigo-500), var(--indigo-700) 60%, var(--indigo-800));
+  color: var(--gold);
+  box-shadow: 0 12px 32px -8px rgba(26, 27, 75, 0.45), 0 0 0 4px rgba(250, 250, 248, 0.98), var(--inner-highlight-gold);
+  gap: 0;
+  justify-content: center;
+}
+.bottomnav__tab--scan svg { width: 26px; height: 26px; }
+.bottomnav__tab--scan .bottomnav__label { display: none; }
+.bottomnav__tab--soon { opacity: 0.55; position: relative; }
+.bottomnav__tab--soon .bottomnav__soon-badge {
+  position: absolute;
+  top: -2px;
+  right: 14%;
+  font-family: var(--font-mono);
+  font-size: 7px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 1px 5px;
+  border-radius: var(--radius-full);
+  background: var(--gold);
+  color: var(--indigo-900);
+  font-weight: 600;
+}
+.bottomnav__icon { width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; }
+.bottomnav__icon svg { width: 22px; height: 22px; }
+
+/* full-bleed chrome : scènes qui possèdent leur layout (onboarding, célébration) */
+.screen[data-chrome="none"] .bottomnav,
+.screen[data-chrome="none"] .version-badge { display: none; }
+
+/* ───────── Mobile : plein écran, plus de colonne ───────── */
+@media (max-width: 500px) {
+  .app-root { background: var(--surface); }
+  .screen {
+    max-width: none;
+    box-shadow: none;
+  }
+}

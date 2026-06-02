@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="32%" r="80%">
+      <stop offset="0%" stop-color="#2A2C6E"/>
+      <stop offset="60%" stop-color="#1A1B4B"/>
+      <stop offset="100%" stop-color="#0B0B1A"/>
+    </radialGradient>
+    <radialGradient id="coin" cx="38%" cy="32%" r="75%">
+      <stop offset="0%" stop-color="#F5D98A"/>
+      <stop offset="55%" stop-color="#C8A864"/>
+      <stop offset="100%" stop-color="#8F7637"/>
+    </radialGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <circle cx="256" cy="256" r="150" fill="url(#coin)" stroke="rgba(0,0,0,0.25)" stroke-width="3"/>
+  <circle cx="256" cy="256" r="118" fill="none" stroke="rgba(58,31,8,0.25)" stroke-width="2"/>
+  <text x="256" y="262" text-anchor="middle" dominant-baseline="central"
+        font-family="Georgia, 'Times New Roman', serif" font-style="italic"
+        font-size="170" font-weight="500" fill="#3A1F08">e</text>
+</svg>
