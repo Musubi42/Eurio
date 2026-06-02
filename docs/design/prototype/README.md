@@ -1,4 +1,26 @@
-# Eurio prototype navigable
+# Eurio prototype navigable — ⚠️ LEGACY / FIGÉ (2026-06-02)
+
+> **Ce proto HTML est déprécié.** La source de vérité du design est désormais la
+> **web app Vue** : [`admin/packages/proto`](../../../admin/packages/proto). La
+> refonte (chunks A→E) a porté toutes les scènes du parcours en Vue + le contrat
+> de données `src/api/`. Voir [`scene-parity.md`](../_shared/scene-parity.md) et
+> [`components-parity.md`](../_shared/components-parity.md) (repointés vers le `.vue`).
+>
+> **Ce qui reste ici** = uniquement les **8 scènes sans équivalent Vue** (états
+> Android non encore portés, conservées comme référence design — R1) :
+> `scan-detecting`, `scan-matched`, `scan-failure`, `scan-not-identified`,
+> `scan-debug`, `scan-coin-3d` (dev tool), `vault-catalog-map` (réf, superseded
+> par `carte-a-gratter`), `vault-empty` (état vide, porté inline dans VaultHome).
+>
+> ⚠️ **La navigation du shell legacy ci-dessous ne fonctionne plus** : `_shared/router.js`
+> et ses redirects pointent encore vers des scènes retirées. Pour consulter une
+> scène orpheline, ouvre directement son `.html`/`.js` (référence statique) ou
+> ajoute sa route au besoin. Le reste de ce README est **historique**.
+>
+> Le build `go-task ml:build-app-core` écrit maintenant dans
+> `admin/packages/proto/public/data/app_core.json` (plus ici).
+
+---
 
 Prototype HTML/CSS/JS vanilla du parcours Eurio — scan-first numismatique
 européenne. Zéro framework, zéro build, servable par `python3 -m http.server`.

@@ -1,6 +1,6 @@
 # Parité scènes — proto ↔ destinations Android
 
-> **Source de vérité du proto = la web app Vue (`admin/packages/proto/src/scenes/*.vue`)** depuis la refonte 2026-06 (chunks A→E livrés). Le tas HTML `docs/design/prototype/scenes/*.html` est **legacy** : conservé en référence le temps de la confirmation de parité visuelle, puis retiré (Chunk F). La colonne « Proto scene » ci-dessous nomme la scène ; son rendu canonique est désormais le `.vue` correspondant. Règle de maintenance : voir [parity-rules.md §R4](parity-rules.md).
+> **Source de vérité du proto = la web app Vue (`admin/packages/proto/src/scenes/*.vue`)** depuis la refonte 2026-06 (chunks A→E livrés). Les **25 scènes HTML portées** ont été **retirées** de `docs/design/prototype/scenes/` (Chunk F, 2026-06-02) — plus de dual-source. **8 scènes HTML restent** (états Android sans équivalent Vue : `scan-detecting/matched/failure/not-identified/debug/coin-3d`, `vault-catalog-map`, `vault-empty`) ; pour celles-ci, la colonne « Proto scene » pointe toujours le `.html` legacy. Pour les scènes portées, le rendu canonique est le `.vue`. Règle de maintenance : voir [parity-rules.md §R4](parity-rules.md).
 >
 > Une ligne `❌ à proto'er` **bloque le démarrage de sa phase**. Tant que le proto manque, on ne code pas l'écran Android.
 >

@@ -4,8 +4,8 @@ C3 is a strict SUBSET of Supabase: the light + stable data the app/proto can
 hold offline. By reading from Supabase (not eurio.db) we guarantee C3 ⊆ C2 by
 construction. Two serializations of the SAME projection are emitted:
 
-    docs/design/prototype/data/app_core.json   # proto (browser, nested per coin)
-    app-android/src/main/assets/app_core.db     # Android (prebuilt SQLite, normalized)
+    admin/packages/proto/public/data/app_core.json   # proto Vue (browser, nested per coin)
+    app-android/src/main/assets/app_core.db           # Android (prebuilt SQLite, normalized)
 
 What's IN the core (offline):
     - coin (identity + flat characteristics + mintage + variant + shared_reverse_id)
@@ -44,7 +44,7 @@ if str(_ML_ROOT) not in sys.path:
 
 from export.app_export.io import get_pg_client  # noqa: E402
 
-_JSON_PATH = _REPO_ROOT / "docs" / "design" / "prototype" / "data" / "app_core.json"
+_JSON_PATH = _REPO_ROOT / "admin" / "packages" / "proto" / "public" / "data" / "app_core.json"
 _DB_PATH = _REPO_ROOT / "app-android" / "src" / "main" / "assets" / "app_core.db"
 _OFFLINE_LANGS = ("fr", "en")
 _PAGE = 1000
