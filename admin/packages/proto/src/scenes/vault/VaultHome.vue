@@ -3,10 +3,11 @@
  * recâblé sur le store collection (jointure owned) + api (catalogue). */
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { coinSvg, getCoin } from '@/api'
+import { getCoin } from '@/api'
 import type { Coin } from '@/api'
 import { useCollectionStore } from '@/stores/collection'
 import type { CollectionEntry, VaultSort, VaultView } from '@/stores/collection'
+import CoinImage from '@/components/CoinImage.vue'
 import CoffreTabs from './CoffreTabs.vue'
 import VaultRemoveConfirm from './VaultRemoveConfirm.vue'
 
@@ -301,7 +302,7 @@ const SORTS: { id: VaultSort; label: string }[] = [
 
           <div v-if="view === 'list'" class="vault-home-list">
             <button v-for="it in g.items" :key="it.coin.eurioId" type="button" class="vault-home-row" @click="openCoin(it.coin)">
-              <div class="vault-home-row__coin" v-html="coinSvg(it.coin, { size: 44, showLabel: false })" />
+              <div class="vault-home-row__coin"><CoinImage :coin="it.coin" :size="44" :show-label="false" /></div>
               <div class="vault-home-row__meta">
                 <span class="vault-home-row__title">{{ it.coin.countryName }}<template v-if="it.count > 1"> ×{{ it.count }}</template></span>
                 <span class="vault-home-row__sub">{{ formatFaceValue(it.coin.faceValueCents) }} · {{ it.coin.year ?? '—' }}</span>
@@ -319,7 +320,7 @@ const SORTS: { id: VaultSort; label: string }[] = [
               <span class="vault-home-tile__more" aria-label="Plus d'options" @click.stop="openRemove(it.coin)">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="5" cy="12" r="1.2" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1.2" fill="currentColor" stroke="none" /></svg>
               </span>
-              <div class="vault-home-tile__coin" v-html="coinSvg(it.coin, { size: 120, showLabel: true })" />
+              <div class="vault-home-tile__coin"><CoinImage :coin="it.coin" :size="120" /></div>
               <div class="vault-home-tile__meta">
                 <span>{{ it.coin.country.toUpperCase() }}</span>
                 <span>{{ it.coin.year ?? '' }}</span>

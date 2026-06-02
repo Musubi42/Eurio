@@ -166,9 +166,17 @@ export function simulateScan(seed?: number): string {
   return pool[idx].eurioId
 }
 
-// ───────── Helper pur ─────────
+// ───────── Helpers ─────────
 
 export { coinSvg }
+
+/**
+ * URL publique de l'avers (face nationale) webp d'une pièce — résolu par
+ * convention de chemin Storage (cf. loader). Le revers (côté commun) est packagé
+ * et passe par getCoin3DAssets. En mode live, coin_image.storage_path pourra
+ * surcharger cette convention.
+ */
+export { obverseUrl as coinObverseUrl } from './loader'
 
 // Ré-export des types (le contrat) pour les vues/stores.
 export type * from './types'

@@ -12,6 +12,7 @@ import {
   simulateScan,
 } from '@/api'
 import { useCollectionStore } from '@/stores/collection'
+import CoinImage from '@/components/CoinImage.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -174,7 +175,7 @@ function confirmRemove() {
         </div>
         <div class="coin-detail-photo coin-detail-photo--reference">
           <span class="coin-detail-photo__label">Référence</span>
-          <div v-html="coinSvg(coin, { size: 200 })" />
+          <CoinImage :coin="coin" :size="200" />
         </div>
       </div>
 

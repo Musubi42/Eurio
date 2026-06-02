@@ -97,7 +97,8 @@
     width: 44px; height: 44px;
     flex: 0 0 44px;
   }
-  .vault-search-row__coin svg { width: 100%; height: auto; }
+  .vault-search-row__coin svg,
+  .vault-search-row__coin img { width: 100%; height: auto; }
   .vault-search-row__meta {
     flex: 1;
     min-width: 0;

@@ -250,7 +250,8 @@
   }
   .cag-coin:hover { background: var(--surface-1); }
   .cag-coin__disc { width: 46px; height: 46px; display: block; }
-  .cag-coin__disc svg { width: 100%; height: 100%; display: block; }
+  .cag-coin__disc svg,
+  .cag-coin__disc img { width: 100%; height: 100%; display: block; }
   .cag-coin__label {
     font-family: var(--font-mono); font-size: 8px; letter-spacing: 0.02em;
     color: var(--ink-400); text-align: center; white-space: nowrap;

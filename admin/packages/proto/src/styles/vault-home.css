@@ -358,7 +358,8 @@
     justify-content: center;
     padding: var(--space-1);
   }
-  .vault-home-tile__coin svg {
+  .vault-home-tile__coin svg,
+  .vault-home-tile__coin img {
     width: 100%;
     max-width: 78px;
     height: auto;
@@ -434,7 +435,8 @@
     align-items: center;
     justify-content: center;
   }
-  .vault-home-row__coin svg {
+  .vault-home-row__coin svg,
+  .vault-home-row__coin img {
     width: 100%;
     height: auto;
   }

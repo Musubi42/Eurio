@@ -3,9 +3,10 @@
  * Port de vault-search.html/.js. */
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { coinSvg, searchCoins } from '@/api'
+import { searchCoins } from '@/api'
 import type { Coin } from '@/api'
 import { useCollectionStore } from '@/stores/collection'
+import CoinImage from '@/components/CoinImage.vue'
 
 const router = useRouter()
 const store = useCollectionStore()
@@ -80,7 +81,7 @@ onMounted(() => inputEl.value?.focus())
           <div class="vault-search-section__title"><span>Dans ton coffre</span><span class="vault-search-section__count">{{ results.owned.length }}</span></div>
           <div class="vault-search-results">
             <button v-for="c in results.owned" :key="c.eurioId" type="button" class="vault-search-row" @click="open(c, 'owned')">
-              <div class="vault-search-row__coin" v-html="coinSvg(c, { size: 44, showLabel: false })" />
+              <div class="vault-search-row__coin"><CoinImage :coin="c" :size="44" :show-label="false" /></div>
               <div class="vault-search-row__meta">
                 <span class="vault-search-row__title" v-html="highlight(c.countryName)" />
                 <span class="vault-search-row__sub">{{ formatFaceValue(c.faceValueCents) }} · {{ c.year ?? '—' }}<template v-if="c.theme"> · <span v-html="highlight(c.theme)" /></template></span>
@@ -93,7 +94,7 @@ onMounted(() => inputEl.value?.focus())
           <div class="vault-search-section__title"><span>Dans le catalogue · à chasser</span><span class="vault-search-section__count">{{ results.hunt.length }}</span></div>
           <div class="vault-search-results">
             <button v-for="c in results.hunt" :key="c.eurioId" type="button" class="vault-search-row" @click="open(c, 'reference')">
-              <div class="vault-search-row__coin" v-html="coinSvg(c, { size: 44, showLabel: false })" />
+              <div class="vault-search-row__coin"><CoinImage :coin="c" :size="44" :show-label="false" /></div>
               <div class="vault-search-row__meta">
                 <span class="vault-search-row__title" v-html="highlight(c.countryName)" />
                 <span class="vault-search-row__sub">{{ formatFaceValue(c.faceValueCents) }} · {{ c.year ?? '—' }}<template v-if="c.theme"> · <span v-html="highlight(c.theme)" /></template></span>

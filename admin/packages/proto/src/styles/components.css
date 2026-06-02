@@ -304,6 +304,19 @@ a { color: inherit; text-decoration: none; }
   width: 72px;
   height: 72px;
 }
+/* Avers réel (photo carrée) rendu en disque : clip circulaire + cover. Hérite
+   de .coin-svg pour le dimensionnement/ombre, surcharge le rendu raster. */
+.coin-img {
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border-radius: 50%;
+  background: var(--surface);
+}
+/* Le repli SVG ne doit pas introduire de boîte : le svg redevient enfant direct
+   du conteneur (sélecteurs `.X svg` conservés). */
+.coin-img-fallback {
+  display: contents;
+}
 
 /* ───────── Toast (ephemeral status pill) ─────────
  * Position-fixed status message at the bottom of the screen. Scenes flip

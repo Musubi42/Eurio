@@ -4,10 +4,11 @@
  * détail pays inline. Port de carte-a-gratter.html/.js. */
 import { computed, nextTick, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { coinSvg, filterCoins, getCountryProgress, isCountryComplete } from '@/api'
+import { filterCoins, getCountryProgress, isCountryComplete } from '@/api'
 import type { Coin, CountryProgress } from '@/api'
 import { confetti, chime, haptic } from '@/lib/celebration'
 import { CONTEXT, GEO } from './eurozone-geo'
+import CoinImage from '@/components/CoinImage.vue'
 import CoffreHeader from './CoffreHeader.vue'
 
 const route = useRoute()
@@ -313,7 +314,7 @@ onMounted(async () => {
       </header>
       <div class="cag-detail__grid">
         <button v-for="cell in detailCells" :key="cell.coin.eurioId" type="button" class="cag-coin" :data-owned="cell.owned ? 1 : 0" @click="openCoin(cell.coin)">
-          <span class="cag-coin__disc" v-html="coinSvg(cell.coin, { size: 46, showLabel: false })" />
+          <span class="cag-coin__disc"><CoinImage :coin="cell.coin" :size="46" :show-label="false" /></span>
           <span class="cag-coin__label">{{ faceLabel(cell.coin) }}{{ cell.coin.year ? ` · ${cell.coin.year}` : '' }}</span>
         </button>
         <p v-if="!detailCells.length" class="cag-detail__empty">Pas de pièces au catalogue pour ce pays (données proto).</p>
