@@ -69,6 +69,31 @@ L'app lit :
 Le **proto mime l'app** : il lit le core projeté (`app_core.json`) **et** fetch le
 **vrai Supabase** (clé anon read-only).
 
+### 2.2. Read-surface canonique = le contrat `src/api/` du proto Vue (2026-06-02)
+
+Le proto Vue formalise **la surface exacte que l'app CONSOMME** dans
+`admin/packages/proto/src/api/` — c'est le **contrat de lecture** dont ce schéma
+Supabase est la projection physique. Correspondance directe à respecter en mode
+live :
+
+| Contrat api (`src/api/types.ts`) | Projection Supabase (§3) |
+|---|---|
+| `RawCoin` (shape de `app_core.json`, `loadSnapshot()`) | `coin` à plat + jointures aplaties à l'export |
+| `Coin` (entité normalisée, `normaliseCoin`) | dérivée de `coin` + `coin_name_i18n` (titre langue système) |
+| `Market` (`getMarket` → p25/p50/p75, grades UNC/TTB/TB, rarity) | `coin_price` `kind='market'` agrégé par grade |
+| `Reveal` (`getReveal` → tier/mintage/grades/completion) | `coin` (mintage) + `coin_price` + sets (completion) |
+| `Recit` (`getRecit`) | dérivé `coin` (theme/design_description/year/country) — pas de table dédiée |
+| `SetPreview`/`SetDetail` (`getSets`/`getSet`) | `sets` + `set_members` (créés, peuplés plus tard) |
+| `Coin3DAssets` (`getCoin3DAssets`) | `shared_reverse` (revers packagé) + `coin_image` (avers Storage) |
+| `CountryProgress`/`CountryPlanche` | **démo** (fixtures) → jointure store `owned` au cutover |
+
+> **Frontière stricte** (identique côté proto et live) : l'api ne renvoie
+> **jamais** `owned`/`condition`/`addedAt` — ça vit dans le store local (Room côté
+> Android). Le point de bascule fixtures↔live est `src/api/loader.ts`
+> (`VITE_DATA_MODE`) : `loadLive()` (PostgREST) doit servir **exactement** la shape
+> `Snapshot`/`RawCoin` ci-dessus pour que `initApi()` reste agnostique. Brancher
+> `loadLive()` est le dernier pas du Chunk F (après confirmation de parité).
+
 ## 3. Schéma cible Supabase
 
 Postgres illustratif (types à affiner). PK = `eurio_id` partout où 1:1.

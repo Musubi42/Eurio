@@ -1,8 +1,10 @@
-# Parité scènes — proto HTML ↔ destinations Android
+# Parité scènes — proto ↔ destinations Android
 
-> Table de correspondance entre les scènes du prototype (`docs/design/prototype/scenes/`) et les destinations de l'app Android Compose. Règle de maintenance : voir [parity-rules.md §R4](parity-rules.md).
+> **Source de vérité du proto = la web app Vue (`admin/packages/proto/src/scenes/*.vue`)** depuis la refonte 2026-06 (chunks A→E livrés). Le tas HTML `docs/design/prototype/scenes/*.html` est **legacy** : conservé en référence le temps de la confirmation de parité visuelle, puis retiré (Chunk F). La colonne « Proto scene » ci-dessous nomme la scène ; son rendu canonique est désormais le `.vue` correspondant. Règle de maintenance : voir [parity-rules.md §R4](parity-rules.md).
 >
 > Une ligne `❌ à proto'er` **bloque le démarrage de sa phase**. Tant que le proto manque, on ne code pas l'écran Android.
+>
+> **Correspondance HTML legacy → Vue** (refonte proto) : `scenes/<name>.html` → `admin/packages/proto/src/scenes/**/<PascalCase>.vue` ; styles `<name>.css` → `admin/packages/proto/src/styles/<name>.css` (extraits verbatim, désormais canoniques). Routes = `admin/packages/proto/src/router/index.ts` (vue-router hash). Données via le contrat `admin/packages/proto/src/api/` (jamais le HTML).
 
 ## Légende status
 
@@ -129,3 +131,5 @@ Extraits dans `docs/design/prototype/_shared/components.css` :
 | `share-piece/completion/carte.html` (×3) | share cards (image générée) | `02-social-partage` | ❌ à proto'er | partage système possible dès v1 (sans compte) |
 
 **Bloquant connu avant de proto'er les défis** : trancher leur emplacement (question produit en suspens). Tous les autres écrans ci-dessus peuvent être proto'és sans dépendre des questions grade/défis.
+
+> ⚠️ **Note refonte Vue (2026-06-02)** : les labels « chunk E/F/G » des lignes ci-dessus réfèrent aux **sessions du proto HTML** (legacy). Toutes ces scènes ont depuis été **portées dans la web app Vue** (`admin/packages/proto/`, refonte chunks A→**E** = source de vérité actuelle). Mapping profil/marketplace : `profile.html`→`scenes/profile/ProfileHome.vue`, `profile-achievements.html`→`ProfileAchievements.vue`, `profile-set.html`→`ProfileSet.vue`, `profile-settings.html`→`ProfileSettings.vue`, `profile-unlock.html`→`ProfileUnlock.vue`, `marketplace-soon.html`→`scenes/MarketplaceSoon.vue`. Les définitions de chases/médailles sont dédupliquées dans `src/api/fixtures/achievements.ts` (démo) + `src/lib/achievements.ts` (dérivation).

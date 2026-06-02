@@ -1,6 +1,8 @@
 # Parité composants — proto CSS ↔ Android Compose
 
-> Table de correspondance entre les classes CSS réutilisables du proto HTML et les composables Compose de l'app Android. Règle de maintenance : voir [parity-rules.md §R3](parity-rules.md).
+> Table de correspondance entre les classes CSS réutilisables du proto et les composables Compose de l'app Android. Règle de maintenance : voir [parity-rules.md §R3](parity-rules.md).
+>
+> **Source CSS canonique = la web app Vue** (`admin/packages/proto/src/styles/components.css` + `shell.css`, importés dans `main.ts`) depuis la refonte 2026-06. `docs/design/prototype/_shared/components.css` est legacy (retiré au Chunk F). Les tokens viennent de `shared/tokens.css` (R2, jamais édité — alias `@shared`). Les classes nommées ci-dessous sont inchangées (copie verbatim) ; seul leur emplacement canonique a bougé.
 >
 > Toute ligne avec un status ≠ 🟢 est un bout de dette à résorber.
 
