@@ -2,9 +2,13 @@ node_modules/
 dist/
 *.tsbuildinfo
 
+# Lien + sortie Vercel (credentials projet, build prebuilt) — jamais commité
+.vercel/
+
 # Fixture régénérable (go-task ml:build-app-core) — repointée au Chunk F
 public/data/app_core.json
 
 # Bundle QA généré (go-task ml:build-app-core-qa) — hermétique, régénérable
 public/data/app_core_qa.json
 public/data/coin-images/
+.vercel

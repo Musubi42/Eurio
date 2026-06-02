@@ -30,6 +30,25 @@ tasks:
     cmds:
       - pnpm -C admin/packages/proto build
 
+  proto:deploy:
+    desc: "Régénère le catalogue depuis eurio.db, build le proto, déploie en prebuilt sur Vercel prod (zéro build cloud — plan gratuit). Pré-requis 1 fois : cd admin/packages/proto && vercel login && vercel link"
+    cmds:
+      # 1. Catalogue complet (app_core.json) régénéré depuis eurio.db — la donnée
+      #    est gitignorée, donc on doit la produire en local AVANT de packager.
+      - task: ml:build-app-core
+      # 2. Build statique du proto (typecheck + vite build → dist/).
+      - pnpm -C admin/packages/proto build
+      # 3. Emballage Build Output API v3 puis deploy prebuilt. Hash routing
+      #    (createWebHashHistory) → pas de rewrite SPA, statique pur suffit.
+      #    On ne touche pas à .vercel/project.json (le lien créé par vercel link).
+      - |
+        cd admin/packages/proto
+        rm -rf .vercel/output
+        mkdir -p .vercel/output/static
+        cp -R dist/. .vercel/output/static/
+        printf '{"version":3}\n' > .vercel/output/config.json
+        vercel deploy --prebuilt --prod
+
   parity:capture-proto:
     desc: Capture proto parity screenshots (self-contained — builds QA bundle, dist, serves, captures)
     cmds:

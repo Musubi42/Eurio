@@ -87,6 +87,30 @@ Liste fermée de différences proto↔Android qu'on ne cherche pas à éliminer 
 
 **Règle** : ajouter une ligne ici dès qu'un delta systémique est identifié. Les deltas D1-D8 ne sont pas à corriger.
 
+## Outillage de capture & flow de travail
+
+**Deux outils, deux cibles** (acté 2026-06-02) :
+
+| Cible | Outil | Comment | Commande |
+|---|---|---|---|
+| **Web (proto Vue)** | **Playwright** | Chromium desktop en viewport mobile (430×932, DPR 3), capture de `.screen`. Émulation mobile sur moteur Blink = bonne référence pour l'app Android (aussi Blink). | `go-task parity:capture-proto` |
+| **Android (app native)** | **Maestro** | Flows `*.yaml` sur device/émulateur physique. | `go-task android:parity:capture` |
+
+- **Pas de pixel-diff croisé** : la parité est une revue visuelle de checkpoints, pas une comparaison pixel automatique. On ne cherche pas le on-device pour le web (iOS Safari écarté : coût Appium/WDA disproportionné en solo ; Android Chrome réel possible via Playwright-Android mais sans valeur tant qu'il n'y a pas de pixel-diff).
+- **Feeling on-device** : le proto est déployé en **PWA** (`go-task proto:deploy` → `eurio-proto.vercel.app`, Vercel prebuilt, plan gratuit) pour la revue humaine sur vrai téléphone. C'est le canal « main sur le device », distinct des captures automatiques.
+
+**Flow de travail (cadence des sessions design)** — découle de R2 proto-first :
+
+```
+1. Itérer le design DANS le proto web (rapide, Playwright pour les captures)
+2. Le user déploie + teste le feeling sur son téléphone (PWA) quand il le décide
+3. Le user revient avec des retours → on itère le proto
+4. … jusqu'à ce que le user soit satisfait du proto web
+5. ALORS seulement : portage Android (Compose), Maestro pour la parité
+```
+
+> **Le portage Android ne démarre pas tant que le proto web ne convient pas au user.** C'est R2 appliqué à la cadence : web d'abord, satisfaction, puis port.
+
 ## Générateur de tokens — contrat
 
 Le script `scripts/generate_android_tokens.mjs` :
