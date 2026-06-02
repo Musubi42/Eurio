@@ -123,7 +123,7 @@ export function getCoin3DAssets(eurioId: string): Coin3DAssets | null {
   const asset = _sharedReverse.get(coin.sharedReverseId)
   if (!asset) return null
   return {
-    obverse: obverseUrl(coin.eurioId),
+    obverse: coin.obverseImageUrl ?? obverseUrl(coin.eurioId),
     reverse: `data/shared_reverse/${asset}`,
     edge: 'procedural',
     uv: { repeat: 1, offset: 0 },
@@ -171,12 +171,15 @@ export function simulateScan(seed?: number): string {
 export { coinSvg }
 
 /**
- * URL publique de l'avers (face nationale) webp d'une pièce — résolu par
- * convention de chemin Storage (cf. loader). Le revers (côté commun) est packagé
- * et passe par getCoin3DAssets. En mode live, coin_image.storage_path pourra
- * surcharger cette convention.
+ * URL de l'avers (face nationale) webp d'une pièce. Préfère l'URL portée par le
+ * contrat (`coin.obverseImageUrl`, peuplée en mode live depuis
+ * `coin_image.storage_path`) ; à défaut (fixtures), retombe sur la convention de
+ * chemin Storage. Seule couture pour l'avers → pas de layout Storage codé en dur
+ * côté vues. Le revers (côté commun, packagé) passe par getCoin3DAssets.
  */
-export { obverseUrl as coinObverseUrl } from './loader'
+export function coinObverseUrl(coin: Coin): string {
+  return coin.obverseImageUrl ?? obverseUrl(coin.eurioId)
+}
 
 // Ré-export des types (le contrat) pour les vues/stores.
 export type * from './types'

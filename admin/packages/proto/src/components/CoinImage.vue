@@ -22,7 +22,7 @@ watch(
   () => (failed.value = false),
 )
 
-const src = computed(() => coinObverseUrl(props.coin.eurioId))
+const src = computed(() => coinObverseUrl(props.coin))
 const svg = computed(() => coinSvg(props.coin, { size: props.size, showLabel: props.showLabel }))
 const alt = computed(() => `${props.coin.countryName}${props.coin.year ? ' ' + props.coin.year : ''}`)
 </script>

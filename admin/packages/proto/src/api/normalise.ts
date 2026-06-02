@@ -19,6 +19,7 @@ export function normaliseCoin(c: RawCoin): Coin {
     canonicalEurioId: c.canonical_eurio_id ?? null,
     designGroupId: c.design_group_id ?? null,
     sharedReverseId: c.shared_reverse_id ?? null,
+    obverseImageUrl: c.obverse_image_url ?? null,
     mintage: c.mintage ?? c.observations?.wikipedia?.mintage_total ?? null,
     diameterMm: c.diameter_mm ?? null,
     weightG: c.weight_g ?? null,

@@ -1,11 +1,12 @@
 <script setup lang="ts">
 /* Scène coin-detail — fiche pièce paramétrée par ?ctx=scan|owned|reference.
  * Port de coin-detail.html + coin-detail.js, recâblé sur api + store. */
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   coinSvg,
   getCoin,
+  getCoin3DAssets,
   getDesignGroupMembers,
   getMarket,
   getRecit,
@@ -39,6 +40,13 @@ const nationalVariants = computed(() => {
 
 const entry = computed(() => (coin.value ? store.entry(coin.value.eurioId) : null))
 const owned = computed(() => (coin.value ? store.hasCoin(coin.value.eurioId) : false))
+
+// ── Face avers / revers (revers = côté commun packagé, cf. getCoin3DAssets) ──
+const assets = computed(() => (coin.value ? getCoin3DAssets(coin.value.eurioId) : null))
+const reverseUrl = computed(() => (assets.value ? `${import.meta.env.BASE_URL}${assets.value.reverse}` : ''))
+const hasReverse = computed(() => !!reverseUrl.value)
+const face = ref<'avers' | 'revers'>('avers')
+watch(eurioId, () => (face.value = 'avers')) // reset au changement de pièce
 
 // ── UI state ──
 const recitCollapsed = ref(false) // lentille Valeur = replié (Chunk E) — défaut déroulé
@@ -175,7 +183,8 @@ function confirmRemove() {
         </div>
         <div class="coin-detail-photo coin-detail-photo--reference">
           <span class="coin-detail-photo__label">Référence</span>
-          <CoinImage :coin="coin" :size="200" />
+          <CoinImage v-if="face === 'avers'" :coin="coin" :size="200" />
+          <img v-else class="coin-svg coin-img" :src="reverseUrl" alt="Revers — côté commun" loading="lazy" decoding="async" />
         </div>
       </div>
 
@@ -195,8 +204,8 @@ function confirmRemove() {
       </div>
 
       <div class="coin-detail-face-toggle" role="tablist">
-        <button type="button" aria-selected="true">Avers</button>
-        <button type="button" aria-selected="false" disabled title="Revers indisponible">Revers</button>
+        <button type="button" :aria-selected="face === 'avers'" @click="face = 'avers'">Avers</button>
+        <button type="button" :aria-selected="face === 'revers'" :disabled="!hasReverse" :title="hasReverse ? '' : 'Revers indisponible'" @click="hasReverse && (face = 'revers')">Revers</button>
       </div>
     </div>
 

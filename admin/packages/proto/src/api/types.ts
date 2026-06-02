@@ -39,6 +39,9 @@ export interface RawCoin {
   canonical_eurio_id?: string | null
   series_id?: string | null
   shared_reverse_id?: string | null
+  /** URL/chemin de l'avers (live = coin_image.storage_path). Absent en fixtures
+   *  → résolu par convention de chemin Storage (cf. loader.obverseUrl). */
+  obverse_image_url?: string | null
   names?: Record<string, string>
   descriptions?: Record<string, string>
   prices?: unknown
@@ -83,6 +86,8 @@ export interface Coin {
   canonicalEurioId: string | null
   designGroupId: string | null
   sharedReverseId: string | null
+  /** Avers résolu : URL fournie par le contrat (live) ou null → convention Storage. */
+  obverseImageUrl: string | null
   mintage: number | null
   diameterMm: number | null
   weightG: number | null
