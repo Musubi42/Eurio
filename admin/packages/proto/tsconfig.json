@@ -14,7 +14,8 @@
     "skipLibCheck": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@shared/*": ["../../../shared/*"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.vue", "vite.config.ts", "env.d.ts"],

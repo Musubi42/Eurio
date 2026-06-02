@@ -1,6 +1,6 @@
 # Dump QA — 3ᵉ profil hermétique (parité web ↔ Android)
 
-> Source de vérité du chantier « dump QA ». Le côté **web est livré et vérifié** (2026-06-02). Le côté **Android (Chunks 4+6) est spécifié ici, implémentation différée** (vérif par Raphaël sur device + screenshots).
+> Source de vérité du chantier « dump QA ». Le côté **web est livré et vérifié** (2026-06-02). Le côté **Android (Chunks 4+6) est implémenté + compile** (`compileFullQaKotlin` OK, 2026-06-02) ; reste la **vérif device par Raphaël** (build/install/run + screenshots checklist §6).
 
 ## 1. Idée
 
@@ -46,7 +46,22 @@ app-android/src/qa/assets/coin-images/<eurio_id>/obverse.webp
 
 **Vérifié** : vault QA (11 pièces, images locales), reveal 3D hermétique **byte-identique 3/3**, fiche prix réel (Princess Grace 2162,5 €), fiche no-image → fallback SVG. `go-task parity:capture-proto` régénère le bundle QA puis capture.
 
-## 4. Côté ANDROID — à implémenter (Chunks 4+6)
+## 4. Côté ANDROID — implémenté (Chunks 4+6), vérif device en attente
+
+> **Statut implémentation (2026-06-02)** — code livré + `compileFullQaKotlin` OK :
+> - **C4.2** `obverseStorageUrl` (CoinRepository.kt) branché `IS_QA` → URI asset / Supabase sinon (zéro code QA en release).
+> - **C4.3 / pièges** `android:build-qa`→`assembleFullQa`, `android:install-qa`→`installFullQa` (Taskfile corrigé).
+> - **C6.4** `build_app_core_qa.py` régénère `preset-populated.json` + `preset-profile-demo.json` depuis la curation (1 pièce/pays, **11 pièces**, `addedAt = parity_now − (N−i)·24 h`). **Single-source tranché : preset-driven des deux côtés** — le web `store.seedFixture` lit désormais ces presets (`@shared/fixtures/*`) au lieu de `demoCoinIds()` dynamique. Métadonnées éditoriales (`levelOverride`) préservées (idempotent).
+> - **C6.5** *no-op* : aucun rendu relatif-à-maintenant côté Android. `VaultGrid` (tri date) groupe sur `firstCapturedAt` **absolu** (= `addedAt` figé) via `SimpleDateFormat("MMMM yyyy")` → déjà déterministe. Les `System.currentTimeMillis()` restants sont en pipeline scan/bench, hors capture vault.
+> - **C6.6** `Coin3DViewer` : flip figé en `IS_QA` (snap pose finale, pas d'anim) — miroir du `__eurioCoinReady` web. Pas de tilt inventé (serait du drift proto, R1) → comparaison visuelle à l'œil de Raphaël.
+>
+> **Correctifs post-1ère vérif device (2026-06-02, compile OK)** :
+> - **Bug version-gate** (catalogue stale / `fr-1999` absent) : `AppCoreBootstrapper` sautait le rechargement quand `storedVersion >= APP_CORE_VERSION`. → en `IS_QA` le bootstrap **force un reload propre à chaque lancement** (`clearCoins()` + reload → catalogue = exactement les 15 ; coffre cascadé re-seedé par le deep link). **Plus besoin de `pm clear`** manuel. Le merge asset qa>main est confirmé OK (asset packagé = 147 k / 15 coins).
+> - **Gap prix fiche** : la fiche Android n'affichait **aucune cote** (`CoinPriceDao` jamais lu, pas de section). → ajout `deriveMarketFromPrices` (port fidèle de `market.marketFromPrices`, cotes réelles only, pas de tendance fabriquée), `CoinRepository.findMarket`, et bloc **VALEUR** dans `CoinDetailScreen` (P25/P50/P75 + Δ vs faciale + badge rareté). `+AppCoreBootstrapper:D` ajouté au filtre `android:logs`.
+>
+> **Restent device-only (non scriptables ici)** : vérif runtime du catalogue (logcat `AppCoreBootstrapper` → ~15 coins), affichage cote Princess Grace (2162,5 €), avers offline (mode avion sur install fraîche), et toute la **checklist §6**.
+
+### Spec d'origine (Chunks 4+6)
 
 ### Pré-acquis vérifiés
 - buildType `qa` (`initWith debug`, `applicationIdSuffix ".qa"`, `BuildConfig.IS_QA = true`) ; flavors `full` / `cohortTest` → variant **`fullQa`** (`com.musubi.eurio.qa`).

@@ -1,6 +1,8 @@
 package com.musubi.eurio.data.repository
 
+import com.musubi.eurio.BuildConfig
 import com.musubi.eurio.data.local.dao.CoinDao
+import com.musubi.eurio.data.local.dao.CoinPriceDao
 import com.musubi.eurio.data.local.dao.SharedReverseDao
 import com.musubi.eurio.data.local.entities.CoinEntity
 
@@ -38,11 +40,18 @@ interface CoinRepository {
     suspend fun findByEurioId(eurioId: String): CoinViewData?
     suspend fun resolveByClassifierName(className: String): CoinViewData?
     suspend fun findAllByFaceValue(faceValue: Double): List<CoinViewData>
+
+    /**
+     * Marché d'une pièce dérivé des cotes réelles (`coin_prices`), ou `null`
+     * si pas de cote exploitable (circulation à la faciale). Cf. [CoinMarket].
+     */
+    suspend fun findMarket(eurioId: String, faceValueCents: Int): CoinMarket?
 }
 
 class RoomCoinRepository(
     private val dao: CoinDao,
     private val sharedReverseDao: SharedReverseDao,
+    private val priceDao: CoinPriceDao,
 ) : CoinRepository {
 
     // Cached asset_name lookup for shared reverses — tiny table (2 rows),
@@ -63,6 +72,9 @@ class RoomCoinRepository(
         dao.findByEurioId(className)?.let { return it.toViewData() }
         return null
     }
+
+    override suspend fun findMarket(eurioId: String, faceValueCents: Int): CoinMarket? =
+        deriveMarketFromPrices(priceDao.findByEurioId(eurioId), faceValueCents)
 
     private suspend fun resolveReverseUrl(sharedReverseId: String?): String? {
         if (sharedReverseId == null) return null
@@ -98,11 +110,21 @@ class RoomCoinRepository(
 }
 
 /**
- * Derives the Supabase Storage URL for a coin's obverse image.
- * The coin-images bucket is public; no auth required.
+ * Derives the obverse image URL for a coin.
+ *
+ * In QA builds (`BuildConfig.IS_QA`), images are bundled as assets by the QA
+ * dump (`src/qa/assets/coin-images/<id>/obverse.webp`) so parity captures are
+ * 100% hermetic — zero network. Coil resolves the `file:///android_asset/...`
+ * URI offline; a coin without a bundled asset (e.g. `fr-1999`) yields a Coil
+ * error → the component falls back to its placeholder (mirror of the web SVG
+ * fallback). In release, IS_QA is false → the Supabase Storage branch is taken
+ * (the coin-images bucket is public; no auth required), so no QA code leaks.
  */
 fun obverseStorageUrl(eurioId: String): String =
-    "${SupabaseConfig.STORAGE_BASE_URL}/coin-images/$eurioId/obverse.webp"
+    if (BuildConfig.IS_QA)
+        "file:///android_asset/coin-images/$eurioId/obverse.webp"
+    else
+        "${SupabaseConfig.STORAGE_BASE_URL}/coin-images/$eurioId/obverse.webp"
 
 /**
  * Central place for Supabase project constants used by the Android app.

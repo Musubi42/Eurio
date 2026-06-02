@@ -94,7 +94,7 @@ class EurioApp : Application() {
     // ─────────────────────────────────────────────────────────────────
 
     val coinRepository: CoinRepository by lazy {
-        RoomCoinRepository(database.coinDao(), database.sharedReverseDao())
+        RoomCoinRepository(database.coinDao(), database.sharedReverseDao(), database.coinPriceDao())
     }
 
     val vaultRepository: VaultRepository by lazy {

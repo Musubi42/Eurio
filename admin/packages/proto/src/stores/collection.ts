@@ -10,6 +10,29 @@ import { allCoins } from '@/api'
 import { now } from '@/api/parity'
 import { CHASE_DEFINITIONS, TIERS } from '@/api/fixtures/achievements'
 import { chaseIsComplete } from '@/lib/achievements'
+import presetPopulated from '@shared/fixtures/preset-populated.json'
+import presetProfileDemo from '@shared/fixtures/preset-profile-demo.json'
+
+// Presets de seed du coffre — générés par le dump QA (build_app_core_qa.py)
+// depuis la curation, et lus TELS QUELS ici comme côté Android
+// (MainActivity.seedFromFixture). Single-source → parité byte-exacte. Le
+// contenu (eurio_id ⊆ subset, addedAt figés sur parity_now) est un OUTPUT, pas
+// écrit à la main : ne pas éditer les JSON, régénérer via `go-task ml:build-app-core-qa`.
+interface SeedPreset {
+  name: string
+  collection: Array<{
+    eurioId: string
+    addedAt: number
+    valueAtAddCents: number | null
+    condition: string | null
+    note: string | null
+  }>
+}
+const SEED_PRESETS: Record<string, SeedPreset> = {
+  populated: presetPopulated as SeedPreset,
+  'profile-demo': presetProfileDemo as SeedPreset,
+  demo: presetPopulated as SeedPreset,
+}
 
 const LS_KEY = 'eurio.proto.v2'
 
@@ -261,22 +284,23 @@ export const useCollectionStore = defineStore('collection', {
 
     /**
      * Applique un état de collection NOMMÉ (contrat PARITY_STATE des flows parité).
-     * Déterministe : addedAt réparti à rebours depuis l'horloge (figée en parité)
-     * → buckets « mois » et sparkline non plats, identiques entre deux runs.
-     * Interim : s'appuie sur le seed démo ; C2 backera des fixtures curées.
+     * Lit le preset généré par le dump QA (SEED_PRESETS, single-source partagé avec
+     * Android) et applique chaque entrée verbatim — eurio_id ⊆ subset, addedAt figés
+     * sur parity_now → buckets « mois » + sparkline 12 mois byte-identiques web↔android.
      */
     seedFixture(name: string) {
       this.reset()
       this.completeOnboarding()
       if (name === 'empty') return
-      // 'populated' | 'profile-demo' | 'demo' : ~24 j entre deux ajouts → les
-      // ~15 pièces couvrent l'année écoulée (sparkline 12 mois lisible).
-      const ids = this.demoCoinIds()
-      const dayMs = 86_400_000
-      const base = now()
-      ids.forEach((eurioId, i) => {
-        this.addCoin(eurioId, { addedAt: base - (ids.length - i) * 24 * dayMs })
-      })
+      const preset = SEED_PRESETS[name] ?? SEED_PRESETS.populated
+      for (const entry of preset.collection) {
+        this.addCoin(entry.eurioId, {
+          addedAt: entry.addedAt,
+          valueAtAddCents: entry.valueAtAddCents,
+          condition: entry.condition,
+          note: entry.note,
+        })
+      }
     },
 
     consumePendingUnlock(): string | null {

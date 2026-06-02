@@ -4,6 +4,7 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.util.Log
 import androidx.room.withTransaction
+import com.musubi.eurio.BuildConfig
 import com.musubi.eurio.data.local.EurioDatabase
 import com.musubi.eurio.data.local.entities.CatalogMetaEntity
 import com.musubi.eurio.data.local.entities.CoinEntity
@@ -29,12 +30,24 @@ class AppCoreBootstrapper(
         val meta = db.metaDao()
         val storedVersion = meta.getInt(KEY_APP_CORE_VERSION)
 
-        if (storedVersion != null && storedVersion >= APP_CORE_VERSION) {
+        // QA : le app_core.db packagé est un sous-ensemble curé régénéré souvent
+        // (la source de vérité parité). On le recharge à chaque lancement pour
+        // que le catalogue reflète toujours le dernier dump, SANS `pm clear`
+        // manuel — le version-gate n'est qu'une optimisation release. Le coffre
+        // est re-seedé via le deep link parité, donc le wipe en cascade est sans
+        // conséquence en QA.
+        val forceReload = BuildConfig.IS_QA
+
+        if (!forceReload && storedVersion != null && storedVersion >= APP_CORE_VERSION) {
             Log.i(TAG, "app_core.db déjà à jour (version=$storedVersion) — skip bootstrap")
             return
         }
 
-        Log.i(TAG, "Bootstrap app_core.db : version stockée=$storedVersion → packagée=$APP_CORE_VERSION")
+        if (forceReload) {
+            Log.i(TAG, "Bootstrap app_core.db : QA force-reload (version stockée=$storedVersion ignorée)")
+        } else {
+            Log.i(TAG, "Bootstrap app_core.db : version stockée=$storedVersion → packagée=$APP_CORE_VERSION")
+        }
 
         val coreDb = extractAndOpen() ?: run {
             Log.e(TAG, "Impossible d'ouvrir app_core.db — skip bootstrap")
@@ -53,11 +66,18 @@ class AppCoreBootstrapper(
             Log.i(TAG, "Bootstrap : ${coins.size} coins, ${prices.size} prices, ${sharedReverses.size} shared_reverse rows")
 
             db.withTransaction {
-                // NB: on n'appelle PAS clearCoins() — `DELETE FROM coins` ferait
-                // cascader la FK ON DELETE CASCADE de coin_in_vault et viderait le
-                // coffre. insertAllCoins est en @Upsert (update en place, pas de
-                // delete → pas de cascade). coin_prices / shared_reverse n'ont pas
-                // d'enfant côté coffre, on peut donc les rafraîchir intégralement.
+                // Release : on n'appelle PAS clearCoins() — `DELETE FROM coins`
+                // ferait cascader la FK ON DELETE CASCADE de coin_in_vault et
+                // viderait le coffre. insertAllCoins est en @Upsert (update en
+                // place, pas de delete → pas de cascade). coin_prices /
+                // shared_reverse n'ont pas d'enfant côté coffre, on les rafraîchit
+                // intégralement.
+                // QA : on PURGE les coins pour que le catalogue soit exactement le
+                // sous-ensemble packagé (aucun coin résiduel d'un build QA
+                // précédent). Le coffre cascadé est re-seedé via le deep link parité.
+                if (forceReload) {
+                    db.coinDao().clearCoins()
+                }
                 db.coinPriceDao().clearAll()
                 db.sharedReverseDao().clearAll()
 

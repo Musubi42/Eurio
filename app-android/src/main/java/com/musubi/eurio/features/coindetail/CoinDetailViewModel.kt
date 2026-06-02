@@ -2,6 +2,7 @@ package com.musubi.eurio.features.coindetail
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.musubi.eurio.data.repository.CoinMarket
 import com.musubi.eurio.data.repository.CoinRepository
 import com.musubi.eurio.data.repository.CoinViewData
 import com.musubi.eurio.data.repository.SetRepository
@@ -15,6 +16,7 @@ import kotlinx.coroutines.launch
 data class CoinDetailUiState(
     val loading: Boolean = true,
     val coin: CoinViewData? = null,
+    val market: CoinMarket? = null,
     val alreadyOwned: Boolean = false,
     val scannedAt: Long? = null,
     val sets: List<SetWithProgress> = emptyList(),
@@ -48,9 +50,11 @@ class CoinDetailViewModel(
             }
             val owned = vaultRepository.containsCoin(eurioId)
             val sets = setRepository.findSetsContaining(eurioId)
+            val market = coinRepository.findMarket(eurioId, coin.faceValueCents)
             _state.value = CoinDetailUiState(
                 loading = false,
                 coin = coin,
+                market = market,
                 alreadyOwned = owned,
                 sets = sets,
             )

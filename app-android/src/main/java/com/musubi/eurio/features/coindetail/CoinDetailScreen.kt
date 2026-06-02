@@ -40,6 +40,7 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import com.musubi.eurio.data.repository.CoinMarket
 import com.musubi.eurio.data.repository.CoinViewData
 import com.musubi.eurio.data.repository.SetWithProgress
 import com.musubi.eurio.features.scan.components.Coin3DViewer
@@ -84,6 +85,7 @@ fun CoinDetailScreen(
                 state.error != null -> ErrorBlock(state.error!!)
                 state.coin != null -> CoinContent(
                     coin = state.coin!!,
+                    market = state.market,
                     alreadyOwned = state.alreadyOwned,
                     sets = state.sets,
                     fromScan = fromScan,
@@ -160,6 +162,7 @@ private fun ErrorBlock(message: String) {
 @Composable
 private fun CoinContent(
     coin: CoinViewData,
+    market: CoinMarket?,
     alreadyOwned: Boolean,
     sets: List<SetWithProgress>,
     fromScan: Boolean,
@@ -218,6 +221,15 @@ private fun CoinContent(
         // Identity section
         Spacer(Modifier.height(EurioSpacing.s5))
         IdentitySection(coin)
+
+        // Valuation / cote (port du bloc marché du proto CoinDetail.vue) :
+        // dérivé des cotes réelles (coin_prices). Bloc P25/P50/P75 + delta vs
+        // faciale + badge rareté. Pas de sparkline/projection (cotes réelles →
+        // pas de série temporelle, cf. CoinMarket).
+        Spacer(Modifier.height(EurioSpacing.s5))
+        SectionHeader("VALEUR")
+        Spacer(Modifier.height(EurioSpacing.s2))
+        ValuationSection(coin = coin, market = market)
 
         // Description
         if (!coin.designDescription.isNullOrBlank()) {
@@ -345,6 +357,97 @@ private fun IdentitySection(coin: CoinViewData) {
 }
 
 @Composable
+private fun ValuationSection(coin: CoinViewData, market: CoinMarket?) {
+    if (market == null) {
+        // Équivalent du `coin-detail-empty` proto (pièce de circulation).
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(EurioRadii.lg))
+                .background(PaperSurface1)
+                .padding(EurioSpacing.s4),
+            verticalArrangement = Arrangement.spacedBy(EurioSpacing.s1),
+        ) {
+            Text(
+                text = "Pas encore de données de marché",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Ink500,
+            )
+            Text(
+                text = "Pièce de circulation, valeur faciale",
+                style = EyebrowStyle,
+                color = Ink400,
+            )
+        }
+        return
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(EurioRadii.lg))
+            .background(PaperSurface1)
+            .padding(EurioSpacing.s4),
+        verticalArrangement = Arrangement.spacedBy(EurioSpacing.s3),
+    ) {
+        // Rareté
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(text = "Cote actuelle", style = MaterialTheme.typography.bodyMedium, color = Ink500)
+            RarityBadge(market.rarity)
+        }
+
+        // P25 / P50 (médiane) / P75
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            PercentileCell("P25", euro(market.p25), highlight = false)
+            PercentileCell("P50 · médiane", euro(market.p50), highlight = true)
+            PercentileCell("P75", euro(market.p75), highlight = false)
+        }
+
+        // Delta vs faciale
+        Text(
+            text = "${pct(market.deltaVsFacePct)} vs valeur faciale (${euro(coin.faceValueCents / 100.0)})",
+            style = EyebrowStyle,
+            color = if (market.deltaVsFacePct >= 0) Success else Danger,
+        )
+    }
+}
+
+@Composable
+private fun PercentileCell(label: String, value: String, highlight: Boolean) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(text = label, style = EyebrowStyle, color = Ink400)
+        Spacer(Modifier.height(EurioSpacing.s1))
+        Text(
+            text = value,
+            style = MaterialTheme.typography.titleMedium,
+            color = if (highlight) GoldDeep else Ink,
+        )
+    }
+}
+
+@Composable
+private fun RarityBadge(rarity: com.musubi.eurio.data.repository.CoinRarity) {
+    val bg = if (rarity.gold) Gold.copy(alpha = 0.18f) else Ink.copy(alpha = 0.06f)
+    val fg = if (rarity.gold) GoldDeep else Ink500
+    Text(
+        text = rarity.label,
+        style = EyebrowStyle,
+        color = fg,
+        modifier = Modifier
+            .clip(RoundedCornerShape(EurioRadii.full))
+            .background(bg)
+            .padding(horizontal = EurioSpacing.s3, vertical = EurioSpacing.s1),
+    )
+}
+
+@Composable
 private fun IdentityRow(label: String, value: String) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -450,6 +553,18 @@ private fun RemoveConfirmDialog(
         },
         containerColor = PaperSurface,
     )
+}
+
+// Ports fidèles des formatters euro()/pct() du proto CoinDetail.vue : virgule
+// décimale FR, 2 décimales sous 10 €, 1 décimale au-delà, signe + sur le delta.
+private fun euro(v: Double): String {
+    val fmt = if (v < 10) "%.2f" else "%.1f"
+    return String.format(java.util.Locale.US, fmt, v).replace('.', ',') + " €"
+}
+
+private fun pct(v: Double): String {
+    val sign = if (v >= 0) "+" else ""
+    return "$sign${String.format(java.util.Locale.US, "%.1f", v).replace('.', ',')} %"
 }
 
 private fun formatFaceValue(cents: Int): String {

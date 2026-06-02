@@ -36,6 +36,7 @@ import com.google.android.filament.ToneMapper
 import com.google.android.filament.utils.TextureType
 import io.github.sceneview.material.setParameter
 import io.github.sceneview.material.setTexture
+import com.musubi.eurio.BuildConfig
 import com.musubi.eurio.data.repository.PhotoMeta
 import dev.romainguy.kotlin.math.Float2
 import dev.romainguy.kotlin.math.Float3
@@ -297,6 +298,15 @@ fun Coin3DViewer(
     val flipScale = remember { Animatable(1f) }
     LaunchedEffect(flipKey) {
         if (flipKey == null) return@LaunchedEffect
+        // Parity capture (IS_QA) : skip the cinematic flip and snap straight to
+        // the final rest pose so the rendered frame is deterministic regardless
+        // of when the screenshot is taken. Mirror of the web's __eurioCoinReady
+        // jump-to-final-pose. No QA code leaks into release (IS_QA false there).
+        if (BuildConfig.IS_QA) {
+            flipRotation.snapTo(0f)
+            flipScale.snapTo(1f)
+            return@LaunchedEffect
+        }
         flipRotation.snapTo(0f)
         flipScale.snapTo(0.85f)
         // 720° rotation runs in fixed-duration tween (a spring on rotation

@@ -35,13 +35,16 @@ tasks:
     desc: Assemble the QA APK (with parity state injection)
     dir: '{{.TASKFILE_DIR}}/..'
     cmds:
-      - ./gradlew :app-android:assembleQa
+      # fullQa = flavor `full` × buildType `qa`. `assembleQa` would build both
+      # flavors (full + cohortTest); we only want the full QA parity build.
+      - ./gradlew :app-android:assembleFullQa
 
   install-qa:
     desc: Build + push QA APK to the connected device
     dir: '{{.TASKFILE_DIR}}/..'
     cmds:
-      - ./gradlew :app-android:installQa
+      # `installQa` is ambiguous across flavors → use the explicit variant.
+      - ./gradlew :app-android:installFullQa
 
   run-qa:
     desc: Install + start QA build
@@ -53,7 +56,7 @@ tasks:
     desc: Tail logcat, filtered on Eurio ML tags
     cmds:
       - adb logcat -c
-      - adb logcat Eurio:D CoinAnalyzer:D CoinDetector:D ScanVM:D CaptureProtocol:D BenchRecorder:D AndroidRuntime:E '*:S'
+      - adb logcat Eurio:D CoinAnalyzer:D CoinDetector:D ScanVM:D CaptureProtocol:D BenchRecorder:D AppCoreBootstrapper:D AndroidRuntime:E '*:S'
 
   logs-all:
     desc: Tail logcat with no filter

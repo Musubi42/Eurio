@@ -29,6 +29,7 @@ import json
 import shutil
 import sqlite3
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -58,6 +59,15 @@ _JSON_PATH = _REPO_ROOT / "admin" / "packages" / "proto" / "public" / "data" / "
 _PROTO_IMG_DIR = _REPO_ROOT / "admin" / "packages" / "proto" / "public" / "data" / "coin-images"
 _ANDROID_DB_PATH = _REPO_ROOT / "app-android" / "src" / "qa" / "assets" / "app_core.db"
 _ANDROID_IMG_DIR = _REPO_ROOT / "app-android" / "src" / "qa" / "assets" / "coin-images"
+
+# Presets de seed du coffre (single-source web↔android, cf. docs/parity/qa-dump.md
+# §6.4). Régénérés depuis la curation : FK-safe (eurio_id ⊆ subset) + addedAt figés
+# sur parity_now. Lus tels quels par le web (store.seedFixture) ET l'android
+# (MainActivity.seedFromFixture). Le symlink android src/qa/assets/fixtures pointe
+# vers ce dossier → un seul fichier physique par preset.
+_PRESET_POPULATED = _REPO_ROOT / "shared" / "fixtures" / "preset-populated.json"
+_PRESET_PROFILE_DEMO = _REPO_ROOT / "shared" / "fixtures" / "preset-profile-demo.json"
+_DAY_MS = 86_400_000
 
 # Priorité de source d'avers (la plus fiable d'abord) — miroir d'upload_app_obverse.
 _SOURCE_PRIORITY = {"bce_official": 0, "eurlex_jo": 1, "numista": 2}
@@ -118,6 +128,55 @@ def build_core_qa(con: sqlite3.Connection, ids: set[str]) -> dict[str, Any]:
     }
 
 
+def _parity_now_ms(parity_now: str) -> int:
+    dt = datetime.fromisoformat(parity_now.replace("Z", "+00:00"))
+    return int(dt.timestamp() * 1000)
+
+
+def _seed_collection(core: dict[str, Any], ids: list[str], parity_now_ms: int) -> list[dict[str, Any]]:
+    """Une pièce par pays du sous-ensemble, dans l'ordre de curation. addedAt
+    réparti à rebours depuis parity_now (24 h entre deux ajouts) → buckets « mois »
+    et sparkline « 12 derniers mois » non plats, byte-identiques entre deux runs
+    (même formule que l'ancien store.seedFixture web : base - (N-i)*24h)."""
+    country_by_id = {c["eurio_id"]: c.get("country") for c in core["coins"]}
+    picked: list[str] = []
+    seen: set[str] = set()
+    for eid in ids:
+        country = country_by_id.get(eid)
+        if country is None or country in seen:
+            continue
+        seen.add(country)
+        picked.append(eid)
+    n = len(picked)
+    return [
+        {
+            "eurioId": eid,
+            "addedAt": parity_now_ms - (n - i) * _DAY_MS,
+            "valueAtAddCents": None,
+            "condition": None,
+            "note": None,
+        }
+        for i, eid in enumerate(picked)
+    ]
+
+
+def regenerate_presets(core: dict[str, Any], ids: list[str], parity_now: str) -> int:
+    """Régénère les presets de seed du coffre depuis la curation. Single-source :
+    le web (store.seedFixture) ET l'android (seedFromFixture) lisent ces mêmes
+    fichiers → parité byte-exacte. Idempotent : seul `collection` est réécrit ;
+    les métadonnées éditoriales (name, firstRun, levelOverride) d'un preset
+    existant sont préservées."""
+    collection = _seed_collection(core, ids, _parity_now_ms(parity_now))
+    for path, name in ((_PRESET_POPULATED, "populated"), (_PRESET_PROFILE_DEMO, "profile-demo")):
+        if path.exists():
+            preset = json.loads(path.read_text(encoding="utf-8"))
+        else:
+            preset = {"name": name, "firstRun": False, "levelOverride": None}
+        preset["collection"] = collection
+        path.write_text(json.dumps(preset, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return len(collection)
+
+
 def copy_obverse(local_path: str, eid: str) -> None:
     src = _REPO_ROOT / local_path
     if not src.exists():
@@ -159,6 +218,9 @@ def main() -> int:
 
         # SQLite Android (même schéma que prod, subset).
         build_sqlite(core, _ANDROID_DB_PATH)
+
+        # Presets de seed du coffre (single-source web↔android), figés sur parity_now.
+        n_seed = regenerate_presets(core, ids, parity_now)
     finally:
         con.close()
 
@@ -166,6 +228,7 @@ def main() -> int:
     n_no = len(ids) - n_img
     print(f"[qa-dump] {len(core['coins'])} pièces · {n_img} avec image · {n_no} sans (fallback SVG)")
     print(f"[qa-dump] prix market: {len(core['coin_price'])} lignes")
+    print(f"[qa-dump] presets seed régénérés: {n_seed} pièces (preset-populated + preset-profile-demo)")
     print(f"[qa-dump] wrote {_JSON_PATH.relative_to(_REPO_ROOT)}")
     print(f"[qa-dump] wrote {_ANDROID_DB_PATH.relative_to(_REPO_ROOT)}")
     print(f"[qa-dump] images → {_PROTO_IMG_DIR.relative_to(_REPO_ROOT)} + {_ANDROID_IMG_DIR.relative_to(_REPO_ROOT)}")
