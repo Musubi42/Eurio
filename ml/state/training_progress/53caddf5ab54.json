@@ -1,0 +1,1 @@
+{"schema_version": 1, "iteration_id": "53caddf5ab54", "phase": "done", "epoch_current": 3, "epochs_total": 3, "loss_current": 0.0, "loss_best": 0.0, "started_at": "2026-06-02T16:24:04Z", "elapsed_seconds": 64, "eta_seconds": 0, "device": "mps", "augmentations_runtime": "disabled", "updated_at": "2026-06-02T16:26:18Z"}

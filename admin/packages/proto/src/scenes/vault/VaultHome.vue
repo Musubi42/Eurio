@@ -5,6 +5,7 @@ import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { getCoin } from '@/api'
 import type { Coin } from '@/api'
+import { now } from '@/api/parity'
 import { useCollectionStore } from '@/stores/collection'
 import type { CollectionEntry, VaultSort, VaultView } from '@/stores/collection'
 import CoinImage from '@/components/CoinImage.vue'
@@ -120,12 +121,12 @@ const sparkline = computed(() => {
   const col = store.collection
   if (!col.length) return null
   const sorted = [...col].sort((a, z) => a.addedAt - z.addedAt)
-  const now = Date.now()
+  const nowMs = now()
   const monthMs = 30 * 24 * 60 * 60 * 1000
   const samples = 12
   const points: number[] = []
   for (let i = samples - 1; i >= 0; i--) {
-    const cutoff = now - i * monthMs
+    const cutoff = nowMs - i * monthMs
     let total = 0
     for (const e of sorted) {
       if (e.addedAt > cutoff) continue

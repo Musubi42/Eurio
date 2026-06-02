@@ -10,12 +10,13 @@ import '@shared/tokens.css'
 import './styles/components.css'
 import './styles/shell.css'
 
-// Hook de test exposé pour Playwright (reset d'état déterministe + navigation).
+// Hook de test exposé pour Playwright (reset d'état déterministe + navigation + seed).
 declare global {
   interface Window {
     __eurio?: {
       reset: () => void
       goto: (path: string) => void
+      seed: (name: string) => void
     }
   }
 }
@@ -28,9 +29,13 @@ async function bootstrap() {
   app.use(pinia)
   app.use(router)
 
+  const collection = useCollectionStore(pinia)
   window.__eurio = {
-    reset: () => useCollectionStore(pinia).reset(),
+    reset: () => collection.reset(),
     goto: (path: string) => router.push(path),
+    // Applique un état de collection nommé (contrat PARITY_STATE des flows
+    // parité). Déterminisme géré dans le store (seedFixture + horloge figée).
+    seed: (name: string) => collection.seedFixture(name),
   }
 
   app.mount('#app')

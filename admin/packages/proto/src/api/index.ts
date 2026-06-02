@@ -11,6 +11,7 @@ import { SET_DETAILS, SET_PREVIEWS } from './fixtures/sets'
 import { EUROZONE_PROGRESS, isComplete } from './fixtures/eurozone'
 import { COUNTRY_PLANCHES } from './fixtures/country-planches'
 import { loadSnapshot, obverseUrl } from './loader'
+import { isParity } from './parity'
 import { deriveMarket, deriveReveal } from './market'
 import { normaliseCoin } from './normalise'
 import { deriveRecit } from './recit'
@@ -176,9 +177,13 @@ export { coinSvg }
  * `coin_image.storage_path`) ; à défaut (fixtures), retombe sur la convention de
  * chemin Storage. Seule couture pour l'avers → pas de layout Storage codé en dur
  * côté vues. Le revers (côté commun, packagé) passe par getCoin3DAssets.
+ *
+ * En parité (capture hermétique), on NE retombe PAS sur l'URL Storage (réseau) :
+ * absence d'avers local → null → CoinImage bascule sur le fallback SVG.
  */
-export function coinObverseUrl(coin: Coin): string {
-  return coin.obverseImageUrl ?? obverseUrl(coin.eurioId)
+export function coinObverseUrl(coin: Coin): string | null {
+  if (coin.obverseImageUrl) return coin.obverseImageUrl
+  return isParity() ? null : obverseUrl(coin.eurioId)
 }
 
 // Ré-export des types (le contrat) pour les vues/stores.

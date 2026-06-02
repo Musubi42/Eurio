@@ -140,6 +140,9 @@ def _build_parser() -> argparse.ArgumentParser:
                    help="Pin the eBay fetch to one eurio_id's group (debug).")
     p.add_argument("--target-eurio-ids", default=None,
                    help="Comma-separated eurio_ids (per-coin discovery — generic sources).")
+    p.add_argument("--cohort-id", default=None,
+                   help="Scope an eBay run to a lab cohort: only its coins' "
+                        "(denom,country,year) groups are searched.")
     p.add_argument("--batch", type=int, default=10,
                    help="Number of discovery groups for the ebay freshness queue (default: 10).")
     p.add_argument("--limit", type=int, default=None, help="Cap discovered items.")
@@ -185,6 +188,34 @@ def main(argv: list[str] | None = None) -> int:
     if args.target_eurio_ids:
         target_eurio_ids = tuple(
             s.strip() for s in args.target_eurio_ids.split(",") if s.strip()
+        )
+    elif args.cohort_id and args.source == "ebay":
+        # Cohort-scoped run : only the groups covering the cohort's coins.
+        from sources.cohort_scope import cohort_ebay_groups
+
+        groups, non_scrapable = cohort_ebay_groups(store, args.cohort_id)
+        if not groups:
+            raise SystemExit(
+                f"Cohort {args.cohort_id}: aucun groupe eBay-scrapable "
+                "(que des standards/eu/variants ?)."
+            )
+        discovery_groups = tuple(
+            DiscoveryGroup(denomination=d, country=c, year=y)
+            for d, c, y, _ in groups
+        )
+        n_coins = sum(n for *_, n in groups)
+        if non_scrapable:
+            print(
+                f"[ebay] {len(non_scrapable)} coin(s) hors découverte groupée "
+                f"(standards/eu/variants — Numista-only): "
+                f"{', '.join(non_scrapable)}"
+            )
+        if not args.dry_run:
+            _ebay_preflight_or_die(store, n_eurio_ids=n_coins)
+        labels = ", ".join(f"{c}/{y}" for _, c, y, _ in groups[:4])
+        print(
+            f"[ebay] cohort {args.cohort_id}: {len(groups)} group(s) / "
+            f"{n_coins} coin(s): {labels}{'...' if len(groups) > 4 else ''}"
         )
     elif args.source == "ebay" and not args.target_eurio_id:
         # Découverte groupée : un run = un batch de groupes (denom, pays,

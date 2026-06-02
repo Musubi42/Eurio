@@ -30,6 +30,13 @@ export function normaliseCoin(c: RawCoin): Coin {
     descriptions: c.descriptions ?? {},
     topics: c.topics ?? [],
     credits: c.credits ?? null,
+    prices: (c.prices ?? []).map((p) => ({
+      grade: p.grade,
+      pLow: p.p_low ?? null,
+      pMid: p.p_mid ?? null,
+      pHigh: p.p_high ?? null,
+      currency: p.currency ?? null,
+    })),
     mintReleases: c.mint_releases ?? [],
     provenance: {
       sourcesUsed: c.provenance?.sources_used ?? [],

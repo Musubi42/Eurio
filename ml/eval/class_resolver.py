@@ -8,8 +8,9 @@ A "class" is the label ArcFace learns. Under the design_groups scheme
 So a coin with a design_group_id (shared-design grouping) contributes to a
 design_group-level class; a coin without one is its own eurio_id-level class.
 
-This module builds the mapping once from Supabase and exposes lookups used by
-prepare_dataset, compute_embeddings, seed_supabase, and the training runner.
+This module builds the mapping once from the canonical local eurio.db and
+exposes lookups used by prepare_dataset, compute_embeddings, seed_supabase,
+and the training runner (SQLite-only doctrine — no Supabase on this path).
 """
 
 from __future__ import annotations
@@ -18,9 +19,6 @@ import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
-
-import httpx
 
 
 @dataclass(frozen=True)
@@ -132,66 +130,58 @@ def load_env(root: Path | None = None) -> dict[str, str]:
     return env
 
 
-def fetch_coin_refs(
-    *,
-    supabase_url: str,
-    supabase_key: str,
-    numista_ids: Iterable[int] | None = None,
-) -> list[CoinRef]:
-    """Fetch coin identifiers from Supabase.
+def _default_db_path() -> Path:
+    """Canonical local SQLite — ml/state/eurio.db (cf. SQLite-only doctrine)."""
+    return Path(__file__).resolve().parent.parent / "state" / "eurio.db"
 
-    If `numista_ids` is given, only coins with one of those ids are returned.
-    Otherwise, all coins with a numista_id are returned (the universe known to
-    the ML pipeline).
+
+def coin_refs_from_sqlite(db_path: Path | None = None) -> list[CoinRef]:
+    """Build CoinRefs from the canonical local eurio.db.
+
+    Reads every coin carrying a numista_id from the ``coins`` table. This is
+    the SQLite-only source of truth for the admin + training pipeline (the
+    legacy Supabase fetch was removed). eurio.db stores ``numista_id`` as a
+    direct column (not nested in ``cross_refs`` like the old Supabase projection).
     """
-    headers = {
-        "apikey": supabase_key,
-        "Authorization": f"Bearer {supabase_key}",
-    }
-    params: dict[str, str] = {
-        "select": "eurio_id,design_group_id,cross_refs",
-        "cross_refs->numista_id": "not.is.null",
-    }
-    rest_base = supabase_url.rstrip("/") + "/rest/v1"
+    import sqlite3
 
+    path = Path(db_path) if db_path else _default_db_path()
+    if not path.exists():
+        raise RuntimeError(f"eurio.db introuvable: {path}")
     coins: list[CoinRef] = []
-    with httpx.Client(headers=headers, timeout=60) as client:
-        resp = client.get(
-            f"{rest_base}/coins",
-            params=params,
-            headers={"Range": "0-9999"},
-        )
-        resp.raise_for_status()
-        filter_ids = {int(n) for n in numista_ids} if numista_ids else None
-        for row in resp.json():
-            cross = row.get("cross_refs") or {}
-            nid_raw = cross.get("numista_id")
-            nid = int(nid_raw) if nid_raw is not None else None
-            if filter_ids is not None and (nid is None or nid not in filter_ids):
-                continue
+    conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    try:
+        conn.row_factory = sqlite3.Row
+        for row in conn.execute(
+            "SELECT eurio_id, numista_id, design_group_id FROM coins "
+            "WHERE numista_id IS NOT NULL"
+        ):
             coins.append(
                 CoinRef(
                     eurio_id=row["eurio_id"],
-                    numista_id=nid,
-                    design_group_id=row.get("design_group_id"),
+                    numista_id=int(row["numista_id"]),
+                    design_group_id=row["design_group_id"],
                 )
             )
+    finally:
+        conn.close()
     return coins
 
 
 def build_resolver(
-    env: dict[str, str] | None = None,
     *,
     force_eurio_id: bool = False,
+    db_path: Path | None = None,
 ) -> Resolver:
-    env = env or load_env()
-    url = env.get("SUPABASE_URL", "")
-    key = env.get("SUPABASE_SERVICE_ROLE_KEY", "")
-    if not url or not key:
-        raise RuntimeError(
-            "SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY required to build class resolver"
-        )
-    coins = fetch_coin_refs(supabase_url=url, supabase_key=key)
+    """Build the coins → class Resolver from the canonical eurio.db.
+
+    SQLite-only doctrine: eurio.db is the source of truth — Supabase is no
+    longer consulted for training/eval. ``force_eurio_id`` drops the
+    design_group COALESCE so each coin is its own class (lab iterations).
+    """
+    coins = coin_refs_from_sqlite(db_path)
+    if not coins:
+        raise RuntimeError("No coins with numista_id found in eurio.db")
     if force_eurio_id:
         coins = [
             CoinRef(eurio_id=c.eurio_id, numista_id=c.numista_id, design_group_id=None)

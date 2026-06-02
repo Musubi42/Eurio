@@ -365,15 +365,23 @@ class TrainingRunner:
 
     def _prepare(self, row: RunRow) -> str:
         cmd = [VENV_PYTHON, str(ML_DIR / "training" / "prepare_dataset.py")]
-        if row.classes_after:
-            only = ",".join(sorted({c.class_id for c in row.classes_after}))
+        iter_dir = _iter_dir(row)
+        # Lab iterations (iter_dir present) are self-contained on their cohort:
+        # restrict prepare to classes_added (the cohort eurio_ids). Legacy global
+        # runs retrain the whole embedding space, so they span classes_after (the
+        # accumulated model_classes registry). Using classes_after for an
+        # iteration would pull the entire catalogue into --only-classes.
+        prepare_classes = (
+            row.classes_added if iter_dir is not None else row.classes_after
+        )
+        if prepare_classes:
+            only = ",".join(sorted({c.class_id for c in prepare_classes}))
             cmd.extend(["--only-classes", only])
         # class_kind est requis par prepare_dataset.py. En lab iteration on
         # force eurio_id (cf. iteration_runner._launch_training). Les runs
         # legacy hors-iteration tombent sur design_group (COALESCE historique).
         class_kind = row.config.get("class_kind", "design_group")
         cmd.extend(["--class-kind", class_kind])
-        iter_dir = _iter_dir(row)
         if iter_dir is not None:
             dataset_dir = iter_dir / "dataset"
             cmd.extend([
@@ -566,12 +574,23 @@ class TrainingRunner:
         *,
         parse_training_output: bool = False,
     ) -> None:
+        # Guarantee ML_DIR is importable from the child (eval/, training/,
+        # scan/ …) regardless of how the API server was launched. Running the
+        # script by path puts only its own dir on sys.path, so without this the
+        # subprocess fails with `ModuleNotFoundError: No module named 'eval'`
+        # whenever the parent's env lacks PYTHONPATH=ml.
+        env = dict(os.environ)
+        existing = env.get("PYTHONPATH", "")
+        env["PYTHONPATH"] = (
+            str(ML_DIR) + (os.pathsep + existing if existing else "")
+        )
         proc = subprocess.Popen(
             cmd,
             cwd=str(ML_DIR),
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
+            env=env,
         )
         with self._lock:
             self._active_proc = proc

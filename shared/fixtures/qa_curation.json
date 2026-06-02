@@ -1,0 +1,21 @@
+{
+  "_comment": "Curation du dump QA (3e profil, cf. docs parité). Édité MANUELLEMENT (gel éditorial Raphaël) — le script build_app_core_qa.py ne le réécrit JAMAIS. Sous-ensemble curé couvrant les cas visuels, toutes pièces avec image locale SAUF la dernière (fallback SVG). parity_now = horloge figée partagée web+android (doit rester alignée sur PARITY_NOW de proto/src/api/parity.ts).",
+  "parity_now": "2026-06-01T12:00:00Z",
+  "coins": [
+    { "eurio_id": "mc-2007-2eur-25th-anniversary-of-the-death-of-princess-grace", "case": "chère (p90 3900€) + micro-état MC, image BCE, cotes réelles riches" },
+    { "eurio_id": "va-2004-2eur-75th-anniversary-of-the-foundation-of-the-vatican-city-state", "case": "micro-état Vatican, image BCE" },
+    { "eurio_id": "sm-2004-2eur-100th-anniversary-of-the-celebrations-in-honor-of-bartolomeo-borghesi", "case": "micro-état Saint-Marin, image BCE" },
+    { "eurio_id": "fr-2024-2eur-olympic-games-paris-2024-coloured", "case": "variante coloured + canonical_eurio_id lié" },
+    { "eurio_id": "lu-2024-2eur-175th-anniversary-of-the-death-of-the-grand-duke-guillaume-ii-hologram", "case": "variante hologram + canonical_eurio_id lié" },
+    { "eurio_id": "ad-2023-2eur-30th-anniversary-of-andorras-admission-to-the-united-nations", "case": "source EUR-Lex/JO (vs BCE)" },
+    { "eurio_id": "sk-2023-2eur-200th-anniversary-of-the-start-of-the-horse-drawn-express-mail-coach-service-between-vienna-and-bratislava", "case": "titre i18n qui déborde (très long)" },
+    { "eurio_id": "lu-2025-2eur-25th-anniversary-of-the-accession-of-grand-duke-henri-to-the-throne", "case": "titre i18n long (~65 c.)" },
+    { "eurio_id": "cy-2024-2eur-20-years-of-cyprus-membership-in-the-european-union", "case": "chère secondaire (p90 1699€), Chypre" },
+    { "eurio_id": "fr-2025-2eur-1st-anniversary-of-the-reopening-of-notre-dame-cathedral-in-paris", "case": "commémo FR récente" },
+    { "eurio_id": "de-2025-2eur-35-years-of-german-unity", "case": "commémo DE récente" },
+    { "eurio_id": "it-2025-2eur-the-jubilee-year-2025", "case": "commémo IT (descriptions 24 langues)" },
+    { "eurio_id": "be-2006-2eur-reopening-of-the-brussels-atomium", "case": "commémo bon marché (p50 2€), contraste de prix, BE" },
+    { "eurio_id": "ad-2014-2eur-20th-anniversary-of-andorras-membership-in-the-council-of-europe", "case": "commémo BCE standard, Andorre" },
+    { "eurio_id": "fr-1999-2eur-standard-1st-map", "case": "SANS image locale → fallback SVG + 2€ standard + millésime 1999" }
+  ]
+}

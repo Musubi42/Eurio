@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { createCohort } from '@/features/lab/composables/useLabApi'
+import { cohortNameFromFilename, parseCohortCsv } from '@/features/lab/csv'
 import { useQueryClient } from '@tanstack/vue-query'
-import { ArrowLeft, Loader2, Plus } from 'lucide-vue-next'
+import { ArrowLeft, Loader2, Plus, Upload } from 'lucide-vue-next'
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
@@ -16,6 +17,23 @@ const rawIds = ref<string>('')
 
 const submitting = ref(false)
 const error = ref<string | null>(null)
+
+const fileInput = ref<HTMLInputElement | null>(null)
+const importInfo = ref<{ file: string; count: number; warnings: string[] } | null>(null)
+
+async function onCsvFile(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  const text = await file.text()
+  const { eurioIds, warnings } = parseCohortCsv(text)
+  // Fill the textarea so the user sees exactly what was imported and can still edit.
+  rawIds.value = eurioIds.join('\n')
+  if (!name.value) name.value = cohortNameFromFilename(file.name)
+  importInfo.value = { file: file.name, count: eurioIds.length, warnings }
+  // Reset so re-selecting the same file fires change again.
+  input.value = ''
+}
 
 onMounted(() => {
   // Prefill from ?eurio_ids= (handoff from /coins). Optional — the user can
@@ -158,10 +176,40 @@ async function submit() {
       </div>
 
       <div>
-        <label class="block">
-          <span class="mb-1 block text-[10px] font-medium uppercase" style="color: var(--ink-500);">
+        <div class="mb-2 flex items-center justify-between">
+          <span class="text-[10px] font-medium uppercase" style="color: var(--ink-500);">
             eurio_ids (optionnel · un par ligne ou séparés par virgule)
           </span>
+          <button
+            type="button"
+            class="flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium"
+            style="border-color: var(--surface-3); color: var(--ink);"
+            @click="fileInput?.click()"
+          >
+            <Upload class="h-3 w-3" />
+            Importer un CSV
+          </button>
+          <input
+            ref="fileInput"
+            type="file"
+            accept=".csv,text/csv"
+            class="hidden"
+            @change="onCsvFile"
+          />
+        </div>
+        <p
+          v-if="importInfo"
+          class="mb-2 rounded-md px-3 py-2 text-[10px]"
+          style="background: color-mix(in srgb, var(--success) 8%, var(--surface)); color: var(--ink-500);"
+        >
+          <strong class="font-mono">{{ importInfo.file }}</strong> :
+          {{ importInfo.count }} eurio_id(s) importé(s).
+          <span v-if="importInfo.warnings.length" style="color: var(--warning);">
+            {{ importInfo.warnings.length }} ligne(s) ignorée(s) (slug invalide).
+          </span>
+        </p>
+        <label class="block">
+          <span class="sr-only">eurio_ids</span>
           <textarea
             v-model="rawIds"
             rows="5"

@@ -1,20 +1,20 @@
 """Bidirectional eurio_id ↔ numista_id mapping.
 
-Source of truth : ``ml/datasets/eurio_referential.json`` — each entry has an
-``eurio_id`` and (optionally) ``cross_refs.numista_id``. ~557/2628 entries
-currently have a numista mapping; coins without one cannot be captured (no
-disk slot in the legacy ``ml/datasets/<numista_id>/`` layout).
+Source of truth : the canonical local ``ml/state/eurio.db`` ``coins`` table
+(SQLite-only doctrine). Each coin has an ``eurio_id`` and (optionally) a
+``numista_id``; coins without one cannot be captured (no disk slot in the
+``ml/datasets/<numista_id>/`` layout).
 
 Loaded once at import time, cached in module-level dicts. Call
-:func:`reload` to re-read the file on disk (cheap: ~30ms).
+:func:`reload` to re-read the table (cheap).
 """
 from __future__ import annotations
 
-import json
+import sqlite3
 import threading
 from pathlib import Path
 
-_REFERENTIAL_PATH = Path(__file__).resolve().parent.parent / "datasets" / "eurio_referential.json"
+_DB_PATH = Path(__file__).resolve().parent.parent / "state" / "eurio.db"
 
 _lock = threading.Lock()
 _eurio_to_numista: dict[str, int] = {}
@@ -28,20 +28,22 @@ def _load() -> None:
     with _lock:
         if _loaded:
             return
-        with _REFERENTIAL_PATH.open() as f:
-            data = json.load(f)
         e2n: dict[str, int] = {}
         n2e: dict[int, str] = {}
         themes: dict[str, str | None] = {}
-        for entry in data.get("entries", []):
-            eid = entry.get("eurio_id")
-            if not eid:
-                continue
-            themes[eid] = entry.get("identity", {}).get("theme")
-            nid = entry.get("cross_refs", {}).get("numista_id")
-            if nid is not None:
-                e2n[eid] = int(nid)
-                n2e[int(nid)] = eid
+        conn = sqlite3.connect(f"file:{_DB_PATH}?mode=ro", uri=True)
+        try:
+            for eid, nid, theme in conn.execute(
+                "SELECT eurio_id, numista_id, theme FROM coins"
+            ):
+                if not eid:
+                    continue
+                themes[eid] = theme
+                if nid is not None:
+                    e2n[eid] = int(nid)
+                    n2e[int(nid)] = eid
+        finally:
+            conn.close()
         _eurio_to_numista.clear()
         _eurio_to_numista.update(e2n)
         _numista_to_eurio.clear()

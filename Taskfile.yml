@@ -20,10 +20,27 @@ tasks:
     cmds:
       - node scripts/generate_android_tokens.mjs
 
-  parity:capture-proto:
-    desc: Capture proto screenshots via Playwright (requires dev server running)
+  proto:dev:
+    desc: Serve the Vue proto (HMR, port 5174) for human design audit
     cmds:
+      - pnpm -C admin/packages/proto dev
+
+  proto:build:
+    desc: Build the Vue proto to dist/ (typecheck + vite build)
+    cmds:
+      - pnpm -C admin/packages/proto build
+
+  parity:capture-proto:
+    desc: Capture proto parity screenshots (self-contained — builds QA bundle, dist, serves, captures)
+    cmds:
+      # Bundle QA hermétique figé (app_core_qa.json + webps locaux) consommé en mode parité.
+      - task: ml:build-app-core-qa
       - pnpm -C admin/packages/parity capture:proto
+
+  parity:capture-admin:
+    desc: Capture admin console screenshots (requires admin web dev server on :5173)
+    cmds:
+      - pnpm -C admin/packages/parity capture:admin
 
   tokens:check:
     desc: Run the token generator and fail if it produces unstaged changes (CI guard)

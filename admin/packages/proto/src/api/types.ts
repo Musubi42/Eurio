@@ -44,12 +44,23 @@ export interface RawCoin {
   obverse_image_url?: string | null
   names?: Record<string, string>
   descriptions?: Record<string, string>
-  prices?: unknown
+  prices?: RawPrice[]
   credits?: unknown
   topics?: unknown[]
   mint_releases?: unknown[]
   observations?: { wikipedia?: { mintage_total?: number | null } }
   provenance?: { sources_used?: string[]; last_updated?: string }
+}
+
+/** Cote marché brute par qualité (cents), telle que sérialisée dans le core. */
+export interface RawPrice {
+  grade: string
+  p_low: number | null
+  p_mid: number | null
+  p_high: number | null
+  currency?: string | null
+  source?: string | null
+  sampled_at?: string | null
 }
 
 export interface RawSharedReverse {
@@ -98,6 +109,8 @@ export interface Coin {
   descriptions: Record<string, string>
   topics: unknown[]
   credits: unknown
+  /** Cotes marché réelles par qualité (euros via cents), vide si non dispo. */
+  prices: CoinPrice[]
   mintReleases: unknown[]
   provenance: { sourcesUsed: string[]; lastUpdated: string | null }
   /** Enregistrement brut, pour les champs pas encore promus en surface typée. */
@@ -110,6 +123,15 @@ export interface RarityTier {
   key: string
   label: string
   gold: boolean
+}
+
+/** Cote marché par qualité, montants en CENTS (tels que stockés). */
+export interface CoinPrice {
+  grade: string
+  pLow: number | null
+  pMid: number | null
+  pHigh: number | null
+  currency: string | null
 }
 
 /** Valeurs par qualité, en euros. */

@@ -1,1 +1,4 @@
 /build
+# Assets QA générés (go-task ml:build-app-core-qa) — hermétiques, régénérables
+/src/qa/assets/app_core.db
+/src/qa/assets/coin-images/

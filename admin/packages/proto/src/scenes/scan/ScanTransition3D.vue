@@ -7,6 +7,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { getCoin, getCoin3DAssets, simulateScan } from '@/api'
 import { buildCoinFromUrls, buildProceduralEdgeTexture, createStage, disposeCoin, R_OUT } from '@/lib/coin3d'
 import type { Coin as Coin3D, Stage } from '@/lib/coin3d'
+import { isParity, PARITY_COIN_POSE } from '@/api/parity'
 
 const route = useRoute()
 const router = useRouter()
@@ -26,7 +27,8 @@ const HERO_FILL = 0.72
 const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
 const light = route.query.light === '1' || reduced
 
-const eurioId = String(route.query.id ?? '') || simulateScan()
+// En parité, pas d'id explicite → tirage SEEDÉ (déterministe), pas Math.random.
+const eurioId = String(route.query.id ?? '') || simulateScan(isParity() ? 0 : undefined)
 const coin = getCoin(eurioId) ?? getCoin(simulateScan(0))!
 
 const phase = ref<'loading' | 'morph' | 'spin' | 'settle' | 'posed'>('loading')
@@ -56,6 +58,8 @@ onMounted(async () => {
   const wrap = canvasWrapRef.value
   if (!wrap) return
 
+  // Marqueur pour la capture parité : scène 3D → attendre __eurioCoinReady.
+  if (isParity()) (window as Window & { __eurioHas3D?: boolean }).__eurioHas3D = true
   stage = createStage(wrap)
   const st = stage
   function frameCoin() {
@@ -96,6 +100,7 @@ onMounted(async () => {
   let dragging = false
   st.onFrame((dt) => {
     frameCoin()
+    if (isParity()) return // pose figée : aucune animation temporelle (tweens/spin/bob)
     advanceTweens(dt)
     if (!group) return
     if (phase.value === 'spin' && !dragging) {
@@ -259,7 +264,23 @@ onMounted(async () => {
     group = coin3d.group
     st.scene.add(group)
     statusHidden.value = true
-    play()
+    if (isParity()) {
+      // Capture parité : saut direct à l'état posé (ni chorégraphie ni FX) +
+      // signal « coin prêt » après 2 frames (texture GPU) pour une capture
+      // déterministe (cf. proto.ts qui attend __eurioCoinReady).
+      group.rotation.set(PARITY_COIN_POSE.x, PARITY_COIN_POSE.y, PARITY_COIN_POSE.z)
+      group.position.set(0, 0, 0)
+      setScale(1)
+      title.value = 'Identifiée'
+      phase.value = 'posed'
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => {
+          ;(window as Window & { __eurioCoinReady?: boolean }).__eurioCoinReady = true
+        }),
+      )
+    } else {
+      play()
+    }
   } catch (err) {
     console.error('[scan-transition-3d] init failed', err)
   }

@@ -7,6 +7,7 @@
 
 import { defineStore } from 'pinia'
 import { allCoins } from '@/api'
+import { now } from '@/api/parity'
 import { CHASE_DEFINITIONS, TIERS } from '@/api/fixtures/achievements'
 import { chaseIsComplete } from '@/lib/achievements'
 
@@ -153,11 +154,12 @@ export const useCollectionStore = defineStore('collection', {
       }
     },
 
-    addCoin(eurioId: string, opts: Partial<Omit<CollectionEntry, 'eurioId' | 'addedAt'>> = {}) {
+    addCoin(eurioId: string, opts: Partial<Omit<CollectionEntry, 'eurioId'>> = {}) {
       if (this.hasCoin(eurioId)) return
       this.collection.push({
         eurioId,
-        addedAt: Date.now(),
+        // addedAt explicite (seed déterministe) sinon horloge — figée en parité.
+        addedAt: opts.addedAt ?? now(),
         valueAtAddCents: opts.valueAtAddCents ?? null,
         condition: opts.condition ?? null,
         note: opts.note ?? null,
@@ -239,17 +241,42 @@ export const useCollectionStore = defineStore('collection', {
     },
 
     /**
-     * Seed démo (debug settings) : injecte des pièces RÉELLES du catalogue,
-     * une par pays distinct, jusqu'à SEED_DEMO_TARGET. Déterministe (ordre du
-     * snapshot, pas de hasard) → fait progresser les chasses pays + 2€ commémo.
+     * IDs du seed démo : pièces RÉELLES du catalogue, une par pays distinct,
+     * dans l'ordre du snapshot, jusqu'à SEED_DEMO_TARGET. Déterministe (pas de
+     * hasard) → fait progresser les chasses pays + 2€ commémo.
      */
-    seedDemoCollection() {
+    demoCoinIds(): string[] {
       const byCountry = new Map<string, string>()
       for (const c of allCoins()) {
         if (!byCountry.has(c.country)) byCountry.set(c.country, c.eurioId)
         if (byCountry.size >= SEED_DEMO_TARGET) break
       }
-      for (const eurioId of byCountry.values()) this.addCoin(eurioId)
+      return [...byCountry.values()]
+    },
+
+    /** Seed démo (bouton debug settings) : ajoute les pièces démo à l'horloge courante. */
+    seedDemoCollection() {
+      for (const eurioId of this.demoCoinIds()) this.addCoin(eurioId)
+    },
+
+    /**
+     * Applique un état de collection NOMMÉ (contrat PARITY_STATE des flows parité).
+     * Déterministe : addedAt réparti à rebours depuis l'horloge (figée en parité)
+     * → buckets « mois » et sparkline non plats, identiques entre deux runs.
+     * Interim : s'appuie sur le seed démo ; C2 backera des fixtures curées.
+     */
+    seedFixture(name: string) {
+      this.reset()
+      this.completeOnboarding()
+      if (name === 'empty') return
+      // 'populated' | 'profile-demo' | 'demo' : ~24 j entre deux ajouts → les
+      // ~15 pièces couvrent l'année écoulée (sparkline 12 mois lisible).
+      const ids = this.demoCoinIds()
+      const dayMs = 86_400_000
+      const base = now()
+      ids.forEach((eurioId, i) => {
+        this.addCoin(eurioId, { addedAt: base - (ids.length - i) * 24 * dayMs })
+      })
     },
 
     consumePendingUnlock(): string | null {

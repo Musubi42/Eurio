@@ -24,7 +24,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from eval.class_resolver import fetch_coin_refs, load_env
+from eval.class_resolver import coin_refs_from_sqlite
 
 
 @dataclass(frozen=True)
@@ -62,16 +62,8 @@ class EquivalenceMap:
 
 
 def build_equivalence_map() -> EquivalenceMap:
-    """Load the eurio_id → design_group_id map from Supabase."""
-    env = load_env()
-    url = env.get("SUPABASE_URL", "")
-    key = env.get("SUPABASE_SERVICE_ROLE_KEY", "")
-    if not url or not key:
-        raise RuntimeError(
-            "SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY required to build "
-            "equivalence map"
-        )
-    coins = fetch_coin_refs(supabase_url=url, supabase_key=key)
+    """Load the eurio_id → design_group_id map from the canonical eurio.db."""
+    coins = coin_refs_from_sqlite()
     return EquivalenceMap(
         eurio_to_group={c.eurio_id: c.design_group_id for c in coins}
     )

@@ -29,7 +29,7 @@ const alt = computed(() => `${props.coin.countryName}${props.coin.year ? ' ' + p
 
 <template>
   <img
-    v-if="!failed"
+    v-if="src && !failed"
     class="coin-svg coin-img"
     :src="src"
     :alt="alt"

@@ -9,6 +9,40 @@
 import type { Coin, Grades, Market, Reveal } from './types'
 import { hashInt, seeded } from './util'
 
+/** Marché bâti sur les COTES RÉELLES (coin.prices, cents) si présentes.
+ *  Pas de série temporelle réelle → history/projection restent null (on ne
+ *  fabrique pas de tendance). null si aucune cote exploitable. */
+function marketFromPrices(coin: Coin): Market | null {
+  if (!coin.prices.length) return null
+  const byGrade = new Map(coin.prices.map((p) => [p.grade?.toUpperCase(), p]))
+  const eur = (cents: number | null | undefined): number | null =>
+    cents == null ? null : Math.round(cents) / 100
+  const ttb = byGrade.get('TTB') ?? coin.prices[0]
+  const p50 = eur(ttb.pMid ?? ttb.pHigh ?? ttb.pLow)
+  if (p50 == null) return null
+  const p25 = eur(ttb.pLow) ?? p50 * 0.8
+  const p75 = eur(ttb.pHigh) ?? p50 * 1.2
+  const faceEur = coin.faceValue || 0
+  const grades: Grades = {
+    unc: eur(byGrade.get('UNC')?.pMid) ?? Math.round(p50 * 1.8 * 100) / 100,
+    ttb: eur(ttb.pMid) ?? p50,
+    tb: eur(byGrade.get('TB')?.pMid) ?? Math.round(Math.max(2, p50 * 0.5) * 100) / 100,
+  }
+  const ratio = p50 / Math.max(faceEur, 1)
+  const rarityIdx = ratio > 6 ? 3 : ratio > 3.5 ? 2 : ratio > 1.8 ? 1 : 0
+  return {
+    p25,
+    p50,
+    p75,
+    deltaVsFace: faceEur > 0 ? ((p50 - faceEur) / faceEur) * 100 : 0,
+    history: [],
+    delta3m: null,
+    projection: null,
+    rarity: RARITY_SCALE[rarityIdx],
+    grades,
+  }
+}
+
 const RARITY_SCALE = [
   { key: 'commune', label: 'Commune', gold: false },
   { key: 'peu', label: 'Peu courante', gold: false },
@@ -27,6 +61,10 @@ function gradesFromP50(p50: number): Grades {
 
 /** Marché d'une pièce, ou null si elle s'échange à la faciale (circulation). */
 export function deriveMarket(coin: Coin): Market | null {
+  // Cotes RÉELLES d'abord (dump QA / live). Fallback synthétique seedé sinon.
+  const real = marketFromPrices(coin)
+  if (real) return real
+
   const faceEur = coin.faceValue || 0
   const rng = seeded(hashInt(coin.eurioId))
   const hasMarket = coin.isCommemorative || faceEur >= 2

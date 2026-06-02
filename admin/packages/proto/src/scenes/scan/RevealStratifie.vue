@@ -8,6 +8,7 @@ import { useCollectionStore } from '@/stores/collection'
 import { buildCoinFromUrls, buildProceduralEdgeTexture, createStage, disposeCoin, R_OUT } from '@/lib/coin3d'
 import type { Coin as Coin3D, Stage } from '@/lib/coin3d'
 import { confetti, chime, haptic } from '@/lib/celebration'
+import { isParity, PARITY_COIN_POSE } from '@/api/parity'
 
 const route = useRoute()
 const router = useRouter()
@@ -30,7 +31,8 @@ const MILESTONE: Record<Exclude<Milestone, ''>, { label: string; confetti: numbe
 
 // ── Résolution pièce ──
 const ownedMode = route.query.owned === '1'
-const eurioId = String(route.query.id ?? '') || simulateScan()
+// En parité, pas d'id explicite → tirage SEEDÉ (déterministe), pas Math.random.
+const eurioId = String(route.query.id ?? '') || simulateScan(isParity() ? 0 : undefined)
 const coin = getCoin(eurioId) ?? getCoin(simulateScan(0))!
 const reveal = getReveal(coin.eurioId)!
 
@@ -112,6 +114,8 @@ onMounted(async () => {
   if (!root || !wrap || !sheet || !handle) return
 
   // ----- 3D hero -----
+  // Marqueur pour la capture parité : scène 3D → attendre __eurioCoinReady.
+  if (isParity()) (window as Window & { __eurioHas3D?: boolean }).__eurioHas3D = true
   stage = createStage(wrap)
   const st = stage
   function frameCoin() {
@@ -131,7 +135,7 @@ onMounted(async () => {
   st.onFrame((dt) => {
     frameCoin()
     if (!group) return
-    if (!dragging) {
+    if (!dragging && !isParity()) {
       group.rotation.y += omega * dt
       omega += (IDLE_SPD - omega) * Math.min(1, dt * 2.5)
       group.rotation.x += (0 - group.rotation.x) * Math.min(1, dt * 4)
@@ -244,6 +248,17 @@ onMounted(async () => {
     }
     group = coin3d.group
     st.scene.add(group)
+    // Capture parité : pose figée (le spin idle est désactivé dans onFrame) +
+    // signal « coin prêt » après 2 frames (texture uploadée au GPU) → la capture
+    // attend ce flag au lieu d'un délai aveugle (déterminisme 3D).
+    if (isParity()) {
+      group.rotation.set(PARITY_COIN_POSE.x, PARITY_COIN_POSE.y, PARITY_COIN_POSE.z)
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => {
+          ;(window as Window & { __eurioCoinReady?: boolean }).__eurioCoinReady = true
+        }),
+      )
+    }
     statusHidden.value = true
     relayout()
 

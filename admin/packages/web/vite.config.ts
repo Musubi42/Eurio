@@ -88,7 +88,6 @@ function devMiddleware(): Plugin {
   const maestroFlows = path.resolve(__dirname, '../parity/flows')
   const maestroScreenshots = path.resolve(__dirname, '../parity/screenshots/android')
   const mlDatasets = path.resolve(__dirname, '../../../ml/datasets')
-  const protoRoot = path.resolve(__dirname, '../../../docs/design/prototype')
   const protoScreenshots = path.resolve(__dirname, '../parity/screenshots/proto')
   const repoRoot = path.resolve(__dirname, '../../../')
 
@@ -164,47 +163,9 @@ function devMiddleware(): Plugin {
           return
         }
 
-        // Serve proto HTML/CSS/JS directly — replaces the Python proxy.
-        // No-cache headers prevent stale ES modules in the parity viewer iframe.
-        if (req.url?.startsWith('/proto/')) {
-          let relPath = req.url.slice('/proto'.length)
-          // Strip hash/query for filesystem lookup
-          relPath = relPath.split('?')[0].split('#')[0]
-          if (relPath === '/' || relPath === '') relPath = '/index.html'
-
-          const filePath = path.join(protoRoot, relPath)
-          // Prevent directory traversal
-          if (!filePath.startsWith(protoRoot)) {
-            res.statusCode = 403
-            res.end('Forbidden')
-            return
-          }
-
-          try {
-            // Follow symlinks (fixtures symlink)
-            const stat = fs.statSync(filePath)
-            if (stat.isDirectory()) {
-              // Try index.html in directory
-              const indexPath = path.join(filePath, 'index.html')
-              if (fs.existsSync(indexPath)) {
-                const data = fs.readFileSync(indexPath)
-                res.setHeader('Content-Type', 'text/html')
-                res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate')
-                res.end(data)
-                return
-              }
-            }
-            const data = fs.readFileSync(filePath)
-            const ext = path.extname(filePath).toLowerCase()
-            res.setHeader('Content-Type', MIME_TYPES[ext] ?? 'application/octet-stream')
-            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate')
-            res.end(data)
-          } catch {
-            res.statusCode = 404
-            res.end('Not found')
-          }
-          return
-        }
+        // Le proto Vue n'est plus servi par la console web : il a son propre
+        // dev server (admin/packages/proto, port 5174) et sa capture parité
+        // tourne contre son build dist (cf. parity/playwright.proto.config.ts).
 
         next()
       })

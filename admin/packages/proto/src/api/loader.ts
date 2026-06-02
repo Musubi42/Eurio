@@ -11,6 +11,7 @@
  */
 
 import type { RawCoin, Snapshot } from './types'
+import { isParity } from './parity'
 
 const MODE: 'fixtures' | 'live' = import.meta.env.VITE_DATA_MODE ?? 'fixtures'
 
@@ -39,12 +40,14 @@ export function loadSnapshot(): Promise<Snapshot> {
 }
 
 async function loadFixtures(): Promise<Snapshot> {
-  const url = `${import.meta.env.BASE_URL}data/app_core.json`
+  // En parité, on sert le bundle figé hermétique (cf. build_app_core_qa).
+  const file = isParity() ? 'app_core_qa.json' : 'app_core.json'
+  const url = `${import.meta.env.BASE_URL}data/${file}`
   const res = await fetch(url, { cache: 'force-cache' })
   if (!res.ok) {
     throw new Error(
-      `[loader] app_core.json introuvable (${res.status}). ` +
-        'Régénère-le via `go-task ml:build-app-core`.',
+      `[loader] ${file} introuvable (${res.status}). ` +
+        'Régénère-le via `go-task ml:build-app-core` (ou parity:capture-proto pour le QA).',
     )
   }
   return (await res.json()) as Snapshot

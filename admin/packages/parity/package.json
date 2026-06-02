@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "capture:proto": "playwright test"
+    "capture:proto": "playwright test -c playwright.proto.config.ts",
+    "capture:admin": "playwright test -c playwright.config.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.52.0",

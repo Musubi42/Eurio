@@ -128,11 +128,15 @@ class RunQueryBody(BaseModel):
     target_eurio_id: str | None = None
     target_eurio_ids: list[str] | None = None
     discovery_groups: list[GroupSpec] | None = None
+    cohort_id: str | None = None
     limit: int | None = Field(default=None, ge=1, le=10_000)
     extra: dict[str, Any] = Field(default_factory=dict)
 
     def to_source_query(self, source_id: str) -> SourceQuery:
         d = self.model_dump()
+        # cohort_id is an API-only convenience expanded to discovery_groups in
+        # trigger_run; SourceQuery doesn't carry it.
+        d.pop("cohort_id", None)
         if d.get("target_eurio_ids") is not None:
             d["target_eurio_ids"] = tuple(d["target_eurio_ids"])
         groups = d.pop("discovery_groups", None)
@@ -153,6 +157,9 @@ class TriggerResponse(BaseModel):
     status: str
     source_id: str
     kind: str
+    # Cohort coins skipped because their (denom,country,year) isn't in the
+    # commemorative eBay discovery view (standards/eu/variants — Numista-only).
+    non_scrapable: list[str] | None = None
 
 
 # Consumed by: admin/packages/web/src/features/sources/composables/useSourceDetail.ts (triggerSourceRun)
@@ -166,6 +173,38 @@ def trigger_run(
 ) -> TriggerResponse:
     payload = body or RunQueryBody()
     store = _store()
+
+    # Cohort-scoped eBay run : expand the cohort to its discovery groups before
+    # building the query (only when no explicit groups were passed).
+    non_scrapable: list[str] = []
+    if source_id == "ebay" and payload.cohort_id and not payload.discovery_groups:
+        from sources.cohort_scope import cohort_ebay_groups
+
+        try:
+            groups, non_scrapable = cohort_ebay_groups(store, payload.cohort_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        if not groups:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "code": "cohort_no_groups",
+                    "message": (
+                        f"Cohort {payload.cohort_id}: aucun groupe eBay-scrapable "
+                        "(que des standards/eu/variants ?)."
+                    ),
+                    "non_scrapable": non_scrapable,
+                },
+            )
+        payload.discovery_groups = [
+            GroupSpec(denomination=d, country=c, year=y) for d, c, y, _ in groups
+        ]
+        if non_scrapable:
+            logger.info(
+                "[ebay] cohort %s: %d coin(s) hors découverte groupée (Numista-only): %s",
+                payload.cohort_id, len(non_scrapable), ", ".join(non_scrapable),
+            )
+
     query = payload.to_source_query(source_id)
 
     # Garde-fou : un run eBay sans périmètre de découverte ne ferait
@@ -300,6 +339,7 @@ def trigger_run(
         status="started",
         source_id=source_id,
         kind="dry" if dry_run else "run",
+        non_scrapable=non_scrapable or None,
     )
 
 

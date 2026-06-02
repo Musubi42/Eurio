@@ -423,7 +423,7 @@ def main():
         source = f"cohort CSV {args.cohort_csv.name}"
     else:
         resolver = build_resolver(force_eurio_id=force_eurio_id)
-        source = "Supabase"
+        source = "eurio.db"
     print(
         f"Resolver: {len(resolver.classes)} known classes from {source} "
         f"(class_kind={args.class_kind})"

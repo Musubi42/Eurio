@@ -287,6 +287,11 @@ tasks:
     cmds:
       - "{{.VENV}}/python -m export.build_app_core {{.CLI_ARGS}}"
 
+  build-app-core-qa:
+    desc: "Build the QA core (3rd profile): hermetic frozen subset from eurio.db → app_core_qa.json + bundled webps + Android src/qa SQLite. Offline, no Supabase."
+    cmds:
+      - "{{.VENV}}/python -m export.build_app_core_qa"
+
   sync-supabase:
     desc: "Push the canonical referential JSON to Supabase (coins, source_observations, coin_market_prices, …)"
     cmds:
