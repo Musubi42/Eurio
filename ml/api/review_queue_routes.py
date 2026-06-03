@@ -13,6 +13,7 @@ asset never disagree.
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import sqlite3
@@ -320,6 +321,7 @@ def list_queue(
     limit: int = Query(default=20, ge=1, le=200),
     order: str = Query(default="priority"),
     kind: str = Query(default="single"),
+    cohort_id: str | None = Query(default=None),
 ) -> list[ReviewItem]:
     if order not in ("priority", "enqueued_at"):
         raise HTTPException(status_code=422, detail="order must be 'priority' or 'enqueued_at'")
@@ -330,12 +332,25 @@ def list_queue(
     order_clause = "rq.priority ASC, rq.enqueued_at ASC" \
         if order == "priority" else "rq.enqueued_at ASC"
 
-    conn = _store()._connection()  # noqa: SLF001
+    store = _store()
+    conn = store._connection()  # noqa: SLF001
     where = "rq.status = ?"
     args: list[Any] = [status]
     if kind != "all":
         where += " AND rq.kind = ?"
         args.append(kind)
+    # Cohort scope : only items whose theme-matched coin is in the cohort.
+    if cohort_id:
+        cohort = store.get_cohort(cohort_id)
+        if cohort is None:
+            raise HTTPException(status_code=404, detail="Cohort introuvable")
+        if not cohort.eurio_ids:
+            return []
+        where += (
+            " AND s.target_eurio_id IN "
+            f"({','.join('?' * len(cohort.eurio_ids))})"
+        )
+        args.extend(cohort.eurio_ids)
     args.append(limit)
 
     rows = conn.execute(
@@ -384,6 +399,29 @@ def list_queue(
 
 
 # Consumed by: admin/packages/web/src/features/review/composables/useReviewApi.ts (fetchReviewStats)
+def _cohort_filter(cohort_id: str | None, alias: str = "s") -> tuple[str, list[Any], bool]:
+    """Clause SQL pour restreindre une queue aux coins d'une cohort.
+
+    Retourne ``(clause, args, is_empty)`` où ``clause`` est ``" AND
+    {alias}.target_eurio_id IN (?,…)"`` (vide si ``cohort_id`` None). Même
+    filtre que ``GET /review-queue?cohort_id=`` (chunk 04), réutilisé par les
+    voies auto-accept / claude (§C4b). Cohort inconnue → 404 ; cohort sans
+    coin → ``is_empty=True`` (l'appelant court-circuite vers un résultat vide).
+    """
+    if not cohort_id:
+        return "", [], False
+    cohort = _store().get_cohort(cohort_id)
+    if cohort is None:
+        raise HTTPException(status_code=404, detail="Cohort introuvable")
+    if not cohort.eurio_ids:
+        return "", [], True
+    clause = (
+        f" AND {alias}.target_eurio_id IN "
+        f"({','.join('?' * len(cohort.eurio_ids))})"
+    )
+    return clause, list(cohort.eurio_ids), False
+
+
 @router.get("/stats")
 def queue_stats() -> dict[str, Any]:
     """Counts for the queue header strip. Cheap (single query)."""
@@ -431,20 +469,29 @@ def queue_stats() -> dict[str, Any]:
 
 # Consumed by: admin/.../review/composables/useReviewApi.ts (fetchTriageStats)
 @router.get("/triage-stats")
-def queue_triage_stats(kind: str = Query(default="single")) -> dict[str, Any]:
+def queue_triage_stats(
+    kind: str = Query(default="single"),
+    cohort_id: str | None = Query(default=None),
+) -> dict[str, Any]:
     """Compteurs pour le dashboard /review : agrège le verdict
     d'auto-validation sur la queue ``open`` en plus des stats temporelles
     déjà fournies par ``/stats``. Un seul fetch côté front.
 
     Une passe : ~5 ms pour 800 items (1 SQL scan + boucle pure-Python).
     Pas de cache nécessaire à l'échelle actuelle.
+
+    ``cohort_id`` (optionnel) restreint TOUS les compteurs aux images dont le
+    coin theme-matché (``source_images.target_eurio_id``) appartient à la
+    cohort — même filtre que ``GET /review-queue?cohort_id=`` (chunk 04). Sert
+    aux 3 cartes scopées de la page cohort (§C4a). Cohort inconnue → 404.
     """
     if kind not in _VALID_KINDS:
         raise HTTPException(
             status_code=422, detail=f"kind must be one of {_VALID_KINDS}",
         )
 
-    conn = _store()._connection()  # noqa: SLF001
+    store = _store()
+    conn = store._connection()  # noqa: SLF001
     today = datetime.utcnow().strftime("%Y-%m-%d")
     week_start = (datetime.utcnow() - timedelta(days=7)).strftime("%Y-%m-%d")
 
@@ -454,25 +501,50 @@ def queue_triage_stats(kind: str = Query(default="single")) -> dict[str, Any]:
         where += " AND rq.kind = ?"
         args.append(kind)
 
-    # Stats temporelles (mêmes valeurs que /stats).
-    n_pending = conn.execute(
-        f"SELECT COUNT(*) AS c FROM review_queue rq WHERE {where}", args,
-    ).fetchone()["c"]
-    n_done_today = conn.execute(
-        "SELECT COUNT(*) AS c FROM review_queue "
-        "WHERE status = 'done' AND decided_at >= ?",
-        (today,),
-    ).fetchone()["c"]
-    n_done_today_auto = conn.execute(
-        "SELECT COUNT(*) AS c FROM review_queue "
-        "WHERE decided_by = 'auto_dino' AND decided_at >= ?",
-        (today,),
-    ).fetchone()["c"]
-    n_done_week = conn.execute(
-        "SELECT COUNT(*) AS c FROM review_queue "
-        "WHERE status = 'done' AND decided_at >= ?",
-        (week_start,),
-    ).fetchone()["c"]
+    # Cohort scope : restreint aux items dont le coin theme-matché est dans la
+    # cohort. Le filtre porte sur source_images.target_eurio_id → impose le
+    # join (la queue verdict le fait déjà ; les comptes temporels l'ajoutent).
+    cohort_clause = ""
+    cohort_args: list[Any] = []
+    if cohort_id:
+        cohort = store.get_cohort(cohort_id)
+        if cohort is None:
+            raise HTTPException(status_code=404, detail="Cohort introuvable")
+        if not cohort.eurio_ids:
+            return {
+                "n_pending": 0, "n_done_today": 0, "n_done_today_auto_dino": 0,
+                "n_done_this_week": 0,
+                "by_verdict": {"auto_candidate": 0, "partial": 0,
+                               "divergent": 0, "unknown": 0},
+            }
+        cohort_clause = (
+            " AND si.target_eurio_id IN "
+            f"({','.join('?' * len(cohort.eurio_ids))})"
+        )
+        cohort_args = list(cohort.eurio_ids)
+
+    # Helper : un COUNT scopé. Sans cohort → requête simple sur review_queue ;
+    # avec cohort → join image_assets/source_images pour filtrer par coin.
+    def _count(status_clause: str, status_args: list[Any], kind_clause: bool) -> int:
+        kc = " AND rq.kind = ?" if (kind_clause and kind != "all") else ""
+        ka = [kind] if (kind_clause and kind != "all") else []
+        if cohort_clause:
+            sql = (
+                "SELECT COUNT(*) AS c FROM review_queue rq "
+                "JOIN image_assets a ON a.id = rq.image_asset_id "
+                "JOIN source_images si ON si.id = a.source_image_id "
+                f"WHERE {status_clause}{kc}{cohort_clause}"
+            )
+            return conn.execute(sql, [*status_args, *ka, *cohort_args]).fetchone()["c"]
+        sql = f"SELECT COUNT(*) AS c FROM review_queue rq WHERE {status_clause}{kc}"
+        return conn.execute(sql, [*status_args, *ka]).fetchone()["c"]
+
+    # Stats temporelles (cohort-scopées si cohort_id).
+    n_pending = _count("rq.status = 'open'", [], kind_clause=True)
+    n_done_today = _count("rq.status = 'done' AND rq.decided_at >= ?", [today], kind_clause=False)
+    n_done_today_auto = _count(
+        "rq.decided_by = 'auto_dino' AND rq.decided_at >= ?", [today], kind_clause=False)
+    n_done_week = _count("rq.status = 'done' AND rq.decided_at >= ?", [week_start], kind_clause=False)
 
     # Verdicts — un seul scan SQL puis pure Python.
     rows = conn.execute(
@@ -491,9 +563,9 @@ def queue_triage_stats(kind: str = Query(default="single")) -> dict[str, Any]:
                 AND p.anchors_kind = '2eur_commemo'
           LEFT JOIN listing_text_signals lts
                  ON lts.source_image_id = si.id
-         WHERE {where}
+         WHERE {where}{cohort_clause}
         """,
-        args,
+        [*args, *cohort_args],
     ).fetchall()
 
     by_verdict = {"auto_candidate": 0, "partial": 0, "divergent": 0, "unknown": 0}
@@ -501,12 +573,29 @@ def queue_triage_stats(kind: str = Query(default="single")) -> dict[str, Any]:
         v = compute_auto_validate_verdict_from_row(r)
         by_verdict[v.level] = by_verdict.get(v.level, 0) + 1
 
+    # Crops en review LOT (kind='lot') — flow distinct du single, surfacé à part
+    # dans le cockpit cohort (§C4-lot) sinon ces images semblent « perdues ».
+    if cohort_clause:
+        n_lot_crops = conn.execute(
+            "SELECT COUNT(*) AS c FROM review_queue rq "
+            "JOIN image_assets a ON a.id = rq.image_asset_id "
+            "JOIN source_images si ON si.id = a.source_image_id "
+            f"WHERE rq.status = 'open' AND rq.kind = 'lot'{cohort_clause}",
+            cohort_args,
+        ).fetchone()["c"]
+    else:
+        n_lot_crops = conn.execute(
+            "SELECT COUNT(*) AS c FROM review_queue rq "
+            "WHERE rq.status = 'open' AND rq.kind = 'lot'"
+        ).fetchone()["c"]
+
     return {
         "n_pending": n_pending,
         "n_done_today": n_done_today,
         "n_done_today_auto_dino": n_done_today_auto,
         "n_done_this_week": n_done_week,
         "by_verdict": by_verdict,
+        "n_lot_crops": n_lot_crops,
     }
 
 
@@ -550,13 +639,19 @@ class LotListResponse(BaseModel):
 def list_lots(
     limit: int = Query(default=24, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    cohort_id: str | None = Query(default=None),
 ) -> LotListResponse:
     """Liste les listings ayant ≥ 1 row review_queue.kind='lot' status='open'.
 
     Groupé par listing_key (cf. _LISTING_KEY_SQL — eBay : ebay_<itemId>).
     Tri : oldest_enqueued_at ASC (le reviewer commence par les plus vieux).
+    ``cohort_id`` (optionnel) restreint aux listings d'un coin de la cohort
+    (§C4-lot) — même filtre ``si.target_eurio_id`` que le reste du cockpit.
     """
     conn = _store()._connection()  # noqa: SLF001
+    cohort_clause, cohort_args, cohort_empty = _cohort_filter(cohort_id, alias="si")
+    if cohort_empty:
+        return LotListResponse(items=[], total=0)
 
     total = conn.execute(
         f"""
@@ -564,8 +659,9 @@ def list_lots(
           FROM review_queue rq
           JOIN image_assets a ON a.id = rq.image_asset_id
           JOIN source_images si ON si.id = a.source_image_id
-         WHERE rq.kind = 'lot' AND rq.status = 'open'
-        """
+         WHERE rq.kind = 'lot' AND rq.status = 'open'{cohort_clause}
+        """,
+        cohort_args,
     ).fetchone()["n"]
 
     rows = conn.execute(
@@ -588,14 +684,14 @@ def list_lots(
             FROM review_queue rq
             JOIN image_assets a ON a.id = rq.image_asset_id
             JOIN source_images si ON si.id = a.source_image_id
-           WHERE rq.kind = 'lot' AND rq.status = 'open'
+           WHERE rq.kind = 'lot' AND rq.status = 'open'{cohort_clause}
            GROUP BY listing_key
         )
         SELECT * FROM grouped
          ORDER BY oldest_enqueued_at ASC
          LIMIT ? OFFSET ?
         """,
-        (limit, offset),
+        (*cohort_args, limit, offset),
     ).fetchall()
 
     items = [
@@ -1004,6 +1100,7 @@ def decide_lot(listing_key: str, payload: LotDecidePayload) -> LotDecideResponse
                            variant_kind = COALESCE(?, variant_kind),
                            resolution_status = 'manual',
                            resolution_confidence = 1.0,
+                           training_eligible = 1,
                            resolved_at = ?
                      WHERE id = ?
                     """,
@@ -1043,7 +1140,10 @@ def decide_lot(listing_key: str, payload: LotDecidePayload) -> LotDecideResponse
                 conn.execute(
                     """
                     UPDATE image_assets
-                       SET resolution_status = 'rejected', resolved_at = ?
+                       SET resolution_status = 'rejected',
+                           training_eligible = 0,
+                           quality_reason = 'rejected_in_review',
+                           resolved_at = ?
                      WHERE id = ?
                     """,
                     (now_iso, asg.asset_id),
@@ -1189,6 +1289,7 @@ def decide_review(review_id: str, payload: DecidePayload) -> dict[str, str]:
                    variant_kind = COALESCE(?, variant_kind),
                    resolution_status = 'manual',
                    resolution_confidence = 1.0,
+                   training_eligible = 1,
                    resolved_at = ?
              WHERE id = ?
             """,
@@ -1327,12 +1428,43 @@ def correct_listing(review_id: str, payload: CorrectListingPayload) -> dict[str,
     }
 
 
+# Trash = sous-cas de reject avec une raison QUALITÉ explicite (chantier
+# crop-quality-overhaul, Session B). Le tail des crops imprécis est surtout
+# du DÉCHET (non-pièce : coincards, certificats, tubes ; ou photo illisible) :
+# l'humain le marque hors-training avec la cause, écrite dans
+# image_assets.quality_reason (au lieu du générique 'rejected_in_review').
+# `reason=None` → comportement reject historique.
+_VALID_TRASH_REASONS = ("not_a_coin", "too_low_quality")
+
+
+class RejectPayload(BaseModel):
+    # Optionnel : body absent → reject générique (rétro-compat). Présent →
+    # trash avec cause qualité tracée. Validé contre _VALID_TRASH_REASONS.
+    reason: str | None = None
+
+
 # Consumed by: admin/packages/web/src/features/review/composables/useReviewApi.ts (rejectReview)
 @router.post("/{review_id}/reject", status_code=200)
-def reject_review(review_id: str) -> dict[str, str]:
+def reject_review(
+    review_id: str, payload: RejectPayload | None = None,
+) -> dict[str, str]:
     """Mark the IMAGE as unusable (not the review row's status). The row
     is closed with `decision_notes='rejected'` and the underlying
-    `image_assets` row gets `resolution_status='rejected'`."""
+    `image_assets` row gets `resolution_status='rejected'`.
+
+    Si ``payload.reason`` est fourni (``not_a_coin`` / ``too_low_quality``),
+    c'est un *trash qualité* : la cause est écrite dans
+    ``image_assets.quality_reason`` et tracée dans la décision. Sans raison,
+    on garde le comportement reject historique (``quality_reason =
+    'rejected_in_review'``)."""
+    reason = payload.reason if payload else None
+    if reason is not None and reason not in _VALID_TRASH_REASONS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"reason must be one of {_VALID_TRASH_REASONS}",
+        )
+    quality_reason = reason or "rejected_in_review"
+
     conn = _store()._connection()  # noqa: SLF001
     rq = conn.execute(
         "SELECT id, image_asset_id, status FROM review_queue WHERE id = ?",
@@ -1352,24 +1484,27 @@ def reject_review(review_id: str) -> dict[str, str]:
         conn.execute(
             """
             UPDATE image_assets
-               SET resolution_status = 'rejected', resolved_at = ?
+               SET resolution_status = 'rejected',
+                   training_eligible = 0,
+                   quality_reason = ?,
+                   resolved_at = ?
              WHERE id = ?
             """,
-            (now_iso, rq["image_asset_id"]),
+            (quality_reason, now_iso, rq["image_asset_id"]),
         )
         cur = conn.execute(
             """
             UPDATE review_queue
                SET status = 'done',
-                   decision_notes = 'rejected',
+                   decision_notes = ?,
                    decided_at = ?,
                    decided_by = 'admin',
                    decision_engine_version = ?,
                    decision_metadata_json = ?
              WHERE id = ? AND status = 'open'
             """,
-            (now_iso, _HUMAN_ENGINE_VERSION,
-             json.dumps({"reason": "rejected"}), review_id),
+            (reason or "rejected", now_iso, _HUMAN_ENGINE_VERSION,
+             json.dumps({"reason": reason or "rejected"}), review_id),
         )
         if cur.rowcount != 1:
             conn.execute("ROLLBACK")
@@ -1384,8 +1519,207 @@ def reject_review(review_id: str) -> dict[str, str]:
         conn.execute("ROLLBACK")
         raise
 
-    logger.info("[review] rejected id=%s", review_id)
-    return {"status": "rejected", "id": review_id}
+    logger.info("[review] rejected id=%s reason=%s", review_id, quality_reason)
+    return {"status": "rejected", "id": review_id, "quality_reason": quality_reason}
+
+
+# ── Re-crop manuel (chantier crop-quality-overhaul, Session B) ─────────────
+#
+# Le ~2 % du tail = de VRAIES pièces mal cadrées (rim coupé, décentré) que
+# l'humain sauve en re-dessinant le cercle sur le RAW. On reproduit EXACTEMENT
+# le format de prod (``_crop_mask_resize_float`` : marge 0.02, masque dur, 224)
+# — seule la détection (cx,cy,r) devient manuelle. L'écriture calque
+# ``scripts/recrop_ebay_refine.py`` : cache local (overwrite) + MinIO
+# write-through + UPDATE image_assets (bbox/method/dims/phash). eurio_id,
+# resolution_status et training_eligible PRÉSERVÉS — le re-crop ne décide pas
+# l'attribution (la review reste ``open`` ; l'humain valide ensuite la pièce).
+
+
+class CropEditContext(BaseModel):
+    asset_id: str
+    source: str
+    raw_url: str                 # /sources/{source}/raws/{sid}/file (cache local)
+    crop_url: str                # /sources/{source}/assets/{aid}/file (crop actuel)
+    raw_width: int | None
+    raw_height: int | None
+    # Cercle de départ de l'éditeur = crop actuel, en px NATIFS du raw,
+    # reconstruit depuis bbox_json (x,y,w,h → centre + rayon). None si la
+    # bbox est absente (l'éditeur démarre alors sur un cercle par défaut).
+    hint: dict | None
+
+
+# Consumed by: admin/.../review/composables/useReviewApi.ts (fetchCropEditContext)
+@router.get("/{review_id}/crop-edit-context", response_model=CropEditContext)
+def get_crop_edit_context(review_id: str) -> CropEditContext:
+    """Contexte pour l'éditeur de cercle : le RAW (sur lequel on dessine) +
+    le cercle de départ (crop actuel, px natifs)."""
+    conn = _store()._connection()  # noqa: SLF001
+    row = conn.execute(
+        """
+        SELECT a.id AS asset_id, a.bbox_json,
+               si.id AS source_image_id, si.source AS source,
+               si.width AS raw_width, si.height AS raw_height,
+               si.storage_path AS raw_storage_path
+          FROM review_queue rq
+          JOIN image_assets a ON a.id = rq.image_asset_id
+          JOIN source_images si ON si.id = a.source_image_id
+         WHERE rq.id = ?
+        """,
+        (review_id,),
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Review item not found.")
+    if not row["raw_storage_path"]:
+        raise HTTPException(status_code=410, detail="Raw image unavailable.")
+
+    hint: dict | None = None
+    if row["bbox_json"]:
+        try:
+            d = json.loads(row["bbox_json"])
+            w, h = float(d.get("w", 0)), float(d.get("h", 0))
+            if w > 0 and h > 0:
+                hint = {
+                    "cx": float(d.get("x", 0)) + w / 2.0,
+                    "cy": float(d.get("y", 0)) + h / 2.0,
+                    "r": (w + h) / 4.0,  # moyenne des demi-côtés (bbox carrée)
+                }
+        except (json.JSONDecodeError, TypeError):
+            hint = None
+
+    sid = row["source_image_id"]
+    aid = row["asset_id"]
+    return CropEditContext(
+        asset_id=aid,
+        source=row["source"],
+        raw_url=f"/sources/{row['source']}/raws/{sid}/file",
+        crop_url=f"/sources/{row['source']}/assets/{aid}/file",
+        raw_width=row["raw_width"],
+        raw_height=row["raw_height"],
+        hint=hint,
+    )
+
+
+class ManualCropPayload(BaseModel):
+    cx: float = Field(ge=0)
+    cy: float = Field(ge=0)
+    r: float = Field(gt=0)
+
+
+class ManualCropResponse(BaseModel):
+    asset_id: str
+    cx: float
+    cy: float
+    r: float
+    bbox: ReviewBbox
+    width: int
+    height: int
+    detection_method: str
+    crop_b64: str                # data URI PNG du nouveau crop 224
+    minio_ok: bool               # False si le write-through MinIO a échoué
+
+
+# Consumed by: admin/.../review/composables/useReviewApi.ts (manualCrop)
+@router.post("/{review_id}/manual-crop", response_model=ManualCropResponse)
+def manual_crop(review_id: str, payload: ManualCropPayload) -> ManualCropResponse:
+    """Re-croppe l'asset depuis un cercle (cx,cy,r) dessiné à la main sur le
+    RAW, écrase le crop (cache + MinIO + DB). Format IDENTIQUE à la prod via
+    ``_crop_mask_resize_float`` ; eurio_id préservé ; review inchangée."""
+    from scan.normalize_snap import _crop_mask_resize_float
+    from sources._base.phash import compute_phash
+    from storage.local_cache import (
+        cache_path_for,
+        local_path,
+        upload_through,
+    )
+
+    conn = _store()._connection()  # noqa: SLF001
+    row = conn.execute(
+        """
+        SELECT a.id AS asset_id, a.storage_path AS crop_storage_path,
+               a.detection_method,
+               si.source AS source, si.storage_path AS raw_storage_path
+          FROM review_queue rq
+          JOIN image_assets a ON a.id = rq.image_asset_id
+          JOIN source_images si ON si.id = a.source_image_id
+         WHERE rq.id = ?
+        """,
+        (review_id,),
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Review item not found.")
+    if not row["crop_storage_path"] or not row["raw_storage_path"]:
+        raise HTTPException(status_code=410, detail="Asset storage unavailable.")
+
+    # 1. Charge le raw (cache local, read-through MinIO).
+    try:
+        raw_p = local_path("enrichment-raws", row["raw_storage_path"])
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=410, detail=f"Raw missing: {exc}") from exc
+    bgr = cv2.imread(str(raw_p), cv2.IMREAD_COLOR)
+    if bgr is None or bgr.size == 0:
+        raise HTTPException(status_code=422, detail="Raw image unreadable.")
+
+    H, W = bgr.shape[:2]
+    if payload.cx > W or payload.cy > H:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Circle centre ({payload.cx},{payload.cy}) outside raw {W}×{H}.",
+        )
+
+    # 2. Crop AU MÊME FORMAT que la prod (marge 0.02, masque dur, 224).
+    res = _crop_mask_resize_float(
+        bgr, payload.cx, payload.cy, payload.r, method="manual",
+    )
+    if res.image is None:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Empty crop ({res.debug.get('error', 'unknown')}).",
+        )
+
+    ok, buf = cv2.imencode(".png", res.image)
+    if not ok:
+        raise HTTPException(status_code=500, detail="PNG encode failed.")
+    png_bytes = buf.tobytes()
+
+    # 3. Écriture (calque recrop_ebay_refine) : cache local OVERWRITE direct
+    #    (upload_through skip le cache si le fichier existe), puis MinIO.
+    crop_sp = row["crop_storage_path"]
+    cache_p = cache_path_for("enrichment-crops", crop_sp)
+    cache_p.parent.mkdir(parents=True, exist_ok=True)
+    cache_p.write_bytes(png_bytes)
+    minio_ok = True
+    try:
+        upload_through("enrichment-crops", crop_sp, png_bytes)
+    except Exception as exc:  # noqa: BLE001
+        minio_ok = False
+        logger.warning("[manual-crop] MinIO write-through failed for %s: %s",
+                       crop_sp, exc)
+
+    # 4. DB : nouveau cercle + method 'manual' + dims + phash. eurio_id,
+    #    resolution_status, training_eligible NON touchés (re-crop ≠ décision).
+    cx, cy, r = payload.cx, payload.cy, payload.r
+    bbox = {"x": cx - r, "y": cy - r, "w": 2 * r, "h": 2 * r}
+    new_h, new_w = res.image.shape[0], res.image.shape[1]
+    conn.execute(
+        "UPDATE image_assets SET bbox_json = ?, detection_method = 'manual', "
+        "width = ?, height = ?, phash = ? WHERE id = ?",
+        (json.dumps(bbox), new_w, new_h, compute_phash(res.image), row["asset_id"]),
+    )
+    conn.commit()
+
+    logger.info("[manual-crop] review=%s asset=%s cx=%.1f cy=%.1f r=%.1f minio=%s",
+                review_id, row["asset_id"], cx, cy, r, minio_ok)
+
+    crop_b64 = "data:image/png;base64," + base64.b64encode(png_bytes).decode("ascii")
+    return ManualCropResponse(
+        asset_id=row["asset_id"],
+        cx=cx, cy=cy, r=r,
+        bbox=ReviewBbox(x=bbox["x"], y=bbox["y"], w=bbox["w"], h=bbox["h"]),
+        width=new_w, height=new_h,
+        detection_method="manual",
+        crop_b64=crop_b64,
+        minio_ok=minio_ok,
+    )
 
 
 # ── Dino suggestions (auto-validation V1) ─────────────────────────────────
@@ -1779,6 +2113,7 @@ def run_auto_accept(
     limit: int = Query(default=2000, ge=1, le=10000),
     dry_run: bool = Query(default=False),
     kind: str = Query(default="single"),
+    cohort_id: str | None = Query(default=None),
 ) -> AutoAcceptResult:
     """Itère la queue ``open`` et auto-décide les items ``auto_candidate``.
 
@@ -1806,12 +2141,21 @@ def run_auto_accept(
         set(body.review_ids) if body and body.review_ids is not None else None
     )
 
+    cohort_clause, cohort_args, cohort_empty = _cohort_filter(cohort_id, alias="s")
+    if cohort_empty:
+        return AutoAcceptResult(
+            processed=0, accepted=0, by_category={
+                "auto_candidate": 0, "partial": 0, "divergent": 0, "unknown": 0},
+            dry_run=dry_run, preview=[])
+
     conn = _store()._connection()  # noqa: SLF001
     where = "rq.status = 'open'"
     args: list[Any] = []
     if kind != "all":
         where += " AND rq.kind = ?"
         args.append(kind)
+    where += cohort_clause
+    args.extend(cohort_args)
     args.append(limit)
 
     # Même JOIN que list_queue → on a le contexte preview (target, thumb,
@@ -1921,6 +2265,7 @@ def run_auto_accept(
                        face = ?,
                        resolution_status = 'manual',
                        resolution_confidence = 1.0,
+                       training_eligible = 1,
                        resolved_at = ?
                  WHERE id = ?
                    AND resolution_status NOT IN ('manual','rejected')
@@ -2058,6 +2403,7 @@ def run_claude_batch(
     body: ClaudeBatchBody | None = None,
     limit: int = Query(default=50, ge=1, le=500),
     kind: str = Query(default="single"),
+    cohort_id: str | None = Query(default=None),
     base_url: str = Query(default="http://127.0.0.1:3002"),
 ) -> ClaudeBatchResult:
     """Pull N items ``open`` dans le scope, appelle Claude vision sur chacun,
@@ -2084,12 +2430,22 @@ def run_claude_batch(
             detail=f"model must be one of {list(MODELS.keys())}",
         )
 
+    cohort_clause, cohort_args, cohort_empty = _cohort_filter(cohort_id, alias="s")
+    if cohort_empty:
+        return ClaudeBatchResult(
+            processed=0, judged=0, skipped_already_judged=0,
+            skipped_no_canonical=0, skipped_not_open=0,
+            by_verdict={"match": 0, "no_match": 0, "uncertain": 0, "error": 0},
+            errors=0, model=MODELS[model_alias])
+
     conn = _store()._connection()  # noqa: SLF001
     where = "rq.status = 'open'"
     args: list[Any] = []
     if kind != "all":
         where += " AND rq.kind = ?"
         args.append(kind)
+    where += cohort_clause
+    args.extend(cohort_args)
     args.append(limit)
 
     rows = conn.execute(
@@ -2256,30 +2612,54 @@ class ClaudePendingResult(BaseModel):
 def list_claude_pending(
     verdict: str = Query(default="match"),
     limit: int = Query(default=200, ge=1, le=1000),
+    cohort_id: str | None = Query(default=None),
 ) -> ClaudePendingResult:
     """Liste les items où Claude a tranché ``verdict`` et qui attendent
     l'acquittement humain. Par défaut filtre sur ``match`` (le seul cas
-    qu'on veut auto-acquitter ; les autres restent en queue manuelle)."""
+    qu'on veut auto-acquitter ; les autres restent en queue manuelle).
+
+    ``cohort_id`` (optionnel) restreint la liste ET les compteurs by_verdict
+    aux coins de la cohort (§C4b)."""
     if verdict not in ("match", "no_match", "uncertain", "error"):
         raise HTTPException(
             status_code=422,
             detail="verdict must be match|no_match|uncertain|error",
         )
 
+    cohort_clause, cohort_args, cohort_empty = _cohort_filter(cohort_id, alias="s")
+    if cohort_empty:
+        return ClaudePendingResult(total_pending=0, by_verdict={}, items=[])
+
     conn = _store()._connection()  # noqa: SLF001
 
-    by_verdict_rows = conn.execute(
-        """
-        SELECT verdict, COUNT(*) AS c FROM review_claude_verdicts
-         WHERE status = 'pending'
-         GROUP BY verdict
-        """
-    ).fetchall()
+    # by_verdict : compteurs scopés cohort si demandé (join requis pour le
+    # filtre par coin ; sinon scan plat de la table verdicts).
+    if cohort_clause:
+        by_verdict_rows = conn.execute(
+            f"""
+            SELECT v.verdict AS verdict, COUNT(*) AS c
+              FROM review_claude_verdicts v
+              JOIN review_queue rq ON rq.id = v.review_id
+              JOIN image_assets a  ON a.id  = rq.image_asset_id
+              JOIN source_images s ON s.id  = a.source_image_id
+             WHERE v.status = 'pending' AND rq.status = 'open'{cohort_clause}
+             GROUP BY v.verdict
+            """,
+            cohort_args,
+        ).fetchall()
+    else:
+        by_verdict_rows = conn.execute(
+            """
+            SELECT verdict, COUNT(*) AS c FROM review_claude_verdicts
+             WHERE status = 'pending'
+             GROUP BY verdict
+            """
+        ).fetchall()
     by_verdict = {r["verdict"]: r["c"] for r in by_verdict_rows}
     total = sum(by_verdict.values())
 
     rows = conn.execute(
-        """
+        f"""
         SELECT v.review_id, v.model, v.verdict, v.confidence, v.face,
                v.raw_content, v.computed_at,
                rq.image_asset_id,
@@ -2295,11 +2675,11 @@ def list_claude_pending(
           JOIN image_assets a  ON a.id  = rq.image_asset_id
           JOIN source_images s ON s.id  = a.source_image_id
           LEFT JOIN coins c    ON c.eurio_id = s.target_eurio_id
-         WHERE v.status = 'pending' AND v.verdict = ? AND rq.status = 'open'
+         WHERE v.status = 'pending' AND v.verdict = ? AND rq.status = 'open'{cohort_clause}
          ORDER BY v.computed_at DESC
          LIMIT ?
         """,
-        (verdict, limit),
+        (verdict, *cohort_args, limit),
     ).fetchall()
 
     items: list[ClaudePendingItem] = []
@@ -2449,6 +2829,7 @@ def acknowledge_claude(body: ClaudeAckBody) -> ClaudeAckResult:
                    SET eurio_id = ?, face = ?,
                        resolution_status = 'manual',
                        resolution_confidence = 1.0,
+                       training_eligible = 1,
                        resolved_at = ?
                  WHERE id = ?
                    AND resolution_status NOT IN ('manual','rejected')

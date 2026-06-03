@@ -13,7 +13,7 @@ import sqlite3
 import pytest
 
 from scripts.llm_coin_aliases import _parse_years, _word_match, collides
-from sources.ebay.queries import _theme_match_state
+from sources.ebay.queries import theme_match_state
 
 
 # ── _parse_years ───────────────────────────────────────────────────────────
@@ -102,7 +102,7 @@ def conn_with_alias():
 
 def test_llm_alias_produces_hit(conn_with_alias):
     # le titre vendeur emploie le vocab de marché, absent de l'i18n
-    state = _theme_match_state(
+    state = theme_match_state(
         "Belgien 2 Euro 2018 Studentenrevolte BU", "be-2018-may-1968",
         conn=conn_with_alias,
     )
@@ -111,7 +111,7 @@ def test_llm_alias_produces_hit(conn_with_alias):
 
 def test_llm_alias_word_boundary_no_false_hit(conn_with_alias):
     # un titre sans le terme de marché ne doit pas hit sur l'alias
-    state = _theme_match_state(
+    state = theme_match_state(
         "Belgien 2 Euro 2018 ESRO-2B BU", "be-2018-may-1968",
         conn=conn_with_alias,
     )

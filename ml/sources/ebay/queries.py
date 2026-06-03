@@ -179,16 +179,22 @@ def search_limit_for_group(n_coins: int) -> int:
 def build_group_query(
     denomination: float,
     country: str,
-    year: int,
+    year: int | None,
     query_lang: str = "fr",
 ) -> EbayQuery:
-    """Build (q, aspect_filter) for a (denomination, country, year) group.
+    """Build (q, aspect_filter) for a discovery group.
 
     `query_lang` choisit la table de noms-pays utilisée — il doit
     correspondre à la langue native du marketplace ciblé (cf. vision.md
-    §P3). La requête ratisse large (denom + pays + année) ; l'attribution
-    de chaque listing à une pièce du groupe se fait en aval via
-    ``match_listing_to_group`` (matcher multilingue sur ``coin_names_i18n``).
+    §P3). La requête ratisse large (denom + pays [+ année]) ; l'attribution
+    de chaque listing à une pièce du groupe se fait en aval.
+
+    ``year=None`` → **groupe STANDARD** : pas de millésime dans la requête
+    (« 2 euro Spanien »). Le design d'un standard ne dépend pas de l'année ;
+    une recherche large couvre toutes les ères, attribuées en aval par
+    appartenance de plage (``sources/ebay/standards.py``). On n'ajoute PAS de
+    mot-clé « Kursmünze » : il filtrerait le recall (même leçon que l'aspect
+    année). Le tri standard/commémo vit dans l'attribution, pas la requête.
 
     Note (bloc 1, 2026-05-05) : le segment `Année:{...}` de l'aspect_filter
     a été drop — beaucoup de vendeurs ne remplissent pas l'aspect année, ce
@@ -198,7 +204,8 @@ def build_group_query(
     names = NAMES_BY_LANG.get(query_lang, ISO2_TO_NAME_FR)
     country_name = names.get(country, country)
     denom_label = "2 euro" if denomination == 2.0 else f"{denomination} euro"
-    q = f"{denom_label} {country_name} {year}".strip()
+    year_token = "" if year is None else f" {year}"
+    q = f"{denom_label} {country_name}{year_token}".strip()
     return EbayQuery(q=q, aspect_filter=f"categoryId:{CATEGORY_EURO_COINS}")
 
 
@@ -242,7 +249,7 @@ def load_group_coins(
     ]
 
 
-def _theme_match_state(
+def theme_match_state(
     title: str,
     eurio_id: str,
     *,
@@ -325,7 +332,7 @@ def title_matches_theme(
     (on ne filtre pas tant qu'on ne peut pas trancher), ``False`` seulement
     sur un vrai ``"miss"``.
     """
-    return _theme_match_state(title, eurio_id, conn=conn) != "miss"
+    return theme_match_state(title, eurio_id, conn=conn) != "miss"
 
 
 @dataclass(frozen=True)
@@ -432,7 +439,7 @@ def match_listing_to_group(
 
     hits = [
         eid for eid in ids
-        if _theme_match_state(title, eid, conn=conn) == "hit"
+        if theme_match_state(title, eid, conn=conn) == "hit"
     ]
     if len(hits) == 1:
         return GroupMatch((hits[0],), "single")

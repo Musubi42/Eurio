@@ -136,9 +136,13 @@ function promoteItemUrls(r: ReviewItem): ReviewItem {
   }
 }
 
-export async function fetchReviewQueue(opts: { limit?: number } = {}): Promise<ReviewItem[]> {
+export async function fetchReviewQueue(
+  opts: { limit?: number; cohortId?: string | null } = {},
+): Promise<ReviewItem[]> {
   const limit = opts.limit ?? 30
-  const real = await safeFetch<ReviewItem[]>(`/review-queue?limit=${limit}&order=priority`)
+  const params = new URLSearchParams({ limit: String(limit), order: 'priority' })
+  if (opts.cohortId) params.set('cohort_id', opts.cohortId)
+  const real = await safeFetch<ReviewItem[]>(`/review-queue?${params.toString()}`)
   if (real !== null) {
     return real.map(promoteItemUrls)
   }
@@ -241,6 +245,69 @@ export async function correctListing(
   }
 }
 
+// ─── Re-crop manuel (chantier crop-quality-overhaul, Session B) ──────────
+
+/** Contexte de l'éditeur de cercle : le RAW (sur lequel on dessine) + le
+ *  cercle de départ (crop actuel), en px NATIFS du raw. */
+export interface CropEditContext {
+  asset_id: string
+  source: string
+  raw_url: string
+  crop_url: string
+  raw_width: number | null
+  raw_height: number | null
+  hint: { cx: number; cy: number; r: number } | null
+}
+
+export interface ManualCropResult {
+  asset_id: string
+  cx: number
+  cy: number
+  r: number
+  bbox: { x: number; y: number; w: number; h: number }
+  width: number
+  height: number
+  detection_method: string
+  crop_b64: string
+  minio_ok: boolean
+}
+
+/** Charge le raw + le cercle de départ pour l'éditeur. Pas de fallback mock :
+ *  l'éditeur n'a de sens qu'avec un vrai backend (raw en cache local). */
+export async function fetchCropEditContext(reviewId: string): Promise<CropEditContext> {
+  const real = await safeFetch<CropEditContext>(
+    `/review-queue/${encodeURIComponent(reviewId)}/crop-edit-context`,
+  )
+  if (real === null) {
+    throw new Error('Backend indisponible — le crop manuel requiert l’API ML locale.')
+  }
+  return {
+    ...real,
+    raw_url: promoteUrl(real.raw_url),
+    crop_url: promoteUrl(real.crop_url),
+  }
+}
+
+/** Re-croppe l'asset depuis un cercle (cx,cy,r) en px natifs du raw. Écrase le
+ *  crop (cache + MinIO + DB) au format prod ; eurio_id préservé, review inchangée. */
+export async function manualCrop(
+  reviewId: string,
+  circle: { cx: number; cy: number; r: number },
+): Promise<ManualCropResult> {
+  const real = await safeFetch<ManualCropResult>(
+    `/review-queue/${encodeURIComponent(reviewId)}/manual-crop`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(circle),
+    },
+  )
+  if (real === null) {
+    throw new Error('Backend indisponible — le re-crop manuel n’a pas pu être enregistré.')
+  }
+  return real
+}
+
 // ─── Claude vision (ccproxy) ─────────────────────────────────────────────
 
 export type ClaudeVerdict = 'match' | 'no_match' | 'uncertain' | 'error'
@@ -290,11 +357,12 @@ export interface ClaudeAckResult {
 
 /** Liste les verdicts Claude en attente d'acquittement humain. */
 export async function fetchClaudePendingAcks(
-  opts: { verdict?: ClaudeVerdict; limit?: number } = {},
+  opts: { verdict?: ClaudeVerdict; limit?: number; cohortId?: string | null } = {},
 ): Promise<ClaudePendingResult> {
   const verdict = opts.verdict ?? 'match'
   const limit = opts.limit ?? 200
-  const qs = `verdict=${verdict}&limit=${limit}`
+  const cohortQs = opts.cohortId ? `&cohort_id=${encodeURIComponent(opts.cohortId)}` : ''
+  const qs = `verdict=${verdict}&limit=${limit}${cohortQs}`
   const real = await safeFetch<ClaudePendingResult>(
     `/review-queue/claude/pending-acks?${qs}`,
   )
@@ -312,10 +380,12 @@ export async function runClaudeBatch(
     scope?: Array<'partial' | 'divergent' | 'auto_candidate' | 'unknown'>
     model?: 'haiku' | 'sonnet' | 'opus'
     force?: boolean
+    cohortId?: string | null
   } = {},
 ): Promise<ClaudeBatchResult> {
   const limit = opts.limit ?? 50
-  const qs = `limit=${limit}`
+  const cohortQs = opts.cohortId ? `&cohort_id=${encodeURIComponent(opts.cohortId)}` : ''
+  const qs = `limit=${limit}${cohortQs}`
   const body = {
     scope: opts.scope ?? ['partial', 'divergent'],
     model: opts.model ?? 'sonnet',
@@ -374,15 +444,21 @@ export interface TriageStats {
   n_done_today_auto_dino: number
   n_done_this_week: number
   by_verdict: TriageVerdictCounts
+  // Crops en review LOT (kind='lot') — flow distinct du single (cockpit cohort).
+  n_lot_crops: number
 }
 
 /**
  * Agrégat unique pour le dashboard `/review` : compte total queue +
  * répartition par verdict d'auto-validation (auto_candidate / partial /
  * divergent / unknown). Source de vérité partagée avec `runAutoAccept`.
+ *
+ * `cohortId` (optionnel) restreint tous les compteurs aux images dont le coin
+ * theme-matché est dans la cohort — alimente les 3 cartes de la page cohort.
  */
-export async function fetchTriageStats(): Promise<TriageStats> {
-  const real = await safeFetch<TriageStats>('/review-queue/triage-stats')
+export async function fetchTriageStats(cohortId?: string | null): Promise<TriageStats> {
+  const qs = cohortId ? `?cohort_id=${encodeURIComponent(cohortId)}` : ''
+  const real = await safeFetch<TriageStats>(`/review-queue/triage-stats${qs}`)
   if (real !== null) return real
   // Mock fallback (backend off) — zéros honnêtes.
   return {
@@ -391,6 +467,7 @@ export async function fetchTriageStats(): Promise<TriageStats> {
     n_done_today_auto_dino: 0,
     n_done_this_week: 0,
     by_verdict: { auto_candidate: 0, partial: 0, divergent: 0, unknown: 0 },
+    n_lot_crops: 0,
   }
 }
 
@@ -431,11 +508,12 @@ export interface AutoAcceptResult {
  * hors `auto_candidate` est silencieusement skip).
  */
 export async function runAutoAccept(
-  opts: { limit?: number; dryRun?: boolean; reviewIds?: string[] } = {},
+  opts: { limit?: number; dryRun?: boolean; reviewIds?: string[]; cohortId?: string | null } = {},
 ): Promise<AutoAcceptResult> {
   const limit = opts.limit ?? 2000
   const dryRun = opts.dryRun ?? false
-  const qs = `limit=${limit}&dry_run=${dryRun}`
+  const cohortQs = opts.cohortId ? `&cohort_id=${encodeURIComponent(opts.cohortId)}` : ''
+  const qs = `limit=${limit}&dry_run=${dryRun}${cohortQs}`
   const real = await safeFetch<AutoAcceptResult>(
     `/review-queue/auto-accept/run?${qs}`,
     {

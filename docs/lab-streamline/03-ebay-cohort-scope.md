@@ -53,8 +53,12 @@ pour eux aussi (chemin générique, hors vue commémo).
 
 ## Décisions actées (2026-06-02)
 
-- **Standards = Numista-only** : pas de chemin per-coin eBay pour eux. Le scoping
-  les reporte dans `non_scrapable` (pas de drop silencieux).
+- ~~**Standards = Numista-only** : pas de chemin per-coin eBay pour eux.~~
+  **SUPERSÉDÉ le 2026-06-03** — un chemin de découverte standard a été livré
+  (groupe `(dénom, pays)`, attribution par appartenance de plage d'années +
+  exclusion commémo). Les standards sont désormais **scrapables** ; sur
+  `mix-zone-17` le `non_scrapable` passe de `[at-2002, es-1999, …]` à `[]`.
+  Voir **`05-ebay-standards.md`**.
 - **Build backend d'abord (03a)** ; lab UI = 03b.
 
 ## 03a livré — backend cohort-scoping
@@ -80,12 +84,25 @@ python -m sources.cli --source ebay --cohort-id <COHORT_ID>
 # ou via l'API (POST /sources/ebay/runs  body {"cohort_id":"<id>"})
 ```
 
-## Reste — 03b (lab UI)
+## 03b livré — lab UI (tiroir §C3 « Images eBay »)
 
-- Section « images eBay par coin » sur la fiche cohort (read-only, compte
-  `source_images`/`image_assets` par coin — pas de quota).
-- Bouton « Lancer scrape eBay (cohort) » → `POST /sources/ebay/runs {cohort_id}`,
-  avec préflight quota affiché + liste `non_scrapable`. Toi qui confirmes le run.
+- **Backend** : `GET /lab/cohorts/{id}/ebay-status` (read-only, **aucun appel eBay**)
+  → par coin : `n_listings` (source_images eBay), `n_crops` (image_assets), 
+  `n_training_eligible`, `scrapable` ; + `scrapable_groups`, `non_scrapable`,
+  `quota` (estimate offline via `check_ebay_quota`).
+- **Frontend** : `CohortDrawerEbay.vue` (tiroir §C3 sur la fiche cohort) — table
+  par coin, badge N/A pour les non-scrapables, ligne quota, bouton « Lancer scrape
+  eBay (cohort) » (confirmation `confirm()` car consomme le quota) → 
+  `triggerCohortEbayScrape` → `POST /sources/ebay/runs {cohort_id}`. Lien vers /review.
+- Composables : `fetchCohortEbayStatus`/`triggerCohortEbayScrape` (useLabApi),
+  `useCohortEbayStatusQuery`/`useTriggerCohortEbayScrapeMutation` (useLabQueries),
+  types `CohortEbayStatus`/`EbayQuotaInfo`/… (types.ts). Typecheck clean.
+
+**Validé** : endpoint testé (curl) sur mix-zone-16 → 11/14 commémo ont déjà des
+images eBay (scrapes globaux passés), `ad-2014`/`be-2007` à 0, 2 standards N/A,
+`training_eligible=0` partout (review pas faite). Audit visuel : à faire sur
+`http://localhost:5173/lab/cohorts/<id>` (le bouton scrape déclenche un vrai pass —
+manuel par doctrine).
 
 ## Journal
 

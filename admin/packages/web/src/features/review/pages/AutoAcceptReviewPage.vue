@@ -8,8 +8,8 @@
 // Pas de raccourcis clavier ici (cf. review single) : la review en grille
 // est plus contemplative qu'une décision unitaire, on reste à la souris.
 
-import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import {
   ArrowLeft,
   Check,
@@ -26,6 +26,14 @@ import ReviewCard from '../components/ReviewCard.vue'
 type Status = 'loading' | 'ready' | 'submitting' | 'done' | 'error'
 
 const router = useRouter()
+const route = useRoute()
+// Scope cohort optionnel (§C4b) — restreint la preview ET l'écriture aux
+// coins de la cohort. Piloté par `?cohort=<id>` (depuis la page cohort).
+const cohortId = computed(() =>
+  typeof route.query.cohort === 'string' && route.query.cohort
+    ? route.query.cohort
+    : null,
+)
 const status = ref<Status>('loading')
 const error = ref<string | null>(null)
 const items = ref<AutoAcceptPreviewItem[]>([])
@@ -59,7 +67,7 @@ async function load() {
   status.value = 'loading'
   error.value = null
   try {
-    const r = await runAutoAccept({ limit: 5000, dryRun: true })
+    const r = await runAutoAccept({ limit: 5000, dryRun: true, cohortId: cohortId.value })
     items.value = r.preview
     counts.value = r.by_category
     processed.value = r.processed
@@ -109,7 +117,7 @@ async function submit() {
   error.value = null
   try {
     const ids = Array.from(selected.value)
-    const r = await runAutoAccept({ limit: 5000, dryRun: false, reviewIds: ids })
+    const r = await runAutoAccept({ limit: 5000, dryRun: false, reviewIds: ids, cohortId: cohortId.value })
     accepted.value = r.accepted
     status.value = 'done'
   } catch (err) {
@@ -123,6 +131,8 @@ function backToCabinet() {
 }
 
 onMounted(load)
+// Recharge si le scope cohort change dans l'URL.
+watch(cohortId, () => { void load() })
 </script>
 
 <template>
@@ -151,6 +161,11 @@ onMounted(load)
           </h1>
           <p class="mt-0.5 text-xs" style="color: var(--ink-500);">
             Dino + texte convergent — désélectionne ce qui te semble douteux.
+            <span
+              v-if="cohortId"
+              class="ml-1.5 rounded-full px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider"
+              style="background: color-mix(in srgb, var(--indigo-700) 12%, var(--surface)); color: var(--indigo-700);"
+            >cohort · {{ cohortId }}</span>
           </p>
         </div>
       </div>

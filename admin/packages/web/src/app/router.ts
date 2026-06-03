@@ -133,6 +133,10 @@ const router = createRouter({
           component: () => import('@/features/bench/pages/BenchStudioPage.vue'),
         },
         {
+          path: 'crop-bench',
+          component: () => import('@/features/crop-bench/pages/CropBenchPage.vue'),
+        },
+        {
           path: 'bench/runs/:runId',
           component: () => import('@/features/bench/pages/BenchRunAuditPage.vue'),
         },

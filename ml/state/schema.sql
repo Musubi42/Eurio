@@ -1061,6 +1061,40 @@ WHERE c.face_value = 2.0
   AND c.country != 'eu'
   AND c.canonical_eurio_id IS NULL;  -- canoniques seules (pas les variantes)
 
+-- ─── Freshness view eBay — pièces STANDARD (maille pays) ──────────────────
+-- Un standard (is_commemorative = 0) n'a PAS de thème par année : sa face
+-- nationale est identique sur toute une *ère de design* (carte 1ʳᵉ/2ᵉ,
+-- portrait, type), et une ère = une ligne canonique `coins` dont `year` est
+-- l'année de *début*. Le grouping commémo `(dénom, pays, année)` est donc
+-- inadapté : une seule recherche large « 2 euro {pays} » couvre toutes les
+-- ères d'un pays. La maille du groupe standard est `(dénomination, pays)` —
+-- PAS l'année. `n_eras` = nombre d'ères canoniques du pays (toutes cherchées
+-- par la recherche large ; l'attribution à une ère se fait en aval par
+-- appartenance de plage d'années, cf. sources/ebay/standards.py).
+--
+-- Drop+create (cf. note des vues freshness commémo ci-dessus).
+DROP VIEW IF EXISTS v_ebay_standard_groups;
+
+CREATE VIEW v_ebay_standard_groups AS
+SELECT
+  c.face_value               AS denomination,
+  c.country                  AS country,
+  COUNT(DISTINCT c.eurio_id)  AS n_eras,
+  MAX(si.fetched_at)          AS last_enriched_at,
+  COUNT(DISTINCT si.id)       AS n_images,
+  COUNT(DISTINCT ia.id)       AS n_crops
+FROM coins c
+LEFT JOIN source_images si
+  ON si.target_eurio_id = c.eurio_id AND si.source = 'ebay'
+LEFT JOIN image_assets ia
+  ON ia.source_image_id = si.id
+WHERE c.face_value = 2.0
+  AND c.is_commemorative = 0
+  AND c.country != 'eu'
+  AND c.canonical_eurio_id IS NULL   -- canoniques (ères) seules ; pas les
+                                     -- variantes pattern/mule/coloured
+GROUP BY c.face_value, c.country;
+
 -- ─── QA : références eurio_id orphelines ──────────────────────────────────
 -- Plusieurs colonnes pointent un eurio_id sans contrainte FK (par design :
 -- target_eurio_id est une *hypothèse* de match, autorisée à être fausse).

@@ -11,13 +11,15 @@ Design notes:
   ``(iteration_seed, numista_id)``. The per-coin seed lets us regenerate
   one coin's snapshot without touching the others (useful when a single
   coin's source images change).
-- Source images are pulled exclusively from ``<nid>/obverse.{jpg,png}``.
-  Captures are NEVER used as a training source — they are the bench's
-  ground truth (`evaluate_real_photos.py` reads them) and using them
-  here would (a) leak the eval set into training, gonflant le R@1
-  studio, and (b) diverger du baseline historique qui s'est toujours
-  entraîné sur obverse uniquement. Reverse n'est pas non plus utilisé
-  — décision produit, le modèle ArcFace ne voit que l'avers.
+- Training sources per coin = ``<nid>/obverse.{jpg,png}`` (Numista canonical)
+  **+ les crops eBay reviewés ``training_eligible=1``** (C4d — cf.
+  lab-streamline README §5 « Doctrine A »). Les augmentations sont réparties
+  en cyclant sur toutes ces sources réelles (``sources[i % len(sources)]``).
+  Captures device : JAMAIS une source de training — ce sont la vérité-terrain
+  du bench (`evaluate_real_photos.py` les lit) ; les utiliser ici (a) fuiterait
+  l'eval set dans le training (gonflant le R@1 studio) et (b) casserait le mur
+  train/bench (Doctrine A). Reverse non plus — le modèle ArcFace ne voit que
+  l'avers. Seuls obverse + eBay-reviewé alimentent le bake.
 - Output filenames are ``sample_<NNN>.jpg`` zero-padded to 3 digits, as
   documented in ``docs/training-pipeline/filesystem.md``.
 - For each iteration we also build a unified training root at
@@ -89,6 +91,45 @@ def _source_images(numista_id: int) -> list[Path]:
     ]
 
 
+def _ebay_training_sources(eurio_id: str, store: Store) -> list[Path]:
+    """eBay crops reviewés ``training_eligible=1`` pour ce coin (C4d).
+
+    Source de training légitime à côté de l'obverse Numista (Doctrine A —
+    eBay reviewé = training). Seuls les crops marqués éligibles en review
+    (manuel / auto-accept / claude) et présents sur disque qualifient ; les
+    captures device restent hors-training (bench-only) et ne sont jamais lues
+    ici. Chemins résolus vers le cache local des crops (``enrichment-crops``).
+    """
+    from storage.local_cache import local_path
+
+    conn = store._connection()  # noqa: SLF001
+    # Filtre sur ``a.eurio_id`` (le label TRANCHÉ en review), pas
+    # ``si.target_eurio_id`` (la cible de découverte) : si l'admin a réattribué
+    # le crop à un autre coin, c'est ce nouveau label qui fait foi pour le train.
+    rows = conn.execute(
+        """
+        SELECT a.storage_path
+          FROM image_assets a
+          JOIN source_images si ON si.id = a.source_image_id
+         WHERE si.source = 'ebay'
+           AND a.eurio_id = ?
+           AND a.training_eligible = 1
+           AND a.storage_status = 'present'
+         ORDER BY a.id
+        """,
+        (eurio_id,),
+    ).fetchall()
+    paths: list[Path] = []
+    for r in rows:
+        sp = r[0]
+        if not sp:
+            continue
+        p = local_path("enrichment-crops", sp)
+        if p.exists():
+            paths.append(p)
+    return paths
+
+
 def generate_for_iteration(
     *,
     iteration_id: str,
@@ -144,7 +185,8 @@ def generate_for_iteration(
             )
             continue
 
-        sources = _source_images(nid)
+        # Sources réelles = obverse Numista + crops eBay reviewés (C4d).
+        sources = _source_images(nid) + _ebay_training_sources(eurio_id, store)
         if not sources:
             reports.append(
                 CoinAugReport(
@@ -152,7 +194,7 @@ def generate_for_iteration(
                     numista_id=nid,
                     written=0,
                     sources_used=0,
-                    skipped_reason="no obverse image (obverse.jpg or obverse.png)",
+                    skipped_reason="no training source (obverse.jpg/png ni crop eBay training-eligible)",
                 )
             )
             continue
@@ -187,9 +229,10 @@ def generate_for_iteration(
                 })
                 written += 1
 
-        # Audit trail: explicit per-coin manifest of which obverse fed which
-        # baked sample. Cheap (≤target rows, plain dicts), and the only way
-        # to verify "obverse uniquement" without re-reading the source code.
+        # Audit trail: explicit per-coin manifest of which source (obverse ou
+        # crop eBay reviewé) fed which baked sample. Cheap (≤target rows, plain
+        # dicts), and the only way to verify le mix de sources réelles sans
+        # re-lire le code (captures device toujours absentes — Doctrine A).
         manifest = {
             "iteration_id": iteration_id,
             "eurio_id": eurio_id,

@@ -1,12 +1,20 @@
 // Coin search composable — backs the /coins/search modal.
 //
-// Source = table `coins` Supabase (même source que /coins page).
-// Le selector UI manipule un `denomination` synthétique ('1c'…'2eur-comm')
-// qui se traduit en {face_value, is_commemorative} pour la requête.
+// Source = table `coins` de **eurio.db** via l'API ML (`GET /coins`), pas
+// Supabase (doctrine SQLite-only — Supabase coins est périmé/vide, ce qui
+// renvoyait « aucune pièce »). Le selector UI manipule un `denomination`
+// synthétique ('1c'…'2eur-comm') traduit en {face_value, is_commemorative}.
 
-import { supabase } from '@/shared/supabase/client'
-import type { Coin } from '@/shared/supabase/types'
-import { firstImageUrl } from '@/shared/utils/coin-images'
+import { ML_API } from '@/features/training/composables/useTrainingApi'
+
+// Sous-ensemble de la réponse `GET /coins` (CoinDetail) utilisé ici.
+interface CoinDetailLite {
+  eurio_id: string
+  country: string
+  year: number
+  is_commemorative: boolean
+  numista_id: number | null
+}
 
 export interface CoinSearchEntry {
   eurio_id: string
@@ -72,7 +80,7 @@ export const DENOMINATIONS: { value: string; label: string; faceValue: number; c
 
 export const YEAR_RANGE = { min: 1999, max: 2026 }
 
-// ─── Fetcher Supabase ───────────────────────────────────────────────────
+// ─── Fetcher API ML (eurio.db) ──────────────────────────────────────────
 
 export async function searchCoins(filters: CoinSearchFilters): Promise<CoinSearchEntry[]> {
   if (!filters.country) return []
@@ -83,34 +91,35 @@ export async function searchCoins(filters: CoinSearchFilters): Promise<CoinSearc
 
   const limit = filters.limit ?? 60
 
-  let q = supabase
-    .from('coins')
-    .select('eurio_id, country, year, face_value, is_commemorative, theme, images')
-    .eq('country', filters.country)
-    .eq('face_value', denomMeta.faceValue)
-    .eq('is_commemorative', denomMeta.commemorative)
-    .order('year', { ascending: true })
-    .order('eurio_id', { ascending: true })
-    .limit(limit)
-
-  if (filters.year !== null) q = q.eq('year', filters.year)
-
-  const { data, error } = await q
-  if (error) throw error
+  // `GET /coins` filtre fv + commemo + country (CSV ISO2 majuscule, comme
+  // eurio.db). Pas de filtre année côté API → on filtre client-side (l'année
+  // est optionnelle dans le selector). Les variantes sont exclues par défaut.
+  const params = new URLSearchParams({
+    fv: String(denomMeta.faceValue),
+    commemo: denomMeta.commemorative ? '1' : '0',
+    country: filters.country,
+    limit: String(limit),
+  })
+  const resp = await fetch(`${ML_API}/coins?${params.toString()}`)
+  if (!resp.ok) throw new Error(`Recherche pièces échouée (${resp.status})`)
+  const data = (await resp.json()) as { items: CoinDetailLite[] }
 
   const countryMeta = EURO_COUNTRIES.find((c) => c.code === filters.country)
-  return (data ?? []).map((row) => {
-    const coin = row as unknown as Coin
-    return {
+  return (data.items ?? [])
+    .filter((coin) => filters.year === null || coin.year === filters.year)
+    .sort((a, b) => a.year - b.year || a.eurio_id.localeCompare(b.eurio_id))
+    .map((coin) => ({
       eurio_id: coin.eurio_id,
       country: coin.country,
       denomination: filters.denomination!,
       year: coin.year,
       label: `${countryMeta?.label ?? coin.country} · ${denomMeta.label} · ${coin.year}`,
-      canonical_thumb_url: firstImageUrl(coin),
+      // Vignette servie par l'API ML (même chemin que les suggestions Dino).
+      canonical_thumb_url: coin.numista_id
+        ? `${ML_API}/images/${coin.numista_id}/source`
+        : null,
       is_commemorative: coin.is_commemorative,
-    }
-  })
+    }))
 }
 
 // ─── Fuzzy search (combobox `/`) ────────────────────────────────────────

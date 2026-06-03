@@ -68,6 +68,56 @@ export interface CohortSyncResult {
   duration_s: number
 }
 
+// ─── eBay cohort status (chunk 03b) ────────────────────────────────────
+
+export interface EbayQuotaInfo {
+  ok: boolean
+  estimate: number
+  remaining: number
+  limit: number
+  avg_calls_per_eurio_id: number
+  max_safe_batch: number
+}
+
+export interface CohortEbayCoin {
+  eurio_id: string
+  numista_id: number | null
+  scrapable: boolean
+  n_listings: number
+  n_crops: number
+  n_training_eligible: number
+  // Sources réelles distinctes (obverse Numista + crops eBay reviewés) et flag
+  // « assez » (≥ min_real_sources). Décident si la classe a besoin de + d'eBay.
+  n_real_sources: number
+  enough: boolean
+}
+
+export interface CohortEbayStatus {
+  cohort_id: string
+  scrapable_groups: Array<{
+    denomination: number
+    country: string
+    // null pour un groupe standard (kind='standard') : le design couvre
+    // toutes les années, la recherche eBay est sans millésime.
+    year: number | null
+    n_coins: number
+    kind: 'commemorative' | 'standard'
+  }>
+  non_scrapable: string[]
+  quota: EbayQuotaInfo | null
+  per_coin: CohortEbayCoin[]
+  // Seuil de sources réelles sous lequel une classe est flaggée (§C5).
+  min_real_sources: number
+}
+
+export interface EbayScrapeTriggerResult {
+  run_id: string
+  status: string
+  source_id: string
+  kind: string
+  non_scrapable: string[] | null
+}
+
 export interface BenchmarkSummary {
   id: string
   status: string

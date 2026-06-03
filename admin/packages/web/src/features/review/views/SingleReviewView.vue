@@ -5,8 +5,8 @@
 // overlay + sélecteur libre. Le shell ReviewPage gère le toggle
 // Single | Lot et le titre.
 
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { AlertTriangle, Keyboard, Search, Sparkles, Undo2, Wand2 } from 'lucide-vue-next'
 import {
   correctListing,
@@ -28,7 +28,9 @@ import {
 import { useReviewKeybinds } from '../composables/useReviewKeybinds'
 import type { CoinSearchEntry } from '../composables/useCoinsSearch'
 import SplitCompare from '../components/SplitCompare.vue'
+import CircleCropEditor from '../components/CircleCropEditor.vue'
 import ReviewActionBar from '../components/ReviewActionBar.vue'
+import { Crop } from 'lucide-vue-next'
 import DinoVerdict from '../components/DinoVerdict.vue'
 import AutoValidateVerdict from '../components/AutoValidateVerdict.vue'
 import ReviewRightColumn from '../components/ReviewRightColumn.vue'
@@ -49,6 +51,10 @@ const freeSearchCandidate = ref<ReviewCandidate | null>(null)
 const face = ref<ReviewFace>('obverse')
 const stats = ref<ReviewStats | null>(null)
 const showHelp = ref(false)
+// Éditeur de re-crop manuel (overlay) + jeton de cache-bust pour rafraîchir
+// le crop affiché après écrasement côté backend.
+const showCropEditor = ref(false)
+const cropBust = ref(0)
 // Mode de la colonne droite : 'auto' = Top N + DinoSuggestions ;
 // 'free' = FreeSelectorPanel inline (cascade pays/dénom/année).
 // Reset à 'auto' à chaque changement d'item.
@@ -104,6 +110,13 @@ const currentItem = computed<ReviewItem | null>(
   () => queue.value[currentIndex.value] ?? null,
 )
 
+// URL du crop avec cache-bust : après un re-crop manuel, le fichier est
+// écrasé au même chemin → on force le navigateur à recharger via `?v=`.
+const currentCropUrl = computed<string>(() => {
+  const url = currentItem.value?.crop_url ?? ''
+  return url && cropBust.value ? `${url}?v=${cropBust.value}` : url
+})
+
 const focusedCandidate = computed<ReviewCandidate | null>(() => {
   if (freeSearchCandidate.value) return freeSearchCandidate.value
   if (focusedCandidateIdx.value === null || !currentItem.value) return null
@@ -130,18 +143,29 @@ const focusedMarketQuote = computed<MarketQuote | null>(() => {
   return (marketQuotes.value[eid] ?? []).find((q) => q.condition === cond) ?? null
 })
 
+// Optional cohort scope, driven by the `?cohort=<id>` query (set in ReviewPage).
+const route = useRoute()
+const cohortId = computed(() =>
+  typeof route.query.cohort === 'string' && route.query.cohort
+    ? route.query.cohort
+    : null,
+)
+
 // Valider exige un candidat ET un type/état renseignés : on ne fige pas
 // une attribution sans avoir tranché le contexte listing (C4).
-const canValidate = computed(
-  () => !!focusedCandidate.value
-    && effectiveKind.value !== null
-    && effectiveCondition.value !== null,
-)
+// EXCEPTION (C4c) — en contexte cohort, la review est centrée « bonne pièce ? » :
+// le contexte listing (prix/type/état, orienté référentiel marché) est masqué,
+// donc valider n'exige qu'un candidat focusé.
+const canValidate = computed(() => {
+  if (!focusedCandidate.value) return false
+  if (cohortId.value) return true
+  return effectiveKind.value !== null && effectiveCondition.value !== null
+})
 const validateBlockedReason = computed<string | null>(() => {
   if (!focusedCandidate.value) {
     return 'Sélectionne un candidat (1-5) ou le sélecteur libre (F)'
   }
-  if (effectiveKind.value === null || effectiveCondition.value === null) {
+  if (!cohortId.value && (effectiveKind.value === null || effectiveCondition.value === null)) {
     return 'Renseigne le type (K) et l’état (C) du listing'
   }
   return null
@@ -150,9 +174,13 @@ const validateBlockedReason = computed<string | null>(() => {
 // ─── Loaders ────────────────────────────────────────────────────────────
 
 async function load() {
-  const [q, s] = await Promise.all([fetchReviewQueue({ limit: 30 }), fetchReviewStats()])
+  const [q, s] = await Promise.all([
+    fetchReviewQueue({ limit: 30, cohortId: cohortId.value }),
+    fetchReviewStats(),
+  ])
   queue.value = q
   stats.value = s
+  currentIndex.value = 0
   resetForCurrent()
 }
 
@@ -161,6 +189,8 @@ function resetForCurrent() {
   mode.value = 'auto'
   correctedKind.value = null
   correctedCondition.value = null
+  cropBust.value = 0
+  showCropEditor.value = false
   void loadMarketQuotes()
   // Pré-sélection : la pièce proposée (target_candidate, theme-match) bat
   // le top-1 auto-name. ~80 % des reviews valident la proposition —
@@ -194,6 +224,11 @@ onMounted(() => {
   window.addEventListener('beforeunload', flushBeforeUnload)
 })
 
+// Reload the queue when the cohort scope changes (?cohort= toggled in the header).
+watch(cohortId, () => {
+  void load()
+})
+
 // Démontage = changement de route OU bascule Single→Lot (v-if dans
 // ReviewPage) : on flush la décision en attente plutôt que la perdre.
 onBeforeUnmount(() => {
@@ -223,6 +258,9 @@ function advance() {
 /** Charge les quotes marché des candidats de l'item courant. */
 async function loadMarketQuotes() {
   marketQuotes.value = {}
+  // En contexte cohort, la carte listing (et son cross-check prix) est masquée
+  // (C4c) → inutile de charger les quotes marché.
+  if (cohortId.value) return
   const item = currentItem.value
   if (!item) return
   const ids = new Set<string>()
@@ -415,7 +453,13 @@ function onDinoSelect(s: DinoSuggestion) {
 
 // ─── Keyboard ───────────────────────────────────────────────────────────
 
-const keyboardEnabled = computed(() => !showHelp.value)
+const keyboardEnabled = computed(() => !showHelp.value && !showCropEditor.value)
+
+// Re-crop manuel validé : le crop a été écrasé côté backend → on bust le
+// cache pour réafficher la nouvelle version sans recharger la queue.
+function onCropSaved() {
+  cropBust.value = Date.now()
+}
 
 useReviewKeybinds(keyboardEnabled, {
   onCandidateFocus: focusCandidate,
@@ -539,13 +583,29 @@ useReviewKeybinds(keyboardEnabled, {
       <div class="grid flex-1 gap-6 overflow-hidden px-8 py-6 lg:grid-cols-[minmax(0,1fr)_560px]">
           <!-- ── COLONNE GAUCHE ── -->
           <div class="flex min-h-0 flex-col gap-4 overflow-y-auto">
+            <div class="flex items-center justify-end">
+              <button
+                type="button"
+                class="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-mono uppercase tracking-wider transition-colors"
+                style="border-color: var(--surface-3); color: var(--indigo-700); background: var(--surface-1);"
+                title="Re-cropper manuellement (pièce mal cadrée)"
+                @click="showCropEditor = true"
+              >
+                <Crop class="h-3 w-3" />
+                Recadrer
+              </button>
+            </div>
             <SplitCompare
-              :crop-url="currentItem.crop_url"
+              :crop-url="currentCropUrl"
               :canonical-url="focusedCandidate?.canonical_thumb_url ?? null"
               :bbox="currentItem.bbox"
             />
 
+            <!-- Carte listing (prix/type/état/quote marché) : orientée
+                 référentiel marché → masquée en contexte cohort (C4c), où la
+                 review se limite à « bonne pièce ? ». -->
             <ListingContextCard
+              v-if="!cohortId"
               :title="currentItem.listing_title"
               :source="currentItem.source"
               :price="currentItem.listing_price"
@@ -646,6 +706,14 @@ useReviewKeybinds(keyboardEnabled, {
         />
       </div>
     </Transition>
+
+    <!-- ═══ Éditeur de re-crop manuel (overlay) ═══ -->
+    <CircleCropEditor
+      v-if="showCropEditor && currentItem"
+      :review-id="currentItem.id"
+      @close="showCropEditor = false"
+      @saved="onCropSaved"
+    />
 
     <!-- ═══ Help overlay ═══ -->
     <div

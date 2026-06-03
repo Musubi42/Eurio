@@ -66,10 +66,23 @@ qui matchent. CSV marqué `# mode=ablation` : à confirmer vs le pull existant.
 | 01 | Import CSV → cohort | ✅ livré | (csv.ts + CohortNewPage.vue) |
 | 02 | Réconciliation slugs + sync captures 17 | ✅ livré (16/17, bleuet manquant) | [02-slug-reconciliation.md](./02-slug-reconciliation.md) |
 | 03a | eBay scopé cohort — backend (CLI + API) | ✅ livré | [03-ebay-cohort-scope.md](./03-ebay-cohort-scope.md) |
-| 03b | eBay scopé cohort — lab UI (statut + trigger) | ⬜ | — |
-| 04 | Review filtrée cohort | ⬜ | — |
-| 05 | Enrichissement (eBay reviewé → sources training) | ⬜ | — |
-| 06 | Gros run PC (17 classes) | ⬜ | — |
+| 03b | eBay scopé cohort — lab UI (tiroir §C3 statut + trigger) | ✅ livré | [03-ebay-cohort-scope.md](./03-ebay-cohort-scope.md) |
+| 04 | Review filtrée cohort | ✅ livré | [04-review-cohort-filter.md](./04-review-cohort-filter.md) |
+| C4a | 3 cartes « Review crops » scopées cohort (tiroir §C4) + triage-stats cohort | ✅ livré | [BACKLOG.md](./BACKLOG.md) §A |
+| C4b | Scoper Auto-accept + CCProxy/Claude à la cohort (`cohort_id` backend + pages) | ✅ livré | [BACKLOG.md](./BACKLOG.md) §A |
+| C4c | Simplifier la review en contexte cohort (retirer prix/listing, valider sans type/état) | ✅ livré | [BACKLOG.md](./BACKLOG.md) §A |
+| — | Debug review : drift ancres Dino (rebuild 508 + backfill 1987) ; free-selector Supabase→eurio.db (`GET /coins`) | ✅ corrigé | [[project_dino_anchors_slug_drift]] |
+| C4d | Mur review→train : validé (manuel/auto/claude) → `training_eligible=1` + brancher crops eBay dans le bake | ✅ livré | [BACKLOG.md](./BACKLOG.md) §A |
+| — | Fraîcheur compteurs : `refetchOnMount:'always'` (C3+C4) ; `train`/bake filtrent sur `ia.eurio_id` (label reviewé) | ✅ corrigé | — |
+| C5 | Enrichissement : colonne « réels » (obverse + eBay reviewé) + flag < 15 + **rescrape ciblé par pièce** dans C3 | ✅ livré | [BACKLOG.md](./BACKLOG.md) §B |
+| C4-lot | Review **Lot** scopée cohort (`list_lots` cohort_id) + 4e carte « Lots » (n_lot_crops) — 979/1367 crops y vivaient, invisibles avant | ✅ livré | — |
+| Lot-crop | **Fix data** : `recrop_ebay_refine` (mono-pièce) ruinait les crops multi-pièces (tous = planche entière). `recrop_lots_per_coin.py` régénère par-pièce via `detect_circles_multi` + garde anti-récidive. 1 listing fait, parc (414 img/1619 crops) en attente | 🔄 1 listing | [[project_dino_anchors_slug_drift]] |
+| Lot-UX | Page détail lot : bande filtrée par photo, anneaux gris/vert/rouge, feedback sélection (candidats + Dino + cible), hover bidirectionnel | ✅ livré | — |
+| eBay-std | Élargir le scrape eBay aux standards | ⬜ (prompt fourni) | [BACKLOG.md](./BACKLOG.md) §C |
+| 06 | Gros run PC (16 classes) | ⬜ | [BACKLOG.md](./BACKLOG.md) §D |
+| crop | Qualité du crop (mission parallèle, **imparfait**) | ⬜ session dédiée | [BACKLOG.md](./BACKLOG.md) |
+
+➡️ **Point de reprise : [BACKLOG.md](./BACKLOG.md)** (état, reste à faire, pièges & patterns).
 
 ### Bugs câblage trouvés+corrigés via le smoke (2026-06-02)
 

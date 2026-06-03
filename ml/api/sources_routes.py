@@ -106,11 +106,17 @@ def sources_status() -> dict:
 
 
 class GroupSpec(BaseModel):
-    """Un groupe de découverte (dénomination, pays, année)."""
+    """Un groupe de découverte eBay.
+
+    ``kind='commemorative'`` → ``(dénomination, pays, année)``.
+    ``kind='standard'`` → ``(dénomination, pays)`` avec ``year=None`` (le
+    design d'un standard couvre toutes les années — cf. ``DiscoveryGroup``).
+    """
 
     denomination: float
     country: str
-    year: int
+    year: int | None = None
+    kind: str = "commemorative"
 
 
 class RunQueryBody(BaseModel):
@@ -146,6 +152,7 @@ class RunQueryBody(BaseModel):
                     denomination=g["denomination"],
                     country=g["country"],
                     year=g["year"],
+                    kind=g.get("kind", "commemorative"),
                 )
                 for g in groups
             )
@@ -197,7 +204,11 @@ def trigger_run(
                 },
             )
         payload.discovery_groups = [
-            GroupSpec(denomination=d, country=c, year=y) for d, c, y, _ in groups
+            GroupSpec(
+                denomination=g.denomination, country=g.country,
+                year=g.year, kind=g.kind,
+            )
+            for g in groups
         ]
         if non_scrapable:
             logger.info(

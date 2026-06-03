@@ -39,6 +39,10 @@ defineProps<{
    *  utilise reviewId, lot utilise assetId). */
   reviewId?: string | null
   assetId?: string | null
+  /** eurio_id assigné au crop actif (contexte lot uniquement).
+   *  Quand fournie, l'item correspondant apparaît "sélectionné/validé"
+   *  (fond vert + icône check). Non fourni = comportement single inchangé. */
+  assignedEurioId?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -54,7 +58,8 @@ const emit = defineEmits<{
   <aside class="flex min-h-0 flex-col overflow-hidden">
     <!-- Pièce proposée : la pièce attribuée au listing par le theme-match.
          Toujours affichée (mode-agnostic), pré-sélectionnée par défaut.
-         ~80 % des reviews valident la proposition → un clic gagné. -->
+         ~80 % des reviews valident la proposition → un clic gagné.
+         Si assignedEurioId == target.eurio_id → overlay "validé" vert. -->
     <section
       v-if="target"
       class="mb-3 flex flex-col gap-1.5"
@@ -66,13 +71,25 @@ const emit = defineEmits<{
         <span>Pièce proposée</span>
         <span class="opacity-60">attribuée au listing</span>
       </p>
-      <CandidateRow
-        :candidate="target"
-        :index="0"
-        badge="★"
-        :focused="freeSearchCandidate?.eurio_id === target.eurio_id"
-        @focus="emit('target-focus')"
-      />
+      <!-- Wrapper "assigné" : fond + bordure vert quand cette cible est l'assignation active -->
+      <div
+        class="relative rounded-md transition-all duration-150"
+        :class="{ 'assigned-highlight': assignedEurioId === target.eurio_id }"
+        :style="assignedEurioId === target.eurio_id ? {
+          outline: '2px solid var(--success)',
+          outlineOffset: '1px',
+          borderRadius: '8px',
+        } : {}"
+      >
+        <CandidateRow
+          :candidate="target"
+          :index="0"
+          :badge="assignedEurioId === target.eurio_id ? '✓' : '★'"
+          :focused="freeSearchCandidate?.eurio_id === target.eurio_id"
+          :assigned="assignedEurioId === target.eurio_id"
+          @focus="emit('target-focus')"
+        />
+      </div>
     </section>
 
     <!-- Mode AUTO : Top N + Dino + freeSearchCandidate banner -->
@@ -116,27 +133,42 @@ const emit = defineEmits<{
         </p>
 
         <div class="flex flex-col gap-2">
-          <CandidateRow
+          <!-- Wrapper "assigné" par candidat : highlight vert si assignedEurioId correspond -->
+          <div
             v-for="(c, idx) in candidates"
             :key="c.eurio_id + idx"
-            :candidate="c"
-            :index="idx"
-            :focused="focusedCandidateIdx === idx && !freeSearchCandidate"
-            :style="{ animation: `fade-in 200ms ease-out ${idx * 30}ms backwards` }"
-            @focus="emit('candidate-focus', idx)"
-          />
+            class="relative rounded-md transition-all duration-150"
+            :style="[
+              { animation: `fade-in 200ms ease-out ${idx * 30}ms backwards` },
+              assignedEurioId === c.eurio_id ? {
+                outline: '2px solid var(--success)',
+                outlineOffset: '1px',
+                borderRadius: '8px',
+              } : {},
+            ]"
+          >
+            <CandidateRow
+              :candidate="c"
+              :index="idx"
+              :focused="focusedCandidateIdx === idx && !freeSearchCandidate"
+              :assigned="assignedEurioId === c.eurio_id"
+              @focus="emit('candidate-focus', idx)"
+            />
+          </div>
         </div>
 
         <DinoSuggestions
           v-if="reviewId"
           :review-id="reviewId"
           variant="standard"
+          :assigned-eurio-id="assignedEurioId"
           @select="(s) => emit('dino-select', s)"
         />
         <DinoSuggestions
           v-else-if="assetId"
           :asset-id="assetId"
           variant="standard"
+          :assigned-eurio-id="assignedEurioId"
           @select="(s) => emit('dino-select', s)"
         />
 

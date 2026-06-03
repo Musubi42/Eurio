@@ -15,8 +15,8 @@
 // crop ↔ canonical, mêmes tokens. La signature spécifique CCProxy : badge
 // modèle + confidence, toggle 3-tabs, 2 actions (acquit vert + reject).
 
-import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import {
   ArrowLeft,
   Check,
@@ -39,6 +39,14 @@ import ReviewCard from '../components/ReviewCard.vue'
 type Status = 'loading' | 'ready' | 'submitting' | 'batching' | 'error' | 'done'
 
 const router = useRouter()
+const route = useRoute()
+// Scope cohort optionnel (§C4b) — restreint la liste pending ET le batch
+// Claude aux coins de la cohort. Piloté par `?cohort=<id>`.
+const cohortId = computed(() =>
+  typeof route.query.cohort === 'string' && route.query.cohort
+    ? route.query.cohort
+    : null,
+)
 const status = ref<Status>('loading')
 const error = ref<string | null>(null)
 const items = ref<ClaudePendingItem[]>([])
@@ -95,7 +103,7 @@ async function load() {
   error.value = null
   lastAck.value = null
   try {
-    const r = await fetchClaudePendingAcks({ verdict: tab.value, limit: 500 })
+    const r = await fetchClaudePendingAcks({ verdict: tab.value, limit: 500, cohortId: cohortId.value })
     items.value = r.items
     byVerdict.value = r.by_verdict
     totalPending.value = r.total_pending
@@ -137,7 +145,7 @@ async function runBatch() {
   error.value = null
   batchInfo.value = null
   try {
-    const r = await runClaudeBatch({ limit: batchLimit.value })
+    const r = await runClaudeBatch({ limit: batchLimit.value, cohortId: cohortId.value })
     batchInfo.value = {
       judged: r.judged,
       skipped:
@@ -155,6 +163,8 @@ function backToCabinet() {
 }
 
 onMounted(load)
+// Recharge si le scope cohort change dans l'URL.
+watch(cohortId, () => { void load() })
 
 // ─── Helpers UI ──────────────────────────────────────────────────────────
 
@@ -210,6 +220,11 @@ function modelShort(m: string): string {
           </h1>
           <p class="mt-0.5 text-xs" style="color: var(--ink-500);">
             Sonnet 4.6 propose, l'humain dispose — sélectionne puis acquitte ou rejette.
+            <span
+              v-if="cohortId"
+              class="ml-1.5 rounded-full px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider"
+              style="background: color-mix(in srgb, var(--indigo-700) 12%, var(--surface)); color: var(--indigo-700);"
+            >cohort · {{ cohortId }}</span>
           </p>
         </div>
       </div>

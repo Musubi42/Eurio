@@ -302,6 +302,12 @@ def get_cohort(id_or_name: str) -> dict:
 
 _OBVERSE_NAMES = ("obverse.jpg", "obverse.png")
 
+# Seuil de sources RÉELLES distinctes (obverse Numista + crops eBay reviewés)
+# sous lequel une classe est flaggée « trop pauvre » : l'augmentation seule
+# gonflerait artificiellement (100 variants depuis 3 photos ≠ 100 vraies vues).
+# Reco doctrine lab-streamline §B. En-dessous → aller chercher plus d'eBay.
+_MIN_REAL_SOURCES = 15
+
 
 def _has_obverse(numista_id: int | None) -> bool:
     if numista_id is None:
@@ -1148,6 +1154,373 @@ def cohort_captures_sync(cohort_id: str, payload: CohortSyncPayload) -> dict:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return report.to_dict()
+
+
+@router.get("/cohorts/{cohort_id}/ebay-status")
+def cohort_ebay_status(cohort_id: str) -> dict:
+    """Read-only eBay coverage for a cohort.
+
+    Per coin: discovered listings + extracted crops + training-eligible crops,
+    and whether the coin is eBay-scrapable (its (denom,country,year) group is in
+    the commemorative discovery view). Plus the offline quota estimate for a
+    cohort run. **No eBay API call** — the actual scrape is triggered manually
+    via ``POST /sources/ebay/runs {cohort_id}`` (eBay passes are user-owned).
+    """
+    store = _get_store()
+    cohort = store.get_cohort(cohort_id)
+    if cohort is None:
+        raise HTTPException(status_code=404, detail="Cohort introuvable")
+
+    from sources.cohort_scope import cohort_ebay_groups
+    from .sources_routes import check_ebay_quota
+
+    groups, non_scrapable = cohort_ebay_groups(store, cohort_id)
+    non_set = set(non_scrapable)
+    conn = store._connection()  # noqa: SLF001
+
+    per_coin: list[dict] = []
+    for eid in cohort.eurio_ids:
+        n_listings = conn.execute(
+            "SELECT COUNT(*) FROM source_images "
+            "WHERE source='ebay' AND target_eurio_id=?",
+            (eid,),
+        ).fetchone()[0]
+        n_crops = conn.execute(
+            "SELECT COUNT(*) FROM image_assets ia "
+            "JOIN source_images si ON si.id = ia.source_image_id "
+            "WHERE si.source='ebay' AND si.target_eurio_id=?",
+            (eid,),
+        ).fetchone()[0]
+        # `train` = crops eBay éligibles pour CE coin selon le label TRANCHÉ en
+        # review (ia.eurio_id), pas la cible de découverte — cohérent avec ce que
+        # le bake pull réellement (iteration_augmentations._ebay_training_sources).
+        n_training = conn.execute(
+            "SELECT COUNT(*) FROM image_assets ia "
+            "JOIN source_images si ON si.id = ia.source_image_id "
+            "WHERE si.source='ebay' AND ia.eurio_id=? "
+            "AND ia.training_eligible=1",
+            (eid,),
+        ).fetchone()[0]
+        # Sources réelles distinctes = obverse Numista (0/1) + crops eBay
+        # reviewés training-eligible. C'est ce compte (pas les augmentées) qui
+        # décide si la classe a besoin de plus d'eBay (§C5).
+        nid = coin_lookup.numista_id_for(eid)
+        n_real = n_training + (1 if _has_obverse(nid) else 0)
+        per_coin.append({
+            "eurio_id": eid,
+            "numista_id": nid,
+            "scrapable": eid not in non_set,
+            "n_listings": n_listings,
+            "n_crops": n_crops,
+            "n_training_eligible": n_training,
+            "n_real_sources": n_real,
+            "enough": n_real >= _MIN_REAL_SOURCES,
+        })
+
+    n_group_coins = sum(g.n_coins for g in groups)
+    quota = check_ebay_quota(store, n_eurio_ids=n_group_coins) if groups else None
+
+    return {
+        "cohort_id": cohort.id,
+        "scrapable_groups": [
+            {
+                "denomination": g.denomination, "country": g.country,
+                "year": g.year, "n_coins": g.n_coins, "kind": g.kind,
+            }
+            for g in groups
+        ],
+        "non_scrapable": non_scrapable,
+        "quota": quota,
+        "per_coin": per_coin,
+        "min_real_sources": _MIN_REAL_SOURCES,
+    }
+
+
+# ─── Funnel (§C3b — scrape eBay → review, scopé cohort) ─────────────────────
+#
+# Étape lab entre §C3 « Images eBay » et §C4 « Review crops » : montre, par
+# cohort, comment les N listings scrapés se réduisent aux M crops qui entrent
+# en review. Read-only sur eurio.db, run-agnostique (toutes passes), zéro appel
+# eBay (passes user-owned). Deux mailles, dictées par la nature des données :
+#
+#   • per_coin (TAIL, post-attribution) — précis par coin. `source_images`
+#     porte `target_eurio_id` = le coin ATTRIBUÉ (theme-match tranché), donc
+#     listings retenus → crops → routing (route_decision/route_reason) → review
+#     se ventilent proprement par pièce.
+#
+#   • head (PRÉ-attribution) — maille GROUPE `(pays, année, kind)`. Une
+#     recherche commémo couvre toute une (pays, année). Le funnel de découverte
+#     (N0 summaries → N3 kept) est keyé sur `discovery_searches.query_filters_json
+#     .$.group` = la clé EXACTE {denom, pays, année} posée à la recherche
+#     (fiable, même quand `target_eurio_id` est NULL). Les discards itemisés
+#     (`discarded_listings.reason`) sont attribués via `target_eurio_id ∈ coins
+#     du groupe` — seule clé honnête, car le `target` d'un discard n'est qu'un
+#     PRIOR tagué à une sœur ; l'attribuer par pièce sur-compterait. Les drops à
+#     `target_eurio_id` NULL ne sont pas rattachables proprement à un coin sans
+#     heuristique → non itemisés ici, mais comptés implicitement dans l'écart
+#     N0→N3 du funnel de découverte du groupe.
+
+
+def _group_referential_coins(
+    conn,
+    *,
+    denomination: float,
+    country: str,
+    year: int | None,
+    kind: str,
+) -> list[str]:
+    """eurio_ids du référentiel couverts par la recherche eBay d'un groupe.
+
+    Commémo = ``(denom, pays, année, is_commemorative=1)`` ; standard =
+    ``(denom, pays, is_commemorative=0)`` toutes ères. Variantes
+    (``canonical_eurio_id`` non-NULL) exclues — non scrapées (cf.
+    ``cohort_ebay_groups``)."""
+    if kind == "standard":
+        rows = conn.execute(
+            "SELECT eurio_id FROM coins WHERE face_value=? AND country=? "
+            "AND is_commemorative=0 AND canonical_eurio_id IS NULL",
+            (denomination, country),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT eurio_id FROM coins WHERE face_value=? AND country=? "
+            "AND year=? AND is_commemorative=1 AND canonical_eurio_id IS NULL",
+            (denomination, country, year),
+        ).fetchall()
+    return [r["eurio_id"] for r in rows]
+
+
+def _discovery_funnel_for_group(
+    conn, *, denomination: float, country: str, year: int | None,
+) -> dict:
+    """Agrège le funnel de découverte ``discovery_searches`` (N0→N3) d'un groupe.
+
+    Maille fiable : ``discovery_searches.query_filters_json.$.group`` porte la
+    clé EXACTE ``{denomination, country, year}`` posée à la recherche (cf.
+    ``queries.build_group_query``). On la préfère à ``target_eurio_id`` (souvent
+    NULL ou tagué à une seule sœur). ``year=None`` ⇒ groupe standard (recherche
+    large sans millésime). Run-agnostique (toutes passes), comme le tail / §C3.
+    N0..N3 peuvent être NULL (alias rétro-compat) → ``COALESCE`` à 0."""
+    year_clause = (
+        "json_extract(query_filters_json,'$.group.year') IS NULL"
+        if year is None
+        else "CAST(json_extract(query_filters_json,'$.group.year') AS INTEGER)=?"
+    )
+    params: list = [country, denomination]
+    if year is not None:
+        params.append(year)
+    row = conn.execute(
+        f"""
+        SELECT COUNT(*)                          AS n_searches,
+               COALESCE(SUM(n_summaries), 0)     AS n_summaries,
+               COALESCE(SUM(n_after_groups), 0)  AS n_after_groups,
+               COALESCE(SUM(n_raw_results), 0)   AS n_raw_results,
+               COALESCE(SUM(n_kept_results), 0)  AS n_kept_results
+          FROM discovery_searches
+         WHERE source='ebay'
+           AND json_extract(query_filters_json,'$.group.country')=?
+           AND json_extract(query_filters_json,'$.group.denomination')=?
+           AND {year_clause}
+        """,
+        params,
+    ).fetchone()
+    return {
+        "n_searches": row["n_searches"] or 0,
+        "n_summaries": row["n_summaries"] or 0,
+        "n_after_groups": row["n_after_groups"] or 0,
+        "n_raw_results": row["n_raw_results"] or 0,
+        "n_kept_results": row["n_kept_results"] or 0,
+    }
+
+
+def _discarded_by_reason(
+    conn, *, where_sql: str, params: list
+) -> tuple[list[dict], int]:
+    """``([{reason, n}], total)`` depuis ``discarded_listings``, trié desc."""
+    rows = conn.execute(
+        f"""
+        SELECT reason, COUNT(*) AS n FROM discarded_listings
+         WHERE source='ebay' AND {where_sql}
+         GROUP BY reason ORDER BY n DESC
+        """,
+        params,
+    ).fetchall()
+    out = [{"reason": r["reason"], "n": r["n"]} for r in rows]
+    return out, sum(r["n"] for r in rows)
+
+
+def _coin_tail(conn, eurio_id: str) -> dict:
+    """Tail post-attribution d'un coin : listings retenus ventilés par
+    ``route_decision``/``route_reason``, crops, et run le plus récent."""
+    breakdown = conn.execute(
+        """
+        SELECT route_decision, route_reason, COUNT(*) AS n
+          FROM source_images
+         WHERE source='ebay' AND target_eurio_id=?
+         GROUP BY route_decision, route_reason
+         ORDER BY n DESC
+        """,
+        (eurio_id,),
+    ).fetchall()
+    by_route = [
+        {
+            "route_decision": r["route_decision"],
+            "route_reason": r["route_reason"],
+            "n": r["n"],
+        }
+        for r in breakdown
+    ]
+    n_source_images = sum(r["n"] for r in breakdown)
+
+    def _roll(pred) -> int:
+        return sum(r["n"] for r in by_route if pred(r["route_decision"]))
+
+    n_pending = _roll(lambda d: d == "pending")
+    n_review_single = _roll(lambda d: d == "review_single")
+    n_review_lot = _roll(lambda d: d == "review_lot")
+    n_auto = _roll(lambda d: bool(d) and d.startswith("auto"))
+    n_rejected = _roll(lambda d: bool(d) and d.startswith("rejected"))
+    n_unrouted = _roll(lambda d: not d)
+
+    n_crops = conn.execute(
+        "SELECT COUNT(*) FROM image_assets ia "
+        "JOIN source_images si ON si.id = ia.source_image_id "
+        "WHERE si.source='ebay' AND si.target_eurio_id=?",
+        (eurio_id,),
+    ).fetchone()[0]
+
+    # Runs ayant produit des source_images pour ce coin → run le plus récent
+    # (deep-link bench) + flag multi-run (limite connue v1 : on linke le
+    # dernier run, cf. handoff).
+    run_rows = conn.execute(
+        """
+        SELECT run_id, COUNT(*) AS n, MAX(fetched_at) AS last_fetch
+          FROM source_images
+         WHERE source='ebay' AND target_eurio_id=? AND run_id IS NOT NULL
+         GROUP BY run_id ORDER BY last_fetch DESC
+        """,
+        (eurio_id,),
+    ).fetchall()
+    latest_run_id = run_rows[0]["run_id"] if run_rows else None
+    latest_run_started_at = None
+    if latest_run_id is not None:
+        r = conn.execute(
+            "SELECT started_at FROM source_runs WHERE id=?", (latest_run_id,),
+        ).fetchone()
+        latest_run_started_at = r["started_at"] if r else None
+
+    return {
+        "n_source_images": n_source_images,
+        "n_crops": n_crops,
+        "by_route_decision": by_route,
+        "n_pending": n_pending,
+        "n_review_single": n_review_single,
+        "n_review_lot": n_review_lot,
+        "n_auto": n_auto,
+        "n_rejected": n_rejected,
+        "n_unrouted": n_unrouted,
+        "latest_run_id": latest_run_id,
+        "latest_run_started_at": latest_run_started_at,
+        "n_runs": len(run_rows),
+    }
+
+
+def _cohort_funnel_status(store: Store, cohort_id: str) -> dict:
+    """Cœur (testable offline) de ``GET /lab/cohorts/{id}/funnel-status``."""
+    cohort = store.get_cohort(cohort_id)
+    if cohort is None:
+        raise HTTPException(status_code=404, detail="Cohort introuvable")
+
+    from sources.cohort_scope import cohort_ebay_groups
+
+    groups, non_scrapable = cohort_ebay_groups(store, cohort_id)
+    non_set = set(non_scrapable)
+    conn = store._connection()  # noqa: SLF001
+
+    # ── per_coin (tail) ────────────────────────────────────────────────
+    per_coin: list[dict] = []
+    for eid in cohort.eurio_ids:
+        tail = _coin_tail(conn, eid)
+        per_coin.append({
+            "eurio_id": eid,
+            "numista_id": coin_lookup.numista_id_for(eid),
+            "scrapable": eid not in non_set,
+            **tail,
+        })
+
+    # Runs de la cohort = ceux ayant produit des source_images pour ses coins
+    # (contexte du deep-link ; le head est attribué par groupe, pas par run).
+    cohort_run_ids = sorted({
+        r["run_id"]
+        for eid in cohort.eurio_ids
+        for r in conn.execute(
+            "SELECT DISTINCT run_id FROM source_images "
+            "WHERE source='ebay' AND target_eurio_id=? AND run_id IS NOT NULL",
+            (eid,),
+        ).fetchall()
+    })
+
+    # ── head.groups (maille (pays, année, kind)) ───────────────────────
+    # Funnel de découverte (N0→N3) keyé sur `query_filters_json.group` —
+    # fiable. Discards itemisés via `target_eurio_id ∈ coins du groupe` (seule
+    # clé honnête : pas de sur-comptage des sœurs ; les drops à target NULL,
+    # non rattachables sans heuristique, restent invisibles ici mais sont
+    # comptés implicitement dans l'écart N0→N3 du funnel).
+    head_groups: list[dict] = []
+    for g in groups:
+        coins = _group_referential_coins(
+            conn,
+            denomination=g.denomination,
+            country=g.country,
+            year=g.year,
+            kind=g.kind,
+        )
+        disco = _discovery_funnel_for_group(
+            conn, denomination=g.denomination, country=g.country, year=g.year,
+        )
+        if coins:
+            ph = ",".join("?" * len(coins))
+            discarded, n_disc = _discarded_by_reason(
+                conn, where_sql=f"target_eurio_id IN ({ph})", params=list(coins),
+            )
+            n_kept_si = conn.execute(
+                f"SELECT COUNT(*) FROM source_images "
+                f"WHERE source='ebay' AND target_eurio_id IN ({ph})",
+                list(coins),
+            ).fetchone()[0]
+        else:
+            discarded, n_disc, n_kept_si = [], 0, 0
+        head_groups.append({
+            "country": g.country,
+            "year": g.year,
+            "denomination": g.denomination,
+            "kind": g.kind,
+            "n_referential_coins": len(coins),
+            **disco,
+            "n_attributed_source_images": n_kept_si,
+            "n_discarded_attributed": n_disc,
+            "discarded_by_reason": discarded,
+        })
+
+    return {
+        "cohort_id": cohort.id,
+        "per_coin": per_coin,
+        "head": {
+            "groups": head_groups,
+            "run_ids": cohort_run_ids,
+        },
+        "non_scrapable": non_scrapable,
+    }
+
+
+@router.get("/cohorts/{cohort_id}/funnel-status")
+def cohort_funnel_status(cohort_id: str) -> dict:
+    """Funnel scrape eBay → review, scopé cohort (read-only, zéro appel eBay).
+
+    Voir le bloc de doc ci-dessus pour la doctrine des deux mailles
+    (per_coin tail précis vs head groupe). Alimente le tiroir §C3b et les
+    deep-links vers le studio bench (``/bench/runs/<run>?eurio_id=<coin>``)."""
+    return _cohort_funnel_status(_get_store(), cohort_id)
 
 
 # ─── Augmentations (Sprint 1) ──────────────────────────────────────────────

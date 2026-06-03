@@ -146,6 +146,44 @@ export async function syncCohortCaptures(
   )
 }
 
+// ─── eBay cohort status (chunk 03b) ────────────────────────────────────
+
+export async function fetchCohortEbayStatus(
+  cohortId: string,
+): Promise<import('../types').CohortEbayStatus> {
+  return json<import('../types').CohortEbayStatus>(
+    `/lab/cohorts/${encodeURIComponent(cohortId)}/ebay-status`,
+  )
+}
+
+/**
+ * Trigger a cohort-scoped eBay scrape via the sources pipeline.
+ * Consumes the user's eBay quota — call only on explicit user action.
+ * The backend expands the cohort to its discovery groups (cohort_id).
+ */
+export async function triggerCohortEbayScrape(
+  cohortId: string,
+): Promise<import('../types').EbayScrapeTriggerResult> {
+  return json<import('../types').EbayScrapeTriggerResult>(
+    `/sources/ebay/runs`,
+    { method: 'POST', body: JSON.stringify({ cohort_id: cohortId }) },
+  )
+}
+
+/**
+ * Rescrape eBay ciblé sur UNE pièce (§C5). Le backend résout le `target_eurio_id`
+ * vers son groupe de découverte (EbayAdapter.discover). Consomme le quota eBay
+ * (préflight 409 si insuffisant) — appel sur action explicite uniquement.
+ */
+export async function triggerCoinEbayScrape(
+  targetEurioId: string,
+): Promise<import('../types').EbayScrapeTriggerResult> {
+  return json<import('../types').EbayScrapeTriggerResult>(
+    `/sources/ebay/runs`,
+    { method: 'POST', body: JSON.stringify({ target_eurio_id: targetEurioId }) },
+  )
+}
+
 // ─── Iterations ────────────────────────────────────────────────────────
 
 export async function fetchIterations(cohortId: string): Promise<IterationDetail[]> {

@@ -481,6 +481,11 @@ _LISTING_RMIN_FRAC_STRICT = 0.08   # calibré sur distrib corpus eBay (n=3664 bb
 _LISTING_RMAX_FRAC_STRICT = 0.55
 _LISTING_EDGE_MARGIN_FRAC = 0.005
 
+# Rim refine post-détection (anti-undercrop bimétal). Cf. detect_circles_multi
+# et crop_detectors.detect_bbox_refine. Listing-only (n'affecte PAS le scan
+# device normalize_device, ni sa parité Kotlin).
+_LISTING_RIM_REFINE = True
+
 # Pré-filtre bbox YOLO. Sur des coincards/blisters, YOLO confond souvent
 # lettres ("O"/"D"/"R") et motifs décoratifs avec des pièces lointaines —
 # bboxes minuscules (r << rmin_strict) qui ne contiennent aucune info
@@ -760,6 +765,20 @@ def detect_circles_multi(bgr: np.ndarray) -> list[CircleDetection]:
         )
         if polish_status == "applied":
             method = method + "+polish"
+
+        # Rim refine (chantier crop-quality-overhaul, Chunk 4) : le couple
+        # Hough+polish accroche l'anneau interne or↔argent des 2€ bimétalliques
+        # ~18 % du temps (undercrop). `detect_bbox_refine` part du cercle courant
+        # (hint) et cherche le RIM EXTERNE dans une ROI bornée — plancher
+        # r ≥ 0.9·hint (jamais pire), plafond r ≤ 2.6·hint (overcrop borné).
+        # Validé sur gold humain (25 gagne / 2 régresse sur 30) + 80 %→94 % oracle.
+        # Import lazy : crop_detectors importe normalize_snap (évite le cycle).
+        if _LISTING_RIM_REFINE:
+            from scan.crop_detectors import detect_bbox_refine
+            _ref = detect_bbox_refine(bgr, hint={"cx": cx_f, "cy": cy_f, "r": r_f})
+            if _ref.ok and _ref.r > 0:
+                cx_f, cy_f, r_f = _ref.cx, _ref.cy, _ref.r
+                method = method + "+refine"
 
         cx_n = int(round(cx_f))
         cy_n = int(round(cy_f))

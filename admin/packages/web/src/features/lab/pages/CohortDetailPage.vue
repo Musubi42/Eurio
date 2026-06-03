@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import CohortDrawerC1 from '@/features/lab/components/CohortDrawerC1.vue'
 import CohortDrawerC2 from '@/features/lab/components/CohortDrawerC2.vue'
+import CohortDrawerCrop from '@/features/lab/components/CohortDrawerCrop.vue'
+import CohortDrawerEbay from '@/features/lab/components/CohortDrawerEbay.vue'
 import IterationRow from '@/features/lab/components/IterationRow.vue'
 import SensitivityPanel from '@/features/lab/components/SensitivityPanel.vue'
 import TrajectoryChart from '@/features/lab/components/TrajectoryChart.vue'
@@ -246,7 +248,7 @@ function formatPct(v: number | null): string {
         <div class="mt-6 h-px w-16" style="background: var(--gold);" />
       </header>
 
-      <!-- §C1 Sélection + §C2 Captures -->
+      <!-- §C1 Sélection + §C2 Captures + §C3 Images eBay + §C4 Review crops -->
       <div class="mb-6 flex flex-col gap-3">
         <CohortDrawerC1
           :cohort-id="cohort.id"
@@ -257,6 +259,13 @@ function formatPct(v: number | null): string {
           :cohort-id="cohort.id"
           :cohort="cohort"
           :progress="progress"
+        />
+        <CohortDrawerEbay
+          :cohort-id="cohort.id"
+          :cohort="cohort"
+        />
+        <CohortDrawerCrop
+          :cohort-id="cohort.id"
         />
       </div>
 

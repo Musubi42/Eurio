@@ -49,18 +49,40 @@ RecordDiscardedFn = Callable[[DiscardedListingRecord], None]
 
 @dataclass(frozen=True)
 class DiscoveryGroup:
-    """A discovery scope = all coins sharing (denomination, country, year).
+    """A discovery scope — the natural unit of one eBay search.
 
-    The natural unit of an eBay search: the query string is a pure
-    function of these three fields, so two commemos of the same
-    country/year would otherwise trigger byte-identical searches. One
-    group fans out to K eurio_ids; the listing→coin attribution happens
-    at resolution time via the multilingual theme matcher.
+    Two ``kind`` :
+
+    - ``"commemorative"`` (défaut) : ``(dénomination, pays, année)``. La
+      requête est fonction pure des trois axes ; deux commémos-sœurs
+      même pays/année partageraient une recherche byte-identique. Le
+      groupe fanne sur K eurio_ids, attribués post-hoc par le theme-match.
+    - ``"standard"`` : ``(dénomination, pays)`` — ``year`` est ``None``.
+      Un standard n'a pas de thème par année : sa face nationale est
+      identique sur toute une *ère de design*, et une seule recherche
+      large « 2 euro {pays} » couvre toutes les ères. L'attribution à une
+      ère se fait par appartenance de plage d'années
+      (``sources/ebay/standards.py``), pas par theme-match.
     """
 
     denomination: float
     country: str
-    year: int
+    year: int | None = None
+    kind: str = "commemorative"
+
+    def __post_init__(self) -> None:
+        if self.kind == "commemorative" and self.year is None:
+            raise ValueError(
+                "DiscoveryGroup commemorative requiert une année (year=None "
+                "réservé aux standards)."
+            )
+        if self.kind == "standard" and self.year is not None:
+            raise ValueError(
+                "DiscoveryGroup standard ne porte pas d'année "
+                f"(year={self.year!r}) — le design couvre toutes les années."
+            )
+        if self.kind not in ("commemorative", "standard"):
+            raise ValueError(f"DiscoveryGroup.kind invalide: {self.kind!r}")
 
 
 @dataclass(frozen=True)

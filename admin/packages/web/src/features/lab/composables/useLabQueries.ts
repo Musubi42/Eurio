@@ -20,6 +20,7 @@ import {
   fetchAugVsReal,
   fetchCohort,
   fetchCohortCaptures,
+  fetchCohortEbayStatus,
   fetchCohortProgress,
   fetchCohortTestBuildInfo,
   fetchCohorts,
@@ -44,8 +45,12 @@ import {
   stopIteration,
   syncCohortCaptures,
   syncLiveTests,
+  triggerCoinEbayScrape,
+  triggerCohortEbayScrape,
   updateIteration,
 } from './useLabApi'
+// Réutilise l'agrégat triage de la review (même endpoint, scopé cohort).
+import { fetchTriageStats } from '@/features/review/composables/useReviewApi'
 import type {
   CohortStatus,
   IterationCreatePayload,
@@ -60,6 +65,8 @@ export const LAB_KEYS = {
   trajectory: (cohortId: string) => ['lab', 'cohort', cohortId, 'trajectory'] as const,
   sensitivity: (cohortId: string) => ['lab', 'cohort', cohortId, 'sensitivity'] as const,
   captures: (cohortId: string) => ['lab', 'cohort', cohortId, 'captures'] as const,
+  ebayStatus: (cohortId: string) => ['lab', 'cohort', cohortId, 'ebay-status'] as const,
+  triageStats: (cohortId: string) => ['lab', 'cohort', cohortId, 'triage-stats'] as const,
   progress: (cohortId: string) => ['lab', 'cohort', cohortId, 'progress'] as const,
   iterationProgress: (cohortId: string, iterationId: string) =>
     ['lab', 'cohort', cohortId, 'iterations', iterationId, 'progress'] as const,
@@ -131,6 +138,36 @@ export function useCaptureManifestQuery(cohortId: MaybeRefOrGetter<string>) {
     // Captures are FS-derived and only change when a sync runs — invalidate
     // explicitly on success rather than poll.
     staleTime: 60 * 60 * 1000, // 1h
+  })
+}
+
+export function useCohortEbayStatusQuery(cohortId: MaybeRefOrGetter<string>) {
+  return useQuery({
+    queryKey: computed(() => LAB_KEYS.ebayStatus(toValue(cohortId))),
+    queryFn: () => fetchCohortEbayStatus(toValue(cohortId)),
+    enabled: computed(() => !!toValue(cohortId)),
+    // Le `train` (training_eligible) bouge à chaque passe de review, faite sur
+    // une AUTRE route (/review). Au retour sur la page cohort on veut le compte
+    // frais : refetch systématique au mount (cache affiché instantanément, puis
+    // mis à jour). staleTime garde la dédup pendant la session sur la page.
+    staleTime: 60 * 1000,
+    refetchOnMount: 'always',
+  })
+}
+
+/**
+ * Triage counts (queue manuelle / auto-accept / ccproxy) scopés cohort —
+ * alimente les 3 cartes §C4a. Réutilise l'agrégat /review-queue/triage-stats.
+ */
+export function useCohortTriageStatsQuery(cohortId: MaybeRefOrGetter<string>) {
+  return useQuery({
+    queryKey: computed(() => LAB_KEYS.triageStats(toValue(cohortId))),
+    queryFn: () => fetchTriageStats(toValue(cohortId)),
+    enabled: computed(() => !!toValue(cohortId)),
+    // Bougent à chaque décision de review (faite sur /review) → refetch au
+    // mount pour un compte frais au retour sur la page cohort.
+    staleTime: 60 * 1000,
+    refetchOnMount: 'always',
   })
 }
 
@@ -210,6 +247,35 @@ export function useRemoveCoinMutation(cohortId: MaybeRefOrGetter<string>) {
       qc.invalidateQueries({ queryKey: LAB_KEYS.captures(id) })
       qc.invalidateQueries({ queryKey: LAB_KEYS.progress(id) })
       qc.invalidateQueries({ queryKey: ['lab', 'cohorts'] })
+    },
+  })
+}
+
+export function useTriggerCohortEbayScrapeMutation(
+  cohortId: MaybeRefOrGetter<string>,
+) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => triggerCohortEbayScrape(toValue(cohortId)),
+    onSuccess: () => {
+      // The scrape runs in the background; refresh counts shortly after.
+      qc.invalidateQueries({ queryKey: LAB_KEYS.ebayStatus(toValue(cohortId)) })
+    },
+  })
+}
+
+/**
+ * Rescrape eBay ciblé sur une pièce (§C5). Invalide l'ebay-status de la cohort
+ * au retour pour rafraîchir les compteurs une fois le run lancé.
+ */
+export function useTriggerCoinEbayScrapeMutation(
+  cohortId: MaybeRefOrGetter<string>,
+) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (targetEurioId: string) => triggerCoinEbayScrape(targetEurioId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: LAB_KEYS.ebayStatus(toValue(cohortId)) })
     },
   })
 }

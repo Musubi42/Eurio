@@ -34,6 +34,9 @@ const props = defineProps<{
   assetId?: string | null
   /** Compact = lot drawer per-crop strip. Standard = single drawer right column. */
   variant?: 'standard' | 'compact'
+  /** eurio_id assigné au crop actif (contexte lot). La suggestion correspondante
+   *  passe "validé" (vert + check). Non fourni = comportement single inchangé. */
+  assignedEurioId?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -213,8 +216,10 @@ const previewLabel = computed(() => {
             :key="`c-${s.eurio_id}-${idx}`"
             class="flex items-stretch gap-2.5 rounded-md border px-2 py-1.5 transition-colors"
             :style="{
-              borderColor: 'var(--indigo-700)',
-              background: 'var(--surface)',
+              borderColor: s.eurio_id === assignedEurioId ? 'var(--success)' : 'var(--indigo-700)',
+              background: s.eurio_id === assignedEurioId
+                ? 'color-mix(in srgb, var(--success) 8%, var(--surface))'
+                : 'var(--surface)',
             }"
             @mouseenter="onRowEnter(`c-${s.eurio_id}-${idx}`, s, $event)"
             @mouseleave="onRowLeave(`c-${s.eurio_id}-${idx}`)"
@@ -266,14 +271,14 @@ const previewLabel = computed(() => {
 
             <button
               type="button"
-              class="shrink-0 rounded-md px-2 font-mono text-[10px] uppercase tracking-wider transition-colors"
+              class="shrink-0 rounded-md px-2 font-mono text-[10px] uppercase tracking-wider transition-colors active:scale-[0.97]"
               :style="{
-                background: 'var(--indigo-700)',
+                background: s.eurio_id === assignedEurioId ? 'var(--success)' : 'var(--indigo-700)',
                 color: 'var(--surface)',
               }"
               @click="emit('select', s)"
             >
-              Sélec.
+              {{ s.eurio_id === assignedEurioId ? '✓ validé' : 'Sélec.' }}
             </button>
           </li>
         </ul>
@@ -295,8 +300,10 @@ const previewLabel = computed(() => {
             :key="`g-${s.eurio_id}-${idx}`"
             class="flex items-stretch gap-2.5 rounded-md border px-2 py-1.5 transition-colors"
             :style="{
-              borderColor: 'var(--surface-3)',
-              background: 'var(--surface)',
+              borderColor: s.eurio_id === assignedEurioId ? 'var(--success)' : 'var(--surface-3)',
+              background: s.eurio_id === assignedEurioId
+                ? 'color-mix(in srgb, var(--success) 8%, var(--surface))'
+                : 'var(--surface)',
             }"
             @mouseenter="onRowEnter(`g-${s.eurio_id}-${idx}`, s, $event)"
             @mouseleave="onRowLeave(`g-${s.eurio_id}-${idx}`)"
@@ -348,14 +355,14 @@ const previewLabel = computed(() => {
 
             <button
               type="button"
-              class="shrink-0 rounded-md px-2 font-mono text-[10px] uppercase tracking-wider transition-colors"
+              class="shrink-0 rounded-md px-2 font-mono text-[10px] uppercase tracking-wider transition-colors active:scale-[0.97]"
               :style="{
-                background: 'var(--indigo-700)',
+                background: s.eurio_id === assignedEurioId ? 'var(--success)' : 'var(--indigo-700)',
                 color: 'var(--surface)',
               }"
               @click="emit('select', s)"
             >
-              Sélec.
+              {{ s.eurio_id === assignedEurioId ? '✓ validé' : 'Sélec.' }}
             </button>
           </li>
         </ul>

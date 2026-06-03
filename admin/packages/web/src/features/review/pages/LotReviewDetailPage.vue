@@ -14,7 +14,7 @@
 // Cf. docs/sources-refacto/prototype-review-lot-debug.html (proto)
 // + docs/sources-refacto/lot-review-kickoff.md.
 
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   ArrowLeft, ArrowRight, Check, CheckCircle2, ChevronDown,
@@ -58,6 +58,9 @@ const activeRawIndex = ref(0)
 // Active crop (cursor clavier) — index dans `actionableCrops`.
 const activeCropIndex = ref(0)
 const cropRowRefs = ref<Record<string, HTMLElement | null>>({})
+
+// Hover bidirectionnel : asset_id survolé (crop card ↔ anneau overlay).
+const hoveredAssetId = ref<string | null>(null)
 
 // ─── Colonne droite — state aligné single ──────────────────────────────
 // `mode` = 'auto' (Top N + Dino) ou 'free' (FreeSelectorPanel inline).
@@ -125,11 +128,33 @@ const tagNumberByAssetId = computed(() => {
   return m
 })
 
+// Crops de la photo active uniquement, avec review_id (actionnables).
+// Utilisé pour la bande du bas : la vue est locale à l'image affichée.
+const activeImageCrops = computed(() =>
+  activeImage.value?.crops.filter((c) => c.review_id) ?? [],
+)
+
+// Mappe asset_id → index dans `actionableCrops` (global) pour que les
+// actions clavier (setActiveIndex) restent cohérentes.
+const globalIndexByAssetId = computed(() => {
+  const m: Record<string, number> = {}
+  actionableCrops.value.forEach(({ crop }, idx) => { m[crop.asset_id] = idx })
+  return m
+})
+
 // SVG viewBox = dimensions natives du raw (les détections sont dans cet espace).
 const overlayViewBox = computed(() => {
   const im = activeImage.value
   if (!im || !im.raw_width || !im.raw_height) return '0 0 1000 750'
   return `0 0 ${im.raw_width} ${im.raw_height}`
+})
+
+// eurio_id assigné au crop actif (pour le feedback de sélection dans ReviewRightColumn).
+const activeCropAssignedEurioId = computed<string | null>(() => {
+  const id = activeAssetId.value
+  if (!id) return null
+  const d = decisions.value[id]
+  return d?.kind === 'assign' ? d.eurio_id : null
 })
 
 // Candidat actuellement "focused" pour le crop actif. Sert à alimenter
@@ -272,6 +297,19 @@ function setActiveIndex(idx: number) {
 
 function nextCrop() { setActiveIndex(activeCropIndex.value + 1) }
 function prevCrop() { setActiveIndex(activeCropIndex.value - 1) }
+
+// Clic sur une vignette photo (haut) : change la photo ET active son premier
+// crop actionnable, pour que la bande filtrée ait toujours un crop actif
+// surligné (cohérence vert). Photo sans crop → simple bascule.
+function selectImage(idx: number) {
+  const im = detail.value?.images[idx]
+  const first = im?.crops.find((c) => c.review_id)
+  if (first) {
+    const gi = globalIndexByAssetId.value[first.asset_id]
+    if (gi !== undefined) { setActiveIndex(gi); return }
+  }
+  activeRawIndex.value = idx
+}
 
 function setRowRef(assetId: string, el: Element | any) {
   cropRowRefs.value[assetId] = el instanceof HTMLElement ? el : null
@@ -425,7 +463,6 @@ function onKeydown(e: KeyboardEvent) {
   if (e.key === 'd' || e.key === 'D') { toggleOverlay(); e.preventDefault() }
 }
 onMounted(() => window.addEventListener('keydown', onKeydown))
-import { onUnmounted } from 'vue'
 onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 
 // ─── Visual helpers ────────────────────────────────────────────────────
@@ -451,6 +488,54 @@ function detectionTagPos(det: { cx: number; cy: number; r: number }) {
   // Place tag in the top-right of the circle (offset by ~r/√2).
   const off = det.r * 0.7
   return { x: det.cx + off, y: det.cy - off }
+}
+
+// Couleur de l'anneau SVG selon l'état de décision du crop.
+// - actif (en cours de jugement) → vert vif + épaisseur 6px
+// - assigné → vert (décision prise)
+// - rejeté → rouge
+// - survolé → gold (halo hover)
+// - non décidé → gris neutre
+function detectionRingColor(cropIndex: number | null): string {
+  if (cropIndex === null) return 'var(--ink-300)'
+  const assetId = assetIdByCropIndex.value[cropIndex]
+  if (!assetId) return 'var(--ink-300)'
+  if (assetId === activeAssetId.value) return 'var(--success)'
+  if (assetId === hoveredAssetId.value) return 'var(--gold-600)'
+  const d = decisions.value[assetId]
+  if (!d) return 'var(--ink-300)'
+  if (d.kind === 'assign') return 'var(--success)'
+  if (d.kind === 'reject') return 'var(--danger)'
+  return 'var(--ink-400)'
+}
+
+function detectionRingWidth(cropIndex: number | null): number {
+  if (cropIndex === null) return 2
+  const assetId = assetIdByCropIndex.value[cropIndex]
+  if (!assetId) return 2
+  if (assetId === activeAssetId.value) return 6
+  if (assetId === hoveredAssetId.value) return 4
+  return 2.5
+}
+
+// Cache-bust par phash : le crop est servi à URL stable (/assets/{id}/file).
+// Après régénération du fichier (même chemin), le navigateur ressert l'ancienne
+// image en cache → ?v=<phash> change quand le contenu change, forçant le refetch.
+function cropSrc(crop: { crop_url: string; phash: number | null }): string {
+  return crop.phash != null ? `${crop.crop_url}?v=${crop.phash}` : crop.crop_url
+}
+
+// Couleur de fond du badge numéroté selon l'état.
+function detectionBadgeColor(cropIndex: number | null): string {
+  if (cropIndex === null) return 'var(--ink-400)'
+  const assetId = assetIdByCropIndex.value[cropIndex]
+  if (!assetId) return 'var(--ink-400)'
+  if (assetId === activeAssetId.value) return 'var(--success)'
+  const d = decisions.value[assetId]
+  if (!d) return 'var(--ink-400)'
+  if (d.kind === 'assign') return 'var(--success)'
+  if (d.kind === 'reject') return 'var(--danger)'
+  return 'var(--ink-400)'
 }
 </script>
 
@@ -566,7 +651,7 @@ function detectionTagPos(det: { cx: number; cy: number; r: number }) {
             class="raw-thumb"
             :class="{ active: idx === activeRawIndex }"
             :title="`img ${im.image_index ?? idx + 1} · ${im.crops.length} crop${im.crops.length > 1 ? 's' : ''}`"
-            @click="activeRawIndex = idx"
+            @click="selectImage(idx)"
           >
             <img :src="im.raw_url" :alt="`img ${idx + 1}`" loading="lazy" />
             <span class="tag-overlay tag-overlay--tl">{{ idx + 1 }}</span>
@@ -587,25 +672,41 @@ function detectionTagPos(det: { cx: number; cy: number; r: number }) {
               :alt="`raw ${activeRawIndex + 1}`"
               class="absolute inset-0 h-full w-full object-contain"
             />
+            <!-- SVG overlay : anneaux + badges numérotés.
+                 Couleurs d'état — actif=vert, assigné=vert, rejeté=rouge,
+                 survolé=gold, non décidé=gris. Pointer-events activés sur
+                 les cercles acceptés pour le hover bidirectionnel. -->
             <svg
-              class="absolute inset-0 h-full w-full pointer-events-none"
+              class="absolute inset-0 h-full w-full"
+              style="pointer-events: none;"
               :viewBox="overlayViewBox"
               preserveAspectRatio="xMidYMid meet"
             >
-              <g>
+              <!-- Cercles acceptés : anneaux colorés + pointer-events pour hover -->
+              <g style="pointer-events: all;">
                 <circle
                   v-for="(det, i) in activeImage.detections.filter(d => d.accepted)"
                   :key="`a-${i}`"
                   :cx="det.cx" :cy="det.cy" :r="det.r"
                   fill="none"
-                  :stroke="det.crop_index !== null && assetIdByCropIndex[det.crop_index] === activeAssetId ? 'var(--gold-500)' : 'var(--gold-600)'"
-                  :stroke-width="det.crop_index !== null && assetIdByCropIndex[det.crop_index] === activeAssetId ? 6 : 3"
+                  :stroke="detectionRingColor(det.crop_index)"
+                  :stroke-width="detectionRingWidth(det.crop_index)"
+                  style="cursor: pointer; transition: stroke 120ms ease, stroke-width 120ms ease;"
+                  @mouseenter="hoveredAssetId = det.crop_index !== null ? (assetIdByCropIndex[det.crop_index] ?? null) : null"
+                  @mouseleave="hoveredAssetId = null"
+                  @click.stop="det.crop_index !== null && assetIdByCropIndex[det.crop_index] ? setActiveIndex(globalIndexByAssetId[assetIdByCropIndex[det.crop_index]] ?? 0) : undefined"
                 />
+              </g>
+              <!-- Badges numérotés (fond coloré selon état) -->
+              <g style="pointer-events: none;">
                 <g v-for="(det, i) in activeImage.detections.filter(d => d.accepted)" :key="`tag-${i}`">
                   <circle
                     :cx="detectionTagPos(det).x"
                     :cy="detectionTagPos(det).y"
-                    r="22" fill="var(--ink)" stroke="var(--surface)" stroke-width="3"
+                    r="22"
+                    :fill="detectionBadgeColor(det.crop_index)"
+                    stroke="var(--surface)" stroke-width="3"
+                    style="transition: fill 120ms ease;"
                   />
                   <text
                     :x="detectionTagPos(det).x" :y="detectionTagPos(det).y + 1"
@@ -615,7 +716,8 @@ function detectionTagPos(det: { cx: number; cy: number; r: number }) {
                   >{{ (det.crop_index ?? 0) + 1 }}</text>
                 </g>
               </g>
-              <g>
+              <!-- Cercles rejetés par le détecteur : pointillés rouges (inchangé) -->
+              <g style="pointer-events: none;">
                 <circle
                   v-for="(det, i) in activeImage.detections.filter(d => !d.accepted)"
                   :key="`r-${i}`"
@@ -637,7 +739,7 @@ function detectionTagPos(det: { cx: number; cy: number; r: number }) {
           <!-- SplitCompare : crop actif ↔ canonique du candidat focused -->
           <SplitCompare
             v-else-if="!showOverlay && activeCrop"
-            :crop-url="activeCrop.crop.crop_url"
+            :crop-url="cropSrc(activeCrop.crop)"
             :canonical-url="focusedCanonicalUrl"
             :bbox="activeCrop.crop.bbox"
           />
@@ -659,47 +761,67 @@ function detectionTagPos(det: { cx: number; cy: number; r: number }) {
           </span>
         </div>
 
-        <!-- Crops strip : cards horizontal, click → setActiveIndex -->
-        <div v-if="actionableCrops.length" class="shrink-0">
+        <!-- Crops strip : crops de la photo active uniquement (bande filtrée).
+             Compteur GLOBAL (tout listing) affiché dans le label. -->
+        <div v-if="activeImageCrops.length" class="shrink-0">
           <p class="mb-1.5 font-mono text-[10px] uppercase tracking-wider" style="color: var(--ink-500);">
-            Crops · <span style="color: var(--gold-600);">{{ decidedCount }}</span> / {{ totalActionable }} décidés
+            Crops · photo {{ activeRawIndex + 1 }}
+            <span class="opacity-50 ml-2">global :</span>
+            <span style="color: var(--gold-600);">{{ decidedCount }}</span>
+            / {{ totalActionable }} décidés
           </p>
           <div class="flex gap-2 overflow-x-auto pb-1">
             <button
-              v-for="({ crop, image }, idx) in actionableCrops"
+              v-for="crop in activeImageCrops"
               :key="crop.asset_id"
               :ref="(el) => setRowRef(crop.asset_id, el)"
               type="button"
               class="crop-strip-card relative flex shrink-0 flex-col items-stretch gap-1 rounded-md border p-1.5 transition-all"
               :style="{
                 width: '88px',
-                borderColor: decisions[crop.asset_id] ? cropDecisionTone(crop.asset_id) : 'var(--surface-3)',
-                background: idx === activeCropIndex
-                  ? 'color-mix(in srgb, var(--gold-600) 8%, var(--surface))'
-                  : decisions[crop.asset_id]
-                    ? `color-mix(in srgb, ${cropDecisionTone(crop.asset_id)} 5%, var(--surface))`
-                    : 'var(--surface)',
-                boxShadow: idx === activeCropIndex ? '0 0 0 2px var(--gold-600)' : 'none',
+                borderColor: crop.asset_id === activeAssetId
+                  ? 'var(--success)'
+                  : crop.asset_id === hoveredAssetId
+                    ? 'var(--gold-600)'
+                    : decisions[crop.asset_id]
+                      ? cropDecisionTone(crop.asset_id)
+                      : 'var(--surface-3)',
+                background: crop.asset_id === activeAssetId
+                  ? 'color-mix(in srgb, var(--success) 8%, var(--surface))'
+                  : crop.asset_id === hoveredAssetId
+                    ? 'color-mix(in srgb, var(--gold-600) 6%, var(--surface))'
+                    : decisions[crop.asset_id]
+                      ? `color-mix(in srgb, ${cropDecisionTone(crop.asset_id)} 5%, var(--surface))`
+                      : 'var(--surface)',
+                boxShadow: crop.asset_id === activeAssetId
+                  ? '0 0 0 2px var(--success)'
+                  : crop.asset_id === hoveredAssetId
+                    ? '0 0 0 1.5px var(--gold-600)'
+                    : 'none',
               }"
-              :title="`img ${image.image_index ?? '?'} · crop ${crop.crop_index}`"
-              @click="setActiveIndex(idx)"
+              :title="`crop ${crop.crop_index}${decisions[crop.asset_id] ? ' · ' + (cropDecisionLabel(crop.asset_id) ?? '') : ''}`"
+              @click="setActiveIndex(globalIndexByAssetId[crop.asset_id] ?? 0)"
+              @mouseenter="hoveredAssetId = crop.asset_id"
+              @mouseleave="hoveredAssetId = null"
             >
-              <!-- Tag badge top-left -->
+              <!-- Tag badge top-left : couleur selon état décision -->
               <span
                 class="absolute -top-1.5 -left-1.5 flex h-5 w-5 items-center justify-center rounded-full font-mono text-[10px] font-semibold"
                 :style="{
-                  background: idx === activeCropIndex || decisions[crop.asset_id]?.kind === 'assign'
-                    ? 'var(--gold-600)'
-                    : decisions[crop.asset_id]?.kind === 'reject'
-                      ? 'var(--danger)'
-                      : 'var(--ink)',
+                  background: crop.asset_id === activeAssetId
+                    ? 'var(--success)'
+                    : decisions[crop.asset_id]?.kind === 'assign'
+                      ? 'var(--success)'
+                      : decisions[crop.asset_id]?.kind === 'reject'
+                        ? 'var(--danger)'
+                        : 'var(--ink-400)',
                   color: 'var(--surface)',
                 }"
-              >{{ tagNumberByAssetId[crop.asset_id] ?? idx + 1 }}</span>
+              >{{ tagNumberByAssetId[crop.asset_id] ?? crop.crop_index + 1 }}</span>
 
               <!-- Thumbnail -->
               <div class="aspect-square overflow-hidden rounded border" style="border-color: var(--surface-3); background: var(--surface-1);">
-                <img :src="crop.crop_url" :alt="`crop ${crop.crop_index}`" class="h-full w-full object-cover" loading="lazy" />
+                <img :src="cropSrc(crop)" :alt="`crop ${crop.crop_index}`" class="h-full w-full object-cover" loading="lazy" />
               </div>
 
               <!-- Decision badge -->
@@ -726,6 +848,7 @@ function detectionTagPos(det: { cx: number; cy: number; r: number }) {
           :focused-candidate-idx="focusedCandidateIdx"
           :free-search-candidate="freeSearchCandidate"
           :asset-id="activeAssetId"
+          :assigned-eurio-id="activeCropAssignedEurioId"
           class="flex-1 min-h-0"
           @target-focus="onTargetFocus"
           @candidate-focus="onCandidateFocus"

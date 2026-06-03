@@ -9,6 +9,7 @@
 import { computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeft, Layers, Package } from 'lucide-vue-next'
+import { useCohortsQuery } from '@/features/lab/composables/useLabQueries'
 import SingleReviewView from '../views/SingleReviewView.vue'
 import LotReviewView from '../views/LotReviewView.vue'
 
@@ -21,6 +22,17 @@ const mode = computed<ReviewMode>(() => {
   const m = route.query.mode
   return m === 'lot' ? 'lot' : 'single'
 })
+
+// Optional cohort scope (Single mode) — persisted in the URL so it survives
+// reloads and the queue view reads it from `?cohort=`.
+const cohortsQuery = useCohortsQuery()
+const cohorts = computed(() => cohortsQuery.data.value ?? [])
+const selectedCohort = computed<string>(() =>
+  typeof route.query.cohort === 'string' ? route.query.cohort : '',
+)
+function setCohort(id: string) {
+  void router.replace({ query: { ...route.query, cohort: id || undefined } })
+}
 
 function setMode(next: ReviewMode) {
   if (mode.value === next) return
@@ -68,12 +80,31 @@ watch(mode, () => {})
         </div>
       </div>
 
-      <!-- Toggle Single | Lot -->
-      <div
-        class="inline-flex rounded-md border p-0.5"
-        style="border-color: var(--surface-3); background: var(--surface-1);"
-        role="tablist"
-      >
+      <div class="flex items-center gap-3">
+        <!-- Cohort scope (Single mode) -->
+        <label
+          v-if="mode === 'single'"
+          class="flex items-center gap-1.5 text-[11px] uppercase tracking-wider"
+          style="color: var(--ink-500);"
+        >
+          Cohort
+          <select
+            class="rounded-md border px-2 py-1 text-xs font-mono normal-case"
+            style="border-color: var(--surface-3); background: var(--surface-1); color: var(--ink);"
+            :value="selectedCohort"
+            @change="setCohort(($event.target as HTMLSelectElement).value)"
+          >
+            <option value="">Toutes</option>
+            <option v-for="c in cohorts" :key="c.id" :value="c.id">{{ c.name }}</option>
+          </select>
+        </label>
+
+        <!-- Toggle Single | Lot -->
+        <div
+          class="inline-flex rounded-md border p-0.5"
+          style="border-color: var(--surface-3); background: var(--surface-1);"
+          role="tablist"
+        >
         <button
           type="button"
           role="tab"
@@ -104,6 +135,7 @@ watch(mode, () => {})
           <Package class="h-3 w-3" />
           Lot
         </button>
+        </div>
       </div>
     </header>
 

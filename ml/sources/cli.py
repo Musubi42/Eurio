@@ -66,14 +66,17 @@ def _load_adapter(source_id: str, *, store=None):
 
 def _resolve_ebay_groups(
     store, *, batch: int, country: str | None, year: int | None,
-) -> list[tuple[float, str, int, int]]:
-    """Resolve discovery groups for an eBay run.
+) -> list["EbayGroup"]:
+    """Resolve **commemorative** discovery groups for an eBay run.
 
-    Renvoie une liste de ``(denomination, country, year, n_coins)``.
-    Priorité : ``--country`` + ``--year`` épingle un groupe unique ;
-    sinon, tête de la freshness queue groupée (top-N des groupes les
-    plus stale de ``v_ebay_freshness_groups``).
+    Renvoie une liste d'``EbayGroup`` (kind=``commemorative``). Priorité :
+    ``--country`` + ``--year`` épingle un groupe unique ; sinon, tête de la
+    freshness queue groupée (top-N des groupes les plus stale de
+    ``v_ebay_freshness_groups``). Les standards ne passent pas par la
+    freshness queue — ils sont scopés par cohort (``cohort_ebay_groups``).
     """
+    from sources.cohort_scope import EbayGroup
+
     conn = store._connection()
     if country and year:
         rows = conn.execute(
@@ -95,7 +98,10 @@ def _resolve_ebay_groups(
             (batch,),
         ).fetchall()
     return [
-        (r["denomination"], r["country"], r["year"], r["n_coins"])
+        EbayGroup(
+            r["denomination"], r["country"], r["year"], r["n_coins"],
+            "commemorative",
+        )
         for r in rows
     ]
 
@@ -197,22 +203,28 @@ def main(argv: list[str] | None = None) -> int:
         if not groups:
             raise SystemExit(
                 f"Cohort {args.cohort_id}: aucun groupe eBay-scrapable "
-                "(que des standards/eu/variants ?)."
+                "(que des eu-issues/variants ?)."
             )
         discovery_groups = tuple(
-            DiscoveryGroup(denomination=d, country=c, year=y)
-            for d, c, y, _ in groups
+            DiscoveryGroup(
+                denomination=g.denomination, country=g.country,
+                year=g.year, kind=g.kind,
+            )
+            for g in groups
         )
-        n_coins = sum(n for *_, n in groups)
+        n_coins = sum(g.n_coins for g in groups)
         if non_scrapable:
             print(
                 f"[ebay] {len(non_scrapable)} coin(s) hors découverte groupée "
-                f"(standards/eu/variants — Numista-only): "
+                f"(eu-issues/variants — Numista-only): "
                 f"{', '.join(non_scrapable)}"
             )
         if not args.dry_run:
             _ebay_preflight_or_die(store, n_eurio_ids=n_coins)
-        labels = ", ".join(f"{c}/{y}" for _, c, y, _ in groups[:4])
+        labels = ", ".join(
+            f"{g.country}/{g.year if g.year is not None else 'std'}"
+            for g in groups[:4]
+        )
         print(
             f"[ebay] cohort {args.cohort_id}: {len(groups)} group(s) / "
             f"{n_coins} coin(s): {labels}{'...' if len(groups) > 4 else ''}"
@@ -230,13 +242,19 @@ def main(argv: list[str] | None = None) -> int:
                 "Run `go-task ml:bootstrap-coins` first."
             )
         discovery_groups = tuple(
-            DiscoveryGroup(denomination=d, country=c, year=y)
-            for d, c, y, _ in groups
+            DiscoveryGroup(
+                denomination=g.denomination, country=g.country,
+                year=g.year, kind=g.kind,
+            )
+            for g in groups
         )
-        n_coins = sum(n for *_, n in groups)
+        n_coins = sum(g.n_coins for g in groups)
         if not args.dry_run:
             _ebay_preflight_or_die(store, n_eurio_ids=n_coins)
-        labels = ", ".join(f"{c}/{y}" for _, c, y, _ in groups[:4])
+        labels = ", ".join(
+            f"{g.country}/{g.year if g.year is not None else 'std'}"
+            for g in groups[:4]
+        )
         print(
             f"[ebay] batch of {len(groups)} group(s) / {n_coins} coin(s): "
             f"{labels}{'...' if len(groups) > 4 else ''}"

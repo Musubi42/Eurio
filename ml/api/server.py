@@ -31,6 +31,7 @@ from . import review_queue_routes
 from . import sources_routes
 from . import coins_review_routes
 from . import bench_routes
+from . import crop_bench_routes
 from . import operations_routes
 from . import referential_routes
 
@@ -118,6 +119,9 @@ app.include_router(coins_review_routes.router)
 
 # Wire /bench — studio bench du theme-matcher (local-only, lecture seule).
 app.include_router(bench_routes.router)
+
+# Wire /crop-bench — banc de qualité du crop eBay (oracle Otsu, lecture seule).
+app.include_router(crop_bench_routes.router)
 
 # Wire /operations — dashboard d'opérations J1/J4 (pulse, readiness, diversity, cohorts).
 app.include_router(operations_routes.router)

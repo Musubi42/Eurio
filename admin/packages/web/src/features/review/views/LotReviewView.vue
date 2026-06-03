@@ -3,8 +3,8 @@
 // Grille de listings groupés (LotCard) → click navigue vers
 // /review/lot/:listing_key (page full-page Specimen Plate, chunk 5).
 
-import { onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onMounted, watch, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { Loader2, Package } from 'lucide-vue-next'
 import {
   fetchLots, LotReviewError,
@@ -13,6 +13,13 @@ import {
 import LotCard from '../components/LotCard.vue'
 
 const router = useRouter()
+const route = useRoute()
+// Scope cohort optionnel (§C4-lot) — restreint les lots aux coins de la cohort.
+const cohortId = computed(() =>
+  typeof route.query.cohort === 'string' && route.query.cohort
+    ? route.query.cohort
+    : null,
+)
 
 const lots = ref<LotListItem[]>([])
 const total = ref(0)
@@ -23,7 +30,7 @@ async function load() {
   loading.value = true
   error.value = null
   try {
-    const resp = await fetchLots({ limit: 24 })
+    const resp = await fetchLots({ limit: 24, cohortId: cohortId.value })
     lots.value = resp.items
     total.value = resp.total
   } catch (err) {
@@ -34,6 +41,7 @@ async function load() {
 }
 
 onMounted(load)
+watch(cohortId, () => { void load() })
 
 function openLot(key: string) {
   // Navigate to the full-page review detail (Phase 2 chunk 5).
@@ -51,6 +59,11 @@ function openLot(key: string) {
       <p class="font-mono text-[11px] tabular-nums" style="color: var(--ink-500);">
         <span class="font-semibold" style="color: var(--gold-600);">{{ total }}</span>
         <span class="ml-1 uppercase tracking-wider" style="color: var(--ink-400);">listings à reviewer</span>
+        <span
+          v-if="cohortId"
+          class="ml-2 rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wider"
+          style="background: color-mix(in srgb, var(--indigo-700) 12%, var(--surface)); color: var(--indigo-700);"
+        >cohort · {{ cohortId }}</span>
       </p>
       <p class="font-mono text-[10px]" style="color: var(--ink-400);">
         Cliquer une card pour ouvrir le détail (full-page)

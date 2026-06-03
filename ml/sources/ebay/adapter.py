@@ -68,6 +68,10 @@ from sources.ebay.queries import (
     match_listing_to_group,
     search_limit_for_group,
 )
+from sources.ebay.standards import (
+    attribute_standard_listing,
+    load_standard_eras,
+)
 
 # Factory invoked by the adapter to materialize a client for a given
 # marketplace. Callers wire it as e.g.
@@ -181,15 +185,32 @@ class EbayAdapter:
         pour ``marketplace_found``).
         """
         group = self._resolve_group(query)
-        coins = load_group_coins(
-            self.conn, group.denomination, group.country, group.year,
-        )
-        if not coins:
-            raise ValueError(
-                f"No commemorative coin for group {group} — nothing to discover."
+        is_standard = group.kind == "standard"
+
+        # Périmètre du groupe : commémos-sœurs (theme-match) vs ères de design
+        # standard (appartenance de plage). `coin_ids` n'est consommé que par
+        # le chemin commémo ; le chemin standard attribue par millésime.
+        coin_ids: list[str] = []
+        if is_standard:
+            eras = load_standard_eras(
+                self.conn, group.denomination, group.country,
             )
-        coin_ids = [c.eurio_id for c in coins]
-        limit = search_limit_for_group(len(coins))
+            if not eras:
+                raise ValueError(
+                    f"No standard era for group {group} — nothing to discover."
+                )
+            n_in_group = len(eras)
+        else:
+            coins = load_group_coins(
+                self.conn, group.denomination, group.country, group.year,
+            )
+            if not coins:
+                raise ValueError(
+                    f"No commemorative coin for group {group} — nothing to discover."
+                )
+            coin_ids = [c.eurio_id for c in coins]
+            n_in_group = len(coins)
+        limit = search_limit_for_group(n_in_group)
 
         # Routage uniforme : EBAY_DE puis EBAY_ES, chacun queryé dans sa
         # langue native (cf. marketplaces.py — décision benchmark).
@@ -213,14 +234,15 @@ class EbayAdapter:
                     "country": group.country,
                     "year": group.year,
                 },
-                "n_coins_in_group": len(coins),
+                "n_coins_in_group": n_in_group,
+                "kind": group.kind,
                 "search_limit": limit,
                 "category_id": ebay_q.category_id,
             }
             logger.info(
-                "[ebay] group=%s/%s/%s mkt=%s lang=%s q=%r n_coins=%d limit=%d",
-                group.denomination, group.country, group.year,
-                mkt, lang, ebay_q.q, len(coins), limit,
+                "[ebay] group=%s/%s/%s kind=%s mkt=%s lang=%s q=%r n_coins=%d limit=%d",
+                group.denomination, group.country, group.year, group.kind,
+                mkt, lang, ebay_q.q, n_in_group, limit,
             )
 
             t0 = time.monotonic()
@@ -253,50 +275,33 @@ class EbayAdapter:
                 )
                 continue
 
-            # Par listing : accept_listing (anti-bruit) puis attribution
-            # theme-match à une pièce du groupe.
+            # Par listing : accept_listing (anti-bruit) puis attribution à une
+            # pièce du groupe — theme-match (commémo) ou appartenance de plage
+            # d'années (standard).
             kept: list[dict] = []
             for row in expand.rows:
                 ok, reason = accept_listing(
                     row,
                     group.denomination,
-                    expected_year=group.year,
-                    is_commemorative=True,
+                    expected_year=group.year,            # None → pas de filtre année (standard)
+                    is_commemorative=not is_standard,
                 )
                 if not ok:
                     self._record_discard(record_discarded, row, reason, mkt)
                     continue
-                gm = match_listing_to_group(
-                    row.get("title") or "", coin_ids, conn=self.conn,
-                )
-                # Garde-fou de contradiction — un titre qui contredit un
-                # axe dur du groupe (pays/année/dénom) → `no_match` →
-                # discard. Contradiction *positive*, pas une absence
-                # d'évidence : on jette à juste titre.
-                if gm.verdict == "no_match":
-                    axe = gm.contradictions[0] if gm.contradictions else "unknown"
+                if is_standard:
+                    if not self._attribute_standard_row(row, group):
+                        # commemo / no_match / no_eras → discard (motif sur la
+                        # ligne) ; la commémo éventuelle est captée par son run.
+                        self._record_discard(
+                            record_discarded, row, row["_discard_reason"], mkt,
+                        )
+                        continue
+                elif not self._attribute_commemo_row(row, coin_ids):
                     self._record_discard(
-                        record_discarded, row, f"group_contradict_{axe}", mkt,
+                        record_discarded, row, row["_discard_reason"], mkt,
                     )
                     continue
-                # C1 — le theme-matcher ne jette plus : single / lot /
-                # ambiguous sont tous gardés. `ambiguous` → target None
-                # → le listing part en review avec ses group_candidates
-                # (chunk 5b) au lieu d'être discardé en `theme_mismatch`.
-                row["_resolved_eurio_id"] = gm.target_eurio_id
-                row["_group_verdict"] = gm.verdict
-                # Candidates pour la review queue : permet à l'admin de
-                # désambiguïser un listing 'ambiguous' parmi les sœurs du
-                # groupe (ex: FR/2018 Bleuet vs Simone Veil). Pour les
-                # verdicts 'lot' on garde le sous-ensemble matché par le
-                # theme-match. Pour 'single' on ne stocke rien (target est
-                # déjà résolu). Cf. P10-E (fix multi-coin groups 2026-05-26).
-                if gm.verdict == "ambiguous":
-                    row["_group_candidates"] = list(coin_ids)
-                elif gm.verdict == "lot":
-                    row["_group_candidates"] = list(gm.matched)
-                else:
-                    row["_group_candidates"] = None
                 kept.append(row)
 
             duration_ms = int((time.monotonic() - t0) * 1000)
@@ -407,10 +412,19 @@ class EbayAdapter:
             return query.discovery_group
         if query.target_eurio_id:
             coin = load_coin(self.conn, query.target_eurio_id)
+            # Un standard se résout vers son groupe pays (année=None) ; une
+            # commémo vers son groupe (denom, pays, année).
+            if coin.is_commemorative:
+                return DiscoveryGroup(
+                    denomination=coin.face_value,
+                    country=coin.country,
+                    year=coin.year,
+                )
             return DiscoveryGroup(
                 denomination=coin.face_value,
                 country=coin.country,
-                year=coin.year,
+                year=None,
+                kind="standard",
             )
         raise ValueError(
             "EbayAdapter.discover requires query.discovery_group "
@@ -445,6 +459,59 @@ class EbayAdapter:
             },
             marketplace=marketplace,
         ))
+
+    # ── Attribution par listing (commémo / standard) ─────────────────────────
+
+    def _attribute_commemo_row(self, row: dict, coin_ids: list[str]) -> bool:
+        """Attribue un listing à une commémo-sœur du groupe (theme-match).
+
+        Retourne ``True`` si gardé (pose ``_resolved_eurio_id`` /
+        ``_group_verdict`` / ``_group_candidates`` sur ``row``), ``False`` si
+        à jeter (pose ``_discard_reason``). C1 — single / lot / ambiguous sont
+        tous gardés ; seul ``no_match`` (contradiction franche pays/année/
+        dénom) jette.
+        """
+        gm = match_listing_to_group(
+            row.get("title") or "", coin_ids, conn=self.conn,
+        )
+        if gm.verdict == "no_match":
+            axe = gm.contradictions[0] if gm.contradictions else "unknown"
+            row["_discard_reason"] = f"group_contradict_{axe}"
+            return False
+        row["_resolved_eurio_id"] = gm.target_eurio_id
+        row["_group_verdict"] = gm.verdict
+        # Candidates review : 'ambiguous' → toutes les sœurs ; 'lot' → le
+        # sous-ensemble matché ; 'single' → rien (target déjà résolu). Cf.
+        # P10-E (fix multi-coin groups 2026-05-26).
+        if gm.verdict == "ambiguous":
+            row["_group_candidates"] = list(coin_ids)
+        elif gm.verdict == "lot":
+            row["_group_candidates"] = list(gm.matched)
+        else:
+            row["_group_candidates"] = None
+        return True
+
+    def _attribute_standard_row(self, row: dict, group: DiscoveryGroup) -> bool:
+        """Attribue un listing à une ère standard du pays (appartenance de plage).
+
+        Retourne ``True`` si gardé, ``False`` si à jeter (``commemo`` /
+        ``no_match`` / ``no_eras`` — pose ``_discard_reason``). Doctrine
+        standards « tout en review » : ``single`` et ``ambiguous`` sont gardés
+        et partent en review ; ``target`` est un *prior* (None si ambiguous) et
+        les ères du pays sont toujours portées en candidates pour que l'humain
+        tranche / corrige.
+        """
+        sm = attribute_standard_listing(
+            row.get("title") or "", group.denomination, group.country,
+            conn=self.conn,
+        )
+        if sm.verdict in ("commemo", "no_match", "no_eras"):
+            row["_discard_reason"] = sm.reason
+            return False
+        row["_resolved_eurio_id"] = sm.target_eurio_id
+        row["_group_verdict"] = sm.verdict
+        row["_group_candidates"] = list(sm.candidates)
+        return True
 
     def _search_and_expand(
         self,
