@@ -1,6 +1,6 @@
 # Design — étage dedup + verify + fusion d'identité (census de pièces)
 
-> **Statut : design VERROUILLÉ (2026-06-04), v1 pas encore codée.** Sous-chantier de [coin-census-bench](./coin-census-bench.md). Fait suite à la mesure du plafond (§5 du bench) : le **propose** est résolu (YOLO-low@~0.10, faux-single 0 %) ; reste à **ramener le sur-comptage** (faux-lot ~69 %) sans réintroduire de faux-single.
+> **Statut : v1 CODÉE + BENCHÉE + AUDITÉE (2026-06-04).** Résultats & verdict en **§6**. Sous-chantier de [coin-census-bench](./coin-census-bench.md). TL;DR : la v1 livrée = **`yolo@0.10 + ① nms_only`** (domine yolo brut, 0 poison) ; le **gate is-coin ② n'est pas prêt** (fragmentation YOLO + trou banque) ; prochain levier = étendre la banque.
 >
 > **Décidé PO** : signal is-coin = **option A (prototype coin-ness large, DINO)** · v1 = **① NMS-concentrique + ② verify is-coin** (fusion ③ repoussée, bench front/back trop mince) → mesurer le résidu.
 
@@ -74,3 +74,27 @@ Deux sous-cas dans COINLIKE_SEP :
 1. **Banque coin-ness** : encoder avers+revers 2€ (Numista, ~1100 imgs ; + BCE si dispo) en DINO → `state/foundation_coinness.npz`. Script type `build_coinness_bank.py`.
 2. **Ladder** : `nms_concentric(boxes)` → `is_coin(crop) = simDINO(crop, banque) ≥ τ` (+ structure-guard) → count. Ajouter le proposeur `yolo_low+ladder` au harnais de bench.
 3. **Mesurer** sur `bench_v0.json` : ablation ① / ①+② ; cible faux-single **0 %**, faux-lot **69 %→~5-10 %**, exact ↑. Présenter au PO.
+
+## 6. Résultats v1 + AUDIT (2026-06-04) — bench `ceiling_ladder.json`
+
+Code livré : `scripts/build_coinness_bank.py` (banque **1127** réfs : 564 avers + 563 revers 2€, dim 384 → `state/foundation_coinness.npz`), module `scan/census.py` (① `nms_concentric` + ② `is_coin`), proposeur `ladder` dans le harnais, `tests/test_census.py` (10 ✅).
+
+`fs_real` = **poison réel** = vrai lot dont les pièces sont VISIBLES (`n_disks_visible≥2`, 25 lots) vu ≤1. Distinct du `false_single` brut, qui comptait à tort des lots scellés/album où les pièces ne sont pas visibles (correctif d'audit).
+
+| variante | zéro-récup /61 | faux-single /27 | **fs_real /25** ⚠️ | faux-lot /80 | exact /110 |
+|---|---|---|---|---|---|
+| baseline prod | 0 % | 48 % | **44 %** ☠️ | 5 % | 34 % |
+| yolo@0.10 (proposeur) | 89 % | 0 % | **0 %** | 69 % | 25 % |
+| **① nms_only** *(garde taille+bord)* | **89 %** | **0 %** | **0 %** ✅ | **64 %** | **30 %** |
+| ①② τ0.35 | 82 % | 19 % | 16 % | 41 % | 46 % |
+| ①② τ0.50 | 57 % | 41 % | 36 % | 22 % | 43 % |
+| ①② τ0.60 | 33 % | 48 % | 44 % | 8 % | 33 % |
+
+### Verdict de l'audit (4 auditeurs Sonnet + synthèse, run `wf_a95d6db2-8fa`)
+1. **v1 livrée = `yolo@0.10 + ① nms_only` (SANS le gate DINO).** Elle **domine** yolo brut : même rappel (89 %), **0 poison** (fs_real 0 %), et améliore exact (30 % vs 25 %) + baisse le faux-lot (64 % vs 69 %). Strictement meilleure que la baseline prod (0 % vs 44 % poison). Le faux-lot résiduel (64 %) = **review humaine, pas du poison** (bon côté de l'asymétrie de coût).
+2. **Le gate is-coin ② n'est PAS prêt** : il échange poison↔faux-lot ~1:1 (fs_real grimpe à 16 % dès τ0.35). **Deux causes** : (A) **fragmentation YOLO** — 1 pièce → 5-13 boîtes disjointes coin-like qu'aucun τ ne sépare (problème de PROPOSEUR) ; (B) **trou de domaine banque** — capsule/revers/multi-dénom Numista canonique ≠ vues eBay réelles. Non calibrable au seuil seul.
+3. **Bugs R0 corrigés post-audit** : blocker (banque absente → `RuntimeError` au lieu de 0 silencieux) ; `nms_concentric` ne fusionne plus 2 pièces distinctes d'un lot (gardes **taille** ≥0.7× + **bord**, cas `172ac301` validé : fs_real nms_only 4 %→0 %) ; CLI (`hough` retiré, `all`=yolo+ladder, proposeur inconnu → erreur) ; `false_single` décomposé en `fs_real` ; assert d'alignement banque ; tests pures.
+
+### Décision (à ratifier) & prochain levier
+- **Livrer `① nms_only` comme proposeur de compte v1** (training corpus + signal lot/single), **gate DINO désactivé**.
+- **Prochain levier (reco audit) : étendre la banque AVANT d'itérer τ** — ajouter vues capsule (20-30 crops du bench), multi-dénom (1c-1€), pour combler les 5 défaillances structurelles. Si elles persistent → option B (probe is-coin 2 classes `physical_coin` vs `printed/capsule`). NB : la **fragmentation YOLO (cause A)** ne se règle pas par la banque — c'est un sujet PROPOSEUR (NMS plus agressif sur boîtes très chevauchantes d'un même single, ou retrain) à traiter séparément.

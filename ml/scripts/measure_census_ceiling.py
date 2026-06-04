@@ -128,6 +128,23 @@ def yolo_low_counts(bgr: np.ndarray, confs: list[float],
     return out
 
 
+def yolo_low_boxes(bgr: np.ndarray, conf: float,
+                   r_floor_frac: float) -> list[tuple[float, float, float, float]]:
+    """Boîtes YOLO (x1,y1,x2,y2) natives à un seuil conf, plancher rayon appliqué."""
+    model = _get_yolo()
+    short = _short_side(bgr)
+    r_floor = r_floor_frac * short
+    res = model.predict(bgr, imgsz=_YOLO_IMGSZ, conf=conf, iou=0.45,
+                        device=_YOLO_DEVICE, verbose=False)
+    out = []
+    if res and res[0].boxes is not None and len(res[0].boxes):
+        for b in res[0].boxes.xyxy.cpu().numpy():
+            x1, y1, x2, y2 = b.tolist()
+            if min(x2 - x1, y2 - y1) / 2.0 >= r_floor:
+                out.append((float(x1), float(y1), float(x2), float(y2)))
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Proposeur (b) — SAM2 everything → is-coin (géométrie + DINO sim-to-anchors)
 # ---------------------------------------------------------------------------
@@ -276,10 +293,15 @@ def aggregate(preds: dict[str, int], bench: list[dict],
     zero_pool = [it for it in items if it["n_crops"] == 0 and it["n_coins"] >= 1]
     lot_pool = [it for it in items if it["n_coins"] >= 2]
     single_pool = [it for it in items if it["n_coins"] == 1]
+    # Poison RÉEL = vrai lot dont les pièces sont VISIBLES (n_disks_visible≥2) vu ≤1.
+    # Audit : un lot scellé/album où les pièces ne sont pas visibles (n_disks≤1) compté
+    # ≤1 n'est pas du poison (rien à croper). On sépare les deux.
+    lot_visible_pool = [it for it in lot_pool if (it.get("n_disks_visible") or 0) >= 2]
 
     zr = frac(lambda it, p: p >= 1, zero_pool)
-    fs = frac(lambda it, p: p <= 1, lot_pool)          # faux-single (poison)
-    fl = frac(lambda it, p: p >= 2, single_pool)       # faux-lot
+    fs = frac(lambda it, p: p <= 1, lot_pool)               # faux-single brut (/27)
+    fs_real = frac(lambda it, p: p <= 1, lot_visible_pool)  # poison réel (pièces visibles)
+    fl = frac(lambda it, p: p >= 2, single_pool)            # faux-lot
     ex_c = frac(lambda it, p: p == it["n_coins"], items)
     p1_c = frac(lambda it, p: abs(p - it["n_coins"]) <= 1, items)
     ex_d = frac(lambda it, p: p == (it.get("n_disks_visible") or 0), items)
@@ -294,9 +316,9 @@ def aggregate(preds: dict[str, int], bench: list[dict],
         "zero_recovery": pct(zr),
         "exact_coins": pct(ex_c), "pm1_coins": pct(p1_c),
         "exact_disks": pct(ex_d), "pm1_disks": pct(p1_d),
-        "false_single": pct(fs), "false_lot": pct(fl),
-        "_raw": {"zero_recovery": zr, "false_single": fs, "false_lot": fl,
-                 "exact_coins": ex_c, "pm1_coins": p1_c,
+        "false_single": pct(fs), "fs_real": pct(fs_real), "false_lot": pct(fl),
+        "_raw": {"zero_recovery": zr, "false_single": fs, "fs_real": fs_real,
+                 "false_lot": fl, "exact_coins": ex_c, "pm1_coins": p1_c,
                  "exact_disks": ex_d, "pm1_disks": p1_d},
     }
 
@@ -308,7 +330,7 @@ def aggregate(preds: dict[str, int], bench: list[dict],
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--proposers", default="all",
-                    help="csv parmi yolo,hough,sam ou 'all'")
+                    help="csv parmi yolo,sam,ladder ou 'all' (=yolo,ladder). sam = opt-in (lent).")
     ap.add_argument("--sam-model", default="FastSAM-s.pt",
                     help="FastSAM-s.pt (Mac, ~0.3s/img) | sam2_b.pt/mobile_sam.pt (GPU CUDA only)")
     ap.add_argument("--limit", type=int, default=0, help="probe N images (0=tout)")
@@ -319,12 +341,20 @@ def main() -> int:
     ap.add_argument("--sam-rmin", type=float, default=0.04)
     ap.add_argument("--sam-rmax", type=float, default=0.55)
     ap.add_argument("--sam-bg-area", type=float, default=0.65)
+    ap.add_argument("--ladder-conf", type=float, default=0.10,
+                    help="conf YOLO du proposeur ladder (proposeur adopté)")
+    ap.add_argument("--ladder-taus", default="0.35,0.40,0.45,0.50,0.55,0.60")
     ap.add_argument("--out", default=str(OUT_DIR / "ceiling_v0.json"))
     args = ap.parse_args()
 
-    which = ({"yolo", "sam"} if args.proposers == "all"
+    which = ({"yolo", "ladder"} if args.proposers == "all"
              else set(s.strip() for s in args.proposers.split(",")))
+    _known = {"yolo", "sam", "ladder"}
+    unknown = which - _known
+    if unknown:
+        raise ValueError(f"proposeur(s) inconnu(s): {sorted(unknown)} — connus: {sorted(_known)}")
     confs = [float(x) for x in args.yolo_confs.split(",")]
+    ladder_taus = [float(x) for x in args.ladder_taus.split(",")]
 
     global _YOLO_DEVICE, _YOLO_IMGSZ, _SAM_DEVICE
     _YOLO_DEVICE = _pick_device() if args.device == "auto" else args.device
@@ -340,6 +370,7 @@ def main() -> int:
     # Collecte des prédictions par proposeur-variante.
     preds: dict[str, dict[str, int]] = {}
     cand_dump: dict[str, list[dict]] = {}   # pour le sweep SAM
+    lad_dump: dict[str, dict] = {}          # pour le sweep ladder (sims+structs)
 
     # baseline_prod (gratuit, lu du bench)
     preds["baseline_prod_ncrops"] = {it["source_image_id"]: it["n_crops"] for it in bench}
@@ -363,6 +394,15 @@ def main() -> int:
             # propose-recall = nb de candidats passant le pré-filtre taille (pur rappel)
             preds.setdefault("sam_propose", {})[sid] = len(cands)
 
+        if "ladder" in which:
+            from scan import census
+            boxes = yolo_low_boxes(bgr, args.ladder_conf, args.yolo_rfloor)
+            h_im, w_im = bgr.shape[:2]
+            deduped = census.nms_concentric(boxes, img_wh=(w_im, h_im))  # ① NMS-concentrique
+            sims, structs = census.coin_signals(bgr, deduped)   # ② signaux is-coin
+            lad_dump[sid] = {"sims": sims, "structs": structs}
+            preds.setdefault("ladder_①nms_only", {})[sid] = len(deduped)
+
         if (idx + 1) % 10 == 0 or idx + 1 == len(bench):
             dt = time.time() - t0
             print(f"  {idx+1}/{len(bench)}  ({dt:.0f}s, {dt/(idx+1):.1f}s/img)")
@@ -384,10 +424,20 @@ def main() -> int:
                 for sid, cs in cand_dump.items()
             }
 
+    # --- Sweep ladder ② is-coin (sim DINO coin-ness ≥ τ + structure-guard) ---
+    if "ladder" in which and lad_dump:
+        from scan.census import _STRUCT_MIN_LAP
+        for tau in ladder_taus:
+            preds[f"ladder_①②(τ{tau:g})"] = {
+                sid: sum(1 for s, st in zip(d["sims"], d["structs"])
+                         if s >= tau and st >= _STRUCT_MIN_LAP)
+                for sid, d in lad_dump.items()
+            }
+
     # --- Agrégation + impression ---
     report: dict[str, Any] = {}
     cols = ["n", "zero_recovery", "exact_coins", "pm1_coins",
-            "exact_disks", "pm1_disks", "false_single", "false_lot"]
+            "false_single", "fs_real", "false_lot"]
     print("\n" + "=" * 110)
     print(f"{'proposeur':<34} " + " ".join(f"{c:>13}" for c in cols[1:]))
     print("-" * 110)
