@@ -1,6 +1,6 @@
 # Design — étage dedup + verify + fusion d'identité (census de pièces)
 
-> **Statut : v1 CODÉE + BENCHÉE + AUDITÉE (2026-06-04).** Résultats & verdict en **§6**. Sous-chantier de [coin-census-bench](./coin-census-bench.md). TL;DR : la v1 livrée = **`yolo@0.10 + ① nms_only`** (domine yolo brut, 0 poison) ; le **gate is-coin ② n'est pas prêt** (fragmentation YOLO + trou banque) ; prochain levier = étendre la banque.
+> **Statut : SOUS-CHANTIER CLÔTURÉ — v1 ACTÉE (2026-06-04, PO).** La v1 livrée = **`yolo@0.10 + ① nms_only`** (domine yolo brut, **poison 0 %**, rappel 89 % ; faux-lot 64 % = review, pas poison). Le **gate is-coin ② n'est PAS adopté** : impasse confirmée (échange poison↔faux-lot 1:1 ; extension banque cause B = négatif §7 ; fragmentation YOLO cause A = irréductible sans risque de re-poison). **Plateau acté, rendements décroissants** → on s'arrête. Seul levier restant non-exploré = option B (probe is-coin entraînée), différé. Infra gardée (`scan/census.py`, `--include-real`, `--bank`). Câblage prod de `nms_only` = **différé** (décision future). Résultats & verdict détaillés en **§6-§7**.
 >
 > **Décidé PO** : signal is-coin = **option A (prototype coin-ness large, DINO)** · v1 = **① NMS-concentrique + ② verify is-coin** (fusion ③ repoussée, bench front/back trop mince) → mesurer le résidu.
 
