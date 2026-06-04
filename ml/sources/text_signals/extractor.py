@@ -35,6 +35,7 @@ from .dictionaries import (
     COUNT_PIECES_RE,
     COUNT_X_RE,
     DENOMINATION_RE,
+    DENOM_RANGE_RE,
     GRADED_SLAB_RE,
     LOT_KEYWORDS_RE,
     LOT_KIND_RE,
@@ -239,10 +240,14 @@ def _extract_rejection_markers(text: str) -> tuple[tuple[str, ...], list[str]]:
 def _extract_lot(
     text: str, *, n_countries: int,
 ) -> tuple[bool, list[str]]:
-    """Détection lot : keyword lot, compteur explicite ≥2, ou ≥2 pays.
+    """Détection lot : keyword lot, compteur explicite ≥2, ≥2 pays, ou plage
+    de dénominations (1 cent → 2 euro).
 
     Le seuil ≥2 pays est intentionnel : un titre comme "2 Euro Andorre &
-    France" est un lot transfrontalier, pas une ambiguïté à résoudre.
+    France" est un lot transfrontalier, pas une ambiguïté à résoudre. La plage
+    1 cent–2 euro (jeu complet) est un signal de lot multilingue validé sur le
+    coin-census-bench. NB : le multi-années a été testé puis retiré — il
+    sur-capturait les offres « au choix / pick your year » (1 pièce vendue).
     """
     raw: list[str] = []
     is_lot = False
@@ -274,6 +279,11 @@ def _extract_lot(
     if n_countries >= 2:
         is_lot = True
         raw.append(f"{n_countries}-countries")
+
+    # Plage « 1 cent … 2 euro » = jeu complet de dénominations (KMS/Satz/cofre).
+    if DENOM_RANGE_RE.search(text):
+        is_lot = True
+        raw.append("denom-range")
 
     return is_lot, raw
 
@@ -308,6 +318,8 @@ def _classify_listing_kind(
             lot_raw.append(m.group(0).strip())
     if n_countries >= 2:
         lot_raw.append(f"{n_countries}-countries")
+    if DENOM_RANGE_RE.search(text_accented):
+        lot_raw.append("denom-range")
     if lot_raw:
         return "lot", _KIND_CONFIDENCE["lot"], lot_raw
 

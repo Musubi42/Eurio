@@ -76,6 +76,8 @@ def _route_decision_for_source_image(
             reason = "is_lot_suspected"
         elif n_crops > 1:
             reason = "multi_coin_photo"
+        elif kind == "lot":
+            reason = "listing_kind_lot"
         else:
             reason = "single_unmatched"
         return (decision, reason)
@@ -100,10 +102,20 @@ def _kind_for_source_image(
 ) -> str:
     """D-26 — résout 'single' vs 'lot' pour cette source_image.
 
-    Niveau 1 : titre suggère lot → 'lot'.
-    Niveau 2 : >1 crops détectés sur cette image → 'lot' (multi-coin photo).
+    Niveau 1 : titre suggère lot (``is_lot_suspected``, FR/EN) → 'lot'.
+    Niveau 2 : ``listing_text_signals.listing_kind == 'lot'`` (classifieur
+        multilingue : KMS/Satz/cofre/N valores/≥2 pays/≥3 millésimes/plage
+        1 cent–2 euro). 'coffret'/'graded_slab'/'single' = 1 pièce → PAS lot.
+        Cf. docs/cohort-pipeline/coin-census-bench.md.
+    Niveau 3 : >1 crops détectés sur cette image → 'lot' (multi-coin photo).
     """
     if is_lot_suspected:
+        return "lot"
+    sig = conn.execute(
+        "SELECT listing_kind FROM listing_text_signals WHERE source_image_id = ?",
+        (source_image_id,),
+    ).fetchone()
+    if sig is not None and sig["listing_kind"] == "lot":
         return "lot"
     n_crops = conn.execute(
         "SELECT count(*) AS n FROM image_assets WHERE source_image_id = ?",

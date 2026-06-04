@@ -169,7 +169,12 @@ LOT_KEYWORDS_RE = re.compile(
     r"\b("
     r"lot|coffret|s[eé]rie|collection\s*compl[eè]te|"
     r"rouleau|roll|set\s+of|sets?\b|"
-    r"bundle|konvolut|sammlung"
+    r"bundle|konvolut|sammlung|"
+    # Sets multilingues (cf. coin-census-bench) : KMS/Kursmünzensatz/Münzset/
+    # (Euro-)Satz/Komplettsatz (DE), cofre/cartera/juego (ES), divisionale (IT),
+    # jaarset/muntset (NL).
+    r"kms|kursm[üu]nzensatz|m[üu]nzset|satz|komplettsatz|"
+    r"cofre|cartera|juego|divisionale|jaarset|muntset"
     r")\b",
     re.IGNORECASE,
 )
@@ -179,7 +184,21 @@ LOT_KEYWORDS_RE = re.compile(
 # 2. "Lot de 3 pièces", "5 coins" — quantité explicite avec mot tête.
 COUNT_X_RE = re.compile(r"\b(\d+)\s*x\s+\S", re.IGNORECASE)
 COUNT_PIECES_RE = re.compile(
-    r"\b(?:lot\s*de\s+)?(\d+)\s*(?:pi[eè]ces?|coins?|m[oü]nzen?)\b",
+    r"\b(?:lot\s*de\s+)?(\d+)\s*(?:"
+    r"pi[eè]ces?|coins?|m[oü]nzen?|st[uü]ck|stuks?|"        # FR/EN/DE/NL
+    r"valori|valores|valeurs|werte|"                         # « valeurs »
+    r"piezas|pezzi|monedas|monete|munten|"                   # « pièces » ES/IT/NL
+    r"exemplaires|ejemplares|esemplari"                      # « exemplaires »
+    r")\b",
+    re.IGNORECASE,
+)
+
+# Plage de dénominations « 1 cent … 2 euro » = jeu complet (KMS/Satz/cofre/cartera).
+# Un vendeur ne décrit jamais UNE pièce comme couvrant 1 cent à 2 euro.
+DENOM_RANGE_RE = re.compile(
+    r"\b1\s*c(?:ent|ents|t|ts|entime?s?|entavos?|entesimi?)?\b"
+    r".{0,15}?"
+    r"\b2\s*(?:€|eur)",
     re.IGNORECASE,
 )
 
@@ -219,7 +238,11 @@ COFFRET_RE = re.compile(
 LOT_KIND_RE = re.compile(
     r"\b("
     r"lot|serie|collection\s*complete|rouleau|roll|set\s+of|sets?|"
-    r"bundle|konvolut|sammlung"
+    r"bundle|konvolut|sammlung|"
+    # Sets multilingues (cf. coin-census-bench) — 'coffret' reste géré par
+    # COFFRET_RE (= 1 pièce emballée). Appliqué sur le titre SANS accents.
+    r"kms|kursmunzensatz|munzset|satz|komplettsatz|"
+    r"cofre|cartera|juego|divisionale|jaarset|muntset"
     r")\b",
     re.IGNORECASE,
 )
