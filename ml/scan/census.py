@@ -28,6 +28,7 @@ import numpy as np
 
 ML_DIR = Path(__file__).resolve().parents[1]
 COINNESS_BANK_PATH = ML_DIR / "state" / "foundation_coinness.npz"
+FACE_PROBE_PATH = ML_DIR / "state" / "fragment_face_probe.npz"
 
 Box = tuple[float, float, float, float]
 
@@ -189,6 +190,63 @@ def is_coin_mask(bgr: np.ndarray, boxes: list[Box], tau: float,
     for b, s in zip(boxes, scores):
         out.append(s >= tau and _box_structure(bgr, b) >= struct_min)
     return out
+
+
+# ---------------------------------------------------------------------------
+# Probe face-vs-fragment (régression log. sur features DINO des crops 224 finaux)
+# ---------------------------------------------------------------------------
+# La cause dominante du sur-comptage census = des fragments coin-like (gros plans
+# tranche/lettrage, anneau interne, partiels) que ni la géométrie ni la sim DINO
+# « coin-ness » ne séparent (census-detector-design.md §6-9). La probe est une
+# régression logistique 1 couche entraînée sur les embeddings DINO des CROPS
+# NORMALISÉS 224 (pas les bbox) → elle doit donc s'appliquer APRÈS le crop, côté
+# `normalize_listing`. LOCO-CV : AP 0.918 sur 9 classes held-out. Persistée par
+# `scripts/build_fragment_probe.py`.
+
+_face_probe_cache: dict[str, Any] = {}
+
+
+def load_face_probe(path: Path | str = FACE_PROBE_PATH) -> tuple[np.ndarray, float]:
+    """(coef (D,), intercept) de la probe face-vs-fragment.
+
+    Lève `RuntimeError` si absente — le gate anti-fragment en dépend, un fallback
+    silencieux (tout gardé) réintroduirait les fragments que le gate doit couper
+    (dette cachée interdite par R0). La générer via `scripts/build_fragment_probe.py`.
+    """
+    key = str(path)
+    if key not in _face_probe_cache:
+        p = Path(path)
+        if not p.exists():
+            raise RuntimeError(
+                f"Probe face-vs-fragment absente: {p}. La générer via "
+                "`scripts/build_fragment_probe.py` (gate anti-fragment census requis)."
+            )
+        npz = np.load(p, allow_pickle=True)
+        _face_probe_cache[key] = (np.asarray(npz["coef"], dtype=np.float32),
+                                  float(npz["intercept"]))
+    return _face_probe_cache[key]
+
+
+def face_scores(images: list[np.ndarray],
+                probe: tuple[np.ndarray, float] | None = None) -> list[float]:
+    """P(face entière) par crop 224 BGR, via DINO + logistique. [] si vide.
+
+    Même encodage que l'entraînement (`foundation.encoder` : BGR→RGB→DINO→L2-norm).
+    """
+    if not images:
+        return []
+    if probe is None:
+        probe = load_face_probe()
+    coef, intercept = probe
+    import torch
+    from PIL import Image
+    enc, dev, tf = _get_dino()
+    pil = [Image.fromarray(cv2.cvtColor(im, cv2.COLOR_BGR2RGB)) for im in images]
+    with torch.no_grad():
+        t = torch.stack([tf(c) for c in pil]).to(dev)
+        feat = torch.nn.functional.normalize(enc(t), dim=1).cpu().numpy()
+    logits = feat @ coef + intercept
+    return [float(1.0 / (1.0 + np.exp(-z))) for z in logits]
 
 
 # ---------------------------------------------------------------------------

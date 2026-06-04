@@ -15,7 +15,17 @@ ML_DIR = Path(__file__).parent.parent
 if str(ML_DIR) not in sys.path:
     sys.path.insert(0, str(ML_DIR))
 
-from scan.census import _area, _center_in, _iou, nms_concentric  # noqa: E402
+import numpy as np  # noqa: E402
+import pytest  # noqa: E402
+
+from scan.census import (  # noqa: E402
+    FACE_PROBE_PATH,
+    _area,
+    _center_in,
+    _iou,
+    load_face_probe,
+    nms_concentric,
+)
 
 
 def test_iou_disjoint_and_identical():
@@ -82,3 +92,19 @@ def test_nms_edge_guard_still_absorbs_central_fragment():
 
 def test_nms_empty():
     assert nms_concentric([]) == []
+
+
+# --- Probe face-vs-fragment (gate anti-fragment census) --------------------
+
+def test_face_probe_missing_raises(tmp_path):
+    # R0 : pas de fallback silencieux — probe absente ⇒ RuntimeError explicite.
+    with pytest.raises(RuntimeError, match="Probe face-vs-fragment absente"):
+        load_face_probe(tmp_path / "nope.npz")
+
+
+@pytest.mark.skipif(not FACE_PROBE_PATH.exists(),
+                    reason="probe non générée (build_fragment_probe.py)")
+def test_face_probe_shape():
+    coef, intercept = load_face_probe()
+    assert coef.ndim == 1 and coef.shape[0] == 384   # dim features DINO
+    assert isinstance(intercept, float)

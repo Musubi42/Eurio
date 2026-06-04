@@ -1,6 +1,8 @@
 # Design — étage dedup + verify + fusion d'identité (census de pièces)
 
-> **Statut : SOUS-CHANTIER CLÔTURÉ — v1 ACTÉE (2026-06-04, PO).** La v1 livrée = **`yolo@0.10 + ① nms_only`** (domine yolo brut, **poison 0 %**, rappel 89 % ; faux-lot 64 % = review, pas poison). Le **gate is-coin ② n'est PAS adopté** : impasse confirmée (échange poison↔faux-lot 1:1 ; extension banque cause B = négatif §7 ; fragmentation YOLO cause A = irréductible sans risque de re-poison). **Plateau acté, rendements décroissants** → on s'arrête. Seul levier restant non-exploré = option B (probe is-coin entraînée), différé. Infra gardée (`scan/census.py`, `--include-real`, `--bank`). Câblage prod de `nms_only` = **différé** (décision future). Résultats & verdict détaillés en **§6-§7**.
+> **Statut : LEVIER ANTI-FRAGMENT TROUVÉ (2026-06-05) — probe face-vs-fragment entraînée, voir §9.** La fragmentation (cause A, §8) qui bloquait la qualité de crop est résolue par une **régression logistique sur features DINO « face entière vs fragment »** : LOCO-CV AP **0.918** sur 9 classes, validée end-to-end sur une classe held-out. Câblée derrière `EURIO_CENSUS_FRAGMENT_TAU` (défaut 0.45), **flag census toujours OFF par défaut** (0 impact prod). Reste : confirmer τ multi-dénom + décision PO d'activation. **Ceci rouvre le sous-chantier** clôturé le 2026-06-04 (ci-dessous), dont les acquis restent valides.
+>
+> **[2026-06-04] v1 ACTÉE.** La v1 livrée = **`yolo@0.10 + ① nms_only`** (domine yolo brut, **poison 0 %**, rappel 89 % ; faux-lot 64 % = review, pas poison). Le **gate is-coin ② (sim DINO « coin-ness ») n'a PAS été adopté** : impasse confirmée (échange poison↔faux-lot 1:1 ; extension banque cause B = négatif §7). → **dépassé par la probe entraînée §9** (le bon signal n'était pas « coin-ness » mais « face vs fragment »). Infra gardée (`scan/census.py`, `--include-real`, `--bank`). Résultats & verdict détaillés en **§6-§7**.
 >
 > **Décidé PO** : signal is-coin = **option A (prototype coin-ness large, DINO)** · v1 = **① NMS-concentrique + ② verify is-coin** (fusion ③ repoussée, bench front/back trop mince) → mesurer le résidu.
 
@@ -128,3 +130,32 @@ Demande PO : tester l'impact RÉEL du câblage census sur le flow `/lab/cohorts/
 **Recall réel : 21/32 zéro-crops récupérés.** MAIS audit visuel (contact sheet) : la majorité des +102 crops = **fragments** (bouts de lettres `R`/`RO`/`EUR`, anneaux internes, bords partiels), PAS des images de training. Cause : YOLO@0.10 détecte des *bouts* de pièce sans la pièce entière → `nms_concentric` n'a pas de boîte parente pour les absorber, et le gate is-coin qui les filtrerait n'est pas prêt.
 
 **Verdict : NE PAS adopter en prod.** Pour le *comptage* lot/single, OK (l'asymétrie tolère le sur-comptage). Pour *produire des crops training propres*, non — ça échange zéro-crops contre crops-fragments. **Le re-crop test confirme la décision bench-only.** Flag gardé OFF (0 impact) + comparateur, pour re-tester quand le maillon is-coin / anti-fragment sera prêt.
+
+## 9. Gate anti-fragment = probe entraînée face-vs-fragment (2026-06-05) — ✅ LEVIER TROUVÉ
+
+> Reprise PO : « réduire RÉELLEMENT les erreurs de crop ». Le problème §8 = **fragmentation** (cause A). Exploration bench-first des 3 pistes du kickoff sur `at-2002` (46 raws, 126 crops census), via `scripts/measure_antifragment.py` + `scripts/diag_fragment_geometry.py`.
+
+**Pistes 1 & 2 = écartées (mesurées) :**
+- **Piste 1 (rim-completeness géométrique)** — NÉGATIF. `arc_coverage` (couverture angulaire Canny, repris de `measure_tilt`) : **117/126 crops ≥ 0.90**. La couverture par secteurs se sature dès qu'il y a de la texture → un fragment circulaire (lettrage de tranche, anneau interne) coche autant de secteurs qu'une face. La géométrie du rim ne sépare PAS face vs fragment (les fragments SONT des disques).
+- **Piste 2 (containment/clustering NMS)** — gain marginal. Seulement **25/126 (20 %)** détections nichées dans une plus grande, dont 16 absorbables (<0.70). La cause dominante (gros plans de **tranche** = l'image entière EST la tranche, pas de boîte parente) n'a **pas de parent** → le clustering ne la touche pas. Plafond ~13 %.
+
+**Piste 3 (probe entraînée) = ✅ LE LEVIER.** Le fragment dominant est circulaire (géométrie inopérante) ET coin-like (sim DINO « coin-ness » le laisse passer — c'est littéralement de la pièce). Seul un **classifieur face-entière vs fragment** le rejette.
+
+- **Probe** = régression logistique 1 couche sur **embeddings DINO des crops normalisés 224** (= sortie de `normalize_listing`, PAS les bbox). `scripts/build_fragment_probe.py` → `state/fragment_face_probe.npz` (coef 384 + intercept).
+- **Dataset** (`scripts/build_fragment_probe_set.py`) : 705 crops census labellisés `face_whole`/`fragment`/`capsule`/`clutter` sur **9 classes 2€**, anti-fuite (110 `source_image_id` du bench census exclus au niveau IMAGE). Labelling : `at-2002` à la main (held-out fiable), 8 classes train via agents vision Sonnet.
+- **Calibration HONNÊTE = Leave-One-Class-Out CV** (aucune fuite inter-classe) : **AP moyenne 0.918** sur 9 classes ; at-2002 fold AP 0.922, le plus faible at-2005 0.718 (garde quand même 9/9 faces — ses fragments fuient en review, pas en poison).
+
+| τ (agrégat 9 classes) | recall faces | coupe fragments |
+|---|---|---|
+| 0.40 | 97.5 % | 86.9 % |
+| **0.45** *(défaut)* | **96.0 %** | **88.7 %** |
+| 0.50 | 94.1 % | 89.9 % |
+| 0.60 | 89.6 % | 92.4 % |
+
+- **Validation end-to-end sur classe 100 % held-out** (`de-2007-...-treaty-of-rome`, jamais dans la probe, `scripts/audit_fragment_gate.py`) : **270 crops census → 79 gardés / 191 coupés** à τ=0.45. Audit visuel : gardés ≈ **95 % faces propres**, coupés ≈ fragments (lettrage tranche, partiels, textures, capsule). Le gate transforme census de « majorité fragments » en « ~30 % gardés, propres ».
+
+**Câblage** (`scan/census.py` `load_face_probe`/`face_scores` ; filtre dans `scan/normalize_snap.normalize_listing` APRÈS le crop) : env **`EURIO_CENSUS_FRAGMENT_TAU` (défaut 0.45)**, τ≤0 = census brut (§8). **Sans effet hors mode census** (flag `EURIO_CENSUS_DETECT` toujours OFF par défaut → 0 impact prod). R0 : probe absente ⇒ `RuntimeError` (pas de fallback silencieux). Tests `tests/test_census.py` (12 ✅).
+
+**Contraste avec le gate is-coin DINO (§6-7)** : celui-ci échangeait poison↔faux-lot 1:1 (sim « coin-ness » ne sépare pas face/fragment, les deux SONT coin-like). La probe **face-vs-fragment** entraînée résout exactement ce que la sim ne pouvait pas, et **généralise à une classe non vue**. Levier débloqué.
+
+**Reste avant adoption prod** : confirmer τ sur d'autres dénominations (banque/probe = 2€ only), et décider d'activer le flag census (ou intégrer le gate dans un mode dédié au corpus training). Décision PO.

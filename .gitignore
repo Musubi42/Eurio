@@ -71,6 +71,9 @@ ml/state/price_snapshots/
 ml/datasets/sources/
 # Runtime: raws + crops downloaded by the orchestrator (D-13).
 ml/state/sources/
+# Census fragment-probe dataset (local bench crops + contact sheets ; the small
+# model state/fragment_face_probe.npz IS versioned, like foundation_coinness.npz).
+ml/state/fragment_probe/
 
 # Claude Code internal worktrees
 .claude/worktrees/

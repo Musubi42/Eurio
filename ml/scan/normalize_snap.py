@@ -487,6 +487,19 @@ _YOLO_IMGSZ = 640
 def _census_detect_enabled() -> bool:
     return os.environ.get("EURIO_CENSUS_DETECT") == "1"
 
+
+# Gate anti-fragment (piste 3, census-detector-design.md §9) : une probe DINO
+# « face entière vs fragment » filtre les crops census fragmentés (tranche/lettrage,
+# anneau interne, partiels, capsule) que le haut-rappel YOLO@0.10 produit sur les
+# singles. S'applique APRÈS le crop (la probe a vu les crops 224 finaux). τ par défaut
+# 0.45 (LOCO-CV 9 classes : recall faces 96 %, coupe 89 % des fragments). τ≤0 désactive
+# le gate (census brut = comportement §8). Sans effet hors mode census.
+def _census_fragment_tau() -> float:
+    try:
+        return float(os.environ.get("EURIO_CENSUS_FRAGMENT_TAU", "0.45"))
+    except ValueError:
+        return 0.45
+
 _CENSUS_YOLO_CONF = 0.10
 _CENSUS_RMIN_FRAC = 0.04
 _YOLO_BBOX_MARGIN_FRAC = 0.00  # ROI = bbox strict. +15% laissait Hough voir capsule/arches autour
@@ -869,6 +882,16 @@ def normalize_listing(bgr: np.ndarray,
         if result.image is None:
             continue
         results.append(result)
+
+    # Gate anti-fragment (census uniquement) : la probe DINO note chaque crop final ;
+    # on jette ceux sous τ (fragments tranche/lettrage/anneau/partiel/capsule). Batch
+    # unique. Hors census ou τ≤0 : aucun appel modèle, comportement inchangé.
+    if _census_detect_enabled():
+        tau = _census_fragment_tau()
+        if tau > 0 and results:
+            from scan.census import face_scores
+            scores = face_scores([r.image for r in results])
+            results = [r for r, s in zip(results, scores) if s >= tau]
     return results
 
 
