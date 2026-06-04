@@ -98,9 +98,9 @@ Le résidu : **4 faux-singles « titre nomme 1 pièce / image en montre N »** +
 2. **FastSAM→DINO ne bat PAS YOLO-low.** Il sur-segmente plus (faux-lot 78-100 % vs 65-69 %), et le gate is-coin DINO ne sépare pas proprement pièce/non-pièce sur ce bench (les ancres = 2€-commémo *avers* seulement → cents & revers matchent mal ; capsule/fond sont ronds aussi). Monter τ échange du faux-lot contre du faux-single. **SAM2 (lourd, GPU) non justifié** : un proposeur-objet n'apporte rien ici.
 3. **Le problème BASCULE vers le sur-comptage** (faux-lot 65-73 %). Sur les singles 1-disque, YOLO tire des boîtes en trop (fenêtre coincard / texte / fragments). C'est le job des étages `verify is-coin → fusion d'identité avers/revers → dedup (NMS/concentrique)` — **en aval du proposeur, qui est déjà résolu**.
 
-### Reco (à ratifier PO)
+### Décision actée (ratifiée PO 2026-06-04)
 - **Ne pas entraîner de nouveau détecteur** ni investir SAM2 pour le PROPOSE. Adopter **YOLO-low @ conf ~0.10** comme proposeur haut-rappel (faux-single 0 %).
-- **Prochain chantier = l'étage DEDUP + VERIFY + FUSION-IDENTITÉ** sur les boîtes YOLO-low, benché sur ce même bench. Cible : ramener le faux-lot de ~69 % vers les ~5 % de la baseline **sans réintroduire de faux-single**, et faire monter `exact pièces`.
+- **Prochain chantier = l'étage DEDUP + VERIFY + FUSION-IDENTITÉ** sur les boîtes YOLO-low, benché sur ce même bench. Cible : ramener le faux-lot de ~69 % vers les ~5 % de la baseline **sans réintroduire de faux-single**, et faire monter `exact pièces`. **Design + évidence (caractérisation du sur-comptage : 8 % concentric / 69 % non-pièce / 22 % tail) → [census-detector-design.md](./census-detector-design.md).**
 - Limite : `single_two_faces` (avers+revers, 1 seul échantillon ici) = le cas que SEULE la fusion d'identité résout. Bench à étendre côté front/back avant de conclure sur cet étage.
 
 ---
