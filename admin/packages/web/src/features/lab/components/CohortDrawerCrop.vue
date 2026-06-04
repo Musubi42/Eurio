@@ -8,7 +8,7 @@
 import DrawerSection from '@/features/lab/components/DrawerSection.vue'
 import { useCohortTriageStatsQuery } from '@/features/lab/composables/useLabQueries'
 import type { DrawerState } from '@/features/lab/types'
-import { ArrowUpRight, Bot, Eye, Package, Wand2 } from 'lucide-vue-next'
+import { ArrowUpRight, Bot, Eye, Package, RotateCcw, SkipForward, Wand2 } from 'lucide-vue-next'
 import { computed } from 'vue'
 
 const props = defineProps<{
@@ -34,6 +34,13 @@ const claudeCount = computed(
 )
 // Crops en review LOT (listings multi-pièces) — flow distinct du single.
 const lotCount = computed(() => stats.value?.n_lot_crops ?? 0)
+// Crops rejetés (récupérables via la grille) + items skippés (report dans la
+// queue manuelle, informationnel). Surfacés en bande sous les plateaux.
+const rejectedCount = computed(() => stats.value?.n_rejected ?? 0)
+const skippedCount = computed(() => stats.value?.n_skipped ?? 0)
+const recoverTo = computed(
+  () => `/review/recover?cohort=${encodeURIComponent(props.cohortId)}`,
+)
 
 const plateaus = computed(() => [
   {
@@ -139,11 +146,26 @@ function fmt(n: number): string {
             </footer>
           </RouterLink>
         </div>
+        <div class="recover-strip">
+          <RouterLink :to="recoverTo" class="recover-chip recover-chip--reject">
+            <RotateCcw :size="13" :stroke-width="1.6" />
+            <span class="recover-chip__num">{{ fmt(rejectedCount) }}</span>
+            <span class="recover-chip__label">rejeté{{ rejectedCount > 1 ? 's' : '' }} à récupérer</span>
+            <ArrowUpRight :size="12" :stroke-width="1.6" class="recover-chip__arrow" />
+          </RouterLink>
+          <div class="recover-chip recover-chip--skip">
+            <SkipForward :size="13" :stroke-width="1.6" />
+            <span class="recover-chip__num">{{ fmt(skippedCount) }}</span>
+            <span class="recover-chip__label">skippé{{ skippedCount > 1 ? 's' : '' }} (dans la queue)</span>
+          </div>
+        </div>
         <p class="hint">
           Compteurs restreints aux pièces de la cohort. Valider une pièce la rend
           éligible à l'entraînement (<strong>train</strong> dans le tiroir eBay).
           <strong>Lots</strong> = listings multi-pièces (flow distinct) — la majorité
           des crops y atterrissent, pense à les traiter aussi.
+          Un <strong>rejet</strong> reste récupérable : remets-le en queue si un
+          re-crop suffisait. Un <strong>skip</strong> revient seul dans la queue manuelle.
         </p>
       </template>
       <div v-else class="text-xs" style="color: var(--danger);">
@@ -291,6 +313,55 @@ function fmt(n: number): string {
   transition: gap 180ms var(--ease-out, ease);
 }
 .card:hover .card__cta { gap: 8px; }
+
+.recover-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+.recover-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 11px;
+  border: 1px solid var(--surface-3);
+  border-radius: 6px;
+  background: var(--surface);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-eyebrow);
+  color: var(--ink-500);
+  text-decoration: none;
+  transition:
+    border-color 160ms var(--ease-out, ease),
+    transform 160ms var(--ease-out, ease);
+}
+.recover-chip__num {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 500;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+.recover-chip__arrow {
+  margin-left: 2px;
+  color: var(--ink-400);
+}
+.recover-chip--reject {
+  cursor: pointer;
+}
+.recover-chip--reject:hover {
+  border-color: var(--gold-600);
+  transform: translateY(-1px);
+}
+.recover-chip--reject .recover-chip__num { color: var(--gold-700); }
+.recover-chip--skip {
+  color: var(--ink-400);
+}
 
 .hint {
   margin-top: 12px;

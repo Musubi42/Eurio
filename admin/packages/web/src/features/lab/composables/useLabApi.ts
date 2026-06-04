@@ -146,13 +146,18 @@ export async function syncCohortCaptures(
   )
 }
 
-// ─── eBay cohort status (chunk 03b) ────────────────────────────────────
+// ─── eBay — sourcing & funnel (§C3) ─────────────────────────────────────
 
-export async function fetchCohortEbayStatus(
+/**
+ * eBay sourcing + funnel scrape → review scopé cohort (§C3). Read-only, zéro
+ * appel eBay. per_coin = tail post-attribution + sourcing (train/réels) ;
+ * head.groups = pré-attribution par groupe ; + quota/scrapable_groups.
+ */
+export async function fetchCohortFunnelStatus(
   cohortId: string,
-): Promise<import('../types').CohortEbayStatus> {
-  return json<import('../types').CohortEbayStatus>(
-    `/lab/cohorts/${encodeURIComponent(cohortId)}/ebay-status`,
+): Promise<import('../types').CohortFunnelStatus> {
+  return json<import('../types').CohortFunnelStatus>(
+    `/lab/cohorts/${encodeURIComponent(cohortId)}/funnel-status`,
   )
 }
 

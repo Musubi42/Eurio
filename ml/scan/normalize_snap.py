@@ -772,13 +772,17 @@ def detect_circles_multi(bgr: np.ndarray) -> list[CircleDetection]:
         # (hint) et cherche le RIM EXTERNE dans une ROI bornée — plancher
         # r ≥ 0.9·hint (jamais pire), plafond r ≤ 2.6·hint (overcrop borné).
         # Validé sur gold humain (25 gagne / 2 régresse sur 30) + 80 %→94 % oracle.
+        # Tag dédié `+rimrefine` (≠ `+lotcrop` du recrop multi-pièces) : permet de
+        # tracer quel crop est passé par CE détecteur, et sert de sentinelle de
+        # skip à scripts.recrop_ebay_refine. NE PAS retomber sur `+refine` nu,
+        # collision avec d'autres passes (cf. chantier crop-quality-overhaul).
         # Import lazy : crop_detectors importe normalize_snap (évite le cycle).
         if _LISTING_RIM_REFINE:
             from scan.crop_detectors import detect_bbox_refine
             _ref = detect_bbox_refine(bgr, hint={"cx": cx_f, "cy": cy_f, "r": r_f})
             if _ref.ok and _ref.r > 0:
                 cx_f, cy_f, r_f = _ref.cx, _ref.cy, _ref.r
-                method = method + "+refine"
+                method = method + "+rimrefine"
 
         cx_n = int(round(cx_f))
         cy_n = int(round(cy_f))

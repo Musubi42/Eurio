@@ -68,7 +68,7 @@ export interface CohortSyncResult {
   duration_s: number
 }
 
-// ─── eBay cohort status (chunk 03b) ────────────────────────────────────
+// ─── eBay cohort sourcing (quota + groupes scrapables) ──────────────────
 
 export interface EbayQuotaInfo {
   ok: boolean
@@ -79,35 +79,14 @@ export interface EbayQuotaInfo {
   max_safe_batch: number
 }
 
-export interface CohortEbayCoin {
-  eurio_id: string
-  numista_id: number | null
-  scrapable: boolean
-  n_listings: number
-  n_crops: number
-  n_training_eligible: number
-  // Sources réelles distinctes (obverse Numista + crops eBay reviewés) et flag
-  // « assez » (≥ min_real_sources). Décident si la classe a besoin de + d'eBay.
-  n_real_sources: number
-  enough: boolean
-}
-
-export interface CohortEbayStatus {
-  cohort_id: string
-  scrapable_groups: Array<{
-    denomination: number
-    country: string
-    // null pour un groupe standard (kind='standard') : le design couvre
-    // toutes les années, la recherche eBay est sans millésime.
-    year: number | null
-    n_coins: number
-    kind: 'commemorative' | 'standard'
-  }>
-  non_scrapable: string[]
-  quota: EbayQuotaInfo | null
-  per_coin: CohortEbayCoin[]
-  // Seuil de sources réelles sous lequel une classe est flaggée (§C5).
-  min_real_sources: number
+export interface CohortScrapableGroup {
+  denomination: number
+  country: string
+  // null pour un groupe standard (kind='standard') : le design couvre
+  // toutes les années, la recherche eBay est sans millésime.
+  year: number | null
+  n_coins: number
+  kind: 'commemorative' | 'standard'
 }
 
 export interface EbayScrapeTriggerResult {
@@ -116,6 +95,81 @@ export interface EbayScrapeTriggerResult {
   source_id: string
   kind: string
   non_scrapable: string[] | null
+}
+
+// ─── eBay — sourcing & funnel (§C3, scopé cohort) ────────────────────────
+// Voir GET /lab/cohorts/{id}/funnel-status (ml/api/lab_routes.py). Deux mailles :
+// per_coin = TAIL précis (post-attribution) + sourcing (train/réels) ;
+// head.groups = PRÉ-attribution par (pays, année, kind).
+
+export interface CohortFunnelRoute {
+  route_decision: string | null
+  route_reason: string | null
+  n: number
+}
+
+export interface CohortFunnelCoin {
+  eurio_id: string
+  numista_id: number | null
+  scrapable: boolean
+  n_source_images: number // listings retenus (attribués à ce coin)
+  n_crops: number
+  by_route_decision: CohortFunnelRoute[]
+  n_pending: number
+  n_review_single: number
+  n_review_lot: number
+  n_auto: number
+  n_rejected: number
+  n_unrouted: number
+  // Sourcing (bout du tunnel, fusionné depuis l'ancien §C3) : crops reviewés
+  // training-eligible + sources réelles distinctes (obverse + eBay reviewé) ;
+  // `enough` = ≥ min_real_sources (sinon l'augmentation gonflerait, §C5).
+  n_training_eligible: number
+  n_real_sources: number
+  enough: boolean
+  // Run le plus récent ayant produit des listings pour ce coin → cible du
+  // deep-link bench. n_runs > 1 = limite v1 connue (on linke le dernier).
+  latest_run_id: string | null
+  latest_run_started_at: string | null
+  n_runs: number
+}
+
+export interface CohortFunnelDiscardReason {
+  reason: string
+  n: number
+}
+
+export interface CohortFunnelHeadGroup {
+  country: string | null
+  year: number | null
+  denomination: number
+  kind: 'commemorative' | 'standard'
+  n_referential_coins: number
+  // Funnel de découverte (discovery_searches, keyé filters_json.group).
+  n_searches: number
+  n_summaries: number // N0 — itemSummaries bruts
+  n_after_groups: number // N1
+  n_raw_results: number // N2 — post theme-token
+  n_kept_results: number // N3 — post accept_listing
+  // Lentille attribution (source_images attribués aux coins du groupe).
+  n_attributed_source_images: number
+  n_discarded_attributed: number
+  discarded_by_reason: CohortFunnelDiscardReason[]
+}
+
+export interface CohortFunnelStatus {
+  cohort_id: string
+  per_coin: CohortFunnelCoin[]
+  head: {
+    groups: CohortFunnelHeadGroup[]
+    run_ids: string[]
+  }
+  // Sourcing cohort-level (fusionné depuis l'ancien §C3) : groupes de découverte
+  // + quota offline du scrape cohort. Aucun appel eBay.
+  scrapable_groups: CohortScrapableGroup[]
+  non_scrapable: string[]
+  quota: EbayQuotaInfo | null
+  min_real_sources: number
 }
 
 export interface BenchmarkSummary {

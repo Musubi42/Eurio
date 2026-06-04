@@ -20,7 +20,7 @@ import {
   fetchAugVsReal,
   fetchCohort,
   fetchCohortCaptures,
-  fetchCohortEbayStatus,
+  fetchCohortFunnelStatus,
   fetchCohortProgress,
   fetchCohortTestBuildInfo,
   fetchCohorts,
@@ -65,7 +65,7 @@ export const LAB_KEYS = {
   trajectory: (cohortId: string) => ['lab', 'cohort', cohortId, 'trajectory'] as const,
   sensitivity: (cohortId: string) => ['lab', 'cohort', cohortId, 'sensitivity'] as const,
   captures: (cohortId: string) => ['lab', 'cohort', cohortId, 'captures'] as const,
-  ebayStatus: (cohortId: string) => ['lab', 'cohort', cohortId, 'ebay-status'] as const,
+  funnelStatus: (cohortId: string) => ['lab', 'cohort', cohortId, 'funnel-status'] as const,
   triageStats: (cohortId: string) => ['lab', 'cohort', cohortId, 'triage-stats'] as const,
   progress: (cohortId: string) => ['lab', 'cohort', cohortId, 'progress'] as const,
   iterationProgress: (cohortId: string, iterationId: string) =>
@@ -141,15 +141,16 @@ export function useCaptureManifestQuery(cohortId: MaybeRefOrGetter<string>) {
   })
 }
 
-export function useCohortEbayStatusQuery(cohortId: MaybeRefOrGetter<string>) {
+/**
+ * eBay sourcing + funnel scrape → review scopé cohort (§C3). Les compteurs
+ * (train, route_decision) bougent à chaque passe de review faite sur /review →
+ * refetch au mount pour un compte frais au retour sur la page cohort.
+ */
+export function useCohortFunnelStatusQuery(cohortId: MaybeRefOrGetter<string>) {
   return useQuery({
-    queryKey: computed(() => LAB_KEYS.ebayStatus(toValue(cohortId))),
-    queryFn: () => fetchCohortEbayStatus(toValue(cohortId)),
+    queryKey: computed(() => LAB_KEYS.funnelStatus(toValue(cohortId))),
+    queryFn: () => fetchCohortFunnelStatus(toValue(cohortId)),
     enabled: computed(() => !!toValue(cohortId)),
-    // Le `train` (training_eligible) bouge à chaque passe de review, faite sur
-    // une AUTRE route (/review). Au retour sur la page cohort on veut le compte
-    // frais : refetch systématique au mount (cache affiché instantanément, puis
-    // mis à jour). staleTime garde la dédup pendant la session sur la page.
     staleTime: 60 * 1000,
     refetchOnMount: 'always',
   })
@@ -259,13 +260,13 @@ export function useTriggerCohortEbayScrapeMutation(
     mutationFn: () => triggerCohortEbayScrape(toValue(cohortId)),
     onSuccess: () => {
       // The scrape runs in the background; refresh counts shortly after.
-      qc.invalidateQueries({ queryKey: LAB_KEYS.ebayStatus(toValue(cohortId)) })
+      qc.invalidateQueries({ queryKey: LAB_KEYS.funnelStatus(toValue(cohortId)) })
     },
   })
 }
 
 /**
- * Rescrape eBay ciblé sur une pièce (§C5). Invalide l'ebay-status de la cohort
+ * Rescrape eBay ciblé sur une pièce (§C5). Invalide le funnel-status de la cohort
  * au retour pour rafraîchir les compteurs une fois le run lancé.
  */
 export function useTriggerCoinEbayScrapeMutation(
@@ -275,7 +276,7 @@ export function useTriggerCoinEbayScrapeMutation(
   return useMutation({
     mutationFn: (targetEurioId: string) => triggerCoinEbayScrape(targetEurioId),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: LAB_KEYS.ebayStatus(toValue(cohortId)) })
+      qc.invalidateQueries({ queryKey: LAB_KEYS.funnelStatus(toValue(cohortId)) })
     },
   })
 }

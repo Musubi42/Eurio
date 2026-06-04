@@ -85,6 +85,10 @@ const router = createRouter({
           component: () => import('@/features/review/pages/LotReviewDetailPage.vue'),
         },
         {
+          path: 'review/recover',
+          component: () => import('@/features/review/pages/RecoverRejectedPage.vue'),
+        },
+        {
           path: 'audit',
           component: () => import('@/features/audit/pages/AuditPage.vue'),
         },

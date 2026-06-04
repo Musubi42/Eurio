@@ -7,7 +7,17 @@ import {
   shortEurio,
 } from '../composables/useBenchApi'
 
-const props = defineProps<{ card: BenchRunCropCard }>()
+const props = defineProps<{
+  card: BenchRunCropCard
+  // true = card cochée pour exclusion (case à cocher dans le panel parent)
+  selected?: boolean
+  // seuil tilt actif dans le panel — null = filtre désactivé (badge toujours visible)
+  tiltMin?: number | null
+}>()
+
+const emit = defineEmits<{
+  (e: 'toggle-exclude'): void
+}>()
 
 // État local : track broken images for graceful fallback.
 const rawBroken = ref(false)
@@ -44,6 +54,22 @@ const areaPct = computed(() => {
   return a == null ? null : (a * 100).toFixed(1)
 })
 
+// Badge tilt : danger si inclinaison ≥ seuil, gold si tilt_trustworthy=false.
+// Affiché dès que tilt_deg est présent (indépendamment du filtre actif).
+const tiltBadgeCls = computed(() => {
+  if (props.card.tilt_deg == null) return null
+  if (props.card.tilt_trustworthy === false) return 'tilt-badge--uncertain'
+  const seuil = props.tiltMin ?? 0
+  return props.card.tilt_deg >= seuil ? 'tilt-badge--hot' : 'tilt-badge--ok'
+})
+
+// Carte "exclue du training" : quality_reason = 'too_tilted' OU training_eligible = 0
+// Le backend ne remonte pas training_eligible directement, mais quality_reason suffisant.
+// On grise aussi si la carte est sélectionnée pour exclusion (feedback immédiat).
+const isExcluded = computed(() =>
+  (props.card.resolution_status === 'excluded') || props.selected === true,
+)
+
 // 3 tons sur le composite is_coin (cf. expé 01) : ≥ 0.5 = vert (confiant),
 // 0.2–0.5 = neutre, < 0.2 = rouge (suspect cat A/B/C).
 const scoreCls = computed(() => {
@@ -56,9 +82,20 @@ const scoreCls = computed(() => {
 </script>
 
 <template>
-  <article class="card" :class="{ 'card--warn': card.is_undercrop_suspect }">
-    <!-- Warning ribbon -->
-    <div v-if="card.is_undercrop_suspect" class="card__ribbon">
+  <article
+    class="card"
+    :class="{
+      'card--warn': card.is_undercrop_suspect,
+      'card--excluded': isExcluded,
+      'card--selected': selected,
+    }"
+    @click="emit('toggle-exclude')"
+  >
+    <!-- Warning ribbon / ribbon exclu -->
+    <div v-if="isExcluded && !card.is_undercrop_suspect" class="card__ribbon card__ribbon--excluded">
+      exclu training
+    </div>
+    <div v-else-if="card.is_undercrop_suspect" class="card__ribbon">
       undercrop suspect
     </div>
 
@@ -149,6 +186,17 @@ const scoreCls = computed(() => {
               :class="scoreCls"
               :title="`composite is_coin (crop_exp/score_crops)`">
           s <b>{{ (card.composite_score * 100).toFixed(0) }}</b>
+        </span>
+        <!-- Badge tilt : affiché dès que tilt_deg est connu -->
+        <span
+          v-if="card.tilt_deg != null"
+          class="tilt-badge"
+          :class="tiltBadgeCls ?? ''"
+          :title="card.tilt_trustworthy === false
+            ? `tilt ${card.tilt_deg.toFixed(0)}° — valeur peu fiable (axis_ratio proche de 1)`
+            : `tilt ${card.tilt_deg.toFixed(0)}° · axis_ratio ${card.axis_ratio?.toFixed(2) ?? '?'}`"
+        >
+          {{ card.tilt_trustworthy === false ? '?' : card.tilt_deg.toFixed(0) }}°
         </span>
         <span class="badge badge--status" :class="statusCls">
           {{ card.resolution_status ?? '—' }}
@@ -434,4 +482,47 @@ const scoreCls = computed(() => {
   color: var(--indigo-600);
 }
 .card__ebay:hover { text-decoration: underline; }
+
+/* État exclu du training */
+.card--excluded {
+  opacity: 0.45;
+}
+/* État sélectionné pour exclusion (feedback immédiat avant confirmation) */
+.card--selected {
+  outline: 2px solid var(--danger);
+  outline-offset: -2px;
+  opacity: 0.6;
+}
+.card { cursor: pointer; }
+
+/* Ribbon "exclu training" — variant neutre (gris) */
+.card__ribbon--excluded {
+  background: var(--surface-3);
+  color: var(--ink-400);
+}
+
+/* Badge tilt */
+.tilt-badge {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-variant-numeric: tabular-nums;
+}
+/* tilt ≥ seuil : rouge (potentiel candidat à exclure) */
+.tilt-badge--hot {
+  background: var(--danger-soft, rgba(209, 67, 67, 0.18));
+  color: var(--danger);
+}
+/* tilt < seuil : neutre */
+.tilt-badge--ok {
+  background: var(--surface-2);
+  color: var(--ink-400);
+}
+/* tilt_trustworthy = false : gold (incertitude mesure) */
+.tilt-badge--uncertain {
+  background: var(--gold-100);
+  color: var(--gold-700);
+}
 </style>

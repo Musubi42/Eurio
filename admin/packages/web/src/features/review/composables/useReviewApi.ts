@@ -446,6 +446,10 @@ export interface TriageStats {
   by_verdict: TriageVerdictCounts
   // Crops en review LOT (kind='lot') — flow distinct du single (cockpit cohort).
   n_lot_crops: number
+  // Crops rejetés (récupérables via /review/recover) + items skippés (report
+  // informationnel). Optionnels : backends antérieurs au chunk recover.
+  n_rejected?: number
+  n_skipped?: number
 }
 
 /**
@@ -468,7 +472,51 @@ export async function fetchTriageStats(cohortId?: string | null): Promise<Triage
     n_done_this_week: 0,
     by_verdict: { auto_candidate: 0, partial: 0, divergent: 0, unknown: 0 },
     n_lot_crops: 0,
+    n_rejected: 0,
+    n_skipped: 0,
   }
+}
+
+// ─── Récupération des crops rejetés (un-reject) ──────────────────────────
+
+/** Un crop rejeté, récupérable via la grille /review/recover. */
+export interface RejectedCrop {
+  review_id: string
+  image_asset_id: string
+  crop_url: string
+  listing_title: string | null
+  quality_reason: string | null
+  decided_at: string | null
+  target_eurio_id: string | null
+  target_label: string | null
+}
+
+export interface RestoreResult {
+  restored: number
+  skipped: string[]
+}
+
+/** Liste les crops rejetés d'une cohort (grille de récupération). */
+export async function fetchRejectedCrops(
+  cohortId?: string | null,
+): Promise<RejectedCrop[]> {
+  const qs = cohortId ? `?cohort_id=${encodeURIComponent(cohortId)}` : ''
+  const real = await safeFetch<RejectedCrop[]>(`/review-queue/rejected${qs}`)
+  if (real === null) return []
+  return real.map((r) => ({ ...r, crop_url: promoteUrl(r.crop_url) }))
+}
+
+/** Ré-ouvre des reviews rejetées : elles repassent en queue manuelle. */
+export async function restoreRejected(reviewIds: string[]): Promise<RestoreResult> {
+  const real = await safeFetch<RestoreResult>('/review-queue/restore', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ review_ids: reviewIds }),
+  })
+  if (real === null) {
+    throw new Error('Backend indisponible — la remise en queue n’a pas pu être enregistrée.')
+  }
+  return real
 }
 
 // ─── Auto-accept déterministe (Dino + texte, pas de Claude) ──────────────

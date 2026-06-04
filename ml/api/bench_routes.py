@@ -16,11 +16,15 @@ Le replay est déterministe et hors quota — recalculé à chaque appel
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+logger = logging.getLogger(__name__)
 
 from api._coin_helpers import canonical_obverse_url
 from scripts.bench_theme_match import SEED_YEARS, replay_bench
@@ -160,6 +164,11 @@ class BenchRunListing(BaseModel):
     image_url: str | None
     source_url: str | None
     marketplace: str | None
+    # Raison du NON-match auto, dérivée des text_signals (chantier lisibilité
+    # matcher). None quand l'annonce est attribuée (target_eurio_id non NULL).
+    # Le matcher ne persiste pas son verdict ; on le RECONSTRUIT depuis les
+    # signaux extraits (denoms multiples, tokens set/coffret/« au choix », lot).
+    match_reason: str | None = None
 
 
 class BenchRunGroupDrop(BaseModel):
@@ -174,9 +183,9 @@ class BenchRunGroupDrop(BaseModel):
 
 
 class BenchRunGroup(BaseModel):
-    group_id: str           # 'AT-2005-2.0'
+    group_id: str           # 'AT-2005-2.0' ; 'AD-std-2.0' pour un standard
     country: str
-    year: int
+    year: int | None        # NULL = groupe standard (recherche sans millésime)
     denomination: float
     target_eurio_ids: list[str]   # eurio_ids cible(s) du groupe (≥1)
     total_listings: int           # source_images du groupe (mailled par (country, year))
@@ -265,8 +274,11 @@ def _run_groups(
         raise HTTPException(status_code=404, detail=f"run {run_id} not found")
 
     # Group key = (listing_country, listing_year) — la maille de la discovery
-    # eBay (1 search par denom×country×year). On ne joint pas sur denomination
-    # car cohorte 19 = 2€ partout ; on récupère la valeur depuis le 1er coin.
+    # eBay (1 search par denom×country×année). Les **standards** ont
+    # ``listing_year = NULL`` (le design couvre toutes les années, recherche
+    # large sans millésime) → on NE filtre PAS sur year, sinon un run 100 %
+    # standard remonte 0 groupe (bench vide). GROUP BY met les NULL dans leur
+    # propre seau. On ne joint pas sur denomination (cohorte = 2€ partout).
     group_rows = conn.execute(
         """
         SELECT listing_country AS country,
@@ -280,7 +292,6 @@ def _run_groups(
           FROM source_images
          WHERE run_id = ?
            AND listing_country IS NOT NULL
-           AND listing_year IS NOT NULL
          GROUP BY listing_country, listing_year
          ORDER BY listing_country, listing_year
         """,
@@ -291,33 +302,40 @@ def _run_groups(
     for gr in group_rows:
         country = gr["country"]
         year = gr["year"]
+        # ``listing_year = ?`` ne matche jamais une valeur NULL (sémantique SQL)
+        # → pour les groupes standard (year NULL) on bascule sur ``IS NULL``,
+        # sinon les sous-requêtes ci-dessous renverraient 0 (cibles/drops vides).
+        if year is None:
+            year_sql, year_args = "listing_year IS NULL", []
+        else:
+            year_sql, year_args = "listing_year = ?", [year]
 
         # eurio_ids cibles : tous les coins du référentiel sur (country, year)
         # pour ce denom. On suppose denom = 2.0 (cohorte V.3), on filtre les
         # commémos sinon on ramasse aussi les standards qui ne sont pas
         # cherchés dans ce run.
         eurio_rows = conn.execute(
-            """
+            f"""
             SELECT DISTINCT target_eurio_id FROM source_images
-             WHERE run_id = ? AND listing_country = ? AND listing_year = ?
+             WHERE run_id = ? AND listing_country = ? AND {year_sql}
                AND target_eurio_id IS NOT NULL
              ORDER BY target_eurio_id
             """,
-            (run_id, country, year),
+            (run_id, country, *year_args),
         ).fetchall()
         target_eurio_ids = [r["target_eurio_id"] for r in eurio_rows]
 
         # Drops : groupés par (route_decision, route_reason)
         drop_rows = conn.execute(
-            """
+            f"""
             SELECT route_decision, route_reason, COUNT(*) AS n
               FROM source_images
-             WHERE run_id = ? AND listing_country = ? AND listing_year = ?
+             WHERE run_id = ? AND listing_country = ? AND {year_sql}
                AND route_decision IS NOT NULL
              GROUP BY route_decision, route_reason
              ORDER BY route_decision, route_reason
             """,
-            (run_id, country, year),
+            (run_id, country, *year_args),
         ).fetchall()
         drops = [
             BenchRunGroupDrop(
@@ -366,7 +384,7 @@ def _run_groups(
                 denom = float(row["face_value"])
 
         groups.append(BenchRunGroup(
-            group_id=f"{country}-{year}-{denom}",
+            group_id=f"{country}-{year if year is not None else 'std'}-{denom}",
             country=country,
             year=year,
             denomination=denom,
@@ -396,6 +414,50 @@ def _run_groups(
         n_groups=len(groups),
     )
     return groups, summary
+
+
+# Tokens (normalisés sans accents par l'extracteur) qui signalent un objet
+# NON-attribuable à une pièce isolée → cause récurrente du verdict ambiguous.
+_SET_TOKENS = {
+    "kursmunzensatz", "kms", "munzset", "satz", "sammlerbox", "coincard",
+    "coincards", "coffret", "set", "blister", "etui",
+}
+_CHOICE_TOKENS = {
+    "wahlen", "zwischen", "unter", "auswahl", "auswahlen",
+    "elige", "elegir", "choisir", "select", "scegli",
+}
+
+
+def _derive_match_reason(
+    *,
+    target_eurio_id: str | None,
+    theme_tokens: list[str],
+    denoms: list[float],
+    is_lot: bool,
+    is_lot_suspected: bool,
+    rejected_markers: list[str],
+) -> str | None:
+    """Reconstruit la cause probable du non-match depuis les text_signals.
+
+    Le theme-matcher ne persiste pas son verdict (single/ambiguous/lot) ; on
+    le ré-explique a posteriori. None si l'annonce EST attribuée (rien à dire).
+    Heuristique transparente — pas la vérité du matcher, mais l'évidence
+    textuelle qui a vraisemblablement empêché de trancher UNE pièce.
+    """
+    if target_eurio_id:
+        return None
+    toks = set(theme_tokens or [])
+    if rejected_markers:
+        return f"Marqueur de rejet : {', '.join(rejected_markers[:3])}"
+    if toks & _SET_TOKENS:
+        return "Set / coffret — plusieurs pièces, ère indéterminable"
+    if toks & _CHOICE_TOKENS:
+        return "Annonce « au choix » — plusieurs pièces / années"
+    if is_lot or is_lot_suspected:
+        return "Lot suspecté — plusieurs pièces"
+    if denoms and len(denoms) > 1:
+        return "Plusieurs valeurs faciales — pas une pièce isolée"
+    return "Ambigu — plusieurs ères possibles (le matcher n'a pas tranché)"
 
 
 def _run_listings(
@@ -449,6 +511,39 @@ def _run_listings(
         """,
         [*params, limit, offset],
     ).fetchall()
+
+    # Signaux texte pour la page courante uniquement (batch) — sert à
+    # reconstruire la raison du non-match des annonces sans target.
+    sig_map: dict[str, sqlite3.Row] = {}
+    ids = [r["id"] for r in rows]
+    if ids:
+        ph = ",".join("?" * len(ids))
+        for s in conn.execute(
+            f"""
+            SELECT source_image_id, denominations_json, theme_tokens_json,
+                   is_lot, rejected_markers_json
+              FROM listing_text_signals
+             WHERE source_image_id IN ({ph})
+            """,
+            ids,
+        ).fetchall():
+            sig_map[s["source_image_id"]] = s
+
+    def _reason(r: sqlite3.Row) -> str | None:
+        if r["target_eurio_id"]:
+            return None
+        sig = sig_map.get(r["id"])
+        if sig is None:
+            return "Non auto-attribuée (pas de signal texte)"
+        return _derive_match_reason(
+            target_eurio_id=None,
+            theme_tokens=json.loads(sig["theme_tokens_json"] or "[]"),
+            denoms=json.loads(sig["denominations_json"] or "[]"),
+            is_lot=bool(sig["is_lot"] or 0),
+            is_lot_suspected=bool(r["is_lot_suspected"] or 0),
+            rejected_markers=json.loads(sig["rejected_markers_json"] or "[]"),
+        )
+
     listings = [
         BenchRunListing(
             source_image_id=r["id"],
@@ -463,6 +558,7 @@ def _run_listings(
             image_url=_listing_image_url(r["raw_payload_json"]),
             source_url=r["source_url"],
             marketplace=r["marketplace"],
+            match_reason=_reason(r),
         )
         for r in rows
     ]
@@ -655,6 +751,10 @@ class BenchRunCropCard(BaseModel):
     listing_url: str | None
     fetched_at: str | None
     composite_score: float | None    # score is_coin de crop_exp/score_crops (sidecar)
+    # Chantier crop-quality-overhaul — inclinaison mesurée via measure_tilt.
+    tilt_deg: float | None           # angle estimé [0–90°], None si backfill absent
+    axis_ratio: float | None         # minor/major — 1.0 = cercle parfait
+    tilt_trustworthy: bool | None    # True si les 3 critères (center_drift/r_ratio/arc_cov) OK
 
 
 class BenchRunCropsMethodBucket(BaseModel):
@@ -878,13 +978,20 @@ def get_bench_run_crops(
     run_id: str,
     country: str | None = Query(None),
     year: int | None = Query(None),
+    eurio_id: str | None = Query(
+        None, description="filtre source_images.target_eurio_id (coin attribué)"
+    ),
     method: str | None = Query(None, description="yolo|hough|merged|manual"),
     status: str | None = Query(None, description="resolution_status filter"),
     quality_min: float | None = Query(None, ge=0, le=1),
     quality_max: float | None = Query(None, ge=0, le=1),
     undercrop_only: bool = Query(False),
+    tilt_min: float | None = Query(
+        None, ge=0, le=90,
+        description="Filtre : tilt_deg >= tilt_min ET tilt_trustworthy=1 (ne garde que les pièces inclinées fiables).",
+    ),
     sort: str = Query("score_desc",
-                      pattern="^(score_desc|score_asc|undercrop_first|quality_asc|quality_desc|recent)$"),
+                      pattern="^(score_desc|score_asc|undercrop_first|quality_asc|quality_desc|recent|tilt_desc)$"),
     undercrop_threshold: float = Query(UNDERCROP_AREA_RATIO_DEFAULT, ge=0, le=1),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
@@ -918,6 +1025,12 @@ def get_bench_run_crops(
     if year is not None:
         where.append("s.listing_year = ?")
         params.append(year)
+    if eurio_id:
+        # Coin attribué (theme-match tranché). Discrimine une commémo précise au
+        # sein d'un groupe (country, year) — les sœurs partagent la maille du
+        # bench. Indépendant de listing_year (NULL pour les standards).
+        where.append("s.target_eurio_id = ?")
+        params.append(eurio_id)
     if method:
         where.append("a.detection_method = ?")
         params.append(method)
@@ -930,6 +1043,11 @@ def get_bench_run_crops(
     if quality_max is not None:
         where.append("(a.quality_score IS NOT NULL AND a.quality_score <= ?)")
         params.append(quality_max)
+    if tilt_min is not None:
+        # Filtre SQL direct (colonne indexable) : ne retourne que les assets
+        # dont l'inclinaison est mesurée, fiable, et au-dessus du seuil.
+        where.append("(a.tilt_deg IS NOT NULL AND a.tilt_deg >= ? AND a.tilt_trustworthy = 1)")
+        params.append(tilt_min)
     where_sql = " AND ".join(where)
 
     rows = conn.execute(
@@ -945,6 +1063,9 @@ def get_bench_run_crops(
             a.width           AS crop_width,
             a.height          AS crop_height,
             a.fetched_at      AS fetched_at,
+            a.tilt_deg        AS tilt_deg,
+            a.axis_ratio      AS axis_ratio,
+            a.tilt_trustworthy AS tilt_trustworthy,
             s.source          AS source,
             s.source_url      AS listing_url,
             s.target_eurio_id AS target_eurio_id,
@@ -1048,6 +1169,11 @@ def get_bench_run_crops(
             listing_url=r["listing_url"],
             fetched_at=r["fetched_at"],
             composite_score=composite_scores.get(r["asset_id"]),
+            tilt_deg=r["tilt_deg"],
+            axis_ratio=r["axis_ratio"],
+            tilt_trustworthy=(
+                bool(r["tilt_trustworthy"]) if r["tilt_trustworthy"] is not None else None
+            ),
         ))
 
     # 4. Aggregats globaux.
@@ -1155,6 +1281,13 @@ def get_bench_run_crops(
         )
     elif sort == "recent":
         filtered.sort(key=lambda c: c.fetched_at or "", reverse=True)
+    elif sort == "tilt_desc":
+        # Tilts les plus forts en premier (tri pour audit exclusion).
+        # Les cartes sans tilt_deg (backfill absent) tombent en fin via sentinel -1.
+        filtered.sort(
+            key=lambda c: c.tilt_deg if c.tilt_deg is not None else -1.0,
+            reverse=True,
+        )
 
     cards_total = len(filtered)
     paginated = filtered[offset:offset + limit]
@@ -1168,6 +1301,87 @@ def get_bench_run_crops(
         cards=paginated,
         cards_total=cards_total,
     )
+
+
+class CropsExcludePayload(BaseModel):
+    asset_ids: list[str] = Field(default_factory=list)
+
+
+class CropsExcludeResult(BaseModel):
+    excluded: int
+    skipped: list[str]   # asset_ids non trouvés ou n'appartenant pas au run
+
+
+@router.post("/runs/{run_id}/crops/exclude", response_model=CropsExcludeResult)
+def post_bench_run_crops_exclude(
+    run_id: str,
+    payload: CropsExcludePayload,
+) -> CropsExcludeResult:
+    """Marque des assets comme exclus du training (trop inclinés ou autre raison
+    éditoriale).
+
+    Seuls ``training_eligible`` et ``quality_reason`` sont modifiés :
+    ``resolution_status``, ``eurio_id`` et toute autre colonne sont préservés.
+    Les asset_ids qui n'appartiennent pas au run courant sont ignorés (skipped).
+    Réversible : remettre ``training_eligible=1, quality_reason=NULL``.
+    """
+    if not payload.asset_ids:
+        return CropsExcludeResult(excluded=0, skipped=[])
+
+    conn = _store()._connection()  # noqa: SLF001
+
+    # Vérifier que le run existe (404 propre si pas).
+    run_row = conn.execute(
+        "SELECT id FROM source_runs WHERE id = ?", (run_id,),
+    ).fetchone()
+    if run_row is None:
+        raise HTTPException(status_code=404, detail=f"Run {run_id} not found.")
+
+    now_iso = datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+    excluded = 0
+    skipped: list[str] = []
+
+    # Guard d'appartenance : récupère d'un coup les asset_ids du run (set).
+    # On évite N requêtes SELECT ; l'ensemble peut être grand (~milliers) mais
+    # payload.asset_ids est borné par la UI (typiquement < 200 au total).
+    run_asset_ids: set[str] = {
+        row[0]
+        for row in conn.execute(
+            "SELECT id FROM image_assets WHERE run_id = ?", (run_id,)
+        ).fetchall()
+    }
+
+    to_update = []
+    for aid in payload.asset_ids:
+        if aid not in run_asset_ids:
+            skipped.append(aid)
+        else:
+            to_update.append(aid)
+
+    if to_update:
+        conn.execute("BEGIN")
+        try:
+            conn.executemany(
+                """
+                UPDATE image_assets
+                   SET training_eligible = 0,
+                       quality_reason    = 'too_tilted',
+                       resolved_at       = ?
+                 WHERE id = ?
+                """,
+                [(now_iso, aid) for aid in to_update],
+            )
+            conn.execute("COMMIT")
+            excluded = len(to_update)
+        except Exception:
+            conn.execute("ROLLBACK")
+            raise
+
+    logger.info(
+        "[bench] crops exclude run=%s excluded=%d skipped=%d",
+        run_id, excluded, len(skipped),
+    )
+    return CropsExcludeResult(excluded=excluded, skipped=skipped)
 
 
 # Consumed by: admin/.../features/bench

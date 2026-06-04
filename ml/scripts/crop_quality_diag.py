@@ -50,6 +50,53 @@ _FILL_RATIO_WRONG = 0.50       # fill < 0.50 → pas de pièce reconnaissable (w
 # Heuristic pour fond clair : luminosité médiane des coins du crop > seuil
 _LIGHT_BG_THRESHOLD = 140
 
+# Stratification par TYPE DE LISTING (chantier crop-quality-overhaul, Chunk 2).
+# Les buckets coin×fond (bimetal/mono × clair/texturé) ne capturent PAS la vraie
+# population d'échec : les crops ratés sont surtout des listings "en contexte"
+# (sets/coffrets multi-pièces, capsules, coincards, pièces minuscules dans le
+# cadre). On stratifie sur 2 axes géométriques, déterministes et gratuits :
+#   - cardinalité : single (1 pièce dans l'image) vs multi (≥2 = set/coffret/lot)
+#   - cadrage     : tight (pièce remplit le cadre) vs small (pièce perdue dans le
+#                   contexte : capsule, coincard, tissu, numisbrief…)
+# coin_frac = r_pipe / min(H, W) du RAW. < _COIN_FRAC_SMALL ⇒ "small".
+# LIMITE CONNUE : les numisbriefs (graphisme circulaire imprimé) ne se distinguent
+# PAS géométriquement d'une pièce nette — ils tombent en single_tight et ne sont
+# séparables qu'au gold humain (champ listing_type surchargé à la main au label).
+_COIN_FRAC_SMALL = 0.18
+
+
+def _listing_type(n_coins: int, coin_frac: float | None) -> str:
+    """Strate géométrique du listing : {single,multi}_{tight,small} | unknown."""
+    if coin_frac is None or coin_frac <= 0:
+        return "unknown"
+    card = "multi" if (n_coins or 1) >= 2 else "single"
+    framing = "small" if coin_frac < _COIN_FRAC_SMALL else "tight"
+    return f"{card}_{framing}"
+
+
+# Oracle DINOv2 (chantier crop-quality-overhaul, Chunk 3). L'oracle géométrique
+# Otsu (r_ratio) est AVEUGLE aux pannes réelles : il re-probe autour du centre
+# choisi par le pipeline, donc un crop sur le MAUVAIS objet (graphisme numisbrief,
+# capsule, tissu, pièce voisine) est scoré "ok". Pire, il est muet (r_ratio None)
+# sur ~54 % du parc → 'ok' par défaut. Le DINOv2 top1_sim (similarité crop↔ancre
+# pièce, déjà calculé dans image_asset_dino_predictions) lui répond la VRAIE
+# question : « est-ce seulement une pièce ? ». Calibré sur la file ccproxy
+# (médiane bad ≈ 0.55 vs corpus 0.72 ; les 2 crops nets isolés à 0.84).
+# Seuils PROVISOIRES — à caler au gold humain (Chunk 4).
+_DINO_WRONG = 0.50      # < 0.50 → mauvais objet / pas une pièce reconnaissable
+_DINO_SUSPECT = 0.65    # 0.50–0.65 → douteux (à revoir) ; ≥ 0.65 → bon
+
+
+def _dino_class(dino_sim: float | None) -> str:
+    """Verdict qualité basé sur la similarité DINOv2 : good|suspect|wrong|unknown."""
+    if dino_sim is None:
+        return "unknown"
+    if dino_sim < _DINO_WRONG:
+        return "wrong"
+    if dino_sim < _DINO_SUSPECT:
+        return "suspect"
+    return "good"
+
 # Contact sheet settings
 _CONTACT_CELL = 224           # px par cell
 _CONTACT_COLS = 10
@@ -265,10 +312,19 @@ def _select_assets(n: int, seed: int = 42) -> list[dict]:
             c.face_value,
             c.is_commemorative,
             c.country,
-            c.year
+            c.year,
+            (SELECT COUNT(*) FROM image_assets a2
+              WHERE a2.source_image_id = a.source_image_id
+                AND a2.storage_status = 'present') AS n_coins_in_img,
+            d.dino_sim
         FROM image_assets a
         JOIN source_images si ON si.id = a.source_image_id
         LEFT JOIN coins c ON c.eurio_id = COALESCE(a.eurio_id, si.target_eurio_id)
+        LEFT JOIN (
+            SELECT asset_id, MAX(top1_sim) AS dino_sim
+              FROM image_asset_dino_predictions
+             GROUP BY asset_id
+        ) d ON d.asset_id = a.id
         WHERE si.source = 'ebay'
           AND a.storage_status = 'present'
           AND si.storage_status = 'present'
@@ -310,6 +366,18 @@ def _process_asset(row: dict) -> dict | None:
     oracle = _oracle_from_raw(raw_bgr, row.get("bbox_json"))
     r_ratio = oracle.get("r_ratio")
 
+    # Stratification listing : cardinalité (DB) × cadrage (taille pièce / raw).
+    raw_h, raw_w = raw_bgr.shape[:2]
+    r_pipe = oracle.get("r_pipe")
+    coin_frac = (r_pipe / min(raw_h, raw_w)) if r_pipe else None
+    n_coins_in_img = int(row.get("n_coins_in_img") or 1)
+    listing_type = _listing_type(n_coins_in_img, coin_frac)
+
+    # Oracle DINOv2 : voit le "mauvais objet" que la géométrie rate.
+    dino_sim = row.get("dino_sim")
+    dino_sim = float(dino_sim) if dino_sim is not None else None
+    dino_class = _dino_class(dino_sim)
+
     # Détection anneau interne (coûteux : seulement sur bimetal)
     bimetal_inner_ring = False
     if is_bimetal_coin:
@@ -342,6 +410,11 @@ def _process_asset(row: dict) -> dict | None:
         "is_bimetal_coin": int(is_bimetal_coin),
         "bucket": bucket,
         "crop_class": crop_class,
+        "n_coins_in_img": n_coins_in_img,
+        "coin_frac": round(coin_frac, 4) if coin_frac is not None else None,
+        "listing_type": listing_type,
+        "dino_sim": round(dino_sim, 4) if dino_sim is not None else None,
+        "dino_class": dino_class,
     }
 
 
@@ -413,7 +486,9 @@ def _write_csv(results: list[dict], out_path: Path) -> None:
               "face_value", "is_commemorative", "detection_method",
               "fill_ratio", "r_pipe", "r_probe", "r_ratio",
               "bimetal_inner_ring", "is_light_bg", "is_bimetal_coin",
-              "bucket", "crop_class"]
+              "bucket", "crop_class",
+              "n_coins_in_img", "coin_frac", "listing_type",
+              "dino_sim", "dino_class"]
     with out_path.open("w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=fields)
         w.writeheader()
@@ -422,14 +497,14 @@ def _write_csv(results: list[dict], out_path: Path) -> None:
     print(f"  CSV → {out_path}  ({len(results)} lignes)")
 
 
-def _bucket_stats(results: list[dict]) -> dict[str, dict]:
-    buckets: dict[str, list] = {}
+def _group_stats(results: list[dict], key: str) -> dict[str, dict]:
+    """Agrège les métriques crop par valeur de `key` (ex: 'bucket', 'listing_type')."""
+    groups: dict[str, list] = {}
     for r in results:
-        b = r["bucket"]
-        buckets.setdefault(b, []).append(r)
+        groups.setdefault(r.get(key) or "unknown", []).append(r)
 
     out = {}
-    for bname, items in sorted(buckets.items()):
+    for gname, items in sorted(groups.items()):
         n = len(items)
         undercrop = sum(1 for r in items if r["crop_class"] == "undercrop")
         overcrop = sum(1 for r in items if r["crop_class"] == "overcrop")
@@ -438,7 +513,12 @@ def _bucket_stats(results: list[dict]) -> dict[str, dict]:
         fill_ratios = [r["fill_ratio"] for r in items]
         r_ratios = [r["r_ratio"] for r in items if r.get("r_ratio") is not None]
         bimetal_inner = sum(1 for r in items if r.get("bimetal_inner_ring"))
-        out[bname] = {
+        # Oracle DINOv2 — la VRAIE qualité (mauvais objet inclus).
+        dwrong = sum(1 for r in items if r.get("dino_class") == "wrong")
+        dsuspect = sum(1 for r in items if r.get("dino_class") == "suspect")
+        dgood = sum(1 for r in items if r.get("dino_class") == "good")
+        dsims = [r["dino_sim"] for r in items if r.get("dino_sim") is not None]
+        out[gname] = {
             "n": n,
             "undercrop_pct": round(100 * undercrop / n, 1),
             "overcrop_pct": round(100 * overcrop / n, 1),
@@ -448,8 +528,24 @@ def _bucket_stats(results: list[dict]) -> dict[str, dict]:
             "bimetal_inner_ring_pct": round(100 * bimetal_inner / max(1, n), 1),
             "r_ratio_median": round(float(np.median(r_ratios)), 3) if r_ratios else None,
             "r_ratio_p25": round(float(np.percentile(r_ratios, 25)), 3) if r_ratios else None,
+            # DINOv2 : bad = wrong + suspect (oracle qui voit le mauvais objet).
+            "dino_wrong_pct": round(100 * dwrong / n, 1),
+            "dino_suspect_pct": round(100 * dsuspect / n, 1),
+            "dino_good_pct": round(100 * dgood / n, 1),
+            "dino_bad_pct": round(100 * (dwrong + dsuspect) / n, 1),
+            "dino_sim_median": round(float(np.median(dsims)), 3) if dsims else None,
         }
     return out
+
+
+def _bucket_stats(results: list[dict]) -> dict[str, dict]:
+    """Agrégats par bucket coin×fond (bimetal/mono × clair/texturé)."""
+    return _group_stats(results, "bucket")
+
+
+def _listing_stats(results: list[dict]) -> dict[str, dict]:
+    """Agrégats par type de listing (single/multi × tight/small) — Chunk 2."""
+    return _group_stats(results, "listing_type")
 
 
 def main() -> None:
@@ -517,6 +613,19 @@ def main() -> None:
               f"fill={s['mean_fill_ratio']:.3f}  "
               f"bi_inner={s['bimetal_inner_ring_pct']:.1f}%"
               + (f"  r_med={s['r_ratio_median']:.3f}" if s.get('r_ratio_median') else ""))
+
+    n_dino = sum(1 for r in results if r.get("dino_sim") is not None)
+    print(f"\n=== PAR TYPE DE LISTING (single/multi × tight/small) ===")
+    print(f"    [géométrie Otsu = AVEUGLE au mauvais objet | DINOv2 = vraie qualité, "
+          f"couverture {n_dino}/{n} = {100*n_dino/n:.0f}%]")
+    lstats = _listing_stats(results)
+    for lname, s in sorted(lstats.items(), key=lambda kv: -kv[1]["n"]):
+        geo_bad = round(s["undercrop_pct"] + s["wrong_pct"], 1)
+        print(f"  {lname:15s}  n={s['n']:4d}  "
+              f"| DINO bad={s['dino_bad_pct']:5.1f}% "
+              f"(wrong={s['dino_wrong_pct']:4.1f}% susp={s['dino_suspect_pct']:4.1f}%) "
+              f"sim_med={s['dino_sim_median'] if s['dino_sim_median'] is not None else 'n/a'}  "
+              f"| géo bad={geo_bad:4.1f}% (aveugle)")
 
     # Pires exemples pour audit
     worst = sorted(

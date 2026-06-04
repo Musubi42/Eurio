@@ -248,7 +248,7 @@ function formatPct(v: number | null): string {
         <div class="mt-6 h-px w-16" style="background: var(--gold);" />
       </header>
 
-      <!-- §C1 Sélection + §C2 Captures + §C3 Images eBay + §C4 Review crops -->
+      <!-- §C1 Sélection + §C2 Captures + §C3 eBay (sourcing & funnel) + §C4 Review crops -->
       <div class="mb-6 flex flex-col gap-3">
         <CohortDrawerC1
           :cohort-id="cohort.id"

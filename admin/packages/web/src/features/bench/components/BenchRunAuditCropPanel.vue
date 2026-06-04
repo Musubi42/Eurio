@@ -7,12 +7,19 @@ import {
   type BenchRunCropsGroupSummary,
   type BenchRunCropsQuery,
   type BenchRunCropsResponse,
+  BenchApiError,
+  excludeTiltedCrops,
   fetchBenchRunCrops,
 } from '../composables/useBenchApi'
 import BenchCropAnalytics from './BenchCropAnalytics.vue'
 import BenchCropEvidenceCard from './BenchCropEvidenceCard.vue'
 
-const props = defineProps<{ runId: string }>()
+const props = defineProps<{
+  runId: string
+  // Deep-link funnel lab : pré-filtre les crops sur le coin attribué et
+  // pré-sélectionne sa recherche. Optionnel (audit libre sinon).
+  eurioId?: string | null
+}>()
 
 // ── State ─────────────────────────────────────────────────────────────────
 // `baseData` : 1er appel sans filtre — sert pour la grid des recherches
@@ -34,6 +41,16 @@ const undercropOnly = ref(false)
 // utile pour audit "les plus confiants d'abord", on rebascule sur score_asc
 // ou undercrop_first pour traquer les pires.).
 const sort = ref<NonNullable<BenchRunCropsQuery['sort']>>('score_desc')
+
+// ── Filtre tilt ────────────────────────────────────────────────────────────
+// tiltActive : active le filtre + le tri tilt_desc.
+// tiltMin : seuil en degrés (defaut 40°). Null = filtre désactivé.
+const tiltActive = ref(false)
+const tiltMin = ref<number>(40)
+// excludedAssetIds : set des asset_ids sélectionnés pour exclusion.
+const excludedAssetIds = ref<Set<string>>(new Set())
+const excludeError = ref<string | null>(null)
+const excluding = ref(false)
 
 const LIMIT = 60
 const offset = ref(0)
@@ -71,6 +88,7 @@ const queryParams = computed<BenchRunCropsQuery>(() => {
     if (selectedGroup.value.country) q.country = selectedGroup.value.country
     if (selectedGroup.value.year != null) q.year = selectedGroup.value.year
   }
+  if (props.eurioId) q.eurio_id = props.eurioId
   if (selectedMethod.value) q.method = selectedMethod.value
   if (selectedStatus.value) q.status = selectedStatus.value
   if (qualityRange.value) {
@@ -78,8 +96,33 @@ const queryParams = computed<BenchRunCropsQuery>(() => {
     q.quality_max = qualityRange.value[1]
   }
   if (undercropOnly.value) q.undercrop_only = true
+  if (tiltActive.value) {
+    q.tilt_min = tiltMin.value
+    q.sort = 'tilt_desc'
+  }
   return q
 })
+
+// Recherche crop d'un coin : les groupes crop sont keyés (pays, année) et ne
+// portent pas les target_eurio_ids → on dérive pays/année du slug eurio_id
+// (`de-2007-2eur-…` → DE/2007). Année exacte d'abord, puis fallback même pays
+// (couvre les standards dont les listings ont listing_year NULL → groupe `?`).
+function bestGroupForCoin(eurioId: string): string | null {
+  const m = /^([a-z]{2})-(\d{4})-/.exec(eurioId)
+  if (!m) return null
+  const country = m[1].toUpperCase()
+  const year = Number(m[2])
+  const exact = groups.value.find(g => g.country === country && g.year === year)
+  if (exact) return exact.group_id
+  const sameCountry = groups.value.find(g => g.country === country)
+  return sameCountry?.group_id ?? null
+}
+
+function applyCoinPreselect() {
+  if (!props.eurioId) return
+  const gid = bestGroupForCoin(props.eurioId)
+  if (gid) selectedGroupId.value = gid
+}
 
 // ── Effects ───────────────────────────────────────────────────────────────
 async function load() {
@@ -88,8 +131,9 @@ async function load() {
   try {
     // Charge uniquement la baseData (sans filtre) pour la metrics bar +
     // la grid des recherches. Pas de groupe sélectionné par défaut —
-    // l'utilisateur choisit, comme en mode Filter.
+    // l'utilisateur choisit, comme en mode Filter (sauf deep-link coin).
     baseData.value = await fetchBenchRunCrops(props.runId, { limit: 1 })
+    applyCoinPreselect()
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
     baseData.value = null
@@ -115,9 +159,23 @@ async function reload() {
 }
 
 watch([selectedGroupId, selectedMethod, selectedStatus, selectedQualityBucket,
-       undercropOnly, sort], () => {
+       undercropOnly, sort, tiltActive, tiltMin], () => {
   offset.value = 0
+  // Vide la sélection d'exclusion quand les filtres changent.
+  excludedAssetIds.value = new Set()
   reload()
+})
+
+// Deep-link coin change sans remount : re-pré-sélectionne sa recherche. Si le
+// groupe ne bouge pas (même pays/année), on recharge ici pour appliquer le
+// nouveau filtre eurio_id ; sinon le watch ci-dessus s'en charge.
+watch(() => props.eurioId, () => {
+  const before = selectedGroupId.value
+  applyCoinPreselect()
+  if (selectedGroupId.value === before) {
+    offset.value = 0
+    reload()
+  }
 })
 
 onMounted(load)
@@ -136,7 +194,33 @@ function onSelectQuality(label: string | null) {
   selectedQualityBucket.value = label
 }
 function setSort(s: NonNullable<BenchRunCropsQuery['sort']>) {
+  // Désactive le mode tilt si on choisit un autre tri manuellement.
+  if (s !== 'tilt_desc') tiltActive.value = false
   sort.value = s
+}
+
+function toggleCardExclude(assetId: string) {
+  const s = new Set(excludedAssetIds.value)
+  if (s.has(assetId)) s.delete(assetId)
+  else s.add(assetId)
+  excludedAssetIds.value = s
+}
+
+async function onExcludeTilted() {
+  const ids = [...excludedAssetIds.value]
+  if (!ids.length) return
+  excluding.value = true
+  excludeError.value = null
+  try {
+    await excludeTiltedCrops(props.runId, ids)
+    excludedAssetIds.value = new Set()
+    offset.value = 0
+    await reload()
+  } catch (e) {
+    excludeError.value = e instanceof BenchApiError ? e.message : String(e)
+  } finally {
+    excluding.value = false
+  }
 }
 function nextPage() {
   if (offset.value + LIMIT < cardsTotal.value) {
@@ -330,6 +414,21 @@ function prevPage() {
                 undercrops only
               </label>
 
+              <!-- Filtre tilt : toggle + seuil numérique -->
+              <label class="evidence__under-toggle">
+                <input type="checkbox" v-model="tiltActive" />
+                tilt &gt;
+              </label>
+              <input
+                type="number"
+                class="tilt-threshold"
+                :disabled="!tiltActive"
+                v-model.number="tiltMin"
+                min="0" max="90" step="5"
+                title="Seuil tilt en degrés — filtre + tri tilt_desc activés simultanément"
+              />
+              <span class="evidence__meta">°</span>
+
               <div class="sort-toggle">
                 <button :class="{ active: sort === 'score_desc' }"
                         @click="setSort('score_desc')"
@@ -343,7 +442,22 @@ function prevPage() {
                         @click="setSort('undercrop_first')">undercrop d'abord</button>
                 <button :class="{ active: sort === 'recent' }"
                         @click="setSort('recent')">récent</button>
+                <button :class="{ active: sort === 'tilt_desc' }"
+                        @click="setSort('tilt_desc')"
+                        title="Tilt le plus fort en premier (cartes sans tilt_deg en fin)">tilt ↓</button>
               </div>
+
+              <!-- Bouton exclusion tilt : visible dès qu'au moins une carte est sélectionnée -->
+              <button
+                v-if="excludedAssetIds.size > 0"
+                class="exclude-btn"
+                :disabled="excluding"
+                @click="onExcludeTilted"
+                title="Marque ces crops comme non-éligibles au training (quality_reason = too_tilted)"
+              >
+                Exclure du training ({{ excludedAssetIds.size }})
+              </button>
+              <span v-if="excludeError" class="exclude-error">{{ excludeError }}</span>
             </div>
 
             <div class="evidence__body">
@@ -362,6 +476,9 @@ function prevPage() {
                   v-for="c in cards"
                   :key="c.asset_id"
                   :card="c"
+                  :selected="excludedAssetIds.has(c.asset_id)"
+                  :tilt-min="tiltActive ? tiltMin : null"
+                  @toggle-exclude="toggleCardExclude(c.asset_id)"
                 />
               </div>
             </div>
@@ -736,6 +853,45 @@ function prevPage() {
   color: var(--ink-500);
 }
 .evidence__pager-btns button:disabled { opacity: 0.4; }
+
+/* Contrôle seuil tilt */
+.tilt-threshold {
+  width: 48px;
+  padding: 3px 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  border: 1px solid var(--surface-3);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+  text-align: center;
+  -moz-appearance: textfield;
+}
+.tilt-threshold:disabled { opacity: 0.45; }
+.tilt-threshold::-webkit-outer-spin-button,
+.tilt-threshold::-webkit-inner-spin-button { -webkit-appearance: none; }
+
+/* Bouton d'exclusion tilt */
+.exclude-btn {
+  padding: 5px 12px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--danger);
+  color: var(--surface);
+  border: none;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.exclude-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+.exclude-error {
+  font-size: 11px;
+  color: var(--danger);
+  max-width: 200px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 /* Hint quand pas de groupe sélectionné */
 .hint {

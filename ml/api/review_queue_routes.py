@@ -64,6 +64,19 @@ router = APIRouter(prefix="/review-queue", tags=["review-queue"])
 
 _VALID_FACES = ("obverse", "reverse", "unknown")
 _SKIP_PRIORITY_BUMP = 50
+
+# Marqueur (review_queue.decision_notes) d'un item qu'un humain a ré-ouvert
+# depuis la grille de récupération (cf. /restore). Ces items sont « épinglés
+# manuel » : ils doivent être tranchés à la main (re-crop), donc on les EXCLUT
+# de l'auto-triage (auto-accept Dino + batch Claude) et des buckets de verdict
+# du cockpit — sinon ils retomberaient dans CCProxy/Auto et n'apparaîtraient
+# pas dans le compteur « Queue manuelle ». Ils restent visibles en tête de la
+# queue manuelle (list_queue n'applique aucun filtre de verdict).
+_RESTORED_NOTE = "restored"
+# Clause SQL réutilisable : « pas un item restauré » (alias review_queue = rq).
+_NOT_RESTORED_SQL = (
+    f"(rq.decision_notes IS NULL OR rq.decision_notes != '{_RESTORED_NOTE}')"
+)
 _VALID_KINDS = ("single", "lot", "all")
 _VALID_REJECT_REASONS = (
     "not_a_coin", "out_of_scope", "duplicate_in_listing", "unreadable", "other",
@@ -495,7 +508,12 @@ def queue_triage_stats(
     today = datetime.utcnow().strftime("%Y-%m-%d")
     week_start = (datetime.utcnow() - timedelta(days=7)).strftime("%Y-%m-%d")
 
-    where = "rq.status = 'open'"
+    # Les items restaurés (épinglés manuel) sont exclus du scan de verdict :
+    # ils ne doivent pas gonfler les buckets auto/partial/divergent. Comme
+    # ``n_pending`` les compte toujours (status='open'), ils retombent
+    # mécaniquement dans « Queue manuelle » (= n_pending − handled). Cf.
+    # _RESTORED_NOTE.
+    where = f"rq.status = 'open' AND {_NOT_RESTORED_SQL}"
     args: list[Any] = []
     if kind != "all":
         where += " AND rq.kind = ?"
@@ -516,6 +534,7 @@ def queue_triage_stats(
                 "n_done_this_week": 0,
                 "by_verdict": {"auto_candidate": 0, "partial": 0,
                                "divergent": 0, "unknown": 0},
+                "n_lot_crops": 0, "n_rejected": 0, "n_skipped": 0,
             }
         cohort_clause = (
             " AND si.target_eurio_id IN "
@@ -589,6 +608,35 @@ def queue_triage_stats(
             "WHERE rq.status = 'open' AND rq.kind = 'lot'"
         ).fetchone()["c"]
 
+    # Crops rejetés (récupérables) + items skippés — surfacés dans le cockpit
+    # cohort (§C4) : le rejet ouvre la grille de récupération, le skip n'est
+    # qu'un report informationnel (l'item reste dans la queue manuelle).
+    if cohort_clause:
+        n_rejected = conn.execute(
+            "SELECT COUNT(*) AS c FROM review_queue rq "
+            "JOIN image_assets a ON a.id = rq.image_asset_id "
+            "JOIN source_images si ON si.id = a.source_image_id "
+            f"WHERE a.resolution_status = 'rejected'{cohort_clause}",
+            cohort_args,
+        ).fetchone()["c"]
+        n_skipped = conn.execute(
+            "SELECT COUNT(*) AS c FROM review_queue rq "
+            "JOIN image_assets a ON a.id = rq.image_asset_id "
+            "JOIN source_images si ON si.id = a.source_image_id "
+            f"WHERE rq.status = 'open' AND rq.decision_notes = 'skipped'{cohort_clause}",
+            cohort_args,
+        ).fetchone()["c"]
+    else:
+        n_rejected = conn.execute(
+            "SELECT COUNT(*) AS c FROM review_queue rq "
+            "JOIN image_assets a ON a.id = rq.image_asset_id "
+            "WHERE a.resolution_status = 'rejected'"
+        ).fetchone()["c"]
+        n_skipped = conn.execute(
+            "SELECT COUNT(*) AS c FROM review_queue rq "
+            "WHERE rq.status = 'open' AND rq.decision_notes = 'skipped'"
+        ).fetchone()["c"]
+
     return {
         "n_pending": n_pending,
         "n_done_today": n_done_today,
@@ -596,7 +644,165 @@ def queue_triage_stats(
         "n_done_this_week": n_done_week,
         "by_verdict": by_verdict,
         "n_lot_crops": n_lot_crops,
+        "n_rejected": n_rejected,
+        "n_skipped": n_skipped,
     }
+
+
+# ── Récupération des crops rejetés (un-reject) ────────────────────────────
+#
+# Un reject (POST /{id}/reject) ferme la review (status='done') ET marque
+# image_assets.resolution_status='rejected' (training_eligible=0). Or un rejet
+# est souvent un simple cadrage raté qu'un re-crop manuel aurait sauvé. Ces
+# deux endpoints rendent le rejet réversible : lister les rejetés d'une cohort
+# (grille de récupération admin) puis les ré-ouvrir en masse — ils repassent
+# 'open'/'needs_review' et reviennent en tête de queue manuelle, où l'éditeur
+# de re-crop existant prend le relais. Inverse EXACT de reject_review.
+#
+# Déclarés AVANT /{review_id} (sinon FastAPI capture "rejected" comme un id).
+
+# Priorité donnée aux items restaurés : basse → ils remontent en tête de la
+# queue (ORDER BY priority ASC) pour que l'humain les re-traite tout de suite.
+_RESTORE_PRIORITY = 5
+
+
+class RejectedCropItem(BaseModel):
+    review_id: str
+    image_asset_id: str
+    crop_url: str
+    listing_title: str | None
+    quality_reason: str | None
+    decided_at: str | None
+    target_eurio_id: str | None
+    target_label: str | None
+
+
+# Consumed by: admin/.../review/composables/useReviewApi.ts (fetchRejectedCrops)
+@router.get("/rejected", response_model=list[RejectedCropItem])
+def list_rejected(
+    cohort_id: str | None = Query(default=None),
+    limit: int = Query(default=500, ge=1, le=2000),
+) -> list[RejectedCropItem]:
+    """Liste les crops rejetés (``image_assets.resolution_status='rejected'``),
+    scopés à la cohort si ``cohort_id``. Alimente la grille de récupération."""
+    cohort_clause, cohort_args, cohort_empty = _cohort_filter(cohort_id, alias="s")
+    if cohort_empty:
+        return []
+    conn = _store()._connection()  # noqa: SLF001
+    rows = conn.execute(
+        f"""
+        SELECT rq.id AS review_id, rq.image_asset_id, rq.decided_at,
+               a.quality_reason,
+               s.source, s.listing_title, s.target_eurio_id,
+               t.country_name AS t_country_name, t.year AS t_year,
+               t.theme AS t_theme
+          FROM review_queue rq
+          JOIN image_assets a ON a.id = rq.image_asset_id
+          JOIN source_images s ON s.id = a.source_image_id
+          LEFT JOIN coins t ON t.eurio_id = s.target_eurio_id
+         WHERE a.resolution_status = 'rejected'{cohort_clause}
+         ORDER BY rq.decided_at DESC
+         LIMIT ?
+        """,
+        [*cohort_args, limit],
+    ).fetchall()
+
+    def _label(r: sqlite3.Row) -> str | None:
+        bits = [r["t_country_name"], str(r["t_year"]) if r["t_year"] else None,
+                r["t_theme"]]
+        joined = " · ".join([b for b in bits if b])
+        return joined or r["target_eurio_id"]
+
+    return [
+        RejectedCropItem(
+            review_id=r["review_id"],
+            image_asset_id=r["image_asset_id"],
+            crop_url=f"/sources/{r['source']}/assets/{r['image_asset_id']}/file",
+            listing_title=r["listing_title"],
+            quality_reason=r["quality_reason"],
+            decided_at=r["decided_at"],
+            target_eurio_id=r["target_eurio_id"],
+            target_label=_label(r),
+        )
+        for r in rows
+    ]
+
+
+class RestorePayload(BaseModel):
+    review_ids: list[str] = Field(default_factory=list)
+
+
+class RestoreResult(BaseModel):
+    restored: int
+    skipped: list[str]  # ids non restaurés (introuvables ou pas rejetés)
+
+
+# Consumed by: admin/.../review/composables/useReviewApi.ts (restoreRejected)
+@router.post("/restore", response_model=RestoreResult)
+def restore_rejected(payload: RestorePayload) -> RestoreResult:
+    """Ré-ouvre des reviews rejetées (inverse de reject_review). Pour chaque
+    id : ``review_queue`` repasse ``status='open'`` avec ses champs décision
+    purgés et une priorité basse (re-traitement prioritaire) ; ``image_assets``
+    repasse ``resolution_status='needs_review'``, ``training_eligible=1``,
+    ``quality_reason=NULL``. Un id introuvable ou dont l'image n'est pas
+    ``rejected`` est ignoré (listé dans ``skipped``)."""
+    if not payload.review_ids:
+        return RestoreResult(restored=0, skipped=[])
+
+    conn = _store()._connection()  # noqa: SLF001
+    now_iso = _now_iso()
+    restored = 0
+    skipped: list[str] = []
+
+    for review_id in payload.review_ids:
+        rq = conn.execute(
+            "SELECT rq.id, rq.image_asset_id, a.resolution_status "
+            "  FROM review_queue rq "
+            "  JOIN image_assets a ON a.id = rq.image_asset_id "
+            " WHERE rq.id = ?",
+            (review_id,),
+        ).fetchone()
+        if rq is None or rq["resolution_status"] != "rejected":
+            skipped.append(review_id)
+            continue
+        conn.execute("BEGIN")
+        try:
+            conn.execute(
+                """
+                UPDATE image_assets
+                   SET resolution_status = 'needs_review',
+                       training_eligible = 1,
+                       quality_reason = NULL,
+                       resolved_at = NULL
+                 WHERE id = ?
+                """,
+                (rq["image_asset_id"],),
+            )
+            conn.execute(
+                """
+                UPDATE review_queue
+                   SET status = 'open',
+                       priority = ?,
+                       decided_at = NULL,
+                       decided_by = NULL,
+                       decided_eurio_id = NULL,
+                       decided_face = NULL,
+                       decided_variant_kind = NULL,
+                       decision_notes = ?,
+                       decision_engine_version = NULL,
+                       decision_metadata_json = '{}'
+                 WHERE id = ?
+                """,
+                (_RESTORE_PRIORITY, _RESTORED_NOTE, review_id),
+            )
+            conn.execute("COMMIT")
+            restored += 1
+        except Exception:
+            conn.execute("ROLLBACK")
+            raise
+
+    logger.info("[review] restored %d rejected (skipped=%d)", restored, len(skipped))
+    return RestoreResult(restored=restored, skipped=skipped)
 
 
 # ── Lot review (V1.5) ─────────────────────────────────────────────────────
@@ -2030,7 +2236,14 @@ def get_text_signals_for_review(review_id: str) -> TextSignalsResponse:
 @router.post("/{review_id}/skip", status_code=200)
 def skip_review(review_id: str) -> dict[str, Any]:
     """Defer this item: bump `priority` so it lands further down the
-    queue, but keep `status='open'`. No write to `image_assets`."""
+    queue, but keep `status='open'`. No write to `image_assets`.
+
+    Marque aussi ``decision_notes='skipped'`` : un skip est sinon
+    indistinguable d'un item jamais touché (même ``status='open'``), ce
+    qui empêche tout compteur honnête. Le marqueur est porté par la row
+    open ; il disparaît dès que l'item est décidé (status='done') ou
+    restauré (cf. ``/restore``). Sert au compteur ``n_skipped`` du cockpit
+    cohort (§C4)."""
     conn = _store()._connection()  # noqa: SLF001
     rq = conn.execute(
         "SELECT id, status, priority FROM review_queue WHERE id = ?",
@@ -2047,7 +2260,7 @@ def skip_review(review_id: str) -> dict[str, Any]:
     # concurrents lisent la même priority et écrivent priority+50 chacun.
     cur = conn.execute(
         "UPDATE review_queue "
-        "   SET priority = priority + ? "
+        "   SET priority = priority + ?, decision_notes = 'skipped' "
         " WHERE id = ? AND status = 'open'",
         (_SKIP_PRIORITY_BUMP, review_id),
     )
@@ -2149,7 +2362,9 @@ def run_auto_accept(
             dry_run=dry_run, preview=[])
 
     conn = _store()._connection()  # noqa: SLF001
-    where = "rq.status = 'open'"
+    # Exclut les items restaurés (épinglés manuel) de l'auto-triage : un humain
+    # les a ré-ouverts pour les trancher à la main. Cf. _RESTORED_NOTE.
+    where = f"rq.status = 'open' AND {_NOT_RESTORED_SQL}"
     args: list[Any] = []
     if kind != "all":
         where += " AND rq.kind = ?"
@@ -2439,7 +2654,9 @@ def run_claude_batch(
             errors=0, model=MODELS[model_alias])
 
     conn = _store()._connection()  # noqa: SLF001
-    where = "rq.status = 'open'"
+    # Exclut les items restaurés (épinglés manuel) de l'auto-triage : un humain
+    # les a ré-ouverts pour les trancher à la main. Cf. _RESTORED_NOTE.
+    where = f"rq.status = 'open' AND {_NOT_RESTORED_SQL}"
     args: list[Any] = []
     if kind != "all":
         where += " AND rq.kind = ?"

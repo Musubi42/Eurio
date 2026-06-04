@@ -4,6 +4,7 @@ import { ImageOff, Loader2 } from 'lucide-vue-next'
 import {
   type CropBenchCard,
   type CropBenchRecrop,
+  type CropSeverity,
   fetchCropBenchRecrop,
   resolveCropBenchImg,
 } from '../composables/useCropBenchApi'
@@ -12,11 +13,12 @@ const props = withDefaults(defineProps<{
   card: CropBenchCard
   compare?: boolean
   algo?: string
+  showTilt?: boolean               // afficher l'overlay ellipse jaune (show_tilt=1 backend)
   label?: Record<string, string>   // {target: verdict} déjà enregistrés pour ce crop
-}>(), { compare: true, algo: 'bbox_refine' })
+}>(), { compare: true, algo: 'bbox_refine', showTilt: false })
 
 const emit = defineEmits<{
-  (e: 'label', payload: { target: string; verdict: 'good' | 'bad'; method: string | null; rRatio: number | null }): void
+  (e: 'label', payload: { target: string; verdict: 'good' | 'bad'; method: string | null; rRatio: number | null; dinoSim: number | null }): void
 }>()
 
 function verdictOf(target: string): string | undefined {
@@ -28,14 +30,31 @@ function mark(target: string, verdict: 'good' | 'bad') {
     target, verdict,
     method: isAlt ? (recrop.value?.method ?? null) : (props.card.detection_method || null),
     rRatio: isAlt ? (recrop.value?.r_ratio_oracle ?? null) : props.card.r_ratio,
+    // dino_sim porte sur le crop ACTUEL (le crop affiché) — on ne le joint qu'au
+    // label 'actuel' pour caler les seuils ; null pour les crops d'algo alt.
+    dinoSim: isAlt ? null : props.card.dino_sim,
   })
 }
+
+// Oracle DINOv2 : le vrai signal qualité (voit le mauvais objet).
+const dinoSev = computed((): CropSeverity => {
+  switch (props.card.dino_class) {
+    case 'good': return 'green'
+    case 'suspect': return 'amber'
+    case 'wrong': return 'red'
+    default: return 'gray'
+  }
+})
 
 const overlayBroken = ref(false)
 const cropBroken = ref(false)
 
 const overlayUrl = computed(() =>
-  resolveCropBenchImg(props.card.overlay_url, props.compare ? props.algo : undefined),
+  resolveCropBenchImg(
+    props.card.overlay_url,
+    props.compare ? props.algo : undefined,
+    props.showTilt,
+  ),
 )
 const cropUrl = computed(() => resolveCropBenchImg(props.card.crop_url))
 
@@ -87,6 +106,22 @@ const improved = computed(() => {
   if (cur == null || alt == null) return false
   return Math.abs(alt - 1) < Math.abs(cur - 1)
 })
+
+// Sévérité du tilt basée sur tilt_deg (0-90°) — gris si non fiable.
+// Seuils : ≥ 30° = fort (red), ≥ 15° = léger (amber), > 0° = rond (green), gris si non trustworthy.
+const tiltSeverity = computed((): CropSeverity => {
+  const deg = props.card.tilt_deg
+  if (deg == null || !props.card.tilt_trustworthy) return 'gray'
+  if (deg >= 30) return 'red'
+  if (deg >= 15) return 'amber'
+  return 'green'
+})
+const tiltLabel = computed((): string => {
+  const deg = props.card.tilt_deg
+  if (deg == null) return 'tilt n/a'
+  if (!props.card.tilt_trustworthy) return `tilt ~${deg.toFixed(0)}° ?`
+  return `tilt ${deg.toFixed(0)}°`
+})
 </script>
 
 <template>
@@ -103,6 +138,11 @@ const improved = computed(() => {
           <span class="text-[10px]" style="color: var(--ink-400);">raw absent</span>
         </div>
         <span v-if="!card.has_bbox" class="pane__warn" title="bbox non stockée — overlay approximatif">⚠ no bbox</span>
+        <span v-if="card.tilt_trustworthy && card.tilt_deg != null && card.tilt_deg >= 15"
+              class="pane__tilt" :class="`pane__tilt--${tiltSeverity}`"
+              :title="`Tilt détecté : ${card.tilt_deg.toFixed(0)}°`">
+          ⟳ {{ card.tilt_deg.toFixed(0) }}°
+        </span>
       </div>
 
       <!-- Pane 2 : crop actuel (Hough) -->
@@ -111,6 +151,10 @@ const improved = computed(() => {
           <img :src="cropUrl" class="pane__img pane__img--crop" loading="lazy" alt="crop actuel" @error="cropBroken = true" />
         </a>
         <div v-else class="pane__fallback"><ImageOff class="h-6 w-6" style="color: var(--ink-300);" /></div>
+        <span v-if="card.dino_class !== 'unknown'" class="pane__dino" :class="`tag-${dinoSev}`"
+              :title="`DINOv2 : ${card.dino_class} (sim ${fmt(card.dino_sim)}) — ressemble-t-il à une pièce ?`">
+          {{ card.dino_class }} · {{ fmt(card.dino_sim) }}
+        </span>
         <span class="pane__tag" :class="`tag-${card.severity}`">actuel · {{ fmt(card.r_ratio) }}</span>
       </div>
 
@@ -143,7 +187,16 @@ const improved = computed(() => {
               :title="`${algo} : r / r_probe (oracle)`">
           {{ algo }} <b>{{ fmt(recrop.r_ratio_oracle) }}</b>
         </span>
+        <span v-if="card.dino_class !== 'unknown'" class="rratio" :class="`rratio-${dinoSev}`"
+              title="DINOv2 top1_sim crop↔ancre — le VRAI signal qualité (voit le mauvais objet)">
+          dino <b>{{ fmt(card.dino_sim) }}</b>
+        </span>
         <span class="metric">fill <b>{{ fillLabel }}</b></span>
+        <span class="metric" :title="`${card.listing_type} · ${card.n_coins_in_img} pièce(s) dans l'image`">{{ card.listing_type }}</span>
+        <span v-if="card.tilt_deg != null" class="rratio" :class="`rratio-${tiltSeverity}`"
+              :title="`Tilt ellipse : axis_ratio=${card.axis_ratio?.toFixed(3) ?? 'n/a'}${card.tilt_trustworthy ? '' : ' (mesure incertaine)'}`">
+          {{ tiltLabel }}
+        </span>
         <span class="bucket-chip">{{ card.bucket }}</span>
       </div>
 
@@ -230,6 +283,17 @@ const improved = computed(() => {
   position: absolute; top: 4px; right: 5px; padding: 1px 6px;
   font-size: 9px; font-weight: 600; color: #7A5320; background: #FBE7C5; border-radius: 4px;
 }
+.pane__dino {
+  position: absolute; top: 4px; left: 5px; padding: 1px 6px;
+  font-size: 9px; font-weight: 700; border-radius: 4px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 90%;
+}
+.pane__tilt {
+  position: absolute; top: 4px; left: 5px; padding: 1px 6px;
+  font-size: 9px; font-weight: 600; border-radius: 4px;
+}
+.pane__tilt--amber { color: #7A5320; background: #FBE7C5; }
+.pane__tilt--red   { color: #fff; background: var(--danger); }
 .pane__improved {
   position: absolute; top: 4px; right: 5px;
   font-size: 13px; font-weight: 700; color: #1F6E48;

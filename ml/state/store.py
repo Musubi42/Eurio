@@ -778,6 +778,14 @@ class Store:
             self._ensure_column(
                 conn, table="coins", column="series_id", decl="TEXT",
             )
+            # Chantier crop-quality-overhaul (2026-06-03) : colonnes de tilt
+            # pour image_assets. Calculées par crop_tilt_backfill_db.py.
+            for _col, _decl in (
+                ("tilt_deg",         "REAL"),
+                ("axis_ratio",       "REAL"),
+                ("tilt_trustworthy", "INTEGER DEFAULT 0"),
+            ):
+                self._ensure_column(conn, table="image_assets", column=_col, decl=_decl)
             # Index NON unique : un numista_id de circulation est partagé par
             # N millésimes (ex. nid 135 = 23 pièces) → (ref_source,ref_native_id)
             # n'est pas unique. L'unicité réelle relève de la génération (Chunk 2).

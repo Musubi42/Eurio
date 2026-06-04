@@ -105,6 +105,8 @@ export interface BenchRunListing {
   image_url: string | null
   source_url: string | null
   marketplace: string | null
+  // Raison reconstruite du non-match auto (null si l'annonce est attribuée).
+  match_reason: string | null
 }
 
 export interface BenchRunGroupDrop {
@@ -119,7 +121,7 @@ export interface BenchRunGroupDrop {
 export interface BenchRunGroup {
   group_id: string
   country: string
-  year: number
+  year: number | null // null = groupe standard (recherche sans millésime)
   denomination: number
   target_eurio_ids: string[]
   total_listings: number
@@ -277,6 +279,9 @@ export interface BenchRunCropCard {
   listing_url: string | null
   fetched_at: string | null
   composite_score: number | null   // is_coin (sidecar crop_exp/score_crops)
+  tilt_deg: number | null          // inclinaison principale de l'ellipse en degrés [0–90]
+  axis_ratio: number | null        // b/a fitEllipse (1.0 = cercle parfait)
+  tilt_trustworthy: boolean | null // false si axis_ratio trop proche de 1
 }
 
 export interface BenchRunCropsMethodBucket {
@@ -341,12 +346,14 @@ export interface BenchRunCropsResponse {
 export interface BenchRunCropsQuery {
   country?: string | null
   year?: number | null
+  eurio_id?: string | null
   method?: string | null
   status?: string | null
   quality_min?: number | null
   quality_max?: number | null
   undercrop_only?: boolean
-  sort?: 'score_desc' | 'score_asc' | 'undercrop_first' | 'quality_asc' | 'quality_desc' | 'recent'
+  tilt_min?: number | null         // filtre tilt_deg >= N si tilt_trustworthy = 1
+  sort?: 'score_desc' | 'score_asc' | 'undercrop_first' | 'quality_asc' | 'quality_desc' | 'recent' | 'tilt_desc'
   undercrop_threshold?: number
   limit?: number
   offset?: number
@@ -358,11 +365,13 @@ export async function fetchBenchRunCrops(
   const params = new URLSearchParams()
   if (q.country) params.set('country', q.country)
   if (q.year != null) params.set('year', String(q.year))
+  if (q.eurio_id) params.set('eurio_id', q.eurio_id)
   if (q.method) params.set('method', q.method)
   if (q.status) params.set('status', q.status)
   if (q.quality_min != null) params.set('quality_min', String(q.quality_min))
   if (q.quality_max != null) params.set('quality_max', String(q.quality_max))
   if (q.undercrop_only) params.set('undercrop_only', 'true')
+  if (q.tilt_min != null) params.set('tilt_min', String(q.tilt_min))
   if (q.sort) params.set('sort', q.sort)
   if (q.undercrop_threshold != null) {
     params.set('undercrop_threshold', String(q.undercrop_threshold))
@@ -388,6 +397,43 @@ export async function fetchBenchRunCrops(
     throw new BenchApiError(resp.status, detail)
   }
   return resp.json() as Promise<BenchRunCropsResponse>
+}
+
+export interface CropsExcludeResult {
+  excluded: number
+  skipped: string[]
+}
+
+// Marque les asset_ids fournis comme non-éligibles au training (too_tilted).
+// Backend : POST /bench/runs/{runId}/crops/exclude
+export async function excludeTiltedCrops(
+  runId: string,
+  assetIds: string[],
+): Promise<CropsExcludeResult> {
+  let resp: Response
+  try {
+    resp = await fetch(
+      `${ML_API}/bench/runs/${encodeURIComponent(runId)}/crops/exclude`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ asset_ids: assetIds }),
+      },
+    )
+  } catch {
+    throw new BenchApiError(0, 'Backend ML injoignable — lance `go-task ml:api`.')
+  }
+  if (!resp.ok) {
+    let detail = `HTTP ${resp.status}`
+    try {
+      const body = await resp.json()
+      if (body && typeof body === 'object' && 'detail' in body) {
+        detail = String((body as { detail: unknown }).detail)
+      }
+    } catch { /* ignore */ }
+    throw new BenchApiError(resp.status, detail)
+  }
+  return resp.json() as Promise<CropsExcludeResult>
 }
 
 // Resolve the raw/crop URLs to absolute ML_API URLs for <img src>.

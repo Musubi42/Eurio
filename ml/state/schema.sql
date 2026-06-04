@@ -387,6 +387,17 @@ CREATE TABLE IF NOT EXISTS image_assets (
   origin                   TEXT
                            CHECK (origin IS NULL OR origin IN ('canonical','collected','synthetic')),
 
+  -- Chantier crop-quality-overhaul (2026-06-03) : mesure d'inclinaison de la
+  -- pièce dans le raw eBay. Calculées par scripts/crop_tilt_backfill_db.py
+  -- (ou à la volée dans /crop-bench). Ajoutées aux DB existantes via
+  -- Store._ensure_column. NULL = jamais mesuré.
+  --   tilt_deg          : angle d'inclinaison (acos(axis_ratio)°), 0 = vertical
+  --   axis_ratio        : rapport petit axe / grand axe de l'ellipse (1.0 = cercle parfait)
+  --   tilt_trustworthy  : 1 si la mesure est fiable (fit concentrique, arc complet)
+  tilt_deg                 REAL,
+  axis_ratio               REAL,
+  tilt_trustworthy         INTEGER DEFAULT 0,
+
   UNIQUE (source_image_id, crop_index)
 );
 

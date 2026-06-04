@@ -49,7 +49,7 @@ from scripts.crop_quality_diag import (  # noqa: E402
     _raw_local_path,
 )
 # Détecteurs alternatifs pluggables (Chunk 1+ : fitellipse, puis edcircles…).
-from scan.crop_detectors import DETECTORS, crop_with_detector, run_detector  # noqa: E402
+from scan.crop_detectors import DETECTORS, crop_with_detector, measure_tilt, run_detector  # noqa: E402
 
 router = APIRouter(prefix="/crop-bench", tags=["crop-bench"])
 
@@ -93,6 +93,16 @@ def _coerce_row(raw: dict) -> dict:
         "is_bimetal_coin": _i(raw.get("is_bimetal_coin", "0")),
         "bucket": raw.get("bucket") or "",
         "crop_class": raw.get("crop_class") or "",
+        "n_coins_in_img": _i(raw.get("n_coins_in_img", "1")),
+        "coin_frac": _f(raw.get("coin_frac", "")),
+        "listing_type": raw.get("listing_type") or "unknown",
+        # Oracle DINOv2 (Chunk 3) — absent des anciens results.csv (→ None/unknown).
+        "dino_sim": _f(raw.get("dino_sim", "")),
+        "dino_class": raw.get("dino_class") or "unknown",
+        # Champs tilt — absents des anciens results.csv (valeur "" → None/False).
+        "axis_ratio": _f(raw.get("axis_ratio", "")),
+        "tilt_deg":   _f(raw.get("tilt_deg", "")),
+        "tilt_trustworthy": _i(raw.get("tilt_trustworthy", "0")),
     }
 
 
@@ -174,6 +184,13 @@ class CropBenchBucket(BaseModel):
     mean_fill_ratio: float
     bimetal_inner_ring_pct: float
     r_ratio_median: float | None
+    # Oracle DINOv2 (Chunk 3) — la VRAIE qualité (voit le mauvais objet que la
+    # géométrie Otsu rate). bad = wrong + suspect.
+    dino_bad_pct: float | None = None
+    dino_wrong_pct: float | None = None
+    dino_suspect_pct: float | None = None
+    dino_good_pct: float | None = None
+    dino_sim_median: float | None = None
 
 
 class CropBenchStats(BaseModel):
@@ -185,6 +202,11 @@ class CropBenchStats(BaseModel):
     n_wrong: int
     n_bimetal_inner_ring: int
     buckets: list[CropBenchBucket]
+    listing_buckets: list[CropBenchBucket]  # Chunk 2 : strates single/multi × tight/small
+    oracle_blind_pct: float          # % de crops sans r_ratio (oracle Otsu muet → 'ok' par défaut)
+    # Oracle DINOv2 (Chunk 3) — la vraie qualité globale.
+    dino_coverage_pct: float         # % de crops avec un dino_sim (≠ unknown)
+    dino_bad_pct: float              # % bad (wrong+suspect) parmi les crops couverts
     generated_at: str                # mtime ISO de results.csv
 
 
@@ -196,7 +218,12 @@ class CropBenchCard(BaseModel):
     year: str
     detection_method: str
     bucket: str
-    crop_class: str                  # undercrop | wrong | ok
+    listing_type: str                # single/multi × tight/small | unknown (Chunk 2)
+    n_coins_in_img: int
+    coin_frac: float | None
+    dino_sim: float | None           # DINOv2 top1_sim crop↔ancre (Chunk 3)
+    dino_class: str                  # good | suspect | wrong | unknown
+    crop_class: str                  # undercrop | wrong | ok (géométrie, AVEUGLE au mauvais objet)
     fill_ratio: float | None
     r_pipe: float | None
     r_probe: float | None
@@ -205,6 +232,11 @@ class CropBenchCard(BaseModel):
     bimetal_inner_ring: bool
     is_light_bg: bool
     is_bimetal_coin: bool
+    # Tilt mesuré à la volée par measure_tilt (None si oracle absent ou raw
+    # non chargeable ; calculé uniquement pour les n cartes renvoyées).
+    axis_ratio: float | None         # minor/major — 1.0 = cercle parfait
+    tilt_deg: float | None           # angle estimé [0–90°], None si non mesuré
+    tilt_trustworthy: bool           # True si les 3 critères (center_drift, r_ratio, arc_cov) OK
     has_bbox: bool                   # bbox stockée → overlay fiable
     raw_url: str | None              # /sources/ebay/raws/{sid}/file
     crop_url: str                    # /sources/ebay/assets/{aid}/file (= algo 'current')
@@ -225,7 +257,7 @@ def get_crop_bench_stats() -> CropBenchStats:
     """Agrégats du diagnostic (par bucket) — recalculés depuis results.csv."""
     from datetime import datetime, timezone
 
-    from scripts.crop_quality_diag import _bucket_stats
+    from scripts.crop_quality_diag import _bucket_stats, _listing_stats
 
     rows = _load_results()
     total = len(rows)
@@ -233,21 +265,31 @@ def get_crop_bench_stats() -> CropBenchStats:
     n_undercrop = sum(1 for r in rows if r["crop_class"] == "undercrop")
     n_wrong = sum(1 for r in rows if r["crop_class"] == "wrong")
     n_inner = sum(1 for r in rows if r["bimetal_inner_ring"])
+    dino_cov = sum(1 for r in rows if r["dino_class"] in ("good", "suspect", "wrong"))
+    dino_bad = sum(1 for r in rows if r["dino_class"] in ("suspect", "wrong"))
 
-    bstats = _bucket_stats(rows)  # source de vérité partagée du calcul par bucket
-    buckets = [
-        CropBenchBucket(
-            bucket=name,
-            n=s["n"],
-            undercrop_pct=s["undercrop_pct"],
-            wrong_pct=s["wrong_pct"],
-            ok_pct=s["ok_pct"],
-            mean_fill_ratio=s["mean_fill_ratio"],
-            bimetal_inner_ring_pct=s["bimetal_inner_ring_pct"],
-            r_ratio_median=s.get("r_ratio_median"),
-        )
-        for name, s in bstats.items()
-    ]
+    def _to_buckets(stats: dict[str, dict]) -> list[CropBenchBucket]:
+        return [
+            CropBenchBucket(
+                bucket=name,
+                n=s["n"],
+                undercrop_pct=s["undercrop_pct"],
+                wrong_pct=s["wrong_pct"],
+                ok_pct=s["ok_pct"],
+                mean_fill_ratio=s["mean_fill_ratio"],
+                bimetal_inner_ring_pct=s["bimetal_inner_ring_pct"],
+                r_ratio_median=s.get("r_ratio_median"),
+                dino_bad_pct=s.get("dino_bad_pct"),
+                dino_wrong_pct=s.get("dino_wrong_pct"),
+                dino_suspect_pct=s.get("dino_suspect_pct"),
+                dino_good_pct=s.get("dino_good_pct"),
+                dino_sim_median=s.get("dino_sim_median"),
+            )
+            for name, s in stats.items()
+        ]
+
+    buckets = _to_buckets(_bucket_stats(rows))
+    listing_buckets = _to_buckets(_listing_stats(rows))
 
     mtime_iso = datetime.fromtimestamp(
         _RESULTS_CSV.stat().st_mtime, tz=timezone.utc
@@ -262,6 +304,13 @@ def get_crop_bench_stats() -> CropBenchStats:
         n_wrong=n_wrong,
         n_bimetal_inner_ring=n_inner,
         buckets=buckets,
+        listing_buckets=listing_buckets,
+        # Part des crops où l'oracle Otsu est MUET (r_ratio None) → classés 'ok'
+        # par défaut faute de mieux. C'est l'angle mort du banc automatique :
+        # un crop sur le mauvais objet (numisbrief, capsule, tissu) y échappe.
+        oracle_blind_pct=round(100 * (total - judged) / total, 1) if total else 0.0,
+        dino_coverage_pct=round(100 * dino_cov / total, 1) if total else 0.0,
+        dino_bad_pct=round(100 * dino_bad / dino_cov, 1) if dino_cov else 0.0,
         generated_at=mtime_iso,
     )
 
@@ -270,23 +319,37 @@ def get_crop_bench_stats() -> CropBenchStats:
 def get_crop_bench_sample(
     n: int = Query(30, ge=1, le=200),
     bucket: str | None = Query(None, description="bimetal_light|bimetal_textured|mono_light|mono_textured"),
+    listing_type: str | None = Query(None, description="single_tight|single_small|multi_tight|multi_small"),
     klass: str | None = Query(None, description="undercrop|wrong|ok"),
-    bias: str | None = Query(None, description="undercrop|worst|bimetal — biaise/trie l'échantillon"),
+    dino_class: str | None = Query(None, description="good|suspect|wrong — filtre sur l'oracle DINOv2"),
+    bias: str | None = Query(None, description="undercrop|worst|bimetal|tilt|dino_bad — biaise/trie l'échantillon"),
+    strata: bool = Query(False, description="échantillon ÉQUILIBRÉ par listing_type (n réparti entre strates)"),
     seed: int = Query(42, ge=0),
 ) -> CropBenchSampleResponse:
-    """Échantillon de cartes raw↔crop, filtrable et biaisable vers les défauts."""
+    """Échantillon de cartes raw↔crop, filtrable et biaisable vers les défauts.
+
+    `strata=true` répartit `n` également entre les strates listing_type : c'est
+    le mode à utiliser pour le gold humain, sinon l'échantillon aléatoire est
+    écrasé par les single_tight propres (majoritaires) et rate les capsules /
+    sets / numisbriefs où sont les vrais échecs."""
     rows = _load_results()
     amap = _asset_map()
 
     matched = rows
     if bucket:
         matched = [r for r in matched if r["bucket"] == bucket]
+    if listing_type:
+        matched = [r for r in matched if r["listing_type"] == listing_type]
     if klass:
         matched = [r for r in matched if r["crop_class"] == klass]
+    if dino_class:
+        matched = [r for r in matched if r["dino_class"] == dino_class]
     if bias == "undercrop":
         matched = [r for r in matched if r["crop_class"] == "undercrop"]
     elif bias == "bimetal":
         matched = [r for r in matched if r["is_bimetal_coin"]]
+    elif bias == "dino_bad":
+        matched = [r for r in matched if r["dino_class"] in ("suspect", "wrong")]
 
     total_matched = len(matched)
 
@@ -294,6 +357,31 @@ def get_crop_bench_sample(
         # Les pires d'abord : r_ratio croissant (None relégué en fin via 2.0).
         ordered = sorted(matched, key=lambda r: (r["r_ratio"] if r["r_ratio"] is not None else 2.0))
         chosen = ordered[:n]
+    elif bias == "tilt":
+        # Les plus ovales d'abord : axis_ratio croissant (plus éloigné de 1 =
+        # plus incliné). axis_ratio None → relégué en fin via sentinel 1.0.
+        ordered = sorted(
+            matched,
+            key=lambda r: (r["axis_ratio"] if r["axis_ratio"] is not None else 1.0),
+        )
+        chosen = ordered[:n]
+    elif bias == "dino_bad":
+        # Les moins "pièce" d'abord : dino_sim croissant (None relégué via 2.0).
+        ordered = sorted(matched, key=lambda r: (r["dino_sim"] if r["dino_sim"] is not None else 2.0))
+        chosen = ordered[:n]
+    elif strata:
+        # Échantillon équilibré : ~n/k par strate listing_type présente.
+        by_strata: dict[str, list] = {}
+        for r in matched:
+            by_strata.setdefault(r["listing_type"], []).append(r)
+        rng = random.Random(seed)
+        per = max(1, n // max(1, len(by_strata)))
+        chosen = []
+        for _name, items in sorted(by_strata.items()):
+            pool = list(items)
+            rng.shuffle(pool)
+            chosen.extend(pool[:per])
+        chosen = chosen[:n]
     else:
         pool = list(matched)
         random.Random(seed).shuffle(pool)
@@ -304,6 +392,32 @@ def get_crop_bench_sample(
         meta = amap.get(r["asset_id"], {})
         sid = meta.get("source_image_id")
         aid = r["asset_id"]
+
+        # Tilt calculé à la volée UNIQUEMENT pour les n cartes renvoyées (jamais
+        # sur tout le corpus). On tente de charger le raw ; si indisponible on
+        # utilise les colonnes CSV si présentes (résultats d'un diag enrichi).
+        axis_ratio_val: float | None = r.get("axis_ratio")
+        tilt_deg_val: float | None   = r.get("tilt_deg")
+        tilt_trust_val: bool         = bool(r.get("tilt_trustworthy", 0))
+
+        if axis_ratio_val is None and meta.get("raw_storage_path"):
+            # Raw disponible → mesure fraîche.
+            raw_path = _raw_local_path(meta["raw_storage_path"])
+            if raw_path.exists():
+                raw_img = cv2.imread(str(raw_path), cv2.IMREAD_COLOR)
+                if raw_img is not None:
+                    oracle = _oracle_from_raw(raw_img, meta.get("bbox_json"))
+                    hint = {
+                        "cx": oracle["hint_cx"],
+                        "cy": oracle["hint_cy"],
+                        "r":  oracle["r_pipe"],
+                    }
+                    tilt = measure_tilt(raw_img, hint)
+                    if tilt["ok"]:
+                        axis_ratio_val = tilt["axis_ratio"]
+                        tilt_deg_val   = tilt["tilt_deg"]
+                        tilt_trust_val = tilt["trustworthy"]
+
         cards.append(CropBenchCard(
             asset_id=aid,
             source_image_id=sid,
@@ -312,6 +426,11 @@ def get_crop_bench_sample(
             year=str(r["year"]),
             detection_method=r["detection_method"],
             bucket=r["bucket"],
+            listing_type=r["listing_type"],
+            n_coins_in_img=r["n_coins_in_img"],
+            coin_frac=r["coin_frac"],
+            dino_sim=r["dino_sim"],
+            dino_class=r["dino_class"],
             crop_class=r["crop_class"],
             fill_ratio=r["fill_ratio"],
             r_pipe=r["r_pipe"],
@@ -321,6 +440,9 @@ def get_crop_bench_sample(
             bimetal_inner_ring=bool(r["bimetal_inner_ring"]),
             is_light_bg=bool(r["is_light_bg"]),
             is_bimetal_coin=bool(r["is_bimetal_coin"]),
+            axis_ratio=axis_ratio_val,
+            tilt_deg=tilt_deg_val,
+            tilt_trustworthy=tilt_trust_val,
             has_bbox=bool(meta.get("bbox_json")),
             raw_url=f"/sources/ebay/raws/{sid}/file" if sid else None,
             crop_url=f"/sources/ebay/assets/{aid}/file",
@@ -364,11 +486,16 @@ def _load_raw(asset_id: str) -> tuple[np.ndarray, dict]:
 def get_crop_bench_overlay(
     asset_id: str,
     algos: str | None = Query(None, description="liste d'algos séparés par ',' à dessiner (ex: fitellipse)"),
+    show_tilt: int = Query(0, description="1 = superpose l'ellipse tilt (jaune) mesurée par measure_tilt"),
 ) -> Response:
     """Raw avec cercles : ROUGE = cercle pipeline (ce qui a été croppé, depuis
     la bbox), VERT = vrai rim détecté par l'oracle Otsu, puis un cercle par
-    algo demandé (bleu = fitellipse). L'écart rouge↔vert EST l'undercrop ; le
-    cercle algo montre s'il rattrape le rim externe."""
+    algo demandé (bleu = fitellipse).
+
+    Avec ``show_tilt=1`` : ellipse JAUNE ajustée par Canny+fitEllipseAMS sur
+    l'anneau de bords — visualise directement l'inclinaison de la pièce.
+    L'écart rouge↔vert EST l'undercrop ; le cercle algo montre s'il rattrape
+    le rim externe."""
     raw, meta = _load_raw(asset_id)
 
     oracle = _oracle_from_raw(raw, meta["bbox_json"])
@@ -385,6 +512,20 @@ def get_crop_bench_overlay(
     # Cercle oracle (vert) — le vrai rim externe.
     if r_probe:
         cv2.circle(vis, (cx, cy), int(r_probe), (0, 200, 0), thick)
+    # Ellipse tilt (jaune) — superposée si show_tilt=1.
+    if show_tilt:
+        hint_for_tilt = {"cx": cx, "cy": cy, "r": r_pipe or (r_probe or 0)}
+        tilt = measure_tilt(raw, hint_for_tilt)
+        if tilt["ok"] and tilt["major"] and tilt["minor"]:
+            cv2.ellipse(
+                vis,
+                (int(tilt["cx"]), int(tilt["cy"])),
+                (int(tilt["major"]), int(tilt["minor"])),
+                tilt["angle"],   # angle axe principal (OpenCV convention)
+                0, 360,
+                (0, 220, 220),   # jaune BGR
+                thick,
+            )
     # Cercles des algos demandés (sur leur propre centre détecté).
     hint = {"cx": cx, "cy": cy, "r": r_pipe}
     for algo in [a.strip() for a in (algos or "").split(",") if a.strip()]:
@@ -521,6 +662,7 @@ class CropBenchLabelIn(BaseModel):
     algo: str | None = None     # algo affiché (contexte)
     method: str | None = None   # méthode du détecteur (contexte)
     r_ratio: float | None = None
+    dino_sim: float | None = None  # DINOv2 top1_sim — pour caler les seuils sur le gold
     note: str | None = None
 
 
@@ -575,6 +717,7 @@ def post_crop_bench_label(body: CropBenchLabelIn) -> CropBenchLabelsResponse:
             "algo": body.algo,
             "method": body.method,
             "r_ratio": body.r_ratio,
+            "dino_sim": body.dino_sim,
             "note": body.note,
             "ts": datetime.now(timezone.utc).isoformat(),
         }

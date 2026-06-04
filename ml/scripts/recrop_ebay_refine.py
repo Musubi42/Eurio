@@ -9,10 +9,12 @@ validé au banc (gold 25/2) et mesuré sur le parc (79.9 %→91.7 % oracle-good)
 Écrit le nouveau crop 224 au MÊME `storage_path` (overwrite) :
   - cache local `~/.cache/eurio/enrichment-crops/<storage_path>`,
   - MinIO (write-through, best-effort ; `--no-minio` pour cache+DB seulement),
-  - DB : bbox_json (nouveau cercle), detection_method (+refine), width/height,
+  - DB : bbox_json (nouveau cercle), detection_method (+rimrefine), width/height,
     phash recalculé. eurio_id / resolution_status PRÉSERVÉS (même pièce).
 
-Raws JAMAIS touchés. Idempotent : skip les assets déjà '+refine' (sauf --force).
+Raws JAMAIS touchés. Idempotent : skip les assets déjà '+rimrefine' (sauf
+--force). Le tag est volontairement distinct de '+lotcrop' (recrop multi-pièces)
+et ne réutilise PAS '+refine' nu (collision historique avec d'autres passes).
 Backup DB conseillé avant `--commit` (cf. state/eurio.db.bak-*).
 
 Usage :
@@ -55,7 +57,7 @@ def main() -> None:
     ap.add_argument("--limit", type=int, default=0, help="Max assets (0 = tous).")
     ap.add_argument("--algo", default="bbox_refine")
     ap.add_argument("--no-minio", action="store_true", help="Cache+DB seulement.")
-    ap.add_argument("--force", action="store_true", help="Re-traite même les '+refine'.")
+    ap.add_argument("--force", action="store_true", help="Re-traite même les '+rimrefine'.")
     args = ap.parse_args()
 
     upload_through = None
@@ -91,7 +93,7 @@ def main() -> None:
             break
         n["seen"] += 1
         method0 = r["detection_method"] or ""
-        if "refine" in method0 and not args.force:
+        if "rimrefine" in method0 and not args.force:
             n["skip_refined"] += 1
             continue
         raw_p = _raw_local_path(r["raw_sp"])
@@ -133,7 +135,13 @@ def main() -> None:
         # 3. DB : nouveau cercle + method + dims + phash (eurio_id préservé)
         bbox = {"x": float(det.cx - det.r), "y": float(det.cy - det.r),
                 "w": float(2 * det.r), "h": float(2 * det.r)}
-        new_method = method0 + "+refine" if method0 else det.method
+        # Idempotent : ne re-tague pas si déjà '+rimrefine' (cas --force).
+        if not method0:
+            new_method = det.method
+        elif "rimrefine" in method0:
+            new_method = method0
+        else:
+            new_method = method0 + "+rimrefine"
         conn.execute(
             "UPDATE image_assets SET bbox_json=?, detection_method=?, "
             "width=?, height=?, phash=? WHERE id=?",

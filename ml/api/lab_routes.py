@@ -1156,92 +1156,13 @@ def cohort_captures_sync(cohort_id: str, payload: CohortSyncPayload) -> dict:
     return report.to_dict()
 
 
-@router.get("/cohorts/{cohort_id}/ebay-status")
-def cohort_ebay_status(cohort_id: str) -> dict:
-    """Read-only eBay coverage for a cohort.
-
-    Per coin: discovered listings + extracted crops + training-eligible crops,
-    and whether the coin is eBay-scrapable (its (denom,country,year) group is in
-    the commemorative discovery view). Plus the offline quota estimate for a
-    cohort run. **No eBay API call** — the actual scrape is triggered manually
-    via ``POST /sources/ebay/runs {cohort_id}`` (eBay passes are user-owned).
-    """
-    store = _get_store()
-    cohort = store.get_cohort(cohort_id)
-    if cohort is None:
-        raise HTTPException(status_code=404, detail="Cohort introuvable")
-
-    from sources.cohort_scope import cohort_ebay_groups
-    from .sources_routes import check_ebay_quota
-
-    groups, non_scrapable = cohort_ebay_groups(store, cohort_id)
-    non_set = set(non_scrapable)
-    conn = store._connection()  # noqa: SLF001
-
-    per_coin: list[dict] = []
-    for eid in cohort.eurio_ids:
-        n_listings = conn.execute(
-            "SELECT COUNT(*) FROM source_images "
-            "WHERE source='ebay' AND target_eurio_id=?",
-            (eid,),
-        ).fetchone()[0]
-        n_crops = conn.execute(
-            "SELECT COUNT(*) FROM image_assets ia "
-            "JOIN source_images si ON si.id = ia.source_image_id "
-            "WHERE si.source='ebay' AND si.target_eurio_id=?",
-            (eid,),
-        ).fetchone()[0]
-        # `train` = crops eBay éligibles pour CE coin selon le label TRANCHÉ en
-        # review (ia.eurio_id), pas la cible de découverte — cohérent avec ce que
-        # le bake pull réellement (iteration_augmentations._ebay_training_sources).
-        n_training = conn.execute(
-            "SELECT COUNT(*) FROM image_assets ia "
-            "JOIN source_images si ON si.id = ia.source_image_id "
-            "WHERE si.source='ebay' AND ia.eurio_id=? "
-            "AND ia.training_eligible=1",
-            (eid,),
-        ).fetchone()[0]
-        # Sources réelles distinctes = obverse Numista (0/1) + crops eBay
-        # reviewés training-eligible. C'est ce compte (pas les augmentées) qui
-        # décide si la classe a besoin de plus d'eBay (§C5).
-        nid = coin_lookup.numista_id_for(eid)
-        n_real = n_training + (1 if _has_obverse(nid) else 0)
-        per_coin.append({
-            "eurio_id": eid,
-            "numista_id": nid,
-            "scrapable": eid not in non_set,
-            "n_listings": n_listings,
-            "n_crops": n_crops,
-            "n_training_eligible": n_training,
-            "n_real_sources": n_real,
-            "enough": n_real >= _MIN_REAL_SOURCES,
-        })
-
-    n_group_coins = sum(g.n_coins for g in groups)
-    quota = check_ebay_quota(store, n_eurio_ids=n_group_coins) if groups else None
-
-    return {
-        "cohort_id": cohort.id,
-        "scrapable_groups": [
-            {
-                "denomination": g.denomination, "country": g.country,
-                "year": g.year, "n_coins": g.n_coins, "kind": g.kind,
-            }
-            for g in groups
-        ],
-        "non_scrapable": non_scrapable,
-        "quota": quota,
-        "per_coin": per_coin,
-        "min_real_sources": _MIN_REAL_SOURCES,
-    }
-
-
-# ─── Funnel (§C3b — scrape eBay → review, scopé cohort) ─────────────────────
+# ─── eBay — sourcing & funnel (§C3, scopé cohort) ───────────────────────────
 #
-# Étape lab entre §C3 « Images eBay » et §C4 « Review crops » : montre, par
-# cohort, comment les N listings scrapés se réduisent aux M crops qui entrent
-# en review. Read-only sur eurio.db, run-agnostique (toutes passes), zéro appel
-# eBay (passes user-owned). Deux mailles, dictées par la nature des données :
+# Tiroir §C3 fusionné (sourcing + funnel) : montre, par cohort, comment les N
+# listings scrapés se réduisent aux M crops qui entrent en review, PLUS le bout
+# « sourcing » (train-eligible, sources réelles, quota scrape). Read-only sur
+# eurio.db, run-agnostique (toutes passes), zéro appel eBay (passes user-owned).
+# Deux mailles, dictées par la nature des données :
 #
 #   • per_coin (TAIL, post-attribution) — précis par coin. `source_images`
 #     porte `target_eurio_id` = le coin ATTRIBUÉ (theme-match tranché), donc
@@ -1433,18 +1354,36 @@ def _cohort_funnel_status(store: Store, cohort_id: str) -> dict:
 
     from sources.cohort_scope import cohort_ebay_groups
 
+    from .sources_routes import check_ebay_quota
+
     groups, non_scrapable = cohort_ebay_groups(store, cohort_id)
     non_set = set(non_scrapable)
     conn = store._connection()  # noqa: SLF001
 
-    # ── per_coin (tail) ────────────────────────────────────────────────
+    # ── per_coin (tail + sourcing) ─────────────────────────────────────
+    # Tail funnel (post-attribution) + le bout « sourcing » fusionné depuis
+    # l'ancien §C3 : `n_training_eligible` (crops reviewés OK pour ce coin,
+    # label tranché `ia.eurio_id`) et `n_real_sources` (obverse Numista +
+    # eBay reviewé) qui décident si la classe a assez de vraies vues pour
+    # s'entraîner (§C5, seuil `_MIN_REAL_SOURCES`).
     per_coin: list[dict] = []
     for eid in cohort.eurio_ids:
         tail = _coin_tail(conn, eid)
+        nid = coin_lookup.numista_id_for(eid)
+        n_training = conn.execute(
+            "SELECT COUNT(*) FROM image_assets ia "
+            "JOIN source_images si ON si.id = ia.source_image_id "
+            "WHERE si.source='ebay' AND ia.eurio_id=? AND ia.training_eligible=1",
+            (eid,),
+        ).fetchone()[0]
+        n_real = n_training + (1 if _has_obverse(nid) else 0)
         per_coin.append({
             "eurio_id": eid,
-            "numista_id": coin_lookup.numista_id_for(eid),
+            "numista_id": nid,
             "scrapable": eid not in non_set,
+            "n_training_eligible": n_training,
+            "n_real_sources": n_real,
+            "enough": n_real >= _MIN_REAL_SOURCES,
             **tail,
         })
 
@@ -1502,6 +1441,11 @@ def _cohort_funnel_status(store: Store, cohort_id: str) -> dict:
             "discarded_by_reason": discarded,
         })
 
+    # Quota offline + groupes scrapables (fusionnés depuis l'ancien §C3 pour
+    # alimenter le bouton « Lancer scrape eBay (cohort) »). Aucun appel eBay.
+    n_group_coins = sum(g.n_coins for g in groups)
+    quota = check_ebay_quota(store, n_eurio_ids=n_group_coins) if groups else None
+
     return {
         "cohort_id": cohort.id,
         "per_coin": per_coin,
@@ -1509,16 +1453,26 @@ def _cohort_funnel_status(store: Store, cohort_id: str) -> dict:
             "groups": head_groups,
             "run_ids": cohort_run_ids,
         },
+        "scrapable_groups": [
+            {
+                "denomination": g.denomination, "country": g.country,
+                "year": g.year, "n_coins": g.n_coins, "kind": g.kind,
+            }
+            for g in groups
+        ],
         "non_scrapable": non_scrapable,
+        "quota": quota,
+        "min_real_sources": _MIN_REAL_SOURCES,
     }
 
 
 @router.get("/cohorts/{cohort_id}/funnel-status")
 def cohort_funnel_status(cohort_id: str) -> dict:
-    """Funnel scrape eBay → review, scopé cohort (read-only, zéro appel eBay).
+    """eBay sourcing + funnel scrape → review, scopé cohort (read-only, zéro
+    appel eBay).
 
     Voir le bloc de doc ci-dessus pour la doctrine des deux mailles
-    (per_coin tail précis vs head groupe). Alimente le tiroir §C3b et les
+    (per_coin tail précis vs head groupe). Alimente le tiroir §C3 et les
     deep-links vers le studio bench (``/bench/runs/<run>?eurio_id=<coin>``)."""
     return _cohort_funnel_status(_get_store(), cohort_id)
 

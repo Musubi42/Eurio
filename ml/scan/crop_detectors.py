@@ -289,6 +289,191 @@ def detect_adaptive(bgr: np.ndarray) -> DetectorResult:
     return DetectorResult(False, reason="no_detection")
 
 
+
+# ---------------------------------------------------------------------------
+# Mesure de tilt (inclinaison de la pièce dans l'image)
+# ---------------------------------------------------------------------------
+# Stratégie retenue : Canny sur anneau [0.70·r, 1.15·r] + fitEllipseAMS.
+# 92.5 % trustworthy sur 120 assets eBay, 0 aberration > 45° trustworthy,
+# couverture angulaire en secteurs (remplace le ratio n_ring/périmètre qui
+# était quasi-inopérant à seuil 0.85 dans le probe).
+#
+# Buckets d'affichage recommandés (sur tilt_deg trustworthy) :
+#   round  : axis_ratio ≥ 0.97  → tilt physiquement indéterminable (<14°)
+#   slight : tilt_deg < 10°     → quasi-face (peut passer en crop)
+#   tilted : 10° ≤ tilt_deg < 30° → inclinaison notable (crop dégradé)
+#   strong : tilt_deg ≥ 30°    → très incliné (crop fiable difficile)
+#   Seuil trustworthy = True pour les 3 critères (center_drift, r_ratio, arc_cov).
+
+_TILT_ROI_K         = 2.6     # même fenêtre que detect_bbox_refine
+_TILT_RING_LO       = 0.70    # anneau interne : facteur × r_hint (working res)
+_TILT_RING_HI       = 1.15    # anneau externe
+_TILT_MIN_RING_PTS  = 50      # nombre minimum de points Canny dans l'anneau
+_TILT_ARC_COV_MIN   = 0.60    # fraction de secteurs de 30° devant contenir ≥1 pt
+_TILT_CENTER_FRAC   = 0.30    # distance max centre ellipse / r_hint
+_TILT_R_RATIO_LO    = 0.70    # grand-axe / r_hint ∈ [LO, HI]
+_TILT_R_RATIO_HI    = 1.40
+_TILT_TRIVIAL       = 0.97    # axis_ratio ≥ seuil → quasi-cercle, angle indéterminé
+
+
+def measure_tilt(bgr: np.ndarray, hint: dict) -> dict:
+    """Mesure l'inclinaison d'une pièce par Canny + fitEllipseAMS sur l'anneau
+    de bords autour du hint (même ROI que ``detect_bbox_refine``).
+
+    Paramètres
+    ----------
+    bgr  : image raw BGR en résolution native.
+    hint : {cx, cy, r} en pixels natifs (centre et rayon du crop bbox connu).
+
+    Retour
+    ------
+    ok            : bool  — False si aucun fit utilisable
+    axis_ratio    : float | None — minor/major (1.0 = cercle parfait)
+    tilt_deg      : float | None — acos(axis_ratio) en degrés [0–90]
+    angle         : float | None — angle OpenCV axe principal (0–180°)
+    trustworthy   : bool  — True si center_drift, r_ratio et arc_coverage OK
+    reason        : str | None — motif de rejet (ou None si trustworthy=True)
+    cx, cy        : float | None — centre ellipse en coords natives
+    major, minor  : float | None — demi-axes en pixels natifs
+    debug         : dict  — métriques internes (arc_coverage, n_ring, r_ratio…)
+    """
+    import math as _math
+
+    def _fail(reason: str) -> dict:
+        return {
+            "ok": False, "axis_ratio": None, "tilt_deg": None, "angle": None,
+            "trustworthy": False, "reason": reason,
+            "cx": None, "cy": None, "major": None, "minor": None,
+            "debug": {},
+        }
+
+    if bgr is None or bgr.size == 0:
+        return _fail("empty_input")
+
+    hcx = float(hint.get("cx", 0))
+    hcy = float(hint.get("cy", 0))
+    hr  = float(hint.get("r", 0))
+    if hr <= 0:
+        return _fail("no_hint_r")
+
+    H, W = bgr.shape[:2]
+
+    # 1. ROI identique à detect_bbox_refine.
+    half = _TILT_ROI_K * hr
+    x0 = max(0, int(hcx - half));  y0 = max(0, int(hcy - half))
+    x1 = min(W, int(hcx + half));  y1 = min(H, int(hcy + half))
+    sub = bgr[y0:y1, x0:x1]
+    if sub.size == 0:
+        return _fail("empty_roi")
+
+    # 2. Mise à l'échelle working-res (long-side ≤ 1024).
+    work, scale = _downscale_to_working_res(sub)
+    roi_cx_w = (hcx - x0) / scale
+    roi_cy_w = (hcy - y0) / scale
+    r_hint_w = hr / scale
+
+    # 3. Canny adaptatif (seuils médiane ± 0.5×médiane).
+    gray = cv2.cvtColor(work, cv2.COLOR_BGR2GRAY)
+    median = float(np.median(gray))
+    lo = max(0.0, median * 0.5)
+    hi = min(255.0, median * 1.5)
+    edges = cv2.Canny(gray, lo, hi)
+
+    # 4. Filtrage anneau [ring_lo·r, ring_hi·r] autour du centre hint.
+    ys, xs = np.nonzero(edges)
+    if len(xs) == 0:
+        return _fail("no_edges")
+
+    dists = np.hypot(xs.astype(float) - roi_cx_w, ys.astype(float) - roi_cy_w)
+    ring_mask = (dists >= _TILT_RING_LO * r_hint_w) & (dists <= _TILT_RING_HI * r_hint_w)
+    ring_xs = xs[ring_mask].astype(np.float32)
+    ring_ys = ys[ring_mask].astype(np.float32)
+    n_ring = int(ring_mask.sum())
+
+    if n_ring < _TILT_MIN_RING_PTS:
+        return _fail("too_few_ring_pts")
+
+    # 5. Couverture angulaire : fraction des secteurs de 30° (12 secteurs)
+    #    contenant au moins un point Canny. Remplace n_ring/périmètre qui
+    #    était quasi-inopérant dans le probe (82 % des cas > 2.0).
+    angles_deg = np.degrees(
+        np.arctan2(ring_ys - roi_cy_w, ring_xs - roi_cx_w)
+    ) % 360.0
+    n_sectors   = 12
+    sector_size = 360.0 / n_sectors
+    occupied    = len(set(int(a / sector_size) for a in angles_deg))
+    arc_coverage = occupied / n_sectors  # fraction [0, 1]
+
+    if arc_coverage < _TILT_ARC_COV_MIN:
+        return _fail("incomplete_ring")
+
+    # 6. fitEllipseAMS → fitEllipseDirect → fitEllipse (cascade défensive).
+    pts = np.column_stack([ring_xs, ring_ys]).reshape(-1, 1, 2)
+    ell = None
+    for fn_name, fn in [
+        ("ams",    lambda p: cv2.fitEllipseAMS(p)),
+        ("direct", lambda p: cv2.fitEllipseDirect(p)),
+        ("std",    lambda p: cv2.fitEllipse(p)),
+    ]:
+        try:
+            ell = fn(pts)
+            break
+        except cv2.error:
+            continue
+
+    if ell is None:
+        return _fail("fitellipse_failed")
+
+    (ell_cx_w, ell_cy_w), (d1, d2), angle_ell = ell
+    major_w = max(d1, d2) / 2.0
+    minor_w = min(d1, d2) / 2.0
+    if major_w <= 0:
+        return _fail("degenerate_ellipse")
+
+    # 7. Projection en pixels natifs.
+    cx_n    = x0 + ell_cx_w * scale
+    cy_n    = y0 + ell_cy_w * scale
+    major_n = major_w * scale
+    minor_n = minor_w * scale
+
+    axis_ratio  = minor_w / major_w
+    r_ratio     = major_n / hr
+    center_dist = _math.hypot(cx_n - hcx, cy_n - hcy)
+    center_frac = center_dist / hr
+
+    # 8. Critères de confiance.
+    reasons: list[str] = []
+    if center_frac > _TILT_CENTER_FRAC:
+        reasons.append(f"center_drift:{center_frac:.2f}")
+    if not (_TILT_R_RATIO_LO <= r_ratio <= _TILT_R_RATIO_HI):
+        reasons.append(f"r_ratio_out:{r_ratio:.2f}")
+    if axis_ratio >= _TILT_TRIVIAL:
+        # Quasi-cercle : l'angle est numériquement instable, tilt indéterminable.
+        reasons.append(f"too_circular:{axis_ratio:.3f}")
+
+    trustworthy = (len(reasons) == 0)
+    tilt_deg    = _math.degrees(_math.acos(min(1.0, axis_ratio)))
+
+    return {
+        "ok":          True,
+        "axis_ratio":  round(axis_ratio,   4),
+        "tilt_deg":    round(tilt_deg,     2),
+        "angle":       round(float(angle_ell), 2),
+        "trustworthy": trustworthy,
+        "reason":      "; ".join(reasons) if reasons else None,
+        "cx":          round(cx_n,         1),
+        "cy":          round(cy_n,         1),
+        "major":       round(major_n,      1),
+        "minor":       round(minor_n,      1),
+        "debug": {
+            "arc_coverage":  round(arc_coverage,  3),
+            "n_ring":        n_ring,
+            "r_ratio":       round(r_ratio,       3),
+            "center_frac":   round(center_frac,   3),
+        },
+    }
+
+
 # Registre des détecteurs. Clé = nom d'algo exposé par l'API du banc.
 # `fitellipse`/`adaptive` = plein cadre (pas de hint). `bbox_refine` = raffine
 # autour du centre de la bbox connue (nécessite `hint`).

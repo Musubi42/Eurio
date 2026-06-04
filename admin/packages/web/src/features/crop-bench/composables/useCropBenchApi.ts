@@ -28,6 +28,12 @@ export interface CropBenchBucket {
   mean_fill_ratio: number
   bimetal_inner_ring_pct: number
   r_ratio_median: number | null
+  // Oracle DINOv2 (Chunk 3) — la vraie qualité (voit le mauvais objet).
+  dino_bad_pct: number | null
+  dino_wrong_pct: number | null
+  dino_suspect_pct: number | null
+  dino_good_pct: number | null
+  dino_sim_median: number | null
 }
 
 export interface CropBenchStats {
@@ -39,6 +45,10 @@ export interface CropBenchStats {
   n_wrong: number
   n_bimetal_inner_ring: number
   buckets: CropBenchBucket[]
+  listing_buckets: CropBenchBucket[]   // strates single/multi × tight/small (Chunk 2)
+  oracle_blind_pct: number             // % crops sans r_ratio (oracle Otsu muet → ok par défaut)
+  dino_coverage_pct: number            // % crops avec un dino_sim
+  dino_bad_pct: number                 // % bad (wrong+suspect) parmi les couverts — LE vrai chiffre
   generated_at: string
 }
 
@@ -52,11 +62,19 @@ export interface CropBenchCard {
   year: string
   detection_method: string
   bucket: string
+  listing_type: string            // single/multi × tight/small | unknown (Chunk 2)
+  n_coins_in_img: number
+  coin_frac: number | null
+  dino_sim: number | null         // DINOv2 top1_sim crop↔ancre (Chunk 3)
+  dino_class: string              // good | suspect | wrong | unknown
   crop_class: string
   fill_ratio: number | null
   r_pipe: number | null
   r_probe: number | null
   r_ratio: number | null
+  axis_ratio: number | null       // b/a de l'ellipse fitEllipse (1.0 = cercle parfait)
+  tilt_deg: number | null         // angle de l'axe principal en degrés [0, 90]
+  tilt_trustworthy: boolean       // false si axis_ratio trop proche de 1 (indistinguable)
   severity: CropSeverity
   bimetal_inner_ring: boolean
   is_light_bg: boolean
@@ -77,8 +95,11 @@ export interface CropBenchSampleResponse {
 export interface CropBenchSampleParams {
   n?: number
   bucket?: string | null
+  listing_type?: string | null
   klass?: string | null
+  dino_class?: string | null
   bias?: string | null
+  strata?: boolean
   seed?: number
 }
 
@@ -130,8 +151,11 @@ export async function fetchCropBenchSample(
   const qs = new URLSearchParams()
   if (params.n != null) qs.set('n', String(params.n))
   if (params.bucket) qs.set('bucket', params.bucket)
+  if (params.listing_type) qs.set('listing_type', params.listing_type)
   if (params.klass) qs.set('klass', params.klass)
+  if (params.dino_class) qs.set('dino_class', params.dino_class)
   if (params.bias) qs.set('bias', params.bias)
+  if (params.strata) qs.set('strata', 'true')
   if (params.seed != null) qs.set('seed', String(params.seed))
   const q = qs.toString()
   return getJson<CropBenchSampleResponse>(
@@ -157,6 +181,7 @@ export async function postCropBenchLabel(body: {
   algo?: string
   method?: string | null
   r_ratio?: number | null
+  dino_sim?: number | null   // capté pour caler les seuils DINOv2 sur vérité humaine
 }): Promise<CropBenchLabels> {
   let resp: Response
   try {
@@ -184,8 +209,17 @@ export async function fetchCropBenchRecrop(
 // Resolve a relative ML URL (/sources/.../file, /crop-bench/overlay/...) to
 // an absolute URL usable in <img src>. `algos` (comma list) overlays the
 // detector circles on the raw (ex: 'fitellipse' → cercle bleu).
-export function resolveCropBenchImg(rel: string | null, algos?: string): string | null {
+// `showTilt` ajoute l'ellipse jaune fitEllipse sur le raw (show_tilt=1).
+export function resolveCropBenchImg(
+  rel: string | null,
+  algos?: string,
+  showTilt = false,
+): string | null {
   if (!rel) return null
   const base = rel.startsWith('http') ? rel : `${ML_API}${rel}`
-  return algos ? `${base}?algos=${encodeURIComponent(algos)}` : base
+  const qs = new URLSearchParams()
+  if (algos) qs.set('algos', algos)
+  if (showTilt) qs.set('show_tilt', '1')
+  const q = qs.toString()
+  return q ? `${base}?${q}` : base
 }

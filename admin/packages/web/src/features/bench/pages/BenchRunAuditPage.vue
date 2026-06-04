@@ -1,13 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import {
-  AlertTriangle, Coins, CornerDownRight, Crop as CropIcon, ExternalLink, Gavel,
-  ImageOff, Inbox, MousePointerClick, RefreshCw, ScanLine, Sparkles,
+  AlertTriangle, Coins, Crop as CropIcon, ExternalLink, Filter,
+  Gavel, ImageOff, Inbox, MousePointerClick, RefreshCw, ScanLine, X,
 } from 'lucide-vue-next'
 import {
   type BenchRunGroup,
-  type BenchRunGroupDrop,
   type BenchRunListing,
   type BenchRunResponse,
   fetchBenchRun,
@@ -16,7 +15,19 @@ import {
 import BenchRunAuditCropPanel from '../components/BenchRunAuditCropPanel.vue'
 
 const route = useRoute()
+const router = useRouter()
 const runId = computed(() => String(route.params.runId))
+
+// Deep-link funnel lab (`?eurio_id=<coin>`) : pré-filtre l'audit sur le coin
+// attribué. Pré-sélectionne sa recherche + restreint listings/crops à ce coin.
+const eurioFilter = computed(() => {
+  const q = route.query.eurio_id
+  return typeof q === 'string' && q ? q : null
+})
+function clearEurioFilter() {
+  const { eurio_id: _drop, ...rest } = route.query
+  router.replace({ query: rest, hash: route.hash })
+}
 
 // Mode toggle (Filter = audit theme-matcher | Crop = audit forensics crop).
 // Persisté en hash de l'URL pour partage et reload-stable.
@@ -57,7 +68,11 @@ async function load() {
   try {
     data.value = await fetchBenchRun(runId.value)
     if (selectedGroupId.value == null && groups.value.length) {
-      selectedGroupId.value = groups.value[0].group_id
+      // Deep-link coin → sa recherche ; sinon la première.
+      const coinGroup = eurioFilter.value
+        ? groups.value.find(g => g.target_eurio_ids.includes(eurioFilter.value!))
+        : null
+      selectedGroupId.value = (coinGroup ?? groups.value[0]).group_id
     }
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
@@ -81,6 +96,12 @@ async function loadListings() {
     limit: LIMIT,
     offset: offset.value,
   }
+  // Deep-link coin : ne filtre QUE la vue par défaut (aucun nœud sélectionné).
+  // Dès qu'on clique un nœud du funnel (routing ou unmatched), on montre le
+  // bucket à l'échelle du GROUPE, pour que la liste corresponde au compteur du
+  // badge (sinon le filtre eurio_id écarte silencieusement les non-attribuées
+  // → clic « lot suspecté 5 » renvoyait 0). Cf. bug funnel deep-link.
+  if (eurioFilter.value && !selectedNodeId.value) q.eurio_id = eurioFilter.value
   // Map selectedNodeId vers les filtres backend
   if (selectedNodeId.value === 'matcher/unmatched') {
     q.unmatched_only = true
@@ -109,6 +130,21 @@ watch([selectedGroupId, selectedNodeId], () => {
   loadListings()
 })
 
+// Filtre coin changé (clear, ou navigation coin→coin sans remount) : re-cible
+// sa recherche ; si le groupe ne bouge pas, recharge ici pour (dé)appliquer le
+// filtre eurio_id — sinon le watch ci-dessus s'en charge.
+watch(eurioFilter, () => {
+  const before = selectedGroupId.value
+  if (eurioFilter.value && data.value) {
+    const g = groups.value.find(gr => gr.target_eurio_ids.includes(eurioFilter.value!))
+    if (g) selectedGroupId.value = g.group_id
+  }
+  if (selectedGroupId.value === before) {
+    offset.value = 0
+    loadListings()
+  }
+})
+
 onMounted(load)
 
 function selectGroup(id: string) {
@@ -120,10 +156,85 @@ function selectNode(id: string) {
   selectedNodeId.value = selectedNodeId.value === id ? null : id
 }
 
-function plateWidth(count: number, total: number): string {
-  if (!total) return '46%'
-  const pct = (count / total) * 100
-  return `${Math.max(46, pct).toFixed(1)}%`
+// ── Répartition du routing (partition des matchées) ──────────────────────
+// matchedCount = total - unmatched ; les drops de routing se PARTAGENT ce
+// total. On expose des helpers d'affichage : largeur de segment, couleur par
+// décision, libellé humain de la raison.
+type RunDrop = BenchRunGroup['drops'][number]
+
+const matchedCount = computed(() =>
+  selectedGroup.value
+    ? selectedGroup.value.total_listings - selectedGroup.value.n_unmatched
+    : 0,
+)
+const routingDrops = computed<RunDrop[]>(() =>
+  selectedGroup.value
+    ? selectedGroup.value.drops.filter((d) => d.node_id !== 'matcher/unmatched')
+    : [],
+)
+// Total des annonces ROUTÉES (= somme des destins de routing). C'est l'axe
+// "traitement des crops", INDÉPENDANT de l'attribution : il couvre matchées
+// ET non-attribuées. Les % de routing sont donc relatifs à ce total, pas à
+// matchedCount (sinon on dépasse 100 % — bug funnel v1).
+const routedTotal = computed(() =>
+  routingDrops.value.reduce((s, d) => s + d.count, 0),
+)
+function partPct(count: number): number {
+  return routedTotal.value ? (count / routedTotal.value) * 100 : 0
+}
+
+// Couleur par décision (cohérente avec les pastilles existantes).
+const DECISION_COLORS: Record<string, string> = {
+  pending: 'var(--ink-300)',
+  review_single: 'var(--indigo-600)',
+  review_lot: 'var(--gold-400)',
+}
+function decisionColor(decision: string | null): string {
+  if (decision && decision.startsWith('auto')) return 'var(--success)'
+  return (decision && DECISION_COLORS[decision]) || 'var(--ink-400)'
+}
+
+// DESTINATION : où part l'annonce, déduit du route_decision (= état agrégé de
+// ses crops). C'est la question de l'utilisateur « ça va où / et après ? ».
+//   review_single|review_lot → file de review HUMAINE (page /review)
+//   pending                  → nulle part : aucun crop produit, pas en review
+//   auto_resolved            → résolu automatiquement (phash/nom)
+//   rejected                 → écarté (tous crops rejetés)
+const DESTINATION_LABELS: Record<string, string> = {
+  review_single: 'En review · pièce seule',
+  review_lot: 'En review · lot',
+  pending: 'Bloqué · pas encore de crop',
+  auto_resolved: 'Auto-résolu',
+  rejected: 'Rejeté',
+}
+function destinationLabel(decision: string | null): string {
+  return (decision && DESTINATION_LABELS[decision]) || decision || '—'
+}
+
+// Version courte pour le badge de carte (chip uppercase).
+const DESTINATION_SHORT: Record<string, string> = {
+  review_single: 'review',
+  review_lot: 'review lot',
+  pending: 'sans crop',
+  auto_resolved: 'auto',
+  rejected: 'rejeté',
+}
+function destinationShort(decision: string | null): string {
+  return (decision && DESTINATION_SHORT[decision]) || decision || '—'
+}
+
+// Raison (le « pourquoi » de cette destination) — affichée en détail.
+const REASON_LABELS: Record<string, string> = {
+  no_crops_yet: 'aucune découpe produite par le crop',
+  mixed_status: 'crops dans des états mixtes',
+  multi_coin_photo: 'photo à plusieurs pièces',
+  is_lot_suspected: 'lot suspecté (titre)',
+  single_unmatched: 'pièce seule, non auto-attribuée',
+  single_matched: 'pièce seule, attribuée',
+  all_crops_rejected: 'tous les crops rejetés',
+}
+function reasonLabel(d: RunDrop): string {
+  return (d.reason && REASON_LABELS[d.reason]) || d.reason || '—'
 }
 
 function priceFmt(p: number | null, cur: string | null): string {
@@ -197,6 +308,21 @@ function markBroken(id: string) {
             avec sa bbox sur le raw, pour repérer les undercrops (rim mangé).
           </template>
         </p>
+        <div
+          v-if="eurioFilter"
+          class="mt-2 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px]"
+          style="border-color: var(--indigo-300); background: var(--indigo-50, #e6e8f5); color: var(--indigo-700);"
+        >
+          <Filter class="h-3 w-3" />
+          <span style="font-family: var(--font-mono);">filtré · {{ shortEurio(eurioFilter) }}</span>
+          <button
+            class="ml-0.5 inline-flex items-center rounded-full p-0.5 transition-colors hover:bg-black/[0.06]"
+            title="Retirer le filtre coin"
+            @click="clearEurioFilter"
+          >
+            <X class="h-3 w-3" />
+          </button>
+        </div>
       </div>
 
       <div class="flex items-center gap-3">
@@ -235,7 +361,7 @@ function markBroken(id: string) {
       class="flex flex-1 flex-col overflow-y-auto"
     >
       <div class="mx-auto w-full max-w-[1500px] px-7 py-6">
-        <BenchRunAuditCropPanel :run-id="runId" />
+        <BenchRunAuditCropPanel :run-id="runId" :eurio-id="eurioFilter" />
       </div>
     </div>
 
@@ -353,7 +479,7 @@ function markBroken(id: string) {
                     class="text-[26px] leading-none"
                     :style="`font-family: var(--font-display); font-weight: 600; color: ${
                       selectedGroupId === g.group_id ? 'var(--indigo-700)' : 'var(--ink)'};`"
-                  >{{ g.year }}</div>
+                  >{{ g.year ?? 'std' }}</div>
                   <div
                     class="mt-0.5 text-[10.5px] uppercase tracking-[0.08em]"
                     style="color: var(--ink-400); font-family: var(--font-mono);"
@@ -409,7 +535,7 @@ function markBroken(id: string) {
                   style="color: var(--ink-400);">Recherche eBay</span>
             <span class="text-[19px]"
                   style="font-family: var(--font-display); font-weight: 600; color: var(--ink);">
-              {{ selectedGroup.country }} · {{ selectedGroup.denomination }} € · {{ selectedGroup.year }}
+              {{ selectedGroup.country }} · {{ selectedGroup.denomination }} € · {{ selectedGroup.year ?? 'standard' }}
             </span>
           </div>
 
@@ -478,127 +604,165 @@ function markBroken(id: string) {
               </div>
             </div>
 
-            <!-- Colonne 2 — entonnoir -->
-            <div class="w-[346px] flex-shrink-0 overflow-y-auto border-r px-5 py-6"
+            <!-- Colonne 2 — RÉPARTITION (partition honnête, pas une cascade).
+                 Les N matchées se PARTAGENT entre les destins de routing ;
+                 la barre + la somme explicite lèvent l'illusion de rétrécissement. -->
+            <div class="w-[360px] flex-shrink-0 overflow-y-auto border-r px-6 py-6"
                  style="border-color: var(--surface-3); background: var(--surface-1);">
-              <div class="flex flex-col items-center">
-                <!-- Plaque : annonces brutes -->
-                <button
-                  class="rounded-xl border px-4 py-3 text-left transition-all"
-                  :style="`width: 100%; ${selectedNodeId === 'raw'
-                    ? 'border-color: var(--indigo-600); background: var(--indigo-50);'
-                    : 'border-color: var(--ink-200); background: var(--surface);'}`"
-                  @click="selectNode('raw')"
-                >
-                  <div class="flex items-baseline justify-between gap-3">
-                    <span class="text-[10.5px] font-medium uppercase tracking-[0.09em]"
-                          style="color: var(--ink-400);">Annonces brutes</span>
-                    <span class="text-[23px] leading-none"
-                          style="font-family: var(--font-display); font-weight: 600; color: var(--ink);">
-                      {{ selectedGroup.total_listings }}
-                    </span>
-                  </div>
-                </button>
 
-                <!-- Transition : theme-matcher -->
-                <div class="my-1 h-3 w-px" style="background: var(--surface-3);" />
-                <button
-                  class="w-full rounded-lg border px-3 py-2 text-left transition-all"
-                  :disabled="selectedGroup.n_unmatched === 0"
-                  :style="selectedGroup.n_unmatched === 0
-                    ? 'border-color: var(--surface-3); background: var(--surface-1); cursor: default;'
-                    : selectedNodeId === 'matcher/unmatched'
-                      ? 'border-color: var(--indigo-600); background: var(--indigo-50);'
-                      : 'border-color: var(--danger); background: var(--surface);'"
-                  @click="selectedGroup.n_unmatched && selectNode('matcher/unmatched')"
-                >
-                  <div class="text-[11.5px] font-semibold" style="color: var(--ink);">
-                    Filtre 1 — theme-matcher
-                  </div>
-                  <div class="mt-1 flex items-center gap-2 text-[11px]">
-                    <span v-if="selectedGroup.n_unmatched"
-                          style="color: var(--danger); font-family: var(--font-mono);">
-                      ✗ {{ selectedGroup.n_unmatched }} unmatched
-                    </span>
-                    <span v-else style="color: var(--success);">tout matché</span>
-                    <span class="ml-auto text-[10px]" style="color: var(--ink-400);">
-                      target_eurio_id NULL
-                    </span>
-                  </div>
-                </button>
-
-                <!-- Plaque : matchés à un coin -->
-                <div class="my-1 h-3 w-px" style="background: var(--surface-3);" />
-                <button
-                  class="rounded-xl border px-4 py-2.5 text-left transition-all"
-                  :style="`width: ${plateWidth(selectedGroup.total_listings - selectedGroup.n_unmatched, selectedGroup.total_listings)}; ${selectedNodeId === 'matched'
-                    ? 'border-color: var(--indigo-600); background: var(--indigo-50);'
-                    : 'border-color: var(--indigo-300); background: var(--surface);'}`"
-                  @click="selectNode('matched')"
-                >
-                  <div class="flex items-baseline justify-between gap-3">
-                    <span class="text-[10.5px] font-medium uppercase tracking-[0.09em]"
-                          style="color: var(--ink-400);">Matchés à un coin</span>
-                    <span class="text-[21px] leading-none"
-                          style="font-family: var(--font-display); font-weight: 600; color: var(--ink);">
-                      {{ selectedGroup.total_listings - selectedGroup.n_unmatched }}
-                    </span>
-                  </div>
-                </button>
-
-                <!-- Transition : router (route_decision/route_reason) -->
-                <div class="my-1 h-3 w-px" style="background: var(--surface-3);" />
-                <div class="mb-2 flex items-center gap-1.5 text-[10.5px] font-medium uppercase tracking-[0.1em]"
-                     style="color: var(--ink-400);">
-                  <Sparkles class="h-3.5 w-3.5" /> Routing
-                </div>
-                <div class="w-full space-y-1.5">
-                  <button
-                    v-for="drop in selectedGroup.drops.filter(d => d.node_id !== 'matcher/unmatched')"
-                    :key="drop.node_id"
-                    class="flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left transition-all"
-                    :style="selectedNodeId === drop.node_id
-                      ? 'border-color: var(--indigo-600); background: var(--indigo-50);'
-                      : drop.route_decision === 'pending'
-                        ? 'border-color: var(--surface-3); background: var(--surface);'
-                        : drop.route_decision === 'review_lot'
-                          ? 'border-color: var(--gold-400); background: var(--surface);'
-                          : 'border-color: var(--indigo-300); background: var(--surface);'"
-                    @click="selectNode(drop.node_id)"
-                  >
-                    <CornerDownRight class="h-3.5 w-3.5 flex-shrink-0" style="color: var(--ink-300);" />
-                    <span class="text-[10px] font-semibold uppercase tracking-[0.07em]"
-                          :style="`color: ${
-                            drop.route_decision === 'pending' ? 'var(--ink-400)'
-                            : drop.route_decision === 'review_lot' ? 'var(--gold-700)'
-                            : 'var(--indigo-700)'};`">
-                      {{ drop.route_decision }}
-                    </span>
-                    <span class="truncate text-[11px]" style="color: var(--ink-500);">
-                      {{ drop.reason ?? '—' }}
-                    </span>
-                    <span class="ml-auto text-[15px]"
-                          style="font-family: var(--font-display); font-weight: 600; color: var(--ink);">
-                      {{ drop.count }}
-                    </span>
-                  </button>
-                </div>
-
-                <!-- Plaque : quotes générés -->
-                <div class="my-1 mt-3 h-3 w-px" style="background: var(--surface-3);" />
-                <div class="rounded-xl border px-4 py-2.5"
-                     :style="`width: ${plateWidth(selectedGroup.n_quotes, selectedGroup.total_listings)};
-                              border-color: var(--indigo-600); background: var(--indigo-50);`">
-                  <div class="flex items-baseline justify-between gap-3">
-                    <span class="text-[10.5px] font-medium uppercase tracking-[0.09em]"
-                          style="color: var(--indigo-700);">Quotes générés</span>
-                    <span class="text-[21px] leading-none"
-                          style="font-family: var(--font-display); font-weight: 600; color: var(--indigo-700);">
-                      {{ selectedGroup.n_quotes }}
-                    </span>
-                  </div>
-                </div>
+              <!-- En-tête : total annonces de la recherche -->
+              <div class="text-[10.5px] font-medium uppercase tracking-[0.12em]"
+                   style="color: var(--ink-400);">Annonces de la recherche</div>
+              <div class="mt-1 text-[34px] leading-none"
+                   style="font-family: var(--font-display); font-weight: 600; color: var(--ink);">
+                {{ selectedGroup.total_listings }}
               </div>
+
+              <!-- ═══ AXE 1 — ATTRIBUTION (theme-matcher) : matchée vs non ═══ -->
+              <div class="mt-5 flex items-baseline justify-between">
+                <span class="text-[10.5px] font-medium uppercase tracking-[0.12em]"
+                      style="color: var(--ink-400);">Attribution</span>
+                <span class="text-[10px]" style="color: var(--ink-300); font-family: var(--font-mono);">theme-matcher</span>
+              </div>
+              <div class="mt-2 flex h-3.5 w-full overflow-hidden rounded-full"
+                   style="background: var(--surface-2); box-shadow: inset 0 1px 2px rgba(14,14,31,0.08);">
+                <div class="h-full"
+                     :style="{ width: (matchedCount / selectedGroup.total_listings * 100) + '%', background: 'var(--indigo-600)' }" />
+                <div class="h-full"
+                     :style="{ width: (selectedGroup.n_unmatched / selectedGroup.total_listings * 100) + '%', background: 'var(--gold-400)' }" />
+              </div>
+              <div class="mt-2.5 space-y-1.5">
+                <div class="flex items-center gap-3 rounded-lg border px-3 py-2"
+                     style="border-color: var(--surface-3); background: var(--surface);">
+                  <span class="h-2.5 w-2.5 flex-shrink-0 rounded-full" style="background: var(--indigo-600);" />
+                  <span class="flex-1 text-[12.5px]" style="color: var(--ink);">matchées à un eurio_id</span>
+                  <span class="text-[17px] leading-none"
+                        style="font-family: var(--font-display); font-weight: 600; color: var(--ink);">{{ matchedCount }}</span>
+                </div>
+                <button
+                  v-if="selectedGroup.n_unmatched"
+                  class="flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-left transition-all"
+                  :style="selectedNodeId === 'matcher/unmatched'
+                    ? 'border-color: var(--danger); background: var(--danger-soft, #f6dcd6);'
+                    : 'border-color: var(--surface-3); background: var(--surface);'"
+                  @click="selectNode('matcher/unmatched')"
+                >
+                  <span class="h-2.5 w-2.5 flex-shrink-0 rounded-full" style="background: var(--gold-400);" />
+                  <span class="flex-1 text-[12.5px]" style="color: var(--ink);">non auto-attribuées — à trancher</span>
+                  <span class="text-[17px] leading-none"
+                        style="font-family: var(--font-display); font-weight: 600; color: var(--gold-700);">{{ selectedGroup.n_unmatched }}</span>
+                </button>
+              </div>
+              <div class="mt-1.5 text-[10px]" style="color: var(--ink-400); font-family: var(--font-mono);">
+                {{ matchedCount }} + {{ selectedGroup.n_unmatched }} = {{ selectedGroup.total_listings }}
+              </div>
+
+              <!-- ═══ AXE 2 — TRAITEMENT (routing des crops) — INDÉPENDANT ═══
+                   Couvre TOUTES les annonces routées (matchées ET non) : c'est
+                   pourquoi la somme = total, pas matchedCount. -->
+              <div class="mt-6 flex items-baseline justify-between">
+                <span class="text-[10.5px] font-medium uppercase tracking-[0.12em]"
+                      style="color: var(--ink-400);">Traitement des crops</span>
+                <span class="text-[10px]" style="color: var(--ink-300); font-family: var(--font-mono);">routing · axe distinct</span>
+              </div>
+              <p class="mt-0.5 text-[10px] italic" style="color: var(--ink-400);">
+                indépendant de l'attribution — inclut matchées <i>et</i> non-attribuées
+              </p>
+
+              <!-- Barre empilée : largeurs ∝ count, somme = routedTotal -->
+              <div class="mt-2 flex h-3.5 w-full overflow-hidden rounded-full"
+                   style="background: var(--surface-2); box-shadow: inset 0 1px 2px rgba(14,14,31,0.08);">
+                <button
+                  v-for="d in routingDrops" :key="d.node_id"
+                  class="h-full border-0 transition-all"
+                  :style="{
+                    width: partPct(d.count) + '%',
+                    background: decisionColor(d.route_decision),
+                    opacity: selectedNodeId && selectedNodeId !== d.node_id ? 0.3 : 1,
+                  }"
+                  :title="`${reasonLabel(d)} — ${d.count}`"
+                  @click="selectNode(d.node_id)"
+                />
+              </div>
+              <!-- Somme explicite : répond à « où sont passées les annonces ? » -->
+              <div class="mt-1.5 text-[10px]" style="color: var(--ink-400); font-family: var(--font-mono);">
+                {{ routingDrops.map(d => d.count).join(' + ') }} = {{ routedTotal }}
+              </div>
+
+              <!-- Légende cliquable : 1 destin/ligne, label humain + part -->
+              <div class="mt-3.5 space-y-1.5">
+                <button
+                  v-for="d in routingDrops" :key="d.node_id"
+                  class="flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-all"
+                  :style="selectedNodeId === d.node_id
+                    ? 'border-color: var(--indigo-600); background: var(--indigo-50); box-shadow: 0 1px 0 var(--indigo-600);'
+                    : 'border-color: var(--surface-3); background: var(--surface);'"
+                  @click="selectNode(d.node_id)"
+                >
+                  <span class="h-2.5 w-2.5 flex-shrink-0 rounded-full"
+                        :style="{ background: decisionColor(d.route_decision) }" />
+                  <span class="min-w-0 flex-1">
+                    <span class="block text-[12.5px] leading-tight" style="color: var(--ink);">
+                      {{ destinationLabel(d.route_decision) }}
+                    </span>
+                    <span class="text-[10px] leading-tight" style="color: var(--ink-400);">
+                      {{ reasonLabel(d) }}
+                    </span>
+                  </span>
+                  <span class="flex-shrink-0 text-right">
+                    <span class="block text-[17px] leading-none"
+                          style="font-family: var(--font-display); font-weight: 600; color: var(--ink);">
+                      {{ d.count }}
+                    </span>
+                    <span class="text-[10px]" style="color: var(--ink-400); font-family: var(--font-mono);">
+                      {{ partPct(d.count).toFixed(0) }} %
+                    </span>
+                  </span>
+                </button>
+              </div>
+
+              <!-- Quotes : SORTI du funnel — résultat marché, pas un étage du tri -->
+              <div class="mt-6 flex items-center justify-between rounded-xl border border-dashed px-4 py-3"
+                   style="border-color: var(--indigo-300); background: var(--indigo-50);">
+                <div>
+                  <div class="text-[10.5px] font-medium uppercase tracking-[0.09em]"
+                       style="color: var(--indigo-700);">Résultat marché</div>
+                  <div class="mt-0.5 text-[10px]" style="color: var(--ink-400);">
+                    prix générés — hors funnel
+                  </div>
+                </div>
+                <span class="text-[24px] leading-none"
+                      style="font-family: var(--font-display); font-weight: 600; color: var(--indigo-700);">
+                  {{ selectedGroup.n_quotes }}
+                </span>
+              </div>
+
+              <!-- Règles du theme-matcher : explicite la doctrine pour comprendre
+                   pourquoi une annonce matche / ne matche pas (demande utilisateur). -->
+              <details class="mt-4 rounded-xl border px-4 py-2.5"
+                       style="border-color: var(--surface-3); background: var(--surface);">
+                <summary class="cursor-pointer select-none text-[10.5px] font-medium uppercase tracking-[0.1em]"
+                         style="color: var(--ink-500);">Règles du matcher</summary>
+                <div class="mt-2.5 space-y-2 text-[11px] leading-snug" style="color: var(--ink-500);">
+                  <p>
+                    <b style="color: var(--ink);">Standards</b>
+                    <span style="color: var(--ink-400);"> (recherche sans année)</span> :
+                    annonce → l'ère du pays si <b>une seule</b> est identifiable (<i>single</i>) ;
+                    sinon <i>ambiguous</i> → gardée en review, toutes les ères en candidats ;
+                    jetée si commémo / hors-pays / aucune ère.
+                  </p>
+                  <p>
+                    <b style="color: var(--ink);">Commémos</b>
+                    <span style="color: var(--ink-400);"> (année précise)</span> :
+                    <i>single</i> / <i>lot</i> / <i>ambiguous</i> gardées ;
+                    jetée seulement sur contradiction franche pays · année · dénom (<i>no_match</i>).
+                  </p>
+                  <p style="color: var(--ink-400);">
+                    Critères lus dans le titre : pays, année, dénomination, tokens de thème,
+                    + marqueurs lot / set / coffret / « au choix ».
+                  </p>
+                </div>
+              </details>
             </div>
 
             <!-- Colonne 3 — listings du nœud (grid de cards) -->
@@ -658,7 +822,7 @@ function markBroken(id: string) {
                           class="absolute right-2 top-2 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
                           :style="`background: ${decisionTone(l.route_decision).bg};
                                    color: ${decisionTone(l.route_decision).color};`"
-                        >{{ l.route_decision ?? '—' }}</span>
+                        >{{ destinationShort(l.route_decision) }}</span>
                       </div>
                       <!-- Méta -->
                       <div class="flex flex-1 flex-col gap-1.5 px-3 py-2.5">
@@ -674,6 +838,14 @@ function markBroken(id: string) {
                           :title="l.route_reason!"
                           style="font-family: var(--font-mono); color: var(--ink-500);"
                         >{{ l.route_reason }}</p>
+                        <!-- Raison du non-match (annonces sans target) -->
+                        <p
+                          v-if="l.match_reason"
+                          class="rounded px-1.5 py-1 text-[10.5px] leading-snug"
+                          :title="l.match_reason!"
+                          style="background: color-mix(in srgb, var(--gold-400) 16%, var(--surface));
+                                 color: var(--gold-700);"
+                        >⊘ {{ l.match_reason }}</p>
                         <div class="mt-auto flex items-center gap-1.5 pt-1">
                           <span
                             v-if="l.marketplace"

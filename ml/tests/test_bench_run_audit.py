@@ -233,6 +233,34 @@ def test_run_groups_multi_eurio_joint_issue(store_run):
     assert g.n_quotes == 2
 
 
+def test_run_groups_standard_year_null(store_run):
+    """Régression : un run 100 % standard (``listing_year`` NULL) doit remonter
+    son groupe `(pays, NULL)`. L'ancien filtre `listing_year IS NOT NULL`
+    masquait tout → bench vide sur les deep-links standard."""
+    _, conn, run_id = store_run
+    _seed_coin(conn, eurio_id="ad-2014-std", country="AD", year=2014,
+               is_commemorative=False)
+    _seed_source_image(conn, sid="s1", run_id=run_id, country="AD", year=None,
+                       target_eurio_id="ad-2014-std", route_decision="pending",
+                       route_reason="no_crops_yet")
+    _seed_source_image(conn, sid="s2", run_id=run_id, country="AD", year=None,
+                       target_eurio_id="ad-2014-std",
+                       route_decision="review_single", route_reason="single_unmatched")
+
+    groups, summary = _run_groups(conn, run_id=run_id)
+    assert summary.n_groups == 1
+    assert summary.total_listings == 2
+    g = groups[0]
+    assert g.year is None
+    assert g.country == "AD"
+    assert g.group_id == "AD-std-2.0"
+    assert g.target_eurio_ids == ["ad-2014-std"]
+    # Drops calculés malgré le year NULL (sous-requêtes en IS NULL).
+    assert {d.node_id for d in g.drops} == {
+        "pending/no_crops_yet", "review_single/single_unmatched",
+    }
+
+
 # ── Tests : _run_listings (drill) ─────────────────────────────────────────
 
 
@@ -256,6 +284,29 @@ def test_listings_filter_by_route_decision(store_run):
     assert total == 1
     assert ls[0].source_image_id == "a"
     assert ls[0].route_decision == "review_single"
+
+
+def test_listings_filter_by_eurio_id(store_run):
+    """Deep-link funnel (§C3b) : deux commémos-sœurs partagent la maille
+    (pays, année) du bench ; `eurio_id` doit discriminer une seule pièce."""
+    _, conn, run_id = store_run
+    _seed_coin(conn, eurio_id="it-2016-plautus", country="IT", year=2016)
+    _seed_coin(conn, eurio_id="it-2016-donatello", country="IT", year=2016)
+    _seed_source_image(conn, sid="p1", run_id=run_id, country="IT", year=2016,
+                       target_eurio_id="it-2016-plautus")
+    _seed_source_image(conn, sid="p2", run_id=run_id, country="IT", year=2016,
+                       target_eurio_id="it-2016-plautus")
+    _seed_source_image(conn, sid="d1", run_id=run_id, country="IT", year=2016,
+                       target_eurio_id="it-2016-donatello")
+
+    ls, total = _run_listings(
+        conn, run_id, country="IT", year=2016,
+        eurio_id="it-2016-plautus", route_decision=None, route_reason=None,
+        unmatched_only=False, limit=100, offset=0,
+    )
+    assert total == 2
+    assert {l.source_image_id for l in ls} == {"p1", "p2"}
+    assert all(l.target_eurio_id == "it-2016-plautus" for l in ls)
 
 
 def test_listings_unmatched_only(store_run):

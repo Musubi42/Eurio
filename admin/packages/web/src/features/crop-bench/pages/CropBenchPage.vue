@@ -22,10 +22,16 @@ const error = ref<string | null>(null)
 
 // Filtres
 const bucket = ref<string>('')
+const listingType = ref<string>('')
 const klass = ref<string>('')
-const bias = ref<string>('worst')
+const dinoClass = ref<string>('')
+const bias = ref<string>('dino_bad')
+const strata = ref<boolean>(false)
 const n = ref<number>(30)
 const seed = ref<number>(42)
+
+const LISTING_TYPES = ['single_tight', 'single_small', 'multi_tight', 'multi_small', 'unknown']
+const DINO_CLASSES = ['good', 'suspect', 'wrong']
 
 // Comparaison détecteur alternatif. bbox_refine (Chunk 2) = raffinement du rim
 // externe autour de la bbox connue (94 % good vs 80 % actuel). fitellipse /
@@ -41,11 +47,16 @@ const ALGOS = [
 const BUCKETS = ['bimetal_light', 'bimetal_textured', 'mono_light', 'mono_textured']
 const CLASSES = ['undercrop', 'wrong', 'ok']
 const BIASES = [
+  { value: 'dino_bad', label: 'DINOv2 pires d\'abord' },
   { value: 'worst', label: 'Pires (r̂ croissant)' },
   { value: 'undercrop', label: 'Undercrops only' },
   { value: 'bimetal', label: 'Bimétal only' },
+  { value: 'tilt', label: 'Plus ovales d\'abord' },
   { value: '', label: 'Aléatoire' },
 ]
+
+// Overlay ellipse tilt (jaune) sur le raw.
+const showTilt = ref<boolean>(false)
 
 async function loadStats() {
   try {
@@ -62,8 +73,11 @@ async function loadSample() {
     const resp = await fetchCropBenchSample({
       n: n.value,
       bucket: bucket.value || null,
+      listing_type: listingType.value || null,
       klass: klass.value || null,
+      dino_class: dinoClass.value || null,
       bias: bias.value || null,
+      strata: strata.value,
       seed: seed.value,
     })
     cards.value = resp.cards
@@ -92,7 +106,7 @@ async function loadLabels() {
   }
 }
 
-async function handleLabel(card: Card, payload: { target: string; verdict: 'good' | 'bad'; method: string | null; rRatio: number | null }) {
+async function handleLabel(card: Card, payload: { target: string; verdict: 'good' | 'bad'; method: string | null; rRatio: number | null; dinoSim: number | null }) {
   try {
     labelsData.value = await postCropBenchLabel({
       asset_id: card.asset_id,
@@ -101,6 +115,7 @@ async function handleLabel(card: Card, payload: { target: string; verdict: 'good
       algo: payload.target === 'actuel' ? undefined : algo.value,
       method: payload.method,
       r_ratio: payload.rRatio,
+      dino_sim: payload.dinoSim,
     })
   } catch (e) {
     error.value = e instanceof CropBenchApiError ? e.message : String(e)
@@ -130,7 +145,7 @@ onMounted(async () => {
       <div class="page__title">
         <Crop class="h-5 w-5" style="color: var(--indigo-600);" />
         <h1>Crop Bench</h1>
-        <span class="page__beta">chunk 0 · lecture seule</span>
+        <span class="page__beta">oracle DINOv2 · gold stratifié</span>
       </div>
       <p class="page__sub">
         Banc de qualité du crop eBay. Pour chaque pièce :
@@ -152,31 +167,41 @@ onMounted(async () => {
           <span class="stat__v">{{ stats.total }}</span>
           <span class="stat__k">crops eBay</span>
         </div>
-        <div class="stat">
-          <span class="stat__v">{{ stats.judged_pct }}%</span>
-          <span class="stat__k">jugés (oracle)</span>
-        </div>
         <div class="stat stat--danger">
+          <span class="stat__v">{{ stats.dino_bad_pct }}%</span>
+          <span class="stat__k">bad — DINOv2 (vrai)</span>
+        </div>
+        <div class="stat stat--muted" title="L'oracle géométrique Otsu ne voit que la taille du cercle, jamais le mauvais objet.">
           <span class="stat__v">{{ stats.undercrop_pct_judged }}%</span>
-          <span class="stat__k">undercrop ({{ stats.n_undercrop }})</span>
+          <span class="stat__k">undercrop — géo (aveugle)</span>
+        </div>
+        <div class="stat stat--muted" title="Crops sans r_ratio → classés 'ok' par défaut par l'oracle Otsu.">
+          <span class="stat__v">{{ stats.oracle_blind_pct }}%</span>
+          <span class="stat__k">oracle Otsu muet</span>
         </div>
         <div class="stat">
-          <span class="stat__v">{{ stats.n_bimetal_inner_ring }}</span>
-          <span class="stat__k">inner-ring flag</span>
+          <span class="stat__v">{{ stats.dino_coverage_pct }}%</span>
+          <span class="stat__k">couverture DINOv2</span>
         </div>
       </div>
+      <!-- Table par TYPE DE LISTING (Chunk 2/3) — là où sont les vraies pannes -->
       <table class="bucket-table">
         <thead>
-          <tr><th>bucket</th><th>n</th><th>under%</th><th>fill</th><th>inner%</th><th>r̂ med</th></tr>
+          <tr>
+            <th>type de listing</th><th>n</th>
+            <th title="bad = wrong + suspect (DINOv2)">DINO bad%</th>
+            <th>wrong%</th><th>sim med</th>
+            <th title="oracle géométrique — aveugle au mauvais objet">géo bad%</th>
+          </tr>
         </thead>
         <tbody>
-          <tr v-for="b in stats.buckets" :key="b.bucket">
+          <tr v-for="b in stats.listing_buckets" :key="b.bucket">
             <td class="bucket-table__name">{{ b.bucket }}</td>
             <td>{{ b.n }}</td>
-            <td :class="{ 'cell--warn': b.undercrop_pct >= 8 }">{{ b.undercrop_pct }}</td>
-            <td>{{ b.mean_fill_ratio.toFixed(3) }}</td>
-            <td>{{ b.bimetal_inner_ring_pct }}</td>
-            <td>{{ b.r_ratio_median ?? '—' }}</td>
+            <td :class="{ 'cell--warn': (b.dino_bad_pct ?? 0) >= 20 }"><b>{{ b.dino_bad_pct ?? '—' }}</b></td>
+            <td>{{ b.dino_wrong_pct ?? '—' }}</td>
+            <td>{{ b.dino_sim_median ?? '—' }}</td>
+            <td class="cell--muted">{{ (b.undercrop_pct + b.wrong_pct).toFixed(1) }}</td>
           </tr>
         </tbody>
       </table>
@@ -191,6 +216,20 @@ onMounted(async () => {
         </select>
       </label>
       <label class="ctrl">
+        <span>Type listing</span>
+        <select v-model="listingType" @change="loadSample">
+          <option value="">tous</option>
+          <option v-for="l in LISTING_TYPES" :key="l" :value="l">{{ l }}</option>
+        </select>
+      </label>
+      <label class="ctrl">
+        <span>DINOv2</span>
+        <select v-model="dinoClass" @change="loadSample">
+          <option value="">tous</option>
+          <option v-for="d in DINO_CLASSES" :key="d" :value="d">{{ d }}</option>
+        </select>
+      </label>
+      <label class="ctrl">
         <span>Bucket</span>
         <select v-model="bucket" @change="loadSample">
           <option value="">tous</option>
@@ -198,7 +237,7 @@ onMounted(async () => {
         </select>
       </label>
       <label class="ctrl">
-        <span>Classe</span>
+        <span>Classe géo</span>
         <select v-model="klass" @change="loadSample">
           <option value="">toutes</option>
           <option v-for="c in CLASSES" :key="c" :value="c">{{ c }}</option>
@@ -216,9 +255,13 @@ onMounted(async () => {
       <button class="btn" :disabled="loading" @click="loadSample">
         <RefreshCw class="h-3.5 w-3.5" :class="{ spin: loading }" /> Recharger
       </button>
-      <button class="btn btn--ghost" :disabled="loading || bias === 'worst'" @click="reshuffle"
+      <button class="btn btn--ghost" :disabled="loading || bias === 'worst' || bias === 'dino_bad'" @click="reshuffle"
               title="Nouveau tirage aléatoire (désactivé en tri 'pires')">
         <Shuffle class="h-3.5 w-3.5" /> Mélanger
+      </button>
+      <button class="btn" :class="strata ? '' : 'btn--ghost'" @click="strata = !strata; loadSample()"
+              title="Échantillon équilibré entre strates listing_type — le mode à utiliser pour le gold (sinon les single_tight propres écrasent l'échantillon)">
+        ⚖ stratifié {{ strata ? 'ON' : 'OFF' }}
       </button>
       <label class="ctrl" v-if="compare">
         <span>Détecteur</span>
@@ -229,6 +272,10 @@ onMounted(async () => {
       <button class="btn" :class="compare ? '' : 'btn--ghost'" @click="compare = !compare"
               title="Afficher la colonne détecteur alternatif">
         <Columns3 class="h-3.5 w-3.5" /> compare {{ compare ? 'ON' : 'OFF' }}
+      </button>
+      <button class="btn" :class="showTilt ? '' : 'btn--ghost'" @click="showTilt = !showTilt"
+              title="Overlay ellipse jaune (fitEllipse tilt) sur le raw — nécessite que le backend supporte show_tilt=1">
+        ◎ tilt {{ showTilt ? 'ON' : 'OFF' }}
       </button>
       <span class="controls__count">
         {{ cards.length }} / {{ totalMatched }} correspondants
@@ -258,6 +305,7 @@ onMounted(async () => {
 
     <div class="grid" :class="{ 'grid--wide': compare }">
       <CropBenchCard v-for="c in cards" :key="c.asset_id" :card="c" :compare="compare" :algo="algo"
+                     :show-tilt="showTilt"
                      :label="labelsData?.labels[c.asset_id]" @label="handleLabel(c, $event)" />
     </div>
   </div>
@@ -326,6 +374,9 @@ onMounted(async () => {
 }
 .stat__k { font-size: 11px; color: var(--ink-400); }
 .stat--danger .stat__v { color: var(--danger); }
+.stat--muted .stat__v { color: var(--ink-400); font-size: 17px; }
+.stat--muted .stat__k { color: var(--ink-300); }
+.cell--muted { color: var(--ink-300); }
 
 .bucket-table {
   margin-left: auto;
