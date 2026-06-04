@@ -113,3 +113,18 @@ Code livré : `scripts/build_coinness_bank.py` (banque **1127** réfs : 564 aver
 **Verdict : l'extension ne débloque PAS le gate.** `fs_real` identique à chaque τ (les **mêmes lots échouent**), faux-lot inchangé-à-pire, exact marginalement mieux à τ haut seulement. Cause : 81 crops = 6,7 % d'une banque de 1208, `is_coin = max sim` → trop dilué pour relever les capsules récalcitrantes ; et on ne peut pas avoir plus de crops PROPRES (les 2237 hors-bench restants sont `needs_review` non validés → y piocher réinjecterait le clutter que le gate doit rejeter). **Levier cause B épuisé avec les données propres dispo.** Banque étendue NON versionnée (pas de gain). Infra (`--include-real`, `--bank`) gardée pour re-tester si un set capsule validé plus large arrive.
 
 → Le gate ② n'est pas débloquable maintenant. Leviers restants : **cause A (fragmentation YOLO)** — proposeur, sans data, le plus gros morceau du faux-lot ; ou **option B (probe is-coin entraînée)** — needs ~150 ex. labellisés. **v1 reste `① nms_only`.**
+
+## 8. Câblage prod derrière flag + re-crop test (2026-06-05)
+
+Demande PO : tester l'impact RÉEL du câblage census sur le flow `/lab/cohorts/...` (search→crop→valide→train). Câblé **derrière flag `EURIO_CENSUS_DETECT=1` (OFF par défaut)** dans `scan/normalize_snap.detect_circles_multi` : conf YOLO 0.35→0.10, `nms_concentric` (gardes taille+bord) en amont, **off_edge + low_structure désactivés** (ils jetaient les pièces emballées) ; Hough refine/polish/rim-refine de qualité conservés. Comparateur réutilisable `scripts/compare_census_recrop.py` (mesure PURE, ne mute pas la base).
+
+**Re-crop test sur `at-2002-2eur-standard-1st-map` (46 raws téléchargés)** :
+
+| | PROD (flag off) | CENSUS (flag on) |
+|---|---|---|
+| crops produits | 24 | **126** (×5.25) |
+| raws à 0 crop | 32 | **11** |
+
+**Recall réel : 21/32 zéro-crops récupérés.** MAIS audit visuel (contact sheet) : la majorité des +102 crops = **fragments** (bouts de lettres `R`/`RO`/`EUR`, anneaux internes, bords partiels), PAS des images de training. Cause : YOLO@0.10 détecte des *bouts* de pièce sans la pièce entière → `nms_concentric` n'a pas de boîte parente pour les absorber, et le gate is-coin qui les filtrerait n'est pas prêt.
+
+**Verdict : NE PAS adopter en prod.** Pour le *comptage* lot/single, OK (l'asymétrie tolère le sur-comptage). Pour *produire des crops training propres*, non — ça échange zéro-crops contre crops-fragments. **Le re-crop test confirme la décision bench-only.** Flag gardé OFF (0 impact) + comparateur, pour re-tester quand le maillon is-coin / anti-fragment sera prêt.

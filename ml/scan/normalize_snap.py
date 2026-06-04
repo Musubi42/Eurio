@@ -30,6 +30,7 @@ Constants:
 """
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -473,6 +474,21 @@ _YOLO_MODEL_PATH = (
 _YOLO_CONF_THRESHOLD = 0.35
 _YOLO_IOU_THRESHOLD = 0.45
 _YOLO_IMGSZ = 640
+
+# --- Mode CENSUS (flag, OFF par défaut) -----------------------------------
+# Activé par `EURIO_CENSUS_DETECT=1`. Bascule la détection listing sur les
+# réglages "haut rappel" validés au bench census (docs/cohort-pipeline/
+# census-detector-design.md §6) : conf YOLO 0.35→0.10, dédup `nms_concentric`
+# (gardes taille+bord), et RELÂCHE les post-filtres stricts qui jetaient des
+# pièces VISIBLES (rmin 0.08→0.04, plus de `low_structure`, plus de `off_edge`).
+# Mesuré : récupère ~89% des zéro-crop, faux-single détecteur 48%→0%. Contrepartie :
+# plus de crops (dont fragments sur singles) → review plus grosse. Le Hough refine /
+# polish / rim-refine de qualité de crop sont CONSERVÉS (ils n'affectent pas le rappel).
+def _census_detect_enabled() -> bool:
+    return os.environ.get("EURIO_CENSUS_DETECT") == "1"
+
+_CENSUS_YOLO_CONF = 0.10
+_CENSUS_RMIN_FRAC = 0.04
 _YOLO_BBOX_MARGIN_FRAC = 0.00  # ROI = bbox strict. +15% laissait Hough voir capsule/arches autour
                                 # → votes parasites pour cercles non-rim sur coincards Meritxell-style.
 
@@ -537,14 +553,16 @@ def _get_yolo_model() -> Any:
     return _yolo_model_cache
 
 
-def _yolo_detect_bboxes(bgr: np.ndarray) -> list[tuple[float, float, float, float, float]]:
+def _yolo_detect_bboxes(bgr: np.ndarray,
+                        conf: float = _YOLO_CONF_THRESHOLD,
+                        ) -> list[tuple[float, float, float, float, float]]:
     """Run YOLO on a listing image. Returns a list of
     `(x1, y1, x2, y2, conf)` in **native pixel** space, ordered by
     descending confidence."""
     model = _get_yolo_model()
     res = model.predict(
         bgr, imgsz=_YOLO_IMGSZ,
-        conf=_YOLO_CONF_THRESHOLD, iou=_YOLO_IOU_THRESHOLD,
+        conf=conf, iou=_YOLO_IOU_THRESHOLD,
         verbose=False,
     )
     if not res:
@@ -726,14 +744,23 @@ def detect_circles_multi(bgr: np.ndarray) -> list[CircleDetection]:
     """
     if bgr is None or bgr.size == 0:
         return []
+    census = _census_detect_enabled()
     h_img, w_img = bgr.shape[:2]
     short = min(h_img, w_img)
-    rmin_strict = int(short * _LISTING_RMIN_FRAC_STRICT)
+    rmin_frac = _CENSUS_RMIN_FRAC if census else _LISTING_RMIN_FRAC_STRICT
+    rmin_strict = int(short * rmin_frac)
     rmax_strict = int(short * _LISTING_RMAX_FRAC_STRICT)
     edge_margin = max(0, int(short * _LISTING_EDGE_MARGIN_FRAC))
 
     bbox_min_r = _YOLO_BBOX_MIN_RADIUS_FRAC * rmin_strict
-    bboxes = _yolo_detect_bboxes(bgr)
+    bboxes = _yolo_detect_bboxes(bgr, conf=_CENSUS_YOLO_CONF if census else _YOLO_CONF_THRESHOLD)
+    if census and bboxes:
+        # Dédup concentrique/contenu (gardes taille+bord) avant refine/crop — évite
+        # de cropper N fois la même pièce (anneau bimétal, fragments). Cf. scan.census.
+        from scan.census import nms_concentric
+        _kept = set(nms_concentric([(b[0], b[1], b[2], b[3]) for b in bboxes],
+                                   img_wh=(w_img, h_img)))
+        bboxes = [b for b in bboxes if (b[0], b[1], b[2], b[3]) in _kept]
     # Pré-calcul du Laplacian pour le structure guard. Une seule passe par image,
     # puis on échantillonne par détection. Coût ~5-10ms sur 1600x1600.
     _gray_full = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
@@ -796,12 +823,16 @@ def detect_circles_multi(bgr: np.ndarray) -> list[CircleDetection]:
         elif r_n > rmax_strict:
             accepted = False
             reason = "radius_too_large"
-        elif (cx_n - r_n < edge_margin or cy_n - r_n < edge_margin
-              or cx_n + r_n > w_img - edge_margin
-              or cy_n + r_n > h_img - edge_margin):
+        elif not census and (cx_n - r_n < edge_margin or cy_n - r_n < edge_margin
+                             or cx_n + r_n > w_img - edge_margin
+                             or cy_n + r_n > h_img - edge_margin):
+            # off_edge : désactivé en census (pièces emballées/partielles touchent
+            # souvent le bord → ce filtre les jetait = zéro-crop).
             accepted = False
             reason = "off_edge"
-        elif _disc_lap_meanabs(_lap_full, cx_n, cy_n, r_n) < _STRUCTURE_MIN_LAP_MEANABS:
+        elif not census and _disc_lap_meanabs(_lap_full, cx_n, cy_n, r_n) < _STRUCTURE_MIN_LAP_MEANABS:
+            # low_structure : désactivé en census (rejetait des pièces emballées à
+            # surface uniforme = une grosse part des zéro-crop).
             accepted = False
             reason = "low_structure"
 
