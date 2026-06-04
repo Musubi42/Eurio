@@ -8,7 +8,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Search } from 'lucide-vue-next'
 import {
-  DENOMINATIONS, EURO_COUNTRIES, fuzzySearchCoins, searchCoins, YEAR_RANGE,
+  DENOMINATIONS, EURO_COUNTRIES, fuzzySearchCoins, searchCoins, searchCoinsByText, YEAR_RANGE,
   type CoinSearchEntry,
 } from '../composables/useCoinsSearch'
 import CoinHoverPreview from './CoinHoverPreview.vue'
@@ -128,6 +128,54 @@ function handleKeydown(e: KeyboardEvent) {
 onMounted(() => window.addEventListener('keydown', handleKeydown))
 onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
 
+// ─── Direct autocomplete (rescue cross-classe) ──────────────────────────
+// Champ libre: saisie eurio_id ou mot-clé, dropdown inline, fermeture blur.
+
+const directQuery = ref('')
+const directResults = ref<CoinSearchEntry[]>([])
+const directLoading = ref(false)
+const showDirectDrop = ref(false)
+
+let directDebounceTimer: ReturnType<typeof setTimeout> | null = null
+
+watch(directQuery, (q) => {
+  if (directDebounceTimer !== null) {
+    clearTimeout(directDebounceTimer)
+    directDebounceTimer = null
+  }
+  if (q.trim().length < 2) {
+    directResults.value = []
+    showDirectDrop.value = false
+    return
+  }
+  directDebounceTimer = setTimeout(async () => {
+    directLoading.value = true
+    try {
+      directResults.value = await searchCoinsByText(q, { limit: 20 })
+      showDirectDrop.value = true
+    } catch {
+      directResults.value = []
+      showDirectDrop.value = false
+    } finally {
+      directLoading.value = false
+    }
+  }, 300)
+})
+
+function onDirectSelect(entry: CoinSearchEntry) {
+  emit('select', entry)
+  directQuery.value = ''
+  directResults.value = []
+  showDirectDrop.value = false
+}
+
+function onDirectBlur() {
+  // Délai pour laisser le clic sur un item se propager avant la fermeture.
+  setTimeout(() => {
+    showDirectDrop.value = false
+  }, 150)
+}
+
 // ─── Hover preview ──────────────────────────────────────────────────────
 
 const hoveredKey = ref<string | null>(null)
@@ -158,6 +206,75 @@ function onRowLeave(eurioId: string) {
       background: 'color-mix(in srgb, var(--gold-600) 3%, var(--surface))',
     }"
   >
+    <!-- ─── Recherche directe eurio_id / mot-clé (rescue cross-classe) ─── -->
+    <div class="relative mb-3 shrink-0">
+      <div
+        class="flex items-center gap-2 rounded-md border px-2 py-1.5"
+        :style="{ borderColor: 'var(--surface-3)', background: 'var(--surface-1)' }"
+      >
+        <Search class="h-3 w-3 shrink-0" style="color: var(--ink-500);" />
+        <input
+          v-model="directQuery"
+          type="text"
+          placeholder="eurio_id ou mot-clé…"
+          class="flex-1 bg-transparent font-mono text-[11px] outline-none"
+          style="color: var(--ink);"
+          @blur="onDirectBlur"
+        />
+        <span
+          v-if="directLoading"
+          class="font-mono text-[9px]"
+          style="color: var(--ink-400);"
+        >…</span>
+      </div>
+
+      <!-- Dropdown résultats -->
+      <div
+        v-if="showDirectDrop && directResults.length"
+        class="absolute left-0 right-0 z-20 mt-0.5 max-h-48 overflow-y-auto rounded-md border shadow-lg"
+        :style="{ background: 'var(--surface)', borderColor: 'var(--surface-3)' }"
+      >
+        <button
+          v-for="r in directResults"
+          :key="r.eurio_id"
+          type="button"
+          class="flex w-full items-center gap-2 px-2 py-1.5 text-left transition-colors"
+          :style="{ background: 'transparent' }"
+          @mousedown.prevent
+          @click="onDirectSelect(r)"
+          @mouseover="($event.currentTarget as HTMLElement).style.background = 'var(--surface-1)'"
+          @mouseleave="($event.currentTarget as HTMLElement).style.background = 'transparent'"
+        >
+          <img
+            v-if="r.canonical_thumb_url"
+            :src="r.canonical_thumb_url"
+            :alt="r.eurio_id"
+            class="h-7 w-7 shrink-0 rounded object-cover"
+            style="background: var(--surface-2);"
+          />
+          <div
+            v-else
+            class="h-7 w-7 shrink-0 rounded"
+            style="background: var(--surface-2);"
+          />
+          <div class="min-w-0 flex-1">
+            <p
+              class="truncate font-mono text-[11px] font-semibold"
+              style="color: var(--ink);"
+            >
+              {{ r.eurio_id }}
+            </p>
+            <p
+              class="truncate text-[10px]"
+              style="color: var(--ink-500);"
+            >
+              {{ r.denomination }} · {{ r.year }}
+            </p>
+          </div>
+        </button>
+      </div>
+    </div>
+
     <div class="shrink-0">
     <header class="flex items-baseline justify-between gap-3">
       <p

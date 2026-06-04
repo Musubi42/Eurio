@@ -97,6 +97,20 @@ export interface EbayScrapeTriggerResult {
   non_scrapable: string[] | null
 }
 
+/**
+ * Sous-ensemble de RunSnapshot pour le badge run live dans CohortDrawerEbay.
+ * Peuplé via GET /sources/ebay/runs?status=running (SourceRunListItem étendu).
+ */
+export interface EbayRunLive {
+  id: string
+  status: string          // 'running'
+  current_step: string | null
+  started_at: string
+  n_raws_added: number
+  n_crops_added: number
+  n_errors: number
+}
+
 // ─── eBay — sourcing & funnel (§C3, scopé cohort) ────────────────────────
 // Voir GET /lab/cohorts/{id}/funnel-status (ml/api/lab_routes.py). Deux mailles :
 // per_coin = TAIL précis (post-attribution) + sourcing (train/réels) ;
@@ -114,6 +128,9 @@ export interface CohortFunnelCoin {
   scrapable: boolean
   n_source_images: number // listings retenus (attribués à ce coin)
   n_crops: number
+  // Téléchargement (MinIO write-through) : success vs failed (retry-able)
+  n_downloaded: number        // source_images avec download_status='success'
+  n_download_failed: number   // source_images avec download_status='failed'
   by_route_decision: CohortFunnelRoute[]
   n_pending: number
   n_review_single: number
@@ -127,6 +144,12 @@ export interface CohortFunnelCoin {
   n_training_eligible: number
   n_real_sources: number
   enough: boolean
+  // Cible & funnel (C3) : images de référence canoniques + projection training.
+  n_numista_ref: number   // 1 si obverse Numista canonique disponible (coin_canonical_images)
+  n_bce_ref: number       // 1 si obverse BCE canonique disponible
+  n_projected: number     // 10 * (n_training_eligible + n_numista_ref + n_bce_ref)
+  gap_to_target: number   // max(0, training_target - n_projected)
+  never_scraped: boolean  // n_source_images == 0
   // Run le plus récent ayant produit des listings pour ce coin → cible du
   // deep-link bench. n_runs > 1 = limite v1 connue (on linke le dernier).
   latest_run_id: string | null
@@ -157,6 +180,21 @@ export interface CohortFunnelHeadGroup {
   discarded_by_reason: CohortFunnelDiscardReason[]
 }
 
+// C8 cohort-pipeline : compteurs dédup eBay scopé cohort (GET /lab/cohorts/{id}/dedup-status).
+// discovery_log est global (pas de FK cohort) ; discarded_listings scopé via target_eurio_id.
+export interface CohortDedupStatus {
+  cohort_id: string
+  // discovery_log global (pas de FK cohort)
+  scope_note: string
+  n_unique_seen: number          // discovery_log eBay global (toutes cohortes)
+  // discarded_listings scopé aux eurio_ids de la cohort
+  n_discarded_total: number
+  n_discarded_unique: number
+  n_duplicates: number           // total - unique
+  n_absent_from_discovery: number // unique non couverts par discovery_log
+  pct_absent: number | null      // % absents (null si 0 discardés)
+}
+
 export interface CohortFunnelStatus {
   cohort_id: string
   per_coin: CohortFunnelCoin[]
@@ -170,6 +208,55 @@ export interface CohortFunnelStatus {
   non_scrapable: string[]
   quota: EbayQuotaInfo | null
   min_real_sources: number
+  training_target: number
+}
+
+// C2 cohort-pipeline : résumé des rejets eBay scopé cohort (GET /lab/cohorts/{id}/discard-summary).
+export interface DiscardSummaryRow {
+  reason_class: string
+  n: number
+  is_rescue_candidate: 1 | 0 | null
+}
+
+// C5 cohort-pipeline : détail rescue par pièce (GET /lab/cohorts/{id}/rescue-candidates).
+export interface DiscardReasonRow {
+  reason: string
+  n: number
+  is_rescue_candidate: boolean
+  rescue_eurio_id: string | null
+  // IDs individuels des discarded_listings à rescue (présents si is_rescue_candidate=true)
+  discard_ids: string[]
+}
+
+export interface DiscardSummaryClass {
+  eurio_id: string
+  total_discards: number
+  by_reason: DiscardReasonRow[]
+  rescue_count: number
+}
+
+export interface RescueCandidates {
+  cohort_id: string
+  per_class: DiscardSummaryClass[]
+  noise_total: number
+  noise_by_reason: Array<{ reason: string; n: number }>
+}
+
+// Réponse POST /lab/discarded/{id}/rescue
+export interface RescueResult {
+  discard_id: string
+  eurio_id: string
+  n_persisted: number
+  already_existed: boolean
+}
+
+export interface CohortDiscardSummary {
+  cohort_id: string
+  total: number
+  rows: DiscardSummaryRow[]
+  rescue_total: number
+  noise_total: number
+  ambiguous_total: number
 }
 
 export interface BenchmarkSummary {

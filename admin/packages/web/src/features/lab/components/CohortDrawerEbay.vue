@@ -8,11 +8,14 @@
 
 import DrawerSection from '@/features/lab/components/DrawerSection.vue'
 import {
+  useCohortDedupStatusQuery,
   useCohortFunnelStatusQuery,
+  useDiscardSummaryQuery,
+  useEbayRunningRunsQuery,
   useTriggerCoinEbayScrapeMutation,
   useTriggerCohortEbayScrapeMutation,
 } from '@/features/lab/composables/useLabQueries'
-import type { CohortFunnelCoin, CohortSummary, DrawerState } from '@/features/lab/types'
+import type { CohortFunnelCoin, CohortSummary, DrawerState, EbayRunLive } from '@/features/lab/types'
 import { ArrowUpRight, Crop as CropIcon, Filter, Loader2, RefreshCw, Search } from 'lucide-vue-next'
 import { computed, ref } from 'vue'
 
@@ -22,14 +25,18 @@ const props = defineProps<{
 }>()
 
 const statusQuery = useCohortFunnelStatusQuery(() => props.cohortId)
+const discardQuery = useDiscardSummaryQuery(() => props.cohortId)
 const scrape = useTriggerCohortEbayScrapeMutation(() => props.cohortId)
 const coinScrape = useTriggerCoinEbayScrapeMutation(() => props.cohortId)
 
 const status = computed(() => statusQuery.data.value ?? null)
 const loading = computed(() => statusQuery.isPending.value)
+const dedupQuery = useCohortDedupStatusQuery(() => props.cohortId)
+const dedup = computed(() => dedupQuery.data.value ?? null)
+const discardSummary = computed(() => discardQuery.data.value ?? null)
 const perCoin = computed<CohortFunnelCoin[]>(() => status.value?.per_coin ?? [])
 const groups = computed(() => status.value?.head.groups ?? [])
-const minReal = computed(() => status.value?.min_real_sources ?? 15)
+const trainingTarget = computed(() => status.value?.training_target ?? 100)
 const quota = computed(() => status.value?.quota ?? null)
 const nonScrapable = computed(() => status.value?.non_scrapable ?? [])
 
@@ -44,9 +51,9 @@ const totals = computed(() => {
     rejected: sum(c => c.n_rejected),
   }
 })
-// Pièces scrapables sous le seuil de sources réelles → candidates au rescrape.
+// Pièces scrapables avec un gap de cible → candidates au rescrape.
 const flaggedCount = computed(
-  () => perCoin.value.filter(c => c.scrapable && !c.enough).length,
+  () => perCoin.value.filter(c => c.scrapable && (c.gap_to_target ?? (!c.enough ? 1 : 0)) > 0).length,
 )
 
 const state = computed<DrawerState>(() => {
@@ -60,7 +67,7 @@ const summary = computed(() => {
   if (loading.value || !status.value) return 'Chargement…'
   const t = totals.value
   if (t.listings === 0) return 'Aucun listing scrapé pour cette cohort'
-  const flag = flaggedCount.value > 0 ? ` · ${flaggedCount.value} sous ${minReal.value} réels` : ''
+  const flag = flaggedCount.value > 0 ? ` · ${flaggedCount.value} sous cible` : ''
   const non = nonScrapable.value.length > 0 ? ` · ${nonScrapable.value.length} hors eBay` : ''
   return `${fmt(t.listings)} → ${fmt(t.crops)} crops → ${fmt(t.review)} en review${flag}${non}`
 })
@@ -95,6 +102,11 @@ async function onScrape() {
   const res = await scrape.mutateAsync()
   triggered.value = res.run_id
 }
+
+// ── Badge run live (polling 3s) ────────────────────────────────────────────
+const runningRunsQuery = useEbayRunningRunsQuery()
+const runningRuns = computed<EbayRunLive[]>(() => runningRunsQuery.data.value ?? [])
+const liveRun = computed<EbayRunLive | null>(() => runningRuns.value[0] ?? null)
 
 // Rescrape ciblé par pièce. On suit la pièce en cours + le run lancé.
 const scrapingCoin = ref<string | null>(null)
@@ -153,6 +165,13 @@ async function onRescrape(c: CohortFunnelCoin) {
           </div>
         </div>
 
+        <!-- Badge run live (visible uniquement si un run eBay tourne) -->
+        <div v-if="liveRun" class="live-badge">
+          <Loader2 class="h-3 w-3 animate-spin" />
+          run {{ liveRun.id.slice(0, 8) }} · {{ liveRun.current_step ?? 'init' }}
+          <span class="font-mono">+{{ liveRun.n_raws_added }} raws · +{{ liveRun.n_crops_added }} crops</span>
+        </div>
+
         <!-- Barre d'action scrape cohort -->
         <div class="mt-3 flex flex-wrap items-center gap-3">
           <button
@@ -182,6 +201,13 @@ async function onRescrape(c: CohortFunnelCoin) {
             run {{ triggered.slice(0, 8) }} lancé →
             <RouterLink to="/review" style="text-decoration: underline;">review</RouterLink>
           </span>
+          <RouterLink
+            :to="{ path: '/crop-bench', query: { cohort: cohortId } }"
+            class="coin__audit"
+            title="Banc de qualité crop eBay — scopé sur cette cohorte"
+          >
+            <CropIcon class="h-3.5 w-3.5" /> Voir qualité crops
+          </RouterLink>
         </div>
 
         <!-- Liste de row-cards par coin -->
@@ -195,6 +221,11 @@ async function onRescrape(c: CohortFunnelCoin) {
             <div class="coin__l1">
               <span class="coin__id">
                 <span
+                  v-if="c.never_scraped"
+                  class="coin__badge coin__badge--danger"
+                  title="Jamais scrapé — 0 listing eBay pour cette pièce"
+                >jamais scrapé</span>
+                <span
                   v-if="!c.scrapable"
                   class="coin__badge"
                   title="hors découverte groupée eBay — Numista-only"
@@ -202,15 +233,20 @@ async function onRescrape(c: CohortFunnelCoin) {
                 {{ c.eurio_id }}
               </span>
               <span class="coin__sources">
-                <span class="coin__src">train <b>{{ c.n_training_eligible }}</b></span>
-                <span class="coin__sep">·</span>
-                <span
-                  class="coin__src"
-                  :title="c.enough ? `≥ ${minReal} sources réelles` : `sous le seuil (${minReal}) — rescrape conseillé`"
-                >réels
-                  <b :style="{ color: c.enough ? 'var(--success)' : 'var(--warning)', fontWeight: 600 }">
-                    {{ c.n_real_sources }}<span v-if="!c.enough"> ⚠</span>
+                <span class="coin__proj">
+                  <span class="coin__proj-bar">
+                    <span
+                      class="coin__proj-fill"
+                      :style="{
+                        width: Math.min(100, Math.round((c.n_projected ?? c.n_real_sources * 10) / trainingTarget * 100)) + '%',
+                        background: (c.gap_to_target ?? (c.enough ? 0 : 1)) === 0 ? 'var(--success)' : 'var(--warning)',
+                      }"
+                    />
+                  </span>
+                  <b :style="{ color: (c.gap_to_target ?? (c.enough ? 0 : 1)) === 0 ? 'var(--success)' : 'var(--warning)' }">
+                    {{ c.n_projected ?? c.n_real_sources * 10 }}
                   </b>
+                  <span style="color: var(--ink-400);">/ {{ trainingTarget }}</span>
                 </span>
               </span>
             </div>
@@ -231,6 +267,14 @@ async function onRescrape(c: CohortFunnelCoin) {
                   <span class="coin__dot">·</span>
                   <span style="color: var(--ink-500);">{{ c.n_rejected }} rejeté</span>
                 </template>
+                <template v-if="c.n_downloaded > 0 || c.n_download_failed > 0">
+                  <span class="coin__arr">→</span>
+                  <b>{{ c.n_downloaded }}</b> DL
+                  <template v-if="c.n_download_failed > 0">
+                    <span class="coin__dot">·</span>
+                    <span style="color: var(--danger);">{{ c.n_download_failed }} ✗</span>
+                  </template>
+                </template>
               </template>
               <span v-else style="color: var(--ink-400);">aucun listing scrapé</span>
             </div>
@@ -238,12 +282,12 @@ async function onRescrape(c: CohortFunnelCoin) {
             <!-- L3 : actions -->
             <div class="coin__actions">
               <button
-                v-if="c.scrapable"
+                v-if="c.scrapable && (c.gap_to_target ?? (!c.enough ? 1 : 0)) > 0"
                 type="button"
                 class="coin__btn"
                 :disabled="scrapingCoin !== null"
                 :style="{ opacity: scrapingCoin !== null ? 0.5 : 1, cursor: scrapingCoin !== null ? 'not-allowed' : 'pointer' }"
-                :title="`Rescrape eBay ciblé sur ${c.eurio_id} (consomme le quota)`"
+                :title="`Rescrape eBay ciblé sur ${c.eurio_id} (gap ${c.gap_to_target ?? '?'} img)`"
                 @click="onRescrape(c)"
               >
                 <Loader2 v-if="scrapingCoin === c.eurio_id" class="h-3 w-3 animate-spin" />
@@ -251,7 +295,8 @@ async function onRescrape(c: CohortFunnelCoin) {
                 <span v-if="coinTriggered[c.eurio_id]" class="font-mono">{{ coinTriggered[c.eurio_id].slice(0, 6) }}</span>
                 <span v-else>rescrape</span>
               </button>
-              <span v-else class="coin__muted">hors découverte eBay</span>
+              <span v-else-if="!c.scrapable" class="coin__muted">hors découverte eBay</span>
+              <span v-else class="coin__muted" style="color: var(--success);">cible atteinte</span>
 
               <template v-if="c.latest_run_id">
                 <RouterLink
@@ -328,13 +373,78 @@ async function onRescrape(c: CohortFunnelCoin) {
           </p>
         </details>
 
+        <!-- C8 : Dédup / Déjà-vu (informatif, lecture seule) -->
+        <details class="mt-2 dedup">
+          <summary class="dedup__summary">
+            Dédup / Déjà-vu
+            <template v-if="dedup">
+              — {{ dedup.n_unique_seen.toLocaleString('fr-FR') }} vus au total
+              <span v-if="dedup.n_duplicates > 0" style="color: var(--warning);">
+                · {{ dedup.n_duplicates.toLocaleString('fr-FR') }} doublons discarded
+              </span>
+            </template>
+          </summary>
+          <div v-if="dedupQuery.isPending.value" class="mt-2 text-xs" style="color: var(--ink-400);">Chargement…</div>
+          <template v-else-if="dedup">
+            <dl class="mt-2 dedup__grid">
+              <dt title="Listings distincts enregistrés dans discovery_log eBay (toutes passes, global)">Vus (discovery_log)</dt>
+              <dd>{{ dedup.n_unique_seen.toLocaleString('fr-FR') }}</dd>
+              <dt title="Lignes totales dans discarded_listings pour les pièces de cette cohort">Discardés (total)</dt>
+              <dd>{{ dedup.n_discarded_total.toLocaleString('fr-FR') }}</dd>
+              <dt title="source_ref distincts discardés — même listing revu plusieurs fois = doublon">Discardés (uniques)</dt>
+              <dd>{{ dedup.n_discarded_unique.toLocaleString('fr-FR') }}</dd>
+              <dt title="Doublons = total - uniques. Cause : UNIQUE(source, source_ref) manquant sur discarded_listings.">Doublons discarded</dt>
+              <dd :style="{ color: dedup.n_duplicates > 0 ? 'var(--warning)' : 'var(--success)' }">
+                {{ dedup.n_duplicates.toLocaleString('fr-FR') }}
+              </dd>
+              <dt title="Discardés uniques absents de discovery_log → re-fetch infini possible">Absents discovery_log</dt>
+              <dd :style="{ color: (dedup.pct_absent ?? 0) > 50 ? 'var(--danger)' : 'var(--ink)' }">
+                {{ dedup.n_absent_from_discovery.toLocaleString('fr-FR') }}
+                <span v-if="dedup.pct_absent !== null" style="font-size: 10px; color: var(--ink-400);"> ({{ dedup.pct_absent }}%)</span>
+              </dd>
+            </dl>
+            <p class="mt-2 text-[10px]" style="color: var(--ink-400);">{{ dedup.scope_note }}</p>
+          </template>
+        </details>
+
+        <!-- C2 : résumé récupérabilité des rejets eBay (scopé cohort) -->
+        <div
+          v-if="discardSummary && discardSummary.total > 0"
+          class="mt-3 rounded border px-3 py-2"
+          style="border-color: var(--surface-3); background: var(--surface);"
+        >
+          <p class="mb-1.5 text-[10px] font-medium uppercase" style="letter-spacing: var(--tracking-eyebrow); color: var(--ink-400);">
+            rejets — récupérabilité ({{ discardSummary.total }} total)
+          </p>
+          <div class="flex gap-2 flex-wrap">
+            <span
+              class="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[11px] font-medium"
+              style="background: color-mix(in srgb, var(--success) 12%, transparent); color: var(--success);"
+            >
+              {{ discardSummary.rescue_total }} récupérables 1-clic
+            </span>
+            <span
+              class="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[11px] font-medium"
+              style="background: color-mix(in srgb, var(--danger) 10%, transparent); color: var(--danger);"
+            >
+              {{ discardSummary.noise_total }} vrai bruit
+            </span>
+            <span
+              v-if="discardSummary.ambiguous_total > 0"
+              class="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[11px] font-medium"
+              style="background: var(--surface-2); color: var(--ink-400);"
+            >
+              {{ discardSummary.ambiguous_total }} ambigus
+            </span>
+          </div>
+        </div>
+
         <p class="mt-3 text-[10px]" style="color: var(--ink-400);">
-          <strong>train</strong> = crops marqués training-eligible en review ;
-          <strong>réels</strong> = sources distinctes (obverse + eBay reviewé),
-          <span style="color: var(--warning);">⚠ sous {{ minReal }}</span> = l'augmentation
-          gonflerait → <strong>rescrape</strong>. Clique <strong>filtres</strong> pour auditer le
-          theme-matcher (ou <strong>crops</strong> pour la forensics), puis tranche dans
-          <RouterLink to="/review" style="text-decoration: underline;">/review</RouterLink> (§C4).
+          <strong>barre</strong> = images training projetées (×10 augmentation) vs cible {{ trainingTarget }} ;
+          <span style="color: var(--success);">vert</span> = cible atteinte, <span style="color: var(--warning);">orange</span> = sous cible → rescrape conseillé.
+          <span style="color: var(--danger);">jamais scrapé</span> = 0 listing eBay existant pour cette pièce.
+          Clique <strong>filtres</strong> pour auditer le theme-matcher (ou <strong>crops</strong> pour la forensics), puis tranche dans
+          <RouterLink to="/review" style="text-decoration: underline;">/review</RouterLink>.
         </p>
       </template>
       <div v-else class="text-xs" style="color: var(--danger);">
@@ -416,14 +526,28 @@ async function onRescrape(c: CohortFunnelCoin) {
   background: var(--surface-2);
   color: var(--ink-400);
 }
+/* Badge jamais-scrapé */
+.coin__badge--danger {
+  background: color-mix(in srgb, var(--danger) 12%, var(--surface));
+  color: var(--danger);
+}
 .coin__sources {
   flex-shrink: 0;
   font-size: 11px;
   color: var(--ink-400);
   white-space: nowrap;
 }
-.coin__src b { color: var(--ink); font-variant-numeric: tabular-nums; }
-.coin__sep { margin: 0 6px; color: var(--ink-300); }
+/* Barre de progression enrichissement */
+.coin__proj { display: flex; align-items: center; gap: 5px; }
+.coin__proj-bar {
+  width: 52px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+.coin__proj-fill { display: block; height: 100%; border-radius: 2px; transition: width 300ms ease; }
+.coin__proj b { font-size: 11px; font-variant-numeric: tabular-nums; font-weight: 600; }
 
 .coin__funnel {
   font-size: 12.5px;
@@ -470,6 +594,19 @@ async function onRescrape(c: CohortFunnelCoin) {
 .coin__audit--muted:hover { background: var(--surface-3); }
 .coin__muted { font-size: 10px; color: var(--ink-400); }
 
+/* Badge run live */
+.live-badge {
+  margin-top: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-size: 11px;
+  background: color-mix(in srgb, var(--indigo-700) 10%, var(--surface));
+  color: var(--indigo-700);
+}
+
 /* Découverte */
 .head__summary {
   cursor: pointer;
@@ -479,4 +616,22 @@ async function onRescrape(c: CohortFunnelCoin) {
   user-select: none;
 }
 .head__summary:hover { color: var(--ink); }
+
+/* Dédup / Déjà-vu (C8) */
+.dedup__summary {
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ink-500);
+  user-select: none;
+}
+.dedup__summary:hover { color: var(--ink); }
+.dedup__grid {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 3px 16px;
+  font-size: 11px;
+}
+.dedup__grid dt { color: var(--ink-400); }
+.dedup__grid dd { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink); }
 </style>

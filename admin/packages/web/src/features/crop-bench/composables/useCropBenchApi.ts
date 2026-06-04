@@ -101,6 +101,7 @@ export interface CropBenchSampleParams {
   bias?: string | null
   strata?: boolean
   seed?: number
+  eurio_ids?: string[] | null
 }
 
 export interface CropBenchRecrop {
@@ -157,6 +158,7 @@ export async function fetchCropBenchSample(
   if (params.bias) qs.set('bias', params.bias)
   if (params.strata) qs.set('strata', 'true')
   if (params.seed != null) qs.set('seed', String(params.seed))
+  if (params.eurio_ids && params.eurio_ids.length > 0) qs.set('eurio_ids', params.eurio_ids.join(','))
   const q = qs.toString()
   return getJson<CropBenchSampleResponse>(
     `${ML_API}/crop-bench/sample${q ? `?${q}` : ''}`,

@@ -16,6 +16,9 @@ export interface ReviewKeybindHandlers {
   // du badge ; n'interfère pas avec le ⏎ d'attribution.
   onCycleKind: () => void
   onCycleCondition: () => void
+  // Chunk Cr — accepter la suggestion DINOv2 top-1 en 1 clic.
+  // No-op si dino_top1 est null (le callsite vérifie avant d'agir).
+  onAcceptDino?: () => void
 }
 
 function isTypingTarget(el: EventTarget | null): boolean {
@@ -94,6 +97,11 @@ export function useReviewKeybinds(
       case 'c':
       case 'C':
         handlers.onCycleCondition()
+        e.preventDefault()
+        break
+      case 'd':
+      case 'D':
+        handlers.onAcceptDino?.()
         e.preventDefault()
         break
     }

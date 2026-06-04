@@ -67,6 +67,11 @@ export interface ReviewItem {
   // (target_candidate null, verdict ambigu) : le reviewer choisit la
   // sœur d'un clic au lieu de passer par la recherche libre.
   group_candidates?: ReviewCandidate[]
+  // Chunk Cr — top-1 DINOv2 inliné (dinov2-vits14, 2eur_commemo).
+  // Préférence country-band > global. null si pas de prédiction Dino ou
+  // eurio_id mort. Sert au bouton « Accept Dino (D) » 1-clic dans
+  // SingleReviewView — face hardcodée obverse (ancres = obverses Numista).
+  dino_top1?: ReviewCandidate | null
   // Chunk C4 — contexte listing pour la carte d'audit « Listing & marché ».
   // Issu de C1 (source_images) + C2 (listing_text_signals). Optionnels :
   // null sur les rows antérieures / les mocks.
@@ -133,6 +138,12 @@ function promoteItemUrls(r: ReviewItem): ReviewItem {
           canonical_thumb_url: promoteUrl(r.target_candidate.canonical_thumb_url),
         }
       : r.target_candidate,
+    dino_top1: r.dino_top1
+      ? {
+          ...r.dino_top1,
+          canonical_thumb_url: promoteUrl(r.dino_top1.canonical_thumb_url),
+        }
+      : r.dino_top1,
   }
 }
 

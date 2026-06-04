@@ -162,6 +162,31 @@ export async function fetchCohortFunnelStatus(
 }
 
 /**
+ * Résumé des rejets eBay scopé aux pièces de la cohort (C2).
+ * Raisons normalisées (commemo_in_standard_run:* → une seule classe).
+ * Widget §C3 — alimente rescue_total / noise_total / ambiguous_total.
+ */
+export async function fetchCohortDiscardSummary(
+  cohortId: string,
+): Promise<import('../types').CohortDiscardSummary> {
+  return json<import('../types').CohortDiscardSummary>(
+    `/lab/cohorts/${encodeURIComponent(cohortId)}/discard-summary`,
+  )
+}
+
+/**
+ * Compteurs dédup eBay scopé cohort (C8) — lecture seule, zéro appel eBay.
+ * n_unique_seen = discovery_log global ; discarded scopé aux eurio_ids de la cohort.
+ */
+export async function fetchCohortDedupStatus(
+  cohortId: string,
+): Promise<import('../types').CohortDedupStatus> {
+  return json<import('../types').CohortDedupStatus>(
+    `/lab/cohorts/${encodeURIComponent(cohortId)}/dedup-status`,
+  )
+}
+
+/**
  * Trigger a cohort-scoped eBay scrape via the sources pipeline.
  * Consumes the user's eBay quota — call only on explicit user action.
  * The backend expands the cohort to its discovery groups (cohort_id).
@@ -186,6 +211,43 @@ export async function triggerCoinEbayScrape(
   return json<import('../types').EbayScrapeTriggerResult>(
     `/sources/ebay/runs`,
     { method: 'POST', body: JSON.stringify({ target_eurio_id: targetEurioId }) },
+  )
+}
+
+/**
+ * Détail des candidates au rescue, groupées par eurio_id (C5).
+ * Contrairement à fetchCohortDiscardSummary (agrégat normalisé §C3), renvoie
+ * le détail par pièce avec les IDs individuels pour l'action 1-clic Reclasser.
+ */
+export async function fetchRescueCandidates(
+  cohortId: string,
+): Promise<import('../types').RescueCandidates> {
+  return json<import('../types').RescueCandidates>(
+    `/lab/cohorts/${encodeURIComponent(cohortId)}/rescue-candidates`,
+  )
+}
+
+/**
+ * Reclasse un discard eBay vers son eurio_id cible (C5).
+ * Insère dans source_images si absent (dédup sur source+source_ref).
+ * Idempotent : un second appel retourne already_existed=true.
+ */
+export async function rescueDiscard(
+  discardId: string,
+): Promise<import('../types').RescueResult> {
+  return json<import('../types').RescueResult>(
+    `/lab/discarded/${encodeURIComponent(discardId)}/rescue`,
+    { method: 'POST', body: '{}' },
+  )
+}
+
+/**
+ * Retourne les runs eBay en cours (status=running). Utilisé pour le badge live
+ * dans CohortDrawerEbay (polling 3s). Renvoie une liste vide si aucun run actif.
+ */
+export async function fetchEbayRunningRuns(): Promise<import('../types').EbayRunLive[]> {
+  return json<import('../types').EbayRunLive[]>(
+    '/sources/ebay/runs?status=running&limit=5',
   )
 }
 

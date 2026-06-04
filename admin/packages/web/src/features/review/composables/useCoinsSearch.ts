@@ -122,6 +122,65 @@ export async function searchCoins(filters: CoinSearchFilters): Promise<CoinSearc
     }))
 }
 
+// ─── Text search (autocomplete eurio_id libre) ──────────────────────────
+//
+// Recherche full-text sur eurio_id + theme + country via GET /coins?search=.
+// Utilisée par le champ autocomplete direct dans FreeSelectorPanel.vue pour
+// le rescue cross-classe (saisir un eurio_id ou un mot-clé quelconque).
+
+interface CoinDetail {
+  eurio_id: string
+  country: string
+  country_name: string | null
+  year: number
+  face_value: number
+  is_commemorative: boolean
+  theme: string | null
+  numista_id: number | null
+}
+
+export async function searchCoinsByText(
+  query: string,
+  opts?: { fv?: number; commemo?: boolean; limit?: number },
+): Promise<CoinSearchEntry[]> {
+  if (query.trim().length < 2) return []
+
+  const limit = opts?.limit ?? 20
+  const params = new URLSearchParams({
+    search: query.trim(),
+    limit: String(limit),
+  })
+  if (opts?.fv !== undefined) params.set('fv', String(opts.fv))
+  if (opts?.commemo !== undefined) params.set('commemo', opts.commemo ? '1' : '0')
+
+  const resp = await fetch(`${ML_API}/coins?${params.toString()}`)
+  if (!resp.ok) throw new Error(`Recherche pièces échouée (${resp.status})`)
+  const data = (await resp.json()) as { items: CoinDetail[]; total: number }
+
+  return (data.items ?? []).map((coin) => {
+    const fvLabel =
+      coin.face_value < 1
+        ? `${Math.round(coin.face_value * 100)}c`
+        : `${coin.face_value}eur`
+    const denomination = `${fvLabel}${coin.is_commemorative ? '-comm' : ''}`
+    const label =
+      (coin.country_name ?? coin.country) +
+      ' · ' +
+      (coin.theme ?? coin.eurio_id)
+    return {
+      eurio_id: coin.eurio_id,
+      country: coin.country,
+      denomination,
+      year: coin.year,
+      label,
+      canonical_thumb_url: coin.numista_id
+        ? `${ML_API}/images/${coin.numista_id}/source`
+        : null,
+      is_commemorative: coin.is_commemorative,
+    }
+  })
+}
+
 // ─── Fuzzy search (combobox `/`) ────────────────────────────────────────
 
 export async function fuzzySearchCoins(query: string): Promise<CoinSearchEntry[]> {

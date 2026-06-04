@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { Columns3, Crop, RefreshCw, Shuffle, TriangleAlert } from 'lucide-vue-next'
 import {
   type CropBenchCard as Card,
@@ -11,7 +12,16 @@ import {
   fetchCropBenchStats,
   postCropBenchLabel,
 } from '../composables/useCropBenchApi'
+import { fetchCohort } from '@/features/lab/composables/useLabApi'
 import CropBenchCard from '../components/CropBenchCard.vue'
+
+const route = useRoute()
+const router = useRouter()
+
+// Scope cohorte : pré-filtrage par eurio_ids quand ?cohort=<id> est présent.
+const scopedCohortId = ref<string | null>(null)
+const scopedCohortName = ref<string | null>(null)
+const scopedEurioIds = ref<string[] | null>(null)
 
 const stats = ref<CropBenchStats | null>(null)
 const cards = ref<Card[]>([])
@@ -79,6 +89,7 @@ async function loadSample() {
       bias: bias.value || null,
       strata: strata.value,
       seed: seed.value,
+      eurio_ids: scopedEurioIds.value,
     })
     cards.value = resp.cards
     totalMatched.value = resp.total_matched
@@ -133,7 +144,26 @@ const generatedAt = computed(() => {
   }
 })
 
+async function clearScope() {
+  scopedCohortId.value = null
+  scopedCohortName.value = null
+  scopedEurioIds.value = null
+  await router.push({ path: '/crop-bench' })
+  loadSample()
+}
+
 onMounted(async () => {
+  const cohortParam = route.query.cohort
+  if (cohortParam && typeof cohortParam === 'string') {
+    try {
+      const cohort = await fetchCohort(cohortParam)
+      scopedCohortId.value = cohort.id
+      scopedCohortName.value = cohort.name
+      scopedEurioIds.value = cohort.eurio_ids
+    } catch {
+      // Backend ML off ou cohort introuvable — dégrade proprement (pas de scope).
+    }
+  }
   await loadStats()
   await Promise.all([loadSample(), loadLabels()])
 })
@@ -146,6 +176,13 @@ onMounted(async () => {
         <Crop class="h-5 w-5" style="color: var(--indigo-600);" />
         <h1>Crop Bench</h1>
         <span class="page__beta">oracle DINOv2 · gold stratifié</span>
+        <span v-if="scopedCohortId" class="page__scope">
+          Scope : <b>{{ scopedCohortName }}</b>
+          ({{ scopedEurioIds?.length ?? 0 }} classes)
+          <button class="page__scope-clear" title="Voir tous les crops (retirer le scope cohorte)" @click="clearScope">
+            tout voir
+          </button>
+        </span>
       </div>
       <p class="page__sub">
         Banc de qualité du crop eBay. Pour chaque pièce :
@@ -480,4 +517,29 @@ onMounted(async () => {
 .grid--wide {
   grid-template-columns: repeat(auto-fill, minmax(620px, 1fr));
 }
+
+/* Badge scope cohorte */
+.page__scope {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 3px 10px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--indigo-600) 12%, var(--surface));
+  color: var(--indigo-700);
+}
+.page__scope b { font-weight: 650; }
+.page__scope-clear {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--ink-400);
+  text-decoration: underline;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+}
+.page__scope-clear:hover { color: var(--ink-700); }
 </style>

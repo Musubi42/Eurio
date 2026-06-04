@@ -324,6 +324,20 @@ function validateCurrent() {
   advance()
 }
 
+// Chunk Cr — accepter la suggestion DINOv2 top-1 en 1 clic.
+// Face hardcodée à 'obverse' : les ancres Dino sont des obverses
+// canoniques Numista — correct par construction pour les 2€ commémo.
+// No-op si pas de suggestion Dino sur l'item courant.
+function acceptDino() {
+  const item = currentItem.value
+  if (!item?.dino_top1) return
+  scheduleCommit('decide', item.id, {
+    eurio_id: item.dino_top1.eurio_id,
+    face: 'obverse',
+  })
+  advance()
+}
+
 function rejectCurrent() {
   if (!currentItem.value) return
   scheduleCommit('reject', currentItem.value.id)
@@ -471,6 +485,7 @@ useReviewKeybinds(keyboardEnabled, {
   onSetFace: setFace,
   onCycleKind: cycleKind,
   onCycleCondition: cycleCondition,
+  onAcceptDino: acceptDino,
 })
 </script>
 
@@ -625,6 +640,47 @@ useReviewKeybinds(keyboardEnabled, {
               :review-id="currentItem.id"
             />
 
+            <!-- Chunk Cr — suggestion DINOv2 top-1 : accept 1-clic.
+                 Affiché seulement si dino_top1 non-null (83 % des singles).
+                 Visuellement distinct (indigo) pour signaler l'origine ML.
+                 Face hardcodée obverse (ancres Dino = obverses canoniques). -->
+            <div
+              v-if="currentItem?.dino_top1"
+              class="flex items-center justify-between gap-3 rounded-md border px-3 py-2"
+              style="border-color: var(--indigo-200, #c7d2fe); background: color-mix(in srgb, var(--indigo-700, #4338ca) 6%, var(--surface));"
+            >
+              <div class="flex min-w-0 flex-col gap-0.5">
+                <span
+                  class="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider"
+                  style="color: var(--indigo-700);"
+                >
+                  <Sparkles class="h-3 w-3 shrink-0" />
+                  Suggestion Dino
+                </span>
+                <span class="truncate font-mono text-[11px]" style="color: var(--ink);">
+                  {{ currentItem.dino_top1.eurio_id }}
+                </span>
+                <span class="truncate text-[10px]" style="color: var(--ink-500);">
+                  {{ currentItem.dino_top1.label }}
+                  <span class="ml-1 font-mono opacity-70">sim={{ currentItem.dino_top1.score.toFixed(3) }}</span>
+                </span>
+              </div>
+              <button
+                type="button"
+                class="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-semibold transition-colors"
+                style="background: var(--indigo-700); color: var(--surface);"
+                title="Accepter la suggestion DINOv2 top-1 (D)"
+                @click="acceptDino"
+              >
+                <Sparkles class="h-3 w-3" />
+                Accept Dino
+                <kbd
+                  class="ml-0.5 rounded px-1 py-0.5 font-mono text-[9px] uppercase"
+                  style="background: rgba(255,255,255,0.2); letter-spacing: 0.05em;"
+                >D</kbd>
+              </button>
+            </div>
+
             <TextSignals
               v-if="currentItem"
               :review-id="currentItem.id"
@@ -747,6 +803,8 @@ useReviewKeybinds(keyboardEnabled, {
           <dd style="color: var(--ink-500);">Corriger le type de listing (cycle)</dd>
           <dt class="font-mono text-[12px]" style="color: var(--ink-700);">C</dt>
           <dd style="color: var(--ink-500);">Corriger l'état de la pièce (cycle)</dd>
+          <dt class="font-mono text-[12px]" style="color: var(--indigo-700);">D</dt>
+          <dd style="color: var(--ink-500);">Accepter la suggestion DINOv2 top-1 (si disponible)</dd>
           <dt class="font-mono text-[12px]" style="color: var(--ink-700);">Esc</dt>
           <dd style="color: var(--ink-500);">Fermer overlay</dd>
         </dl>

@@ -20,6 +20,8 @@ import {
   fetchAugVsReal,
   fetchCohort,
   fetchCohortCaptures,
+  fetchCohortDedupStatus,
+  fetchCohortDiscardSummary,
   fetchCohortFunnelStatus,
   fetchCohortProgress,
   fetchCohortTestBuildInfo,
@@ -45,6 +47,9 @@ import {
   stopIteration,
   syncCohortCaptures,
   syncLiveTests,
+  fetchEbayRunningRuns,
+  fetchRescueCandidates,
+  rescueDiscard,
   triggerCoinEbayScrape,
   triggerCohortEbayScrape,
   updateIteration,
@@ -66,6 +71,9 @@ export const LAB_KEYS = {
   sensitivity: (cohortId: string) => ['lab', 'cohort', cohortId, 'sensitivity'] as const,
   captures: (cohortId: string) => ['lab', 'cohort', cohortId, 'captures'] as const,
   funnelStatus: (cohortId: string) => ['lab', 'cohort', cohortId, 'funnel-status'] as const,
+  discardSummary: (cohortId: string) => ['lab', 'cohort', cohortId, 'discard-summary'] as const,
+  rescueCandidates: (cohortId: string) => ['lab', 'cohort', cohortId, 'rescue-candidates'] as const,
+  dedupStatus: (cohortId: string) => ['lab', 'cohort', cohortId, 'dedup-status'] as const,
   triageStats: (cohortId: string) => ['lab', 'cohort', cohortId, 'triage-stats'] as const,
   progress: (cohortId: string) => ['lab', 'cohort', cohortId, 'progress'] as const,
   iterationProgress: (cohortId: string, iterationId: string) =>
@@ -80,6 +88,7 @@ export const LAB_KEYS = {
     ['lab', 'cohort', cohortId, 'iterations', iterationId, 'live-tests'] as const,
   dashboard: ['lab', 'dashboard'] as const,
   runner: ['lab', 'runner'] as const,
+  ebayRunningRuns: ['lab', 'ebay', 'running-runs'] as const,
 }
 
 // ─── Reads ──────────────────────────────────────────────────────────────
@@ -153,6 +162,83 @@ export function useCohortFunnelStatusQuery(cohortId: MaybeRefOrGetter<string>) {
     enabled: computed(() => !!toValue(cohortId)),
     staleTime: 60 * 1000,
     refetchOnMount: 'always',
+  })
+}
+
+/**
+ * Badge run live pour CohortDrawerEbay : poll /sources/ebay/runs?status=running
+ * toutes les 3s. La liste est vide si aucun run eBay n'est en cours.
+ * Le polling s'arrête naturellement quand le composant se démonte (TanStack lifecycle).
+ */
+export function useEbayRunningRunsQuery() {
+  return useQuery({
+    queryKey: LAB_KEYS.ebayRunningRuns,
+    queryFn: () => fetchEbayRunningRuns(),
+    refetchInterval: 3000,
+    staleTime: 0,
+  })
+}
+
+/**
+ * Résumé des rejets eBay scopé cohort (C2) — rescue / noise / ambiguous.
+ * Raisons normalisées (commemo_in_standard_run:* → une seule classe).
+ * Alimente le widget §C3 du tiroir CohortDrawerEbay.
+ */
+export function useDiscardSummaryQuery(cohortId: MaybeRefOrGetter<string>) {
+  return useQuery({
+    queryKey: computed(() => LAB_KEYS.discardSummary(toValue(cohortId))),
+    queryFn: () => fetchCohortDiscardSummary(toValue(cohortId)),
+    enabled: computed(() => !!toValue(cohortId)),
+    staleTime: 60 * 1000,
+    refetchOnMount: 'always',
+  })
+}
+
+/**
+ * Détail rescue par eurio_id (C5) — par pièce, avec les IDs individuels.
+ * Distinct de useDiscardSummaryQuery (agrégat normalisé §C3) : expose les
+ * discard_ids pour l'action 1-clic Reclasser dans CohortDrawerRescue.
+ */
+export function useRescueCandidatesQuery(cohortId: MaybeRefOrGetter<string>) {
+  return useQuery({
+    queryKey: computed(() => LAB_KEYS.rescueCandidates(toValue(cohortId))),
+    queryFn: () => fetchRescueCandidates(toValue(cohortId)),
+    enabled: computed(() => !!toValue(cohortId)),
+    staleTime: 60 * 1000,
+    refetchOnMount: 'always',
+  })
+}
+
+/**
+ * Mutation rescue 1-clic (C5) — POST /lab/discarded/{id}/rescue.
+ * Invalide rescue-candidates + discard-summary + funnel-status au retour.
+ */
+export function useRescueDiscardMutation(cohortId: MaybeRefOrGetter<string>) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (discardId: string) => rescueDiscard(discardId),
+    onSuccess: () => {
+      const id = toValue(cohortId)
+      qc.invalidateQueries({ queryKey: LAB_KEYS.rescueCandidates(id) })
+      qc.invalidateQueries({ queryKey: LAB_KEYS.discardSummary(id) })
+      qc.invalidateQueries({ queryKey: LAB_KEYS.funnelStatus(id) })
+    },
+  })
+}
+
+/**
+ * Compteurs dédup eBay scopé cohort (C8) — lecture seule.
+ * n_unique_seen = discovery_log global (toutes cohortes) ; discarded scopé
+ * aux eurio_ids de la cohort. Données stables → 5 min de fraîcheur.
+ */
+export function useCohortDedupStatusQuery(cohortId: MaybeRefOrGetter<string>) {
+  return useQuery({
+    queryKey: computed(() => LAB_KEYS.dedupStatus(toValue(cohortId))),
+    queryFn: () => fetchCohortDedupStatus(toValue(cohortId)),
+    enabled: computed(() => !!toValue(cohortId)),
+    // Données statiques (pas de write depuis l'UI) — 5 min de fraîcheur suffit.
+    staleTime: 5 * 60 * 1000,
+    refetchOnMount: false,
   })
 }
 

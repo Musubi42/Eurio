@@ -3,6 +3,7 @@ import CohortDrawerC1 from '@/features/lab/components/CohortDrawerC1.vue'
 import CohortDrawerC2 from '@/features/lab/components/CohortDrawerC2.vue'
 import CohortDrawerCrop from '@/features/lab/components/CohortDrawerCrop.vue'
 import CohortDrawerEbay from '@/features/lab/components/CohortDrawerEbay.vue'
+import CohortDrawerRescue from '@/features/lab/components/CohortDrawerRescue.vue'
 import IterationRow from '@/features/lab/components/IterationRow.vue'
 import SensitivityPanel from '@/features/lab/components/SensitivityPanel.vue'
 import TrajectoryChart from '@/features/lab/components/TrajectoryChart.vue'
@@ -263,6 +264,9 @@ function formatPct(v: number | null): string {
         <CohortDrawerEbay
           :cohort-id="cohort.id"
           :cohort="cohort"
+        />
+        <CohortDrawerRescue
+          :cohort-id="cohort.id"
         />
         <CohortDrawerCrop
           :cohort-id="cohort.id"
