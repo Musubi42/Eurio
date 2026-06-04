@@ -19,7 +19,11 @@ Design notes:
   du bench (`evaluate_real_photos.py` les lit) ; les utiliser ici (a) fuiterait
   l'eval set dans le training (gonflant le R@1 studio) et (b) casserait le mur
   train/bench (Doctrine A). Reverse non plus — le modèle ArcFace ne voit que
-  l'avers. Seuls obverse + eBay-reviewé alimentent le bake.
+  l'avers. Sources du bake : obverse Numista + crops eBay reviewés + réfs
+  officielles BCE / EUR-Lex JO (``coin_canonical_images``, avers téléchargé) —
+  ces dernières servant de filet pour les classes pauvres en crops eBay.
+- Cible par classe (cf. ``docs/cohort-pipeline``) : ``>100`` images, via
+  ``AUG_PER_SOURCE`` (×10) par source réelle, plancher ``TARGET_MIN_PER_COIN``.
 - Output filenames are ``sample_<NNN>.jpg`` zero-padded to 3 digits, as
   documented in ``docs/training-pipeline/filesystem.md``.
 - For each iteration we also build a unified training root at
@@ -57,6 +61,19 @@ ITERATION_TRAIN_ROOTS = DATASETS_DIR / "iterations"
 
 OBVERSE_NAMES = ("obverse.jpg", "obverse.png")
 
+# Cible d'images de training par classe (spec docs/cohort-pipeline, 2026-06-04) :
+# > 100 par classe, via augmentation ×10 sur chaque source réelle. Plancher 100
+# (en cyclant les sources) pour les classes pauvres. FLOOR_REAL_EBAY = repère
+# qualité (≥10 crops eBay réels) — n'affecte pas la cible, juste un flag report.
+TARGET_MIN_PER_COIN = 100
+AUG_PER_SOURCE = 10
+FLOOR_REAL_EBAY = 10
+
+# Réfs canoniques officielles utilisables comme sources de training (avers
+# uniquement). numista_api est exclu : ses lignes n'ont pas de local_path —
+# l'avers Numista est déjà lu depuis le FS par ``_source_images``.
+_CANONICAL_REF_SOURCES = ("bce_official", "eurlex_jo")
+
 
 @dataclass
 class CoinAugReport:
@@ -65,6 +82,9 @@ class CoinAugReport:
     written: int
     sources_used: int
     skipped_reason: str | None = None
+    n_real_ebay: int = 0          # crops eBay reviewés (training_eligible=1) utilisés
+    n_ref_images: int = 0         # réfs officielles BCE / EUR-Lex JO utilisées
+    below_floor_real: bool = False  # True si < FLOOR_REAL_EBAY crops eBay réels
 
 
 def _per_coin_seed(iteration_seed: int, numista_id: int) -> int:
@@ -130,6 +150,54 @@ def _ebay_training_sources(eurio_id: str, store: Store) -> list[Path]:
     return paths
 
 
+def _canonical_ref_images(eurio_id: str, store: Store) -> list[Path]:
+    """Réfs canoniques officielles (avers) utilisables comme sources de training.
+
+    Filet de sécurité pour les classes pauvres en crops eBay (cf.
+    ``docs/cohort-pipeline``) : l'avers officiel BCE / EUR-Lex JO, déjà
+    téléchargé localement (``coin_canonical_images.local_path``). Garantit
+    qu'une classe jamais scrapée sur eBay ou affamée atteint quand même la
+    cible par augmentation. ``numista_api`` est exclu (pas de ``local_path`` —
+    l'avers Numista est lu depuis le FS par ``_source_images``). Les chemins
+    absents du disque sont ignorés (pas d'erreur bloquante).
+    """
+    conn = store._connection()  # noqa: SLF001
+    placeholders = ",".join("?" * len(_CANONICAL_REF_SOURCES))
+    rows = conn.execute(
+        f"""
+        SELECT local_path
+          FROM coin_canonical_images
+         WHERE eurio_id = ?
+           AND role = 'obverse'
+           AND source IN ({placeholders})
+           AND local_path IS NOT NULL
+           AND local_path != ''
+         ORDER BY source, local_path
+        """,
+        (eurio_id, *_CANONICAL_REF_SOURCES),
+    ).fetchall()
+    paths: list[Path] = []
+    for r in rows:
+        # ``local_path`` est relatif à la racine du repo (ex: 'ml/canonical_images/…').
+        p = ML_DIR.parent / r[0]
+        if p.exists():
+            paths.append(p)
+    return paths
+
+
+def _target_per_coin(n_sources: int, variant_count: int | None) -> int:
+    """Cible d'images augmentées d'une classe : ≥ 100, et ×10 par source réelle.
+
+    ``variant_count`` (réglage de l'itération) agit comme plancher optionnel
+    quand il dépasse la cible dynamique. Voir ``docs/cohort-pipeline``.
+    """
+    return max(
+        AUG_PER_SOURCE * n_sources,
+        TARGET_MIN_PER_COIN,
+        int(variant_count or 0),
+    )
+
+
 def generate_for_iteration(
     *,
     iteration_id: str,
@@ -166,7 +234,6 @@ def generate_for_iteration(
     else:
         recipe_cfg = DEFAULT_RECIPE
 
-    target = max(int(it.variant_count), 1)
     train_root = ITERATION_TRAIN_ROOTS / iteration_id
     train_root.mkdir(parents=True, exist_ok=True)
 
@@ -185,8 +252,13 @@ def generate_for_iteration(
             )
             continue
 
-        # Sources réelles = obverse Numista + crops eBay reviewés (C4d).
-        sources = _source_images(nid) + _ebay_training_sources(eurio_id, store)
+        # Sources réelles de training, par priorité (cf. docs/cohort-pipeline) :
+        # avers Numista (FS) + crops eBay reviewés (DB) + réfs officielles
+        # BCE / EUR-Lex JO (filet pour les classes pauvres en crops eBay).
+        numista_sources = _source_images(nid)
+        real_ebay = _ebay_training_sources(eurio_id, store)
+        ref_sources = _canonical_ref_images(eurio_id, store)
+        sources = numista_sources + real_ebay + ref_sources
         if not sources:
             reports.append(
                 CoinAugReport(
@@ -194,18 +266,22 @@ def generate_for_iteration(
                     numista_id=nid,
                     written=0,
                     sources_used=0,
-                    skipped_reason="no training source (obverse.jpg/png ni crop eBay training-eligible)",
+                    skipped_reason="no training source (obverse Numista, crop eBay ni réf BCE/EUR-Lex)",
+                    below_floor_real=True,
                 )
             )
             continue
+
+        # Cible > 100/classe : ×10 par source réelle, plancher 100 (cf. spec).
+        target_per_coin = _target_per_coin(len(sources), it.variant_count)
 
         out_dir = DATASETS_DIR / str(nid) / "augmentations" / iteration_id
         out_dir.mkdir(parents=True, exist_ok=True)
         existing = sorted(out_dir.glob("sample_*.jpg"))
         manifest_samples: list[dict] = []
-        if len(existing) >= target:
+        if len(existing) >= target_per_coin:
             written = len(existing)
-            for i, f in enumerate(existing[:target]):
+            for i, f in enumerate(existing[:target_per_coin]):
                 src_path = sources[i % len(sources)]
                 manifest_samples.append({"file": f.name, "source": src_path.name})
         else:
@@ -216,7 +292,7 @@ def generate_for_iteration(
             seed = _per_coin_seed(it.augmentations_seed, nid)
             pipeline = AugmentationPipeline(recipe_cfg, seed=seed)
             written = 0
-            for i in range(target):
+            for i in range(target_per_coin):
                 src_path = sources[i % len(sources)]
                 with Image.open(src_path) as raw:
                     base = raw.convert("RGB")
@@ -264,6 +340,9 @@ def generate_for_iteration(
                 numista_id=nid,
                 written=written,
                 sources_used=len(sources),
+                n_real_ebay=len(real_ebay),
+                n_ref_images=len(ref_sources),
+                below_floor_real=len(real_ebay) < FLOOR_REAL_EBAY,
             )
         )
 
@@ -351,7 +430,11 @@ def main() -> None:
         if r.skipped_reason:
             print(f"  {r.eurio_id} → SKIP: {r.skipped_reason}")
         else:
-            print(f"  {r.eurio_id} (n{r.numista_id}): {r.written} samples ({r.sources_used} sources)")
+            floor = "  ⚠ <10 crops eBay réels" if r.below_floor_real else ""
+            print(
+                f"  {r.eurio_id} (n{r.numista_id}): {r.written} samples "
+                f"({r.sources_used} sources — {r.n_real_ebay} eBay, {r.n_ref_images} réf){floor}"
+            )
 
 
 if __name__ == "__main__":
