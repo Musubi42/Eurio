@@ -325,6 +325,7 @@ def get_crop_bench_sample(
     bias: str | None = Query(None, description="undercrop|worst|bimetal|tilt|dino_bad — biaise/trie l'échantillon"),
     strata: bool = Query(False, description="échantillon ÉQUILIBRÉ par listing_type (n réparti entre strates)"),
     seed: int = Query(42, ge=0),
+    eurio_ids: str | None = Query(None, description="liste eurio_id séparée par virgule — scope cohorte"),
 ) -> CropBenchSampleResponse:
     """Échantillon de cartes raw↔crop, filtrable et biaisable vers les défauts.
 
@@ -344,6 +345,9 @@ def get_crop_bench_sample(
         matched = [r for r in matched if r["crop_class"] == klass]
     if dino_class:
         matched = [r for r in matched if r["dino_class"] == dino_class]
+    if eurio_ids:
+        _scope = {e.strip() for e in eurio_ids.split(",") if e.strip()}
+        matched = [r for r in matched if r["eurio_id"] in _scope]
     if bias == "undercrop":
         matched = [r for r in matched if r["crop_class"] == "undercrop"]
     elif bias == "bimetal":

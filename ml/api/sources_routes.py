@@ -30,8 +30,10 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from sources._base.adapter import DiscoveryGroup, SourceQuery
+from sources._base.dedup import SourceImageRow, upsert_source_image
 from sources._base.orchestrator import run_pipeline
 from sources._base.run_logger import RunAlreadyRunning
+from sources.ebay.standards import COMMEMO_IN_STANDARD_PREFIX
 from state import Store
 
 from . import sources_aggregator
@@ -1326,6 +1328,138 @@ def get_run_discarded(
     )
 
 
+# ── Rescue rétroactif d'un discard commémo ───────────────────────────────
+#
+# C1 cohort-pipeline : un listing rejeté avec reason=commemo_in_standard_run:{X}
+# peut être rescapé après coup (les 120 discards historiques). L'endpoint :
+#   1. vérifie que la reason commence bien par COMMEMO_IN_STANDARD_PREFIX ;
+#   2. extrait l'eurio_id cible depuis la reason ;
+#   3. vérifie son existence dans `coins` ;
+#   4. upserte une row source_images avec route_decision='pending' ;
+#   5. met à jour discarded_listings.rescued_source_image_id + reason.
+# training_eligible reste 0 — l'attribution définitive est 1-clic assisté.
+
+
+class RescueResult(BaseModel):
+    rescued_to: str
+    source_image_id: str
+    was_already_rescued: bool
+
+
+@router.post(
+    "/discarded/{discard_id}/rescue",
+    response_model=RescueResult,
+)
+def rescue_discarded(discard_id: str) -> RescueResult:
+    """Sauve rétroactivement un listing rejeté commemo_in_standard_run.
+
+    Crée une row ``source_images`` avec ``route_decision='pending'`` et
+    ``target_eurio_id`` extrait du motif de rejet.  Met à jour
+    ``discarded_listings.reason`` → ``rescued_to:{eurio_id}`` et pose
+    ``rescued_source_image_id``. Idempotent : un double appel retourne
+    ``was_already_rescued=True`` sans modifier la DB.
+
+    Seuls les discards ``commemo_in_standard_run:…`` sont acceptés — les
+    autres motifs (noise_title, year_mismatch, …) ne qualifient pas (400).
+    """
+    conn = _store()._connection()  # noqa: SLF001
+
+    discard = conn.execute(
+        """
+        SELECT id, source, source_ref, target_eurio_id, reason, title,
+               raw_payload, marketplace, run_id, rescued_source_image_id
+          FROM discarded_listings
+         WHERE id = ?
+        """,
+        (discard_id,),
+    ).fetchone()
+    if discard is None:
+        raise HTTPException(status_code=404, detail=f"Discard {discard_id!r} not found.")
+
+    reason: str = discard["reason"]
+
+    # Déjà rescapé → retourne l'état existant sans modification.
+    if discard["rescued_source_image_id"] is not None:
+        return RescueResult(
+            rescued_to=reason.replace("rescued_to:", "", 1),
+            source_image_id=discard["rescued_source_image_id"],
+            was_already_rescued=True,
+        )
+
+    if not reason.startswith(COMMEMO_IN_STANDARD_PREFIX):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Discard reason {reason!r} is not a commemo rescue candidate. "
+                f"Only reasons starting with {COMMEMO_IN_STANDARD_PREFIX!r} are supported."
+            ),
+        )
+
+    eurio_id: str = reason.split(":", 1)[1]
+
+    # Vérifie que la pièce cible existe.
+    coin_row = conn.execute(
+        "SELECT eurio_id FROM coins WHERE eurio_id = ?", (eurio_id,)
+    ).fetchone()
+    if coin_row is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"eurio_id {eurio_id!r} extracted from discard reason not found in coins table.",
+        )
+
+    # Reconstruit les champs du listing depuis raw_payload.
+    raw_payload: dict[str, Any] | None = None
+    if discard["raw_payload"]:
+        try:
+            raw_payload = json.loads(discard["raw_payload"])
+        except (TypeError, ValueError):
+            raw_payload = None
+
+    source_url: str | None = (raw_payload or {}).get("item_web_url")
+    listing_price_raw = (raw_payload or {}).get("price")
+    listing_price: float | None = (
+        float(listing_price_raw) if isinstance(listing_price_raw, (int, float)) else None
+    )
+    currency_raw = (raw_payload or {}).get("currency")
+    listing_currency: str = currency_raw if isinstance(currency_raw, str) else "EUR"
+
+    sid = upsert_source_image(
+        conn,
+        SourceImageRow(
+            source="ebay",
+            source_ref=discard["source_ref"],
+            source_url=source_url,
+            target_eurio_id=eurio_id,
+            listing_title=discard["title"],
+            listing_price=listing_price,
+            listing_currency=listing_currency,
+            marketplace=discard["marketplace"],
+            route_decision="pending",
+            route_reason=f"rescued_from_discard:{discard_id}",
+            run_id=discard["run_id"],
+            raw_payload=raw_payload,
+        ),
+    )
+
+    # Met à jour le discard : trace le rescue dans reason + pose le FK.
+    conn.execute(
+        """
+        UPDATE discarded_listings
+           SET reason = ?,
+               rescued_source_image_id = ?
+         WHERE id = ?
+        """,
+        (f"rescued_to:{eurio_id}", sid, discard_id),
+    )
+    conn.commit()
+
+    return RescueResult(
+        rescued_to=eurio_id,
+        source_image_id=sid,
+        was_already_rescued=False,
+    )
+
+
 # ── Run funnel — page Logs/Entonnoir du run-detail ────────────────────────
 
 
@@ -1603,6 +1737,9 @@ class SourceRunListItem(BaseModel):
     n_quotes: int
     n_errors: int
     status: str
+    current_step: str | None
+    n_raws_added: int
+    n_crops_added: int
     filters: dict[str, Any]
     log_path: str | None
 
@@ -1637,6 +1774,9 @@ def list_runs(
             n_quotes=snap.n_quotes_added,
             n_errors=snap.n_errors,
             status=snap.status,
+            current_step=snap.current_step,
+            n_raws_added=snap.n_raws_added,
+            n_crops_added=snap.n_crops_added,
             filters=snap.filters,
             log_path=snap.log_path,
         ))

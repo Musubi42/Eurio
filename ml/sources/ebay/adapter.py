@@ -69,6 +69,7 @@ from sources.ebay.queries import (
     search_limit_for_group,
 )
 from sources.ebay.standards import (
+    COMMEMO_IN_STANDARD_PREFIX,
     attribute_standard_listing,
     load_standard_eras,
 )
@@ -291,11 +292,26 @@ class EbayAdapter:
                     continue
                 if is_standard:
                     if not self._attribute_standard_row(row, group):
-                        # commemo / no_match / no_eras → discard (motif sur la
-                        # ligne) ; la commémo éventuelle est captée par son run.
-                        self._record_discard(
-                            record_discarded, row, row["_discard_reason"], mkt,
-                        )
+                        discard_reason: str = row["_discard_reason"]
+                        if discard_reason.startswith(COMMEMO_IN_STANDARD_PREFIX):
+                            # Commémo détectée dans un run standard : on la sauve
+                            # au lieu de la jeter. Elle part dans le flux normal
+                            # (→ _yield_listing_images) avec l'eurio_id extrait,
+                            # et on trace également dans discarded_listings (audit).
+                            eurio_id: str = discard_reason.split(":", 1)[1]
+                            row["_resolved_eurio_id"] = eurio_id
+                            row["_group_verdict"] = "rescued"
+                            kept.append(row)
+                            self._record_discard(
+                                record_discarded, row,
+                                f"rescued_to:{eurio_id}", mkt,
+                                target_eurio_id=eurio_id,
+                            )
+                        else:
+                            # no_match / no_eras / group_contradict_* → discard.
+                            self._record_discard(
+                                record_discarded, row, discard_reason, mkt,
+                            )
                         continue
                 elif not self._attribute_commemo_row(row, coin_ids):
                     self._record_discard(
@@ -437,18 +453,19 @@ class EbayAdapter:
         row: dict,
         reason: str,
         marketplace: str,
+        *,
+        target_eurio_id: str | None = None,
     ) -> None:
         """Persiste un rejet de listing (audit ``discarded_listings``).
 
-        ``target_eurio_id`` est ``None`` : un listing rejeté n'est attribué
-        à aucune pièce (il a échoué accept_listing ou n'a matché aucune
-        commémo du groupe).
+        ``target_eurio_id`` est ``None`` pour les rejets ordinaires ; passé
+        explicitement pour les rescues commémo (audit avec eurio_id résolu).
         """
         if record_discarded is None or not row.get("item_id"):
             return
         record_discarded(DiscardedListingRecord(
             source_ref=f"ebay_listing_{row['item_id']}",
-            target_eurio_id=None,
+            target_eurio_id=target_eurio_id,
             reason=reason,
             title=row.get("title"),
             raw_payload={

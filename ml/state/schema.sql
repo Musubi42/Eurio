@@ -726,13 +726,43 @@ CREATE TABLE IF NOT EXISTS discarded_listings (
   reason          TEXT NOT NULL,
   title           TEXT,
   raw_payload     TEXT,
-  created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+  -- Rescue rétroactif (C1 cohort-pipeline) : id de la source_image créée par
+  -- POST /sources/discarded/{id}/rescue. NULL = pas encore sauvé.
+  -- Sur les DB existantes, ajouté via Store._ensure_column.
+  rescued_source_image_id TEXT,
+  created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  -- C2 cohort-pipeline : flag pré-calculé à l'INSERT pour la récupérabilité.
+  -- Taxonomie :
+  --   1 (rescue) : reason LIKE 'commemo_in_standard_run:%' ou reason = 'theme_mismatch'
+  --                → pièce valide mais dans le mauvais bucket ; réattribution utile.
+  --   0 (noise)  : reason IN ('noise_title','below_face','above_extreme','non_eur')
+  --                → vrai bruit, pas de valeur pour le training.
+  --   NULL       : tout le reste ('year_mismatch','commemo_keyword',
+  --                'text_contradict_year','group_contradict_country',
+  --                'group_contradict_denomination','text_contradict_country')
+  --                → ambigu, évaluation ultérieure.
+  -- Sur les DB existantes, colonne + backfill ajoutés via Store._bootstrap.
+  -- NOTE : 'marketplace' existe en DB via _ensure_column mais PAS dans ce
+  -- CREATE TABLE (géré dynamiquement pour compatibilité DB existantes/fraîches).
+  is_rescue_candidate INTEGER,
+  UNIQUE (source, source_ref)
 );
 
 CREATE INDEX IF NOT EXISTS idx_discarded_listings_run
   ON discarded_listings(run_id);
 CREATE INDEX IF NOT EXISTS idx_discarded_listings_reason
   ON discarded_listings(reason);
+-- idx_discarded_listings_rescue est créé dans Store._bootstrap après que
+-- is_rescue_candidate soit ajoutée via _ensure_column (sinon executescript
+-- pète sur les bases pré-existantes qui n'ont pas encore la colonne).
+-- Index UNIQUE explicite (en plus de la contrainte dans CREATE TABLE).
+-- Sur les DB pré-C0 avec doublons, store.py dédupe d'abord (pre-bootstrap)
+-- avant que executescript ne tente de créer cet index.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_discarded_listings_source_ref
+  ON discarded_listings(source, source_ref);
+-- idx_discarded_listings_rescued est créé dans Store._bootstrap après que
+-- rescued_source_image_id soit ajoutée via _ensure_column (sinon executescript
+-- pète sur les bases pré-existantes qui n'ont pas encore la colonne).
 
 -- ════════════════════════════════════════════════════════════════════════
 -- Référentiel canonique — harmonisation des données (docs/data-harmonization/)

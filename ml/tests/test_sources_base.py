@@ -146,3 +146,55 @@ def test_pending_quote_insert_and_delete(conn: sqlite3.Connection) -> None:
     assert pid
     n = dedup.delete_pending_quotes_for(conn, sid)
     assert n == 1
+
+
+# ── C0 — record_discarded_listing idempotence & discovery_log ───────────────
+
+
+def test_record_discarded_listing_idempotent(conn: sqlite3.Connection) -> None:
+    """Deux appels avec même (source, source_ref) → 1 seule row dans discarded_listings."""
+    dedup.record_discarded_listing(
+        conn, run_id=None, source="ebay", source_ref="REF_IDEM",
+        target_eurio_id=None, reason="year_mismatch",
+    )
+    dedup.record_discarded_listing(
+        conn, run_id=None, source="ebay", source_ref="REF_IDEM",
+        target_eurio_id=None, reason="noise_title",
+    )
+    conn.commit()
+    n = conn.execute(
+        "SELECT COUNT(*) FROM discarded_listings WHERE source='ebay' AND source_ref='REF_IDEM'"
+    ).fetchone()[0]
+    assert n == 1
+
+
+def test_record_discarded_listing_writes_discovery_log(conn: sqlite3.Connection) -> None:
+    """Après appel → discovery_log a une row (source, source_ref) avec pipeline_state='rejected'."""
+    dedup.record_discarded_listing(
+        conn, run_id=None, source="ebay", source_ref="REF_DL",
+        target_eurio_id=None, reason="wrong_currency",
+    )
+    conn.commit()
+    row = conn.execute(
+        "SELECT pipeline_state FROM discovery_log WHERE source='ebay' AND source_ref='REF_DL'"
+    ).fetchone()
+    assert row is not None
+    assert row["pipeline_state"] == "rejected"
+
+
+def test_record_discarded_listing_discovery_log_idempotent(conn: sqlite3.Connection) -> None:
+    """Double appel → toujours 1 seule row discovery_log, état 'rejected'."""
+    for _ in range(3):
+        dedup.record_discarded_listing(
+            conn, run_id=None, source="ebay", source_ref="REF_DL2",
+            target_eurio_id=None, reason="year_mismatch",
+        )
+    conn.commit()
+    n = conn.execute(
+        "SELECT COUNT(*) FROM discovery_log WHERE source='ebay' AND source_ref='REF_DL2'"
+    ).fetchone()[0]
+    assert n == 1
+    row = conn.execute(
+        "SELECT pipeline_state FROM discovery_log WHERE source='ebay' AND source_ref='REF_DL2'"
+    ).fetchone()
+    assert row["pipeline_state"] == "rejected"

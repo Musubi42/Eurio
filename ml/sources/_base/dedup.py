@@ -54,6 +54,11 @@ class SourceImageRow:
     # de ON CONFLICT DO UPDATE.
     marketplace: str | None = None
     marketplace_found_json: str | None = None
+    # Décision de routage (pipeline sources). 'pending' = image persistée en
+    # attente de routage (ex: rescue commémo rétroactif). NULL = pas encore
+    # décidé / géré par le pipeline ordinaire.
+    route_decision: str | None = None
+    route_reason: str | None = None
 
 
 @dataclass
@@ -149,6 +154,8 @@ def upsert_source_image(conn: sqlite3.Connection, row: SourceImageRow) -> str:
               run_id=COALESCE(?, run_id),
               marketplace=COALESCE(marketplace, ?),
               marketplace_found_json=COALESCE(marketplace_found_json, ?),
+              route_decision=COALESCE(?, route_decision),
+              route_reason=COALESCE(?, route_reason),
               fetched_at=datetime('now')
             WHERE id=?
             """,
@@ -163,6 +170,7 @@ def upsert_source_image(conn: sqlite3.Connection, row: SourceImageRow) -> str:
                 payload,
                 row.run_id,
                 row.marketplace, row.marketplace_found_json,
+                row.route_decision, row.route_reason,
                 sid,
             ),
         )
@@ -178,8 +186,9 @@ def upsert_source_image(conn: sqlite3.Connection, row: SourceImageRow) -> str:
           storage_path, width, height, bytes, sha256,
           n_crops_detected, license, redistributable, is_lot_suspected,
           raw_payload_json, run_id,
-          marketplace, marketplace_found_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          marketplace, marketplace_found_json,
+          route_decision, route_reason
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             sid, row.source, row.source_ref, row.source_url, row.target_eurio_id,
@@ -190,6 +199,7 @@ def upsert_source_image(conn: sqlite3.Connection, row: SourceImageRow) -> str:
             int(row.is_lot_suspected),
             payload, row.run_id,
             row.marketplace, row.marketplace_found_json,
+            row.route_decision, row.route_reason,
         ),
     )
     return sid
@@ -473,6 +483,20 @@ class DiscoverySearchRecord:
     browse_url: str | None = None
 
 
+def _compute_rescue_candidate(reason: str) -> int | None:
+    """Calcule is_rescue_candidate depuis la raison du rejet.
+
+    1  (rescue) : commémo valide dans le mauvais bucket → réattribution utile.
+    0  (noise)  : vrai bruit, pas de valeur training.
+    None        : ambigu, évaluation ultérieure.
+    """
+    if reason == "theme_mismatch" or reason.startswith("commemo_in_standard_run:"):
+        return 1
+    if reason in ("noise_title", "below_face", "above_extreme", "non_eur"):
+        return 0
+    return None
+
+
 def record_discarded_listing(
     conn: sqlite3.Connection,
     *,
@@ -484,25 +508,61 @@ def record_discarded_listing(
     title: str | None = None,
     raw_payload: dict[str, Any] | None = None,
     marketplace: str | None = None,
+    is_rescue_candidate: bool | None = None,
 ) -> str:
     """Trace un listing rejeté par accept_listing avant ingestion.
 
     But : audit. Si on assouplit une règle plus tard, on peut interroger
     cette table pour évaluer combien de listings auraient passé le filtre.
+
+    Idempotent (C0) : ON CONFLICT(source, source_ref) DO NOTHING — on garde
+    la première occurrence chronologique. Les doublons cross-runs (re-fetch
+    infini) sont silencieusement ignorés. Retourne l'id de la row existante
+    dans ce cas. Met également à jour discovery_log(pipeline_state='rejected')
+    pour bloquer le re-fetch sur les prochains runs.
+
+    ``is_rescue_candidate`` est pré-calculé depuis ``reason`` si non fourni
+    (voir ``_compute_rescue_candidate``).
     """
     rid = uuid.uuid4().hex
     payload_json = json.dumps(raw_payload) if raw_payload is not None else None
+    # Pré-calcul du flag si non fourni explicitement.
+    rescue_flag: int | None
+    if is_rescue_candidate is None:
+        rescue_flag = _compute_rescue_candidate(reason)
+    else:
+        rescue_flag = int(is_rescue_candidate)
     conn.execute(
         """
         INSERT INTO discarded_listings (
           id, run_id, source, source_ref, target_eurio_id,
-          reason, title, raw_payload, marketplace
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          reason, title, raw_payload, marketplace, is_rescue_candidate
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(source, source_ref) DO NOTHING
         """,
         (rid, run_id, source, source_ref, target_eurio_id, reason, title,
-         payload_json, marketplace),
+         payload_json, marketplace, rescue_flag),
     )
-    return rid
+    # Récupère l'id réel (peut être différent de rid si DO NOTHING a joué).
+    existing = conn.execute(
+        "SELECT id FROM discarded_listings WHERE source=? AND source_ref=?",
+        (source, source_ref),
+    ).fetchone()
+    real_id = existing["id"] if existing else rid
+    # Inscrit ou maintient l'item dans discovery_log avec pipeline_state='rejected'
+    # pour bloquer le re-fetch sur les prochains runs de discover.
+    # On garantit l'existence de la row avant l'UPDATE (pre-persist rejects n'ont
+    # pas encore de row dans discovery_log).
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO discovery_log (id, source, source_ref, pipeline_state)
+        VALUES (?, ?, ?, 'rejected')
+        """,
+        (uuid.uuid4().hex, source, source_ref),
+    )
+    set_discovery_pipeline_state(conn, source=source, source_ref=source_ref,
+                                  state="rejected")
+    return real_id
 
 
 def record_discovery_search(conn: sqlite3.Connection, rec: DiscoverySearchRecord) -> str:

@@ -45,6 +45,10 @@ from sources.text_signals import (
 # Borne haute « ouverte » pour la plage de l'ère la plus récente d'un pays.
 _ERA_OPEN_END = 9999
 
+# Préfixe stable du motif de rejet « commémo détectée dans un run standard ».
+# Importé par l'adapter pour parser l'eurio_id sans coupler sur une chaîne nue.
+COMMEMO_IN_STANDARD_PREFIX = "commemo_in_standard_run:"
+
 # Auto-déclaration commémo dans le titre seller (DE/ES/FR/IT/EN/NL, accents
 # retirés, « ü→u »). Un standard dit « Kursmünze » ; une commémo dit
 # « Gedenkmünze / conmemorativo / commémorative ». Signal négatif fort,

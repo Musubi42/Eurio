@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import sqlite3
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -302,11 +303,17 @@ def get_cohort(id_or_name: str) -> dict:
 
 _OBVERSE_NAMES = ("obverse.jpg", "obverse.png")
 
-# Seuil de sources RÉELLES distinctes (obverse Numista + crops eBay reviewés)
+# Cible d'images projetées après augmentation x10 (seed primaire × 10) :
+# en-dessous, la classe est trop pauvre même avec augmentation.
+TRAINING_TARGET = 100
+# Plancher de sources RÉELLES distinctes (obverse Numista + crops eBay reviewés)
 # sous lequel une classe est flaggée « trop pauvre » : l'augmentation seule
 # gonflerait artificiellement (100 variants depuis 3 photos ≠ 100 vraies vues).
 # Reco doctrine lab-streamline §B. En-dessous → aller chercher plus d'eBay.
-_MIN_REAL_SOURCES = 15
+MIN_REAL = 10
+# Alias legacy conservé pour ne pas casser les usages existants (n_real_sources,
+# colonne `enough`) le temps d'un éventuel nettoyage ultérieur.
+_MIN_REAL_SOURCES = MIN_REAL
 
 
 def _has_obverse(numista_id: int | None) -> bool:
@@ -314,6 +321,17 @@ def _has_obverse(numista_id: int | None) -> bool:
         return False
     coin_dir = CAPTURES_BASE / str(numista_id)
     return any((coin_dir / name).is_file() for name in _OBVERSE_NAMES)
+
+
+def _has_canonical(conn: sqlite3.Connection, eurio_id: str, source: str) -> bool:
+    """Retourne True si ``coin_canonical_images`` contient une obverse pour
+    (eurio_id, source).  Utilisé pour calculer n_numista_ref et n_bce_ref."""
+    row = conn.execute(
+        "SELECT 1 FROM coin_canonical_images "
+        "WHERE eurio_id=? AND source=? AND role='obverse' LIMIT 1",
+        (eurio_id, source),
+    ).fetchone()
+    return row is not None
 
 
 def _drawer_state_c1(total_coins: int, missing_obverse: list[str]) -> str:
@@ -1310,6 +1328,18 @@ def _coin_tail(conn, eurio_id: str) -> dict:
         (eurio_id,),
     ).fetchone()[0]
 
+    n_downloaded = conn.execute(
+        "SELECT COUNT(*) FROM source_images "
+        "WHERE source='ebay' AND target_eurio_id=? AND download_status='success'",
+        (eurio_id,),
+    ).fetchone()[0]
+
+    n_download_failed = conn.execute(
+        "SELECT COUNT(*) FROM source_images "
+        "WHERE source='ebay' AND target_eurio_id=? AND download_status='failed'",
+        (eurio_id,),
+    ).fetchone()[0]
+
     # Runs ayant produit des source_images pour ce coin → run le plus récent
     # (deep-link bench) + flag multi-run (limite connue v1 : on linke le
     # dernier run, cf. handoff).
@@ -1333,6 +1363,8 @@ def _coin_tail(conn, eurio_id: str) -> dict:
     return {
         "n_source_images": n_source_images,
         "n_crops": n_crops,
+        "n_downloaded": n_downloaded,
+        "n_download_failed": n_download_failed,
         "by_route_decision": by_route,
         "n_pending": n_pending,
         "n_review_single": n_review_single,
@@ -1344,6 +1376,103 @@ def _coin_tail(conn, eurio_id: str) -> dict:
         "latest_run_started_at": latest_run_started_at,
         "n_runs": len(run_rows),
     }
+
+
+def _cohort_dedup_status(store: Store, cohort_id: str) -> dict:
+    """Cœur (testable offline) de ``GET /lab/cohorts/{id}/dedup-status``.
+
+    Expose les signaux de rupture D (doublons discarded_listings, absents
+    discovery_log) — lecture seule, zéro appel eBay.
+
+    Notes de scope :
+    - ``n_unique_seen`` est global (``discovery_log`` n'a pas de FK cohort/run
+      direct) → indique le volume total de listings jamais vus, toutes cohortes
+      confondues. Annoté dans ``scope_note``.
+    - ``n_discarded_*`` est scopé aux eurio_ids de la cohort via
+      ``target_eurio_id`` — seule clé honnête disponible. Les discards dont
+      ``target_eurio_id`` est NULL ne sont pas rattachables sans heuristique
+      et ne sont pas comptés ici.
+    """
+    cohort = store.get_cohort(cohort_id)
+    if cohort is None:
+        raise HTTPException(status_code=404, detail="Cohort introuvable")
+
+    conn = store._connection()  # noqa: SLF001
+    cohort_eids = list(cohort.eurio_ids)
+
+    # ── n_unique_seen : discovery_log global (pas de FK cohort) ──────────────
+    n_unique_seen: int = conn.execute(
+        "SELECT COUNT(*) FROM discovery_log WHERE source='ebay'"
+    ).fetchone()[0]
+
+    # ── discarded_listings scopé aux eurio_ids de la cohort ──────────────────
+    if cohort_eids:
+        ph = ",".join("?" * len(cohort_eids))
+        row = conn.execute(
+            f"""
+            SELECT COUNT(*)                    AS n_discarded_total,
+                   COUNT(DISTINCT source_ref)  AS n_discarded_unique
+              FROM discarded_listings
+             WHERE source='ebay'
+               AND target_eurio_id IN ({ph})
+            """,
+            list(cohort_eids),
+        ).fetchone()
+        n_discarded_total: int = row["n_discarded_total"]
+        n_discarded_unique: int = row["n_discarded_unique"]
+        n_duplicates: int = n_discarded_total - n_discarded_unique
+
+        # Unique discards absent from discovery_log → re-fetch infini possible
+        n_absent: int = conn.execute(
+            f"""
+            SELECT COUNT(*)
+              FROM (
+                SELECT DISTINCT dl.source_ref
+                  FROM discarded_listings dl
+                 WHERE dl.source='ebay'
+                   AND dl.target_eurio_id IN ({ph})
+              ) unique_discarded
+              LEFT JOIN discovery_log dlog
+                ON dlog.source='ebay' AND dlog.source_ref = unique_discarded.source_ref
+             WHERE dlog.id IS NULL
+            """,
+            list(cohort_eids),
+        ).fetchone()[0]
+    else:
+        n_discarded_total = 0
+        n_discarded_unique = 0
+        n_duplicates = 0
+        n_absent = 0
+
+    pct_absent: float | None = (
+        round(100.0 * n_absent / n_discarded_unique, 1)
+        if n_discarded_unique > 0
+        else None
+    )
+
+    return {
+        "cohort_id": cohort_id,
+        "scope_note": (
+            "discovery_log est global (pas de FK cohort) ; "
+            "discarded_listings scopé aux eurio_ids de la cohort via target_eurio_id"
+        ),
+        "n_unique_seen": n_unique_seen,
+        "n_discarded_total": n_discarded_total,
+        "n_discarded_unique": n_discarded_unique,
+        "n_duplicates": n_duplicates,
+        "n_absent_from_discovery": n_absent,
+        "pct_absent": pct_absent,
+    }
+
+
+@router.get("/cohorts/{cohort_id}/dedup-status")
+def cohort_dedup_status(cohort_id: str) -> dict:
+    """Compteurs dédup eBay — lecture seule, zéro appel eBay.
+
+    Expose les signaux de rupture D (doublons discarded_listings, absents
+    discovery_log).
+    """
+    return _cohort_dedup_status(_get_store(), cohort_id)
 
 
 def _cohort_funnel_status(store: Store, cohort_id: str) -> dict:
@@ -1377,6 +1506,11 @@ def _cohort_funnel_status(store: Store, cohort_id: str) -> dict:
             (eid,),
         ).fetchone()[0]
         n_real = n_training + (1 if _has_obverse(nid) else 0)
+        n_numista_ref = 1 if _has_canonical(conn, eid, "numista_api") else 0
+        n_bce_ref = 1 if _has_canonical(conn, eid, "bce_official") else 0
+        n_projected = 10 * (n_training + n_numista_ref + n_bce_ref)
+        gap_to_target = max(0, TRAINING_TARGET - n_projected)
+        never_scraped = tail["n_source_images"] == 0
         per_coin.append({
             "eurio_id": eid,
             "numista_id": nid,
@@ -1384,6 +1518,11 @@ def _cohort_funnel_status(store: Store, cohort_id: str) -> dict:
             "n_training_eligible": n_training,
             "n_real_sources": n_real,
             "enough": n_real >= _MIN_REAL_SOURCES,
+            "n_numista_ref": n_numista_ref,
+            "n_bce_ref": n_bce_ref,
+            "n_projected": n_projected,
+            "gap_to_target": gap_to_target,
+            "never_scraped": never_scraped,
             **tail,
         })
 
@@ -1463,6 +1602,7 @@ def _cohort_funnel_status(store: Store, cohort_id: str) -> dict:
         "non_scrapable": non_scrapable,
         "quota": quota,
         "min_real_sources": _MIN_REAL_SOURCES,
+        "training_target": TRAINING_TARGET,
     }
 
 
@@ -1475,6 +1615,338 @@ def cohort_funnel_status(cohort_id: str) -> dict:
     (per_coin tail précis vs head groupe). Alimente le tiroir §C3 et les
     deep-links vers le studio bench (``/bench/runs/<run>?eurio_id=<coin>``)."""
     return _cohort_funnel_status(_get_store(), cohort_id)
+
+
+def _cohort_discard_summary(store: Store, cohort_id: str) -> dict:
+    """Cœur (testable offline) de ``GET /lab/cohorts/{id}/discard-summary``.
+
+    Agrège ``discarded_listings`` scopé aux eurio_ids de la cohort (source='ebay')
+    par reason_class + is_rescue_candidate. Les raisons ``commemo_in_standard_run:*``
+    sont normalisées en ``commemo_in_standard_run`` pour éviter une explosion de
+    lignes (51 valeurs distinctes sur la prod actuelle).
+
+    Retourne : ``{cohort_id, total, rows, rescue_total, noise_total, ambiguous_total}``.
+    ``rows`` est trié par n desc.
+    """
+    cohort = store.get_cohort(cohort_id)
+    if cohort is None:
+        raise HTTPException(status_code=404, detail="Cohort introuvable")
+
+    eurio_ids = cohort.eurio_ids
+    if not eurio_ids:
+        return {
+            "cohort_id": cohort_id,
+            "total": 0,
+            "rows": [],
+            "rescue_total": 0,
+            "noise_total": 0,
+            "ambiguous_total": 0,
+        }
+
+    conn = store._connection()  # noqa: SLF001
+    ph = ",".join("?" * len(eurio_ids))
+    raw_rows = conn.execute(
+        f"""
+        SELECT reason, is_rescue_candidate, COUNT(*) AS n
+          FROM discarded_listings
+         WHERE source = 'ebay'
+           AND target_eurio_id IN ({ph})
+         GROUP BY reason, is_rescue_candidate
+        """,
+        list(eurio_ids),
+    ).fetchall()
+
+    # Normalise + agrège : commemo_in_standard_run:* → 'commemo_in_standard_run'.
+    from collections import defaultdict
+    agg: dict[tuple[str, int | None], int] = defaultdict(int)
+    for row in raw_rows:
+        reason_class = (
+            "commemo_in_standard_run"
+            if str(row["reason"]).startswith("commemo_in_standard_run:")
+            else str(row["reason"])
+        )
+        key = (reason_class, row["is_rescue_candidate"])
+        agg[key] += int(row["n"])
+
+    rows = [
+        {
+            "reason_class": reason_class,
+            "n": n,
+            "is_rescue_candidate": flag,
+        }
+        for (reason_class, flag), n in sorted(agg.items(), key=lambda kv: -kv[1])
+    ]
+    total = sum(r["n"] for r in rows)
+    rescue_total = sum(r["n"] for r in rows if r["is_rescue_candidate"] == 1)
+    noise_total = sum(r["n"] for r in rows if r["is_rescue_candidate"] == 0)
+    ambiguous_total = sum(r["n"] for r in rows if r["is_rescue_candidate"] is None)
+    return {
+        "cohort_id": cohort_id,
+        "total": total,
+        "rows": rows,
+        "rescue_total": rescue_total,
+        "noise_total": noise_total,
+        "ambiguous_total": ambiguous_total,
+    }
+
+
+@router.get("/cohorts/{cohort_id}/discard-summary")
+def cohort_discard_summary(cohort_id: str) -> dict:
+    """Agrégat des rejets eBay scopé aux pièces de la cohort (C2).
+
+    Normalise les raisons ``commemo_in_standard_run:*`` en une seule classe.
+    Retourne ``rescue_total`` / ``noise_total`` / ``ambiguous_total`` pour
+    alimenter le widget §C3 du tiroir CohortDrawerEbay."""
+    return _cohort_discard_summary(_get_store(), cohort_id)
+
+
+def _cohort_rescue_candidates(store: Store, cohort_id: str) -> dict:
+    """Cœur (testable offline) de ``GET /lab/cohorts/{id}/rescue-candidates``.
+
+    Retourne un détail par eurio_id avec les IDs individuels de chaque
+    ``discarded_listings`` récupérable (``is_rescue_candidate=1``). Contrairement
+    à ``_cohort_discard_summary`` (agrégat normalisé §C3), ce endpoint expose les
+    ``id`` individuels pour l'action 1-clic Reclasser (C5).
+
+    Séparation noise : lignes à ``target_eurio_id IS NULL`` ou sans
+    ``is_rescue_candidate=1`` pour les raisons non commemo → comptées dans
+    ``noise_by_reason`` (section bruit readonly).
+
+    Pour les ``commemo_in_standard_run:<eid>`` : l'``eid`` embarqué dans la raison
+    est l'eurio_id cible réel (la pièce commémo qui apparaissait dans un run
+    standard). On rattache ces discards à l'eurio_id cible extraite de la raison.
+    """
+    cohort = store.get_cohort(cohort_id)
+    if cohort is None:
+        raise HTTPException(status_code=404, detail="Cohort introuvable")
+
+    eurio_ids = cohort.eurio_ids
+    if not eurio_ids:
+        return {
+            "cohort_id": cohort_id,
+            "per_class": [],
+            "noise_total": 0,
+            "noise_by_reason": [],
+        }
+
+    conn = store._connection()  # noqa: SLF001
+    ph = ",".join("?" * len(eurio_ids))
+
+    # Récupère toutes les lignes discarded scopées à la cohort + les commemo
+    # dont l'eid embarqué est dans la cohort (target_eurio_id=NULL côté standard run).
+    # On doit aussi capturer les commemo dont le target_eurio_id n'est pas dans la
+    # cohort mais dont le eurio_id embarqué l'est.
+    raw_rows = conn.execute(
+        f"""
+        SELECT id, reason, target_eurio_id, is_rescue_candidate, rescued_source_image_id
+          FROM discarded_listings
+         WHERE source = 'ebay'
+           AND (
+             target_eurio_id IN ({ph})
+             OR (
+               reason LIKE 'commemo_in_standard_run:%'
+               AND SUBSTR(reason, INSTR(reason, ':') + 1) IN ({ph})
+             )
+           )
+        """,
+        list(eurio_ids) + list(eurio_ids),
+    ).fetchall()
+
+    from collections import defaultdict
+
+    # Structure : per_eurio_id → {reason → {n, is_rescue, ids[]}}
+    # Pour une ligne commemo, l'eurio_id clé est celui embarqué dans la raison.
+    per_eurio: dict[str, dict] = defaultdict(lambda: defaultdict(
+        lambda: {"n": 0, "is_rescue_candidate": False, "discard_ids": []}
+    ))
+    noise_by_reason: dict[str, int] = defaultdict(int)
+    noise_ids: set[str] = set()
+
+    for row in raw_rows:
+        reason: str = str(row["reason"])
+        is_rescue = bool(row["is_rescue_candidate"])
+        row_id: str = row["id"]
+        already_rescued = row["rescued_source_image_id"] is not None
+
+        # Commemo dans un run standard → l'eid est dans la raison
+        if reason.startswith("commemo_in_standard_run:"):
+            embedded_eid = reason[len("commemo_in_standard_run:"):]
+            if embedded_eid in eurio_ids:
+                # Rescue candidate si l'eid cible est dans la cohort
+                bucket = per_eurio[embedded_eid][reason]
+                bucket["n"] += 1
+                bucket["is_rescue_candidate"] = True
+                # Ne propose le rescue que si pas encore rescué
+                if not already_rescued:
+                    bucket["discard_ids"].append(row_id)
+                continue
+
+        # Autres raisons rattachables via target_eurio_id
+        target: str | None = row["target_eurio_id"]
+        if target and target in eurio_ids:
+            if is_rescue:
+                bucket = per_eurio[target][reason]
+                bucket["n"] += 1
+                bucket["is_rescue_candidate"] = True
+                if not already_rescued:
+                    bucket["discard_ids"].append(row_id)
+            else:
+                # Rejet non-récupérable rattaché à une pièce → bruit
+                noise_by_reason[reason] += 1
+                noise_ids.add(row_id)
+        else:
+            # target NULL (non attribuable proprement) → bruit
+            noise_by_reason[reason] += 1
+            noise_ids.add(row_id)
+
+    # Construit la liste per_class triée par nombre de discards desc
+    per_class = []
+    for eid, reasons_map in per_eurio.items():
+        by_reason = []
+        rescue_count = 0
+        total = 0
+        for reason, bucket in reasons_map.items():
+            n = bucket["n"]
+            total += n
+            is_rescue_candidate = bucket["is_rescue_candidate"]
+            discard_ids = bucket["discard_ids"]
+            # rescue_eurio_id : pour commemo c'est l'eid lui-même (= la pièce ciblée)
+            rescue_eurio_id = eid if is_rescue_candidate else None
+            by_reason.append({
+                "reason": reason,
+                "n": n,
+                "is_rescue_candidate": is_rescue_candidate,
+                "rescue_eurio_id": rescue_eurio_id,
+                "discard_ids": discard_ids,
+            })
+            if is_rescue_candidate:
+                rescue_count += len(discard_ids)
+        by_reason.sort(key=lambda x: -x["n"])
+        per_class.append({
+            "eurio_id": eid,
+            "total_discards": total,
+            "by_reason": by_reason,
+            "rescue_count": rescue_count,
+        })
+    per_class.sort(key=lambda x: -x["total_discards"])
+
+    # noise_by_reason trié desc, dédupliqué (on compte les lignes pas les ids)
+    noise_by_reason_list = [
+        {"reason": r, "n": n}
+        for r, n in sorted(noise_by_reason.items(), key=lambda kv: -kv[1])
+    ]
+
+    return {
+        "cohort_id": cohort_id,
+        "per_class": per_class,
+        "noise_total": len(noise_ids),
+        "noise_by_reason": noise_by_reason_list,
+    }
+
+
+@router.get("/cohorts/{cohort_id}/rescue-candidates")
+def cohort_rescue_candidates(cohort_id: str) -> dict:
+    """Détail des rejets eBay récupérables (C5), groupé par eurio_id.
+
+    Contrairement à ``/discard-summary`` (agrégat normalisé pour §C3), expose
+    les ``id`` individuels des ``discarded_listings`` pour l'action 1-clic
+    Reclasser dans le tiroir §C5 CohortDrawerRescue.
+    Inclut uniquement les discards pas encore rescués (``rescued_source_image_id IS NULL``)."""
+    return _cohort_rescue_candidates(_get_store(), cohort_id)
+
+
+@router.post("/discarded/{discard_id}/rescue")
+def rescue_discard(discard_id: str) -> dict:
+    """Reclasse un ``discarded_listings`` vers son eurio_id cible (C5).
+
+    Insère dans ``source_images`` si absent (dédup sur ``source + source_ref``).
+    Idempotent : un second appel retourne ``already_existed=true``.
+    Marque la ligne ``discarded_listings.rescued_source_image_id`` pour éviter
+    qu'elle réapparaisse dans les rescue candidates.
+
+    Note : l'image est reclassée en base, mais aucun crop ne sera généré
+    automatiquement. L'utilisateur doit déclencher un re-crop explicitement."""
+    store = _get_store()
+    conn = store._connection()  # noqa: SLF001
+
+    row = conn.execute(
+        "SELECT * FROM discarded_listings WHERE id = ?", (discard_id,)
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="discard_id introuvable")
+
+    source: str = row["source"]
+    source_ref: str = row["source_ref"]
+    run_id: str | None = row["run_id"]
+    reason: str = str(row["reason"])
+
+    # Résout l'eurio_id cible
+    if reason.startswith("commemo_in_standard_run:"):
+        target_eurio_id = reason[len("commemo_in_standard_run:"):]
+    else:
+        target_eurio_id = row["target_eurio_id"]
+
+    if not target_eurio_id:
+        raise HTTPException(
+            status_code=422,
+            detail="Impossible de déterminer l'eurio_id cible pour ce discard.",
+        )
+
+    # Vérifie si déjà rescué
+    if row["rescued_source_image_id"] is not None:
+        return {
+            "discard_id": discard_id,
+            "eurio_id": target_eurio_id,
+            "n_persisted": 0,
+            "already_existed": True,
+        }
+
+    # Vérifie si la source_image existe déjà (dédup sur source+source_ref)
+    existing = conn.execute(
+        "SELECT id FROM source_images WHERE source = ? AND source_ref = ?",
+        (source, source_ref),
+    ).fetchone()
+
+    if existing is not None:
+        # Marque le discard comme rescué
+        conn.execute(
+            "UPDATE discarded_listings SET rescued_source_image_id = ? WHERE id = ?",
+            (existing["id"], discard_id),
+        )
+        conn.commit()
+        return {
+            "discard_id": discard_id,
+            "eurio_id": target_eurio_id,
+            "n_persisted": 0,
+            "already_existed": True,
+        }
+
+    # Insère dans source_images
+    new_id = uuid.uuid4().hex
+    title = row["title"]
+    raw_payload = row["raw_payload"]
+    conn.execute(
+        """
+        INSERT INTO source_images (
+            id, source, source_ref, target_eurio_id, listing_title,
+            raw_payload_json, run_id, download_status, fetched_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', datetime('now'))
+        """,
+        (new_id, source, source_ref, target_eurio_id, title, raw_payload, run_id),
+    )
+    # Marque le discard comme rescué
+    conn.execute(
+        "UPDATE discarded_listings SET rescued_source_image_id = ? WHERE id = ?",
+        (new_id, discard_id),
+    )
+    conn.commit()
+
+    return {
+        "discard_id": discard_id,
+        "eurio_id": target_eurio_id,
+        "n_persisted": 1,
+        "already_existed": False,
+    }
 
 
 # ─── Augmentations (Sprint 1) ──────────────────────────────────────────────

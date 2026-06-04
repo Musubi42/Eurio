@@ -538,6 +538,43 @@ class Store:
                     ("canonical_eurio_id", "TEXT"),
                 ):
                     self._ensure_column(conn, table="coins", column=column, decl=decl)
+            # C0 pre-bootstrap : dédup discarded_listings AVANT executescript.
+            # executescript re-crée le CREATE TABLE IF NOT EXISTS avec
+            # UNIQUE(source, source_ref) — si des doublons existent, la
+            # création de l'index UNIQUE planterait. On dédupe d'abord.
+            # Guard : si la table n'existe pas encore (fresh DB), skip — elle
+            # sera créée proprement avec la contrainte par executescript.
+            if conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' "
+                "AND name='discarded_listings'"
+            ).fetchone():
+                # Passe 1 : garder 1ère row par triplet (source, source_ref, reason).
+                conn.execute(
+                    """
+                    DELETE FROM discarded_listings
+                     WHERE id NOT IN (
+                       SELECT MIN(id)
+                         FROM discarded_listings
+                        GROUP BY source, source_ref, reason
+                     )
+                    """
+                )
+                # Passe 2 : garder 1ère row par paire (source, source_ref).
+                conn.execute(
+                    """
+                    DELETE FROM discarded_listings
+                     WHERE id NOT IN (
+                       SELECT MIN(id)
+                         FROM discarded_listings
+                        GROUP BY source, source_ref
+                     )
+                    """
+                )
+                conn.execute(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS "
+                    "idx_discarded_listings_source_ref "
+                    "ON discarded_listings(source, source_ref)"
+                )
             conn.executescript(schema)
             self._ensure_column(
                 conn,
@@ -786,6 +823,66 @@ class Store:
                 ("tilt_trustworthy", "INTEGER DEFAULT 0"),
             ):
                 self._ensure_column(conn, table="image_assets", column=_col, decl=_decl)
+            # C2 cohort-pipeline : flag is_rescue_candidate pré-calculé.
+            # 1 = commémo valide dans le mauvais bucket (récupérable),
+            # 0 = vrai bruit (noise_title/below_face/above_extreme/non_eur).
+            self._ensure_column(
+                conn,
+                table="discarded_listings",
+                column="is_rescue_candidate",
+                decl="INTEGER",
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_discarded_listings_rescue "
+                "ON discarded_listings(is_rescue_candidate) "
+                "WHERE is_rescue_candidate IS NOT NULL"
+            )
+            # Backfill des rows existantes (idempotent : WHERE is_rescue_candidate IS NULL).
+            conn.execute(
+                """
+                UPDATE discarded_listings
+                   SET is_rescue_candidate = CASE
+                         WHEN reason = 'theme_mismatch'
+                              OR reason LIKE 'commemo_in_standard_run:%' THEN 1
+                         WHEN reason IN (
+                              'noise_title','below_face','above_extreme','non_eur'
+                         ) THEN 0
+                         ELSE NULL
+                       END
+                 WHERE is_rescue_candidate IS NULL
+                """
+            )
+            # C1 cohort-pipeline : rescue commémo rétroactif. Colonne pour
+            # lier un discard rescapé à la source_image correspondante sans
+            # reparsing de la colonne `reason`.
+            self._ensure_column(
+                conn,
+                table="discarded_listings",
+                column="rescued_source_image_id",
+                decl="TEXT",
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_discarded_listings_rescued "
+                "ON discarded_listings(rescued_source_image_id) "
+                "WHERE rescued_source_image_id IS NOT NULL"
+            )
+            # ─── C0 — Backfill discovery_log (cohort-pipeline) ─────────────
+            # Dédup + index UNIQUE posés en pre-bootstrap (avant executescript).
+            # Ici : backfill discovery_log pour les rejets sans entrée existante.
+            # INSERT OR IGNORE = idempotent. Rows fantômes (last_run_id=NULL)
+            # — leur rôle est uniquement de bloquer le re-fetch futur.
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO discovery_log (id, source, source_ref, pipeline_state)
+                SELECT hex(randomblob(16)), source, source_ref, 'rejected'
+                  FROM discarded_listings dl
+                 WHERE NOT EXISTS (
+                   SELECT 1 FROM discovery_log dlog
+                    WHERE dlog.source = dl.source
+                      AND dlog.source_ref = dl.source_ref
+                 )
+                """
+            )
             # Index NON unique : un numista_id de circulation est partagé par
             # N millésimes (ex. nid 135 = 23 pièces) → (ref_source,ref_native_id)
             # n'est pas unique. L'unicité réelle relève de la génération (Chunk 2).

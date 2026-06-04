@@ -161,6 +161,13 @@ class ReviewItem(BaseModel):
     # verdict ambigu) — le reviewer choisit la sœur d'un clic sans passer
     # par la recherche libre. Vide sinon.
     group_candidates: list[ReviewCandidate] = []
+    # Chunk Cr — top-1 DINOv2 inliné (dinov2-vits14, 2eur_commemo).
+    # Préférence : top1_country (restreint au pays du listing) > top1 global.
+    # None si pas de prédiction Dino pour cet asset ou eurio_id inexistant
+    # dans coins (mort après rename). Affiché comme bouton « Accept Dino »
+    # 1-clic dans SingleReviewView — face hardcodée à 'obverse' (ancres
+    # Dino = obverses canoniques Numista, correct pour 2€ commémo).
+    dino_top1: ReviewCandidate | None = None
 
 
 def _build_target_candidate(
@@ -198,6 +205,55 @@ def _build_target_candidate(
         country=row["t_country"] or "",
         denomination=denom,
         year=row["t_year"],
+        canonical_thumb_url=thumb,
+    )
+
+
+def _build_dino_top1_candidate(
+    conn: sqlite3.Connection,
+    eurio_id: str | None,
+    sim: float | None,
+) -> ReviewCandidate | None:
+    """Construit le ReviewCandidate pour la suggestion DINOv2 top-1.
+
+    Fait un SELECT coins pour enrichir label/country/year. Retourne None si
+    eurio_id est absent, sim None, ou la coin n'est pas dans le catalog
+    (ex: eurio_id mort post-rename)."""
+    if not eurio_id or sim is None:
+        return None
+    row = conn.execute(
+        """
+        SELECT eurio_id, country, country_name, year, theme,
+               face_value, numista_id
+          FROM coins
+         WHERE eurio_id = ?
+        """,
+        (eurio_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    label_bits = [
+        row["country_name"],
+        str(row["year"]) if row["year"] else None,
+        row["theme"],
+    ]
+    denom = (
+        f"{float(row['face_value']):.2f} EUR"
+        if row["face_value"] is not None
+        else ""
+    )
+    thumb = (
+        f"/images/{int(row['numista_id'])}/source"
+        if row["numista_id"]
+        else ""
+    )
+    return ReviewCandidate(
+        eurio_id=row["eurio_id"],
+        score=float(sim),
+        label=" · ".join([b for b in label_bits if b]) or row["eurio_id"],
+        country=row["country"] or "",
+        denomination=denom,
+        year=row["year"],
         canonical_thumb_url=thumb,
     )
 
@@ -252,6 +308,7 @@ def _fetch_group_candidates(
 def _row_to_item(
     row: sqlite3.Row,
     group_map: dict[tuple[str, int], list[ReviewCandidate]] | None = None,
+    conn: sqlite3.Connection | None = None,
 ) -> ReviewItem:
     bbox: ReviewBbox | None = None
     if row["bbox_json"]:
@@ -300,6 +357,17 @@ def _row_to_item(
         if gc_country and gc_year is not None:
             group_candidates = group_map.get((gc_country, gc_year), [])
 
+    # Chunk Cr — top-1 Dino inliné. Préférence country > global.
+    # Les colonnes dino_* sont présentes si le SELECT du caller fait
+    # le LEFT JOIN image_asset_dino_predictions. Sinon _opt() retourne None
+    # et _build_dino_top1_candidate retourne None gracieusement.
+    dino_top1: ReviewCandidate | None = None
+    if conn is not None:
+        dino_eurio_id = _opt("dino_top1_country_eurio_id") or _opt("dino_top1_eurio_id")
+        dino_sim = _opt("dino_top1_country_sim") if _opt("dino_top1_country_eurio_id") \
+            else _opt("dino_top1_sim")
+        dino_top1 = _build_dino_top1_candidate(conn, dino_eurio_id, dino_sim)
+
     return ReviewItem(
         id=row["id"],
         crop_url=f"/sources/{row['source']}/assets/{row['image_asset_id']}/file",
@@ -324,6 +392,7 @@ def _row_to_item(
         target_eurio_id=target_eurio_id,
         target_candidate=target_candidate,
         group_candidates=group_candidates,
+        dino_top1=dino_top1,
     )
 
 
@@ -383,12 +452,20 @@ def list_queue(
                t.year         AS t_year,
                t.theme        AS t_theme,
                t.face_value   AS t_face_value,
-               t.numista_id   AS t_numista_id
+               t.numista_id   AS t_numista_id,
+               p.top1_country_eurio_id AS dino_top1_country_eurio_id,
+               p.top1_country_sim      AS dino_top1_country_sim,
+               p.top1_eurio_id         AS dino_top1_eurio_id,
+               p.top1_sim              AS dino_top1_sim
           FROM review_queue rq
           JOIN image_assets a ON a.id = rq.image_asset_id
           JOIN source_images s ON s.id = a.source_image_id
           LEFT JOIN listing_text_signals lts ON lts.source_image_id = s.id
           LEFT JOIN coins t   ON t.eurio_id = s.target_eurio_id
+          LEFT JOIN image_asset_dino_predictions p
+                 ON p.asset_id = a.id
+                AND p.encoder_version = 'dinov2-vits14'
+                AND p.anchors_kind = '2eur_commemo'
          WHERE {where}
          ORDER BY {order_clause}
          LIMIT ?
@@ -408,7 +485,7 @@ def list_queue(
             pairs.add((c, y))
     group_map = _fetch_group_candidates(conn, pairs)
 
-    return [_row_to_item(r, group_map) for r in rows]
+    return [_row_to_item(r, group_map, conn=conn) for r in rows]
 
 
 # Consumed by: admin/packages/web/src/features/review/composables/useReviewApi.ts (fetchReviewStats)
@@ -1431,19 +1508,27 @@ def get_review(review_id: str) -> ReviewItem:
                t.year         AS t_year,
                t.theme        AS t_theme,
                t.face_value   AS t_face_value,
-               t.numista_id   AS t_numista_id
+               t.numista_id   AS t_numista_id,
+               p.top1_country_eurio_id AS dino_top1_country_eurio_id,
+               p.top1_country_sim      AS dino_top1_country_sim,
+               p.top1_eurio_id         AS dino_top1_eurio_id,
+               p.top1_sim              AS dino_top1_sim
           FROM review_queue rq
           JOIN image_assets a ON a.id = rq.image_asset_id
           JOIN source_images s ON s.id = a.source_image_id
           LEFT JOIN listing_text_signals lts ON lts.source_image_id = s.id
           LEFT JOIN coins t   ON t.eurio_id = s.target_eurio_id
+          LEFT JOIN image_asset_dino_predictions p
+                 ON p.asset_id = a.id
+                AND p.encoder_version = 'dinov2-vits14'
+                AND p.anchors_kind = '2eur_commemo'
          WHERE rq.id = ?
         """,
         (review_id,),
     ).fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail="Review item not found.")
-    return _row_to_item(row)
+    return _row_to_item(row, conn=conn)
 
 
 # ── Mutations ─────────────────────────────────────────────────────────────
