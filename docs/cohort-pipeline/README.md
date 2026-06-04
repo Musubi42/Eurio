@@ -62,9 +62,17 @@ Front cible : cockpit `CohortDetailPage` = §C1..§C7. On **ne fusionne pas** be
 
 ---
 
-## À tester / décider par le PO
-- **Débit review** : atteindre le plancher ~10 crops réels/classe dépend d'un effort de review. Valider l'approche « singles-first + 1-clic DINOv2 » à l'usage (sinon CCProxy à débugger).
-- Confirmer la source exacte des **réfs Numista/BCE** pour le seed augmentation (canonical obverse + BCE) lors de C-1.
+## À tester / décider par le PO (smoke visuel, backend + dev server up)
+
+Sur `/lab/cohorts/b0299ca0252b` (mix-zone-17) sauf indication :
+- **§C7 enrichissement** : barre `n_projected/100` + gap par classe ; badge **rouge « jamais scrapé »** sur `be-2007` & `es-1999` ; bouton **Rescraper** masqué si gap=0.
+- **§C5 Jetées & Rescue** : apparaît **entre §C3 et §C4** ; clic **Reclasser** sur un `commemo_in_standard_run` → crée la row `source_images` (`download_status=NULL` → à re-télécharger) ; idempotent.
+- **§C6 dédup** : `n_duplicates` doit tendre vers 0 (post-migration C0).
+- **Review** (`/review`) : carte **Suggestion Dino** + bouton **Accept [D]** visible si prédiction, absent sinon ; queue **singles d'abord** ; mode Libre (F) → **champ eurio_id libre** (taper `simone`/`be-2007` → rescue cross-classe).
+- **Crop-bench** : bouton **« Voir qualité crops »** (§C3) → `/crop-bench?cohort=…` avec badge **Scope : mix-zone-17 (16 classes)** + cartes filtrées ; « tout voir » reset.
+- **C-1 augmentation** : un bake doit produire ~100 samples pour `fr-2018-simone-veil` (seedés BCE+Numista, 0 crop eBay) et ~160 pour `at-2005` (15 eBay + réfs).
+
+**Décisions encore ouvertes** : débit review réel pour atteindre le plancher ~10 crops/classe (sinon rouvrir CCProxy) ; faut-il auto-rescuer (vs 1-clic) les `commemo_in_standard_run`.
 
 ---
 
@@ -79,3 +87,7 @@ Front cible : cockpit `CohortDetailPage` = §C1..§C7. On **ne fusionne pas** be
 - **2026-06-04** — Spec verrouillée (cible >100 / plancher 10 / ×10 / enrichissement=augmentation / seeds Numista+BCE). Décisions rescue & review actées.
 - **2026-06-04** — Blueprint d'implémentation (workflow `cohort-pipeline-impl-blueprint`, run `wf_bd15179b-e32`) : 12 chunks designés + ordre conflict-aware ci-dessus + carte des conflits de fichiers.
 - **2026-06-04** — **C-1 cœur livré** (`ml/training/iteration_augmentations.py`, sans WIP) : réfs BCE/EUR-Lex JO injectées comme seeds (`_canonical_ref_images`), cible dynamique `_target_per_coin` (×10/source, plancher 100), `CoinAugReport` enrichi (`n_real_ebay`/`n_ref_images`/`below_floor_real`). Tests `ml/tests/test_iteration_augmentations.py` ✅ 2/2. Reste de C-1 (surface report I2 dans `lab_routes.py`) reporté au cluster lab_routes (WIP). NB : 2 échecs **pré-existants** dans `test_augmentation.py` (layer schemas/seed), hors périmètre.
+- **2026-06-04** — Base remise au propre : commits `2210bb6` (snapshot WIP session concurrente) + `3042628` (C-1).
+- **2026-06-04** — **11 chunks restants exécutés** (workflow `cohort-pipeline-execute`, run `wf_82f184e5-750`, séquentiel conflict-aware). Tous `done`. Commits `64414ae` (backend C0/C1/C2/C3/Cr/C7/C8/C9-backend) + `f39e766` (front C4/C5/C6/C7/C8/C9/Cr-front). **Vérif d'intégration : 0 régression** — les 21 échecs pytest + 7 erreurs TS sont **pré-existants** (fichiers non touchés ; `create_cohort` byte-identique à la base ; aucun nouveau TS dans un fichier des chunks).
+  - **Effets de bord DB live** (tests des agents) : (1) migration C0 jouée sur `eurio.db` → `discarded_listings` 2979→1895 (1084 doublons supprimés, garde 1ʳᵉ occurrence ; 107 paires multi-reason réduites à 1 row), +1658 `discovery_log` en `rejected` (guards re-fetch). (2) Cr a tranché **1 item de review** en test (`n_pending` 580→579).
+  - **Dette ciblée connue (follow-ups, hors périmètre des chunks)** : reject d'`image_assets` croppées (bench/review) PAS encore tracé en `discarded_listings`/`discovery_log` ; rows rescuées rétroactivement ont `storage_path/download_status=NULL` → re-download requis avant crop ; `_MIN_REAL_SOURCES` alias à retirer ; bouton bulk-rescue (`POST /sources/discarded/bulk-rescue`) à câbler ; audit multi-reason perdu sur les 107 paires dédupliquées.
