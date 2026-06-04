@@ -49,6 +49,10 @@ ml/*.npy
 ml/checkpoints/
 ml/output/
 ml/yolov8n.pt
+# Poids SAM auto-téléchargés par ultralytics (proposeurs-objet du bench census).
+ml/mobile_sam.pt
+ml/FastSAM*.pt
+ml/sam2*.pt
 ml/.ebay_token_cache.json
 ml/.dataset_cache/
 # Images canoniques générées localement par scripts/migrate_canonical_images_local.py.
