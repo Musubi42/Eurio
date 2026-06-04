@@ -344,6 +344,8 @@ def main() -> int:
     ap.add_argument("--ladder-conf", type=float, default=0.10,
                     help="conf YOLO du proposeur ladder (proposeur adopté)")
     ap.add_argument("--ladder-taus", default="0.35,0.40,0.45,0.50,0.55,0.60")
+    ap.add_argument("--bank", default="",
+                    help="npz banque coin-ness pour l'étage ② (vide = défaut scan/census.py)")
     ap.add_argument("--out", default=str(OUT_DIR / "ceiling_v0.json"))
     args = ap.parse_args()
 
@@ -366,6 +368,12 @@ def main() -> int:
     if args.limit:
         bench = bench[: args.limit]
     print(f"Bench: {len(bench)} raws | proposeurs: {sorted(which)}")
+
+    # Banque coin-ness pour l'étage ② (explicite → A/B défaut vs étendue).
+    _ladder_bank = None
+    if "ladder" in which and args.bank:
+        _ladder_bank = np.asarray(np.load(args.bank)["matrix"], dtype=np.float32)
+        print(f"Banque ladder: {args.bank} ({_ladder_bank.shape})")
 
     # Collecte des prédictions par proposeur-variante.
     preds: dict[str, dict[str, int]] = {}
@@ -399,7 +407,7 @@ def main() -> int:
             boxes = yolo_low_boxes(bgr, args.ladder_conf, args.yolo_rfloor)
             h_im, w_im = bgr.shape[:2]
             deduped = census.nms_concentric(boxes, img_wh=(w_im, h_im))  # ① NMS-concentrique
-            sims, structs = census.coin_signals(bgr, deduped)   # ② signaux is-coin
+            sims, structs = census.coin_signals(bgr, deduped, bank=_ladder_bank)  # ② signaux is-coin
             lad_dump[sid] = {"sims": sims, "structs": structs}
             preds.setdefault("ladder_①nms_only", {})[sid] = len(deduped)
 

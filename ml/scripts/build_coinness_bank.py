@@ -19,12 +19,15 @@ from __future__ import annotations
 
 import argparse
 import json
+import sqlite3
 from pathlib import Path
 
 import numpy as np
 
 ML_DIR = Path(__file__).resolve().parents[1]
 DATASETS_DIR = ML_DIR / "datasets"
+DB_PATH = ML_DIR / "state" / "eurio.db"
+BENCH_PATH = ML_DIR / "state" / "coin_census_bench" / "bench_v0.json"
 OUT_PATH = ML_DIR / "state" / "foundation_coinness.npz"
 
 FACE_FILES = ("obverse.jpg", "reverse.jpg")
@@ -45,9 +48,51 @@ def collect_ref_paths(limit: int = 0) -> list[tuple[str, str, str]]:
     return out
 
 
+def collect_real_crop_paths() -> list[tuple[str, str, str]]:
+    """Crops eBay RÉELS validés humainement, HORS bench (anti-fuite), pour combler
+    le trou de domaine (capsule/glare/revers) du gate is-coin.
+
+    Filtre haute-confiance UNIQUEMENT (`manual`/`auto_phash`/`training_eligible`) :
+    ces crops sont la sortie de YOLO+Hough → en prendre des non-validés réinjecterait
+    le clutter/fragments que le gate doit justement rejeter. On EXCLUT toute image du
+    bench (`source_image_id`) — sinon fuite banque→bench = mesure faussée.
+    """
+    from storage.local_cache import local_path
+
+    bench = json.loads(BENCH_PATH.read_text())
+    bench_sids = {x["source_image_id"] for x in bench}
+
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+        """
+        SELECT id, source_image_id, storage_path, eurio_id
+          FROM image_assets
+         WHERE storage_path IS NOT NULL AND storage_status = 'present'
+           AND (resolution_status IN ('manual', 'auto_phash')
+                OR COALESCE(training_eligible, 0) = 1)
+        """
+    ).fetchall()
+    conn.close()
+
+    out: list[tuple[str, str, str]] = []
+    for r in rows:
+        if r["source_image_id"] in bench_sids:
+            continue
+        try:
+            p = local_path("enrichment-crops", r["storage_path"])
+        except FileNotFoundError:
+            continue
+        if Path(p).exists():
+            out.append((str(p), r["eurio_id"] or r["id"], "real_crop"))
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--include-real", action="store_true",
+                    help="ajoute les crops eBay validés hors-bench (domaine capsule/glare/revers)")
     ap.add_argument("--out", default=str(OUT_PATH))
     args = ap.parse_args()
 
@@ -59,6 +104,10 @@ def main() -> int:
     if not refs:
         print("Aucune réf avers/revers trouvée dans datasets/ — abort.")
         return 1
+    if args.include_real:
+        real = collect_real_crop_paths()
+        print(f"+ {len(real)} crops eBay réels validés hors-bench (domaine)")
+        refs = refs + real
     paths = [r[0] for r in refs]
     by_face: dict[str, int] = {}
     for _, _, face in refs:

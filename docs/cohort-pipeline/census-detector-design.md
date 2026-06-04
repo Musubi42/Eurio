@@ -98,3 +98,18 @@ Code livré : `scripts/build_coinness_bank.py` (banque **1127** réfs : 564 aver
 ### Décision (à ratifier) & prochain levier
 - **Livrer `① nms_only` comme proposeur de compte v1** (training corpus + signal lot/single), **gate DINO désactivé**.
 - **Prochain levier (reco audit) : étendre la banque AVANT d'itérer τ** — ajouter vues capsule (20-30 crops du bench), multi-dénom (1c-1€), pour combler les 5 défaillances structurelles. Si elles persistent → option B (probe is-coin 2 classes `physical_coin` vs `printed/capsule`). NB : la **fragmentation YOLO (cause A)** ne se règle pas par la banque — c'est un sujet PROPOSEUR (NMS plus agressif sur boîtes très chevauchantes d'un même single, ou retrain) à traiter séparément.
+
+## 7. Extension banque (cause B) — testée, NÉGATIF (2026-06-04)
+
+> ⚠️ Anti-fuite : la reco audit (« 20-30 crops capsule du bench ») aurait créé une **fuite banque→bench**. On a donc pris **81 crops eBay validés humainement HORS-bench** (`manual`/`auto_phash`/`training_eligible`, incl. FI 5 + AT 40 = les domaines des échecs structurels) via `build_coinness_bank.py --include-real`. Banque 1127 → **1208**. A/B via `--bank` du harnais.
+
+| variante | banque | fs_real | faux-lot | exact |
+|---|---|---|---|---|
+| ①② τ0.35 | défaut | 16 % | 41 % | 46 % |
+| ①② τ0.35 | étendue | **16 %** | 46 % | 42 % |
+| ①② τ0.45 | défaut | 28 % | 28 % | 46 % |
+| ①② τ0.45 | étendue | **28 %** | 30 % | 49 % |
+
+**Verdict : l'extension ne débloque PAS le gate.** `fs_real` identique à chaque τ (les **mêmes lots échouent**), faux-lot inchangé-à-pire, exact marginalement mieux à τ haut seulement. Cause : 81 crops = 6,7 % d'une banque de 1208, `is_coin = max sim` → trop dilué pour relever les capsules récalcitrantes ; et on ne peut pas avoir plus de crops PROPRES (les 2237 hors-bench restants sont `needs_review` non validés → y piocher réinjecterait le clutter que le gate doit rejeter). **Levier cause B épuisé avec les données propres dispo.** Banque étendue NON versionnée (pas de gain). Infra (`--include-real`, `--bank`) gardée pour re-tester si un set capsule validé plus large arrive.
+
+→ Le gate ② n'est pas débloquable maintenant. Leviers restants : **cause A (fragmentation YOLO)** — proposeur, sans data, le plus gros morceau du faux-lot ; ou **option B (probe is-coin entraînée)** — needs ~150 ex. labellisés. **v1 reste `① nms_only`.**
