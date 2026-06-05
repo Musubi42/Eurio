@@ -741,7 +741,8 @@ def _radial_gradient_polish(bgr: np.ndarray,
     return cx, cy, best_r, gain, "applied"
 
 
-def detect_circles_multi(bgr: np.ndarray) -> list[CircleDetection]:
+def detect_circles_multi(bgr: np.ndarray,
+                         census: bool | None = None) -> list[CircleDetection]:
     """Detect ALL coins in a listing image (1..N), with accept/reject reasons.
 
     YOLO produces N bbox candidates above `_YOLO_CONF_THRESHOLD`. For each
@@ -751,13 +752,17 @@ def detect_circles_multi(bgr: np.ndarray) -> list[CircleDetection]:
     circle of the bbox — `method="yolo+bbox"`. Either way, the same
     `radius_too_small / radius_too_large / off_edge` post-filter applies.
 
+    `census` : mode haut-rappel + gate anti-fragment (cf. §6-9). `None` (défaut)
+    = résolu via le flag d'env `EURIO_CENSUS_DETECT` (chemins bench/CLI) ; un bool
+    explicite a priorité (le pipeline eBay passe `census=True` côté detect_crop).
+
     Returns detections ordered by YOLO confidence descending. Rejected
     circles are reported only for the admin debug view (Stage 2). No
     persistence — recompute is cheap.
     """
     if bgr is None or bgr.size == 0:
         return []
-    census = _census_detect_enabled()
+    census = _census_detect_enabled() if census is None else census
     h_img, w_img = bgr.shape[:2]
     short = min(h_img, w_img)
     rmin_frac = _CENSUS_RMIN_FRAC if census else _LISTING_RMIN_FRAC_STRICT
@@ -859,7 +864,8 @@ def detect_circles_multi(bgr: np.ndarray) -> list[CircleDetection]:
 
 
 def normalize_listing(bgr: np.ndarray,
-                       config: CropConfig | None = None) -> list[NormalizationResult]:
+                       config: CropConfig | None = None,
+                       census: bool | None = None) -> list[NormalizationResult]:
     """Normalize a listing image (eBay etc.) into 0..N tight coin crops.
 
     One result per **accepted** circle from `detect_circles_multi`. Order
@@ -869,10 +875,13 @@ def normalize_listing(bgr: np.ndarray,
     source_image at `'downloaded'` for re-processing).
 
     `config` permet l'ablation format (margin, edge_mode, output_size).
+    `census` : voir `detect_circles_multi`. `None` = flag d'env ; un bool explicite
+    a priorité (pipeline eBay = `census=True`). Active aussi le gate anti-fragment.
     """
     if bgr is None or bgr.size == 0:
         return []
-    detections = detect_circles_multi(bgr)
+    use_census = _census_detect_enabled() if census is None else census
+    detections = detect_circles_multi(bgr, census=use_census)
     results: list[NormalizationResult] = []
     for det in detections:
         if not det.accepted:
@@ -886,7 +895,7 @@ def normalize_listing(bgr: np.ndarray,
     # Gate anti-fragment (census uniquement) : la probe DINO note chaque crop final ;
     # on jette ceux sous τ (fragments tranche/lettrage/anneau/partiel/capsule). Batch
     # unique. Hors census ou τ≤0 : aucun appel modèle, comportement inchangé.
-    if _census_detect_enabled():
+    if use_census:
         tau = _census_fragment_tau()
         if tau > 0 and results:
             from scan.census import face_scores
@@ -896,9 +905,10 @@ def normalize_listing(bgr: np.ndarray,
 
 
 def normalize_listing_path(path: Path,
-                            config: CropConfig | None = None) -> list[NormalizationResult]:
+                            config: CropConfig | None = None,
+                            census: bool | None = None) -> list[NormalizationResult]:
     bgr = cv2.imread(str(path), cv2.IMREAD_COLOR)
-    return normalize_listing(bgr, config=config)
+    return normalize_listing(bgr, config=config, census=census)
 
 
 # ---------------------------------------------------------------------------

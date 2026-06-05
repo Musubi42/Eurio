@@ -159,7 +159,12 @@ def run_detect_crop(
             single = normalize_studio_path(raw)
             results: list[NormalizationResult] = [single] if single.image is not None else []
         else:
-            results = normalize_listing_path(raw)
+            # Mode census + gate anti-fragment par défaut pour eBay (haut rappel sur
+            # les pièces emballées + probe DINO qui jette les fragments/tranche/blank/
+            # packaging). Validé 2€ ; cf. census-detector-design.md §9. Scopé à eBay
+            # explicitement (la probe est 2€-only) — les autres sources `listing`
+            # restent en mode strict. Le scan device (normalize_device) n'est pas concerné.
+            results = normalize_listing_path(raw, census=(source_id == "ebay"))
         if not results:
             # 0 crop n'est PAS une erreur : beaucoup de photos de listing
             # ne montrent pas de pièce détectable (certificat, emballage,
