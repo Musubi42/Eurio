@@ -39,10 +39,10 @@ def main() -> int:
     os.environ["EURIO_CENSUS_DETECT"] = "1"
     if args.tau is not None:
         os.environ["EURIO_CENSUS_FRAGMENT_TAU"] = args.tau
-    tau = os.environ.get("EURIO_CENSUS_FRAGMENT_TAU", "0.45")
-
-    from scan.normalize_snap import normalize_listing
+    from scan.normalize_snap import _census_fragment_tau, normalize_listing
     from storage.local_cache import local_path
+
+    tau = _census_fragment_tau()   # vraie τ appliquée par le gate (source unique)
 
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row

@@ -61,15 +61,16 @@ def main() -> int:
     os.environ["EURIO_CENSUS_DETECT"] = "1"
     if args.tau is not None:
         os.environ["EURIO_CENSUS_FRAGMENT_TAU"] = args.tau
-    tau = os.environ.get("EURIO_CENSUS_FRAGMENT_TAU", "0.45")
     run_id = f"census-recover-{args.cohort}"
 
-    from scan.normalize_snap import normalize_listing
+    from scan.normalize_snap import _census_fragment_tau, normalize_listing
     from sources._base.dedup import ImageAssetRow, upsert_image_asset
     from sources._base.phash import compute_phash
     from sources._base.storage import crop_cache_path, crop_key
     from state.store import _register_phash_udfs
     from storage.local_cache import local_path, upload_through
+
+    tau = _census_fragment_tau()   # vraie τ appliquée par le gate (source unique)
 
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
