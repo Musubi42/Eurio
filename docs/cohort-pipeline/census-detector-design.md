@@ -159,3 +159,9 @@ Demande PO : tester l'impact RÉEL du câblage census sur le flow `/lab/cohorts/
 **Contraste avec le gate is-coin DINO (§6-7)** : celui-ci échangeait poison↔faux-lot 1:1 (sim « coin-ness » ne sépare pas face/fragment, les deux SONT coin-like). La probe **face-vs-fragment** entraînée résout exactement ce que la sim ne pouvait pas, et **généralise à une classe non vue**. Levier débloqué.
 
 **Reste avant adoption prod** : confirmer τ sur d'autres dénominations (banque/probe = 2€ only), et décider d'activer le flag census (ou intégrer le gate dans un mode dédié au corpus training). Décision PO.
+
+### Activation sur le corpus training (2026-06-05, PO go)
+
+Décision PO : **2€ uniquement** (multidénom différée), **activer sur le corpus training** de la cohorte mix-zone-17, **settings actuels** (τ=0.45). Périmètre **additif & sûr** : `scripts/recrop_cohort_census.py` ne re-crope QUE les raws eBay à **0 crop présent** (zéro-crops) — aucune écriture sur des crops déjà reviewés/`training_eligible`. Persistance identique à `detect_crop` (crop_key→MinIO→`upsert_image_asset`, dédup phash, bbox forensics), `run_id=census-recover-<cohort>`, commit par classe, dry-run par défaut.
+
+**Run committé sur mix-zone-17** : 1899 candidats zéro-crop → **425 raws récupérés (+733 crops propres)**, dont 16 auto-résolus phash, 717 `pending_match`. Tous `training_eligible=0` → **review queue** (rien n'entre en training sans review humaine). Gain concentré : at-2005 +174, fr-2008 +180 (lots multi-pièces, faces gardées par le gate), fr-2016 +59, fi-2016 +54. **Réversible** : `DELETE FROM image_assets WHERE run_id='census-recover-b0299ca0252b'` + purge MinIO préfixe. Observation préalable : `scripts/cohort_census_observe.py` (mesure pure, sans mutation).
