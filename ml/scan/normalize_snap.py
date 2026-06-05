@@ -496,9 +496,9 @@ def _census_detect_enabled() -> bool:
 # le gate (census brut = comportement §8). Sans effet hors mode census.
 def _census_fragment_tau() -> float:
     try:
-        return float(os.environ.get("EURIO_CENSUS_FRAGMENT_TAU", "0.45"))
+        return float(os.environ.get("EURIO_CENSUS_FRAGMENT_TAU", "0.55"))
     except ValueError:
-        return 0.45
+        return 0.55
 
 _CENSUS_YOLO_CONF = 0.10
 _CENSUS_RMIN_FRAC = 0.04

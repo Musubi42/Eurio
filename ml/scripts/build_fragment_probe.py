@@ -60,6 +60,13 @@ def main() -> int:
     from foundation.encoder import encode_paths
 
     rows = _load("train") + _load("test")
+    # Split hardneg (probe v2) : hard-negatives minés sur le run census-recover
+    # (blanks/packaging/dark que v1 laissait passer). Optionnel — absent = probe v1.
+    if (OUT / "manifest_hardneg.jsonl").exists() and (OUT / "labels_hardneg.jsonl").exists():
+        hn = _load("hardneg")
+        rows += hn
+        print(f"+ split hardneg : {len(hn)} crops "
+              f"({sum(r['label'] == POS_LABEL for r in hn)} faces)")
     print(f"{len(rows)} crops labellisés, "
           f"{sum(r['label'] == POS_LABEL for r in rows)} faces")
 
