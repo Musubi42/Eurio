@@ -43,6 +43,7 @@ from foundation import (
     top_k_match,
     top_k_match_country,
 )
+from foundation.review_lanes import compute_lane
 from sources._base.run_logger import RunHandle
 from state.store import DinoPredictionRow
 
@@ -319,6 +320,7 @@ def _run_inner(
     n_no_anchor = 0
     n_oos = 0
     n_errors = 0
+    predicted_ids: list[str] = []  # assets re-prédits → re-route lane post-Dino
 
     in_scope: list = []
     for r in candidates:
@@ -382,6 +384,7 @@ def _run_inner(
             n_errors += 1
             continue
         rows_to_write.append(prediction)
+        predicted_ids.append(aid)
         n_predicted += 1
         if len(rows_to_write) >= 32:
             _flush(conn, store, rows_to_write)
@@ -390,6 +393,30 @@ def _run_inner(
     if rows_to_write:
         _flush(conn, store, rows_to_write)
         rows_to_write.clear()
+
+    # Re-route post-Dino : pour les items DÉJÀ en queue (cas backfill — en run
+    # normal l'enqueue vient APRÈS et pose la lane lui-même), recalcule la lane
+    # des items open NON épinglés humain à partir de la prédiction qu'on vient
+    # d'écrire. Source de vérité = foundation/review_lanes. Les items
+    # lane_source='human' (déplacés à la main) ne sont JAMAIS re-routés.
+    n_relane = 0
+    for aid in predicted_ids:
+        rq = conn.execute(
+            "SELECT id, lane FROM review_queue "
+            "WHERE image_asset_id=? AND status='open' AND lane_source='auto'",
+            (aid,),
+        ).fetchone()
+        if rq is None:
+            continue
+        _v, lane = compute_lane(conn, aid)
+        if lane != rq["lane"]:
+            conn.execute(
+                "UPDATE review_queue SET lane=? WHERE id=? AND lane_source='auto'",
+                (lane, rq["id"]),
+            )
+            n_relane += 1
+    if n_relane:
+        logger.info("auto_validate: re-routed %d review lanes (post-Dino)", n_relane)
 
     logger.info(
         "auto_validate: predicted=%d existing=%d no_anchor=%d "

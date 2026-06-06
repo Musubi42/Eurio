@@ -19,19 +19,12 @@ const statsQuery = useCohortTriageStatsQuery(() => props.cohortId)
 const stats = computed(() => statsQuery.data.value ?? null)
 const loading = computed(() => statsQuery.isPending.value)
 
-// Mêmes dérivés que ReviewDashboardPage : la « vraie » review manuelle est
-// le pending moins ce qui sera tranché par auto-dino ou Claude.
-const manualCount = computed(() => {
-  if (!stats.value) return 0
-  const s = stats.value
-  const handled = s.by_verdict.auto_candidate + s.by_verdict.partial + s.by_verdict.divergent
-  const rest = s.n_pending - handled
-  return rest > 0 ? rest : s.n_pending
-})
-const autoCount = computed(() => stats.value?.by_verdict.auto_candidate ?? 0)
-const claudeCount = computed(
-  () => (stats.value?.by_verdict.partial ?? 0) + (stats.value?.by_verdict.divergent ?? 0),
-)
+// WS1 : compteurs lus sur la LANE PERSISTÉE (review_queue.lane), plus aucune
+// heuristique recalculée. Chaque carte ouvre la review filtrée sur sa lane →
+// le compteur décroît à chaque décision dans cette lane.
+const manualCount = computed(() => stats.value?.by_lane?.manual ?? 0)
+const autoCount = computed(() => stats.value?.by_lane?.auto_accept ?? 0)
+const claudeCount = computed(() => stats.value?.by_lane?.ccproxy ?? 0)
 // Crops en review LOT (listings multi-pièces) — flow distinct du single.
 const lotCount = computed(() => stats.value?.n_lot_crops ?? 0)
 // Crops rejetés (récupérables via la grille) + items skippés (report dans la
@@ -51,7 +44,7 @@ const plateaus = computed(() => [
     icon: Eye,
     count: manualCount.value,
     unit: 'à trancher à la main',
-    to: `/review/manual?cohort=${encodeURIComponent(props.cohortId)}`,
+    to: `/review/manual?cohort=${encodeURIComponent(props.cohortId)}&lane=manual`,
     accent: 'ink' as const,
   },
   {

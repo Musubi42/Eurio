@@ -575,6 +575,24 @@ class Store:
                     "idx_discarded_listings_source_ref "
                     "ON discarded_listings(source, source_ref)"
                 )
+            # WS1 pre-bootstrap : review_queue.lane/lane_source AVANT executescript
+            # car schema.sql crée idx_review_queue_lane_status ON (lane, status) —
+            # planterait sur "no such column: lane" pour les DB antérieures. Fresh
+            # DB : review_queue n'existe pas encore, executescript la créera avec
+            # les colonnes dans le CREATE TABLE.
+            if conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='review_queue'"
+            ).fetchone():
+                self._ensure_column(
+                    conn, table="review_queue", column="lane",
+                    decl="TEXT CHECK (lane IS NULL OR lane IN "
+                         "('manual','auto_accept','ccproxy'))",
+                )
+                self._ensure_column(
+                    conn, table="review_queue", column="lane_source",
+                    decl="TEXT NOT NULL DEFAULT 'auto' "
+                         "CHECK (lane_source IN ('auto','human'))",
+                )
             conn.executescript(schema)
             self._ensure_column(
                 conn,
@@ -637,6 +655,8 @@ class Store:
                 column="decision_metadata_json",
                 decl="TEXT NOT NULL DEFAULT '{}'",
             )
+            # WS1 lane/lane_source : ajoutés en PRE-bootstrap (avant executescript)
+            # car schema.sql crée idx_review_queue_lane_status. Cf. plus haut.
             for column, decl in (
                 ("target_country", "TEXT"),
                 ("country_anchors_count", "INTEGER"),

@@ -586,11 +586,23 @@ CREATE TABLE IF NOT EXISTS review_queue (
   decision_engine_version  TEXT,
   decision_metadata_json   TEXT NOT NULL DEFAULT '{}',
   enqueued_at              TEXT NOT NULL DEFAULT (datetime('now')),
+  -- Lane de tri PERSISTÉE (WS1 2026-06-05). Plus d'heuristique recalculée à
+  -- l'affichage : la lane est figée à l'enqueue par la règle centralisée
+  -- (foundation/review_lanes.py) à partir du verdict Dino, et chaque carte /
+  -- écran de review filtre dessus. `lane_source='human'` = déplacement manuel
+  -- STICKY (un recalcul Dino ne ré-route jamais un item épinglé humain).
+  -- lane NULL (items legacy avant backfill) est traité comme 'manual'.
+  lane                     TEXT
+                           CHECK (lane IS NULL OR lane IN ('manual','auto_accept','ccproxy')),
+  lane_source              TEXT NOT NULL DEFAULT 'auto'
+                           CHECK (lane_source IN ('auto','human')),
   UNIQUE (image_asset_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_review_queue_status_priority
   ON review_queue(status, priority);
+CREATE INDEX IF NOT EXISTS idx_review_queue_lane_status
+  ON review_queue(lane, status);
 
 -- ─── Verdicts Claude (chunk ccproxy) ─────────────────────────────────────
 -- Un verdict Claude vision par review_queue item. La pipeline batch

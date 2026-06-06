@@ -78,6 +78,7 @@ _NOT_RESTORED_SQL = (
     f"(rq.decision_notes IS NULL OR rq.decision_notes != '{_RESTORED_NOTE}')"
 )
 _VALID_KINDS = ("single", "lot", "all")
+_VALID_LANES = ("manual", "auto_accept", "ccproxy")
 _VALID_REJECT_REASONS = (
     "not_a_coin", "out_of_scope", "duplicate_in_listing", "unreadable", "other",
 )
@@ -403,6 +404,7 @@ def list_queue(
     limit: int = Query(default=20, ge=1, le=200),
     order: str = Query(default="priority"),
     kind: str = Query(default="single"),
+    lane: str | None = Query(default=None),
     cohort_id: str | None = Query(default=None),
 ) -> list[ReviewItem]:
     if order not in ("priority", "enqueued_at"):
@@ -410,6 +412,10 @@ def list_queue(
     if kind not in _VALID_KINDS:
         raise HTTPException(
             status_code=422, detail=f"kind must be one of {_VALID_KINDS}",
+        )
+    if lane is not None and lane not in _VALID_LANES:
+        raise HTTPException(
+            status_code=422, detail=f"lane must be one of {_VALID_LANES}",
         )
     order_clause = "rq.priority ASC, rq.enqueued_at ASC" \
         if order == "priority" else "rq.enqueued_at ASC"
@@ -421,6 +427,14 @@ def list_queue(
     if kind != "all":
         where += " AND rq.kind = ?"
         args.append(kind)
+    # Lane persistée (WS1) : chaque écran de review filtre sur sa lane → le
+    # compteur de la lane décroît à chaque décision. lane NULL (legacy) = manual.
+    if lane is not None:
+        if lane == "manual":
+            where += " AND (rq.lane = 'manual' OR rq.lane IS NULL)"
+        else:
+            where += " AND rq.lane = ?"
+            args.append(lane)
     # Cohort scope : only items whose theme-matched coin is in the cohort.
     if cohort_id:
         cohort = store.get_cohort(cohort_id)
@@ -714,12 +728,30 @@ def queue_triage_stats(
             "WHERE rq.status = 'open' AND rq.decision_notes = 'skipped'"
         ).fetchone()["c"]
 
+    # Compteurs par LANE PERSISTÉE (WS1) — c'est désormais la source de vérité
+    # des 3 cartes du cockpit (plus de recompute via by_verdict). Comptés sur la
+    # colonne figée → décroissent à chaque décision dans la lane. lane NULL
+    # (legacy avant backfill) compte comme 'manual'. Scopé cohort + kind via _count.
+    by_lane = {
+        "manual": _count(
+            "rq.status = 'open' AND (rq.lane = 'manual' OR rq.lane IS NULL)",
+            [], kind_clause=True,
+        ),
+        "auto_accept": _count(
+            "rq.status = 'open' AND rq.lane = ?", ["auto_accept"], kind_clause=True,
+        ),
+        "ccproxy": _count(
+            "rq.status = 'open' AND rq.lane = ?", ["ccproxy"], kind_clause=True,
+        ),
+    }
+
     return {
         "n_pending": n_pending,
         "n_done_today": n_done_today,
         "n_done_today_auto_dino": n_done_today_auto,
         "n_done_this_week": n_done_week,
         "by_verdict": by_verdict,
+        "by_lane": by_lane,
         "n_lot_crops": n_lot_crops,
         "n_rejected": n_rejected,
         "n_skipped": n_skipped,
@@ -2361,6 +2393,29 @@ def skip_review(review_id: str) -> dict[str, Any]:
     return {"status": "skipped", "id": review_id, "new_priority": new_priority}
 
 
+@router.post("/{review_id}/move-lane", status_code=200)
+def move_lane(review_id: str) -> dict[str, str]:
+    """Déplace un item vers la lane MANUELLE (switch unidirectionnel, WS1).
+
+    Sticky : pose ``lane_source='human'`` → aucun recalcul Dino (enqueue /
+    re-route post-Dino) ne pourra le ré-router. C'est le seul sens autorisé
+    (manuel→ccproxy n'est pas rentable : le manuel se review un par un). N'agit
+    que sur un item ``open``."""
+    conn = _store()._connection()  # noqa: SLF001
+    cur = conn.execute(
+        "UPDATE review_queue SET lane = 'manual', lane_source = 'human' "
+        "WHERE id = ? AND status = 'open'",
+        (review_id,),
+    )
+    if cur.rowcount != 1:
+        raise HTTPException(
+            status_code=404,
+            detail="Review item introuvable ou non-ouvert (déjà décidé ?).",
+        )
+    logger.info("[review] move-lane id=%s → manual (human)", review_id)
+    return {"status": "ok", "id": review_id, "lane": "manual"}
+
+
 # ── Auto-accept déterministe (Dino + texte, pas de Claude) ────────────────
 
 
@@ -2449,7 +2504,10 @@ def run_auto_accept(
     conn = _store()._connection()  # noqa: SLF001
     # Exclut les items restaurés (épinglés manuel) de l'auto-triage : un humain
     # les a ré-ouverts pour les trancher à la main. Cf. _RESTORED_NOTE.
-    where = f"rq.status = 'open' AND {_NOT_RESTORED_SQL}"
+    # WS1 : ne traite QUE la lane 'auto_accept' (Dino confiant). Lane de review
+    # HUMAINE : la page présélectionne tout, l'admin décoche les mauvais →
+    # ceux-là redescendent en 'manual' sticky (voir la boucle plus bas).
+    where = f"rq.status = 'open' AND rq.lane = 'auto_accept' AND {_NOT_RESTORED_SQL}"
     args: list[Any] = []
     if kind != "all":
         where += " AND rq.kind = ?"
@@ -2542,8 +2600,15 @@ def run_auto_accept(
             preview.append(item_preview)
             continue
 
-        # Run réel : skip si l'utilisateur a désélectionné cet item.
+        # Run réel : item DÉSÉLECTIONNÉ par l'admin → il ne part PAS en train ;
+        # on le démote vers la lane 'manual' (sticky) pour qu'il soit re-jugé à
+        # la main, plutôt que de le laisser traîner en 'auto_accept' (WS1).
         if selected_ids is not None and row["review_id"] not in selected_ids:
+            conn.execute(
+                "UPDATE review_queue SET lane='manual', lane_source='human' "
+                "WHERE id=? AND status='open'",
+                (row["review_id"],),
+            )
             continue
 
         # G7 : ne pas masquer l'incertitude par un default obverse. Si la
@@ -2741,7 +2806,10 @@ def run_claude_batch(
     conn = _store()._connection()  # noqa: SLF001
     # Exclut les items restaurés (épinglés manuel) de l'auto-triage : un humain
     # les a ré-ouverts pour les trancher à la main. Cf. _RESTORED_NOTE.
-    where = f"rq.status = 'open' AND {_NOT_RESTORED_SQL}"
+    # WS1 : ccproxy ne traite QUE la lane 'ccproxy' (Dino hésite/contredit →
+    # arbitrage Claude vision). Les unknown (manual) et auto_candidate ne passent
+    # jamais ici.
+    where = f"rq.status = 'open' AND rq.lane = 'ccproxy' AND {_NOT_RESTORED_SQL}"
     args: list[Any] = []
     if kind != "all":
         where += " AND rq.kind = ?"

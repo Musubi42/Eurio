@@ -14,6 +14,7 @@ import {
   fetchMarketQuotes,
   fetchReviewQueue,
   fetchReviewStats,
+  moveReviewLaneToManual,
   rejectReviewItem,
   skipReviewItem,
   type ConditionTier,
@@ -150,6 +151,15 @@ const cohortId = computed(() =>
     ? route.query.cohort
     : null,
 )
+// WS1 : lane persistée à reviewer (manual/auto_accept/ccproxy). Défaut 'manual'
+// en contexte cohort (la carte « Queue manuelle » deep-linke ?lane=manual) → on
+// ne sert QUE les items de cette lane, donc le compteur décroît à chaque review.
+const lane = computed(() =>
+  typeof route.query.lane === 'string'
+    && ['manual', 'auto_accept', 'ccproxy'].includes(route.query.lane)
+    ? route.query.lane
+    : null,
+)
 
 // Valider exige un candidat ET un type/état renseignés : on ne fige pas
 // une attribution sans avoir tranché le contexte listing (C4).
@@ -175,7 +185,7 @@ const validateBlockedReason = computed<string | null>(() => {
 
 async function load() {
   const [q, s] = await Promise.all([
-    fetchReviewQueue({ limit: 30, cohortId: cohortId.value }),
+    fetchReviewQueue({ limit: 30, cohortId: cohortId.value, lane: lane.value }),
     fetchReviewStats(),
   ])
   queue.value = q
@@ -224,8 +234,8 @@ onMounted(() => {
   window.addEventListener('beforeunload', flushBeforeUnload)
 })
 
-// Reload the queue when the cohort scope changes (?cohort= toggled in the header).
-watch(cohortId, () => {
+// Reload the queue when the cohort scope OR the lane (?lane=) changes.
+watch([cohortId, lane], () => {
   void load()
 })
 
@@ -347,6 +357,22 @@ function rejectCurrent() {
 function skipCurrent() {
   if (!currentItem.value) return
   scheduleCommit('skip', currentItem.value.id)
+  advance()
+}
+
+// WS1 : « Faire en manuel » — sort l'item de la lane courante (auto_accept /
+// ccproxy) vers la lane manuelle (sticky). Écriture immédiate (pas de fenêtre
+// d'undo : c'est un déplacement, pas une décision) puis on avance.
+async function moveCurrentToManual() {
+  const item = currentItem.value
+  if (!item) return
+  flushPending()
+  try {
+    await moveReviewLaneToManual(item.id)
+  } catch (err) {
+    flashTopNotice(`Échec du déplacement : ${err instanceof Error ? err.message : String(err)}`)
+    return
+  }
   advance()
 }
 
@@ -721,6 +747,18 @@ useReviewKeybinds(keyboardEnabled, {
         @reject="rejectCurrent"
         @skip="skipCurrent"
       />
+      <!-- WS1 : sortir l'item de la lane auto/ccproxy vers la queue manuelle -->
+      <div v-if="lane && lane !== 'manual' && currentItem" class="mt-2 text-center">
+        <button
+          type="button"
+          class="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium"
+          style="background: var(--surface-2); color: var(--ink-600);"
+          title="Retire cet item de la lane courante et le met dans la queue manuelle (je le tranche moi-même)"
+          @click="moveCurrentToManual"
+        >
+          <Undo2 class="h-3.5 w-3.5" /> Faire en manuel
+        </button>
+      </div>
     </section>
 
     <!-- ═══ Bandeau d'alerte (descend du haut) ═══ -->

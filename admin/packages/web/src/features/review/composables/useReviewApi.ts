@@ -148,11 +148,12 @@ function promoteItemUrls(r: ReviewItem): ReviewItem {
 }
 
 export async function fetchReviewQueue(
-  opts: { limit?: number; cohortId?: string | null } = {},
+  opts: { limit?: number; cohortId?: string | null; lane?: string | null } = {},
 ): Promise<ReviewItem[]> {
   const limit = opts.limit ?? 30
   const params = new URLSearchParams({ limit: String(limit), order: 'priority' })
   if (opts.cohortId) params.set('cohort_id', opts.cohortId)
+  if (opts.lane) params.set('lane', opts.lane)
   const real = await safeFetch<ReviewItem[]>(`/review-queue?${params.toString()}`)
   if (real !== null) {
     return real.map(promoteItemUrls)
@@ -455,6 +456,10 @@ export interface TriageStats {
   n_done_today_auto_dino: number
   n_done_this_week: number
   by_verdict: TriageVerdictCounts
+  // WS1 : compteurs par LANE PERSISTÉE (review_queue.lane). Source de vérité des
+  // 3 cartes du cockpit (manual/auto_accept/ccproxy). by_verdict reste fourni
+  // pour compat/debug, mais l'affichage vient de by_lane.
+  by_lane: { manual: number; auto_accept: number; ccproxy: number }
   // Crops en review LOT (kind='lot') — flow distinct du single (cockpit cohort).
   n_lot_crops: number
   // Crops rejetés (récupérables via /review/recover) + items skippés (report
@@ -482,10 +487,22 @@ export async function fetchTriageStats(cohortId?: string | null): Promise<Triage
     n_done_today_auto_dino: 0,
     n_done_this_week: 0,
     by_verdict: { auto_candidate: 0, partial: 0, divergent: 0, unknown: 0 },
+    by_lane: { manual: 0, auto_accept: 0, ccproxy: 0 },
     n_lot_crops: 0,
     n_rejected: 0,
     n_skipped: 0,
   }
+}
+
+/**
+ * Déplace un item de review vers la lane MANUELLE (switch unidirectionnel, WS1).
+ * Sticky côté backend (lane_source='human') : aucun recalcul Dino ne le re-route.
+ */
+export async function moveReviewLaneToManual(id: string): Promise<void> {
+  await safeFetch<unknown>(
+    `/review-queue/${encodeURIComponent(id)}/move-lane`,
+    { method: 'POST' },
+  )
 }
 
 // ─── Récupération des crops rejetés (un-reject) ──────────────────────────

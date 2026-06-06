@@ -26,6 +26,7 @@ import sqlite3
 import uuid
 from dataclasses import dataclass
 
+from foundation.review_lanes import compute_lane
 from sources._base.run_logger import RunHandle
 
 logger = logging.getLogger(__name__)
@@ -171,13 +172,17 @@ def run_enqueue(
 
             priority = _compute_priority(target_eurio_id=si_meta["target_eurio_id"])
             candidates = r["candidate_eurio_ids_json"]
+            # Lane persistée figée à l'enqueue (règle centralisée review_lanes).
+            # Dino tourne au step 5.5 (avant enqueue) → la prédiction est dispo ;
+            # absente ⇒ verdict 'unknown' ⇒ lane 'manual' (filet de sécurité).
+            _verdict, lane = compute_lane(conn, r["asset_id"])
             conn.execute(
                 """
                 INSERT INTO review_queue (
-                  id, image_asset_id, priority, candidate_eurio_ids_json, kind
-                ) VALUES (?, ?, ?, ?, ?)
+                  id, image_asset_id, priority, candidate_eurio_ids_json, kind, lane
+                ) VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (uuid.uuid4().hex, r["asset_id"], priority, candidates, kind),
+                (uuid.uuid4().hex, r["asset_id"], priority, candidates, kind, lane),
             )
             n_enqueued += 1
             if kind == "lot":
