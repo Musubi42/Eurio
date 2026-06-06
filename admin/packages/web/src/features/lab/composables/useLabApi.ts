@@ -267,6 +267,20 @@ export async function fetchEbayRunningRuns(): Promise<import('../types').EbayRun
   )
 }
 
+/**
+ * Jobs cohorte observables (scrape/recrop) depuis la table cohort_jobs (B2).
+ * Source du statut + barre de progression in-row du cockpit (remplace le badge
+ * global + le thread mémoire). Récents d'abord.
+ */
+export async function fetchCohortJobs(
+  cohortId: string,
+): Promise<import('../types').CohortJob[]> {
+  const res = await json<{ jobs: import('../types').CohortJob[] }>(
+    `/lab/cohorts/${encodeURIComponent(cohortId)}/jobs`,
+  )
+  return res.jobs
+}
+
 // ─── Iterations ────────────────────────────────────────────────────────
 
 export async function fetchIterations(cohortId: string): Promise<IterationDetail[]> {

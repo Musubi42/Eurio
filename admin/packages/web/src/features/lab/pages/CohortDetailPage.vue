@@ -3,6 +3,7 @@ import CohortDrawerC1 from '@/features/lab/components/CohortDrawerC1.vue'
 import CohortDrawerC2 from '@/features/lab/components/CohortDrawerC2.vue'
 import CohortDrawerCrop from '@/features/lab/components/CohortDrawerCrop.vue'
 import CohortDrawerEbay from '@/features/lab/components/CohortDrawerEbay.vue'
+import CohortFlowHeader from '@/features/lab/components/CohortFlowHeader.vue'
 import CohortDrawerRescue from '@/features/lab/components/CohortDrawerRescue.vue'
 import IterationRow from '@/features/lab/components/IterationRow.vue'
 import SensitivityPanel from '@/features/lab/components/SensitivityPanel.vue'
@@ -248,6 +249,13 @@ function formatPct(v: number | null): string {
         </div>
         <div class="mt-6 h-px w-16" style="background: var(--gold);" />
       </header>
+
+      <!-- F3 : frise du flow 10 étapes (statut par étage = compteur d'état réel) -->
+      <CohortFlowHeader
+        :cohort-id="cohort.id"
+        :cohort="cohort"
+        :progress="progress"
+      />
 
       <!-- §C1 Sélection + §C2 Captures + §C3 eBay (sourcing & funnel) + §C4 Review crops -->
       <div class="mb-6 flex flex-col gap-3">

@@ -176,6 +176,25 @@ export interface CohortFunnelDiscardReason {
   n: number
 }
 
+// Job cohorte observable (scrape/recrop) — table cohort_jobs (B2). Remplace le
+// thread mémoire : état persisté, progression au fil de l'eau, survit au restart.
+export interface CohortJob {
+  id: string
+  kind: 'scrape_ebay' | 'recrop_zero' | 'census_recover'
+  eurio_id: string | null
+  target_eurio_id: string | null
+  status: 'running' | 'done' | 'failed' | 'skipped'
+  n_total: number | null
+  n_done: number
+  n_produced: number
+  n_attributed_target: number
+  tau: number | null
+  note: string | null     // ex: « épuisé à τ=0.55 — 0 crop récupérable »
+  error: string | null
+  started_at: string
+  finished_at: string | null
+}
+
 export interface CohortFunnelHeadGroup {
   country: string | null
   year: number | null

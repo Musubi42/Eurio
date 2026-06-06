@@ -10,13 +10,14 @@ import DrawerSection from '@/features/lab/components/DrawerSection.vue'
 import {
   useCohortDedupStatusQuery,
   useCohortFunnelStatusQuery,
+  useCohortJobsQuery,
   useDiscardSummaryQuery,
   useEbayRunningRunsQuery,
   useRecropZeroCoinMutation,
   useTriggerCoinEbayScrapeMutation,
   useTriggerCohortEbayScrapeMutation,
 } from '@/features/lab/composables/useLabQueries'
-import type { CohortFunnelCoin, CohortSummary, DrawerState, EbayRunLive, RescuedToSister } from '@/features/lab/types'
+import type { CohortFunnelCoin, CohortJob, CohortSummary, DrawerState, EbayRunLive, RescuedToSister } from '@/features/lab/types'
 import { ArrowUpRight, Crop as CropIcon, Filter, Loader2, Package, RefreshCw, Search } from 'lucide-vue-next'
 import { computed, ref } from 'vue'
 
@@ -79,6 +80,37 @@ function reviewCount(c: CohortFunnelCoin): number {
 function lotReviewCount(c: CohortFunnelCoin): number {
   return c.n_open_review_lot ?? 0
 }
+
+// ── Jobs recrop observables (F5 / B2) — lus depuis cohort_jobs, pas de thread
+// mémoire. Dernier job recrop_zero par pièce → barre de progression si running,
+// note « tenté/épuisé » si done à 0 crop (fin du bouton zombie).
+const jobsQuery = useCohortJobsQuery(() => props.cohortId)
+const recropJobByCoin = computed<Record<string, CohortJob>>(() => {
+  const m: Record<string, CohortJob> = {}
+  for (const j of jobsQuery.data.value ?? []) {
+    if (j.kind !== 'recrop_zero' || !j.eurio_id) continue
+    const prev = m[j.eurio_id]
+    if (!prev || j.started_at > prev.started_at) m[j.eurio_id] = j
+  }
+  return m
+})
+function recropJob(c: CohortFunnelCoin): CohortJob | null {
+  return recropJobByCoin.value[c.eurio_id] ?? null
+}
+function recropRunning(c: CohortFunnelCoin): boolean {
+  return recropJob(c)?.status === 'running' || recroppingCoin.value === c.eurio_id
+}
+// Épuisé = dernier recrop terminé sans produire de crop → re-proposer « Recropper »
+// serait un bouton zombie. On grise + on affiche la note du job.
+function recropExhausted(c: CohortFunnelCoin): boolean {
+  const j = recropJob(c)
+  return j != null && j.status === 'done' && j.n_produced === 0
+}
+function recropProgressPct(c: CohortFunnelCoin): number {
+  const j = recropJob(c)
+  if (!j || !j.n_total) return 0
+  return Math.min(100, Math.round((j.n_done / j.n_total) * 100))
+}
 // Grammaire d'actions (F2) : UNE seule action PRIMAIRE par pièce selon l'état,
 // arbre de priorité strict (review singles > review lots > recrop > scrape).
 // Les autres actions applicables passent en secondaire (subordonné visuellement).
@@ -86,7 +118,7 @@ function lotReviewCount(c: CohortFunnelCoin): number {
 function primaryAction(c: CohortFunnelCoin): 'review' | 'lot' | 'recrop' | 'scrape' | null {
   if (reviewCount(c) > 0) return 'review'
   if (lotReviewCount(c) > 0) return 'lot'
-  if (recropCount(c) > 0) return 'recrop'
+  if (recropCount(c) > 0 && !recropExhausted(c)) return 'recrop'
   if (c.scrapable && (c.below_real_floor ?? !c.enough)) return 'scrape'
   return null
 }
@@ -302,6 +334,48 @@ async function onRecrop(c: CohortFunnelCoin) {
           </RouterLink>
         </div>
 
+        <!-- F4 : ligne-exemple annotée (légende ouverte par défaut) — explique
+             chaque chiffre et chaque action une fois pour toutes. -->
+        <details open class="mt-3 legend">
+          <summary class="legend__summary">Comment lire une ligne (légende)</summary>
+          <div class="legend__example">
+            <div class="coin__l1">
+              <span class="coin__id">xx-2099-2eur-exemple</span>
+              <span class="coin__sources">
+                <span class="coin__proj">
+                  <span class="coin__proj-bar"><span class="coin__proj-fill" style="width: 100%; background: var(--success);" /></span>
+                  <b style="color: var(--success);">110</b><span style="color: var(--ink-400);">img</span>
+                  <span class="coin__proj-detail">11 réels ×10</span>
+                </span>
+              </span>
+            </div>
+            <div class="coin__funnel">
+              <b>185</b> listings <span class="coin__arr">→</span>
+              <b>160</b> téléchargés <span class="coin__arr">→</span>
+              <b>120</b> crops <span class="coin__arr">→</span>
+              <b style="color: var(--indigo-700);">38</b> en review
+              <span class="coin__dot">·</span><span style="color: var(--success);">11 validés</span>
+              <span class="coin__dot">·</span><span style="color: var(--ink-500);">3 rejetés</span>
+            </div>
+            <div class="coin__actions">
+              <span class="coin__btn coin__btn--primary"><Search class="h-3 w-3" /> Reviewer 38</span>
+              <span class="coin__btn coin__btn--scrape"><RefreshCw class="h-3 w-3" /> Rescraper</span>
+            </div>
+          </div>
+          <dl class="legend__key">
+            <dt><b>110 img</b> · jauge</dt><dd>images projetées (réels × facteur d'aug) vs cible ≥{{ trainingTarget }}. Jauge <span style="color: var(--success);">verte</span> = assez de réels (plancher {{ minReal }}), <span style="color: var(--warning);">orange</span> = à enrichir.</dd>
+            <dt>listings</dt><dd>annonces eBay attribuées à cette pièce</dd>
+            <dt>téléchargés</dt><dd>images rapatriées (download OK) — <em>avant</em> le crop</dd>
+            <dt>crops</dt><dd>crops produits par l'autocrop (≠ « Recropper »)</dd>
+            <dt style="color: var(--indigo-700);">en review</dt><dd>crops qui attendent une décision — file <b>vivante</b> (= le bouton « Reviewer N »)</dd>
+            <dt style="color: var(--success);">validés</dt><dd>tranchés ET éligibles training</dd>
+            <dt style="color: var(--warning);">jamais croppés</dt><dd>raws téléchargés sans aucun crop → « Recropper »</dd>
+            <dt>non routés</dt><dd>listings pas encore téléchargés/routés (ni review ni crop)</dd>
+            <dt>action <span class="legend__chip legend__chip--primary">pleine</span></dt><dd>LA chose à faire maintenant (1 seule par ligne) — Reviewer &gt; Recropper &gt; Scraper</dd>
+            <dt>action <span class="legend__chip">discrète</span></dt><dd>secondaire ; <b>Rescraper</b> consomme le quota eBay</dd>
+          </dl>
+        </details>
+
         <!-- Liste de row-cards par coin -->
         <div class="mt-3 overflow-hidden rounded-md border" style="border-color: var(--surface-3);">
           <div
@@ -401,9 +475,31 @@ async function onRecrop(c: CohortFunnelCoin) {
                 <Package class="h-3 w-3" /> {{ lotReviewCount(c) }} lots
               </RouterLink>
 
-              <!-- 2. Raws téléchargés sans crop → recropper (local, sans quota) -->
+              <!-- 2. Raws téléchargés sans crop → recropper (local, sans quota).
+                   F5/B2 : 3 états lus depuis cohort_jobs (observable, persisté). -->
+              <!-- 2a. recrop en cours → barre de progression in-row (n_done/n_total) -->
+              <span
+                v-if="recropRunning(c)"
+                class="coin__job"
+                :title="`Recrop en cours — ${recropJob(c)?.n_done ?? 0}/${recropJob(c)?.n_total ?? recropCount(c)} raws`"
+              >
+                <Loader2 class="h-3 w-3 animate-spin" />
+                <span class="coin__job-bar">
+                  <span class="coin__job-fill" :style="{ width: recropProgressPct(c) + '%' }" />
+                </span>
+                <span class="coin__job-lbl">recrop {{ recropJob(c)?.n_done ?? 0 }}/{{ recropJob(c)?.n_total ?? recropCount(c) }}</span>
+              </span>
+              <!-- 2b. recrop épuisé (dernier job done à 0 crop) → grisé, plus de zombie -->
+              <span
+                v-else-if="recropCount(c) > 0 && recropExhausted(c)"
+                class="coin__btn coin__btn--exhausted"
+                :title="recropJob(c)?.note ?? 'Recrop tenté, 0 crop récupérable au seuil courant'"
+              >
+                <CropIcon class="h-3 w-3" /> recrop tenté (0)
+              </span>
+              <!-- 2c. recrop disponible -->
               <button
-                v-if="recropCount(c) > 0"
+                v-else-if="recropCount(c) > 0"
                 type="button"
                 :class="['coin__btn', { 'coin__btn--primary': primaryAction(c) === 'recrop' }]"
                 :disabled="recroppingCoin !== null"
@@ -411,10 +507,8 @@ async function onRecrop(c: CohortFunnelCoin) {
                 :title="`Recropper ${recropCount(c)} raws sans crop (census+gate, sans quota eBay)`"
                 @click="onRecrop(c)"
               >
-                <Loader2 v-if="recroppingCoin === c.eurio_id" class="h-3 w-3 animate-spin" />
-                <CropIcon v-else class="h-3 w-3" />
-                <span v-if="recropTriggered[c.eurio_id]" class="font-mono">recrop {{ recropTriggered[c.eurio_id].slice(-6) }}</span>
-                <span v-else>Recropper {{ recropCount(c) }}</span>
+                <CropIcon class="h-3 w-3" />
+                <span>Recropper {{ recropCount(c) }}</span>
               </button>
 
               <!-- 3. Scrape eBay : jamais scrapé → Scraper ; sinon Rescraper (nouvelles annonces) -->
@@ -582,22 +676,6 @@ async function onRecrop(c: CohortFunnelCoin) {
           </div>
         </div>
 
-        <p class="mt-3 text-[10px]" style="color: var(--ink-400);">
-          <strong>Phrase funnel</strong> (ordre pipeline) : <strong>listings</strong> retenus →
-          <strong>téléchargés</strong> (images rapatriées) → <strong>crops</strong> (détectés) →
-          <strong style="color: var(--indigo-700);">en review</strong> (file VIVANTE à trancher, pas l'intention figée) ·
-          <strong style="color: var(--success);">validés</strong> (tranchés ET éligibles training) ·
-          <strong style="color: var(--warning);">jamais croppés</strong> (raws sans crop → recropper) ·
-          <strong>non routés</strong> (pas encore téléchargés/routés).
-          <br>
-          <strong>{{ '{N} img' }}</strong> = images projetées après augmentation (<strong>{{ '{seed}' }} réels ×{{ '{facteur}' }}</strong>,
-          facteur = ceil({{ trainingTarget }}/seed) → toujours ≥ {{ trainingTarget }}).
-          La <strong>jauge</strong> = sources eBay réelles vs plancher {{ minReal }} :
-          <span style="color: var(--success);">vert</span> = assez de diversité réelle,
-          <span style="color: var(--warning);">orange</span> = sous le plancher → enrichir (recropper / rescraper).
-          Actions : <strong>Reviewer</strong> (crops déjà là à trancher), <strong>Recropper</strong> (raws sans crop, sans quota),
-          <strong>Rescraper</strong> (nouvelles annonces eBay).
-        </p>
       </template>
       <div v-else class="text-xs" style="color: var(--danger);">
         Erreur de chargement du statut eBay.
@@ -751,6 +829,36 @@ async function onRecrop(c: CohortFunnelCoin) {
   background: var(--surface-2);
 }
 .coin__btn--scrape:hover { background: var(--surface-3); }
+/* Recrop épuisé (job done à 0 crop) — grisé, non cliquable, plus de zombie. */
+.coin__btn--exhausted {
+  color: var(--ink-400);
+  background: var(--surface-2);
+  cursor: default;
+  font-style: italic;
+}
+/* Job recrop en cours : barre de progression in-row (lue depuis cohort_jobs). */
+.coin__job {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: var(--indigo-700);
+}
+.coin__job-bar {
+  width: 56px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+.coin__job-fill {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--indigo-700);
+  transition: width 300ms ease;
+}
+.coin__job-lbl { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 .coin__audit {
   display: inline-flex;
   align-items: center;
@@ -781,6 +889,53 @@ async function onRecrop(c: CohortFunnelCoin) {
   background: color-mix(in srgb, var(--indigo-700) 10%, var(--surface));
   color: var(--indigo-700);
 }
+
+/* F4 — ligne-exemple annotée (légende) */
+.legend {
+  border: 1px dashed var(--surface-3);
+  border-radius: 8px;
+  padding: 8px 14px 12px;
+  background: color-mix(in srgb, var(--surface-1) 50%, var(--surface));
+}
+.legend__summary {
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-500);
+  user-select: none;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-eyebrow);
+}
+.legend__summary:hover { color: var(--ink); }
+.legend__example {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--surface-3);
+  border-radius: 6px;
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.legend__key {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 14px;
+  margin: 12px 0 0;
+  font-size: 11px;
+}
+.legend__key dt { color: var(--ink); white-space: nowrap; }
+.legend__key dt b { font-variant-numeric: tabular-nums; }
+.legend__key dd { margin: 0; color: var(--ink-400); }
+.legend__chip {
+  display: inline-block;
+  border-radius: 3px;
+  padding: 0 5px;
+  font-size: 9px;
+  background: var(--surface-2);
+  color: var(--ink-500);
+}
+.legend__chip--primary { background: var(--indigo-700); color: white; }
 
 /* Découverte */
 .head__summary {

@@ -48,6 +48,7 @@ import {
   syncCohortCaptures,
   syncLiveTests,
   fetchEbayRunningRuns,
+  fetchCohortJobs,
   fetchRescueCandidates,
   rescueDiscard,
   triggerCoinEbayScrape,
@@ -76,6 +77,7 @@ export const LAB_KEYS = {
   rescueCandidates: (cohortId: string) => ['lab', 'cohort', cohortId, 'rescue-candidates'] as const,
   dedupStatus: (cohortId: string) => ['lab', 'cohort', cohortId, 'dedup-status'] as const,
   triageStats: (cohortId: string) => ['lab', 'cohort', cohortId, 'triage-stats'] as const,
+  jobs: (cohortId: string) => ['lab', 'cohort', cohortId, 'jobs'] as const,
   progress: (cohortId: string) => ['lab', 'cohort', cohortId, 'progress'] as const,
   iterationProgress: (cohortId: string, iterationId: string) =>
     ['lab', 'cohort', cohortId, 'iterations', iterationId, 'progress'] as const,
@@ -177,6 +179,22 @@ export function useEbayRunningRunsQuery() {
     queryFn: () => fetchEbayRunningRuns(),
     refetchInterval: 3000,
     staleTime: 0,
+  })
+}
+
+/**
+ * Jobs cohorte observables (scrape/recrop) — table cohort_jobs (B2). Alimente la
+ * barre de progression in-row + le statut « tenté/épuisé » du bouton recrop.
+ * Poll 3s tant qu'un job tourne, sinon arrêt (pas de polling inutile).
+ */
+export function useCohortJobsQuery(cohortId: MaybeRefOrGetter<string>) {
+  return useQuery({
+    queryKey: computed(() => LAB_KEYS.jobs(toValue(cohortId))),
+    queryFn: () => fetchCohortJobs(toValue(cohortId)),
+    enabled: computed(() => !!toValue(cohortId)),
+    refetchInterval: (q) =>
+      (q.state.data ?? []).some(j => j.status === 'running') ? 3000 : false,
+    staleTime: 1000,
   })
 }
 
