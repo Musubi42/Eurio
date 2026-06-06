@@ -28,6 +28,7 @@ from dataclasses import dataclass
 
 from foundation.review_lanes import compute_lane
 from sources._base.run_logger import RunHandle
+from state import emit_state_event
 
 logger = logging.getLogger(__name__)
 
@@ -183,6 +184,14 @@ def run_enqueue(
                 ) VALUES (?, ?, ?, ?, ?, ?)
                 """,
                 (uuid.uuid4().hex, r["asset_id"], priority, candidates, kind, lane),
+            )
+            # Modèle d'état : crop entre en file → 'queued' (from_state résolu
+            # depuis l'état courant : 'detected' au scrape normal, 'orphaned'
+            # pour un crop recroppé/réparé, NULL si jamais journalisé).
+            emit_state_event(
+                conn, asset_id=r["asset_id"], to_state="queued", actor="pipeline",
+                reason="enqueued", target_eurio_id=si_meta["target_eurio_id"],
+                run_id=run.run_id,
             )
             n_enqueued += 1
             if kind == "lot":

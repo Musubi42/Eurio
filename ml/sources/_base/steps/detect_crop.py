@@ -30,6 +30,7 @@ from pathlib import Path
 import cv2
 
 from sources._base.dedup import ImageAssetRow, set_discovery_pipeline_state, upsert_image_asset
+from state import emit_state_event
 from sources._base.phash import compute_phash
 from sources._base.run_logger import RunHandle
 from sources._base.storage import crop_cache_path, crop_key
@@ -87,7 +88,7 @@ def run_detect_crop(
 
     for source_ref, sid in source_image_ids.items():
         row = conn.execute(
-            "SELECT id, storage_path, storage_status, raw_payload_json "
+            "SELECT id, storage_path, storage_status, raw_payload_json, target_eurio_id "
             "FROM source_images WHERE id = ?",
             (sid,),
         ).fetchone()
@@ -280,6 +281,17 @@ def run_detect_crop(
             conn.execute(
                 "UPDATE image_assets SET storage_status='present' WHERE id = ?",
                 (asset_id,),
+            )
+            # Modèle d'état : crop créé → 'detected' (sans match) ou 'auto_matched'
+            # (phash terminal). Tous les crops entrent ainsi dans image_state_current
+            # dès la détection (pas seulement à l'enqueue).
+            emit_state_event(
+                conn, asset_id=asset_id,
+                to_state="auto_matched" if status == "auto_phash" else "detected",
+                actor="pipeline",
+                reason="phash_match" if status == "auto_phash" else "crop_detected",
+                eurio_id=eurio_id, target_eurio_id=row["target_eurio_id"],
+                run_id=run.run_id,
             )
             n_crops_added += 1
             crops_for_image += 1

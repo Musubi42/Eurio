@@ -47,6 +47,7 @@ def recrop_zero_for_coin(
     run_id: str,
     commit: bool = False,
     limit: int = 0,
+    progress_cb=None,
 ) -> dict:
     """Re-crope les raws eBay zéro-crop de ``eurio_id``. Retourne les compteurs
     ``{scanned, recovered, crops, auto_phash}``. ``commit=False`` = dry-run (compte
@@ -60,7 +61,7 @@ def recrop_zero_for_coin(
 
     rows = conn.execute(
         """
-        SELECT si.id, si.storage_path, si.raw_payload_json
+        SELECT si.id, si.source_ref, si.storage_path, si.raw_payload_json
           FROM source_images si
          WHERE si.source = 'ebay' AND si.target_eurio_id = ?
            AND si.storage_path IS NOT NULL
@@ -74,7 +75,10 @@ def recrop_zero_for_coin(
         rows = rows[:limit]
 
     counts = dict(scanned=0, recovered=0, crops=0, auto_phash=0)
-    for r in rows:
+    enqueued: dict[str, str] = {}  # source_ref → sid des raws ayant produit des crops
+    for i, r in enumerate(rows):
+        if progress_cb is not None:
+            progress_cb(i)  # n raws traités (0-based → reflète l'avancement)
         try:
             raw = local_path("enrichment-raws", r["storage_path"])
         except FileNotFoundError:
@@ -130,6 +134,18 @@ def recrop_zero_for_coin(
         conn.execute(
             "UPDATE source_images SET n_crops_detected=?, crop_status='success', "
             "crop_error=NULL WHERE id=?", (len(results), r["id"]))
+        enqueued[r["source_ref"]] = r["id"]
+    # Fix T1 : clôturer la pipeline pour les crops récupérés (resolve → enqueue)
+    # sinon ils restent en 'pending_match' SANS review_queue (= orphelins,
+    # invisibles à la review). Réutilise les steps canoniques. RunHandle minimal
+    # (run_id recrop hors source_runs → bump no-op, sans effet de bord).
+    if commit and enqueued:
+        from sources._base.run_logger import RunHandle
+        from sources._base.steps.enqueue import run_enqueue
+        from sources._base.steps.resolve import run_resolve
+        handle = RunHandle(run_id=run_id, source="ebay", _conn=conn)
+        run_resolve(conn=conn, run=handle, source_id="ebay", source_image_ids=enqueued)
+        run_enqueue(conn=conn, run=handle, source_id="ebay", source_image_ids=enqueued)
     if commit:
         conn.commit()
     return counts

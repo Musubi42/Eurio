@@ -57,7 +57,7 @@ _AUTO_DINO_ENGINE_VERSION = (
     f"-d{DINO_VERDICT_THRESHOLDS['country_spread_min']}"
 )
 from scan.normalize_snap import detect_circles_multi
-from state import Store
+from state import Store, emit_state_event
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/review-queue", tags=["review-queue"])
@@ -911,6 +911,10 @@ def restore_rejected(payload: RestorePayload) -> RestoreResult:
                 """,
                 (_RESTORE_PRIORITY, _RESTORED_NOTE, review_id),
             )
+            emit_state_event(
+                conn, asset_id=rq["image_asset_id"], to_state="queued",
+                actor="human", reason="restored",
+            )
             conn.execute("COMMIT")
             restored += 1
         except Exception:
@@ -1449,6 +1453,10 @@ def decide_lot(listing_key: str, payload: LotDecidePayload) -> LotDecideResponse
                         f"asset {asg.asset_id} decided concurrently — skipped"
                     )
                     continue
+                emit_state_event(
+                    conn, asset_id=asg.asset_id, to_state="resolved",
+                    actor="human", reason="human_decided_lot", eurio_id=asg.eurio_id,
+                )
                 n_done += 1
 
             # Reject path
@@ -1488,6 +1496,10 @@ def decide_lot(listing_key: str, payload: LotDecidePayload) -> LotDecideResponse
                         f"asset {asg.asset_id} decided concurrently — skipped"
                     )
                     continue
+                emit_state_event(
+                    conn, asset_id=asg.asset_id, to_state="rejected",
+                    actor="human", reason=f"trash_{asg.reject_reason}",
+                )
                 n_rejected += 1
 
             # Skip path
@@ -1502,6 +1514,10 @@ def decide_lot(listing_key: str, payload: LotDecidePayload) -> LotDecideResponse
                         f"asset {asg.asset_id} decided concurrently — skipped"
                     )
                     continue
+                emit_state_event(
+                    conn, asset_id=asg.asset_id, to_state="skipped",
+                    actor="human", reason="deferred_lot",
+                )
                 n_skipped += 1
 
             else:
@@ -1652,6 +1668,10 @@ def decide_review(review_id: str, payload: DecidePayload) -> dict[str, str]:
                 status_code=409,
                 detail="Review already decided concurrently by another voie.",
             )
+        emit_state_event(
+            conn, asset_id=asset_id, to_state="resolved", actor="human",
+            reason="human_decided", eurio_id=payload.eurio_id,
+        )
         conn.execute("COMMIT")
     except HTTPException:
         raise
@@ -1842,6 +1862,10 @@ def reject_review(
                 status_code=409,
                 detail="Review already decided concurrently by another voie.",
             )
+        emit_state_event(
+            conn, asset_id=rq["image_asset_id"], to_state="rejected",
+            actor="human", reason=(f"trash_{reason}" if reason else "rejected"),
+        )
         conn.execute("COMMIT")
     except HTTPException:
         raise
@@ -2396,7 +2420,7 @@ def skip_review(review_id: str) -> dict[str, Any]:
     cohort (§C4)."""
     conn = _store()._connection()  # noqa: SLF001
     rq = conn.execute(
-        "SELECT id, status, priority FROM review_queue WHERE id = ?",
+        "SELECT id, image_asset_id, status, priority FROM review_queue WHERE id = ?",
         (review_id,),
     ).fetchone()
     if rq is None:
@@ -2421,6 +2445,10 @@ def skip_review(review_id: str) -> dict[str, Any]:
             status_code=409,
             detail="Review is no longer open — cannot skip.",
         )
+    emit_state_event(
+        conn, asset_id=rq["image_asset_id"], to_state="skipped",
+        actor="human", reason="deferred",
+    )
     new_priority = rq["priority"] + _SKIP_PRIORITY_BUMP
     logger.info("[review] skipped id=%s new_priority=%d", review_id, new_priority)
     return {"status": "skipped", "id": review_id, "new_priority": new_priority}
@@ -2703,6 +2731,11 @@ def run_auto_accept(
                 conn.execute("ROLLBACK")
                 skipped_concurrent += 1
                 continue
+            emit_state_event(
+                conn, asset_id=row["image_asset_id"], to_state="resolved",
+                actor="auto_dino", reason=verdict.reason,
+                eurio_id=verdict.decided_eurio_id,
+            )
             conn.execute("COMMIT")
             accepted += 1
         except Exception:
@@ -3274,6 +3307,10 @@ def acknowledge_claude(body: ClaudeAckBody) -> ClaudeAckResult:
                 conn.execute("ROLLBACK")
                 skipped_concurrent += 1
                 continue
+            emit_state_event(
+                conn, asset_id=row["image_asset_id"], to_state="resolved",
+                actor="ccproxy", reason="claude_ack", eurio_id=target,
+            )
             # Le commit de l'ack n'est valide que si le UPDATE rq a écrit ;
             # sinon on aurait passé le verdict à 'acked' sans avoir tranché.
             conn.execute(

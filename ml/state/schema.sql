@@ -777,6 +777,102 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_discarded_listings_source_ref
 -- pète sur les bases pré-existantes qui n'ont pas encore la colonne).
 
 -- ════════════════════════════════════════════════════════════════════════
+-- Machine à états explicite des crops (cohort-pipeline rebuild, 2026-06-06)
+-- ════════════════════════════════════════════════════════════════════════
+-- Modèle d'état ADDITIF : ne touche pas source_images/image_assets/review_queue
+-- (le cœur qui marche). Exigence PO : fini les heuristiques temps-réel — chaque
+-- transition d'un crop est journalisée (image_state_events, append-only) et
+-- l'état courant est matérialisé (image_state_current, 1 ligne/crop) pour des
+-- compteurs cockpit = SELECT direct, sans recompute. Alimenté en APPLICATIF via
+-- store.emit_state_event aux call-sites du pipeline (chunk C2 — pas de trigger :
+-- un trigger ne connaît ni l'acteur ni la raison ni le run_id). Le scoping
+-- cockpit se fait par target_eurio_id (clé de découverte stable dès la création
+-- du crop), PAS par cohort_id (un eurio_id peut être dans plusieurs cohortes).
+-- Design complet : docs/cohort-pipeline/REBUILD-ANALYSIS.md (section DESIGN).
+--
+-- 9 états canoniques (réconcilient crop_status × resolution_status × rq.status) :
+--   detected      crop créé, pas encore matché (pending_match, pas de rq)
+--   auto_matched  match phash auto, terminal (resolution_status auto_phash/auto_name)
+--   queued        en file de review, ouvert (rq.status='open')
+--   in_review     pris en charge (rq.status='in_progress')
+--   skipped       reporté par l'humain, reste à traiter (decision_notes='skipped' AND open)
+--   resolved      tranché → eurio_id posé (resolution_status='manual' AND rq.status='done')
+--   rejected      écarté (resolution_status='rejected')
+--   orphaned      crop sans file ni résolution — recrop/run échoué (les ~544 invisibles)
+--   superseded    remplacé par un recrop ultérieur
+
+CREATE TABLE IF NOT EXISTS image_state_events (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,   -- ordre total monotone
+  asset_id        TEXT NOT NULL REFERENCES image_assets(id) ON DELETE CASCADE,
+  from_state      TEXT,                                -- NULL = première transition (∅ → …)
+  to_state        TEXT NOT NULL
+                  CHECK (to_state IN (
+                    'detected','auto_matched','queued','in_review',
+                    'skipped','resolved','rejected','orphaned','superseded'
+                  )),
+  actor           TEXT NOT NULL
+                  CHECK (actor IN ('pipeline','human','auto_dino','ccproxy','recrop','system')),
+  reason          TEXT,                                -- code court stable (catalogue design)
+  eurio_id        TEXT,                                -- eurio_id posé à cette transition (si applicable)
+  target_eurio_id TEXT,                                -- clé de découverte (scoping cohorte)
+  run_id          TEXT,                                -- source_runs.id OU cohort_jobs.id (pas de FK : 2 cibles)
+  detail_json     TEXT,                                -- libre : {sim, spread, top1, reject_reason, …}
+  created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_ise_asset   ON image_state_events(asset_id, id DESC);
+CREATE INDEX IF NOT EXISTS idx_ise_target  ON image_state_events(target_eurio_id, to_state);
+CREATE INDEX IF NOT EXISTS idx_ise_run     ON image_state_events(run_id);
+CREATE INDEX IF NOT EXISTS idx_ise_created ON image_state_events(created_at DESC);
+
+-- État courant matérialisé : 1 ligne par crop, tenue à jour par emit_state_event
+-- dans la même transaction que l'INSERT du journal (chunk C2). Source des
+-- compteurs cockpit (GROUP BY current_state). Projection garantie cohérente du
+-- journal ; reconstructible depuis image_state_events en cas de doute.
+CREATE TABLE IF NOT EXISTS image_state_current (
+  asset_id        TEXT PRIMARY KEY REFERENCES image_assets(id) ON DELETE CASCADE,
+  current_state   TEXT NOT NULL
+                  CHECK (current_state IN (
+                    'detected','auto_matched','queued','in_review',
+                    'skipped','resolved','rejected','orphaned','superseded'
+                  )),
+  eurio_id        TEXT,                                -- identité résolue (NULL tant que non résolu)
+  target_eurio_id TEXT,                                -- clé de découverte (scoping cockpit)
+  last_event_id   INTEGER REFERENCES image_state_events(id),
+  actor           TEXT,                                -- acteur de la dernière transition
+  state_since     TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_isc_target_state ON image_state_current(target_eurio_id, current_state);
+CREATE INDEX IF NOT EXISTS idx_isc_state        ON image_state_current(current_state);
+
+-- Jobs cohorte observables (scrape eBay, recrop-zero). Remplace le dict
+-- in-memory _recrop_jobs (perdu au restart FastAPI). Le worker écrit sa
+-- progression au fil de l'eau → polling réel + survit aux restarts (corrige B2).
+-- target_eurio_id + n_attributed_target → affichage honnête "0 attribué" (B1).
+CREATE TABLE IF NOT EXISTS cohort_jobs (
+  id                  TEXT PRIMARY KEY,                -- uuid hex
+  kind                TEXT NOT NULL
+                      CHECK (kind IN ('scrape_ebay','recrop_zero','census_recover')),
+  cohort_id           TEXT NOT NULL REFERENCES experiment_cohorts(id) ON DELETE CASCADE,
+  eurio_id            TEXT,                            -- NULL = job cohorte entière
+  target_eurio_id     TEXT,                            -- pièce ciblée par le scrape (B1)
+  run_id              TEXT,                            -- lien source_runs.id / image_assets.run_id
+  status              TEXT NOT NULL DEFAULT 'running'
+                      CHECK (status IN ('running','done','failed','skipped')),
+  n_total             INTEGER,                         -- items dans le scope au lancement (barre de progression)
+  n_done              INTEGER NOT NULL DEFAULT 0,      -- items traités (mis à jour au fil de l'eau)
+  n_produced          INTEGER NOT NULL DEFAULT 0,      -- crops/listings produits
+  n_attributed_target INTEGER NOT NULL DEFAULT 0,      -- combien attribués à target_eurio_id (B1)
+  tau                 REAL,                            -- seuil census utilisé (diagnostic "0 crop")
+  started_at          TEXT NOT NULL DEFAULT (datetime('now')),
+  finished_at         TEXT,
+  error               TEXT,
+  note                TEXT                             -- ex: "épuisé à τ=0.55 — 0 crop récupérable"
+);
+CREATE INDEX IF NOT EXISTS idx_cohort_jobs_cohort  ON cohort_jobs(cohort_id, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_cohort_jobs_running ON cohort_jobs(status) WHERE status = 'running';
+CREATE INDEX IF NOT EXISTS idx_cohort_jobs_target  ON cohort_jobs(target_eurio_id);
+
+-- ════════════════════════════════════════════════════════════════════════
 -- Référentiel canonique — harmonisation des données (docs/data-harmonization/)
 -- ════════════════════════════════════════════════════════════════════════
 -- `coins` n'est plus un miroir d'un JSON : c'est la table CANONIQUE. Voir

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sqlite3
 import threading
 import uuid
@@ -24,6 +25,9 @@ from state import (
     ExperimentIterationRow,
     IterationLiveTestRow,
     Store,
+    cohort_job_finish,
+    cohort_job_progress,
+    cohort_job_start,
 )
 
 from foundation.enrichment import (
@@ -1723,12 +1727,10 @@ def cohort_funnel_status(cohort_id: str) -> dict:
 
 
 # ── Recrop des zéro-crops d'une pièce (census+gate, en arrière-plan) ──────────
-# État des jobs recrop en cours, keyé par eurio_id. In-memory (process unique) :
-# le job écrit en base au fil de l'eau ; le front poll funnel-status pour voir les
-# crops apparaître + ce dict pour le statut running/done/failed. Source de vérité
-# du recrop = scan/recrop_zero.py (partagé avec le CLI batch).
-_recrop_jobs: dict[str, dict] = {}
-_recrop_jobs_lock = threading.Lock()
+# B2 corrigé : l'état du job vit dans la table `cohort_jobs` (persisté, survit au
+# restart, progression au fil de l'eau), PLUS de dict in-memory opaque. Le thread
+# fait le travail ; son ÉTAT est en base. Source de vérité du recrop =
+# scan/recrop_zero.py (partagé avec le CLI batch).
 
 
 def _open_recrop_conn(store: Store) -> sqlite3.Connection:
@@ -1759,45 +1761,93 @@ def recrop_zero_coin(cohort_id: str, eurio_id: str) -> dict:
     if eurio_id not in cohort.eurio_ids:
         raise HTTPException(status_code=404, detail="Pièce absente de la cohort")
 
-    with _recrop_jobs_lock:
-        prev = _recrop_jobs.get(eurio_id)
-        if prev and prev.get("status") == "running":
-            raise HTTPException(
-                status_code=409,
-                detail={"code": "recrop_already_running", "eurio_id": eurio_id},
-            )
-        run_id = f"recrop-zero-{eurio_id}"
-        _recrop_jobs[eurio_id] = {"status": "running", "run_id": run_id}
+    conn0 = store._connection()  # noqa: SLF001
+    running = conn0.execute(
+        "SELECT id FROM cohort_jobs WHERE kind='recrop_zero' AND eurio_id=? "
+        "AND status='running' LIMIT 1",
+        (eurio_id,),
+    ).fetchone()
+    if running:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "recrop_already_running", "eurio_id": eurio_id},
+        )
+    run_id = f"recrop-zero-{eurio_id}"
+    tau = float(os.environ.get("EURIO_CENSUS_FRAGMENT_TAU", "0.55"))
+    # n_total = raws eBay zéro-crop dans le scope (même filtre que recrop_zero_for_coin)
+    n_total = conn0.execute(
+        "SELECT COUNT(*) FROM source_images si WHERE si.source='ebay' "
+        "AND si.target_eurio_id=? AND si.storage_path IS NOT NULL "
+        "AND (SELECT COUNT(*) FROM image_assets ia WHERE ia.source_image_id=si.id "
+        "     AND ia.storage_status='present')=0",
+        (eurio_id,),
+    ).fetchone()[0]
+    job_id = cohort_job_start(
+        conn0, kind="recrop_zero", cohort_id=cohort_id, eurio_id=eurio_id,
+        target_eurio_id=eurio_id, run_id=run_id, n_total=n_total, tau=tau,
+    )
 
     def _runner() -> None:
         from scan.recrop_zero import recrop_zero_for_coin
 
         conn = _open_recrop_conn(store)
         try:
-            counts = recrop_zero_for_coin(conn, eurio_id, run_id=run_id, commit=True)
-            with _recrop_jobs_lock:
-                _recrop_jobs[eurio_id] = {"status": "done", "run_id": run_id, **counts}
+            counts = recrop_zero_for_coin(
+                conn, eurio_id, run_id=run_id, commit=True,
+                progress_cb=lambda n: cohort_job_progress(conn, job_id, n_done=n),
+            )
+            # Diag honnête : 0 crop produit = scope déjà épuisé au seuil courant
+            # (corrige le "bouton zombie" — le front affiche la note, ne re-propose plus).
+            note = None
+            if counts["crops"] == 0:
+                note = (f"épuisé à τ={tau} — 0 crop récupérable "
+                        f"({n_total} raws déjà tentés)")
+            cohort_job_finish(
+                conn, job_id, status="done", n_done=n_total,
+                n_produced=counts["crops"], note=note,
+            )
             logger.info("[recrop-zero] %s done: %s", eurio_id, counts)
-        except Exception as exc:  # noqa: BLE001 — surfacé via le status job
+        except Exception as exc:  # noqa: BLE001 — surfacé via cohort_jobs.error
             logger.exception("[recrop-zero] %s crashed", eurio_id)
-            with _recrop_jobs_lock:
-                _recrop_jobs[eurio_id] = {
-                    "status": "failed", "run_id": run_id, "error": str(exc),
-                }
+            cohort_job_finish(conn, job_id, status="failed", error=str(exc))
         finally:
             conn.close()
 
     threading.Thread(
         target=_runner, name=f"recrop-zero-{eurio_id}", daemon=True,
     ).start()
-    return {"status": "started", "run_id": run_id, "eurio_id": eurio_id}
+    return {"status": "started", "run_id": run_id, "eurio_id": eurio_id,
+            "job_id": job_id, "n_total": n_total}
 
 
 @router.get("/cohorts/{cohort_id}/coins/{eurio_id}/recrop-zero/status")
 def recrop_zero_status(cohort_id: str, eurio_id: str) -> dict:
-    """Statut du dernier job recrop-zero de la pièce (running/done/failed/idle)."""
-    with _recrop_jobs_lock:
-        return _recrop_jobs.get(eurio_id, {"status": "idle"})
+    """Statut du dernier job recrop-zero de la pièce, lu depuis cohort_jobs
+    (persisté, survit au restart). ``idle`` si aucun job."""
+    conn = _get_store()._connection()  # noqa: SLF001
+    row = conn.execute(
+        "SELECT id, status, n_total, n_done, n_produced, tau, note, error, "
+        "       started_at, finished_at, run_id "
+        "FROM cohort_jobs WHERE kind='recrop_zero' AND eurio_id=? "
+        "ORDER BY started_at DESC LIMIT 1",
+        (eurio_id,),
+    ).fetchone()
+    return dict(row) if row is not None else {"status": "idle"}
+
+
+@router.get("/cohorts/{cohort_id}/jobs")
+def cohort_jobs_list(cohort_id: str) -> dict:
+    """Jobs observables de la cohorte (scrape/recrop), récents d'abord.
+    Source du statut + barre de progression in-row du cockpit (corrige B2)."""
+    conn = _get_store()._connection()  # noqa: SLF001
+    rows = conn.execute(
+        "SELECT id, kind, eurio_id, target_eurio_id, status, n_total, n_done, "
+        "       n_produced, n_attributed_target, tau, note, error, "
+        "       started_at, finished_at FROM cohort_jobs "
+        "WHERE cohort_id=? ORDER BY started_at DESC LIMIT 100",
+        (cohort_id,),
+    ).fetchall()
+    return {"cohort_id": cohort_id, "jobs": [dict(r) for r in rows]}
 
 
 def _cohort_discard_summary(store: Store, cohort_id: str) -> dict:

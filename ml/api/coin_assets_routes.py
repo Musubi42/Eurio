@@ -28,7 +28,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from state import Store
+from state import Store, emit_state_event
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/coins", tags=["coins"])
@@ -275,6 +275,10 @@ def reflag_assets(payload: ReflagPayload) -> ReflagResponse:
                     """,
                     (asset_id, now),
                 )
+            emit_state_event(
+                conn, asset_id=asset_id, to_state="queued", actor="human",
+                reason="reflagged_from_coin",
+            )
         n_reflagged += 1
 
     logger.info(
