@@ -406,6 +406,7 @@ def list_queue(
     kind: str = Query(default="single"),
     lane: str | None = Query(default=None),
     cohort_id: str | None = Query(default=None),
+    eurio_id: str | None = Query(default=None),
 ) -> list[ReviewItem]:
     if order not in ("priority", "enqueued_at"):
         raise HTTPException(status_code=422, detail="order must be 'priority' or 'enqueued_at'")
@@ -435,8 +436,14 @@ def list_queue(
         else:
             where += " AND rq.lane = ?"
             args.append(lane)
+    # Scope PAR PIÈCE (prioritaire) : la review déclenchée depuis une row coin du
+    # cockpit ne doit servir QUE les crops de cette pièce, sinon trancher ne fait
+    # pas bouger SA ligne (bug constaté : « Reviewer N » servait toute la cohorte).
+    if eurio_id:
+        where += " AND s.target_eurio_id = ?"
+        args.append(eurio_id)
     # Cohort scope : only items whose theme-matched coin is in the cohort.
-    if cohort_id:
+    elif cohort_id:
         cohort = store.get_cohort(cohort_id)
         if cohort is None:
             raise HTTPException(status_code=404, detail="Cohort introuvable")
@@ -1939,6 +1946,7 @@ class ManualCropResponse(BaseModel):
     detection_method: str
     crop_b64: str                # data URI PNG du nouveau crop 224
     minio_ok: bool               # False si le write-through MinIO a échoué
+    dino_recomputed: bool = False  # True si Dino a été recalculé sur le crop recadré
 
 
 # Consumed by: admin/.../review/composables/useReviewApi.ts (manualCrop)
@@ -1960,7 +1968,8 @@ def manual_crop(review_id: str, payload: ManualCropPayload) -> ManualCropRespons
         """
         SELECT a.id AS asset_id, a.storage_path AS crop_storage_path,
                a.detection_method,
-               si.source AS source, si.storage_path AS raw_storage_path
+               si.source AS source, si.storage_path AS raw_storage_path,
+               si.target_eurio_id AS target_eurio_id
           FROM review_queue rq
           JOIN image_assets a ON a.id = rq.image_asset_id
           JOIN source_images si ON si.id = a.source_image_id
@@ -2033,6 +2042,29 @@ def manual_crop(review_id: str, payload: ManualCropPayload) -> ManualCropRespons
     logger.info("[manual-crop] review=%s asset=%s cx=%.1f cy=%.1f r=%.1f minio=%s",
                 review_id, row["asset_id"], cx, cy, r, minio_ok)
 
+    # Recompute Dino sur le crop recadré : la suggestion d'avant pointait sur
+    # le mauvais objet (mauvais cadrage). On réencode + ré-persiste pour que le
+    # panneau « Suggestions Dino » reflète le bon crop dès le refetch front.
+    # Best-effort : un échec Dino ne casse pas le re-crop (déjà committé).
+    dino_recomputed = False
+    try:
+        from sources._base.steps.auto_validate import predict_and_persist_one
+
+        target_eid = row["target_eurio_id"]
+        target_country = (
+            target_eid[:2].lower() if target_eid and len(target_eid) >= 2 else None
+        )
+        pred = predict_and_persist_one(
+            store=_store(),
+            asset_id=row["asset_id"],
+            crop_path=cache_p,
+            target_country=target_country,
+        )
+        dino_recomputed = pred is not None
+    except Exception as exc:  # noqa: BLE001 — suggestion layer, never fatal
+        logger.warning("[manual-crop] Dino recompute failed for asset=%s: %s",
+                       row["asset_id"], exc)
+
     crop_b64 = "data:image/png;base64," + base64.b64encode(png_bytes).decode("ascii")
     return ManualCropResponse(
         asset_id=row["asset_id"],
@@ -2042,6 +2074,7 @@ def manual_crop(review_id: str, payload: ManualCropPayload) -> ManualCropRespons
         detection_method="manual",
         crop_b64=crop_b64,
         minio_ok=minio_ok,
+        dino_recomputed=dino_recomputed,
     )
 
 

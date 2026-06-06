@@ -1380,6 +1380,27 @@ def _coin_tail(conn, eurio_id: str) -> dict:
         (eurio_id,),
     ).fetchone()[0]
 
+    # File de review RÉELLEMENT ouverte pour ce coin (review_queue.status='open'),
+    # par kind. À distinguer de n_review_single/n_review_lot ci-dessus qui comptent
+    # le route_decision des source_images (intention de routage) et restent figés
+    # même après que les items aient été tranchés. C'EST ÇA qu'il faut afficher
+    # comme « reste à reviewer » : sinon le bouton « Reviewer N » ment (ex.
+    # georg-henrik : 27 review_single en route_decision mais 0 single open réel).
+    rq_open = conn.execute(
+        """
+        SELECT rq.kind AS kind, COUNT(*) AS n
+          FROM review_queue rq
+          JOIN image_assets ia ON ia.id = rq.image_asset_id
+          JOIN source_images si ON si.id = ia.source_image_id
+         WHERE si.source='ebay' AND si.target_eurio_id=? AND rq.status='open'
+         GROUP BY rq.kind
+        """,
+        (eurio_id,),
+    ).fetchall()
+    rq_open_map = {r["kind"]: r["n"] for r in rq_open}
+    n_open_review_single = rq_open_map.get("single", 0)
+    n_open_review_lot = rq_open_map.get("lot", 0)
+
     # Runs ayant produit des source_images pour ce coin → run le plus récent
     # (deep-link bench) + flag multi-run (limite connue v1 : on linke le
     # dernier run, cf. handoff).
@@ -1410,6 +1431,8 @@ def _coin_tail(conn, eurio_id: str) -> dict:
         "n_pending": n_pending,
         "n_review_single": n_review_single,
         "n_review_lot": n_review_lot,
+        "n_open_review_single": n_open_review_single,
+        "n_open_review_lot": n_open_review_lot,
         "n_auto": n_auto,
         "n_rejected": n_rejected,
         "n_unrouted": n_unrouted,

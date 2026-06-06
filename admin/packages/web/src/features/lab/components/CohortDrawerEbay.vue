@@ -17,7 +17,7 @@ import {
   useTriggerCohortEbayScrapeMutation,
 } from '@/features/lab/composables/useLabQueries'
 import type { CohortFunnelCoin, CohortSummary, DrawerState, EbayRunLive, RescuedToSister } from '@/features/lab/types'
-import { ArrowUpRight, Crop as CropIcon, Filter, Loader2, RefreshCw, Search } from 'lucide-vue-next'
+import { ArrowUpRight, Crop as CropIcon, Filter, Loader2, Package, RefreshCw, Search } from 'lucide-vue-next'
 import { computed, ref } from 'vue'
 
 const props = defineProps<{
@@ -65,8 +65,13 @@ const flaggedCount = computed(
 function recropCount(c: CohortFunnelCoin): number {
   return c.n_zero_crops ?? 0
 }
+// File RÉELLEMENT ouverte (review_queue), pas le route_decision figé : c'est ce
+// qui reste à trancher. Singles scopables par pièce ; lots = flow cohorte.
 function reviewCount(c: CohortFunnelCoin): number {
-  return c.n_review_single + c.n_review_lot
+  return c.n_open_review_single ?? 0
+}
+function lotReviewCount(c: CohortFunnelCoin): number {
+  return c.n_open_review_lot ?? 0
 }
 // Jauge santé = sources réelles eBay vs plancher (≥ plancher = vert).
 function realBarPct(c: CohortFunnelCoin): number {
@@ -349,11 +354,21 @@ async function onRecrop(c: CohortFunnelCoin) {
               <!-- 1. Crops déjà là à trancher → reviewer (transforme en train) -->
               <RouterLink
                 v-if="reviewCount(c) > 0"
-                :to="{ path: '/review', query: { cohort: cohortId } }"
+                :to="{ path: '/review/manual', query: { cohort: cohortId, eurio_id: c.eurio_id } }"
                 class="coin__btn"
-                :title="`${reviewCount(c)} crops en review pour ${c.eurio_id} — trancher pour les passer en training`"
+                :title="`${reviewCount(c)} crops en review POUR ${c.eurio_id} — review scopée à cette pièce, trancher fait monter sa ligne`"
               >
                 <Search class="h-3 w-3" /> Reviewer {{ reviewCount(c) }}
+              </RouterLink>
+
+              <!-- 1b. Reste en review LOT (flow cohorte, multi-pièces) -->
+              <RouterLink
+                v-if="lotReviewCount(c) > 0"
+                :to="{ path: '/review/manual', query: { cohort: cohortId, mode: 'lot' } }"
+                class="coin__audit coin__audit--muted"
+                :title="`${lotReviewCount(c)} crops en review LOT touchant ${c.eurio_id} — flow cohorte multi-pièces`"
+              >
+                <Package class="h-3 w-3" /> {{ lotReviewCount(c) }} lots
               </RouterLink>
 
               <!-- 2. Raws téléchargés sans crop → recropper (local, sans quota) -->

@@ -134,8 +134,10 @@ export interface CohortFunnelCoin {
   n_zero_crops: number        // raws téléchargés SANS aucun crop → candidats recrop
   by_route_decision: CohortFunnelRoute[]
   n_pending: number
-  n_review_single: number
-  n_review_lot: number
+  n_review_single: number    // route_decision (intention) — figé après décision
+  n_review_lot: number       // route_decision (intention) — figé après décision
+  n_open_review_single: number  // review_queue.status='open' kind='single' — RESTE à reviewer
+  n_open_review_lot: number     // review_queue.status='open' kind='lot' — RESTE à reviewer
   n_auto: number
   n_rejected: number
   n_unrouted: number

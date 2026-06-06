@@ -148,12 +148,13 @@ function promoteItemUrls(r: ReviewItem): ReviewItem {
 }
 
 export async function fetchReviewQueue(
-  opts: { limit?: number; cohortId?: string | null; lane?: string | null } = {},
+  opts: { limit?: number; cohortId?: string | null; lane?: string | null; eurioId?: string | null } = {},
 ): Promise<ReviewItem[]> {
   const limit = opts.limit ?? 30
   const params = new URLSearchParams({ limit: String(limit), order: 'priority' })
   if (opts.cohortId) params.set('cohort_id', opts.cohortId)
   if (opts.lane) params.set('lane', opts.lane)
+  if (opts.eurioId) params.set('eurio_id', opts.eurioId)
   const real = await safeFetch<ReviewItem[]>(`/review-queue?${params.toString()}`)
   if (real !== null) {
     return real.map(promoteItemUrls)

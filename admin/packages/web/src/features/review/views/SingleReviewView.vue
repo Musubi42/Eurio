@@ -160,6 +160,14 @@ const lane = computed(() =>
     ? route.query.lane
     : null,
 )
+// Scope PAR PIÈCE (?eurio_id=) : review déclenchée depuis une row coin du
+// cockpit. Ne sert QUE les crops de cette pièce → trancher fait bouger SA ligne
+// (corrige « Reviewer N » qui servait toute la cohorte). Prioritaire backend.
+const eurioId = computed(() =>
+  typeof route.query.eurio_id === 'string' && route.query.eurio_id
+    ? route.query.eurio_id
+    : null,
+)
 
 // Valider exige un candidat ET un type/état renseignés : on ne fige pas
 // une attribution sans avoir tranché le contexte listing (C4).
@@ -185,7 +193,7 @@ const validateBlockedReason = computed<string | null>(() => {
 
 async function load() {
   const [q, s] = await Promise.all([
-    fetchReviewQueue({ limit: 30, cohortId: cohortId.value, lane: lane.value }),
+    fetchReviewQueue({ limit: 30, cohortId: cohortId.value, lane: lane.value, eurioId: eurioId.value }),
     fetchReviewStats(),
   ])
   queue.value = q
@@ -234,8 +242,8 @@ onMounted(() => {
   window.addEventListener('beforeunload', flushBeforeUnload)
 })
 
-// Reload the queue when the cohort scope OR the lane (?lane=) changes.
-watch([cohortId, lane], () => {
+// Reload the queue when the cohort scope, the lane, or the per-coin scope changes.
+watch([cohortId, lane, eurioId], () => {
   void load()
 })
 
@@ -495,10 +503,16 @@ function onDinoSelect(s: DinoSuggestion) {
 
 const keyboardEnabled = computed(() => !showHelp.value && !showCropEditor.value)
 
+// Bumpé après un re-crop manuel pour forcer DinoSuggestions à refetcher
+// (le backend a recalculé Dino sur le nouveau crop dans la même requête).
+const dinoReloadKey = ref(0)
+
 // Re-crop manuel validé : le crop a été écrasé côté backend → on bust le
-// cache pour réafficher la nouvelle version sans recharger la queue.
+// cache pour réafficher la nouvelle version, et on relance les suggestions
+// Dino (recalculées server-side sur le crop recadré).
 function onCropSaved() {
   cropBust.value = Date.now()
+  dinoReloadKey.value += 1
 }
 
 useReviewKeybinds(keyboardEnabled, {
@@ -512,6 +526,7 @@ useReviewKeybinds(keyboardEnabled, {
   onCycleKind: cycleKind,
   onCycleCondition: cycleCondition,
   onAcceptDino: acceptDino,
+  onRecrop: () => { if (currentItem.value) showCropEditor.value = true },
 })
 </script>
 
@@ -629,11 +644,12 @@ useReviewKeybinds(keyboardEnabled, {
                 type="button"
                 class="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-mono uppercase tracking-wider transition-colors"
                 style="border-color: var(--surface-3); color: var(--indigo-700); background: var(--surface-1);"
-                title="Re-cropper manuellement (pièce mal cadrée)"
+                title="Re-cropper manuellement (pièce mal cadrée) · E"
                 @click="showCropEditor = true"
               >
                 <Crop class="h-3 w-3" />
                 Recadrer
+                <span class="font-mono text-[9px] opacity-70">E</span>
               </button>
             </div>
             <SplitCompare
@@ -716,6 +732,7 @@ useReviewKeybinds(keyboardEnabled, {
             <DinoVerdict
               v-if="currentItem"
               :review-id="currentItem.id"
+              :reload-key="dinoReloadKey"
               variant="standard"
             />
           </div>
@@ -729,6 +746,7 @@ useReviewKeybinds(keyboardEnabled, {
             :focused-candidate-idx="focusedCandidateIdx"
             :free-search-candidate="freeSearchCandidate"
             :review-id="currentItem.id"
+            :dino-reload-key="dinoReloadKey"
             @target-focus="selectTarget"
             @candidate-focus="focusCandidate"
             @dino-select="onDinoSelect"
@@ -843,6 +861,8 @@ useReviewKeybinds(keyboardEnabled, {
           <dd style="color: var(--ink-500);">Corriger l'état de la pièce (cycle)</dd>
           <dt class="font-mono text-[12px]" style="color: var(--indigo-700);">D</dt>
           <dd style="color: var(--ink-500);">Accepter la suggestion DINOv2 top-1 (si disponible)</dd>
+          <dt class="font-mono text-[12px]" style="color: var(--ink-700);">E</dt>
+          <dd style="color: var(--ink-500);">Recadrer le crop manuellement (⏎ valide le recadrage)</dd>
           <dt class="font-mono text-[12px]" style="color: var(--ink-700);">Esc</dt>
           <dd style="color: var(--ink-500);">Fermer overlay</dd>
         </dl>
