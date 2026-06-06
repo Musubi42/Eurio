@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
+import threading
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -25,6 +26,12 @@ from state import (
     Store,
 )
 
+from foundation.enrichment import (
+    CANONICAL_REF_SOURCES,
+    MIN_REAL as _ENRICH_MIN_REAL,
+    TRAINING_TARGET as _ENRICH_TARGET,
+    projection as _enrich_projection,
+)
 from . import coin_lookup
 from .iteration_logic import compute_sensitivity
 from .iteration_runner import IterationRunner
@@ -303,14 +310,11 @@ def get_cohort(id_or_name: str) -> dict:
 
 _OBVERSE_NAMES = ("obverse.jpg", "obverse.png")
 
-# Cible d'images projetées après augmentation x10 (seed primaire × 10) :
-# en-dessous, la classe est trop pauvre même avec augmentation.
-TRAINING_TARGET = 100
-# Plancher de sources RÉELLES distinctes (obverse Numista + crops eBay reviewés)
-# sous lequel une classe est flaggée « trop pauvre » : l'augmentation seule
-# gonflerait artificiellement (100 variants depuis 3 photos ≠ 100 vraies vues).
-# Reco doctrine lab-streamline §B. En-dessous → aller chercher plus d'eBay.
-MIN_REAL = 10
+# Cible et plancher = source de vérité UNIQUE (foundation/enrichment.py), partagée
+# avec le bake (training/iteration_augmentations.py). La projection n'est plus un
+# ×10 codé en dur mais un facteur dynamique ceil(100/seed) → voir _enrich_projection.
+TRAINING_TARGET = _ENRICH_TARGET
+MIN_REAL = _ENRICH_MIN_REAL
 # Alias legacy conservé pour ne pas casser les usages existants (n_real_sources,
 # colonne `enough`) le temps d'un éventuel nettoyage ultérieur.
 _MIN_REAL_SOURCES = MIN_REAL
@@ -332,6 +336,25 @@ def _has_canonical(conn: sqlite3.Connection, eurio_id: str, source: str) -> bool
         (eurio_id, source),
     ).fetchone()
     return row is not None
+
+
+def _count_canonical_refs(conn: sqlite3.Connection, eurio_id: str) -> int:
+    """Réfs canoniques officielles (BCE / EUR-Lex JO) RÉELLEMENT présentes sur
+    disque — compté à l'identique du bake (``iteration_augmentations
+    ._canonical_ref_images``) pour que l'affichage et l'augmentation effective
+    partagent le même « seed ». ``local_path`` est relatif à la racine du repo."""
+    placeholders = ",".join("?" * len(CANONICAL_REF_SOURCES))
+    rows = conn.execute(
+        f"""
+        SELECT local_path FROM coin_canonical_images
+         WHERE eurio_id=? AND role='obverse'
+           AND source IN ({placeholders})
+           AND local_path IS NOT NULL AND local_path != ''
+        """,
+        (eurio_id, *CANONICAL_REF_SOURCES),
+    ).fetchall()
+    repo_root = _ML_DIR.parent
+    return sum(1 for r in rows if (repo_root / r[0]).exists())
 
 
 def _drawer_state_c1(total_coins: int, missing_obverse: list[str]) -> str:
@@ -1340,6 +1363,23 @@ def _coin_tail(conn, eurio_id: str) -> dict:
         (eurio_id,),
     ).fetchone()[0]
 
+    # Raws téléchargés mais SANS aucun crop présent = candidats au re-crop
+    # (même condition que la garde d'idempotence DetectCrop). Distingue « il faut
+    # recropper » de « il faut rescraper » / « il faut reviewer » (§WS4).
+    n_zero_crops = conn.execute(
+        """
+        SELECT COUNT(*) FROM source_images si
+         WHERE si.source='ebay' AND si.target_eurio_id=?
+           AND si.download_status='success'
+           AND NOT EXISTS (
+               SELECT 1 FROM image_assets ia
+                WHERE ia.source_image_id = si.id
+                  AND ia.storage_status = 'present'
+           )
+        """,
+        (eurio_id,),
+    ).fetchone()[0]
+
     # Runs ayant produit des source_images pour ce coin → run le plus récent
     # (deep-link bench) + flag multi-run (limite connue v1 : on linke le
     # dernier run, cf. handoff).
@@ -1365,6 +1405,7 @@ def _coin_tail(conn, eurio_id: str) -> dict:
         "n_crops": n_crops,
         "n_downloaded": n_downloaded,
         "n_download_failed": n_download_failed,
+        "n_zero_crops": n_zero_crops,
         "by_route_decision": by_route,
         "n_pending": n_pending,
         "n_review_single": n_review_single,
@@ -1505,11 +1546,19 @@ def _cohort_funnel_status(store: Store, cohort_id: str) -> dict:
             "WHERE si.source='ebay' AND ia.eurio_id=? AND ia.training_eligible=1",
             (eid,),
         ).fetchone()[0]
-        n_real = n_training + (1 if _has_obverse(nid) else 0)
-        n_numista_ref = 1 if _has_canonical(conn, eid, "numista_api") else 0
-        n_bce_ref = 1 if _has_canonical(conn, eid, "bce_official") else 0
-        n_projected = 10 * (n_training + n_numista_ref + n_bce_ref)
+        # Seed = sources RÉELLES distinctes, comptées à l'identique du bake
+        # (foundation/enrichment.py + iteration_augmentations) : crops eBay
+        # validés + avers Numista (FS) + réfs officielles BCE/EUR-Lex (sur disque).
+        n_numista_ref = 1 if _has_obverse(nid) else 0
+        n_bce_ref = _count_canonical_refs(conn, eid)
+        n_seed = n_training + n_numista_ref + n_bce_ref
+        n_real = n_seed
+        aug_factor, n_projected = _enrich_projection(n_seed)
         gap_to_target = max(0, TRAINING_TARGET - n_projected)
+        # Signal santé réel : la cible ≥100 est toujours atteignable par
+        # augmentation dès seed≥1 ; ce qui compte c'est d'avoir assez de crops
+        # eBay RÉELS (diversité). En-dessous du plancher → aller chercher + d'eBay.
+        below_real_floor = n_training < MIN_REAL
         never_scraped = tail["n_source_images"] == 0
         per_coin.append({
             "eurio_id": eid,
@@ -1517,7 +1566,10 @@ def _cohort_funnel_status(store: Store, cohort_id: str) -> dict:
             "scrapable": eid not in non_set,
             "n_training_eligible": n_training,
             "n_real_sources": n_real,
-            "enough": n_real >= _MIN_REAL_SOURCES,
+            "n_seed": n_seed,
+            "aug_factor": aug_factor,
+            "enough": n_training >= MIN_REAL,
+            "below_real_floor": below_real_floor,
             "n_numista_ref": n_numista_ref,
             "n_bce_ref": n_bce_ref,
             "n_projected": n_projected,
@@ -1580,6 +1632,35 @@ def _cohort_funnel_status(store: Store, cohort_id: str) -> dict:
             "discarded_by_reason": discarded,
         })
 
+    # ── Rescue cross-classe : crops validés (training_eligible=1) scrapés SOUS
+    # un groupe de la cohort mais ré-attribués en review à une pièce SŒUR hors
+    # cohort. Ce sont du training valide pour LEUR pièce — pas pour une pièce de
+    # la cohort — donc jamais comptés dans le seed d'une classe cohort ; on les
+    # rend juste VISIBLES pour que le travail ne paraisse pas perdu (§WS3).
+    rescued_to_sisters: list[dict] = []
+    if cohort.eurio_ids:
+        ph = ",".join("?" * len(cohort.eurio_ids))
+        rescued_to_sisters = [
+            {"source_coin": r[0], "sister_eurio_id": r[1], "n": r[2]}
+            for r in conn.execute(
+                f"""
+                SELECT si.target_eurio_id AS source_coin,
+                       ia.eurio_id        AS sister_eurio_id,
+                       COUNT(*)           AS n
+                  FROM image_assets ia
+                  JOIN source_images si ON si.id = ia.source_image_id
+                 WHERE si.source = 'ebay'
+                   AND ia.training_eligible = 1
+                   AND si.target_eurio_id IN ({ph})
+                   AND ia.eurio_id IS NOT NULL
+                   AND ia.eurio_id NOT IN ({ph})
+                 GROUP BY si.target_eurio_id, ia.eurio_id
+                 ORDER BY n DESC
+                """,
+                [*cohort.eurio_ids, *cohort.eurio_ids],
+            ).fetchall()
+        ]
+
     # Quota offline + groupes scrapables (fusionnés depuis l'ancien §C3 pour
     # alimenter le bouton « Lancer scrape eBay (cohort) »). Aucun appel eBay.
     n_group_coins = sum(g.n_coins for g in groups)
@@ -1588,6 +1669,7 @@ def _cohort_funnel_status(store: Store, cohort_id: str) -> dict:
     return {
         "cohort_id": cohort.id,
         "per_coin": per_coin,
+        "rescued_to_sisters": rescued_to_sisters,
         "head": {
             "groups": head_groups,
             "run_ids": cohort_run_ids,
@@ -1615,6 +1697,84 @@ def cohort_funnel_status(cohort_id: str) -> dict:
     (per_coin tail précis vs head groupe). Alimente le tiroir §C3 et les
     deep-links vers le studio bench (``/bench/runs/<run>?eurio_id=<coin>``)."""
     return _cohort_funnel_status(_get_store(), cohort_id)
+
+
+# ── Recrop des zéro-crops d'une pièce (census+gate, en arrière-plan) ──────────
+# État des jobs recrop en cours, keyé par eurio_id. In-memory (process unique) :
+# le job écrit en base au fil de l'eau ; le front poll funnel-status pour voir les
+# crops apparaître + ce dict pour le statut running/done/failed. Source de vérité
+# du recrop = scan/recrop_zero.py (partagé avec le CLI batch).
+_recrop_jobs: dict[str, dict] = {}
+_recrop_jobs_lock = threading.Lock()
+
+
+def _open_recrop_conn(store: Store) -> sqlite3.Connection:
+    """Connexion sqlite dédiée au thread recrop (mêmes PRAGMAs que le Store +
+    UDFs phash requis par la dédup). NE PAS réutiliser ``store._connection()``
+    (thread-local)."""
+    from state.store import _register_phash_udfs
+
+    conn = sqlite3.connect(store.db_path(), isolation_level=None)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA foreign_keys=ON")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    _register_phash_udfs(conn)
+    return conn
+
+
+@router.post("/cohorts/{cohort_id}/coins/{eurio_id}/recrop-zero", status_code=202)
+def recrop_zero_coin(cohort_id: str, eurio_id: str) -> dict:
+    """Re-crope en arrière-plan les raws eBay zéro-crop d'UNE pièce (census+gate
+    anti-fragment). Additif & sûr : ne touche que les raws sans crop présent,
+    ``training_eligible=0`` → review humaine. Le front poll ``funnel-status``
+    (les crops apparaissent) + l'endpoint status ci-dessous."""
+    store = _get_store()
+    cohort = store.get_cohort(cohort_id)
+    if cohort is None:
+        raise HTTPException(status_code=404, detail="Cohort introuvable")
+    if eurio_id not in cohort.eurio_ids:
+        raise HTTPException(status_code=404, detail="Pièce absente de la cohort")
+
+    with _recrop_jobs_lock:
+        prev = _recrop_jobs.get(eurio_id)
+        if prev and prev.get("status") == "running":
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "recrop_already_running", "eurio_id": eurio_id},
+            )
+        run_id = f"recrop-zero-{eurio_id}"
+        _recrop_jobs[eurio_id] = {"status": "running", "run_id": run_id}
+
+    def _runner() -> None:
+        from scan.recrop_zero import recrop_zero_for_coin
+
+        conn = _open_recrop_conn(store)
+        try:
+            counts = recrop_zero_for_coin(conn, eurio_id, run_id=run_id, commit=True)
+            with _recrop_jobs_lock:
+                _recrop_jobs[eurio_id] = {"status": "done", "run_id": run_id, **counts}
+            logger.info("[recrop-zero] %s done: %s", eurio_id, counts)
+        except Exception as exc:  # noqa: BLE001 — surfacé via le status job
+            logger.exception("[recrop-zero] %s crashed", eurio_id)
+            with _recrop_jobs_lock:
+                _recrop_jobs[eurio_id] = {
+                    "status": "failed", "run_id": run_id, "error": str(exc),
+                }
+        finally:
+            conn.close()
+
+    threading.Thread(
+        target=_runner, name=f"recrop-zero-{eurio_id}", daemon=True,
+    ).start()
+    return {"status": "started", "run_id": run_id, "eurio_id": eurio_id}
+
+
+@router.get("/cohorts/{cohort_id}/coins/{eurio_id}/recrop-zero/status")
+def recrop_zero_status(cohort_id: str, eurio_id: str) -> dict:
+    """Statut du dernier job recrop-zero de la pièce (running/done/failed/idle)."""
+    with _recrop_jobs_lock:
+        return _recrop_jobs.get(eurio_id, {"status": "idle"})
 
 
 def _cohort_discard_summary(store: Store, cohort_id: str) -> dict:

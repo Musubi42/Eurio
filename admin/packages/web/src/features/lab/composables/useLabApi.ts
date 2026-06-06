@@ -215,6 +215,22 @@ export async function triggerCoinEbayScrape(
 }
 
 /**
+ * Re-crope en arrière-plan les raws eBay zéro-crop d'UNE pièce (census + gate
+ * anti-fragment). Additif & sûr : ne touche que les raws sans crop présent,
+ * crops créés en training_eligible=0 → review. Ne consomme PAS le quota eBay
+ * (recrop local, pas de nouvelle découverte). Le front poll funnel-status.
+ */
+export async function triggerRecropZeroCoin(
+  cohortId: string,
+  eurioId: string,
+): Promise<{ status: string; run_id: string; eurio_id: string }> {
+  return json<{ status: string; run_id: string; eurio_id: string }>(
+    `/lab/cohorts/${encodeURIComponent(cohortId)}/coins/${encodeURIComponent(eurioId)}/recrop-zero`,
+    { method: 'POST' },
+  )
+}
+
+/**
  * Détail des candidates au rescue, groupées par eurio_id (C5).
  * Contrairement à fetchCohortDiscardSummary (agrégat normalisé §C3), renvoie
  * le détail par pièce avec les IDs individuels pour l'action 1-clic Reclasser.

@@ -12,10 +12,11 @@ import {
   useCohortFunnelStatusQuery,
   useDiscardSummaryQuery,
   useEbayRunningRunsQuery,
+  useRecropZeroCoinMutation,
   useTriggerCoinEbayScrapeMutation,
   useTriggerCohortEbayScrapeMutation,
 } from '@/features/lab/composables/useLabQueries'
-import type { CohortFunnelCoin, CohortSummary, DrawerState, EbayRunLive } from '@/features/lab/types'
+import type { CohortFunnelCoin, CohortSummary, DrawerState, EbayRunLive, RescuedToSister } from '@/features/lab/types'
 import { ArrowUpRight, Crop as CropIcon, Filter, Loader2, RefreshCw, Search } from 'lucide-vue-next'
 import { computed, ref } from 'vue'
 
@@ -28,6 +29,7 @@ const statusQuery = useCohortFunnelStatusQuery(() => props.cohortId)
 const discardQuery = useDiscardSummaryQuery(() => props.cohortId)
 const scrape = useTriggerCohortEbayScrapeMutation(() => props.cohortId)
 const coinScrape = useTriggerCoinEbayScrapeMutation(() => props.cohortId)
+const recrop = useRecropZeroCoinMutation(() => props.cohortId)
 
 const status = computed(() => statusQuery.data.value ?? null)
 const loading = computed(() => statusQuery.isPending.value)
@@ -36,6 +38,9 @@ const dedup = computed(() => dedupQuery.data.value ?? null)
 const discardSummary = computed(() => discardQuery.data.value ?? null)
 const perCoin = computed<CohortFunnelCoin[]>(() => status.value?.per_coin ?? [])
 const groups = computed(() => status.value?.head.groups ?? [])
+const rescuedToSisters = computed<RescuedToSister[]>(() => status.value?.rescued_to_sisters ?? [])
+const rescuedTotal = computed(() => rescuedToSisters.value.reduce((a, r) => a + r.n, 0))
+const minReal = computed(() => status.value?.min_real_sources ?? 10)
 const trainingTarget = computed(() => status.value?.training_target ?? 100)
 const quota = computed(() => status.value?.quota ?? null)
 const nonScrapable = computed(() => status.value?.non_scrapable ?? [])
@@ -51,10 +56,22 @@ const totals = computed(() => {
     rejected: sum(c => c.n_rejected),
   }
 })
-// Pièces scrapables avec un gap de cible → candidates au rescrape.
+// Pièces sous le plancher de sources RÉELLES (diversité faible) → à enrichir.
 const flaggedCount = computed(
-  () => perCoin.value.filter(c => c.scrapable && (c.gap_to_target ?? (!c.enough ? 1 : 0)) > 0).length,
+  () => perCoin.value.filter(c => c.below_real_floor ?? !c.enough).length,
 )
+
+// Compteurs d'action par pièce (recrop = raws sans crop ; review = crops à trancher).
+function recropCount(c: CohortFunnelCoin): number {
+  return c.n_zero_crops ?? 0
+}
+function reviewCount(c: CohortFunnelCoin): number {
+  return c.n_review_single + c.n_review_lot
+}
+// Jauge santé = sources réelles eBay vs plancher (≥ plancher = vert).
+function realBarPct(c: CohortFunnelCoin): number {
+  return Math.min(100, Math.round((c.n_training_eligible / Math.max(minReal.value, 1)) * 100))
+}
 
 const state = computed<DrawerState>(() => {
   if (scrape.isPending.value) return 'running'
@@ -67,7 +84,7 @@ const summary = computed(() => {
   if (loading.value || !status.value) return 'Chargement…'
   const t = totals.value
   if (t.listings === 0) return 'Aucun listing scrapé pour cette cohort'
-  const flag = flaggedCount.value > 0 ? ` · ${flaggedCount.value} sous cible` : ''
+  const flag = flaggedCount.value > 0 ? ` · ${flaggedCount.value} sous plancher réel` : ''
   const non = nonScrapable.value.length > 0 ? ` · ${nonScrapable.value.length} hors eBay` : ''
   return `${fmt(t.listings)} → ${fmt(t.crops)} crops → ${fmt(t.review)} en review${flag}${non}`
 })
@@ -129,6 +146,30 @@ async function onRescrape(c: CohortFunnelCoin) {
     scrapingCoin.value = null
   }
 }
+
+// Recrop des raws zéro-crop d'une pièce (census+gate). Local, sans quota eBay.
+const recroppingCoin = ref<string | null>(null)
+const recropTriggered = ref<Record<string, string>>({})
+
+async function onRecrop(c: CohortFunnelCoin) {
+  const n = recropCount(c)
+  const ok = window.confirm(
+    `Recropper les ${n} raws sans crop de « ${c.eurio_id} » ?\n\n`
+    + `Re-détection census + gate anti-fragment sur les images déjà téléchargées `
+    + `(ne consomme PAS le quota eBay). Les crops récupérés partent en review.\n`
+    + `Le job tourne en arrière-plan ; les crops apparaîtront au fil de l'eau.`,
+  )
+  if (!ok) return
+  recroppingCoin.value = c.eurio_id
+  try {
+    const res = await recrop.mutateAsync(c.eurio_id)
+    recropTriggered.value = { ...recropTriggered.value, [c.eurio_id]: res.run_id }
+  } catch (e) {
+    alert(`Recrop échoué : ${(e as Error).message}`)
+  } finally {
+    recroppingCoin.value = null
+  }
+}
 </script>
 
 <template>
@@ -164,6 +205,28 @@ async function onRescrape(c: CohortFunnelCoin) {
             <span v-if="totals.rejected"><b>{{ totals.rejected }}</b> rejetés</span>
           </div>
         </div>
+
+        <!-- Rescue cross-classe : travail validé parti vers des pièces sœurs
+             hors cohort (visible pour ne pas paraître perdu — pas compté dans
+             les cibles de la cohort) -->
+        <details v-if="rescuedTotal > 0" class="mt-2 sisters">
+          <summary class="sisters__summary">
+            {{ rescuedTotal }} crops validés rescués → {{ rescuedToSisters.length }} pièces sœurs (hors cohort)
+          </summary>
+          <ul class="sisters__list">
+            <li v-for="r in rescuedToSisters" :key="`${r.source_coin}-${r.sister_eurio_id}`">
+              <span class="sisters__src">{{ r.source_coin }}</span>
+              <span class="sisters__arr">→</span>
+              <span class="sisters__dst">{{ r.sister_eurio_id }}</span>
+              <span class="sisters__n">{{ r.n }}</span>
+            </li>
+          </ul>
+          <p class="sisters__note">
+            Crops scrapés sous un groupe de la cohort mais ré-attribués en review à
+            leur vraie pièce (sœur du même groupe). Training valide pour la sœur ;
+            non comptés dans le seed des pièces de la cohort.
+          </p>
+        </details>
 
         <!-- Badge run live (visible uniquement si un run eBay tourne) -->
         <div v-if="liveRun" class="live-badge">
@@ -233,20 +296,22 @@ async function onRescrape(c: CohortFunnelCoin) {
                 {{ c.eurio_id }}
               </span>
               <span class="coin__sources">
-                <span class="coin__proj">
+                <span
+                  class="coin__proj"
+                  :title="`${c.n_seed} sources réelles (${c.n_training_eligible} eBay + ${c.n_numista_ref} Numista + ${c.n_bce_ref} réf) × ${c.aug_factor} augmentation = ${c.n_projected} images projetées (cible ≥ ${trainingTarget}). Jauge = sources eBay réelles vs plancher ${minReal}.`"
+                >
                   <span class="coin__proj-bar">
                     <span
                       class="coin__proj-fill"
                       :style="{
-                        width: Math.min(100, Math.round((c.n_projected ?? c.n_real_sources * 10) / trainingTarget * 100)) + '%',
-                        background: (c.gap_to_target ?? (c.enough ? 0 : 1)) === 0 ? 'var(--success)' : 'var(--warning)',
+                        width: realBarPct(c) + '%',
+                        background: c.below_real_floor ? 'var(--warning)' : 'var(--success)',
                       }"
                     />
                   </span>
-                  <b :style="{ color: (c.gap_to_target ?? (c.enough ? 0 : 1)) === 0 ? 'var(--success)' : 'var(--warning)' }">
-                    {{ c.n_projected ?? c.n_real_sources * 10 }}
-                  </b>
-                  <span style="color: var(--ink-400);">/ {{ trainingTarget }}</span>
+                  <b :style="{ color: c.below_real_floor ? 'var(--warning)' : 'var(--success)' }">{{ c.n_projected }}</b>
+                  <span style="color: var(--ink-400);">img</span>
+                  <span class="coin__proj-detail">{{ c.n_seed }} réels ×{{ c.aug_factor }}</span>
                 </span>
               </span>
             </div>
@@ -279,24 +344,57 @@ async function onRescrape(c: CohortFunnelCoin) {
               <span v-else style="color: var(--ink-400);">aucun listing scrapé</span>
             </div>
 
-            <!-- L3 : actions -->
+            <!-- L3 : actions diagnostiquées selon la vraie cause (§WS4) -->
             <div class="coin__actions">
+              <!-- 1. Crops déjà là à trancher → reviewer (transforme en train) -->
+              <RouterLink
+                v-if="reviewCount(c) > 0"
+                :to="{ path: '/review', query: { cohort: cohortId } }"
+                class="coin__btn"
+                :title="`${reviewCount(c)} crops en review pour ${c.eurio_id} — trancher pour les passer en training`"
+              >
+                <Search class="h-3 w-3" /> Reviewer {{ reviewCount(c) }}
+              </RouterLink>
+
+              <!-- 2. Raws téléchargés sans crop → recropper (local, sans quota) -->
               <button
-                v-if="c.scrapable && (c.gap_to_target ?? (!c.enough ? 1 : 0)) > 0"
+                v-if="recropCount(c) > 0"
                 type="button"
                 class="coin__btn"
+                :disabled="recroppingCoin !== null"
+                :style="{ opacity: recroppingCoin !== null ? 0.5 : 1, cursor: recroppingCoin !== null ? 'not-allowed' : 'pointer' }"
+                :title="`Recropper ${recropCount(c)} raws sans crop (census+gate, sans quota eBay)`"
+                @click="onRecrop(c)"
+              >
+                <Loader2 v-if="recroppingCoin === c.eurio_id" class="h-3 w-3 animate-spin" />
+                <CropIcon v-else class="h-3 w-3" />
+                <span v-if="recropTriggered[c.eurio_id]" class="font-mono">recrop {{ recropTriggered[c.eurio_id].slice(-6) }}</span>
+                <span v-else>Recropper {{ recropCount(c) }}</span>
+              </button>
+
+              <!-- 3. Scrape eBay : jamais scrapé → Scraper ; sinon Rescraper (nouvelles annonces) -->
+              <button
+                v-if="c.scrapable"
+                type="button"
+                class="coin__btn coin__btn--scrape"
                 :disabled="scrapingCoin !== null"
                 :style="{ opacity: scrapingCoin !== null ? 0.5 : 1, cursor: scrapingCoin !== null ? 'not-allowed' : 'pointer' }"
-                :title="`Rescrape eBay ciblé sur ${c.eurio_id} (gap ${c.gap_to_target ?? '?'} img)`"
+                :title="c.never_scraped
+                  ? `Scraper eBay pour ${c.eurio_id} (jamais scrapé)`
+                  : `Rescraper eBay (nouvelles annonces) — consomme le quota`"
                 @click="onRescrape(c)"
               >
                 <Loader2 v-if="scrapingCoin === c.eurio_id" class="h-3 w-3 animate-spin" />
                 <RefreshCw v-else class="h-3 w-3" />
                 <span v-if="coinTriggered[c.eurio_id]" class="font-mono">{{ coinTriggered[c.eurio_id].slice(0, 6) }}</span>
-                <span v-else>rescrape</span>
+                <span v-else>{{ c.never_scraped ? 'Scraper' : 'Rescraper' }}</span>
               </button>
-              <span v-else-if="!c.scrapable" class="coin__muted">hors découverte eBay</span>
-              <span v-else class="coin__muted" style="color: var(--success);">cible atteinte</span>
+              <span v-else class="coin__muted">hors découverte eBay</span>
+              <span
+                v-if="!c.below_real_floor && reviewCount(c) === 0 && recropCount(c) === 0"
+                class="coin__muted"
+                style="color: var(--success);"
+              >assez de réels</span>
 
               <template v-if="c.latest_run_id">
                 <RouterLink
@@ -440,11 +538,13 @@ async function onRescrape(c: CohortFunnelCoin) {
         </div>
 
         <p class="mt-3 text-[10px]" style="color: var(--ink-400);">
-          <strong>barre</strong> = images training projetées (×10 augmentation) vs cible {{ trainingTarget }} ;
-          <span style="color: var(--success);">vert</span> = cible atteinte, <span style="color: var(--warning);">orange</span> = sous cible → rescrape conseillé.
-          <span style="color: var(--danger);">jamais scrapé</span> = 0 listing eBay existant pour cette pièce.
-          Clique <strong>filtres</strong> pour auditer le theme-matcher (ou <strong>crops</strong> pour la forensics), puis tranche dans
-          <RouterLink to="/review" style="text-decoration: underline;">/review</RouterLink>.
+          <strong>{{ '{N} img' }}</strong> = images projetées après augmentation (<strong>{{ '{seed}' }} réels ×{{ '{facteur}' }}</strong>,
+          facteur = ceil({{ trainingTarget }}/seed) → toujours ≥ {{ trainingTarget }}).
+          La <strong>jauge</strong> = sources eBay réelles vs plancher {{ minReal }} :
+          <span style="color: var(--success);">vert</span> = assez de diversité réelle,
+          <span style="color: var(--warning);">orange</span> = sous le plancher → enrichir (recropper / rescraper).
+          Actions : <strong>Reviewer</strong> (crops déjà là à trancher), <strong>Recropper</strong> (raws sans crop, sans quota),
+          <strong>Rescraper</strong> (nouvelles annonces eBay).
         </p>
       </template>
       <div v-else class="text-xs" style="color: var(--danger);">
@@ -548,6 +648,12 @@ async function onRescrape(c: CohortFunnelCoin) {
 }
 .coin__proj-fill { display: block; height: 100%; border-radius: 2px; transition: width 300ms ease; }
 .coin__proj b { font-size: 11px; font-variant-numeric: tabular-nums; font-weight: 600; }
+.coin__proj-detail {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--ink-400);
+  white-space: nowrap;
+}
 
 .coin__funnel {
   font-size: 12.5px;
@@ -576,6 +682,13 @@ async function onRescrape(c: CohortFunnelCoin) {
   transition: background 160ms var(--ease-out, ease);
 }
 .coin__btn:hover { background: color-mix(in srgb, var(--indigo-700) 16%, var(--surface)); }
+/* Bouton scrape (consomme le quota) : ton plus neutre pour le distinguer des
+   actions locales gratuites (Reviewer / Recropper). */
+.coin__btn--scrape {
+  color: var(--ink-500);
+  background: var(--surface-2);
+}
+.coin__btn--scrape:hover { background: var(--surface-3); }
 .coin__audit {
   display: inline-flex;
   align-items: center;
@@ -634,4 +747,49 @@ async function onRescrape(c: CohortFunnelCoin) {
 }
 .dedup__grid dt { color: var(--ink-400); }
 .dedup__grid dd { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink); }
+
+/* Rescue cross-classe (pièces sœurs hors cohort) — ton neutre, c'est du travail
+   fait, pas un gap. */
+.sisters {
+  border: 1px solid var(--surface-3);
+  border-radius: 6px;
+  padding: 6px 12px;
+  background: var(--surface);
+}
+.sisters__summary {
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--ink-500);
+  user-select: none;
+}
+.sisters__summary:hover { color: var(--ink); }
+.sisters__list {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.sisters__list li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-500);
+}
+.sisters__src { color: var(--ink-400); }
+.sisters__arr { color: var(--ink-300); }
+.sisters__dst { color: var(--ink); }
+.sisters__n {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-400);
+}
+.sisters__note {
+  margin-top: 8px;
+  font-size: 10px;
+  color: var(--ink-400);
+}
 </style>

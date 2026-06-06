@@ -51,6 +51,7 @@ import {
   fetchRescueCandidates,
   rescueDiscard,
   triggerCoinEbayScrape,
+  triggerRecropZeroCoin,
   triggerCohortEbayScrape,
   updateIteration,
 } from './useLabApi'
@@ -361,6 +362,23 @@ export function useTriggerCoinEbayScrapeMutation(
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (targetEurioId: string) => triggerCoinEbayScrape(targetEurioId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: LAB_KEYS.funnelStatus(toValue(cohortId)) })
+    },
+  })
+}
+
+/**
+ * Recrop des zéro-crops d'UNE pièce (§WS4). Job en arrière-plan côté backend ;
+ * on rafraîchit le funnel-status au retour (les crops apparaîtront au fil de
+ * l'eau — un re-fetch périodique du tiroir capte la progression).
+ */
+export function useRecropZeroCoinMutation(
+  cohortId: MaybeRefOrGetter<string>,
+) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (eurioId: string) => triggerRecropZeroCoin(toValue(cohortId), eurioId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: LAB_KEYS.funnelStatus(toValue(cohortId)) })
     },

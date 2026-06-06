@@ -23,7 +23,7 @@ Design notes:
   officielles BCE / EUR-Lex JO (``coin_canonical_images``, avers téléchargé) —
   ces dernières servant de filet pour les classes pauvres en crops eBay.
 - Cible par classe (cf. ``docs/cohort-pipeline``) : ``>100`` images, via
-  ``AUG_PER_SOURCE`` (×10) par source réelle, plancher ``TARGET_MIN_PER_COIN``.
+  facteur dynamique ``ceil(100/seed)`` par source réelle (foundation/enrichment).
 - Output filenames are ``sample_<NNN>.jpg`` zero-padded to 3 digits, as
   documented in ``docs/training-pipeline/filesystem.md``.
 - For each iteration we also build a unified training root at
@@ -54,6 +54,11 @@ from PIL import Image
 from api import coin_lookup
 from augmentations import AugmentationPipeline
 from augmentations.recipes import DEFAULT_RECIPE
+from foundation.enrichment import (
+    CANONICAL_REF_SOURCES,
+    MIN_REAL,
+    projection,
+)
 from state import Store
 
 DATASETS_DIR = ML_DIR / "datasets"
@@ -61,18 +66,12 @@ ITERATION_TRAIN_ROOTS = DATASETS_DIR / "iterations"
 
 OBVERSE_NAMES = ("obverse.jpg", "obverse.png")
 
-# Cible d'images de training par classe (spec docs/cohort-pipeline, 2026-06-04) :
-# > 100 par classe, via augmentation ×10 sur chaque source réelle. Plancher 100
-# (en cyclant les sources) pour les classes pauvres. FLOOR_REAL_EBAY = repère
-# qualité (≥10 crops eBay réels) — n'affecte pas la cible, juste un flag report.
-TARGET_MIN_PER_COIN = 100
-AUG_PER_SOURCE = 10
-FLOOR_REAL_EBAY = 10
-
-# Réfs canoniques officielles utilisables comme sources de training (avers
-# uniquement). numista_api est exclu : ses lignes n'ont pas de local_path —
-# l'avers Numista est déjà lu depuis le FS par ``_source_images``.
-_CANONICAL_REF_SOURCES = ("bce_official", "eurlex_jo")
+# Cible d'images de training par classe : source de vérité UNIQUE partagée avec
+# l'affichage cockpit (foundation/enrichment.py). Plus de ×10 codé en dur : le
+# facteur est dynamique = ceil(100/seed), appliqué uniformément (voir _target_per_coin).
+# MIN_REAL = repère qualité (≥10 crops eBay réels) — n'affecte pas la cible, juste
+# un flag report. CANONICAL_REF_SOURCES = réfs officielles (avers) ; numista_api
+# exclu (pas de local_path — l'avers Numista est lu sur le FS par _source_images).
 
 
 @dataclass
@@ -162,7 +161,7 @@ def _canonical_ref_images(eurio_id: str, store: Store) -> list[Path]:
     absents du disque sont ignorés (pas d'erreur bloquante).
     """
     conn = store._connection()  # noqa: SLF001
-    placeholders = ",".join("?" * len(_CANONICAL_REF_SOURCES))
+    placeholders = ",".join("?" * len(CANONICAL_REF_SOURCES))
     rows = conn.execute(
         f"""
         SELECT local_path
@@ -174,7 +173,7 @@ def _canonical_ref_images(eurio_id: str, store: Store) -> list[Path]:
            AND local_path != ''
          ORDER BY source, local_path
         """,
-        (eurio_id, *_CANONICAL_REF_SOURCES),
+        (eurio_id, *CANONICAL_REF_SOURCES),
     ).fetchall()
     paths: list[Path] = []
     for r in rows:
@@ -186,16 +185,16 @@ def _canonical_ref_images(eurio_id: str, store: Store) -> list[Path]:
 
 
 def _target_per_coin(n_sources: int, variant_count: int | None) -> int:
-    """Cible d'images augmentées d'une classe : ≥ 100, et ×10 par source réelle.
+    """Cible d'images augmentées d'une classe : facteur dynamique ceil(100/seed).
 
-    ``variant_count`` (réglage de l'itération) agit comme plancher optionnel
-    quand il dépasse la cible dynamique. Voir ``docs/cohort-pipeline``.
+    Le facteur entier ``ceil(100 / n_sources)`` est appliqué uniformément à
+    toutes les sources réelles → projeté = facteur × n_sources, toujours ≥ 100
+    (ex. 15 sources → ×7 → 105). ``variant_count`` (réglage de l'itération) agit
+    comme plancher optionnel s'il dépasse la cible dynamique. Source de vérité :
+    ``foundation/enrichment.py`` (partagée avec l'affichage cockpit).
     """
-    return max(
-        AUG_PER_SOURCE * n_sources,
-        TARGET_MIN_PER_COIN,
-        int(variant_count or 0),
-    )
+    _factor, projected = projection(n_sources)
+    return max(projected, int(variant_count or 0))
 
 
 def generate_for_iteration(
@@ -342,7 +341,7 @@ def generate_for_iteration(
                 sources_used=len(sources),
                 n_real_ebay=len(real_ebay),
                 n_ref_images=len(ref_sources),
-                below_floor_real=len(real_ebay) < FLOOR_REAL_EBAY,
+                below_floor_real=len(real_ebay) < MIN_REAL,
             )
         )
 

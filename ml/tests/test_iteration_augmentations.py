@@ -17,29 +17,33 @@ ML_DIR = Path(__file__).parent.parent
 if str(ML_DIR) not in sys.path:
     sys.path.insert(0, str(ML_DIR))
 
+from foundation.enrichment import MIN_REAL, TRAINING_TARGET  # noqa: E402
 from state import Store  # noqa: E402
 from training.iteration_augmentations import (  # noqa: E402
-    AUG_PER_SOURCE,
-    FLOOR_REAL_EBAY,
-    TARGET_MIN_PER_COIN,
     _canonical_ref_images,
     _target_per_coin,
 )
 
 
-def test_target_per_coin_floor_and_scaling():
-    # Classe pauvre (réfs seules) → plancher 100.
-    assert _target_per_coin(2, None) == TARGET_MIN_PER_COIN
-    assert _target_per_coin(0, None) == TARGET_MIN_PER_COIN
-    assert _target_per_coin(9, 100) == TARGET_MIN_PER_COIN  # 9×10=90 < 100
-    # Classe riche en sources réelles → ×10 domine (l'exemple du PO : 11 → 110).
+def test_target_per_coin_dynamic_factor():
+    # Facteur dynamique ceil(100/seed) appliqué uniformément → projeté ≥ 100,
+    # SANS gonflement ×10 (l'exemple du PO : 15 réels → ×7 → 105).
+    assert _target_per_coin(15, None) == 105
+    assert _target_per_coin(21, None) == 105   # ×5
+    # Classe pauvre (peu de sources) → facteur élevé, projeté juste au-dessus de 100.
+    assert _target_per_coin(2, None) == 100     # ×50
+    assert _target_per_coin(3, None) == 102     # ×34
+    assert _target_per_coin(9, None) == 108     # ×12
+    # Classe riche : 11 → ×10 → 110 ; at-2005 (17 sources) → ×6 → 102 (plus de 170).
     assert _target_per_coin(11, None) == 110
-    assert _target_per_coin(17, 100) == 170  # at-2005 : 15 eBay + obverse + BCE
+    assert _target_per_coin(17, 100) == 102
+    # Tout projeté est ≥ la cible dès qu'il y a au moins une source.
+    for n in (1, 2, 3, 11, 15, 17, 21, 50):
+        assert _target_per_coin(n, None) >= TRAINING_TARGET
     # variant_count agit comme plancher optionnel quand > cible dynamique.
     assert _target_per_coin(3, 150) == 150
-    # Constantes alignées sur la spec.
-    assert AUG_PER_SOURCE == 10
-    assert FLOOR_REAL_EBAY == 10
+    # Plancher qualité « sources réelles » inchangé.
+    assert MIN_REAL == 10
 
 
 def test_canonical_ref_images_filters_source_role_and_existence(tmp_path):

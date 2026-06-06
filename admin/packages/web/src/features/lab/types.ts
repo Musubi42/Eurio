@@ -131,6 +131,7 @@ export interface CohortFunnelCoin {
   // Téléchargement (MinIO write-through) : success vs failed (retry-able)
   n_downloaded: number        // source_images avec download_status='success'
   n_download_failed: number   // source_images avec download_status='failed'
+  n_zero_crops: number        // raws téléchargés SANS aucun crop → candidats recrop
   by_route_decision: CohortFunnelRoute[]
   n_pending: number
   n_review_single: number
@@ -142,13 +143,16 @@ export interface CohortFunnelCoin {
   // training-eligible + sources réelles distinctes (obverse + eBay reviewé) ;
   // `enough` = ≥ min_real_sources (sinon l'augmentation gonflerait, §C5).
   n_training_eligible: number
-  n_real_sources: number
-  enough: boolean
-  // Cible & funnel (C3) : images de référence canoniques + projection training.
-  n_numista_ref: number   // 1 si obverse Numista canonique disponible (coin_canonical_images)
-  n_bce_ref: number       // 1 si obverse BCE canonique disponible
-  n_projected: number     // 10 * (n_training_eligible + n_numista_ref + n_bce_ref)
-  gap_to_target: number   // max(0, training_target - n_projected)
+  n_real_sources: number  // = n_seed (crops eBay validés + obverse Numista + réfs)
+  enough: boolean         // n_training_eligible >= min_real_sources
+  below_real_floor: boolean // n_training_eligible < min_real_sources (diversité faible)
+  // Cible & funnel (C3) : facteur d'augmentation DYNAMIQUE = ceil(100/seed).
+  n_numista_ref: number   // 1 si obverse Numista présent (FS datasets/<nid>)
+  n_bce_ref: number       // réfs canoniques officielles BCE/EUR-Lex présentes sur disque
+  n_seed: number          // sources réelles distinctes (eBay validés + numista + refs)
+  aug_factor: number      // ceil(100 / max(seed,1)) — facteur uniforme
+  n_projected: number     // aug_factor * n_seed (≥ 100 dès seed ≥ 1)
+  gap_to_target: number   // max(0, training_target - n_projected), informatif
   never_scraped: boolean  // n_source_images == 0
   // Run le plus récent ayant produit des listings pour ce coin → cible du
   // deep-link bench. n_runs > 1 = limite v1 connue (on linke le dernier).
@@ -195,9 +199,20 @@ export interface CohortDedupStatus {
   pct_absent: number | null      // % absents (null si 0 discardés)
 }
 
+// Crops validés (training_eligible=1) scrapés sous un groupe de la cohort mais
+// ré-attribués en review à une pièce SŒUR hors cohort (rescue cross-classe).
+// Training valide pour la sœur — rendu visible pour que le travail ne paraisse
+// pas perdu, jamais compté dans le seed d'une pièce cohort.
+export interface RescuedToSister {
+  source_coin: string       // pièce cohort sous laquelle le listing a été scrapé
+  sister_eurio_id: string   // pièce réelle (hors cohort) attribuée en review
+  n: number
+}
+
 export interface CohortFunnelStatus {
   cohort_id: string
   per_coin: CohortFunnelCoin[]
+  rescued_to_sisters: RescuedToSister[]
   head: {
     groups: CohortFunnelHeadGroup[]
     run_ids: string[]
