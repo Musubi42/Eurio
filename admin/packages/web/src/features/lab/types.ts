@@ -141,6 +141,14 @@ export interface CohortFunnelCoin {
   n_auto: number
   n_rejected: number
   n_unrouted: number
+  // État CANONIQUE (image_state_current) — source honnête, persistée, qui
+  // remplace les heuristiques route_decision figées (C3). À PRÉFÉRER pour
+  // l'affichage : n_in_review (file vivante) > n_review_single+lot (gelés).
+  state_counts: Record<string, number> // {detected, queued, resolved, rejected, orphaned, …}
+  n_in_review: number          // queued + in_review — file de review VIVANTE
+  n_resolved: number           // crops tranchés (resolution_status='manual')
+  n_resolved_training: number  // tranchés ET training_eligible=1 — « validés »
+  n_orphaned: number           // crops sans file ni résolution (jadis invisibles → ~0)
   // Sourcing (bout du tunnel, fusionné depuis l'ancien §C3) : crops reviewés
   // training-eligible + sources réelles distinctes (obverse + eBay reviewé) ;
   // `enough` = ≥ min_real_sources (sinon l'augmentation gonflerait, §C5).

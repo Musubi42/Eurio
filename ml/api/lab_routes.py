@@ -1405,6 +1405,31 @@ def _coin_tail(conn, eurio_id: str) -> dict:
     n_open_review_single = rq_open_map.get("single", 0)
     n_open_review_lot = rq_open_map.get("lot", 0)
 
+    # Ventilation par état CANONIQUE (image_state_current) — la source honnête,
+    # persistée, qui remplace les heuristiques route_decision figées. C'est ce que
+    # le cockpit doit afficher : `n_in_review` (file vivante) au lieu de
+    # n_review_single/lot (gelés), `n_orphaned` (les crops jadis invisibles),
+    # `n_resolved`/`n_resolved_training` (tranchés / éligibles train). Scoping par
+    # target_eurio_id (clé de découverte stable). Cf. REBUILD-ANALYSIS.md.
+    state_rows = conn.execute(
+        """
+        SELECT isc.current_state AS state, COUNT(*) AS n,
+               SUM(CASE WHEN ia.training_eligible = 1 THEN 1 ELSE 0 END) AS n_te
+          FROM image_state_current isc
+          JOIN image_assets ia ON ia.id = isc.asset_id
+         WHERE isc.target_eurio_id = ?
+         GROUP BY isc.current_state
+        """,
+        (eurio_id,),
+    ).fetchall()
+    state_counts = {r["state"]: r["n"] for r in state_rows}
+    n_in_review = state_counts.get("queued", 0) + state_counts.get("in_review", 0)
+    n_resolved = state_counts.get("resolved", 0)
+    n_resolved_training = sum(
+        (r["n_te"] or 0) for r in state_rows if r["state"] == "resolved"
+    )
+    n_orphaned = state_counts.get("orphaned", 0)
+
     # Runs ayant produit des source_images pour ce coin → run le plus récent
     # (deep-link bench) + flag multi-run (limite connue v1 : on linke le
     # dernier run, cf. handoff).
@@ -1440,6 +1465,12 @@ def _coin_tail(conn, eurio_id: str) -> dict:
         "n_auto": n_auto,
         "n_rejected": n_rejected,
         "n_unrouted": n_unrouted,
+        # ── État canonique (honnête, image_state_current) ──
+        "state_counts": state_counts,
+        "n_in_review": n_in_review,
+        "n_resolved": n_resolved,
+        "n_resolved_training": n_resolved_training,
+        "n_orphaned": n_orphaned,
         "latest_run_id": latest_run_id,
         "latest_run_started_at": latest_run_started_at,
         "n_runs": len(run_rows),

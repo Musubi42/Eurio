@@ -50,9 +50,15 @@ const totals = computed(() => {
   const sum = (f: (c: CohortFunnelCoin) => number) => pc.reduce((a, c) => a + f(c), 0)
   return {
     listings: sum(c => c.n_source_images),
+    downloaded: sum(c => c.n_downloaded),
     crops: sum(c => c.n_crops),
-    review: sum(c => c.n_review_single + c.n_review_lot),
-    pending: sum(c => c.n_pending),
+    // File de review VIVANTE (image_state_current), pas le route_decision gelé.
+    review: sum(c => c.n_in_review),
+    resolved: sum(c => c.n_resolved_training),
+    // « non routés » = listings pas encore téléchargés/routés (route_decision=
+    // 'pending') — PAS une file de review. Renommé pour lever l'ambiguïté.
+    unrouted: sum(c => c.n_pending),
+    orphaned: sum(c => c.n_orphaned),
     rejected: sum(c => c.n_rejected),
   }
 })
@@ -82,7 +88,7 @@ const state = computed<DrawerState>(() => {
   if (scrape.isPending.value) return 'running'
   if (loading.value || !status.value) return 'empty'
   if (totals.value.listings === 0) return 'empty'
-  return totals.value.pending > 0 ? 'partial' : 'ready'
+  return (totals.value.review > 0 || totals.value.unrouted > 0) ? 'partial' : 'ready'
 })
 
 const summary = computed(() => {
@@ -197,8 +203,13 @@ async function onRecrop(c: CohortFunnelCoin) {
           </div>
           <span class="ribbon__arr">→</span>
           <div class="ribbon__cell">
+            <span class="ribbon__n">{{ fmt(totals.downloaded) }}</span>
+            <span class="ribbon__lbl">téléchargés</span>
+          </div>
+          <span class="ribbon__arr">→</span>
+          <div class="ribbon__cell">
             <span class="ribbon__n">{{ fmt(totals.crops) }}</span>
-            <span class="ribbon__lbl">crops extraits</span>
+            <span class="ribbon__lbl">crops</span>
           </div>
           <span class="ribbon__arr">→</span>
           <div class="ribbon__cell ribbon__cell--accent">
@@ -206,7 +217,9 @@ async function onRecrop(c: CohortFunnelCoin) {
             <span class="ribbon__lbl">en review</span>
           </div>
           <div class="ribbon__aside">
-            <span><b>{{ totals.pending }}</b> pending</span>
+            <span style="color: var(--success);"><b>{{ fmt(totals.resolved) }}</b> validés (train)</span>
+            <span><b>{{ fmt(totals.unrouted) }}</b> non routés</span>
+            <span v-if="totals.orphaned" style="color: var(--warning);"><b>{{ totals.orphaned }}</b> jamais croppés</span>
             <span v-if="totals.rejected"><b>{{ totals.rejected }}</b> rejetés</span>
           </div>
         </div>
@@ -326,24 +339,30 @@ async function onRecrop(c: CohortFunnelCoin) {
               <template v-if="c.n_source_images > 0">
                 <b>{{ c.n_source_images }}</b> listings
                 <span class="coin__arr">→</span>
+                <b>{{ c.n_downloaded }}</b> téléchargés
+                <template v-if="c.n_download_failed > 0">
+                  <span class="coin__dot">·</span>
+                  <span style="color: var(--danger);">{{ c.n_download_failed }} ✗</span>
+                </template>
+                <span class="coin__arr">→</span>
                 <b>{{ c.n_crops }}</b> crops
                 <span class="coin__arr">→</span>
-                <b style="color: var(--indigo-700);">{{ c.n_review_single + c.n_review_lot }}</b> review
-                <span class="coin__dot">·</span>
-                <span :style="{ color: c.n_pending > 0 ? 'var(--warning)' : 'var(--ink-400)' }">
-                  {{ c.n_pending }} pending
-                </span>
-                <template v-if="c.n_rejected">
+                <b style="color: var(--indigo-700);">{{ c.n_in_review }}</b> en review
+                <template v-if="c.n_resolved_training > 0">
                   <span class="coin__dot">·</span>
-                  <span style="color: var(--ink-500);">{{ c.n_rejected }} rejeté</span>
+                  <span style="color: var(--success);">{{ c.n_resolved_training }} validés</span>
                 </template>
-                <template v-if="c.n_downloaded > 0 || c.n_download_failed > 0">
-                  <span class="coin__arr">→</span>
-                  <b>{{ c.n_downloaded }}</b> DL
-                  <template v-if="c.n_download_failed > 0">
-                    <span class="coin__dot">·</span>
-                    <span style="color: var(--danger);">{{ c.n_download_failed }} ✗</span>
-                  </template>
+                <template v-if="(c.state_counts?.rejected ?? 0) > 0">
+                  <span class="coin__dot">·</span>
+                  <span style="color: var(--ink-500);">{{ c.state_counts.rejected }} rejetés</span>
+                </template>
+                <template v-if="c.n_orphaned > 0">
+                  <span class="coin__dot">·</span>
+                  <span style="color: var(--warning);">{{ c.n_orphaned }} jamais croppés</span>
+                </template>
+                <template v-if="c.n_pending > 0">
+                  <span class="coin__dot">·</span>
+                  <span style="color: var(--ink-400);">{{ c.n_pending }} non routés</span>
                 </template>
               </template>
               <span v-else style="color: var(--ink-400);">aucun listing scrapé</span>
@@ -553,6 +572,13 @@ async function onRecrop(c: CohortFunnelCoin) {
         </div>
 
         <p class="mt-3 text-[10px]" style="color: var(--ink-400);">
+          <strong>Phrase funnel</strong> (ordre pipeline) : <strong>listings</strong> retenus →
+          <strong>téléchargés</strong> (images rapatriées) → <strong>crops</strong> (détectés) →
+          <strong style="color: var(--indigo-700);">en review</strong> (file VIVANTE à trancher, pas l'intention figée) ·
+          <strong style="color: var(--success);">validés</strong> (tranchés ET éligibles training) ·
+          <strong style="color: var(--warning);">jamais croppés</strong> (raws sans crop → recropper) ·
+          <strong>non routés</strong> (pas encore téléchargés/routés).
+          <br>
           <strong>{{ '{N} img' }}</strong> = images projetées après augmentation (<strong>{{ '{seed}' }} réels ×{{ '{facteur}' }}</strong>,
           facteur = ceil({{ trainingTarget }}/seed) → toujours ≥ {{ trainingTarget }}).
           La <strong>jauge</strong> = sources eBay réelles vs plancher {{ minReal }} :
