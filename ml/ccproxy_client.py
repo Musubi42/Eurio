@@ -45,21 +45,51 @@ class ChatResult:
         return self.tokens_in + self.tokens_out
 
 
-def image_part(path: Path | str) -> dict[str, Any]:
+# Bord max envoyé à Claude. Les images vision sont tokenisées ~(w·h)/750 : un
+# canonical Numista 1000-1500px coûte 1500-3000 tokens pour rien (un avers de
+# pièce reste parfaitement lisible à 768px). Downscale = ~4× moins cher sur le
+# canonical, sans perte de qualité de verdict (mesuré WS5). Les crops 224px
+# passent inchangés (≤ MAX_EDGE → no-op, bytes exacts préservés).
+MAX_IMAGE_EDGE = 768
+
+
+def image_part(path: Path | str, *, max_edge: int = MAX_IMAGE_EDGE) -> dict[str, Any]:
     """Construit un message-part OpenAI ``image_url`` à partir d'un fichier
     disque, encodé en data URL base64. ccproxy renvoie ces images inline à
     Claude via ``--input-format stream-json`` (cf. ccproxy/README.md).
+
+    Downscale au-delà de ``max_edge`` (bord le plus long) pour borner le coût
+    tokens. En-dessous, l'image est envoyée telle quelle (bytes exacts).
     """
     p = Path(path)
     if not p.exists():
         raise FileNotFoundError(p)
-    mime, _ = mimetypes.guess_type(p.name)
-    if not mime:
-        mime = "image/jpeg"
-    data = base64.b64encode(p.read_bytes()).decode("ascii")
+
+    from PIL import Image
+
+    with Image.open(p) as im:
+        w, h = im.size
+        if max(w, h) <= max_edge:
+            # Déjà petite (ex. crop 224) → bytes d'origine, pas de ré-encodage.
+            mime, _ = mimetypes.guess_type(p.name)
+            data = base64.b64encode(p.read_bytes()).decode("ascii")
+            return {
+                "type": "image_url",
+                "image_url": {"url": f"data:{mime or 'image/jpeg'};base64,{data}"},
+            }
+        # Downscale proportionnel + ré-encodage JPEG (RGBA/P → RGB).
+        scale = max_edge / max(w, h)
+        resized = im.convert("RGB").resize(
+            (max(1, round(w * scale)), max(1, round(h * scale))),
+            Image.LANCZOS,
+        )
+        import io
+        buf = io.BytesIO()
+        resized.save(buf, format="JPEG", quality=88)
+        data = base64.b64encode(buf.getvalue()).decode("ascii")
     return {
         "type": "image_url",
-        "image_url": {"url": f"data:{mime};base64,{data}"},
+        "image_url": {"url": f"data:image/jpeg;base64,{data}"},
     }
 
 
