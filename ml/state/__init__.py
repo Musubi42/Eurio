@@ -15,6 +15,7 @@ from .store import (
     Store,
     cohort_job_finish,
     cohort_job_progress,
+    cohort_job_set_pid,
     cohort_job_start,
     emit_state_event,
 )
@@ -36,6 +37,7 @@ __all__ = [
     "Store",
     "cohort_job_finish",
     "cohort_job_progress",
+    "cohort_job_set_pid",
     "cohort_job_start",
     "emit_state_event",
 ]

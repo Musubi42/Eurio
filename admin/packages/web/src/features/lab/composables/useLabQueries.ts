@@ -379,9 +379,11 @@ export function useTriggerCoinEbayScrapeMutation(
 ) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (targetEurioId: string) => triggerCoinEbayScrape(targetEurioId),
+    mutationFn: (targetEurioId: string) =>
+      triggerCoinEbayScrape(targetEurioId, toValue(cohortId)),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: LAB_KEYS.funnelStatus(toValue(cohortId)) })
+      qc.invalidateQueries({ queryKey: LAB_KEYS.jobs(toValue(cohortId)) })
     },
   })
 }

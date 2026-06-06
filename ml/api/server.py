@@ -175,6 +175,26 @@ def _sources_startup() -> None:
 
 
 @app.on_event("startup")
+def _recrop_startup() -> None:
+    """Reaper précis des `cohort_jobs` recrop laissés `running` par un process
+    mort (BUG-1 : zombie persisté). Le recrop tourne en subprocess détaché qui
+    survit au `--reload`, donc on ne tue QUE les jobs dont le PID n'existe plus
+    (cf. `lab_routes.reap_orphan_cohort_jobs`)."""
+    try:
+        n = lab_routes.reap_orphan_cohort_jobs(_store)
+        if n:
+            import logging
+            logging.getLogger(__name__).info(
+                "Cohort jobs: reaped %d orphan recrop job(s) at startup", n,
+            )
+    except Exception as exc:  # noqa: BLE001
+        import logging
+        logging.getLogger(__name__).warning(
+            "Cohort jobs orphan reap failed at startup: %s", exc
+        )
+
+
+@app.on_event("startup")
 def _lab_startup() -> None:
     """Cleanup any Lab iteration left mid-flight by a previous process.
 

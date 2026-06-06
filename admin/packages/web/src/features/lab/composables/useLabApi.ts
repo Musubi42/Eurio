@@ -207,10 +207,18 @@ export async function triggerCohortEbayScrape(
  */
 export async function triggerCoinEbayScrape(
   targetEurioId: string,
+  cohortId: string,
 ): Promise<import('../types').EbayScrapeTriggerResult> {
+  // `cohort_id` accompagne le `target_eurio_id` UNIQUEMENT comme label de la
+  // trace cohort_jobs (BUG-3) — le backend ne l'expanse pas en groupes quand un
+  // target est présent (cf. sources_routes.trigger_run). Périmètre scrapé = la
+  // seule pièce ciblée, le quota n'est pas affecté.
   return json<import('../types').EbayScrapeTriggerResult>(
     `/sources/ebay/runs`,
-    { method: 'POST', body: JSON.stringify({ target_eurio_id: targetEurioId }) },
+    {
+      method: 'POST',
+      body: JSON.stringify({ target_eurio_id: targetEurioId, cohort_id: cohortId }),
+    },
   )
 }
 

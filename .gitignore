@@ -68,6 +68,9 @@ ml/state/numista_cache/
 ml/state/sources_runs.json
 ml/state/quotas/
 ml/state/price_snapshots/
+# Runtime: logs par job/run (recrop subprocess + source_runs) — régénérables.
+ml/state/job_logs/
+ml/state/run_logs/
 ml/datasets/sources/
 # Runtime: raws + crops downloaded by the orchestrator (D-13).
 ml/state/sources/

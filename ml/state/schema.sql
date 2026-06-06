@@ -866,7 +866,8 @@ CREATE TABLE IF NOT EXISTS cohort_jobs (
   started_at          TEXT NOT NULL DEFAULT (datetime('now')),
   finished_at         TEXT,
   error               TEXT,
-  note                TEXT                             -- ex: "épuisé à τ=0.55 — 0 crop récupérable"
+  note                TEXT,                            -- ex: "épuisé à τ=0.55 — 0 crop récupérable"
+  pid                 INTEGER                          -- PID du subprocess détaché (recrop) → reaper boot précis (os.kill,0)
 );
 CREATE INDEX IF NOT EXISTS idx_cohort_jobs_cohort  ON cohort_jobs(cohort_id, started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_cohort_jobs_running ON cohort_jobs(status) WHERE status = 'running';

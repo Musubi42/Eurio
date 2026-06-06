@@ -11,7 +11,8 @@ import json
 import logging
 import os
 import sqlite3
-import threading
+import subprocess
+import sys
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -25,8 +26,7 @@ from state import (
     ExperimentIterationRow,
     IterationLiveTestRow,
     Store,
-    cohort_job_finish,
-    cohort_job_progress,
+    cohort_job_set_pid,
     cohort_job_start,
 )
 
@@ -1777,19 +1777,55 @@ def cohort_funnel_status(cohort_id: str) -> dict:
 # scan/recrop_zero.py (partagé avec le CLI batch).
 
 
-def _open_recrop_conn(store: Store) -> sqlite3.Connection:
-    """Connexion sqlite dédiée au thread recrop (mêmes PRAGMAs que le Store +
-    UDFs phash requis par la dédup). NE PAS réutiliser ``store._connection()``
-    (thread-local)."""
-    from state.store import _register_phash_udfs
+# Au-delà de cette durée, un cohort_jobs 'running' est considéré orphelin même
+# si son PID semble vivant (couvre la réutilisation de PID par l'OS). Un recrop
+# réel dépasse rarement quelques minutes.
+_RECROP_MAX_RUNTIME_MIN = 60
 
-    conn = sqlite3.connect(store.db_path(), isolation_level=None)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA foreign_keys=ON")
-    conn.execute("PRAGMA synchronous=NORMAL")
-    _register_phash_udfs(conn)
-    return conn
+
+def reap_orphan_cohort_jobs(store: Store) -> int:
+    """Marque `failed` les `cohort_jobs` restés `running` dont le subprocess est
+    mort (BUG-1 : zombie persisté). Appelé par le hook startup de server.py.
+
+    Précis (vs le reaper brutal de source_runs) : un recrop tourne en subprocess
+    DÉTACHÉ qui survit au `--reload` du worker → on ne tue QUE les jobs dont le
+    PID n'existe plus (`os.kill(pid, 0)`), ou qui traînent au-delà de
+    `_RECROP_MAX_RUNTIME_MIN` (garde anti-réutilisation de PID). Un job sans PID
+    (ancien thread, ou subprocess pas encore enregistré) est traité comme mort.
+    """
+    conn = store._connection()  # noqa: SLF001
+    rows = conn.execute(
+        "SELECT id, pid, "
+        "  CAST((julianday('now') - julianday(started_at)) * 24 * 60 AS REAL) AS age_min "
+        "FROM cohort_jobs WHERE status='running'"
+    ).fetchall()
+    reaped = 0
+    for r in rows:
+        pid = r["pid"]
+        age_min = r["age_min"] or 0.0
+        alive = False
+        if pid:
+            try:
+                os.kill(int(pid), 0)
+                alive = True
+            except PermissionError:
+                alive = True  # existe mais pas à nous → vivant
+            except (ProcessLookupError, OSError, ValueError):
+                alive = False
+        if alive and age_min < _RECROP_MAX_RUNTIME_MIN:
+            continue
+        reason = ("process restart — orphan job (reaped at boot)"
+                  if not alive else
+                  f"reaped at boot — running > {_RECROP_MAX_RUNTIME_MIN}min "
+                  f"(pid {pid} suspect)")
+        conn.execute(
+            "UPDATE cohort_jobs SET status='failed', "
+            "finished_at=COALESCE(finished_at, datetime('now')), "
+            "error=COALESCE(error, ?) WHERE id=?",
+            (reason, r["id"]),
+        )
+        reaped += 1
+    return reaped
 
 
 @router.post("/cohorts/{cohort_id}/coins/{eurio_id}/recrop-zero", status_code=202)
@@ -1831,37 +1867,39 @@ def recrop_zero_coin(cohort_id: str, eurio_id: str) -> dict:
         target_eurio_id=eurio_id, run_id=run_id, n_total=n_total, tau=tau,
     )
 
-    def _runner() -> None:
-        from scan.recrop_zero import recrop_zero_for_coin
-
-        conn = _open_recrop_conn(store)
-        try:
-            counts = recrop_zero_for_coin(
-                conn, eurio_id, run_id=run_id, commit=True,
-                progress_cb=lambda n: cohort_job_progress(conn, job_id, n_done=n),
-            )
-            # Diag honnête : 0 crop produit = scope déjà épuisé au seuil courant
-            # (corrige le "bouton zombie" — le front affiche la note, ne re-propose plus).
-            note = None
-            if counts["crops"] == 0:
-                note = (f"épuisé à τ={tau} — 0 crop récupérable "
-                        f"({n_total} raws déjà tentés)")
-            cohort_job_finish(
-                conn, job_id, status="done", n_done=n_total,
-                n_produced=counts["crops"], note=note,
-            )
-            logger.info("[recrop-zero] %s done: %s", eurio_id, counts)
-        except Exception as exc:  # noqa: BLE001 — surfacé via cohort_jobs.error
-            logger.exception("[recrop-zero] %s crashed", eurio_id)
-            cohort_job_finish(conn, job_id, status="failed", error=str(exc))
-        finally:
-            conn.close()
-
-    threading.Thread(
-        target=_runner, name=f"recrop-zero-{eurio_id}", daemon=True,
-    ).start()
+    # Exécution en SUBPROCESS DÉTACHÉ (pas un thread daemon) — le subprocess
+    # possède le cycle de vie du job (progress + finish) via sa propre connexion.
+    # Robustesse vs l'ancien thread (BUG-1 zombie) : (a) survit au `--reload` du
+    # worker uvicorn (start_new_session → hors du groupe de signaux du worker) ;
+    # (b) torch/MPS hors du worker ; (c) un crash réel clôt le job en `failed`
+    # (visible in-row) ; (d) le reaper boot (reap_orphan_cohort_jobs) nettoie via
+    # le PID. Précédent : ml/api/training_runner._run_subprocess.
+    log_dir = _ML_DIR / "state" / "job_logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_path = log_dir / f"recrop-{job_id}.log"
+    env = dict(os.environ)
+    existing = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = str(_ML_DIR) + (os.pathsep + existing if existing else "")
+    cmd = [
+        sys.executable, "scripts/recrop_cohort_census.py", "--commit",
+        "--cohort", cohort_id, "--coin", eurio_id,
+        "--job-id", job_id, "--run-id", run_id, "--tau", str(tau),
+    ]
+    logf = log_path.open("w")
+    try:
+        proc = subprocess.Popen(
+            cmd, cwd=str(_ML_DIR), env=env,
+            stdout=logf, stderr=subprocess.STDOUT,
+            start_new_session=True,  # détache du process-group du worker --reload
+        )
+    finally:
+        logf.close()  # le child garde son propre fd ouvert
+    cohort_job_set_pid(conn0, job_id, proc.pid)
+    conn0.commit()
+    logger.info("[recrop-zero] %s spawned subprocess pid=%s job=%s log=%s",
+                eurio_id, proc.pid, job_id, log_path)
     return {"status": "started", "run_id": run_id, "eurio_id": eurio_id,
-            "job_id": job_id, "n_total": n_total}
+            "job_id": job_id, "n_total": n_total, "pid": proc.pid}
 
 
 @router.get("/cohorts/{cohort_id}/coins/{eurio_id}/recrop-zero/status")
@@ -1879,11 +1917,69 @@ def recrop_zero_status(cohort_id: str, eurio_id: str) -> dict:
     return dict(row) if row is not None else {"status": "idle"}
 
 
+def _reconcile_scrape_jobs(conn: sqlite3.Connection, cohort_id: str) -> None:
+    """Réconcilie les `cohort_jobs` scrape 'running' depuis `source_runs` (BUG-3).
+
+    Le scrape eBay s'exécute dans un thread sources : `source_runs` est la source
+    de vérité (statut, compteurs, reaper « orphan run »). Le `cohort_jobs` scrape
+    est une trace in-row du cockpit, ouverte au trigger et **projetée en lecture**
+    depuis le run lié — pas de thread lab fragile, survit au `--reload`, et un run
+    `failed` devient visible in-row. `conn` est en autocommit (isolation_level=None).
+    """
+    jobs = conn.execute(
+        "SELECT id, run_id, target_eurio_id FROM cohort_jobs "
+        "WHERE cohort_id=? AND kind='scrape_ebay' AND status='running'",
+        (cohort_id,),
+    ).fetchall()
+    for j in jobs:
+        if not j["run_id"]:
+            continue
+        run = conn.execute(
+            "SELECT status, n_raws_added, n_crops_added, error_summary "
+            "FROM source_runs WHERE id=?",
+            (j["run_id"],),
+        ).fetchone()
+        if run is None:
+            continue
+        if run["status"] == "running":
+            # Avancement live : crops produits jusqu'ici.
+            conn.execute(
+                "UPDATE cohort_jobs SET n_done=?, n_produced=?, "
+                "n_total=COALESCE(n_total, ?) WHERE id=?",
+                (run["n_crops_added"], run["n_crops_added"],
+                 run["n_raws_added"], j["id"]),
+            )
+            continue
+        # Terminal (success/partial/failed) → clôture le job + diag honnête.
+        n_attr = 0
+        if j["target_eurio_id"]:
+            n_attr = conn.execute(
+                "SELECT COUNT(*) FROM image_assets WHERE run_id=? AND eurio_id=?",
+                (j["run_id"], j["target_eurio_id"]),
+            ).fetchone()[0]
+        status = "done" if run["status"] in ("success", "partial") else "failed"
+        note = None
+        if (status == "done" and j["target_eurio_id"]
+                and n_attr == 0 and (run["n_crops_added"] or 0) > 0):
+            note = (f"{run['n_crops_added']} crops produits, 0 attribué à cette "
+                    "pièce (répartis sur le groupe de découverte) — "
+                    "récupérable via review lots")
+        conn.execute(
+            "UPDATE cohort_jobs SET status=?, n_total=COALESCE(n_total, ?), "
+            "n_done=?, n_produced=?, n_attributed_target=?, "
+            "note=COALESCE(note, ?), error=COALESCE(error, ?), "
+            "finished_at=COALESCE(finished_at, datetime('now')) WHERE id=?",
+            (status, run["n_raws_added"], run["n_raws_added"],
+             run["n_crops_added"], n_attr, note, run["error_summary"], j["id"]),
+        )
+
+
 @router.get("/cohorts/{cohort_id}/jobs")
 def cohort_jobs_list(cohort_id: str) -> dict:
     """Jobs observables de la cohorte (scrape/recrop), récents d'abord.
     Source du statut + barre de progression in-row du cockpit (corrige B2)."""
     conn = _get_store()._connection()  # noqa: SLF001
+    _reconcile_scrape_jobs(conn, cohort_id)  # projette source_runs → cohort_jobs scrape
     rows = conn.execute(
         "SELECT id, kind, eurio_id, target_eurio_id, status, n_total, n_done, "
         "       n_produced, n_attributed_target, tau, note, error, "

@@ -34,7 +34,7 @@ from sources._base.dedup import SourceImageRow, upsert_source_image
 from sources._base.orchestrator import run_pipeline
 from sources._base.run_logger import RunAlreadyRunning
 from sources.ebay.standards import COMMEMO_IN_STANDARD_PREFIX
-from state import Store
+from state import Store, cohort_job_start
 
 from . import sources_aggregator
 
@@ -186,7 +186,13 @@ def trigger_run(
     # Cohort-scoped eBay run : expand the cohort to its discovery groups before
     # building the query (only when no explicit groups were passed).
     non_scrapable: list[str] = []
-    if source_id == "ebay" and payload.cohort_id and not payload.discovery_groups:
+    # `cohort_id` + un `target_eurio_id(s)` = scrape ciblé d'UNE pièce DEPUIS le
+    # cockpit : le cohort_id ne sert alors que de label pour la trace cohort_jobs
+    # (BUG-3), surtout PAS à expanser tout le groupe. On n'expanse en groupes que
+    # pour un scrape cohorte entière (cohort_id seul, sans target).
+    _has_target = bool(payload.target_eurio_id or payload.target_eurio_ids)
+    if (source_id == "ebay" and payload.cohort_id
+            and not payload.discovery_groups and not _has_target):
         from sources.cohort_scope import cohort_ebay_groups
 
         try:
@@ -347,6 +353,22 @@ def trigger_run(
             )
         rid = row["id"]
 
+    # BUG-3 : trace in-row du scrape dans le cockpit. Le scrape tourne dans un
+    # thread sources (source_runs = source de vérité, avec reaper + compteurs) ;
+    # on ouvre ici un cohort_jobs 'running' lié par run_id, RÉCONCILIÉ en lecture
+    # depuis source_runs (cf. lab_routes._reconcile_scrape_jobs) → pas de thread
+    # lab fragile, et les runs failed deviennent visibles in-row. Best-effort :
+    # un échec d'écriture ne doit jamais faire échouer le scrape lui-même.
+    if source_id == "ebay" and payload.cohort_id and not dry_run:
+        try:
+            cohort_job_start(
+                conn, kind="scrape_ebay", cohort_id=payload.cohort_id,
+                eurio_id=payload.target_eurio_id,
+                target_eurio_id=payload.target_eurio_id, run_id=rid,
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception("[ebay] cohort_job_start (scrape trace) failed")
+
     return TriggerResponse(
         run_id=rid,
         status="started",
@@ -405,6 +427,35 @@ def get_run(source_id: str, run_id: str) -> RunSnapshot:
     if row is None:
         raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found.")
     return _row_to_snapshot(row, n_downloads_failed=_count_downloads_failed(conn, run_id))
+
+
+@router.get("/{source_id}/runs/{run_id}/log")
+def get_run_log(source_id: str, run_id: str, tail: int = Query(default=500, ge=1, le=10_000)) -> dict:
+    """Tail du log fichier d'un run (BUG-3 : « voir les logs des scraps »).
+
+    ``log_path`` est relatif à ``ml/state`` (cf. run_logger). Renvoie les
+    ``tail`` dernières lignes. ``available=False`` pour les runs antérieurs au
+    câblage (log_path NULL) ou si le fichier a été purgé."""
+    from sources._base.run_logger import _RUN_LOGS_DIR
+
+    conn = _store()._connection()  # noqa: SLF001
+    row = conn.execute(
+        "SELECT log_path, status FROM source_runs WHERE id = ? AND source = ?",
+        (run_id, source_id),
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found.")
+    if not row["log_path"]:
+        return {"run_id": run_id, "available": False,
+                "reason": "no log_path (run antérieur au câblage)", "lines": []}
+    log_file = _RUN_LOGS_DIR.parent / row["log_path"]  # ml/state / run_logs/<id>.log
+    if not log_file.is_file():
+        return {"run_id": run_id, "available": False,
+                "reason": "fichier introuvable (purgé ?)", "lines": []}
+    lines = log_file.read_text(encoding="utf-8", errors="replace").splitlines()
+    return {"run_id": run_id, "available": True, "status": row["status"],
+            "log_path": row["log_path"], "total_lines": len(lines),
+            "lines": lines[-tail:]}
 
 
 def _row_to_snapshot(row: sqlite3.Row, *, n_downloads_failed: int = 0) -> RunSnapshot:

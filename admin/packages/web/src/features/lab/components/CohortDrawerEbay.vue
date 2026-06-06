@@ -111,6 +111,22 @@ function recropProgressPct(c: CohortFunnelCoin): number {
   if (!j || !j.n_total) return 0
   return Math.min(100, Math.round((j.n_done / j.n_total) * 100))
 }
+// BUG-3 : trace in-row du scrape eBay (kind='scrape_ebay'), dernier job par pièce
+// ciblée. Réconcilié backend depuis source_runs → status done/failed + note
+// honnête (« X crops produits, 0 attribué à cette pièce »). Donne la trace
+// persistée qui manquait (le badge live global clignotait sans rien laisser).
+const scrapeJobByCoin = computed<Record<string, CohortJob>>(() => {
+  const m: Record<string, CohortJob> = {}
+  for (const j of jobsQuery.data.value ?? []) {
+    if (j.kind !== 'scrape_ebay' || !j.target_eurio_id) continue
+    const prev = m[j.target_eurio_id]
+    if (!prev || j.started_at > prev.started_at) m[j.target_eurio_id] = j
+  }
+  return m
+})
+function scrapeJob(c: CohortFunnelCoin): CohortJob | null {
+  return scrapeJobByCoin.value[c.eurio_id] ?? null
+}
 // Grammaire d'actions (F2) : UNE seule action PRIMAIRE par pièce selon l'état,
 // arbre de priorité strict (review singles > review lots > recrop > scrape).
 // Les autres actions applicables passent en secondaire (subordonné visuellement).
@@ -455,6 +471,13 @@ async function onRecrop(c: CohortFunnelCoin) {
                   <span style="color: var(--ink-400);">{{ c.n_pending }} non routés</span>
                 </template>
               </template>
+              <!-- Cohérent avec le badge « 0 attribué » (B1) : groupe cherché sur
+                   eBay mais 0 listing pour CE millésime (dispersé sur les sœurs)
+                   ≠ jamais scrapé. -->
+              <span
+                v-else-if="c.group_scraped"
+                style="color: var(--ink-400);"
+              >groupe scrapé · 0 pour ce millésime — récupérable via review lots</span>
               <span v-else style="color: var(--ink-400);">aucun listing scrapé</span>
             </div>
 
@@ -534,6 +557,29 @@ async function onRecrop(c: CohortFunnelCoin) {
                 <span v-else>{{ c.never_scraped ? 'Scraper' : 'Rescraper' }}</span>
               </button>
               <span v-else class="coin__muted">hors découverte eBay</span>
+
+              <!-- 3b. Trace in-row du scrape (BUG-3) — réconciliée depuis
+                   source_runs : la trace persistée qui manquait. running → barre ;
+                   failed → badge rouge visible (fini le run failed silencieux) ;
+                   done → note honnête (ex « N crops, 0 attribué à cette pièce »). -->
+              <span
+                v-if="scrapeJob(c)?.status === 'running'"
+                class="coin__job"
+                :title="`Scrape eBay en cours — ${scrapeJob(c)?.n_produced ?? 0} crops produits`"
+              >
+                <Loader2 class="h-3 w-3 animate-spin" />
+                <span class="coin__job-lbl">scrape… {{ scrapeJob(c)?.n_produced ?? 0 }} crops</span>
+              </span>
+              <span
+                v-else-if="scrapeJob(c)?.status === 'failed'"
+                class="coin__badge coin__badge--danger"
+                :title="scrapeJob(c)?.error ?? 'Scrape échoué'"
+              >scrape échoué</span>
+              <span
+                v-else-if="scrapeJob(c)?.status === 'done' && scrapeJob(c)?.note"
+                class="coin__muted"
+                :title="scrapeJob(c)?.note ?? ''"
+              >{{ scrapeJob(c)?.n_produced ?? 0 }} crops · {{ scrapeJob(c)?.n_attributed_target ?? 0 }} ici</span>
               <span
                 v-if="!c.below_real_floor && reviewCount(c) === 0 && recropCount(c) === 0"
                 class="coin__muted"
@@ -552,7 +598,16 @@ async function onRecrop(c: CohortFunnelCoin) {
                   <CropIcon class="h-3 w-3" /> crops
                 </RouterLink>
               </template>
-              <span v-else-if="c.scrapable" class="coin__muted">pas encore scrapé</span>
+              <!-- group_scraped ⇒ ne PAS dire « pas encore scrapé » (contredit le
+                   badge « 0 attribué ») : le groupe a été cherché, 0 ici. -->
+              <span
+                v-else-if="c.scrapable && c.group_scraped"
+                class="coin__muted"
+              >groupe scrapé · 0 ici</span>
+              <span
+                v-else-if="c.scrapable"
+                class="coin__muted"
+              >pas encore scrapé</span>
             </div>
           </div>
         </div>

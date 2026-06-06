@@ -602,6 +602,13 @@ def cohort_job_progress(conn: sqlite3.Connection, job_id: str, *, n_done: int) -
     conn.execute("UPDATE cohort_jobs SET n_done=? WHERE id=?", (n_done, job_id))
 
 
+def cohort_job_set_pid(conn: sqlite3.Connection, job_id: str, pid: int) -> None:
+    """Enregistre le PID du subprocess détaché qui exécute le job. Lu par le
+    reaper boot (`reap_orphan_cohort_jobs`) pour distinguer un job encore vivant
+    (subprocess qui a traversé un `--reload`) d'un orphelin réel."""
+    conn.execute("UPDATE cohort_jobs SET pid=? WHERE id=?", (pid, job_id))
+
+
 def cohort_job_finish(
     conn: sqlite3.Connection,
     job_id: str,
@@ -680,6 +687,15 @@ class Store:
                     table=table,
                     column="storage_status",
                     decl=_STORAGE_STATUS_DECL,
+                )
+            # Reaper précis recrop : `pid` (subprocess détaché) sur les DB
+            # antérieures. Pas référencée par un index → ALTER simple, idempotent.
+            # Fresh DB : cohort_jobs créée par executescript avec pid déjà dedans.
+            if conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='cohort_jobs'"
+            ).fetchone():
+                self._ensure_column(
+                    conn, table="cohort_jobs", column="pid", decl="INTEGER"
                 )
             # Chantier variantes : les vues v_ebay_freshness* et
             # v_orphan_eurio_refs (recréées par executescript) référencent

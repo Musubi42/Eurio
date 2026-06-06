@@ -13,12 +13,41 @@ the same source raises `RunAlreadyRunning` unless `force=True`.
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 import traceback
 import uuid
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
+
+# Logs de run persistés (BUG-3 : « voir les logs des scraps »). Un FileHandler
+# par run capte le logger `sources.*` (pipeline discover→…→price_aggregate)
+# pendant toute sa durée → source_runs.log_path pointe le fichier, lisible via
+# GET /sources/{src}/runs/{id}/log. Chemin relatif à ml/state (portable).
+_RUN_LOGS_DIR = Path(__file__).resolve().parents[2] / "state" / "run_logs"
+_RUN_LOG_FORMAT = logging.Formatter(
+    "%(asctime)s %(levelname)s %(name)s — %(message)s"
+)
+
+
+def _attach_run_log(run_id: str) -> tuple[str, logging.Handler]:
+    """Crée un FileHandler scopé au run, branché sur le logger `sources`.
+    Retourne ``(log_path_relatif_à_ml/state, handler)``."""
+    _RUN_LOGS_DIR.mkdir(parents=True, exist_ok=True)
+    handler = logging.FileHandler(_RUN_LOGS_DIR / f"{run_id}.log", encoding="utf-8")
+    handler.setFormatter(_RUN_LOG_FORMAT)
+    handler.setLevel(logging.INFO)
+    src_logger = logging.getLogger("sources")
+    # Garantit que les records INFO du pipeline atteignent le handler, sans
+    # dépendre de la config logging ambiante (en test isolé le défaut = WARNING
+    # filtrerait tout). On ne descend pas un éventuel DEBUG déjà posé.
+    if src_logger.level == logging.NOTSET or src_logger.level > logging.INFO:
+        src_logger.setLevel(logging.INFO)
+    src_logger.addHandler(handler)
+    return f"run_logs/{run_id}.log", handler
+
 
 _VALID_KINDS = ("run", "dry", "limit", "reset")
 PIPELINE_STEPS: tuple[str, ...] = (
@@ -82,13 +111,28 @@ class RunHandle:
 
 
 class _RunContext(AbstractContextManager[RunHandle]):
-    def __init__(self, handle: RunHandle) -> None:
+    def __init__(
+        self, handle: RunHandle, log_handler: logging.Handler | None = None
+    ) -> None:
         self._handle = handle
+        self._log_handler = log_handler
 
     def __enter__(self) -> RunHandle:
         return self._handle
 
+    def _detach_log(self) -> None:
+        if self._log_handler is not None:
+            logging.getLogger("sources").removeHandler(self._log_handler)
+            self._log_handler.close()
+            self._log_handler = None
+
     def __exit__(self, exc_type, exc, tb):  # type: ignore[no-untyped-def]
+        try:
+            return self._exit_inner(exc_type, exc, tb)
+        finally:
+            self._detach_log()
+
+    def _exit_inner(self, exc_type, exc, tb):  # type: ignore[no-untyped-def]
         if exc is None:
             # Caller is expected to call `.end(...)` explicitly with a real status.
             # If they forgot, we mark partial so it doesn't stay 'running'.
@@ -137,6 +181,14 @@ def start_run(
             )
 
     run_id = uuid.uuid4().hex
+    # Branche le log fichier du run (BUG-3). log_path explicite respecté ;
+    # sinon auto `run_logs/<run_id>.log`. Le handler est retiré au __exit__.
+    log_handler: logging.Handler | None = None
+    if log_path is None:
+        try:
+            log_path, log_handler = _attach_run_log(run_id)
+        except OSError:  # pas de log fichier ne doit jamais bloquer un run
+            log_path, log_handler = None, None
     conn.execute(
         """
         INSERT INTO source_runs (id, source, kind, started_at, status, filters_json, log_path)
@@ -150,4 +202,6 @@ def start_run(
             log_path,
         ),
     )
-    return _RunContext(RunHandle(run_id=run_id, source=source, _conn=conn))
+    return _RunContext(
+        RunHandle(run_id=run_id, source=source, _conn=conn), log_handler=log_handler
+    )
