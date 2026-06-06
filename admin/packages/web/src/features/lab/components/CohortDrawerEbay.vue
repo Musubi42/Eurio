@@ -387,9 +387,14 @@ async function onRecrop(c: CohortFunnelCoin) {
             <div class="coin__l1">
               <span class="coin__id">
                 <span
-                  v-if="c.never_scraped"
+                  v-if="c.never_scraped && c.group_scraped"
+                  class="coin__badge coin__badge--warn"
+                  title="Groupe scrapé, mais 0 listing attribué à cette pièce — eBay n'a rien renvoyé pour ce millésime (dispersé sur ses sœurs). Récupère via la review des lots du groupe."
+                >0 attribué</span>
+                <span
+                  v-else-if="c.never_scraped"
                   class="coin__badge coin__badge--danger"
-                  title="Jamais scrapé — 0 listing eBay pour cette pièce"
+                  title="Jamais scrapé — le groupe de découverte de cette pièce n'a pas encore été cherché sur eBay"
                 >jamais scrapé</span>
                 <span
                   v-if="!c.scrapable"
@@ -760,6 +765,11 @@ async function onRecrop(c: CohortFunnelCoin) {
 .coin__badge--danger {
   background: color-mix(in srgb, var(--danger) 12%, var(--surface));
   color: var(--danger);
+}
+/* Badge « 0 attribué » (B1) — groupe scrapé mais rien reçu (dispersé sœurs). */
+.coin__badge--warn {
+  background: color-mix(in srgb, var(--warning) 14%, var(--surface));
+  color: var(--warning);
 }
 .coin__sources {
   flex-shrink: 0;

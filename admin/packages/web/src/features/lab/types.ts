@@ -164,6 +164,10 @@ export interface CohortFunnelCoin {
   n_projected: number     // aug_factor * n_seed (≥ 100 dès seed ≥ 1)
   gap_to_target: number   // max(0, training_target - n_projected), informatif
   never_scraped: boolean  // n_source_images == 0
+  // B1 : le groupe de découverte de ce coin a-t-il été cherché (n_searches>0) ?
+  // never_scraped && group_scraped → « 0 attribué » (dispersé sur les sœurs) ≠
+  // never_scraped && !group_scraped → « jamais scrapé ».
+  group_scraped?: boolean
   // Run le plus récent ayant produit des listings pour ce coin → cible du
   // deep-link bench. n_runs > 1 = limite v1 connue (on linke le dernier).
   latest_run_id: string | null

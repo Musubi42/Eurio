@@ -1655,6 +1655,11 @@ def _cohort_funnel_status(store: Store, cohort_id: str) -> dict:
     # non rattachables sans heuristique, restent invisibles ici mais sont
     # comptés implicitement dans l'écart N0→N3 du funnel).
     head_groups: list[dict] = []
+    # B1 : un coin est « 0 attribué » (≠ « jamais scrapé ») si SON groupe de
+    # découverte a bien été cherché (n_searches>0) mais qu'il n'a reçu aucune
+    # attribution — cas be-2007 (ère 1 an, dispersée sur ses sœurs). Dérivé du
+    # funnel de découverte déjà calculé, sans toucher au scrape.
+    searched_coins: set[str] = set()
     for g in groups:
         coins = _group_referential_coins(
             conn,
@@ -1666,6 +1671,8 @@ def _cohort_funnel_status(store: Store, cohort_id: str) -> dict:
         disco = _discovery_funnel_for_group(
             conn, denomination=g.denomination, country=g.country, year=g.year,
         )
+        if (disco.get("n_searches") or 0) > 0:
+            searched_coins.update(coins)
         if coins:
             ph = ",".join("?" * len(coins))
             discarded, n_disc = _discarded_by_reason(
@@ -1689,6 +1696,12 @@ def _cohort_funnel_status(store: Store, cohort_id: str) -> dict:
             "n_discarded_attributed": n_disc,
             "discarded_by_reason": discarded,
         })
+
+    # B1 : marque chaque coin dont le groupe a été cherché → « 0 attribué » au
+    # lieu de « jamais scrapé » quand n_source_images=0 (honnête : le scrape a
+    # tourné, la pièce n'a juste rien reçu).
+    for _c in per_coin:
+        _c["group_scraped"] = _c["eurio_id"] in searched_coins
 
     # ── Rescue cross-classe : crops validés (training_eligible=1) scrapés SOUS
     # un groupe de la cohort mais ré-attribués en review à une pièce SŒUR hors
