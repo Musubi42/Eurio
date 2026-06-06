@@ -79,6 +79,17 @@ function reviewCount(c: CohortFunnelCoin): number {
 function lotReviewCount(c: CohortFunnelCoin): number {
   return c.n_open_review_lot ?? 0
 }
+// Grammaire d'actions (F2) : UNE seule action PRIMAIRE par pièce selon l'état,
+// arbre de priorité strict (review singles > review lots > recrop > scrape).
+// Les autres actions applicables passent en secondaire (subordonné visuellement).
+// → toujours 0 ou 1 bouton plein par row : règle le grief « les boutons se mélangent ».
+function primaryAction(c: CohortFunnelCoin): 'review' | 'lot' | 'recrop' | 'scrape' | null {
+  if (reviewCount(c) > 0) return 'review'
+  if (lotReviewCount(c) > 0) return 'lot'
+  if (recropCount(c) > 0) return 'recrop'
+  if (c.scrapable && (c.below_real_floor ?? !c.enough)) return 'scrape'
+  return null
+}
 // Jauge santé = sources réelles eBay vs plancher (≥ plancher = vert).
 function realBarPct(c: CohortFunnelCoin): number {
   return Math.min(100, Math.round((c.n_training_eligible / Math.max(minReal.value, 1)) * 100))
@@ -374,7 +385,7 @@ async function onRecrop(c: CohortFunnelCoin) {
               <RouterLink
                 v-if="reviewCount(c) > 0"
                 :to="{ path: '/review/manual', query: { cohort: cohortId, eurio_id: c.eurio_id } }"
-                class="coin__btn"
+                :class="['coin__btn', { 'coin__btn--primary': primaryAction(c) === 'review' }]"
                 :title="`${reviewCount(c)} crops en review POUR ${c.eurio_id} — review scopée à cette pièce, trancher fait monter sa ligne`"
               >
                 <Search class="h-3 w-3" /> Reviewer {{ reviewCount(c) }}
@@ -384,7 +395,7 @@ async function onRecrop(c: CohortFunnelCoin) {
               <RouterLink
                 v-if="lotReviewCount(c) > 0"
                 :to="{ path: '/review/manual', query: { cohort: cohortId, mode: 'lot' } }"
-                class="coin__audit coin__audit--muted"
+                :class="['coin__btn', { 'coin__btn--primary': primaryAction(c) === 'lot' }]"
                 :title="`${lotReviewCount(c)} crops en review LOT touchant ${c.eurio_id} — flow cohorte multi-pièces`"
               >
                 <Package class="h-3 w-3" /> {{ lotReviewCount(c) }} lots
@@ -394,7 +405,7 @@ async function onRecrop(c: CohortFunnelCoin) {
               <button
                 v-if="recropCount(c) > 0"
                 type="button"
-                class="coin__btn"
+                :class="['coin__btn', { 'coin__btn--primary': primaryAction(c) === 'recrop' }]"
                 :disabled="recroppingCoin !== null"
                 :style="{ opacity: recroppingCoin !== null ? 0.5 : 1, cursor: recroppingCoin !== null ? 'not-allowed' : 'pointer' }"
                 :title="`Recropper ${recropCount(c)} raws sans crop (census+gate, sans quota eBay)`"
@@ -410,7 +421,7 @@ async function onRecrop(c: CohortFunnelCoin) {
               <button
                 v-if="c.scrapable"
                 type="button"
-                class="coin__btn coin__btn--scrape"
+                :class="['coin__btn', primaryAction(c) === 'scrape' ? 'coin__btn--primary' : 'coin__btn--scrape']"
                 :disabled="scrapingCoin !== null"
                 :style="{ opacity: scrapingCoin !== null ? 0.5 : 1, cursor: scrapingCoin !== null ? 'not-allowed' : 'pointer' }"
                 :title="c.never_scraped
@@ -723,6 +734,16 @@ async function onRecrop(c: CohortFunnelCoin) {
   transition: background 160ms var(--ease-out, ease);
 }
 .coin__btn:hover { background: color-mix(in srgb, var(--indigo-700) 16%, var(--surface)); }
+/* Action PRIMAIRE (F2) : plein indigo, dominant. Une seule par row max → l'œil
+   sait quoi faire sans lire 5 boutons à poids égal. Override coin__btn (ordre
+   source). */
+.coin__btn--primary {
+  color: white;
+  background: var(--indigo-700);
+  font-weight: 600;
+  padding: 4px 10px;
+}
+.coin__btn--primary:hover { background: var(--indigo-700); filter: brightness(1.08); }
 /* Bouton scrape (consomme le quota) : ton plus neutre pour le distinguer des
    actions locales gratuites (Reviewer / Recropper). */
 .coin__btn--scrape {

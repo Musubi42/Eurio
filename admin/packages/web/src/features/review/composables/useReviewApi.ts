@@ -461,6 +461,9 @@ export interface TriageStats {
   // 3 cartes du cockpit (manual/auto_accept/ccproxy). by_verdict reste fourni
   // pour compat/debug, mais l'affichage vient de by_lane.
   by_lane: { manual: number; auto_accept: number; ccproxy: number }
+  // Lots (kind='lot') PAR LANE — décompose la carte « Lots » (B3 : on ne cache
+  // plus les lots manuels). Optionnel : backends antérieurs au chunk F6.
+  by_lane_lot?: { manual: number; auto_accept: number; ccproxy: number }
   // Crops en review LOT (kind='lot') — flow distinct du single (cockpit cohort).
   n_lot_crops: number
   // Crops rejetés (récupérables via /review/recover) + items skippés (report
@@ -489,6 +492,7 @@ export async function fetchTriageStats(cohortId?: string | null): Promise<Triage
     n_done_this_week: 0,
     by_verdict: { auto_candidate: 0, partial: 0, divergent: 0, unknown: 0 },
     by_lane: { manual: 0, auto_accept: 0, ccproxy: 0 },
+    by_lane_lot: { manual: 0, auto_accept: 0, ccproxy: 0 },
     n_lot_crops: 0,
     n_rejected: 0,
     n_skipped: 0,

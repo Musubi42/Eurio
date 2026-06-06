@@ -752,6 +752,27 @@ def queue_triage_stats(
         ),
     }
 
+    # Lots PAR LANE (kind='lot') — décompose la carte fourre-tout « Lots » (B3 :
+    # on ne cache plus les lots manuels). Indépendant du `kind` de la requête.
+    def _count_lot(lane_clause: str, lane_args: list[Any]) -> int:
+        if cohort_clause:
+            sql = (
+                "SELECT COUNT(*) AS c FROM review_queue rq "
+                "JOIN image_assets a ON a.id = rq.image_asset_id "
+                "JOIN source_images si ON si.id = a.source_image_id "
+                f"WHERE rq.status='open' AND rq.kind='lot' AND {lane_clause}{cohort_clause}"
+            )
+            return conn.execute(sql, [*lane_args, *cohort_args]).fetchone()["c"]
+        sql = ("SELECT COUNT(*) AS c FROM review_queue rq "
+               f"WHERE rq.status='open' AND rq.kind='lot' AND {lane_clause}")
+        return conn.execute(sql, lane_args).fetchone()["c"]
+
+    by_lane_lot = {
+        "manual": _count_lot("(rq.lane='manual' OR rq.lane IS NULL)", []),
+        "auto_accept": _count_lot("rq.lane = ?", ["auto_accept"]),
+        "ccproxy": _count_lot("rq.lane = ?", ["ccproxy"]),
+    }
+
     return {
         "n_pending": n_pending,
         "n_done_today": n_done_today,
@@ -759,6 +780,7 @@ def queue_triage_stats(
         "n_done_this_week": n_done_week,
         "by_verdict": by_verdict,
         "by_lane": by_lane,
+        "by_lane_lot": by_lane_lot,
         "n_lot_crops": n_lot_crops,
         "n_rejected": n_rejected,
         "n_skipped": n_skipped,

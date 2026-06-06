@@ -27,6 +27,15 @@ const autoCount = computed(() => stats.value?.by_lane?.auto_accept ?? 0)
 const claudeCount = computed(() => stats.value?.by_lane?.ccproxy ?? 0)
 // Crops en review LOT (listings multi-pièces) — flow distinct du single.
 const lotCount = computed(() => stats.value?.n_lot_crops ?? 0)
+// Lots PAR LANE (F6 / B3) : on ne cache plus les lots manuels dans le fourre-tout.
+// Les cartes I/II/III comptent les SINGLES de leur lane ; ce sont les lots de la
+// même lane, surfacés en « +N lots » (et décomposés dans la carte IV).
+const manualLots = computed(() => stats.value?.by_lane_lot?.manual ?? 0)
+const autoLots = computed(() => stats.value?.by_lane_lot?.auto_accept ?? 0)
+const ccproxyLots = computed(() => stats.value?.by_lane_lot?.ccproxy ?? 0)
+function lotsNote(n: number): string | null {
+  return n > 0 ? `+ ${fmt(n)} lots` : null
+}
 // Crops rejetés (récupérables via la grille) + items skippés (report dans la
 // queue manuelle, informationnel). Surfacés en bande sous les plateaux.
 const rejectedCount = computed(() => stats.value?.n_rejected ?? 0)
@@ -43,7 +52,8 @@ const plateaus = computed(() => [
     title: 'Queue manuelle',
     icon: Eye,
     count: manualCount.value,
-    unit: 'à trancher à la main',
+    unit: 'singles à trancher',
+    subnote: lotsNote(manualLots.value),
     to: `/review/manual?cohort=${encodeURIComponent(props.cohortId)}&lane=manual`,
     accent: 'ink' as const,
   },
@@ -54,7 +64,8 @@ const plateaus = computed(() => [
     title: 'Auto-accept',
     icon: Wand2,
     count: autoCount.value,
-    unit: 'prêts à valider',
+    unit: 'singles prêts à valider',
+    subnote: lotsNote(autoLots.value),
     to: `/review/auto-accept?cohort=${encodeURIComponent(props.cohortId)}`,
     accent: 'gold' as const,
   },
@@ -65,7 +76,8 @@ const plateaus = computed(() => [
     title: 'CCProxy',
     icon: Bot,
     count: claudeCount.value,
-    unit: 'cas ambigus',
+    unit: 'singles ambigus (LLM)',
+    subnote: lotsNote(ccproxyLots.value),
     to: `/review/ccproxy?cohort=${encodeURIComponent(props.cohortId)}`,
     accent: 'indigo' as const,
   },
@@ -79,6 +91,11 @@ const plateaus = computed(() => [
     // La review Lot vit dans ReviewPage (/review/manual, toggle Single|Lot via
     // ?mode=lot) — PAS sur /review (le hub global, qui ignore ?mode/?cohort).
     unit: 'crops en lots',
+    // Décomposition par lane (B3) : la majorité des lots sont ccproxy/auto
+    // (automatisables), peu sont manuels.
+    subnote: lotCount.value > 0
+      ? `${fmt(ccproxyLots.value)} ccproxy · ${fmt(autoLots.value)} auto · ${fmt(manualLots.value)} manuel`
+      : null,
     to: `/review/manual?mode=lot&cohort=${encodeURIComponent(props.cohortId)}`,
     accent: 'gold' as const,
   },
@@ -133,6 +150,7 @@ function fmt(n: number): string {
               <span class="card__number">{{ fmt(p.count) }}</span>
               <span class="card__unit">{{ p.unit }}</span>
             </div>
+            <span v-if="p.subnote" class="card__subnote">{{ p.subnote }}</span>
             <footer class="card__cta">
               <span>{{ p.count === 0 ? 'Voir' : 'Entrer' }}</span>
               <ArrowUpRight :size="13" :stroke-width="1.6" />
@@ -153,12 +171,12 @@ function fmt(n: number): string {
           </div>
         </div>
         <p class="hint">
-          Compteurs restreints aux pièces de la cohort. Valider une pièce la rend
-          éligible à l'entraînement (<strong>train</strong> dans le tiroir eBay).
-          <strong>Lots</strong> = listings multi-pièces (flow distinct) — la majorité
-          des crops y atterrissent, pense à les traiter aussi.
-          Un <strong>rejet</strong> reste récupérable : remets-le en queue si un
-          re-crop suffisait. Un <strong>skip</strong> revient seul dans la queue manuelle.
+          Compteurs restreints aux pièces de la cohort. Cartes <strong>I-III</strong> =
+          <strong>singles</strong> par lane (manuel / auto-accept / LLM) ; le « <strong>+N lots</strong> »
+          sous chaque nombre = les lots de la MÊME lane (plus cachés). Carte <strong>IV Lots</strong>
+          = tous les lots, décomposés par lane (la majorité sont ccproxy/auto = automatisables).
+          Valider une pièce la rend éligible à l'entraînement (<strong>validés</strong> dans le tiroir eBay).
+          Un <strong>rejet</strong> reste récupérable ; un <strong>skip</strong> revient seul dans la queue manuelle.
         </p>
       </template>
       <div v-else class="text-xs" style="color: var(--danger);">
@@ -289,6 +307,14 @@ function fmt(n: number): string {
   line-height: 1.3;
   padding-bottom: 4px;
   max-width: 90px;
+}
+
+.card__subnote {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--ink-400);
+  margin-top: 2px;
+  font-variant-numeric: tabular-nums;
 }
 
 .card__cta {
