@@ -23,7 +23,7 @@ ML_DIR = Path(__file__).parent.parent
 if str(ML_DIR) not in sys.path:
     sys.path.insert(0, str(ML_DIR))
 
-from api import review_queue_routes, sources_routes  # noqa: E402
+from serving import review_queue_routes, sources_routes  # noqa: E402
 from store import Store  # noqa: E402
 
 

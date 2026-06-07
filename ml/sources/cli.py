@@ -107,7 +107,7 @@ def _resolve_ebay_groups(
 
 
 def _ebay_preflight_or_die(store, *, n_eurio_ids: int) -> None:
-    from api.sources_routes import check_ebay_quota
+    from serving.sources_routes import check_ebay_quota
 
     check = check_ebay_quota(store, n_eurio_ids=n_eurio_ids)
     print(

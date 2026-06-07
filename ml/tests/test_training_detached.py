@@ -16,7 +16,7 @@ import subprocess
 import pytest
 
 import jobs
-from api.training_runner import TrainingRunner
+from serving.training_runner import TrainingRunner
 from store import ClassRef, EpochRow, RunRow, Store
 
 

@@ -52,7 +52,7 @@ if str(ML_DIR) not in sys.path:
 
 from PIL import Image
 
-from api import coin_lookup
+from serving import coin_lookup
 from augmentations import AugmentationPipeline
 from augmentations.recipes import DEFAULT_RECIPE
 from foundation.enrichment import (

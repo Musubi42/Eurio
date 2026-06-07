@@ -26,8 +26,8 @@ ML_DIR = Path(__file__).parent.parent
 if str(ML_DIR) not in sys.path:
     sys.path.insert(0, str(ML_DIR))
 
-from api import review_queue_routes
-from api.review_queue_routes import router as review_router
+from serving import review_queue_routes
+from serving.review_queue_routes import router as review_router
 from store import Store
 
 
@@ -491,7 +491,7 @@ def test_detect_lot_image_persists_and_returns(app_client, monkeypatch):
     """POST /detect relance la détection (Chunk C), persiste detections_json,
     renvoie les cercles. `_compute_detections` monkeypatché (pas de YOLO/raw).
     """
-    from api.review_queue_routes import LotDetection
+    from serving.review_queue_routes import LotDetection
 
     _, conn, client = app_client
     _seed_lot_listing(conn, item_id="A1", n_images=1, crops_per_image=(2,))
@@ -543,7 +543,7 @@ def test_add_lot_crop_404_when_image_not_in_lot(app_client):
 def test_add_lot_crop_returns_new_crop(app_client, monkeypatch):
     """POST /crops crée un crop (Chunk D) et renvoie le LotCrop enrichi.
     `create_manual_crop` monkeypatché (pas de raw/MinIO/Dino dans le test)."""
-    from api.crop_edit import NewCropData
+    from serving.crop_edit import NewCropData
 
     _, conn, client = app_client
     _seed_lot_listing(conn, item_id="A1", n_images=1, crops_per_image=(1,))
@@ -558,7 +558,7 @@ def test_add_lot_crop_returns_new_crop(app_client, monkeypatch):
             candidate_eurio_ids=[{"eurio_id": "fr-2015-2eur-paix"}],
             minio_ok=True, dino_recomputed=False,
         )
-    import api.crop_edit as crop_edit_mod
+    import serving.crop_edit as crop_edit_mod
     monkeypatch.setattr(crop_edit_mod, "create_manual_crop", fake_create)
 
     resp = client.post(

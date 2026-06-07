@@ -55,7 +55,7 @@ ML_DIR = Path(__file__).resolve().parent.parent
 if str(ML_DIR) not in sys.path:
     sys.path.insert(0, str(ML_DIR))
 
-from api.supabase_client import SupabaseClient, load_env  # noqa: E402
+from serving.supabase_client import SupabaseClient, load_env  # noqa: E402
 from referential.coin_image_storage import (  # noqa: E402
     BUCKET_NAME, encode_webp, public_url, storage_key, upload_object,
 )

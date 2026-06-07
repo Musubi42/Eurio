@@ -553,12 +553,12 @@ tasks:
   api:
     desc: "Start the ML training API (FastAPI on port 8042)"
     cmds:
-      - "{{.VENV}}/python -m uvicorn api.server:app --port 8042 --reload"
+      - "{{.VENV}}/python -m uvicorn serving.server:app --port 8042 --reload"
 
   api-prod:
     desc: "Start the ML API without reload"
     cmds:
-      - "{{.VENV}}/python -m uvicorn api.server:app --port 8042"
+      - "{{.VENV}}/python -m uvicorn serving.server:app --port 8042"
 
   # ---------- Confusion Map ----------
   confusion-map:

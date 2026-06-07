@@ -342,7 +342,7 @@ def _fetch_standard_candidates(
     ``design_groups.designation`` quand le groupe en a une, sinon construit
     depuis pays/thème. Vignette = avers canonique du représentant.
     ``pairs``/``countries`` est petit (≤ nb de pays du run)."""
-    from api._coin_helpers import canonical_obverse_url
+    from serving._coin_helpers import canonical_obverse_url
 
     out: dict[str, list[ReviewCandidate]] = {}
     for country in countries:
@@ -1632,7 +1632,7 @@ def add_lot_crop(listing_key: str, source_image_id: str,
             detail=f"Image '{source_image_id}' not found in lot '{listing_key}'.",
         )
 
-    from api.crop_edit import create_manual_crop
+    from serving.crop_edit import create_manual_crop
     new = create_manual_crop(
         _store(), source_image_id, payload.cx, payload.cy, payload.r)
     return LotCrop(

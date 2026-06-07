@@ -14,8 +14,8 @@ import subprocess
 import pytest
 
 import jobs
-from api.iteration_runner import IterationRunner
-from api.training_runner import TrainingRunner
+from serving.iteration_runner import IterationRunner
+from serving.training_runner import TrainingRunner
 from store import Store
 
 

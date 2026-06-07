@@ -25,7 +25,7 @@ if str(ML_DIR) not in sys.path:
 @pytest.fixture()
 def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     from store import Store
-    import api.benchmark_routes as br
+    import serving.benchmark_routes as br
 
     store = Store(tmp_path / "t.db")
     br.bind(store)

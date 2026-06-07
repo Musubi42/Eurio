@@ -100,14 +100,14 @@ app.include_router(sources_routes.router)
 app.include_router(review_queue_routes.router)
 
 # Wire /coins/{eurio_id}/assets — enrichment gallery on CoinDetailPage.
-from api import coin_assets_routes  # noqa: E402
+from serving import coin_assets_routes  # noqa: E402
 
 coin_assets_routes.bind(_store)
 app.include_router(coin_assets_routes.router)
 
 # Wire /coins/* (detail, lookups, prices, i18n, embedding, series, patch) —
 # P.8a doctrine SQLite-only, remplace les reads Supabase du frontend.
-from api import coins_routes, sets_routes  # noqa: E402
+from serving import coins_routes, sets_routes  # noqa: E402
 
 coins_routes.bind(_store)
 app.include_router(coins_routes.router)

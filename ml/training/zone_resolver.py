@@ -37,7 +37,7 @@ def _make_supabase_client():
     )
     if not url or not key:
         return None
-    from api.supabase_client import SupabaseClient
+    from serving.supabase_client import SupabaseClient
 
     return SupabaseClient(url, key)
 

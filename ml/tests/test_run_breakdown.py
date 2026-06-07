@@ -32,7 +32,7 @@ ML_DIR = Path(__file__).parent.parent
 if str(ML_DIR) not in sys.path:
     sys.path.insert(0, str(ML_DIR))
 
-from api.sources_routes import compute_run_breakdown
+from serving.sources_routes import compute_run_breakdown
 from sources._base.run_logger import start_run
 from store import Store
 

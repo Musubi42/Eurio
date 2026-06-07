@@ -29,7 +29,7 @@ from PIL import Image
 ML_DIR = Path(__file__).parent.parent
 sys.path.insert(0, str(ML_DIR))
 
-from api.supabase_client import SupabaseClient, load_env  # noqa: E402
+from serving.supabase_client import SupabaseClient, load_env  # noqa: E402
 from augmentations.pipeline import AugmentationPipeline  # noqa: E402
 from augmentations.recipes import DEFAULT_RECIPE, ZONE_RECIPES  # noqa: E402
 from store import Store  # noqa: E402

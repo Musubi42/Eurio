@@ -77,7 +77,7 @@ class _StubRunner:
 @pytest.fixture()
 def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     from store import Store
-    import api.lab_routes as lr
+    import serving.lab_routes as lr
 
     store = Store(tmp_path / "t.db")
     stub = _StubRunner(store)
@@ -332,7 +332,7 @@ def test_sensitivity_runs_on_empty_cohort(client):
 import json
 from pathlib import Path
 
-import api.lab_routes as _lr_mod
+import serving.lab_routes as _lr_mod
 from store import (
     BenchmarkRunRow,
     ExperimentCohortRow,
@@ -348,7 +348,7 @@ def live_test_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     at a tmp dir for hermetic runs.
     """
     from store import Store
-    import api.lab_routes as lr
+    import serving.lab_routes as lr
 
     store = Store(tmp_path / "t.db")
     stub = _StubRunner(store)

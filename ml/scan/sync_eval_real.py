@@ -130,7 +130,7 @@ def sync(
 
     if also_write_captures:
         # Lazy import — keep the script usable without FastAPI deps.
-        from api import coin_lookup  # noqa: WPS433
+        from serving import coin_lookup  # noqa: WPS433
     else:
         coin_lookup = None  # type: ignore[assignment]
 

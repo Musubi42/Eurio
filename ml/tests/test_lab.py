@@ -122,7 +122,7 @@ def test_list_iterations_filters_and_orders(store: Store):
 
 
 def test_verdict_matrix():
-    from api.iteration_logic import compute_verdict
+    from serving.iteration_logic import compute_verdict
 
     # Baseline
     assert compute_verdict({"r_at_1": 0.8}, None) == "baseline"
@@ -150,7 +150,7 @@ def test_verdict_matrix():
 
 
 def test_delta_handles_none_parent_and_common_coins():
-    from api.iteration_logic import compute_delta
+    from serving.iteration_logic import compute_delta
 
     assert compute_delta({"r_at_1": 0.8}, None) == {}
 
@@ -181,7 +181,7 @@ def test_delta_handles_none_parent_and_common_coins():
 
 
 def test_input_diff_flattens_recipe_layers():
-    from api.iteration_logic import compute_input_diff
+    from serving.iteration_logic import compute_input_diff
 
     diff = compute_input_diff(
         {
@@ -209,7 +209,7 @@ def test_input_diff_flattens_recipe_layers():
 
 
 def test_sensitivity_averages_deltas_per_path():
-    from api.iteration_logic import compute_sensitivity
+    from serving.iteration_logic import compute_sensitivity
 
     # Two iterations where variant_count doubled and R@1 gained 3pts and 2pts
     sens = compute_sensitivity([

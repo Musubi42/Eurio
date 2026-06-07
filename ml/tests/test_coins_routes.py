@@ -19,7 +19,7 @@ ML_DIR = Path(__file__).resolve().parent.parent
 if str(ML_DIR) not in sys.path:
     sys.path.insert(0, str(ML_DIR))
 
-from api import coins_routes, sets_routes  # noqa: E402
+from serving import coins_routes, sets_routes  # noqa: E402
 from state.source_status import upsert_source_status  # noqa: E402
 from store import Store  # noqa: E402
 
@@ -39,7 +39,7 @@ def tmp_store(tmp_path: Path):
     target = tmp_path / "eurio.db"
     shutil.copy2(REAL_DB, target)
     # Force initial wiring (no-op si déjà importé).
-    from api import server as _server  # noqa: F401
+    from serving import server as _server  # noqa: F401
     store = Store(target)
     coins_routes.bind(store)
     sets_routes.bind(store)
@@ -110,7 +110,7 @@ def seeded_store(tmp_store: Store) -> Store:
 
 @pytest.fixture
 def client() -> TestClient:
-    from api.server import app
+    from serving.server import app
     return TestClient(app)
 
 

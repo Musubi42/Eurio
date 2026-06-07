@@ -43,7 +43,7 @@ def main() -> int:
                     help="liste l'échantillon + URLs sans appeler Claude (gratuit)")
     args = ap.parse_args()
 
-    from api.review_queue_routes import _canonical_path, _crop_path
+    from serving.review_queue_routes import _canonical_path, _crop_path
     from foundation.claude_review import judge
 
     conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)

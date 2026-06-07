@@ -30,7 +30,7 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     test_store = Store(tmp_path / "t.db")
 
     # Reset the augmentation module's bound state, then re-bind with our store.
-    import api.augmentation_routes as ar
+    import serving.augmentation_routes as ar
 
     def _no_supabase():
         raise HTTPException(

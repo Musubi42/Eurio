@@ -44,7 +44,7 @@ CACHE_DIR = ML_DIR / "cache"
 IMAGE_CACHE_DIR = CACHE_DIR / "dinov2_inputs"
 
 sys.path.insert(0, str(ML_DIR))
-from api.supabase_client import SupabaseClient, load_env  # noqa: E402
+from serving.supabase_client import SupabaseClient, load_env  # noqa: E402
 from foundation.encoder import (  # noqa: E402
     DEFAULT_ENCODER_VERSION,
     DINOV2_MODEL,

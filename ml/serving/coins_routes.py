@@ -673,7 +673,7 @@ class CoinCardResponse(BaseModel):
 def get_coin_card(eurio_id: str) -> CoinCardResponse:
     """Carte légère d'un coin pour le hover de la matrice de couverture :
     image de base (avers) + titre FR par défaut + flags JO/commune."""
-    from api._coin_helpers import canonical_obverse_url, fr_title
+    from serving._coin_helpers import canonical_obverse_url, fr_title
 
     conn = _conn()
     row = conn.execute(
@@ -946,7 +946,7 @@ def get_coin_design_group(eurio_id: str) -> DesignGroupResponse:
     effigie, carte différente) → une classe. Renvoie ``members=[]`` si la pièce
     n'a pas de ``design_group_id`` (le front masque alors la section). Générique
     pour tous les groupes (avers-standards, joint-issues, numista_id)."""
-    from api._coin_helpers import canonical_obverse_url, fr_title
+    from serving._coin_helpers import canonical_obverse_url, fr_title
 
     conn = _conn()
     row = conn.execute(

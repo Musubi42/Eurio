@@ -13,7 +13,7 @@ ML_DIR = Path(__file__).resolve().parents[2]
 if str(ML_DIR) not in sys.path:
     sys.path.insert(0, str(ML_DIR))
 
-from api.sources_routes import (
+from serving.sources_routes import (
     EBAY_DAILY_QUOTA,
     ebay_calls_today,
     estimate_calls_per_eurio_id,

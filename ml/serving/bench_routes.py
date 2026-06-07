@@ -26,7 +26,7 @@ from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
-from api._coin_helpers import canonical_obverse_url
+from serving._coin_helpers import canonical_obverse_url
 from scripts.bench_theme_match import SEED_YEARS, replay_bench
 
 router = APIRouter(prefix="/bench", tags=["bench"])

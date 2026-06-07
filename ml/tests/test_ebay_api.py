@@ -84,7 +84,7 @@ def client(tmp_path: Path):
 
     # Build a minimal FastAPI app — bypass server.py boot which loads
     # supabase + training_runner.
-    from api import sources_routes
+    from serving import sources_routes
     sources_routes.reset_orphan_runs(test_store)
 
     # Patch _store() to return our test store.
@@ -118,7 +118,7 @@ def test_quota_status_zero_at_start(client: TestClient):
 
 def test_quota_status_reflects_api_call_log(client: TestClient):
     """Inserer manuellement des calls dans api_call_log doit se refléter."""
-    from api.sources_routes import _today_period
+    from serving.sources_routes import _today_period
 
     conn = client.test_store._connection()  # type: ignore[attr-defined]
     conn.execute(
@@ -171,13 +171,13 @@ def test_freshness_respects_limit(client: TestClient):
 
 
 def test_estimate_falls_back_to_7_with_no_history(client: TestClient):
-    from api.sources_routes import estimate_calls_per_eurio_id
+    from serving.sources_routes import estimate_calls_per_eurio_id
     val = estimate_calls_per_eurio_id(client.test_store)  # type: ignore[attr-defined]
     assert val == 7.0
 
 
 def test_estimate_uses_history_when_3_plus_runs(client: TestClient):
-    from api.sources_routes import estimate_calls_per_eurio_id
+    from serving.sources_routes import estimate_calls_per_eurio_id
 
     conn = client.test_store._connection()  # type: ignore[attr-defined]
     # 3 runs avec n_calls=10 et 2 target_eurio_ids → ratio = 5
@@ -202,7 +202,7 @@ def test_estimate_uses_history_when_3_plus_runs(client: TestClient):
 def test_trigger_run_returns_409_if_quota_insufficient(client: TestClient):
     """Avec moins de 5000-bootstrap*7*1.3 = 4936 quota restant et 100 eurio_ids
     en target, le pre-flight refuse avec 409 quota_insufficient."""
-    from api.sources_routes import _today_period
+    from serving.sources_routes import _today_period
 
     conn = client.test_store._connection()  # type: ignore[attr-defined]
     # Consomme 4900 calls aujourd'hui → reste 100
@@ -396,7 +396,7 @@ def test_run_preview_counts_coins_and_calls(client: TestClient):
 
 def test_estimate_handles_grouped_runs(client: TestClient):
     _seed_two_coin_group(client.test_store)  # type: ignore[attr-defined]
-    from api.sources_routes import estimate_calls_per_eurio_id
+    from serving.sources_routes import estimate_calls_per_eurio_id
 
     conn = client.test_store._connection()  # type: ignore[attr-defined]
     # 3 runs groupés, n_calls=10, groupe LU/2099 = 2 pièces → ratio = 5.
