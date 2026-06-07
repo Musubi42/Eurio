@@ -81,7 +81,7 @@
 | 5 | [Review humaine admin](./training-pipeline/harvest/human-review.md) | 🔲 | support phases 2 et 4 |
 
 ### training-refacto-ux
-Voir [`training-pipeline/refacto/progress.md`](./training-pipeline/refacto/progress.md) pour le détail des 5 phases. Aucune dépendance bloquante avec les autres tracks.
+Voir [`archive/training-pipeline/refacto/progress.md`](./archive/training-pipeline/refacto/progress.md) pour le détail des 5 phases (chantier archivé, livré). Aucune dépendance bloquante avec les autres tracks.
 
 ### on-device-v2
 Pas encore de doc dédié. À créer quand `harvest/phase-1` aura validé DINOv2 (ou alt). Périmètre attendu : fine-tune ArcFace head sur backbone foundation, distillation mobile, export TFLite, intégration `app-android/`.
