@@ -1951,19 +1951,40 @@ def _reconcile_scrape_jobs(conn: sqlite3.Connection, cohort_id: str) -> None:
             )
             continue
         # Terminal (success/partial/failed) → clôture le job + diag honnête.
+        # Attribution au niveau de la CLASSE (design_group) : un scrape de
+        # standard nourrit une classe ArcFace (be-2007 + be-1999 = t1), pas un
+        # eurio_id isolé. On compte les crops produits par ce run dont le *prior*
+        # (source_images.target_eurio_id) tombe dans la même classe que la cible.
+        # Pour un coin sans design_group (commémo), classe = eurio_id → identique
+        # à l'ancien comptage (rétro-compatible).
         n_attr = 0
+        target_class = j["target_eurio_id"]
         if j["target_eurio_id"]:
+            tc = conn.execute(
+                "SELECT COALESCE(design_group_id, eurio_id) FROM coins WHERE eurio_id=?",
+                (j["target_eurio_id"],),
+            ).fetchone()
+            if tc:
+                target_class = tc[0]
             n_attr = conn.execute(
-                "SELECT COUNT(*) FROM image_assets WHERE run_id=? AND eurio_id=?",
-                (j["run_id"], j["target_eurio_id"]),
+                "SELECT COUNT(*) FROM image_assets ia "
+                "JOIN source_images si ON si.id = ia.source_image_id "
+                "LEFT JOIN coins c ON c.eurio_id = si.target_eurio_id "
+                "WHERE ia.run_id = ? "
+                "AND COALESCE(c.design_group_id, c.eurio_id) = ?",
+                (j["run_id"], target_class),
             ).fetchone()[0]
         status = "done" if run["status"] in ("success", "partial") else "failed"
         note = None
-        if (status == "done" and j["target_eurio_id"]
-                and n_attr == 0 and (run["n_crops_added"] or 0) > 0):
-            note = (f"{run['n_crops_added']} crops produits, 0 attribué à cette "
-                    "pièce (répartis sur le groupe de découverte) — "
-                    "récupérable via review lots")
+        if status == "done" and j["target_eurio_id"] and (run["n_crops_added"] or 0) > 0:
+            if n_attr > 0:
+                note = (f"{run['n_crops_added']} crops produits, {n_attr} pour la "
+                        f"classe « {target_class} »")
+            else:
+                note = (f"{run['n_crops_added']} crops produits, 0 pour la classe "
+                        f"« {target_class} » — offre eBay ~nulle pour cette ère ; "
+                        "le reste est attribué aux autres classes du pays (utile pour "
+                        "elles), cette classe s'entraîne sur Numista augmenté")
         conn.execute(
             "UPDATE cohort_jobs SET status=?, n_total=COALESCE(n_total, ?), "
             "n_done=?, n_produced=?, n_attributed_target=?, "

@@ -561,7 +561,9 @@ async function onRecrop(c: CohortFunnelCoin) {
               <!-- 3b. Trace in-row du scrape (BUG-3) — réconciliée depuis
                    source_runs : la trace persistée qui manquait. running → barre ;
                    failed → badge rouge visible (fini le run failed silencieux) ;
-                   done → note honnête (ex « N crops, 0 attribué à cette pièce »). -->
+                   done → note honnête au niveau CLASSE (design_group) : un scrape
+                   de standard nourrit une classe ArcFace (be-2007+be-1999=t1), pas
+                   un eurio_id isolé. « N crops · M classe » + tooltip explicatif. -->
               <span
                 v-if="scrapeJob(c)?.status === 'running'"
                 class="coin__job"
@@ -579,7 +581,7 @@ async function onRecrop(c: CohortFunnelCoin) {
                 v-else-if="scrapeJob(c)?.status === 'done' && scrapeJob(c)?.note"
                 class="coin__muted"
                 :title="scrapeJob(c)?.note ?? ''"
-              >{{ scrapeJob(c)?.n_produced ?? 0 }} crops · {{ scrapeJob(c)?.n_attributed_target ?? 0 }} ici</span>
+              >{{ scrapeJob(c)?.n_produced ?? 0 }} crops · {{ scrapeJob(c)?.n_attributed_target ?? 0 }} classe</span>
               <span
                 v-if="!c.below_real_floor && reviewCount(c) === 0 && recropCount(c) === 0"
                 class="coin__muted"
