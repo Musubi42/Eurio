@@ -211,7 +211,7 @@ class EbayAdapter:
                 )
             coin_ids = [c.eurio_id for c in coins]
             n_in_group = len(coins)
-        limit = search_limit_for_group(n_in_group)
+        limit = search_limit_for_group(n_in_group, standard=is_standard)
 
         # Routage uniforme : EBAY_DE puis EBAY_ES, chacun queryé dans sa
         # langue native (cf. marketplaces.py — décision benchmark).

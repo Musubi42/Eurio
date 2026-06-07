@@ -166,13 +166,28 @@ def load_coin(conn: sqlite3.Connection, eurio_id: str) -> CoinIdentity:
 SEARCH_LIMIT_MIN = 75
 SEARCH_LIMIT_MAX = 200
 SEARCH_LIMIT_PER_COIN = 25
+# Standards : une recherche pays couvre N *design groups* (avers), pas une
+# pièce. L'offre Juan Carlos / Albert II est noyée dans les commémos du pays
+# (la recherche large « 2 euro España » ramène surtout des commémos). On
+# ratisse donc ~3× plus large pour qu'un standard rare remonte — au prix d'un
+# review-pool plus gros (assumé : la review N-contre-3-designs absorbe). La
+# borne dure reste 200 (cap API Browse par appel ; au-delà → pagination V2).
+SEARCH_LIMIT_STANDARD_MULT = 3
 
 
-def search_limit_for_group(n_coins: int) -> int:
-    """Limite de résultats eBay pour un groupe de `n_coins` pièces."""
+def search_limit_for_group(n_coins: int, *, standard: bool = False) -> int:
+    """Limite de résultats eBay pour un groupe de découverte.
+
+    Commémo : ~25 résultats/pièce (un groupe = K commémos-sœurs partageant la
+    requête). Standard : ``×SEARCH_LIMIT_STANDARD_MULT`` — la recherche pays
+    couvre toutes les ères mais la part standard est diluée par les commémos,
+    on compense par un recall plus large. Plafonné à 200 (cap API) dans les
+    deux cas — au-delà = pagination (différée)."""
+    per_coin = SEARCH_LIMIT_PER_COIN * (SEARCH_LIMIT_STANDARD_MULT if standard else 1)
+    floor = SEARCH_LIMIT_MIN * (SEARCH_LIMIT_STANDARD_MULT if standard else 1)
     return max(
-        SEARCH_LIMIT_MIN,
-        min(SEARCH_LIMIT_MAX, SEARCH_LIMIT_PER_COIN * max(n_coins, 1)),
+        min(SEARCH_LIMIT_MAX, floor),
+        min(SEARCH_LIMIT_MAX, per_coin * max(n_coins, 1)),
     )
 
 

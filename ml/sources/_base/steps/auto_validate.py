@@ -306,6 +306,49 @@ def run_auto_validate_dino_backfill(
     )
 
 
+# Called by: ml/api/review_queue_routes.py (manual_crop) — recompute on demand
+# after a human re-crop, so the Dino suggestions panel reflects the corrected
+# crop without waiting for a batch backfill.
+def predict_and_persist_one(
+    *,
+    store,
+    asset_id: str,
+    crop_path: Path,
+    target_country: str | None = None,
+    anchors_kind: str = "2eur_commemo",
+) -> DinoPredictionRow | None:
+    """Encode one crop, match against the anchor bank, upsert the prediction.
+
+    Reuses the process-wide encoder + bank singletons (same path as the
+    batch backfill → identical format). Returns the persisted row, or None
+    if the bank is missing or the crop can't be encoded. Scope is NOT
+    enforced here: a human re-crop is an explicit action and the caller
+    owns the decision to run Dino (the V1 bank is 2€ commémo anchors).
+    """
+    bank = _get_bank(anchors_kind)
+    if bank is None:
+        logger.warning(
+            "predict_and_persist_one: anchor bank %s missing — skipping",
+            anchors_kind,
+        )
+        return None
+    encoder, device, transform = _get_encoder_singleton()
+    prediction = _predict_one(
+        asset_id=asset_id,
+        crop_path=crop_path,
+        bank=bank,
+        encoder=encoder,
+        device=device,
+        transform=transform,
+        anchors_kind=anchors_kind,
+        target_country=target_country,
+    )
+    if prediction is None:
+        return None
+    store.upsert_dino_predictions([prediction])
+    return prediction
+
+
 def _run_inner(
     *,
     conn: sqlite3.Connection,

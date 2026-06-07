@@ -30,6 +30,8 @@ const props = defineProps<{
   assetId?: string | null
   /** Compact = strip horizontal léger. Standard = panel droit / gauche. */
   variant?: 'standard' | 'compact'
+  /** Bumpé après un re-crop manuel : refetch (Dino recalculé server-side). */
+  reloadKey?: number
 }>()
 
 const variant = computed(() => props.variant ?? 'standard')
@@ -59,6 +61,13 @@ watch(
     if (props.reviewId || props.assetId) void load()
   },
   { immediate: true },
+)
+
+watch(
+  () => props.reloadKey,
+  (next, prev) => {
+    if (next !== prev && (props.reviewId || props.assetId)) void load()
+  },
 )
 
 const verdict = computed(() => computeDinoVerdict(data.value))

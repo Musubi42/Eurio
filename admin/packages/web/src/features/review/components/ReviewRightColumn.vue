@@ -26,6 +26,11 @@ defineProps<{
    *  quand il n'y a pas de proposition (verdict theme-match ambigu).
    *  Optionnel : la page lot ne les passe pas. */
   groupCandidates?: ReviewCandidate[]
+  /** Design groups avers standard du pays (crop issu d'un scrape standard,
+   *  listing_year NULL). Affichés EN PRIORITÉ tout en haut : le reviewer
+   *  tranche entre N designs (ex. ES → Juan Carlos t1/t2 / Felipe VI) d'un
+   *  clic, au lieu de subir un drop « ambigu ». Optionnel (page lot). */
+  standardCandidates?: ReviewCandidate[]
   /** Mode de la colonne — 'auto' affiche Top N + Dino, 'free' affiche
    *  le FreeSelectorPanel inline. */
   mode: 'auto' | 'free'
@@ -43,6 +48,8 @@ defineProps<{
    *  Quand fournie, l'item correspondant apparaît "sélectionné/validé"
    *  (fond vert + icône check). Non fourni = comportement single inchangé. */
   assignedEurioId?: string | null
+  /** Bumpé après un re-crop manuel : force DinoSuggestions à refetcher. */
+  dinoReloadKey?: number
 }>()
 
 const emit = defineEmits<{
@@ -51,11 +58,49 @@ const emit = defineEmits<{
   (e: 'dino-select', suggestion: DinoSuggestion): void
   (e: 'free-select', entry: CoinSearchEntry): void
   (e: 'group-select', candidate: ReviewCandidate): void
+  (e: 'standard-select', candidate: ReviewCandidate): void
 }>()
 </script>
 
 <template>
   <aside class="flex min-h-0 flex-col overflow-hidden">
+    <!-- Design groups STANDARD du pays : crop d'un scrape standard (recherche
+         large pays). Affichés en PRIORITÉ tout en haut — un standard sans
+         année propre n'est pas splittable automatiquement, le reviewer tranche
+         entre N designs d'un clic. La sélection libre (F) couvre les commémos
+         noyées dans le pool. -->
+    <section
+      v-if="(standardCandidates?.length ?? 0) > 0"
+      class="mb-3 flex flex-col gap-1.5"
+    >
+      <p
+        class="flex items-baseline justify-between font-mono text-[10px] uppercase tracking-wider"
+        style="color: var(--indigo-700);"
+      >
+        <span>Pièces standards · {{ standardCandidates!.length }} designs</span>
+        <span class="opacity-60">scrape standard</span>
+      </p>
+      <div
+        v-for="c in standardCandidates"
+        :key="'std-' + c.eurio_id"
+        class="relative rounded-md transition-all duration-150"
+        :style="assignedEurioId === c.eurio_id ? {
+          outline: '2px solid var(--success)',
+          outlineOffset: '1px',
+          borderRadius: '8px',
+        } : {}"
+      >
+        <CandidateRow
+          :candidate="c"
+          :index="0"
+          :badge="assignedEurioId === c.eurio_id ? '✓' : '◎'"
+          :focused="freeSearchCandidate?.eurio_id === c.eurio_id"
+          :assigned="assignedEurioId === c.eurio_id"
+          @focus="emit('standard-select', c)"
+        />
+      </div>
+    </section>
+
     <!-- Pièce proposée : la pièce attribuée au listing par le theme-match.
          Toujours affichée (mode-agnostic), pré-sélectionnée par défaut.
          ~80 % des reviews valident la proposition → un clic gagné.
@@ -162,6 +207,7 @@ const emit = defineEmits<{
           :review-id="reviewId"
           variant="standard"
           :assigned-eurio-id="assignedEurioId"
+          :reload-key="dinoReloadKey"
           @select="(s) => emit('dino-select', s)"
         />
         <DinoSuggestions
@@ -209,6 +255,7 @@ const emit = defineEmits<{
     <template v-else>
       <FreeSelectorPanel
         class="min-h-0 flex-1"
+        :enable-kbd-nav="mode === 'free'"
         @select="(e) => emit('free-select', e)"
       />
     </template>

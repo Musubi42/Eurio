@@ -37,6 +37,9 @@ const props = defineProps<{
   /** eurio_id assigné au crop actif (contexte lot). La suggestion correspondante
    *  passe "validé" (vert + check). Non fourni = comportement single inchangé. */
   assignedEurioId?: string | null
+  /** Bumpé par le parent après un re-crop manuel : force un refetch des
+   *  suggestions (le backend vient de recalculer Dino sur le nouveau crop). */
+  reloadKey?: number
 }>()
 
 const emit = defineEmits<{
@@ -47,6 +50,9 @@ const variant = computed(() => props.variant ?? 'standard')
 const data = ref<DinoSuggestionsResponse | null>(null)
 const loading = ref(false)
 const loaded = ref(false)
+// Distingue le 1er chargement (« …chargement ») du refetch post-recrop
+// (« Dino recalcule… ») pour un retour visuel clair après recadrage.
+const recomputing = ref(false)
 
 async function load() {
   loading.value = true
@@ -61,6 +67,7 @@ async function load() {
   } finally {
     loading.value = false
     loaded.value = true
+    recomputing.value = false
   }
 }
 
@@ -70,6 +77,18 @@ watch(
     if (props.reviewId || props.assetId) void load()
   },
   { immediate: true },
+)
+
+// Re-crop validé : le parent bumpe reloadKey → Dino a été recalculé côté
+// backend, on refetch. immediate:false pour ne pas doubler le load initial.
+watch(
+  () => props.reloadKey,
+  (next, prev) => {
+    if (next !== prev && (props.reviewId || props.assetId)) {
+      recomputing.value = true
+      void load()
+    }
+  },
 )
 
 const hasCountryBand = computed(
@@ -161,10 +180,11 @@ const previewLabel = computed(() => {
 
     <p
       v-if="loading"
-      class="mt-3 font-mono text-[11px]"
-      style="color: var(--ink-400);"
+      class="mt-3 flex items-center gap-1.5 font-mono text-[11px]"
+      :style="{ color: recomputing ? 'var(--indigo-700)' : 'var(--ink-400)' }"
     >
-      …chargement.
+      <Sparkles v-if="recomputing" class="h-3 w-3 animate-spin" />
+      {{ recomputing ? 'Dino recalcule sur le nouveau crop…' : '…chargement.' }}
     </p>
 
     <p

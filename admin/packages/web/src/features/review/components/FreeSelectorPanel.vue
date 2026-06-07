@@ -13,6 +13,12 @@ import {
 } from '../composables/useCoinsSearch'
 import CoinHoverPreview from './CoinHoverPreview.vue'
 
+const props = withDefaults(defineProps<{
+  /** Active la nav clavier (codes ISO + grilles fléchées). Le callsite single
+   *  ne l'active qu'en mode='free' ; les pages lot restent souris (défaut). */
+  enableKbdNav?: boolean
+}>(), { enableKbdNav: false })
+
 const emit = defineEmits<{
   (e: 'select', entry: CoinSearchEntry): void
 }>()
@@ -112,21 +118,138 @@ function exitFuzzyMode() {
   results.value = []
 }
 
-// ─── Keyboard ───────────────────────────────────────────────────────────
-// `/` active le mode fuzzy. Ignoré si l'utilisateur tape dans un input
-// (sinon impossible d'écrire un slash dans une textbox ailleurs sur la page).
+// ─── Keyboard : nav cascade (codes ISO + grilles fléchées) ───────────────
+// `/` active le mode fuzzy (toujours). La nav cascade n'est active que si
+// `enableKbdNav` (callsite single en mode free). Capture phase + stopProp
+// pour passer DEVANT les raccourcis globaux de /review (sinon taper « FI »
+// déclencherait F=toggle, I=…). Cf. CircleCropEditor (même précédent capture).
 
-function handleKeydown(e: KeyboardEvent) {
+type Zone = 'country' | 'denom' | 'year' | 'results'
+const activeZone = ref<Zone>('country')
+const isoBuffer = ref('')
+const DEFAULT_DENOM_IDX = Math.max(0, DENOMINATIONS.findIndex((d) => d.value === '2eur-comm'))
+const denomIdx = ref(DEFAULT_DENOM_IDX)
+const yearIdx = ref(0)
+const resultIdx = ref(0)
+const resultsEl = ref<HTMLElement | null>(null)
+
+// Reset du curseur résultats quand la liste change (nouvelle recherche).
+watch(results, () => {
+  resultIdx.value = 0
+  if (props.enableKbdNav && activeZone.value === 'results') {
+    void nextTick(showResultPreview)
+  }
+})
+
+function availableZones(): Zone[] {
+  const z: Zone[] = ['country']
+  if (country.value) z.push('denom')
+  if (country.value && denomination.value) z.push('year')
+  if (results.value.length) z.push('results')
+  return z
+}
+
+function cycleZone(dir: 1 | -1) {
+  const zs = availableZones()
+  const i = zs.indexOf(activeZone.value)
+  activeZone.value = zs[((i < 0 ? 0 : i) + dir + zs.length) % zs.length]
+}
+
+function selectCountryKbd(code: string) {
+  if (fuzzyMode.value) exitFuzzyMode()
+  country.value = code
+  // Pré-règle la dénomination sur la cible cohorte (2€ commémo) → résultats
+  // immédiats. L'utilisateur ajuste ensuite avec ← / →.
+  denomIdx.value = DEFAULT_DENOM_IDX
+  denomination.value = DENOMINATIONS[DEFAULT_DENOM_IDX].value
+  yearIdx.value = 0
+  year.value = null
+  activeZone.value = 'denom'
+}
+
+function pushIso(ch: string) {
+  const next = (isoBuffer.value + ch).toUpperCase()
+  if (EURO_COUNTRIES.some((c) => c.code === next)) { selectCountryKbd(next); isoBuffer.value = ''; return }
+  if (EURO_COUNTRIES.some((c) => c.code.startsWith(next))) { isoBuffer.value = next; return }
+  const solo = ch.toUpperCase()
+  isoBuffer.value = EURO_COUNTRIES.some((c) => c.code.startsWith(solo)) ? solo : ''
+}
+
+function moveDenom(dir: 1 | -1) {
+  denomIdx.value = Math.min(DENOMINATIONS.length - 1, Math.max(0, denomIdx.value + dir))
+  denomination.value = DENOMINATIONS[denomIdx.value].value
+}
+function moveYear(dir: 1 | -1) {
+  yearIdx.value = Math.min(COMMON_YEARS.value.length - 1, Math.max(0, yearIdx.value + dir))
+  year.value = COMMON_YEARS.value[yearIdx.value]
+}
+function moveResult(dir: 1 | -1) {
+  if (!results.value.length) return
+  resultIdx.value = Math.min(results.value.length - 1, Math.max(0, resultIdx.value + dir))
+  void nextTick(() => {
+    (resultsEl.value?.children[resultIdx.value] as HTMLElement | undefined)
+      ?.scrollIntoView({ block: 'nearest' })
+    showResultPreview()
+  })
+}
+
+// Réaffiche la même pop-up que le survol souris pour l'élément focusé au
+// clavier — clé du geste : comparer visuellement la pièce au « crop à résoudre ».
+function showResultPreview() {
+  const entry = results.value[resultIdx.value]
+  const el = resultsEl.value?.children[resultIdx.value] as HTMLElement | undefined
+  if (!entry || !el) return
+  hoveredKey.value = entry.eurio_id
+  hoveredRect.value = el.getBoundingClientRect()
+  hoveredEntry.value = entry
+}
+function clearPreview() {
+  hoveredKey.value = null
+  hoveredRect.value = null
+  hoveredEntry.value = null
+}
+
+// Entrer/sortir de la zone Résultats au clavier (Tab) → ouvre/ferme la pop-up.
+watch(activeZone, (z) => {
+  if (!props.enableKbdNav) return
+  if (z === 'results') void nextTick(showResultPreview)
+  else clearPreview()
+})
+
+function onKeyCapture(e: KeyboardEvent) {
   if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
   if (e.metaKey || e.ctrlKey || e.altKey) return
-  if (e.key === '/' && !fuzzyMode.value) {
-    enterFuzzyMode()
-    e.preventDefault()
+  if (e.key === '/' && !fuzzyMode.value) { enterFuzzyMode(); e.preventDefault(); return }
+  if (!props.enableKbdNav || fuzzyMode.value) return
+
+  const consume = () => { e.preventDefault(); e.stopPropagation() }
+  const k = e.key
+
+  if (k === 'Tab') { cycleZone(e.shiftKey ? -1 : 1); consume(); return }
+  if (k === 'Backspace') {
+    if (activeZone.value === 'country' && isoBuffer.value) { isoBuffer.value = isoBuffer.value.slice(0, -1); consume() }
+    return
+  }
+  if (/^[a-zA-Z]$/.test(k)) { activeZone.value = 'country'; pushIso(k); consume(); return }
+  if (k === 'ArrowLeft' || k === 'ArrowRight') {
+    const dir = k === 'ArrowRight' ? 1 : -1
+    if (activeZone.value === 'denom') { moveDenom(dir); consume() }
+    else if (activeZone.value === 'year') { moveYear(dir); consume() }
+    return
+  }
+  if (k === 'ArrowDown' || k === 'ArrowUp') {
+    if (activeZone.value === 'results') { moveResult(k === 'ArrowDown' ? 1 : -1); consume() }
+    return
+  }
+  if (k === 'Enter') {
+    if (activeZone.value === 'results' && results.value[resultIdx.value]) {
+      emit('select', results.value[resultIdx.value]); consume()
+    } else { cycleZone(1); consume() }
   }
 }
 
-onMounted(() => window.addEventListener('keydown', handleKeydown))
-onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
+onMounted(() => window.addEventListener('keydown', onKeyCapture, true))
+onBeforeUnmount(() => window.removeEventListener('keydown', onKeyCapture, true))
 
 // ─── Direct autocomplete (rescue cross-classe) ──────────────────────────
 // Champ libre: saisie eurio_id ou mot-clé, dropdown inline, fermeture blur.
@@ -337,6 +460,15 @@ function onRowLeave(eurioId: string) {
         style="color: var(--ink-500);"
       >
         <span style="color: var(--gold-600);">1.</span> Pays
+        <span
+          v-if="enableKbdNav && isoBuffer"
+          class="ml-1.5 rounded px-1 font-mono tracking-widest"
+          style="background: var(--gold-600); color: var(--surface);"
+        >⌨ {{ isoBuffer }}</span>
+        <span
+          v-else-if="enableKbdNav && activeZone === 'country'"
+          class="ml-1.5 normal-case tracking-normal opacity-60"
+        >tape le code pays…</span>
       </p>
       <div class="grid grid-cols-7 gap-1">
         <button
@@ -370,7 +502,7 @@ function onRowLeave(eurioId: string) {
       </p>
       <div class="flex flex-wrap gap-1">
         <button
-          v-for="d in DENOMINATIONS"
+          v-for="(d, di) in DENOMINATIONS"
           :key="d.value"
           type="button"
           class="rounded-full border px-2 py-0.5 text-[10px] transition-all"
@@ -378,6 +510,8 @@ function onRowLeave(eurioId: string) {
             borderColor: denomination === d.value ? 'var(--indigo-700)' : 'var(--surface-3)',
             color: denomination === d.value ? 'var(--surface)' : 'var(--ink-700)',
             background: denomination === d.value ? 'var(--indigo-700)' : 'var(--surface)',
+            boxShadow: enableKbdNav && activeZone === 'denom' && denomIdx === di
+              ? '0 0 0 2px var(--gold-600)' : 'none',
           }"
           @click="pickDenomination(d.value)"
         >
@@ -397,7 +531,7 @@ function onRowLeave(eurioId: string) {
       </p>
       <div class="years-scroll flex gap-1 overflow-x-auto pb-1">
         <button
-          v-for="y in COMMON_YEARS"
+          v-for="(y, yi) in COMMON_YEARS"
           :key="y ?? 'all'"
           type="button"
           class="shrink-0 rounded border px-2 py-0.5 font-mono text-[10px] tabular-nums transition-all"
@@ -407,6 +541,8 @@ function onRowLeave(eurioId: string) {
             background: year === y
               ? 'color-mix(in srgb, var(--gold-600) 8%, var(--surface))'
               : 'var(--surface)',
+            boxShadow: enableKbdNav && activeZone === 'year' && yearIdx === yi
+              ? '0 0 0 2px var(--gold-600)' : 'none',
           }"
           @click="pickYear(y)"
         >
@@ -440,6 +576,12 @@ function onRowLeave(eurioId: string) {
         class="rounded-md border-2 border-dashed px-3 py-4 text-center text-[11px]"
         style="border-color: var(--surface-3); color: var(--ink-400);"
       >
+        <template v-if="enableKbdNav">
+          Tape le <strong>code pays</strong> (ex. <kbd class="mx-0.5 inline-block rounded px-1 font-mono text-[10px]" style="background: var(--surface-1); border: 0.5px solid var(--surface-3); color: var(--ink-700);">FI</kbd>),
+          <kbd class="mx-0.5 inline-block rounded px-1 font-mono text-[10px]" style="background: var(--surface-1); border: 0.5px solid var(--surface-3); color: var(--ink-700);">Tab</kbd> entre zones,
+          <kbd class="mx-0.5 inline-block rounded px-1 font-mono text-[10px]" style="background: var(--surface-1); border: 0.5px solid var(--surface-3); color: var(--ink-700);">← →</kbd> / <kbd class="mx-0.5 inline-block rounded px-1 font-mono text-[10px]" style="background: var(--surface-1); border: 0.5px solid var(--surface-3); color: var(--ink-700);">↑ ↓</kbd>,
+          <kbd class="mx-0.5 inline-block rounded px-1 font-mono text-[10px]" style="background: var(--surface-1); border: 0.5px solid var(--surface-3); color: var(--ink-700);">⏎</kbd> sélectionne.<br />
+        </template>
         Sélectionne un pays puis une dénomination<br />
         ou tape <kbd class="mx-1 inline-block rounded px-1 py-0.5 font-mono text-[10px]" style="background: var(--surface-1); border: 0.5px solid var(--surface-3); color: var(--ink-700);">/</kbd> pour la recherche texte.
       </p>
@@ -452,14 +594,18 @@ function onRowLeave(eurioId: string) {
         Aucune pièce ne correspond.
       </p>
 
-      <ul v-else class="flex flex-col gap-1.5">
+      <ul v-else ref="resultsEl" class="flex flex-col gap-1.5">
         <li
-          v-for="r in results"
+          v-for="(r, ri) in results"
           :key="r.eurio_id"
           class="flex items-stretch gap-2.5 rounded-md border px-2 py-1.5 transition-colors"
           :style="{
-            borderColor: 'var(--surface-3)',
-            background: 'var(--surface)',
+            borderColor: enableKbdNav && activeZone === 'results' && resultIdx === ri
+              ? 'var(--gold-600)' : 'var(--surface-3)',
+            background: enableKbdNav && activeZone === 'results' && resultIdx === ri
+              ? 'color-mix(in srgb, var(--gold-600) 7%, var(--surface))' : 'var(--surface)',
+            boxShadow: enableKbdNav && activeZone === 'results' && resultIdx === ri
+              ? '0 0 0 1px var(--gold-600)' : 'none',
           }"
           @mouseenter="onRowEnter(r, $event)"
           @mouseleave="onRowLeave(r.eurio_id)"
