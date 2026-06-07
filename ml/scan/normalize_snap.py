@@ -878,8 +878,26 @@ def normalize_listing(bgr: np.ndarray,
     `census` : voir `detect_circles_multi`. `None` = flag d'env ; un bool explicite
     a priorité (pipeline eBay = `census=True`). Active aussi le gate anti-fragment.
     """
+    return normalize_listing_with_detections(bgr, config=config, census=census)[0]
+
+
+def normalize_listing_with_detections(
+    bgr: np.ndarray,
+    config: CropConfig | None = None,
+    census: bool | None = None,
+) -> tuple[list[NormalizationResult], list[CircleDetection]]:
+    """Comme `normalize_listing`, mais renvoie aussi la liste BRUTE des
+    détections (`detect_circles_multi` — acceptés ET rejetés).
+
+    Le caller (``detect_crop``) persiste cette liste dans
+    ``source_images.detections_json`` pour que la review lot affiche
+    l'Examination plate sans recompute live. Les crops renvoyés (1er
+    élément) restent ceux post-gate anti-fragment ; les détections (2e)
+    sont le constat complet avant gate — c'est le débug que l'humain veut
+    voir (cercles écartés inclus).
+    """
     if bgr is None or bgr.size == 0:
-        return []
+        return [], []
     use_census = _census_detect_enabled() if census is None else census
     detections = detect_circles_multi(bgr, census=use_census)
     results: list[NormalizationResult] = []
@@ -901,7 +919,7 @@ def normalize_listing(bgr: np.ndarray,
             from scan.census import face_scores
             scores = face_scores([r.image for r in results])
             results = [r for r, s in zip(results, scores) if s >= tau]
-    return results
+    return results, detections
 
 
 def normalize_listing_path(path: Path,
@@ -909,6 +927,15 @@ def normalize_listing_path(path: Path,
                             census: bool | None = None) -> list[NormalizationResult]:
     bgr = cv2.imread(str(path), cv2.IMREAD_COLOR)
     return normalize_listing(bgr, config=config, census=census)
+
+
+def normalize_listing_path_with_detections(
+    path: Path,
+    config: CropConfig | None = None,
+    census: bool | None = None,
+) -> tuple[list[NormalizationResult], list[CircleDetection]]:
+    bgr = cv2.imread(str(path), cv2.IMREAD_COLOR)
+    return normalize_listing_with_detections(bgr, config=config, census=census)
 
 
 # ---------------------------------------------------------------------------

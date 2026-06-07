@@ -57,7 +57,7 @@ _AUTO_DINO_ENGINE_VERSION = (
     f"-d{DINO_VERDICT_THRESHOLDS['country_spread_min']}"
 )
 from scan.normalize_snap import detect_circles_multi
-from state import Store, emit_state_event
+from store import Store, emit_state_event
 
 from .crop_edit import (
     CropEditContextData,
@@ -564,9 +564,20 @@ def list_queue(
             (eurio_id,),
         ).fetchone()
         if std_coin and std_coin["country"]:
+            # Pool standard CANONIQUE = (pays, single, lane manual, open). On
+            # force ``kind=single`` + ``lane=manual`` ici quels que soient les
+            # query params : les coffrets/lots (kind=lot) ont leur review lot
+            # dédiée (un coffret n'est pas une standard unique), et les commémos
+            # rescue vivent en lanes ccproxy/auto_accept. Sans ce resserrement,
+            # ouvrir la review d'un standard déversait tout le pool pays toutes
+            # lanes (≈ centaines d'items mélangés). Ce scope == celui que le
+            # cockpit compte (lab_routes funnel-status) → les 2 surfaces
+            # affichent le MÊME nombre.
             where += (
                 " AND s.source = 'ebay' AND s.listing_country = ? "
-                "AND s.listing_year IS NULL"
+                "AND s.listing_year IS NULL "
+                "AND rq.kind = 'single' "
+                "AND (rq.lane = 'manual' OR rq.lane IS NULL)"
             )
             args.append(std_coin["country"])
         else:
@@ -1297,17 +1308,18 @@ def _parse_bbox(json_str: str | None) -> ReviewBbox | None:
 
 
 def _compute_detections(raw_storage_key: str | None,
-                         crop_indices_in_db: list[int]) -> list[LotDetection]:
-    """Re-run `detect_circles_multi` on the raw — used for the Stage 2 debug view.
+                        crop_indices_in_db: list[int],
+                        census: bool | None = None) -> list[LotDetection]:
+    """Re-run `detect_circles_multi` on the raw — re-détection à la demande
+    (Chunk C). N'est PLUS sur le chemin de chargement (get_lot lit le JSON
+    persisté) ; appelé seulement quand l'humain relance la détection sur une
+    image. Coûteux (YOLO+Hough), d'où le déclenchement manuel.
 
-    Compute on-the-fly, no persistence. Latency ~50-200ms per image
-    (acceptable for an admin view that's slow by nature). The accepted
-    detections are matched to the existing `image_assets` rows by order
-    (the pipeline is deterministic so accepted-detection-order ==
-    crop_index order).
+    Les détections acceptées sont mappées aux `image_assets` existants par
+    ordre (pipeline déterministe : ordre accepté == ordre crop_index).
 
-    `raw_storage_key` is the S3 key in `enrichment-raws` (since SS-1
-    write-through MinIO). local_path() does read-through cache fetch.
+    `census` : aligne le mode sur le scrape (eBay = census=True). None = flag
+    d'env. `raw_storage_key` = clé S3 `enrichment-raws` (read-through cache).
     """
     if not raw_storage_key:
         return []
@@ -1319,7 +1331,7 @@ def _compute_detections(raw_storage_key: str | None,
     bgr = cv2.imread(str(p), cv2.IMREAD_COLOR)
     if bgr is None or bgr.size == 0:
         return []
-    detections = detect_circles_multi(bgr)
+    detections = detect_circles_multi(bgr, census=census)
     out: list[LotDetection] = []
     accepted_idx = 0
     for det in detections:
@@ -1333,6 +1345,42 @@ def _compute_detections(raw_storage_key: str | None,
             accepted=det.accepted,
             reject_reason=det.reject_reason,
             method=det.method,
+            crop_index=crop_index,
+        ))
+    return out
+
+
+def _lot_detections_from_json(
+    detections_json: str | None,
+    crop_indices_in_db: list[int],
+) -> list[LotDetection]:
+    """Lit les détections persistées (`source_images.detections_json`) et
+    mappe les cercles ACCEPTÉS aux `crop_index` existants par ordre — même
+    logique que `_compute_detections`, mais zéro recompute.
+
+    Persistées au scrape par `detect_crop._detection_to_dict`. Renvoie []
+    si la colonne est nulle (listing pré-backfill → la plate sera vide tant
+    qu'on n'a pas relancé la détection à la main, cf. Chunk C).
+    """
+    if not detections_json:
+        return []
+    try:
+        raw = json.loads(detections_json)
+    except (json.JSONDecodeError, TypeError):
+        return []
+    out: list[LotDetection] = []
+    accepted_idx = 0
+    for det in raw:
+        crop_index: int | None = None
+        if det.get("accepted"):
+            if accepted_idx < len(crop_indices_in_db):
+                crop_index = crop_indices_in_db[accepted_idx]
+            accepted_idx += 1
+        out.append(LotDetection(
+            cx=det.get("cx", 0), cy=det.get("cy", 0), r=det.get("r", 0),
+            accepted=bool(det.get("accepted")),
+            reject_reason=det.get("reject_reason"),
+            method=det.get("method", ""),
             crop_index=crop_index,
         ))
     return out
@@ -1397,6 +1445,7 @@ def get_lot(listing_key: str) -> LotDetail:
         SELECT si.id AS source_image_id,
                si.raw_payload_json,
                si.storage_path AS raw_storage_path,
+               si.detections_json AS detections_json,
                si.width AS raw_width, si.height AS raw_height,
                a.id AS asset_id,
                a.crop_index, a.bbox_json, a.phash, a.eurio_id AS current_eurio_id,
@@ -1412,8 +1461,8 @@ def get_lot(listing_key: str) -> LotDetail:
         (listing_key,),
     ).fetchall()
 
-    # Storage paths kept aside per source_image for detection compute.
-    raw_paths: dict[str, str | None] = {}
+    # detections_json persisté au scrape, gardé de côté par source_image.
+    detections_json_by_si: dict[str, str | None] = {}
     by_si: dict[str, LotImage] = {}
     for r in rows:
         si_id = r["source_image_id"]
@@ -1425,7 +1474,7 @@ def get_lot(listing_key: str) -> LotDetail:
                     image_index = payload.get("image_index")
                 except json.JSONDecodeError:
                     pass
-            raw_paths[si_id] = r["raw_storage_path"]
+            detections_json_by_si[si_id] = r["detections_json"]
             by_si[si_id] = LotImage(
                 source_image_id=si_id,
                 image_index=image_index,
@@ -1453,11 +1502,15 @@ def get_lot(listing_key: str) -> LotDetail:
             bbox=_parse_bbox(r["bbox_json"]),
         ))
 
-    # Compute on-the-fly detections per image (Stage 2 debug). Crops in DB
-    # are sorted by crop_index already (ORDER BY si.id, a.crop_index).
+    # Lecture des détections persistées au scrape (Stage 2 debug). Plus de
+    # recompute live ici — c'était la cause des ~67s. Le rafraîchissement à
+    # la main se fait via l'endpoint /images/{sid}/detect (Chunk C). Crops
+    # triés par crop_index déjà (ORDER BY si.id, a.crop_index).
     for si_id, im in by_si.items():
         crop_indices = [c.crop_index for c in im.crops]
-        im.detections = _compute_detections(raw_paths.get(si_id), crop_indices)
+        im.detections = _lot_detections_from_json(
+            detections_json_by_si.get(si_id), crop_indices,
+        )
 
     # Tri images par image_index (None à la fin).
     images = sorted(
@@ -1486,6 +1539,111 @@ def get_lot(listing_key: str) -> LotDetail:
         images=images,
         prev_listing_key=prev_key,
         next_listing_key=next_key,
+    )
+
+
+class LotImageDetectResponse(BaseModel):
+    source_image_id: str
+    detections: list[LotDetection]
+
+
+# Consumed by: admin/packages/web/src/features/review/composables/useLotReview.ts (detectLotImage)
+@router.post("/lots/{listing_key}/images/{source_image_id}/detect",
+             response_model=LotImageDetectResponse)
+def detect_lot_image(listing_key: str, source_image_id: str) -> LotImageDetectResponse:
+    """Re-détection LIVE d'UNE image du listing (Chunk C) — rattrapage manuel
+    quand le scrape a raté des pièces.
+
+    Relance `detect_circles_multi` (mode aligné scrape : eBay = census), met à
+    jour `source_images.detections_json`, et renvoie les cercles (acceptés +
+    rejetés) pour overlay immédiat. Coûteux (YOLO+Hough) → déclenché à la main,
+    une image à la fois (jamais sur le chemin de chargement, cf. Chunk A).
+    """
+    conn = _store()._connection()  # noqa: SLF001
+    row = conn.execute(
+        f"""
+        SELECT si.id, si.source, si.storage_path
+          FROM source_images si
+         WHERE {_LISTING_KEY_SQL} = ? AND si.id = ?
+         LIMIT 1
+        """,
+        (listing_key, source_image_id),
+    ).fetchone()
+    if row is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Image '{source_image_id}' not found in lot '{listing_key}'.",
+        )
+
+    # crop_index existants → mapping accepté→crop_index (ordre déterministe).
+    crop_indices = [
+        r["crop_index"] for r in conn.execute(
+            "SELECT crop_index FROM image_assets WHERE source_image_id = ? "
+            "ORDER BY crop_index",
+            (source_image_id,),
+        ).fetchall()
+    ]
+    detections = _compute_detections(
+        row["storage_path"], crop_indices, census=(row["source"] == "ebay"),
+    )
+
+    # Persiste le constat rafraîchi (sans crop_index — dérivé à la lecture par
+    # _lot_detections_from_json). Même schéma que detect_crop._detection_to_dict.
+    conn.execute(
+        "UPDATE source_images SET detections_json = ? WHERE id = ?",
+        (json.dumps([{
+            "cx": d.cx, "cy": d.cy, "r": d.r, "method": d.method,
+            "accepted": d.accepted, "reject_reason": d.reject_reason,
+        } for d in detections]), source_image_id),
+    )
+    conn.commit()
+    return LotImageDetectResponse(source_image_id=source_image_id, detections=detections)
+
+
+class LotAddCropPayload(BaseModel):
+    cx: float
+    cy: float
+    r: float
+
+
+# Consumed by: admin/packages/web/src/features/review/composables/useLotReview.ts (addLotCrop)
+@router.post("/lots/{listing_key}/images/{source_image_id}/crops",
+             response_model=LotCrop)
+def add_lot_crop(listing_key: str, source_image_id: str,
+                 payload: LotAddCropPayload) -> LotCrop:
+    """Add-crop manuel (Chunk D) : crée un nouveau crop sur l'image depuis un
+    cercle (cx,cy,r) en px natifs du raw — rattrapage des pièces ratées par la
+    détection (depuis un cercle détecté cliqué OU un tracé manuel). Le crop
+    rejoint la review (kind lot) avec ses candidats ; les crops frères ne sont
+    pas touchés. Renvoie le LotCrop pour insertion live côté front.
+    """
+    conn = _store()._connection()  # noqa: SLF001
+    src = conn.execute(
+        f"""
+        SELECT si.source FROM source_images si
+         WHERE {_LISTING_KEY_SQL} = ? AND si.id = ?
+         LIMIT 1
+        """,
+        (listing_key, source_image_id),
+    ).fetchone()
+    if src is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Image '{source_image_id}' not found in lot '{listing_key}'.",
+        )
+
+    from api.crop_edit import create_manual_crop
+    new = create_manual_crop(
+        _store(), source_image_id, payload.cx, payload.cy, payload.r)
+    return LotCrop(
+        asset_id=new.asset_id,
+        review_id=new.review_id,
+        crop_url=f"/sources/{src['source']}/assets/{new.asset_id}/file",
+        crop_index=new.crop_index,
+        phash=new.phash,
+        current_eurio_id=None,
+        candidate_eurio_ids=_parse_candidates(json.dumps(new.candidate_eurio_ids)),
+        bbox=_parse_bbox(json.dumps(new.bbox)),
     )
 
 

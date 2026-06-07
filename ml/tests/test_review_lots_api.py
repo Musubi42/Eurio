@@ -28,7 +28,7 @@ if str(ML_DIR) not in sys.path:
 
 from api import review_queue_routes
 from api.review_queue_routes import router as review_router
-from state import Store
+from store import Store
 
 
 # ── App fixture (avec store override) ─────────────────────────────────────
@@ -428,53 +428,152 @@ def test_lot_detail_includes_raw_dimensions(app_client):
     assert isinstance(im["detections"], list)
 
 
-def test_lot_detail_detections_empty_when_raw_missing(app_client):
-    """Pas de raw sur disque → detections = [] (pas une erreur, vue debug dégradée)."""
+def test_lot_detail_detections_empty_when_json_null(app_client):
+    """detections_json NULL (listing pré-backfill) → detections = [] (plate
+    vide jusqu'au backfill ou re-détection manuelle, pas une erreur)."""
     _, conn, client = app_client
     _seed_lot_listing(conn, item_id="A1", n_images=1, crops_per_image=(1,))
     body = client.get("/review-queue/lots/ebay_A1").json()
     im = body["images"][0]
-    # storage_path = '/tmp/raw_SI_A1_0.jpg' qui n'existe pas → detections vides.
     assert im["detections"] == []
 
 
-def test_lot_detail_detections_computed_from_real_raw(app_client, tmp_path):
-    """Avec un vrai raw sur disque, les détections sont calculées on-the-fly.
-
-    On génère une image synthétique avec 2 cercles évidents → on s'attend
-    à ≥ 2 détections acceptées, et les `crop_index` matchent les image_assets.
+def test_lot_detail_detections_read_from_persisted_json(app_client):
+    """get_lot LIT `source_images.detections_json` (persisté au scrape) — plus
+    aucun recompute live (c'était la cause des ~67s). Les cercles ACCEPTÉS
+    sont mappés aux `crop_index` des image_assets par ordre.
     """
-    import cv2
-    import numpy as np
+    import json
 
     _, conn, client = app_client
-    seeded = _seed_lot_listing(conn, item_id="A1", n_images=1, crops_per_image=(2,))
+    _seed_lot_listing(conn, item_id="A1", n_images=1, crops_per_image=(2,))
 
-    # Build a clean 2-coin synthetic raw on disk.
-    raw_path = tmp_path / "raw_2coins.jpg"
-    img = np.full((900, 1200, 3), 40, dtype=np.uint8)
-    cv2.circle(img, (350, 450), 200, (220, 200, 180), -1)
-    cv2.circle(img, (350, 450), 200, (40, 40, 40), 3)
-    cv2.circle(img, (850, 450), 200, (220, 200, 180), -1)
-    cv2.circle(img, (850, 450), 200, (40, 40, 40), 3)
-    cv2.imwrite(str(raw_path), img)
-
+    # 2 acceptés (→ crop_index 0,1) + 1 rejeté (crop_index None).
+    persisted = [
+        {"cx": 350, "cy": 450, "r": 200, "method": "yolo+hough",
+         "accepted": True, "reject_reason": None},
+        {"cx": 850, "cy": 450, "r": 200, "method": "yolo+hough",
+         "accepted": True, "reject_reason": None},
+        {"cx": 1100, "cy": 100, "r": 40, "method": "yolo+bbox",
+         "accepted": False, "reject_reason": "radius_too_small"},
+    ]
     conn.execute(
-        "UPDATE source_images SET storage_path=?, width=1200, height=900 WHERE id=?",
-        (str(raw_path), "SI_A1_0"),
+        "UPDATE source_images SET detections_json=? WHERE id=?",
+        (json.dumps(persisted), "SI_A1_0"),
     )
 
     body = client.get("/review-queue/lots/ebay_A1").json()
     im = body["images"][0]
+    assert len(im["detections"]) == 3
     accepted = [d for d in im["detections"] if d["accepted"]]
-    assert len(accepted) >= 2, f"expected ≥2 accepted, got {im['detections']}"
-    # Each accepted detection should have crop_index in [0, 1] (DB has 2 crops).
+    assert len(accepted) == 2
     db_crop_indices = {c["crop_index"] for c in im["crops"]}
-    for det in accepted[:2]:
+    for det in accepted:
         assert det["crop_index"] in db_crop_indices
-    # Each detection has the expected schema.
+    # Le rejeté n'a pas de crop_index.
+    rejected = [d for d in im["detections"] if not d["accepted"]]
+    assert rejected[0]["crop_index"] is None
+    assert rejected[0]["reject_reason"] == "radius_too_small"
+    # Schéma exposé.
     for det in im["detections"]:
         assert {"cx", "cy", "r", "accepted", "reject_reason", "method"} <= set(det)
+
+
+def test_detect_lot_image_404_when_image_not_in_lot(app_client):
+    """POST /detect sur une source_image absente du listing → 404."""
+    _, conn, client = app_client
+    _seed_lot_listing(conn, item_id="A1", n_images=1, crops_per_image=(2,))
+    resp = client.post("/review-queue/lots/ebay_A1/images/SI_NOPE_0/detect")
+    assert resp.status_code == 404
+
+
+def test_detect_lot_image_persists_and_returns(app_client, monkeypatch):
+    """POST /detect relance la détection (Chunk C), persiste detections_json,
+    renvoie les cercles. `_compute_detections` monkeypatché (pas de YOLO/raw).
+    """
+    from api.review_queue_routes import LotDetection
+
+    _, conn, client = app_client
+    _seed_lot_listing(conn, item_id="A1", n_images=1, crops_per_image=(2,))
+
+    fake = [
+        LotDetection(cx=350, cy=450, r=200, accepted=True,
+                     reject_reason=None, method="yolo+hough", crop_index=0),
+        LotDetection(cx=850, cy=450, r=200, accepted=True,
+                     reject_reason=None, method="yolo+hough", crop_index=1),
+        LotDetection(cx=1100, cy=100, r=40, accepted=False,
+                     reject_reason="radius_too_small", method="yolo+bbox",
+                     crop_index=None),
+    ]
+    monkeypatch.setattr(review_queue_routes, "_compute_detections",
+                        lambda *a, **k: fake)
+
+    resp = client.post("/review-queue/lots/ebay_A1/images/SI_A1_0/detect")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["source_image_id"] == "SI_A1_0"
+    assert len(body["detections"]) == 3
+    assert sum(1 for d in body["detections"] if d["accepted"]) == 2
+
+    # detections_json persisté (sans crop_index — dérivé à la lecture).
+    persisted = conn.execute(
+        "SELECT detections_json FROM source_images WHERE id='SI_A1_0'",
+    ).fetchone()["detections_json"]
+    parsed = json.loads(persisted)
+    assert len(parsed) == 3
+    assert "crop_index" not in parsed[0]
+    assert {"cx", "cy", "r", "accepted", "reject_reason", "method"} == set(parsed[0])
+
+    # get_lot relit le JSON fraîchement persisté → mêmes 3 cercles.
+    im = client.get("/review-queue/lots/ebay_A1").json()["images"][0]
+    assert len(im["detections"]) == 3
+
+
+def test_add_lot_crop_404_when_image_not_in_lot(app_client):
+    """POST /crops sur une source_image absente du listing → 404."""
+    _, conn, client = app_client
+    _seed_lot_listing(conn, item_id="A1", n_images=1, crops_per_image=(1,))
+    resp = client.post(
+        "/review-queue/lots/ebay_A1/images/SI_NOPE_0/crops",
+        json={"cx": 100, "cy": 100, "r": 50},
+    )
+    assert resp.status_code == 404
+
+
+def test_add_lot_crop_returns_new_crop(app_client, monkeypatch):
+    """POST /crops crée un crop (Chunk D) et renvoie le LotCrop enrichi.
+    `create_manual_crop` monkeypatché (pas de raw/MinIO/Dino dans le test)."""
+    from api.crop_edit import NewCropData
+
+    _, conn, client = app_client
+    _seed_lot_listing(conn, item_id="A1", n_images=1, crops_per_image=(1,))
+
+    def fake_create(store, source_image_id, cx, cy, r):
+        return NewCropData(
+            asset_id="NEW_ASSET", review_id="NEW_REVIEW",
+            source_image_id=source_image_id, crop_index=1,
+            bbox={"x": cx - r, "y": cy - r, "w": 2 * r, "h": 2 * r},
+            width=224, height=224, phash=123,
+            storage_path="ebay/run/NEW_ASSET.png",
+            candidate_eurio_ids=[{"eurio_id": "fr-2015-2eur-paix"}],
+            minio_ok=True, dino_recomputed=False,
+        )
+    import api.crop_edit as crop_edit_mod
+    monkeypatch.setattr(crop_edit_mod, "create_manual_crop", fake_create)
+
+    resp = client.post(
+        "/review-queue/lots/ebay_A1/images/SI_A1_0/crops",
+        json={"cx": 350, "cy": 450, "r": 200},
+    )
+    assert resp.status_code == 200, resp.text
+    crop = resp.json()
+    assert crop["asset_id"] == "NEW_ASSET"
+    assert crop["review_id"] == "NEW_REVIEW"
+    assert crop["crop_index"] == 1
+    assert "/assets/NEW_ASSET/file" in crop["crop_url"]
+    assert crop["bbox"]["w"] == 400
+    # candidat enrichi (eurio_id présent au minimum).
+    assert crop["candidate_eurio_ids"][0]["eurio_id"] == "fr-2015-2eur-paix"
 
 
 def test_lot_detail_prev_next_listing_keys(app_client):

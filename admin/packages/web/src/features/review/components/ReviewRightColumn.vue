@@ -215,6 +215,7 @@ const emit = defineEmits<{
           :asset-id="assetId"
           variant="standard"
           :assigned-eurio-id="assignedEurioId"
+          :reload-key="dinoReloadKey"
           @select="(s) => emit('dino-select', s)"
         />
 

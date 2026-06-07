@@ -30,13 +30,14 @@ from pathlib import Path
 import cv2
 
 from sources._base.dedup import ImageAssetRow, set_discovery_pipeline_state, upsert_image_asset
-from state import emit_state_event
+from store import emit_state_event
 from sources._base.phash import compute_phash
 from sources._base.run_logger import RunHandle
 from sources._base.storage import crop_cache_path, crop_key
 from storage.local_cache import local_path, upload_through
 from scan.normalize_snap import (
-    NormalizationResult, normalize_listing_path, normalize_studio_path,
+    NormalizationResult, normalize_listing_path_with_detections,
+    normalize_studio_path,
 )
 
 logger = logging.getLogger(__name__)
@@ -59,6 +60,20 @@ _STUDIO_SOURCES: frozenset[str] = frozenset({"mock", "numista"})
 
 def _crop_strategy(source_id: str) -> str:
     return "studio" if source_id in _STUDIO_SOURCES else "listing"
+
+
+def _detection_to_dict(det) -> dict:
+    """Sérialise un `CircleDetection` pour `source_images.detections_json`.
+
+    Schéma stable lu par la review lot (``_lot_detections_from_json`` côté
+    api/review_queue_routes.py). On ne stocke pas `votes` (non affiché).
+    """
+    return {
+        "cx": det.cx, "cy": det.cy, "r": det.r,
+        "method": det.method,
+        "accepted": det.accepted,
+        "reject_reason": det.reject_reason,
+    }
 
 
 @dataclass
@@ -156,6 +171,7 @@ def run_detect_crop(
             )
             continue
 
+        detections: list = []
         if _crop_strategy(source_id) == "studio":
             single = normalize_studio_path(raw)
             results: list[NormalizationResult] = [single] if single.image is not None else []
@@ -165,7 +181,17 @@ def run_detect_crop(
             # packaging). Validé 2€ ; cf. census-detector-design.md §9. Scopé à eBay
             # explicitement (la probe est 2€-only) — les autres sources `listing`
             # restent en mode strict. Le scan device (normalize_device) n'est pas concerné.
-            results = normalize_listing_path(raw, census=(source_id == "ebay"))
+            results, detections = normalize_listing_path_with_detections(
+                raw, census=(source_id == "ebay")
+            )
+            # Persiste le constat de détection complet (acceptés + rejetés) pour
+            # que la review lot affiche l'Examination plate sans recompute live.
+            # Écrit même quand 0 crop accepté (cercles rejetés restent un débug
+            # utile). Cf. plan review-lot Chunk A.
+            conn.execute(
+                "UPDATE source_images SET detections_json = ? WHERE id = ?",
+                (json.dumps([_detection_to_dict(d) for d in detections]), sid),
+            )
         if not results:
             # 0 crop n'est PAS une erreur : beaucoup de photos de listing
             # ne montrent pas de pièce détectable (certificat, emballage,

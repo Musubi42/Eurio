@@ -23,7 +23,7 @@ from pathlib import Path
 import cv2
 from fastapi import HTTPException
 
-from state import Store
+from store import Store
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +54,24 @@ class ManualCropData:
     height: int
     detection_method: str
     png_bytes: bytes
+    minio_ok: bool
+    dino_recomputed: bool
+
+
+@dataclass
+class NewCropData:
+    """Résultat d'un add-crop manuel (nouvel asset créé)."""
+
+    asset_id: str
+    review_id: str
+    source_image_id: str
+    crop_index: int
+    bbox: dict
+    width: int
+    height: int
+    phash: int | None
+    storage_path: str
+    candidate_eurio_ids: list[dict]
     minio_ok: bool
     dino_recomputed: bool
 
@@ -222,6 +240,203 @@ def apply_manual_crop(
         width=new_w, height=new_h,
         detection_method="manual",
         png_bytes=png_bytes,
+        minio_ok=minio_ok,
+        dino_recomputed=dino_recomputed,
+    )
+
+
+def _group_candidates_from_payload(raw_payload_json: str | None,
+                                   target_eurio_id: str | None) -> list[dict]:
+    """Candidats seed pour un crop ajouté à la main : reprend les
+    ``group_candidates`` du payload eBay (comme detect_crop), fallback sur la
+    cible du listing pour qu'au moins celle-ci soit proposée dans la review."""
+    cands: list[str] = []
+    if raw_payload_json:
+        try:
+            payload = json.loads(raw_payload_json)
+            raw = payload.get("group_candidates") if isinstance(payload, dict) else None
+            if isinstance(raw, list):
+                cands = [str(x) for x in raw if isinstance(x, str)]
+        except (json.JSONDecodeError, TypeError):
+            pass
+    if not cands and target_eurio_id:
+        cands = [target_eurio_id]
+    return [{"eurio_id": eid} for eid in cands]
+
+
+def create_manual_crop(
+    store: Store, source_image_id: str, cx: float, cy: float, r: float,
+) -> NewCropData:
+    """Crée un NOUVEAU crop (add-crop) sur une source_image depuis un cercle
+    (cx,cy,r) en px natifs du raw. Mirroir de ``detect_crop`` pour UN crop :
+    crop format prod → upload cache+MinIO → INSERT image_assets → Dino →
+    enqueue review (kind lot/single). Scopé au nouvel asset : les crops frères
+    ne sont jamais touchés (cf. garde recrop multi-pièces).
+
+    Sert au rattrapage des pièces que la détection a ratées (depuis un cercle
+    détecté cliqué OU un cercle tracé à la main — même chemin)."""
+    import uuid
+
+    from scan.normalize_snap import _crop_mask_resize_float
+    from sources._base.phash import compute_phash
+    from sources._base.storage import crop_key, crop_cache_path
+    from sources._base.dedup import ImageAssetRow, upsert_image_asset
+    from sources._base.steps.enqueue import _compute_priority, _kind_for_source_image
+    from foundation.review_lanes import compute_lane
+    from storage.local_cache import upload_through, local_path
+    from store import emit_state_event
+
+    conn = store._connection()  # noqa: SLF001
+    si = conn.execute(
+        """
+        SELECT id, source, storage_path, run_id, target_eurio_id,
+               raw_payload_json, is_lot_suspected
+          FROM source_images WHERE id = ?
+        """,
+        (source_image_id,),
+    ).fetchone()
+    if si is None:
+        raise HTTPException(status_code=404, detail="Source image not found.")
+    if not si["storage_path"]:
+        raise HTTPException(status_code=410, detail="Raw image unavailable.")
+
+    try:
+        raw_p = local_path("enrichment-raws", si["storage_path"])
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=410, detail=f"Raw missing: {exc}") from exc
+    bgr = cv2.imread(str(raw_p), cv2.IMREAD_COLOR)
+    if bgr is None or bgr.size == 0:
+        raise HTTPException(status_code=422, detail="Raw image unreadable.")
+    H, W = bgr.shape[:2]
+    if cx > W or cy > H or cx < 0 or cy < 0:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Circle centre ({cx},{cy}) outside raw {W}×{H}.",
+        )
+
+    res = _crop_mask_resize_float(bgr, cx, cy, r, method="manual_add")
+    if res.image is None:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Empty crop ({res.debug.get('error', 'unknown')}).",
+        )
+    ok, buf = cv2.imencode(".png", res.image)
+    if not ok:
+        raise HTTPException(status_code=500, detail="PNG encode failed.")
+    png_bytes = buf.tobytes()
+
+    crop_index = (conn.execute(
+        "SELECT COALESCE(MAX(crop_index), -1) AS m FROM image_assets "
+        "WHERE source_image_id = ?",
+        (source_image_id,),
+    ).fetchone()["m"]) + 1
+
+    asset_id = uuid.uuid4().hex
+    run_id = si["run_id"]
+    # run_id peut être NULL (vieux source_images) → fallback 'manual' dans la clé.
+    storage_key = crop_key(si["source"], run_id or "manual", asset_id)
+    cache_p = crop_cache_path(si["source"], run_id or "manual", asset_id)
+    cache_p.parent.mkdir(parents=True, exist_ok=True)
+    cache_p.write_bytes(png_bytes)
+    minio_ok = True
+    try:
+        upload_through("enrichment-crops", storage_key, png_bytes)
+    except Exception as exc:  # noqa: BLE001
+        minio_ok = False
+        logger.warning("[add-crop] MinIO write-through failed for %s: %s",
+                       storage_key, exc)
+
+    phash_value = compute_phash(res.image)
+    bbox = {"x": cx - r, "y": cy - r, "w": 2 * r, "h": 2 * r}
+    new_h, new_w = res.image.shape[0], res.image.shape[1]
+    candidate_list = _group_candidates_from_payload(
+        si["raw_payload_json"], si["target_eurio_id"])
+
+    upsert_image_asset(
+        conn,
+        ImageAssetRow(
+            id=asset_id,
+            source_image_id=source_image_id,
+            crop_index=crop_index,
+            bbox=bbox,
+            detection_method="manual_add",
+            resolution_status="needs_review",
+            candidate_eurio_ids=candidate_list or None,
+            phash=phash_value,
+            storage_path=storage_key,
+            width=new_w,
+            height=new_h,
+            run_id=run_id,
+        ),
+    )
+    conn.execute(
+        "UPDATE image_assets SET storage_status='present' WHERE id = ?",
+        (asset_id,),
+    )
+    emit_state_event(
+        conn, asset_id=asset_id, to_state="detected", actor="human",
+        reason="manual_add_crop", target_eurio_id=si["target_eurio_id"],
+        run_id=run_id,
+    )
+    conn.commit()
+
+    # Dino best-effort (suggestion layer, jamais fatal) — avant compute_lane
+    # pour que la lane soit informée.
+    dino_recomputed = False
+    try:
+        from sources._base.steps.auto_validate import predict_and_persist_one
+        target_eid = si["target_eurio_id"]
+        target_country = (
+            target_eid[:2].lower() if target_eid and len(target_eid) >= 2 else None
+        )
+        pred = predict_and_persist_one(
+            store=store, asset_id=asset_id, crop_path=cache_p,
+            target_country=target_country,
+        )
+        dino_recomputed = pred is not None
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[add-crop] Dino failed for asset=%s: %s", asset_id, exc)
+
+    # Enqueue review (réplique l'INSERT de run_enqueue, scopé au nouvel asset —
+    # les frères ont déjà leur row et ne sont pas touchés).
+    kind = _kind_for_source_image(
+        conn, source_image_id=source_image_id,
+        is_lot_suspected=bool(si["is_lot_suspected"]),
+    )
+    priority = _compute_priority(target_eurio_id=si["target_eurio_id"])
+    _verdict, lane = compute_lane(conn, asset_id)
+    review_id = uuid.uuid4().hex
+    conn.execute(
+        """
+        INSERT INTO review_queue (
+          id, image_asset_id, priority, candidate_eurio_ids_json,
+          kind, lane, status
+        ) VALUES (?, ?, ?, ?, ?, ?, 'open')
+        """,
+        (review_id, asset_id, priority,
+         json.dumps(candidate_list) if candidate_list else None, kind, lane),
+    )
+    emit_state_event(
+        conn, asset_id=asset_id, to_state="queued", actor="human",
+        reason="manual_add_enqueued", target_eurio_id=si["target_eurio_id"],
+        run_id=run_id,
+    )
+    conn.commit()
+
+    logger.info("[add-crop] asset=%s si=%s idx=%d kind=%s lane=%s minio=%s",
+                asset_id, source_image_id, crop_index, kind, lane, minio_ok)
+
+    return NewCropData(
+        asset_id=asset_id,
+        review_id=review_id,
+        source_image_id=source_image_id,
+        crop_index=crop_index,
+        bbox=bbox,
+        width=new_w,
+        height=new_h,
+        phash=phash_value,
+        storage_path=storage_key,
+        candidate_eurio_ids=candidate_list,
         minio_ok=minio_ok,
         dino_recomputed=dino_recomputed,
     )

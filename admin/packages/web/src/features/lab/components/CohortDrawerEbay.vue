@@ -486,7 +486,7 @@ async function onRecrop(c: CohortFunnelCoin) {
               <!-- 1. Crops déjà là à trancher → reviewer (transforme en train) -->
               <RouterLink
                 v-if="reviewCount(c) > 0"
-                :to="{ path: '/review/manual', query: { cohort: cohortId, eurio_id: c.eurio_id } }"
+                :to="{ path: '/review/manual', query: { cohort: cohortId, eurio_id: c.eurio_id, lane: 'manual' } }"
                 :class="['coin__btn', { 'coin__btn--primary': primaryAction(c) === 'review' }]"
                 :title="`${reviewCount(c)} crops en review POUR ${c.eurio_id} — review scopée à cette pièce, trancher fait monter sa ligne`"
               >

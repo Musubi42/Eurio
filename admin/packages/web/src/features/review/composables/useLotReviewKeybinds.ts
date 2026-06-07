@@ -36,6 +36,8 @@ export interface LotReviewKeybindHandlers {
   onCloseOverlay: () => void
   /** S : requalifier le listing en single (ce n'est pas un lot). */
   onRequalifySingle?: () => void
+  /** E : ouvre l'éditeur de re-crop sur le crop actif (aligné single). */
+  onRecropActive?: () => void
 }
 
 function isTypingTarget(el: EventTarget | null): boolean {
@@ -117,6 +119,10 @@ export function useLotReviewKeybinds(
         break
       case 's': case 'S':
         handlers.onRequalifySingle?.()
+        e.preventDefault()
+        break
+      case 'e': case 'E':
+        handlers.onRecropActive?.()
         e.preventDefault()
         break
       case '?':

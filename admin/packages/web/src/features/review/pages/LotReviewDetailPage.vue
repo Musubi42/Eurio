@@ -17,17 +17,19 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  ArrowLeft, ArrowRight, Check, CheckCircle2, ChevronDown,
-  Keyboard, Loader2, RotateCcw, SkipForward,
+  ArrowLeft, ArrowRight, Check, CheckCircle2, ChevronDown, Crop,
+  Keyboard, Loader2, Plus, RotateCcw, ScanSearch, SkipForward,
   Trash2, X,
 } from 'lucide-vue-next'
 import {
-  decideLot, fetchLot, LotReviewError, requalifyLotAsSingle,
-  type LotAssignment, type LotCandidate, type LotDetail, type LotRejectReason,
+  decideLot, detectLotImage, fetchLot, LotReviewError, requalifyLotAsSingle,
+  type LotAssignment, type LotCandidate, type LotCrop, type LotDetail,
+  type LotRejectReason,
 } from '../composables/useLotReview'
 import { useLotReviewKeybinds } from '../composables/useLotReviewKeybinds'
 import ReviewRightColumn from '../components/ReviewRightColumn.vue'
 import SplitCompare from '../components/SplitCompare.vue'
+import CircleCropEditor from '../components/CircleCropEditor.vue'
 import type { CoinSearchEntry } from '../composables/useCoinsSearch'
 import type { DinoSuggestion } from '../composables/useDinoSuggestions'
 
@@ -61,6 +63,28 @@ const cropRowRefs = ref<Record<string, HTMLElement | null>>({})
 
 // Hover bidirectionnel : asset_id survolé (crop card ↔ anneau overlay).
 const hoveredAssetId = ref<string | null>(null)
+
+// Re-crop manuel (touche E) — éditeur de cercle sur le crop actif, réutilise
+// CircleCropEditor (entrée reviewId). Cf. Chunk B plan review-lot.
+const showCropEditor = ref(false)
+// Cache-bust post-recrop par asset_id : le fichier crop est réécrit au même
+// chemin → ?b=<ts> force le refetch sans refetch tout le lot (qui effacerait
+// les décisions en cours). Aligné single (cropBust).
+const cropBustByAsset = ref<Record<string, number>>({})
+// Bumpé après recrop → ReviewRightColumn refetch les suggestions Dino
+// (recalculées server-side sur le nouveau crop). Aligné single.
+const dinoReloadKey = ref(0)
+
+// Re-détection à la demande (Chunk C) — relance detect_circles_multi sur
+// l'image active quand le scrape a raté des pièces. Coûteux → manuel.
+const detecting = ref(false)
+const detectError = ref<string | null>(null)
+
+// Add-crop (Chunk D) — éditeur de cercle sur l'image active pour créer un
+// nouveau crop là où la détection a raté. `addCropCircle` pré-remplit le
+// cercle (depuis une détection cliquée) ou null (tracé manuel).
+const showAddCrop = ref(false)
+const addCropCircle = ref<{ cx: number; cy: number; r: number } | null>(null)
 
 // ─── Colonne droite — state aligné single ──────────────────────────────
 // `mode` = 'auto' (Top N + Dino) ou 'free' (FreeSelectorPanel inline).
@@ -202,8 +226,10 @@ async function load(key: string) {
   }
 }
 
+// `immediate: true` couvre déjà le montage initial — pas de onMounted en
+// double (sinon 2 appels identiques au endpoint lourd). Couvre aussi la
+// navigation prev/next (la route change → listingKey change → reload).
 watch(listingKey, (k) => { if (k) void load(k) }, { immediate: true })
-onMounted(() => { if (listingKey.value) void load(listingKey.value) })
 
 // ─── Decision helpers ──────────────────────────────────────────────────
 
@@ -458,8 +484,81 @@ function closeOverlay() {
 // En mode free l'input texte du FreeSelectorPanel peut capter `/` — on
 // désactive les autres raccourcis pour éviter le double-effet.
 const keyboardEnabled = computed(
-  () => !showHelp.value && mode.value !== 'free',
+  () => !showHelp.value && mode.value !== 'free'
+    && !showCropEditor.value && !showAddCrop.value,
 )
+
+// E : ouvre l'éditeur de re-crop sur le crop actif. Réutilise CircleCropEditor
+// (entrée reviewId) — opère sur le RAW complet, ne régénère que CE crop
+// (apply_manual_crop keyé asset_id, crops frères intacts).
+function openRecropActive() {
+  if (activeCrop.value?.crop.review_id) showCropEditor.value = true
+}
+
+// Re-détecte l'image active à la demande (Chunk C). Met à jour
+// activeImage.detections en place (overlay live) sans refetch du lot. Les
+// cercles sans crop deviennent candidats add-crop (Chunk D).
+async function reDetectActiveImage() {
+  const im = activeImage.value
+  if (!im || detecting.value || !detail.value) return
+  detecting.value = true
+  detectError.value = null
+  try {
+    const res = await detectLotImage(detail.value.listing_key, im.source_image_id)
+    im.detections = res.detections
+    if (!showOverlay.value) showOverlay.value = true  // montre la plate
+  } catch (err) {
+    detectError.value = err instanceof LotReviewError ? err.message : String(err)
+  } finally {
+    detecting.value = false
+  }
+}
+
+// Contexte add-crop pour l'image active (CircleCropEditor mode addContext).
+const addCropContext = computed(() => {
+  const im = activeImage.value
+  if (!im || !detail.value || im.raw_width == null || im.raw_height == null) return null
+  return {
+    listingKey: detail.value.listing_key,
+    sourceImageId: im.source_image_id,
+    source: detail.value.source,
+    rawUrl: im.raw_url,
+    rawWidth: im.raw_width,
+    rawHeight: im.raw_height,
+    initialCircle: addCropCircle.value,
+  }
+})
+
+// Ouvre l'éditeur en mode add-crop (cercle vierge = tracé manuel, ou
+// pré-rempli depuis une détection sans crop).
+function openAddCrop(circle?: { cx: number; cy: number; r: number }) {
+  addCropCircle.value = circle ?? null
+  showAddCrop.value = true
+}
+
+// Crop ajouté : insère le nouveau LotCrop dans l'image active (réactif), le
+// rend actionnable, et place le curseur dessus.
+function onCropCreated(crop: LotCrop) {
+  const im = activeImage.value
+  if (im) {
+    im.crops.push(crop)
+    void nextTick(() => {
+      const idx = actionableCrops.value.findIndex((c) => c.crop.asset_id === crop.asset_id)
+      if (idx >= 0) activeCropIndex.value = idx
+    })
+  }
+  showAddCrop.value = false
+  addCropCircle.value = null
+}
+
+// Re-crop validé : bust le cache du crop recadré (sans refetch tout le lot,
+// qui effacerait les décisions) + relance les suggestions Dino.
+function onCropSaved() {
+  const id = activeAssetId.value
+  if (id) cropBustByAsset.value = { ...cropBustByAsset.value, [id]: Date.now() }
+  dinoReloadKey.value += 1
+  showCropEditor.value = false
+}
 
 useLotReviewKeybinds(keyboardEnabled, {
   onCandidateFocus: kbCandidateFocus,
@@ -475,6 +574,7 @@ useLotReviewKeybinds(keyboardEnabled, {
   onToggleHelp: toggleHelp,
   onCloseOverlay: closeOverlay,
   onRequalifySingle: requalifyAsSingle,
+  onRecropActive: openRecropActive,
 })
 
 // D toggle reste géré ici (pas dans le composable car spécifique à
@@ -482,7 +582,7 @@ useLotReviewKeybinds(keyboardEnabled, {
 function onKeydown(e: KeyboardEvent) {
   if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
   if (e.metaKey || e.ctrlKey || e.altKey) return
-  if (showHelp.value || mode.value === 'free') return
+  if (showHelp.value || mode.value === 'free' || showCropEditor.value || showAddCrop.value) return
   if (e.key === 'd' || e.key === 'D') { toggleOverlay(); e.preventDefault() }
 }
 onMounted(() => window.addEventListener('keydown', onKeydown))
@@ -544,8 +644,13 @@ function detectionRingWidth(cropIndex: number | null): number {
 // Cache-bust par phash : le crop est servi à URL stable (/assets/{id}/file).
 // Après régénération du fichier (même chemin), le navigateur ressert l'ancienne
 // image en cache → ?v=<phash> change quand le contenu change, forçant le refetch.
-function cropSrc(crop: { crop_url: string; phash: number | null }): string {
-  return crop.phash != null ? `${crop.crop_url}?v=${crop.phash}` : crop.crop_url
+// `?b=<ts>` ajoute un bust post-recrop in-session (le phash de `detail` n'est
+// pas rafraîchi sans refetch — cf. onCropSaved).
+function cropSrc(crop: { crop_url: string; phash: number | null; asset_id?: string }): string {
+  const base = crop.phash != null ? `${crop.crop_url}?v=${crop.phash}` : crop.crop_url
+  const bust = crop.asset_id ? cropBustByAsset.value[crop.asset_id] : undefined
+  if (bust == null) return base
+  return `${base}${base.includes('?') ? '&' : '?'}b=${bust}`
 }
 
 // Couleur de fond du badge numéroté selon l'état.
@@ -749,22 +854,28 @@ function detectionBadgeColor(cropIndex: number | null): string {
                   >{{ (det.crop_index ?? 0) + 1 }}</text>
                 </g>
               </g>
-              <!-- Cercles rejetés par le détecteur : pointillés rouges (inchangé) -->
-              <g style="pointer-events: none;">
+              <!-- Cercles rejetés par le détecteur : pointillés rouges,
+                   CLIQUABLES → add-crop pré-rempli (rattrapage Chunk D). -->
+              <g style="pointer-events: all;">
                 <circle
                   v-for="(det, i) in activeImage.detections.filter(d => !d.accepted)"
                   :key="`r-${i}`"
                   :cx="det.cx" :cy="det.cy" :r="det.r"
-                  fill="none" stroke="var(--danger)" stroke-width="2"
+                  fill="transparent" stroke="var(--danger)" stroke-width="2"
                   stroke-dasharray="8 6" opacity="0.7"
-                />
+                  style="cursor: pointer;"
+                  @click.stop="openAddCrop({ cx: det.cx, cy: det.cy, r: det.r })"
+                >
+                  <title>Ajouter ce crop (écarté : {{ det.reject_reason }})</title>
+                </circle>
                 <text
                   v-for="(det, i) in activeImage.detections.filter(d => !d.accepted)"
                   :key="`rt-${i}`"
                   :x="det.cx" :y="det.cy + 4" text-anchor="middle"
                   font-family="JetBrains Mono" font-size="14"
                   fill="var(--danger)" opacity="0.8"
-                >{{ det.reject_reason }}</text>
+                  style="pointer-events: none;"
+                >+ {{ det.reject_reason }}</text>
               </g>
             </svg>
           </div>
@@ -792,6 +903,29 @@ function detectionBadgeColor(cropIndex: number | null): string {
               · <span style="color: var(--danger);">{{ activeImage.detections.filter(d => !d.accepted).length }} écartés</span>
             </template>
           </span>
+          <span style="color: var(--surface-3);">·</span>
+          <button
+            type="button"
+            class="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 font-mono text-[10px]"
+            style="border-color: var(--surface-3); color: var(--indigo-700); background: var(--surface);"
+            :disabled="detecting"
+            title="Relancer la détection sur cette image (rattrapage si le scrape a raté des pièces)"
+            @click="reDetectActiveImage"
+          >
+            <Loader2 v-if="detecting" class="h-3 w-3 animate-spin" />
+            <ScanSearch v-else class="h-3 w-3" />
+            {{ detecting ? 'Détection…' : 'Re-détecter' }}
+          </button>
+          <button
+            type="button"
+            class="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 font-mono text-[10px]"
+            style="border-color: var(--surface-3); color: var(--success); background: var(--surface);"
+            title="Ajouter un crop à la main sur cette image (pièce ratée par la détection)"
+            @click="openAddCrop()"
+          >
+            <Plus class="h-3 w-3" /> Crop manuel
+          </button>
+          <span v-if="detectError" style="color: var(--danger);">{{ detectError }}</span>
         </div>
 
         <!-- Crops strip : crops de la photo active uniquement (bande filtrée).
@@ -882,6 +1016,7 @@ function detectionBadgeColor(cropIndex: number | null): string {
           :free-search-candidate="freeSearchCandidate"
           :asset-id="activeAssetId"
           :assigned-eurio-id="activeCropAssignedEurioId"
+          :dino-reload-key="dinoReloadKey"
           class="flex-1 min-h-0"
           @target-focus="onTargetFocus"
           @candidate-focus="onCandidateFocus"
@@ -927,6 +1062,15 @@ function detectionBadgeColor(cropIndex: number | null): string {
             <SkipForward class="h-3 w-3" /> Skip <kbd>N</kbd>
           </button>
           <button
+            type="button"
+            class="inline-flex items-center gap-1 rounded-md border px-2 py-1 font-mono text-[10px]"
+            style="border-color: var(--surface-3); color: var(--ink-500); background: var(--surface);"
+            title="Recadrer ce crop (éditeur de cercle sur le raw)"
+            @click="openRecropActive"
+          >
+            <Crop class="h-3 w-3" /> Recadrer <kbd>E</kbd>
+          </button>
+          <button
             v-if="activeAssetId && decisions[activeAssetId]"
             type="button"
             class="inline-flex items-center gap-1 rounded-md px-2 py-1 font-mono text-[10px]"
@@ -946,7 +1090,7 @@ function detectionBadgeColor(cropIndex: number | null): string {
             }"></div>
           </div>
           <p class="mt-1.5 font-mono text-[10px]" style="color: var(--ink-400);">
-            <kbd>J</kbd>/<kbd>K</kbd> crop · <kbd>←</kbd>/<kbd>→</kbd> raw · <kbd>1-5</kbd> focus · <kbd>⏎</kbd> valider · <kbd>F</kbd> free · <kbd>D</kbd> détections · <kbd>?</kbd> aide
+            <kbd>J</kbd>/<kbd>K</kbd> crop · <kbd>←</kbd>/<kbd>→</kbd> raw · <kbd>1-5</kbd> focus · <kbd>⏎</kbd> valider · <kbd>E</kbd> recadrer · <kbd>F</kbd> free · <kbd>D</kbd> détections · <kbd>?</kbd> aide
           </p>
         </div>
         <div class="flex items-center gap-2">
@@ -1013,6 +1157,8 @@ function detectionBadgeColor(cropIndex: number | null): string {
           <dd style="color: var(--ink-500);">Skip le crop actif + advance</dd>
           <dt class="font-mono text-[12px]" style="color: var(--ink-700);">O / V / U</dt>
           <dd style="color: var(--ink-500);">Face : avers / revers / inconnu (sur assign)</dd>
+          <dt class="font-mono text-[12px]" style="color: var(--ink-700);">E</dt>
+          <dd style="color: var(--ink-500);">Recadrer le crop actif (éditeur de cercle sur le raw)</dd>
           <dt class="font-mono text-[12px]" style="color: var(--ink-700);">D</dt>
           <dd style="color: var(--ink-500);">Toggle examination plate (raw + cercles)</dd>
           <dt class="font-mono text-[12px]" style="color: var(--ink-700);">S</dt>
@@ -1029,6 +1175,22 @@ function detectionBadgeColor(cropIndex: number | null): string {
         </p>
       </article>
     </div>
+
+    <!-- ═══ Éditeur de re-crop manuel (overlay) — touche E ═══ -->
+    <CircleCropEditor
+      v-if="showCropEditor && activeCrop?.crop.review_id"
+      :review-id="activeCrop.crop.review_id"
+      @close="showCropEditor = false"
+      @saved="onCropSaved"
+    />
+
+    <!-- ═══ Éditeur add-crop (overlay) — "+ Crop manuel" / cercle écarté ═══ -->
+    <CircleCropEditor
+      v-if="showAddCrop && addCropContext"
+      :add-context="addCropContext"
+      @close="showAddCrop = false; addCropCircle = null"
+      @created="onCropCreated"
+    />
 
   </div>
 </template>

@@ -22,17 +22,35 @@ import {
   manualCropAsset,
   type CropEditContext,
 } from '../composables/useReviewApi'
+import { addLotCrop, type LotCrop } from '../composables/useLotReview'
 
-// Deux points d'entrée pour le MÊME éditeur (cœur backend partagé) :
-//   - `reviewId` : depuis la review queue (le crop appartient à une review).
-//   - `assetId`  : depuis la galerie enrichment (recadrage EN PLACE d'une
-//                  vignette coin-detail, hors queue — statut inchangé).
-// Exactement l'un des deux doit être fourni.
-const props = defineProps<{ reviewId?: string; assetId?: string }>()
+// Trois points d'entrée pour le MÊME éditeur (cœur backend partagé) :
+//   - `reviewId`   : depuis la review queue (le crop appartient à une review).
+//   - `assetId`    : recadrage EN PLACE d'une vignette coin-detail (hors queue).
+//   - `addContext` : ADD-CROP (Chunk D) — pas d'asset existant, on crée un
+//                    nouveau crop sur une source_image depuis un cercle dessiné
+//                    (rattrapage des pièces ratées par la détection).
+// Exactement l'un des trois doit être fourni.
+const props = defineProps<{
+  reviewId?: string
+  assetId?: string
+  addContext?: {
+    listingKey: string
+    sourceImageId: string
+    source: string
+    rawUrl: string
+    rawWidth: number
+    rawHeight: number
+    initialCircle?: { cx: number; cy: number; r: number } | null
+  }
+}>()
 const emit = defineEmits<{
   (e: 'close'): void
   (e: 'saved'): void
+  (e: 'created', crop: LotCrop): void
 }>()
+
+const isAddMode = computed(() => props.addContext != null)
 
 // Marge radiale du format prod (CropConfig.margin_frac = 0.02).
 const MARGIN_FRAC = 0.02
@@ -48,6 +66,18 @@ const r = ref(0)
 
 const natW = computed(() => ctx.value?.raw_width ?? 0)
 const natH = computed(() => ctx.value?.raw_height ?? 0)
+
+// URL distincte (`?canvas=1`) pour le raw dessiné sur canvas : l'img est
+// chargée en crossorigin='anonymous' (sinon canvas tainté → pas d'aperçu).
+// La marquer différemment de l'URL d'AFFICHAGE (plate lot, sans crossorigin)
+// évite que le navigateur réutilise une entrée de cache non-CORS pour la
+// requête CORS — ce qui cassait l'aperçu (lot) ou l'affichage (selon l'ordre).
+// Endpoint backend `/sources/.../file` : ignore les query params inconnus.
+const canvasRawSrc = computed(() => {
+  const u = ctx.value?.raw_url
+  if (!u) return ''
+  return `${u}${u.includes('?') ? '&' : '?'}canvas=1`
+})
 const rMax = computed(() => Math.max(natW.value, natH.value) || 1)
 
 // Refs DOM.
@@ -91,6 +121,29 @@ const handleR = computed(() => 10 * uiScale.value)
 async function load() {
   loadError.value = null
   try {
+    // Add-crop : pas de fetch, on construit le contexte depuis le raw du lot
+    // (déjà connu côté front) — l'asset n'existe pas encore.
+    if (props.addContext) {
+      const ac = props.addContext
+      const c: CropEditContext = {
+        asset_id: '',
+        source: ac.source,
+        raw_url: ac.rawUrl,
+        crop_url: '',
+        raw_width: ac.rawWidth,
+        raw_height: ac.rawHeight,
+        hint: ac.initialCircle ?? null,
+      }
+      ctx.value = c
+      if (c.hint) {
+        cx.value = c.hint.cx; cy.value = c.hint.cy; r.value = c.hint.r
+      } else {
+        cx.value = (c.raw_width ?? 0) / 2
+        cy.value = (c.raw_height ?? 0) / 2
+        r.value = Math.min(c.raw_width ?? 0, c.raw_height ?? 0) * 0.3
+      }
+      return
+    }
     const c = props.assetId
       ? await fetchAssetCropEditContext(props.assetId)
       : await fetchCropEditContext(props.reviewId!)
@@ -245,6 +298,13 @@ async function save() {
   saving.value = true
   try {
     const circle = { cx: cx.value, cy: cy.value, r: r.value }
+    if (props.addContext) {
+      const crop = await addLotCrop(
+        props.addContext.listingKey, props.addContext.sourceImageId, circle)
+      emit('created', crop)
+      emit('close')
+      return
+    }
     if (props.assetId) await manualCropAsset(props.assetId, circle)
     else await manualCrop(props.reviewId!, circle)
     emit('saved')
@@ -283,7 +343,7 @@ function onKey(e: KeyboardEvent) {
     >
       <div>
         <h2 class="font-display text-base italic font-semibold" style="color: var(--indigo-700);">
-          Recadrer le crop
+          {{ isAddMode ? 'Ajouter un crop' : 'Recadrer le crop' }}
         </h2>
         <p class="mt-0.5 text-xs" style="color: var(--ink-500);">
           Dessine le cercle sur la pièce — glisser le centre, poignée / molette / slider pour le rayon.
@@ -310,7 +370,7 @@ function onKey(e: KeyboardEvent) {
       <div ref="stageEl" class="relative flex min-h-0 min-w-0 flex-1 items-center justify-center">
         <img
           ref="rawImg"
-          :src="ctx.raw_url"
+          :src="canvasRawSrc"
           alt="raw"
           crossorigin="anonymous"
           class="block max-h-full max-w-full select-none rounded-lg"
@@ -429,7 +489,7 @@ function onKey(e: KeyboardEvent) {
           >
             <Loader2 v-if="saving" class="h-3.5 w-3.5 animate-spin" />
             <Check v-else class="h-3.5 w-3.5" />
-            {{ saving ? 'Enregistrement…' : 'Valider le recadrage' }}
+            {{ saving ? 'Enregistrement…' : (isAddMode ? 'Ajouter le crop' : 'Valider le recadrage') }}
             <span
               v-if="!saving"
               class="ml-1 rounded px-1 font-mono text-[10px] uppercase tracking-wider"

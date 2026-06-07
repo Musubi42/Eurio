@@ -211,6 +211,59 @@ export async function decideLot(
   return (await resp.json()) as LotDecideResponse
 }
 
+export interface LotImageDetectResponse {
+  source_image_id: string
+  detections: LotDetection[]
+}
+
+/**
+ * Re-détection LIVE d'UNE image (Chunk C) — rattrapage manuel quand le scrape
+ * a raté des pièces. Relance detect_circles_multi côté backend, rafraîchit
+ * detections_json, renvoie les cercles (acceptés + rejetés) pour overlay.
+ * Coûteux (YOLO+Hough) → une image à la fois, déclenché à la main.
+ */
+export async function detectLotImage(
+  listingKey: string,
+  sourceImageId: string,
+): Promise<LotImageDetectResponse> {
+  const resp = await fetch(
+    `${ML_API}/review-queue/lots/${encodeURIComponent(listingKey)}`
+    + `/images/${encodeURIComponent(sourceImageId)}/detect`,
+    { method: 'POST' },
+  )
+  if (!resp.ok) throw await parseError(resp)
+  return (await resp.json()) as LotImageDetectResponse
+}
+
+/**
+ * Add-crop manuel (Chunk D) : crée un nouveau crop sur une source_image depuis
+ * un cercle (cx,cy,r en px natifs du raw). Renvoie le LotCrop enrichi (avec
+ * review_id + candidats) à insérer en place dans le lot. Rattrapage des pièces
+ * ratées par la détection (cercle détecté cliqué OU tracé manuel).
+ */
+export async function addLotCrop(
+  listingKey: string,
+  sourceImageId: string,
+  circle: { cx: number; cy: number; r: number },
+): Promise<LotCrop> {
+  const resp = await fetch(
+    `${ML_API}/review-queue/lots/${encodeURIComponent(listingKey)}`
+    + `/images/${encodeURIComponent(sourceImageId)}/crops`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(circle),
+    },
+  )
+  if (!resp.ok) throw await parseError(resp)
+  const crop = (await resp.json()) as LotCrop
+  return {
+    ...crop,
+    crop_url: withMlApi(crop.crop_url) ?? '',
+    candidate_eurio_ids: crop.candidate_eurio_ids.map(promoteCandidate),
+  }
+}
+
 export interface RequalifySingleResponse {
   status: string
   listing_key: string
