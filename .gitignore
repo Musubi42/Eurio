@@ -153,3 +153,6 @@ ml/state/bce_runs/
 ml/state/lmdlp_runs/
 ml/state/*.log
 ml/state/*_worklist.json
+
+# graphify knowledge-graph output (regenerable, large)
+graphify-out/
