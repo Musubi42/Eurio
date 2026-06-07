@@ -205,6 +205,21 @@ def test_derive_france_merges_maps_splits_type() -> None:
     assert by_id["fr-2euro-standard-t2"].members == ("fr-2022-2eur-standard-2nd-type",)
 
 
+def test_derive_override_forces_split() -> None:
+    # Source non distinguante (« Francis » pour 2 designs) → override force le split.
+    francis = [
+        StandardCoin("va-2014-2eur-standard-francis", "VA", 2.0, 2014, "2 Euros - Francis"),
+        StandardCoin("va-2017-2eur-standard-francis", "VA", 2.0, 2017, "2 Euros - Francis"),
+    ]
+    # Sans override : fusionnés (même clé).
+    assert len(derive_groups(francis).groups) == 1
+    # Avec override sur le 2017 → 2 groupes (t1 portrait, t2 armoiries).
+    ov = {"va-2017-2eur-standard-francis": ObverseKey("Francis", 2)}
+    res = derive_groups(francis, ov)
+    ids = {g.group_id for g in res.groups}
+    assert ids == {"va-2euro-francis-t1", "va-2euro-francis-t2"}
+
+
 def test_derive_unparsable_flagged_not_grouped() -> None:
     bad = StandardCoin("be-9999-2eur-mystere", "BE", 2.0, 9999, None)
     result = derive_groups([BE_2014, bad])

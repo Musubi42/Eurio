@@ -30,6 +30,7 @@ if str(ML_DIR) not in sys.path:
 from bootstrap.obverse_groups import (  # noqa: E402
     DeriveResult,
     derive_groups,
+    load_overrides,
     load_standard_coins,
 )
 
@@ -103,7 +104,7 @@ def main() -> int:
         conn.close()
 
     print(f"Pays {args.country.upper()} — {len(coins)} standard(s) canonique(s) chargé(s).")
-    result = derive_groups(coins)
+    result = derive_groups(coins, load_overrides())
     _print_derived(result)
 
     expected = _load_expected(args.country)

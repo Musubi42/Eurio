@@ -32,7 +32,14 @@ import re
 import sqlite3
 from collections import defaultdict
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Iterable
+
+# Overrides de curation : eurio_id → ObverseKey forcée. Pour les cas où la source
+# (Numista) ne distingue PAS deux designs réellement différents (ex. Vatican
+# « 2 Euros - Francis » pour le portrait 2014 ET les armoiries 2017). Vit dans
+# NOTRE couche, survit à un refetch Numista, ne falsifie pas design_description.
+DEFAULT_OVERRIDES_PATH = Path(__file__).resolve().parents[1] / "data" / "design_groups_obverse_overrides.json"
 
 # Slug de dénomination — copie locale (le legacy l'expose mais importe Supabase
 # au top-level ; on garde ce module découplé). Source de vérité identique.
@@ -237,17 +244,35 @@ def _build_group(
     )
 
 
-def derive_groups(coins: Iterable[StandardCoin]) -> DeriveResult:
-    """Groupe les standards par ``(country, face_value, monarque, Nème type)``.
+def load_overrides(path: Path = DEFAULT_OVERRIDES_PATH) -> dict[str, ObverseKey]:
+    """Charge les overrides de curation (eurio_id → ObverseKey forcée)."""
+    if not path.exists():
+        return {}
+    data = json.loads(path.read_text())
+    return {
+        eid: ObverseKey(name=v["name"], type_ordinal=int(v.get("type_ordinal", 1)))
+        for eid, v in data.items()
+        if not eid.startswith("_")
+    }
+
+
+def derive_groups(
+    coins: Iterable[StandardCoin], overrides: dict[str, ObverseKey] | None = None
+) -> DeriveResult:
+    """Groupe les standards par ``(country, face_value, name, Nème type)``.
 
     Un groupe est créé pour chaque clé avers, **même mono-membre** (cf. en-tête).
-    Les pièces dont l'avers n'est pas parsable sont listées dans ``unparsable``.
-    Les groupes sont ordonnés par ``(country, face_value, year_min, group_id)``.
+    ``overrides`` (eurio_id → ObverseKey) force la clé pour les collisions source
+    non distinguées (ex. Vatican Francis 2014 vs 2017). Les pièces dont l'avers
+    n'est pas parsable sont listées dans ``unparsable``.
     """
+    overrides = overrides or {}
     result = DeriveResult()
     buckets: dict[tuple[str, float, ObverseKey], list[StandardCoin]] = defaultdict(list)
     for coin in coins:
-        key = parse_obverse_key(coin.design_description, coin.eurio_id)
+        key = overrides.get(coin.eurio_id) or parse_obverse_key(
+            coin.design_description, coin.eurio_id
+        )
         if key is None:
             result.unparsable.append(coin.eurio_id)
             continue
@@ -315,7 +340,8 @@ class BootstrapPlan:
 
 
 def plan_bootstrap(
-    conn: sqlite3.Connection, country: str, face_value: float | None = None
+    conn: sqlite3.Connection, country: str, face_value: float | None = None,
+    overrides: dict[str, ObverseKey] | None = None,
 ) -> BootstrapPlan:
     """Calcule le plan d'attribution avers sans rien écrire.
 
@@ -326,7 +352,7 @@ def plan_bootstrap(
       jamais écraser un groupe numista_id / joint-issue existant).
     """
     coins = load_standard_coins(conn, country, face_value)
-    derived = derive_groups(coins)
+    derived = derive_groups(coins, overrides if overrides is not None else load_overrides())
     by_eid = {c.eurio_id: c for c in coins}
 
     plan = BootstrapPlan(groups=derived.groups, unparsable=derived.unparsable)

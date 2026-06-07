@@ -1,0 +1,8 @@
+{
+  "_comment": "Overrides de curation pour le groupage avers (bootstrap.obverse_groups.derive_groups). Clé = eurio_id, valeur = {name, type_ordinal} forçant l'ObverseKey. À utiliser UNIQUEMENT quand la source (Numista) ne distingue pas deux designs réellement différents — la vision l'a confirmé. Vit dans notre couche, survit à un refetch Numista, sans falsifier coins.design_description. Cf. docs/design-groups-standards/KICKOFF.md.",
+  "va-2017-2eur-standard-francis": {
+    "name": "Francis",
+    "type_ordinal": 2,
+    "_why": "Numista titre 2014 (portrait) ET 2017 (armoiries pontificales) « 2 Euros - Francis » → collision. Vision a confirmé 2 designs distincts (2026-06-07). Force le 2017 en t2 = groupe va-2euro-francis-t2 séparé du portrait 2014 (t1)."
+  }
+}
