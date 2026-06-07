@@ -59,6 +59,13 @@ _AUTO_DINO_ENGINE_VERSION = (
 from scan.normalize_snap import detect_circles_multi
 from state import Store, emit_state_event
 
+from .crop_edit import (
+    CropEditContextData,
+    ManualCropData,
+    apply_manual_crop,
+    load_crop_edit_context,
+)
+
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/review-queue", tags=["review-queue"])
 
@@ -162,6 +169,18 @@ class ReviewItem(BaseModel):
     # verdict ambigu) — le reviewer choisit la sœur d'un clic sans passer
     # par la recherche libre. Vide sinon.
     group_candidates: list[ReviewCandidate] = []
+    # Chantier « review N-contre-designs » : pour un crop issu d'un scrape
+    # STANDARD (recherche large pays, ``listing_year IS NULL``), les *design
+    # groups* avers du pays (ex. ES → Juan Carlos I 1er type / 2e type /
+    # Felipe VI). Affichés EN PRIORITÉ (haut de colonne) : un standard sans
+    # année propre ne peut pas être splitté automatiquement par range — le
+    # reviewer tranche entre 3 designs d'un clic, au lieu de subir un drop
+    # « ambigu ». ``eurio_id`` du candidat = membre représentant du groupe (le
+    # plus ancien millésime) ; trancher écrit ce membre → classe d'entraînement
+    # = ``COALESCE(design_group_id, eurio_id)`` = le groupe. Vide pour les crops
+    # commémo (année présente). La sélection libre (touche F) reste le fallback
+    # pour les vraies commémos noyées dans le pool standard.
+    standard_candidates: list[ReviewCandidate] = []
     # Chunk Cr — top-1 DINOv2 inliné (dinov2-vits14, 2eur_commemo).
     # Préférence : top1_country (restreint au pays du listing) > top1 global.
     # None si pas de prédiction Dino pour cet asset ou eurio_id inexistant
@@ -306,10 +325,80 @@ def _fetch_group_candidates(
     return out
 
 
+def _fetch_standard_candidates(
+    conn: sqlite3.Connection,
+    countries: set[str],
+    denom: float = 2.0,
+) -> dict[str, list[ReviewCandidate]]:
+    """Pour chaque pays, les *design groups* avers standard (denom 2 €) —
+    candidats prioritaires d'un crop de scrape standard (chantier « review
+    N-contre-designs »).
+
+    Une ligne par ``COALESCE(design_group_id, eurio_id)`` : les Types partageant
+    un avers (ex. ``be-1999`` + ``be-2007``) fusionnent en UN candidat. Le
+    membre représentant = le plus ancien millésime (prior) — c'est son
+    ``eurio_id`` qui est écrit à la décision (la classe d'entraînement reste le
+    groupe via ``COALESCE`` en aval). Le libellé vient de
+    ``design_groups.designation`` quand le groupe en a une, sinon construit
+    depuis pays/thème. Vignette = avers canonique du représentant.
+    ``pairs``/``countries`` est petit (≤ nb de pays du run)."""
+    from api._coin_helpers import canonical_obverse_url
+
+    out: dict[str, list[ReviewCandidate]] = {}
+    for country in countries:
+        rows = conn.execute(
+            """
+            SELECT c.eurio_id, c.country, c.country_name, c.year, c.theme,
+                   c.face_value, c.numista_id,
+                   COALESCE(c.design_group_id, c.eurio_id) AS class_id,
+                   dg.designation AS dg_designation
+              FROM coins c
+              LEFT JOIN design_groups dg ON dg.id = c.design_group_id
+             WHERE c.face_value = ? AND c.country = ?
+               AND c.is_commemorative = 0 AND c.canonical_eurio_id IS NULL
+             ORDER BY c.year, c.eurio_id
+            """,
+            (denom, country),
+        ).fetchall()
+        # Collapse par classe (design group) ; 1er vu (plus ancien millésime,
+        # grâce à l'ORDER BY) = représentant.
+        groups: dict[str, sqlite3.Row] = {}
+        for r in rows:
+            groups.setdefault(r["class_id"], r)
+        cands: list[ReviewCandidate] = []
+        for r in groups.values():
+            label = r["dg_designation"] or " · ".join(
+                b for b in [
+                    r["country_name"],
+                    str(r["year"]) if r["year"] else None,
+                    r["theme"],
+                ] if b
+            ) or r["eurio_id"]
+            cands.append(ReviewCandidate(
+                eurio_id=r["eurio_id"],
+                score=0.0,  # pas un score — design group sélectionnable
+                label=label,
+                country=r["country"] or "",
+                denomination=(
+                    f"{float(r['face_value']):.2f} EUR"
+                    if r["face_value"] is not None else ""
+                ),
+                year=r["year"],
+                canonical_thumb_url=canonical_obverse_url(conn, r["eurio_id"]) or (
+                    f"/images/{int(r['numista_id'])}/source"
+                    if r["numista_id"] else ""
+                ),
+            ))
+        cands.sort(key=lambda c: (c.year or 0))
+        out[country] = cands
+    return out
+
+
 def _row_to_item(
     row: sqlite3.Row,
     group_map: dict[tuple[str, int], list[ReviewCandidate]] | None = None,
     conn: sqlite3.Connection | None = None,
+    std_map: dict[str, list[ReviewCandidate]] | None = None,
 ) -> ReviewItem:
     bbox: ReviewBbox | None = None
     if row["bbox_json"]:
@@ -358,6 +447,16 @@ def _row_to_item(
         if gc_country and gc_year is not None:
             group_candidates = group_map.get((gc_country, gc_year), [])
 
+    # Design groups standard du pays : crop issu d'un scrape standard
+    # (``listing_year IS NULL`` + pays connu). Affichés en priorité quel que
+    # soit le verdict d'attribution (même un rescued-commemo voit les 3 designs
+    # au-dessus de sa proposition commémo).
+    standard_candidates: list[ReviewCandidate] = []
+    if std_map is not None:
+        sc_country = _opt("listing_country")
+        if sc_country and _opt("listing_year") is None:
+            standard_candidates = std_map.get(sc_country, [])
+
     # Chunk Cr — top-1 Dino inliné. Préférence country > global.
     # Les colonnes dino_* sont présentes si le SELECT du caller fait
     # le LEFT JOIN image_asset_dino_predictions. Sinon _opt() retourne None
@@ -393,6 +492,7 @@ def _row_to_item(
         target_eurio_id=target_eurio_id,
         target_candidate=target_candidate,
         group_candidates=group_candidates,
+        standard_candidates=standard_candidates,
         dino_top1=dino_top1,
     )
 
@@ -407,6 +507,7 @@ def list_queue(
     lane: str | None = Query(default=None),
     cohort_id: str | None = Query(default=None),
     eurio_id: str | None = Query(default=None),
+    review_ids: str | None = Query(default=None),
 ) -> list[ReviewItem]:
     if order not in ("priority", "enqueued_at"):
         raise HTTPException(status_code=422, detail="order must be 'priority' or 'enqueued_at'")
@@ -436,12 +537,41 @@ def list_queue(
         else:
             where += " AND rq.lane = ?"
             args.append(lane)
-    # Scope PAR PIÈCE (prioritaire) : la review déclenchée depuis une row coin du
-    # cockpit ne doit servir QUE les crops de cette pièce, sinon trancher ne fait
-    # pas bouger SA ligne (bug constaté : « Reviewer N » servait toute la cohorte).
-    if eurio_id:
-        where += " AND s.target_eurio_id = ?"
-        args.append(eurio_id)
+    # Scope par IDS EXPLICITES (prioritaire absolu) : la galerie enrichment
+    # reflagge une sélection puis navigue ici sur ces rows EXACTES — robuste aux
+    # crops rescués (target_eurio_id ≠ pièce assignée). CSV d'ids review_queue.
+    if review_ids:
+        ids = [x for x in review_ids.split(",") if x]
+        if not ids:
+            return []
+        where += f" AND rq.id IN ({','.join('?' * len(ids))})"
+        args.extend(ids)
+    # Scope PAR PIÈCE : la review déclenchée depuis une row coin du cockpit ne
+    # doit servir QUE les crops de cette pièce, sinon trancher ne fait pas bouger
+    # SA ligne (bug constaté : « Reviewer N » servait toute la cohorte).
+    #
+    # EXCEPTION standards (chantier « review N-contre-designs ») : un scrape
+    # standard est une recherche LARGE pays ; ses crops sans année propre
+    # atterrissent en ``target_eurio_id NULL`` (ambigu) et seraient invisibles
+    # sous un scope ``target = eurio_id``. Pour un eurio_id standard on sert donc
+    # tout le POOL standard du pays (``listing_country = pays AND listing_year
+    # IS NULL``), y compris les crops NULL — c'est exactement « toutes les 2 €
+    # standard du pays », que le reviewer trie contre les 3 designs.
+    elif eurio_id:
+        std_coin = conn.execute(
+            "SELECT country, face_value FROM coins "
+            "WHERE eurio_id = ? AND is_commemorative = 0",
+            (eurio_id,),
+        ).fetchone()
+        if std_coin and std_coin["country"]:
+            where += (
+                " AND s.source = 'ebay' AND s.listing_country = ? "
+                "AND s.listing_year IS NULL"
+            )
+            args.append(std_coin["country"])
+        else:
+            where += " AND s.target_eurio_id = ?"
+            args.append(eurio_id)
     # Cohort scope : only items whose theme-matched coin is in the cohort.
     elif cohort_id:
         cohort = store.get_cohort(cohort_id)
@@ -498,15 +628,20 @@ def list_queue(
     # sans proposition (target_eurio_id NULL → verdict ambigu). Une
     # requête par (pays, année) distinct ; l'ensemble est petit.
     pairs: set[tuple[str, int]] = set()
+    # Pays des crops de scrape standard (listing_year NULL) → design groups.
+    std_countries: set[str] = set()
     for r in rows:
+        c, y = r["listing_country"], r["listing_year"]
+        if c and y is None:
+            std_countries.add(c)
         if r["target_eurio_id"]:
             continue
-        c, y = r["listing_country"], r["listing_year"]
         if c and y is not None:
             pairs.add((c, y))
     group_map = _fetch_group_candidates(conn, pairs)
+    std_map = _fetch_standard_candidates(conn, std_countries)
 
-    return [_row_to_item(r, group_map, conn=conn) for r in rows]
+    return [_row_to_item(r, group_map, conn=conn, std_map=std_map) for r in rows]
 
 
 # Consumed by: admin/packages/web/src/features/review/composables/useReviewApi.ts (fetchReviewStats)
@@ -1925,54 +2060,36 @@ class CropEditContext(BaseModel):
 
 
 # Consumed by: admin/.../review/composables/useReviewApi.ts (fetchCropEditContext)
+def _asset_id_for_review(review_id: str) -> str:
+    """Résout review_id → asset_id (le re-crop est une opération sur l'asset)."""
+    conn = _store()._connection()  # noqa: SLF001
+    row = conn.execute(
+        "SELECT image_asset_id FROM review_queue WHERE id = ?", (review_id,),
+    ).fetchone()
+    if row is None or not row["image_asset_id"]:
+        raise HTTPException(status_code=404, detail="Review item not found.")
+    return row["image_asset_id"]
+
+
+def _crop_edit_context_response(ctx: CropEditContextData) -> CropEditContext:
+    """Habille le contexte (keyé asset) en réponse API + URLs servables."""
+    return CropEditContext(
+        asset_id=ctx.asset_id,
+        source=ctx.source,
+        raw_url=f"/sources/{ctx.source}/raws/{ctx.source_image_id}/file",
+        crop_url=f"/sources/{ctx.source}/assets/{ctx.asset_id}/file",
+        raw_width=ctx.raw_width,
+        raw_height=ctx.raw_height,
+        hint=ctx.hint,
+    )
+
+
 @router.get("/{review_id}/crop-edit-context", response_model=CropEditContext)
 def get_crop_edit_context(review_id: str) -> CropEditContext:
     """Contexte pour l'éditeur de cercle : le RAW (sur lequel on dessine) +
-    le cercle de départ (crop actuel, px natifs)."""
-    conn = _store()._connection()  # noqa: SLF001
-    row = conn.execute(
-        """
-        SELECT a.id AS asset_id, a.bbox_json,
-               si.id AS source_image_id, si.source AS source,
-               si.width AS raw_width, si.height AS raw_height,
-               si.storage_path AS raw_storage_path
-          FROM review_queue rq
-          JOIN image_assets a ON a.id = rq.image_asset_id
-          JOIN source_images si ON si.id = a.source_image_id
-         WHERE rq.id = ?
-        """,
-        (review_id,),
-    ).fetchone()
-    if row is None:
-        raise HTTPException(status_code=404, detail="Review item not found.")
-    if not row["raw_storage_path"]:
-        raise HTTPException(status_code=410, detail="Raw image unavailable.")
-
-    hint: dict | None = None
-    if row["bbox_json"]:
-        try:
-            d = json.loads(row["bbox_json"])
-            w, h = float(d.get("w", 0)), float(d.get("h", 0))
-            if w > 0 and h > 0:
-                hint = {
-                    "cx": float(d.get("x", 0)) + w / 2.0,
-                    "cy": float(d.get("y", 0)) + h / 2.0,
-                    "r": (w + h) / 4.0,  # moyenne des demi-côtés (bbox carrée)
-                }
-        except (json.JSONDecodeError, TypeError):
-            hint = None
-
-    sid = row["source_image_id"]
-    aid = row["asset_id"]
-    return CropEditContext(
-        asset_id=aid,
-        source=row["source"],
-        raw_url=f"/sources/{row['source']}/raws/{sid}/file",
-        crop_url=f"/sources/{row['source']}/assets/{aid}/file",
-        raw_width=row["raw_width"],
-        raw_height=row["raw_height"],
-        hint=hint,
-    )
+    le cercle de départ (crop actuel, px natifs). Délègue au cœur keyé asset."""
+    ctx = load_crop_edit_context(_store(), _asset_id_for_review(review_id))
+    return _crop_edit_context_response(ctx)
 
 
 class ManualCropPayload(BaseModel):
@@ -2000,127 +2117,27 @@ class ManualCropResponse(BaseModel):
 def manual_crop(review_id: str, payload: ManualCropPayload) -> ManualCropResponse:
     """Re-croppe l'asset depuis un cercle (cx,cy,r) dessiné à la main sur le
     RAW, écrase le crop (cache + MinIO + DB). Format IDENTIQUE à la prod via
-    ``_crop_mask_resize_float`` ; eurio_id préservé ; review inchangée."""
-    from scan.normalize_snap import _crop_mask_resize_float
-    from sources._base.phash import compute_phash
-    from storage.local_cache import (
-        cache_path_for,
-        local_path,
-        upload_through,
+    ``_crop_mask_resize_float`` ; eurio_id préservé ; review inchangée. Délègue
+    au cœur keyé asset (partagé avec la voie coin-detail)."""
+    data = apply_manual_crop(
+        _store(), _asset_id_for_review(review_id), payload.cx, payload.cy, payload.r,
     )
+    return _manual_crop_response(data)
 
-    conn = _store()._connection()  # noqa: SLF001
-    row = conn.execute(
-        """
-        SELECT a.id AS asset_id, a.storage_path AS crop_storage_path,
-               a.detection_method,
-               si.source AS source, si.storage_path AS raw_storage_path,
-               si.target_eurio_id AS target_eurio_id
-          FROM review_queue rq
-          JOIN image_assets a ON a.id = rq.image_asset_id
-          JOIN source_images si ON si.id = a.source_image_id
-         WHERE rq.id = ?
-        """,
-        (review_id,),
-    ).fetchone()
-    if row is None:
-        raise HTTPException(status_code=404, detail="Review item not found.")
-    if not row["crop_storage_path"] or not row["raw_storage_path"]:
-        raise HTTPException(status_code=410, detail="Asset storage unavailable.")
 
-    # 1. Charge le raw (cache local, read-through MinIO).
-    try:
-        raw_p = local_path("enrichment-raws", row["raw_storage_path"])
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=410, detail=f"Raw missing: {exc}") from exc
-    bgr = cv2.imread(str(raw_p), cv2.IMREAD_COLOR)
-    if bgr is None or bgr.size == 0:
-        raise HTTPException(status_code=422, detail="Raw image unreadable.")
-
-    H, W = bgr.shape[:2]
-    if payload.cx > W or payload.cy > H:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Circle centre ({payload.cx},{payload.cy}) outside raw {W}×{H}.",
-        )
-
-    # 2. Crop AU MÊME FORMAT que la prod (marge 0.02, masque dur, 224).
-    res = _crop_mask_resize_float(
-        bgr, payload.cx, payload.cy, payload.r, method="manual",
-    )
-    if res.image is None:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Empty crop ({res.debug.get('error', 'unknown')}).",
-        )
-
-    ok, buf = cv2.imencode(".png", res.image)
-    if not ok:
-        raise HTTPException(status_code=500, detail="PNG encode failed.")
-    png_bytes = buf.tobytes()
-
-    # 3. Écriture (calque recrop_ebay_refine) : cache local OVERWRITE direct
-    #    (upload_through skip le cache si le fichier existe), puis MinIO.
-    crop_sp = row["crop_storage_path"]
-    cache_p = cache_path_for("enrichment-crops", crop_sp)
-    cache_p.parent.mkdir(parents=True, exist_ok=True)
-    cache_p.write_bytes(png_bytes)
-    minio_ok = True
-    try:
-        upload_through("enrichment-crops", crop_sp, png_bytes)
-    except Exception as exc:  # noqa: BLE001
-        minio_ok = False
-        logger.warning("[manual-crop] MinIO write-through failed for %s: %s",
-                       crop_sp, exc)
-
-    # 4. DB : nouveau cercle + method 'manual' + dims + phash. eurio_id,
-    #    resolution_status, training_eligible NON touchés (re-crop ≠ décision).
-    cx, cy, r = payload.cx, payload.cy, payload.r
-    bbox = {"x": cx - r, "y": cy - r, "w": 2 * r, "h": 2 * r}
-    new_h, new_w = res.image.shape[0], res.image.shape[1]
-    conn.execute(
-        "UPDATE image_assets SET bbox_json = ?, detection_method = 'manual', "
-        "width = ?, height = ?, phash = ? WHERE id = ?",
-        (json.dumps(bbox), new_w, new_h, compute_phash(res.image), row["asset_id"]),
-    )
-    conn.commit()
-
-    logger.info("[manual-crop] review=%s asset=%s cx=%.1f cy=%.1f r=%.1f minio=%s",
-                review_id, row["asset_id"], cx, cy, r, minio_ok)
-
-    # Recompute Dino sur le crop recadré : la suggestion d'avant pointait sur
-    # le mauvais objet (mauvais cadrage). On réencode + ré-persiste pour que le
-    # panneau « Suggestions Dino » reflète le bon crop dès le refetch front.
-    # Best-effort : un échec Dino ne casse pas le re-crop (déjà committé).
-    dino_recomputed = False
-    try:
-        from sources._base.steps.auto_validate import predict_and_persist_one
-
-        target_eid = row["target_eurio_id"]
-        target_country = (
-            target_eid[:2].lower() if target_eid and len(target_eid) >= 2 else None
-        )
-        pred = predict_and_persist_one(
-            store=_store(),
-            asset_id=row["asset_id"],
-            crop_path=cache_p,
-            target_country=target_country,
-        )
-        dino_recomputed = pred is not None
-    except Exception as exc:  # noqa: BLE001 — suggestion layer, never fatal
-        logger.warning("[manual-crop] Dino recompute failed for asset=%s: %s",
-                       row["asset_id"], exc)
-
-    crop_b64 = "data:image/png;base64," + base64.b64encode(png_bytes).decode("ascii")
+def _manual_crop_response(data: ManualCropData) -> ManualCropResponse:
+    """Habille le résultat (keyé asset) en réponse API (+ data-URI base64)."""
+    crop_b64 = "data:image/png;base64," + base64.b64encode(data.png_bytes).decode("ascii")
     return ManualCropResponse(
-        asset_id=row["asset_id"],
-        cx=cx, cy=cy, r=r,
-        bbox=ReviewBbox(x=bbox["x"], y=bbox["y"], w=bbox["w"], h=bbox["h"]),
-        width=new_w, height=new_h,
-        detection_method="manual",
+        asset_id=data.asset_id,
+        cx=data.cx, cy=data.cy, r=data.r,
+        bbox=ReviewBbox(x=data.bbox["x"], y=data.bbox["y"],
+                        w=data.bbox["w"], h=data.bbox["h"]),
+        width=data.width, height=data.height,
+        detection_method=data.detection_method,
         crop_b64=crop_b64,
-        minio_ok=minio_ok,
-        dino_recomputed=dino_recomputed,
+        minio_ok=data.minio_ok,
+        dino_recomputed=data.dino_recomputed,
     )
 
 

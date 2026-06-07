@@ -16,12 +16,19 @@
 import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { Check, Loader2, X } from 'lucide-vue-next'
 import {
+  fetchAssetCropEditContext,
   fetchCropEditContext,
   manualCrop,
+  manualCropAsset,
   type CropEditContext,
 } from '../composables/useReviewApi'
 
-const props = defineProps<{ reviewId: string }>()
+// Deux points d'entrée pour le MÊME éditeur (cœur backend partagé) :
+//   - `reviewId` : depuis la review queue (le crop appartient à une review).
+//   - `assetId`  : depuis la galerie enrichment (recadrage EN PLACE d'une
+//                  vignette coin-detail, hors queue — statut inchangé).
+// Exactement l'un des deux doit être fourni.
+const props = defineProps<{ reviewId?: string; assetId?: string }>()
 const emit = defineEmits<{
   (e: 'close'): void
   (e: 'saved'): void
@@ -84,7 +91,9 @@ const handleR = computed(() => 10 * uiScale.value)
 async function load() {
   loadError.value = null
   try {
-    const c = await fetchCropEditContext(props.reviewId)
+    const c = props.assetId
+      ? await fetchAssetCropEditContext(props.assetId)
+      : await fetchCropEditContext(props.reviewId!)
     ctx.value = c
     if (c.hint) {
       cx.value = c.hint.cx
@@ -110,7 +119,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKey, true)
   ro?.disconnect()
 })
-watch(() => props.reviewId, load)
+watch(() => [props.reviewId, props.assetId], load)
 
 // ─── Mapping pointeur → coords natives ───────────────────────────────────
 
@@ -235,7 +244,9 @@ async function save() {
   if (saving.value) return
   saving.value = true
   try {
-    await manualCrop(props.reviewId, { cx: cx.value, cy: cy.value, r: r.value })
+    const circle = { cx: cx.value, cy: cy.value, r: r.value }
+    if (props.assetId) await manualCropAsset(props.assetId, circle)
+    else await manualCrop(props.reviewId!, circle)
     emit('saved')
     emit('close')
   } catch (err) {
@@ -249,6 +260,13 @@ function onKey(e: KeyboardEvent) {
   if (e.key === 'Escape') {
     e.stopPropagation()
     emit('close')
+  } else if (e.key === 'Enter') {
+    // Entrée = « Valider le recadrage » (PAS la pièce — le clavier global
+    // est désactivé tant que l'éditeur est ouvert). No-op si pas prêt.
+    if (!ctx.value || saving.value) return
+    e.stopPropagation()
+    e.preventDefault()
+    void save()
   }
 }
 </script>
@@ -412,6 +430,11 @@ function onKey(e: KeyboardEvent) {
             <Loader2 v-if="saving" class="h-3.5 w-3.5 animate-spin" />
             <Check v-else class="h-3.5 w-3.5" />
             {{ saving ? 'Enregistrement…' : 'Valider le recadrage' }}
+            <span
+              v-if="!saving"
+              class="ml-1 rounded px-1 font-mono text-[10px] uppercase tracking-wider"
+              style="background: rgba(255,255,255,.18);"
+            >⏎</span>
           </button>
           <button
             type="button"

@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+import uuid
 from datetime import datetime
 from typing import Any
 
@@ -29,6 +30,15 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from state import Store, emit_state_event
+
+from .crop_edit import apply_manual_crop, load_crop_edit_context
+from .review_queue_routes import (
+    CropEditContext,
+    ManualCropPayload,
+    ManualCropResponse,
+    _crop_edit_context_response,
+    _manual_crop_response,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/coins", tags=["coins"])
@@ -89,6 +99,12 @@ class ReflagResponse(BaseModel):
     n_reflagged: int
     n_skipped: int
     skipped_reasons: list[str] = []
+    # Lignes review_queue OPEN des assets fournis (reflaggés OU déjà
+    # unresolved) — la galerie navigue vers /review/manual?ids=… pour les
+    # traiter tout de suite (recadrer / re-choisir la pièce) au lieu d'aller
+    # les chercher en queue. Robuste aux crops rescués (filtre rq.id IN, pas
+    # target_eurio_id).
+    review_ids: list[str] = []
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────
@@ -228,6 +244,7 @@ def reflag_assets(payload: ReflagPayload) -> ReflagResponse:
     n_reflagged = 0
     n_skipped = 0
     reasons: list[str] = []
+    review_ids: list[str] = []
 
     now = datetime.utcnow().isoformat(timespec="seconds")
 
@@ -240,53 +257,93 @@ def reflag_assets(payload: ReflagPayload) -> ReflagResponse:
             n_skipped += 1
             reasons.append(f"{asset_id}: not_found")
             continue
-        if row["resolution_status"] in ("needs_review", "pending_crop", "pending_match"):
-            n_skipped += 1
-            reasons.append(f"{asset_id}: already_unresolved")
-            continue
 
-        with conn:  # transaction
+        # NB : la connexion est en autocommit (isolation_level=None) — chaque
+        # statement commit immédiatement ; le `with conn:` est conservé pour
+        # l'intention, pas pour l'atomicité.
+        with conn:
             conn.execute(
-                """
-                UPDATE image_assets
-                   SET resolution_status = 'needs_review',
-                       resolved_at = NULL
-                 WHERE id = ?
-                """,
+                "UPDATE image_assets SET resolution_status = 'needs_review', "
+                "resolved_at = NULL WHERE id = ?",
                 (asset_id,),
             )
-            existing = conn.execute(
+            # review_queue.UNIQUE(image_asset_id) : un asset déjà reviewé porte
+            # une ligne 'done' → un 2ᵉ INSERT violait la contrainte (500, l'asset
+            # restait coincé en needs_review sans ligne open). On UPSERT : on
+            # ré-ouvre la ligne existante (reset décision + lane manuelle) ou on
+            # en crée une. Soigne aussi les lignes corrompues par l'ancien bug.
+            new_id = uuid.uuid4().hex
+            conn.execute(
                 """
-                SELECT id FROM review_queue
-                 WHERE image_asset_id = ? AND status = 'open'
+                INSERT INTO review_queue (
+                    id, image_asset_id, status, priority, enqueued_at, kind,
+                    decision_notes, lane, lane_source
+                ) VALUES (?, ?, 'open', 100, ?, 'single',
+                          're-flagged from coin detail', 'manual', 'human')
+                ON CONFLICT(image_asset_id) DO UPDATE SET
+                    status = 'open',
+                    priority = 100,
+                    enqueued_at = excluded.enqueued_at,
+                    kind = 'single',
+                    decision_notes = 're-flagged from coin detail',
+                    lane = 'manual',
+                    lane_source = 'human',
+                    decided_eurio_id = NULL,
+                    decided_face = NULL,
+                    decided_variant_kind = NULL,
+                    decided_at = NULL,
+                    decided_by = NULL
                 """,
+                (new_id, asset_id, now),
+            )
+            rid_row = conn.execute(
+                "SELECT id FROM review_queue WHERE image_asset_id = ?",
                 (asset_id,),
             ).fetchone()
-            if existing is None:
-                conn.execute(
-                    """
-                    INSERT INTO review_queue (
-                        id, image_asset_id, status, priority, enqueued_at,
-                        kind, decision_notes
-                    ) VALUES (
-                        lower(hex(randomblob(16))), ?, 'open', 100, ?,
-                        'single', 're-flagged from coin detail'
-                    )
-                    """,
-                    (asset_id, now),
-                )
             emit_state_event(
                 conn, asset_id=asset_id, to_state="queued", actor="human",
                 reason="reflagged_from_coin",
             )
+        review_ids.append(rid_row["id"])
         n_reflagged += 1
 
     logger.info(
-        "[coin_assets] reflag asset_ids=%d reflagged=%d skipped=%d",
-        len(payload.asset_ids), n_reflagged, n_skipped,
+        "[coin_assets] reflag asset_ids=%d reflagged=%d skipped=%d review_ids=%d",
+        len(payload.asset_ids), n_reflagged, n_skipped, len(review_ids),
     )
     return ReflagResponse(
         n_reflagged=n_reflagged,
         n_skipped=n_skipped,
         skipped_reasons=reasons,
+        review_ids=review_ids,
     )
+
+
+# ── Re-crop manuel EN PLACE (galerie enrichment, page coin-detail) ────────
+# Même cœur que la voie review (POST /review-queue/{id}/manual-crop) mais keyé
+# par asset_id : on recadre une vignette sans la renvoyer en queue — le statut
+# (auto_name/manual) et l'eurio_id sont préservés (un recadrage ≠ une décision).
+# Le « mauvaise pièce ? » reste la voie reflag → review. Cf. crop_edit.py.
+
+
+def _bound_store() -> Store:
+    if _store is None:
+        raise RuntimeError("coin_assets_routes not bound — call bind() first.")
+    return _store
+
+
+# Consumed by: admin/.../coins/composables/useCoinAssets.ts (fetchAssetCropEditContext)
+@router.get("/assets/{asset_id}/crop-edit-context", response_model=CropEditContext)
+def get_asset_crop_edit_context(asset_id: str) -> CropEditContext:
+    """Contexte de l'éditeur de cercle pour un asset (raw + cercle de départ)."""
+    ctx = load_crop_edit_context(_bound_store(), asset_id)
+    return _crop_edit_context_response(ctx)
+
+
+# Consumed by: admin/.../coins/composables/useCoinAssets.ts (manualCropAsset)
+@router.post("/assets/{asset_id}/manual-crop", response_model=ManualCropResponse)
+def manual_crop_asset(asset_id: str, payload: ManualCropPayload) -> ManualCropResponse:
+    """Re-croppe l'asset en place (écrase cache + MinIO + DB au format prod).
+    Statut / eurio_id inchangés."""
+    data = apply_manual_crop(_bound_store(), asset_id, payload.cx, payload.cy, payload.r)
+    return _manual_crop_response(data)

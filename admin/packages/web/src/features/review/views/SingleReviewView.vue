@@ -168,6 +168,15 @@ const eurioId = computed(() =>
     ? route.query.eurio_id
     : null,
 )
+// IDS explicites (?ids=a,b,c) : review déclenchée depuis la galerie enrichment
+// d'une page coin (reflag → ces rows review_queue EXACTES). Prioritaire absolu
+// sur eurio_id/cohort — robuste aux crops rescués. Vide → ignoré.
+const reviewIds = computed<string[] | null>(() => {
+  const raw = route.query.ids
+  if (typeof raw !== 'string' || !raw) return null
+  const ids = raw.split(',').filter(Boolean)
+  return ids.length ? ids : null
+})
 
 // Valider exige un candidat ET un type/état renseignés : on ne fige pas
 // une attribution sans avoir tranché le contexte listing (C4).
@@ -193,7 +202,13 @@ const validateBlockedReason = computed<string | null>(() => {
 
 async function load() {
   const [q, s] = await Promise.all([
-    fetchReviewQueue({ limit: 30, cohortId: cohortId.value, lane: lane.value, eurioId: eurioId.value }),
+    fetchReviewQueue({
+      limit: 30,
+      cohortId: cohortId.value,
+      lane: lane.value,
+      eurioId: eurioId.value,
+      reviewIds: reviewIds.value,
+    }),
     fetchReviewStats(),
   ])
   queue.value = q
@@ -242,8 +257,9 @@ onMounted(() => {
   window.addEventListener('beforeunload', flushBeforeUnload)
 })
 
-// Reload the queue when the cohort scope, the lane, or the per-coin scope changes.
-watch([cohortId, lane, eurioId], () => {
+// Reload the queue when the cohort scope, the lane, the per-coin scope, or the
+// explicit id list changes.
+watch([cohortId, lane, eurioId, reviewIds], () => {
   void load()
 })
 
@@ -480,6 +496,16 @@ function onGroupSelect(c: ReviewCandidate) {
   // Pièce du groupe pickée (listing ambigu, pas de proposition) — même
   // voie que la sélection libre : devient le candidat focusé, validable
   // immédiatement (⏎).
+  freeSearchCandidate.value = c
+  focusedCandidateIdx.value = null
+}
+
+function onStandardSelect(c: ReviewCandidate) {
+  // Design group standard pické (crop de scrape standard) — même voie que
+  // la sélection libre : devient le candidat focusé, validable d'un ⏎.
+  // c.eurio_id = membre représentant du groupe → la décision écrit ce
+  // membre, dont la classe d'entraînement = COALESCE(design_group_id) = le
+  // groupe (ex. es-1999 → es-2euro-juan-carlos-i-t1).
   freeSearchCandidate.value = c
   focusedCandidateIdx.value = null
 }
@@ -742,6 +768,7 @@ useReviewKeybinds(keyboardEnabled, {
             :target="currentItem.target_candidate ?? null"
             :candidates="currentItem.candidates"
             :group-candidates="currentItem.group_candidates ?? []"
+            :standard-candidates="currentItem.standard_candidates ?? []"
             :mode="mode"
             :focused-candidate-idx="focusedCandidateIdx"
             :free-search-candidate="freeSearchCandidate"
@@ -752,6 +779,7 @@ useReviewKeybinds(keyboardEnabled, {
             @dino-select="onDinoSelect"
             @free-select="onSearchSelect"
             @group-select="onGroupSelect"
+            @standard-select="onStandardSelect"
           />
       </div>
 

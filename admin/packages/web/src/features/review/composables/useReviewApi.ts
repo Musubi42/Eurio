@@ -67,6 +67,13 @@ export interface ReviewItem {
   // (target_candidate null, verdict ambigu) : le reviewer choisit la
   // sœur d'un clic au lieu de passer par la recherche libre.
   group_candidates?: ReviewCandidate[]
+  // Review « N-contre-designs » — design groups avers standard du pays pour
+  // un crop issu d'un scrape standard (listing_year null). Affichés en
+  // priorité tout en haut : le reviewer tranche entre N designs (ex. ES →
+  // Juan Carlos t1/t2 / Felipe VI) d'un clic. eurio_id = membre représentant
+  // (la décision écrit ce membre → classe = son design_group). Vide pour les
+  // crops commémo (année présente).
+  standard_candidates?: ReviewCandidate[]
   // Chunk Cr — top-1 DINOv2 inliné (dinov2-vits14, 2eur_commemo).
   // Préférence country-band > global. null si pas de prédiction Dino ou
   // eurio_id mort. Sert au bouton « Accept Dino (D) » 1-clic dans
@@ -148,13 +155,21 @@ function promoteItemUrls(r: ReviewItem): ReviewItem {
 }
 
 export async function fetchReviewQueue(
-  opts: { limit?: number; cohortId?: string | null; lane?: string | null; eurioId?: string | null } = {},
+  opts: {
+    limit?: number
+    cohortId?: string | null
+    lane?: string | null
+    eurioId?: string | null
+    /** IDs review_queue explicites (galerie enrichment → review ciblée). */
+    reviewIds?: string[] | null
+  } = {},
 ): Promise<ReviewItem[]> {
   const limit = opts.limit ?? 30
   const params = new URLSearchParams({ limit: String(limit), order: 'priority' })
   if (opts.cohortId) params.set('cohort_id', opts.cohortId)
   if (opts.lane) params.set('lane', opts.lane)
   if (opts.eurioId) params.set('eurio_id', opts.eurioId)
+  if (opts.reviewIds && opts.reviewIds.length) params.set('review_ids', opts.reviewIds.join(','))
   const real = await safeFetch<ReviewItem[]>(`/review-queue?${params.toString()}`)
   if (real !== null) {
     return real.map(promoteItemUrls)
@@ -309,6 +324,45 @@ export async function manualCrop(
 ): Promise<ManualCropResult> {
   const real = await safeFetch<ManualCropResult>(
     `/review-queue/${encodeURIComponent(reviewId)}/manual-crop`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(circle),
+    },
+  )
+  if (real === null) {
+    throw new Error('Backend indisponible — le re-crop manuel n’a pas pu être enregistré.')
+  }
+  return real
+}
+
+// ─── Re-crop manuel keyé ASSET (page coin-detail, hors review queue) ─────
+// Même cœur backend que la voie review (crop_edit.py), mais l'éditeur s'ouvre
+// sur une vignette de la galerie enrichment : recadrage EN PLACE, statut +
+// eurio_id préservés (un recadrage ≠ une décision). Cf. coin_assets_routes.
+
+/** Charge le raw + le cercle de départ pour l'éditeur, depuis un asset_id. */
+export async function fetchAssetCropEditContext(assetId: string): Promise<CropEditContext> {
+  const real = await safeFetch<CropEditContext>(
+    `/coins/assets/${encodeURIComponent(assetId)}/crop-edit-context`,
+  )
+  if (real === null) {
+    throw new Error('Backend indisponible — le crop manuel requiert l’API ML locale.')
+  }
+  return {
+    ...real,
+    raw_url: promoteUrl(real.raw_url),
+    crop_url: promoteUrl(real.crop_url),
+  }
+}
+
+/** Re-croppe un asset en place (écrase cache + MinIO + DB au format prod). */
+export async function manualCropAsset(
+  assetId: string,
+  circle: { cx: number; cy: number; r: number },
+): Promise<ManualCropResult> {
+  const real = await safeFetch<ManualCropResult>(
+    `/coins/assets/${encodeURIComponent(assetId)}/manual-crop`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

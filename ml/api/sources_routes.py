@@ -2022,7 +2022,16 @@ def get_asset_file(source_id: str, asset_id: str):
     except FileNotFoundError as exc:
         raise HTTPException(status_code=410,
                             detail=f"Asset missing in MinIO: {exc}") from exc
-    return FileResponse(p, media_type="image/png")
+    # Crops are MUTABLE in place (re-crop overwrites the same storage_path) and
+    # referenced by a stable URL. Without this, FileResponse ships only ETag +
+    # Last-Modified, so browsers apply heuristic freshness and keep serving the
+    # pre-recrop crop from cache without revalidating (stale thumbs on coin
+    # detail / bench / lot review). `no-cache` = cache allowed but ALWAYS
+    # revalidate via the ETag → cheap 304 when unchanged, fresh 200 after a
+    # recrop. (The review page's ?v= cache-bust becomes redundant.)
+    return FileResponse(
+        p, media_type="image/png", headers={"Cache-Control": "no-cache"},
+    )
 
 
 # Consumed by: admin/packages/web/src/features/sources/composables/useRunListings.ts (rawFileUrl, URL builder for <img src>)

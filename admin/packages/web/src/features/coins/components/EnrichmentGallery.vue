@@ -14,8 +14,10 @@
 // galerie — sélection multiple → footer → "Re-flagger".
 
 import { computed, onMounted, ref, watch } from 'vue'
-import { ImageOff, Loader2, RotateCcw, X } from 'lucide-vue-next'
+import { useRouter } from 'vue-router'
+import { Crop, ImageOff, Loader2, RotateCcw, X } from 'lucide-vue-next'
 import type { CoinImage } from '@/shared/supabase/types'
+import CircleCropEditor from '@/features/review/components/CircleCropEditor.vue'
 import {
   fetchCoinAssets,
   reflagAssetsNeedsReview,
@@ -35,6 +37,8 @@ const emit = defineEmits<{
   (e: 'select', img: CoinImage): void
 }>()
 
+const router = useRouter()
+
 const assets = ref<CoinAsset[]>([])
 const total = ref(0)
 const nextOffset = ref<number | null>(null)
@@ -45,6 +49,24 @@ const includeUnresolved = ref(false)
 const selectedIds = ref<Set<string>>(new Set())
 const reflagging = ref(false)
 const reflagToast = ref<string | null>(null)
+
+// Recadrage EN PLACE : l'asset en cours d'édition (overlay éditeur de cercle)
+// + un jeton de cache-bust par asset. Le crop est écrasé au même chemin côté
+// backend → on force le <img> à re-fetcher en changeant son `?v=` (le header
+// Cache-Control: no-cache garantit alors des bytes frais). Recadrer ne change
+// NI le statut NI l'eurio_id — pas de retour en review.
+const recropAsset = ref<CoinAsset | null>(null)
+const bust = ref<Record<string, number>>({})
+
+function thumbSrc(a: CoinAsset): string {
+  const v = bust.value[a.id]
+  return v ? `${a.file_url}?v=${v}` : a.file_url
+}
+
+function onRecropSaved() {
+  const a = recropAsset.value
+  if (a) bust.value = { ...bust.value, [a.id]: Date.now() }
+}
 
 const PAGE_SIZE = 60
 
@@ -102,8 +124,9 @@ function clearSelection() {
 
 function onThumbClick(a: CoinAsset) {
   // Maps un CoinAsset → CoinImage (la shape attendue par le grand viewer).
+  // `thumbSrc` propage le cache-bust post-recrop au viewer parent.
   emit('select', {
-    url: a.file_url,
+    url: thumbSrc(a),
     role: a.face ?? 'unknown',
     source: a.source,
   })
@@ -113,8 +136,9 @@ async function bulkReflag() {
   if (selectedIds.value.size === 0) return
   if (
     !window.confirm(
-      `Re-flagger ${selectedIds.value.size} image(s) en needs_review ?\n` +
-        `Elles repasseront dans la review queue.`,
+      `Renvoyer ${selectedIds.value.size} image(s) en review ?\n` +
+        `Elles repassent en needs_review et la review s'ouvre sur ces crops ` +
+        `(recadrer / re-choisir la pièce, puis valider).`,
     )
   ) {
     return
@@ -123,6 +147,12 @@ async function bulkReflag() {
   try {
     const ids = Array.from(selectedIds.value)
     const res = await reflagAssetsNeedsReview(ids)
+    // Ouvre la review directement sur ces rows exactes (robuste aux rescués).
+    if (res.review_ids && res.review_ids.length) {
+      void router.push({ path: '/review/manual', query: { ids: res.review_ids.join(',') } })
+      return
+    }
+    // Aucun item ouvrable (p.ex. tous introuvables) — feedback en place.
     reflagToast.value = `${res.n_reflagged} re-flaggée(s)` +
       (res.n_skipped ? ` · ${res.n_skipped} ignorée(s)` : '')
     setTimeout(() => (reflagToast.value = null), 3000)
@@ -232,11 +262,22 @@ onMounted(() => void load())
           @click="onThumbClick(a)"
         >
           <img
-            :src="a.file_url"
+            :src="thumbSrc(a)"
             :alt="a.id"
             class="h-full w-full object-cover transition-transform group-hover:scale-105"
             loading="lazy"
           />
+
+          <!-- Recadrer EN PLACE (hover, top-left) — n'altère NI statut NI
+               eurio_id. Pour « mauvaise pièce », passer par Re-flagger. -->
+          <span
+            class="absolute left-1 top-1 flex h-5 w-5 items-center justify-center rounded opacity-0 transition-opacity group-hover:opacity-100"
+            style="background: rgba(14,14,31,0.62); backdrop-filter: blur(2px);"
+            title="Recadrer ce crop (en place)"
+            @click.stop="recropAsset = a"
+          >
+            <Crop class="h-3 w-3" style="color: #fff;" />
+          </span>
 
           <!-- Status label (bottom) — needs_review / rejected uniquement -->
           <span
@@ -316,7 +357,7 @@ onMounted(() => void load())
             @click="bulkReflag"
           >
             <RotateCcw class="h-3 w-3" />
-            Re-flagger en needs_review
+            Renvoyer en review
           </button>
           <button
             type="button"
@@ -343,6 +384,14 @@ onMounted(() => void load())
         </div>
       </Transition>
     </Teleport>
+
+    <!-- ── Éditeur de recadrage EN PLACE (overlay plein écran) ── -->
+    <CircleCropEditor
+      v-if="recropAsset"
+      :asset-id="recropAsset.id"
+      @saved="onRecropSaved"
+      @close="recropAsset = null"
+    />
   </section>
 </template>
 

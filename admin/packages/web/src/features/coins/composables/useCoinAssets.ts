@@ -46,6 +46,8 @@ export interface ReflagResponse {
   n_reflagged: number
   n_skipped: number
   skipped_reasons: string[]
+  /** Rows review_queue open des assets fournis → navigation /review/manual?ids= */
+  review_ids: string[]
 }
 
 function promoteUrl(url: string): string {
