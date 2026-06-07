@@ -119,7 +119,9 @@ QA dump + buildType Android `src/qa` faits, tooling `admin/packages/parity/` sca
 ## training-pipeline — sprints livrés, harvest à démarrer
 Sprints 1-5 livrés (2026-04-29/30, code dans `ml/training/`, table README corrigée). `journal/` = logs de runs actifs.
 **Reste :**
-- **`harvest/` (chantier suivant, 0 % — design only)** : phase 1 DINOv2 bring-up → phases 2-5 (auto-validateur eBay, sources étendues, user harvest in-app, review humaine admin). C'est le prochain gros morceau ML.
+- **`harvest/` — vision LARGEMENT EXÉCUTÉE (~80 %), docs périmées.** ⚠️ Le `harvest/README` dit « aucun code livré » : **c'est faux, c'est le drift**. Réalité du code : phase 1 DINOv2 ✅ (`ml/foundation/encoder.py`, dinov2_vits14), phase 2 auto-validateur ✅ (`foundation/auto_validate.py` + `thresholds` + `review_lanes`), phase 3 sources étendues ✅ (`ml/sources/ebay` ~80k + bce/lmdlp/jo/pricing), phase 5 review humaine ✅ (review_queue + **lot-review live** + `claude_review`). **À faire : réécrire les docs harvest/ pour pointer la réalité.**
+  - **Phase 4 — user-harvest in-app** (seul vrai manque) : l'utilisateur scanne → confirme/corrige la pièce → on récupère **une photo unique, label sûr** pour le training. Gated sur l'app Android.
+  - **Cloud fallback** : Numista API pour identifier une pièce inconnue (partiel — source `numista` existe déjà).
 - Device walkthrough des sprints 4-5 jamais loggé (premières métriques device end-to-end TBD)
 - Routes `/benchmark` FastAPI pas encore purgées (fusion prévue dans `experiment_iterations`)
 - `iteration-detail-page-design.md` : gaps UX ouverts (monitor training invisible G-001, collapse §0 G-002, recipe affichée en UUID)
@@ -134,6 +136,6 @@ Doc de cadrage solide (pourquoi, catégories A-F, dashboard, 7 questions à tran
 
 ---
 
-> **Sources (parking lot)** — `docs/sources-refacto/` a été **archivé** (chantier multi-sessions livré : pipeline 6 étapes, orchestrateur, eBay V1). Fils résiduels encore potentiellement pertinents, à juger : auto-validation chunks 8-9 (Dino×texte, auto-accept), ebay-multi-marketplace F1-F4 + cutover V2 (9/14 faits), `lot-review` (page `/review/lots`, pas démarrée), `sdk-kickoff` (ReferentialSourceAdapter, différé post-cohorte 19). Détail : `docs/archive/sources-refacto/`.
+> **Sources (parking lot)** — `docs/sources-refacto/` a été **archivé** (chantier multi-sessions livré : pipeline 6 étapes, orchestrateur, eBay). ⚠️ _Les statuts « pas démarré » de ces docs ont drifté — vérifier le code avant de croire un doc._ Réalité : **lot-review = LIVE et actif** (`/review-queue/lots`, `LotReviewDetailPage.vue` 1353 lignes, 30 routes, édité aujourd'hui), **auto-validation = faite** (`ml/foundation/`). Fils encore réellement ouverts, à juger : `ebay-multi-marketplace` cutover V2, `sdk-kickoff` (ReferentialSourceAdapter, différé post-cohorte 19), Dino×texte combiné (chunk 9). Détail : `docs/archive/sources-refacto/`.
 >
 > **Références/ADRs gardés en place :** `adr/`, `app-implem-phases/`, `research/`, `mission/`, `design/_shared/`, `tracks.md`, `roadmap.md`, `tech-stack.md`, `cross-platform-setup.md`, `DECISIONS.md`.

@@ -1,6 +1,17 @@
 # Harvest pipeline — élargir le corpus de photos réelles
 
-> Statut : **planification, aucun code livré.** Document écrit
+> ⚠️ **STATUT PÉRIMÉ — vérifié doc↔code le 2026-06-07.** Le « aucun code livré »
+> ci-dessous est **faux** : la vision de ce track a été **largement exécutée** sous
+> d'autres noms. Réalité du code :
+> - **DINOv2 bring-up (phase 1)** ✅ → `ml/foundation/encoder.py` (dinov2_vits14)
+> - **Auto-validateur eBay (phase 2)** ✅ → `ml/foundation/auto_validate.py` + `thresholds.py` + `review_lanes.py`
+> - **Sources étendues (phase 3)** ✅ → `ml/sources/ebay/` (~80k) + `bce/` `lmdlp/` `jo/` `pricing/` ; cohorte `mix-zone-17` pilotée via `ml/sources/cohort_scope.py` + lab
+> - **Review humaine admin (phase 5)** ✅ → review_queue + **lot-review live** + `ml/foundation/claude_review.py`
+> - **User-harvest in-app (phase 4)** ❌ = **le seul vrai manque** (gated sur l'app Android : scan user → confirme/corrige → photo unique label sûr) + cloud fallback Numista (partiel)
+>
+> **TODO : réécrire ce dossier pour refléter le code.** Le texte ci-dessous est la vision d'origine (2026-05-02), conservée pour le « pourquoi ».
+>
+> ~~Statut : **planification, aucun code livré.**~~ Document écrit
 > 2026-05-02 après le constat tiré de la cohort `mix-zone-7-cls`
 > (test-2, R@1 strict 57% live) : **une seule photo studio Numista
 > + augmentation synthétique ne suffit pas** à entraîner un embedder
