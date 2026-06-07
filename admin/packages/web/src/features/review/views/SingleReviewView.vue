@@ -16,6 +16,7 @@ import {
   fetchReviewStats,
   moveReviewLaneToManual,
   rejectReviewItem,
+  requalifyReviewAsLot,
   skipReviewItem,
   type ConditionTier,
   type ListingKind,
@@ -31,7 +32,7 @@ import type { CoinSearchEntry } from '../composables/useCoinsSearch'
 import SplitCompare from '../components/SplitCompare.vue'
 import CircleCropEditor from '../components/CircleCropEditor.vue'
 import ReviewActionBar from '../components/ReviewActionBar.vue'
-import { Crop } from 'lucide-vue-next'
+import { Boxes, Crop } from 'lucide-vue-next'
 import DinoVerdict from '../components/DinoVerdict.vue'
 import AutoValidateVerdict from '../components/AutoValidateVerdict.vue'
 import ReviewRightColumn from '../components/ReviewRightColumn.vue'
@@ -384,6 +385,29 @@ function skipCurrent() {
   advance()
 }
 
+// « Requalifier en lot » (L) — le crop était en review single mais l'annonce
+// est en réalité un lot. On bascule TOUT le listing en kind='lot' (écriture
+// immédiate, pas une décision) : les crops quittent la queue single → flow lot.
+// On RELOAD (pas un simple advance) car les crops frères du listing basculent
+// aussi et doivent disparaître de la queue locale.
+async function requalifyCurrentAsLot() {
+  const item = currentItem.value
+  if (!item) return
+  flushPending()
+  try {
+    const res = await requalifyReviewAsLot(item.id)
+    flashTopNotice(
+      res.n_requalified > 1
+        ? `Listing requalifié en lot — ${res.n_requalified} crops basculés vers le flow lot`
+        : 'Crop requalifié en lot',
+    )
+  } catch (err) {
+    flashTopNotice(`Échec de la requalification : ${err instanceof Error ? err.message : String(err)}`)
+    return
+  }
+  await load()
+}
+
 // WS1 : « Faire en manuel » — sort l'item de la lane courante (auto_accept /
 // ccproxy) vers la lane manuelle (sticky). Écriture immédiate (pas de fenêtre
 // d'undo : c'est un déplacement, pas une décision) puis on avance.
@@ -553,6 +577,7 @@ useReviewKeybinds(keyboardEnabled, {
   onCycleCondition: cycleCondition,
   onAcceptDino: acceptDino,
   onRecrop: () => { if (currentItem.value) showCropEditor.value = true },
+  onRequalifyLot: requalifyCurrentAsLot,
 })
 </script>
 
@@ -665,7 +690,18 @@ useReviewKeybinds(keyboardEnabled, {
       <div class="grid flex-1 gap-6 overflow-hidden px-8 py-6 lg:grid-cols-[minmax(0,1fr)_560px]">
           <!-- ── COLONNE GAUCHE ── -->
           <div class="flex min-h-0 flex-col gap-4 overflow-y-auto">
-            <div class="flex items-center justify-end">
+            <div class="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                class="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-mono uppercase tracking-wider transition-colors"
+                style="border-color: var(--surface-3); color: var(--ink-700); background: var(--surface-1);"
+                title="Ce n'est pas un single mais un lot → bascule tout le listing dans le flow lot · L"
+                @click="requalifyCurrentAsLot"
+              >
+                <Boxes class="h-3 w-3" />
+                Requalifier en lot
+                <span class="font-mono text-[9px] opacity-70">L</span>
+              </button>
               <button
                 type="button"
                 class="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-mono uppercase tracking-wider transition-colors"
@@ -891,6 +927,8 @@ useReviewKeybinds(keyboardEnabled, {
           <dd style="color: var(--ink-500);">Accepter la suggestion DINOv2 top-1 (si disponible)</dd>
           <dt class="font-mono text-[12px]" style="color: var(--ink-700);">E</dt>
           <dd style="color: var(--ink-500);">Recadrer le crop manuellement (⏎ valide le recadrage)</dd>
+          <dt class="font-mono text-[12px]" style="color: var(--ink-700);">L</dt>
+          <dd style="color: var(--ink-500);">Requalifier en lot (le single est en fait un lot → flow lot)</dd>
           <dt class="font-mono text-[12px]" style="color: var(--ink-700);">Esc</dt>
           <dd style="color: var(--ink-500);">Fermer overlay</dd>
         </dl>

@@ -19,6 +19,11 @@ export interface ReviewKeybindHandlers {
   // Chunk Cr — accepter la suggestion DINOv2 top-1 en 1 clic.
   // No-op si dino_top1 est null (le callsite vérifie avant d'agir).
   onAcceptDino?: () => void
+  // E — ouvrir l'éditeur de recadrage manuel (R est pris par Reject).
+  onRecrop?: () => void
+  // L — requalifier le crop courant (et son listing) en LOT : il quitte la
+  // queue single et bascule dans le flow lot. No-op si pas d'item courant.
+  onRequalifyLot?: () => void
 }
 
 function isTypingTarget(el: EventTarget | null): boolean {
@@ -102,6 +107,16 @@ export function useReviewKeybinds(
       case 'd':
       case 'D':
         handlers.onAcceptDino?.()
+        e.preventDefault()
+        break
+      case 'e':
+      case 'E':
+        handlers.onRecrop?.()
+        e.preventDefault()
+        break
+      case 'l':
+      case 'L':
+        handlers.onRequalifyLot?.()
         e.preventDefault()
         break
     }

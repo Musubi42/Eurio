@@ -273,6 +273,29 @@ export async function correctListing(
   }
 }
 
+/**
+ * Requalifie le crop courant — et tout son listing — en LOT (review_queue.kind
+ * passe de 'single' à 'lot'). Les crops du listing quittent la queue single et
+ * basculent dans le flow lot. Réservé au cas « ce single est en fait un lot ».
+ */
+export interface RequalifyLotResult {
+  status: string
+  listing_key: string
+  n_requalified: number
+  n_images: number
+}
+
+export async function requalifyReviewAsLot(id: string): Promise<RequalifyLotResult> {
+  const real = await safeFetch<RequalifyLotResult>(
+    `/review-queue/${encodeURIComponent(id)}/requalify-lot`,
+    { method: 'POST' },
+  )
+  if (real === null) {
+    throw new Error('Backend indisponible — la requalification en lot n’a pas pu être enregistrée.')
+  }
+  return real
+}
+
 // ─── Re-crop manuel (chantier crop-quality-overhaul, Session B) ──────────
 
 /** Contexte de l'éditeur de cercle : le RAW (sur lequel on dessine) + le

@@ -1935,6 +1935,84 @@ def correct_listing(review_id: str, payload: CorrectListingPayload) -> dict[str,
     }
 
 
+class RequalifyLotResponse(BaseModel):
+    status: str
+    listing_key: str
+    n_requalified: int   # rows review_queue passées en kind='lot'
+    n_images: int        # source_images du listing touchées
+
+
+# Consumed by: admin/.../review/composables/useReviewApi.ts (requalifyReviewAsLot)
+@router.post("/{review_id}/requalify-lot", response_model=RequalifyLotResponse)
+def requalify_lot(review_id: str) -> RequalifyLotResponse:
+    """Requalifie le crop courant — et TOUT son listing — en LOT.
+
+    Le crop était en review SINGLE mais l'annonce est en réalité un lot
+    (plusieurs pièces). On bascule toutes les rows ``open`` du listing en
+    ``review_queue.kind='lot'`` : elles quittent la queue single et
+    apparaissent dans le flow lot (groupé par ``listing_key``). On marque
+    aussi ``listing_kind='lot'`` (taxonomie, ``extractor_version='manual'``)
+    pour cohérence + empêcher une re-classification auto en single."""
+    conn = _store()._connection()  # noqa: SLF001
+    row = conn.execute(
+        f"""
+        SELECT {_LISTING_KEY_SQL} AS listing_key
+          FROM review_queue rq
+          JOIN image_assets a ON a.id = rq.image_asset_id
+          JOIN source_images si ON si.id = a.source_image_id
+         WHERE rq.id = ?
+        """,
+        (review_id,),
+    ).fetchone()
+    if row is None or not row["listing_key"]:
+        raise HTTPException(status_code=404, detail="Review item not found.")
+    listing_key = row["listing_key"]
+
+    # Toutes les source_images du listing (même listing_key) → leurs rows.
+    sids = [
+        r["sid"] for r in conn.execute(
+            f"SELECT si.id AS sid FROM source_images si "  # noqa: S608
+            f"WHERE {_LISTING_KEY_SQL} = ?",
+            (listing_key,),
+        ).fetchall()
+    ]
+    if not sids:
+        raise HTTPException(status_code=404, detail="Listing has no images.")
+    ph = ",".join("?" * len(sids))
+
+    with conn:
+        cur = conn.execute(
+            f"""
+            UPDATE review_queue
+               SET kind = 'lot'
+             WHERE status = 'open' AND kind != 'lot'
+               AND image_asset_id IN (
+                   SELECT a.id FROM image_assets a
+                    WHERE a.source_image_id IN ({ph})
+               )
+            """,  # noqa: S608
+            sids,
+        )
+        n_requalified = cur.rowcount or 0
+        # Taxonomie : marque le listing en 'lot' (manuel → non ré-écrasé par C2).
+        conn.execute(
+            f"""
+            UPDATE listing_text_signals
+               SET listing_kind = 'lot', listing_kind_confidence = 1.0,
+                   extractor_version = 'manual', computed_at = datetime('now')
+             WHERE source_image_id IN ({ph})
+            """,  # noqa: S608
+            sids,
+        )
+
+    logger.info("[review] requalify-lot id=%s listing=%s rows=%d images=%d",
+                review_id, listing_key, n_requalified, len(sids))
+    return RequalifyLotResponse(
+        status="ok", listing_key=listing_key,
+        n_requalified=n_requalified, n_images=len(sids),
+    )
+
+
 # Trash = sous-cas de reject avec une raison QUALITÉ explicite (chantier
 # crop-quality-overhaul, Session B). Le tail des crops imprécis est surtout
 # du DÉCHET (non-pièce : coincards, certificats, tubes ; ou photo illisible) :
