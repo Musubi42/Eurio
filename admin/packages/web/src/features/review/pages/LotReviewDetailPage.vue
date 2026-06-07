@@ -22,7 +22,7 @@ import {
   Trash2, X,
 } from 'lucide-vue-next'
 import {
-  decideLot, fetchLot, LotReviewError,
+  decideLot, fetchLot, LotReviewError, requalifyLotAsSingle,
   type LotAssignment, type LotCandidate, type LotDetail, type LotRejectReason,
 } from '../composables/useLotReview'
 import { useLotReviewKeybinds } from '../composables/useLotReviewKeybinds'
@@ -342,6 +342,28 @@ async function submit() {
   }
 }
 
+// « Pas un lot » (S) — faux positif de la classif v2 : le listing repart en
+// single. Écriture immédiate (pas une décision d'attribution) puis on chaîne
+// vers le listing suivant (comme submit), ou retour à la grille.
+const requalifyingSingle = ref(false)
+async function requalifyAsSingle() {
+  if (!detail.value || requalifyingSingle.value) return
+  requalifyingSingle.value = true
+  const next = detail.value.next_listing_key
+  try {
+    await requalifyLotAsSingle(detail.value.listing_key)
+    if (autoAdvance.value && next) {
+      void router.replace(`/review/lot/${encodeURIComponent(next)}`)
+    } else {
+      void router.replace('/review?mode=lot')
+    }
+  } catch (err) {
+    error.value = err instanceof LotReviewError ? err.message : String(err)
+  } finally {
+    requalifyingSingle.value = false
+  }
+}
+
 function gotoPrev() {
   if (detail.value?.prev_listing_key) {
     void router.replace(`/review/lot/${encodeURIComponent(detail.value.prev_listing_key)}`)
@@ -452,6 +474,7 @@ useLotReviewKeybinds(keyboardEnabled, {
   onPrevRaw: prevRaw,
   onToggleHelp: toggleHelp,
   onCloseOverlay: closeOverlay,
+  onRequalifySingle: requalifyAsSingle,
 })
 
 // D toggle reste géré ici (pas dans le composable car spécifique à
@@ -597,7 +620,17 @@ function detectionBadgeColor(cropIndex: number | null): string {
         <button class="nav-btn" :disabled="!detail?.next_listing_key" title="Listing suivant (→)" @click="gotoNext">
           <ArrowRight class="h-4 w-4" />
         </button>
-        <button class="nav-btn ml-2" title="Fermer (Esc)" @click="closePage">
+        <button
+          class="nav-btn nav-btn--text ml-2"
+          :disabled="requalifyingSingle"
+          title="Ce listing n'est pas un lot → review single (S)"
+          @click="requalifyAsSingle"
+        >
+          <RotateCcw class="h-3.5 w-3.5" />
+          <span class="text-[11px]">Pas un lot</span>
+          <kbd>S</kbd>
+        </button>
+        <button class="nav-btn ml-1" title="Fermer (Esc)" @click="closePage">
           <X class="h-4 w-4" />
         </button>
       </nav>
@@ -982,6 +1015,8 @@ function detectionBadgeColor(cropIndex: number | null): string {
           <dd style="color: var(--ink-500);">Face : avers / revers / inconnu (sur assign)</dd>
           <dt class="font-mono text-[12px]" style="color: var(--ink-700);">D</dt>
           <dd style="color: var(--ink-500);">Toggle examination plate (raw + cercles)</dd>
+          <dt class="font-mono text-[12px]" style="color: var(--ink-700);">S</dt>
+          <dd style="color: var(--ink-500);">Pas un lot → requalifier le listing en single</dd>
           <dt class="font-mono text-[12px]" style="color: var(--ink-700);">Esc</dt>
           <dd style="color: var(--ink-500);">Fermer overlay / quitter mode free / page</dd>
           <dt class="font-mono text-[12px]" style="color: var(--ink-700);">?</dt>

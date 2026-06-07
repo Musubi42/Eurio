@@ -210,3 +210,26 @@ export async function decideLot(
   if (!resp.ok) throw await parseError(resp)
   return (await resp.json()) as LotDecideResponse
 }
+
+export interface RequalifySingleResponse {
+  status: string
+  listing_key: string
+  n_requalified: number
+  n_images: number
+}
+
+/**
+ * Inverse de la requalif single→lot : ce listing n'est PAS un lot (faux
+ * positif v2). Rebascule toutes ses rows open en kind='single' → elles
+ * repartent dans le flow single.
+ */
+export async function requalifyLotAsSingle(
+  listingKey: string,
+): Promise<RequalifySingleResponse> {
+  const resp = await fetch(
+    `${ML_API}/review-queue/lots/${encodeURIComponent(listingKey)}/requalify-single`,
+    { method: 'POST' },
+  )
+  if (!resp.ok) throw await parseError(resp)
+  return (await resp.json()) as RequalifySingleResponse
+}

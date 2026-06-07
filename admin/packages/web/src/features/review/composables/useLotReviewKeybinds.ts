@@ -34,6 +34,8 @@ export interface LotReviewKeybindHandlers {
   onToggleHelp: () => void
   /** Esc : cascade fermeture (help → free → bulk → page). */
   onCloseOverlay: () => void
+  /** S : requalifier le listing en single (ce n'est pas un lot). */
+  onRequalifySingle?: () => void
 }
 
 function isTypingTarget(el: EventTarget | null): boolean {
@@ -111,6 +113,10 @@ export function useLotReviewKeybinds(
         break
       case 'ArrowRight':
         handlers.onNextRaw()
+        e.preventDefault()
+        break
+      case 's': case 'S':
+        handlers.onRequalifySingle?.()
         e.preventDefault()
         break
       case '?':

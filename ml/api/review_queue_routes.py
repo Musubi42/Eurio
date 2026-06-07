@@ -2013,6 +2013,134 @@ def requalify_lot(review_id: str) -> RequalifyLotResponse:
     )
 
 
+# Consumed by: admin/.../review/composables/useLotReview.ts (requalifyLotAsSingle)
+@router.post("/lots/{listing_key}/requalify-single", response_model=RequalifyLotResponse)
+def requalify_single(listing_key: str) -> RequalifyLotResponse:
+    """Inverse de requalify-lot : le listing n'est PAS un lot (faux positif de
+    la classif v2). Rebascule toutes ses rows ``open`` en ``kind='single'`` +
+    ``listing_kind='single'`` → elles repartent dans le flow single."""
+    conn = _store()._connection()  # noqa: SLF001
+    sids = [
+        r["sid"] for r in conn.execute(
+            f"SELECT si.id AS sid FROM source_images si "  # noqa: S608
+            f"WHERE {_LISTING_KEY_SQL} = ?",
+            (listing_key,),
+        ).fetchall()
+    ]
+    if not sids:
+        raise HTTPException(status_code=404, detail=f"Lot '{listing_key}' not found.")
+    ph = ",".join("?" * len(sids))
+
+    with conn:
+        cur = conn.execute(
+            f"""
+            UPDATE review_queue
+               SET kind = 'single'
+             WHERE status = 'open' AND kind != 'single'
+               AND image_asset_id IN (
+                   SELECT a.id FROM image_assets a
+                    WHERE a.source_image_id IN ({ph})
+               )
+            """,  # noqa: S608
+            sids,
+        )
+        n_requalified = cur.rowcount or 0
+        conn.execute(
+            f"""
+            UPDATE listing_text_signals
+               SET listing_kind = 'single', listing_kind_confidence = 1.0,
+                   extractor_version = 'manual', computed_at = datetime('now')
+             WHERE source_image_id IN ({ph})
+            """,  # noqa: S608
+            sids,
+        )
+
+    logger.info("[review] requalify-single listing=%s rows=%d images=%d",
+                listing_key, n_requalified, len(sids))
+    return RequalifyLotResponse(
+        status="ok", listing_key=listing_key,
+        n_requalified=n_requalified, n_images=len(sids),
+    )
+
+
+class BatchRequalifyLotResponse(BaseModel):
+    dry_run: bool
+    n_rows: int                      # rows single→lot (prévues / effectuées)
+    n_listings: int                  # listings distincts concernés
+    by_listing_kind: dict[str, int]  # {'coffret': N, 'lot': M}
+
+
+# Filtre commun : rows open kind='single' dont le listing est classé lot/coffret.
+_BATCH_LOT_WHERE = """
+  rq.status = 'open' AND rq.kind = 'single'
+  AND a.id IN (
+    SELECT a2.id FROM image_assets a2
+      JOIN listing_text_signals lts ON lts.source_image_id = a2.source_image_id
+     WHERE lts.listing_kind IN ('lot', 'coffret')
+  )
+"""
+
+
+# Endpoint de MAINTENANCE (piloté manuellement en dry-run puis exécution).
+# Pas de consommateur front pour l'instant ; un bouton dashboard pourra
+# l'appeler si le besoin devient récurrent.
+@router.post("/requalify-lot/batch", response_model=BatchRequalifyLotResponse)
+def batch_requalify_lot(
+    dry_run: bool = Query(default=True),
+) -> BatchRequalifyLotResponse:
+    """Requalifie en LOT, en masse, tous les crops encore en queue SINGLE dont
+    le listing est déjà classé ``lot``/``coffret`` (faux-singles : v2 a vu le
+    lot mais le routing n'a pas suivi). ``dry_run=True`` (défaut) ne compte que.
+
+    Ne touche PAS ``listing_text_signals`` (déjà lot/coffret) — uniquement le
+    routing ``review_queue.kind``. Idempotent (filtre kind='single')."""
+    conn = _store()._connection()  # noqa: SLF001
+
+    # Breakdown par listing_kind (toujours calculé, dry-run inclus).
+    by_kind = {
+        r["lk"]: r["n"]
+        for r in conn.execute(
+            """
+            SELECT lts.listing_kind AS lk, COUNT(*) AS n
+              FROM review_queue rq
+              JOIN image_assets a ON a.id = rq.image_asset_id
+              JOIN listing_text_signals lts ON lts.source_image_id = a.source_image_id
+             WHERE rq.status = 'open' AND rq.kind = 'single'
+               AND lts.listing_kind IN ('lot', 'coffret')
+             GROUP BY lts.listing_kind
+            """,
+        ).fetchall()
+    }
+    n_rows = sum(by_kind.values())
+    n_listings = conn.execute(
+        f"""
+        SELECT COUNT(DISTINCT {_LISTING_KEY_SQL}) AS n
+          FROM review_queue rq
+          JOIN image_assets a ON a.id = rq.image_asset_id
+          JOIN source_images si ON si.id = a.source_image_id
+          JOIN listing_text_signals lts ON lts.source_image_id = si.id
+         WHERE rq.status = 'open' AND rq.kind = 'single'
+           AND lts.listing_kind IN ('lot', 'coffret')
+        """,
+    ).fetchone()["n"]
+
+    if not dry_run and n_rows:
+        with conn:
+            conn.execute(
+                f"UPDATE review_queue SET kind = 'lot' "  # noqa: S608
+                f"WHERE rowid IN (SELECT rq.rowid FROM review_queue rq "
+                f"JOIN image_assets a ON a.id = rq.image_asset_id "
+                f"WHERE {_BATCH_LOT_WHERE})",
+            )
+        logger.info("[review] batch requalify-lot EXECUTED rows=%d listings=%d",
+                    n_rows, n_listings)
+
+    return BatchRequalifyLotResponse(
+        dry_run=dry_run, n_rows=n_rows, n_listings=n_listings,
+        by_listing_kind=by_kind,
+    )
+
+
 # Trash = sous-cas de reject avec une raison QUALITÉ explicite (chantier
 # crop-quality-overhaul, Session B). Le tail des crops imprécis est surtout
 # du DÉCHET (non-pièce : coincards, certificats, tubes ; ou photo illisible) :
