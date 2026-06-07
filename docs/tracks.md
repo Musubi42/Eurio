@@ -19,7 +19,7 @@
 | Track | Doc racine | Mission | Démarré | Statut global |
 |---|---|---|---|---|
 | **lab-prod-refacto** | [`lab-prod-refacto/`](./work-in-progress/lab-prod-refacto/) | Isoler lab et prod, rendre le label space cohérent (`eurio_id` côté lab) | 2026-05-02 | ✅ phase 1 livrée et validée (test-1 v2 : 85.7% live vs 57.1% en test-2) · phase 2 à démarrer |
-| **training-refacto-ux** | [`training-pipeline/refacto/`](./archive/training-pipeline/refacto/) | UX lab : tiroirs cohort/iteration, training monitor, purge transforms | en cours | partiel — voir doc |
+| **training-refacto-ux** | [`training-pipeline/refacto/`](./archive/training-pipeline/refacto/) | UX lab : tiroirs cohort/iteration, training monitor, purge transforms | 2026-05-01 | ✅ 5 phases livrées (chantier clos, archivé) |
 | **harvest** | [`training-pipeline/harvest/`](./work-in-progress/training-pipeline/harvest/) | Élargir le corpus de photos réelles (scraping + cloud fallback + user scans) | 2026-05-02 | 🔲 phase 1 (DINOv2 bring-up) à démarrer |
 | **on-device-v2** | _(à créer)_ | Backbone DINOv2 + tête ArcFace fine-tunée, distill mobile, intégration TFLite | non démarré | 🔲 dépend de `harvest/phase-1` |
 
