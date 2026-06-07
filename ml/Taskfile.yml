@@ -514,6 +514,30 @@ tasks:
     cmds:
       - "{{.VENV}}/python -m state.archive prune {{.CLI_ARGS}}"
 
+  # ---------- DB lease cross-machine (MinIO, chunk 6) ----------
+  # eurio.db canonique vit dans le bucket MinIO `eurio-db` ; une seule machine
+  # le détient à la fois. Workflow séquentiel Mac→PC→Mac : acquire avant de
+  # bosser, release après. Le driver reste sqlite3 (zéro perte de compat).
+  db:status:
+    desc: "Lease eurio.db : qui tient le verrou, sha local vs distant (lecture seule)."
+    cmds:
+      - "{{.VENV}}/python -m store.lease status"
+
+  db:acquire:
+    desc: "Pose le verrou MinIO + pull eurio.db. Usage: go-task ml:db:acquire [-- --note 'training PC']"
+    cmds:
+      - "{{.VENV}}/python -m store.lease acquire {{.CLI_ARGS}}"
+
+  db:release:
+    desc: "Checkpoint + push eurio.db + retire le verrou (la DB distante refait foi)."
+    cmds:
+      - "{{.VENV}}/python -m store.lease release"
+
+  db:steal:
+    desc: "Supprime un verrou périmé (machine crashée). Usage: go-task ml:db:steal -- --force"
+    cmds:
+      - "{{.VENV}}/python -m store.lease steal {{.CLI_ARGS}}"
+
   # ---------- API quotas ----------
   quota:status:
     desc: "Dump quota usage as JSON. Usage: go-task ml:quota:status -- --source=numista"

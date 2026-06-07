@@ -176,6 +176,24 @@ def _sources_startup() -> None:
 
 
 @app.on_event("startup")
+def _db_lease_startup() -> None:
+    """Lease cross-machine eurio.db (chunk 6) : on AVERTIT seulement (jamais
+    bloquant, jamais d'acquire/release auto — doctrine manuelle). Best-effort :
+    si MinIO est injoignable ou les creds absents, on ne dit rien."""
+    try:
+        from store import lease  # noqa: PLC0415
+
+        import logging
+        for msg in lease.startup_warnings():
+            logging.getLogger(__name__).warning("DB lease: %s", msg)
+    except Exception as exc:  # noqa: BLE001
+        import logging
+        logging.getLogger(__name__).debug(
+            "DB lease startup check skipped: %s", exc
+        )
+
+
+@app.on_event("startup")
 def _recrop_startup() -> None:
     """Reaper précis des `cohort_jobs` recrop laissés `running` par un process
     mort (BUG-1 : zombie persisté). Le recrop tourne en subprocess détaché qui
