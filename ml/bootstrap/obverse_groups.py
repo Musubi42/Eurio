@@ -80,17 +80,30 @@ def _ordinal_en(n: int) -> str:
 
 # « 2nd type », « 1st type »… (dans la parenthèse de design_description).
 _TYPE_RE = re.compile(r"(\d+)\s*(?:st|nd|rd|th)\s+type", re.IGNORECASE)
-# Préfixe dénomination de design_description : « 2 Euros - … », « 50 Cents - … ».
-_DENOM_PREFIX_RE = re.compile(r"^\s*[\d.,]+\s*(?:euros?|cents?)\s*[-–—]\s*", re.IGNORECASE)
+# Forme « monarchie » : « 2 Euros - Beatrix (…) » → capture « Beatrix (…) ».
+_MONARCH_FORM_RE = re.compile(r"^\s*[\d.,]+\s*(?:euros?|cents?)\s*[-–—]\s*(.+)$", re.IGNORECASE)
+# Première parenthèse : « (2nd map, 2nd type, Valletta) ».
+_PAREN_RE = re.compile(r"\(([^)]*)\)")
+# Token générique « 1st map » / « 2nd type » / « 3rd portrait » (à ignorer dans
+# la parenthèse — ce ne sont PAS des noms de design).
+_DESIGN_NOISE_RE = re.compile(r"^\s*\d+\s*(?:st|nd|rd|th)\s+(?:map|type|portrait)\s*$", re.IGNORECASE)
 # Tokens « -1st-map- », « -2nd-type- »… dans un eurio_id (pour le fallback).
 _EURIO_ORDINAL_TOKEN_RE = re.compile(r"-\d+(?:st|nd|rd|th)-")
 
 
 @dataclass(frozen=True)
 class ObverseKey:
-    """Identité d'avers déterministe : monarque + ordinal de type."""
+    """Identité d'avers déterministe : nom de design + ordinal de type.
 
-    monarch: str
+    ``name`` = monarque (« Albert II », « Beatrix ») pour les monarchies, OU le
+    nom de design en texte libre de la parenthèse hors map/type/portrait
+    (« Valletta », « Il-Kelb Tal-Fenek ») pour les designs nommés, OU chaîne vide
+    pour un standard map-only sans monarque (l'aigle DE, l'arbre FR… : le symbole
+    n'est pas dans les métadonnées, mais il est identique sur toutes les cartes →
+    une seule classe). ``type_ordinal`` = « Nème type » (refonte majeure d'avers).
+    """
+
+    name: str
     type_ordinal: int
 
 
@@ -138,29 +151,44 @@ class DeriveResult:
 def parse_obverse_key(
     design_description: str | None, eurio_id: str | None = None
 ) -> ObverseKey | None:
-    """Extrait ``(monarque, ordinal de type)`` de façon déterministe.
+    """Extrait ``(name, ordinal de type)`` de façon déterministe.
 
-    Primaire : ``design_description`` (« 2 Euros - Albert II (1st map, 2nd type,
-    1st portrait) » → ``ObverseKey('Albert II', 2)`` ; « 2 Euros - Philippe » →
-    ``ObverseKey('Philippe', 1)``). Le « Nème type » absent vaut 1.
-    Fallback léger : ``eurio_id`` (« …-standard-philippe » → ``Philippe`` t1).
-    Renvoie ``None`` si rien d'exploitable (→ flag ``unparsable``).
+    Trois formes de ``design_description`` couvertes :
+    - monarchie : « 2 Euros - Albert II (1st map, 2nd type) » → ``('Albert II', 2)`` ;
+    - design nommé : « 2 Euros (Valletta) » → ``('Valletta', 1)`` (le nom libre
+      de la parenthèse, hors map/type/portrait) ;
+    - standard map-only : « 2 Euros (1st map) » → ``('', 1)`` (aucun nom : aigle/
+      arbre national, identique sur toutes les cartes → une seule classe).
+
+    Le « Nème type » (refonte majeure) splitte (ex. FR 2022 « (2nd type) »). On
+    IGNORE la carte (revers) et le « Nème portrait ». Fallback ``eurio_id`` quand
+    la description est absente. Renvoie ``None`` si rien d'exploitable.
     """
-    monarch: str | None = None
+    name: str | None = None
     type_ordinal = 1
 
     if design_description:
-        body = _DENOM_PREFIX_RE.sub("", design_description.strip())
-        # Monarque = texte avant la 1ʳᵉ parenthèse (la parenthèse ne porte que
-        # carte / type / portrait, qu'on ignore sauf le type).
-        head = body.split("(", 1)[0].strip()
-        if head:
-            monarch = head
-        m = _TYPE_RE.search(body)
+        desc = design_description.strip()
+        m = _TYPE_RE.search(desc)
         if m:
             type_ordinal = int(m.group(1))
+        mm = _MONARCH_FORM_RE.match(desc)
+        if mm:
+            # Forme « denom - X » : X (avant parenthèse) est le monarque. Vide
+            # (« 2 Euros - ») = malformé → None.
+            head = mm.group(1).split("(", 1)[0].strip()
+            name = head or None
+        else:
+            # Pas de monarque : nom de design = parenthèse moins map/type/portrait.
+            paren = _PAREN_RE.search(desc)
+            extras = [
+                t.strip()
+                for t in (paren.group(1).split(",") if paren else [])
+                if t.strip() and not _DESIGN_NOISE_RE.match(t)
+            ]
+            name = ", ".join(extras)  # « » si map-only pur (DE/FR/IT…)
 
-    if monarch is None and eurio_id:
+    if name is None and eurio_id:
         # Fallback : « {country}-{year}-{denom}-standard-{reste} » → reste avant
         # le 1er token ordinal (« -1st-map- », « -2nd-type- »…).
         marker = "-standard-"
@@ -168,17 +196,16 @@ def parse_obverse_key(
         if idx != -1:
             rest = eurio_id[idx + len(marker) :]
             cut = _EURIO_ORDINAL_TOKEN_RE.search(rest)
-            slug_monarch = rest[: cut.start()] if cut else rest
-            slug_monarch = slug_monarch.strip("-")
-            if slug_monarch:
-                monarch = slug_monarch.replace("-", " ").title()
+            slug_name = (rest[: cut.start()] if cut else rest).strip("-")
+            if slug_name:
+                name = slug_name.replace("-", " ").title()
             m = _TYPE_RE.search(rest.replace("-", " "))
             if m:
                 type_ordinal = int(m.group(1))
 
-    if not monarch:
+    if name is None:
         return None
-    return ObverseKey(monarch=monarch, type_ordinal=type_ordinal)
+    return ObverseKey(name=name, type_ordinal=type_ordinal)
 
 
 def _build_group(
@@ -186,12 +213,14 @@ def _build_group(
 ) -> ObverseGroup:
     cc = country.upper()
     disp = face_value_display(face_value)
-    monarch_slug = _slugify(key.monarch)
-    group_id = f"{country.lower()}-{face_value_slug(face_value)}-{monarch_slug}-t{key.type_ordinal}"
-    designation = f"{cc} {disp} {key.monarch} ({_ordinal_fr(key.type_ordinal)} type)"
+    # name vide (standard map-only sans monarque) → slug 'standard' + libellé sobre.
+    name_slug = _slugify(key.name) or "standard"
+    label = key.name if key.name else "standard"
+    group_id = f"{country.lower()}-{face_value_slug(face_value)}-{name_slug}-t{key.type_ordinal}"
+    designation = f"{cc} {disp} {label} ({_ordinal_fr(key.type_ordinal)} type)"
     i18n = {
         "fr": designation,
-        "en": f"{cc} {disp} {key.monarch} ({_ordinal_en(key.type_ordinal)} type)",
+        "en": f"{cc} {disp} {label} ({_ordinal_en(key.type_ordinal)} type)",
     }
     members = tuple(c.eurio_id for c in sorted(coins, key=lambda c: (c.year, c.eurio_id)))
     years = [c.year for c in coins]

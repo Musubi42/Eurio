@@ -72,6 +72,26 @@ def test_parse_other_denomination_prefix() -> None:
     assert parse_obverse_key("1 Euro - Felipe VI") == ObverseKey("Felipe VI", 1)
 
 
+def test_parse_non_monarchy_map_only_is_empty_name() -> None:
+    # Pays sans monarque (aigle DE, arbre FR…) : « 2 Euros (1st map) » → name vide
+    # → toutes les cartes fusionnent (avers identique).
+    assert parse_obverse_key("2 Euros (1st map)") == ObverseKey("", 1)
+    assert parse_obverse_key("2 Euros (2nd map)") == ObverseKey("", 1)
+
+
+def test_parse_non_monarchy_type_splits() -> None:
+    # France 2022 : « (2nd type) » = refonte → split.
+    assert parse_obverse_key("2 Euros (2nd type)") == ObverseKey("", 2)
+
+
+def test_parse_free_text_design_name() -> None:
+    # Malte 2026 : designs nommés en texte libre → name = le nom (split).
+    assert parse_obverse_key("2 Euros (Valletta)") == ObverseKey("Valletta", 1)
+    assert parse_obverse_key("2 Euros (Il-Kelb Tal-Fenek)") == ObverseKey(
+        "Il-Kelb Tal-Fenek", 1
+    )
+
+
 def test_parse_fallback_to_eurio_id() -> None:
     # design_description absent → fallback sur l'eurio_id.
     assert parse_obverse_key(None, BE_2014.eurio_id) == ObverseKey("Philippe", 1)
@@ -80,9 +100,16 @@ def test_parse_fallback_to_eurio_id() -> None:
 
 
 def test_parse_unparsable_returns_none() -> None:
+    # Vrai unparsable = AUCUNE description (ni eurio_id fallback).
     assert parse_obverse_key(None, None) is None
     assert parse_obverse_key("", "") is None
-    assert parse_obverse_key("2 Euros - ") is None  # monarque vide
+
+
+def test_parse_bare_denomination_is_empty_name_standard() -> None:
+    # « 2 Euros » nu (ou « 2 Euros - » malformé) → standard name-vide, pas une
+    # erreur : un standard sans info de design (cas non-monarchie sans parenthèse).
+    assert parse_obverse_key("2 Euros") == ObverseKey("", 1)
+    assert parse_obverse_key("2 Euros - ") == ObverseKey("", 1)
 
 
 # --- derive_groups ---
@@ -134,6 +161,48 @@ def test_derive_groups_sorted_by_year() -> None:
         "be-2euro-albert-ii-t2",
         "be-2euro-philippe-t1",
     ]
+
+
+def test_derive_non_monarchy_merges_map_variants() -> None:
+    # DE : aigle identique sur 1st/2nd map → 1 seul groupe « standard ».
+    de = [
+        StandardCoin("de-2002-2eur-standard-1st-map", "DE", 2.0, 2002, "2 Euros (1st map)"),
+        StandardCoin("de-2008-2eur-standard-2nd-map", "DE", 2.0, 2008, "2 Euros (2nd map)"),
+    ]
+    res = derive_groups(de)
+    assert len(res.groups) == 1
+    g = res.groups[0]
+    assert g.group_id == "de-2euro-standard-t1"
+    assert set(g.members) == {"de-2002-2eur-standard-1st-map", "de-2008-2eur-standard-2nd-map"}
+
+
+def test_derive_malta_splits_named_designs() -> None:
+    # MT : 2nd map + Valletta + Il-Kelb = 3 designs distincts → 3 groupes.
+    mt = [
+        StandardCoin("mt-2008-2eur-standard-2nd-map", "MT", 2.0, 2008, "2 Euros (2nd map)"),
+        StandardCoin("mt-2026-2eur-standard-valletta", "MT", 2.0, 2026, "2 Euros (Valletta)"),
+        StandardCoin("mt-2026-2eur-standard-il-kelb-tal-fenek", "MT", 2.0, 2026, "2 Euros (Il-Kelb Tal-Fenek)"),
+    ]
+    res = derive_groups(mt)
+    ids = {g.group_id for g in res.groups}
+    assert ids == {
+        "mt-2euro-standard-t1",
+        "mt-2euro-valletta-t1",
+        "mt-2euro-il-kelb-tal-fenek-t1",
+    }
+
+
+def test_derive_france_merges_maps_splits_type() -> None:
+    fr = [
+        StandardCoin("fr-1999-2eur-standard-1st-map", "FR", 2.0, 1999, "2 Euros (1st map)"),
+        StandardCoin("fr-2007-2eur-standard-2nd-map", "FR", 2.0, 2007, "2 Euros (2nd map)"),
+        StandardCoin("fr-2022-2eur-standard-2nd-type", "FR", 2.0, 2022, "2 Euros (2nd type)"),
+    ]
+    res = derive_groups(fr)
+    by_id = {g.group_id: g for g in res.groups}
+    assert set(by_id) == {"fr-2euro-standard-t1", "fr-2euro-standard-t2"}
+    assert len(by_id["fr-2euro-standard-t1"].members) == 2  # les 2 cartes fusionnées
+    assert by_id["fr-2euro-standard-t2"].members == ("fr-2022-2eur-standard-2nd-type",)
 
 
 def test_derive_unparsable_flagged_not_grouped() -> None:
