@@ -3,7 +3,7 @@
 > Recherche préparatoire à l'implémentation de la Phase 2C.1.
 > Date : 2026-04-13.
 > Consommateur : `ml/bootstrap_referential.py` (à coder).
-> Doc parent : [`data-referential-architecture.md`](./data-referential-architecture.md), [`phase-2c-referential.md`](../phases/phase-2c-referential.md).
+> Doc parent : [`data-referential-architecture.md`](./data-referential-architecture.md), [`phase-2c-referential.md`](../archive/phases/phase-2c-referential.md).
 
 ---
 

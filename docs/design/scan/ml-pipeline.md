@@ -57,7 +57,7 @@ Frame CameraX (ARGB_8888)
 ## Références
 
 - [`docs/research/data-referential-architecture.md`](../../research/data-referential-architecture.md) — comment les embeddings sont générés côté bootstrap
-- [`docs/phases/phase-2c-referential.md`](../../phases/phase-2c-referential.md) — pipeline de matching multi-stage (stage 4 = visual, branchera ArcFace)
+- [`docs/phases/phase-2c-referential.md`](../../archive/phases/phase-2c-referential.md) — pipeline de matching multi-stage (stage 4 = visual, branchera ArcFace)
 - Mémoire Claude : `project_phase1_decisions.md` — historique des décisions ML
 
 ---

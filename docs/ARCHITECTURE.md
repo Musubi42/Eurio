@@ -2,7 +2,7 @@
 
 > **Statut** : living document, mis à jour par milestone (pas par commit).
 > **Dernière mise à jour** : 2026-04-13 (**Phase 2C complète** : bootstrap → scrapers → review tool → Supabase sync).
-> **Lecture complémentaire** : [`PRD.md`](../PRD.md) pour les détails produit (sera progressivement absorbé ici), [`docs/research/`](./research/) et [`docs/phases/`](./phases/) comme Architecture Decision Records.
+> **Lecture complémentaire** : [`PRD.md`](../PRD.md) pour les détails produit (sera progressivement absorbé ici), [`docs/research/`](./research/) et [`docs/phases/`](./archive/phases/) comme Architecture Decision Records.
 
 Ce document est volontairement **overview**. Il capture les décisions fondatrices, l'architecture système à gros grain, et l'état courant. Les détails d'implémentation vivent dans les docs de phase et de research.
 
@@ -349,7 +349,7 @@ Ces décisions sont documentées en détail dans leurs propres fichiers. Ce tabl
 | Wikipedia source primaire, BCE validation | 2026-04-13 | [`referential-bootstrap-research.md`](./research/referential-bootstrap-research.md) |
 | Slugify via `anyascii` (licence ISC) plutôt que `unidecode` (GPL) | 2026-04-13 | [`phase-2c1-review.md`](./research/phase-2c1-review.md) §3.1 |
 | Collision policy permissive (WARN, pas d'exit 1), zéro auto-suffix | 2026-04-13 | [`phase-2c1-review.md`](./research/phase-2c1-review.md) §3.2 |
-| DE circulation via `de.wikipedia Auflagen` (source dédiée 2C.1c) | 2026-04-13 | [`phase-2c-referential.md`](./phases/phase-2c-referential.md) §2C.1c |
+| DE circulation via `de.wikipedia Auflagen` (source dédiée 2C.1c) | 2026-04-13 | [`phase-2c-referential.md`](./archive/phases/phase-2c-referential.md) §2C.1c |
 | eBay Browse API + vélocité (Finding API décommissionnée) | Avril 2026 | [`ebay-api-strategy.md`](./research/ebay-api-strategy.md), mémoire `project_ebay_api_strategy.md` |
 | Numista API = catalogue seul, zéro prix | Avril 2026 | mémoire `reference_numista_no_price.md` |
 | Matching hybride `max(token_coverage, seq_ratio*0.7)` pour Stage 3 | 2026-04-13 | [`phase-2c2-lmdlp-run.md`](./research/phase-2c2-lmdlp-run.md) §2 |

@@ -18,7 +18,7 @@
 
 | Track | Doc racine | Mission | Démarré | Statut global |
 |---|---|---|---|---|
-| **lab-prod-refacto** | [`lab-prod-refacto/`](./lab-prod-refacto/) | Isoler lab et prod, rendre le label space cohérent (`eurio_id` côté lab) | 2026-05-02 | ✅ phase 1 livrée et validée (test-1 v2 : 85.7% live vs 57.1% en test-2) · phase 2 à démarrer |
+| **lab-prod-refacto** | [`lab-prod-refacto/`](./work-in-progress/lab-prod-refacto/) | Isoler lab et prod, rendre le label space cohérent (`eurio_id` côté lab) | 2026-05-02 | ✅ phase 1 livrée et validée (test-1 v2 : 85.7% live vs 57.1% en test-2) · phase 2 à démarrer |
 | **training-refacto-ux** | [`training-pipeline/refacto/`](./training-pipeline/refacto/) | UX lab : tiroirs cohort/iteration, training monitor, purge transforms | en cours | partiel — voir doc |
 | **harvest** | [`training-pipeline/harvest/`](./training-pipeline/harvest/) | Élargir le corpus de photos réelles (scraping + cloud fallback + user scans) | 2026-05-02 | 🔲 phase 1 (DINOv2 bring-up) à démarrer |
 | **on-device-v2** | _(à créer)_ | Backbone DINOv2 + tête ArcFace fine-tunée, distill mobile, intégration TFLite | non démarré | 🔲 dépend de `harvest/phase-1` |
@@ -66,10 +66,10 @@
 ### lab-prod-refacto
 | # | Phase | Statut | Bloque |
 |---|---|---|---|
-| 1 | [Label space eurio_id](./lab-prod-refacto/phase-1-label-space.md) | ✅ livrée, validée par test-1 v2 (85.7% live R@1 strict) | — |
-| 2 | [Isolation artefacts](./lab-prod-refacto/phase-2-isolation-artefacts.md) | 🔲 | comparaison inter-itérations, on-device-v2 propre |
-| 3 | [Step promote](./lab-prod-refacto/phase-3-promote.md) | 🔲 | versionning prod |
-| 4 | [Bundle routing](./lab-prod-refacto/phase-4-bundle-routing.md) | 🔲 | A/B cohort-test |
+| 1 | [Label space eurio_id](./work-in-progress/lab-prod-refacto/phase-1-label-space.md) | ✅ livrée, validée par test-1 v2 (85.7% live R@1 strict) | — |
+| 2 | [Isolation artefacts](./work-in-progress/lab-prod-refacto/phase-2-isolation-artefacts.md) | 🔲 | comparaison inter-itérations, on-device-v2 propre |
+| 3 | [Step promote](./work-in-progress/lab-prod-refacto/phase-3-promote.md) | 🔲 | versionning prod |
+| 4 | [Bundle routing](./work-in-progress/lab-prod-refacto/phase-4-bundle-routing.md) | 🔲 | A/B cohort-test |
 
 ### harvest
 | # | Phase | Statut | Bloque |

@@ -443,8 +443,8 @@ Le référentiel est en JSON git. On peut partir vers n'importe quelle stack (Po
 
 ## 10. Liens croisés
 
-- **Phase d'implémentation** : [`docs/phases/phase-2c-referential.md`](../phases/phase-2c-referential.md)
+- **Phase d'implémentation** : [`docs/phases/phase-2c-referential.md`](../archive/phases/phase-2c-referential.md)
 - **Pipeline de prix eBay** : [`docs/research/ebay-api-strategy.md`](./ebay-api-strategy.md)
 - **Cartographie écosystème euro** : [`docs/research/euro-ecosystem-map.md`](./euro-ecosystem-map.md)
-- **Phase catalogue ML** : [`docs/phases/phase-2b-arcface-catalog.md`](../phases/phase-2b-arcface-catalog.md) — le modèle d'embedding entraîné ici sert aussi au Stage 4 du matching
-- **Phase coffre** : [`docs/phases/phase-3-coffre.md`](../phases/phase-3-coffre.md) — dépend du référentiel pour les prix
+- **Phase catalogue ML** : [`docs/phases/phase-2b-arcface-catalog.md`](../archive/phases/phase-2b-arcface-catalog.md) — le modèle d'embedding entraîné ici sert aussi au Stage 4 du matching
+- **Phase coffre** : [`docs/phases/phase-3-coffre.md`](../archive/phases/phase-3-coffre.md) — dépend du référentiel pour les prix

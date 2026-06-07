@@ -91,7 +91,7 @@
 | 🟢 | Schema canonique = 6 tables Supabase (`coins`, `source_observations`, `matching_decisions`, `review_queue`, `coin_embeddings`, `user_collections`) | 2026-04-13 | [`research/phase-2c7-supabase-sync-run.md`](./research/phase-2c7-supabase-sync-run.md) |
 | 🟢 | **Matching pipeline 5 stages** : cross-ref → structural unique → structural+fuzzy → numeric → visual (ArcFace, gated sur Phase 2B) | 2026-04-13 | [`research/data-referential-architecture.md`](./research/data-referential-architecture.md) |
 | 🟢 | Pas d'auto-création de variantes : collisions vont dans `review_queue`, jamais `-v2` auto | 2026-04-13 | [`research/data-referential-architecture.md`](./research/data-referential-architecture.md) |
-| 🟢 | Bootstrap merge pattern préserve `images`, `design_description`, `sources_used` sur re-run | 2026-04-13 | [`phases/phase-2c-referential.md`](./phases/phase-2c-referential.md) |
+| 🟢 | Bootstrap merge pattern préserve `images`, `design_description`, `sources_used` sur re-run | 2026-04-13 | [`phases/phase-2c-referential.md`](./archive/phases/phase-2c-referential.md) |
 | 🟢 | Émissions communes zone euro = **une seule entrée canonique** (`eu-*`) avec `national_variants` listé (Option A figée) | 2026-04-13 | [`research/data-referential-architecture.md`](./research/data-referential-architecture.md) |
 | 🟢 | Photos Numista fetchées via **scrape one-shot côté `ml/`** → upload Supabase Storage → app fetch CDN. Jamais d'appel live Numista (rate limit 2000/mois épuisé en avril 2026) | 2026-04-13 | [`design/_shared/offline-first.md`](./design/_shared/offline-first.md) |
 | 🟢 | eBay Finding API morte depuis 2025-02-05 → Browse API + velocity weighting (`ebay_client.py`) | 2026-04-13 | [`research/phase-2c4-ebay-run.md`](./research/phase-2c4-ebay-run.md) |

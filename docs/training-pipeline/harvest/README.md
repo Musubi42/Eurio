@@ -55,7 +55,7 @@ tracks en parallèle.
 
 | Doc | Relation |
 |---|---|
-| [`lab-prod-refacto/`](../../lab-prod-refacto/) | Prérequis. Sans isolation par `iteration_id` (phase 2), un track DINOv2 / harvest expérimental polluerait la prod. |
+| [`lab-prod-refacto/`](../../work-in-progress/lab-prod-refacto/) | Prérequis. Sans isolation par `iteration_id` (phase 2), un track DINOv2 / harvest expérimental polluerait la prod. |
 | [`refacto/`](../refacto/) (UX lab) | Orthogonal. Les tiroirs cohort/iteration affichent les nouvelles itérations sans modification. |
 | [`journal/`](../journal/) | Continue à tracker chaque itération, y compris les premières "DINOv2 + harvest" dès qu'elles tournent. |
 

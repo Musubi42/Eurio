@@ -8,10 +8,10 @@
 
 ## Pré-requis
 
-- [`lab-prod-refacto/phase-1-label-space.md`](../../lab-prod-refacto/phase-1-label-space.md)
+- [`lab-prod-refacto/phase-1-label-space.md`](../../work-in-progress/lab-prod-refacto/phase-1-label-space.md)
   appliquée — sinon les itérations multi-classes ne tournent pas
   proprement.
-- Idéalement [`lab-prod-refacto/phase-2-isolation-artefacts.md`](../../lab-prod-refacto/phase-2-isolation-artefacts.md)
+- Idéalement [`lab-prod-refacto/phase-2-isolation-artefacts.md`](../../work-in-progress/lab-prod-refacto/phase-2-isolation-artefacts.md)
   appliquée — sinon une expérimentation DINOv2 polluerait les
   artefacts singleton.
 

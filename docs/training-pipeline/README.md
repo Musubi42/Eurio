@@ -62,6 +62,6 @@ en bas. Le sprint doc lui peut être édité si on identifie un meilleur plan
 
 ## Liens externes
 
-- [`docs/admin/cohort-capture-flow/design.md`](../admin/cohort-capture-flow/design.md) — la pipeline de capture, déjà livrée, base de tout
-- [`docs/scan-normalization/`](../scan-normalization/) — la normalize device
+- [`docs/admin/cohort-capture-flow/design.md`](../work-in-progress/cohort-capture-flow/design.md) — la pipeline de capture, déjà livrée, base de tout
+- [`docs/scan-normalization/`](../archive/scan-normalization/) — la normalize device
 - [`CLAUDE.md`](../../CLAUDE.md) — règles repo (R0 pas de dette, R1 proto-first, etc.)
