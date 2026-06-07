@@ -19,12 +19,14 @@ import {
   fetchCoinPrices,
   fetchCoinSeries,
   fetchCoinVariantGroup,
+  fetchCoinDesignGroup,
   type CoinDescription,
   type SourceStatusResponse,
   type CreditsResponse,
   type MintReleaseFull,
   type ObservationsResponse,
   type VariantGroupEntry,
+  type DesignGroupMember,
 } from '@/features/coins/composables/useCoinsApi'
 import type { Coin, CoinImage, CoinImageDict, CoinSeries, IssueType } from '@/shared/supabase/types'
 import {
@@ -132,6 +134,14 @@ const mintReleases = ref<MintReleaseFull[] | null | undefined>(undefined)
 // groupe a >1 membre (canonique + au moins une variante).
 const variantMembers = ref<VariantGroupEntry[]>([])
 const hasVariantGroup = computed(() => variantMembers.value.length > 1)
+
+// Design group — pièces partageant l'AVERS (= classe ArcFace). Distinct des
+// variantes (finitions ci-dessus). Section visible ssi >1 membre.
+const designGroupId = ref<string | null>(null)
+const designGroupLabel = ref<string | null>(null)
+const designGroupMembers = ref<DesignGroupMember[]>([])
+const hasDesignGroup = computed(() => designGroupMembers.value.length > 1)
+
 const I18N_LANG_ORDER = ['fr', 'en', 'de', 'it', 'es', 'nl'] as const
 const I18N_LANG_LABEL: Record<string, string> = {
   fr: 'Français', en: 'English', de: 'Deutsch',
@@ -376,6 +386,18 @@ async function loadCharacteristics(eurioId: string) {
     variantMembers.value = vg.members.length > 1 ? vg.members : []
   } catch {
     variantMembers.value = []
+  }
+  // Design group (pièces du même avers = classe ArcFace) — fail-silent.
+  designGroupId.value = null
+  designGroupLabel.value = null
+  designGroupMembers.value = []
+  try {
+    const dg = await fetchCoinDesignGroup(eurioId)
+    designGroupId.value = dg.design_group_id
+    designGroupLabel.value = dg.designation
+    designGroupMembers.value = dg.members
+  } catch {
+    designGroupMembers.value = []
   }
 }
 
@@ -1871,6 +1893,73 @@ const numistaTotalMintage = computed<number | null>(() => {
           </table>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- ═══ Design group — pièces partageant l'avers (= classe ArcFace) — pleine largeur ═══ -->
+    <div v-if="hasDesignGroup" class="mt-12">
+      <div class="mb-5 flex items-end justify-between border-b pb-3"
+           style="border-color: var(--surface-3);">
+        <div>
+          <p class="text-[10px] uppercase"
+             style="color: var(--ink-500); letter-spacing: var(--tracking-eyebrow);">
+            Design group · classe d'entraînement
+          </p>
+          <h2 class="mt-0.5 font-display text-2xl italic font-semibold"
+              style="color: var(--indigo-700);">
+            Pièces associées — même avers
+          </h2>
+        </div>
+        <div class="text-right">
+          <p class="text-sm font-medium" style="color: var(--ink);">{{ designGroupLabel }}</p>
+          <p class="font-mono text-[10px] uppercase" style="color: var(--ink-400);">
+            {{ designGroupMembers.length }} pièces · {{ designGroupId }}
+          </p>
+        </div>
+      </div>
+      <p class="mb-4 text-xs" style="color: var(--ink-500);">
+        Même face nationale (avers), pays/années différents — regroupées en une seule classe
+        ArcFace. Distinct des variantes de finition (badges en tête de fiche).
+      </p>
+      <div class="grid grid-cols-2 gap-4 md:grid-cols-4">
+        <component
+          :is="m.is_self ? 'div' : 'button'"
+          v-for="m in designGroupMembers"
+          :key="m.eurio_id"
+          class="group flex flex-col overflow-hidden rounded-lg border text-left transition-all"
+          :class="m.is_self ? '' : 'hover:-translate-y-0.5'"
+          :style="`border-color: ${m.is_self ? 'var(--indigo-700)' : 'var(--surface-3)'}; background: var(--surface); box-shadow: var(--shadow-sm);`"
+          @click="!m.is_self && goToConfusionCoin(m.eurio_id)"
+        >
+          <div
+            class="relative flex aspect-square items-center justify-center overflow-hidden"
+            style="background: linear-gradient(160deg, var(--surface-1), var(--surface-2));"
+          >
+            <img
+              v-if="m.obverse_url"
+              :src="m.obverse_url"
+              :alt="m.title ?? m.eurio_id"
+              class="h-full w-full object-contain p-4 transition-transform duration-300 group-hover:scale-105"
+              loading="lazy"
+            />
+            <ImageOff v-else class="h-8 w-8" style="color: var(--ink-300);" />
+            <span
+              v-if="m.is_self"
+              class="absolute right-2 top-2 rounded-full px-2 py-0.5 text-xs font-semibold"
+              :style="{ background: 'var(--indigo-700)', color: 'white' }"
+            >
+              cette pièce
+            </span>
+          </div>
+          <div class="flex flex-1 flex-col justify-between p-3">
+            <p class="line-clamp-2 text-sm font-medium leading-snug" style="color: var(--ink);">
+              {{ m.title ?? m.eurio_id }}
+            </p>
+            <span class="mt-2 font-mono text-[10px] uppercase" style="color: var(--ink-400);">
+              {{ m.country }}{{ m.year ? ` · ${m.year}` : '' }}
+            </span>
+          </div>
+        </component>
       </div>
     </div>
 

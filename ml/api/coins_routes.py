@@ -916,6 +916,75 @@ def get_coin_variant_group(eurio_id: str) -> VariantGroupResponse:
     return VariantGroupResponse(canonical_eurio_id=canonical, members=members)
 
 
+# ─── Design group (pièces partageant un AVERS) ───────────────────────────────
+# Distinct des variantes (variant_kind, ci-dessus) : ici ce sont des pièces
+# DIFFÉRENTES (pays/années) qui partagent la même face nationale — donc une
+# seule classe ArcFace (COALESCE(design_group_id, eurio_id)). Couvre tous les
+# design_groups : avers-standards (be-…-t1), joint-issues eu-*, numista_id.
+
+class DesignGroupMember(BaseModel):
+    eurio_id: str
+    country: str
+    year: int
+    variant_kind: str
+    title: str | None = None          # titre FR pour affichage
+    obverse_url: str | None = None    # vignette avers canonique
+    is_self: bool = False             # True = la pièce courante
+
+
+class DesignGroupResponse(BaseModel):
+    design_group_id: str | None = None   # None si la pièce n'appartient à aucun groupe
+    designation: str | None = None       # libellé humain du groupe (= classe ArcFace)
+    members: list[DesignGroupMember]     # [] si pas de groupe
+
+
+@router.get("/{eurio_id}/design-group", response_model=DesignGroupResponse)
+def get_coin_design_group(eurio_id: str) -> DesignGroupResponse:
+    """Pièces partageant l'AVERS de ``eurio_id`` (membres de son design_group).
+
+    Le ``design_group`` est l'unité de classe ArcFace : be-1999 + be-2007 (même
+    effigie, carte différente) → une classe. Renvoie ``members=[]`` si la pièce
+    n'a pas de ``design_group_id`` (le front masque alors la section). Générique
+    pour tous les groupes (avers-standards, joint-issues, numista_id)."""
+    from api._coin_helpers import canonical_obverse_url, fr_title
+
+    conn = _conn()
+    row = conn.execute(
+        "SELECT design_group_id FROM coins WHERE eurio_id = ?", (eurio_id,),
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"coin {eurio_id} not found")
+    dgid = row["design_group_id"]
+    if not dgid:
+        return DesignGroupResponse(design_group_id=None, designation=None, members=[])
+
+    dg = conn.execute(
+        "SELECT designation FROM design_groups WHERE id = ?", (dgid,),
+    ).fetchone()
+    member_rows = conn.execute(
+        "SELECT eurio_id, country, year, variant_kind FROM coins "
+        "WHERE design_group_id = ? ORDER BY year, eurio_id",
+        (dgid,),
+    ).fetchall()
+    members = [
+        DesignGroupMember(
+            eurio_id=m["eurio_id"],
+            country=m["country"],
+            year=m["year"],
+            variant_kind=m["variant_kind"],
+            title=fr_title(conn, m["eurio_id"]),
+            obverse_url=canonical_obverse_url(conn, m["eurio_id"]),
+            is_self=(m["eurio_id"] == eurio_id),
+        )
+        for m in member_rows
+    ]
+    return DesignGroupResponse(
+        design_group_id=dgid,
+        designation=dg["designation"] if dg else None,
+        members=members,
+    )
+
+
 @router.get("/{eurio_id}/embedding", response_model=EmbeddingResponse)
 def get_coin_embedding(eurio_id: str) -> EmbeddingResponse:
     """Renvoie le model_version le plus récent (par created_at) si présent."""

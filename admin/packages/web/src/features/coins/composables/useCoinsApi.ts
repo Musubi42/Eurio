@@ -385,6 +385,29 @@ export function fetchCoinVariantGroup(eurioId: string): Promise<VariantGroupResp
   return json<VariantGroupResponse>(`/coins/${encodeURIComponent(eurioId)}/variant-group`)
 }
 
+// ─── Design group (pièces partageant un AVERS = classe ArcFace) ──────────────
+// Distinct des variantes (finitions) : ici des pièces DIFFÉRENTES (pays/années)
+// qui partagent la même face nationale.
+
+export interface DesignGroupMember {
+  eurio_id: string
+  country: string
+  year: number
+  variant_kind: string
+  title: string | null
+  obverse_url: string | null
+  is_self: boolean
+}
+export interface DesignGroupResponse {
+  design_group_id: string | null
+  designation: string | null
+  members: DesignGroupMember[]
+}
+
+export function fetchCoinDesignGroup(eurioId: string): Promise<DesignGroupResponse> {
+  return json<DesignGroupResponse>(`/coins/${encodeURIComponent(eurioId)}/design-group`)
+}
+
 export function fetchCoinEmbedding(eurioId: string): Promise<{ model_version: string | null }> {
   return json<{ model_version: string | null }>(`/coins/${encodeURIComponent(eurioId)}/embedding`)
 }
