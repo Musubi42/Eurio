@@ -17,7 +17,7 @@ ML_DIR = Path(__file__).parent.parent
 if str(ML_DIR) not in sys.path:
     sys.path.insert(0, str(ML_DIR))
 
-from foundation.enrichment import MIN_REAL, TRAINING_TARGET  # noqa: E402
+from training.foundation.enrichment import MIN_REAL, TRAINING_TARGET  # noqa: E402
 from store import Store  # noqa: E402
 from training.iteration_augmentations import (  # noqa: E402
     _canonical_ref_images,

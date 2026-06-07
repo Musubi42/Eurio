@@ -1019,7 +1019,7 @@ class IterationRunner:
         cmd = [
             VENV_PYTHON,
             "-u",  # Unbuffered stdio so streaming actually streams.
-            str(ML_DIR / "eval" / "evaluate_real_photos.py"),
+            str(ML_DIR / "training" / "eval" / "evaluate_real_photos.py"),
             "--model",
             str(model_path),
             "--real-photos",

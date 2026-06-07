@@ -42,7 +42,7 @@ _ML_DIR = Path(__file__).resolve().parents[2]
 if str(_ML_DIR) not in sys.path:
     sys.path.insert(0, str(_ML_DIR))
 
-from storage.local_cache import local_path
+from shared.storage.local_cache import local_path
 
 CCPROXY_URL = "http://localhost:3002/v1/chat/completions"
 MODEL = "claude-sonnet-4-6"
@@ -243,7 +243,7 @@ def recrop_with_margin(pair: Pair, margin_frac: float,
     les bytes PNG du nouveau crop."""
     import cv2  # local pour ne pas alourdir le import top-level
 
-    from scan.normalize_snap import CropConfig, _crop_mask_resize_int
+    from vision.normalize_snap import CropConfig, _crop_mask_resize_int
 
     bgr = cv2.imread(str(pair.raw_path), cv2.IMREAD_COLOR)
     if bgr is None:

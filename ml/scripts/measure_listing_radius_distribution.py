@@ -25,7 +25,7 @@ if str(_ML_DIR) not in sys.path:
 
 import cv2  # noqa: E402
 
-from scan.normalize_snap import (  # noqa: E402
+from vision.normalize_snap import (  # noqa: E402
     _hough_refine_in_roi,
     _yolo_detect_bboxes,
     _YOLO_BBOX_MARGIN_FRAC,

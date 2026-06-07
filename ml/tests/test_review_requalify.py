@@ -24,9 +24,10 @@ ML_DIR = Path(__file__).parent.parent
 if str(ML_DIR) not in sys.path:
     sys.path.insert(0, str(ML_DIR))
 
-from serving import coin_assets_routes, review_queue_routes
+from serving import coin_assets_routes
+from review import review_queue_routes
 from serving.coin_assets_routes import router as coins_router
-from serving.review_queue_routes import router as review_router
+from review.review_queue_routes import router as review_router
 from store import Store
 
 

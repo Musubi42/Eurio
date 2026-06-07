@@ -45,7 +45,7 @@ def _load_split(split: str):
 
 
 def _features(paths):
-    from foundation.encoder import encode_paths
+    from training.foundation.encoder import encode_paths
     kept, mat = encode_paths(paths)
     kept_stems = [p.stem for p in kept]
     return kept_stems, mat

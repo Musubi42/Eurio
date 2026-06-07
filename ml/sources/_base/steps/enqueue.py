@@ -26,7 +26,7 @@ import sqlite3
 import uuid
 from dataclasses import dataclass
 
-from foundation.review_lanes import compute_lane
+from training.foundation.review_lanes import compute_lane
 from sources._base.run_logger import RunHandle
 from store import emit_state_event
 

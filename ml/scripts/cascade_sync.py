@@ -26,8 +26,8 @@ import sqlite3
 import sys
 from pathlib import Path
 
-from storage import Bucket
-from storage.cascade import (
+from shared.storage import Bucket
+from shared.storage.cascade import (
     STATUS_MISSING,
     STATUS_PRESENT,
     STATUS_REMOVED,
@@ -177,7 +177,7 @@ def _audit(client, conn: sqlite3.Connection, *, check_cache: bool):
             minio_missing_in_db[bucket] = orphans
 
         if check_cache:
-            from storage import local_cache  # lazy
+            from shared.storage import local_cache  # lazy
             cache_dir = local_cache._cache_root() / bucket  # noqa: SLF001
             if not cache_dir.exists():
                 continue
@@ -197,7 +197,7 @@ def _audit(client, conn: sqlite3.Connection, *, check_cache: bool):
 
 
 def cmd_audit(args: argparse.Namespace) -> int:
-    from storage import _client
+    from shared.storage import _client
 
     conn = _connect()
     try:
@@ -257,7 +257,7 @@ def cmd_audit(args: argparse.Namespace) -> int:
 
 
 def cmd_repair(args: argparse.Namespace) -> int:
-    from storage import _client
+    from shared.storage import _client
 
     conn = _connect()
     try:
@@ -296,7 +296,7 @@ def cmd_repair(args: argparse.Namespace) -> int:
 
 
 def cmd_purge_cache(args: argparse.Namespace) -> int:
-    from storage import _client, local_cache
+    from shared.storage import _client, local_cache
 
     client = _client()
     cache_root = local_cache._cache_root()  # noqa: SLF001

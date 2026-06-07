@@ -46,7 +46,7 @@ _ML_DIR = Path(__file__).resolve().parents[1]
 if str(_ML_DIR) not in sys.path:
     sys.path.insert(0, str(_ML_DIR))
 
-from scan.normalize_snap import CropConfig  # noqa: E402
+from vision.normalize_snap import CropConfig  # noqa: E402
 from scripts.recrop_with_config import (  # noqa: E402
     _DEFAULT_SWEEP, _slug_for, recrop_one,
 )

@@ -20,8 +20,8 @@ import pytest
 # Nix devShell) rather than fail every test in the file at collection time.
 pytest.importorskip("botocore")
 
-import storage
-from storage import cascade
+from shared import storage
+from shared.storage import cascade
 
 
 # ─── tmp DB fixture ─────────────────────────────────────────────────────────
@@ -199,7 +199,7 @@ def test_local_path_404_marks_row_missing(tmp_db, tmp_path, monkeypatch):
     )
     monkeypatch.setattr(storage, "_s3_client", fake)
 
-    from storage import local_cache
+    from shared.storage import local_cache
 
     with pytest.raises(FileNotFoundError):
         local_cache.local_path("enrichment-crops", "ebay/run-x/a-1.png")
@@ -221,7 +221,7 @@ def test_local_path_transient_error_does_not_mark(tmp_db, tmp_path, monkeypatch)
     fake.download_file.side_effect = RuntimeError("connection reset")
     monkeypatch.setattr(storage, "_s3_client", fake)
 
-    from storage import local_cache
+    from shared.storage import local_cache
 
     with pytest.raises(FileNotFoundError):
         local_cache.local_path("enrichment-crops", "ebay/run-x/a-1.png")

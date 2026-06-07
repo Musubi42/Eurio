@@ -42,7 +42,7 @@ _MARKER = _ML_ROOT / "state" / ".eurio.db.lease"
 
 def _s3():
     """Client boto3 partagé avec la couche images (mêmes creds ``MINIO_*``)."""
-    from storage import _client  # noqa: PLC0415
+    from shared.storage import _client  # noqa: PLC0415
 
     return _client()
 

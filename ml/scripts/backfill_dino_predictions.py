@@ -63,7 +63,7 @@ def main() -> int:
         level=logging.INFO if args.verbose else logging.WARNING,
         format="%(asctime)s %(levelname)-7s %(name)s %(message)s",
     )
-    for name in ("foundation", "sources._base.steps.auto_validate"):
+    for name in ("training.foundation", "sources._base.steps.auto_validate"):
         logging.getLogger(name).setLevel(logging.INFO)
 
     store = Store(Path(args.db))

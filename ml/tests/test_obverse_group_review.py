@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import foundation.obverse_group_review as ogr
-from ccproxy_client import ChatResult
+import training.foundation.obverse_group_review as ogr
+from shared.ccproxy_client import ChatResult
 
 
 def _canned(content: str) -> ChatResult:

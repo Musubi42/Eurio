@@ -65,8 +65,8 @@ def _bench_excluded() -> set[str]:
 
 def _gen_split(conn, split: str, classes: list[str], cap: int | None,
                excluded: set[str]) -> list[dict]:
-    from scan.normalize_snap import normalize_listing
-    from storage.local_cache import local_path
+    from vision.normalize_snap import normalize_listing
+    from shared.storage.local_cache import local_path
 
     crop_dir = OUT / "crops" / split
     crop_dir.mkdir(parents=True, exist_ok=True)

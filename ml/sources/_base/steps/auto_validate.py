@@ -32,7 +32,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from foundation import (
+from training.foundation import (
     DEFAULT_ENCODER_VERSION,
     AnchorBank,
     build_transform,
@@ -43,7 +43,7 @@ from foundation import (
     top_k_match,
     top_k_match_country,
 )
-from foundation.review_lanes import compute_lane
+from training.foundation.review_lanes import compute_lane
 from sources._base.run_logger import RunHandle
 from store import DinoPredictionRow
 
@@ -400,7 +400,7 @@ def _run_inner(
         )
         # storage_path is the S3 key in enrichment-crops. local_path()
         # does read-through cache (no-op if cached by same-run detect_crop).
-        from storage.local_cache import local_path as _local_path
+        from shared.storage.local_cache import local_path as _local_path
         try:
             crop_p = _local_path("enrichment-crops", r["storage_path"])
         except FileNotFoundError as exc:

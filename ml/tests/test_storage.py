@@ -11,8 +11,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-import storage
-from storage import (
+from shared import storage
+from shared.storage import (
     bucket_for_asset,
     bucket_for_source_image,
     public_url,
@@ -100,7 +100,7 @@ def _make_fake_client(payloads: dict[tuple[str, str], bytes]):
 
 
 def test_local_path_downloads_first_then_caches(tmp_cache, monkeypatch):
-    from storage import local_cache
+    from shared.storage import local_cache
 
     fake = _make_fake_client({("enrichment-crops", "ebay/run-1/a.png"): b"hello"})
     monkeypatch.setattr(storage, "_s3_client", fake)
@@ -116,7 +116,7 @@ def test_local_path_downloads_first_then_caches(tmp_cache, monkeypatch):
 
 
 def test_local_path_raises_on_missing(tmp_cache, monkeypatch):
-    from storage import local_cache
+    from shared.storage import local_cache
 
     fake = _make_fake_client({})  # no payloads = always raise
     monkeypatch.setattr(storage, "_s3_client", fake)
@@ -126,7 +126,7 @@ def test_local_path_raises_on_missing(tmp_cache, monkeypatch):
 
 
 def test_local_path_atomic_no_partial_on_failure(tmp_cache, monkeypatch):
-    from storage import local_cache
+    from shared.storage import local_cache
 
     def _failing(bucket, key, dest):
         Path(dest).write_bytes(b"partial")
@@ -145,7 +145,7 @@ def test_local_path_atomic_no_partial_on_failure(tmp_cache, monkeypatch):
 
 
 def test_evict_when_over_cap(tmp_cache, monkeypatch):
-    from storage import local_cache
+    from shared.storage import local_cache
 
     monkeypatch.setenv("EURIO_CACHE_MAX_GB", str(1 / 1024 / 1024))   # 1 MB cap
 
@@ -172,7 +172,7 @@ def test_evict_when_over_cap(tmp_cache, monkeypatch):
 
 
 def test_cache_stats_empty(tmp_cache):
-    from storage.local_cache import cache_stats
+    from shared.storage.local_cache import cache_stats
     stats = cache_stats()
     assert stats["n_files"] == 0
     assert stats["size_bytes"] == 0

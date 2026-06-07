@@ -261,7 +261,7 @@ def _upload_one(client, e: Entry) -> tuple[Entry, str]:
 
 
 def cmd_upload(args: argparse.Namespace) -> int:
-    from storage import _client
+    from shared.storage import _client
 
     entries = _read_manifest()
     if args.category:
@@ -379,7 +379,7 @@ def cmd_db(args: argparse.Namespace) -> int:
 
 
 def cmd_verify(args: argparse.Namespace) -> int:
-    from storage import _client
+    from shared.storage import _client
 
     entries = _read_manifest()
     if not entries:

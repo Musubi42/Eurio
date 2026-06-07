@@ -31,7 +31,7 @@ ML_DIR = Path(__file__).parent.parent
 if str(ML_DIR) not in sys.path:
     sys.path.insert(0, str(ML_DIR))
 
-from api_quota import QuotaTracker  # noqa: E402
+from shared.api_quota import QuotaTracker  # noqa: E402
 from referential.numista_keys import KeyManager as NumistaKeyManager  # noqa: E402
 from state.sources_runs import read_all as read_runs  # noqa: E402
 

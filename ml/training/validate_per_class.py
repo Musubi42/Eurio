@@ -32,9 +32,9 @@ ML_DIR = Path(__file__).parent.parent
 if str(ML_DIR) not in sys.path:
     sys.path.insert(0, str(ML_DIR))
 
-from augmentations import AugmentationPipeline
-from augmentations.recipes import ZONE_RECIPES
-from eval.class_resolver import MANIFEST_FILENAME, build_resolver, read_manifest
+from training.augmentations import AugmentationPipeline
+from training.augmentations.recipes import ZONE_RECIPES
+from training.eval.class_resolver import MANIFEST_FILENAME, build_resolver, read_manifest
 from training.train_embedder import CoinEmbedder, get_val_transforms
 from training.zone_resolver import fetch_eurio_zones, resolve_class_zones
 

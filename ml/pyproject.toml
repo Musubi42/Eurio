@@ -32,13 +32,12 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["referential*", "market*", "export*", "training*", "eval*", "bootstrap*", "serving*", "augmentations*", "scan*", "sources*", "state*", "store*", "jobs*", "storage*", "scripts*", "tests*"]
+include = ["referential*", "export*", "training*", "bootstrap*", "serving*", "vision*", "review*", "shared*", "sources*", "state*", "store*", "jobs*", "scripts*", "tests*"]
 
-# Top-level modules (single .py files at ml/ root). setuptools.packages.find
-# only picks up packages, so any new sibling .py needs to be listed here too
-# or it won't be importable through the editable install.
+# Plus aucun module top-level isolé : api_quota/api_quota_cli/ccproxy_client ont
+# rejoint le package `shared/` (refacto ML chunk 7e).
 [tool.setuptools]
-py-modules = ["api_quota", "api_quota_cli"]
+py-modules = []
 
 # Per-platform torch source. Linux x86_64 → CUDA 12.6 wheel (1080ti = compute
 # 6.1, supporté par les wheels PyTorch jusqu'à au moins 2.9.x). On a dû

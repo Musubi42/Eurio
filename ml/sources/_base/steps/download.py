@@ -26,7 +26,7 @@ from sources._base.adapter import SourceAdapter
 from sources._base.dedup import set_discovery_pipeline_state
 from sources._base.run_logger import RunHandle
 from sources._base.storage import raw_cache_path, raw_key
-from storage.local_cache import upload_through
+from shared.storage.local_cache import upload_through
 
 logger = logging.getLogger(__name__)
 

@@ -31,7 +31,7 @@ import httpx
 # Allow `python -m scripts.probe_ebay_query_strategies` from ml/.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from market.ebay_client import SEARCH_URL, get_app_token  # noqa: E402
+from sources.market.ebay_client import SEARCH_URL, get_app_token  # noqa: E402
 from sources.ebay.queries import (  # noqa: E402
     CATEGORY_EURO_COINS,
     ISO2_TO_NAME_FR,

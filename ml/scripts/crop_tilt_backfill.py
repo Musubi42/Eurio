@@ -33,7 +33,7 @@ if str(_ML) not in sys.path:
     sys.path.insert(0, str(_ML))
 
 from serving.crop_bench_routes import _asset_map, _RESULTS_CSV  # noqa: E402
-from scan.crop_detectors import measure_tilt  # noqa: E402
+from vision.crop_detectors import measure_tilt  # noqa: E402
 from scripts.crop_quality_diag import _oracle_from_raw, _raw_local_path  # noqa: E402
 
 _NEW_COLS = ["axis_ratio", "tilt_deg", "tilt_trustworthy"]

@@ -236,7 +236,7 @@ def _delete_supabase_classes_not_in(coin_class_ids: set[str]) -> None:
     class_id (or eurio_id) is absent from the new promotion. Cf.
     phase-3-promote.md §"Mismatch class set"."""
     import httpx
-    from eval.class_resolver import load_env
+    from training.eval.class_resolver import load_env
 
     env = load_env()
     url = env.get("SUPABASE_URL", "")

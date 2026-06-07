@@ -18,7 +18,7 @@ if str(ML_DIR) not in sys.path:
 import numpy as np  # noqa: E402
 import pytest  # noqa: E402
 
-from scan.census import (  # noqa: E402
+from vision.census import (  # noqa: E402
     FACE_PROBE_PATH,
     _area,
     _center_in,

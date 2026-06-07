@@ -233,9 +233,9 @@ def prune_legacy_objects(
     per call. That avoids 1700+ single-shot DELETE HTTPs and the false-400
     "not_found" noise from probing keys that don't exist.
     """
-    # Read the legacy keys directly from storage.objects via PostgREST RPC.
+    # Read the legacy keys directly from shared.storage.objects via PostgREST RPC.
     sql = (
-        "select name from storage.objects "
+        "select name from shared.storage.objects "
         "where bucket_id = 'coin-images' "
         "and (name like '%/obverse-400.webp' or name like '%/obverse-120.webp' "
         "  or name like '%/reverse-400.webp' or name like '%/reverse-120.webp')"

@@ -38,7 +38,7 @@ ML_DIR = Path(__file__).resolve().parent.parent
 if str(ML_DIR) not in sys.path:
     sys.path.insert(0, str(ML_DIR))
 
-from ccproxy_client import (  # noqa: E402
+from shared.ccproxy_client import (  # noqa: E402
     ChatResult,
     chat,
     health,
@@ -46,7 +46,7 @@ from ccproxy_client import (  # noqa: E402
     parse_json_response,
     text_part,
 )
-from storage.local_cache import local_path  # noqa: E402
+from shared.storage.local_cache import local_path  # noqa: E402
 
 logger = logging.getLogger("bench")
 

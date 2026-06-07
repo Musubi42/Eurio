@@ -16,7 +16,7 @@ from __future__ import annotations
 import os
 from typing import Iterable
 
-from eval.class_resolver import Resolver
+from training.eval.class_resolver import Resolver
 
 ZONE_RANK: dict[str, int] = {"green": 0, "orange": 1, "red": 2}
 DEFAULT_ZONE = "orange"

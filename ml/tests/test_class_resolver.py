@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from eval.class_resolver import CoinRef, Resolver  # noqa: E402
+from training.eval.class_resolver import CoinRef, Resolver  # noqa: E402
 
 
 def _sample_coins() -> list[CoinRef]:

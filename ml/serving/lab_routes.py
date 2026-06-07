@@ -30,7 +30,7 @@ from store import (
     cohort_job_start,
 )
 
-from foundation.enrichment import (
+from training.foundation.enrichment import (
     CANONICAL_REF_SOURCES,
     MIN_REAL as _ENRICH_MIN_REAL,
     TRAINING_TARGET as _ENRICH_TARGET,
@@ -1171,7 +1171,7 @@ def cohort_captures_sync(cohort_id: str, payload: CohortSyncPayload) -> dict:
 
     # Lazy import — keeps the route module importable even if cv2 is absent
     # in some thin environment.
-    from scan.sync_eval_real import sync as run_sync
+    from vision.sync_eval_real import sync as run_sync
 
     try:
         report = run_sync(

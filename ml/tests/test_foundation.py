@@ -18,7 +18,7 @@ from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from foundation import (  # noqa: E402
+from training.foundation import (  # noqa: E402
     DEFAULT_ENCODER_VERSION,
     INPUT_SIZE,
     AnchorBank,
@@ -215,7 +215,7 @@ def test_top_k_match_country_returns_empty_on_blank_target():
 
 
 def test_anchor_bank_roundtrip(tmp_path, monkeypatch):
-    monkeypatch.setattr("foundation.anchors.STATE_DIR", tmp_path)
+    monkeypatch.setattr("training.foundation.anchors.STATE_DIR", tmp_path)
     bank = _fixture_bank()
     bank.anchors_kind = "roundtrip_test"
     saved_path = save_anchors(bank)
@@ -230,7 +230,7 @@ def test_anchor_bank_roundtrip(tmp_path, monkeypatch):
 
 
 def test_load_anchors_returns_none_when_missing(tmp_path, monkeypatch):
-    monkeypatch.setattr("foundation.anchors.STATE_DIR", tmp_path)
+    monkeypatch.setattr("training.foundation.anchors.STATE_DIR", tmp_path)
     assert load_anchors("does_not_exist") is None
 
 
@@ -246,7 +246,7 @@ def test_encode_image_returns_normalized_vec():
     Skipped by default — opt in with `-m slow` to actually pay the
     model download / load cost.
     """
-    from foundation import encode_image
+    from training.foundation import encode_image
 
     img = Image.new("RGB", (256, 256), color=(120, 120, 120))
     vec = encode_image(img)

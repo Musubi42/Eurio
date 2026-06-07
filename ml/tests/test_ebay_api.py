@@ -78,7 +78,7 @@ def client(tmp_path: Path):
     test_store = Store(tmp_path / "t.db")
     # api_call_log is provisioned by api_quota.ensure_schema (separate from
     # state/schema.sql, see api_quota.py) — load it for the test DB.
-    from api_quota import ensure_schema as ensure_quota_schema
+    from shared.api_quota import ensure_schema as ensure_quota_schema
     ensure_quota_schema(tmp_path / "t.db")
     _seed_minimal_referential(test_store)
 

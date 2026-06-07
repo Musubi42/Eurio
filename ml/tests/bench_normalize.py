@@ -31,7 +31,7 @@ import numpy as np
 sys.stdout.reconfigure(line_buffering=True)
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from scan.normalize_snap import (  # noqa: E402
+from vision.normalize_snap import (  # noqa: E402
     NormalizationResult,
     normalize_device,
     normalize_studio,

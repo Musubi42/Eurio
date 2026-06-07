@@ -27,9 +27,9 @@ from . import augmentation_routes
 from . import benchmark_routes
 from . import iteration_runner as iteration_runner_module
 from . import lab_routes
-from . import review_queue_routes
+from review import review_queue_routes
 from . import sources_routes
-from . import coins_review_routes
+from review import coins_review_routes
 from . import bench_routes
 from . import crop_bench_routes
 from . import operations_routes
@@ -1338,7 +1338,7 @@ def confusion_map_compute(req: ConfusionMapComputeRequest | None = None) -> dict
     # tweaking sys.path inside the worker; the direct path is simpler.
     cmd: list[str] = [
         VENV_PYTHON,
-        str(ML_DIR / "eval" / "confusion_map.py"),
+        str(ML_DIR / "training" / "eval" / "confusion_map.py"),
         "--encoder-version",
         encoder_version,
         "--status-file",

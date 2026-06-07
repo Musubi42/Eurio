@@ -50,7 +50,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from market.ebay_client import SEARCH_URL, get_app_token  # noqa: E402
+from sources.market.ebay_client import SEARCH_URL, get_app_token  # noqa: E402
 from sources.ebay.filters import accept_listing, listing_row  # noqa: E402
 from sources.ebay.queries import (  # noqa: E402
     CATEGORY_EURO_COINS,

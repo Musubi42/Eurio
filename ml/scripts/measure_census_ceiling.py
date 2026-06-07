@@ -93,7 +93,7 @@ def _get_yolo() -> Any:
     global _yolo_model
     if _yolo_model is None:
         from ultralytics import YOLO
-        from scan.normalize_snap import _YOLO_MODEL_PATH
+        from vision.normalize_snap import _YOLO_MODEL_PATH
         _yolo_model = YOLO(str(_YOLO_MODEL_PATH))
     return _yolo_model
 
@@ -176,7 +176,7 @@ def _get_sam(sam_model: str) -> Any:
 
 def _get_dino():
     if not _dino:
-        from foundation.encoder import load_encoder, build_transform
+        from training.foundation.encoder import load_encoder, build_transform
         enc, dev = load_encoder()
         _dino["enc"], _dino["dev"], _dino["tf"] = enc, dev, build_transform()
     return _dino["enc"], _dino["dev"], _dino["tf"]
@@ -185,7 +185,7 @@ def _get_dino():
 def _get_anchors() -> np.ndarray | None:
     global _anchor_mat
     if _anchor_mat is None:
-        from foundation.anchors import load_anchors
+        from training.foundation.anchors import load_anchors
         bank = load_anchors("2eur_commemo")
         _anchor_mat = bank.matrix if bank is not None else np.zeros((0, 0), np.float32)
     return _anchor_mat if _anchor_mat.size else None
@@ -403,7 +403,7 @@ def main() -> int:
             preds.setdefault("sam_propose", {})[sid] = len(cands)
 
         if "ladder" in which:
-            from scan import census
+            from vision import census
             boxes = yolo_low_boxes(bgr, args.ladder_conf, args.yolo_rfloor)
             h_im, w_im = bgr.shape[:2]
             deduped = census.nms_concentric(boxes, img_wh=(w_im, h_im))  # ① NMS-concentrique
@@ -434,7 +434,7 @@ def main() -> int:
 
     # --- Sweep ladder ② is-coin (sim DINO coin-ness ≥ τ + structure-guard) ---
     if "ladder" in which and lad_dump:
-        from scan.census import _STRUCT_MIN_LAP
+        from vision.census import _STRUCT_MIN_LAP
         for tau in ladder_taus:
             preds[f"ladder_①②(τ{tau:g})"] = {
                 sid: sum(1 for s, st in zip(d["sims"], d["structs"])

@@ -61,9 +61,9 @@ SAMPLE_COIN_THRESHOLD = 30
 SAMPLED_COIN_COUNT = 3
 
 sys.path.insert(0, str(ML_DIR))
-from eval.equivalence import build_equivalence_map  # noqa: E402
+from training.eval.equivalence import build_equivalence_map  # noqa: E402
 from store import Store  # noqa: E402
-from utils.i18n import coin_display  # noqa: E402
+from shared.utils.i18n import coin_display  # noqa: E402
 
 LIVE_TESTS_MANIFEST_VERSION = 2
 

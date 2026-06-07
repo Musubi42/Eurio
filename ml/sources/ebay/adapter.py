@@ -43,7 +43,7 @@ from typing import Callable, Iterable
 
 import httpx
 
-from market.ebay_client import EbayClient
+from sources.market.ebay_client import EbayClient
 from sources._base.adapter import (
     DiscardedListingRecord,
     DiscoveredItem,

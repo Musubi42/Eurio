@@ -24,7 +24,7 @@ from pathlib import Path
 
 import httpx
 
-from eval.class_resolver import load_env
+from training.eval.class_resolver import load_env
 
 EMBEDDINGS_DEFAULT = Path(__file__).parent.parent / "output" / "embeddings_v1.json"
 

@@ -24,7 +24,7 @@ import httpx
 import pytest
 from PIL import Image
 
-from market.ebay_client import EbayClient
+from sources.market.ebay_client import EbayClient
 from sources._base.adapter import SourceQuery
 from sources.ebay.adapter import EbayAdapter
 from sources.ebay.filters import accept_listing, is_lot_suspected, listing_row

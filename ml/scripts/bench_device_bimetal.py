@@ -51,7 +51,7 @@ _ML_DIR = Path(__file__).resolve().parents[1]
 if str(_ML_DIR) not in sys.path:
     sys.path.insert(0, str(_ML_DIR))
 
-from scan.normalize_snap import (  # noqa: E402
+from vision.normalize_snap import (  # noqa: E402
     normalize_device,
     normalize_studio,
 )

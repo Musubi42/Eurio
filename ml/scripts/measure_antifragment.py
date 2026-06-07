@@ -51,7 +51,7 @@ def rim_signals(bgr: np.ndarray, cx: float, cy: float, r: float) -> dict:
     axis_ratio   : minor/major de l'ellipse ajustée (1.0 = cercle), ou None.
     n_ring       : nb de points Canny dans l'anneau.
     """
-    from scan.normalize_snap import _downscale_to_working_res
+    from vision.normalize_snap import _downscale_to_working_res
 
     if bgr is None or bgr.size == 0 or r <= 0:
         return {"arc_coverage": 0.0, "axis_ratio": None, "n_ring": 0}
@@ -110,8 +110,8 @@ def main() -> int:
     args = ap.parse_args()
 
     os.environ["EURIO_CENSUS_DETECT"] = "1"
-    from scan.normalize_snap import normalize_listing
-    from storage.local_cache import local_path
+    from vision.normalize_snap import normalize_listing
+    from shared.storage.local_cache import local_path
 
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row

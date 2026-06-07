@@ -39,8 +39,8 @@ def main() -> int:
     os.environ["EURIO_CENSUS_DETECT"] = "1"
     if args.tau is not None:
         os.environ["EURIO_CENSUS_FRAGMENT_TAU"] = args.tau
-    from scan.normalize_snap import _census_fragment_tau, normalize_listing
-    from storage.local_cache import local_path
+    from vision.normalize_snap import _census_fragment_tau, normalize_listing
+    from shared.storage.local_cache import local_path
 
     tau = _census_fragment_tau()   # vraie τ appliquée par le gate (source unique)
 

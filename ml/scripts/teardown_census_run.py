@@ -32,8 +32,8 @@ def main() -> int:
     ap.add_argument("--commit", action="store_true")
     args = ap.parse_args()
 
-    from storage import _client
-    from storage.local_cache import _cache_root
+    from shared.storage import _client
+    from shared.storage.local_cache import _cache_root
 
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row

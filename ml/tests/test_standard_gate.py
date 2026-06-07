@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import foundation.standard_gate_review as sgr
-from ccproxy_client import ChatResult
+import training.foundation.standard_gate_review as sgr
+from shared.ccproxy_client import ChatResult
 from scripts.gate_standard_vision import _reject
 from store import Store
 

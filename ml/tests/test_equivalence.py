@@ -15,7 +15,7 @@ ML_DIR = Path(__file__).parent.parent
 if str(ML_DIR) not in sys.path:
     sys.path.insert(0, str(ML_DIR))
 
-from eval.equivalence import EquivalenceMap
+from training.eval.equivalence import EquivalenceMap
 
 
 def _map():

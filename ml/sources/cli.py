@@ -34,7 +34,7 @@ def _load_adapter(source_id: str, *, store=None):
     if source_id == "ebay":
         import os
 
-        from market.ebay_client import EbayClient, get_app_token
+        from sources.market.ebay_client import EbayClient, get_app_token
         from sources.ebay import EbayAdapter
 
         client_id = os.environ.get("EBAY_CLIENT_ID")
@@ -51,8 +51,8 @@ def _load_adapter(source_id: str, *, store=None):
         # via QuotaTracker singleton (table api_call_log côté SQLite),
         # passé explicitement pour éviter qu'EbayClient n'instancie un
         # tracker par mkt (sinon le quota daily compterait à part par mkt).
-        from api_quota import QuotaTracker
-        from market.ebay_client import EBAY_DAILY_LIMIT
+        from shared.api_quota import QuotaTracker
+        from sources.market.ebay_client import EBAY_DAILY_LIMIT
         shared_tracker = QuotaTracker("ebay", "daily", EBAY_DAILY_LIMIT)
         make_client = lambda mkt: EbayClient(  # noqa: E731
             token, marketplace=mkt, tracker=shared_tracker,

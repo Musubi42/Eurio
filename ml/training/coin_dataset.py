@@ -28,8 +28,8 @@ from PIL import Image
 from torch.utils.data import Dataset
 from torchvision.datasets.folder import default_loader, IMG_EXTENSIONS
 
-from augmentations import AugmentationPipeline
-from augmentations.recipes import ZONE_RECIPES
+from training.augmentations import AugmentationPipeline
+from training.augmentations.recipes import ZONE_RECIPES
 
 
 def _is_image(path: Path) -> bool:

@@ -20,7 +20,7 @@ from fastapi.responses import FileResponse
 from PIL import Image
 from pydantic import BaseModel, Field
 
-from augmentations import (
+from training.augmentations import (
     AugmentationPipeline,
     OVERLAY_CATEGORIES,
     RecipeValidationError,
@@ -28,7 +28,7 @@ from augmentations import (
     list_layer_schemas,
     validate_recipe,
 )
-from augmentations.overlays import OVERLAYS_DIR
+from training.augmentations.overlays import OVERLAYS_DIR
 from store import AugmentationRecipeRow, AugmentationRunRow, Store
 
 logger = logging.getLogger(__name__)

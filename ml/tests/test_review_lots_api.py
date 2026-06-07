@@ -26,8 +26,8 @@ ML_DIR = Path(__file__).parent.parent
 if str(ML_DIR) not in sys.path:
     sys.path.insert(0, str(ML_DIR))
 
-from serving import review_queue_routes
-from serving.review_queue_routes import router as review_router
+from review import review_queue_routes
+from review.review_queue_routes import router as review_router
 from store import Store
 
 
@@ -491,7 +491,7 @@ def test_detect_lot_image_persists_and_returns(app_client, monkeypatch):
     """POST /detect relance la détection (Chunk C), persiste detections_json,
     renvoie les cercles. `_compute_detections` monkeypatché (pas de YOLO/raw).
     """
-    from serving.review_queue_routes import LotDetection
+    from review.review_queue_routes import LotDetection
 
     _, conn, client = app_client
     _seed_lot_listing(conn, item_id="A1", n_images=1, crops_per_image=(2,))

@@ -47,17 +47,17 @@ tasks:
   eval-real:sync:
     desc: "Normalize the device-pulled eval_real/ snaps into datasets/eval_real_norm/. Usage: go-task ml:eval-real:sync -- <debug_pull_dir>"
     cmds:
-      - "{{.VENV}}/python -m scan.sync_eval_real {{.CLI_ARGS}} --clear"
+      - "{{.VENV}}/python -m vision.sync_eval_real {{.CLI_ARGS}} --clear"
 
   eval-real:eval:
     desc: "Per-snap eval against deployed centroids (output/embeddings_v1.json). Pass --from-checkpoint-W to compare against the raw ArcFace W."
     cmds:
-      - "{{.VENV}}/python -m scan.eval_real_snaps {{.CLI_ARGS}}"
+      - "{{.VENV}}/python -m vision.eval_real_snaps {{.CLI_ARGS}}"
 
   scan:diff:
     desc: "Validate the Kotlin SnapNormalizer port against Python normalize_snap on a debug pull. Usage: go-task ml:scan:diff -- <debug_pull_dir> [--write-diff]"
     cmds:
-      - "{{.VENV}}/python -m scan.diff_kotlin_python {{.CLI_ARGS}}"
+      - "{{.VENV}}/python -m vision.diff_kotlin_python {{.CLI_ARGS}}"
 
   scan:bench-normalize:
     desc: "Sandbox bench: time normalize_studio / normalize_device on a stratified sample, with cross-algo parity stats. Usage: go-task ml:scan:bench-normalize -- [--per-bucket N] [--variants studio,device]"
@@ -547,7 +547,7 @@ tasks:
   quota:status:
     desc: "Dump quota usage as JSON. Usage: go-task ml:quota:status -- --source=numista"
     cmds:
-      - "{{.VENV}}/python -m api_quota_cli {{.CLI_ARGS}}"
+      - "{{.VENV}}/python -m shared.api_quota_cli {{.CLI_ARGS}}"
 
   # ---------- ML API ----------
   api:

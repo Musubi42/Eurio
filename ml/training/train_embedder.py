@@ -299,7 +299,7 @@ def _build_train_dataset(args) -> EurioCoinDataset:
     )
     if eurio_zones:
         # Supabase reachable → map each class to its confusion zone.
-        from eval.class_resolver import build_resolver
+        from training.eval.class_resolver import build_resolver
         resolver = build_resolver()
         class_zones = resolve_class_zones(class_dirs, resolver, eurio_zones=eurio_zones)
     else:

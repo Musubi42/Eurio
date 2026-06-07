@@ -36,7 +36,7 @@ import numpy as np
 import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from scan.normalize_snap import normalize_device, normalize_studio  # noqa: E402
+from vision.normalize_snap import normalize_device, normalize_studio  # noqa: E402
 from tests._utils import diff_metrics, fmt_table  # noqa: E402
 from tests.bench_normalize import log  # noqa: E402
 

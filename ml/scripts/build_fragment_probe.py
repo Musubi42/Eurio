@@ -57,7 +57,7 @@ def _operating(y, score, tau):
 def main() -> int:
     from sklearn.linear_model import LogisticRegression
     from sklearn.metrics import average_precision_score
-    from foundation.encoder import encode_paths
+    from training.foundation.encoder import encode_paths
 
     rows = _load("train") + _load("test")
     # Split hardneg (probe v2) : hard-negatives minés sur le run census-recover

@@ -40,7 +40,7 @@ from referential.eurio_referential import (
     save_referential,
     slugify,
 )
-from eval.matching import index_referential, match as match_identity
+from training.eval.matching import index_referential, match as match_identity
 from state.sources_runs import record_run
 
 BCE_BASE = "https://www.ecb.europa.eu/euro/coins/comm/html/"

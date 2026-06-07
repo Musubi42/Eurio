@@ -38,10 +38,10 @@ _ML_DIR = Path(__file__).resolve().parents[1]
 if str(_ML_DIR) not in sys.path:
     sys.path.insert(0, str(_ML_DIR))
 
-from scan.normalize_snap import normalize_listing_path, normalize_studio_path  # noqa: E402
+from vision.normalize_snap import normalize_listing_path, normalize_studio_path  # noqa: E402
 from sources._base.steps.detect_crop import _crop_strategy  # noqa: E402
 from store import Store  # noqa: E402
-from storage.local_cache import local_path  # noqa: E402
+from shared.storage.local_cache import local_path  # noqa: E402
 
 
 def _bbox_from_result(result) -> dict[str, float] | None:

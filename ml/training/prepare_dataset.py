@@ -25,7 +25,7 @@ from pathlib import Path
 import cv2
 from PIL import Image
 
-from eval.class_resolver import (
+from training.eval.class_resolver import (
     ClassDescriptor,
     MANIFEST_FILENAME,
     Resolver,
@@ -33,7 +33,7 @@ from eval.class_resolver import (
     build_resolver_from_cohort_csv,
     write_manifest,
 )
-from scan.normalize_snap import CropConfig, OUTPUT_SIZE, normalize_studio_path
+from vision.normalize_snap import CropConfig, OUTPUT_SIZE, normalize_studio_path
 
 
 def normalize_and_save(src: Path, dst: Path,

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from market.ebay_client import (
+from sources.market.ebay_client import (
     MARKETPLACE_ACCEPT_LANGUAGE,
     SUPPORTED_MARKETPLACES,
     EbayClient,

@@ -30,7 +30,7 @@ ML_DIR = Path(__file__).resolve().parent.parent
 if str(ML_DIR) not in sys.path:
     sys.path.insert(0, str(ML_DIR))
 
-from storage.local_cache import _cache_root, local_path  # noqa: E402
+from shared.storage.local_cache import _cache_root, local_path  # noqa: E402
 
 COINCARD = re.compile(r"coin\s*card|coincard|blister|capsul|m[üu]nzkarte|folder|cartera|numisbrief|etui", re.I)
 TRUELOT = re.compile(

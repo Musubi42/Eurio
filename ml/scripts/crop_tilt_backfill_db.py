@@ -34,7 +34,7 @@ _ML = Path(__file__).resolve().parents[1]
 if str(_ML) not in sys.path:
     sys.path.insert(0, str(_ML))
 
-from scan.crop_detectors import measure_tilt  # noqa: E402
+from vision.crop_detectors import measure_tilt  # noqa: E402
 from scripts.crop_quality_diag import _oracle_from_raw, _raw_local_path  # noqa: E402
 
 _DB = _ML / "state" / "eurio.db"

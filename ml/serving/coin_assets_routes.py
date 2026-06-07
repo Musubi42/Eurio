@@ -32,7 +32,7 @@ from pydantic import BaseModel, Field
 from store import Store, emit_state_event
 
 from .crop_edit import apply_manual_crop, load_crop_edit_context
-from .review_queue_routes import (
+from review.review_queue_routes import (
     CropEditContext,
     ManualCropPayload,
     ManualCropResponse,

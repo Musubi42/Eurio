@@ -34,14 +34,14 @@ _ML_DIR = Path(__file__).resolve().parents[1]
 if str(_ML_DIR) not in sys.path:
     sys.path.insert(0, str(_ML_DIR))
 
-from scan.normalize_snap import (  # noqa: E402
+from vision.normalize_snap import (  # noqa: E402
     _LISTING_RMIN_FRAC_STRICT,
     _YOLO_BBOX_MIN_RADIUS_FRAC,
     _crop_mask_resize_int,
     _yolo_detect_bboxes,
     detect_circles_multi,
 )
-from storage.local_cache import local_path  # noqa: E402
+from shared.storage.local_cache import local_path  # noqa: E402
 
 
 _DB = _ML_DIR / "state" / "eurio.db"

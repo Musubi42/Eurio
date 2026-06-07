@@ -31,8 +31,8 @@ def main() -> int:
     args = ap.parse_args()
 
     os.environ["EURIO_CENSUS_DETECT"] = "1"
-    from scan.normalize_snap import detect_circles_multi
-    from storage.local_cache import local_path
+    from vision.normalize_snap import detect_circles_multi
+    from shared.storage.local_cache import local_path
 
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row

@@ -7,7 +7,7 @@ ML_DIR = Path(__file__).resolve().parents[1]
 if str(ML_DIR) not in sys.path:
     sys.path.insert(0, str(ML_DIR))
 
-from foundation.review_lanes import (  # noqa: E402
+from training.foundation.review_lanes import (  # noqa: E402
     DEFAULT_LANE,
     LANES,
     VERDICT_TO_LANE,

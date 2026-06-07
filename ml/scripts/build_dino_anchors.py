@@ -22,7 +22,7 @@ from pathlib import Path
 ML_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ML_DIR))
 
-from foundation.anchors import (  # noqa: E402
+from training.foundation.anchors import (  # noqa: E402
     DATASETS_DIR,
     build_anchors_2eur_commemo,
     load_anchors,
@@ -70,7 +70,7 @@ def main() -> int:
     )
     # Always echo INFO from the foundation module to give visibility on
     # this CLI.
-    logging.getLogger("foundation").setLevel(logging.INFO)
+    logging.getLogger("training.foundation").setLevel(logging.INFO)
 
     store = Store(Path(args.db))
     t0 = time.perf_counter()

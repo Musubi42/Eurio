@@ -19,8 +19,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from storage import Bucket  # noqa: E402
-from storage.local_cache import cache_path_for  # noqa: E402
+from shared.storage import Bucket  # noqa: E402
+from shared.storage.local_cache import cache_path_for  # noqa: E402
 
 
 def raw_key(source: str, run_id: str, source_image_id: str,

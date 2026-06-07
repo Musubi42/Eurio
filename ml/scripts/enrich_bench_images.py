@@ -126,7 +126,7 @@ def main() -> int:
                   "sauté (source_images écrit). Relance dans un shell "
                   "direnv pour les rejetés.", file=sys.stderr)
             return 1
-        from market.ebay_client import EbayClient, get_app_token
+        from sources.market.ebay_client import EbayClient, get_app_token
 
         token = get_app_token(client_id, client_secret)
         clients: dict[str, EbayClient] = {}

@@ -42,7 +42,7 @@ if str(_ML_DIR) not in sys.path:
     sys.path.insert(0, str(_ML_DIR))
 
 from store import Store
-from storage.local_cache import local_path
+from shared.storage.local_cache import local_path
 
 
 def _disc_mask(size: int, r_inner: int, r_outer: int) -> np.ndarray:

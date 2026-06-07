@@ -49,7 +49,7 @@ from scripts.crop_quality_diag import (  # noqa: E402
     _raw_local_path,
 )
 # Détecteurs alternatifs pluggables (Chunk 1+ : fitellipse, puis edcircles…).
-from scan.crop_detectors import DETECTORS, crop_with_detector, measure_tilt, run_detector  # noqa: E402
+from vision.crop_detectors import DETECTORS, crop_with_detector, measure_tilt, run_detector  # noqa: E402
 
 router = APIRouter(prefix="/crop-bench", tags=["crop-bench"])
 

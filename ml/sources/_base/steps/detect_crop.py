@@ -34,8 +34,8 @@ from store import emit_state_event
 from sources._base.phash import compute_phash
 from sources._base.run_logger import RunHandle
 from sources._base.storage import crop_cache_path, crop_key
-from storage.local_cache import local_path, upload_through
-from scan.normalize_snap import (
+from shared.storage.local_cache import local_path, upload_through
+from vision.normalize_snap import (
     NormalizationResult, normalize_listing_path_with_detections,
     normalize_studio_path,
 )

@@ -36,7 +36,7 @@ from referential.eurio_referential import (
     save_referential,
     slugify,
 )
-from eval.matching import (
+from training.eval.matching import (
     best_slug_match,
     candidates_for,
     index_referential,

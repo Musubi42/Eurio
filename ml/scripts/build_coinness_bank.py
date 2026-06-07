@@ -57,7 +57,7 @@ def collect_real_crop_paths() -> list[tuple[str, str, str]]:
     le clutter/fragments que le gate doit justement rejeter. On EXCLUT toute image du
     bench (`source_image_id`) — sinon fuite banque→bench = mesure faussée.
     """
-    from storage.local_cache import local_path
+    from shared.storage.local_cache import local_path
 
     bench = json.loads(BENCH_PATH.read_text())
     bench_sids = {x["source_image_id"] for x in bench}
@@ -96,7 +96,7 @@ def main() -> int:
     ap.add_argument("--out", default=str(OUT_PATH))
     args = ap.parse_args()
 
-    from foundation.encoder import (
+    from training.foundation.encoder import (
         DEFAULT_ENCODER_VERSION, build_transform, encode_paths, load_encoder,
     )
 

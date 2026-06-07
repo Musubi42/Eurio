@@ -35,7 +35,7 @@ def main() -> int:
     ap.add_argument("--per-sheet", type=int, default=24)
     args = ap.parse_args()
 
-    from storage.local_cache import local_path
+    from shared.storage.local_cache import local_path
 
     crop_dir = OUT / "crops" / "hardneg"
     crop_dir.mkdir(parents=True, exist_ok=True)

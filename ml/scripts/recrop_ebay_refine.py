@@ -39,7 +39,7 @@ _ML = Path(__file__).resolve().parents[1]
 if str(_ML) not in sys.path:
     sys.path.insert(0, str(_ML))
 
-from scan.crop_detectors import crop_with_detector  # noqa: E402
+from vision.crop_detectors import crop_with_detector  # noqa: E402
 from scripts.crop_quality_diag import _oracle_from_raw, _raw_local_path  # noqa: E402
 from sources._base.phash import compute_phash  # noqa: E402
 
@@ -62,7 +62,7 @@ def main() -> None:
 
     upload_through = None
     if args.commit and not args.no_minio:
-        from storage.local_cache import upload_through as _ut  # noqa: E402
+        from shared.storage.local_cache import upload_through as _ut  # noqa: E402
         upload_through = _ut
 
     conn = sqlite3.connect(str(_DB))

@@ -19,7 +19,7 @@ from referential.eurio_referential import (
     parse_volume,
     slugify,
 )
-from eval.matching import best_slug_match, candidates_for, index_referential, slug_score
+from training.eval.matching import best_slug_match, candidates_for, index_referential, slug_score
 from referential.scrape_lmdlp import (
     extract_country_iso2,
     extract_mintage,
@@ -36,7 +36,7 @@ from referential.scrape_monnaiedeparis import (
     filter_coin_urls,
 )
 from referential.scrape_monnaiedeparis import extract_price_eur as mdp_extract_price_eur
-from market.scrape_ebay import (
+from sources.market.scrape_ebay import (
     _theme_keywords,
     accept_listing,
     build_search_query,

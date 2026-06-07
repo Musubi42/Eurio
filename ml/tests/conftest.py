@@ -24,5 +24,5 @@ def _stub_minio_client(monkeypatch):
     MinIO behavior reassign `_s3_client` themselves — monkeypatch unwinds
     to the MagicMock on teardown, not None, so the next test stays stubbed.
     """
-    import storage
+    from shared import storage
     monkeypatch.setattr(storage, "_s3_client", MagicMock())

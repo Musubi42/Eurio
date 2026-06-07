@@ -53,9 +53,9 @@ if str(ML_DIR) not in sys.path:
 from PIL import Image
 
 from serving import coin_lookup
-from augmentations import AugmentationPipeline
-from augmentations.recipes import DEFAULT_RECIPE
-from foundation.enrichment import (
+from training.augmentations import AugmentationPipeline
+from training.augmentations.recipes import DEFAULT_RECIPE
+from training.foundation.enrichment import (
     CANONICAL_REF_SOURCES,
     MIN_REAL,
     projection,
@@ -120,7 +120,7 @@ def _ebay_training_sources(eurio_id: str, store: Store) -> list[Path]:
     captures device restent hors-training (bench-only) et ne sont jamais lues
     ici. Chemins résolus vers le cache local des crops (``enrichment-crops``).
     """
-    from storage.local_cache import local_path
+    from shared.storage.local_cache import local_path
 
     conn = store._connection()  # noqa: SLF001
     # Filtre sur ``a.eurio_id`` (le label TRANCHÉ en review), pas

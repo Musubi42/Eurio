@@ -31,7 +31,7 @@ def main() -> int:
     ap.add_argument("--tile", type=int, default=200)
     args = ap.parse_args()
 
-    from storage.local_cache import local_path
+    from shared.storage.local_cache import local_path
 
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)

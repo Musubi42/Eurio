@@ -36,7 +36,7 @@ def main() -> int:
     ap.add_argument("--limit", type=int, default=0, help="cap items (0=tous)")
     args = ap.parse_args()
 
-    from foundation.review_lanes import compute_lane
+    from training.foundation.review_lanes import compute_lane
 
     conn = sqlite3.connect(DB_PATH, isolation_level=None)
     conn.row_factory = sqlite3.Row

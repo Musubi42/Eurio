@@ -52,7 +52,7 @@ def _load_adapter(source_id: str, *, store: "Store" | None = None):
         return MockAdapter()
     if source_id == "ebay":
         import os
-        from market.ebay_client import EbayClient, get_app_token
+        from sources.market.ebay_client import EbayClient, get_app_token
         from sources.ebay import EbayAdapter
 
         client_id = os.environ.get("EBAY_CLIENT_ID")
@@ -66,8 +66,8 @@ def _load_adapter(source_id: str, *, store: "Store" | None = None):
         s = store or _store()
         conn = s._connection()  # noqa: SLF001
         # B4 — factory pour les N clients par mkt avec tracker partagé.
-        from api_quota import QuotaTracker
-        from market.ebay_client import EBAY_DAILY_LIMIT
+        from shared.api_quota import QuotaTracker
+        from sources.market.ebay_client import EBAY_DAILY_LIMIT
         shared_tracker = QuotaTracker("ebay", "daily", EBAY_DAILY_LIMIT)
         make_client = lambda mkt: EbayClient(  # noqa: E731
             token, marketplace=mkt, tracker=shared_tracker,
@@ -2016,7 +2016,7 @@ def get_asset_file(source_id: str, asset_id: str):
     ).fetchone()
     if row is None or not row["storage_path"]:
         raise HTTPException(status_code=404, detail="Asset not found.")
-    from storage.local_cache import local_path as _local_path
+    from shared.storage.local_cache import local_path as _local_path
     try:
         p = _local_path("enrichment-crops", row["storage_path"])
     except FileNotFoundError as exc:
@@ -2050,7 +2050,7 @@ def get_raw_file(source_id: str, source_image_id: str):
     ).fetchone()
     if row is None or not row["storage_path"]:
         raise HTTPException(status_code=404, detail="Raw image not found.")
-    from storage.local_cache import local_path as _local_path
+    from shared.storage.local_cache import local_path as _local_path
     try:
         p = _local_path("enrichment-raws", row["storage_path"])
     except FileNotFoundError as exc:

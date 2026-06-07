@@ -12,7 +12,7 @@ import hashlib
 import os
 from pathlib import Path
 
-from api_quota import DEFAULT_DB, QuotaTracker
+from shared.api_quota import DEFAULT_DB, QuotaTracker
 
 _SOURCE = "numista"
 _WINDOW = "monthly"

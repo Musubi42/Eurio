@@ -499,7 +499,7 @@ def _read_current_classes() -> list[ClassRef]:
 
 
 def _build_resolver():
-    from eval.class_resolver import build_resolver
+    from training.eval.class_resolver import build_resolver
 
     return build_resolver()
 

@@ -17,7 +17,7 @@ import torch
 from torch.utils.data import DataLoader
 from torchvision.datasets import ImageFolder
 
-from eval.class_resolver import MANIFEST_FILENAME, read_manifest
+from training.eval.class_resolver import MANIFEST_FILENAME, read_manifest
 from training.train_embedder import CoinEmbedder, get_val_transforms
 
 CATALOG_PATH = Path(__file__).parent.parent / "datasets" / "coin_catalog.json"

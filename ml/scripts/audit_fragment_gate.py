@@ -47,9 +47,9 @@ def main() -> int:
 
     os.environ["EURIO_CENSUS_DETECT"] = "1"
     os.environ["EURIO_CENSUS_FRAGMENT_TAU"] = "0"   # désactive le gate → tous les crops
-    from scan.census import face_scores
-    from scan.normalize_snap import normalize_listing
-    from storage.local_cache import local_path
+    from vision.census import face_scores
+    from vision.normalize_snap import normalize_listing
+    from shared.storage.local_cache import local_path
 
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row

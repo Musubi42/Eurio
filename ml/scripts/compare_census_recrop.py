@@ -33,7 +33,7 @@ def _count_crops(bgr, census: bool) -> int:
         os.environ["EURIO_CENSUS_DETECT"] = "1"
     else:
         os.environ.pop("EURIO_CENSUS_DETECT", None)
-    from scan.normalize_snap import normalize_listing
+    from vision.normalize_snap import normalize_listing
     return len(normalize_listing(bgr))
 
 
@@ -42,7 +42,7 @@ def _crops(bgr, census: bool):
         os.environ["EURIO_CENSUS_DETECT"] = "1"
     else:
         os.environ.pop("EURIO_CENSUS_DETECT", None)
-    from scan.normalize_snap import normalize_listing
+    from vision.normalize_snap import normalize_listing
     return [r.image for r in normalize_listing(bgr) if r.image is not None]
 
 
@@ -53,7 +53,7 @@ def main() -> int:
     ap.add_argument("--limit", type=int, default=0)
     args = ap.parse_args()
 
-    from storage.local_cache import local_path
+    from shared.storage.local_cache import local_path
 
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row

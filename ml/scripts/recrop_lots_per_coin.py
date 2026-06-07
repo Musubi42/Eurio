@@ -43,7 +43,7 @@ _ML = Path(__file__).resolve().parents[1]
 if str(_ML) not in sys.path:
     sys.path.insert(0, str(_ML))
 
-from scan.normalize_snap import (  # noqa: E402
+from vision.normalize_snap import (  # noqa: E402
     _crop_mask_resize_float,
     detect_circles_multi,
 )
@@ -77,7 +77,7 @@ def main() -> None:
 
     upload_through = None
     if args.commit and not args.no_minio:
-        from storage.local_cache import upload_through as _ut  # noqa: E402
+        from shared.storage.local_cache import upload_through as _ut  # noqa: E402
         upload_through = _ut
 
     conn = sqlite3.connect(str(_DB))

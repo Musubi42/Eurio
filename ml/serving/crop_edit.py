@@ -134,9 +134,9 @@ def apply_manual_crop(
     ``eurio_id``, ``resolution_status``, ``training_eligible`` NON touchés :
     re-crop ≠ décision. Recompute Dino best-effort (la suggestion d'avant
     pointait sur le mauvais cadrage)."""
-    from scan.normalize_snap import _crop_mask_resize_float
+    from vision.normalize_snap import _crop_mask_resize_float
     from sources._base.phash import compute_phash
-    from storage.local_cache import cache_path_for, local_path, upload_through
+    from shared.storage.local_cache import cache_path_for, local_path, upload_through
 
     conn = store._connection()  # noqa: SLF001
     row = conn.execute(
@@ -277,13 +277,13 @@ def create_manual_crop(
     détecté cliqué OU un cercle tracé à la main — même chemin)."""
     import uuid
 
-    from scan.normalize_snap import _crop_mask_resize_float
+    from vision.normalize_snap import _crop_mask_resize_float
     from sources._base.phash import compute_phash
     from sources._base.storage import crop_key, crop_cache_path
     from sources._base.dedup import ImageAssetRow, upsert_image_asset
     from sources._base.steps.enqueue import _compute_priority, _kind_for_source_image
-    from foundation.review_lanes import compute_lane
-    from storage.local_cache import upload_through, local_path
+    from training.foundation.review_lanes import compute_lane
+    from shared.storage.local_cache import upload_through, local_path
     from store import emit_state_event
 
     conn = store._connection()  # noqa: SLF001

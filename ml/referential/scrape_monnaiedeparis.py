@@ -34,7 +34,7 @@ from referential.eurio_referential import (
     save_referential,
     slugify,
 )
-from eval.matching import index_referential, match as match_identity
+from training.eval.matching import index_referential, match as match_identity
 from state.sources_runs import record_run
 
 SITEMAP_URL = "https://www.monnaiedeparis.fr/media/sitemap/sitemap_mdp_fr.xml"
