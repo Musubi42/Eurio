@@ -297,30 +297,56 @@ def attribute_standard_listing(
     if _COMMEMO_KW_RE.search(norm) and not _STANDARD_KW_RE.search(norm):
         return StandardMatch("commemo", None, candidates, "commemo_keyword")
 
-    # Sans millésime unique on ne peut pas pinner l'ère → review (candidats =
-    # ères du pays). Couvre yearless (« Jahr nach Wahl ») et lots multi-années.
-    if len(signals.years) != 1:
-        reason = "year_absent" if not signals.years else "year_multi"
-        return StandardMatch("ambiguous", None, candidates, reason)
-    year = next(iter(signals.years))
+    # Au moins un millésime requis pour pinner l'ère. Yearless → review.
+    if not signals.years:
+        return StandardMatch("ambiguous", None, candidates, "year_absent")
 
-    commemo = _commemo_theme_hit(conn, denomination, country, year, title)
-    if commemo is not None:
+    # Exclusion commémo : si le titre *hit* le thème d'une commémo de
+    # (pays, année) pour N'IMPORTE quelle année présente, c'est une commémo
+    # (déjà captée par le run commémo) → discard.
+    for y in sorted(signals.years):
+        commemo = _commemo_theme_hit(conn, denomination, country, y, title)
+        if commemo is not None:
+            return StandardMatch(
+                "commemo", None, candidates, f"commemo_in_standard_run:{commemo}"
+            )
+
+    # Multi-années : exiger une confirmation POSITIVE du pays. Un lot croise
+    # souvent plusieurs pays et la garde « pays non-contredit » (étape 1) ne
+    # suffit pas quand le titre ne nomme PAS le pays (countries vide) — sinon
+    # « Serie de Finlandia 2017-2018 » / « BRD … 2020-2024 » se résoudraient au
+    # pays scrapé. Mono-année non concerné (recherche déjà scopée pays).
+    if len(signals.years) >= 2 and country.upper() not in signals.countries:
         return StandardMatch(
-            "commemo", None, candidates, f"commemo_in_standard_run:{commemo}"
+            "ambiguous", None, candidates, "year_multi_country_unconfirmed"
         )
 
-    hits = eras_for_year(eras, year)
-    if not hits:
+    # Appartenance de plage par GROUPE avers. Chaque année doit tomber dans
+    # exactement une ère. Multi-années (lots « Kursmünzen 2000-2008 ») : on
+    # attribue dès lors que TOUTES les années tombent dans le MÊME groupe —
+    # l'avers est inchangé sur la plage, donc la classe est déterminée même sans
+    # millésime unique (c'est ce qui récupère l'offre Juan Carlos en lots). Si
+    # les années s'étalent sur plusieurs groupes, ou si une année est hors-
+    # référentiel / en collision même-année → ambigu (review).
+    groups_seen: dict[str, StandardEra] = {}
+    for y in signals.years:
+        hits = eras_for_year(eras, y)
+        if len(hits) != 1:
+            reason = f"era_year_collision:{y}" if hits else f"year_before_first_era:{y}"
+            return StandardMatch("ambiguous", None, candidates, reason)
+        groups_seen[hits[0].group_id] = hits[0]
+    if len(groups_seen) > 1:
         return StandardMatch(
-            "ambiguous", None, candidates, f"year_before_first_era:{year}"
+            "ambiguous", None, candidates, f"year_spans_groups:{sorted(groups_seen)}"
         )
-    if len(hits) > 1:
-        return StandardMatch(
-            "ambiguous", None, candidates, f"era_year_collision:{year}"
-        )
-    # Prior résolu au millésime DANS le groupe hit (la classe d'entraînement
-    # reste le groupe via COALESCE ; le prior pré-remplit la review au bon Type).
+
+    # Toutes les années dans un seul groupe → attribué. Prior résolu au plus
+    # petit millésime présent DANS le groupe (la classe d'entraînement reste le
+    # groupe via COALESCE ; le prior pré-remplit la review au bon Type).
+    era = next(iter(groups_seen.values()))
+    pin_year = min(signals.years)
+    reason = "year_resolved" if len(signals.years) == 1 else "year_group_resolved"
     return StandardMatch(
-        "single", hits[0].prior_for_year(year), candidates, f"year_resolved:{year}"
+        "single", era.prior_for_year(pin_year), candidates,
+        f"{reason}:{sorted(signals.years)}",
     )

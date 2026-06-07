@@ -240,6 +240,63 @@ def test_grouped_commemo_excluded_before_widened_range(tmp_path):
     assert m.reason.startswith("commemo_in_standard_run:")
 
 
+def test_attribute_multiyear_same_group_resolves(tmp_path):
+    """Lot multi-années dont toutes les années tombent dans UN groupe → attribué
+    (récupère l'offre type « Kursmünzen 2000-2008 » Juan Carlos)."""
+    store = Store(tmp_path / "t.db")
+    conn = store._connection()
+    _seed_be_grouped(conn)
+    m = attribute_standard_listing(
+        "Belgien 2 Euro Kursmünze 2003 2005 König Albert II", _DENOM, "BE", conn=conn
+    )
+    assert m.verdict == "single"
+    assert m.target_eurio_id == "be-1999-2eur-standard-albert-ii-1st-map-1st-type-1st-portrait"
+    assert m.reason.startswith("year_group_resolved")
+
+
+def test_attribute_multiyear_spans_groups_is_ambiguous(tmp_path):
+    """Lot multi-années qui chevauche plusieurs groupes → ambigu (review)."""
+    store = Store(tmp_path / "t.db")
+    conn = store._connection()
+    _seed_be_grouped(conn)
+    m = attribute_standard_listing(
+        "Belgien 2 Euro Lot 2005 2009 Kursmünze", _DENOM, "BE", conn=conn
+    )
+    assert m.verdict == "ambiguous"
+    assert m.reason.startswith("year_spans_groups")
+
+
+def test_attribute_multiyear_foreign_lot_not_resolved(tmp_path):
+    """Lot multi-années sans confirmation du pays cible → ambigu (anti-leak
+    inter-pays : « Serie de Finlandia 2017-2018 » ne doit pas devenir ES/BE)."""
+    store = Store(tmp_path / "t.db")
+    conn = store._connection()
+    _seed_be_grouped(conn)
+    m = attribute_standard_listing("Serie 2003 2005 Lot Münzen", _DENOM, "BE", conn=conn)
+    assert m.verdict == "ambiguous"
+    assert m.reason == "year_multi_country_unconfirmed"
+
+
+def test_attribute_multiyear_commemo_still_excluded(tmp_path):
+    """Un lot multi-années dont une année hit un thème commémo → commemo."""
+    store = Store(tmp_path / "t.db")
+    conn = store._connection()
+    _seed_be_grouped(conn)
+    _seed(conn, "be-2007-2eur-commemo-rome", "BE", 2007, is_comm=True)
+    conn.execute(
+        "INSERT OR IGNORE INTO source_registry (id, display_name, kind) VALUES "
+        "('eurio_derived', 'Eurio derived', 'derived')"
+    )
+    conn.execute(
+        "INSERT INTO coin_names_i18n (eurio_id, lang, title, source) VALUES (?, ?, ?, ?)",
+        ("be-2007-2eur-commemo-rome", "de", "Vertrag von Rom", "eurio_derived"),
+    )
+    m = attribute_standard_listing(
+        "Belgien 2 Euro 2003 2007 Vertrag von Rom", _DENOM, "BE", conn=conn
+    )
+    assert m.verdict == "commemo"
+
+
 def test_standard_view_counts_design_groups(tmp_path):
     """v_ebay_standard_groups.n_eras = nombre de groupes avers (pas de Types)."""
     store = Store(tmp_path / "t.db")
