@@ -39,7 +39,7 @@ sous-chunks pour garder une cadence d'audit (poser le rail, puis migrer un runne
 | 4 | **Bake d'augmentation détaché** (« Générer » standalone). Découverte : le bake par itération était déjà détaché (2b-2) ; restait le standalone **3 endpoints** synchrones-dans-la-requête (`/bake`, `/augmentations/regenerate`, `/preview-iteration`). Décision PO : détacher le littéral (frontend inclus). | ✅ | `training/run_augmentation.py` détaché via rail (clear+generate, progress n_done/n_total). Les 3 endpoints → **202 `{job_id}`** + endpoint statut `…/augmentations/job`. `generate_for_iteration` a un `on_progress` optionnel. **Fix correctness** : `job_by_param` filtre désormais par `kind` (un même `iteration_id` porte chaîne `iteration` ET bake `augmentation`) — `IterationRunner._active_job`/`tail_logs` filtrent `kind='iteration'`. Front : `useLabApi` poll jusqu'à `done` → l'`isPending` des mutations couvre le bake (**spinner inchangé, zéro changement de composant**). Garde anti-double-bake (PID vivant). 65 tests back verts (+1 kind-filter), typecheck front = 0 nouvelle erreur (7 pré-existantes). |
 | 5 | **Split `Store`** → `store/connection.py` + modules par domaine. | ✅ | Prépare le swap driver du chunk 6. **5a** scaffold `ml/store/` plat + shim `state/store.py`. **5b** `_domains.py` carvé en 8 modules mixins (runs/staging/augmentation/benchmark/cohorts/iterations/dino/listing_signals), chacun = ses rows + converter + `*Mixin`. `Store(StoreBase, RunsMixin, …)`. 1068 passed / 20 failed (= baseline, 0 régression). |
 | 6 | **Cross-machine eurio.db** : ~~libSQL~~ → **lease MinIO**. | 🟡 | libSQL abandonné (client Python sans row_factory/create_function/executescript — cf. ADR D4 révisé). **6a livré** (`store/lease.py` + `go-task ml:db:{status,acquire,release,steal}` + 13 tests, FakeS3 IfNoneMatch). **6b livré** (doc VPS `chunk6-vps-minio.md`). **6c livré** (hook startup `server.py` qui avertit, non bloquant). **Reste : exécution côté VPS** (provisioning MinIO via la doc) puis 1ᵉʳ acquire/release réel Mac↔PC. |
-| 7 | **Restructure `ml/` plat** : sources/vision/training/review/serving/shared ; absorbe scan/eval/foundation/augmentations ; api→serving ; fix imports + Taskfile + tests. | 🟡 | PO a choisi **restructure complète**, livrée en sous-chunks audités. **7a** ✅ migration imports `state→store` + suppression shim (119 fichiers). **7b** ✅ `api/`→`serving/`. **Reste** : 7c scan→vision · 7d augmentations/eval/foundation→training · 7e shared (utils/storage/api_quota/ccproxy) · 7f market→sources + trancher referential/bootstrap/export · 7g extraction `review/` (vrai refactor depuis serving/). ⚠️ Pré-requis fait : review-lot (B) commité en wip pour arbre propre. |
+| 7 | **Restructure `ml/` plat** : sources/vision/training/review/serving/shared ; absorbe scan/eval/foundation/augmentations ; api→serving ; fix imports + Taskfile + tests. | ✅ | **Restructure complète livrée** (7a-7g). 7a imports `state→store`+shim retiré · 7b `api`→`serving` · 7c `scan`→`vision` · 7d `augmentations`/`eval`/`foundation`→`training/` · 7e `utils`/`storage`/`api_quota[_cli]`/`ccproxy_client`→`shared/` · 7f `market`→`sources/market` (referential/bootstrap/export gardés domaines plats) · 7g `review/` extrait (review_queue_routes+coins_review_routes). 1081/20 baseline, 0 régression. Commits c6ec9ee, f3d4cd5, bd3ceee. |
 | 8 | **Purge `scripts/`** : one-time → archive/suppression, ne garder que les scripts opérables. | ⬜ | — |
 
 ## Invariants à ne pas casser (R0)
@@ -86,6 +86,19 @@ sous-chunks pour garder une cadence d'audit (poser le rail, puis migrer un runne
   qu'un spinner. Barre de progression possible (nice-to-have).
 
 ## Journal
+- **2026-06-08** — **Chunk 7 CLOS (restructure complète livrée)**. Sous-chunks **7c-7g** enchaînés
+  (à la demande PO) puis un gros check : `scan→vision`, `augmentations/eval/foundation→training/`,
+  `utils/storage/api_quota[_cli]/ccproxy_client→shared/`, `market→sources/market`, extraction
+  `review/` (2 routers, imports relatifs→absolus, multi-imports splittés). `referential/`,
+  `bootstrap/`, `export/` gardés comme domaines plats (décision : déjà plats, hors périmètre move).
+  Réécriture mécanique (53 renames git détectés) + corrections refs non-import (monkeypatch strings,
+  subprocess `training/eval/*.py`, logger names). **0 import résiduel** des anciens packages.
+  Régressions trouvées & corrigées au check : 2 `test_foundation` (monkeypatch `"foundation.anchors"`
+  → `"training.foundation.anchors"`). `test_list_layer_schemas` rouge = **pré-existant** (échoue
+  aussi sur HEAD, vérifié par stash). Hygiène : `.gitignore` corrigé pour le cache token eBay
+  (déplacé sous `sources/`) + artefacts `training_progress/`. **1081 passed / 20 failed = baseline,
+  0 régression.** Commits 7 : `c6ec9ee` (7a), `f3d4cd5` (7b), `bd3ceee` (7c-7g), `fce7420` (gitignore).
+  **Reste : chunk 8** (purge `scripts/` 106 fichiers + vestige `training.db`).
 - **2026-06-08** — **Chunk 7 démarré (restructure complète, par sous-chunks)**. Commits hygiène
   d'abord : chunks **1-4** (`adbb6ec`), **6** (`3dd4500`) et le chantier **review-lot/B en wip**
   (`7acb2ff`) commités séparément pour partir d'un arbre propre. **7a** (`c6ec9ee`) : migration
