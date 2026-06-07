@@ -53,8 +53,12 @@ ml/yolov8n.pt
 ml/mobile_sam.pt
 ml/FastSAM*.pt
 ml/sam2*.pt
+# Cache de token OAuth eBay (secret runtime) — peut vivre à la racine ml/ ou sous sources/.
 ml/.ebay_token_cache.json
+ml/**/.ebay_token_cache.json
 ml/.dataset_cache/
+# Artefacts de progression d'entraînement (runtime, régénérés).
+ml/state/training_progress/
 # Images canoniques générées localement par scripts/migrate_canonical_images_local.py.
 # Régénérables depuis eurio.db (coin_canonical_images.url) — pas besoin de versionner.
 ml/canonical_images/
