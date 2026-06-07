@@ -5,8 +5,9 @@
 > comparaison aug↔réelles → app de test custom → live tests device →
 > décision/itération.
 >
-> **Statu : DRAFT — début 2026-04-29.** Aucun code écrit. Cette doc est la
-> source de vérité pour les 5 sprints à venir.
+> **Statut : sprints 1-5 LIVRÉS (2026-04-29/30)** — code en place dans `ml/training/`.
+> Le chantier suivant `harvest/` (DINOv2 + scraping massif) est **non démarré** (design only).
+> Statut détaillé dans `progress.md`. _(Mesuré doc↔code via graphify 2026-06-07.)_
 
 ## Pourquoi ce dossier existe
 
@@ -40,11 +41,11 @@ pré-requis et la doc à lire avant.
 
 | # | Titre | Périmètre | Statut |
 |---|---|---|---|
-| 1 | [Foundation](./sprint-1-foundation.md) | Augmentations stockées sur disque + stop training + recipe interactive | 🔲 À démarrer |
-| 2 | [Aug vs réelles](./sprint-2-aug-vs-real.md) | Galerie comparison + distance DINO + déprécation `/benchmark` | 🔲 |
-| 3 | [Cohort test app](./sprint-3-cohort-test-app.md) | Gradle flavor cohortTest + build commands surfacées | 🔲 |
-| 4 | [Live tests](./sprint-4-live-tests.md) | Prescription on-device + sync admin + confusion matrix réelle | 🔲 |
-| 5 | [Polish](./sprint-5-polish.md) | Dashboard cross-cohort + GC augmentations + doc finale | 🔲 |
+| 1 | [Foundation](./sprint-1-foundation.md) | Augmentations stockées sur disque + stop training + recipe interactive | ✅ livré |
+| 2 | [Aug vs réelles](./sprint-2-aug-vs-real.md) | Galerie comparison + distance DINO + déprécation `/benchmark` | ✅ livré |
+| 3 | [Cohort test app](./sprint-3-cohort-test-app.md) | Gradle flavor cohortTest + build commands surfacées | ✅ livré |
+| 4 | [Live tests](./sprint-4-live-tests.md) | Prescription on-device + sync admin + confusion matrix réelle | ✅ livré (device walkthrough non loggé) |
+| 5 | [Polish](./sprint-5-polish.md) | Dashboard cross-cohort + GC augmentations + doc finale | ✅ livré (routes /benchmark FastAPI pas encore purgées) |
 
 ## Workflow de session avec un agent
 

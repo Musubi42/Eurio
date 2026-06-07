@@ -8,6 +8,22 @@
 >
 > **Boucle cible** : reprendre → finir le reste listé ci-dessous → déplacer vers `docs/archive/`.
 
+## Pour une session Claude Code autonome
+
+Tu peux exécuter ces missions **seule**, en bouclant :
+
+1. **Choisis une mission** dans la table ci-dessous (le `% réel` te dit la proximité de la clôture).
+2. **Comprends le gap** : l'entrée détaillée liste le reste-à-faire. Confirme-le sur le code avec **graphify**
+   (`graphify query "comment marche X"`, `graphify explain "Symbole"`, `graphify path "A" "B"`) — le graphe code+docs
+   est dans `graphify-out/` (régénère avec `/graphify .` après un gros changement). Tu vois la big picture sans tout relire.
+3. **Implémente** la brique manquante. Tu as les outils : `go-task` (build/install/test/snapshot), sous-agents
+   (fan-out lecture/vérif), MCP (Supabase, MinIO), le skill `frontend-design` pour l'UI admin.
+4. **Vérifie** (tests `ml/tests/`, `go-task` cibles, ou le skill `/verify`) puis **mets à jour cette entrée** :
+   barre ce qui est fait, signale ce qui a encore drifté. Quand un chantier atteint 100 %, `git mv` vers `docs/archive/`.
+
+> ⚠️ Avant d'agir sur une entrée : **re-vérifie le gap sur le code** (la doc peut avoir re-drifté depuis le 2026-06-07).
+> Le `%` et le reste-à-faire sont une boussole, pas une vérité gravée.
+
 | Chantier | % réel | En une phrase |
 |---|---|---|
 | [lab-prod-refacto](./lab-prod-refacto/) | ~95 % | 4 phases closes, reste du cleanup cosmétique |
@@ -22,7 +38,9 @@
 | [crop-quality-overhaul](./crop-quality-overhaul/) | algo livré | reste sessions Android + tooling review manuel |
 | [referential-fixes](./referential-fixes/) | discovery livré | reste Apply backend + UI admin |
 | [cohort-pipeline](./cohort-pipeline/) | ~40 % | rebuild cockpit pas commencé, design seulement |
+| [training-pipeline](./training-pipeline/) | sprints ✅ | 5 sprints livrés (README à jour), `harvest/` non démarré |
 | [parity](./parity/) | ~30 % | QA dump fait, parité Maestro↔Playwright différée |
+| [ai-first-test-suite](./ai-first-test-suite.md) | 0 % | kickoff prêt, pas démarré — gros levier qualité |
 
 ---
 
@@ -98,6 +116,24 @@ QA dump + buildType Android `src/qa` faits, tooling `admin/packages/parity/` sca
 
 ---
 
-> **Non déplacés (volontaire) :** `docs/sources-refacto/` (index vivant multi-sessions, déplacer casserait les cross-liens),
-> `docs/training-pipeline/` (sprints 1-5 livrés mais dossier vivant : harvest/ + journal/ actifs — split différé).
-> Références/ADRs gardés en place : `adr/`, `app-implem-phases/`, `research/`, `mission/`, `design/_shared/`.
+## training-pipeline — sprints livrés, harvest à démarrer
+Sprints 1-5 livrés (2026-04-29/30, code dans `ml/training/`, table README corrigée). `journal/` = logs de runs actifs.
+**Reste :**
+- **`harvest/` (chantier suivant, 0 % — design only)** : phase 1 DINOv2 bring-up → phases 2-5 (auto-validateur eBay, sources étendues, user harvest in-app, review humaine admin). C'est le prochain gros morceau ML.
+- Device walkthrough des sprints 4-5 jamais loggé (premières métriques device end-to-end TBD)
+- Routes `/benchmark` FastAPI pas encore purgées (fusion prévue dans `experiment_iterations`)
+- `iteration-detail-page-design.md` : gaps UX ouverts (monitor training invisible G-001, collapse §0 G-002, recipe affichée en UUID)
+
+## ai-first-test-suite — kickoff prêt, 0 %
+Doc de cadrage solide (pourquoi, catégories A-F, dashboard, 7 questions à trancher). **Très pertinent** : la review auto-validation 2026-05-05 a saigné ~70 % de faux positifs faute de tests vérifiables.
+**Reste (par ordre du doc) :**
+- Trancher les 7 questions (front tool, fixtures DB, marqueurs pytest, couverture cible, auto vs main, CI gates, rétro-compat 308 tests)
+- §A wiring tests (endpoint backend ↔ composable front) sur le périmètre `auto-validation` d'abord (ROI immédiat)
+- Puis §B contract tests par étape pipeline, §D smoke, §E front (vitest, 0 test admin aujourd'hui)
+- Dashboard `docs/test-status.md` régénéré + workflow `go-task test:snapshot`/`test:diff`
+
+---
+
+> **Sources (parking lot)** — `docs/sources-refacto/` a été **archivé** (chantier multi-sessions livré : pipeline 6 étapes, orchestrateur, eBay V1). Fils résiduels encore potentiellement pertinents, à juger : auto-validation chunks 8-9 (Dino×texte, auto-accept), ebay-multi-marketplace F1-F4 + cutover V2 (9/14 faits), `lot-review` (page `/review/lots`, pas démarrée), `sdk-kickoff` (ReferentialSourceAdapter, différé post-cohorte 19). Détail : `docs/archive/sources-refacto/`.
+>
+> **Références/ADRs gardés en place :** `adr/`, `app-implem-phases/`, `research/`, `mission/`, `design/_shared/`, `tracks.md`, `roadmap.md`, `tech-stack.md`, `cross-platform-setup.md`, `DECISIONS.md`.

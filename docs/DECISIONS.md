@@ -20,7 +20,7 @@
 | **Questions ouvertes prototype** | [`docs/archive/design/prototype/OPEN-QUESTIONS.md`](./archive/design/prototype/OPEN-QUESTIONS.md) | Priorisées P0/P1/P2, relues par milestone. |
 | **Changelog prototype** | [`docs/archive/design/prototype/CHANGELOG.md`](./archive/design/prototype/CHANGELOG.md) | Log technique des changements du proto. |
 | **État du projet** | [`docs/roadmap.md`](./roadmap.md) | Photo instantanée fait/en-cours/à-faire. |
-| **Vue d'ensemble archi** | [`docs/ARCHITECTURE.md`](./ARCHITECTURE.md) | Overview 15 min, mise à jour par milestone. |
+| **Vue d'ensemble archi** | **graphify** (`graphify-out/GRAPH_REPORT.md` + `graphify query "…"`) | Graphe code+docs indexé, généré à la demande — remplace l'ancien ARCHITECTURE.md manuel. |
 | **Mémoire Claude persistante** | `~/.claude/projects/-Users-musubi42-Documents-Musubi42-Eurio/memory/MEMORY.md` | Préférences, contraintes, rappels cross-session. |
 
 ---
@@ -196,7 +196,7 @@
 ## Voir aussi
 
 - [`docs/roadmap.md`](./roadmap.md) — photo instantanée fait / en cours / à faire
-- [`docs/ARCHITECTURE.md`](./ARCHITECTURE.md) — overview 15 min de l'archi complète
+- **graphify** (`graphify-out/` : `GRAPH_REPORT.md`, `graph.html`, `graphify query "…"`) — vue d'ensemble de l'archi, graphe code+docs indexé à la demande
 - [`docs/adr/`](./adr/) — ADRs techniques numérotées
 - [`docs/archive/design/prototype/OPEN-QUESTIONS.md`](./archive/design/prototype/OPEN-QUESTIONS.md) — questions non tranchées
 - [`docs/archive/design/prototype/CHANGELOG.md`](./archive/design/prototype/CHANGELOG.md) — historique technique du proto

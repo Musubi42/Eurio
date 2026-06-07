@@ -19,8 +19,8 @@
 | Track | Doc racine | Mission | Démarré | Statut global |
 |---|---|---|---|---|
 | **lab-prod-refacto** | [`lab-prod-refacto/`](./work-in-progress/lab-prod-refacto/) | Isoler lab et prod, rendre le label space cohérent (`eurio_id` côté lab) | 2026-05-02 | ✅ phase 1 livrée et validée (test-1 v2 : 85.7% live vs 57.1% en test-2) · phase 2 à démarrer |
-| **training-refacto-ux** | [`training-pipeline/refacto/`](./training-pipeline/refacto/) | UX lab : tiroirs cohort/iteration, training monitor, purge transforms | en cours | partiel — voir doc |
-| **harvest** | [`training-pipeline/harvest/`](./training-pipeline/harvest/) | Élargir le corpus de photos réelles (scraping + cloud fallback + user scans) | 2026-05-02 | 🔲 phase 1 (DINOv2 bring-up) à démarrer |
+| **training-refacto-ux** | [`training-pipeline/refacto/`](./archive/training-pipeline/refacto/) | UX lab : tiroirs cohort/iteration, training monitor, purge transforms | en cours | partiel — voir doc |
+| **harvest** | [`training-pipeline/harvest/`](./work-in-progress/training-pipeline/harvest/) | Élargir le corpus de photos réelles (scraping + cloud fallback + user scans) | 2026-05-02 | 🔲 phase 1 (DINOv2 bring-up) à démarrer |
 | **on-device-v2** | _(à créer)_ | Backbone DINOv2 + tête ArcFace fine-tunée, distill mobile, intégration TFLite | non démarré | 🔲 dépend de `harvest/phase-1` |
 
 ## Graphe de dépendances
@@ -74,11 +74,11 @@
 ### harvest
 | # | Phase | Statut | Bloque |
 |---|---|---|---|
-| 1 | [DINOv2 bring-up](./training-pipeline/harvest/phase-1-dinov2-bring-up.md) | 🔲 | tout le reste du track + on-device-v2 |
-| 2 | [Auto-validateur eBay (commémo)](./training-pipeline/harvest/auto-validator.md) | 🔲 | scraping massif |
-| 3 | [Sources étendues](./training-pipeline/harvest/sources.md) | 🔲 | — |
-| 4 | [User harvest in-app](./training-pipeline/harvest/user-harvest.md) | 🔲 | dépend on-device shippé |
-| 5 | [Review humaine admin](./training-pipeline/harvest/human-review.md) | 🔲 | support phases 2 et 4 |
+| 1 | [DINOv2 bring-up](./work-in-progress/training-pipeline/harvest/phase-1-dinov2-bring-up.md) | 🔲 | tout le reste du track + on-device-v2 |
+| 2 | [Auto-validateur eBay (commémo)](./work-in-progress/training-pipeline/harvest/auto-validator.md) | 🔲 | scraping massif |
+| 3 | [Sources étendues](./work-in-progress/training-pipeline/harvest/sources.md) | 🔲 | — |
+| 4 | [User harvest in-app](./work-in-progress/training-pipeline/harvest/user-harvest.md) | 🔲 | dépend on-device shippé |
+| 5 | [Review humaine admin](./work-in-progress/training-pipeline/harvest/human-review.md) | 🔲 | support phases 2 et 4 |
 
 ### training-refacto-ux
 Voir [`archive/training-pipeline/refacto/progress.md`](./archive/training-pipeline/refacto/progress.md) pour le détail des 5 phases (chantier archivé, livré). Aucune dépendance bloquante avec les autres tracks.
