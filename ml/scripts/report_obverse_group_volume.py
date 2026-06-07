@@ -48,8 +48,9 @@ class ClassVolume:
     members: list[str] = field(default_factory=list)
     year_min: int = 9999
     year_max: int = 0
-    attributed: int = 0
-    train_eligible: int = 0
+    attributed: int = 0       # crops proposés (prior), HORS rejetés
+    rejected: int = 0         # crops écartés (gate vision / review)
+    train_eligible: int = 0   # crops résolus + entraînables
 
     @property
     def is_group(self) -> bool:
@@ -57,12 +58,19 @@ class ClassVolume:
 
 
 def collect(conn: sqlite3.Connection, country: str, face_value: float | None) -> list[ClassVolume]:
+    # « attributed » exclut les rejetés (resolution_status='rejected') pour refléter
+    # le pool propre post-gate ; « rejected » les compte à part (transparence).
     sql = (
         "SELECT c.eurio_id, c.year, "
         "       COALESCE(c.design_group_id, c.eurio_id) AS class_id, "
         "       (SELECT COUNT(*) FROM image_assets ia "
         "          JOIN source_images si ON si.id = ia.source_image_id "
-        "         WHERE si.source = 'ebay' AND si.target_eurio_id = c.eurio_id) AS attributed, "
+        "         WHERE si.source = 'ebay' AND si.target_eurio_id = c.eurio_id "
+        "           AND ia.resolution_status != 'rejected') AS attributed, "
+        "       (SELECT COUNT(*) FROM image_assets iar "
+        "          JOIN source_images sir ON sir.id = iar.source_image_id "
+        "         WHERE sir.source = 'ebay' AND sir.target_eurio_id = c.eurio_id "
+        "           AND iar.resolution_status = 'rejected') AS rejected, "
         "       (SELECT COUNT(*) FROM image_assets ia2 "
         "         WHERE ia2.eurio_id = c.eurio_id AND ia2.training_eligible = 1) AS train_eligible "
         "  FROM coins c "
@@ -82,6 +90,7 @@ def collect(conn: sqlite3.Connection, country: str, face_value: float | None) ->
         cv.year_min = min(cv.year_min, int(r["year"]))
         cv.year_max = max(cv.year_max, int(r["year"]))
         cv.attributed += int(r["attributed"])
+        cv.rejected += int(r["rejected"])
         cv.train_eligible += int(r["train_eligible"])
     return sorted(classes.values(), key=lambda c: (c.year_min, c.class_id))
 
@@ -110,26 +119,27 @@ def main() -> int:
 
     print(
         f"Volume eBay par classe — {args.country.upper()} — cible {args.target}/classe\n\n"
-        f"  {'classe':30} {'plage':>9} {'memb':>4} {'attrib':>7} {'train':>6} {'gap':>6}"
+        f"  {'classe':30} {'plage':>9} {'memb':>4} {'attrib':>7} {'rejet':>6} {'train':>6} {'gap':>6}"
     )
     n_under = 0
-    tot_attr = tot_train = 0
+    tot_attr = tot_rej = tot_train = 0
     for cv in classes:
         rng = f"{cv.year_min}" if cv.year_min == cv.year_max else f"{cv.year_min}-{cv.year_max}"
         gap = max(0, args.target - cv.train_eligible)
         if gap > 0:
             n_under += 1
         tot_attr += cv.attributed
+        tot_rej += cv.rejected
         tot_train += cv.train_eligible
         flag = "" if gap == 0 else (" ⚠" if cv.train_eligible else " ✗0")
         print(
             f"  {cv.class_id:30} {rng:>9} {len(cv.members):>4} "
-            f"{cv.attributed:>7} {cv.train_eligible:>6} {gap:>6}{flag}"
+            f"{cv.attributed:>7} {cv.rejected:>6} {cv.train_eligible:>6} {gap:>6}{flag}"
         )
 
     print(
         f"\n{len(classes)} classe(s) — {n_under} sous la cible. "
-        f"Total attribué={tot_attr}, training-eligible={tot_train}."
+        f"Attribué (hors rejet)={tot_attr}, rejeté={tot_rej}, training-eligible={tot_train}."
     )
     if n_under:
         print(
