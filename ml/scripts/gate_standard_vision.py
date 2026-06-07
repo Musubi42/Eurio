@@ -38,7 +38,7 @@ import ccproxy_client  # noqa: E402
 from foundation.claude_review import DEFAULT_MODEL_ALIAS, MODELS  # noqa: E402
 from foundation.obverse_group_review import canonical_obverse_path  # noqa: E402
 from foundation.standard_gate_review import classify_crop  # noqa: E402
-from state.store import Store, emit_state_event  # noqa: E402
+from store import Store, emit_state_event  # noqa: E402
 from storage.local_cache import local_path  # noqa: E402
 
 DEFAULT_DB = ML_DIR / "state" / "eurio.db"

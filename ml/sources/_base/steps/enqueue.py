@@ -28,7 +28,7 @@ from dataclasses import dataclass
 
 from foundation.review_lanes import compute_lane
 from sources._base.run_logger import RunHandle
-from state import emit_state_event
+from store import emit_state_event
 
 logger = logging.getLogger(__name__)
 

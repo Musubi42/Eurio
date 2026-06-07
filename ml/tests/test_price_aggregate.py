@@ -24,7 +24,7 @@ from sources.pricing import (
     years_since,
 )
 from sources.pricing.aggregate import MIN_SAMPLES_FOR_OUTLIER
-from state.store import Store
+from store import Store
 
 NOW = datetime(2026, 5, 21, tzinfo=timezone.utc)
 

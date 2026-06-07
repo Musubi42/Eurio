@@ -39,7 +39,7 @@ from sources._base.steps.resolve import run_resolve
 from sources._base.steps.text_signal import run_text_signal_extract
 
 if TYPE_CHECKING:
-    from state.store import Store
+    from store import Store
 
 logger = logging.getLogger(__name__)
 

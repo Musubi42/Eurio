@@ -19,7 +19,7 @@ import pytest
 from sources._base.adapter import SourceQuery
 from sources._base.orchestrator import run_pipeline
 from sources._mock import MOCK_FIXTURES, MockAdapter
-from state.store import Store
+from store import Store
 
 
 @pytest.fixture()

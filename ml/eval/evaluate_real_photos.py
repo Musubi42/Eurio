@@ -39,7 +39,7 @@ if str(ML_DIR) not in sys.path:
 
 from eval.equivalence import EquivalenceMap, build_equivalence_map  # noqa: E402
 from eval.real_photo_meta import AXES, parse_filename  # noqa: E402
-from state import BenchmarkRunRow, Store  # noqa: E402
+from store import BenchmarkRunRow, Store  # noqa: E402
 
 logger = logging.getLogger("evaluate_real_photos")
 

@@ -22,7 +22,7 @@ from fastapi.responses import FileResponse
 from PIL import Image
 from pydantic import BaseModel
 
-from state import Store
+from store import Store
 
 logger = logging.getLogger(__name__)
 

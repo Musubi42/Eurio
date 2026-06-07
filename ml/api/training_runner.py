@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 import jobs
 from jobs import _pid_alive
-from state import (
+from store import (
     ClassMetricRow,
     ClassRef,
     EpochRow,

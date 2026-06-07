@@ -37,7 +37,7 @@ ML_DIR = Path(__file__).parent.parent
 if str(ML_DIR) not in sys.path:
     sys.path.insert(0, str(ML_DIR))
 
-from state import Store  # noqa: E402
+from store import Store  # noqa: E402
 
 LAB_ITERATIONS_DIR = ML_DIR / "lab" / "iterations"
 PROD_DIR = ML_DIR / "prod"

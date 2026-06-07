@@ -40,7 +40,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from referential.eurio_referential import compute_eurio_id, slugify  # noqa: E402
-from state.store import Store  # noqa: E402
+from store import Store  # noqa: E402
 
 DEFAULT_DB = ROOT / "state" / "eurio.db"
 COUNTRY_MAPPING = ROOT / "datasets" / "country_mapping.json"

@@ -109,7 +109,7 @@ def main() -> int:
 
     # Instancier Store → applique schema.sql (crée image_state_events/current +
     # cohort_jobs en IF NOT EXISTS sur la DB existante). Aucune autre mutation.
-    from state.store import Store
+    from store import Store
     Store(DB_PATH)
 
     conn = sqlite3.connect(DB_PATH, isolation_level=None)

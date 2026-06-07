@@ -22,7 +22,7 @@ from pathlib import Path
 
 from sources._base.adapter import DiscoveryGroup, SourceQuery
 from sources._base.orchestrator import process_downloaded, run_pipeline
-from state.store import Store
+from store import Store
 
 _DEFAULT_DB = Path(__file__).resolve().parents[1] / "state" / "eurio.db"
 

@@ -25,7 +25,7 @@ if str(ML_DIR) not in sys.path:
 @pytest.fixture()
 def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Fresh TestClient with a temp SQLite DB and no supabase dependency."""
-    from state import Store
+    from store import Store
 
     test_store = Store(tmp_path / "t.db")
 

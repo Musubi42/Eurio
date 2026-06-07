@@ -21,7 +21,7 @@ if str(ML_DIR) not in sys.path:
 
 from api import coins_routes, sets_routes  # noqa: E402
 from state.source_status import upsert_source_status  # noqa: E402
-from state.store import Store  # noqa: E402
+from store import Store  # noqa: E402
 
 
 REAL_DB = ML_DIR / "state" / "eurio.db"

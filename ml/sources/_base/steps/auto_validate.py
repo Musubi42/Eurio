@@ -45,7 +45,7 @@ from foundation import (
 )
 from foundation.review_lanes import compute_lane
 from sources._base.run_logger import RunHandle
-from state.store import DinoPredictionRow
+from store import DinoPredictionRow
 
 logger = logging.getLogger(__name__)
 

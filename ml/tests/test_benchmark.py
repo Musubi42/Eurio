@@ -20,7 +20,7 @@ ML_DIR = Path(__file__).parent.parent
 if str(ML_DIR) not in sys.path:
     sys.path.insert(0, str(ML_DIR))
 
-from state import BenchmarkRunRow, Store  # noqa: E402
+from store import BenchmarkRunRow, Store  # noqa: E402
 
 
 # ─── Store ──────────────────────────────────────────────────────────────────
@@ -93,7 +93,7 @@ def test_store_list_filters_by_zone(store: Store):
 def test_store_list_filters_by_model_and_recipe(store: Store):
     # FK: benchmark_runs.recipe_id → augmentation_recipes.id. Create two
     # real recipes to back the IDs we filter on.
-    from state import AugmentationRecipeRow
+    from store import AugmentationRecipeRow
 
     store.create_recipe(
         AugmentationRecipeRow(id="rX", name="rx", zone="green", config={"layers": []})

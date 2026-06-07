@@ -27,7 +27,7 @@ if str(ML_DIR) not in sys.path:
     sys.path.insert(0, str(ML_DIR))
 
 from api import review_queue_routes  # noqa: E402
-from state import Store  # noqa: E402
+from store import Store  # noqa: E402
 
 
 @pytest.fixture()

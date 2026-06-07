@@ -29,7 +29,7 @@ from referential.scrape_bce_i18n import (  # noqa: E402
 )
 from sources.bce.adapter import BceAdapter  # noqa: E402
 from state.source_status import upsert_source_status  # noqa: E402
-from state.store import Store  # noqa: E402
+from store import Store  # noqa: E402
 
 logger = logging.getLogger("sweep_bce_empty")
 DB_PATH = ML_DIR / "state" / "eurio.db"

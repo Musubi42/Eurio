@@ -30,7 +30,7 @@ import torch.nn.functional as F
 from PIL import Image
 
 from api import coin_lookup
-from state import AugVsRealRow, Store
+from store import AugVsRealRow, Store
 
 logger = logging.getLogger(__name__)
 

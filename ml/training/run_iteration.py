@@ -24,7 +24,7 @@ ML_DIR = Path(__file__).resolve().parent.parent
 if str(ML_DIR) not in sys.path:
     sys.path.insert(0, str(ML_DIR))
 
-from state import Store  # noqa: E402
+from store import Store  # noqa: E402
 from api.training_runner import TrainingRunner  # noqa: E402
 from api.iteration_runner import IterationRunner  # noqa: E402
 import jobs  # noqa: E402

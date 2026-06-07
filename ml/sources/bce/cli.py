@@ -50,7 +50,7 @@ def main() -> int:
     from sources._base.adapter import SourceQuery
     from sources.bce import BceAdapter
     from sources.bce.pipeline import run_bce_pipeline
-    from state import Store
+    from store import Store
 
     store = Store(_ML_ROOT / "state" / "eurio.db")
     adapter = BceAdapter(conn=store._connection())  # noqa: SLF001

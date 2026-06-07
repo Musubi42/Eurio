@@ -11,7 +11,7 @@ from __future__ import annotations
 import pytest
 
 from scripts.bench_theme_match import DB_PATH, GOLD_PATH, replay_bench
-from state import Store
+from store import Store
 
 _REASON = "gold gelé ou eurio.db absent (artefacts locaux)"
 pytestmark = pytest.mark.skipif(

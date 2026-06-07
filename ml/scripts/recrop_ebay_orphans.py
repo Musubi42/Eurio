@@ -31,7 +31,7 @@ if str(_ML_DIR) not in sys.path:
 
 from sources._base.run_logger import start_run  # noqa: E402
 from sources._base.steps.detect_crop import run_detect_crop  # noqa: E402
-from state import Store  # noqa: E402
+from store import Store  # noqa: E402
 
 _SOURCE_ID = "ebay"
 

@@ -29,7 +29,7 @@ from sources._base.adapter import SourceQuery
 from sources.ebay.adapter import EbayAdapter
 from sources.ebay.filters import accept_listing, is_lot_suspected, listing_row
 from sources.ebay.queries import build_query, load_coin
-from state.store import Store
+from store import Store
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────

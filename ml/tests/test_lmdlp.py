@@ -30,7 +30,7 @@ from sources.lmdlp.adapter import (  # noqa: E402
     to_product,
 )
 from sources.lmdlp.pipeline import _promote  # noqa: E402
-from state import Store  # noqa: E402
+from store import Store  # noqa: E402
 
 
 def _product(name, sku, *, country_cat="France", year_cat="2026",

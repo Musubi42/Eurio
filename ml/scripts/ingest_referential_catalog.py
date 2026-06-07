@@ -31,7 +31,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from state.store import Store  # noqa: E402
+from store import Store  # noqa: E402
 
 DEFAULT_DB = ROOT / "state" / "eurio.db"
 CATALOG_PATH = ROOT / "datasets" / "coin_catalog.json"

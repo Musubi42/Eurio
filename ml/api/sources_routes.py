@@ -34,7 +34,7 @@ from sources._base.dedup import SourceImageRow, upsert_source_image
 from sources._base.orchestrator import run_pipeline
 from sources._base.run_logger import RunAlreadyRunning
 from sources.ebay.standards import COMMEMO_IN_STANDARD_PREFIX
-from state import Store, cohort_job_start
+from store import Store, cohort_job_start
 
 from . import sources_aggregator
 

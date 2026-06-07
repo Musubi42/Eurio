@@ -11,7 +11,7 @@ import logging
 
 import pytest
 
-from state import Store, emit_state_event
+from store import Store, emit_state_event
 
 
 def _seed_asset(conn, *, asset_id="a1", target="fr-2018-x", eurio=None):
@@ -106,7 +106,7 @@ def test_unknown_state_raises(conn):
 
 
 def test_cohort_job_lifecycle(tmp_path):
-    from state import (
+    from store import (
         Store, cohort_job_finish, cohort_job_progress, cohort_job_start,
     )
 

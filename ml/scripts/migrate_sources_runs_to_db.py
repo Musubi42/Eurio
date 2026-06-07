@@ -41,7 +41,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from state.store import Store  # noqa: E402  (after sys.path tweak)
+from store import Store  # noqa: E402  (after sys.path tweak)
 
 LOG = logging.getLogger("migrate_sources_runs")
 

@@ -24,7 +24,7 @@ from augmentations import (  # noqa: E402
     list_layer_schemas,
     validate_recipe,
 )
-from state import AugmentationRecipeRow, ClassRef, Store  # noqa: E402
+from store import AugmentationRecipeRow, ClassRef, Store  # noqa: E402
 
 
 # ─── introspection ──────────────────────────────────────────────────────────
@@ -240,7 +240,7 @@ def test_store_create_run_with_aug_recipe(store: Store):
     )
     store.create_recipe(recipe)
 
-    from state import RunRow
+    from store import RunRow
 
     row = RunRow(
         id="run1",
@@ -260,7 +260,7 @@ def test_store_create_run_with_aug_recipe(store: Store):
 
 
 def test_store_prune_aug_runs(store: Store):
-    from state import AugmentationRunRow
+    from store import AugmentationRunRow
 
     store.create_aug_run(
         AugmentationRunRow(

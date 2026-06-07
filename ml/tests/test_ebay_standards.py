@@ -18,7 +18,7 @@ from sources.ebay.standards import (
     eras_for_year,
     load_standard_eras,
 )
-from state.store import Store
+from store import Store
 from tests.test_ebay_adapter import _detail, _make_adapter, _summary
 
 _DENOM = 2.0

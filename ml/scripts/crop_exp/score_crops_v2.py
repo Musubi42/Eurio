@@ -40,7 +40,7 @@ _ML_DIR = Path(__file__).resolve().parents[2]
 if str(_ML_DIR) not in sys.path:
     sys.path.insert(0, str(_ML_DIR))
 
-from state import Store
+from store import Store
 
 
 AREA_RATIO_SATURATION = 0.15

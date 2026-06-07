@@ -38,7 +38,7 @@ from referential.scrape_bce_images import bce_lang_url, parse_bce_page
 from sources._base.registry_map import to_registry_source
 from sources.bce.adapter import BceAdapter
 from state.source_status import bce_axes, upsert_source_status
-from state.store import Store
+from store import Store
 
 logger = logging.getLogger(__name__)
 

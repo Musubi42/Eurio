@@ -24,7 +24,7 @@ if str(ML_DIR) not in sys.path:
     sys.path.insert(0, str(ML_DIR))
 
 from state.source_status import get_network_verdicted_ids, upsert_source_status  # noqa: E402
-from state.store import Store  # noqa: E402
+from store import Store  # noqa: E402
 
 logger = logging.getLogger("backfill_source_status")
 

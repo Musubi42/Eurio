@@ -17,7 +17,7 @@ import pytest
 
 from sources._base import dedup, run_logger
 from sources._base.run_logger import RunAlreadyRunning, start_run
-from state.store import Store
+from store import Store
 
 
 @pytest.fixture()

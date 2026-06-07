@@ -41,7 +41,7 @@ def main() -> int:
     from sources._base.adapter import SourceQuery
     from sources.jo import JoAdapter
     from sources.jo.pipeline import run_jo_pipeline
-    from state import Store
+    from store import Store
 
     store = Store(_ML_ROOT / "state" / "eurio.db")
     adapter = JoAdapter(conn=store._connection(), since_year=args.since)  # noqa: SLF001

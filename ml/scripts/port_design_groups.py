@@ -33,7 +33,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from api.supabase_client import SupabaseClient, load_env  # noqa: E402
-from state.store import Store  # noqa: E402
+from store import Store  # noqa: E402
 
 DEFAULT_DB = ROOT / "state" / "eurio.db"
 

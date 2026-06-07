@@ -14,7 +14,7 @@ from bootstrap.obverse_groups import (
     parse_obverse_key,
     plan_bootstrap,
 )
-from state.store import Store
+from store import Store
 
 # --- Fixtures : les 5 standards BE 2€ réels (cf. eurio.db 2026-06-07) ---
 

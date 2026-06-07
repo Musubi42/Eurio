@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from state import RunRow, Store
+from store import RunRow, Store
 from training.pipeline import PipelineHooks, TrainingPipeline
 
 

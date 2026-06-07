@@ -13,7 +13,7 @@ import json
 from pathlib import Path
 
 from scripts.bootstrap_coins_from_referential import bootstrap
-from state.store import Store
+from store import Store
 
 
 def _fixture_referential(tmp_path: Path, entries: list[dict]) -> Path:

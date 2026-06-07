@@ -24,7 +24,7 @@ if str(ML_DIR) not in sys.path:
 
 @pytest.fixture()
 def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    from state import Store
+    from store import Store
     import api.benchmark_routes as br
 
     store = Store(tmp_path / "t.db")
@@ -162,7 +162,7 @@ def test_run_launches_and_returns_running(client, tmp_path: Path, monkeypatch: p
     def _fake_launch(payload, run_id):
         launched.append((payload, run_id))
         # Simulate the script inserting the row itself; we insert here instead.
-        from state import BenchmarkRunRow
+        from store import BenchmarkRunRow
         store.create_benchmark_run(
             BenchmarkRunRow(
                 id=run_id,
@@ -188,7 +188,7 @@ def test_run_launches_and_returns_running(client, tmp_path: Path, monkeypatch: p
 
 def test_list_and_filter_runs(client):
     c, store, *_ = client
-    from state import BenchmarkRunRow
+    from store import BenchmarkRunRow
 
     store.create_benchmark_run(
         BenchmarkRunRow(
@@ -213,7 +213,7 @@ def test_list_and_filter_runs(client):
 
 def test_run_detail_and_delete(client):
     c, store, *_ = client
-    from state import BenchmarkRunRow
+    from store import BenchmarkRunRow
 
     store.create_benchmark_run(
         BenchmarkRunRow(

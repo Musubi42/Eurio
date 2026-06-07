@@ -467,7 +467,7 @@ def _apply_to_db(bundles: dict[int, "FetchBundle"], db_path: Path,
     from referential.numista_eurio_id import eurio_id_from_numista_payload
     from referential.numista_writer import NumistaWriter
     from state.source_status import numista_axes, upsert_source_status
-    from state.store import Store
+    from store import Store
 
     print("\n" + "═" * 60)
     print(f"WRITE TO SQLite — {db_path}")

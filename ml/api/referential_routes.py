@@ -33,7 +33,7 @@ from referential.canonical_image_local import (
     canonical_dir_for,
     canonical_path,
 )
-from state import Store
+from store import Store
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/referential", tags=["referential"])

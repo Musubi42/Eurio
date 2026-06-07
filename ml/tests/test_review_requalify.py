@@ -27,7 +27,7 @@ if str(ML_DIR) not in sys.path:
 from api import coin_assets_routes, review_queue_routes
 from api.coin_assets_routes import router as coins_router
 from api.review_queue_routes import router as review_router
-from state import Store
+from store import Store
 
 
 @pytest.fixture()

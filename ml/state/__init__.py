@@ -1,43 +1,6 @@
-from .store import (
-    AugmentationRecipeRow,
-    AugmentationRunRow,
-    AugVsRealRow,
-    BenchmarkRunRow,
-    ClassMetricRow,
-    ClassRef,
-    DinoPredictionRow,
-    EpochRow,
-    ExperimentCohortRow,
-    ExperimentIterationRow,
-    IterationLiveTestRow,
-    RunRow,
-    StepRow,
-    Store,
-    cohort_job_finish,
-    cohort_job_progress,
-    cohort_job_set_pid,
-    cohort_job_start,
-    emit_state_event,
-)
+"""Package `state` — données locales (eurio.db, schema.sql, artefacts de run) et
+modules d'accès résiduels (`source_status`, `sources_runs`, `archive`).
 
-__all__ = [
-    "AugmentationRecipeRow",
-    "AugmentationRunRow",
-    "AugVsRealRow",
-    "BenchmarkRunRow",
-    "ClassMetricRow",
-    "ClassRef",
-    "DinoPredictionRow",
-    "EpochRow",
-    "ExperimentCohortRow",
-    "ExperimentIterationRow",
-    "IterationLiveTestRow",
-    "RunRow",
-    "StepRow",
-    "Store",
-    "cohort_job_finish",
-    "cohort_job_progress",
-    "cohort_job_set_pid",
-    "cohort_job_start",
-    "emit_state_event",
-]
+Le store SQLite a migré vers le package `store/` (refacto ML chunks 5-7) ;
+ce package ne ré-exporte plus rien — importer `from store import …`.
+"""

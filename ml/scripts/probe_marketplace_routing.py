@@ -58,7 +58,7 @@ from sources.ebay.queries import (  # noqa: E402
     load_coin,
     title_matches_theme,
 )
-from state.store import Store  # noqa: E402
+from store import Store  # noqa: E402
 
 # Marketplace → langue de query native (cf. vision.md §P3).
 MARKETPLACES: dict[str, str] = {

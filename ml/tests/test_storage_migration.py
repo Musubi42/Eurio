@@ -22,7 +22,7 @@ from pathlib import Path
 
 import pytest
 
-from state.store import Store
+from store import Store
 
 
 def _columns(conn: sqlite3.Connection, table: str) -> set[str]:

@@ -21,7 +21,7 @@ if str(ML_DIR) not in sys.path:
 
 from referential.numista_eurio_id import eurio_id_from_numista_payload  # noqa: E402
 from referential.numista_writer import NumistaWriter  # noqa: E402
-from state.store import Store  # noqa: E402
+from store import Store  # noqa: E402
 
 
 REAL_DB = ML_DIR / "state" / "eurio.db"

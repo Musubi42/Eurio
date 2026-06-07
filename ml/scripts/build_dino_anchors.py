@@ -27,7 +27,7 @@ from foundation.anchors import (  # noqa: E402
     build_anchors_2eur_commemo,
     load_anchors,
 )
-from state import Store  # noqa: E402
+from store import Store  # noqa: E402
 
 DB_PATH = ML_DIR / "state" / "eurio.db"
 

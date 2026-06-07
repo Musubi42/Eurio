@@ -40,7 +40,7 @@ class _StubRunner:
         return self.busy
 
     def create_iteration(self, **kwargs):
-        from state import ExperimentIterationRow
+        from store import ExperimentIterationRow
         import uuid
 
         iid = uuid.uuid4().hex[:12]
@@ -76,7 +76,7 @@ class _StubRunner:
 
 @pytest.fixture()
 def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    from state import Store
+    from store import Store
     import api.lab_routes as lr
 
     store = Store(tmp_path / "t.db")
@@ -333,7 +333,7 @@ import json
 from pathlib import Path
 
 import api.lab_routes as _lr_mod
-from state import (
+from store import (
     BenchmarkRunRow,
     ExperimentCohortRow,
     ExperimentIterationRow,
@@ -347,7 +347,7 @@ def live_test_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     The default ``ml/state/live_test_logs/`` lives under the repo. We point it
     at a tmp dir for hermetic runs.
     """
-    from state import Store
+    from store import Store
     import api.lab_routes as lr
 
     store = Store(tmp_path / "t.db")

@@ -29,7 +29,7 @@ from sources._base.steps.text_signal import (  # noqa: E402
     EXTRACTOR_VERSION,
     run_text_signal_extract,
 )
-from state import Store  # noqa: E402
+from store import Store  # noqa: E402
 
 DB_PATH = ML_DIR / "state" / "eurio.db"
 

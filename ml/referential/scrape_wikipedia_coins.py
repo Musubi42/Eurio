@@ -376,7 +376,7 @@ def main() -> int:
     logging.basicConfig(level=getattr(logging, args.log.upper(), logging.INFO),
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
                         datefmt="%H:%M:%S")
-    from state import Store
+    from store import Store
 
     store = Store(_ML_ROOT / "state" / "eurio.db")
     if args.unmatched:

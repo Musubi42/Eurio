@@ -32,7 +32,7 @@ sys.path.insert(0, str(ML_DIR))
 
 from sources.ebay.filters import accept_listing  # noqa: E402
 from sources.ebay.queries import match_listing_to_group  # noqa: E402
-from state import Store  # noqa: E402
+from store import Store  # noqa: E402
 
 DB_PATH = ML_DIR / "state" / "eurio.db"
 BENCH_DIR = ML_DIR / "state" / "discovery_bench"

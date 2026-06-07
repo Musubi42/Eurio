@@ -27,7 +27,7 @@ from sources._base.steps.enqueue import (  # noqa: E402
     _route_decision_for_source_image,
 )
 from sources.text_signals.extractor import extract_listing_text_signals  # noqa: E402
-from state import Store  # noqa: E402
+from store import Store  # noqa: E402
 
 
 def main() -> None:

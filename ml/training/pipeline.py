@@ -34,7 +34,7 @@ from typing import Callable
 
 import httpx
 
-from state import ClassMetricRow, ClassRef, EpochRow, RunRow, StepRow, Store
+from store import ClassMetricRow, ClassRef, EpochRow, RunRow, StepRow, Store
 
 logger = logging.getLogger(__name__)
 

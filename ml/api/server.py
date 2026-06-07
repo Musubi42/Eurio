@@ -47,7 +47,7 @@ STATE_DIR = ML_DIR / "state"
 import sys as _sys
 if str(ML_DIR) not in _sys.path:
     _sys.path.insert(0, str(ML_DIR))
-from state import Store  # noqa: E402
+from store import Store  # noqa: E402
 import jobs as _jobs  # noqa: E402  — rail jobs/ générique (refacto-ml ADR D1)
 
 # ─── App ───
@@ -729,7 +729,7 @@ def training_stage_list() -> dict:
 
 @app.post("/training/stage")
 def training_stage(payload: StagePayload) -> dict:
-    from state import ClassRef
+    from store import ClassRef
 
     refs = [ClassRef(i.class_id, i.class_kind) for i in payload.items]
     recipe_ids: list[str | None] = []
@@ -765,7 +765,7 @@ def training_unstage(class_id: str) -> dict:
 
 @app.post("/training/removal")
 def training_stage_removal(payload: StagePayload) -> dict:
-    from state import ClassRef
+    from store import ClassRef
 
     refs = [ClassRef(i.class_id, i.class_kind) for i in payload.items]
     _store.stage_removal(refs)

@@ -46,7 +46,7 @@ def _run_single_coin_job(
     ``finish``. Toute exception → ``finish(status='failed', error=…)`` pour qu'un
     crash soit visible in-row (jamais de zombie silencieux). Sortie 0 = OK,
     1 = échec (déjà persisté)."""
-    from state.store import cohort_job_finish, cohort_job_progress
+    from store import cohort_job_finish, cohort_job_progress
 
     conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
@@ -107,7 +107,7 @@ def main() -> int:
 
     from scan.normalize_snap import _census_fragment_tau
     from scan.recrop_zero import recrop_zero_for_coin
-    from state.store import _register_phash_udfs
+    from store import _register_phash_udfs
 
     tau = _census_fragment_tau()   # vraie τ appliquée par le gate (source unique)
 

@@ -45,7 +45,7 @@ def main() -> int:
     from sources._base.adapter import SourceQuery
     from sources.lmdlp import LmdlpAdapter
     from sources.lmdlp.pipeline import run_lmdlp_pipeline
-    from state import Store
+    from store import Store
 
     store = Store(_ML_ROOT / "state" / "eurio.db")
     adapter = LmdlpAdapter(conn=store._connection())  # noqa: SLF001

@@ -26,7 +26,7 @@ if str(ML_DIR) not in sys.path:
 from sources._base.run_logger import start_run
 from sources._base.steps.enqueue import run_enqueue
 from sources._base.steps.resolve import run_resolve
-from state import Store
+from store import Store
 
 
 def _seed_source_image(

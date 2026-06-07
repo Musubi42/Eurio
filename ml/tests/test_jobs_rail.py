@@ -15,7 +15,7 @@ import pytest
 
 import jobs
 from jobs import db, reaper, runner
-from state import Store
+from store import Store
 
 
 @pytest.fixture
@@ -136,7 +136,7 @@ def test_launch_detached_subprocess_finishes_job(conn, tmp_path):
     db_path = conn.execute("PRAGMA database_list").fetchone()[2]
     child = tmp_path / "child.py"
     child.write_text(
-        "from state import Store\n"
+        "from store import Store\n"
         "from jobs import job_id_from_argv, job_finish\n"
         f"store = Store({str(db_path)!r})\n"
         "jid = job_id_from_argv()\n"

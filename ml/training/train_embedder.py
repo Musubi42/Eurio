@@ -123,7 +123,7 @@ def _resolve_recipe(id_or_name: str) -> dict:
     Kept local so that passing `--aug-recipe` is the *only* way the
     legacy-only code path changes. No silent default injection.
     """
-    from state import Store
+    from store import Store
 
     store = Store(ML_DIR / "state" / "eurio.db")
     row = store.get_recipe(id_or_name)

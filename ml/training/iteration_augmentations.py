@@ -60,7 +60,7 @@ from foundation.enrichment import (
     MIN_REAL,
     projection,
 )
-from state import Store
+from store import Store
 
 DATASETS_DIR = ML_DIR / "datasets"
 ITERATION_TRAIN_ROOTS = DATASETS_DIR / "iterations"

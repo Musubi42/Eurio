@@ -17,7 +17,7 @@ import pytest
 
 import jobs
 from api.training_runner import TrainingRunner
-from state import ClassRef, EpochRow, RunRow, Store
+from store import ClassRef, EpochRow, RunRow, Store
 
 
 @pytest.fixture

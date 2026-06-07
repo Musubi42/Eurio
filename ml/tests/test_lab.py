@@ -16,7 +16,7 @@ ML_DIR = Path(__file__).parent.parent
 if str(ML_DIR) not in sys.path:
     sys.path.insert(0, str(ML_DIR))
 
-from state import ExperimentCohortRow, ExperimentIterationRow, Store  # noqa: E402
+from store import ExperimentCohortRow, ExperimentIterationRow, Store  # noqa: E402
 
 
 # ─── Store CRUD ─────────────────────────────────────────────────────────────

@@ -422,7 +422,7 @@ def _main() -> int:
     ml_dir = Path(__file__).resolve().parents[1]
     if str(ml_dir) not in sys.path:
         sys.path.insert(0, str(ml_dir))
-    from state.store import Store  # noqa: PLC0415
+    from store import Store  # noqa: PLC0415
 
     parser = argparse.ArgumentParser(description="Bootstrap design_groups STANDARD par avers (eurio.db).")
     parser.add_argument("--country", required=True, help="ISO2 (ex. BE)")

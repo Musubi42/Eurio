@@ -23,7 +23,7 @@ if str(ML_DIR) not in sys.path:
     sys.path.insert(0, str(ML_DIR))
 
 from scripts.bootstrap_coins_from_referential import bootstrap as bootstrap_coins
-from state import Store
+from store import Store
 
 
 def _seed_minimal_referential(store: Store, *, never_count=3, stale_count=2, fresh_count=1):

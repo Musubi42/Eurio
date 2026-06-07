@@ -40,7 +40,7 @@ if str(_ML_DIR) not in sys.path:
 
 from scan.normalize_snap import normalize_listing_path, normalize_studio_path  # noqa: E402
 from sources._base.steps.detect_crop import _crop_strategy  # noqa: E402
-from state import Store  # noqa: E402
+from store import Store  # noqa: E402
 from storage.local_cache import local_path  # noqa: E402
 
 

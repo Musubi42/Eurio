@@ -217,7 +217,7 @@ def import_archive(archive_path: Path) -> dict:
 
 
 def prune_history(*, keep_last: int) -> dict:
-    from .store import Store
+    from store import Store
 
     store = Store(DB_PATH)
     before = store.count_runs()

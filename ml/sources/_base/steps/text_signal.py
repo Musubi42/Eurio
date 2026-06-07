@@ -38,7 +38,7 @@ from sources.text_signals import (
     extract_listing_text_signals,
     load_target_identity,
 )
-from state.store import ListingTextSignalsRow
+from store import ListingTextSignalsRow
 
 logger = logging.getLogger(__name__)
 

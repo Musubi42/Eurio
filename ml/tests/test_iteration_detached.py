@@ -16,7 +16,7 @@ import pytest
 import jobs
 from api.iteration_runner import IterationRunner
 from api.training_runner import TrainingRunner
-from state import Store
+from store import Store
 
 
 @pytest.fixture

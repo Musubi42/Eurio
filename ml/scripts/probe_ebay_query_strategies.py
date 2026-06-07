@@ -38,7 +38,7 @@ from sources.ebay.queries import (  # noqa: E402
     _theme_keywords,
     load_coin,
 )
-from state.store import Store  # noqa: E402
+from store import Store  # noqa: E402
 
 
 # Country canonical EN names (used in eBay listings cross-marketplace).

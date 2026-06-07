@@ -49,7 +49,7 @@ from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 
-from state import ClassRef, ExperimentIterationRow, Store
+from store import ClassRef, ExperimentIterationRow, Store
 
 import jobs
 from jobs import _pid_alive
@@ -707,7 +707,7 @@ class IterationRunner:
         # `update_iteration(benchmark_run_id=...)` would fail with
         # "FOREIGN KEY constraint failed". The script's own create call
         # is idempotent against this stub (cf evaluate_real_photos.py).
-        from state import BenchmarkRunRow
+        from store import BenchmarkRunRow
         benchmark_run_id = uuid.uuid4().hex[:12]
         model_path = _iter_model_path(iteration_id)
         self._store.create_benchmark_run(
@@ -783,7 +783,7 @@ class IterationRunner:
           3. Row missing (subprocess died before its insert) → create
              a stub ``failed`` row keyed by the linked benchmark_run_id.
         """
-        from state import BenchmarkRunRow
+        from store import BenchmarkRunRow
 
         it = self._store.get_iteration(iteration_id)
         if it is None:
