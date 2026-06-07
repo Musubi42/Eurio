@@ -27,19 +27,19 @@ Tu peux exécuter ces missions **seule**, en bouclant :
 | Chantier | % réel | En une phrase |
 |---|---|---|
 | [lab-prod-refacto](./lab-prod-refacto/) | ~95 % | 4 phases closes, reste du cleanup cosmétique |
+| [referential-fixes](./referential-fixes/) | ~90 % | backend + UI admin câblés, reste cliquer Apply sur 9 cas |
+| [cohort-pipeline](./cohort-pipeline/) | ~88 % | rebuild cockpit SHIPPÉ (B1-B5 fixés), reste validation PO lane UX + smoke run |
 | [coin-richness](./coin-richness/) | ~85 % | presque fini, reste run eBay sur cohorte + scale 524 |
 | [data-harmonization](./data-harmonization/) | ~85 % | tout livré sauf le Chunk 5 (migration identité) |
 | [lab-streamline](./lab-streamline/) | ~85 % | reste eBay-standards + gros run PC 16 classes |
 | [cohort-capture-flow](./cohort-capture-flow/) | ~85 % | flow live, reste vérifier les chemins post-rename |
 | [best-frame-capture](./best-frame-capture/) | ~80 % | chunks 1-6 livrés (README périmé), reste chunk 7 |
 | [design-groups-standards](./design-groups-standards/) | ~80 % | pilote BE live, reste le rollout autres pays |
-| [harmonisation-images](./harmonisation-images/) | ~60 % | code prêt mais migration jamais lancée |
+| [training-pipeline](./training-pipeline/) | ~80 % | sprints ✅ + harvest exécuté (docs périmées), reste user-harvest in-app |
+| [parity](./parity/) | ~75 % | capture Maestro+proto+viewer LIVE, reste flows nouvelles scènes + pont interpréteur |
+| [harmonisation-images](./harmonisation-images/) | ~70 % | write-through MinIO live (pas vide !), reste canoniques + 546 legacy |
 | [crop-forensics](./crop-forensics/) | ~55 % | sujet actif, reste l'auto-rejet (S7) |
 | [crop-quality-overhaul](./crop-quality-overhaul/) | algo livré | reste sessions Android + tooling review manuel |
-| [referential-fixes](./referential-fixes/) | discovery livré | reste Apply backend + UI admin |
-| [cohort-pipeline](./cohort-pipeline/) | ~40 % | rebuild cockpit pas commencé, design seulement |
-| [training-pipeline](./training-pipeline/) | sprints ✅ | 5 sprints livrés (README à jour), `harvest/` non démarré |
-| [parity](./parity/) | ~30 % | QA dump fait, parité Maestro↔Playwright différée |
 | [ai-first-test-suite](./ai-first-test-suite.md) | 0 % | kickoff prêt, pas démarré — gros levier qualité |
 
 ---
@@ -85,12 +85,12 @@ Doc fidèle au code (FK scalaire `coins.design_group_id` `schema.sql:935`, tooli
 Pilote BE (chunks 1-5) livré.
 **Reste :** Chunk 6 rollout autres pays · gate parseur derive-then-diff · validation vision LLM par pays.
 
-## harmonisation-images — ~60 %
-Chunks 1-4/9 codés (cascade.py, local_cache.py, storage_status) mais **la migration n'a jamais tourné** (MinIO vide).
-**Reste :** Bloc A (activer module NixOS `eurio-vps.nix` + rclone/pCloud + timer backup) ·
-Bloc B (rsync Mac→VPS puis `migrate_to_minio`) · Chunk 5 (cache training pré-fetch, pas de code) ·
-Chunk 6 (publication Supabase, routes renvoient encore FileResponse) · Chunk 8 (cleanup/rollback) · test E2E cascade.
-⚠️ `TODO-handover.md` référence l'ancien chemin `~/dev/eurio/`.
+## harmonisation-images — ~70 % (vérifié code 2026-06-07)
+⚠️ Le « MinIO vide / migration jamais lancée » des docs est **faux**. Réalité : **write-through MinIO LIVE** — `ml/storage/` (client S3, `local_cache` read/write-through, `cascade`) câblé dans `download.py` + `detect_crop.py` + `crop_edit.py` + `review_queue_routes.py`. **`image_assets` 100 % sur clés S3** (3524/3524), source_images 4626/5425 sur S3. La stratégie a **pivoté** : batch-migration → write-through (donc `migrate_to_minio.py` est DEPRECATED à dessein).
+**Reste réellement :**
+- **Images canoniques** encore servies du FS (`referential_routes.py` → FileResponse, pas `numista-canonical` bucket) — c'est la plus grosse surface restante
+- **546 source_images legacy** (BCE 475 + JO 71) avec chemins FS absolus → backfill ciblé vers `enrichment-raws`
+- Backup NixOS/pCloud : **0 % codé** (rien dans `ml/storage/`)
 
 ## crop-forensics — ~55 % (sujet actif)
 S1-S6 livrés/réfutés (composite score, sort buttons, scripts `ml/scripts/crop_exp/`).
@@ -101,18 +101,24 @@ S1-S6 livrés/réfutés (composite score, sort buttons, scripts `ml/scripts/crop
 **Reste :** Session A (parité crop scan Android) · Session B (tooling review manuel pour la traîne).
 ⚠️ doublonne avec `operations/crop-bimetal-harden-session.md` — fusionner avant de lancer.
 
-## referential-fixes — discovery livré, apply en attente
-`discover_referential_fixes.py` + `referential_fix_apply.py` (logique `_mutate_db`) + `referential_fix_proposals.json` existent.
-**Reste :** câbler l'endpoint apply dans l'UI admin · appliquer les 9 cas · confirmer cleanup Supabase + Storage.
+## referential-fixes — ~90 % (vérifié code 2026-06-07)
+⚠️ « apply backend + UI pending » des docs est **faux**. Réalité : backend **complet** (`referential_fix_apply.py` : `_mutate_db`, `_fetch_numista_image`, `apply_fix`) **exposé** via `referential_routes.py` (`GET /fix-proposals`, `POST /fix-proposals/{id}/apply`, `/refresh`) **+ UI admin câblée** (`FixesPage.vue` avec flow apply complet).
+**Reste réellement :** action humaine — ouvrir `/referential` → FixesPage, **appliquer les 9 cas** (es-2012, fr-2014, be-2015, de-2015, lt-2015, lv-2016, fr-2018, lv-2018, es-2018) ; audit post-apply (orphelins images/data après chaque mutation).
 
-## cohort-pipeline — ~40 % (rebuild pas commencé)
-Tables `cohort_jobs`/`image_state_events` + `recrop-zero` live, mais le rebuild cockpit (`REBUILD-HANDOFF`) **n'a pas démarré**.
-**Reste :** audit cycle de vie image en base (repro B1-B4) avant tout patch · modèle d'état SQLite explicite ·
-redesign UX cockpit (frontend-design) · fixes B1-B5 · valider WS5 ccproxy · câbler census `nms_only`.
+## cohort-pipeline — ~88 % (vérifié code 2026-06-07)
+⚠️ Le `REBUILD-HANDOFF` (« rebuild pas démarré, B1-B5 ouverts ») était un **snapshot du vendredi soir, immédiatement périmé** : 7 commits du week-end ont shippé le rebuild. Réalité : cockpit reconstruit et fonctionnel — **36 fichiers / 9287 lignes** dans `admin/.../features/lab/` (`CohortDetailPage` + `CohortFlowHeader` + 5 drawers), **modèle d'état explicite shippé** (`image_state_events`/`image_state_current`/`cohort_jobs` + `emit_state_event`, commit `85bf851`), `lab_routes.py` 3212 lignes. **B1-B5 ont chacun un commit de fix** (`c69ff22` recrop subprocess, `2a14596` attribution class-level, `dbf3db3` flow header).
+**Reste réellement :**
+- **Validation PO du lane UX (B3)** : `CohortDrawerCrop.vue` existe mais aucun commit « validé PO » ; sémantique manual/auto/ccproxy à confirmer en usage réel
+- **Smoke run end-to-end** mix-zone-17 avec le cockpit reconstruit (pas re-validé en UI)
+- Tweaks en cours sur `CohortDrawerEbay.vue` (modifié `M` dans le git status actuel)
+- Theme-matcher standards (cause racine B1) : mitigé par l'attribution class-level, qualité upstream reste un point faible
 
-## parity — ~30 % (différé)
-QA dump + buildType Android `src/qa` faits, tooling `admin/packages/parity/` scaffoldé (flows yaml, capture).
-**Reste :** vérif device du build QA Android · pont interpréteur Maestro→Playwright (différé) · validation flow parité cross-platform.
+## parity — ~75 % (vérifié code 2026-06-07)
+⚠️ « différé » sous-compte massivement. Réalité : pipeline de capture **fonctionnel et déjà exécuté** — **16 flows Maestro** réels (`admin/packages/parity/flows/`, statut `COMPLETED` les 16-17 avril, screenshots déposés), capture proto **automatisée** (`capture/proto.ts` + Playwright, 27 PNG), deeplinks Android live (`app-android/src/qa/` : `eurio://parity/seed`, `eurio://scene/`), **viewer web** `ParityPage.vue` (284L) routé `/parity`. go-task `parity:capture-*` enregistrés.
+**Reste réellement :**
+- **Flows manquants** pour les scènes post-shift design (~10 : onboarding ×5, coin-detail, vault-catalog-country, profile-unlock) — 16 flows vs ~26 scènes
+- **Pont Maestro↔Playwright** (rejouer les *steps* yaml comme assertions Playwright, pas juste screenshot) = la vraie partie différée
+- Screenshots Android **périmés** (dernier run 2026-04-17, l'app a bcp changé depuis) → re-run Maestro
 
 ---
 
