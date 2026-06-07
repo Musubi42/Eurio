@@ -5,7 +5,6 @@
 import { ML_API } from '@/features/training/composables/useTrainingApi'
 import type {
   AugVsRealReport,
-  BakeResult,
   CohortCaptureManifest,
   CohortCreatePayload,
   CohortCsvResult,
@@ -17,7 +16,6 @@ import type {
   IterationCreatePayload,
   IterationDetail,
   IterationProgress,
-  RegenerateAugmentationsResult,
   RunnerStatus,
   RuntimeInfo,
   SensitivityEntry,
@@ -338,14 +336,56 @@ export async function fetchIterationProgress(
   )
 }
 
+// ─── Augmentation bake : détaché + poll (refacto-ml chunk 4) ────────────
+// Les endpoints `/bake`, `/augmentations/regenerate` et `/preview-iteration`
+// renvoient 202 + un job_id ; le bake tourne en subprocess détaché (survit au
+// reload de l'API). On poll `…/augmentations/job` jusqu'à terminal pour que
+// l'`isPending` de la mutation couvre toute la durée du bake (spinner inchangé).
+
+export interface AugmentationJob {
+  status: 'idle' | 'running' | 'done' | 'failed' | 'skipped'
+  n_total: number | null
+  n_done: number
+  note: string | null
+  error: string | null
+}
+
+export async function fetchAugmentationJob(
+  cohortId: string,
+  iterationId: string,
+): Promise<AugmentationJob> {
+  return json<AugmentationJob>(
+    `/lab/cohorts/${encodeURIComponent(cohortId)}/iterations/${encodeURIComponent(iterationId)}/augmentations/job`,
+  )
+}
+
+const _sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms))
+
+async function waitForAugmentationBake(
+  cohortId: string,
+  iterationId: string,
+): Promise<void> {
+  // Le job est créé synchroniquement par le 202 → la 1re lecture le voit déjà.
+  // Cap dur (~1h à 1s) pour ne jamais boucler indéfiniment.
+  for (let i = 0; i < 3600; i++) {
+    const job = await fetchAugmentationJob(cohortId, iterationId)
+    if (job.status === 'done' || job.status === 'skipped') return
+    if (job.status === 'failed')
+      throw new Error(job.error || 'Bake des augmentations échoué')
+    await _sleep(1000)
+  }
+  throw new Error('Bake des augmentations : délai dépassé')
+}
+
 export async function bakeIterationAugmentations(
   cohortId: string,
   iterationId: string,
-): Promise<BakeResult> {
-  return json<BakeResult>(
+): Promise<void> {
+  await json(
     `/lab/cohorts/${encodeURIComponent(cohortId)}/iterations/${encodeURIComponent(iterationId)}/bake`,
     { method: 'POST', body: '{}' },
   )
+  await waitForAugmentationBake(cohortId, iterationId)
 }
 
 export async function launchIterationTraining(
@@ -419,11 +459,12 @@ export async function fetchIterationAugmentations(
 export async function regenerateIterationAugmentations(
   cohortId: string,
   iterationId: string,
-): Promise<RegenerateAugmentationsResult> {
-  return json<RegenerateAugmentationsResult>(
+): Promise<void> {
+  await json(
     `/lab/cohorts/${encodeURIComponent(cohortId)}/iterations/${encodeURIComponent(iterationId)}/augmentations/regenerate`,
     { method: 'POST', body: '{}' },
   )
+  await waitForAugmentationBake(cohortId, iterationId)
 }
 
 export async function stopIteration(
@@ -442,18 +483,16 @@ export interface PreviewIterationResult {
   augmentations_seed: number | null
   recipe_id: string | null
   variant_count: number
-  per_coin: Array<{
-    eurio_id: string
-    numista_id: number | null
-    written: number
-    skipped_reason: string | null
-  }>
+  job_id: string
+  status: string
 }
 
 export async function previewIteration(
   cohortId: string,
   payload: { recipe_id: string | null; variant_count?: number },
 ): Promise<PreviewIterationResult> {
+  // 202 + job_id ; le bake détaché tourne en arrière-plan. L'appelant qui veut
+  // attendre la fin poll via `waitForAugmentationBake(cohortId, result.iteration_id)`.
   return json<PreviewIterationResult>(
     `/lab/cohorts/${encodeURIComponent(cohortId)}/preview-iteration`,
     { method: 'POST', body: JSON.stringify(payload) },

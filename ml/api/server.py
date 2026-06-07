@@ -48,6 +48,7 @@ import sys as _sys
 if str(ML_DIR) not in _sys.path:
     _sys.path.insert(0, str(ML_DIR))
 from state import Store  # noqa: E402
+import jobs as _jobs  # noqa: E402  — rail jobs/ générique (refacto-ml ADR D1)
 
 # ─── App ───
 
@@ -191,6 +192,25 @@ def _recrop_startup() -> None:
         import logging
         logging.getLogger(__name__).warning(
             "Cohort jobs orphan reap failed at startup: %s", exc
+        )
+
+
+@app.on_event("startup")
+def _jobs_startup() -> None:
+    """Reaper boot du rail `jobs/` générique : clôt en `failed` les jobs détachés
+    restés `running` dont le PID est mort (process précédent tué). Les jobs qui ont
+    survécu au `--reload` (PID vivant) sont préservés. Cf. `jobs.reaper.reap_orphans`."""
+    try:
+        n = _jobs.reap_orphans(_store._connection())  # noqa: SLF001
+        if n:
+            import logging
+            logging.getLogger(__name__).info(
+                "Jobs rail: reaped %d orphan job(s) at startup", n,
+            )
+    except Exception as exc:  # noqa: BLE001
+        import logging
+        logging.getLogger(__name__).warning(
+            "Jobs rail orphan reap failed at startup: %s", exc
         )
 
 

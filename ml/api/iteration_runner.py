@@ -51,6 +51,9 @@ from pathlib import Path
 
 from state import ClassRef, ExperimentIterationRow, Store
 
+import jobs
+from jobs import _pid_alive
+from training.pipeline import TrainingPipeline
 from .iteration_logic import compute_delta, compute_input_diff, compute_verdict
 from .training_runner import TrainingRunner
 
@@ -60,6 +63,7 @@ ML_DIR = Path(__file__).parent.parent
 VENV_PYTHON = str(ML_DIR / ".venv" / "bin" / "python")
 DATASETS_DIR = ML_DIR / "datasets"
 LAB_ITERATIONS_DIR = ML_DIR / "lab" / "iterations"
+RUN_ITERATION_SCRIPT = str(ML_DIR / "training" / "run_iteration.py")
 
 
 def _iter_dir(iteration_id: str) -> Path:
@@ -137,22 +141,24 @@ class IterationRunner:
     def __init__(self, store: Store, training_runner: TrainingRunner):
         self._store = store
         self._training_runner = training_runner
-        self._global_lock = threading.Lock()  # only one iteration at a time
+        # Single iteration per detached chain process; this lock just guards the
+        # chain body within that process (the API-side concurrency guard is
+        # `is_busy()`, which checks the live iteration job).
+        self._global_lock = threading.Lock()
 
-        # Per-iteration log buffer. Owns the lifecycle: subprocess output
-        # (training stream from TrainingRunner via log_sink, plus export
-        # and benchmark via _run_subprocess_streamed) all go through here.
+        # Per-iteration log buffer used by the chain WHILE it runs (detached
+        # process). `_append_log` also prints to stdout → captured into the job
+        # log file, which the API process tails via `tail_logs`.
         self._iter_logs: dict[str, deque[str]] = {}
         self._iter_logs_lock = threading.Lock()
-
-        # Active subprocess tracker (export, benchmark). Training subprocess
-        # is owned by TrainingRunner — its stop() is dispatched separately.
-        self._active_subprocess: subprocess.Popen | None = None
-        self._active_subprocess_lock = threading.Lock()
 
     # ─── Per-iteration log buffer ─────────────────────────────────────
 
     def _append_log(self, iteration_id: str, line: str) -> None:
+        # Imprime sur stdout → capté dans le fichier de log du job détaché (lu par
+        # l'API via `tail_logs`). Le deque mémoire reste utile au sein du process
+        # détaché (ex. `_launch_benchmark` relit la tail pour son message d'erreur).
+        print(line, flush=True)
         with self._iter_logs_lock:
             buf = self._iter_logs.get(iteration_id)
             if buf is None:
@@ -161,23 +167,25 @@ class IterationRunner:
             buf.append(line)
 
     def tail_logs(self, iteration_id: str, n: int = 30) -> list[str]:
-        """Return up to ``n`` most recent log lines for an iteration.
-
-        Covers all phases: training, TFLite export, studio benchmark.
-        Empty list when no chain has run for this iteration yet (or the
-        runner was rebooted since).
-
-        Held under ``_iter_logs_lock`` only long enough to slice the
-        deque tail (``itertools.islice`` from ``len-n`` to ``len``) —
-        avoids materializing the full 500-line buffer while concurrent
-        appenders contend for the lock.
-        """
-        with self._iter_logs_lock:
-            buf = self._iter_logs.get(iteration_id)
-            if buf is None:
-                return []
-            start = max(0, len(buf) - n)
-            return list(itertools.islice(buf, start, len(buf)))
+        """Up to ``n`` most recent log lines for an iteration — couvre toutes les
+        phases (training, export, benchmark). Côté API : lit la tail du fichier de
+        log du job détaché. Vide si aucune chaîne n'a (encore) tourné."""
+        job = jobs.job_by_param(
+            self._store._connection(), "iteration_id", iteration_id, kind="iteration",  # noqa: SLF001
+        )
+        if not job or not job.get("log_path"):
+            # Dans le process détaché lui-même, la row job peut ne pas être visible
+            # avant le 1er commit → fallback sur le deque mémoire local.
+            with self._iter_logs_lock:
+                buf = self._iter_logs.get(iteration_id)
+                if buf is None:
+                    return []
+                start = max(0, len(buf) - n)
+                return list(itertools.islice(buf, start, len(buf)))
+        p = Path(job["log_path"])
+        if not p.exists():
+            return []
+        return p.read_text(errors="replace").splitlines()[-n:]
 
     def _reset_logs(self, iteration_id: str) -> None:
         with self._iter_logs_lock:
@@ -191,72 +199,48 @@ class IterationRunner:
         for log tailing; now logs are read via :meth:`tail_logs`)."""
         return self._training_runner
 
+    def _active_job(self, iteration_id: str) -> dict | None:
+        # kind='iteration' : ne PAS confondre avec un job 'augmentation' qui porte
+        # le même iteration_id (bake standalone). Cf. lab_routes augmentations.
+        return jobs.job_by_param(
+            self._store._connection(), "iteration_id", iteration_id, kind="iteration",  # noqa: SLF001
+        )
+
     def is_busy(self) -> bool:
-        return self._global_lock.locked()
+        """True si une itération tourne actuellement (job détaché vivant). Garde
+        de concurrence côté API : une seule chaîne à la fois (GPU + best_model.pth)."""
+        job = jobs.job_latest(self._store._connection(), "iteration")  # noqa: SLF001
+        if not job or job["status"] != "running":
+            return False
+        pid = job.get("pid")
+        return bool(pid and _pid_alive(pid))
 
     def stop(self, iteration_id: str) -> dict:
-        """Cooperatively stop a running iteration.
+        """Cooperatively stop a running iteration by signalling its DETACHED
+        process-group (training/export/benchmark children inclus).
 
-        Tries to terminate the active subprocess (training, export, or
-        benchmark — whichever is running). Returns a dict with ``outcome``
-        ∈ {``graceful``, ``forced``, ``idle``} and ``marked_failed``
-        (whether the iteration was transitioned to ``failed``).
+        Returns ``{outcome ∈ graceful|forced|idle, marked_failed}``. Only
+        iterations in a transient state (``training``/``benchmarking``) are
+        marked failed; terminal ones are left untouched (avoids racing a chain
+        that just legitimately transitioned)."""
+        job = self._active_job(iteration_id)
+        pid = job.get("pid") if job else None
+        if pid and _pid_alive(pid):
+            outcome = jobs.stop_process_group(
+                int(pid), graceful_timeout=self.STOP_GRACEFUL_TIMEOUT_SEC,
+            )
+            if outcome != "idle":
+                self._fail(iteration_id, f"Stopped by user ({outcome})")
+                return {"outcome": outcome, "marked_failed": True}
 
-        Only iterations in a transient state (``training``/``benchmarking``)
-        are marked failed; if the iteration has already reached a terminal
-        state (``completed``/``failed``/``pending``) we don't touch it —
-        avoids racing a chain thread that just legitimately transitioned.
-        """
-        # 1) Training subprocess (owned by TrainingRunner)
-        outcome = self._training_runner.stop_active(
-            graceful_timeout=self.STOP_GRACEFUL_TIMEOUT_SEC,
-        )
-        if outcome != "idle":
-            self._fail(iteration_id, f"Stopped by user ({outcome})")
-            return {"outcome": outcome, "marked_failed": True}
-
-        # 2) Our own subprocess (export or benchmark)
-        outcome = self._stop_active_subprocess(
-            graceful_timeout=self.STOP_GRACEFUL_TIMEOUT_SEC,
-        )
-        if outcome != "idle":
-            self._fail(iteration_id, f"Stopped by user ({outcome})")
-            return {"outcome": outcome, "marked_failed": True}
-
-        # 3) Nothing alive. Only fail if the iteration is genuinely
-        #    in a transient state — otherwise we'd race a chain thread
-        #    that just transitioned to a terminal state.
+        # Nothing alive. Only fail if the iteration is genuinely transient.
         it = self._store.get_iteration(iteration_id)
         if it is None:
             return {"outcome": "idle", "marked_failed": False}
         if it.status in ("training", "benchmarking"):
-            self._fail(iteration_id, "Stopped by user (no active subprocess)")
+            self._fail(iteration_id, "Stopped by user (no active process)")
             return {"outcome": "idle", "marked_failed": True}
         return {"outcome": "idle", "marked_failed": False}
-
-    def _stop_active_subprocess(self, *, graceful_timeout: float) -> str:
-        """Terminate the active export/benchmark subprocess if any.
-
-        Returns the same vocabulary as :meth:`TrainingRunner.stop_active`.
-        """
-        with self._active_subprocess_lock:
-            proc = self._active_subprocess
-        if proc is None or proc.poll() is not None:
-            return "idle"
-        try:
-            proc.terminate()
-        except ProcessLookupError:
-            return "idle"
-        try:
-            proc.wait(timeout=graceful_timeout)
-            return "graceful"
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            try:
-                proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                pass
-            return "forced"
 
     def create_iteration(
         self,
@@ -330,13 +314,7 @@ class IterationRunner:
             raise RuntimeError(
                 "Une itération est déjà en cours — une seule à la fois."
             )
-
-        thread = threading.Thread(
-            target=self._run_full_chain,
-            args=(iteration_id,),
-            daemon=True,
-        )
-        thread.start()
+        self._launch_chain(iteration_id, mode="full")
         return iteration
 
     def launch_benchmark(self, iteration_id: str) -> ExperimentIterationRow:
@@ -357,14 +335,21 @@ class IterationRunner:
             raise RuntimeError(
                 "Une itération est déjà en cours — une seule à la fois."
             )
-
-        thread = threading.Thread(
-            target=self._run_benchmark_chain,
-            args=(iteration_id,),
-            daemon=True,
-        )
-        thread.start()
+        self._launch_chain(iteration_id, mode="benchmark")
         return iteration
+
+    def _launch_chain(self, iteration_id: str, *, mode: str) -> None:
+        """Lance la chaîne (`full` = training→export→benchmark, ou `benchmark`
+        seul) en subprocess DÉTACHÉ via le rail `jobs/` → survit au `--reload`."""
+        jobs.launch(
+            self._store._connection(),  # noqa: SLF001
+            kind="iteration",
+            cmd_builder=lambda jid: [
+                VENV_PYTHON, RUN_ITERATION_SCRIPT,
+                "--iteration-id", iteration_id, "--mode", mode, "--job-id", jid,
+            ],
+            params={"iteration_id": iteration_id, "mode": mode},
+        )
 
     def _validate_for_launch_training(
         self, iteration_id: str,
@@ -421,19 +406,28 @@ class IterationRunner:
             raise ValueError("cohort introuvable")
         return iteration
 
-    def recover_on_boot(self) -> int:
-        """Mark stuck iterations as terminal at API boot.
+    def _chain_alive(self, iteration_id: str) -> bool:
+        """True si la chaîne détachée de cette itération a survécu au reload
+        (job `running` + PID vivant). Le reaper du rail clôt sa row job si mort."""
+        job = self._active_job(iteration_id)
+        pid = job.get("pid") if job else None
+        return bool(pid and _pid_alive(pid))
 
-        We don't auto-retry: the orchestrator daemon thread that died
-        leaves disk + DB in an unknown state, and resuming blindly is
-        more dangerous than helpful (could re-bake mid-flight, trigger
-        a duplicate training, etc.). The user re-launches explicitly.
+    def recover_on_boot(self) -> int:
+        """Reconcile stuck iterations at API boot.
+
+        Une chaîne détachée qui a survécu au `--reload` (PID vivant) est
+        **laissée tourner**. On ne nettoie que les itérations dont le process est
+        mort. Pas d'auto-retry : reprendre à l'aveugle est plus dangereux qu'utile
+        (re-bake mid-flight, training dupliqué…) — l'utilisateur relance.
 
         Returns the number of cleaned-up iterations.
         """
         cleaned = 0
         # Training-stuck → mark failed (no usable model to point at).
         for it in self._store.list_iterations(status="training"):
+            if self._chain_alive(it.id):
+                continue  # survived the reload — leave it running
             logger.info(
                 "Recovery: iteration %s stuck in training → failed", it.id,
             )
@@ -449,6 +443,8 @@ class IterationRunner:
         # usable. Promote the iteration to ``completed`` and mark the
         # benchmark row failed so I4a surfaces the partial state.
         for it in self._store.list_iterations(status="benchmarking"):
+            if self._chain_alive(it.id):
+                continue  # survived the reload — leave it running
             logger.info(
                 "Recovery: iteration %s stuck in benchmarking → completed "
                 "(benchmark partial)", it.id,
@@ -911,21 +907,23 @@ class IterationRunner:
         # docs/lab-prod-refacto/phase-2-isolation-artefacts.md §"Sémantique
         # du mode destructif actuel".
         removed: list[ClassRef] = []
-        # Wire the per-iteration log buffer through the training runner so
-        # epoch lines stream into our ring buffer in real time. Failures
-        # in the sink must NEVER propagate (logging path).
-        iid = iteration.id
-
-        def _sink(line: str) -> None:
-            self._append_log(iid, "[training] " + line)
-
-        run = self._training_runner.start_run(
-            added=added, removed=removed, config=config, log_sink=_sink,
+        # 2b-2 : on est DÉJÀ dans le process détaché de la chaîne → le pipeline
+        # training tourne SYNCHRONIQUEMENT ici. Son stdout (les lignes d'epoch
+        # incluses) est capté dans le fichier de log du job iteration, que l'API
+        # tail via `tail_logs`. Plus de thread ni de `log_sink`.
+        run = self._training_runner.create_run_row(
+            added=added, removed=removed, config=config,
         )
         if iteration.recipe_id:
             recipe = self._store.get_recipe(iteration.recipe_id)
             if recipe is not None:
                 self._store.update_run_aug_recipe(run.id, recipe.id)
+        try:
+            TrainingPipeline(
+                self._store, run.id, device=self._training_runner.device,
+            ).run()
+        except Exception:  # noqa: BLE001 — run() a marqué le run 'failed' ; _wait_training le verra
+            logger.exception("Iteration training pipeline failed (run %s)", run.id)
         return run.id
 
     def _wait_training(self, run_id: str) -> bool:
@@ -1159,9 +1157,9 @@ class IterationRunner:
     ) -> int:
         """Run ``cmd``, stream stdout+stderr to the per-iteration buffer, return rc.
 
-        Registers the process in ``_active_subprocess`` so :meth:`stop`
-        can terminate it. Used for export and benchmark — training has
-        its own streaming path inside :class:`TrainingRunner`.
+        Export & benchmark children. Stop is handled cross-process by
+        signalling the whole DETACHED chain group (`jobs.stop_process_group`) —
+        these children share the chain's session, so no local tracking needed.
 
         Forces ``PYTHONUNBUFFERED=1`` on the child (cheap belt-and-
         suspenders alongside the ``-u`` flag we pass to the python
@@ -1181,20 +1179,12 @@ class IterationRunner:
             bufsize=1,  # line-buffered on the parent side
             env=env,
         )
-        with self._active_subprocess_lock:
-            self._active_subprocess = proc
-        try:
-            assert proc.stdout is not None
-            prefix = f"[{label}] " if label else ""
-            for raw in proc.stdout:
-                line = raw.rstrip()
-                self._append_log(iteration_id, prefix + line)
-            rc = proc.wait()
-        finally:
-            with self._active_subprocess_lock:
-                if self._active_subprocess is proc:
-                    self._active_subprocess = None
-        return rc
+        assert proc.stdout is not None
+        prefix = f"[{label}] " if label else ""
+        for raw in proc.stdout:
+            line = raw.rstrip()
+            self._append_log(iteration_id, prefix + line)
+        return proc.wait()
 
     # ─── Failure path (training-side) ──────────────────────────────────
 

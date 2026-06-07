@@ -874,6 +874,33 @@ CREATE INDEX IF NOT EXISTS idx_cohort_jobs_running ON cohort_jobs(status) WHERE 
 CREATE INDEX IF NOT EXISTS idx_cohort_jobs_target  ON cohort_jobs(target_eurio_id);
 
 -- ════════════════════════════════════════════════════════════════════════
+-- Jobs génériques — rail `ml/jobs/` (refacto-ml ADR D1)
+-- ════════════════════════════════════════════════════════════════════════
+-- Table DOMAINE-AGNOSTIQUE pour les jobs longs lancés en subprocess détaché
+-- (start_new_session) qui survivent au `--reload` du worker. Généralise le
+-- pattern éprouvé de `cohort_jobs` (cf. lab_routes recrop) hors du couplage
+-- cohorte : pas de FK, `kind` libre, payload domaine en JSON `params`. Le reaper
+-- boot (jobs.reaper.reap_orphans) ne tue QUE les jobs dont le PID est mort.
+-- `cohort_jobs` reste séparée tant que ses runners ne sont pas migrés (ADR Q).
+CREATE TABLE IF NOT EXISTS jobs (
+  id          TEXT PRIMARY KEY,                -- uuid hex
+  kind        TEXT NOT NULL,                   -- libre : 'training','scrape','augmentation',…
+  status      TEXT NOT NULL DEFAULT 'running'
+              CHECK (status IN ('running','done','failed','skipped')),
+  pid         INTEGER,                         -- PID du subprocess détaché → reaper boot précis (os.kill,0)
+  n_total     INTEGER,                         -- items dans le scope au lancement (barre de progression)
+  n_done      INTEGER NOT NULL DEFAULT 0,      -- items traités (mis à jour au fil de l'eau)
+  params      TEXT,                            -- JSON payload domaine (cohort_id, eurio_id, run_id, tau…)
+  log_path    TEXT,                            -- chemin du log fichier du subprocess (stdout+stderr)
+  note        TEXT,
+  error       TEXT,
+  started_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  finished_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_jobs_kind    ON jobs(kind, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_jobs_running ON jobs(status) WHERE status = 'running';
+
+-- ════════════════════════════════════════════════════════════════════════
 -- Référentiel canonique — harmonisation des données (docs/data-harmonization/)
 -- ════════════════════════════════════════════════════════════════════════
 -- `coins` n'est plus un miroir d'un JSON : c'est la table CANONIQUE. Voir

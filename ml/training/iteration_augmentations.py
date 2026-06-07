@@ -44,6 +44,7 @@ import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Callable
 
 ML_DIR = Path(__file__).resolve().parent.parent
 if str(ML_DIR) not in sys.path:
@@ -201,6 +202,7 @@ def generate_for_iteration(
     *,
     iteration_id: str,
     store: Store | None = None,
+    on_progress: Callable[[int, int], None] | None = None,
 ) -> list[CoinAugReport]:
     """(Re)generate augmentations for every coin in the iteration's cohort.
 
@@ -208,6 +210,9 @@ def generate_for_iteration(
     contains the expected number of files, the coin is left untouched.
     Callers that want a forced rebuild should clear the directory first
     (the regenerate endpoint does that).
+
+    ``on_progress(done, total)`` (optional) is called before processing each coin
+    — used by the detached bake runner (`run_augmentation.py`) to report progress.
     """
     store = store or Store(ML_DIR / "state" / "eurio.db")
     it = store.get_iteration(iteration_id)
@@ -237,7 +242,10 @@ def generate_for_iteration(
     train_root.mkdir(parents=True, exist_ok=True)
 
     reports: list[CoinAugReport] = []
-    for eurio_id in cohort.eurio_ids:
+    total = len(cohort.eurio_ids)
+    for _idx, eurio_id in enumerate(cohort.eurio_ids):
+        if on_progress is not None:
+            on_progress(_idx, total)
         nid = coin_lookup.numista_id_for(eurio_id)
         if nid is None:
             reports.append(

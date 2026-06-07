@@ -36,6 +36,7 @@ from foundation.enrichment import (
     TRAINING_TARGET as _ENRICH_TARGET,
     projection as _enrich_projection,
 )
+import jobs
 from . import coin_lookup
 from .iteration_logic import compute_sensitivity
 from .iteration_runner import IterationRunner
@@ -831,12 +832,11 @@ def iteration_progress(cohort_id: str, iteration_id: str) -> dict:
     return _iteration_progress(it)
 
 
-@router.post("/cohorts/{cohort_id}/iterations/{iteration_id}/bake")
+@router.post("/cohorts/{cohort_id}/iterations/{iteration_id}/bake", status_code=202)
 def bake_iteration(cohort_id: str, iteration_id: str) -> dict:
-    """Idempotent bake — fills missing samples without wiping the rest.
-
-    Distinct from ``regenerate`` which clears + rebakes from scratch.
-    """
+    """Idempotent bake (sans clear) — DÉTACHÉ. Remplit les samples manquants sans
+    effacer le reste. Distinct de ``regenerate`` qui clear + rebuild. 202 → le
+    front poll ``…/augmentations/job`` puis re-fetch la galerie."""
     it = _get_store().get_iteration(iteration_id)
     if it is None or it.cohort_id != cohort_id:
         raise HTTPException(status_code=404, detail="Itération introuvable")
@@ -853,24 +853,8 @@ def bake_iteration(cohort_id: str, iteration_id: str) -> dict:
             status_code=400,
             detail="Aucune recipe — sélectionne une recipe avant de baker.",
         )
-    from training.iteration_augmentations import generate_for_iteration
-
-    reports = generate_for_iteration(iteration_id=iteration_id, store=_get_store())
-    total = sum(r.written for r in reports)
-    return {
-        "ok": True,
-        "total_baked": total,
-        "reports": [
-            {
-                "eurio_id": r.eurio_id,
-                "numista_id": r.numista_id,
-                "written": r.written,
-                "sources_used": r.sources_used,
-                "skipped_reason": r.skipped_reason,
-            }
-            for r in reports
-        ],
-    }
+    bake = _launch_aug_bake(iteration_id, clear=False)
+    return {"iteration_id": iteration_id, "job_id": bake["job_id"], "status": "baking"}
 
 
 @router.put("/cohorts/{cohort_id}/iterations/{iteration_id}")
@@ -1317,16 +1301,45 @@ def _discarded_by_reason(
 
 def _coin_tail(conn, eurio_id: str) -> dict:
     """Tail post-attribution d'un coin : listings retenus ventilés par
-    ``route_decision``/``route_reason``, crops, et run le plus récent."""
+    ``route_decision``/``route_reason``, crops, et run le plus récent.
+
+    Scope : un STANDARD est scrapé par recherche LARGE pays ; ses crops
+    atterrissent en ``target_eurio_id`` NULL (ambigu), sur le représentant du
+    groupe, ou en commémos rescue — un scope ``target_eurio_id = eurio_id``
+    exact afficherait ~0 alors que des dizaines sont à trancher. On compte donc
+    le POOL standard du pays (``listing_country`` + ``listing_year IS NULL``),
+    IDENTIQUE au scope de la review (``review_queue_routes.list_queue``) → le
+    cockpit et la review affichent le MÊME nombre. Les commémos gardent le scope
+    ``target_eurio_id`` exact. (Limite connue : deux standards d'un même pays
+    dans une cohorte partagent le pool → même compte affiché sur chaque ligne ;
+    OK tant qu'une cohorte ne mixe pas deux standards d'un même pays.)
+    """
+    std = conn.execute(
+        "SELECT country FROM coins WHERE eurio_id=? AND is_commemorative=0",
+        (eurio_id,),
+    ).fetchone()
+    is_standard = bool(std and std["country"])
+    if is_standard:
+        scope = "si.source='ebay' AND si.listing_country=? AND si.listing_year IS NULL"
+        scope_bare = "source='ebay' AND listing_country=? AND listing_year IS NULL"
+        sp: tuple = (std["country"],)
+        # La review standard ne sert que la lane manuelle (single) — on aligne.
+        rq_lane_clause = " AND (rq.lane='manual' OR rq.lane IS NULL)"
+    else:
+        scope = "si.source='ebay' AND si.target_eurio_id=?"
+        scope_bare = "source='ebay' AND target_eurio_id=?"
+        sp = (eurio_id,)
+        rq_lane_clause = ""
+
     breakdown = conn.execute(
-        """
+        f"""
         SELECT route_decision, route_reason, COUNT(*) AS n
           FROM source_images
-         WHERE source='ebay' AND target_eurio_id=?
+         WHERE {scope_bare}
          GROUP BY route_decision, route_reason
          ORDER BY n DESC
         """,
-        (eurio_id,),
+        sp,
     ).fetchall()
     by_route = [
         {
@@ -1349,31 +1362,31 @@ def _coin_tail(conn, eurio_id: str) -> dict:
     n_unrouted = _roll(lambda d: not d)
 
     n_crops = conn.execute(
-        "SELECT COUNT(*) FROM image_assets ia "
-        "JOIN source_images si ON si.id = ia.source_image_id "
-        "WHERE si.source='ebay' AND si.target_eurio_id=?",
-        (eurio_id,),
+        f"SELECT COUNT(*) FROM image_assets ia "
+        f"JOIN source_images si ON si.id = ia.source_image_id "
+        f"WHERE {scope}",
+        sp,
     ).fetchone()[0]
 
     n_downloaded = conn.execute(
-        "SELECT COUNT(*) FROM source_images "
-        "WHERE source='ebay' AND target_eurio_id=? AND download_status='success'",
-        (eurio_id,),
+        f"SELECT COUNT(*) FROM source_images "
+        f"WHERE {scope_bare} AND download_status='success'",
+        sp,
     ).fetchone()[0]
 
     n_download_failed = conn.execute(
-        "SELECT COUNT(*) FROM source_images "
-        "WHERE source='ebay' AND target_eurio_id=? AND download_status='failed'",
-        (eurio_id,),
+        f"SELECT COUNT(*) FROM source_images "
+        f"WHERE {scope_bare} AND download_status='failed'",
+        sp,
     ).fetchone()[0]
 
     # Raws téléchargés mais SANS aucun crop présent = candidats au re-crop
     # (même condition que la garde d'idempotence DetectCrop). Distingue « il faut
     # recropper » de « il faut rescraper » / « il faut reviewer » (§WS4).
     n_zero_crops = conn.execute(
-        """
+        f"""
         SELECT COUNT(*) FROM source_images si
-         WHERE si.source='ebay' AND si.target_eurio_id=?
+         WHERE {scope}
            AND si.download_status='success'
            AND NOT EXISTS (
                SELECT 1 FROM image_assets ia
@@ -1381,7 +1394,7 @@ def _coin_tail(conn, eurio_id: str) -> dict:
                   AND ia.storage_status = 'present'
            )
         """,
-        (eurio_id,),
+        sp,
     ).fetchone()[0]
 
     # File de review RÉELLEMENT ouverte pour ce coin (review_queue.status='open'),
@@ -1391,15 +1404,15 @@ def _coin_tail(conn, eurio_id: str) -> dict:
     # comme « reste à reviewer » : sinon le bouton « Reviewer N » ment (ex.
     # georg-henrik : 27 review_single en route_decision mais 0 single open réel).
     rq_open = conn.execute(
-        """
+        f"""
         SELECT rq.kind AS kind, COUNT(*) AS n
           FROM review_queue rq
           JOIN image_assets ia ON ia.id = rq.image_asset_id
           JOIN source_images si ON si.id = ia.source_image_id
-         WHERE si.source='ebay' AND si.target_eurio_id=? AND rq.status='open'
+         WHERE {scope} AND rq.status='open'{rq_lane_clause}
          GROUP BY rq.kind
         """,
-        (eurio_id,),
+        sp,
     ).fetchall()
     rq_open_map = {r["kind"]: r["n"] for r in rq_open}
     n_open_review_single = rq_open_map.get("single", 0)
@@ -1411,16 +1424,20 @@ def _coin_tail(conn, eurio_id: str) -> dict:
     # n_review_single/lot (gelés), `n_orphaned` (les crops jadis invisibles),
     # `n_resolved`/`n_resolved_training` (tranchés / éligibles train). Scoping par
     # target_eurio_id (clé de découverte stable). Cf. REBUILD-ANALYSIS.md.
+    # Scopé via la jointure source_images (et non isc.target_eurio_id) pour
+    # capter le pool pays d'un standard (crops ambigus inclus), cohérent avec
+    # les autres compteurs ci-dessus.
     state_rows = conn.execute(
-        """
+        f"""
         SELECT isc.current_state AS state, COUNT(*) AS n,
                SUM(CASE WHEN ia.training_eligible = 1 THEN 1 ELSE 0 END) AS n_te
           FROM image_state_current isc
           JOIN image_assets ia ON ia.id = isc.asset_id
-         WHERE isc.target_eurio_id = ?
+          JOIN source_images si ON si.id = ia.source_image_id
+         WHERE {scope}
          GROUP BY isc.current_state
         """,
-        (eurio_id,),
+        sp,
     ).fetchall()
     state_counts = {r["state"]: r["n"] for r in state_rows}
     n_in_review = state_counts.get("queued", 0) + state_counts.get("in_review", 0)
@@ -1434,13 +1451,13 @@ def _coin_tail(conn, eurio_id: str) -> dict:
     # (deep-link bench) + flag multi-run (limite connue v1 : on linke le
     # dernier run, cf. handoff).
     run_rows = conn.execute(
-        """
+        f"""
         SELECT run_id, COUNT(*) AS n, MAX(fetched_at) AS last_fetch
           FROM source_images
-         WHERE source='ebay' AND target_eurio_id=? AND run_id IS NOT NULL
+         WHERE {scope_bare} AND run_id IS NOT NULL
          GROUP BY run_id ORDER BY last_fetch DESC
         """,
-        (eurio_id,),
+        sp,
     ).fetchall()
     latest_run_id = run_rows[0]["run_id"] if run_rows else None
     latest_run_started_at = None
@@ -2346,7 +2363,33 @@ def rescue_discard(discard_id: str) -> dict:
 # ─── Augmentations (Sprint 1) ──────────────────────────────────────────────
 
 
-@router.post("/cohorts/{cohort_id}/preview-iteration")
+def _launch_aug_bake(iteration_id: str, *, clear: bool) -> dict:
+    """Lance le bake d'augmentation en subprocess DÉTACHÉ via le rail `jobs/`.
+
+    Garde de concurrence : si un bake de CETTE itération tourne déjà (PID vivant),
+    on renvoie son job existant au lieu d'en lancer un 2e (le bouton Générer peut
+    être recliqué). Retourne ``{job_id, status}``."""
+    store = _get_store()
+    conn = store._connection()  # noqa: SLF001
+    existing = jobs.job_by_param(conn, "iteration_id", iteration_id, kind="augmentation")
+    if existing and existing["status"] == "running":
+        pid = existing.get("pid")
+        if pid and jobs._pid_alive(pid):  # noqa: SLF001
+            return {"job_id": existing["id"], "status": "running"}
+    extra = ["--clear"] if clear else []
+    res = jobs.launch(
+        conn,
+        kind="augmentation",
+        cmd_builder=lambda jid: [
+            sys.executable, str(_ML_DIR / "training" / "run_augmentation.py"),
+            "--iteration-id", iteration_id, "--job-id", jid, *extra,
+        ],
+        params={"iteration_id": iteration_id},
+    )
+    return {"job_id": res["job_id"], "status": "running"}
+
+
+@router.post("/cohorts/{cohort_id}/preview-iteration", status_code=202)
 def preview_iteration(cohort_id: str, payload: IterationPreviewPayload) -> dict:
     """Create a ``pending`` iteration without launching training, then bake
     a small augmentations preview for the §3 Recipe section.
@@ -2409,30 +2452,18 @@ def preview_iteration(cohort_id: str, payload: IterationPreviewPayload) -> dict:
         _get_store().create_iteration(row)
         it = _get_store().get_iteration(iid)
 
-    # Bake (or refresh) the snapshot. Clear first so a recipe change
-    # produces fresh samples rather than mixing old and new.
-    from training.iteration_augmentations import (
-        clear_for_iteration,
-        generate_for_iteration,
-    )
-
-    clear_for_iteration(iteration_id=it.id, store=_get_store())
-    reports = generate_for_iteration(iteration_id=it.id, store=_get_store())
+    # Bake (or refresh) the snapshot in a DETACHED job (clear first so a recipe
+    # change produces fresh samples). 202 → le front poll le statut puis re-fetch
+    # la galerie. Le bake survit au `--reload` et ne bloque plus la requête.
+    bake = _launch_aug_bake(it.id, clear=True)
     return {
         "iteration_id": it.id,
         "name": it.name,
         "augmentations_seed": it.augmentations_seed,
         "recipe_id": it.recipe_id,
         "variant_count": it.variant_count,
-        "per_coin": [
-            {
-                "eurio_id": r.eurio_id,
-                "numista_id": r.numista_id,
-                "written": r.written,
-                "skipped_reason": r.skipped_reason,
-            }
-            for r in reports
-        ],
+        "job_id": bake["job_id"],
+        "status": "baking",
     }
 
 
@@ -2454,7 +2485,10 @@ def list_iteration_augmentations(cohort_id: str, iteration_id: str) -> dict:
     }
 
 
-@router.post("/cohorts/{cohort_id}/iterations/{iteration_id}/augmentations/regenerate")
+@router.post(
+    "/cohorts/{cohort_id}/iterations/{iteration_id}/augmentations/regenerate",
+    status_code=202,
+)
 def regenerate_iteration_augmentations(cohort_id: str, iteration_id: str) -> dict:
     it = _get_store().get_iteration(iteration_id)
     if it is None or it.cohort_id != cohort_id:
@@ -2467,25 +2501,26 @@ def regenerate_iteration_augmentations(cohort_id: str, iteration_id: str) -> dic
                 "autorisée que pour les itérations 'pending'."
             ),
         )
-    from training.iteration_augmentations import (
-        clear_for_iteration,
-        generate_for_iteration,
-    )
+    # Bake détaché (clear + génération). 202 → le front poll `…/augmentations/job`.
+    bake = _launch_aug_bake(iteration_id, clear=True)
+    return {"iteration_id": iteration_id, "job_id": bake["job_id"], "status": "baking"}
 
-    clear_for_iteration(iteration_id=iteration_id, store=_get_store())
-    reports = generate_for_iteration(iteration_id=iteration_id, store=_get_store())
+
+@router.get("/cohorts/{cohort_id}/iterations/{iteration_id}/augmentations/job")
+def augmentation_job_status(cohort_id: str, iteration_id: str) -> dict:
+    """Statut du bake d'augmentation détaché de l'itération (poll par le front).
+    `idle` si aucun bake n'a (encore) été lancé."""
+    job = jobs.job_by_param(
+        _get_store()._connection(), "iteration_id", iteration_id, kind="augmentation",  # noqa: SLF001
+    )
+    if job is None:
+        return {"status": "idle"}
     return {
-        "iteration_id": iteration_id,
-        "regenerated": True,
-        "per_coin": [
-            {
-                "eurio_id": r.eurio_id,
-                "numista_id": r.numista_id,
-                "written": r.written,
-                "skipped_reason": r.skipped_reason,
-            }
-            for r in reports
-        ],
+        "status": job["status"],
+        "n_total": job["n_total"],
+        "n_done": job["n_done"],
+        "note": job["note"],
+        "error": job["error"],
     }
 
 
