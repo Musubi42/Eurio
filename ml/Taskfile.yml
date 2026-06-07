@@ -579,6 +579,16 @@ tasks:
     cmds:
       - "{{.VENV}}/python -m scripts.report_obverse_group_volume {{.CLI_ARGS}}"
 
+  eval-obverse-attribution:
+    desc: "Éval vision du filtrage eBay → groupe avers (lecture seule, ccproxy). Ex: go-task ml:eval-obverse-attribution -- --country BE --per-group 8"
+    cmds:
+      - "{{.VENV}}/python -m scripts.eval_obverse_attribution_vision {{.CLI_ARGS}}"
+
+  gate-standard-vision:
+    desc: "Gate vision : rejette les commémos/junk leakées dans le standard scrape (dry-run par défaut ; --apply pour écrire ; ccproxy). Ex: go-task ml:gate-standard-vision -- --country BE --apply"
+    cmds:
+      - "{{.VENV}}/python -m scripts.gate_standard_vision {{.CLI_ARGS}}"
+
   # ---------- Phase 2 Augmentation ----------
   augment-preview:
     desc: "Generate a preview grid of augmented images for a design (takes --design-group-id or --eurio-id)"
