@@ -204,3 +204,21 @@ Backups DB avant toute migration/purge (`ml/state/eurio.db.bak-*`).
   `features/lab/types.ts`.
 - État (sain, ne pas casser) : `image_state_events`/`image_state_current`/`cohort_jobs`
   dans `schema.sql` ; vérif drift : `PYTHONPATH=ml ml/.venv/bin/python ml/scripts/backfill_image_state.py --verify`.
+
+---
+
+## 6. Loose ends de la session (branche `sources-jo-wikipedia`, pas encore commités)
+
+> Déplacé depuis `docs/design-groups-standards/KICKOFF.md` §7 (n'avait pas sa place
+> dans un kickoff). 2026-06-07.
+
+Travaux livrés cette session :
+- BUG-1 recrop subprocess + reaper PID (livré, vérifié).
+- BUG-2 libellés be-2007 cohérents (livré).
+- BUG-3 cœur : scrape→cohort_jobs réconcilié + trace in-row + runs failed (livré).
+
+**À faire** :
+- BUG-3 sub-part **logs scrape** : `source_runs.log_path` vide + endpoint tail.
+- Corriger la note BUG-3 « dispersés sur les sœurs » → « réparti sur le groupe pays »
+  (imprécise pour un standard, cf. chantier design-groups-standards).
+- Décider commit/PR de la branche.

@@ -153,6 +153,109 @@ def test_attribute_denomination_contradiction(tmp_path):
     assert m.reason == "group_contradict_denomination"
 
 
+# ── Groupes avers (design_group collapse) ─────────────────────────────────────
+
+# BE 2€ standard groupés par avers (cf. chantier design-groups-standards).
+_BE_GROUPED = [
+    ("be-1999-2eur-standard-albert-ii-1st-map-1st-type-1st-portrait", 1999, "be-2euro-albert-ii-t1"),
+    ("be-2007-2eur-standard-albert-ii-2nd-map-1st-type-1st-portrait", 2007, "be-2euro-albert-ii-t1"),
+    ("be-2008-2eur-standard-albert-ii-2nd-map-2nd-type-2nd-portrait", 2008, "be-2euro-albert-ii-t2"),
+    ("be-2009-2eur-standard-albert-ii-2nd-map-2nd-type-1st-portrait", 2009, "be-2euro-albert-ii-t2"),
+    ("be-2014-2eur-standard-philippe", 2014, "be-2euro-philippe-t1"),
+]
+
+
+def _seed_be_grouped(conn):
+    for gid in {g for _, _, g in _BE_GROUPED}:
+        conn.execute(
+            "INSERT OR REPLACE INTO design_groups (id, designation) VALUES (?, ?)", (gid, gid)
+        )
+    for eid, year, gid in _BE_GROUPED:
+        _seed(conn, eid, "BE", year, is_comm=False)
+        conn.execute(
+            "UPDATE coins SET design_group_id=? WHERE eurio_id=?", (gid, eid)
+        )
+
+
+def test_load_standard_eras_collapses_groups(tmp_path):
+    store = Store(tmp_path / "t.db")
+    conn = store._connection()
+    _seed_be_grouped(conn)
+    eras = load_standard_eras(conn, _DENOM, "BE")
+    by_group = {e.group_id: e for e in eras}
+    # 5 Types → 3 ères (groupes avers).
+    assert set(by_group) == {"be-2euro-albert-ii-t1", "be-2euro-albert-ii-t2", "be-2euro-philippe-t1"}
+    t1 = by_group["be-2euro-albert-ii-t1"]
+    # be-1999 + be-2007 fusionnés : la plage couvre 1999→2007.
+    assert (t1.year_from, t1.year_to) == (1999, 2007)
+    assert set(t1.eurio_ids) == {
+        "be-1999-2eur-standard-albert-ii-1st-map-1st-type-1st-portrait",
+        "be-2007-2eur-standard-albert-ii-2nd-map-1st-type-1st-portrait",
+    }
+    assert by_group["be-2euro-philippe-t1"].year_to == 9999  # dernier groupe ouvert
+
+
+def test_attribute_grouped_resolves_year_prior(tmp_path):
+    store = Store(tmp_path / "t.db")
+    conn = store._connection()
+    _seed_be_grouped(conn)
+    # Un listing 2007 : be-2007 ne starve plus — il tombe dans le groupe t1.
+    m07 = attribute_standard_listing(
+        "Belgien 2 Euro Kursmünze 2007 zirkuliert", _DENOM, "BE", conn=conn
+    )
+    assert m07.verdict == "single"
+    # prior résolu au millésime DANS le groupe → be-2007 (pas be-1999).
+    assert m07.target_eurio_id == "be-2007-2eur-standard-albert-ii-2nd-map-1st-type-1st-portrait"
+    # candidates = les 5 Types du pays (review humaine).
+    assert len(m07.candidates) == 5
+
+    # Un listing 2003 : même groupe t1, prior = be-1999.
+    m03 = attribute_standard_listing(
+        "Belgien 2 Euro Kursmünze 2003 zirkuliert", _DENOM, "BE", conn=conn
+    )
+    assert m03.verdict == "single"
+    assert m03.target_eurio_id == "be-1999-2eur-standard-albert-ii-1st-map-1st-type-1st-portrait"
+
+
+def test_grouped_commemo_excluded_before_widened_range(tmp_path):
+    """Étape 4 (theme-match commémo) AVANT étape 5 (plage) : la fenêtre t1
+    élargie à [1999,2007] ne doit pas absorber la commémo Traité de Rome 2007."""
+    store = Store(tmp_path / "t.db")
+    conn = store._connection()
+    _seed_be_grouped(conn)
+    # Commémo BE 2007 (Traité de Rome) + titre i18n discriminant (theme-match).
+    _seed(conn, "be-2007-2eur-commemo-rome", "BE", 2007, is_comm=True)
+    conn.execute(
+        "INSERT OR IGNORE INTO source_registry (id, display_name, kind) VALUES "
+        "('eurio_derived', 'Eurio derived', 'derived')"
+    )
+    conn.execute(
+        "INSERT INTO coin_names_i18n (eurio_id, lang, title, source) VALUES (?, ?, ?, ?)",
+        ("be-2007-2eur-commemo-rome", "de", "Vertrag von Rom", "eurio_derived"),
+    )
+    m = attribute_standard_listing(
+        "Belgien 2 Euro 2007 Vertrag von Rom", _DENOM, "BE", conn=conn
+    )
+    assert m.verdict == "commemo"
+    assert m.reason.startswith("commemo_in_standard_run:")
+
+
+def test_standard_view_counts_design_groups(tmp_path):
+    """v_ebay_standard_groups.n_eras = nombre de groupes avers (pas de Types)."""
+    store = Store(tmp_path / "t.db")
+    conn = store._connection()
+    _seed_be_grouped(conn)        # 5 Types BE → 3 groupes
+    _seed_es_standards(conn)      # 4 Types ES non groupés → 4 (legacy)
+    rows = {
+        r["country"]: r["n_eras"]
+        for r in conn.execute(
+            "SELECT country, n_eras FROM v_ebay_standard_groups WHERE country IN ('BE','ES')"
+        )
+    }
+    assert rows["BE"] == 3
+    assert rows["ES"] == 4
+
+
 # ── Cohort-scoping ───────────────────────────────────────────────────────────
 
 

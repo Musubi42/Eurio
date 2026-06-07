@@ -2800,19 +2800,10 @@ _DATASETS_DIR = _ML_DIR / "datasets"
 
 
 def _canonical_path(numista_id: int | None) -> Path | None:
-    if not numista_id:
-        return None
-    coin_dir = _DATASETS_DIR / str(numista_id)
-    if not coin_dir.exists():
-        return None
-    for name in ("obverse.jpg", "obverse.png", "obverse.jpeg"):
-        p = coin_dir / name
-        if p.exists():
-            return p
-    for f in sorted(coin_dir.iterdir()):
-        if f.is_file() and f.suffix.lower() in (".jpg", ".jpeg", ".png"):
-            return f
-    return None
+    # Résolveur partagé (cf. foundation.obverse_group_review — réutilisé par la
+    # review vision des design_groups par avers). Layout : datasets/<numista>/obverse.*
+    from foundation.obverse_group_review import canonical_obverse_path
+    return canonical_obverse_path(numista_id)
 
 
 def _crop_path(storage_path: str) -> Path | None:

@@ -553,6 +553,32 @@ tasks:
     cmds:
       - "{{.VENV}}/python bootstrap/bootstrap_design_groups.py"
 
+  audit-obverse-groups:
+    desc: "Gate derive-then-diff des design_groups STANDARD par avers (lecture seule). Ex: go-task ml:audit-obverse-groups -- --country BE"
+    cmds:
+      - "{{.VENV}}/python -m scripts.audit_obverse_groups {{.CLI_ARGS}}"
+
+  bootstrap-obverse-groups-dry:
+    desc: "Preview bootstrap design_groups par avers (aucune écriture). Ex: go-task ml:bootstrap-obverse-groups-dry -- --country BE"
+    cmds:
+      - "{{.VENV}}/python -m bootstrap.obverse_groups {{.CLI_ARGS}}"
+
+  bootstrap-obverse-groups:
+    desc: "Applique le bootstrap design_groups par avers en base (backup DB d'abord). Ex: go-task ml:bootstrap-obverse-groups -- --country BE"
+    cmds:
+      - 'cp "{{.TASKFILE_DIR}}/state/eurio.db" "{{.TASKFILE_DIR}}/state/eurio.db.bak-pre-obverse-$(date +%Y%m%dT%H%M%S)"'
+      - "{{.VENV}}/python -m bootstrap.obverse_groups --apply {{.CLI_ARGS}}"
+
+  review-obverse-vision:
+    desc: "Review vision Claude de la cohérence des design_groups par avers (ccproxy user-owned requis). Ex: go-task ml:review-obverse-vision -- --country BE"
+    cmds:
+      - "{{.VENV}}/python -m scripts.review_obverse_groups_vision {{.CLI_ARGS}}"
+
+  report-obverse-volume:
+    desc: "Rapport volume eBay par classe avers vs cible ~100 (lecture seule). Ex: go-task ml:report-obverse-volume -- --country BE"
+    cmds:
+      - "{{.VENV}}/python -m scripts.report_obverse_group_volume {{.CLI_ARGS}}"
+
   # ---------- Phase 2 Augmentation ----------
   augment-preview:
     desc: "Generate a preview grid of augmented images for a design (takes --design-group-id or --eurio-id)"

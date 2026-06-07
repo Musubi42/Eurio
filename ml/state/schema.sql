@@ -1218,9 +1218,12 @@ WHERE c.face_value = 2.0
 -- l'année de *début*. Le grouping commémo `(dénom, pays, année)` est donc
 -- inadapté : une seule recherche large « 2 euro {pays} » couvre toutes les
 -- ères d'un pays. La maille du groupe standard est `(dénomination, pays)` —
--- PAS l'année. `n_eras` = nombre d'ères canoniques du pays (toutes cherchées
--- par la recherche large ; l'attribution à une ère se fait en aval par
--- appartenance de plage d'années, cf. sources/ebay/standards.py).
+-- PAS l'année. `n_eras` = nombre de *design_groups avers* du pays (Types
+-- partageant un avers collapsés via COALESCE(design_group_id, eurio_id) —
+-- cf. chantier design-groups-standards), c'est-à-dire le nombre de classes
+-- ArcFace réellement visées. Toutes cherchées par la recherche large ;
+-- l'attribution à un groupe se fait en aval par appartenance de plage d'années
+-- (sources/ebay/standards.py). Un Type sans design_group reste compté pour 1.
 --
 -- Drop+create (cf. note des vues freshness commémo ci-dessus).
 DROP VIEW IF EXISTS v_ebay_standard_groups;
@@ -1229,7 +1232,7 @@ CREATE VIEW v_ebay_standard_groups AS
 SELECT
   c.face_value               AS denomination,
   c.country                  AS country,
-  COUNT(DISTINCT c.eurio_id)  AS n_eras,
+  COUNT(DISTINCT COALESCE(c.design_group_id, c.eurio_id))  AS n_eras,
   MAX(si.fetched_at)          AS last_enriched_at,
   COUNT(DISTINCT si.id)       AS n_images,
   COUNT(DISTINCT ia.id)       AS n_crops

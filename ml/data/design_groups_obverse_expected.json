@@ -1,0 +1,16 @@
+{
+  "_comment": "Ground truth du gate derive-then-diff (cf. docs/design-groups-standards/KICKOFF.md §3 + §4.6). Le script audit_obverse_groups.py compare les groupes DÉRIVÉS depuis design_description vs cette table validée à la main. Tout écart = gate bloquant. Étendre pays par pays avant chaque rollout (clé = group_id, valeur = membres triés).",
+  "BE": {
+    "be-2euro-albert-ii-t1": [
+      "be-1999-2eur-standard-albert-ii-1st-map-1st-type-1st-portrait",
+      "be-2007-2eur-standard-albert-ii-2nd-map-1st-type-1st-portrait"
+    ],
+    "be-2euro-albert-ii-t2": [
+      "be-2008-2eur-standard-albert-ii-2nd-map-2nd-type-2nd-portrait",
+      "be-2009-2eur-standard-albert-ii-2nd-map-2nd-type-1st-portrait"
+    ],
+    "be-2euro-philippe-t1": [
+      "be-2014-2eur-standard-philippe"
+    ]
+  }
+}

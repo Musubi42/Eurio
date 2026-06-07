@@ -1,0 +1,4 @@
+{
+  "_comment": "Anomalies de review vision (scripts/review_obverse_groups_vision.py) explicitement ACCEPTÉES par le PO : la vision voit une différence visuelle mais le groupage est conservé volontairement. Clé = design_group_id, valeur = raison. Trace honnête (pas de silence) : ces groupes restent affichés '⚠ accepté (PO)' mais ne font plus échouer le gate. Une anomalie NON listée fait toujours échouer le gate.",
+  "be-2euro-albert-ii-t2": "Effigie 2008 (transitoire, 2nd portrait) vs 2009-2013 (1st portrait) : différence d'effigie réelle mais micro-variante du même 2e type. Groupage conservé (be-2008 mono-année starve si scindé ; désambiguïsation 2008/2009 par l'année OCR, pas l'avers). Décision PO 2026-06-07."
+}

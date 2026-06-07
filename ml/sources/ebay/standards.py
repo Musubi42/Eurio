@@ -82,17 +82,45 @@ def _strip_accents(s: str) -> str:
 
 @dataclass(frozen=True)
 class StandardEra:
-    """Une ère de design standard d'un pays = une ligne canonique ``coins``.
+    """Une ère de design standard d'un pays = un **design_group avers**.
 
-    ``year_from`` = année de début (colonne ``coins.year``). ``year_to`` =
-    année de début de l'ère *strictement* suivante − 1, ou ``_ERA_OPEN_END``
-    pour la plus récente. La plage ``[year_from, year_to]`` est l'intervalle
-    de millésimes couverts par l'ère.
+    Depuis le chantier « design groups par avers » (cf.
+    ``docs/design-groups-standards/KICKOFF.md``), une ère regroupe les Types
+    ``coins`` partageant un même avers (``COALESCE(design_group_id, eurio_id)``) :
+    ``be-1999`` + ``be-2007`` (effigie Albert II 1er type, seule la carte/revers
+    change) = **une seule ère** ``[1999, 2007]`` → une seule classe ArcFace, qui
+    cesse de starve. Les pièces sans ``design_group_id`` restent leur propre ère
+    (``group_id == eurio_id``, un seul membre) — comportement legacy préservé.
+
+    ``year_from``/``year_to`` = bornes du groupe (min/max des plages-membres).
+    Chaque membre porte sa propre sous-plage ``(eurio_id, year_from, year_to)``
+    pour résoudre un *prior* au millésime (cf. ``prior_for_year``).
     """
 
-    eurio_id: str
+    group_id: str
+    members: tuple[tuple[str, int, int], ...]  # (eurio_id, year_from, year_to), trié par année
     year_from: int
     year_to: int
+
+    @property
+    def eurio_ids(self) -> tuple[str, ...]:
+        return tuple(m[0] for m in self.members)
+
+    @property
+    def eurio_id(self) -> str:
+        """Prior par défaut = 1ᵉʳ membre (ordre catalogue)."""
+        return self.members[0][0]
+
+    def prior_for_year(self, year: int) -> str:
+        """eurio_id du membre dont la sous-plage contient ``year`` (sinon 1ᵉʳ).
+
+        La classe d'entraînement reste le groupe (``COALESCE`` en aval) ; ce
+        prior ne sert qu'à pré-remplir la review au bon millésime.
+        """
+        for eid, yf, yt in self.members:
+            if yf <= year <= yt:
+                return eid
+        return self.members[0][0]
 
 
 @dataclass(frozen=True)
@@ -130,15 +158,20 @@ def load_standard_eras(
 
     Canoniques seules (``canonical_eurio_id IS NULL``) — les variantes
     pattern / mule / coloured ne sont pas la pièce de circulation, on ne les
-    scrape pas. Ordonnées par année de début ; ``year_to`` de chaque ère =
-    (année de l'ère *strictement* suivante − 1), ouverte pour la dernière.
-    Le calcul sur l'année strictement suivante (et non l'élément suivant)
-    rend les collisions même-année (ex. MT 2026 ×2) toutes deux ouvertes
-    plutôt que de créer une plage vide.
+    scrape pas. La sous-plage par Type se calcule comme avant (``year_to`` =
+    année de l'ère *strictement* suivante − 1, ouverte pour la dernière ; le
+    calcul sur l'année strictement suivante rend les collisions même-année —
+    ex. MT 2026 ×2 — toutes deux ouvertes plutôt que vides).
+
+    Les Types sont ensuite **collapsés par ``COALESCE(design_group_id,
+    eurio_id)``** : ceux partageant un avers forment une seule ère couvrant
+    ``[min(year_from), max(year_to)]`` des membres. Les Types sans
+    ``design_group_id`` restent une ère mono-membre (legacy). Ères triées par
+    ``year_from`` croissant.
     """
     rows = conn.execute(
         """
-        SELECT eurio_id, year
+        SELECT eurio_id, year, design_group_id
           FROM coins
          WHERE face_value = ? AND country = ? AND is_commemorative = 0
            AND canonical_eurio_id IS NULL
@@ -147,14 +180,28 @@ def load_standard_eras(
         (denomination, country),
     ).fetchall()
     distinct_years = sorted({int(r["year"]) for r in rows})
-    eras: list[StandardEra] = []
+
+    # Sous-plage par Type (logique historique, robuste aux collisions même-année).
+    by_group: dict[str, list[tuple[str, int, int]]] = {}
     for r in rows:
         year_from = int(r["year"])
         later = [y for y in distinct_years if y > year_from]
         year_to = (later[0] - 1) if later else _ERA_OPEN_END
+        group_id = r["design_group_id"] or r["eurio_id"]
+        by_group.setdefault(group_id, []).append((r["eurio_id"], year_from, year_to))
+
+    eras: list[StandardEra] = []
+    for group_id, members in by_group.items():
+        members.sort(key=lambda m: (m[1], m[0]))
         eras.append(
-            StandardEra(eurio_id=r["eurio_id"], year_from=year_from, year_to=year_to)
+            StandardEra(
+                group_id=group_id,
+                members=tuple(members),
+                year_from=min(m[1] for m in members),
+                year_to=max(m[2] for m in members),
+            )
         )
+    eras.sort(key=lambda e: (e.year_from, e.group_id))
     return eras
 
 
@@ -217,7 +264,9 @@ def attribute_standard_listing(
        même-année ou millésime hors-référentiel).
     """
     eras = load_standard_eras(conn, denomination, country)
-    candidates = tuple(e.eurio_id for e in eras)
+    # Candidates = TOUS les Types du pays (membres de chaque groupe), portés en
+    # review pour que l'humain tranche / corrige.
+    candidates = tuple(eid for e in eras for eid in e.eurio_ids)
     if not eras:
         return StandardMatch("no_eras", None, (), "no_standard_eras")
 
@@ -270,4 +319,8 @@ def attribute_standard_listing(
         return StandardMatch(
             "ambiguous", None, candidates, f"era_year_collision:{year}"
         )
-    return StandardMatch("single", hits[0].eurio_id, candidates, f"year_resolved:{year}")
+    # Prior résolu au millésime DANS le groupe hit (la classe d'entraînement
+    # reste le groupe via COALESCE ; le prior pré-remplit la review au bon Type).
+    return StandardMatch(
+        "single", hits[0].prior_for_year(year), candidates, f"year_resolved:{year}"
+    )
