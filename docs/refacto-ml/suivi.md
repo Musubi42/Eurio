@@ -39,7 +39,7 @@ sous-chunks pour garder une cadence d'audit (poser le rail, puis migrer un runne
 | 4 | **Bake d'augmentation détaché** (« Générer » standalone). Découverte : le bake par itération était déjà détaché (2b-2) ; restait le standalone **3 endpoints** synchrones-dans-la-requête (`/bake`, `/augmentations/regenerate`, `/preview-iteration`). Décision PO : détacher le littéral (frontend inclus). | ✅ | `training/run_augmentation.py` détaché via rail (clear+generate, progress n_done/n_total). Les 3 endpoints → **202 `{job_id}`** + endpoint statut `…/augmentations/job`. `generate_for_iteration` a un `on_progress` optionnel. **Fix correctness** : `job_by_param` filtre désormais par `kind` (un même `iteration_id` porte chaîne `iteration` ET bake `augmentation`) — `IterationRunner._active_job`/`tail_logs` filtrent `kind='iteration'`. Front : `useLabApi` poll jusqu'à `done` → l'`isPending` des mutations couvre le bake (**spinner inchangé, zéro changement de composant**). Garde anti-double-bake (PID vivant). 65 tests back verts (+1 kind-filter), typecheck front = 0 nouvelle erreur (7 pré-existantes). |
 | 5 | **Split `Store`** → `store/connection.py` + modules par domaine. | ✅ | Prépare le swap driver du chunk 6. **5a** scaffold `ml/store/` plat + shim `state/store.py`. **5b** `_domains.py` carvé en 8 modules mixins (runs/staging/augmentation/benchmark/cohorts/iterations/dino/listing_signals), chacun = ses rows + converter + `*Mixin`. `Store(StoreBase, RunsMixin, …)`. 1068 passed / 20 failed (= baseline, 0 régression). |
 | 6 | **Cross-machine eurio.db** : ~~libSQL~~ → **lease MinIO**. | 🟡 | libSQL abandonné (client Python sans row_factory/create_function/executescript — cf. ADR D4 révisé). **6a livré** (`store/lease.py` + `go-task ml:db:{status,acquire,release,steal}` + 13 tests, FakeS3 IfNoneMatch). **6b livré** (doc VPS `chunk6-vps-minio.md`). **6c livré** (hook startup `server.py` qui avertit, non bloquant). **Reste : exécution côté VPS** (provisioning MinIO via la doc) puis 1ᵉʳ acquire/release réel Mac↔PC. |
-| 7 | **Restructure `ml/` plat** : sources/vision/training/review/serving/shared ; absorbe scan/eval/foundation/augmentations ; api→serving ; fix imports + Taskfile + tests. | ⬜ | Le gros morceau ; ne déplace que le legacy (jobs/ et store/ déjà à leur place). |
+| 7 | **Restructure `ml/` plat** : sources/vision/training/review/serving/shared ; absorbe scan/eval/foundation/augmentations ; api→serving ; fix imports + Taskfile + tests. | 🟡 | PO a choisi **restructure complète**, livrée en sous-chunks audités. **7a** ✅ migration imports `state→store` + suppression shim (119 fichiers). **7b** ✅ `api/`→`serving/`. **Reste** : 7c scan→vision · 7d augmentations/eval/foundation→training · 7e shared (utils/storage/api_quota/ccproxy) · 7f market→sources + trancher referential/bootstrap/export · 7g extraction `review/` (vrai refactor depuis serving/). ⚠️ Pré-requis fait : review-lot (B) commité en wip pour arbre propre. |
 | 8 | **Purge `scripts/`** : one-time → archive/suppression, ne garder que les scripts opérables. | ⬜ | — |
 
 ## Invariants à ne pas casser (R0)
@@ -86,6 +86,16 @@ sous-chunks pour garder une cadence d'audit (poser le rail, puis migrer un runne
   qu'un spinner. Barre de progression possible (nice-to-have).
 
 ## Journal
+- **2026-06-08** — **Chunk 7 démarré (restructure complète, par sous-chunks)**. Commits hygiène
+  d'abord : chunks **1-4** (`adbb6ec`), **6** (`3dd4500`) et le chantier **review-lot/B en wip**
+  (`7acb2ff`) commités séparément pour partir d'un arbre propre. **7a** (`c6ec9ee`) : migration
+  `state→store` (119 fichiers), shim `state/store.py` supprimé, `state/__init__` vidé — god-module
+  entièrement retiré. **7b** (`f3d4cd5`) : `api/`→`serving/` (git mv + imports + Taskfile + pyproject).
+  Baseline tests stable 1081/20 à chaque étape. ⚠️ **Incident évité** : un script de migration avait
+  un filtre `.venv` cassé (`'/.venv/' in s` faux sur chemins relatifs) → 104 fichiers `.venv`
+  (torch/jax/tf/polars) corrompus par `api`→`serving` ; réparé par reverse-sub ciblé (libs ré-importent
+  OK). **Leçon : tout script de réécriture doit filtrer via `'.venv' in p.parts` et opérer dans des
+  dossiers ciblés, pas `rglob` global.** Reste 7c-7g (cf. table).
 - **2026-06-08** — **Chunk 6 (Mac/PC + doc VPS) livré ; libSQL abandonné**. Vérif du client
   Python libSQL → `row_factory`/`create_function`(phash)/`executescript` non implémentés ⇒ swap
   driver = shim fragile (dette R0). Bascule actée sur **lease MinIO** (ADR D4 révisé). **6a** :
