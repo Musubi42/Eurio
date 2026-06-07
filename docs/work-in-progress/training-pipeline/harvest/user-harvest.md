@@ -1,154 +1,58 @@
-# User harvest — capter des photos labelées depuis l'app
+# User harvest — identification manuelle in-app + opt-in collecte
 
-> Quand le modèle on-device n'identifie pas la pièce de l'user avec
-> confiance, on transforme l'échec en opportunité d'apprentissage :
-> on aide l'user à pointer la bonne pièce, et on capture
-> photo + label pour le training futur.
+> Canal d'acquisition A (cf. `README.md`). **Pas encore implémenté** — gated sur l'app Android.
+> Réécrit 2026-06-07 avec la vision PO. Statut : spec, à proto'er d'abord (R1).
 
-## Le problème
+## Idée
 
-Pl@ntNet a montré qu'un corpus de photos user-validées est ce qui
-ferme vraiment le gap studio→wild à long terme. Mais **avant** que
-les users existent en masse, on a un cold-start :
+L'utilisateur est la meilleure source de **labels sûrs en condition réelle**. Deux mécanismes
+complémentaires, tous deux **opt-in** :
 
-- L'app doit être suffisamment bonne dès le jour 1 pour ne pas
-  frustrer.
-- Pour devenir suffisamment bonne, il faudrait justement les
-  données users.
-- Cercle vicieux.
+1. **Identification manuelle** quand le scan échoue → produit `(photo, eurio_id confirmé)`.
+2. **Collecte opt-in** des photos de scan (même réussies) → enrichit le corpus avec l'accord explicite.
 
-C'est pourquoi le **scraping** (cf. [`sources.md`](./sources.md))
-attaque le cold-start. Le user-harvest prend ensuite le relais et
-devient la source dominante quand l'app a une base.
+## A. Identification manuelle (scan échoué / incertain)
 
-## Trois cas à distinguer
+### Déclencheur
+Le scan ne retourne pas de pièce avec assez de confiance (sous le seuil), ou l'utilisateur dit
+« ce n'est pas la bonne pièce ».
 
-Quand l'user scanne une pièce, le modèle on-device produit un top-k
-avec scores. On classe le résultat en trois cas :
+### UX cible (à proto'er dans `admin/packages/proto/`)
+On connaît **toutes les pièces 2 € de la zone euro** (référentiel `coins` en base, packagé dans l'APK
+via le snapshot catalogue). Donc on peut offrir une **sélection manuelle agréable** :
 
-### Cas A — Modèle on-device confiant
+- Entrée par **pays** (drapeaux) → **année** → vignettes des commémoratives, avec l'image canonique.
+- Ou **recherche** texte (thème, personnage, « Erasmus », « Rome 2007 »…) via les alias i18n déjà en base.
+- Interaction soignée (pas une liste austère) : grille de vignettes, filtre rapide, preview.
+- Confirmation en 1-2 taps → la pièce est ajoutée au coffre **et** le couple est marqué pour le training.
 
-`top1_score > seuil_high` ET `top1 - top2 > marge`.
-L'app affiche directement "C'est X, ajouter au coffre ?". Pas de
-harvest particulier — la photo et le label peuvent être stockés en
-local pour audit, mais ne nécessitent pas de validation humaine
-(l'user va corriger explicitement si on s'est trompés).
+### Donnée produite
+`(photo utilisateur capturée, eurio_id choisi par l'humain, conditions=wild)` → **label d'or**.
+Chemin de données : photo → (si opt-in) upload → table/queue de candidats training → review légère →
+intègre le dataset (`image_assets` ou équivalent user-sourced, à trancher).
 
-### Cas B — On-device hésite, fallback cloud résout
+## B. Opt-in collecte des photos de scan (Settings)
 
-`top1_score < seuil_high` ou ambiguïté top1/top2.
-L'app appelle le service cloud (notre infra ou tiers). Le cloud
-renvoie un top-k plus fiable. **L'app demande confirmation à
-l'user** : "On hésite entre X et Y. C'est laquelle ?" L'user tap.
-Photo + label capturés avec **confiance haute** (user-validated).
+### Principe
+Une **option dans les Settings de l'app** : « Aider à améliorer le scan — autoriser Eurio à utiliser
+mes photos de pièces pour entraîner les modèles ». **Désactivée par défaut.** RGPD-friendly.
 
-### Cas C — Cloud aussi indécis ou totalement inconnu
+### Comportement
+- **OFF (défaut)** : aucune photo ne quitte l'appareil pour le training.
+- **ON** : les photos de scan (réussi ou via identification manuelle) sont **éligibles** à la collecte
+  (upload différé en Wi-Fi, anonymisé, sans métadonnée perso). L'utilisateur peut révoquer à tout moment.
 
-L'app entre en **mode aide manuelle**. Plusieurs niveaux de
-fallback successifs :
+### À trancher
+- Granularité : opt-in global, ou par-scan (« partager cette photo ? ») ?
+- Quoi upload : la photo brute, le crop normalisé, ou les deux ?
+- Stockage : bucket dédié `user-harvest` (séparé de `enrichment-*`), provenance tracée (`source='user'`).
+- Confiance : une photo user-confirmée vaut-elle autant qu'un canonical ? (trust model — provenance).
 
-1. **Top-k visuel cloud** : "Voici 6 candidats, c'est laquelle ?"
-   Si l'user pointe → photo + label haute confiance.
-2. **Filtres rapides** : si l'user ne reconnaît pas dans le top-k,
-   on propose des filtres : pays ? valeur (1c, 2€…) ? commémo ou
-   standard ? L'user répond, on filtre le catalogue, on présente
-   une grille visuelle. L'user pointe.
-3. **Recherche libre** : l'user tape un mot-clé ("Kniefall",
-   "Allemagne 2020") → recherche dans le catalogue → grille → pointe.
-4. **Inconnu total** : l'user dit "je ne sais pas". Photo capturée
-   avec label `unknown`, métadonnées (pays détecté ? texte OCR
-   visible ?). File de **review admin** (cf.
-   [`human-review.md`](./human-review.md)).
+## Dépendances
+- **App Android shippée** avec le flux scan + coffre (phases `app-implem-phases/`).
+- **Proto-first** : scènes proto pour (1) l'écran d'identification manuelle, (2) le toggle settings opt-in.
+- Backend : endpoint d'ingestion user-harvest + intégration au pipeline training (provenance `user`).
 
-## Schéma de capture
-
-Chaque scan donne lieu à un enregistrement local sur le device,
-synchronisé vers `ml/state/user_harvest/` (ou table Supabase
-dédiée — à arbitrer au moment du câblage) :
-
-```json
-{
-  "scan_id": "uuid",
-  "device_id": "anonymous_hash",
-  "scanned_at": "2026-05-02T14:32:00Z",
-  "photo_path": "user_harvest/<uuid>.jpg",
-  "model_version": "lab/iterations/<iid>/...",
-  "topk_on_device": [
-    {"eurio_id": "de-2020-2eur-kniefall", "score": 0.42},
-    {"eurio_id": "de-2007-2eur-schwerin", "score": 0.38}
-  ],
-  "fallback_used": "cloud",
-  "topk_cloud": [...],
-  "user_decision": {
-    "kind": "confirmed" | "selected_from_topk" | "filtered" | "search" | "unknown",
-    "eurio_id": "de-2020-2eur-kniefall",
-    "confidence": "high" | "medium" | "unknown"
-  },
-  "needs_review": false
-}
-```
-
-Tous les scans (même cas A succès) sont conservés. L'analytique sur
-ce log permet de :
-
-- Identifier les pièces qui font régulièrement échouer le on-device
-  (cibler scraping ciblé sur ces pièces).
-- Mesurer le taux d'usage du fallback cloud (coût opérationnel).
-- Détecter les régressions (un scan auparavant cas A devient cas B
-  sur une nouvelle version).
-
-## UX — règles directrices
-
-- **Ne jamais bloquer l'user**. Si on ne sait pas, on aide à
-  trouver, on n'affiche pas un mur "désolé inconnu".
-- **Toujours présenter quelque chose à choisir**. Une grille de 6
-  candidats vaut mieux qu'un input texte vide.
-- **Ne pas demander à l'user d'annoter**. On ne fait pas une app
-  contributive façon Pl@ntNet. L'user veut identifier sa pièce, pas
-  contribuer à un dataset. Le harvest est un effet de bord
-  silencieux : "merci, c'est bien Kniefall, ajoutée à ton coffre".
-- **Anonymat**. Les photos sont liées à un device_id hashé, pas à
-  un compte. L'user peut purger son historique localement.
-- **Opt-out clair** : un toggle "aider Eurio à s'améliorer en
-  partageant tes scans anonymes" dans les settings. Default ON pour
-  l'instant (à valider RGPD).
-
-## Privacy & RGPD
-
-- Les photos sont des photos de **pièces de monnaie**, pas de
-  visages. Risque RGPD direct faible.
-- Mais : un scan peut accidentellement capturer un environnement
-  (table, main, document avec texte). Best practice :
-  - Crop automatique sur la pièce (déjà fait pour le matcher) avant
-    upload — on n'envoie que le cercle.
-  - Pas de géolocalisation captée.
-- Documenter clairement la politique dans la page settings.
-
-## Boucle d'apprentissage
-
-Photos collectées ⇒ ingestion lab périodique :
-
-1. Filtrage : ne garder que les scans avec `confidence ∈ {high,
-   medium}` ET `user_decision.kind ≠ unknown`.
-2. Pré-traitement : crop pièce, redimensionnement, dédup pHash
-   contre le training set existant.
-3. Auto-validateur (si possible) : passe par DINOv2 vs ancre
-   canonique, pour filtrer les cas où l'user a pointé la mauvaise
-   pièce dans le top-k cloud.
-4. Ingestion dans `ml/datasets/user_harvest/<eurio_id>/*.jpg`.
-5. Disponible pour la prochaine itération de cohort.
-
-Cadence : hebdo ou mensuelle selon volume. À industrialiser quand
-les premiers users tournent.
-
-## Hors-scope (rappel)
-
-- **Récompense user pour avoir confirmé** (gamification "tu as
-  ajouté 10 pièces, badge !"). Levier intéressant mais hors track
-  data.
-- **Modération communautaire** des photos contribuées. Pour
-  l'instant tout passe par l'admin (humain unique = toi).
-- **Sync multi-device** du harvest local. Pas pertinent au stade
-  v1.
-- **Réseau social autour des collectionneurs**. Hors mission de
-  l'app.
+## Pourquoi c'est fort
+Chaque photo user-confirmée est **gratuite, en condition réelle, et parfaitement labellisée** — exactement
+ce qui ferme le gap studio→wild que le scrap eBay attaque déjà par le volume. Les deux canaux se cumulent.

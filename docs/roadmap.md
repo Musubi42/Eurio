@@ -9,8 +9,14 @@
 >
 > **Dernière mise à jour** : 2026-05-28 (re-séquencement crop / découplage scrape↔crop)
 >
-> **Pour l'historique des phases ML/data antérieures** : voir `docs/phases/` et `docs/archive/`.
+> **Pour l'historique des phases ML/data antérieures** : voir `docs/archive/phases/` et `docs/archive/`.
 > **Pour la doc app Android** : voir `docs/app-implem-phases/`.
+>
+> ⚠️ **MAJ 2026-06-07** : la trajectoire J0→J7 ci-dessous reste valide (c'est l'arc ML stratégique).
+> Mais le **statut chantier-par-chantier vit désormais dans [`docs/work-in-progress/`](./work-in-progress/)**
+> (% réels mesurés doc↔code). **Objectif next-phase concret = finir les chantiers WIP** (beaucoup sont à
+> 80-95 %, souvent bloqués sur un geste humain). Plusieurs liens inline ci-dessous pointent vers des docs
+> depuis déplacés (`work-in-progress/` ou `archive/`) — l'archi à jour se lit via **graphify**.
 
 ---
 
@@ -307,15 +313,15 @@ Memories pertinentes : `project_crop_format_ablation`, `reference_crop_format_re
 
 ## Liens canoniques
 
-- **Roadmap stratégique 3 leviers** : `docs/features/README.md`
-- **Architecture globale** : `docs/ARCHITECTURE.md`
-- **Plan harmonisation data** : `docs/data-harmonization/plan.md`, `architecture.md`
-- **Pipeline training** : `docs/training-pipeline/`
+- **Stratégie produit (3 leviers)** : `docs/mission/` (l'ancien `docs/features/` est archivé)
+- **Architecture globale** : **graphify** (`graphify-out/GRAPH_REPORT.md`, `graphify query "…"`) — l'ancien `ARCHITECTURE.md` est supprimé
+- **Plan harmonisation data** : `docs/work-in-progress/data-harmonization/plan.md`, `architecture.md`
+- **Pipeline training** : `docs/work-in-progress/training-pipeline/`
 - **Détection scan (ML)** : `docs/research/detection-pipeline-unified.md`
-- **Cohort capture flow** : `docs/admin/cohort-capture-flow/`
-- **Dashboard spec** : `docs/operations/dashboard-j1.md`
+- **Cohort capture flow** : `docs/work-in-progress/cohort-capture-flow/`
+- **Dashboard spec** : `docs/archive/operations/dashboard-j1.md`
 - **App Android par phases** : `docs/app-implem-phases/README.md`
-- **Analyse J0 + référentiel** : `docs/operations/j0-gap-analysis.md`
+- **Analyse J0 + référentiel** : `docs/archive/operations/j0-gap-analysis.md`
 - **Trust model référentiel** : memory `project_trust_model_referential`
 - **Architecture stockage** : memory `feedback_architecture_eurio_db_vs_supabase`
 

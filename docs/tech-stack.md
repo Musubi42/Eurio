@@ -1,7 +1,11 @@
 # Tech Stack — Eurio
 
-> Document consolidé des choix technologiques.  
+> Document consolidé des choix technologiques.
 > Mis à jour après analyse comparative (avril 2026) — passage de React Native Expo à **Kotlin natif**.
+>
+> ⚠️ **Refresh 2026-06-07.** Deux évolutions majeures depuis la v1 :
+> 1. **Le modèle ML a pivoté** : MobileNetV3 + Triplet loss (échec) → **DINOv2 ViT-S/14 (foundation) + tête ArcFace**. Triplet loss abandonné. Voir `ml/foundation/encoder.py`.
+> 2. **Une couche ML dev locale existe** : `eurio.db` (SQLite, source de vérité du référentiel) + **API FastAPI `ml/`** (scrape, crop, training, review) + **MinIO** (images enrichies, write-through). Supabase reste la cible *app-facing* (projection read-only). Détail archi à jour : **graphify** (`graphify query "…"`, `graphify-out/GRAPH_REPORT.md`).
 
 ---
 
@@ -35,8 +39,8 @@ Ce n'est pas le focus du MVP. On construit Android d'abord, on porte ensuite.
 | **App mobile** | Kotlin + Jetpack Compose | Natif Android, performance optimale, UI moderne |
 | **Caméra** | CameraX (AndroidX) | API officielle Google, stable, gestion lifecycle automatique |
 | **ML on-device** | LiteRT 1.4.2 (ex-TFLite) | SDK natif Google, GPU/NNAPI delegates, 16KB-aligned, zéro overhead |
-| **Modèle ML** | MobileNetV3-Small fine-tuné, TFLite INT8 | ~2.5 MB, <5ms sur Pixel 9a, embedding extraction |
-| **Training ML** | PyTorch + pytorch-metric-learning | Triplet loss, hard mining, export TFLite via ai-edge-torch (litert-torch) |
+| **Modèle ML** | **DINOv2 ViT-S/14 (foundation) + tête ArcFace** fine-tunée, export TFLite | embedding discriminant ; DINOv2 sert aussi de gate is-coin + auto-validation scrap |
+| **Training ML** | PyTorch + ArcFace (sub-center) | ~~Triplet loss~~ abandonné. Augmentation bake-on-disk, export TFLite via ai-edge-torch (litert-torch) |
 | **Backend** | Supabase (PostgreSQL + Auth + Storage + Edge Functions) | Zéro infrastructure perso, free tier généreux |
 | **API prix** | eBay Browse API | Prix de marché réels, transactions datées |
 | **API catalogue** | Numista API | Référence du domaine numismatique euro |
@@ -104,11 +108,12 @@ app-android/
 │                                                         │
 └─────────────────────────────────────────────────────────┘
 
-┌─ TRAINING (local, hors app) ───────────────────────────┐
+┌─ TRAINING (local, hors app — API FastAPI ml/) ─────────┐
 │                                                         │
-│  Python + PyTorch + pytorch-metric-learning             │
-│  Dataset : Kaggle + photos perso + augmentation         │
-│  Triplet loss → MobileNetV3 feature extractor           │
+│  Python + PyTorch + ArcFace (sub-center)                │
+│  Dataset : Numista canonical augmenté ∪ wild scrap      │
+│            (eBay + BCE + LMDLP…), auto-validé DINOv2     │
+│  Backbone DINOv2 ViT-S/14 → tête ArcFace fine-tunée     │
 │  Export : PyTorch → TFLite via ai-edge-torch (litert-torch)            │
 │  Résultat : .tflite embarqué dans l'APK                │
 │                                                         │

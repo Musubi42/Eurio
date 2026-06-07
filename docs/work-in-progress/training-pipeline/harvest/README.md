@@ -1,112 +1,64 @@
-# Harvest pipeline — élargir le corpus de photos réelles
+# Harvest — acquérir des images réelles pour entraîner le scan
 
-> ⚠️ **STATUT PÉRIMÉ — vérifié doc↔code le 2026-06-07.** Le « aucun code livré »
-> ci-dessous est **faux** : la vision de ce track a été **largement exécutée** sous
-> d'autres noms. Réalité du code :
-> - **DINOv2 bring-up (phase 1)** ✅ → `ml/foundation/encoder.py` (dinov2_vits14)
-> - **Auto-validateur eBay (phase 2)** ✅ → `ml/foundation/auto_validate.py` + `thresholds.py` + `review_lanes.py`
-> - **Sources étendues (phase 3)** ✅ → `ml/sources/ebay/` (~80k) + `bce/` `lmdlp/` `jo/` `pricing/` ; cohorte `mix-zone-17` pilotée via `ml/sources/cohort_scope.py` + lab
-> - **Review humaine admin (phase 5)** ✅ → review_queue + **lot-review live** + `ml/foundation/claude_review.py`
-> - **User-harvest in-app (phase 4)** ❌ = **le seul vrai manque** (gated sur l'app Android : scan user → confirme/corrige → photo unique label sûr) + cloud fallback Numista (partiel)
->
-> **TODO : réécrire ce dossier pour refléter le code.** Le texte ci-dessous est la vision d'origine (2026-05-02), conservée pour le « pourquoi ».
->
-> ~~Statut : **planification, aucun code livré.**~~ Document écrit
-> 2026-05-02 après le constat tiré de la cohort `mix-zone-7-cls`
-> (test-2, R@1 strict 57% live) : **une seule photo studio Numista
-> + augmentation synthétique ne suffit pas** à entraîner un embedder
-> qui tient face aux photos in-the-wild.
+> **Réécrit 2026-06-07** (vérifié doc↔code). Ce track = **comment on nourrit le dataset
+> d'entraînement du scan** au-delà de l'unique photo studio Numista.
 
-## Pourquoi ce track existe
+## Le constat fondateur (toujours valide)
 
-L'app Eurio doit reconnaître des pièces euro à partir de scans
-utilisateur (lumière variable, angle approximatif, usure, doigts dans
-le cadre). Le pipeline actuel entraîne un ArcFace from-scratch sur :
+1 photo canonique Numista + augmentation synthétique **ne ferme pas** le gap studio→wild
+(test-2, R@1 strict 57 % live sur `mix-zone-7-cls`). Il faut des **vraies photos variées**
+par pièce — lumière changeante, angle approximatif, usure, doigts dans le cadre.
 
-- **1 photo canonique Numista** par pièce (qualité studio, propre)
-- **N variantes augmentées** (perspective, relighting, overlays patine)
+## Ce qui est DÉJÀ construit ✅ (la doc d'origine disait « aucun code livré » — c'était faux)
 
-Test-2 a confirmé empiriquement ce que la littérature laisse entendre
-(cf. brainstorm meta du 2026-05-02) : le gap studio→wild ne se ferme
-pas par augmentation seule. Les apps qui marchent en prod
-(Pl@ntNet, Numista search, Coinoscope) s'appuient sur un **corpus de
-photos réelles** plus ou moins curé. On ne possède pas physiquement
-les pièces, donc on doit aller chercher ces photos ailleurs.
+| Brique / canal | État | Code |
+|---|---|---|
+| Foundation **DINOv2 ViT-S/14** | ✅ | `ml/foundation/encoder.py` |
+| **Auto-validateur** (image + label proposé → auto-accept / review / reject) | ✅ | `ml/foundation/auto_validate.py`, `thresholds.py`, `review_lanes.py` |
+| **Scrap multi-source** (eBay massif + BCE + LMDLP + JO + pricing) | ✅ | `ml/sources/` (ebay ~80k) |
+| Pilotage **par cohorte** (mix-zone-17) | ✅ | `ml/sources/cohort_scope.py` + cockpit lab |
+| **Review humaine admin** (queue + lot-review + claude_review) | ✅ | `ml/api/review_queue_routes.py`, admin `features/review/` |
 
-## Trois sources de photos réelles à exploiter
+→ **Le scraping web (eBay en tête) est le canal principal et il tourne en prod.** Gros morceau livré.
+Le bottleneck restant côté scrap = couverture wild des 510 classes encore peu dotées (cf. `roadmap.md`).
 
-| Source | Description | Confiance label | Volume potentiel |
-|---|---|---|---|
-| **Scraping web** | eBay, maisons de vente, Wikimedia, Colnect, Numista user-uploads… | Variable, à valider | Élevé (centaines/coin sur les communes) |
-| **Fallback cloud** | Quand le modèle on-device hésite, l'app interroge un service cloud (notre infra ou tiers). Si l'user confirme, photo + label capturés. | Haute (user-validated) | Croissant avec les users |
-| **User scans in-app** | Quand le scan échoue côté on-device et côté cloud, on aide l'user à pointer la bonne pièce dans le catalogue (cf. [`user-harvest.md`](./user-harvest.md)). | Haute (user-validated) | Croissant |
+## Canaux d'acquisition à AJOUTER — le vrai reste-à-faire
 
-Les trois sont complémentaires. Le scraping débloque le cold-start
-(pas d'users → pas de données users), le user-harvest prend le relais
-quand l'app a une base d'utilisateurs.
+### A. User self-identification in-app + opt-in collecte — **priorité produit**
 
-## Le rôle pivot de DINOv2 (ou équivalent foundation)
+Quand le modèle **ne reconnaît pas** la pièce scannée (ou hésite) :
 
-Le track **DINOv2 backbone swap** (cf. brainstorm meta) et ce track
-harvest partagent une dépendance : **un foundation embedder
-généraliste capable de matcher photo wild ↔ photo canonique**.
+- **UI d'identification manuelle sympa** : on a **toutes les pièces 2 € en base** → l'utilisateur
+  choisit lui-même la bonne pièce via un affichage agréable et filtrable (par pays / année / thème,
+  vignettes canoniques, recherche). Interaction soignée, pas une liste austère.
+- **Donnée d'or produite** : le couple **(photo utilisateur, `eurio_id` confirmé par un humain)** =
+  label sûr, en condition réelle. C'est exactement ce qui manque au dataset.
+- **Opt-in explicite dans les Settings** : l'utilisateur **autorise** qu'on récupère ses photos de
+  scan pour entraîner les modèles et améliorer la précision. **Sans opt-in coché, rien n'est collecté.**
 
-- Côté **modèle on-device** : DINOv2 sert de backbone, fine-tuné avec
-  une tête ArcFace sur nos données.
-- Côté **harvest** : le même DINOv2 sert de **verifier** —
-  étant donné une photo scrapée et la photo canonique Numista de la
-  pièce visée, est-ce qu'on confirme que c'est bien la même pièce ?
-  (cf. [`auto-validator.md`](./auto-validator.md))
+Gated sur l'app Android shippée. **Proto-first** (R1 du CLAUDE.md) : la scène d'identification manuelle
++ l'écran settings opt-in doivent d'abord exister dans le proto `admin/packages/proto/`.
+→ Détail UX + flux données : **[`user-harvest.md`](./user-harvest.md)**.
 
-Conséquence : le premier investissement code utile est de **câbler
-DINOv2 en lab** (Python `ml/`, pas Android). Ça débloque les deux
-tracks en parallèle.
+### B. Numista API — fallback image → pièce (à explorer)
 
-## Lien avec les autres refactos
+Donner une **image** à l'API Numista et récupérer les **données de la pièce**. Double usage :
+1. **Fallback in-app au début** : tant que notre modèle n'est pas assez bon, on délègue l'identification
+   à Numista pour ne pas frustrer l'utilisateur.
+2. **Source de label** : une pièce identifiée par Numista = un label exploitable pour le dataset.
 
-| Doc | Relation |
-|---|---|
-| [`lab-prod-refacto/`](../../work-in-progress/lab-prod-refacto/) | Prérequis. Sans isolation par `iteration_id` (phase 2), un track DINOv2 / harvest expérimental polluerait la prod. |
-| [`refacto/`](../refacto/) (UX lab) | Orthogonal. Les tiroirs cohort/iteration affichent les nouvelles itérations sans modification. |
-| [`journal/`](../journal/) | Continue à tracker chaque itération, y compris les premières "DINOv2 + harvest" dès qu'elles tournent. |
+À explorer : **que retourne exactement l'API** (matching visuel ? juste métadonnées par ID ? quotas ?
+coût ?). → **[`numista-api-fallback.md`](./numista-api-fallback.md)**.
 
-## Phases
+## Phases d'origine (référence historique)
 
-| # | Titre | Périmètre | Bloque la suite ? | Statut |
-|---|---|---|---|---|
-| 1 | [DINOv2 en lab](./phase-1-dinov2-bring-up.md) | Câbler DINOv2 (or alt) en Python, embedder utilitaire, premier bench sur cohort existante | Oui — verifier et backbone en dépendent | 🔲 |
-| 2 | [Auto-validateur sur eBay (commémo only)](./auto-validator.md) | Pipeline texte+image, seuils calibrés, review queue minimale | Non, mais débloque le scraping massif | 🔲 |
-| 3 | [Sources étendues](./sources.md) | Catawiki, Colnect, Wikimedia, Numista user-uploads | Non | 🔲 |
-| 4 | [User harvest in-app](./user-harvest.md) | Flow cold-start côté Android, capture photo+label, ingestion lab | Non, dépend du nouvel on-device shippé | 🔲 |
-| 5 | [Review humaine admin](./human-review.md) | UI batch dans `admin/web`, raccourcis clavier, exports | Non, support des phases 2+4 | 🔲 |
+`phase-1-dinov2-bring-up.md`, `auto-validator.md`, `sources.md`, `human-review.md` décrivent la vision
+d'origine (2026-05-02). **L'essentiel est BÂTI** (cf. table « déjà construit »). `user-harvest.md` = le
+canal A ci-dessus, mis à jour. Ces docs phase restent pour le « pourquoi » et les seuils détaillés.
 
-> Phase 1 est **bloquante** pour le track DINOv2 ET pour le
-> verifier. C'est l'investissement le plus rentable à court terme.
+## Pourquoi ce track existe (conservé)
 
-## Hors-scope explicite
-
-- **Choix définitif du foundation model** (DINOv2 vs SigLIP vs CLIP
-  vs autres). À trancher en phase 1 selon perf mesurée sur notre
-  cohort existante. Le doc parle de "DINOv2" par raccourci.
-- **Achat de pièces physiques** pour shooter nos propres photos
-  studio multi-angle. Levier valide mais hors de ce track.
-- **Distillation du foundation model en mobile-friendly** pour
-  embarquer DINOv2 directement sur Android. C'est un sous-projet du
-  track on-device, pas du harvest.
-- **Marketplace / API payante** (CoinArchives, Numista API search).
-  Listées en référence dans [`sources.md`](./sources.md) mais pas
-  attaquées en premier.
-
-## Workflow agent
-
-Un agent qui démarre une phase doit :
-
-1. Lire ce README en entier.
-2. Lire la phase qu'il implémente.
-3. Lire le doc connexe (`auto-validator.md`, `sources.md`, etc.) si
-   la phase y touche.
-4. Valider avec l'utilisateur que la cohort/dataset cible est OK
-   avant de toucher aux artefacts.
-5. À la fin de la session, append une entrée datée dans
-   `progress.md` (à créer si absent) ou dans le journal d'itération
-   correspondant.
+L'app doit reconnaître des pièces à partir de scans utilisateur en conditions réelles. Le pipeline
+entraîne un embedder (DINOv2 + ArcFace) ; la littérature et test-2 confirment que le gap studio→wild
+ne se ferme pas par augmentation synthétique seule. Les apps qui marchent en prod s'appuient sur du
+**corpus réel** — d'où ces canaux d'acquisition (scrap, user, Numista).
