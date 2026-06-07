@@ -15,6 +15,7 @@ Eurio/
 ├── app-android/                  # App Kotlin/Compose (Material 3)
 ├── admin/                        # pnpm workspace
 │   ├── packages/web/             # Console Vue/Vite → déployé sur Vercel (coins, sets, audit)
+│   ├── packages/proto/           # Prototype design = Vue+Pinia PWA (SOURCE DE VÉRITÉ du design)
 │   └── packages/parity/          # Tooling QA local-only (Playwright, Maestro flows, screenshots)
 ├── ml/                           # Python standalone : FastAPI, entraînement, fetch (Numista/Wiki/eBay)
 ├── supabase/                     # Migrations SQL + types générés
@@ -23,8 +24,7 @@ Eurio/
 ├── docs/
 │   ├── app-implem-phases/        # Plan des 6 phases d'implémentation Android
 │   ├── design/                   # Design docs
-│   │   ├── _shared/              # parity-rules, components-parity, scene-parity, data-contracts, etc.
-│   │   └── prototype/            # Prototype HTML/CSS/JS (source de vérité du design)
+│   │   └── _shared/              # parity-rules, components-parity, scene-parity, data-contracts, etc.
 │   └── research/                 # Recherche et décisions techniques
 └── Taskfile.yml                  # Point d'entrée des commandes (go-task)
 ```
@@ -43,7 +43,7 @@ Jamais de shortcut qui crée de la dette. Construire proprement depuis le POC. S
 
 ### R1. Proto-first design (STRICT)
 
-**Tout nouveau design doit d'abord exister dans le prototype HTML** (`docs/design/prototype/`) avant d'être implémenté en Compose Android.
+**Tout nouveau design doit d'abord exister dans le prototype** (`admin/packages/proto/`, Vue+Pinia PWA — source de vérité du design) avant d'être implémenté en Compose Android. _(L'ancien proto HTML `docs/design/prototype/` est archivé sous `docs/archive/design/prototype/`.)_
 
 - Cela inclut : nouvelles scènes, nouveaux composants visuels, nouveaux layouts, nouveaux états (empty/loading/error).
 - Cela n'inclut pas : adaptations techniques Android (back gesture, permission dialog), ni les deltas systémiques documentés dans `docs/design/_shared/parity-rules.md` §R6.

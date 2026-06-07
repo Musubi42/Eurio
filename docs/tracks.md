@@ -10,7 +10,7 @@
 > chaque track et le `journal/` des itérations.
 >
 > **Vision stratégique segmentée par feature** :
-> [`features/`](./features/) (scrape, augmentation, model). Les
+> [`features/`](./archive/features/) (scrape, augmentation, model). Les
 > tracks ci-dessous sont les chantiers d'infrastructure qui
 > supportent ces features.
 

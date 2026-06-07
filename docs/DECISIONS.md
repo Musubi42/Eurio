@@ -13,12 +13,12 @@
 | Type | Source | Quand mettre à jour |
 |---|---|---|
 | **ADRs techniques** | [`docs/adr/`](./adr/) | Un fichier numéroté `00X-*.md` par décision majeure. Format : Contexte / Décision / Conséquences. |
-| **Décisions design prototype** | [`docs/design/prototype/_shared/DECISIONS.md`](./design/prototype/_shared/DECISIONS.md) | Liste numérotée §1→§N, format Contexte / Alternatives / Choix / Raison. Étendue au fil des phases. |
+| **Décisions design prototype** | [`docs/archive/design/prototype/_shared/DECISIONS.md`](./archive/design/prototype/_shared/DECISIONS.md) | Liste numérotée §1→§N, format Contexte / Alternatives / Choix / Raison. Étendue au fil des phases. |
 | **Architecture transverse (offline/auth/data/debug)** | [`docs/design/_shared/`](./design/_shared/) | Un fichier par thème. Contient décisions + questions ouvertes thématiques. |
 | **Décisions par vue** | `docs/design/{vue}/README.md` | Tableau "Décision / Contexte" spécifique à une vue. |
 | **ADRs ML historiques** | Mémoire Claude `project_phase1_decisions.md` | Expérimentations ML, pivots (triplet → ArcFace). |
-| **Questions ouvertes prototype** | [`docs/design/prototype/OPEN-QUESTIONS.md`](./design/prototype/OPEN-QUESTIONS.md) | Priorisées P0/P1/P2, relues par milestone. |
-| **Changelog prototype** | [`docs/design/prototype/CHANGELOG.md`](./design/prototype/CHANGELOG.md) | Log technique des changements du proto. |
+| **Questions ouvertes prototype** | [`docs/archive/design/prototype/OPEN-QUESTIONS.md`](./archive/design/prototype/OPEN-QUESTIONS.md) | Priorisées P0/P1/P2, relues par milestone. |
+| **Changelog prototype** | [`docs/archive/design/prototype/CHANGELOG.md`](./archive/design/prototype/CHANGELOG.md) | Log technique des changements du proto. |
 | **État du projet** | [`docs/roadmap.md`](./roadmap.md) | Photo instantanée fait/en-cours/à-faire. |
 | **Vue d'ensemble archi** | [`docs/ARCHITECTURE.md`](./ARCHITECTURE.md) | Overview 15 min, mise à jour par milestone. |
 | **Mémoire Claude persistante** | `~/.claude/projects/-Users-musubi42-Documents-Musubi42-Eurio/memory/MEMORY.md` | Préférences, contraintes, rappels cross-session. |
@@ -123,12 +123,12 @@
 
 | Statut | Décision | Date | Source |
 |---|---|---|---|
-| 🟢 | **Site admin séparé** pour gérer sets et référentiel éditorial. Pas une app mobile, un web app dédié. Scope : CRUD sets, constructeur visuel, live preview, publish, audit | 2026-04-15 | [`design/admin/README.md`](./design/admin/README.md) |
-| 🟢 | **Stack admin = Vue 3 + shadcn-vue + TailwindCSS + Supabase + Vercel**. Repo séparé `eurio-admin`, déploiement indépendant | 2026-04-15 | [`design/admin/README.md`](./design/admin/README.md) §5 |
-| 🟢 | **Domaine `admin.eurio.app`** (sous-domaine dédié) | 2026-04-15 | [`design/admin/README.md`](./design/admin/README.md) §7.1 |
-| 🟢 | **Auth v1 admin = Supabase magic link**, un seul admin, custom claim `role='admin'`, RLS par rôle | 2026-04-15 | [`design/admin/README.md`](./design/admin/README.md) §6 |
-| 🟢 | **Développement différé post-launch v1 app**. Priorité au core loop mobile, admin est un outil de croissance | 2026-04-15 | [`design/admin/README.md`](./design/admin/README.md) §10 |
-| 🟢 | Gestion des `coins` reste côté `ml/` Python (bootstrap scripts), admin en lecture seule dessus | 2026-04-15 | [`design/admin/README.md`](./design/admin/README.md) §3.2 |
+| 🟢 | **Site admin séparé** pour gérer sets et référentiel éditorial. Pas une app mobile, un web app dédié. Scope : CRUD sets, constructeur visuel, live preview, publish, audit | 2026-04-15 | [`design/admin/README.md`](./archive/design/admin/README.md) |
+| 🟢 | **Stack admin = Vue 3 + shadcn-vue + TailwindCSS + Supabase + Vercel**. Repo séparé `eurio-admin`, déploiement indépendant | 2026-04-15 | [`design/admin/README.md`](./archive/design/admin/README.md) §5 |
+| 🟢 | **Domaine `admin.eurio.app`** (sous-domaine dédié) | 2026-04-15 | [`design/admin/README.md`](./archive/design/admin/README.md) §7.1 |
+| 🟢 | **Auth v1 admin = Supabase magic link**, un seul admin, custom claim `role='admin'`, RLS par rôle | 2026-04-15 | [`design/admin/README.md`](./archive/design/admin/README.md) §6 |
+| 🟢 | **Développement différé post-launch v1 app**. Priorité au core loop mobile, admin est un outil de croissance | 2026-04-15 | [`design/admin/README.md`](./archive/design/admin/README.md) §10 |
+| 🟢 | Gestion des `coins` reste côté `ml/` Python (bootstrap scripts), admin en lecture seule dessus | 2026-04-15 | [`design/admin/README.md`](./archive/design/admin/README.md) §3.2 |
 
 ---
 
@@ -136,15 +136,15 @@
 
 | Statut | Décision | Date | Source |
 |---|---|---|---|
-| 🟢 | **Fraunces italic** = display serif officiel (numismatique / museum) | 2026-04-14 | [`design/prototype/_shared/DECISIONS.md`](./design/prototype/_shared/DECISIONS.md) §1 |
-| 🟢 | **Inter Tight** = typo UI, **JetBrains Mono** = mono (tabular nums, technique, debug) | 2026-04-13 | [`design/prototype/_shared/DECISIONS.md`](./design/prototype/_shared/DECISIONS.md) |
-| 🟢 | Palette primary = **indigo deep `#1A1B4B`** (`--indigo-700`) évoquant drapeau européen | 2026-04-14 | [`design/prototype/_shared/tokens.css`](./design/prototype/_shared/tokens.css) |
-| 🟢 | Accent = **or brossé `#C8A864`** (`--gold`), **parcimonieux** (réservé aux "moments" : set complete, médaille, P50 médiane, delta positif) | 2026-04-13 | [`design/prototype/_shared/DECISIONS.md`](./design/prototype/_shared/DECISIONS.md) |
+| 🟢 | **Fraunces italic** = display serif officiel (numismatique / museum) | 2026-04-14 | [`design/prototype/_shared/DECISIONS.md`](./archive/design/prototype/_shared/DECISIONS.md) §1 |
+| 🟢 | **Inter Tight** = typo UI, **JetBrains Mono** = mono (tabular nums, technique, debug) | 2026-04-13 | [`design/prototype/_shared/DECISIONS.md`](./archive/design/prototype/_shared/DECISIONS.md) |
+| 🟢 | Palette primary = **indigo deep `#1A1B4B`** (`--indigo-700`) évoquant drapeau européen | 2026-04-14 | [`design/prototype/_shared/tokens.css`](./archive/design/prototype/_shared/tokens.css) |
+| 🟢 | Accent = **or brossé `#C8A864`** (`--gold`), **parcimonieux** (réservé aux "moments" : set complete, médaille, P50 médiane, delta positif) | 2026-04-13 | [`design/prototype/_shared/DECISIONS.md`](./archive/design/prototype/_shared/DECISIONS.md) |
 | 🟢 | Surface warm `#FAFAF8` / paper `#F4F1E8` (pas blanc SaaS) — feel musée | 2026-04-14 | Convergence des 5 agents Phase 2 initiaux |
-| 🟢 | Radius 12px default / 8px petits / 24px sheets+cards / 999px pills | 2026-04-14 | [`design/prototype/_shared/tokens.css`](./design/prototype/_shared/tokens.css) |
-| 🟢 | Spacing scale 4/8/12/16/24/32/48 | 2026-04-14 | [`design/prototype/_shared/tokens.css`](./design/prototype/_shared/tokens.css) |
+| 🟢 | Radius 12px default / 8px petits / 24px sheets+cards / 999px pills | 2026-04-14 | [`design/prototype/_shared/tokens.css`](./archive/design/prototype/_shared/tokens.css) |
+| 🟢 | Spacing scale 4/8/12/16/24/32/48 | 2026-04-14 | [`design/prototype/_shared/tokens.css`](./archive/design/prototype/_shared/tokens.css) |
 | 🟢 | `font-variant-numeric: tabular-nums` partout pour les valeurs monétaires | 2026-04-14 | Convergence Phase 2 |
-| 🟢 | ~Instrument Serif dans l'agent scan~ → banni en Phase 3 | 2026-04-14 | [`design/prototype/_shared/DECISIONS.md`](./design/prototype/_shared/DECISIONS.md) |
+| 🟢 | ~Instrument Serif dans l'agent scan~ → banni en Phase 3 | 2026-04-14 | [`design/prototype/_shared/DECISIONS.md`](./archive/design/prototype/_shared/DECISIONS.md) |
 | 🟢 | Esthétique cible = **"cabinet du collectionneur" / museum card** (grain overlay, hairlines, numérotation section cartel) — jamais gamification kitsch américaine | 2026-04-13 | [`design/onboarding/mockups/DESIGN-NOTES.md`](./design/onboarding/mockups/DESIGN-NOTES.md) + convergence |
 
 ---
@@ -153,18 +153,18 @@
 
 | Statut | Décision | Date | Source |
 |---|---|---|---|
-| 🟢 | Niveau 3 : prototype navigable complet (shell + router + state + vraie data JSON), servable `python3 -m http.server` + ngrok-friendly | 2026-04-14 | [`design/prototype/README.md`](./design/prototype/README.md) |
-| 🟢 | **Vanilla** : pas de framework, pas de build, pas de npm, pas de TypeScript — HTML + CSS + ES modules | 2026-04-14 | [`design/prototype/_shared/DECISIONS.md`](./design/prototype/_shared/DECISIONS.md) |
-| 🟢 | Router **hash-based** (`#/path`), pas history API (http.server ne peut pas rewrite) | 2026-04-14 | [`design/prototype/_shared/DECISIONS.md`](./design/prototype/_shared/DECISIONS.md) |
-| 🟢 | Scenes = **fragments HTML** injectés dans `#view`, sidecar optionnel `scenes/xxx.js` exporte `mount({params, query, state, data, navigate})` | 2026-04-14 | [`design/prototype/_shared/router.js`](./design/prototype/_shared/router.js) |
-| 🟢 | Vraies données = fetch `ml/datasets/eurio_referential.json` (2938 coins) une fois, en mémoire. **Pas d'images réelles**, SVG placeholders paramétrés par métadonnées | 2026-04-14 | [`design/prototype/_shared/data.js`](./design/prototype/_shared/data.js) |
-| 🟢 | Persistence = localStorage sous clé unique `eurio.proto.v1`, reset via `#/debug/reset` | 2026-04-14 | [`design/prototype/_shared/state.js`](./design/prototype/_shared/state.js) |
-| 🟢 | Collection seed **vide** au premier run (pas de fake data) → vraie expérience first-run. Seed démo via `#/debug/seed-demo` ou bouton settings | 2026-04-14 | [`design/prototype/_shared/state.js`](./design/prototype/_shared/state.js) |
-| 🟢 | Responsive : device frame 390×844 sur desktop, plein viewport ≤ 500px | 2026-04-14 | [`design/prototype/_shared/shell.css`](./design/prototype/_shared/shell.css) |
-| 🟢 | Chrome contract = `data-chrome="light|dark|none"` porté par le route config, géré par `shell.css`. `none` cache statusbar/nav/home/badge pour les scenes full-bleed (onboarding, unlock). | Phase 3 | [`design/prototype/CHANGELOG.md`](./design/prototype/CHANGELOG.md) |
-| 🟢 | **Tokens only dans les scenes** : zéro hex hardcodé, zéro `font-family` inline. Enforced via `grep` en acceptance test. | 2026-04-14 | [`design/prototype/_shared/DECISIONS.md`](./design/prototype/_shared/DECISIONS.md) |
-| 🟢 | Dark mode reporté v2 : picker settings désactivé avec pill "Bientôt · v2" | Phase 3 | [`design/prototype/CHANGELOG.md`](./design/prototype/CHANGELOG.md) |
-| 🟢 | Auto-unlock celebration : `addCoin()` → `checkSetCompletions()` → `pendingUnlock` → profile.js auto-navigate vers `/profile/unlock?setId=X` une seule fois | Phase 3 | [`design/prototype/_shared/state.js`](./design/prototype/_shared/state.js) |
+| 🟢 | Niveau 3 : prototype navigable complet (shell + router + state + vraie data JSON), servable `python3 -m http.server` + ngrok-friendly | 2026-04-14 | [`design/prototype/README.md`](./archive/design/prototype/README.md) |
+| 🟢 | **Vanilla** : pas de framework, pas de build, pas de npm, pas de TypeScript — HTML + CSS + ES modules | 2026-04-14 | [`design/prototype/_shared/DECISIONS.md`](./archive/design/prototype/_shared/DECISIONS.md) |
+| 🟢 | Router **hash-based** (`#/path`), pas history API (http.server ne peut pas rewrite) | 2026-04-14 | [`design/prototype/_shared/DECISIONS.md`](./archive/design/prototype/_shared/DECISIONS.md) |
+| 🟢 | Scenes = **fragments HTML** injectés dans `#view`, sidecar optionnel `scenes/xxx.js` exporte `mount({params, query, state, data, navigate})` | 2026-04-14 | [`design/prototype/_shared/router.js`](./archive/design/prototype/_shared/router.js) |
+| 🟢 | Vraies données = fetch `ml/datasets/eurio_referential.json` (2938 coins) une fois, en mémoire. **Pas d'images réelles**, SVG placeholders paramétrés par métadonnées | 2026-04-14 | [`design/prototype/_shared/data.js`](./archive/design/prototype/_shared/data.js) |
+| 🟢 | Persistence = localStorage sous clé unique `eurio.proto.v1`, reset via `#/debug/reset` | 2026-04-14 | [`design/prototype/_shared/state.js`](./archive/design/prototype/_shared/state.js) |
+| 🟢 | Collection seed **vide** au premier run (pas de fake data) → vraie expérience first-run. Seed démo via `#/debug/seed-demo` ou bouton settings | 2026-04-14 | [`design/prototype/_shared/state.js`](./archive/design/prototype/_shared/state.js) |
+| 🟢 | Responsive : device frame 390×844 sur desktop, plein viewport ≤ 500px | 2026-04-14 | [`design/prototype/_shared/shell.css`](./archive/design/prototype/_shared/shell.css) |
+| 🟢 | Chrome contract = `data-chrome="light|dark|none"` porté par le route config, géré par `shell.css`. `none` cache statusbar/nav/home/badge pour les scenes full-bleed (onboarding, unlock). | Phase 3 | [`design/prototype/CHANGELOG.md`](./archive/design/prototype/CHANGELOG.md) |
+| 🟢 | **Tokens only dans les scenes** : zéro hex hardcodé, zéro `font-family` inline. Enforced via `grep` en acceptance test. | 2026-04-14 | [`design/prototype/_shared/DECISIONS.md`](./archive/design/prototype/_shared/DECISIONS.md) |
+| 🟢 | Dark mode reporté v2 : picker settings désactivé avec pill "Bientôt · v2" | Phase 3 | [`design/prototype/CHANGELOG.md`](./archive/design/prototype/CHANGELOG.md) |
+| 🟢 | Auto-unlock celebration : `addCoin()` → `checkSetCompletions()` → `pendingUnlock` → profile.js auto-navigate vers `/profile/unlock?setId=X` une seule fois | Phase 3 | [`design/prototype/_shared/state.js`](./archive/design/prototype/_shared/state.js) |
 
 ---
 
@@ -186,7 +186,7 @@
 
 - **Chercher une décision** → `Cmd+F` sur ce fichier. Les catégories sont stables.
 - **Prendre une nouvelle décision** → ajouter une ligne dans la bonne catégorie avec statut 🟢, date, description courte, lien vers la source détaillée. Si la décision remplace une précédente, marquer l'ancienne ⚪️ avec un renvoi.
-- **Questionner une décision existante** → passer en 🔴, ajouter une note dans [`design/prototype/OPEN-QUESTIONS.md`](./design/prototype/OPEN-QUESTIONS.md) si c'est lié au proto, ou créer une ADR dans `docs/adr/` si c'est technique et mérite un débat formel.
+- **Questionner une décision existante** → passer en 🔴, ajouter une note dans [`design/prototype/OPEN-QUESTIONS.md`](./archive/design/prototype/OPEN-QUESTIONS.md) si c'est lié au proto, ou créer une ADR dans `docs/adr/` si c'est technique et mérite un débat formel.
 - **Consolider un thème** → créer un doc dans `docs/design/_shared/` ou un ADR, puis pointer dessus depuis ici.
 
 **Principe** : ce fichier **indexe** mais ne **duplique pas**. Si une décision a un doc détaillé, on pointe dessus. Si c'est une décision one-liner, on la garde ici.
@@ -198,5 +198,5 @@
 - [`docs/roadmap.md`](./roadmap.md) — photo instantanée fait / en cours / à faire
 - [`docs/ARCHITECTURE.md`](./ARCHITECTURE.md) — overview 15 min de l'archi complète
 - [`docs/adr/`](./adr/) — ADRs techniques numérotées
-- [`docs/design/prototype/OPEN-QUESTIONS.md`](./design/prototype/OPEN-QUESTIONS.md) — questions non tranchées
-- [`docs/design/prototype/CHANGELOG.md`](./design/prototype/CHANGELOG.md) — historique technique du proto
+- [`docs/archive/design/prototype/OPEN-QUESTIONS.md`](./archive/design/prototype/OPEN-QUESTIONS.md) — questions non tranchées
+- [`docs/archive/design/prototype/CHANGELOG.md`](./archive/design/prototype/CHANGELOG.md) — historique technique du proto

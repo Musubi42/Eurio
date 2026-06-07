@@ -39,4 +39,4 @@ memories `project_data_referential` / `project_trust_model_referential` / `proje
 
 - Tracker legacy ML/scan (J0→J7) : [`../roadmap.md`](../roadmap.md) — détail de la mission Scan.
 - Phases app Android : [`../app-implem-phases/`](../app-implem-phases/) — détail de la mission App.
-- Vision reconnaissance (scrape/augmentation/model) : [`../features/`](../features/).
+- Vision reconnaissance (scrape/augmentation/model) : [`../features/`](../archive/features/).
