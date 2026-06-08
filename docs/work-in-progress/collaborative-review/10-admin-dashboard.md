@@ -1,9 +1,15 @@
-# 10 — Régie review depuis le dashboard admin (suite du 09)
+# 10 — Régie review : front admin auto-hébergé sur le VPS
 
-> Statut : **intention produit**, à implémenter après le 09 (déploiement VPS
-> OK). Le service review tourne, on a un CLI `manage` ; on veut maintenant
-> piloter tout ça depuis la console admin Vue plutôt que d'aller `docker
-> compose exec` à chaque fois.
+> Statut : **conception figée**, prête à implémenter après le 09 (déploiement
+> VPS OK). Le service review tourne, on a un CLI `manage` ; on veut maintenant
+> piloter la gestion des reviewers depuis une vraie page web plutôt que d'aller
+> `docker compose exec` à chaque fois.
+>
+> **Décision d'architecture (2026-06-08) : Option B — front admin auto-hébergé
+> sur le VPS.** La régie ne vit PAS dans la console Vue Vercel
+> (`admin/packages/web`). Elle est servie par `review_service` lui-même, sur
+> `eurio-review.musubi.dev/admin`, gated par `REVIEW_ADMIN_TOKEN`. Voir
+> « Pourquoi cette topologie » plus bas.
 
 ## Pourquoi
 
@@ -14,109 +20,187 @@ Aujourd'hui, pour ajouter un ami reviewer :
 
 C'est friable, et surtout je veux **aussi** voir d'un coup d'œil qui review,
 combien, à quel rythme, et pouvoir moi-même rentrer dans une session review
-en un clic depuis l'admin. Le CLI reste utile (bootstrap, debug), mais la
-régie quotidienne doit vivre dans `admin/packages/web`.
+en un clic. Le CLI reste utile (bootstrap, disaster-recovery), mais la régie
+quotidienne doit vivre dans une page web.
 
-## Surface fonctionnelle visée
+## Pourquoi cette topologie (Option B)
 
-Une page admin `/review/reviewers` (à câbler dans la nav existante) avec :
+Trois machines sont dans le jeu :
+
+```
+Mac (moi)              Vercel                    VPS
+─────────              ──────                    ───
+admin/packages/web  →  (déployé statique)        review_service + review.db
+ml API (local)         PAS de secret ici         /admin/* gated X-Admin-Token
+secrets/dev.env                                  eurio-review.musubi.dev
+(REVIEW_ADMIN_TOKEN)
+```
+
+Le secret `REVIEW_ADMIN_TOKEN` protège les routes `/admin/*`. Il ne doit
+**jamais** finir dans un bundle front public (Vercel), sinon n'importe qui le
+lit dans les sources du navigateur. Trois designs étaient possibles :
+
+- **A — relais par l'API ml locale (Mac)** : page dans la console Vue, tape
+  l'API ml locale qui détient le secret et relaie. Marche seulement quand le
+  Mac tourne.
+- **B — front admin auto-hébergé sur le VPS** *(retenu)* : `review_service`
+  sert lui-même une page `/admin`, gated par le token tapé une fois. Autonome,
+  toujours disponible, aucun relais, aucun secret côté front.
+- **C — proxy serverless Vercel** : met le secret review dans Vercel et ajoute
+  de l'infra qu'on n'a nulle part ailleurs.
+
+**B est retenu** parce que la régie devient toujours disponible (créer une
+invite depuis le téléphone un dimanche sans allumer le Mac), self-contained, et
+sans exposition de secret : la page `/admin` est du HTML inerte qui demande le
+token au chargement ; sans token valide, tous les `/admin/*` répondent 401.
+
+## Forme cible
+
+```
+eurio-review.musubi.dev/          → front reviewer (existant, ?u=<token>)
+eurio-review.musubi.dev/admin     → NOUVEAU front régie, gated REVIEW_ADMIN_TOKEN
+```
+
+`review_service` sert déjà son front reviewer statique sur `/` (mount avec
+`html=True`). On ajoute un **second build** monté sur `/admin`, **avant** le
+catch-all `/` dans `app.py` (ordre Starlette : sinon la SPA reviewer avale
+`/admin`).
+
+### Structure de code
+
+- **Nouveau package** `admin/packages/review-admin/` (Vue 3 + Vite, même stack
+  que `admin/packages/review`). Auth admin séparée proprement de l'auth
+  reviewer — pas de route bricolée dans le front reviewer existant.
+- Le `Dockerfile` (`infra/review/Dockerfile`) build les **deux** fronts ;
+  l'entrypoint / `app.py` sert les deux dist (`/` et `/admin`).
+- `VITE_REVIEW_API` du front régie pointe sur la même origine (`''` en prod
+  puisque servi par le même service ; `http://localhost:8048` en dev).
+
+### Login `/admin`
+
+- Au chargement, si pas de token en `localStorage` → écran « colle ton
+  `REVIEW_ADMIN_TOKEN` ».
+- Token stocké en `localStorage`, envoyé en header `X-Admin-Token` sur chaque
+  appel `/admin/*`. Un 401 vide le localStorage et re-demande.
+- **Pas de couche supplémentaire** (pas de BasicAuth Traefik) : le token *est*
+  déjà le secret, et je suis seul admin. Suffisant.
+
+## Surface fonctionnelle
 
 ### a) Émettre un nouveau code
 
 Formulaire :
 - champ **Nom** (libre, ex. « Paolo »),
-- champ **Code** (par défaut auto-généré court & mémorable type
-  `Paolo42` / `mathis-coins-7q` ; éditable manuellement),
-- bouton **Créer** → POST `/admin/reviewers` sur `review_service`,
-- une fois créé, afficher en grand l'**URL complète prête à partager** avec
-  bouton **Copier** :
+- champ **Code** (auto-généré court & mémorable type `Paolo42` /
+  `mathis-coins-7q` ; éditable manuellement),
+- bouton **Créer** → `POST /admin/reviewers {token, name}`.
 
-  ```
-  https://eurio-review.musubi.dev/?u=Paolo42
-  ```
+`POST` **rejette un code déjà pris** (le token est PK) → message clair, pas de
+silent overwrite.
 
-  Idéalement aussi un bouton **Partager via WhatsApp** (lien
-  `https://wa.me/?text=…` URL-encodé) pour envoyer en un tap depuis le tel.
+Une fois créé, afficher en grand l'**URL complète prête à partager** + bouton
+**Copier** + bouton **Partager via WhatsApp** (`https://wa.me/?text=…`
+URL-encodé) :
 
-> Le query param `?u=<code>` est **déjà supporté** par le front review (la
+```
+https://eurio-review.musubi.dev/?u=Paolo42
+```
+
+> Le query param `?u=<code>` est **déjà supporté** par le front reviewer (la
 > modale code n'apparaît que si le param est absent ou invalide) — rien à
-> changer côté front review.
+> changer côté front reviewer.
 
 ### b) Voir qui review et combien
 
-Tableau des reviewers avec, par ligne :
-- Nom, code (masqué style `Pao•••42`, hover/clic = révéler + copier),
-- **Reviews totales** (compte des décisions enregistrées),
+Tableau des reviewers, une ligne par reviewer :
+- Nom, code masqué style `Pao•••42` (clic = révéler + copier),
+- **Reviews totales** (compte `decisions`),
 - **Reviews 7 derniers jours** (cadence),
-- **Dernière activité** (timestamp relatif : "il y a 3h"),
-- **Items en cours de lease** par ce reviewer (ceux claim mais pas encore
-  décidés — utile pour détecter un ami qui a abandonné un batch).
+- **Dernière activité** (timestamp relatif : « il y a 3 h », depuis
+  `reviewers.last_seen_at`),
+- **Items en cours de lease** (`review_items` `status='claimed'` &
+  `claimed_by = token`) — pour repérer un ami qui a abandonné un batch,
+- bouton **Révoquer** / **Réactiver**.
 
-Trier par défaut sur "dernière activité" desc — les actifs en haut, les
-fantômes en bas.
+Tri par défaut sur « dernière activité » desc — actifs en haut, fantômes en
+bas. Tout vient d'un seul `GET /admin/reviewers` qui agrège `review.db`.
+
+**Révocation = soft-delete** (`is_active=0`), **jamais** hard-delete : les
+`decisions` référencent `reviewer_token` en FK. Un reviewer révoqué ne peut
+plus se logger ; il reste réactivable (`is_active=1`) depuis le tableau.
 
 ### c) Vue agrégée du flux
 
-Un petit bloc en haut de page :
-- nombre d'items **en attente de review** (claim_window plein vs vide),
-- nombre d'items **reviewés mais pas encore reconcile** (= en attente d'un
-  `go-task ml:review:reconcile` côté Mac),
+Bloc en haut de page :
+- nombre d'items **en attente de review** (`review_items` `status IN
+  ('open','claimed')`),
+- nombre d'items **reviewés mais pas encore reconcile** (`decisions`
+  `reconciled_at IS NULL`) = en attente d'un `go-task ml:review:reconcile`
+  côté Mac,
 - date du dernier `publish` et du dernier `reconcile`.
 
-Ça me dit en un coup d'œil "j'ai besoin de relancer un publish" ou "j'ai du
-travail d'arbitration côté Mac".
+> `last_publish_at` / `last_reconcile_at` n'existent nulle part aujourd'hui.
+> Ajouter une mini-table `meta (key TEXT PRIMARY KEY, value TEXT)` dans
+> `review.db`, tamponnée par les endpoints `/admin/publish` et
+> `/admin/decisions/ack` quand le Mac les appelle. C'est le seul morceau qui
+> touche le chemin publish/reconcile existant.
 
 ### d) Entrer en mode reviewer depuis l'admin
 
-Bouton **Reviewer moi-même → ouvre `https://eurio-review.musubi.dev/?u=<mon-code>`**
-dans un nouvel onglet. Pour ça, me créer un reviewer dédié (ex. `raph`)
-au bootstrap, et stocker mon code dans l'admin (ou dans `localStorage` du
-navigateur — peu importe, c'est juste mon poste).
+Bouton **Reviewer moi-même** → ouvre `https://eurio-review.musubi.dev/?u=<mon-code>`
+dans un nouvel onglet. Un reviewer dédié (ex. `raph`) créé au bootstrap ; le
+front régie le liste déjà (table reviewers), donc rien à stocker en plus.
 
 ## Implémentation côté `review_service`
 
-Routes admin à ajouter (toutes gated par `REVIEW_ADMIN_TOKEN`, comme
+Routes admin à ajouter (toutes gated par `require_admin` = header
+`X-Admin-Token` vs `REVIEW_ADMIN_TOKEN`, qui existe déjà pour
 publish/reconcile) :
 
 | Méthode | Route | Body / réponse |
 |---|---|---|
-| `GET`  | `/admin/reviewers`            | liste reviewers + stats agrégées (count, last_seen, in_flight) |
-| `POST` | `/admin/reviewers`            | `{token, name}` → crée, renvoie l'URL complète |
-| `DELETE` | `/admin/reviewers/{token}`  | révoque (= suppression simple : le pote ne peut plus se logger) |
-| `GET`  | `/admin/flow`                 | `{pending, awaiting_reconcile, last_publish_at, last_reconcile_at}` |
+| `GET`    | `/admin/reviewers`          | liste reviewers + stats agrégées (total, 7j, last_seen, in_flight, is_active) |
+| `POST`   | `/admin/reviewers`          | `{token, name}` → crée (409 si token pris), renvoie `{token, name, url}` |
+| `DELETE` | `/admin/reviewers/{token}`  | soft-revoke (`is_active=0`) |
+| `POST`   | `/admin/reviewers/{token}/reactivate` | `is_active=1` |
+| `GET`    | `/admin/flow`               | `{pending, awaiting_reconcile, last_publish_at, last_reconcile_at}` |
 
-`last_publish_at` / `last_reconcile_at` : à stocker dans une mini-table
-`meta` (`key TEXT PRIMARY KEY, value TEXT`) dans `review.db`, posée par les
-endpoints `publish` / `reconcile` quand le Mac les appelle.
+**Factorisation** : la logique create / revoke / list vit aujourd'hui dans
+`manage.py`. L'extraire dans un module partagé (ex.
+`review_service/reviewers.py`) appelé à la fois par le CLI et par les routes
+HTTP — pas de duplication. Le CLI reste comme bootstrap / disaster-recovery.
 
-## Implémentation côté `admin/packages/web`
-
-Nouvelle page Vue `ReviewersAdmin.vue`, sous la même nav que l'arbitration
-existante (`/review/peer-arbitration`). Pattern proxy local-only pour le
-backend review : ajouter `VITE_REVIEW_SERVICE_URL` (default
-`https://eurio-review.musubi.dev`) et lire `REVIEW_ADMIN_TOKEN` côté
-backend uniquement (jamais exposé au front Vercel) — donc les appels
-admin passent par un endpoint relais sur le serveur de dev ou via un
-proxy Vercel serverless qui injecte le header.
-
-> ⚠️ **Pas de token admin dans le bundle front.** Le front Vercel n'a pas
-> de secret. Soit l'admin tourne en local seulement (déjà le cas pour
-> training & parity), soit on ajoute une route Vercel server-side qui
-> détient le token et relaie. À trancher au moment de l'implémentation.
+**Schéma** : ajouter la table `meta` à `schema.sql` (idempotent,
+`CREATE TABLE IF NOT EXISTS`). Wirer le tampon dans `routes_admin.py`
+(`publish` → `meta['last_publish_at']`, `decisions/ack` →
+`meta['last_reconcile_at']`).
 
 ## Hors scope (à NE PAS faire)
 
-- ❌ Auth utilisateur sur l'admin lui-même — déjà discuté ailleurs, le
-  dashboard reste local-only ou gated par BasicAuth côté Vercel, mais
-  pas de système de comptes.
+- ❌ Auth utilisateur sur l'admin lui-même au-delà du `REVIEW_ADMIN_TOKEN` —
+  pas de système de comptes, le token suffit.
 - ❌ Permettre à un reviewer de se créer un code lui-même — l'invite est
-  toujours une action explicite de ma part (sinon n'importe qui peut
-  s'inscrire).
-- ❌ Stats temps-réel (websocket / polling agressif) — un refresh page ou
-  un bouton "rafraîchir" suffit largement.
+  toujours une action explicite de ma part (sinon n'importe qui s'inscrit).
+- ❌ Stats temps-réel (websocket / polling agressif) — un bouton
+  « rafraîchir » suffit.
+- ❌ Régie dans la console Vue Vercel (`admin/packages/web`) — annulé par
+  l'Option B.
 
 ## Suite
 
 Une fois cette page en place, le 09 perd son CLI `manage` comme chemin
 principal : on garde la doc CLI comme procédure de bootstrap / disaster
-recovery (si l'admin est cassé), pas comme usage courant.
+recovery (si le service est cassé), pas comme usage courant.
+
+### Chunks d'implémentation proposés
+
+1. **Backend reviewers** — module `reviewers.py` (extrait de `manage.py`) +
+   routes `GET/POST/DELETE/reactivate /admin/reviewers`, CLI re-câblé dessus.
+2. **Backend flow** — table `meta`, route `/admin/flow`, tampon
+   publish/reconcile.
+3. **Front régie** — package `admin/packages/review-admin`, login token,
+   sections a/b/c/d.
+4. **Déploiement** — Dockerfile build 2 fronts, `app.py` mount `/admin`,
+   rebuild VPS, créer reviewer `raph` au bootstrap.
+</content>
+</invoke>

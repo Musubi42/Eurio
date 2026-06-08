@@ -25,7 +25,11 @@ from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 
 from review_service.db import ReviewDB  # noqa: E402
-from review_service import routes_admin, routes_reviewer  # noqa: E402
+from review_service import (  # noqa: E402
+    routes_admin,
+    routes_admin_reviewers,
+    routes_reviewer,
+)
 
 app = FastAPI(title="Eurio Review Service", version="0.1.0", docs_url="/api/docs")
 
@@ -51,6 +55,7 @@ app.state.db = ReviewDB()
 
 app.include_router(routes_reviewer.router)
 app.include_router(routes_admin.router)
+app.include_router(routes_admin_reviewers.router)
 
 
 @app.get("/health")
