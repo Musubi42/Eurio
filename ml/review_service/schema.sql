@@ -55,3 +55,11 @@ CREATE INDEX IF NOT EXISTS idx_decisions_unreconciled
   ON decisions(reconciled_at) WHERE reconciled_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_decisions_reviewer
   ON decisions(reviewer_token);
+
+-- Méta clé/valeur : horodatages du dernier publish / reconcile, tamponnés par
+-- les endpoints /admin/publish et /admin/decisions/ack quand le Mac les appelle.
+-- Alimente le bloc « flux » de la page régie. cf. 10-admin-dashboard.md
+CREATE TABLE IF NOT EXISTS meta (
+  key   TEXT PRIMARY KEY,
+  value TEXT
+);

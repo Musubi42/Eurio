@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from review_service.auth import require_admin
 from review_service.db import ReviewDB, now_iso
+from review_service.meta import LAST_PUBLISH_AT, LAST_RECONCILE_AT, set_meta
 
 router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_admin)])
 
@@ -76,6 +77,7 @@ def publish(payload: PublishPayload, request: Request) -> dict:
                 ),
             )
             published += 1
+        set_meta(conn, LAST_PUBLISH_AT, now_iso())
     return {"published": published, "skipped": skipped}
 
 
@@ -114,4 +116,5 @@ def ack_decisions(payload: AckPayload, request: Request) -> dict:
             f"WHERE id IN ({marks}) AND reconciled_at IS NULL",
             [now_iso(), *payload.ids],
         )
+        set_meta(conn, LAST_RECONCILE_AT, now_iso())
     return {"acked": len(payload.ids)}

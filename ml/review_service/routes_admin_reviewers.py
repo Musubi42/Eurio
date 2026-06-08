@@ -16,6 +16,7 @@ from pydantic import BaseModel
 from review_service import reviewers
 from review_service.auth import require_admin
 from review_service.db import ReviewDB
+from review_service.meta import LAST_PUBLISH_AT, LAST_RECONCILE_AT, get_meta
 
 router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_admin)])
 
@@ -77,3 +78,22 @@ def reactivate_reviewer(token: str, request: Request) -> dict:
     except reviewers.ReviewerNotFound as exc:
         raise HTTPException(status_code=404, detail="Reviewer introuvable.") from exc
     return {"token": token, "is_active": True}
+
+
+@router.get("/flow")
+def flow(request: Request) -> dict:
+    """Vue agrégée du flux pour le bloc en tête de page régie."""
+    db: ReviewDB = request.app.state.db
+    conn = db.connection()
+    pending = conn.execute(
+        "SELECT count(*) AS n FROM review_items WHERE status IN ('open', 'claimed')"
+    ).fetchone()["n"]
+    awaiting_reconcile = conn.execute(
+        "SELECT count(*) AS n FROM decisions WHERE reconciled_at IS NULL"
+    ).fetchone()["n"]
+    return {
+        "pending": pending,
+        "awaiting_reconcile": awaiting_reconcile,
+        "last_publish_at": get_meta(db, LAST_PUBLISH_AT),
+        "last_reconcile_at": get_meta(db, LAST_RECONCILE_AT),
+    }
