@@ -40,7 +40,7 @@ sous-chunks pour garder une cadence d'audit (poser le rail, puis migrer un runne
 | 5 | **Split `Store`** → `store/connection.py` + modules par domaine. | ✅ | Prépare le swap driver du chunk 6. **5a** scaffold `ml/store/` plat + shim `state/store.py`. **5b** `_domains.py` carvé en 8 modules mixins (runs/staging/augmentation/benchmark/cohorts/iterations/dino/listing_signals), chacun = ses rows + converter + `*Mixin`. `Store(StoreBase, RunsMixin, …)`. 1068 passed / 20 failed (= baseline, 0 régression). |
 | 6 | **Cross-machine eurio.db** : ~~libSQL~~ → **lease MinIO**. | 🟡 | libSQL abandonné (client Python sans row_factory/create_function/executescript — cf. ADR D4 révisé). **6a livré** (`store/lease.py` + `go-task ml:db:{status,acquire,release,steal}` + 13 tests, FakeS3 IfNoneMatch). **6b livré** (doc VPS `chunk6-vps-minio.md`). **6c livré** (hook startup `server.py` qui avertit, non bloquant). **Reste : exécution côté VPS** (provisioning MinIO via la doc) puis 1ᵉʳ acquire/release réel Mac↔PC. |
 | 7 | **Restructure `ml/` plat** : sources/vision/training/review/serving/shared ; absorbe scan/eval/foundation/augmentations ; api→serving ; fix imports + Taskfile + tests. | ✅ | **Restructure complète livrée** (7a-7g). 7a imports `state→store`+shim retiré · 7b `api`→`serving` · 7c `scan`→`vision` · 7d `augmentations`/`eval`/`foundation`→`training/` · 7e `utils`/`storage`/`api_quota[_cli]`/`ccproxy_client`→`shared/` · 7f `market`→`sources/market` (referential/bootstrap/export gardés domaines plats) · 7g `review/` extrait (review_queue_routes+coins_review_routes). 1081/20 baseline, 0 régression. Commits c6ec9ee, f3d4cd5, bd3ceee. |
-| 8 | **Purge `scripts/`** : one-time → archive/suppression, ne garder que les scripts opérables. | ⬜ | — |
+| 8 | **Purge `scripts/`** + nettoyage `ml/` : one-time → archive, sortir les artefacts de git. | ✅ | **Livré** (analyse graphify+déterministe). 40 scripts de chantiers conclus → `ml/archive/scripts/` (52 opérables gardés). `ml/ib/` (2 docs) → `docs/research/`. **418 artefacts de run sortis de git** (`git rm --cached`, gardés disque) + `.gitignore` étendu ; gold/seed/code/sql protégés. `training.db` vestige untracké. Commit `e2473d4`. **`datasets/` (2.5G) = mission séparée** : doc plan `docs/work-in-progress/datasets-minio-migration.md` (2 buckets originals+thumbs, FS-first jusqu'à validation, purge git-history en dernier). |
 
 ## Invariants à ne pas casser (R0)
 - Un seul `eurio.db` (SQLite-only), connexion WAL + `isolation_level=None` autocommit.
@@ -86,6 +86,19 @@ sous-chunks pour garder une cadence d'audit (poser le rail, puis migrer un runne
   qu'un spinner. Barre de progression possible (nice-to-have).
 
 ## Journal
+- **2026-06-08** — **Chunk 8 livré (cleanup ml/) ; refacto-ml terminé**. Analyse graphify (AST build
+  a crashé en env → bascule sur analyse déterministe : Taskfile/imports/git-tracking/tailles +
+  mémoires). **scripts/** : 92→52 ; 40 chantiers conclus (census CLÔTURÉ, fragment-gate, probes,
+  migrations/patches/backfills one-time, benchs one-off) → `ml/archive/scripts/` via git mv ; gardés
+  les opérables (recrop_*/promote_*/push_to_supabase) + câblés Taskfile + importés librairie
+  (`crop_quality_diag`, `bench_listing_bimetal` = dep live de crop_quality_diag, `refetch_numista_2eur`…).
+  **Docs égarés** `ml/ib/` → `docs/research/`. **state/** : 418 artefacts de run sortis de git
+  (`git rm --cached`, gardés disque) + `.gitignore` étendu (exceptions `!` sur le gold) ; protégés :
+  `.py`/`.sql`/gold/seed/cohort_csvs/`*_nids`/benchmark_coins ; `training.db` vestige + `.bak` untrackés.
+  Commit `e2473d4`. **`datasets/` (2.5G, 8895 fichiers git)** : PO veut migrer vers MinIO (2 buckets :
+  originals + thumbs optimisées pour la page coins admin) — **mission séparée**, plan détaillé écrit dans
+  `docs/work-in-progress/datasets-minio-migration.md` (FS-first jusqu'à validation bout-en-bout, purge
+  git-history en toute dernière phase avec backup). 1081/20 baseline, 0 régression.
 - **2026-06-08** — **Chunk 7 CLOS (restructure complète livrée)**. Sous-chunks **7c-7g** enchaînés
   (à la demande PO) puis un gros check : `scan→vision`, `augmentations/eval/foundation→training/`,
   `utils/storage/api_quota[_cli]/ccproxy_client→shared/`, `market→sources/market`, extraction
