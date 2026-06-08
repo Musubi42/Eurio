@@ -1,4 +1,0 @@
-review_id,model_alias,model_id,ground,verdict,face,confidence,tokens_in,tokens_out,cache_read,cost_usd,duration_ms,error,raw_content
-66bcd2eb4bc74a4188b18175afd9445b,haiku,claude-haiku-4-5,match,match,obverse,0.850,3,19,9477,0.003728,2539,,"{""verdict"":""match"",""face"":""obverse"",""confidence"":0.85}"
-0925b758a02e423386f7679633ea50c3,haiku,claude-haiku-4-5,no_match,no_match,reverse,0.950,3,20,0,0.036426,2693,,"{""verdict"":""no_match"",""face"":""reverse"",""confidence"":0.95}"
-f2bd92891c814789908126f9df23c9cc,haiku,claude-haiku-4-5,match,match,obverse,0.950,3,19,0,0.036371,2891,,"{""verdict"":""match"",""face"":""obverse"",""confidence"":0.95}"

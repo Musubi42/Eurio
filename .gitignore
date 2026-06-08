@@ -59,6 +59,50 @@ ml/**/.ebay_token_cache.json
 ml/.dataset_cache/
 # Artefacts de progression d'entraînement (runtime, régénérés).
 ml/state/training_progress/
+# Artefacts de run/bench ML sortis de git (chunk 8) — gardés sur disque, régénérables.
+# Le gold/seed reste tracké (exceptions ! ci-dessous).
+ml/state/device_bimetal_bench/
+ml/state/listing_bimetal_bench/
+ml/state/listing_bench/
+ml/state/ablation_eval/
+ml/state/crop_diag/
+ml/state/coin_census_bench/
+ml/state/bce_runs/
+ml/state/live_test_logs/
+ml/state/fragment_probe/
+ml/state/numista_cache/
+ml/state/run_logs/
+ml/state/job_logs/
+ml/state/crop_scores/
+!ml/state/crop_scores/gold/
+ml/state/discovery_bench/
+!ml/state/discovery_bench/gold_images.jsonl
+!ml/state/discovery_bench/theme_match_gold.jsonl
+# training.db = vestige (plus ouvert) — sorti de git, à supprimer du disque au besoin.
+ml/state/training.db
+ml/state/training.db-*
+ml/state/training.db.bak-*
+ml/state/eurio.db.bak-*
+ml/state/eurio.db.fix-attempt-*
+# Sorties de run/probe en vrac à la racine de state/.
+ml/state/*.log
+ml/state/*_results.jsonl
+ml/state/i18n_*.jsonl
+ml/state/i18n_*.json
+ml/state/aliases_*.jsonl
+ml/state/probe_*.json
+ml/state/bootstrap_coin_names_i18n_*.json
+ml/state/*_worklist*.json
+ml/state/refetch_state.json
+ml/state/referential_fix_proposals.json
+ml/state/e3_rename_mapping.json
+ml/state/sources_runs.json
+ml/state/cohort_validation_*.txt
+ml/state/ad_nids.txt
+ml/state/*.npz
+ml/state/*.npz.bak-*
+ml/state/bench_*.csv
+ml/state/i18n_review_report.md
 # Images canoniques générées localement par scripts/migrate_canonical_images_local.py.
 # Régénérables depuis eurio.db (coin_canonical_images.url) — pas besoin de versionner.
 ml/canonical_images/
