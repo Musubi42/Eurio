@@ -43,7 +43,7 @@ from training.foundation import (
     top_k_match,
     top_k_match_country,
 )
-from training.foundation.review_lanes import compute_lane
+from review.review_lanes import compute_lane
 from sources._base.run_logger import RunHandle
 from store import DinoPredictionRow
 

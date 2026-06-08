@@ -282,7 +282,7 @@ def create_manual_crop(
     from sources._base.storage import crop_key, crop_cache_path
     from sources._base.dedup import ImageAssetRow, upsert_image_asset
     from sources._base.steps.enqueue import _compute_priority, _kind_for_source_image
-    from training.foundation.review_lanes import compute_lane
+    from review.review_lanes import compute_lane
     from shared.storage.local_cache import upload_through, local_path
     from store import emit_state_event
 
