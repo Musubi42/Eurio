@@ -42,7 +42,13 @@ def _now_iso() -> str:
 def _headers() -> dict:
     if not _ADMIN_TOKEN:
         raise SystemExit("REVIEW_ADMIN_TOKEN absent de l'env (secrets/dev.env).")
-    return {"Content-Type": "application/json", "X-Admin-Token": _ADMIN_TOKEN}
+    # User-Agent explicite : le VPS est derrière Cloudflare, qui renvoie 403 sur
+    # le UA par défaut `Python-urllib`. Un UA nommé passe le filtre.
+    return {
+        "Content-Type": "application/json",
+        "X-Admin-Token": _ADMIN_TOKEN,
+        "User-Agent": "eurio-publish-cli/1.0",
+    }
 
 
 def _post_json(path: str, payload: dict) -> dict:
