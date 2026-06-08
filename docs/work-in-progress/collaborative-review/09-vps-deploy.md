@@ -12,109 +12,119 @@
 Le service est **indépendant du lease eurio.db** : il tourne en continu. Le pont
 `publish`/`reconcile` (côté Mac, lease requis) alimente/draine `review.db`.
 
+**Mode de déploiement : docker-compose + Traefik**, même pattern que
+`infra/minio/` (sous-domaine HTTPS, secrets en fichiers, bind-mount data).
+
 ## Pré-requis sur le VPS
 
-- Le projet `ml/` déployable (venv ou conteneur) avec `fastapi`, `uvicorn`,
-  `boto3` (déjà nécessaires pour le reste de ml).
-- Accès MinIO (mêmes creds que la couche images) : `MINIO_ENDPOINT`,
-  `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `MINIO_USE_SSL` — la clé doit avoir
-  **lecture** sur le bucket `enrichment-crops` (les crops servis aux amis via URL
-  présignée).
-- Node + pnpm pour builder le front (ou builder sur le Mac et copier `dist/`).
+- Docker + Compose v2 installés, network `traefik` déjà créé (partagé avec
+  `infra/minio/` et le reste de la stack `musubi.dev`).
+- DNS : `eurio-review.musubi.dev` → IP du VPS (sous-domaine déjà créé).
+- Accès MinIO : une access/secret key avec **lecture** sur le bucket
+  `enrichment-crops` (crops servis aux amis via URL présignée).
 
-## Variables d'environnement (service)
+## Layout `infra/review/`
 
-| Variable | Rôle | Exemple |
+```
+infra/review/
+├── docker-compose.yml      # service `review` + labels Traefik
+├── Dockerfile              # multi-stage : node (front) → python:3.12-slim
+├── entrypoint.sh           # lit /run/secrets/* → env vars, exec uvicorn
+├── data/                   # bind-mount review.db (gitignoré)
+└── secrets/                # un fichier par secret, montés en RO (gitignoré)
+    ├── review_admin_token
+    ├── review_session_secret
+    ├── minio_access_key
+    └── minio_secret_key
+```
+
+Le bind-mount `./data` est persistant : `review.db` survit aux rebuilds et
+redéploiements.
+
+## Variables d'environnement & secrets
+
+Posées par `docker-compose.yml` (env publique) et `entrypoint.sh` (secrets
+fichiers) :
+
+| Variable | Source | Rôle |
 |---|---|---|
-| `REVIEW_DB_PATH` | chemin de review.db sur le VPS (persistant) | `/var/lib/eurio/review.db` |
-| `REVIEW_ADMIN_TOKEN` | secret partagé pour `/admin/*` (publish/reconcile) | (aléatoire long) |
-| `REVIEW_SESSION_SECRET` | clé HMAC des cookies de session | (aléatoire long) |
-| `REVIEW_CORS_ORIGINS` | origine(s) du front en prod | `https://review.<domaine>` |
-| `REVIEW_COOKIE_SECURE` | cookies en HTTPS only | `true` |
-| `REVIEW_CLAIM_WINDOW` | taille de fenêtre de claim | `10` (défaut) |
-| `REVIEW_LEASE_TTL_SECONDS` | visibility timeout des claims | `1800` (défaut) |
-| `MINIO_*` | accès crops | cf. ci-dessus |
+| `REVIEW_DB_PATH` | env compose | `/var/lib/eurio/review.db` (dans le conteneur) |
+| `REVIEW_CORS_ORIGINS` | env compose | `https://eurio-review.musubi.dev` |
+| `REVIEW_COOKIE_SECURE` | env compose | `true` (HTTPS only) |
+| `MINIO_ENDPOINT` | env compose | `eurio-s3.musubi.dev` |
+| `MINIO_USE_SSL` | env compose | `true` |
+| `REVIEW_ADMIN_TOKEN` | `secrets/review_admin_token` | secret partagé pour `/admin/*` (publish/reconcile) |
+| `REVIEW_SESSION_SECRET` | `secrets/review_session_secret` | clé HMAC des cookies de session |
+| `MINIO_ACCESS_KEY` | `secrets/minio_access_key` | accès crops |
+| `MINIO_SECRET_KEY` | `secrets/minio_secret_key` | accès crops |
 
-> `REVIEW_ADMIN_TOKEN` doit être **identique** côté Mac (env du `publish`/`reconcile`).
+> `REVIEW_ADMIN_TOKEN` doit être **identique** côté Mac (env des tasks
+> `ml:review:publish` / `ml:review:reconcile`).
 
-## 1. Build du front
-
-Option A (sur le VPS) :
-```bash
-pnpm -C admin/packages/review install
-VITE_REVIEW_API="https://review.<domaine>" pnpm -C admin/packages/review build
-```
-Option B (sur le Mac, puis rsync) : idem build, puis copier `dist/` sur le VPS.
-
-Le service monte automatiquement `admin/packages/review/dist/` à la racine si le
-dossier existe (cf. `ml/review_service/app.py`). Sinon il ne sert que l'API.
-
-> `VITE_REVIEW_API` doit pointer vers l'URL **publique** du service (même origine
-> que le front si servi par le service → on peut laisser vide / relatif si
-> co-hébergé ; sinon mettre l'URL complète).
-
-## 2. systemd unit
-
-`/etc/systemd/system/eurio-review.service` :
-```ini
-[Unit]
-Description=Eurio Review Service
-After=network.target
-
-[Service]
-WorkingDirectory=/opt/eurio/ml
-Environment=REVIEW_DB_PATH=/var/lib/eurio/review.db
-Environment=REVIEW_ADMIN_TOKEN=__set_me__
-Environment=REVIEW_SESSION_SECRET=__set_me__
-Environment=REVIEW_CORS_ORIGINS=https://review.<domaine>
-Environment=REVIEW_COOKIE_SECURE=true
-Environment=MINIO_ENDPOINT=eurio-s3.musubi.dev
-Environment=MINIO_ACCESS_KEY=__set_me__
-Environment=MINIO_SECRET_KEY=__set_me__
-Environment=MINIO_USE_SSL=true
-ExecStart=/opt/eurio/ml/.venv/bin/uvicorn review_service.app:app --host 127.0.0.1 --port 8048
-Restart=always
-RestartSec=3
-
-[Install]
-WantedBy=multi-user.target
-```
-```bash
-mkdir -p /var/lib/eurio
-systemctl daemon-reload
-systemctl enable --now eurio-review
-systemctl status eurio-review
-```
-
-> Secrets : préférer un `EnvironmentFile=` chiffré plutôt que des `Environment=`
-> en clair dans l'unit, selon la convention secrets du VPS.
-
-## 3. Reverse-proxy (sous-domaine HTTPS)
-
-Exemple Caddy :
-```
-review.<domaine> {
-    reverse_proxy 127.0.0.1:8048
-}
-```
-(ou bloc nginx équivalent avec `proxy_pass http://127.0.0.1:8048;` + en-têtes).
-HTTPS obligatoire (cookies `Secure`).
-
-## 4. Seed des reviewers
-
-Un INSERT par ami (le token = identité **et** mot de passe) :
-```bash
-cd /opt/eurio/ml
-REVIEW_DB_PATH=/var/lib/eurio/review.db .venv/bin/python -m review_service.manage \
-  add-reviewer --token Paolo42 --name Paolo
-.venv/bin/python -m review_service.manage list-reviewers
-```
-Puis transmettre à chaque ami son lien privé : `https://review.<domaine>/?u=Paolo42`.
-
-## 5. Alimenter & drainer (depuis le Mac, lease eurio.db détenu)
+## 1. Bootstrap
 
 ```bash
-export REVIEW_SERVICE_URL=https://review.<domaine>
+cd /opt/eurio/infra/review
+
+# Secrets — un fichier par secret, 0600.
+umask 077
+openssl rand -hex 32 > secrets/review_admin_token
+openssl rand -hex 32 > secrets/review_session_secret
+$EDITOR secrets/minio_access_key       # clé MinIO avec READ sur enrichment-crops
+$EDITOR secrets/minio_secret_key
+
+# Build + start.
+docker compose up -d --build
+
+# Vérifier.
+docker compose logs -f review
+curl https://eurio-review.musubi.dev/health
+# → {"status":"ok"}
+```
+
+Le build est multi-stage :
+- Stage `front-builder` (node:20-alpine) → `pnpm install --filter
+  eurio-review-front --frozen-lockfile && pnpm build` ;
+- Stage `runtime` (python:3.12-slim) → installe `fastapi`, `uvicorn`, `boto3`
+  (pas la stack ml complète), copie `ml/review_service/`, `ml/shared/storage/`,
+  et le `dist/` du front.
+
+Image finale ~200 Mo.
+
+## 2. Reverse-proxy
+
+Géré par les labels Traefik du conteneur — pas de bloc nginx/Caddy à éditer
+à la main :
+
+```yaml
+- traefik.http.routers.eurio-review.rule=Host(`eurio-review.musubi.dev`)
+- traefik.http.routers.eurio-review.entrypoints=websecure
+- traefik.http.routers.eurio-review.tls=true
+- traefik.http.routers.eurio-review.tls.certresolver=letsencryptresolver
+- traefik.http.services.eurio-review.loadbalancer.server.port=8048
+```
+
+Le cert Let's Encrypt est délivré automatiquement par le `letsencryptresolver`
+de l'instance Traefik existante. HTTPS obligatoire pour que les cookies
+`Secure` posés par FastAPI fonctionnent.
+
+## 3. Seed des reviewers
+
+Le CLI vit dans le conteneur :
+
+```bash
+docker compose exec review python -m review_service.manage \
+    add-reviewer --token Paolo42 --name Paolo
+
+docker compose exec review python -m review_service.manage list-reviewers
+```
+
+Lien à transmettre à chaque ami : `https://eurio-review.musubi.dev/?u=Paolo42`.
+
+## 4. Alimenter & drainer (depuis le Mac, lease eurio.db détenu)
+
+```bash
+export REVIEW_SERVICE_URL=https://eurio-review.musubi.dev
 export REVIEW_ADMIN_TOKEN=<même secret que le service>
 go-task ml:db:acquire
 go-task ml:review:publish -- --limit 200     # pousse des items à reviewer
@@ -122,21 +132,35 @@ go-task ml:review:publish -- --limit 200     # pousse des items à reviewer
 go-task ml:review:reconcile                   # tire leurs décisions en staging
 go-task ml:db:release
 ```
+
 Puis arbitrer dans le console admin : `/review/peer-arbitration`.
+
+## 5. Mise à jour
+
+```bash
+cd /opt/eurio && git pull
+cd infra/review && docker compose up -d --build
+```
+
+`review.db` est en bind-mount → survit. Layer cache Docker → rebuild rapide
+tant que `pyproject` et `package.json` ne bougent pas.
 
 ## Checklist à rendre
 
-- [ ] `curl https://review.<domaine>/health` → `{"status":"ok"}`
-- [ ] service systemd `enabled` + `active` (survit au reboot)
-- [ ] reverse-proxy HTTPS OK, cookies `Secure` posés
+- [ ] `curl https://eurio-review.musubi.dev/health` → `{"status":"ok"}`
+- [ ] conteneur `eurio-review` `restart=unless-stopped` + `Up`, survit au reboot
+- [ ] Traefik route bien le sous-domaine, cert Let's Encrypt OK, cookies `Secure` posés
 - [ ] au moins un reviewer seedé (`list-reviewers`)
 - [ ] `?u=Paolo42` connecte ; URL nue → modale code
 - [ ] crop d'un item s'affiche (URL présignée MinIO joignable)
 - [ ] depuis le Mac : `review:publish` puis `review:reconcile` round-trip OK
-- [ ] `review.db` sur un chemin **persistant** (survit aux redéploiements)
+- [ ] `infra/review/data/review.db` présent et persistant entre rebuilds
 
 ## Ce qui n'est PAS ici
 
 - ❌ Backup de `review.db` : c'est un tampon transient (la vérité reste eurio.db).
   Un snapshot périodique est un bonus, pas une nécessité.
 - ❌ Auth forte : volontairement minimale (cf. `04-auth.md`).
+- ❌ Stack ml complète dans l'image : le service ne fait que servir review.db
+  et générer des URLs présignées MinIO. Image minimale (fastapi/uvicorn/boto3),
+  ~200 Mo.

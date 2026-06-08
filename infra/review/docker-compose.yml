@@ -1,0 +1,56 @@
+services:
+  review:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      # `additional_contexts` (compose ≥ 2.17) → on aspire admin/ et ml/ depuis
+      # le repo, sans avoir besoin de mettre le contexte au repo root (et donc
+      # sans tarballer tout le monorepo dans le daemon Docker).
+      additional_contexts:
+        admin: ../../admin
+        ml: ../../ml
+        # Tokens canoniques importés par le front via
+        # `@import '../../../../shared/tokens.css'` (cf. CLAUDE.md R2).
+        shared: ../../shared
+    image: eurio-review:latest
+    container_name: eurio-review
+    restart: unless-stopped
+    volumes:
+      # Persistance de review.db (SQLite WAL) — bind-mount gitignoré, pattern
+      # identique à infra/minio/data.
+      - ./data:/var/lib/eurio
+      # Secrets fichiers, montés read-only. L'entrypoint les lit et exporte
+      # les env vars correspondantes.
+      - ./secrets:/run/secrets:ro
+    environment:
+      # Pointeurs vers les fichiers de secrets (lus par entrypoint.sh).
+      REVIEW_ADMIN_TOKEN_FILE: /run/secrets/review_admin_token
+      REVIEW_SESSION_SECRET_FILE: /run/secrets/review_session_secret
+      MINIO_ACCESS_KEY_FILE: /run/secrets/minio_access_key
+      MINIO_SECRET_KEY_FILE: /run/secrets/minio_secret_key
+
+      # Config non-sensible.
+      REVIEW_DB_PATH: /var/lib/eurio/review.db
+      REVIEW_CORS_ORIGINS: https://eurio-review.musubi.dev
+      REVIEW_COOKIE_SECURE: "true"
+      # Accès MinIO (même cluster que infra/minio). `shared/storage` accepte
+      # un host nu et reconstruit l'URL à partir de MINIO_USE_SSL.
+      MINIO_ENDPOINT: eurio-s3.musubi.dev
+      MINIO_USE_SSL: "true"
+    networks:
+      - traefik
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik
+
+      # ── Review service (API + front statique servi par FastAPI) ──
+      - traefik.http.routers.eurio-review.rule=Host(`eurio-review.musubi.dev`)
+      - traefik.http.routers.eurio-review.entrypoints=websecure
+      - traefik.http.routers.eurio-review.tls=true
+      - traefik.http.routers.eurio-review.tls.certresolver=letsencryptresolver
+      - traefik.http.routers.eurio-review.service=eurio-review
+      - traefik.http.services.eurio-review.loadbalancer.server.port=8048
+
+networks:
+  traefik:
+    external: true

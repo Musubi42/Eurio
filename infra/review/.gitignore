@@ -1,0 +1,8 @@
+# review.db (SQLite WAL) — état transient sur le VPS, jamais dans le repo.
+data/
+
+# Secrets en clair sur le VPS (un fichier par secret, montés read-only).
+# Seuls les exemples sont committés.
+secrets/*
+!secrets/.gitkeep
+!secrets/*.example
