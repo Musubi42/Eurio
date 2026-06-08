@@ -10,12 +10,14 @@ les valeurs que ``training/foundation/auto_validate.py`` consomme aujourd'hui �
 un verdict reconstruit depuis eux est identique au verdict canonique. Gate :
 tests/test_validation_experts.py.
 
-Réalité des données crop (mesurée 2026-06-08, cf. C2 du doc) : ``quality_score``
-n'est PAS peuplé (colonne vide), ``quality_reason`` ne porte que des états de
-review (``rejected_in_review``/``vision_standard_gate``) — sauf ``too_tilted``
-(label humain du banc). Le seul signal crop exploitable aujourd'hui est le
-**tilt fiable** (``tilt_trustworthy=1`` + ``tilt_deg``). L'expert reste
-forward-compatible : il consomme ``quality_score`` dès qu'il sera peuplé.
+Données crop (2026-06-08) : ``quality_score`` peuplé sur **~46 %** des crops
+(oracle r_ratio rétro-rempli depuis ``state/crop_diag/results.csv`` via
+``scripts/backfill_quality_score.py`` — couverture Otsu) ; NULL ailleurs.
+``quality_reason`` ne porte que des états de review
+(``rejected_in_review``/``vision_standard_gate``) — sauf ``too_tilted`` (label
+humain du banc). Le tilt fiable (``tilt_trustworthy=1``) complète sur les crops
+sans quality_score. Ordre de priorité dans ``crop_signal`` : label humain →
+quality_score → tilt → abstention.
 
 Dépendance : ``review`` → ``training.foundation`` (sens correct). La résolution
 des signaux verdict (préférence country-restricted) reste définie une seule fois
@@ -59,7 +61,7 @@ class CropQuality:
 
     tilt_deg: float | None
     tilt_trustworthy: int | None  # 1 / 0 / None
-    quality_score: float | None  # vide aujourd'hui (pipeline crop-quality)
+    quality_score: float | None  # oracle r_ratio, peuplé ~46 % (NULL ailleurs)
     quality_reason: str | None
 
 
@@ -167,13 +169,15 @@ class DinoExpert:
 
 # ── Crop-quality expert (C2) ────────────────────────────────────────────
 
-# Seuils provisoires (à calibrer par la mesure C2). Au-delà de ``_TILT_MAX_DEG``,
-# un crop incliné de façon FIABLE (tilt_trustworthy=1) pénalise le verdict (la
-# pièce n'est pas frontale → l'embedding DINO est moins fiable). Tilt non fiable
-# / NULL = abstention (pénalité nulle) : le détecteur n'est fiable que sur ~36 %
-# des assets. ``_QUALITY_MIN`` ne sert que lorsque ``quality_score`` sera peuplé.
+# Seuils provisoires (à calibrer). Au-delà de ``_TILT_MAX_DEG``, un crop incliné
+# de façon FIABLE (tilt_trustworthy=1) pénalise le verdict (pièce non frontale →
+# embedding DINO moins fiable). Tilt non fiable / NULL = abstention : le
+# détecteur n'est fiable que sur ~36 % des assets.
+# ``quality_score`` (oracle r_ratio, scripts/backfill_quality_score.py) est
+# peuplé sur ~46 % des crops ; ``_QUALITY_MIN`` = 0.85 = seuil d'undercrop du
+# chantier crop-quality-overhaul (< 0.85 → under/overcrop → pénalité).
 _TILT_MAX_DEG = 30.0
-_QUALITY_MIN = 0.5
+_QUALITY_MIN = 0.85
 
 # quality_reason qui dénotent un défaut de CROP (pas un état de review).
 _CROP_BAD_REASONS = {"too_tilted"}
@@ -199,7 +203,7 @@ def crop_signal(crop: CropQuality) -> Signal:
         return Signal("crop_quality", 0.0, "too_tilted",
                       f"label humain {crop.quality_reason}", base)
 
-    # 2. quality_score du pipeline crop-quality (vide aujourd'hui).
+    # 2. quality_score (oracle r_ratio, peuplé ~46 % des crops).
     if crop.quality_score is not None:
         good = crop.quality_score >= _QUALITY_MIN
         return Signal(

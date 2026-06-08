@@ -129,11 +129,11 @@ def test_crop_quality_expert_penalty_rule():
     none = crop_signal(CropQuality(None, None, None, None))
     assert none.label == "unmeasured" and none.score is None
 
-    # quality_score peuplé (forward-compat) : prioritaire sur le tilt.
-    good_q = crop_signal(CropQuality(40.0, 1, 0.8, None))
-    assert good_q.label == "good" and good_q.score == 0.8
-    low_q = crop_signal(CropQuality(5.0, 1, 0.2, None))
-    assert low_q.label == "low_quality" and low_q.score == 0.2
+    # quality_score (oracle r_ratio) : prioritaire sur le tilt. Seuil 0.85.
+    good_q = crop_signal(CropQuality(40.0, 1, 0.95, None))
+    assert good_q.label == "good" and good_q.score == 0.95
+    low_q = crop_signal(CropQuality(5.0, 1, 0.70, None))
+    assert low_q.label == "low_quality" and low_q.score == 0.70
 
 
 def test_expert_registry_order_and_names():
@@ -176,5 +176,20 @@ def test_collect_signals_matches_canonical_view_on_db():
             )
             assert reconstructed.level == view.level
             assert reconstructed.reason == view.reason
+    finally:
+        conn.close()
+
+
+@pytest.mark.skipif(not _DB.exists(), reason="eurio.db absent (CI sans état)")
+def test_replay_gold_self_consistent_on_db():
+    """C2.5 — build puis replay immédiat doit diffuser à zéro (règle inchangée)."""
+    from review.validation.replay import build_gold, replay_gold
+
+    conn = sqlite3.connect(_DB)
+    try:
+        gold = build_gold(conn)
+        assert gold, "gold vide — sources de vérité introuvables"
+        rep = replay_gold(conn, gold)
+        assert rep["n_changes"] == 0, rep["changes"][:5]
     finally:
         conn.close()
