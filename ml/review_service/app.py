@@ -63,8 +63,14 @@ def health() -> dict:
     return {"status": "ok"}
 
 
-# Front statique (build de admin/packages/review). Monté en dernier pour ne pas
-# masquer les routes API. Absent en dev pur (on utilise le Vite dev server).
+# Fronts statiques. Montés APRÈS les routers API (les routes /admin/* explicites
+# sont enregistrées avant et gagnent donc sur le mount /admin). Absents en dev
+# pur (on utilise les Vite dev servers). Ordre crucial : /admin AVANT le
+# catch-all /, sinon la SPA reviewer avalerait /admin.
+_ADMIN_DIST = _ML_DIR.parent / "admin" / "packages" / "review-admin" / "dist"
+if _ADMIN_DIST.is_dir():
+    app.mount("/admin", StaticFiles(directory=str(_ADMIN_DIST), html=True), name="admin-front")
+
 _FRONT_DIST = _ML_DIR.parent / "admin" / "packages" / "review" / "dist"
 if _FRONT_DIST.is_dir():
     app.mount("/", StaticFiles(directory=str(_FRONT_DIST), html=True), name="front")

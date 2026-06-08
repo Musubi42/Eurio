@@ -18,23 +18,28 @@ RUN corepack enable && corepack prepare pnpm@9.12.0 --activate
 WORKDIR /admin
 
 # Workspace pnpm complet (lockfile + manifests). On installe ensuite
-# UNIQUEMENT le filter `eurio-review-front` pour rester rapide.
+# UNIQUEMENT les filters des deux fronts review pour rester rapide.
 COPY --from=admin pnpm-workspace.yaml pnpm-lock.yaml package.json ./
 COPY --from=admin packages/review packages/review
+COPY --from=admin packages/review-admin packages/review-admin
 
-# Tokens canoniques (shared/tokens.css). Le front les importe en relatif :
+# Tokens canoniques (shared/tokens.css). Les fronts les importent en relatif :
 #   src/styles.css → `@import '../../../../shared/tokens.css'`
-# Soit, depuis /admin/packages/review/src, le chemin /shared/tokens.css.
+# Soit, depuis /admin/packages/<pkg>/src, le chemin /shared/tokens.css.
 # On reproduit donc le layout repo à la racine du stage.
 COPY --from=shared tokens.css /shared/tokens.css
 
-RUN pnpm install --filter eurio-review-front... --frozen-lockfile
+RUN pnpm install \
+      --filter eurio-review-front... \
+      --filter eurio-review-admin-front... \
+      --frozen-lockfile
 
 # L'API est servie par la même origine → chemins relatifs côté front. Si on
 # split front/API un jour, passer VITE_REVIEW_API en build-arg.
 ARG VITE_REVIEW_API=""
 ENV VITE_REVIEW_API=${VITE_REVIEW_API}
 RUN pnpm --filter eurio-review-front build
+RUN pnpm --filter eurio-review-admin-front build
 
 
 # ─── Stage 2 : runtime Python ─────────────────────────────────────────────
@@ -63,6 +68,8 @@ COPY --from=ml shared/storage ./shared/storage
 
 COPY --from=front-builder /admin/packages/review/dist \
      /srv/admin/packages/review/dist
+COPY --from=front-builder /admin/packages/review-admin/dist \
+     /srv/admin/packages/review-admin/dist
 
 # Entrypoint : lit les secrets fichiers (/run/secrets/*) → exporte en env,
 # puis exec uvicorn.

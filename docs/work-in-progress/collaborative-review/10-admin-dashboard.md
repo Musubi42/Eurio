@@ -192,15 +192,42 @@ Une fois cette page en place, le 09 perd son CLI `manage` comme chemin
 principal : on garde la doc CLI comme procédure de bootstrap / disaster
 recovery (si le service est cassé), pas comme usage courant.
 
-### Chunks d'implémentation proposés
+### Chunks d'implémentation
 
-1. **Backend reviewers** — module `reviewers.py` (extrait de `manage.py`) +
+1. ✅ **Backend reviewers** — module `reviewers.py` (extrait de `manage.py`) +
    routes `GET/POST/DELETE/reactivate /admin/reviewers`, CLI re-câblé dessus.
-2. **Backend flow** — table `meta`, route `/admin/flow`, tampon
+2. ✅ **Backend flow** — table `meta`, route `/admin/flow`, tampon
    publish/reconcile.
-3. **Front régie** — package `admin/packages/review-admin`, login token,
+3. ✅ **Front régie** — package `admin/packages/review-admin`, login token,
    sections a/b/c/d.
-4. **Déploiement** — Dockerfile build 2 fronts, `app.py` mount `/admin`,
-   rebuild VPS, créer reviewer `raph` au bootstrap.
+4. ✅ **Câblage déploiement** — Dockerfile build 2 fronts + copie des 2 dist,
+   `app.py` mount `/admin` avant le catch-all `/`. Reste l'exécution du rebuild
+   sur le VPS (ci-dessous).
+
+### Procédure de déploiement (VPS)
+
+```bash
+# 1. Récupérer le code à jour sur le VPS
+cd /opt/eurio && git pull
+
+# 2. Rebuild + redémarrer le service (recompile les 2 fronts dans l'image)
+cd /opt/eurio/infra/review
+docker compose up -d --build
+
+# 3. Créer mon reviewer perso (pour le bouton « ouvrir ↗ » / reviewer moi-même)
+docker compose exec review python -m review_service.manage \
+  add-reviewer --token raph --name Raphael
+
+# 4. Vérifier
+curl -s https://eurio-review.musubi.dev/admin/ | head -c 40   # doit servir le HTML régie
+```
+
+La page est alors sur **`https://eurio-review.musubi.dev/admin`**. Au premier
+chargement, coller le `REVIEW_ADMIN_TOKEN` (celui de
+`infra/review/secrets/review_admin_token`, le même que `publish`/`reconcile`).
+
+> Audit visuel local avant de déployer :
+> `pnpm --filter eurio-review-admin-front dev` (sur :5181, tape l'API
+> `go-task ml:review:serve` sur :8048).
 </content>
 </invoke>
