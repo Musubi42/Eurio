@@ -13,6 +13,11 @@
 // hard error — Dino is an aid layer, not a blocker.
 
 import { ML_API } from '@/features/training/composables/useTrainingApi'
+import type {
+  AutoValidateLevel,
+  CriterionKey,
+  CriterionState,
+} from './useAutoValidateVerdict'
 
 export interface DinoSuggestion {
   eurio_id: string
@@ -56,6 +61,15 @@ export interface DinoSuggestionsResponse {
     top1_country_sim_min: number
     country_spread_min: number
   }
+  // Verdict d'auto-validation calculé côté serveur — source unique (C0 du
+  // redesign auto-validation). Le front l'affiche tel quel (level/reason +
+  // état par critère), il ne recalcule plus rien. null seulement si l'asset
+  // est introuvable (ne devrait pas arriver : 404 amont si pas de prédiction).
+  auto_validate_verdict: {
+    level: AutoValidateLevel
+    reason: string
+    criteria: { key: CriterionKey; state: CriterionState }[]
+  } | null
 }
 
 /** Returns null if the API doesn't have suggestions yet (404) or is unreachable. */

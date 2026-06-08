@@ -18,9 +18,9 @@ import {
   type DinoSuggestionsResponse,
 } from '../composables/useDinoSuggestions'
 import {
-  computeDinoVerdict,
   criterionStateColor,
   criterionStateGlyph,
+  dinoCriteriaDisplay,
 } from '../composables/useAutoValidateVerdict'
 
 const props = defineProps<{
@@ -70,7 +70,9 @@ watch(
   },
 )
 
-const verdict = computed(() => computeDinoVerdict(data.value))
+const criteria = computed(() =>
+  data.value ? dinoCriteriaDisplay(data.value) : [],
+)
 </script>
 
 <template>
@@ -125,7 +127,7 @@ const verdict = computed(() => computeDinoVerdict(data.value))
     <template v-else-if="data">
       <ul class="mt-2 flex flex-col gap-1">
         <li
-          v-for="c in verdict.criteria"
+          v-for="c in criteria"
           :key="c.key"
           class="flex items-baseline gap-2 font-mono text-[11px]"
           :style="{ color: criterionStateColor(c.state) }"
@@ -171,7 +173,7 @@ const verdict = computed(() => computeDinoVerdict(data.value))
 
     <template v-else-if="data">
       <span
-        v-for="c in verdict.criteria"
+        v-for="c in criteria"
         :key="c.key"
         class="font-mono text-[10px]"
         :style="{ color: criterionStateColor(c.state) }"

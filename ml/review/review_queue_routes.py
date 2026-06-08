@@ -42,6 +42,7 @@ from pydantic import BaseModel, Field
 from training.foundation.auto_validate import (
     compute_auto_validate_verdict,
     compute_auto_validate_verdict_from_row,
+    compute_auto_validate_view,
 )
 from training.foundation.claude_review import DEFAULT_MODEL_ALIAS, MODELS, judge
 from training.foundation.thresholds import DINO_VERDICT_THRESHOLDS, DinoVerdictThresholds
@@ -2522,6 +2523,20 @@ class DinoSuggestion(BaseModel):
     obverse_url: str | None = None  # /images/<numista_id>/source if available
 
 
+class DinoCriterionOut(BaseModel):
+    key: str  # top1_target | top1_country_sim | country_spread
+    state: str  # pass | fail | absent
+
+
+class AutoValidateVerdictOut(BaseModel):
+    """Verdict d'auto-validation calculé côté serveur — source unique (C0).
+    Le front affiche ``level``/``reason``/``criteria`` tels quels."""
+
+    level: str  # auto_candidate | partial | divergent | unknown
+    reason: str
+    criteria: list[DinoCriterionOut]
+
+
 class DinoSuggestionsResponse(BaseModel):
     asset_id: str
     encoder_version: str
@@ -2552,6 +2567,11 @@ class DinoSuggestionsResponse(BaseModel):
     # depuis ml/foundation/thresholds.py. Permet au front d'afficher
     # ✓/✗ par critère sans hardcoder de constante.
     verdict_thresholds: DinoVerdictThresholds = DINO_VERDICT_THRESHOLDS
+    # Verdict d'auto-validation calculé côté serveur (source unique — C0 du
+    # redesign auto-validation). Le front l'affiche tel quel (level/reason +
+    # état par critère), il ne recalcule plus rien. None seulement si l'asset
+    # est introuvable (cas qui ne devrait pas arriver vu le 404 amont).
+    auto_validate_verdict: AutoValidateVerdictOut | None = None
 
 
 def _enrich_top_k(
@@ -2627,6 +2647,14 @@ def _build_dino_response(
     target_eurio_id = (
         target_eurio_row["target_eurio_id"] if target_eurio_row else None
     )
+    view = compute_auto_validate_view(conn, asset_id, anchors_kind=anchors_kind)
+    auto_validate_verdict = AutoValidateVerdictOut(
+        level=view.level,
+        reason=view.reason,
+        criteria=[
+            DinoCriterionOut(key=c.key, state=c.state) for c in view.criteria
+        ],
+    )
     return DinoSuggestionsResponse(
         asset_id=pred.asset_id,
         encoder_version=pred.encoder_version,
@@ -2645,6 +2673,7 @@ def _build_dino_response(
         top1_country_sim=pred.top1_country_sim,
         top_k_country=_enrich_top_k(conn, pred.top_k_country or []),
         target_eurio_id=target_eurio_id,
+        auto_validate_verdict=auto_validate_verdict,
     )
 
 

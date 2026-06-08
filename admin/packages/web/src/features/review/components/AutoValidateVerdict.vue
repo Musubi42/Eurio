@@ -1,14 +1,12 @@
 <script setup lang="ts">
-// Synthèse top du drawer : verdict global d'auto-validation en 3
-// niveaux (auto_candidate / partial / divergent) + raison courte.
+// Synthèse top du drawer : verdict global d'auto-validation en 4 niveaux
+// (auto_candidate / partial / divergent / unknown) + raison courte.
 //
-// Réplique en miniature ce que fera le chunk 8 (auto-accept) sans
-// écrire en DB. Source de vérité = les seuils de
-// ml/foundation/thresholds.py exposés par l'API Dino.
-//
-// Le composant fetche lui-même Dino + Texte (via les composables) pour
-// rester drop-in dans n'importe quel drawer ; il s'affiche TOUJOURS,
-// même quand Dino n'a pas tourné (état "unknown" → "Hors scope V1").
+// Le verdict est calculé côté serveur (source unique — C0 du redesign
+// auto-validation) et exposé dans le champ `auto_validate_verdict` de la
+// réponse dino-suggestions. Ce composant ne fetche plus que Dino (le verdict
+// embarque déjà la comparaison Dino + Texte) et l'affiche tel quel ; il
+// s'affiche TOUJOURS, même hors scope (Dino 404 → état "unknown").
 
 import { computed, ref, watch } from 'vue'
 import { ShieldCheck } from 'lucide-vue-next'
@@ -18,15 +16,9 @@ import {
   type DinoSuggestionsResponse,
 } from '../composables/useDinoSuggestions'
 import {
-  fetchTextSignalsByAssetId,
-  fetchTextSignalsByReviewId,
-  type TextSignalsResponse,
-} from '../composables/useTextSignals'
-import {
-  computeAutoValidateVerdict,
-  computeDinoVerdict,
   levelColor,
   levelLabel,
+  type AutoValidateLevel,
 } from '../composables/useAutoValidateVerdict'
 
 const props = defineProps<{
@@ -37,7 +29,6 @@ const props = defineProps<{
 }>()
 
 const dino = ref<DinoSuggestionsResponse | null>(null)
-const text = ref<TextSignalsResponse | null>(null)
 const loading = ref(false)
 const loaded = ref(false)
 
@@ -45,22 +36,11 @@ async function load() {
   loading.value = true
   loaded.value = false
   dino.value = null
-  text.value = null
   try {
     if (props.reviewId) {
-      const [d, t] = await Promise.all([
-        fetchDinoSuggestionsByReviewId(props.reviewId),
-        fetchTextSignalsByReviewId(props.reviewId),
-      ])
-      dino.value = d
-      text.value = t
+      dino.value = await fetchDinoSuggestionsByReviewId(props.reviewId)
     } else if (props.assetId) {
-      const [d, t] = await Promise.all([
-        fetchDinoSuggestionsByAssetId(props.assetId),
-        fetchTextSignalsByAssetId(props.assetId),
-      ])
-      dino.value = d
-      text.value = t
+      dino.value = await fetchDinoSuggestionsByAssetId(props.assetId)
     }
   } finally {
     loading.value = false
@@ -76,9 +56,14 @@ watch(
   { immediate: true },
 )
 
-const verdict = computed(() =>
-  computeAutoValidateVerdict(computeDinoVerdict(dino.value), text.value),
-)
+// Dino 404 (pas de prédiction) → réponse null → on dégrade en "unknown".
+// Le serveur ne renvoie jamais auto_validate_verdict=null en pratique (404
+// amont quand il n'y a pas de prédiction).
+const UNKNOWN: { level: AutoValidateLevel; reason: string } = {
+  level: 'unknown',
+  reason: 'Hors scope V1 (2€ commémo) ou Dino pas encore exécuté',
+}
+const verdict = computed(() => dino.value?.auto_validate_verdict ?? UNKNOWN)
 const color = computed(() => levelColor(verdict.value.level))
 </script>
 
