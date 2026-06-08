@@ -5,9 +5,18 @@
 > `eurio.db` que Mac et PC se partagent via un verrou. Le travail client (Mac/PC)
 > est déjà fait — voir `ml/store/lease.py`. Cette doc ne couvre **que** le serveur.
 
+> **Périmètre & docs liées.** Cette doc = **uniquement** le bucket de lease
+> `eurio-db`. Le VPS héberge désormais **deux choses indépendantes** :
+> 1. le **bucket lease `eurio-db`** (cette doc) — sync de `eurio.db` Mac↔PC ;
+> 2. le **service review collaboratif** (FastAPI + `review.db` + front) →
+>    `docs/work-in-progress/collaborative-review/09-vps-deploy.md`.
+> Elles ne dépendent pas l'une de l'autre et peuvent être déployées dans
+> n'importe quel ordre. Côté client, le protocole training-pendant-dev est dans
+> `ml/README-training.md` (concerne le Mac/PC, pas le VPS).
+
 ## Contexte (pourquoi)
 
-L'admin ML tourne sur deux machines (Mac = prépare cohortes/référentiel/review,
+L'admin ML tourne sur deux machines (Mac = prépare cohortes/référentiel + arbitre,
 PC = entraîne/bench), **séquentiellement dans le temps**, sur une base SQLite
 unique `eurio.db` (doctrine SQLite-only). On a écarté libSQL/`sqld` : le client
 Python libSQL ne supporte ni `row_factory`, ni `create_function` (nos UDFs phash),
@@ -15,6 +24,18 @@ ni `executescript` — un swap de driver casserait tout. À la place : **modèle
 lease**. La copie canonique vit dans MinIO ; une machine la *pull*, pose un
 verrou, travaille en `sqlite3` standard, puis *push* et libère. Aucune écriture
 concurrente possible → pas de corruption, pas de merge binaire.
+
+**Ce qui a changé depuis la conception initiale (n'impacte pas le provisioning) :**
+- La **review collaborative est sortie du lease** : les amis reviewent dans le
+  service review (sa propre `review.db`, hors MinIO), et leurs décisions sont
+  réconciliées dans `eurio.db` par un pont. Le lease ne gouverne donc plus que
+  les éditions `eurio.db` (référentiel, cohortes, training, arbitrage) — il est
+  plus « léger » qu'avant mais le mécanisme serveur est identique.
+- Le **training long sur PC** peut tourner pendant que le Mac continue à bosser :
+  le PC n'envoie alors **pas** le fichier entier au release (ça écraserait le
+  travail data du Mac), il applique ses tables training-owned à la main
+  (cf. `ml/README-training.md`). C'est une doctrine **client** : rien à faire
+  côté VPS, le bucket reste le même.
 
 ## Contrat client (ce que Mac/PC vont faire)
 
@@ -75,6 +96,12 @@ La clé `MINIO_ACCESS_KEY` utilisée par Mac/PC doit avoir **lecture+écriture**
 `eurio-db` (get/put/delete object, list bucket). Si tu utilises une policy
 nommée, ajoute `eurio-db` à son scope ; sinon, vérifie que la clé existante
 (déjà rw sur `enrichment-*`) couvre aussi ce nouveau bucket.
+
+> **Note (service review)** : le service review (doc 09) réutilise les **mêmes
+> creds MinIO** pour minter des URLs présignées des crops (`enrichment-crops`,
+> lecture seule). La clé étant déjà rw sur `enrichment-*`, **aucun grant
+> supplémentaire** n'est nécessaire. Le service review n'accède **pas** au bucket
+> `eurio-db`.
 ```bash
 mc anonymous get local/eurio-db   # doit rester PRIVÉ (aucun accès anonyme)
 ```
@@ -115,6 +142,10 @@ mc ilm rule ls  local/eurio-db
 - ❌ Installer/configurer `sqld`/libSQL (approche abandonnée).
 - ❌ Monter `eurio.db` sur un FS réseau (NFS/SMB) — locking SQLite cassé = corruption.
 - ❌ Ouvrir le bucket en public.
+- ❌ Déployer le **service review** (systemd, reverse-proxy, `review.db`, seed des
+  reviewers) — c'est un déploiement distinct → `09-vps-deploy.md`.
+- ❌ Mettre `review.db` dans MinIO — c'est un fichier local du service review,
+  sur le disque du VPS (pas de lease, pas de bucket).
 
 Une fois cette checklist verte, prévenir la session Mac : elle pourra
 `go-task ml:db:acquire` / `release` et le cross-machine est opérationnel.
