@@ -1642,3 +1642,38 @@ CREATE TABLE IF NOT EXISTS referential_discovery_queue (
   discovered_at     TEXT NOT NULL DEFAULT (datetime('now')),
   resolved_at       TEXT
 );
+
+-- ─── Review collaborative — staging d'arbitrage ────────────────────────────
+-- Les décisions prises par des amis reviewers dans le service review dédié
+-- (VPS, review.db) sont tirées ici par `go-task ml:review:reconcile` SANS
+-- toucher le canonique : elles attendent l'arbitrage humain (Raphaël) qui les
+-- promeut (approve → applique le chemin decide() habituel) ou les rejette. Le
+-- niveau de confiance entrant est 'peer_review' (cf. trust model). La clé `id`
+-- = decisions.id du review.db → INSERT OR IGNORE = réconciliation idempotente.
+-- cf. docs/work-in-progress/collaborative-review/ (02-data-model, 05, 07).
+CREATE TABLE IF NOT EXISTS peer_review_decisions (
+  id                   TEXT PRIMARY KEY,         -- = decisions.id (review.db)
+  image_asset_id       TEXT NOT NULL,
+  review_item_id       TEXT,                     -- = review_queue.id publié
+  reviewer_token       TEXT NOT NULL,
+  reviewer_name        TEXT NOT NULL,
+  action               TEXT NOT NULL
+                         CHECK (action IN ('accept', 'reject', 'skip')),
+  decided_eurio_id     TEXT,
+  decided_face         TEXT,
+  decided_variant_kind TEXT,
+  quality_reason       TEXT,
+  notes                TEXT,
+  decided_at           TEXT NOT NULL,
+  imported_at          TEXT NOT NULL DEFAULT (datetime('now')),
+  arbitration_status   TEXT NOT NULL DEFAULT 'pending'
+                         CHECK (arbitration_status IN
+                           ('pending', 'approved', 'rejected', 'superseded')),
+  arbitrated_at        TEXT,
+  arbitration_notes    TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_peer_review_pending
+  ON peer_review_decisions(arbitration_status)
+  WHERE arbitration_status = 'pending';
+CREATE INDEX IF NOT EXISTS idx_peer_review_reviewer
+  ON peer_review_decisions(reviewer_token);

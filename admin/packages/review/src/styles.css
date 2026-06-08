@@ -1,0 +1,19 @@
+/* Front reviewer — styles. Tokens partagés (source of truth). */
+@import '../../../../shared/tokens.css';
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  font-family: 'Inter Tight', system-ui, -apple-system, sans-serif;
+  background: var(--indigo-700);
+  color: var(--ink);
+}

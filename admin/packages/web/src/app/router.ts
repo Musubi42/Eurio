@@ -89,6 +89,10 @@ const router = createRouter({
           component: () => import('@/features/review/pages/RecoverRejectedPage.vue'),
         },
         {
+          path: 'review/peer-arbitration',
+          component: () => import('@/features/review/pages/PeerArbitrationPage.vue'),
+        },
+        {
           path: 'audit',
           component: () => import('@/features/audit/pages/AuditPage.vue'),
         },

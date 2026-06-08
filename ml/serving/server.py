@@ -28,6 +28,7 @@ from . import benchmark_routes
 from . import iteration_runner as iteration_runner_module
 from . import lab_routes
 from review import review_queue_routes
+from review import peer_arbitration_routes
 from . import sources_routes
 from review import coins_review_routes
 from . import bench_routes
@@ -98,6 +99,10 @@ app.include_router(sources_routes.router)
 # Wire /review-queue — single-item review flow over the queue populated
 # by the orchestrator's `enqueue` step.
 app.include_router(review_queue_routes.router)
+
+# Wire /peer-arbitration — arbitrage admin des décisions des amis reviewers
+# (staging peer_review_decisions, réconcilié depuis le service review VPS).
+app.include_router(peer_arbitration_routes.router)
 
 # Wire /coins/{eurio_id}/assets — enrichment gallery on CoinDetailPage.
 from serving import coin_assets_routes  # noqa: E402

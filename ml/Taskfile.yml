@@ -543,6 +543,35 @@ tasks:
     cmds:
       - "{{.VENV}}/python -m store.lease steal {{.CLI_ARGS}}"
 
+  # ---------- Review collaborative (service VPS + pont eurio.db) ----------
+  # Service review = review.db SQLite + FastAPI, hors lease (toujours allumé sur
+  # le VPS). publish/reconcile = pont avec eurio.db (lease requis, côté Mac).
+  # cf. docs/work-in-progress/collaborative-review/
+  review:serve:
+    desc: "Lance le service review en local (uvicorn :8048, reload) pour le dev."
+    cmds:
+      - "{{.VENV}}/python -m uvicorn review_service.app:app --port 8048 --reload"
+
+  review:reviewer:add:
+    desc: "Ajoute un reviewer. Usage: go-task ml:review:reviewer:add -- --token Paolo42 --name Paolo"
+    cmds:
+      - "{{.VENV}}/python -m review_service.manage add-reviewer {{.CLI_ARGS}}"
+
+  review:reviewer:list:
+    desc: "Liste les reviewers de review.db."
+    cmds:
+      - "{{.VENV}}/python -m review_service.manage list-reviewers"
+
+  review:publish:
+    desc: "Pousse les items open (lane manuel) eurio.db → service review. Usage: [-- --limit 200]"
+    cmds:
+      - "{{.VENV}}/python -m review.publish_cli publish {{.CLI_ARGS}}"
+
+  review:reconcile:
+    desc: "Tire les décisions des amis → staging eurio.db.peer_review_decisions."
+    cmds:
+      - "{{.VENV}}/python -m review.publish_cli reconcile"
+
   # ---------- API quotas ----------
   quota:status:
     desc: "Dump quota usage as JSON. Usage: go-task ml:quota:status -- --source=numista"
