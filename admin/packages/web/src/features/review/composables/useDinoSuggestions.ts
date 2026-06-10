@@ -15,6 +15,8 @@
 import { ML_API } from '@/features/training/composables/useTrainingApi'
 import type {
   AutoValidateLevel,
+  ConsensusLane,
+  ConsensusOutcome,
   CriterionKey,
   CriterionState,
 } from './useAutoValidateVerdict'
@@ -69,6 +71,18 @@ export interface DinoSuggestionsResponse {
     level: AutoValidateLevel
     reason: string
     criteria: { key: CriterionKey; state: CriterionState }[]
+  } | null
+  // Verdict de CONSENSUS (C3) — la décision de routage qui fait foi (= la lane
+  // posée en review_queue). Source du badge depuis le polish front : fin du
+  // drift où le verdict Dino 4-niveaux pouvait diverger de la lane (ex.
+  // crop_cap → Dino auto_candidate mais lane ccproxy). null seulement si
+  // l'asset n'a aucun signal exploitable.
+  consensus_verdict: {
+    outcome: ConsensusOutcome
+    lane: ConsensusLane
+    reason: string
+    rule: string
+    confidence: number
   } | null
 }
 

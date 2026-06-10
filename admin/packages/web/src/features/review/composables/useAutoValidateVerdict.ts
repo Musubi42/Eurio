@@ -25,6 +25,13 @@ export type CriterionKey =
   | 'top1_country_sim'
   | 'country_spread'
 
+/** Verdict de CONSENSUS (C3) — la décision de routage qui fait foi (= la lane
+ *  posée en review_queue). C'est la source du badge depuis le polish front ;
+ *  le `level` Dino 4-niveaux n'est plus que du détail par critère. */
+export type ConsensusOutcome = 'accept' | 'needs_review' | 'reject'
+
+export type ConsensusLane = 'auto_accept' | 'ccproxy' | 'manual'
+
 /** Ligne affichable d'un critère Dino : état décidé par le serveur +
  *  valeur/seuil formatés pour l'affichage. */
 export interface DinoCriterionDisplay {
@@ -92,31 +99,39 @@ export function dinoCriteriaDisplay(
   ]
 }
 
-// ─── Visual helpers ─────────────────────────────────────────────────────
+// ─── Verdict de consensus (badge) ────────────────────────────────────────
 
-export function levelColor(level: AutoValidateLevel): string {
-  switch (level) {
-    case 'auto_candidate':
-      return 'var(--success)'
-    case 'partial':
-      return 'var(--gold-600)'
-    case 'divergent':
-      return 'var(--danger)'
-    case 'unknown':
-      return 'var(--ink-400)'
+export function outcomeLabel(outcome: ConsensusOutcome): string {
+  switch (outcome) {
+    case 'accept':
+      return 'accepté'
+    case 'needs_review':
+      return 'à revoir'
+    case 'reject':
+      return 'rejeté'
   }
 }
 
-export function levelLabel(level: AutoValidateLevel): string {
-  switch (level) {
-    case 'auto_candidate':
-      return 'auto-candidat'
-    case 'partial':
-      return 'partiel'
-    case 'divergent':
-      return 'divergent'
-    case 'unknown':
-      return 'inconnu'
+export function outcomeColor(outcome: ConsensusOutcome): string {
+  switch (outcome) {
+    case 'accept':
+      return 'var(--success)'
+    case 'needs_review':
+      return 'var(--gold-600)'
+    case 'reject':
+      return 'var(--danger)'
+  }
+}
+
+/** Libellé court de la lane de routage (audit sous le badge). */
+export function laneLabel(lane: ConsensusLane): string {
+  switch (lane) {
+    case 'auto_accept':
+      return 'auto-accept'
+    case 'ccproxy':
+      return 'ccproxy'
+    case 'manual':
+      return 'manuel'
   }
 }
 

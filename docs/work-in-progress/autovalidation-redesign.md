@@ -1,7 +1,7 @@
 # Mission — Repenser l'orchestration de l'auto-validation (modèle ensemble/consensus)
 
-> **Statut : C0→C5 LIVRÉS + câblés live (2026-06-10). Reste : polish front (badge consensus) +
-> lancer le cleanup legacy `--apply`.** Décidé
+> **Statut : TERMINÉ — C0→C5 livrés + câblés live + polish front + cleanup legacy appliqué
+> (2026-06-10).** Décidé
 > 2026-06-08 après exploration graphify du flux text-signals → attribution → review. Chantier à
 > part entière (touche le chemin critique d'ingestion + le front admin). Chunks audités, avec une
 > **stratégie de non-régression par replay** (verdicts avant/après). Doctrine R0,
@@ -286,9 +286,8 @@ Le gauntlet est remplacé par le flux ensemble dans le pipeline live :
   auto_accept, contradict-alone→ccproxy rescue, dual_contradict in-scope→reject/manual, standard hors-scope→
   rescue) + `test_text_signal_step.py` réécrit (contradict = signal, plus de kill).
 
-**Drift connu (front, suivi séparé)** : `_verdict_from_signals` reste la source du badge verdict affiché
-(`dino-suggestions`, C0) — la lane vient désormais du consensus. Pour un crop-cap, le front peut afficher
-`auto_candidate` alors que la lane est `ccproxy`. Unifier le front sur `consensus_verdicts` = polish ultérieur.
+**Drift front — RÉSOLU (polish front, 2026-06-10)** : le badge lit désormais `consensus_verdict` (= la
+lane qui fait foi), plus `_verdict_from_signals`. Voir « Polish front » ci-dessous.
 
 ### Resolver d'attribution unifié (2026-06-10 — C4 FAIT)
 Nouveau `review/validation/resolver.py` : **une entrée source-agnostique**
@@ -322,8 +321,20 @@ reporté ; le contrat est déjà agnostique.
   (118) → un re-run de cohorte les redécouvre et les passe au consensus. ⚠️ destructif + retire les
   lignes du panneau front « rejetés pré-ingestion » → **à lancer sur décision** (`--apply`).
 
+### Polish front (2026-06-10 — FAIT)
+Le badge `AutoValidateVerdict.vue` lit désormais le **verdict de consensus** (= la décision de routage qui
+fait foi), plus le verdict Dino 4-niveaux → fin du drift C3 (un crop-cap affichait `auto_candidate` alors
+que la lane était `ccproxy`). L'endpoint `dino-suggestions` expose `consensus_verdict`
+(`ConsensusVerdictOut` : outcome/lane/reason/rule/confidence) — lu depuis `consensus_verdicts` (ce qui a
+décidé la lane), recalculé à la volée en fallback. Le badge montre `accepté/à revoir/rejeté · <lane>` +
+raison. Le détail Dino par critère reste dans `DinoVerdict.vue` (`auto_validate_verdict` conservé pour ça ;
+helpers morts `levelColor`/`levelLabel` retirés). Fichiers : `ml/review/review_queue_routes.py`,
+`admin/.../review/{composables/useAutoValidateVerdict.ts,composables/useDinoSuggestions.ts,
+components/AutoValidateVerdict.vue}`. Typecheck review/ propre.
+
 ### Reste à faire
-1. **Polish front** : faire lire au front le `consensus_verdicts` (badge verdict) → fin du drift C3.
+— Chantier complet (C0→C5 + câblage live + polish front). Suite éventuelle : relabelliser `mix-zone-17`
+par asset pour en faire un vrai hold-out ; calibrer les seuils consensus après accumulation de reviews.
 
 ### Fichiers livrés (working tree)
 - `ml/review/validation/{__init__,experts,replay,consensus,persist}.py` (nouveau package)

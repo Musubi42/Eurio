@@ -1,12 +1,13 @@
 <script setup lang="ts">
-// Synthèse top du drawer : verdict global d'auto-validation en 4 niveaux
-// (auto_candidate / partial / divergent / unknown) + raison courte.
+// Synthèse top du drawer : verdict de CONSENSUS (C3) = la décision de routage
+// qui fait foi (accepté / à revoir / rejeté) + la lane + la raison courte.
 //
-// Le verdict est calculé côté serveur (source unique — C0 du redesign
-// auto-validation) et exposé dans le champ `auto_validate_verdict` de la
-// réponse dino-suggestions. Ce composant ne fetche plus que Dino (le verdict
-// embarque déjà la comparaison Dino + Texte) et l'affiche tel quel ; il
-// s'affiche TOUJOURS, même hors scope (Dino 404 → état "unknown").
+// Le verdict est calculé côté serveur (source unique) et exposé dans le champ
+// `consensus_verdict` de la réponse dino-suggestions — c'est ce qui a décidé la
+// lane en review_queue. On l'affiche tel quel (fin du drift où le verdict Dino
+// 4-niveaux pouvait diverger de la lane, ex. crop_cap). Le détail Dino par
+// critère vit dans `DinoVerdict.vue`. S'affiche TOUJOURS, même hors scope
+// (Dino 404 → réponse null → on dégrade en "à revoir / manuel").
 
 import { computed, ref, watch } from 'vue'
 import { ShieldCheck } from 'lucide-vue-next'
@@ -16,9 +17,11 @@ import {
   type DinoSuggestionsResponse,
 } from '../composables/useDinoSuggestions'
 import {
-  levelColor,
-  levelLabel,
-  type AutoValidateLevel,
+  laneLabel,
+  outcomeColor,
+  outcomeLabel,
+  type ConsensusLane,
+  type ConsensusOutcome,
 } from '../composables/useAutoValidateVerdict'
 
 const props = defineProps<{
@@ -56,15 +59,22 @@ watch(
   { immediate: true },
 )
 
-// Dino 404 (pas de prédiction) → réponse null → on dégrade en "unknown".
-// Le serveur ne renvoie jamais auto_validate_verdict=null en pratique (404
-// amont quand il n'y a pas de prédiction).
-const UNKNOWN: { level: AutoValidateLevel; reason: string } = {
-  level: 'unknown',
+// Dino 404 (pas de prédiction / hors scope) → réponse null → on dégrade vers le
+// filet humain (à revoir / manuel), cohérent avec la règle "aucun signal".
+interface ConsensusView {
+  outcome: ConsensusOutcome
+  lane: ConsensusLane
+  reason: string
+}
+const FALLBACK: ConsensusView = {
+  outcome: 'needs_review',
+  lane: 'manual',
   reason: 'Hors scope V1 (2€ commémo) ou Dino pas encore exécuté',
 }
-const verdict = computed(() => dino.value?.auto_validate_verdict ?? UNKNOWN)
-const color = computed(() => levelColor(verdict.value.level))
+const verdict = computed<ConsensusView>(
+  () => dino.value?.consensus_verdict ?? FALLBACK,
+)
+const color = computed(() => outcomeColor(verdict.value.outcome))
 </script>
 
 <template>
@@ -81,14 +91,17 @@ const color = computed(() => levelColor(verdict.value.level))
         :style="{ color }"
       >
         <ShieldCheck class="h-3 w-3" />
-        Verdict auto-validate
+        Verdict consensus
       </p>
       <p
         class="font-mono text-[11px] font-semibold uppercase tracking-wider"
         :style="{ color }"
       >
         <span v-if="loading" class="opacity-60">…</span>
-        <span v-else>{{ levelLabel(verdict.level) }}</span>
+        <span v-else
+          >{{ outcomeLabel(verdict.outcome) }}
+          <span class="opacity-60">· {{ laneLabel(verdict.lane) }}</span></span
+        >
       </p>
     </div>
     <p

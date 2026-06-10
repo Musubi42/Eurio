@@ -39,6 +39,9 @@ import cv2
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from review.validation.consensus import consensus_verdict
+from review.validation.experts import collect_signals
+from review.validation.persist import load_consensus_verdict
 from training.foundation.auto_validate import (
     compute_auto_validate_verdict,
     compute_auto_validate_verdict_from_row,
@@ -2529,12 +2532,27 @@ class DinoCriterionOut(BaseModel):
 
 
 class AutoValidateVerdictOut(BaseModel):
-    """Verdict d'auto-validation calculé côté serveur — source unique (C0).
-    Le front affiche ``level``/``reason``/``criteria`` tels quels."""
+    """Détail Dino par critère (top1/sim/spread) — alimente l'affichage des
+    critères (``DinoVerdict.vue``). N'EST PLUS le verdict de routage : c'est
+    ``ConsensusVerdictOut`` qui fait foi (cf. câblage live C3)."""
 
     level: str  # auto_candidate | partial | divergent | unknown
     reason: str
     criteria: list[DinoCriterionOut]
+
+
+class ConsensusVerdictOut(BaseModel):
+    """Verdict de CONSENSUS (C3) — la décision qui fait foi (= la lane routée).
+    Le badge front l'affiche tel quel ; fin du drift où le verdict Dino
+    4-niveaux pouvait diverger de la lane (ex. crop_cap : Dino auto_candidate
+    mais lane ccproxy). Lu depuis ``consensus_verdicts`` (ce qui a décidé la
+    lane à l'enqueue), recalculé à la volée en fallback si pas encore persisté."""
+
+    outcome: str  # accept | needs_review | reject
+    lane: str  # auto_accept | ccproxy | manual
+    reason: str
+    rule: str  # branche de décision (audit)
+    confidence: float
 
 
 class DinoSuggestionsResponse(BaseModel):
@@ -2572,6 +2590,10 @@ class DinoSuggestionsResponse(BaseModel):
     # état par critère), il ne recalcule plus rien. None seulement si l'asset
     # est introuvable (cas qui ne devrait pas arriver vu le 404 amont).
     auto_validate_verdict: AutoValidateVerdictOut | None = None
+    # Verdict de CONSENSUS (C3) — décision de routage qui fait foi (= la lane).
+    # Source du badge front. None seulement si l'asset n'a aucun signal
+    # exploitable (introuvable / non résolu).
+    consensus_verdict: ConsensusVerdictOut | None = None
 
 
 def _enrich_top_k(
@@ -2655,6 +2677,21 @@ def _build_dino_response(
             DinoCriterionOut(key=c.key, state=c.state) for c in view.criteria
         ],
     )
+    # Verdict de consensus = ce qui fait foi pour le badge. On lit d'abord la row
+    # persistée (ce qui a réellement décidé la lane à l'enqueue) ; à défaut
+    # (legacy / pas encore enqueué) on recalcule à la volée depuis les experts.
+    cv = load_consensus_verdict(conn, asset_id)
+    if cv is None:
+        signals = collect_signals(conn, asset_id)
+        cv = consensus_verdict(signals) if signals else None
+    consensus_out = (
+        ConsensusVerdictOut(
+            outcome=cv.outcome, lane=cv.lane, reason=cv.reason,
+            rule=cv.rule, confidence=cv.confidence,
+        )
+        if cv is not None
+        else None
+    )
     return DinoSuggestionsResponse(
         asset_id=pred.asset_id,
         encoder_version=pred.encoder_version,
@@ -2674,6 +2711,7 @@ def _build_dino_response(
         top_k_country=_enrich_top_k(conn, pred.top_k_country or []),
         target_eurio_id=target_eurio_id,
         auto_validate_verdict=auto_validate_verdict,
+        consensus_verdict=consensus_out,
     )
 
 
