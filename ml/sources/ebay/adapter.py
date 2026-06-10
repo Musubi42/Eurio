@@ -60,19 +60,15 @@ from sources.ebay.filters import (
     listing_row,
 )
 from sources.ebay.marketplaces import discovery_marketplaces
+from review.validation.resolver import resolve_listing
 from sources.ebay.queries import (
     EbayQuery,
     build_group_query,
     load_coin,
     load_group_coins,
-    match_listing_to_group,
     search_limit_for_group,
 )
-from sources.ebay.standards import (
-    COMMEMO_IN_STANDARD_PREFIX,
-    attribute_standard_listing,
-    load_standard_eras,
-)
+from sources.ebay.standards import load_standard_eras
 
 # Factory invoked by the adapter to materialize a client for a given
 # marketplace. Callers wire it as e.g.
@@ -94,7 +90,7 @@ class SearchExpandResult:
     """Funnel ventilé du `_search_and_expand`.
 
     - ``rows``           : listings bruts (post-expansion groupes), prêts
-                           pour `accept_listing` + `match_listing_to_group`.
+                           pour `accept_listing` + `resolve_listing`.
     - ``n_summaries``    : N0 — `itemSummaries` retournés brut par Browse.
     - ``n_after_groups`` : N1 — N0 + lignes ajoutées par expansion
                            `getItemsByGroup` (top-K limité).
@@ -175,10 +171,11 @@ class EbayAdapter:
         Découverte par **groupe** ``(dénomination, pays, année)`` : une
         seule recherche eBay par marketplace couvre toutes les commémos-
         sœurs du groupe. Chaque listing retourné est attribué à une pièce
-        du groupe par ``match_listing_to_group``. ``target_eurio_id`` de
-        chaque ``DiscoveredItem`` porte donc la pièce *résolue* par le
-        theme-match — pas la pièce cherchée (il n'y a plus de pièce
-        cherchée, juste un groupe). ``None`` pour les listings ambigus.
+        du groupe par le resolver unifié (``review.validation.resolver.
+        resolve_listing`` — theme-match commémo ou plage standard).
+        ``target_eurio_id`` de chaque ``DiscoveredItem`` porte donc la pièce
+        *résolue* — pas la pièce cherchée (il n'y a plus de pièce cherchée,
+        juste un groupe). ``None`` pour les listings ambigus.
 
         Multi-marketplace : interroge ``DISCOVERY_MARKETPLACES`` (EBAY_DE
         puis EBAY_ES, routage uniforme). Les rows sont agrégées par item_id
@@ -290,34 +287,28 @@ class EbayAdapter:
                 if not ok:
                     self._record_discard(record_discarded, row, reason, mkt)
                     continue
-                if is_standard:
-                    if not self._attribute_standard_row(row, group):
-                        discard_reason: str = row["_discard_reason"]
-                        if discard_reason.startswith(COMMEMO_IN_STANDARD_PREFIX):
-                            # Commémo détectée dans un run standard : on la sauve
-                            # au lieu de la jeter. Elle part dans le flux normal
-                            # (→ _yield_listing_images) avec l'eurio_id extrait,
-                            # et on trace également dans discarded_listings (audit).
-                            eurio_id: str = discard_reason.split(":", 1)[1]
-                            row["_resolved_eurio_id"] = eurio_id
-                            row["_group_verdict"] = "rescued"
-                            kept.append(row)
-                            self._record_discard(
-                                record_discarded, row,
-                                f"rescued_to:{eurio_id}", mkt,
-                                target_eurio_id=eurio_id,
-                            )
-                        else:
-                            # no_match / no_eras / group_contradict_* → discard.
-                            self._record_discard(
-                                record_discarded, row, discard_reason, mkt,
-                            )
-                        continue
-                elif not self._attribute_commemo_row(row, coin_ids):
+                # Attribution unifiée commémo + standard (C4) : un seul resolver,
+                # un seul type de résultat. ``reason`` est posé pour les discards
+                # ET le rescue (gardé + audité). Cf. review/validation/resolver.py.
+                att = resolve_listing(
+                    row.get("title") or "",
+                    kind="standard" if is_standard else "commemorative",
+                    denomination=group.denomination,
+                    country=group.country,
+                    year=group.year,
+                    conn=self.conn,
+                    coin_ids=None if is_standard else coin_ids,
+                )
+                if att.reason is not None:
                     self._record_discard(
-                        record_discarded, row, row["_discard_reason"], mkt,
+                        record_discarded, row, att.reason, mkt,
+                        target_eurio_id=att.target_eurio_id if att.keep else None,
                     )
+                if not att.keep:
                     continue
+                row["_resolved_eurio_id"] = att.target_eurio_id
+                row["_group_verdict"] = att.verdict
+                row["_group_candidates"] = list(att.candidates) or None
                 kept.append(row)
 
             duration_ms = int((time.monotonic() - t0) * 1000)
@@ -477,58 +468,9 @@ class EbayAdapter:
             marketplace=marketplace,
         ))
 
-    # ── Attribution par listing (commémo / standard) ─────────────────────────
-
-    def _attribute_commemo_row(self, row: dict, coin_ids: list[str]) -> bool:
-        """Attribue un listing à une commémo-sœur du groupe (theme-match).
-
-        Retourne ``True`` si gardé (pose ``_resolved_eurio_id`` /
-        ``_group_verdict`` / ``_group_candidates`` sur ``row``), ``False`` si
-        à jeter (pose ``_discard_reason``). C1 — single / lot / ambiguous sont
-        tous gardés ; seul ``no_match`` (contradiction franche pays/année/
-        dénom) jette.
-        """
-        gm = match_listing_to_group(
-            row.get("title") or "", coin_ids, conn=self.conn,
-        )
-        if gm.verdict == "no_match":
-            axe = gm.contradictions[0] if gm.contradictions else "unknown"
-            row["_discard_reason"] = f"group_contradict_{axe}"
-            return False
-        row["_resolved_eurio_id"] = gm.target_eurio_id
-        row["_group_verdict"] = gm.verdict
-        # Candidates review : 'ambiguous' → toutes les sœurs ; 'lot' → le
-        # sous-ensemble matché ; 'single' → rien (target déjà résolu). Cf.
-        # P10-E (fix multi-coin groups 2026-05-26).
-        if gm.verdict == "ambiguous":
-            row["_group_candidates"] = list(coin_ids)
-        elif gm.verdict == "lot":
-            row["_group_candidates"] = list(gm.matched)
-        else:
-            row["_group_candidates"] = None
-        return True
-
-    def _attribute_standard_row(self, row: dict, group: DiscoveryGroup) -> bool:
-        """Attribue un listing à une ère standard du pays (appartenance de plage).
-
-        Retourne ``True`` si gardé, ``False`` si à jeter (``commemo`` /
-        ``no_match`` / ``no_eras`` — pose ``_discard_reason``). Doctrine
-        standards « tout en review » : ``single`` et ``ambiguous`` sont gardés
-        et partent en review ; ``target`` est un *prior* (None si ambiguous) et
-        les ères du pays sont toujours portées en candidates pour que l'humain
-        tranche / corrige.
-        """
-        sm = attribute_standard_listing(
-            row.get("title") or "", group.denomination, group.country,
-            conn=self.conn,
-        )
-        if sm.verdict in ("commemo", "no_match", "no_eras"):
-            row["_discard_reason"] = sm.reason
-            return False
-        row["_resolved_eurio_id"] = sm.target_eurio_id
-        row["_group_verdict"] = sm.verdict
-        row["_group_candidates"] = list(sm.candidates)
-        return True
+    # Attribution par listing : unifiée commémo + standard via
+    # ``review.validation.resolver.resolve_listing`` (C4) — plus de méthodes
+    # ``_attribute_*_row`` séparées ni de parsing de chaîne pour le rescue.
 
     def _search_and_expand(
         self,

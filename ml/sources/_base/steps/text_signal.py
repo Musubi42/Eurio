@@ -6,22 +6,23 @@ puis ``compare_to_target`` quand le ``target_eurio_id`` est connu
 (chunk 6 auto-validation). Persiste 1 row par ``source_image_id`` dans
 ``listing_text_signals`` avec le verdict.
 
-**Décision pipeline** (chunk 6.c) : sur verdict ``contradict``, le step
-écrit dans ``discarded_listings(reason='text_contradict_<axe>')`` et
-pose ``source_images.route_decision='rejected_text'``. Le step
-``download`` saute ensuite ces sources_images — le crop n'est pas
-téléchargé. Audit : le panel front "Listings rejetés pré-ingestion"
-affiche les nouveaux rejets sans nouveau code.
+**Plus de kill dur sur contradict** (auto-validation redesign C3,
+docs/work-in-progress/autovalidation-redesign.md) : ce step ne fait QUE
+**produire le signal texte** (``vs_target_verdict``). Un verdict
+``contradict`` n'est plus une suppression — il devient un signal parmi
+d'autres, tranché *en aval* par la règle de consensus
+(``review/validation/consensus.py``) à l'enqueue, sur la base de TOUS les
+experts (texte + dino + crop_quality). Un contradict isolé → ``needs_review``
+(rescue) ; seul un double désaccord texte+dino *in-scope* → ``reject``. Le
+listing traverse donc désormais download → crop → dino → consensus au lieu
+d'être tué ici. (Mesure du rescue : ``scripts/contradict_rescue.py``.)
 
 Idempotence : skip un source_image si une row existe déjà pour la même
-``extractor_version``. Passer ``force=True`` pour recompute (auquel cas
-les rejets ``text_contradict_*`` du même source_ref sont nettoyés et
-ré-écrits).
+``extractor_version``. Passer ``force=True`` pour recompute.
 
 Placé entre ``persist`` et ``download`` dans la pipeline : le titre est
-disponible dès que le source_image existe en DB, et le filtre dur
-économise download + detect_crop pour les listings clairement
-contradictoires.
+disponible dès que le source_image existe en DB. Le pré-filtre dur restant
+(non-EUR / bruit évident) vit en amont (discover/persist), pas ici.
 """
 
 from __future__ import annotations
@@ -31,7 +32,6 @@ import sqlite3
 import time
 from dataclasses import dataclass
 
-from sources._base.dedup import record_discarded_listing
 from sources._base.run_logger import RunHandle
 from sources.text_signals import (
     compare_to_target,
@@ -53,7 +53,6 @@ class TextSignalResult:
     n_skipped_existing: int
     n_skipped_empty_title: int
     n_errors: int
-    n_rejected_contradict: int = 0
 
 
 # Called by: ml/sources/_base/orchestrator.py (step 3/8 — after persist, before download)
@@ -88,12 +87,7 @@ def run_text_signal_extract(
     n_skipped_existing = 0
     n_skipped_empty = 0
     n_errors = 0
-    n_rejected_contradict = 0
     rows: list[ListingTextSignalsRow] = []
-    # Pending rejet writes : (source_ref, sid, target_eurio_id, axe, title, payload)
-    pending_rejects: list[tuple[str, str, str | None, str, str | None, dict]] = []
-    run_id_for_reject = run.run_id if run is not None else None
-    source_id_for_reject: str | None = None
 
     t0 = time.monotonic()
     for source_ref, sid in source_image_ids.items():
@@ -135,8 +129,6 @@ def run_text_signal_extract(
 
         title = title_row["listing_title"] or ""
         target_eurio_id = title_row["target_eurio_id"]
-        if source_id_for_reject is None:
-            source_id_for_reject = title_row["source"]
         if not title.strip():
             # On persiste quand même un row "empty" pour éviter de
             # ré-extraire à chaque run, mais on compte séparément.
@@ -152,9 +144,9 @@ def run_text_signal_extract(
             n_errors += 1
             continue
 
-        # Chunk 6 — compute verdict vs target (and persist). Le filtre
-        # dur (chunk 6.c) écrit dans discarded_listings + pose
-        # route_decision='rejected_text' uniquement sur ``contradict``.
+        # Chunk 6 — compute verdict vs target (and persist). Le verdict
+        # ``contradict`` n'est plus un kill (C3) : il est juste persisté ici
+        # comme signal, et tranché en aval par le consensus à l'enqueue.
         # Skip silently quand le target n'est pas connu (pas de
         # target_eurio_id, ou absent de coins).
         verdict: str | None = None
@@ -167,27 +159,6 @@ def run_text_signal_extract(
                 verdict = cmp_result.verdict
                 contradictions = list(cmp_result.contradictions)
                 convergences = list(cmp_result.convergences)
-                if verdict == "contradict":
-                    pending_rejects.append((
-                        source_ref, sid, target_eurio_id,
-                        contradictions[0],
-                        title or None,
-                        {
-                            "contradictions": contradictions,
-                            "convergences": convergences,
-                            "signals": {
-                                "countries": sorted(sig.countries),
-                                "years": sorted(sig.years),
-                                "denominations": sorted(sig.denominations),
-                                "matched": {k: list(v) for k, v in sig.matched.items()},
-                            },
-                            "target": {
-                                "country": target.country,
-                                "year": target.year,
-                                "face_value": target.face_value,
-                            },
-                        },
-                    ))
 
         rows.append(ListingTextSignalsRow(
             source_image_id=sid,
@@ -216,82 +187,18 @@ def run_text_signal_extract(
         else:
             _flush_rows_direct(conn, rows)
 
-    # Filtre dur (chunk 6.c) — applique les rejets contradict après le
-    # flush des signaux pour que la row listing_text_signals existe déjà
-    # quand le panel front la consulte.
-    n_rejected_contradict = _apply_text_contradict_rejections(
-        conn,
-        pending_rejects=pending_rejects,
-        run_id=run_id_for_reject,
-        source_id=source_id_for_reject,
-    )
-
     duration_ms = int((time.monotonic() - t0) * 1000)
     logger.info(
         "[text_signal] extracted=%d skipped_existing=%d skipped_empty=%d "
-        "errors=%d rejected_contradict=%d duration_ms=%d",
-        n_extracted, n_skipped_existing, n_skipped_empty, n_errors,
-        n_rejected_contradict, duration_ms,
+        "errors=%d duration_ms=%d",
+        n_extracted, n_skipped_existing, n_skipped_empty, n_errors, duration_ms,
     )
     return TextSignalResult(
         n_extracted=n_extracted,
         n_skipped_existing=n_skipped_existing,
         n_skipped_empty_title=n_skipped_empty,
         n_errors=n_errors,
-        n_rejected_contradict=n_rejected_contradict,
     )
-
-
-def _apply_text_contradict_rejections(
-    conn,
-    *,
-    pending_rejects: list,
-    run_id: str | None,
-    source_id: str | None,
-) -> int:
-    """Écrit les rejets ``text_contradict_<axe>`` dans discarded_listings
-    et pose ``route_decision='rejected_text'`` sur les source_images
-    correspondants. Idempotent : nettoie d'abord les rows
-    ``text_contradict_*`` pré-existantes pour le même (source, source_ref)
-    avant d'écrire les nouvelles, pour ne pas dupliquer sur force=True.
-    """
-    if not pending_rejects or source_id is None:
-        return 0
-
-    n_rejected = 0
-    for source_ref, sid, target_eurio_id, axe, title, payload in pending_rejects:
-        # Cleanup stale rejects (force-recompute path).
-        conn.execute(
-            """
-            DELETE FROM discarded_listings
-             WHERE source = ? AND source_ref = ?
-               AND reason LIKE 'text_contradict_%'
-            """,
-            (source_id, source_ref),
-        )
-        record_discarded_listing(
-            conn,
-            run_id=run_id,
-            source=source_id,
-            source_ref=source_ref,
-            target_eurio_id=target_eurio_id,
-            reason=f"text_contradict_{axe}",
-            title=title,
-            raw_payload=payload,
-        )
-        # Marque le source_image comme rejeté pour que ``download`` saute.
-        conn.execute(
-            """
-            UPDATE source_images
-               SET route_decision = 'rejected_text',
-                   route_reason   = ?
-             WHERE id = ?
-            """,
-            (axe, sid),
-        )
-        n_rejected += 1
-    conn.commit()
-    return n_rejected
 
 
 def _flush_rows_direct(

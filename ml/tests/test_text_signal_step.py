@@ -384,9 +384,10 @@ def test_verdict_partial_when_country_absent(conn):
     assert row["vs_target_verdict"] == "partial"
 
 
-def test_contradict_writes_discarded_and_route_decision(conn):
-    """Filtre dur (chunk 6.c) — verdict contradict → discarded_listings
-    + route_decision='rejected_text' sur source_images."""
+def test_contradict_is_signal_not_kill(conn):
+    """C3 — un verdict contradict n'est PLUS un kill : il est persisté comme
+    signal (vs_target_verdict), SANS discarded_listings ni route_decision.
+    Le consensus tranche en aval (à l'enqueue)."""
     eurio_id = "fr-2014-2eur-test"
     _insert_coin(conn, eurio_id=eurio_id, country="FR", year=2014)
     _, ref = _insert_run_and_image(
@@ -395,33 +396,29 @@ def test_contradict_writes_discarded_and_route_decision(conn):
         title="Belgique 2 euros 2014 commémorative",
         target_eurio_id=eurio_id,
     )
-    res = run_text_signal_extract(
-        conn=conn, run=None, source_image_ids={ref: "sid1"},
-    )
-    assert res.n_rejected_contradict == 1
+    run_text_signal_extract(conn=conn, run=None, source_image_ids={ref: "sid1"})
 
-    # discarded_listings row écrit
-    drow = conn.execute(
-        "SELECT reason, target_eurio_id, raw_payload FROM discarded_listings "
-        "WHERE source_ref = ?",
+    # Le verdict contradict est bien persisté comme signal.
+    lts = conn.execute(
+        "SELECT vs_target_verdict, contradictions_json FROM listing_text_signals "
+        "WHERE source_image_id = 'sid1'",
+    ).fetchone()
+    assert lts["vs_target_verdict"] == "contradict"
+    assert "country" in json.loads(lts["contradictions_json"])
+
+    # PLUS de kill : aucun discarded_listings, pas de route_decision.
+    n_disc = conn.execute(
+        "SELECT COUNT(*) AS n FROM discarded_listings WHERE source_ref = ?",
         (ref,),
-    ).fetchone()
-    assert drow is not None
-    assert drow["reason"] == "text_contradict_country"
-    assert drow["target_eurio_id"] == eurio_id
-    payload = json.loads(drow["raw_payload"])
-    assert "country" in payload["contradictions"]
-
-    # route_decision posé sur source_images
+    ).fetchone()["n"]
+    assert n_disc == 0
     sirow = conn.execute(
-        "SELECT route_decision, route_reason FROM source_images WHERE id = ?",
-        ("sid1",),
+        "SELECT route_decision FROM source_images WHERE id = 'sid1'",
     ).fetchone()
-    assert sirow["route_decision"] == "rejected_text"
-    assert sirow["route_reason"] == "country"
+    assert sirow["route_decision"] is None
 
 
-def test_no_rejection_on_convergent(conn):
+def test_no_discarded_on_convergent(conn):
     eurio_id = "fr-2014-2eur-test"
     _insert_coin(conn, eurio_id=eurio_id, country="FR", year=2014)
     _, ref = _insert_run_and_image(
@@ -430,25 +427,21 @@ def test_no_rejection_on_convergent(conn):
         title="France 2 euros 2014 hommage",
         target_eurio_id=eurio_id,
     )
-    res = run_text_signal_extract(
-        conn=conn, run=None, source_image_ids={ref: "sid1"},
-    )
-    assert res.n_rejected_contradict == 0
+    run_text_signal_extract(conn=conn, run=None, source_image_ids={ref: "sid1"})
     n = conn.execute(
         "SELECT COUNT(*) AS n FROM discarded_listings WHERE source_ref = ?",
         (ref,),
     ).fetchone()["n"]
     assert n == 0
     sirow = conn.execute(
-        "SELECT route_decision FROM source_images WHERE id = ?",
-        ("sid1",),
+        "SELECT route_decision FROM source_images WHERE id = 'sid1'",
     ).fetchone()
     assert sirow["route_decision"] is None
 
 
-def test_force_recompute_does_not_duplicate_discarded(conn):
-    """Idempotence : recompute via force ne duplique pas les rejets
-    text_contradict_*. Le step nettoie d'abord puis ré-écrit."""
+def test_contradict_never_writes_discarded_even_on_force(conn):
+    """C3 — recompute via force ne crée aucun discarded_listings (le kill
+    n'existe plus)."""
     eurio_id = "fr-2014-2eur-test"
     _insert_coin(conn, eurio_id=eurio_id, country="FR", year=2014)
     _, ref = _insert_run_and_image(
@@ -463,11 +456,10 @@ def test_force_recompute_does_not_duplicate_discarded(conn):
     )
 
     n = conn.execute(
-        "SELECT COUNT(*) AS n FROM discarded_listings "
-        "WHERE source_ref = ? AND reason LIKE 'text_contradict_%'",
+        "SELECT COUNT(*) AS n FROM discarded_listings WHERE source_ref = ?",
         (ref,),
     ).fetchone()["n"]
-    assert n == 1
+    assert n == 0
 
 
 def test_force_recomputes_verdict_after_coin_added(conn):

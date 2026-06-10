@@ -103,6 +103,12 @@ def test_dino_expert_labels_and_scores():
     low = dino_signal(target="fr-x", top1="fr-x", sim=0.40, spread=0.10)
     assert low.raw["sim_pass"] is False
 
+    # Hors scope (standard dans banc commemo) → abstention, jamais "mismatch".
+    oos = dino_signal(target="be-1999-std", top1="be-2021-cmm", sim=0.9,
+                      spread=0.1, in_scope=False)
+    assert oos.label == "absent" and oos.score is None
+    assert oos.raw["in_scope"] is False
+
 
 def test_crop_quality_expert_penalty_rule():
     # Label humain too_tilted → pénalité dure.

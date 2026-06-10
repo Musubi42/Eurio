@@ -21,12 +21,16 @@ Les `lot` rows sont visibles dans /review mais l'UI dédiée
 
 from __future__ import annotations
 
+import json
 import logging
 import sqlite3
 import uuid
 from dataclasses import dataclass
 
-from review.review_lanes import compute_lane
+from review.review_lanes import DEFAULT_LANE
+from review.validation.consensus import RULE_VERSION, consensus_verdict
+from review.validation.experts import collect_signals
+from review.validation.persist import upsert_consensus_verdict
 from sources._base.run_logger import RunHandle
 from store import emit_state_event
 
@@ -34,6 +38,9 @@ logger = logging.getLogger(__name__)
 
 _BASE_PRIORITY = 100
 _BONUS_TARGETED = 30
+# Estampille `decision_engine_version` d'un rejet auto par la règle de consensus
+# (cf. format schema.sql review_queue : 'auto_dino@…', 'human@v1', …).
+_CONSENSUS_ENGINE_VERSION = f"consensus@v{RULE_VERSION}"
 
 
 @dataclass
@@ -41,6 +48,7 @@ class EnqueueResult:
     n_enqueued: int
     n_skipped_already_queued: int
     n_kind_lot: int
+    n_auto_rejected: int = 0  # verdicts consensus 'reject' (ré-ouvrables, C5)
 
 
 def _compute_priority(*, target_eurio_id: str | None) -> int:
@@ -137,6 +145,7 @@ def run_enqueue(
     n_enqueued = 0
     n_skipped = 0
     n_lot = 0
+    n_rejected = 0
 
     for sid in source_image_ids.values():
         si_meta = conn.execute(
@@ -173,18 +182,75 @@ def run_enqueue(
 
             priority = _compute_priority(target_eurio_id=si_meta["target_eurio_id"])
             candidates = r["candidate_eurio_ids_json"]
-            # Lane persistée figée à l'enqueue (règle centralisée review_lanes).
-            # Dino tourne au step 5.5 (avant enqueue) → la prédiction est dispo ;
-            # absente ⇒ verdict 'unknown' ⇒ lane 'manual' (filet de sécurité).
-            _verdict, lane = compute_lane(conn, r["asset_id"])
+            # Lane figée à l'enqueue par la RÈGLE DE CONSENSUS (C3) — source de
+            # vérité unique du routage : agrège text + dino + crop_quality (tous
+            # disponibles ici : text au step 2.5, dino au 5.5, crop si mesuré) en
+            # {accept→auto_accept, needs_review→ccproxy/manual, reject→manual}.
+            # Remplace l'ancien compute_lane (branche contradict→divergent). Le
+            # verdict est aussi PERSISTÉ (consensus_verdicts) pour audit/replay.
+            # Pas de signal exploitable (asset non résolu) ⇒ lane 'manual'.
+            signals = collect_signals(conn, r["asset_id"])
+            cv = consensus_verdict(signals)
+            lane = cv.lane if signals else DEFAULT_LANE
+            if signals:
+                upsert_consensus_verdict(
+                    conn, r["asset_id"], signals=signals, verdict=cv, commit=False,
+                )
+            review_id = uuid.uuid4().hex
             conn.execute(
                 """
                 INSERT INTO review_queue (
                   id, image_asset_id, priority, candidate_eurio_ids_json, kind, lane
                 ) VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (uuid.uuid4().hex, r["asset_id"], priority, candidates, kind, lane),
+                (review_id, r["asset_id"], priority, candidates, kind, lane),
             )
+
+            # C5 — un verdict consensus `reject` (dual_contradict) devient un
+            # REJET ré-ouvrable, pas un item de queue à trier ni une suppression :
+            # même état terminal qu'un reject humain (cf. reject_review) mais
+            # estampillé `consensus`. Il apparaît dans la grille /rejected et se
+            # ré-ouvre via /restore (qui exige une row review_queue → on l'insère
+            # d'abord). La garde `already` ci-dessus rend le restore humain sticky.
+            if signals and cv.outcome == "reject":
+                conn.execute(
+                    """
+                    UPDATE image_assets
+                       SET resolution_status = 'rejected',
+                           training_eligible = 0,
+                           quality_reason    = 'consensus_reject',
+                           resolved_at       = datetime('now')
+                     WHERE id = ?
+                    """,
+                    (r["asset_id"],),
+                )
+                conn.execute(
+                    """
+                    UPDATE review_queue
+                       SET status = 'done',
+                           decided_at = datetime('now'),
+                           decided_by = 'consensus',
+                           decision_notes = 'rejected',
+                           decision_engine_version = ?,
+                           decision_metadata_json = ?
+                     WHERE id = ?
+                    """,
+                    (
+                        _CONSENSUS_ENGINE_VERSION,
+                        json.dumps({"reason": cv.reason, "rule": cv.rule}),
+                        review_id,
+                    ),
+                )
+                # actor='pipeline' (CHECK image_state_events.actor) — la décision
+                # vient du step pipeline ; `reason` porte la règle de consensus.
+                emit_state_event(
+                    conn, asset_id=r["asset_id"], to_state="rejected",
+                    actor="pipeline", reason=f"consensus_{cv.rule}",
+                    target_eurio_id=si_meta["target_eurio_id"], run_id=run.run_id,
+                )
+                n_rejected += 1
+                continue
+
             # Modèle d'état : crop entre en file → 'queued' (from_state résolu
             # depuis l'état courant : 'detected' au scrape normal, 'orphaned'
             # pour un crop recroppé/réparé, NULL si jamais journalisé).
@@ -207,9 +273,10 @@ def run_enqueue(
 
     run.bump(n_review_enqueued=n_enqueued)
     logger.info(
-        "[%s] enqueue → %d new (%d lot / %d single) / %d already-queued",
-        source_id, n_enqueued, n_lot, n_enqueued - n_lot, n_skipped,
+        "[%s] enqueue → %d new (%d lot / %d single) / %d auto-rejected / %d already-queued",
+        source_id, n_enqueued, n_lot, n_enqueued - n_lot, n_rejected, n_skipped,
     )
     return EnqueueResult(
         n_enqueued=n_enqueued, n_skipped_already_queued=n_skipped, n_kind_lot=n_lot,
+        n_auto_rejected=n_rejected,
     )

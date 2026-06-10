@@ -641,6 +641,37 @@ CREATE TABLE IF NOT EXISTS review_claude_verdicts (
 CREATE INDEX IF NOT EXISTS idx_review_claude_verdicts_status
   ON review_claude_verdicts(status, verdict);
 
+-- ─── Verdicts de consensus (auto-validation redesign, C3) ────────────────
+-- Le verdict d'ensemble (review/validation/consensus.py) persisté & versionné
+-- par image_asset. Source de vérité unique du routage auto-validation : agrège
+-- les avis d'experts (text + dino + crop_quality) en {accept,needs_review,reject}
+-- + lane + confiance + règle déclenchée. Cf. docs/work-in-progress/
+-- autovalidation-redesign.md §3/§7.
+--
+-- Une row par (image_asset_id, rule_version) — REPLACE au rerun de la MÊME
+-- version (ON CONFLICT sur la PK), une NOUVELLE version coexiste (audit/replay
+-- d'une règle révisée hors-ligne sans écraser l'historique). ``signals_json``
+-- snapshote les Signals experts qui ont motivé le verdict (audit à froid, comme
+-- review_queue.decision_metadata_json). Statut SHADOW jusqu'au câblage live :
+-- la table peut être backfillée (scripts/persist_consensus.py) sans toucher la
+-- décision de routage actuelle.
+
+CREATE TABLE IF NOT EXISTS consensus_verdicts (
+  image_asset_id TEXT NOT NULL REFERENCES image_assets(id) ON DELETE CASCADE,
+  rule_version   INTEGER NOT NULL,
+  outcome        TEXT NOT NULL CHECK (outcome IN ('accept','needs_review','reject')),
+  lane           TEXT NOT NULL CHECK (lane IN ('manual','auto_accept','ccproxy')),
+  confidence     REAL NOT NULL DEFAULT 0,
+  reason         TEXT NOT NULL DEFAULT '',
+  rule           TEXT NOT NULL,                 -- branche de décision (audit)
+  signals_json   TEXT NOT NULL DEFAULT '[]',    -- snapshot des Signals experts
+  computed_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (image_asset_id, rule_version)
+);
+
+CREATE INDEX IF NOT EXISTS idx_consensus_verdicts_outcome
+  ON consensus_verdicts(rule_version, outcome);
+
 -- ─── Discovery log (cross-runs dedup, layer 1) ───────────────────────────
 -- L'orchestrateur D-13 §"Discover" inscrit ici tout listing rencontré
 -- pendant un fetch (avant même d'aller le télécharger). Permet de

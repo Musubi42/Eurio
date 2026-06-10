@@ -33,9 +33,12 @@ def main() -> None:
     b = sub.add_parser("build", help="fige le gold")
     b.add_argument("--db", type=Path, default=_DB)
     b.add_argument("--out", type=Path, default=DEFAULT_GOLD)
-    r = sub.add_parser("replay", help="recompute + diff")
+    r = sub.add_parser("replay", help="recompute + diff (before↔after même règle)")
     r.add_argument("--db", type=Path, default=_DB)
     r.add_argument("--gold", type=Path, default=DEFAULT_GOLD)
+    c = sub.add_parser("consensus", help="shadow C3 : verdict actuel vs consensus")
+    c.add_argument("--db", type=Path, default=_DB)
+    c.add_argument("--gold", type=Path, default=DEFAULT_GOLD)
     args = ap.parse_args()
 
     conn = sqlite3.connect(args.db)
@@ -45,6 +48,18 @@ def main() -> None:
         print(f"gold figé: {len(gold)} assets → {args.out}")
         print("par source:", dict(Counter(g.source for g in gold)))
         print("verdict before:", dict(Counter(g.before_level for g in gold)))
+        return
+
+    if args.cmd == "consensus":
+        from review.validation.consensus import consensus_shadow
+
+        gold = load_gold(args.gold)
+        rep = consensus_shadow(conn, gold)
+        print(json.dumps({k: v for k, v in rep.items() if k != "flips"}, indent=2, ensure_ascii=False))
+        by_rule = Counter(f["rule"] for f in rep["flips"])
+        print("\nflips par règle:", dict(by_rule))
+        for f in rep["flips"][:25]:
+            print(f"  {f['asset_id'][:16]} [{f['source']}] {f['old']}→{f['new']} ({f['rule']})")
         return
 
     gold = load_gold(args.gold)

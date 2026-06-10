@@ -6,6 +6,7 @@ normalisés), règle de consensus (C3), verdict→lane. C1 introduit l'interface
 docs/work-in-progress/autovalidation-redesign.md.
 """
 
+from .consensus import ConsensusVerdict, consensus_shadow, consensus_verdict
 from .experts import (
     EXPERTS,
     AssetContext,
@@ -23,6 +24,9 @@ from .experts import (
 )
 
 __all__ = [
+    "ConsensusVerdict",
+    "consensus_shadow",
+    "consensus_verdict",
     "EXPERTS",
     "AssetContext",
     "CropQuality",

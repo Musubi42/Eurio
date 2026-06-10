@@ -38,8 +38,7 @@ class DownloadResult:
     n_errors: int
 
 
-# Called by: ml/sources/_base/orchestrator.py (step 4/8 — after text_signal,
-# skips rows with route_decision='rejected_text')
+# Called by: ml/sources/_base/orchestrator.py (step 4/8 — after text_signal)
 def run_download(
     *,
     conn: sqlite3.Connection,
@@ -53,8 +52,7 @@ def run_download(
 
     for source_ref, sid in source_image_ids.items():
         row = conn.execute(
-            "SELECT id, source_url, listing_title, storage_path, storage_status, "
-            "       route_decision "
+            "SELECT id, source_url, listing_title, storage_path, storage_status "
             "FROM source_images WHERE id = ?",
             (sid,),
         ).fetchone()
@@ -64,12 +62,11 @@ def run_download(
             run.bump(n_errors=1)
             continue
 
-        # Chunk 6.c — text_signal step a déjà rejeté ce listing (verdict
-        # contradict). On saute le download : économie de quota CDN +
-        # détection de crops sur des listings clairement mauvais.
-        if row["route_decision"] == "rejected_text":
-            n_skipped += 1
-            continue
+        # NB (C3) : plus de skip sur ``route_decision='rejected_text'``. Le kill
+        # dur contradict est supprimé (text_signal n'écrit plus ce flag) — un
+        # contradict traverse maintenant download → crop → dino → consensus. Les
+        # vieux source_images encore marqués ``rejected_text`` (data legacy) se
+        # re-téléchargent donc au prochain run de leur cohorte = le rescue voulu.
 
         # Idempotence : already uploaded to MinIO (DB authority — trust it,
         # downstream local_path() does cache-or-fetch).

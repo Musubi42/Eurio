@@ -72,6 +72,9 @@ class AssetContext:
 
     resolved: ResolvedSignals
     crop: CropQuality
+    # La cible est-elle dans le scope du banc d'ancres DINO (2eur_commemo) ?
+    # False pour un standard → la prédiction DINO est structurellement fausse.
+    dino_in_scope: bool = True
 
 
 class Expert(Protocol):
@@ -120,17 +123,36 @@ def dino_signal(
     top1: str | None,
     sim: float | None,
     spread: float | None,
+    in_scope: bool = True,
 ) -> Signal:
     """Normalise le signal DINO : top1 (country-restricted, fallback global) vs
     target + similarité/spread confrontés aux seuils canoniques.
 
     ``label`` ∈ {match, mismatch, absent}. ``absent`` quand il n'y a pas de
-    prédiction (top1 et sim nuls) ou pas de cible à confronter.
+    prédiction (top1 et sim nuls), pas de cible, OU que la cible est **hors
+    scope** du banc d'ancres (ex: un standard dans le banc 2eur_commemo) — dans
+    ce dernier cas top1 ne PEUT PAS être la cible, donc un "mismatch" serait
+    trompeur (faux rejet). On s'abstient.
     """
     sim_min = DINO_VERDICT_THRESHOLDS["top1_country_sim_min"]
     spread_min = DINO_VERDICT_THRESHOLDS["country_spread_min"]
     sim_pass = sim is not None and sim >= sim_min
     spread_pass = spread is not None and spread >= spread_min
+    raw = {
+        "target": target,
+        "top1": top1,
+        "sim": sim,
+        "spread": spread,
+        "sim_pass": sim_pass,
+        "spread_pass": spread_pass,
+        "in_scope": in_scope,
+    }
+
+    if target is not None and not in_scope:
+        return Signal(
+            "dino", None, "absent",
+            "cible hors scope ancres (standard) — DINO non fiable", raw,
+        )
 
     if (top1 is None and sim is None) or target is None:
         label = "absent"
@@ -148,14 +170,7 @@ def dino_signal(
             if sim is not None
             else "pas de prédiction DINO"
         ),
-        raw={
-            "target": target,
-            "top1": top1,
-            "sim": sim,
-            "spread": spread,
-            "sim_pass": sim_pass,
-            "spread_pass": spread_pass,
-        },
+        raw=raw,
     )
 
 
@@ -164,7 +179,10 @@ class DinoExpert:
 
     def evaluate(self, ctx: AssetContext) -> Signal:
         r = ctx.resolved
-        return dino_signal(target=r.target, top1=r.top1, sim=r.sim, spread=r.spread)
+        return dino_signal(
+            target=r.target, top1=r.top1, sim=r.sim, spread=r.spread,
+            in_scope=ctx.dino_in_scope,
+        )
 
 
 # ── Crop-quality expert (C2) ────────────────────────────────────────────
@@ -233,6 +251,19 @@ class CropQualityExpert:
         return crop_signal(ctx.crop)
 
 
+def target_in_dino_scope(conn: sqlite3.Connection, target: str | None) -> bool:
+    """La cible est-elle dans le scope du banc 2eur_commemo ? (= commémorative).
+    Inconnue → True (on ne supprime pas un signal qu'on ne sait pas invalider)."""
+    if not target:
+        return True
+    row = conn.execute(
+        "SELECT is_commemorative FROM coins WHERE eurio_id = ?", (target,)
+    ).fetchone()
+    if row is None:
+        return True
+    return bool(row[0])
+
+
 def fetch_crop_quality(
     conn: sqlite3.Connection, asset_id: str
 ) -> CropQuality | None:
@@ -280,5 +311,9 @@ def collect_signals(
     if resolved is None:
         return []
     crop = fetch_crop_quality(conn, asset_id) or CropQuality(None, None, None, None)
-    ctx = AssetContext(resolved=resolved, crop=crop)
+    ctx = AssetContext(
+        resolved=resolved,
+        crop=crop,
+        dino_in_scope=target_in_dino_scope(conn, resolved.target),
+    )
     return [expert.evaluate(ctx) for expert in EXPERTS]
