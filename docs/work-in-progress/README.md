@@ -26,16 +26,16 @@ Tu peux exécuter ces missions **seule**, en bouclant :
 
 | Chantier | % réel | En une phrase |
 |---|---|---|
-| [lab-prod-refacto](./lab-prod-refacto/) | ~95 % | 4 phases closes, reste du cleanup cosmétique |
+| [lab-prod-refacto](./lab-prod-refacto/) | ~97 % | 4 phases closes ; cohort_meta retiré 2026-06-11, reste 1 item bloqué (server.py source-aware) |
 | [referential-fixes](./referential-fixes/) | ~90 % | backend + UI admin câblés, reste cliquer Apply sur 9 cas |
 | [cohort-pipeline](./cohort-pipeline/) | ~88 % | rebuild cockpit SHIPPÉ (B1-B5 fixés), reste validation PO lane UX + smoke run |
 | [coin-richness](./coin-richness/) | ~85 % | presque fini, reste run eBay sur cohorte + scale 524 |
 | [data-harmonization](./data-harmonization/) | ~85 % | tout livré sauf le Chunk 5 (migration identité) |
 | [lab-streamline](./lab-streamline/) | ~85 % | reste eBay-standards + gros run PC 16 classes |
 | [cohort-capture-flow](./cohort-capture-flow/) | ~85 % | flow live, reste vérifier les chemins post-rename |
-| [best-frame-capture](./best-frame-capture/) | ~80 % | chunks 1-6 livrés (README périmé), reste chunk 7 |
+| [best-frame-capture](./best-frame-capture/) | ~85 % | chunks 1-6 + 7-Android livrés (README corrigé 2026-06-11), reste tooling Python chunk 7 |
 | [design-groups-standards](./design-groups-standards/) | ~80 % | pilote BE live, reste le rollout autres pays |
-| [training-pipeline](./training-pipeline/) | ~80 % | sprints ✅ + harvest exécuté (docs périmées), reste user-harvest in-app |
+| [training-pipeline](./training-pipeline/) | ~80 % | sprints ✅ + harvest exécuté (docs corrigées 2026-06-11), reste user-harvest in-app |
 | [parity](./parity/) | ~75 % | capture Maestro+proto+viewer LIVE, reste flows nouvelles scènes + pont interpréteur |
 | [harmonisation-images](./harmonisation-images/) | ~70 % | write-through MinIO live (pas vide !), reste canoniques + 546 legacy |
 | [crop-forensics](./crop-forensics/) | ~55 % | sujet actif, reste l'auto-rejet (S7) |
@@ -44,12 +44,15 @@ Tu peux exécuter ces missions **seule**, en bouclant :
 
 ---
 
-## lab-prod-refacto — ~95 % ✅ quasi clos
+## lab-prod-refacto — ~97 % ✅ quasi clos (re-vérifié 2026-06-11)
 4 phases fonctionnellement closes (2026-05-02) : `promote_iteration.py`, `promote_prod_assets.py`,
 `build_cohort_bundle.py`, `equivalence.py` live ; patch destructif retiré.
-**Reste (cosmétique) :** retirer `_mirror_iter_outputs` de `iteration_runner.py` une fois les consommateurs migrés ·
-sortir `cohort_meta.json` du bundle quand Android ne le lit plus · table `model_promotions` Supabase ·
-colonnes `r_at_*_eq` sur `benchmark_runs` · confirmer la règle d'équivalence côté Android (cohort-test).
+**Fait 2026-06-11 :** ~~cohort_meta.json~~ retiré (Android lit `bundle_meta.json`, tests verts) ·
+~~équivalence Android~~ confirmée live (EquivalenceMap.kt + isCorrectEq + JSONL) ·
+`model_promotions` et `r_at_*_eq` reclassés **optionnels par design** (promoted_from.json / JSON reports suffisent).
+**Reste (1 item, pas cosmétique) :** retirer `_mirror_iter_outputs` de `iteration_runner.py` — bloqué tant que
+`serving/server.py` + `lab_routes.py` lisent `ml/output/` ; pré-requis = rendre server.py source-aware (lab/prod)
+et migrer les défauts CLI (`eval_real_snaps`, `compute_embeddings`, `export_tflite`, …). Détail dans `progress.md`.
 
 ## coin-richness — ~85 %
 Prep (P.*) + V.1-V.2 livrées (9 tables, scripts, page CoinDetail live).
@@ -74,11 +77,15 @@ Flow selection→CSV→adb push→sync (`sync_eval_real`) live dans `lab_routes.
 **Reste :** vérifier que les chemins `ml/datasets/` collent au layout actuel post-rename eurio_id ·
 nettoyer les TODO résolus de `session-kickoff.md` · confirmer le freeze auto `cohort.status` vs `CohortDetailPage.vue`.
 
-## best-frame-capture — ~80 %
+## best-frame-capture — ~85 % (re-vérifié 2026-06-11)
 Chunks 1-6 livrés (ScanReducer 6 états, BestFrameSelector, CameraLockController, scorer, archive).
-⚠️ README périmé (table « À écrire » alors que tout est codé).
-**Reste :** vérifier chunk 7 (bench protocol + replay JSONL — fichiers présents, complétude à confirmer) ·
-mettre à jour la table de statut du README · confirmer la table Room `coin_captures`.
+~~README périmé~~ → table de statut corrigée 2026-06-11 avec preuves fichier par fichier.
+Table Room `coin_captures` confirmée (`CoinCaptureEntity.kt`, migration v2→v3 dans `EurioDatabase.kt`).
+Chunk 7 vérifié : **moitié Android livrée** (BenchRecorder/BenchEvent/BenchProtocol + écran `/dev/bench`,
+sessions réelles sous `ml/bench/sessions/Pixel9a/`).
+**Reste :** le tooling Python du chunk 7 (rien n'existe) — `session_io.py`, `replay_session.py`,
+`annotate_session.py`, `calibrate_thresholds.py`, `compare_runs.py`, port parité du scorer Kotlin,
+go-task `bench:*`. Détail dans le README du chantier.
 
 ## design-groups-standards — ~80 %
 Doc fidèle au code (FK scalaire `coins.design_group_id` `schema.sql:935`, tooling `obverse_groups.py` + tests live).
@@ -125,7 +132,7 @@ S1-S6 livrés/réfutés (composite score, sort buttons, scripts `ml/scripts/crop
 ## training-pipeline — sprints livrés, harvest à démarrer
 Sprints 1-5 livrés (2026-04-29/30, code dans `ml/training/`, table README corrigée). `journal/` = logs de runs actifs.
 **Reste :**
-- **`harvest/` — vision LARGEMENT EXÉCUTÉE (~80 %), docs périmées.** ⚠️ Le `harvest/README` dit « aucun code livré » : **c'est faux, c'est le drift**. Réalité du code : phase 1 DINOv2 ✅ (`ml/foundation/encoder.py`, dinov2_vits14), phase 2 auto-validateur ✅ (`foundation/auto_validate.py` + `thresholds` + `review_lanes`), phase 3 sources étendues ✅ (`ml/sources/ebay` ~80k + bce/lmdlp/jo/pricing), phase 5 review humaine ✅ (review_queue + **lot-review live** + `claude_review`). **À faire : réécrire les docs harvest/ pour pointer la réalité.**
+- **`harvest/` — vision LARGEMENT EXÉCUTÉE (~80 %), docs corrigées 2026-06-11.** Réalité du code : phase 1 DINOv2 ✅ (`ml/training/foundation/encoder.py`, dinov2_vits14), phase 2 auto-validateur ✅ (`ml/training/foundation/auto_validate.py` + `thresholds` + `ml/review/review_lanes.py`), phase 3 sources étendues ✅ (`ml/sources/ebay` ~80k + bce/lmdlp/jo/pricing), phase 5 review humaine ✅ (review_queue + **lot-review live** + `claude_review`). ~~Réécrire les docs harvest/~~ → fait : chemins post-refacto corrigés dans README + phase-1, entrée datée dans harvest/progress.md.
   - **Phase 4 — user-harvest in-app** (seul vrai manque) : l'utilisateur scanne → confirme/corrige la pièce → on récupère **une photo unique, label sûr** pour le training. Gated sur l'app Android.
   - **Cloud fallback** : Numista API pour identifier une pièce inconnue (partiel — source `numista` existe déjà).
 - Device walkthrough des sprints 4-5 jamais loggé (premières métriques device end-to-end TBD)

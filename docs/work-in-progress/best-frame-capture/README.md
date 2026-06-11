@@ -13,15 +13,32 @@ attaqué sans que ses pré-requis soient livrés et audités.
 
 ## Plan
 
+_Statuts re-vérifiés sur le code le 2026-06-11 (l'ancienne table disait
+« À écrire » partout alors que les chunks 1-6 + 7-Android sont codés)._
+
 | # | Chunk | Pré-req | Statut |
 |---|---|---|---|
-| 1 | [Debug-bar + HUD live](chunk-1-debug-bar.md) | — | À écrire |
-| 2 | [Frame quality scorer](chunk-2-quality-scorer.md) | 1 | À écrire |
-| 3 | [Trigger strategies (3 candidats)](chunk-3-trigger-strategies.md) | 1, 2 | À écrire |
-| 4 | [AE/AF/AWB lock via Camera2Interop](chunk-4-ae-af-lock.md) | 3 | À écrire |
-| 5 | [ImageCapture + archive schema](chunk-5-imagecapture-archive.md) | 4 | À écrire |
-| 6 | [State machine refonte ScanViewModel](chunk-6-state-machine.md) | 3, 4, 5 | À écrire |
-| 7 | [Bench protocol + replay tooling](chunk-7-bench-protocol.md) | 6 | À écrire |
+| 1 | [Debug-bar + HUD live](chunk-1-debug-bar.md) | — | ✅ Livré — `features/scan/debug/` (DebugScanConfig + HUD) |
+| 2 | [Frame quality scorer](chunk-2-quality-scorer.md) | 1 | ✅ Livré — `ml/quality/FrameQualityScorer.kt` + tests |
+| 3 | [Trigger strategies (3 candidats)](chunk-3-trigger-strategies.md) | 1, 2 | ✅ Livré — `ml/trigger/BestFrameSelector.kt` + `BestFrameSelectorTest.kt` |
+| 4 | [AE/AF/AWB lock via Camera2Interop](chunk-4-ae-af-lock.md) | 3 | ✅ Livré — `ml/camera/CameraLockController.kt` |
+| 5 | [ImageCapture + archive schema](chunk-5-imagecapture-archive.md) | 4 | ✅ Livré — `CoinCaptureEntity.kt` (table `coin_captures`), migration Room v2→v3 dans `EurioDatabase.kt` |
+| 6 | [State machine refonte ScanViewModel](chunk-6-state-machine.md) | 3, 4, 5 | ✅ Livré — `domain/scan/ScanReducer.kt` (6 états) + `ScanReducerTest.kt` |
+| 7 | [Bench protocol + replay tooling](chunk-7-bench-protocol.md) | 6 | ⚠️ Moitié Android livrée — voir détail ci-dessous |
+
+### Chunk 7 — état détaillé
+
+**Livré (Android)** : `ml/bench/BenchRecorder.kt` (events.jsonl streaming,
+schema v2) + `BenchEvent.kt` (15+ types d'événements sérialisés) +
+`BenchProtocol.kt`/`BenchProtocolState.kt` (5 conditions × cohorte guidée) +
+écran `/dev/bench` (`features/dev/bench/`). Des sessions réelles existent
+déjà sous `ml/bench/sessions/Pixel9a/`.
+
+**Reste (Python, rien n'existe)** : `ml/bench/` ne contient que `sessions/`.
+À écrire selon la spec chunk-7 : `session_io.py` (parseur JSONL),
+`replay_session.py`, `annotate_session.py`, `calibrate_thresholds.py`,
+`compare_runs.py`, port parité du scorer Kotlin, et les go-task
+`bench:pull/annotate/replay/calibrate/compare`.
 
 ## Ordre d'implémentation conseillé
 

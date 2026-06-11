@@ -17,3 +17,17 @@
 - Aucune ligne de code écrite. Décisions seulement.
 - Prochaine étape : décider quand démarrer phase 1 vs prioriser
   `lab-prod-refacto` phase 1 (label space) qui est aussi bloquant.
+
+## 2026-06-11 — Correction de drift (chemins post-refacto ml/)
+
+- Audit doc↔code : **tout ce que le README liste comme « déjà
+  construit » existe bien**, mais les chemins dataient d'avant la
+  refacto ml/ (structure plate par domaine). Corrigé dans README +
+  phase-1 : `ml/foundation/` → `ml/training/foundation/` (encoder,
+  auto_validate, thresholds, claude_review) ; `ml/api/
+  review_queue_routes.py` → `ml/review/review_queue_routes.py` ;
+  `review_lanes.py` vit dans `ml/review/`.
+- Les refs `ml/api/` des sprint-docs et de progress.md (track parent)
+  sont des logs historiques — laissées telles quelles.
+- Reste-à-faire inchangé : canal A user-harvest in-app (gated app
+  Android, proto-first) + exploration Numista API fallback.

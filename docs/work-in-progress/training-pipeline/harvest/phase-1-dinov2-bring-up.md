@@ -19,8 +19,9 @@
 
 À la fin de cette phase, on doit avoir :
 
-1. Un module `ml/foundation/` qui expose un embedder DINOv2
-   utilitaire (charge le modèle, encode une image → vecteur).
+1. Un module foundation qui expose un embedder DINOv2 utilitaire
+   (charge le modèle, encode une image → vecteur). _Livré :
+   `ml/training/foundation/encoder.py` (chemin post-refacto ml/)._
 2. Un script `ml/scripts/bench_foundation_vs_canonical.py` qui
    prend les photos studio Numista comme ancres et les photos live
    tests existantes comme requêtes, et reporte R@1 / R@3 / spread.
@@ -124,7 +125,7 @@ que l'approche est la bonne. La barre psychologique est là.
 
 ## Livrable
 
-- Code `ml/foundation/` + script bench commités.
+- Code foundation (`ml/training/foundation/`) + script bench commités.
 - Entrée journal pour les chiffres mesurés.
 - Décision tranchée sur le foundation à utiliser.
 - (Si décision = continuer) phase 2 du harvest peut démarrer.

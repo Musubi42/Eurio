@@ -11,13 +11,15 @@ par pièce — lumière changeante, angle approximatif, usure, doigts dans le ca
 
 ## Ce qui est DÉJÀ construit ✅ (la doc d'origine disait « aucun code livré » — c'était faux)
 
+_Chemins re-vérifiés 2026-06-11 après la refacto ml/ (structure plate par domaine)._
+
 | Brique / canal | État | Code |
 |---|---|---|
-| Foundation **DINOv2 ViT-S/14** | ✅ | `ml/foundation/encoder.py` |
-| **Auto-validateur** (image + label proposé → auto-accept / review / reject) | ✅ | `ml/foundation/auto_validate.py`, `thresholds.py`, `review_lanes.py` |
+| Foundation **DINOv2 ViT-S/14** | ✅ | `ml/training/foundation/encoder.py` |
+| **Auto-validateur** (image + label proposé → auto-accept / review / reject) | ✅ | `ml/training/foundation/auto_validate.py` + `thresholds.py`, `ml/review/review_lanes.py` |
 | **Scrap multi-source** (eBay massif + BCE + LMDLP + JO + pricing) | ✅ | `ml/sources/` (ebay ~80k) |
 | Pilotage **par cohorte** (mix-zone-17) | ✅ | `ml/sources/cohort_scope.py` + cockpit lab |
-| **Review humaine admin** (queue + lot-review + claude_review) | ✅ | `ml/api/review_queue_routes.py`, admin `features/review/` |
+| **Review humaine admin** (queue + lot-review + claude_review) | ✅ | `ml/review/review_queue_routes.py`, `ml/training/foundation/claude_review.py`, admin `features/review/` |
 
 → **Le scraping web (eBay en tête) est le canal principal et il tourne en prod.** Gros morceau livré.
 Le bottleneck restant côté scrap = couverture wild des 510 classes encore peu dotées (cf. `roadmap.md`).
