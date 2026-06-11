@@ -29,7 +29,7 @@ import torch
 import torch.nn.functional as F
 from PIL import Image
 
-from training.train_embedder import CoinEmbedder, get_val_transforms
+from training.train_embedder import build_embedder, get_val_transforms
 
 
 ML_DIR = Path(__file__).resolve().parent.parent
@@ -80,7 +80,8 @@ def main() -> int:
         centroids = F.normalize(centroids, p=2, dim=1).to(device)
         centroid_src = f"deployed ({args.centroids.relative_to(ML_DIR)})"
 
-    model = CoinEmbedder(embedding_dim=embedding_dim).to(device)
+    backbone = ckpt.get("backbone", "mobilenet_v3_small")
+    model = build_embedder(backbone, embedding_dim).to(device)
     model.load_state_dict(ckpt["model_state_dict"])
     model.eval()
 
