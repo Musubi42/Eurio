@@ -75,23 +75,39 @@ def compute(args: argparse.Namespace) -> None:
     class_embeddings: dict[str, list[np.ndarray]] = {}
     centroid_sources: dict[str, str] = {}
 
-    # (a) Empirical mean over val embeddings.
-    val_dir = dataset_root / "val"
-    if val_dir.exists():
-        val_dataset = ImageFolder(str(val_dir), transform=get_val_transforms())
-        if len(val_dataset) > 0:
-            loader = DataLoader(val_dataset, batch_size=32, shuffle=False, num_workers=0)
-            for images, labels in loader:
-                emb = model(images).numpy()
-                for i, label in enumerate(labels):
-                    cls_name = val_dataset.classes[label]
-                    class_embeddings.setdefault(cls_name, []).append(emb[i])
-            for cls, embs in class_embeddings.items():
-                centroid_sources[cls] = f"val_mean(n={len(embs)})"
+    # Source du centroïde par classe (cf. C1 — model-efficiency) :
+    #   auto       : val-mean où dispo, fallback ArcFace-W (comportement legacy)
+    #   val_mean   : moyenne d'images val uniquement
+    #   train_mean : moyenne d'images train (couvre toutes les classes)
+    #   arcface_w  : prototype ArcFace-W pour toutes les classes
+    source = getattr(args, "centroid_source", "auto")
 
-    # (b) ArcFace W fallback for classes that had no val coverage.
+    def _split_means(split: str) -> None:
+        split_dir = dataset_root / split
+        if not split_dir.exists():
+            return
+        ds = ImageFolder(str(split_dir), transform=get_val_transforms())
+        if len(ds) == 0:
+            return
+        loader = DataLoader(ds, batch_size=32, shuffle=False, num_workers=0)
+        for images, labels in loader:
+            emb = model(images).numpy()
+            for i, label in enumerate(labels):
+                cls_name = ds.classes[label]
+                class_embeddings.setdefault(cls_name, []).append(emb[i])
+        for cls in ds.classes:
+            if cls in class_embeddings:
+                centroid_sources[cls] = f"{split}_mean(n={len(class_embeddings[cls])})"
+
+    # (a) Moyennes d'images (val et/ou train selon la source).
+    if source in ("auto", "val_mean"):
+        _split_means("val")
+    if source == "train_mean":
+        _split_means("train")
+
+    # (b) ArcFace W : toutes les classes (arcface_w) ou fallback (auto).
     arcface_W = checkpoint.get("arcface_weights")
-    if checkpoint.get("mode") == "arcface" and arcface_W is not None:
+    if source in ("auto", "arcface_w") and checkpoint.get("mode") == "arcface" and arcface_W is not None:
         ckpt_classes = checkpoint.get("classes") or []
         if not ckpt_classes:
             raise SystemExit(
@@ -103,9 +119,9 @@ def compute(args: argparse.Namespace) -> None:
         W = arcface_W.t() if arcface_W.shape[0] == embedding_dim else arcface_W
         W = torch.nn.functional.normalize(W, p=2, dim=1).numpy()
         for idx, cls_name in enumerate(ckpt_classes):
-            if cls_name not in class_embeddings:
+            if source == "arcface_w" or cls_name not in class_embeddings:
                 class_embeddings[cls_name] = [W[idx]]
-                centroid_sources[cls_name] = "arcface_W(val_empty)"
+                centroid_sources[cls_name] = "arcface_W"
 
     # (c) Legacy: average across all splits when no W available.
     if not class_embeddings:
@@ -203,6 +219,12 @@ def main():
         type=str,
         default="",
         help="Override model version string (else read from checkpoint or derived).",
+    )
+    parser.add_argument(
+        "--centroid-source",
+        choices=["auto", "val_mean", "train_mean", "arcface_w"],
+        default="auto",
+        help="Per-class centroid source (cf. C1). auto=val-mean+W fallback (legacy).",
     )
     args = parser.parse_args()
     compute(args)

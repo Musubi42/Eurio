@@ -70,7 +70,7 @@ jamais en perdre une de vue.
 | H | Hypothèse | Croyance actuelle | Testée par | Statut |
 |---|---|---|---|---|
 | H1 | Plus d'images **réelles** par classe ↑ précision **et** ↑ fiabilité des centroïdes | Forte (mécanisme plausible) | C0 + C1 | ❓ non mesuré |
-| H2 | Les centroïdes ArcFace-W sont peu fiables (vs moyennes d'images) | ~~Forte~~ → **affaiblie** | C1 | ⚠️ **contredit** (1er test, set étroit) |
+| H2 | Les centroïdes ArcFace-W sont peu fiables (vs moyennes d'images) | **Réfutée** : le faible est val-mean, pas W | C1 | ⚠️ train-mean≈W > val-mean (set étroit) |
 | H3 | fp16 ≈ sans perte ; int8 dégrade un ViT | Moyenne (typique, pas mesuré ici) | C4 | ❓ non mesuré |
 | H4 | Les gains DINOv2 transfèrent à la **classification eBay scrape** | Moyenne (idée produit, plausible) | C2 | ❓ non mesuré |
 | H5 | La perf fp16 ViT-S est OK sur milieu/haut de gamme | Faible (aucune latence mesurée) | C5 | ❓ non mesuré |
@@ -94,6 +94,14 @@ jamais en perdre une de vue.
   - **H6 → le val sous-estime** ici le réel (66.67% val vs 77-82% réel).
   - ⚠️ Caveat : set étroit (~17 classes, recouvrant nos classes fiables), 5 pts
     ≈ 16 snaps. Signal, pas preuve. → élargir le set (C0) avant conclusion.
+
+- **2026-06-11 — 3-way centroïdes (C1) précise H2.** Même set (317 snaps),
+  `--centroid-source` : **train-mean 82.97%** · **ArcFace-W 82.65%** ·
+  **val-mean 77.60%**. Le maillon faible est **val-mean** (peu d'images val),
+  pas ArcFace-W. train-mean ≈ W (égalité). Implication : l'app déployée priorise
+  val-mean (le pire) → gain immédiat possible en train-mean. Et train-mean tient
+  déjà avec `n=1`/classe → devrait progresser avec plus d'images (H1). Toujours
+  set étroit → à confirmer large.
 
 ## Sources de vérité (code)
 

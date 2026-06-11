@@ -78,7 +78,11 @@ def main() -> int:
             dtype=torch.float32,
         )
         centroids = F.normalize(centroids, p=2, dim=1).to(device)
-        centroid_src = f"deployed ({args.centroids.relative_to(ML_DIR)})"
+        try:
+            shown = args.centroids.resolve().relative_to(ML_DIR)
+        except ValueError:
+            shown = args.centroids  # path outside ML_DIR (or relative) — show as-is
+        centroid_src = f"deployed ({shown})"
 
     backbone = ckpt.get("backbone", "mobilenet_v3_small")
     model = build_embedder(backbone, embedding_dim).to(device)

@@ -1,6 +1,6 @@
 # C1 — Centroïdes fiables
 
-**Statut : 🔲 pas commencé**  ·  Dépend de : C0  ·  Débloque : C2, C3
+**Statut : 🟡 en cours**  ·  Dépend de : C0  ·  Débloque : C2, C3
 
 ## Objectif
 
@@ -45,11 +45,24 @@ pour passer de 27 à 546 classes utilisables.
 
 _(vide)_
 
-| Source centroïde | Classes couvertes | R@1 (C0) | Notes |
+3-way mesuré sur **317 vraies photos** (`eval_real_norm`, ~17 classes),
+`arcface-vits14-v1`, 2026-06-11 :
+
+| Source centroïde | Classes couvertes | Top-1 réel | Notes |
 |---|---|---|---|
-| ArcFace-W | 546 | | baseline actuelle (519) |
-| train-mean | 546 | | |
-| val-mean | 27 | | fiable mais partiel |
+| **train-mean** | 546 | **82.97%** (263/317) | meilleur ; mais `n=1` pour bcp de classes |
+| ArcFace-W | 546 | 82.65% (262/317) | ~à égalité avec train-mean (1 snap) |
+| val-mean (déployé) | 27 | 77.60% (246/317) | **le pire** — centroïdes val ~2 img/classe, bruités |
+
+**Conclusion (à confirmer sur set large)** :
+- Le maillon faible n'est **pas** ArcFace-W mais **val-mean** (peu d'images val).
+- train-mean ≈ W ; train-mean est préférable car il **s'améliorera avec plus
+  d'images** (H1), alors que W est figé.
+- **Action immédiate possible** : l'app déployée priorise val-mean → regénérer
+  ses centroïdes en train-mean (ou W) pour un gain de qualité sans ré-entraîner.
+
+Implémenté : option `--centroid-source {auto,val_mean,train_mean,arcface_w}`
+dans `compute_embeddings.py`.
 
 ## Décisions & next
 
