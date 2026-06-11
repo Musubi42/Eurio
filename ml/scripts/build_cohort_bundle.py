@@ -23,8 +23,7 @@ Layout produced (under ``--out``)::
       embeddings_v1.json         ← filtered to cohort eurio_ids
       model_meta.json
       catalog_snapshot.json      ← filtered to cohort eurio_ids
-      cohort_meta.json           ← cohort + iteration identity (legacy)
-      bundle_meta.json           ← phase 4 : source + sha256 + identity
+      bundle_meta.json           ← source + sha256 + identity
       live_tests_manifest.json
       equivalence_map.json       ← {eurio_id → design_group_id|null}
 
@@ -347,24 +346,8 @@ def main() -> int:
         json.dumps(filtered_snapshot, ensure_ascii=False, indent=2)
     )
 
-    # Identity card (legacy : conservé pour rétrocompat Android pré-phase-4).
-    cohort_meta = {
-        "cohort_id": cohort.id,
-        "cohort_name": cohort.name,
-        "iteration_id": iteration.id if iteration else None,
-        "iteration_name": iteration.name if iteration else None,
-        "model_version": embeddings.get("model") or "unknown",
-        "trained_at": iteration.finished_at if iteration else None,
-        "generated_at": _iso_now(),
-        "num_coins": len(cohort.eurio_ids),
-    }
-    (out_dir / "cohort_meta.json").write_text(
-        json.dumps(cohort_meta, ensure_ascii=False, indent=2)
-    )
-
-    # Phase 4 — bundle_meta.json : source + identity + sha256. C'est la
-    # source canonique côté Android pour l'écran "status / source du
-    # bundle". cohort_meta.json reste pour rétrocompat.
+    # bundle_meta.json : source + identity + sha256. Source canonique côté
+    # Android (BundleMeta.kt) pour l'écran "status / source du bundle".
     bundle_meta = {
         "schema_version": BUNDLE_META_VERSION,
         "source": args.source,

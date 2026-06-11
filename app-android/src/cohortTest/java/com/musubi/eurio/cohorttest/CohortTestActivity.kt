@@ -30,10 +30,6 @@ import com.musubi.eurio.ml.CoinAnalyzerFactory
 import com.musubi.eurio.ui.theme.EurioTheme
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import org.opencv.android.OpenCVLoader
 
 /**
@@ -78,9 +74,6 @@ class CohortTestActivity : ComponentActivity() {
 data class CohortBundle(
     val cohortName: String,
     val iterationId: String,
-    val iterationName: String,
-    val modelVersion: String,
-    val trainedAt: String?,
     val numCoins: Int,
     val tests: List<TestPrescription>,
     val coinsDisplay: Map<String, CoinDisplay>,
@@ -92,10 +85,10 @@ data class CohortBundle(
      */
     val equivalence: EquivalenceMap,
     /**
-     * Phase 4 — provenance card. `null` for pre-phase-4 bundles that
-     * shipped without `bundle_meta.json` ; UI renders [BundleMeta.LEGACY_LABEL]
-     * in that case and downstream consumers (logger, header) degrade
-     * gracefully.
+     * Provenance card. `null` for legacy bundles that shipped without
+     * `bundle_meta.json` ; UI renders [BundleMeta.LEGACY_LABEL] in that
+     * case and downstream consumers (logger, header) degrade gracefully —
+     * identity then falls back to the manifest's raw ids.
      */
     val bundleMeta: BundleMeta?,
 )
@@ -243,12 +236,9 @@ private fun ErrorState(msg: String) {
 }
 
 private fun loadBundle(assets: android.content.res.AssetManager): CohortBundle {
-    val meta = assets.open("cohort_bundle/cohort_meta.json").bufferedReader()
-        .use { it.readText() }
     val manifestRaw = assets.open("cohort_bundle/live_tests_manifest.json").bufferedReader()
         .use { it.readText() }
 
-    val metaJson = Json.parseToJsonElement(meta).jsonObject
     val manifest = bundleJson.decodeFromString<LiveTestsManifest>(manifestRaw)
     if (manifest.version != LIVE_TESTS_MANIFEST_VERSION) {
         throw IllegalStateException(
@@ -258,19 +248,14 @@ private fun loadBundle(assets: android.content.res.AssetManager): CohortBundle {
         )
     }
 
+    val bundleMeta = BundleMeta.fromAssets(assets)
     return CohortBundle(
-        cohortName = metaJson.str("cohort_name") ?: "?",
-        iterationId = metaJson.str("iteration_id") ?: "?",
-        iterationName = metaJson.str("iteration_name") ?: "?",
-        modelVersion = metaJson.str("model_version") ?: "?",
-        trainedAt = metaJson.str("trained_at"),
+        cohortName = bundleMeta?.cohortName ?: manifest.cohort_id,
+        iterationId = bundleMeta?.iterationId ?: manifest.iteration_id,
         numCoins = manifest.coins_display.size,
         tests = manifest.tests,
         coinsDisplay = manifest.coins_display,
         equivalence = EquivalenceMap.fromAssets(assets),
-        bundleMeta = BundleMeta.fromAssets(assets),
+        bundleMeta = bundleMeta,
     )
 }
-
-private fun JsonObject.str(key: String): String? =
-    this[key]?.jsonPrimitive?.contentOrNull

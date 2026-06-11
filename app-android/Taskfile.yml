@@ -250,8 +250,9 @@ tasks:
     desc: "Build the cohortTest APK bundle (model + filtered catalog + manifests). COHORT + ITERATION required."
     summary: |
       Usage: go-task -t app-android/Taskfile.yml cohort-test:bundle COHORT=<name> ITERATION=<iid>
-      Drops 6 files into app-android/src/cohortTest/assets/cohort_bundle/ so the
-      next assembleCohortTestDebug picks them up. Cf. docs/training-pipeline/sprint-3-cohort-test-app.md.
+      Drops the bundle files (model + embeddings + manifests) into
+      app-android/src/cohortTest/assets/cohort_bundle/ so the next
+      assembleCohortTestDebug picks them up. Cf. docs/training-pipeline/sprint-3-cohort-test-app.md.
     vars:
       COHORT: '{{.COHORT}}'
       ITERATION: '{{.ITERATION}}'

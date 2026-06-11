@@ -748,18 +748,33 @@ go-task -t ../app-android/Taskfile.yml cohort-test:bundle:prod \
 
 ### Cleanup à programmer (post phase 4)
 
-- Migrer `scan/eval_real_snaps.py` à un argument `--source` explicite
-  (lab/prod), au lieu de défauter sur `ml/output/`.
-- Idem défauts CLI de `compute_embeddings.py` / `export_tflite.py`
-  / `validate_export.py` / `visualize.py` — supprimer les défauts
-  pointant vers `output/` ou les rendre opt-in via flag.
-- Retirer `_mirror_iter_outputs` de `iteration_runner.py` une fois
-  les ci-dessus migrés.
-- Retirer `cohort_meta.json` du bundle quand l'app cohort-test ne
-  le consomme plus.
-- Créer la table `model_promotions` Supabase (historique queryable).
-- Ajouter colonnes `r_at_*_eq` à `benchmark_runs` si on veut les
-  surfacer dans la UI lab.
+_(re-vérifié sur code le 2026-06-11)_
+
+- ~~Retirer `cohort_meta.json` du bundle quand l'app cohort-test ne
+  le consomme plus.~~ ✅ **Fait 2026-06-11** : `loadBundle`
+  (CohortTestActivity.kt) lit désormais l'identité depuis
+  `bundle_meta.json` (fallback manifest pour les ids), champs morts
+  `iterationName`/`modelVersion`/`trainedAt` supprimés de
+  `CohortBundle`, writer legacy retiré de `build_cohort_bundle.py`.
+  Compile + tests `testCohortTestDebugUnitTest` verts.
+- Retirer `_mirror_iter_outputs` de `iteration_runner.py` — **bloqué** :
+  `serving/server.py` (endpoints `/scan`, `/cohort-test/setup`) et
+  `serving/lab_routes.py` lisent encore `ml/output/` directement.
+  Pré-requis : rendre `server.py` source-aware (lab/prod), migrer
+  `eval_real_snaps.py` + défauts CLI de `compute_embeddings.py` /
+  `export_tflite.py` / `validate_export.py` / `visualize.py`.
+  C'est un refacto serveur à part entière, pas du cosmétique.
+- Table `model_promotions` Supabase : **optionnelle par design** —
+  `prod/current/promoted_from.json` couvre le besoin actuel
+  (historique queryable = enhancement futur).
+- Colonnes `r_at_*_eq` sur `benchmark_runs` : **non, par design**
+  (décision phase 3) — les valeurs sont calculées et persistées dans
+  les JSON reports (`ml/reports/benchmark_*.json`) ; migration de
+  schéma seulement si la UI lab veut les requêter en SQL.
+- Règle d'équivalence côté Android : ✅ **confirmée live** —
+  `EquivalenceMap.kt` (9 tests verts), verdict `isCorrectEq` dans
+  `LiveTestsScreen`, compteur `≈` dans `ProgressStrip`, JSONL logge
+  `is_correct_eq`.
 
 ### Refacto lab-prod **fonctionnellement clos**
 
