@@ -43,6 +43,17 @@ include = ["referential*", "export*", "training*", "bootstrap*", "serving*", "vi
 [tool.setuptools]
 py-modules = []
 
+# ultralytics tire `opencv-python` (variant GUI, lié à Qt5 + libxcb) en
+# dépendance transitive, ce qui écrase le `cv2.abi3.so` du
+# `opencv-python-headless` déclaré ci-dessus (même namespace `cv2/`, le
+# dernier installé gagne). Sur un hôte headless (PC training), l'import
+# casse alors sur `libxcb.so.1: cannot open shared object`. On sort
+# opencv-python de la résolution via un marker jamais vrai : seul le
+# headless subsiste, et ultralytics importe `cv2` sans souci (il tourne
+# parfaitement en headless, recommandé pour le training/CI).
+[tool.uv]
+override-dependencies = ["opencv-python ; sys_platform == 'never'"]
+
 # Per-platform torch source. Linux x86_64 → CUDA 12.6 wheel (1080ti = compute
 # 6.1, supporté par les wheels PyTorch jusqu'à au moins 2.9.x). On a dû
 # remonter de cu121 à cu126 parce que litert-torch + torchao requièrent
