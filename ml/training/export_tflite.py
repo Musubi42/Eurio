@@ -31,7 +31,21 @@ def export(args):
     import litert_torch
 
     sample_input = (torch.randn(1, 3, 224, 224),)
-    edge_model = litert_torch.convert(model, sample_input)
+    # fp16 halves the on-disk model (DINOv2 ViT-S: 83 MB → ~42 MB) at a
+    # negligible cosine cost (cf. spike scripts/spike_vits14_litert.py). The
+    # flags dict is walked recursively by litert_torch, so target_spec must be
+    # nested (a dotted key would be silently ignored).
+    converter_flags = None
+    if args.fp16:
+        import tensorflow as tf
+        converter_flags = {
+            "optimizations": [tf.lite.Optimize.DEFAULT],
+            "target_spec": {"supported_types": [tf.float16]},
+        }
+        print("Quantization: fp16")
+    edge_model = litert_torch.convert(
+        model, sample_input, _ai_edge_converter_flags=converter_flags
+    )
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -61,6 +75,8 @@ def main():
     parser.add_argument("--model", type=str, default="./checkpoints/best_model.pth")
     parser.add_argument("--output-dir", type=str, default="./output")
     parser.add_argument("--filename", type=str, default="eurio_embedder_v1.tflite")
+    parser.add_argument("--fp16", action="store_true",
+                        help="Export float16-quantized weights (~half size).")
     args = parser.parse_args()
     export(args)
 

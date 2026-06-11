@@ -18,7 +18,7 @@ from torch.utils.data import DataLoader
 from torchvision.datasets import ImageFolder
 
 from training.eval.class_resolver import MANIFEST_FILENAME, read_manifest
-from training.train_embedder import CoinEmbedder, get_val_transforms
+from training.train_embedder import build_embedder, get_val_transforms
 
 CATALOG_PATH = Path(__file__).parent.parent / "datasets" / "coin_catalog.json"
 
@@ -37,7 +37,8 @@ def compute(args: argparse.Namespace) -> None:
 
     checkpoint = torch.load(args.model, map_location=device, weights_only=False)
     embedding_dim = checkpoint["embedding_dim"]
-    model = CoinEmbedder(embedding_dim=embedding_dim)
+    backbone = checkpoint.get("backbone", "mobilenet_v3_small")
+    model = build_embedder(backbone, embedding_dim)
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
 

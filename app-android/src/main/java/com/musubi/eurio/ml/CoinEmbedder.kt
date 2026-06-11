@@ -39,7 +39,9 @@ class CoinRecognizer(
         interpreter = Interpreter(model)
 
         val metaJson = context.assets.open(metaPath).bufferedReader().use { it.readText() }
-        meta = Json.decodeFromString<ModelMeta>(metaJson)
+        // Tolerate forward-compatible metadata: the exporter emits extra keys
+        // (e.g. `backbone`) that this DTO doesn't model. Don't crash on them.
+        meta = Json { ignoreUnknownKeys = true }.decodeFromString<ModelMeta>(metaJson)
 
         val outputShape = interpreter.getOutputTensor(0).shape()
         outputSize = outputShape[1]
