@@ -165,7 +165,7 @@ class CircleDetection:
     method: str               # "yolo+hough" | "yolo+bbox" | legacy "hough_*"
     votes: float = 0.0        # YOLO confidence (yolo+*) or 0 (hough-only)
     accepted: bool = True
-    reject_reason: str | None = None  # "radius_too_small" | "radius_too_large" | "off_edge" | "low_structure"
+    reject_reason: str | None = None  # "radius_too_small" | "radius_too_large" | "off_edge" | "low_structure" | "gated_fragment"
 
 
 # ---------------------------------------------------------------------------
@@ -741,6 +741,41 @@ def _radial_gradient_polish(bgr: np.ndarray,
     return cx, cy, best_r, gain, "applied"
 
 
+_DUP_CENTER_FRAC = 0.04    # centres à ≤ 4 % du petit côté = la même pièce
+_DUP_RADIUS_RATIO = 0.85   # rayons à ≤ 15 % d'écart
+
+
+def _dedup_duplicate_circles(detections: list["CircleDetection"], short: int) -> None:
+    """Marque rejetés (in place) les cercles ACCEPTÉS en doublon : même centre
+    ET même rayon qu'un autre = la même pièce détectée 2× (bboxes YOLO
+    distinctes mais raffinées sur le même listel). Garde le plus confiant
+    (votes, sinon rayon), les autres → accepted=False reason="duplicate_circle".
+
+    Seuils très serrés (centres à <4 % du petit côté) : deux pièces DISTINCTES
+    sur une planche sont espacées d'au moins ~1 diamètre → jamais fusionnées.
+    Complète `nms_concentric` qui agit sur les bboxes AVANT le rim-refine."""
+    dup_center = _DUP_CENTER_FRAC * short
+    accepted = [i for i, d in enumerate(detections) if d.accepted]
+    for a_pos, i in enumerate(accepted):
+        di = detections[i]
+        if not di.accepted:
+            continue
+        for j in accepted[a_pos + 1:]:
+            dj = detections[j]
+            if not dj.accepted:
+                continue
+            if (abs(di.cx - dj.cx) <= dup_center
+                    and abs(di.cy - dj.cy) <= dup_center
+                    and min(di.r, dj.r) / max(di.r, dj.r, 1) >= _DUP_RADIUS_RATIO):
+                if (di.votes, di.r) >= (dj.votes, dj.r):
+                    dj.accepted = False
+                    dj.reject_reason = "duplicate_circle"
+                else:
+                    di.accepted = False
+                    di.reject_reason = "duplicate_circle"
+                    break
+
+
 def detect_circles_multi(bgr: np.ndarray,
                          census: bool | None = None) -> list[CircleDetection]:
     """Detect ALL coins in a listing image (1..N), with accept/reject reasons.
@@ -783,8 +818,12 @@ def detect_circles_multi(bgr: np.ndarray,
     # puis on échantillonne par détection. Coût ~5-10ms sur 1600x1600.
     _gray_full = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
     _lap_full = cv2.Laplacian(_gray_full, cv2.CV_32F, ksize=3)
+    # Centre + rayon estimé de chaque bbox, pour la garde voisin-aware du
+    # rim-refine (un listel ne peut pas empiéter sur la pièce voisine).
+    _bbox_centers = [((b[0] + b[2]) / 2.0, (b[1] + b[3]) / 2.0,
+                      min(b[2] - b[0], b[3] - b[1]) / 2.0) for b in bboxes]
     detections: list[CircleDetection] = []
-    for x1, y1, x2, y2, conf in bboxes:
+    for i, (x1, y1, x2, y2, conf) in enumerate(bboxes):
         bw = x2 - x1
         bh = y2 - y1
         if min(bw, bh) / 2.0 < bbox_min_r:
@@ -824,7 +863,19 @@ def detect_circles_multi(bgr: np.ndarray,
         # Import lazy : crop_detectors importe normalize_snap (évite le cycle).
         if _LISTING_RIM_REFINE:
             from vision.crop_detectors import detect_bbox_refine
-            _ref = detect_bbox_refine(bgr, hint={"cx": cx_f, "cy": cy_f, "r": r_f})
+            # Cap voisin-aware : distance jusqu'au bord proche de la pièce
+            # voisine la plus proche. Borne la ROI et le plafond du rim-refine
+            # → tue l'explosion à 2.6× quand la ROI engloutit les capsules
+            # adjacentes sur une planche multi-pièces. Mono-pièce → None →
+            # comportement bimétal validé inchangé.
+            neighbor_max_r: float | None = None
+            if len(_bbox_centers) > 1:
+                gaps = [float(np.hypot(cx_f - ox, cy_f - oy)) - orr
+                        for j, (ox, oy, orr) in enumerate(_bbox_centers) if j != i]
+                if gaps:
+                    neighbor_max_r = max(0.0, min(gaps))
+            _ref = detect_bbox_refine(bgr, hint={"cx": cx_f, "cy": cy_f, "r": r_f},
+                                      max_r=neighbor_max_r)
             if _ref.ok and _ref.r > 0:
                 cx_f, cy_f, r_f = _ref.cx, _ref.cy, _ref.r
                 method = method + "+rimrefine"
@@ -859,6 +910,13 @@ def detect_circles_multi(bgr: np.ndarray,
             method=method, votes=conf,
             accepted=accepted, reject_reason=reason,
         ))
+
+    # Garde anti-doublon (post rim-refine) : évite que la même pièce, détectée
+    # via 2 bboxes YOLO distinctes mais raffinées sur le même listel, génère N
+    # crops identiques (même phash) au scrape — la dégénérescence « 3× la même
+    # pièce » observée en review lot. Marque les doublons rejetés (debug-visible,
+    # exclus des crops). Toujours actif (géométrique, aucun coût modèle).
+    _dedup_duplicate_circles(detections, short)
 
     return detections
 
@@ -901,7 +959,8 @@ def normalize_listing_with_detections(
     use_census = _census_detect_enabled() if census is None else census
     detections = detect_circles_multi(bgr, census=use_census)
     results: list[NormalizationResult] = []
-    for det in detections:
+    result_src: list[int] = []  # index dans `detections` ayant produit chaque crop
+    for idx, det in enumerate(detections):
         if not det.accepted:
             continue
         result = _crop_mask_resize_int(bgr, det.cx, det.cy, det.r,
@@ -909,16 +968,32 @@ def normalize_listing_with_detections(
         if result.image is None:
             continue
         results.append(result)
+        result_src.append(idx)
 
     # Gate anti-fragment (census uniquement) : la probe DINO note chaque crop final ;
     # on jette ceux sous τ (fragments tranche/lettrage/anneau/partiel/capsule). Batch
     # unique. Hors census ou τ≤0 : aucun appel modèle, comportement inchangé.
+    #
+    # Les détections gatées sont re-marquées `accepted=False`
+    # (reject_reason="gated_fragment") pour que `detections` (persisté dans
+    # source_images.detections_json) reste un constat FIDÈLE : sinon l'overlay
+    # affiche N "retenus" alors que seuls les crops post-gate existent réellement
+    # → mismatch overlay ↔ bande de crops, et mapping accepté→crop_index par
+    # ordre faussé (badges sur capsules vides). Cf. review_queue_routes.
     if use_census:
         tau = _census_fragment_tau()
         if tau > 0 and results:
             from vision.census import face_scores
             scores = face_scores([r.image for r in results])
-            results = [r for r, s in zip(results, scores) if s >= tau]
+            kept: list[NormalizationResult] = []
+            for result, src_idx, score in zip(results, result_src, scores):
+                if score >= tau:
+                    kept.append(result)
+                else:
+                    det = detections[src_idx]
+                    det.accepted = False
+                    det.reject_reason = "gated_fragment"
+            results = kept
     return results, detections
 
 

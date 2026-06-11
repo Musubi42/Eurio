@@ -3,6 +3,7 @@ ai-edge-litert
 opencv-python-headless
 pytorch-metric-learning
 pyyaml
+timm
 torch
 torchvision
 ultralytics

@@ -16,11 +16,14 @@ real distributions in `/review` (cf. vision §P5).
 Idempotence: skip an asset if a row already exists for the same
 ``(encoder_version, anchors_kind)``. Pass ``force=True`` to recompute.
 
-Scope V1: only crops whose target_eurio_id (on the parent
-source_image) points at a 2€ commemorative coin get validated against
-the ``2eur_commemo`` bank. Other crops get skipped silently — the bank
-isn't relevant to them. Other scopes (``all_2eur``, ``all_commemo``)
-will be added when needed.
+Scopes (un crop est encodé UNE fois, matché contre N banques) :
+  - ``2eur_commemo`` — target = 2€ commémo. C'est la prédiction que lit
+    la couche consensus/lanes (calibrée C0–C5) — ne pas déplacer.
+  - ``2eur_all`` — target = 2€ (commémo OU courante). Banque large
+    (commémo + design groups standards) servie comme SUGGESTIONS dans
+    la review : un lot « diverse Länder » ciblé commémo contient des
+    courantes, la banque large les couvre.
+  - ``2eur_standard`` — target = 2€ courante (backfill ciblé uniquement).
 """
 
 from __future__ import annotations
@@ -33,10 +36,13 @@ from pathlib import Path
 from typing import Any
 
 from training.foundation import (
+    CONSENSUS_ANCHORS_KIND,
     DEFAULT_ENCODER_VERSION,
+    SUGGESTIONS_ANCHORS_KIND,
     AnchorBank,
     build_transform,
     encode_image,
+    encoder_version_for_kind,
     load_anchors,
     load_encoder,
     spread,
@@ -51,9 +57,32 @@ logger = logging.getLogger(__name__)
 
 _TOP_K_STORE = 5  # how many candidates to persist per asset
 
+# Kinds calculés au fil de l'eau (scrape/sync) : la prédiction consensus
+# (2eur_commemo) + la prédiction suggestions (2eur_all). Un seul encodage
+# par crop, N matchings — le matching est négligeable (dot-product numpy).
+LIVE_ANCHORS_KINDS: tuple[str, ...] = (
+    CONSENSUS_ANCHORS_KIND,
+    SUGGESTIONS_ANCHORS_KIND,
+)
+
+
+def _kind_in_scope(kind: str, face_value, is_commemorative) -> bool:
+    """Le target du listing rend-il ce kind pertinent pour le crop ?"""
+    if face_value is None or float(face_value) != 2.0:
+        return False
+    if kind == "2eur_commemo":
+        return bool(is_commemorative)
+    if kind == "2eur_standard":
+        return not is_commemorative
+    if kind == "2eur_all":
+        return True
+    return False
+
 # Module-level singletons — torch.hub model load is ~2s, transform is
 # stateless. Reuse across calls within the same Python process.
-_encoder_cache: dict[str, Any] = {}
+# Les kinds live tournent sur des encodeurs différents (consensus=vits14,
+# suggestions=vitl14) → un singleton PAR encoder_version.
+_encoder_cache: dict[str, tuple[Any, Any, Any]] = {}
 _bank_cache: dict[str, AnchorBank] = {}
 
 
@@ -66,19 +95,13 @@ class AutoValidateResult:
     n_errors: int
 
 
-def _get_encoder_singleton():
-    """Lazy-load the DINOv2 encoder + transform; cached per-process."""
-    if "encoder" not in _encoder_cache:
-        encoder, device = load_encoder()
-        _encoder_cache["encoder"] = encoder
-        _encoder_cache["device"] = device
-        _encoder_cache["transform"] = build_transform()
-        logger.info("auto_validate: DINOv2 ready on %s", device)
-    return (
-        _encoder_cache["encoder"],
-        _encoder_cache["device"],
-        _encoder_cache["transform"],
-    )
+def _get_encoder_singleton(encoder_version: str = DEFAULT_ENCODER_VERSION):
+    """Lazy-load a DINOv2 encoder + transform; cached per (process, version)."""
+    if encoder_version not in _encoder_cache:
+        encoder, device = load_encoder(encoder_version=encoder_version)
+        _encoder_cache[encoder_version] = (encoder, device, build_transform())
+        logger.info("auto_validate: DINOv2 %s ready on %s", encoder_version, device)
+    return _encoder_cache[encoder_version]
 
 
 def _get_bank(anchors_kind: str) -> AnchorBank | None:
@@ -86,6 +109,19 @@ def _get_bank(anchors_kind: str) -> AnchorBank | None:
         return _bank_cache[anchors_kind]
     bank = load_anchors(anchors_kind)
     if bank is None:
+        return None
+    expected = encoder_version_for_kind(anchors_kind)
+    if bank.encoder_version != expected:
+        # Banque stale (ex. 2eur_all encore en vits14 après la bascule
+        # suggestions→vitl14) : la servir écrirait des prédictions sous un
+        # encoder_version que les routes ne lisent plus → on la traite
+        # comme absente, l'opérateur doit la rebâtir.
+        logger.error(
+            "auto_validate: anchor bank %s has encoder=%s, expected %s — "
+            "treating as missing (rebuild: go-task ml:dino-anchors:build "
+            "-- --kind %s --force)",
+            anchors_kind, bank.encoder_version, expected, anchors_kind,
+        )
         return None
     _bank_cache[anchors_kind] = bank
     logger.info(
@@ -129,7 +165,7 @@ def _select_assets_for_backfill(
     conn: sqlite3.Connection,
     *,
     limit: int | None = None,
-    only_2eur_commemo: bool = True,
+    anchors_kind: str = "2eur_commemo",
 ) -> list[sqlite3.Row]:
     """Return all `image_assets` candidates for a standalone backfill run."""
     sql = """
@@ -140,9 +176,13 @@ def _select_assets_for_backfill(
           JOIN source_images s ON s.id = a.source_image_id
      LEFT JOIN coins c ON c.eurio_id = s.target_eurio_id
          WHERE a.storage_path IS NOT NULL
+           AND c.face_value = 2.0
     """
-    if only_2eur_commemo:
-        sql += " AND c.face_value = 2.0 AND c.is_commemorative = 1"
+    if anchors_kind == "2eur_commemo":
+        sql += " AND c.is_commemorative = 1"
+    elif anchors_kind == "2eur_standard":
+        sql += " AND c.is_commemorative = 0"
+    # 2eur_all : tout target 2€, commémo ou courante.
     sql += " ORDER BY a.fetched_at ASC"
     if limit:
         sql += f" LIMIT {int(limit)}"
@@ -159,15 +199,22 @@ def _predict_one(
     transform,
     anchors_kind: str,
     target_country: str | None = None,
+    vec=None,
 ) -> DinoPredictionRow | None:
-    if not crop_path.is_file():
-        logger.warning(
-            "auto_validate: missing crop file for asset=%s path=%s",
-            asset_id, crop_path,
-        )
-        return None
+    """Match un crop contre une banque. Passer ``vec`` (embedding déjà
+    calculé) pour matcher le même crop contre plusieurs banques sans
+    ré-encoder — l'encodage domine le coût, le matching est négligeable."""
     t0 = time.perf_counter()
-    vec = encode_image(crop_path, encoder=encoder, device=device, transform=transform)
+    if vec is None:
+        if not crop_path.is_file():
+            logger.warning(
+                "auto_validate: missing crop file for asset=%s path=%s",
+                asset_id, crop_path,
+            )
+            return None
+        vec = encode_image(
+            crop_path, encoder=encoder, device=device, transform=transform
+        )
     matches = top_k_match(vec, bank, top_k=_TOP_K_STORE)
 
     # Country-restricted re-rank — same embedding, masked bank. Cheap.
@@ -233,6 +280,23 @@ def _existing_keys(
     return {r["asset_id"] for r in rows}
 
 
+def _load_banks(kinds: tuple[str, ...], context: str) -> dict[str, AnchorBank]:
+    """Charge les banques demandées ; celles qui manquent sont loggées et
+    sautées (le pipeline amont ne casse jamais sur la couche suggestion)."""
+    banks: dict[str, AnchorBank] = {}
+    for kind in kinds:
+        bank = _get_bank(kind)
+        if bank is None:
+            logger.warning(
+                "[%s] auto_validate: anchor bank %s missing — skipping this "
+                "kind (run `go-task ml:dino-anchors:build` to bootstrap)",
+                context, kind,
+            )
+            continue
+        banks[kind] = bank
+    return banks
+
+
 # Called by: ml/sources/_base/orchestrator.py (step 7/8 — after resolve, before enqueue; suggestion layer, no decision in V1)
 def run_auto_validate_dino(
     *,
@@ -240,30 +304,24 @@ def run_auto_validate_dino(
     run: RunHandle | None,
     source_id: str,
     source_image_ids: dict[str, str],
-    anchors_kind: str = "2eur_commemo",
+    anchors_kinds: tuple[str, ...] = LIVE_ANCHORS_KINDS,
     force: bool = False,
 ) -> AutoValidateResult:
     """Step 5.5 entry point — called by the orchestrator after `resolve`.
 
-    Falls back to a no-op (logged) if the bank file is missing — the
+    Falls back to a no-op (logged) if the bank files are missing — the
     upstream pipeline should not break because the auto-validation
     layer hasn't been bootstrapped yet.
     """
-    bank = _get_bank(anchors_kind)
-    if bank is None:
-        logger.warning(
-            "[%s] auto_validate: anchor bank %s missing — skipping (run "
-            "`go-task ml:dino-anchors:build` to bootstrap)",
-            source_id, anchors_kind,
-        )
+    banks = _load_banks(anchors_kinds, source_id)
+    if not banks:
         return AutoValidateResult(0, 0, 0, 0, 0)
 
     candidates = _select_assets_for_run(conn, source_image_ids)
     return _run_inner(
         conn=conn,
         candidates=candidates,
-        bank=bank,
-        anchors_kind=anchors_kind,
+        banks=banks,
         force=force,
     )
 
@@ -291,7 +349,9 @@ def run_auto_validate_dino_backfill(
         return AutoValidateResult(0, 0, 0, 0, 0)
 
     conn = store._connection()  # noqa: SLF001
-    candidates = _select_assets_for_backfill(conn, limit=limit)
+    candidates = _select_assets_for_backfill(
+        conn, limit=limit, anchors_kind=anchors_kind
+    )
     logger.info(
         "auto_validate backfill: %d candidate assets in scope %s",
         len(candidates), anchors_kind,
@@ -299,8 +359,7 @@ def run_auto_validate_dino_backfill(
     return _run_inner(
         conn=conn,
         candidates=candidates,
-        bank=bank,
-        anchors_kind=anchors_kind,
+        banks={anchors_kind: bank},
         force=force,
         store=store,
     )
@@ -317,47 +376,92 @@ def predict_and_persist_one(
     target_country: str | None = None,
     anchors_kind: str = "2eur_commemo",
 ) -> DinoPredictionRow | None:
-    """Encode one crop, match against the anchor bank, upsert the prediction.
+    """Encode one crop, match against ONE anchor bank, upsert the prediction.
 
     Reuses the process-wide encoder + bank singletons (same path as the
     batch backfill → identical format). Returns the persisted row, or None
     if the bank is missing or the crop can't be encoded. Scope is NOT
     enforced here: a human re-crop is an explicit action and the caller
-    owns the decision to run Dino (the V1 bank is 2€ commémo anchors).
+    owns the decision to run Dino.
     """
-    bank = _get_bank(anchors_kind)
-    if bank is None:
-        logger.warning(
-            "predict_and_persist_one: anchor bank %s missing — skipping",
-            anchors_kind,
-        )
-        return None
-    encoder, device, transform = _get_encoder_singleton()
-    prediction = _predict_one(
+    rows = predict_and_persist_kinds(
+        store=store,
         asset_id=asset_id,
         crop_path=crop_path,
-        bank=bank,
-        encoder=encoder,
-        device=device,
-        transform=transform,
-        anchors_kind=anchors_kind,
         target_country=target_country,
+        anchors_kinds=(anchors_kind,),
     )
-    if prediction is None:
-        return None
-    store.upsert_dino_predictions([prediction])
-    return prediction
+    return rows.get(anchors_kind)
+
+
+# Called by: ml/serving/crop_edit.py (re-crop / add-crop manuel) et
+# ml/review/review_queue_routes.py (_lazy_compute_dino) — recompute à la
+# demande des kinds live, en partageant l'embedding (1 encode → N banques).
+def predict_and_persist_kinds(
+    *,
+    store,
+    asset_id: str,
+    crop_path: Path,
+    target_country: str | None = None,
+    anchors_kinds: tuple[str, ...] = LIVE_ANCHORS_KINDS,
+) -> dict[str, DinoPredictionRow]:
+    """Encode un crop (une fois PAR encodeur) et upsert une prédiction par kind.
+
+    Les kinds partageant un encodeur partagent l'embedding ; consensus
+    (vits14) et suggestions (vitl14) impliquent deux encodages. Les kinds
+    dont la banque manque sont sautés (loggés). Renvoie les rows persistées
+    par kind — dict vide si rien n'a pu être calculé.
+    """
+    banks = _load_banks(anchors_kinds, f"asset={asset_id}")
+    if not banks:
+        return {}
+    if not crop_path.is_file():
+        logger.warning(
+            "predict_and_persist_kinds: missing crop file asset=%s path=%s",
+            asset_id, crop_path,
+        )
+        return {}
+    out: dict[str, DinoPredictionRow] = {}
+    for version in sorted({b.encoder_version for b in banks.values()}):
+        encoder, device, transform = _get_encoder_singleton(version)
+        vec = encode_image(
+            crop_path, encoder=encoder, device=device, transform=transform
+        )
+        for kind, bank in banks.items():
+            if bank.encoder_version != version:
+                continue
+            prediction = _predict_one(
+                asset_id=asset_id,
+                crop_path=crop_path,
+                bank=bank,
+                encoder=encoder,
+                device=device,
+                transform=transform,
+                anchors_kind=kind,
+                target_country=target_country,
+                vec=vec,
+            )
+            if prediction is not None:
+                out[kind] = prediction
+    if out:
+        store.upsert_dino_predictions(list(out.values()))
+    return out
 
 
 def _run_inner(
     *,
     conn: sqlite3.Connection,
     candidates: list,
-    bank: AnchorBank,
-    anchors_kind: str,
+    banks: dict[str, AnchorBank],
     force: bool,
     store=None,
 ) -> AutoValidateResult:
+    """Boucle interne : encode chaque crop une fois, matche contre chaque
+    banque dont le kind est en scope pour le target du listing.
+
+    Compteurs : ``n_predicted`` = rows écrites (assets × kinds),
+    ``n_skipped_existing`` / ``n_skipped_out_of_scope`` = assets.
+    """
     n_predicted = 0
     n_existing = 0
     n_no_anchor = 0
@@ -365,30 +469,36 @@ def _run_inner(
     n_errors = 0
     predicted_ids: list[str] = []  # assets re-prédits → re-route lane post-Dino
 
-    in_scope: list = []
+    # (asset, kinds applicables au target) — un asset peut nourrir N kinds.
+    in_scope: list[tuple[Any, list[str]]] = []
     for r in candidates:
-        if anchors_kind == "2eur_commemo":
-            if not (r["face_value"] and float(r["face_value"]) == 2.0 and r["is_commemorative"]):
-                n_oos += 1
-                continue
-        in_scope.append(r)
+        kinds = [
+            k for k in banks
+            if _kind_in_scope(k, r["face_value"], r["is_commemorative"])
+        ]
+        if not kinds:
+            n_oos += 1
+            continue
+        in_scope.append((r, kinds))
 
     if not in_scope:
         return AutoValidateResult(0, 0, 0, n_oos, 0)
 
-    encoder, device, transform = _get_encoder_singleton()
-
-    asset_ids = [r["asset_id"] for r in in_scope]
-    skip = (
-        _existing_keys(conn, asset_ids, bank.encoder_version, anchors_kind)
-        if not force
-        else set()
-    )
+    asset_ids = [r["asset_id"] for r, _ in in_scope]
+    skip_by_kind: dict[str, set[str]] = {
+        kind: (
+            _existing_keys(conn, asset_ids, bank.encoder_version, kind)
+            if not force
+            else set()
+        )
+        for kind, bank in banks.items()
+    }
 
     rows_to_write: list[DinoPredictionRow] = []
-    for r in in_scope:
+    for r, kinds in in_scope:
         aid = r["asset_id"]
-        if aid in skip:
+        kinds_todo = [k for k in kinds if aid not in skip_by_kind[k]]
+        if not kinds_todo:
             n_existing += 1
             continue
         # Target country from the parent eBay query (source_images.target_eurio_id).
@@ -409,26 +519,48 @@ def _run_inner(
             n_errors += 1
             continue
         try:
-            prediction = _predict_one(
-                asset_id=aid,
-                crop_path=crop_p,
-                bank=bank,
-                encoder=encoder,
-                device=device,
-                transform=transform,
-                anchors_kind=anchors_kind,
-                target_country=target_country,
-            )
+            if not crop_p.is_file():
+                logger.warning(
+                    "auto_validate: missing crop file for asset=%s path=%s",
+                    aid, crop_p,
+                )
+                n_errors += 1
+                continue
+            # Un embedding par encodeur (consensus=vits14, suggestions=vitl14),
+            # partagé entre les kinds qui tournent sur le même encodeur.
+            predictions = []
+            for version in sorted(
+                {banks[k].encoder_version for k in kinds_todo}
+            ):
+                encoder, device, transform = _get_encoder_singleton(version)
+                vec = encode_image(
+                    crop_p, encoder=encoder, device=device, transform=transform
+                )
+                predictions.extend(
+                    p for kind in kinds_todo
+                    if banks[kind].encoder_version == version
+                    and (p := _predict_one(
+                        asset_id=aid,
+                        crop_path=crop_p,
+                        bank=banks[kind],
+                        encoder=encoder,
+                        device=device,
+                        transform=transform,
+                        anchors_kind=kind,
+                        target_country=target_country,
+                        vec=vec,
+                    )) is not None
+                )
         except Exception as exc:  # broad on purpose — pipeline must keep moving
             logger.exception("auto_validate: failed on asset=%s: %s", aid, exc)
             n_errors += 1
             continue
-        if prediction is None:
+        if not predictions:
             n_errors += 1
             continue
-        rows_to_write.append(prediction)
+        rows_to_write.extend(predictions)
         predicted_ids.append(aid)
-        n_predicted += 1
+        n_predicted += len(predictions)
         if len(rows_to_write) >= 32:
             _flush(conn, store, rows_to_write)
             rows_to_write.clear()

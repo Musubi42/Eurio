@@ -23,6 +23,7 @@ import {
 } from 'lucide-vue-next'
 import {
   decideLot, detectLotImage, fetchLot, LotReviewError, requalifyLotAsSingle,
+  syncLotCrops,
   type LotAssignment, type LotCandidate, type LotCrop, type LotDetail,
   type LotRejectReason,
 } from '../composables/useLotReview'
@@ -42,7 +43,10 @@ const detail = ref<LotDetail | null>(null)
 const loading = ref(false)
 const error = ref<string | null>(null)
 const showHelp = ref(false)
-const showOverlay = ref(true)         // toggle Stage 2 cercles (D)
+// Démarre en COMPARAISON (crop ↔ canonique) : l'identification est l'acte
+// dominant ; le plateau (curation des cercles) est sur D à la demande. Cf.
+// refonte UX review lot (comparaison-primaire).
+const showOverlay = ref(false)        // toggle Stage 2 cercles (D)
 const autoAdvance = ref(true)          // validate→next chain
 const submitting = ref(false)
 const lastDecisionToast = ref<{ done: number; rejected: number; skipped: number } | null>(null)
@@ -96,7 +100,10 @@ const addCropCircle = ref<{ cx: number; cy: number; r: number } | null>(null)
 // propre (la cible est de nouveau focused par défaut visuellement).
 const mode = ref<'auto' | 'free'>('auto')
 const focusedCandidateIdx = ref<number | null>(null)
-const freeSearchCandidate = ref<{ eurio_id: string; label: string } | null>(null)
+// Candidat explicitement SÉLECTIONNÉ (recherche libre OU suggestion Dino) :
+// pilote la canonique de SplitCompare. Porte sa vignette pour que la grosse
+// canonique suive la sélection (sinon elle restait sur la cible eBay).
+const freeSearchCandidate = ref<{ eurio_id: string; label: string; canonical_thumb_url?: string } | null>(null)
 
 const REJECT_REASONS: { value: LotRejectReason; label: string }[] = [
   { value: 'not_a_coin', label: 'Pas une pièce' },
@@ -285,13 +292,21 @@ function onDinoSelect(s: DinoSuggestion) {
   if (!a) return
   const label = `${s.eurio_id} (Dino · ${(s.sim * 100).toFixed(0)}%)`
   assignToCandidate(a.crop.asset_id, s.eurio_id, label)
+  // La canonique de SplitCompare suit la sélection (vignette = avers Dino).
+  freeSearchCandidate.value = {
+    eurio_id: s.eurio_id, label, canonical_thumb_url: s.obverse_url ?? undefined,
+  }
+  focusedCandidateIdx.value = null
 }
 
 function onFreeSelect(entry: CoinSearchEntry) {
   const a = activeCrop.value
   if (!a) return
   assignToCandidate(a.crop.asset_id, entry.eurio_id, entry.label)
-  freeSearchCandidate.value = { eurio_id: entry.eurio_id, label: entry.label }
+  freeSearchCandidate.value = {
+    eurio_id: entry.eurio_id, label: entry.label,
+    canonical_thumb_url: entry.canonical_thumb_url ?? undefined,
+  }
   exitFreeMode()
 }
 
@@ -507,6 +522,33 @@ async function reDetectActiveImage() {
     const res = await detectLotImage(detail.value.listing_key, im.source_image_id)
     im.detections = res.detections
     if (!showOverlay.value) showOverlay.value = true  // montre la plate
+  } catch (err) {
+    detectError.value = err instanceof LotReviewError ? err.message : String(err)
+  } finally {
+    detecting.value = false
+  }
+}
+
+// Resync les crops de l'image active sur les cercles acceptés du constat
+// (action explicite, distincte de Re-détecter). Remplace les fichiers de crop
+// (re-point/create/delete côté backend) et recompute le Dino → corrige les
+// vignettes ET les suggestions. Refuse (409) si un crop est déjà décidé.
+async function syncCropsActiveImage() {
+  const im = activeImage.value
+  if (!im || detecting.value || !detail.value) return
+  if (!im.crops.some((c) => c.review_id)) return  // rien à resync
+  detecting.value = true
+  detectError.value = null
+  try {
+    const res = await syncLotCrops(detail.value.listing_key, im.source_image_id)
+    im.crops = res.crops
+    // Les fichiers crop sont réécrits aux mêmes/nouveaux chemins → bust le cache
+    // de tous les crops de l'image + relance les suggestions Dino.
+    const bust = { ...cropBustByAsset.value }
+    for (const c of res.crops) bust[c.asset_id] = Date.now()
+    cropBustByAsset.value = bust
+    dinoReloadKey.value += 1
+    activeCropIndex.value = 0
   } catch (err) {
     detectError.value = err instanceof LotReviewError ? err.message : String(err)
   } finally {
@@ -889,6 +931,25 @@ function detectionBadgeColor(cropIndex: number | null): string {
           />
         </div>
 
+        <!-- Barre compacte (mode comparaison) : éditer le crop actif à un clic ;
+             le plateau complet (re-détecter / sync / crop manuel) est sur D. -->
+        <div v-if="!showOverlay && activeImage" class="flex flex-wrap items-center gap-2 shrink-0">
+          <button
+            type="button"
+            class="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 font-mono text-[10px] disabled:opacity-40"
+            style="border-color: var(--surface-3); color: var(--ink-700); background: var(--surface);"
+            :disabled="!activeCrop?.crop.review_id"
+            title="Éditer le crop actif : ajuster le cercle existant sur le raw"
+            @click="openRecropActive"
+          >
+            <Crop class="h-3 w-3" /> Éditer le crop <kbd>E</kbd>
+          </button>
+          <span class="font-mono text-[10px]" style="color: var(--ink-400);">
+            plateau &amp; recadrage des cercles sur <kbd>D</kbd>
+          </span>
+          <span v-if="detectError" style="color: var(--danger);">{{ detectError }}</span>
+        </div>
+
         <!-- Plate footnote (D ON uniquement) -->
         <div v-if="showOverlay && activeImage" class="flex flex-wrap items-baseline gap-3 font-mono text-[10px] shrink-0" style="color: var(--ink-500);">
           <span v-if="activeImage.raw_width && activeImage.raw_height">
@@ -918,12 +979,32 @@ function detectionBadgeColor(cropIndex: number | null): string {
           </button>
           <button
             type="button"
+            class="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 font-mono text-[10px] disabled:opacity-40"
+            style="border-color: var(--surface-3); color: var(--indigo-700); background: var(--surface);"
+            :disabled="detecting || !activeImageCrops.length"
+            title="Resynchroniser les crops sur les cercles acceptés de l'overlay (re-pointe / crée / supprime + recompute Dino). Refusé si un crop est déjà décidé. Relance Re-détecter d'abord si l'overlay est périmé."
+            @click="syncCropsActiveImage"
+          >
+            <RotateCcw class="h-3 w-3" /> Sync crops
+          </button>
+          <button
+            type="button"
             class="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 font-mono text-[10px]"
             style="border-color: var(--surface-3); color: var(--success); background: var(--surface);"
             title="Ajouter un crop à la main sur cette image (pièce ratée par la détection)"
             @click="openAddCrop()"
           >
             <Plus class="h-3 w-3" /> Crop manuel
+          </button>
+          <button
+            type="button"
+            class="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 font-mono text-[10px] disabled:opacity-40"
+            style="border-color: var(--surface-3); color: var(--ink-700); background: var(--surface);"
+            :disabled="!activeCrop?.crop.review_id"
+            title="Éditer le crop actif : ajuster le cercle existant sur le raw (≠ ajouter un crop)"
+            @click="openRecropActive"
+          >
+            <Crop class="h-3 w-3" /> Éditer le crop <kbd>E</kbd>
           </button>
           <span v-if="detectError" style="color: var(--danger);">{{ detectError }}</span>
         </div>

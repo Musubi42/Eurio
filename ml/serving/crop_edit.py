@@ -39,6 +39,10 @@ class CropEditContextData:
     raw_width: int | None
     raw_height: int | None
     hint: dict | None  # {cx, cy, r} reconstruit depuis la bbox actuelle, ou None
+    # {cx, cy, r} : cercle dominant détecté dans le raw, proposé comme point de
+    # départ de l'éditeur quand la source est mono-pièce (le crop stocké est
+    # souvent sous-dimensionné/excentré sur les macros eBay). None sinon.
+    suggested: dict | None = None
 
 
 @dataclass
@@ -94,6 +98,35 @@ def _hint_from_bbox(bbox_json: str | None) -> dict | None:
     return None
 
 
+def _dominant_circle(raw_storage_path: str) -> dict | None:
+    """Cercle dominant du raw via Hough (le plus grand cercle bien dimensionné)
+    — point de départ de l'éditeur quand le crop détecté est sous-dimensionné /
+    excentré (macro eBay où la pièce remplit le cadre). Heuristique LOCALE
+    « pièce qui remplit le cadre » : ne relance PAS la pipeline de crop. None si
+    raw illisible ou aucun cercle ≥ 0.30·petit-côté trouvé (pièce trop petite /
+    cadrage atypique → on garde le hint bbox)."""
+    from shared.storage.local_cache import local_path
+    try:
+        p = local_path("enrichment-raws", raw_storage_path)
+    except FileNotFoundError:
+        return None
+    bgr = cv2.imread(str(p), cv2.IMREAD_COLOR)
+    if bgr is None or bgr.size == 0:
+        return None
+    H, W = bgr.shape[:2]
+    short = min(H, W)
+    gray = cv2.medianBlur(cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY), 5)
+    circles = cv2.HoughCircles(
+        gray, cv2.HOUGH_GRADIENT, dp=1.0, minDist=short,
+        param1=100, param2=30,
+        minRadius=int(short * 0.30), maxRadius=int(short * 0.50),
+    )
+    if circles is None or len(circles[0]) == 0:
+        return None
+    best = max(circles[0], key=lambda c: c[2])
+    return {"cx": float(best[0]), "cy": float(best[1]), "r": float(best[2])}
+
+
 def load_crop_edit_context(store: Store, asset_id: str) -> CropEditContextData:
     """Charge le raw + le cercle de départ pour l'éditeur, depuis un asset_id."""
     conn = store._connection()  # noqa: SLF001
@@ -114,6 +147,16 @@ def load_crop_edit_context(store: Store, asset_id: str) -> CropEditContextData:
     if not row["raw_storage_path"]:
         raise HTTPException(status_code=410, detail="Raw image unavailable.")
 
+    # Cercle dominant proposé — UNIQUEMENT pour les sources mono-pièce. Sur un
+    # lot (plusieurs crops sur le même raw), un Hough global sauterait sur la
+    # plus grosse pièce, pas celle qu'on édite : on garde alors le hint bbox
+    # (bon depuis le bridage rim-refine). Coût Hough ~ acceptable (action manuelle).
+    n_crops = conn.execute(
+        "SELECT COUNT(*) FROM image_assets WHERE source_image_id = ?",
+        (row["source_image_id"],),
+    ).fetchone()[0]
+    suggested = _dominant_circle(row["raw_storage_path"]) if n_crops <= 1 else None
+
     return CropEditContextData(
         asset_id=row["asset_id"],
         source=row["source"],
@@ -122,6 +165,7 @@ def load_crop_edit_context(store: Store, asset_id: str) -> CropEditContextData:
         raw_width=row["raw_width"],
         raw_height=row["raw_height"],
         hint=_hint_from_bbox(row["bbox_json"]),
+        suggested=suggested,
     )
 
 
@@ -213,22 +257,23 @@ def apply_manual_crop(
                 row["asset_id"], cx, cy, r, minio_ok)
 
     # Recompute Dino sur le crop recadré (best-effort : un échec ne casse pas
-    # le re-crop déjà committé).
+    # le re-crop déjà committé). Tous les kinds live (consensus + suggestions)
+    # sont rafraîchis en un seul encodage.
     dino_recomputed = False
     try:
-        from sources._base.steps.auto_validate import predict_and_persist_one
+        from sources._base.steps.auto_validate import predict_and_persist_kinds
 
         target_eid = row["target_eurio_id"]
         target_country = (
             target_eid[:2].lower() if target_eid and len(target_eid) >= 2 else None
         )
-        pred = predict_and_persist_one(
+        preds = predict_and_persist_kinds(
             store=store,
             asset_id=row["asset_id"],
             crop_path=cache_p,
             target_country=target_country,
         )
-        dino_recomputed = pred is not None
+        dino_recomputed = bool(preds)
     except Exception as exc:  # noqa: BLE001 — suggestion layer, never fatal
         logger.warning("[manual-crop] Dino recompute failed for asset=%s: %s",
                        row["asset_id"], exc)
@@ -381,19 +426,19 @@ def create_manual_crop(
     conn.commit()
 
     # Dino best-effort (suggestion layer, jamais fatal) — avant compute_lane
-    # pour que la lane soit informée.
+    # pour que la lane soit informée. Tous les kinds live en un encodage.
     dino_recomputed = False
     try:
-        from sources._base.steps.auto_validate import predict_and_persist_one
+        from sources._base.steps.auto_validate import predict_and_persist_kinds
         target_eid = si["target_eurio_id"]
         target_country = (
             target_eid[:2].lower() if target_eid and len(target_eid) >= 2 else None
         )
-        pred = predict_and_persist_one(
+        preds = predict_and_persist_kinds(
             store=store, asset_id=asset_id, crop_path=cache_p,
             target_country=target_country,
         )
-        dino_recomputed = pred is not None
+        dino_recomputed = bool(preds)
     except Exception as exc:  # noqa: BLE001
         logger.warning("[add-crop] Dino failed for asset=%s: %s", asset_id, exc)
 
@@ -440,3 +485,36 @@ def create_manual_crop(
         minio_ok=minio_ok,
         dino_recomputed=dino_recomputed,
     )
+
+
+def delete_crop(store: Store, asset_id: str) -> None:
+    """Supprime DÉFINITIVEMENT un crop : fichier (MinIO + cache, best-effort)
+    puis la row ``image_assets``. Le ``ON DELETE CASCADE`` du schéma purge en
+    chaîne ``review_queue`` + prédictions Dino (la connexion Store a
+    ``PRAGMA foreign_keys=ON``). Ne touche JAMAIS au raw.
+
+    Le caller DOIT avoir vérifié que le crop est indécidé (review 'open') —
+    on ne supprime pas une décision humaine. Sert à la resync crops↔détection
+    quand la détection corrigée trouve MOINS de pièces que de crops stockés."""
+    conn = store._connection()  # noqa: SLF001
+    row = conn.execute(
+        "SELECT storage_path FROM image_assets WHERE id = ?", (asset_id,),
+    ).fetchone()
+    if row is None:
+        return
+    storage_key = row["storage_path"]
+    if storage_key:
+        # Fichier d'abord (la cascade DB suit). Best-effort : un orphelin MinIO
+        # est rattrapé par la sync périodique, on ne bloque pas la suppression.
+        try:
+            from shared.storage.cascade import delete_asset_cascade, STATUS_REMOVED
+            delete_asset_cascade(
+                "enrichment-crops", storage_key, "image_assets", asset_id,
+                reason=STATUS_REMOVED,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[delete-crop] file delete failed asset=%s: %s",
+                           asset_id, exc)
+    conn.execute("DELETE FROM image_assets WHERE id = ?", (asset_id,))
+    conn.commit()
+    logger.info("[delete-crop] asset=%s purged (row + cascade)", asset_id)

@@ -84,7 +84,22 @@ export interface DinoSuggestionsResponse {
     rule: string
     confidence: number
   } | null
+  // Abstention des suggestions (P5 dino-suggestions, calibrée audit Phase 0
+  // sur le spread GLOBAL — la sim ne sépare pas le hors-scope) :
+  // 'uncertain' = probablement hors banque ou design ambigu → le panel doit
+  // le dire au lieu de présenter une liste classée trompeuse.
+  abstention_state: AbstentionState
+  abstention_thresholds: {
+    spread_uncertain_max: number
+    spread_confident_min: number
+  }
+  // Lot multi-pays suspecté (titre « diverse Länder / mixed / divers pays »).
+  // Le pays cible du listing ne dit rien du pays de CHAQUE crop → le panel
+  // montre le ranking global en premier, la bande pays en prior indicatif.
+  multi_country_lot: boolean
 }
+
+export type AbstentionState = 'confident' | 'low_margin' | 'uncertain' | 'unknown'
 
 /** Returns null if the API doesn't have suggestions yet (404) or is unreachable. */
 async function fetchOrNull(path: string): Promise<DinoSuggestionsResponse | null> {
@@ -118,13 +133,30 @@ async function fetchOrNull(path: string): Promise<DinoSuggestionsResponse | null
   }
 }
 
+// Kind par défaut = banque large commémo + courantes (suggestions review).
+// Fallback sur la banque historique 2eur_commemo si la banque 2eur_all n'est
+// pas bâtie sur la machine qui sert l'API (404 propre → on retente).
+const DEFAULT_ANCHORS_KIND = '2eur_all'
+const FALLBACK_ANCHORS_KIND = '2eur_commemo'
+
+async function fetchWithKindFallback(
+  pathFor: (kind: string) => string,
+  anchorsKind?: string,
+): Promise<DinoSuggestionsResponse | null> {
+  const kind = anchorsKind ?? DEFAULT_ANCHORS_KIND
+  const first = await fetchOrNull(pathFor(kind))
+  if (first || anchorsKind || kind === FALLBACK_ANCHORS_KIND) return first
+  return fetchOrNull(pathFor(FALLBACK_ANCHORS_KIND))
+}
+
 export async function fetchDinoSuggestionsByReviewId(
   reviewId: string,
   opts: { anchorsKind?: string } = {},
 ): Promise<DinoSuggestionsResponse | null> {
-  const kind = opts.anchorsKind ?? '2eur_commemo'
-  return fetchOrNull(
-    `/review-queue/${encodeURIComponent(reviewId)}/dino-suggestions?anchors_kind=${kind}`,
+  return fetchWithKindFallback(
+    (kind) =>
+      `/review-queue/${encodeURIComponent(reviewId)}/dino-suggestions?anchors_kind=${kind}`,
+    opts.anchorsKind,
   )
 }
 
@@ -132,9 +164,10 @@ export async function fetchDinoSuggestionsByAssetId(
   assetId: string,
   opts: { anchorsKind?: string } = {},
 ): Promise<DinoSuggestionsResponse | null> {
-  const kind = opts.anchorsKind ?? '2eur_commemo'
-  return fetchOrNull(
-    `/review-queue/asset/${encodeURIComponent(assetId)}/dino-suggestions?anchors_kind=${kind}`,
+  return fetchWithKindFallback(
+    (kind) =>
+      `/review-queue/asset/${encodeURIComponent(assetId)}/dino-suggestions?anchors_kind=${kind}`,
+    opts.anchorsKind,
   )
 }
 
@@ -182,4 +215,19 @@ export function spreadLabel(spread: number | null): { text: string; tone: SimTie
   if (spread >= 0.05) return { text: 'net', tone: 'top' }
   if (spread >= 0.02) return { text: 'modéré', tone: 'mid' }
   return { text: 'tassé', tone: 'low' }
+}
+
+/** Label humain de l'état d'abstention (P5) — calculé côté serveur depuis le
+ * spread global (seuils dans ml/training/foundation/thresholds.py). */
+export function abstentionLabel(state: AbstentionState): { text: string; tone: SimTier } {
+  switch (state) {
+    case 'confident':
+      return { text: 'confiant', tone: 'top' }
+    case 'low_margin':
+      return { text: 'faible marge', tone: 'mid' }
+    case 'uncertain':
+      return { text: 'incertain', tone: 'low' }
+    case 'unknown':
+      return { text: '—', tone: 'low' }
+  }
 }

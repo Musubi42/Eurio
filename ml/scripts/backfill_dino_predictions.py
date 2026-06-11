@@ -37,7 +37,7 @@ def main() -> int:
     parser.add_argument(
         "--kind",
         default="2eur_commemo",
-        choices=["2eur_commemo"],
+        choices=["2eur_commemo", "2eur_standard", "2eur_all"],
         help="Anchor scope (default: 2eur_commemo).",
     )
     parser.add_argument(

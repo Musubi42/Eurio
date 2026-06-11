@@ -16,6 +16,7 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import re
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -47,8 +48,18 @@ from training.foundation.auto_validate import (
     compute_auto_validate_verdict_from_row,
     compute_auto_validate_view,
 )
+from training.foundation.anchors import (
+    CONSENSUS_ANCHORS_KIND,
+    SUGGESTIONS_ANCHORS_KIND,
+    encoder_version_for_kind,
+)
 from training.foundation.claude_review import DEFAULT_MODEL_ALIAS, MODELS, judge
-from training.foundation.thresholds import DINO_VERDICT_THRESHOLDS, DinoVerdictThresholds
+from training.foundation.thresholds import (
+    DINO_ABSTENTION_THRESHOLDS,
+    DINO_VERDICT_THRESHOLDS,
+    DinoAbstentionThresholds,
+    DinoVerdictThresholds,
+)
 
 # Chunk B 2026-05-25 : engine version stables, écrits dans
 # ``review_queue.decision_engine_version`` pour permettre de retrouver
@@ -60,7 +71,7 @@ _AUTO_DINO_ENGINE_VERSION = (
     f"auto_dino@s{DINO_VERDICT_THRESHOLDS['top1_country_sim_min']}"
     f"-d{DINO_VERDICT_THRESHOLDS['country_spread_min']}"
 )
-from vision.normalize_snap import detect_circles_multi
+from vision.normalize_snap import normalize_listing_with_detections
 from store import Store, emit_state_event
 
 from serving.crop_edit import (
@@ -420,6 +431,14 @@ def _row_to_item(
             for c in raw if isinstance(raw, list) else []:
                 if not isinstance(c, dict) or "eurio_id" not in c:
                     continue
+                # Vignette : la valeur stockée dans candidate_eurio_ids_json est
+                # souvent NULL (jamais peuplée au scrape) → image cassée. On la
+                # recalcule live via canonical_obverse_url (même source que les
+                # « pièces standards »), avec fallback sur la valeur stockée.
+                thumb = c.get("canonical_thumb_url") or ""
+                if not thumb and conn is not None:
+                    from serving._coin_helpers import canonical_obverse_url
+                    thumb = canonical_obverse_url(conn, c["eurio_id"]) or ""
                 candidates.append(ReviewCandidate(
                     eurio_id=c["eurio_id"],
                     score=float(c.get("score", 0)),
@@ -427,7 +446,7 @@ def _row_to_item(
                     country=c.get("country", ""),
                     denomination=c.get("denomination", ""),
                     year=c.get("year"),
-                    canonical_thumb_url=c.get("canonical_thumb_url", ""),
+                    canonical_thumb_url=thumb,
                 ))
         except json.JSONDecodeError:
             pass
@@ -1314,7 +1333,8 @@ def _parse_bbox(json_str: str | None) -> ReviewBbox | None:
 def _compute_detections(raw_storage_key: str | None,
                         crop_indices_in_db: list[int],
                         census: bool | None = None) -> list[LotDetection]:
-    """Re-run `detect_circles_multi` on the raw — re-détection à la demande
+    """Re-run le pipeline de détection complet (`normalize_listing_with_detections`
+    : crop + gate anti-fragment) sur le raw — re-détection à la demande
     (Chunk C). N'est PLUS sur le chemin de chargement (get_lot lit le JSON
     persisté) ; appelé seulement quand l'humain relance la détection sur une
     image. Coûteux (YOLO+Hough), d'où le déclenchement manuel.
@@ -1335,7 +1355,12 @@ def _compute_detections(raw_storage_key: str | None,
     bgr = cv2.imread(str(p), cv2.IMREAD_COLOR)
     if bgr is None or bgr.size == 0:
         return []
-    detections = detect_circles_multi(bgr, census=census)
+    # Passe par le pipeline COMPLET (crop + gate anti-fragment), pas par
+    # detect_circles_multi brut : la re-détection LIVE doit produire EXACTEMENT
+    # le même constat que le scrape. Sinon les capsules/fragments gatés au
+    # scrape ressortent "acceptés" ici → overlay faux + mapping accepté→
+    # crop_index décalé. On jette les crops (1er élément), on garde le constat.
+    _, detections = normalize_listing_with_detections(bgr, census=census)
     out: list[LotDetection] = []
     accepted_idx = 0
     for det in detections:
@@ -1558,7 +1583,8 @@ def detect_lot_image(listing_key: str, source_image_id: str) -> LotImageDetectRe
     """Re-détection LIVE d'UNE image du listing (Chunk C) — rattrapage manuel
     quand le scrape a raté des pièces.
 
-    Relance `detect_circles_multi` (mode aligné scrape : eBay = census), met à
+    Relance le pipeline complet (gate anti-fragment inclus, mode aligné scrape :
+    eBay = census), met à
     jour `source_images.detections_json`, et renvoie les cercles (acceptés +
     rejetés) pour overlay immédiat. Coûteux (YOLO+Hough) → déclenché à la main,
     une image à la fois (jamais sur le chemin de chargement, cf. Chunk A).
@@ -1648,6 +1674,123 @@ def add_lot_crop(listing_key: str, source_image_id: str,
         current_eurio_id=None,
         candidate_eurio_ids=_parse_candidates(json.dumps(new.candidate_eurio_ids)),
         bbox=_parse_bbox(json.dumps(new.bbox)),
+    )
+
+
+class LotSyncCropsResponse(BaseModel):
+    source_image_id: str
+    crops: list[LotCrop]
+    repointed: int
+    created: int
+    deleted: int
+
+
+# Consumed by: admin/packages/web/src/features/review/composables/useLotReview.ts (syncLotCrops)
+@router.post("/lots/{listing_key}/images/{source_image_id}/sync-crops",
+             response_model=LotSyncCropsResponse)
+def sync_lot_crops(listing_key: str, source_image_id: str) -> LotSyncCropsResponse:
+    """Resync crops ↔ détection — action EXPLICITE, distincte de Re-détecter.
+
+    Reconstruit les crops d'UNE image pour coller aux cercles ACCEPTÉS du
+    constat persisté (`detections_json` = l'overlay que l'humain voit et valide) :
+      - re-pointe les crops existants sur les cercles (`apply_manual_crop` :
+        écrase le fichier en place + recompute Dino → corrige aussi les
+        suggestions périmées) ;
+      - crée les crops manquants (`create_manual_crop`) ;
+      - supprime le surplus (`delete_crop`, cascade).
+
+    Garde : REFUSE (409) si un crop de l'image est déjà décidé (review ≠ 'open')
+    — on ne réécrit pas une décision humaine. Ne relance PAS la détection :
+    relance Re-détecter d'abord si l'overlay est périmé. Le mapping cercle↔crop
+    est par ordre (accepté[i] → crop_index[i]) — cohérent avec l'overlay.
+    """
+    conn = _store()._connection()  # noqa: SLF001
+    img = conn.execute(
+        f"""
+        SELECT si.id, si.source, si.detections_json
+          FROM source_images si
+         WHERE {_LISTING_KEY_SQL} = ? AND si.id = ?
+         LIMIT 1
+        """,
+        (listing_key, source_image_id),
+    ).fetchone()
+    if img is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Image '{source_image_id}' not found in lot '{listing_key}'.",
+        )
+
+    crops = conn.execute(
+        """
+        SELECT a.id AS asset_id, a.crop_index, rq.status AS rq_status
+          FROM image_assets a
+          LEFT JOIN review_queue rq ON rq.image_asset_id = a.id
+         WHERE a.source_image_id = ?
+         ORDER BY a.crop_index
+        """,
+        (source_image_id,),
+    ).fetchall()
+    decided = [c["asset_id"] for c in crops if c["rq_status"] and c["rq_status"] != "open"]
+    if decided:
+        raise HTTPException(
+            status_code=409,
+            detail=(f"{len(decided)} crop(s) déjà décidé(s) sur cette image — "
+                    "resync refusée (annule la/les décision(s) d'abord)."),
+        )
+
+    accepted = [d for d in json.loads(img["detections_json"] or "[]") if d.get("accepted")]
+    if not accepted:
+        raise HTTPException(
+            status_code=422,
+            detail="Aucun cercle accepté dans le constat — relance Re-détecter d'abord.",
+        )
+
+    from serving.crop_edit import apply_manual_crop, create_manual_crop, delete_crop
+    existing = list(crops)
+    n_repoint = min(len(existing), len(accepted))
+    for i in range(n_repoint):
+        d = accepted[i]
+        apply_manual_crop(_store(), existing[i]["asset_id"],
+                          float(d["cx"]), float(d["cy"]), float(d["r"]))
+    for i in range(n_repoint, len(accepted)):
+        d = accepted[i]
+        create_manual_crop(_store(), source_image_id,
+                           float(d["cx"]), float(d["cy"]), float(d["r"]))
+    for i in range(len(accepted), len(existing)):
+        delete_crop(_store(), existing[i]["asset_id"])
+
+    # Recharge les crops de l'image post-sync (même format que get_lot).
+    rows = conn.execute(
+        """
+        SELECT a.id AS asset_id, a.crop_index, a.bbox_json, a.phash,
+               a.eurio_id AS current_eurio_id, a.candidate_eurio_ids_json,
+               rq.id AS review_id
+          FROM image_assets a
+          LEFT JOIN review_queue rq ON rq.image_asset_id = a.id
+         WHERE a.source_image_id = ?
+         ORDER BY a.crop_index
+        """,
+        (source_image_id,),
+    ).fetchall()
+    out_crops = [
+        LotCrop(
+            asset_id=r["asset_id"],
+            review_id=r["review_id"] or "",
+            crop_url=f"/sources/{img['source']}/assets/{r['asset_id']}/file",
+            crop_index=r["crop_index"] or 0,
+            phash=r["phash"],
+            current_eurio_id=r["current_eurio_id"],
+            candidate_eurio_ids=_parse_candidates(r["candidate_eurio_ids_json"]),
+            bbox=_parse_bbox(r["bbox_json"]),
+        )
+        for r in rows
+    ]
+    return LotSyncCropsResponse(
+        source_image_id=source_image_id,
+        crops=out_crops,
+        repointed=n_repoint,
+        created=max(0, len(accepted) - len(existing)),
+        deleted=max(0, len(existing) - len(accepted)),
     )
 
 
@@ -2425,6 +2568,11 @@ class CropEditContext(BaseModel):
     # reconstruit depuis bbox_json (x,y,w,h → centre + rayon). None si la
     # bbox est absente (l'éditeur démarre alors sur un cercle par défaut).
     hint: dict | None
+    # Cercle dominant détecté dans le raw (px natifs), proposé comme point de
+    # départ quand la source est mono-pièce et le crop stocké mal dimensionné.
+    # null sur les lots / quand aucun cercle probant. L'éditeur démarre dessus
+    # quand présent, sinon sur `hint`.
+    suggested_circle: dict | None = None
 
 
 # Consumed by: admin/.../review/composables/useReviewApi.ts (fetchCropEditContext)
@@ -2449,6 +2597,7 @@ def _crop_edit_context_response(ctx: CropEditContextData) -> CropEditContext:
         raw_width=ctx.raw_width,
         raw_height=ctx.raw_height,
         hint=ctx.hint,
+        suggested_circle=ctx.suggested,
     )
 
 
@@ -2594,6 +2743,21 @@ class DinoSuggestionsResponse(BaseModel):
     # Source du badge front. None seulement si l'asset n'a aucun signal
     # exploitable (introuvable / non résolu).
     consensus_verdict: ConsensusVerdictOut | None = None
+    # Abstention des suggestions (P5 dino-suggestions) — basée sur le spread
+    # GLOBAL (la sim ne sépare pas le hors-scope, cf. audit Phase 0) :
+    #   confident  : spread ≥ spread_confident_min — liste fiable
+    #   low_margin : entre les deux seuils — liste affichée sans confiance
+    #   uncertain  : spread < spread_uncertain_max — probablement hors banque
+    #                ou design ambigu → l'UI doit le dire plutôt que de
+    #                présenter une liste classée trompeuse
+    #   unknown    : pas de spread persisté (prédiction legacy)
+    abstention_state: str = "unknown"
+    abstention_thresholds: DinoAbstentionThresholds = DINO_ABSTENTION_THRESHOLDS
+    # Lot multi-pays suspecté (titre « diverse Länder / mixed / divers pays »).
+    # Sur ces lots le pays cible du listing ne dit RIEN du pays de CHAQUE
+    # crop → le front doit montrer le ranking global en premier et la bande
+    # pays seulement en prior indicatif (P2 dino-suggestions).
+    multi_country_lot: bool = False
 
 
 def _enrich_top_k(
@@ -2637,29 +2801,114 @@ def _enrich_top_k(
     return enriched
 
 
+# Titres de lots multi-pays — le pays cible du listing n'y contraint pas le
+# pays de chaque crop (cas kickoff : « 2 Euro Kursmünze 2011 — Diverse Länder
+# nach Wahl », target BE, crops de toute la zone euro). Volontairement court
+# et haute-précision : un faux négatif laisse l'UI actuelle, un faux positif
+# démote la bande pays qui aide massivement sur les listings mono-pays
+# (recall@5 90.7 % vs 71.6 % global, audit Phase 0).
+# L'adjectif (divers/verschiedene/mixed…) doit être à ≤ 2 mots d'un mot
+# « pays » — « verschiedene Jahre » (multi-années mono-pays) ne matche pas.
+_MULTI_COUNTRY_TITLE_RE = re.compile(
+    r"(divers\w*|verschieden\w*|gemischt\w*|mixed|various|assortit?\w*"
+    r"|misti|vari[oe]?s?|diff[ée]rente?s?)"
+    r"\W+(?:\w+\W+){0,2}"
+    r"(l[äa]nder\w*|countr\w*|pays|paesi|pa[íi]ses)"
+    r"|aus\s+allen\s+l[äa]ndern|alle\s+l[äa]nder|eurol[äa]nder",
+    re.IGNORECASE,
+)
+
+
+def _is_multi_country_lot(listing_title: str | None) -> bool:
+    return bool(listing_title and _MULTI_COUNTRY_TITLE_RE.search(listing_title))
+
+
+def _abstention_state(spread: float | None) -> str:
+    """État d'abstention des suggestions à partir du spread GLOBAL.
+    Seuils calibrés Phase 0 (cf. foundation/thresholds.py)."""
+    if spread is None:
+        return "unknown"
+    if spread >= DINO_ABSTENTION_THRESHOLDS["spread_confident_min"]:
+        return "confident"
+    if spread < DINO_ABSTENTION_THRESHOLDS["spread_uncertain_max"]:
+        return "uncertain"
+    return "low_margin"
+
+
+def _lazy_compute_dino(store, conn, asset_id: str, anchors_kind: str):
+    """Calcule + persiste la prédiction Dino d'un crop À LA DEMANDE quand elle
+    manque (trou de backfill, ou recompute best-effort raté au scrape/sync).
+    Réutilise `predict_and_persist_kinds` (même format que le backfill batch) ;
+    les kinds live manquants sont soignés au passage (1 seul encodage).
+    Renvoie la row persistée du kind demandé, ou None si hors scope / crop
+    illisible / bank absente — le caller garde alors le 404. Idempotent."""
+    row = conn.execute(
+        """
+        SELECT a.storage_path, si.target_eurio_id
+          FROM image_assets a JOIN source_images si ON si.id = a.source_image_id
+         WHERE a.id = ?
+        """,
+        (asset_id,),
+    ).fetchone()
+    if row is None or not row["storage_path"]:
+        return None
+    try:
+        from shared.storage.local_cache import local_path
+        crop_path = local_path("enrichment-crops", row["storage_path"])
+    except FileNotFoundError:
+        return None
+    target_eid = row["target_eurio_id"]
+    target_country = (
+        target_eid[:2].lower() if target_eid and len(target_eid) >= 2 else None
+    )
+    try:
+        from sources._base.steps.auto_validate import (
+            LIVE_ANCHORS_KINDS,
+            predict_and_persist_kinds,
+        )
+        kinds = tuple(dict.fromkeys((*LIVE_ANCHORS_KINDS, anchors_kind)))
+        rows = predict_and_persist_kinds(
+            store=store, asset_id=asset_id, crop_path=crop_path,
+            target_country=target_country, anchors_kinds=kinds,
+        )
+        pred = rows.get(anchors_kind)
+    except Exception as exc:  # noqa: BLE001 — couche d'aide, jamais fatale
+        logger.warning("[dino] lazy compute failed asset=%s: %s", asset_id, exc)
+        return None
+    if pred is not None:
+        logger.info("[dino] lazy-computed prediction for asset=%s", asset_id)
+    return pred
+
+
 def _build_dino_response(
     asset_id: str, anchors_kind: str
 ) -> DinoSuggestionsResponse:
     store = _store()
     conn = store._connection()  # noqa: SLF001
+    # L'encodeur dépend du kind : suggestions (2eur_all) = vitl14,
+    # consensus (2eur_commemo) = vits14 — cf. ENCODER_VERSION_FOR_KIND.
     pred = store.get_dino_prediction(
         asset_id=asset_id,
-        encoder_version="dinov2-vits14",
+        encoder_version=encoder_version_for_kind(anchors_kind),
         anchors_kind=anchors_kind,
     )
+    if pred is None:
+        # Trou de prédiction (backfill incomplet, ou recompute best-effort raté
+        # au sync/scrape) → on calcule à la volée plutôt que de renvoyer 404.
+        pred = _lazy_compute_dino(store, conn, asset_id, anchors_kind)
     if pred is None:
         raise HTTPException(
             status_code=404,
             detail=(
                 f"No Dino prediction for asset_id={asset_id} "
                 f"(anchors_kind={anchors_kind}). Either out of scope or "
-                "auto_validate hasn't run yet — see "
+                "the crop could not be encoded — see "
                 "go-task ml:dino-predictions:backfill."
             ),
         )
     target_eurio_row = conn.execute(
         """
-        SELECT si.target_eurio_id
+        SELECT si.target_eurio_id, si.listing_title
           FROM image_assets ia
           JOIN source_images si ON si.id = ia.source_image_id
          WHERE ia.id = ?
@@ -2669,7 +2918,15 @@ def _build_dino_response(
     target_eurio_id = (
         target_eurio_row["target_eurio_id"] if target_eurio_row else None
     )
-    view = compute_auto_validate_view(conn, asset_id, anchors_kind=anchors_kind)
+    multi_country_lot = _is_multi_country_lot(
+        target_eurio_row["listing_title"] if target_eurio_row else None
+    )
+    # Les couches verdict/consensus restent calibrées sur le kind consensus
+    # (2eur_commemo, règle C0–C5) quel que soit le kind des SUGGESTIONS servi
+    # — le badge ne doit pas bouger parce que la banque affichée est plus large.
+    view = compute_auto_validate_view(
+        conn, asset_id, anchors_kind=CONSENSUS_ANCHORS_KIND
+    )
     auto_validate_verdict = AutoValidateVerdictOut(
         level=view.level,
         reason=view.reason,
@@ -2712,6 +2969,8 @@ def _build_dino_response(
         target_eurio_id=target_eurio_id,
         auto_validate_verdict=auto_validate_verdict,
         consensus_verdict=consensus_out,
+        abstention_state=_abstention_state(pred.spread),
+        multi_country_lot=multi_country_lot,
     )
 
 
@@ -2722,7 +2981,7 @@ def _build_dino_response(
 )
 def get_dino_suggestions(
     asset_id: str,
-    anchors_kind: str = Query(default="2eur_commemo"),
+    anchors_kind: str = Query(default=SUGGESTIONS_ANCHORS_KIND),
 ) -> DinoSuggestionsResponse:
     """Return the persisted Dino top-K for one image_asset, enriched.
 
@@ -2741,7 +3000,7 @@ def get_dino_suggestions(
 )
 def get_dino_suggestions_for_review(
     review_id: str,
-    anchors_kind: str = Query(default="2eur_commemo"),
+    anchors_kind: str = Query(default=SUGGESTIONS_ANCHORS_KIND),
 ) -> DinoSuggestionsResponse:
     """Same payload as /asset/{asset_id}/dino-suggestions, but indexed
     by ``review_queue.id`` — handy for the single review drawer which

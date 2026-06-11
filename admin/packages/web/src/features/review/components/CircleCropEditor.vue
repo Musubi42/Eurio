@@ -148,10 +148,13 @@ async function load() {
       ? await fetchAssetCropEditContext(props.assetId)
       : await fetchCropEditContext(props.reviewId!)
     ctx.value = c
-    if (c.hint) {
-      cx.value = c.hint.cx
-      cy.value = c.hint.cy
-      r.value = c.hint.r
+    // Démarre sur le cercle dominant détecté (source mono-pièce, crop souvent
+    // sous-dimensionné) quand présent, sinon sur le crop actuel (hint bbox).
+    const start = c.suggested_circle ?? c.hint
+    if (start) {
+      cx.value = start.cx
+      cy.value = start.cy
+      r.value = start.r
     } else {
       cx.value = (c.raw_width ?? 0) / 2
       cy.value = (c.raw_height ?? 0) / 2

@@ -135,22 +135,25 @@ function promoteUrl(url: string): string {
   return url.startsWith('http') ? url : `${ML_API}${url}`
 }
 
+function promoteCandidateThumb(c: ReviewCandidate): ReviewCandidate {
+  return { ...c, canonical_thumb_url: promoteUrl(c.canonical_thumb_url) }
+}
+
 function promoteItemUrls(r: ReviewItem): ReviewItem {
   return {
     ...r,
     crop_url: promoteUrl(r.crop_url),
+    // Toutes les listes de candidats ont une vignette canonique (relative
+    // /referential/… ou /images/… → préfixe ML_API requis). Avant, seuls
+    // target_candidate et dino_top1 étaient promus → vignettes cassées dans
+    // « candidats auto-name » et « pièces standards » à URL locale.
+    candidates: r.candidates?.map(promoteCandidateThumb) ?? r.candidates,
+    standard_candidates: r.standard_candidates?.map(promoteCandidateThumb),
+    group_candidates: r.group_candidates?.map(promoteCandidateThumb),
     target_candidate: r.target_candidate
-      ? {
-          ...r.target_candidate,
-          canonical_thumb_url: promoteUrl(r.target_candidate.canonical_thumb_url),
-        }
+      ? promoteCandidateThumb(r.target_candidate)
       : r.target_candidate,
-    dino_top1: r.dino_top1
-      ? {
-          ...r.dino_top1,
-          canonical_thumb_url: promoteUrl(r.dino_top1.canonical_thumb_url),
-        }
-      : r.dino_top1,
+    dino_top1: r.dino_top1 ? promoteCandidateThumb(r.dino_top1) : r.dino_top1,
   }
 }
 
@@ -308,6 +311,9 @@ export interface CropEditContext {
   raw_width: number | null
   raw_height: number | null
   hint: { cx: number; cy: number; r: number } | null
+  // Cercle dominant détecté dans le raw (source mono-pièce) : point de départ
+  // de l'éditeur quand le crop stocké est mal dimensionné. null sur les lots.
+  suggested_circle?: { cx: number; cy: number; r: number } | null
 }
 
 export interface ManualCropResult {

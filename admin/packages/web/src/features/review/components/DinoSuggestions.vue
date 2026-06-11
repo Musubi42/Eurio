@@ -15,8 +15,9 @@
 // (e.g. mock source), on retombe sur l'ancien rendu single-band.
 
 import { computed, ref, watch } from 'vue'
-import { Sparkles, Globe } from 'lucide-vue-next'
+import { Sparkles, Globe, AlertTriangle } from 'lucide-vue-next'
 import {
+  abstentionLabel,
   fetchDinoSuggestionsByAssetId,
   fetchDinoSuggestionsByReviewId,
   simTier,
@@ -98,11 +99,26 @@ const hasCountryBand = computed(
 const top1Global = computed(() => data.value?.top1_sim ?? 0)
 const top1Country = computed(() => data.value?.top1_country_sim ?? 0)
 
-// In standard variant we show all 5 country candidates + 3 globals (the
-// globals are a fallback for when the seller listed a coin from a
-// different country than the eBay query expected — ~20 % of cases per
-// our measure).
-const globalFallbackCount = 3
+// Lot multi-pays (titre « diverse Länder / mixed / divers pays ») : le pays
+// cible du listing ne contraint pas le pays de CHAQUE crop → le ranking
+// GLOBAL passe en premier, la bande pays devient un prior indicatif.
+const multiCountry = computed(() => data.value?.multi_country_lot ?? false)
+const countryIsPrimary = computed(() => hasCountryBand.value && !multiCountry.value)
+
+// Abstention (P5) : spread global sous le seuil → la liste est probablement
+// trompeuse (pièce hors banque ou design ambigu) — on le DIT au reviewer.
+const uncertain = computed(() => data.value?.abstention_state === 'uncertain')
+
+// In standard variant we show all 5 candidates of the primary band + 3 of
+// the secondary one (fallback global sur listing mono-pays, prior pays sur
+// lot multi-pays).
+const secondaryBandCount = 3
+const globalShownCount = computed(() =>
+  countryIsPrimary.value ? secondaryBandCount : 5,
+)
+const countryShownCount = computed(() =>
+  multiCountry.value ? secondaryBandCount : 5,
+)
 
 const formatYearTheme = (s: DinoSuggestion): string => {
   const bits = [s.year ? String(s.year) : null, s.theme]
@@ -194,28 +210,65 @@ const previewLabel = computed(() => {
     >
       Pas de prédiction Dino pour ce crop.<br />
       <span class="opacity-70">
-        Hors scope (V1 = 2€ commémo) ou pas encore backfillé.
+        Hors scope (2€ commémo + courantes) ou pas encore backfillé.
       </span>
     </p>
 
     <template v-else-if="data">
-      <!-- ── Bande pays (primaire) ── -->
-      <div v-if="hasCountryBand" class="mt-3">
+      <!-- ── Abstention (P5) : spread global sous le seuil — la liste classée
+           est probablement trompeuse, on le dit plutôt que de la vendre. ── -->
+      <aside
+        v-if="uncertain"
+        class="mt-3 flex items-start gap-2 rounded-md border-2 border-dashed px-3 py-2"
+        :style="{
+          borderColor: 'var(--gold-600)',
+          background: 'color-mix(in srgb, var(--gold-600) 7%, var(--surface))',
+        }"
+      >
+        <AlertTriangle class="mt-0.5 h-3.5 w-3.5 shrink-0" style="color: var(--gold-600);" />
+        <div class="min-w-0">
+          <p class="font-mono text-[10px] uppercase tracking-wider" style="color: var(--gold-600);">
+            Dino incertain
+          </p>
+          <p class="mt-0.5 text-[11px] leading-snug" style="color: var(--ink-500);">
+            Spread {{ data.spread?.toFixed(3) ?? '—' }} sous le seuil
+            {{ data.abstention_thresholds.spread_uncertain_max.toFixed(2) }} :
+            pièce probablement hors banque ou design ambigu. Préférer la
+            recherche libre (<kbd
+              class="mx-0.5 inline-block rounded px-1 py-0.5 font-mono text-[9px]"
+              style="background: var(--surface-1); border: 1px solid var(--surface-3);"
+            >F</kbd>) — liste ci-dessous à titre indicatif.
+          </p>
+        </div>
+      </aside>
+
+      <!-- Les deux bandes ; l'ordre s'inverse sur lot multi-pays (le ranking
+           global passe devant, la bande pays devient un prior indicatif). -->
+      <div class="flex flex-col" :style="uncertain ? { opacity: 0.75 } : {}">
+      <!-- ── Bande pays (primaire hors lot multi-pays) ── -->
+      <div v-if="hasCountryBand" class="mt-3" :style="{ order: countryIsPrimary ? 0 : 1 }">
         <div class="flex items-baseline justify-between">
           <p
             class="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider"
-            style="color: var(--indigo-700);"
+            :style="{ color: countryIsPrimary ? 'var(--indigo-700)' : 'var(--ink-400)' }"
           >
             <Globe class="h-2.5 w-2.5" />
             Pays cible
             <span
               class="ml-0.5 font-semibold"
-              :style="{ color: 'var(--indigo-700)' }"
+              :style="{ color: countryIsPrimary ? 'var(--indigo-700)' : 'var(--ink-400)' }"
             >
               {{ data.target_country?.toUpperCase() }}
             </span>
             <span class="font-normal" style="color: var(--ink-400);">
               · {{ data.country_anchors_count ?? 0 }} ancres
+            </span>
+            <span
+              v-if="multiCountry"
+              class="font-normal"
+              style="color: var(--ink-400);"
+            >
+              · prior indicatif — lot multi-pays
             </span>
           </p>
           <p
@@ -232,7 +285,7 @@ const previewLabel = computed(() => {
 
         <ul class="mt-1.5 flex flex-col gap-1.5">
           <li
-            v-for="(s, idx) in data.top_k_country"
+            v-for="(s, idx) in data.top_k_country.slice(0, countryShownCount)"
             :key="`c-${s.eurio_id}-${idx}`"
             class="flex items-stretch gap-2.5 rounded-md border px-2 py-1.5 transition-colors"
             :style="{
@@ -304,10 +357,18 @@ const previewLabel = computed(() => {
         </ul>
       </div>
 
-      <!-- ── Bande globale (primaire si pas de country, sinon fallback) ── -->
-      <div :class="hasCountryBand ? 'mt-3' : 'mt-2'">
+      <!-- ── Bande globale (primaire si pas de country OU lot multi-pays) ── -->
+      <div :class="hasCountryBand ? 'mt-3' : 'mt-2'" :style="{ order: countryIsPrimary ? 1 : 0 }">
         <p
-          v-if="hasCountryBand"
+          v-if="multiCountry"
+          class="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider"
+          style="color: var(--indigo-700);"
+        >
+          <Sparkles class="h-2.5 w-2.5" />
+          Lot multi-pays — ranking global (toute la bank)
+        </p>
+        <p
+          v-else-if="hasCountryBand"
           class="font-mono text-[9px] uppercase tracking-wider"
           style="color: var(--ink-400);"
         >
@@ -316,7 +377,7 @@ const previewLabel = computed(() => {
 
         <ul class="mt-1.5 flex flex-col gap-1.5">
           <li
-            v-for="(s, idx) in (hasCountryBand ? data.top_k.slice(0, globalFallbackCount) : data.top_k)"
+            v-for="(s, idx) in data.top_k.slice(0, globalShownCount)"
             :key="`g-${s.eurio_id}-${idx}`"
             class="flex items-stretch gap-2.5 rounded-md border px-2 py-1.5 transition-colors"
             :style="{
@@ -387,6 +448,7 @@ const previewLabel = computed(() => {
           </li>
         </ul>
       </div>
+      </div>
     </template>
 
     <p
@@ -419,7 +481,7 @@ const previewLabel = computed(() => {
       <Sparkles class="h-2.5 w-2.5" style="color: var(--indigo-700);" />
       Dino
       <span
-        v-if="hasCountryBand && data?.target_country"
+        v-if="countryIsPrimary && data?.target_country"
         class="ml-1 inline-flex items-center gap-0.5 font-semibold"
         style="color: var(--indigo-700);"
       >
@@ -427,16 +489,31 @@ const previewLabel = computed(() => {
         {{ data.target_country.toUpperCase() }}
       </span>
       <span
-        v-if="data && (hasCountryBand ? data.country_spread : data.spread) !== null"
+        v-if="multiCountry"
+        class="ml-1 font-normal"
+        style="color: var(--ink-400);"
+      >
+        multi-pays · global
+      </span>
+      <span
+        v-if="data && (countryIsPrimary ? data.country_spread : data.spread) !== null"
         class="ml-1 font-normal"
         :style="{
           color: simTierColor(
-            spreadLabel(hasCountryBand ? data.country_spread : data.spread).tone,
+            spreadLabel(countryIsPrimary ? data.country_spread : data.spread).tone,
           ),
         }"
       >
         spread
-        {{ (hasCountryBand ? data.country_spread : data.spread)?.toFixed(3) ?? '—' }}
+        {{ (countryIsPrimary ? data.country_spread : data.spread)?.toFixed(3) ?? '—' }}
+      </span>
+      <span
+        v-if="uncertain"
+        class="ml-1 inline-flex items-center gap-0.5 font-semibold"
+        style="color: var(--gold-600);"
+      >
+        <AlertTriangle class="h-2.5 w-2.5" />
+        {{ abstentionLabel('uncertain').text }}
       </span>
     </p>
 
@@ -456,14 +533,14 @@ const previewLabel = computed(() => {
 
     <ul v-else-if="data" class="flex flex-wrap gap-1">
       <li
-        v-for="(s, idx) in (hasCountryBand ? data.top_k_country : data.top_k).slice(0, 5)"
+        v-for="(s, idx) in (countryIsPrimary ? data.top_k_country : data.top_k).slice(0, 5)"
         :key="s.eurio_id + idx"
       >
         <button
           type="button"
           class="inline-flex items-center gap-1.5 rounded-md border px-1.5 py-0.5 transition-colors"
           :style="{
-            borderColor: hasCountryBand ? 'var(--indigo-700)' : 'var(--surface-3)',
+            borderColor: countryIsPrimary ? 'var(--indigo-700)' : 'var(--surface-3)',
             background: 'var(--surface)',
           }"
           :title="`${s.eurio_id} · ${s.country_name ?? ''} ${formatYearTheme(s)}`"
@@ -478,7 +555,7 @@ const previewLabel = computed(() => {
           />
           <span
             class="font-mono text-[10px] tabular-nums"
-            :style="{ color: simTierColor(simTier(s.sim, hasCountryBand ? top1Country : top1Global)) }"
+            :style="{ color: simTierColor(simTier(s.sim, countryIsPrimary ? top1Country : top1Global)) }"
           >
             {{ s.sim.toFixed(2) }}
           </span>

@@ -167,19 +167,31 @@ _REFINE_R_FLOOR = 0.90     # plancher : r_final ≥ floor × r_hint (jamais PIRE
 _REFINE_R_CEIL = 2.6       # plafond : r_final ≤ ceil × r_hint (borne l'overcrop)
 
 
-def detect_bbox_refine(bgr: np.ndarray, hint: dict | None = None) -> DetectorResult:
+def detect_bbox_refine(bgr: np.ndarray, hint: dict | None = None,
+                       max_r: float | None = None) -> DetectorResult:
     """Raffine le rim externe DANS une ROI autour du centre de la bbox connue.
 
     `hint` = {cx, cy, r} en pixels natifs (centre + rayon du crop actuel /
     bbox stockée). Garde la localisation (pas d'overcrop sur sets/lots) tout
     en cherchant le rim externe (corrige l'anneau interne bimétal).
     Plancher r ≥ 0.9×r_hint (jamais pire), plafond r ≤ 2.6×r_hint (borné).
+
+    `max_r` (garde voisin-aware, fournie par `detect_circles_multi` sur les
+    planches multi-pièces) = distance jusqu'au bord proche de la pièce voisine
+    la plus proche : un listel ne peut pas empiéter dessus. Borne À LA FOIS la
+    ROI et le plafond → tue l'explosion à 2.6×r quand la ROI engloutit les
+    capsules adjacentes. `None` (mono-pièce) = comportement validé inchangé.
     """
     if not hint or not hint.get("r"):
         return DetectorResult(False, reason="no_hint")
     H, W = bgr.shape[:2]
     hcx, hcy, hr = float(hint["cx"]), float(hint["cy"]), float(hint["r"])
     half = _REFINE_ROI_K * hr
+    ceil_r = _REFINE_R_CEIL * hr
+    if max_r is not None and max_r > 0:
+        half = min(half, max_r)
+        ceil_r = min(ceil_r, max_r)
+    half = max(half, hr)  # la ROI doit au moins couvrir le hint
     x0 = max(0, int(hcx - half)); y0 = max(0, int(hcy - half))
     x1 = min(W, int(hcx + half)); y1 = min(H, int(hcy + half))
     sub = bgr[y0:y1, x0:x1]
@@ -195,8 +207,8 @@ def detect_bbox_refine(bgr: np.ndarray, hint: dict | None = None) -> DetectorRes
         cx_n = x0 + cx_w * scale
         cy_n = y0 + cy_w * scale
         r_n = max(r_w * scale, _REFINE_R_FLOOR * hr)   # plancher : jamais pire que l'actuel
-        if r_n > _REFINE_R_CEIL * hr:
-            return None                                 # overcrop (capsule/objet) → rejeter
+        if r_n > ceil_r:
+            return None                                 # overcrop (capsule/voisine) → rejeter
         return DetectorResult(ok=True, cx=cx_n, cy=cy_n, r=r_n, method=method,
                               reason=None, debug={**extra, "scale": float(scale)})
 

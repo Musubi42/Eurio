@@ -24,23 +24,32 @@ sys.path.insert(0, str(ML_DIR))
 
 from training.foundation.anchors import (  # noqa: E402
     DATASETS_DIR,
+    build_anchors_2eur_all,
     build_anchors_2eur_commemo,
+    build_anchors_2eur_standard,
     load_anchors,
 )
 from store import Store  # noqa: E402
 
 DB_PATH = ML_DIR / "state" / "eurio.db"
 
+_BUILDERS = {
+    "2eur_commemo": build_anchors_2eur_commemo,
+    "2eur_standard": build_anchors_2eur_standard,
+    "2eur_all": build_anchors_2eur_all,
+}
+
 
 def _build_dispatcher(kind: str, store: Store, force: bool):
-    if kind == "2eur_commemo":
-        with store._writing() as conn:  # noqa: SLF001 — we only read here
-            return build_anchors_2eur_commemo(
-                conn=conn,
-                datasets_dir=DATASETS_DIR,
-                force_recompute=force,
-            )
-    raise ValueError(f"Unknown anchors kind: {kind!r}")
+    builder = _BUILDERS.get(kind)
+    if builder is None:
+        raise ValueError(f"Unknown anchors kind: {kind!r}")
+    with store._writing() as conn:  # noqa: SLF001 — we only read here
+        return builder(
+            conn=conn,
+            datasets_dir=DATASETS_DIR,
+            force_recompute=force,
+        )
 
 
 def main() -> int:
@@ -48,7 +57,7 @@ def main() -> int:
     parser.add_argument(
         "--kind",
         default="2eur_commemo",
-        choices=["2eur_commemo"],
+        choices=sorted(_BUILDERS),
         help="Anchor scope (default: 2eur_commemo).",
     )
     parser.add_argument(

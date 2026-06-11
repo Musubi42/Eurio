@@ -37,7 +37,7 @@ if str(_ML_DIR) not in sys.path:
 
 import cv2  # noqa: E402
 
-from vision.normalize_snap import detect_circles_multi  # noqa: E402
+from vision.normalize_snap import normalize_listing_with_detections  # noqa: E402
 from sources._base.steps.detect_crop import _crop_strategy, _detection_to_dict  # noqa: E402
 from store import Store  # noqa: E402
 from shared.storage.local_cache import local_path  # noqa: E402
@@ -53,7 +53,9 @@ def _process_one(sid: str, source_id: str, raw_storage_path: str
     bgr = cv2.imread(str(p), cv2.IMREAD_COLOR)
     if bgr is None or bgr.size == 0:
         return None, "imread failed"
-    dets = detect_circles_multi(bgr, census=(source_id == "ebay"))
+    # Pipeline complet (crop + gate anti-fragment) pour écrire le MÊME constat
+    # que le scrape : les capsules/fragments gatés sont marqués accepted=False.
+    _, dets = normalize_listing_with_detections(bgr, census=(source_id == "ebay"))
     return [_detection_to_dict(d) for d in dets], ""
 
 

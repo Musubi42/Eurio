@@ -264,6 +264,42 @@ export async function addLotCrop(
   }
 }
 
+export interface LotSyncCropsResponse {
+  source_image_id: string
+  crops: LotCrop[]
+  repointed: number
+  created: number
+  deleted: number
+}
+
+/**
+ * Resync crops ↔ détection — action explicite, distincte de Re-détecter.
+ * Reconstruit les crops d'UNE image pour coller aux cercles ACCEPTÉS du constat
+ * (`detections_json`, l'overlay validé) : re-pointe / crée / supprime. Le
+ * backend recompute le Dino par crop (corrige les suggestions périmées).
+ * REFUSE (409) si un crop est déjà décidé. Ne relance PAS la détection.
+ */
+export async function syncLotCrops(
+  listingKey: string,
+  sourceImageId: string,
+): Promise<LotSyncCropsResponse> {
+  const resp = await fetch(
+    `${ML_API}/review-queue/lots/${encodeURIComponent(listingKey)}`
+    + `/images/${encodeURIComponent(sourceImageId)}/sync-crops`,
+    { method: 'POST' },
+  )
+  if (!resp.ok) throw await parseError(resp)
+  const data = (await resp.json()) as LotSyncCropsResponse
+  return {
+    ...data,
+    crops: data.crops.map((crop) => ({
+      ...crop,
+      crop_url: withMlApi(crop.crop_url) ?? '',
+      candidate_eurio_ids: crop.candidate_eurio_ids.map(promoteCandidate),
+    })),
+  }
+}
+
 export interface RequalifySingleResponse {
   status: string
   listing_key: string
