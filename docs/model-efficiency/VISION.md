@@ -62,6 +62,12 @@ Ordre = dépendances. Statut : 🔲 pas commencé · 🟡 en cours · ✅ fait.
 | **C5** | [Accélération on-device](./C5-on-device-acceleration.md) | 🔲 | C0 |
 | **C6** | [Gate d'éval continue](./C6-eval-gate.md) | 🔲 | C0 |
 
+## Passations de session
+
+- [HANDOFF-C2.md](./HANDOFF-C2.md) — démarrage d'une session dédiée au flywheel
+  eBay (C2) : mission bout-en-bout, infra existante cartographiée, décisions à
+  prendre, premiers pas. Écrit fin session 1.
+
 ## Registre global des hypothèses (à challenger)
 
 Chaque hypothèse vit en détail dans son chantier ; ici c'est l'index pour ne
