@@ -61,7 +61,15 @@ antérieures au câblage ? à re-vérifier sur la DB canonique).
 
 | Date | Source | Recall | Précision autos | Auto-attrib % | Junk false-keep | Notes |
 |---|---|---|---|---|---|---|
-| 2026-06-12 | texte (theme-matcher HEAD) | 100 % | 94,9 % (75/79) | **75,8 %** (75/99) | **36,5 %** (31/85) | aliases au 25/05 |
+| 2026-06-12 | texte (HEAD, DB scratch 25/05) | 100 % | 94,9 % (75/79) | 75,8 % (75/99) | 36,5 % (31/85) | 563 aliases |
+| 2026-06-12 | texte (HEAD, **DB canonique**) | 100 % | **94,5 %** (69/73) | **69,7 %** (69/99) | **36,5 %** (31/85) | 69 aliases (purge) — la purge coûte ~6 pts d'auto-attrib, la précision tient |
+
+> ⚠️ Premier replay canonique : 17,2 % @ 23,3 % — **artefact de slugs**. Le
+> référentiel canonique est revenu aux slugs « anciens » et le gold (figé
+> 01/06) portait les renommés : 52 des 53 « erreurs » étaient la bonne pièce
+> sous un autre slug (1 seule vraie erreur, ghent→liège). Le gold a été
+> **réaligné sur les slugs canoniques** (76 verdicts) — leçon : le gold est
+> figé sur l'identité des pièces, pas sur l'orthographe des slugs.
 
 **Pré-classement vision** (`ml/scripts/bench_vision_preclass.py`, nouveau —
 94 listings gold `coin:*`, 551 crops multi-Hough, 9 classes BE, ancres =
@@ -69,13 +77,17 @@ canonical Numista uniquement, n=1 train pour ces 9 classes) :
 
 | Système | Scope | Top-1 | Hit@5 | Auto-attrib @ p≥95 % |
 |---|---|---|---|---|
-| DINOv2 vitl14 zero-shot (`2eur_all`, 540 ancres) | full | 39,4 % | 45,7 % | 0 % |
-| DINOv2 vitl14 zero-shot | re-rank pays (be) | **62,8 %** | **80,9 %** | 1,1 % (seuil sim 0,878) |
+| DINOv2 vitl14 zero-shot (`2eur_all`, 544 ancres) | full | 39,4 % | 46,8 % | 0 % |
+| DINOv2 vitl14 zero-shot | re-rank pays (be) | **62,8 %** | **79,8 %** | 1,1 % (seuil sim 0,878) |
 | arcface-vits14-v1 + centroïdes train-mean | full | 11,7 % | 20,2 % | 0 % |
 | arcface-vits14-v1 | re-rank pays (be) | 28,7 % | 35,1 % | 0 % |
 
-Sur le **résiduel texte** (16 listings que le matcher route en review — le
-rôle réel de la vision en prod) : zs_country top-1 37,5 %, arc_country 31,2 %.
+_(Chiffres confirmés sur DB canonique + gold réaligné — identiques au run
+scratch 25/05 à ±1 pt de hit@5 : la conclusion est robuste au référentiel.)_
+
+Sur le **résiduel texte** (24 listings que le matcher canonique route en
+review — le rôle réel de la vision en prod) : zs_country top-1 45,8 %,
+arc_country 25,0 %.
 
 **Lectures :**
 - **H4 réfutée sur ce régime** : les gains du fine-tuné (82–83 % sur snaps

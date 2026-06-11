@@ -123,6 +123,20 @@ jamais en perdre une de vue.
   auto-attribution ; le rôle réel de la vision est le **résiduel** (21,2 % des
   valides routés review) + le **junk filtering** (le vrai point faible).
 
+- **2026-06-12 (suite) — DB canonique récupérée (lease Mac→PC) ; les chiffres
+  tiennent ; un artefact de slugs débusqué.** Le cycle lease a été fait
+  (`ml:db:release` Mac → `ml:db:acquire` PC, 82 Mo). Le 1er replay texte
+  canonique donnait 17,2 % @ 23,3 % — c'était un **artefact** : 52 des 53
+  « erreurs » étaient la bonne pièce sous un slug renommé (le canonique est
+  revenu aux slugs anciens, le gold portait ceux du 01/06). Gold **réaligné**
+  (76 verdicts). Chiffres canoniques réels : texte **69,7 % @ 94,5 %** (la
+  purge des aliases 563→69 coûte ~6 pts d'auto-attrib, la précision tient) ;
+  vision inchangée (zs_country 62,8 % / 79,8 % hit@5 ; arc 28,7 %). La DB
+  canonique révèle aussi : **574 crops training_eligible=1 sur 89 classes**
+  (le flywheel produit déjà), backlog review 1722 ccproxy / 560 manual / 123
+  auto_accept. ⚠️ Les 9 classes gold BE n'ont **aucun** crop wild → le bench
+  gold ne mesurera l'effet boucle qu'après review du backlog BE.
+
 - **2026-06-12 — Bench vision pré-classement (C2) réfute H4.** Nouveau bench
   `ml/scripts/bench_vision_preclass.py` (94 listings gold BE, 551 crops
   multi-Hough, ancres canonical-only) : **zero-shot vitl14 `2eur_all` 62,8 %
