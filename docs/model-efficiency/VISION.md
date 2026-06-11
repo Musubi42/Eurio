@@ -56,7 +56,7 @@ Ordre = dépendances. Statut : 🔲 pas commencé · 🟡 en cours · ✅ fait.
 |---|---|---|---|
 | **C0** | [Benchmark & vérité terrain](./C0-benchmark-ground-truth.md) | 🔲 | — |
 | **C1** | [Centroïdes fiables](./C1-reliable-centroids.md) | 🔲 | C0 |
-| **C2** | [Flywheel données — review eBay](./C2-data-flywheel-ebay-review.md) | 🔲 | C0, C1 |
+| **C2** | [Flywheel données — review eBay](./C2-data-flywheel-ebay-review.md) | 🟡 | C0, C1 |
 | **C3** | [Couverture catalogue complète](./C3-full-catalog-coverage.md) | 🔲 | C1, C2 |
 | **C4** | [Efficacité — quantization + distillation](./C4-efficiency-quant-distill.md) | 🔲 | C0 |
 | **C5** | [Accélération on-device](./C5-on-device-acceleration.md) | 🔲 | C0 |
@@ -78,7 +78,7 @@ jamais en perdre une de vue.
 | H1 | Plus d'images **réelles** par classe ↑ précision **et** ↑ fiabilité des centroïdes | Forte (mécanisme plausible) | C0 + C1 | ❓ non mesuré |
 | H2 | Les centroïdes ArcFace-W sont peu fiables (vs moyennes d'images) | **Réfutée** : le faible est val-mean, pas W | C1 | ⚠️ train-mean≈W > val-mean (set étroit) |
 | H3 | fp16 ≈ sans perte ; int8 dégrade un ViT | Moyenne (typique, pas mesuré ici) | C4 | ❓ non mesuré |
-| H4 | Les gains DINOv2 transfèrent à la **classification eBay scrape** | Moyenne (idée produit, plausible) | C2 | ❓ non mesuré |
+| H4 | Les gains DINOv2 transfèrent à la **classification eBay scrape** | **Réfutée** (régime ancres canonical-only) : zero-shot vitl14 62,8 % top-1 / 80,9 % hit@5 vs fine-tuné 28,7 % / 35,1 % ; auto-attribution = texte (75,8 % @ 94,9 %) | C2 | ⚠️ mesuré (gold BE 9 classes, DB 25/05) |
 | H5 | La perf fp16 ViT-S est OK sur milieu/haut de gamme | Faible (aucune latence mesurée) | C5 | ❓ non mesuré |
 | H6 | Le R@1 val reflète la perf réelle sur tout le catalogue | **Non** (val ≠ réel) | C0 | ⚠️ **réel > val** sur set étroit |
 
@@ -100,6 +100,46 @@ jamais en perdre une de vue.
   - **H6 → le val sous-estime** ici le réel (66.67% val vs 77-82% réel).
   - ⚠️ Caveat : set étroit (~17 classes, recouvrant nos classes fiables), 5 pts
     ≈ 16 snaps. Signal, pas preuve. → élargir le set (C0) avant conclusion.
+
+- **2026-06-12 — Session 2 (C2) : le « maillon manquant » training_eligible
+  n'existe pas — le lien review → entraînement est COMPLET.** Le handoff C2
+  (§3, gap n°1) supposait qu'aucun code ne reliait une décision de review au
+  flag `image_assets.training_eligible`. Audit code exhaustif : le lien existe
+  sur **tous** les chemins de décision, atomiquement avec `resolution_status` —
+  accept humain (`decide_review`, `bulk_assign_lot_review`), accept 1-click
+  DINO (`accept_dino_review`), ack verdict Claude (`ack_claude_verdict`),
+  arbitrage pair (`peer_arbitration_routes.approve`) → `=1` ; rejets (humain,
+  consensus `enqueue.py`, gate vision, pair) → `=0`. Conso côté training :
+  `iteration_augmentations.py:136` (`training_eligible=1` + `storage_status=
+  'present'`). Le flywheel n'a PAS de maillon code manquant — ce qui manque,
+  c'est du **volume validé** (au 25/05 : 0 asset `training_eligible=1` sur
+  1961).
+
+- **2026-06-12 — Baseline H4 texte mesurée (C2).** Replay du theme-matcher
+  HEAD sur le gold figé (196 listings) : recall **100 %**, auto-attribution
+  **75,8 %** (75/99) à précision **94,9 %** (75/79), junk false-keep **36,5 %**
+  (31/85). ⚠️ Mesuré sur la DB scratch du 25/05 (aliases/coins de cette date —
+  cf. note DB ci-dessous). Le matcher texte est donc déjà fort en
+  auto-attribution ; le rôle réel de la vision est le **résiduel** (21,2 % des
+  valides routés review) + le **junk filtering** (le vrai point faible).
+
+- **2026-06-12 — Bench vision pré-classement (C2) réfute H4.** Nouveau bench
+  `ml/scripts/bench_vision_preclass.py` (94 listings gold BE, 551 crops
+  multi-Hough, ancres canonical-only) : **zero-shot vitl14 `2eur_all` 62,8 %
+  top-1 / 80,9 % hit@5** (re-rank pays) vs **arcface-vits14-v1 28,7 % / 35,1 %**.
+  Vision seule ≈ 0 % d'auto-attribution à p≥95 %. Décision : la review garde le
+  zero-shot vitl14 en suggestions ; l'auto-attribution reste portée par le
+  texte ; le fine-tuné ne revient en review que quand ses centroïdes auront des
+  refs wild (H1). Détail + caveats : C2 §Résultats.
+
+- **2026-06-12 — ⚠️ Infra : la eurio.db canonique n'est PAS sur ce PC.** Le
+  lease MinIO (`ml:db:status`) montre `sha distant ∅` (jamais poussée — bucket
+  `eurio-db` créé le 08/06), et la DB locale était un stub vide auto-créé. La
+  canonique vit sur le Mac. **Workaround session 2** : copie du backup
+  `/nix/store/...-source/ml/state/eurio.db.fix-attempt-20260525` (29 Mo, état
+  réel du 25/05) installée en `ml/state/eurio.db` — DB **scratch**, ne jamais
+  `ml:db:release` depuis ce PC tant que la vraie DB n'a pas été poussée depuis
+  le Mac (`ml:db:release` là-bas, puis `ml:db:acquire` ici).
 
 - **2026-06-11 — 3-way centroïdes (C1) précise H2.** Même set (317 snaps),
   `--centroid-source` : **train-mean 82.97%** · **ArcFace-W 82.65%** ·

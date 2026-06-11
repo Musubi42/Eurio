@@ -1,5 +1,13 @@
 # HANDOFF — C2 : le flywheel de données eBay (review autonome)
 
+> **⚠️ Mise à jour session 2 (2026-06-12)** : deux croyances de ce doc sont
+> tombées. (1) Le « gap `training_eligible` » (§3, §5.3) **n'existe pas** — le
+> lien review→flag est complet sur tous les chemins (cf. journal VISION.md).
+> (2) La eurio.db canonique n'était **pas** sur ce PC (lease jamais poussé) —
+> session 2 a travaillé sur une copie du backup du 25/05 ; pousser la vraie DB
+> depuis le Mac (`ml:db:release`) avant tout run réel. Résultats session 2 :
+> [C2-data-flywheel-ebay-review.md §Résultats](./C2-data-flywheel-ebay-review.md).
+
 > Doc de passation pour une **nouvelle session**. Objectif : démarrer avec le
 > meilleur contexte et traiter **C2 de bout en bout**. Écrit le 2026-06-11 à la
 > fin de la session 1 (entraînement + déploiement du 1er modèle dinov2).
