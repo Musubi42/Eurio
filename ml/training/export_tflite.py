@@ -6,19 +6,22 @@ from pathlib import Path
 
 import torch
 
-from training.train_embedder import CoinClassifier, CoinEmbedder
+from training.train_embedder import CoinClassifier, build_embedder
 
 
 def export(args):
     checkpoint = torch.load(args.model, map_location="cpu", weights_only=False)
     mode = checkpoint.get("mode", "embed")
-    print(f"Mode: {mode}")
+    backbone = checkpoint.get("backbone", "mobilenet_v3_small")
+    print(f"Mode: {mode} | Backbone: {backbone}")
 
     if mode == "classify":
         model = CoinClassifier(num_classes=checkpoint["num_classes"])
         print(f"Classes: {checkpoint['classes']}")
     else:
-        model = CoinEmbedder(embedding_dim=checkpoint["embedding_dim"])
+        # DinoV2Embedder fige son pos_embed à la construction → le graphe
+        # est exportable tel quel (cf. spike scripts/spike_vits14_litert.py).
+        model = build_embedder(backbone, checkpoint["embedding_dim"])
 
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
@@ -42,6 +45,7 @@ def export(args):
     # Also save a metadata file so Android knows what model type this is
     meta = {
         "mode": mode,
+        "backbone": backbone,
         "classes": checkpoint.get("classes", []),
         "num_classes": checkpoint.get("num_classes"),
         "embedding_dim": checkpoint.get("embedding_dim"),

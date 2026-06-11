@@ -40,3 +40,29 @@ DINO_VERDICT_THRESHOLDS: Final[DinoVerdictThresholds] = {
     "top1_country_sim_min": 0.55,
     "country_spread_min": 0.05,
 }
+
+
+class DinoAbstentionThresholds(TypedDict):
+    """Seuils d'abstention des SUGGESTIONS (spread du top-K global)."""
+
+    spread_uncertain_max: float
+    spread_confident_min: float
+
+
+# Abstention des suggestions (P5 du chantier dino-suggestions) — calibrée
+# sur l'audit Phase 0 (478 crops décidés en review, scripts/
+# audit_dino_suggestions.py, 2026-06-11) :
+#   - la SIM top1 ne sépare RIEN (vits14 : médiane hors-scope 0.834 ≈
+#     médiane des top1 corrects 0.836) → aucun seuil de sim exploitable ;
+#   - le SPREAD global (top1 − top2) sépare bien.
+# Re-validée après la bascule suggestions → vitl14 (même jour) : la
+# séparation s'élargit encore — spread médian 0.097 (correct) vs 0.011
+# (faux) ; sous 0.02 on ne perd que 8 % des top1 corrects, et au-dessus de
+# 0.05 la précision top1 est de 97.8 %. Les mêmes seuils servent les deux
+# encodeurs (le consensus vits14 ne consomme PAS ces seuils d'abstention).
+# spread < 0.02  → « incertain » (probablement hors banque / design ambigu)
+# spread ≥ 0.05 → « net » ; entre les deux : « faible marge ».
+DINO_ABSTENTION_THRESHOLDS: Final[DinoAbstentionThresholds] = {
+    "spread_uncertain_max": 0.02,
+    "spread_confident_min": 0.05,
+}

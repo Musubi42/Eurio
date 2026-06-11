@@ -93,6 +93,40 @@ class CoinEmbedder(nn.Module):
         return F.normalize(embeddings, p=2, dim=1)
 
 
+class DinoV2Embedder(nn.Module):
+    """DINOv2 ViT-S/14 backbone + projection head → L2-normalized embeddings.
+
+    Student retenu par le bench zero-shot (à taille égale, +28 pts pays@1
+    vs tout backbone ImageNet — docs/work-in-progress/dino-suggestions/
+    phase2-student-findings.md). Le pos_embed est figé à 224 dès la
+    construction : numériquement exact (validé au spike LiteRT), forward
+    plus court, et le checkpoint reste exportable LiteRT tel quel.
+    """
+
+    def __init__(self, embedding_dim: int = 384):
+        super().__init__()
+        from training.foundation import DINOV2_MODEL, DINOV2_REPO, bake_pos_encoding
+
+        backbone = torch.hub.load(DINOV2_REPO, DINOV2_MODEL, pretrained=True)
+        bake_pos_encoding(backbone)
+        self.backbone = backbone  # outputs 384-dim (CLS)
+        self.head = nn.Linear(384, embedding_dim)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        features = self.backbone(x)
+        embeddings = self.head(features)
+        return F.normalize(embeddings, p=2, dim=1)
+
+
+def build_embedder(backbone: str, embedding_dim: int) -> nn.Module:
+    """Construit l'embedder selon ``--backbone`` (checkpoint field idem)."""
+    if backbone == "dinov2_vits14":
+        return DinoV2Embedder(embedding_dim=embedding_dim)
+    if backbone in ("", "mobilenet_v3_small"):
+        return CoinEmbedder(embedding_dim=embedding_dim)
+    raise ValueError(f"Unknown backbone {backbone!r}")
+
+
 class CoinClassifier(nn.Module):
     """MobileNetV3-Small backbone + classification head → class logits."""
 
@@ -613,7 +647,10 @@ def train_embedder(args):
     print(f"Val:   {len(val_dataset)} images")
     print(f"Classes: {train_dataset.classes}")
 
-    effective_epoch_size = len(train_dataset) * 10
+    # ×10 historique pour les tout petits datasets (qq dizaines d'images) ;
+    # paramétrable depuis que les datasets wild dépassent le millier d'images
+    # (un fine-tune vits14 sur MPS à ×10 = des heures par epoch de gradient).
+    effective_epoch_size = len(train_dataset) * args.epoch_multiplier
     sampler = MPerClassSampler(
         labels=train_dataset.targets,
         m=args.m_per_class,
@@ -751,7 +788,10 @@ def train_arcface(args):
     output_dir.mkdir(parents=True, exist_ok=True)
     dump_aug_preview(train_dataset, output_dir / "aug_preview", count_per_class=6)
 
-    effective_epoch_size = len(train_dataset) * 10
+    # ×10 historique pour les tout petits datasets (qq dizaines d'images) ;
+    # paramétrable depuis que les datasets wild dépassent le millier d'images
+    # (un fine-tune vits14 sur MPS à ×10 = des heures par epoch de gradient).
+    effective_epoch_size = len(train_dataset) * args.epoch_multiplier
     sampler = MPerClassSampler(
         labels=train_dataset.targets,
         m=args.m_per_class,
@@ -785,8 +825,8 @@ def train_arcface(args):
             persistent_workers=n_workers > 0,
         )
 
-    # Model: same CoinEmbedder backbone + projection → L2-normalized embeddings
-    model = CoinEmbedder(embedding_dim=args.embedding_dim).to(device)
+    # Model: backbone selon --backbone + projection → L2-normalized embeddings
+    model = build_embedder(args.backbone, args.embedding_dim).to(device)
     print(f"Model parameters: {sum(p.numel() for p in model.parameters()):,}")
     _log_runtime_contract(args, device, len(train_dataset), num_classes)
     _log_tensor_check(model)
@@ -932,6 +972,7 @@ def train_arcface(args):
             torch.save({
                 "epoch": epoch,
                 "mode": "arcface",
+                "backbone": args.backbone,
                 "model_state_dict": model.state_dict(),
                 "embedding_dim": args.embedding_dim,
                 "num_classes": num_classes,
@@ -949,6 +990,7 @@ def train_arcface(args):
             torch.save({
                 "epoch": epoch,
                 "mode": "arcface",
+                "backbone": args.backbone,
                 "model_state_dict": model.state_dict(),
                 "embedding_dim": args.embedding_dim,
                 "num_classes": num_classes,
@@ -1000,7 +1042,22 @@ def main():
     parser.add_argument("--arcface-scale", type=float, default=30.0, help="ArcFace scale factor")
     parser.add_argument("--lr", type=float, default=1e-3, help="Learning rate")
     parser.add_argument("--embedding-dim", type=int, default=256, help="Embedding dim (embed mode)")
+    parser.add_argument(
+        "--backbone",
+        type=str,
+        default="mobilenet_v3_small",
+        choices=["mobilenet_v3_small", "dinov2_vits14"],
+        help="Backbone de l'embedder (arcface/embed). dinov2_vits14 = "
+             "student retenu par le bench zero-shot (pos_embed figé 224, "
+             "exportable LiteRT).",
+    )
     parser.add_argument("--freeze-epochs", type=int, default=5, help="Epochs to freeze backbone")
+    parser.add_argument(
+        "--epoch-multiplier", type=int, default=10,
+        help="Taille d'epoch effective = len(dataset) × ce facteur "
+             "(MPerClassSampler). 10 = défaut historique petits datasets ; "
+             "réduire (2-3) sur les gros datasets wild.",
+    )
     parser.add_argument("--device", type=str, default="auto")
     parser.add_argument("--num-workers", type=int, default=-1, help="DataLoader workers (-1=auto: 4 on CUDA, 0 on CPU/MPS)")
     parser.add_argument("--output", type=str, default="./checkpoints/")

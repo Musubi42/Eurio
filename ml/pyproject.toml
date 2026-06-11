@@ -12,6 +12,10 @@ dependencies = [
   "opencv-python-headless",
   "pytorch-metric-learning",
   "pyyaml",
+  # Zoo de backbones pré-entraînés (TinyViT, EfficientFormer, MobileViT…)
+  # pour le bench zero-shot des candidats students ArcFace
+  # (scripts/bench_encoder_dino.py) et le futur fine-tune du gagnant.
+  "timm",
   "torch",
   "torchvision",
   # YOLO11 detector — runtime dep du scrape. `scan/normalize_snap.py`

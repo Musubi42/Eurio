@@ -1,10 +1,15 @@
-"""DINOv2 ViT-S/14 wrapper — single source of truth.
+"""DINOv2 wrapper — single source of truth.
 
 Owns the model load (lazy, singleton-per-device), the preprocessing
 transform, and the encode entry-points. Other consumers
 (eval/confusion_map.py, api/distance_logic.py, sources auto-validation)
-import from here so the version string and preprocessing stay in
+import from here so the version strings and preprocessing stay in
 sync across the codebase.
+
+Deux tailles vivent en prod (bench Phase 2.4, dino-suggestions) :
+  - ``dinov2-vits14`` — couche CONSENSUS (seuils C0–C5 calibrés dessus).
+  - ``dinov2-vitl14`` — couche SUGGESTIONS (+22 pts recall@1 global,
+    4× le coût d'encodage). Même transform 224 / ImageNet pour les deux.
 
 DINOv2 was pretrained with ImageNet normalization and 14-multiple input
 sizes; 224 is divisible by 14 and matches the standard eval resolution.
@@ -25,8 +30,15 @@ from torchvision import transforms
 logger = logging.getLogger(__name__)
 
 DEFAULT_ENCODER_VERSION = "dinov2-vits14"
+SUGGESTIONS_ENCODER_VERSION = "dinov2-vitl14"
 DINOV2_REPO = "facebookresearch/dinov2"
 DINOV2_MODEL = "dinov2_vits14"
+
+# encoder_version (tracé en DB / .npz) → nom de modèle torch.hub.
+ENCODER_HUB_MODELS = {
+    "dinov2-vits14": "dinov2_vits14",
+    "dinov2-vitl14": "dinov2_vitl14",
+}
 
 INPUT_SIZE = 224
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
@@ -44,18 +56,45 @@ def pick_device() -> torch.device:
 
 def load_encoder(
     device: torch.device | None = None,
+    *,
+    encoder_version: str = DEFAULT_ENCODER_VERSION,
 ) -> tuple[torch.nn.Module, torch.device]:
-    """Load DINOv2 ViT-S/14 via torch.hub. First call downloads weights.
+    """Load a DINOv2 encoder via torch.hub. First call downloads weights.
 
     Returns (model, device) — pass ``device=None`` to auto-pick.
     """
+    hub_model = ENCODER_HUB_MODELS.get(encoder_version)
+    if hub_model is None:
+        raise ValueError(
+            f"Unknown encoder_version {encoder_version!r} — "
+            f"known: {sorted(ENCODER_HUB_MODELS)}"
+        )
     if device is None:
         device = pick_device()
-    logger.info("Loading DINOv2 encoder (%s) on %s…", DINOV2_MODEL, device)
-    model = torch.hub.load(DINOV2_REPO, DINOV2_MODEL, pretrained=True)
+    logger.info("Loading DINOv2 encoder (%s) on %s…", hub_model, device)
+    model = torch.hub.load(DINOV2_REPO, hub_model, pretrained=True)
     model.eval()
     model.to(device)
     return model, device
+
+
+def bake_pos_encoding(model: torch.nn.Module, px: int = INPUT_SIZE) -> None:
+    """Fige le pos_embed DINOv2 à ``px`` (in-place, idempotent).
+
+    Le checkpoint embarque un pos_embed 518px (1370 tokens) interpolé en
+    bicubique à CHAQUE forward — chemin dynamique que torch.export ne
+    digère pas (bloquant LiteRT) et coût inutile à résolution fixe. On
+    pré-calcule via ``interpolate_pos_encoding`` du modèle lui-même →
+    équivalence numérique exacte avec l'eager (validé au spike LiteRT,
+    cosine 1.000000). À ré-appliquer après chaque fine-tune AVANT export.
+    """
+    n_tokens = (px // model.patch_embed.patch_size[0]) ** 2 + 1
+    if model.pos_embed.shape[1] == n_tokens:
+        return
+    dummy = torch.zeros(1, n_tokens, model.embed_dim)
+    with torch.no_grad():
+        baked = model.interpolate_pos_encoding(dummy, px, px)
+    model.pos_embed = torch.nn.Parameter(baked.float())
 
 
 def build_transform() -> transforms.Compose:

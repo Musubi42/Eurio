@@ -81,7 +81,7 @@ tasks:
 
   # ---------- Foundation (DINOv2 anchors for auto-validation) ----------
   dino-anchors:build:
-    desc: "Build DINOv2 obverse anchor bank for the auto-validation pipeline (default scope: 2eur_commemo). Reads coins from eurio.db and ml/datasets/<numista>/obverse.jpg. Writes ml/state/foundation_anchors_<kind>.npz. Usage: go-task ml:dino-anchors:build [-- --force] [-- --kind 2eur_commemo]"
+    desc: "Build DINOv2 obverse anchor bank for the auto-validation pipeline. Kinds: 2eur_commemo (consensus, vits14), 2eur_standard (design groups courantes, vits14), 2eur_all (commémo+standards, banque des suggestions review, ENCODÉE EN vitl14). Reads coins from eurio.db and ml/datasets/<numista>/obverse.jpg. Writes ml/state/foundation_anchors_<kind>.npz. Usage: go-task ml:dino-anchors:build [-- --force] [-- --kind 2eur_all]. Après un renommage de slugs : rebâtir 2eur_commemo ET 2eur_all --force PUIS re-backfiller les prédictions."
     cmds:
       - "{{.VENV}}/python -m scripts.build_dino_anchors -v {{.CLI_ARGS}}"
 
@@ -91,7 +91,7 @@ tasks:
       - "{{.VENV}}/python -m pytest tests/test_foundation.py -v"
 
   dino-predictions:backfill:
-    desc: "Compute DINOv2 top-K predictions for every existing crop in scope (default: 2€ commémo) that doesn't yet have a row in image_asset_dino_predictions. Idempotent. Usage: go-task ml:dino-predictions:backfill [-- --force] [-- --limit 50]"
+    desc: "Compute DINOv2 top-K predictions for every existing crop in scope that doesn't yet have a row in image_asset_dino_predictions. Kinds: 2eur_commemo (défaut, consensus) | 2eur_all (suggestions review, targets 2€ commémo + courantes) | 2eur_standard. Idempotent. Usage: go-task ml:dino-predictions:backfill [-- --kind 2eur_all] [-- --force] [-- --limit 50]"
     cmds:
       - "{{.VENV}}/python -m scripts.backfill_dino_predictions -v {{.CLI_ARGS}}"
 
