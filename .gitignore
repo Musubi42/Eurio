@@ -61,6 +61,10 @@ ml/.dataset_cache/
 ml/state/training_progress/
 # Artefacts de run/bench ML sortis de git (chunk 8) — gardés sur disque, régénérables.
 # Le gold/seed reste tracké (exceptions ! ci-dessous).
+# Bench best-frame-capture (chunk 7) : sessions + ground_truth.json restent
+# trackés (données primaires) ; replays et rapports sont dérivés.
+ml/bench/sessions/**/replays/
+ml/bench/reports/
 ml/state/device_bimetal_bench/
 ml/state/listing_bimetal_bench/
 ml/state/listing_bench/

@@ -24,21 +24,33 @@ _Statuts re-vérifiés sur le code le 2026-06-11 (l'ancienne table disait
 | 4 | [AE/AF/AWB lock via Camera2Interop](chunk-4-ae-af-lock.md) | 3 | ✅ Livré — `ml/camera/CameraLockController.kt` |
 | 5 | [ImageCapture + archive schema](chunk-5-imagecapture-archive.md) | 4 | ✅ Livré — `CoinCaptureEntity.kt` (table `coin_captures`), migration Room v2→v3 dans `EurioDatabase.kt` |
 | 6 | [State machine refonte ScanViewModel](chunk-6-state-machine.md) | 3, 4, 5 | ✅ Livré — `domain/scan/ScanReducer.kt` (6 états) + `ScanReducerTest.kt` |
-| 7 | [Bench protocol + replay tooling](chunk-7-bench-protocol.md) | 6 | ⚠️ Moitié Android livrée — voir détail ci-dessous |
+| 7 | [Bench protocol + replay tooling](chunk-7-bench-protocol.md) | 6 | ✅ Livré (Android + Python 2026-06-11) — voir détail ci-dessous |
 
 ### Chunk 7 — état détaillé
 
 **Livré (Android)** : `ml/bench/BenchRecorder.kt` (events.jsonl streaming,
 schema v2) + `BenchEvent.kt` (15+ types d'événements sérialisés) +
 `BenchProtocol.kt`/`BenchProtocolState.kt` (5 conditions × cohorte guidée) +
-écran `/dev/bench` (`features/dev/bench/`). Des sessions réelles existent
-déjà sous `ml/bench/sessions/Pixel9a/`.
+écran `/dev/bench` (`features/dev/bench/`) + go-task `android:bench:pull`/
+`bench:clean`. Des sessions réelles existent sous `ml/bench/sessions/Pixel9a/`.
 
-**Reste (Python, rien n'existe)** : `ml/bench/` ne contient que `sessions/`.
-À écrire selon la spec chunk-7 : `session_io.py` (parseur JSONL),
-`replay_session.py`, `annotate_session.py`, `calibrate_thresholds.py`,
-`compare_runs.py`, port parité du scorer Kotlin, et les go-task
-`bench:pull/annotate/replay/calibrate/compare`.
+**Livré (Python, 2026-06-11)** : package `ml/bench/` — `session_io.py`
+(parseur schema v1+v2), `replay.py` (ports exacts BoxStability/YoloConfidence
++ sélecteur D8), CLIs `replay_session` / `annotate_session` /
+`calibrate_thresholds` / `compare_runs`, `conditions.md` ; port parité du
+scorer dans `ml/vision/frame_scorer.py`. Go-task `ml:bench:{replay,annotate,
+calibrate,compare}`. **Parité verrouillée par test** : la session Pixel9a
+committée rejouée en Python reproduit les scores/gates Kotlin à ≤1e-3
+(31 tests, `ml/tests/test_frame_scorer.py` + `test_bench_sessions.py`).
+Deltas vs spec assumés : pas de `cohort.json` (la cohorte vient de
+`CaptureProtocol`/cohort.csv, sessions auto-taguées par le protocole guidé) ;
+`arcface_consensus` rejoué aux events `consensus_reached` ; fix Android
+`Locale.US` sur les reasons de trigger (un device FR écrivait `IoU≥0,70`).
+
+**Reste (exécution, pas du code)** : le premier bench complet — 50 sessions
+protocole guidé sur device (avec `recordFramesEnabled` pour la parité
+image-level), annotation, calibration, rapport commité dans
+`docs/work-in-progress/best-frame-capture/results/`.
 
 ## Ordre d'implémentation conseillé
 

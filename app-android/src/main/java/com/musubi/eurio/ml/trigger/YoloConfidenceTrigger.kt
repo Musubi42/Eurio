@@ -1,6 +1,7 @@
 package com.musubi.eurio.ml.trigger
 
 import com.musubi.eurio.ml.DetectionSource
+import java.util.Locale
 
 /**
  * Fires once YOLO confidence on the primary detection stays at or above
@@ -35,7 +36,9 @@ class YoloConfidenceTrigger(
         if (consecutive >= nFramesRequired) {
             firedForRun = true
             return TriggerEvent.Fire(
-                reason = "yolo ${consecutive}f conf≥${"%.2f".format(confMin)}",
+                // Locale.US — même contrainte de reproductibilité bench que
+                // BoxStabilityTrigger (events.jsonl relu par le replay Python).
+                reason = "yolo ${consecutive}f conf≥${"%.2f".format(Locale.US, confMin)}",
                 bufferSnapshot = context.buffer,
             )
         }

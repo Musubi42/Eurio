@@ -1,5 +1,7 @@
 package com.musubi.eurio.ml.trigger
 
+import java.util.Locale
+
 /**
  * Fires once the primary detection's bbox has stayed within [iouMin] of the
  * previous frame's bbox for [nFramesRequired] consecutive frames.
@@ -48,7 +50,9 @@ class BoxStabilityTrigger(
         if (consecutive >= nFramesRequired) {
             firedForRun = true
             return TriggerEvent.Fire(
-                reason = "stable ${consecutive}f IoU≥${"%.2f".format(iouMin)}",
+                // Locale.US : la reason atterrit dans events.jsonl et le replay
+                // Python la compare — un device FR écrirait "0,70".
+                reason = "stable ${consecutive}f IoU≥${"%.2f".format(Locale.US, iouMin)}",
                 bufferSnapshot = context.buffer,
             )
         }

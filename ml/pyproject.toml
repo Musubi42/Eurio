@@ -32,7 +32,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["referential*", "export*", "training*", "bootstrap*", "serving*", "vision*", "review*", "shared*", "sources*", "state*", "store*", "jobs*", "scripts*", "tests*"]
+include = ["referential*", "export*", "training*", "bootstrap*", "serving*", "vision*", "review*", "shared*", "sources*", "state*", "store*", "jobs*", "scripts*", "tests*", "bench*"]
 
 # Plus aucun module top-level isolé : api_quota/api_quota_cli/ccproxy_client ont
 # rejoint le package `shared/` (refacto ML chunk 7e).

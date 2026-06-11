@@ -33,7 +33,7 @@ Tu peux exécuter ces missions **seule**, en bouclant :
 | [data-harmonization](./data-harmonization/) | ~85 % | tout livré sauf le Chunk 5 (migration identité) |
 | [lab-streamline](./lab-streamline/) | ~85 % | reste eBay-standards + gros run PC 16 classes |
 | [cohort-capture-flow](./cohort-capture-flow/) | ~85 % | flow live, reste vérifier les chemins post-rename |
-| [best-frame-capture](./best-frame-capture/) | ~85 % | chunks 1-6 + 7-Android livrés (README corrigé 2026-06-11), reste tooling Python chunk 7 |
+| [best-frame-capture](./best-frame-capture/) | ~95 % | chunks 1-7 livrés (tooling Python + parité 2026-06-11), reste le premier bench 50 sessions sur device |
 | [design-groups-standards](./design-groups-standards/) | ~80 % | pilote BE live, reste le rollout autres pays |
 | [training-pipeline](./training-pipeline/) | ~80 % | sprints ✅ + harvest exécuté (docs corrigées 2026-06-11), reste user-harvest in-app |
 | [parity](./parity/) | ~75 % | capture Maestro+proto+viewer LIVE, reste flows nouvelles scènes + pont interpréteur |
@@ -77,15 +77,16 @@ Flow selection→CSV→adb push→sync (`sync_eval_real`) live dans `lab_routes.
 **Reste :** vérifier que les chemins `ml/datasets/` collent au layout actuel post-rename eurio_id ·
 nettoyer les TODO résolus de `session-kickoff.md` · confirmer le freeze auto `cohort.status` vs `CohortDetailPage.vue`.
 
-## best-frame-capture — ~85 % (re-vérifié 2026-06-11)
-Chunks 1-6 livrés (ScanReducer 6 états, BestFrameSelector, CameraLockController, scorer, archive).
-~~README périmé~~ → table de statut corrigée 2026-06-11 avec preuves fichier par fichier.
-Table Room `coin_captures` confirmée (`CoinCaptureEntity.kt`, migration v2→v3 dans `EurioDatabase.kt`).
-Chunk 7 vérifié : **moitié Android livrée** (BenchRecorder/BenchEvent/BenchProtocol + écran `/dev/bench`,
-sessions réelles sous `ml/bench/sessions/Pixel9a/`).
-**Reste :** le tooling Python du chunk 7 (rien n'existe) — `session_io.py`, `replay_session.py`,
-`annotate_session.py`, `calibrate_thresholds.py`, `compare_runs.py`, port parité du scorer Kotlin,
-go-task `bench:*`. Détail dans le README du chantier.
+## best-frame-capture — ~95 % (chunk 7 livré 2026-06-11)
+Chunks 1-6 livrés (ScanReducer 6 états, BestFrameSelector, CameraLockController, scorer, archive ;
+table Room `coin_captures` confirmée). Chunk 7 **complet** : côté Android (BenchRecorder/BenchEvent/
+BenchProtocol + `/dev/bench` + `android:bench:pull`) et côté Python (package `ml/bench/` : session_io,
+replay avec ports exacts des triggers + sélecteur D8, CLIs annotate/calibrate/compare,
+`ml/vision/frame_scorer.py` parité scorer). Parité Kotlin↔Python verrouillée par test sur la session
+device committée (≤1e-3, 31 tests verts). Go-task `ml:bench:{replay,annotate,calibrate,compare}`.
+**Reste (exécution) :** le premier bench complet — 50 sessions protocole guidé sur device
+(`recordFramesEnabled` on), annotation, calibration, rapport dans `results/`. C'est de la manip
+device + 25 min d'annotation, pas du code.
 
 ## design-groups-standards — ~80 %
 Doc fidèle au code (FK scalaire `coins.design_group_id` `schema.sql:935`, tooling `obverse_groups.py` + tests live).

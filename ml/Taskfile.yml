@@ -922,3 +922,27 @@ tasks:
     desc: "Seed mints avec les 29 ateliers canoniques eurozone (DE A/D/F/G/J + autres pays). Idempotent. --update pour upsert, --check pour audit."
     cmds:
       - "{{.VENV}}/python -m scripts.seed_mints {{.CLI_ARGS}}"
+
+  # ─── Bench best-frame-capture (chunk 7) ───────────────────────────────────
+  # Le pull device vit côté android (go-task android:bench:pull). Doc boucle
+  # complète : ml/bench/conditions.md.
+  bench:replay:
+    desc: "Replay offline d'une session bench sous config alternative. Usage: go-task ml:bench:replay -- --session bench/sessions/<device>/sessions/<id> [--override clé=val …]"
+    cmds:
+      - "{{.VENV}}/python -m bench.replay_session {{.CLI_ARGS}}"
+
+  bench:annotate:
+    desc: "Annotation ground-truth interactive des sessions bench (best-frame humain + eurio_id). Usage: go-task ml:bench:annotate -- [--device <d>] [--session <id>] [--redo]"
+    interactive: true
+    cmds:
+      - "{{.VENV}}/python -m bench.annotate_session {{.CLI_ARGS}}"
+
+  bench:calibrate:
+    desc: "Grid search seuils qualité (96 configs) sur les sessions annotées → ml/bench/reports/recommended_thresholds.json. Usage: go-task ml:bench:calibrate -- [--device <d>]"
+    cmds:
+      - "{{.VENV}}/python -m bench.calibrate_thresholds {{.CLI_ARGS}}"
+
+  bench:compare:
+    desc: "Rapport comparatif markdown + plots de N configs rejouées. Usage: go-task ml:bench:compare -- --run original --run nom:clé=val,… [--device <d>]"
+    cmds:
+      - "{{.VENV}}/python -m bench.compare_runs {{.CLI_ARGS}}"
