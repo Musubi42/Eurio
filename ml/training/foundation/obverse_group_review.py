@@ -27,7 +27,9 @@ logger = logging.getLogger(__name__)
 
 # Chemin disque canonical : ml/datasets/<numista_id>/obverse.jpg (même layout que
 # api/review_queue_routes._canonical_path — résolveur du batch ccproxy).
-_DATASETS_DIR = Path(__file__).resolve().parents[1] / "datasets"
+# Source unique : anchors.DATASETS_DIR — parents[1] cassait depuis le move
+# ml/foundation/ → ml/training/foundation/ (résolvait ml/training/datasets).
+from training.foundation.anchors import DATASETS_DIR as _DATASETS_DIR
 
 
 def canonical_obverse_path(numista_id: int | None) -> Path | None:
