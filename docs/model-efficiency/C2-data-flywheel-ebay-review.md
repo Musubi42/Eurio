@@ -162,6 +162,36 @@ cette itération ; instruments = test manifest held-out + eval_real.
   **raccourcir les runs** (`--epoch-multiplier 3`, recommandé par le help du
   trainer pour les datasets wild — run ÷3).
 
+### 2026-06-12 — Passe backlog review (C2b : la review produit des refs)
+
+Sur la DB canonique (lease PC), traitement des 3 lanes :
+
+| Lane | Avant | Action | Résultat |
+|---|---|---|---|
+| auto_accept | 123 open | `POST /review-queue/auto-accept/run` (kind=all, re-validation serveur) | **123 acceptés** (`decided_by='auto_dino'`) |
+| manual | 560 open | `review.publish_cli publish` → `eurio-review.musubi.dev` | **548 publiés** aux reviewers (10 déjà décidés/en cours) |
+| ccproxy | 1722 open | 2 fixes + prefetch, puis batch Sonnet 4.6 | pilote 50 : 50 jugés, 0 erreur, ~3,5 s/item — **43 no_match / 6 uncertain / 1 match** |
+
+Impact data immédiat : `training_eligible` **574 → 697** (+123), couverture
+wild **89 → 105 classes**.
+
+Trouvailles d'infra au passage :
+- **Bug chemin canonical** (commit `a63cac3a`) : `canonical_obverse_path`
+  résolvait `ml/training/datasets` (inexistant) depuis le refactor
+  `bd3ceeec` — tous les batchs ccproxy de ce PC skippaient en
+  `no_canonical`. ⚠️ Le compteur `skipped_no_canonical` agrège en réalité
+  canonical absent ET crop absent — à scinder un jour.
+- **MinIO VPS : 403 transitoires sur HeadObject en rafale** (les GET
+  passent) — `local_path()`/`download_file` (HEAD d'abord) échoue par
+  vagues ; c'est ce qui avait fait échouer le 1er build du dataset v2
+  (591 « no_file »). Contournement : prefetch en `get_object` direct
+  (1722/1722 crops, 0 erreur). À investiguer côté reverse-proxy VPS.
+- Lecture du pilote : 86 % de no_match — la lane ccproxy contient surtout
+  des revers et de mauvaises pièces (cohérent : c'est la lane « Dino
+  hésite/contredit »). Le rendement en refs d'entraînement viendra des
+  `match` ackés + de la review collaborative ; les no_match serviront au
+  nettoyage de la queue.
+
 ## Décisions & next
 
 **Décision §5.1 (mesurée)** : le modèle de pré-classement review reste le
