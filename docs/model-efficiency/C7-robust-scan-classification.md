@@ -108,7 +108,20 @@ funnel bench** :
   - Device : `app-android` n'a aucun rejet de face → UX « retourne la pièce »
     (le matching ArcFace est obverse-only, un revers échoue silencieusement).
 
-## Pilier 2 — Authenticité (à venir)
+## Pilier 2 — Gate dénomination « est-ce un 2€ ? » (PROCHAIN — voir HANDOFF-C7)
+
+**Constat 2026-06-12** (run `059dc8d…`, AT-2€-2005) : le grid review est pollué par
+des **1ct/2ct/20ct** issus de **photos de lots** (le crop crope toutes les pièces).
+Le détecteur de face les étiquette `obverse` par défaut (margin≈0, ne matche ni
+avers ni revers 2€). Le funnel **isole déjà** ces crops dans les buckets lot
+(`multi_coin_photo` 149, `is_lot_suspected` 12, `listing_kind_lot` 4 — 0 junk en
+attente dans `single_unmatched`). **Pas de fix par seuil de similarité** : les
+non-2€ chevauchent les avers 2€ usés (seuil `max(obv,rev)<0,60` = 25 % junk
+capturé mais 4 % de vrais avers perdus). → Il faut un **vrai signal 2€-ness**
+(bimétal géométrique recommandé, ou probe DINO dénomination). Détails, mesures et
+pistes : **[HANDOFF-C7.md](./HANDOFF-C7.md)**.
+
+## Pilier 3 — Authenticité (à venir)
 
 Détecter dessin / rendu 3D / impression carton / réplique plastique / slab.
 Aucun détecteur image aujourd'hui (signaux faibles : Laplacian, DINO coin-ness,
