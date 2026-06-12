@@ -61,6 +61,7 @@ Ordre = dépendances. Statut : 🔲 pas commencé · 🟡 en cours · ✅ fait.
 | **C4** | [Efficacité — quantization + distillation](./C4-efficiency-quant-distill.md) | 🔲 | C0 |
 | **C5** | [Accélération on-device](./C5-on-device-acceleration.md) | 🔲 | C0 |
 | **C6** | [Gate d'éval continue](./C6-eval-gate.md) | 🔲 | C0 |
+| **C7** | [Scan robuste — cascade (face/authenticité/fusion)](./C7-robust-scan-classification.md) | 🟡 | C0, C1, C2 |
 
 ## Passations de session
 
@@ -81,6 +82,9 @@ jamais en perdre une de vue.
 | H4 | Les gains DINOv2 transfèrent à la **classification eBay scrape** | **Réfutée** (régime ancres canonical-only) : zero-shot vitl14 62,8 % top-1 / 80,9 % hit@5 vs fine-tuné 28,7 % / 35,1 % ; auto-attribution = texte (75,8 % @ 94,9 %) | C2 | ⚠️ mesuré (gold BE 9 classes, DB 25/05) |
 | H5 | La perf fp16 ViT-S est OK sur milieu/haut de gamme | Faible (aucune latence mesurée) | C5 | ❓ non mesuré |
 | H6 | Le R@1 val reflète la perf réelle sur tout le catalogue | **Non** (val ≠ réel) | C0 | ⚠️ **réel > val** sur set étroit |
+| H7 | DINO sépare avers national vs revers commun 2€ sans retrain | **Confirmée** : 0 % FP sur 562 avers, top-40 minés = 100 % revers | C7 | ✅ mesuré (précision ; rappel wild à élargir) |
+| H8 | Un détecteur d'authenticité (vraie pièce vs dessin/3D/carton/réplique) manque | Forte (audit code = 0 détecteur image) | C7 | ❓ non mesuré (gold à construire) |
+| H9 | Retourner la question Claude (confirmer top-1 DINO) ↑ rendement refs | Moyenne | C7 | ❓ non mesuré |
 
 ## Journal des révisions de croyances
 
@@ -122,6 +126,17 @@ jamais en perdre une de vue.
   cf. note DB ci-dessous). Le matcher texte est donc déjà fort en
   auto-attribution ; le rôle réel de la vision est le **résiduel** (21,2 % des
   valides routés review) + le **junk filtering** (le vrai point faible).
+
+- **2026-06-12 — Pivot stratégie (C7) + H7 confirmée.** Constat utilisateur :
+  ccproxy/Claude vision « pourri », mais le DINO de la review manuelle classe
+  bien. Diagnostic : ccproxy posait la mauvaise question (vérifier la cible eBay
+  sur la lane où DINO diverge déjà → 86 % no_match inexploitables). Décision :
+  vision = **proposeur d'identité** (DINO top-K), pas vérificateur de cible ;
+  lane ccproxy parquée. Ouverture du chantier **C7** (cascade : face →
+  authenticité → fusion). **H7 confirmée** du premier coup : détecteur de face
+  zéro-training (ancres = 2 designs revers communs packagés) → **0 % FP** sur
+  562 avers, top-40 revers minés **100 % corrects**. ~15 % de la queue sont des
+  revers non détectés. Détail : C7 §Pilier 1.
 
 - **2026-06-12 (soir) — Clôture itération 1 : v1 reste le modèle de
   référence ; double incident GPU.** Le re-run v2 complet a collapsé (best
