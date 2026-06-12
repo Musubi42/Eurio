@@ -264,6 +264,8 @@ class StoreBase:
                 # Face detection (C7) : reverse-ness + marge vs obverse-ness.
                 ("reverse_sim", "REAL"),
                 ("face_margin", "REAL"),
+                # Gate dénomination (C7 pilier 2) : score 2€-ness probe DINO+bimétal.
+                ("denom_2eur_score", "REAL"),
             ):
                 self._ensure_column(
                     conn,
@@ -444,6 +446,9 @@ class StoreBase:
                 ("tilt_deg",         "REAL"),
                 ("axis_ratio",       "REAL"),
                 ("tilt_trustworthy", "INTEGER DEFAULT 0"),
+                # Gate dénomination (C7 pilier 2) : verdict binaire 2€ vs junk,
+                # miroir de `face`. Écrit si NULL (anti-clobber labels humains).
+                ("denom", "TEXT"),
             ):
                 self._ensure_column(conn, table="image_assets", column=_col, decl=_decl)
             # C2 cohort-pipeline : flag is_rescue_candidate pré-calculé.

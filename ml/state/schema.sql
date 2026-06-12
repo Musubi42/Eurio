@@ -355,6 +355,10 @@ CREATE TABLE IF NOT EXISTS image_assets (
 
   face                     TEXT
                            CHECK (face IS NULL OR face IN ('obverse','reverse','unknown')),
+  -- Gate dénomination (C7 pilier 2) : verdict 2€ vs junk (probe DINO+bimétal),
+  -- miroir de `face`. Écrit si NULL (anti-clobber). NULL = non évalué.
+  denom                    TEXT
+                           CHECK (denom IS NULL OR denom IN ('2eur','not_2eur')),
   variant_kind             TEXT NOT NULL DEFAULT 'unknown'
                            CHECK (variant_kind IN (
                              'canonical','official_press','merchant_catalog',
@@ -448,6 +452,7 @@ CREATE TABLE IF NOT EXISTS image_asset_dino_predictions (
   -- sur anchors_kind='2eur_all' (vitl14, même embedding que la banque revers).
   reverse_sim            REAL,
   face_margin            REAL,            -- reverse_sim - top1_sim
+  denom_2eur_score       REAL,            -- C7 pilier 2 : score 2€-ness probe DINO+bimétal
   computed_at     TEXT NOT NULL DEFAULT (datetime('now')),
   duration_ms     INTEGER,
   PRIMARY KEY (asset_id, encoder_version, anchors_kind)

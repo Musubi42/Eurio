@@ -56,6 +56,7 @@ from training.foundation import (
 from review.review_lanes import compute_lane
 from sources._base.run_logger import RunHandle
 from store import DinoPredictionRow
+from vision.denom_probe import decide_denom, denom_score
 
 logger = logging.getLogger(__name__)
 
@@ -475,6 +476,13 @@ def predict_and_persist_kinds(
                 rev_sim = float(np.max(rev_bank.matrix @ vec))
                 ap.reverse_sim = rev_sim
                 ap.face_margin = rev_sim - ap.top1_sim
+                # Gate dénom (C7 pilier 2) : score 2€-ness sur la row 2eur_all.
+                import cv2 as _cv2
+                _bgr = _cv2.imread(str(crop_path))
+                if _bgr is not None:
+                    ds = denom_score(vec, _bgr)
+                    if ds is not None:
+                        ap.denom_2eur_score = ds
     if out:
         store.upsert_dino_predictions(list(out.values()))
     return out
@@ -529,6 +537,7 @@ def _run_inner(
     # Banque revers (C7 face) — chargée une fois, partagée. None → face skip.
     rev_bank = _get_reverse_bank()
     face_writes: list[tuple[str, str]] = []  # (face, asset_id), WHERE face IS NULL
+    denom_writes: list[tuple[str, str]] = []  # (denom, asset_id), WHERE denom IS NULL
 
     rows_to_write: list[DinoPredictionRow] = []
     for r, kinds in in_scope:
@@ -614,6 +623,17 @@ def _run_inner(
                 face_writes.append(
                     (_decide_face(rev_sim, all_pred.top1_sim), aid)
                 )
+                # ── Gate dénomination (C7 pilier 2) — réutilise le vec vitl14 ──
+                # Probe DINO+bimétal : score 2€-ness sur la row 2eur_all (ranker)
+                # + verdict image_assets.denom écrit plus bas si NULL. No-op si
+                # l'artefact denom_probe.npz est absent (denom_score → None).
+                import cv2 as _cv2
+                _bgr = _cv2.imread(str(crop_p))
+                if _bgr is not None:
+                    ds = denom_score(vvec, _bgr)
+                    if ds is not None:
+                        all_pred.denom_2eur_score = ds
+                        denom_writes.append((decide_denom(ds), aid))
 
         rows_to_write.extend(predictions)
         predicted_ids.append(aid)
@@ -639,6 +659,21 @@ def _run_inner(
         logger.info(
             "auto_validate: face écrit sur %d crops (%d reverse, %d obverse) "
             "[face IS NULL only]", len(face_writes), n_rev, len(face_writes) - n_rev,
+        )
+
+    # ── Écriture de la dénomination (C7 pilier 2) — miroir de la face ─────
+    # UNIQUEMENT si denom IS NULL (anti-clobber). Le rejet 'not_2eur' se fait
+    # à l'enqueue / backfill, comme face_reverse.
+    if denom_writes:
+        conn.executemany(
+            "UPDATE image_assets SET denom=? WHERE id=? AND denom IS NULL",
+            denom_writes,
+        )
+        n_junk = sum(1 for d, _ in denom_writes if d == "not_2eur")
+        logger.info(
+            "auto_validate: denom écrit sur %d crops (%d not_2eur, %d 2eur) "
+            "[denom IS NULL only]", len(denom_writes), n_junk,
+            len(denom_writes) - n_junk,
         )
 
     # Re-route post-Dino : pour les items DÉJÀ en queue (cas backfill — en run

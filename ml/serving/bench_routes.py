@@ -256,6 +256,7 @@ _HUMAN_REASON: dict[str, str] = {
     "is_lot_suspected": "lot suspecté (titre)",
     "all_crops_rejected": "tous les crops rejetés",
     "face_reverse": "revers commun 2€",
+    "not_2eur": "pas un 2€ (cent/médaille/mire)",
 }
 
 

@@ -44,6 +44,11 @@ class DinoPredictionRow:
     # la banque revers). NULL ailleurs.
     reverse_sim: float | None = None
     face_margin: float | None = None
+    # Gate dénomination (C7 pilier 2) : score 2€-ness ∈ [0,1] de la probe
+    # DINO+bimétal (`vision/denom_probe.py`). Renseigné seulement sur la row
+    # anchors_kind='2eur_all' (vitl14). NULL ailleurs. Ranker doux + le verdict
+    # binaire vit sur image_assets.denom.
+    denom_2eur_score: float | None = None
     duration_ms: int | None = None
     computed_at: str | None = None
 
@@ -69,6 +74,7 @@ class DinoPredictionRow:
             "country_spread": self.country_spread,
             "reverse_sim": self.reverse_sim,
             "face_margin": self.face_margin,
+            "denom_2eur_score": self.denom_2eur_score,
             "duration_ms": self.duration_ms,
             "computed_at": self.computed_at,
         }
@@ -102,6 +108,7 @@ def _row_to_dino_prediction(r: sqlite3.Row) -> DinoPredictionRow:
         country_spread=_maybe("country_spread"),
         reverse_sim=_maybe("reverse_sim"),
         face_margin=_maybe("face_margin"),
+        denom_2eur_score=_maybe("denom_2eur_score"),
         duration_ms=r["duration_ms"],
         computed_at=r["computed_at"],
     )
@@ -124,11 +131,11 @@ class DinoMixin:
                   target_country, country_anchors_count, top_k_country_json,
                   top1_country_eurio_id, top1_country_sim,
                   top2_country_eurio_id, top2_country_sim, country_spread,
-                  reverse_sim, face_margin,
+                  reverse_sim, face_margin, denom_2eur_score,
                   computed_at, duration_ms
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                           ?, ?, ?, ?, ?, ?, ?, ?,
-                          ?, ?,
+                          ?, ?, ?,
                           datetime('now'), ?)
                 ON CONFLICT(asset_id, encoder_version, anchors_kind) DO UPDATE SET
                   anchors_count          = excluded.anchors_count,
@@ -148,6 +155,7 @@ class DinoMixin:
                   country_spread         = excluded.country_spread,
                   reverse_sim            = excluded.reverse_sim,
                   face_margin            = excluded.face_margin,
+                  denom_2eur_score       = excluded.denom_2eur_score,
                   duration_ms            = excluded.duration_ms,
                   computed_at            = datetime('now')
                 """,
@@ -173,6 +181,7 @@ class DinoMixin:
                         r.country_spread,
                         r.reverse_sim,
                         r.face_margin,
+                        r.denom_2eur_score,
                         r.duration_ms,
                     )
                     for r in rows

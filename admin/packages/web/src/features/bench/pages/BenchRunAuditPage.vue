@@ -234,6 +234,7 @@ const REASON_LABELS: Record<string, string> = {
   single_matched: 'pièce seule, attribuée',
   all_crops_rejected: 'tous les crops rejetés',
   face_reverse: 'revers commun 2€ (avers attendu)',
+  not_2eur: 'pas un 2€ (cent / médaille / mire)',
 }
 function reasonLabel(d: RunDrop): string {
   return (d.reason && REASON_LABELS[d.reason]) || d.reason || '—'

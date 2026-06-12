@@ -43,6 +43,7 @@ _BONUS_TARGETED = 30
 _CONSENSUS_ENGINE_VERSION = f"consensus@v{RULE_VERSION}"
 # Rejet auto par le détecteur de face (C7) : crop = revers commun 2€.
 _FACE_ENGINE_VERSION = "face@v1"
+_DENOM_ENGINE_VERSION = "denom@v1"
 
 
 def _reject_crop_terminal(
@@ -154,6 +155,8 @@ def _route_decision_for_source_image(
         reasons = {r["quality_reason"] for r in rows}
         if reasons == {"face_reverse"}:
             return ("rejected", "face_reverse")
+        if reasons == {"not_2eur"}:
+            return ("rejected", "not_2eur")
         return ("rejected", "all_crops_rejected")
 
     if statuses <= {"auto_phash", "auto_name", "manual", "rejected"}:
@@ -226,7 +229,8 @@ def run_enqueue(
             """
             SELECT a.id AS asset_id,
                    a.candidate_eurio_ids_json,
-                   a.face
+                   a.face,
+                   a.denom
               FROM image_assets a
              WHERE a.source_image_id = ?
                AND a.resolution_status = 'needs_review'
@@ -267,6 +271,32 @@ def run_enqueue(
                     state_reason="face_reverse",
                     engine_version=_FACE_ENGINE_VERSION,
                     decision_payload={"reason": "face_reverse"},
+                    target_eurio_id=si_meta["target_eurio_id"], run_id=run.run_id,
+                )
+                n_rejected += 1
+                continue
+
+            # C7 pilier 2 — Dénomination : un crop qui n'est PAS un 2€ (cent,
+            # médaille, mire, 1€, set) ne part pas en identité 2€. Rejet terminal
+            # ré-ouvrable, per-crop (jamais la photo entière → les avers 2€ d'un
+            # lot mixte restent en review). Même pattern que face_reverse.
+            if r["denom"] == "not_2eur":
+                review_id = uuid.uuid4().hex
+                conn.execute(
+                    """
+                    INSERT INTO review_queue (
+                      id, image_asset_id, priority, candidate_eurio_ids_json, kind, lane
+                    ) VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (review_id, r["asset_id"], priority, candidates, kind, DEFAULT_LANE),
+                )
+                _reject_crop_terminal(
+                    conn, asset_id=r["asset_id"], review_id=review_id,
+                    quality_reason="not_2eur",
+                    decided_by="pipeline",
+                    state_reason="not_2eur",
+                    engine_version=_DENOM_ENGINE_VERSION,
+                    decision_payload={"reason": "not_2eur"},
                     target_eurio_id=si_meta["target_eurio_id"], run_id=run.run_id,
                 )
                 n_rejected += 1

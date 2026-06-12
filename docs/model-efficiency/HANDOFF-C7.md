@@ -54,17 +54,25 @@ similarité aux ancres avers.
 
 ## 2. Pistes pour le gate dénomination (à mesurer, benchmark-first)
 
-1. **Bimétal géométrique** (le plus prometteur) : 1€/2€ sont **bimétal** (anneau +
-   disque) ; 1/2/5 ct (cuivre) et 10/20/50 ct (nordic gold) sont **monométal**.
-   Un détecteur anneau-concentrique + couleur (cuivre vs or vs bi-couleur) sépare
-   nettement. Réutiliser `ml/vision/crop_detectors.py` (`measure_tilt`,
-   `ring_contour`, Hough concentrique) + `ml/vision/census.py` (`nms_concentric`,
-   déjà conscient du bimétal sur 2€). ⚠️ 1€ est aussi bimétal — mais hors scope des
-   recherches 2€, et discriminable par taille relative / couleur d'anneau.
-2. **Probe DINO dénomination** : petit classifieur logistique sur embeddings DINO
-   (comme la probe fragment dormante `census.py:230`) entraîné 2€ vs autres-denoms.
-   Gold : les 231 face=reverse + 2046 obverse confirmés sont 2€ ; miner des 1/2/20
-   ct depuis les crops de lots (face_margin≈0, top1_sim bas) + curation visuelle.
+1. ~~**Bimétal géométrique**~~ → **TESTÉ & RÉFUTÉ comme gate dur (2026-06-13, H10)**.
+   `bimetal_score` (contraste chroma a*/b* anneau↔disque, `ml/vision/denom_geometry.py`,
+   bench `ml/scripts/bench_denom.py`) : à τ=4 il **false-drop 25 % des vrais 2€**
+   (usés/tonés/mal éclairés indistinguables d'une monométal). Distributions qui se
+   chevauchent. **Reste utile** comme *ranker doux* (bande score≥18 = ~100 % vrais
+   2€) pour le triage de lot (piste 3), **pas** comme porte binaire. Détail : C7 §H10.
+2. **Probe DINO 2€-vs-junk** (PISTE PRIMAIRE désormais) : classifieur logistique sur
+   embeddings DINO (comme la probe fragment dormante `census.py:230`). Positifs :
+   2843 crops `face IN obverse,reverse` (vrais 2€). **Bloqueur mesuré (2026-06-13) :
+   le catalogue est 2€-only** → aucun négatif labellisé. Il FAUT curer un gold de
+   négatifs. **Gold provisoire déjà labellisé** (pass visuel Claude full-res 2026-06-13) :
+   `state/denom_bench/denom_gold.jsonl` = **76 pos / 32 neg / 4 unk**, dict éditable
+   `scripts/_seed_denom_gold.py`, verif `gold_verify.png`. 67 `conf=hi` (charts,
+   médailles MdP, cents, 2€ nets = ancres sûres) ; 45 `conf=lo` + 4 `unk` (3 crops
+   « bleuet » colorisé + 1 obscurci) **à valider humainement** avant d'entraîner.
+   NB 224² = résolution native (pièce ~223px dans la photo lot 1600px) → pas de
+   re-crop source à gagner. Pas de page web crop-level dédiée (la `crop-bench` Vue
+   existe mais générique, non câblée au gold denom). NB la pollution lot dépasse la dénom (médailles « Monnaie de Paris »,
+   logos, mire couleurs) → le probe doit viser **2€ vs tout-le-reste**, pas 2€ vs cents.
 3. **Suppression au niveau lot** : repenser si **tous** les crops d'une photo de
    lot doivent partir en review 2€. Un lot mixte → peut-être ne garder que les
    crops bimétal. Lien : `_kind_for_source_image` (lot detection, enqueue.py) +
@@ -108,8 +116,13 @@ constant (précision préservée car même design). À tester via `bench_face_de
 1. Lire [C7](./C7-robust-scan-classification.md) + ce handoff + `[[h4-zeroshot-beats-arcface-review]]`.
 2. Reproduire le constat : run `059dc8d90dad42558e3c6319a722fd35`, groupe AT-2005,
    bucket `multi_coin_photo` → crops 1ct/20ct (montages dans `ml/state/face_bench/`).
-3. Décider la piste gate dénomination (§2) — recommandé : **bimétal géométrique**
-   (signal physique fort, pas de training). Semer un bench + gold denom d'abord.
+3. ~~Décider la piste~~ — **fait (2026-06-13)** : bimétal géométrique réfuté en gate
+   dur (H10), bench `bench_denom.py` + signal `denom_geometry.py` livrés. **Prochain
+   pas concret** : labelliser les 112 crops d'amorce (`state/denom_bench/gold_page*.png`,
+   tâche humaine — distinguer 2€ / cent / médaille / logo / mire / partiel), figer un
+   `denom_gold.jsonl`, puis entraîner la **probe DINO 2€-vs-junk** (§2 piste 2).
+   Penser à **rebuild la banque coin-ness** (`foundation_coinness.npz` absente sur
+   desktop) pour rejeter médailles/logos/mire avant la dénom.
 4. Optionnel : enrichir les ancres revers (§3) pour le rappel.
 
 ## 6. État infra / garde-fous
