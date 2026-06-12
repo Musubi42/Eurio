@@ -144,6 +144,24 @@ cette itération ; instruments = test manifest held-out + eval_real.
   sur 11 Go sans xFormers, ~35 min/epoch). Interruption précédente : PC
   éteint à ~3h du matin, pas un crash du trainer.
 
+**Épilogue du run complet (12/06 soir)** — deux conclusions :
+- **Le re-run n'a pas reproduit v1** : best à l'epoch 1 (R@1 val 52,5 %),
+  puis collapse ArcFace (loss ≈ 0,003, R@1 45,8 % aux epochs 10-11). Pas de
+  seed fixée → forte variance inter-runs. Le meilleur artefact v2 reste le
+  checkpoint epoch-3 du matin (59,3 % val / 59,7 % held-out) — toujours
+  **sous v1 (71,4 %)**. Logique : v2 n'ajoutait presque pas de wild nouveau
+  vs v1. **Décision : on arrête de réentraîner sur ces données ; v1 reste le
+  modèle de référence.** Le prochain réentraînement attendra un vrai delta de
+  données (backlog review : 1722 ccproxy + 560 manual ouverts).
+- ⚠️ **Incident matériel ×2** : le GPU (GTX 1080 Ti) est tombé du bus PCIe
+  (**Xid 79, « GPU has fallen off the bus »**, 16:33) pendant l'epoch 12,
+  après ~7 h à 250 W — crash-loop d'affichage (`nvidia-modeset` flip
+  timeout), reboot forcé. L'« extinction » de la nuit (~3h, après 1h45 de
+  run) était très probablement le même phénomène. Pour les longs runs sur
+  cette machine : **capper la puissance** (`sudo nvidia-smi -pl 180`) et
+  **raccourcir les runs** (`--epoch-multiplier 3`, recommandé par le help du
+  trainer pour les datasets wild — run ÷3).
+
 ## Décisions & next
 
 **Décision §5.1 (mesurée)** : le modèle de pré-classement review reste le

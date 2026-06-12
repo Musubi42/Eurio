@@ -123,6 +123,17 @@ jamais en perdre une de vue.
   auto-attribution ; le rôle réel de la vision est le **résiduel** (21,2 % des
   valides routés review) + le **junk filtering** (le vrai point faible).
 
+- **2026-06-12 (soir) — Clôture itération 1 : v1 reste le modèle de
+  référence ; double incident GPU.** Le re-run v2 complet a collapsé (best
+  epoch 1 à 52,5 %, puis 45,8 % — pas de seed fixée, variance forte) et le
+  GPU (GTX 1080 Ti) est **tombé du bus PCIe (Xid 79)** pendant l'epoch 12
+  après ~7 h à 250 W (idem, très probablement, pour l'« extinction » de la
+  nuit). Décisions : (1) **v1 reste le fine-tuné de référence** — pas de
+  réentraînement avant un vrai delta de données (backlog review) ; (2) longs
+  runs sur ce PC : capper la puissance (`nvidia-smi -pl 180`) + raccourcir
+  (`--epoch-multiplier 3`) ; (3) à corriger côté trainer : seed fixée +
+  `training_log.json` écrit à chaque epoch (pas seulement en fin de run).
+
 - **2026-06-12 (boucle C2, 1re itération) — H1 confirmée ; « best epoch
   précoce » réfutée.** Dataset v2 (544 classes, 455 wild train, 77 test
   held-out par listing). Sur le test held-out : **v1 fine-tuné 71,4 % g@1 ≈
