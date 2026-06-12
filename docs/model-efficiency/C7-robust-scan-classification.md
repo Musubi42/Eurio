@@ -68,6 +68,32 @@ queue review sont en fait des **revers** qui polluent identité + flywheel
 aujourd'hui (le training ArcFace filtre `face!='reverse'`, mais `face` n'était
 quasi jamais renseigné → ces revers passaient en `NULL`).
 
+### Câblage livré (2026-06-12) — back + données + funnel
+
+Le détecteur tourne **dans la pipeline** et l'élimination est **visible dans le
+funnel bench** :
+
+- **Détecteur** (`auto_validate.py`) : réutilise le `vec` vitl14 déjà encodé →
+  `reverse_sim`/`face_margin` stockés sur la prédiction `2eur_all`, et
+  `image_assets.face` écrit **si NULL** (anti-clobber des labels humains). τ via
+  `FACE_REVERSE_TAU=0.05`. Parité de sortie avec le bench vérifiée au millième.
+- **Ancres** : banque `reverse_2eur` (2 webp packagés, vitl14) —
+  `go-task ml:dino-anchors:build -- --kind reverse_2eur`.
+- **Données** : colonnes `reverse_sim`/`face_margin` (`image_asset_dino_predictions`)
+  via `_ensure_column` (idempotent).
+- **Routing** : un crop `face=reverse` est **rejeté** (pattern `consensus_reject`
+  factorisé en `_reject_crop_terminal`), `quality_reason='face_reverse'`,
+  ré-ouvrable via /restore. `_route_decision_for_source_image` → bucket
+  `route_reason='face_reverse'`.
+- **Funnel** : bucket « Rejeté · revers commun 2€ » dans « TRAITEMENT DES CROPS »
+  (rendu générique), cliquable → drill des listings via
+  `?route_decision=rejected&route_reason=face_reverse`.
+- **Backfill** (`go-task ml:backfill-face`) sur l'existant : **2277 crops 2€
+  évalués → 231 reverse / 2046 obverse**, 119 revers rejetés (les autres déjà
+  tranchés / restore humain → sticky), 48 listings single-crop re-routés en
+  `face_reverse`. Idempotent (re-run = 0 écrit). Les 566 avers humains + 170
+  unknown intacts.
+
 ### Caveats / reste à faire (pilier 1)
 
 - **Rappel wild non chiffré** : le top minée est 100 % revers (précision@top),

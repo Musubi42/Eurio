@@ -95,6 +95,11 @@ tasks:
     cmds:
       - "{{.VENV}}/python -m scripts.backfill_dino_predictions -v {{.CLI_ARGS}}"
 
+  backfill-face:
+    desc: "C7 — Détecte la face (avers vs revers commun 2€) sur les crops face IS NULL, rejette les revers (ré-ouvrables) et re-route les listings touchés (bucket funnel 'revers commun 2€'). Idempotent. Usage: go-task ml:backfill-face [-- --limit 200] [-- --dry]"
+    cmds:
+      - "{{.VENV}}/python -m scripts.backfill_face -v {{.CLI_ARGS}}"
+
   text-signals:backfill:
     desc: "Extract listing text signals (countries/years/denoms/themes/markers/lot/coverage) for every source_image without a row in listing_text_signals. Pure regex/dict, no I/O. Idempotent. Usage: go-task ml:text-signals:backfill [-- --force] [-- --limit 50] [-- --source ebay]"
     cmds:

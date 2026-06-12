@@ -35,10 +35,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
 from training.foundation import (
     CONSENSUS_ANCHORS_KIND,
     DEFAULT_ENCODER_VERSION,
+    REVERSE_ANCHORS_KIND,
     SUGGESTIONS_ANCHORS_KIND,
+    SUGGESTIONS_ENCODER_VERSION,
     AnchorBank,
     build_transform,
     encode_image,
@@ -56,6 +60,13 @@ from store import DinoPredictionRow
 logger = logging.getLogger(__name__)
 
 _TOP_K_STORE = 5  # how many candidates to persist per asset
+
+# Détection de face (C7) : un crop est le REVERS commun 2€ si sa similarité au
+# revers dépasse sa similarité à l'avers d'au moins τ. Seuil mesuré (bench
+# bench_face_detection.py, DINO vitl14) : τ=+0,05 → 0 % de faux positifs sur
+# 562 avers confirmés, top-40 minés = 100 % revers. Conservateur (précision >
+# rappel) car un faux « reverse » jetterait un avers identifiable.
+FACE_REVERSE_TAU = 0.05
 
 # Kinds calculés au fil de l'eau (scrape/sync) : la prédiction consensus
 # (2eur_commemo) + la prédiction suggestions (2eur_all). Un seul encodage
@@ -129,6 +140,17 @@ def _get_bank(anchors_kind: str) -> AnchorBank | None:
         anchors_kind, bank.count, bank.dim, bank.encoder_version,
     )
     return bank
+
+
+def _get_reverse_bank() -> AnchorBank | None:
+    """Banque du revers commun 2€ (vitl14). None si absente → face non calculée
+    (dégrade proprement, comme une banque d'ancres manquante)."""
+    return _get_bank(REVERSE_ANCHORS_KIND)
+
+
+def _decide_face(reverse_sim: float, obverse_sim: float) -> str:
+    """Verdict de face depuis la marge reverse-ness − obverse-ness (cf. C7)."""
+    return "reverse" if (reverse_sim - obverse_sim) >= FACE_REVERSE_TAU else "obverse"
 
 
 def _select_assets_for_run(
@@ -443,6 +465,16 @@ def predict_and_persist_kinds(
             )
             if prediction is not None:
                 out[kind] = prediction
+        # Face (C7) : sur le vec vitl14, renseigne reverse_sim/face_margin de la
+        # row 2eur_all (audit). L'écriture de image_assets.face reste au run
+        # principal / backfill (ici on n'a pas le garde-fou face IS NULL ciblé).
+        if version == SUGGESTIONS_ENCODER_VERSION and SUGGESTIONS_ANCHORS_KIND in out:
+            rev_bank = _get_reverse_bank()
+            ap = out[SUGGESTIONS_ANCHORS_KIND]
+            if rev_bank is not None and ap.top1_sim is not None:
+                rev_sim = float(np.max(rev_bank.matrix @ vec))
+                ap.reverse_sim = rev_sim
+                ap.face_margin = rev_sim - ap.top1_sim
     if out:
         store.upsert_dino_predictions(list(out.values()))
     return out
@@ -494,6 +526,10 @@ def _run_inner(
         for kind, bank in banks.items()
     }
 
+    # Banque revers (C7 face) — chargée une fois, partagée. None → face skip.
+    rev_bank = _get_reverse_bank()
+    face_writes: list[tuple[str, str]] = []  # (face, asset_id), WHERE face IS NULL
+
     rows_to_write: list[DinoPredictionRow] = []
     for r, kinds in in_scope:
         aid = r["asset_id"]
@@ -529,6 +565,7 @@ def _run_inner(
             # Un embedding par encodeur (consensus=vits14, suggestions=vitl14),
             # partagé entre les kinds qui tournent sur le même encodeur.
             predictions = []
+            vecs_by_version: dict[str, Any] = {}
             for version in sorted(
                 {banks[k].encoder_version for k in kinds_todo}
             ):
@@ -536,6 +573,7 @@ def _run_inner(
                 vec = encode_image(
                     crop_p, encoder=encoder, device=device, transform=transform
                 )
+                vecs_by_version[version] = vec
                 predictions.extend(
                     p for kind in kinds_todo
                     if banks[kind].encoder_version == version
@@ -558,6 +596,25 @@ def _run_inner(
         if not predictions:
             n_errors += 1
             continue
+
+        # ── Détection de face (C7) — gratuite : réutilise le vec vitl14 ──────
+        # Calculée seulement quand on (re)prédit 2eur_all (même encodeur que la
+        # banque revers). reverse_sim/face_margin sont stockés sur la row
+        # 2eur_all (audit), et image_assets.face écrit plus bas si NULL.
+        if rev_bank is not None and SUGGESTIONS_ENCODER_VERSION in vecs_by_version:
+            all_pred = next(
+                (p for p in predictions if p.anchors_kind == SUGGESTIONS_ANCHORS_KIND),
+                None,
+            )
+            if all_pred is not None and all_pred.top1_sim is not None:
+                vvec = vecs_by_version[SUGGESTIONS_ENCODER_VERSION]
+                rev_sim = float(np.max(rev_bank.matrix @ vvec))
+                all_pred.reverse_sim = rev_sim
+                all_pred.face_margin = rev_sim - all_pred.top1_sim
+                face_writes.append(
+                    (_decide_face(rev_sim, all_pred.top1_sim), aid)
+                )
+
         rows_to_write.extend(predictions)
         predicted_ids.append(aid)
         n_predicted += len(predictions)
@@ -568,6 +625,21 @@ def _run_inner(
     if rows_to_write:
         _flush(conn, store, rows_to_write)
         rows_to_write.clear()
+
+    # ── Écriture de la face (C7) ─────────────────────────────────────────
+    # UNIQUEMENT si face IS NULL : ne clobbe pas les labels humains/Claude
+    # (review_queue.decided_face → image_assets.face) ni un run précédent →
+    # idempotent. Le routing (rejet face_reverse) se fait à l'enqueue / backfill.
+    if face_writes:
+        conn.executemany(
+            "UPDATE image_assets SET face=? WHERE id=? AND face IS NULL",
+            face_writes,
+        )
+        n_rev = sum(1 for f, _ in face_writes if f == "reverse")
+        logger.info(
+            "auto_validate: face écrit sur %d crops (%d reverse, %d obverse) "
+            "[face IS NULL only]", len(face_writes), n_rev, len(face_writes) - n_rev,
+        )
 
     # Re-route post-Dino : pour les items DÉJÀ en queue (cas backfill — en run
     # normal l'enqueue vient APRÈS et pose la lane lui-même), recalcule la lane
@@ -628,9 +700,11 @@ def _flush(conn: sqlite3.Connection, store, rows: list[DinoPredictionRow]) -> No
           target_country, country_anchors_count, top_k_country_json,
           top1_country_eurio_id, top1_country_sim,
           top2_country_eurio_id, top2_country_sim, country_spread,
+          reverse_sim, face_margin,
           computed_at, duration_ms
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                   ?, ?, ?, ?, ?, ?, ?, ?,
+                  ?, ?,
                   datetime('now'), ?)
         ON CONFLICT(asset_id, encoder_version, anchors_kind) DO UPDATE SET
           anchors_count          = excluded.anchors_count,
@@ -648,6 +722,8 @@ def _flush(conn: sqlite3.Connection, store, rows: list[DinoPredictionRow]) -> No
           top2_country_eurio_id  = excluded.top2_country_eurio_id,
           top2_country_sim       = excluded.top2_country_sim,
           country_spread         = excluded.country_spread,
+          reverse_sim            = excluded.reverse_sim,
+          face_margin            = excluded.face_margin,
           duration_ms            = excluded.duration_ms,
           computed_at            = datetime('now')
         """,
@@ -661,6 +737,7 @@ def _flush(conn: sqlite3.Connection, store, rows: list[DinoPredictionRow]) -> No
                 _json.dumps(r.top_k_country) if r.top_k_country is not None else None,
                 r.top1_country_eurio_id, r.top1_country_sim,
                 r.top2_country_eurio_id, r.top2_country_sim, r.country_spread,
+                r.reverse_sim, r.face_margin,
                 r.duration_ms,
             )
             for r in rows

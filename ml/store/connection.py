@@ -261,6 +261,9 @@ class StoreBase:
                 ("top2_country_eurio_id", "TEXT"),
                 ("top2_country_sim", "REAL"),
                 ("country_spread", "REAL"),
+                # Face detection (C7) : reverse-ness + marge vs obverse-ness.
+                ("reverse_sim", "REAL"),
+                ("face_margin", "REAL"),
             ):
                 self._ensure_column(
                     conn,

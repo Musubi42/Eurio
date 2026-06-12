@@ -38,6 +38,12 @@ class DinoPredictionRow:
     top2_country_eurio_id: str | None = None
     top2_country_sim: float | None = None
     country_spread: float | None = None
+    # Face detection (C7) : sim max aux 2 ancres du revers commun 2€ et marge
+    # reverse-ness − obverse-ness (= reverse_sim − top1_sim). Renseignées
+    # seulement sur la row anchors_kind='2eur_all' (même encodeur vitl14 que
+    # la banque revers). NULL ailleurs.
+    reverse_sim: float | None = None
+    face_margin: float | None = None
     duration_ms: int | None = None
     computed_at: str | None = None
 
@@ -61,6 +67,8 @@ class DinoPredictionRow:
             "top2_country_eurio_id": self.top2_country_eurio_id,
             "top2_country_sim": self.top2_country_sim,
             "country_spread": self.country_spread,
+            "reverse_sim": self.reverse_sim,
+            "face_margin": self.face_margin,
             "duration_ms": self.duration_ms,
             "computed_at": self.computed_at,
         }
@@ -92,6 +100,8 @@ def _row_to_dino_prediction(r: sqlite3.Row) -> DinoPredictionRow:
         top2_country_eurio_id=_maybe("top2_country_eurio_id"),
         top2_country_sim=_maybe("top2_country_sim"),
         country_spread=_maybe("country_spread"),
+        reverse_sim=_maybe("reverse_sim"),
+        face_margin=_maybe("face_margin"),
         duration_ms=r["duration_ms"],
         computed_at=r["computed_at"],
     )
@@ -114,9 +124,11 @@ class DinoMixin:
                   target_country, country_anchors_count, top_k_country_json,
                   top1_country_eurio_id, top1_country_sim,
                   top2_country_eurio_id, top2_country_sim, country_spread,
+                  reverse_sim, face_margin,
                   computed_at, duration_ms
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                           ?, ?, ?, ?, ?, ?, ?, ?,
+                          ?, ?,
                           datetime('now'), ?)
                 ON CONFLICT(asset_id, encoder_version, anchors_kind) DO UPDATE SET
                   anchors_count          = excluded.anchors_count,
@@ -134,6 +146,8 @@ class DinoMixin:
                   top2_country_eurio_id  = excluded.top2_country_eurio_id,
                   top2_country_sim       = excluded.top2_country_sim,
                   country_spread         = excluded.country_spread,
+                  reverse_sim            = excluded.reverse_sim,
+                  face_margin            = excluded.face_margin,
                   duration_ms            = excluded.duration_ms,
                   computed_at            = datetime('now')
                 """,
@@ -157,6 +171,8 @@ class DinoMixin:
                         r.top2_country_eurio_id,
                         r.top2_country_sim,
                         r.country_spread,
+                        r.reverse_sim,
+                        r.face_margin,
                         r.duration_ms,
                     )
                     for r in rows

@@ -444,6 +444,10 @@ CREATE TABLE IF NOT EXISTS image_asset_dino_predictions (
   top2_country_eurio_id  TEXT,
   top2_country_sim       REAL,
   country_spread         REAL,
+  -- Face detection (C7) : reverse-ness vs obverse-ness. Renseignées seulement
+  -- sur anchors_kind='2eur_all' (vitl14, même embedding que la banque revers).
+  reverse_sim            REAL,
+  face_margin            REAL,            -- reverse_sim - top1_sim
   computed_at     TEXT NOT NULL DEFAULT (datetime('now')),
   duration_ms     INTEGER,
   PRIMARY KEY (asset_id, encoder_version, anchors_kind)

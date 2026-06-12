@@ -11,12 +11,14 @@ Re-exports the most common entry-points so callers can write
 
 from training.foundation.anchors import (
     CONSENSUS_ANCHORS_KIND,
+    REVERSE_ANCHORS_KIND,
     SUGGESTIONS_ANCHORS_KIND,
     AnchorBank,
     anchor_path,
     build_anchors_2eur_all,
     build_anchors_2eur_commemo,
     build_anchors_2eur_standard,
+    build_anchors_reverse_2eur,
     encoder_version_for_kind,
     load_anchors,
     save_anchors,
@@ -41,6 +43,7 @@ from training.foundation.matcher import Match, spread, top_k_match, top_k_match_
 
 __all__ = [
     "CONSENSUS_ANCHORS_KIND",
+    "REVERSE_ANCHORS_KIND",
     "DEFAULT_ENCODER_VERSION",
     "DINOV2_MODEL",
     "DINOV2_REPO",
@@ -57,6 +60,7 @@ __all__ = [
     "build_anchors_2eur_all",
     "build_anchors_2eur_commemo",
     "build_anchors_2eur_standard",
+    "build_anchors_reverse_2eur",
     "build_transform",
     "encode_image",
     "encode_paths",

@@ -54,6 +54,19 @@ DATASETS_DIR = ML_DIR / "datasets"
 SUGGESTIONS_ANCHORS_KIND = "2eur_all"
 CONSENSUS_ANCHORS_KIND = "2eur_commemo"
 
+# Banque revers commun 2€ (C7 pilier face) : exactement 2 designs (carte v1
+# ≤2006, v2 ≥2007), packagés dans l'APK. Sert à détecter qu'un crop montre le
+# côté commun (non identifiable) plutôt que l'avers national. Encodée en vitl14
+# pour partager l'embedding avec ``2eur_all`` (même ``vec`` au runtime → la
+# marge reverse-ness vs obverse-ness est calculable sans ré-encoder).
+REVERSE_ANCHORS_KIND = "reverse_2eur"
+_REVERSE_ANCHOR_SOURCES = [
+    ("reverse_2eur_v1", ML_DIR.parent / "app-android" / "src" / "main"
+     / "assets" / "shared_reverse" / "reverse_2eur_v1.webp"),
+    ("reverse_2eur_v2", ML_DIR.parent / "app-android" / "src" / "main"
+     / "assets" / "shared_reverse" / "reverse_2eur_v2.webp"),
+]
+
 # Encodeur par kind : les suggestions tournent sur vitl14 (+22 pts recall@1,
 # bench Phase 2.4 dino-suggestions) ; le consensus reste sur vits14 (seuils
 # C0–C5 calibrés sur ses sims — re-replay gold requis avant toute bascule).
@@ -61,6 +74,7 @@ ENCODER_VERSION_FOR_KIND = {
     CONSENSUS_ANCHORS_KIND: DEFAULT_ENCODER_VERSION,
     SUGGESTIONS_ANCHORS_KIND: SUGGESTIONS_ENCODER_VERSION,
     "2eur_standard": DEFAULT_ENCODER_VERSION,
+    REVERSE_ANCHORS_KIND: SUGGESTIONS_ENCODER_VERSION,
 }
 
 
@@ -399,6 +413,44 @@ def build_anchors_2eur_all(
         raise RuntimeError(
             f"No 2€ obverse found under {datasets_dir} — "
             "did you bootstrap the dataset?"
+        )
+
+    return _encode_and_save(
+        kind=kind, paths_with_eid=paths_with_eid, encoder_version=encoder_version
+    )
+
+
+def build_anchors_reverse_2eur(
+    *,
+    conn: sqlite3.Connection | None = None,
+    datasets_dir: Path = DATASETS_DIR,
+    encoder_version: str = SUGGESTIONS_ENCODER_VERSION,
+    force_recompute: bool = False,
+) -> AnchorBank:
+    """Banque du revers commun 2€ : les 2 designs de carte packagés (APK).
+
+    ``conn``/``datasets_dir`` ignorés (signature homogène avec les autres
+    builders pour le dispatcher CLI) — les sources sont les 2 webp figés
+    ``app-android/.../shared_reverse/reverse_2eur_v{1,2}.webp``. Encodée vitl14
+    pour partager l'embedding avec ``2eur_all`` (cf. C7 face).
+    """
+    kind = REVERSE_ANCHORS_KIND
+
+    if not force_recompute:
+        cached = load_anchors(kind)
+        if cached is not None and cached.encoder_version == encoder_version:
+            logger.info(
+                "Anchors cache hit (%s, %d entries, encoder=%s) — skipping rebuild",
+                kind, cached.count, cached.encoder_version,
+            )
+            return cached
+
+    paths_with_eid = [(eid, p) for eid, p in _REVERSE_ANCHOR_SOURCES if p.is_file()]
+    if len(paths_with_eid) < 2:
+        raise RuntimeError(
+            "Reverse anchors missing — expected 2 webp under "
+            f"{_REVERSE_ANCHOR_SOURCES[0][1].parent} "
+            "(run export.build_shared_reverse_assets)"
         )
 
     return _encode_and_save(

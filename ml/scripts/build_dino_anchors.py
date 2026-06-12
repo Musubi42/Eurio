@@ -27,6 +27,7 @@ from training.foundation.anchors import (  # noqa: E402
     build_anchors_2eur_all,
     build_anchors_2eur_commemo,
     build_anchors_2eur_standard,
+    build_anchors_reverse_2eur,
     load_anchors,
 )
 from store import Store  # noqa: E402
@@ -37,6 +38,9 @@ _BUILDERS = {
     "2eur_commemo": build_anchors_2eur_commemo,
     "2eur_standard": build_anchors_2eur_standard,
     "2eur_all": build_anchors_2eur_all,
+    # reverse_2eur ignore conn/datasets_dir (sources = 2 webp packagés) mais
+    # garde la signature homogène pour passer par le même dispatcher.
+    "reverse_2eur": build_anchors_reverse_2eur,
 }
 
 

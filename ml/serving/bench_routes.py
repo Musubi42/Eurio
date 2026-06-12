@@ -254,6 +254,8 @@ _HUMAN_REASON: dict[str, str] = {
     "single_unmatched": "single sans match unique",
     "multi_coin_photo": "photo multi-pièces",
     "is_lot_suspected": "lot suspecté (titre)",
+    "all_crops_rejected": "tous les crops rejetés",
+    "face_reverse": "revers commun 2€",
 }
 
 

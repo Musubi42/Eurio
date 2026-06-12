@@ -127,6 +127,15 @@ jamais en perdre une de vue.
   auto-attribution ; le rôle réel de la vision est le **résiduel** (21,2 % des
   valides routés review) + le **junk filtering** (le vrai point faible).
 
+- **2026-06-12 — C7 pilier face LIVRÉ (back + données + funnel).** Détecteur
+  câblé dans `auto_validate` (réutilise le vec vitl14, τ=0,05, écrit
+  `image_assets.face` si NULL), banque `reverse_2eur`, rejet `face_reverse`
+  (pattern consensus factorisé), bucket cliquable dans le funnel bench.
+  Backfill : **2277 crops 2€ → 231 reverse / 2046 obverse**, 119 rejetés, 48
+  listings re-routés ; idempotent ; 566 avers humains intacts. Funnel vérifié
+  (7 groupes montrent « Rejeté · revers commun 2€ », drill OK). Reste : rappel
+  wild à élargir, UX Android « retourne la pièce » (proto-first, ❌ à proto'er).
+
 - **2026-06-12 — Pivot stratégie (C7) + H7 confirmée.** Constat utilisateur :
   ccproxy/Claude vision « pourri », mais le DINO de la review manuelle classe
   bien. Diagnostic : ccproxy posait la mauvaise question (vérifier la cible eBay

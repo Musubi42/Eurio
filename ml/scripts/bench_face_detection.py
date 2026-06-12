@@ -158,32 +158,55 @@ def main() -> int:
     for t in (-0.05, 0.0, 0.05, 0.10):
         print(f"    FP_avers @ marge≥{t:+.2f} : {float((obv_margin>=t).mean()):.1%}")
 
-    # ── mining : top reverse-ness du pool → à vérifier visuellement ──────
+    # ── mining par BANDES de marge → planche par bande pour vérif ────────
     if pool_imgs:
+        import math
         pool_vecs = _encode(pool_imgs, model, device, tf)
         p_rev, p_obv = face_scores(pool_vecs)
         p_margin = p_rev - p_obv
-        order = np.argsort(-p_margin)
-        mined = ML_DIR / "state" / "face_bench" / "mined_reverse"
-        mined.mkdir(parents=True, exist_ok=True)
-        # purge anciens
-        for f in mined.glob("*.png"):
+        bands = [(-1.0, -0.05), (-0.05, 0.0), (0.0, 0.05), (0.05, 0.10), (0.10, 1.0)]
+        out = ML_DIR / "state" / "face_bench"
+        for f in out.glob("band_*.png"):
             f.unlink()
-        print(f"\nTOP {args.mine} candidats REVERS (marge desc) → {mined}")
-        for rank, idx in enumerate(order[:args.mine]):
-            aid, sp = pool_keys[int(idx)]
-            src = local_path("enrichment-crops", sp)
-            dst = mined / f"{rank:02d}_m{p_margin[idx]:+.3f}_{aid[:12]}.png"
-            try:
-                Image.open(src).convert("RGB").save(dst)
-            except Exception:
-                pass
-        print(f"  marge candidats top : {p_margin[order[0]]:+.3f} … "
-              f"{p_margin[order[args.mine-1]]:+.3f}")
-        print(f"  pool avec marge≥0 : {float((p_margin>=0).mean()):.1%} "
-              f"({int((p_margin>=0).sum())}/{len(p_margin)})")
-        print("  → vérifier visuellement ces crops (Read) pour valider le rappel wild.")
-    print("\n⚠️ rappel wild non encore mesuré — dépend de la vérif visuelle du top minée.")
+        # JSONL des candidats scorés (pour figer un gold élargi après vérif)
+        import json
+        cand = []
+        print("\n" + "=" * 64)
+        print("MINING PAR BANDE DE MARGE (pool non-labellisé)")
+        print("=" * 64)
+        for lo, hi in bands:
+            idxs = [i for i in range(len(p_margin)) if lo <= p_margin[i] < hi]
+            idxs.sort(key=lambda i: -p_margin[i])
+            print(f"  marge [{lo:+.2f},{hi:+.2f}) : {len(idxs)} crops")
+            for i in idxs:
+                aid, sp = pool_keys[i]
+                cand.append({"asset_id": aid, "storage_path": sp,
+                             "margin": round(float(p_margin[i]), 4)})
+            # planche-contact (max 48 par bande)
+            sample = idxs[:48]
+            if sample:
+                cols, cell = 8, 130
+                rows = math.ceil(len(sample) / cols)
+                sheet = Image.new("RGB", (cols * cell, rows * cell), (25, 25, 25))
+                from PIL import ImageDraw
+                dr = ImageDraw.Draw(sheet)
+                for k, i in enumerate(sample):
+                    aid, sp = pool_keys[i]
+                    try:
+                        im = Image.open(local_path("enrichment-crops", sp)).convert("RGB").resize((cell - 8, cell - 20))
+                        x, y = (k % cols) * cell, (k // cols) * cell
+                        sheet.paste(im, (x + 4, y + 4))
+                        dr.text((x + 4, y + cell - 15), f"{p_margin[i]:+.3f}", fill=(255, 230, 0))
+                    except Exception:
+                        pass
+                tag = f"band_{lo:+.2f}_{hi:+.2f}".replace(".", "")
+                sheet.save(out / f"{tag}.png")
+        (out / "mined_candidates.jsonl").write_text(
+            "\n".join(json.dumps(c) for c in cand) + "\n")
+        print(f"\n  total scoré : {len(p_margin)} | marge≥0 : "
+              f"{int((p_margin>=0).sum())} ({float((p_margin>=0).mean()):.1%})")
+        print(f"  planches → {out}/band_*.png ; candidats → mined_candidates.jsonl")
+    print("\n⚠️ rappel wild : valider les bandes frontière (−0,05..+0,05) pour fixer τ.")
     return 0
 
 

@@ -36,6 +36,7 @@
 | `scan-not-identified.html` | `ScanScreen` state NotIdentified → `ScanNotIdentifiedSheet` | 1 | 🟡 | Portage livré (red ring + top-5 + face-value picker 8 chips). Validation device pendante. |
 | `scan-failure.html` | `ScanScreen` state Failure → `ScanFailureLayer` | 1 | 🟡 | Portage livré (warm orange + auto-retry 3s). Le trigger `ScanState.Failure` reste à définir côté pipeline (actuellement inatteignable). |
 | `scan-debug.html` | `ScanScreen` + `ScanDebugOverlay` gated by `debugMode` | 1 | 🟡 | Portage livré (5 panels + tool strip). Le 7-tap version badge fonctionne. `DebugViewData` populée vide pour l'instant — à brancher sur `ScanResult` latences + bboxes réelles. |
+| _(à créer)_ `scan-flip-coin` | `ScanScreen` state ReverseDetected | 1 | ❌ à proto'er | **C7 face** — l'utilisateur montre le revers commun 2€ (carte). Le détecteur de face (DINO, τ=0,05) le reconnaît → inviter « retourne la pièce » plutôt qu'un match voué à l'échec (matching obverse-only). Bloque le code Compose tant que la scène proto n'existe pas (R1). Back déjà livré (`image_assets.face`). |
 
 ### Coin detail
 

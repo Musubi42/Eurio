@@ -188,6 +188,7 @@ const DECISION_COLORS: Record<string, string> = {
   pending: 'var(--ink-300)',
   review_single: 'var(--indigo-600)',
   review_lot: 'var(--gold-400)',
+  rejected: 'var(--danger)',
 }
 function decisionColor(decision: string | null): string {
   if (decision && decision.startsWith('auto')) return 'var(--success)'
@@ -232,6 +233,7 @@ const REASON_LABELS: Record<string, string> = {
   single_unmatched: 'pièce seule, non auto-attribuée',
   single_matched: 'pièce seule, attribuée',
   all_crops_rejected: 'tous les crops rejetés',
+  face_reverse: 'revers commun 2€ (avers attendu)',
 }
 function reasonLabel(d: RunDrop): string {
   return (d.reason && REASON_LABELS[d.reason]) || d.reason || '—'

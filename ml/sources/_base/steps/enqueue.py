@@ -41,6 +41,60 @@ _BONUS_TARGETED = 30
 # Estampille `decision_engine_version` d'un rejet auto par la règle de consensus
 # (cf. format schema.sql review_queue : 'auto_dino@…', 'human@v1', …).
 _CONSENSUS_ENGINE_VERSION = f"consensus@v{RULE_VERSION}"
+# Rejet auto par le détecteur de face (C7) : crop = revers commun 2€.
+_FACE_ENGINE_VERSION = "face@v1"
+
+
+def _reject_crop_terminal(
+    conn: sqlite3.Connection,
+    *,
+    asset_id: str,
+    review_id: str,
+    quality_reason: str,
+    decided_by: str,
+    state_reason: str,
+    engine_version: str,
+    decision_payload: dict,
+    target_eurio_id: str | None,
+    run_id: str | None,
+) -> None:
+    """Rejet auto ré-ouvrable d'un crop (pattern partagé consensus / face).
+
+    Même état terminal qu'un reject humain mais estampillé pipeline : apparaît
+    dans la grille /rejected et se ré-ouvre via /restore (la row review_queue
+    doit exister → l'appelant l'insère d'abord). actor='pipeline' (CHECK
+    image_state_events.actor). La row review_queue est marquée `done` avec
+    ``decided_by`` (ex. 'consensus', 'pipeline').
+    """
+    conn.execute(
+        """
+        UPDATE image_assets
+           SET resolution_status = 'rejected',
+               training_eligible = 0,
+               quality_reason    = ?,
+               resolved_at       = datetime('now')
+         WHERE id = ?
+        """,
+        (quality_reason, asset_id),
+    )
+    conn.execute(
+        """
+        UPDATE review_queue
+           SET status = 'done',
+               decided_at = datetime('now'),
+               decided_by = ?,
+               decision_notes = 'rejected',
+               decision_engine_version = ?,
+               decision_metadata_json = ?
+         WHERE id = ?
+        """,
+        (decided_by, engine_version, json.dumps(decision_payload), review_id),
+    )
+    emit_state_event(
+        conn, asset_id=asset_id, to_state="rejected",
+        actor="pipeline", reason=state_reason,
+        target_eurio_id=target_eurio_id, run_id=run_id,
+    )
 
 
 @dataclass
@@ -71,7 +125,8 @@ def _route_decision_for_source_image(
         needs_review > rejected > auto_* > manual > pending
     """
     rows = conn.execute(
-        "SELECT resolution_status FROM image_assets WHERE source_image_id = ?",
+        "SELECT resolution_status, quality_reason "
+        "FROM image_assets WHERE source_image_id = ?",
         (source_image_id,),
     ).fetchall()
     if not rows:
@@ -93,6 +148,12 @@ def _route_decision_for_source_image(
         return (decision, reason)
 
     if statuses == {"rejected"}:
+        # C7 — si TOUS les crops rejetés le sont pour face=revers commun, on le
+        # dit explicitement (bucket funnel « revers commun 2€ ») ; sinon rejet
+        # générique. Cas typique : listing single-crop montrant le revers.
+        reasons = {r["quality_reason"] for r in rows}
+        if reasons == {"face_reverse"}:
+            return ("rejected", "face_reverse")
         return ("rejected", "all_crops_rejected")
 
     if statuses <= {"auto_phash", "auto_name", "manual", "rejected"}:
@@ -164,7 +225,8 @@ def run_enqueue(
         rows = conn.execute(
             """
             SELECT a.id AS asset_id,
-                   a.candidate_eurio_ids_json
+                   a.candidate_eurio_ids_json,
+                   a.face
               FROM image_assets a
              WHERE a.source_image_id = ?
                AND a.resolution_status = 'needs_review'
@@ -182,6 +244,34 @@ def run_enqueue(
 
             priority = _compute_priority(target_eurio_id=si_meta["target_eurio_id"])
             candidates = r["candidate_eurio_ids_json"]
+
+            # C7 — Face : un crop du REVERS commun 2€ n'est pas identifiable
+            # (l'avers national est ce qu'on matche). Rejet terminal ré-ouvrable
+            # AVANT le consensus (sinon dino/texte produiraient un verdict
+            # contradictoire sur une face non pertinente). La garde `already`
+            # ci-dessus rend un /restore humain sticky → pas de re-rejet.
+            if r["face"] == "reverse":
+                review_id = uuid.uuid4().hex
+                conn.execute(
+                    """
+                    INSERT INTO review_queue (
+                      id, image_asset_id, priority, candidate_eurio_ids_json, kind, lane
+                    ) VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (review_id, r["asset_id"], priority, candidates, kind, DEFAULT_LANE),
+                )
+                _reject_crop_terminal(
+                    conn, asset_id=r["asset_id"], review_id=review_id,
+                    quality_reason="face_reverse",
+                    decided_by="pipeline",
+                    state_reason="face_reverse",
+                    engine_version=_FACE_ENGINE_VERSION,
+                    decision_payload={"reason": "face_reverse"},
+                    target_eurio_id=si_meta["target_eurio_id"], run_id=run.run_id,
+                )
+                n_rejected += 1
+                continue
+
             # Lane figée à l'enqueue par la RÈGLE DE CONSENSUS (C3) — source de
             # vérité unique du routage : agrège text + dino + crop_quality (tous
             # disponibles ici : text au step 2.5, dino au 5.5, crop si mesuré) en
@@ -213,39 +303,13 @@ def run_enqueue(
             # ré-ouvre via /restore (qui exige une row review_queue → on l'insère
             # d'abord). La garde `already` ci-dessus rend le restore humain sticky.
             if signals and cv.outcome == "reject":
-                conn.execute(
-                    """
-                    UPDATE image_assets
-                       SET resolution_status = 'rejected',
-                           training_eligible = 0,
-                           quality_reason    = 'consensus_reject',
-                           resolved_at       = datetime('now')
-                     WHERE id = ?
-                    """,
-                    (r["asset_id"],),
-                )
-                conn.execute(
-                    """
-                    UPDATE review_queue
-                       SET status = 'done',
-                           decided_at = datetime('now'),
-                           decided_by = 'consensus',
-                           decision_notes = 'rejected',
-                           decision_engine_version = ?,
-                           decision_metadata_json = ?
-                     WHERE id = ?
-                    """,
-                    (
-                        _CONSENSUS_ENGINE_VERSION,
-                        json.dumps({"reason": cv.reason, "rule": cv.rule}),
-                        review_id,
-                    ),
-                )
-                # actor='pipeline' (CHECK image_state_events.actor) — la décision
-                # vient du step pipeline ; `reason` porte la règle de consensus.
-                emit_state_event(
-                    conn, asset_id=r["asset_id"], to_state="rejected",
-                    actor="pipeline", reason=f"consensus_{cv.rule}",
+                _reject_crop_terminal(
+                    conn, asset_id=r["asset_id"], review_id=review_id,
+                    quality_reason="consensus_reject",
+                    decided_by="consensus",
+                    state_reason=f"consensus_{cv.rule}",
+                    engine_version=_CONSENSUS_ENGINE_VERSION,
+                    decision_payload={"reason": cv.reason, "rule": cv.rule},
                     target_eurio_id=si_meta["target_eurio_id"], run_id=run.run_id,
                 )
                 n_rejected += 1
