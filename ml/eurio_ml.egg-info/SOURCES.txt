@@ -119,6 +119,7 @@ scripts/bench_listing_bimetal.py
 scripts/bench_theme_match.py
 scripts/bootstrap_coin_names_i18n.py
 scripts/bootstrap_coins_from_referential.py
+scripts/build_arcface_dataset.py
 scripts/build_cohort_bundle.py
 scripts/build_dino_anchors.py
 scripts/cascade_sync.py
@@ -133,6 +134,7 @@ scripts/discover_referential_fixes.py
 scripts/enqueue_orphan_crops.py
 scripts/enrich_bench_images.py
 scripts/enrich_missing_payloads.py
+scripts/eval_arcface_vits14.py
 scripts/eval_obverse_attribution_vision.py
 scripts/export_i18n_worklist.py
 scripts/gate_standard_vision.py
@@ -159,6 +161,7 @@ scripts/report_obverse_group_volume.py
 scripts/review_obverse_groups_vision.py
 scripts/seed_mints.py
 scripts/seed_source_registry.py
+scripts/spike_vits14_litert.py
 scripts/sweep_bce_empty_upstream.py
 scripts/verdict_gold.py
 scripts/verify_backup_restore.py
