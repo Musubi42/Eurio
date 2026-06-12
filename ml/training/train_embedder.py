@@ -7,6 +7,7 @@ Supports two modes:
 
 import argparse
 import json
+import random
 import signal
 import sys
 import time
@@ -168,6 +169,33 @@ def _resolve_recipe(id_or_name: str) -> dict:
 
 
 PROGRESS_DIR = ML_DIR / "state" / "training_progress"
+
+
+def _set_seed(seed: int) -> None:
+    """Seed random/numpy/torch pour des runs reproductibles.
+
+    Sans seed, deux runs à config identique divergent fortement (mesuré le
+    2026-06-12 : R@1 val 59,3 % vs 45,8 %) — la variance inter-runs masque
+    l'effet des données, ce qui casse le protocole benchmark-first.
+    """
+    import numpy as np  # noqa: PLC0415
+
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+
+def _flush_training_log(output_dir: Path, training_log: list[dict]) -> None:
+    """Écrit training_log.json après CHAQUE epoch (écriture atomique).
+
+    Un run interrompu (crash GPU, extinction) garde ainsi son journal — le
+    12/06, deux runs de plusieurs heures sont morts sans laisser de log
+    (le fichier n'était écrit qu'en fin de run).
+    """
+    tmp = output_dir / "training_log.json.tmp"
+    tmp.write_text(json.dumps(training_log, indent=2), encoding="utf-8")
+    tmp.replace(output_dir / "training_log.json")
 
 
 def _iso_now_utc() -> str:
@@ -598,6 +626,7 @@ def train_classifier(args):
             "lr": round(scheduler.get_last_lr()[0], 6),
         }
         training_log.append(log_entry)
+        _flush_training_log(output_dir, training_log)
 
         frozen_str = " [frozen]" if epoch <= args.freeze_epochs else ""
         print(
@@ -733,6 +762,7 @@ def train_embedder(args):
             "lr": round(scheduler.get_last_lr()[0], 6),
         }
         training_log.append(log_entry)
+        _flush_training_log(output_dir, training_log)
 
         frozen_str = " [frozen]" if epoch <= args.freeze_epochs else ""
         print(
@@ -926,6 +956,7 @@ def train_arcface(args):
             "lr": round(scheduler.get_last_lr()[0], 6),
         }
         training_log.append(log_entry)
+        _flush_training_log(output_dir, training_log)
 
         frozen_str = " [frozen]" if epoch <= args.freeze_epochs else ""
         val_str = (
@@ -1058,6 +1089,8 @@ def main():
              "(MPerClassSampler). 10 = défaut historique petits datasets ; "
              "réduire (2-3) sur les gros datasets wild.",
     )
+    parser.add_argument("--seed", type=int, default=42,
+                        help="Seed random/numpy/torch (reproductibilité inter-runs).")
     parser.add_argument("--device", type=str, default="auto")
     parser.add_argument("--num-workers", type=int, default=-1, help="DataLoader workers (-1=auto: 4 on CUDA, 0 on CPU/MPS)")
     parser.add_argument("--output", type=str, default="./checkpoints/")
@@ -1084,6 +1117,9 @@ def main():
              "ml/state/training_progress/<iid>.json (consumed by the Lab UI).",
     )
     args = parser.parse_args()
+
+    _set_seed(args.seed)
+    print(f"Seed: {args.seed}")
 
     _assert_no_real_photos(args.dataset, role="train")
     _assert_no_real_photos(args.val_dataset, role="val")
