@@ -75,7 +75,7 @@ jamais en perdre une de vue.
 
 | H | Hypothèse | Croyance actuelle | Testée par | Statut |
 |---|---|---|---|---|
-| H1 | Plus d'images **réelles** par classe ↑ précision **et** ↑ fiabilité des centroïdes | Forte (mécanisme plausible) | C0 + C1 | ❓ non mesuré |
+| H1 | Plus d'images **réelles** par classe ↑ précision **et** ↑ fiabilité des centroïdes | **Confirmée** (held-out wild 77 crops) : avec wild au train, vits14 fine-tuné 71,4 % ≈ vitl14 zero-shot 72,7 % (+17 pts vs son zero-shot) ; sans wild (gold) il fait 28,7 % | C2 | ⚠️ mesuré (1 itération, classes wild-rich) |
 | H2 | Les centroïdes ArcFace-W sont peu fiables (vs moyennes d'images) | **Réfutée** : le faible est val-mean, pas W | C1 | ⚠️ train-mean≈W > val-mean (set étroit) |
 | H3 | fp16 ≈ sans perte ; int8 dégrade un ViT | Moyenne (typique, pas mesuré ici) | C4 | ❓ non mesuré |
 | H4 | Les gains DINOv2 transfèrent à la **classification eBay scrape** | **Réfutée** (régime ancres canonical-only) : zero-shot vitl14 62,8 % top-1 / 80,9 % hit@5 vs fine-tuné 28,7 % / 35,1 % ; auto-attribution = texte (75,8 % @ 94,9 %) | C2 | ⚠️ mesuré (gold BE 9 classes, DB 25/05) |
@@ -122,6 +122,18 @@ jamais en perdre une de vue.
   cf. note DB ci-dessous). Le matcher texte est donc déjà fort en
   auto-attribution ; le rôle réel de la vision est le **résiduel** (21,2 % des
   valides routés review) + le **junk filtering** (le vrai point faible).
+
+- **2026-06-12 (boucle C2, 1re itération) — H1 confirmée ; « best epoch
+  précoce » réfutée.** Dataset v2 (544 classes, 455 wild train, 77 test
+  held-out par listing). Sur le test held-out : **v1 fine-tuné 71,4 % g@1 ≈
+  vitl14 zero-shot 72,7 %**, +17 pts vs vits14 zero-shot (54,5 %) — alors que
+  le même v1 fait 28,7 % sur le gold (classes sans wild). **Ce sont les refs
+  wild par classe qui font le modèle** → le flywheel est la bonne stratégie.
+  Réfuté au passage : « le best val-R@1 à l'epoch 3 ≈ plateau » — v2 interrompu
+  à l'epoch 3 fait 59,7 % vs v1 epoch 10 à 71,4 % sur le held-out (le val 59
+  img ne voit pas la progression tardive, écho de H6). Run v2 complet relancé
+  (~7 h, 35 min/epoch ; batch >32 OOM au défreeze sans xFormers sur 11 Go).
+  Détails : C2 §Résultats.
 
 - **2026-06-12 (suite) — DB canonique récupérée (lease Mac→PC) ; les chiffres
   tiennent ; un artefact de slugs débusqué.** Le cycle lease a été fait

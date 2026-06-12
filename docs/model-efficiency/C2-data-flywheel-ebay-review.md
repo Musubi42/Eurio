@@ -109,6 +109,41 @@ de cette date) ; crops bench multi-Hough sans YOLO (poids `coin_detector`
 absents du PC) ; gold BE-only, 9 classes commémo ; centroïdes arcface
 train-mean avec n=1 pour les 9 classes testées.
 
+### 2026-06-12 — Boucle C2c→e, première itération (DB canonique)
+
+**Dataset v2** (`scripts/build_arcface_dataset.py --root datasets/arcface_vits14_v2`) :
+544 classes alignées sur la bank `2eur_all`, **455 crops wild train + 59 val +
+77 test** (split déterministe par listing), 1 canonical/classe. ⚠️ Les 9
+classes gold BE n'ont **aucun** crop wild — le bench gold ne peut pas mesurer
+cette itération ; instruments = test manifest held-out + eval_real.
+
+**Test held-out (77 crops wild jamais vus, ancres canoniques, 544 classes)** :
+
+| Candidat | global@1 | global@5 | pays@1 | pays@5 |
+|---|---|---|---|---|
+| zero-shot dinov2_vits14 | 54,5 % | 70,1 % | 49,4 % | 62,3 % |
+| zero-shot dinov2_vitl14 (réf. serveur) | 72,7 % | 80,5 % | 58,4 % | 67,5 % |
+| **arcface-vits14-v1 (epoch 10, run complet)** | **71,4 %** | **79,2 %** | **61,0 %** | **67,5 %** |
+| arcface-vits14-v2 (epoch 3, run interrompu) | 59,7 % | 68,8 % | 55,8 % | 61,0 % |
+
+**eval_real (snaps device)** : v2-epoch3 = 73,1 % (217/297) vs v1 train-mean
+= 82,97 % — le checkpoint interrompu régresse aussi sur device.
+
+**Lectures :**
+- **H1 confirmée avec précision** : sur les classes *avec* refs wild au
+  train, le vits14 fine-tuné (71,4 %) rejoint quasiment le vitl14 zero-shot
+  (72,7 %, modèle ~14× plus gros) et bat son propre backbone zero-shot de
+  **+17 pts** (54,5 %). À mettre en regard du gold (classes *sans* wild) où
+  le même v1 fait 28,7 % : **ce sont les refs wild par classe qui font le
+  modèle**, pas le fine-tune en soi. Le flywheel est la bonne stratégie.
+- **L'epoch 3 n'est pas le plateau** (croyance réfutée par la mesure) : v1
+  avait son best val-R@1 à l'epoch 3, mais sur le held-out wild le run
+  complet (epoch 10+) vaut +11,7 pts vs epoch 3. Le val étroit (59 img)
+  sous-estime la progression tardive — cf. H6.
+- Run v2 complet relancé (12 epochs, batch 32 — 256/128 OOM au défreeze
+  sur 11 Go sans xFormers, ~35 min/epoch). Interruption précédente : PC
+  éteint à ~3h du matin, pas un crash du trainer.
+
 ## Décisions & next
 
 **Décision §5.1 (mesurée)** : le modèle de pré-classement review reste le
