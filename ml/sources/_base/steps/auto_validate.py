@@ -65,11 +65,14 @@ logger = logging.getLogger(__name__)
 _TOP_K_STORE = 5  # how many candidates to persist per asset
 
 # Détection de face (C7) : un crop est le REVERS commun 2€ si sa similarité au
-# revers dépasse sa similarité à l'avers d'au moins τ. Seuil mesuré (bench
-# bench_face_detection.py, DINO vitl14) : τ=+0,05 → 0 % de faux positifs sur
-# 562 avers confirmés, top-40 minés = 100 % revers. Conservateur (précision >
-# rappel) car un faux « reverse » jetterait un avers identifiable.
-FACE_REVERSE_TAU = 0.05
+# revers dépasse sa similarité à l'avers d'au moins τ. Seuil recalibré pour la
+# banque ENRICHIE (2 canoniques + 32 ancres wild, cf. `_REVERSE_WILD_FILE`
+# dans anchors.py) — bench `bench_face_recall.py` (2026-06-13) : τ=+0,065 →
+# FP 0/566 avers confirmés, rappel revers durs (denom-rescue) 0 % → 73,3 %,
+# revers faciles 100 %. Pire avers à +0,059, prochain revers dur à +0,070 →
+# τ équidistant. Conservateur (précision > rappel) car un faux « reverse »
+# jetterait un avers identifiable.
+FACE_REVERSE_TAU = 0.065
 
 # Kinds calculés au fil de l'eau (scrape/sync) : la prédiction consensus
 # (2eur_commemo) + la prédiction suggestions (2eur_all). Un seul encodage

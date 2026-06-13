@@ -66,6 +66,11 @@ _REVERSE_ANCHOR_SOURCES = [
     ("reverse_2eur_v2", ML_DIR.parent / "app-android" / "src" / "main"
      / "assets" / "shared_reverse" / "reverse_2eur_v2.webp"),
 ]
+# Ancres revers WILD (C7 pilier 1, rappel) : revers eBay vérifiés visuellement,
+# curés depuis les `face='reverse'` à margin élevé, dédup par annonce et HORS
+# `face_gold.jsonl` (pas de fuite éval). Fichier optionnel : absent, la banque
+# retombe sur les 2 canoniques seules. Bench : `scripts/bench_face_recall.py`.
+_REVERSE_WILD_FILE = STATE_DIR / "face_bench" / "reverse_wild_anchors.jsonl"
 
 # Encodeur par kind : les suggestions tournent sur vitl14 (+22 pts recall@1,
 # bench Phase 2.4 dino-suggestions) ; le consensus reste sur vits14 (seuils
@@ -427,12 +432,14 @@ def build_anchors_reverse_2eur(
     encoder_version: str = SUGGESTIONS_ENCODER_VERSION,
     force_recompute: bool = False,
 ) -> AnchorBank:
-    """Banque du revers commun 2€ : les 2 designs de carte packagés (APK).
+    """Banque du revers commun 2€ : 2 designs canoniques (APK) + revers wild.
 
     ``conn``/``datasets_dir`` ignorés (signature homogène avec les autres
-    builders pour le dispatcher CLI) — les sources sont les 2 webp figés
-    ``app-android/.../shared_reverse/reverse_2eur_v{1,2}.webp``. Encodée vitl14
-    pour partager l'embedding avec ``2eur_all`` (cf. C7 face).
+    builders pour le dispatcher CLI). Sources : les 2 webp figés
+    ``app-android/.../shared_reverse/reverse_2eur_v{1,2}.webp``, plus les
+    ancres wild de ``_REVERSE_WILD_FILE`` si présent (C7 pilier 1 rappel —
+    revers usés/inclinés/mal éclairés que les 2 designs propres ratent).
+    Encodée vitl14 pour partager l'embedding avec ``2eur_all`` (cf. C7 face).
     """
     kind = REVERSE_ANCHORS_KIND
 
@@ -452,6 +459,20 @@ def build_anchors_reverse_2eur(
             f"{_REVERSE_ANCHOR_SOURCES[0][1].parent} "
             "(run export.build_shared_reverse_assets)"
         )
+
+    if _REVERSE_WILD_FILE.is_file():
+        from shared.storage.local_cache import local_path
+        n_wild = 0
+        for line in _REVERSE_WILD_FILE.read_text().splitlines():
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            p = Path(local_path("enrichment-crops", row["storage_path"]))
+            if p.is_file():
+                paths_with_eid.append((f"wild-{row['asset_id'][:12]}", p))
+                n_wild += 1
+        logger.info("Reverse bank: +%d ancres wild (%s)", n_wild,
+                    _REVERSE_WILD_FILE.name)
 
     return _encode_and_save(
         kind=kind, paths_with_eid=paths_with_eid, encoder_version=encoder_version
