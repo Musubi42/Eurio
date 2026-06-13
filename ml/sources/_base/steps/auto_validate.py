@@ -35,6 +35,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import cv2
 import numpy as np
 
 from training.foundation import (
@@ -55,6 +56,7 @@ from training.foundation import (
 )
 from review.review_lanes import compute_lane
 from sources._base.run_logger import RunHandle
+from sources._base.steps.enqueue import _kind_for_source_image
 from store import DinoPredictionRow
 from vision.denom_probe import decide_denom, denom_score
 
@@ -154,6 +156,29 @@ def _decide_face(reverse_sim: float, obverse_sim: float) -> str:
     return "reverse" if (reverse_sim - obverse_sim) >= FACE_REVERSE_TAU else "obverse"
 
 
+def _is_lot_source(
+    conn: sqlite3.Connection,
+    *,
+    source_image_id: str,
+    is_lot_suspected,
+    cache: dict[str, bool],
+) -> bool:
+    """La photo source est-elle un LOT (multi-pièces) ? Mémoïsé par run.
+
+    Réutilise la résolution D-26 de l'enqueue (`_kind_for_source_image` :
+    titre lot / listing_kind='lot' / >1 crops). Le gate dénomination ne
+    s'applique QU'AUX crops de lots (HANDOFF-C7 §1) : la pollution non-2€
+    vient des photos de collections entières ; un single ciblé 2€ a déjà
+    passé le theme-matcher amont."""
+    if source_image_id not in cache:
+        cache[source_image_id] = _kind_for_source_image(
+            conn,
+            source_image_id=source_image_id,
+            is_lot_suspected=bool(is_lot_suspected),
+        ) == "lot"
+    return cache[source_image_id]
+
+
 def _select_assets_for_run(
     conn: sqlite3.Connection,
     source_image_ids: dict[str, str],
@@ -170,8 +195,8 @@ def _select_assets_for_run(
     placeholders = ",".join("?" for _ in source_image_ids)
     rows = conn.execute(
         f"""
-        SELECT a.id AS asset_id, a.storage_path,
-               s.target_eurio_id,
+        SELECT a.id AS asset_id, a.storage_path, a.source_image_id,
+               s.target_eurio_id, s.is_lot_suspected,
                c.face_value, c.is_commemorative
           FROM image_assets a
           JOIN source_images s ON s.id = a.source_image_id
@@ -192,8 +217,8 @@ def _select_assets_for_backfill(
 ) -> list[sqlite3.Row]:
     """Return all `image_assets` candidates for a standalone backfill run."""
     sql = """
-        SELECT a.id AS asset_id, a.storage_path,
-               s.target_eurio_id,
+        SELECT a.id AS asset_id, a.storage_path, a.source_image_id,
+               s.target_eurio_id, s.is_lot_suspected,
                c.face_value, c.is_commemorative
           FROM image_assets a
           JOIN source_images s ON s.id = a.source_image_id
@@ -476,11 +501,27 @@ def predict_and_persist_kinds(
                 rev_sim = float(np.max(rev_bank.matrix @ vec))
                 ap.reverse_sim = rev_sim
                 ap.face_margin = rev_sim - ap.top1_sim
-                # Gate dénom (C7 pilier 2) : score 2€-ness sur la row 2eur_all.
-                import cv2 as _cv2
-                _bgr = _cv2.imread(str(crop_path))
-                if _bgr is not None:
-                    ds = denom_score(vec, _bgr)
+            # Gate dénom (C7 pilier 2) : score 2€-ness audit sur la row 2eur_all,
+            # crops de LOTS uniquement (même périmètre que _run_inner). Le verdict
+            # image_assets.denom n'est PAS réécrit ici : un re-crop manuel est une
+            # action humaine, le rejet/restore reste la décision de l'opérateur.
+            conn = store._connection()  # noqa: SLF001
+            meta = conn.execute(
+                "SELECT a.source_image_id, s.is_lot_suspected"
+                "  FROM image_assets a"
+                "  JOIN source_images s ON s.id = a.source_image_id"
+                " WHERE a.id = ?",
+                (asset_id,),
+            ).fetchone()
+            if meta is not None and _is_lot_source(
+                conn,
+                source_image_id=meta["source_image_id"],
+                is_lot_suspected=meta["is_lot_suspected"],
+                cache={},
+            ):
+                bgr = cv2.imread(str(crop_path))
+                if bgr is not None:
+                    ds = denom_score(vec, bgr)
                     if ds is not None:
                         ap.denom_2eur_score = ds
     if out:
@@ -538,6 +579,7 @@ def _run_inner(
     rev_bank = _get_reverse_bank()
     face_writes: list[tuple[str, str]] = []  # (face, asset_id), WHERE face IS NULL
     denom_writes: list[tuple[str, str]] = []  # (denom, asset_id), WHERE denom IS NULL
+    lot_cache: dict[str, bool] = {}  # source_image_id → lot ? (gate denom)
 
     rows_to_write: list[DinoPredictionRow] = []
     for r, kinds in in_scope:
@@ -606,34 +648,41 @@ def _run_inner(
             n_errors += 1
             continue
 
-        # ── Détection de face (C7) — gratuite : réutilise le vec vitl14 ──────
-        # Calculée seulement quand on (re)prédit 2eur_all (même encodeur que la
-        # banque revers). reverse_sim/face_margin sont stockés sur la row
-        # 2eur_all (audit), et image_assets.face écrit plus bas si NULL.
-        if rev_bank is not None and SUGGESTIONS_ENCODER_VERSION in vecs_by_version:
+        # ── Face + dénomination (C7) — gratuits : réutilisent le vec vitl14 ──
+        # Calculés seulement quand on (re)prédit 2eur_all (même encodeur vitl14).
+        if SUGGESTIONS_ENCODER_VERSION in vecs_by_version:
             all_pred = next(
                 (p for p in predictions if p.anchors_kind == SUGGESTIONS_ANCHORS_KIND),
                 None,
             )
             if all_pred is not None and all_pred.top1_sim is not None:
                 vvec = vecs_by_version[SUGGESTIONS_ENCODER_VERSION]
-                rev_sim = float(np.max(rev_bank.matrix @ vvec))
-                all_pred.reverse_sim = rev_sim
-                all_pred.face_margin = rev_sim - all_pred.top1_sim
-                face_writes.append(
-                    (_decide_face(rev_sim, all_pred.top1_sim), aid)
-                )
-                # ── Gate dénomination (C7 pilier 2) — réutilise le vec vitl14 ──
+                # Face : reverse_sim/face_margin stockés sur la row 2eur_all
+                # (audit), image_assets.face écrit plus bas si NULL. Skip si la
+                # banque revers manque (dégrade proprement).
+                if rev_bank is not None:
+                    rev_sim = float(np.max(rev_bank.matrix @ vvec))
+                    all_pred.reverse_sim = rev_sim
+                    all_pred.face_margin = rev_sim - all_pred.top1_sim
+                    face_writes.append(
+                        (_decide_face(rev_sim, all_pred.top1_sim), aid)
+                    )
+                # ── Gate dénomination (C7 pilier 2) — crops de LOTS uniquement.
                 # Probe DINO+bimétal : score 2€-ness sur la row 2eur_all (ranker)
                 # + verdict image_assets.denom écrit plus bas si NULL. No-op si
                 # l'artefact denom_probe.npz est absent (denom_score → None).
-                import cv2 as _cv2
-                _bgr = _cv2.imread(str(crop_p))
-                if _bgr is not None:
-                    ds = denom_score(vvec, _bgr)
-                    if ds is not None:
-                        all_pred.denom_2eur_score = ds
-                        denom_writes.append((decide_denom(ds), aid))
+                if _is_lot_source(
+                    conn,
+                    source_image_id=r["source_image_id"],
+                    is_lot_suspected=r["is_lot_suspected"],
+                    cache=lot_cache,
+                ):
+                    bgr = cv2.imread(str(crop_p))
+                    if bgr is not None:
+                        ds = denom_score(vvec, bgr)
+                        if ds is not None:
+                            all_pred.denom_2eur_score = ds
+                            denom_writes.append((decide_denom(ds), aid))
 
         rows_to_write.extend(predictions)
         predicted_ids.append(aid)
@@ -735,11 +784,11 @@ def _flush(conn: sqlite3.Connection, store, rows: list[DinoPredictionRow]) -> No
           target_country, country_anchors_count, top_k_country_json,
           top1_country_eurio_id, top1_country_sim,
           top2_country_eurio_id, top2_country_sim, country_spread,
-          reverse_sim, face_margin,
+          reverse_sim, face_margin, denom_2eur_score,
           computed_at, duration_ms
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                   ?, ?, ?, ?, ?, ?, ?, ?,
-                  ?, ?,
+                  ?, ?, ?,
                   datetime('now'), ?)
         ON CONFLICT(asset_id, encoder_version, anchors_kind) DO UPDATE SET
           anchors_count          = excluded.anchors_count,
@@ -759,6 +808,7 @@ def _flush(conn: sqlite3.Connection, store, rows: list[DinoPredictionRow]) -> No
           country_spread         = excluded.country_spread,
           reverse_sim            = excluded.reverse_sim,
           face_margin            = excluded.face_margin,
+          denom_2eur_score       = excluded.denom_2eur_score,
           duration_ms            = excluded.duration_ms,
           computed_at            = datetime('now')
         """,
@@ -772,7 +822,7 @@ def _flush(conn: sqlite3.Connection, store, rows: list[DinoPredictionRow]) -> No
                 _json.dumps(r.top_k_country) if r.top_k_country is not None else None,
                 r.top1_country_eurio_id, r.top1_country_sim,
                 r.top2_country_eurio_id, r.top2_country_sim, r.country_spread,
-                r.reverse_sim, r.face_margin,
+                r.reverse_sim, r.face_margin, r.denom_2eur_score,
                 r.duration_ms,
             )
             for r in rows

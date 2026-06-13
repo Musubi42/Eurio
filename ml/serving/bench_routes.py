@@ -986,6 +986,12 @@ def get_bench_run_crops(
     ),
     method: str | None = Query(None, description="yolo|hough|merged|manual"),
     status: str | None = Query(None, description="resolution_status filter"),
+    route_reason: str | None = Query(
+        None,
+        description="filtre source_images.route_reason du listing parent — "
+                    "buckets crop-level du funnel (not_2eur, face_reverse, …) "
+                    "où la photo brute du lot ne montre rien d'utile",
+    ),
     quality_min: float | None = Query(None, ge=0, le=1),
     quality_max: float | None = Query(None, ge=0, le=1),
     undercrop_only: bool = Query(False),
@@ -1040,6 +1046,11 @@ def get_bench_run_crops(
     if status:
         where.append("a.resolution_status = ?")
         params.append(status)
+    if route_reason:
+        # Filtre sur le listing parent (cohérent avec les buckets du funnel,
+        # construits depuis source_images.route_decision/route_reason).
+        where.append("s.route_reason = ?")
+        params.append(route_reason)
     if quality_min is not None:
         where.append("(a.quality_score IS NOT NULL AND a.quality_score >= ?)")
         params.append(quality_min)

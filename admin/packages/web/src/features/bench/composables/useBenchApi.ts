@@ -349,6 +349,10 @@ export interface BenchRunCropsQuery {
   eurio_id?: string | null
   method?: string | null
   status?: string | null
+  // Filtre par route_reason du listing parent — pour les buckets crop-level
+  // du funnel (not_2eur, face_reverse) où il faut montrer les crops, pas la
+  // photo brute du lot.
+  route_reason?: string | null
   quality_min?: number | null
   quality_max?: number | null
   undercrop_only?: boolean
@@ -368,6 +372,7 @@ export async function fetchBenchRunCrops(
   if (q.eurio_id) params.set('eurio_id', q.eurio_id)
   if (q.method) params.set('method', q.method)
   if (q.status) params.set('status', q.status)
+  if (q.route_reason) params.set('route_reason', q.route_reason)
   if (q.quality_min != null) params.set('quality_min', String(q.quality_min))
   if (q.quality_max != null) params.set('quality_max', String(q.quality_max))
   if (q.undercrop_only) params.set('undercrop_only', 'true')

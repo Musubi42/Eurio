@@ -6,11 +6,14 @@ import {
   Gavel, ImageOff, Inbox, MousePointerClick, RefreshCw, ScanLine, X,
 } from 'lucide-vue-next'
 import {
+  type BenchRunCropCard,
   type BenchRunGroup,
   type BenchRunListing,
   type BenchRunResponse,
   fetchBenchRun,
+  fetchBenchRunCrops,
   fetchBenchRunListings,
+  resolveBenchImageUrl,
 } from '../composables/useBenchApi'
 import BenchRunAuditCropPanel from '../components/BenchRunAuditCropPanel.vue'
 
@@ -53,6 +56,21 @@ const listingsTotal = ref(0)
 const listingsLoading = ref(false)
 const LIMIT = 50
 const offset = ref(0)
+
+// Buckets CROP-LEVEL (rejets per-crop : C7 face/dénom) : la photo brute du
+// listing (lot 1600px) ne montre pas ce qui a été rejeté — on affiche les
+// CROPS via /crops?route_reason=… (filtré sur le listing parent).
+const CROP_LEVEL_REASONS = new Set(['face_reverse', 'not_2eur'])
+const crops = ref<BenchRunCropCard[]>([])
+const cropsTotal = ref(0)
+const cropsLoading = ref(false)
+
+// route_reason du nœud sélectionné SI c'est un bucket crop-level, sinon null.
+const cropReason = computed<string | null>(() => {
+  if (!selectedNodeId.value?.includes('/')) return null
+  const [decision, reason] = selectedNodeId.value.split('/')
+  return decision === 'rejected' && CROP_LEVEL_REASONS.has(reason) ? reason : null
+})
 
 const summary = computed(() => data.value?.summary ?? null)
 const groups = computed(() => data.value?.groups ?? [])
@@ -125,9 +143,46 @@ async function loadListings() {
   }
 }
 
+// Charge les CROPS du bucket crop-level sélectionné (grid de la colonne 3).
+async function loadCrops() {
+  if (!selectedGroup.value || !cropReason.value) {
+    crops.value = []
+    cropsTotal.value = 0
+    return
+  }
+  cropsLoading.value = true
+  const g = selectedGroup.value
+  try {
+    const r = await fetchBenchRunCrops(runId.value, {
+      country: g.country,
+      year: g.year,
+      route_reason: cropReason.value,
+      sort: 'recent',
+      limit: LIMIT,
+      offset: offset.value,
+    })
+    crops.value = r.cards
+    cropsTotal.value = r.cards_total
+  } finally {
+    cropsLoading.value = false
+  }
+}
+
+// La colonne 3 affiche soit des annonces, soit des crops (bucket crop-level).
+function reloadGrid() {
+  if (cropReason.value) loadCrops()
+  else loadListings()
+}
+const gridTotal = computed(() =>
+  cropReason.value ? cropsTotal.value : listingsTotal.value,
+)
+const gridCount = computed(() =>
+  cropReason.value ? crops.value.length : listings.value.length,
+)
+
 watch([selectedGroupId, selectedNodeId], () => {
   offset.value = 0
-  loadListings()
+  reloadGrid()
 })
 
 // Filtre coin changé (clear, ou navigation coin→coin sans remount) : re-cible
@@ -141,7 +196,7 @@ watch(eurioFilter, () => {
   }
   if (selectedGroupId.value === before) {
     offset.value = 0
-    loadListings()
+    reloadGrid()
   }
 })
 
@@ -250,15 +305,15 @@ function shortEurio(id: string): string {
 }
 
 function nextPage() {
-  if (offset.value + LIMIT < listingsTotal.value) {
+  if (offset.value + LIMIT < gridTotal.value) {
     offset.value += LIMIT
-    loadListings()
+    reloadGrid()
   }
 }
 function prevPage() {
   if (offset.value > 0) {
     offset.value = Math.max(0, offset.value - LIMIT)
-    loadListings()
+    reloadGrid()
   }
 }
 
@@ -267,6 +322,11 @@ function nodeLabel(id: string | null): string {
   if (id === 'raw') return 'annonces brutes'
   if (id === 'matched') return 'matchés à un coin'
   if (id === 'matcher/unmatched') return 'theme-matcher — unmatched'
+  if (id.includes('/')) {
+    const [decision, reason] = id.split('/')
+    const r = REASON_LABELS[reason] ?? reason
+    return `${destinationLabel(decision)} — ${r}`
+  }
   return id
 }
 
@@ -775,17 +835,75 @@ function markBroken(id: string) {
                      style="border-color: var(--surface-3);">
                   <Inbox class="h-4 w-4" style="color: var(--ink-400);" />
                   <h3 class="text-[13px] font-semibold" style="color: var(--ink);">
-                    Annonces — {{ nodeLabel(selectedNodeId) }}
+                    {{ cropReason ? 'Crops' : 'Annonces' }} — {{ nodeLabel(selectedNodeId) }}
                   </h3>
                   <span class="text-[12px]" style="color: var(--ink-400);">
-                    {{ listingsTotal }}
+                    {{ gridTotal }}
                   </span>
-                  <span v-if="listingsLoading" class="text-[11px]" style="color: var(--ink-400);">
+                  <span v-if="listingsLoading || cropsLoading" class="text-[11px]" style="color: var(--ink-400);">
                     chargement…
                   </span>
                 </div>
                 <div class="flex-1 overflow-y-auto px-5 py-5">
-                  <div v-if="!listings.length"
+                  <!-- ░ Bucket CROP-LEVEL (face_reverse / not_2eur) : grid de
+                       crops — la photo brute du lot ne montre pas le rejet ░ -->
+                  <div v-if="cropReason && !crops.length"
+                       class="flex h-full flex-col items-center justify-center gap-2 text-center">
+                    <ImageOff class="h-7 w-7" style="color: var(--ink-300);" />
+                    <p class="text-[13px] italic"
+                       style="font-family: var(--font-display); color: var(--ink-400);">
+                      {{ cropsLoading ? 'Chargement des crops…' : 'Aucun crop dans ce bucket.' }}
+                    </p>
+                  </div>
+                  <div v-else-if="cropReason"
+                       class="grid gap-3"
+                       style="grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));">
+                    <article
+                      v-for="c in crops" :key="c.asset_id"
+                      class="flex flex-col overflow-hidden rounded-xl border"
+                      style="border-color: var(--surface-3); background: var(--surface);"
+                    >
+                      <div class="relative flex aspect-square items-center justify-center overflow-hidden"
+                           style="background: var(--surface-2);">
+                        <img
+                          v-if="c.crop_url && !brokenImages.has(c.asset_id)"
+                          :src="resolveBenchImageUrl(c.crop_url)!"
+                          :alt="c.listing_title ?? c.asset_id"
+                          class="h-full w-full object-contain"
+                          loading="lazy"
+                          @error="markBroken(c.asset_id)"
+                        />
+                        <ImageOff v-else class="h-6 w-6" style="color: var(--ink-300);" />
+                      </div>
+                      <div class="flex flex-1 flex-col gap-1 px-2.5 py-2">
+                        <p
+                          class="text-[11px] leading-snug"
+                          style="color: var(--ink); display: -webkit-box;
+                                 -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+                                 overflow: hidden;"
+                        >{{ c.listing_title ?? '(sans titre)' }}</p>
+                        <div class="mt-auto flex items-center gap-1.5 pt-0.5">
+                          <span
+                            class="rounded px-1 py-px text-[9.5px] uppercase"
+                            style="background: var(--surface-2); color: var(--ink-400);
+                                   font-family: var(--font-mono);"
+                          >{{ c.resolution_status ?? '?' }}</span>
+                          <a
+                            v-if="c.listing_url"
+                            :href="c.listing_url"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            class="ml-auto flex items-center gap-0.5 text-[10px] hover:underline"
+                            style="color: var(--indigo-600);"
+                            @click.stop
+                          >
+                            <ExternalLink class="h-3 w-3" /> eBay
+                          </a>
+                        </div>
+                      </div>
+                    </article>
+                  </div>
+                  <div v-else-if="!listings.length"
                        class="flex h-full flex-col items-center justify-center gap-2 text-center">
                     <MousePointerClick class="h-7 w-7" style="color: var(--ink-300);" />
                     <p class="text-[13px] italic"
@@ -885,7 +1003,7 @@ function markBroken(id: string) {
                 <div class="flex flex-shrink-0 items-center justify-between border-t px-5 py-2 text-[11px]"
                      style="border-color: var(--surface-3); color: var(--ink-400);">
                   <span>
-                    {{ listings.length ? offset + 1 : 0 }}–{{ Math.min(offset + LIMIT, listingsTotal) }} / {{ listingsTotal }}
+                    {{ gridCount ? offset + 1 : 0 }}–{{ Math.min(offset + LIMIT, gridTotal) }} / {{ gridTotal }}
                   </span>
                   <div class="flex gap-2">
                     <button
@@ -897,7 +1015,7 @@ function markBroken(id: string) {
                     <button
                       class="rounded border px-2 py-0.5 disabled:opacity-40"
                       style="border-color: var(--surface-3);"
-                      :disabled="offset + LIMIT >= listingsTotal"
+                      :disabled="offset + LIMIT >= gridTotal"
                       @click="nextPage"
                     >Suivant →</button>
                   </div>

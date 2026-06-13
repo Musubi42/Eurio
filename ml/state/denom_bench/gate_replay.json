@@ -1,0 +1,67 @@
+{
+  "generated_at": "2026-06-13T00:30:44+00:00",
+  "threshold": 0.3307,
+  "threshold_source": "state/denom_probe.npz",
+  "n_gold_non_unk": 925,
+  "n_read_errors": 0,
+  "sections": {
+    "tous (hi+lo)": {
+      "n": 925,
+      "n_pos": 660,
+      "n_neg": 265,
+      "n_rejected": 229,
+      "recall_2eur": 0.9682,
+      "true2eur_loss": 0.0318,
+      "junk_capture": 0.7849,
+      "reject_precision": 0.9083,
+      "capture_by_kind": {
+        "banknote": "1/1",
+        "cent": "143/186",
+        "chart": "2/6",
+        "fragment": "17/17",
+        "medal": "14/17",
+        "notcoin": "24/27",
+        "one_euro": "1/4",
+        "other": "1/2",
+        "stamp_postmark": "5/5"
+      }
+    },
+    "conf=hi (in-sample — train de la probe)": {
+      "n": 865,
+      "n_pos": 624,
+      "n_neg": 241,
+      "n_rejected": 207,
+      "recall_2eur": 0.9824,
+      "true2eur_loss": 0.0176,
+      "junk_capture": 0.8133,
+      "reject_precision": 0.9469,
+      "capture_by_kind": {
+        "banknote": "1/1",
+        "cent": "138/170",
+        "chart": "2/6",
+        "fragment": "14/14",
+        "medal": "11/14",
+        "notcoin": "24/27",
+        "one_euro": "1/4",
+        "stamp_postmark": "5/5"
+      }
+    },
+    "conf=lo (jamais vu à l'entraînement)": {
+      "n": 60,
+      "n_pos": 36,
+      "n_neg": 24,
+      "n_rejected": 22,
+      "recall_2eur": 0.7222,
+      "true2eur_loss": 0.2778,
+      "junk_capture": 0.5,
+      "reject_precision": 0.5455,
+      "capture_by_kind": {
+        "cent": "5/16",
+        "fragment": "3/3",
+        "medal": "3/3",
+        "other": "1/2"
+      }
+    }
+  },
+  "caveat": "conf=hi est le train de la probe (scores in-sample) ; l'éval honnête out-of-fold est train_denom_probe.py"
+}

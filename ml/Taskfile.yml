@@ -101,9 +101,14 @@ tasks:
       - "{{.VENV}}/python -m scripts.backfill_face -v {{.CLI_ARGS}}"
 
   backfill-denom:
-    desc: "C7 pilier 2 — Gate dénomination (probe DINO+bimétal) sur les crops denom IS NULL, rejette les not_2eur (cent/médaille/mire, ré-ouvrables) per-crop et re-route les listings (bucket funnel 'pas un 2€'). Idempotent. Usage: go-task ml:backfill-denom [-- --run 059dc8d] [-- --limit 200] [-- --dry]"
+    desc: "C7 pilier 2 — Gate dénomination (probe DINO) sur les crops LOT denom IS NULL : audit d'abord (denom + denom_2eur_score écrits, routes inchangées). Le rejet not_2eur (ré-ouvrable) + re-route funnel se déclenche avec --reject APRÈS validation PO. Idempotent. Usage: go-task ml:backfill-denom [-- --run 059dc8d] [-- --limit 200] [-- --dry] ; puis go-task ml:backfill-denom -- --reject"
     cmds:
       - "{{.VENV}}/python -m scripts.backfill_denom -v {{.CLI_ARGS}}"
+
+  bench-denom-probe:
+    desc: "C7 pilier 2 — Replay du gate dénomination déployé (state/denom_probe.npz, seuil embarqué) sur le gold denom_gold.jsonl via le chemin d'inférence prod : rappel 2€ / capture junk / précision rejet, par conf et par kind. Test de régression rejouable (l'éval honnête out-of-fold reste scripts.train_denom_probe). Usage: go-task ml:bench-denom-probe [-- --threshold 0.42]"
+    cmds:
+      - "{{.VENV}}/python -m scripts.bench_denom_probe {{.CLI_ARGS}}"
 
   text-signals:backfill:
     desc: "Extract listing text signals (countries/years/denoms/themes/markers/lot/coverage) for every source_image without a row in listing_text_signals. Pure regex/dict, no I/O. Idempotent. Usage: go-task ml:text-signals:backfill [-- --force] [-- --limit 50] [-- --source ebay]"
