@@ -96,19 +96,26 @@ funnel bench** :
 
 ### Caveats / reste à faire (pilier 1)
 
-- **Rappel wild non chiffré** : le top minée est 100 % revers (précision@top),
-  mais le rappel (quels revers ratés sous le seuil) demande un gold revers plus
-  large. Le gold actuel n'a que 40 revers (vérifiés). → élargir par mining +
-  vérif, puis fixer τ sur précision **et** rappel.
-- **Robustesse v1/v2** : 2 ancres seulement. Tester si ajouter quelques vues
-  réelles de revers (usés/inclinés) comme ancres ↑ le rappel wild.
+- ~~**Rappel wild non chiffré**~~ / ~~**Robustesse v1/v2**~~ → **RÉSOLUS
+  (2026-06-13, banque enrichie)**. Le tour de boucle denom (§H12) a produit
+  15 revers wild *ratés* par la banque canonique (rappel mesuré : **0 %** à
+  τ=0,05 — le gold face a maintenant 621 rows : 566 avers + 40 revers faciles +
+  15 revers durs `denom-rescue-*`). Fix : **32 ancres wild** curées depuis les
+  `face='reverse'` à margin élevé (dédup par annonce, HORS gold — pas de fuite
+  éval, vérif visuelle), branchées dans `build_anchors_reverse_2eur`
+  (`state/face_bench/reverse_wild_anchors.jsonl`, optionnel). τ recalibré
+  0,05 → **0,065** (pire avers à +0,059, prochain revers dur à +0,070). Bench
+  replay `scripts/bench_face_recall.py` : **FP 0/566 · rappel durs 73,3 % ·
+  faciles 100 %** (banque prod rebuildée, 34 ancres). Les 4/15 durs restants
+  sont des crops extrêmes (recadrés serrés, éclairage chaud) — prochain gain =
+  plus d'ancres wild via les tours de boucle.
 - **Câblage** (décision produit, non fait) :
   - Serveur : Stage 1 avant l'identité — backfill `image_assets.face`, et un
     crop `reverse` ne part plus en identité/flywheel.
   - Device : `app-android` n'a aucun rejet de face → UX « retourne la pièce »
     (le matching ArcFace est obverse-only, un revers échoue silencieusement).
 
-## Pilier 2 — Gate dénomination « est-ce un 2€ ? » (PROCHAIN — voir HANDOFF-C7)
+## Pilier 2 — Gate dénomination « est-ce un 2€ ? » (LIVRÉ — probe v2 en prod, voir §H12)
 
 **Constat 2026-06-12** (run `059dc8d…`, AT-2€-2005) : le grid review est pollué par
 des **1ct/2ct/20ct** issus de **photos de lots** (le crop crope toutes les pièces).
@@ -295,3 +302,56 @@ pixels, même asset_id) ne recalcule pas (cas rare ; nouveau crop = nouvelle row
 NULL = recalculé). (2) médailles/mires sous-captées (ci-dessus). (3) backfill lancé
 sur run 059 seulement (autres runs : crops non cachés / 403 ici → couverts au fil de
 l'eau par la pipeline inline ou un futur backfill).
+
+### H12 — Tour de boucle 1 : recalibrage R0 + rescue des rejets → **probe v2** (2026-06-13)
+
+Premier tour complet de la **boucle rétroactive** (labelliser → entraîner → mieux
+trier → re-labelliser) voulue comme principe du lab. Quatre temps :
+
+**1. Recalibrage benchmark-first (probe v1 → v1-R0).** `train_denom_probe.py`
+réécrit : train sur `conf=hi` only, CV 5-fold stratifiée (scores **out-of-fold**
+uniquement), courbe de seuils, opérateur = max junk capté sous **perte ≤ 2 %**,
+baselines (ancres, bimétal, dino, dino⊕bm) sur le même gold. L'artefact `t=0,24`
+(entraîné lo inclus) est remplacé par **`t=0,4168`** : 1,5 % perte / 63,3 % capture
+(stable sur 6 seeds). Validation terrain gratuite : sur les reviews humaines déjà
+tranchées, le verdict `not_2eur` n'est contredit que **3/271** (~99 % précision) ;
+les 2 vrais conflits humains = **commémoratives FI en éclairage doré** (anneau
+bimétal invisible) → angle mort identifié.
+
+**2. Rejet armé + audit PO.** Backfill audit corpus complet (587 crops lot → 201
+`not_2eur`), planches `audit_denom_rejects.py` (rejets triés par score, bande grise
+d'abord), audit PO (~10 avers 2€ acceptés comme perte bornée) → `backfill_denom
+--reject` : **172 reviews évacuées, 83 listings re-routés** (gardes sticky OK).
+
+**3. Rescue + récolte.** Passe visuelle Claude pleine-résolution (4 agents) sur les
+172 rejetés : **19 vrais 2€ dont 15 REVERS** → diagnostic : le gold pos était
+avers-dominé, la probe v1 ratait les revers. +150 négatifs enfin diversifiés
+(27 notcoin, 17 fragments, 17 médailles, tampons, 1€, billet). Récolte via
+`harvest_denom_gold.py` (nouveau, organe de la boucle) : labels visuels + **563
+positifs vérité humaine** (reviews `decided_by='admin'` avec identité). Gold :
+**406 → 952 rows** (660 pos / 265 neg / 27 unk). Les 19 vrais 2€ **restaurés**
+via `POST /review-queue/restore` (sticky).
+
+**4. Probe v2.** Ré-entraînement sur 865 hi (624/241), même protocole :
+
+| | probe v1 (out-of-fold) | **probe v2 (out-of-fold)** |
+|---|---|---|
+| vrais 2€ perdus | 1,5 % | 1,9 % (≤ 2 % R0 ✓) |
+| junk capturé | 63,3 % | **78,8 %** |
+| AUC | 0,928 (dino seule) | 0,956 dino · **0,947 dino⊕bm retenu** |
+| seuil | 0,4168 | **0,331** |
+
+**Renversement** : dino⊕bm, perdant en v1 (le bimétal dégradait la queue basse des
+2€ usés), **gagne en v2 au point opérationnel** — le bimétal est devenu discriminant
+contre les nouveaux négatifs durs (médailles 11/14, notcoins 24/27, fragments 14/14).
+Artefact sauvé (`denom_probe.npz`, ⚠️ restart API à chaque remplacement — singleton).
+
+**Outillage boucle** (tout rejouable) : `train_denom_probe.py` (entraîner+bench),
+`bench_denom_probe.py` / `go-task ml:bench-denom-probe` (replay du gate déployé),
+`backfill_denom.py` (audit-first, `--reject` opt-in), `audit_denom_rejects.py`
+(planches PO), `harvest_denom_gold.py` (récolte labels visuels + review-admin).
+
+**Reste (tour 2)** : (1) valider humainement **27 unk + 60 lo** (le sanity lo est
+à 27,8 % de perte — labels ambigus par construction, c'est LE levier) ; (2)
+médailles/charts encore minoritaires dans les négatifs ; (3) prochain run eBay =
+premier test live du gate v2 → nouvelles planches → tour suivant.

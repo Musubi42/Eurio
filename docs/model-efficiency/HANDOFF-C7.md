@@ -3,6 +3,13 @@
 > Passation pour une **nouvelle session**. Pilier 1 (face avers/revers) **livré**.
 > Ce doc cadre le **pilier 2 (gate dénomination « est-ce un 2€ ? » + authenticité)**,
 > qui est ce que l'utilisateur a identifié comme manquant. Écrit le 2026-06-12.
+>
+> **⚠️ MIS À JOUR 2026-06-13 (soir) : le pilier 2 est LIVRÉ** — probe v2 dino⊕bm en
+> prod (out-of-fold **1,9 % de vrais 2€ perdus / 78,8 % de junk capturé**, seuil
+> 0,331), rejet `--reject` armé et validé PO, boucle rétroactive tour 1 bouclée
+> (gold 952 rows, 19 vrais 2€ rescued+restaurés). Les §1-§2 ci-dessous restent
+> valables comme **diagnostic historique** ; l'état courant et la suite sont dans
+> [C7 §H11/H11bis/H12](./C7-robust-scan-classification.md) et le §5 réécrit.
 
 ## 0. Où on en est
 
@@ -81,15 +88,15 @@ similarité aux ancres avers.
 Métrique cible : précision/rappel du gate « est-ce un 2€ » sur un gold de crops
 lot labellisés (denom). Semer le bench comme `bench_face_detection.py`.
 
-## 3. Autre amélioration (pilier 1, optionnelle) — rappel revers wild
+## 3. Autre amélioration (pilier 1) — rappel revers wild → **FAIT (2026-06-13 soir)**
 
-Le détecteur de face a une **précision excellente mais un rappel incomplet** (τ
-conservateur, 2 ancres canoniques propres). Les revers *wild* (usés/inclinés)
-sous le seuil sont ratés. Fix mesurable : **enrichir la banque `reverse_2eur`**
-avec un échantillon de revers wild vérifiés (parmi les 231 `face=reverse` détectés,
-margin élevé) → couvre les conditions réelles, devrait monter le rappel à τ
-constant (précision préservée car même design). À tester via `bench_face_detection`
-(FP doit rester ~0 sur les 562 avers).
+Le détecteur de face avait une **précision excellente mais un rappel incomplet**
+(2 ancres canoniques propres). Mesuré sur les 15 revers wild rescued du tour de
+boucle denom : rappel **0 %** à τ=0,05. Fix livré : banque `reverse_2eur` enrichie
+de **32 ancres wild vérifiées** (`state/face_bench/reverse_wild_anchors.jsonl`,
+curées top-margin hors gold), τ recalibré **0,065** → **FP 0/566 · rappel revers
+durs 73,3 % · faciles 100 %** (bench replay `scripts/bench_face_recall.py`,
+gold face élargi à 621 rows). Détail : C7 §Caveats pilier 1.
 
 ## 4. Carte du code (pilier 1 livré — réutiliser)
 
@@ -111,19 +118,23 @@ constant (précision préservée car même design). À tester via `bench_face_de
 - Colonnes audit : `image_asset_dino_predictions.reverse_sim/face_margin`
   (schema.sql + `_ensure_column` connection.py).
 
-## 5. Premiers pas (nouvelle session)
+## 5. Premiers pas (nouvelle session) — RÉÉCRIT 2026-06-13 soir, pilier 2 livré
 
-1. Lire [C7](./C7-robust-scan-classification.md) + ce handoff + `[[h4-zeroshot-beats-arcface-review]]`.
-2. Reproduire le constat : run `059dc8d90dad42558e3c6319a722fd35`, groupe AT-2005,
-   bucket `multi_coin_photo` → crops 1ct/20ct (montages dans `ml/state/face_bench/`).
-3. ~~Décider la piste~~ — **fait (2026-06-13)** : bimétal géométrique réfuté en gate
-   dur (H10), bench `bench_denom.py` + signal `denom_geometry.py` livrés. **Prochain
-   pas concret** : labelliser les 112 crops d'amorce (`state/denom_bench/gold_page*.png`,
-   tâche humaine — distinguer 2€ / cent / médaille / logo / mire / partiel), figer un
-   `denom_gold.jsonl`, puis entraîner la **probe DINO 2€-vs-junk** (§2 piste 2).
-   Penser à **rebuild la banque coin-ness** (`foundation_coinness.npz` absente sur
-   desktop) pour rejeter médailles/logos/mire avant la dénom.
-4. Optionnel : enrichir les ancres revers (§3) pour le rappel.
+Le gate dénomination est en prod (probe v2, C7 §H12). La **boucle rétroactive**
+est outillée et a tourné une fois : `harvest_denom_gold.py` (récolte labels) →
+`train_denom_probe.py` (entraînement+bench CV) → `--save` + restart API →
+`bench_denom_probe.py` (replay) → `backfill_denom.py` (audit puis `--reject`) →
+`audit_denom_rejects.py` (planches PO). Prochains pas par ordre de levier :
+
+1. **Tour 2 du gold denom** : faire valider humainement les **27 unk + 60 conf=lo**
+   (le sanity hold-out lo est à 27,8 % de perte — labels ambigus, petit volume,
+   passe rapide dans l'admin) puis ré-entraîner. Enrichir aussi les négatifs
+   médailles/charts (encore minoritaires vs 186 cents).
+2. ~~**Pilier 1, rappel revers**~~ → **FAIT le 2026-06-13 soir** (§3) : banque
+   enrichie 34 ancres + τ=0,065, FP 0/566, rappel durs 0 → 73,3 %.
+3. **Premier run eBay post-gate** : test live de la probe v2 sur des crops frais
+   (le rejet à l'enqueue est actif), puis planches + tour de boucle suivant.
+4. **Pilier 3 — authenticité** : à cadrer (cf. C7 §Pilier 3).
 
 ## 6. État infra / garde-fous
 
