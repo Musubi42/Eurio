@@ -145,6 +145,25 @@ const router = createRouter({
           component: () => import('@/features/crop-bench/pages/CropBenchPage.vue'),
         },
         {
+          path: 'denom-gold',
+          component: () => import('@/features/denom-gold/pages/DenomGoldValidatePage.vue'),
+        },
+        {
+          // Page one-shot d'audit du gate anti-fragment (volontairement hors nav).
+          path: 'fragment-audit',
+          component: () => import('@/features/fragment-audit/pages/FragmentAuditPage.vue'),
+        },
+        {
+          // Front d'analyse du banc crop-recovery (hors nav).
+          path: 'crop-recovery',
+          component: () => import('@/features/crop-recovery/pages/CropRecoveryPage.vue'),
+        },
+        {
+          // Vue « par image brute » du banc crop-recovery (hors nav).
+          path: 'crop-recovery/by-raw',
+          component: () => import('@/features/crop-recovery/pages/RawGalleryPage.vue'),
+        },
+        {
           path: 'bench/runs/:runId',
           component: () => import('@/features/bench/pages/BenchRunAuditPage.vue'),
         },
