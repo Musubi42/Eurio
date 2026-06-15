@@ -250,6 +250,35 @@ def release() -> int:
     return 0
 
 
+def sync() -> int:
+    """Pousse l'état local vers le canonique MinIO SANS relâcher le verrou.
+
+    Checkpoint/backup : la machine reste le writer (verrou conservé) mais la copie
+    distante + le sha sont mis à jour → le travail local est en sécurité même sans
+    handoff. Idéal quand on tient le lease en continu (sole-writer) et qu'on veut
+    juste ne pas perdre un gros travail (ex. re-crop d'un run). `release` reste le
+    handoff (push + retire le verrou)."""
+    client = _s3()
+    lock = _get_json(client, LOCK_KEY)
+    if not _i_hold(lock):
+        holder = (lock or {}).get("holder_host", "personne")
+        print(f"REFUSÉ : cette machine ne tient pas le lease (tenu par {holder}). "
+              "Rien poussé.", file=sys.stderr)
+        return 2
+    if not _DB_PATH.exists():
+        print(f"REFUSÉ : {_DB_PATH} introuvable — rien à pousser.", file=sys.stderr)
+        return 3
+
+    print("Checkpoint WAL…")
+    _wal_checkpoint(_DB_PATH)
+    sha = _sha256(_DB_PATH)
+    print(f"Push eurio.db ({sha[:12]}…) → {BUCKET}/{DB_KEY} (verrou CONSERVÉ)…")
+    client.upload_file(str(_DB_PATH), BUCKET, DB_KEY)
+    client.put_object(Bucket=BUCKET, Key=SHA_KEY, Body=sha.encode())
+    print("Synchronisé. Tu tiens toujours le lease — continue ou `db:release` pour le handoff.")
+    return 0
+
+
 def steal(force: bool = False) -> int:
     client = _s3()
     lock = _get_json(client, LOCK_KEY)
@@ -311,6 +340,7 @@ def main(argv: list[str] | None = None) -> int:
     p_acq = sub.add_parser("acquire", help="pose le verrou + pull la DB")
     p_acq.add_argument("--note", default=None, help="note libre (ex. 'training PC')")
     sub.add_parser("release", help="push la DB + retire le verrou")
+    sub.add_parser("sync", help="push la DB + sha SANS retirer le verrou (checkpoint sole-writer)")
     p_steal = sub.add_parser("steal", help="supprime un verrou périmé (crash)")
     p_steal.add_argument("--force", action="store_true")
     args = parser.parse_args(argv)
@@ -321,6 +351,8 @@ def main(argv: list[str] | None = None) -> int:
         return acquire(note=args.note)
     if args.cmd == "release":
         return release()
+    if args.cmd == "sync":
+        return sync()
     if args.cmd == "steal":
         return steal(force=args.force)
     return 1

@@ -500,6 +500,35 @@ def _census_fragment_tau() -> float:
     except ValueError:
         return 0.55
 
+
+# Anti-undercrop (rim over-fit) — leviers EXPÉRIMENTAUX, OFF par défaut (R0 : aucun
+# changement de comportement prod tant que non activés). Ancrés sur le constat
+# `scripts.measure_crop_undercrop` : l'étage de SÉLECTION (hough refine) est le 1er
+# contributeur au rétrécissement (~54 %), la bbox YOLO borne fiablement la pièce.
+#   EURIO_CROP_OUTER_SELECT=1   → hough_refine choisit le PLUS GRAND cercle centré
+#                                  (rim externe) au lieu du plus centré (anneau interne).
+#   EURIO_CROP_BBOX_FLOOR=0.85  → plancher r_final ≥ frac·r_bbox (la pièce ne peut pas
+#                                  être plus petite que ~85 % de l'extension YOLO). 0 = off.
+def _census_outer_select() -> bool:
+    return os.environ.get("EURIO_CROP_OUTER_SELECT") == "1"
+
+
+def _census_bbox_floor() -> float:
+    try:
+        return max(0.0, float(os.environ.get("EURIO_CROP_BBOX_FLOOR", "0")))
+    except ValueError:
+        return 0.0
+
+
+# Récupération score-guided (stratégie A, banc crop-recovery) : passe de SECOURS quand le
+# census ne rend AUCUN crop (bimétal sous-croppé jeté par le gate → zero_crops). Repart de la
+# détection dominante et cherche par balayage de rayon scoré le crop pièce-entière qui passe
+# le gate. OFF par défaut (R0 : aucun changement prod) ; activé par `EURIO_CENSUS_RECOVER=1`
+# (enrichment serveur uniquement — K appels probe/image, jamais le scan device). Cf.
+# `vision/score_recover.py` + docs/work-in-progress/crop-recovery/.
+def _census_recover_enabled() -> bool:
+    return os.environ.get("EURIO_CENSUS_RECOVER") == "1"
+
 _CENSUS_YOLO_CONF = 0.10
 _CENSUS_RMIN_FRAC = 0.04
 _YOLO_BBOX_MARGIN_FRAC = 0.00  # ROI = bbox strict. +15% laissait Hough voir capsule/arches autour
@@ -994,6 +1023,23 @@ def normalize_listing_with_detections(
                     det.accepted = False
                     det.reject_reason = "gated_fragment"
             results = kept
+
+        # Passe de SECOURS score-guided : si le census ne rend rien (tout rejeté/gaté),
+        # on tente de récupérer la pièce entière par balayage de rayon scoré (stratégie A).
+        # OFF par défaut ; cf. `_census_recover_enabled`. Repart de la plus grosse détection
+        # (même rejetée) comme hint ; n'émet QUE si le crop récupéré passe le gate (≥ τ).
+        if tau > 0 and not results and _census_recover_enabled() and detections:
+            from vision.score_recover import recover_crop
+            hint_det = max(detections, key=lambda d: d.r)
+            rec = recover_crop(
+                bgr, {"cx": hint_det.cx, "cy": hint_det.cy, "r_final": hint_det.r},
+                tau=tau, config=config,
+            )
+            if rec is not None and rec.image is not None:
+                results = [rec]
+                detections.append(CircleDetection(
+                    cx=rec.cx, cy=rec.cy, r=rec.r, method="score_recover", accepted=True,
+                ))
     return results, detections
 
 

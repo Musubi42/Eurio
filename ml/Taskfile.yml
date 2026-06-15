@@ -553,6 +553,11 @@ tasks:
     cmds:
       - "{{.VENV}}/python -m store.lease release"
 
+  db:sync:
+    desc: "Checkpoint + push eurio.db SANS retirer le verrou (sauvegarde sole-writer, on garde la main)."
+    cmds:
+      - "{{.VENV}}/python -m store.lease sync"
+
   db:steal:
     desc: "Supprime un verrou périmé (machine crashée). Usage: go-task ml:db:steal -- --force"
     cmds:
@@ -712,6 +717,11 @@ tasks:
 
   src:ebay:run:
     desc: "Run eBay enrichment on the next 10 eurio_ids from freshness queue. Override: --batch N or --target-eurio-ids a,b,c"
+    # EURIO_CENSUS_RECOVER=1 : passe de secours score-guided (stratégie A) quand le census ne
+    # rend aucun crop → récupère les bimétal sous-croppés au lieu de les laisser zero_crops
+    # (~77% du parc, validé 2026-06-15). Mettre 0 pour désactiver. Cf. vision/score_recover.py.
+    env:
+      EURIO_CENSUS_RECOVER: "1"
     cmds:
       - "{{.VENV}}/python -m sources.cli --source ebay {{.CLI_ARGS}}"
 
@@ -722,6 +732,8 @@ tasks:
 
   src:ebay:limit:
     desc: "eBay batch with custom size. Usage: go-task ml:src:ebay:limit -- --batch 5"
+    env:
+      EURIO_CENSUS_RECOVER: "1"
     cmds:
       - "{{.VENV}}/python -m sources.cli --source ebay {{.CLI_ARGS}}"
 
