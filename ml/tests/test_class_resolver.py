@@ -81,3 +81,34 @@ def test_force_eurio_id_does_not_collapse_distinct_coins():
     assert len(resolver.classes) == 2
     class_ids = {d.class_id for d in resolver.classes}
     assert class_ids == {"at-2002-2eur-standard", "at-2008-2eur-standard"}
+
+
+def test_classes_for_eurio_ids_dedupes_design_group_and_flags_unresolved():
+    """Joint cohorte→staging : eurio_ids → classes COALESCE dédupliquées.
+
+    Deux membres d'un même design_group s'effondrent en UNE classe (ordre du
+    premier vu préservé) ; un commémoratif sans design_group reste sa propre
+    classe ; un eurio_id absent du catalogue tombe dans `unresolved`.
+    """
+    coins = [
+        CoinRef(eurio_id="be-2007-std", numista_id=1, design_group_id="be-albert-t1"),
+        CoinRef(eurio_id="be-2008-std", numista_id=2, design_group_id="be-albert-t1"),
+        CoinRef(eurio_id="fr-2016-commemo", numista_id=3, design_group_id=None),
+    ]
+    resolver = Resolver(coins)
+    descriptors, unresolved = resolver.classes_for_eurio_ids(
+        ["be-2007-std", "fr-2016-commemo", "be-2008-std", "ghost-coin"]
+    )
+    # be-2007 + be-2008 → une seule classe design_group ; fr-2016 sa propre classe.
+    class_ids = [d.class_id for d in descriptors]
+    assert class_ids == ["be-albert-t1", "fr-2016-commemo"]
+    kinds = {d.class_id: d.class_kind for d in descriptors}
+    assert kinds["be-albert-t1"] == "design_group_id"
+    assert kinds["fr-2016-commemo"] == "eurio_id"
+    assert unresolved == ["ghost-coin"]
+
+
+def test_classes_for_eurio_ids_empty():
+    resolver = Resolver([CoinRef(eurio_id="x", numista_id=1, design_group_id=None)])
+    descriptors, unresolved = resolver.classes_for_eurio_ids([])
+    assert descriptors == [] and unresolved == []

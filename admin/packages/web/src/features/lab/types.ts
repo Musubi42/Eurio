@@ -23,6 +23,43 @@ export interface CohortSummary {
   updated_at: string | null
 }
 
+// ─── Joint cohorte→training_staging ───────────────────────────────────
+export interface StagedClassRef {
+  class_id: string
+  class_kind: 'eurio_id' | 'design_group_id'
+}
+
+export interface PreflightClass {
+  class_id: string
+  class_kind: string
+  n_numista: number
+  n_ebay: number
+  n_ref: number
+  seed: number
+  status: 'ok' | 'warn' | 'block'
+  reason: string | null
+  missing_eurio_ids: string[]
+}
+
+export interface PreflightReport {
+  ok: boolean
+  m_per_class: number
+  n_total: number
+  n_blocked: number
+  n_warned: number
+  classes: PreflightClass[]
+  summary: string
+}
+
+export interface CohortStageResult {
+  cohort_id: string
+  cohort_name: string
+  replaced: boolean
+  staged: StagedClassRef[]
+  unresolved: string[]
+  preflight: PreflightReport
+}
+
 export interface CoinCaptureStatus {
   eurio_id: string
   numista_id: number | null

@@ -129,6 +129,12 @@ class CohortSyncPayload(BaseModel):
     overwrite: bool = False
 
 
+class CohortStagePayload(BaseModel):
+    # replace=True : remplace tout le staging par les classes de la cohorte
+    # (scope de run propre) ; False : fusionne (UPSERT) avec l'existant.
+    replace: bool = True
+
+
 class IterationCreatePayload(BaseModel):
     name: str
     hypothesis: str | None = None
@@ -480,6 +486,57 @@ def add_coins_to_cohort(
     _get_store().update_cohort(cohort.id, eurio_ids=merged)
     updated = _get_store().get_cohort(cohort.id)
     return _cohort_summary(updated) if updated else cohort.to_dict()
+
+
+@router.post("/cohorts/{cohort_id}/stage")
+def stage_cohort_for_training(
+    cohort_id: str, payload: CohortStagePayload | None = None
+) -> dict:
+    """Joint cohorte→training_staging : stage les classes de la cohorte.
+
+    Chaque eurio_id de la cohorte résout vers sa classe ``COALESCE(
+    design_group_id, eurio_id)`` (les membres d'un même design_group
+    s'effondrent en une classe — la cohorte définit *quelles classes*). Les
+    eurio_ids absents du catalogue (réf morte / slug drift) sont remontés dans
+    ``unresolved`` et **non** stagés. Le preflight tourne sur le résultat pour
+    signaler tout de suite les classes affamées (block/warn) — sans bloquer le
+    staging lui-même (le gate dur est au lancement du run).
+    """
+    from store import ClassRef
+    from training.eval.class_resolver import build_resolver
+    from training.foundation.preflight import preflight_classes
+
+    payload = payload or CohortStagePayload()
+    store = _get_store()
+    cohort = store.get_cohort(cohort_id)
+    if cohort is None:
+        raise HTTPException(status_code=404, detail="Cohort introuvable")
+
+    resolver = build_resolver(force_eurio_id=False, db_path=store.db_path)
+    descriptors, unresolved = resolver.classes_for_eurio_ids(cohort.eurio_ids)
+    refs = [ClassRef(d.class_id, d.class_kind) for d in descriptors]
+    if not refs:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Aucune classe résolue depuis la cohorte — tous les eurio_ids "
+                f"sont absents du catalogue : {unresolved}"
+            ),
+        )
+
+    if payload.replace:
+        store.clear_staging()
+    store.stage_classes(refs)
+
+    report = preflight_classes(refs, store, resolver=resolver)
+    return {
+        "cohort_id": cohort.id,
+        "cohort_name": cohort.name,
+        "replaced": payload.replace,
+        "staged": [r.to_dict() for r in refs],
+        "unresolved": unresolved,
+        "preflight": report.to_dict(),
+    }
 
 
 @router.delete("/cohorts/{cohort_id}/coins/{eurio_id}")

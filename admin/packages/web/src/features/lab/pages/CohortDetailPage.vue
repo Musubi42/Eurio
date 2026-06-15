@@ -9,7 +9,7 @@ import IterationRow from '@/features/lab/components/IterationRow.vue'
 import SensitivityPanel from '@/features/lab/components/SensitivityPanel.vue'
 import TrajectoryChart from '@/features/lab/components/TrajectoryChart.vue'
 import { useQueryClient } from '@tanstack/vue-query'
-import { deleteCohort } from '@/features/lab/composables/useLabApi'
+import { deleteCohort, stageCohortForTraining } from '@/features/lab/composables/useLabApi'
 import {
   useCloneCohortMutation,
   useCohortProgressQuery,
@@ -20,9 +20,10 @@ import {
   useTrajectoryQuery,
 } from '@/features/lab/composables/useLabQueries'
 import type {
+  CohortStageResult,
   IterationDetail,
 } from '@/features/lab/types'
-import { ArrowLeft, Copy as CopyIcon, Loader2, Plus, Trash2 } from 'lucide-vue-next'
+import { ArrowLeft, Copy as CopyIcon, Layers, Loader2, Plus, Trash2, X } from 'lucide-vue-next'
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
@@ -97,6 +98,27 @@ async function handleDeleteCohort() {
     router.push('/lab')
   } catch (e) {
     alert(`Suppression échouée : ${(e as Error).message}`)
+  }
+}
+
+// Joint cohorte→training_staging : stage les classes de la cohorte (replace).
+const staging = ref(false)
+const stageResult = ref<CohortStageResult | null>(null)
+async function handleStageForTraining() {
+  if (!cohort.value) return
+  const ok = confirm(
+    `Stager pour training : remplacer le staging par les classes de "${cohort.value.name}" `
+    + `(${cohort.value.eurio_ids.length} pièces → classes design_group/eurio_id) ?`,
+  )
+  if (!ok) return
+  staging.value = true
+  stageResult.value = null
+  try {
+    stageResult.value = await stageCohortForTraining(cohort.value.id, true)
+  } catch (e) {
+    alert(`Staging échoué : ${(e as Error).message}`)
+  } finally {
+    staging.value = false
   }
 }
 
@@ -228,6 +250,18 @@ function formatPct(v: number | null): string {
               Nouvelle itération
             </button>
             <button
+              class="flex items-center gap-1.5 rounded-md border px-3 py-2 text-sm transition-colors hover:bg-[var(--surface-2)]"
+              style="border-color: var(--surface-3); color: var(--ink);"
+              :disabled="staging"
+              :style="{ cursor: staging ? 'wait' : 'pointer' }"
+              title="Remplace le staging du prochain run par les classes de cette cohorte (résout les eurio_ids → design_group, dédup) puis affiche le preflight."
+              @click="handleStageForTraining"
+            >
+              <Loader2 v-if="staging" class="h-3.5 w-3.5 animate-spin" />
+              <Layers v-else class="h-3.5 w-3.5" />
+              Stager pour training
+            </button>
+            <button
               v-if="!isDraft"
               class="flex items-center gap-1.5 rounded-md border px-3 py-2 text-sm transition-colors hover:bg-[var(--surface-2)]"
               style="border-color: var(--surface-3); color: var(--ink);"
@@ -249,6 +283,75 @@ function formatPct(v: number | null): string {
         </div>
         <div class="mt-6 h-px w-16" style="background: var(--gold);" />
       </header>
+
+      <!-- Résultat du staging cohorte→training (joint + preflight) -->
+      <section
+        v-if="stageResult"
+        class="mb-6 rounded-lg border"
+        :style="{
+          borderColor: stageResult.preflight.ok ? 'var(--success)' : 'var(--danger)',
+          background: `color-mix(in srgb, ${stageResult.preflight.ok ? 'var(--success)' : 'var(--danger)'} 6%, var(--surface))`,
+        }"
+      >
+        <div class="flex items-start justify-between gap-4 px-4 py-3">
+          <div class="min-w-0">
+            <p class="text-sm font-medium" style="color: var(--ink);">
+              {{ stageResult.staged.length }} classe(s) stagée(s){{ stageResult.replaced ? ' (staging remplacé)' : '' }}
+              · <span :style="{ color: stageResult.preflight.ok ? 'var(--success)' : 'var(--danger)' }">
+                {{ stageResult.preflight.ok ? 'prêt à entraîner' : `${stageResult.preflight.n_blocked} bloquante(s)` }}
+              </span>
+              <span v-if="stageResult.preflight.n_warned > 0" style="color: var(--warning);">
+                · {{ stageResult.preflight.n_warned }} à surveiller
+              </span>
+            </p>
+            <p
+              v-if="stageResult.unresolved.length"
+              class="mt-1 text-xs"
+              style="color: var(--danger);"
+            >
+              {{ stageResult.unresolved.length }} eurio_id(s) non résolus (réf morte, non stagés) :
+              <code class="font-mono">{{ stageResult.unresolved.join(', ') }}</code>
+            </p>
+          </div>
+          <button
+            class="rounded p-1 transition-colors hover:bg-[var(--surface-2)]"
+            style="color: var(--ink-400);"
+            title="Fermer"
+            @click="stageResult = null"
+          >
+            <X class="h-3.5 w-3.5" />
+          </button>
+        </div>
+        <table class="w-full border-t text-sm" style="border-color: var(--surface-3);">
+          <thead>
+            <tr style="background: var(--surface-1);">
+              <th class="px-4 py-1.5 text-left text-[10px] uppercase" style="color: var(--ink-500);">Classe</th>
+              <th class="px-2 py-1.5 text-right text-[10px] uppercase" style="color: var(--ink-500);">Seed</th>
+              <th class="px-2 py-1.5 text-right text-[10px] uppercase" style="color: var(--ink-500);">eBay</th>
+              <th class="px-4 py-1.5 text-left text-[10px] uppercase" style="color: var(--ink-500);">Statut</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="c in stageResult.preflight.classes"
+              :key="c.class_id"
+              class="border-t"
+              style="border-color: var(--surface-3);"
+            >
+              <td class="px-4 py-1.5 font-mono text-xs" style="color: var(--ink);">{{ c.class_id }}</td>
+              <td class="px-2 py-1.5 text-right font-mono text-xs" style="color: var(--ink-500);">{{ c.seed }}</td>
+              <td class="px-2 py-1.5 text-right font-mono text-xs" style="color: var(--ink-500);">{{ c.n_ebay }}</td>
+              <td class="px-4 py-1.5 text-xs">
+                <span
+                  :style="{
+                    color: c.status === 'block' ? 'var(--danger)' : c.status === 'warn' ? 'var(--warning)' : 'var(--success)',
+                  }"
+                >{{ c.status === 'block' ? '✗ bloque' : c.status === 'warn' ? '⚠ ' + (c.reason ?? '') : 'ok' }}</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
 
       <!-- F3 : frise du flow 10 étapes (statut par étage = compteur d'état réel) -->
       <CohortFlowHeader

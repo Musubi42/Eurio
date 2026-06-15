@@ -55,6 +55,19 @@ class ClassPreflight:
     reason: str | None = None
     missing_eurio_ids: tuple[str, ...] = ()  # membres absents du catalogue
 
+    def to_dict(self) -> dict:
+        return {
+            "class_id": self.class_id,
+            "class_kind": self.class_kind,
+            "n_numista": self.n_numista,
+            "n_ebay": self.n_ebay,
+            "n_ref": self.n_ref,
+            "seed": self.seed,
+            "status": self.status,
+            "reason": self.reason,
+            "missing_eurio_ids": list(self.missing_eurio_ids),
+        }
+
 
 @dataclass
 class PreflightReport:
@@ -72,6 +85,17 @@ class PreflightReport:
     @property
     def ok(self) -> bool:
         return not self.blocked
+
+    def to_dict(self) -> dict:
+        return {
+            "ok": self.ok,
+            "m_per_class": self.m_per_class,
+            "n_total": len(self.classes),
+            "n_blocked": len(self.blocked),
+            "n_warned": len(self.warned),
+            "classes": [c.to_dict() for c in self.classes],
+            "summary": self.summary(),
+        }
 
     def summary(self) -> str:
         """Tableau lisible (logué tel quel par le pipeline)."""

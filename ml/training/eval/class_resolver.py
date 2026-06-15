@@ -112,6 +112,32 @@ class Resolver:
         d = self._by_class.get(class_id)
         return list(d.eurio_ids) if d else []
 
+    def classes_for_eurio_ids(
+        self, eurio_ids: list[str]
+    ) -> tuple[list[ClassDescriptor], list[str]]:
+        """Mappe une liste d'eurio_ids (ex. une cohorte) → classes dédupliquées.
+
+        Chaque eurio_id résout vers sa classe ``COALESCE(design_group_id,
+        eurio_id)`` ; plusieurs eurio_ids d'un même design_group s'effondrent en
+        UNE classe (l'ordre du premier vu est préservé). C'est le joint
+        cohorte→staging : la cohorte définit *quelles classes* entraîner.
+
+        Retourne ``(descriptors, unresolved)`` — ``unresolved`` = eurio_ids
+        absents du catalogue (réf morte / slug drift) qu'on ne peut pas stager.
+        """
+        descriptors: list[ClassDescriptor] = []
+        seen: set[str] = set()
+        unresolved: list[str] = []
+        for eid in eurio_ids:
+            d = self._by_eurio.get(eid)
+            if d is None:
+                unresolved.append(eid)
+                continue
+            if d.class_id not in seen:
+                seen.add(d.class_id)
+                descriptors.append(d)
+        return descriptors, unresolved
+
 
 def load_env(root: Path | None = None) -> dict[str, str]:
     base = root or Path(__file__).resolve().parent.parent.parent

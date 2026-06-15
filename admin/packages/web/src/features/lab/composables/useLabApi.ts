@@ -113,6 +113,18 @@ export async function cloneCohort(
   )
 }
 
+// Joint cohorte→training_staging : stage les classes de la cohorte (replace
+// par défaut). Renvoie le résultat + le preflight (block/warn) pour affichage.
+export async function stageCohortForTraining(
+  cohortId: string,
+  replace = true,
+): Promise<import('../types').CohortStageResult> {
+  return json<import('../types').CohortStageResult>(
+    `/lab/cohorts/${encodeURIComponent(cohortId)}/stage`,
+    { method: 'POST', body: JSON.stringify({ replace }) },
+  )
+}
+
 // ─── Captures (cohort capture flow) ────────────────────────────────────
 
 export async function fetchCohortProgress(cohortId: string): Promise<CohortProgress> {
