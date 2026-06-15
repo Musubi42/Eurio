@@ -48,6 +48,14 @@ import type { DinoSuggestion } from '../composables/useDinoSuggestions'
 
 const queue = ref<ReviewItem[]>([])
 const currentIndex = ref(0)
+// Pagination « infinie » : la queue se recharge à l'approche de la fin du batch
+// local (cf. loadMore). `drained` = le backend n'a plus rien de nouveau pour ce
+// scope (vrai écran vide). `loadingMore` garde-fou anti-concurrence.
+const loadingMore = ref(false)
+const drained = ref(false)
+// Re-fetch déclenché quand le curseur arrive à PREFETCH_AHEAD items de la fin :
+// le reviewer ne voit jamais « vide » alors qu'il reste des items côté serveur.
+const PREFETCH_AHEAD = 5
 const focusedCandidateIdx = ref<number | null>(null)
 const freeSearchCandidate = ref<ReviewCandidate | null>(null)
 const face = ref<ReviewFace>('obverse')
@@ -152,15 +160,27 @@ const cohortId = computed(() =>
     ? route.query.cohort
     : null,
 )
-// WS1 : lane persistée à reviewer (manual/auto_accept/ccproxy). Défaut 'manual'
-// en contexte cohort (la carte « Queue manuelle » deep-linke ?lane=manual) → on
-// ne sert QUE les items de cette lane, donc le compteur décroît à chaque review.
-const lane = computed(() =>
-  typeof route.query.lane === 'string'
-    && ['manual', 'auto_accept', 'ccproxy'].includes(route.query.lane)
-    ? route.query.lane
-    : null,
-)
+// WS1 : lane persistée à reviewer (manual/auto_accept/ccproxy). SingleReviewView
+// EST l'écran manuel (auto_accept et ccproxy ont leurs pages dédiées) → il filtre
+// sur sa lane, donc le compteur de la lane décroît à chaque décision.
+//
+// Défaut = 'manual'. Sans ce défaut, /review/manual (lien dashboard, sans param)
+// servait lane=null → toutes lanes par priorité → les items ccproxy (priorité plus
+// haute) passaient devant et le reviewer tranchait du ccproxy en croyant faire du
+// manuel : la carte « Queue manuelle » (n_pending − handled) restait alors
+// mathématiquement figée (toute décision non-manuelle décrémente n_pending ET
+// handled à parts égales). Bug PO 2026-06-15.
+//
+// EXCEPTION ?ids= (galerie enrichment) : sert des rows EXACTES toutes lanes
+// confondues (crops rescués, target ≠ pièce assignée) → pas de filtre lane.
+const lane = computed<string | null>(() => {
+  const q = route.query.lane
+  if (typeof q === 'string' && ['manual', 'auto_accept', 'ccproxy'].includes(q)) {
+    return q
+  }
+  if (typeof route.query.ids === 'string' && route.query.ids) return null
+  return 'manual'
+})
 // Scope PAR PIÈCE (?eurio_id=) : review déclenchée depuis une row coin du
 // cockpit. Ne sert QUE les crops de cette pièce → trancher fait bouger SA ligne
 // (corrige « Reviewer N » qui servait toute la cohorte). Prioritaire backend.
@@ -215,7 +235,38 @@ async function load() {
   queue.value = q
   stats.value = s
   currentIndex.value = 0
+  drained.value = q.length === 0
+  loadingMore.value = false
   resetForCurrent()
+}
+
+// Charge le batch suivant et l'APPEND à la queue locale (pagination continue).
+// Dédup obligatoire : le backend re-sert les items encore `open`, donc (a) les
+// items non encore décidés qu'on tient déjà en file, et (b) la décision en
+// attente (commit différé, status reste 'open' tant que sa fenêtre d'undo n'a
+// pas flush). On exclut les deux pour ne jamais empiler de doublon.
+async function loadMore() {
+  if (loadingMore.value || drained.value) return
+  loadingMore.value = true
+  try {
+    const more = await fetchReviewQueue({
+      limit: 30,
+      cohortId: cohortId.value,
+      lane: lane.value,
+      eurioId: eurioId.value,
+      reviewIds: reviewIds.value,
+    })
+    const known = new Set(queue.value.map((r) => r.id))
+    if (pendingCommit.value) known.add(pendingCommit.value.reviewId)
+    const fresh = more.filter((r) => !known.has(r.id))
+    if (fresh.length === 0) {
+      drained.value = true
+    } else {
+      queue.value = [...queue.value, ...fresh]
+    }
+  } finally {
+    loadingMore.value = false
+  }
 }
 
 function resetForCurrent() {
@@ -262,6 +313,14 @@ onMounted(() => {
 // explicit id list changes.
 watch([cohortId, lane, eurioId, reviewIds], () => {
   void load()
+})
+
+// Pagination continue : dès que le curseur approche la fin du batch local,
+// précharge la suite. Couvre aussi le dépassement (curseur ≥ longueur) si le
+// reviewer va plus vite que le fetch. La garde loadingMore/drained évite les
+// appels redondants.
+watch(currentIndex, (idx) => {
+  if (idx >= queue.value.length - PREFETCH_AHEAD) void loadMore()
 })
 
 // Démontage = changement de route OU bascule Single→Lot (v-if dans
@@ -658,9 +717,22 @@ useReviewKeybinds(keyboardEnabled, {
       </div>
     </div>
 
-    <!-- ═══ Empty state ═══ -->
+    <!-- ═══ Chargement de la suite (batch local épuisé, fetch en vol) ═══ -->
     <section
-      v-if="isQueueEmpty"
+      v-if="isQueueEmpty && !drained"
+      class="flex flex-1 flex-col items-center justify-center px-8 py-16 text-center"
+    >
+      <p
+        class="font-mono text-[11px] uppercase tracking-wider"
+        style="color: var(--ink-400);"
+      >
+        Chargement de la suite…
+      </p>
+    </section>
+
+    <!-- ═══ Empty state (queue réellement vidée) ═══ -->
+    <section
+      v-else-if="isQueueEmpty"
       class="flex flex-1 flex-col items-center justify-center px-8 py-16 text-center"
     >
       <p
