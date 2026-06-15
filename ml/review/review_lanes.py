@@ -1,10 +1,14 @@
 """Routage des items de review vers une LANE persistée — source de vérité UNIQUE.
 
-Avant (WS1) : les 3 « queues » manuel / auto-accept / ccproxy n'existaient pas en
-base. C'était une heuristique Dino recalculée à chaque affichage (triage-stats),
-et l'écran de review ne filtrait sur rien → le compteur d'une lane ne bougeait
+Avant (WS1) : les 2 « queues » manuel / auto-accept n'existaient pas en base.
+C'était une heuristique Dino recalculée à chaque affichage (triage-stats), et
+l'écran de review ne filtrait sur rien → le compteur d'une lane ne bougeait
 jamais. Désormais la lane est figée en base (``review_queue.lane``) par CE module,
 et chaque compteur / écran filtre dessus.
+
+NB : la lane ``ccproxy`` (arbitrage Claude vision en masse sur les cas ambigus)
+a été retirée — décision PO : on ne garde que ``manual`` + ``auto_accept`` ;
+tout ce qui n'est pas auto-accept tombe en review humaine.
 
 Règle de routage (à partir du verdict d'auto-validation Dino, cf.
 ``foundation/auto_validate.py``) — UN SEUL endroit, documenté :
@@ -14,10 +18,10 @@ Règle de routage (à partir du verdict d'auto-validation Dino, cf.
     ├────────────────┼───────────────┼─────────────────────────────────────────┤
     │ auto_candidate │ auto_accept   │ machine confiante → review humaine rapide │
     │                │               │ (tout présélectionné, on décoche)         │
-    │ partial        │ ccproxy       │ Dino penche bon mais pas assez sûr →      │
-    │                │               │ arbitrage Claude vision en masse          │
-    │ divergent      │ ccproxy       │ Dino contredit la cible → idem (signal à  │
-    │                │               │ arbitrer)                                 │
+    │ partial        │ manual        │ Dino penche bon mais pas assez sûr →      │
+    │                │               │ tranché à la main                         │
+    │ divergent      │ manual        │ Dino contredit la cible → tranché à la    │
+    │                │               │ main                                      │
     │ unknown        │ manual        │ Dino aveugle (pas de prédiction / pas de  │
     │                │               │ cible) → seul un humain peut décider      │
     └────────────────┴───────────────┴─────────────────────────────────────────┘
@@ -39,10 +43,10 @@ from training.foundation.auto_validate import (
     compute_auto_validate_verdict,
 )
 
-Lane = Literal["manual", "auto_accept", "ccproxy"]
+Lane = Literal["manual", "auto_accept"]
 
-# Les 3 lanes valides (CHECK miroir du schéma review_queue.lane).
-LANES: tuple[Lane, ...] = ("manual", "auto_accept", "ccproxy")
+# Les 2 lanes valides (CHECK miroir du schéma review_queue.lane).
+LANES: tuple[Lane, ...] = ("manual", "auto_accept")
 
 # Lane par défaut des items legacy (lane NULL avant backfill) et fallback de tout
 # verdict inconnu : l'humain est le filet de sécurité.
@@ -51,8 +55,8 @@ DEFAULT_LANE: Lane = "manual"
 # Règle de routage verdict → lane. SOURCE DE VÉRITÉ UNIQUE.
 VERDICT_TO_LANE: dict[str, Lane] = {
     "auto_candidate": "auto_accept",
-    "partial": "ccproxy",
-    "divergent": "ccproxy",
+    "partial": "manual",
+    "divergent": "manual",
     "unknown": "manual",
 }
 

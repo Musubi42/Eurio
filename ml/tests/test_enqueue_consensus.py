@@ -103,9 +103,10 @@ def test_strong_match_routes_auto_accept_and_persists(conn):
     )
 
 
-def test_contradict_alone_is_rescued_to_ccproxy_not_killed(conn):
+def test_contradict_alone_is_rescued_to_manual_not_killed(conn):
     # LE changement clé : texte contradict + dino match (pas mismatch) →
-    # needs_review/ccproxy (rescue), PAS reject, PAS de discarded.
+    # needs_review/manual (rescue), PAS reject, PAS de discarded. (ccproxy
+    # retiré : le rescue tombe en review humaine.)
     eid = "fr-2014-2eur-commemo"
     ref, sid, aid = _seed_asset(
         conn, eurio_id=eid, is_commemorative=1, text_verdict="contradict",
@@ -116,7 +117,7 @@ def test_contradict_alone_is_rescued_to_ccproxy_not_killed(conn):
     rq = conn.execute(
         "SELECT lane FROM review_queue WHERE image_asset_id = ?", (aid,)
     ).fetchone()
-    assert rq["lane"] == "ccproxy"
+    assert rq["lane"] == "manual"
     cv = conn.execute(
         "SELECT outcome, rule FROM consensus_verdicts WHERE image_asset_id = ?",
         (aid,),

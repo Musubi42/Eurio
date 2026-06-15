@@ -305,7 +305,7 @@ def run_enqueue(
             # Lane figée à l'enqueue par la RÈGLE DE CONSENSUS (C3) — source de
             # vérité unique du routage : agrège text + dino + crop_quality (tous
             # disponibles ici : text au step 2.5, dino au 5.5, crop si mesuré) en
-            # {accept→auto_accept, needs_review→ccproxy/manual, reject→manual}.
+            # {accept→auto_accept, needs_review→manual, reject→manual}.
             # Remplace l'ancien compute_lane (branche contradict→divergent). Le
             # verdict est aussi PERSISTÉ (consensus_verdicts) pour audit/replay.
             # Pas de signal exploitable (asset non résolu) ⇒ lane 'manual'.

@@ -1,12 +1,13 @@
 <script setup lang="ts">
-// Dashboard de triage /review — entrée unique vers les 3 voies de
-// review : queue manuelle, auto-accept heuristique, ccproxy (Claude).
+// Dashboard de triage /review — entrée unique vers les 2 voies de
+// review : queue manuelle + auto-accept heuristique. (CCProxy/Claude
+// retiré — décision PO : on ne garde que manuel + auto-accept.)
 //
 // Pas un mode parmi d'autres mais le hub. Les pages filles
-// (/review/manual, /review/auto-accept, plus tard /review/ccproxy) sont
-// les outils ; cette page donne la vision globale.
+// (/review/manual, /review/auto-accept) sont les outils ; cette page
+// donne la vision globale.
 //
-// Design : table de travail d'un numismate. Trois plateaux d'examen
+// Design : table de travail d'un numismate. Plateaux d'examen
 // numérotés en chiffres romains, chiffres héros en Fraunces italique,
 // ruban de répartition fin sous les cards. Cohérent avec
 // AutoAcceptReviewPage.vue mais avec une emphase éditoriale plus
@@ -18,7 +19,6 @@ import {
   ArrowUpRight,
   Eye,
   Wand2,
-  Bot,
   RotateCcw,
 } from 'lucide-vue-next'
 import { fetchTriageStats, type TriageStats } from '../composables/useReviewApi'
@@ -48,16 +48,13 @@ const manualCount = computed(() => {
   // Compteur de la LANE manuelle persistée (WS1) — exactement le filtre que sert
   // /review/manual (lane='manual' OR NULL, single, open). Garantit que la carte ==
   // ce que le reviewer voit. L'ancien calcul (n_pending − handled, par verdict) se
-  // dégradait : quand tous les pending étaient partiels/divergents (lane ccproxy),
+  // dégradait : quand tous les pending étaient partiels/divergents (désormais manual),
   // rest=0 → fallback sur n_pending → la carte affichait 142 « manuels » alors que
   // la page manual était vide. Bug PO 2026-06-15.
   return stats.value?.by_lane.manual ?? 0
 })
 
 const autoCount = computed(() => stats.value?.by_verdict.auto_candidate ?? 0)
-const claudeCount = computed(
-  () => (stats.value?.by_verdict.partial ?? 0) + (stats.value?.by_verdict.divergent ?? 0),
-)
 
 const segments = computed(() => {
   if (!stats.value || stats.value.n_pending === 0) return []
@@ -102,7 +99,7 @@ function fmt(n: number): string {
           Review.
         </h1>
         <p class="mt-2 max-w-md text-sm" style="color: var(--ink-500);">
-          Trois voies d'identification pour les images scrapées. Choisissez le plateau d'examen.
+          Deux voies d'identification pour les images scrapées. Choisissez le plateau d'examen.
         </p>
       </div>
 
@@ -240,47 +237,6 @@ function fmt(n: number): string {
             </footer>
           </article>
 
-          <!-- III — CCPROXY (Claude) -->
-          <article
-            class="card card-active card-indigo"
-            :style="{ '--enter-delay': '200ms' }"
-            @click="go('/review/ccproxy')"
-            role="link"
-            tabindex="0"
-            @keydown.enter="go('/review/ccproxy')"
-          >
-            <header class="card-head">
-              <span class="card-roman">III</span>
-              <span class="card-eyebrow">Plateau LLM</span>
-            </header>
-
-            <div class="card-icon">
-              <Bot :size="18" :stroke-width="1.4" />
-            </div>
-
-            <h2 class="card-title">CCProxy</h2>
-
-            <div class="card-number-row">
-              <span class="card-number" :class="{ 'is-skeleton': status === 'loading' }">
-                {{ status === 'loading' ? '—' : fmt(claudeCount) }}
-              </span>
-              <span class="card-number-unit">cas ambigus<br />à examiner</span>
-            </div>
-
-            <p class="card-sub">
-              <template v-if="status === 'loading'">Chargement…</template>
-              <template v-else>
-                Sonnet 4.6 via ccproxy — partiels et divergents proposés à l'acquittement humain.
-              </template>
-            </p>
-
-            <footer class="card-cta">
-              <span class="card-cta-label">
-                {{ claudeCount === 0 ? 'Lancer un batch' : 'Examiner' }}
-              </span>
-              <ArrowUpRight :size="14" :stroke-width="1.6" />
-            </footer>
-          </article>
         </div>
 
         <!-- ─── Vision globale : ruban segmenté ─── -->

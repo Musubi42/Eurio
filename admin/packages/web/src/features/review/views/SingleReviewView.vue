@@ -167,14 +167,14 @@ const cohortId = computed(() =>
     ? route.query.cohort
     : null,
 )
-// WS1 : lane persistée à reviewer (manual/auto_accept/ccproxy). SingleReviewView
-// EST l'écran manuel (auto_accept et ccproxy ont leurs pages dédiées) → il filtre
-// sur sa lane, donc le compteur de la lane décroît à chaque décision.
+// WS1 : lane persistée à reviewer (manual/auto_accept). SingleReviewView
+// EST l'écran manuel (auto_accept a sa page dédiée) → il filtre sur sa lane,
+// donc le compteur de la lane décroît à chaque décision.
 //
 // Défaut = 'manual'. Sans ce défaut, /review/manual (lien dashboard, sans param)
-// servait lane=null → toutes lanes par priorité → les items ccproxy (priorité plus
-// haute) passaient devant et le reviewer tranchait du ccproxy en croyant faire du
-// manuel : la carte « Queue manuelle » (n_pending − handled) restait alors
+// servait lane=null → toutes lanes par priorité → des items d'autres lanes
+// (priorité plus haute) passaient devant et le reviewer tranchait hors-manuel en
+// croyant faire du manuel : la carte « Queue manuelle » (n_pending − handled) restait alors
 // mathématiquement figée (toute décision non-manuelle décrémente n_pending ET
 // handled à parts égales). Bug PO 2026-06-15.
 //
@@ -182,7 +182,7 @@ const cohortId = computed(() =>
 // confondues (crops rescués, target ≠ pièce assignée) → pas de filtre lane.
 const lane = computed<string | null>(() => {
   const q = route.query.lane
-  if (typeof q === 'string' && ['manual', 'auto_accept', 'ccproxy'].includes(q)) {
+  if (typeof q === 'string' && ['manual', 'auto_accept'].includes(q)) {
     return q
   }
   if (typeof route.query.ids === 'string' && route.query.ids) return null

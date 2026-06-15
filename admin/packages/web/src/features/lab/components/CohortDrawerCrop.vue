@@ -1,14 +1,14 @@
 <script setup lang="ts">
 // Tiroir §C4 — Review crops (scopé cohort).
-// Trois plateaux (Queue manuelle / Auto-accept / CCProxy) avec compteurs
-// restreints aux images eBay des coins de la cohort, qui ouvrent la review
-// déjà filtrée (`?cohort=<id>`). Pas de traitement inline : on délègue aux
-// pages /review existantes. Miroir compact du ReviewDashboardPage global.
+// Plateaux (Queue manuelle / Auto-accept / Lots) avec compteurs restreints
+// aux images eBay des coins de la cohort, qui ouvrent la review déjà filtrée
+// (`?cohort=<id>`). Pas de traitement inline : on délègue aux pages /review
+// existantes. Miroir compact du ReviewDashboardPage global. (CCProxy retiré.)
 
 import DrawerSection from '@/features/lab/components/DrawerSection.vue'
 import { useCohortTriageStatsQuery } from '@/features/lab/composables/useLabQueries'
 import type { DrawerState } from '@/features/lab/types'
-import { ArrowUpRight, Bot, Eye, Package, RotateCcw, SkipForward, Wand2 } from 'lucide-vue-next'
+import { ArrowUpRight, Eye, Package, RotateCcw, SkipForward, Wand2 } from 'lucide-vue-next'
 import { computed } from 'vue'
 
 const props = defineProps<{
@@ -24,7 +24,6 @@ const loading = computed(() => statsQuery.isPending.value)
 // le compteur décroît à chaque décision dans cette lane.
 const manualCount = computed(() => stats.value?.by_lane?.manual ?? 0)
 const autoCount = computed(() => stats.value?.by_lane?.auto_accept ?? 0)
-const claudeCount = computed(() => stats.value?.by_lane?.ccproxy ?? 0)
 // Crops en review LOT (listings multi-pièces) — flow distinct du single.
 const lotCount = computed(() => stats.value?.n_lot_crops ?? 0)
 // Lots PAR LANE (F6 / B3) : on ne cache plus les lots manuels dans le fourre-tout.
@@ -32,7 +31,6 @@ const lotCount = computed(() => stats.value?.n_lot_crops ?? 0)
 // même lane, surfacés en « +N lots » (et décomposés dans la carte IV).
 const manualLots = computed(() => stats.value?.by_lane_lot?.manual ?? 0)
 const autoLots = computed(() => stats.value?.by_lane_lot?.auto_accept ?? 0)
-const ccproxyLots = computed(() => stats.value?.by_lane_lot?.ccproxy ?? 0)
 function lotsNote(n: number): string | null {
   return n > 0 ? `+ ${fmt(n)} lots` : null
 }
@@ -70,20 +68,8 @@ const plateaus = computed(() => [
     accent: 'gold' as const,
   },
   {
-    key: 'ccproxy',
-    roman: 'III',
-    eyebrow: 'Plateau LLM',
-    title: 'CCProxy',
-    icon: Bot,
-    count: claudeCount.value,
-    unit: 'singles ambigus (LLM)',
-    subnote: lotsNote(ccproxyLots.value),
-    to: `/review/ccproxy?cohort=${encodeURIComponent(props.cohortId)}`,
-    accent: 'indigo' as const,
-  },
-  {
     key: 'lot',
-    roman: 'IV',
+    roman: 'III',
     eyebrow: 'Plateau lots',
     title: 'Lots',
     icon: Package,
@@ -91,10 +77,9 @@ const plateaus = computed(() => [
     // La review Lot vit dans ReviewPage (/review/manual, toggle Single|Lot via
     // ?mode=lot) — PAS sur /review (le hub global, qui ignore ?mode/?cohort).
     unit: 'crops en lots',
-    // Décomposition par lane (B3) : la majorité des lots sont ccproxy/auto
-    // (automatisables), peu sont manuels.
+    // Décomposition par lane (B3) : on ne cache plus les lots manuels.
     subnote: lotCount.value > 0
-      ? `${fmt(ccproxyLots.value)} ccproxy · ${fmt(autoLots.value)} auto · ${fmt(manualLots.value)} manuel`
+      ? `${fmt(autoLots.value)} auto · ${fmt(manualLots.value)} manuel`
       : null,
     to: `/review/manual?mode=lot&cohort=${encodeURIComponent(props.cohortId)}`,
     accent: 'gold' as const,
@@ -110,7 +95,7 @@ const state = computed<DrawerState>(() => {
 const summary = computed(() => {
   if (loading.value || !stats.value) return 'Chargement…'
   if (stats.value.n_pending === 0 && lotCount.value === 0) return 'Tout reviewé pour cette cohort'
-  return `${manualCount.value} à trancher · ${autoCount.value} auto · ${claudeCount.value} ambigus · ${lotCount.value} en lots`
+  return `${manualCount.value} à trancher · ${autoCount.value} auto · ${lotCount.value} en lots`
 })
 
 function fmt(n: number): string {
@@ -171,10 +156,10 @@ function fmt(n: number): string {
           </div>
         </div>
         <p class="hint">
-          Compteurs restreints aux pièces de la cohort. Cartes <strong>I-III</strong> =
-          <strong>singles</strong> par lane (manuel / auto-accept / LLM) ; le « <strong>+N lots</strong> »
-          sous chaque nombre = les lots de la MÊME lane (plus cachés). Carte <strong>IV Lots</strong>
-          = tous les lots, décomposés par lane (la majorité sont ccproxy/auto = automatisables).
+          Compteurs restreints aux pièces de la cohort. Cartes <strong>I-II</strong> =
+          <strong>singles</strong> par lane (manuel / auto-accept) ; le « <strong>+N lots</strong> »
+          sous chaque nombre = les lots de la MÊME lane (plus cachés). Carte <strong>III Lots</strong>
+          = tous les lots, décomposés par lane (auto / manuel).
           Valider une pièce la rend éligible à l'entraînement (<strong>validés</strong> dans le tiroir eBay).
           Un <strong>rejet</strong> reste récupérable ; un <strong>skip</strong> revient seul dans la queue manuelle.
         </p>

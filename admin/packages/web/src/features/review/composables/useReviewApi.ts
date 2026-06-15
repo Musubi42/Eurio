@@ -404,127 +404,6 @@ export async function manualCropAsset(
   return real
 }
 
-// ─── Claude vision (ccproxy) ─────────────────────────────────────────────
-
-export type ClaudeVerdict = 'match' | 'no_match' | 'uncertain' | 'error'
-export type ClaudeAction = 'ack' | 'reject'
-
-export interface ClaudePendingItem {
-  review_id: string
-  image_asset_id: string
-  crop_url: string
-  listing_title: string
-  listing_url: string | null
-  source: string
-  target_eurio_id: string
-  target_label: string
-  target_thumb_url: string | null
-  verdict: ClaudeVerdict
-  confidence: number | null
-  face_detected: string | null
-  model: string
-  raw_content: string
-  computed_at: string
-}
-
-export interface ClaudePendingResult {
-  total_pending: number
-  by_verdict: Record<string, number>
-  items: ClaudePendingItem[]
-}
-
-export interface ClaudeBatchResult {
-  processed: number
-  judged: number
-  skipped_already_judged: number
-  skipped_no_canonical: number
-  skipped_not_open?: number   // chunk C : items décidés par une autre voie
-  by_verdict: Record<string, number>
-  errors: number
-  model: string
-}
-
-export interface ClaudeAckResult {
-  requested: number
-  committed: number
-  rejected: number
-  skipped: number
-}
-
-/** Liste les verdicts Claude en attente d'acquittement humain. */
-export async function fetchClaudePendingAcks(
-  opts: { verdict?: ClaudeVerdict; limit?: number; cohortId?: string | null } = {},
-): Promise<ClaudePendingResult> {
-  const verdict = opts.verdict ?? 'match'
-  const limit = opts.limit ?? 200
-  const cohortQs = opts.cohortId ? `&cohort_id=${encodeURIComponent(opts.cohortId)}` : ''
-  const qs = `verdict=${verdict}&limit=${limit}${cohortQs}`
-  const real = await safeFetch<ClaudePendingResult>(
-    `/review-queue/claude/pending-acks?${qs}`,
-  )
-  if (real !== null) return real
-  return { total_pending: 0, by_verdict: {}, items: [] }
-}
-
-/**
- * Lance un batch de jugement Claude sur la queue. Long : ~3-5 s par item
- * en Sonnet via ccproxy. Par défaut idempotent (skip les items déjà jugés).
- */
-export async function runClaudeBatch(
-  opts: {
-    limit?: number
-    scope?: Array<'partial' | 'divergent' | 'auto_candidate' | 'unknown'>
-    model?: 'haiku' | 'sonnet' | 'opus'
-    force?: boolean
-    cohortId?: string | null
-  } = {},
-): Promise<ClaudeBatchResult> {
-  const limit = opts.limit ?? 50
-  const cohortQs = opts.cohortId ? `&cohort_id=${encodeURIComponent(opts.cohortId)}` : ''
-  const qs = `limit=${limit}${cohortQs}`
-  const body = {
-    scope: opts.scope ?? ['partial', 'divergent'],
-    model: opts.model ?? 'sonnet',
-    force: opts.force ?? false,
-  }
-  const real = await safeFetch<ClaudeBatchResult>(
-    `/review-queue/claude/batch?${qs}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    },
-  )
-  if (real !== null) return real
-  return {
-    processed: 0, judged: 0, skipped_already_judged: 0,
-    skipped_no_canonical: 0, by_verdict: {}, errors: 0,
-    model: 'claude-sonnet-4-6',
-  }
-}
-
-/**
- * Acquitte ou rejette une sélection de verdicts Claude. ``ack`` écrit la
- * décision finale dans review_queue (decided_by='claude_ack_human').
- * ``reject`` marque juste le verdict Claude comme rejeté (l'item reste
- * en queue manuelle classique).
- */
-export async function ackClaudeVerdicts(
-  reviewIds: string[],
-  action: ClaudeAction,
-): Promise<ClaudeAckResult> {
-  const real = await safeFetch<ClaudeAckResult>(
-    '/review-queue/claude/acknowledge',
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ review_ids: reviewIds, action }),
-    },
-  )
-  if (real !== null) return real
-  return { requested: reviewIds.length, committed: 0, rejected: 0, skipped: 0 }
-}
-
 // ─── Départage Dino en ensemble fermé (candidats de groupe / standards) ──
 
 export interface RankedCandidate {
@@ -612,12 +491,12 @@ export interface TriageStats {
   n_done_this_week: number
   by_verdict: TriageVerdictCounts
   // WS1 : compteurs par LANE PERSISTÉE (review_queue.lane). Source de vérité des
-  // 3 cartes du cockpit (manual/auto_accept/ccproxy). by_verdict reste fourni
+  // 2 cartes du cockpit (manual/auto_accept). by_verdict reste fourni
   // pour compat/debug, mais l'affichage vient de by_lane.
-  by_lane: { manual: number; auto_accept: number; ccproxy: number }
+  by_lane: { manual: number; auto_accept: number }
   // Lots (kind='lot') PAR LANE — décompose la carte « Lots » (B3 : on ne cache
   // plus les lots manuels). Optionnel : backends antérieurs au chunk F6.
-  by_lane_lot?: { manual: number; auto_accept: number; ccproxy: number }
+  by_lane_lot?: { manual: number; auto_accept: number }
   // Crops en review LOT (kind='lot') — flow distinct du single (cockpit cohort).
   n_lot_crops: number
   // Crops rejetés (récupérables via /review/recover) + items skippés (report
@@ -645,8 +524,8 @@ export async function fetchTriageStats(cohortId?: string | null): Promise<Triage
     n_done_today_auto_dino: 0,
     n_done_this_week: 0,
     by_verdict: { auto_candidate: 0, partial: 0, divergent: 0, unknown: 0 },
-    by_lane: { manual: 0, auto_accept: 0, ccproxy: 0 },
-    by_lane_lot: { manual: 0, auto_accept: 0, ccproxy: 0 },
+    by_lane: { manual: 0, auto_accept: 0 },
+    by_lane_lot: { manual: 0, auto_accept: 0 },
     n_lot_crops: 0,
     n_rejected: 0,
     n_skipped: 0,

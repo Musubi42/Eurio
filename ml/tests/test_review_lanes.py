@@ -16,10 +16,11 @@ from review.review_lanes import (  # noqa: E402
 
 
 def test_verdict_to_lane_mapping():
-    # Les 4 niveaux de verdict Dino → 3 lanes (mapping verrouillé WS1).
+    # Les 4 niveaux de verdict Dino → 2 lanes. ccproxy retiré (décision PO) :
+    # tout ce qui n'est pas auto_candidate tombe en review humaine.
     assert verdict_to_lane("auto_candidate") == "auto_accept"
-    assert verdict_to_lane("partial") == "ccproxy"
-    assert verdict_to_lane("divergent") == "ccproxy"
+    assert verdict_to_lane("partial") == "manual"
+    assert verdict_to_lane("divergent") == "manual"
     assert verdict_to_lane("unknown") == "manual"
 
 
@@ -35,4 +36,4 @@ def test_every_mapped_lane_is_valid():
     # Toute lane produite par la règle appartient à l'ensemble valide (CHECK DB).
     for lane in VERDICT_TO_LANE.values():
         assert lane in LANES
-    assert set(LANES) == {"manual", "auto_accept", "ccproxy"}
+    assert set(LANES) == {"manual", "auto_accept"}

@@ -30,7 +30,7 @@ export type CriterionKey =
  *  le `level` Dino 4-niveaux n'est plus que du détail par critère. */
 export type ConsensusOutcome = 'accept' | 'needs_review' | 'reject'
 
-export type ConsensusLane = 'auto_accept' | 'ccproxy' | 'manual'
+export type ConsensusLane = 'auto_accept' | 'manual'
 
 /** Ligne affichable d'un critère Dino : état décidé par le serveur +
  *  valeur/seuil formatés pour l'affichage. */
@@ -128,8 +128,6 @@ export function laneLabel(lane: ConsensusLane): string {
   switch (lane) {
     case 'auto_accept':
       return 'auto-accept'
-    case 'ccproxy':
-      return 'ccproxy'
     case 'manual':
       return 'manuel'
   }

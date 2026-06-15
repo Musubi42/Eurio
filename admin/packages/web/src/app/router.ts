@@ -77,10 +77,6 @@ const router = createRouter({
           component: () => import('@/features/review/pages/AutoAcceptReviewPage.vue'),
         },
         {
-          path: 'review/ccproxy',
-          component: () => import('@/features/review/pages/ClaudeReviewPage.vue'),
-        },
-        {
           path: 'review/lot/:listing_key',
           component: () => import('@/features/review/pages/LotReviewDetailPage.vue'),
         },

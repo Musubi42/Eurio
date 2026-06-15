@@ -53,7 +53,6 @@ from training.foundation.anchors import (
     SUGGESTIONS_ANCHORS_KIND,
     encoder_version_for_kind,
 )
-from training.foundation.claude_review import DEFAULT_MODEL_ALIAS, MODELS, judge
 from training.foundation.thresholds import (
     DINO_ABSTENTION_THRESHOLDS,
     DINO_VERDICT_THRESHOLDS,
@@ -91,7 +90,7 @@ _SKIP_PRIORITY_BUMP = 50
 # depuis la grille de récupération (cf. /restore). Ces items sont « épinglés
 # manuel » : ils doivent être tranchés à la main (re-crop), donc on les EXCLUT
 # de l'auto-triage (auto-accept Dino + batch Claude) et des buckets de verdict
-# du cockpit — sinon ils retomberaient dans CCProxy/Auto et n'apparaîtraient
+# du cockpit — sinon ils retomberaient dans Auto et n'apparaîtraient
 # pas dans le compteur « Queue manuelle ». Ils restent visibles en tête de la
 # queue manuelle (list_queue n'applique aucun filtre de verdict).
 _RESTORED_NOTE = "restored"
@@ -100,7 +99,7 @@ _NOT_RESTORED_SQL = (
     f"(rq.decision_notes IS NULL OR rq.decision_notes != '{_RESTORED_NOTE}')"
 )
 _VALID_KINDS = ("single", "lot", "all")
-_VALID_LANES = ("manual", "auto_accept", "ccproxy")
+_VALID_LANES = ("manual", "auto_accept")
 _VALID_REJECT_REASONS = (
     "not_a_coin", "out_of_scope", "duplicate_in_listing", "unreadable", "other",
 )
@@ -591,7 +590,7 @@ def list_queue(
             # force ``kind=single`` + ``lane=manual`` ici quels que soient les
             # query params : les coffrets/lots (kind=lot) ont leur review lot
             # dédiée (un coffret n'est pas une standard unique), et les commémos
-            # rescue vivent en lanes ccproxy/auto_accept. Sans ce resserrement,
+            # rescue vivent en lane auto_accept. Sans ce resserrement,
             # ouvrir la review d'un standard déversait tout le pool pays toutes
             # lanes (≈ centaines d'items mélangés). Ce scope == celui que le
             # cockpit compte (lab_routes funnel-status) → les 2 surfaces
@@ -916,9 +915,6 @@ def queue_triage_stats(
         "auto_accept": _count(
             "rq.status = 'open' AND rq.lane = ?", ["auto_accept"], kind_clause=True,
         ),
-        "ccproxy": _count(
-            "rq.status = 'open' AND rq.lane = ?", ["ccproxy"], kind_clause=True,
-        ),
     }
 
     # Lots PAR LANE (kind='lot') — décompose la carte fourre-tout « Lots » (B3 :
@@ -939,7 +935,6 @@ def queue_triage_stats(
     by_lane_lot = {
         "manual": _count_lot("(rq.lane='manual' OR rq.lane IS NULL)", []),
         "auto_accept": _count_lot("rq.lane = ?", ["auto_accept"]),
-        "ccproxy": _count_lot("rq.lane = ?", ["ccproxy"]),
     }
 
     return {
@@ -2694,11 +2689,11 @@ class ConsensusVerdictOut(BaseModel):
     """Verdict de CONSENSUS (C3) — la décision qui fait foi (= la lane routée).
     Le badge front l'affiche tel quel ; fin du drift où le verdict Dino
     4-niveaux pouvait diverger de la lane (ex. crop_cap : Dino auto_candidate
-    mais lane ccproxy). Lu depuis ``consensus_verdicts`` (ce qui a décidé la
+    mais lane manual). Lu depuis ``consensus_verdicts`` (ce qui a décidé la
     lane à l'enqueue), recalculé à la volée en fallback si pas encore persisté."""
 
     outcome: str  # accept | needs_review | reject
-    lane: str  # auto_accept | ccproxy | manual
+    lane: str  # auto_accept | manual
     reason: str
     rule: str  # branche de décision (audit)
     confidence: float
@@ -3356,9 +3351,9 @@ def move_lane(review_id: str) -> dict[str, str]:
     """Déplace un item vers la lane MANUELLE (switch unidirectionnel, WS1).
 
     Sticky : pose ``lane_source='human'`` → aucun recalcul Dino (enqueue /
-    re-route post-Dino) ne pourra le ré-router. C'est le seul sens autorisé
-    (manuel→ccproxy n'est pas rentable : le manuel se review un par un). N'agit
-    que sur un item ``open``."""
+    re-route post-Dino) ne pourra le ré-router. Seul sens utile désormais :
+    auto_accept→manual (sortir un item de l'auto-accept pour le trancher à la
+    main). N'agit que sur un item ``open``."""
     conn = _store()._connection()  # noqa: SLF001
     cur = conn.execute(
         "UPDATE review_queue SET lane = 'manual', lane_source = 'human' "
@@ -3654,615 +3649,3 @@ def run_auto_accept(
         dry_run=dry_run,
         preview=preview,
     )
-
-
-# ─────────────────────────────────────────────────────────────────────────
-# ── ccproxy (Claude vision) : Claude propose, l'humain dispose ──────────
-# ─────────────────────────────────────────────────────────────────────────
-#
-# Flux :
-#   1. POST /claude/batch                → run Sonnet sur N items partial/divergent,
-#                                          persiste dans review_claude_verdicts (pending)
-#   2. GET  /claude/pending-acks         → liste les "match" pending pour acquittement
-#   3. POST /claude/acknowledge          → l'humain acquitte une sélection → décision
-#                                          finale écrite dans review_queue.
-#
-# Cf. memory project_claude_vision_bench (Sonnet 4.6 retenu, prec 92%).
-
-# Chemin disque canonical : ml/datasets/<numista_id>/obverse.jpg
-_ML_DIR = Path(__file__).resolve().parent.parent
-_DATASETS_DIR = _ML_DIR / "datasets"
-
-
-def _canonical_path(numista_id: int | None) -> Path | None:
-    # Résolveur partagé (cf. foundation.obverse_group_review — réutilisé par la
-    # review vision des design_groups par avers). Layout : datasets/<numista>/obverse.*
-    from training.foundation.obverse_group_review import canonical_obverse_path
-    return canonical_obverse_path(numista_id)
-
-
-def _crop_path(storage_path: str) -> Path | None:
-    """Résout le chemin disque local d'un crop image_assets."""
-    try:
-        from shared.storage.local_cache import local_path
-        return local_path("enrichment-crops", storage_path)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("[claude] crop path resolution failed for %s: %s",
-                       storage_path, exc)
-        return None
-
-
-class ClaudeBatchResult(BaseModel):
-    processed: int
-    judged: int
-    skipped_already_judged: int
-    skipped_no_canonical: int
-    # Race entre SELECT initial du batch et call Claude : l'item a été décidé
-    # par une autre voie (admin/auto_dino/claude_ack) avant qu'on lance le LLM.
-    # On skip silencieusement — évite de payer Claude pour un orphan.
-    skipped_not_open: int = 0
-    by_verdict: dict[str, int]
-    errors: int
-    model: str
-
-
-class ClaudeBatchBody(BaseModel):
-    # Scope : sous-ensemble des verdicts éligibles. Defaults aux deux cas
-    # où Claude apporte le plus de valeur (cf. bench chunk 2).
-    scope: list[str] = Field(default_factory=lambda: ["partial", "divergent"])
-    # Alias modèle (haiku|sonnet|opus) — par défaut sonnet (cf. bench).
-    model: str = DEFAULT_MODEL_ALIAS
-    # ``force=True`` re-judge même les items qui ont déjà un verdict Claude.
-    force: bool = False
-
-
-# Consumed by: admin/.../review/composables/useReviewApi.ts (runClaudeBatch)
-@router.post("/claude/batch", response_model=ClaudeBatchResult)
-def run_claude_batch(
-    body: ClaudeBatchBody | None = None,
-    limit: int = Query(default=50, ge=1, le=500),
-    kind: str = Query(default="single"),
-    cohort_id: str | None = Query(default=None),
-    base_url: str = Query(default="http://127.0.0.1:3002"),
-) -> ClaudeBatchResult:
-    """Pull N items ``open`` dans le scope, appelle Claude vision sur chacun,
-    persiste les verdicts dans ``review_claude_verdicts`` (status='pending').
-
-    Idempotent par défaut : un item ayant déjà un verdict Claude est skip.
-    ``force=true`` pour re-judger (utile après changement de prompt/modèle).
-    """
-    if kind not in _VALID_KINDS:
-        raise HTTPException(
-            status_code=422, detail=f"kind must be one of {_VALID_KINDS}",
-        )
-    b = body or ClaudeBatchBody()
-    scope = set(b.scope) & {"partial", "divergent", "auto_candidate", "unknown"}
-    if not scope:
-        raise HTTPException(
-            status_code=422,
-            detail="scope must include at least one of partial|divergent|auto_candidate|unknown",
-        )
-    model_alias = b.model
-    if model_alias not in MODELS:
-        raise HTTPException(
-            status_code=422,
-            detail=f"model must be one of {list(MODELS.keys())}",
-        )
-
-    cohort_clause, cohort_args, cohort_empty = _cohort_filter(cohort_id, alias="s")
-    if cohort_empty:
-        return ClaudeBatchResult(
-            processed=0, judged=0, skipped_already_judged=0,
-            skipped_no_canonical=0, skipped_not_open=0,
-            by_verdict={"match": 0, "no_match": 0, "uncertain": 0, "error": 0},
-            errors=0, model=MODELS[model_alias])
-
-    conn = _store()._connection()  # noqa: SLF001
-    # Exclut les items restaurés (épinglés manuel) de l'auto-triage : un humain
-    # les a ré-ouverts pour les trancher à la main. Cf. _RESTORED_NOTE.
-    # WS1 : ccproxy ne traite QUE la lane 'ccproxy' (Dino hésite/contredit →
-    # arbitrage Claude vision). Les unknown (manual) et auto_candidate ne passent
-    # jamais ici.
-    where = f"rq.status = 'open' AND rq.lane = 'ccproxy' AND {_NOT_RESTORED_SQL}"
-    args: list[Any] = []
-    if kind != "all":
-        where += " AND rq.kind = ?"
-        args.append(kind)
-    where += cohort_clause
-    args.extend(cohort_args)
-    args.append(limit)
-
-    rows = conn.execute(
-        f"""
-        SELECT rq.id AS review_id, rq.image_asset_id,
-               a.storage_path,
-               s.source, s.listing_title, s.target_eurio_id,
-               c.country_name AS t_country_name,
-               c.year         AS t_year,
-               c.theme        AS t_theme,
-               c.numista_id   AS t_numista_id
-          FROM review_queue rq
-          JOIN image_assets a ON a.id = rq.image_asset_id
-          JOIN source_images s ON s.id = a.source_image_id
-          LEFT JOIN coins c ON c.eurio_id = s.target_eurio_id
-         WHERE {where}
-         ORDER BY rq.priority ASC, rq.enqueued_at ASC
-         LIMIT ?
-        """,
-        args,
-    ).fetchall()
-
-    by_verdict: dict[str, int] = {
-        "match": 0, "no_match": 0, "uncertain": 0, "error": 0,
-    }
-    judged = 0
-    skipped_already = 0
-    skipped_no_canon = 0
-    skipped_not_open = 0
-    errors = 0
-
-    for row in rows:
-        verdict_dt = compute_auto_validate_verdict(conn, row["image_asset_id"])
-        if verdict_dt.level not in scope:
-            continue
-
-        # Idempotence
-        if not b.force:
-            existing = conn.execute(
-                "SELECT 1 FROM review_claude_verdicts WHERE review_id = ?",
-                (row["review_id"],),
-            ).fetchone()
-            if existing is not None:
-                skipped_already += 1
-                continue
-
-        # Pre-check : l'item est-il toujours open ? Le SELECT initial du
-        # batch peut être à jour de plusieurs secondes, et entre temps une
-        # autre voie peut avoir décidé l'item. Évite de payer Claude pour
-        # un verdict orphan. Cf. chunk C.
-        still_open = conn.execute(
-            "SELECT 1 FROM review_queue WHERE id = ? AND status = 'open'",
-            (row["review_id"],),
-        ).fetchone()
-        if still_open is None:
-            skipped_not_open += 1
-            continue
-
-        canonical = _canonical_path(row["t_numista_id"])
-        if canonical is None:
-            skipped_no_canon += 1
-            continue
-        crop = _crop_path(row["storage_path"]) if row["storage_path"] else None
-        if crop is None or not crop.exists():
-            skipped_no_canon += 1
-            continue
-
-        label_bits = [
-            row["t_country_name"],
-            str(row["t_year"]) if row["t_year"] else None,
-            row["t_theme"],
-        ]
-        target_label = " · ".join(b for b in label_bits if b) or row["target_eurio_id"]
-
-        j = judge(
-            crop_path=crop,
-            canonical_path=canonical,
-            target_label=target_label,
-            listing_title=row["listing_title"] or "",
-            model_alias=model_alias,
-            base_url=base_url,
-        )
-
-        # Upsert
-        verdict_str = j.verdict or "error"
-        by_verdict[verdict_str] = by_verdict.get(verdict_str, 0) + 1
-        if not j.parsed_ok:
-            errors += 1
-        conn.execute(
-            """
-            INSERT INTO review_claude_verdicts
-              (review_id, model, verdict, face, confidence, raw_content,
-               tokens_in, tokens_out, cache_read, cost_usd, duration_ms,
-               status, error, computed_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, datetime('now'))
-            ON CONFLICT(review_id) DO UPDATE SET
-              model       = excluded.model,
-              verdict     = excluded.verdict,
-              face        = excluded.face,
-              confidence  = excluded.confidence,
-              raw_content = excluded.raw_content,
-              tokens_in   = excluded.tokens_in,
-              tokens_out  = excluded.tokens_out,
-              cache_read  = excluded.cache_read,
-              cost_usd    = excluded.cost_usd,
-              duration_ms = excluded.duration_ms,
-              status      = 'pending',
-              error       = excluded.error,
-              computed_at = datetime('now'),
-              acked_at    = NULL
-            """,
-            (row["review_id"], j.model, verdict_str, j.face, j.confidence,
-             j.raw_content, j.tokens_in, j.tokens_out, j.cache_read_tokens,
-             j.cost_usd, j.duration_ms, j.error),
-        )
-        judged += 1
-
-    logger.info(
-        "[claude] batch model=%s scope=%s judged=%d skipped_already=%d "
-        "skipped_no_canon=%d skipped_not_open=%d errors=%d by_verdict=%s",
-        model_alias, sorted(scope), judged, skipped_already,
-        skipped_no_canon, skipped_not_open, errors, by_verdict,
-    )
-
-    return ClaudeBatchResult(
-        processed=len(rows),
-        judged=judged,
-        skipped_already_judged=skipped_already,
-        skipped_no_canonical=skipped_no_canon,
-        skipped_not_open=skipped_not_open,
-        by_verdict=by_verdict,
-        errors=errors,
-        model=MODELS[model_alias],
-    )
-
-
-class ClaudePendingItem(BaseModel):
-    review_id: str
-    image_asset_id: str
-    crop_url: str
-    listing_title: str
-    listing_url: str | None = None
-    source: str
-    target_eurio_id: str
-    target_label: str
-    target_thumb_url: str | None = None
-    # Verdict Claude
-    verdict: str
-    confidence: float | None = None
-    face_detected: str | None = None
-    model: str
-    raw_content: str
-    computed_at: str
-
-
-class ClaudePendingResult(BaseModel):
-    total_pending: int                          # tous status=pending, tous verdicts
-    by_verdict: dict[str, int]                  # match/no_match/uncertain/error
-    items: list[ClaudePendingItem]              # filtré au verdict demandé
-
-
-# Consumed by: admin/.../review/composables/useReviewApi.ts (fetchClaudePendingAcks)
-@router.get("/claude/pending-acks", response_model=ClaudePendingResult)
-def list_claude_pending(
-    verdict: str = Query(default="match"),
-    limit: int = Query(default=200, ge=1, le=1000),
-    cohort_id: str | None = Query(default=None),
-) -> ClaudePendingResult:
-    """Liste les items où Claude a tranché ``verdict`` et qui attendent
-    l'acquittement humain. Par défaut filtre sur ``match`` (le seul cas
-    qu'on veut auto-acquitter ; les autres restent en queue manuelle).
-
-    ``cohort_id`` (optionnel) restreint la liste ET les compteurs by_verdict
-    aux coins de la cohort (§C4b)."""
-    if verdict not in ("match", "no_match", "uncertain", "error"):
-        raise HTTPException(
-            status_code=422,
-            detail="verdict must be match|no_match|uncertain|error",
-        )
-
-    cohort_clause, cohort_args, cohort_empty = _cohort_filter(cohort_id, alias="s")
-    if cohort_empty:
-        return ClaudePendingResult(total_pending=0, by_verdict={}, items=[])
-
-    conn = _store()._connection()  # noqa: SLF001
-
-    # by_verdict : compteurs scopés cohort si demandé (join requis pour le
-    # filtre par coin ; sinon scan plat de la table verdicts).
-    if cohort_clause:
-        by_verdict_rows = conn.execute(
-            f"""
-            SELECT v.verdict AS verdict, COUNT(*) AS c
-              FROM review_claude_verdicts v
-              JOIN review_queue rq ON rq.id = v.review_id
-              JOIN image_assets a  ON a.id  = rq.image_asset_id
-              JOIN source_images s ON s.id  = a.source_image_id
-             WHERE v.status = 'pending' AND rq.status = 'open'{cohort_clause}
-             GROUP BY v.verdict
-            """,
-            cohort_args,
-        ).fetchall()
-    else:
-        by_verdict_rows = conn.execute(
-            """
-            SELECT verdict, COUNT(*) AS c FROM review_claude_verdicts
-             WHERE status = 'pending'
-             GROUP BY verdict
-            """
-        ).fetchall()
-    by_verdict = {r["verdict"]: r["c"] for r in by_verdict_rows}
-    total = sum(by_verdict.values())
-
-    rows = conn.execute(
-        f"""
-        SELECT v.review_id, v.model, v.verdict, v.confidence, v.face,
-               v.raw_content, v.computed_at,
-               rq.image_asset_id,
-               a.face AS asset_face,
-               s.source, s.source_url AS listing_url, s.listing_title,
-               s.target_eurio_id,
-               c.country_name AS t_country_name,
-               c.year         AS t_year,
-               c.theme        AS t_theme,
-               c.numista_id   AS t_numista_id
-          FROM review_claude_verdicts v
-          JOIN review_queue rq ON rq.id = v.review_id
-          JOIN image_assets a  ON a.id  = rq.image_asset_id
-          JOIN source_images s ON s.id  = a.source_image_id
-          LEFT JOIN coins c    ON c.eurio_id = s.target_eurio_id
-         WHERE v.status = 'pending' AND v.verdict = ? AND rq.status = 'open'{cohort_clause}
-         ORDER BY v.computed_at DESC
-         LIMIT ?
-        """,
-        (verdict, *cohort_args, limit),
-    ).fetchall()
-
-    items: list[ClaudePendingItem] = []
-    for r in rows:
-        label_bits = [
-            r["t_country_name"],
-            str(r["t_year"]) if r["t_year"] else None,
-            r["t_theme"],
-        ]
-        label = " · ".join(b for b in label_bits if b) or r["target_eurio_id"]
-        thumb = (
-            f"/images/{int(r['t_numista_id'])}/source"
-            if r["t_numista_id"] else None
-        )
-        items.append(ClaudePendingItem(
-            review_id=r["review_id"],
-            image_asset_id=r["image_asset_id"],
-            crop_url=f"/sources/{r['source']}/assets/{r['image_asset_id']}/file",
-            listing_title=r["listing_title"] or "",
-            listing_url=r["listing_url"],
-            source=r["source"],
-            target_eurio_id=r["target_eurio_id"],
-            target_label=label,
-            target_thumb_url=thumb,
-            verdict=r["verdict"],
-            confidence=r["confidence"],
-            face_detected=r["face"] or r["asset_face"],
-            model=r["model"],
-            raw_content=r["raw_content"],
-            computed_at=r["computed_at"],
-        ))
-
-    return ClaudePendingResult(
-        total_pending=total,
-        by_verdict=by_verdict,
-        items=items,
-    )
-
-
-class ClaudeAckBody(BaseModel):
-    review_ids: list[str]
-    # 'ack'    → humain valide la suggestion Claude → écrit la décision
-    # 'reject' → humain rejette → l'item reste open en queue manuelle,
-    #            le verdict Claude passe juste à 'rejected' (audit)
-    action: str = "ack"
-
-
-class ClaudeAckResult(BaseModel):
-    requested: int
-    committed: int
-    rejected: int
-    skipped: int    # IDs invalides / déjà acquittés / verdict ≠ match
-    skipped_concurrent: int = 0   # tranchés par une autre voie pendant l'ack
-
-
-# Consumed by: admin/.../review/composables/useReviewApi.ts (ackClaudeVerdicts)
-@router.post("/claude/acknowledge", response_model=ClaudeAckResult)
-def acknowledge_claude(body: ClaudeAckBody) -> ClaudeAckResult:
-    """L'humain acquitte (ou rejette) une sélection de verdicts Claude.
-
-    ``ack`` : écrit la décision finale dans ``review_queue`` (
-    ``decided_by='claude_ack_human'``) ET ``image_assets``, et marque le
-    verdict Claude ``status='acked'``.
-
-    ``reject`` : ne touche pas à ``review_queue`` (l'item reste open et
-    sortira en queue manuelle classique), marque juste le verdict Claude
-    ``status='rejected'``.
-    """
-    if body.action not in ("ack", "reject"):
-        raise HTTPException(status_code=422, detail="action must be 'ack' or 'reject'")
-    if not body.review_ids:
-        return ClaudeAckResult(requested=0, committed=0, rejected=0, skipped=0)
-
-    conn = _store()._connection()  # noqa: SLF001
-    now_iso = _now_iso()
-    committed = 0
-    rejected = 0
-    skipped = 0
-    skipped_concurrent = 0
-
-    for review_id in body.review_ids:
-        # Charge le verdict + état rq pour valider qu'on peut acquitter.
-        # Note : ce SELECT est hors transaction et donc snapshot stale —
-        # la vraie garde est dans le `AND status='open'` du UPDATE final
-        # (pattern « premier-écrit-gagne »).
-        row = conn.execute(
-            """
-            SELECT v.verdict, v.face, v.status AS v_status,
-                   v.model, v.confidence, v.raw_content,
-                   v.tokens_in, v.tokens_out, v.cost_usd, v.duration_ms,
-                   rq.status AS rq_status, rq.image_asset_id,
-                   s.target_eurio_id
-              FROM review_claude_verdicts v
-              JOIN review_queue rq ON rq.id = v.review_id
-              JOIN image_assets a  ON a.id  = rq.image_asset_id
-              JOIN source_images s ON s.id  = a.source_image_id
-             WHERE v.review_id = ?
-            """,
-            (review_id,),
-        ).fetchone()
-
-        if row is None:
-            skipped += 1
-            continue
-        if row["v_status"] != "pending":
-            skipped += 1
-            continue
-
-        if body.action == "reject":
-            # Reject = action consultative côté humain : on archive le
-            # verdict Claude. La review_queue n'est pas touchée. Garde
-            # `AND status='pending'` pour éviter le double-write si la
-            # même row a déjà été rejetée concurremment.
-            cur = conn.execute(
-                "UPDATE review_claude_verdicts "
-                "SET status='rejected', acked_at=? "
-                "WHERE review_id=? AND status='pending'",
-                (now_iso, review_id),
-            )
-            if cur.rowcount == 1:
-                rejected += 1
-            else:
-                skipped += 1
-            continue
-
-        # action = 'ack' — nécessite verdict=match + queue open + target connu
-        if row["verdict"] != "match":
-            skipped += 1
-            continue
-        if row["rq_status"] != "open":
-            skipped += 1
-            continue
-        target = row["target_eurio_id"]
-        if not target:
-            skipped += 1
-            continue
-
-        # G7 : pareil qu'auto_dino — on n'écrase pas par un default 'obverse'.
-        # Claude renvoie 'unknown' explicitement quand la face est ambiguë.
-        face = row["face"] or "unknown"
-
-        conn.execute("BEGIN")
-        try:
-            conn.execute(
-                """
-                UPDATE image_assets
-                   SET eurio_id = ?, face = ?,
-                       resolution_status = 'manual',
-                       resolution_confidence = 1.0,
-                       training_eligible = 1,
-                       resolved_at = ?
-                 WHERE id = ?
-                   AND resolution_status NOT IN ('manual','rejected')
-                """,
-                (target, face, now_iso, row["image_asset_id"]),
-            )
-            # Snapshot complet du verdict Claude au moment de l'ack —
-            # raw_content + tokens + coût figés sur la row review_queue
-            # pour que la trace survive à un re-batch force=true côté
-            # review_claude_verdicts (cf. GAP 5).
-            claude_metadata = json.dumps({
-                "model": row["model"],
-                "confidence": row["confidence"],
-                "face": row["face"],
-                "raw_content": row["raw_content"],
-                "tokens_in": row["tokens_in"],
-                "tokens_out": row["tokens_out"],
-                "cost_usd": row["cost_usd"],
-                "duration_ms": row["duration_ms"],
-            })
-            cur = conn.execute(
-                """
-                UPDATE review_queue
-                   SET status = 'done',
-                       decided_eurio_id = ?, decided_face = ?,
-                       decision_notes = ?,
-                       decided_at = ?, decided_by = 'claude_ack_human',
-                       decision_engine_version = ?,
-                       decision_metadata_json = ?
-                 WHERE id = ? AND status = 'open'
-                """,
-                (target, face, "Claude vision suggestion acquittée par humain",
-                 now_iso, row["model"], claude_metadata, review_id),
-            )
-            if cur.rowcount != 1:
-                # Race : une autre voie a tranché entre le SELECT et l'UPDATE.
-                # On annule tout (ROLLBACK) — le verdict Claude reste 'pending'
-                # et sera nettoyé en chunk C (stale verdicts).
-                conn.execute("ROLLBACK")
-                skipped_concurrent += 1
-                continue
-            emit_state_event(
-                conn, asset_id=row["image_asset_id"], to_state="resolved",
-                actor="ccproxy", reason="claude_ack", eurio_id=target,
-            )
-            # Le commit de l'ack n'est valide que si le UPDATE rq a écrit ;
-            # sinon on aurait passé le verdict à 'acked' sans avoir tranché.
-            conn.execute(
-                "UPDATE review_claude_verdicts "
-                "SET status='acked', acked_at=? "
-                "WHERE review_id=? AND status='pending'",
-                (now_iso, review_id),
-            )
-            conn.execute("COMMIT")
-            committed += 1
-        except Exception:
-            conn.execute("ROLLBACK")
-            logger.exception("[claude] ack failed for review_id=%s", review_id)
-            skipped += 1
-
-    logger.info(
-        "[claude] ack action=%s requested=%d committed=%d rejected=%d "
-        "skipped=%d skipped_concurrent=%d",
-        body.action, len(body.review_ids),
-        committed, rejected, skipped, skipped_concurrent,
-    )
-    return ClaudeAckResult(
-        requested=len(body.review_ids),
-        committed=committed,
-        rejected=rejected,
-        skipped=skipped,
-        skipped_concurrent=skipped_concurrent,
-    )
-
-
-class ClaudeCleanupResult(BaseModel):
-    deleted: int
-    inspected: int
-
-
-# Consumed by: admin/.../review/composables/useReviewApi.ts (cleanupClaudeOrphans)
-@router.post("/claude/cleanup-orphans", response_model=ClaudeCleanupResult)
-def cleanup_claude_orphans(dry_run: bool = Query(default=False)) -> ClaudeCleanupResult:
-    """Supprime les verdicts Claude ``status='pending'`` dont la
-    review_queue parente n'est plus ``status='open'``. Ce sont des
-    verdicts orphans nés des races chunk-A entre voies (auto_dino,
-    admin) et le batch Claude. Le SELECT côté /pending-acks les filtre
-    déjà, mais ils s'accumulent en table — cette route les expurge.
-
-    ``dry_run=true`` retourne juste le compteur. Pas d'écriture.
-    """
-    conn = _store()._connection()  # noqa: SLF001
-    rows = conn.execute(
-        """
-        SELECT v.review_id FROM review_claude_verdicts v
-          JOIN review_queue rq ON rq.id = v.review_id
-         WHERE v.status = 'pending' AND rq.status != 'open'
-        """
-    ).fetchall()
-    orphan_ids = [r["review_id"] for r in rows]
-
-    if dry_run or not orphan_ids:
-        return ClaudeCleanupResult(deleted=0, inspected=len(orphan_ids))
-
-    placeholders = ",".join("?" for _ in orphan_ids)
-    cur = conn.execute(
-        f"DELETE FROM review_claude_verdicts WHERE review_id IN ({placeholders})",
-        orphan_ids,
-    )
-    conn.commit()
-    logger.info("[claude] cleanup-orphans deleted=%d", cur.rowcount)
-    return ClaudeCleanupResult(deleted=cur.rowcount, inspected=len(orphan_ids))

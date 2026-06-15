@@ -34,7 +34,7 @@ _CROP_BAD = {"too_tilted", "low_quality"}
 @dataclass(frozen=True)
 class ConsensusVerdict:
     outcome: str  # accept | needs_review | reject
-    lane: str  # auto_accept | ccproxy | manual
+    lane: str  # auto_accept | manual
     confidence: float  # [0, 1]
     reason: str
     rule: str  # branche déclenchée (audit)
@@ -72,7 +72,7 @@ def consensus_verdict(signals: list[Signal]) -> ConsensusVerdict:
     # 3. Crop défaillant → plafond needs_review quel que soit dino (cap C2).
     if crop_bad:
         return ConsensusVerdict(
-            "needs_review", "ccproxy", 0.50,
+            "needs_review", "manual", 0.50,
             f"crop {crop.label} → plafonné needs_review", "crop_cap",
         )
 
@@ -87,21 +87,21 @@ def consensus_verdict(signals: list[Signal]) -> ConsensusVerdict:
     # 5. Contradiction d'un SEUL expert → needs_review (rescue, PAS kill).
     if text_label == "contradict":  # dino n'est pas mismatch (sinon règle 2)
         return ConsensusVerdict(
-            "needs_review", "ccproxy", 0.40,
-            "texte contredit mais dino ne confirme pas le rejet → arbitrage",
+            "needs_review", "manual", 0.40,
+            "texte contredit mais dino ne confirme pas le rejet → review humaine",
             "text_contradict_rescue",
         )
     if dino_label == "mismatch":  # texte ne contredit pas
         return ConsensusVerdict(
-            "needs_review", "ccproxy", 0.40,
-            "dino diverge de la cible, texte ne tranche pas → arbitrage",
+            "needs_review", "manual", 0.40,
+            "dino diverge de la cible, texte ne tranche pas → review humaine",
             "dino_mismatch",
         )
 
     # 6. Signaux partiels (dino match tiède, ou texte partial/absent) → review.
     return ConsensusVerdict(
-        "needs_review", "ccproxy", 0.35,
-        "signaux partiels → arbitrage humain", "partial",
+        "needs_review", "manual", 0.35,
+        "signaux partiels → review humaine", "partial",
     )
 
 
