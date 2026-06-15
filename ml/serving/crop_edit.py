@@ -127,6 +127,26 @@ def _dominant_circle(raw_storage_path: str) -> dict | None:
     return {"cx": float(best[0]), "cy": float(best[1]), "r": float(best[2])}
 
 
+def _plausible_suggestion(suggested: dict | None, hint: dict | None) -> dict | None:
+    """Garde le cercle dominant SEULEMENT s'il est cohérent avec la bbox connue.
+
+    La bbox (`hint`) est l'emplacement fiable de la pièce. Le Hough `_dominant_circle`
+    cherche un grand cercle (≥0.30·petit-côté) : sur un undercrop macro il trouve la pièce
+    entière (concentrique, un peu plus grande → bon point de départ), mais sur un COINCARD /
+    capsule (pièce petite dans un coin) il accroche le rebord de la carte / la capsule → un
+    cercle ÉNORME et DÉCENTRÉ. On le rejette alors (l'éditeur repart de la bbox, sur la
+    pièce). Critères : centre proche de la bbox (≤1,2·r_bbox) ET rayon borné (≤3,5·r_bbox)."""
+    if suggested is None or hint is None:
+        return suggested
+    hr = float(hint.get("r") or 0.0)
+    if hr <= 0:
+        return suggested
+    dist = ((suggested["cx"] - hint["cx"]) ** 2 + (suggested["cy"] - hint["cy"]) ** 2) ** 0.5
+    if dist > 1.2 * hr or suggested["r"] > 3.5 * hr:
+        return None  # cercle dominant aberrant (coincard/capsule) → garder la bbox
+    return suggested
+
+
 def load_crop_edit_context(store: Store, asset_id: str) -> CropEditContextData:
     """Charge le raw + le cercle de départ pour l'éditeur, depuis un asset_id."""
     conn = store._connection()  # noqa: SLF001
@@ -155,7 +175,9 @@ def load_crop_edit_context(store: Store, asset_id: str) -> CropEditContextData:
         "SELECT COUNT(*) FROM image_assets WHERE source_image_id = ?",
         (row["source_image_id"],),
     ).fetchone()[0]
+    hint = _hint_from_bbox(row["bbox_json"])
     suggested = _dominant_circle(row["raw_storage_path"]) if n_crops <= 1 else None
+    suggested = _plausible_suggestion(suggested, hint)  # rejette le cercle coincard aberrant
 
     return CropEditContextData(
         asset_id=row["asset_id"],
@@ -164,7 +186,7 @@ def load_crop_edit_context(store: Store, asset_id: str) -> CropEditContextData:
         raw_storage_path=row["raw_storage_path"],
         raw_width=row["raw_width"],
         raw_height=row["raw_height"],
-        hint=_hint_from_bbox(row["bbox_json"]),
+        hint=hint,
         suggested=suggested,
     )
 

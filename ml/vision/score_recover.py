@@ -54,13 +54,13 @@ def _score_specs(bgr, specs, config):
     return [(cx, cy, r, float(s), res) for (cx, cy, r, res), s in zip(kept, scores)]
 
 
-def recover_crop(bgr: np.ndarray, hint: dict, tau: float, config=None):
-    """Cherche le crop pièce-entière qui maximise la probe, autour du `hint`.
+def search_best_crop(bgr: np.ndarray, hint: dict, config=None) -> dict | None:
+    """Balayage de rayon scoré autour du `hint` → meilleur crop pièce-entière (sans gate).
 
-    `hint` = {cx, cy, r_final} de la détection dominante (coords natives). `tau` = seuil du
-    gate (même que `_census_fragment_tau`). Retourne un `NormalizationResult` (method
-    "score_recover", cx/cy/r renseignés pour reconstruire la bbox) si le meilleur candidat
-    passe le gate, sinon `None` (aucune dégradation : l'image reste zero_crops).
+    `hint` = {cx, cy, r_final|r} de la détection / bbox actuelle (coords natives). Retourne
+    `{"result": NormalizationResult, "score": float, "baseline_score": float, "ratio": float}`
+    où `baseline_score` = le score du crop AU rayon du hint (×1.0) → permet au caller de ne
+    remplacer un crop existant QUE si le meilleur l'améliore franchement. `None` si aucun crop.
     """
     if bgr is None or bgr.size == 0:
         return None
@@ -72,8 +72,9 @@ def recover_crop(bgr: np.ndarray, hint: dict, tau: float, config=None):
         return None
     rcap = _RCAP_FRAC * short
 
-    # Étage 1 : ladder grossier (×mult sur r_hint ∪ fractions absolues du short).
-    specs, seen = [], set()
+    # Étage 1 : ladder grossier (×mult sur r_hint ∪ fractions absolues du short). Le ×1.0
+    # (= rayon du hint) sert de baseline de comparaison.
+    specs, seen, base_rk = [], set(), int(round(min(r0, rcap)))
     radii = [r0 * m for m in _RADIUS_MULT] + [f * short for f in _RADIUS_ABS_FRAC]
     for r in radii:
         r = min(r, rcap)
@@ -87,6 +88,7 @@ def recover_crop(bgr: np.ndarray, hint: dict, tau: float, config=None):
     if not scored:
         return None
 
+    baseline_score = next((t[3] for t in scored if int(round(t[2])) == base_rk), scored[0][3])
     best = max(scored, key=lambda t: t[3])
 
     # Étage 2 : affinage fin autour du meilleur rayon (au même centre).
@@ -104,6 +106,19 @@ def recover_crop(bgr: np.ndarray, hint: dict, tau: float, config=None):
     if fine_scored:
         best = max([best] + fine_scored, key=lambda t: t[3])
 
-    if best[3] < tau:
+    return {"result": best[4], "score": best[3], "baseline_score": baseline_score,
+            "ratio": best[2] / r0}
+
+
+def recover_crop(bgr: np.ndarray, hint: dict, tau: float, config=None):
+    """Cherche le crop pièce-entière qui maximise la probe, autour du `hint`.
+
+    `hint` = {cx, cy, r_final} de la détection dominante (coords natives). `tau` = seuil du
+    gate (même que `_census_fragment_tau`). Retourne un `NormalizationResult` (method
+    "score_recover", cx/cy/r renseignés pour reconstruire la bbox) si le meilleur candidat
+    passe le gate, sinon `None` (aucune dégradation : l'image reste zero_crops).
+    """
+    best = search_best_crop(bgr, hint, config=config)
+    if best is None or best["score"] < tau:
         return None  # rien ne passe le gate → l'image reste zero_crops (pas de dégradation)
-    return best[4]   # NormalizationResult (image + cx/cy/r + method="score_recover")
+    return best["result"]
