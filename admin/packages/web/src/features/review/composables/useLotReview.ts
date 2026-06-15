@@ -151,11 +151,13 @@ function withMlApi(url: string | null): string | null {
 // ─── Public API ───────────────────────────────────────────────────────
 
 export async function fetchLots(
-  opts: { limit?: number; offset?: number; cohortId?: string | null } = {},
+  opts: { limit?: number; offset?: number; cohortId?: string | null; targetEurioId?: string | null } = {},
 ): Promise<LotListResponse> {
   const params = new URLSearchParams()
   if (opts.limit) params.set('limit', String(opts.limit))
   if (opts.offset) params.set('offset', String(opts.offset))
+  // target_eurio_id (une classe précise) est prioritaire sur cohort_id côté API.
+  if (opts.targetEurioId) params.set('target_eurio_id', opts.targetEurioId)
   if (opts.cohortId) params.set('cohort_id', opts.cohortId)
   const qs = params.size ? `?${params.toString()}` : ''
   const resp = await fetch(`${ML_API}/review-queue/lots${qs}`)

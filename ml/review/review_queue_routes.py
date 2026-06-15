@@ -1152,16 +1152,24 @@ def list_lots(
     limit: int = Query(default=24, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     cohort_id: str | None = Query(default=None),
+    target_eurio_id: str | None = Query(default=None),
 ) -> LotListResponse:
     """Liste les listings ayant ≥ 1 row review_queue.kind='lot' status='open'.
 
     Groupé par listing_key (cf. _LISTING_KEY_SQL — eBay : ebay_<itemId>).
     Tri : oldest_enqueued_at ASC (le reviewer commence par les plus vieux).
-    ``cohort_id`` (optionnel) restreint aux listings d'un coin de la cohort
-    (§C4-lot) — même filtre ``si.target_eurio_id`` que le reste du cockpit.
+    Scope (par ``si.target_eurio_id``, clé de découverte) :
+    - ``target_eurio_id`` (prioritaire) → les lots d'UNE classe précise (ouvrir
+      « N lots » depuis une row coin du cockpit ne déverse plus tout le pool) ;
+    - sinon ``cohort_id`` → tous les lots des coins de la cohort (§C4-lot).
     """
     conn = _store()._connection()  # noqa: SLF001
-    cohort_clause, cohort_args, cohort_empty = _cohort_filter(cohort_id, alias="si")
+    if target_eurio_id:
+        cohort_clause, cohort_args, cohort_empty = (
+            " AND si.target_eurio_id = ?", [target_eurio_id], False,
+        )
+    else:
+        cohort_clause, cohort_args, cohort_empty = _cohort_filter(cohort_id, alias="si")
     if cohort_empty:
         return LotListResponse(items=[], total=0)
 

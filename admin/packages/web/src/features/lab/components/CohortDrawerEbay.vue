@@ -496,9 +496,9 @@ async function onRecrop(c: CohortFunnelCoin) {
               <!-- 1b. Reste en review LOT (flow cohorte, multi-pièces) -->
               <RouterLink
                 v-if="lotReviewCount(c) > 0"
-                :to="{ path: '/review/manual', query: { cohort: cohortId, mode: 'lot' } }"
+                :to="{ path: '/review/manual', query: { mode: 'lot', target: c.eurio_id } }"
                 :class="['coin__btn', { 'coin__btn--primary': primaryAction(c) === 'lot' }]"
-                :title="`${lotReviewCount(c)} crops en review LOT touchant ${c.eurio_id} — flow cohorte multi-pièces`"
+                :title="`${lotReviewCount(c)} crops en review LOT touchant ${c.eurio_id} — uniquement les lots de cette pièce`"
               >
                 <Package class="h-3 w-3" /> {{ lotReviewCount(c) }} lots
               </RouterLink>

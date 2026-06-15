@@ -20,6 +20,13 @@ const cohortId = computed(() =>
     ? route.query.cohort
     : null,
 )
+// Scope UNE classe : ?target=<eurio_id> → seulement les lots de cette pièce
+// (ouvrir « N lots » depuis une row coin du cockpit, pas tout le pool).
+const targetEurioId = computed(() =>
+  typeof route.query.target === 'string' && route.query.target
+    ? route.query.target
+    : null,
+)
 
 const lots = ref<LotListItem[]>([])
 const total = ref(0)
@@ -30,7 +37,11 @@ async function load() {
   loading.value = true
   error.value = null
   try {
-    const resp = await fetchLots({ limit: 24, cohortId: cohortId.value })
+    const resp = await fetchLots({
+      limit: 24,
+      cohortId: cohortId.value,
+      targetEurioId: targetEurioId.value,
+    })
     lots.value = resp.items
     total.value = resp.total
   } catch (err) {
@@ -41,7 +52,7 @@ async function load() {
 }
 
 onMounted(load)
-watch(cohortId, () => { void load() })
+watch([cohortId, targetEurioId], () => { void load() })
 
 function openLot(key: string) {
   // Navigate to the full-page review detail (Phase 2 chunk 5).
@@ -60,7 +71,12 @@ function openLot(key: string) {
         <span class="font-semibold" style="color: var(--gold-600);">{{ total }}</span>
         <span class="ml-1 uppercase tracking-wider" style="color: var(--ink-400);">listings à reviewer</span>
         <span
-          v-if="cohortId"
+          v-if="targetEurioId"
+          class="ml-2 rounded-full px-2 py-0.5 text-[10px] tracking-wider"
+          style="background: color-mix(in srgb, var(--gold-600) 14%, var(--surface)); color: var(--gold-600);"
+        >classe · {{ targetEurioId }}</span>
+        <span
+          v-else-if="cohortId"
           class="ml-2 rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wider"
           style="background: color-mix(in srgb, var(--indigo-700) 12%, var(--surface)); color: var(--indigo-700);"
         >cohort · {{ cohortId }}</span>
