@@ -20,6 +20,7 @@ from review.validation.replay import (
     DEFAULT_GOLD,
     build_gold,
     load_gold,
+    relabel_worklist,
     replay_gold,
     save_gold,
 )
@@ -39,15 +40,34 @@ def main() -> None:
     c = sub.add_parser("consensus", help="shadow C3 : verdict actuel vs consensus")
     c.add_argument("--db", type=Path, default=_DB)
     c.add_argument("--gold", type=Path, default=DEFAULT_GOLD)
+    w = sub.add_parser("worklist", help="assets mix-zone-17 à relabelliser (review humaine)")
+    w.add_argument("--db", type=Path, default=_DB)
+    w.add_argument("--out", type=Path, default=None, help="écrit la liste asset_id (1/ligne)")
     args = ap.parse_args()
 
     conn = sqlite3.connect(args.db)
     if args.cmd == "build":
         gold = build_gold(conn)
         save_gold(gold, args.out)
-        print(f"gold figé: {len(gold)} assets → {args.out}")
+        n_labeled = sum(1 for g in gold if g.ground_truth_eurio_id)
+        print(f"gold figé: {len(gold)} assets ({n_labeled} labellisés / "
+              f"{len(gold) - n_labeled} diff-only) → {args.out}")
         print("par source:", dict(Counter(g.source for g in gold)))
+        print("labellisés par source:",
+              dict(Counter(g.source for g in gold if g.ground_truth_eurio_id)))
         print("verdict before:", dict(Counter(g.before_level for g in gold)))
+        return
+
+    if args.cmd == "worklist":
+        rows = relabel_worklist(conn)
+        by_status = Counter(r["resolution_status"] for r in rows)
+        print(f"{len(rows)} assets mix-zone-17 sans label fiable (à reviewer-admin) :")
+        print("  par statut:", dict(by_status))
+        print("  (needs_review = vrai travail de relabel ; les décider en admin "
+              "les fait entrer dans le hold-out au prochain `build`)")
+        if args.out:
+            args.out.write_text("\n".join(r["asset_id"] for r in rows) + "\n")
+            print(f"  → asset_ids écrits dans {args.out}")
         return
 
     if args.cmd == "consensus":
