@@ -26,7 +26,11 @@ import httpx
 
 from training.eval.class_resolver import load_env
 
-EMBEDDINGS_DEFAULT = Path(__file__).parent.parent / "output" / "embeddings_v1.json"
+# Default = promoted prod embeddings (phase 4). Override with --embeddings to
+# seed from a specific lab iteration. Populated by scripts.promote_iteration.
+EMBEDDINGS_DEFAULT = (
+    Path(__file__).parent.parent / "prod" / "current" / "embeddings" / "embeddings_v1.json"
+)
 
 
 def seed(args: argparse.Namespace) -> int:

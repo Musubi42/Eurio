@@ -33,13 +33,23 @@ from . import sources_routes
 from review import coins_review_routes
 from . import bench_routes
 from . import crop_bench_routes
+from . import denom_gold_routes
+from . import fragment_audit_routes
+from . import crop_recovery_routes
 from . import operations_routes
 from . import referential_routes
 
 ML_DIR = Path(__file__).parent.parent
 VENV_PYTHON = str(ML_DIR / ".venv" / "bin" / "python")
 CHECKPOINTS_DIR = ML_DIR / "checkpoints"
-OUTPUT_DIR = ML_DIR / "output"
+# Prod model artefacts = the *promoted* state under ml/prod/current/ (phase 4,
+# lab-prod-refacto). These endpoints read prod/current, NOT the old floating
+# ml/output/ mirror — which has been removed. `prod/current/` is populated by
+# `scripts.promote_iteration`; until the first promotion it is absent, so every
+# read below guards with `.exists()` and degrades to "no model yet".
+PROD_CURRENT = ML_DIR / "prod" / "current"
+PROD_TFLITE_DIR = PROD_CURRENT / "tflite"
+PROD_EMBEDDINGS_DIR = PROD_CURRENT / "embeddings"
 DATASETS_DIR = ML_DIR / "datasets"
 STATE_DIR = ML_DIR / "state"
 
@@ -128,6 +138,9 @@ app.include_router(bench_routes.router)
 
 # Wire /crop-bench — banc de qualité du crop eBay (oracle Otsu, lecture seule).
 app.include_router(crop_bench_routes.router)
+app.include_router(denom_gold_routes.router)
+app.include_router(fragment_audit_routes.router)
+app.include_router(crop_recovery_routes.router)
 
 # Wire /operations — dashboard d'opérations J1/J4 (pulse, readiness, diversity, cohorts).
 app.include_router(operations_routes.router)
@@ -356,8 +369,8 @@ def health_full():
     """
     resp = HealthResponse(status="ok")
 
-    # Current model info
-    meta_path = OUTPUT_DIR / "model_meta.json"
+    # Current model info (promoted prod model)
+    meta_path = PROD_TFLITE_DIR / "model_meta.json"
     if meta_path.exists():
         meta = json.loads(meta_path.read_text())
         resp.model_version = f"v1-{meta.get('mode', '?')}"
@@ -1040,9 +1053,9 @@ _export_status: dict = {"running": False, "error": None, "last_export": None}
 def export_status() -> dict:
     """Get TFLite export status and delta info."""
     # Current TFLite info
-    tflite_path = OUTPUT_DIR / "eurio_embedder_v1.tflite"
-    meta_path = OUTPUT_DIR / "model_meta.json"
-    emb_path = OUTPUT_DIR / "embeddings_v1.json"
+    tflite_path = PROD_TFLITE_DIR / "eurio_embedder_v1.tflite"
+    meta_path = PROD_TFLITE_DIR / "model_meta.json"
+    emb_path = PROD_EMBEDDINGS_DIR / "embeddings_v1.json"
 
     tflite_info = None
     if tflite_path.exists():
@@ -1145,8 +1158,8 @@ def validate_export() -> dict:
 def model_sync_status() -> dict:
     """Check sync status between local model and Supabase Storage."""
     local_model = CHECKPOINTS_DIR / "best_model.pth"
-    local_meta = OUTPUT_DIR / "model_meta.json"
-    local_emb = OUTPUT_DIR / "embeddings_v1.json"
+    local_meta = PROD_TFLITE_DIR / "model_meta.json"
+    local_emb = PROD_EMBEDDINGS_DIR / "embeddings_v1.json"
 
     local_info = {}
     if local_model.exists():
@@ -1181,7 +1194,12 @@ def model_sync_status() -> dict:
 
 @app.post("/export/upload-model")
 def upload_model_to_supabase() -> dict:
-    """Upload best_model.pth + model_meta.json + embeddings_v1.json to Supabase Storage."""
+    """Upload best_model.pth + promoted prod model_meta/embeddings to Supabase Storage.
+
+    Model artefacts are read from ``ml/prod/current/`` (phase 4). The class-table
+    push to Supabase is also done by ``scripts.promote_iteration``; this endpoint
+    mirrors the model files into the ``ml-models`` storage bucket for backup.
+    """
     import httpx
 
     env = load_env()
@@ -1198,9 +1216,9 @@ def upload_model_to_supabase() -> dict:
 
     files_to_upload = [
         (CHECKPOINTS_DIR / "best_model.pth", "best_model.pth"),
-        (OUTPUT_DIR / "model_meta.json", "model_meta.json"),
-        (OUTPUT_DIR / "embeddings_v1.json", "embeddings_v1.json"),
-        (OUTPUT_DIR / "coin_embeddings.json", "coin_embeddings.json"),
+        (PROD_TFLITE_DIR / "model_meta.json", "model_meta.json"),
+        (PROD_EMBEDDINGS_DIR / "embeddings_v1.json", "embeddings_v1.json"),
+        (PROD_EMBEDDINGS_DIR / "coin_embeddings.json", "coin_embeddings.json"),
     ]
 
     uploaded = []
@@ -1244,7 +1262,12 @@ def upload_model_to_supabase() -> dict:
 
 @app.post("/export/deploy")
 def deploy_to_android() -> dict:
-    """Copy TFLite + embeddings + meta to Android assets."""
+    """Copy promoted prod TFLite + embeddings + meta to Android assets.
+
+    Reads ``ml/prod/current/`` (phase 4). Equivalent to the canonical CLI
+    ``python -m scripts.promote_prod_assets`` — prefer that for scripted
+    deploys; this endpoint exists for the admin one-click flow.
+    """
     import shutil
 
     assets = ML_DIR.parent / "app-android" / "src" / "main" / "assets"
@@ -1253,9 +1276,9 @@ def deploy_to_android() -> dict:
 
     deployed = []
     for src, dst_dir, name in [
-        (OUTPUT_DIR / "eurio_embedder_v1.tflite", models_dir, "TFLite model"),
-        (OUTPUT_DIR / "coin_embeddings.json", data_dir, "Embeddings"),
-        (OUTPUT_DIR / "model_meta.json", data_dir, "Metadata"),
+        (PROD_TFLITE_DIR / "eurio_embedder_v1.tflite", models_dir, "TFLite model"),
+        (PROD_EMBEDDINGS_DIR / "coin_embeddings.json", data_dir, "Embeddings"),
+        (PROD_TFLITE_DIR / "model_meta.json", data_dir, "Metadata"),
     ]:
         if src.exists():
             dst_dir.mkdir(parents=True, exist_ok=True)

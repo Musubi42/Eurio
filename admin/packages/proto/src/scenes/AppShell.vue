@@ -43,8 +43,8 @@ function tapBadge() {
         <router-view />
       </main>
 
-      <!-- Bottom navigation -->
-      <nav class="bottomnav" aria-label="Navigation principale">
+      <!-- Bottom navigation (masquée sur les sous-pages nav:null — ex. fiche pièce) -->
+      <nav v-if="nav" class="bottomnav" aria-label="Navigation principale">
         <button type="button" class="bottomnav__tab" data-nav="vault" data-testid="nav-vault" :aria-current="nav === 'vault' ? 'page' : undefined" @click="go('/vault')">
           <span class="bottomnav__icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -75,17 +75,9 @@ function tapBadge() {
           </span>
           <span class="bottomnav__label">Profil</span>
         </button>
-
-        <button type="button" class="bottomnav__tab bottomnav__tab--soon" data-nav="marketplace" data-testid="nav-marketplace" :aria-current="nav === 'marketplace' ? 'page' : undefined" @click="go('/marketplace')">
-          <span class="bottomnav__soon-badge">Bientôt</span>
-          <span class="bottomnav__icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M4 7h16l-1.3 10.2a2 2 0 0 1-2 1.8H7.3a2 2 0 0 1-2-1.8L4 7Z" />
-              <path d="M9 7V5a3 3 0 0 1 6 0v2" />
-            </svg>
-          </span>
-          <span class="bottomnav__label">Marché</span>
-        </button>
+        <!-- Onglet Marché retiré (T1) : nav à 3 icônes Coffre · Scan · Profil.
+             Le marketplace (North Star) reste en germe via les liens « où trouver »
+             de la fiche, à réintroduire plus tard. -->
       </nav>
     </div>
   </div>

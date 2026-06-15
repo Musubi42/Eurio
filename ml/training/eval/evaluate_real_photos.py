@@ -45,7 +45,9 @@ logger = logging.getLogger("evaluate_real_photos")
 
 DEFAULT_REAL_PHOTOS = ML_DIR / "data" / "real_photos"
 DEFAULT_REPORTS_DIR = ML_DIR / "reports"
-DEFAULT_CENTROIDS = ML_DIR / "output" / "embeddings_v1.json"
+# ML_DIR here is ml/training/ ; the repo ml root is ML_DIR.parent. Default to the
+# promoted prod embeddings (phase 4) ; override with --centroids for a lab iteration.
+DEFAULT_CENTROIDS = ML_DIR.parent / "prod" / "current" / "embeddings" / "embeddings_v1.json"
 DEFAULT_DETECTOR = ML_DIR / "output" / "detection" / "coin_detector" / "weights" / "best.pt"
 STATE_DB = ML_DIR / "state" / "eurio.db"
 

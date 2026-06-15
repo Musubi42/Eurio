@@ -531,3 +531,94 @@
     font-family: var(--font-display);
     font-style: italic;
   }
+
+  /* ───────── Meilleures pièces : carrousel superlatif (E4) ───────── */
+  .vault-best {
+    margin: 0 0 var(--space-6);
+  }
+  .vault-best__head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin: 0 0 var(--space-3);
+  }
+  .vault-best__title {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: var(--text-lg);
+    color: var(--ink);
+  }
+  /* Rail à débordement : bleed jusqu'aux bords de l'écran (padding du scroll = space-5). */
+  .vault-best__rail {
+    display: flex;
+    gap: var(--space-3);
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    margin: 0 calc(-1 * var(--space-5));
+    padding: 0 var(--space-5) var(--space-2);
+  }
+  .vault-best__rail::-webkit-scrollbar { display: none; }
+  .vault-best__card {
+    flex: 0 0 auto;
+    width: 132px;
+    scroll-snap-align: start;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-1);
+    padding: var(--space-4) var(--space-2) var(--space-3);
+    background: var(--surface-2);
+    border: 1px solid var(--indigo-100);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-sm);
+    cursor: pointer;
+    position: relative;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+  .vault-best__card:active { transform: scale(0.97); }
+  .vault-best__badge {
+    position: absolute;
+    top: calc(-1 * var(--space-2));
+    left: 50%;
+    transform: translateX(-50%);
+    white-space: nowrap;
+    font-size: var(--text-xs);
+    font-weight: 600;
+    line-height: 1;
+    padding: 5px 10px;
+    border-radius: var(--radius-full);
+    background: var(--indigo-100);
+    color: var(--indigo-700);
+    box-shadow: var(--shadow-sm);
+  }
+  .vault-best__badge--rare {
+    background: var(--gold);
+    color: var(--gold-deep);
+    box-shadow: var(--shadow-gold);
+  }
+  .vault-best__badge--value {
+    background: var(--indigo-700);
+    color: #fff;
+  }
+  .vault-best__coin {
+    width: 96px; height: 96px;
+    display: grid; place-items: center;
+    margin-top: var(--space-1);
+  }
+  .vault-best__name {
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--ink);
+    text-align: center;
+    line-height: var(--leading-tight);
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .vault-best__value {
+    font-size: var(--text-xs);
+    color: var(--ink-500);
+  }

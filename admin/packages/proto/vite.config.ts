@@ -48,5 +48,10 @@ export default defineConfig({
   server: {
     host: true, // expose sur le réseau local → test direct au téléphone
     port: 5174,
+    strictPort: true, // ne jamais voler le port d'un autre paquet (web = 5173) → échoue clairement
+  },
+  preview: {
+    port: 5174,
+    strictPort: true,
   },
 })

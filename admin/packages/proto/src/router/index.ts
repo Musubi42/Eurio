@@ -28,18 +28,18 @@ const routes: RouteRecordRaw[] = [
   { path: '/onboarding/permission', component: () => import('@/scenes/onboarding/OnboardingPermission.vue'), meta: { nav: null, chrome: 'none' } },
   { path: '/onboarding/demo', component: () => import('@/scenes/onboarding/OnboardingDemo.vue'), meta: { nav: null, chrome: 'none' } },
 
-  // Scan (idle → transition 3D → reveal 3D)
-  { path: '/scan', name: 'scan', component: () => import('@/scenes/ScanIdle.vue'), meta: { nav: 'scan', chrome: 'dark' } },
-  { path: '/scan/transition', component: () => import('@/scenes/scan/ScanTransition3D.vue'), meta: { nav: 'scan', chrome: 'dark' } },
-  { path: '/scan/reveal', component: () => import('@/scenes/scan/RevealStratifie.vue'), meta: { nav: 'scan', chrome: 'dark' } },
+  // Scan = flux unifié (idle → identification 3D → reveal sheet → swipe-down = re-scan). Scène unique.
+  { path: '/scan', name: 'scan', component: () => import('@/scenes/scan/ScanReveal.vue'), meta: { nav: 'scan', chrome: 'dark' } },
 
   // Coin detail (Chunk B)
   { path: '/coin/:eurioId', name: 'coin', component: () => import('@/scenes/CoinDetail.vue'), meta: { nav: null, chrome: 'light' } },
 
   // Vault (Chunk C)
   { path: '/vault', name: 'vault', component: () => import('@/scenes/vault/VaultHome.vue'), meta: { nav: 'vault', chrome: 'light' } },
+  { path: '/vault/all', component: () => import('@/scenes/vault/VaultAll.vue'), meta: { nav: 'vault', chrome: 'light' } },
   { path: '/vault/sets', component: () => import('@/scenes/vault/VaultSetsList.vue'), meta: { nav: 'vault', chrome: 'light' } },
   { path: '/vault/sets/:setId', component: () => import('@/scenes/vault/VaultSetsDetail.vue'), meta: { nav: 'vault', chrome: 'light' } },
+  { path: '/vault/geo', component: () => import('@/scenes/vault/VaultGeoMap.vue'), meta: { nav: 'vault', chrome: 'light' } },
   { path: '/vault/catalog', component: () => import('@/scenes/vault/CarteAGratter.vue'), meta: { nav: 'vault', chrome: 'light' } },
   { path: '/vault/catalog/:iso', component: () => import('@/scenes/vault/VaultCatalogCountry.vue'), meta: { nav: 'vault', chrome: 'light' } },
   { path: '/vault/search', component: () => import('@/scenes/vault/VaultSearch.vue'), meta: { nav: 'vault', chrome: 'light' } },
@@ -50,6 +50,7 @@ const routes: RouteRecordRaw[] = [
   { path: '/profile/achievements', component: () => import('@/scenes/profile/ProfileAchievements.vue'), meta: { nav: 'profile', chrome: 'light' } },
   { path: '/profile/set/:setId', component: () => import('@/scenes/profile/ProfileSet.vue'), meta: { nav: 'profile', chrome: 'light' } },
   { path: '/profile/settings', component: () => import('@/scenes/profile/ProfileSettings.vue'), meta: { nav: 'profile', chrome: 'light' } },
+  { path: '/profile/history', component: () => import('@/scenes/profile/ProfileHistory.vue'), meta: { nav: 'profile', chrome: 'light' } },
   { path: '/profile/unlock', component: () => import('@/scenes/profile/ProfileUnlock.vue'), meta: { nav: null, chrome: 'none' } },
 
   // Marketplace (Chunk E)

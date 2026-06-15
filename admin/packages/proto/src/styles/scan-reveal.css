@@ -1,0 +1,254 @@
+/* scan-reveal.css — surcouche du flux unifié (scène ScanReveal).
+ * Réutilise reveal-stratifie.css pour le sheet/hero/célébration ; n'ajoute ICI
+ * que les nouveautés : phase idle (guide caméra), FX d'identification (halo/flash,
+ * DÉPLACÉS depuis scan-transition.css qui meurt au chunk 5), titre remonté sous
+ * la pièce, et la visibilité pilotée par [data-phase]. */
+
+/* ───────── Visibilité par phase ───────── */
+/* Le sheet (= la fiche qui remonte) reste hors écran tant que pas révélée. */
+.scan-reveal-root .reveal-sheet {
+  transition: height var(--duration-slow) var(--ease-out), transform var(--duration-slow) var(--ease-out);
+}
+.scan-reveal-root:not([data-phase="revealed"]) .reveal-sheet {
+  transform: translateY(110%);
+  pointer-events: none;
+}
+
+/* ───────── Phase idle : guide caméra (ex ScanIdle) ───────── */
+.scan-reveal-idle {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 240px; height: 240px;
+  z-index: 2;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--duration-base) var(--ease-out);
+}
+.scan-reveal-root[data-phase="idle"] .scan-reveal-idle {
+  opacity: 1;
+  animation: scan-reveal-guide-pulse 2.2s var(--ease-in-out) infinite;
+}
+@keyframes scan-reveal-guide-pulse {
+  0%, 100% { opacity: 0.55; transform: translate(-50%, -50%) scale(1); }
+  50% { opacity: 0.9; transform: translate(-50%, -50%) scale(1.03); }
+}
+.scan-reveal-idle__corner {
+  position: absolute;
+  width: 26px; height: 26px;
+  border: 1.6px solid rgba(255, 255, 255, 0.85);
+}
+.scan-reveal-idle__corner--tl { top: 0; left: 0; border-right: 0; border-bottom: 0; border-top-left-radius: 6px; }
+.scan-reveal-idle__corner--tr { top: 0; right: 0; border-left: 0; border-bottom: 0; border-top-right-radius: 6px; }
+.scan-reveal-idle__corner--bl { bottom: 0; left: 0; border-right: 0; border-top: 0; border-bottom-left-radius: 6px; }
+.scan-reveal-idle__corner--br { bottom: 0; right: 0; border-left: 0; border-top: 0; border-bottom-right-radius: 6px; }
+
+.scan-reveal-idlehead {
+  position: absolute;
+  top: 62px; left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+  z-index: 4;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--duration-base) var(--ease-out);
+}
+.scan-reveal-root[data-phase="idle"] .scan-reveal-idlehead { opacity: 1; }
+.scan-reveal-idlehead__title {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: var(--text-xl);
+  font-weight: 400;
+  color: var(--surface);
+  letter-spacing: 0.01em;
+  margin-top: 2px;
+}
+.scan-reveal-idlehint {
+  position: absolute;
+  left: 50%; bottom: 220px;
+  transform: translateX(-50%);
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 10px 18px;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-full);
+  font-size: var(--text-sm);
+  color: rgba(255, 255, 255, 0.92);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--duration-base) var(--ease-out);
+}
+.scan-reveal-root[data-phase="idle"] .scan-reveal-idlehint { opacity: 1; }
+.scan-reveal-idlehint__dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.7);
+  animation: scan-reveal-dot 1.6s var(--ease-in-out) infinite;
+}
+@keyframes scan-reveal-dot {
+  0%, 90%, 100% { opacity: 1; }
+  95% { opacity: 0.4; }
+}
+
+/* ───────── Statut (centre du hero) ───────── */
+.scan-reveal-status {
+  position: absolute;
+  left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 4;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.5);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--duration-base) var(--ease-out);
+}
+/* "Identification…" pendant la chorégraphie */
+.scan-reveal-root[data-phase="morph"] .scan-reveal-status--id,
+.scan-reveal-root[data-phase="spin"] .scan-reveal-status--id,
+.scan-reveal-root[data-phase="settle"] .scan-reveal-status--id { opacity: 1; }
+
+/* ───────── Titre remonté sous la pièce (wireframe A) ───────── */
+.scan-reveal-title {
+  position: absolute;
+  top: 39%; left: 0; right: 0;
+  z-index: 2;
+  text-align: center;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity var(--duration-slow) var(--ease-out), transform var(--duration-slow) var(--ease-out);
+}
+.scan-reveal-root[data-phase="revealed"] .scan-reveal-title {
+  opacity: 1;
+  transform: translateY(0);
+}
+.scan-reveal-title__main {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+}
+.scan-reveal-title__sub {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 400;
+  font-size: var(--text-2xl);
+  line-height: var(--leading-tight);
+  color: var(--surface);
+  margin-top: 3px;
+  padding: 0 var(--space-6);
+}
+
+/* ───────── En-tête de fiche dans le sheet (déployé seulement) ───────── */
+/* En peek, le titre est déjà sous la pièce et le 3D dans le bandeau haut : on
+   masque ces deux blocs (display:none → hauteur nulle, le résumé reste en tête). */
+.scan-reveal-sheethead,
+.scan-reveal-sheethero { display: none; }
+.scan-reveal-root[data-state="expanded"] .scan-reveal-sheethead { display: block; text-align: center; padding-top: var(--space-2); }
+.scan-reveal-root[data-state="expanded"] .scan-reveal-sheethero {
+  display: block;
+  position: relative;
+  height: 168px;
+  margin: var(--space-2) 0 var(--space-1);
+}
+.scan-reveal-sheethead__main {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+}
+.scan-reveal-sheethead__sub {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 400;
+  font-size: var(--text-2xl);
+  line-height: var(--leading-tight);
+  color: var(--surface);
+  margin-top: 3px;
+}
+
+/* ───────── Valeur compacte (peek du sheet) ───────── */
+.reveal-sum__value {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  margin: 6px 0 2px;
+}
+.reveal-sum__value-num {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 400;
+  font-size: var(--text-2xl);
+  color: var(--gold-300);
+}
+.reveal-sum__value-tier {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+/* ───────── FX d'identification (halo + flash) — DÉPLACÉS depuis scan-transition.css ───────── */
+.scan-reveal-flash {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(ellipse 58% 40% at 50% 50%, rgba(224, 198, 136, 0.45) 0%, transparent 60%);
+}
+.scan-reveal-flash.is-burst { animation: scan-reveal-flash 0.7s var(--ease-out) forwards; }
+@keyframes scan-reveal-flash {
+  0% { opacity: 0; }
+  18% { opacity: 1; }
+  100% { opacity: 0; }
+}
+.scan-reveal-halo {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 220px; height: 220px;
+  transform: translate(-50%, -50%) scale(0.6);
+  border-radius: 50%;
+  border: 1.5px solid var(--gold-300);
+  z-index: 3;
+  pointer-events: none;
+  opacity: 0;
+}
+.scan-reveal-halo.is-burst { animation: scan-reveal-halo 0.85s var(--ease-out) forwards; }
+@keyframes scan-reveal-halo {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.55); }
+  30% { opacity: 0.85; }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1.5); }
+}
+
+/* Le corps CoinDetailBody porte désormais sa patte SOMBRE canonique dans
+   coin-detail.css (1 source de vérité, partagée scan + /coin/:id). Plus aucun
+   remap couleur ici — voir coin-detail.css §« Texte du corps ». */
+
+/* Snackbar : remonté au-dessus du CTA + navbar (sinon il chevauche « Retirer du coffre »). */
+.scan-reveal-root .toast { bottom: 168px; }
+
+/* ───────── Debug : forcer un match (phase idle) ───────── */
+.scan-reveal-debug {
+  position: absolute;
+  left: 50%; bottom: 140px;
+  transform: translateX(-50%);
+  z-index: 5;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--duration-base) var(--ease-out);
+}
+.scan-reveal-root[data-phase="idle"] .scan-reveal-debug {
+  opacity: 1;
+  pointer-events: auto;
+}

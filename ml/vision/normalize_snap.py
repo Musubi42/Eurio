@@ -659,7 +659,16 @@ def _hough_refine_in_roi(bgr: np.ndarray,
     if not valid:
         return None
     rcx, rcy = rw / 2.0, rh / 2.0
-    best = min(valid, key=lambda c: (c[0] - rcx) ** 2 + (c[1] - rcy) ** 2)
+    if _census_outer_select():
+        # Préférer le rim EXTERNE : parmi les candidats centrés (≤30 % du petit côté),
+        # garder le plus grand. Sur designs à motif interne fort (€ globe EMU, aigle),
+        # « le plus centré » votait l'anneau interne ; « le plus grand centré » prend
+        # le rebord. Borné par r_max_clamp (bbox YOLO) → pas d'arche de fond.
+        tol_sq = (0.30 * short) ** 2
+        centred = [c for c in valid if (c[0] - rcx) ** 2 + (c[1] - rcy) ** 2 <= tol_sq]
+        best = max(centred or valid, key=lambda c: c[2])
+    else:
+        best = min(valid, key=lambda c: (c[0] - rcx) ** 2 + (c[1] - rcy) ** 2)
     return float(x1i + best[0]), float(y1i + best[1]), float(best[2])
 
 
@@ -806,7 +815,8 @@ def _dedup_duplicate_circles(detections: list["CircleDetection"], short: int) ->
 
 
 def detect_circles_multi(bgr: np.ndarray,
-                         census: bool | None = None) -> list[CircleDetection]:
+                         census: bool | None = None,
+                         trace: list[dict] | None = None) -> list[CircleDetection]:
     """Detect ALL coins in a listing image (1..N), with accept/reject reasons.
 
     YOLO produces N bbox candidates above `_YOLO_CONF_THRESHOLD`. For each
@@ -819,6 +829,11 @@ def detect_circles_multi(bgr: np.ndarray,
     `census` : mode haut-rappel + gate anti-fragment (cf. §6-9). `None` (défaut)
     = résolu via le flag d'env `EURIO_CENSUS_DETECT` (chemins bench/CLI) ; un bool
     explicite a priorité (le pipeline eBay passe `census=True` côté detect_crop).
+
+    `trace` : instrumentation OPT-IN (défaut None = aucun effet, aucune persistance).
+    Si une liste est passée, on y append un dict par bbox traitée avec le rayon à
+    CHAQUE étage (bbox YOLO → hough refine → polish → rim-refine), ce qui rend le
+    « rim over-fit » mesurable sans label humain (cf. scripts.measure_crop_undercrop).
 
     Returns detections ordered by YOLO confidence descending. Rejected
     circles are reported only for the admin debug view (Stage 2). No
@@ -861,6 +876,7 @@ def detect_circles_multi(bgr: np.ndarray,
         my = bh * _YOLO_BBOX_MARGIN_FRAC
         # YOLO anchor : Hough refine must stay inside the bbox half-side.
         r_max_clamp = max(bw, bh) / 2.0
+        r_bbox = min(bw, bh) / 2.0  # rayon inscrit de la bbox = extension « vraie pièce »
 
         refined = _hough_refine_in_roi(bgr, x1 - mx, y1 - my, x2 + mx, y2 + my,
                                         r_max_clamp=r_max_clamp)
@@ -872,12 +888,14 @@ def detect_circles_multi(bgr: np.ndarray,
             cy_f = (y1 + y2) / 2.0
             r_f = min(bw, bh) / 2.0
             method = "yolo+bbox"
+        r_hough = r_f  # rayon après hough-refine (ou fallback bbox)
 
         cx_f, cy_f, r_f, _gain, polish_status = _radial_gradient_polish(
             bgr, cx_f, cy_f, r_f, r_max_clamp=r_max_clamp,
         )
         if polish_status == "applied":
             method = method + "+polish"
+        r_polish = r_f  # rayon après polish gradient radial
 
         # Rim refine (chantier crop-quality-overhaul, Chunk 4) : le couple
         # Hough+polish accroche l'anneau interne or↔argent des 2€ bimétalliques
@@ -908,6 +926,15 @@ def detect_circles_multi(bgr: np.ndarray,
             if _ref.ok and _ref.r > 0:
                 cx_f, cy_f, r_f = _ref.cx, _ref.cy, _ref.r
                 method = method + "+rimrefine"
+        r_rim = r_f  # rayon final après rim-refine
+
+        # Plancher ancré bbox YOLO (anti-undercrop, OFF par défaut) : la pièce ne
+        # peut pas être plus petite que `floor`× l'extension YOLO. Borné par la
+        # demi-diagonale bbox (r_max_clamp) → pas d'overcrop hors bbox.
+        floor = _census_bbox_floor()
+        if census and floor > 0 and r_bbox > 0 and r_f < floor * r_bbox:
+            r_f = min(floor * r_bbox, r_max_clamp)
+            method = method + "+bboxfloor"
 
         cx_n = int(round(cx_f))
         cy_n = int(round(cy_f))
@@ -933,6 +960,20 @@ def detect_circles_multi(bgr: np.ndarray,
             # surface uniforme = une grosse part des zéro-crop).
             accepted = False
             reason = "low_structure"
+
+        if trace is not None:
+            trace.append({
+                "conf": round(float(conf), 4),
+                "r_bbox": round(float(r_bbox), 2),
+                "r_hough": round(float(r_hough), 2),
+                "r_polish": round(float(r_polish), 2),
+                "r_rim": round(float(r_rim), 2),
+                "polish_status": polish_status,
+                "method": method,
+                "r_final": r_n, "cx": cx_n, "cy": cy_n,
+                "bcx": int(round((x1 + x2) / 2.0)), "bcy": int(round((y1 + y2) / 2.0)),
+                "accepted": accepted, "reject_reason": reason,
+            })
 
         detections.append(CircleDetection(
             cx=cx_n, cy=cy_n, r=r_n,

@@ -21,18 +21,21 @@ import logging
 import sqlite3
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
 
-from fastapi import APIRouter, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, HTTPException, Query, Response
+from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel
 
 from referential.canonical_image_local import (
+    CANONICAL_DIR,
     canonical_dir_for,
     canonical_path,
 )
+from shared.storage import public_url
 from store import Store
 
 logger = logging.getLogger(__name__)
@@ -75,9 +78,46 @@ def _lookup_source(eurio_id: str, role: str) -> str | None:
     return row[0] if row else None
 
 
+# Canonical images live in MinIO bucket ``numista-canonical`` (decision
+# 2026-06-14, harmonisation-images). We redirect to the public CDN so the API
+# server doesn't stream image bytes. The local FS (``ml/canonical_images/``)
+# stays the source of truth and the fallback: any key not (yet) confirmed in the
+# bucket — or any MinIO outage — degrades to serving the local file directly, so
+# this change can never 404 something that used to serve.
+_bucket_keys_cache: set[str] | None = None
+_bucket_keys_loaded_at: float = 0.0
+_BUCKET_KEYS_TTL_S = 300.0  # re-list every 5 min so canonicals enriched by other
+#                             processes (write_variants write-through) flip from
+#                             FS fallback to CDN without a server restart.
+
+
+def _bucket_keys() -> set[str]:
+    """Keys present in ``numista-canonical`` (cached, refreshed every TTL).
+
+    On any error (MinIO down, no creds) returns an empty set → every request
+    falls back to FileResponse, i.e. the pre-2026-06-14 behaviour.
+    """
+    global _bucket_keys_cache, _bucket_keys_loaded_at
+    now = time.monotonic()
+    if _bucket_keys_cache is not None and (now - _bucket_keys_loaded_at) < _BUCKET_KEYS_TTL_S:
+        return _bucket_keys_cache
+    keys: set[str] = set()
+    try:
+        from shared.storage import _client
+        paginator = _client().get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket="numista-canonical"):
+            for obj in page.get("Contents", []):
+                keys.add(obj["Key"])
+    except Exception as exc:  # noqa: BLE001 — any failure → FS fallback
+        logger.warning("numista-canonical list failed, serving canonicals from FS: %s", exc)
+    _bucket_keys_cache = keys
+    _bucket_keys_loaded_at = now
+    return keys
+
+
 def _serve_canonical(
     eurio_id: str, role: str, *, thumb: bool, source: str | None = None,
-) -> FileResponse:
+):
     role = _resolve_role(role)
 
     # Fallback chain : si l'appelant spécifie `source`, on essaie celui-ci en
@@ -113,6 +153,13 @@ def _serve_canonical(
                    f"(tried sources: {candidates})",
         )
     _ = chosen_source  # noqa: F841 — kept for future logging/headers
+
+    # MinIO key = path relative to the canonical FS root (same convention the
+    # upload script uses: ``{eurio_id}/{role}_{tag}.webp``). Redirect to the CDN
+    # when the object is confirmed present, else fall back to streaming the FS file.
+    storage_key = path.relative_to(CANONICAL_DIR).as_posix()
+    if storage_key in _bucket_keys():
+        return RedirectResponse(public_url(storage_key), status_code=302)
 
     return FileResponse(
         path,
@@ -160,8 +207,9 @@ def canonical_index() -> dict:
 def canonical_detail(
     eurio_id: str, role: str,
     source: str | None = Query(default=None, description="numista|bce_comm|unknown"),
-) -> FileResponse:
-    """Image canonique 400 px WebP. Sert depuis ``ml/canonical_images/`` local.
+) -> Response:
+    """Image canonique 400 px WebP. Redirige vers le CDN MinIO (numista-canonical),
+    avec fallback FS ``ml/canonical_images/`` si l'objet n'est pas dans le bucket.
 
     ``source`` optionnel : sans ce param on retourne la meilleure dispo
     (numista > bce_comm > unknown). Avec ``source=bce_comm`` on cible
@@ -174,7 +222,7 @@ def canonical_detail(
 def canonical_thumb(
     eurio_id: str, role: str,
     source: str | None = Query(default=None),
-) -> FileResponse:
+) -> Response:
     """Thumbnail 120 px WebP. Pour les grilles `/coins` admin."""
     return _serve_canonical(eurio_id, role, thumb=True, source=source)
 

@@ -45,15 +45,13 @@ onMounted(load)
 // ─── Dérivés ─────────────────────────────────────────────────────────────
 
 const manualCount = computed(() => {
-  // « Vraie » review humaine : la queue pending moins ce qui pourra être
-  // tranché automatiquement (auto_dino) ou par LLM (partial + divergent).
-  // Si négatif (cas dégénéré, l'admin n'a rien lancé), on retombe sur
-  // n_pending.
-  if (!stats.value) return 0
-  const s = stats.value
-  const handled = s.by_verdict.auto_candidate + s.by_verdict.partial + s.by_verdict.divergent
-  const rest = s.n_pending - handled
-  return rest > 0 ? rest : s.n_pending
+  // Compteur de la LANE manuelle persistée (WS1) — exactement le filtre que sert
+  // /review/manual (lane='manual' OR NULL, single, open). Garantit que la carte ==
+  // ce que le reviewer voit. L'ancien calcul (n_pending − handled, par verdict) se
+  // dégradait : quand tous les pending étaient partiels/divergents (lane ccproxy),
+  // rest=0 → fallback sur n_pending → la carte affichait 142 « manuels » alors que
+  // la page manual était vide. Bug PO 2026-06-15.
+  return stats.value?.by_lane.manual ?? 0
 })
 
 const autoCount = computed(() => stats.value?.by_verdict.auto_candidate ?? 0)

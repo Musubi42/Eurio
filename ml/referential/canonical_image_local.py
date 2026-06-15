@@ -22,6 +22,7 @@ les scripts qui l'appellent.
 from __future__ import annotations
 
 import hashlib
+import logging
 from pathlib import Path
 
 from .coin_image_storage import (
@@ -31,6 +32,15 @@ from .coin_image_storage import (
     encode_webp,
     source_file_tag,
 )
+
+logger = logging.getLogger(__name__)
+
+# MinIO bucket servant les canoniques au CDN admin (décision 2026-06-14,
+# harmonisation-images). Le FS reste la source de vérité ; ce write-through
+# garde le bucket à jour pour le redirect CDN de ``referential_routes``.
+# NB : distinct de Supabase ``coin-images`` (publication Android, inchangée).
+_MINIO_CANONICAL_BUCKET = "numista-canonical"
+_MINIO_CACHE_CONTROL = "public, max-age=604800, immutable"
 
 # Default detail width — l'écran admin affiche les coins en grille 200-300 px
 # côté display, on garde 400 px pour la marge d'agrandissement (modal détail).
@@ -60,6 +70,32 @@ def relative_path(eurio_id: str, role: str, source: str, *, thumb: bool = False)
     return str(abs_path.relative_to(_ML_ROOT.parent))
 
 
+def _mirror_to_minio(path: Path, data: bytes) -> None:
+    """Best-effort push d'un WebP canonique vers ``numista-canonical``.
+
+    Clé = chemin relatif à ``CANONICAL_DIR`` (``{eurio_id}/{role}_{tag}.webp``),
+    identique à ``scripts.upload_canonicals_to_minio``. Best-effort : toute
+    erreur (MinIO down, pas de creds) est loggée mais ne casse PAS l'écriture
+    FS, qui reste la source de vérité. Le script d'upload idempotent rattrape
+    les éventuels manques (réconciliation).
+    """
+    key = path.relative_to(CANONICAL_DIR).as_posix()
+    try:
+        from shared.storage import _client
+        _client().put_object(
+            Bucket=_MINIO_CANONICAL_BUCKET,
+            Key=key,
+            Body=data,
+            ContentType="image/webp",
+            CacheControl=_MINIO_CACHE_CONTROL,
+        )
+    except Exception as exc:  # noqa: BLE001 — FS reste la source de vérité
+        logger.warning(
+            "canonical MinIO write-through failed for %s (served from FS, "
+            "reconcile via scripts.upload_canonicals_to_minio): %s", key, exc,
+        )
+
+
 def write_variants(
     eurio_id: str,
     role: str,
@@ -67,10 +103,14 @@ def write_variants(
     raw_bytes: bytes,
     *,
     detail_width: int = DETAIL_WIDTH,
+    mirror_to_minio: bool = True,
 ) -> dict[str, int]:
     """Encode WebP detail + thumb et écrit sur disque. Retourne metadata.
 
     Idempotent au sens où re-écrire le même fichier produit le même résultat.
+    ``mirror_to_minio`` (défaut True) pousse aussi les deux variants vers le
+    bucket CDN ``numista-canonical`` (best-effort) ; le passer à False pour les
+    tests / runs offline.
     """
     canonical_dir_for(eurio_id).mkdir(parents=True, exist_ok=True)
 
@@ -81,6 +121,10 @@ def write_variants(
     thumb_path = canonical_path(eurio_id, role, source, thumb=True)
     detail_path.write_bytes(detail_bytes)
     thumb_path.write_bytes(thumb_bytes)
+
+    if mirror_to_minio:
+        _mirror_to_minio(detail_path, detail_bytes)
+        _mirror_to_minio(thumb_path, thumb_bytes)
 
     return {
         "detail_bytes": len(detail_bytes),

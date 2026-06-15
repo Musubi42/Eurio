@@ -2666,7 +2666,8 @@ def runner_training_progress(iteration_id: str) -> dict:
 
 
 _REPO_ROOT = _ML_DIR.parent
-_TFLITE_PATH = _ML_DIR / "output" / "eurio_embedder_v1.tflite"
+# Promoted prod model (phase 4) — populated by scripts.promote_iteration.
+_TFLITE_PATH = _ML_DIR / "prod" / "current" / "tflite" / "eurio_embedder_v1.tflite"
 
 
 @router.get("/cohorts/{cohort_id}/iterations/{iteration_id}/test-app/build-info")

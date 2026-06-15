@@ -9,7 +9,6 @@ import type { Coin, CountryProgress } from '@/api'
 import { confetti, chime, haptic } from '@/lib/celebration'
 import { CONTEXT, GEO } from './eurozone-geo'
 import CoinImage from '@/components/CoinImage.vue'
-import CoffreHeader from './CoffreHeader.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -229,7 +228,12 @@ onMounted(async () => {
 
 <template>
   <section ref="rootRef" class="cag-root" data-scene="carte-a-gratter" :data-mode="mode">
-    <CoffreHeader active="catalog" />
+    <div class="cag-backbar">
+      <button type="button" class="coffre-header__icon" aria-label="Retour au coffre" @click="router.push('/vault')">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
+      </button>
+      <span class="cag-backbar__title">Catalogue eurozone</span>
+    </div>
 
     <div class="cag-toggle-row">
       <div class="cag-toggle" role="tablist" aria-label="Mode d'affichage">

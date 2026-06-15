@@ -58,16 +58,26 @@ def _load_visual_labels(path: Path, source: str, labeled_by: str,
     out = {}
     for r in rows:
         aid = r["asset_id"]
-        if aid not in sp_by_id:
-            print(f"  skip {aid} : storage_path introuvable en DB")
+        # `sp` porté par le fichier (ex. human_validation.jsonl) prime sur le
+        # lookup DB — l'asset peut avoir été purgé de image_assets.
+        sp = r.get("sp") or sp_by_id.get(aid)
+        if not sp:
+            print(f"  skip {aid} : storage_path introuvable (ni fichier ni DB)")
             continue
-        entry = {"asset_id": aid, "sp": sp_by_id[aid], "label": r["label"],
+        entry = {"asset_id": aid, "sp": sp, "label": r["label"],
                  "kind": r.get("kind"), "conf": r.get("conf", "lo"),
-                 "source": source, "labeled_by": labeled_by}
+                 "source": r.get("source") or source,
+                 "labeled_by": r.get("labeled_by") or labeled_by}
         if r.get("face"):
             entry["face"] = r["face"]
         if r.get("note"):
             entry["note"] = r["note"]
+        # Axe B (qualité crop) — porté tel quel ; train_denom_probe peut exclure
+        # les positifs `crop_bad` du set d'entraînement.
+        if r.get("crop_bad"):
+            entry["crop_bad"] = True
+            if r.get("crop_reason"):
+                entry["crop_reason"] = r["crop_reason"]
         out[aid] = entry
     return out
 
@@ -90,6 +100,10 @@ def main() -> int:
     ap.add_argument("--labeled-by", default="claude-visual")
     ap.add_argument("--review-admin", action="store_true",
                     help="récolter les positifs review humaine (decided_by=admin)")
+    ap.add_argument("--override", action="store_true",
+                    help="les labels frais REMPLACENT les rows existantes du gold "
+                         "(par asset_id). Sans ce flag, un asset déjà présent est "
+                         "préservé (la validation humaine serait ignorée).")
     ap.add_argument("--dry", action="store_true")
     args = ap.parse_args()
 
@@ -110,12 +124,21 @@ def main() -> int:
     if GOLD.exists():
         existing = [json.loads(l) for l in GOLD.read_text().splitlines() if l.strip()]
     seen = {o["asset_id"] for o in existing}
-    added = [v for k, v in fresh.items() if k not in seen]
-    dupes = len(fresh) - len(added)
-    merged = existing + added
-
-    print(f"gold : {len(existing)} existants · +{len(added)} nouveaux "
-          f"({dupes} doublons préservés côté gold)")
+    if args.override:
+        # Les labels frais remplacent les rows existantes EN PLACE (ordre préservé),
+        # puis on append les asset_id inédits.
+        merged = [fresh.get(o["asset_id"], o) for o in existing]
+        added = [v for k, v in fresh.items() if k not in seen]
+        merged += added
+        overridden = sum(1 for o in existing if o["asset_id"] in fresh)
+        print(f"gold : {len(existing)} existants · {overridden} remplacés (override) "
+              f"· +{len(added)} nouveaux")
+    else:
+        added = [v for k, v in fresh.items() if k not in seen]
+        dupes = len(fresh) - len(added)
+        merged = existing + added
+        print(f"gold : {len(existing)} existants · +{len(added)} nouveaux "
+              f"({dupes} doublons préservés côté gold — utilise --override pour les écraser)")
     print("label :", dict(Counter(o["label"] for o in merged)))
     print("neg kind :", dict(Counter(o.get("kind") for o in merged
                                      if o["label"] == "neg")))

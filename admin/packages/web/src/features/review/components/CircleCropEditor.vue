@@ -323,13 +323,36 @@ function onKey(e: KeyboardEvent) {
   if (e.key === 'Escape') {
     e.stopPropagation()
     emit('close')
-  } else if (e.key === 'Enter') {
+    return
+  }
+  if (e.key === 'Enter') {
     // Entrée = « Valider le recadrage » (PAS la pièce — le clavier global
     // est désactivé tant que l'éditeur est ouvert). No-op si pas prêt.
     if (!ctx.value || saving.value) return
     e.stopPropagation()
     e.preventDefault()
     void save()
+    return
+  }
+  // Ajustement fin au clavier (px natifs) : +/− = rayon, flèches = déplacement.
+  // Shift = pas grossier (×4). Pas de base = 3 % du rayon (≥ 2 px) → réactif quel
+  // que soit le zoom. clampCircle borne aux limites de l'image.
+  if (!ctx.value) return
+  const step = Math.max(2, r.value * 0.03) * (e.shiftKey ? 4 : 1)
+  let handled = true
+  switch (e.key) {
+    case '+': case '=': r.value += step; break
+    case '-': case '_': r.value -= step; break
+    case 'ArrowUp': cy.value -= step; break
+    case 'ArrowDown': cy.value += step; break
+    case 'ArrowLeft': cx.value -= step; break
+    case 'ArrowRight': cx.value += step; break
+    default: handled = false
+  }
+  if (handled) {
+    e.preventDefault()
+    e.stopPropagation()
+    clampCircle()
   }
 }
 </script>
@@ -350,6 +373,8 @@ function onKey(e: KeyboardEvent) {
         </h2>
         <p class="mt-0.5 text-xs" style="color: var(--ink-500);">
           Dessine le cercle sur la pièce — glisser le centre, poignée / molette / slider pour le rayon.
+          Clavier : <span class="font-mono">+ −</span> rayon, <span class="font-mono">↑ ↓ ← →</span> déplacer
+          (<span class="font-mono">Maj</span> = pas large), <span class="font-mono">⏎</span> valider.
         </p>
       </div>
       <button

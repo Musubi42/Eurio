@@ -135,6 +135,12 @@ export const navSections: NavSection[] = [
         icon: Crop,
         route: '/crop-bench',
       },
+      {
+        id: 'denom-gold',
+        label: 'Gold denom',
+        icon: Coins,
+        route: '/denom-gold',
+      },
     ],
   },
   // Futurs domaines :

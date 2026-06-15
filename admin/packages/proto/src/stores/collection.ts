@@ -47,6 +47,13 @@ export interface CollectionEntry {
   note: string | null
 }
 
+/** Historique des scans (E8 CoinSnap) — chaque identification, qu'elle soit
+ *  ajoutée au coffre ou non. Distinct de `collection` (possédé). */
+export interface ScanHistoryEntry {
+  eurioId: string
+  scannedAt: number
+}
+
 interface LevelState {
   tier: string
   progressPct: number
@@ -94,6 +101,7 @@ export type Lens = 'discovery' | 'valeur' | 'histoire' | 'collection'
 interface CollectionState {
   firstRun: boolean
   collection: CollectionEntry[]
+  scanHistory: ScanHistoryEntry[]
   level: LevelState
   prefs: Prefs
   lens: Lens
@@ -104,6 +112,7 @@ function defaultState(): CollectionState {
   return {
     firstRun: true,
     collection: [],
+    scanHistory: [],
     level: {
       tier: 'Découvreur',
       progressPct: 0,
@@ -189,6 +198,16 @@ export const useCollectionStore = defineStore('collection', {
       })
       this.recomputeLevel()
       this.checkSetCompletions()
+      this.persist()
+    },
+
+    /** Journalise un scan dans l'historique (E8). Dédup le re-mount immédiat
+     *  de la même pièce ; cappé à 50 entrées (plus récent en tête). */
+    logScan(eurioId: string) {
+      const last = this.scanHistory[0]
+      if (last && last.eurioId === eurioId) return
+      this.scanHistory.unshift({ eurioId, scannedAt: now() })
+      if (this.scanHistory.length > 50) this.scanHistory.length = 50
       this.persist()
     },
 

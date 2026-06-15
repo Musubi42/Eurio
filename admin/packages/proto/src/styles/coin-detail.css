@@ -1,13 +1,22 @@
-/* coin-detail.css — extrait verbatim de coin-detail.html (scène canonique Vue). */
+/* coin-detail.css — fiche pièce.
+ *
+ * PATTE GRAPHIQUE CANONIQUE = sombre immersif (indigo profond, texte clair, or
+ * en accent), la MÊME que le résultat de scan. Le corps `.coin-detail-body` est
+ * partagé entre deux hôtes (R0, 1 source de vérité) :
+ *   • coquille /coin/:id (.coin-detail-root, ce fichier) — sombre plein écran
+ *   • scène ScanReveal (sheet sombre)                    — hérite du même corps
+ * Le thème sombre vit ICI sur les classes du corps ; ScanReveal n'a plus à le
+ * remapper (les overrides .scan-reveal-root ont été supprimés). */
 
 .coin-detail-root {
     position: absolute;
     inset: 0;
-    background: var(--surface);
-    color: var(--ink);
+    background:
+      radial-gradient(120% 78% at 50% -8%, var(--indigo-800) 0%, transparent 60%),
+      linear-gradient(180deg, var(--indigo-900) 0%, var(--indigo-950) 100%);
+    color: var(--surface);
     overflow-y: auto;
     overflow-x: hidden;
-    padding-bottom: 120px; /* sticky CTA clearance */
     -webkit-overflow-scrolling: touch;
   }
 
@@ -20,155 +29,137 @@
     align-items: center;
     justify-content: space-between;
     padding: 52px var(--space-4) var(--space-3);
-    background: linear-gradient(180deg, var(--surface) 85%, rgba(250,250,248,0) 100%);
+    background: linear-gradient(180deg, var(--indigo-900) 76%, rgba(11,12,34,0) 100%);
   }
   .coin-detail-topbar__back,
   .coin-detail-topbar__more {
     width: 40px;
     height: 40px;
     border-radius: var(--radius-full);
-    background: var(--surface-1);
+    background: rgba(255,255,255,0.06);
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    color: var(--ink);
-    border: 1px solid var(--gray-100);
+    color: var(--surface);
+    border: 1px solid rgba(255,255,255,0.12);
   }
   .coin-detail-topbar__title {
     font-family: var(--font-mono);
     font-size: 10px;
     letter-spacing: var(--tracking-eyebrow);
     text-transform: uppercase;
-    color: var(--ink-400);
+    color: rgba(255,255,255,0.5);
   }
 
-  /* ───────── Hero ───────── */
-  .coin-detail-hero {
-    position: relative;
-    padding: var(--space-4) var(--space-5) var(--space-6);
-    min-height: 300px;
+  /* ───────── Hero 3D (cohérent scan + best-coins) ───────── */
+  .coin-detail-hero3d {
+    height: 264px;
+    margin: 0 0 var(--space-1);
+    /* Spotlight doré pour poser la pièce dans le noir (pas la faire flotter). */
+    background:
+      radial-gradient(58% 64% at 50% 46%, rgba(200, 168, 100, 0.17) 0%, rgba(200, 168, 100, 0) 62%),
+      radial-gradient(80% 90% at 50% 54%, rgba(0, 0, 0, 0.28) 0%, rgba(0, 0, 0, 0) 70%);
   }
-  .coin-detail-hero[data-ctx="reference"] {
-    padding-top: var(--space-8);
-    padding-bottom: var(--space-9);
-    text-align: center;
-  }
-  .coin-detail-hero__gold-badge {
-    display: inline-flex;
+
+  /* ───────── Texte du corps : encres claires (canonique) ───────── */
+  /* .stat-* sont globaux (ink) → on les éclaircit UNIQUEMENT dans le corps. */
+  .coin-detail-body .stat-value { color: var(--surface); }
+  .coin-detail-body .stat-label { color: rgba(255,255,255,0.55); }
+
+  /* ───────── En-tête value-forward (identité + prix + grade + rareté) ───────── */
+  .cd-head {
+    display: flex;
+    flex-direction: column;
     align-items: center;
-    gap: 6px;
-    padding: 6px 12px;
-    border-radius: var(--radius-full);
-    background: linear-gradient(180deg, var(--gold-300), var(--gold));
-    color: var(--ink);
-    font-family: var(--font-mono);
-    font-size: 10px;
-    font-weight: 600;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    box-shadow: 0 4px 14px rgba(200,168,100,0.35), var(--inner-highlight-gold);
+    text-align: center;
+    padding: var(--space-3) var(--space-5) var(--space-5);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
     margin-bottom: var(--space-4);
   }
-  .coin-detail-hero__photos {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: var(--space-4);
-    align-items: start;
+  .cd-head__new {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin-bottom: var(--space-3);
+    padding: 4px 10px;
+    border-radius: var(--radius-full);
+    background: var(--gold);
+    color: var(--gold-deep);
+    font-size: var(--text-xs);
+    font-weight: 600;
   }
-  .coin-detail-hero[data-ctx="reference"] .coin-detail-hero__photos {
-    grid-template-columns: 1fr;
-    max-width: 260px;
-    margin: 0 auto;
+  .cd-head__eyebrow {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: rgba(255, 255, 255, 0.6);
   }
-  .coin-detail-photo {
-    position: relative;
-    aspect-ratio: 1;
-    border-radius: var(--radius-lg);
-    background: linear-gradient(135deg, var(--indigo-800), var(--indigo-900));
+  .cd-head__title {
+    margin-top: var(--space-2);
+    font-family: var(--font-display);
+    font-style: italic;
+    font-weight: 400;
+    font-size: var(--text-2xl);
+    line-height: 1.12;
+    letter-spacing: -0.01em;
+    color: var(--surface);
+    max-width: 22ch;
+  }
+  .cd-head__valgrade {
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: var(--space-3);
-    box-shadow: var(--shadow-card);
-    overflow: hidden;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+    margin-top: var(--space-3);
   }
-  .coin-detail-photo__label {
-    position: absolute;
-    top: 8px;
-    left: 10px;
-    font-family: var(--font-mono);
-    font-size: 9px;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: rgba(255,255,255,0.55);
+  .cd-head__price {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: var(--text-xl);
+    color: var(--surface);
   }
-  .coin-detail-photo--user {
-    background: linear-gradient(135deg, var(--gray-700), var(--gray-900));
-    filter: grayscale(1);
-  }
-  .coin-detail-photo--user .coin-svg {
-    opacity: 0.85;
-  }
-  .coin-detail-photo--reference {
-    background: radial-gradient(ellipse 80% 60% at 40% 35%, var(--indigo-600), var(--indigo-900));
-  }
-  .coin-detail-photo .coin-svg {
-    width: 85%;
-    height: 85%;
-  }
-
-  /* Ownership strip (owned only) */
-  .coin-detail-ownership {
-    display: flex;
-    gap: var(--space-4);
-    margin-top: var(--space-4);
-    padding: var(--space-3) var(--space-4);
-    background: var(--surface-1);
-    border-radius: var(--radius-md);
-    border: 1px solid var(--gray-100);
-  }
-  .coin-detail-ownership .stat-label { font-size: 9px; }
-  .coin-detail-ownership .stat-value {
-    font-family: var(--font-ui);
-    font-size: var(--text-sm);
-    font-weight: 600;
-  }
-  .coin-detail-ownership .stat-value--delta-up { color: var(--success); }
-  .coin-detail-ownership .stat-value--delta-down { color: var(--danger); }
-
-  /* Face toggle pills */
-  .coin-detail-face-toggle {
-    display: flex;
-    gap: 4px;
-    padding: 4px;
-    background: rgba(14,14,31,0.06);
+  .cd-head__grade {
+    padding: 2px 9px;
     border-radius: var(--radius-full);
-    margin-top: var(--space-4);
-    width: fit-content;
-    margin-left: auto;
-    margin-right: auto;
-  }
-  .coin-detail-face-toggle button {
-    padding: 6px 16px;
-    border-radius: var(--radius-full);
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--surface);
     font-size: var(--text-xs);
-    font-weight: 500;
-    color: var(--ink-400);
+    font-weight: 700;
+    letter-spacing: 0.04em;
   }
-  .coin-detail-face-toggle button[aria-selected="true"] {
-    background: var(--surface);
-    color: var(--ink);
-    box-shadow: var(--shadow-sm);
+  .cd-head__tirage {
+    margin-top: var(--space-3);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.04em;
+    color: rgba(255, 255, 255, 0.7);
   }
-  .coin-detail-face-toggle button[disabled] {
-    opacity: 0.4;
-    cursor: not-allowed;
+  .cd-head__tirage span {
+    margin-right: 6px;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-eyebrow);
+    color: rgba(255, 255, 255, 0.45);
   }
+  .cd-head__owned {
+    display: flex;
+    justify-content: center;
+    gap: var(--space-6);
+    margin-top: var(--space-4);
+  }
+  .cd-head__owned .stat + .stat {
+    padding-left: var(--space-6);
+    border-left: 1px solid rgba(255, 255, 255, 0.08);
+  }
+  .cd-head__owned .stat-value--delta-up { color: var(--success); }
+  .cd-head__owned .stat-value--delta-down { color: var(--danger-muted); }
 
-  /* ───────── Récit (transportation narrative, chunk F) ─────────
-     Bloc immersif sombre dans la page blanche : on emmène le lecteur dans
-     l'histoire de la pièce. Déroulé progressif (événement → contexte →
-     créateurs → lieu). Sens PROPOSÉ : si la lentille = Valeur, replié en teaser. */
+  /* ───────── Récit (transportation narrative) ─────────
+     Panneau immersif LIFTÉ au-dessus de la page sombre (un cran plus clair +
+     hairline) pour qu'il se détache au lieu de se fondre. */
   .coin-detail-recit {
     position: relative;
     margin: var(--space-4) var(--space-5) 0;
@@ -176,8 +167,9 @@
     border-radius: var(--radius-xl);
     background:
       radial-gradient(130% 80% at 18% -10%, var(--indigo-600) 0%, transparent 58%),
-      linear-gradient(180deg, var(--indigo-800) 0%, var(--indigo-900) 100%);
+      linear-gradient(180deg, var(--indigo-700) 0%, var(--indigo-800) 100%);
     color: var(--surface);
+    border: 1px solid rgba(255, 255, 255, 0.07);
     box-shadow: var(--shadow-indigo);
     overflow: hidden;
   }
@@ -230,10 +222,10 @@
   }
   .coin-detail-recit[data-collapsed="false"] .coin-detail-recit__more { display: none; }
 
-  /* ───────── Sections (museum card) ───────── */
+  /* ───────── Sections ───────── */
   .coin-detail-section {
     padding: var(--space-6) var(--space-5);
-    border-top: 1px solid rgba(14,14,31,0.08);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
   }
   .coin-detail-section__head {
     display: flex;
@@ -241,106 +233,73 @@
     gap: var(--space-3);
     margin-bottom: var(--space-4);
   }
-  .coin-detail-section__num {
-    font-family: var(--font-mono);
-    font-size: 10px;
-    color: var(--gold);
-    letter-spacing: 0.18em;
-  }
   .coin-detail-section__title {
     font-family: var(--font-mono);
     font-size: 10px;
     letter-spacing: var(--tracking-eyebrow);
     text-transform: uppercase;
-    color: var(--ink-400);
+    color: rgba(255, 255, 255, 0.5);
   }
 
-  /* 01 Identité */
-  .coin-detail-identity__value {
-    font-family: var(--font-display);
-    font-style: italic;
-    font-size: var(--text-hero);
-    line-height: var(--leading-tight);
-    font-weight: 400;
-    color: var(--ink);
-    letter-spacing: var(--tracking-tight);
-  }
-  .coin-detail-identity__meta {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    margin-top: var(--space-2);
-    font-size: var(--text-sm);
-    color: var(--ink-500);
-  }
-  .coin-detail-identity__theme {
-    margin-top: var(--space-3);
-    font-family: var(--font-display);
-    font-style: italic;
-    font-size: var(--text-lg);
-    color: var(--ink);
-    line-height: var(--leading-snug);
-  }
-  .coin-detail-identity__rarity {
-    margin-top: var(--space-4);
-  }
-
-  /* 02 Valorisation */
+  /* Valorisation */
   .coin-detail-valuation {
     display: grid;
     grid-template-columns: 1fr 1fr 1fr;
     gap: var(--space-3);
+  }
+  .coin-detail-valuation--flat {
+    grid-template-columns: 1fr;
   }
   .coin-detail-pct {
     display: flex;
     flex-direction: column;
     gap: 4px;
     padding: var(--space-3);
-    background: var(--surface-1);
+    background: rgba(255, 255, 255, 0.05);
     border-radius: var(--radius-md);
-    border: 1px solid var(--gray-100);
+    border: 1px solid rgba(255, 255, 255, 0.1);
   }
   .coin-detail-pct--median {
-    background: linear-gradient(180deg, rgba(200,168,100,0.14), rgba(200,168,100,0.06));
-    border-color: rgba(200,168,100,0.35);
+    background: linear-gradient(180deg, rgba(200,168,100,0.18), rgba(200,168,100,0.07));
+    border-color: rgba(200,168,100,0.4);
   }
   .coin-detail-pct__label {
     font-family: var(--font-mono);
     font-size: 9px;
     letter-spacing: 0.14em;
     text-transform: uppercase;
-    color: var(--ink-400);
+    color: rgba(255, 255, 255, 0.6);
   }
-  .coin-detail-pct--median .coin-detail-pct__label { color: var(--gold-deep); }
+  .coin-detail-pct--median .coin-detail-pct__label { color: var(--gold-300); }
   .coin-detail-pct__value {
     font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
     font-size: var(--text-xl);
     font-weight: 500;
-    color: var(--ink);
+    color: var(--surface);
   }
   .coin-detail-valuation__delta {
     margin-top: var(--space-3);
     font-family: var(--font-mono);
     font-size: var(--text-xs);
     font-variant-numeric: tabular-nums;
-    color: var(--ink-400);
+    color: rgba(255, 255, 255, 0.6);
   }
   .coin-detail-valuation__delta--up { color: var(--success); }
-  .coin-detail-valuation__delta--down { color: var(--danger); }
+  .coin-detail-valuation__delta--down { color: var(--danger-muted); }
   .coin-detail-empty {
     padding: var(--space-5);
     text-align: center;
     font-family: var(--font-display);
     font-style: italic;
     font-size: var(--text-sm);
-    color: var(--ink-400);
-    background: var(--surface-1);
+    color: rgba(255, 255, 255, 0.6);
+    background: rgba(255, 255, 255, 0.05);
     border-radius: var(--radius-md);
-    border: 1px dashed var(--gray-200);
+    border: 1px dashed rgba(255, 255, 255, 0.16);
   }
 
-  /* 03 Historique sparkline */
+  /* Historique sparkline */
   .coin-detail-spark {
     display: block;
     width: 100%;
@@ -348,18 +307,18 @@
   }
   .coin-detail-spark path.line {
     fill: none;
-    stroke: var(--indigo-700);
+    stroke: var(--gold-300);
     stroke-width: 1.8;
     stroke-linecap: round;
     stroke-linejoin: round;
   }
   .coin-detail-spark path.fill {
-    fill: rgba(26,27,75,0.08);
+    fill: rgba(224, 198, 136, 0.12);
     stroke: none;
   }
   .coin-detail-spark circle.point {
     fill: var(--gold);
-    stroke: var(--surface);
+    stroke: var(--indigo-900);
     stroke-width: 2;
   }
   .coin-detail-history__stats {
@@ -371,20 +330,21 @@
     margin-top: var(--space-3);
     padding: 10px 14px;
     border-radius: var(--radius-md);
-    border: 1px solid var(--gray-200);
+    border: 1px solid rgba(255, 255, 255, 0.1);
     font-size: var(--text-xs);
     font-weight: 500;
-    color: var(--ink-500);
-    background: var(--surface);
+    color: rgba(255, 255, 255, 0.7);
+    background: rgba(255, 255, 255, 0.05);
     width: 100%;
   }
 
-  /* 04 Projection */
+  /* Projection */
   .coin-detail-projection {
     padding: var(--space-5);
     border-radius: var(--radius-lg);
-    background: linear-gradient(135deg, var(--indigo-700), var(--indigo-800));
+    background: linear-gradient(135deg, var(--indigo-600), var(--indigo-800));
     color: var(--surface);
+    border: 1px solid rgba(255, 255, 255, 0.07);
     box-shadow: var(--shadow-indigo);
   }
   .coin-detail-projection__label {
@@ -409,11 +369,11 @@
     color: rgba(255,255,255,0.55);
   }
 
-  /* 05 Sets */
+  /* Sets */
   .coin-detail-set {
     display: block;
     padding: var(--space-3) 0;
-    border-bottom: 1px solid rgba(14,14,31,0.06);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
   }
   .coin-detail-set:last-child { border-bottom: 0; }
   .coin-detail-set__head {
@@ -426,22 +386,22 @@
     font-family: var(--font-display);
     font-style: italic;
     font-size: var(--text-base);
-    color: var(--ink);
+    color: var(--surface);
   }
   .coin-detail-set__count {
     font-family: var(--font-mono);
     font-size: var(--text-xs);
     font-variant-numeric: tabular-nums;
-    color: var(--ink-400);
+    color: rgba(255, 255, 255, 0.6);
   }
   .coin-detail-set__affiliate {
     display: inline-flex; align-items: center; gap: 5px;
     margin-top: var(--space-2);
     font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.04em;
-    color: var(--gold-deep); cursor: pointer;
+    color: var(--gold-300); cursor: pointer;
   }
 
-  /* 06 Details + common */
+  /* Détails + émission commune */
   .coin-detail-dl {
     display: grid;
     grid-template-columns: 1fr 1.5fr;
@@ -452,32 +412,26 @@
     font-size: 9px;
     letter-spacing: 0.14em;
     text-transform: uppercase;
-    color: var(--ink-400);
+    color: rgba(255, 255, 255, 0.6);
   }
   .coin-detail-dl dd {
     font-size: var(--text-sm);
-    color: var(--ink);
+    color: var(--surface);
     font-variant-numeric: tabular-nums;
-  }
-  .coin-detail-description {
-    margin-top: var(--space-3);
-    font-size: var(--text-sm);
-    line-height: var(--leading-base);
-    color: var(--ink-700);
   }
   .coin-detail-common {
     margin-top: var(--space-5);
     padding: var(--space-4);
     border-radius: var(--radius-md);
-    background: var(--surface-1);
-    border: 1px solid var(--gray-100);
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
   }
   .coin-detail-common__title {
     font-family: var(--font-display);
     font-style: italic;
     font-size: var(--text-base);
     margin-bottom: var(--space-2);
-    color: var(--ink);
+    color: var(--surface);
   }
   .coin-detail-common__flags {
     display: flex;
@@ -488,22 +442,237 @@
   .coin-detail-common__flag {
     padding: 4px 10px;
     border-radius: var(--radius-full);
-    background: var(--surface);
-    border: 1px solid var(--gray-100);
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
     font-family: var(--font-mono);
     font-size: 10px;
     letter-spacing: 0.1em;
-    color: var(--ink);
+    color: var(--surface);
   }
 
-  /* ───────── CTA bar ───────── */
-  .coin-detail-cta {
+  /* ───────── Design : avers / revers + lettering ───────── */
+  .cd-design {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+  }
+  .cd-design__label {
+    display: block;
+    margin-bottom: 4px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-eyebrow);
+    color: rgba(255, 255, 255, 0.6);
+  }
+  .cd-design__desc {
+    font-size: var(--text-sm);
+    line-height: var(--leading-base);
+    color: rgba(255, 255, 255, 0.6);
+  }
+  .cd-design__desc--muted {
+    color: rgba(255, 255, 255, 0.5);
+    font-style: italic;
+  }
+  .cd-design__lettering,
+  .cd-design__edge {
+    margin-top: 6px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    color: var(--surface);
+  }
+  .cd-design__edge {
+    margin-top: var(--space-2);
+    padding-top: var(--space-3);
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+  }
+  .cd-design__lettering span,
+  .cd-design__edge span {
+    margin-right: 6px;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-eyebrow);
+    color: rgba(255, 255, 255, 0.6);
+  }
+
+  /* ───────── Courbe de rareté (en-tête, pièces rares) ───────── */
+  .cd-rarity {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-3);
+    margin-top: var(--space-4);
+  }
+  .cd-rarity__chart {
+    width: 96px;
+    height: 32px;
+    flex: none;
+    overflow: visible;
+  }
+  .cd-rarity__axis { stroke: rgba(255, 255, 255, 0.16); stroke-width: 1; }
+  .cd-rarity__curve { fill: none; stroke: rgba(255, 255, 255, 0.4); stroke-width: 1.3; stroke-linejoin: round; }
+  .cd-rarity__tail { fill: rgba(200, 168, 100, 0.22); stroke: none; }
+  .cd-rarity__marker { stroke: var(--gold); stroke-width: 1.4; }
+  .cd-rarity__dot { fill: var(--gold); stroke: var(--indigo-900); stroke-width: 1.5; }
+  .cd-rarity__meta {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .cd-rarity__label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--gold-300);
+  }
+  .cd-rarity__hint {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.5);
+  }
+
+  /* ───────── Caractéristiques : diagramme coté (pièce figée + flèche Ø) ───────── */
+  .cd-phys {
+    margin-bottom: var(--space-5);
+  }
+  .cd-phys__viz {
+    position: relative;
+    width: 220px;
+    height: 220px;
+    margin: 0 auto var(--space-4);
+    background: radial-gradient(52% 56% at 50% 50%, rgba(200, 168, 100, 0.16) 0%, rgba(200, 168, 100, 0) 64%);
+  }
+  /* Flèche de diamètre tracée EN TRAVERS de la pièce (planche technique). */
+  .cd-phys__caliper {
     position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+  .cd-phys__caliper line { stroke: var(--gold); stroke-width: 1.4; }
+  .cd-phys__caliper polygon { fill: var(--gold); }
+  .cd-phys__dlabel {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    padding: 2px 9px;
+    border-radius: var(--radius-full);
+    background: var(--indigo-900);
+    border: 1px solid rgba(200, 168, 100, 0.4);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    color: var(--gold-300);
+    white-space: nowrap;
+  }
+  .cd-phys__metrics {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-2) var(--space-3);
+  }
+  .cd-phys__group {
+    position: relative;
+    padding: var(--space-3) var(--space-3) var(--space-3) var(--space-4);
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: var(--radius-md);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+  /* Barre d'accent color-codée (cool = mesures d'aspect · warm = gabarit) */
+  .cd-phys__group::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 10px; bottom: 10px;
+    width: 3px;
+    border-radius: 3px;
+  }
+  .cd-phys__group--cool::before { background: var(--indigo-300); }
+  .cd-phys__group--warm::before { background: var(--gold); }
+  .cd-phys__row {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .cd-phys__row span {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.55);
+  }
+  .cd-phys__row b {
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--surface);
+    line-height: 1.25;
+  }
+
+  /* ───────── Communauté Discord (« Reste connecté ») ───────── */
+  .cd-community-sec { padding-bottom: var(--space-8); }
+  .cd-community {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: var(--space-2);
+    padding: var(--space-6) var(--space-5);
+    border-radius: var(--radius-xl);
+    background: linear-gradient(180deg, rgba(88, 101, 242, 0.16), rgba(88, 101, 242, 0.05));
+    border: 1px solid rgba(88, 101, 242, 0.3);
+  }
+  .cd-community__icon {
+    display: grid;
+    place-items: center;
+    width: 48px;
+    height: 48px;
+    border-radius: var(--radius-full);
+    background: #5865F2;
+    color: #fff;
+    margin-bottom: var(--space-1);
+    box-shadow: 0 6px 18px rgba(88, 101, 242, 0.4);
+  }
+  .cd-community__title {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: var(--text-lg);
+    color: var(--surface);
+  }
+  .cd-community__sub {
+    font-size: var(--text-sm);
+    line-height: var(--leading-base);
+    color: rgba(255, 255, 255, 0.6);
+    max-width: 30ch;
+  }
+  .cd-community__btn {
+    margin-top: var(--space-3);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    border-radius: var(--radius-full);
+    background: #5865F2;
+    color: #fff;
+    font-size: var(--text-sm);
+    font-weight: 600;
+    box-shadow: 0 6px 18px rgba(88, 101, 242, 0.35), var(--inner-highlight);
+  }
+  .cd-community__btn span { transition: transform var(--duration-fast) var(--ease-out); }
+  .cd-community__btn:hover span { transform: translateX(3px); }
+
+  /* ───────── CTA bar (pinné en bas, fond solide sombre) ───────── */
+  .coin-detail-cta {
+    position: sticky;
+    bottom: 0;
     left: 0;
     right: 0;
-    bottom: 0;
-    padding: var(--space-4) var(--space-5) calc(var(--space-5) + 24px);
-    background: linear-gradient(180deg, rgba(250,250,248,0) 0%, var(--surface) 30%);
+    padding: var(--space-4) var(--space-5) calc(var(--space-4) + 12px);
+    background: var(--indigo-950);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 -8px 22px rgba(0, 0, 0, 0.4);
     z-index: 6;
   }
   .coin-detail-cta .btn { width: 100%; }
@@ -511,12 +680,12 @@
     display: none;
     gap: var(--space-2);
     padding: var(--space-3);
-    background: var(--surface-1);
+    background: rgba(255, 255, 255, 0.05);
     border-radius: var(--radius-md);
     border: 1px solid var(--danger-soft);
     margin-bottom: var(--space-2);
     font-size: var(--text-xs);
-    color: var(--ink-700);
+    color: rgba(255, 255, 255, 0.75);
     flex-direction: column;
   }
   .coin-detail-cta__confirm[data-open="true"] { display: flex; }
@@ -530,8 +699,8 @@
     bottom: 140px;
     transform: translateX(-50%) translateY(20px);
     padding: 12px 18px;
-    background: var(--ink);
-    color: var(--surface);
+    background: var(--surface);
+    color: var(--ink);
     border-radius: var(--radius-full);
     font-size: var(--text-xs);
     font-weight: 500;

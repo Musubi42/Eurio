@@ -942,10 +942,12 @@ class IterationRunner:
     def _export_tflite(self, iteration_id: str) -> None:
         """Run ``python -m training.export_tflite`` after training succeeds.
 
-        Phase 2 : exporte sous ``lab/iterations/<iid>/tflite/`` puis copie
-        embeddings + tflite + meta sous ``ml/output/`` pour les
-        consommateurs aval (build_cohort_bundle, seed_supabase) pas encore
-        migrés. Ces copies seront retirées en phase 4.
+        Phase 4 : exporte uniquement sous ``lab/iterations/<iid>/tflite/``.
+        Les artefacts ne deviennent « prod » que via
+        ``scripts.promote_iteration`` (→ ``ml/prod/current/``). Le mirror
+        legacy vers ``ml/output/`` a été retiré : tous les consommateurs
+        (server.py, lab_routes, seed_supabase, eval) lisent désormais
+        ``prod/current/`` ou la lab iteration explicite.
         """
         iter_dir = _iter_dir(iteration_id)
         tflite_out = iter_dir / "tflite"
@@ -964,30 +966,6 @@ class IterationRunner:
         if rc != 0:
             raise RuntimeError(f"export_tflite exit {rc}")
         logger.info("Iteration %s: TFLite export OK", iteration_id)
-
-        # Mirror to ml/output/ pour les consommateurs aval (build_cohort_bundle
-        # lit ml/output/eurio_embedder_v1.tflite, seed_supabase lit
-        # ml/output/embeddings_v1.json). Phase 4 finira l'isolation.
-        self._mirror_iter_outputs(iteration_id)
-
-    def _mirror_iter_outputs(self, iteration_id: str) -> None:
-        """Copy iter_dir artifacts → ml/output/ for legacy downstream readers."""
-        iter_dir = _iter_dir(iteration_id)
-        output_dir = ML_DIR / "output"
-        output_dir.mkdir(parents=True, exist_ok=True)
-        sources = [
-            iter_dir / "embeddings" / "embeddings_v1.json",
-            iter_dir / "embeddings" / "coin_embeddings.json",
-            iter_dir / "tflite" / "eurio_embedder_v1.tflite",
-            iter_dir / "tflite" / "model_meta.json",
-        ]
-        for src in sources:
-            if src.exists():
-                shutil.copy2(src, output_dir / src.name)
-            else:
-                logger.warning(
-                    "Iteration %s: mirror missing source %s", iteration_id, src,
-                )
 
     # ─── Benchmark launch (streamed) ───────────────────────────────────
 

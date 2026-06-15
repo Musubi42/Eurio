@@ -7,7 +7,7 @@ const sampleId = simulateScan(0)
 function onClick(e: MouseEvent) {
   const a = (e.target as HTMLElement).closest('[data-action]')?.getAttribute('data-action')
   if (a === 'skip') { store.completeOnboarding(); router.push('/scan'); return }
-  store.completeOnboarding(); router.push('/scan/transition?id=' + encodeURIComponent(sampleId))
+  store.completeOnboarding(); router.push('/scan?id=' + encodeURIComponent(sampleId))
 }
 </script>
 

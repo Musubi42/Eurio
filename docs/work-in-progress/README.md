@@ -26,8 +26,8 @@ Tu peux exécuter ces missions **seule**, en bouclant :
 
 | Chantier | % réel | En une phrase |
 |---|---|---|
-| [lab-prod-refacto](./lab-prod-refacto/) | ~97 % | 4 phases closes ; cohort_meta retiré 2026-06-11, reste 1 item bloqué (server.py source-aware) |
-| [referential-fixes](./referential-fixes/) | ~90 % | backend + UI admin câblés, reste cliquer Apply sur 9 cas |
+| ~~lab-prod-refacto~~ ([archivé](../archive/lab-prod-refacto/)) | ✅ clos | mirror `ml/output/` retiré + 4 sites repointés `prod/current` (2026-06-14, 36 tests verts) — archivé |
+| ~~referential-fixes~~ ([archivé](../archive/referential-fixes/)) | ✅ clos | 9/9 cas DÉJÀ corrects en DB (re-bootstrap P.6), 0 apply — archivé 2026-06-14 |
 | [cohort-pipeline](./cohort-pipeline/) | ~88 % | rebuild cockpit SHIPPÉ (B1-B5 fixés), reste validation PO lane UX + smoke run |
 | [coin-richness](./coin-richness/) | ~85 % | presque fini, reste run eBay sur cohorte + scale 524 |
 | [data-harmonization](./data-harmonization/) | ~85 % | tout livré sauf le Chunk 5 (migration identité) |
@@ -37,7 +37,8 @@ Tu peux exécuter ces missions **seule**, en bouclant :
 | [design-groups-standards](./design-groups-standards/) | ~80 % | pilote BE live, reste le rollout autres pays |
 | [training-pipeline](./training-pipeline/) | ~80 % | sprints ✅ + harvest exécuté (docs corrigées 2026-06-11), reste user-harvest in-app |
 | [parity](./parity/) | ~75 % | capture Maestro+proto+viewer LIVE, reste flows nouvelles scènes + pont interpréteur |
-| [harmonisation-images](./harmonisation-images/) | ~70 % | write-through MinIO live (pas vide !), reste canoniques + 546 legacy |
+| [harmonisation-images](./harmonisation-images/) | ~85 % | canoniques READ migrés MinIO+CDN (3824, 2026-06-14) ; reste WRITE path enrichissement + 546 legacy |
+| [crop-rim-overfit](./crop-rim-overfit/) | 🆕 kickoff | run eBay → crop sur-ajuste le cercle interne (EMU 2009 €-globe) → ~100 faux négatifs ; handoff prêt, stratégies A→D |
 | [crop-forensics](./crop-forensics/) | ~55 % | sujet actif, reste l'auto-rejet (S7) |
 | [crop-quality-overhaul](./crop-quality-overhaul/) | algo livré | reste sessions Android + tooling review manuel |
 | [ai-first-test-suite](./ai-first-test-suite.md) | 0 % | kickoff prêt, pas démarré — gros levier qualité |
@@ -50,9 +51,15 @@ Tu peux exécuter ces missions **seule**, en bouclant :
 **Fait 2026-06-11 :** ~~cohort_meta.json~~ retiré (Android lit `bundle_meta.json`, tests verts) ·
 ~~équivalence Android~~ confirmée live (EquivalenceMap.kt + isCorrectEq + JSONL) ·
 `model_promotions` et `r_at_*_eq` reclassés **optionnels par design** (promoted_from.json / JSON reports suffisent).
-**Reste (1 item, pas cosmétique) :** retirer `_mirror_iter_outputs` de `iteration_runner.py` — bloqué tant que
-`serving/server.py` + `lab_routes.py` lisent `ml/output/` ; pré-requis = rendre server.py source-aware (lab/prod)
-et migrer les défauts CLI (`eval_real_snaps`, `compute_embeddings`, `export_tflite`, …). Détail dans `progress.md`.
+**✅ FAIT 2026-06-14 (décision PO : tous les sites → prod/current promu).**
+`_mirror_iter_outputs` retiré de `iteration_runner.py` (+ docstring `_export_tflite` corrigé). Les **4 consommateurs** du
+mirror repointés vers `ml/prod/current/` : `server.py` (5 read-sites, constantes `PROD_TFLITE_DIR`/`PROD_EMBEDDINGS_DIR`,
+`OUTPUT_DIR` supprimé ; `/export/deploy` & `/export/upload-model` doc'és comme doublons des scripts promote),
+`lab_routes.py` (`_TFLITE_PATH`), `bootstrap/seed_supabase.py` (`EMBEDDINGS_DEFAULT`), `training/eval/evaluate_real_photos.py`
+(`DEFAULT_CENTROIDS` — au passage fix d'un bug pré-existant : pointait vers `ml/training/output/` mort). Tous les read-sites
+guardent par `.exists()`. **Comportement attendu : monitoring/deploy affichent vide tant qu'aucune `promote_iteration`
+n'a peuplé `prod/current/`** — c'est l'état prod-promu-seulement voulu. Validé : `py_compile` + imports OK + 36 tests verts
+(promote 11, iteration/cohort/resolver 25). `build_cohort_bundle.py` était déjà migré (lit `prod/current` ou `lab/iterations` via `--source`). **À archiver.**
 
 ## coin-richness — ~85 %
 Prep (P.*) + V.1-V.2 livrées (9 tables, scripts, page CoinDetail live).
@@ -95,23 +102,32 @@ Pilote BE (chunks 1-5) livré.
 
 ## harmonisation-images — ~70 % (vérifié code 2026-06-07)
 ⚠️ Le « MinIO vide / migration jamais lancée » des docs est **faux**. Réalité : **write-through MinIO LIVE** — `ml/storage/` (client S3, `local_cache` read/write-through, `cascade`) câblé dans `download.py` + `detect_crop.py` + `crop_edit.py` + `review_queue_routes.py`. **`image_assets` 100 % sur clés S3** (3524/3524), source_images 4626/5425 sur S3. La stratégie a **pivoté** : batch-migration → write-through (donc `migrate_to_minio.py` est DEPRECATED à dessein).
-**Reste réellement :**
-- **Images canoniques** encore servies du FS (`referential_routes.py` → FileResponse, pas `numista-canonical` bucket) — c'est la plus grosse surface restante
+**Images canoniques — ✅ READ migré vers MinIO 2026-06-14 (décision PO : home = MinIO `numista-canonical`, abandon Supabase `coin-images`).**
+- **Upload livré** : `ml/scripts/upload_canonicals_to_minio.py` (idempotent, pré-liste le bucket en set) → **3824 webp** dans `numista-canonical`, clé `{eurio_id}/{role}_{src}.webp`, cache-control immutable. Vérifié : bucket = 3824 objets, CDN sert 200 `image/webp`.
+- **Redirect livré** : `referential_routes.py::_serve_canonical` renvoie `RedirectResponse(public_url(key))` (302) **avec fallback FileResponse FS** quand la clé n'est pas confirmée dans le bucket, et dégradation propre si MinIO est down (set vide → tout FS). Aucune régression (FS-présent ⟹ uploadé). Validé end-to-end (302 live + 3 cas unitaires).
+- ⚠️ **Reste (follow-up, pas de régression entre-temps) : le chemin d'ÉCRITURE enrichissement** (`ml/referential/coin_image_storage.py`) pousse encore vers **Supabase `coin-images`** — à repointer vers MinIO + write-through pour que les futurs canoniques atterrissent dans le bucket et soient servis par le CDN (sinon ils tombent sur le fallback FS). Convention de clé périmée du doc chunk-3 (`numista/<numista_id>/<face>.jpg`) à corriger en `{eurio_id}/{role}_{src}.webp`. `scripts/migrate_to_minio.py` reste DEPRECATED.
 - **546 source_images legacy** (BCE 475 + JO 71) avec chemins FS absolus → backfill ciblé vers `enrichment-raws`
 - Backup NixOS/pCloud : **0 % codé** (rien dans `ml/storage/`)
 
 ## crop-forensics — ~55 % (sujet actif)
 S1-S6 livrés/réfutés (composite score, sort buttons, scripts `ml/scripts/crop_exp/`).
 **Reste :** S7 `auto_reject_reason` backend (2 seuils) · S8 score_v2 sort par défaut (optionnel) · S9 area_ratio adaptatif (pausé).
+⚠️ **Re-vérifié 2026-06-14 : S7 est gelé, pas juste « à faire ».** Les 2 seuils S7 dépendent de `bg_uniformity` (S4) et `inner_feature_score` (S5/S6), qui ont **tous été réfutés** sur les bench. Implémenter l'auto-reject sur ces signaux morts = faux positifs garantis (dette). S7 attend un **nouveau signal discriminant** avant d'avoir un sens. Ne pas coder en l'état.
 
 ## crop-quality-overhaul — algo livré, sessions restantes
 `detect_bbox_refine` shippé (crop eBay ~92 %). _(NB : le doc pointe `ml/sources/_base/steps/` mais le code vit dans `ml/scan/crop_detectors.py` — chemin périmé.)_
 **Reste :** Session A (parité crop scan Android) · Session B (tooling review manuel pour la traîne).
 ⚠️ doublonne avec `operations/crop-bimetal-harden-session.md` — fusionner avant de lancer.
 
-## referential-fixes — ~90 % (vérifié code 2026-06-07)
-⚠️ « apply backend + UI pending » des docs est **faux**. Réalité : backend **complet** (`referential_fix_apply.py` : `_mutate_db`, `_fetch_numista_image`, `apply_fix`) **exposé** via `referential_routes.py` (`GET /fix-proposals`, `POST /fix-proposals/{id}/apply`, `/refresh`) **+ UI admin câblée** (`FixesPage.vue` avec flow apply complet).
-**Reste réellement :** action humaine — ouvrir `/referential` → FixesPage, **appliquer les 9 cas** (es-2012, fr-2014, be-2015, de-2015, lt-2015, lv-2016, fr-2018, lv-2018, es-2018) ; audit post-apply (orphelins images/data après chaque mutation).
+## referential-fixes — ✅ 100 % RÉSOLU (audit 2026-06-14)
+Backend + UI étaient déjà complets (`referential_fix_apply.py`, `referential_routes.py`, `FixesPage.vue`).
+**Mais l'audit lecture-seule du 2026-06-14 a montré que les 9 cas sont DÉJÀ corrects en DB** : `discover_referential_fixes`
+(lecture seule, 0 appel Numista) retourne **0 proposals** car `referential_catalog` a été wipé+re-bootstrapé au P.6
+coin-richness (2026-05-26), qui a cette fois créé N rows par (country, year) avec les bons `numista_id`. Les 9 erreurs
+de linkage (es-2012, fr-2014, be-2015, de-2015, lt-2015, lv-2016, fr-2018, lv-2018, es-2018) ont donc été corrigées par
+le re-bootstrap lui-même — le bouton apply-fix n'a jamais servi et n'est plus nécessaire. Toutes les rows ont leurs
+images `numista_api` (+ `bce_official` quand pertinent). **Action : `git mv` ce dossier vers `docs/archive/`.**
+_Résidu hors-scope : `referential_catalog` reste vide ; ré-activer le discover pour de futurs cas = re-peupler cette table depuis Numista (autre chantier)._
 
 ## cohort-pipeline — ~88 % (vérifié code 2026-06-07)
 ⚠️ Le `REBUILD-HANDOFF` (« rebuild pas démarré, B1-B5 ouverts ») était un **snapshot du vendredi soir, immédiatement périmé** : 7 commits du week-end ont shippé le rebuild. Réalité : cockpit reconstruit et fonctionnel — **36 fichiers / 9287 lignes** dans `admin/.../features/lab/` (`CohortDetailPage` + `CohortFlowHeader` + 5 drawers), **modèle d'état explicite shippé** (`image_state_events`/`image_state_current`/`cohort_jobs` + `emit_state_event`, commit `85bf851`), `lab_routes.py` 3212 lignes. **B1-B5 ont chacun un commit de fix** (`c69ff22` recrop subprocess, `2a14596` attribution class-level, `dbf3db3` flow header).

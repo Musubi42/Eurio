@@ -3095,6 +3095,11 @@ _AUTOCROP_FLOOR = 0.55   # le crop retenu doit passer le gate (pièce entière v
 # (center-sweep) gagnent +0,08 à +0,11 → 0,12 les raterait ; les crops déjà bons
 # ne bougent que de ~0,02 → 0,05 sépare proprement les deux.
 _AUTOCROP_MARGIN = 0.05
+# Marge VISUELLE ajoutée au rayon probe-optimal avant écriture : le probe maximise
+# « dessin complet » et tend à serrer (cercles gagnants ~r×0,85-0,9), sans
+# récompenser la marge rim/étoiles que l'œil attend (≈ le cadrage canonique). On
+# élargit le rayon de 7 % (clampé à l'image → pas de bord noir ajouté). Réglable.
+_AUTOCROP_MARGIN_FRAC = 0.07
 
 
 class AutoCropResponse(BaseModel):
@@ -3115,6 +3120,7 @@ def auto_crop_for_review(
     review_id: str,
     floor: float = Query(default=_AUTOCROP_FLOOR),
     margin: float = Query(default=_AUTOCROP_MARGIN),
+    margin_frac: float = Query(default=_AUTOCROP_MARGIN_FRAC),
 ) -> AutoCropResponse:
     """Recadre la pièce par balayage de rayon scoré (probe), depuis la bbox
     actuelle. Écrit le nouveau crop seulement s'il améliore franchement le
@@ -3163,8 +3169,13 @@ def auto_crop_for_review(
             ratio=float(best["ratio"]), reason="already_optimal",
         )
     res = best["result"]
+    # Marge visuelle : élargit le rayon probe-optimal (un poil serré) sans sortir
+    # de l'image (sinon on ajouterait du bord noir au lieu de rim/étoiles).
+    h_raw, w_raw = bgr.shape[:2]
+    r_fit = min(res.cx, res.cy, w_raw - res.cx, h_raw - res.cy)
+    r_apply = min(res.r * (1.0 + max(0.0, margin_frac)), float(r_fit))
     apply_manual_crop(
-        _store(), asset_id, float(res.cx), float(res.cy), float(res.r),
+        _store(), asset_id, float(res.cx), float(res.cy), float(r_apply),
     )
     return AutoCropResponse(
         applied=True, baseline_score=baseline, best_score=score,

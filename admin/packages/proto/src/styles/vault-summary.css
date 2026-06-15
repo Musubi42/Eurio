@@ -1,0 +1,249 @@
+/* vault-summary.css — onglet Résumé du Coffre (carte spotlight, répartition
+ * géographique, aperçu sets). Le header sobre est dans components.css. */
+
+.summary-scroll {
+  display: flex;
+  flex-direction: column;
+  padding: 0 var(--space-5) var(--space-10);
+}
+
+/* ───────── Section générique ───────── */
+.summary-section {
+  margin-bottom: var(--space-7);
+}
+.summary-section__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: var(--space-3);
+}
+.summary-section__title {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: var(--text-lg);
+  color: var(--ink);
+}
+.summary-section__action {
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--indigo-700);
+}
+.summary-link {
+  display: block;
+  width: 100%;
+  margin-top: var(--space-3);
+  padding: 12px;
+  border-radius: var(--radius-full);
+  background: var(--surface-1);
+  border: 1px solid rgba(14, 14, 31, 0.06);
+  color: var(--ink);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-align: center;
+}
+
+/* ───────── Spotlight best coin ───────── */
+.summary-spot {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-6) var(--space-4) var(--space-5);
+  background: var(--surface-2);
+  border: 1px solid var(--indigo-100);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+.summary-spot:active {
+  transform: scale(0.99);
+}
+.summary-spot__name {
+  font-family: var(--font-display);
+  font-size: var(--text-base);
+  color: var(--ink);
+}
+.summary-spot__stage {
+  width: 100%;
+  height: 200px;
+  pointer-events: none; /* le tap traverse vers la carte (ouvre la fiche) */
+}
+.summary-spot__laurel {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+.summary-spot__laurel-leaf {
+  font-size: 18px;
+  opacity: 0.75;
+}
+.summary-spot__laurel-leaf--flip {
+  transform: scaleX(-1);
+}
+.summary-spot__value {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: var(--text-2xl);
+  font-weight: 300;
+  color: var(--ink);
+}
+.summary-spot__value--plain {
+  font-size: var(--text-xl);
+}
+.summary-spot__superlative {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-eyebrow);
+  color: var(--ink-500);
+}
+
+/* Pagination par points */
+.summary-spot__dots {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin-top: var(--space-3);
+}
+.summary-spot__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: rgba(14, 14, 31, 0.18);
+  transition: background var(--duration-fast) var(--ease-out), width var(--duration-fast) var(--ease-out);
+}
+.summary-spot__dot[aria-selected='true'] {
+  width: 18px;
+  background: var(--gold);
+}
+
+/* ───────── Répartition géographique ───────── */
+.summary-geo__lead {
+  font-size: var(--text-sm);
+  color: var(--ink-500);
+  margin-bottom: var(--space-3);
+}
+.summary-geo__lead strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+.summary-geo__map {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 180px;
+  border-radius: var(--radius-lg);
+  background: var(--surface-1);
+  border: 1px solid rgba(14, 14, 31, 0.06);
+  overflow: hidden;
+  padding: var(--space-3);
+}
+.summary-geo__map svg {
+  width: 100%;
+  height: 100%;
+}
+.summary-geo__context {
+  fill: rgba(14, 14, 31, 0.05);
+  stroke: none;
+}
+.summary-geo__country {
+  fill: rgba(14, 14, 31, 0.12);
+  stroke: var(--surface);
+  stroke-width: 0.6;
+}
+.summary-geo__country.is-owned {
+  fill: var(--gold);
+}
+.summary-geo__expand {
+  position: absolute;
+  right: var(--space-3);
+  bottom: var(--space-3);
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(6px);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-500);
+}
+.summary-geo__expand svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.summary-geo__list {
+  display: flex;
+  flex-direction: column;
+  margin-top: var(--space-3);
+}
+.summary-geo__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid rgba(14, 14, 31, 0.06);
+}
+.summary-geo__row:last-child {
+  border-bottom: none;
+}
+.summary-geo__flag {
+  font-size: 20px;
+  line-height: 1;
+}
+.summary-geo__country-name {
+  flex: 1;
+  text-align: left;
+  font-size: var(--text-sm);
+  color: var(--ink);
+}
+.summary-geo__count {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-500);
+}
+
+/* ───────── Aperçu des sets ───────── */
+.summary-sets {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.summary-set {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-1);
+  border: 1px solid rgba(14, 14, 31, 0.06);
+  border-radius: var(--radius-md);
+}
+.summary-set__top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.summary-set__title {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.summary-set__count {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-500);
+}

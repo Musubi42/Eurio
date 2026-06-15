@@ -175,6 +175,9 @@ function devMiddleware(): Plugin {
 
 export default defineConfig({
   plugins: [vue(), devMiddleware()],
+  // Port explicite + strictPort : web reste sur 5173, ne vole jamais le 5174 du proto.
+  server: { port: 5173, strictPort: true },
+  preview: { port: 5173, strictPort: true },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

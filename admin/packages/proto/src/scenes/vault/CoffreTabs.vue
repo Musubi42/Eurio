@@ -1,15 +1,17 @@
 <script setup lang="ts">
-/* Onglets segmentés du Coffre (Mes pièces / Sets / Catalogue) — partagé par
- * vault-home, sets-list, catalog. Route vers les sous-vues. */
+/* Onglets segmentés du Coffre (Summary / All / Sets) — partagé par les trois
+ * sous-vues. Route vers chaque onglet. Le Catalogue (carte à gratter) n'a plus
+ * d'onglet : il devient le « Tout voir » de la répartition géographique du
+ * Summary. */
 import { useRouter } from 'vue-router'
 
-defineProps<{ active: 'coins' | 'sets' | 'catalog'; navClass?: string }>()
+defineProps<{ active: 'summary' | 'all' | 'sets'; navClass?: string }>()
 const router = useRouter()
 
 const TABS = [
-  { id: 'coins', label: 'Mes pièces', path: '/vault' },
+  { id: 'summary', label: 'Résumé', path: '/vault' },
+  { id: 'all', label: 'Pièces', path: '/vault/all' },
   { id: 'sets', label: 'Sets', path: '/vault/sets' },
-  { id: 'catalog', label: 'Catalogue', path: '/vault/catalog' },
 ] as const
 </script>
 

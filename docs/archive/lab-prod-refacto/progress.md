@@ -789,3 +789,36 @@ explicite, traçable et réversible :
 
 Les chantiers restants sont du **cleanup** (cf. ci-dessus), pas du
 refacto structurel.
+
+---
+
+## 2026-06-14 · Cleanup final · mirror `ml/output/` retiré — ✅ chantier clos
+
+**Done** :
+- `_mirror_iter_outputs` supprimé de `serving/iteration_runner.py` (méthode +
+  appel dans `_export_tflite`) ; docstring `_export_tflite` réécrit (export =
+  `lab/iterations/<iid>/` seul, prod via `promote_iteration`).
+- Les **4 consommateurs** du mirror repointés vers `ml/prod/current/` :
+  - `serving/server.py` : 5 read-sites (`/health/full`, `/export/status`,
+    `/export/model-sync`, `/export/upload-model`, `/export/deploy`) via
+    nouvelles constantes `PROD_CURRENT` / `PROD_TFLITE_DIR` / `PROD_EMBEDDINGS_DIR`.
+    `OUTPUT_DIR` supprimé (plus aucun usage). Docstrings deploy/upload notent le
+    doublon avec `scripts.promote_prod_assets` / `promote_iteration`.
+  - `serving/lab_routes.py` : `_TFLITE_PATH` → `prod/current/tflite/`.
+  - `bootstrap/seed_supabase.py` : `EMBEDDINGS_DEFAULT` → `prod/current/embeddings/`.
+  - `training/eval/evaluate_real_photos.py` : `DEFAULT_CENTROIDS` →
+    `prod/current/embeddings/` (fix bonus : l'ancien défaut pointait vers
+    `ml/training/output/` — chemin mort, `ML_DIR` y vaut `ml/training/`).
+
+**Working** : `py_compile` OK sur les 6 fichiers ; import réel de
+`server`/`lab_routes`/`iteration_runner`/`seed_supabase`/`evaluate_real_photos`
+sans erreur ; collecte pytest 1176 tests sans régression d'import ; 36 tests
+verts (`test_promote` 11 + iteration/cohort/resolver 25).
+
+**Decisions taken** : PO a tranché « tous les sites → modèle **prod promu** »
+(pas la dernière itération lab). `prod/current/` est absent tant qu'aucune
+`promote_iteration` n'a tourné → les endpoints monitoring/deploy renvoient
+vide (guard `.exists()`), c'est l'état prod-promu-seulement voulu, pas un bug.
+
+**Handoff** : chantier **clos**, `git mv docs/work-in-progress/lab-prod-refacto/
+→ docs/archive/`. `build_cohort_bundle.py` était déjà migré (`--source`).

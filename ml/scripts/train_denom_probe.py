@@ -86,10 +86,15 @@ def _embed(paths: list[Path], model, device, tf) -> np.ndarray:
     return np.concatenate(vecs).astype(np.float32)
 
 
-def _load_gold() -> list[dict]:
+def _load_gold(exclude_bad_crops: bool = False) -> list[dict]:
     rows = [json.loads(l) for l in GOLD.read_text().splitlines() if l.strip()]
     # ordre jsonl préservé : le cache npz est aligné sur les rows non-unk.
-    return [r for r in rows if r["label"] in ("pos", "neg")]
+    rows = [r for r in rows if r["label"] in ("pos", "neg")]
+    if exclude_bad_crops:
+        # Axe B : un crop mauvais (partiel/rogné/flou) est un mauvais exemple
+        # d'entraînement même quand la dénomination est correcte → on l'écarte.
+        rows = [r for r in rows if not r.get("crop_bad")]
+    return rows
 
 
 def _load_embeddings(rows: list[dict], paths: list[Path]) -> np.ndarray:
@@ -271,9 +276,11 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--save", action="store_true",
                     help="fit final sur tout le conf=hi + write state/denom_probe.npz")
+    ap.add_argument("--exclude-bad-crops", action="store_true",
+                    help="exclut les positifs marqués crop_bad (axe B) du training")
     args = ap.parse_args()
 
-    rows = _load_gold()
+    rows = _load_gold(exclude_bad_crops=args.exclude_bad_crops)
     paths = [local_path("enrichment-crops", r["sp"]) for r in rows]
     emb = _load_embeddings(rows, paths)
     assert len(emb) == len(rows), "cache npz désaligné — supprimer gold_vitl14.npz"

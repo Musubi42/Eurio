@@ -1,195 +1,177 @@
 <script setup lang="ts">
-/* Scène vault-home — vue principale du Coffre. Port de vault-home.html/.js,
- * recâblé sur le store collection (jointure owned) + api (catalogue). */
+/* Onglet « Résumé » (Summary) — vitrine curée du Coffre, inspirée du flow
+ * CoinSnap : carte spotlight des meilleures pièces, répartition géographique
+ * (aperçu de la carte à gratter + liste pays), aperçu des sets. Le navigateur
+ * brut des pièces vit dans l'onglet « Pièces » (VaultAll). Le header patrimoine
+ * sobre est partagé (CoffreHeader). */
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { getCoin } from '@/api'
+import { getCoin, getCountryProgress, getMarket, getSets } from '@/api'
 import type { Coin } from '@/api'
-import { now } from '@/api/parity'
 import { useCollectionStore } from '@/stores/collection'
-import type { CollectionEntry, VaultSort, VaultView } from '@/stores/collection'
-import CoinImage from '@/components/CoinImage.vue'
-import CoffreTabs from './CoffreTabs.vue'
-import VaultRemoveConfirm from './VaultRemoveConfirm.vue'
+import Spotlight3D from '@/components/Spotlight3D.vue'
+import CoffreHeader from './CoffreHeader.vue'
+import { CONTEXT, GEO } from './eurozone-geo'
 
 const router = useRouter()
 const store = useCollectionStore()
 
 const isEmpty = computed(() => store.collection.length === 0)
-const view = computed(() => store.prefs.vaultView)
-const sort = computed(() => store.prefs.vaultSort)
 
-// ── Formatters ──
-function formatEuros(cents: number): string {
-  const eur = cents / 100
+function formatValue(eur: number): string {
   return Number.isInteger(eur) ? `${eur} €` : `${eur.toFixed(2).replace('.', ',')} €`
 }
-function formatFaceValue(cents: number): string {
-  if (cents >= 100) {
-    const eur = cents / 100
-    return Number.isInteger(eur) ? `${eur} €` : `${eur.toFixed(2).replace('.', ',')} €`
-  }
-  return `${cents} c`
-}
-const MONTHS_FR = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre']
 
-// ── Valeur totale + delta ──
-function referenceCents(entry: CollectionEntry): number {
-  return entry.valueAtAddCents ?? getCoin(entry.eurioId)?.faceValueCents ?? 0
-}
-const currentCents = computed(() => store.collection.reduce((sum, e) => sum + referenceCents(e), 0))
-const valueInt = computed(() => Math.floor(currentCents.value / 100).toLocaleString('fr-FR'))
-const deltaHidden = computed(() => currentCents.value < 50)
-const deltaPct = computed(() => 0) // mock : current == initial (valueAtAddCents)
-
-// ── Stats ──
-const countries = computed(() => new Set(store.collection.map((e) => getCoin(e.eurioId)?.country).filter(Boolean)))
-const stats = computed(() => ({
-  coins: store.collection.length,
-  countries: countries.value.size,
-  series: `${countries.value.size}/21`,
-}))
-
-// ── Multiplicité ──
-const multi = computed(() => {
-  const m = new Map<string, number>()
-  for (const e of store.collection) m.set(e.eurioId, (m.get(e.eurioId) ?? 0) + 1)
-  return m
-})
-
-// ── Bucketing ──
-interface Bucket {
-  label: string
-  entries: CollectionEntry[]
-}
-function bucket(col: CollectionEntry[], mode: VaultSort): Bucket[] {
-  if (mode === 'face') {
-    const b = new Map<number, Bucket & { cents: number }>()
-    for (const e of col) {
-      const cents = getCoin(e.eurioId)?.faceValueCents ?? 0
-      if (!b.has(cents)) b.set(cents, { cents, label: formatFaceValue(cents), entries: [] })
-      b.get(cents)!.entries.push(e)
-    }
-    return [...b.values()].sort((a, z) => z.cents - a.cents)
-  }
-  if (mode === 'month') {
-    const b = new Map<string, Bucket & { key: string }>()
-    for (const e of col) {
-      const d = new Date(e.addedAt)
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-      if (!b.has(key)) b.set(key, { key, label: `${MONTHS_FR[d.getMonth()]} ${d.getFullYear()}`, entries: [] })
-      b.get(key)!.entries.push(e)
-    }
-    return [...b.values()].sort((a, z) => z.key.localeCompare(a.key))
-  }
-  if (mode === 'price') {
-    const sorted = [...col].sort((a, z) => referenceCents(z) - referenceCents(a))
-    return [{ label: 'Trié par prix', entries: sorted }]
-  }
-  // country (défaut)
-  const b = new Map<string, Bucket>()
-  for (const e of col) {
-    const label = getCoin(e.eurioId)?.countryName || '?'
-    if (!b.has(label)) b.set(label, { label, entries: [] })
-    b.get(label)!.entries.push(e)
-  }
-  return [...b.values()].sort((a, z) => a.label.localeCompare(z.label, 'fr'))
-}
-
-interface GroupItem {
+// ───────── Meilleures pièces (spotlight = galerie de trophées) ─────────
+// Chaque page du spotlight = UNE catégorie superlative ; la pièce gagnante est
+// affichée en 3D (Spotlight3D). Valeur = cote médiane marché (getMarket.p50)
+// avec repli sur la faciale.
+const RARITY_RANK: Record<string, number> = { commune: 0, peu: 1, rare: 2, 'tres-rare': 3 }
+const MICRO_STATES = new Set(['mc', 'va', 'sm', 'ad']) // Monaco, Vatican, Saint-Marin, Andorre
+interface BestCoin {
   coin: Coin
-  count: number
+  valueEur: number
+  rarityLabel: string
+  rarityRank: number
+  mintage: number | null
 }
-const groups = computed(() => {
-  return bucket(store.collection, sort.value)
-    .map((g) => {
-      const seen = new Set<string>()
-      const items: GroupItem[] = []
-      for (const e of g.entries) {
-        if (seen.has(e.eurioId)) continue
-        seen.add(e.eurioId)
-        const coin = getCoin(e.eurioId)
-        if (coin) items.push({ coin, count: multi.value.get(e.eurioId) ?? 1 })
-      }
-      return { label: g.label, items }
+const bestCoins = computed<BestCoin[]>(() => {
+  const seen = new Set<string>()
+  const list: BestCoin[] = []
+  for (const e of store.collection) {
+    if (seen.has(e.eurioId)) continue
+    seen.add(e.eurioId)
+    const coin = getCoin(e.eurioId)
+    if (!coin) continue
+    const m = getMarket(e.eurioId)
+    list.push({
+      coin,
+      valueEur: m?.p50 ?? coin.faceValue,
+      rarityLabel: m?.rarity.label ?? 'Commune',
+      rarityRank: RARITY_RANK[m?.rarity.key ?? 'commune'] ?? 0,
+      mintage: coin.mintage,
     })
-    .filter((g) => g.items.length)
-})
-
-// ── Sparkline (valeur sur 12 mois) ──
-const sparkline = computed(() => {
-  const col = store.collection
-  if (!col.length) return null
-  const sorted = [...col].sort((a, z) => a.addedAt - z.addedAt)
-  const nowMs = now()
-  const monthMs = 30 * 24 * 60 * 60 * 1000
-  const samples = 12
-  const points: number[] = []
-  for (let i = samples - 1; i >= 0; i--) {
-    const cutoff = nowMs - i * monthMs
-    let total = 0
-    for (const e of sorted) {
-      if (e.addedAt > cutoff) continue
-      total += referenceCents(e)
-    }
-    points.push(total)
   }
-  const max = Math.max(...points, 1)
-  const min = Math.min(...points)
-  const range = Math.max(max - min, 1)
-  const W = 300, H = 52, PAD = 6
-  const coords = points.map((v, i) => [(i / (samples - 1)) * W, H - PAD - ((v - min) / range) * (H - PAD * 2)] as const)
-  const line = coords.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ')
-  const fill = `${line} L${W},${H} L0,${H} Z`
-  const [cx, cy] = coords[coords.length - 1]
-  return { line, fill, cx: cx.toFixed(1), cy: cy.toFixed(1) }
+  return list
 })
 
-// ── Retrait + undo ──
-const removeTarget = ref<Coin | null>(null)
-const undo = ref<{ entry: CollectionEntry; text: string } | null>(null)
-let undoTimer: ReturnType<typeof setTimeout> | null = null
+// Trophées dans l'ordre PO : précieuse · rare · ancienne · commémo phare · micro-état.
+// Une catégorie sans pièce éligible est simplement omise.
+interface Trophy {
+  key: string
+  icon: string
+  label: string
+  coin: Coin
+  metric: string
+}
+const trophies = computed<Trophy[]>(() => {
+  const pool = bestCoins.value
+  if (!pool.length) return []
+  const out: Trophy[] = []
+  const used = new Set<string>()
+  // Premier candidat d'une liste pré-triée dont la pièce n'a pas déjà gagné une
+  // autre catégorie → 5 trophées sur 5 pièces DISTINCTES (sinon une pièce qui
+  // cumule les superlatifs, ex Monaco Grace Kelly, occuperait plusieurs pages).
+  const firstUnused = (list: BestCoin[]) => list.find((b) => !used.has(b.coin.eurioId)) ?? null
+  const add = (t: Omit<Trophy, 'coin'> & { b: BestCoin | null }) => {
+    if (!t.b) return
+    used.add(t.b.coin.eurioId)
+    out.push({ key: t.key, icon: t.icon, label: t.label, coin: t.b.coin, metric: t.metric })
+  }
 
-function openRemove(coin: Coin) {
-  removeTarget.value = coin
-}
-function confirmRemove() {
-  const coin = removeTarget.value
-  removeTarget.value = null
-  if (!coin) return
-  const removed = store.removeCoin(coin.eurioId)
-  if (!removed) return
-  undo.value = { entry: removed, text: `${coin.countryName} retirée` }
-  if (undoTimer) clearTimeout(undoTimer)
-  undoTimer = setTimeout(() => (undo.value = null), 5000)
-}
-function doUndo() {
-  if (undo.value) store.restoreEntry(undo.value.entry)
-  undo.value = null
-  if (undoTimer) clearTimeout(undoTimer)
+  const byValue = [...pool].sort((a, z) => z.valueEur - a.valueEur)
+  const byRare = [...pool].sort((a, z) => z.rarityRank - a.rarityRank || (a.mintage ?? Infinity) - (z.mintage ?? Infinity))
+  const byOld = pool.filter((b) => b.coin.year != null).sort((a, z) => (a.coin.year as number) - (z.coin.year as number))
+
+  const precieuse = firstUnused(byValue)
+  add({ key: 'precieuse', icon: '💎', label: 'La plus précieuse', b: precieuse, metric: precieuse ? formatValue(precieuse.valueEur) : '' })
+  const rare = firstUnused(byRare)
+  add({ key: 'rare', icon: '👑', label: 'La plus rare', b: rare, metric: rare ? (rare.mintage != null ? `Tirage ${rare.mintage.toLocaleString('fr-FR')}` : rare.rarityLabel) : '' })
+  const ancienne = firstUnused(byOld)
+  add({ key: 'ancienne', icon: '🏛️', label: 'La plus ancienne', b: ancienne, metric: ancienne ? String(ancienne.coin.year) : '' })
+  const commemo = firstUnused(byValue.filter((b) => b.coin.isCommemorative))
+  add({ key: 'commemo', icon: '⭐', label: 'La commémo phare', b: commemo, metric: commemo ? formatValue(commemo.valueEur) : '' })
+  const micro = firstUnused(byValue.filter((b) => MICRO_STATES.has(b.coin.country)))
+  add({ key: 'micro', icon: '🏰', label: 'Le micro-état', b: micro, metric: micro ? micro.coin.countryName : '' })
+
+  return out
+})
+const showBest = computed(() => trophies.value.length >= 1)
+
+// Pagination du spotlight (1 catégorie à la fois).
+const spotIndex = ref(0)
+const trophy = computed(() => trophies.value[Math.min(spotIndex.value, trophies.value.length - 1)] ?? null)
+function goSpot(i: number) {
+  spotIndex.value = i
 }
 
-// ── Nav ──
+// ───────── Répartition géographique ─────────
+// Dérivée du store (cohérente avec le header) ; la fixture getCountryProgress
+// ne sert qu'à récupérer drapeau + nom localisé.
+interface GeoRow {
+  iso: string
+  name: string
+  flag: string
+  owned: number
+}
+// Emoji drapeau dérivé de l'ISO alpha-2 (indicateurs régionaux) — couvre les
+// micro-états absents de la fixture getCountryProgress.
+function flagFromIso(iso: string): string {
+  if (iso.length !== 2) return '🏳️'
+  const base = 0x1f1e6
+  return String.fromCodePoint(base + (iso.charCodeAt(0) - 65), base + (iso.charCodeAt(1) - 65))
+}
+const ownedCountries = computed<GeoRow[]>(() => {
+  const byIso = new Map(getCountryProgress().map((c) => [c.iso, c]))
+  const acc = new Map<string, GeoRow>()
+  for (const e of store.collection) {
+    const coin = getCoin(e.eurioId)
+    if (!coin) continue
+    const iso = coin.country.toUpperCase()
+    const row = acc.get(iso)
+    if (row) {
+      row.owned += 1
+    } else {
+      const p = byIso.get(iso)
+      acc.set(iso, { iso, name: p?.name ?? coin.countryName, flag: p?.flag ?? flagFromIso(iso), owned: 1 })
+    }
+  }
+  return [...acc.values()].sort((a, z) => z.owned - a.owned)
+})
+const geoSummary = computed(() => ({
+  coins: ownedCountries.value.reduce((n, c) => n + c.owned, 0),
+  countries: ownedCountries.value.length,
+}))
+const topCountries = computed(() => ownedCountries.value.slice(0, 3))
+const ownedIso = computed(() => new Set(ownedCountries.value.map((c) => c.iso)))
+
+// Mini-carte (aperçu non interactif de la carte à gratter).
+const contextPaths = Object.values(CONTEXT)
+const geoPaths = computed(() =>
+  Object.keys(GEO).map((iso) => ({ iso, d: GEO[iso].d, owned: ownedIso.value.has(iso) })),
+)
+
+// ───────── Aperçu des sets ─────────
+const setsPreview = computed(() => {
+  const all = getSets()
+  const live = all
+    .filter((s) => s.completedAt == null && s.owned > 0)
+    .sort((a, z) => z.owned / z.total - a.owned / a.total)
+  const rest = all.filter((s) => !(s.completedAt == null && s.owned > 0))
+  return [...live, ...rest].slice(0, 3)
+})
+function setPct(owned: number, total: number): number {
+  return total ? Math.round((owned / total) * 100) : 0
+}
+
+// ───────── Nav ─────────
 function openCoin(coin: Coin) {
   router.push(`/coin/${encodeURIComponent(coin.eurioId)}?ctx=owned`)
 }
-function setView(v: VaultView) {
-  store.setVaultView(v)
-}
-function setSort(s: VaultSort) {
-  store.setVaultSort(s)
-}
-
-const SORTS: { id: VaultSort; label: string }[] = [
-  { id: 'country', label: 'Pays' },
-  { id: 'face', label: 'Valeur faciale' },
-  { id: 'price', label: 'Prix' },
-  { id: 'month', label: "Date d'ajout" },
-]
 </script>
 
 <template>
-  <section class="vault-home-root" data-scene="vault-home" :data-empty="isEmpty ? 'true' : 'false'">
+  <section class="vault-home-root" data-scene="vault-summary" :data-empty="isEmpty ? 'true' : 'false'">
     <!-- ───────── Empty ───────── -->
     <div v-if="isEmpty" class="vault-home-empty">
       <div class="vault-home-empty__art" aria-hidden="true">
@@ -229,122 +211,86 @@ const SORTS: { id: VaultSort; label: string }[] = [
       </button>
     </div>
 
-    <!-- ───────── Populated ───────── -->
-    <div v-else class="vault-home-scroll">
-      <header class="vault-home-header">
-        <div class="vault-home-header__top">
-          <div class="eyebrow">Ton coffre</div>
-          <div class="vault-home-header__actions">
-            <button type="button" class="vault-home-header__icon" aria-label="Exporter"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0l-5-5m5 5l5-5M3 21h18" /></svg></button>
-            <button type="button" class="vault-home-header__icon" aria-label="Plus d'options"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.3" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1.3" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1.3" fill="currentColor" stroke="none" /></svg></button>
-          </div>
-        </div>
+    <!-- ───────── Résumé ───────── -->
+    <template v-else>
+      <CoffreHeader active="summary" />
 
-        <CoffreTabs active="coins" nav-class="vault-home-header__segnav" />
-
-        <div class="vault-home-value">
-          <span class="vault-home-value__label">Valeur totale</span>
-          <div class="vault-home-value__amount tabular"><span>{{ valueInt }}</span><span class="vault-home-value__euro">€</span></div>
-          <div v-show="!deltaHidden" class="vault-home-value__delta">
-            <span class="vault-home-delta-chip tabular">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 14l5-5 5 5" /></svg>
-              <span>+{{ deltaPct }}%</span>
-            </span>
-            <span>depuis tes premiers ajouts</span>
+      <div class="summary-scroll">
+        <!-- Meilleures pièces : carte spotlight -->
+        <section v-if="showBest" class="summary-section" data-testid="vault-best">
+          <div class="summary-section__head">
+            <span class="summary-section__title">Tes meilleures pièces</span>
           </div>
 
-          <div v-if="sparkline" class="vault-home-spark">
-            <span class="vault-home-spark__scale">12 derniers mois</span>
-            <svg viewBox="0 0 300 52" preserveAspectRatio="none" aria-hidden="true">
-              <path class="vault-home-spark__fill" :d="sparkline.fill" />
-              <path class="vault-home-spark__line" :d="sparkline.line" />
-              <circle class="vault-home-spark__dot" :cx="sparkline.cx" :cy="sparkline.cy" r="3.2" />
+          <div v-if="trophy" class="summary-spot" @click="openCoin(trophy.coin)">
+            <span class="summary-spot__name">{{ trophy.coin.countryName }}<template v-if="trophy.coin.year"> · {{ trophy.coin.year }}</template></span>
+            <div class="summary-spot__stage"><Spotlight3D :eurio-id="trophy.coin.eurioId" /></div>
+            <div class="summary-spot__laurel">
+              <span class="summary-spot__laurel-leaf" aria-hidden="true">🌿</span>
+              <span class="summary-spot__value tabular">{{ trophy.metric }}</span>
+              <span class="summary-spot__laurel-leaf summary-spot__laurel-leaf--flip" aria-hidden="true">🌿</span>
+            </div>
+            <span class="summary-spot__superlative">{{ trophy.icon }} {{ trophy.label }}</span>
+          </div>
+
+          <div v-if="trophies.length > 1" class="summary-spot__dots" role="tablist" aria-label="Catégories">
+            <button v-for="(t, i) in trophies" :key="t.key" type="button" class="summary-spot__dot" :aria-selected="i === spotIndex" :aria-label="t.label" @click.stop="goSpot(i)"></button>
+          </div>
+        </section>
+
+        <!-- Répartition géographique -->
+        <section v-if="geoSummary.countries" class="summary-section">
+          <div class="summary-section__head">
+            <span class="summary-section__title">Répartition géographique</span>
+          </div>
+          <p class="summary-geo__lead">
+            <strong>{{ geoSummary.coins }}</strong> {{ geoSummary.coins > 1 ? 'pièces réparties' : 'pièce' }} dans
+            <strong>{{ geoSummary.countries }}</strong> {{ geoSummary.countries > 1 ? 'pays' : 'pays' }}
+          </p>
+
+          <button type="button" class="summary-geo__map" aria-label="Voir la répartition de tes pièces" @click="router.push('/vault/geo')">
+            <svg viewBox="0 0 400 511" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Carte de l'eurozone">
+              <path v-for="(d, i) in contextPaths" :key="`ctx-${i}`" :d="d" class="summary-geo__context" />
+              <path v-for="c in geoPaths" :key="c.iso" :d="c.d" class="summary-geo__country" :class="{ 'is-owned': c.owned }" />
             </svg>
-          </div>
-        </div>
-      </header>
-
-      <div class="vault-home-stats">
-        <div class="stat"><span class="stat-value tabular">{{ stats.coins }}</span><span class="stat-label">Pièces</span></div>
-        <div class="stat"><span class="stat-value tabular">{{ stats.countries }}</span><span class="stat-label">Pays</span></div>
-        <div class="stat"><span class="stat-value tabular">{{ stats.series }}</span><span class="stat-label">Séries</span></div>
-      </div>
-
-      <div class="vault-home-toolbar">
-        <button type="button" class="vault-home-search" data-testid="vault-search" @click="router.push('/vault/search')">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" stroke-linecap="round" /></svg>
-          <span>Chercher dans ton coffre</span>
-        </button>
-
-        <div class="vault-home-toolbar__row">
-          <button type="button" class="vault-home-filters-btn" data-testid="vault-filters" @click="router.push('/vault/filters')">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4" /></svg>
-            <span>Filtres</span>
+            <span class="summary-geo__expand" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" /></svg>
+            </span>
           </button>
 
-          <div class="vault-home-toggle" role="tablist" aria-label="Mode d'affichage">
-            <button type="button" :aria-selected="view === 'grid'" aria-label="Grille" @click="setView('grid')"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg></button>
-            <button type="button" :aria-selected="view === 'list'" aria-label="Liste" @click="setView('list')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" stroke-linecap="round" /></svg></button>
-          </div>
-        </div>
-
-        <div class="vault-home-sort" role="radiogroup" aria-label="Trier par">
-          <span class="vault-home-sort__label">Trier</span>
-          <button v-for="s in SORTS" :key="s.id" type="button" class="vault-home-sort__chip" :aria-pressed="sort === s.id" @click="setSort(s.id)">{{ s.label }}</button>
-        </div>
-      </div>
-
-      <div>
-        <template v-for="g in groups" :key="g.label">
-          <div class="vault-home-group">
-            <span class="vault-home-group__label">{{ g.label }}</span>
-            <span class="vault-home-group__line"></span>
-          </div>
-
-          <div v-if="view === 'list'" class="vault-home-list">
-            <button v-for="it in g.items" :key="it.coin.eurioId" type="button" class="vault-home-row" @click="openCoin(it.coin)">
-              <div class="vault-home-row__coin"><CoinImage :coin="it.coin" :size="44" :show-label="false" /></div>
-              <div class="vault-home-row__meta">
-                <span class="vault-home-row__title">{{ it.coin.countryName }}<template v-if="it.count > 1"> ×{{ it.count }}</template></span>
-                <span class="vault-home-row__sub">{{ formatFaceValue(it.coin.faceValueCents) }} · {{ it.coin.year ?? '—' }}</span>
-              </div>
-              <div class="vault-home-row__value tabular">
-                <span class="vault-home-row__price">{{ formatEuros(it.coin.faceValueCents) }}</span>
-                <span class="vault-home-row__delta vault-home-row__delta--neutral">—</span>
-              </div>
+          <div class="summary-geo__list">
+            <button v-for="c in topCountries" :key="c.iso" type="button" class="summary-geo__row" @click="router.push('/vault/geo')">
+              <span class="summary-geo__flag">{{ c.flag }}</span>
+              <span class="summary-geo__country-name">{{ c.name }}</span>
+              <span class="summary-geo__count tabular">{{ c.owned }} {{ c.owned > 1 ? 'pièces' : 'pièce' }}</span>
             </button>
           </div>
 
-          <div v-else class="vault-home-grid">
-            <button v-for="it in g.items" :key="it.coin.eurioId" type="button" class="vault-home-tile" :class="{ 'vault-home-tile--set-complete': it.coin.isCommemorative && it.count >= 2 }" @click="openCoin(it.coin)">
-              <span v-if="it.count > 1" class="vault-home-tile__mult">×{{ it.count }}</span>
-              <span class="vault-home-tile__more" aria-label="Plus d'options" @click.stop="openRemove(it.coin)">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="5" cy="12" r="1.2" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1.2" fill="currentColor" stroke="none" /></svg>
-              </span>
-              <div class="vault-home-tile__coin"><CoinImage :coin="it.coin" :size="120" /></div>
-              <div class="vault-home-tile__meta">
-                <span>{{ it.coin.country.toUpperCase() }}</span>
-                <span>{{ it.coin.year ?? '' }}</span>
+          <button type="button" class="summary-link" @click="router.push('/vault/geo')">Tout voir</button>
+        </section>
+
+        <!-- Aperçu des sets -->
+        <section v-if="setsPreview.length" class="summary-section">
+          <div class="summary-section__head">
+            <span class="summary-section__title">Tes sets</span>
+            <button type="button" class="summary-section__action" @click="router.push('/vault/sets')">Tout voir</button>
+          </div>
+          <div class="summary-sets">
+            <button v-for="s in setsPreview" :key="s.id" type="button" class="summary-set" @click="router.push(`/vault/sets/${encodeURIComponent(s.id)}`)">
+              <div class="summary-set__top">
+                <span class="summary-set__title">{{ s.title }}</span>
+                <span class="summary-set__count tabular">{{ s.owned }}/{{ s.total }}</span>
               </div>
+              <div class="progress-bar"><div class="progress-track"><div class="progress-fill" :style="{ width: setPct(s.owned, s.total) + '%' }"></div></div></div>
             </button>
           </div>
-        </template>
+        </section>
+
+        <div style="height: var(--space-10)"></div>
       </div>
-
-      <div style="height: var(--space-10)"></div>
-    </div>
-
-    <!-- Overlay retrait -->
-    <VaultRemoveConfirm v-if="removeTarget" :coin="removeTarget" @cancel="removeTarget = null" @confirm="confirmRemove" />
-
-    <!-- Toast undo -->
-    <div v-if="undo" class="vault-remove-toast">
-      <span>{{ undo.text }}</span>
-      <button type="button" class="vault-remove-toast__undo" data-testid="undo-remove" @click="doUndo">Annuler</button>
-    </div>
+    </template>
   </section>
 </template>
 
 <style src="../../styles/vault-home.css"></style>
-<!-- Le toast undo réutilise le style de l'overlay de retrait. -->
-<style src="../../styles/vault-remove-confirm.css"></style>
+<style src="../../styles/vault-summary.css"></style>

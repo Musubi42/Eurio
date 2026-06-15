@@ -61,6 +61,12 @@ const chases = computed(() => listChases(ownedIds.value).filter((a) => !a.unlock
 function openSettings() {
   router.push('/profile/settings')
 }
+
+// ── Historique des scans (E8) ──
+const scanCount = computed(() => store.scanHistory.length)
+function openHistory() {
+  router.push('/profile/history')
+}
 </script>
 
 <template>
@@ -153,6 +159,19 @@ function openSettings() {
       <div class="profile-home-empty" v-else>
         <div class="profile-home-medal is-dim"><span>◐</span></div>
         <p>Les chasses apparaîtront dès ta première pièce scannée.</p>
+      </div>
+
+      <!-- Historique des scans (E8) -->
+      <div class="profile-home-section">
+        <h2>Activité</h2>
+      </div>
+      <div class="profile-home-settings">
+        <button type="button" class="profile-home-setrow" data-testid="profile-history" @click="openHistory">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 8v4l3 2" stroke-linecap="round" /></svg>
+          <span class="profile-home-setrow__label">Historique des scans</span>
+          <span class="profile-home-setrow__val">{{ scanCount || '—' }}</span>
+          <span class="profile-home-setrow__arrow">›</span>
+        </button>
       </div>
 
       <!-- Settings preview -->

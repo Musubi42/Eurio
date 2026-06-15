@@ -8,6 +8,20 @@
     padding: 0 0 var(--space-10);
   }
 
+  /* ───────── Back bar (atteint via « Tout voir » du Résumé) ───────── */
+  .cag-backbar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-5) var(--space-4);
+  }
+  .cag-backbar__title {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: var(--text-lg);
+    color: var(--ink);
+  }
+
   /* ───────── Toggle Carte / Liste ───────── */
   .cag-toggle-row { display: flex; justify-content: center; padding: 0 var(--space-5) var(--space-4); }
   .cag-toggle {

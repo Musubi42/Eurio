@@ -1,31 +1,18 @@
-# Ce fichier est committé. Aucun secret en clair ne doit y être écrit ;
-# les secrets vivent dans `secrets/dev.env` (chiffré via SOPS+age) et sont
-# déchiffrés au chargement du shell.
+use flake
+export VITE_SUPABASE_URL=https://ettxkixkxrzchbnohgfm.supabase.co
+export VITE_SUPABASE_ANON_KEY=***REDACTED-SECRET***
+export VITE_SUPABASE_SERVICE_KEY=***REDACTED-SECRET***
 
-# 1) Charge le devShell Nix selon le hostname.
-case "$(hostname -s)" in
-  Musubi42s-MacBook-Air-Oim) use flake .#mac ;;
-  desktop)                   use flake .#pc  ;;
-  nixos)                     use flake .#vps ;;
-  *)
-    echo "" >&2
-    echo "❌ Hostname inconnu pour Eurio : $(hostname -s)" >&2
-    echo "" >&2
-    echo "Profils disponibles : mac | pc | vps" >&2
-    echo "" >&2
-    echo "Pour cette machine, soit :" >&2
-    echo "  1. Ajouter '$(hostname -s)' au case dans .envrc" >&2
-    echo "  2. Forcer un profil ponctuellement (gitignore conseillé) :" >&2
-    echo "       echo 'use flake .#vps' > .envrc.local && direnv allow" >&2
-    echo "" >&2
-    exit 1
-    ;;
-esac
+# Numista API keys — rotate when monthly quota is reached (1800 calls/month soft limit)
+export NUMISTA_API_KEY_MUSUBI00=kiXdR9SO4Jfw9AW7t57ueAYH7u3TiPxLpLtvz6c
+export NUMISTA_API_KEY_MUSUBI01=lAU8duqc1JxA4GTcSxeAzP4J1ctFj7LmbEyMOZw
 
-# 2) Déchiffre les secrets et les exporte dans le shell.
-#    Lit ~/.config/sops/age/keys.txt automatiquement (clé privée de la machine).
-if [ -f secrets/dev.env ]; then
-  eval "$(set -a / . <(...) / set +a)"
-else
-  echo "⚠️  secrets/dev.env absent — voir README.md §Secrets pour le bootstrap." >&2
-fi
+# Ebay
+export EBAY_CLIENT_ID=***REDACTED-SECRET***
+export EBAY_CLIENT_SECRET=***REDACTED-SECRET***
+
+# Supabase
+export SUPABASE_URL=https://ettxkixkxrzchbnohgfm.supabase.co
+export SUPABASE_ANON_KEY=***REDACTED-SECRET***
+
+export SUPABASE_SERVICE_ROLE_KEY=***REDACTED-SECRET***
