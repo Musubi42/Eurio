@@ -114,8 +114,25 @@ def _dominant_circle(raw_storage_path: str) -> dict | None:
     if bgr is None or bgr.size == 0:
         return None
     H, W = bgr.shape[:2]
-    short = min(H, W)
-    gray = cv2.medianBlur(cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY), 5)
+    # HoughCircles à pleine résolution explose (jusqu'à ~35 s sur un raw 1600²,
+    # pire cas observé en review) : le coût de l'accumulateur croît avec la
+    # résolution ET la largeur de la plage de rayons (ici 0.30→0.50·petit-côté).
+    # On borne donc le petit côté de l'image de travail à WORK_SHORT puis on remet
+    # le cercle trouvé à l'échelle native. Le cercle n'est qu'un POINT DE DÉPART
+    # que l'éditeur laisse ajuster à la main (et que _plausible_suggestion filtre)
+    # → la précision sub-pixel pleine résolution est inutile. Les raws dont le
+    # petit côté est déjà ≤ WORK_SHORT ne sont PAS redimensionnés (comportement
+    # identique, et ils étaient déjà rapides). Mesuré : 1600² 35 s → ~0,1 s.
+    WORK_SHORT = 768
+    src_short = min(H, W)
+    scale = min(1.0, WORK_SHORT / src_short) if src_short > 0 else 1.0
+    work = (
+        cv2.resize(bgr, (round(W * scale), round(H * scale)),
+                   interpolation=cv2.INTER_AREA)
+        if scale < 1.0 else bgr
+    )
+    short = min(work.shape[:2])
+    gray = cv2.medianBlur(cv2.cvtColor(work, cv2.COLOR_BGR2GRAY), 5)
     circles = cv2.HoughCircles(
         gray, cv2.HOUGH_GRADIENT, dp=1.0, minDist=short,
         param1=100, param2=30,
@@ -124,7 +141,12 @@ def _dominant_circle(raw_storage_path: str) -> dict | None:
     if circles is None or len(circles[0]) == 0:
         return None
     best = max(circles[0], key=lambda c: c[2])
-    return {"cx": float(best[0]), "cy": float(best[1]), "r": float(best[2])}
+    inv = 1.0 / scale
+    return {
+        "cx": float(best[0]) * inv,
+        "cy": float(best[1]) * inv,
+        "r": float(best[2]) * inv,
+    }
 
 
 def _plausible_suggestion(suggested: dict | None, hint: dict | None) -> dict | None:
@@ -132,18 +154,28 @@ def _plausible_suggestion(suggested: dict | None, hint: dict | None) -> dict | N
 
     La bbox (`hint`) est l'emplacement fiable de la pièce. Le Hough `_dominant_circle`
     cherche un grand cercle (≥0.30·petit-côté) : sur un undercrop macro il trouve la pièce
-    entière (concentrique, un peu plus grande → bon point de départ), mais sur un COINCARD /
-    capsule (pièce petite dans un coin) il accroche le rebord de la carte / la capsule → un
-    cercle ÉNORME et DÉCENTRÉ. On le rejette alors (l'éditeur repart de la bbox, sur la
-    pièce). Critères : centre proche de la bbox (≤1,2·r_bbox) ET rayon borné (≤3,5·r_bbox)."""
+    entière (CONCENTRIQUE, un peu plus grande → bon point de départ), mais sur un COINCARD /
+    capsule / COFFRET (pièce petite dans une boîte) il accroche le rebord de la boîte → un
+    cercle plus grand et DÉCENTRÉ. On le rejette alors (l'éditeur repart de la bbox, sur la
+    pièce).
+
+    Critères de confiance (un « meilleur cadrage de la MÊME pièce ») :
+      - concentrique : centre ≤ 0,7·r_bbox de la bbox ;
+      - taille bornée : rayon ≤ 2,2·r_bbox (l'undercrop type = pièce entière ≈ 2× le
+        disque bimétal détecté ; au-delà c'est une boîte/capsule, pas la pièce).
+
+    Asymétrie de coût assumée : un rejet retombe sur la bbox (toujours SUR la pièce →
+    sûr) ; un faux positif donne un cercle géant inutile (le bug). On biaise donc vers
+    le rejet. Seuils d'origine (1,2 / 3,5) trop lâches : ils laissaient passer un coffret
+    proof (ex. eBay Donatello : r=3,05·r_bbox, centre à 1,12·r_bbox → cercle sur la boîte)."""
     if suggested is None or hint is None:
         return suggested
     hr = float(hint.get("r") or 0.0)
     if hr <= 0:
         return suggested
     dist = ((suggested["cx"] - hint["cx"]) ** 2 + (suggested["cy"] - hint["cy"]) ** 2) ** 0.5
-    if dist > 1.2 * hr or suggested["r"] > 3.5 * hr:
-        return None  # cercle dominant aberrant (coincard/capsule) → garder la bbox
+    if dist > 0.7 * hr or suggested["r"] > 2.2 * hr:
+        return None  # cercle dominant aberrant (coincard/capsule/coffret) → garder la bbox
     return suggested
 
 
