@@ -131,8 +131,13 @@ def load_env(root: Path | None = None) -> dict[str, str]:
 
 
 def _default_db_path() -> Path:
-    """Canonical local SQLite — ml/state/eurio.db (cf. SQLite-only doctrine)."""
-    return Path(__file__).resolve().parent.parent / "state" / "eurio.db"
+    """Canonical local SQLite — ml/state/eurio.db (cf. SQLite-only doctrine).
+
+    Ce module est ``ml/training/eval/class_resolver.py`` → ``parents[2]`` == ``ml/``.
+    (Un ``.parent.parent`` pointait à tort vers ``ml/training/state/`` inexistant,
+    faisant échouer tout ``build_resolver()`` sans ``db_path`` explicite.)
+    """
+    return Path(__file__).resolve().parents[2] / "state" / "eurio.db"
 
 
 def coin_refs_from_sqlite(db_path: Path | None = None) -> list[CoinRef]:

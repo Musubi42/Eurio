@@ -185,6 +185,46 @@ def _canonical_ref_images(eurio_id: str, store: Store) -> list[Path]:
     return paths
 
 
+@dataclass
+class CoinSources:
+    """Sources réelles de training d'un coin, ventilées par provenance.
+
+    ``paths`` est l'ordre de bake exact (obverse Numista, puis crops eBay
+    reviewés, puis réfs officielles) ; ``total`` = ``len(paths)`` = le *seed*
+    au sens ``foundation/enrichment`` (nombre de vues réelles distinctes).
+    Définition UNIQUE partagée entre le bake (``generate_for_iteration``) et le
+    preflight (``foundation/preflight``) — ne jamais recompter ailleurs.
+    """
+
+    n_numista: int
+    n_ebay: int
+    n_ref: int
+    paths: list[Path]
+
+    @property
+    def total(self) -> int:
+        return len(self.paths)
+
+
+def real_training_sources(
+    eurio_id: str, numista_id: int | None, store: Store
+) -> CoinSources:
+    """Sources réelles de training d'un coin (avers Numista + eBay reviewés + réfs).
+
+    Source de vérité du *seed* : même collecte que le bake. ``numista_id`` None
+    (coin sans mapping) → l'avers Numista FS est simplement absent du pool.
+    """
+    numista_sources = _source_images(numista_id) if numista_id is not None else []
+    real_ebay = _ebay_training_sources(eurio_id, store)
+    ref_sources = _canonical_ref_images(eurio_id, store)
+    return CoinSources(
+        n_numista=len(numista_sources),
+        n_ebay=len(real_ebay),
+        n_ref=len(ref_sources),
+        paths=numista_sources + real_ebay + ref_sources,
+    )
+
+
 def _target_per_coin(n_sources: int, variant_count: int | None) -> int:
     """Cible d'images augmentées d'une classe : facteur dynamique ceil(100/seed).
 
@@ -262,10 +302,11 @@ def generate_for_iteration(
         # Sources réelles de training, par priorité (cf. docs/cohort-pipeline) :
         # avers Numista (FS) + crops eBay reviewés (DB) + réfs officielles
         # BCE / EUR-Lex JO (filet pour les classes pauvres en crops eBay).
-        numista_sources = _source_images(nid)
-        real_ebay = _ebay_training_sources(eurio_id, store)
-        ref_sources = _canonical_ref_images(eurio_id, store)
-        sources = numista_sources + real_ebay + ref_sources
+        # Collecte UNIQUE partagée avec le preflight (cf. real_training_sources).
+        coin_src = real_training_sources(eurio_id, nid, store)
+        real_ebay = coin_src.n_ebay
+        ref_sources = coin_src.n_ref
+        sources = coin_src.paths
         if not sources:
             reports.append(
                 CoinAugReport(
@@ -347,9 +388,9 @@ def generate_for_iteration(
                 numista_id=nid,
                 written=written,
                 sources_used=len(sources),
-                n_real_ebay=len(real_ebay),
-                n_ref_images=len(ref_sources),
-                below_floor_real=len(real_ebay) < MIN_REAL,
+                n_real_ebay=real_ebay,
+                n_ref_images=ref_sources,
+                below_floor_real=real_ebay < MIN_REAL,
             )
         )
 

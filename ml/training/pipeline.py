@@ -106,6 +106,7 @@ class TrainingPipeline:
         version_str = self._version_string(run_id)
         try:
             self._store.update_run_status(run_id, "running", started_at=_now_iso())
+            self._preflight(run_id)
             self._run_step(run_id, 0, lambda row: self._delete(row))
             self._run_step(run_id, 1, lambda row: self._prepare(row))
             self._run_step(run_id, 2, lambda row: self._train(row, version_str))
@@ -170,6 +171,52 @@ class TrainingPipeline:
                 ),
             )
             raise
+
+    # ─── Preflight ───────────────────────────────────────────────────────
+
+    def _preflight(self, run_id: str) -> None:
+        """Refuse le run AVANT toute dépense si une classe stagée est affamée.
+
+        Une classe sans source réelle serait silencieusement absente du dataset
+        (ImageFolder ignore un dossier vide) ; toutes vides → 0 classe →
+        MPerClassSampler plante. On échoue ici, tôt, avec un message clair.
+        Les classes « pauvres en eBay » (warn) n'arrêtent pas le run.
+        """
+        from training.eval.class_resolver import build_resolver
+        from training.foundation.preflight import preflight_classes
+
+        row = self._store.get_run(run_id)
+        if row is None:
+            raise RuntimeError(f"Run {run_id} disappeared")
+        iter_dir = _iter_dir(row)
+        staged = row.classes_added if iter_dir is not None else row.classes_after
+        class_kind = row.config.get("class_kind", "design_group")
+        m_per_class = int(row.config.get("m_per_class", 4))
+
+        # Resolver lié à la DB du run (et non au défaut de class_resolver, qui
+        # pointe à côté) → cohérent avec le Store du pipeline.
+        resolver = build_resolver(
+            force_eurio_id=(class_kind == "eurio_id"),
+            db_path=self._store.db_path,
+        )
+        report = preflight_classes(
+            staged, self._store, m_per_class=m_per_class, resolver=resolver
+        )
+        self._emit_log(report.summary())
+        if not staged:
+            raise RuntimeError(
+                "Preflight: aucune classe stagée — rien à entraîner. "
+                "Stage des classes (training_staging / classes_after) avant de lancer."
+            )
+        if not report.ok:
+            blocked = ", ".join(
+                f"{c.class_id} ({c.reason})" for c in report.blocked
+            )
+            raise RuntimeError(
+                f"Preflight: {len(report.blocked)} classe(s) sous le plancher de "
+                f"{m_per_class} sources réelles — run refusé. À débloquer "
+                f"(review/enrichissement) ou retirer du staging : {blocked}"
+            )
 
     # ─── Étapes ──────────────────────────────────────────────────────────
 
