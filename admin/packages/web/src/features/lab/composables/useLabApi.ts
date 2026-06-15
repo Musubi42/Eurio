@@ -113,15 +113,14 @@ export async function cloneCohort(
   )
 }
 
-// Joint cohorte→training_staging : stage les classes de la cohorte (replace
-// par défaut). Renvoie le résultat + le preflight (block/warn) pour affichage.
-export async function stageCohortForTraining(
+// Garde-fou « prêt à entraîner » (lecture seule). Le staging est IMPLICITE :
+// une itération entraîne cohort.eurio_ids. Renvoie le preflight (classes pas
+// prêtes) pour bloquer « Nouvelle itération » côté front.
+export async function fetchTrainingReadiness(
   cohortId: string,
-  replace = true,
-): Promise<import('../types').CohortStageResult> {
-  return json<import('../types').CohortStageResult>(
-    `/lab/cohorts/${encodeURIComponent(cohortId)}/stage`,
-    { method: 'POST', body: JSON.stringify({ replace }) },
+): Promise<import('../types').CohortReadiness> {
+  return json<import('../types').CohortReadiness>(
+    `/lab/cohorts/${encodeURIComponent(cohortId)}/training-readiness`,
   )
 }
 

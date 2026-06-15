@@ -23,12 +23,7 @@ export interface CohortSummary {
   updated_at: string | null
 }
 
-// ─── Joint cohorte→training_staging ───────────────────────────────────
-export interface StagedClassRef {
-  class_id: string
-  class_kind: 'eurio_id' | 'design_group_id'
-}
-
+// ─── Garde-fou « prêt à entraîner » (staging implicite = cohort.eurio_ids) ──
 export interface PreflightClass {
   class_id: string
   class_kind: string
@@ -51,11 +46,10 @@ export interface PreflightReport {
   summary: string
 }
 
-export interface CohortStageResult {
+export interface CohortReadiness {
   cohort_id: string
-  cohort_name: string
-  replaced: boolean
-  staged: StagedClassRef[]
+  ready: boolean
+  n_classes: number
   unresolved: string[]
   preflight: PreflightReport
 }

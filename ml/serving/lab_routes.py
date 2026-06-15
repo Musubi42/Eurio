@@ -129,12 +129,6 @@ class CohortSyncPayload(BaseModel):
     overwrite: bool = False
 
 
-class CohortStagePayload(BaseModel):
-    # replace=True : remplace tout le staging par les classes de la cohorte
-    # (scope de run propre) ; False : fusionne (UPSERT) avec l'existant.
-    replace: bool = True
-
-
 class IterationCreatePayload(BaseModel):
     name: str
     hypothesis: str | None = None
@@ -200,6 +194,42 @@ def _require_draft(cohort: ExperimentCohortRow) -> None:
                 "Pour modifier ses pièces, clone-le."
             ),
         )
+
+
+def _require_classes_ready(cohort: ExperimentCohortRow) -> None:
+    """409 si une classe de la cohorte n'est pas prête à entraîner (preflight).
+
+    Bloque AVANT l'auto-freeze irréversible : pas de source réelle (réf morte),
+    sous le plancher dur ``m_per_class``, OU trop pauvre en eBay réel (warn).
+    L'admin doit enrichir (scrape eBay) / reviewer avant de lancer. Source de
+    vérité = ``training/foundation/preflight`` (même calcul que le run)."""
+    from store import ClassRef
+    from training.eval.class_resolver import build_resolver
+    from training.foundation.preflight import preflight_classes
+
+    store = _get_store()
+    resolver = build_resolver(force_eurio_id=False, db_path=store.db_path)
+    descriptors, unresolved = resolver.classes_for_eurio_ids(cohort.eurio_ids)
+    refs = [ClassRef(d.class_id, d.class_kind) for d in descriptors]
+    report = preflight_classes(refs, store, resolver=resolver)
+    not_ready = report.blocked + report.warned
+    if not unresolved and not not_ready:
+        return
+    parts = [f"{c.class_id} ({c.reason or c.status})" for c in not_ready]
+    if unresolved:
+        parts.append(f"absents du catalogue : {', '.join(unresolved)}")
+    raise HTTPException(
+        status_code=409,
+        detail={
+            "message": (
+                f"{len(not_ready)} classe(s) pas prête(s) à entraîner — enrichis "
+                "(scrape eBay) ou review avant de lancer une itération."
+            ),
+            "not_ready": [c.to_dict() for c in not_ready],
+            "unresolved": unresolved,
+            "preflight": report.to_dict(),
+        },
+    )
 
 
 def _validate_verdict(v: str | None) -> None:
@@ -488,25 +518,20 @@ def add_coins_to_cohort(
     return _cohort_summary(updated) if updated else cohort.to_dict()
 
 
-@router.post("/cohorts/{cohort_id}/stage")
-def stage_cohort_for_training(
-    cohort_id: str, payload: CohortStagePayload | None = None
-) -> dict:
-    """Joint cohorte→training_staging : stage les classes de la cohorte.
+@router.get("/cohorts/{cohort_id}/training-readiness")
+def cohort_training_readiness(cohort_id: str) -> dict:
+    """Lecture seule : la cohorte est-elle prête à entraîner ?
 
-    Chaque eurio_id de la cohorte résout vers sa classe ``COALESCE(
-    design_group_id, eurio_id)`` (les membres d'un même design_group
-    s'effondrent en une classe — la cohorte définit *quelles classes*). Les
-    eurio_ids absents du catalogue (réf morte / slug drift) sont remontés dans
-    ``unresolved`` et **non** stagés. Le preflight tourne sur le résultat pour
-    signaler tout de suite les classes affamées (block/warn) — sans bloquer le
-    staging lui-même (le gate dur est au lancement du run).
+    Le staging est IMPLICITE — une itération entraîne les pièces de la cohorte
+    (cohort.eurio_ids). Cet endpoint résout ces eurio_ids → classes
+    ``COALESCE(design_group_id, eurio_id)`` (dédup) et fait tourner le preflight,
+    sans rien écrire. Le front s'en sert pour bloquer « Nouvelle itération » et
+    montrer les classes pas prêtes (le hard-block vit dans ``create_iteration``).
     """
     from store import ClassRef
     from training.eval.class_resolver import build_resolver
     from training.foundation.preflight import preflight_classes
 
-    payload = payload or CohortStagePayload()
     store = _get_store()
     cohort = store.get_cohort(cohort_id)
     if cohort is None:
@@ -515,25 +540,12 @@ def stage_cohort_for_training(
     resolver = build_resolver(force_eurio_id=False, db_path=store.db_path)
     descriptors, unresolved = resolver.classes_for_eurio_ids(cohort.eurio_ids)
     refs = [ClassRef(d.class_id, d.class_kind) for d in descriptors]
-    if not refs:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "Aucune classe résolue depuis la cohorte — tous les eurio_ids "
-                f"sont absents du catalogue : {unresolved}"
-            ),
-        )
-
-    if payload.replace:
-        store.clear_staging()
-    store.stage_classes(refs)
-
     report = preflight_classes(refs, store, resolver=resolver)
+    not_ready = report.blocked + report.warned
     return {
         "cohort_id": cohort.id,
-        "cohort_name": cohort.name,
-        "replaced": payload.replace,
-        "staged": [r.to_dict() for r in refs],
+        "ready": not unresolved and not not_ready,
+        "n_classes": len(refs),
         "unresolved": unresolved,
         "preflight": report.to_dict(),
     }
@@ -613,6 +625,14 @@ def create_iteration(cohort_id: str, payload: IterationCreatePayload) -> dict:
         raise HTTPException(
             status_code=400, detail="variant_count doit être entre 1 et 2000"
         )
+
+    # Garde-fou : une itération entraîne IMPLICITEMENT les pièces de la cohorte
+    # (cohort.eurio_ids). On refuse de figer la cohorte + lancer si une classe est
+    # trop pauvre — chaque classe doit avoir assez de sources RÉELLES (≥ plancher
+    # eBay), sinon l'augmentation gonfle du vide. Réutilise le preflight (source de
+    # vérité unique). Bloque sur block ET warn (un run cohorte se veut propre).
+    _require_classes_ready(cohort)
+
     runner = _get_runner()
     try:
         row = runner.create_iteration(
