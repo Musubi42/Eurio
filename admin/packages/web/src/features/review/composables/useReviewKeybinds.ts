@@ -21,6 +21,9 @@ export interface ReviewKeybindHandlers {
   onAcceptDino?: () => void
   // E — ouvrir l'éditeur de recadrage manuel (R est pris par Reject).
   onRecrop?: () => void
+  // A — auto-crop score-guided (probe → balayage rayon → meilleur crop). Outil
+  // « propose & recrop » tenté AVANT le recadrage manuel. No-op sans item.
+  onAutoCrop?: () => void
   // L — requalifier le crop courant (et son listing) en LOT : il quitte la
   // queue single et bascule dans le flow lot. No-op si pas d'item courant.
   onRequalifyLot?: () => void
@@ -112,6 +115,11 @@ export function useReviewKeybinds(
       case 'e':
       case 'E':
         handlers.onRecrop?.()
+        e.preventDefault()
+        break
+      case 'a':
+      case 'A':
+        handlers.onAutoCrop?.()
         e.preventDefault()
         break
       case 'l':

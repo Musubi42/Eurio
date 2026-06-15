@@ -525,6 +525,77 @@ export async function ackClaudeVerdicts(
   return { requested: reviewIds.length, committed: 0, rejected: 0, skipped: 0 }
 }
 
+// ─── Départage Dino en ensemble fermé (candidats de groupe / standards) ──
+
+export interface RankedCandidate {
+  eurio_id: string
+  sim: number
+}
+
+export interface RankCandidatesResult {
+  anchors_kind: string
+  encoder_version: string | null
+  ranked: RankedCandidate[]
+  /** eurio_ids fournis mais absents de la banque d'ancres (non classables). */
+  missing: string[]
+}
+
+/**
+ * Classe un ENSEMBLE FERMÉ de candidats (eurio_ids connus) par similarité Dino
+ * au crop de la review. Sert à départager les pièces du groupe (pays+année) ou
+ * les designs standard quand le top-K open-vocab abstient (la bonne réponse est
+ * enterrée sous des pays voisins). Couche d'aide → renvoie null sur tout échec
+ * (réseau, 4xx, hors-scope) plutôt que de bloquer le flow de review.
+ */
+export async function rankCandidates(
+  reviewId: string,
+  eurioIds: string[],
+): Promise<RankCandidatesResult | null> {
+  if (!eurioIds.length) return null
+  try {
+    return await safeFetch<RankCandidatesResult>(
+      `/review-queue/${encodeURIComponent(reviewId)}/rank-candidates`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ eurio_ids: eurioIds }),
+      },
+    )
+  } catch {
+    return null
+  }
+}
+
+// ─── Auto-crop score-guided (probe → balayage rayon → meilleur crop) ─────
+
+export interface AutoCropResult {
+  applied: boolean
+  /** Score probe du crop actuel et du meilleur candidat (comparables). */
+  baseline_score: number | null
+  best_score: number | null
+  /** Rayon retenu / rayon actuel (ex. 1.8 = pièce 1.8× plus grande). */
+  ratio: number | null
+  /** 'improved' (écrit) · 'already_optimal' (rien) · 'no_candidate'. */
+  reason: string
+}
+
+/**
+ * Auto-crop « propose & recrop » : balaye le rayon autour de la bbox actuelle,
+ * score chaque candidat avec la probe gelée, et écrit le meilleur crop SEULEMENT
+ * s'il bat franchement l'actuel (sinon « déjà optimal »). Outil à tenter avant le
+ * recadrage manuel. Lève sur échec backend (l'appelant surface le message).
+ */
+export async function autoCropReview(reviewId: string): Promise<AutoCropResult> {
+  const real = await safeFetch<AutoCropResult>(
+    `/review-queue/${encodeURIComponent(reviewId)}/auto-crop`,
+    { method: 'POST' },
+  )
+  if (real === null) {
+    throw new Error('Backend indisponible — l’auto-crop requiert l’API ML locale.')
+  }
+  return real
+}
+
 // ─── Dashboard triage stats ──────────────────────────────────────────────
 
 export interface TriageVerdictCounts {

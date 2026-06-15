@@ -3015,6 +3015,163 @@ def get_dino_suggestions_for_review(
     return _build_dino_response(row["image_asset_id"], anchors_kind)
 
 
+# ── Départage Dino en ensemble fermé (candidats de groupe / standards) ──
+#
+# Le top-K open-vocab enterre la bonne réponse quand le crop est ambigu : sur
+# une 2€ commémo IT 2016, Donatello sort #6 (derrière des Monaco à sim plus
+# haute) et l'abstention « incertain » se déclenche. Mais quand le reviewer a
+# déjà un ENSEMBLE de candidats plausibles (pièces du même groupe pays+année,
+# ou designs standard du pays), Dino sait très bien les départager : on compare
+# le crop UNIQUEMENT à ces candidats et on classe. Sert à pré-focuser le
+# gagnant côté front (UX : « fais tourner Dino entre les 2 et propose »).
+
+
+class RankCandidatesPayload(BaseModel):
+    eurio_ids: list[str] = Field(min_length=1, max_length=50)
+
+
+class RankedCandidate(BaseModel):
+    eurio_id: str
+    sim: float
+
+
+class RankCandidatesResponse(BaseModel):
+    anchors_kind: str
+    encoder_version: str | None
+    ranked: list[RankedCandidate]
+    # eurio_ids fournis mais absents de la banque d'ancres (pas classables).
+    missing: list[str]
+
+
+# Consumed by: admin/.../review/composables/useReviewApi.ts (rankCandidates)
+@router.post(
+    "/{review_id}/rank-candidates",
+    response_model=RankCandidatesResponse,
+)
+def rank_candidates_for_review(
+    review_id: str,
+    payload: RankCandidatesPayload,
+    anchors_kind: str = Query(default=SUGGESTIONS_ANCHORS_KIND),
+) -> RankCandidatesResponse:
+    """Classe un ensemble FERMÉ de candidats (eurio_ids) par similarité Dino au
+    crop de la review. Pas d'abstention : l'appelant a restreint l'espace.
+    Encode le crop une fois et compare aux seules ancres demandées."""
+    from sources._base.steps.auto_validate import rank_eurio_ids_for_crop
+    from shared.storage.local_cache import local_path
+
+    asset_id = _asset_id_for_review(review_id)
+    conn = _store()._connection()  # noqa: SLF001
+    row = conn.execute(
+        "SELECT storage_path FROM image_assets WHERE id = ?", (asset_id,),
+    ).fetchone()
+    if row is None or not row["storage_path"]:
+        raise HTTPException(status_code=410, detail="Crop unavailable.")
+    try:
+        crop_path = local_path("enrichment-crops", row["storage_path"])
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=410, detail=f"Crop missing: {exc}") from exc
+    result = rank_eurio_ids_for_crop(
+        crop_path, payload.eurio_ids, anchors_kind=anchors_kind,
+    )
+    return RankCandidatesResponse(**result)
+
+
+# ── Auto-crop score-guided (probe → balayage rayon → meilleur crop) ─────
+#
+# Outil « propose & recrop » de la review : on tente AVANT le recadrage manuel
+# (E). Réutilise la stratégie A déjà prouvée au banc (recovery 86 %, IoU 0,87) :
+# `search_best_crop` part de la bbox actuelle comme hint, balaie le rayon, score
+# chaque candidat avec la probe gelée (`face_scores`) et rend le meilleur. On
+# n'écrase le crop QUE s'il bat franchement l'actuel (mêmes gardes floor/margin
+# que `recrop_review_score_guided`) → un crop déjà bon n'est pas touché. Écriture
+# via le chemin canonique `apply_manual_crop` (cache+MinIO+DB, eurio_id/statut
+# préservés, re-Dino) : un recadrage ≠ une décision. Rayon-only pour l'instant
+# (le balayage du centre, pour les clips décalés, viendra dans un 2ᵉ temps).
+
+_AUTOCROP_FLOOR = 0.55   # le crop retenu doit passer le gate (pièce entière valide)
+# Marge plus basse que le batch (0,12) : l'auto-crop est INTERACTIF (humain dans
+# la boucle, déclenché sur un crop jugé mauvais, résultat visible + recadrage
+# manuel possible). Mesuré au banc : les récupérations de crops décalés
+# (center-sweep) gagnent +0,08 à +0,11 → 0,12 les raterait ; les crops déjà bons
+# ne bougent que de ~0,02 → 0,05 sépare proprement les deux.
+_AUTOCROP_MARGIN = 0.05
+
+
+class AutoCropResponse(BaseModel):
+    applied: bool
+    # Score probe du crop ACTUEL (baseline) et du MEILLEUR candidat trouvé.
+    # Comparables (même pipeline de scoring). null si aucun candidat.
+    baseline_score: float | None
+    best_score: float | None
+    # Rayon retenu / rayon actuel (ex. 1,8 = pièce 1,8× plus grande que la bbox).
+    ratio: float | None
+    # "improved" (écrit) | "already_optimal" (rien) | "no_candidate" (rien).
+    reason: str
+
+
+# Consumed by: admin/.../review/composables/useReviewApi.ts (autoCropReview)
+@router.post("/{review_id}/auto-crop", response_model=AutoCropResponse)
+def auto_crop_for_review(
+    review_id: str,
+    floor: float = Query(default=_AUTOCROP_FLOOR),
+    margin: float = Query(default=_AUTOCROP_MARGIN),
+) -> AutoCropResponse:
+    """Recadre la pièce par balayage de rayon scoré (probe), depuis la bbox
+    actuelle. Écrit le nouveau crop seulement s'il améliore franchement le
+    score (≥ floor ET delta ≥ margin) ; sinon ne touche à rien."""
+    import cv2
+
+    from shared.storage.local_cache import local_path
+    from vision.score_recover import search_best_crop
+    from serving.crop_edit import _hint_from_bbox, apply_manual_crop
+
+    asset_id = _asset_id_for_review(review_id)
+    conn = _store()._connection()  # noqa: SLF001
+    row = conn.execute(
+        """
+        SELECT a.bbox_json, si.storage_path AS raw_sp
+          FROM image_assets a JOIN source_images si ON si.id = a.source_image_id
+         WHERE a.id = ?
+        """,
+        (asset_id,),
+    ).fetchone()
+    if row is None or not row["raw_sp"]:
+        raise HTTPException(status_code=410, detail="Raw image unavailable.")
+    hint = _hint_from_bbox(row["bbox_json"])
+    if hint is None:
+        raise HTTPException(status_code=422, detail="No bbox to anchor the search.")
+    try:
+        raw_p = local_path("enrichment-raws", row["raw_sp"])
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=410, detail=f"Raw missing: {exc}") from exc
+    bgr = cv2.imread(str(raw_p), cv2.IMREAD_COLOR)
+    if bgr is None or bgr.size == 0:
+        raise HTTPException(status_code=410, detail="Raw unreadable.")
+
+    best = search_best_crop(bgr, hint, sweep_center=True)
+    if best is None or best["result"].image is None:
+        return AutoCropResponse(
+            applied=False, baseline_score=None, best_score=None,
+            ratio=None, reason="no_candidate",
+        )
+    baseline = float(best["baseline_score"])
+    score = float(best["score"])
+    improved = score >= floor and (score - baseline) >= margin
+    if not improved:
+        return AutoCropResponse(
+            applied=False, baseline_score=baseline, best_score=score,
+            ratio=float(best["ratio"]), reason="already_optimal",
+        )
+    res = best["result"]
+    apply_manual_crop(
+        _store(), asset_id, float(res.cx), float(res.cy), float(res.r),
+    )
+    return AutoCropResponse(
+        applied=True, baseline_score=baseline, best_score=score,
+        ratio=float(best["ratio"]), reason="improved",
+    )
+
+
 # ── Listing text signals (chunk 5 auto-validation) ─────────────────────
 #
 # Expose les signaux extraits par ml/sources/text_signals depuis le

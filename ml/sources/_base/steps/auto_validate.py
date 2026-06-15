@@ -532,6 +532,56 @@ def predict_and_persist_kinds(
     return out
 
 
+# Called by: ml/review/review_queue_routes.py (endpoint rank-candidates) —
+# départage Dino en ENSEMBLE FERMÉ entre des candidats CONNUS (pièces du
+# groupe / designs standard du pays). Différent du top-K open-vocab : là on ne
+# cherche pas la pièce dans toute la banque (qui enterre la bonne réponse sous
+# des pays voisins à forte sim — ex. Donatello #6 derrière des Monaco), on
+# compare le crop UNIQUEMENT aux candidats fournis et on classe. Pas
+# d'abstention : l'appelant a déjà restreint l'espace à 2-N pièces plausibles.
+def rank_eurio_ids_for_crop(
+    crop_path: Path,
+    eurio_ids: list[str],
+    *,
+    anchors_kind: str = SUGGESTIONS_ANCHORS_KIND,
+) -> dict[str, Any]:
+    """Classe ``eurio_ids`` par similarité Dino décroissante au crop.
+
+    Retourne ``{"anchors_kind", "encoder_version", "ranked": [{"eurio_id",
+    "sim"}], "missing": [...]}`` où ``ranked`` est trié sim décroissante et
+    ``missing`` liste les eurio_ids absents de la banque (pas d'ancre → non
+    classables). ``ranked`` vide si la banque manque ou le crop est illisible
+    (l'appelant dégrade proprement — c'est une aide, pas un bloqueur)."""
+    empty = {
+        "anchors_kind": anchors_kind, "encoder_version": None,
+        "ranked": [], "missing": list(eurio_ids),
+    }
+    if not eurio_ids:
+        return {**empty, "missing": []}
+    bank = _get_bank(anchors_kind)
+    if bank is None or not crop_path.is_file():
+        return empty
+    encoder, device, transform = _get_encoder_singleton(bank.encoder_version)
+    vec = encode_image(crop_path, encoder=encoder, device=device, transform=transform)
+    sims = bank.matrix @ vec  # (N,) — banque L2-normalisée, vec L2-normalisé
+    index = {eid: i for i, eid in enumerate(bank.eurio_ids)}
+    ranked: list[dict[str, Any]] = []
+    missing: list[str] = []
+    for eid in eurio_ids:
+        i = index.get(eid)
+        if i is None:
+            missing.append(eid)
+        else:
+            ranked.append({"eurio_id": eid, "sim": float(sims[i])})
+    ranked.sort(key=lambda r: r["sim"], reverse=True)
+    return {
+        "anchors_kind": anchors_kind,
+        "encoder_version": bank.encoder_version,
+        "ranked": ranked,
+        "missing": missing,
+    }
+
+
 def _run_inner(
     *,
     conn: sqlite3.Connection,

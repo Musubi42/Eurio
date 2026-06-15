@@ -9,15 +9,18 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { AlertTriangle, Keyboard, Search, Sparkles, Undo2, Wand2 } from 'lucide-vue-next'
 import {
+  autoCropReview,
   correctListing,
   decideReviewItem,
   fetchMarketQuotes,
   fetchReviewQueue,
   fetchReviewStats,
   moveReviewLaneToManual,
+  rankCandidates,
   rejectReviewItem,
   requalifyReviewAsLot,
   skipReviewItem,
+  type AutoCropResult,
   type ConditionTier,
   type ListingKind,
   type MarketQuote,
@@ -65,6 +68,10 @@ const showHelp = ref(false)
 // le crop affiché après écrasement côté backend.
 const showCropEditor = ref(false)
 const cropBust = ref(0)
+// Auto-crop score-guidé (touche A) : état pendant le calcul + dernier résultat
+// (score baseline → best) affiché sur le bouton. Reset à chaque item.
+const autoCropBusy = ref(false)
+const autoCropResult = ref<AutoCropResult | null>(null)
 // Mode de la colonne droite : 'auto' = Top N + DinoSuggestions ;
 // 'free' = FreeSelectorPanel inline (cascade pays/dénom/année).
 // Reset à 'auto' à chaque changement d'item.
@@ -276,6 +283,7 @@ function resetForCurrent() {
   correctedCondition.value = null
   cropBust.value = 0
   showCropEditor.value = false
+  autoCropResult.value = null
   void loadMarketQuotes()
   // Pré-sélection : la pièce proposée (target_candidate, theme-match) bat
   // le top-1 auto-name. ~80 % des reviews valident la proposition —
@@ -287,8 +295,45 @@ function resetForCurrent() {
   } else {
     const top1 = currentItem.value?.candidates[0]
     focusedCandidateIdx.value = top1 && top1.score >= 0.5 ? 0 : null
+    // Pas de proposition theme-match, mais un ENSEMBLE de candidats connus
+    // (pièces du groupe pays+année, ou designs standard du pays) : Dino sait
+    // les départager même quand le top-K open-vocab abstient (la bonne réponse
+    // est enterrée sous des pays voisins). On classe en ensemble fermé et on
+    // pré-focus le gagnant. Async → garde-fou anti-race dans le helper.
+    void autoRankGroupCandidates()
   }
   face.value = currentItem.value?.face_detected ?? 'obverse'
+}
+
+/** Départage Dino des candidats de groupe/standard quand aucune proposition
+ *  theme-match n'existe. Pré-focus le gagnant (sim la plus haute). No-op s'il
+ *  n'y a pas d'ensemble de candidats, ou si l'utilisateur a déjà choisi /
+ *  changé d'item pendant le calcul. */
+async function autoRankGroupCandidates() {
+  const item = currentItem.value
+  if (!item) return
+  const pool = [...(item.group_candidates ?? []), ...(item.standard_candidates ?? [])]
+  if (pool.length === 0) return
+  const eurioIds = [...new Set(pool.map((c) => c.eurio_id))]
+  const result = await rankCandidates(item.id, eurioIds)
+  // Garde-fou : l'utilisateur a pu avancer d'item ou choisir une pièce pendant
+  // l'encodage Dino → ne rien écraser dans ces cas.
+  if (!result?.ranked.length) return
+  if (currentItem.value?.id !== item.id) return
+  if (freeSearchCandidate.value || focusedCandidateIdx.value !== null) return
+  const winnerId = result.ranked[0].eurio_id
+  const winner = pool.find((c) => c.eurio_id === winnerId)
+  if (!winner) return
+  freeSearchCandidate.value = winner
+  focusedCandidateIdx.value = null
+  const top = result.ranked[0]
+  const runner = result.ranked[1]
+  const pct = (s: number) => `${(s * 100).toFixed(0)}%`
+  flashTopNotice(
+    runner
+      ? `Dino : ${winner.label} (${pct(top.sim)}) pré-sélectionné · ${pct(runner.sim)} pour le 2ᵉ`
+      : `Dino : ${winner.label} (${pct(top.sim)}) pré-sélectionné`,
+  )
 }
 
 function selectTarget() {
@@ -624,6 +669,51 @@ function onCropSaved() {
   dinoReloadKey.value += 1
 }
 
+// Auto-crop score-guidé (A) : balaye le rayon autour de la bbox, score chaque
+// candidat avec la probe, écrit le meilleur SEULEMENT s'il bat franchement
+// l'actuel. À tenter AVANT le recadrage manuel (E). Le résultat (score baseline
+// → best) reste affiché sur le bouton.
+async function runAutoCrop() {
+  const item = currentItem.value
+  if (!item || autoCropBusy.value) return
+  autoCropBusy.value = true
+  autoCropResult.value = null
+  const pct = (s: number | null) => (s === null ? '—' : `${Math.round(s * 100)}%`)
+  try {
+    const res = await autoCropReview(item.id)
+    // Garde-fou : l'utilisateur a pu avancer d'item pendant le calcul.
+    if (currentItem.value?.id !== item.id) return
+    autoCropResult.value = res
+    if (res.applied) {
+      cropBust.value = Date.now()   // réaffiche le nouveau crop (overwrite serveur)
+      dinoReloadKey.value += 1      // crop changé → suggestions Dino à recalculer
+      flashTopNotice(
+        `Auto-crop appliqué : ${pct(res.baseline_score)} → ${pct(res.best_score)} (×${res.ratio?.toFixed(2)})`,
+      )
+    } else if (res.reason === 'already_optimal') {
+      flashTopNotice(
+        `Crop déjà optimal (${pct(res.baseline_score)}) — recadre à la main (E) si besoin`,
+      )
+    } else {
+      flashTopNotice('Auto-crop : aucun meilleur cadrage trouvé — recadre à la main (E)')
+    }
+  } catch (err) {
+    flashTopNotice(`Échec auto-crop : ${err instanceof Error ? err.message : String(err)}`)
+  } finally {
+    autoCropBusy.value = false
+  }
+}
+
+// Badge du bouton : « 62%→91% » si appliqué, sinon le score actuel.
+const autoCropBadge = computed<string | null>(() => {
+  const r = autoCropResult.value
+  if (!r) return null
+  const pct = (s: number | null) => (s === null ? '—' : `${Math.round(s * 100)}%`)
+  if (r.applied) return `${pct(r.baseline_score)}→${pct(r.best_score)}`
+  if (r.baseline_score !== null) return `${pct(r.baseline_score)} ✓`
+  return null
+})
+
 useReviewKeybinds(keyboardEnabled, {
   onCandidateFocus: focusCandidate,
   onValidate: validateCurrent,
@@ -636,6 +726,7 @@ useReviewKeybinds(keyboardEnabled, {
   onCycleCondition: cycleCondition,
   onAcceptDino: acceptDino,
   onRecrop: () => { if (currentItem.value) showCropEditor.value = true },
+  onAutoCrop: runAutoCrop,
   onRequalifyLot: requalifyCurrentAsLot,
 })
 </script>
@@ -773,6 +864,23 @@ useReviewKeybinds(keyboardEnabled, {
                 <Boxes class="h-3 w-3" />
                 Requalifier en lot
                 <span class="font-mono text-[9px] opacity-70">L</span>
+              </button>
+              <button
+                type="button"
+                class="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-mono uppercase tracking-wider transition-colors disabled:opacity-60"
+                style="border-color: var(--surface-3); color: var(--indigo-700); background: var(--surface-1);"
+                title="Auto-crop score-guidé (probe) — à tenter avant le recadrage manuel · A"
+                :disabled="autoCropBusy"
+                @click="runAutoCrop"
+              >
+                <Wand2 class="h-3 w-3" :class="{ 'animate-spin': autoCropBusy }" />
+                Auto-crop
+                <span
+                  v-if="autoCropBadge"
+                  class="font-mono text-[10px] normal-case"
+                  style="color: var(--ink-500);"
+                >{{ autoCropBadge }}</span>
+                <span class="font-mono text-[9px] opacity-70">A</span>
               </button>
               <button
                 type="button"
@@ -997,6 +1105,8 @@ useReviewKeybinds(keyboardEnabled, {
           <dd style="color: var(--ink-500);">Corriger l'état de la pièce (cycle)</dd>
           <dt class="font-mono text-[12px]" style="color: var(--indigo-700);">D</dt>
           <dd style="color: var(--ink-500);">Accepter la suggestion DINOv2 top-1 (si disponible)</dd>
+          <dt class="font-mono text-[12px]" style="color: var(--indigo-700);">A</dt>
+          <dd style="color: var(--ink-500);">Auto-crop score-guidé (probe) — à tenter avant le recadrage manuel</dd>
           <dt class="font-mono text-[12px]" style="color: var(--ink-700);">E</dt>
           <dd style="color: var(--ink-500);">Recadrer le crop manuellement (⏎ valide le recadrage)</dd>
           <dt class="font-mono text-[12px]" style="color: var(--ink-700);">L</dt>

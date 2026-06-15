@@ -30,6 +30,12 @@ _RADIUS_ABS_FRAC = [0.12, 0.18, 0.24, 0.30, 0.36, 0.42]
 # Affinage autour du meilleur rayon (resserre).
 _RADIUS_FINE = [0.85, 0.92, 0.96, 1.0, 1.04, 1.08, 1.15]
 _RCAP_FRAC = 0.48  # un candidat ne dépasse pas cette fraction du petit côté (anti sur-crop fond)
+# Balayage du CENTRE (offsets en fraction de r0) — optionnel, pour les crops
+# DÉCALÉS que le balayage de rayon (centre fixe) ne peut pas rattraper. Mesuré au
+# banc probe sur les 10 crops les plus partiels : +0,03 à +0,10 de score vs
+# rayon-seul sur ~6/10 (gain nul sur les autres → garde le centre). Coût = grille
+# de probes en plus → réservé à l'auto-crop interactif (sweep_center=True).
+_CENTER_OFFSETS_FRAC = [-0.3, -0.2, -0.1, 0.0, 0.1, 0.2, 0.3]
 
 
 def _clamp_center(cx, cy, r, W, H):
@@ -54,7 +60,9 @@ def _score_specs(bgr, specs, config):
     return [(cx, cy, r, float(s), res) for (cx, cy, r, res), s in zip(kept, scores)]
 
 
-def search_best_crop(bgr: np.ndarray, hint: dict, config=None) -> dict | None:
+def search_best_crop(
+    bgr: np.ndarray, hint: dict, config=None, sweep_center: bool = False,
+) -> dict | None:
     """Balayage de rayon scoré autour du `hint` → meilleur crop pièce-entière (sans gate).
 
     `hint` = {cx, cy, r_final|r} de la détection / bbox actuelle (coords natives). Retourne
@@ -105,6 +113,64 @@ def search_best_crop(bgr: np.ndarray, hint: dict, config=None) -> dict | None:
     fine_scored = _score_specs(bgr, fine, config)
     if fine_scored:
         best = max([best] + fine_scored, key=lambda t: t[3])
+
+    # Étage 3 (optionnel) : balayage du CENTRE au meilleur rayon courant, puis
+    # re-affinage du rayon au nouveau centre. Rattrape les crops décalés que les
+    # étages rayon-seul (centre = hint) ne peuvent pas corriger. Ancré sur le
+    # centre du hint (cx0, cy0) ± offsets·r0 — un crop décalé a son vrai centre à
+    # une fraction du rayon de la bbox.
+    if sweep_center:
+        br = best[2]
+        # Grille de centre menée à DEUX rayons (le meilleur courant et 0,85× plus
+        # serré) : un crop décalé a souvent un vrai centre déplacé ET un rayon plus
+        # petit en même temps (optimum joint que la descente rayon-puis-centre
+        # raterait sinon — mesuré sur 909255c5).
+        sweep_radii = [br]
+        if int(round(0.85 * br)) >= 8:
+            sweep_radii.append(0.85 * br)
+        cspecs, seenc = [], set()
+        for sr in sweep_radii:
+            for ox in _CENTER_OFFSETS_FRAC:
+                for oy in _CENTER_OFFSETS_FRAC:
+                    ccx, ccy = _clamp_center(cx0 + ox * r0, cy0 + oy * r0, sr, W, H)
+                    key = (int(round(ccx)), int(round(ccy)), int(round(sr)))
+                    if key in seenc:
+                        continue
+                    seenc.add(key)
+                    cspecs.append((ccx, ccy, sr))
+        cscored = _score_specs(bgr, cspecs, config)
+        if cscored:
+            best = max([best] + cscored, key=lambda t: t[3])
+            # Affinage du centre autour du gagnant (la grille grossière au pas 0,1
+            # rate les optima intermédiaires, ex. décalage à −0,15·r0). ±0,05/±0,1·r0.
+            bcx, bcy = best[0], best[1]
+            br = best[2]
+            rspecs, seenr = [], {(int(round(bcx)), int(round(bcy)))}
+            for ox in (-0.1, -0.05, 0.05, 0.1):
+                for oy in (-0.1, -0.05, 0.0, 0.05, 0.1):
+                    ccx, ccy = _clamp_center(bcx + ox * r0, bcy + oy * r0, br, W, H)
+                    key = (int(round(ccx)), int(round(ccy)))
+                    if key in seenr:
+                        continue
+                    seenr.add(key)
+                    rspecs.append((ccx, ccy, br))
+            rscored = _score_specs(bgr, rspecs, config)
+            if rscored:
+                best = max([best] + rscored, key=lambda t: t[3])
+            # Re-affine le rayon au centre gagnant (le bon rayon dépend du centre).
+            bcx, bcy, br = best[0], best[1], best[2]
+            fine2, seenf2 = [], {int(round(br))}
+            for m in _RADIUS_FINE:
+                r = min(br * m, rcap)
+                rk = int(round(r))
+                if rk < 8 or rk in seenf2:
+                    continue
+                seenf2.add(rk)
+                ccx, ccy = _clamp_center(bcx, bcy, r, W, H)
+                fine2.append((ccx, ccy, r))
+            fine2_scored = _score_specs(bgr, fine2, config)
+            if fine2_scored:
+                best = max([best] + fine2_scored, key=lambda t: t[3])
 
     return {"result": best[4], "score": best[3], "baseline_score": baseline_score,
             "ratio": best[2] / r0}
