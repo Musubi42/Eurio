@@ -14,6 +14,13 @@
 > **MàJ 2026-06-10 : C0→C3 implémentés** (nouveau package `ml/review/validation/`). Voir le
 > **Journal §8** pour le détail + l'état exact. Reste avant bascule live : mesurer le rescue des
 > ex-contradicts *tués* (hors gold) + persister/câbler le consensus en prod, puis C4-C5.
+>
+> **MàJ 2026-06-15 : lane `ccproxy` RETIRÉE** (décision PO, hors ce chantier). Les lanes de review
+> sont désormais **manual + auto_accept** uniquement ; `consensus.py` mappe partial/divergent/
+> crop_cap/contradict-rescue → `manual` (plus `ccproxy`). Toutes les mentions « lane ccproxy »
+> ci-dessous sont **historiques**. Les features Claude-vision *hors review-queue* (standard_gate,
+> obverse_group) sont conservées. Migration : `consensus_verdicts.lane` + `review_queue.lane`
+> 'ccproxy'→'manual'.
 
 ## 1. État actuel (cartographié sur le code, 2026-06-08)
 
