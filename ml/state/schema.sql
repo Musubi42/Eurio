@@ -289,7 +289,8 @@ CREATE TABLE IF NOT EXISTS source_runs (
   n_errors           INTEGER NOT NULL DEFAULT 0,
   filters_json    TEXT,
   log_path        TEXT,
-  error_summary   TEXT
+  error_summary   TEXT,
+  pid             INTEGER                              -- pid du process qui tient le run (anti-orphan : ne reaper que si pid mort)
 );
 
 CREATE INDEX IF NOT EXISTS idx_source_runs_source_started

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sqlite3
 import traceback
 import uuid
@@ -191,8 +192,8 @@ def start_run(
             log_path, log_handler = None, None
     conn.execute(
         """
-        INSERT INTO source_runs (id, source, kind, started_at, status, filters_json, log_path)
-        VALUES (?, ?, ?, datetime('now'), 'running', ?, ?)
+        INSERT INTO source_runs (id, source, kind, started_at, status, filters_json, log_path, pid)
+        VALUES (?, ?, ?, datetime('now'), 'running', ?, ?, ?)
         """,
         (
             run_id,
@@ -200,6 +201,7 @@ def start_run(
             kind,
             json.dumps(filters or {}, ensure_ascii=False),
             log_path,
+            os.getpid(),  # anti-orphan : reset_orphan_runs ne reape que si ce pid est mort
         ),
     )
     return _RunContext(

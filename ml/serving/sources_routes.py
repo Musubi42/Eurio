@@ -2631,21 +2631,39 @@ def ebay_filter_config() -> EbayFilterConfig:
 
 
 def reset_orphan_runs(store: Store) -> int:
-    """Flip rows left in `status='running'` from a previous process to
-    `'failed'`. Returns the number of rows touched.
+    """Flip rows left in `status='running'` whose process is DEAD to `'failed'`.
+    Returns the number of rows touched.
 
-    Called by the FastAPI startup hook in `server.py`. Without this,
-    if uvicorn is killed mid-run, the next request sees the orphan as
-    "still running" and refuses to start a new one (anti-double-run).
+    Called by the FastAPI startup hook in `server.py`. Without this, if uvicorn
+    is killed mid-run, the next request sees the orphan as "still running" and
+    refuses to start a new one (anti-double-run).
+
+    PID-aware (comme `jobs.reaper` / `cohort_jobs`) : un run dont le ``pid`` est
+    encore VIVANT n'est PAS reapé — sinon un simple reload uvicorn (--reload sur
+    édition de code) tuait le scrape foreground en cours (« ça plante »). Les
+    runs legacy sans pid (NULL) sont reapés comme avant (on ne peut pas vérifier).
     """
+    from jobs import _pid_alive
+
     conn = store._connection()  # noqa: SLF001
-    cur = conn.execute(
-        """
+    rows = conn.execute(
+        "SELECT id, pid FROM source_runs WHERE status = 'running'"
+    ).fetchall()
+    orphan_ids = [
+        r[0] for r in rows
+        if not (r[1] and _pid_alive(int(r[1])))  # pid NULL ou mort → orphan
+    ]
+    if not orphan_ids:
+        return 0
+    placeholders = ",".join("?" * len(orphan_ids))
+    conn.execute(
+        f"""
         UPDATE source_runs
            SET status = 'failed',
                ended_at = COALESCE(ended_at, datetime('now')),
                error_summary = COALESCE(error_summary, 'process restart — orphan run')
-         WHERE status = 'running'
-        """
+         WHERE id IN ({placeholders})
+        """,
+        orphan_ids,
     )
-    return cur.rowcount or 0
+    return len(orphan_ids)
