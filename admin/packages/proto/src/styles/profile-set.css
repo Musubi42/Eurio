@@ -9,8 +9,8 @@
     overflow-x: hidden;
     /* Own scroll container overrides #view padding-bottom: reclaim nav clearance. */
     padding-bottom: 104px;
-    background: var(--surface);
-    color: var(--ink);
+    background: var(--bg-grad);
+    color: var(--fg);
     font-variant-numeric: tabular-nums;
   }
 
@@ -144,7 +144,7 @@
     font-style: italic;
     font-weight: 400;
     font-size: 20px;
-    color: var(--ink);
+    color: var(--fg);
   }
   .profile-set-legend {
     display: inline-flex;
@@ -153,7 +153,7 @@
     font-size: 9px;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: var(--ink-400);
+    color: var(--fg-faint);
   }
   .profile-set-legend__item {
     display: inline-flex;
@@ -166,15 +166,15 @@
     background: radial-gradient(circle at 30% 30%, var(--gold-soft), var(--gold) 60%, var(--gold-deep));
   }
   .profile-set-legend__dot.is-missing {
-    background: var(--gray-200);
+    background: var(--card-border);
   }
 
   .profile-set-planche {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 10px;
-    background: var(--paper);
-    border: 1px solid var(--gray-100);
+    background: var(--card);
+    border: 1px solid var(--card-border);
     border-radius: var(--radius-lg);
     padding: var(--space-4);
   }
@@ -184,13 +184,13 @@
     gap: 10px;
     padding: 10px;
     border-radius: var(--radius-md);
-    background: var(--surface);
-    border: 1px solid var(--gray-100);
+    background: var(--bg-grad);
+    border: 1px solid var(--card-border);
   }
   .profile-set-cell.is-missing {
     background: transparent;
     border-style: dashed;
-    border-color: var(--gray-200);
+    border-color: var(--card-border);
   }
   .profile-set-disc {
     position: relative;
@@ -239,7 +239,7 @@
   .profile-set-disc.is-missing .profile-set-disc__val {
     color: var(--gray-400);
   }
-  .profile-set-disc.silver .profile-set-disc__val { color: var(--ink-700); }
+  .profile-set-disc.silver .profile-set-disc__val { color: var(--fg); }
   .profile-set-disc__check {
     position: absolute;
     top: -2px; right: -2px;
@@ -262,10 +262,10 @@
     font-weight: 500;
     font-size: 13px;
     line-height: 1.1;
-    color: var(--ink);
+    color: var(--fg);
   }
   .profile-set-cell.is-missing .profile-set-cell__title {
-    color: var(--ink-400);
+    color: var(--fg-faint);
     font-style: italic;
   }
   .profile-set-cell__meta {
@@ -273,15 +273,15 @@
     font-size: 9px;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: var(--ink-400);
+    color: var(--fg-faint);
     margin-top: 3px;
   }
 
   /* Missing section */
   .profile-set-missing {
     margin-top: var(--space-7);
-    background: var(--paper);
-    border: 1px solid var(--gray-100);
+    background: var(--card);
+    border: 1px solid var(--card-border);
     border-radius: var(--radius-lg);
     padding: var(--space-5);
   }
@@ -290,7 +290,7 @@
     font-style: italic;
     font-weight: 400;
     font-size: 17px;
-    color: var(--ink);
+    color: var(--fg);
     margin-bottom: var(--space-3);
   }
   .profile-set-missing ul {
@@ -302,11 +302,11 @@
     align-items: center;
     gap: 10px;
     padding: 10px 0;
-    border-top: 1px solid var(--gray-100);
+    border-top: 1px solid var(--hairline);
     font-size: var(--text-sm);
   }
   .profile-set-missing li:first-child { border-top: 0; }
-  .profile-set-missing__name { flex: 1; color: var(--ink); }
+  .profile-set-missing__name { flex: 1; color: var(--fg); }
   .profile-set-missing__cta {
     font-family: var(--font-mono);
     font-size: 10px;

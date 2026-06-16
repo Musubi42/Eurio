@@ -7,8 +7,8 @@
     inset: 0;
     overflow-y: auto;
     overflow-x: hidden;
-    background: var(--surface);
-    color: var(--ink);
+    background: var(--bg-grad);
+    color: var(--fg);
     /* Own scroll container overrides #view padding-bottom: 104px reclaims nav clearance. */
     padding: 56px var(--space-5) 104px;
   }
@@ -23,12 +23,12 @@
   .profile-settings-head__back {
     width: 38px; height: 38px;
     border-radius: var(--radius-full);
-    background: var(--surface-1);
-    border: 1px solid var(--gray-100);
+    background: var(--icon-btn-bg);
+    border: 1px solid var(--card-border);
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    color: var(--ink);
+    color: var(--fg);
   }
   .profile-settings-head__back svg {
     width: 16px; height: 16px;
@@ -39,13 +39,13 @@
     font-style: italic;
     font-weight: 400;
     font-size: var(--text-xl);
-    color: var(--ink);
+    color: var(--fg);
   }
 
   /* Group */
   .profile-settings-group {
-    background: var(--paper);
-    border: 1px solid var(--gray-100);
+    background: var(--card);
+    border: 1px solid var(--card-border);
     border-radius: var(--radius-lg);
     padding: var(--space-4) var(--space-5);
     margin-bottom: var(--space-5);
@@ -60,7 +60,7 @@
     content: "";
     flex: 1;
     height: 1px;
-    background: linear-gradient(90deg, var(--gray-200), transparent);
+    background: linear-gradient(90deg, var(--hairline), transparent);
   }
   .profile-settings-group__badge {
     font-family: var(--font-mono);
@@ -79,9 +79,9 @@
     align-items: center;
     gap: var(--space-3);
     padding: var(--space-3) 0;
-    border-top: 1px solid var(--gray-100);
+    border-top: 1px solid var(--hairline);
     font-size: var(--text-sm);
-    color: var(--ink);
+    color: var(--fg);
     width: 100%;
     text-align: left;
     min-height: 44px;
@@ -89,17 +89,17 @@
   .profile-settings-row:first-of-type { border-top: 0; }
   .profile-settings-row__label {
     flex: 1;
-    color: var(--ink);
+    color: var(--fg);
     font-weight: 500;
   }
   .profile-settings-row__help {
     font-size: 11px;
-    color: var(--ink-400);
+    color: var(--fg-faint);
     margin-top: 2px;
     font-weight: 400;
   }
   .profile-settings-row__arrow {
-    color: var(--ink-300);
+    color: var(--fg-faint);
     font-family: var(--font-mono);
   }
 
@@ -134,7 +134,7 @@
     display: flex;
     gap: 2px;
     padding: 2px;
-    background: var(--gray-100);
+    background: var(--seg-track);
     border-radius: var(--radius-md);
     margin-top: var(--space-3);
   }
@@ -145,12 +145,12 @@
     font-family: var(--font-ui);
     font-size: var(--text-xs);
     font-weight: 500;
-    color: var(--ink-500);
+    color: var(--fg-muted);
     min-height: 32px;
   }
   .profile-settings-seg button[aria-pressed="true"] {
-    background: var(--surface);
-    color: var(--ink);
+    background: var(--seg-active);
+    color: var(--fg);
     box-shadow: var(--shadow-sm);
   }
 
@@ -158,11 +158,11 @@
   .profile-settings-select {
     font-family: var(--font-mono);
     font-size: 11px;
-    color: var(--ink-700);
-    background: var(--surface-1);
+    color: var(--fg);
+    background: var(--icon-btn-bg);
     padding: 6px 10px;
     border-radius: var(--radius-sm);
-    border: 1px solid var(--gray-100);
+    border: 1px solid var(--card-border);
     letter-spacing: 0.04em;
   }
 
@@ -183,7 +183,7 @@
   .profile-settings-debug {
     margin-top: var(--space-5);
     padding-top: var(--space-4);
-    border-top: 1px dashed var(--gray-200);
+    border-top: 1px dashed var(--hairline);
   }
   .profile-settings-debug__eyebrow {
     color: var(--danger);
@@ -197,7 +197,7 @@
     align-items: center;
     gap: var(--space-3);
     padding: var(--space-4);
-    border: 1px dashed var(--gray-200);
+    border: 1px dashed var(--card-border);
     border-radius: var(--radius-md);
     margin-top: var(--space-3);
   }
@@ -205,19 +205,19 @@
     width: 34px; height: 34px;
     flex: 0 0 34px;
     border-radius: 50%;
-    background: var(--surface-1);
+    background: var(--icon-btn-bg);
     display: inline-flex;
     align-items: center;
     justify-content: center;
     font-family: var(--font-display);
     font-style: italic;
     font-weight: 500;
-    color: var(--ink-400);
+    color: var(--fg-faint);
   }
   .profile-settings-signin__label {
     flex: 1;
     font-size: var(--text-sm);
-    color: var(--ink);
+    color: var(--fg);
     font-weight: 500;
   }
 
@@ -228,11 +228,11 @@
     font-family: var(--font-mono);
     font-size: 10px;
     letter-spacing: 0.12em;
-    color: var(--ink-400);
+    color: var(--fg-faint);
     text-transform: uppercase;
   }
   .profile-settings-about b {
-    color: var(--ink);
+    color: var(--fg);
     font-weight: 600;
   }
   .profile-settings-about a {

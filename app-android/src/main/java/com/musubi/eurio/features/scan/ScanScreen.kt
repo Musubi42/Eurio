@@ -17,11 +17,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import com.musubi.eurio.features.scan.components.Coin3DViewer
-import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -30,11 +26,11 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.musubi.eurio.features.scan.components.CameraPreview
-import com.musubi.eurio.features.scan.components.ScanAcceptedCard
 import com.musubi.eurio.features.scan.components.ScanDebugOverlay
 import com.musubi.eurio.features.scan.components.ScanDetectingLayer
 import com.musubi.eurio.features.scan.components.ScanFailureLayer
 import com.musubi.eurio.features.scan.components.ScanIdleLayer
+import com.musubi.eurio.features.scan.components.ScanRevealLayer
 import com.musubi.eurio.features.scan.debug.DebugBarLauncher
 import com.musubi.eurio.features.scan.debug.ScanHud
 import com.musubi.eurio.features.scan.debug.ScanLockOverlay
@@ -127,35 +123,15 @@ fun ScanScreen(
                 is ScanUiState.Idle -> ScanIdleLayer()
                 is ScanUiState.Detecting -> ScanDetectingLayer()
                 is ScanUiState.Accepted -> {
-                    // Discovery moment (Phase 5) : the 3D viewer fills the
-                    // screen behind the AcceptedCard and plays a flip on every
-                    // new coin. The card slides in 400 ms later — the flip is
-                    // still mid-rotation when the card arrives, which reads as
-                    // "the coin lands and the sheet catches it".
-                    Coin3DViewer(
-                        eurioId = s.coin.eurioId,
-                        obverseImageUrl = s.coin.imageObverseUrl,
-                        reverseImageUrl = s.coin.imageReverseUrl,
-                        obverseMeta = s.coin.obversePhotoMeta,
-                        reverseMeta = s.coin.reversePhotoMeta,
-                        flipKey = s.coin.eurioId,
-                        modifier = Modifier.fillMaxSize(),
+                    // Reveal stratifié (portage proto ScanReveal.vue, Chunk A) :
+                    // un seul Coin3DViewer (flip de découverte sur flipKey) +
+                    // bottom sheet 2 crans. Le hero 3D et le sheet sont co-gérés
+                    // dans ScanRevealLayer pour partager la fraction d'ouverture.
+                    ScanRevealLayer(
+                        coin = s.coin,
+                        onCtaAdd = { viewModel.onAddToVault() },
+                        onRescan = { viewModel.onDismissCard() },
                     )
-                    var cardVisible by remember(s.coin.eurioId) { mutableStateOf(false) }
-                    LaunchedEffect(s.coin.eurioId) {
-                        delay(400)
-                        cardVisible = true
-                    }
-                    if (cardVisible) {
-                        ScanAcceptedCard(
-                            coin = s.coin,
-                            confidence = s.confidence,
-                            onDetail = { onOpenCoinDetail(s.coin.eurioId) },
-                            onAddToVault = { viewModel.onAddToVault() },
-                            onDismiss = { viewModel.onDismissCard() },
-                            modifier = Modifier.align(Alignment.BottomCenter),
-                        )
-                    }
                 }
                 is ScanUiState.NotIdentified -> {
                     // UX decision: scan is continuous like a QR scanner.

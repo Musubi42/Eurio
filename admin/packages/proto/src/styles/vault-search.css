@@ -3,8 +3,8 @@
 .vault-search-root {
     position: relative;
     min-height: 100%;
-    background: var(--surface);
-    color: var(--ink);
+    background: var(--bg-grad);
+    color: var(--fg);
     display: flex;
     flex-direction: column;
   }
@@ -14,22 +14,22 @@
     align-items: center;
     gap: var(--space-2);
     padding: var(--space-3) var(--space-4) var(--space-3);
-    background: var(--surface);
-    border-bottom: 1px solid rgba(14,14,31,0.06);
+    background: var(--bg);
+    border-bottom: 1px solid var(--hairline);
   }
   .vault-search-field {
     flex: 1;
     display: flex;
     align-items: center;
     gap: var(--space-2);
-    background: var(--surface-1);
-    border: 1px solid rgba(14,14,31,0.06);
+    background: var(--card);
+    border: 1px solid var(--hairline);
     border-radius: var(--radius-full);
     padding: 10px 14px;
   }
   .vault-search-field svg {
     width: 16px; height: 16px;
-    fill: none; stroke: var(--ink-400);
+    fill: none; stroke: var(--fg-faint);
     stroke-width: 1.8; stroke-linecap: round;
   }
   .vault-search-field input {
@@ -38,14 +38,14 @@
     background: none;
     font-family: var(--font-ui);
     font-size: var(--text-sm);
-    color: var(--ink);
+    color: var(--fg);
   }
-  .vault-search-field input::placeholder { color: var(--ink-400); }
+  .vault-search-field input::placeholder { color: var(--fg-faint); }
 
   .vault-search-cancel {
     font-family: var(--font-ui);
     font-size: var(--text-sm);
-    color: var(--indigo-700);
+    color: var(--accent);
     padding: 8px 4px;
     font-weight: 500;
   }
@@ -64,7 +64,7 @@
     font-size: 10px;
     text-transform: uppercase;
     letter-spacing: var(--tracking-eyebrow);
-    color: var(--ink-400);
+    color: var(--fg-faint);
     margin-bottom: var(--space-3);
     display: flex;
     align-items: center;
@@ -73,7 +73,7 @@
   .vault-search-section__count {
     font-family: var(--font-mono);
     font-size: 9px;
-    color: var(--ink-300);
+    color: var(--fg-faint);
   }
 
   .vault-search-results {
@@ -92,7 +92,7 @@
     cursor: pointer;
     transition: background var(--duration-fast) var(--ease-out);
   }
-  .vault-search-row:hover { background: var(--surface-1); }
+  .vault-search-row:hover { background: var(--card); }
   .vault-search-row__coin {
     width: 44px; height: 44px;
     flex: 0 0 44px;
@@ -108,7 +108,7 @@
   .vault-search-row__title {
     font-family: var(--font-display);
     font-size: var(--text-base);
-    color: var(--ink);
+    color: var(--fg);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -116,7 +116,7 @@
   .vault-search-row__sub {
     font-family: var(--font-mono);
     font-size: 10px;
-    color: var(--ink-400);
+    color: var(--fg-faint);
     letter-spacing: 0.06em;
     text-transform: uppercase;
   }
@@ -138,14 +138,14 @@
   .vault-search-empty {
     text-align: center;
     padding: var(--space-9) var(--space-6);
-    color: var(--ink-400);
+    color: var(--fg-faint);
   }
   .vault-search-empty h3 {
     font-family: var(--font-display);
     font-style: italic;
     font-size: var(--text-lg);
     font-weight: 400;
-    color: var(--ink);
+    color: var(--fg);
     margin-bottom: var(--space-3);
   }
   .vault-search-empty .vault-search-suggest {
@@ -158,8 +158,8 @@
   .vault-search-empty .vault-search-suggest button {
     padding: 6px 12px;
     border-radius: var(--radius-full);
-    background: var(--surface-1);
-    border: 1px solid var(--gray-100);
+    background: var(--card);
+    border: 1px solid var(--card-border);
     font-size: var(--text-xs);
-    color: var(--ink);
+    color: var(--fg);
   }

@@ -3,8 +3,8 @@
 .vault-filters-root {
     position: relative;
     min-height: 100%;
-    background: linear-gradient(180deg, var(--surface) 0%, var(--surface-1) 100%);
-    color: var(--ink);
+    background: var(--bg-grad);
+    color: var(--fg);
     display: flex;
     flex-direction: column;
     padding: var(--space-3) 0 0;
@@ -15,24 +15,24 @@
     align-items: center;
     justify-content: space-between;
     padding: var(--space-3) var(--space-5) var(--space-4);
-    border-bottom: 1px solid rgba(14,14,31,0.06);
+    border-bottom: 1px solid var(--hairline);
   }
   .vault-filters-head__title {
     font-family: var(--font-display);
     font-style: italic;
     font-size: var(--text-xl);
     font-weight: 400;
-    color: var(--ink);
+    color: var(--fg);
   }
   .vault-filters-close {
     width: 36px; height: 36px;
     border-radius: var(--radius-full);
-    background: var(--surface-1);
+    background: var(--icon-btn-bg);
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    color: var(--ink);
-    border: 1px solid rgba(14,14,31,0.08);
+    color: var(--fg);
+    border: 1px solid var(--hairline);
   }
   .vault-filters-close svg {
     width: 16px; height: 16px;
@@ -54,7 +54,7 @@
     font-size: 10px;
     text-transform: uppercase;
     letter-spacing: var(--tracking-eyebrow);
-    color: var(--ink-400);
+    color: var(--fg-faint);
     margin-bottom: var(--space-3);
   }
 
@@ -69,11 +69,11 @@
     gap: 4px;
     padding: 8px 14px;
     border-radius: var(--radius-full);
-    background: var(--surface);
-    border: 1px solid var(--gray-100);
+    background: var(--card);
+    border: 1px solid var(--card-border);
     font-family: var(--font-ui);
     font-size: var(--text-xs);
-    color: var(--ink);
+    color: var(--fg);
     cursor: pointer;
     transition: background var(--duration-fast) var(--ease-out),
                 border-color var(--duration-fast) var(--ease-out),
@@ -100,8 +100,8 @@
     flex: 1;
     padding: 14px 16px;
     border-radius: var(--radius-md);
-    background: var(--surface);
-    border: 1px solid var(--gray-100);
+    background: var(--card);
+    border: 1px solid var(--card-border);
     display: flex;
     flex-direction: column;
     gap: 2px;
@@ -111,13 +111,13 @@
     font-size: 9px;
     text-transform: uppercase;
     letter-spacing: var(--tracking-eyebrow);
-    color: var(--ink-400);
+    color: var(--fg-faint);
   }
   .vault-filters-year__value {
     font-family: var(--font-display);
     font-size: var(--text-xl);
     font-variant-numeric: tabular-nums;
-    color: var(--ink);
+    color: var(--fg);
     background: none;
     border: none;
     outline: none;
@@ -127,7 +127,7 @@
   .vault-filters-year__dash {
     width: 16px;
     height: 1px;
-    background: var(--ink-300);
+    background: var(--fg-faint);
   }
 
   /* Footer sticky */
@@ -135,12 +135,12 @@
     position: sticky;
     bottom: 0;
     left: 0; right: 0;
-    background: linear-gradient(180deg, rgba(250,250,248,0.8), var(--surface) 50%);
+    background: linear-gradient(180deg, transparent, var(--bg) 50%);
     padding: var(--space-4) var(--space-5) var(--space-6);
     display: flex;
     gap: var(--space-3);
     align-items: center;
-    border-top: 1px solid rgba(14,14,31,0.06);
+    border-top: 1px solid var(--hairline);
   }
   .vault-filters-foot .btn { flex: 1; }
   .vault-filters-reset {

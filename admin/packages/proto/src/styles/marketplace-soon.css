@@ -42,10 +42,10 @@
     position: absolute;
     left: 0; right: 0; bottom: 0;
     height: 85%;
-    background: linear-gradient(180deg, var(--surface) 0%, var(--surface-1) 100%);
+    background: linear-gradient(180deg, var(--bg) 0%, var(--card) 100%);
     border-radius: var(--radius-2xl) var(--radius-2xl) 0 0;
     padding: var(--space-3) var(--space-6) var(--space-9);
-    color: var(--ink);
+    color: var(--fg);
     box-shadow: var(--shadow-sheet);
     overflow-y: auto;
     display: flex;
@@ -82,7 +82,7 @@
     font-size: var(--text-3xl);
     line-height: 1.05;
     letter-spacing: -0.025em;
-    color: var(--ink);
+    color: var(--fg);
     text-align: center;
     margin-bottom: var(--space-5);
     padding: 0 var(--space-3);
@@ -91,7 +91,7 @@
   .marketplace-copy {
     font-size: var(--text-sm);
     line-height: 1.55;
-    color: var(--ink-500);
+    color: var(--fg-muted);
     text-align: center;
     max-width: 36ch;
     margin: 0 auto var(--space-8);
@@ -109,8 +109,8 @@
     align-items: center;
     gap: var(--space-2);
     padding: var(--space-4) var(--space-2);
-    background: var(--surface);
-    border: 1px solid var(--gray-100);
+    background: var(--card);
+    border: 1px solid var(--card-border);
     border-radius: var(--radius-lg);
     text-align: center;
   }
@@ -131,7 +131,7 @@
     font-weight: 500;
     font-size: 12px;
     line-height: 1.2;
-    color: var(--ink);
+    color: var(--fg);
   }
 
   .marketplace-cta {
@@ -150,7 +150,7 @@
     font-size: 9px;
     letter-spacing: 0.18em;
     text-transform: uppercase;
-    color: var(--ink-400);
+    color: var(--fg-faint);
     margin-top: var(--space-4);
   }
   .marketplace-fineprint b {

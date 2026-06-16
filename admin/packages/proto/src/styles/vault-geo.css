@@ -4,8 +4,8 @@
 .geo-root {
   position: relative;
   height: 100%;
-  background: linear-gradient(180deg, #dce8f0 0%, #cddde8 100%); /* mer/atlas clair */
-  color: var(--ink);
+  background: var(--bg-grad); /* mer/atlas — suit le thème (sombre) */
+  color: var(--fg);
   overflow: hidden;
 }
 
@@ -20,20 +20,20 @@
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-3) var(--space-5);
-  background: linear-gradient(180deg, rgba(220, 232, 240, 0.95) 0%, rgba(220, 232, 240, 0) 100%);
+  background: linear-gradient(180deg, var(--indigo-950) 0%, transparent 100%);
 }
 .geo-backbar__title {
   flex: 1;
   font-family: var(--font-display);
   font-style: italic;
   font-size: var(--text-lg);
-  color: var(--ink);
+  color: var(--fg);
 }
 .geo-backbar__link {
   font-family: var(--font-ui);
   font-size: var(--text-xs);
   font-weight: 600;
-  color: var(--indigo-700);
+  color: var(--accent);
 }
 
 /* ── Carte full-bleed ── */
@@ -63,14 +63,14 @@
   height: 100%;
 }
 .geo-map__context {
-  fill: rgba(255, 255, 255, 0.35);
-  stroke: rgba(14, 14, 31, 0.06);
+  fill: rgba(255, 255, 255, 0.06);
+  stroke: rgba(255, 255, 255, 0.06);
   stroke-width: 0.5;
   vector-effect: non-scaling-stroke;
 }
 .geo-map__country {
-  fill: #eef3ee;
-  stroke: rgba(14, 14, 31, 0.12);
+  fill: rgba(255, 255, 255, 0.16);
+  stroke: var(--indigo-950);
   stroke-width: 0.6;
   vector-effect: non-scaling-stroke; /* trait constant quel que soit le zoom */
   transition: fill var(--duration-fast) var(--ease-out);
@@ -95,10 +95,10 @@
   align-items: center;
   gap: 4px;
   padding: 3px 8px 3px 4px;
-  background: var(--surface);
+  background: var(--card);
   border-radius: var(--radius-full);
   box-shadow: var(--shadow-md);
-  border: 1px solid rgba(14, 14, 31, 0.08);
+  border: 1px solid var(--hairline);
   cursor: pointer;
   white-space: nowrap;
 }
@@ -110,9 +110,9 @@
   transform: translateX(-50%) rotate(45deg);
   width: 8px;
   height: 8px;
-  background: var(--surface);
-  border-right: 1px solid rgba(14, 14, 31, 0.08);
-  border-bottom: 1px solid rgba(14, 14, 31, 0.08);
+  background: var(--card);
+  border-right: 1px solid var(--hairline);
+  border-bottom: 1px solid var(--hairline);
 }
 .geo-pin__pill.is-selected {
   box-shadow: var(--shadow-gold);
@@ -126,7 +126,7 @@
   font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 700;
-  color: var(--ink);
+  color: var(--fg);
 }
 
 /* ── Contrôles zoom ── */
@@ -144,8 +144,8 @@
 .geo-zoom button {
   width: 40px;
   height: 40px;
-  background: var(--surface);
-  color: var(--ink);
+  background: var(--card);
+  color: var(--fg);
   font-size: 22px;
   font-weight: 300;
   line-height: 1;
@@ -153,7 +153,7 @@
   place-items: center;
 }
 .geo-zoom button + button {
-  border-top: 1px solid rgba(14, 14, 31, 0.08);
+  border-top: 1px solid var(--hairline);
 }
 
 /* ── Feuille pièces (overlay, redimensionnable, NE touche pas la carte) ── */
@@ -166,7 +166,7 @@
   display: flex;
   flex-direction: column;
   min-height: 120px;
-  background: var(--surface);
+  background: var(--bg);
   border-top-left-radius: var(--radius-xl);
   border-top-right-radius: var(--radius-xl);
   box-shadow: 0 -8px 24px rgba(14, 14, 31, 0.14);
@@ -189,7 +189,7 @@
   align-items: baseline;
   gap: var(--space-2);
   padding: var(--space-1) var(--space-5) var(--space-3);
-  border-bottom: 1px solid rgba(14, 14, 31, 0.06);
+  border-bottom: 1px solid var(--hairline);
 }
 .geo-sheet__flag {
   font-size: 18px;
@@ -198,7 +198,7 @@
 .geo-sheet__title {
   font-family: var(--font-display);
   font-size: var(--text-base);
-  color: var(--ink);
+  color: var(--fg);
 }
 .geo-sheet__title strong {
   font-weight: 600;
@@ -209,13 +209,13 @@
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: var(--tracking-eyebrow);
-  color: var(--ink-400);
+  color: var(--fg-faint);
 }
 .geo-sheet__clear {
   font-family: var(--font-ui);
   font-size: var(--text-xs);
   font-weight: 600;
-  color: var(--indigo-700);
+  color: var(--accent);
 }
 .geo-sheet__list {
   flex: 1;
@@ -235,7 +235,7 @@
   transition: background var(--duration-fast) var(--ease-out);
 }
 .geo-row:hover {
-  background: var(--surface-1);
+  background: var(--card);
 }
 .geo-row__coin {
   flex: 0 0 44px;
@@ -260,7 +260,7 @@
 .geo-row__title {
   font-family: var(--font-display);
   font-size: var(--text-base);
-  color: var(--ink);
+  color: var(--fg);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -268,13 +268,13 @@
 .geo-row__sub {
   font-family: var(--font-mono);
   font-size: 10px;
-  color: var(--ink-400);
+  color: var(--fg-faint);
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 .geo-row__value {
   font-family: var(--font-display);
   font-size: var(--text-base);
-  color: var(--ink);
+  color: var(--fg);
   font-variant-numeric: tabular-nums;
 }

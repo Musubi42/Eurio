@@ -32,29 +32,29 @@ const routes: RouteRecordRaw[] = [
   { path: '/scan', name: 'scan', component: () => import('@/scenes/scan/ScanReveal.vue'), meta: { nav: 'scan', chrome: 'dark' } },
 
   // Coin detail (Chunk B)
-  { path: '/coin/:eurioId', name: 'coin', component: () => import('@/scenes/CoinDetail.vue'), meta: { nav: null, chrome: 'light' } },
+  { path: '/coin/:eurioId', name: 'coin', component: () => import('@/scenes/CoinDetail.vue'), meta: { nav: null, chrome: 'dark' } },
 
-  // Vault (Chunk C)
-  { path: '/vault', name: 'vault', component: () => import('@/scenes/vault/VaultHome.vue'), meta: { nav: 'vault', chrome: 'light' } },
-  { path: '/vault/all', component: () => import('@/scenes/vault/VaultAll.vue'), meta: { nav: 'vault', chrome: 'light' } },
-  { path: '/vault/sets', component: () => import('@/scenes/vault/VaultSetsList.vue'), meta: { nav: 'vault', chrome: 'light' } },
-  { path: '/vault/sets/:setId', component: () => import('@/scenes/vault/VaultSetsDetail.vue'), meta: { nav: 'vault', chrome: 'light' } },
-  { path: '/vault/geo', component: () => import('@/scenes/vault/VaultGeoMap.vue'), meta: { nav: 'vault', chrome: 'light' } },
-  { path: '/vault/catalog', component: () => import('@/scenes/vault/CarteAGratter.vue'), meta: { nav: 'vault', chrome: 'light' } },
-  { path: '/vault/catalog/:iso', component: () => import('@/scenes/vault/VaultCatalogCountry.vue'), meta: { nav: 'vault', chrome: 'light' } },
-  { path: '/vault/search', component: () => import('@/scenes/vault/VaultSearch.vue'), meta: { nav: 'vault', chrome: 'light' } },
-  { path: '/vault/filters', component: () => import('@/scenes/vault/VaultFilters.vue'), meta: { nav: 'vault', chrome: 'light' } },
+  // Vault (Chunk C) — passe « tout sombre » : Résumé converti (dark), sous-vues à suivre
+  { path: '/vault', name: 'vault', component: () => import('@/scenes/vault/VaultHome.vue'), meta: { nav: 'vault', chrome: 'dark' } },
+  { path: '/vault/all', component: () => import('@/scenes/vault/VaultAll.vue'), meta: { nav: 'vault', chrome: 'dark' } },
+  { path: '/vault/sets', component: () => import('@/scenes/vault/VaultSetsList.vue'), meta: { nav: 'vault', chrome: 'dark' } },
+  { path: '/vault/sets/:setId', component: () => import('@/scenes/vault/VaultSetsDetail.vue'), meta: { nav: 'vault', chrome: 'dark' } },
+  { path: '/vault/geo', component: () => import('@/scenes/vault/VaultGeoMap.vue'), meta: { nav: 'vault', chrome: 'dark' } },
+  { path: '/vault/catalog', component: () => import('@/scenes/vault/CarteAGratter.vue'), meta: { nav: 'vault', chrome: 'dark' } },
+  { path: '/vault/catalog/:iso', component: () => import('@/scenes/vault/VaultCatalogCountry.vue'), meta: { nav: 'vault', chrome: 'dark' } },
+  { path: '/vault/search', component: () => import('@/scenes/vault/VaultSearch.vue'), meta: { nav: 'vault', chrome: 'dark' } },
+  { path: '/vault/filters', component: () => import('@/scenes/vault/VaultFilters.vue'), meta: { nav: 'vault', chrome: 'dark' } },
 
   // Profile (Chunk E) — unlock = célébration (Chunk D4)
-  { path: '/profile', name: 'profile', component: () => import('@/scenes/profile/ProfileHome.vue'), meta: { nav: 'profile', chrome: 'light' } },
-  { path: '/profile/achievements', component: () => import('@/scenes/profile/ProfileAchievements.vue'), meta: { nav: 'profile', chrome: 'light' } },
-  { path: '/profile/set/:setId', component: () => import('@/scenes/profile/ProfileSet.vue'), meta: { nav: 'profile', chrome: 'light' } },
-  { path: '/profile/settings', component: () => import('@/scenes/profile/ProfileSettings.vue'), meta: { nav: 'profile', chrome: 'light' } },
-  { path: '/profile/history', component: () => import('@/scenes/profile/ProfileHistory.vue'), meta: { nav: 'profile', chrome: 'light' } },
+  { path: '/profile', name: 'profile', component: () => import('@/scenes/profile/ProfileHome.vue'), meta: { nav: 'profile', chrome: 'dark' } },
+  { path: '/profile/achievements', component: () => import('@/scenes/profile/ProfileAchievements.vue'), meta: { nav: 'profile', chrome: 'dark' } },
+  { path: '/profile/set/:setId', component: () => import('@/scenes/profile/ProfileSet.vue'), meta: { nav: 'profile', chrome: 'dark' } },
+  { path: '/profile/settings', component: () => import('@/scenes/profile/ProfileSettings.vue'), meta: { nav: 'profile', chrome: 'dark' } },
+  { path: '/profile/history', component: () => import('@/scenes/profile/ProfileHistory.vue'), meta: { nav: 'profile', chrome: 'dark' } },
   { path: '/profile/unlock', component: () => import('@/scenes/profile/ProfileUnlock.vue'), meta: { nav: null, chrome: 'none' } },
 
   // Marketplace (Chunk E)
-  { path: '/marketplace', name: 'marketplace', component: () => import('@/scenes/MarketplaceSoon.vue'), meta: { nav: 'marketplace', chrome: 'light' } },
+  { path: '/marketplace', name: 'marketplace', component: () => import('@/scenes/MarketplaceSoon.vue'), meta: { nav: 'marketplace', chrome: 'dark' } },
 
   // Défaut → onboarding au premier lancement, sinon scan
   { path: '/', redirect: () => (useCollectionStore().firstRun ? '/onboarding/splash' : '/scan') },

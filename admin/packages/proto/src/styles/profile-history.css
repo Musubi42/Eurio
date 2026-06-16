@@ -5,8 +5,8 @@
     inset: 0;
     overflow-y: auto;
     overflow-x: hidden;
-    background: var(--surface);
-    color: var(--ink);
+    background: var(--bg-grad);
+    color: var(--fg);
     padding: 56px var(--space-5) 104px;
   }
   .profile-history-head {
@@ -18,12 +18,12 @@
   .profile-history-head__back {
     width: 38px; height: 38px;
     border-radius: var(--radius-full);
-    background: var(--surface-1);
-    border: 1px solid var(--gray-100);
+    background: var(--icon-btn-bg);
+    border: 1px solid var(--card-border);
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    color: var(--ink);
+    color: var(--fg);
   }
   .profile-history-head__back svg {
     width: 20px; height: 20px;
@@ -35,11 +35,11 @@
     font-style: italic;
     font-weight: 400;
     font-size: var(--text-xl);
-    color: var(--ink);
+    color: var(--fg);
   }
   .profile-history-intro {
     font-size: var(--text-sm);
-    color: var(--ink-500);
+    color: var(--fg-muted);
     margin: 0 0 var(--space-5);
   }
 
@@ -53,14 +53,14 @@
     align-items: center;
     gap: var(--space-3);
     padding: var(--space-3);
-    background: var(--surface-1);
-    border: 1px solid var(--gray-100);
+    background: var(--card);
+    border: 1px solid var(--card-border);
     border-radius: var(--radius-md);
     text-align: left;
     cursor: pointer;
     transition: background 0.15s ease;
   }
-  .profile-history-row:active { background: var(--surface-2); }
+  .profile-history-row:active { background: var(--card); }
   .profile-history-row__coin {
     width: 44px; height: 44px;
     flex: 0 0 auto;
@@ -76,14 +76,14 @@
   .profile-history-row__name {
     font-size: var(--text-sm);
     font-weight: 600;
-    color: var(--ink);
+    color: var(--fg);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
   .profile-history-row__sub {
     font-size: var(--text-xs);
-    color: var(--ink-400);
+    color: var(--fg-faint);
   }
   .profile-history-row__right {
     display: flex;
@@ -109,7 +109,7 @@
   }
   .profile-history-row__when {
     font-size: var(--text-xs);
-    color: var(--ink-400);
+    color: var(--fg-faint);
   }
 
   .profile-history-empty {
@@ -122,10 +122,10 @@
   }
   .profile-history-empty__icon svg {
     width: 56px; height: 56px;
-    fill: none; stroke: var(--ink-300); stroke-width: 1.5;
+    fill: none; stroke: var(--fg-faint); stroke-width: 1.5;
   }
   .profile-history-empty p {
     font-size: var(--text-sm);
-    color: var(--ink-500);
+    color: var(--fg-muted);
     line-height: var(--leading-base);
   }

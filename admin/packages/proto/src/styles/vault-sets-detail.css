@@ -3,8 +3,8 @@
 .scene-vsd-root {
     position: relative;
     min-height: 100%;
-    background: var(--surface);
-    color: var(--ink);
+    background: var(--bg-grad);
+    color: var(--fg);
     padding: 0 0 var(--space-10);
   }
 
@@ -19,7 +19,7 @@
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    color: var(--ink-500);
+    color: var(--fg-muted);
     font-family: var(--font-mono);
     font-size: 10px;
     letter-spacing: 0.18em;
@@ -34,12 +34,12 @@
   .scene-vsd-topbar__more {
     width: 36px; height: 36px;
     border-radius: var(--radius-full);
-    background: var(--surface-1);
-    border: 1px solid rgba(14, 14, 31, 0.06);
+    background: var(--icon-btn-bg);
+    border: 1px solid var(--hairline);
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    color: var(--ink);
+    color: var(--fg);
   }
   .scene-vsd-topbar__more svg { width: 16px; height: 16px; }
 
@@ -114,7 +114,7 @@
     font-size: 38px;
     line-height: 1.02;
     letter-spacing: -0.02em;
-    color: var(--ink);
+    color: var(--fg);
     margin-bottom: var(--space-3);
   }
   .scene-vsd-hero__title em {
@@ -128,7 +128,7 @@
 
   .scene-vsd-hero__desc {
     font-size: var(--text-sm);
-    color: var(--ink-500);
+    color: var(--fg-muted);
     line-height: 1.5;
     max-width: 38ch;
     margin-bottom: var(--space-4);
@@ -163,7 +163,7 @@
     font-size: 9px;
     letter-spacing: var(--tracking-eyebrow);
     text-transform: uppercase;
-    color: var(--ink-400);
+    color: var(--fg-faint);
   }
   .scene-vsd-progress__pct {
     font-family: var(--font-display);
@@ -171,19 +171,19 @@
     font-weight: 300;
     font-size: 72px;
     line-height: 0.95;
-    color: var(--ink);
+    color: var(--fg);
     letter-spacing: -0.03em;
     font-variant-numeric: tabular-nums;
   }
   .scene-vsd-progress__pct small {
     font-size: 32px;
-    color: var(--ink-400);
+    color: var(--fg-faint);
     margin-left: 2px;
   }
   .scene-vsd-progress__ratio {
     font-family: var(--font-mono);
     font-size: 11px;
-    color: var(--ink-500);
+    color: var(--fg-muted);
     letter-spacing: 0.06em;
     text-transform: uppercase;
   }
@@ -211,7 +211,7 @@
     font-style: italic;
     font-weight: 400;
     font-size: var(--text-xl);
-    color: var(--ink);
+    color: var(--fg);
   }
   .scene-vsd-legend {
     display: inline-flex;
@@ -220,7 +220,7 @@
     font-size: 9px;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: var(--ink-400);
+    color: var(--fg-faint);
   }
   .scene-vsd-legend span {
     display: inline-flex;
@@ -234,8 +234,8 @@
     background: radial-gradient(circle at 30% 30%, var(--gold-soft), var(--gold) 60%, var(--gold-deep));
   }
   .scene-vsd-legend span.missing::before {
-    background: var(--gray-200);
-    border: 1px dashed var(--ink-300);
+    background: var(--card);
+    border: 1px dashed var(--fg-faint);
     box-sizing: border-box;
   }
 
@@ -252,7 +252,7 @@
     border-radius: var(--radius-lg);
     background:
       radial-gradient(220px 120px at 10% 0%, rgba(200, 168, 100, 0.18), transparent 70%),
-      var(--surface);
+      var(--card);
     border: 1px solid rgba(200, 168, 100, 0.35);
     display: flex;
     align-items: center;
@@ -286,13 +286,13 @@
     font-style: italic;
     font-weight: 400;
     font-size: var(--text-base);
-    color: var(--ink);
+    color: var(--fg);
     line-height: 1.2;
     margin-bottom: 2px;
   }
   .scene-vsd-reward__hint {
     font-size: 11px;
-    color: var(--ink-400);
+    color: var(--fg-faint);
   }
 
   /* ───────── Affiliate (case manquante) ───────── */

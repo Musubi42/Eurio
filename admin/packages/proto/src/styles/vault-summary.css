@@ -1,5 +1,6 @@
 /* vault-summary.css — onglet Résumé du Coffre (carte spotlight, répartition
- * géographique, aperçu sets). Le header sobre est dans components.css. */
+ * géographique, aperçu sets). Écrit en RÔLES sémantiques → suit le chrome de la
+ * route. Le header sobre est dans components.css. */
 
 .summary-scroll {
   display: flex;
@@ -21,13 +22,13 @@
   font-family: var(--font-display);
   font-style: italic;
   font-size: var(--text-lg);
-  color: var(--ink);
+  color: var(--fg);
 }
 .summary-section__action {
   font-family: var(--font-ui);
   font-size: var(--text-xs);
   font-weight: 600;
-  color: var(--indigo-700);
+  color: var(--accent);
 }
 .summary-link {
   display: block;
@@ -35,9 +36,9 @@
   margin-top: var(--space-3);
   padding: 12px;
   border-radius: var(--radius-full);
-  background: var(--surface-1);
-  border: 1px solid rgba(14, 14, 31, 0.06);
-  color: var(--ink);
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  color: var(--fg);
   font-size: var(--text-sm);
   font-weight: 600;
   text-align: center;
@@ -51,10 +52,9 @@
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-6) var(--space-4) var(--space-5);
-  background: var(--surface-2);
-  border: 1px solid var(--indigo-100);
+  background: var(--card);
+  border: 1px solid var(--card-border);
   border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-sm);
   cursor: pointer;
   transition: transform 0.15s ease;
 }
@@ -64,7 +64,7 @@
 .summary-spot__name {
   font-family: var(--font-display);
   font-size: var(--text-base);
-  color: var(--ink);
+  color: var(--fg);
 }
 .summary-spot__stage {
   width: 100%;
@@ -89,7 +89,7 @@
   font-style: italic;
   font-size: var(--text-2xl);
   font-weight: 300;
-  color: var(--ink);
+  color: var(--fg);
 }
 .summary-spot__value--plain {
   font-size: var(--text-xl);
@@ -99,7 +99,7 @@
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: var(--tracking-eyebrow);
-  color: var(--ink-500);
+  color: var(--fg-muted);
 }
 
 /* Pagination par points */
@@ -113,7 +113,7 @@
   width: 6px;
   height: 6px;
   border-radius: var(--radius-full);
-  background: rgba(14, 14, 31, 0.18);
+  background: var(--card-border);
   transition: background var(--duration-fast) var(--ease-out), width var(--duration-fast) var(--ease-out);
 }
 .summary-spot__dot[aria-selected='true'] {
@@ -124,11 +124,11 @@
 /* ───────── Répartition géographique ───────── */
 .summary-geo__lead {
   font-size: var(--text-sm);
-  color: var(--ink-500);
+  color: var(--fg-muted);
   margin-bottom: var(--space-3);
 }
 .summary-geo__lead strong {
-  color: var(--ink);
+  color: var(--fg);
   font-weight: 600;
 }
 .summary-geo__map {
@@ -137,8 +137,8 @@
   width: 100%;
   height: 180px;
   border-radius: var(--radius-lg);
-  background: var(--surface-1);
-  border: 1px solid rgba(14, 14, 31, 0.06);
+  background: var(--card);
+  border: 1px solid var(--card-border);
   overflow: hidden;
   padding: var(--space-3);
 }
@@ -147,12 +147,12 @@
   height: 100%;
 }
 .summary-geo__context {
-  fill: rgba(14, 14, 31, 0.05);
+  fill: var(--hairline);
   stroke: none;
 }
 .summary-geo__country {
-  fill: rgba(14, 14, 31, 0.12);
-  stroke: var(--surface);
+  fill: var(--card-border);
+  stroke: var(--bg);
   stroke-width: 0.6;
 }
 .summary-geo__country.is-owned {
@@ -165,12 +165,12 @@
   width: 28px;
   height: 28px;
   border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.85);
+  background: var(--icon-btn-bg);
   backdrop-filter: blur(6px);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--ink-500);
+  color: var(--fg);
 }
 .summary-geo__expand svg {
   width: 14px;
@@ -191,7 +191,7 @@
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-3) 0;
-  border-bottom: 1px solid rgba(14, 14, 31, 0.06);
+  border-bottom: 1px solid var(--hairline);
 }
 .summary-geo__row:last-child {
   border-bottom: none;
@@ -204,12 +204,12 @@
   flex: 1;
   text-align: left;
   font-size: var(--text-sm);
-  color: var(--ink);
+  color: var(--fg);
 }
 .summary-geo__count {
   font-family: var(--font-mono);
   font-size: 11px;
-  color: var(--ink-500);
+  color: var(--fg-muted);
 }
 
 /* ───────── Aperçu des sets ───────── */
@@ -223,8 +223,8 @@
   flex-direction: column;
   gap: var(--space-2);
   padding: var(--space-3) var(--space-4);
-  background: var(--surface-1);
-  border: 1px solid rgba(14, 14, 31, 0.06);
+  background: var(--card);
+  border: 1px solid var(--card-border);
   border-radius: var(--radius-md);
 }
 .summary-set__top {
@@ -236,7 +236,7 @@
 .summary-set__title {
   font-size: var(--text-sm);
   font-weight: 500;
-  color: var(--ink);
+  color: var(--fg);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -245,5 +245,5 @@
   flex: 0 0 auto;
   font-family: var(--font-mono);
   font-size: 11px;
-  color: var(--ink-500);
+  color: var(--fg-muted);
 }

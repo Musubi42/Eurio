@@ -3,8 +3,8 @@
 .cag-root {
     position: relative;
     min-height: 100%;
-    background: var(--surface);
-    color: var(--ink);
+    background: var(--bg-grad);
+    color: var(--fg);
     padding: 0 0 var(--space-10);
   }
 
@@ -19,24 +19,24 @@
     font-family: var(--font-display);
     font-style: italic;
     font-size: var(--text-lg);
-    color: var(--ink);
+    color: var(--fg);
   }
 
   /* ───────── Toggle Carte / Liste ───────── */
   .cag-toggle-row { display: flex; justify-content: center; padding: 0 var(--space-5) var(--space-4); }
   .cag-toggle {
     display: inline-flex; padding: 3px;
-    background: var(--surface-1);
-    border: 1px solid rgba(14, 14, 31, 0.06);
+    background: var(--seg-track);
+    border: 1px solid var(--card-border);
     border-radius: var(--radius-full);
   }
   .cag-toggle button {
     padding: 8px 18px; border-radius: var(--radius-full);
     font-family: var(--font-ui); font-size: var(--text-xs); font-weight: 500;
-    color: var(--ink-400);
+    color: var(--fg-faint);
     transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out);
   }
-  .cag-toggle button[aria-selected="true"] { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-sm); }
+  .cag-toggle button[aria-selected="true"] { background: var(--seg-active); color: var(--fg); box-shadow: var(--shadow-sm); }
 
   /* ───────── Map card : parchemin indigo + cadre cartouche or ───────── */
   .cag-mapcard {
@@ -236,14 +236,14 @@
   .cag-detail__head { display: flex; align-items: center; gap: var(--space-4); }
   .cag-detail__flag {
     flex: 0 0 44px; width: 44px; height: 44px; border-radius: 50%;
-    background: var(--surface-1); display: flex; align-items: center; justify-content: center;
-    font-size: 24px; border: 1px solid rgba(14, 14, 31, 0.06);
+    background: var(--card); display: flex; align-items: center; justify-content: center;
+    font-size: 24px; border: 1px solid var(--card-border);
     transition: border-color var(--duration-base) var(--ease-out), background var(--duration-base) var(--ease-out);
   }
   .cag-detail[data-complete="1"] .cag-detail__flag { background: rgba(200,168,100,0.16); border-color: rgba(200,168,100,0.55); }
   .cag-detail__hgroup { flex: 1; min-width: 0; }
-  .cag-detail__name { font-family: var(--font-display); font-style: italic; font-size: var(--text-xl); color: var(--ink); line-height: 1.1; margin-bottom: 5px; }
-  .cag-detail__meta { display: flex; align-items: center; gap: 10px; font-family: var(--font-mono); font-size: 10px; color: var(--ink-400); letter-spacing: 0.06em; text-transform: uppercase; }
+  .cag-detail__name { font-family: var(--font-display); font-style: italic; font-size: var(--text-xl); color: var(--fg); line-height: 1.1; margin-bottom: 5px; }
+  .cag-detail__meta { display: flex; align-items: center; gap: 10px; font-family: var(--font-mono); font-size: 10px; color: var(--fg-faint); letter-spacing: 0.06em; text-transform: uppercase; }
   .cag-detail__bar { flex: 1; min-width: 40px; }
 
   .cag-detail__grid {
@@ -262,29 +262,29 @@
     cursor: pointer; background: none;
     transition: background var(--duration-fast) var(--ease-out);
   }
-  .cag-coin:hover { background: var(--surface-1); }
+  .cag-coin:hover { background: var(--card); }
   .cag-coin__disc { width: 46px; height: 46px; display: block; }
   .cag-coin__disc svg,
   .cag-coin__disc img { width: 100%; height: 100%; display: block; }
   .cag-coin__label {
     font-family: var(--font-mono); font-size: 8px; letter-spacing: 0.02em;
-    color: var(--ink-400); text-align: center; white-space: nowrap;
+    color: var(--fg-faint); text-align: center; white-space: nowrap;
   }
   /* pièce manquante : grisée + contour pointillé sur le disque */
   .cag-coin[data-owned="0"] .cag-coin__disc { filter: grayscale(1) opacity(0.4); }
-  .cag-coin[data-owned="0"] .cag-coin__label { color: var(--ink-300); }
+  .cag-coin[data-owned="0"] .cag-coin__label { color: var(--fg-faint); }
   .cag-coin[data-owned="1"] .cag-coin__disc { position: relative; }
   .cag-coin[data-owned="1"] .cag-coin__disc::after {
     content: "✓"; position: absolute; right: -2px; bottom: -2px;
     width: 15px; height: 15px; border-radius: 50%;
     background: var(--success); color: #fff;
     font-size: 9px; line-height: 15px; text-align: center;
-    box-shadow: 0 0 0 2px var(--surface);
+    box-shadow: 0 0 0 2px var(--bg);
   }
   .cag-detail__empty {
     grid-column: 1 / -1;
     font-family: var(--font-mono); font-size: var(--text-xs);
-    color: var(--ink-400); text-align: center; padding: var(--space-4) 0;
+    color: var(--fg-faint); text-align: center; padding: var(--space-4) 0;
   }
 
   /* ───────── List mode ───────── */
@@ -297,19 +297,19 @@
     display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3);
     border-radius: var(--radius-md); cursor: pointer;
     background: none; border: 0; width: 100%; text-align: left;
-    border-bottom: 1px solid rgba(14, 14, 31, 0.06);
+    border-bottom: 1px solid var(--hairline);
     transition: background var(--duration-fast) var(--ease-out);
   }
   .cag-listrow:last-child { border-bottom: 0; }
-  .cag-listrow:hover { background: var(--surface-1); }
+  .cag-listrow:hover { background: var(--card); }
   .cag-listrow__flag {
     flex: 0 0 32px; width: 32px; height: 32px; border-radius: 50%;
-    background: var(--surface-1); display: flex; align-items: center; justify-content: center;
-    font-size: 18px; border: 1px solid rgba(14, 14, 31, 0.06);
+    background: var(--card); display: flex; align-items: center; justify-content: center;
+    font-size: 18px; border: 1px solid var(--card-border);
   }
-  .cag-listrow__name { flex: 1; min-width: 0; font-family: var(--font-display); font-size: var(--text-base); color: var(--ink); letter-spacing: -0.005em; }
+  .cag-listrow__name { flex: 1; min-width: 0; font-family: var(--font-display); font-size: var(--text-base); color: var(--fg); letter-spacing: -0.005em; }
   .cag-listrow__name span { font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.1em; color: var(--gold-deep); margin-left: 6px; }
-  .cag-listrow__ratio { font-family: var(--font-mono); font-size: 10px; color: var(--ink-400); letter-spacing: 0.05em; white-space: nowrap; }
+  .cag-listrow__ratio { font-family: var(--font-mono); font-size: 10px; color: var(--fg-faint); letter-spacing: 0.05em; white-space: nowrap; }
   .cag-listrow__bar { flex: 0 0 56px; }
 
   @media (prefers-reduced-motion: reduce) {

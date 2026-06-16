@@ -30,9 +30,17 @@ html, body {
   max-width: 440px;
   height: 100dvh;
   overflow: hidden;
+  /* Le fond suit le chrome de la route (cf. plus bas) : clair par défaut, sombre
+     pour les routes converties. Évite le « sombre sur sombre » sur les scènes
+     encore claires pendant la transition tout-sombre. */
   background: var(--surface);
   isolation: isolate;
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.05), 0 30px 80px -20px rgba(6, 7, 26, 0.6);
+}
+
+/* Fond sombre uniquement pour les routes converties (chrome dark). */
+.screen[data-chrome="dark"] {
+  background: var(--indigo-950);
 }
 
 /* ───────── Scene viewport ───────── */

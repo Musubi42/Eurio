@@ -21,7 +21,7 @@
   .vault-remove-dialog {
     width: 100%;
     max-width: 320px;
-    background: var(--surface);
+    background: var(--bg);
     border-radius: var(--radius-xl);
     padding: var(--space-6) var(--space-5) var(--space-5);
     box-shadow: var(--shadow-lg);
@@ -57,12 +57,12 @@
     font-style: italic;
     font-size: var(--text-xl);
     font-weight: 400;
-    color: var(--ink);
+    color: var(--fg);
     margin-bottom: var(--space-2);
   }
   .vault-remove-sub {
     font-size: var(--text-sm);
-    color: var(--ink-500);
+    color: var(--fg-muted);
     line-height: var(--leading-base);
     margin-bottom: var(--space-5);
   }
