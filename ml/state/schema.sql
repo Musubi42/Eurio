@@ -1731,3 +1731,14 @@ CREATE TABLE IF NOT EXISTS ingested_runs (
   applied_at  TEXT NOT NULL DEFAULT (datetime('now')),
   counts_json TEXT
 );
+
+-- ─── Modèle B : auth bearer de l'API (chunk C2) ──────────────────────────────
+-- Tokens d'accès à l'eurio-api (writer unique). On stocke le SHA-256 du token,
+-- jamais le secret en clair. Auth appliquée seulement si EURIO_API_AUTH_REQUIRED
+-- est vrai (le local reste ouvert). Révocation = `revoked_at` non NULL.
+CREATE TABLE IF NOT EXISTS api_tokens (
+  token_sha  TEXT PRIMARY KEY,
+  name       TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  revoked_at TEXT
+);

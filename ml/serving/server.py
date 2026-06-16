@@ -16,7 +16,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -38,6 +38,8 @@ from . import fragment_audit_routes
 from . import crop_recovery_routes
 from . import operations_routes
 from . import referential_routes
+from . import ingest_routes
+from . import auth as api_auth
 
 ML_DIR = Path(__file__).parent.parent
 VENV_PYTHON = str(ML_DIR / ".venv" / "bin" / "python")
@@ -67,6 +69,9 @@ app = FastAPI(
     title="Eurio ML API",
     version="0.2.0",
     docs_url="/docs",
+    # Auth bearer globale (Modèle B C2) : no-op tant que EURIO_API_AUTH_REQUIRED
+    # n'est pas mis (local inchangé) ; requise sur le serveur canonique.
+    dependencies=[Depends(api_auth.require_token)],
 )
 
 app.add_middleware(
@@ -89,6 +94,11 @@ _env: dict[str, str] = {}
 _supabase: SupabaseClient | None = None
 _store = Store(STATE_DIR / "eurio.db")
 _runner = TrainingRunner(_store)
+
+# Modèle B (C2/C3) : auth bearer + route d'ingestion run-batch sur le store partagé.
+api_auth.bind(_store)
+ingest_routes.bind(_store)
+app.include_router(ingest_routes.router)
 
 # Wire augmentation routes to the shared store + a lazy supabase fetcher.
 augmentation_routes.bind(_store, lambda: get_supabase())

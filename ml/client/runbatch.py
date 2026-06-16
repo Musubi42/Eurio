@@ -171,6 +171,19 @@ def _upsert(conn: sqlite3.Connection, table: str, rows: list[dict]) -> int:
     return len(rows)
 
 
+def push_run(conn: sqlite3.Connection, run_id: str, *, poster=None) -> dict[str, Any]:
+    """Exporte un run depuis la réplique locale et le POST au serveur canonique.
+
+    ``poster`` injectable (tests) : ``poster(path, payload) -> dict``. Défaut =
+    ``client.http.post_json`` (import paresseux pour éviter le cycle).
+    """
+    batch = export_run(conn, run_id)
+    if poster is None:
+        from client import http  # noqa: PLC0415
+        poster = http.post_json
+    return poster("/ingest/run", batch)
+
+
 def ingest_run(conn: sqlite3.Connection, batch: dict[str, Any]) -> dict[str, Any]:
     """Applique un run-batch au canonique en UNE transaction, idempotent.
 
