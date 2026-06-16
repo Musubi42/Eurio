@@ -1,6 +1,9 @@
 // Client du service review. credentials:'include' → cookie de session.
 
-const API = import.meta.env.VITE_REVIEW_API || 'http://localhost:8048'
+// `??` et pas `||` : en prod le Dockerfile pose VITE_REVIEW_API='' (chaîne
+// vide = même origine, chemins relatifs). Avec `||`, '' tombait sur le
+// fallback localhost:8048 → /auth tapait le Mac depuis le navigateur prod.
+const API = import.meta.env.VITE_REVIEW_API ?? 'http://localhost:8048'
 
 export interface Candidate {
   eurio_id: string
