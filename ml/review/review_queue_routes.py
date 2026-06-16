@@ -40,6 +40,7 @@ import cv2
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from sources.ebay.standards import design_group_lot_scope
 from review.validation.consensus import consensus_verdict
 from review.validation.experts import collect_signals
 from review.validation.persist import load_consensus_verdict
@@ -1153,18 +1154,28 @@ def list_lots(
     offset: int = Query(default=0, ge=0),
     cohort_id: str | None = Query(default=None),
     target_eurio_id: str | None = Query(default=None),
+    design_group: str | None = Query(default=None),
 ) -> LotListResponse:
     """Liste les listings ayant ≥ 1 row review_queue.kind='lot' status='open'.
 
     Groupé par listing_key (cf. _LISTING_KEY_SQL — eBay : ebay_<itemId>).
     Tri : oldest_enqueued_at ASC (le reviewer commence par les plus vieux).
-    Scope (par ``si.target_eurio_id``, clé de découverte) :
-    - ``target_eurio_id`` (prioritaire) → les lots d'UNE classe précise (ouvrir
-      « N lots » depuis une row coin du cockpit ne déverse plus tout le pool) ;
+    Scope (par ``si.target_eurio_id``, clé de découverte), priorité décroissante :
+    - ``design_group`` (prioritaire) → les lots d'UNE **ère** standard : prior +
+      membres + pool ambigu du pays (cf. ``design_group_lot_scope``). C'est l'unité
+      d'un standard, dont l'avers — donc la classe ArcFace — est partagé sur toutes
+      les années (ex. be-1999 ⊕ be-2007) ;
+    - ``target_eurio_id`` → les lots d'UNE classe précise (commémo) ;
     - sinon ``cohort_id`` → tous les lots des coins de la cohort (§C4-lot).
     """
     conn = _store()._connection()  # noqa: SLF001
-    if target_eurio_id:
+    if design_group:
+        try:
+            cohort_clause, cohort_args = design_group_lot_scope(conn, design_group)
+        except ValueError:
+            return LotListResponse(items=[], total=0)
+        cohort_empty = False
+    elif target_eurio_id:
         cohort_clause, cohort_args, cohort_empty = (
             " AND si.target_eurio_id = ?", [target_eurio_id], False,
         )

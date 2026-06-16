@@ -27,6 +27,13 @@ const targetEurioId = computed(() =>
     ? route.query.target
     : null,
 )
+// Scope UNE ère standard : ?design_group=<id> → prior + membres + pool ambigu du
+// pays (l'avers — donc la classe ArcFace — est partagé sur toutes les années).
+const designGroup = computed(() =>
+  typeof route.query.design_group === 'string' && route.query.design_group
+    ? route.query.design_group
+    : null,
+)
 
 const lots = ref<LotListItem[]>([])
 const total = ref(0)
@@ -41,6 +48,7 @@ async function load() {
       limit: 24,
       cohortId: cohortId.value,
       targetEurioId: targetEurioId.value,
+      designGroup: designGroup.value,
     })
     lots.value = resp.items
     total.value = resp.total
@@ -52,7 +60,7 @@ async function load() {
 }
 
 onMounted(load)
-watch([cohortId, targetEurioId], () => { void load() })
+watch([cohortId, targetEurioId, designGroup], () => { void load() })
 
 function openLot(key: string) {
   // Navigate to the full-page review detail (Phase 2 chunk 5).
@@ -71,7 +79,12 @@ function openLot(key: string) {
         <span class="font-semibold" style="color: var(--gold-600);">{{ total }}</span>
         <span class="ml-1 uppercase tracking-wider" style="color: var(--ink-400);">listings à reviewer</span>
         <span
-          v-if="targetEurioId"
+          v-if="designGroup"
+          class="ml-2 rounded-full px-2 py-0.5 text-[10px] tracking-wider"
+          style="background: color-mix(in srgb, var(--gold-600) 14%, var(--surface)); color: var(--gold-600);"
+        >ère · {{ designGroup }}</span>
+        <span
+          v-else-if="targetEurioId"
           class="ml-2 rounded-full px-2 py-0.5 text-[10px] tracking-wider"
           style="background: color-mix(in srgb, var(--gold-600) 14%, var(--surface)); color: var(--gold-600);"
         >classe · {{ targetEurioId }}</span>

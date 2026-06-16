@@ -157,6 +157,15 @@ export interface CohortFunnelCoin {
   eurio_id: string
   numista_id: number | null
   scrapable: boolean
+  // Design_group (avers) : un standard partageant l'avers sur plusieurs années
+  // (be-1999 ⊕ be-2007) porte le même design_group_id = même classe ArcFace.
+  // La review d'un standard se scope à l'ère via ?design_group= (cf. §design_group-first).
+  design_group_id?: string | null
+  design_group_designation?: string | null
+  is_commemorative?: boolean | null
+  // Standards d'une même ère collapsés en 1 ligne ; les millésimes membres
+  // (avers partagé) — la ligne représente toute l'ère, pas un seul millésime.
+  era_member_eurio_ids?: string[]
   n_source_images: number // listings retenus (attribués à ce coin)
   n_crops: number
   // Téléchargement (MinIO write-through) : success vs failed (retry-able)

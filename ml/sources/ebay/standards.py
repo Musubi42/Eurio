@@ -350,3 +350,55 @@ def attribute_standard_listing(
         "single", era.prior_for_year(pin_year), candidates,
         f"{reason}:{sorted(signals.years)}",
     )
+
+
+def design_group_lot_scope(
+    conn: sqlite3.Connection,
+    design_group_id: str,
+    alias: str = "si",
+) -> tuple[str, list[object]]:
+    """Fragment SQL scopant les listings d'une ère (design_group) standard.
+
+    ``design_group_id`` accepte soit un vrai ``design_groups.id`` (ex.
+    ``be-2euro-albert-ii-t1``), soit un ``eurio_id`` solo (ère mono-membre sans
+    ``design_group_id``) — la résolution se fait par
+    ``COALESCE(design_group_id, eurio_id) = ?`` dans les deux cas.
+
+    Doctrine « ère = unité » (reco a) : une ère regroupe
+    1. les listings **assignés** au prior de l'ère ou à l'un de ses membres
+       (``target_eurio_id IN (membres)``), et
+    2. le **pool standard ambigu** du pays — listings dont le millésime est
+       illisible (``target_eurio_id IS NULL`` + ``listing_year IS NULL``), à
+       trancher *par l'avers* en review. Ce pool est partagé entre les ères d'un
+       même pays (un humain l'attribue une fois ; il quitte alors le pool).
+
+    LIMITE CONNUE : la branche pool-ambigu n'est PAS dé-dupliquée entre ères
+    co-pays. Si une cohorte mixe deux ères standard d'un même pays (ex.
+    ``be-…-t1`` et ``be-…-t2``), chacune comptera le MÊME pool ambigu → compte
+    sur-affiché sur chaque ligne. OK tant qu'une cohorte ne mixe pas deux ères
+    standard d'un même pays (cas nominal). Le pool assigné (branche IN) est, lui,
+    exclusif à l'ère.
+
+    Retourne ``(clause, args)`` où ``clause`` commence par `` AND (…)`` et
+    s'insère après un ``WHERE`` existant (``alias`` = alias de ``source_images``).
+    ``ValueError`` si l'ère ne résout aucun membre (design_group inconnu).
+    """
+    members = conn.execute(
+        "SELECT eurio_id, country FROM coins "
+        "WHERE COALESCE(design_group_id, eurio_id) = ?",
+        (design_group_id,),
+    ).fetchall()
+    if not members:
+        raise ValueError(f"design_group {design_group_id!r} ne résout aucun coin")
+    eurio_ids = [m["eurio_id"] for m in members]
+    country = members[0]["country"]
+    placeholders = ",".join("?" * len(eurio_ids))
+    # ``alias=""`` → colonnes nues (requêtes ``FROM source_images`` sans alias).
+    col = f"{alias}." if alias else ""
+    clause = (
+        f" AND ({col}target_eurio_id IN ({placeholders})"
+        f" OR ({col}target_eurio_id IS NULL AND {col}source='ebay'"
+        f" AND {col}listing_country=? AND {col}listing_year IS NULL))"
+    )
+    args: list[object] = [*eurio_ids, country]
+    return clause, args

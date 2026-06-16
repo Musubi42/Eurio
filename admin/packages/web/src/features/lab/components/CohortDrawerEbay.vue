@@ -80,6 +80,16 @@ function reviewCount(c: CohortFunnelCoin): number {
 function lotReviewCount(c: CohortFunnelCoin): number {
   return c.n_open_review_lot ?? 0
 }
+// Lien review LOT : un STANDARD se scope à son ère (design_group) — son avers,
+// donc sa classe ArcFace, est partagé sur toutes les années (be-1999 ⊕ be-2007),
+// et le `target_eurio_id` posé n'est qu'un prior au millésime. Scoper au seul
+// eurio_id viderait le reviewer. Les commémoratives gardent le scope par classe.
+function lotReviewQuery(c: CohortFunnelCoin): Record<string, string> {
+  if (c.is_commemorative === false) {
+    return { mode: 'lot', design_group: c.design_group_id ?? c.eurio_id }
+  }
+  return { mode: 'lot', target: c.eurio_id }
+}
 
 // ── Jobs recrop observables (F5 / B2) — lus depuis cohort_jobs, pas de thread
 // mémoire. Dernier job recrop_zero par pièce → barre de progression si running,
@@ -417,7 +427,12 @@ async function onRecrop(c: CohortFunnelCoin) {
                   class="coin__badge"
                   title="hors découverte groupée eBay — Numista-only"
                 >Numista-only</span>
-                {{ c.eurio_id }}
+                <span
+                  v-if="(c.era_member_eurio_ids?.length ?? 1) > 1"
+                  class="coin__badge"
+                  :title="`Ère (avers partagé) — ${c.era_member_eurio_ids?.length} millésimes, une seule classe ArcFace : ${c.era_member_eurio_ids?.join(', ')}`"
+                >ère · {{ c.era_member_eurio_ids?.length }} millésimes</span>
+                {{ c.design_group_designation ?? c.eurio_id }}
               </span>
               <span class="coin__sources">
                 <span
@@ -496,9 +511,9 @@ async function onRecrop(c: CohortFunnelCoin) {
               <!-- 1b. Reste en review LOT (flow cohorte, multi-pièces) -->
               <RouterLink
                 v-if="lotReviewCount(c) > 0"
-                :to="{ path: '/review/manual', query: { mode: 'lot', target: c.eurio_id } }"
+                :to="{ path: '/review/manual', query: lotReviewQuery(c) }"
                 :class="['coin__btn', { 'coin__btn--primary': primaryAction(c) === 'lot' }]"
-                :title="`${lotReviewCount(c)} crops en review LOT touchant ${c.eurio_id} — uniquement les lots de cette pièce`"
+                :title="`${lotReviewCount(c)} crops en review LOT touchant ${c.design_group_designation ?? c.eurio_id} — ${c.is_commemorative === false ? 'tous les lots de l’ère (toutes années, avers partagé)' : 'uniquement les lots de cette pièce'}`"
               >
                 <Package class="h-3 w-3" /> {{ lotReviewCount(c) }} lots
               </RouterLink>

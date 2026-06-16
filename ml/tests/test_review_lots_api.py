@@ -228,6 +228,73 @@ def test_lots_list_groups_by_item_id(app_client):
     assert a1["thumb_url"].startswith("/sources/ebay/raws/")
 
 
+def _seed_coin(conn, eurio_id, *, country, year, is_commemorative, design_group_id=None):
+    conn.execute(
+        "INSERT INTO coins (eurio_id, country, year, face_value, is_commemorative, "
+        "design_group_id) VALUES (?, ?, ?, 2.0, ?, ?)",
+        (eurio_id, country, year, int(is_commemorative), design_group_id),
+    )
+
+
+def _set_listing_geo(conn, item_id, *, country, year):
+    """Patch listing_country / listing_year sur les source_images d'un item."""
+    conn.execute(
+        "UPDATE source_images SET listing_country=?, listing_year=? "
+        "WHERE source_ref LIKE ?",
+        (country, year, f"ebay_{item_id}_%"),
+    )
+
+
+def test_lots_scope_by_design_group_includes_era_and_ambiguous(app_client):
+    """?design_group=<ère> : prior (be-1999) + membres (be-2007) + pool NULL
+    standard du pays remontent ; une commémo mal-routée dans le pool NULL est
+    exclue. Régression du symptôme : ?target=be-2007 (prior posé sur be-1999)
+    reste vide.
+    """
+    _, conn, client = app_client
+    dg = "be-2euro-albert-ii-t1"
+    conn.execute(
+        "INSERT INTO design_groups (id, designation) VALUES (?, ?)",
+        (dg, "BE 2€ Albert II t1"),
+    )
+    _seed_coin(conn, "be-1999-2eur-std", country="BE", year=1999,
+               is_commemorative=False, design_group_id=dg)
+    _seed_coin(conn, "be-2007-2eur-std", country="BE", year=2007,
+               is_commemorative=False, design_group_id=dg)
+    _seed_coin(conn, "be-2020-jan-van-eyck", country="BE", year=2020,
+               is_commemorative=True)
+
+    # Lot assigné au prior de l'ère (be-1999).
+    _seed_lot_listing(conn, item_id="PRIOR", n_images=1, crops_per_image=(1,),
+                      target_eurio_id="be-1999-2eur-std")
+    _set_listing_geo(conn, "PRIOR", country="BE", year=2003)
+    # Lot standard ambigu : année illisible → target NULL, pool pays NULL.
+    _seed_lot_listing(conn, item_id="AMBIG", n_images=1, crops_per_image=(1,),
+                      target_eurio_id=None)
+    _set_listing_geo(conn, "AMBIG", country="BE", year=None)
+    # Commémo mal-routée dans le pool NULL : NE DOIT PAS apparaître dans l'ère.
+    _seed_lot_listing(conn, item_id="COMMEMO", n_images=1, crops_per_image=(1,),
+                      target_eurio_id="be-2020-jan-van-eyck")
+    _set_listing_geo(conn, "COMMEMO", country="BE", year=None)
+
+    body = client.get(f"/review-queue/lots?design_group={dg}").json()
+    keys = {it["listing_key"] for it in body["items"]}
+    assert keys == {"ebay_PRIOR", "ebay_AMBIG"}
+    assert body["total"] == 2
+
+    # Régression : scoper au seul millésime be-2007 (jamais le prior) → vide.
+    empty = client.get("/review-queue/lots?target_eurio_id=be-2007-2eur-std").json()
+    assert empty["total"] == 0
+    assert empty["items"] == []
+
+
+def test_lots_scope_by_design_group_unknown_returns_empty(app_client):
+    _, _, client = app_client
+    body = client.get("/review-queue/lots?design_group=nope-does-not-exist").json()
+    assert body["total"] == 0
+    assert body["items"] == []
+
+
 def test_lots_list_excludes_done_items(app_client):
     _, conn, client = app_client
     seeded = _seed_lot_listing(conn, item_id="A1", n_images=1, crops_per_image=(1,))

@@ -37,6 +37,7 @@ from training.foundation.enrichment import (
     projection as _enrich_projection,
 )
 import jobs
+from sources.ebay.standards import design_group_lot_scope
 from . import coin_lookup
 from .iteration_logic import compute_sensitivity
 from .iteration_runner import IterationRunner
@@ -1381,25 +1382,33 @@ def _coin_tail(conn, eurio_id: str) -> dict:
     ``route_decision``/``route_reason``, crops, et run le plus récent.
 
     Scope : un STANDARD est scrapé par recherche LARGE pays ; ses crops
-    atterrissent en ``target_eurio_id`` NULL (ambigu), sur le représentant du
-    groupe, ou en commémos rescue — un scope ``target_eurio_id = eurio_id``
-    exact afficherait ~0 alors que des dizaines sont à trancher. On compte donc
-    le POOL standard du pays (``listing_country`` + ``listing_year IS NULL``),
-    IDENTIQUE au scope de la review (``review_queue_routes.list_queue``) → le
-    cockpit et la review affichent le MÊME nombre. Les commémos gardent le scope
-    ``target_eurio_id`` exact. (Limite connue : deux standards d'un même pays
-    dans une cohorte partagent le pool → même compte affiché sur chaque ligne ;
-    OK tant qu'une cohorte ne mixe pas deux standards d'un même pays.)
+    atterrissent en ``target_eurio_id`` NULL (ambigu) ou sur le prior de l'ère
+    (1er millésime) — un scope ``target_eurio_id = eurio_id`` exact afficherait
+    ~0 alors que des dizaines sont à trancher. On scope donc à l'**ère**
+    (``design_group``) via ``design_group_lot_scope`` : membres de l'ère (prior
+    inclus) ∪ pool ambigu du pays — IDENTIQUE au scope de la review lot
+    (``review_queue_routes.list_lots?design_group=…``) → le cockpit et la review
+    affichent le MÊME nombre, sans la pollution des commémos mal-routées (qui
+    portent leur propre ``target_eurio_id``). Les commémos gardent le scope
+    ``target_eurio_id`` exact.
     """
     std = conn.execute(
-        "SELECT country FROM coins WHERE eurio_id=? AND is_commemorative=0",
+        "SELECT country, design_group_id FROM coins "
+        "WHERE eurio_id=? AND is_commemorative=0",
         (eurio_id,),
     ).fetchone()
     is_standard = bool(std and std["country"])
     if is_standard:
-        scope = "si.source='ebay' AND si.listing_country=? AND si.listing_year IS NULL"
-        scope_bare = "source='ebay' AND listing_country=? AND listing_year IS NULL"
-        sp: tuple = (std["country"],)
+        # Ère = design_group si présent, sinon le coin seul (ère mono-membre).
+        dg_clause, dg_args = design_group_lot_scope(
+            conn, std["design_group_id"] or eurio_id, alias="si"
+        )
+        dg_clause_bare, _ = design_group_lot_scope(
+            conn, std["design_group_id"] or eurio_id, alias=""
+        )
+        scope = "si.source='ebay'" + dg_clause
+        scope_bare = "source='ebay'" + dg_clause_bare
+        sp: tuple = tuple(dg_args)
         # La review standard ne sert que la lane manuelle (single) — on aligne.
         rq_lane_clause = " AND (rq.lane='manual' OR rq.lane IS NULL)"
     else:
@@ -1688,21 +1697,71 @@ def _cohort_funnel_status(store: Store, cohort_id: str) -> dict:
     # label tranché `ia.eurio_id`) et `n_real_sources` (obverse Numista +
     # eBay reviewé) qui décident si la classe a assez de vraies vues pour
     # s'entraîner (§C5, seuil `_MIN_REAL_SOURCES`).
+    # Design_group (avers) par coin : un standard dont l'avers est partagé sur
+    # plusieurs années (ex. be-1999 ⊕ be-2007) porte le même `design_group_id`,
+    # donc la même classe ArcFace. Exposé au cockpit pour scoper la review/le
+    # collapse à l'ère plutôt qu'au millésime (cf. §design_group-first).
+    dg_by_eid: dict[str, sqlite3.Row] = {}
+    if cohort.eurio_ids:
+        ph = ",".join("?" * len(cohort.eurio_ids))
+        dg_by_eid = {
+            r["eurio_id"]: r
+            for r in conn.execute(
+                f"SELECT c.eurio_id, c.design_group_id, c.is_commemorative, "
+                f"dg.designation AS design_group_designation "
+                f"FROM coins c "
+                f"LEFT JOIN design_groups dg ON dg.id = c.design_group_id "
+                f"WHERE c.eurio_id IN ({ph})",
+                tuple(cohort.eurio_ids),
+            ).fetchall()
+        }
+
+    # Membres d'ère (avers) par design_group standard présent dans la cohort —
+    # TOUS les coins partageant l'avers (même hors-cohort), car la classe ArcFace
+    # EST l'ère. Sert à compter les sources au niveau ère (be-1999 ⊕ be-2007),
+    # pas au millésime — sinon un standard affamé paraît plus pauvre qu'il n'est.
+    era_members: dict[str, list[str]] = {}
+    for r in dg_by_eid.values():
+        dgid = r["design_group_id"]
+        if not dgid or r["is_commemorative"] or dgid in era_members:
+            continue
+        era_members[dgid] = [
+            row["eurio_id"]
+            for row in conn.execute(
+                "SELECT eurio_id FROM coins WHERE COALESCE(design_group_id, eurio_id)=?",
+                (dgid,),
+            ).fetchall()
+        ]
+
     per_coin: list[dict] = []
     for eid in cohort.eurio_ids:
         tail = _coin_tail(conn, eid)
+        dg_row = dg_by_eid.get(eid)
         nid = coin_lookup.numista_id_for(eid)
+        # Classe = ère (membres avers) pour un standard groupé, sinon le coin seul.
+        dgid = dg_row["design_group_id"] if dg_row else None
+        is_commemo = bool(dg_row["is_commemorative"]) if dg_row else True
+        class_eids = (
+            era_members[dgid] if (dgid and not is_commemo and dgid in era_members)
+            else [eid]
+        )
+        ph_cls = ",".join("?" * len(class_eids))
         n_training = conn.execute(
-            "SELECT COUNT(*) FROM image_assets ia "
-            "JOIN source_images si ON si.id = ia.source_image_id "
-            "WHERE si.source='ebay' AND ia.eurio_id=? AND ia.training_eligible=1",
-            (eid,),
+            f"SELECT COUNT(*) FROM image_assets ia "
+            f"JOIN source_images si ON si.id = ia.source_image_id "
+            f"WHERE si.source='ebay' AND ia.eurio_id IN ({ph_cls}) "
+            f"AND ia.training_eligible=1",
+            tuple(class_eids),
         ).fetchone()[0]
         # Seed = sources RÉELLES distinctes, comptées à l'identique du bake
         # (foundation/enrichment.py + iteration_augmentations) : crops eBay
         # validés + avers Numista (FS) + réfs officielles BCE/EUR-Lex (sur disque).
-        n_numista_ref = 1 if _has_obverse(nid) else 0
-        n_bce_ref = _count_canonical_refs(conn, eid)
+        # Avers partagé sur l'ère → l'obverse/réf ne se cumulent PAS (max, pas sum).
+        n_numista_ref = (
+            1 if any(_has_obverse(coin_lookup.numista_id_for(m)) for m in class_eids)
+            else 0
+        )
+        n_bce_ref = max((_count_canonical_refs(conn, m) for m in class_eids), default=0)
         n_seed = n_training + n_numista_ref + n_bce_ref
         n_real = n_seed
         aug_factor, n_projected = _enrich_projection(n_seed)
@@ -1727,8 +1786,32 @@ def _cohort_funnel_status(store: Store, cohort_id: str) -> dict:
             "n_projected": n_projected,
             "gap_to_target": gap_to_target,
             "never_scraped": never_scraped,
+            "design_group_id": dgid,
+            "design_group_designation": (
+                dg_row["design_group_designation"] if dg_row else None
+            ),
+            "is_commemorative": (
+                bool(dg_row["is_commemorative"]) if dg_row else None
+            ),
+            "era_member_eurio_ids": class_eids,
             **tail,
         })
+
+    # Collapse design_group-first : les standards d'une même ère (avers partagé)
+    # sont déjà comptés au niveau ère (sources + tail), donc identiques entre
+    # membres → on n'en garde qu'UNE ligne (le 1er membre de cohort rencontré,
+    # ordre catalogue). Évite le doublon be-1999 + be-2007 aux compteurs jumeaux.
+    # Les commémoratives (une classe = un eurio_id) ne sont jamais collapsées.
+    collapsed: list[dict] = []
+    seen_dg: set[str] = set()
+    for c in per_coin:
+        dgid = c["design_group_id"]
+        if dgid and c["is_commemorative"] is False:
+            if dgid in seen_dg:
+                continue
+            seen_dg.add(dgid)
+        collapsed.append(c)
+    per_coin = collapsed
 
     # Runs de la cohort = ceux ayant produit des source_images pour ses coins
     # (contexte du deep-link ; le head est attribué par groupe, pas par run).
