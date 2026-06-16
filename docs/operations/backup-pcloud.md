@@ -33,11 +33,12 @@ le volume `eurio.db` y sont côte à côte. Un incident disque = perte totale. p
 ## 3. Remote pCloud (destination) — ⚠️ région EU
 
 `rclone config` → `n` (new) → nom **`pcloud`** → type **`pcloud`** →
-`client_id`/`client_secret` **vides** → **« Edit advanced config » = Yes** pour régler :
+`client_id`/`client_secret` **vides** → auth.
 
-- **`hostname`** = `eapi.pcloud.com` si ton compte est **EU** (sinon `api.pcloud.com`).
-  ⚠️ **Piège** : mauvais hostname = token invalide. Vérifie la région de ton compte
-  pCloud avant (un compte EU n'auth pas sur l'endpoint US).
+- **Région : compte pCloud = US** → **`hostname = api.pcloud.com`** (la valeur par
+  défaut → tu peux laisser « Edit advanced config » = No). _(Pour mémoire : un compte
+  EU exigerait `hostname=eapi.pcloud.com` ; ce n'est PAS notre cas.)_
+  ⚠️ Si un jour la donnée était sur un compte EU, mauvais hostname = token invalide.
 
 Auth navigateur : rclone ouvre `http://127.0.0.1:53682/auth`, tu autorises, le token
 revient tout seul.
