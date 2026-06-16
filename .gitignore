@@ -208,3 +208,11 @@ ml/state/*_worklist.json
 
 # graphify knowledge-graph output (regenerable, large)
 graphify-out/
+
+# Images/HTML de bench sous ml/state — régénérables, sortis de git (cleanup Codeberg).
+# Les .jsonl/.json gold/seed/ground_truth restent trackés (pas de pattern image).
+ml/state/**/*.png
+ml/state/**/*.jpg
+ml/state/**/*.jpeg
+ml/state/**/*.webp
+ml/state/**/*.html
