@@ -14,19 +14,10 @@ SCOPE = "https://api.ebay.com/oauth/api_scope"
 
 
 def load_env() -> dict[str, str]:
-    env = {}
-    env_path = Path(__file__).parent.parent.parent / ".env"
-    if env_path.exists():
-        for line in env_path.read_text().splitlines():
-            line = line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            key, _, value = line.partition("=")
-            env[key.strip()] = value.strip()
-    for key in ("EBAY_CLIENT_ID", "EBAY_CLIENT_SECRET"):
-        if key in os.environ:
-            env[key] = os.environ[key]
-    return env
+    # Canonical secret accessor (source: secrets/dev.env via .envrc).
+    from shared.env import load_env as _load_env
+
+    return _load_env()
 
 
 def get_app_token(client_id: str, client_secret: str) -> str:

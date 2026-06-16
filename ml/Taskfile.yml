@@ -488,11 +488,8 @@ tasks:
       - "{{.VENV}}/python -m bootstrap.migrate_storage_layout {{.CLI_ARGS}}"
 
   # ---------- Detection (YOLOv8-nano) ----------
-  detect-setup:
-    desc: "Download and prepare coin detection dataset"
-    cmds:
-      - "{{.VENV}}/python training/setup_detection_dataset.py"
-
+  # Note : la préparation du dataset via Roboflow a été retirée (source non
+  # utilisée). Le dataset vit sous ml/datasets/detection/coin_detect.
   detect-train:
     desc: "Train YOLOv8-nano coin detector"
     cmds:

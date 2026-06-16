@@ -45,21 +45,10 @@ UPSERT_BATCH_SIZE = 500
 
 
 # ---------- env ----------
-
-def load_env() -> dict[str, str]:
-    env: dict[str, str] = {}
-    env_path = Path(__file__).parent.parent.parent / ".env"
-    if env_path.exists():
-        for line in env_path.read_text().splitlines():
-            line = line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            key, _, value = line.partition("=")
-            env[key.strip()] = value.strip()
-    for key in ("SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"):
-        if key in os.environ:
-            env[key] = os.environ[key]
-    return env
+# Canonical secret accessor (single source: secrets/dev.env via .envrc).
+# Re-exported here so the many `from export.sync_to_supabase import load_env`
+# callers keep working unchanged.
+from shared.env import load_env  # noqa: E402
 
 
 # ---------- PostgREST client ----------

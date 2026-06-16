@@ -119,11 +119,13 @@ Un hostname inconnu fait échouer `direnv allow` avec un message d'aide listant 
 
 ### Secrets (SOPS + age)
 
-Les secrets vivent **chiffrés dans le repo** (`secrets/dev.env`) via [SOPS](https://github.com/getsops/sops) + [age](https://github.com/FiloSottile/age). Chaque machine perso a sa propre clé age ; les pubkeys sont listées dans `.sops.yaml`.
+**`secrets/dev.env` (chiffré SOPS+age) est la SOURCE UNIQUE de tous les secrets.** Pas de `.env` en clair, pas de second store. Chaque machine perso a sa propre clé age ; les pubkeys sont listées dans `.sops.yaml`.
 
-- `.envrc` (committé, template `.envrc.example`) déchiffre `secrets/dev.env` au chargement du shell via `sops -d`.
+- `.envrc` (committé, template `.envrc.example`) déchiffre `secrets/dev.env` au chargement du shell via `sops -d` et **exporte** les vars dans l'environnement.
 - Clés privées : `~/.config/sops/age/keys.txt` sur chaque machine, jamais committées. Backup dans le password manager perso.
-- Éditer un secret : `sops secrets/dev.env` (ouvre dans `$EDITOR`, re-chiffre à la sauvegarde).
+- **Éditer un secret : `go-task secrets:edit`** (ouvre déchiffré dans `$EDITOR`, re-chiffre à la sauvegarde). `go-task secrets:list` (noms) · `go-task secrets:check` (déchiffrable). Après édition : `direnv reload`.
+- **Côté code** : le Python lit les secrets via `shared.env.load_env()` / `require()` / `numista_api_key()` (lecture `os.environ` uniquement, peuplé par `.envrc`). Jamais de parsing de `.env` à la main. Les clés Numista (8, en rotation) passent par `referential.numista_keys.KeyManager` — il n'existe **pas** de `NUMISTA_API_KEY` au singulier.
+- Frontières hors-SOPS (runtimes distants) : **Vercel** (projet `loan/` + web) gère ses secrets via le dashboard Vercel ; **VPS** via les Docker secrets de `infra/*/secrets/` (fichiers `*.example` trackés, vrais fichiers non trackés).
 - Bootstrap d'une nouvelle machine : voir `README.md §Secrets`.
 
 ### Supabase
@@ -169,5 +171,5 @@ Voir `docs/research/detection-pipeline-unified.md`. Pipeline actuelle : YOLO11-n
 - ❌ Hardcoder des couleurs dans du Compose (toujours passer par `MaterialTheme.colorScheme.*` ou les vals générées)
 - ❌ Créer des `TODO:` dans le code (la dette est explicite via docs ou tasks, pas enfouie dans le code)
 - ❌ Utiliser `git add -A` ou `git add .` (staging explicite par fichier pour éviter les fuites de secrets)
-- ❌ Éditer `secrets/dev.env` directement (fichier chiffré — utiliser `sops secrets/dev.env`)
+- ❌ Éditer `secrets/dev.env` directement ou créer un `.env` en clair (fichier chiffré — utiliser `go-task secrets:edit`)
 - ❌ Utiliser `task` au lieu de `go-task` dans les commandes ou les docs

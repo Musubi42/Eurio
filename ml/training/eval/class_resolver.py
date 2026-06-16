@@ -140,20 +140,14 @@ class Resolver:
 
 
 def load_env(root: Path | None = None) -> dict[str, str]:
-    base = root or Path(__file__).resolve().parent.parent.parent
-    env: dict[str, str] = {}
-    env_path = base / ".env"
-    if env_path.exists():
-        for raw in env_path.read_text().splitlines():
-            line = raw.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            k, _, v = line.partition("=")
-            env[k.strip()] = v.strip()
-    for key in ("SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY"):
-        if key in os.environ:
-            env[key] = os.environ[key]
-    return env
+    """Canonical secret accessor (source: secrets/dev.env via .envrc).
+
+    ``root`` is accepted for backwards compatibility but ignored — secrets no
+    longer come from a per-root ``.env`` file, only from the environment.
+    """
+    from shared.env import load_env as _load_env
+
+    return _load_env()
 
 
 def _default_db_path() -> Path:

@@ -1,38 +1,15 @@
-"""Supabase REST client — thin wrapper around httpx for PostgREST.
-
-Reuses the same env-loading pattern as the existing ML scripts.
-"""
+"""Supabase REST client — thin wrapper around httpx for PostgREST."""
 
 from __future__ import annotations
 
-import os
-from pathlib import Path
-
 import httpx
 
-_ENV_KEYS = [
-    "SUPABASE_URL",
-    "SUPABASE_SERVICE_ROLE_KEY",
-    "SUPABASE_ANON_KEY",
-    "NUMISTA_API_KEY",
-]
+# Canonical secret accessor (single source: secrets/dev.env via .envrc).
+# Re-exported so existing callers `from serving.supabase_client import load_env`
+# keep working without churn.
+from shared.env import load_env
 
-
-def load_env() -> dict[str, str]:
-    """Load environment variables from .env file, overridden by OS env."""
-    env: dict[str, str] = {}
-    env_path = Path(__file__).parent.parent.parent / ".env"
-    if env_path.exists():
-        for line in env_path.read_text().splitlines():
-            line = line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            key, _, value = line.partition("=")
-            env[key.strip()] = value.strip()
-    for key in _ENV_KEYS:
-        if key in os.environ:
-            env[key] = os.environ[key]
-    return env
+__all__ = ["SupabaseClient", "load_env"]
 
 
 class SupabaseClient:

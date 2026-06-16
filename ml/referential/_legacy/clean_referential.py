@@ -72,24 +72,12 @@ class _SupabaseClient:
 
 
 def _load_env() -> tuple[str, str]:
+    # Source unique : secrets/dev.env via .envrc (os.environ). Plus de .env racine.
     url = os.environ.get("SUPABASE_URL") or os.environ.get("VITE_SUPABASE_URL", "")
     key = (
         os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
         or os.environ.get("VITE_SUPABASE_SERVICE_KEY", "")
     )
-    if not url or not key:
-        env_path = Path(__file__).parent.parent.parent / ".env"
-        if env_path.exists():
-            for line in env_path.read_text().splitlines():
-                line = line.strip()
-                if not line or line.startswith("#") or "=" not in line:
-                    continue
-                k, _, v = line.partition("=")
-                k, v = k.strip(), v.strip()
-                if k in ("SUPABASE_URL", "VITE_SUPABASE_URL") and not url:
-                    url = v
-                if k in ("SUPABASE_SERVICE_ROLE_KEY", "VITE_SUPABASE_SERVICE_KEY") and not key:
-                    key = v
     return url, key
 
 

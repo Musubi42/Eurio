@@ -31,7 +31,8 @@ OUTPUT_DIR = Path(__file__).parent.parent / "output"
 def train(args):
     if not DATA_YAML.exists():
         print(f"ERROR: {DATA_YAML} not found.")
-        print("Run setup_detection_dataset.py first.")
+        print("Prépare le dataset sous ml/datasets/detection/coin_detect/ "
+              "(images + labels + data.yaml).")
         return
 
     print(f"Training YOLOv8-nano coin detector")

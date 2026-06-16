@@ -27,6 +27,7 @@ import httpx
 
 from referential.eurio_referential import load_referential, save_referential
 from referential.import_numista import get_type_details
+from referential.numista_keys import KeyManager
 from export.sync_to_supabase import load_env
 from state.sources_runs import record_run
 
@@ -116,14 +117,14 @@ def upload_to_storage(client: httpx.Client, base_url: str, path: str, data: byte
 
 def process_type(
     numista_id: int,
-    api_key: str,
+    km: KeyManager,
     storage_client: httpx.Client,
     supabase_url: str,
 ) -> dict[str, str] | None:
     """Fetch, resize, upload images for one Numista type. Returns images dict or None."""
-    # 1. Get image URLs from API
+    # 1. Get image URLs from API (KeyManager rotates keys + tracks quota / 429)
     try:
-        details = get_type_details(api_key, numista_id)
+        details = km.call(get_type_details, numista_id)
     except httpx.HTTPError as e:
         print(f"  API error: {e}")
         return None
@@ -229,7 +230,6 @@ def main() -> int:
     env = load_env()
     supabase_url = env.get("SUPABASE_URL", "")
     supabase_key = env.get("SUPABASE_SERVICE_ROLE_KEY", "")
-    api_key = env.get("NUMISTA_API_KEY", "")
 
     if not supabase_url or not supabase_key:
         print("ERROR: SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY required")
@@ -239,8 +239,12 @@ def main() -> int:
         list_missing_obverse(supabase_url, supabase_key)
         return 0
 
-    if not api_key:
-        print("ERROR: NUMISTA_API_KEY required")
+    # Numista access via the multi-key manager (NUMISTA_API_KEY_MUSUBI00..),
+    # which rotates keys and tracks the monthly quota. Raises if none configured.
+    try:
+        km = KeyManager()
+    except RuntimeError as e:
+        print(f"ERROR: {e}")
         return 2
 
     print("Finding types needing images...")
@@ -288,7 +292,7 @@ def main() -> int:
         for i, nid in enumerate(pending):
             print(f"\n[{i + 1}/{len(pending)}] Numista {nid} ...", end=" ", flush=True)
 
-            images = process_type(nid, api_key, storage_client, supabase_url)
+            images = process_type(nid, km, storage_client, supabase_url)
             if not images:
                 print("SKIP (no images)")
                 failed += 1

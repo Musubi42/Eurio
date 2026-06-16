@@ -290,15 +290,9 @@ def _search_numista_live(
     year: int | None,
     face_value: float | None,
 ) -> list[CatalogHit]:
-    """Live search via Numista API v3. Requires NUMISTA_API_KEY env."""
-    import os
-    api_key = os.environ.get("NUMISTA_API_KEY", "")
-    if not api_key:
-        from serving.supabase_client import load_env
-        env = load_env()
-        api_key = env.get("NUMISTA_API_KEY", "")
-    if not api_key:
-        return []
+    """Live search via Numista API v3 (keys via KeyManager / secrets/dev.env)."""
+    from referential.numista_keys import KeyManager
+
     params: dict[str, Any] = {"q": q, "category": "coin", "count": 20, "lang": "en"}
     if country:
         params["issuer"] = country.lower()
@@ -306,11 +300,23 @@ def _search_numista_live(
         params["face_value"] = face_value
     if year is not None:
         params["year"] = year
-    headers = {"Numista-API-Key": api_key}
-    with httpx.Client(timeout=10) as cli:
-        resp = cli.get("https://api.numista.com/v3/types", params=params, headers=headers)
-        resp.raise_for_status()
-        data = resp.json()
+
+    def _do(key: str) -> dict:
+        with httpx.Client(timeout=10) as cli:
+            resp = cli.get(
+                "https://api.numista.com/v3/types",
+                params=params,
+                headers={"Numista-API-Key": key},
+            )
+            resp.raise_for_status()
+            return resp.json()
+
+    try:
+        # KeyManager rotates the NUMISTA_API_KEY_MUSUBI00.. keys + tracks quota.
+        data = KeyManager().call(_do)
+    except RuntimeError:
+        # No Numista keys configured / all exhausted — degrade gracefully.
+        return []
     out: list[CatalogHit] = []
     for t in data.get("types", []):
         out.append(CatalogHit(

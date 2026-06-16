@@ -581,12 +581,8 @@ def main() -> int:
     countries = [c.upper() for c in countries]
 
     env = load_env()
-    # Inject Numista keys into os.environ for KeyManager
-    import os
-    for k, v in env.items():
-        if k.startswith("NUMISTA_API_KEY"):
-            os.environ.setdefault(k, v)
-
+    # Les clés Numista (NUMISTA_API_KEY_MUSUBI00..) sont déjà dans os.environ
+    # via .envrc/SOPS ; KeyManager les lit directement.
     sb = SupabaseClient(env["SUPABASE_URL"], env["SUPABASE_SERVICE_ROLE_KEY"])
     km = KeyManager()
 

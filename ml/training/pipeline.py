@@ -552,19 +552,10 @@ def _build_resolver():
 
 
 def _load_env() -> dict[str, str]:
-    env: dict[str, str] = {}
-    env_path = ML_DIR.parent / ".env"
-    if env_path.exists():
-        for raw in env_path.read_text().splitlines():
-            line = raw.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            k, _, v = line.partition("=")
-            env[k.strip()] = v.strip()
-    for k in ("SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"):
-        if k in os.environ:
-            env[k] = os.environ[k]
-    return env
+    # Canonical secret accessor (source: secrets/dev.env via .envrc).
+    from shared.env import load_env
+
+    return load_env()
 
 
 def _purge_supabase(ref: ClassRef, eurio_ids: tuple[str, ...]) -> None:

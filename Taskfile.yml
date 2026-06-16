@@ -15,6 +15,23 @@ tasks:
       - task --list-all
     silent: true
 
+  secrets:edit:
+    desc: "Éditer les secrets (secrets/dev.env). Déchiffre dans $EDITOR, re-chiffre à la sauvegarde. SOURCE UNIQUE de tous les secrets."
+    cmds:
+      - sops secrets/dev.env
+
+  secrets:check:
+    desc: "Vérifie que secrets/dev.env est déchiffrable (clé age présente) et bien formé. À lancer après un changement de machine/recipient."
+    cmds:
+      - 'sops -d secrets/dev.env > /dev/null && echo "✅ secrets/dev.env déchiffrable et valide"'
+    silent: true
+
+  secrets:list:
+    desc: "Liste les NOMS des secrets présents dans dev.env (valeurs jamais affichées)."
+    cmds:
+      - 'sops -d secrets/dev.env | grep -E "^[A-Za-z_][A-Za-z0-9_]*=" | cut -d= -f1 | sort'
+    silent: true
+
   tokens:generate:
     desc: Regenerate Android theme files (Color/Shape/Spacing) from shared/tokens.css
     cmds:
