@@ -1,0 +1,46 @@
+services:
+  eurio-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      # On aspire ml/ depuis le repo sans tarballer tout le monorepo.
+      additional_contexts:
+        ml: ../../ml
+    image: eurio-api:latest
+    container_name: eurio-api
+    restart: unless-stopped
+    volumes:
+      # Canonique eurio.db (SQLite WAL) — bind-mount gitignoré. Le serveur en est
+      # le writer unique ; seedé depuis MinIO au 1er boot (entrypoint).
+      - ./data:/var/lib/eurio
+      # Secrets fichiers (read-only), lus par entrypoint.sh.
+      - ./secrets:/run/secrets:ro
+    environment:
+      # Pointeurs secrets (lus par entrypoint.sh → env).
+      MINIO_ACCESS_KEY_FILE: /run/secrets/minio_access_key
+      MINIO_SECRET_KEY_FILE: /run/secrets/minio_secret_key
+
+      # Config non-sensible.
+      EURIO_DB_PATH: /var/lib/eurio/eurio.db
+      EURIO_API_AUTH_REQUIRED: "1"          # auth bearer OBLIGATOIRE sur le VPS
+      EURIO_DB_BUCKET: eurio-db             # bucket MinIO du canonique (seed)
+      # Origines autorisées (console admin). À adapter (Vercel + local).
+      EURIO_API_CORS_ORIGINS: "https://eurio-admin.musubi.dev,http://localhost:5173"
+      # Accès MinIO (même cluster que infra/minio).
+      MINIO_ENDPOINT: eurio-s3.musubi.dev
+      MINIO_USE_SSL: "true"
+    networks:
+      - traefik
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik
+      - traefik.http.routers.eurio-api.rule=Host(`eurio-api.musubi.dev`)
+      - traefik.http.routers.eurio-api.entrypoints=websecure
+      - traefik.http.routers.eurio-api.tls=true
+      - traefik.http.routers.eurio-api.tls.certresolver=letsencryptresolver
+      - traefik.http.routers.eurio-api.service=eurio-api
+      - traefik.http.services.eurio-api.loadbalancer.server.port=8042
+
+networks:
+  traefik:
+    external: true

@@ -1,0 +1,4 @@
+# Données canoniques (volume) + secrets réels — jamais committés.
+data/
+secrets/*
+!secrets/*.example
