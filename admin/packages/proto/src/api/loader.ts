@@ -19,11 +19,9 @@ const MODE: 'fixtures' | 'live' = import.meta.env.VITE_DATA_MODE ?? 'fixtures'
 const SUPABASE_URL = 'https://ettxkixkxrzchbnohgfm.supabase.co'
 const STORAGE_PUBLIC = `${SUPABASE_URL}/storage/v1/object/public`
 
-// Clé anon PUBLIQUE (RLS read-only) — embarquable, protégée par les policies.
-// Surchargée par VITE_SUPABASE_ANON_KEY si fournie.
-const SUPABASE_ANON_KEY =
-  import.meta.env.VITE_SUPABASE_ANON_KEY ??
-  '***REDACTED-SECRET***'
+// Clé anon PUBLIQUE (RLS read-only) — fournie via l'environnement uniquement
+// (VITE_SUPABASE_ANON_KEY, depuis secrets/dev.env SOPS). Jamais hardcodée.
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY ?? ''
 
 /** URL publique de l'avers (face nationale) webp d'une pièce dans Storage. */
 export function obverseUrl(eurioId: string): string {
@@ -107,6 +105,12 @@ function groupBy<T extends Record<string, unknown>>(rows: T[], key: string): Map
 type Row = Record<string, unknown>
 
 async function loadLive(): Promise<Snapshot> {
+  if (!SUPABASE_ANON_KEY) {
+    throw new Error(
+      "VITE_SUPABASE_ANON_KEY manquante : le mode 'live' requiert la clé anon " +
+      "(fournie via secrets/dev.env SOPS). Reste en mode 'fixtures' sinon.",
+    )
+  }
   const langFilter = `in.(${OFFLINE_LANGS.join(',')})`
   const [coins, sharedReverse, designGroup, mints, releases, credits, topics, names, descs, prices] =
     await Promise.all([
