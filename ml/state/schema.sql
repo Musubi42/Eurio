@@ -1718,3 +1718,16 @@ CREATE INDEX IF NOT EXISTS idx_peer_review_pending
   WHERE arbitration_status = 'pending';
 CREATE INDEX IF NOT EXISTS idx_peer_review_reviewer
   ON peer_review_decisions(reviewer_token);
+
+-- ─── Modèle B : run-batch ingest (chunk C1) ──────────────────────────────────
+-- Journal des run-batches appliqués au canonique (serveur = writer unique).
+-- Le calcul lourd (scraping/crop/dino) tourne sur réplique read-only puis pousse
+-- ses lignes par run ; `ingest_run` UPSERT par clé naturelle et marque ici le run
+-- + son `batch_sha`. Re-POST du MÊME contenu (sha identique) = no-op total (couvre
+-- `image_state_events`, sans clé naturelle). Cf. docs/work-in-progress/model-b/.
+CREATE TABLE IF NOT EXISTS ingested_runs (
+  run_id      TEXT PRIMARY KEY,
+  batch_sha   TEXT NOT NULL,
+  applied_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  counts_json TEXT
+);
