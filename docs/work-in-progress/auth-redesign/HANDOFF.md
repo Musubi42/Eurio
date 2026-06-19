@@ -14,7 +14,7 @@
 > 2. **Authentik** (déjà déployé) = IDP unique pour humains. OIDC.
 > 3. **`eurio-api`** absorbe `review_service` ; **`admin/packages/panel`**
 >    (nouveau) absorbe `admin/packages/web` + `admin/packages/review-admin`.
-> 4. **Tokens API personnels** (PAT, style GitHub) — format `eurio_<43 base32>`
+> 4. **Tokens API personnels** (PAT, style GitHub) — format `eurio_<43 base64url>`
 >    (256 bits) — créés depuis le panel. Remplacent le pattern `add-token` du
 >    C4 model-b.
 > 5. **RBAC simple** : 3 rôles (`owner`/`admin`/`reviewer`) + scopes fins,

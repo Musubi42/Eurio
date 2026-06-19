@@ -170,7 +170,7 @@ CREATE INDEX auth_audit_actor_idx ON auth_audit(actor_id);
 Une dépendance FastAPI `Principal = require_principal()` qui accepte **deux** schémas d'auth :
 
 1. **Bearer JWT** émis par Authentik (cas browser après login OIDC, transmis en `Authorization: Bearer <jwt>` ou cookie HttpOnly). Vérif via JWKS d'Authentik (cache local 1h).
-2. **Bearer token machine** (PAT) émis par `eurio-api` (cas ml/ CLI). Détection : forme `eurio_<43 base32>` (256 bits d'entropie — cf. C3 §1). Lookup sha256 dans `api_tokens`. Mise à jour `last_used_at`.
+2. **Bearer token machine** (PAT) émis par `eurio-api` (cas ml/ CLI). Détection : forme `eurio_<43 base64url>` (256 bits d'entropie — cf. C3 §1). Lookup sha256 dans `api_tokens`. Mise à jour `last_used_at`.
 
 Les deux résolvent vers un `Principal` interne unique :
 
@@ -289,7 +289,7 @@ require_principal()               # auth seulement, sans check
 
 - **OQ1 (C1)** : Authentik tourne dans quel docker-compose ? Faut-il l'ajouter à `infra/` du repo ou il est géré ailleurs sur le VPS ? **Identifier le volume Postgres exact** et l'ajouter à `infra/backup/eurio-backup.sh` (bloque C9).
 - **OQ2 (C2)** : JWKS d'Authentik — endpoint exact + politique de cache.
-- ~~**OQ3 (C3)** : Format du token personnel.~~ **Tranché** : `eurio_<43 base32>` (256 bits) — cf. §5.1 et C3 §1.
+- ~~**OQ3 (C3)** : Format du token personnel.~~ **Tranché** : `eurio_<43 base64url>` (256 bits) — cf. §5.1 et C3 §1.
 - **OQ4 (C5)** : Panel servi par Nginx static ou monté sur FastAPI (`StaticFiles`) ? **À trancher en C5** (impact CSP, pas en C9). Recommandation provisoire : nginx static + reverse-proxy `/api/*` → eurio-api (séparation claire, CSP simple).
 - **OQ5 (C6)** : `review.db` existant a-t-il des données à migrer dans `eurio.db` (decisions historiques) ou on repart vierge ?
 - **OQ6 (C9)** : Date du cutover. Pré-requis : panel testé en parallèle pendant ≥ 1 semaine.

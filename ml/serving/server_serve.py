@@ -20,7 +20,7 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from serving import auth as api_auth
-from serving import auth_routes, db_migrate, ingest_routes, users_routes
+from serving import auth_routes, db_migrate, ingest_routes, tokens_routes, users_routes
 from store import Store
 
 logging.basicConfig(level=logging.INFO)
@@ -56,6 +56,7 @@ if _origins:
 # propre dep `require_principal` ou sont publiques pour le flow).
 app.include_router(auth_routes.router)
 app.include_router(users_routes.router)
+app.include_router(tokens_routes.router)
 
 
 @app.get("/healthz")

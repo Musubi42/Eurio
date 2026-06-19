@@ -15,7 +15,7 @@
 
 ## 1. Modèle de token
 
-- Format : `eurio_<43 base32 caractères>` (256 bits d'entropie). **Tranché — cf. DESIGN.md §5.1.** Génération : `secrets.token_bytes(32)` → `base64.b32encode(...).decode().rstrip("=").lower()` → préfixer `eurio_`. Pas de checksum (pas nécessaire pour V1, lookup direct par sha).
+- Format : `eurio_<43 base64url caractères (RFC 4648 sans padding)>` (256 bits d'entropie). **Tranché — cf. DESIGN.md §5.1.** Génération : `secrets.token_bytes(32)` → `secrets.token_urlsafe(32).decode().rstrip("=").lower()` → préfixer `eurio_`. Pas de checksum (pas nécessaire pour V1, lookup direct par sha).
 - Préfixe `eurio_` détectable pour distinguer du JWT (qui commence par `eyJ`).
 - Stockage : `sha256(token)` hex en `api_tokens.token_sha`. Le clair n'est
   **jamais** stocké côté serveur, **affiché une seule fois** à la création.

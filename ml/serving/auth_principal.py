@@ -3,12 +3,15 @@
 Cf. DESIGN.md §3, §5, §6. Le ``Principal`` est l'objet d'auth unifié exposé aux
 routes, qu'il vienne d'un cookie de session OIDC (browser) ou d'un PAT (CLI).
 
-Pour C2, le path PAT n'est **pas** encore branché (sera fait en C3). On résoud
-uniquement OIDC ici, et on garde le bearer legacy compatible via le module
-``auth.py`` existant (sera retiré en C3 quand les PAT prennent le relais).
+C2 : path OIDC (cookie ``eurio_session``).
+C3 : path PAT (``Authorization: Bearer eurio_<43 base64url>``), branché dans
+     ``require_principal``. Les scopes effectifs d'un PAT = intersection des
+     scopes demandés à la création et des scopes effectifs *actuels* du user
+     (rôles peuvent évoluer entre temps).
 """
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import sqlite3
@@ -18,7 +21,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
-from fastapi import Cookie, HTTPException, Request
+from fastapi import Cookie, Header, HTTPException, Request
 from jose import jwt
 from jose.exceptions import JWTError
 
@@ -144,22 +147,97 @@ def cookie_settings() -> dict:
 # ─── Dépendances FastAPI ────────────────────────────────────────────────────
 
 
+PAT_PREFIX = "eurio_"
+
+
+def hash_pat(token: str) -> str:
+    """sha256 hex du PAT clair — stocké en base, jamais le clair."""
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def _db_path() -> Path:
+    return Path(os.environ.get("EURIO_DB_PATH", "/var/lib/eurio/eurio.db"))
+
+
+def _principal_from_pat(token: str) -> Principal:
+    """Résoud un PAT vers un Principal. 401 si invalide / révoqué / expiré.
+
+    Scopes effectifs = scopes du token ∩ scopes effectifs *actuels* de l'user
+    (recalculés depuis ``user_roles`` à chaque requête).
+    """
+    import json
+    sha = hash_pat(token)
+    now_ms = int(time.time() * 1000)
+    conn = sqlite3.connect(str(_db_path()))
+    conn.row_factory = sqlite3.Row
+    try:
+        row = conn.execute(
+            "SELECT t.id, t.user_id, t.scopes_json, u.email, u.active, "
+            "       COALESCE(GROUP_CONCAT(ur.role, ','), '') AS roles_csv "
+            "FROM pat_tokens t "
+            "JOIN users u ON u.id = t.user_id "
+            "LEFT JOIN user_roles ur ON ur.user_id = u.id "
+            "WHERE t.token_sha = ? AND t.revoked_at IS NULL "
+            "  AND (t.expires_at IS NULL OR t.expires_at > ?) "
+            "GROUP BY t.id",
+            (sha, now_ms),
+        ).fetchone()
+        if not row:
+            raise HTTPException(status_code=401, detail="invalid or revoked token")
+        if not row["active"]:
+            raise HTTPException(status_code=401, detail="user disabled")
+        roles = [r for r in (row["roles_csv"] or "").split(",") if r]
+        token_scopes = set(json.loads(row["scopes_json"] or "[]"))
+        effective = token_scopes & roles_to_scopes(roles)
+        # Fire-and-forget last_used_at (best-effort).
+        try:
+            conn.execute(
+                "UPDATE pat_tokens SET last_used_at = ? WHERE id = ?",
+                (now_ms, row["id"]),
+            )
+            conn.commit()
+        except Exception:
+            _LOG.warning("last_used_at update failed (non-fatal)")
+        return Principal(
+            user_id=row["user_id"],
+            email=row["email"] or "",
+            roles=roles,
+            scopes=effective,
+            auth_method="api_token",
+            token_id=row["id"],
+        )
+    finally:
+        conn.close()
+
+
 def require_principal(
     request: Request,
     eurio_session: str | None = Cookie(default=None),
+    authorization: str | None = Header(default=None),
 ) -> Principal:
-    """Auth obligatoire — lit le cookie de session, valide, renvoie le Principal.
+    """Auth obligatoire — accepte ``Authorization: Bearer eurio_…`` (PAT, C3) OU
+    cookie ``eurio_session`` (OIDC, C2). PAT a priorité si présent.
 
-    Pour C2 : seul le cookie OIDC est supporté. En C3, on ajoute le path PAT
-    via ``Authorization: Bearer eurio_…``.
+    Note : on n'accepte **pas** d'autres formes de ``Authorization: Bearer``
+    (ex: JWT Authentik brut). Le JWT Authentik est échangé pour notre cookie de
+    session lors du callback et n'est jamais re-présenté.
     """
+    if authorization and authorization.lower().startswith("bearer "):
+        token = authorization[7:].strip()
+        if token.startswith(PAT_PREFIX):
+            return _principal_from_pat(token)
+        raise HTTPException(
+            status_code=401,
+            detail=f"unsupported Authorization scheme (expected '{PAT_PREFIX}…')",
+        )
+
     if not eurio_session:
         # Fallback : header Cookie manuel (cas curl --cookie). FastAPI ne capture
         # pas tous les formats, donc on regarde la string brute.
         raw = request.cookies.get(os.environ.get("EURIO_COOKIE_NAME", "eurio_session"))
         eurio_session = raw or None
     if not eurio_session:
-        raise HTTPException(status_code=401, detail="auth required (no session cookie)")
+        raise HTTPException(status_code=401, detail="auth required (no session cookie, no PAT)")
     try:
         payload = verify_session_cookie(eurio_session)
     except JWTError as e:
