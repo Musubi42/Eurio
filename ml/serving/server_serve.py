@@ -21,6 +21,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from serving import auth as api_auth
 from serving import auth_routes, db_migrate, ingest_routes, tokens_routes, users_routes
+from serving.auth_principal import require_principal
 from store import Store
 
 logging.basicConfig(level=logging.INFO)
@@ -38,6 +39,9 @@ if _applied:
 
 _store = Store(_DB_PATH)
 api_auth.bind(_store)
+
+# Boot guard : refuse de démarrer si EURIO_DEV_BYPASS=1 dans un contexte prod.
+auth_routes.assert_dev_bypass_safe()
 
 app = FastAPI(title="Eurio API (serve)", version="0.1.0", docs_url="/docs")
 
@@ -88,7 +92,11 @@ for _name, _modpath, _has_bind in _CANDIDATES:
         _mod = importlib.import_module(_modpath)
         if _has_bind and hasattr(_mod, "bind"):
             _mod.bind(_store)
-        app.include_router(_mod.router, dependencies=[Depends(api_auth.require_token)])
+        # Auth-redesign C3.5 : migration require_token (legacy bearer machine
+        # via table api_tokens) → require_principal (cookie OIDC + PAT). Le
+        # legacy bearer n'est plus accepté sur ces routes ; les workflows
+        # Mac/PC doivent utiliser un PAT (eurio_<43 base64url>).
+        app.include_router(_mod.router, dependencies=[Depends(require_principal)])
         _mounted.append(_name)
     except Exception as exc:  # noqa: BLE001 — dep lourde ou wiring absent
         _skipped.append(f"{_name} ({type(exc).__name__}: {exc})")

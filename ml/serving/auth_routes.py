@@ -48,13 +48,34 @@ def _db_path() -> Path:
 
 
 def _flow_cookie_kwargs() -> dict:
+    from .auth_principal import _env_bool
     return {
         "httponly": True,
-        "secure": True,
-        "samesite": "lax",
+        "secure": _env_bool("EURIO_COOKIE_SECURE", True),
+        "samesite": os.environ.get("EURIO_COOKIE_SAMESITE", "lax"),
         "path": "/auth/oidc",  # scoped au flow OIDC uniquement
         "max_age": _OIDC_FLOW_TTL_SEC,
     }
+
+
+def _dev_bypass_enabled() -> bool:
+    """Mode dev (cf. C5 §6.1). Refuse en prod (panel_origin contient musubi.dev)
+    OU si le binding n'est pas localhost. Vérification dure au boot via
+    `assert_dev_bypass_safe()` ci-dessous."""
+    from .auth_principal import _env_bool
+    return _env_bool("EURIO_DEV_BYPASS", False)
+
+
+def assert_dev_bypass_safe() -> None:
+    """À appeler au boot. Crashe si `EURIO_DEV_BYPASS=1` ET indices de prod."""
+    if not _dev_bypass_enabled():
+        return
+    panel = os.environ.get("EURIO_PANEL_ORIGIN", "").lower()
+    if "musubi.dev" in panel:
+        raise RuntimeError(
+            "EURIO_DEV_BYPASS=1 mais EURIO_PANEL_ORIGIN pointe sur prod "
+            f"({panel}) — refus de démarrer."
+        )
 
 
 def _pkce_pair() -> tuple[str, str]:
@@ -201,6 +222,44 @@ def callback(
     # Cleanup flow cookies
     for c in (_STATE_COOKIE, _VERIFIER_COOKIE, _RETURN_TO_COOKIE):
         resp.delete_cookie(c, path="/auth/oidc")
+    return resp
+
+
+@router.get("/dev/login")
+def dev_login(
+    email: str = Query(default="dev@local.test"),
+    name: str = Query(default="Dev User"),
+) -> Response:
+    """Mode dev only — émet un cookie de session signé pour un user fictif owner.
+
+    Activé via `EURIO_DEV_BYPASS=1` côté `eurio-api`. Refusé en prod (vérifié
+    au boot par `assert_dev_bypass_safe()`). Permet de bosser sur le panel
+    sans Authentik joignable en local.
+    """
+    if not _dev_bypass_enabled():
+        raise HTTPException(status_code=404, detail="dev login disabled")
+
+    # sub stable basé sur l'email pour réutiliser le même user à travers les
+    # redémarrages — pas d'aléa.
+    import hashlib
+    sub = "dev_" + hashlib.sha256(email.encode()).hexdigest()[:32]
+
+    from .auth_principal import sign_session_cookie, upsert_user_and_sync_roles
+    principal = upsert_user_and_sync_roles(
+        _db_path(), sub=sub, email=email, name=name, roles=["owner", "admin", "reviewer"]
+    )
+    session_jwt, sid = sign_session_cookie(
+        user_id=principal.user_id,
+        email=principal.email,
+        roles=principal.roles,
+        scopes=principal.scopes,
+    )
+    write_auth_audit(_db_path(), actor_id=sub, event="login.ok",
+                     target=sid, meta={"dev_bypass": True, "email": email})
+    panel = os.environ.get("EURIO_PANEL_ORIGIN", "http://localhost:5173")
+    resp = RedirectResponse(url=panel + "/", status_code=302)
+    settings = cookie_settings()
+    resp.set_cookie(value=session_jwt, **settings)
     return resp
 
 

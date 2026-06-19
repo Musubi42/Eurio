@@ -21,7 +21,12 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from .auth_principal import Principal, require_principal, write_auth_audit
+from .auth_principal import (
+    Principal,
+    require_principal,
+    require_scope,
+    write_auth_audit,
+)
 
 router = APIRouter(tags=["users"])
 
@@ -32,9 +37,18 @@ def _db_path() -> Path:
 
 @router.get("/me")
 def me(principal: Principal = Depends(require_principal)) -> dict:
+    # Lire le `name` depuis la DB (pas porté dans le JWT pour rester compact).
+    conn = sqlite3.connect(str(_db_path()))
+    try:
+        row = conn.execute(
+            "SELECT name FROM users WHERE id = ?", (principal.user_id,)
+        ).fetchone()
+    finally:
+        conn.close()
     return {
         "user_id": principal.user_id,
         "email": principal.email,
+        "name": row[0] if row else principal.email,
         "roles": principal.roles,
         "scopes": sorted(principal.scopes),
         "auth_method": principal.auth_method,
@@ -44,21 +58,9 @@ def me(principal: Principal = Depends(require_principal)) -> dict:
 # ─── /users ───────────────────────────────────────────────────────────────
 
 
-def _require_scope(scope: str):
-    """Local helper — bind du scope dans une closure typée FastAPI."""
-    def _dep(principal: Principal = Depends(require_principal)) -> Principal:
-        if scope not in principal.scopes:
-            raise HTTPException(
-                status_code=403,
-                detail=f"missing scope: {scope} (have: {sorted(principal.scopes)})",
-            )
-        return principal
-    return _dep
-
-
 @router.get("/users")
 def list_users(
-    principal: Principal = Depends(_require_scope("users:read")),
+    principal: Principal = Depends(require_scope("users:read")),
 ) -> list[dict]:
     conn = sqlite3.connect(str(_db_path()))
     conn.row_factory = sqlite3.Row
@@ -96,7 +98,7 @@ _VALID_ROLES = {"owner", "admin", "reviewer"}
 def set_user_roles(
     user_id: str,
     payload: RolesPayload,
-    principal: Principal = Depends(_require_scope("users:manage")),
+    principal: Principal = Depends(require_scope("users:manage")),
 ) -> dict:
     requested = [r for r in payload.roles if r in _VALID_ROLES]
     invalid = sorted(set(payload.roles) - _VALID_ROLES)

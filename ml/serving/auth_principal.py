@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
-from fastapi import Cookie, Header, HTTPException, Request
+from fastapi import Cookie, Depends, Header, HTTPException, Request
 from jose import jwt
 from jose.exceptions import JWTError
 
@@ -129,13 +129,26 @@ def verify_session_cookie(token: str) -> dict:
     )
 
 
+def _env_bool(name: str, default: bool) -> bool:
+    val = os.environ.get(name, "").strip().lower()
+    if not val:
+        return default
+    return val in ("1", "true", "yes", "on")
+
+
 def cookie_settings() -> dict:
-    """Attrs pour ``Response.set_cookie`` — central pour cohérence partout."""
+    """Attrs pour ``Response.set_cookie`` — central pour cohérence partout.
+
+    ``EURIO_COOKIE_SECURE`` (default ``1``) + ``EURIO_COOKIE_SAMESITE`` (default
+    ``lax``) permettent de baisser la garde **uniquement en dev local** (http,
+    cross-origin avec port différent) où le browser refuse les cookies Secure
+    sur http:// et Lax sur fetch cross-port.
+    """
     return {
         "key": os.environ.get("EURIO_COOKIE_NAME", "eurio_session"),
         "httponly": True,
-        "secure": True,
-        "samesite": "lax",
+        "secure": _env_bool("EURIO_COOKIE_SECURE", True),
+        "samesite": os.environ.get("EURIO_COOKIE_SAMESITE", "lax"),
         "path": "/",
         "max_age": SESSION_TTL_SEC,
         # Pas de domain : le cookie reste lié à eurio-api.musubi.dev.
@@ -254,26 +267,31 @@ def require_principal(
 
 
 def require_scope(scope: str):
-    """Factory de dépendance — 403 si le scope est absent du Principal."""
-    def _dep(principal: Principal = None):  # noqa: ANN001 — typed via Depends below
+    """Factory de dépendance — 403 si le scope est absent du Principal.
+
+    Usage côté router :
+
+        @router.get(...)
+        def handler(principal: Annotated[Principal, Depends(require_scope("sources:read"))]):
+            ...
+    """
+    def _dep(principal: Principal = Depends(require_principal)) -> Principal:
         if scope not in principal.scopes:
             raise HTTPException(
                 status_code=403,
-                detail=f"missing scope: {scope} (have: {sorted(principal.scopes)})",
+                detail=f"missing scope: {scope}",
             )
         return principal
-    # FastAPI besoin de l'annotation : on la branche via Depends côté router
-    # (cf. users_routes.py). Le wrapper ci-dessous est juste un closure.
     return _dep
 
 
 def require_role(role: str):
-    """Factory de dépendance — 403 si le rôle est absent du Principal."""
-    def _dep(principal: Principal = None):  # noqa: ANN001
+    """Idem ``require_scope`` mais pour les rôles applicatifs."""
+    def _dep(principal: Principal = Depends(require_principal)) -> Principal:
         if role not in principal.roles:
             raise HTTPException(
                 status_code=403,
-                detail=f"missing role: {role} (have: {principal.roles})",
+                detail=f"missing role: {role}",
             )
         return principal
     return _dep

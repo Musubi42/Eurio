@@ -32,8 +32,7 @@ from .auth_principal import (
     PAT_PREFIX,
     Principal,
     hash_pat,
-    require_principal,
-    roles_to_scopes,
+    require_scope,
     write_auth_audit,
 )
 
@@ -44,18 +43,7 @@ def _db_path() -> Path:
     return Path(os.environ.get("EURIO_DB_PATH", "/var/lib/eurio/eurio.db"))
 
 
-# ─── Scope guard local (évite l'overhead d'un module séparé) ────────────────
-
-
-def _require_tokens_manage_own(
-    principal: Principal = Depends(require_principal),
-) -> Principal:
-    if "tokens:manage_own" not in principal.scopes:
-        raise HTTPException(
-            status_code=403,
-            detail="missing scope: tokens:manage_own",
-        )
-    return principal
+_require_tokens = require_scope("tokens:manage_own")
 
 
 # ─── GET /me/tokens ─────────────────────────────────────────────────────────
@@ -63,7 +51,7 @@ def _require_tokens_manage_own(
 
 @router.get("")
 def list_tokens(
-    principal: Annotated[Principal, Depends(_require_tokens_manage_own)],
+    principal: Annotated[Principal, Depends(_require_tokens)],
 ) -> list[dict]:
     """Liste les tokens du user courant (jamais le clair)."""
     conn = sqlite3.connect(str(_db_path()))
@@ -107,7 +95,7 @@ class CreateTokenPayload(BaseModel):
 @router.post("")
 def create_token(
     payload: CreateTokenPayload,
-    principal: Annotated[Principal, Depends(_require_tokens_manage_own)],
+    principal: Annotated[Principal, Depends(_require_tokens)],
 ) -> dict:
     """Crée un PAT. Retourne le clair UNE FOIS.
 
@@ -182,7 +170,7 @@ def create_token(
 @router.delete("/{token_id}")
 def revoke_token(
     token_id: int,
-    principal: Annotated[Principal, Depends(_require_tokens_manage_own)],
+    principal: Annotated[Principal, Depends(_require_tokens)],
 ) -> dict:
     """Soft delete : ``revoked_at = now()``. Audit conservé."""
     now_ms = int(time.time() * 1000)
