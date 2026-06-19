@@ -1,27 +1,71 @@
-# RESUME — reprise auth-redesign à partir de C6
+# RESUME — reprise auth-redesign post-pivot 2026-06-19
 
 > **Pour qui** : une session future (Claude Code ou humain) qui reprend la
-> refonte auth après la grosse session du 2026-06-19 qui a livré
-> **C1 → C5** (config Authentik + backend complet eurio-api OIDC/RBAC/PAT +
-> review absorbé + panel shell Vue).
+> refonte auth après la grosse session du 2026-06-19.
 >
-> **Statut** : C6 → C9 restent à faire. **C6.5** (data migration Supabase → SQLite)
-> est le seul vrai gros morceau ; le reste est principalement de l'UI.
+> **⚠ Pivot architectural majeur en fin de session 2026-06-19 — lire d'abord
+> [`ARCHITECTURE.md`](./ARCHITECTURE.md)**. Les handoffs C6/C7/C8/C9 originels
+> sont en partie obsolètes : la cible n'est plus "un seul nouveau panel
+> remplaçant web", mais **deux frontends séparés** (`studio-local` heavy +
+> `admin-vps` light). Cf. §0bis ci-dessous.
 >
-> **Avant de coder quoi que ce soit** : lire ce doc en entier, puis ouvrir
-> les handoffs du chunk visé. Les handoffs C6, C7, C8, C9 sont déjà écrits,
-> mais ce doc consolide les **findings + décisions + écarts vs spec initiale**
-> qui sont arrivés en cours de route.
+> **Statut auth core** : C1 → C5 livrés et déployés. La suite (C6+) bascule
+> sur la nouvelle direction.
 
 ## 0. Quick map
 
 | Doc | Rôle |
 |---|---|
-| [`DESIGN.md`](./DESIGN.md) | Cible architecture autoritaire. À relire si conflit. |
-| [`HANDOFF.md`](./HANDOFF.md) | Historique d'ouverture (superseded). Ne pas suivre les §5-9 normativement. |
+| **[`ARCHITECTURE.md`](./ARCHITECTURE.md)** | **Source de vérité post-pivot 2026-06-19** : dual frontend studio-local + admin-vps, règles de placement features, auth PAT vs OIDC. À lire en premier. |
+| [`PAT-WORKFLOW.md`](./PAT-WORKFLOW.md) | Comment générer / coller / révoquer un PAT côté studio-local. |
+| [`admin-vps-SPEC.md`](./admin-vps-SPEC.md) | Spec du panel léger VPS (mobile-friendly, read-mostly). |
+| [`DESIGN.md`](./DESIGN.md) | Cible auth backend (PAT, OIDC, RBAC). Reste valide. |
+| [`HANDOFF.md`](./HANDOFF.md) | Historique d'ouverture (superseded). |
 | [`ROADMAP.md`](./ROADMAP.md) | Statut courant des chunks. Mettre à jour en fin de chunk. |
-| [`Cx-HANDOFF-*.md`](./) | Détail par chunk. Lire celui du chunk avant de coder. |
+| [`Cx-HANDOFF-*.md`](./) | Handoffs originaux. C6/C7/C8 **en partie obsolètes** depuis pivot. À lire avec recul. |
 | **`RESUME-NEXT-SESSION.md`** | **Tu es ici.** Findings + corrections cumulées. |
+
+## 0bis. Pivot du 2026-06-19 — résumé exécutif
+
+Avant le pivot : la cible était "un nouveau panel `packages/panel/` from-scratch
+qui remplace progressivement `packages/web/` (C7a/C7b), avec data Supabase
+migrée vers SQLite (C6.5)".
+
+Après pivot : **deux frontends parallèles, deux usages distincts** :
+
+- `admin/packages/studio-local/` (ancien `packages/web/`) — heavy local
+  Mac/PC sur `pnpm dev :5173`, auth **Bearer PAT** depuis `.env.local`.
+  Conserve la majorité du code existant. C'est où raph code activement.
+- `admin/packages/admin-vps/` (ancien `packages/panel/`) — light hosted
+  sur `https://eurio-admin.musubi.dev`, auth **cookie OIDC**. Vues
+  read-mostly + users/tokens + mobile-friendly. Pas de heavy compute
+  (interdit par mixed content HTTPS → http://localhost:8042).
+
+C6 du plan initial (port review UI dans panel) **abandonné** : `studio-local`
+a déjà ses propres écrans review backed by `useReviewApi.ts → /review-queue/*`
+legacy routes. Les vues review/* écrites brièvement dans panel ont été
+supprimées.
+
+C6.5 (data migration) **dégonflée** : audit factuel a montré que seules 4
+tables Supabase sont touchées par le frontend (`coins`, `coin_confusion_map`,
+`coin_series`, `sets_audit`). Migration mécanique, ~0.5j de travail, non
+bloquante pour la suite.
+
+Foundations livrées en fin de session :
+
+- `infra/eurio-admin/` — Dockerfile multistage (node → nginx static) +
+  docker-compose Traefik. `https://eurio-admin.musubi.dev` répond 200.
+- `admin/packages/admin-vps/` — squelette auth OIDC déployé (Login redirect
+  Authentik, Pinia store `/me`, AppShell, guards par scope).
+- `admin/packages/studio-local/src/shared/api/eurio-api.ts` — wrapper Bearer
+  PAT pour studio-local.
+- `admin/packages/studio-local/src/stores/eurio-session.ts` — Pinia store
+  `useEurioSession` (load `/me` au boot, status missing/invalid/ok).
+- `admin/packages/studio-local/src/shared/ui/EurioSessionBanner.vue` — bandeau
+  affiché si PAT manquant/invalide.
+- `.env.example` + gitignore `.env.local` côté studio-local.
+
+**Mémoires** : `project_frontend_dual`, `project_friends_review_deferred`.
 
 ## 1. État réel au 2026-06-19 (post-session)
 
@@ -33,18 +77,24 @@
 | `eurio-api` | `https://eurio-api.musubi.dev` | ✅ container up, healthz 200, OIDC flow E2E validé, PAT, review absorbé |
 | `eurio.db` (SQLite) | `/opt/eurio/infra/eurio-api/data/eurio.db` | ✅ tables auth (`users`, `roles`, `user_roles`, `pat_tokens`, `auth_audit`, `_schema_migrations`) + métier (training, etc.) |
 | `review.db` (SQLite) | `/opt/eurio/infra/eurio-api/data/review.db` | ✅ schéma C4 bootstrappé (`review_items`, `decisions`, `meta`) — séparé d'`eurio.db` |
-| Panel (skeleton) | `admin/packages/panel/` | ✅ pnpm package, Vue 3 + Vite + Pinia + Router, build 38KB gzip, **pas encore déployé** |
+| `admin-vps` (renamed from `panel`) | `admin/packages/admin-vps/` | ✅ déployé sur `https://eurio-admin.musubi.dev` via `infra/eurio-admin/` (nginx + Traefik), build 39KB gzip. Vues review/* supprimées en fin de session 2026-06-19. |
+| `studio-local` (renamed from `web`) | `admin/packages/studio-local/` | ✅ code existant intact + foundations PAT auth (eurio-api client + Pinia store + bandeau) ajoutées. Auth Supabase OTP en cohabitation pour l'instant. |
 
-### Ce qui reste à faire
+### Ce qui reste à faire (re-priorisé post-pivot)
 
-| Chunk | Estimation | Bloquant ? |
-|---|---|---|
-| C6 — port review UI dans le panel | 1h | non |
-| C8 — UI users + tokens | 45 min | non |
-| C6.5 — data Supabase → SQLite | **gros** | **bloque C7a/C7b** |
-| C7a — editorial core | 2-3h | dépend C6.5 |
-| C7b — sets & analytics | 2-3h | dépend C7a |
-| C9 — cutover | 1-2h | dépend tout le reste |
+| Chantier | Localisation | Estimation | Bloquant ? |
+|---|---|---|---|
+| **Studio-local : générer PAT + tester E2E** | `studio-local` + CLI break-glass | 30 min | non |
+| Rip Supabase auth de studio-local | `studio-local/src/features/auth/` | 1h | non (cohabitation OK pour l'instant) |
+| Admin-vps : vue Users (CRUD rôles) | `admin-vps/src/views/users/` | 1h | non |
+| Admin-vps : vue Mes tokens (PAT mgmt) | `admin-vps/src/views/tokens/` | 1h | non |
+| Admin-vps : layout responsive mobile-first | `admin-vps/src/components/AppShell.vue` | 1-2h | bonus UX |
+| Migration data Supabase → SQLite (4 tables) | `eurio-api` + studio-local refactor | 0.5-1j | non |
+| Cleanup : suppression `packages/review-admin/` | `admin/packages/` | 5min | non |
+| Spec friends-review (markdown) | docs | 30min | non |
+
+C6 (original) **annulé**. C7a/b/C9 (originaux) **superseded** par la liste
+ci-dessus.
 
 ## 2. Endpoints `eurio-api` actuellement live
 

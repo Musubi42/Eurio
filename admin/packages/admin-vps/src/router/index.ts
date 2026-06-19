@@ -46,12 +46,6 @@ const routes: RouteRecordRaw[] = [
         meta: { scope: 'audit:read', title: 'Audit' },
       },
       {
-        path: 'review',
-        name: 'review',
-        component: () => import('@/views/Placeholder.vue'),
-        meta: { scope: 'review:read', title: 'Review' },
-      },
-      {
         path: 'training',
         name: 'training',
         component: () => import('@/views/Placeholder.vue'),

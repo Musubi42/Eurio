@@ -166,6 +166,144 @@ def _grant_owner(email: str) -> int:
     return 0
 
 
+def _create_pat(
+    *,
+    email: str,
+    name: str,
+    scopes_csv: str,
+    expires_days: int | None,
+) -> int:
+    """Break-glass : crée un PAT pour un user existant (table pat_tokens).
+
+    Sert au bootstrap de studio-local (chicken-and-egg : POST /me/tokens exige
+    une session OIDC, mais on n'a pas encore d'UI pour la créer). Format et
+    règles identiques à ``tokens_routes.create_token`` :
+
+    - Token : ``eurio_<43 base64url>`` via ``secrets.token_urlsafe(32)``.
+    - Scopes demandés ⊆ scopes effectifs courants de l'user (rôles → ROLE_SCOPES).
+    - ``audit:write`` interdit (réservé services).
+    - Stockage : sha256 dans ``pat_tokens.token_sha``.
+    - Audit : ``token.create`` avec ``actor_id = user_id``.
+    """
+    import json as _json
+    import os as _os
+    import sys as _sys
+    import time as _time
+
+    from .auth_principal import (
+        PAT_PREFIX,
+        ROLE_SCOPES,
+        hash_pat,
+        write_auth_audit,
+    )
+
+    db_path = Path(_os.environ.get("EURIO_DB_PATH", str(_DEFAULT_DB)))
+    if not db_path.exists():
+        print(f"ERREUR : DB introuvable à {db_path}", file=_sys.stderr)
+        return 2
+
+    conn = sqlite3.connect(str(db_path))
+    try:
+        row = conn.execute(
+            "SELECT id FROM users WHERE email = ? AND active = 1",
+            (email,),
+        ).fetchone()
+        if not row:
+            print(
+                f"ERREUR : user actif avec email '{email}' inconnu du miroir.\n"
+                f"  → premier login OIDC requis (cf. grant-owner help).",
+                file=_sys.stderr,
+            )
+            return 3
+        user_id = row[0]
+        roles = [
+            r[0]
+            for r in conn.execute(
+                "SELECT role FROM user_roles WHERE user_id = ?",
+                (user_id,),
+            ).fetchall()
+        ]
+        effective: set[str] = set()
+        for r in roles:
+            effective |= ROLE_SCOPES.get(r, set())
+
+        if scopes_csv.strip():
+            requested = {s.strip() for s in scopes_csv.split(",") if s.strip()}
+        else:
+            requested = set(effective)
+
+        if "audit:write" in requested:
+            print(
+                "ERREUR : audit:write est réservé aux services serveur.",
+                file=_sys.stderr,
+            )
+            return 4
+
+        extra = requested - effective
+        if extra:
+            print(
+                f"ERREUR : scopes hors des scopes effectifs de l'user : "
+                f"{sorted(extra)}\n  scopes effectifs : {sorted(effective)}",
+                file=_sys.stderr,
+            )
+            return 5
+
+        raw = secrets.token_urlsafe(32)
+        full = f"{PAT_PREFIX}{raw}"
+        sha = hash_pat(full)
+        now_ms = int(_time.time() * 1000)
+        expires_at_ms = (
+            now_ms + int(expires_days) * 24 * 3600 * 1000
+            if expires_days is not None
+            else None
+        )
+
+        cur = conn.execute(
+            "INSERT INTO pat_tokens(user_id, name, token_sha, scopes_json, "
+            "                       created_at, expires_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                user_id,
+                name,
+                sha,
+                _json.dumps(sorted(requested), separators=(",", ":")),
+                now_ms,
+                expires_at_ms,
+            ),
+        )
+        token_id = cur.lastrowid
+        conn.commit()
+    finally:
+        conn.close()
+
+    write_auth_audit(
+        db_path,
+        actor_id=user_id,
+        event="token.create",
+        target=str(token_id),
+        meta={
+            "name": name,
+            "scopes": sorted(requested),
+            "invoked_by": "cli.create-pat",
+        },
+    )
+
+    print(f"OK : PAT '{name}' créé pour {email}.")
+    print(f"  id            : {token_id}")
+    print(f"  scopes        : {sorted(requested)}")
+    print(f"  expires_at_ms : {expires_at_ms or 'jamais'}")
+    print()
+    print("  ┌─────────────── CLAIR (copie-le MAINTENANT, non re-affichable) ───────────────┐")
+    print(f"    {full}")
+    print("  └──────────────────────────────────────────────────────────────────────────────┘")
+    print()
+    print(
+        "  Colle dans admin/packages/studio-local/.env.local :",
+        f"\n    VITE_EURIO_PAT={full}",
+    )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     import argparse
 
@@ -183,10 +321,36 @@ def main(argv: list[str] | None = None) -> int:
         help="break-glass : grant le rôle owner à un user (auth-redesign C3)",
     )
     p_grant.add_argument("--email", required=True)
+    p_pat = sub.add_parser(
+        "create-pat",
+        help="break-glass : crée un PAT (table pat_tokens) pour bootstraper studio-local. "
+             "Le clair est imprimé UNE FOIS. Scopes = intersection des roles de l'user et "
+             "des scopes demandés (par défaut = tous les scopes effectifs de l'user).",
+    )
+    p_pat.add_argument("--email", required=True)
+    p_pat.add_argument("--name", required=True, help="nom lisible, ex: mac-raph")
+    p_pat.add_argument(
+        "--scopes",
+        default="",
+        help="liste séparée par virgule. Vide = tous les scopes effectifs de l'user.",
+    )
+    p_pat.add_argument(
+        "--expires-days",
+        type=int,
+        default=None,
+        help="optionnel : expiration en jours. Défaut = pas d'expiration.",
+    )
     args = parser.parse_args(argv)
 
     if args.cmd == "grant-owner":
         return _grant_owner(args.email)
+    if args.cmd == "create-pat":
+        return _create_pat(
+            email=args.email,
+            name=args.name,
+            scopes_csv=args.scopes,
+            expires_days=args.expires_days,
+        )
 
     store = Store(_DEFAULT_DB)
     conn = store._connection()  # noqa: SLF001

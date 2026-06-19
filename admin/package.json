@@ -2,11 +2,11 @@
   "name": "eurio-admin-workspace",
   "private": true,
   "scripts": {
-    "dev": "pnpm -C packages/web dev",
-    "build": "pnpm -C packages/web build",
-    "typecheck": "pnpm -C packages/web typecheck",
-    "panel:dev": "pnpm -C packages/panel dev",
-    "panel:build": "pnpm -C packages/panel build",
-    "panel:typecheck": "pnpm -C packages/panel typecheck"
+    "studio:dev": "pnpm -C packages/studio-local dev",
+    "studio:build": "pnpm -C packages/studio-local build",
+    "studio:typecheck": "pnpm -C packages/studio-local typecheck",
+    "admin-vps:dev": "pnpm -C packages/admin-vps dev",
+    "admin-vps:build": "pnpm -C packages/admin-vps build",
+    "admin-vps:typecheck": "pnpm -C packages/admin-vps typecheck"
   }
 }

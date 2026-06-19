@@ -5,11 +5,15 @@ App Android de collection de pièces euro. L'acte central de l'app est le **scan
 Monorepo :
 
 - `app-android/` — app Kotlin / Jetpack Compose / Material 3
-- `admin/packages/web/` — console Vue 3 / Vite (coins, sets, audit) déployée sur Vercel
+- `admin/packages/studio-local/` — front HEAVY local (Mac/PC, `pnpm dev` :5173), auth PAT Bearer, heavy lifting (crops, scrape, training, review fast-iter)
+- `admin/packages/admin-vps/` — front LIGHT VPS (`eurio-admin.musubi.dev`), auth cookie OIDC, read-mostly + users/tokens, mobile-friendly
 - `admin/packages/parity/` — tooling QA local (Playwright, Maestro, screenshots proto ↔ Android)
+- `admin/packages/proto/` — prototype design Vue PWA déployé sur Vercel
 - `ml/` — projet Python standalone (FastAPI, entraînement, scraping sources)
-- `supabase/` — migrations SQL + types générés
+- `infra/` — docker-compose des services VPS (eurio-api, eurio-admin, minio, backup)
+- `supabase/` — migrations SQL + types générés (legacy, en retrait)
 - `docs/` — design docs, phases d'implémentation, recherche technique
+- Architecture frontend dual : `docs/work-in-progress/auth-redesign/ARCHITECTURE.md`
 
 Plan de travail : `docs/app-implem-phases/README.md`.
 Règles repo : `CLAUDE.md`.

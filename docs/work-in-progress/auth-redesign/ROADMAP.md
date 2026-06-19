@@ -1,12 +1,11 @@
-# ROADMAP — auth-redesign (chunks d'implémentation)
+# ROADMAP — auth-redesign (post-pivot 2026-06-19)
 
-> Découpage en chunks autonomes, chacun avec son propre `Cx-HANDOFF-*.md`.
-> Une session future (Claude Code ou humain) prend un chunk, l'exécute, met à
-> jour le statut ici, puis remonte un résumé.
+> **Pré-requis transverse** : lire d'abord [`ARCHITECTURE.md`](./ARCHITECTURE.md)
+> (source de vérité depuis le pivot) puis [`RESUME-NEXT-SESSION.md`](./RESUME-NEXT-SESSION.md).
 >
-> **Pré-requis transverse** : lire `DESIGN.md` **et**
-> [`RESUME-NEXT-SESSION.md`](./RESUME-NEXT-SESSION.md) (findings + déviations
-> cumulés depuis la session du 2026-06-19) avant de démarrer un chunk.
+> Les anciens chunks C6/C7/C8/C9 ont été partiellement invalidés par le
+> pivot architectural (dual frontend `studio-local` + `admin-vps`). Cette
+> roadmap reflète la **nouvelle** trajectoire.
 
 ## Statuts
 
@@ -14,75 +13,71 @@
 - 🟡 in-progress
 - ✅ done
 - ⏸️ blocked (raison)
+- ❌ abandonné / superseded
 
-## Tableau
+## Backend auth (livré)
 
-| # | Chunk | Statut | Dépend de | Handoff |
-|---|---|---|---|---|
-| C1 | Provisioning Authentik (OIDC app + groups) | ✅ 2026-06-19 (flow E2E validé : login OIDC + cookie posé + user upserté + rôles synchronisés) | — | [`C1-HANDOFF-AUTHENTIK.md`](./C1-HANDOFF-AUTHENTIK.md) |
-| C1.5 | Bootstrap déploiement `infra/eurio-api/` sur VPS (compose, secrets, Traefik, healthcheck) | ✅ 2026-06-19 (eurio-api.musubi.dev → 200 /healthz, auth gating actif) | C1 | (dans C2 §0 — sous-section dédiée) |
-| C2 | `eurio-api` : middleware JWT + tables RBAC + `/me` | ✅ 2026-06-19 (commit e42a4e4d ; flow OIDC complet validé : login → callback → cookie → user/roles/audit en DB) | C1, C1.5 | [`C2-HANDOFF-API-RBAC.md`](./C2-HANDOFF-API-RBAC.md) |
-| C3 | Tokens API personnels (modèle + endpoints + vérif machine) | ✅ 2026-06-19 (PAT format eurio_<43 base64url>, table pat_tokens, /me/tokens GET/POST/DELETE, intersection scopes vérifiée à chaque usage, break-glass grant-owner CLI) | C2 | [`C3-HANDOFF-TOKENS.md`](./C3-HANDOFF-TOKENS.md) |
-| C3.5 | Polish pré-front (cookie env-aware, /auth/dev/login, /me name, require_principal global, factories require_scope/role) | ✅ 2026-06-19 (commit 42c6805d ; débloque C5 dev local + C7a/C7b) | C3 | (inline dans le commit) |
-| C4 | Absorption `review_service` dans `eurio-api` | ✅ 2026-06-19 (routes /review/* portées avec Principal + scopes ; review.db séparé bootstrappé idempotent ; container eurio-review legacy intact en parallèle) | C2, C3.5 | [`C4-HANDOFF-MERGE-REVIEW.md`](./C4-HANDOFF-MERGE-REVIEW.md) |
-| C4 | Absorption `review_service` dans `eurio-api` | ⬜ | C2 | [`C4-HANDOFF-MERGE-REVIEW.md`](./C4-HANDOFF-MERGE-REVIEW.md) |
-| C5 | Panel : skeleton Vue + login OIDC + shell | ✅ 2026-06-19 (admin/packages/panel créé, Vue 3 + Vite + Pinia + Router strict TS, AppShell + Login + Home + NotAuthorized + placeholders, router guard par scope, dev bypass aware ; build 38KB gzip, typecheck OK) | C2 | [`C5-HANDOFF-PANEL-SHELL.md`](./C5-HANDOFF-PANEL-SHELL.md) |
-| C6 | Panel : portage des écrans review | ⬜ | C4, C5 | [`C6-HANDOFF-PORT-REVIEW.md`](./C6-HANDOFF-PORT-REVIEW.md) |
-| C6.5 | Migration data Supabase → `eurio.db` SQLite (schéma + data + switch code `supabase_client` → `sqlite3`) | ⬜ | C2 | (handoff à écrire — esquisse ci-dessous) |
-| C7a | Panel : portage editorial core (sources / coins / audit / referential) + endpoints `eurio-api` correspondants | ⬜ | C5, C6.5 | [`C7-HANDOFF-PORT-WEB.md`](./C7-HANDOFF-PORT-WEB.md) §C7a |
-| C7b | Panel : portage sets & analytics (sets / criteria-preview / design-groups / confusion / fragment-audit / crop-recovery / denom-gold / parity / lab) + endpoints correspondants | ⬜ | C7a, C6.5 | [`C7-HANDOFF-PORT-WEB.md`](./C7-HANDOFF-PORT-WEB.md) §C7b |
-| C8 | Panel : UI users + UI mes tokens | ⬜ | C3, C5 | [`C8-HANDOFF-USERS-UI.md`](./C8-HANDOFF-USERS-UI.md) |
-| C9 | Cutover : déploiement VPS, kill Vercel + Supabase Auth + `review_service`, archive | ⬜ | C6, C7a, C7b, C8 | [`C9-HANDOFF-CUTOVER.md`](./C9-HANDOFF-CUTOVER.md) |
+| # | Chunk | Statut | Handoff |
+|---|---|---|---|
+| C1 | Provisioning Authentik (OIDC app + groups) | ✅ 2026-06-19 | [`C1-HANDOFF-AUTHENTIK.md`](./C1-HANDOFF-AUTHENTIK.md) |
+| C1.5 | Bootstrap `infra/eurio-api/` VPS | ✅ 2026-06-19 | (inline) |
+| C2 | `eurio-api` : middleware JWT + RBAC + `/me` | ✅ 2026-06-19 | [`C2-HANDOFF-API-RBAC.md`](./C2-HANDOFF-API-RBAC.md) |
+| C3 | PAT (modèle + endpoints + intersection scopes) | ✅ 2026-06-19 | [`C3-HANDOFF-TOKENS.md`](./C3-HANDOFF-TOKENS.md) |
+| C3.5 | Polish pré-front (cookie env-aware, dev login, require_principal global) | ✅ 2026-06-19 | (inline commit 42c6805d) |
+| C4 | Absorption `review_service` dans `eurio-api` | ✅ 2026-06-19 | [`C4-HANDOFF-MERGE-REVIEW.md`](./C4-HANDOFF-MERGE-REVIEW.md) |
 
-## Chemin critique
+## Frontend (post-pivot)
 
-```
-C1 ─▶ C1.5 ─▶ C2 ─┬─▶ C3 ─▶ C8 ─┐
-                  ├─▶ C4 ─▶ C6 ─┤
-                  └─▶ C5 ─▶ C7a ─▶ C7b ─┴─▶ C9
-```
+| # | Chantier | Statut | Localisation |
+|---|---|---|---|
+| F1 | Squelette `admin-vps` (Vue 3 + auth OIDC + AppShell + guards) | ✅ 2026-06-19 (ex-C5, renommé) | `admin/packages/admin-vps/` |
+| F2 | Déploiement `eurio-admin.musubi.dev` (Dockerfile + nginx + Traefik) | ✅ 2026-06-19 | `infra/eurio-admin/` |
+| F3 | Foundations auth PAT côté `studio-local` (client + store + bandeau + .env.example) | ✅ 2026-06-19 | `admin/packages/studio-local/src/{shared/api,stores,shared/ui}` |
+| F4 | Studio-local : génération + collage d'un PAT réel (E2E test) | ⬜ | manuel (cf. `PAT-WORKFLOW.md`) |
+| F5 | Studio-local : rip auth Supabase OTP (LoginPage + AuthCallbackPage + guard) | ⬜ | `studio-local/src/features/auth/` + `app/router.ts` |
+| F6 | Admin-vps : vue Users (table + édition rôles) | ⬜ | `admin-vps/src/views/users/` |
+| F7 | Admin-vps : vue Mes Tokens (CRUD PAT, modale clair une fois) | ⬜ | `admin-vps/src/views/tokens/` |
+| F8 | Admin-vps : layout responsive mobile-first (drawer + bottom-nav) | ⬜ | `admin-vps/src/components/AppShell.vue` + composants |
+| F9 | Admin-vps : dashboard KPIs (counts coins / sets / sources / review) | ⬜ | nouveau `admin-vps/src/views/Home.vue` |
 
-C1 → C1.5 (déploiement `eurio-api`) → C2 sont strictement séquentiels : C2 ne peut être testé E2E (callback OIDC, `/me`) sans un `eurio-api` joignable sur `eurio-api.musubi.dev`. Une fois C2 mergé, C3, C4 et C5 sont parallélisables si plusieurs sessions tournent. C7 est **scindé** en C7a (editorial core) → C7b (sets & analytics) pour garder des chunks lisibles. C9 est le cutover final all-in (cf. DESIGN.md D9), à ne déclencher qu'après C6 + C7a + C7b + C8 validés en coexistence test ≥ 7 jours.
+## Data (post-pivot — dégonflé)
 
-## Conventions de chunk
+| # | Chantier | Statut |
+|---|---|---|
+| D1 | Audit Supabase tables réellement frontées (2026-06-19) | ✅ 4 tables seulement : `coins`, `coin_confusion_map`, `coin_series`, `sets_audit` |
+| D2 | Migration `coin_series` (SELECT only, 200 rows) → SQLite + endpoint `eurio-api` | ⬜ |
+| D3 | Migration `coin_confusion_map` (SELECT only, ~1500 rows) → SQLite + endpoint | ⬜ |
+| D4 | Migration `sets_audit` (SELECT only, ~100 rows) → SQLite + endpoint | ⬜ |
+| D5 | Migration `coins` (SELECT + 1 UPDATE `cross_refs`, ~1500 rows) → SQLite + endpoints CRUD limités | ⬜ |
+| D6 | Refactor studio-local : composables passent de Supabase → `eurio-api` Bearer | ⬜ |
+| D7 | Suppression du client Supabase frontend (`@supabase/supabase-js`) après D2-D6 | ⬜ |
 
-Chaque `Cx-HANDOFF-*.md` doit contenir :
+L'app Android continue à lire Supabase (mirror read-only). Sync descendant
+SQLite → Supabase = `ml/export/sync_to_supabase.py` (déjà partiellement
+implémenté, à étendre).
 
-1. **But en 1 phrase** + ce que le chunk *ne fait pas*.
-2. **Pré-requis** (chunks dépendants validés + état repo).
-3. **Étapes** numérotées et exécutables.
-4. **Critères d'acceptation** vérifiables (curl, requête DB, screenshot).
-5. **Garde-fous** (ce qu'il ne faut pas casser, retours arrière).
-6. **Résumé à produire** en fin de session (template).
+## Cleanup & doc
 
-Le chunk **n'invente pas** : si une déviation est nécessaire (lib manquante,
-endpoint Authentik différent, schéma DB à ajuster), il la **note dans le
-résumé** et met à jour `DESIGN.md` si la déviation est structurelle.
+| # | Chantier | Statut |
+|---|---|---|
+| K1 | Suppression `admin/packages/review-admin/` (legacy auth régie reviewer) | ⬜ |
+| K2 | Décision et exécution sur `admin/packages/review/` (mini-app reviewer) | ⬜ (cf. `ARCHITECTURE.md §7`) |
+| K3 | Suppression handoffs obsolètes (C6/C7/C8/C9 originaux) ou marquage "superseded" | ⬜ |
+| K4 | Spec markdown future "friends review" feature | ⬜ |
 
-## C6.5 — esquisse (handoff complet à écrire avant exécution)
+## Chunks originaux abandonnés / superseded
 
-Décision DESIGN.md §9.1 : Supabase disparaît entièrement, y compris la donnée. Ce chunk porte les ~15 tables éditoriales de Supabase Postgres vers `eurio.db` SQLite, et bascule le code `ml/serving/` vers `sqlite3` direct.
+| # original | Sort post-pivot |
+|---|---|
+| C5 | ✅ renommé F1 (`admin-vps` au lieu de `panel`) |
+| C6 (port review UI) | ❌ abandonné — studio-local a déjà ses écrans review legacy |
+| C6.5 (data migration big-bang) | ❌ superseded par D1-D7 (mécanique, dégonflé) |
+| C7a/C7b (port web vers panel) | ❌ inversé — c'est `studio-local` qui reste canonique |
+| C8 (UI users/tokens) | ❌ superseded par F6/F7 (côté `admin-vps`) |
+| C9 (cutover all-in) | ❌ plus de cutover unique — décommissionnement progressif via D7/K1/K2 |
 
-**Étapes** :
-1. **Audit Supabase** : inventaire des tables réellement utilisées (`supabase/migrations/*.sql` + `grep -rn "from(['\"]"` côté front + `grep -n "supabase\." ml/serving/`).
-2. **Schéma cible SQLite** : transposer chaque table Postgres en SQLite (types `jsonb` → `TEXT`, arrays Postgres → `TEXT` JSON ou table de jointure selon usage, `timestamp with tz` → `TEXT` ISO, etc.). Sortie : `ml/state/editorial_schema.sql` (séparé du training schema pour clarté).
-3. **Script de migration data** : `python -m serving.migrate_supabase_to_sqlite` qui :
-   - `pg_dump --data-only --inserts <table>` ou requête PostgREST avec pagination ;
-   - transforme les lignes (jsonb → str JSON, etc.) ;
-   - insert dans SQLite.
-   - **Idempotent** (CHECKSUM par table avant/après).
-4. **Switch code** :
-   - Remplacer chaque `supabase.from('coins').select(…)` par `sqlite3` direct.
-   - Refactor `augmentation_routes`, `coins_review_routes` pour ne plus dépendre de `SupabaseClient`.
-   - Supprimer `ml/serving/supabase_client.py` à la fin.
-   - Supprimer `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` de l'env d'eurio-api (gardés en SOPS pour la durée du chunk au cas où on doive rejouer la migration).
-5. **Tests** : par table, comparer `count(*)` + sample row entre Supabase et SQLite après migration.
-6. **Cutover** : on switch eurio-api code sur SQLite, on relance, on valide. Si OK, on archive le `supabase_client.py` dans `docs/archive/`.
+## Hors scope
 
-**Pré-requis** : C2 ✅ (les nouvelles tables auth coexistent avec les éditoriales dans `eurio.db`).
-
-**Bloque** : C7a/C7b (qui ne peuvent porter les UIs avant que les endpoints `eurio-api` ne tapent sur SQLite local).
-
-## Hors scope de la roadmap
-
-Cf. `DESIGN.md` §9. En particulier : App Android, MinIO assets (séparé de la DB), SSH, pCloud, MCP.
+Cf. `DESIGN.md §9` + `ARCHITECTURE.md`. En particulier : App Android,
+MinIO assets, SSH, pCloud, MCP. La feature "friends review" est différée
+(cf. mémoire `project_friends_review_deferred`).

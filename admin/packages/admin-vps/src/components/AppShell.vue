@@ -16,7 +16,6 @@ const allItems: NavItem[] = [
   { to: '/sources', label: 'Sources', scope: 'sources:read' },
   { to: '/coins', label: 'Coins', scope: 'coins:read' },
   { to: '/audit', label: 'Audit', scope: 'audit:read' },
-  { to: '/review', label: 'Review', scope: 'review:read' },
   { to: '/training', label: 'Training', scope: 'training:run' },
   { to: '/users', label: 'Users', scope: 'users:read' },
   { to: '/me/tokens', label: 'Mes tokens', scope: 'tokens:manage_own' },

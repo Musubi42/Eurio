@@ -1,15 +1,42 @@
-# Example rclone config for the pCloud backup destination.
+# Eurio — bouts de config rclone à ajouter dans ~/.config/rclone/rclone.conf.
 #
-# Copy this file to /root/.config/rclone/rclone.conf on the VPS, then
-# replace the placeholder values via:
+# 1. [pcloud] — destination brute (compte pCloud US).
+#    Token OAuth à générer interactivement sur une machine avec navigateur :
+#       rclone authorize pcloud
+#    puis coller le blob token sur le serveur :
+#       rclone config create pcloud pcloud hostname=api.pcloud.com token='<blob>'
 #
-#   sudo rclone config            (interactive — choose `pcloud`)
+# 2. [pcloud_crypt] — couche de chiffrement (rclone crypt) au-dessus de pcloud.
+#    - filename_encryption = off → noms de fichiers/dossiers en CLAIR (max lisibilité)
+#    - PAS de password ici → fourni au runtime via env vars par eurio-backup.sh
+#      (qui lit la clé Age à ~/.config/eurio-backup/age-key.txt)
 #
-# rclone will OAuth-authenticate against pCloud and write the real token
-# to that file. Do NOT commit the populated rclone.conf — it contains
-# the OAuth token.
+# 3. [minio] — source MinIO Eurio (S3 derrière Cloudflare).
+#    - v2_auth = true → requis car le WAF Cloudflare altère les en-têtes Amz-Sdk-*
+#      que SigV4 signe. SigV2 signe moins d'en-têtes et passe.
+#
+# Ne PAS committer le rclone.conf réel (il contient le token pCloud).
 
 [pcloud]
 type = pcloud
-hostname = eapi.pcloud.com
-# token = {"access_token":"…","token_type":"…","expiry":"…"}
+hostname = api.pcloud.com
+# token = {"access_token":"…","token_type":"bearer","expiry":"…"}
+
+[pcloud_crypt]
+type = crypt
+remote = pcloud:backups/serverOimNix/Eurio
+filename_encryption = off
+directory_name_encryption = false
+suffix = none
+# password  ← fourni au runtime via RCLONE_CONFIG_PCLOUD_CRYPT_PASSWORD
+# password2 ← fourni au runtime via RCLONE_CONFIG_PCLOUD_CRYPT_PASSWORD2
+
+[minio]
+type = s3
+provider = Minio
+region = us-east-1
+endpoint = https://eurio-s3.musubi.dev
+force_path_style = true
+v2_auth = true
+# access_key_id et secret_access_key = creds root MinIO
+# (lus depuis infra/minio/secrets/minio_root_user et minio_root_password)

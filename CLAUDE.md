@@ -12,34 +12,68 @@ Voir `docs/app-implem-phases/README.md` pour le plan détaillé en 6 phases (0 �
 
 ```
 Eurio/
-├── app-android/                  # App Kotlin/Compose (Material 3)
-├── admin/                        # pnpm workspace
-│   ├── packages/web/             # Console Vue/Vite → déployé sur Vercel (coins, sets, audit)
-│   ├── packages/proto/           # Prototype design = Vue+Pinia PWA (SOURCE DE VÉRITÉ du design)
-│   └── packages/parity/          # Tooling QA local-only (Playwright, Maestro flows, screenshots)
-├── ml/                           # Python standalone : FastAPI, entraînement, fetch (Numista/Wiki/eBay)
-├── supabase/                     # Migrations SQL + types générés
-├── shared/                       # Sources partagées (tokens.css, fixtures/)
-├── scripts/                      # Générateurs et utilitaires cross-module (Node)
+├── app-android/                       # App Kotlin/Compose (Material 3)
+├── admin/                             # pnpm workspace
+│   ├── packages/studio-local/         # Front HEAVY local (Mac/PC), pnpm dev :5173, auth PAT Bearer
+│   ├── packages/admin-vps/            # Front LIGHT VPS (eurio-admin.musubi.dev), read-mostly + mobile, auth cookie OIDC
+│   ├── packages/proto/                # Prototype design = Vue+Pinia PWA (SOURCE DE VÉRITÉ du design)
+│   └── packages/parity/               # Tooling QA local-only (Playwright, Maestro flows, screenshots)
+├── ml/                                # Python standalone : FastAPI, entraînement, fetch (Numista/Wiki/eBay)
+├── supabase/                          # Migrations SQL + types générés (legacy, en cours de retrait)
+├── shared/                            # Sources partagées (tokens.css, fixtures/)
+├── scripts/                           # Générateurs et utilitaires cross-module (Node)
+├── infra/
+│   ├── eurio-api/                     # FastAPI léger sur VPS (eurio-api.musubi.dev)
+│   ├── eurio-admin/                   # Nginx static sur VPS (eurio-admin.musubi.dev)
+│   ├── minio/                         # MinIO assets (eurio-s3.musubi.dev)
+│   └── backup/                        # eurio-backup.sh + rclone pCloud
 ├── docs/
-│   ├── app-implem-phases/        # Plan des 6 phases d'implémentation Android
-│   ├── design/                   # Design docs
-│   │   └── _shared/              # parity-rules, components-parity, scene-parity, data-contracts, etc.
-│   └── research/                 # Recherche et décisions techniques
-└── Taskfile.yml                  # Point d'entrée des commandes (go-task)
+│   ├── work-in-progress/auth-redesign/# DESIGN.md + ARCHITECTURE.md + RESUME + chunks
+│   ├── app-implem-phases/             # Plan des 6 phases d'implémentation Android
+│   ├── design/                        # Design docs
+│   │   └── _shared/                   # parity-rules, components-parity, scene-parity, data-contracts, etc.
+│   └── research/                      # Recherche et décisions techniques
+└── Taskfile.yml                       # Point d'entrée des commandes (go-task)
 ```
+
+### Architecture frontend (CRITIQUE — à graver)
+
+Deux frontends, **un seul backend** `eurio-api.musubi.dev`. Règle simple :
+
+| | `studio-local` | `admin-vps` |
+|---|---|---|
+| **Où** | Mac/PC, `pnpm dev` sur `localhost:5173` | VPS, `https://eurio-admin.musubi.dev` |
+| **Auth** | Bearer PAT depuis `.env.local` (gitignored) | Cookie OIDC posé par eurio-api après Authentik |
+| **Heavy** | ML API local `:8042` (crops, scrape, training) | aucun heavy lifting (mixed content interdit en HTTPS) |
+| **Audience** | dev (toi, futur·es collègues sur leurs machines) | toi + tel + admins occasionnel·les |
+| **Features** | tout : édition + heavy compute + reviews fast-iter | consultation + users/tokens + KPIs read-mostly |
+| **Mobile** | non | **oui, obligatoire** |
+
+→ Si une feature appelle le ML API local OU itère vite sur des crops → `studio-local`.
+→ Si c'est consultation / admin léger consultable depuis un mobile → `admin-vps`.
+
+Détail complet + diagrammes + workflow PAT : [`docs/work-in-progress/auth-redesign/ARCHITECTURE.md`](docs/work-in-progress/auth-redesign/ARCHITECTURE.md).
 
 ### Déploiement admin
 
-- **Vercel** : `packages/web` uniquement — vues éditoriales (coins, sets, audit) + Supabase
-- **Local** : tout fonctionne — web + parity (screenshots via middleware) + training (FastAPI proxy)
-- Les pages parity/training vivent dans `packages/web` mais dégradent proprement si le backend local est off
-- `ml/` est un projet Python standalone, **pas** dans le workspace pnpm
+- **`admin-vps`** : déployé sur le VPS via `infra/eurio-admin/` (nginx static derrière Traefik, image rebuild via `docker compose up -d --build`). Servi à `https://eurio-admin.musubi.dev`. Pas de Vercel.
+- **`studio-local`** : **jamais déployé**. Tourne uniquement en `pnpm dev` sur Mac/PC. C'est l'outil de travail dev.
+- **Vercel** : seul `packages/proto/` y est déployé (prototype design en prebuilt, cf. `go-task proto:deploy`). `studio-local` et `admin-vps` n'utilisent **pas** Vercel.
+- `ml/` est un projet Python standalone, **pas** dans le workspace pnpm.
 
 ## Règles non-négociables
 
 ### R0. Pas de dette technique
 Jamais de shortcut qui crée de la dette. Construire proprement depuis le POC. Si une solution propre n'est pas claire, on discute avant d'implémenter, pas après.
+
+### R0bis. Frontend dual — choisir le bon package
+
+Avant de toucher à du code front, demande-toi : **est-ce que ça appelle le ML API local, ou pas ?**
+
+- **Oui** → `admin/packages/studio-local/`
+- **Non, et c'est consultable / admin léger** → `admin/packages/admin-vps/`
+
+Ne JAMAIS ajouter une feature qui appelle `http://127.0.0.1:8042` dans `admin-vps/` : le navigateur bloquera (mixed content depuis HTTPS). Spec complète : `docs/work-in-progress/auth-redesign/ARCHITECTURE.md`.
 
 ### R1. Proto-first design (STRICT)
 
