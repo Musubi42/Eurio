@@ -34,9 +34,7 @@ RUN pnpm install --frozen-lockfile --filter "eurio-admin-vps..."
 
 # Build avec env de prod (URL eurio-api injectée à la compilation).
 ARG VITE_EURIO_API_BASE=https://eurio-api.musubi.dev
-ARG VITE_EURIO_DEV_BYPASS=0
-ENV VITE_EURIO_API_BASE=$VITE_EURIO_API_BASE \
-    VITE_EURIO_DEV_BYPASS=$VITE_EURIO_DEV_BYPASS
+ENV VITE_EURIO_API_BASE=$VITE_EURIO_API_BASE
 
 RUN pnpm -C packages/admin-vps build
 

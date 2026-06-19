@@ -63,14 +63,11 @@ def health() -> dict:
     return {"status": "ok"}
 
 
-# Fronts statiques. Montés APRÈS les routers API (les routes /admin/* explicites
-# sont enregistrées avant et gagnent donc sur le mount /admin). Absents en dev
-# pur (on utilise les Vite dev servers). Ordre crucial : /admin AVANT le
-# catch-all /, sinon la SPA reviewer avalerait /admin.
-_ADMIN_DIST = _ML_DIR.parent / "admin" / "packages" / "review-admin" / "dist"
-if _ADMIN_DIST.is_dir():
-    app.mount("/admin", StaticFiles(directory=str(_ADMIN_DIST), html=True), name="admin-front")
-
+# Front statique reviewer (SPA claim/decide). Absent en dev pur (Vite dev
+# server). NOTE 2026-06-19 : le front régie `review-admin/` a été supprimé
+# (légacy X-Admin-Token remplacé par Authentik OIDC) — seul le reviewer
+# mini-app reste, en attente d'une décision sur la feature friends-review
+# (cf. memory project_friends_review_deferred).
 _FRONT_DIST = _ML_DIR.parent / "admin" / "packages" / "review" / "dist"
 if _FRONT_DIST.is_dir():
     app.mount("/", StaticFiles(directory=str(_FRONT_DIST), html=True), name="front")

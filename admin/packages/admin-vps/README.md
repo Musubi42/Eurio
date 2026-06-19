@@ -1,10 +1,15 @@
-# admin/packages/panel — Eurio panel admin (auth-redesign C5)
+# admin/packages/admin-vps — Eurio panel léger VPS
 
-Skeleton du nouveau panel admin self-hosted. Vue 3 + Vite + Pinia + Vue Router,
-TypeScript strict. Remplacera à C9 :
+Front admin léger servi à `https://eurio-admin.musubi.dev` (cf.
+`infra/eurio-admin/`). Vue 3 + Vite + Pinia + Vue Router, TypeScript strict.
 
-- `admin/packages/web/` (déployé sur Vercel)
-- `admin/packages/review-admin/` (review)
+**Note 2026-06-19** : ce package était initialement `admin/packages/panel/`
+et conçu pour remplacer `packages/web/`. Le pivot architectural a redéfini
+les rôles — voir
+[`docs/work-in-progress/auth-redesign/ARCHITECTURE.md`](../../../docs/work-in-progress/auth-redesign/ARCHITECTURE.md) :
+- `studio-local` (ex `packages/web/`) reste le front canonique de travail.
+- `admin-vps` (ce package) sert la consultation lightweight + users/tokens,
+  mobile-friendly.
 
 ## Stack
 

@@ -8,7 +8,6 @@ services:
         shared: ../../shared
       args:
         VITE_EURIO_API_BASE: https://eurio-api.musubi.dev
-        VITE_EURIO_DEV_BYPASS: "0"
     image: eurio-admin:latest
     container_name: eurio-admin
     restart: unless-stopped
