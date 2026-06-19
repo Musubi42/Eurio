@@ -22,7 +22,7 @@
 - Pour un `owner` (scope `users:manage`) : éditeur de rôles inline (cocher
   `owner`/`admin`/`reviewer`) → `PUT /users/{id}/roles`.
 - **Disclaimer visible** : "La création/suppression d'utilisateurs se fait
-  dans Authentik" + bouton lien profond vers `https://auth.musubi.dev/...`.
+  dans Authentik" + bouton lien profond vers `https://authentik.musubi.dev/...`.
 - Pour un `admin` (scope `users:read` seul) : table en lecture seule, pas
   d'édition.
 

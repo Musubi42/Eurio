@@ -28,7 +28,7 @@ Dans l'UI Authentik (Applications → Create) :
 | Name | `Eurio Panel` |
 | Slug | `eurio-panel` |
 | Provider | (créé à l'étape 2) |
-| Launch URL | `https://admin.musubi.dev/` |
+| Launch URL | `https://eurio-admin.musubi.dev/` |
 | Open in new tab | non |
 
 ## 2. Provider OIDC
@@ -90,7 +90,7 @@ Puis : retourner sur le provider `eurio-panel-oidc`, ajouter `eurio-groups` aux 
 Récupérer le discovery doc :
 
 ```bash
-curl -s https://auth.musubi.dev/application/o/eurio-panel/.well-known/openid-configuration | jq .
+curl -s https://authentik.musubi.dev/application/o/eurio-panel/.well-known/openid-configuration | jq .
 ```
 
 Vérifier les champs présents :
@@ -105,7 +105,7 @@ Vérifier les champs présents :
 Puis JWKS direct :
 
 ```bash
-curl -s $(curl -s https://auth.musubi.dev/application/o/eurio-panel/.well-known/openid-configuration | jq -r .jwks_uri) | jq .
+curl -s $(curl -s https://authentik.musubi.dev/application/o/eurio-panel/.well-known/openid-configuration | jq -r .jwks_uri) | jq .
 ```
 
 Doit renvoyer au moins une clé publique RSA. C'est ce que `eurio-api` consommera en C2.
@@ -115,7 +115,7 @@ Doit renvoyer au moins une clé publique RSA. C'est ce que `eurio-api` consommer
 Construire l'URL d'authorize à la main :
 
 ```
-https://auth.musubi.dev/application/o/authorize/?
+https://authentik.musubi.dev/application/o/authorize/?
   client_id=<CLIENT_ID>&
   response_type=code&
   scope=openid+profile+email+eurio_groups&
@@ -130,16 +130,23 @@ arrive avec un `code` dans la query.
 
 ## 7. Documentation des claims pour C2
 
-À reporter dans le résumé (sera consommé par le chunk C2) :
+Valeurs captées le 2026-06-19 (consommées par C2) :
 
-- `issuer` : `https://auth.musubi.dev/application/o/eurio-panel/`
-- `jwks_uri` : `…`
-- `client_id` : `…`
-- Format attendu du token décodé :
+- `issuer` : `https://authentik.musubi.dev/application/o/eurio-panel/`
+- `authorization_endpoint` : `https://authentik.musubi.dev/application/o/authorize/`
+- `token_endpoint` : `https://authentik.musubi.dev/application/o/token/`
+- `userinfo_endpoint` : `https://authentik.musubi.dev/application/o/userinfo/`
+- `jwks_uri` : `https://authentik.musubi.dev/application/o/eurio-panel/jwks/`
+- `end_session_endpoint` : `https://authentik.musubi.dev/application/o/eurio-panel/end-session/`
+- `id_token_signing_alg` : `RS256` (kid actuel `77ad99d54ae56c4cc81c57cde8492853` — sujet à rotation, **ne pas durcir** en code, lire toujours depuis JWKS)
+- `client_id` : `8nFCZsZV0Pryxcjse0pOq2YQvLbdWXP8gmwYbh82` (public, OK en clair dans `infra/eurio-api/docker-compose.yml`)
+- `client_secret` : transmis hors-bande à l'opérateur, à mettre en SOPS sous `EURIO_OIDC_CLIENT_SECRET`
+
+Format attendu du token décodé :
 
 ```json
 {
-  "iss": "https://auth.musubi.dev/application/o/eurio-panel/",
+  "iss": "https://authentik.musubi.dev/application/o/eurio-panel/",
   "sub": "<hashed user id, stable>",
   "aud": "<client_id>",
   "exp": 1750000000,
@@ -158,11 +165,23 @@ arrive avec un `code` dans la query.
 - **Ne pas régénérer** le `client_secret` sans prévenir l'opérateur (il est
   référencé dans SOPS côté API).
 - **Sauvegarde Authentik (BLOQUANT pour C9)** :
-  1. Identifier le **nom exact** du volume Docker Postgres utilisé par Authentik (`docker inspect <authentik-postgres-container> | jq '.[0].Mounts'`). Le reporter dans le résumé sous forme `volume=<nom>` ou `host_path=<chemin>`.
-  2. Identifier de la même façon le volume `media/` d'Authentik (clés de signature, certs, branding) — il doit aussi être backupé.
-  3. Ouvrir `infra/backup/eurio-backup.sh` (actuellement non tracké en repo — cf. branche `sources-jo-wikipedia` en cours) et **vérifier que les deux volumes sont listés** comme sources à inclure dans le `tar.gz` + `rclone` vers pCloud. Sinon, **les ajouter** dans le même commit que la doc C1, en passant par un `pg_dump` côté Postgres plutôt qu'un tar du volume live (cohérence transactionnelle).
-  4. Tester un cycle backup → restore sur un Authentik throw-away (compose local) avant de marquer le chunk validé.
-  5. Si l'étape 3 ou 4 échoue ou n'est pas faite, **C9 est bloqué** : noter explicitement dans le résumé et ouvrir un ticket de suivi.
+
+  **Infos Authentik VPS capturées le 2026-06-19** (instance `oim-authentik`, version 2025.10.0) :
+
+  | Cible | Type | Chemin/nom |
+  |---|---|---|
+  | Postgres data | volume Docker nommé | `oim-authentik_database` |
+  | Media (clés de signature OIDC, branding) | bind mount | `/opt/stacks/oim-authentik/media/` |
+  | Certs TLS Authentik | bind mount | `/opt/stacks/oim-authentik/certs/` |
+  | Templates custom | bind mount | `/opt/stacks/oim-authentik/custom-templates/` |
+  | Compose + .env | bind | `/opt/stacks/oim-authentik/docker-compose.yaml` + `.env` |
+
+  Étapes :
+  1. Ouvrir `infra/backup/eurio-backup.sh` et ajouter ces sources s'il ne les couvre pas déjà.
+  2. **Postgres** : utiliser `docker exec authentik_postgresql pg_dump -U authentik authentik | gzip > /tmp/authentik-pg-$(date +%F).sql.gz` (cohérence transactionnelle) — **pas** un tar du volume live.
+  3. **Bind mounts** : tar standard suffit (`media/`, `certs/`, `custom-templates/`, `docker-compose.yaml`, `.env`).
+  4. Tester un cycle backup → restore sur un Authentik throw-away (compose local jetable) avant de marquer le chunk validé.
+  5. Si l'étape 1, 2 ou 4 échoue ou n'est pas faite, **C9 est bloqué** : noter explicitement dans le résumé et ouvrir un ticket de suivi.
 
 ## 9. Résumé à produire
 

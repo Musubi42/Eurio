@@ -30,11 +30,10 @@
                 │                                            │
    ┌────────┐   │   ┌─────────────────┐   ┌──────────────┐  │
    │ Browser│──▶│──▶│  panel (static) │   │  Authentik   │  │
-   │ (toi+  │   │   │  admin.musubi   │◀─▶│  auth.musubi │  │
-   │  amis) │◀──│───│  (Nginx ou      │   │  (OIDC)       │  │
-   └────────┘   │   │   FastAPI mount)│   └──────┬───────┘  │
-                │   └────────┬────────┘          │ JWKS     │
-                │            │ XHR               │          │
+   │ (toi+  │   │   │ eurio-admin.    │◀─▶│ authentik.   │  │
+   │  amis) │◀──│───│  musubi (nginx) │   │  musubi (OIDC)│  │
+   └────────┘   │            │                   │          │
+                │            │ XHR /api          │ JWKS     │
                 │            ▼                   │          │
    ┌────────┐   │   ┌─────────────────┐          │          │
    │ ml/    │   │   │  eurio-api      │──────────┘          │
@@ -52,8 +51,8 @@
 ```
 
 Domaines :
-- `auth.musubi.dev` → Authentik (existant)
-- `admin.musubi.dev` → panel statique (nouveau, remplace Vercel + `eurio-review.musubi.dev`)
+- `authentik.musubi.dev` → Authentik (existant)
+- `eurio-admin.musubi.dev` → panel statique (nouveau, remplace Vercel + `eurio-review.musubi.dev`)
 - `eurio-api.musubi.dev` → API unique (existant, étendu)
 
 ## 3. Modèle d'identité et de droits
@@ -217,7 +216,7 @@ require_principal()               # auth seulement, sans check
 | Type | JWT signé HS256 (lib `python-jose`) |
 | Clé de signature | `EURIO_SESSION_SECRET` (32 bytes hex, SOPS, rotation = invalidation globale) |
 | Attributs | `HttpOnly`, `Secure`, `SameSite=Lax`, `Path=/` |
-| Domaine | `admin.musubi.dev` (prod) / pas de Domain en dev (localhost) |
+| Domaine | `eurio-admin.musubi.dev` (prod) / pas de Domain en dev (localhost) |
 | Durée | `exp = iat + 8h` |
 | Claims | `{sub, email, roles[], scopes[], sid, iat, exp, iss="eurio-api"}` |
 
@@ -241,7 +240,7 @@ require_principal()               # auth seulement, sans check
 - `ml/review_service/` → fusionné dans `ml/serving/` (chunks C4) ; ancien code archivé.
 - `infra/review/` (container `eurio-review`) → stoppé et supprimé après C9.
 - Projet Vercel "eurio-admin" → supprimé du dashboard Vercel.
-- DNS `eurio-review.musubi.dev` → CNAME vers `admin.musubi.dev` ou suppression.
+- DNS `eurio-review.musubi.dev` → CNAME vers `eurio-admin.musubi.dev` ou suppression.
 - `REVIEW_ADMIN_TOKEN`, `REVIEW_SESSION_SECRET` dans `secrets/dev.env` → supprimés.
 
 ## 9. Hors scope (à NE PAS toucher dans cette refonte)

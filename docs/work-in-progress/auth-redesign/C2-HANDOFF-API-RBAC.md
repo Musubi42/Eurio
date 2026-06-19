@@ -34,12 +34,12 @@
 **Env vars publiques** (URLs Authentik, **pas** des secrets — à mettre en clair dans `infra/eurio-api/docker-compose.yml` sous `environment:`) :
 
 ```
-EURIO_OIDC_ISSUER=https://auth.musubi.dev/application/o/eurio-panel/
-EURIO_OIDC_JWKS_URL=https://auth.musubi.dev/application/o/eurio-panel/jwks/
+EURIO_OIDC_ISSUER=https://authentik.musubi.dev/application/o/eurio-panel/
+EURIO_OIDC_JWKS_URL=https://authentik.musubi.dev/application/o/eurio-panel/jwks/
 EURIO_OIDC_CLIENT_ID=<from C1>            # public, OK en clair
-EURIO_PANEL_ORIGIN=https://admin.musubi.dev
+EURIO_PANEL_ORIGIN=https://eurio-admin.musubi.dev
 EURIO_COOKIE_NAME=eurio_session
-EURIO_COOKIE_DOMAIN=admin.musubi.dev      # vide en dev (localhost)
+EURIO_COOKIE_DOMAIN=eurio-admin.musubi.dev      # vide en dev (localhost)
 ```
 
 **Secrets sensibles** (à mettre dans `secrets/dev.env` via `go-task secrets:edit` + propagés au container via SOPS → fichiers Docker secrets ou env injection) :
@@ -49,7 +49,7 @@ EURIO_OIDC_CLIENT_SECRET=<from C1>
 EURIO_SESSION_SECRET=<32 bytes hex aléatoires — clé HS256 du JWT de session>
 ```
 
-Justification du split : seul ce qui est vraiment secret va en SOPS. Les URLs publiques d'Authentik et le `client_id` sont déjà visibles dans les requêtes browser (redirect vers `auth.musubi.dev`) — pas de bénéfice à les chiffrer, et ça allège la rotation SOPS.
+Justification du split : seul ce qui est vraiment secret va en SOPS. Les URLs publiques d'Authentik et le `client_id` sont déjà visibles dans les requêtes browser (redirect vers `authentik.musubi.dev`) — pas de bénéfice à les chiffrer, et ça allège la rotation SOPS.
 
 Côté container, l'`entrypoint.sh` doit propager les secrets sensibles (ajouter le passage `*_FILE` → env si on monte des Docker secrets).
 
@@ -162,7 +162,7 @@ docker compose exec eurio-api curl -s $EURIO_OIDC_JWKS_URL | jq '.keys[0].kty'
 
 # b) /auth/oidc/login renvoie 302 vers Authentik
 curl -si https://eurio-api.musubi.dev/auth/oidc/login | head -5
-# → 302 Location: https://auth.musubi.dev/...
+# → 302 Location: https://authentik.musubi.dev/...
 
 # c) Flow complet manuel : ouvrir /auth/oidc/login dans le browser,
 #    se logger sur Authentik, retomber sur /auth/oidc/callback → set cookie.
@@ -184,7 +184,7 @@ curl -si https://eurio-api.musubi.dev/me
 - **Ne pas exposer** `EURIO_OIDC_CLIENT_SECRET` ni `EURIO_SESSION_SECRET` dans les logs (filtrer dans le logging middleware).
 - **Cookie de session `eurio_session`** (cf. DESIGN.md §6.1) :
   - **JWT HS256** signé avec `EURIO_SESSION_SECRET`. Claims : `{sub, email, roles[], scopes[], sid (uuid4), iat, exp=iat+8h, iss="eurio-api"}`.
-  - Attributs : `HttpOnly`, `Secure`, `SameSite=Lax`, `Path=/`, `Domain=admin.musubi.dev` en prod (vide en dev).
+  - Attributs : `HttpOnly`, `Secure`, `SameSite=Lax`, `Path=/`, `Domain=eurio-admin.musubi.dev` en prod (vide en dev).
   - **Pas de session-store côté serveur** : tout est dans le JWT, validation = `jwt.decode` + clé symétrique. `sid` sert uniquement à l'audit log.
   - **Pas le JWT Authentik brut** dans le cookie : on émet notre propre JWT court, contenant seulement ce que `eurio-api` a besoin de re-vérifier sur chaque requête.
   - **Rotation = invalidation globale** : changer `EURIO_SESSION_SECRET` invalide tous les cookies (procédure break-glass).

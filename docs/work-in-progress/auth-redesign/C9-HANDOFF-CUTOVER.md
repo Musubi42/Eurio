@@ -14,7 +14,7 @@
 - C8 ✅ — users + tokens UI.
 - **Sauvegarde Authentik vérifiée** (volumes Postgres + media inclus dans `infra/backup/eurio-backup.sh`, cycle restore testé) — cf. C1 §8. **Bloquant** : si non fait, on ne lance pas C9.
 - **Coexistence test ≥ 7 jours** : panel + legacy tournent côte à côte, l'opérateur (et idéalement 1 reviewer) utilise le panel pour les tâches quotidiennes. Aucune régression bloquante recensée. Cette coexistence est la **dernière phase de test avant le cutover one-shot** (cf. DESIGN.md D9 all-in : ce n'est pas un dual-run permanent, c'est une fenêtre de validation).
-- DNS : `admin.musubi.dev` créé (pointe vers IP VPS).
+- DNS : `eurio-admin.musubi.dev` créé (pointe vers IP VPS).
 
 ## 1. Déploiement du panel sur le VPS
 
@@ -44,7 +44,7 @@ déploiement API et complique la CSP. **Rejeté en C5 §9.**
 
 ```yaml
 labels:
-  - traefik.http.routers.eurio-panel.rule=Host(`admin.musubi.dev`)
+  - traefik.http.routers.eurio-panel.rule=Host(`eurio-admin.musubi.dev`)
   - traefik.http.routers.eurio-panel.entrypoints=websecure
   - traefik.http.routers.eurio-panel.tls=true
   - traefik.http.routers.eurio-panel.tls.certresolver=letsencryptresolver
@@ -72,7 +72,7 @@ tar czf ~/review-legacy-backup-$(date +%F).tar.gz ./data
 
 Supprimer le dossier `infra/review/` du repo (commit dédié).
 Supprimer `ml/review_service/` du repo (les routes ont été portées en C4).
-Supprimer DNS `eurio-review.musubi.dev` (ou CNAME vers `admin.musubi.dev`).
+Supprimer DNS `eurio-review.musubi.dev` (ou CNAME vers `eurio-admin.musubi.dev`).
 
 ## 4. Kill `admin/packages/web` + `admin/packages/review-admin`
 
@@ -188,7 +188,7 @@ de l'ajout du backup.
 
 ## 8. Critères d'acceptation
 
-- `admin.musubi.dev` répond avec le panel, certifié TLS, login Authentik OK.
+- `eurio-admin.musubi.dev` répond avec le panel, certifié TLS, login Authentik OK.
 - `eurio-review.musubi.dev` ne répond plus (ou redirige).
 - `dashboard.vercel.com` ne montre plus le projet eurio-admin.
 - `docker ps` sur le VPS ne montre plus `eurio-review`.
@@ -203,7 +203,7 @@ de l'ajout du backup.
 ## C9 — résumé cutover
 
 - Date du cutover : YYYY-MM-DD
-- Panel déployé sur admin.musubi.dev : OK
+- Panel déployé sur eurio-admin.musubi.dev : OK
 - Vercel project supprimé : OK
 - eurio-review container stoppé + volume backupé : OK
 - review.db migré / fusionné / conservé : <…>

@@ -142,7 +142,7 @@ VITE_EURIO_DEV_BYPASS=0       # 1 en dev local sans Authentik joignable
 En prod : `VITE_EURIO_API_BASE=https://eurio-api.musubi.dev` (défini au build).
 
 CORS : `eurio-api` doit autoriser `http://localhost:5173` (dev) et
-`https://admin.musubi.dev` (prod). Vérifier `EURIO_API_CORS_ORIGINS` dans
+`https://eurio-admin.musubi.dev` (prod). Vérifier `EURIO_API_CORS_ORIGINS` dans
 `infra/eurio-api/docker-compose.yml`. **Important** : `credentials: 'include'`
 nécessite `Access-Control-Allow-Credentials: true` et une origine exacte (pas `*`).
 
@@ -198,9 +198,9 @@ default-src 'self';
 script-src 'self';
 style-src 'self' 'unsafe-inline';     # Vue inline styles ; à tightener si possible
 img-src 'self' data: https:;
-connect-src 'self' https://eurio-api.musubi.dev https://auth.musubi.dev;
+connect-src 'self' https://eurio-api.musubi.dev https://authentik.musubi.dev;
 frame-ancestors 'none';
-form-action 'self' https://auth.musubi.dev;
+form-action 'self' https://authentik.musubi.dev;
 ```
 
 ## 11. Résumé à produire
