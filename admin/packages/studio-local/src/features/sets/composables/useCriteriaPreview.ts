@@ -1,15 +1,21 @@
-import { supabase } from '@/shared/supabase/client'
+import { eurioApi } from '@/shared/api/eurio-api'
 import type { Coin, SetCriteria } from '@/shared/supabase/types'
 import { useDebounceFn } from '@vueuse/core'
 import { ref, watch, type Ref } from 'vue'
 
 /**
- * Construit une query Supabase depuis un SetCriteria et retourne
+ * Construit une query eurio-api depuis un SetCriteria et retourne
  * { count, samples, loading, error } réactifs.
  *
- * - Pour les critères simples (country, issue_type, year, denomination, series_id,
- *   is_withdrawn, min/max_mintage), on délègue à PostgREST.
- * - Pour `distinct_by`, on fait le dédoublonnage côté client après fetch (limite 1000).
+ * Phase 2a data-layer-unification : porté de Supabase PostgREST →
+ * eurio-api ``/coins`` qui supporte désormais year/series_id/variant_kind/
+ * min_mintage/max_mintage en plus de country/fv/commemo.
+ *
+ * - Pour les critères simples, on délègue les filtres à eurio-api.
+ * - Pour `distinct_by`, on fait le dédoublonnage côté client après fetch.
+ *
+ * Note : `issue_type` Supabase ↔ `variant_kind` SQLite (renommage).
+ * `is_withdrawn` n'existe pas en SQLite — filtre ignoré.
  */
 const MAX_FETCH = 1000
 
@@ -32,58 +38,67 @@ export function useCriteriaPreview(criteria: Ref<SetCriteria | null>) {
     loading.value = true
     error.value = null
 
-    let q = supabase
-      .from('coins')
-      .select('*', { count: c.distinct_by ? undefined : 'exact' })
-      .limit(c.distinct_by ? MAX_FETCH : 24)
+    const params = new URLSearchParams()
+    params.set('limit', String(c.distinct_by ? MAX_FETCH : 24))
 
     // country
     if (c.country) {
       const countries = (Array.isArray(c.country) ? c.country : [c.country])
         .map(s => s.toUpperCase())
-      q = countries.length === 1 ? q.eq('country', countries[0]) : q.in('country', countries)
+      if (countries.length) params.set('country', countries.join(','))
     }
 
-    // issue_type
+    // issue_type → variant_kind (renommage Supabase → SQLite)
     if (c.issue_type) {
       const types = Array.isArray(c.issue_type) ? c.issue_type : [c.issue_type]
-      q = types.length === 1 ? q.eq('issue_type', types[0]) : q.in('issue_type', types)
+      if (types.length) params.set('variant_kind', types.join(','))
     }
 
     // year
     if (typeof c.year === 'number') {
-      q = q.eq('year', c.year)
+      params.set('year', String(c.year))
     } else if (c.year === 'current') {
-      q = q.eq('year', new Date().getFullYear())
+      params.set('year', String(new Date().getFullYear()))
     }
 
-    // denomination
+    // denomination (face_value) — un seul supporté pour l'instant côté API
     if (c.denomination && c.denomination.length > 0) {
-      q = c.denomination.length === 1
-        ? q.eq('face_value', c.denomination[0])
-        : q.in('face_value', c.denomination)
+      // L'endpoint /coins accepte un seul fv. Pour multi-fv, post-filter client-side.
+      if (c.denomination.length === 1) {
+        params.set('fv', String(c.denomination[0]))
+      }
     }
 
     // series_id
     if (c.series_id) {
-      q = q.eq('series_id', c.series_id)
+      params.set('series_id', c.series_id)
     }
 
-    // is_withdrawn
-    if (c.is_withdrawn !== undefined) {
-      q = q.eq('is_withdrawn', c.is_withdrawn)
-    }
+    // is_withdrawn : absent côté SQLite — filtre ignoré (à porter si besoin)
 
     // mintage bounds
-    if (c.min_mintage !== undefined) q = q.gte('mintage', c.min_mintage)
-    if (c.max_mintage !== undefined) q = q.lte('mintage', c.max_mintage)
+    if (c.min_mintage !== undefined) params.set('min_mintage', String(c.min_mintage))
+    if (c.max_mintage !== undefined) params.set('max_mintage', String(c.max_mintage))
 
-    const { data, error: err, count: cnt } = await q
-
+    let resp: { items: Coin[], total: number }
+    try {
+      resp = await eurioApi.get<{ items: Coin[], total: number }>(
+        `/coins?${params.toString()}`,
+      )
+    } catch (e) {
+      loading.value = false
+      error.value = e instanceof Error ? e.message : String(e)
+      return
+    }
     loading.value = false
-    if (err) { error.value = err.message; return }
 
-    const rows = (data ?? []) as Coin[]
+    let rows = resp.items ?? []
+
+    // Post-filter denomination multi-valeurs si pas géré côté API
+    if (c.denomination && c.denomination.length > 1) {
+      const set = new Set(c.denomination)
+      rows = rows.filter(r => set.has(r.face_value))
+    }
 
     if (c.distinct_by === 'country') {
       // Dedup côté client
@@ -98,7 +113,7 @@ export function useCriteriaPreview(criteria: Ref<SetCriteria | null>) {
       count.value = deduped.length
       samples.value = deduped.slice(0, 24)
     } else {
-      count.value = cnt ?? rows.length
+      count.value = resp.total ?? rows.length
       samples.value = rows.slice(0, 24)
     }
   }

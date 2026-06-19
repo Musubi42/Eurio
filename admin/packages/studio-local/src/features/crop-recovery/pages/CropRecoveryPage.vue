@@ -105,7 +105,7 @@ onMounted(loadRuns)
       <label>Jeu
         <select v-model="fDataset">
           <option value="all">tous</option>
-          <option v-for="(n, k) in datasets" :key="k" :value="k">{{ k }}</option>
+          <option v-for="(_, k) in datasets" :key="k" :value="k">{{ k }}</option>
         </select>
       </label>
       <label><input v-model="fEmu" type="checkbox" /> EMU/globe</label>

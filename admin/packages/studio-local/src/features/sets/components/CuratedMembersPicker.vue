@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { supabase } from '@/shared/supabase/client'
+import { eurioApi } from '@/shared/api/eurio-api'
 import type { Coin } from '@/shared/supabase/types'
 import { firstImageUrl } from '@/shared/utils/coin-images'
 import { useDebounceFn } from '@vueuse/core'
@@ -39,15 +39,15 @@ async function runSearch(q: string) {
   searchError.value = null
 
   const s = q.trim()
-  const { data, error } = await supabase
-    .from('coins')
-    .select('*')
-    .or(`eurio_id.ilike.%${s}%,theme.ilike.%${s}%,country.ilike.${s}`)
-    .limit(40)
-
-  searching.value = false
-  if (error) { searchError.value = error.message; return }
-  results.value = (data ?? []) as Coin[]
+  try {
+    const params = new URLSearchParams({ search: s, limit: '40' })
+    const resp = await eurioApi.get<{ items: Coin[] }>(`/coins?${params.toString()}`)
+    results.value = resp.items ?? []
+  } catch (e) {
+    searchError.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    searching.value = false
+  }
 }
 
 const debouncedSearch = useDebounceFn(() => runSearch(query.value), 250)

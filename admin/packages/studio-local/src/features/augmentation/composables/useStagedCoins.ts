@@ -1,8 +1,8 @@
 // Reads the `eurio_ids` query param from the route and hydrates the
-// corresponding Coin rows from Supabase. Keeps everything reactive — if the
+// corresponding Coin rows from eurio-api. Keeps everything reactive — if the
 // user navigates with a different set of ids, the list updates.
 
-import { supabase } from '@/shared/supabase/client'
+import { eurioApi } from '@/shared/api/eurio-api'
 import type { Coin } from '@/shared/supabase/types'
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
@@ -36,13 +36,13 @@ export function useStagedCoins(maxCoins: number = 20) {
     loading.value = true
     error.value = null
     try {
-      const { data, error: err } = await supabase
-        .from('coins')
-        .select('*')
-        .in('eurio_id', ids)
-      if (err) throw err
+      const params = new URLSearchParams({
+        eurio_ids: ids.join(','),
+        limit: String(ids.length),
+      })
+      const resp = await eurioApi.get<{ items: Coin[] }>(`/coins?${params.toString()}`)
       // Preserve the order of the query param.
-      const byId = new Map((data as Coin[]).map(c => [c.eurio_id, c]))
+      const byId = new Map((resp.items ?? []).map(c => [c.eurio_id, c]))
       coins.value = ids
         .map(id => byId.get(id))
         .filter((c): c is Coin => c != null)

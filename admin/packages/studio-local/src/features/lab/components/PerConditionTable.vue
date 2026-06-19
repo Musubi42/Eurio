@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-
 defineProps<{
   // Shape: { lighting: { "natural-direct": { r_at_1, r_at_3, num_photos }, ... }, angle: {...}, ... }
   perCondition: Record<string, Record<string, { r_at_1: number; r_at_3: number; num_photos: number }>>

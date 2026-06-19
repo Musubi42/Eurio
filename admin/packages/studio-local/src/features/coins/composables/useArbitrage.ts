@@ -1,4 +1,4 @@
-import { supabase } from '@/shared/supabase/client'
+import { eurioApi } from '@/shared/api/eurio-api'
 import type { Coin } from '@/shared/supabase/types'
 import { computed, ref, watch } from 'vue'
 
@@ -65,28 +65,26 @@ export function useArbitrage() {
     }
     queue.value = await resp.json() as QueueEntry[]
 
-    // Fetch all candidate coins from Supabase
+    // Fetch all candidate coins from eurio-api (Bearer PAT, cross-origin OK)
     const allIds = queue.value.flatMap(e => e.candidates.map(c => c.eurio_id))
     const unique = [...new Set(allIds)]
 
-    // Supabase `in()` has a limit of ~300 items, we're at ~112, fine
-    const { data, error } = await supabase
-      .from('coins')
-      .select('*')
-      .in('eurio_id', unique)
-
-    if (error) {
-      console.error('Failed to fetch candidate coins:', error.message)
+    try {
+      const params = new URLSearchParams({
+        eurio_ids: unique.join(','),
+        limit: String(unique.length),
+      })
+      const resp = await eurioApi.get<{ items: Coin[] }>(`/coins?${params.toString()}`)
+      const map = new Map<string, Coin>()
+      for (const row of resp.items ?? []) {
+        map.set(row.eurio_id, row)
+      }
+      coinCache.value = map
+    } catch (e) {
+      console.error('Failed to fetch candidate coins:', e instanceof Error ? e.message : e)
+    } finally {
       loading.value = false
-      return
     }
-
-    const map = new Map<string, Coin>()
-    for (const row of (data ?? []) as Coin[]) {
-      map.set(row.eurio_id, row)
-    }
-    coinCache.value = map
-    loading.value = false
   }
 
   // ── Decision helpers ──
@@ -162,7 +160,11 @@ export function useArbitrage() {
     decisions.value = new Map(decisions.value)
   }
 
-  // ── Sync to Supabase ──
+  // ── Sync vers eurio-api ──
+  //
+  // Phase 2a data-layer-unification : `coin_cross_refs` est une table de
+  // jointure côté SQLite (différent du JSONB de Supabase). On utilise un
+  // endpoint dédié PUT /coins/{id}/cross-refs/numista_id.
 
   async function syncToSupabase() {
     syncing.value = true
@@ -172,28 +174,15 @@ export function useArbitrage() {
     for (const [numista_id, decision] of decisions.value) {
       if (decision.status !== 'assigned' || decision.synced || !decision.chosen_eurio_id) continue
 
-      // Fetch current cross_refs to merge (don't overwrite other fields)
-      const { data: current, error: fetchErr } = await supabase
-        .from('coins')
-        .select('cross_refs')
-        .eq('eurio_id', decision.chosen_eurio_id)
-        .single()
-
-      if (fetchErr || !current) {
-        syncError.value = `Fetch failed for ${decision.chosen_eurio_id}: ${fetchErr?.message ?? 'not found'}`
-        break
-      }
-
-      const crossRefs = ((current as Record<string, unknown>).cross_refs ?? {}) as Record<string, unknown>
-      crossRefs.numista_id = numista_id
-
-      const { error: updateErr } = await supabase
-        .from('coins')
-        .update({ cross_refs: crossRefs } as never)
-        .eq('eurio_id', decision.chosen_eurio_id)
-
-      if (updateErr) {
-        syncError.value = `Update failed for ${decision.chosen_eurio_id}: ${updateErr.message}`
+      try {
+        await eurioApi.put(
+          `/coins/${encodeURIComponent(decision.chosen_eurio_id)}/cross-refs/numista_id`,
+          { value: String(numista_id) },
+        )
+      } catch (e) {
+        syncError.value = `Sync failed for ${decision.chosen_eurio_id}: ${
+          e instanceof Error ? e.message : String(e)
+        }`
         break
       }
 

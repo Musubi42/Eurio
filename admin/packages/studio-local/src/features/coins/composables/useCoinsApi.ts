@@ -6,7 +6,7 @@
 //
 // Backend : ml/api/coins_routes.py.
 
-import { ML_API } from '@/features/training/composables/useTrainingApi'
+import { eurioApi } from '@/shared/api/eurio-api'
 
 // ─── Models (alignés sur Pydantic côté backend) ──────────────────────────
 
@@ -246,17 +246,28 @@ export interface CoinListFilters {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
+//
+// Phase 2a data-layer-unification : tous les /coins/* tapent eurio-api
+// (VPS canonical, Bearer PAT) au lieu de l'ancien ML_API localhost. Les
+// endpoints sont déjà live côté VPS via le mount _CANDIDATES dans
+// server_serve.py. Helper `json` re-typé vers le client eurioApi.
 
 async function json<T>(path: string, init?: RequestInit): Promise<T> {
-  const resp = await fetch(`${ML_API}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
-    ...init,
-  })
-  if (!resp.ok) {
-    const body = await resp.text().catch(() => '')
-    throw new Error(`${resp.status} ${resp.statusText}: ${body}`)
+  const method = (init?.method || 'GET').toUpperCase()
+  if (method === 'GET') return eurioApi.get<T>(path)
+  let body: unknown
+  if (typeof init?.body === 'string') {
+    try { body = JSON.parse(init.body) } catch { body = init.body }
+  } else {
+    body = init?.body
   }
-  return resp.json() as Promise<T>
+  switch (method) {
+    case 'POST': return eurioApi.post<T>(path, body)
+    case 'PUT': return eurioApi.put<T>(path, body)
+    case 'PATCH': return eurioApi.patch<T>(path, body)
+    case 'DELETE': return eurioApi.delete<T>(path)
+    default: throw new Error(`useCoinsApi.json: méthode non supportée ${method}`)
+  }
 }
 
 // ─── List + filters ───────────────────────────────────────────────────────

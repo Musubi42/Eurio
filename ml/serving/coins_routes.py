@@ -304,6 +304,11 @@ def list_coins(
     lent_to_me: bool | None = None,
     search: str | None = Query(default=None, description="ILIKE eurio_id/theme + numista_id exact"),
     eurio_ids: str | None = Query(default=None, description="CSV restrict to these eurio_ids"),
+    year: int | None = Query(default=None),
+    series_id: str | None = Query(default=None),
+    variant_kind: str | None = Query(default=None, description="CSV (classic,coloured,…) ; canoniques par défaut"),
+    min_mintage: int | None = Query(default=None),
+    max_mintage: int | None = Query(default=None),
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=100, ge=1, le=1000),
 ) -> CoinListResponse:
@@ -378,6 +383,25 @@ def list_coins(
             placeholders = ",".join("?" * len(ids))
             where.append(f"c.eurio_id IN ({placeholders})")
             params.extend(ids)
+
+    if year is not None:
+        where.append("c.year = ?")
+        params.append(year)
+    if series_id:
+        where.append("c.series_id = ?")
+        params.append(series_id)
+    if variant_kind:
+        kinds = [k.strip() for k in variant_kind.split(",") if k.strip()]
+        if kinds:
+            placeholders = ",".join("?" * len(kinds))
+            where.append(f"c.variant_kind IN ({placeholders})")
+            params.extend(kinds)
+    if min_mintage is not None:
+        where.append("c.mintage >= ?")
+        params.append(min_mintage)
+    if max_mintage is not None:
+        where.append("c.mintage <= ?")
+        params.append(max_mintage)
 
     where_clause = ("WHERE " + " AND ".join(where)) if where else ""
     total = conn.execute(
@@ -1044,3 +1068,62 @@ def patch_coin(eurio_id: str, payload: CoinPatch) -> CoinDetail:
         if result.rowcount == 0:
             raise HTTPException(status_code=404, detail=f"coin {eurio_id} not found")
     return _build_coin_detail(conn, eurio_id)
+
+
+# ── Cross-refs (table de jointure coin_cross_refs) ──────────────────────────
+
+
+class CrossRefRow(BaseModel):
+    ref_type: str
+    ref_value: str
+
+
+class CrossRefPut(BaseModel):
+    value: str
+
+
+@router.get("/{eurio_id}/cross-refs", response_model=list[CrossRefRow])
+def list_cross_refs(eurio_id: str) -> list[CrossRefRow]:
+    """Liste les cross-refs d'un coin (numista_id, krause_mishler, schon, …)."""
+    conn = _conn()
+    if not conn.execute(
+        "SELECT 1 FROM coins WHERE eurio_id = ?", (eurio_id,)
+    ).fetchone():
+        raise HTTPException(status_code=404, detail=f"coin {eurio_id} not found")
+    rows = conn.execute(
+        "SELECT ref_type, ref_value FROM coin_cross_refs "
+        "WHERE eurio_id = ? ORDER BY ref_type",
+        (eurio_id,),
+    ).fetchall()
+    return [CrossRefRow(ref_type=r["ref_type"], ref_value=r["ref_value"]) for r in rows]
+
+
+@router.put("/{eurio_id}/cross-refs/{ref_type}", response_model=CrossRefRow)
+def put_cross_ref(
+    eurio_id: str, ref_type: str, payload: CrossRefPut
+) -> CrossRefRow:
+    """Upsert d'une cross-ref ``(eurio_id, ref_type)`` → ``value``.
+
+    Utilisé par le workflow Arbitrage pour binder un ``numista_id`` à un coin.
+    """
+    conn = _conn()
+    if not conn.execute(
+        "SELECT 1 FROM coins WHERE eurio_id = ?", (eurio_id,)
+    ).fetchone():
+        raise HTTPException(status_code=404, detail=f"coin {eurio_id} not found")
+    conn.execute(
+        "INSERT INTO coin_cross_refs(eurio_id, ref_type, ref_value) "
+        "VALUES (?, ?, ?) "
+        "ON CONFLICT(eurio_id, ref_type) DO UPDATE SET ref_value = excluded.ref_value",
+        (eurio_id, ref_type, payload.value),
+    )
+    return CrossRefRow(ref_type=ref_type, ref_value=payload.value)
+
+
+@router.delete("/{eurio_id}/cross-refs/{ref_type}", status_code=204)
+def delete_cross_ref(eurio_id: str, ref_type: str) -> None:
+    conn = _conn()
+    conn.execute(
+        "DELETE FROM coin_cross_refs WHERE eurio_id = ? AND ref_type = ?",
+        (eurio_id, ref_type),
+    )
