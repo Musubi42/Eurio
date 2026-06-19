@@ -9,8 +9,9 @@
 
 ## 0. Pré-requis
 
-- C4 ✅ — routes `/review/*` opérationnelles sur `eurio-api`.
-- C5 ✅ — panel shell + auth fonctionnels.
+- C4 ✅ — routes `/review/*` opérationnelles sur `eurio-api` (cf. `ml/serving/review_routes.py`, smoke-testé E2E le 2026-06-19).
+- C5 ✅ — panel shell + auth fonctionnels (`admin/packages/panel/`, build 38KB gzip).
+- Lire d'abord : [`RESUME-NEXT-SESSION.md`](./RESUME-NEXT-SESSION.md) — findings et décisions arrivées en cours de route.
 - Branche : `auth-redesign-c6`.
 
 ## 1. Inventaire des écrans à porter
@@ -40,21 +41,45 @@ plus restrictif.
 
 ## 3. API client
 
-Étendre `admin/packages/panel/src/api/client.ts` avec :
+Créer `admin/packages/panel/src/api/review.ts`. **`api/client.ts` expose `api.get/post/put/delete<T>(path, body?)`** (pas `get/post`).
 
 ```ts
+import { api } from './client'
+
+export interface ReviewItem {
+  id: string
+  image_asset_id: string
+  crop_url: string
+  source: string | null
+  listing_title: string | null
+  candidates: Array<Record<string, unknown>>
+  target_eurio_id: string | null
+  dino_top1: Record<string, unknown> | null
+}
+
+export interface DecidePayload {
+  action: 'accept' | 'reject'
+  eurio_id?: string
+  face?: string
+  variant_kind?: string
+  quality_reason?: string
+  notes?: string
+}
+
 export const reviewApi = {
-  listMyItems: () => get('/review/me/items'),
-  claim: () => post('/review/claim'),
-  decide: (itemId, decision) => post(`/review/items/${itemId}/decide`, decision),
-  skip: (itemId) => post(`/review/items/${itemId}/skip`),
-  myStats: () => get('/review/me/stats'),
+  listMyItems: () => api.get<{ items: ReviewItem[]; window: number }>('/review/me/items'),
+  claim: () => api.post<{ items: ReviewItem[]; window: number }>('/review/claim'),
+  decide: (itemId: string, decision: DecidePayload) =>
+    api.post<{ status: string; id: string }>(`/review/items/${itemId}/decide`, decision),
+  skip: (itemId: string) =>
+    api.post<{ status: string; id: string }>(`/review/items/${itemId}/skip`),
+  myStats: () => api.get<{ total: number; today: number; user_id: string }>('/review/me/stats'),
   // admin
-  flow: () => get('/review/flow'),
-  decisions: (params) => get('/review/decisions', params),
-  ackDecisions: (ids) => post('/review/decisions/ack', { ids }),
-  publish: () => post('/review/publish'),
-};
+  flow: () => api.get('/review/flow'),
+  decisions: (unreconciled = 1) => api.get(`/review/decisions?unreconciled=${unreconciled}`),
+  ackDecisions: (ids: string[]) => api.post('/review/decisions/ack', { ids }),
+  publish: (items: unknown[]) => api.post('/review/publish', { items }),
+}
 ```
 
 ## 4. Design

@@ -86,8 +86,25 @@ Mettre à jour `admin/pnpm-workspace.yaml`.
 
 ### 5.1 Anciens tokens machine (C4 model-b legacy)
 
-- Anciens tokens `mac` / `pc` (model-b C4 legacy) : **soft-delete** via `UPDATE api_tokens SET revoked_at = strftime('%s','now')*1000 WHERE revoked_at IS NULL AND name IN ('mac','pc')`. Pas de `DELETE` — on garde la trace pour l'audit (cohérence avec C3 §2).
-- L'opérateur re-crée 2 tokens propres (`mac-cli`, `pc-cli`) depuis `/me/tokens`.
+Deux tables coexistent :
+
+| Table | Source | Schéma | Devenir |
+|---|---|---|---|
+| `api_tokens` (legacy) | `ml/state/schema.sql:1739` + `ml/serving/auth.py` | `token_sha PK, name, created_at, revoked_at` | **Drop la table entière** à C9 — les routes sont migrées sur `require_principal` (C3.5) depuis cette date, plus aucun appelant ; CLI `add-token` deprecated avec warning. |
+| `pat_tokens` (nouveau) | `ml/serving/migrations/0001_auth_redesign.sql` | `id PK, user_id, name, token_sha, scopes_json, ...` | Conservée — c'est le PAT moderne (C3). |
+
+Procédure C9 :
+
+```sql
+-- Anciens tokens legacy (table api_tokens) : on drop carrément.
+-- Backup au préalable si on veut garder l'audit.
+DROP TABLE IF EXISTS api_tokens;
+
+-- Supprimer la définition de la table dans ml/state/schema.sql:1735-1744
+-- (commit séparé pour la propreté). La table ne sera plus recréée au boot.
+```
+
+- L'opérateur re-crée 2 PAT propres (`mac-cli`, `pc-cli`) depuis `/me/tokens` dans le panel.
 - Mettre à jour `secrets/dev.env` côté Mac + PC avec les nouveaux tokens via `go-task secrets:edit`.
 
 ### 5.2 Suppression complète Supabase Auth (admin)
@@ -137,7 +154,7 @@ ssh vps
 cd /opt/eurio/infra/eurio-api/
 docker compose exec eurio-api python -m serving.auth grant-owner --email raphaelthi59@gmail.com
 # Vérifie auth_audit
-docker compose exec eurio-api sqlite3 /data/eurio.db \
+docker compose exec eurio-api sqlite3 /var/lib/eurio/eurio.db \
   "SELECT * FROM auth_audit WHERE event='grant_owner.cli' ORDER BY ts DESC LIMIT 5;"
 ```
 
@@ -167,16 +184,16 @@ admin compromise.
 
 ```bash
 # Lister les tokens actifs d'un user (depuis le panel /me/tokens, ou via SQL)
-docker compose exec eurio-api sqlite3 /data/eurio.db \
-  "SELECT id, name, created_at, last_used_at FROM api_tokens
+docker compose exec eurio-api sqlite3 /var/lib/eurio/eurio.db \
+  "SELECT id, name, created_at, last_used_at FROM pat_tokens
    WHERE user_id=? AND revoked_at IS NULL;"
 
 # Révoquer un PAT spécifique (soft-delete)
-docker compose exec eurio-api sqlite3 /data/eurio.db \
-  "UPDATE api_tokens SET revoked_at = strftime('%s','now')*1000 WHERE id=?;"
+docker compose exec eurio-api sqlite3 /var/lib/eurio/eurio.db \
+  "UPDATE pat_tokens SET revoked_at = strftime('%s','now')*1000 WHERE id=?;"
 
 # Auditer l'usage
-docker compose exec eurio-api sqlite3 /data/eurio.db \
+docker compose exec eurio-api sqlite3 /var/lib/eurio/eurio.db \
   "SELECT * FROM auth_audit WHERE target=? ORDER BY ts DESC LIMIT 50;"
 ```
 

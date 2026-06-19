@@ -4,7 +4,9 @@
 > Une session future (Claude Code ou humain) prend un chunk, l'exécute, met à
 > jour le statut ici, puis remonte un résumé.
 >
-> **Pré-requis transverse** : lire `DESIGN.md` avant de démarrer un chunk.
+> **Pré-requis transverse** : lire `DESIGN.md` **et**
+> [`RESUME-NEXT-SESSION.md`](./RESUME-NEXT-SESSION.md) (findings + déviations
+> cumulés depuis la session du 2026-06-19) avant de démarrer un chunk.
 
 ## Statuts
 
