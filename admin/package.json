@@ -4,6 +4,9 @@
   "scripts": {
     "dev": "pnpm -C packages/web dev",
     "build": "pnpm -C packages/web build",
-    "typecheck": "pnpm -C packages/web typecheck"
+    "typecheck": "pnpm -C packages/web typecheck",
+    "panel:dev": "pnpm -C packages/panel dev",
+    "panel:build": "pnpm -C packages/panel build",
+    "panel:typecheck": "pnpm -C packages/panel typecheck"
   }
 }

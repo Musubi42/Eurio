@@ -24,7 +24,7 @@
 | C3.5 | Polish pré-front (cookie env-aware, /auth/dev/login, /me name, require_principal global, factories require_scope/role) | ✅ 2026-06-19 (commit 42c6805d ; débloque C5 dev local + C7a/C7b) | C3 | (inline dans le commit) |
 | C4 | Absorption `review_service` dans `eurio-api` | ✅ 2026-06-19 (routes /review/* portées avec Principal + scopes ; review.db séparé bootstrappé idempotent ; container eurio-review legacy intact en parallèle) | C2, C3.5 | [`C4-HANDOFF-MERGE-REVIEW.md`](./C4-HANDOFF-MERGE-REVIEW.md) |
 | C4 | Absorption `review_service` dans `eurio-api` | ⬜ | C2 | [`C4-HANDOFF-MERGE-REVIEW.md`](./C4-HANDOFF-MERGE-REVIEW.md) |
-| C5 | Panel : skeleton Vue + login OIDC + shell | ⬜ | C2 | [`C5-HANDOFF-PANEL-SHELL.md`](./C5-HANDOFF-PANEL-SHELL.md) |
+| C5 | Panel : skeleton Vue + login OIDC + shell | ✅ 2026-06-19 (admin/packages/panel créé, Vue 3 + Vite + Pinia + Router strict TS, AppShell + Login + Home + NotAuthorized + placeholders, router guard par scope, dev bypass aware ; build 38KB gzip, typecheck OK) | C2 | [`C5-HANDOFF-PANEL-SHELL.md`](./C5-HANDOFF-PANEL-SHELL.md) |
 | C6 | Panel : portage des écrans review | ⬜ | C4, C5 | [`C6-HANDOFF-PORT-REVIEW.md`](./C6-HANDOFF-PORT-REVIEW.md) |
 | C6.5 | Migration data Supabase → `eurio.db` SQLite (schéma + data + switch code `supabase_client` → `sqlite3`) | ⬜ | C2 | (handoff à écrire — esquisse ci-dessous) |
 | C7a | Panel : portage editorial core (sources / coins / audit / referential) + endpoints `eurio-api` correspondants | ⬜ | C5, C6.5 | [`C7-HANDOFF-PORT-WEB.md`](./C7-HANDOFF-PORT-WEB.md) §C7a |
