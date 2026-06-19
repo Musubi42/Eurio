@@ -20,7 +20,14 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from serving import auth as api_auth
-from serving import auth_routes, db_migrate, ingest_routes, tokens_routes, users_routes
+from serving import (
+    auth_routes,
+    db_migrate,
+    ingest_routes,
+    review_routes,
+    tokens_routes,
+    users_routes,
+)
 from serving.auth_principal import require_principal
 from store import Store
 
@@ -61,6 +68,7 @@ if _origins:
 app.include_router(auth_routes.router)
 app.include_router(users_routes.router)
 app.include_router(tokens_routes.router)
+app.include_router(review_routes.router)
 
 
 @app.get("/healthz")
