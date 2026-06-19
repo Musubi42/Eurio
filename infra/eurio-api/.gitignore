@@ -1,4 +1,2 @@
-# Données canoniques (volume) + secrets réels — jamais committés.
+# Volume canonique (eurio.db) — jamais committé.
 data/
-secrets/*
-!secrets/*.example

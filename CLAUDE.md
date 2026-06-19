@@ -125,7 +125,9 @@ Un hostname inconnu fait échouer `direnv allow` avec un message d'aide listant 
 - Clés privées : `~/.config/sops/age/keys.txt` sur chaque machine, jamais committées. Backup dans le password manager perso.
 - **Éditer un secret : `go-task secrets:edit`** (ouvre déchiffré dans `$EDITOR`, re-chiffre à la sauvegarde). `go-task secrets:list` (noms) · `go-task secrets:check` (déchiffrable). Après édition : `direnv reload`.
 - **Côté code** : le Python lit les secrets via `shared.env.load_env()` / `require()` / `numista_api_key()` (lecture `os.environ` uniquement, peuplé par `.envrc`). Jamais de parsing de `.env` à la main. Les clés Numista (8, en rotation) passent par `referential.numista_keys.KeyManager` — il n'existe **pas** de `NUMISTA_API_KEY` au singulier.
-- Frontières hors-SOPS (runtimes distants) : **Vercel** (projet `loan/` + web) gère ses secrets via le dashboard Vercel ; **VPS** via les Docker secrets de `infra/*/secrets/` (fichiers `*.example` trackés, vrais fichiers non trackés).
+- Frontières hors-SOPS (runtimes distants) :
+  - **Vercel** (projet `loan/` + web, en cours de décommissionnement — cf. `docs/work-in-progress/auth-redesign/`) gère ses secrets via le dashboard Vercel.
+  - **VPS** : pattern **SOPS via direnv**. Le `.envrc` racine déchiffre `secrets/dev.env` (SOPS+age) au `cd /opt/eurio` et exporte les vars dans le shell. `docker compose up` les forwarde au container via `environment: { VAR: ${VAR:?missing} }` dans `docker-compose.yml`. Aucun fichier secret en clair sur disque côté `infra/*/`. La clé age reste sur la machine (`~/.config/sops/age/keys.txt`, jamais committée). Pour les contextes scriptés (cron, systemd), fallback explicite : `sops exec-env /opt/eurio/secrets/dev.env "docker compose up ..."`. Le pattern legacy Docker secrets (fichiers `infra/*/secrets/<name>` + `*_FILE` env var) est **déprécié** : `infra/eurio-api/` a migré (juin 2026) ; `infra/review/` sera supprimé à C9 de la refonte auth.
 - Bootstrap d'une nouvelle machine : voir `README.md §Secrets`.
 
 ### Supabase
