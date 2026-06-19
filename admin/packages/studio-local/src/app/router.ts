@@ -1,24 +1,20 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { DEV_BYPASS, supabase } from '@/shared/supabase/client'
+
+// Auth via PAT (Bearer header sur les XHR eurio-api), pas via cookie ni
+// guard route-level. Si le PAT est absent / invalide, le store
+// `useEurioSession` reflète l'état et `EurioSessionBanner` (intégré dans
+// `AppLayout`) affiche le feedback. Les routes restent accessibles —
+// les composables qui appellent eurio-api échouent proprement avec
+// `EurioApiError` / `MissingPatError` si la session n'est pas OK.
+//
+// Supabase est encore consulté pour 4 tables data (cf. ARCHITECTURE.md).
 
 const router = createRouter({
   history: createWebHistory(),
   routes: [
     {
-      path: '/login',
-      component: () => import('@/features/auth/pages/LoginPage.vue'),
-      meta: { requiresAuth: false },
-    },
-    {
-      // Cible du magic link — gère la race condition session/router
-      path: '/auth/callback',
-      component: () => import('@/features/auth/pages/AuthCallbackPage.vue'),
-      meta: { requiresAuth: false },
-    },
-    {
       path: '/',
       component: () => import('@/shared/ui/AppLayout.vue'),
-      meta: { requiresAuth: true },
       children: [
         {
           path: '',
@@ -186,27 +182,6 @@ const router = createRouter({
       redirect: '/sets',
     },
   ],
-})
-
-// Auth guard — désactivé en dev local si VITE_SUPABASE_SERVICE_KEY est défini
-router.beforeEach(async (to) => {
-  if (DEV_BYPASS) {
-    if (to.path === '/login' || to.path === '/auth/callback') return '/sets'
-    return true
-  }
-  if (!to.meta.requiresAuth) return true
-
-  const { data: { session } } = await supabase.auth.getSession()
-
-  if (!session) return '/login'
-
-  const role = session.user.app_metadata?.role
-  if (role !== 'admin') {
-    await supabase.auth.signOut()
-    return '/login'
-  }
-
-  return true
 })
 
 export default router

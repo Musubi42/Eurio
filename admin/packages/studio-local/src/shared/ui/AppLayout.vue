@@ -1,16 +1,15 @@
 <script setup lang="ts">
 import { navSections } from '@/app/nav'
 import EurioSessionBanner from '@/shared/ui/EurioSessionBanner.vue'
-import { DEV_BYPASS, supabase } from '@/shared/supabase/client'
+import { DEV_BYPASS } from '@/shared/supabase/client'
 import { useNavState } from '@/shared/composables/useNavState'
-import { ChevronsLeft, ChevronsRight, LogOut } from 'lucide-vue-next'
+import { useEurioSession } from '@/stores/eurio-session'
+import { ChevronsLeft, ChevronsRight } from 'lucide-vue-next'
 import { ref } from 'vue'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
-import { useRouter } from 'vue-router'
 
-const router = useRouter()
 const route = useRoute()
-const signingOut = ref(false)
+const session = useEurioSession()
 const { badges: navBadges } = useNavState()
 
 // Sidebar repliable en icônes (plus de viewport pour la review). Persisté.
@@ -19,12 +18,6 @@ const collapsed = ref(localStorage.getItem(NAV_COLLAPSED_KEY) === '1')
 function toggleCollapsed() {
   collapsed.value = !collapsed.value
   localStorage.setItem(NAV_COLLAPSED_KEY, collapsed.value ? '1' : '0')
-}
-
-async function signOut() {
-  signingOut.value = true
-  await supabase.auth.signOut()
-  router.push('/login')
 }
 
 function isActive(itemRoute: string) {
@@ -121,19 +114,24 @@ function isActive(itemRoute: string) {
         </div>
       </nav>
 
-      <!-- Sign out -->
-      <div class="p-3 border-t" style="border-color: rgba(255,255,255,0.08);">
-        <button
-          @click="signOut"
-          :disabled="signingOut"
-          :title="collapsed ? 'Se déconnecter' : undefined"
-          class="flex w-full items-center rounded-md py-2 text-sm transition-colors hover:bg-white/5 disabled:opacity-50"
-          :class="collapsed ? 'justify-center px-0' : 'gap-3 px-3'"
-          style="color: rgba(255,255,255,0.45);"
-        >
-          <LogOut class="h-4 w-4 flex-shrink-0" />
-          <span v-if="!collapsed">{{ signingOut ? 'Déconnexion…' : 'Se déconnecter' }}</span>
-        </button>
+      <!-- User identity (depuis useEurioSession). Pas de signOut : déconnexion
+           = retirer/modifier .env.local (cf. PAT-WORKFLOW.md). -->
+      <div
+        v-if="!collapsed"
+        class="p-3 border-t text-xs"
+        style="border-color: rgba(255,255,255,0.08); color: rgba(255,255,255,0.55);"
+      >
+        <template v-if="session.principal">
+          <div class="truncate font-medium" style="color: rgba(255,255,255,0.85);">
+            {{ session.principal.email }}
+          </div>
+          <div class="truncate">
+            {{ session.principal.roles.join(' · ') }}
+          </div>
+        </template>
+        <template v-else>
+          <div class="italic">PAT non configuré</div>
+        </template>
       </div>
     </aside>
 
