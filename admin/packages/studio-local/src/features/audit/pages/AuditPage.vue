@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { supabase } from '@/shared/supabase/client'
+import { eurioApi } from '@/shared/api/eurio-api'
 import type { SetAudit } from '@/shared/supabase/types'
 import { onMounted, ref } from 'vue'
 
@@ -18,15 +18,14 @@ const actionColor: Record<SetAudit['action'], string> = {
 
 async function fetchAudit() {
   loading.value = true
-  const { data, error: err } = await supabase
-    .from('sets_audit')
-    .select('*')
-    .order('at', { ascending: false })
-    .limit(100)
-
-  loading.value = false
-  if (err) { error.value = err.message; return }
-  entries.value = data ?? []
+  try {
+    // Phase 1 data-layer-unification : sets_audit migré Supabase → eurio.db
+    entries.value = await eurioApi.get<SetAudit[]>('/audit/sets?limit=100')
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    loading.value = false
+  }
 }
 
 onMounted(fetchAudit)
