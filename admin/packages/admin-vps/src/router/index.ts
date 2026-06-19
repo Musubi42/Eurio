@@ -60,7 +60,7 @@ const routes: RouteRecordRaw[] = [
       {
         path: 'me/tokens',
         name: 'tokens',
-        component: () => import('@/views/Placeholder.vue'),
+        component: () => import('@/views/tokens/MyTokensPage.vue'),
         meta: { scope: 'tokens:manage_own', title: 'Mes tokens' },
       },
     ],
