@@ -17,9 +17,9 @@
 
 | # | Chunk | Statut | Dépend de | Handoff |
 |---|---|---|---|---|
-| C1 | Provisioning Authentik (OIDC app + groups) | 🟡 config OK, test browser bloqué par redirect URI strict mode | — | [`C1-HANDOFF-AUTHENTIK.md`](./C1-HANDOFF-AUTHENTIK.md) |
-| C1.5 | Bootstrap déploiement `infra/eurio-api/` sur VPS (compose, secrets, Traefik, healthcheck) | ✅ déployé 2026-06-19 (eurio-api.musubi.dev → 200 /healthz, auth gating actif) | C1 | (dans C2 §0 — sous-section dédiée) |
-| C2 | `eurio-api` : middleware JWT + tables RBAC + `/me` | ⬜ | C1, C1.5 | [`C2-HANDOFF-API-RBAC.md`](./C2-HANDOFF-API-RBAC.md) |
+| C1 | Provisioning Authentik (OIDC app + groups) | ✅ 2026-06-19 (flow E2E validé : login OIDC + cookie posé + user upserté + rôles synchronisés) | — | [`C1-HANDOFF-AUTHENTIK.md`](./C1-HANDOFF-AUTHENTIK.md) |
+| C1.5 | Bootstrap déploiement `infra/eurio-api/` sur VPS (compose, secrets, Traefik, healthcheck) | ✅ 2026-06-19 (eurio-api.musubi.dev → 200 /healthz, auth gating actif) | C1 | (dans C2 §0 — sous-section dédiée) |
+| C2 | `eurio-api` : middleware JWT + tables RBAC + `/me` | ✅ 2026-06-19 (commit e42a4e4d ; flow OIDC complet validé : login → callback → cookie → user/roles/audit en DB) | C1, C1.5 | [`C2-HANDOFF-API-RBAC.md`](./C2-HANDOFF-API-RBAC.md) |
 | C3 | Tokens API personnels (modèle + endpoints + vérif machine) | ⬜ | C2 | [`C3-HANDOFF-TOKENS.md`](./C3-HANDOFF-TOKENS.md) |
 | C4 | Absorption `review_service` dans `eurio-api` | ⬜ | C2 | [`C4-HANDOFF-MERGE-REVIEW.md`](./C4-HANDOFF-MERGE-REVIEW.md) |
 | C5 | Panel : skeleton Vue + login OIDC + shell | ⬜ | C2 | [`C5-HANDOFF-PANEL-SHELL.md`](./C5-HANDOFF-PANEL-SHELL.md) |
