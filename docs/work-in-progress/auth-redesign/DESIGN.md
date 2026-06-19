@@ -130,7 +130,12 @@ CREATE TABLE user_roles (
   PRIMARY KEY (user_id, role)
 );
 
-CREATE TABLE api_tokens (
+-- Note (déviation 2026-06-19) : la table est nommée `pat_tokens` (Personal
+-- Access Tokens), pas `api_tokens`. La table `api_tokens` existait déjà dans
+-- le schéma legacy (`ml/state/schema.sql:1739`, bearer machine simple sans
+-- user_id ni scopes) et entre en collision. Le nom `pat_tokens` est plus
+-- explicite et évite la collision pendant la coexistence C2↔C3.
+CREATE TABLE pat_tokens (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id       TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   name          TEXT NOT NULL,
@@ -141,8 +146,8 @@ CREATE TABLE api_tokens (
   revoked_at    INTEGER,
   expires_at    INTEGER                  -- nullable
 );
-CREATE INDEX api_tokens_user_idx ON api_tokens(user_id);
-CREATE INDEX api_tokens_active_idx ON api_tokens(revoked_at) WHERE revoked_at IS NULL;
+CREATE INDEX pat_tokens_user_idx ON pat_tokens(user_id);
+CREATE INDEX pat_tokens_active_idx ON pat_tokens(revoked_at) WHERE revoked_at IS NULL;
 
 CREATE TABLE auth_audit (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -251,12 +256,24 @@ require_principal()               # auth seulement, sans check
 - **pCloud backup** (rclone OAuth) → machine-to-cloud, hors scope.
 - **MCP servers Claude** → géré par claude.ai, hors scope.
 
-### 9.1 Dans le scope (clarification post-audit 2026-06-19)
+### 9.1 Dans le scope (clarification post-audit 2026-06-19, mis à jour)
 
-- **Supabase Auth (magic-link `admin/packages/web` `LoginPage.vue`)** : **disparaît complètement** à C9. Toutes les surfaces UI passent par Authentik via le panel. Suppression effective des comptes `auth.users` Supabase (purge documentée dans C9 §5), désactivation du provider magic-link Supabase, suppression de la conf Vercel correspondante.
-- **Appels Supabase directs depuis `admin/packages/web`** : **tous migrés** vers des endpoints `eurio-api` équivalents en C7 (split en C7a / C7b). Aucun appel `supabase.from(…)` ne doit subsister côté front après C9.
-- **RLS `auth.jwt() ->> 'role' = 'admin'`** (8+ policies dans `supabase/migrations/`) : conservées **en place** (la DB Supabase est intégralement préservée), mais deviennent **inactives** une fois que `eurio-api` est le seul appelant et tape avec la service-role key. Documentées comme dead-but-kept dans le commit C9. **Pas de DROP.**
-- **Service-role Supabase** : reste utilisée, mais **uniquement** côté `eurio-api` (VPS, SOPS), jamais côté navigateur.
+**Décision all-in : Supabase disparaît entièrement du stack admin/eurio.** Auth ET données, pas de demi-mesure.
+
+- **Supabase Auth (magic-link `admin/packages/web` `LoginPage.vue`)** : disparaît à C9. Toutes les surfaces UI passent par Authentik via le panel. Suppression effective des comptes `auth.users` Supabase, désactivation des providers.
+- **Données éditoriales Supabase** (~15 tables : `coins`, `coin_series`, `coin_confusion_map`, `sets`, `sets_audit`, `design_groups`, `referential_*`, `coin_market_prices`, etc.) : **rapatriement complet vers `eurio.db` (SQLite)**. Nouveau chunk **C6.5** dédié à cette migration (schéma + data + switch code).
+- **`ml/serving/supabase_client.py`** : **supprimé** à la fin de C6.5. Tous ses appelants (`augmentation_routes`, `coins_review_routes`, etc. — cf. `server.py:103,143`) basculent sur `sqlite3` direct contre `eurio.db`.
+- **Appels Supabase directs depuis `admin/packages/web`** : **tous migrés** vers les endpoints `eurio-api` (qui tapent eux-mêmes sur `eurio.db`) en C7a/C7b. Aucun appel `supabase.from(…)` ne doit subsister côté front après C9.
+- **`supabase/migrations/*.sql`** (schéma source Postgres) : **conservées dans le repo** comme référence historique du schéma — utile pour reconstituer l'équivalent SQLite en C6.5. Aucun DROP côté Postgres distant (la DB Supabase peut être laissée en l'état après cutover, ou décommissionnée séparément hors scope).
+- **RLS `auth.jwt() ->> 'role' = 'admin'`** : deviennent un non-sujet (on ne tape plus du tout sur Supabase). Le contrôle d'accès est entièrement réimplémenté côté `eurio-api` via les scopes RBAC.
+- **`ml/state/schema.sql`** (canonique SQLite training/ML, 1744 lignes, 63 tables) : reste tel quel. C6.5 **étend** ce schéma avec les tables éditoriales rapatriées (ou crée un schéma séparé `editorial_schema.sql` dans le même fichier `eurio.db` — à trancher en C6.5).
+
+### 9.2 MinIO ne sert plus la DB
+
+- Pattern legacy "Mac pull eurio.db depuis MinIO, travaille, push" : **abandonné**.
+- `eurio.db` vit en **filesystem classique** sur le VPS (bind mount `infra/eurio-api/data/`). Backups via `infra/backup/eurio-backup.sh` (`sqlite3 .backup` ou `tar` selon stratégie).
+- `ml/serving/bootstrap_canonical.py` (pull MinIO au cold-start) : **supprimé en C2**. Le cold-start d'un VPS vierge se fait via restore d'un backup, pas seed MinIO.
+- MinIO reste utilisé pour les **assets** (images coins, screenshots ingest, etc.) — séparé de la DB.
 
 ## 10. Risques et garde-fous
 

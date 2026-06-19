@@ -24,10 +24,23 @@ services:
       # Config non-sensible (peut rester en clair ici).
       EURIO_DB_PATH: /var/lib/eurio/eurio.db
       EURIO_API_AUTH_REQUIRED: "1"          # auth bearer OBLIGATOIRE sur le VPS
-      EURIO_DB_BUCKET: eurio-db             # bucket MinIO du canonique (seed)
-      # Origines autorisées (console admin). À adapter (Vercel + local).
       EURIO_API_CORS_ORIGINS: "https://eurio-admin.musubi.dev,http://localhost:5173"
-      # Accès MinIO (même cluster que infra/minio).
+      # OIDC Authentik (auth-redesign C2). URLs publiques, OK en clair.
+      EURIO_OIDC_ISSUER: https://authentik.musubi.dev/application/o/eurio-panel/
+      EURIO_OIDC_JWKS_URL: https://authentik.musubi.dev/application/o/eurio-panel/jwks/
+      EURIO_OIDC_AUTHORIZATION_ENDPOINT: https://authentik.musubi.dev/application/o/authorize/
+      EURIO_OIDC_TOKEN_ENDPOINT: https://authentik.musubi.dev/application/o/token/
+      EURIO_OIDC_END_SESSION_ENDPOINT: https://authentik.musubi.dev/application/o/eurio-panel/end-session/
+      EURIO_OIDC_CLIENT_ID: 8nFCZsZV0Pryxcjse0pOq2YQvLbdWXP8gmwYbh82
+      EURIO_OIDC_REDIRECT_URI: https://eurio-api.musubi.dev/auth/oidc/callback
+      EURIO_PANEL_ORIGIN: https://eurio-admin.musubi.dev
+      EURIO_COOKIE_NAME: eurio_session
+      # Pas de Domain explicite : cookie est lié à eurio-api.musubi.dev,
+      # envoyé par le browser uniquement sur les XHR vers cet host.
+      # OIDC client_secret + session signing key (SOPS).
+      EURIO_OIDC_CLIENT_SECRET: ${EURIO_OIDC_CLIENT_SECRET:?missing - voir secrets/dev.env}
+      EURIO_SESSION_SECRET: ${EURIO_SESSION_SECRET:?missing - voir secrets/dev.env}
+      # Accès MinIO (assets uniquement — plus de seed DB depuis MinIO).
       MINIO_ENDPOINT: eurio-s3.musubi.dev
       MINIO_USE_SSL: "true"
     networks:

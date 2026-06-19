@@ -21,7 +21,9 @@ RUN pip install --no-cache-dir \
         "fastapi>=0.115,<0.120" \
         "uvicorn[standard]>=0.32,<0.40" \
         "pydantic>=2.7,<3.0" \
-        "boto3>=1.35,<2.0"
+        "boto3>=1.35,<2.0" \
+        "httpx>=0.27,<0.30" \
+        "python-jose[cryptography]>=3.3,<4.0"
 
 WORKDIR /srv/ml
 

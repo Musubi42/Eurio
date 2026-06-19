@@ -1,14 +1,14 @@
 #!/bin/sh
-# Seed le canonique depuis MinIO si absent, puis exec uvicorn.
-# Les secrets (MINIO_*) sont injectés en env par `sops exec-env … docker compose up`
-# (cf. README.md). Pas de fichiers secrets sur disque — source unique = secrets/dev.env (SOPS).
+# Vérifie les secrets nécessaires aux assets MinIO (images, screenshots), puis
+# exec uvicorn. Les migrations DB (CREATE TABLE IF NOT EXISTS) sont appliquées
+# par le startup hook FastAPI dans server_serve.py — pas par cet entrypoint.
+#
+# Cold-start d'un VPS vierge : restore d'un backup (`infra/backup/eurio-backup.sh`),
+# pas seed MinIO. Le pattern legacy (`bootstrap_canonical.py`) est supprimé
+# en C2 de la refonte auth-redesign — cf. DESIGN.md §9.2.
 set -eu
 
-# Sans accès MinIO on ne peut pas seed le canonique → crash tôt.
-: "${MINIO_ACCESS_KEY:?MINIO_ACCESS_KEY missing — déploie via `sops exec-env`}"
-: "${MINIO_SECRET_KEY:?MINIO_SECRET_KEY missing — déploie via `sops exec-env`}"
-
-# Seed eurio.db depuis MinIO au 1er boot (no-op si déjà présent dans le volume).
-python -m serving.bootstrap_canonical
+: "${MINIO_ACCESS_KEY:?MINIO_ACCESS_KEY missing — déploie via direnv ou sops exec-env}"
+: "${MINIO_SECRET_KEY:?MINIO_SECRET_KEY missing — déploie via direnv ou sops exec-env}"
 
 exec "$@"

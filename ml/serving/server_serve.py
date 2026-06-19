@@ -20,13 +20,22 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from serving import auth as api_auth
-from serving import ingest_routes
+from serving import auth_routes, db_migrate, ingest_routes, users_routes
 from store import Store
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("eurio-api")
 
 _DB_PATH = Path(os.environ.get("EURIO_DB_PATH", "/var/lib/eurio/eurio.db"))
+
+# Migrations idempotentes appliquées AVANT que Store n'ouvre la connexion.
+# Couvre les nouvelles tables auth (users/roles/user_roles/api_tokens/auth_audit
+# — cf. auth-redesign C2). Les tables existantes (training_*, etc.) sont
+# gérées par Store via state/schema.sql.
+_applied = db_migrate.run_migrations(_DB_PATH)
+if _applied:
+    log.info("db_migrate: applied %d migration(s): %s", len(_applied), _applied)
+
 _store = Store(_DB_PATH)
 api_auth.bind(_store)
 
@@ -37,9 +46,16 @@ if _origins:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=_origins,
+        # credentials=True nécessaire pour le cookie eurio_session côté panel.
+        allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+# Routes auth OIDC + identité (sans `require_token` legacy — elles ont leur
+# propre dep `require_principal` ou sont publiques pour le flow).
+app.include_router(auth_routes.router)
+app.include_router(users_routes.router)
 
 
 @app.get("/healthz")

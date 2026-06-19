@@ -24,8 +24,9 @@
 | C4 | Absorption `review_service` dans `eurio-api` | ⬜ | C2 | [`C4-HANDOFF-MERGE-REVIEW.md`](./C4-HANDOFF-MERGE-REVIEW.md) |
 | C5 | Panel : skeleton Vue + login OIDC + shell | ⬜ | C2 | [`C5-HANDOFF-PANEL-SHELL.md`](./C5-HANDOFF-PANEL-SHELL.md) |
 | C6 | Panel : portage des écrans review | ⬜ | C4, C5 | [`C6-HANDOFF-PORT-REVIEW.md`](./C6-HANDOFF-PORT-REVIEW.md) |
-| C7a | Panel : portage editorial core (sources / coins / audit / referential) + endpoints `eurio-api` correspondants | ⬜ | C5 | [`C7-HANDOFF-PORT-WEB.md`](./C7-HANDOFF-PORT-WEB.md) §C7a |
-| C7b | Panel : portage sets & analytics (sets / criteria-preview / design-groups / confusion / fragment-audit / crop-recovery / denom-gold / parity / lab) + endpoints correspondants | ⬜ | C7a | [`C7-HANDOFF-PORT-WEB.md`](./C7-HANDOFF-PORT-WEB.md) §C7b |
+| C6.5 | Migration data Supabase → `eurio.db` SQLite (schéma + data + switch code `supabase_client` → `sqlite3`) | ⬜ | C2 | (handoff à écrire — esquisse ci-dessous) |
+| C7a | Panel : portage editorial core (sources / coins / audit / referential) + endpoints `eurio-api` correspondants | ⬜ | C5, C6.5 | [`C7-HANDOFF-PORT-WEB.md`](./C7-HANDOFF-PORT-WEB.md) §C7a |
+| C7b | Panel : portage sets & analytics (sets / criteria-preview / design-groups / confusion / fragment-audit / crop-recovery / denom-gold / parity / lab) + endpoints correspondants | ⬜ | C7a, C6.5 | [`C7-HANDOFF-PORT-WEB.md`](./C7-HANDOFF-PORT-WEB.md) §C7b |
 | C8 | Panel : UI users + UI mes tokens | ⬜ | C3, C5 | [`C8-HANDOFF-USERS-UI.md`](./C8-HANDOFF-USERS-UI.md) |
 | C9 | Cutover : déploiement VPS, kill Vercel + Supabase Auth + `review_service`, archive | ⬜ | C6, C7a, C7b, C8 | [`C9-HANDOFF-CUTOVER.md`](./C9-HANDOFF-CUTOVER.md) |
 
@@ -54,6 +55,30 @@ Le chunk **n'invente pas** : si une déviation est nécessaire (lib manquante,
 endpoint Authentik différent, schéma DB à ajuster), il la **note dans le
 résumé** et met à jour `DESIGN.md` si la déviation est structurelle.
 
+## C6.5 — esquisse (handoff complet à écrire avant exécution)
+
+Décision DESIGN.md §9.1 : Supabase disparaît entièrement, y compris la donnée. Ce chunk porte les ~15 tables éditoriales de Supabase Postgres vers `eurio.db` SQLite, et bascule le code `ml/serving/` vers `sqlite3` direct.
+
+**Étapes** :
+1. **Audit Supabase** : inventaire des tables réellement utilisées (`supabase/migrations/*.sql` + `grep -rn "from(['\"]"` côté front + `grep -n "supabase\." ml/serving/`).
+2. **Schéma cible SQLite** : transposer chaque table Postgres en SQLite (types `jsonb` → `TEXT`, arrays Postgres → `TEXT` JSON ou table de jointure selon usage, `timestamp with tz` → `TEXT` ISO, etc.). Sortie : `ml/state/editorial_schema.sql` (séparé du training schema pour clarté).
+3. **Script de migration data** : `python -m serving.migrate_supabase_to_sqlite` qui :
+   - `pg_dump --data-only --inserts <table>` ou requête PostgREST avec pagination ;
+   - transforme les lignes (jsonb → str JSON, etc.) ;
+   - insert dans SQLite.
+   - **Idempotent** (CHECKSUM par table avant/après).
+4. **Switch code** :
+   - Remplacer chaque `supabase.from('coins').select(…)` par `sqlite3` direct.
+   - Refactor `augmentation_routes`, `coins_review_routes` pour ne plus dépendre de `SupabaseClient`.
+   - Supprimer `ml/serving/supabase_client.py` à la fin.
+   - Supprimer `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` de l'env d'eurio-api (gardés en SOPS pour la durée du chunk au cas où on doive rejouer la migration).
+5. **Tests** : par table, comparer `count(*)` + sample row entre Supabase et SQLite après migration.
+6. **Cutover** : on switch eurio-api code sur SQLite, on relance, on valide. Si OK, on archive le `supabase_client.py` dans `docs/archive/`.
+
+**Pré-requis** : C2 ✅ (les nouvelles tables auth coexistent avec les éditoriales dans `eurio.db`).
+
+**Bloque** : C7a/C7b (qui ne peuvent porter les UIs avant que les endpoints `eurio-api` ne tapent sur SQLite local).
+
 ## Hors scope de la roadmap
 
-Cf. `DESIGN.md` §9. En particulier : App Android, MinIO, SSH, pCloud, MCP.
+Cf. `DESIGN.md` §9. En particulier : App Android, MinIO assets (séparé de la DB), SSH, pCloud, MCP.
