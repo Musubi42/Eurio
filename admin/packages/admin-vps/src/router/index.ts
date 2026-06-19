@@ -54,7 +54,7 @@ const routes: RouteRecordRaw[] = [
       {
         path: 'users',
         name: 'users',
-        component: () => import('@/views/Placeholder.vue'),
+        component: () => import('@/views/users/UsersPage.vue'),
         meta: { scope: 'users:read', title: 'Users' },
       },
       {
