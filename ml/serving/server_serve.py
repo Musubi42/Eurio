@@ -31,6 +31,7 @@ from serving import (
     users_routes,
 )
 from serving.auth_principal import require_principal
+from serving.review_queue import router as review_queue_router
 from serving.sources import router as sources_router
 from store import Store
 
@@ -77,6 +78,10 @@ app.include_router(audit_routes.router)
 # Phase 2b data-layer-unification : domaine `sources` (READ) layered, sans
 # dépendances ML lourdes — mount inconditionnel sur l'image lean.
 app.include_router(sources_router)
+# Phase 2c data-layer-unification : domaine `review_queue` (READ) layered.
+# Endpoints heavy (manual-crop, dino-suggestions, auto-crop) restent dans le
+# legacy `review.review_queue_routes` (skipped sur lean image via cv2).
+app.include_router(review_queue_router)
 
 
 @app.get("/healthz")

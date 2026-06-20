@@ -13,6 +13,7 @@
 // backend with no review items returns an empty array, we surface the
 // empty state truthfully (no mock substitution).
 
+import { eurioApi, EurioApiError } from '@/shared/api/eurio-api'
 import { ML_API } from '@/features/training/composables/useTrainingApi'
 
 export type ReviewFace = 'obverse' | 'reverse' | 'unknown'
@@ -195,15 +196,21 @@ export async function fetchReviewItem(id: string): Promise<ReviewItem> {
 }
 
 export async function fetchReviewStats(): Promise<ReviewStats> {
-  const real = await safeFetch<ReviewStats>('/review-queue/stats')
-  if (real !== null) return real
-
-  await delay(60)
-  return {
-    n_pending: 1247,
-    n_done_today: 47,
-    median_seconds_per_decision: 8.3,
-    n_done_this_week: 314,
+  // Phase 2c : porté sur eurio-api (Bearer PAT).
+  try {
+    return await eurioApi.get<ReviewStats>('/review-queue/stats')
+  } catch (err) {
+    if (err instanceof EurioApiError) {
+      throw new ReviewApiError(err.status, err.message)
+    }
+    // Fallback mock — backend hors-ligne.
+    await delay(60)
+    return {
+      n_pending: 1247,
+      n_done_today: 47,
+      median_seconds_per_decision: 8.3,
+      n_done_this_week: 314,
+    }
   }
 }
 
@@ -567,9 +574,18 @@ export async function fetchRejectedCrops(
   cohortId?: string | null,
 ): Promise<RejectedCrop[]> {
   const qs = cohortId ? `?cohort_id=${encodeURIComponent(cohortId)}` : ''
-  const real = await safeFetch<RejectedCrop[]>(`/review-queue/rejected${qs}`)
-  if (real === null) return []
-  return real.map((r) => ({ ...r, crop_url: promoteUrl(r.crop_url) }))
+  // Phase 2c : porté sur eurio-api. Les `crop_url` sont des chemins relatifs
+  // /sources/{id}/assets/.../file — résolus vers ML_API local par promoteUrl
+  // (le file-serving reste sur le poste dev — Phase 6).
+  try {
+    const real = await eurioApi.get<RejectedCrop[]>(`/review-queue/rejected${qs}`)
+    return real.map((r) => ({ ...r, crop_url: promoteUrl(r.crop_url) }))
+  } catch (err) {
+    if (err instanceof EurioApiError) {
+      throw new ReviewApiError(err.status, err.message)
+    }
+    return []  // network down → empty list
+  }
 }
 
 /** Ré-ouvre des reviews rejetées : elles repassent en queue manuelle. */
@@ -647,16 +663,21 @@ export async function runAutoAccept(
   }
 }
 
-/** Derniers prix de référence par pièce (un par tier d'état). C4. */
+/** Derniers prix de référence par pièce (un par tier d'état). C4.
+ * Phase 2b bonus : endpoint porté sur eurio-api (`/sources/ebay/market-quotes`). */
 export async function fetchMarketQuotes(
   eurioIds: string[],
 ): Promise<Record<string, MarketQuote[]>> {
   if (eurioIds.length === 0) return {}
   const qs = encodeURIComponent(eurioIds.join(','))
-  const real = await safeFetch<{ quotes: Record<string, MarketQuote[]> }>(
-    `/sources/ebay/market-quotes?eurio_ids=${qs}`,
-  )
-  return real?.quotes ?? {}
+  try {
+    const real = await eurioApi.get<{ quotes: Record<string, MarketQuote[]> }>(
+      `/sources/ebay/market-quotes?eurio_ids=${qs}`,
+    )
+    return real.quotes
+  } catch {
+    return {}
+  }
 }
 
 // ─── Mock data ──────────────────────────────────────────────────────────

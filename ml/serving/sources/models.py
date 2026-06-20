@@ -370,6 +370,21 @@ class EbayFreshnessGroupsResponse(BaseModel):
     buckets: FreshnessBuckets
 
 
+class MarketQuoteEntry(BaseModel):
+    condition: str  # tier d'état : 'UNC' | 'TTB' | 'TB' | 'unknown'
+    p10: float | None
+    p50: float | None
+    p90: float | None
+    sample_size: int
+    period_start: str
+
+
+class MarketQuotesResponse(BaseModel):
+    """Clé = eurio_id ; valeur = liste des quotes les plus récentes
+    (`coin_market_quotes`, source ebay), une par tier d'état."""
+    quotes: dict[str, list[MarketQuoteEntry]]
+
+
 # ─── Filter / Query objects ─────────────────────────────────────────────────
 
 class SourceRunFilter(BaseModel):

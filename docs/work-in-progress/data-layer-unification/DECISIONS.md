@@ -169,3 +169,51 @@ et `/sources/{id}` côté `serving/sources/service.py` :
 **Pattern reproductible** : pour les prochains domaines (training, review),
 préférer cette approche (constante en dur + compute DB) à un port littéral
 du fat-controller — plus court à écrire, et le shape reste stable côté front.
+
+## D-10-2026-06-20 — Phase 2c découpée en 2c-a (livré) + 2c-b (à venir)
+
+**Contexte** : le legacy `review/review_queue_routes.py` fait 3670 lignes
+avec 29 routes (8 GET, 21 POST). L'endpoint principal `GET /review-queue`
+(list) construit un `ReviewItem` riche (20+ champs : bbox, candidates,
+group_candidates, standard_candidates, dino_top1, listing_kind/condition,
+etc.) qui nécessite :
+- ~7 helpers SQL : `_fetch_group_candidates`, `_fetch_standard_candidates`,
+  `_build_target_candidate`, `_build_dino_top1_candidate`, `_row_to_item`,
+  `_parse_candidates`, `canonical_obverse_url`
+- 4-table JOIN (`review_queue` × `image_assets` × `source_images` ×
+  `coins`) + 2 LEFT JOIN (`listing_text_signals`, `image_asset_dino_predictions`)
+- Logique distincte pour 3 scopes (`review_ids`, `eurio_id` avec
+  exception standards, `cohort_id`)
+
+L'endpoint `/triage-stats` agrège `compute_auto_validate_verdict_from_row`
+depuis `training/foundation/auto_validate.py` (non livré sur image lean).
+Les endpoints `/lots` dépendent de `sources.ebay.standards.design_group_lot_scope`
+(non livré non plus).
+
+**Décision** : on découpe Phase 2c en deux passes :
+- **2c-a (livré 2026-06-20)** — endpoints triviaux, gros gain immédiat sur le
+  trafic légitime : `/review-queue/stats`, `/review-queue/rejected`,
+  `/review-queue/{id}/text-signals`, `/review-queue/asset/{id}/text-signals`.
+  Sub-tâche bonus : porter aussi `/sources/ebay/market-quotes` (manquant
+  en 2b, utilisé par `useReviewApi.fetchMarketQuotes` — bug latent : la
+  SQL legacy filtrait `source='ebay'` au lieu de `'ebay_browse'`, retournait
+  toujours vide).
+- **2c-b** — endpoints lourds : `/review-queue` list, `/{id}`, `/triage-stats`,
+  `/lots`, `/lots/{key}`. À porter avec un travail soigneux : reproduire
+  `_row_to_item` + helpers candidates dans `service.py`, porter
+  `compute_auto_validate_verdict_from_row` (50 lignes pure Python + seuils
+  Dino, le module `training` n'a pas besoin d'être livré), porter
+  `design_group_lot_scope` (logique de groupage de standards, ~30 lignes).
+
+**Conséquences immédiates** :
+- Studio-local en pattern hybride sur review : stats/rejected/text-signals
+  via eurio-api, list/detail/triage/lots toujours via ML_API legacy
+- `useReviewApi.fetchReviewQueue` / `fetchReviewItem` / `fetchTriageStats`
+  appellent encore `localhost:8042` — fonctionnel mais pas conforme à
+  l'objectif data-unification. À faire en 2c-b.
+
+**Pattern reproductible** : pour les chunks à fort impact mais lourds en
+port (≥ 300 lignes de logique à porter), découper en (a) endpoints triviaux
+qui dégagent du fronton + (b) endpoints lourds traités en bloc dans une
+session dédiée. Évite l'over-scoping et garde chaque commit testable
+end-to-end.

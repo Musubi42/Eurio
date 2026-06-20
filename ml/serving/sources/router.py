@@ -41,6 +41,7 @@ from .models import (
     FilterRule,
     MarketplaceMapEntry,
     MarketplaceMapResponse,
+    MarketQuotesResponse,
     RunBreakdown,
     RunDiscarded,
     RunFunnel,
@@ -166,6 +167,17 @@ def ebay_filter_config(principal: PrincipalDep) -> EbayFilterConfig:
         ],
         source_path="ml/sources/ebay/filters.py",
     )
+
+
+@router.get("/sources/ebay/market-quotes", response_model=MarketQuotesResponse)
+def ebay_market_quotes(
+    principal: PrincipalDep,
+    conn: ConnDep,
+    eurio_ids: str = Query(..., description="CSV d'eurio_id"),
+) -> MarketQuotesResponse:
+    """Derniers `coin_market_quotes` par (pièce, tier). Cross-check review."""
+    ids = [e.strip() for e in eurio_ids.split(",") if e.strip()]
+    return MarketQuotesResponse(quotes=repository.ebay_market_quotes(conn, ids))
 
 
 @router.get("/sources/ebay/freshness-groups", response_model=EbayFreshnessGroupsResponse)

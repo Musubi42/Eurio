@@ -1,5 +1,5 @@
-// Text signals composable — wraps the chunk 5+6 API
-// (ml/api/review_queue_routes.py).
+// Text signals composable — wraps Phase 2c eurio-api endpoints
+// (ml/serving/review_queue/router.py).
 //
 //   GET /review-queue/{review_id}/text-signals     (lookup by review_queue.id)
 //   GET /review-queue/asset/{asset_id}/text-signals  (lookup by image_asset.id)
@@ -8,10 +8,9 @@
 // plusieurs assets d'un même listing partagent la même réponse.
 //
 // 404 = step `text_signal` n'a pas tourné sur ce source_image (run
-// pré-chunk-5, ou hors scope). Le panel doit dégrader silencieusement
-// — le texte est une couche d'aide, pas requis pour reviewer.
+// pré-chunk-5, ou hors scope). Le panel doit dégrader silencieusement.
 
-import { ML_API } from '@/features/training/composables/useTrainingApi'
+import { eurioApi, EurioApiError } from '@/shared/api/eurio-api'
 
 export type VsTargetVerdict = 'convergent' | 'partial' | 'absent' | 'contradict'
 
@@ -36,14 +35,13 @@ export interface TextSignalsResponse {
 
 async function fetchOrNull(path: string): Promise<TextSignalsResponse | null> {
   try {
-    const resp = await fetch(`${ML_API}${path}`)
-    if (resp.status === 404) return null
-    if (!resp.ok) {
-      console.warn(`[text-signals] HTTP ${resp.status} for ${path}`)
+    return await eurioApi.get<TextSignalsResponse>(path)
+  } catch (err) {
+    if (err instanceof EurioApiError) {
+      if (err.status === 404) return null
+      console.warn(`[text-signals] HTTP ${err.status} for ${path}`)
       return null
     }
-    return (await resp.json()) as TextSignalsResponse
-  } catch (err) {
     if (err instanceof TypeError) return null // network down
     console.warn('[text-signals] error', err)
     return null

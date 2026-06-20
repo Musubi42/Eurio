@@ -19,7 +19,7 @@
 | **1** | Orphan tables Supabase (`coin_confusion_map`, `sets_audit`) | ✅ 2026-06-19 | 4h |
 | **2a** | Endpoints `/coins/*` + refactor composables coins studio-local | ✅ 2026-06-19 | 3h |
 | **2b** | Endpoints `/sources/*` (READ) — **layered pattern, première fois** | ✅ 2026-06-20 | ~5h |
-| **2c** | Endpoints `/review-queue/*` (READ) | ⬜ | 2-3h |
+| **2c** | Endpoints `/review-queue/*` (READ) | 🟡 part. 2026-06-20 | 2-3h |
 | **2d** | Endpoints `/training-runs/*` (READ) | ⬜ | 2-3h |
 | **2e** | Endpoints `/mints`, `/referential`, `/cohorts`, `/bench`, `/augmentation` | ⬜ | 3-4h |
 | **3** | Refactor composables studio-local restants vers eurio-api | ⬜ | 1-2j |
@@ -108,14 +108,32 @@ Hors scope (déférré) :
   `localhost:8042` (les fichiers vivent côté workstation, pas synchronisés)
 - `/sources/{id}/images` · `/quotes` · `/coverage` — Phase 2c ou 2e
 
-## Phase 2c ⬜ — Review queue READ
+## Phase 2c 🟡 — Review queue READ (part. 2026-06-20)
 
-Endpoints `/review-queue/*` (legacy, distinct du `/review/*` C4 — cf.
-décision DECISIONS.md). 5773 rows dans `review_queue`. Composables :
-`useReviewApi`, `useLotReview`, `useTextSignals`, `useDinoSuggestions`.
+**Livré (Phase 2c-a)** :
+- Domaine `serving/review_queue/` (layered, pas de dep ML)
+- Endpoints `GET /review-queue/stats`, `/rejected`,
+  `/{review_id}/text-signals`, `/asset/{asset_id}/text-signals`
+- Composables refactorés : `useTextSignals` (full), `useReviewApi`
+  (`fetchReviewStats`, `fetchRejectedCrops`, `fetchMarketQuotes`)
+- Bonus Phase 2b : `/sources/ebay/market-quotes` (utilisé par
+  `useReviewApi.fetchMarketQuotes`) — défaut SQL legacy filtrait
+  `source='ebay'` au lieu de `'ebay_browse'` (corrigé)
 
-Choix à faire : on garde le préfixe legacy `/review-queue/*` ou on
-recompose vers `/review/*` C4 ? À discuter en début de session.
+**Reste (Phase 2c-b)** — porte les endpoints lourds :
+- `GET /review-queue` (list — 180 lignes legacy avec ReviewItem shape
+  riche : candidates, group_candidates, standard_candidates, dino_top1)
+- `GET /review-queue/{id}` (detail — même shape, single item)
+- `GET /review-queue/triage-stats` (agrégat avec
+  `compute_auto_validate_verdict_from_row` — port du module
+  `training/foundation/auto_validate.py` ~50 lignes)
+- `GET /review-queue/lots` + `GET /review-queue/lots/{key}` (besoin
+  `_LISTING_KEY_SQL` constant + `design_group_lot_scope` —
+  ce dernier non livré sur image lean, à porter)
+
+Composables Phase 2c-b : `useReviewApi.fetchReviewQueue/fetchReviewItem/
+fetchTriageStats`, `useLotReview`, `useDinoSuggestions` (heavy — laisser
+sur ML local jusqu'à Phase 6).
 
 ## Phase 2d ⬜ — Training READ
 
@@ -193,10 +211,10 @@ Effort estimé : 3-5j. À traiter dans son propre handoff.
 | `useRunSearches` | 2b | ✅ |
 | `useMarketplaceMap` | 2b | ✅ |
 | `useFilterConfig` | 2b | ✅ |
-| `useReviewApi` (legacy `/review-queue/*`) | 2c | ⬜ |
-| `useLotReview` | 2c | ⬜ |
-| `useTextSignals` | 2c | ⬜ |
-| `useDinoSuggestions` | 2c | ⬜ |
+| `useReviewApi` (READ partiel) | 2c | 🟡 (stats/rejected/market-quotes ✅, queue/triage/item Phase 2c-b) |
+| `useLotReview` | 2c-b | ⬜ |
+| `useTextSignals` | 2c | ✅ |
+| `useDinoSuggestions` | 6 | ⬜ (heavy deps — laisser ML local) |
 | `useTrainingApi` | 2d | ⬜ |
 | `useReferentialApi` | 2e | ⬜ |
 | `useBenchApi` | 2e | ⬜ |

@@ -22,6 +22,7 @@ from .models import (
     FunnelStep,
     ListingCropAsset,
     ListingDetail,
+    MarketQuoteEntry,
     RunBreakdown,
     RunBreakdownEntry,
     RunDiscarded,
@@ -889,6 +890,47 @@ def ebay_freshness_groups(
         fresh=buckets["fresh"],
         total=len(all_rows),
     )
+
+
+# ─── /sources/ebay/market-quotes ────────────────────────────────────────────
+
+
+def ebay_market_quotes(
+    conn: sqlite3.Connection, eurio_ids: list[str],
+) -> dict[str, list[MarketQuoteEntry]]:
+    """Renvoie le dernier `coin_market_quotes` par (pièce, tier d'état).
+
+    Pour chaque eurio_id, garde uniquement les rows du `period_start` le plus
+    récent (par condition). Source `ebay` uniquement (C4).
+    """
+    if not eurio_ids:
+        return {}
+    placeholders = ",".join("?" * len(eurio_ids))
+    # Note (Phase 2b bonus) : la table `coin_market_quotes` utilise
+    # `source='ebay_browse'` (cf. `source_registry.id`). Le legacy
+    # `sources_routes.py` filtrait `source='ebay'` — retournait toujours
+    # vide. On corrige ici en passant à `ebay_browse`.
+    rows = conn.execute(
+        f"""
+        SELECT eurio_id, condition_raw, p10, p50, p90, sample_size, period_start
+          FROM coin_market_quotes c
+         WHERE source = 'ebay_browse' AND eurio_id IN ({placeholders})
+           AND period_start = (
+               SELECT MAX(period_start) FROM coin_market_quotes c2
+                WHERE c2.source = c.source AND c2.eurio_id = c.eurio_id
+                  AND COALESCE(c2.condition_raw, '') = COALESCE(c.condition_raw, '')
+           )
+        """,
+        eurio_ids,
+    ).fetchall()
+    out: dict[str, list[MarketQuoteEntry]] = {}
+    for r in rows:
+        out.setdefault(r["eurio_id"], []).append(MarketQuoteEntry(
+            condition=r["condition_raw"] or "unknown",
+            p10=r["p10"], p50=r["p50"], p90=r["p90"],
+            sample_size=r["sample_size"], period_start=r["period_start"],
+        ))
+    return out
 
 
 # ─── /sources (list) ────────────────────────────────────────────────────────
