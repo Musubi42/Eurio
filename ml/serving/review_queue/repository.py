@@ -328,11 +328,15 @@ def _cohort_eurio_ids(
 
     is_empty_or_missing=True signifie qu'on doit court-circuiter vers une
     réponse vide (cohort introuvable OU cohort sans coin).
+
+    La table source est `experiment_cohorts.eurio_ids_json` (CSV JSON).
+    `cohort_jobs` est une autre table (jobs de scrape par cohorte).
     """
     if not cohort_id:
         return [], False
     row = conn.execute(
-        "SELECT eurio_ids_json FROM cohort_jobs WHERE id = ?", (cohort_id,),
+        "SELECT eurio_ids_json FROM experiment_cohorts WHERE id = ?",
+        (cohort_id,),
     ).fetchone()
     if row is None:
         return [], True
@@ -940,3 +944,170 @@ def source_image_id_for_review(conn: sqlite3.Connection, review_id: str) -> str:
     if row is None:
         raise ReviewItemNotFound(review_id)
     return row["source_image_id"]
+
+
+# ─── Helpers pour /review-queue/triage-stats (SQL extraite du service) ─────
+
+
+def count_with_filter(
+    conn: sqlite3.Connection,
+    *,
+    status_clause: str,
+    status_args: list[object],
+    kind: str,
+    kind_clause: bool,
+    cohort_clause: str,
+    cohort_args: list[object],
+) -> int:
+    """Compteur générique sur `review_queue` avec scope cohort optionnel.
+
+    `status_clause` : ex. "rq.status = 'open'" ou "rq.decided_by = ?".
+    `kind_clause` : si True, applique aussi le filtre kind (sauf si kind='all').
+    `cohort_clause` / `cohort_args` : précomputés par `cohort_filter_clause()`.
+    """
+    kc = " AND rq.kind = ?" if (kind_clause and kind != "all") else ""
+    ka = [kind] if (kind_clause and kind != "all") else []
+    if cohort_clause:
+        sql = (
+            "SELECT COUNT(*) AS c FROM review_queue rq "
+            "JOIN image_assets a ON a.id = rq.image_asset_id "
+            "JOIN source_images si ON si.id = a.source_image_id "
+            f"WHERE {status_clause}{kc}{cohort_clause}"
+        )
+        return conn.execute(sql, [*status_args, *ka, *cohort_args]).fetchone()["c"]
+    sql = f"SELECT COUNT(*) AS c FROM review_queue rq WHERE {status_clause}{kc}"
+    return conn.execute(sql, [*status_args, *ka]).fetchone()["c"]
+
+
+def count_lot_open_in_lane(
+    conn: sqlite3.Connection,
+    *,
+    lane_clause: str,
+    lane_args: list[object],
+    cohort_clause: str,
+    cohort_args: list[object],
+) -> int:
+    """Lots open par lane — variante de count_with_filter spécialisée."""
+    if cohort_clause:
+        sql = (
+            "SELECT COUNT(*) AS c FROM review_queue rq "
+            "JOIN image_assets a ON a.id = rq.image_asset_id "
+            "JOIN source_images si ON si.id = a.source_image_id "
+            f"WHERE rq.status='open' AND rq.kind='lot' AND {lane_clause}{cohort_clause}"
+        )
+        return conn.execute(sql, [*lane_args, *cohort_args]).fetchone()["c"]
+    sql = (
+        "SELECT COUNT(*) AS c FROM review_queue rq "
+        f"WHERE rq.status='open' AND rq.kind='lot' AND {lane_clause}"
+    )
+    return conn.execute(sql, lane_args).fetchone()["c"]
+
+
+def count_lot_open_open(
+    conn: sqlite3.Connection, *,
+    cohort_clause: str, cohort_args: list[object],
+) -> int:
+    """`COUNT(*) WHERE rq.status='open' AND rq.kind='lot'` (scopable cohort)."""
+    if cohort_clause:
+        sql = (
+            "SELECT COUNT(*) AS c FROM review_queue rq "
+            "JOIN image_assets a ON a.id = rq.image_asset_id "
+            "JOIN source_images si ON si.id = a.source_image_id "
+            f"WHERE rq.status = 'open' AND rq.kind = 'lot'{cohort_clause}"
+        )
+        return conn.execute(sql, cohort_args).fetchone()["c"]
+    return conn.execute(
+        "SELECT COUNT(*) AS c FROM review_queue rq "
+        "WHERE rq.status = 'open' AND rq.kind = 'lot'"
+    ).fetchone()["c"]
+
+
+def count_rejected(
+    conn: sqlite3.Connection, *,
+    cohort_clause: str, cohort_args: list[object],
+) -> int:
+    if cohort_clause:
+        sql = (
+            "SELECT COUNT(*) AS c FROM review_queue rq "
+            "JOIN image_assets a ON a.id = rq.image_asset_id "
+            "JOIN source_images si ON si.id = a.source_image_id "
+            f"WHERE a.resolution_status = 'rejected'{cohort_clause}"
+        )
+        return conn.execute(sql, cohort_args).fetchone()["c"]
+    return conn.execute(
+        "SELECT COUNT(*) AS c FROM review_queue rq "
+        "JOIN image_assets a ON a.id = rq.image_asset_id "
+        "WHERE a.resolution_status = 'rejected'"
+    ).fetchone()["c"]
+
+
+def count_skipped(
+    conn: sqlite3.Connection, *,
+    cohort_clause: str, cohort_args: list[object],
+) -> int:
+    if cohort_clause:
+        sql = (
+            "SELECT COUNT(*) AS c FROM review_queue rq "
+            "JOIN image_assets a ON a.id = rq.image_asset_id "
+            "JOIN source_images si ON si.id = a.source_image_id "
+            f"WHERE rq.status = 'open' AND rq.decision_notes = 'skipped'{cohort_clause}"
+        )
+        return conn.execute(sql, cohort_args).fetchone()["c"]
+    return conn.execute(
+        "SELECT COUNT(*) AS c FROM review_queue rq "
+        "WHERE rq.status = 'open' AND rq.decision_notes = 'skipped'"
+    ).fetchone()["c"]
+
+
+def fetch_verdict_signal_rows(
+    conn: sqlite3.Connection,
+    *,
+    kind: str,
+    cohort_clause: str,
+    cohort_args: list[object],
+) -> list[sqlite3.Row]:
+    """Scan complet de la queue open pour compute_auto_validate_verdict.
+
+    Une seule requête puis pure-Python dans service.compute_auto_validate_verdict.
+    """
+    where = f"rq.status = 'open' AND {NOT_RESTORED_SQL}"
+    args: list[object] = []
+    if kind != "all":
+        where += " AND rq.kind = ?"
+        args.append(kind)
+    return conn.execute(
+        f"""
+        SELECT a.face,
+               si.target_eurio_id,
+               p.top1_country_eurio_id, p.top1_country_sim, p.country_spread,
+               p.top1_eurio_id, p.top1_sim, p.spread,
+               lts.vs_target_verdict
+          FROM review_queue rq
+          JOIN image_assets a ON a.id = rq.image_asset_id
+          JOIN source_images si ON si.id = a.source_image_id
+          LEFT JOIN image_asset_dino_predictions p
+                 ON p.asset_id = a.id
+                AND p.encoder_version = 'dinov2-vits14'
+                AND p.anchors_kind = '2eur_commemo'
+          LEFT JOIN listing_text_signals lts
+                 ON lts.source_image_id = si.id
+         WHERE {where}{cohort_clause}
+        """,
+        [*args, *cohort_args],
+    ).fetchall()
+
+
+def cohort_filter_clause(
+    conn: sqlite3.Connection, cohort_id: str | None,
+) -> tuple[str, list[object], bool]:
+    """Renvoie (clause SQL `AND si.target_eurio_id IN …`, args, is_empty).
+
+    `is_empty=True` signifie cohort introuvable ou vide → caller court-circuite.
+    """
+    eids, empty = _cohort_eurio_ids(conn, cohort_id)
+    if cohort_id and empty:
+        return "", [], True
+    if not eids:
+        return "", [], False
+    clause = f" AND si.target_eurio_id IN ({','.join('?' * len(eids))})"
+    return clause, list(eids), False

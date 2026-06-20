@@ -733,18 +733,31 @@ def get_run_breakdown(
 def get_run_log_meta(
     conn: sqlite3.Connection, run_id: str,
 ) -> tuple[str, str | None]:
-    """Renvoie (status, log_path). 404 si run inconnu.
-
-    Note Phase 2b : la lecture du fichier de log se fait côté router (FS).
-    Sur l'image lean VPS, le répertoire ml/state/run_logs/ n'est pas livré ;
-    l'endpoint marquera `available=False` avec une raison explicite.
-    """
+    """Renvoie (status, log_path). 404 si run inconnu."""
     row = conn.execute(
         "SELECT log_path, status FROM source_runs WHERE id = ?", (run_id,),
     ).fetchone()
     if row is None:
         raise SourceRunNotFound(run_id)
     return row["status"], row["log_path"]
+
+
+def read_run_log_tail(log_path: str, tail: int) -> str | None:
+    """Tail des `tail` dernières lignes du fichier `log_path`.
+
+    Le répertoire racine vient de `EURIO_RUN_LOGS_DIR` (défaut
+    `/srv/ml/state` — emplacement de `state/` côté lean image VPS).
+    Retourne None si le fichier n'existe pas (run pré-câblage logs ou
+    fichier purgé / pas synchronisé sur lean).
+    """
+    import os
+    from pathlib import Path
+    root = Path(os.environ.get("EURIO_RUN_LOGS_DIR", "/srv/ml/state"))
+    candidate = root / log_path
+    if not candidate.is_file():
+        return None
+    lines = candidate.read_text(encoding="utf-8", errors="replace").splitlines()
+    return "\n".join(lines[-tail:])
 
 
 # ─── /sources/ebay/quota-status ─────────────────────────────────────────────

@@ -305,15 +305,10 @@ def get_run_log(
     if not log_path:
         return RunLogResponse(run_id=run_id, log_path=None,
                               tail="(no log_path on this run)")
-    from pathlib import Path
-    candidate = Path("/srv/ml/state") / log_path
-    if not candidate.is_file():
+    text = repository.read_run_log_tail(log_path, tail)
+    if text is None:
         return RunLogResponse(
             run_id=run_id, log_path=log_path,
             tail=f"(log file not shipped to VPS — status={run_status})",
         )
-    lines = candidate.read_text(encoding="utf-8", errors="replace").splitlines()
-    return RunLogResponse(
-        run_id=run_id, log_path=log_path,
-        tail="\n".join(lines[-tail:]),
-    )
+    return RunLogResponse(run_id=run_id, log_path=log_path, tail=text)
