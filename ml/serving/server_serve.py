@@ -31,6 +31,7 @@ from serving import (
     users_routes,
 )
 from serving.auth_principal import require_principal
+from serving.sources import router as sources_router
 from store import Store
 
 logging.basicConfig(level=logging.INFO)
@@ -73,6 +74,9 @@ app.include_router(tokens_routes.router)
 app.include_router(review_routes.router)
 app.include_router(confusion_routes.router)
 app.include_router(audit_routes.router)
+# Phase 2b data-layer-unification : domaine `sources` (READ) layered, sans
+# dépendances ML lourdes — mount inconditionnel sur l'image lean.
+app.include_router(sources_router)
 
 
 @app.get("/healthz")

@@ -18,7 +18,7 @@
 | **0** | Données canoniques sur VPS (état initial validé) | ✅ 2026-06-19 | — |
 | **1** | Orphan tables Supabase (`coin_confusion_map`, `sets_audit`) | ✅ 2026-06-19 | 4h |
 | **2a** | Endpoints `/coins/*` + refactor composables coins studio-local | ✅ 2026-06-19 | 3h |
-| **2b** | Endpoints `/sources/*` (READ) — **layered pattern, première fois** | ⬜ | 4-6h |
+| **2b** | Endpoints `/sources/*` (READ) — **layered pattern, première fois** | ✅ 2026-06-20 | ~5h |
 | **2c** | Endpoints `/review-queue/*` (READ) | ⬜ | 2-3h |
 | **2d** | Endpoints `/training-runs/*` (READ) | ⬜ | 2-3h |
 | **2e** | Endpoints `/mints`, `/referential`, `/cohorts`, `/bench`, `/augmentation` | ⬜ | 3-4h |
@@ -70,26 +70,43 @@ Livré :
 - **Studio-local typecheck 100% clean** (6 erreurs TS pré-existantes
   éliminées par effet de bord)
 
-## Phase 2b ⬜ — Sources READ (next)
+## Phase 2b ✅ — Sources READ
 
-**Objectif** : porter les endpoints `/sources/*` lecture seule sur
-`eurio-api`, refactor des composables sources studio-local.
+**2026-06-20** — Première application du pattern layered (cf.
+`ARCHITECTURE.md`) en grandeur réelle.
 
-**Inaugurera le pattern layered** (`models / repository / service / router`).
-C'est la première application en grandeur réelle de l'architecture cible
-décrite dans `ARCHITECTURE.md`.
+Livré :
+- `serving/deps.py` — dependency FastAPI `db_connection()` partagée
+- `serving/sources/` — domain layered (models / repository / service / router) :
+  - `models.py` (24 Pydantic schemas)
+  - `repository.py` (SQL pur, sqlite3 stdlib only)
+  - `service.py` (registry statique + business logic /sources/status et /sources/{id})
+  - `router.py` (15 endpoints, tous sous `require_scope("sources:read")`)
+- Câblage `server_serve.py` : `include_router(sources_router)` inconditionnel
+  (pas de skip dynamique — le module ne dépend pas de PIL/cv2/torch)
+- 15 endpoints READ portés :
+  - `/sources` · `/sources/status` · `/sources/{id}` · `/sources/{id}/runs`
+  - `/source-runs/{run_id}` · `/funnel` · `/breakdown` · `/listings` ·
+    `/searches` · `/discarded` · `/log`
+  - `/sources/ebay/quota-status` · `/marketplace-map` · `/filter-config` ·
+    `/freshness-groups`
+- 9 composables studio-local refactorés vers `eurioApi.get<T>(...)` (PAT) :
+  - `useSourcesApi`, `useSourceDetail`, `useRunFunnel`, `useRunBreakdown`,
+    `useRunListings`, `useRunDiscarded`, `useRunSearches`,
+    `useMarketplaceMap`, `useFilterConfig`
+- URL refactor (côté API & front) : `/sources/{id}/runs/{run_id}/X` →
+  `/source-runs/{run_id}/X` (run_id globalement unique)
+- Déviations documentées dans DECISIONS.md §D-09 (quota live, deltas prix,
+  log file FS — non portés en Phase 2b, fallback front existant)
 
-Périmètre :
-- ~15 endpoints read-only : status, source detail, runs list, run
-  snapshot, funnel, breakdown, listings, searches, discarded, log,
-  ebay/{filter-config, freshness-groups, marketplace-map, quota-status}
-- 6 composables studio-local : `useSourcesApi`, `useSourceDetail`,
-  `useRun{Funnel,Breakdown,Listings,Discarded,Searches}`,
-  `useMarketplaceMap`, `useFilterConfig`
-- **Hors scope** : endpoints write/trigger (`POST /sources/{id}/runs`,
-  retry, crop-pending) — restent sur `localhost:8042` jusqu'à Phase 6
+**Studio-local typecheck ✅ clean · build ✅ ok · 15 endpoints smoke ✅ 200**
 
-Cf. `HANDOFF-NEXT-SESSION.md` pour le plan d'exécution détaillé.
+Hors scope (déférré) :
+- Endpoints write/trigger (`POST /sources/{id}/runs`, retry, crop-pending,
+  rescue) — restent sur `localhost:8042` (Phase 6)
+- File-serving (`/sources/{id}/{raws,assets}/.../file`) — reste sur
+  `localhost:8042` (les fichiers vivent côté workstation, pas synchronisés)
+- `/sources/{id}/images` · `/quotes` · `/coverage` — Phase 2c ou 2e
 
 ## Phase 2c ⬜ — Review queue READ
 
@@ -167,15 +184,15 @@ Effort estimé : 3-5j. À traiter dans son propre handoff.
 | `useNumistaReview` | 2a | ⬜ |
 | `useCoinAssets` | 2a | ⬜ |
 | `useCoinLookups` | 2a | ⬜ (fetchZoneMap = ✅ via confusion-map, reste = ?) |
-| `useSourcesApi` | 2b | ⬜ |
-| `useSourceDetail` | 2b | ⬜ |
-| `useRunFunnel` | 2b | ⬜ |
-| `useRunBreakdown` | 2b | ⬜ |
-| `useRunListings` | 2b | ⬜ |
-| `useRunDiscarded` | 2b | ⬜ |
-| `useRunSearches` | 2b | ⬜ |
-| `useMarketplaceMap` | 2b | ⬜ |
-| `useFilterConfig` | 2b | ⬜ |
+| `useSourcesApi` | 2b | ✅ |
+| `useSourceDetail` | 2b | ✅ (POST + images/quotes/coverage encore legacy) |
+| `useRunFunnel` | 2b | ✅ |
+| `useRunBreakdown` | 2b | ✅ |
+| `useRunListings` | 2b | ✅ (file URLs restent legacy) |
+| `useRunDiscarded` | 2b | ✅ |
+| `useRunSearches` | 2b | ✅ |
+| `useMarketplaceMap` | 2b | ✅ |
+| `useFilterConfig` | 2b | ✅ |
 | `useReviewApi` (legacy `/review-queue/*`) | 2c | ⬜ |
 | `useLotReview` | 2c | ⬜ |
 | `useTextSignals` | 2c | ⬜ |

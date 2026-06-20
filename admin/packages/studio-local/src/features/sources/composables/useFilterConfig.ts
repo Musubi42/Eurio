@@ -1,4 +1,4 @@
-import { ML_API } from '@/features/training/composables/useTrainingApi'
+import { eurioApi } from '@/shared/api/eurio-api'
 
 /**
  * Règles de filtrage eBay actives — snapshot lecture seule de
@@ -22,9 +22,7 @@ export interface EbayFilterConfig {
 
 export async function fetchFilterConfig(): Promise<EbayFilterConfig | null> {
   try {
-    const resp = await fetch(`${ML_API}/sources/ebay/filter-config`)
-    if (!resp.ok) return null
-    return await resp.json()
+    return await eurioApi.get<EbayFilterConfig>('/sources/ebay/filter-config')
   } catch {
     return null
   }

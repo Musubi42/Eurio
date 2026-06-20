@@ -1,9 +1,8 @@
-// Composable pour /sources/:id/runs/:run_id/searches.
+// Composable pour /source-runs/:run_id/searches.
 //
-// Backend : ml/api/sources_routes.py → get_run_searches.
-// Doc : docs/sources-refacto/listing-debug-view-kickoff.md.
+// Backend : ml/serving/sources/router.py → get_run_searches.
 
-import { ML_API } from '@/features/training/composables/useTrainingApi'
+import { eurioApi, EurioApiError } from '@/shared/api/eurio-api'
 import type { SourceId } from './useSourcesApi'
 
 export type DiscoverySearchStatus = 'success' | 'empty' | 'failed'
@@ -16,19 +15,16 @@ export interface DiscoverySearchItem {
   query_filters: Record<string, unknown> | null
   status: DiscoverySearchStatus
   http_status: number | null
-  // Funnel ventilé (chunk 0 auto-validation).
-  // n_summaries → n_after_groups → n_raw_results → n_kept_results.
+  // Funnel ventilé.
   n_summaries: number | null
   n_after_groups: number | null
   n_raw_results: number | null
   n_kept_results: number | null
   duration_ms: number | null
   error: string | null
-  // Marketplace ciblé par la search (distingue les 2 rows DE/ES d'un
-  // même groupe). null pour les sources mono-marketplace.
+  // Marketplace ciblé par la search.
   marketplace: string | null
-  // F3 — URL d'appel Browse exacte, rejouable. null si l'appel n'a pas
-  // atteint le serveur, ou sur les runs antérieurs au chunk F3.
+  // URL d'appel Browse rejouable.
   browse_url: string | null
   created_at: string
 }
@@ -49,24 +45,17 @@ export class RunSearchesError extends Error {
 }
 
 export async function fetchRunSearches(
-  sourceId: SourceId,
+  _sourceId: SourceId,
   runId: string,
   eurio_id?: string | null,
 ): Promise<RunSearches> {
-  const url = new URL(`${ML_API}/sources/${sourceId}/runs/${runId}/searches`)
-  if (eurio_id) url.searchParams.set('eurio_id', eurio_id)
-  const resp = await fetch(url.toString())
-  if (!resp.ok) {
-    let detail = `HTTP ${resp.status}`
-    try {
-      const body = await resp.json()
-      if (body && typeof body === 'object' && 'detail' in body) {
-        detail = String((body as { detail: unknown }).detail)
-      }
-    } catch {
-      // ignore
+  const qs = eurio_id ? `?eurio_id=${encodeURIComponent(eurio_id)}` : ''
+  try {
+    return await eurioApi.get<RunSearches>(`/source-runs/${runId}/searches${qs}`)
+  } catch (err) {
+    if (err instanceof EurioApiError) {
+      throw new RunSearchesError(err.status, err.message)
     }
-    throw new RunSearchesError(resp.status, detail)
+    throw err
   }
-  return resp.json() as Promise<RunSearches>
 }

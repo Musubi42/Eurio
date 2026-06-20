@@ -1,10 +1,10 @@
-// Composable pour /sources/:id/runs/:run_id/funnel.
+// Composable pour /source-runs/:run_id/funnel.
 //
-// Backend : ml/api/sources_routes.py → get_run_funnel. Vue entonnoir
+// Backend : ml/serving/sources/router.py → get_run_funnel. Vue entonnoir
 // d'un run (steps du pipeline + discovery → détection → review +
 // rejets), pour l'onglet « Logs » de la page run-detail.
 
-import { ML_API } from '@/features/training/composables/useTrainingApi'
+import { eurioApi, EurioApiError } from '@/shared/api/eurio-api'
 import type { SourceId } from './useSourcesApi'
 
 export type StepStatus = 'done' | 'running' | 'pending' | 'failed'
@@ -56,22 +56,18 @@ export class RunFunnelError extends Error {
   }
 }
 
+// `sourceId` reste dans la signature pour stabilité d'appel — le run_id est
+// globalement unique côté backend (Phase 2b), pas besoin de le scoper.
 export async function fetchRunFunnel(
-  sourceId: SourceId,
+  _sourceId: SourceId,
   runId: string,
 ): Promise<RunFunnel> {
-  const resp = await fetch(`${ML_API}/sources/${sourceId}/runs/${runId}/funnel`)
-  if (!resp.ok) {
-    let detail = `HTTP ${resp.status}`
-    try {
-      const body = await resp.json()
-      if (body && typeof body === 'object' && 'detail' in body) {
-        detail = String((body as { detail: unknown }).detail)
-      }
-    } catch {
-      // ignore
+  try {
+    return await eurioApi.get<RunFunnel>(`/source-runs/${runId}/funnel`)
+  } catch (err) {
+    if (err instanceof EurioApiError) {
+      throw new RunFunnelError(err.status, err.message)
     }
-    throw new RunFunnelError(resp.status, detail)
+    throw err
   }
-  return resp.json() as Promise<RunFunnel>
 }

@@ -131,3 +131,41 @@ côté ML local jusqu'à Phase 6 (refactor ML pipeline en client HTTP).
   de `sources_routes.py` legacy) suivant l'architecture layered
 - L'ancien `sources_routes.py` continue de servir sur ML local pour
   les triggers, intouché jusqu'à Phase 6
+
+## D-09-2026-06-20 — Sources status & detail : metadata statique côté eurio-api
+
+**Contexte** : `sources_aggregator.build_status()` (630 lignes) agrège pour
+`/sources/status` : registry métadata + quota live (Numista KeyManager,
+eBay QuotaTracker) + delta prix (`ml/state/price_snapshots/*.json`) +
+coverage (Supabase). L'image lean VPS ne livre pas `state/`, ni
+`referential.numista_keys.KeyManager` (clés API non gérées côté serveur),
+ni `shared.api_quota.QuotaTracker` côté tracker live.
+
+**Décision** : Phase 2b porte une version **simplifiée** de `/sources/status`
+et `/sources/{id}` côté `serving/sources/service.py` :
+- registry statique reproduit en dur (labels, cli_hints,
+  expected_cadence_days) — c'est la **même** liste que
+  `sources_aggregator.SOURCES_REGISTRY`, sans la couche dynamique
+- `temporal.last_run_at` / `last_run_kind` / `days_since_last_run` /
+  `overdue` : computés depuis `source_runs` (data lives dans la DB
+  canonique)
+- `quota`, `temporal.delta`, `coverage` : laissés `null`/0 — le front a
+  un mock fallback dans `MOCK_SOURCES_STATUS` qui prend le relais
+  visuellement (sans crasher)
+- `quota_groups`: dict vide, pour la même raison
+
+**Conséquences** :
+- Le dashboard SourcesPage est **fonctionnel** mais affiche un "—" pour
+  les quotas live, deltas prix et coverage tant que ces couches n'ont
+  pas migré
+- Si jamais l'aspect "quota live Numista" devient critique : porter
+  `referential.numista_keys.KeyManager` côté image lean (= ne dépend
+  pas de PIL/cv2), exposer `/sources/numista/quota-status`
+- L'endpoint `/source-runs/{run_id}/log` retourne `tail = "(log file
+  not shipped to VPS …)"` car `ml/state/run_logs/` n'est pas livré dans
+  l'image lean. À revisiter si tail-log devient un usage régulier
+  (option : copier le répertoire ou exposer un endpoint de download)
+
+**Pattern reproductible** : pour les prochains domaines (training, review),
+préférer cette approche (constante en dur + compute DB) à un port littéral
+du fat-controller — plus court à écrire, et le shape reste stable côté front.

@@ -1,10 +1,11 @@
-// Source detail composables — mocks for /sources/:id (V1).
+// Source detail composables.
 //
-// Le backend FastAPI sert déjà /sources/status (cf. ml/api/sources_routes.py)
-// mais pas encore les sous-endpoints détail. Tant qu'ils n'existent pas, on
-// mocke localement avec des signatures alignées sur ce qui sera servi
-// (cf. docs/sources-refacto/admin-ux.md §"Endpoints attendus").
+// Endpoints data passent via eurio-api (Bearer PAT) depuis Phase 2b
+// data-layer-unification. Quelques endpoints non-portés (images/quotes/
+// coverage, file-serving) restent sur ML_API legacy localhost:8042 — à
+// porter en Phase 2c.
 
+import { eurioApi, EurioApiError } from '@/shared/api/eurio-api'
 import { ML_API } from '@/features/training/composables/useTrainingApi'
 import type { CliHint, HealthState, SourceId } from './useSourcesApi'
 import { MOCK_SOURCES_STATUS } from './useSourcesApi'
@@ -84,17 +85,32 @@ export interface SourceCoverageDetail {
   uncovered_eurio_ids: string[]
 }
 
-// ─── Fetchers (real API, with mock fallback on network failure) ─────────
-// Backed by ml/api/sources_routes.py. If the backend is unreachable we
-// fall back to deterministic mocks so the page stays usable in pure-front
-// dev (no FastAPI running).
+// ─── Fetchers ───────────────────────────────────────────────────────────
+// Phase 2b : endpoints data passent via eurio-api (PAT). Fallback mock si
+// backend down (network/CORS). 404 propagé pour distinguer "source inconnue"
+// de "backend hors-ligne".
+//
+// Endpoints non-portés (images/quotes/coverage) restent via ML_API legacy.
 
-async function getJson<T>(path: string): Promise<T | null> {
+async function getViaEurioApi<T>(path: string): Promise<T | null> {
+  try {
+    return await eurioApi.get<T>(path)
+  } catch (err) {
+    if (err instanceof EurioApiError) {
+      if (err.status === 404) throw new Error(err.message)
+      // Tout autre HTTP error = backend partiellement down → mock fallback.
+      return null
+    }
+    // Network error / CORS → mock fallback.
+    if (err instanceof TypeError) return null
+    throw err
+  }
+}
+
+async function getViaMlApi<T>(path: string): Promise<T | null> {
   try {
     const resp = await fetch(`${ML_API}${path}`)
     if (!resp.ok) {
-      // 404 on detail = source not declared → caller throws below.
-      // Other non-OK = treat as backend down → null = use mock.
       if (resp.status === 404) {
         const detail = await resp.json().catch(() => ({}))
         const msg = (detail && typeof detail === 'object' && 'detail' in detail)
@@ -106,14 +122,13 @@ async function getJson<T>(path: string): Promise<T | null> {
     }
     return (await resp.json()) as T
   } catch (err) {
-    // Network error (CORS, ECONNREFUSED, etc.) → mock fallback.
     if (err instanceof TypeError) return null
     throw err
   }
 }
 
 export async function fetchSourceDetail(id: SourceId): Promise<SourceDetailHeader> {
-  const real = await getJson<SourceDetailHeader>(`/sources/${id}`)
+  const real = await getViaEurioApi<SourceDetailHeader>(`/sources/${id}`)
   if (real) return real
 
   // Fallback (FastAPI down) — derived from MOCK_SOURCES_STATUS.
@@ -166,7 +181,7 @@ export async function fetchSourceRuns(
   if (opts.limit) params.set('limit', String(opts.limit))
   if (opts.status) params.set('status', opts.status)
   const qs = params.size ? `?${params.toString()}` : ''
-  const real = await getJson<SourceRun[]>(`/sources/${id}/runs${qs}`)
+  const real = await getViaEurioApi<SourceRun[]>(`/sources/${id}/runs${qs}`)
   if (real) return real
 
   await delay(120)
@@ -183,7 +198,7 @@ export async function fetchSourceImages(
   if (opts.page) params.set('page', String(opts.page))
   if (opts.pageSize) params.set('pageSize', String(opts.pageSize))
   const qs = params.size ? `?${params.toString()}` : ''
-  const real = await getJson<{ items: SourceImage[]; total: number }>(
+  const real = await getViaMlApi<{ items: SourceImage[]; total: number }>(
     `/sources/${id}/images${qs}`,
   )
   if (real) {
@@ -214,7 +229,7 @@ export async function fetchSourceQuotes(
   if (opts.page) params.set('page', String(opts.page))
   if (opts.pageSize) params.set('pageSize', String(opts.pageSize))
   const qs = params.size ? `?${params.toString()}` : ''
-  const real = await getJson<{ items: SourceQuote[]; total: number }>(
+  const real = await getViaMlApi<{ items: SourceQuote[]; total: number }>(
     `/sources/${id}/quotes${qs}`,
   )
   if (real) return real
@@ -228,7 +243,7 @@ export async function fetchSourceQuotes(
 }
 
 export async function fetchSourceCoverage(id: SourceId): Promise<SourceCoverageDetail> {
-  const real = await getJson<SourceCoverageDetail>(`/sources/${id}/coverage`)
+  const real = await getViaMlApi<SourceCoverageDetail>(`/sources/${id}/coverage`)
   if (real) {
     // Real response, even if breakdown is empty (V1 — joins land later).
     // For sources known to the front mock registry, augment the empty
@@ -359,9 +374,7 @@ export interface EbayFreshnessGroupsResponse {
 
 export async function fetchEbayQuotaStatus(): Promise<EbayQuotaStatus | null> {
   try {
-    const resp = await fetch(`${ML_API}/sources/ebay/quota-status`)
-    if (!resp.ok) return null
-    return await resp.json()
+    return await eurioApi.get<EbayQuotaStatus>('/sources/ebay/quota-status')
   } catch { return null }
 }
 
@@ -369,9 +382,9 @@ export async function fetchEbayFreshnessGroups(
   limit = 200,
 ): Promise<EbayFreshnessGroupsResponse | null> {
   try {
-    const resp = await fetch(`${ML_API}/sources/ebay/freshness-groups?limit=${limit}`)
-    if (!resp.ok) return null
-    return await resp.json()
+    return await eurioApi.get<EbayFreshnessGroupsResponse>(
+      `/sources/ebay/freshness-groups?limit=${limit}`,
+    )
   } catch { return null }
 }
 
@@ -407,10 +420,15 @@ export async function triggerSourceRun(
   return resp.json()
 }
 
-export async function fetchSourceRun(id: SourceId, runId: string): Promise<RunSnapshot> {
-  const resp = await fetch(`${ML_API}/sources/${id}/runs/${runId}`)
-  if (!resp.ok) throw new TriggerError(resp.status, `HTTP ${resp.status}`)
-  return resp.json()
+export async function fetchSourceRun(_id: SourceId, runId: string): Promise<RunSnapshot> {
+  try {
+    return await eurioApi.get<RunSnapshot>(`/source-runs/${runId}`)
+  } catch (err) {
+    if (err instanceof EurioApiError) {
+      throw new TriggerError(err.status, err.message)
+    }
+    throw err
+  }
 }
 
 /**

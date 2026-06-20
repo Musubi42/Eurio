@@ -1,9 +1,8 @@
-// Composable pour /sources/:id/runs/:run_id/breakdown.
+// Composable pour /source-runs/:run_id/breakdown.
 //
-// Backend : ml/api/sources_routes.py → compute_run_breakdown.
-// Doc : docs/sources-refacto/run-breakdown-kickoff.md.
+// Backend : ml/serving/sources/router.py → get_run_breakdown.
 
-import { ML_API } from '@/features/training/composables/useTrainingApi'
+import { eurioApi, EurioApiError } from '@/shared/api/eurio-api'
 import type { SourceId } from './useSourcesApi'
 
 export interface RunBreakdownEntry {
@@ -46,23 +45,15 @@ export class RunBreakdownError extends Error {
 }
 
 export async function fetchRunBreakdown(
-  sourceId: SourceId,
+  _sourceId: SourceId,
   runId: string,
 ): Promise<RunBreakdown> {
-  const resp = await fetch(
-    `${ML_API}/sources/${sourceId}/runs/${runId}/breakdown`,
-  )
-  if (!resp.ok) {
-    let detail = `HTTP ${resp.status}`
-    try {
-      const body = await resp.json()
-      if (body && typeof body === 'object' && 'detail' in body) {
-        detail = String((body as { detail: unknown }).detail)
-      }
-    } catch {
-      // ignore
+  try {
+    return await eurioApi.get<RunBreakdown>(`/source-runs/${runId}/breakdown`)
+  } catch (err) {
+    if (err instanceof EurioApiError) {
+      throw new RunBreakdownError(err.status, err.message)
     }
-    throw new RunBreakdownError(resp.status, detail)
+    throw err
   }
-  return resp.json() as Promise<RunBreakdown>
 }

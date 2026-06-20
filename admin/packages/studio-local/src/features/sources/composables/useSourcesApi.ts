@@ -4,7 +4,7 @@
 // `GET /sources/status` (cf. docs/sources/backend.md) will replace
 // `fetchSourcesStatus` once shipped — the contract is the same.
 
-import { ML_API } from '@/features/training/composables/useTrainingApi'
+import { eurioApi } from '@/shared/api/eurio-api'
 
 export type SourceId =
   | 'numista_match'
@@ -144,9 +144,7 @@ export function getPipelineMeta(id: SourceId): PipelineMeta {
 // ─── Real fetch (used once backend endpoint exists) ──────────────────────
 
 export async function fetchSourcesStatus(): Promise<SourcesStatusResponse> {
-  const resp = await fetch(`${ML_API}/sources/status`)
-  if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`)
-  return resp.json() as Promise<SourcesStatusResponse>
+  return eurioApi.get<SourcesStatusResponse>('/sources/status')
 }
 
 // ─── Mock data (V1 — to be replaced by `fetchSourcesStatus` above) ───────

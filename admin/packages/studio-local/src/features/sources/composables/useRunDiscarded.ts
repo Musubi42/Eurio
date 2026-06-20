@@ -1,10 +1,9 @@
-// Composable pour /sources/:id/runs/:run_id/discarded.
+// Composable pour /source-runs/:run_id/discarded.
 //
-// Backend : ml/api/sources_routes.py → get_run_discarded.
-// Chunk 0 auto-validation ("visibilité du stream") :
-// expose les listings rejetés pré-ingestion (accept_listing + theme_mismatch).
+// Backend : ml/serving/sources/router.py → get_run_discarded.
+// Expose les listings rejetés pré-ingestion (accept_listing + theme_mismatch).
 
-import { ML_API } from '@/features/training/composables/useTrainingApi'
+import { eurioApi, EurioApiError } from '@/shared/api/eurio-api'
 import type { SourceId } from './useSourcesApi'
 
 export interface DiscardedListing {
@@ -44,27 +43,22 @@ export class RunDiscardedError extends Error {
 }
 
 export async function fetchRunDiscarded(
-  sourceId: SourceId,
+  _sourceId: SourceId,
   runId: string,
   opts?: { eurio_id?: string | null; reason?: string | null },
 ): Promise<RunDiscarded> {
-  const url = new URL(`${ML_API}/sources/${sourceId}/runs/${runId}/discarded`)
-  if (opts?.eurio_id) url.searchParams.set('eurio_id', opts.eurio_id)
-  if (opts?.reason) url.searchParams.set('reason', opts.reason)
-  const resp = await fetch(url.toString())
-  if (!resp.ok) {
-    let detail = `HTTP ${resp.status}`
-    try {
-      const body = await resp.json()
-      if (body && typeof body === 'object' && 'detail' in body) {
-        detail = String((body as { detail: unknown }).detail)
-      }
-    } catch {
-      // ignore
+  const params = new URLSearchParams()
+  if (opts?.eurio_id) params.set('eurio_id', opts.eurio_id)
+  if (opts?.reason) params.set('reason', opts.reason)
+  const qs = params.size ? `?${params.toString()}` : ''
+  try {
+    return await eurioApi.get<RunDiscarded>(`/source-runs/${runId}/discarded${qs}`)
+  } catch (err) {
+    if (err instanceof EurioApiError) {
+      throw new RunDiscardedError(err.status, err.message)
     }
-    throw new RunDiscardedError(resp.status, detail)
+    throw err
   }
-  return resp.json() as Promise<RunDiscarded>
 }
 
 // Tone par raison (cohérent avec le panel Discovery searches).

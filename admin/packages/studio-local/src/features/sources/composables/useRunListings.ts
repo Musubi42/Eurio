@@ -1,8 +1,13 @@
-// Composable pour /sources/:id/runs/:run_id/listings.
+// Composable pour /source-runs/:run_id/listings.
 //
-// Backend : ml/api/sources_routes.py → get_run_listings.
-// Doc : docs/sources-refacto/listing-debug-view-kickoff.md.
+// Backend : ml/serving/sources/router.py → get_run_listings.
+//
+// Le fetch des MÉTADONNÉES passe par eurio-api (Bearer PAT). Les helpers
+// `rawFileUrl` / `assetFileUrl` restent sur ML_API (localhost:8042) — les
+// fichiers image vivent sur le poste dev où la pipeline ML a tourné, ils
+// ne sont pas synchronisés sur le VPS.
 
+import { eurioApi, EurioApiError } from '@/shared/api/eurio-api'
 import { ML_API } from '@/features/training/composables/useTrainingApi'
 import type { SourceId } from './useSourcesApi'
 
@@ -70,26 +75,19 @@ export class RunListingsError extends Error {
 }
 
 export async function fetchRunListings(
-  sourceId: SourceId,
+  _sourceId: SourceId,
   runId: string,
   eurio_id?: string | null,
 ): Promise<RunListings> {
-  const url = new URL(`${ML_API}/sources/${sourceId}/runs/${runId}/listings`)
-  if (eurio_id) url.searchParams.set('eurio_id', eurio_id)
-  const resp = await fetch(url.toString())
-  if (!resp.ok) {
-    let detail = `HTTP ${resp.status}`
-    try {
-      const body = await resp.json()
-      if (body && typeof body === 'object' && 'detail' in body) {
-        detail = String((body as { detail: unknown }).detail)
-      }
-    } catch {
-      // ignore
+  const qs = eurio_id ? `?eurio_id=${encodeURIComponent(eurio_id)}` : ''
+  try {
+    return await eurioApi.get<RunListings>(`/source-runs/${runId}/listings${qs}`)
+  } catch (err) {
+    if (err instanceof EurioApiError) {
+      throw new RunListingsError(err.status, err.message)
     }
-    throw new RunListingsError(resp.status, detail)
+    throw err
   }
-  return resp.json() as Promise<RunListings>
 }
 
 export function rawFileUrl(sourceId: SourceId, sourceImageId: string): string {

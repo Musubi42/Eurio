@@ -7,7 +7,7 @@
 // "Stratégie d'extraction" du pilote eBay. Cf. front-ux.md §"Surface 1".
 
 import { ref } from 'vue'
-import { ML_API } from '@/features/training/composables/useTrainingApi'
+import { eurioApi, EurioApiError } from '@/shared/api/eurio-api'
 
 // ─── Types (aligned on MarketplaceMapResponse, ml/api/sources_routes.py) ──
 
@@ -81,15 +81,10 @@ export function useMarketplaceMap() {
     loading.value = true
     error.value = null
     try {
-      const resp = await fetch(`${ML_API}/sources/ebay/marketplace-map`)
-      if (!resp.ok) {
-        error.value = `HTTP ${resp.status}`
-        return
-      }
-      map.value = (await resp.json()) as MarketplaceMap
-    } catch {
+      map.value = await eurioApi.get<MarketplaceMap>('/sources/ebay/marketplace-map')
+    } catch (err) {
       // Backend down — le bandeau dégrade proprement (cf. parity-rules).
-      error.value = 'API ML indisponible'
+      error.value = err instanceof EurioApiError ? `HTTP ${err.status}` : 'API indisponible'
     } finally {
       loading.value = false
     }
