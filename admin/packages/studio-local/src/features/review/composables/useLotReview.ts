@@ -3,6 +3,7 @@
 // Backend : ml/api/review_queue_routes.py — endpoints list_lots / get_lot
 // / decide_lot. Doc : docs/sources-refacto/lot-review-kickoff.md §L.A.
 
+import { eurioApi, EurioApiError } from '@/shared/api/eurio-api'
 import { ML_API } from '@/features/training/composables/useTrainingApi'
 
 // ─── Types alignés sur Pydantic ───────────────────────────────────────
@@ -167,9 +168,14 @@ export async function fetchLots(
   if (opts.targetEurioId) params.set('target_eurio_id', opts.targetEurioId)
   if (opts.cohortId) params.set('cohort_id', opts.cohortId)
   const qs = params.size ? `?${params.toString()}` : ''
-  const resp = await fetch(`${ML_API}/review-queue/lots${qs}`)
-  if (!resp.ok) throw await parseError(resp)
-  const body = (await resp.json()) as LotListResponse
+  // Phase 2c-b : porté sur eurio-api (Bearer PAT).
+  let body: LotListResponse
+  try {
+    body = await eurioApi.get<LotListResponse>(`/review-queue/lots${qs}`)
+  } catch (err) {
+    if (err instanceof EurioApiError) throw new Error(`${err.status} ${err.message}`)
+    throw err
+  }
   return {
     ...body,
     items: body.items.map((it) => ({
@@ -184,11 +190,16 @@ function promoteCandidate(c: LotCandidate): LotCandidate {
 }
 
 export async function fetchLot(listingKey: string): Promise<LotDetail> {
-  const resp = await fetch(
-    `${ML_API}/review-queue/lots/${encodeURIComponent(listingKey)}`,
-  )
-  if (!resp.ok) throw await parseError(resp)
-  const body = (await resp.json()) as LotDetail
+  // Phase 2c-b : porté sur eurio-api (Bearer PAT).
+  let body: LotDetail
+  try {
+    body = await eurioApi.get<LotDetail>(
+      `/review-queue/lots/${encodeURIComponent(listingKey)}`,
+    )
+  } catch (err) {
+    if (err instanceof EurioApiError) throw new Error(`${err.status} ${err.message}`)
+    throw err
+  }
   return {
     ...body,
     target_candidate: body.target_candidate ? promoteCandidate(body.target_candidate) : null,

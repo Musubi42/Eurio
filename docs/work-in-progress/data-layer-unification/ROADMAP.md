@@ -19,10 +19,10 @@
 | **1** | Orphan tables Supabase (`coin_confusion_map`, `sets_audit`) | ✅ 2026-06-19 | 4h |
 | **2a** | Endpoints `/coins/*` + refactor composables coins studio-local | ✅ 2026-06-19 | 3h |
 | **2b** | Endpoints `/sources/*` (READ) — **layered pattern, première fois** | ✅ 2026-06-20 | ~5h |
-| **2c** | Endpoints `/review-queue/*` (READ) | 🟡 part. 2026-06-20 | 2-3h |
+| **2c** | Endpoints `/review-queue/*` (READ) | ✅ 2026-06-20 | ~6h |
 | **2d** | Endpoints `/training-runs/*` (READ) | ⬜ | 2-3h |
 | **2e** | Endpoints `/mints`, `/referential`, `/cohorts`, `/bench`, `/augmentation` | ⬜ | 3-4h |
-| **3** | Refactor composables studio-local restants vers eurio-api | ⬜ | 1-2j |
+| **3** | Refactor composables studio-local restants vers eurio-api | 🟡 immédiats 2026-06-20 | 1-2j |
 | **4** | Drop `@supabase/supabase-js` du studio-local | ⬜ | 30min |
 | **5** | Kill MinIO `eurio-db` bucket + `ml/store/lease.py` + `ml:db:*` tasks | ⬜ | 2-3h |
 | **6** | ML compute local = client HTTP de eurio-api | ⬜ | 3-5j |
@@ -108,32 +108,33 @@ Hors scope (déférré) :
   `localhost:8042` (les fichiers vivent côté workstation, pas synchronisés)
 - `/sources/{id}/images` · `/quotes` · `/coverage` — Phase 2c ou 2e
 
-## Phase 2c 🟡 — Review queue READ (part. 2026-06-20)
+## Phase 2c ✅ — Review queue READ (2026-06-20)
 
-**Livré (Phase 2c-a)** :
+**Phase 2c-a (commit `3aa29a44`)** :
 - Domaine `serving/review_queue/` (layered, pas de dep ML)
-- Endpoints `GET /review-queue/stats`, `/rejected`,
-  `/{review_id}/text-signals`, `/asset/{asset_id}/text-signals`
+- Endpoints `GET /review-queue/{healthcheck,stats,rejected,
+  {review_id}/text-signals, asset/{asset_id}/text-signals}`
 - Composables refactorés : `useTextSignals` (full), `useReviewApi`
   (`fetchReviewStats`, `fetchRejectedCrops`, `fetchMarketQuotes`)
 - Bonus Phase 2b : `/sources/ebay/market-quotes` (utilisé par
-  `useReviewApi.fetchMarketQuotes`) — défaut SQL legacy filtrait
-  `source='ebay'` au lieu de `'ebay_browse'` (corrigé)
+  `useReviewApi.fetchMarketQuotes` — défaut SQL legacy corrigé)
 
-**Reste (Phase 2c-b)** — porte les endpoints lourds :
-- `GET /review-queue` (list — 180 lignes legacy avec ReviewItem shape
-  riche : candidates, group_candidates, standard_candidates, dino_top1)
-- `GET /review-queue/{id}` (detail — même shape, single item)
-- `GET /review-queue/triage-stats` (agrégat avec
-  `compute_auto_validate_verdict_from_row` — port du module
-  `training/foundation/auto_validate.py` ~50 lignes)
-- `GET /review-queue/lots` + `GET /review-queue/lots/{key}` (besoin
-  `_LISTING_KEY_SQL` constant + `design_group_lot_scope` —
-  ce dernier non livré sur image lean, à porter)
-
-Composables Phase 2c-b : `useReviewApi.fetchReviewQueue/fetchReviewItem/
-fetchTriageStats`, `useLotReview`, `useDinoSuggestions` (heavy — laisser
-sur ML local jusqu'à Phase 6).
+**Phase 2c-b (commit `<2c-b>`)** :
+- 5 endpoints lourds : `/review-queue` (list), `/{review_id}` (detail),
+  `/triage-stats`, `/lots` (list), `/lots/{listing_key}` (detail)
+- Port pure-Python de `compute_auto_validate_verdict` dans `service.py`
+  (mirror exact du legacy `training/foundation/auto_validate.py`) +
+  `DINO_VERDICT_THRESHOLDS`
+- Port pure-Python de `design_group_lot_scope` (helper sources.ebay
+  non livré sur lean image)
+- Helpers `_row_to_item`, `_build_target_candidate`,
+  `_build_dino_top1_candidate`, `_fetch_group_candidates`,
+  `_fetch_standard_candidates` portés
+- Composables : `useReviewApi.fetchReviewQueue/fetchReviewItem/
+  fetchTriageStats` → eurioApi ; `useLotReview.fetchLots/fetchLot` → eurioApi
+- `/lots/{key}` : version sans re-détection live (cv2 absent), lit les
+  détections persistées dans `source_images.detections_json`. La
+  re-détection live et POST decide restent sur ML_API legacy (Phase 6).
 
 ## Phase 2d ⬜ — Training READ
 
@@ -211,10 +212,12 @@ Effort estimé : 3-5j. À traiter dans son propre handoff.
 | `useRunSearches` | 2b | ✅ |
 | `useMarketplaceMap` | 2b | ✅ |
 | `useFilterConfig` | 2b | ✅ |
-| `useReviewApi` (READ partiel) | 2c | 🟡 (stats/rejected/market-quotes ✅, queue/triage/item Phase 2c-b) |
-| `useLotReview` | 2c-b | ⬜ |
+| `useReviewApi` (READ) | 2c | ✅ (queue/item/triage/stats/rejected/market-quotes — POST/heavy = legacy) |
+| `useLotReview` (READ) | 2c-b | ✅ (fetchLots/fetchLot — POST decide/detect/addCrop = legacy) |
 | `useTextSignals` | 2c | ✅ |
 | `useDinoSuggestions` | 6 | ⬜ (heavy deps — laisser ML local) |
+| `useOperationsApi` | 3 | ✅ |
+| `usePeerArbitrationApi` | 3 | ✅ |
 | `useTrainingApi` | 2d | ⬜ |
 | `useReferentialApi` | 2e | ⬜ |
 | `useBenchApi` | 2e | ⬜ |

@@ -32,7 +32,12 @@ TIER_RED_MAX = 5  # < 5 = red
 
 
 def _store() -> Store:
-    from .server import _store as shared_store
+    # Lean-image safe : import depuis server_serve (no training deps) ;
+    # fallback sur server.py pour les workstations full (workstation FastAPI).
+    try:
+        from .server_serve import _store as shared_store
+    except ImportError:
+        from .server import _store as shared_store
     return shared_store
 
 

@@ -1,7 +1,7 @@
 // Operations dashboard API — thin fetch wrappers around ML FastAPI.
 // Backend: ml/api/operations_routes.py — endpoints under /operations/*.
 
-import { ML_API } from '@/features/training/composables/useTrainingApi'
+import { eurioApi } from '@/shared/api/eurio-api'
 
 // ─── Section 1 — Pulse ─────────────────────────────────────────────────
 
@@ -107,14 +107,9 @@ export interface CohortResponse {
 // ─── Fetch helpers ─────────────────────────────────────────────────────
 
 async function json<T>(path: string): Promise<T> {
-  const resp = await fetch(`${ML_API}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
-  })
-  if (!resp.ok) {
-    const body = await resp.text().catch(() => '')
-    throw new Error(`${resp.status} ${resp.statusText}: ${body}`)
-  }
-  return resp.json() as Promise<T>
+  // Phase 3 : porté sur eurio-api (Bearer PAT). operations_routes monté
+  // en best-effort sur l'image lean (cf. server_serve._CANDIDATES).
+  return eurioApi.get<T>(path)
 }
 
 export function fetchPulse(windowDays = 7): Promise<PulseResponse> {

@@ -125,6 +125,20 @@ async function safeFetch<T>(path: string, init?: RequestInit): Promise<T | null>
   }
 }
 
+/** Variante eurio-api (Bearer PAT) — pour les endpoints READ portés en Phase 2c-b. */
+async function safeFetchEurio<T>(path: string): Promise<T | null> {
+  try {
+    return await eurioApi.get<T>(path)
+  } catch (err) {
+    if (err instanceof EurioApiError) {
+      // Pour la liste/detail, on remonte les 4xx/5xx au caller (surface error).
+      throw new ReviewApiError(err.status, err.message)
+    }
+    if (err instanceof TypeError) return null  // network down → fallback
+    throw err
+  }
+}
+
 export class ReviewApiError extends Error {
   constructor(public readonly status: number, message: string) {
     super(message)
@@ -174,21 +188,21 @@ export async function fetchReviewQueue(
   if (opts.lane) params.set('lane', opts.lane)
   if (opts.eurioId) params.set('eurio_id', opts.eurioId)
   if (opts.reviewIds && opts.reviewIds.length) params.set('review_ids', opts.reviewIds.join(','))
-  const real = await safeFetch<ReviewItem[]>(`/review-queue?${params.toString()}`)
+  // Phase 2c-b : porté sur eurio-api (Bearer PAT).
+  const real = await safeFetchEurio<ReviewItem[]>(`/review-queue?${params.toString()}`)
   if (real !== null) {
     return real.map(promoteItemUrls)
   }
-
   await delay(120)
   return MOCK_QUEUE.slice(0, limit)
 }
 
 export async function fetchReviewItem(id: string): Promise<ReviewItem> {
-  const real = await safeFetch<ReviewItem>(`/review-queue/${encodeURIComponent(id)}`)
+  // Phase 2c-b : porté sur eurio-api.
+  const real = await safeFetchEurio<ReviewItem>(`/review-queue/${encodeURIComponent(id)}`)
   if (real !== null) {
     return promoteItemUrls(real)
   }
-
   await delay(60)
   const item = MOCK_QUEUE.find((r) => r.id === id)
   if (!item) throw new Error(`Review introuvable : ${id}`)
@@ -522,7 +536,8 @@ export interface TriageStats {
  */
 export async function fetchTriageStats(cohortId?: string | null): Promise<TriageStats> {
   const qs = cohortId ? `?cohort_id=${encodeURIComponent(cohortId)}` : ''
-  const real = await safeFetch<TriageStats>(`/review-queue/triage-stats${qs}`)
+  // Phase 2c-b : porté sur eurio-api.
+  const real = await safeFetchEurio<TriageStats>(`/review-queue/triage-stats${qs}`)
   if (real !== null) return real
   // Mock fallback (backend off) — zéros honnêtes.
   return {

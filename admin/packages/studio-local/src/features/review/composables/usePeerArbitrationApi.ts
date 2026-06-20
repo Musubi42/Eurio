@@ -2,6 +2,7 @@
 // Backed by ml/review/peer_arbitration_routes.py (/peer-arbitration).
 // cf. docs/work-in-progress/collaborative-review/05-admin-arbitration.md
 
+import { eurioApi } from '@/shared/api/eurio-api'
 import { ML_API } from '@/features/training/composables/useTrainingApi'
 
 export interface PeerDecision {
@@ -36,42 +37,31 @@ export function cropSrc(url: string | null): string {
   return url ? `${ML_API}${url}` : ''
 }
 
-async function jsonFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const resp = await fetch(`${ML_API}${path}`, init)
-  if (!resp.ok) {
-    const detail = await resp.json().catch(() => ({ detail: `HTTP ${resp.status}` }))
-    throw new Error(
-      typeof detail === 'object' && detail && 'detail' in detail
-        ? String((detail as { detail: unknown }).detail)
-        : `HTTP ${resp.status}`,
-    )
-  }
-  return (await resp.json()) as T
-}
+// Phase 3 : porté sur eurio-api (Bearer PAT). peer_arbitration_routes monté
+// en best-effort sur l'image lean (cf. server_serve._CANDIDATES).
 
 export function usePeerArbitrationApi() {
   async function fetchPending(limit = 200): Promise<PeerDecision[]> {
-    const data = await jsonFetch<{ items: PeerDecision[] }>(
+    const data = await eurioApi.get<{ items: PeerDecision[] }>(
       `/peer-arbitration?limit=${limit}`,
     )
     return data.items
   }
 
   async function fetchReviewerStats(): Promise<ReviewerStat[]> {
-    const data = await jsonFetch<{ reviewers: ReviewerStat[] }>('/peer-arbitration/reviewers')
+    const data = await eurioApi.get<{ reviewers: ReviewerStat[] }>('/peer-arbitration/reviewers')
     return data.reviewers
   }
 
   async function approve(id: string): Promise<{ status: string }> {
-    return jsonFetch(`/peer-arbitration/${id}/approve`, { method: 'POST' })
+    return eurioApi.post<{ status: string }>(`/peer-arbitration/${id}/approve`)
   }
 
   async function reject(id: string, notes?: string): Promise<{ status: string }> {
-    return jsonFetch(`/peer-arbitration/${id}/reject`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ notes: notes ?? null }),
-    })
+    return eurioApi.post<{ status: string }>(
+      `/peer-arbitration/${id}/reject`,
+      { notes: notes ?? null },
+    )
   }
 
   return { fetchPending, fetchReviewerStats, approve, reject }

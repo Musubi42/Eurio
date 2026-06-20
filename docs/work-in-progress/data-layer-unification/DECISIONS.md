@@ -217,3 +217,56 @@ port (≥ 300 lignes de logique à porter), découper en (a) endpoints triviaux
 qui dégagent du fronton + (b) endpoints lourds traités en bloc dans une
 session dédiée. Évite l'over-scoping et garde chaque commit testable
 end-to-end.
+
+## D-11-2026-06-20 — Fix lean-image safe imports pour operations + peer_arbitration
+
+**Contexte** : les routers `operations_routes.py` et
+`review/peer_arbitration_routes.py` étaient listés dans `_CANDIDATES`
+(server_serve.py) et mounted au boot, mais leur fonction `_store()` faisait
+un lazy-import depuis `serving.server` qui charge `training.pipeline` au
+top-level. Sur l'image lean (pas de `training/`), TOUTES les requêtes
+levaient 500 ImportError. Bug latent — endpoints "monted but broken".
+
+**Décision** : changer le lazy-import de `_store()` pour préférer
+`serving.server_serve._store` (existe sur lean), fallback sur
+`serving.server._store` pour les workstations qui chargent le full server.
+
+```python
+def _store() -> Store:
+    try:
+        from serving.server_serve import _store as shared_store
+    except ImportError:
+        from serving.server import _store as shared_store
+    return shared_store
+```
+
+**Conséquences** :
+- `/operations/*` et `/peer-arbitration/*` fonctionnent réellement sur le
+  VPS (smoke 200 OK ✅).
+- `useOperationsApi` et `usePeerArbitrationApi` côté studio-local ont pu
+  être migrés vers `eurioApi.*` (Phase 3 immédiate).
+- Note : ce pattern est à reproduire pour tout futur router legacy que
+  Phase 3 voudra rendre vraiment fonctionnel sur lean (vs juste "mounted").
+
+## D-12-2026-06-20 — Lot detail sans re-détection live sur eurio-api
+
+**Contexte** : `GET /review-queue/lots/{listing_key}` legacy lit
+`source_images.detections_json` (persisted) ET expose une voie de
+re-détection live qui nécessite cv2 + `normalize_listing_with_detections`
+(`POST /lots/{key}/images/{id}/detect`).
+
+**Décision** : sur eurio-api Phase 2c-b, ne porter QUE la lecture des
+détections persistées. Si `detections_json` est NULL, l'endpoint renvoie
+une liste vide pour le champ `images[].detections` — pas d'erreur. La
+re-détection live et le ré-`add-crop` manuel restent côté ML_API workstation
+(opérations write-heavy avec cv2, naturellement Phase 6).
+
+**Conséquences** :
+- Studio-local peut afficher la grille des lots et les crops persistés.
+- Quand un dev veut re-détecter une image avec cv2 (cas rare, manuel),
+  le bouton existant pointe encore vers ML_API local — c'est OK car cette
+  opération n'a de sens que sur workstation.
+- Champ `prev_listing_key`/`next_listing_key` du detail toujours `None` :
+  le legacy les calculait via une requête globale scopée à la queue, trop
+  coûteux à reproduire sans port complet du scope-state. Le front dégrade
+  gracieusement (boutons "prev"/"next" cachés s'ils sont nuls).

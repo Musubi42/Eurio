@@ -29,7 +29,12 @@ _VALID_FACES = ("obverse", "reverse", "unknown")
 
 
 def _store() -> Store:
-    from serving.server import _store as shared_store
+    # Lean-image safe : import depuis server_serve (no training deps) ;
+    # fallback sur server.py pour les workstations full.
+    try:
+        from serving.server_serve import _store as shared_store
+    except ImportError:
+        from serving.server import _store as shared_store
     return shared_store
 
 
