@@ -22,7 +22,7 @@ la VM.
 | Charge | Où | Pourquoi |
 |---|---|---|
 | **eurio.db canonique (SQLite)** | **Serveur (VPS), derrière `eurio-api`** | Writer unique Model B ; le compute pousse via `/ingest/run` |
-| **MinIO — buckets IMAGES uniquement** | **Serveur** | Object storage (raws/crops/canonical). ⚠️ PLUS la DB après R2 (transitoire, cf. encart ci-dessous) |
+| **MinIO — buckets IMAGES uniquement** | **Serveur** | Object storage (raws/crops/canonical). La DB n'y est **plus** (R2 fait 2026-06-30). |
 | `review_service` + front reviewer + page `/admin` régie | **Serveur** | Les amis reviewent sans que le Mac soit allumé |
 | Fetch eBay / BCE / JO (HTTP + parsing) | **Mac** | Réseau ; bottleneck = review humaine, pas la machine |
 | Crop refine (YOLO11-nano + Hough) | **Mac** | CPU serveur = 2-5 min/batch + risque OOM |
@@ -42,8 +42,8 @@ la VM.
 │ eurio-api  →  /var/lib/eurio/eurio.db  (canonique SQLite)      │
 │   • /ingest/run : applique les run-batches poussés (Model B)   │
 │   • écritures review (decide/skip/reject/restore, TC2)         │
-│   • [CIBLE R2] GET /db/replica (+ sha) : sert un snapshot      │
-│     cohérent → le compute tire SA réplique depuis le VPS        │
+│   • GET /db/replica (+ sha) : sert un snapshot VACUUM INTO     │
+│     cohérent → le compute tire SA réplique depuis le VPS (R2)   │
 └────────────────────────────────────────────────────────────────┘
 
 ┌─ Mac/PC : CALCUL (plus writer du canonique) ───────────────────┐
@@ -58,23 +58,29 @@ locale, fait son travail multi-étapes **sans aller-retour**, et pousse le run f
 il n'écrit jamais le canonique en direct. Multi-PC sans conflit (l'API arbitre, pas
 de lease).
 
-> **⚠️ Transitoire à remplacer (cf. `model-b/README.md` §R2)** : aujourd'hui la
-> réplique passe encore par MinIO — `serving/canonical_sync.py` pousse le canonique
-> VPS → bucket `eurio-db`, et `pull_replica` lit MinIO (+ un lock VPS qui bloque un
-> `db:acquire` Model A). C'est **le dernier reste Model A**. Cible : un endpoint
-> `GET /db/replica` côté VPS, **retrait** de `canonical_sync→MinIO` + du lease
-> (`store/lease.py`). **MinIO ne doit garder que les images.**
+> **✅ R2 fait (2026-06-30)** : la réplique est tirée **directement du VPS**
+> (`GET /db/replica` → snapshot `VACUUM INTO` cohérent + vérif sha, scope
+> `ingest:run`). `serving/canonical_sync.py` (sync→MinIO) et `store/lease.py`
+> (lease) ont été **supprimés** ; les tâches `ml:db:acquire/release/sync/steal`
+> sont retirées du Taskfile. **MinIO ne garde que les images.**
 
-**Durabilité** : `eurio-backup.sh` sauvegarde les buckets MinIO → pCloud (couvre les
-images ; après R2, prévoir un backup direct du eurio.db VPS → pCloud).
+**Durabilité** : `eurio-backup.sh run` snapshote le **canonique** directement du
+conteneur `eurio-api` (`VACUUM INTO` → `docker cp` → pCloud crypt, sous
+`eurio-db/eurio.db` + `.sha256`) et sauvegarde les 3 buckets d'images. Le canonique
+n'est plus copié via MinIO.
 
-**Secours (VPS down)** : tant que le transitoire MinIO existe, le dernier snapshot
-DB est dans le bucket `eurio-db`. Après R2, le secours = restaurer le backup pCloud
-du eurio.db. Cf. `docs/work-in-progress/model-b/README.md`.
+**Secours (VPS down)** : restaurer le backup pCloud du `eurio.db` dans le volume du
+conteneur `eurio-api` (cf. `infra/backup/README-RESTORE.md` §7). Plus de snapshot DB
+dans MinIO.
 
 ---
 
-## Le rythme quotidien (Modèle A — SUPERSEDED, référence + secours)
+## Le rythme quotidien (Modèle A — SUPERSEDED, référence historique)
+
+> **⚠️ Outillage retiré (R2, 2026-06-30).** `store/lease.py` et les tâches
+> `ml:db:acquire/release/sync/steal` n'existent plus — les commandes ci-dessous
+> sont conservées **uniquement comme trace** du fonctionnement Model A. Le secours
+> actuel = restaurer le backup pCloud (cf. encart R2 ci-dessus), pas le lease.
 
 Le **eurio.db canonique vivait dans MinIO** (bucket `eurio-db`, lease atomique —
 cf. lease MinIO chunk 6). Le Mac/PC en était le **seul writer**, sérialisé par le

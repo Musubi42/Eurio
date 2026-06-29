@@ -4,7 +4,7 @@
 > `GAP-ANALYSIS.md`, `HANDOFF-2026-06-29.md`, `C4-HANDOFF-SERVER.md`,
 > `C8-CUTOVER-PLAN.md`) sont **historiques** — gardés comme trace de raisonnement,
 > mais c'est ici que vit l'état présent + la cible + la roadmap.
-> Dernière MAJ : 2026-06-29.
+> Dernière MAJ : 2026-06-30.
 
 ## En une phrase
 
@@ -31,11 +31,14 @@ des **répliques locales** (copies de travail) et **poussent** leurs runs au VPS
   derrière `eurio-api` : `/ingest/run` (run-batches poussés par le compute) +
   écritures review (decide/skip/reject/restore, TC2).
 - **Réplique** = copie de travail locale, **tirée DU VPS** via un endpoint
-  authentifié (`GET /db/replica` + sha). C'est la copie sur laquelle le compute
-  lourd (scrape/crop/dino/training) lit/écrit en local, avant de pousser.
+  authentifié (`GET /db/replica` + `/db/replica/sha`, scope `ingest:run`). C'est la
+  copie sur laquelle le compute lourd (scrape/crop/dino/training) lit/écrit en
+  local, avant de pousser. ✅ **Livré (R2)** : `client.replica.pull_replica` tire
+  un snapshot `VACUUM INTO` cohérent servi par `serving.db_routes`.
 - **MinIO = images uniquement** (buckets `enrichment-raws`, `enrichment-crops`,
-  canonical, transfers). **PLUS la DB.** Le MinIO-pour-la-DB + le lease étaient une
-  béquille Model A → **à retirer** (cf. roadmap §R2).
+  `numista-canonical`, transfers). **PLUS la DB.** Le MinIO-pour-la-DB + le lease
+  étaient une béquille Model A → ✅ **retirés (R2)** (`canonical_sync.py`,
+  `store/lease.py` supprimés).
 - Cycle type (scrape eBay) : `pull-replica` (depuis VPS) → scrape+crop+résolution
   **en local sur la réplique** → `--push` (un seul POST au VPS). Idem recrop/dino.
   Training : on tire la réplique (métadonnées) + les **images depuis MinIO** en
@@ -74,25 +77,24 @@ des **répliques locales** (copies de travail) et **poussent** leurs runs au VPS
 - ✅ **TC2** : écritures review server-side (lean, cv2-free) + front sur l'API VPS.
 - ✅ **Cutover** : VPS = canonique. Orphelins FK nettoyés (`foreign_key_check`=0).
   Topology A→B.
-- ⚠️ **Transitoire à remplacer (le dernier reste Model A)** :
-  👉 **Aujourd'hui, `pull_replica` lit la réplique depuis MINIO, pas encore depuis le
-  VPS.** Le canonique VPS est poussé vers le bucket MinIO `eurio-db`
-  (`serving/canonical_sync.py`, boucle de fond) + un lock VPS bloque un `db:acquire`
-  Model A résiduel. La cible (§R2) supprime ce détour : `pull_replica` tirera
-  directement d'un endpoint VPS `GET /db/replica`, et `canonical_sync→MinIO` + le
-  lease (`store/lease.py`) seront retirés.
+- ✅ **R2 (2026-06-30) — dernier reste Model A retiré** : `pull_replica` tire la
+  réplique **directement du VPS** (`GET /db/replica`, snapshot `VACUUM INTO`
+  cohérent + vérif sha). `serving/canonical_sync.py` (sync→MinIO) et
+  `store/lease.py` (lease) **supprimés** ; tâches `ml:db:acquire/release/sync/steal`
+  retirées du Taskfile. Backup du canonique **direct** conteneur→pCloud
+  (`infra/backup/eurio-backup.sh`, plus via MinIO). **MinIO ne contient plus la DB.**
 
 ## Roadmap (compressée — ce qui RESTE)
 
 | # | Chantier | Quoi | Effort |
 |---|---|---|---|
 | **R1** | **Fusion front** | 1 codebase : porter users/tokens/dashboard d'`admin-vps` dans le front riche + auth-adapter (PAT/cookie) + gating `hasLocalMlApi` + bandeau rappel local. Déployer en hébergé (remplace `admin-vps`), retirer `admin-vps`. | L |
-| **R2** | **Réplique ← VPS, retrait MinIO-DB** | Endpoint VPS `GET /db/replica` (+ sha) servant un snapshot cohérent ; repointer `client/replica.pull_replica` dessus ; **retirer** `canonical_sync→MinIO` + le lease (`store/lease.py`) ; MinIO ne garde que les images. | M |
+| ~~**R2**~~ | ~~**Réplique ← VPS, retrait MinIO-DB**~~ | ✅ **LIVRÉ 2026-06-30** — endpoint `GET /db/replica` (+ sha, `VACUUM INTO`), `pull_replica` repointé, `canonical_sync`+`lease` supprimés, backup canonique direct→pCloud. | M |
 | **R3** | **Finitions Model B** (différé, pas bloquant) | wire `--push` dans le pipeline training GPU ; endpoint orchestration lean (C7 server-side). | M |
 | **R4** | **Débit review** (valeur produit) | ~2700 items open sur le canonique = goulot cohorte→training. Outillage / autovalidation. | — |
 
-> **Priorité** : R1 (front, le plus visible/structurant) et R2 (cohérence archi —
-> tuer le dernier reste Model A). R3/R4 ensuite.
+> **Priorité** : R1 (front, le plus visible/structurant) — R2 (cohérence archi —
+> tuer le dernier reste Model A) ✅ fait. R3/R4 ensuite.
 
 > 🛠️ **Pour exécuter** : briefs turn-key par chantier (avec accès SSH serveur,
 > deploy, tests, usage workflows) dans [`HANDOFF-NEXT-SESSIONS.md`](./HANDOFF-NEXT-SESSIONS.md).
@@ -104,4 +106,4 @@ des **répliques locales** (copies de travail) et **poussent** leurs runs au VPS
   vieux run dont le contenu mutable a changé — résidu assumé).
 - `source_images.run_id` = first-seen **immuable** ; la containment par-run vit dans
   `source_image_runs` (sinon un re-scrape vole l'attribution — cf. fix parité).
-- MinIO = images. **Jamais** la DB (after R2).
+- MinIO = images. **Jamais** la DB (R2 fait — `canonical_sync`/`lease` supprimés).

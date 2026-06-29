@@ -5,6 +5,16 @@
 > le Mac (référentiel, cohortes, review) pendant qu'un training tourne des heures
 > sur le PC**, sans drift destructeur de `eurio.db`.
 
+> **⚠️ MAJ Model B / R2 (2026-06-30).** Le **lease MinIO a été supprimé**
+> (`store/lease.py`, tâches `ml:db:acquire/release/sync/steal`). Le canonique vit
+> désormais sur le VPS derrière `eurio-api` (writer unique) : le PC **tire une
+> réplique** (`go-task ml:db:pull-replica` → `GET /db/replica`) et **pousse son run
+> training** via `/ingest/run` (`--push`, à câbler dans le pipeline GPU — chantier
+> **R3**). L'analyse « tables disjointes » ci-dessous reste la **raison pour
+> laquelle ce merge par run-batch est sûr** ; seul le *mécanisme* (lease →
+> réplique+push) a changé. Les mentions `db:release` / lease ci-dessous sont de la
+> **trace historique**.
+
 ## Le problème
 
 Le lease `eurio.db` (`ml/store/lease.py`, cf. `docs/refacto-ml/chunk6-vps-minio.md`)
@@ -86,7 +96,10 @@ réellement séquentielles sans dev concurrent.
 
 ## Voir aussi
 
-- `ml/store/lease.py` — le lease MinIO (acquire/release/steal/status).
-- `docs/refacto-ml/chunk6-vps-minio.md` — provisioning MinIO du bucket lease.
-- `docs/work-in-progress/collaborative-review/` — la review collaborative, qui
-  sort la review de l'équation du lease (autre chantier, complémentaire).
+- `docs/work-in-progress/model-b/README.md` — archi cible Model B (réplique ← VPS,
+  push via `/ingest/run`) + roadmap R3 (câbler le `--push` training).
+- `ml/client/replica.py` — `pull_replica()` (réplique read-only tirée du VPS).
+- `ml/client/runbatch.py` — `push_run()` (export + POST `/ingest/run`).
+- `docs/refacto-ml/chunk6-vps-minio.md` — provisioning MinIO (historique, lease retiré).
+- `docs/work-in-progress/collaborative-review/` — la review collaborative
+  (complémentaire).
