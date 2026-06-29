@@ -38,6 +38,13 @@ Eurio/
 
 ### Architecture frontend (CRITIQUE — à graver)
 
+> ⚠️ **En cours de FUSION (décidé 2026-06-29).** Le split dual-front décrit ci-dessous
+> est l'état **actuel du code**, mais la cible est **UN seul codebase** (front riche
+> servi hébergé-léger via cookie Authentik + local-full via PAT ; features lourdes
+> grisées en hébergé). `admin-vps` sera retiré. Tant que la fusion (chantier R1) n'est
+> pas faite, le dual-front reste la réalité — mais ne construis plus en pensant
+> « deux fronts distincts pérennes ». Cible : `docs/work-in-progress/model-b/README.md` §Front.
+
 Deux frontends, **un seul backend** `eurio-api.musubi.dev`. Règle simple :
 
 | | `studio-local` | `admin-vps` |

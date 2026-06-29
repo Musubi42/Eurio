@@ -74,9 +74,13 @@ des **répliques locales** (copies de travail) et **poussent** leurs runs au VPS
 - ✅ **TC2** : écritures review server-side (lean, cv2-free) + front sur l'API VPS.
 - ✅ **Cutover** : VPS = canonique. Orphelins FK nettoyés (`foreign_key_check`=0).
   Topology A→B.
-- ⚠️ **Transitoire à remplacer** : le canonique est aujourd'hui poussé vers MinIO
-  (`serving/canonical_sync.py`) pour nourrir `pull_replica` (qui lit MinIO). C'est
-  **le dernier reste Model A** → à remplacer par l'endpoint réplique VPS (§R2).
+- ⚠️ **Transitoire à remplacer (le dernier reste Model A)** :
+  👉 **Aujourd'hui, `pull_replica` lit la réplique depuis MINIO, pas encore depuis le
+  VPS.** Le canonique VPS est poussé vers le bucket MinIO `eurio-db`
+  (`serving/canonical_sync.py`, boucle de fond) + un lock VPS bloque un `db:acquire`
+  Model A résiduel. La cible (§R2) supprime ce détour : `pull_replica` tirera
+  directement d'un endpoint VPS `GET /db/replica`, et `canonical_sync→MinIO` + le
+  lease (`store/lease.py`) seront retirés.
 
 ## Roadmap (compressée — ce qui RESTE)
 

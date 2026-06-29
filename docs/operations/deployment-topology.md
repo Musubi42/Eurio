@@ -21,13 +21,14 @@ la VM.
 
 | Charge | Où | Pourquoi |
 |---|---|---|
-| MinIO (eurio.db canonique + buckets images) | **Serveur** | Durable, toujours dispo |
+| **eurio.db canonique (SQLite)** | **Serveur (VPS), derrière `eurio-api`** | Writer unique Model B ; le compute pousse via `/ingest/run` |
+| **MinIO — buckets IMAGES uniquement** | **Serveur** | Object storage (raws/crops/canonical). ⚠️ PLUS la DB après R2 (transitoire, cf. encart ci-dessous) |
 | `review_service` + front reviewer + page `/admin` régie | **Serveur** | Les amis reviewent sans que le Mac soit allumé |
 | Fetch eBay / BCE / JO (HTTP + parsing) | **Mac** | Réseau ; bottleneck = review humaine, pas la machine |
 | Crop refine (YOLO11-nano + Hough) | **Mac** | CPU serveur = 2-5 min/batch + risque OOM |
 | DINO anchors / predictions / confusion-map | **Mac** | ~30 min CPU vs 1-2 min GPU |
 | Training ArcFace + export TFLite | **PC** (GPU) | GPU obligatoire |
-| Console admin (arbitrage, crop edits, sets, dashboards) | **Mac** (local) | Outil perso ; reste local jusqu'au Modèle B |
+| Front riche (review, crop edits, sets, dashboards) | **Local** (lourd) **+ hébergé** (léger, lourd grisé) | Fusion 1 codebase, cf. `model-b/README.md` §Front (R1) |
 
 ## Le rythme quotidien (Modèle B — ACTIF depuis 2026-06-29, cutover C8)
 
@@ -114,7 +115,14 @@ docker compose exec review python -m review_service.manage \
 Page régie : `https://eurio-review.musubi.dev/admin` (coller le
 `REVIEW_ADMIN_TOKEN` au premier chargement).
 
-## Le cap — Modèle B (serveur = canonique vivant)
+## Le cap — Modèle B (serveur = canonique vivant) — 📜 SUPERSÉDÉ (cible ATTEINTE)
+
+> ⚠️ **Cette section décrivait le Modèle B comme un cap À VENIR (vocabulaire chunks
+> C1-C8, read-sync via MinIO, Mac-writer-via-lease). Le cutover est FAIT (2026-06-29).**
+> L'état courant + la roadmap restante (R1 fusion front, R2 réplique←VPS + retrait
+> MinIO-DB) sont dans [`../work-in-progress/model-b/README.md`](../work-in-progress/model-b/README.md).
+> Le « read-sync » et le lease ci-dessous **ne s'appliquent plus** (le Mac n'est plus
+> writer). Gardé comme trace.
 
 Aujourd'hui l'édition admin (arbitrage, crop edits, CRUD sets) **écrit** dans
 eurio.db et se fait donc côté Mac (qui détient le lease). Le Modèle B déplace le
