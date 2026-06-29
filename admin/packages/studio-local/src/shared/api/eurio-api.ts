@@ -48,6 +48,7 @@ async function request<T>(
   method: string,
   path: string,
   body?: unknown,
+  opts?: { keepalive?: boolean },
 ): Promise<T> {
   const headers: Record<string, string> = { ...authHeader() }
   if (body !== undefined) headers['Content-Type'] = 'application/json'
@@ -56,6 +57,8 @@ async function request<T>(
     method,
     headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,
+    // `keepalive` : le POST survit à un unload de page (fenêtre d'undo review).
+    keepalive: opts?.keepalive,
   })
 
   let parsed: unknown = null
@@ -86,7 +89,8 @@ export const eurioApi = {
   base: API_BASE,
   hasPat,
   get: <T>(path: string) => request<T>('GET', path),
-  post: <T>(path: string, body?: unknown) => request<T>('POST', path, body),
+  post: <T>(path: string, body?: unknown, opts?: { keepalive?: boolean }) =>
+    request<T>('POST', path, body, opts),
   put: <T>(path: string, body?: unknown) => request<T>('PUT', path, body),
   patch: <T>(path: string, body?: unknown) => request<T>('PATCH', path, body),
   delete: <T>(path: string) => request<T>('DELETE', path),

@@ -139,6 +139,25 @@ async function safeFetchEurio<T>(path: string): Promise<T | null> {
   }
 }
 
+/** Variante eurio-api pour les ÉCRITURES review (TC2, Model B) : POST Bearer PAT
+ * vers le canonique, avec `keepalive` (commit-on-unload, fenêtre d'undo). Renvoie
+ * null sur erreur réseau (→ fallback mock), remonte les 4xx/5xx en ReviewApiError. */
+async function safeFetchEurioWrite<T>(
+  path: string,
+  body?: unknown,
+  opts: CommitOpts = {},
+): Promise<T | null> {
+  try {
+    return await eurioApi.post<T>(path, body, { keepalive: opts.keepalive })
+  } catch (err) {
+    if (err instanceof EurioApiError) {
+      throw new ReviewApiError(err.status, err.message)
+    }
+    if (err instanceof TypeError) return null  // network down → fallback
+    throw err
+  }
+}
+
 export class ReviewApiError extends Error {
   constructor(public readonly status: number, message: string) {
     super(message)
@@ -240,12 +259,10 @@ export async function decideReviewItem(
   payload: ReviewDecision,
   opts: CommitOpts = {},
 ): Promise<void> {
-  const real = await safeFetch<unknown>(`/review-queue/${encodeURIComponent(id)}/decide`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-    keepalive: opts.keepalive,
-  })
+  // TC2 (Model B) : écriture review portée sur eurio-api (Bearer PAT → canonique).
+  const real = await safeFetchEurioWrite<unknown>(
+    `/review-queue/${encodeURIComponent(id)}/decide`, payload, opts,
+  )
   if (real === null) {
     await delay(40)
     console.info('[mock fallback] decide', id, payload)
@@ -253,10 +270,9 @@ export async function decideReviewItem(
 }
 
 export async function skipReviewItem(id: string, opts: CommitOpts = {}): Promise<void> {
-  const real = await safeFetch<unknown>(`/review-queue/${encodeURIComponent(id)}/skip`, {
-    method: 'POST',
-    keepalive: opts.keepalive,
-  })
+  const real = await safeFetchEurioWrite<unknown>(
+    `/review-queue/${encodeURIComponent(id)}/skip`, undefined, opts,
+  )
   if (real === null) {
     await delay(20)
     console.info('[mock fallback] skip', id)
@@ -264,10 +280,9 @@ export async function skipReviewItem(id: string, opts: CommitOpts = {}): Promise
 }
 
 export async function rejectReviewItem(id: string, opts: CommitOpts = {}): Promise<void> {
-  const real = await safeFetch<unknown>(`/review-queue/${encodeURIComponent(id)}/reject`, {
-    method: 'POST',
-    keepalive: opts.keepalive,
-  })
+  const real = await safeFetchEurioWrite<unknown>(
+    `/review-queue/${encodeURIComponent(id)}/reject`, undefined, opts,
+  )
   if (real === null) {
     await delay(20)
     console.info('[mock fallback] reject', id)
@@ -605,10 +620,9 @@ export async function fetchRejectedCrops(
 
 /** Ré-ouvre des reviews rejetées : elles repassent en queue manuelle. */
 export async function restoreRejected(reviewIds: string[]): Promise<RestoreResult> {
-  const real = await safeFetch<RestoreResult>('/review-queue/restore', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ review_ids: reviewIds }),
+  // TC2 (Model B) : écriture portée sur eurio-api (Bearer PAT → canonique).
+  const real = await safeFetchEurioWrite<RestoreResult>('/review-queue/restore', {
+    review_ids: reviewIds,
   })
   if (real === null) {
     throw new Error('Backend indisponible — la remise en queue n’a pas pu être enregistrée.')

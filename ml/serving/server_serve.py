@@ -48,6 +48,7 @@ from serving import (
 from serving.auth_principal import require_principal
 from serving.coin_series import router as coin_series_router
 from serving.review_queue import router as review_queue_router
+from serving.review_queue.writes import router as review_writes_router
 from serving.sources import router as sources_router
 from store import Store
 
@@ -103,6 +104,11 @@ app.include_router(sources_router)
 # Endpoints heavy (manual-crop, dino-suggestions, auto-crop) restent dans le
 # legacy `review.review_queue_routes` (skipped sur lean image via cv2).
 app.include_router(review_queue_router)
+# TC2 (Model B) : écritures review (decide/skip/reject/restore) SQL-pures, cv2-free
+# → servies sur l'image lean (scope review:write). Le full app `server.py` garde le
+# legacy `review.review_queue_routes` (mêmes paths + crops cv2) → ne PAS monter ici-bas
+# dans server.py (routes dupliquées).
+app.include_router(review_writes_router)
 
 
 @app.get("/healthz")
