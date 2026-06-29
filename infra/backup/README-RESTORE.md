@@ -5,14 +5,16 @@
 
 ## Ce qu'il y a sur ce backup
 
-`backups/serverOimNix/Eurio/` contient 4 dossiers, chacun = un bucket MinIO :
+`backups/serverOimNix/Eurio/` contient 4 dossiers. Le **canonique** vient du
+conteneur `eurio-api` (Model B / R2 : la DB n'est plus dans MinIO) ; les 3 autres
+sont des buckets MinIO d'images :
 
-| Dossier               | Contenu                                          | Taille approx |
-|-----------------------|--------------------------------------------------|---------------|
-| `eurio-db/`           | SQLite canonique de l'app (`eurio.db`) + lock    | ~200 MiB      |
-| `enrichment-crops/`   | Crops images du pipeline d'enrichissement        | ~620 MiB      |
-| `enrichment-raws/`    | Raws images du pipeline                          | ~3 GiB        |
-| `numista-canonical/`  | Référentiel Numista (pages HTML, JSON, médias)   | ~80 MiB       |
+| Dossier               | Contenu                                          | Source        | Taille approx |
+|-----------------------|--------------------------------------------------|---------------|---------------|
+| `eurio-db/`           | SQLite **canonique** (`eurio.db` + `.sha256`)    | conteneur VPS | ~200 MiB      |
+| `enrichment-crops/`   | Crops images du pipeline d'enrichissement        | MinIO         | ~620 MiB      |
+| `enrichment-raws/`    | Raws images du pipeline                          | MinIO         | ~3 GiB        |
+| `numista-canonical/`  | Référentiel Numista (pages HTML, JSON, médias)   | MinIO         | ~80 MiB       |
 
 **Noms de fichiers/dossiers en clair, contenu chiffré** (rclone crypt).
 
@@ -104,13 +106,22 @@ done
 
 ### 7. (Si tu remontes un serveur Eurio complet)
 
-Voir `infra/minio/README.md` §"Restore" pour ré-injecter dans une nouvelle
-instance MinIO :
+**Canonique `eurio.db`** → restaurer dans le volume du conteneur `eurio-api`
+(writer unique, Model B), **pas** dans MinIO :
+
+```bash
+# Vérifier l'intégrité du backup avant restauration
+sha256sum ./restore/eurio-db/eurio.db        # doit == contenu de eurio.db.sha256
+# Placer le fichier là où eurio-api le monte (cf. infra/eurio-api/docker-compose.yml,
+# volume EURIO_DB_PATH → /var/lib/eurio/eurio.db), conteneur arrêté :
+docker cp ./restore/eurio-db/eurio.db eurio-api:/var/lib/eurio/eurio.db
+```
+
+**Images** → ré-injecter dans MinIO (cf. `infra/minio/README.md` §"Restore") :
 
 ```bash
 cd infra/minio && ./bootstrap.sh        # recrée buckets + creds
-# Puis ré-uploader les objets restaurés :
-for b in eurio-db enrichment-crops enrichment-raws numista-canonical; do
+for b in enrichment-crops enrichment-raws numista-canonical; do
   ./infra/backup/eurio-backup.sh rclone copy "./restore/$b/" "minio:$b/"
 done
 ```

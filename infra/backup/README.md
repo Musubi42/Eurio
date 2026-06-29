@@ -1,9 +1,12 @@
-# `infra/backup/` — Backup chiffré MinIO → pCloud
+# `infra/backup/` — Backup chiffré (canonique + MinIO images) → pCloud
 
-> Backup off-site de la data MinIO (DB + crops + raws + canonical) vers pCloud,
-> chiffré côté client avec `rclone crypt`. Le secret est une clé Age dédiée,
-> qui ne touche jamais le store Nix ni le repo. La logique vit dans le repo
-> (portable d'un serveur à l'autre), seul le runtime est sur le serveur.
+> Backup off-site vers pCloud, chiffré côté client avec `rclone crypt`. Deux
+> sources (Model B / R2) : (1) le **canonique `eurio.db`** snapshoté directement
+> du conteneur `eurio-api` (writer unique — `VACUUM INTO`), (2) les **images
+> MinIO** (crops + raws + canonical). La DB n'est **plus** dans MinIO. Le secret
+> est une clé Age dédiée, qui ne touche jamais le store Nix ni le repo. La logique
+> vit dans le repo (portable d'un serveur à l'autre), seul le runtime est sur le
+> serveur.
 
 ## TL;DR opérationnel
 
@@ -13,8 +16,8 @@
                                          # → SAUVEGARDER dans Bitwarden + papier !
 
 # Récurrent :
-./infra/backup/eurio-backup.sh run       # backup 4 buckets vers pcloud_crypt:
-./infra/backup/eurio-backup.sh verify    # check --one-way + sha256 DB
+./infra/backup/eurio-backup.sh run       # snapshot canonique + 3 buckets images → pcloud_crypt:
+./infra/backup/eurio-backup.sh verify    # check --one-way images + sha256 backup canonique
 ```
 
 ## Pourquoi ce design
@@ -38,11 +41,11 @@
 
 ```
 ┌─────────────────┐                    ┌──────────────────────────────────┐
-│  MinIO (S3)     │                    │  pCloud (compte US)              │
-│  4 buckets      │                    │  backups/serverOimNix/Eurio/     │
-│                 │   ── rclone copy ──▶│  ├─ eurio-db/...   (CHIFFRÉ)    │
-│                 │      via crypt     │  ├─ enrichment-...  (CHIFFRÉ)    │
-└─────────────────┘                    │  └─ README-RESTORE.md  (CLAIR)   │
+│ eurio-api (VPS) │   VACUUM INTO      │  pCloud (compte US)              │
+│  /var/lib/...   │   docker cp + sha  │  backups/serverOimNix/Eurio/     │
+│  eurio.db       │   ── rclone copy ──▶│  ├─ eurio-db/eurio.db (CHIFFRÉ) │
+│ MinIO (images)  │      via crypt     │  ├─ enrichment-...  (CHIFFRÉ)    │
+│  3 buckets      │                    │  └─ README-RESTORE.md  (CLAIR)   │
                                        └──────────────────────────────────┘
        ▲                                              ▲
        │                                              │

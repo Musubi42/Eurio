@@ -33,10 +33,16 @@ fi
 EURIO_BACKUP_AGE_KEY="${EURIO_BACKUP_AGE_KEY:-$HOME/.config/eurio-backup/age-key.txt}"
 EURIO_BACKUP_REMOTE_SRC="${EURIO_BACKUP_REMOTE_SRC:-minio}"
 EURIO_BACKUP_REMOTE_DST="${EURIO_BACKUP_REMOTE_DST:-pcloud_crypt}"
+# Buckets MinIO = IMAGES uniquement (Modèle B / R2 : la DB n'est plus dans MinIO).
 # shellcheck disable=SC2206
-EURIO_BACKUP_BUCKETS=(${EURIO_BACKUP_BUCKETS:-eurio-db enrichment-crops enrichment-raws numista-canonical})
+EURIO_BACKUP_BUCKETS=(${EURIO_BACKUP_BUCKETS:-enrichment-crops enrichment-raws numista-canonical})
+# Canonique eurio.db : sauvegardé DIRECTEMENT depuis le conteneur eurio-api du VPS
+# (writer unique, Model B/R2) → pCloud crypt, sous le même chemin `eurio-db/eurio.db`
+# (layout de restauration inchangé). Plus de détour MinIO.
 EURIO_BACKUP_DB_BUCKET="${EURIO_BACKUP_DB_BUCKET:-eurio-db}"
 EURIO_BACKUP_DB_OBJECT="${EURIO_BACKUP_DB_OBJECT:-eurio.db}"
+EURIO_BACKUP_DB_CONTAINER="${EURIO_BACKUP_DB_CONTAINER:-eurio-api}"
+EURIO_BACKUP_DB_PATH="${EURIO_BACKUP_DB_PATH:-/var/lib/eurio/eurio.db}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -92,14 +98,39 @@ cmd_keygen() {
   echo "──────────────────────"
 }
 
+# Snapshot cohérent du canonique eurio.db (VACUUM INTO sous WAL, dans le conteneur)
+# → pCloud crypt sous `eurio-db/eurio.db` (+ `.sha256` sidecar pour le verify).
+# Model B / R2 : la DB n'est plus dans MinIO, on la sauvegarde direct du writer.
+backup_canonical_db() {
+  echo ">>> canonical eurio.db  $(date -Is)"
+  command -v docker >/dev/null 2>&1 || die "docker absent : impossible de snapshot le canonique."
+  local tmp snap sha
+  tmp="$(mktemp -d)"
+  snap="$tmp/eurio.db"
+  # VACUUM INTO un chemin neuf DANS le conteneur (échoue si la cible existe).
+  docker exec "$EURIO_BACKUP_DB_CONTAINER" sh -c \
+    "rm -f /tmp/eurio-backup-snap.db && python -c \"import sqlite3; sqlite3.connect('$EURIO_BACKUP_DB_PATH').execute('VACUUM INTO \\\"/tmp/eurio-backup-snap.db\\\"')\"" \
+    || die "VACUUM INTO du canonique a échoué."
+  docker cp "$EURIO_BACKUP_DB_CONTAINER:/tmp/eurio-backup-snap.db" "$snap" || die "docker cp du snapshot a échoué."
+  docker exec "$EURIO_BACKUP_DB_CONTAINER" rm -f /tmp/eurio-backup-snap.db || true
+  sha="$(sha256sum "$snap" | awk '{print $1}')"
+  echo "$sha" > "$tmp/eurio.db.sha256"
+  rclone copyto "$snap" "$EURIO_BACKUP_REMOTE_DST:$EURIO_BACKUP_DB_BUCKET/$EURIO_BACKUP_DB_OBJECT"
+  rclone copyto "$tmp/eurio.db.sha256" "$EURIO_BACKUP_REMOTE_DST:$EURIO_BACKUP_DB_BUCKET/$EURIO_BACKUP_DB_OBJECT.sha256"
+  rm -rf "$tmp"
+  echo "<<< canonical eurio.db  sha=${sha:0:12}…  $(date -Is)"
+}
+
 cmd_run() {
   load_age_key
   local start end b
   start=$(date -Is)
   echo "=== Eurio backup run  $start ==="
-  echo "  src    : $EURIO_BACKUP_REMOTE_SRC:"
+  echo "  src    : $EURIO_BACKUP_REMOTE_SRC: (images) + conteneur $EURIO_BACKUP_DB_CONTAINER (canonique)"
   echo "  dst    : $EURIO_BACKUP_REMOTE_DST: (rclone crypt over pcloud)"
   echo "  buckets: ${EURIO_BACKUP_BUCKETS[*]}"
+  echo
+  backup_canonical_db
   echo
   for b in "${EURIO_BACKUP_BUCKETS[@]}"; do
     echo ">>> $b  $(date -Is)"
@@ -127,21 +158,29 @@ cmd_verify() {
   done
 
   echo
-  echo "=== Sanity sha256 DB ($EURIO_BACKUP_DB_BUCKET/$EURIO_BACKUP_DB_OBJECT) ==="
-  local tmp h1 h2
+  echo "=== Sanity sha256 canonique ($EURIO_BACKUP_DB_BUCKET/$EURIO_BACKUP_DB_OBJECT) ==="
+  # Model B/R2 : le canonique change en continu → on ne compare PAS à une source
+  # vivante. On vérifie que le BACKUP est intact/restaurable : sha recalculé du
+  # fichier sauvegardé ≡ sidecar `.sha256` poussé en même temps que lui.
+  local tmp got want
   tmp="$(mktemp -d)"
   trap 'rm -rf "$tmp"' RETURN
-  rclone copyto "$EURIO_BACKUP_REMOTE_SRC:$EURIO_BACKUP_DB_BUCKET/$EURIO_BACKUP_DB_OBJECT" "$tmp/from-src.db"  >/dev/null 2>&1
-  rclone copyto "$EURIO_BACKUP_REMOTE_DST:$EURIO_BACKUP_DB_BUCKET/$EURIO_BACKUP_DB_OBJECT" "$tmp/from-dst.db" >/dev/null 2>&1
-  h1="$(sha256sum "$tmp/from-src.db" | awk '{print $1}')"
-  h2="$(sha256sum "$tmp/from-dst.db" | awk '{print $1}')"
-  echo "  source : $h1"
-  echo "  backup : $h2"
-  if [ "$h1" = "$h2" ]; then
-    ok "sha256 source ≡ backup"
-  else
-    echo "❌ sha256 mismatch" >&2
+  rclone copyto "$EURIO_BACKUP_REMOTE_DST:$EURIO_BACKUP_DB_BUCKET/$EURIO_BACKUP_DB_OBJECT" "$tmp/backup.db" >/dev/null 2>&1
+  rclone copyto "$EURIO_BACKUP_REMOTE_DST:$EURIO_BACKUP_DB_BUCKET/$EURIO_BACKUP_DB_OBJECT.sha256" "$tmp/backup.db.sha256" >/dev/null 2>&1
+  if [ ! -s "$tmp/backup.db" ] || [ ! -s "$tmp/backup.db.sha256" ]; then
+    echo "❌ backup canonique introuvable (lance d'abord 'run')" >&2
     fail=1
+  else
+    got="$(sha256sum "$tmp/backup.db" | awk '{print $1}')"
+    want="$(tr -d '[:space:]' < "$tmp/backup.db.sha256")"
+    echo "  backup   : $got"
+    echo "  sidecar  : $want"
+    if [ "$got" = "$want" ]; then
+      ok "sha256 backup ≡ sidecar (restaurable)"
+    else
+      echo "❌ sha256 mismatch (backup corrompu)" >&2
+      fail=1
+    fi
   fi
 
   [ "$fail" -eq 0 ] && ok "verify OK" || die "verify FAIL"

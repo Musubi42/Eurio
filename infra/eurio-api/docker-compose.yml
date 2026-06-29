@@ -41,10 +41,12 @@ services:
       EURIO_OIDC_CLIENT_SECRET: ${EURIO_OIDC_CLIENT_SECRET:?missing - voir secrets/dev.env}
       EURIO_SESSION_SECRET: ${EURIO_SESSION_SECRET:?missing - voir secrets/dev.env}
       # Accès MinIO — endpoint INTERNE (même réseau docker `traefik`) : eurio-api
-      # ne sert pas d'assets (image lean), son seul usage MinIO est le sync C8
-      # (canonical_sync : canonique VPS → bucket eurio-db pour la fraîcheur réplique).
+      # ne sert pas d'assets (image lean), son usage MinIO se limite aux URLs
+      # signées des crops review (`shared.storage.signed_url`, bucket
+      # enrichment-crops). La DB n'est PLUS dans MinIO (R2) : la réplique est
+      # servie par GET /db/replica (snapshot VACUUM INTO), pas par un sync MinIO.
       # On évite le hairpin par le LB public eurio-s3.musubi.dev (non résolu depuis
-      # le conteneur). Le Mac, lui, garde l'endpoint public pour pull_replica.
+      # le conteneur).
       MINIO_ENDPOINT: eurio-minio:9000
       MINIO_USE_SSL: "false"
     networks:
