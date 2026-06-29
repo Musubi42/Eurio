@@ -82,7 +82,13 @@ des **répliques locales** (copies de travail) et **poussent** leurs runs au VPS
   cohérent + vérif sha). `serving/canonical_sync.py` (sync→MinIO) et
   `store/lease.py` (lease) **supprimés** ; tâches `ml:db:acquire/release/sync/steal`
   retirées du Taskfile. Backup du canonique **direct** conteneur→pCloud
-  (`infra/backup/eurio-backup.sh`, plus via MinIO). **MinIO ne contient plus la DB.**
+  (`infra/backup/eurio-backup.sh`, plus via MinIO). **Plus aucune référence
+  DB↔MinIO dans le code.** Déployé + vérifié VPS (healthz 200, endpoint sha≡header≡
+  fichier, `foreign_key_check`=0, `go-task ml:db:pull-replica` ramène l'état VPS).
+  - ⏳ **Housekeeping restant (1 action user, non bloquant)** : lancer une fois
+    `eurio-backup.sh run` sur le VPS (premier backup direct du canonique sur pCloud),
+    **puis** supprimer les objets `eurio.db`/`.sha256`/`.lock` du bucket MinIO
+    `eurio-db` (devenu orphelin). Ordre = backup d'abord, suppression ensuite.
 
 ## Roadmap (compressée — ce qui RESTE)
 
