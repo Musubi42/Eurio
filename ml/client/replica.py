@@ -13,6 +13,8 @@ backup) — pour l'instant la copie MinIO suffit (l'ingest dédup par clé natur
 """
 from __future__ import annotations
 
+import argparse
+import sqlite3
 from pathlib import Path
 
 from store import lease as _lease
@@ -45,3 +47,37 @@ def pull_replica(dest: Path | None = None, *, client=None) -> Path:
     tmp.replace(dest)
     _lease._drop_sidecars(dest)
     return dest
+
+
+def _count_coins(db: Path) -> int | None:
+    """Compte les lignes de ``coins`` dans la réplique (confirmation post-pull)."""
+    try:
+        conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+        try:
+            return conn.execute("SELECT count(*) FROM coins").fetchone()[0]
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return None
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="python -m client.replica", description=__doc__
+    )
+    parser.add_argument(
+        "--dest",
+        default=None,
+        help=f"chemin de la réplique (défaut : {_DEFAULT_REPLICA})",
+    )
+    args = parser.parse_args(argv)
+
+    dest = pull_replica(Path(args.dest) if args.dest else None)
+    n = _count_coins(dest)
+    coins = f"{n} coins" if n is not None else "coins illisibles"
+    print(f"réplique read-only → {dest} ({coins})")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

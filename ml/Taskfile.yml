@@ -560,6 +560,11 @@ tasks:
     cmds:
       - "{{.VENV}}/python -m store.lease steal {{.CLI_ARGS}}"
 
+  db:pull-replica:
+    desc: "Réplique read-only de eurio.db depuis MinIO (Modèle B, C6) — SANS poser de lease. Pour le calcul lourd qui lit sans bloquer le canonique."
+    cmds:
+      - "{{.VENV}}/python -m client.replica {{.CLI_ARGS}}"
+
   # ---------- Review collaborative (service VPS + pont eurio.db) ----------
   # Service review = review.db SQLite + FastAPI, hors lease (toujours allumé sur
   # le VPS). publish/reconcile = pont avec eurio.db (lease requis, côté Mac).

@@ -116,6 +116,10 @@ ml/state/eurio.db
 ml/state/eurio.db-wal
 ml/state/eurio.db-shm
 ml/state/eurio.db.bak-*
+# Réplique read-only Modèle B (copie du canonique tirée de MinIO, jamais versionnée)
+ml/state/eurio.replica.db
+ml/state/eurio.replica.db-wal
+ml/state/eurio.replica.db-shm
 ml/state/numista_cache/
 # ml/state/cohort_csvs/
 # Sources refacto — local-only, each machine autonomous (decisions.md D-06)
