@@ -1,9 +1,12 @@
-"""Tests Modèle B C2 (auth bearer) + C3 (SDK client + route ingest).
+"""Tests Modèle B C2 (auth bearer legacy) + C3 (SDK client + route ingest).
 
 - C2 : ``require_token`` no-op si auth off ; 401 sans/avec mauvais token ; 200 avec
-  token valide ; 401 après révocation.
+  token valide ; 401 après révocation. (module serving.auth legacy, non utilisé par
+  ingest_routes depuis A1.)
 - C3 : ``POST /ingest/run`` applique un run-batch (idempotent) + ``GET`` statut ;
   ``push_run`` exporte et POST ; en-têtes HTTP (bearer) ; ``pull_replica`` (fake S3).
+  Les routes /ingest sont protégées par require_scope("ingest:run") (PAT owner/admin).
+  En test, on court-circuite via dependency_overrides sur require_principal.
 """
 from __future__ import annotations
 
@@ -20,6 +23,7 @@ import pytest
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
+from serving.auth_principal import Principal, require_principal
 from store import Store
 
 RUN = "run_c3"
@@ -91,15 +95,27 @@ def test_auth_on_requires_valid_token(auth_client, monkeypatch):
 # ─── C3 : route ingest + push_run ────────────────────────────────────────────
 
 
+def _owner_principal() -> Principal:
+    """Principal de substitution avec scope ingest:run (owner) — test only."""
+    return Principal(
+        user_id="test-owner",
+        email="owner@test.local",
+        roles=["owner"],
+        scopes={"ingest:run"},
+        auth_method="api_token",
+    )
+
+
 @pytest.fixture()
-def ingest_client(tmp_path, monkeypatch):
-    monkeypatch.delenv("EURIO_API_AUTH_REQUIRED", raising=False)  # auth off
-    from serving import auth, ingest_routes
+def ingest_client(tmp_path):
+    from serving import ingest_routes
 
     dst = Store(tmp_path / "dst.db")
-    auth.bind(dst)
     ingest_routes.bind(dst)
     app = FastAPI()
+    # Court-circuite require_principal (et donc require_scope) : pas de DB d'auth
+    # nécessaire, le Principal renvoyé possède le scope ingest:run.
+    app.dependency_overrides[require_principal] = _owner_principal
     app.include_router(ingest_routes.router)
     return dst, TestClient(app)
 

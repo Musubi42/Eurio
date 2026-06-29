@@ -52,6 +52,7 @@ import {
 } from 'lucide-vue-next'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { ML_API } from '@/shared/api/ml-api'
 import { coinDisplayName } from '@/shared/utils/coin-display'
 import EnrichmentGallery from '../components/EnrichmentGallery.vue'
 import VariantBadge from '../components/VariantBadge.vue'
@@ -71,7 +72,6 @@ function onEnrichmentSelect(img: CoinImage) {
 const trainedModelVersion = ref<string | null>(null)
 
 // Training enqueue
-const ML_API = 'http://127.0.0.1:8042'
 const enqueueState = ref<'idle' | 'loading' | 'success'>('idle')
 
 // Confusion-map detail (Phase 1 ML scalability)

@@ -15,6 +15,7 @@ import { Brain, Check, Copy, FlaskConical, HandHelping, Image as ImageIcon, Imag
 import { fetchEnrichmentCounts } from '../composables/useCoinAssets'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { ML_API } from '@/shared/api/ml-api'
 
 const route = useRoute()
 const router = useRouter()
@@ -346,7 +347,6 @@ const hasActiveFilters = () =>
 
 type ClassKind = 'eurio_id' | 'design_group_id'
 
-const ML_API = 'http://127.0.0.1:8042'
 const mlApiOnline = ref(false)
 const selectedClasses = ref<Set<string>>(new Set())
 const selectedClassKinds = ref<Map<string, ClassKind>>(new Map())

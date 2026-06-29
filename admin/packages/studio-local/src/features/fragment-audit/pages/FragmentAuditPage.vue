@@ -3,8 +3,7 @@
 // Montre chaque crop éjecté + son score face_scores + le palier τ. L'humain
 // tague coin/fragment pour quantifier combien de VRAIS 2€ sont tués.
 import { computed, onMounted, ref } from 'vue'
-
-const ML_API = 'http://127.0.0.1:8042'
+import { ML_API } from '@/shared/api/ml-api'
 
 type Item = {
   name: string

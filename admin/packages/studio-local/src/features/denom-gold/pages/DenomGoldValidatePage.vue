@@ -5,8 +5,7 @@
 //   B — Qualité du crop : flag "crop pas bon" + raison (exclu du training, feedback détecteur)
 // Le verdict humain est persisté côté ML dans state/denom_bench/human_validation.jsonl.
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-
-const ML_API = 'http://127.0.0.1:8042'
+import { ML_API } from '@/shared/api/ml-api'
 
 type Tax = { code: string; label: string }
 type Item = {

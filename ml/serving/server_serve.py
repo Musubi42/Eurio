@@ -8,6 +8,20 @@ sur le VPS, cf. DESIGN.md). Le log de démarrage liste ``montés`` / ``skippés`
 
 NE PAS confondre avec ``serving/server.py`` (app FULL workstation). Ici aucun
 router de calcul lourd n'est exposé.
+
+RÈGLE DE SYNCHRONISATION FULL ↔ LEAN
+--------------------------------------
+``serving/server.py`` (FULL, workstation Mac/PC) et ce fichier (LEAN, image VPS)
+partagent les mêmes routers légers mais divergent intentionnellement sur les
+routers lourds (cv2/torch/dino uniquement disponibles sur la workstation).
+
+Lorsqu'un nouveau router est ajouté dans ``server.py`` :
+  • S'il est léger (pas de cv2/torch/dino) → l'ajouter également ici en mount
+    inconditionnel (section « Cœur garanti » ou bloc direct comme coin_series).
+  • S'il est lourd (cv2/torch/dino) → l'ajouter dans ``_CANDIDATES`` ci-dessous ;
+    l'image lean le skippera automatiquement à l'ImportError.
+
+Ne jamais supprimer un router de ``_CANDIDATES`` sans le retirer aussi de ``server.py``.
 """
 from __future__ import annotations
 
@@ -126,9 +140,13 @@ for _name, _modpath, _has_bind in _CANDIDATES:
         # Mac/PC doivent utiliser un PAT (eurio_<43 base64url>).
         app.include_router(_mod.router, dependencies=[Depends(require_principal)])
         _mounted.append(_name)
-    except Exception as exc:  # noqa: BLE001 — dep lourde ou wiring absent
+    except (ImportError, ModuleNotFoundError) as exc:
+        # Skip uniquement si une dépendance lourde (cv2/torch/dino…) est absente
+        # de l'image lean — ces routers lèvent ImportError/ModuleNotFoundError à
+        # l'import. Toute autre exception (typo, init bug, AttributeError…) doit
+        # remonter en clair pour ne pas masquer un vrai problème de câblage.
         _skipped.append(f"{_name} ({type(exc).__name__}: {exc})")
-        log.warning("serve: router '%s' NON monté → %s", _name, exc)
+        log.warning("serve: router '%s' NON monté (dep absente) → %s", _name, exc)
 
 log.info("serve-role prêt | DB=%s | auth=%s", _DB_PATH, api_auth.auth_required())
 log.info("routers montés : %s", _mounted)

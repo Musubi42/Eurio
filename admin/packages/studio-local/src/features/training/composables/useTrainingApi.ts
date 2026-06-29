@@ -5,11 +5,10 @@
 // while a run is in-flight and refreshes history/classes on demand.
 
 import { ref, type Ref } from 'vue'
+import { ML_API } from '@/shared/api/ml-api'
 
-// Use 127.0.0.1 (not localhost) — uvicorn binds to IPv4 only, but on macOS
-// `localhost` resolves to ::1 first and falls back to 127.0.0.1, adding
-// ~500ms per request from the IPv6 connection-refused before the retry.
-export const ML_API = 'http://127.0.0.1:8042'
+// Re-export so existing importers of this module don't need to change.
+export { ML_API }
 
 export type ClassKind = 'eurio_id' | 'design_group_id'
 

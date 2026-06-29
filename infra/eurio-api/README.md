@@ -49,7 +49,11 @@ SOPS pour un restart simple. Seul un `up`/`up --force-recreate` nouveau exige
 les vars présentes.
 
 ```bash
-# Bootstrap d'un premier token machine (auth bearer legacy — sera remplacé par
-# les PAT du chunk auth-redesign/C3) :
-docker compose exec eurio-api python -m serving.auth add-token --name mac
+# Créer un compte owner puis un PAT machine (auth OIDC+PAT, auth-redesign C3) :
+docker compose exec eurio-api python -m serving.auth grant-owner --email <ton-email>
+# → puis login OIDC une fois (navigateur), puis :
+docker compose exec eurio-api python -m serving.auth create-pat \
+  --email <ton-email> --name mac --scope "ingest:run coins:read"
 ```
+
+Procédure complète (DNS, TLS, vérifs) : **`docs/work-in-progress/model-b/C4-HANDOFF-SERVER.md`**.

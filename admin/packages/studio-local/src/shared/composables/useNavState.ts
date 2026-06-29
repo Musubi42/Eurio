@@ -1,6 +1,5 @@
 import { onMounted, onUnmounted, ref } from 'vue'
-
-const ML_API = 'http://127.0.0.1:8042'
+import { ML_API } from '@/shared/api/ml-api'
 
 // Shared reactive badge counts keyed by nav item id
 const badges = ref<Record<string, number>>({})

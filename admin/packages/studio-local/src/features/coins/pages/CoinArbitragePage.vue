@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { firstImageUrl } from '@/shared/utils/coin-images'
+import { ML_API } from '@/shared/api/ml-api'
 import { CheckCircle2, ChevronLeft, ChevronRight, ImageOff, Loader2, Scale, Upload } from 'lucide-vue-next'
 import { onMounted } from 'vue'
 import { useArbitrage } from '../composables/useArbitrage'
@@ -127,7 +128,7 @@ function formatScore(score: number): string {
           <div class="w-28 h-28 shrink-0 rounded-lg overflow-hidden flex items-center justify-center"
                style="background: var(--surface-1);">
             <img
-              :src="`http://127.0.0.1:8042/images/${currentEntry.numista_id}/source`"
+              :src="`${ML_API}/images/${currentEntry.numista_id}/source`"
               :alt="currentEntry.numista_name"
               class="w-full h-full object-cover"
               @error="(e) => (e.target as HTMLImageElement).style.display = 'none'"

@@ -1,8 +1,10 @@
 import { eurioApi } from '@/shared/api/eurio-api'
+import { ML_API } from '@/shared/api/ml-api'
 import type { ConfusionZone } from '@/shared/supabase/types'
 import { zoneFromSimilarity } from './useConfusionZone'
 
-export const ML_API = 'http://127.0.0.1:8042'
+// Re-export so existing importers of this module don't need to change.
+export { ML_API }
 export const ENCODER_VERSION = 'dinov2-vits14'
 
 /* ───────── Types ───────── */

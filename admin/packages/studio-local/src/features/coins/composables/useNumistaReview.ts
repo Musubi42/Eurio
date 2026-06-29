@@ -1,6 +1,5 @@
 import { computed, ref } from 'vue'
-
-const ML_API = 'http://127.0.0.1:8042'
+import { ML_API } from '@/shared/api/ml-api'
 
 export interface ReviewCandidate {
   eurio_id: string

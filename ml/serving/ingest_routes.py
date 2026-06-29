@@ -2,7 +2,7 @@
 
 Le serveur canonique (writer unique) reçoit les résultats du calcul lourd par run
 et les applique via ``client.runbatch.ingest_run`` (1 tx, idempotent). Protégé par
-le token bearer (``serving.auth.require_token``).
+le scope ``ingest:run`` (PAT owner/admin via ``serving.auth_principal.require_scope``).
 """
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from client.runbatch import ingest_run
-from serving.auth import require_token
+from serving.auth_principal import require_scope
 
 router = APIRouter(prefix="/ingest", tags=["ingest"])
 
@@ -27,7 +27,7 @@ class RunBatch(BaseModel):
     tables: dict[str, list[dict]]
 
 
-@router.post("/run", dependencies=[Depends(require_token)])
+@router.post("/run", dependencies=[Depends(require_scope("ingest:run"))])
 def ingest_run_route(batch: RunBatch) -> dict:
     """Applique un run-batch au canonique (UPSERT clé naturelle, idempotent)."""
     if _store is None:
@@ -35,7 +35,7 @@ def ingest_run_route(batch: RunBatch) -> dict:
     return ingest_run(_store._connection(), batch.model_dump())  # noqa: SLF001
 
 
-@router.get("/run/{run_id}", dependencies=[Depends(require_token)])
+@router.get("/run/{run_id}", dependencies=[Depends(require_scope("ingest:run"))])
 def run_status(run_id: str) -> dict:
     """État d'un run déjà ingéré (depuis ``ingested_runs``)."""
     if _store is None:

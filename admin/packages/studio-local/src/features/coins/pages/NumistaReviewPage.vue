@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useNumistaReview, type ReviewItem } from '../composables/useNumistaReview'
+import { ML_API } from '@/shared/api/ml-api'
 import { Check, CircleAlert, SkipForward, WifiOff } from 'lucide-vue-next'
 import { computed, onMounted, ref } from 'vue'
 
@@ -146,7 +147,7 @@ onMounted(() => fetchQueue())
               <div class="w-24 h-24 shrink-0 rounded-lg overflow-hidden flex items-center justify-center"
                    style="background: var(--surface);">
                 <img
-                  :src="`http://127.0.0.1:8042/images/${selected.numista_id}/source`"
+                  :src="`${ML_API}/images/${selected.numista_id}/source`"
                   :alt="selected.numista_name"
                   class="w-full h-full object-cover"
                   @error="(e) => (e.target as HTMLImageElement).style.display = 'none'"

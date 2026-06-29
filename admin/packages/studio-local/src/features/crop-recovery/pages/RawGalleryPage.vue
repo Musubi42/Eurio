@@ -5,8 +5,7 @@
 // Réutilise les runs du banc ; le crop affiché = le candidat CHOISI de la stratégie sélectionnée.
 import { computed, onMounted, ref } from 'vue'
 import RawCard from '../components/RawCard.vue'
-
-const ML_API = 'http://127.0.0.1:8042'
+import { ML_API } from '@/shared/api/ml-api'
 
 const runs = ref<{ strategy: string; n_cases: number }[]>([])
 const datasets = ref<Record<string, number>>({})

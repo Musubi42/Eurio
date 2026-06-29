@@ -18,8 +18,7 @@ import {
   postCoinRefresh,
   type CoinCard,
 } from '@/features/coins/composables/useCoinsApi'
-
-const ML_API = 'http://127.0.0.1:8042'
+import { ML_API } from '@/shared/api/ml-api'
 
 const data = ref<CoverageMatrixResponse | null>(null)
 const loading = ref(true)

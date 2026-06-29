@@ -200,14 +200,14 @@ image-serving (`:src` sur ML_API) nécessiteraient CORS+HTTPS si pointés VPS.
 | Chunk | Titre | Dép | Effort | Pourquoi / note |
 |---|---|---|---|---|
 | ~~H1~~ ✅ | Hotfix `lab_routes:2061` → `recrop_cohort_census.py` archivé | — | S | **FAIT 2026-06-29** : `git mv archive/scripts → scripts/`. Endpoint recrop-zero rétabli. |
-| **H2** | Doc-hygiène : `deployment-topology §cap B` (C1–C4 ✅), réécrire `C4-HANDOFF-SERVER.md` en runbook, fix `client/__init__.py` | — | S | Évite un échec de re-déploiement et la confusion de statut |
-| **H3** | Dead code : supprimer/archiver `bootstrap_canonical.py` ; resserrer `except` `_CANDIDATES` + smoke-test routers | H2 | S | Réduit la dette, fiabilise le boot lean |
-| **A1** | `ingest_routes` : `require_token` → `require_scope("ingest:run")` + test | — | S | Aligne l'auth, débloque C6 au PAT (cf. §4.2) |
-| **C5** | `VITE_ML_API` : déclarer + consolider 11 const + 2 raw strings | — | M | Front configurable (cf. §4.4) |
-| **C4-deploy** | Déployer le conteneur VPS (seed MinIO, `/healthz`, `/ingest/run`) | H2,H3 ; **§4.1 tranché** | M | ⚠ Déployer avant C6 = risque split-brain (cf. §4.1) |
-| **TC1** | Sets CRUD front → `eurioApi` | C4-deploy | S | `sets_routes` déjà dans `_CANDIDATES` ; swap client TS |
-| **TC2** | Review writes (decide/skip/reject) dans lean `serving/review_queue/` + front | C4-deploy | M | Permet la review multi-device sans Mac (cf. §4.3) |
-| **TC3** | Referential reads front → `eurioApi` | C4-deploy | S | Lectures seules ; images locales restent ML_API |
+| ~~H2~~ ✅ | Doc-hygiène : `deployment-topology §cap B`, runbook `C4-HANDOFF-SERVER.md`, `client/__init__.py`, `infra/eurio-api/README.md` | — | S | **FAIT 2026-06-29** |
+| ~~H3~~ ✅ | Dead code : `bootstrap_canonical.py` → `ml/archive/serving/` ; `except` resserré + règle sync FULL↔LEAN | H2 | S | **FAIT 2026-06-29** (⚠ except : valider au boot lean) |
+| ~~A1~~ ✅ | `ingest_routes` : `require_token` → `require_scope("ingest:run")` + test | — | S | **FAIT 2026-06-29** (⚠ pytest à lancer) |
+| ~~C5~~ ✅ | `VITE_ML_API` : module `shared/api/ml-api.ts` + consolidation + 2 raw strings | — | M | **FAIT 2026-06-29** (typecheck+build OK) |
+| **C4-deploy** | Déployer le conteneur VPS (seed, `/healthz`, `/ingest/run`) | H2,H3 ; §4.1 acté | M | **VPS** — cf. `HANDOFF-2026-06-29.md §2` |
+| ~~TC1~~ ✅ | Sets CRUD front → `eurioApi` | C5 | S | **FAIT 2026-06-29** (typecheck+build OK) |
+| **TC2** | Review writes (decide/skip/reject) dans lean `serving/review_queue/` + front | C4-deploy | M | Différé — spec `HANDOFF-2026-06-29.md §3` (cf. §4.3) |
+| ~~TC3~~ ✅ | Referential reads front → `eurioApi` | C5 | S | **FAIT 2026-06-29** (images locales gardées sur ML_API) |
 | **C6-task** | `go-task ml:db:pull-replica` (rafraîchit `eurio.replica.db`) | A1 | S | Ergonomie pré-requise au wiring compute |
 | **C6a** | Scraping `sources/cli.py` → `pull_replica` + `push_run` | A1,C6-task | M | 1er runner ; valider parité comptages vs Modèle A |
 | **C6b** | `recrop_zero` + `backfill_dino` → `push_run` (run_id stub : cf. §3.6 B2/B3) | C6a | L | Décisions PO sur l'ancrage `run_id` |

@@ -1,7 +1,13 @@
 // Referential API — coverage + heal + (à venir) discover + push.
 // Backend: ml/api/referential_routes.py.
+//
+// Routing TC3 :
+//   GET  (lectures données)  → eurioApi  (eurio-api.musubi.dev, Bearer PAT)
+//   POST (compute / écriture) → ML_API   (localhost:8042, go-task ml:api)
+//   Images canoniques (/referential/canonical/…) → ML_API via raw <img :src>
 
-import { ML_API } from '@/features/training/composables/useTrainingApi'
+import { eurioApi } from '@/shared/api/eurio-api'
+import { ML_API } from '@/shared/api/ml-api'
 
 export interface CoverageYear {
   year: number
@@ -68,7 +74,7 @@ async function json<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export function fetchCoverage(): Promise<CoverageResponse> {
-  return json<CoverageResponse>('/referential/coverage')
+  return eurioApi.get<CoverageResponse>('/referential/coverage')
 }
 
 export function runHeal(): Promise<HealResponse> {
@@ -110,7 +116,7 @@ export interface CoverageMatrixResponse {
 }
 
 export function fetchCoverageMatrix(): Promise<CoverageMatrixResponse> {
-  return json<CoverageMatrixResponse>('/referential/coverage-matrix')
+  return eurioApi.get<CoverageMatrixResponse>('/referential/coverage-matrix')
 }
 
 // ─── Découverte Numista ciblée + file de review (gap-fill) ───────────────
@@ -148,7 +154,7 @@ export function discoverAll(): Promise<DiscoverResult> {
 }
 
 export function fetchDiscoveryQueue(): Promise<DiscoveryQueueItem[]> {
-  return json<DiscoveryQueueItem[]>('/referential/discovery-queue')
+  return eurioApi.get<DiscoveryQueueItem[]>('/referential/discovery-queue')
 }
 
 export function acceptDiscovery(id: number): Promise<{ ok: boolean; relinked?: number }> {
@@ -204,7 +210,7 @@ export interface JointIssuesResponse {
 }
 
 export function fetchJointIssues(): Promise<JointIssuesResponse> {
-  return json<JointIssuesResponse>('/referential/joint-issues')
+  return eurioApi.get<JointIssuesResponse>('/referential/joint-issues')
 }
 
 // ─── Zero-canon résiduels (BCE-aware) ─────────────────────────────────
@@ -225,7 +231,7 @@ export interface ZeroCanonResponse {
 }
 
 export function fetchZeroCanon(): Promise<ZeroCanonResponse> {
-  return json<ZeroCanonResponse>('/referential/zero-canon')
+  return eurioApi.get<ZeroCanonResponse>('/referential/zero-canon')
 }
 
 // ─── Divergences BCE ↔ Numista ────────────────────────────────────────
@@ -261,7 +267,7 @@ export interface DivergencesResponse {
 
 export function fetchDivergences(softThreshold?: number): Promise<DivergencesResponse> {
   const q = softThreshold != null ? `?soft_threshold=${softThreshold}` : ''
-  return json<DivergencesResponse>(`/referential/divergences${q}`)
+  return eurioApi.get<DivergencesResponse>(`/referential/divergences${q}`)
 }
 
 // ─── Push to Supabase ──────────────────────────────────────────────────
@@ -370,11 +376,11 @@ export interface FixProposalsRefreshResponse {
 }
 
 export function fetchFixProposals(): Promise<FixProposalsListResponse> {
-  return json<FixProposalsListResponse>('/referential/fix-proposals')
+  return eurioApi.get<FixProposalsListResponse>('/referential/fix-proposals')
 }
 
 export function fetchFixProposalDetail(caseId: string): Promise<FixProposalDetail> {
-  return json<FixProposalDetail>(`/referential/fix-proposals/${encodeURIComponent(caseId)}`)
+  return eurioApi.get<FixProposalDetail>(`/referential/fix-proposals/${encodeURIComponent(caseId)}`)
 }
 
 export function refreshFixProposals(): Promise<FixProposalsRefreshResponse> {

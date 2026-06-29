@@ -1,6 +1,5 @@
 import { computed, ref } from 'vue'
-
-const ML_API = 'http://127.0.0.1:8042'
+import { ML_API } from '@/shared/api/ml-api'
 
 export type ReviewHint = 'rebind' | 'verify_parent' | 'confirm_or_rematch_uncertain'
 

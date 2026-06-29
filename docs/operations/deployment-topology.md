@@ -80,17 +80,17 @@ calcul** qui réconcilie ses résultats vers le serveur (même pattern
 publish/reconcile que `review_service`). MinIO redevient store d'images +
 backup.
 
-Chantiers à faire pour B (pas démarrés — migration incrémentale, pas big-bang) :
+**C1–C4 codés** (cf. `docs/work-in-progress/model-b/GAP-ANALYSIS.md`) — migration
+incrémentale, pas big-bang. **Reste : C4-deploy + C5 + C6+.**
 
-1. **Gating des routers** — `EURIO_SERVER_ROLE=serve|full` dans
-   `ml/serving/server.py` : en `serve`, ne monter QUE les routers read-only
-   légers (coins, sets, referential, operations, bench, crop-bench) ; gater
-   tout ce qui est lourd (augmentation, lab/training, sources) ou write
-   (arbitrage tant que le chemin d'écriture serveur n'existe pas). Garde-fou
-   anti-OOM sur la VM no-swap. `full` par défaut (Mac inchangé).
-2. **Serve-API sur le serveur** — dockeriser l'API ML serve-role (à la
-   `infra/review`), Traefik (`eurio-api.musubi.dev`), **auth token** (l'API est
-   aujourd'hui `localhost`-only sans auth).
+1. **Gating des routers** — approche **fichier parallèle** (acté, non une var
+   `EURIO_SERVER_ROLE`) : `ml/serving/server_serve.py` (lean, sans torch/cv2, monte
+   best-effort via `try/except`) coexiste avec `ml/serving/server.py` (full, Mac/PC).
+   Garde-fou anti-OOM sur la VM no-swap. (Sous-gaps restants : resserrer l'`except`,
+   smoke-test routers — cf. GAP-ANALYSIS §3.1 / chunk H3.)
+2. ✅ **LIVRÉ (code)** — `infra/eurio-api/` : Dockerfile + `docker-compose.yml`
+   (Traefik `eurio-api.musubi.dev`, OIDC+PAT, SOPS). **Reste : C4-deploy** (lancer
+   le conteneur sur le VPS — cf. `docs/work-in-progress/model-b/C4-HANDOFF-SERVER.md`).
 3. **Read-sync eurio.db** — le serveur tire la dernière version depuis MinIO
    (sans lease, lecture seule) après chaque `release` du Mac.
 4. **Chemin d'écriture réconcilié** — les mutations éditoriales lourdes faites
@@ -99,5 +99,5 @@ Chantiers à faire pour B (pas démarrés — migration incrémentale, pas big-b
 5. **Admin web configurable** — `VITE_ML_API` au lieu du `http://127.0.0.1:8042`
    hardcodé, pointé sur `eurio-api.musubi.dev`.
 
-À reprendre quand A aura tourné quelques semaines et qu'on saura quelles
-écritures admin valent vraiment d'être serveur-side.
+À déclencher chunk par chunk selon le plan GAP-ANALYSIS §5 ; C6 est le verrou
+central (câblage compute) et conditionne le cutover C8.

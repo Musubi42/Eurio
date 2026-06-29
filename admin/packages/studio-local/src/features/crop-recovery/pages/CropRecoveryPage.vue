@@ -4,8 +4,7 @@
 // de cas (raw + cercles : rouge=baseline, vert=choisi, bleu=gold).
 import { computed, onMounted, ref } from 'vue'
 import CaseCard from '../components/CaseCard.vue'
-
-const ML_API = 'http://127.0.0.1:8042'
+import { ML_API } from '@/shared/api/ml-api'
 
 type Metrics = Record<string, Record<string, number>>
 const runs = ref<{ strategy: string; n_cases: number }[]>([])

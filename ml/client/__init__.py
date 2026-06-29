@@ -9,5 +9,6 @@ Voir ``docs/work-in-progress/model-b/DESIGN.md``.
 
 Chunks :
 - C1 (livré) : ``runbatch`` — export/ingest d'un run, idempotent.
-- C2/C3 (à venir) : ``auth`` (bearer), ``http`` (client), ``replica`` (pull RO).
+- C2 (livré) : ``http`` (client urllib, ``EURIO_API_URL`` + ``EURIO_API_TOKEN``).
+- C3 (livré) : ``replica`` — ``pull_replica()`` MinIO → ``eurio.replica.db`` (sans lease).
 """
