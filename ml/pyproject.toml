@@ -9,6 +9,10 @@ requires-python = ">=3.12"
 dependencies = [
   "ai-edge-torch",
   "ai-edge-litert",
+  # OIDC/PAT auth (serving.auth_principal/auth_oidc) — requis aussi par l'app
+  # workstation `serving/server.py` (ingest_routes/db_routes importent
+  # auth_principal). Même contrainte que l'image lean eurio-api.
+  "python-jose[cryptography]>=3.3,<4.0",
   "opencv-python-headless",
   "pytorch-metric-learning",
   "pyyaml",
