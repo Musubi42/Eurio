@@ -1,3 +1,8 @@
+> 📜 **HISTORIQUE / quasi-terminé.** Backend auth (C1-C4) + front (F1-F9) livrés.
+> Le volet **front** (dual `studio-local`/`admin-vps`) est **supersédé par la fusion**
+> — cf. [`../model-b/README.md`](../model-b/README.md) §Front + §R1. Reste data D2/D7
+> (dernier `supabase.from`) + cleanup K1-K4.
+
 # ROADMAP — auth-redesign (post-pivot 2026-06-19)
 
 > **Pré-requis transverse** : lire d'abord [`ARCHITECTURE.md`](./ARCHITECTURE.md)

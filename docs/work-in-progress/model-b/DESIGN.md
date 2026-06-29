@@ -1,3 +1,5 @@
+> 📜 **HISTORIQUE.** Design d'origine. État courant + cible + roadmap : [`README.md`](./README.md).
+
 # Modèle B — eurio.db serveur-canonique derrière l'API (design v2)
 
 > Statut : **design verrouillé, all-in, non démarré**. Décidé 2026-06-16.

@@ -1,5 +1,11 @@
 # Architecture frontend Eurio — `studio-local` vs `admin-vps`
 
+> ⚠️ **SUPERSÉDÉ (2026-06-29).** Le split dual-front `studio-local` vs `admin-vps`
+> décrit ici est **abandonné** au profit d'une **fusion en UN seul codebase** (front
+> riche servi hébergé-léger via cookie Authentik + local-full via PAT ; features
+> lourdes grisées + bandeau « lance en local » côté hébergé). État courant + cible :
+> [`../model-b/README.md`](../model-b/README.md) §Front. Doc gardé comme historique.
+
 > **Décision actée le 2026-06-19**. Source de vérité pour toute question
 > "où va cette feature ?" et "comment auth ?". Tout autre doc qui contredit
 > ce fichier est obsolète.

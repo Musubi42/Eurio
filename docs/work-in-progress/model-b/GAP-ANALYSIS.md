@@ -1,3 +1,5 @@
+> 📜 **HISTORIQUE.** Gap analysis d'une session passée. État courant + cible : [`README.md`](./README.md).
+
 # Modèle B — Analyse as-built vs DESIGN (GAP-ANALYSIS)
 
 > **But** : cartographier ce qui EXISTE réellement dans le code vs ce que veut

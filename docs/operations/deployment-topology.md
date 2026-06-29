@@ -38,30 +38,38 @@ la VM.
 
 ```
 ┌─ VPS : writer canonique unique (toujours allumé) ──────────────┐
-│ eurio-api  →  /var/lib/eurio/eurio.db  (canonique)             │
+│ eurio-api  →  /var/lib/eurio/eurio.db  (canonique SQLite)      │
 │   • /ingest/run : applique les run-batches poussés (Model B)   │
 │   • écritures review (decide/skip/reject/restore, TC2)         │
-│   • canonical_sync (boucle 600s) : canonique → MinIO eurio-db  │
-│     (snapshot VACUUM INTO + sha) → fraîcheur de la réplique     │
-│   • pose le lock MinIO « VPS canonical » → bloque un acquire    │
-│     Model A accidentel (lease = secours via db:steal --force)   │
+│   • [CIBLE R2] GET /db/replica (+ sha) : sert un snapshot      │
+│     cohérent → le compute tire SA réplique depuis le VPS        │
 └────────────────────────────────────────────────────────────────┘
 
 ┌─ Mac/PC : CALCUL (plus writer du canonique) ───────────────────┐
-│ go-task ml:db:pull-replica   # réplique read-only (sans lease) │
-│   … crop / fetch / DINO / training sur la réplique …           │
-│ <pipeline> --push            # POST le run au VPS (/ingest/run) │
+│ pull-replica (← VPS)         # copie de travail locale          │
+│   … scrape / crop / DINO / training EN LOCAL sur la réplique …  │
+│ <pipeline> --push            # un seul POST au VPS (/ingest/run)│
 └────────────────────────────────────────────────────────────────┘
 ```
 
 **Conséquence :** le canonique survit au Mac éteint. Le compute lit une réplique
-fraîche (MinIO sync'é depuis le VPS) et pousse ses runs ; il n'écrit plus jamais
-le canonique en direct. Durabilité : `eurio-backup.sh` sauvegarde le bucket MinIO
-`eurio-db` (qui reçoit le canonique via `canonical_sync`) → pCloud.
+locale, fait son travail multi-étapes **sans aller-retour**, et pousse le run fini ;
+il n'écrit jamais le canonique en direct. Multi-PC sans conflit (l'API arbitre, pas
+de lease).
 
-**Secours (VPS down)** : `go-task ml:db:steal -- --force` (retire le lock VPS) puis
-`ml:db:acquire` → on repart en Modèle A sur le dernier sync MinIO. Voir
-`docs/work-in-progress/model-b/C8-CUTOVER-PLAN.md`.
+> **⚠️ Transitoire à remplacer (cf. `model-b/README.md` §R2)** : aujourd'hui la
+> réplique passe encore par MinIO — `serving/canonical_sync.py` pousse le canonique
+> VPS → bucket `eurio-db`, et `pull_replica` lit MinIO (+ un lock VPS qui bloque un
+> `db:acquire` Model A). C'est **le dernier reste Model A**. Cible : un endpoint
+> `GET /db/replica` côté VPS, **retrait** de `canonical_sync→MinIO` + du lease
+> (`store/lease.py`). **MinIO ne doit garder que les images.**
+
+**Durabilité** : `eurio-backup.sh` sauvegarde les buckets MinIO → pCloud (couvre les
+images ; après R2, prévoir un backup direct du eurio.db VPS → pCloud).
+
+**Secours (VPS down)** : tant que le transitoire MinIO existe, le dernier snapshot
+DB est dans le bucket `eurio-db`. Après R2, le secours = restaurer le backup pCloud
+du eurio.db. Cf. `docs/work-in-progress/model-b/README.md`.
 
 ---
 
