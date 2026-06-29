@@ -7,7 +7,12 @@ services:
         admin: ../../admin
         shared: ../../shared
       args:
+        VITE_DEPLOY_TARGET: hosted
         VITE_EURIO_API_BASE: https://eurio-api.musubi.dev
+        # Publics (RLS-safe), sourcés de l'env SOPS au build (`direnv exec /opt/eurio`).
+        # studio-local/supabase/client.ts throw au top-level sans eux (legacy, retrait = D7).
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:?VITE_SUPABASE_URL manquant — direnv exec /opt/eurio}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:?VITE_SUPABASE_ANON_KEY manquant — direnv exec /opt/eurio}
     image: eurio-admin:latest
     container_name: eurio-admin
     restart: unless-stopped
