@@ -268,6 +268,19 @@ class IterationRunner:
         if not cohort.eurio_ids:
             raise ValueError("Cohort vide — ajoute des eurio_ids avant d'itérer.")
 
+        # C7 (Model B) : garde-fou par cohorte — refuse de créer une nouvelle
+        # itération tant qu'une itération de CETTE cohorte est en `training`
+        # (résultats pas encore connus). RuntimeError → 409 (lab_routes mapping).
+        # Complète `is_busy()` (single-flight GLOBAL au launch) par une garde
+        # sémantique par-cohorte au create. Raisonne sur l'état canonique des
+        # itérations (cf. C6c qui transporte experiment_iterations au serveur).
+        training = self._store.list_iterations(cohort_id=cohort_id, status="training")
+        if training:
+            raise RuntimeError(
+                f"Cohorte {cohort_id!r} : une itération est déjà en entraînement "
+                f"({training[0].id}) — attends sa fin avant d'en créer une nouvelle."
+            )
+
         if recipe_id is not None and self._store.get_recipe(recipe_id) is None:
             raise ValueError(f"Recipe {recipe_id!r} introuvable")
 
