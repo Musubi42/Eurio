@@ -28,6 +28,7 @@ import argparse
 import json
 import os
 import sqlite3
+import sys
 from pathlib import Path
 
 ML_DIR = Path(__file__).resolve().parents[1]
@@ -99,7 +100,17 @@ def main() -> int:
                     help="cohort_jobs.id à piloter (mode --coin) : ce process "
                          "écrit lui-même progress/finish → survit au --reload")
     ap.add_argument("--run-id", dest="run_id", default=None, help="run_id override")
+    ap.add_argument("--push", action="store_true",
+                    help="Modèle B (C6b) : recrop la cohorte sur une réplique "
+                         "read-only (pull MinIO, sans lease) puis POST le run au "
+                         "canonique via /ingest/run. Implique --commit. Sans ce "
+                         "flag : écrit la DB Mac (Modèle A).")
     args = ap.parse_args()
+
+    if args.push and args.coin:
+        print("ERROR: --push n'est pas supporté en mode --coin (job endpoint, Modèle A)",
+              file=sys.stderr)
+        return 1
 
     os.environ["EURIO_CENSUS_DETECT"] = "1"
     if args.tau is not None:
@@ -125,13 +136,24 @@ def main() -> int:
         )
 
     run_id = f"census-recover-{args.cohort}"
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    _register_phash_udfs(conn)   # hamming() / phash_match() UDFs (dédup C4)
+    # Model B (C6b) : --push → réplique read-only (FK ON, Store) ; recrop_zero_for_coin
+    # stubbe source_runs avant d'écrire les crops (FK satisfaite). Sinon : DB Mac via
+    # connexion brute (FK OFF, comportement Modèle A historique).
+    commit = args.commit or args.push
+    if args.push:
+        from store import Store
+        from client.replica import pull_replica
+        db_path = pull_replica()
+        print(f"[model-b] réplique read-only → {db_path}")
+        conn = Store(db_path)._connection()
+    else:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        _register_phash_udfs(conn)   # hamming() / phash_match() UDFs (dédup C4)
     row = conn.execute("SELECT eurio_ids_json FROM experiment_cohorts WHERE id = ?",
                        (args.cohort,)).fetchone()
     classes = json.loads(row["eurio_ids_json"]) if row and row["eurio_ids_json"] else []
-    mode = "COMMIT" if args.commit else "DRY-RUN"
+    mode = "COMMIT" if commit else "DRY-RUN"
     print(f"[{mode}] cohorte {args.cohort} : {len(classes)} classes, τ={tau}, run_id={run_id}\n")
 
     T = dict(scanned=0, recovered=0, crops=0, auto_phash=0)
@@ -142,7 +164,7 @@ def main() -> int:
         # classe = transaction courte (évite les locks SQLite avec l'API admin) +
         # reprise propre (le scope additif re-skippe les raws déjà faits).
         c = recrop_zero_for_coin(
-            conn, cls, run_id=run_id, commit=args.commit, limit=args.limit,
+            conn, cls, run_id=run_id, commit=commit, limit=args.limit,
         )
         if c["scanned"]:
             print(f"{cls[:45]:45s}{c['scanned']:>7}{c['recovered']:>7}{c['crops']:>7}",
@@ -150,13 +172,22 @@ def main() -> int:
         for k in T:
             T[k] += c[k]
 
-    if args.commit:
-        conn.commit()
+    if commit:
+        conn.commit()  # no-op sur la connexion Store autocommit (--push)
     print("-" * 66)
     print(f"{'TOTAL':45s}{T['scanned']:>7}{T['recovered']:>7}{T['crops']:>7}")
-    print(f"\n{'[COMMITTÉ]' if args.commit else '[DRY-RUN — rien écrit]'} "
+    print(f"\n{'[COMMITTÉ]' if commit else '[DRY-RUN — rien écrit]'} "
           f"candidats zéro-crop {T['scanned']} → {T['recovered']} raws récupérés, "
           f"+{T['crops']} crops ({T['auto_phash']} auto-phash) → review queue (training_eligible=0)")
+
+    if args.push:
+        from client.runbatch import push_run
+        res = push_run(conn, run_id)
+        if res.get("already_applied"):
+            print(f"[model-b] push {run_id} → déjà appliqué (no-op)")
+        else:
+            total = sum((res.get("counts") or {}).values())
+            print(f"[model-b] push {run_id} → {total} ligne(s) appliquée(s) au canonique")
     return 0
 
 

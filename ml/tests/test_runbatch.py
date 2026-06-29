@@ -303,6 +303,48 @@ def test_ingest_does_not_steal_run_id_server_side(tmp_path):
     assert links == {"run_A", "run_B"}
 
 
+def test_recrop_run_transports_touched_parent_source_image(tmp_path):
+    """C6b : un run recrop (stub source_runs) qui ré-crope un source_image d'un
+    AUTRE run doit transporter (a) le nouveau crop (run_id=recrop) ET (b) la
+    mutation du source_image parent (crop_status), via le lien source_image_runs.
+    Sans le lien, export_run(recrop) ne verrait pas le parent (run_id=ancien run).
+    """
+    from sources._base.dedup import _link_source_image_run
+
+    store = Store(tmp_path / "x.db")
+    conn = store._connection()  # noqa: SLF001
+    conn.execute(
+        "INSERT OR IGNORE INTO source_registry (id, display_name, kind) "
+        "VALUES ('ebay','eBay','marketplace')"
+    )
+    # Ancien run scrape : 1 source_image zero_crops.
+    conn.execute("INSERT INTO source_runs (id, source, kind) VALUES ('scrape','ebay','run')")
+    conn.execute(
+        "INSERT INTO source_images (id, source, source_ref, run_id, crop_status) "
+        "VALUES ('X','ebay','ref1','scrape','zero_crops')"
+    )
+    conn.execute("INSERT INTO source_image_runs (source_image_id, run_id) VALUES ('X','scrape')")
+
+    # Recrop : stub source_runs + mute crop_status + lie le parent + nouveau crop.
+    conn.execute(
+        "INSERT OR IGNORE INTO source_runs (id, source, kind, status, current_step) "
+        "VALUES ('recrop-zero-X','recrop_zero','reset','success','detect')"
+    )
+    conn.execute("UPDATE source_images SET crop_status='success' WHERE id='X'")
+    _link_source_image_run(conn, "X", "recrop-zero-X")
+    conn.execute(
+        "INSERT INTO image_assets (id, source_image_id, run_id, crop_index, "
+        "storage_path, storage_status) VALUES ('a1','X','recrop-zero-X',0,'p.png','present')"
+    )
+
+    rb = export_run(conn, "recrop-zero-X")["tables"]
+    assert [r["id"] for r in rb["source_images"]] == ["X"]
+    assert rb["source_images"][0]["crop_status"] == "success"   # mutation transportée
+    assert [r["id"] for r in rb["image_assets"]] == ["a1"]       # nouveau crop transporté
+    # L'ancien run garde sa containment sur X (provenance préservée).
+    assert [r["id"] for r in export_run(conn, "scrape")["tables"]["source_images"]] == ["X"]
+
+
 def test_reingest_repoints_image_state_current_under_fk_on(tmp_path):
     """Régression : re-ingest d'un run dont les events sont référencés par
     ``image_state_current.last_event_id`` ne doit PAS casser la FK (FK ON serveur).

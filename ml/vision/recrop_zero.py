@@ -54,10 +54,23 @@ def recrop_zero_for_coin(
     seulement). ``conn`` doit avoir les UDFs phash enregistrées
     (``_register_phash_udfs``). Imports lourds (cv2/scan/storage) en lazy."""
     from vision.normalize_snap import normalize_listing
-    from sources._base.dedup import ImageAssetRow, upsert_image_asset
+    from sources._base.dedup import (
+        ImageAssetRow, _link_source_image_run, upsert_image_asset,
+    )
     from sources._base.phash import compute_phash
     from sources._base.storage import crop_cache_path, crop_key
     from shared.storage.local_cache import local_path, upload_through
+
+    # Model B (C6b) : stub source_runs pour CE run_id (recrop hors pipeline → run_id
+    # absent de source_runs avant). Requis pour (1) la FK image_assets.run_id et
+    # source_image_runs.run_id sous FK ON (réplique/--push) ; (2) export_run/push_run.
+    # INSERT OR IGNORE : idempotent (batch cohorte = N pièces partagent 1 run_id).
+    if commit:
+        conn.execute(
+            "INSERT OR IGNORE INTO source_runs (id, source, kind, status, current_step) "
+            "VALUES (?, 'recrop_zero', 'reset', 'success', 'detect')",
+            (run_id,),
+        )
 
     rows = conn.execute(
         """
@@ -134,11 +147,15 @@ def recrop_zero_for_coin(
         conn.execute(
             "UPDATE source_images SET n_crops_detected=?, crop_status='success', "
             "crop_error=NULL WHERE id=?", (len(results), r["id"]))
+        # Model B (C6b) : ce run a TOUCHÉ ce source_image parent (crop_status muté) —
+        # le lier au run pour que export_run(run) le transporte (sinon la mutation
+        # reste sur l'ancien run du source_image, jamais poussée). Cf. parité A↔B.
+        _link_source_image_run(conn, r["id"], run_id)
         enqueued[r["source_ref"]] = r["id"]
     # Fix T1 : clôturer la pipeline pour les crops récupérés (resolve → enqueue)
     # sinon ils restent en 'pending_match' SANS review_queue (= orphelins,
-    # invisibles à la review). Réutilise les steps canoniques. RunHandle minimal
-    # (run_id recrop hors source_runs → bump no-op, sans effet de bord).
+    # invisibles à la review). Réutilise les steps canoniques. RunHandle minimal :
+    # le source_runs stub (posé en tête si commit) accueille les bumps de counters.
     if commit and enqueued:
         from sources._base.run_logger import RunHandle
         from sources._base.steps.enqueue import run_enqueue

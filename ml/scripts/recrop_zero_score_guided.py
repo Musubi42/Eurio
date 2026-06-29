@@ -55,12 +55,25 @@ def main() -> int:
     ap.add_argument("--run", default=_DEFAULT_RUN, help="run_id à traiter")
     ap.add_argument("--dry", action="store_true", help="aperçu, aucune écriture")
     ap.add_argument("--limit", type=int, default=None, help="traiter au plus N source_images")
+    ap.add_argument("--push", action="store_true",
+                    help="Modèle B (C6b) : recrop sur une réplique read-only (pull "
+                         "MinIO, sans lease) puis POST le run au canonique via "
+                         "/ingest/run. Sans ce flag : écrit la DB Mac (Modèle A).")
     args = ap.parse_args()
 
-    db_path = _ML_DIR / "state" / "eurio.db"
-    if not db_path.is_file():
-        print(f"ERROR: DB introuvable: {db_path}", file=sys.stderr)
+    if args.push and args.dry:
+        print("ERROR: --push incompatible avec --dry (rien à pousser)", file=sys.stderr)
         return 1
+
+    if args.push:
+        from client.replica import pull_replica
+        db_path = pull_replica()
+        print(f"[model-b] réplique read-only → {db_path}")
+    else:
+        db_path = _ML_DIR / "state" / "eurio.db"
+        if not db_path.is_file():
+            print(f"ERROR: DB introuvable: {db_path}", file=sys.stderr)
+            return 1
 
     store = Store(db_path)
     conn = store._connection()
@@ -90,6 +103,14 @@ def main() -> int:
         result = run_detect_crop(conn=conn, run=run, source_id=_SOURCE_ID,
                                  source_image_ids=targets)
         run.end("success")
+    run_id = run.run_id
+
+    # Model B (C6b) : les crops récupérés ont run_id=ce run (transportés nativement),
+    # mais leurs source_images parents appartiennent à args.run — les lier à CE run
+    # pour que export_run transporte la mutation crop_status. Cf. parité A↔B.
+    from sources._base.dedup import _link_source_image_run
+    for sid in targets.values():
+        _link_source_image_run(conn, sid, run_id)
 
     # Récupérées = parmi les cibles, celles qui ne sont plus en zero_crops.
     remaining = set(_list_zero_crops(conn, args.run).values())
@@ -99,6 +120,15 @@ def main() -> int:
     print(f"[recover] récupérées = {recovered}/{len(targets)} cibles "
           f"({100 * recovered / len(targets):.0f}%) · zero_crops restants sur le run = "
           f"{len(remaining)} (non récupérables : coincard/proof/tilt)")
+
+    if args.push:
+        from client.runbatch import push_run
+        res = push_run(conn, run_id)
+        if res.get("already_applied"):
+            print(f"[model-b] push {run_id[:12]}… → déjà appliqué (no-op)")
+        else:
+            total = sum((res.get("counts") or {}).values())
+            print(f"[model-b] push {run_id[:12]}… → {total} ligne(s) appliquée(s) au canonique")
     return 0
 
 
