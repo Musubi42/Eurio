@@ -21,6 +21,11 @@ import {
   hasPat,
 } from '@/shared/api/eurio-api'
 import { AUTH_MODE } from '@/shared/config/deploy-target'
+import { startOidcLogin } from '@/shared/auth/oidc'
+
+// Garde anti-boucle : on ne redirige vers Authentik qu'UNE fois par session de tab.
+// Si on revient encore non-authentifié, on s'arrête sur le bandeau (login manuel).
+const OIDC_TRIED_KEY = 'eurio.oidc.tried'
 
 export interface Principal {
   user_id: string
@@ -63,16 +68,29 @@ export const useEurioSession = defineStore('eurio-session', () => {
     try {
       principal.value = await eurioApi.get<Principal>('/me')
       status.value = 'ok'
+      // Login OK → on réarme la possibilité d'un futur auto-login.
+      try { sessionStorage.removeItem(OIDC_TRIED_KEY) } catch { /* SSR/privacy */ }
     } catch (e) {
       principal.value = null
       if (e instanceof MissingPatError) {
         status.value = 'missing'
       } else if (e instanceof EurioApiError && (e.status === 401 || e.status === 403)) {
         status.value = 'invalid'
-        error.value =
-          AUTH_MODE === 'cookie'
-            ? 'Session expirée ou absente — reconnecte-toi via Authentik.'
-            : 'PAT invalide ou expiré — régénère-le (page « Mes tokens ») et MAJ .env.local.'
+        if (AUTH_MODE === 'cookie') {
+          // Pas de cookie valide → tente le login OIDC UNE fois (SSO silencieux si une
+          // session Authentik est déjà active). Si on revient encore 401, garde
+          // anti-boucle : on reste sur le bandeau avec le bouton « Se connecter ».
+          let tried = false
+          try { tried = sessionStorage.getItem(OIDC_TRIED_KEY) === '1' } catch { /* ignore */ }
+          if (!tried) {
+            try { sessionStorage.setItem(OIDC_TRIED_KEY, '1') } catch { /* ignore */ }
+            startOidcLogin()
+            return
+          }
+          error.value = 'Connexion Authentik échouée ou refusée — réessaie, ou contacte un admin.'
+        } else {
+          error.value = 'PAT invalide ou expiré — régénère-le (page « Mes tokens ») et MAJ .env.local.'
+        }
       } else {
         status.value = 'error'
         error.value = e instanceof Error ? e.message : String(e)

@@ -7,9 +7,13 @@
 import { computed, ref } from 'vue'
 
 import { useEurioSession } from '@/stores/eurio-session'
+import { AUTH_MODE } from '@/shared/config/deploy-target'
+import { startOidcLogin } from '@/shared/auth/oidc'
 
 const session = useEurioSession()
 const dismissed = ref(false)
+
+const cookieMode = computed(() => AUTH_MODE === 'cookie')
 
 const visible = computed(
   () =>
@@ -20,6 +24,13 @@ const visible = computed(
 )
 
 const message = computed(() => {
+  // Mode cookie (hébergé) : tout repose sur la session Authentik.
+  if (cookieMode.value) {
+    if (session.status === 'error')
+      return `eurio-api injoignable : ${session.error ?? 'erreur inconnue'}`
+    return session.error || 'Tu n’es pas connecté. Connecte-toi via Authentik pour accéder au panel.'
+  }
+  // Mode PAT (local).
   switch (session.status) {
     case 'missing':
       return 'eurio-api : aucun PAT configuré. Crée un .env.local depuis .env.example pour activer les features qui en dépendent.'
@@ -35,6 +46,9 @@ const message = computed(() => {
   }
 })
 
+// En mode cookie, propose le login OIDC (sauf si l'API est carrément injoignable).
+const showLogin = computed(() => cookieMode.value && session.status !== 'error')
+
 const docsUrl =
   'docs/work-in-progress/auth-redesign/PAT-WORKFLOW.md'
 </script>
@@ -42,7 +56,10 @@ const docsUrl =
 <template>
   <div v-if="visible" class="eurio-banner" role="alert">
     <span class="msg">{{ message }}</span>
-    <a class="link" :href="docsUrl" target="_blank" rel="noopener">
+    <button v-if="showLogin" class="login" @click="startOidcLogin()">
+      Se connecter avec Authentik
+    </button>
+    <a v-else class="link" :href="docsUrl" target="_blank" rel="noopener">
       Doc PAT
     </a>
     <button class="close" aria-label="Masquer" @click="dismissed = true">×</button>
@@ -67,6 +84,20 @@ const docsUrl =
   color: #5d4a0c;
   text-decoration: underline;
   font-weight: 500;
+}
+.login {
+  background: #5d4a0c;
+  color: #fff4d6;
+  border: none;
+  border-radius: 6px;
+  padding: 4px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.login:hover {
+  opacity: 0.9;
 }
 .close {
   background: transparent;
