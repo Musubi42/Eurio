@@ -1,10 +1,14 @@
-import { supabase } from '@/shared/supabase/client'
-import type { CoinSeries } from '@/shared/supabase/types'
 import { onMounted, ref } from 'vue'
+import { eurioApi } from '@/shared/api/eurio-api'
+import type { CoinSeries } from '@/shared/supabase/types'
 
 /**
  * Fetch et cache les 32 entrées coin_series (picker série).
  * Une seule query par session — elles sont stables.
+ *
+ * Source : eurio-api `GET /coin-series` (canonique SQLite, D2
+ * data-layer-unification) — déjà trié server-side par (country,
+ * minting_started_at). Remplace le dernier `supabase.from()` runtime.
  */
 const cache = ref<CoinSeries[] | null>(null)
 
@@ -19,17 +23,14 @@ export function useCoinSeries() {
       return
     }
     loading.value = true
-    const { data, error: err } = await supabase
-      .from('coin_series')
-      .select('*')
-      .order('country')
-      .order('minting_started_at')
-
-    loading.value = false
-    if (err) { error.value = err.message; return }
-
-    cache.value = (data ?? []) as CoinSeries[]
-    series.value = cache.value
+    try {
+      cache.value = await eurioApi.get<CoinSeries[]>('/coin-series')
+      series.value = cache.value
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : String(e)
+    } finally {
+      loading.value = false
+    }
   }
 
   onMounted(fetchSeries)
