@@ -32,6 +32,7 @@ from serving import (
     users_routes,
 )
 from serving.auth_principal import require_principal
+from serving.coin_series import router as coin_series_router
 from serving.review_queue import router as review_queue_router
 from serving.sources import router as sources_router
 from store import Store
@@ -76,6 +77,9 @@ app.include_router(tokens_routes.router)
 app.include_router(review_routes.router)
 app.include_router(confusion_routes.router)
 app.include_router(audit_routes.router)
+# D2 data-layer-unification : domaine `coin_series` (READ) layered, scope
+# coins:read — remplace le dernier supabase.from('coin_series') de studio-local.
+app.include_router(coin_series_router)
 # F9 dashboard KPIs : compteurs read-only agrégés, filtrés par scope (lean).
 app.include_router(stats_routes.router)
 # Phase 2b data-layer-unification : domaine `sources` (READ) layered, sans
