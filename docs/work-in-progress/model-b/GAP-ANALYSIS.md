@@ -135,7 +135,7 @@ mais inerte. La data-layer-unification a fait écrire l'API VPS dans **sa propre
   - **B2 recrop_zero** : `run_id` synthétique (`recrop-zero-{eurio_id}`) **absent de `source_runs`** → `export_run()` ne peut pas l'ancrer (violation FK potentielle). Choix A (stub `source_runs`) vs B (endpoint dédié).
   - **B3 dino/backfill** : pas de `run_id` → opérations globales ; à faire post-C8 sur réplique, ou API server-side. Décision PO.
   - **C7 training metadata** : tables `training_*`/`experiment_iterations` absentes de `_TABLE_ORDER` d'`export_run`.
-- 🐛 **BUG RUNTIME** : `lab_routes.py:2061` spawn `scripts/recrop_cohort_census.py` **archivé** (`ml/archive/scripts/`) → endpoint `POST /lab/cohorts/{id}/coins/{eurio_id}/recrop-zero` **cassé**. Hotfix indépendant de C6.
+- 🐛 **BUG RUNTIME** : `lab_routes.py:2061` spawn `scripts/recrop_cohort_census.py` **archivé** (`ml/archive/scripts/`) → endpoint `POST /lab/cohorts/{id}/coins/{eurio_id}/recrop-zero` **cassé**. ✅ **Corrigé (H1, 2026-06-29)** : script restauré dans `ml/scripts/` (`git mv`). Le scan a confirmé qu'aucun autre script archivé par `7b2cbbb` n'était encore référencé par du code live.
 
 ### 3.7 `interactive-thin-client` — classe A (effort M)
 - **Déjà thin-client (`eurioApi`)** : coins, peer_arbitration, operations, audit, review-reads.
@@ -199,7 +199,7 @@ image-serving (`:src` sur ML_API) nécessiteraient CORS+HTTPS si pointés VPS.
 
 | Chunk | Titre | Dép | Effort | Pourquoi / note |
 |---|---|---|---|---|
-| **H1** | Hotfix `lab_routes:2061` → `recrop_cohort_census.py` archivé | — | S | Bug runtime live, indépendant, à faire en premier |
+| ~~H1~~ ✅ | Hotfix `lab_routes:2061` → `recrop_cohort_census.py` archivé | — | S | **FAIT 2026-06-29** : `git mv archive/scripts → scripts/`. Endpoint recrop-zero rétabli. |
 | **H2** | Doc-hygiène : `deployment-topology §cap B` (C1–C4 ✅), réécrire `C4-HANDOFF-SERVER.md` en runbook, fix `client/__init__.py` | — | S | Évite un échec de re-déploiement et la confusion de statut |
 | **H3** | Dead code : supprimer/archiver `bootstrap_canonical.py` ; resserrer `except` `_CANDIDATES` + smoke-test routers | H2 | S | Réduit la dette, fiabilise le boot lean |
 | **A1** | `ingest_routes` : `require_token` → `require_scope("ingest:run")` + test | — | S | Aligne l'auth, débloque C6 au PAT (cf. §4.2) |
