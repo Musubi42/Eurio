@@ -116,6 +116,10 @@ des **répliques locales** (copies de travail) et **poussent** leurs runs au VPS
 > 🛠️ **Pour exécuter** : briefs turn-key par chantier (avec accès SSH serveur,
 > deploy, tests, usage workflows) dans [`HANDOFF-NEXT-SESSIONS.md`](./HANDOFF-NEXT-SESSIONS.md).
 
+> 🧪 **QA navigateur** : suite de tests Chrome MCP turn-key (Sonnet 4.6 + sous-agents)
+> dans [`QA-CHROME-MCP.md`](./QA-CHROME-MCP.md) — valide R1 (front local+hébergé, gating)
+> et le chemin de données (charge du VPS, images MinIO, zéro mixed-content).
+
 ## Garde-fous / invariants à ne pas casser
 
 - Le compute **n'écrit jamais** le canonique en direct → toujours réplique + `--push`.

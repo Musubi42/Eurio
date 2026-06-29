@@ -76,84 +76,34 @@ Proto-first pour tout NOUVEAU design d'app (pas concerné par R1-R3, outillage a
 
 ---
 
-## R1 — Fusion front (effort L — possible en 2 sessions)
+## R1 — Fusion front ✅ LIVRÉ (2026-06-30)
 
-**But.** Un **seul** codebase front : le front riche `studio-local` devient le front
-canonique, servi **hébergé** (cookie Authentik, léger) **et** **local** (PAT, full).
-`admin-vps` disparaît. Features lourdes (crop/scrape/training) **grisées + bandeau**
-en hébergé. Détail cible : `README.md` §Front.
-
-**Découpage proposé.**
-- **R1a (auth + gating, sans toucher au déploiement)** :
-  1. **Auth-adapter** dans `studio-local/src/shared/api/eurio-api.ts` : mode `pat`
-     (Bearer depuis `VITE_EURIO_PAT`) vs `cookie` (`credentials: 'include'`),
-     sélectionné par une env (`VITE_AUTH_MODE` ou `VITE_DEPLOY_TARGET=local|hosted`).
-  2. **Capacité `hasLocalMlApi`** : composable qui résout vrai/faux (env explicite,
-     ou ping `GET ${ML_API}/healthz` au boot). Exposer un store/flag global.
-  3. **Gating** : les vues/boutons lourds (crop edit, scrape, training, recrop —
-     tout ce qui tape `ML_API` cf. `useReviewApi.ts`, `useTrainingApi.ts`,
-     `useReferentialApi.ts` compute, `useSetsApi`…) lisent le flag → état désactivé
-     + **bandeau** « ceci tourne en local : lance `…` puis va sur localhost ».
-  - *Vérif* : `pnpm dev` local (mode pat, hasLocalMlApi=true) = tout marche ;
-    build avec `VITE_DEPLOY_TARGET=hosted` = lourd grisé. `pnpm typecheck`.
-- **R1b (port des vues admin-vps + déploiement + retrait)** :
-  4. **Porter** les 3 vues utiles d'`admin-vps` dans `studio-local` :
-     `UsersPage` (F6), `MyTokensPage` (F7), dashboard KPIs `Home`/`stats` (F9).
-     Source : `admin/packages/admin-vps/src/views/`. Les endpoints VPS existent déjà
-     (`users_routes`, `tokens_routes`, `stats_routes`).
-  5. **Déployer `studio-local` en hébergé** sur `eurio-admin.musubi.dev` : build mode
-     hosted → static → servi par `infra/eurio-admin/` (remplace le build admin-vps).
-     Auth cookie OIDC (Authentik) déjà en place côté `eurio-api`.
-  6. **Retirer** le package `admin/packages/admin-vps/` (et ses refs Taskfile/CI).
-  - *Vérif* : aller sur `eurio-admin.musubi.dev`, login Authentik, voir review
-    (consultation) + users + tokens + KPIs ; vérifier que crop/scrape/training sont
-    grisés avec le bandeau. SSH pour rebuild le conteneur `eurio-admin`.
-
-**Workflow utile** : un agent d'audit qui **liste tous les call-sites `ML_API`** dans
-`studio-local/src` (= la surface « lourde » à gater) + mappe les vues `admin-vps` à
-porter → puis tu codes le gating sur cette liste. Le port des 3 vues peut fan-out.
-
-**Done quand** : un seul codebase, `eurio-admin` sert le front riche (léger marche,
-lourd grisé), `admin-vps` supprimé, `CLAUDE.md` §Architecture frontend réécrit (retire
-le dual-front, décrit le mono-front + modes). MAJ `README.md` §État (R1 ✅).
+Front unique `studio-local`, servi local (PAT, ML lourd) + hébergé (cookie OIDC,
+lourd grisé) via `VITE_DEPLOY_TARGET`. Auth-adapter (`eurio-api.ts`), capacité
+`hasLocalMlApi` (`stores/capabilities.ts` + ping `:8042`), gating **route-level**
+(`meta.heavy` + `LocalOnlyNotice` — pas d'édition des 25 call-sites ML). 3 vues
+rapatriées (`features/{dashboard,users,tokens}`). `admin-vps` supprimé.
+`infra/eurio-admin/` build désormais studio-local mode hosted. Déployé + vérifié
+(200, bundle cookie, healthz 200). Commits `9478335`→`aba0a5b`. État : `README.md` §État.
 
 ---
 
-## R2 — Réplique ← VPS, retrait MinIO-DB (effort M)
+## R2 — Réplique ← VPS, retrait MinIO-DB ✅ LIVRÉ (2026-06-30)
 
-**But.** `pull_replica` tire la réplique **d'un endpoint VPS**, plus de MinIO. On
-retire le dernier reste Model A (sync→MinIO + lease). **MinIO = images uniquement.**
+`pull_replica` tire la réplique du VPS (`GET /db/replica`, snapshot `VACUUM INTO` +
+sha). `canonical_sync.py` + `store/lease.py` supprimés, tâches `ml:db:acquire/release/
+sync/steal` retirées, backup canonique direct conteneur→pCloud. **MinIO = images.**
+Déployé + vérifié (3 sha concordent, `foreign_key_check`=0). Commits `caf8f2a`→`4940f41`.
+⏳ Seul reste (housekeeping user) : 1er `eurio-backup.sh run` puis purge du bucket MinIO
+`eurio-db` orphelin (cf. `README.md` §État).
 
-**Étapes.**
-1. **Endpoint VPS** `GET /db/replica` (auth `require_scope`, ex. `ingest:run` ou un
-   nouveau `db:replica`) qui sert un **snapshot cohérent** du canonique :
-   `VACUUM INTO /tmp/snap.db` (intègre sous WAL) → `StreamingResponse` du fichier →
-   cleanup. Plus `GET /db/replica/sha` (sha du même snapshot) pour l'intégrité.
-   *Réutilise la logique de `serving/canonical_sync.py::_snapshot` + `store.lease._sha256`.*
-   ⚠️ 106 Mo : streamer, pas charger en RAM ; envisager un cache court (snapshot +
-   sha valides N secondes) pour ne pas VACUUM à chaque pull.
-2. **Repointer `client/replica.pull_replica`** : download HTTP depuis l'endpoint VPS
-   (via `client.http` + le PAT `EURIO_API_TOKEN`) + vérif sha, au lieu de
-   `_lease._s3()` / MinIO. Garder le contrat (retourne le `Path`, vérifie le sha).
-3. **Retirer** `serving/canonical_sync.py` + son hook startup dans
-   `serving/server_serve.py` (`_start_canonical_sync`) + le lock VPS.
-4. **Déprécier/retirer** `store/lease.py` + les tâches `Taskfile` `ml:db:acquire/
-   release/sync/steal` (ou les marquer « secours uniquement » si on garde un filet).
-5. **Backup** : MinIO ne contient plus la DB → ajouter un backup **direct** du
-   `eurio.db` VPS → pCloud (greffer sur `infra/backup/eurio-backup.sh`, ou un cron
-   VPS `docker exec eurio-api … VACUUM INTO` puis rclone). Sans ça, plus de copie
-   hors-VPS de la base.
-6. **Nettoyer** le bucket MinIO `eurio-db` (objets `eurio.db`, `.sha256`, `.lock`)
-   une fois R2 validé.
+---
 
-**Vérif (SSH + Mac)** : depuis le Mac, `go-task ml:db:pull-replica` ramène une
-réplique = état VPS courant (contient les derniers runs) sans toucher MinIO ;
-`grep -r minio client/replica.py` ne renvoie plus rien de la DB. Endpoint testable :
-`curl -H "Authorization: Bearer <PAT>" https://eurio-api.musubi.dev/db/replica/sha`.
+## QA — vérification navigateur (Chrome MCP)
 
-**Done quand** : aucune référence DB↔MinIO ne subsiste, `pull_replica` lit le VPS,
-backup DB hors-VPS en place. MAJ `README.md` (retirer l'encart transitoire) +
-`deployment-topology.md` (le « transitoire » devient l'état nominal).
+Suite de tests turn-key (Sonnet 4.6 + sous-agents) dans [`QA-CHROME-MCP.md`](./QA-CHROME-MCP.md) :
+charge-t-on bien du VPS, gating correct, 3 vues admin, images depuis MinIO, zéro
+mixed-content, mode local vs hébergé. À lancer dans une session dédiée.
 
 ---
 
