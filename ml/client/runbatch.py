@@ -39,6 +39,17 @@ _TABLE_ORDER = [
     "review_queue",
     "consensus_verdicts",
     "coin_market_quotes",
+    # ── Training (C6c) ── métadonnées d'entraînement, scopées par run_id (le
+    # training_run.id est sa propre clé, AUCUN lien source_runs → pas de stub).
+    # `augmentation_recipes` AVANT training_runs (FK aug_recipe_id, closure
+    # récursive via based_on). Exclus : training_run_logs (BLOB log_gz, artefact
+    # local), training_staging/_removal (globaux, pas run-scopés), et
+    # experiment_iterations/cohorts (dimension — push séparé, différé cutover).
+    "augmentation_recipes",
+    "training_runs",
+    "training_run_steps",
+    "training_run_epochs",
+    "training_run_classes",
 ]
 _EVENTS = "image_state_events"
 
@@ -67,6 +78,53 @@ def _pk_cols(conn: sqlite3.Connection, table: str) -> list[str]:
     info = conn.execute(f"PRAGMA table_info({table})").fetchall()
     pk = sorted((r for r in info if r[5]), key=lambda r: r[5])
     return [r[1] for r in pk]
+
+
+def _collect_training_tables(
+    conn: sqlite3.Connection, run_id: str, tables: dict[str, list[dict]]
+) -> None:
+    """Peuple les tables training du batch pour un ``run_id`` = ``training_runs.id``.
+
+    Vide si le run n'est pas un training run. Inclut la **FK closure** des
+    ``augmentation_recipes`` (``training_runs.aug_recipe_id`` + chaîne
+    ``based_on_recipe_id``) pour que ``ingest_run`` ne viole pas la FK sur un
+    canonique qui n'a pas encore la recipe. ``training_run_logs`` (BLOB),
+    ``training_staging``/``_removal`` (globaux) et ``experiment_iterations``
+    (dimension) sont délibérément hors scope (cf. _TABLE_ORDER).
+    """
+    runs = _rows(conn, "SELECT * FROM training_runs WHERE id=? ORDER BY id", (run_id,))
+    tables["training_runs"] = runs
+    tables["training_run_steps"] = _rows(
+        conn,
+        "SELECT * FROM training_run_steps WHERE run_id=? ORDER BY step_index",
+        (run_id,),
+    )
+    tables["training_run_epochs"] = _rows(
+        conn, "SELECT * FROM training_run_epochs WHERE run_id=? ORDER BY epoch", (run_id,)
+    )
+    tables["training_run_classes"] = _rows(
+        conn,
+        "SELECT * FROM training_run_classes WHERE run_id=? ORDER BY class_id",
+        (run_id,),
+    )
+
+    # FK closure des recipes : aug_recipe_id (colonne additive — peut manquer) puis
+    # la chaîne based_on_recipe_id. Itératif, dédupliqué, borné (DAG fini).
+    recipes: dict[str, dict] = {}
+    seed = runs[0].get("aug_recipe_id") if runs else None
+    pending = [seed] if seed else []
+    while pending:
+        rid = pending.pop()
+        if rid is None or rid in recipes:
+            continue
+        got = _rows(conn, "SELECT * FROM augmentation_recipes WHERE id=?", (rid,))
+        if not got:
+            continue
+        recipes[rid] = got[0]
+        based_on = got[0].get("based_on_recipe_id")
+        if based_on and based_on not in recipes:
+            pending.append(based_on)
+    tables["augmentation_recipes"] = [recipes[k] for k in sorted(recipes)]
 
 
 # ─── Export (lecture seule, côté workstation) ────────────────────────────────
@@ -157,6 +215,11 @@ def export_run(conn: sqlite3.Connection, run_id: str) -> dict[str, Any]:
     tables["coin_market_quotes"] = _rows(
         conn, "SELECT * FROM coin_market_quotes WHERE run_id=? ORDER BY id", (run_id,)
     )
+
+    # ── Training (C6c) ── ne se peuple que pour un run_id = training_runs.id ; vide
+    # pour un run de scrape/recrop/dino. La FK closure des recipes (aug_recipe_id +
+    # chaîne based_on) garantit qu'ingest_run trouve ses cibles FK (defer_foreign_keys).
+    _collect_training_tables(conn, run_id, tables)
 
     events = _rows(
         conn,

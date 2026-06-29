@@ -401,6 +401,68 @@ def test_dino_backfill_predictions_transported_by_run_id(tmp_path):
     assert ingest_run(dconn, batch)["already_applied"] is True
 
 
+def test_training_run_export_with_recipe_closure(tmp_path):
+    """C6c : un training run transporte ses tables run-scopées (runs/steps/epochs/
+    classes) + la FK closure des augmentation_recipes (aug_recipe_id + based_on).
+    Le run_id = training_runs.id (aucun lien source_runs). Ingest idempotent.
+    """
+    def _seed_training(conn):
+        # Chaîne de recipes : r_base ← r_child (based_on).
+        conn.execute(
+            "INSERT INTO augmentation_recipes (id, name, config_json) "
+            "VALUES ('r_base','base','{}')"
+        )
+        conn.execute(
+            "INSERT INTO augmentation_recipes (id, name, config_json, based_on_recipe_id) "
+            "VALUES ('r_child','child','{}','r_base')"
+        )
+        conn.execute(
+            "INSERT INTO training_runs (id, version, status, config_json, "
+            "classes_before_json, classes_after_json, classes_added_json, "
+            "classes_removed_json, aug_recipe_id) "
+            "VALUES ('tr1', 1, 'completed', '{}', '[]', '[]', '[]', '[]', 'r_child')"
+        )
+        conn.execute(
+            "INSERT INTO training_run_steps (run_id, step_index, name, status) "
+            "VALUES ('tr1', 0, 'train', 'done')"
+        )
+        conn.execute(
+            "INSERT INTO training_run_epochs (run_id, epoch, train_loss) "
+            "VALUES ('tr1', 0, 0.5)"
+        )
+        conn.execute(
+            "INSERT INTO training_run_classes (run_id, class_id, class_kind) "
+            "VALUES ('tr1', 'be-2007', 'eurio_id')"
+        )
+
+    src = Store(tmp_path / "src.db")
+    sconn = src._connection()  # noqa: SLF001
+    _seed_training(sconn)
+
+    batch = export_run(sconn, "tr1")["tables"]
+    assert [r["id"] for r in batch["training_runs"]] == ["tr1"]
+    assert len(batch["training_run_steps"]) == 1
+    assert len(batch["training_run_epochs"]) == 1
+    assert len(batch["training_run_classes"]) == 1
+    # FK closure : la recipe directe (r_child) ET son parent (r_base).
+    assert [r["id"] for r in batch["augmentation_recipes"]] == ["r_base", "r_child"]
+    # Pas de lien source_runs : un training run n'a pas de row source_runs.
+    assert batch["source_runs"] == []
+
+    dst = Store(tmp_path / "dst.db")
+    dconn = dst._connection()  # noqa: SLF001
+    res = ingest_run(dconn, export_run(sconn, "tr1"))
+    assert res["already_applied"] is False
+    assert dconn.execute(
+        "SELECT status FROM training_runs WHERE id='tr1'"
+    ).fetchone()[0] == "completed"
+    assert dconn.execute(
+        "SELECT aug_recipe_id FROM training_runs WHERE id='tr1'"
+    ).fetchone()[0] == "r_child"
+    # Idempotent.
+    assert ingest_run(dconn, export_run(sconn, "tr1"))["already_applied"] is True
+
+
 def test_reingest_repoints_image_state_current_under_fk_on(tmp_path):
     """Régression : re-ingest d'un run dont les events sont référencés par
     ``image_state_current.last_event_id`` ne doit PAS casser la FK (FK ON serveur).
