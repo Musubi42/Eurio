@@ -46,8 +46,13 @@ des **répliques locales** (copies de travail) et **poussent** leurs runs au VPS
 
 ### Front
 
-- **Un seul codebase** (le front riche actuel `studio-local`, renommé front
-  canonique), servi à **deux endroits** via deux réglages (pas deux codebases) :
+> ✅ **Livré (R1, 2026-06-30).** Tout ce qui suit est **fait** : un seul codebase
+> `studio-local`, knob `VITE_DEPLOY_TARGET`, auth-adapter PAT/cookie, gating route-level
+> (`meta.heavy` + `LocalOnlyNotice`), 3 vues admin rapatriées, `admin-vps` supprimé,
+> déployé sur `eurio-admin.musubi.dev`.
+
+- **Un seul codebase** (le front riche `studio-local`, devenu front canonique),
+  servi à **deux endroits** via deux réglages (pas deux codebases) :
   - **En local** (`pnpm dev`, `localhost`, auth **PAT**) : **tout** marche, y
     compris crop/scrape/training (la page appelle l'API ML locale `:8042`, même
     origine non-sécurisée → zéro mixed-content).
@@ -67,7 +72,7 @@ des **répliques locales** (copies de travail) et **poussent** leurs runs au VPS
   = mixed-content / Private Network Access, fragile et cross-browser instable. On ne
   fait PAS ça. Le lourd se déclenche depuis le local, point.
 
-## État courant (2026-06-29) — ce qui EST fait
+## État courant (2026-06-30) — ce qui EST fait
 
 - ✅ Backend Model B : `eurio-api` (JWT/RBAC, PAT, `/ingest/run`), run-batch
   export/ingest idempotent (`client/runbatch.py`), parité A↔B validée + fix
@@ -89,18 +94,24 @@ des **répliques locales** (copies de travail) et **poussent** leurs runs au VPS
     `eurio-backup.sh run` sur le VPS (premier backup direct du canonique sur pCloud),
     **puis** supprimer les objets `eurio.db`/`.sha256`/`.lock` du bucket MinIO
     `eurio-db` (devenu orphelin). Ordre = backup d'abord, suppression ensuite.
+- ✅ **R1 (2026-06-30) — fusion front** : un seul codebase `studio-local` servi local
+  (PAT, ML lourd) + hébergé (cookie OIDC, lourd grisé), piloté par `VITE_DEPLOY_TARGET`.
+  Auth-adapter (`shared/api/eurio-api.ts`), capacité `hasLocalMlApi` (`stores/capabilities.ts`
+  + ping `:8042`), gating route-level (`meta.heavy` + `LocalOnlyNotice`). 3 vues rapatriées
+  (dashboard KPIs / users / mes tokens). `admin-vps` **supprimé**. `infra/eurio-admin/`
+  build désormais `studio-local` mode hosted. CLAUDE.md §Architecture frontend réécrit.
 
 ## Roadmap (compressée — ce qui RESTE)
 
 | # | Chantier | Quoi | Effort |
 |---|---|---|---|
-| **R1** | **Fusion front** | 1 codebase : porter users/tokens/dashboard d'`admin-vps` dans le front riche + auth-adapter (PAT/cookie) + gating `hasLocalMlApi` + bandeau rappel local. Déployer en hébergé (remplace `admin-vps`), retirer `admin-vps`. | L |
+| ~~**R1**~~ | ~~**Fusion front**~~ | ✅ **LIVRÉ 2026-06-30** — 1 codebase, auth-adapter PAT/cookie, gating `hasLocalMlApi` (route `meta.heavy` + `LocalOnlyNotice`), 3 vues rapatriées, `admin-vps` supprimé, déployé hébergé. | L |
 | ~~**R2**~~ | ~~**Réplique ← VPS, retrait MinIO-DB**~~ | ✅ **LIVRÉ 2026-06-30** — endpoint `GET /db/replica` (+ sha, `VACUUM INTO`), `pull_replica` repointé, `canonical_sync`+`lease` supprimés, backup canonique direct→pCloud. | M |
 | **R3** | **Finitions Model B** (différé, pas bloquant) | wire `--push` dans le pipeline training GPU ; endpoint orchestration lean (C7 server-side). | M |
 | **R4** | **Débit review** (valeur produit) | ~2700 items open sur le canonique = goulot cohorte→training. Outillage / autovalidation. | — |
 
-> **Priorité** : R1 (front, le plus visible/structurant) — R2 (cohérence archi —
-> tuer le dernier reste Model A) ✅ fait. R3/R4 ensuite.
+> **Priorité** : R1 (front) ✅ et R2 (cohérence archi) ✅ faits. Reste **R3** (finitions,
+> différé) et **R4** (débit review, valeur produit) — voir le handoff pour les briefs.
 
 > 🛠️ **Pour exécuter** : briefs turn-key par chantier (avec accès SSH serveur,
 > deploy, tests, usage workflows) dans [`HANDOFF-NEXT-SESSIONS.md`](./HANDOFF-NEXT-SESSIONS.md).

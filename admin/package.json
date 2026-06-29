@@ -4,9 +4,6 @@
   "scripts": {
     "studio:dev": "pnpm -C packages/studio-local dev",
     "studio:build": "pnpm -C packages/studio-local build",
-    "studio:typecheck": "pnpm -C packages/studio-local typecheck",
-    "admin-vps:dev": "pnpm -C packages/admin-vps dev",
-    "admin-vps:build": "pnpm -C packages/admin-vps build",
-    "admin-vps:typecheck": "pnpm -C packages/admin-vps typecheck"
+    "studio:typecheck": "pnpm -C packages/studio-local typecheck"
   }
 }

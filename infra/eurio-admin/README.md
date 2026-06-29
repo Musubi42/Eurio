@@ -1,31 +1,35 @@
 # infra/eurio-admin
 
-Panel admin Vue/Vite servi en statique par nginx derrière Traefik.
+Front riche `studio-local` servi en **hébergé** (statique nginx derrière Traefik).
+Model B / R1 : un seul codebase, build `VITE_DEPLOY_TARGET=hosted` → auth cookie OIDC,
+features lourdes ML grisées (admin-vps retiré).
 
 - **Host** : `https://eurio-admin.musubi.dev`
 - **API cible** : `https://eurio-api.musubi.dev` (injectée à la compilation via
   `VITE_EURIO_API_BASE` dans `docker-compose.yml`).
-- **Source** : `admin/packages/admin-vps/` (workspace pnpm `admin/`).
-- **Build** : multistage Docker — `node:20-alpine` (pnpm install + `vite build`)
-  → `nginx:1.27-alpine` (static + SPA fallback).
+- **Source** : `admin/packages/studio-local/` (workspace pnpm `admin/`).
+- **Build** : multistage Docker — `node:20-alpine` (pnpm install + `vite build` mode
+  hosted) → `nginx:1.27-alpine` (static + SPA fallback).
 
 ## Déploiement
 
 ```bash
-cd infra/eurio-admin
-docker compose up -d --build
+# Les build args Supabase (publics) viennent de l'env SOPS → passer par direnv exec.
+cd /opt/eurio/infra/eurio-admin
+direnv exec /opt/eurio docker compose up -d --build
 ```
 
-Aucun secret SOPS requis pour ce service — tout est public (URL API,
-flag dev-bypass). Le compose se contente des labels Traefik.
+`VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY` (publics, RLS-safe) sont requis au build
+(`supabase/client.ts` throw au top-level sans eux — legacy data, retrait = chantier D7).
+Ils sont sourcés de `secrets/dev.env` (SOPS) via `direnv exec /opt/eurio`.
 
 ## Mise à jour
 
-À chaque PR mergée touchant `admin/packages/admin-vps/` ou `shared/tokens.css` :
+À chaque PR mergée touchant `admin/packages/studio-local/` ou `shared/tokens.css` :
 
 ```bash
-cd infra/eurio-admin
-docker compose up -d --build
+cd /opt/eurio/infra/eurio-admin
+direnv exec /opt/eurio docker compose up -d --build
 ```
 
 (Aucun cache d'image, pas de tagging — `image: eurio-admin:latest` est

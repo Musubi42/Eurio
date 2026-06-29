@@ -5,8 +5,7 @@ App Android de collection de pièces euro. L'acte central de l'app est le **scan
 Monorepo :
 
 - `app-android/` — app Kotlin / Jetpack Compose / Material 3
-- `admin/packages/studio-local/` — front HEAVY local (Mac/PC, `pnpm dev` :5173), auth PAT Bearer, heavy lifting (crops, scrape, training, review fast-iter)
-- `admin/packages/admin-vps/` — front LIGHT VPS (`eurio-admin.musubi.dev`), auth cookie OIDC, read-mostly + users/tokens, mobile-friendly
+- `admin/packages/studio-local/` — **front unique** (Model B / R1). Servi en **local** (Mac/PC, `pnpm dev` :5173, auth PAT, tout marche y compris le lourd ML) ET en **hébergé** (`eurio-admin.musubi.dev`, auth cookie OIDC, features lourdes grisées) — un seul codebase, piloté par `VITE_DEPLOY_TARGET`
 - `admin/packages/parity/` — tooling QA local (Playwright, Maestro, screenshots proto ↔ Android)
 - `admin/packages/proto/` — prototype design Vue PWA déployé sur Vercel
 - `ml/` — projet Python standalone (FastAPI, entraînement, scraping sources)

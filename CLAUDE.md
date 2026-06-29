@@ -14,8 +14,7 @@ Voir `docs/app-implem-phases/README.md` pour le plan détaillé en 6 phases (0 �
 Eurio/
 ├── app-android/                       # App Kotlin/Compose (Material 3)
 ├── admin/                             # pnpm workspace
-│   ├── packages/studio-local/         # Front HEAVY local (Mac/PC), pnpm dev :5173, auth PAT Bearer
-│   ├── packages/admin-vps/            # Front LIGHT VPS (eurio-admin.musubi.dev), read-mostly + mobile, auth cookie OIDC
+│   ├── packages/studio-local/         # Front UNIQUE (R1) : local (PAT, :5173, ML lourd) + hébergé (cookie OIDC, lourd grisé), piloté par VITE_DEPLOY_TARGET
 │   ├── packages/proto/                # Prototype design = Vue+Pinia PWA (SOURCE DE VÉRITÉ du design)
 │   └── packages/parity/               # Tooling QA local-only (Playwright, Maestro flows, screenshots)
 ├── ml/                                # Python standalone : FastAPI, entraînement, fetch (Numista/Wiki/eBay)
@@ -38,34 +37,41 @@ Eurio/
 
 ### Architecture frontend (CRITIQUE — à graver)
 
-> ⚠️ **En cours de FUSION (décidé 2026-06-29).** Le split dual-front décrit ci-dessous
-> est l'état **actuel du code**, mais la cible est **UN seul codebase** (front riche
-> servi hébergé-léger via cookie Authentik + local-full via PAT ; features lourdes
-> grisées en hébergé). `admin-vps` sera retiré. Tant que la fusion (chantier R1) n'est
-> pas faite, le dual-front reste la réalité — mais ne construis plus en pensant
-> « deux fronts distincts pérennes ». Cible : `docs/work-in-progress/model-b/README.md` §Front.
+> ✅ **Fusion faite (R1, 2026-06-30).** **UN seul front** = `admin/packages/studio-local`,
+> servi à deux endroits via **un seul réglage de build** `VITE_DEPLOY_TARGET` (cf.
+> `studio-local/src/shared/config/deploy-target.ts`). `admin-vps` **supprimé**.
 
-Deux frontends, **un seul backend** `eurio-api.musubi.dev`. Règle simple :
+**Un seul codebase, un seul backend** `eurio-api.musubi.dev`, deux modes :
 
-| | `studio-local` | `admin-vps` |
+| | **local** (`VITE_DEPLOY_TARGET=local`, défaut) | **hébergé** (`=hosted`) |
 |---|---|---|
 | **Où** | Mac/PC, `pnpm dev` sur `localhost:5173` | VPS, `https://eurio-admin.musubi.dev` |
 | **Auth** | Bearer PAT depuis `.env.local` (gitignored) | Cookie OIDC posé par eurio-api après Authentik |
-| **Heavy** | ML API local `:8042` (crops, scrape, training) | aucun heavy lifting (mixed content interdit en HTTPS) |
-| **Audience** | dev (toi, futur·es collègues sur leurs machines) | toi + tel + admins occasionnel·les |
-| **Features** | tout : édition + heavy compute + reviews fast-iter | consultation + users/tokens + KPIs read-mostly |
-| **Mobile** | non | **oui, obligatoire** |
+| **Heavy ML `:8042`** | actif (crops, scrape, training, lab, bench…) | **grisé + notice** (`hasLocalMlApi`=false ; mixed-content interdit) |
+| **Features légères** | toutes | toutes (review consultation, users, tokens, KPIs, édition métadonnées) |
+| **Mobile** | non | oui |
 
-→ Si une feature appelle le ML API local OU itère vite sur des crops → `studio-local`.
-→ Si c'est consultation / admin léger consultable depuis un mobile → `admin-vps`.
+- **Auth-adapter** : `studio-local/src/shared/api/eurio-api.ts` choisit Bearer (pat) vs
+  cookie (`credentials:'include'`) selon `AUTH_MODE` dérivé de `VITE_DEPLOY_TARGET`.
+- **Capacité `hasLocalMlApi`** : `stores/capabilities.ts` (baseline `deploy-target` + ping
+  `:8042/health` en local). Les **routes lourdes** sont marquées `meta.heavy` (`app/router.ts`) ;
+  `AppLayout` grise la nav et rend `LocalOnlyNotice` à leur place quand `hasLocalMlApi` est faux.
+- **Ajouter une feature lourde** (tape `:8042`) : marque sa route `meta: { heavy: true }` +
+  l'item nav `heavy: true`. Pas besoin de gérer le gating ailleurs. Aucune feature n'est
+  « interdite » par mode — le lourd se grise tout seul en hébergé.
 
-Détail complet + diagrammes + workflow PAT : [`docs/work-in-progress/auth-redesign/ARCHITECTURE.md`](docs/work-in-progress/auth-redesign/ARCHITECTURE.md).
+Cible/raisonnement complet : `docs/work-in-progress/model-b/README.md` §Front.
 
 ### Déploiement admin
 
-- **`admin-vps`** : déployé sur le VPS via `infra/eurio-admin/` (nginx static derrière Traefik, image rebuild via `docker compose up -d --build`). Servi à `https://eurio-admin.musubi.dev`. Pas de Vercel.
-- **`studio-local`** : **jamais déployé**. Tourne uniquement en `pnpm dev` sur Mac/PC. C'est l'outil de travail dev.
-- **Vercel** : seul `packages/proto/` y est déployé (prototype design en prebuilt, cf. `go-task proto:deploy`). `studio-local` et `admin-vps` n'utilisent **pas** Vercel.
+- **Front hébergé** (`studio-local` mode hosted) : déployé sur le VPS via `infra/eurio-admin/`
+  (nginx static derrière Traefik). Rebuild = `cd /opt/eurio/infra/eurio-admin && direnv exec
+  /opt/eurio docker compose up -d --build` (les build args Supabase publics viennent de l'env SOPS).
+  Servi à `https://eurio-admin.musubi.dev`. Pas de Vercel.
+- **Front local** (`studio-local` mode local) : `pnpm dev` sur Mac/PC, jamais déployé — c'est
+  le même codebase, juste lancé avec PAT + ML local.
+- **Vercel** : seul `packages/proto/` y est déployé (prototype design en prebuilt, cf.
+  `go-task proto:deploy`).
 - `ml/` est un projet Python standalone, **pas** dans le workspace pnpm.
 
 ## Règles non-négociables
@@ -73,14 +79,13 @@ Détail complet + diagrammes + workflow PAT : [`docs/work-in-progress/auth-redes
 ### R0. Pas de dette technique
 Jamais de shortcut qui crée de la dette. Construire proprement depuis le POC. Si une solution propre n'est pas claire, on discute avant d'implémenter, pas après.
 
-### R0bis. Frontend dual — choisir le bon package
+### R0bis. Front unique — gater le lourd, pas le séparer
 
-Avant de toucher à du code front, demande-toi : **est-ce que ça appelle le ML API local, ou pas ?**
-
-- **Oui** → `admin/packages/studio-local/`
-- **Non, et c'est consultable / admin léger** → `admin/packages/admin-vps/`
-
-Ne JAMAIS ajouter une feature qui appelle `http://127.0.0.1:8042` dans `admin-vps/` : le navigateur bloquera (mixed content depuis HTTPS). Spec complète : `docs/work-in-progress/auth-redesign/ARCHITECTURE.md`.
+Il n'y a **qu'un** front (`admin/packages/studio-local`). Avant d'ajouter une feature qui
+appelle le ML API local (`http://127.0.0.1:8042`) : marque sa **route** `meta: { heavy: true }`
+et son **item nav** `heavy: true`. Elle marche en local et se grise automatiquement en hébergé
+(`hasLocalMlApi` faux) — `AppLayout` rend `LocalOnlyNotice`. Ne réintroduis **pas** un second
+package front. Spec : `docs/work-in-progress/model-b/README.md` §Front.
 
 ### R1. Proto-first design (STRICT)
 
