@@ -154,8 +154,32 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--limit", type=int, default=None, help="Cap discovered items.")
     p.add_argument("--db", type=Path, default=_DEFAULT_DB,
                    help=f"Path to the SQLite store (default: {_DEFAULT_DB}).")
+    p.add_argument("--push", action="store_true",
+                   help="Modèle B (C6a) : lit/écrit une réplique read-only "
+                        "(pull MinIO, sans lease) et POST le run au serveur "
+                        "canonique via /ingest/run. Sans ce flag : Modèle A "
+                        "(écrit la DB Mac canonique, comportement par défaut). "
+                        "Requiert EURIO_API_URL (VPS) + EURIO_API_TOKEN (PAT "
+                        "scope ingest:run).")
     p.add_argument("-v", "--verbose", action="store_true", help="DEBUG-level logs.")
     return p
+
+
+def _push_run_to_server(store, run_id: str) -> None:
+    """Modèle B : POST le run au serveur canonique via /ingest/run, imprime le bilan."""
+    from client.runbatch import push_run
+
+    res = push_run(store._connection(), run_id)  # noqa: SLF001
+    print()
+    if res.get("already_applied"):
+        print(f"[model-b] push {run_id} → déjà appliqué (no-op idempotent)")
+    else:
+        counts = res.get("counts", {})
+        total = sum(counts.values()) if isinstance(counts, dict) else 0
+        print(f"[model-b] push {run_id} → {total} ligne(s) appliquée(s) au canonique")
+        for table, n in (counts or {}).items():
+            if n:
+                print(f"            {table:<32} {n}")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -165,7 +189,20 @@ def main(argv: list[str] | None = None) -> int:
         format="%(message)s",
     )
 
-    store = Store(args.db)
+    if args.push and args.dry_run:
+        raise SystemExit("--push est incompatible avec --dry-run (rien à pousser).")
+
+    # Modèle B (C6a) : le compute lit/écrit une réplique read-only tirée de
+    # MinIO (sans poser de lease) et pousse le run au serveur canonique. Modèle A
+    # (défaut) : on écrit directement la DB Mac canonique passée via --db.
+    if args.push:
+        from client.replica import pull_replica
+
+        db_path = pull_replica()
+        print(f"[model-b] réplique read-only → {db_path}")
+    else:
+        db_path = args.db
+    store = Store(db_path)
 
     # Crop-on-demand path : crop a previous --download-only run. No adapter
     # load (no eBay token needed), no discovery — just the deferred crop steps.
@@ -185,6 +222,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"current_step  {row['current_step']}")
             if row["error_summary"]:
                 print(f"error_summary {row['error_summary']}")
+            if args.push:
+                _push_run_to_server(store, args.crop_pending)
             return 1 if row["status"] == "failed" else 0
         return 0
 
@@ -297,6 +336,9 @@ def main(argv: list[str] | None = None) -> int:
     print(f"n_errors         {row['n_errors']}")
     if row["error_summary"]:
         print(f"error_summary    {row['error_summary']}")
+
+    if args.push:
+        _push_run_to_server(store, run_id)
 
     return 1 if row["status"] == "failed" else 0
 
