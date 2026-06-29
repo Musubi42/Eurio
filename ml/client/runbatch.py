@@ -184,12 +184,62 @@ def push_run(conn: sqlite3.Connection, run_id: str, *, poster=None) -> dict[str,
     return poster("/ingest/run", batch)
 
 
+def _rebuild_state_current(conn: sqlite3.Connection, asset_ids: list[str]) -> None:
+    """Recale ``image_state_current`` sur le dernier event de chaque asset touché.
+
+    ``image_state_current`` est une table DÉRIVÉE (état courant par asset) dont
+    ``last_event_id`` pointe vers ``image_state_events.id``. Comme l'ingest
+    remplace les events du run (delete + ré-insert avec de NOUVEAUX id autoinc),
+    ces pointeurs deviennent pendants → on les reconstruit ici, en répliquant la
+    sémantique de ``store.events.emit_state_event`` (COALESCE sur eurio_id/target).
+    On lit l'historique RÉEL post-apply (dernier event par ``created_at`` puis
+    ``id``), donc le résultat est correct même en ré-application out-of-order.
+    """
+    for i in range(0, len(asset_ids), _IN_CHUNK):
+        chunk = asset_ids[i : i + _IN_CHUNK]
+        ph = ",".join("?" * len(chunk))
+        conn.execute(
+            f"""
+            INSERT INTO image_state_current
+                (asset_id, current_state, eurio_id, target_eurio_id,
+                 last_event_id, actor, state_since)
+            SELECT e.asset_id, e.to_state, e.eurio_id, e.target_eurio_id,
+                   e.id, e.actor, e.created_at
+            FROM image_state_events e
+            WHERE e.asset_id IN ({ph})
+              AND e.id = (
+                  SELECT x.id FROM image_state_events x
+                  WHERE x.asset_id = e.asset_id
+                  ORDER BY x.created_at DESC, x.id DESC LIMIT 1
+              )
+            ON CONFLICT(asset_id) DO UPDATE SET
+                current_state=excluded.current_state,
+                eurio_id=COALESCE(excluded.eurio_id, image_state_current.eurio_id),
+                target_eurio_id=COALESCE(excluded.target_eurio_id,
+                                         image_state_current.target_eurio_id),
+                last_event_id=excluded.last_event_id,
+                actor=excluded.actor,
+                state_since=excluded.state_since
+            """,
+            chunk,
+        )
+
+
 def ingest_run(conn: sqlite3.Connection, batch: dict[str, Any]) -> dict[str, Any]:
     """Applique un run-batch au canonique en UNE transaction, idempotent.
 
     Suppose une connexion en autocommit (``isolation_level=None``, style ``Store``) :
     on ouvre une transaction explicite ``BEGIN IMMEDIATE`` (cf.
     [[feedback_store_autocommit_unique]]). Re-POST du même ``batch_sha`` = no-op.
+
+    ``PRAGMA defer_foreign_keys`` reporte la vérification des FK au COMMIT : (1) le
+    DELETE des events du run, référencés par ``image_state_current.last_event_id``,
+    ne casse plus en cours de transaction (on recale ``image_state_current`` juste
+    après, cf. ``_rebuild_state_current``) ; (2) les violations FK HISTORIQUES déjà
+    présentes dans le canonique (orphelins de prune) ne sont pas comptées par le
+    compteur deferred, donc elles ne bloquent pas un batch sain. Le serveur tourne
+    ``foreign_keys=ON`` : un batch qui introduirait une VRAIE violation est bien
+    rejeté au COMMIT.
     """
     run_id = batch["run_id"]
     tables = batch["tables"]
@@ -203,6 +253,7 @@ def ingest_run(conn: sqlite3.Connection, batch: dict[str, Any]) -> dict[str, Any
 
     counts: dict[str, int] = {}
     conn.execute("BEGIN IMMEDIATE")
+    conn.execute("PRAGMA defer_foreign_keys=ON")
     try:
         for table in _TABLE_ORDER:
             counts[table] = _upsert(conn, table, tables.get(table, []))
@@ -220,6 +271,12 @@ def ingest_run(conn: sqlite3.Connection, batch: dict[str, Any]) -> dict[str, Any
                 [[e[c] for c in cols] for e in events],
             )
         counts[_EVENTS] = len(events)
+
+        # Les events viennent d'être ré-insérés avec de nouveaux id autoinc :
+        # recale image_state_current (FK last_event_id) sur les assets touchés.
+        affected_assets = sorted({e["asset_id"] for e in events})
+        if affected_assets:
+            _rebuild_state_current(conn, affected_assets)
 
         conn.execute(
             "INSERT INTO ingested_runs (run_id, batch_sha, counts_json) "

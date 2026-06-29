@@ -185,3 +185,54 @@ def test_ingest_scopes_to_run_and_preserves_later_events(tmp_path):
     assert dconn.execute(
         "SELECT COUNT(*) FROM source_images WHERE run_id='other_run'"
     ).fetchone()[0] == 2
+
+
+def test_reingest_repoints_image_state_current_under_fk_on(tmp_path):
+    """Régression : re-ingest d'un run dont les events sont référencés par
+    ``image_state_current.last_event_id`` ne doit PAS casser la FK (FK ON serveur).
+
+    L'ingest remplace les events (delete + ré-insert avec de nouveaux id autoinc) ;
+    sans recalage de ``image_state_current``, le DELETE viole la FK. On vérifie
+    que le chemin réussit et que ``image_state_current`` repointe sur un event valide
+    reflétant le dernier état.
+    """
+    src = Store(tmp_path / "src.db")
+    sconn = src._connection()  # noqa: SLF001
+    _seed_run(sconn)
+    batch1 = export_run(sconn, RUN)
+
+    dst = Store(tmp_path / "dst.db")  # FK ON (cf. store.connection)
+    dconn = dst._connection()  # noqa: SLF001
+    ingest_run(dconn, batch1)
+
+    asset = f"a_{RUN}_0_0"
+    # image_state_current pointe désormais sur un event de ce run (via le recalage).
+    cur = dconn.execute(
+        "SELECT last_event_id, current_state FROM image_state_current WHERE asset_id=?",
+        (asset,),
+    ).fetchone()
+    assert cur is not None and cur["last_event_id"] is not None
+
+    # batch2 : même run, un event SUPPLÉMENTAIRE plus récent → sha différent →
+    # force le delete+reinsert (le cas qui cassait la FK).
+    batch2 = export_run(sconn, RUN)
+    batch2["tables"]["image_state_events"].append({
+        "asset_id": asset, "from_state": "queued", "to_state": "resolved",
+        "actor": "human", "reason": "test", "eurio_id": None,
+        "target_eurio_id": None, "run_id": RUN, "detail_json": None,
+        "created_at": "2099-01-01 00:00:00",
+    })
+
+    res = ingest_run(dconn, batch2)  # ne doit PAS lever (FK ON)
+    assert res["already_applied"] is False
+
+    # image_state_current repointé sur un event valide = le plus récent (resolved).
+    row = dconn.execute(
+        "SELECT sc.current_state, sc.last_event_id, e.to_state "
+        "FROM image_state_current sc JOIN image_state_events e ON e.id=sc.last_event_id "
+        "WHERE sc.asset_id=?",
+        (asset,),
+    ).fetchone()
+    assert row is not None, "last_event_id pendant (FK cassée)"
+    assert row["current_state"] == "resolved"
+    assert row["to_state"] == "resolved"
