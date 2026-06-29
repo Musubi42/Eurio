@@ -1,51 +1,92 @@
-"""Réplique read-only de eurio.db pour le calcul (Modèle B, chunk C3).
+"""Réplique read-only de eurio.db pour le calcul (Modèle B — R2 : tirée DU VPS).
 
 Le calcul lourd (scraping/crop/dino/dataset) lit une **copie locale** du canonique
-pour garder la vitesse (dedup, prepare) sans round-trips HTTP. On tire l'objet
-``eurio-db/eurio.db`` depuis MinIO **sans poser de lease** (lecture seule pure) et
-on vérifie son SHA. Aucune écriture ne passe par là : les résultats remontent par
-run-batch (``client.runbatch.push_run``).
+pour garder la vitesse (dedup, prepare) sans round-trips HTTP. On tire la réplique
+**directement du writer unique** via l'API VPS (``GET /db/replica`` + son sha), on
+vérifie l'intégrité, et c'est tout — **plus de détour MinIO** (le bucket `eurio-db`
++ le lease Model A sont retirés en R2 ; MinIO ne garde que les images). Aucune
+écriture ne passe par là : les résultats remontent par run-batch
+(``client.runbatch.push_run`` → ``POST /ingest/run``).
 
-NB : sous Modèle A la copie MinIO est le canonique ; après le cutover (C8) elle
-devient le backup que le serveur pousse. Si on veut une réplique strictement
-fraîche post-cutover, on ajoutera un ``GET /db/snapshot`` côté serveur (online
-backup) — pour l'instant la copie MinIO suffit (l'ingest dédup par clé naturelle).
+Le serveur sert un snapshot **cohérent** (``VACUUM INTO`` sous WAL, cf.
+``serving.db_routes``) — la réplique reflète l'état frais du canonique au pull.
 """
 from __future__ import annotations
 
 import argparse
+import hashlib
 import sqlite3
 from pathlib import Path
 
-from store import lease as _lease
+from client import http as _http
 
-_DEFAULT_REPLICA = _lease._ML_ROOT / "state" / "eurio.replica.db"
+_ML_ROOT = Path(__file__).resolve().parent.parent
+_DEFAULT_REPLICA = _ML_ROOT / "state" / "eurio.replica.db"
+
+_REPLICA_PATH = "/db/replica"
+_REPLICA_SHA_PATH = "/db/replica/sha"
 
 
-def pull_replica(dest: Path | None = None, *, client=None) -> Path:
-    """Télécharge une réplique read-only de eurio.db depuis MinIO + vérifie le SHA.
+def _sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
 
-    ``client`` injectable (tests). Retourne le chemin de la réplique. Lève si le
-    SHA téléchargé ne correspond pas au SHA distant, ou si aucune DB distante.
+
+def _drop_sidecars(db: Path) -> None:
+    """Supprime -wal/-shm : un WAL périmé réappliqué sur une DB fraîchement
+    pull-ée corromprait la base. À appeler avant/après remplacement du fichier."""
+    for suffix in ("-wal", "-shm"):
+        sidecar = db.with_name(db.name + suffix)
+        if sidecar.exists():
+            sidecar.unlink()
+
+
+class _ApiTransport:
+    """Transport HTTP par défaut : tire la réplique de l'API VPS (PAT bearer)."""
+
+    def sha(self) -> str | None:
+        return _http.get_json(_REPLICA_SHA_PATH).get("sha")
+
+    def download(self, dest: Path) -> str | None:
+        # Retourne le sha annoncé par l'en-tête (X-Eurio-DB-Sha256) s'il est présent.
+        return _http.download(_REPLICA_PATH, dest) or None
+
+
+def pull_replica(dest: Path | None = None, *, transport=None) -> Path:
+    """Télécharge une réplique read-only de eurio.db depuis le VPS + vérifie le SHA.
+
+    ``transport`` injectable (tests) — objet exposant ``sha()`` et ``download(dest)``.
+    Retourne le chemin de la réplique. Lève si le SHA téléchargé ne correspond pas
+    au SHA annoncé par le serveur.
     """
     dest = Path(dest) if dest else _DEFAULT_REPLICA
     dest.parent.mkdir(parents=True, exist_ok=True)
-    client = client or _lease._s3()
+    transport = transport or _ApiTransport()
 
-    remote_sha = _lease._get_text(client, _lease.SHA_KEY)
-    if remote_sha is None:
+    expected_sha = transport.sha()
+    if not expected_sha:
         raise RuntimeError(
-            "Aucune DB distante dans MinIO (bucket eurio-db) — rien à répliquer."
+            "Le serveur n'a pas renvoyé de sha de réplique (GET /db/replica/sha) — "
+            "canonique indisponible ?"
         )
-    _lease._drop_sidecars(dest)
+    _drop_sidecars(dest)
     tmp = dest.with_suffix(".db.replica-tmp")
-    client.download_file(_lease.BUCKET, _lease.DB_KEY, str(tmp))
-    got = _lease._sha256(tmp)
-    if got != remote_sha:
+    header_sha = transport.download(tmp)
+    got = _sha256(tmp)
+    # Vérif contre le sha du endpoint /sha (source d'autorité) ET, si fourni,
+    # contre l'en-tête du download (cohérence du même snapshot servi).
+    if got != expected_sha or (header_sha and header_sha != got):
         tmp.unlink(missing_ok=True)
-        raise RuntimeError(f"Intégrité réplique : sha {got} ≠ attendu {remote_sha}.")
+        raise RuntimeError(
+            f"Intégrité réplique : sha {got} ≠ attendu {expected_sha}"
+            + (f" (en-tête download {header_sha})" if header_sha else "")
+            + "."
+        )
     tmp.replace(dest)
-    _lease._drop_sidecars(dest)
+    _drop_sidecars(dest)
     return dest
 
 
