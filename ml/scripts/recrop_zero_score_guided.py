@@ -56,8 +56,8 @@ def main() -> int:
     ap.add_argument("--dry", action="store_true", help="aperçu, aucune écriture")
     ap.add_argument("--limit", type=int, default=None, help="traiter au plus N source_images")
     ap.add_argument("--push", action="store_true",
-                    help="Modèle B (C6b) : recrop sur une réplique read-only (pull "
-                         "MinIO, sans lease) puis POST le run au canonique via "
+                    help="Modèle B : recrop sur une réplique read-only (pull "
+                         "depuis le VPS) puis POST le run au canonique via "
                          "/ingest/run. Sans ce flag : écrit la DB Mac (Modèle A).")
     args = ap.parse_args()
 

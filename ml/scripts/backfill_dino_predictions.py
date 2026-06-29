@@ -59,8 +59,8 @@ def main() -> int:
     )
     parser.add_argument(
         "--push", action="store_true",
-        help="Modèle B (C6b) : backfill sur une réplique read-only (pull MinIO, "
-             "sans lease) puis POST les prédictions au canonique via /ingest/run. "
+        help="Modèle B : backfill sur une réplique read-only (pull depuis le "
+             "VPS) puis POST les prédictions au canonique via /ingest/run. "
              "Sans ce flag : écrit la DB Mac (Modèle A).",
     )
     parser.add_argument("--verbose", "-v", action="store_true")

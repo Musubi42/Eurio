@@ -4,14 +4,14 @@
   token valide ; 401 après révocation. (module serving.auth legacy, non utilisé par
   ingest_routes depuis A1.)
 - C3 : ``POST /ingest/run`` applique un run-batch (idempotent) + ``GET`` statut ;
-  ``push_run`` exporte et POST ; en-têtes HTTP (bearer) ; ``pull_replica`` (fake S3).
+  ``push_run`` exporte et POST ; en-têtes HTTP (bearer) ; ``pull_replica`` (R2 :
+  tirée du VPS via un transport HTTP injecté).
   Les routes /ingest sont protégées par require_scope("ingest:run") (PAT owner/admin).
   En test, on court-circuite via dependency_overrides sur require_principal.
 """
 from __future__ import annotations
 
 import hashlib
-import io
 import sys
 from pathlib import Path
 
@@ -169,38 +169,38 @@ def test_http_headers_bearer(monkeypatch):
     assert "Authorization" not in http._headers()
 
 
-# ─── C3 : réplique read-only (fake S3) ───────────────────────────────────────
+# ─── R2 : réplique read-only tirée du VPS (fake transport HTTP) ───────────────
 
 
-class _FakeS3:
+class _FakeTransport:
+    """Transport injectable : sert ``data`` + son sha (comme GET /db/replica[/sha])."""
+
     def __init__(self, data: bytes):
         self.data = data
-        self.sha = hashlib.sha256(data).hexdigest()
+        self._sha = hashlib.sha256(data).hexdigest()
 
-    def get_object(self, Bucket, Key):  # noqa: N803
-        from store import lease
+    def sha(self):
+        return self._sha
 
-        if Key == lease.SHA_KEY:
-            return {"Body": io.BytesIO(self.sha.encode())}
-        raise AssertionError(f"clé inattendue {Key}")
-
-    def download_file(self, Bucket, Key, path):  # noqa: N803
-        Path(path).write_bytes(self.data)
+    def download(self, dest):  # retourne le sha d'en-tête (cohérent)
+        Path(dest).write_bytes(self.data)
+        return self._sha
 
 
 def test_pull_replica_verifies_sha(tmp_path):
     from client.replica import pull_replica
 
-    dest = pull_replica(tmp_path / "replica.db", client=_FakeS3(b"sqlite-bytes"))
+    dest = pull_replica(tmp_path / "replica.db", transport=_FakeTransport(b"sqlite-bytes"))
     assert dest.read_bytes() == b"sqlite-bytes"
 
 
 def test_pull_replica_rejects_corrupt(tmp_path):
     from client.replica import pull_replica
 
-    class _Corrupt(_FakeS3):
-        def download_file(self, Bucket, Key, path):  # noqa: N803
-            Path(path).write_bytes(b"DIFFERENT")  # sha ne matchera pas
+    class _Corrupt(_FakeTransport):
+        def download(self, dest):  # noqa: D401
+            Path(dest).write_bytes(b"DIFFERENT")  # sha ne matchera pas
+            return None
 
     with pytest.raises(RuntimeError, match="Intégrité"):
-        pull_replica(tmp_path / "replica.db", client=_Corrupt(b"original"))
+        pull_replica(tmp_path / "replica.db", transport=_Corrupt(b"original"))

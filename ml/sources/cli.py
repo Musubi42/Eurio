@@ -155,8 +155,8 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--db", type=Path, default=_DEFAULT_DB,
                    help=f"Path to the SQLite store (default: {_DEFAULT_DB}).")
     p.add_argument("--push", action="store_true",
-                   help="Modèle B (C6a) : lit/écrit une réplique read-only "
-                        "(pull MinIO, sans lease) et POST le run au serveur "
+                   help="Modèle B : lit/écrit une réplique read-only "
+                        "(pull depuis le VPS) et POST le run au serveur "
                         "canonique via /ingest/run. Sans ce flag : Modèle A "
                         "(écrit la DB Mac canonique, comportement par défaut). "
                         "Requiert EURIO_API_URL (VPS) + EURIO_API_TOKEN (PAT "
@@ -192,8 +192,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.push and args.dry_run:
         raise SystemExit("--push est incompatible avec --dry-run (rien à pousser).")
 
-    # Modèle B (C6a) : le compute lit/écrit une réplique read-only tirée de
-    # MinIO (sans poser de lease) et pousse le run au serveur canonique. Modèle A
+    # Modèle B : le compute lit/écrit une réplique read-only tirée du VPS
+    # (GET /db/replica) et pousse le run au serveur canonique. Modèle A
     # (défaut) : on écrit directement la DB Mac canonique passée via --db.
     if args.push:
         from client.replica import pull_replica
