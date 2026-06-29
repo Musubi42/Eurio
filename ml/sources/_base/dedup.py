@@ -119,6 +119,23 @@ class PendingQuoteRow:
 # ── Upserts ─────────────────────────────────────────────────────────────────
 
 
+def _link_source_image_run(
+    conn: sqlite3.Connection, source_image_id: str, run_id: str | None
+) -> None:
+    """Enregistre le lien M:N run ↔ source_image (containment par-run, Model B).
+
+    Idempotent (``INSERT OR IGNORE``, PK composée). No-op si ``run_id`` est NULL
+    (image hors run, ex. import manuel). Cf. ``source_image_runs`` dans schema.sql.
+    """
+    if run_id is None:
+        return
+    conn.execute(
+        "INSERT OR IGNORE INTO source_image_runs (source_image_id, run_id) "
+        "VALUES (?, ?)",
+        (source_image_id, run_id),
+    )
+
+
 def upsert_source_image(conn: sqlite3.Connection, row: SourceImageRow) -> str:
     """Insert or update a `source_images` row by (source, source_ref).
 
@@ -151,7 +168,10 @@ def upsert_source_image(conn: sqlite3.Connection, row: SourceImageRow) -> str:
               license=?, redistributable=?,
               is_lot_suspected=?,
               raw_payload_json=COALESCE(?, raw_payload_json),
-              run_id=COALESCE(?, run_id),
+              -- run_id = first-seen immuable (provenance). La containment par-run
+              -- est portée par source_image_runs (insérée plus bas). Un re-scrape
+              -- ne vole plus l'attribution du run d'origine. Cf. Model B parité A↔B.
+              run_id=COALESCE(run_id, ?),
               marketplace=COALESCE(marketplace, ?),
               marketplace_found_json=COALESCE(marketplace_found_json, ?),
               route_decision=COALESCE(?, route_decision),
@@ -174,6 +194,7 @@ def upsert_source_image(conn: sqlite3.Connection, row: SourceImageRow) -> str:
                 sid,
             ),
         )
+        _link_source_image_run(conn, sid, row.run_id)
         return sid
 
     sid = uuid.uuid4().hex
@@ -202,6 +223,7 @@ def upsert_source_image(conn: sqlite3.Connection, row: SourceImageRow) -> str:
             row.route_decision, row.route_reason,
         ),
     )
+    _link_source_image_run(conn, sid, row.run_id)
     return sid
 
 

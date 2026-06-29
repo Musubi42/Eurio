@@ -526,6 +526,34 @@ class StoreBase:
                 "ON coins(canonical_eurio_id) WHERE canonical_eurio_id IS NOT NULL",
             ):
                 conn.execute(index_sql)
+            # ─── Model B — backfill source_image_runs (parité A↔B) ─────────
+            # `source_image_runs` (lien M:N run↔image) est créée par schema.sql,
+            # mais le CREATE ne peuple pas les DB existantes. Reconstruit les
+            # liens depuis les deux sources d'attribution : source_images.run_id
+            # (first-seen) + image_assets.run_id (récupère les liens HISTORIQUES
+            # qu'un re-scrape avait volés — l'asset garde le run qui l'a créé).
+            # Gardé : ne tourne que si la table est vide (idempotent, one-shot).
+            already_linked = conn.execute(
+                "SELECT 1 FROM source_image_runs LIMIT 1"
+            ).fetchone()
+            if already_linked is None:
+                # Filtre anti-orphelins : ne lier que les rows dont les cibles FK
+                # existent (le canonique traîne ~503 violations FK historiques
+                # image_assets→source_runs, dette séparée C8). FK ON ici → un
+                # INSERT orphelin lèverait ; on les exclut proprement.
+                conn.execute(
+                    "INSERT OR IGNORE INTO source_image_runs (source_image_id, run_id) "
+                    "SELECT id, run_id FROM source_images "
+                    " WHERE run_id IS NOT NULL "
+                    "   AND run_id IN (SELECT id FROM source_runs)"
+                )
+                conn.execute(
+                    "INSERT OR IGNORE INTO source_image_runs (source_image_id, run_id) "
+                    "SELECT ia.source_image_id, ia.run_id FROM image_assets ia "
+                    " WHERE ia.run_id IS NOT NULL "
+                    "   AND ia.run_id IN (SELECT id FROM source_runs) "
+                    "   AND ia.source_image_id IN (SELECT id FROM source_images)"
+                )
             n_coins = conn.execute("SELECT count(*) AS n FROM coins").fetchone()["n"]
             if n_coins == 0:
                 logger.warning(

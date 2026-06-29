@@ -336,6 +336,20 @@ CREATE INDEX IF NOT EXISTS idx_source_images_run ON source_images(run_id);
 CREATE INDEX IF NOT EXISTS idx_source_images_storage_status
   ON source_images(storage_status) WHERE storage_status != 'present';
 
+-- Lien M:N run ↔ source_image (Model B, parité A↔B).
+-- `source_images` est une dimension dédupliquée globalement (1 image = 1 contenu,
+-- clé naturelle UNIQUE(source, source_ref)) : la MÊME image ré-apparaît dans N runs
+-- (re-scrape d'un groupe par la freshness queue). Sa colonne `run_id` est désormais
+-- first-seen-immuable (provenance) ; cette table porte la containment PAR-RUN qu'un
+-- run ultérieur ne peut plus voler. `export_run` scope source_images via ce lien.
+CREATE TABLE IF NOT EXISTS source_image_runs (
+  source_image_id TEXT NOT NULL REFERENCES source_images(id) ON DELETE CASCADE,
+  run_id          TEXT NOT NULL REFERENCES source_runs(id)   ON DELETE CASCADE,
+  first_seen_at   TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (source_image_id, run_id)
+);
+CREATE INDEX IF NOT EXISTS idx_source_image_runs_run ON source_image_runs(run_id);
+
 CREATE TABLE IF NOT EXISTS image_assets (
   id                       TEXT PRIMARY KEY,
   source_image_id          TEXT NOT NULL REFERENCES source_images(id) ON DELETE CASCADE,

@@ -30,6 +30,9 @@ from typing import Any
 _TABLE_ORDER = [
     "source_runs",
     "source_images",
+    # Lien M:N run↔image : après source_images ET source_runs (FK vers les deux).
+    # Porte la containment par-run (run_id de source_images = first-seen immuable).
+    "source_image_runs",
     "image_assets",
     "listing_text_signals",
     "image_asset_dino_predictions",
@@ -72,18 +75,29 @@ def _pk_cols(conn: sqlite3.Connection, table: str) -> list[str]:
 def export_run(conn: sqlite3.Connection, run_id: str) -> dict[str, Any]:
     """Collecte toutes les lignes d'un run sur le graphe de tables lourdes.
 
-    Containment : ``source_runs`` par id ; ``source_images``/``coin_market_quotes``
-    par ``run_id`` ; ``image_assets`` par ``run_id`` OU ``source_image_id`` du run
-    (couvre scrape ET recrop) ; enfants par asset/source_image ;
-    ``image_state_events`` par ``run_id`` (l'id AUTOINCREMENT est retiré).
-    Toutes les requêtes sont ``ORDER BY`` → sérialisation déterministe (sha stable).
+    Containment : ``source_runs`` par id ; ``source_images`` par le lien M:N
+    ``source_image_runs`` (PAS par ``run_id`` seul — une image re-scrapée par un run
+    ultérieur garde son ``run_id`` first-seen mais doit rester transportée par CHAQUE
+    run qui l'a touchée) ; ``coin_market_quotes`` par ``run_id`` ; ``image_assets``
+    par ``run_id`` OU ``source_image_id`` du run (couvre scrape ET recrop) ; enfants
+    par asset/source_image ; ``image_state_events`` par ``run_id`` (l'id AUTOINCREMENT
+    est retiré). Toutes les requêtes sont ``ORDER BY`` → sérialisation déterministe.
     """
     tables: dict[str, list[dict]] = {}
     tables["source_runs"] = _rows(
         conn, "SELECT * FROM source_runs WHERE id=? ORDER BY id", (run_id,)
     )
     tables["source_images"] = _rows(
-        conn, "SELECT * FROM source_images WHERE run_id=? ORDER BY id", (run_id,)
+        conn,
+        "SELECT * FROM source_images WHERE id IN ("
+        "  SELECT source_image_id FROM source_image_runs WHERE run_id=?"
+        ") ORDER BY id",
+        (run_id,),
+    )
+    tables["source_image_runs"] = _rows(
+        conn,
+        "SELECT * FROM source_image_runs WHERE run_id=? ORDER BY source_image_id",
+        (run_id,),
     )
     si_ids = [r["id"] for r in tables["source_images"]]
 
@@ -158,6 +172,11 @@ def _upsert(conn: sqlite3.Connection, table: str, rows: list[dict]) -> int:
     placeholders = ",".join("?" * len(cols))
     conflict = ",".join(pk)
     non_pk = [c for c in cols if c not in pk]
+    if table == "source_images":
+        # run_id = first-seen immuable côté canonique : ne JAMAIS l'écraser sur
+        # re-ingest (robuste même si la réplique MinIO est en retard et croit
+        # l'image neuve). La containment vit dans source_image_runs. Cf. parité A↔B.
+        non_pk = [c for c in non_pk if c != "run_id"]
     if non_pk:
         set_clause = ",".join(f"{c}=excluded.{c}" for c in non_pk)
         action = f"DO UPDATE SET {set_clause}"

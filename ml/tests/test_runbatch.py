@@ -27,9 +27,9 @@ from store import Store
 
 RUN = "run_test_1"
 _HEAVY_TABLES = [
-    "source_runs", "source_images", "image_assets", "listing_text_signals",
-    "image_asset_dino_predictions", "review_queue", "consensus_verdicts",
-    "coin_market_quotes", "image_state_events",
+    "source_runs", "source_images", "source_image_runs", "image_assets",
+    "listing_text_signals", "image_asset_dino_predictions", "review_queue",
+    "consensus_verdicts", "coin_market_quotes", "image_state_events",
 ]
 
 
@@ -48,6 +48,13 @@ def _seed_run(conn, run_id=RUN, *, item_offset=0) -> None:
             "INSERT INTO source_images (id, source, source_ref, run_id, listing_title) "
             "VALUES (?, 'ebay', ?, ?, ?)",
             (si, f"ebay_item_{i}", run_id, f"Lot {i}"),
+        )
+        # Lien M:N run↔image (containment par-run) — un run réel l'écrit via
+        # upsert_source_image ; ici on le reproduit pour le seed SQL direct.
+        conn.execute(
+            "INSERT OR IGNORE INTO source_image_runs (source_image_id, run_id) "
+            "VALUES (?, ?)",
+            (si, run_id),
         )
         conn.execute(
             "INSERT INTO listing_text_signals (source_image_id, coverage) VALUES (?, 'rich')",
@@ -185,6 +192,115 @@ def test_ingest_scopes_to_run_and_preserves_later_events(tmp_path):
     assert dconn.execute(
         "SELECT COUNT(*) FROM source_images WHERE run_id='other_run'"
     ).fetchone()[0] == 2
+
+
+def test_rescrape_overlap_preserves_first_seen_run_id(tmp_path):
+    """Parité A↔B (write-path) : une image re-scrapée par un run ultérieur garde
+    son ``run_id`` first-seen (provenance) — le run ultérieur ne VOLE plus
+    l'attribution. La containment par-run vit dans ``source_image_runs``, donc
+    ``export_run`` de CHAQUE run contient l'image partagée. Repro du cas réel
+    f981e819 (16 juin) ↔ a2ff9ffa (CY/2012) qui se partageaient 3 images.
+    """
+    from sources._base.dedup import SourceImageRow, upsert_source_image
+
+    store = Store(tmp_path / "x.db")
+    conn = store._connection()  # noqa: SLF001
+    conn.execute(
+        "INSERT OR IGNORE INTO source_registry (id, display_name, kind) "
+        "VALUES ('ebay','eBay','marketplace')"
+    )
+    for r in ("run_A", "run_B"):
+        conn.execute(
+            "INSERT INTO source_runs (id, source, kind) VALUES (?, 'ebay', 'run')", (r,)
+        )
+
+    # Run A découvre l'image (prix 10).
+    sid_a = upsert_source_image(
+        conn,
+        SourceImageRow(source="ebay", source_ref="shared_item",
+                       run_id="run_A", listing_price=10.0),
+    )
+    # Run B re-scrape la MÊME image (même source_ref) — prix rafraîchi à 12.
+    sid_b = upsert_source_image(
+        conn,
+        SourceImageRow(source="ebay", source_ref="shared_item",
+                       run_id="run_B", listing_price=12.0),
+    )
+    assert sid_a == sid_b  # dédup par (source, source_ref)
+
+    row = conn.execute(
+        "SELECT run_id, listing_price FROM source_images WHERE id=?", (sid_a,)
+    ).fetchone()
+    assert row["run_id"] == "run_A"      # first-seen immuable (PAS volé par run_B)
+    assert row["listing_price"] == 12.0  # contenu mutable bien rafraîchi par le re-scrape
+
+    links = {
+        r["run_id"] for r in conn.execute(
+            "SELECT run_id FROM source_image_runs WHERE source_image_id=?", (sid_a,)
+        )
+    }
+    assert links == {"run_A", "run_B"}   # les DEUX runs ont touché l'image
+
+    # Containment par junction : chaque run ré-exporte l'image partagée.
+    assert [r["id"] for r in export_run(conn, "run_A")["tables"]["source_images"]] == [sid_a]
+    assert [r["id"] for r in export_run(conn, "run_B")["tables"]["source_images"]] == [sid_a]
+
+
+def test_ingest_does_not_steal_run_id_server_side(tmp_path):
+    """L'UPSERT canonique ne ré-écrit JAMAIS ``source_images.run_id`` (first-seen
+    immuable), même si la réplique MinIO était en retard et croyait l'image neuve
+    (donc l'a exportée avec un run_id ultérieur). Le lien (image, run_ultérieur)
+    est néanmoins enregistré dans ``source_image_runs``.
+    """
+    dst = Store(tmp_path / "dst.db")
+    dconn = dst._connection()  # noqa: SLF001
+    dconn.execute(
+        "INSERT OR IGNORE INTO source_registry (id, display_name, kind) "
+        "VALUES ('ebay','eBay','marketplace')"
+    )
+    for r in ("run_A", "run_B"):
+        dconn.execute(
+            "INSERT INTO source_runs (id, source, kind) VALUES (?, 'ebay', 'run')", (r,)
+        )
+    # Canonique : image X appartient déjà à run_A.
+    dconn.execute(
+        "INSERT INTO source_images (id, source, source_ref, run_id) "
+        "VALUES ('X','ebay','shared','run_A')"
+    )
+    dconn.execute(
+        "INSERT INTO source_image_runs (source_image_id, run_id) VALUES ('X','run_A')"
+    )
+
+    # Réplique "en retard" : run_B porte la MÊME image X avec run_id=run_B.
+    src = Store(tmp_path / "src.db")
+    sconn = src._connection()  # noqa: SLF001
+    sconn.execute("INSERT INTO source_runs (id, source, kind) VALUES ('run_B','ebay','run')")
+    sconn.execute(
+        "INSERT OR IGNORE INTO source_registry (id, display_name, kind) "
+        "VALUES ('ebay','eBay','marketplace')"
+    )
+    sconn.execute(
+        "INSERT INTO source_images (id, source, source_ref, run_id) "
+        "VALUES ('X','ebay','shared','run_B')"
+    )
+    sconn.execute(
+        "INSERT INTO source_image_runs (source_image_id, run_id) VALUES ('X','run_B')"
+    )
+    batch = export_run(sconn, "run_B")
+
+    ingest_run(dconn, batch)
+
+    # run_id NON volé côté serveur (reste run_A).
+    assert dconn.execute(
+        "SELECT run_id FROM source_images WHERE id='X'"
+    ).fetchone()[0] == "run_A"
+    # mais le lien (X, run_B) est bien enregistré.
+    links = {
+        r[0] for r in dconn.execute(
+            "SELECT run_id FROM source_image_runs WHERE source_image_id='X'"
+        )
+    }
+    assert links == {"run_A", "run_B"}
 
 
 def test_reingest_repoints_image_state_current_under_fk_on(tmp_path):
