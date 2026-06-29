@@ -470,8 +470,15 @@ CREATE TABLE IF NOT EXISTS image_asset_dino_predictions (
   denom_2eur_score       REAL,            -- C7 pilier 2 : score 2€-ness probe DINO+bimétal
   computed_at     TEXT NOT NULL DEFAULT (datetime('now')),
   duration_ms     INTEGER,
+  -- Model B (C6b) : run_id du backfill DINO ayant produit la prédiction (sur des
+  -- assets préexistants). NULL pour les prédictions du scrape normal (collectées
+  -- par asset_id via le run parent de l'asset). export_run scope les prédictions
+  -- backfill par run_id (les assets n'appartenant pas au run de backfill).
+  run_id          TEXT REFERENCES source_runs(id) ON DELETE SET NULL,
   PRIMARY KEY (asset_id, encoder_version, anchors_kind)
 );
+CREATE INDEX IF NOT EXISTS idx_dino_pred_run ON image_asset_dino_predictions(run_id)
+  WHERE run_id IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_dino_pred_asset
   ON image_asset_dino_predictions(asset_id);

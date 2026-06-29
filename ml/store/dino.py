@@ -51,6 +51,11 @@ class DinoPredictionRow:
     denom_2eur_score: float | None = None
     duration_ms: int | None = None
     computed_at: str | None = None
+    # Model B (C6b) : run_id du backfill DINO qui a produit cette prédiction.
+    # NULL pour les prédictions du pipeline scrape normal (collectées par asset_id
+    # via le run parent de l'asset). Renseigné par run_auto_validate_dino_backfill
+    # → export_run collecte ces prédictions sur assets préexistants via run_id.
+    run_id: str | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -77,6 +82,7 @@ class DinoPredictionRow:
             "denom_2eur_score": self.denom_2eur_score,
             "duration_ms": self.duration_ms,
             "computed_at": self.computed_at,
+            "run_id": self.run_id,
         }
 
 
@@ -111,6 +117,7 @@ def _row_to_dino_prediction(r: sqlite3.Row) -> DinoPredictionRow:
         denom_2eur_score=_maybe("denom_2eur_score"),
         duration_ms=r["duration_ms"],
         computed_at=r["computed_at"],
+        run_id=_maybe("run_id"),
     )
 
 
@@ -132,11 +139,11 @@ class DinoMixin:
                   top1_country_eurio_id, top1_country_sim,
                   top2_country_eurio_id, top2_country_sim, country_spread,
                   reverse_sim, face_margin, denom_2eur_score,
-                  computed_at, duration_ms
+                  computed_at, duration_ms, run_id
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                           ?, ?, ?, ?, ?, ?, ?, ?,
                           ?, ?, ?,
-                          datetime('now'), ?)
+                          datetime('now'), ?, ?)
                 ON CONFLICT(asset_id, encoder_version, anchors_kind) DO UPDATE SET
                   anchors_count          = excluded.anchors_count,
                   top_k_json             = excluded.top_k_json,
@@ -157,7 +164,11 @@ class DinoMixin:
                   face_margin            = excluded.face_margin,
                   denom_2eur_score       = excluded.denom_2eur_score,
                   duration_ms            = excluded.duration_ms,
-                  computed_at            = datetime('now')
+                  computed_at            = datetime('now'),
+                  -- Model B : préserve l'attribution backfill (run_id) si la
+                  -- nouvelle écriture est run_id NULL (pipeline scrape normal).
+                  run_id                 = COALESCE(excluded.run_id,
+                                                    image_asset_dino_predictions.run_id)
                 """,
                 [
                     (
@@ -183,6 +194,7 @@ class DinoMixin:
                         r.face_margin,
                         r.denom_2eur_score,
                         r.duration_ms,
+                        r.run_id,
                     )
                     for r in rows
                 ],

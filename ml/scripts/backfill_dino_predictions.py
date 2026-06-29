@@ -18,6 +18,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import sys
 import time
@@ -56,6 +57,12 @@ def main() -> int:
         default=str(DB_PATH),
         help="Path to the training SQLite DB (default: ml/state/eurio.db).",
     )
+    parser.add_argument(
+        "--push", action="store_true",
+        help="Modèle B (C6b) : backfill sur une réplique read-only (pull MinIO, "
+             "sans lease) puis POST les prédictions au canonique via /ingest/run. "
+             "Sans ce flag : écrit la DB Mac (Modèle A).",
+    )
     parser.add_argument("--verbose", "-v", action="store_true")
     args = parser.parse_args()
 
@@ -66,13 +73,32 @@ def main() -> int:
     for name in ("training.foundation", "sources._base.steps.auto_validate"):
         logging.getLogger(name).setLevel(logging.INFO)
 
-    store = Store(Path(args.db))
+    if args.push:
+        from client.replica import pull_replica
+        db_path = pull_replica()
+        print(f"[model-b] réplique read-only → {db_path}")
+        store = Store(db_path)
+    else:
+        store = Store(Path(args.db))
+
+    # Model B (C6b) : stub source_runs pour CE backfill → export_run collecte les
+    # prédictions (sur assets préexistants) par run_id. ISO-timestamp = run_id unique.
+    from datetime import datetime, timezone
+    run_id = f"dino-backfill-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
+    conn = store._connection()  # noqa: SLF001
+    conn.execute(
+        "INSERT OR IGNORE INTO source_runs (id, source, kind, status, current_step, filters_json) "
+        "VALUES (?, 'dino_backfill', 'reset', 'success', 'auto_validate', ?)",
+        (run_id, json.dumps({"anchors_kind": args.kind, "force": args.force})),
+    )
+
     t0 = time.perf_counter()
     result = run_auto_validate_dino_backfill(
         store=store,
         anchors_kind=args.kind,
         force=args.force,
         limit=args.limit,
+        run_id=run_id,
     )
     dt = time.perf_counter() - t0
 
@@ -85,6 +111,15 @@ def main() -> int:
     print(f"Total time:         {dt:.1f}s")
     if result.n_predicted:
         print(f"Per-asset average:  {dt / result.n_predicted * 1000:.1f}ms")
+
+    if args.push:
+        from client.runbatch import push_run
+        res = push_run(conn, run_id)
+        if res.get("already_applied"):
+            print(f"[model-b] push {run_id} → déjà appliqué (no-op)")
+        else:
+            total = sum((res.get("counts") or {}).values())
+            print(f"[model-b] push {run_id} → {total} ligne(s) appliquée(s) au canonique")
     return 0
 
 

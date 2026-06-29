@@ -345,6 +345,62 @@ def test_recrop_run_transports_touched_parent_source_image(tmp_path):
     assert [r["id"] for r in export_run(conn, "scrape")["tables"]["source_images"]] == ["X"]
 
 
+def test_dino_backfill_predictions_transported_by_run_id(tmp_path):
+    """C6b dino : un backfill DINO produit des prédictions sur des assets
+    PRÉEXISTANTS (anciens runs). La prédiction est taguée run_id=backfill →
+    export_run la collecte par run_id (l'asset n'appartient pas au backfill run,
+    donc le scope par asset_id seul ne la verrait pas). Ingest idempotent.
+    """
+    def _seed_scrape(conn):
+        conn.execute(
+            "INSERT OR IGNORE INTO source_registry (id, display_name, kind) "
+            "VALUES ('ebay','eBay','marketplace')"
+        )
+        conn.execute("INSERT INTO source_runs (id, source, kind) VALUES ('scrape','ebay','run')")
+        conn.execute(
+            "INSERT INTO source_images (id, source, source_ref, run_id) "
+            "VALUES ('X','ebay','r','scrape')"
+        )
+        conn.execute("INSERT INTO source_image_runs (source_image_id, run_id) VALUES ('X','scrape')")
+        conn.execute(
+            "INSERT INTO image_assets (id, source_image_id, run_id, crop_index, "
+            "storage_path, storage_status) VALUES ('a1','X','scrape',0,'p.png','present')"
+        )
+
+    src = Store(tmp_path / "src.db")
+    sconn = src._connection()  # noqa: SLF001
+    _seed_scrape(sconn)
+    # Backfill DINO : stub run + prédiction sur l'asset préexistant 'a1', taguée run_id.
+    sconn.execute(
+        "INSERT INTO source_runs (id, source, kind, status) "
+        "VALUES ('dino-bf','dino_backfill','reset','success')"
+    )
+    sconn.execute(
+        "INSERT INTO image_asset_dino_predictions "
+        "(asset_id, encoder_version, anchors_kind, anchors_count, top_k_json, run_id) "
+        "VALUES ('a1','dinov2-vits14','2eur_commemo',10,'[]','dino-bf')"
+    )
+
+    batch = export_run(sconn, "dino-bf")
+    preds = batch["tables"]["image_asset_dino_predictions"]
+    assert [d["asset_id"] for d in preds] == ["a1"]      # collectée via run_id
+    assert preds[0]["run_id"] == "dino-bf"
+    assert batch["tables"]["source_images"] == []        # le backfill ne possède aucune image
+    assert batch["tables"]["image_assets"] == []
+
+    # Ingest dans un canonique qui a déjà l'asset (poussé par le run scrape).
+    dst = Store(tmp_path / "dst.db")
+    dconn = dst._connection()  # noqa: SLF001
+    _seed_scrape(dconn)
+    res = ingest_run(dconn, batch)
+    assert res["already_applied"] is False
+    assert dconn.execute(
+        "SELECT run_id FROM image_asset_dino_predictions WHERE asset_id='a1'"
+    ).fetchone()[0] == "dino-bf"
+    # Idempotent : re-POST = no-op.
+    assert ingest_run(dconn, batch)["already_applied"] is True
+
+
 def test_reingest_repoints_image_state_current_under_fk_on(tmp_path):
     """Régression : re-ingest d'un run dont les events sont référencés par
     ``image_state_current.last_event_id`` ne doit PAS casser la FK (FK ON serveur).

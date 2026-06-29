@@ -122,12 +122,27 @@ def export_run(conn: sqlite3.Connection, run_id: str) -> dict[str, Any]:
         "ORDER BY source_image_id",
         si_ids,
     ) if si_ids else []
-    tables["image_asset_dino_predictions"] = _rows_in(
+    # DINO predictions : par asset du run (scrape normal, run_id NULL) OU par run_id
+    # (backfill DINO sur assets PRÉEXISTANTS — leurs assets n'appartiennent pas au
+    # run de backfill, seul run_id les rattache). Merge dédupliqué par PK
+    # (asset_id, encoder_version, anchors_kind), trié → sha déterministe.
+    _dino_pk = lambda d: (d["asset_id"], d["encoder_version"], d["anchors_kind"])  # noqa: E731
+    dino_by_asset = _rows_in(
         conn,
         "SELECT * FROM image_asset_dino_predictions WHERE asset_id IN ({ph}) "
         "ORDER BY asset_id, encoder_version, anchors_kind",
         asset_ids,
     ) if asset_ids else []
+    dino_by_run = _rows(
+        conn,
+        "SELECT * FROM image_asset_dino_predictions WHERE run_id=? "
+        "ORDER BY asset_id, encoder_version, anchors_kind",
+        (run_id,),
+    )
+    _dino_seen = {_dino_pk(d) for d in dino_by_asset}
+    dino_merged = dino_by_asset + [d for d in dino_by_run if _dino_pk(d) not in _dino_seen]
+    dino_merged.sort(key=_dino_pk)
+    tables["image_asset_dino_predictions"] = dino_merged
     tables["review_queue"] = _rows_in(
         conn,
         "SELECT * FROM review_queue WHERE image_asset_id IN ({ph}) ORDER BY id",

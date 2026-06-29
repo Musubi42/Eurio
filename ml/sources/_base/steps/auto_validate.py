@@ -384,6 +384,7 @@ def run_auto_validate_dino_backfill(
     anchors_kind: str = "2eur_commemo",
     force: bool = False,
     limit: int | None = None,
+    run_id: str | None = None,
 ) -> AutoValidateResult:
     """Standalone backfill — used by ml/scripts/backfill_dino_predictions.py.
 
@@ -413,6 +414,7 @@ def run_auto_validate_dino_backfill(
         banks={anchors_kind: bank},
         force=force,
         store=store,
+        run_id=run_id,
     )
 
 
@@ -589,6 +591,7 @@ def _run_inner(
     banks: dict[str, AnchorBank],
     force: bool,
     store=None,
+    run_id: str | None = None,
 ) -> AutoValidateResult:
     """Boucle interne : encode chaque crop une fois, matche contre chaque
     banque dont le kind est en scope pour le target du listing.
@@ -737,6 +740,12 @@ def _run_inner(
                             all_pred.denom_2eur_score = ds
                             denom_writes.append((decide_denom(ds), aid))
 
+        # Model B (C6b) : tag les prédictions avec le run_id du backfill (sur des
+        # assets préexistants) pour qu'export_run les collecte par run_id. NULL au
+        # run scrape normal (collectées par asset_id via le run parent de l'asset).
+        if run_id is not None:
+            for p in predictions:
+                p.run_id = run_id
         rows_to_write.extend(predictions)
         predicted_ids.append(aid)
         n_predicted += len(predictions)

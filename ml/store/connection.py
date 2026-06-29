@@ -188,6 +188,18 @@ class StoreBase:
                     decl="TEXT NOT NULL DEFAULT 'auto' "
                          "CHECK (lane_source IN ('auto','human'))",
                 )
+            # Model B (C6b) pre-bootstrap : run_id sur image_asset_dino_predictions
+            # AVANT executescript, car schema.sql crée idx_dino_pred_run ON (run_id)
+            # → planterait sur "no such column: run_id" pour les DB antérieures.
+            # Fresh DB : la table n'existe pas, executescript la crée avec run_id.
+            if conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' "
+                "AND name='image_asset_dino_predictions'"
+            ).fetchone():
+                self._ensure_column(
+                    conn, table="image_asset_dino_predictions", column="run_id",
+                    decl="TEXT REFERENCES source_runs(id) ON DELETE SET NULL",
+                )
             conn.executescript(schema)
             self._ensure_column(
                 conn,
