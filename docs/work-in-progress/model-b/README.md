@@ -94,6 +94,9 @@ des **répliques locales** (copies de travail) et **poussent** leurs runs au VPS
 > **Priorité** : R1 (front, le plus visible/structurant) et R2 (cohérence archi —
 > tuer le dernier reste Model A). R3/R4 ensuite.
 
+> 🛠️ **Pour exécuter** : briefs turn-key par chantier (avec accès SSH serveur,
+> deploy, tests, usage workflows) dans [`HANDOFF-NEXT-SESSIONS.md`](./HANDOFF-NEXT-SESSIONS.md).
+
 ## Garde-fous / invariants à ne pas casser
 
 - Le compute **n'écrit jamais** le canonique en direct → toujours réplique + `--push`.
