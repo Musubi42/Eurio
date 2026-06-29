@@ -17,7 +17,7 @@
 
 ### 0.1 C1.5 — Bootstrap déploiement `eurio-api` (sous-chunk)
 
-À faire **avant** d'écrire la moindre route OIDC. Le code de l'image `infra/eurio-api/` existe (Dockerfile + compose + entrypoint) mais n'est pas déployé (C4 model-b en pause depuis l'ouverture de cette refonte).
+À faire **avant** d'écrire la moindre route OIDC. Le code de l'image `infra/eurio-api/` existe (Dockerfile + compose + entrypoint) mais n'est pas déployé (C4 model-b en pause depuis l'ouverture de cette refonte). **[MAJ 2026-06-29] : C4 model-b est désormais déployé** (image `f623f630…`, conteneur `eurio-api` live, healthz 200, cf. `docs/work-in-progress/model-b/HANDOFF-2026-06-29.md §2`). Ce sous-chunk est donc obsolète au-delà du sub-§1 (secrets) qui est devenu SOPS+direnv.
 
 Étapes :
 

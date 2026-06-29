@@ -25,8 +25,10 @@
 1. Le **tuyau serveur du Modèle B existe et est testé** : `ml/client/` (runbatch
    + replica + http) + `POST /ingest/run` + `ml/serving/server_serve.py` lean +
    `infra/eurio-api/` (Docker/Traefik/OIDC). Chunks C1–C3 ✅, C4 ✅ **en code**.
-2. **Mais C4 n'est pas déployé** (`infra/eurio-api/data/` absent → conteneur
-   jamais lancé, DB canonique VPS non seedée).
+2. ~~**Mais C4 n'est pas déployé**~~ **C4 déployé le 2026-06-29** : conteneur
+   `eurio-api` live (image `f623f630…`, embarque a8bd7760 + H1–TC3), `/healthz` 200,
+   boot propre (`db_migrate: no pending migration`). DB VPS seedée
+   (`infra/eurio-api/data/eurio.db` ~100 MB).
 3. **C6 est à zéro** : aucun module de calcul (scraping/recrop/DINO/training)
    n'utilise `push_run`/`pull_replica` — tous écrivent `Store(local)` en direct.
    **C'est le verrou** : tant que C6 n'existe pas, le Modèle B n'a aucun effet.
@@ -87,7 +89,7 @@ mais inerte. La data-layer-unification a fait écrire l'API VPS dans **sa propre
 | **C1 run-batch** | ✅ codé + testé | `ml/client/runbatch.py` (`export_run`/`ingest_run`/`push_run`/`batch_sha`), table `ingested_runs` (`state/schema.sql:1728`), `tests/test_runbatch.py` + `test_model_b_c2_c3.py` |
 | **C2 auth bearer** | ✅ codé, ⚠ superseded | `ml/serving/auth.py` (`require_token`, `api_tokens`) — mais auth-redesign a livré **PAT** (`require_principal`, `pat_tokens`, `create-pat`, `grant-owner`). Le bearer machine est **legacy**. |
 | **C3 SDK client** | ✅ codé + testé | `ml/client/http.py` (urllib, `EURIO_API_URL`+`EURIO_API_TOKEN`), `ml/client/replica.py` (`pull_replica` MinIO→`eurio.replica.db`, sans lease) |
-| **C4 serve-API + infra** | ✅ **codé**, ❌ **pas déployé** | `ml/serving/server_serve.py` (lean, `require_principal`, ingest core) ; `infra/eurio-api/{Dockerfile,docker-compose.yml,entrypoint.sh}` (Traefik, OIDC, SOPS). `data/` absent = jamais lancé. |
+| **C4 serve-API + infra** | ✅ codé, ✅ **déployé 2026-06-29** | `ml/serving/server_serve.py` (lean, `require_principal`, ingest core) ; `infra/eurio-api/{Dockerfile,docker-compose.yml,entrypoint.sh}` (Traefik, OIDC, SOPS). Conteneur live `eurio-api` (image `f623f630…`), seed DB OK. |
 | **Thin-client classe A** | 🟡 partiel | Portés vers `eurioApi` (Bearer PAT, `eurio-api.musubi.dev`) : **coins** (CRUD complet), **peer_arbitration**, **operations**, **audit**, **review LECTURES**. Lean `serving/review_queue/` (read-only) monté. |
 
 > Autrement dit : la moitié « plomberie + interactif lecture » du Modèle B est
@@ -169,26 +171,73 @@ Restera à cadrer **au C8** (pas avant) :
 - Le canonique VPS a-t-il été seedé (`go-task ml:db:release` récent ? objet `eurio-db/eurio.db` présent dans MinIO ?).
 - Comment réconcilier les deltas Mac (runs calcul) → VPS ? `push_run` rétroactif vs dump+restore.
 
-### 4.2 Auth `/ingest/run` (legacy vs PAT)
-Le seul mécanisme post-auth-redesign pour Mac/PC est le **PAT** ; or `/ingest/run`
-exige un `api_token` legacy. **Décision** : migrer `ingest_routes` vers
-`require_scope("ingest:run")` **maintenant** (recommandé, 30 min, débloque C6 au PAT)
-ou garder un `api_token` machine jusqu'à C8.
+### 4.2 Auth `/ingest/run` (legacy vs PAT) — TRANCHÉ ✅
+> **Décision PO 2026-06-29** : **migration vers `require_scope("ingest:run")`**
+> appliquée (chunk A1 livré + déployé sur VPS, cf. `HANDOFF §2`). L'`api_token`
+> machine legacy est désormais inutile pour `/ingest/run`. Un PAT
+> `eurio_…` (rôle owner/admin) avec scope `ingest:run` est requis côté Mac/PC
+> pour C6.
 
-### 4.3 `lab_routes` : classe A (VPS) ou local-only ?
-Les opérations captures/csv/sync/adb sont **Mac par nature**. Option (a) : garder
-le lab **local-only** (front conserve ML_API, `lab` = classe B/locale) — **ne bloque
-pas le Modèle B**. Option (b) : split metadata→VPS / filesystem→local (refacto L).
-**Reco : (a)** pour ne pas bloquer.
+### 4.3 `lab_routes` : classe A (VPS) ou local-only ? — TRANCHÉ ✅
+> **Décision PO 2026-06-29** : **option (a) local-only**. Le lab reste sur
+> `ML_API` (Mac/PC), `lab_routes` ne sera **pas** porté au VPS dans le périmètre
+> Modèle B. Justifications : (i) IterationRunner = subprocess + datasets locaux +
+> `adb push` → contraintes physiques Mac/PC ; (ii) opération mono-utilisateur
+> (toi) donc pas de besoin multi-device ; (iii) éviter la dette d'un split
+> metadata/filesystem coûteux pour un gain nul à court terme. Le front
+> studio-local continue à pointer `ML_API` pour les routes `lab/*`. À revisiter
+> seulement si un cas d'usage multi-device pour le lab apparaît.
 
-### 4.4 Périmètre `VITE_ML_API`
-Le compute reste Mac/PC → `ML_API` localhost est **correct** pour training/bench/aug.
-Ne migrer vers le VPS que les endpoints **classe A**. Risque : les 2 endpoints
-image-serving (`:src` sur ML_API) nécessiteraient CORS+HTTPS si pointés VPS.
+### 4.4 Périmètre `VITE_ML_API` — TRANCHÉ ✅ (appliqué par C5)
+> **Décision PO 2026-06-29** : seul le **compute** reste sur `ML_API` (localhost) ;
+> tout endpoint **classe A** est migré vers `eurioApi`. Appliqué par C5/TC1/TC3.
+> Les 2 endpoints image-serving canoniques (`:src` brut) **restent sur ML_API**
+> (compute local) — ne PAS les pointer VPS tant que CORS+HTTPS+serve image
+> server-side n'est pas en place. Comportement actuel = correct.
 
-### 4.5 Hygiène (dette qui coûtera une session de debug)
-`bootstrap_canonical.py` (mort), `C4-HANDOFF-SERVER.md` + `deployment-topology.md §cap B`
-+ `client/__init__.py` (périmés), `except Exception` trop large dans `_CANDIDATES`.
+### 4.5 Hygiène (dette qui coûtera une session de debug) — RÉSORBÉE ✅
+`bootstrap_canonical.py` → archivé (H3) ; `C4-HANDOFF-SERVER.md` + `deployment-topology.md §cap B`
++ `client/__init__.py` → réécrits (H2) ; `except Exception` → resserré à
+`except (ImportError, ModuleNotFoundError)` (H3, vérifié runtime sur VPS).
+
+### 4.6 C6b — ancrage `run_id` du recrop & du backfill DINO — TRANCHÉ ✅
+> **Décision PO 2026-06-29** : **option A — stub `source_runs`**. Chaque opération
+> de recrop_zero / backfill_dino crée un row `source_runs` AVANT le calcul, avec :
+> - `source` ∈ {`'recrop_zero'`, `'dino_backfill'`}
+> - `run_id` = `'recrop-zero-{eurio_id}'` ou `'dino-backfill-{ISO-timestamp}'`
+> - `params_json` = payload du run
+>
+> Bénéfices : (i) **un seul chemin d'ingestion** (`export_run` + `/ingest/run`),
+> conforme R0 « pas de dette » ; (ii) idempotence garantie par `ingested_runs.batch_sha` ;
+> (iii) traçabilité = chaque recrop/backfill est versionné dans `source_runs`,
+> auditables comme n'importe quel run scraping. **REJETÉ** : endpoint dédié
+> `/ingest/recrop` ou `/ingest/dino-backfill` (duplique la logique
+> `export_run`/`ingest_run`, multiplie les chemins serveur, dette).
+>
+> Conséquence côté code (C6b) : pré-`INSERT INTO source_runs` dans
+> `vision/recrop_zero.py` et `scripts/backfill_dino_predictions.py` juste avant
+> l'écriture des résultats. Pas de modification serveur.
+
+### 4.7 C6c — training metadata : étendre `_TABLE_ORDER` vs endpoint dédié — TRANCHÉ ✅
+> **Décision PO 2026-06-29** : **étendre `_TABLE_ORDER` de `export_run`** pour
+> inclure `training_runs/steps/epochs/...`. Chaque session d'entraînement est un
+> run versionné : `source='training'`, `run_id='train-{recipe_sha}-{ISO-timestamp}'`.
+> Cohérent avec §4.6 : un seul chemin. **REJETÉ** : endpoint dédié
+> `/ingest/training-run` (même argument de dette qu'au §4.6).
+>
+> Conséquence côté code (C6c) : (1) ajouter les tables `training_*` à
+> `_TABLE_ORDER` dans `ml/client/runbatch.py` ; (2) `train_embedder.py` ouvre un
+> stub `source_runs` au démarrage, puis `push_run` à la fin ; (3) qualifier le
+> read-only de `train_embedder.py:163` en `mode=ro` sur la réplique (séparément
+> du push).
+
+### 4.8 TC2 — priorité review writes server-side
+> **Décision PO 2026-06-29** : **différer après C6a**. Rationale : (i) user
+> unique en review depuis le Mac → besoin multi-device sans Mac = pas exprimé ;
+> (ii) C6 est le verrou stratégique du Modèle B (sans lui, rien ne se passe).
+> TC2 reste un chunk M sécable sans dépendance forte avec C6 — peut être
+> paralléliséé après C6a si la session est longue, ou repris ensuite. Spec
+> détaillée : `HANDOFF §3 TC2`.
 
 ---
 
