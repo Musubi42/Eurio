@@ -1,8 +1,35 @@
-# C8 — Plan de cutover Model B (préparé 2026-06-29, NON exécuté)
+# C8 — Cutover Model B — ✅ EXÉCUTÉ 2026-06-29
 
-> Prépare la bascule **Model A → Model B** : le canonique passe du eurio.db MinIO
-> (Mac writer via lease) au eurio.db du VPS (writer unique derrière `/ingest/run`).
-> Ce document est un **plan** — l'exécution se fera dans une session dédiée.
+> Bascule **Model A → Model B** : le canonique est passé du eurio.db MinIO (Mac
+> writer via lease) au eurio.db du VPS (writer unique derrière `/ingest/run`).
+> **Fait le 2026-06-29** (le plan ci-dessous reste comme trace de raisonnement).
+
+## ✅ Ce qui a été exécuté
+
+1. **Orphelins FK nettoyés** sur le canonique VPS : 499 `image_assets.run_id`
+   dangling → NULL, + 4 enfants orphelins (2 dino_predictions, 2 review_queue)
+   supprimés → `PRAGMA foreign_key_check` = **0 violation**.
+2. **`canonical_sync` livré** (`serving/canonical_sync.py`) : snapshot cohérent
+   (VACUUM INTO) du canonique VPS → MinIO `eurio-db` (eurio.db + sha) si sha changé,
+   boucle de fond 600s au startup eurio-api + CLI. Endpoint MinIO **interne**
+   (`eurio-minio:9000`, le conteneur ne résout pas le LB public). **Prouvé** : MinIO
+   eurio.db contient désormais a2ff9ffa (frais) + sha cohérent + FK=0.
+3. **Lock VPS posé** dans MinIO (`eurio.db.lock`, note « VPS canonical ») → un
+   `db:acquire` Model A est refusé. Lease = secours (`db:steal --force`).
+4. **Réplique fraîche** : `pull_replica` (Mac, endpoint public) ramène maintenant
+   l'état VPS courant (plus le snapshot Model A figé au 16/06).
+5. **Backup** : `eurio-backup.sh` sauvegarde déjà le bucket `eurio-db` → pCloud →
+   le canonique sync'é est couvert, rien à ajouter.
+6. **Topology A→B** : `docs/operations/deployment-topology.md` mise à jour.
+
+**Optimisation possible (non bloquante)** : `canonical_sync` fait un VACUUM INTO
+(~106 Mo) à chaque tick même si rien n'a changé (l'upload, lui, est skippé par la
+garde sha). Pré-checker un signal de changement (`PRAGMA data_version` / dernier
+ingest) éviterait le VACUUM inutile. Mineur.
+
+---
+
+## (Plan d'origine, conservé)
 
 ## TL;DR — la réconciliation est un NON-PROBLÈME (mesuré)
 

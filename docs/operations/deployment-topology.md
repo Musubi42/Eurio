@@ -29,11 +29,47 @@ la VM.
 | Training ArcFace + export TFLite | **PC** (GPU) | GPU obligatoire |
 | Console admin (arbitrage, crop edits, sets, dashboards) | **Mac** (local) | Outil perso ; reste local jusqu'au Modèle B |
 
-## Le rythme quotidien (Modèle A — état actuel)
+## Le rythme quotidien (Modèle B — ACTIF depuis 2026-06-29, cutover C8)
 
-Le **eurio.db canonique vit dans MinIO** (bucket `eurio-db`, lease atomique —
-cf. lease MinIO chunk 6). Le Mac/PC en est le **seul writer**, sérialisé par le
-lease. Le serveur ne touche pas à eurio.db (il sert MinIO + review).
+> **Cutover effectué le 2026-06-29.** Le canonique est désormais le **eurio.db du
+> VPS** (`/var/lib/eurio/eurio.db`), writer unique derrière `eurio-api`
+> (`/ingest/run` + écritures review). Le Modèle A ci-dessous est **superseded**
+> (conservé comme référence + procédure de secours).
+
+```
+┌─ VPS : writer canonique unique (toujours allumé) ──────────────┐
+│ eurio-api  →  /var/lib/eurio/eurio.db  (canonique)             │
+│   • /ingest/run : applique les run-batches poussés (Model B)   │
+│   • écritures review (decide/skip/reject/restore, TC2)         │
+│   • canonical_sync (boucle 600s) : canonique → MinIO eurio-db  │
+│     (snapshot VACUUM INTO + sha) → fraîcheur de la réplique     │
+│   • pose le lock MinIO « VPS canonical » → bloque un acquire    │
+│     Model A accidentel (lease = secours via db:steal --force)   │
+└────────────────────────────────────────────────────────────────┘
+
+┌─ Mac/PC : CALCUL (plus writer du canonique) ───────────────────┐
+│ go-task ml:db:pull-replica   # réplique read-only (sans lease) │
+│   … crop / fetch / DINO / training sur la réplique …           │
+│ <pipeline> --push            # POST le run au VPS (/ingest/run) │
+└────────────────────────────────────────────────────────────────┘
+```
+
+**Conséquence :** le canonique survit au Mac éteint. Le compute lit une réplique
+fraîche (MinIO sync'é depuis le VPS) et pousse ses runs ; il n'écrit plus jamais
+le canonique en direct. Durabilité : `eurio-backup.sh` sauvegarde le bucket MinIO
+`eurio-db` (qui reçoit le canonique via `canonical_sync`) → pCloud.
+
+**Secours (VPS down)** : `go-task ml:db:steal -- --force` (retire le lock VPS) puis
+`ml:db:acquire` → on repart en Modèle A sur le dernier sync MinIO. Voir
+`docs/work-in-progress/model-b/C8-CUTOVER-PLAN.md`.
+
+---
+
+## Le rythme quotidien (Modèle A — SUPERSEDED, référence + secours)
+
+Le **eurio.db canonique vivait dans MinIO** (bucket `eurio-db`, lease atomique —
+cf. lease MinIO chunk 6). Le Mac/PC en était le **seul writer**, sérialisé par le
+lease. Le serveur ne touchait pas à eurio.db (il servait MinIO + review).
 
 ```
 ┌─ Mac/PC : session de travail ──────────────────────────────┐
