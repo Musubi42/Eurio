@@ -100,6 +100,11 @@ api_auth.bind(_store)
 ingest_routes.bind(_store)
 app.include_router(ingest_routes.router)
 
+# Modèle B (R2) : endpoint réplique (snapshot VACUUM INTO cohérent). Léger →
+# monté ici comme sur l'image lean (cf. règle de sync FULL↔LEAN dans server_serve).
+from serving import db_routes  # noqa: E402
+app.include_router(db_routes.router)
+
 # Wire augmentation routes to the shared store + a lazy supabase fetcher.
 augmentation_routes.bind(_store, lambda: get_supabase())
 app.include_router(augmentation_routes.router)
@@ -200,24 +205,6 @@ def _sources_startup() -> None:
         import logging
         logging.getLogger(__name__).warning(
             "Sources orphan reset failed at startup: %s", exc
-        )
-
-
-@app.on_event("startup")
-def _db_lease_startup() -> None:
-    """Lease cross-machine eurio.db (chunk 6) : on AVERTIT seulement (jamais
-    bloquant, jamais d'acquire/release auto — doctrine manuelle). Best-effort :
-    si MinIO est injoignable ou les creds absents, on ne dit rien."""
-    try:
-        from store import lease  # noqa: PLC0415
-
-        import logging
-        for msg in lease.startup_warnings():
-            logging.getLogger(__name__).warning("DB lease: %s", msg)
-    except Exception as exc:  # noqa: BLE001
-        import logging
-        logging.getLogger(__name__).debug(
-            "DB lease startup check skipped: %s", exc
         )
 
 

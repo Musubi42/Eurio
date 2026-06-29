@@ -39,6 +39,7 @@ from serving import (
     auth_routes,
     confusion_routes,
     db_migrate,
+    db_routes,
     ingest_routes,
     review_routes,
     stats_routes,
@@ -109,19 +110,10 @@ app.include_router(review_queue_router)
 # legacy `review.review_queue_routes` (mêmes paths + crops cv2) → ne PAS monter ici-bas
 # dans server.py (routes dupliquées).
 app.include_router(review_writes_router)
-
-
-@app.on_event("startup")
-async def _start_canonical_sync() -> None:
-    """C8 (Model B) : pousse périodiquement le canonique VPS → MinIO pour que
-    pull_replica (qui lit MinIO) reflète l'état frais du writer unique. Best-effort
-    (jamais bloquant pour le boot)."""
-    try:
-        from serving.canonical_sync import start_background_sync
-        start_background_sync()
-        log.info("canonical_sync: tâche de fond planifiée")
-    except Exception as exc:  # noqa: BLE001
-        log.warning("canonical_sync: démarrage impossible : %s", exc)
+# R2 (Model B) : réplique servie DIRECTEMENT par le writer unique (snapshot
+# VACUUM INTO cohérent), remplace le détour `canonical_sync → MinIO`. Léger
+# (stdlib + sqlite3) → mount inconditionnel sur l'image lean. Scope ingest:run.
+app.include_router(db_routes.router)
 
 
 @app.get("/healthz")
