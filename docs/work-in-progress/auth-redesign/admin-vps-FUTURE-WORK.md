@@ -16,7 +16,11 @@
 ⏸️ Dashboard Home = liste des rôles/scopes courants (placeholder)
 ⏸️ Vues Sources / Coins / Audit / Review / Training = Placeholder
 
-## F8 — Layout responsive mobile-first
+> **MàJ 2026-06-29** : F8 et F9 livrés (code). F8 reste à valider sur un vrai
+> téléphone (Safari iOS + Chrome Android). Détail ci-dessous conservé pour
+> référence.
+
+## F8 — Layout responsive mobile-first ✅ (code livré 2026-06-29)
 
 **But** : rendre `admin-vps` réellement utilisable au pouce sur tel
 (c'était une exigence explicite — cf. `ARCHITECTURE.md` §3).
@@ -46,7 +50,14 @@
 
 ### Estimation : 2-3h
 
-## F9 — Dashboard KPIs
+## F9 — Dashboard KPIs ✅ (livré 2026-06-29)
+
+> Implémenté en **un seul** endpoint `GET /stats/overview` (au lieu de 6),
+> qui renvoie uniquement les sections autorisées par les scopes du principal
+> (filtrage par section, 1 round-trip, pas de 403 par carte). Cf. en-tête de
+> `ml/serving/stats_routes.py` pour la justification de la déviation.
+> Front : `api/stats.ts` + `views/Home.vue` (grille KpiCard auto-fill, refresh
+> manuel + auto 60s).
 
 **But** : avoir une Home utile au lieu du placeholder actuel.
 

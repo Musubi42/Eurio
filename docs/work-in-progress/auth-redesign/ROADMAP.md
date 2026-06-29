@@ -34,23 +34,27 @@
 | F2 | Déploiement `eurio-admin.musubi.dev` (Dockerfile + nginx + Traefik) | ✅ 2026-06-19 | `infra/eurio-admin/` |
 | F3 | Foundations auth PAT côté `studio-local` (client + store + bandeau + .env.example) | ✅ 2026-06-19 | `admin/packages/studio-local/src/{shared/api,stores,shared/ui}` |
 | F4 | Studio-local : génération + collage d'un PAT réel (E2E test) | ⬜ | manuel (cf. `PAT-WORKFLOW.md`) |
-| F5 | Studio-local : rip auth Supabase OTP (LoginPage + AuthCallbackPage + guard) | ⬜ | `studio-local/src/features/auth/` + `app/router.ts` |
-| F6 | Admin-vps : vue Users (table + édition rôles) | ⬜ | `admin-vps/src/views/users/` |
-| F7 | Admin-vps : vue Mes Tokens (CRUD PAT, modale clair une fois) | ⬜ | `admin-vps/src/views/tokens/` |
-| F8 | Admin-vps : layout responsive mobile-first (drawer + bottom-nav) | ⬜ | `admin-vps/src/components/AppShell.vue` + composants |
-| F9 | Admin-vps : dashboard KPIs (counts coins / sets / sources / review) | ⬜ | nouveau `admin-vps/src/views/Home.vue` |
+| F5 | Studio-local : rip auth Supabase OTP (LoginPage + AuthCallbackPage + guard) | ✅ 2026-06-19 (`0939b84`) | pages/guard supprimés ; reliquat = client *data* Supabase (cf. D2/D6/D7) |
+| F6 | Admin-vps : vue Users (table + édition rôles) | ✅ 2026-06-19 (`4eb980c`) | `admin-vps/src/views/users/UsersPage.vue` |
+| F7 | Admin-vps : vue Mes Tokens (CRUD PAT, modale clair une fois) | ✅ 2026-06-19 (`5a2669a`) | `admin-vps/src/views/tokens/MyTokensPage.vue` |
+| F8 | Admin-vps : layout responsive mobile-first (drawer + bottom-nav) | ✅ 2026-06-29 (à valider sur vrai tel) | `AppShell.vue` + `composables/useSidebarMode.ts` + `components/navIcons.ts` |
+| F9 | Admin-vps : dashboard KPIs (counts coins / sets / sources / review) | ✅ 2026-06-29 | `views/Home.vue` + `api/stats.ts` + `ml/serving/stats_routes.py` |
 
 ## Data (post-pivot — dégonflé)
 
 | # | Chantier | Statut |
 |---|---|---|
 | D1 | Audit Supabase tables réellement frontées (2026-06-19) | ✅ 4 tables seulement : `coins`, `coin_confusion_map`, `coin_series`, `sets_audit` |
-| D2 | Migration `coin_series` (SELECT only, 200 rows) → SQLite + endpoint `eurio-api` | ⬜ |
-| D3 | Migration `coin_confusion_map` (SELECT only, ~1500 rows) → SQLite + endpoint | ⬜ |
-| D4 | Migration `sets_audit` (SELECT only, ~100 rows) → SQLite + endpoint | ⬜ |
-| D5 | Migration `coins` (SELECT + 1 UPDATE `cross_refs`, ~1500 rows) → SQLite + endpoints CRUD limités | ⬜ |
-| D6 | Refactor studio-local : composables passent de Supabase → `eurio-api` Bearer | ⬜ |
-| D7 | Suppression du client Supabase frontend (`@supabase/supabase-js`) après D2-D6 | ⬜ |
+| D2 | Migration `coin_series` → SQLite (seed canonique) + endpoint `eurio-api` | 🟡 en cours (2026-06-29) — seed n'existait qu'en Supabase ; refactor `enrich_coins_metadata.py` PostgREST → Store |
+| D3 | Migration `coin_confusion_map` → SQLite + endpoint | ✅ data-layer-unification Phase 1 (`confusion_routes.py`) |
+| D4 | Migration `sets_audit` → SQLite + endpoint | ✅ data-layer-unification Phase 1 (`audit_routes.py`) |
+| D5 | Migration `coins` → SQLite + endpoints CRUD limités | ✅ data-layer-unification Phase 2a (`fca3d167`, `coins_routes.py`) |
+| D6 | Refactor studio-local : composables Supabase → `eurio-api` Bearer | 🟡 en cours — la plupart ✅ ; reliquat = `useCoinSeries` (D2) + composables heavy (Phase 6) |
+| D7 | Suppression du client Supabase frontend (`@supabase/supabase-js`) après D2-D6 | ⬜ bloqué par le dernier `supabase.from('coin_series')` de `useCoinSeries.ts` |
+
+> **Source de vérité data** : ces chunks D2–D7 sont **supersédés en pratique** par
+> `docs/work-in-progress/data-layer-unification/` (effort plus mature, pattern layered).
+> Voir sa `ROADMAP.md` (tracking par composable) et son `ARCHITECTURE.md` (conventions endpoints).
 
 L'app Android continue à lire Supabase (mirror read-only). Sync descendant
 SQLite → Supabase = `ml/export/sync_to_supabase.py` (déjà partiellement

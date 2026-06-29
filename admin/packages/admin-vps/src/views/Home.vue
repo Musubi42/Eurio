@@ -1,34 +1,127 @@
 <script setup lang="ts">
+/**
+ * Home — dashboard KPIs (F9). En-tête identité + grille de cartes KPI
+ * remplies par /stats/overview (sections filtrées par scope côté serveur).
+ * Fetch au mount + refresh manuel + auto-refresh 60s.
+ */
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+
 import { useAuthStore } from '@/stores/auth'
+import { statsApi, type StatsOverview } from '@/api/stats'
 
 const auth = useAuthStore()
+
+const stats = ref<StatsOverview>({})
+const loading = ref(true)
+const error = ref<string | null>(null)
+const lastUpdated = ref<string | null>(null)
+
+async function load() {
+  loading.value = true
+  error.value = null
+  try {
+    stats.value = await statsApi.overview()
+    lastUpdated.value = new Date().toLocaleTimeString('fr-FR')
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    loading.value = false
+  }
+}
+
+interface Kpi {
+  key: string
+  label: string
+  value: number | string
+  sub: string
+}
+
+const cards = computed<Kpi[]>(() => {
+  const s = stats.value
+  const out: Kpi[] = []
+  if (s.coins)
+    out.push({
+      key: 'coins',
+      label: 'Coins',
+      value: s.coins.total,
+      sub: `${s.coins.needs_review} à revoir`,
+    })
+  if (s.sets)
+    out.push({
+      key: 'sets',
+      label: 'Sets',
+      value: s.sets.total,
+      sub: `${s.sets.active} actifs`,
+    })
+  if (s.sources)
+    out.push({
+      key: 'sources',
+      label: 'Sources',
+      value: s.sources.total,
+      sub: `${s.sources.runs_24h} runs / 24h`,
+    })
+  if (s.review)
+    out.push({
+      key: 'review',
+      label: 'Review queue',
+      value: s.review.total,
+      sub: `${s.review.by_status.pending ?? 0} pending · ${s.review.by_status.claimed ?? 0} claimed`,
+    })
+  if (s.users)
+    out.push({
+      key: 'users',
+      label: 'Users',
+      value: s.users.total,
+      sub: `${s.users.active} actifs`,
+    })
+  if (s.tokens)
+    out.push({
+      key: 'tokens',
+      label: 'Mes tokens',
+      value: s.tokens.mine_active,
+      sub: `${s.tokens.mine_total} au total`,
+    })
+  return out
+})
+
+let timer: ReturnType<typeof setInterval> | undefined
+onMounted(() => {
+  load()
+  timer = setInterval(load, 60_000)
+})
+onUnmounted(() => {
+  if (timer) clearInterval(timer)
+})
 </script>
 
 <template>
   <section class="home">
-    <h2>Bienvenue {{ auth.principal?.name || auth.principal?.email }}</h2>
-    <p class="lead">
-      Tu es connecté avec
-      <strong>{{ auth.principal?.email }}</strong>
-      via <code>{{ auth.principal?.auth_method }}</code>.
-    </p>
-    <div class="grid">
-      <article class="info">
-        <h3>Rôles</h3>
-        <ul>
-          <li v-for="r in auth.principal?.roles" :key="r">
-            <span class="badge">{{ r }}</span>
-          </li>
-        </ul>
+    <header class="head">
+      <div>
+        <h2>Bienvenue {{ auth.principal?.name || auth.principal?.email }}</h2>
+        <p class="lead">
+          <span v-for="role in auth.principal?.roles" :key="role" class="role">{{ role }}</span>
+        </p>
+      </div>
+      <div class="refresh">
+        <span v-if="lastUpdated" class="updated">maj {{ lastUpdated }}</span>
+        <button :disabled="loading" @click="load">
+          {{ loading ? '…' : 'Rafraîchir' }}
+        </button>
+      </div>
+    </header>
+
+    <p v-if="error" class="error">{{ error }}</p>
+
+    <div class="kpis">
+      <article v-for="c in cards" :key="c.key" class="kpi">
+        <span class="kpi-label">{{ c.label }}</span>
+        <span class="kpi-value">{{ c.value }}</span>
+        <span class="kpi-sub">{{ c.sub }}</span>
       </article>
-      <article class="info">
-        <h3>Scopes effectifs</h3>
-        <ul class="scopes">
-          <li v-for="s in auth.principal?.scopes" :key="s">
-            <code>{{ s }}</code>
-          </li>
-        </ul>
-      </article>
+      <p v-if="!loading && cards.length === 0" class="empty">
+        Aucune métrique disponible pour tes scopes.
+      </p>
     </div>
   </section>
 </template>
@@ -36,57 +129,83 @@ const auth = useAuthStore()
 <style scoped>
 .home {
   padding: var(--space-5) var(--space-6);
-  max-width: 960px;
+  max-width: 1080px;
+}
+.head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
 }
 h2 {
-  margin: 0 0 var(--space-3);
+  margin: 0 0 var(--space-2);
   font-size: var(--text-xl);
 }
 .lead {
+  margin: 0;
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.role {
+  font-size: var(--text-xs);
+  background: var(--surface-2);
   color: var(--text-secondary);
-  margin: 0 0 var(--space-5);
+  padding: 2px 8px;
+  border-radius: 999px;
+  text-transform: capitalize;
 }
-.grid {
+.refresh {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.updated {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+.error {
+  background: color-mix(in srgb, var(--danger) 10%, white);
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--text-sm);
+}
+.kpis {
+  margin-top: var(--space-5);
   display: grid;
-  grid-template-columns: 1fr 2fr;
-  gap: var(--space-5);
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--space-4);
 }
-.info {
+.kpi {
   background: white;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  padding: var(--space-5);
+  padding: var(--space-4) var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
 }
-.info h3 {
-  margin: 0 0 var(--space-3);
-  font-size: var(--text-sm);
-  color: var(--text-secondary);
+.kpi-label {
+  font-size: var(--text-xs);
   text-transform: uppercase;
   letter-spacing: 0.04em;
+  color: var(--text-secondary);
 }
-ul {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
+.kpi-value {
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--brand);
 }
-.scopes li {
-  font-size: var(--text-xs);
+.kpi-sub {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
 }
-.badge {
-  background: var(--brand);
-  color: white;
-  padding: var(--space-1) var(--space-3);
-  border-radius: 999px;
-  font-size: var(--text-xs);
-  text-transform: capitalize;
-}
-code {
-  background: var(--surface-2);
-  padding: 2px 6px;
-  border-radius: var(--radius-sm);
-  font-size: var(--text-xs);
+.empty {
+  grid-column: 1 / -1;
+  color: var(--text-secondary);
 }
 </style>

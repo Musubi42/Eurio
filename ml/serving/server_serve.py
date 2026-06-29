@@ -27,6 +27,7 @@ from serving import (
     db_migrate,
     ingest_routes,
     review_routes,
+    stats_routes,
     tokens_routes,
     users_routes,
 )
@@ -75,6 +76,8 @@ app.include_router(tokens_routes.router)
 app.include_router(review_routes.router)
 app.include_router(confusion_routes.router)
 app.include_router(audit_routes.router)
+# F9 dashboard KPIs : compteurs read-only agrégés, filtrés par scope (lean).
+app.include_router(stats_routes.router)
 # Phase 2b data-layer-unification : domaine `sources` (READ) layered, sans
 # dépendances ML lourdes — mount inconditionnel sur l'image lean.
 app.include_router(sources_router)
