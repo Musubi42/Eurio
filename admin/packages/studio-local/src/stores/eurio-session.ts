@@ -20,6 +20,7 @@ import {
   eurioApi,
   hasPat,
 } from '@/shared/api/eurio-api'
+import { AUTH_MODE } from '@/shared/config/deploy-target'
 
 export interface Principal {
   user_id: string
@@ -49,6 +50,9 @@ export const useEurioSession = defineStore('eurio-session', () => {
   }
 
   async function load(): Promise<void> {
+    // Mode PAT : pas de PAT configuré → "missing" (bandeau). Mode cookie :
+    // `hasPat()` est toujours vrai → on tente `/me`, un 401 (pas de cookie / session
+    // expirée) bascule en "invalid".
     if (!hasPat()) {
       status.value = 'missing'
       principal.value = null
@@ -65,7 +69,10 @@ export const useEurioSession = defineStore('eurio-session', () => {
         status.value = 'missing'
       } else if (e instanceof EurioApiError && (e.status === 401 || e.status === 403)) {
         status.value = 'invalid'
-        error.value = 'PAT invalide ou expiré — régénère depuis admin-vps et MAJ .env.local.'
+        error.value =
+          AUTH_MODE === 'cookie'
+            ? 'Session expirée ou absente — reconnecte-toi via Authentik.'
+            : 'PAT invalide ou expiré — régénère-le (page « Mes tokens ») et MAJ .env.local.'
       } else {
         status.value = 'error'
         error.value = e instanceof Error ? e.message : String(e)

@@ -1,14 +1,16 @@
 /**
- * Client `eurio-api` pour studio-local — Bearer PAT.
+ * Client `eurio-api` — auth-adapter local (PAT) / hébergé (cookie OIDC). (Model B / R1)
  *
- * Le PAT vit dans `.env.local` (gitignored) sous `VITE_EURIO_PAT`. Vite
- * l'injecte dans `import.meta.env` à la compilation. Pas de cookie ici :
- * studio-local est cross-origin (localhost → eurio-api.musubi.dev) et le
- * cookie SameSite=Lax ne traverse pas. Bearer header = solution propre.
+ * UN seul codebase, deux modes pilotés par `AUTH_MODE` (cf. `shared/config/deploy-target`) :
+ *  - `pat` (local) : le PAT vit dans `.env.local` (gitignored) sous `VITE_EURIO_PAT`, injecté
+ *    en header `Authorization: Bearer`. Pas de cookie : cross-origin localhost → VPS, le cookie
+ *    SameSite=Lax ne traverse pas.
+ *  - `cookie` (hébergé) : `credentials: 'include'` envoie le cookie HttpOnly `eurio_session`
+ *    posé par eurio-api après le flow Authentik. Pas de header auth, pas de PAT requis.
  *
- * Pour l'auth cookie OIDC, voir `admin-vps` : c'est un autre frontend.
- * Spec : docs/work-in-progress/auth-redesign/ARCHITECTURE.md
+ * Spec : docs/work-in-progress/model-b/README.md §Front.
  */
+import { AUTH_MODE } from '@/shared/config/deploy-target'
 
 const API_BASE: string =
   (import.meta.env.VITE_EURIO_API_BASE as string | undefined)?.trim() ||
@@ -36,12 +38,18 @@ export class MissingPatError extends Error {
 }
 
 function authHeader(): Record<string, string> {
+  // Mode cookie : aucun header auth (le cookie part via credentials:'include').
+  if (AUTH_MODE === 'cookie') return {}
   if (!PAT) throw new MissingPatError()
   return { Authorization: `Bearer ${PAT}` }
 }
 
+/**
+ * Auth « présente » côté front : en mode PAT, vrai si un PAT est configuré ; en mode
+ * cookie, toujours vrai (la validité réelle est vérifiée par `/me`, pas connaissable ici).
+ */
 export function hasPat(): boolean {
-  return Boolean(PAT)
+  return AUTH_MODE === 'cookie' ? true : Boolean(PAT)
 }
 
 async function request<T>(
@@ -56,6 +64,8 @@ async function request<T>(
   const res = await fetch(`${API_BASE}${path}`, {
     method,
     headers,
+    // Mode cookie : envoie le cookie de session HttpOnly cross-origin.
+    credentials: AUTH_MODE === 'cookie' ? 'include' : 'same-origin',
     body: body !== undefined ? JSON.stringify(body) : undefined,
     // `keepalive` : le POST survit à un unload de page (fenêtre d'undo review).
     keepalive: opts?.keepalive,

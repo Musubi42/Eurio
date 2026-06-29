@@ -26,7 +26,7 @@ const message = computed(() => {
     case 'invalid':
       return (
         session.error ||
-        'eurio-api : PAT invalide ou expiré. Génère un nouveau token via admin-vps puis MAJ .env.local.'
+        'eurio-api : PAT invalide ou expiré. Génère un nouveau token (page « Mes tokens ») puis MAJ .env.local.'
       )
     case 'error':
       return `eurio-api injoignable : ${session.error ?? 'erreur inconnue'}`

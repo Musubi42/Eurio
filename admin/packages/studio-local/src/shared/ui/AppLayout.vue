@@ -1,16 +1,29 @@
 <script setup lang="ts">
+import type { NavItem } from '@/app/nav'
 import { navSections } from '@/app/nav'
 import EurioSessionBanner from '@/shared/ui/EurioSessionBanner.vue'
+import LocalOnlyNotice from '@/shared/ui/LocalOnlyNotice.vue'
 import { DEV_BYPASS } from '@/shared/supabase/client'
 import { useNavState } from '@/shared/composables/useNavState'
+import { useCapabilities } from '@/stores/capabilities'
 import { useEurioSession } from '@/stores/eurio-session'
 import { ChevronsLeft, ChevronsRight } from 'lucide-vue-next'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
 
 const route = useRoute()
 const session = useEurioSession()
+const caps = useCapabilities()
 const { badges: navBadges } = useNavState()
+
+// Gating des features lourdes (Model B / R1) : en hébergé (ou API ML locale absente),
+// les items `heavy` sont grisés/non-cliquables et les routes `meta.heavy` rendent une
+// notice « ceci tourne en local » au lieu de la vue.
+const heavyLocked = computed(() => !caps.hasLocalMlApi)
+function isLocked(item: NavItem): boolean {
+  return Boolean(item.heavy) && heavyLocked.value
+}
+const routeLocked = computed(() => Boolean(route.meta.heavy) && heavyLocked.value)
 
 // Sidebar repliable en icônes (plus de viewport pour la review). Persisté.
 const NAV_COLLAPSED_KEY = 'eurio.nav.collapsed'
@@ -71,15 +84,21 @@ function isActive(itemRoute: string) {
                class="mx-2 mb-2 h-px" style="background: rgba(255,255,255,0.08);"></div>
           <ul class="space-y-0.5">
             <li v-for="item in section.items" :key="item.id">
-              <RouterLink
-                :to="item.route"
-                :title="collapsed ? item.label : undefined"
+              <!-- Item lourd verrouillé (hébergé / API ML absente) → div grisé non-cliquable. -->
+              <component
+                :is="isLocked(item) ? 'div' : RouterLink"
+                :to="isLocked(item) ? undefined : item.route"
+                :title="isLocked(item)
+                  ? `${item.label} — disponible uniquement en local (lance go-task ml:api puis va sur localhost)`
+                  : (collapsed ? item.label : undefined)"
                 class="group relative flex items-center rounded-md py-2 text-sm font-medium transition-colors duration-150"
                 :class="[
                   collapsed ? 'justify-center px-0' : 'gap-3 px-3',
-                  isActive(item.route) ? 'text-white' : 'hover:bg-white/5',
+                  isLocked(item)
+                    ? 'cursor-not-allowed opacity-40'
+                    : (isActive(item.route) ? 'text-white' : 'hover:bg-white/5'),
                 ]"
-                :style="isActive(item.route)
+                :style="!isLocked(item) && isActive(item.route)
                   ? 'background: rgba(255,255,255,0.08); box-shadow: inset 2px 0 0 var(--gold);'
                   : ''"
               >
@@ -108,7 +127,15 @@ function isActive(itemRoute: string) {
                   class="absolute top-1 right-1 h-2 w-2 rounded-full"
                   style="background: var(--gold);"
                 ></span>
-              </RouterLink>
+                <!-- Pastille « local » sur les items lourds verrouillés. -->
+                <span
+                  v-if="isLocked(item) && !collapsed && !navBadges[item.id]"
+                  class="ml-auto flex-shrink-0 rounded px-1 text-[10px] font-semibold uppercase tracking-wide"
+                  style="background: rgba(255,255,255,0.12); color: rgba(255,255,255,0.7);"
+                >
+                  local
+                </span>
+              </component>
             </li>
           </ul>
         </div>
@@ -130,7 +157,7 @@ function isActive(itemRoute: string) {
           </div>
         </template>
         <template v-else>
-          <div class="italic">PAT non configuré</div>
+          <div class="italic">Non connecté</div>
         </template>
       </div>
     </aside>
@@ -146,7 +173,8 @@ function isActive(itemRoute: string) {
         ⚠ MODE DEV — service_role key active, auth bypassée, RLS désactivée
       </div>
       <div class="flex-1 overflow-y-auto">
-        <RouterView />
+        <LocalOnlyNotice v-if="routeLocked" />
+        <RouterView v-else />
       </div>
     </main>
   </div>
