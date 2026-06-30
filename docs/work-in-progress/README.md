@@ -1,5 +1,27 @@
 # Work in progress — chantiers à reprendre et clore
 
+## 🎯 Focus actuel (2026-06-30) — par où commencer
+
+> **Un agent qui arrive lit CE bloc, pas tout le reste.**
+
+1. **Model B est quasi clos.** Le canonique = SQLite sur VPS derrière l'API ;
+   compute Mac/PC sur réplique locale ; images dans MinIO. **R1 (front fusionné)** et
+   **R2 (réplique←VPS)** livrés + QA navigateur validée le 2026-06-30. Reste **R3**
+   (finitions training `--push`, différé) et **R4** (débit review).
+   → **Seul doc à lire : [`model-b/README.md`](./model-b/README.md)** (état + cible +
+   roadmap + mode opératoire serveur + briefs R3/R4). Les docs de raisonnement sont
+   dans `model-b/_archive/`.
+
+2. **Objectif live : valider l'entraînement dans le lab.** But = lancer un **smoke
+   training** (≈2 images/classe) sur Mac pour vérifier toute la plomberie post-Model-B
+   (pull réplique VPS + images MinIO + écriture manifest + run), puis lancer la **run
+   complète sur PC** ensuite. Pipeline : voir [`training-pipeline/`](./training-pipeline/)
+   (sprints livrés) ; chemin de données amont = `model-b/README.md` §Données.
+
+Le reste ci-dessous = catalogue des autres chantiers, à reprendre au besoin.
+
+---
+
 > Chantiers démarrés selon le workflow « doc d'abord, puis implémentation »,
 > mais **pas encore 100 % finis** (arrêtés en cours, évolués, ou idées en suspens).
 >

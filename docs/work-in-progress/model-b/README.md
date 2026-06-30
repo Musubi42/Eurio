@@ -1,10 +1,11 @@
 # Model B — État courant & cible (source de vérité)
 
-> **Ce doc est LA référence.** Les autres fichiers de ce dossier (`DESIGN.md`,
-> `GAP-ANALYSIS.md`, `HANDOFF-2026-06-29.md`, `C4-HANDOFF-SERVER.md`,
-> `C8-CUTOVER-PLAN.md`) sont **historiques** — gardés comme trace de raisonnement,
-> mais c'est ici que vit l'état présent + la cible + la roadmap.
-> Dernière MAJ : 2026-06-30.
+> **Ce doc est LE seul à lire pour Model B.** État présent + cible + roadmap +
+> mode opératoire + briefs R3/R4 vivent ici. Les anciens docs de raisonnement
+> (`DESIGN`, `GAP-ANALYSIS`, `HANDOFF-2026-06-29`, `HANDOFF-NEXT-SESSIONS`,
+> `C4-HANDOFF-SERVER`, `C8-CUTOVER-PLAN`) sont dans [`_archive/`](./_archive/) —
+> trace de raisonnement, plus à lire au quotidien. `QA-CHROME-MCP.md` reste à côté
+> (suite de tests navigateur re-jouable). Dernière MAJ : 2026-06-30.
 
 ## En une phrase
 
@@ -111,14 +112,11 @@ des **répliques locales** (copies de travail) et **poussent** leurs runs au VPS
 | **R4** | **Débit review** (valeur produit) | ~2700 items open sur le canonique = goulot cohorte→training. Outillage / autovalidation. | — |
 
 > **Priorité** : R1 (front) ✅ et R2 (cohérence archi) ✅ faits. Reste **R3** (finitions,
-> différé) et **R4** (débit review, valeur produit) — voir le handoff pour les briefs.
+> différé) et **R4** (débit review, valeur produit) — briefs en bas de ce doc.
 
-> 🛠️ **Pour exécuter** : briefs turn-key par chantier (avec accès SSH serveur,
-> deploy, tests, usage workflows) dans [`HANDOFF-NEXT-SESSIONS.md`](./HANDOFF-NEXT-SESSIONS.md).
-
-> 🧪 **QA navigateur** : suite de tests Chrome MCP turn-key (Sonnet 4.6 + sous-agents)
-> dans [`QA-CHROME-MCP.md`](./QA-CHROME-MCP.md) — valide R1 (front local+hébergé, gating)
-> et le chemin de données (charge du VPS, images MinIO, zéro mixed-content).
+> 🧪 **QA navigateur** : suite de tests Chrome MCP re-jouable (Sonnet 4.6) dans
+> [`QA-CHROME-MCP.md`](./QA-CHROME-MCP.md) — valide R1 (front local+hébergé, gating) et
+> le chemin de données (charge du VPS, images MinIO, zéro mixed-content). **Validée 2026-06-30.**
 
 ## Garde-fous / invariants à ne pas casser
 
@@ -128,3 +126,78 @@ des **répliques locales** (copies de travail) et **poussent** leurs runs au VPS
 - `source_images.run_id` = first-seen **immuable** ; la containment par-run vit dans
   `source_image_runs` (sinon un re-scrape vole l'attribution — cf. fix parité).
 - MinIO = images. **Jamais** la DB (R2 fait — `canonical_sync`/`lease` supprimés).
+
+---
+
+## Mode opératoire (serveur / deploy / tests)
+
+### Accès VPS (autorisé)
+- **SSH** : `ssh serverOimNixDontpanic` → le VPS (NixOS, no-GPU, toujours allumé).
+- **Rebuild + deploy `eurio-api`** (après `git push`) :
+  ```bash
+  ssh serverOimNixDontpanic 'cd /opt/eurio && git pull origin sources-jo-wikipedia && \
+    cd infra/eurio-api && direnv exec /opt/eurio bash -c "docker compose up -d --build"'
+  ssh serverOimNixDontpanic 'docker logs --tail 30 eurio-api'
+  curl -sS -o /dev/null -w "%{http_code}\n" https://eurio-api.musubi.dev/healthz   # attendu 200
+  ```
+  Migrations SQL (`ml/serving/migrations/*.sql`) appliquées **au boot**. `direnv exec
+  /opt/eurio` charge les secrets SOPS (pas de `sops` nu en ssh non-interactif).
+- **Requêter le canonique** (pas de `sqlite3` CLI dans le conteneur lean) :
+  ```bash
+  ssh serverOimNixDontpanic 'docker exec eurio-api python -c "
+  import sqlite3; c=sqlite3.connect(\"/var/lib/eurio/eurio.db\")
+  print(list(c.execute(\"SELECT count(*) FROM coins\")))"'
+  ```
+  Script plus long : l'écrire dans `/tmp/x.py` → `scp` VPS → `docker cp` dans
+  `eurio-api` → `docker exec eurio-api python /tmp/x.py` (évite l'enfer du quoting).
+- **MinIO** : `eurio-minio` sur le VPS (réseau docker `traefik`). Depuis le conteneur
+  eurio-api, endpoint **interne** `http://eurio-minio:9000` (boto3 + creds `MINIO_*`).
+  L'endpoint public `eurio-s3.musubi.dev` n'est PAS résolu depuis le conteneur.
+- **Front hébergé** : `infra/eurio-admin/` (nginx static derrière Traefik). Rebuild =
+  `cd /opt/eurio/infra/eurio-admin && direnv exec /opt/eurio docker compose up -d --build`.
+
+### Git / deploy
+- Branche : `sources-jo-wikipedia`. Remotes : `origin` = codeberg, `github` = backup.
+  **Push les deux**. Staging explicite par fichier (jamais `git add -A`/`.`).
+- Footer : `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`.
+
+### Tests / build
+- Python : `cd ml && .venv/bin/python -m pytest tests/test_runbatch.py -q` (10/10).
+  ⚠️ `python-jose` absent du venv compute Mac → pas d'import `serving.auth_principal`
+  en local ; `py_compile` + boot Docker VPS valident ces modules.
+- Front : `cd admin/packages/studio-local && pnpm typecheck` (+ `pnpm build`).
+
+### Secrets / PAT
+- Secrets via SOPS+direnv (`go-task secrets:edit`). PAT user dans
+  `studio-local/.env.local` (`VITE_EURIO_PAT`, gitignored). Minter un PAT :
+  ```bash
+  ssh serverOimNixDontpanic 'docker exec eurio-api python -m serving.auth \
+    create-pat --email raphaelthi59@gmail.com --name <nom>'
+  ```
+
+---
+
+## Briefs des chantiers restants
+
+### R3 — Finitions Model B (effort M — différé, pas bloquant)
+- **Training `--push`** : câbler le push du run-batch training (export C6c déjà dans
+  `client/runbatch._collect_training_tables`) dans le pipeline GPU
+  (`ml/training/pipeline.py` / `serving/training_runner.py`) : à la fin d'un run,
+  `push_run(run_id)` (training_runs = sa propre PK, pas de stub source_runs).
+  Vérifier la FK closure recipe côté canonique.
+- **Endpoint orchestration lean (C7 server-side)** : `lab_routes` est lourd (imports
+  `iteration_runner`→`training.*`→torch/cv2) → non mountable lean. Pour servir
+  `POST /lab/iterations` sur le VPS, faire un routeur mince n'important que `store`.
+  Différable : utile seulement quand le VPS orchestre.
+- **Done quand** : un training local pousse ses métadonnées au canonique (vérifiable
+  SSH : `training_runs`/`steps`/`epochs` côté VPS).
+
+### R4 — Débit review (valeur produit — chantier ouvert)
+Vrai goulot : **~2700 items `open`** sur le canonique (`review_queue`) bloquent
+cohorte→training. Pistes (à cadrer avec le user, pas turn-key) :
+- Outillage pour accélérer la review humaine (raccourcis, batch, pré-tri).
+- Calibrer les seuils d'autovalidation (consensus/Dino) pour réduire le volume manuel.
+- Relabel `mix-zone-17` (hold-out) pour mesurer.
+
+Plus **produit** que technique → discussion de cadrage avant de coder. Vérif d'état :
+`SELECT status, count(*) FROM review_queue GROUP BY status` sur le canonique (SSH).
