@@ -82,6 +82,11 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     store = Store(tmp_path / "t.db")
     stub = _StubRunner(store)
     lr.bind(store, stub)
+    # Ces tests exercent le câblage CRUD/launch, pas le préflight référentiel
+    # (`_require_classes_ready` → build_resolver), qui exige un catalogue `coins`
+    # peuplé (absent du Store temporaire → RuntimeError 500). Ce préflight a sa
+    # propre couverture ; on le neutralise ici pour isoler le câblage.
+    monkeypatch.setattr(lr, "_require_classes_ready", lambda cohort: None)
 
     app = FastAPI()
     app.include_router(lr.router)
@@ -111,10 +116,13 @@ def test_create_cohort_validates_name(client):
     assert resp.status_code == 400
 
 
-def test_create_cohort_rejects_empty_ids(client):
+def test_create_cohort_allows_empty_ids(client):
+    # Une cohorte peut être créée vide depuis la page « créer cohorte » puis
+    # peuplée plus tard (cf. create_cohort, lab_routes.py §draft-cohort).
     c, *_ = client
     resp = c.post("/lab/cohorts", json={"name": "good-name", "eurio_ids": []})
-    assert resp.status_code == 400
+    assert resp.status_code == 200
+    assert resp.json()["eurio_ids"] == []
 
 
 def test_create_cohort_dedups_eurio_ids(client):

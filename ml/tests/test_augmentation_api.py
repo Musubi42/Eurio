@@ -56,8 +56,8 @@ def test_get_schema(client: TestClient):
     assert resp.status_code == 200
     data = resp.json()
     layers = data["layers"]
-    assert len(layers) == 3
-    assert {l["type"] for l in layers} == {"perspective", "relighting", "overlays"}
+    assert len(layers) == 4
+    assert {l["type"] for l in layers} == {"background", "perspective", "relighting", "overlays"}
     assert data["zones"] == ["green", "orange", "red"]
     assert data["default_recipe"]["count"] > 0
     assert data["limits"]["preview_count_max"] == 64

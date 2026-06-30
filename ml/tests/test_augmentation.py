@@ -33,7 +33,7 @@ from store import AugmentationRecipeRow, ClassRef, Store  # noqa: E402
 def test_list_layer_schemas_covers_all_layer_types():
     schemas = list_layer_schemas()
     types = {s["type"] for s in schemas}
-    assert types == {"perspective", "relighting", "overlays"}
+    assert types == {"background", "perspective", "relighting", "overlays"}
     for s in schemas:
         assert s["label"]
         assert s["description"]
@@ -158,7 +158,10 @@ def test_pipeline_deterministic_with_seed():
 
 def test_pipeline_different_seeds_diverge():
     img = _dummy_image(128)
-    recipe = ZONE_RECIPES["green"]
+    # Les ZONE_RECIPES sont désormais vides (layers: []) → no-op déterministe.
+    # On construit une recipe avec une couche RNG (perspective) pour tester la
+    # divergence inter-seed.
+    recipe = {"count": 2, "layers": [{"type": "perspective", "probability": 1.0}]}
     a = AugmentationPipeline(recipe, seed=42).generate(img, count=2)
     b = AugmentationPipeline(recipe, seed=43).generate(img, count=2)
     # At least one image differs — perspective uses RNG.
