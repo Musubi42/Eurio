@@ -19,7 +19,10 @@ from pathlib import Path
 from typing import Any
 
 NBSP = " "
-DATASETS_DIR = Path(__file__).resolve().parent.parent / "datasets"
+# Ce module vit dans ml/shared/utils/ ; les données (country_fr.json…) sont à
+# ml/datasets/. parents[2] == ml/ (un parent.parent pointait à tort vers
+# ml/shared/datasets/ inexistant depuis le refacto shared/).
+DATASETS_DIR = Path(__file__).resolve().parents[2] / "datasets"
 COUNTRY_FR_PATH = DATASETS_DIR / "country_fr.json"
 
 

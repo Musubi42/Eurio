@@ -46,8 +46,11 @@ REPO_ROOT = ML_DIR.parent
 STATE_DB = ML_DIR / "state" / "eurio.db"
 LAB_ITERATIONS_DIR = ML_DIR / "lab" / "iterations"
 PROD_CURRENT = ML_DIR / "prod" / "current"
-PROD_SNAPSHOT_PATH = (
-    REPO_ROOT / "app-android" / "src" / "main" / "assets" / "catalog_snapshot.json"
+# Catalogue d'affichage = app_core.db (P6 ; remplace le legacy
+# catalog_snapshot.json). On en tire country/year/face_value/titres pour le
+# manifest des live-tests (coin_display).
+APP_CORE_DB = (
+    REPO_ROOT / "app-android" / "src" / "main" / "assets" / "app_core.db"
 )
 BUNDLE_META_VERSION = 2
 
@@ -76,33 +79,50 @@ def _iso_now() -> str:
     )
 
 
-def _filter_snapshot(snapshot: dict[str, Any], eurio_ids: set[str]) -> dict[str, Any]:
-    """Trim coins/series/sets/set_members to entries that touch the cohort.
+def _coins_from_app_core_db(eurio_ids: set[str]) -> dict[str, dict[str, Any]]:
+    """Métadonnées d'affichage par eurio_id, lues depuis app_core.db (P6).
 
-    Coins are filtered by membership; series are kept if at least one of
-    their coins survives; sets are kept if any of their set_members
-    survives; set_members are filtered to surviving coins.
+    Remplace le legacy catalog_snapshot.json. On ne ramène que ce dont
+    ``coin_display`` a besoin pour le manifest des live-tests : pays, année,
+    valeur faciale (en euros, dérivée de ``face_value_cents``), titres i18n
+    (``coin_name_i18n``) et ``issue_type`` (circulation vs commémo). Les coins
+    de la cohorte absents du catalogue sont simplement omis (coin_display gère
+    le fallback slug côté appelant).
     """
-    coins = [c for c in snapshot.get("coins", []) if c.get("eurio_id") in eurio_ids]
-    surviving_series = {c.get("series_id") for c in coins if c.get("series_id")}
-    series = [
-        s for s in snapshot.get("coin_series", [])
-        if s.get("id") in surviving_series
-    ]
-    set_members = [
-        m for m in snapshot.get("set_members", [])
-        if m.get("eurio_id") in eurio_ids
-    ]
-    surviving_sets = {m.get("set_id") for m in set_members}
-    sets = [s for s in snapshot.get("sets", []) if s.get("id") in surviving_sets]
-    return {
-        "catalog_version": snapshot.get("catalog_version"),
-        "generated_at": snapshot.get("generated_at"),
-        "coins": coins,
-        "coin_series": series,
-        "sets": sets,
-        "set_members": set_members,
-    }
+    import sqlite3
+
+    conn = sqlite3.connect(str(APP_CORE_DB))
+    conn.row_factory = sqlite3.Row
+    try:
+        names: dict[str, dict[str, str]] = {}
+        for r in conn.execute("SELECT eurio_id, lang, title FROM coin_name_i18n"):
+            if r["eurio_id"] in eurio_ids:
+                names.setdefault(r["eurio_id"], {})[r["lang"]] = r["title"]
+        out: dict[str, dict[str, Any]] = {}
+        qmarks = ",".join("?" * len(eurio_ids))
+        rows = conn.execute(
+            f"SELECT eurio_id, country, year, face_value_cents, is_commemorative "
+            f"FROM coin WHERE eurio_id IN ({qmarks})",
+            tuple(sorted(eurio_ids)),
+        )
+        for r in rows:
+            eid = r["eurio_id"]
+            n = names.get(eid, {})
+            fvc = r["face_value_cents"]
+            out[eid] = {
+                "eurio_id": eid,
+                "country": r["country"],
+                "year": r["year"],
+                "face_value": (fvc / 100) if fvc is not None else None,
+                "name_fr": n.get("fr"),
+                "name_en": n.get("en"),
+                "issue_type": (
+                    "circulation" if not r["is_commemorative"] else "commemorative"
+                ),
+            }
+        return out
+    finally:
+        conn.close()
 
 
 def _filter_embeddings(
@@ -317,10 +337,10 @@ def main() -> int:
                 file=sys.stderr,
             )
             return 3
-    if not PROD_SNAPSHOT_PATH.exists():
+    if not APP_CORE_DB.exists():
         print(
-            f"error: {PROD_SNAPSHOT_PATH.relative_to(REPO_ROOT)} missing. "
-            "Run `go-task android:snapshot` first.",
+            f"error: {APP_CORE_DB.relative_to(REPO_ROOT)} missing (catalogue P6) "
+            "— build/sync l'app_core.db Android d'abord.",
             file=sys.stderr,
         )
         return 3
@@ -330,23 +350,31 @@ def main() -> int:
 
     eurio_ids = set(cohort.eurio_ids)
 
+    # Maille des labels = COALESCE(design_group_id, eurio_id). Les embeddings
+    # sont clés par class_id design_group pour les standards pluri-millésimes
+    # (ex. be-2euro-albert-ii-t1), PAS par eurio_id. On résout donc les labels
+    # de classe de la cohorte pour ne pas droper ces classes du bundle (sinon
+    # le test on-device ne reconnaîtrait pas les coins standard). full_map est
+    # réutilisé plus bas pour equivalence_map.json.
+    full_map = build_equivalence_map()
+    class_labels = {full_map.eurio_to_group.get(eid) or eid for eid in eurio_ids}
+
     # Copy raw model artefacts.
     shutil.copy2(tflite_path, out_dir / tflite_path.name)
     shutil.copy2(model_meta_path, out_dir / model_meta_path.name)
 
-    # Filter embeddings to the cohort.
+    # Filter embeddings to the cohort (par label de classe, design_group-aware).
     embeddings = json.loads(embeddings_path.read_text())
-    filtered_embeddings = _filter_embeddings(embeddings, eurio_ids)
+    filtered_embeddings = _filter_embeddings(embeddings, class_labels)
     (out_dir / embeddings_path.name).write_text(
         json.dumps(filtered_embeddings, ensure_ascii=False, indent=2)
     )
 
-    # Filter catalog snapshot to the cohort.
-    snapshot = json.loads(PROD_SNAPSHOT_PATH.read_text())
-    filtered_snapshot = _filter_snapshot(snapshot, eurio_ids)
-    (out_dir / "catalog_snapshot.json").write_text(
-        json.dumps(filtered_snapshot, ensure_ascii=False, indent=2)
-    )
+    # Métadonnées d'affichage des coins de la cohorte (app_core.db, P6).
+    # Plus de catalog_snapshot.json filtré dans le bundle : il n'était lu par
+    # aucun consommateur (l'app cohortTest lit equivalence_map + manifest, et
+    # son catalogue vient du code partagé / app_core.db).
+    coin_by_id = _coins_from_app_core_db(eurio_ids)
 
     # bundle_meta.json : source + identity + sha256. Source canonique côté
     # Android (BundleMeta.kt) pour l'écran "status / source du bundle".
@@ -373,7 +401,6 @@ def main() -> int:
     )
 
     # Live tests prescription.
-    coin_by_id = {c["eurio_id"]: c for c in filtered_snapshot["coins"]}
     tests, sampled = _build_test_list(cohort.eurio_ids, coin_by_id)
     coins_display = _build_coins_display(coin_by_id)
     manifest = {
@@ -389,12 +416,10 @@ def main() -> int:
         json.dumps(manifest, ensure_ascii=False, indent=2)
     )
 
-    # Equivalence map (design_group_id) for the cohort. Pulled from Supabase
-    # via the canonical builder so the Android client and the Python bench
-    # stay in lock-step on the same source-of-truth (cf.
-    # ml/eval/equivalence.py, ml/tests/test_equivalence.py and the Kotlin
-    # mirror EquivalenceMap.kt).
-    full_map = build_equivalence_map()
+    # Equivalence map (design_group_id) for the cohort. Source-of-truth unique
+    # partagée avec le bench Python et le miroir Kotlin EquivalenceMap.kt (cf.
+    # ml/eval/equivalence.py, ml/tests/test_equivalence.py). full_map déjà
+    # construit plus haut (réutilisé pour le filtrage des embeddings).
     cohort_map = {
         eid: full_map.eurio_to_group.get(eid) for eid in sorted(eurio_ids)
     }
@@ -404,7 +429,7 @@ def main() -> int:
 
     print(
         f"OK · bundle written to {out_dir} "
-        f"({len(filtered_snapshot['coins'])} coins, "
+        f"({len(coin_by_id)} coins, "
         f"{len(filtered_embeddings['coins'])} embeddings, "
         f"{len(tests)} tests{', sampled' if sampled else ''})."
     )
