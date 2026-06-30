@@ -5,6 +5,14 @@
 > Préparé le 2026-06-30 après validation d'un smoke complet sur Mac.
 > **Pas-à-pas opérationnel** = [`RUNBOOK-pc-training.md`](./RUNBOOK-pc-training.md) (lis-le aussi).
 
+> ⚠️ **L'historique git a été réécrit le 2026-06-30** (filter-repo : purge des artefacts
+> de run ml/lab/iterations + ml/cache). Si le PC a **déjà un clone**, un `git pull` simple
+> **échouera** (branches divergentes). Synchronise par :
+> ```bash
+> cd /chemin/Eurio && git fetch origin --prune && git reset --hard origin/sources-jo-wikipedia
+> ```
+> (s'il y a du travail local non-poussé sur le PC, le stash AVANT). Sinon, un clone frais marche directement.
+
 ## 1. Mission de cette session
 
 Lancer **la vraie run d'entraînement complète** (epochs par défaut = 40, toutes les
