@@ -367,7 +367,7 @@ class IterationRunner:
     def _validate_for_launch_training(
         self, iteration_id: str,
     ) -> ExperimentIterationRow:
-        from training.iteration_augmentations import list_for_iteration
+        from training.iteration_augmentations import class_sample_counts
 
         iteration = self._store.get_iteration(iteration_id)
         if iteration is None:
@@ -380,19 +380,17 @@ class IterationRunner:
         if self._store.get_cohort(iteration.cohort_id) is None:
             raise ValueError("cohort introuvable")
 
-        per_coin = list_for_iteration(
-            iteration_id=iteration_id, store=self._store,
-        )
+        # Maille = CLASSE (design_group), pas membre. Un membre sans crops propres
+        # (ex. be-2007) baке 0 sample, mais sa classe a les samples via un autre
+        # millésime (ex. be-1999) — le préflight valide déjà au niveau groupe. On
+        # exige donc ≥ target samples *par classe*, pas par pièce de cohorte.
         target = iteration.variant_count
-        missing = [
-            c["eurio_id"]
-            for c in per_coin
-            if len(c.get("samples", [])) < target
-        ]
+        counts = class_sample_counts(iteration_id=iteration_id, store=self._store)
+        missing = [cid for cid, n in counts.items() if n < target]
         if missing:
             raise RuntimeError(
                 f"Augmentations manquantes ou incomplètes pour "
-                f"{len(missing)} pièce(s) : {', '.join(missing[:5])}"
+                f"{len(missing)} classe(s) : {', '.join(missing[:5])}"
                 + (f" (+ {len(missing) - 5} autres)" if len(missing) > 5 else "")
                 + " — clique « Générer » avant de lancer le training."
             )
@@ -845,34 +843,27 @@ class IterationRunner:
         """
         from training.iteration_augmentations import (
             ITERATION_TRAIN_ROOTS,
+            class_sample_counts,
             generate_for_iteration,
-            list_for_iteration,
         )
         from training.eval.class_resolver import build_resolver
 
-        # Belt-and-suspenders : the front locks I3 until I2 is ready, and
-        # _validate_for_launch_training already enforces this. Re-check so
-        # internal callers (tests, scripts) can't bypass it.
-        per_coin = list_for_iteration(iteration_id=iteration.id, store=self._store)
+        # (Re)bake idempotent des augmentations persistantes. La maille de vérité
+        # est la CLASSE (design_group) : un membre sans crops propres (ex.
+        # be-2007, qui hérite de be-1999) est skippé — c'est attendu, pas une
+        # erreur. On ne refuse que si une CLASSE finit sous le seuil (samples
+        # poolés sur tous ses membres). _validate_for_launch_training fait déjà
+        # ce contrôle en amont ; re-check ici pour les callers internes.
         target = max(int(iteration.variant_count), 1)
-        incomplete = [
-            c["eurio_id"]
-            for c in per_coin
-            if len(c.get("samples", [])) < target
-        ]
-        if incomplete:
-            raise RuntimeError(
-                f"I2 incomplete : {len(incomplete)} pièce(s) sans bake — "
-                "génère les augmentations via le tiroir I2 avant de lancer."
-            )
-
         reports = generate_for_iteration(iteration_id=iteration.id, store=self._store)
-        skipped = [r for r in reports if r.skipped_reason]
-        if skipped:
-            details = "; ".join(
-                f"{r.eurio_id} ({r.skipped_reason})" for r in skipped
+        counts = class_sample_counts(iteration_id=iteration.id, store=self._store)
+        under = [cid for cid, n in counts.items() if n < target]
+        if under:
+            raise RuntimeError(
+                f"I2 incomplète : {len(under)} classe(s) sous le seuil de "
+                f"{target} samples ({', '.join(under[:5])}) — relance le bake "
+                "via le tiroir I2 avant de lancer."
             )
-            raise RuntimeError(f"Augmentations skipped for: {details}")
         total_written = sum(r.written for r in reports)
         logger.info(
             "Iteration %s: baked %d augmentation samples across %d coin(s)",

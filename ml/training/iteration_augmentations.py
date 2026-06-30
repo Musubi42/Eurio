@@ -489,6 +489,46 @@ def list_for_iteration(
     return out
 
 
+def class_sample_counts(
+    *,
+    iteration_id: str,
+    store: Store | None = None,
+) -> dict[str, int]:
+    """Total baked samples per CLASS (``COALESCE(design_group_id, eurio_id)``).
+
+    Le bake bake par MEMBRE : un design_group multi-millésimes voit ses crops
+    bakés sur le millésime qui les porte (ex. ``be-1999``), pas forcément sur le
+    membre listé dans la cohorte (ex. ``be-2007``, sans crops propres). La maille
+    de vérité du training étant la CLASSE, on somme les samples de TOUS les
+    membres du groupe — miroir exact de l'expansion ``bake_eurio_ids`` du bake.
+    Sert au garde-fou de launch-training (cf. ``IterationRunner``).
+    """
+    store = store or Store(ML_DIR / "state" / "eurio.db")
+    it = store.get_iteration(iteration_id)
+    if it is None:
+        raise ValueError(f"Iteration {iteration_id!r} not found")
+    cohort = store.get_cohort(it.cohort_id)
+    if cohort is None:
+        raise ValueError(f"Cohort {it.cohort_id!r} not found")
+
+    from training.eval.class_resolver import build_resolver
+    resolver = build_resolver(force_eurio_id=False, db_path=store.db_path)
+    descriptors, _ = resolver.classes_for_eurio_ids(cohort.eurio_ids)
+
+    counts: dict[str, int] = {}
+    for d in descriptors:
+        total = 0
+        for member in d.eurio_ids:
+            nid = coin_lookup.numista_id_for(member)
+            if nid is None:
+                continue
+            sample_dir = DATASETS_DIR / str(nid) / "augmentations" / iteration_id
+            if sample_dir.is_dir():
+                total += sum(1 for _ in sample_dir.glob("sample_*.jpg"))
+        counts[d.class_id] = total
+    return counts
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Bake persistent augmentations for a Lab iteration")
     parser.add_argument("--iteration-id", required=True)
