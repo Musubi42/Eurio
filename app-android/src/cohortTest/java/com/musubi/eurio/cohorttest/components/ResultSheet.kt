@@ -150,7 +150,13 @@ private fun SheetContent(
 ) {
     val verdict = when {
         result.error != null -> Verdict.Error
-        result.isCorrect -> Verdict.Correct
+        // Maille design_group : le modèle prédit des labels de classe
+        // (COALESCE(design_group_id, eurio_id)). Un top-1 qui résout au même
+        // groupe que la pièce visée EST correct. isCorrectEq subsume le match
+        // strict (areEquivalent(x,x)=true) et l'équivalence design_group ;
+        // c'est l'intention d'EquivalenceMap, qui retombe en strict si le
+        // bundle n'a pas de carte d'équivalence.
+        result.isCorrectEq -> Verdict.Correct
         else -> Verdict.Incorrect
     }
     Column(

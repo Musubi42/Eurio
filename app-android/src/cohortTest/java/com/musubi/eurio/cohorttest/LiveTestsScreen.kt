@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -258,11 +259,16 @@ fun LiveTestsScreen(
                     ),
             )
 
-            // Camera viewfinder
+            // Camera viewfinder — prend l'espace restant entre la card et le
+            // CTA (weight) + clip : ne peut plus déborder/chevaucher la card
+            // au-dessus, quelle que soit la densité d'écran.
             DetectionViewfinder(
                 detected = detected,
                 analyzer = analyzer,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .clipToBounds(),
             )
 
             // Bottom: snap CTA + end-of-run card

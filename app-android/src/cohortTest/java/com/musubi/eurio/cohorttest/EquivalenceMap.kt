@@ -39,9 +39,16 @@ data class EquivalenceMap(
      */
     fun areEquivalent(predicted: String, groundTruth: String): Boolean {
         if (predicted == groundTruth) return true
-        val gPred = eurioToGroup[predicted]
-        val gGt = eurioToGroup[groundTruth]
-        return gPred != null && gPred == gGt
+        // Le modèle prédit des labels de CLASSE = COALESCE(design_group_id,
+        // eurio_id) : `predicted` peut être un id de design_group (ex.
+        // "ad-2euro-standard-t1"), ABSENT des clés de la carte (qui mappe
+        // eurio_id → group). On résout chaque côté vers sa classe canonique
+        // (le groupe si connu, sinon l'id lui-même) puis on compare. Deux
+        // pièces distinctes sans groupe restent non-équivalentes (id != id) —
+        // pas de faux positif vs l'ancien garde `gPred != null`.
+        val cPred = eurioToGroup[predicted] ?: predicted
+        val cGt = eurioToGroup[groundTruth] ?: groundTruth
+        return cPred == cGt
     }
 
     fun toJson(): String = buildString {

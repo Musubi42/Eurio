@@ -54,12 +54,12 @@ fun ProgressStrip(
     modifier: Modifier = Modifier,
 ) {
     val total = tests.size
-    val correct = results.values.count { it.isCorrect && it.error == null }
-    val wrong = results.values.count { !it.isCorrect && it.error == null }
-    // R@1 sous la règle d'équivalence design_group (cf. EquivalenceMap.kt).
-    // Toujours >= correct ; quand la cohorte ne partage aucun design_group
-    // (cas standard), eq == strict et le compteur est silencieux.
-    val correctEq = results.values.count { it.isCorrectEq && it.error == null }
+    // Verdict = équivalence design_group : le modèle prédit des labels de classe
+    // COALESCE(design_group_id, eurio_id), donc un top-1 au même groupe que la
+    // pièce visée est correct. isCorrectEq subsume le match strict ; il retombe
+    // en strict si le bundle n'a pas de carte d'équivalence (cf. EquivalenceMap).
+    val correct = results.values.count { it.isCorrectEq && it.error == null }
+    val wrong = results.values.count { !it.isCorrectEq && it.error == null }
     val done = results.size
 
     Column(
@@ -97,15 +97,6 @@ fun ProgressStrip(
                     "$wrong ✗",
                     style = MonoBadgeStyle.copy(color = Danger, fontSize = 11.sp),
                 )
-                // Affiché uniquement quand la règle d'équivalence
-                // design_group "rattrape" au moins un test ; pas de bruit
-                // visuel dans une cohorte 100% strict.
-                if (correctEq > correct) {
-                    Text(
-                        "$correctEq ≈",
-                        style = MonoBadgeStyle.copy(color = Indigo700, fontSize = 11.sp),
-                    )
-                }
             }
         }
         Row(
@@ -120,7 +111,7 @@ fun ProgressStrip(
                 val state: SegState = when {
                     t.idx == currentIdx -> SegState.Current
                     result == null -> SegState.Pending
-                    result.error != null || !result.isCorrect -> SegState.Wrong
+                    result.error != null || !result.isCorrectEq -> SegState.Wrong
                     else -> SegState.Correct
                 }
                 Segment(
