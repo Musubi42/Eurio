@@ -256,6 +256,22 @@ class TrainingPipeline:
         if iter_dir is not None:
             dataset_dir = iter_dir / "dataset"
             cmd.extend(["--output-dir", str(dataset_dir), "--skip-train-split"])
+            # Mode prebaked (lab iteration) : les augmentations sont déjà bakées
+            # et stagées PAR CLASSE sous ITERATION_TRAIN_ROOTS/<iid>/<class_id>/.
+            # Les avers canoniques (datasets/<nid>/obverse*) vivent dans MinIO,
+            # absents en local sur ce compute → prepare_dataset doit lire le
+            # staging prebaked plutôt que scanner datasets/<nid>/.
+            if row.config.get("prebaked_augmentations"):
+                from training.iteration_augmentations import ITERATION_TRAIN_ROOTS
+
+                iteration_id = row.config.get("iteration_id")
+                if iteration_id:
+                    staging_dir = ITERATION_TRAIN_ROOTS / str(iteration_id)
+                else:
+                    # Repli : dataset_override pointe sur le symlink train/ →
+                    # sa cible résolue est la racine de staging.
+                    staging_dir = Path(row.config["dataset_override"]).resolve()
+                cmd.extend(["--prebaked-staging-dir", str(staging_dir)])
             self._run_subprocess(row.id, cmd)
             manifest_path = dataset_dir / "class_manifest.json"
         else:

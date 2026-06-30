@@ -151,6 +151,48 @@ def _discover_classes(
     return sources, [d for d in descriptors if d is not None]
 
 
+def _discover_classes_prebaked(
+    staging_dir: Path,
+    resolver: Resolver,
+    only_classes: set[str] | None = None,
+) -> tuple[dict[str, list[Path]], list[ClassDescriptor]]:
+    """Group baked samples by class_id from a prebaked staging tree.
+
+    Mode prebaked (lab iteration) : les augmentations sont déjà bakées et
+    stagées PAR CLASSE sous ``<staging>/<class_id>/*.jpg`` — des symlinks vers
+    ``datasets/<nid>/augmentations/<iid>/sample_NNN.jpg`` (cf.
+    iteration_augmentations.generate_for_iteration). Les dossiers du staging
+    SONT déjà les class_id (maille design_group), pas des numista_id : on ne
+    scanne donc pas ``datasets/<nid>/`` — les avers canoniques (obverse*/real_*)
+    y sont absents en local sur le compute Model B (ils vivent dans MinIO).
+    ``--only-classes`` filtre comme en mode raw ; les class_id inconnus du
+    resolver sont ignorés (descripteur None).
+    """
+    sources: dict[str, list[Path]] = defaultdict(list)
+    active_class_ids: set[str] = set()
+
+    for class_dir in sorted(staging_dir.iterdir()):
+        if not class_dir.is_dir():
+            continue
+        class_id = class_dir.name
+        if only_classes is not None and class_id not in only_classes:
+            continue
+        imgs = sorted(
+            # is_file() suit les symlinks → True pour un lien valide vers un
+            # sample baké ; les liens cassés (sample purgé) sont écartés.
+            f for f in class_dir.iterdir()
+            if f.is_file()
+            and f.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp")
+        )
+        if not imgs:
+            continue
+        sources[class_id].extend(imgs)
+        active_class_ids.add(class_id)
+
+    descriptors = [resolver.for_class(cid) for cid in sorted(active_class_ids)]
+    return sources, [d for d in descriptors if d is not None]
+
+
 def split_dataset(
     raw_dir: Path,
     output_dir: Path,
@@ -162,16 +204,29 @@ def split_dataset(
     only_classes: set[str] | None = None,
     skip_train_split: bool = False,
     crop_config: CropConfig | None = None,
+    prebaked_staging_dir: Path | None = None,
 ) -> None:
     random.seed(seed)
 
-    sources, descriptors = _discover_classes(raw_dir, resolver, only_classes)
-    if not descriptors:
-        raise SystemExit(
-            f"No source images found in {raw_dir} — every staged class must have "
-            "at least one image in datasets/<numista_id>/. Check that the augment "
-            "(now removed) and seed steps succeeded for the staged classes."
+    if prebaked_staging_dir is not None:
+        sources, descriptors = _discover_classes_prebaked(
+            prebaked_staging_dir, resolver, only_classes,
         )
+        if not descriptors:
+            raise SystemExit(
+                f"No prebaked classes found in {prebaked_staging_dir} — every "
+                "staged class must have at least one sample in "
+                "<staging>/<class_id>/. Vérifie que le bake (I2) a écrit le "
+                "staging symlinké pour les classes de l'itération."
+            )
+    else:
+        sources, descriptors = _discover_classes(raw_dir, resolver, only_classes)
+        if not descriptors:
+            raise SystemExit(
+                f"No source images found in {raw_dir} — every staged class must have "
+                "at least one image in datasets/<numista_id>/. Check that the augment "
+                "(now removed) and seed steps succeeded for the staged classes."
+            )
 
     splits = ("val",) if skip_train_split else ("train", "val", "test")
     for split in splits:
@@ -367,6 +422,17 @@ def main():
              "vient des symlinks bakés (cf. iteration_runner). N'efface pas "
              "output_dir préexistant pour préserver le symlink train/.",
     )
+    parser.add_argument(
+        "--prebaked-staging-dir",
+        type=Path,
+        default=None,
+        help="Mode prebaked (lab iteration) : lit les classes PAR DOSSIER "
+             "depuis <staging>/<class_id>/*.jpg (les samples bakés symlinkés, "
+             "cf. iteration_augmentations) au lieu de scanner datasets/<nid>/. "
+             "Requis quand les avers canoniques sont absents en local "
+             "(compute Model B → MinIO). Respecte --only-classes / "
+             "--class-kind / --skip-train-split.",
+    )
     # CropConfig ablation : laisser None pour comportement legacy (2% / hard / 224)
     parser.add_argument(
         "--crop-margin-frac", type=float, default=None,
@@ -454,6 +520,7 @@ def main():
         only_classes=only_classes,
         skip_train_split=args.skip_train_split,
         crop_config=crop_config,
+        prebaked_staging_dir=args.prebaked_staging_dir,
     )
 
 
