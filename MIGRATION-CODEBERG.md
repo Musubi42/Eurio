@@ -88,3 +88,8 @@ git push origin --all && git push origin --tags
 - [ ] `nix develop` / build OK ; training OK depuis MinIO
 - [ ] Repo Codeberg créé + push + miroir GitHub
 - [ ] Statut → 🟢
+
+
+
+
+Bon pas mal de PB sur la partie itération on a encore du supabase de plugué, il faut corriger ça, on a aussi des chemins

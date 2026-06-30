@@ -1,4 +1,4 @@
-# Handoff — run d'entraînement COMPLÈTE sur le PC (1080 Ti)
+># Handoff — run d'entraînement COMPLÈTE sur le PC (1080 Ti)
 
 > **Pour une session Claude Code fraîche sur le PC.** Tout le contexte est ici.
 > Branche : `sources-jo-wikipedia` (remotes : `origin`=codeberg, `github`=backup).

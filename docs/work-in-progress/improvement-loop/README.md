@@ -67,3 +67,11 @@ déchets depuis le contexte lab/cohorte. C'est la première amélioration UX
   (réversible, effet au re-bake). Cf. `03-crop-triage-ux.md`.
 - 🔜 **Itération 2 (modèle)** : attaquer les near-twins (hard-negatives via
   `confusion_map.py`) + augmentations basse-lumière. Prochaine étape.
+
+
+
+Prochaine étape proposée
+
+Comme convenu (« les deux, outil d'abord »), l'étape suivante est l'itération 2 côté modèle : hard-negatives sur les near-twins via confusion_map.py + augmentations basse-lumière (le pire condition, dim à 0.69). Je peux creuser et te proposer un plan d'itération 2 quand tu veux — dis-moi si tu valides d'abord l'outil en visuel.
+
+Planifier l'itération 2, du coup là nous sommes sous Mac, il faut prendre en compte que MPS est plus long, donc si on veut vérifier avec un retrain, on fait moins d'epochs, genre 3

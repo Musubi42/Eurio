@@ -1,5 +1,6 @@
 ai-edge-torch
 ai-edge-litert
+python-jose[cryptography]<4.0,>=3.3
 opencv-python-headless
 pytorch-metric-learning
 pyyaml
