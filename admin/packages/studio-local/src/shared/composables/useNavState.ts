@@ -1,5 +1,6 @@
 import { onMounted, onUnmounted, ref } from 'vue'
 import { ML_API } from '@/shared/api/ml-api'
+import { HAS_LOCAL_ML_API } from '@/shared/config/deploy-target'
 
 // Shared reactive badge counts keyed by nav item id
 const badges = ref<Record<string, number>>({})
@@ -8,6 +9,7 @@ let refCount = 0
 let pollInterval: ReturnType<typeof setInterval> | null = null
 
 async function fetchBadges() {
+  if (!HAS_LOCAL_ML_API) return
   try {
     const res = await fetch(`${ML_API}/numista-review/stats`)
     if (!res.ok) return

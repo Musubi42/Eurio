@@ -16,6 +16,7 @@ import { fetchEnrichmentCounts } from '../composables/useCoinAssets'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ML_API } from '@/shared/api/ml-api'
+import { HAS_LOCAL_ML_API } from '@/shared/config/deploy-target'
 
 const route = useRoute()
 const router = useRouter()
@@ -247,9 +248,11 @@ onMounted(() => {
   // Load canonical image index first so firstImageUrl can gate dev rewrites
   // on its presence (avoids 404s on zombie coins not in eurio.db).
   loadCanonicalIndex().then(() => fetchCoins())
-  checkMlApi()
-  void loadEnrichmentCounts()
-  mlApiInterval = setInterval(checkMlApi, 30_000)
+  if (HAS_LOCAL_ML_API) {
+    checkMlApi()
+    void loadEnrichmentCounts()
+    mlApiInterval = setInterval(checkMlApi, 30_000)
+  }
 })
 
 onUnmounted(() => {

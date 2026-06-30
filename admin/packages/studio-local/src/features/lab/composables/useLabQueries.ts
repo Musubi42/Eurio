@@ -12,6 +12,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { computed, type MaybeRefOrGetter, toValue } from 'vue'
+import { HAS_LOCAL_ML_API } from '@/shared/config/deploy-target'
 import {
   addCoinsToCohort,
   bakeIterationAugmentations,
@@ -103,6 +104,7 @@ export function useCohortsQuery(filters?: MaybeRefOrGetter<{
   return useQuery({
     queryKey: computed(() => LAB_KEYS.cohorts(toValue(filters) ?? {})),
     queryFn: () => fetchCohorts(toValue(filters) ?? {}),
+    enabled: HAS_LOCAL_ML_API,
   })
 }
 

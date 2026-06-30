@@ -53,6 +53,7 @@ import {
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ML_API } from '@/shared/api/ml-api'
+import { HAS_LOCAL_ML_API } from '@/shared/config/deploy-target'
 import { coinDisplayName } from '@/shared/utils/coin-display'
 import EnrichmentGallery from '../components/EnrichmentGallery.vue'
 import VariantBadge from '../components/VariantBadge.vue'
@@ -420,6 +421,7 @@ interface LocalCanonicalEntry {
   file_present: boolean
 }
 async function mergeLocalCanonicals(c: Coin): Promise<void> {
+  if (!HAS_LOCAL_ML_API) return
   try {
     const resp = await fetch(
       `${ML_API}/referential/coin-canonicals/${encodeURIComponent(c.eurio_id)}`,
@@ -1244,7 +1246,7 @@ const numistaTotalMintage = computed<number | null>(() => {
             </div>
             <div v-if="coin.cross_refs?.numista_id" class="flex items-center gap-2">
               <button
-                v-if="!trainedModelVersion"
+                v-if="!trainedModelVersion && HAS_LOCAL_ML_API"
                 class="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all"
                 :style="{
                   background: enqueueState === 'success' ? 'var(--success)' : 'var(--indigo-700)',

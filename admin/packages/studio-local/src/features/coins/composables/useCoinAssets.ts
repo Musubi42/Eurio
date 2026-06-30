@@ -10,6 +10,7 @@
 // déjà des URLs absolues : la promotion sera no-op, pas de breaking.
 
 import { ML_API } from '@/features/training/composables/useTrainingApi'
+import { HAS_LOCAL_ML_API } from '@/shared/config/deploy-target'
 
 export type CoinAssetStatus =
   | 'auto_name'
@@ -58,6 +59,7 @@ export async function fetchCoinAssets(
   eurioId: string,
   opts: { includeUnresolved?: boolean; limit?: number; offset?: number } = {},
 ): Promise<CoinAssetsPage> {
+  if (!HAS_LOCAL_ML_API) return { eurio_id: eurioId, total: 0, assets: [], next_offset: null }
   const params = new URLSearchParams()
   if (opts.includeUnresolved) params.set('include_unresolved', 'true')
   params.set('limit', String(opts.limit ?? 60))
@@ -78,6 +80,7 @@ export async function fetchCoinAssets(
 /** Compteur global eurio_id → n_enrichment, pour les badges sur la
  *  liste des coins. Une seule query côté ML — coût ~ms. */
 export async function fetchEnrichmentCounts(): Promise<Record<string, number>> {
+  if (!HAS_LOCAL_ML_API) return {}
   const resp = await fetch(`${ML_API}/coins/enrichment-counts`)
   if (!resp.ok) return {}
   return (await resp.json()) as Record<string, number>
