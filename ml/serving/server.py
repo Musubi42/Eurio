@@ -13,6 +13,7 @@ Usage:
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime
 from pathlib import Path
 
@@ -54,6 +55,12 @@ PROD_TFLITE_DIR = PROD_CURRENT / "tflite"
 PROD_EMBEDDINGS_DIR = PROD_CURRENT / "embeddings"
 DATASETS_DIR = ML_DIR / "datasets"
 STATE_DIR = ML_DIR / "state"
+# DB de travail du lab. Défaut local = `state/eurio.db`. Surchargeable via
+# `EURIO_DB_PATH` (même variable que `serving.deps`) pour pointer le lab sur la
+# réplique fraîche tirée du VPS (`state/eurio.replica.db`, cf. `client.replica`)
+# sans toucher au fichier de travail — Modèle B : le canonique vit sur le VPS,
+# le compute lit une réplique locale.
+CANONICAL_DB = Path(os.environ.get("EURIO_DB_PATH") or (STATE_DIR / "eurio.db"))
 
 # `state` is a sibling package of `api`; sys.path must contain ML_DIR for the
 # bare import to resolve when uvicorn is launched from `ml/` (see Taskfile: `api`).
@@ -92,7 +99,7 @@ app.add_middleware(
 
 _env: dict[str, str] = {}
 _supabase: SupabaseClient | None = None
-_store = Store(STATE_DIR / "eurio.db")
+_store = Store(CANONICAL_DB)
 _runner = TrainingRunner(_store)
 
 # Modèle B (C2/C3) : auth bearer + route d'ingestion run-batch sur le store partagé.

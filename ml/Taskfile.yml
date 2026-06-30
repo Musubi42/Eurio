@@ -587,6 +587,13 @@ tasks:
     cmds:
       - "{{.VENV}}/python -m uvicorn serving.server:app --port 8042"
 
+  api-replica:
+    desc: "Start the ML API sur la RÉPLIQUE fraîche du VPS (state/eurio.replica.db). Lance d'abord `go-task ml:db:pull-replica`. Modèle B : le lab lit la donnée canonique du VPS sans toucher au fichier de travail local."
+    env:
+      EURIO_DB_PATH: "{{.TASKFILE_DIR}}/state/eurio.replica.db"
+    cmds:
+      - "{{.VENV}}/python -m uvicorn serving.server:app --port 8042 --reload"
+
   # ---------- Confusion Map ----------
   confusion-map:
     desc: "Generate coin confusion map via DINOv2 and upsert to Supabase"
