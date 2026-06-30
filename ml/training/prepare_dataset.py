@@ -281,8 +281,18 @@ def _override_val_with_eval_real(
     device_val_total = 0
     missing: list[str] = []
     for descriptor in descriptors:
-        cls_src = eval_real_dir / descriptor.class_id
-        if not cls_src.is_dir():
+        # eval_real_norm/ est indexé par eurio_id (le label de capture device).
+        # Une classe design_group agrège plusieurs eurio_id → on fusionne les
+        # dossiers membres dans la val de la classe, noms préfixés par eurio_id
+        # pour éviter la collision. class_id == eurio_id pour une classe
+        # non-groupée (membre unique) → comportement eurio_id inchangé.
+        members = list(descriptor.eurio_ids) or [descriptor.class_id]
+        present = [
+            (eid, eval_real_dir / eid)
+            for eid in members
+            if (eval_real_dir / eid).is_dir()
+        ]
+        if not present:
             if class_kind == "eurio_id":
                 missing.append(descriptor.class_id)
             continue
@@ -291,10 +301,11 @@ def _override_val_with_eval_real(
             shutil.rmtree(cls_dst)
         cls_dst.mkdir(parents=True, exist_ok=True)
         n = 0
-        for f in sorted(cls_src.iterdir()):
-            if f.is_file() and f.suffix.lower() in (".jpg", ".jpeg", ".png"):
-                shutil.copy2(f, cls_dst / f.name)
-                n += 1
+        for eid, cls_src in present:
+            for f in sorted(cls_src.iterdir()):
+                if f.is_file() and f.suffix.lower() in (".jpg", ".jpeg", ".png"):
+                    shutil.copy2(f, cls_dst / f"{eid}__{f.name}")
+                    n += 1
         print(f"  {descriptor.class_id:<55} {n:>3} device snaps → val/")
         device_val_total += n
     if missing:

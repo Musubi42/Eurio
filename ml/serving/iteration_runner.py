@@ -848,6 +848,7 @@ class IterationRunner:
             generate_for_iteration,
             list_for_iteration,
         )
+        from training.eval.class_resolver import build_resolver
 
         # Belt-and-suspenders : the front locks I3 until I2 is ready, and
         # _validate_for_launch_training already enforces this. Re-check so
@@ -905,15 +906,28 @@ class IterationRunner:
         config["dataset_override"] = str(train_link)
         config["iteration_id"] = iteration.id
         config["iter_dir"] = str(iter_dir)
-        # Lab iteration = label space eurio_id partout. Le COALESCE
-        # design_group_id du resolver est désactivé via build_resolver(
-        # force_eurio_id=True) côté prepare_dataset. Cf.
-        # docs/lab-prod-refacto/phase-1-label-space.md.
-        config["class_kind"] = "eurio_id"
+        # Lab iteration entraîne à la maille CANONIQUE du label ArcFace =
+        # COALESCE(design_group_id, eurio_id) (cf. docs/design/_shared/
+        # design-groups.md §6.1). Les standards pluri-millésimes d'un même avers
+        # (ex. be-1999 ⊕ be-2007 → be-2euro-albert-ii-t1) s'effondrent en UNE
+        # classe → pooling des sources réelles (be-2007 hérite des crops de
+        # be-1999) au lieu de starve en eurio_id pur. L'invariant phase-1
+        # (--only-classes doit matcher le label space) est préservé : on stage
+        # les class_id design_group ET on prépare en class_kind="design_group".
+        config["class_kind"] = "design_group"
         if iteration.recipe_id:
             config["aug_recipe"] = iteration.recipe_id
 
-        added = [ClassRef(eid, "eurio_id") for eid in eurio_ids]
+        resolver = build_resolver(
+            force_eurio_id=False, db_path=self._store.db_path,
+        )
+        descriptors, unresolved = resolver.classes_for_eurio_ids(eurio_ids)
+        if unresolved:
+            raise RuntimeError(
+                "eurio_ids absents du catalogue (réf morte / slug drift), "
+                f"impossible de stager : {', '.join(unresolved)}"
+            )
+        added = [ClassRef(d.class_id, d.class_kind) for d in descriptors]
         # Phase 2 : iter_dir auto-suffisant → plus rien à purger inter-run.
         # Le mode "destructif par itération" (purge globale du checkpoint
         # partagé) est retiré ici. Cf.
@@ -1002,6 +1016,15 @@ class IterationRunner:
         before inserting its own row.
         """
         model_path = _iter_model_path(iteration.id)
+        # Centroïdes = ceux de CETTE itération (calculés au step compute_embeddings
+        # → lab/iterations/<iid>/embeddings/). Sans --centroids, le script tombe
+        # sur son défaut = prod/current/embeddings/ (le modèle PROMU), qui est soit
+        # absent (rien promu → "Centroids file not found" → bench raté), soit
+        # incohérent avec le modèle de l'itération (espace d'embedding ≠). On
+        # benche toujours l'itération contre SES propres prototypes.
+        centroids_path = (
+            _iter_dir(iteration.id) / "embeddings" / "embeddings_v1.json"
+        )
         # Cohort/iteration captures land under `datasets/eval_real_norm/`
         # via `scan.sync_eval_real`. The script's default real-photos
         # path is `ml/data/real_photos/` (legacy manual-benchmark dir).
@@ -1013,6 +1036,8 @@ class IterationRunner:
             str(ML_DIR / "training" / "eval" / "evaluate_real_photos.py"),
             "--model",
             str(model_path),
+            "--centroids",
+            str(centroids_path),
             "--real-photos",
             str(real_photos_root),
             "--run-id",

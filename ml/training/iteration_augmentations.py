@@ -279,11 +279,37 @@ def generate_for_iteration(
         recipe_cfg = DEFAULT_RECIPE
 
     train_root = ITERATION_TRAIN_ROOTS / iteration_id
+    # Staging ImageFolder reconstruit à neuf à chaque appel (cheap — ce ne sont
+    # que des symlinks vers les samples persistants). Pooled à la maille
+    # design_group : plusieurs eurio_id d'un même groupe partagent UN dossier de
+    # classe, donc on vide train_root en amont plutôt que par-coin (sinon le 2e
+    # membre du groupe écraserait le 1er). Cf. iteration_runner._launch_training
+    # (class_kind="design_group").
+    if train_root.exists():
+        shutil.rmtree(train_root)
     train_root.mkdir(parents=True, exist_ok=True)
+    from training.eval.class_resolver import build_resolver
+    _resolver = build_resolver(force_eurio_id=False, db_path=store.db_path)
+
+    # Maille design_group : une classe = COALESCE(design_group_id, eurio_id),
+    # et elle s'entraîne sur TOUS ses eurio_id membres — y compris des pièces
+    # hors-cohorte (ex. be-1999 nourrit la classe de be-2007 même si seule
+    # be-2007 est listée dans la cohorte). On étend donc l'ensemble à baker à
+    # l'union des membres des groupes de la cohorte. Le préflight agrège déjà
+    # sur ce même ensemble → cohérence préflight ↔ donnée réelle (pas de
+    # faux-vert : be-2007 hérite vraiment des crops de be-1999).
+    _cohort_descriptors, _ = _resolver.classes_for_eurio_ids(cohort.eurio_ids)
+    bake_eurio_ids: list[str] = []
+    _seen: set[str] = set()
+    for _d in _cohort_descriptors:
+        for _eid in _d.eurio_ids:
+            if _eid not in _seen:
+                _seen.add(_eid)
+                bake_eurio_ids.append(_eid)
 
     reports: list[CoinAugReport] = []
-    total = len(cohort.eurio_ids)
-    for _idx, eurio_id in enumerate(cohort.eurio_ids):
+    total = len(bake_eurio_ids)
+    for _idx, eurio_id in enumerate(bake_eurio_ids):
         if on_progress is not None:
             on_progress(_idx, total)
         nid = coin_lookup.numista_id_for(eurio_id)
@@ -370,16 +396,20 @@ def generate_for_iteration(
         }
         (out_dir / "_manifest.json").write_text(json.dumps(manifest, indent=2))
 
-        # Stage symlinks under the iteration training root so that the
-        # standard ImageFolder layout works — one subdir per class.
-        class_dir = train_root / eurio_id
-        if class_dir.is_symlink() or class_dir.is_file():
-            class_dir.unlink()
-        elif class_dir.is_dir():
-            shutil.rmtree(class_dir)
+        # Stage symlinks sous la racine d'entraînement → layout ImageFolder
+        # standard, UN sous-dossier par CLASSE (maille design_group canonique).
+        # Plusieurs eurio_id d'un même groupe écrivent dans le même class_dir →
+        # on préfixe le nom du lien par eurio_id pour éviter la collision
+        # (sample_001.jpg de be-1999 vs be-2007). Pas de wipe par-coin : le
+        # class_dir est partagé, train_root a été vidé en amont.
+        _desc = _resolver.for_eurio(eurio_id)
+        class_id = _desc.class_id if _desc is not None else eurio_id
+        class_dir = train_root / class_id
         class_dir.mkdir(parents=True, exist_ok=True)
         for f in sorted(out_dir.glob("sample_*.jpg")):
-            link = class_dir / f.name
+            link = class_dir / f"{eurio_id}__{f.name}"
+            if link.is_symlink() or link.exists():
+                link.unlink()
             os.symlink(os.path.relpath(f, class_dir), link)
 
         reports.append(
