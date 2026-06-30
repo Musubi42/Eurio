@@ -702,6 +702,47 @@ export interface LiveTestsReport {
   log_path: string
 }
 
+// ─── QA crops d'entraînement par classe (boucle d'amélioration) ──────────────
+
+export interface TrainingCrop {
+  asset_id: string
+  source: string
+  /** Relatif (`/sources/…/file`) — préfixer ML_API pour l'affichage. */
+  file_url: string
+  eurio_id: string | null
+  face: string | null
+  denom: string | null
+  quality_score: number | null
+  training_eligible: boolean
+  resolution_status: string
+}
+
+export interface TrainingCropClass {
+  class_id: string
+  class_kind: string
+  member_eurio_ids: string[]
+  n_eligible: number
+  /** Eligible mais face ≠ obverse — suspects à inspecter. */
+  n_unknown_face: number
+  n_rejected: number
+  /** R@1 studio (dernière itération), moyenné sur les membres. */
+  r_at_1: number | null
+  crops: TrainingCrop[]
+}
+
+export interface CohortTrainingCrops {
+  cohort_id: string
+  cohort_name: string
+  benchmark_run_id: string | null
+  classes: TrainingCropClass[]
+}
+
+export interface SetTrainingEligibleResult {
+  asset_id: string
+  eurio_id: string | null
+  training_eligible: boolean
+}
+
 export interface LiveTestsSyncResult {
   iteration_id: string
   cohort_id: string

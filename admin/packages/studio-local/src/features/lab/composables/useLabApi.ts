@@ -247,6 +247,27 @@ export async function triggerRecropZeroCoin(
   )
 }
 
+// ─── QA crops d'entraînement par classe ──────────────────────────────────
+
+export async function fetchCohortTrainingCrops(
+  cohortId: string,
+): Promise<import('../types').CohortTrainingCrops> {
+  return json<import('../types').CohortTrainingCrops>(
+    `/lab/cohorts/${encodeURIComponent(cohortId)}/training-crops`,
+  )
+}
+
+/** Inclut/exclut un crop du train (réversible). */
+export async function setAssetTrainingEligible(
+  assetId: string,
+  eligible: boolean,
+): Promise<import('../types').SetTrainingEligibleResult> {
+  return json<import('../types').SetTrainingEligibleResult>(
+    `/lab/assets/${encodeURIComponent(assetId)}/training-eligible`,
+    { method: 'POST', body: JSON.stringify({ eligible }) },
+  )
+}
+
 /**
  * Détail des candidates au rescue, groupées par eurio_id (C5).
  * Contrairement à fetchCohortDiscardSummary (agrégat normalisé §C3), renvoie

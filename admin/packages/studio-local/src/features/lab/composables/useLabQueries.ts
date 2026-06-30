@@ -26,7 +26,9 @@ import {
   fetchCohortFunnelStatus,
   fetchCohortProgress,
   fetchCohortTestBuildInfo,
+  fetchCohortTrainingCrops,
   fetchCohorts,
+  setAssetTrainingEligible,
   fetchDashboard,
   fetchIterationAugmentations,
   fetchIterationProgress,
@@ -93,6 +95,8 @@ export const LAB_KEYS = {
     ['lab', 'cohort', cohortId, 'iterations', iterationId, 'build-info'] as const,
   liveTests: (cohortId: string, iterationId: string) =>
     ['lab', 'cohort', cohortId, 'iterations', iterationId, 'live-tests'] as const,
+  trainingCrops: (cohortId: string) =>
+    ['lab', 'cohort', cohortId, 'training-crops'] as const,
   dashboard: ['lab', 'dashboard'] as const,
   runner: ['lab', 'runner'] as const,
   ebayRunningRuns: ['lab', 'ebay', 'running-runs'] as const,
@@ -416,6 +420,62 @@ export function useCloneCohortMutation() {
     mutationFn: (vars: { cohortId: string; name: string; description?: string | null }) =>
       cloneCohort(vars.cohortId, { name: vars.name, description: vars.description }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['lab', 'cohorts'] }),
+  })
+}
+
+/**
+ * Crops d'entraînement par classe design_group (triage des déchets). Couplé au
+ * R@1 studio par classe. Refetch au mount — la couverture bouge à chaque
+ * exclusion/review.
+ */
+export function useCohortTrainingCropsQuery(cohortId: MaybeRefOrGetter<string>) {
+  return useQuery({
+    queryKey: computed(() => LAB_KEYS.trainingCrops(toValue(cohortId))),
+    queryFn: () => fetchCohortTrainingCrops(toValue(cohortId)),
+    enabled: computed(() => !!toValue(cohortId) && HAS_LOCAL_ML_API),
+  })
+}
+
+/**
+ * Inclut/exclut un crop du train. Optimistic : on bascule le flag localement
+ * (la vignette se grise / le compteur eligible bouge tout de suite), rollback
+ * sur erreur. Pas d'invalidation — le re-bake lira la DB à jour.
+ */
+export function useSetTrainingEligibleMutation(cohortId: MaybeRefOrGetter<string>) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (vars: { assetId: string; eligible: boolean }) =>
+      setAssetTrainingEligible(vars.assetId, vars.eligible),
+    onMutate: async (vars) => {
+      const key = LAB_KEYS.trainingCrops(toValue(cohortId))
+      await qc.cancelQueries({ queryKey: key })
+      const prev = qc.getQueryData<import('../types').CohortTrainingCrops>(key)
+      if (prev) {
+        qc.setQueryData<import('../types').CohortTrainingCrops>(key, {
+          ...prev,
+          classes: prev.classes.map((cls) => {
+            const hit = cls.crops.find((c) => c.asset_id === vars.assetId)
+            if (!hit || hit.training_eligible === vars.eligible) return cls
+            const delta = vars.eligible ? 1 : -1
+            const wasUnknown = hit.face !== 'obverse'
+            return {
+              ...cls,
+              n_eligible: cls.n_eligible + delta,
+              n_unknown_face: cls.n_unknown_face + (wasUnknown ? delta : 0),
+              crops: cls.crops.map((c) =>
+                c.asset_id === vars.assetId
+                  ? { ...c, training_eligible: vars.eligible }
+                  : c,
+              ),
+            }
+          }),
+        })
+      }
+      return { prev, key }
+    },
+    onError: (_e, _vars, ctx) => {
+      if (ctx?.prev) qc.setQueryData(ctx.key, ctx.prev)
+    },
   })
 }
 
