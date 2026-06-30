@@ -7,6 +7,9 @@ un shim de compat jusqu'à la migration des imports (chunk 7).
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
+
 from .augmentation import AugmentationMixin, AugmentationRecipeRow, AugmentationRunRow
 from .benchmark import BenchmarkMixin, BenchmarkRunRow
 from .cohort_jobs import (
@@ -45,6 +48,19 @@ class Store(
     """SQLite store for local training state (WAL, autocommit, single eurio.db)."""
 
 
+def resolve_db_path(default: str | Path) -> Path:
+    """Chemin de la DB locale, honorant ``EURIO_DB_PATH`` (Model B : le compute
+    lit la réplique pointée par l'env, pas un fichier codé en dur).
+
+    À utiliser par TOUS les entrypoints détachés (``training/run_*.py``) pour
+    qu'ils ouvrent la MÊME DB que le serveur. Sinon le serveur lit la réplique
+    (``EURIO_DB_PATH``) mais le subprocess lit ``state/eurio.db`` → l'itération
+    créée via le serveur est « introuvable » côté bake/training. Fallback sur
+    ``default`` quand l'env est absent (dev local sans réplique)."""
+    env = os.environ.get("EURIO_DB_PATH", "").strip()
+    return Path(env) if env else Path(default)
+
+
 __all__ = [
     "AugVsRealRow",
     "AugmentationRecipeRow",
@@ -67,4 +83,5 @@ __all__ = [
     "cohort_job_set_pid",
     "cohort_job_start",
     "emit_state_event",
+    "resolve_db_path",
 ]

@@ -22,7 +22,7 @@ ML_DIR = Path(__file__).resolve().parent.parent
 if str(ML_DIR) not in sys.path:
     sys.path.insert(0, str(ML_DIR))
 
-from store import Store  # noqa: E402
+from store import Store, resolve_db_path  # noqa: E402
 from training.pipeline import TrainingPipeline  # noqa: E402
 import jobs  # noqa: E402
 
@@ -34,7 +34,7 @@ def main() -> int:
     ap.add_argument("--job-id", default=None)
     args = ap.parse_args()
 
-    store = Store(ML_DIR / "state" / "eurio.db")
+    store = Store(resolve_db_path(ML_DIR / "state" / "eurio.db"))
     conn = store._connection()  # noqa: SLF001
     pipeline = TrainingPipeline(store, args.run_id, device=args.device)
 
