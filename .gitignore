@@ -212,6 +212,11 @@ infra/minio/secrets/*
 # infra/backup/rclone.conf.example.
 infra/backup/rclone.conf
 
+# Bundle cohortTest — artefact par-itération régénéré par `cohort-test:bundle`
+# (modèle .tflite ~4 Mo + embeddings + manifest). Régénérable localement avant
+# build de l'APK de test ; sorti de git pour éviter le churn binaire.
+app-android/src/cohortTest/assets/cohort_bundle/
+
 # Artefacts runtime (ne pas committer — churn)
 build/
 ml/.task/
