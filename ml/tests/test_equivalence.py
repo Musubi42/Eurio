@@ -75,6 +75,40 @@ def test_unknown_eurio_id_not_equivalent():
     assert m.are_equivalent("xx-9999-2eur-mystery", "xx-9999-2eur-mystery")
 
 
+def test_group_id_as_input_is_equivalent():
+    """The lab predicts mesh labels (design_group ids), not eurio_ids.
+
+    Parité avec Android bc17d955 : `are_equivalent` doit traiter un id de
+    groupe en entrée (passthrough) et le matcher à un eurio_id du même groupe.
+    Régression du faux R@1 strict du §5 (cf.
+    project_live_tests_strict_recall_bug).
+    """
+    m = _map()
+    # predicted = group id, ground_truth = eurio_id of that group.
+    assert m.are_equivalent("treaty-of-rome-2007", "be-2007-2eur-treaty-of-rome")
+    # symmetric.
+    assert m.are_equivalent("be-2007-2eur-treaty-of-rome", "treaty-of-rome-2007")
+    # group id vs eurio_id of a different group → not equivalent.
+    assert not m.are_equivalent("treaty-of-rome-2007", "at-2002-2eur-standard")
+
+
+def test_none_prediction_not_equivalent():
+    m = _map()
+    assert not m.are_equivalent(None, "at-2002-2eur-standard")
+
+
+def test_coalesce():
+    m = _map()
+    assert m.coalesce("be-2007-2eur-treaty-of-rome") == "treaty-of-rome-2007"
+    # already a group id → passthrough.
+    assert m.coalesce("treaty-of-rome-2007") == "treaty-of-rome-2007"
+    # standalone eurio_id (group=None) → passthrough.
+    assert m.coalesce("at-2002-2eur-standard") == "at-2002-2eur-standard"
+    # unknown → passthrough.
+    assert m.coalesce("xx-9999-2eur-mystery") == "xx-9999-2eur-mystery"
+    assert m.coalesce(None) is None
+
+
 def test_design_group_lookup():
     m = _map()
     assert m.design_group("be-2007-2eur-treaty-of-rome") == "treaty-of-rome-2007"

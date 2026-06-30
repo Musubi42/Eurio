@@ -245,7 +245,8 @@ CREATE TABLE IF NOT EXISTS iteration_live_tests (
   predicted_top3_json TEXT NOT NULL,        -- [{eurio_id, similarity}, ...]
   predicted_top1      TEXT,                  -- denormalized for fast queries
   similarity_top1     REAL,
-  is_correct          INTEGER NOT NULL,      -- 1 if predicted_top1 == expected, else 0
+  is_correct          INTEGER NOT NULL,      -- 1 if predicted_top1 == expected (strict eurio_id), else 0
+  is_correct_eq       INTEGER NOT NULL DEFAULT 0,  -- 1 if equivalent on the COALESCE(design_group,eurio_id) mesh (server-recomputed at sync, source of truth for §5 R@1)
   error               TEXT,                  -- non-null when on-device inference failed (OQ-1)
   ts                  TEXT NOT NULL,         -- ISO8601 from device
   synced_at           TEXT NOT NULL DEFAULT (datetime('now')),

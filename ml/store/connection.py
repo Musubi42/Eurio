@@ -566,6 +566,16 @@ class StoreBase:
                     "   AND ia.run_id IN (SELECT id FROM source_runs) "
                     "   AND ia.source_image_id IN (SELECT id FROM source_images)"
                 )
+            # Live-tests verdict eq (design_group mesh). Strict is_correct
+            # (eurio_id exact) ne peut jamais matcher un label design_group →
+            # le §5 doit lire is_correct_eq, recomputé server-side au sync.
+            # Pas d'index dessus → ALTER simple. Fresh DB : déjà dans schema.sql.
+            self._ensure_column(
+                conn,
+                table="iteration_live_tests",
+                column="is_correct_eq",
+                decl="INTEGER NOT NULL DEFAULT 0",
+            )
             n_coins = conn.execute("SELECT count(*) AS n FROM coins").fetchone()["n"]
             if n_coins == 0:
                 logger.warning(

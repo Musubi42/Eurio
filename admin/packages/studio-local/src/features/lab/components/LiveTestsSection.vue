@@ -98,7 +98,8 @@ function deltaColor(d: number | null | undefined): string {
 function cellLabel(entry: LiveTestEntry | undefined): string {
   if (!entry) return '—'
   if (entry.error) return '✗ err'
-  return entry.is_correct ? '✓' : '✗'
+  // Verdict = maille design_group (is_correct_eq), pas le strict eurio_id.
+  return entry.is_correct_eq ? '✓' : '✗'
 }
 
 function cellTitle(entry: LiveTestEntry | undefined): string {
@@ -106,13 +107,16 @@ function cellTitle(entry: LiveTestEntry | undefined): string {
   const top1 = entry.predicted_top1 ?? '∅'
   const sim = entry.similarity_top1 != null ? entry.similarity_top1.toFixed(3) : '—'
   const err = entry.error ? `\nerror: ${entry.error}` : ''
-  return `top-1: ${top1} (sim ${sim})\nexpected: ${entry.expected_eurio_id}${err}`
+  const eqNote = entry.is_correct_eq && !entry.is_correct
+    ? '\n(équivalent design_group)'
+    : ''
+  return `top-1: ${top1} (sim ${sim})\nexpected: ${entry.expected_eurio_id}${eqNote}${err}`
 }
 
 function cellColor(entry: LiveTestEntry | undefined): string {
   if (!entry) return 'var(--surface-3)'
   if (entry.error) return 'var(--danger, #dc2626)'
-  return entry.is_correct ? 'var(--success, #16a34a)' : 'var(--danger, #dc2626)'
+  return entry.is_correct_eq ? 'var(--success, #16a34a)' : 'var(--danger, #dc2626)'
 }
 </script>
 

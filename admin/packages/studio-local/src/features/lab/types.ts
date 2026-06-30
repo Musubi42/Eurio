@@ -667,7 +667,12 @@ export interface LiveTestEntry {
   predicted_top3: LiveTestTopMatch[]
   predicted_top1: string | null
   similarity_top1: number | null
+  /** Strict eurio_id match — informational only (a design_group prediction
+   *  can never strict-match an eurio_id expected). */
   is_correct: boolean
+  /** Verdict on the COALESCE(design_group, eurio_id) mesh — the truth metric
+   *  for §5, recomputed server-side at sync. */
+  is_correct_eq: boolean
   error: string | null
   ts: string
   synced_at: string | null
@@ -675,8 +680,12 @@ export interface LiveTestEntry {
 
 export interface LiveTestsSummary {
   total: number
+  /** Equivalence-aware correct count (matches recall_at_1). */
   correct: number
+  correct_strict: number
+  /** Equivalence-aware R@1 (design_group mesh) — the headline metric. */
   recall_at_1: number | null
+  recall_at_1_strict: number | null
   studio_r_at_1: number | null
   delta: number | null
 }

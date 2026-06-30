@@ -450,6 +450,68 @@ def test_live_tests_sync_parses_and_dedups(live_test_client):
     assert resp2.json()["skipped_dupe"] == 3
 
 
+def test_live_tests_sync_verdict_uses_design_group_equivalence(live_test_client):
+    """A design_group prediction grades CORRECT against its eurio_id member.
+
+    Régression du faux R@1 strict (project_live_tests_strict_recall_bug) : le
+    modèle prédit `xx-2euro-standard-t1` (label de groupe) alors que l'attendu
+    est `xx-2014-2eur-standard` — strict=faux mais eq=vrai. La recall §5 doit
+    suivre l'eq, pas le strict.
+    """
+    c, store, logs = live_test_client
+    # Seed a coin whose eurio_id maps to a design_group, so build_equivalence_map
+    # (reading the bound store DB) resolves the mesh. numista_id required —
+    # coin_refs_from_sqlite filters on it. Committed via _writing() because the
+    # map reads through a separate RO connection to the same file.
+    with store._writing() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO design_groups (id, designation) VALUES (?, ?)",
+            ("xx-2euro-standard-t1", "XX 2€ standard type 1"),
+        )
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO coins (
+              eurio_id, country, country_name, year, face_value,
+              is_commemorative, numista_id, design_group_id, raw_payload_json
+            ) VALUES (?, 'XX', 'XX', 2014, 2.0, 0, 999001, ?, '{}')
+            """,
+            ("xx-2014-2eur-standard", "xx-2euro-standard-t1"),
+        )
+
+    store.create_cohort(ExperimentCohortRow(
+        id="c1", name="cohort-eq", eurio_ids=["xx-2014-2eur-standard"],
+        status="frozen",
+    ))
+    store.create_benchmark_run(BenchmarkRunRow(
+        id="b1", model_path="", model_name="m",
+        report_path="", status="completed", r_at_1=0.90,
+    ))
+    store.create_iteration(ExperimentIterationRow(
+        id="iter1", cohort_id="c1", name="it1",
+        status="completed", benchmark_run_id="b1",
+    ))
+    (logs / "iter1.jsonl").write_text(
+        _line(
+            1, eid="xx-2014-2eur-standard", top1="xx-2euro-standard-t1",
+            sim=0.81, correct=False,  # device said strict-false; server re-grades
+        ) + "\n"
+    )
+
+    resp = c.post("/lab/cohorts/_/iterations/iter1/live-tests/sync", json={})
+    assert resp.status_code == 200
+    summary = resp.json()["summary"]
+    assert summary["correct"] == 1          # eq-aware
+    assert summary["correct_strict"] == 0   # strict can't match a group label
+    assert summary["recall_at_1"] == pytest.approx(1.0)
+    assert summary["recall_at_1_strict"] == pytest.approx(0.0)
+
+    # The matrix cell carries the eq verdict.
+    body = c.get("/lab/cohorts/c1/iterations/iter1/live-tests").json()
+    cell = body["matrix"]["xx-2014-2eur-standard"]["bright"]
+    assert cell["is_correct_eq"] is True
+    assert cell["is_correct"] is False
+
+
 def test_live_tests_get_returns_matrix(live_test_client):
     c, store, logs = live_test_client
     _seed_cohort_with_completed_iteration(store)

@@ -36,18 +36,37 @@ class EquivalenceMap:
     def design_group(self, eurio_id: str) -> str | None:
         return self.eurio_to_group.get(eurio_id)
 
-    def are_equivalent(self, predicted: str, ground_truth: str) -> bool:
+    def coalesce(self, label: str | None) -> str | None:
+        """Resolve a label to its canonical mesh id COALESCE(group, eurio_id).
+
+        ``label`` may be **either** a raw ``eurio_id`` (mapped to its
+        ``design_group_id`` when it has one) **or** an already-canonical
+        ``design_group_id`` (the lab trains/predicts on the mesh, so a
+        prediction is a group id, not a key in this map → passthrough). A
+        standalone eurio_id (group=None) also passes through. An unknown
+        label passes through unchanged.
+        """
+        if label is None:
+            return None
+        return self.eurio_to_group.get(label) or label
+
+    def are_equivalent(self, predicted: str | None, ground_truth: str) -> bool:
         """True when predicted is correct under the design-group rule.
 
+        Compares both sides on the COALESCE(group, eurio_id) mesh, so it is
+        symmetric and handles a **design_group id** as input (the lab predicts
+        mesh labels, not eurio_ids). Must stay in parity with the Android
+        ``EquivalenceMap.areEquivalent`` (cf. commit bc17d955) and
+        ``feedback_output_contract_parity.md``.
+
         - Strict eurio_id match → equivalent.
-        - Same non-null design_group_id → equivalent.
+        - Same non-null design_group_id (either side raw or already a group
+          id) → equivalent.
         - Otherwise → not equivalent.
         """
-        if predicted == ground_truth:
-            return True
-        g_pred = self.eurio_to_group.get(predicted)
-        g_gt = self.eurio_to_group.get(ground_truth)
-        return g_pred is not None and g_pred == g_gt
+        if predicted is None:
+            return False
+        return self.coalesce(predicted) == self.coalesce(ground_truth)
 
     def to_json(self) -> str:
         return json.dumps(self.eurio_to_group, sort_keys=True, indent=2)
@@ -61,9 +80,14 @@ class EquivalenceMap:
         return cls.from_json(Path(path).read_text())
 
 
-def build_equivalence_map() -> EquivalenceMap:
-    """Load the eurio_id → design_group_id map from the canonical eurio.db."""
-    coins = coin_refs_from_sqlite()
+def build_equivalence_map(db_path: Path | None = None) -> EquivalenceMap:
+    """Load the eurio_id → design_group_id map from the canonical eurio.db.
+
+    ``db_path`` overrides the default resolution (which honours
+    ``EURIO_DB_PATH``) — pass the bound store's ``db_path`` to stay on the
+    same DB as the caller (hermetic tests, replica vs canonical, etc.).
+    """
+    coins = coin_refs_from_sqlite(db_path=db_path)
     return EquivalenceMap(
         eurio_to_group={c.eurio_id: c.design_group_id for c in coins}
     )

@@ -811,7 +811,8 @@ def _i4_substate_live_tests(iteration_id: str) -> dict:
     total = len(rows)
     if total == 0:
         return {"state": "empty", "total": 0, "recall_at_1": None}
-    correct = sum(1 for r in rows if r.is_correct)
+    # Maille design_group (cf. _live_tests_summary) — pas le strict eurio_id.
+    correct = sum(1 for r in rows if r.is_correct_eq)
     return {
         "state": "ready",
         "total": total,
@@ -3084,8 +3085,13 @@ def _live_tests_summary(
     rows: list[IterationLiveTestRow], iteration: ExperimentIterationRow,
 ) -> dict:
     total = len(rows)
-    correct = sum(1 for r in rows if r.is_correct)
+    # R@1 de vérité = maille design_group (le modèle prédit des labels de
+    # groupe ; le strict eurio_id ne peut structurellement jamais matcher).
+    # On expose aussi le strict à titre informatif.
+    correct = sum(1 for r in rows if r.is_correct_eq)
+    correct_strict = sum(1 for r in rows if r.is_correct)
     live_r1 = correct / total if total > 0 else None
+    live_r1_strict = correct_strict / total if total > 0 else None
     studio_r1: float | None = None
     if iteration.benchmark_run_id:
         bench = _get_store().get_benchmark_run(iteration.benchmark_run_id)
@@ -3099,7 +3105,9 @@ def _live_tests_summary(
     return {
         "total": total,
         "correct": correct,
+        "correct_strict": correct_strict,
         "recall_at_1": live_r1,
+        "recall_at_1_strict": live_r1_strict,
         "studio_r_at_1": studio_r1,
         "delta": delta,
     }
@@ -3130,6 +3138,13 @@ def sync_live_tests(
                 f"cohort-test:pull-tests ITERATION={iteration_id}`."
             ),
         )
+    # Verdict recomputé server-side sur la maille COALESCE(design_group,
+    # eurio_id) — on ne fait JAMAIS confiance au flag on-device (l'APK de scan
+    # peut précéder un fix de la règle de verdict, cf. bc17d955). Parité avec
+    # le matcher Android + feedback_output_contract_parity.md.
+    from training.eval.equivalence import build_equivalence_map
+
+    eq_map = build_equivalence_map(db_path=store.db_path)
     inserted = 0
     skipped_dupe = 0
     parse_errors: list[str] = []
@@ -3143,6 +3158,9 @@ def sync_live_tests(
                 continue
             if row is None:
                 continue
+            pred = row.predicted_top1
+            row.is_correct = pred is not None and pred == row.expected_eurio_id
+            row.is_correct_eq = eq_map.are_equivalent(pred, row.expected_eurio_id)
             if store.upsert_live_test(row):
                 inserted += 1
             else:

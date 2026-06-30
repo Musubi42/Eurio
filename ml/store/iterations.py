@@ -94,6 +94,11 @@ class IterationLiveTestRow:
     is_correct: bool
     error: str | None
     ts: str
+    # Verdict sur la maille COALESCE(design_group, eurio_id), recomputé
+    # server-side au sync (cf. lab_routes.sync_live_tests). C'est la métrique
+    # de vérité du §5 — `is_correct` strict ne peut jamais matcher un label
+    # design_group prédit par le modèle.
+    is_correct_eq: bool = False
     synced_at: str | None = None
 
     def to_dict(self) -> dict:
@@ -106,6 +111,7 @@ class IterationLiveTestRow:
             "predicted_top1": self.predicted_top1,
             "similarity_top1": self.similarity_top1,
             "is_correct": self.is_correct,
+            "is_correct_eq": self.is_correct_eq,
             "error": self.error,
             "ts": self.ts,
             "synced_at": self.synced_at,
@@ -353,6 +359,12 @@ class IterationsMixin:
         Dupe detection is structural: a row already exists for
         ``(iteration_id, test_idx)``. The route uses the boolean to count
         ``inserted`` vs ``skipped_dupe`` for resync idempotency.
+
+        On dupe we still **refresh the verdict** (``is_correct`` /
+        ``is_correct_eq``): re-syncing after the equivalence logic improved
+        must re-grade existing rows, not freeze the stale on-device verdict.
+        The raw fields (predictions, ts) are immutable — only the verdict is
+        re-derived server-side, so refreshing it is safe and idempotent.
         """
         with self._writing() as c:
             existing = c.execute(
@@ -361,14 +373,25 @@ class IterationsMixin:
                 (row.iteration_id, row.test_idx),
             ).fetchone()
             if existing is not None:
+                c.execute(
+                    "UPDATE iteration_live_tests "
+                    "SET is_correct = ?, is_correct_eq = ? "
+                    "WHERE iteration_id = ? AND test_idx = ?",
+                    (
+                        1 if row.is_correct else 0,
+                        1 if row.is_correct_eq else 0,
+                        row.iteration_id,
+                        row.test_idx,
+                    ),
+                )
                 return False
             c.execute(
                 """
                 INSERT INTO iteration_live_tests (
                   iteration_id, test_idx, expected_eurio_id, condition,
                   predicted_top3_json, predicted_top1, similarity_top1,
-                  is_correct, error, ts
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                  is_correct, is_correct_eq, error, ts
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     row.iteration_id,
@@ -379,6 +402,7 @@ class IterationsMixin:
                     row.predicted_top1,
                     row.similarity_top1,
                     1 if row.is_correct else 0,
+                    1 if row.is_correct_eq else 0,
                     row.error,
                     row.ts,
                 ),
@@ -401,6 +425,7 @@ class IterationsMixin:
                 predicted_top1=r["predicted_top1"],
                 similarity_top1=r["similarity_top1"],
                 is_correct=bool(r["is_correct"]),
+                is_correct_eq=bool(_optional_column(r, "is_correct_eq")),
                 error=r["error"],
                 ts=r["ts"],
                 synced_at=r["synced_at"],
