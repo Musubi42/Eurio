@@ -565,6 +565,17 @@ export interface IterationProgressI2 {
   per_coin: IterationProgressI2Coin[]
 }
 
+// Provenance des images d'entraînement (GET …/sources). Agrégée sur le bake set
+// design_group : avers Numista (FS) + crops eBay reviewés + réfs officielles BCE.
+export interface IterationSources {
+  numista_obverse: number
+  ebay_crops: number
+  bce_refs: number
+  total: number
+  n_classes: number
+  n_coins: number
+}
+
 export interface IterationProgressI3 {
   state: DrawerState
   status: IterationStatus

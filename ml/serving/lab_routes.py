@@ -910,6 +910,45 @@ def iteration_progress(cohort_id: str, iteration_id: str) -> dict:
     return _iteration_progress(it)
 
 
+@router.get("/cohorts/{cohort_id}/iterations/{iteration_id}/sources")
+def iteration_sources(cohort_id: str, iteration_id: str) -> dict:
+    """Provenance des images d'entraînement, agrégée sur le bake set design_group.
+
+    Réponse à la demande (pas pollée) : compte les sources RÉELLES — avers Numista
+    (FS), crops eBay reviewés (`training_eligible`), réfs officielles BCE/EUR-Lex —
+    sur l'union des membres des groupes de la cohorte (mêmes sources que le bake et
+    le préflight). Donne à l'admin « d'où viennent les images » avant/pendant un run.
+    """
+    it = _get_store().get_iteration(iteration_id)
+    if it is None or it.cohort_id != cohort_id:
+        raise HTTPException(status_code=404, detail="Itération introuvable")
+    cohort = _get_store().get_cohort(it.cohort_id)
+    if cohort is None:
+        raise HTTPException(status_code=404, detail="Cohorte introuvable")
+    from training.iteration_augmentations import real_training_sources
+    from training.eval.class_resolver import build_resolver
+    from serving import coin_lookup
+    store = _get_store()
+    resolver = build_resolver(force_eurio_id=False, db_path=store.db_path)
+    descriptors, _ = resolver.classes_for_eurio_ids(cohort.eurio_ids)
+    bake_ids = {eid for d in descriptors for eid in d.eurio_ids}
+    numista = ebay = ref = 0
+    for eid in bake_ids:
+        nid = coin_lookup.numista_id_for(eid)
+        src = real_training_sources(eid, nid, store)
+        numista += src.n_numista
+        ebay += src.n_ebay
+        ref += src.n_ref
+    return {
+        "numista_obverse": numista,
+        "ebay_crops": ebay,
+        "bce_refs": ref,
+        "total": numista + ebay + ref,
+        "n_classes": len(descriptors),
+        "n_coins": len(bake_ids),
+    }
+
+
 @router.post("/cohorts/{cohort_id}/iterations/{iteration_id}/bake", status_code=202)
 def bake_iteration(cohort_id: str, iteration_id: str) -> dict:
     """Idempotent bake (sans clear) — DÉTACHÉ. Remplit les samples manquants sans

@@ -30,6 +30,7 @@ import {
   fetchDashboard,
   fetchIterationAugmentations,
   fetchIterationProgress,
+  fetchIterationSources,
   fetchIterations,
   fetchLiveTests,
   fetchRunnerStatus,
@@ -82,6 +83,8 @@ export const LAB_KEYS = {
   progress: (cohortId: string) => ['lab', 'cohort', cohortId, 'progress'] as const,
   iterationProgress: (cohortId: string, iterationId: string) =>
     ['lab', 'cohort', cohortId, 'iterations', iterationId, 'progress'] as const,
+  iterationSources: (cohortId: string, iterationId: string) =>
+    ['lab', 'cohort', cohortId, 'iterations', iterationId, 'sources'] as const,
   augmentations: (cohortId: string, iterationId: string) =>
     ['lab', 'cohort', cohortId, 'iterations', iterationId, 'augmentations'] as const,
   augVsReal: (cohortId: string, iterationId: string) =>
@@ -447,12 +450,36 @@ export function useIterationProgressQuery(
     queryFn: () =>
       fetchIterationProgress(toValue(cohortId), toValue(iterationId)),
     enabled: computed(() => !!toValue(cohortId) && !!toValue(iterationId)),
-    refetchInterval: computed(() => {
+    refetchInterval: (query) => {
       const s = toValue(status)
       if (s === 'training' || s === 'benchmarking') return 2000
+      // Pendant un bake (I2 partiel), rafraîchir vite pour voir le compteur
+      // total_baked monter en quasi-direct au lieu d'attendre 5 s.
+      const data = query.state.data as { i2?: { state?: string } } | undefined
+      if (data?.i2?.state === 'partial') return 2000
       return 5000
-    }),
+    },
     staleTime: 1000,
+  })
+}
+
+/**
+ * Provenance des images d'entraînement (avers Numista / crops eBay / réfs BCE),
+ * agrégée sur le bake set design_group. À la demande (pas pollée) — change peu
+ * pendant un run.
+ */
+export function useIterationSourcesQuery(
+  cohortId: MaybeRefOrGetter<string>,
+  iterationId: MaybeRefOrGetter<string>,
+) {
+  return useQuery({
+    queryKey: computed(() =>
+      LAB_KEYS.iterationSources(toValue(cohortId), toValue(iterationId)),
+    ),
+    queryFn: () =>
+      fetchIterationSources(toValue(cohortId), toValue(iterationId)),
+    enabled: computed(() => !!toValue(cohortId) && !!toValue(iterationId)),
+    staleTime: 30000,
   })
 }
 

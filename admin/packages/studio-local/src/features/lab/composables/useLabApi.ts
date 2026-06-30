@@ -347,6 +347,15 @@ export async function fetchIterationProgress(
   )
 }
 
+export async function fetchIterationSources(
+  cohortId: string,
+  iterationId: string,
+): Promise<import('../types').IterationSources> {
+  return json<import('../types').IterationSources>(
+    `/lab/cohorts/${encodeURIComponent(cohortId)}/iterations/${encodeURIComponent(iterationId)}/sources`,
+  )
+}
+
 // ─── Augmentation bake : détaché + poll (refacto-ml chunk 4) ────────────
 // Les endpoints `/bake`, `/augmentations/regenerate` et `/preview-iteration`
 // renvoient 202 + un job_id ; le bake tourne en subprocess détaché (survit au

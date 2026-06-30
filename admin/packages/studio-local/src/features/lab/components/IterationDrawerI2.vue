@@ -7,6 +7,7 @@ import AugmentationsGallery from '@/features/lab/components/AugmentationsGallery
 import DrawerSection from '@/features/lab/components/DrawerSection.vue'
 import {
   useBakeIterationMutation,
+  useIterationSourcesQuery,
   useRegenerateAugmentationsMutation,
 } from '@/features/lab/composables/useLabQueries'
 import type {
@@ -29,9 +30,22 @@ const iterationId = computed(() => props.iteration.id)
 
 const bakeMut = useBakeIterationMutation(cohortId, iterationId)
 const regenMut = useRegenerateAugmentationsMutation(cohortId, iterationId)
+const sourcesQuery = useIterationSourcesQuery(cohortId, iterationId)
 const error = ref<string | null>(null)
 
 const isPending = computed(() => props.iteration.status === 'pending')
+
+// Barre de progression du bake (total_baked / total_expected). Pendant le bake,
+// le poll progress passe à 2 s (I2 partiel) → le compteur monte en quasi-direct.
+const bakePct = computed(() => {
+  const p = props.progress
+  if (!p || p.total_expected <= 0) return 0
+  return Math.min(100, Math.round((p.total_baked / p.total_expected) * 100))
+})
+const isBaking = computed(
+  () => bakeMut.isPending.value || regenMut.isPending.value || props.progress?.state === 'partial',
+)
+const sources = computed(() => sourcesQuery.data.value ?? null)
 
 const summary = computed(() => {
   const p = props.progress
@@ -113,6 +127,38 @@ async function regenerate() {
           <RefreshCw v-else class="h-3 w-3" />
           Régénérer
         </button>
+      </div>
+
+      <!-- Provenance : d'où viennent les images réelles d'entraînement -->
+      <div
+        v-if="sources && sources.total > 0"
+        class="mb-3 rounded-md border px-3 py-2 text-xs"
+        style="border-color: var(--surface-3); color: var(--ink);"
+      >
+        <span style="color: var(--ink-400);">Sources réelles :</span>
+        <span class="font-mono">{{ sources.numista_obverse }}</span> avers Numista ·
+        <span class="font-mono">{{ sources.ebay_crops }}</span> crops eBay ·
+        <span class="font-mono">{{ sources.bce_refs }}</span> réfs BCE
+        <span style="color: var(--ink-400);">
+          ({{ sources.n_coins }} pièce(s) → {{ sources.n_classes }} classe(s) design_group)
+        </span>
+      </div>
+
+      <!-- Barre de progression du bake (monte en quasi-direct pendant le bake) -->
+      <div v-if="(progress?.total_expected ?? 0) > 0" class="mb-4">
+        <div class="mb-1 flex items-center justify-between text-xs">
+          <span class="flex items-center gap-1.5" style="color: var(--ink-400);">
+            <Loader2 v-if="isBaking" class="h-3 w-3 animate-spin" />
+            Bake des augmentations
+          </span>
+          <span class="font-mono">{{ progress?.total_baked ?? 0 }}/{{ progress?.total_expected ?? 0 }} ({{ bakePct }}%)</span>
+        </div>
+        <div class="h-1.5 w-full overflow-hidden rounded-full" style="background: var(--surface-3);">
+          <div
+            class="h-full rounded-full transition-all"
+            :style="{ width: `${bakePct}%`, background: 'var(--gold)' }"
+          />
+        </div>
       </div>
 
       <div
