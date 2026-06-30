@@ -601,6 +601,11 @@ tasks:
     cmds:
       - "{{.VENV}}/python -m uvicorn serving.server:app --port 8042"
 
+  lab:clean-orphans:
+    desc: "Supprime les artefacts disque d'itérations lab orphelines (plus en DB). Dry-run par défaut ; ajouter -- --apply pour supprimer. Filet pour les runs morts (subprocess tué)."
+    cmds:
+      - "{{.VENV}}/python -m scripts.clean_lab_orphans {{.CLI_ARGS}}"
+
   # ---------- Confusion Map ----------
   confusion-map:
     desc: "Generate coin confusion map via DINOv2 and upsert to Supabase"

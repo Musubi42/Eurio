@@ -50,6 +50,14 @@ ml/*.tflite
 ml/*.npy
 ml/checkpoints/
 ml/output/
+# Artefacts de run du lab (modèle/tflite/embeddings/previews/manifests par itération)
+# — régénérables, nettoyés à la suppression de l'itération (cf. delete_iteration).
+ml/lab/iterations/
+# Caches régénérables : sources d'augmentation, embeddings/inputs DINO, status.
+ml/cache/
+# Rapports de benchmark + résidu de chemin par défaut.
+ml/training/reports/
+ml/training/state/
 ml/yolov8n.pt
 # Poids SAM auto-téléchargés par ultralytics (proposeurs-objet du bench census).
 ml/mobile_sam.pt

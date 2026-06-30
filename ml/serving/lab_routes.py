@@ -1039,6 +1039,25 @@ def update_iteration(
 
 
 @router.delete("/cohorts/{cohort_id}/iterations/{iteration_id}")
+def _purge_iteration_artifacts(iteration_id: str) -> None:
+    """Supprime les artefacts disque (régénérables) d'une itération — l'« événement
+    de fin ». Couvre : ``lab/iterations/<iid>`` (modèle/tflite/embeddings/previews/
+    manifests), ``datasets/iterations/<iid>`` (staging) et ``datasets/*/augmentations/
+    <iid>`` (bakes par-coin, set design_group inclus → glob, pas juste la cohorte).
+    Best-effort : un échec de rmtree ne bloque pas la suppression DB."""
+    import shutil
+    from .iteration_runner import (
+        DATASETS_DIR,
+        ITERATION_TRAIN_ROOTS,
+        LAB_ITERATIONS_DIR,
+    )
+    for path in (LAB_ITERATIONS_DIR / iteration_id, ITERATION_TRAIN_ROOTS / iteration_id):
+        if path.exists():
+            shutil.rmtree(path, ignore_errors=True)
+    for aug in DATASETS_DIR.glob(f"*/augmentations/{iteration_id}"):
+        shutil.rmtree(aug, ignore_errors=True)
+
+
 def delete_iteration(cohort_id: str, iteration_id: str) -> dict:
     it = _get_store().get_iteration(iteration_id)
     if it is None or it.cohort_id != cohort_id:
@@ -1049,6 +1068,7 @@ def delete_iteration(cohort_id: str, iteration_id: str) -> dict:
             detail="Impossible de supprimer une itération en cours.",
         )
     _get_store().delete_iteration(iteration_id)
+    _purge_iteration_artifacts(iteration_id)
     return {"deleted": True, "id": iteration_id}
 
 
