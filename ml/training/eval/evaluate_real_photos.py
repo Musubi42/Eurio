@@ -39,7 +39,7 @@ if str(ML_DIR) not in sys.path:
 
 from training.eval.equivalence import EquivalenceMap, build_equivalence_map  # noqa: E402
 from training.eval.real_photo_meta import AXES, parse_filename  # noqa: E402
-from store import BenchmarkRunRow, Store  # noqa: E402
+from store import BenchmarkRunRow, Store, resolve_db_path  # noqa: E402
 
 logger = logging.getLogger("evaluate_real_photos")
 
@@ -49,7 +49,11 @@ DEFAULT_REPORTS_DIR = ML_DIR / "reports"
 # promoted prod embeddings (phase 4) ; override with --centroids for a lab iteration.
 DEFAULT_CENTROIDS = ML_DIR.parent / "prod" / "current" / "embeddings" / "embeddings_v1.json"
 DEFAULT_DETECTOR = ML_DIR / "output" / "detection" / "coin_detector" / "weights" / "best.pt"
-STATE_DB = ML_DIR / "state" / "eurio.db"
+# Honore EURIO_DB_PATH (Model B : le bench détaché doit écrire la row dans la
+# MÊME DB que le runner — la réplique —, sinon sa complétion n'arrive jamais et
+# le runner reste hung en `benchmarking`). ML_DIR = ml/training/ ici, donc la
+# racine ml/ = ML_DIR.parent ; le défaut legacy reste ml/state/eurio.db.
+STATE_DB = resolve_db_path(ML_DIR.parent / "state" / "eurio.db")
 
 
 # ─── Centroids ──────────────────────────────────────────────────────────────

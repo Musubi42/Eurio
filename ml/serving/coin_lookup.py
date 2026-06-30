@@ -14,7 +14,11 @@ import sqlite3
 import threading
 from pathlib import Path
 
-_DB_PATH = Path(__file__).resolve().parent.parent / "state" / "eurio.db"
+from store import resolve_db_path
+
+# Honore EURIO_DB_PATH (Model B : le compute lit la réplique, pas un eurio.db
+# local périmé). Défaut legacy = ml/state/eurio.db.
+_DB_PATH = resolve_db_path(Path(__file__).resolve().parent.parent / "state" / "eurio.db")
 
 _lock = threading.Lock()
 _eurio_to_numista: dict[str, int] = {}

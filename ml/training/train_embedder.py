@@ -158,9 +158,9 @@ def _resolve_recipe(id_or_name: str) -> dict:
     Kept local so that passing `--aug-recipe` is the *only* way the
     legacy-only code path changes. No silent default injection.
     """
-    from store import Store
+    from store import Store, resolve_db_path
 
-    store = Store(ML_DIR / "state" / "eurio.db")
+    store = Store(resolve_db_path(ML_DIR / "state" / "eurio.db"))
     row = store.get_recipe(id_or_name)
     if row is None:
         raise SystemExit(f"aug_recipe {id_or_name!r} introuvable en SQLite")
