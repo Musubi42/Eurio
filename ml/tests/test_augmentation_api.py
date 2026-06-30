@@ -14,7 +14,6 @@ import sys
 from pathlib import Path
 
 import pytest
-from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 ML_DIR = Path(__file__).parent.parent
@@ -24,7 +23,7 @@ if str(ML_DIR) not in sys.path:
 
 @pytest.fixture()
 def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    """Fresh TestClient with a temp SQLite DB and no supabase dependency."""
+    """Fresh TestClient with a temp SQLite DB (Modèle B : aucune dépendance Supabase)."""
     from store import Store
 
     test_store = Store(tmp_path / "t.db")
@@ -32,12 +31,7 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     # Reset the augmentation module's bound state, then re-bind with our store.
     import serving.augmentation_routes as ar
 
-    def _no_supabase():
-        raise HTTPException(
-            status_code=503, detail="Supabase disabled in tests"
-        )
-
-    ar.bind(test_store, _no_supabase)
+    ar.bind(test_store)
     # Point cleanup to a temp tree to avoid touching real ml/output.
     monkeypatch.setattr(ar, "PREVIEW_ROOT", tmp_path / "previews")
 

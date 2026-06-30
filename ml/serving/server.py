@@ -112,8 +112,9 @@ app.include_router(ingest_routes.router)
 from serving import db_routes  # noqa: E402
 app.include_router(db_routes.router)
 
-# Wire augmentation routes to the shared store + a lazy supabase fetcher.
-augmentation_routes.bind(_store, lambda: get_supabase())
+# Wire augmentation routes to the shared store (Modèle B : sources d'aperçu
+# résolues via MinIO, plus de dépendance Supabase).
+augmentation_routes.bind(_store)
 app.include_router(augmentation_routes.router)
 
 # Wire benchmark routes (real-photo hold-out — no Supabase dependency).
