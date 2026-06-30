@@ -1,5 +1,6 @@
 import { eurioApi } from '@/shared/api/eurio-api'
 import { ML_API } from '@/shared/api/ml-api'
+import { HAS_LOCAL_ML_API } from '@/shared/config/deploy-target'
 import type { ConfusionZone } from '@/shared/supabase/types'
 import { zoneFromSimilarity } from './useConfusionZone'
 
@@ -63,6 +64,7 @@ export interface CoinConfusionDetail {
 /* ───────── ML API availability ───────── */
 
 export async function checkMlApiOnline(): Promise<boolean> {
+  if (!HAS_LOCAL_ML_API) return false
   try {
     const resp = await fetch(`${ML_API}/health`, {
       signal: AbortSignal.timeout(3000),
