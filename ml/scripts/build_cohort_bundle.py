@@ -37,6 +37,7 @@ import hashlib
 import json
 import shutil
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -66,6 +67,7 @@ sys.path.insert(0, str(ML_DIR))
 from training.eval.equivalence import build_equivalence_map  # noqa: E402
 from store import Store, resolve_db_path  # noqa: E402
 from shared.utils.i18n import coin_display  # noqa: E402
+from shared.storage import _client, public_url  # noqa: E402
 
 LIVE_TESTS_MANIFEST_VERSION = 2
 
@@ -123,6 +125,37 @@ def _coins_from_app_core_db(eurio_ids: set[str]) -> dict[str, dict[str, Any]]:
         return out
     finally:
         conn.close()
+
+
+def _obverse_url(eurio_id: str, conn, s3) -> str | None:
+    """URL d'affichage de l'avers canonique pour la vignette de référence du
+    test on-device.
+
+    Priorité : asset CDN MinIO ``numista-canonical/<eurio_id>/obverse_bce.webp``
+    (servi public via eurio-images.musubi.dev — fiable, asset du projet). À
+    défaut (ex. types courants sans réf BCE), l'URL source canonique stockée en
+    base (``coin_canonical_images``). ``None`` si rien → l'app retombe sur le
+    disque générique. Un 403 transitoire MinIO sur le HEAD est retenté quelques
+    fois (même fragilité que ``local_path``)."""
+    from botocore.exceptions import ClientError
+
+    key = f"{eurio_id}/obverse_bce.webp"
+    for attempt in range(4):
+        try:
+            s3.head_object(Bucket="numista-canonical", Key=key)
+            return public_url(key)
+        except ClientError as e:
+            code = (getattr(e, "response", {}) or {}).get("Error", {}).get("Code")
+            if code in ("404", "NoSuchKey", "NotFound"):
+                break  # vraiment absent → fallback DB
+            time.sleep(0.2 * (attempt + 1))  # 403 transitoire → retry
+    row = conn.execute(
+        "SELECT url FROM coin_canonical_images "
+        "WHERE eurio_id=? AND role='obverse' AND url IS NOT NULL AND url != '' "
+        "LIMIT 1",
+        (eurio_id,),
+    ).fetchone()
+    return row[0] if row else None
 
 
 def _filter_embeddings(
@@ -375,6 +408,14 @@ def main() -> int:
     # aucun consommateur (l'app cohortTest lit equivalence_map + manifest, et
     # son catalogue vient du code partagé / app_core.db).
     coin_by_id = _coins_from_app_core_db(eurio_ids)
+
+    # Vignette de référence : URL de l'avers canonique par coin (CDN MinIO si
+    # dispo, sinon source canonique). Sans ça, l'app affiche un disque générique
+    # "2€" au lieu de la vraie pièce.
+    _conn = store._connection()  # noqa: SLF001
+    _s3 = _client()
+    for _eid, _c in coin_by_id.items():
+        _c["image_obverse_url"] = _obverse_url(_eid, _conn, _s3)
 
     # bundle_meta.json : source + identity + sha256. Source canonique côté
     # Android (BundleMeta.kt) pour l'écran "status / source du bundle".

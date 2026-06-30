@@ -188,15 +188,16 @@ fun LiveTestsScreen(
                     error = errorMsg,
                     ts = logger.isoNow(),
                 )
-                if (active.idx !in results) {
-                    results[active.idx] = result
-                    runCatching { logger.append(result) }
-                        .onFailure { android.util.Log.e("LiveTests", "Append failed", it) }
-                } else if (results[active.idx]?.error != null && result.error == null) {
-                    // OQ-4 — only allow re-snapping a previous failure.
-                    results[active.idx] = result
-                    runCatching { logger.append(result) }
-                }
+                // Re-snap toujours autorisé : on (ré)écrit le résultat du test
+                // courant. Avant, un test déjà enregistré (sans erreur) rendait
+                // le snap inopérant → l'utilisateur restait coincé dessus
+                // (« une seule analyze puis ça boucle »). Re-tester une pièce est
+                // légitime ; l'avancement reste la CTA « Test suivant → » de la
+                // sheet. Le JSONL est append-only (le sync prend le dernier par
+                // test_idx), donc réécrire est cohérent.
+                results[active.idx] = result
+                runCatching { logger.append(result) }
+                    .onFailure { android.util.Log.e("LiveTests", "Append failed", it) }
                 awaitingSnap = false
             }
         }
