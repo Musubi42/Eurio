@@ -61,4 +61,9 @@ déchets depuis le contexte lab/cohorte. C'est la première amélioration UX
 - 🔬 **Diagnostic itération 1** fait : l'écart résiduel 0.79→0.94 est surtout
   des **near-twins de portrait** + domaine (eBay proof vs circulation), pas
   majoritairement du déchet. Quelques crops bas de gamme existent quand même.
-- 🔜 **Outil INSPECT** à construire (`03-crop-triage-ux.md`).
+- ✅ **Outil INSPECT construit** (commits 9b524e08 backend + 3f432de9 front) :
+  drawer C5 « QA crops d'entraînement » sur `/lab/cohorts/:id` — accordéon par
+  classe rangé par R@1, vignettes suspect-first, clic = exclure/réinclure
+  (réversible, effet au re-bake). Cf. `03-crop-triage-ux.md`.
+- 🔜 **Itération 2 (modèle)** : attaquer les near-twins (hard-negatives via
+  `confusion_map.py`) + augmentations basse-lumière. Prochaine étape.
