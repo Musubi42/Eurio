@@ -35,16 +35,28 @@ def _max_gb() -> float:
     return float(os.environ.get("EURIO_CACHE_MAX_GB", "0"))
 
 
+# Backoff schedule for transient download failures (in seconds, AFTER the
+# first attempt). MinIO behind the VPS proxy returns sporadic 403s under
+# bursts of distinct-key reads — empirically ~100% recover on an immediate
+# retry. Short delays: total worst-case ~7.7s per object, rarely hit.
+_DOWNLOAD_RETRY_DELAYS = (0.2, 0.5, 1.0, 2.0, 4.0)
+
+
 def local_path(bucket: Bucket, storage_key: str) -> Path:
     """Return a local filesystem path for `<bucket>/<storage_key>`.
 
     Downloads from MinIO on first call, touches atime on subsequent calls.
     Raises FileNotFoundError if the object is missing or MinIO is down.
 
+    Transient download failures (network errors, 5xx, and the sporadic 403
+    MinIO emits under read bursts) are retried with bounded backoff
+    (`_DOWNLOAD_RETRY_DELAYS`). A genuine "key not found" is NOT transient and
+    is surfaced immediately.
+
     Cascade: when MinIO confirms the object no longer exists (404), every
     DB row pointing at this key is marked `storage_status='missing_in_storage'`
-    via `cascade.mark_missing_in_storage()`. Transient network errors do
-    NOT trigger the mark — only an explicit "key not found" response does.
+    via `cascade.mark_missing_in_storage()`. Transient errors do NOT trigger
+    the mark — only an explicit "key not found" response does.
     """
     target = _cache_root() / bucket / storage_key
     if target.exists():
@@ -59,21 +71,31 @@ def local_path(bucket: Bucket, storage_key: str) -> Path:
 
     target.parent.mkdir(parents=True, exist_ok=True)
     tmp = target.with_suffix(target.suffix + ".tmp")
-    try:
-        _client().download_file(bucket, storage_key, str(tmp))
-    except Exception as e:
-        # Wipe the half-written tmp; surface as FileNotFoundError so callers
-        # don't have to catch boto-specific exceptions.
-        tmp.unlink(missing_ok=True)
-        if _is_not_found(e):
-            # MinIO confirms the object is gone — propagate to DB + cache.
-            from . import cascade  # lazy import (avoids circular)
-            cascade.mark_missing_in_storage(bucket, storage_key)
-        raise FileNotFoundError(
-            f"Cannot fetch {bucket}/{storage_key}: {e}"
-        ) from e
-    os.replace(tmp, target)
-    return target
+    last_exc: BaseException | None = None
+    for delay in (0.0, *_DOWNLOAD_RETRY_DELAYS):
+        if delay:
+            time.sleep(delay)
+        try:
+            _client().download_file(bucket, storage_key, str(tmp))
+            os.replace(tmp, target)
+            return target
+        except Exception as e:  # noqa: BLE001
+            # Wipe the half-written tmp; surface as FileNotFoundError so callers
+            # don't have to catch boto-specific exceptions.
+            tmp.unlink(missing_ok=True)
+            if _is_not_found(e):
+                # MinIO confirms the object is gone — not transient, propagate
+                # to DB + cache and bail out without retrying.
+                from . import cascade  # lazy import (avoids circular)
+                cascade.mark_missing_in_storage(bucket, storage_key)
+                raise FileNotFoundError(
+                    f"Cannot fetch {bucket}/{storage_key}: {e}"
+                ) from e
+            last_exc = e
+    raise FileNotFoundError(
+        f"Cannot fetch {bucket}/{storage_key} after "
+        f"{len(_DOWNLOAD_RETRY_DELAYS) + 1} attempts: {last_exc}"
+    ) from last_exc
 
 
 def _is_not_found(exc: BaseException) -> bool:
