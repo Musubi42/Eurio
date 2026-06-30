@@ -553,3 +553,109 @@ def test_live_tests_sync_rejects_iteration_id_mismatch(live_test_client):
     assert resp.status_code == 200
     assert resp.json()["inserted"] == 0
     assert any("iteration_id" in e for e in resp.json()["parse_errors"])
+
+
+# ── QA crops d'entraînement par classe (boucle d'amélioration) ───────────────
+
+
+def _seed_coin(conn, eurio_id, numista_id, design_group_id):
+    conn.execute(
+        "INSERT OR REPLACE INTO coins (eurio_id, country, country_name, year, "
+        "face_value, is_commemorative, numista_id, design_group_id, "
+        "raw_payload_json) VALUES (?, 'XX', 'XX', 2016, 2.0, 1, ?, ?, '{}')",
+        (eurio_id, numista_id, design_group_id),
+    )
+
+
+def _seed_crop(conn, eurio_id, *, face, eligible, status, quality, denom="2eur"):
+    import uuid
+    sid = uuid.uuid4().hex
+    conn.execute(
+        "INSERT INTO source_images (id, source, source_ref, target_eurio_id, "
+        "listing_title) VALUES (?, 'ebay', ?, ?, 'titre')",
+        (sid, f"ebay_{sid}", eurio_id),
+    )
+    aid = uuid.uuid4().hex
+    conn.execute(
+        "INSERT INTO image_assets (id, source_image_id, crop_index, eurio_id, "
+        "resolution_status, face, denom, quality_score, training_eligible, "
+        "storage_path) VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?)",
+        (aid, sid, eurio_id, status, face, denom, quality,
+         1 if eligible else 0, f"ebay/{sid}/{aid}.png"),
+    )
+    return aid
+
+
+def test_cohort_training_crops_rolls_up_design_group_and_ranks(client):
+    c, store, _ = client
+    # Deux eurio_ids du même design_group → UNE classe.
+    with store._writing() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO design_groups (id, designation) VALUES "
+            "(?, ?)", ("grp-portrait", "Portrait"),
+        )
+        _seed_coin(conn, "xx-2016-a", 900101, "grp-portrait")
+        _seed_coin(conn, "xx-2016-b", 900102, "grp-portrait")
+        # Membre A : 2 obverse eligible, 1 unknown-face eligible (suspect),
+        #            1 reverse rejected (non eligible).
+        a_obv = _seed_crop(conn, "xx-2016-a", face="obverse", eligible=True,
+                           status="manual", quality=0.9)
+        _seed_crop(conn, "xx-2016-a", face="obverse", eligible=True,
+                   status="manual", quality=0.8)
+        _seed_crop(conn, "xx-2016-a", face="unknown", eligible=True,
+                   status="manual", quality=0.5)
+        _seed_crop(conn, "xx-2016-a", face="reverse", eligible=False,
+                   status="rejected", quality=0.2)
+        # Membre B : 1 obverse eligible (le rollup doit l'inclure).
+        _seed_crop(conn, "xx-2016-b", face="obverse", eligible=True,
+                   status="manual", quality=0.7)
+    # Cohorte + itération + benchmark avec per_coin (couplage R@1).
+    store.create_cohort(ExperimentCohortRow(
+        id="cg", name="cohort-grp", eurio_ids=["xx-2016-a", "xx-2016-b"],
+        status="frozen",
+    ))
+    store.create_benchmark_run(BenchmarkRunRow(
+        id="bg", model_path="", model_name="m", report_path="",
+        status="completed", r_at_1=0.6,
+        per_coin=[{"eurio_id": "xx-2016-a", "r_at_1": 0.5}],
+    ))
+    store.create_iteration(ExperimentIterationRow(
+        id="itg", cohort_id="cg", name="it", status="completed",
+        benchmark_run_id="bg",
+    ))
+
+    resp = c.get("/lab/cohorts/cg/training-crops")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["benchmark_run_id"] == "bg"
+    assert len(body["classes"]) == 1          # A+B collapsed into grp-portrait
+    cls = body["classes"][0]
+    assert cls["class_id"] == "grp-portrait"
+    assert set(cls["member_eurio_ids"]) == {"xx-2016-a", "xx-2016-b"}
+    assert cls["n_eligible"] == 4             # 3 from A + 1 from B
+    assert cls["n_unknown_face"] == 1         # the eligible unknown-face crop
+    assert cls["n_rejected"] == 1
+    assert cls["r_at_1"] == pytest.approx(0.5)
+    # Suspect d'abord : la première vignette n'est pas un obverse.
+    assert cls["crops"][0]["face"] != "obverse"
+
+    # Toggle : exclure un crop obverse → n_eligible baisse, réversible.
+    off = c.post(f"/lab/assets/{a_obv}/training-eligible", json={"eligible": False})
+    assert off.status_code == 200
+    assert off.json()["training_eligible"] is False
+    again = c.get("/lab/cohorts/cg/training-crops").json()["classes"][0]
+    assert again["n_eligible"] == 3
+    on = c.post(f"/lab/assets/{a_obv}/training-eligible", json={"eligible": True})
+    assert on.json()["training_eligible"] is True
+    assert c.get("/lab/cohorts/cg/training-crops").json()["classes"][0]["n_eligible"] == 4
+
+
+def test_set_training_eligible_404_on_unknown_asset(client):
+    c, *_ = client
+    resp = c.post("/lab/assets/nope/training-eligible", json={"eligible": False})
+    assert resp.status_code == 404
+
+
+def test_cohort_training_crops_404_on_unknown_cohort(client):
+    c, *_ = client
+    assert c.get("/lab/cohorts/nope/training-crops").status_code == 404

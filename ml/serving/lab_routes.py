@@ -2007,6 +2007,212 @@ def cohort_funnel_status(cohort_id: str) -> dict:
     return _cohort_funnel_status(_get_store(), cohort_id)
 
 
+# ── QA crops d'entraînement par classe (boucle d'amélioration — INSPECT) ─────
+# Surface, par classe design_group de la cohorte, les crops qui alimentent (ou
+# pourraient alimenter) le train, rangés « suspect d'abord », couplés au R@1
+# studio par classe — pour repérer les déchets et les exclure en un clic.
+# Spéc : docs/work-in-progress/improvement-loop/03-crop-triage-ux.md.
+
+# Statuts de crops qu'on expose au triage : le pool résolu (candidats train) +
+# les rejetés (pour pouvoir restaurer). On NE touche PAS resolution_status à
+# l'exclusion — seul training_eligible bascule, donc le crop reste visible et le
+# prochain bake le drop (filtre training_eligible=1). Cf. 02-pipeline-map.
+_TRIAGE_STATUSES = ("auto_name", "auto_phash", "manual", "needs_review", "rejected")
+_TRIAGE_MAX_PER_CLASS = 400
+
+
+class TrainingCrop(BaseModel):
+    asset_id: str
+    source: str
+    file_url: str
+    eurio_id: str | None = None
+    face: str | None = None
+    denom: str | None = None
+    quality_score: float | None = None
+    training_eligible: bool
+    resolution_status: str
+
+
+class TrainingCropClass(BaseModel):
+    class_id: str
+    class_kind: str
+    member_eurio_ids: list[str]
+    n_eligible: int
+    n_unknown_face: int  # eligible mais face != obverse (suspects à inspecter)
+    n_rejected: int
+    r_at_1: float | None = None  # R@1 studio (dernière itération), moyenné sur les membres
+    crops: list[TrainingCrop]
+
+
+class CohortTrainingCropsResponse(BaseModel):
+    cohort_id: str
+    cohort_name: str
+    benchmark_run_id: str | None = None
+    classes: list[TrainingCropClass]
+
+
+def _latest_benchmark_per_coin(
+    store: Store, cohort_id: str,
+) -> tuple[str | None, dict[str, float]]:
+    """(benchmark_run_id, {eurio_id: r_at_1}) de l'itération la plus récente de la
+    cohorte qui a un benchmark complété. ({},) si aucune."""
+    iterations = store.list_iterations(cohort_id=cohort_id)
+    best_it = None
+    for it in iterations:
+        if it.benchmark_run_id is None:
+            continue
+        key = it.finished_at or it.created_at or ""
+        if best_it is None or key > (best_it[1]):
+            best_it = (it, key)
+    if best_it is None:
+        return None, {}
+    bench = store.get_benchmark_run(best_it[0].benchmark_run_id)
+    if bench is None:
+        return None, {}
+    per_coin: dict[str, float] = {}
+    for entry in bench.per_coin:
+        eid = entry.get("eurio_id")
+        r1 = entry.get("r_at_1")
+        if isinstance(eid, str) and isinstance(r1, (int, float)):
+            per_coin[eid] = float(r1)
+    return bench.id, per_coin
+
+
+def _cohort_training_crops(store: Store, cohort_id: str) -> CohortTrainingCropsResponse:
+    """Cœur (testable offline) de ``GET /lab/cohorts/{id}/training-crops``."""
+    from training.eval.class_resolver import build_resolver
+
+    cohort = store.get_cohort(cohort_id)
+    if cohort is None:
+        raise HTTPException(status_code=404, detail="Cohort introuvable")
+
+    resolver = build_resolver(force_eurio_id=False, db_path=store.db_path)
+    descriptors, _unresolved = resolver.classes_for_eurio_ids(cohort.eurio_ids)
+    benchmark_run_id, per_coin_r1 = _latest_benchmark_per_coin(store, cohort.id)
+
+    conn = store._connection()  # noqa: SLF001
+    status_ph = ",".join("?" for _ in _TRIAGE_STATUSES)
+    classes: list[TrainingCropClass] = []
+    for d in descriptors:
+        members = list(d.eurio_ids)
+        if not members:
+            classes.append(TrainingCropClass(
+                class_id=d.class_id, class_kind=d.class_kind,
+                member_eurio_ids=members, n_eligible=0, n_unknown_face=0,
+                n_rejected=0, r_at_1=None, crops=[],
+            ))
+            continue
+        member_ph = ",".join("?" for _ in members)
+        rows = conn.execute(
+            f"""
+            SELECT a.id, a.eurio_id, a.face, a.denom, a.quality_score,
+                   a.training_eligible, a.resolution_status, s.source
+              FROM image_assets a
+              JOIN source_images s ON s.id = a.source_image_id
+             WHERE a.eurio_id IN ({member_ph})
+               AND a.resolution_status IN ({status_ph})
+               AND a.storage_status = 'present'
+             ORDER BY
+               CASE WHEN a.face = 'obverse' THEN 1 ELSE 0 END ASC,
+               CASE WHEN a.denom = 'not_2eur' THEN 0 ELSE 1 END ASC,
+               a.quality_score ASC,
+               a.id
+             LIMIT ?
+            """,
+            (*members, *_TRIAGE_STATUSES, _TRIAGE_MAX_PER_CLASS),
+        ).fetchall()
+        crops = [
+            TrainingCrop(
+                asset_id=r["id"],
+                source=r["source"],
+                file_url=f"/sources/{r['source']}/assets/{r['id']}/file",
+                eurio_id=r["eurio_id"],
+                face=r["face"],
+                denom=r["denom"],
+                quality_score=r["quality_score"],
+                training_eligible=bool(r["training_eligible"]),
+                resolution_status=r["resolution_status"],
+            )
+            for r in rows
+        ]
+        n_eligible = sum(1 for c in crops if c.training_eligible)
+        n_unknown = sum(
+            1 for c in crops if c.training_eligible and c.face != "obverse"
+        )
+        n_rejected = sum(1 for c in crops if c.resolution_status == "rejected")
+        member_r1 = [per_coin_r1[m] for m in members if m in per_coin_r1]
+        r_at_1 = sum(member_r1) / len(member_r1) if member_r1 else None
+        classes.append(TrainingCropClass(
+            class_id=d.class_id, class_kind=d.class_kind,
+            member_eurio_ids=members, n_eligible=n_eligible,
+            n_unknown_face=n_unknown, n_rejected=n_rejected,
+            r_at_1=r_at_1, crops=crops,
+        ))
+
+    # Tri des classes : « à inspecter d'abord » = R@1 bas (None → en tête comme
+    # non-évalué/risqué), puis plus de suspects (face unknown) d'abord.
+    classes.sort(key=lambda c: (
+        c.r_at_1 if c.r_at_1 is not None else -1.0,
+        -c.n_unknown_face,
+    ))
+    return CohortTrainingCropsResponse(
+        cohort_id=cohort.id, cohort_name=cohort.name,
+        benchmark_run_id=benchmark_run_id, classes=classes,
+    )
+
+
+@router.get("/cohorts/{cohort_id}/training-crops", response_model=CohortTrainingCropsResponse)
+def cohort_training_crops(cohort_id: str) -> CohortTrainingCropsResponse:
+    """Crops d'entraînement par classe design_group de la cohorte, rangés suspect
+    d'abord et couplés au R@1 studio — pour le triage des déchets (read-only)."""
+    return _cohort_training_crops(_get_store(), cohort_id)
+
+
+class SetTrainingEligiblePayload(BaseModel):
+    eligible: bool
+
+
+@router.post("/assets/{asset_id}/training-eligible")
+def set_asset_training_eligible(
+    asset_id: str, payload: SetTrainingEligiblePayload,
+) -> dict:
+    """Inclut/exclut un crop du train (``training_eligible``). Réversible.
+
+    Exclure pose ``quality_reason='manual_triage'`` (traçable) sans toucher
+    ``resolution_status`` ni ``eurio_id`` — le crop reste visible au triage, et
+    le prochain bake le drop (filtre ``training_eligible=1``). Restaurer efface
+    le ``quality_reason`` posé par le triage (laisse intacts les autres motifs)."""
+    store = _get_store()
+    conn = store._connection()  # noqa: SLF001
+    row = conn.execute(
+        "SELECT id, eurio_id FROM image_assets WHERE id = ?", (asset_id,),
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Crop introuvable")
+    if payload.eligible:
+        conn.execute(
+            "UPDATE image_assets SET training_eligible = 1, "
+            "quality_reason = CASE WHEN quality_reason = 'manual_triage' "
+            "THEN NULL ELSE quality_reason END WHERE id = ?",
+            (asset_id,),
+        )
+    else:
+        conn.execute(
+            "UPDATE image_assets SET training_eligible = 0, "
+            "quality_reason = 'manual_triage' WHERE id = ?",
+            (asset_id,),
+        )
+    conn.commit()
+    new = conn.execute(
+        "SELECT training_eligible FROM image_assets WHERE id = ?", (asset_id,),
+    ).fetchone()
+    return {
+        "asset_id": asset_id,
+        "eurio_id": row["eurio_id"],
+        "training_eligible": bool(new["training_eligible"]),
+    }
+
+
 # ── Recrop des zéro-crops d'une pièce (census+gate, en arrière-plan) ──────────
 # B2 corrigé : l'état du job vit dans la table `cohort_jobs` (persisté, survit au
 # restart, progression au fil de l'eau), PLUS de dict in-memory opaque. Le thread
