@@ -48,6 +48,7 @@ from serving import (
 )
 from serving.auth_principal import require_principal
 from serving.coin_series import router as coin_series_router
+from serving import recipe_routes
 from serving.review_queue import router as review_queue_router
 from serving.review_queue.writes import router as review_writes_router
 from serving.sources import router as sources_router
@@ -96,6 +97,13 @@ app.include_router(audit_routes.router)
 # D2 data-layer-unification : domaine `coin_series` (READ) layered, scope
 # coins:read — remplace le dernier supabase.from('coin_series') de studio-local.
 app.include_router(coin_series_router)
+# Recettes d'augmentation (CRUD) : métadonnée PURE (nom/zone/JSON), servie par le
+# writer canonique → une recette créée sur Mac/PC atterrit dans la DB canonique et
+# reste récupérable partout. Léger (Store + validateur pur, sans cv2) → mount
+# inconditionnel sur l'image lean. Le rendu lourd (/augmentation/preview) reste
+# sur le ML local :8042. Scope aligné sur les autres routes protégées.
+recipe_routes.bind(_store)
+app.include_router(recipe_routes.router, dependencies=[Depends(require_principal)])
 # F9 dashboard KPIs : compteurs read-only agrégés, filtrés par scope (lean).
 app.include_router(stats_routes.router)
 # Phase 2b data-layer-unification : domaine `sources` (READ) layered, sans

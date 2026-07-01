@@ -23,7 +23,8 @@ import cv2
 import numpy as np
 from PIL import Image
 
-from training.augmentations.base import PROBABILITY_SCHEMA, Augmentor, LayerSchema, circular_mask
+from shared.augmentation_recipe import RELIGHTING_SCHEMA
+from training.augmentations.base import Augmentor, LayerSchema, circular_mask
 
 logger = logging.getLogger(__name__)
 
@@ -67,72 +68,7 @@ class RelightingAugmentor(Augmentor):
 
     @classmethod
     def get_schema(cls) -> LayerSchema:
-        return {
-            "type": "relighting",
-            "label": "Re-lighting 2.5D",
-            "description": (
-                "Re-éclaire la pièce avec une lumière directionnelle dérivée d'un normal map Sobel. "
-                "Simule l'angle de prise utilisateur avec une source lumineuse décentrée."
-            ),
-            "params": [
-                {**PROBABILITY_SCHEMA, "default": 0.6},
-                {
-                    "name": "ambient",
-                    "type": "float",
-                    "default": 0.35,
-                    "min": 0.0,
-                    "max": 1.0,
-                    "step": 0.05,
-                    "description": "Lumière ambiante de base (0 = noir dans les ombres, 1 = image plate).",
-                },
-                {
-                    "name": "min_elevation_deg",
-                    "type": "float",
-                    "default": 15.0,
-                    "min": 0.0,
-                    "max": 89.0,
-                    "step": 1.0,
-                    "description": "Angle minimum d'élévation de la source lumineuse (doit être < max).",
-                },
-                {
-                    "name": "max_elevation_deg",
-                    "type": "float",
-                    "default": 60.0,
-                    "min": 1.0,
-                    "max": 90.0,
-                    "step": 1.0,
-                    "description": "Angle maximum d'élévation de la source lumineuse.",
-                },
-                {
-                    "name": "intensity_range",
-                    "type": "list[float]",
-                    "default": [0.6, 1.1],
-                    "min": 0.0,
-                    "max": 2.0,
-                    "length": 2,
-                    "step": 0.05,
-                    "description": "Plage d'intensité appliquée après shading [min, max].",
-                },
-                {
-                    "name": "normal_strength",
-                    "type": "float",
-                    "default": 1.5,
-                    "min": 0.0,
-                    "max": 3.0,
-                    "step": 0.05,
-                    "description": "Amplification de la dérivation du normal map depuis la luminance.",
-                },
-                {
-                    "name": "smooth_sigma",
-                    "type": "float",
-                    "default": 2.0,
-                    "min": 0.0,
-                    "max": 10.0,
-                    "step": 0.1,
-                    "description": "Sigma du flou gaussien appliqué avant Sobel (lisse les détails fins).",
-                },
-            ],
-        }
+        return RELIGHTING_SCHEMA
 
     # ------------------------------------------------------------------
     # Normal map (deterministic) — cached per source image.

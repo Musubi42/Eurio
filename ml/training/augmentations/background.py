@@ -24,20 +24,16 @@ import logging
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
 
-from training.augmentations.base import PROBABILITY_SCHEMA, Augmentor, LayerSchema, circular_mask
+from shared.augmentation_recipe import BACKGROUND_SCHEMA, PALETTES
+from training.augmentations.base import Augmentor, LayerSchema, circular_mask
 
 logger = logging.getLogger(__name__)
 
-PALETTES = ("plain", "gradient", "noise")
-"""Three families of synthetic backgrounds.
-
-- ``plain``   : single solid color, sampled from a curated palette
-                (wood, grey, cream, dark, beige). Cheapest, used in green
-                zone where over-augmentation hurts.
-- ``gradient``: linear gradient between two random RGB points.
-- ``noise``   : per-pixel random noise with a Gaussian blur — approximates
-                fabric / table textures without a real image library.
-"""
+# ``PALETTES`` (source unique dans ``shared.augmentation_recipe``) — trois
+# familles de fonds synthétiques :
+# - ``plain``   : couleur unie, tirée d'une palette (wood, grey, cream, dark, beige).
+# - ``gradient``: dégradé linéaire entre deux points RGB aléatoires.
+# - ``noise``   : bruit per-pixel + flou gaussien (approx. textures table/tissu).
 
 
 def _solid_color(size: int, rng: np.random.Generator) -> Image.Image:
@@ -106,39 +102,7 @@ class BackgroundAugmentor(Augmentor):
 
     @classmethod
     def get_schema(cls) -> LayerSchema:
-        return {
-            "type": "background",
-            "label": "Background (cutout + replacement)",
-            "description": (
-                "Découpe la pièce via un masque circulaire et la repose sur un fond "
-                "synthétique. Empêche le modèle d'apprendre le fond studio Numista "
-                "comme signature. Les recettes par zone choisissent une palette plus ou "
-                "moins agressive."
-            ),
-            "params": [
-                {**PROBABILITY_SCHEMA, "default": 1.0},
-                {
-                    "name": "palette",
-                    "type": "list[string]",
-                    "default": list(PALETTES),
-                    "options": list(PALETTES),
-                    "description": (
-                        "Familles de fonds tirées au hasard à chaque variation : "
-                        "plain (couleur unie), gradient (dégradé linéaire), "
-                        "noise (texture bruitée floutée)."
-                    ),
-                },
-                {
-                    "name": "feather",
-                    "type": "int",
-                    "default": 3,
-                    "min": 0,
-                    "max": 10,
-                    "step": 1,
-                    "description": "Adoucissement gaussien du bord du masque (px).",
-                },
-            ],
-        }
+        return BACKGROUND_SCHEMA
 
     def apply(
         self,

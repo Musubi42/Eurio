@@ -1,10 +1,14 @@
-// Fetch wrappers for the /augmentation/* subsystem served by the local ML API.
+// Fetch wrappers for the augmentation subsystem — split by weight (Model B) :
 //
-// Same host as the training composable (http://127.0.0.1:8042). Thin layer —
-// all error handling + retry happens at the caller site, since the ergonomics
-// depend on the action (preview vs save vs load).
+//  - **Rendu lourd** (schema / overlays / preview) → ML API local `:8042`
+//    (`ML_API`), qui a besoin du pipeline cv2. Grisé en hébergé.
+//  - **CRUD recettes** (métadonnée pure : nom/zone/JSON) → API CANONIQUE
+//    `eurioApi` (VPS = writer unique). Une recette créée ici atterrit dans la DB
+//    canonique → récupérable Mac ↔ PC après `ml:db:pull-replica`. Marche dans les
+//    deux modes (PAT local / cookie hébergé).
 
 import { ML_API } from '@/features/training/composables/useTrainingApi'
+import { eurioApi } from '@/shared/api/eurio-api'
 import type {
   AugmentationSchemaResponse,
   OverlaysResponse,
@@ -55,15 +59,15 @@ export async function postPreview(req: PreviewRequest): Promise<PreviewResponse>
   })
 }
 
+// ─── Recettes : CRUD canonique (eurio-api, writer unique) ────────────────────
+
 export async function fetchRecipes(zone?: string | null): Promise<RecipeRow[]> {
   const qs = zone ? `?zone=${encodeURIComponent(zone)}` : ''
-  return json<RecipeRow[]>(`/augmentation/recipes${qs}`)
+  return eurioApi.get<RecipeRow[]>(`/recipes${qs}`)
 }
 
 export async function fetchRecipe(idOrName: string): Promise<RecipeRow> {
-  return json<RecipeRow>(
-    `/augmentation/recipes/${encodeURIComponent(idOrName)}`,
-  )
+  return eurioApi.get<RecipeRow>(`/recipes/${encodeURIComponent(idOrName)}`)
 }
 
 export interface CreateRecipePayload {
@@ -74,27 +78,18 @@ export interface CreateRecipePayload {
 }
 
 export async function createRecipe(payload: CreateRecipePayload): Promise<RecipeRow> {
-  return json<RecipeRow>('/augmentation/recipes', {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  })
+  return eurioApi.post<RecipeRow>('/recipes', payload)
 }
 
 export async function updateRecipe(
   id: string,
   patch: Partial<Pick<CreateRecipePayload, 'name' | 'zone' | 'config'>>,
 ): Promise<RecipeRow> {
-  return json<RecipeRow>(`/augmentation/recipes/${encodeURIComponent(id)}`, {
-    method: 'PUT',
-    body: JSON.stringify(patch),
-  })
+  return eurioApi.put<RecipeRow>(`/recipes/${encodeURIComponent(id)}`, patch)
 }
 
 export async function deleteRecipe(id: string): Promise<void> {
-  await json<{ deleted: boolean }>(
-    `/augmentation/recipes/${encodeURIComponent(id)}`,
-    { method: 'DELETE' },
-  )
+  await eurioApi.delete<{ deleted: boolean }>(`/recipes/${encodeURIComponent(id)}`)
 }
 
 // Handoff to training — passes aug_recipe_id per item. Backend resolves

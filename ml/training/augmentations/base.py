@@ -8,47 +8,20 @@ pipeline (see ``pipeline.py``) composes several of them in order.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TypedDict
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
 
-
-class ParamSchema(TypedDict, total=False):
-    """JSON-serializable description of one Augmentor param.
-
-    Consumed by ``GET /augmentation/schema`` so the admin Studio can render
-    sliders/selects without duplicating bounds. Only ``name``, ``type`` and
-    ``default`` are required; the rest are type-dependent.
-    """
-
-    name: str
-    type: str          # float | int | bool | string | list[float] | list[string]
-    default: object
-    min: float | int
-    max: float | int
-    step: float
-    length: int        # list[...] only
-    options: list[str] # string / list[string] with a finite set
-    description: str
-
-
-class LayerSchema(TypedDict):
-    type: str
-    label: str
-    description: str
-    params: list[ParamSchema]
-
-
-PROBABILITY_SCHEMA: ParamSchema = {
-    "name": "probability",
-    "type": "float",
-    "default": 1.0,
-    "min": 0.0,
-    "max": 1.0,
-    "step": 0.05,
-    "description": "Probabilité d'appliquer ce layer à chaque variation (0 = jamais, 1 = toujours).",
-}
+# Schéma des params + probabilité : source unique dans le module PUR
+# ``shared.augmentation_recipe`` (sans numpy/PIL/cv2), pour que le CRUD recettes
+# léger (eurio-api) puisse valider une recette sans tirer le stack lourd. On les
+# ré-exporte ici pour ne rien casser des imports historiques
+# (``from training.augmentations.base import PROBABILITY_SCHEMA, LayerSchema``).
+from shared.augmentation_recipe import (  # noqa: F401  (re-export)
+    PROBABILITY_SCHEMA,
+    LayerSchema,
+    ParamSchema,
+)
 
 
 class Augmentor(ABC):

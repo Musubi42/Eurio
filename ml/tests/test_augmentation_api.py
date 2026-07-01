@@ -64,82 +64,10 @@ def test_get_overlays(client: TestClient):
     assert set(data.keys()) == {"patina", "dust", "scratches", "fingerprints"}
 
 
-def test_recipe_crud(client: TestClient):
-    # Create
-    payload = {
-        "name": "test-recipe",
-        "zone": "orange",
-        "config": {
-            "count": 16,
-            "layers": [
-                {"type": "perspective", "max_tilt_degrees": 10, "probability": 0.5}
-            ],
-        },
-    }
-    resp = client.post("/augmentation/recipes", json=payload)
-    assert resp.status_code == 200, resp.json()
-    created = resp.json()
-    assert created["name"] == "test-recipe"
-    assert created["zone"] == "orange"
-    recipe_id = created["id"]
-
-    # Duplicate name → 409
-    dup = client.post("/augmentation/recipes", json=payload)
-    assert dup.status_code == 409
-
-    # Get by id AND by name
-    by_id = client.get(f"/augmentation/recipes/{recipe_id}")
-    by_name = client.get("/augmentation/recipes/test-recipe")
-    assert by_id.status_code == 200 and by_name.status_code == 200
-    assert by_id.json()["id"] == by_name.json()["id"]
-
-    # List filtered by zone
-    listed = client.get("/augmentation/recipes?zone=orange")
-    assert listed.status_code == 200
-    assert any(r["id"] == recipe_id for r in listed.json())
-
-    # Update
-    upd = client.put(
-        f"/augmentation/recipes/{recipe_id}",
-        json={"zone": "red"},
-    )
-    assert upd.status_code == 200
-    assert upd.json()["zone"] == "red"
-
-    # Delete
-    dele = client.delete(f"/augmentation/recipes/{recipe_id}")
-    assert dele.status_code == 200
-    missing = client.get(f"/augmentation/recipes/{recipe_id}")
-    assert missing.status_code == 404
-
-
-def test_create_recipe_rejects_bad_bounds(client: TestClient):
-    payload = {
-        "name": "bad-recipe",
-        "config": {"layers": [{"type": "relighting", "ambient": 1.5}]},
-    }
-    resp = client.post("/augmentation/recipes", json=payload)
-    assert resp.status_code == 400
-    detail = resp.json()["detail"]
-    assert detail["param"] == "ambient"
-
-
-def test_create_recipe_rejects_unknown_layer(client: TestClient):
-    payload = {
-        "name": "bad-layer",
-        "config": {"layers": [{"type": "wat"}]},
-    }
-    resp = client.post("/augmentation/recipes", json=payload)
-    assert resp.status_code == 400
-
-
-def test_create_recipe_rejects_bad_name(client: TestClient):
-    payload = {
-        "name": "Not_kebab-case",
-        "config": {"layers": []},
-    }
-    resp = client.post("/augmentation/recipes", json=payload)
-    assert resp.status_code == 400
+# NB : le CRUD des recettes a migré vers le router LÉGER canonique
+# (``serving.recipe_routes`` → ``/recipes``). Ses tests vivent dans
+# ``test_recipe_routes.py``. Ici on ne garde que le rendu lourd (schema/overlays/
+# preview), qui reste servi par ``augmentation_routes`` sur le ML local :8042.
 
 
 def test_preview_count_cap(client: TestClient):

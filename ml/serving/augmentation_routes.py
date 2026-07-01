@@ -26,7 +26,7 @@ from training.augmentations import (
     validate_recipe,
 )
 from training.augmentations.overlays import OVERLAYS_DIR
-from store import AugmentationRecipeRow, AugmentationRunRow, Store
+from store import AugmentationRunRow, Store
 
 logger = logging.getLogger(__name__)
 
@@ -67,40 +67,13 @@ class PreviewPayload(BaseModel):
     seed: int | None = None
 
 
-class RecipePayload(BaseModel):
-    name: str
-    zone: str | None = None
-    config: dict
-    based_on_recipe_id: str | None = None
-
-
-class RecipeUpdatePayload(BaseModel):
-    name: str | None = None
-    zone: str | None = None
-    config: dict | None = None
+# NB : le **CRUD** des recettes (list/get/create/update/delete) vit désormais
+# dans le router LÉGER ``serving.recipe_routes`` (métadonnée pure, servie par le
+# writer canonique eurio-api). Ce module ne garde que le rendu lourd
+# (``/preview`` + ``/schema`` + ``/overlays``), qui a besoin du pipeline cv2.
 
 
 # ─── Helpers ────────────────────────────────────────────────────────────────
-
-
-_NAME_RE = __import__("re").compile(r"^[a-z0-9][a-z0-9-]*[a-z0-9]$")
-
-
-def _validate_recipe_name(name: str) -> None:
-    if not name or len(name) > 80:
-        raise HTTPException(
-            status_code=400, detail="name vide ou > 80 caractères"
-        )
-    if not _NAME_RE.match(name):
-        raise HTTPException(
-            status_code=400,
-            detail="name must be lowercase kebab-case (a-z, 0-9, -)",
-        )
-
-
-def _validate_zone(zone: str | None) -> None:
-    if zone is not None and zone not in ("green", "orange", "red"):
-        raise HTTPException(status_code=400, detail=f"zone invalide: {zone!r}")
 
 
 def _raise_recipe_error(exc: RecipeValidationError) -> None:
@@ -337,96 +310,3 @@ def get_preview_image(run_id: str, index: int):
     if not resolved.exists():
         raise HTTPException(status_code=404, detail="Image non trouvée")
     return FileResponse(resolved, media_type="image/png")
-
-
-# ─── Recipes CRUD ───────────────────────────────────────────────────────────
-
-
-@router.get("/recipes")
-def list_recipes(zone: str | None = None) -> list[dict]:
-    _validate_zone(zone)
-    return [r.to_dict() for r in _get_store().list_recipes(zone=zone)]
-
-
-@router.get("/recipes/{id_or_name}")
-def get_recipe(id_or_name: str) -> dict:
-    recipe = _get_store().get_recipe(id_or_name)
-    if recipe is None:
-        raise HTTPException(status_code=404, detail="Recette introuvable")
-    return recipe.to_dict()
-
-
-@router.post("/recipes")
-def create_recipe(payload: RecipePayload) -> dict:
-    store = _get_store()
-    _validate_recipe_name(payload.name)
-    _validate_zone(payload.zone)
-
-    try:
-        validate_recipe(payload.config)
-    except RecipeValidationError as exc:
-        _raise_recipe_error(exc)
-
-    if store.get_recipe(payload.name) is not None:
-        raise HTTPException(
-            status_code=409, detail=f"Recette {payload.name!r} existe déjà"
-        )
-    if payload.based_on_recipe_id and store.get_recipe(payload.based_on_recipe_id) is None:
-        raise HTTPException(
-            status_code=400,
-            detail=f"based_on_recipe_id {payload.based_on_recipe_id!r} introuvable",
-        )
-
-    recipe_id = uuid.uuid4().hex[:12]
-    row = AugmentationRecipeRow(
-        id=recipe_id,
-        name=payload.name,
-        zone=payload.zone,
-        config=payload.config,
-        based_on_recipe_id=payload.based_on_recipe_id,
-    )
-    store.create_recipe(row)
-    created = store.get_recipe(recipe_id)
-    return created.to_dict() if created else row.to_dict()
-
-
-@router.put("/recipes/{recipe_id}")
-def update_recipe(recipe_id: str, payload: RecipeUpdatePayload) -> dict:
-    store = _get_store()
-    existing = store.get_recipe(recipe_id)
-    if existing is None:
-        raise HTTPException(status_code=404, detail="Recette introuvable")
-
-    if payload.name is not None and payload.name != existing.name:
-        _validate_recipe_name(payload.name)
-        clash = store.get_recipe(payload.name)
-        if clash and clash.id != recipe_id:
-            raise HTTPException(
-                status_code=409, detail=f"name {payload.name!r} déjà pris"
-            )
-
-    if payload.zone is not None:
-        _validate_zone(payload.zone)
-
-    if payload.config is not None:
-        try:
-            validate_recipe(payload.config)
-        except RecipeValidationError as exc:
-            _raise_recipe_error(exc)
-
-    store.update_recipe(
-        recipe_id,
-        name=payload.name,
-        zone=payload.zone,
-        config=payload.config,
-    )
-    updated = store.get_recipe(recipe_id)
-    return updated.to_dict() if updated else {}
-
-
-@router.delete("/recipes/{recipe_id}")
-def delete_recipe(recipe_id: str) -> dict:
-    deleted = _get_store().delete_recipe(recipe_id)
-    if not deleted:
-        raise HTTPException(status_code=404, detail="Recette introuvable")
-    return {"deleted": True, "id": recipe_id}

@@ -23,12 +23,12 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from training.augmentations.base import PROBABILITY_SCHEMA, Augmentor, LayerSchema, circular_mask
+from shared.augmentation_recipe import OVERLAYS_SCHEMA, OVERLAY_CATEGORIES as CATEGORIES
+from training.augmentations.base import Augmentor, LayerSchema, circular_mask
 
 logger = logging.getLogger(__name__)
 
 OVERLAYS_DIR = Path(__file__).parent.parent / "data" / "overlays"
-CATEGORIES = ("patina", "dust", "scratches", "fingerprints")
 _BLEND_MODE = {
     "patina": "multiply",
     "dust": "multiply",
@@ -75,43 +75,7 @@ class OverlayAugmentor(Augmentor):
 
     @classmethod
     def get_schema(cls) -> LayerSchema:
-        return {
-            "type": "overlays",
-            "label": "Overlays (patina / dust / scratches / fingerprints)",
-            "description": (
-                "Compose 1 à max_layers textures par-dessus la pièce (multiply / screen / overlay). "
-                "Simule usure, dépôt, rayures et traces de doigts. Les bancs de textures vivent sous ml/data/overlays/<category>/."
-            ),
-            "params": [
-                {**PROBABILITY_SCHEMA, "default": 0.5},
-                {
-                    "name": "categories",
-                    "type": "list[string]",
-                    "default": ["patina", "dust"],
-                    "options": list(CATEGORIES),
-                    "description": "Catégories de textures autorisées pour ce layer.",
-                },
-                {
-                    "name": "opacity_range",
-                    "type": "list[float]",
-                    "default": [0.10, 0.30],
-                    "min": 0.0,
-                    "max": 1.0,
-                    "length": 2,
-                    "step": 0.05,
-                    "description": "Plage d'opacité appliquée à chaque texture [min, max].",
-                },
-                {
-                    "name": "max_layers",
-                    "type": "int",
-                    "default": 2,
-                    "min": 1,
-                    "max": 5,
-                    "step": 1,
-                    "description": "Nombre maximum de textures empilées par variation.",
-                },
-            ],
-        }
+        return OVERLAYS_SCHEMA
 
     def _scan(self) -> dict[str, list[Path]]:
         paths: dict[str, list[Path]] = {}

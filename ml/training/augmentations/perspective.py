@@ -18,7 +18,8 @@ import logging
 import numpy as np
 from PIL import Image
 
-from training.augmentations.base import PROBABILITY_SCHEMA, Augmentor, LayerSchema
+from shared.augmentation_recipe import PERSPECTIVE_SCHEMA
+from training.augmentations.base import Augmentor, LayerSchema
 
 logger = logging.getLogger(__name__)
 
@@ -45,26 +46,7 @@ class PerspectiveAugmentor(Augmentor):
 
     @classmethod
     def get_schema(cls) -> LayerSchema:
-        return {
-            "type": "perspective",
-            "label": "Perspective (tilt 3D)",
-            "description": (
-                "Simule un angle caméra non perpendiculaire à la pièce via une homographie. "
-                "Valeur = angle maximum de tilt en degrés sur les axes X et Y."
-            ),
-            "params": [
-                {**PROBABILITY_SCHEMA, "default": 0.6},
-                {
-                    "name": "max_tilt_degrees",
-                    "type": "float",
-                    "default": 15.0,
-                    "min": 0.0,
-                    "max": 45.0,
-                    "step": 1.0,
-                    "description": "Angle maximum de tilt en degrés (tiré uniformément entre -max et +max).",
-                },
-            ],
-        }
+        return PERSPECTIVE_SCHEMA
 
     def apply(
         self,
