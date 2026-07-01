@@ -1,7 +1,8 @@
 > 📜 **HISTORIQUE / quasi-terminé.** Backend auth (C1-C4) + front (F1-F9) livrés.
 > Le volet **front** (dual `studio-local`/`admin-vps`) est **supersédé par la fusion**
-> — cf. [`../model-b/README.md`](../model-b/README.md) §Front + §R1. Reste data D2/D7
-> (dernier `supabase.from`) + cleanup K1-K4.
+> — cf. [`../model-b/README.md`](../model-b/README.md) §Front + §R1. Data **D2/D7
+> livrés (2026-07-01)** : Supabase retiré du front (client + dép `@supabase/supabase-js`),
+> tout passe par eurio-api. Reste cleanup K1-K4 + purge secrets SOPS `VITE_SUPABASE_*`.
 
 # ROADMAP — auth-redesign (post-pivot 2026-06-19)
 
@@ -50,12 +51,12 @@
 | # | Chantier | Statut |
 |---|---|---|
 | D1 | Audit Supabase tables réellement frontées (2026-06-19) | ✅ 4 tables seulement : `coins`, `coin_confusion_map`, `coin_series`, `sets_audit` |
-| D2 | Migration `coin_series` → SQLite (seed canonique) + endpoint `eurio-api` | 🟡 en cours (2026-06-29) — seed n'existait qu'en Supabase ; refactor `enrich_coins_metadata.py` PostgREST → Store |
+| D2 | Migration `coin_series` → SQLite (seed canonique) + endpoint `eurio-api` | ✅ 2026-07-01 — `enrich_coins_metadata.py --target sqlite` (seed 32/59) + module layered `coin_series/` + `useCoinSeries` swap ; DB VPS seedée |
 | D3 | Migration `coin_confusion_map` → SQLite + endpoint | ✅ data-layer-unification Phase 1 (`confusion_routes.py`) |
 | D4 | Migration `sets_audit` → SQLite + endpoint | ✅ data-layer-unification Phase 1 (`audit_routes.py`) |
 | D5 | Migration `coins` → SQLite + endpoints CRUD limités | ✅ data-layer-unification Phase 2a (`fca3d167`, `coins_routes.py`) |
-| D6 | Refactor studio-local : composables Supabase → `eurio-api` Bearer | 🟡 en cours — la plupart ✅ ; reliquat = `useCoinSeries` (D2) + composables heavy (Phase 6) |
-| D7 | Suppression du client Supabase frontend (`@supabase/supabase-js`) après D2-D6 | ⬜ bloqué par le dernier `supabase.from('coin_series')` de `useCoinSeries.ts` |
+| D6 | Refactor studio-local : composables Supabase → `eurio-api` Bearer | ✅ 2026-07-01 — plus aucun `supabase.from()` runtime ; composables heavy restent sur ML API local (par design, cf. R0bis) |
+| D7 | Suppression du client Supabase frontend (`@supabase/supabase-js`) | ✅ 2026-07-01 (`05d9eb0`) — client + dép + types relocalisés (`shared/types/domain.ts`) + build-args infra nettoyés ; reste purge secrets SOPS |
 
 > **Source de vérité data** : ces chunks D2–D7 sont **supersédés en pratique** par
 > `docs/work-in-progress/data-layer-unification/` (effort plus mature, pattern layered).

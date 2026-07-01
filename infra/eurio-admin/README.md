@@ -14,14 +14,13 @@ features lourdes ML grisées (admin-vps retiré).
 ## Déploiement
 
 ```bash
-# Les build args Supabase (publics) viennent de l'env SOPS → passer par direnv exec.
 cd /opt/eurio/infra/eurio-admin
-direnv exec /opt/eurio docker compose up -d --build
+docker compose up -d --build
 ```
 
-`VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY` (publics, RLS-safe) sont requis au build
-(`supabase/client.ts` throw au top-level sans eux — legacy data, retrait = chantier D7).
-Ils sont sourcés de `secrets/dev.env` (SOPS) via `direnv exec /opt/eurio`.
+Le build n'a plus besoin d'aucun secret : depuis D7, le front ne dépend plus de
+Supabase. Seuls `VITE_DEPLOY_TARGET=hosted` + `VITE_EURIO_API_BASE` (constantes
+publiques) sont injectés, en dur dans `docker-compose.yml`.
 
 ## Mise à jour
 

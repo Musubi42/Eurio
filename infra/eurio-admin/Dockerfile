@@ -35,16 +35,11 @@ RUN pnpm install --frozen-lockfile --filter "eurio-studio-local..."
 # Env de build hébergé, injectée à la compilation (cf. vite.config define) :
 #  - DEPLOY_TARGET=hosted → auth cookie OIDC + features lourdes grisées
 #  - EURIO_API_BASE → backend canonique
-#  - SUPABASE_* (publics, RLS-safe) → `supabase/client.ts` throw au top-level sans eux
-#    (legacy data, retrait = chantier D7).
+# (Supabase retiré du front en D7 — plus aucun VITE_SUPABASE_* requis au build.)
 ARG VITE_DEPLOY_TARGET=hosted
 ARG VITE_EURIO_API_BASE=https://eurio-api.musubi.dev
-ARG VITE_SUPABASE_URL
-ARG VITE_SUPABASE_ANON_KEY
 ENV VITE_DEPLOY_TARGET=$VITE_DEPLOY_TARGET \
-    VITE_EURIO_API_BASE=$VITE_EURIO_API_BASE \
-    VITE_SUPABASE_URL=$VITE_SUPABASE_URL \
-    VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
+    VITE_EURIO_API_BASE=$VITE_EURIO_API_BASE
 
 RUN pnpm -C packages/studio-local build
 
