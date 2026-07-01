@@ -262,42 +262,15 @@ def _cohort_summary(cohort: ExperimentCohortRow) -> dict:
 
 
 def _iteration_with_run_metrics(it: ExperimentIterationRow) -> dict:
-    """Enrich an iteration row with a compact summary of its benchmark."""
-    d = it.to_dict()
-    if it.recipe_id:
-        recipe = _get_store().get_recipe(it.recipe_id)
-        d["recipe_name"] = recipe.name if recipe else None
-    else:
-        d["recipe_name"] = None
-    bench_summary: dict | None = None
-    if it.benchmark_run_id:
-        bench = _get_store().get_benchmark_run(it.benchmark_run_id)
-        if bench is not None:
-            bench_summary = {
-                "id": bench.id,
-                "status": bench.status,
-                "r_at_1": bench.r_at_1,
-                "r_at_3": bench.r_at_3,
-                "r_at_5": bench.r_at_5,
-                "mean_spread": bench.mean_spread,
-                "num_photos": bench.num_photos,
-                "num_coins": bench.num_coins,
-                "per_zone": bench.per_zone,
-            }
-    d["benchmark_summary"] = bench_summary
-    training_summary: dict | None = None
-    if it.training_run_id:
-        run = _get_store().get_run(it.training_run_id)
-        if run is not None:
-            training_summary = {
-                "id": run.id,
-                "version": run.version,
-                "status": run.status,
-                "recall_at_1": run.recall_at_1,
-                "error": run.error,
-            }
-    d["training_summary"] = training_summary
-    return d
+    """Enrich an iteration row with a compact summary of its benchmark.
+
+    Le résumé (recette + benchmark + training) est construit par la source unique
+    ``iteration_summary.build_iteration_summary`` — la MÊME que celle poussée au
+    canonique dans ``summary_json`` (R3), pour une parité chiffres locaux ↔ canonique.
+    """
+    from serving.iteration_summary import build_iteration_summary
+
+    return {**it.to_dict(), **build_iteration_summary(_get_store(), it)}
 
 
 # ─── Cohorts ───────────────────────────────────────────────────────────────

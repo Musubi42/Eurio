@@ -87,6 +87,24 @@ def _generate_seed() -> int:
     return random.randint(0, _SEED_MAX)
 
 
+def _canonical_push_enabled() -> bool:
+    """True si un canonique DISTANT est configuré → on pousse l'état des itérations.
+
+    R3 (Model B) : le compute (Mac/PC) pousse chaque transition d'itération au
+    canonique VPS pour la sync Mac↔PC. Activé quand ``EURIO_API_URL`` pointe un
+    hôte distant (déjà posé pour ``ml:db:pull-replica``). En dev local (défaut
+    ``localhost:8042``) on ne pousse pas — le serveur local n'a de toute façon pas
+    ``/iterations``. Override explicite : ``EURIO_ITERATION_PUSH=0|1``.
+    """
+    override = os.environ.get("EURIO_ITERATION_PUSH", "").strip().lower()
+    if override in ("0", "false", "no"):
+        return False
+    if override in ("1", "true", "yes"):
+        return True
+    url = os.environ.get("EURIO_API_URL", "").strip()
+    return bool(url) and "127.0.0.1" not in url and "localhost" not in url
+
+
 PROGRESS_DIR = ML_DIR / "state" / "training_progress"
 
 
@@ -307,7 +325,39 @@ class IterationRunner:
             augmentations_seed=seed,
         )
         self._store.create_iteration(row)
+        self._sync_canonical(iid)
         return row
+
+    def _sync_canonical(self, iteration_id: str) -> None:
+        """Pousse (best-effort) l'état d'une itération au canonique (R3, Model B).
+
+        No-op si aucun canonique distant n'est configuré (cf.
+        ``_canonical_push_enabled``). **Ne lève jamais** : un run ne doit pas
+        dépendre de la joignabilité du VPS. Stampe ``created_on`` = cette machine
+        (jamais persisté localement — la DB locale peut être pré-migration 0005 ;
+        l'origine ne vit que dans le snapshot canonique) et dénormalise le résumé
+        des métriques pour que le canonique affiche les chiffres sans les tables
+        lourdes. Appelé à chaque transition (create / training / completed / failed
+        / benchmark).
+        """
+        if not _canonical_push_enabled():
+            return
+        try:
+            it = self._store.get_iteration(iteration_id)
+            if it is None:
+                return
+            from serving.iteration_summary import build_iteration_summary
+            from shared.machine import machine_origin
+            from client import http as api_http
+
+            it.created_on = machine_origin()
+            it.summary = build_iteration_summary(self._store, it)
+            api_http.put_json(f"/iterations/{iteration_id}", it.to_dict(), timeout=15)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "R3 canonical push failed for %s: %s (best-effort, ignoré)",
+                iteration_id, exc,
+            )
 
     def launch_training(self, iteration_id: str) -> ExperimentIterationRow:
         """Spawn the chained ``training → export → benchmark`` flow.
@@ -597,6 +647,7 @@ class IterationRunner:
             started_at=_iso_now(),
         )
         _set_progress_phase(iteration_id, "bake")
+        self._sync_canonical(iteration_id)  # R3 : itération « en cours » visible partout
 
         # Bake + spawn training subprocess
         try:
@@ -667,6 +718,7 @@ class IterationRunner:
             status="completed",
             finished_at=finished_at,
         )
+        self._sync_canonical(iteration_id)  # R3 : training+export OK (modèle prêt)
         self._append_log(iteration_id, "[runner] Training phase OK")
         return True
 
@@ -774,6 +826,7 @@ class IterationRunner:
         # Restore status='completed' (we toggled to 'benchmarking' above).
         self._store.update_iteration(iteration_id, status="completed")
         _set_progress_phase(iteration_id, "done")
+        self._sync_canonical(iteration_id)  # R3 : R@1/verdict désormais dispo → poussés
         self._append_log(iteration_id, "[runner] Benchmark phase OK")
         return True
 
@@ -827,6 +880,7 @@ class IterationRunner:
         if it.status == "benchmarking":
             self._store.update_iteration(iteration_id, status="completed")
         _set_progress_phase(iteration_id, "benchmark_failed", error=error)
+        self._sync_canonical(iteration_id)  # R3 : état partiel (bench raté) poussé
 
     # ─── Training launch (bake + start training_runner) ────────────────
 
@@ -1209,6 +1263,7 @@ class IterationRunner:
             finished_at=_iso_now(),
         )
         _set_progress_phase(iteration_id, "failed", error=error)
+        self._sync_canonical(iteration_id)  # R3 : l'échec est visible partout
 
 
 # ─── Module-level bind (same pattern as augmentation/benchmark routes) ─────
