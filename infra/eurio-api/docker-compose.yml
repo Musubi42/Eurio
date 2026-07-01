@@ -23,6 +23,10 @@ services:
 
       # Config non-sensible (peut rester en clair ici).
       EURIO_DB_PATH: /var/lib/eurio/eurio.db
+      # Origine machine (R3) : le conteneur a un hostname = ID Docker aléatoire.
+      # On force `vps` pour que /whoami soit lisible (le canonique ne stampe jamais
+      # created_on lui-même, mais l'info reste cohérente).
+      EURIO_MACHINE_ORIGIN: vps
       EURIO_API_AUTH_REQUIRED: "1"          # auth bearer OBLIGATOIRE sur le VPS
       EURIO_API_CORS_ORIGINS: "https://eurio-admin.musubi.dev,http://localhost:5173"
       # OIDC Authentik (auth-redesign C2). URLs publiques, OK en clair.
