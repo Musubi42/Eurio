@@ -85,12 +85,20 @@ def test_upsert_nulls_unresolved_fks(tmp_path: Path):
     """Une recette/parent absent du canonique est nullé (pas de violation FK)."""
     app, _ = _make_app(tmp_path, {"lab:read", "ingest:write"})
     with TestClient(app) as c:
-        snap = {**_SNAPSHOT, "recipe_id": "legacy-absent", "parent_iteration_id": "ghost"}
+        snap = {
+            **_SNAPSHOT,
+            "recipe_id": "legacy-absent",
+            "parent_iteration_id": "ghost",
+            "training_run_id": "run-not-here",     # runs jamais poussés (MVP)
+            "benchmark_run_id": "bench-not-here",
+        }
         put = c.put("/iterations/it2", json=snap)
         assert put.status_code == 200, put.json()
         body = put.json()
         assert body["recipe_id"] is None
         assert body["parent_iteration_id"] is None
+        assert body["training_run_id"] is None
+        assert body["benchmark_run_id"] is None
         # l'itération est bien stockée (summary poussé conservé verbatim)
         assert body["summary"] == {"r_at_1": 0.79, "loss": 0.05}
 

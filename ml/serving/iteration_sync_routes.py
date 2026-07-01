@@ -96,16 +96,20 @@ def upsert_iteration(iteration_id: str, payload: IterationSnapshot) -> dict:
     store = _get_store()
     data = payload.model_dump()
 
-    # Tolérance FK : une itération poussée peut référencer une recette ou un parent
-    # qui ne vit pas (encore) sur le canonique — recette legacy locale, ou parent
-    # pas encore synchronisé. On null la référence non résolue pour ne pas violer
-    # la FK (`foreign_keys=ON`). Pas de perte d'affichage : `summary.recipe_name`
-    # porte déjà le nom de la recette. Les itérations futures créées via le CRUD
-    # canonique référencent des recettes canoniques → la FK résout normalement.
+    # Tolérance FK : une itération poussée référence des rows qui ne vivent pas
+    # sur le canonique — recette/parent legacy, et SURTOUT les runs
+    # (training_run_id / benchmark_run_id) qui restent locaux (MVP R3 =
+    # métadonnée seule, les tables lourdes ne sont jamais poussées). On null les
+    # références non résolues pour ne pas violer la FK (`foreign_keys=ON`). Pas de
+    # perte : `summary` porte déjà recipe_name + les métriques bench/training.
     if data.get("recipe_id") and store.get_recipe(data["recipe_id"]) is None:
         data["recipe_id"] = None
     if data.get("parent_iteration_id") and store.get_iteration(data["parent_iteration_id"]) is None:
         data["parent_iteration_id"] = None
+    if data.get("training_run_id") and store.get_run(data["training_run_id"]) is None:
+        data["training_run_id"] = None
+    if data.get("benchmark_run_id") and store.get_benchmark_run(data["benchmark_run_id"]) is None:
+        data["benchmark_run_id"] = None
 
     row = ExperimentIterationRow(id=iteration_id, **data)
     store.upsert_iteration(row)
