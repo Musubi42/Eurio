@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { I18nField, Set, SetCategory, SetKind, SetReward } from '@/shared/supabase/types'
+import type { I18nField, Set, SetCategory, SetKind, SetReward } from '@/shared/types/domain'
 import { computed } from 'vue'
 
 type EditableSet = Partial<Set> & { id: string; kind: SetKind; category: SetCategory }

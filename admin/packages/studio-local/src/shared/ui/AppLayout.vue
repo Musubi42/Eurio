@@ -3,7 +3,6 @@ import type { NavItem } from '@/app/nav'
 import { navSections } from '@/app/nav'
 import EurioSessionBanner from '@/shared/ui/EurioSessionBanner.vue'
 import LocalOnlyNotice from '@/shared/ui/LocalOnlyNotice.vue'
-import { DEV_BYPASS } from '@/shared/supabase/client'
 import { useNavState } from '@/shared/composables/useNavState'
 import { useCapabilities } from '@/stores/capabilities'
 import { useEurioSession } from '@/stores/eurio-session'
@@ -166,12 +165,6 @@ function isActive(itemRoute: string) {
     <main class="flex flex-1 flex-col overflow-hidden">
       <!-- Bandeau eurio-api session (PAT manquant/invalide/erreur) -->
       <EurioSessionBanner />
-      <!-- Bandeau dev bypass -->
-      <div v-if="DEV_BYPASS"
-           class="flex items-center justify-center gap-2 px-4 py-1.5 text-xs font-mono font-medium"
-           style="background: var(--warning); color: var(--ink);">
-        ⚠ MODE DEV — service_role key active, auth bypassée, RLS désactivée
-      </div>
       <div class="flex-1 overflow-y-auto">
         <LocalOnlyNotice v-if="routeLocked" />
         <RouterView v-else />

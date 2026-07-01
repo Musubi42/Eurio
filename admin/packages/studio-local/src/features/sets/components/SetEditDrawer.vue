@@ -15,7 +15,7 @@ import type {
   SetCategory,
   SetCriteria,
   SetKind,
-} from '@/shared/supabase/types'
+} from '@/shared/types/domain'
 import { useEventListener } from '@vueuse/core'
 import { Archive, ArchiveRestore, Save, Trash2, X } from 'lucide-vue-next'
 import { computed, ref, watch } from 'vue'

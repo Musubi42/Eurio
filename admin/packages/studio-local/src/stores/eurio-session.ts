@@ -5,11 +5,9 @@
  * ou "invalid", l'UI affiche un bandeau d'avertissement + lien vers
  * `PAT-WORKFLOW.md`. Le store reste utilisable côté code mais isAuthed=false.
  *
- * NOTE : ce store coexiste pour l'instant avec l'auth Supabase historique
- * (LoginPage OTP + AuthCallbackPage). Le port complet "rip Supabase auth,
- * use eurio-api only" est planifié en chunk suivant. Pour l'instant : tout
- * appel à eurio-api passe par `eurioApi.*` + `useEurioSession`, et l'accès
- * Supabase data continue normalement.
+ * eurio-api est la seule source auth + data côté front : l'auth Supabase OTP
+ * (F5) et le client data Supabase (D7) ont été retirés. Tout passe par
+ * `eurioApi.*` + `useEurioSession`.
  */
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'

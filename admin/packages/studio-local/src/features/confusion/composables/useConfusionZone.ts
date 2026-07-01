@@ -1,4 +1,4 @@
-import type { ConfusionZone } from '@/shared/supabase/types'
+import type { ConfusionZone } from '@/shared/types/domain'
 
 export interface ZoneStyle {
   solid: string

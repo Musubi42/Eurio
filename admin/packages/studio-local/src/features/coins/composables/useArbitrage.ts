@@ -1,5 +1,5 @@
 import { eurioApi } from '@/shared/api/eurio-api'
-import type { Coin } from '@/shared/supabase/types'
+import type { Coin } from '@/shared/types/domain'
 import { computed, ref, watch } from 'vue'
 
 // ───────── Types ─────────

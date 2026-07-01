@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { zoneStyle } from '@/features/confusion/composables/useConfusionZone'
-import type { Coin, ConfusionZone } from '@/shared/supabase/types'
+import type { Coin, ConfusionZone } from '@/shared/types/domain'
 import { firstImageUrl } from '@/shared/utils/coin-images'
 import { ImageOff } from 'lucide-vue-next'
 

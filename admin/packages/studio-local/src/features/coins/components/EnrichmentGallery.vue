@@ -16,7 +16,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { Crop, ImageOff, Loader2, RotateCcw, X } from 'lucide-vue-next'
-import type { CoinImage } from '@/shared/supabase/types'
+import type { CoinImage } from '@/shared/types/domain'
 import CircleCropEditor from '@/features/review/components/CircleCropEditor.vue'
 import {
   fetchCoinAssets,

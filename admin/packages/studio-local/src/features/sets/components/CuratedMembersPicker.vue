@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { eurioApi } from '@/shared/api/eurio-api'
-import type { Coin } from '@/shared/supabase/types'
+import type { Coin } from '@/shared/types/domain'
 import { firstImageUrl } from '@/shared/utils/coin-images'
 import { useDebounceFn } from '@vueuse/core'
 import {

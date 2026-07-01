@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { fetchSets as apiFetchSets } from '@/features/sets/composables/useSetsApi'
-import type { Set, SetCategory, SetKind } from '@/shared/supabase/types'
+import type { Set, SetCategory, SetKind } from '@/shared/types/domain'
 import { Plus, RefreshCw, Search, X } from 'lucide-vue-next'
 import { computed, onMounted, ref } from 'vue'
 import SetEditDrawer from '../components/SetEditDrawer.vue'

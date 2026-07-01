@@ -1,6 +1,6 @@
 import { onMounted, ref } from 'vue'
 import { eurioApi } from '@/shared/api/eurio-api'
-import type { CoinSeries } from '@/shared/supabase/types'
+import type { CoinSeries } from '@/shared/types/domain'
 
 /**
  * Fetch et cache les 32 entrées coin_series (picker série).

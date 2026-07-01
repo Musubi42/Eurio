@@ -1,14 +1,19 @@
 /**
- * Domain types — types métier indépendants des types générés.
- * Les pages castent les résultats Supabase (`as Coin[]`, `as Set[]`) parce que
- * Supabase JS retourne `Json` pour les JSONB et on narrow-type ici.
+ * Domain types — types métier de l'admin studio-local.
  *
- * Toujours importer depuis ce fichier, jamais depuis database.generated.ts.
+ * Autonomes (aucune dépendance Supabase depuis D7 / data-layer-unification) :
+ * les données viennent de `eurio-api` (canonique SQLite). Les pages castent les
+ * réponses (`as Coin[]`, `as Set[]`) car l'API renvoie du JSON large-typé.
  */
-import type { Database as DatabaseGenerated, Json } from './database.generated'
 
-export type { Json }
-export type Database = DatabaseGenerated
+/** Valeur JSON arbitraire (colonnes JSONB côté eurio.db). */
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[]
 
 // ───────── Enums ─────────
 
@@ -104,8 +109,7 @@ export interface CoinCrossRefs {
 }
 
 // ───────── Domain entities ─────────
-// Standalone interfaces — pas dérivées des Row pour éviter la complexité des
-// conditional types Supabase. Gardées alignées à la main sur database.generated.ts.
+// Interfaces standalone, alignées à la main sur le schéma eurio.db.
 
 export interface Coin {
   eurio_id: string

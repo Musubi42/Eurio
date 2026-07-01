@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Coin, SetCriteria } from '@/shared/supabase/types'
+import type { Coin, SetCriteria } from '@/shared/types/domain'
 import { firstImageUrl } from '@/shared/utils/coin-images'
 import { AlertCircle, CheckCircle2, ImageOff, Loader2 } from 'lucide-vue-next'
 import { computed, toRef } from 'vue'

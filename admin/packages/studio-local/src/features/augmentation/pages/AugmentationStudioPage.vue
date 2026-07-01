@@ -14,7 +14,7 @@ import { useRecipeState } from '../composables/useRecipeState'
 import { useStagedCoins } from '../composables/useStagedCoins'
 import { checkMlApi } from '@/features/training/composables/useTrainingApi'
 import { fetchZoneMap } from '@/features/confusion/composables/useConfusionMap'
-import type { ConfusionZone } from '@/shared/supabase/types'
+import type { ConfusionZone } from '@/shared/types/domain'
 import type {
   AugmentationSchemaResponse,
   Layer,

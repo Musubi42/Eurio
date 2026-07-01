@@ -184,13 +184,6 @@ export default defineConfig({
     },
   },
   define: {
-    'import.meta.env.VITE_SUPABASE_URL':
-      JSON.stringify(process.env.VITE_SUPABASE_URL ?? ''),
-    'import.meta.env.VITE_SUPABASE_ANON_KEY':
-      JSON.stringify(process.env.VITE_SUPABASE_ANON_KEY ?? ''),
-    // Optionnel — bypass dev local (service_role key depuis .envrc)
-    'import.meta.env.VITE_SUPABASE_SERVICE_KEY':
-      JSON.stringify(process.env.VITE_SUPABASE_SERVICE_KEY ?? ''),
     // R1 — build hébergé : VITE_DEPLOY_TARGET + VITE_EURIO_API_BASE arrivent par
     // build-arg Docker (process.env). En local ils viennent de `.env.local` (dotenv
     // Vite) → on n'injecte ici QUE s'ils sont présents dans l'env shell, sinon on

@@ -1,7 +1,7 @@
 import { eurioApi } from '@/shared/api/eurio-api'
 import { ML_API } from '@/shared/api/ml-api'
 import { HAS_LOCAL_ML_API } from '@/shared/config/deploy-target'
-import type { ConfusionZone } from '@/shared/supabase/types'
+import type { ConfusionZone } from '@/shared/types/domain'
 import { zoneFromSimilarity } from './useConfusionZone'
 
 // Re-export so existing importers of this module don't need to change.

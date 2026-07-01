@@ -1,4 +1,4 @@
-import type { Coin, CoinImageDict } from '@/shared/supabase/types'
+import type { Coin, CoinImageDict } from '@/shared/types/domain'
 import { ML_API } from '@/features/training/composables/useTrainingApi'
 
 /**

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { eurioApi } from '@/shared/api/eurio-api'
-import type { SetAudit } from '@/shared/supabase/types'
+import type { SetAudit } from '@/shared/types/domain'
 import { onMounted, ref } from 'vue'
 
 const entries = ref<SetAudit[]>([])

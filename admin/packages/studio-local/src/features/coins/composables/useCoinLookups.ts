@@ -18,7 +18,7 @@ import {
   patchCoin,
   type SourceKey,
 } from '@/features/coins/composables/useCoinsApi'
-import type { ConfusionZone } from '@/shared/supabase/types'
+import type { ConfusionZone } from '@/shared/types/domain'
 
 export const COIN_LOOKUP_KEYS = {
   trained: ['coins', 'lookups', 'trained'] as const,

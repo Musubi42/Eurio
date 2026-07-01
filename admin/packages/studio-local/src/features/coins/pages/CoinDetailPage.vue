@@ -28,7 +28,7 @@ import {
   type VariantGroupEntry,
   type DesignGroupMember,
 } from '@/features/coins/composables/useCoinsApi'
-import type { Coin, CoinImage, CoinImageDict, CoinSeries, IssueType } from '@/shared/supabase/types'
+import type { Coin, CoinImage, CoinImageDict, CoinSeries, IssueType } from '@/shared/types/domain'
 import {
   ArrowLeft,
   ArrowUpRight,

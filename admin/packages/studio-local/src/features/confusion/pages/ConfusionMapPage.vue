@@ -11,7 +11,7 @@ import {
   type PersonalFilter,
 } from '@/features/confusion/composables/useConfusionMap'
 import { zoneStyle } from '@/features/confusion/composables/useConfusionZone'
-import type { ConfusionZone } from '@/shared/supabase/types'
+import type { ConfusionZone } from '@/shared/types/domain'
 import {
   AlertTriangle,
   Filter,

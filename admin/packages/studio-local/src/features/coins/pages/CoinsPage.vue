@@ -7,7 +7,7 @@ import {
 } from '@/features/coins/composables/useCoinLookups'
 import { zoneStyle } from '@/features/confusion/composables/useConfusionZone'
 import { fetchCoinsList, patchCoin } from '@/features/coins/composables/useCoinsApi'
-import type { Coin, ConfusionZone, IssueType } from '@/shared/supabase/types'
+import type { Coin, ConfusionZone, IssueType } from '@/shared/types/domain'
 import { coinDisplayName } from '@/shared/utils/coin-display'
 import { firstImageUrl, loadCanonicalIndex } from '@/shared/utils/coin-images'
 import { useDebounceFn } from '@vueuse/core'

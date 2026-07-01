@@ -1,5 +1,5 @@
 import { eurioApi } from '@/shared/api/eurio-api'
-import type { Coin, SetCriteria } from '@/shared/supabase/types'
+import type { Coin, SetCriteria } from '@/shared/types/domain'
 import { useDebounceFn } from '@vueuse/core'
 import { ref, watch, type Ref } from 'vue'
 

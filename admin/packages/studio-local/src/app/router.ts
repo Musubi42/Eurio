@@ -9,7 +9,8 @@ import { createRouter, createWebHistory } from 'vue-router'
 // dev-only). En hébergé (`hasLocalMlApi` faux), `AppLayout` rend `LocalOnlyNotice` à
 // leur place — les composables lourds ne montent pas (zéro fetch mixed-content).
 //
-// Supabase est encore consulté pour quelques tables data (retrait = chantier D7).
+// Data : 100 % via eurio-api (canonique SQLite). Le client Supabase front a été
+// retiré (D7) — il ne reste que des features de *push* vers le mirror Android.
 
 const heavy = { heavy: true } as const
 

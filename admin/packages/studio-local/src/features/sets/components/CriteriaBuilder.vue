@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { IssueType, SetCriteria } from '@/shared/supabase/types'
+import type { IssueType, SetCriteria } from '@/shared/types/domain'
 import { computed } from 'vue'
 import {
   EUROZONE_COUNTRIES,
