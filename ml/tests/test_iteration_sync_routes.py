@@ -81,6 +81,20 @@ def test_upsert_get_list_roundtrip(tmp_path: Path):
         assert len(c.get("/iterations?cohort_id=c1").json()) == 1
 
 
+def test_upsert_nulls_unresolved_fks(tmp_path: Path):
+    """Une recette/parent absent du canonique est nullé (pas de violation FK)."""
+    app, _ = _make_app(tmp_path, {"lab:read", "ingest:write"})
+    with TestClient(app) as c:
+        snap = {**_SNAPSHOT, "recipe_id": "legacy-absent", "parent_iteration_id": "ghost"}
+        put = c.put("/iterations/it2", json=snap)
+        assert put.status_code == 200, put.json()
+        body = put.json()
+        assert body["recipe_id"] is None
+        assert body["parent_iteration_id"] is None
+        # l'itération est bien stockée (summary poussé conservé verbatim)
+        assert body["summary"] == {"r_at_1": 0.79, "loss": 0.05}
+
+
 def test_missing_iteration_404(tmp_path: Path):
     app, _ = _make_app(tmp_path, {"lab:read"})
     with TestClient(app) as c:
