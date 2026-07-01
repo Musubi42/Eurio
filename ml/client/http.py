@@ -50,6 +50,10 @@ def post_json(path: str, payload: Any, *, timeout: int = 120) -> dict:
     return _request(path, method="POST", payload=payload, timeout=timeout)
 
 
+def put_json(path: str, payload: Any, *, timeout: int = 120) -> dict:
+    return _request(path, method="PUT", payload=payload, timeout=timeout)
+
+
 def get_json(path: str, *, timeout: int = 60) -> dict:
     return _request(path, method="GET", payload=None, timeout=timeout)
 

@@ -201,7 +201,13 @@ CREATE TABLE IF NOT EXISTS experiment_iterations (
   error                     TEXT,
   created_at                TEXT NOT NULL DEFAULT (datetime('now')),
   started_at                TEXT,
-  finished_at               TEXT
+  finished_at               TEXT,
+  -- R3 (Model B) : origine machine (mac/pc/vps) où l'itération a été calculée,
+  -- stampée à la création + poussée au canonique ; `summary_json` = snapshot
+  -- dénormalisé des métriques (R@1/loss/verdict) pour afficher les chiffres
+  -- partout sans pousser training_runs/benchmark_runs. Miroir : migration 0005.
+  created_on                TEXT,
+  summary_json              TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_experiment_iterations_cohort ON experiment_iterations(cohort_id);

@@ -32,6 +32,10 @@ class ExperimentIterationRow:
     created_at: str | None = None
     started_at: str | None = None
     finished_at: str | None = None
+    # R3 (Model B) : origine machine (mac/pc/vps) + snapshot dénormalisé des
+    # métriques (R@1/loss/verdict). Poussés au canonique pour la sync Mac↔PC.
+    created_on: str | None = None
+    summary: dict | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -56,6 +60,8 @@ class ExperimentIterationRow:
             "created_at": self.created_at,
             "started_at": self.started_at,
             "finished_at": self.finished_at,
+            "created_on": self.created_on,
+            "summary": self.summary,
         }
 
 
@@ -143,7 +149,22 @@ def _row_to_iteration(r: sqlite3.Row) -> ExperimentIterationRow:
         created_at=r["created_at"],
         started_at=r["started_at"],
         finished_at=r["finished_at"],
+        # Colonnes R3 — lues en gracieux (_optional_column) : une DB antérieure à
+        # la migration 0005 ne les expose pas → traitées comme NULL.
+        created_on=_optional_column(r, "created_on"),
+        summary=_json_or_none(_optional_column(r, "summary_json")),
     )
+
+
+def _json_or_none(raw: object | None) -> dict | None:
+    if raw is None or raw == "":
+        return None
+    if isinstance(raw, dict):
+        return raw
+    try:
+        return json.loads(raw)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
 
 
 class IterationsMixin:
@@ -184,6 +205,78 @@ class IterationsMixin:
                     iteration.augmentations_seed,
                     iteration.started_at,
                     iteration.finished_at,
+                ),
+            )
+
+    def upsert_iteration(self, iteration: ExperimentIterationRow) -> None:
+        """Écrit le snapshot COMPLET d'une itération (INSERT ou REMPLACE tout).
+
+        Utilisé par le canonique (R3) : une machine de calcul pousse l'état de son
+        itération à chaque transition ; le canonique remplace la row entière (id
+        uuid4 = propriété d'une seule machine → last-writer-wins sans conflit
+        réel). Préserve `created_at`/`created_on` de la SOURCE (l'origine et
+        l'horodatage de création viennent de la machine, pas du canonique).
+        """
+        with self._writing() as c:
+            c.execute(
+                """
+                INSERT INTO experiment_iterations (
+                  id, cohort_id, parent_iteration_id, name, hypothesis,
+                  recipe_id, variant_count, training_config_json,
+                  status, training_run_id, benchmark_run_id,
+                  verdict, verdict_override,
+                  delta_vs_parent_json, diff_from_parent_json,
+                  notes, error, augmentations_seed,
+                  created_at, started_at, finished_at, created_on, summary_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                  cohort_id            = excluded.cohort_id,
+                  parent_iteration_id  = excluded.parent_iteration_id,
+                  name                 = excluded.name,
+                  hypothesis           = excluded.hypothesis,
+                  recipe_id            = excluded.recipe_id,
+                  variant_count        = excluded.variant_count,
+                  training_config_json = excluded.training_config_json,
+                  status               = excluded.status,
+                  training_run_id      = excluded.training_run_id,
+                  benchmark_run_id     = excluded.benchmark_run_id,
+                  verdict              = excluded.verdict,
+                  verdict_override     = excluded.verdict_override,
+                  delta_vs_parent_json = excluded.delta_vs_parent_json,
+                  diff_from_parent_json= excluded.diff_from_parent_json,
+                  notes                = excluded.notes,
+                  error                = excluded.error,
+                  augmentations_seed   = excluded.augmentations_seed,
+                  created_at           = excluded.created_at,
+                  started_at           = excluded.started_at,
+                  finished_at          = excluded.finished_at,
+                  created_on           = excluded.created_on,
+                  summary_json         = excluded.summary_json
+                """,
+                (
+                    iteration.id,
+                    iteration.cohort_id,
+                    iteration.parent_iteration_id,
+                    iteration.name,
+                    iteration.hypothesis,
+                    iteration.recipe_id,
+                    iteration.variant_count,
+                    json.dumps(iteration.training_config),
+                    iteration.status,
+                    iteration.training_run_id,
+                    iteration.benchmark_run_id,
+                    iteration.verdict,
+                    iteration.verdict_override,
+                    json.dumps(iteration.delta_vs_parent),
+                    json.dumps(iteration.diff_from_parent),
+                    iteration.notes,
+                    iteration.error,
+                    iteration.augmentations_seed,
+                    iteration.created_at,
+                    iteration.started_at,
+                    iteration.finished_at,
+                    iteration.created_on,
+                    json.dumps(iteration.summary) if iteration.summary is not None else None,
                 ),
             )
 

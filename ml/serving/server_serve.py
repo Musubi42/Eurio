@@ -48,7 +48,7 @@ from serving import (
 )
 from serving.auth_principal import require_principal
 from serving.coin_series import router as coin_series_router
-from serving import recipe_routes
+from serving import iteration_sync_routes, recipe_routes, whoami_routes
 from serving.review_queue import router as review_queue_router
 from serving.review_queue.writes import router as review_writes_router
 from serving.sources import router as sources_router
@@ -104,6 +104,15 @@ app.include_router(coin_series_router)
 # sur le ML local :8042. Scope aligné sur les autres routes protégées.
 recipe_routes.bind(_store)
 app.include_router(recipe_routes.router, dependencies=[Depends(require_principal)])
+# R3 (Model B) : itérations canoniques — état (métadonnée + métriques
+# dénormalisées) partagé Mac↔PC. Router léger (Store + validateur pur). Scopes
+# PAR-ROUTE (lab:read en lecture, ingest:write pour l'upsert poussé par le
+# compute) déjà déclarés dans le module → pas de dep globale ici.
+iteration_sync_routes.bind(_store)
+app.include_router(iteration_sync_routes.router)
+# /whoami : origine machine (mac/pc/vps) + principal optionnel. Public (ne 401
+# jamais) — le front s'en sert pour gater les actions lourdes hors machine d'origine.
+app.include_router(whoami_routes.router)
 # F9 dashboard KPIs : compteurs read-only agrégés, filtrés par scope (lean).
 app.include_router(stats_routes.router)
 # Phase 2b data-layer-unification : domaine `sources` (READ) layered, sans
