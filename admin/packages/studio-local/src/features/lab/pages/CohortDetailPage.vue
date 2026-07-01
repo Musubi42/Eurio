@@ -15,6 +15,7 @@ import {
   useCloneCohortMutation,
   useCohortProgressQuery,
   useCohortQuery,
+  useCurrentMachineQuery,
   useIterationsQuery,
   useRunnerStatusQuery,
   useSensitivityQuery,
@@ -126,7 +127,21 @@ async function handleNewIteration() {
   }
 }
 
+// R3 : machine courante (mac/pc) pour l'origine + le gating des actions lourdes.
+const currentMachineQuery = useCurrentMachineQuery()
+const currentMachine = computed(() => currentMachineQuery.data.value ?? null)
+
+/** Une itération est « locale » (ouvrable/actionnable ici) si elle a été calculée
+ *  sur CETTE machine, ou si son origine est inconnue (pré-sync R3). */
+function isLocalIteration(it: IterationDetail): boolean {
+  return !it.created_on || !currentMachine.value || it.created_on === currentMachine.value
+}
+
 function openIteration(iterationId: string) {
+  const it = iterationsById.value.get(iterationId)
+  // Les artefacts d'une itération d'une AUTRE machine ne sont pas ici : la page
+  // détail (ML local) 404erait. On ne navigue que vers les itérations locales.
+  if (it && !isLocalIteration(it)) return
   router.push(`/lab/cohorts/${cohortId.value}/iterations/${iterationId}`)
 }
 
@@ -433,6 +448,7 @@ function formatPct(v: number | null): string {
                   <th class="px-4 py-2 text-right text-[10px] uppercase" style="color: var(--ink-500);">R@1</th>
                   <th class="px-4 py-2 text-left text-[10px] uppercase" style="color: var(--ink-500);">Verdict</th>
                   <th class="px-4 py-2 text-left text-[10px] uppercase" style="color: var(--ink-500);">Date</th>
+                  <th class="px-4 py-2 text-left text-[10px] uppercase" style="color: var(--ink-500);">Origine</th>
                 </tr>
               </thead>
               <tbody>
@@ -441,6 +457,7 @@ function formatPct(v: number | null): string {
                   :key="it.id"
                   :iteration="it"
                   :parent="getParent(it)"
+                  :current-machine="currentMachine"
                   @click="openIteration(it.id)"
                 />
               </tbody>

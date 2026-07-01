@@ -34,6 +34,8 @@ import {
   fetchIterationProgress,
   fetchIterationSources,
   fetchIterations,
+  fetchCanonicalIterations,
+  fetchLocalMachine,
   fetchLiveTests,
   fetchRunnerStatus,
   fetchRuntimeInfo,
@@ -65,6 +67,7 @@ import { fetchTriageStats } from '@/features/review/composables/useReviewApi'
 import type {
   CohortStatus,
   IterationCreatePayload,
+  IterationDetail,
   IterationStatus,
 } from '../types'
 
@@ -123,13 +126,55 @@ export function useCohortQuery(id: MaybeRefOrGetter<string>) {
   })
 }
 
+/** Origine machine (mac/pc) de CE poste, via le ML local `/whoami` (R3).
+ *  `null` en hébergé (pas de ML local) → aucune action lourde de toute façon. */
+export function useCurrentMachineQuery() {
+  return useQuery({
+    queryKey: ['lab', 'whoami', 'machine'] as const,
+    queryFn: () => fetchLocalMachine(),
+    enabled: HAS_LOCAL_ML_API,
+    staleTime: Infinity, // le hostname ne change pas en cours de session
+  })
+}
+
+/** Fusionne les itérations LOCALES (machine courante, détail riche + in-flight)
+ *  et CANONIQUES (toutes machines). Les locales gagnent (plus riches) et sont
+ *  estampillées `created_on` = machine courante ; les canoniques absentes en
+ *  local (autres machines, ou pré-sync) complètent. Tri chronologique. */
+function mergeIterations(
+  local: IterationDetail[],
+  canonical: IterationDetail[],
+  currentMachine: string | null,
+): IterationDetail[] {
+  const localIds = new Set(local.map(i => i.id))
+  const localStamped = local.map(i => ({ ...i, created_on: i.created_on ?? currentMachine }))
+  const others = canonical.filter(i => !localIds.has(i.id))
+  return [...localStamped, ...others].sort(
+    (a, b) => (a.created_at ?? '').localeCompare(b.created_at ?? ''),
+  )
+}
+
 export function useIterationsQuery(
   cohortId: MaybeRefOrGetter<string>,
   opts?: { pollWhileBusy?: MaybeRefOrGetter<boolean> },
 ) {
   return useQuery({
     queryKey: computed(() => LAB_KEYS.iterations(toValue(cohortId))),
-    queryFn: () => fetchIterations(toValue(cohortId)),
+    // R3 : la liste unit le local (machine courante) et le canonique (Mac+PC).
+    // `allSettled` → une source KO (ML local off en hébergé, PAT sans lab:read,
+    // VPS injoignable) dégrade proprement sans casser l'autre.
+    queryFn: async () => {
+      const cid = toValue(cohortId)
+      const [localRes, canonRes, machineRes] = await Promise.allSettled([
+        HAS_LOCAL_ML_API ? fetchIterations(cid) : Promise.resolve([]),
+        fetchCanonicalIterations(cid),
+        HAS_LOCAL_ML_API ? fetchLocalMachine() : Promise.resolve(null),
+      ])
+      const local = localRes.status === 'fulfilled' ? localRes.value : []
+      const canonical = canonRes.status === 'fulfilled' ? canonRes.value : []
+      const machine = machineRes.status === 'fulfilled' ? machineRes.value : null
+      return mergeIterations(local, canonical, machine)
+    },
     enabled: computed(() => !!toValue(cohortId)),
     refetchInterval: computed(() => (toValue(opts?.pollWhileBusy) ? 4000 : false)),
   })

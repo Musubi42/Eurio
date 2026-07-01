@@ -398,6 +398,9 @@ export interface IterationDetail {
   finished_at: string | null
   benchmark_summary: BenchmarkSummary | null
   training_summary: TrainingSummary | null
+  // R3 (Model B) : machine où l'itération a été calculée (mac/pc/vps). Vient du
+  // canonique ; pour les itérations locales pré-sync = la machine courante.
+  created_on?: string | null
 }
 
 export interface IterationAugmentationCoin {

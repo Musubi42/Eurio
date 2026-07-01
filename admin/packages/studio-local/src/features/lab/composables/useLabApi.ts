@@ -3,6 +3,7 @@
 // Same host as the training composable (http://127.0.0.1:8042).
 
 import { ML_API } from '@/features/training/composables/useTrainingApi'
+import { eurioApi } from '@/shared/api/eurio-api'
 import type {
   AugVsRealReport,
   CohortCaptureManifest,
@@ -325,6 +326,46 @@ export async function fetchIterations(cohortId: string): Promise<IterationDetail
   return json<IterationDetail[]>(
     `/lab/cohorts/${encodeURIComponent(cohortId)}/iterations`,
   )
+}
+
+// ─── Itérations canoniques (toutes machines) + origine (R3) ────────────────
+
+/** Forme brute renvoyée par le canonique `GET /iterations` : le résumé
+ *  (recette + métriques) est imbriqué sous `summary`, l'origine sous `created_on`. */
+interface CanonicalIterationRow extends Omit<IterationDetail, 'recipe_name' | 'benchmark_summary' | 'training_summary'> {
+  created_on: string | null
+  summary: {
+    recipe_name: string | null
+    benchmark_summary: IterationDetail['benchmark_summary']
+    training_summary: IterationDetail['training_summary']
+  } | null
+}
+
+/** Aplatit une row canonique vers la forme `IterationDetail` du front. */
+function mapCanonicalIteration(row: CanonicalIterationRow): IterationDetail {
+  const { summary, ...rest } = row
+  return {
+    ...rest,
+    recipe_name: summary?.recipe_name ?? null,
+    benchmark_summary: summary?.benchmark_summary ?? null,
+    training_summary: summary?.training_summary ?? null,
+    created_on: row.created_on ?? null,
+  }
+}
+
+/** Itérations d'une cohorte vues par le CANONIQUE (Mac + PC). Lecture légère
+ *  (scope `lab:read`), sert la liste multi-machines de la page cohorte. */
+export async function fetchCanonicalIterations(cohortId: string): Promise<IterationDetail[]> {
+  const rows = await eurioApi.get<CanonicalIterationRow[]>(
+    `/iterations?cohort_id=${encodeURIComponent(cohortId)}`,
+  )
+  return rows.map(mapCanonicalIteration)
+}
+
+/** Origine machine (mac/pc) de CE poste de calcul, via le ML local `/whoami`. */
+export async function fetchLocalMachine(): Promise<string | null> {
+  const res = await json<{ machine: string | null }>('/whoami')
+  return res.machine ?? null
 }
 
 export async function fetchIteration(cohortId: string, iterationId: string): Promise<IterationDetail> {

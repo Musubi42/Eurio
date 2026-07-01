@@ -9,11 +9,26 @@ import { computed } from 'vue'
 const props = defineProps<{
   iteration: IterationDetail
   parent?: IterationDetail | null
+  /** Machine courante (mac/pc) — pour l'origine + le gating (R3). */
+  currentMachine?: string | null
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   (e: 'click'): void
 }>()
+
+// R3 : origine de l'itération. « Cross-origin » = calculée sur une AUTRE machine
+// → ses artefacts (tflite/checkpoints/logs) ne sont pas ici, la page détail
+// (ML local) 404erait → on la rend consultable mais non-ouvrable.
+const origin = computed(() => props.iteration.created_on ?? null)
+const crossOrigin = computed(() =>
+  !!(origin.value && props.currentMachine && origin.value !== props.currentMachine),
+)
+
+function onRowClick() {
+  if (crossOrigin.value) return
+  emit('click')
+}
 
 const stopMutation = useStopIterationMutation(() => props.iteration.cohort_id)
 
@@ -65,9 +80,13 @@ const deltaR1 = computed(() => props.iteration.delta_vs_parent?.r_at_1)
 
 <template>
   <tr
-    class="cursor-pointer border-b transition-colors hover:bg-[color-mix(in_srgb,var(--indigo-700)_3%,var(--surface))]"
-    style="border-color: var(--surface-3);"
-    @click="$emit('click')"
+    class="border-b transition-colors"
+    :class="crossOrigin
+      ? 'cursor-default'
+      : 'cursor-pointer hover:bg-[color-mix(in_srgb,var(--indigo-700)_3%,var(--surface))]'"
+    :style="{ borderColor: 'var(--surface-3)', opacity: crossOrigin ? 0.6 : 1 }"
+    :title="crossOrigin ? `Itération calculée sur « ${origin} » — artefacts sur cette machine, ouvre-la depuis là-bas` : undefined"
+    @click="onRowClick"
   >
     <td class="px-4 py-2">
       <div class="font-medium" style="color: var(--ink);">{{ iteration.name }}</div>
@@ -123,6 +142,18 @@ const deltaR1 = computed(() => props.iteration.delta_vs_parent?.r_at_1)
     </td>
     <td class="px-4 py-2 text-xs align-top" style="color: var(--ink-500);">
       {{ formatDate(iteration.created_at) }}
+    </td>
+    <td class="px-4 py-2 align-top">
+      <span
+        v-if="origin"
+        class="inline-flex items-center rounded-md px-1.5 py-0.5 font-mono text-[10px] uppercase"
+        :style="{
+          letterSpacing: 'var(--tracking-eyebrow)',
+          background: crossOrigin ? 'var(--surface-2)' : 'color-mix(in srgb, var(--indigo-700) 12%, var(--surface))',
+          color: crossOrigin ? 'var(--ink-500)' : 'var(--indigo-700)',
+        }"
+      >{{ origin }}</span>
+      <span v-else class="text-xs" style="color: var(--ink-400);">—</span>
     </td>
   </tr>
 </template>

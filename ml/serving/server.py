@@ -126,6 +126,11 @@ _iteration_runner = iteration_runner_module.bind(_store, _runner)
 lab_routes.bind(_store, _iteration_runner)
 app.include_router(lab_routes.router)
 
+# /whoami : origine machine (mac/pc) de CE poste de calcul — le front s'en sert
+# pour gater les actions lourdes aux itérations créées ici (R3). Public.
+from serving import whoami_routes  # noqa: E402
+app.include_router(whoami_routes.router)
+
 # Wire /sources/status — quota + temporal + coverage aggregation.
 app.include_router(sources_routes.router)
 
