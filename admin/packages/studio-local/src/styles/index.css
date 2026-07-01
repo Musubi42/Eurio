@@ -20,6 +20,13 @@
   --surface-2:  #E2DBC8;   /* deeper recess   (was #ECEBE4) */
   --surface-3:  #D0C7B2;   /* hairline borders (was #E2E0D6) */
   --paper:      #F5F1E7;   /* hero variant    (was #F5F3EC) */
+
+  /* Brand aliases : plusieurs pages (`button.primary`, liens, pills) tapent
+   * `var(--brand)` / `var(--brand-hover)` qui n'existaient nulle part — les
+   * boutons primaires tombaient donc en white-on-transparent (invisibles).
+   * On les mappe sur l'indigo canonique de tokens.css. */
+  --brand:       var(--indigo-700);
+  --brand-hover: var(--indigo-800);
 }
 
 @tailwind base;
