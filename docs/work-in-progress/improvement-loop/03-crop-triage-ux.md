@@ -3,6 +3,13 @@
 > Spéc de la petite amélioration UX qui ferme la boucle : voir les crops d'une
 > classe d'un coup, repérer les déchets, les exclure en un clic. Date : 2026-06-30.
 
+> ✅ **CONSTRUIT** (drawer C5 `CohortTrainingQa.vue` + backend `training-crops` /
+> `training-eligible`). 🔜 **Raffinements PO demandés (2026-07-01)** — renommage en
+> **« Jeu d'entraînement »**, overlay allégé, bordure verte pour les inclus, recrop
+> en place + réassignation de classe (réutiliser Review), clarté du R@1 `—`. Tous
+> détaillés, prêts à coder, dans le handoff dédié :
+> [`04-jeu-entrainement-handoff.md`](./04-jeu-entrainement-handoff.md).
+
 ## Le problème UX (concret)
 
 Depuis le contexte lab/cohorte — là où on voit les confusions et les stats par

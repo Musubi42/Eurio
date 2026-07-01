@@ -65,8 +65,15 @@ déchets depuis le contexte lab/cohorte. C'est la première amélioration UX
   drawer C5 « QA crops d'entraînement » sur `/lab/cohorts/:id` — accordéon par
   classe rangé par R@1, vignettes suspect-first, clic = exclure/réinclure
   (réversible, effet au re-bake). Cf. `03-crop-triage-ux.md`.
+- 🔜 **Raffinements de l'outil INSPECT** (retour PO 2026-07-01, session dédiée) :
+  renommage « **Jeu d'entraînement** », overlay allégé, bordure verte pour les
+  inclus, **recrop en place** + **réassignation de classe** (réutiliser Review),
+  clarté du badge R@1 `—`. Handoff prêt à coder :
+  [`04-jeu-entrainement-handoff.md`](./04-jeu-entrainement-handoff.md).
 - 🔜 **Itération 2 (modèle)** : attaquer les near-twins (hard-negatives via
-  `confusion_map.py`) + augmentations basse-lumière. Prochaine étape.
+  `confusion_map.py`) + augmentations basse-lumière (levier `low-light-v1` :
+  relighting `ambient 0.20`/`intensity [0.35,1.0]` — recette déjà créable via le
+  CRUD canonique depuis la refonte recettes). Piste parallèle.
 
 
 
