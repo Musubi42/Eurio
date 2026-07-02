@@ -119,6 +119,22 @@ class StoreBase:
                 self._ensure_column(
                     conn, table="cohort_jobs", column="pid", decl="INTEGER"
                 )
+            # Scan v2 du Jeu d'entraînement : composantes d'audit du verdict
+            # (ancre canonique vs consensus intra-classe) sur les DB qui ont
+            # la table v1. Pas d'index dessus → ALTER simple, idempotent.
+            if conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' "
+                "AND name='cohort_training_scan_results'"
+            ).fetchone():
+                for column, decl in (
+                    ("anchor_sim", "REAL"),
+                    ("consensus_sim", "REAL"),
+                    ("intruder_reason", "TEXT"),
+                ):
+                    self._ensure_column(
+                        conn, table="cohort_training_scan_results",
+                        column=column, decl=decl,
+                    )
             # Chantier variantes : les vues v_ebay_freshness* et
             # v_orphan_eurio_refs (recréées par executescript) référencent
             # coins.canonical_eurio_id → la colonne doit exister AVANT

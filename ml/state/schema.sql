@@ -1808,19 +1808,26 @@ CREATE INDEX IF NOT EXISTS idx_training_scans_running
 
 -- Verdict par crop du scan (REPLACE au re-scan via PK (scan_id, asset_id)).
 -- `margin` = sim(top-1 classe cohorte) − sim(classe assignée) : > 0 quand Dino
--- préfère une AUTRE classe de la cohorte. `is_intruder` applique le seuil du
--- scan (désaccord fort) — l'UI remonte ces crops en tête, l'humain tranche via
--- la réassignation existante.
+-- préfère une AUTRE classe de la cohorte. `assigned_sim` = max(anchor_sim,
+-- consensus_sim) : l'ancre canonique (1 photo studio) est complétée par le
+-- consensus intra-classe (centroïde leave-one-out des crops éligibles avers)
+-- — tue les faux positifs quand l'ancre matche mal les photos réelles
+-- (ex. Kniefall de-2020). `is_intruder` applique le seuil du scan (désaccord
+-- fort) — l'UI remonte ces crops en tête, l'humain tranche via la
+-- réassignation existante.
 CREATE TABLE IF NOT EXISTS cohort_training_scan_results (
   scan_id         TEXT NOT NULL REFERENCES cohort_training_scans(id) ON DELETE CASCADE,
   asset_id        TEXT NOT NULL REFERENCES image_assets(id) ON DELETE CASCADE,
   assigned_class  TEXT NOT NULL,                    -- classe (design_group/eurio) au scan
-  assigned_sim    REAL,                             -- max sim des ancres de sa classe
+  assigned_sim    REAL,                             -- max(anchor_sim, consensus_sim)
+  anchor_sim      REAL,                             -- meilleure ancre canonique de sa classe
+  consensus_sim   REAL,                             -- centroïde LOO des camarades éligibles
   top1_class      TEXT,                             -- meilleure classe cohorte selon Dino
   top1_eurio_id   TEXT,                             -- membre gagnant (cible de réassign)
   top1_sim        REAL,
   margin          REAL,
   is_intruder     INTEGER NOT NULL DEFAULT 0,
+  intruder_reason TEXT,                             -- 'margin' | 'outlier' | 'margin+outlier'
   face_verdict    TEXT,                             -- verdict P2 (obverse/reverse), NULL si non calculé
   face_written    INTEGER NOT NULL DEFAULT 0,       -- 1 si image_assets.face a été écrit
   PRIMARY KEY (scan_id, asset_id)

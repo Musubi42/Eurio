@@ -1995,7 +1995,9 @@ def cohort_funnel_status(cohort_id: str) -> dict:
 # les rejetés (pour pouvoir restaurer). On NE touche PAS resolution_status à
 # l'exclusion — seul training_eligible bascule, donc le crop reste visible et le
 # prochain bake le drop (filtre training_eligible=1). Cf. 02-pipeline-map.
-_TRIAGE_STATUSES = ("auto_name", "auto_phash", "manual", "needs_review", "rejected")
+# Source de vérité partagée avec le scan (même périmètre panneau ↔ scan).
+from training.training_set_scan import TRIAGE_STATUSES as _TRIAGE_STATUSES  # noqa: E402
+
 _TRIAGE_MAX_PER_CLASS = 400
 
 
@@ -2010,9 +2012,11 @@ class TrainingCrop(BaseModel):
     training_eligible: bool
     resolution_status: str
     # ── P1 · verdict du dernier scan (cohort_training_scan_results) ──
-    # « probable intrus » = le top-1 Dino closed-set est une AUTRE classe de la
-    # cohorte, avec une marge ≥ seuil du scan. Suggestion, pas une décision.
+    # « probable intrus » = margin (une autre classe de la cohorte le réclame)
+    # et/ou outlier (ne ressemble pas à ses camarades — vraie classe hors
+    # cohorte). Suggestion, pas une décision.
     intruder_suspect: bool = False
+    intruder_reason: str | None = None  # 'margin' | 'outlier' | 'margin+outlier'
     intruder_top1_class: str | None = None
     intruder_top1_eurio_id: str | None = None
     intruder_margin: float | None = None
@@ -2238,14 +2242,17 @@ def _cohort_training_crops(store: Store, cohort_id: str) -> CohortTrainingCropsR
                 training_eligible=bool(r["training_eligible"]),
                 resolution_status=r["resolution_status"],
                 intruder_suspect=bool(v["is_intruder"]) if v is not None else False,
+                intruder_reason=v["intruder_reason"] if v is not None else None,
                 intruder_top1_class=v["top1_class"] if v is not None else None,
                 intruder_top1_eurio_id=v["top1_eurio_id"] if v is not None else None,
                 intruder_margin=v["margin"] if v is not None else None,
             ))
-        # P1 : les probables intrus en TÊTE (marge décroissante), puis l'ordre
-        # suspect-first du SQL (tri stable).
+        # P1 : les probables intrus en TÊTE — ceux AU TRAIN d'abord (ils
+        # polluent le modèle), puis les flagués hors-train (rescue), marge
+        # décroissante ; enfin l'ordre suspect-first du SQL (tri stable).
         crops.sort(key=lambda c: (
-            0 if c.intruder_suspect else 1,
+            0 if (c.intruder_suspect and c.training_eligible)
+            else 1 if c.intruder_suspect else 2,
             -(c.intruder_margin or 0.0) if c.intruder_suspect else 0.0,
         ))
         n_eligible = sum(
@@ -2262,7 +2269,11 @@ def _cohort_training_crops(store: Store, cohort_id: str) -> CohortTrainingCropsR
             1 for c in crops if c.training_eligible and c.face == "obverse"
         )
         n_rejected = sum(1 for c in crops if c.resolution_status == "rejected")
-        n_intruders = sum(1 for c in crops if c.intruder_suspect)
+        # Compteur d'en-tête = intrus AU TRAIN (ce qui pollue le modèle) ; les
+        # flags sur needs_review/rejetés restent visibles via les filtres.
+        n_intruders = sum(
+            1 for c in crops if c.intruder_suspect and c.training_eligible
+        )
         member_r1 = [per_coin_r1[m] for m in members if m in per_coin_r1]
         r_at_1 = sum(member_r1) / len(member_r1) if member_r1 else None
         member_r1_prev = [

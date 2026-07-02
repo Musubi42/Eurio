@@ -16,16 +16,25 @@ from dataclasses import dataclass
 
 @dataclass
 class ScanResultRow:
-    """Verdict d'un crop : classement closed-set (P1) + face (P2)."""
+    """Verdict d'un crop : classement closed-set (P1) + face (P2).
+
+    ``assigned_sim = max(anchor_sim, consensus_sim)`` — les deux composantes
+    sont gardées pour l'audit/calibration (ancre canonique faible vs
+    consensus des camarades de classe)."""
 
     asset_id: str
     assigned_class: str
     assigned_sim: float | None = None
+    anchor_sim: float | None = None
+    consensus_sim: float | None = None
     top1_class: str | None = None
     top1_eurio_id: str | None = None
     top1_sim: float | None = None
     margin: float | None = None
     is_intruder: bool = False
+    # 'margin' (une autre classe de la cohorte le réclame) · 'outlier' (ne
+    # ressemble pas à ses camarades de classe) · 'margin+outlier' · NULL.
+    intruder_reason: str | None = None
     face_verdict: str | None = None
     face_written: bool = False
 
@@ -104,13 +113,15 @@ def training_scan_upsert_results(
         return
     conn.executemany(
         "INSERT OR REPLACE INTO cohort_training_scan_results "
-        "(scan_id, asset_id, assigned_class, assigned_sim, top1_class, "
-        " top1_eurio_id, top1_sim, margin, is_intruder, face_verdict, "
-        " face_written) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        "(scan_id, asset_id, assigned_class, assigned_sim, anchor_sim, "
+        " consensus_sim, top1_class, top1_eurio_id, top1_sim, margin, "
+        " is_intruder, intruder_reason, face_verdict, face_written) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         [
             (scan_id, r.asset_id, r.assigned_class, r.assigned_sim,
+             r.anchor_sim, r.consensus_sim,
              r.top1_class, r.top1_eurio_id, r.top1_sim, r.margin,
-             1 if r.is_intruder else 0, r.face_verdict,
+             1 if r.is_intruder else 0, r.intruder_reason, r.face_verdict,
              1 if r.face_written else 0)
             for r in rows
         ],
