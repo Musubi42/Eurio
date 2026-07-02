@@ -718,8 +718,10 @@ export interface TrainingCrop {
   quality_score: number | null
   training_eligible: boolean
   resolution_status: string
-  /** P1 · verdict du dernier scan : Dino closed-set préfère une AUTRE classe. */
+  /** P1 · verdict du dernier scan : margin (une autre classe le réclame)
+   *  et/ou outlier (ne ressemble pas à ses camarades). */
   intruder_suspect: boolean
+  intruder_reason: 'margin' | 'outlier' | 'margin+outlier' | null
   intruder_top1_class: string | null
   intruder_top1_eurio_id: string | null
   intruder_margin: number | null
