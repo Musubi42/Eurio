@@ -5,7 +5,7 @@ import CohortDrawerCrop from '@/features/lab/components/CohortDrawerCrop.vue'
 import CohortDrawerEbay from '@/features/lab/components/CohortDrawerEbay.vue'
 import CohortFlowHeader from '@/features/lab/components/CohortFlowHeader.vue'
 import CohortDrawerRescue from '@/features/lab/components/CohortDrawerRescue.vue'
-import CohortTrainingQa from '@/features/lab/components/CohortTrainingQa.vue'
+import CohortTrainingSet from '@/features/lab/components/CohortTrainingSet.vue'
 import IterationRow from '@/features/lab/components/IterationRow.vue'
 import SensitivityPanel from '@/features/lab/components/SensitivityPanel.vue'
 import TrajectoryChart from '@/features/lab/components/TrajectoryChart.vue'
@@ -384,7 +384,7 @@ function formatPct(v: number | null): string {
         <CohortDrawerCrop
           :cohort-id="cohort.id"
         />
-        <CohortTrainingQa
+        <CohortTrainingSet
           :cohort-id="cohort.id"
         />
       </div>

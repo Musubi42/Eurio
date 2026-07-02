@@ -3007,6 +3007,35 @@ def get_dino_suggestions(
     return _build_dino_response(asset_id, anchors_kind)
 
 
+# Consumed by: studio-local CohortTrainingSet.vue (recomputeDinoSuggestions) —
+# bouton « recalculer Dino » du panneau de réassignation. Le GET calcule déjà à
+# la demande quand la prédiction manque ; ce POST FORCE un recalcul même si une
+# prédiction existe (utile quand elle est périmée), puis renvoie la réponse
+# fraîche. Best-effort : 404 si le crop est hors scope / illisible.
+@router.post(
+    "/asset/{asset_id}/dino-suggestions/recompute",
+    response_model=DinoSuggestionsResponse,
+)
+def recompute_dino_suggestions(
+    asset_id: str,
+    anchors_kind: str = Query(default=SUGGESTIONS_ANCHORS_KIND),
+) -> DinoSuggestionsResponse:
+    """Force le recalcul Dino (tous les kinds live) d'un crop puis renvoie le
+    top-K enrichi. Écrase la prédiction persistée existante."""
+    store = _store()
+    conn = store._connection()  # noqa: SLF001
+    pred = _lazy_compute_dino(store, conn, asset_id, anchors_kind)
+    if pred is None:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"Recalcul Dino impossible pour asset_id={asset_id} "
+                f"(anchors_kind={anchors_kind}) : hors scope ou crop illisible."
+            ),
+        )
+    return _build_dino_response(asset_id, anchors_kind)
+
+
 # Consumed by: admin/packages/web/src/features/review/composables/useDinoSuggestions.ts (fetchDinoSuggestionsByReviewId)
 @router.get(
     "/{review_id}/dino-suggestions",

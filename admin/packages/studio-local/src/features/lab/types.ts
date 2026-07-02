@@ -746,6 +746,12 @@ export interface SetTrainingEligibleResult {
   training_eligible: boolean
 }
 
+export interface ReassignAssetResult {
+  asset_id: string
+  eurio_id: string
+  previous_eurio_id: string | null
+}
+
 export interface LiveTestsSyncResult {
   iteration_id: string
   cohort_id: string

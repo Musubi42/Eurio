@@ -270,6 +270,21 @@ export async function setAssetTrainingEligible(
 }
 
 /**
+ * Réassigne un crop à une autre pièce (eurio_id) — redirige un intrus vers la
+ * bonne classe. Ne touche que `image_assets.eurio_id` (training_eligible/face
+ * préservés) ; l'asset change de classe au prochain read du Jeu d'entraînement.
+ */
+export async function reassignAsset(
+  assetId: string,
+  eurioId: string,
+): Promise<import('../types').ReassignAssetResult> {
+  return json<import('../types').ReassignAssetResult>(
+    `/lab/assets/${encodeURIComponent(assetId)}/reassign`,
+    { method: 'POST', body: JSON.stringify({ eurio_id: eurioId }) },
+  )
+}
+
+/**
  * Détail des candidates au rescue, groupées par eurio_id (C5).
  * Contrairement à fetchCohortDiscardSummary (agrégat normalisé §C3), renvoie
  * le détail par pièce avec les IDs individuels pour l'action 1-clic Reclasser.

@@ -29,6 +29,7 @@ import {
   fetchCohortTrainingCrops,
   fetchCohorts,
   setAssetTrainingEligible,
+  reassignAsset,
   fetchDashboard,
   fetchIterationAugmentations,
   fetchIterationProgress,
@@ -520,6 +521,22 @@ export function useSetTrainingEligibleMutation(cohortId: MaybeRefOrGetter<string
     },
     onError: (_e, _vars, ctx) => {
       if (ctx?.prev) qc.setQueryData(ctx.key, ctx.prev)
+    },
+  })
+}
+
+/**
+ * Réassigne un crop à une autre pièce (redirige un intrus). Pas d'optimistic :
+ * l'asset saute d'une classe à l'autre (rollup design_group) → on invalide la
+ * query training-crops et on relit l'état serveur, plus simple et sans risque.
+ */
+export function useReassignAssetMutation(cohortId: MaybeRefOrGetter<string>) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (vars: { assetId: string; eurioId: string }) =>
+      reassignAsset(vars.assetId, vars.eurioId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: LAB_KEYS.trainingCrops(toValue(cohortId)) })
     },
   })
 }

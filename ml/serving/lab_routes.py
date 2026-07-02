@@ -2186,6 +2186,48 @@ def set_asset_training_eligible(
     }
 
 
+class ReassignAssetPayload(BaseModel):
+    eurio_id: str
+
+
+@router.post("/assets/{asset_id}/reassign")
+def reassign_asset(asset_id: str, payload: ReassignAssetPayload) -> dict:
+    """Réassigne un crop à une autre pièce (``eurio_id``) — pour rediriger, depuis
+    le Jeu d'entraînement, un intrus vers la bonne classe.
+
+    Ne touche QUE ``image_assets.eurio_id`` : ``training_eligible``, ``face``,
+    ``denom`` et ``resolution_status`` sont préservés (un crop bien cadré mais mal
+    classé reste un bon crop, juste sur une autre pièce). ``source_images`` est
+    laissé intact (provenance du scrape). Symétrique de ``training-eligible`` ;
+    l'asset quitte sa classe source et rejoint la classe cible au prochain read."""
+    target = payload.eurio_id.strip()
+    if not target:
+        raise HTTPException(status_code=422, detail="eurio_id cible requis")
+    store = _get_store()
+    conn = store._connection()  # noqa: SLF001
+    row = conn.execute(
+        "SELECT id, eurio_id FROM image_assets WHERE id = ?", (asset_id,),
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Crop introuvable")
+    coin = conn.execute(
+        "SELECT eurio_id FROM coins WHERE eurio_id = ?", (target,),
+    ).fetchone()
+    if coin is None:
+        raise HTTPException(
+            status_code=404, detail=f"Pièce cible inconnue : {target}",
+        )
+    conn.execute(
+        "UPDATE image_assets SET eurio_id = ? WHERE id = ?", (target, asset_id),
+    )
+    conn.commit()
+    return {
+        "asset_id": asset_id,
+        "eurio_id": target,
+        "previous_eurio_id": row["eurio_id"],
+    }
+
+
 # ── Recrop des zéro-crops d'une pièce (census+gate, en arrière-plan) ──────────
 # B2 corrigé : l'état du job vit dans la table `cohort_jobs` (persisté, survit au
 # restart, progression au fil de l'eau), PLUS de dict in-memory opaque. Le thread

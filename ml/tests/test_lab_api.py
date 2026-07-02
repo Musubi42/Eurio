@@ -659,3 +659,53 @@ def test_set_training_eligible_404_on_unknown_asset(client):
 def test_cohort_training_crops_404_on_unknown_cohort(client):
     c, *_ = client
     assert c.get("/lab/cohorts/nope/training-crops").status_code == 404
+
+
+def test_reassign_asset_moves_crop_to_target_coin(client):
+    c, store, _ = client
+    with store._writing() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO design_groups (id, designation) VALUES "
+            "(?, ?), (?, ?)",
+            ("grp-a", "A", "grp-b", "B"),
+        )
+        _seed_coin(conn, "xx-2016-a", 910001, "grp-a")
+        _seed_coin(conn, "xx-2016-b", 910002, "grp-b")
+        # Un crop bien cadré mais attribué à la mauvaise pièce (grp-a).
+        aid = _seed_crop(conn, "xx-2016-a", face="obverse", eligible=True,
+                         status="manual", quality=0.9)
+
+    resp = c.post(f"/lab/assets/{aid}/reassign", json={"eurio_id": "xx-2016-b"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["eurio_id"] == "xx-2016-b"
+    assert body["previous_eurio_id"] == "xx-2016-a"
+
+    # L'asset a bien migré, training_eligible préservé.
+    with store._writing() as conn:
+        row = conn.execute(
+            "SELECT eurio_id, training_eligible FROM image_assets WHERE id = ?",
+            (aid,),
+        ).fetchone()
+    assert row["eurio_id"] == "xx-2016-b"
+    assert row["training_eligible"] == 1
+
+
+def test_reassign_asset_404_on_unknown_asset(client):
+    c, *_ = client
+    resp = c.post("/lab/assets/nope/reassign", json={"eurio_id": "xx-2016-a"})
+    assert resp.status_code == 404
+
+
+def test_reassign_asset_404_on_unknown_target_coin(client):
+    c, store, _ = client
+    with store._writing() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO design_groups (id, designation) VALUES (?, ?)",
+            ("grp-a", "A"),
+        )
+        _seed_coin(conn, "xx-2016-a", 920001, "grp-a")
+        aid = _seed_crop(conn, "xx-2016-a", face="obverse", eligible=True,
+                         status="manual", quality=0.9)
+    resp = c.post(f"/lab/assets/{aid}/reassign", json={"eurio_id": "does-not-exist"})
+    assert resp.status_code == 404

@@ -171,6 +171,37 @@ export async function fetchDinoSuggestionsByAssetId(
   )
 }
 
+/** Force un recalcul Dino (POST) sur un crop puis renvoie la réponse fraîche.
+ *  Contrairement au GET (qui ne calcule que si la prédiction manque), ce POST
+ *  écrase une prédiction périmée. Même fallback de banque que les lectures. */
+async function postOrNull(path: string): Promise<DinoSuggestionsResponse | null> {
+  try {
+    const resp = await fetch(`${ML_API}${path}`, { method: 'POST' })
+    if (resp.status === 404) return null
+    if (!resp.ok) {
+      console.warn(`[dino-suggestions] recompute HTTP ${resp.status} for ${path}`)
+      return null
+    }
+    return (await resp.json()) as DinoSuggestionsResponse
+  } catch (err) {
+    if (err instanceof TypeError) return null
+    console.warn('[dino-suggestions] recompute error', err)
+    return null
+  }
+}
+
+export async function recomputeDinoSuggestionsByAssetId(
+  assetId: string,
+  opts: { anchorsKind?: string } = {},
+): Promise<DinoSuggestionsResponse | null> {
+  const pathFor = (kind: string) =>
+    `/review-queue/asset/${encodeURIComponent(assetId)}/dino-suggestions/recompute?anchors_kind=${kind}`
+  const kind = opts.anchorsKind ?? DEFAULT_ANCHORS_KIND
+  const first = await postOrNull(pathFor(kind))
+  if (first || opts.anchorsKind || kind === FALLBACK_ANCHORS_KIND) return first
+  return postOrNull(pathFor(FALLBACK_ANCHORS_KIND))
+}
+
 // ─── Visual tier helpers ────────────────────────────────────────────────
 //
 // Dino sims are tassées sur euros (cf. memory feedback_dino_thresholds —
