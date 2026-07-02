@@ -239,6 +239,19 @@ def _recrop_startup() -> None:
         logging.getLogger(__name__).warning(
             "Cohort jobs orphan reap failed at startup: %s", exc
         )
+    # Même doctrine pour les scans du Jeu d'entraînement (subprocess détaché).
+    try:
+        n = lab_routes.reap_orphan_training_scans(_store)
+        if n:
+            import logging
+            logging.getLogger(__name__).info(
+                "Training scans: reaped %d orphan scan(s) at startup", n,
+            )
+    except Exception as exc:  # noqa: BLE001
+        import logging
+        logging.getLogger(__name__).warning(
+            "Training scans orphan reap failed at startup: %s", exc
+        )
 
 
 @app.on_event("startup")

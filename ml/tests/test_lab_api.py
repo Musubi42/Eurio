@@ -691,6 +691,140 @@ def test_reassign_asset_moves_crop_to_target_coin(client):
     assert row["training_eligible"] == 1
 
 
+def test_cohort_training_crops_merges_scan_verdicts_and_health(client):
+    """P1/P4/P5/P6 : le dernier scan done remonte les intrus en tête, la santé
+    par classe est calculée, le Δ R@1 vs l'itération benchée précédente aussi,
+    et les confusions du bench sont agrégées à la maille classe."""
+    from store import ScanResultRow, training_scan_start, training_scan_finish
+    from store import training_scan_upsert_results
+
+    c, store, _ = client
+    with store._writing() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO design_groups (id, designation) VALUES "
+            "(?, ?), (?, ?)", ("grp-a", "A", "grp-b", "B"),
+        )
+        _seed_coin(conn, "xx-2016-a", 930001, "grp-a")
+        _seed_coin(conn, "xx-2016-b", 930002, "grp-b")
+        a1 = _seed_crop(conn, "xx-2016-a", face="obverse", eligible=True,
+                        status="manual", quality=0.9)
+        a2 = _seed_crop(conn, "xx-2016-a", face="obverse", eligible=True,
+                        status="manual", quality=0.95)
+        # Un reverse éligible : flaggé, mais HORS bake (P3) → pas dans n_eligible.
+        _seed_crop(conn, "xx-2016-a", face="reverse", eligible=True,
+                   status="manual", quality=0.4)
+        _seed_crop(conn, "xx-2016-b", face="obverse", eligible=True,
+                   status="manual", quality=0.8)
+    store.create_cohort(ExperimentCohortRow(
+        id="cs", name="cohort-scan", eurio_ids=["xx-2016-a", "xx-2016-b"],
+        status="frozen",
+    ))
+    # Deux itérations benchées → P5 (delta) ; per_coin + confusion sur la dernière.
+    store.create_benchmark_run(BenchmarkRunRow(
+        id="b-prev", model_path="", model_name="m", report_path="",
+        status="completed", r_at_1=0.5,
+        per_coin=[{"eurio_id": "xx-2016-a", "r_at_1": 0.5}],
+    ))
+    store.create_benchmark_run(BenchmarkRunRow(
+        id="b-last", model_path="", model_name="m", report_path="",
+        status="completed", r_at_1=0.75,
+        per_coin=[{"eurio_id": "xx-2016-a", "r_at_1": 0.75}],
+        confusion={"xx-2016-a": {"xx-2016-a": 3, "xx-2016-b": 2}},
+    ))
+    store.create_iteration(ExperimentIterationRow(
+        id="it-prev", cohort_id="cs", name="prev", status="completed",
+        benchmark_run_id="b-prev", finished_at="2026-06-01T00:00:00Z",
+    ))
+    store.create_iteration(ExperimentIterationRow(
+        id="it-last", cohort_id="cs", name="last", status="completed",
+        benchmark_run_id="b-last", finished_at="2026-06-20T00:00:00Z",
+    ))
+    with store._writing() as conn:
+        conn.executemany(
+            "INSERT INTO iteration_aug_vs_real (iteration_id, eurio_id, "
+            "num_real, num_aug, cosine, dino_version) VALUES (?,?,?,?,0.5,'v')",
+            [("it-prev", "grp-a", 2, 20), ("it-last", "grp-a", 3, 30)],
+        )
+        # Scan done : a1 = probable intrus (Dino préfère grp-b), a2 = ok.
+        scan_id = training_scan_start(
+            conn, cohort_id="cs", anchors_kind="2eur_all",
+            encoder_version="dinov2-vitl14", intruder_margin=0.05, n_total=4,
+        )
+        training_scan_upsert_results(conn, scan_id, [
+            ScanResultRow(
+                asset_id=a1, assigned_class="grp-a", assigned_sim=0.61,
+                top1_class="grp-b", top1_eurio_id="xx-2016-b", top1_sim=0.72,
+                margin=0.11, is_intruder=True,
+            ),
+            ScanResultRow(
+                asset_id=a2, assigned_class="grp-a", assigned_sim=0.80,
+                top1_class="grp-a", top1_eurio_id="xx-2016-a", top1_sim=0.80,
+                margin=0.0, is_intruder=False,
+            ),
+        ])
+        training_scan_finish(conn, scan_id, status="done", n_done=4,
+                             n_intruders=1, n_faces_written=0, n_skipped=0)
+
+    body = c.get("/lab/cohorts/cs/training-crops").json()
+    assert body["benchmark_run_id"] == "b-last"
+    assert body["prev_benchmark_run_id"] == "b-prev"
+    assert body["scan"]["n_intruders"] == 1
+    cls_a = next(cl for cl in body["classes"] if cl["class_id"] == "grp-a")
+    # P3 reflété : le reverse éligible ne compte plus « dans le train ».
+    assert cls_a["n_eligible"] == 2
+    assert cls_a["n_reverse_flagged"] == 1
+    assert cls_a["n_obverse"] == 2
+    # P1 : l'intrus est compté ET remonté en tête de grille.
+    assert cls_a["n_intruders"] == 1
+    assert cls_a["crops"][0]["asset_id"] == a1
+    assert cls_a["crops"][0]["intruder_suspect"] is True
+    assert cls_a["crops"][0]["intruder_top1_class"] == "grp-b"
+    # P5 : delta vs itération benchée précédente + seed réel au bake.
+    assert cls_a["r_at_1"] == pytest.approx(0.75)
+    assert cls_a["r_at_1_prev"] == pytest.approx(0.5)
+    assert cls_a["r_at_1_delta"] == pytest.approx(0.25)
+    assert cls_a["n_real_last_bake"] == 3
+    assert cls_a["n_real_prev_bake"] == 2
+    # P4 : santé — 2 crops < min_real → sous-alimentée, pas de réfs.
+    assert cls_a["underfed"] is True
+    assert cls_a["has_numista_ref"] is False
+    assert cls_a["n_bce_ref"] == 0
+    # P6 : confusion agrégée à la classe (self exclu).
+    assert cls_a["confused_with"] == [{"class_id": "grp-b", "n": 2}]
+
+
+def test_training_scan_status_idle_then_running(client):
+    from store import training_scan_start
+
+    c, store, _ = client
+    store.create_cohort(ExperimentCohortRow(
+        id="ct", name="cohort-t", eurio_ids=["xx-1"], status="frozen",
+    ))
+    assert c.get("/lab/cohorts/ct/training-scan/status").json() == {
+        "status": "idle",
+    }
+    with store._writing() as conn:
+        training_scan_start(
+            conn, cohort_id="ct", anchors_kind="2eur_all",
+            encoder_version="dinov2-vitl14", intruder_margin=0.05, n_total=7,
+        )
+    body = c.get("/lab/cohorts/ct/training-scan/status").json()
+    assert body["status"] == "running"
+    assert body["n_total"] == 7
+    # Un scan déjà en cours bloque un nouveau lancement (409).
+    resp = c.post("/lab/cohorts/ct/training-scan")
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["code"] == "training_scan_already_running"
+
+
+def test_training_scan_404_on_unknown_cohort(client):
+    c, *_ = client
+    assert c.post("/lab/cohorts/nope/training-scan").status_code == 404
+    assert c.get("/lab/cohorts/nope/training-scan/status").json() == {
+        "status": "idle",
+    }
+
+
 def test_reassign_asset_404_on_unknown_asset(client):
     c, *_ = client
     resp = c.post("/lab/assets/nope/reassign", json={"eurio_id": "xx-2016-a"})

@@ -28,6 +28,10 @@ from store import (
     Store,
     cohort_job_set_pid,
     cohort_job_start,
+    latest_training_scan,
+    training_scan_results,
+    training_scan_set_pid,
+    training_scan_start,
 )
 
 from training.foundation.enrichment import (
@@ -1783,7 +1787,8 @@ def _cohort_funnel_status(store: Store, cohort_id: str) -> dict:
             f"SELECT COUNT(*) FROM image_assets ia "
             f"JOIN source_images si ON si.id = ia.source_image_id "
             f"WHERE si.source='ebay' AND ia.eurio_id IN ({ph_cls}) "
-            f"AND ia.training_eligible=1",
+            f"AND ia.training_eligible=1 "
+            f"AND (ia.face IS NULL OR ia.face != 'reverse')",
             tuple(class_eids),
         ).fetchone()[0]
         # Seed = sources RÉELLES distinctes, comptées à l'identique du bake
@@ -2004,51 +2009,116 @@ class TrainingCrop(BaseModel):
     quality_score: float | None = None
     training_eligible: bool
     resolution_status: str
+    # ── P1 · verdict du dernier scan (cohort_training_scan_results) ──
+    # « probable intrus » = le top-1 Dino closed-set est une AUTRE classe de la
+    # cohorte, avec une marge ≥ seuil du scan. Suggestion, pas une décision.
+    intruder_suspect: bool = False
+    intruder_top1_class: str | None = None
+    intruder_top1_eurio_id: str | None = None
+    intruder_margin: float | None = None
+
+
+class ClassConfusion(BaseModel):
+    """P6 · « cette classe se confond avec X » — agrégé du confusion_matrix du
+    dernier bench (photos ground-truth de la classe prédites top-1 ailleurs)."""
+    class_id: str
+    n: int
 
 
 class TrainingCropClass(BaseModel):
     class_id: str
     class_kind: str
     member_eurio_ids: list[str]
+    # « part au train » = compté à l'identique du bake (P3) : training_eligible=1
+    # ET face != 'reverse'. Un reverse éligible est exposé dans n_reverse_flagged
+    # (anneau ambre) mais n'entre plus au bake.
     n_eligible: int
-    n_unknown_face: int  # eligible mais face != obverse (suspects à inspecter)
+    n_unknown_face: int  # éligibles face NULL/'unknown' (à confirmer — P2 les résout)
+    n_reverse_flagged: int  # éligibles face='reverse' (hors bake depuis P3)
     n_rejected: int
+    n_intruders: int  # P1 · suspects levés par le dernier scan
     r_at_1: float | None = None  # R@1 studio (dernière itération), moyenné sur les membres
+    # ── P5 · Δ vs itération benchée précédente ──
+    r_at_1_prev: float | None = None
+    r_at_1_delta: float | None = None  # r_at_1 − r_at_1_prev (si les deux existent)
+    n_real_last_bake: int | None = None   # seed réel au bake de la dernière itération
+    n_real_prev_bake: int | None = None   # idem, itération benchée précédente
+    # ── P4 · santé / couverture ──
+    n_obverse: int = 0            # éligibles face obverse confirmée
+    has_numista_ref: bool = False  # avers canonique Numista sur le FS
+    n_bce_ref: int = 0             # réfs officielles BCE / EUR-Lex présentes
+    underfed: bool = False         # n_eligible < min_real → « sourcer »
+    # ── P6 · confusions du dernier bench ──
+    confused_with: list[ClassConfusion] = []
     crops: list[TrainingCrop]
+
+
+class TrainingScanInfo(BaseModel):
+    """Dernier scan TERMINÉ mergé dans la réponse (fraîcheur des badges P1/P2).
+    Le statut live d'un scan en cours se lit sur ``training-scan/status``."""
+    scan_id: str
+    finished_at: str | None = None
+    n_intruders: int
+    n_faces_written: int
+    intruder_margin: float | None = None
 
 
 class CohortTrainingCropsResponse(BaseModel):
     cohort_id: str
     cohort_name: str
     benchmark_run_id: str | None = None
+    prev_benchmark_run_id: str | None = None  # P5 · itération benchée précédente
+    min_real: int = MIN_REAL  # plancher qualité (P4) — légende du front
+    scan: TrainingScanInfo | None = None
     classes: list[TrainingCropClass]
 
 
-def _latest_benchmark_per_coin(
-    store: Store, cohort_id: str,
-) -> tuple[str | None, dict[str, float]]:
-    """(benchmark_run_id, {eurio_id: r_at_1}) de l'itération la plus récente de la
-    cohorte qui a un benchmark complété. ({},) si aucune."""
-    iterations = store.list_iterations(cohort_id=cohort_id)
-    best_it = None
-    for it in iterations:
+def _benched_iterations(store: Store, cohort_id: str) -> list:
+    """Paires ``(iteration, bench)`` de la cohorte dont le benchmark est
+    COMPLETED, la plus récente d'abord. Un bench failed n'a ni per_coin ni
+    confusion — le retenir masquerait le vrai « pas encore benché » (badge —)."""
+    pairs = []
+    for it in store.list_iterations(cohort_id=cohort_id):
         if it.benchmark_run_id is None:
             continue
-        key = it.finished_at or it.created_at or ""
-        if best_it is None or key > (best_it[1]):
-            best_it = (it, key)
-    if best_it is None:
-        return None, {}
-    bench = store.get_benchmark_run(best_it[0].benchmark_run_id)
+        bench = store.get_benchmark_run(it.benchmark_run_id)
+        if bench is None or bench.status != "completed":
+            continue
+        pairs.append((it, bench))
+    pairs.sort(key=lambda p: p[0].finished_at or p[0].created_at or "",
+               reverse=True)
+    return pairs
+
+
+def _bench_per_coin(bench) -> tuple[str | None, dict[str, float], dict]:
+    """(benchmark_run_id, {eurio_id: r_at_1}, confusion) d'un bench (ou None)."""
     if bench is None:
-        return None, {}
+        return None, {}, {}
     per_coin: dict[str, float] = {}
     for entry in bench.per_coin:
         eid = entry.get("eurio_id")
         r1 = entry.get("r_at_1")
         if isinstance(eid, str) and isinstance(r1, (int, float)):
             per_coin[eid] = float(r1)
-    return bench.id, per_coin
+    return bench.id, per_coin, bench.confusion or {}
+
+
+def _aug_real_by_key(store: Store, iteration_id: str | None) -> dict[str, int]:
+    """{clé de bake: num_real} d'une itération (iteration_aug_vs_real) — le seed
+    réel par classe au moment du bake (P5 : « n_eligible avant/après »). La clé
+    est celle du bake (class_id design_group ou eurio_id) ; le caller matche
+    class_id ∪ membres."""
+    if iteration_id is None:
+        return {}
+    conn = store._connection()  # noqa: SLF001
+    return {
+        r["eurio_id"]: int(r["num_real"])
+        for r in conn.execute(
+            "SELECT eurio_id, num_real FROM iteration_aug_vs_real "
+            "WHERE iteration_id=?",
+            (iteration_id,),
+        ).fetchall()
+    }
 
 
 def _cohort_training_crops(store: Store, cohort_id: str) -> CohortTrainingCropsResponse:
@@ -2061,18 +2131,78 @@ def _cohort_training_crops(store: Store, cohort_id: str) -> CohortTrainingCropsR
 
     resolver = build_resolver(force_eurio_id=False, db_path=store.db_path)
     descriptors, _unresolved = resolver.classes_for_eurio_ids(cohort.eurio_ids)
-    benchmark_run_id, per_coin_r1 = _latest_benchmark_per_coin(store, cohort.id)
 
+    # ── P5 · les deux dernières itérations benchées : R@1 courant vs précédent,
+    # seed réel au bake (iteration_aug_vs_real). ──
+    benched = _benched_iterations(store, cohort.id)
+    latest_it, latest_bench = benched[0] if benched else (None, None)
+    prev_it, prev_bench = benched[1] if len(benched) > 1 else (None, None)
+    benchmark_run_id, per_coin_r1, confusion = _bench_per_coin(latest_bench)
+    prev_benchmark_run_id, per_coin_r1_prev, _ = _bench_per_coin(prev_bench)
+    real_last = _aug_real_by_key(store, latest_it.id if latest_it else None)
+    real_prev = _aug_real_by_key(store, prev_it.id if prev_it else None)
+
+    # ── P1 · verdicts du dernier scan TERMINÉ ──
     conn = store._connection()  # noqa: SLF001
+    scan_row = latest_training_scan(conn, cohort.id, status="done")
+    scan_verdicts = (
+        training_scan_results(conn, scan_row["id"]) if scan_row is not None else {}
+    )
+    scan_info = (
+        TrainingScanInfo(
+            scan_id=scan_row["id"],
+            finished_at=scan_row["finished_at"],
+            n_intruders=scan_row["n_intruders"],
+            n_faces_written=scan_row["n_faces_written"],
+            intruder_margin=scan_row["intruder_margin"],
+        )
+        if scan_row is not None else None
+    )
+
+    # ── P6 · confusion_matrix (eurio_id → eurio_id/class_id) agrégée à la
+    # maille classe : {classe gt: {classe prédite: n}}, self exclu. ──
+    class_of: dict[str, str] = {}
+    for d in descriptors:
+        class_of[d.class_id] = d.class_id
+        for eid in d.eurio_ids:
+            class_of[eid] = d.class_id
+    confused_by_class: dict[str, dict[str, int]] = {}
+    for gt, preds in confusion.items():
+        gt_cls = class_of.get(gt)
+        if gt_cls is None:
+            continue
+        for pred, n in preds.items():
+            pred_cls = class_of.get(pred, pred)
+            if pred_cls == gt_cls:
+                continue
+            bucket = confused_by_class.setdefault(gt_cls, {})
+            bucket[pred_cls] = bucket.get(pred_cls, 0) + int(n)
+
+    def _real_at_bake(table: dict[str, int], class_id: str, members: list[str]) -> int | None:
+        """Seed réel du bake pour la classe — la clé du bake est le class_id
+        (design_group) ou l'eurio_id (commemo) selon l'itération ; on matche
+        les deux, max (les membres d'ère partagent le même pool)."""
+        vals = [table[k] for k in (class_id, *members) if k in table]
+        return max(vals) if vals else None
+
     status_ph = ",".join("?" for _ in _TRIAGE_STATUSES)
     classes: list[TrainingCropClass] = []
     for d in descriptors:
         members = list(d.eurio_ids)
+        confusions = [
+            ClassConfusion(class_id=cid, n=n)
+            for cid, n in sorted(
+                confused_by_class.get(d.class_id, {}).items(),
+                key=lambda kv: -kv[1],
+            )[:3]
+        ]
         if not members:
             classes.append(TrainingCropClass(
                 class_id=d.class_id, class_kind=d.class_kind,
                 member_eurio_ids=members, n_eligible=0, n_unknown_face=0,
-                n_rejected=0, r_at_1=None, crops=[],
+                n_reverse_flagged=0, n_rejected=0, n_intruders=0,
+                r_at_1=None, confused_with=confusions, underfed=True,
+                crops=[],
             ))
             continue
         member_ph = ",".join("?" for _ in members)
@@ -2094,8 +2224,10 @@ def _cohort_training_crops(store: Store, cohort_id: str) -> CohortTrainingCropsR
             """,
             (*members, *_TRIAGE_STATUSES, _TRIAGE_MAX_PER_CLASS),
         ).fetchall()
-        crops = [
-            TrainingCrop(
+        crops = []
+        for r in rows:
+            v = scan_verdicts.get(r["id"])
+            crops.append(TrainingCrop(
                 asset_id=r["id"],
                 source=r["source"],
                 file_url=f"/sources/{r['source']}/assets/{r['id']}/file",
@@ -2105,32 +2237,79 @@ def _cohort_training_crops(store: Store, cohort_id: str) -> CohortTrainingCropsR
                 quality_score=r["quality_score"],
                 training_eligible=bool(r["training_eligible"]),
                 resolution_status=r["resolution_status"],
-            )
-            for r in rows
-        ]
-        n_eligible = sum(1 for c in crops if c.training_eligible)
+                intruder_suspect=bool(v["is_intruder"]) if v is not None else False,
+                intruder_top1_class=v["top1_class"] if v is not None else None,
+                intruder_top1_eurio_id=v["top1_eurio_id"] if v is not None else None,
+                intruder_margin=v["margin"] if v is not None else None,
+            ))
+        # P1 : les probables intrus en TÊTE (marge décroissante), puis l'ordre
+        # suspect-first du SQL (tri stable).
+        crops.sort(key=lambda c: (
+            0 if c.intruder_suspect else 1,
+            -(c.intruder_margin or 0.0) if c.intruder_suspect else 0.0,
+        ))
+        n_eligible = sum(
+            1 for c in crops if c.training_eligible and c.face != "reverse"
+        )
         n_unknown = sum(
-            1 for c in crops if c.training_eligible and c.face != "obverse"
+            1 for c in crops
+            if c.training_eligible and (c.face is None or c.face == "unknown")
+        )
+        n_reverse = sum(
+            1 for c in crops if c.training_eligible and c.face == "reverse"
+        )
+        n_obverse = sum(
+            1 for c in crops if c.training_eligible and c.face == "obverse"
         )
         n_rejected = sum(1 for c in crops if c.resolution_status == "rejected")
+        n_intruders = sum(1 for c in crops if c.intruder_suspect)
         member_r1 = [per_coin_r1[m] for m in members if m in per_coin_r1]
         r_at_1 = sum(member_r1) / len(member_r1) if member_r1 else None
+        member_r1_prev = [
+            per_coin_r1_prev[m] for m in members if m in per_coin_r1_prev
+        ]
+        r_at_1_prev = (
+            sum(member_r1_prev) / len(member_r1_prev) if member_r1_prev else None
+        )
         classes.append(TrainingCropClass(
             class_id=d.class_id, class_kind=d.class_kind,
             member_eurio_ids=members, n_eligible=n_eligible,
-            n_unknown_face=n_unknown, n_rejected=n_rejected,
-            r_at_1=r_at_1, crops=crops,
+            n_unknown_face=n_unknown, n_reverse_flagged=n_reverse,
+            n_rejected=n_rejected, n_intruders=n_intruders,
+            r_at_1=r_at_1,
+            r_at_1_prev=r_at_1_prev,
+            r_at_1_delta=(
+                r_at_1 - r_at_1_prev
+                if (r_at_1 is not None and r_at_1_prev is not None) else None
+            ),
+            n_real_last_bake=_real_at_bake(real_last, d.class_id, members),
+            n_real_prev_bake=_real_at_bake(real_prev, d.class_id, members),
+            n_obverse=n_obverse,
+            has_numista_ref=any(
+                _has_obverse(coin_lookup.numista_id_for(m)) for m in members
+            ),
+            n_bce_ref=max(
+                (_count_canonical_refs(conn, m) for m in members), default=0,
+            ),
+            underfed=n_eligible < MIN_REAL,
+            confused_with=confusions,
+            crops=crops,
         ))
 
     # Tri des classes : « à inspecter d'abord » = R@1 bas (None → en tête comme
-    # non-évalué/risqué), puis plus de suspects (face unknown) d'abord.
+    # non-évalué/risqué), puis plus d'intrus, puis plus de suspects (face ?).
     classes.sort(key=lambda c: (
         c.r_at_1 if c.r_at_1 is not None else -1.0,
+        -c.n_intruders,
         -c.n_unknown_face,
     ))
     return CohortTrainingCropsResponse(
         cohort_id=cohort.id, cohort_name=cohort.name,
-        benchmark_run_id=benchmark_run_id, classes=classes,
+        benchmark_run_id=benchmark_run_id,
+        prev_benchmark_run_id=prev_benchmark_run_id,
+        min_real=MIN_REAL,
+        scan=scan_info,
+        classes=classes,
     )
 
 
@@ -2226,6 +2405,138 @@ def reassign_asset(asset_id: str, payload: ReassignAssetPayload) -> dict:
         "eurio_id": target,
         "previous_eurio_id": row["eurio_id"],
     }
+
+
+# ── Scan Dino du Jeu d'entraînement (P1 intrus + P2 face) ────────────────────
+# Subprocess détaché, même doctrine que recrop-zero : l'endpoint ouvre la row
+# `cohort_training_scans`, le subprocess la fait avancer et la clôt lui-même.
+# Cœur : training/training_set_scan.py. Résultats mergés dans training-crops.
+
+# Au-delà de cette durée, un scan 'running' est considéré orphelin même si son
+# PID semble vivant (réutilisation de PID). Un scan réel = quelques minutes
+# (~10-15 crops/s vitl14 sur MPS + chargement modèle).
+_TRAINING_SCAN_MAX_RUNTIME_MIN = 60
+
+
+def reap_orphan_training_scans(store: Store) -> int:
+    """Marque `failed` les `cohort_training_scans` restés `running` dont le
+    subprocess est mort. Appelé au startup (même hook que le reaper recrop)."""
+    conn = store._connection()  # noqa: SLF001
+    rows = conn.execute(
+        "SELECT id, pid, "
+        "  CAST((julianday('now') - julianday(started_at)) * 24 * 60 AS REAL) AS age_min "
+        "FROM cohort_training_scans WHERE status='running'"
+    ).fetchall()
+    reaped = 0
+    for r in rows:
+        pid = r["pid"]
+        age_min = r["age_min"] or 0.0
+        alive = False
+        if pid:
+            try:
+                os.kill(int(pid), 0)
+                alive = True
+            except PermissionError:
+                alive = True
+            except (ProcessLookupError, OSError, ValueError):
+                alive = False
+        if alive and age_min < _TRAINING_SCAN_MAX_RUNTIME_MIN:
+            continue
+        reason = ("process restart — orphan scan (reaped at boot)"
+                  if not alive else
+                  f"reaped at boot — running > {_TRAINING_SCAN_MAX_RUNTIME_MIN}min "
+                  f"(pid {pid} suspect)")
+        conn.execute(
+            "UPDATE cohort_training_scans SET status='failed', "
+            "finished_at=COALESCE(finished_at, datetime('now')), "
+            "error=COALESCE(error, ?) WHERE id=?",
+            (reason, r["id"]),
+        )
+        reaped += 1
+    return reaped
+
+
+@router.post("/cohorts/{cohort_id}/training-scan", status_code=202)
+def start_training_scan(cohort_id: str, margin: float | None = None) -> dict:
+    """Lance en arrière-plan le scan Dino du Jeu d'entraînement : détection
+    d'intrus en ensemble fermé (P1) + passe de face sur les NULL/'unknown'
+    (P2). Écrit `image_assets.face` (jamais par-dessus un label existant) et
+    les verdicts dans `cohort_training_scan_results` — la réassignation reste
+    une décision humaine. Le front poll `training-scan/status` puis recharge
+    `training-crops` (badges intrus mergés)."""
+    from training.training_set_scan import (
+        DEFAULT_INTRUDER_MARGIN,
+        scan_scope_count,
+    )
+    from training.foundation import (
+        SUGGESTIONS_ANCHORS_KIND,
+        SUGGESTIONS_ENCODER_VERSION,
+    )
+
+    store = _get_store()
+    cohort = store.get_cohort(cohort_id)
+    if cohort is None:
+        raise HTTPException(status_code=404, detail="Cohort introuvable")
+
+    conn = store._connection()  # noqa: SLF001
+    running = latest_training_scan(conn, cohort_id, status="running")
+    if running is not None:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "training_scan_already_running",
+                    "scan_id": running["id"]},
+        )
+    eff_margin = margin if margin is not None else DEFAULT_INTRUDER_MARGIN
+    n_total = scan_scope_count(store, cohort)
+    scan_id = training_scan_start(
+        conn,
+        cohort_id=cohort_id,
+        anchors_kind=SUGGESTIONS_ANCHORS_KIND,
+        encoder_version=SUGGESTIONS_ENCODER_VERSION,
+        intruder_margin=eff_margin,
+        n_total=n_total,
+    )
+
+    # Subprocess DÉTACHÉ (précédent : recrop_zero_coin ci-dessous) — torch/MPS
+    # hors du worker, survit au --reload, crash visible in-row (failed).
+    log_dir = _ML_DIR / "state" / "job_logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_path = log_dir / f"training-scan-{scan_id}.log"
+    env = dict(os.environ)
+    existing = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = str(_ML_DIR) + (os.pathsep + existing if existing else "")
+    cmd = [
+        sys.executable, "scripts/lab_training_scan.py",
+        "--cohort", cohort_id, "--scan-id", scan_id,
+        "--margin", str(eff_margin),
+    ]
+    logf = log_path.open("w")
+    try:
+        proc = subprocess.Popen(
+            cmd, cwd=str(_ML_DIR), env=env,
+            stdout=logf, stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+    finally:
+        logf.close()
+    training_scan_set_pid(conn, scan_id, proc.pid)
+    conn.commit()
+    logger.info("[training-scan] %s spawned subprocess pid=%s scan=%s log=%s",
+                cohort_id, proc.pid, scan_id, log_path)
+    return {"status": "started", "scan_id": scan_id,
+            "n_total": n_total, "pid": proc.pid,
+            "intruder_margin": eff_margin}
+
+
+@router.get("/cohorts/{cohort_id}/training-scan/status")
+def training_scan_status(cohort_id: str) -> dict:
+    """Statut du dernier scan de la cohorte (persisté, survit au restart).
+    ``idle`` si aucun scan n'a jamais tourné."""
+    conn = _get_store()._connection()  # noqa: SLF001
+    row = latest_training_scan(conn, cohort_id)
+    if row is None:
+        return {"status": "idle"}
+    return {k: row[k] for k in row.keys() if k != "pid"}
 
 
 # ── Recrop des zéro-crops d'une pièce (census+gate, en arrière-plan) ──────────

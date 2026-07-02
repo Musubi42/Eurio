@@ -32,6 +32,16 @@ from .iterations import (
 from .listing_signals import ListingSignalsMixin, ListingTextSignalsRow
 from .runs import ClassMetricRow, EpochRow, RunRow, RunsMixin, StepRow
 from .staging import StagingMixin
+from .training_scan import (
+    ScanResultRow,
+    latest_training_scan,
+    training_scan_finish,
+    training_scan_progress,
+    training_scan_results,
+    training_scan_set_pid,
+    training_scan_start,
+    training_scan_upsert_results,
+)
 
 
 class Store(
@@ -75,6 +85,7 @@ __all__ = [
     "IterationLiveTestRow",
     "ListingTextSignalsRow",
     "RunRow",
+    "ScanResultRow",
     "StepRow",
     "Store",
     "StoreBase",
@@ -83,5 +94,12 @@ __all__ = [
     "cohort_job_set_pid",
     "cohort_job_start",
     "emit_state_event",
+    "latest_training_scan",
     "resolve_db_path",
+    "training_scan_finish",
+    "training_scan_progress",
+    "training_scan_results",
+    "training_scan_set_pid",
+    "training_scan_start",
+    "training_scan_upsert_results",
 ]

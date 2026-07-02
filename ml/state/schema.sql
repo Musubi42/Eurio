@@ -1770,3 +1770,60 @@ CREATE TABLE IF NOT EXISTS api_tokens (
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   revoked_at TEXT
 );
+
+-- ─── Scan du Jeu d'entraînement (improvement-loop P1+P2) ─────────────────────
+-- Un scan = une passe Dino (vitl14) sur les crops éligibles d'une cohorte :
+--   P1 · intrus : classement en ENSEMBLE FERMÉ contre les classes de la cohorte
+--       (rank closed-set, même brique que la review) — désaccord fort entre la
+--       classe assignée et le top-1 Dino → « probable intrus », remonté en tête
+--       du Jeu d'entraînement.
+--   P2 · face : verdict obverse/reverse (banque revers C7) écrit sur
+--       image_assets.face quand il est NULL ou 'unknown' (jamais par-dessus un
+--       obverse/reverse déjà posé) → vide le bucket « à confirmer ».
+-- Exécuté en subprocess détaché (même doctrine que recrop_zero : l'état vit en
+-- base, survit au --reload, reaper au boot). Table séparée de cohort_jobs (son
+-- CHECK kind est gelé sur les DB existantes) mais mêmes conventions.
+CREATE TABLE IF NOT EXISTS cohort_training_scans (
+  id               TEXT PRIMARY KEY,                -- uuid hex
+  cohort_id        TEXT NOT NULL REFERENCES experiment_cohorts(id) ON DELETE CASCADE,
+  status           TEXT NOT NULL DEFAULT 'running'
+                   CHECK (status IN ('running','done','failed')),
+  anchors_kind     TEXT,                            -- banque closed-set (2eur_all)
+  encoder_version  TEXT,
+  intruder_margin  REAL,                            -- seuil de désaccord utilisé
+  n_total          INTEGER,                         -- crops dans le scope au lancement
+  n_done           INTEGER NOT NULL DEFAULT 0,
+  n_intruders      INTEGER NOT NULL DEFAULT 0,      -- suspects levés (P1)
+  n_faces_written  INTEGER NOT NULL DEFAULT 0,      -- faces résolues (P2)
+  n_skipped        INTEGER NOT NULL DEFAULT 0,      -- crops sans ancre / illisibles
+  started_at       TEXT NOT NULL DEFAULT (datetime('now')),
+  finished_at      TEXT,
+  error            TEXT,
+  pid              INTEGER                          -- subprocess détaché (reaper)
+);
+CREATE INDEX IF NOT EXISTS idx_training_scans_cohort
+  ON cohort_training_scans(cohort_id, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_training_scans_running
+  ON cohort_training_scans(status) WHERE status = 'running';
+
+-- Verdict par crop du scan (REPLACE au re-scan via PK (scan_id, asset_id)).
+-- `margin` = sim(top-1 classe cohorte) − sim(classe assignée) : > 0 quand Dino
+-- préfère une AUTRE classe de la cohorte. `is_intruder` applique le seuil du
+-- scan (désaccord fort) — l'UI remonte ces crops en tête, l'humain tranche via
+-- la réassignation existante.
+CREATE TABLE IF NOT EXISTS cohort_training_scan_results (
+  scan_id         TEXT NOT NULL REFERENCES cohort_training_scans(id) ON DELETE CASCADE,
+  asset_id        TEXT NOT NULL REFERENCES image_assets(id) ON DELETE CASCADE,
+  assigned_class  TEXT NOT NULL,                    -- classe (design_group/eurio) au scan
+  assigned_sim    REAL,                             -- max sim des ancres de sa classe
+  top1_class      TEXT,                             -- meilleure classe cohorte selon Dino
+  top1_eurio_id   TEXT,                             -- membre gagnant (cible de réassign)
+  top1_sim        REAL,
+  margin          REAL,
+  is_intruder     INTEGER NOT NULL DEFAULT 0,
+  face_verdict    TEXT,                             -- verdict P2 (obverse/reverse), NULL si non calculé
+  face_written    INTEGER NOT NULL DEFAULT 0,       -- 1 si image_assets.face a été écrit
+  PRIMARY KEY (scan_id, asset_id)
+);
+CREATE INDEX IF NOT EXISTS idx_training_scan_results_scan
+  ON cohort_training_scan_results(scan_id);
