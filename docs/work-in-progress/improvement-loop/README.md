@@ -56,6 +56,7 @@ la [roadmap](#suite--rendre-la-boucle-pilotable-par-un-humain).
 | `02-pipeline-map.md` | Carte de la pipeline data : où entrent les crops, quel filtre décide l'inclusion training, où brancher l'exclusion. |
 | `03-crop-triage-ux.md` | Spéc d'origine de l'outil INSPECT par classe. |
 | `04-jeu-entrainement-handoff.md` | Handoff des raffinements PO (renommage, anneau, recrop, réassign) — **LIVRÉ** `26e164d`. |
+| `05-iteration-2-runbook.md` | P7 · runbook opérateur itération 2 : recette `low-light-v1` (payload validé), hard-negatives par extension de cohorte, vérif 3 epochs Mac / run long PC. |
 
 ## État (2026-07-02, soir) — P1→P6 LIVRÉS
 
@@ -85,7 +86,11 @@ la [roadmap](#suite--rendre-la-boucle-pilotable-par-un-humain).
 - ✅ **P6 · Confusions liées** : chips « ↔ se confond avec X (n) » par classe
   (confusion_matrix du dernier bench, agrégée à la maille classe), clic =
   saute à la classe confondue.
-- ⏳ **P7 · Itération 2** : recette `low-light-v1` + runbook — voir §Suite.
+- 🧭 **P7 · Itération 2** : prépa livrée — runbook opérateur
+  `05-iteration-2-runbook.md` (recette `low-light-v1` validée contre le
+  validateur canonique, hard-negatives par extension de cohorte — le miner
+  in-batch existe déjà —, vérif 3 epochs Mac / run long PC). Les runs
+  eux-mêmes = action opérateur (recette à créer sur l'API canonique VPS).
 
 ## État (2026-07-02)
 
