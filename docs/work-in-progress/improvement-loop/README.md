@@ -58,6 +58,37 @@ la [roadmap](#suite--rendre-la-boucle-pilotable-par-un-humain).
 | `04-jeu-entrainement-handoff.md` | Handoff des raffinements PO (renommage, anneau, recrop, réassign) — **LIVRÉ** `26e164d`. |
 | `05-iteration-2-runbook.md` | P7 · runbook opérateur itération 2 : recette `low-light-v1` (payload validé), hard-negatives par extension de cohorte, vérif 3 epochs Mac / run long PC. |
 
+## État (2026-07-02, retour PO) — scan v2 + lisibilité du panneau
+
+Retour PO sur la v1 (vue brute, faux positifs) → v2 livrée le soir même :
+
+- ✅ **Scan v2 — consensus intra-classe + signal outlier.** Mesuré sur
+  `mix-zone-17` : l'ancre canonique unique créait des faux positifs (4 Kniefall
+  de-2020 corrects flagués — leurs photos réelles ne matchent la photo studio
+  qu'à 0.39-0.62) ET des faux négatifs par contamination mutuelle (3
+  Brandenburg dans le centroïde de 20 se sauvaient entre eux). Fix :
+  `assigned_sim = max(ancre, consensus)` où le consensus est le **centroïde
+  leave-one-out purgé** (médiane − K·MAD, une passe) des crops éligibles avers
+  de la classe ; deuxième raison de badge **`outlier`** (« ne ressemble pas à
+  ses camarades ») qui attrape les intrus dont la vraie classe est HORS cohorte
+  (Brandenburg n'est pas dans mix-zone-17 → aucune classe ne le « réclame »).
+  Résultat validé visuellement : les 4 Kniefall sont propres, **5 Brandenburg
+  flagués** (les 3 du retour PO + 2 que l'œil avait ratés). Composantes
+  persistées (`anchor_sim`, `consensus_sim`, `intruder_reason`) pour audit.
+- ✅ **Périmètre élargi** : le scan juge maintenant TOUT ce que le panneau
+  affiche (validés + needs_review + exclus + rejetés, 1467 crops ~6 min MPS)
+  → badge cohérent partout + **rescue** (un rejeté/à-reviewer qui est une
+  autre pièce de la cohorte se réassigne en 1 clic). Les compteurs « N intrus ? »
+  (scan + en-têtes de classe) ne comptent que les intrus **au train**.
+- ✅ **Lisibilité (retour PO)** : vignettes 64 → **112 px** + **zoom flottant
+  au survol** (brique `CoinHoverPreview` de la review) ; **filtres par état**
+  avec compteurs (⚠ intrus · au train · face ? · reverse · à reviewer · exclus
+  · rejetés), défaut « problèmes d'abord » ; l'overlay unique « exclu »
+  (mensonger : 52/108 étaient juste en attente de review) devient **« à
+  reviewer » / « exclu » / « rejeté »** ; badge ⚠ tooltippé avec la RAISON
+  (réclamé par X à +marge / outlier) ; modale de réassignation élargie avec le
+  **crop en 256 px sticky** + bouton « Recadrer plutôt ».
+
 ## État (2026-07-02, soir) — P1→P6 LIVRÉS
 
 - ✅ **P1 · Scan intrus (Dino ensemble fermé)** : bouton « Scanner intrus +
