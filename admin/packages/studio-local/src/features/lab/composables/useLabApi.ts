@@ -270,6 +270,29 @@ export async function setAssetTrainingEligible(
 }
 
 /**
+ * Lance le scan Dino du Jeu d'entraînement (P1 intrus closed-set + P2 passe de
+ * face sur les NULL/'unknown'). Subprocess détaché côté ML — poll
+ * `fetchTrainingScanStatus`, puis recharger training-crops (badges mergés).
+ */
+export async function startTrainingScan(
+  cohortId: string,
+): Promise<{ status: string; scan_id: string; n_total: number }> {
+  return json<{ status: string; scan_id: string; n_total: number }>(
+    `/lab/cohorts/${encodeURIComponent(cohortId)}/training-scan`,
+    { method: 'POST' },
+  )
+}
+
+/** Statut du dernier scan (persisté — `idle` si aucun scan n'a jamais tourné). */
+export async function fetchTrainingScanStatus(
+  cohortId: string,
+): Promise<import('../types').TrainingScanStatus> {
+  return json<import('../types').TrainingScanStatus>(
+    `/lab/cohorts/${encodeURIComponent(cohortId)}/training-scan/status`,
+  )
+}
+
+/**
  * Réassigne un crop à une autre pièce (eurio_id) — redirige un intrus vers la
  * bonne classe. Ne touche que `image_assets.eurio_id` (training_eligible/face
  * préservés) ; l'asset change de classe au prochain read du Jeu d'entraînement.

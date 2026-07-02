@@ -28,7 +28,9 @@ import {
   fetchCohortTestBuildInfo,
   fetchCohortTrainingCrops,
   fetchCohorts,
+  fetchTrainingScanStatus,
   setAssetTrainingEligible,
+  startTrainingScan,
   reassignAsset,
   fetchDashboard,
   fetchIterationAugmentations,
@@ -101,6 +103,8 @@ export const LAB_KEYS = {
     ['lab', 'cohort', cohortId, 'iterations', iterationId, 'live-tests'] as const,
   trainingCrops: (cohortId: string) =>
     ['lab', 'cohort', cohortId, 'training-crops'] as const,
+  trainingScan: (cohortId: string) =>
+    ['lab', 'cohort', cohortId, 'training-scan'] as const,
   dashboard: ['lab', 'dashboard'] as const,
   runner: ['lab', 'runner'] as const,
   ebayRunningRuns: ['lab', 'ebay', 'running-runs'] as const,
@@ -503,11 +507,16 @@ export function useSetTrainingEligibleMutation(cohortId: MaybeRefOrGetter<string
             const hit = cls.crops.find((c) => c.asset_id === vars.assetId)
             if (!hit || hit.training_eligible === vars.eligible) return cls
             const delta = vars.eligible ? 1 : -1
-            const wasUnknown = hit.face !== 'obverse'
+            // Mêmes règles que le backend : n_eligible = « part au bake »
+            // (face ≠ reverse, P3) ; n_unknown = face NULL/'unknown'.
+            const isReverse = hit.face === 'reverse'
+            const isUnknown = hit.face == null || hit.face === 'unknown'
             return {
               ...cls,
-              n_eligible: cls.n_eligible + delta,
-              n_unknown_face: cls.n_unknown_face + (wasUnknown ? delta : 0),
+              n_eligible: cls.n_eligible + (isReverse ? 0 : delta),
+              n_reverse_flagged: cls.n_reverse_flagged + (isReverse ? delta : 0),
+              n_unknown_face: cls.n_unknown_face + (isUnknown ? delta : 0),
+              n_obverse: cls.n_obverse + (hit.face === 'obverse' ? delta : 0),
               crops: cls.crops.map((c) =>
                 c.asset_id === vars.assetId
                   ? { ...c, training_eligible: vars.eligible }
@@ -521,6 +530,32 @@ export function useSetTrainingEligibleMutation(cohortId: MaybeRefOrGetter<string
     },
     onError: (_e, _vars, ctx) => {
       if (ctx?.prev) qc.setQueryData(ctx.key, ctx.prev)
+    },
+  })
+}
+
+/**
+ * Statut du scan Dino du Jeu d'entraînement. Poll toutes les 2 s tant qu'un
+ * scan tourne ; à la clôture (done/failed) le composant invalide training-crops
+ * pour merger les badges intrus + faces résolues.
+ */
+export function useTrainingScanStatusQuery(cohortId: MaybeRefOrGetter<string>) {
+  return useQuery({
+    queryKey: computed(() => LAB_KEYS.trainingScan(toValue(cohortId))),
+    queryFn: () => fetchTrainingScanStatus(toValue(cohortId)),
+    enabled: computed(() => !!toValue(cohortId) && HAS_LOCAL_ML_API),
+    refetchInterval: (query) =>
+      query.state.data?.status === 'running' ? 2000 : false,
+  })
+}
+
+/** Lance le scan (P1+P2) puis rafraîchit le statut (le poll prend le relais). */
+export function useStartTrainingScanMutation(cohortId: MaybeRefOrGetter<string>) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => startTrainingScan(toValue(cohortId)),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: LAB_KEYS.trainingScan(toValue(cohortId)) })
     },
   })
 }

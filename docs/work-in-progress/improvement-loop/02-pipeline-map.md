@@ -32,14 +32,12 @@ Deux consommateurs, deux filtres légèrement différents — **attention** :
 | **Bake lab** (`iteration_augmentations.py:129-141`) | `source='ebay' AND eurio_id=? AND training_eligible=1 AND storage_status='present'` | **les itérations lab** (ce qui tourne aujourd'hui) |
 | Export legacy (`scripts/build_arcface_dataset.py:117-130`) | `resolution_status='manual' AND eurio_id NOT NULL AND face!='reverse' AND face_value=2.0` | pipeline DB→disk historique |
 
-> ⚠️ **Le bake lab ne filtre PAS par `face`.** Un crop `training_eligible=1`
-> entre dans le train quelle que soit sa face (obverse / unknown / reverse).
-> En pratique `training_eligible=1` est posé à la validation review (qui implique
-> en général un avers), mais des crops `face='unknown'` eligible existent et sont
-> inclus. Sur l'itération 1 c'est bénin (ils sont propres) — mais c'est un point
-> de fuite potentiel à garder en tête (un crop reverse validé par erreur
-> polluerait). Décision ouverte : ajouter `AND (face IS NULL OR face!='reverse')`
-> au bake lab pour aligner sur l'export legacy.
+> ✅ **Fuite fermée (P3, 2026-07-02).** Le bake lab filtre désormais
+> `AND (face IS NULL OR face != 'reverse')` — un reverse confirmé n'entre plus
+> au train, aligné sur l'export legacy. Les NULL/'unknown' passent (présumés
+> avers) : la **passe de face du scan** (P2, `training/training_set_scan.py`)
+> les résout en amont. Le compteur funnel `n_training_eligible` et le
+> `n_eligible` du Jeu d'entraînement comptent à l'identique de ce filtre.
 
 ## Où brancher l'exclusion d'un déchet (déjà câblé, réversible)
 
@@ -62,13 +60,10 @@ asset-level existent désormais (livrés `26e164d`, servent le Jeu d'entraîneme
 | **Toggle train** | `POST /lab/assets/{id}/training-eligible {eligible}` | flippe `training_eligible` (pose/efface `quality_reason='manual_triage'`), garde status/eurio_id |
 | **Réassigner** | `POST /lab/assets/{id}/reassign {eurio_id}` | change `image_assets.eurio_id` (valide la pièce cible contre `coins`), garde `training_eligible`/face/status ; l'asset saute de classe |
 | Recalcul Dino | `POST /review-queue/asset/{id}/dino-suggestions/recompute` | force `predict_and_persist_kinds` (écrase la prédiction périmée) |
+| **Scan Jeu d'entraînement** | `POST /lab/cohorts/{id}/training-scan` (+ `GET …/status`) | subprocess détaché : P1 intrus closed-set (verdicts `cohort_training_scan_results`, mergés dans `training-crops`) + P2 face sur NULL/'unknown' (`image_assets.face`). Ne touche ni `training_eligible` ni `eurio_id` — suggestion, l'humain tranche |
 
-> **Fuite du gate bake — toujours ouverte.** Le bake lab n'exclut pas `face=reverse`
-> (cf. §filtre ci-dessus). L'anneau du Jeu d'entraînement *surface* maintenant les
-> reverse (ambre) et les `unknown` (pointillés), mais un reverse éligible entre
-> encore dans le train. Fix propre = P2 (re-détecter la face sur les `unknown`)
-> puis P3 (ajouter `AND (face IS NULL OR face != 'reverse')` au bake) — cf.
-> `README.md` §Suite.
+> ✅ **Fuite du gate bake — FERMÉE (P2+P3, 2026-07-02).** Le scan résout les
+> faces `unknown` (P2), et le bake exclut `face='reverse'` (P3, cf. §filtre).
 
 ## Lister les crops d'une classe (pour les afficher)
 

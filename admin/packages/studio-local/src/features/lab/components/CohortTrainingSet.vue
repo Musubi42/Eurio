@@ -21,13 +21,20 @@ import { recomputeDinoSuggestionsByAssetId } from '@/features/review/composables
 import type { CoinSearchEntry } from '@/features/review/composables/useCoinsSearch'
 import { ML_API } from '@/features/training/composables/useTrainingApi'
 import {
+  LAB_KEYS,
   useCohortTrainingCropsQuery,
   useSetTrainingEligibleMutation,
   useReassignAssetMutation,
+  useStartTrainingScanMutation,
+  useTrainingScanStatusQuery,
 } from '@/features/lab/composables/useLabQueries'
 import type { DrawerState, TrainingCrop, TrainingCropClass } from '@/features/lab/types'
-import { ArrowRightLeft, ChevronRight, Crop, Loader2, RefreshCw, X } from 'lucide-vue-next'
-import { computed, reactive, ref } from 'vue'
+import { useQueryClient } from '@tanstack/vue-query'
+import {
+  AlertTriangle, ArrowRightLeft, ChevronRight, Crop, Loader2, RefreshCw,
+  ScanSearch, X,
+} from 'lucide-vue-next'
+import { computed, reactive, ref, watch } from 'vue'
 
 const props = defineProps<{ cohortId: string }>()
 const cohortId = computed(() => props.cohortId)
@@ -43,9 +50,14 @@ const totalEligible = computed(() =>
 const totalSuspect = computed(() =>
   classes.value.reduce((s, c) => s + c.n_unknown_face, 0),
 )
-// Auto-ouvre quand il y a quelque chose à inspecter (suspects ou R@1 imparfait).
+const totalIntruders = computed(() =>
+  classes.value.reduce((s, c) => s + c.n_intruders, 0),
+)
+// Auto-ouvre quand il y a quelque chose à inspecter (intrus, suspects, R@1 bas).
 const needsAttention = computed(() =>
-  classes.value.some((c) => c.n_unknown_face > 0 || (c.r_at_1 != null && c.r_at_1 < 0.8)),
+  classes.value.some((c) =>
+    c.n_intruders > 0 || c.n_unknown_face > 0 || (c.r_at_1 != null && c.r_at_1 < 0.8),
+  ),
 )
 const state = computed<DrawerState>(() => {
   if (query.isLoading.value || !classes.value.length) return 'empty'
@@ -55,8 +67,84 @@ const summary = computed(() => {
   if (query.isLoading.value) return 'chargement…'
   if (!classes.value.length) return 'pas de crops'
   return `${classes.value.length} classes · ${totalEligible.value} dans le train`
-    + (totalSuspect.value ? ` · ${totalSuspect.value} suspects` : '')
+    + (totalIntruders.value ? ` · ${totalIntruders.value} intrus ?` : '')
+    + (totalSuspect.value ? ` · ${totalSuspect.value} faces ?` : '')
 })
+
+// ─── Scan Dino (P1 intrus + P2 face) ──────────────────────────────────────
+// Subprocess détaché côté ML : on lance, le statut se poll (2 s), et à la
+// clôture on invalide training-crops pour merger badges intrus + faces.
+const qc = useQueryClient()
+const scanStatus = useTrainingScanStatusQuery(cohortId)
+const startScan = useStartTrainingScanMutation(cohortId)
+const scanRunning = computed(() => scanStatus.data.value?.status === 'running')
+watch(
+  () => scanStatus.data.value?.status,
+  (now, before) => {
+    if (before === 'running' && (now === 'done' || now === 'failed')) {
+      qc.invalidateQueries({ queryKey: LAB_KEYS.trainingCrops(cohortId.value) })
+    }
+  },
+)
+const scanProgress = computed(() => {
+  const s = scanStatus.data.value
+  if (!s || s.status !== 'running') return null
+  return s.n_total ? `${s.n_done ?? 0}/${s.n_total}` : `${s.n_done ?? 0}`
+})
+// Dernier scan terminé (mergé dans training-crops) — fraîcheur des badges.
+const lastScan = computed(() => query.data.value?.scan ?? null)
+const scanFailed = computed(() => scanStatus.data.value?.status === 'failed')
+
+function launchScan() {
+  if (scanRunning.value || startScan.isPending.value) return
+  startScan.mutate()
+}
+
+// ─── Δ R@1 (P5) + santé (P4) + confusions (P6) — helpers d'affichage ──────
+const minReal = computed(() => query.data.value?.min_real ?? 10)
+
+function deltaLabel(c: TrainingCropClass): string | null {
+  if (c.r_at_1_delta == null) return null
+  const pts = c.r_at_1_delta * 100
+  return `${pts >= 0 ? '+' : ''}${pts.toFixed(0)} pt${Math.abs(pts) >= 2 ? 's' : ''}`
+}
+function deltaColor(c: TrainingCropClass): string {
+  const d = c.r_at_1_delta ?? 0
+  if (d > 0.005) return 'var(--success)'
+  if (d < -0.005) return 'var(--danger)'
+  return 'var(--ink-400)'
+}
+function deltaTitle(c: TrainingCropClass): string {
+  const prev = c.r_at_1_prev != null ? (c.r_at_1_prev * 100).toFixed(0) + '%' : '—'
+  const cur = c.r_at_1 != null ? (c.r_at_1 * 100).toFixed(0) + '%' : '—'
+  let seeds = ''
+  if (c.n_real_prev_bake != null || c.n_real_last_bake != null) {
+    seeds = `\nseed réel au bake : ${c.n_real_prev_bake ?? '—'} → ${c.n_real_last_bake ?? '—'}`
+    + (c.n_real_last_bake != null && c.n_eligible !== c.n_real_last_bake
+      ? ` (maintenant ${c.n_eligible} — re-bake pour appliquer)` : '')
+  }
+  return `R@1 : ${prev} → ${cur} (vs itération benchée précédente)${seeds}`
+}
+
+function healthTitle(c: TrainingCropClass): string {
+  return [
+    `${c.n_obverse} obverse confirmés · ${c.n_unknown_face} face à confirmer`
+    + (c.n_reverse_flagged ? ` · ${c.n_reverse_flagged} reverse (hors bake)` : ''),
+    `avers Numista : ${c.has_numista_ref ? 'présent' : 'ABSENT'} · réfs BCE/JO : ${c.n_bce_ref}`,
+    c.underfed
+      ? `sous-alimentée : ${c.n_eligible} < ${minReal.value} crops réels — sourcer (scrape/rescue)`
+      : `prête : ≥ ${minReal.value} crops réels`,
+  ].join('\n')
+}
+
+// P6 · clic sur « se confond avec X » → ouvre + scrolle la classe cible.
+function jumpToClass(classId: string) {
+  open[classId] = true
+  requestAnimationFrame(() => {
+    document.getElementById(`ts-class-${classId}`)
+      ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  })
+}
 
 // Ouvert par défaut quand la classe mérite l'œil : R@1 imparfait ou suspects.
 const open = reactive<Record<string, boolean>>({})
@@ -129,7 +217,17 @@ function onCropClick(c: TrainingCrop) {
 function cropTitle(c: TrainingCrop): string {
   const q = c.quality_score != null ? c.quality_score.toFixed(2) : '—'
   const inout = c.training_eligible ? 'dans le train' : 'exclu'
-  return `${c.eurio_id}\nface: ${c.face ?? '∅'} · denom: ${c.denom ?? '∅'} · qualité: ${q}\nstatut: ${c.resolution_status} · ${inout}\n(clic pour ${c.training_eligible ? 'exclure' : 'réinclure'})`
+  const intr = c.intruder_suspect
+    ? `\n⚠ probable intrus — Dino préfère ${c.intruder_top1_class}`
+      + (c.intruder_margin != null ? ` (marge +${c.intruder_margin.toFixed(3)})` : '')
+    : ''
+  return `${c.eurio_id}\nface: ${c.face ?? '∅'} · denom: ${c.denom ?? '∅'} · qualité: ${q}\nstatut: ${c.resolution_status} · ${inout}${intr}\n(clic pour ${c.training_eligible ? 'exclure' : 'réinclure'})`
+}
+
+function intruderTitle(c: TrainingCrop): string {
+  return `Probable intrus : Dino (ensemble fermé cohorte) préfère ${c.intruder_top1_class}`
+    + (c.intruder_margin != null ? ` — marge +${c.intruder_margin.toFixed(3)}` : '')
+    + '\nClic : réassigner à la bonne classe'
 }
 
 // ─── Recrop en place (§5) ─────────────────────────────────────────────────
@@ -204,11 +302,47 @@ async function recomputeDino() {
     <p class="mb-3 text-xs" style="color: var(--ink-400);">
       <span style="color: var(--ink-200);">Cette liste est le jeu exact qui part
       au modèle</span> — les crops eBay reviewés, classe par classe. Déjà validé
-      et rangé « à inspecter d'abord » (R@1 le plus bas en tête, suspects en
-      premier). Bordure verte = part au train ; pointillés = face à confirmer ;
-      ambre / rouge = à vérifier. Clic = inclure / exclure (réversible, effet au
-      prochain re-bake) ; au survol : recadrer ou réassigner un crop.
+      et rangé « à inspecter d'abord » (R@1 le plus bas en tête, intrus puis
+      suspects en premier). Bordure verte = part au train ; pointillés = face à
+      confirmer ; ambre / rouge = à vérifier. Clic = inclure / exclure
+      (réversible, effet au prochain re-bake) ; au survol : recadrer ou
+      réassigner un crop.
     </p>
+
+    <!-- Scan Dino (P1 intrus + P2 face) : lance en arrière-plan, poll, merge. -->
+    <div
+      class="mb-3 flex flex-wrap items-center gap-3 rounded-lg border px-3 py-2"
+      style="border-color: var(--surface-3); background: var(--surface-1);"
+    >
+      <button
+        type="button"
+        class="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium"
+        style="border-color: var(--surface-3); color: var(--ink-200); background: var(--surface);"
+        :disabled="scanRunning || startScan.isPending.value"
+        title="Pour chaque crop éligible : détection d'intrus (Dino ensemble fermé sur les classes de la cohorte) + résolution des faces non étiquetées. N'exclut ni ne réassigne rien tout seul."
+        @click="launchScan"
+      >
+        <Loader2 v-if="scanRunning || startScan.isPending.value" class="h-3.5 w-3.5 animate-spin" />
+        <ScanSearch v-else class="h-3.5 w-3.5" />
+        {{ scanRunning ? `Scan en cours… ${scanProgress ?? ''}` : 'Scanner intrus + faces (Dino)' }}
+      </button>
+      <span v-if="lastScan && !scanRunning" class="text-[11px]" style="color: var(--ink-400);">
+        Dernier scan : {{ lastScan.n_intruders }} intrus ·
+        {{ lastScan.n_faces_written }} faces résolues
+        <template v-if="lastScan.finished_at"> · {{ lastScan.finished_at }}</template>
+      </span>
+      <span v-else-if="!lastScan && !scanRunning" class="text-[11px]" style="color: var(--ink-400);">
+        Jamais scanné — lance le scan pour repérer les intrus et confirmer les faces.
+      </span>
+      <span
+        v-if="scanFailed"
+        class="text-[11px]"
+        style="color: var(--danger);"
+        :title="scanStatus.data.value?.error ?? undefined"
+      >
+        Dernier scan en échec — relancer (détail au survol).
+      </span>
+    </div>
 
     <div
       v-if="query.isLoading.value"
@@ -229,6 +363,7 @@ async function recomputeDino() {
     <div v-else class="space-y-2">
       <div
         v-for="c in classes"
+        :id="`ts-class-${c.class_id}`"
         :key="c.class_id"
         class="rounded-lg border"
         style="border-color: var(--surface-3); background: var(--surface);"
@@ -244,16 +379,46 @@ async function recomputeDino() {
             :style="{ transform: isOpen(c) ? 'rotate(90deg)' : 'none', color: 'var(--ink-400)' }"
           />
           <span class="font-mono text-xs" style="color: var(--ink-200);">{{ c.class_id }}</span>
+          <!-- P4 · santé : sous-alimentée → sourcer, pas seulement retirer. -->
+          <span
+            v-if="c.underfed"
+            class="rounded-md px-1.5 py-0.5 text-[10px] font-medium"
+            style="background: color-mix(in srgb, var(--warning) 18%, transparent); color: var(--warning);"
+            :title="healthTitle(c)"
+          >sous-alimentée</span>
           <span class="ml-auto flex items-center gap-3 text-xs" style="color: var(--ink-400);">
-            <span>{{ c.n_eligible }} elig</span>
+            <!-- P1 · intrus levés par le scan -->
+            <span
+              v-if="c.n_intruders > 0"
+              class="inline-flex items-center gap-1 font-medium"
+              style="color: var(--danger);"
+              title="Probables intrus (scan Dino) — remontés en tête de grille"
+            >
+              <AlertTriangle class="h-3 w-3" />{{ c.n_intruders }} intrus ?
+            </span>
+            <span :title="healthTitle(c)">{{ c.n_eligible }} au train</span>
             <span
               v-if="c.n_unknown_face > 0"
               style="color: var(--ink-400);"
-              title="Éligibles dont la face n'est pas confirmée obverse (à confirmer)"
+              title="Éligibles dont la face n'est pas étiquetée — le scan les résout"
             >
               {{ c.n_unknown_face }} face ?
             </span>
+            <span
+              v-if="c.n_reverse_flagged > 0"
+              style="color: var(--warning);"
+              title="Éligibles face=reverse — hors bake (côté carte commun)"
+            >
+              {{ c.n_reverse_flagged }} rev
+            </span>
             <span v-if="c.n_rejected > 0">{{ c.n_rejected }} rej</span>
+            <!-- P5 · Δ vs itération benchée précédente -->
+            <span
+              v-if="deltaLabel(c)"
+              class="font-semibold"
+              :style="{ color: deltaColor(c) }"
+              :title="deltaTitle(c)"
+            >Δ {{ deltaLabel(c) }}</span>
             <span
               class="inline-flex min-w-[2.75rem] justify-center rounded-md px-1.5 py-0.5 font-semibold"
               :style="{ background: r1Color(c.r_at_1), color: c.r_at_1 == null ? 'var(--surface)' : '#fff' }"
@@ -264,6 +429,25 @@ async function recomputeDino() {
 
         <!-- Grille de crops -->
         <div v-if="isOpen(c)" class="border-t px-3 py-3" style="border-color: var(--surface-3);">
+          <!-- P6 · confusions du dernier bench : où cette classe perd ses photos. -->
+          <p
+            v-if="c.confused_with.length"
+            class="mb-2 flex flex-wrap items-center gap-1.5 text-[11px]"
+            style="color: var(--ink-400);"
+          >
+            <span>Au bench, se confond avec :</span>
+            <button
+              v-for="cf in c.confused_with"
+              :key="cf.class_id"
+              type="button"
+              class="rounded-md border px-1.5 py-0.5 font-mono text-[10px]"
+              style="border-color: var(--surface-3); color: var(--ink-200); background: var(--surface-1);"
+              :title="`${cf.n} photo(s) de ${c.class_id} prédite(s) ${cf.class_id} au dernier bench — clic : voir cette classe`"
+              @click="jumpToClass(cf.class_id)"
+            >
+              ↔ {{ cf.class_id }} ({{ cf.n }})
+            </button>
+          </p>
           <p v-if="!c.crops.length" class="text-xs" style="color: var(--ink-400);">
             Aucun crop. (classe sans données propres — sourcer ou retirer)
           </p>
@@ -292,6 +476,18 @@ async function recomputeDino() {
                 class="pointer-events-none absolute inset-x-0 bottom-0 bg-black/60 py-0.5 text-center text-[9px] font-medium text-white"
               >exclu</span>
 
+              <!-- P1 · badge intrus (toujours visible) — clic = réassigner -->
+              <button
+                v-if="crop.intruder_suspect"
+                type="button"
+                class="absolute left-0 top-0 flex h-5 w-5 items-center justify-center rounded-br-md"
+                style="background: var(--danger); color: #fff;"
+                :title="intruderTitle(crop)"
+                @click.stop="openReassign(crop)"
+              >
+                <AlertTriangle class="h-3 w-3" />
+              </button>
+
               <!-- Barre d'actions au survol (recadrer / réassigner) -->
               <div
                 class="absolute right-0 top-0 flex gap-0.5 p-0.5 opacity-0 transition-opacity group-hover:opacity-100"
@@ -318,11 +514,13 @@ async function recomputeDino() {
             </div>
           </div>
           <p class="mt-2 text-[11px]" style="color: var(--ink-400);">
-            Bordure verte = face obverse confirmée, part au train · pointillés =
-            face à confirmer (non détectée, pas un défaut de crop) · ambre =
-            mauvaise face (côté commun) · rouge = rejeté / non-2€ · gris = exclu.
-            R@1 « — » = pas de benchmark récent. Clic = inclure / exclure ;
-            survol = recadrer ou réassigner. Effet au prochain re-bake.
+            Badge rouge ⚠ = probable intrus (scan Dino, clic = réassigner) ·
+            bordure verte = face obverse confirmée, part au train · pointillés =
+            face à confirmer (le scan la résout) · ambre = mauvaise face (côté
+            commun, hors bake) · rouge = rejeté / non-2€ · gris = exclu.
+            R@1 « — » = pas de benchmark récent ; Δ = vs itération benchée
+            précédente. Clic = inclure / exclure ; survol = recadrer ou
+            réassigner. Effet au prochain re-bake.
           </p>
         </div>
       </div>

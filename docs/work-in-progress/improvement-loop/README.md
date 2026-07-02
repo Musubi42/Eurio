@@ -57,6 +57,36 @@ la [roadmap](#suite--rendre-la-boucle-pilotable-par-un-humain).
 | `03-crop-triage-ux.md` | Spéc d'origine de l'outil INSPECT par classe. |
 | `04-jeu-entrainement-handoff.md` | Handoff des raffinements PO (renommage, anneau, recrop, réassign) — **LIVRÉ** `26e164d`. |
 
+## État (2026-07-02, soir) — P1→P6 LIVRÉS
+
+- ✅ **P1 · Scan intrus (Dino ensemble fermé)** : bouton « Scanner intrus +
+  faces (Dino) » dans le Jeu d'entraînement → subprocess détaché
+  (`training/training_set_scan.py`, endpoints `POST /lab/cohorts/{id}/training-scan`
+  + `GET …/status`, tables `cohort_training_scans[_results]`). Chaque crop
+  éligible est classé contre les seules classes de la cohorte (vitl14,
+  banque `2eur_all`) ; désaccord ≥ marge (défaut 0.05) → badge rouge ⚠
+  « probable intrus », **remonté en tête de grille**, clic = réassigner.
+  Vérifié sur `mix-zone-17` : 515 crops scannés en ~105 s, 25 intrus levés —
+  contrôle visuel des 2 plus fortes marges : vraies erreurs de label
+  (une fi-2017 étiquetée es-2016, un portrait étiqueté von-wright).
+- ✅ **P2 · Passe de face** : le même scan résout `face` sur les éligibles
+  NULL/`'unknown'` (banque revers C7, τ benché) — n'écrase JAMAIS un label
+  obverse/reverse existant. Sur mix-zone-17 : 88 faces résolues, le bucket
+  « à confirmer » d'`at-2005` passe de 41 → 0.
+- ✅ **P3 · Gate bake fermé** : `AND (face IS NULL OR face != 'reverse')` au
+  bake (`iteration_augmentations._ebay_training_sources`) + compteurs funnel
+  et panneau alignés (`n_eligible` = « part au bake »). Cf. `02-pipeline-map.md`.
+- ✅ **P4 · Santé par classe** : chip « sous-alimentée » (n_eligible < MIN_REAL)
+  + tooltip couverture (obverse confirmés / faces ?, avers Numista, réfs BCE/JO).
+- ✅ **P5 · Δ vs itération précédente** : chip `Δ ±N pts` par classe (R@1 des
+  deux dernières itérations **benchées completed** + seed réel au bake via
+  `iteration_aug_vs_real`). S'affichera dès la 2ᵉ itération benchée de la
+  cohorte (l'itération 1 de mix-zone-17 a un bench `failed` → badge « — »).
+- ✅ **P6 · Confusions liées** : chips « ↔ se confond avec X (n) » par classe
+  (confusion_matrix du dernier bench, agrégée à la maille classe), clic =
+  saute à la classe confondue.
+- ⏳ **P7 · Itération 2** : recette `low-light-v1` + runbook — voir §Suite.
+
 ## État (2026-07-02)
 
 - ✅ **Outil INSPECT raffiné** (`26e164d`, session PO 2026-07-01/02) : renommé
@@ -94,7 +124,11 @@ la [roadmap](#suite--rendre-la-boucle-pilotable-par-un-humain).
 > Objectif : que l'humain, en ouvrant le Jeu d'entraînement, sache **où regarder
 > d'abord**, **corrige vite** (pas en scrutant 275 vignettes), et **voie que ses
 > corrections paient**. Deux tracks : la qualité des données en entrée, et le
-> retour de boucle. Ordre = leviers décroissants. À trancher/planifier avec le PO.
+> retour de boucle. Ordre = leviers décroissants.
+>
+> ✅ **P1→P6 livrés le 2026-07-02** (cf. §État ci-dessus). Reste **P7**
+> (itération 2 : hard-negatives + low-light) — et le flux humain : scanner →
+> réassigner les intrus levés → re-baker → bencher → lire les Δ.
 
 ### Track DONNÉE — « les meilleures pièces en entrée »
 

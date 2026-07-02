@@ -705,7 +705,7 @@ export interface LiveTestsReport {
   log_path: string
 }
 
-// ─── QA crops d'entraînement par classe (boucle d'amélioration) ──────────────
+// ─── Jeu d'entraînement par classe (boucle d'amélioration) ───────────────────
 
 export interface TrainingCrop {
   asset_id: string
@@ -718,25 +718,80 @@ export interface TrainingCrop {
   quality_score: number | null
   training_eligible: boolean
   resolution_status: string
+  /** P1 · verdict du dernier scan : Dino closed-set préfère une AUTRE classe. */
+  intruder_suspect: boolean
+  intruder_top1_class: string | null
+  intruder_top1_eurio_id: string | null
+  intruder_margin: number | null
+}
+
+/** P6 · « cette classe se confond avec X » (confusion_matrix du dernier bench). */
+export interface ClassConfusion {
+  class_id: string
+  n: number
 }
 
 export interface TrainingCropClass {
   class_id: string
   class_kind: string
   member_eurio_ids: string[]
+  /** Compté à l'identique du bake (P3) : éligible ET face ≠ reverse. */
   n_eligible: number
-  /** Eligible mais face ≠ obverse — suspects à inspecter. */
+  /** Éligibles face NULL/'unknown' — à confirmer (la passe P2 les résout). */
   n_unknown_face: number
+  /** Éligibles face='reverse' — anneau ambre, hors bake depuis P3. */
+  n_reverse_flagged: number
   n_rejected: number
+  /** P1 · probables intrus levés par le dernier scan. */
+  n_intruders: number
   /** R@1 studio (dernière itération), moyenné sur les membres. */
   r_at_1: number | null
+  // P5 · Δ vs itération benchée précédente
+  r_at_1_prev: number | null
+  r_at_1_delta: number | null
+  n_real_last_bake: number | null
+  n_real_prev_bake: number | null
+  // P4 · santé / couverture
+  n_obverse: number
+  has_numista_ref: boolean
+  n_bce_ref: number
+  underfed: boolean
+  confused_with: ClassConfusion[]
   crops: TrainingCrop[]
+}
+
+/** Dernier scan TERMINÉ mergé dans training-crops (fraîcheur des badges). */
+export interface TrainingScanInfo {
+  scan_id: string
+  finished_at: string | null
+  n_intruders: number
+  n_faces_written: number
+  intruder_margin: number | null
+}
+
+/** Statut live (`training-scan/status`) — poll pendant qu'un scan tourne. */
+export interface TrainingScanStatus {
+  status: 'idle' | 'running' | 'done' | 'failed'
+  id?: string
+  n_total?: number | null
+  n_done?: number
+  n_intruders?: number
+  n_faces_written?: number
+  n_skipped?: number
+  intruder_margin?: number | null
+  started_at?: string
+  finished_at?: string | null
+  error?: string | null
 }
 
 export interface CohortTrainingCrops {
   cohort_id: string
   cohort_name: string
   benchmark_run_id: string | null
+  prev_benchmark_run_id: string | null
+  /** Plancher qualité par classe (MIN_REAL) — légende santé. */
+  min_real: number
+  scan: TrainingScanInfo | null
   classes: TrainingCropClass[]
 }
 
