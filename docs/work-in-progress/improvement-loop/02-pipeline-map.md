@@ -54,9 +54,21 @@ Flipper `training_eligible` à 0 suffit — le prochain bake le drop automatique
 | Validate | `POST /review-queue/{id}/decide` | `resolution_status='manual'`, `training_eligible=1`, pose `eurio_id/face` |
 | Re-flag | `POST /coins/assets/reflag-needs-review` | rouvre des crops déjà résolus en `needs_review` (+ upsert review_queue) |
 
-Pour un crop **déjà validé** (pas dans une file ouverte), il faut d'abord une row
-`review_queue` (via `reflag-needs-review`) **ou** un endpoint de toggle au niveau
-asset (à ajouter — cf. `03-crop-triage-ux`).
+Pour un crop **déjà validé** (pas dans une file ouverte), deux endpoints
+asset-level existent désormais (livrés `26e164d`, servent le Jeu d'entraînement) :
+
+| Action | Endpoint | Effet |
+|---|---|---|
+| **Toggle train** | `POST /lab/assets/{id}/training-eligible {eligible}` | flippe `training_eligible` (pose/efface `quality_reason='manual_triage'`), garde status/eurio_id |
+| **Réassigner** | `POST /lab/assets/{id}/reassign {eurio_id}` | change `image_assets.eurio_id` (valide la pièce cible contre `coins`), garde `training_eligible`/face/status ; l'asset saute de classe |
+| Recalcul Dino | `POST /review-queue/asset/{id}/dino-suggestions/recompute` | force `predict_and_persist_kinds` (écrase la prédiction périmée) |
+
+> **Fuite du gate bake — toujours ouverte.** Le bake lab n'exclut pas `face=reverse`
+> (cf. §filtre ci-dessus). L'anneau du Jeu d'entraînement *surface* maintenant les
+> reverse (ambre) et les `unknown` (pointillés), mais un reverse éligible entre
+> encore dans le train. Fix propre = P2 (re-détecter la face sur les `unknown`)
+> puis P3 (ajouter `AND (face IS NULL OR face != 'reverse')` au bake) — cf.
+> `README.md` §Suite.
 
 ## Lister les crops d'une classe (pour les afficher)
 

@@ -40,10 +40,13 @@ les outils qu'on construit pour fermer la boucle.
                       crops exclus, re-compte la couverture par classe.
 ```
 
-Étapes 1→4 **existent et marchent**. Le maillon faible est **5 (INSPECT)** : il
-n'y a pas de moyen rapide de voir les crops d'une classe pour repérer les
-déchets depuis le contexte lab/cohorte. C'est la première amélioration UX
-(cf. `03-crop-triage-ux.md`).
+Étapes 1→4 **existent et marchent**. Le maillon 5 (INSPECT) est maintenant
+**construit ET raffiné** : le drawer « Jeu d'entraînement » sur `/lab/cohorts/:id`
+laisse inspecter par classe, exclure/réinclure, **recadrer en place** et
+**réassigner à la bonne classe** (cf. `04-jeu-entrainement-handoff.md`). Ce qui
+reste faible, c'est le *pilotage* : rien ne dit encore à l'humain **où regarder
+en priorité** (intrus, near-twins) ni **si son nettoyage a payé** (Δ R@1). Voir
+la [roadmap](#suite--rendre-la-boucle-pilotable-par-un-humain).
 
 ## Index
 
@@ -51,7 +54,26 @@ déchets depuis le contexte lab/cohorte. C'est la première amélioration UX
 |---|---|
 | `01-diagnosis-iter-1fcac3c9.md` | Diagnostic de l'itération de référence : d'où vient le R@1 0.79 vs studio 0.94, classe par classe, avec crops réels inspectés. |
 | `02-pipeline-map.md` | Carte de la pipeline data : où entrent les crops, quel filtre décide l'inclusion training, où brancher l'exclusion. |
-| `03-crop-triage-ux.md` | Spéc de l'outil « QA crops d'entraînement » par classe (le maillon INSPECT). |
+| `03-crop-triage-ux.md` | Spéc d'origine de l'outil INSPECT par classe. |
+| `04-jeu-entrainement-handoff.md` | Handoff des raffinements PO (renommage, anneau, recrop, réassign) — **LIVRÉ** `26e164d`. |
+
+## État (2026-07-02)
+
+- ✅ **Outil INSPECT raffiné** (`26e164d`, session PO 2026-07-01/02) : renommé
+  « **Jeu d'entraînement** » (fichier `CohortTrainingSet.vue`), copy de confiance,
+  overlay d'exclusion allégé. **Anneau refondu (décision B)** — il encode la
+  *valeur d'entraînement*, pas la netteté : vert plein = obverse confirmée / part
+  au train · pointillés neutres = éligible mais face non détectée (`unknown`, à
+  confirmer, PAS un défaut de crop) · ambre = `face=reverse` (côté carte commun,
+  nuisible) · rouge = rejeté/non-2€. **Recrop en place** (réutilise
+  `CircleCropEditor`). **Réassignation façon review** : `DinoSuggestions` +
+  `FreeSelectorPanel` (clic = réassigne) + bouton « recalculer Dino ».
+  - Nouveaux endpoints : `POST /lab/assets/{id}/reassign {eurio_id}` (+ 3 tests) ;
+    `POST /review-queue/asset/{id}/dino-suggestions/recompute` (force le recalcul).
+- 🔎 **Constat mesuré** (cohorte `mix-zone-17`, classe `at-2005`) : 41/99 crops
+  éligibles sont `face='unknown'` — de bons crops que le classifieur de face n'a
+  jamais étiquetés. C'est le principal bruit visuel (et un angle mort : cf.
+  fuite du gate bake, `02-pipeline-map.md` §filtre).
 
 ## État (2026-06-30)
 
@@ -65,20 +87,58 @@ déchets depuis le contexte lab/cohorte. C'est la première amélioration UX
   drawer C5 « QA crops d'entraînement » sur `/lab/cohorts/:id` — accordéon par
   classe rangé par R@1, vignettes suspect-first, clic = exclure/réinclure
   (réversible, effet au re-bake). Cf. `03-crop-triage-ux.md`.
-- 🔜 **Raffinements de l'outil INSPECT** (retour PO 2026-07-01, session dédiée) :
-  renommage « **Jeu d'entraînement** », overlay allégé, bordure verte pour les
-  inclus, **recrop en place** + **réassignation de classe** (réutiliser Review),
-  clarté du badge R@1 `—`. Handoff prêt à coder :
-  [`04-jeu-entrainement-handoff.md`](./04-jeu-entrainement-handoff.md).
-- 🔜 **Itération 2 (modèle)** : attaquer les near-twins (hard-negatives via
-  `confusion_map.py`) + augmentations basse-lumière (levier `low-light-v1` :
-  relighting `ambient 0.20`/`intensity [0.35,1.0]` — recette déjà créable via le
-  CRUD canonique depuis la refonte recettes). Piste parallèle.
+- ✅ **Raffinements de l'outil INSPECT** — livrés `26e164d` (cf. §État 2026-07-02).
 
+## Suite — rendre la boucle *pilotable* par un humain
 
+> Objectif : que l'humain, en ouvrant le Jeu d'entraînement, sache **où regarder
+> d'abord**, **corrige vite** (pas en scrutant 275 vignettes), et **voie que ses
+> corrections paient**. Deux tracks : la qualité des données en entrée, et le
+> retour de boucle. Ordre = leviers décroissants. À trancher/planifier avec le PO.
 
-Prochaine étape proposée
+### Track DONNÉE — « les meilleures pièces en entrée »
 
-Comme convenu (« les deux, outil d'abord »), l'étape suivante est l'itération 2 côté modèle : hard-negatives sur les near-twins via confusion_map.py + augmentations basse-lumière (le pire condition, dim à 0.69). Je peux creuser et te proposer un plan d'itération 2 quand tu veux — dis-moi si tu valides d'abord l'outil en visuel.
+- **P1 · Détection d'intrus automatique (Dino ensemble fermé).** Pour chaque crop
+  éligible, comparer sa classe assignée au top-1 Dino restreint aux classes de la
+  cohorte (`rankCandidates`, déjà en place). Si désaccord fort (sim cible ≫ sim
+  classe), lever un badge « probable intrus » et **remonter ces crops en tête**.
+  → l'humain réassigne les 3–5 qui comptent au lieu de tout balayer. Réutilise
+  l'action réassign livrée. *Le plus fort levier « corriger ».*
+- **P2 · Passe de détection de face sur les `unknown` (décision C).** Batch qui
+  re-classe `face` (obverse/reverse) sur les crops éligibles `unknown` → vide le
+  bucket « à confirmer » (pointillés) et **révèle les vrais reverse** cachés.
+  → l'anneau devient enfin honnête ; prérequis propre de P3.
+- **P3 · Fermer la fuite du gate bake.** Aligner le bake lab sur l'export legacy :
+  `AND (face IS NULL OR face != 'reverse')` (`iteration_augmentations.py`, cf.
+  `02-pipeline-map.md` §filtre). Empêche un reverse validé par erreur de polluer
+  une classe. Petit, correctness. À faire **après P2** (sinon on droppe des
+  `unknown` qui sont en fait des avers).
+- **P4 · Santé / couverture par classe.** Colonne d'état : nb obverse confirmés vs
+  `unknown` vs total, canonique Numista présent ?, réfs BCE ?, seuil min atteint ?
+  → flag « sous-alimentée → sourcer » vs « prête ». Dit à l'humain où **ajouter**
+  des pièces, pas seulement où en retirer (anti-starve, cf. `[[project_lab_streamline]]`).
 
-Planifier l'itération 2, du coup là nous sommes sous Mac, il faut prendre en compte que MPS est plus long, donc si on veut vérifier avec un retrain, on fait moins d'epochs, genre 3
+### Track BOUCLE — « est-ce que mes corrections paient ? »
+
+- **P5 · Δ vs itération précédente.** Par classe : R@1 et n_eligible avant/après la
+  dernière itération (les données de `benchmark_runs.per_coin` existent déjà). Un
+  crop nettoyé + un re-bake → l'humain **voit** le R@1 monter. Rend la boucle
+  gratifiante et mesurable (aujourd'hui le badge R@1 est celui de la dernière
+  itération, périmé dès qu'on nettoie).
+- **P6 · Lier les confusions dans le panneau.** `confusion_matrix` / `top_confusions`
+  (bench) + near-twins (`confusion_map.py`) : afficher « cette classe se confond
+  avec X » et surligner les crops responsables. Guide l'œil au-delà du simple tri
+  par R@1.
+
+### Track MODÈLE (parallèle)
+
+- **P7 · Itération 2.** Hard-negatives sur les near-twins (via `confusion_map.py`)
+  + augmentations basse-lumière (levier `low-light-v1` : relighting `ambient 0.20`,
+  `intensity [0.35,1.0]` — recette créable via le CRUD canonique). ⚠️ Sur **Mac
+  (MPS)** l'entraînement est lent : pour une **vérification** de retrain, réduire à
+  ~3 epochs ; garder les runs longs pour le PC (1080 Ti, cf.
+  `[[project_cohort_training_and_lanes_2026-06-15]]`, `RUNBOOK-pc-training.md`).
+
+**Reco d'ordre** : P1 (trouver les intrus vite) → P5 (voir que ça paie) → P2+P3
+(assainir la face) → P4 (couverture) → P6 → P7. P1 et P5 donnent le plus de
+« sentiment de contrôle » pour le moindre coût.

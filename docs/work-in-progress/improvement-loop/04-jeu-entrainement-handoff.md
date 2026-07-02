@@ -1,5 +1,22 @@
 # Handoff — refonte du panneau « Jeu d'entraînement » (ex-« QA crops d'entraînement »)
 
+> ✅ **LIVRÉ 2026-07-02 — commit `26e164d`** (branche `sources-jo-wikipedia`).
+> Résumé de ce qui a été fait, y compris les écarts vs le plan ci-dessous :
+> - §1–4,7 (cosmétique) : faits. **Fichier renommé** `CohortTrainingSet.vue`.
+> - §2 badge R@1 `—` : tooltip « pas de benchmark récent » + légende.
+> - §4 **anneau** : au retour PO, la sémantique a été affinée (**décision B**) —
+>   vert = obverse confirmée · **pointillés neutres = face `unknown` à confirmer**
+>   (les bons crops non étiquetés ne sont plus alarmés) · ambre = `face=reverse`
+>   (mauvaise face) · rouge = rejeté/non-2€.
+> - §5 recrop : fait via `CircleCropEditor` (keyé asset) + cache-bust.
+> - §6 **réassignation** : la liste déroulante a été **abandonnée** au profit des
+>   briques review — `DinoSuggestions` + `FreeSelectorPanel` (clic = réassigne) +
+>   bouton « recalculer Dino » (nouvel endpoint recompute). Décision (a) retenue :
+>   `POST /lab/assets/{id}/reassign {eurio_id}` (+ 3 tests).
+> - Suite = roadmap dans [`README.md`](./README.md) §Suite (P1…P7).
+>
+> --- Handoff d'origine (2026-07-01) ci-dessous, conservé pour trace ---
+>
 > Pour une session Claude Code fraîche. Tout le contexte est ici. Préparé le
 > 2026-07-01. Branche : `sources-jo-wikipedia` (remotes `codeberg` + `github`).
 > Spec d'origine : [`03-crop-triage-ux.md`](./03-crop-triage-ux.md) (l'outil est
