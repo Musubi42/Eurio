@@ -16,6 +16,10 @@ const props = defineProps<{
   label?: string | null
   /** Bounding rect de l'élément ancre, en coords viewport. */
   anchorRect: DOMRect
+  /** 'above' (défaut, lignes de suggestions) ou 'side' : à DROITE de l'ancre
+   *  (gauche si pas la place), sans jamais la recouvrir — pour les grilles de
+   *  vignettes dont les boutons d'action doivent rester cliquables. */
+  placement?: 'above' | 'side'
 }>()
 
 const PREVIEW_W = 220
@@ -25,6 +29,22 @@ const SAFE_MARGIN = 8
 
 const computedStyle = computed(() => {
   const r = props.anchorRect
+  if (props.placement === 'side') {
+    // À droite de l'ancre, sinon à gauche — jamais par-dessus (les actions de
+    // la vignette restent visibles). Centré verticalement, clampé au viewport.
+    const left =
+      r.right + GAP + PREVIEW_W + SAFE_MARGIN <= window.innerWidth
+        ? r.right + GAP
+        : Math.max(SAFE_MARGIN, r.left - GAP - PREVIEW_W)
+    const top = Math.max(
+      SAFE_MARGIN,
+      Math.min(
+        window.innerHeight - PREVIEW_H - SAFE_MARGIN,
+        r.top + r.height / 2 - PREVIEW_H / 2,
+      ),
+    )
+    return { left: `${left}px`, top: `${top}px`, width: `${PREVIEW_W}px` }
+  }
   // Centré horizontalement sur l'ancre, clampé au viewport.
   const idealLeft = r.left + r.width / 2 - PREVIEW_W / 2
   const left = Math.max(

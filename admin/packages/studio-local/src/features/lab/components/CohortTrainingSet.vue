@@ -159,52 +159,68 @@ function toggleOpen(c: TrainingCropClass) {
   open[c.class_id] = !isOpen(c)
 }
 
-// ─── Filtres par état (retour PO : les 80+ gris noyaient le signal) ───────
-// Un crop appartient à une ou plusieurs catégories ; il est visible si AU
-// MOINS une de ses catégories est active. Défaut = « problèmes d'abord » :
-// intrus + au train + face ? + reverse — le stock à reviewer / exclu / rejeté
-// reste derrière ses chips (compteurs visibles).
-type FilterKey =
-  | 'intruder' | 'train' | 'face' | 'reverse' | 'review' | 'excluded' | 'rejected'
+// ─── Sous-listes pliables par catégorie (retour PO v2) ────────────────────
+// Plus de chips-filtres : chaque classe expose des LISTES par état, pliables,
+// dans un ordre fixe — au train d'abord, puis les intrus (actions), puis le
+// stock. Catégories DISJOINTES (un crop = une liste) : l'intrus prime (c'est
+// l'action à faire), puis l'état review, puis la face.
+type CategoryKey =
+  | 'train' | 'intruder' | 'face' | 'reverse' | 'review' | 'excluded' | 'rejected'
 
-const FILTER_DEFS: { key: FilterKey; label: string; title: string }[] = [
-  { key: 'intruder', label: '⚠ intrus', title: 'Probables intrus (scan Dino) — tous états' },
-  { key: 'train', label: 'au train', title: 'Éligibles, partent au bake (face ≠ reverse)' },
-  { key: 'face', label: 'face ?', title: 'Éligibles dont la face n\'est pas étiquetée — le scan les résout' },
-  { key: 'reverse', label: 'reverse', title: 'Éligibles face=reverse — hors bake (côté commun)' },
-  { key: 'review', label: 'à reviewer', title: 'Jamais reviewés (needs_review) — pas exclus : en attente' },
-  { key: 'excluded', label: 'exclus', title: 'Écartés du train à la main (réversible, clic pour réinclure)' },
-  { key: 'rejected', label: 'rejetés', title: 'Rejetés en review (déchets) — restaurables côté review' },
+const CATEGORY_DEFS: { key: CategoryKey; label: string; title: string }[] = [
+  { key: 'train', label: 'Au train', title: 'Éligibles, partent au bake (face ≠ reverse)' },
+  { key: 'intruder', label: '⚠ Intrus ?', title: 'Probables intrus (scan Dino) — réassigner ou exclure ; tous états confondus' },
+  { key: 'face', label: 'Face ?', title: 'Éligibles dont la face n\'est pas étiquetée — le scan les résout' },
+  { key: 'reverse', label: 'Reverse', title: 'Éligibles face=reverse — hors bake (côté commun)' },
+  { key: 'review', label: 'À reviewer', title: 'Jamais reviewés (needs_review) — pas exclus : en attente' },
+  { key: 'excluded', label: 'Exclus', title: 'Écartés du train à la main (réversible, clic pour réinclure)' },
+  { key: 'rejected', label: 'Rejetés', title: 'Rejetés en review (déchets) — restaurables côté review' },
 ]
-const activeFilters = reactive<Record<FilterKey, boolean>>({
-  intruder: true, train: true, face: true, reverse: true,
-  review: false, excluded: false, rejected: false,
-})
 
-function cropCategories(c: TrainingCrop): FilterKey[] {
-  const cats: FilterKey[] = []
-  if (c.intruder_suspect) cats.push('intruder')
-  if (c.resolution_status === 'rejected') cats.push('rejected')
-  else if (c.resolution_status === 'needs_review') cats.push('review')
-  else if (!c.training_eligible) cats.push('excluded')
-  if (c.training_eligible && c.face !== 'reverse') cats.push('train')
-  if (c.training_eligible && (c.face == null || c.face === 'unknown')) cats.push('face')
-  if (c.training_eligible && c.face === 'reverse') cats.push('reverse')
-  return cats
+function cropCategory(c: TrainingCrop): CategoryKey {
+  if (c.intruder_suspect) return 'intruder'
+  if (c.resolution_status === 'rejected') return 'rejected'
+  if (c.resolution_status === 'needs_review') return 'review'
+  if (!c.training_eligible) return 'excluded'
+  if (c.face === 'reverse') return 'reverse'
+  if (c.face == null || c.face === 'unknown') return 'face'
+  return 'train'
 }
-function isVisible(c: TrainingCrop): boolean {
-  return cropCategories(c).some((k) => activeFilters[k])
+
+interface CategoryGroup {
+  key: CategoryKey
+  label: string
+  title: string
+  crops: TrainingCrop[]
 }
-function visibleCrops(cls: TrainingCropClass): TrainingCrop[] {
-  return cls.crops.filter(isVisible)
+function groupedCrops(cls: TrainingCropClass): CategoryGroup[] {
+  const buckets = new Map<CategoryKey, TrainingCrop[]>()
+  for (const crop of cls.crops) {
+    const k = cropCategory(crop)
+    const b = buckets.get(k)
+    if (b) b.push(crop)
+    else buckets.set(k, [crop])
+  }
+  return CATEGORY_DEFS
+    .filter((d) => buckets.has(d.key))
+    .map((d) => ({ ...d, crops: buckets.get(d.key)! }))
 }
-const filterCounts = computed<Record<FilterKey, number>>(() => {
-  const counts = { intruder: 0, train: 0, face: 0, reverse: 0, review: 0, excluded: 0, rejected: 0 }
-  for (const cls of classes.value)
-    for (const crop of cls.crops)
-      for (const k of cropCategories(crop)) counts[k] += 1
-  return counts
-})
+
+// Pliage par (classe, catégorie). Défaut : « Intrus ? » ouvert (c'est la liste
+// d'actions), le reste plié — on déplie ce qu'on veut inspecter.
+const groupOpen = reactive<Record<string, boolean>>({})
+function isGroupOpen(cls: TrainingCropClass, key: CategoryKey): boolean {
+  return groupOpen[`${cls.class_id}:${key}`] ?? (key === 'intruder')
+}
+function toggleGroup(cls: TrainingCropClass, key: CategoryKey) {
+  groupOpen[`${cls.class_id}:${key}`] = !isGroupOpen(cls, key)
+}
+function groupCountColor(key: CategoryKey): string {
+  if (key === 'intruder') return 'var(--danger)'
+  if (key === 'reverse') return 'var(--warning)'
+  if (key === 'train') return 'var(--success)'
+  return 'var(--ink-400)'
+}
 
 // Overlay d'état honnête (le « exclu » unique mentait : 52/108 étaient juste
 // en attente de review) — rien pour les crops au train.
@@ -401,12 +417,12 @@ async function recomputeDino() {
     <template #body>
     <p class="mb-3 text-xs" style="color: var(--ink-400);">
       <span style="color: var(--ink-200);">Cette liste est le jeu exact qui part
-      au modèle</span> — les crops eBay reviewés, classe par classe. Déjà validé
-      et rangé « à inspecter d'abord » (R@1 le plus bas en tête, intrus puis
-      suspects en premier). Bordure verte = part au train ; pointillés = face à
-      confirmer ; ambre / rouge = à vérifier. Clic = inclure / exclure
-      (réversible, effet au prochain re-bake) ; au survol : recadrer ou
-      réassigner un crop.
+      au modèle</span> — les crops eBay, classe par classe, rangées « à
+      inspecter d'abord » (R@1 le plus bas en tête). Dans chaque classe, des
+      listes pliables par état : au train, ⚠ intrus (dépliée — c'est la liste
+      d'actions), face ?, reverse, à reviewer, exclus, rejetés. Clic = inclure /
+      exclure (réversible, effet au prochain re-bake) ; au survol : zoom +
+      recadrer / réassigner.
     </p>
 
     <!-- Scan Dino (P1 intrus + P2 face) : lance en arrière-plan, poll, merge. -->
@@ -442,25 +458,6 @@ async function recomputeDino() {
       >
         Dernier scan en échec — relancer (détail au survol).
       </span>
-    </div>
-
-    <!-- Filtres par état — défaut « problèmes d'abord », le stock (à reviewer /
-         exclus / rejetés) reste derrière ses chips. -->
-    <div class="mb-3 flex flex-wrap items-center gap-1.5">
-      <span class="mr-1 text-[11px]" style="color: var(--ink-400);">Afficher :</span>
-      <button
-        v-for="f in FILTER_DEFS"
-        :key="f.key"
-        type="button"
-        class="rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors"
-        :style="activeFilters[f.key]
-          ? { background: 'var(--indigo-700)', borderColor: 'var(--indigo-700)', color: 'var(--surface)' }
-          : { background: 'var(--surface)', borderColor: 'var(--surface-3)', color: 'var(--ink-400)' }"
-        :title="f.title"
-        @click="activeFilters[f.key] = !activeFilters[f.key]"
-      >
-        {{ f.label }} ({{ filterCounts[f.key] }})
-      </button>
     </div>
 
     <div
@@ -570,96 +567,109 @@ async function recomputeDino() {
           <p v-if="!c.crops.length" class="text-xs" style="color: var(--ink-400);">
             Aucun crop. (classe sans données propres — sourcer ou retirer)
           </p>
-          <p
-            v-else-if="!visibleCrops(c).length"
-            class="text-xs"
-            style="color: var(--ink-400);"
-          >
-            {{ c.crops.length }} crops masqués par les filtres (rien à voir dans
-            les catégories actives — active « à reviewer » / « exclus » /
-            « rejetés » pour tout voir).
-          </p>
-          <div v-else class="flex flex-wrap gap-2">
+          <!-- Sous-listes pliables par état (retour PO) : au train d'abord,
+               puis les intrus (dépliés = liste d'actions), puis le stock. -->
+          <div v-else class="space-y-1.5">
             <div
-              v-for="crop in visibleCrops(c)"
-              :key="crop.asset_id"
-              class="group relative h-28 w-28 overflow-hidden rounded-md"
-              :style="{
-                outline: ringOutline(crop),
-                outlineOffset: '-2px',
-                opacity: crop.training_eligible ? 1 : 0.55,
-              }"
-              @mouseenter="onTileEnter(crop, $event)"
-              @mouseleave="onTileLeave(crop)"
+              v-for="g in groupedCrops(c)"
+              :key="g.key"
+              class="rounded-md border"
+              style="border-color: var(--surface-3); background: var(--surface-1);"
             >
-              <img
-                :src="imgUrl(crop)"
-                loading="lazy"
-                class="h-full w-full object-cover"
-                :class="{ 'cursor-pointer': canToggle(crop), 'cursor-default': !canToggle(crop) }"
-                :style="{ filter: crop.training_eligible ? 'none' : 'grayscale(1)' }"
-                :title="cropTitle(crop)"
-                @click="onCropClick(crop)"
-              />
-              <span
-                v-if="stateLabel(crop)"
-                class="pointer-events-none absolute inset-x-0 bottom-0 bg-black/60 py-0.5 text-center text-[10px] font-medium text-white"
-              >{{ stateLabel(crop) }}</span>
-
-              <!-- P1 · badge intrus (toujours visible) — clic = réassigner -->
               <button
-                v-if="crop.intruder_suspect"
                 type="button"
-                class="absolute left-0 top-0 flex h-6 w-6 items-center justify-center rounded-br-md"
-                style="background: var(--danger); color: #fff;"
-                :title="intruderTitle(crop)"
-                @click.stop="openReassign(crop)"
+                class="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs"
+                :title="g.title"
+                @click="toggleGroup(c, g.key)"
               >
-                <AlertTriangle class="h-3.5 w-3.5" />
+                <ChevronRight
+                  class="h-3.5 w-3.5 shrink-0 transition-transform"
+                  :style="{ transform: isGroupOpen(c, g.key) ? 'rotate(90deg)' : 'none', color: 'var(--ink-400)' }"
+                />
+                <span class="font-medium" :style="{ color: groupCountColor(g.key) }">
+                  {{ g.label }}
+                </span>
+                <span style="color: var(--ink-400);">{{ g.crops.length }}</span>
               </button>
 
-              <!-- Barre d'actions au survol (recadrer / réassigner) -->
               <div
-                class="absolute right-0 top-0 flex gap-0.5 p-0.5 opacity-0 transition-opacity group-hover:opacity-100"
+                v-if="isGroupOpen(c, g.key)"
+                class="flex flex-wrap gap-2 border-t px-2.5 py-2.5"
+                style="border-color: var(--surface-3); background: var(--surface);"
               >
-                <button
-                  type="button"
-                  class="flex h-6 w-6 items-center justify-center rounded"
-                  style="background: rgba(14,14,31,.72); color: #fff;"
-                  title="Recadrer ce crop"
-                  @click.stop="openRecrop(crop)"
+                <div
+                  v-for="crop in g.crops"
+                  :key="crop.asset_id"
+                  class="group relative h-28 w-28 overflow-hidden rounded-md"
+                  :style="{
+                    outline: ringOutline(crop),
+                    outlineOffset: '-2px',
+                    opacity: crop.training_eligible ? 1 : 0.55,
+                  }"
+                  @mouseenter="onTileEnter(crop, $event)"
+                  @mouseleave="onTileLeave(crop)"
                 >
-                  <Crop class="h-3.5 w-3.5" />
-                </button>
-                <button
-                  type="button"
-                  class="flex h-6 w-6 items-center justify-center rounded"
-                  style="background: rgba(14,14,31,.72); color: #fff;"
-                  title="Réassigner à la bonne classe"
-                  @click.stop="openReassign(crop)"
-                >
-                  <ArrowRightLeft class="h-3.5 w-3.5" />
-                </button>
+                  <img
+                    :src="imgUrl(crop)"
+                    loading="lazy"
+                    class="h-full w-full object-cover"
+                    :class="{ 'cursor-pointer': canToggle(crop), 'cursor-default': !canToggle(crop) }"
+                    :style="{ filter: crop.training_eligible ? 'none' : 'grayscale(1)' }"
+                    :title="cropTitle(crop)"
+                    @click="onCropClick(crop)"
+                  />
+                  <span
+                    v-if="stateLabel(crop)"
+                    class="pointer-events-none absolute inset-x-0 bottom-0 bg-black/60 py-0.5 text-center text-[10px] font-medium text-white"
+                  >{{ stateLabel(crop) }}</span>
+
+                  <!-- P1 · badge intrus (toujours visible) — clic = réassigner -->
+                  <button
+                    v-if="crop.intruder_suspect"
+                    type="button"
+                    class="absolute left-0 top-0 flex h-6 w-6 items-center justify-center rounded-br-md"
+                    style="background: var(--danger); color: #fff;"
+                    :title="intruderTitle(crop)"
+                    @click.stop="openReassign(crop)"
+                  >
+                    <AlertTriangle class="h-3.5 w-3.5" />
+                  </button>
+
+                  <!-- Barre d'actions au survol (recadrer / réassigner) -->
+                  <div
+                    class="absolute right-0 top-0 flex gap-0.5 p-0.5 opacity-0 transition-opacity group-hover:opacity-100"
+                  >
+                    <button
+                      type="button"
+                      class="flex h-6 w-6 items-center justify-center rounded"
+                      style="background: rgba(14,14,31,.72); color: #fff;"
+                      title="Recadrer ce crop"
+                      @click.stop="openRecrop(crop)"
+                    >
+                      <Crop class="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      class="flex h-6 w-6 items-center justify-center rounded"
+                      style="background: rgba(14,14,31,.72); color: #fff;"
+                      title="Réassigner à la bonne classe"
+                      @click.stop="openReassign(crop)"
+                    >
+                      <ArrowRightLeft class="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
-          <p
-            v-if="c.crops.length && visibleCrops(c).length && visibleCrops(c).length < c.crops.length"
-            class="mt-1.5 text-[11px]"
-            style="color: var(--ink-400);"
-          >
-            + {{ c.crops.length - visibleCrops(c).length }} crops masqués par
-            les filtres.
-          </p>
           <p class="mt-2 text-[11px]" style="color: var(--ink-400);">
             Badge rouge ⚠ = probable intrus (une autre classe le réclame, ou il
             ne ressemble pas à ses camarades — clic = réassigner) · bordure
-            verte = obverse confirmée, part au train · pointillés = face à
-            confirmer (le scan la résout) · ambre = reverse (hors bake) · rouge
-            = rejeté / non-2€ · gris = à reviewer / exclu (bandeau). R@1 « — » =
-            pas de benchmark récent ; Δ = vs itération benchée précédente. Clic
-            = inclure / exclure ; survol = zoom + recadrer / réassigner. Effet
-            au prochain re-bake.
+            verte = obverse confirmée, part au train · ambre = reverse (hors
+            bake) · rouge = rejeté / non-2€. R@1 « — » = pas de benchmark
+            récent ; Δ = vs itération benchée précédente. Clic = inclure /
+            exclure ; survol = zoom + recadrer / réassigner. Effet au prochain
+            re-bake.
           </p>
         </div>
       </div>
@@ -667,13 +677,16 @@ async function recomputeDino() {
     </template>
   </DrawerSection>
 
-  <!-- Zoom au survol d'une vignette (même brique flottante que la review). -->
+  <!-- Zoom au survol d'une vignette (même brique flottante que la review).
+       placement="side" : la carte se pose À CÔTÉ de la vignette, jamais
+       par-dessus — les boutons recadrer/réassigner restent cliquables. -->
   <CoinHoverPreview
     v-if="hoverCrop && hoverRect"
     :image-url="imgUrl(hoverCrop)"
     :eurio-id="hoverCrop.eurio_id ?? '∅'"
     :label="hoverLabel"
     :anchor-rect="hoverRect"
+    placement="side"
   />
 
   <!-- Recrop en place : même éditeur que la review, keyé asset (§5). -->
