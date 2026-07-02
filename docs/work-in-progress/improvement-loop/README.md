@@ -80,14 +80,18 @@ Retour PO sur la v1 (vue brute, faux positifs) → v2 livrée le soir même :
   → badge cohérent partout + **rescue** (un rejeté/à-reviewer qui est une
   autre pièce de la cohorte se réassigne en 1 clic). Les compteurs « N intrus ? »
   (scan + en-têtes de classe) ne comptent que les intrus **au train**.
-- ✅ **Lisibilité (retour PO)** : vignettes 64 → **112 px** + **zoom flottant
-  au survol** (brique `CoinHoverPreview` de la review) ; **filtres par état**
-  avec compteurs (⚠ intrus · au train · face ? · reverse · à reviewer · exclus
-  · rejetés), défaut « problèmes d'abord » ; l'overlay unique « exclu »
-  (mensonger : 52/108 étaient juste en attente de review) devient **« à
-  reviewer » / « exclu » / « rejeté »** ; badge ⚠ tooltippé avec la RAISON
-  (réclamé par X à +marge / outlier) ; modale de réassignation élargie avec le
-  **crop en 256 px sticky** + bouton « Recadrer plutôt ».
+- ✅ **Lisibilité (retour PO, 2 itérations)** : vignettes 64 → **112 px** +
+  **zoom flottant au survol** (brique `CoinHoverPreview`, placement `side` —
+  la carte se pose À CÔTÉ de la vignette, jamais par-dessus les boutons
+  recadrer/réassigner) ; dans chaque classe, **sous-listes pliables par état**
+  (au train · ⚠ intrus (dépliée = liste d'actions) · face ? · reverse · à
+  reviewer · exclus · rejetés — catégories disjointes, l'intrus prime), qui
+  remplacent la v1 à chips-filtres ; l'overlay unique « exclu » (mensonger :
+  52/108 étaient juste en attente de review) devient **« à reviewer » /
+  « exclu » / « rejeté »** ; badge ⚠ tooltippé avec la RAISON (réclamé par X à
+  +marge / outlier) ; modale de réassignation élargie avec le **crop en 256 px
+  sticky** + bouton « Recadrer plutôt ». **Validé PO — sujet clos** (reste le
+  flux humain : réassigner les intrus → re-bake → bench → lire les Δ).
 
 ## État (2026-07-02, soir) — P1→P6 LIVRÉS
 
