@@ -126,6 +126,11 @@ def _ebay_training_sources(eurio_id: str, store: Store) -> list[Path]:
     # Filtre sur ``a.eurio_id`` (le label TRANCHÉ en review), pas
     # ``si.target_eurio_id`` (la cible de découverte) : si l'admin a réattribué
     # le crop à un autre coin, c'est ce nouveau label qui fait foi pour le train.
+    # Gate face (P3 improvement-loop) : le REVERS confirmé n'entre jamais au
+    # train (côté carte commun à toutes les 2€ → nuisible à une classe d'avers).
+    # NULL / 'unknown' passent — présumés avers ; la passe de face du scan
+    # (training/training_set_scan.py, P2) les résout en amont. Aligné sur
+    # l'export legacy (scripts/build_arcface_dataset.py).
     rows = conn.execute(
         """
         SELECT a.storage_path
@@ -135,6 +140,7 @@ def _ebay_training_sources(eurio_id: str, store: Store) -> list[Path]:
            AND a.eurio_id = ?
            AND a.training_eligible = 1
            AND a.storage_status = 'present'
+           AND (a.face IS NULL OR a.face != 'reverse')
          ORDER BY a.id
         """,
         (eurio_id,),

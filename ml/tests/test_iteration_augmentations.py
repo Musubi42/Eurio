@@ -21,6 +21,7 @@ from training.foundation.enrichment import MIN_REAL, TRAINING_TARGET  # noqa: E4
 from store import Store  # noqa: E402
 from training.iteration_augmentations import (  # noqa: E402
     _canonical_ref_images,
+    _ebay_training_sources,
     _target_per_coin,
 )
 
@@ -68,6 +69,45 @@ def test_canonical_ref_images_filters_source_role_and_existence(tmp_path):
     assert _canonical_ref_images("c", store) == [present]
     # eurio_id inconnu → liste vide.
     assert _canonical_ref_images("does-not-exist", store) == []
+
+
+def test_ebay_training_sources_excludes_confirmed_reverse(tmp_path, monkeypatch):
+    """Gate bake P3 (improvement-loop) : un crop ``face='reverse'`` éligible
+    n'entre PAS au train ; NULL / 'unknown' / 'obverse' passent."""
+    import shared.storage.local_cache as lc
+
+    store = Store(tmp_path / "t.db")
+    conn = store._connection()  # noqa: SLF001
+    conn.execute("PRAGMA foreign_keys=OFF")  # pas de coins parent, test isolé
+    conn.execute(
+        "INSERT INTO source_images (id, source, source_ref) "
+        "VALUES ('si1', 'ebay', 'ref1')"
+    )
+    crops = [
+        ("a-obv", "obverse"),
+        ("a-null", None),
+        ("a-unk", "unknown"),
+        ("a-rev", "reverse"),  # seul exclu
+    ]
+    for idx, (aid, face) in enumerate(crops):
+        conn.execute(
+            "INSERT INTO image_assets (id, source_image_id, crop_index, "
+            "eurio_id, resolution_status, face, training_eligible, "
+            "storage_path) VALUES (?, 'si1', ?, 'c', 'manual', ?, 1, ?)",
+            (aid, idx, face, f"ebay/si1/{aid}.png"),
+        )
+    conn.commit()
+    # local_path read-through → fichiers locaux du test (pas de MinIO ici).
+    files = {}
+    for aid, _ in crops:
+        p = tmp_path / f"{aid}.png"
+        p.write_bytes(b"png")
+        files[f"ebay/si1/{aid}.png"] = p
+    monkeypatch.setattr(lc, "local_path", lambda bucket, key: files[key])
+
+    paths = _ebay_training_sources("c", store)
+    names = {p.stem for p in paths}
+    assert names == {"a-obv", "a-null", "a-unk"}
 
 
 if __name__ == "__main__":
