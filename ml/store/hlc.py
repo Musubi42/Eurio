@@ -53,9 +53,11 @@ def machine_id(conn: sqlite3.Connection) -> str:
     ).fetchone()
     if row is not None:
         return row[0] if not isinstance(row, sqlite3.Row) else row["value"]
-    generated = _sanitize_machine(
-        f"{socket.gethostname().split('.')[0]}-{uuid.uuid4().hex[:4]}"
-    )
+    # Hostname tronqué à 11 AVANT le suffixe aléatoire : la troncature globale
+    # à 16 ne doit jamais manger le suffixe (deux machines aux hostnames
+    # similaires — macbook-air vs macbook-pro — collisionneraient sinon).
+    host = _sanitize_machine(socket.gethostname().split(".")[0])[:11].rstrip("-")
+    generated = f"{host}-{uuid.uuid4().hex[:4]}"
     # INSERT-or-ignore + re-lecture : si deux threads génèrent en même temps,
     # le premier écrit gagne et tout le monde relit la même valeur.
     conn.execute(
