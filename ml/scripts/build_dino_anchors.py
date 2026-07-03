@@ -48,7 +48,7 @@ def _build_dispatcher(kind: str, store: Store, force: bool):
     builder = _BUILDERS.get(kind)
     if builder is None:
         raise ValueError(f"Unknown anchors kind: {kind!r}")
-    with store._writing() as conn:  # noqa: SLF001 — we only read here
+    with store._writing() as conn:  # noqa: SLF001 — 2eur_all écrit dino_class_references
         return builder(
             conn=conn,
             datasets_dir=DATASETS_DIR,

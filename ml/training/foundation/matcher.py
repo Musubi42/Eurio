@@ -25,15 +25,24 @@ class Match:
         return {"eurio_id": self.eurio_id, "sim": float(self.sim)}
 
 
-def top_k_match(
-    query_vec: np.ndarray,
-    bank: AnchorBank,
-    *,
-    top_k: int = 5,
-) -> list[Match]:
-    """Return the top-K nearest anchors for ``query_vec``, sorted desc by sim."""
-    if bank.count == 0:
-        return []
+def _best_sim_by_eurio(
+    sims: np.ndarray, eurio_ids: list[str], mask: np.ndarray | None = None,
+) -> dict[str, float]:
+    """Max-pool par eurio_id : depuis B, une banque multi-exemplaires a
+    plusieurs lignes par classe (canonique + crops FPS). La similarité d'une
+    CLASSE = la meilleure de ses lignes. Dédup indispensable côté suggestions
+    (sinon le top-K renverrait 3 exemplaires de la même pièce)."""
+    best: dict[str, float] = {}
+    for i, eid in enumerate(eurio_ids):
+        if mask is not None and not mask[i]:
+            continue
+        s = float(sims[i])
+        if eid not in best or s > best[eid]:
+            best[eid] = s
+    return best
+
+
+def _validate_query(query_vec: np.ndarray, bank: AnchorBank) -> None:
     if query_vec.ndim != 1:
         raise ValueError(
             f"query_vec must be 1-D (D,), got shape={query_vec.shape}"
@@ -43,15 +52,24 @@ def top_k_match(
             f"query_vec dim={query_vec.shape[0]} ≠ bank dim={bank.dim}"
         )
 
+
+def top_k_match(
+    query_vec: np.ndarray,
+    bank: AnchorBank,
+    *,
+    top_k: int = 5,
+) -> list[Match]:
+    """Return the top-K nearest DISTINCT classes for ``query_vec``, desc by sim.
+
+    Max-pool par eurio_id (une classe multi-exemplaires ne compte qu'une fois,
+    à sa meilleure ligne)."""
+    if bank.count == 0:
+        return []
+    _validate_query(query_vec, bank)
     sims = bank.matrix @ query_vec  # (N,)
-    k = min(top_k, bank.count)
-    # argpartition for the k largest, then sort just those k
-    idx_part = np.argpartition(-sims, k - 1)[:k] if k > 1 else np.array([int(np.argmax(sims))])
-    idx_sorted = idx_part[np.argsort(-sims[idx_part])]
-    return [
-        Match(eurio_id=bank.eurio_ids[int(i)], sim=float(sims[int(i)]))
-        for i in idx_sorted
-    ]
+    best = _best_sim_by_eurio(sims, bank.eurio_ids)
+    ranked = sorted(best.items(), key=lambda kv: kv[1], reverse=True)[:top_k]
+    return [Match(eurio_id=eid, sim=s) for eid, s in ranked]
 
 
 def top_k_match_country(
@@ -73,14 +91,7 @@ def top_k_match_country(
     """
     if bank.count == 0:
         return []
-    if query_vec.ndim != 1:
-        raise ValueError(
-            f"query_vec must be 1-D (D,), got shape={query_vec.shape}"
-        )
-    if query_vec.shape[0] != bank.dim:
-        raise ValueError(
-            f"query_vec dim={query_vec.shape[0]} ≠ bank dim={bank.dim}"
-        )
+    _validate_query(query_vec, bank)
     if not target_country:
         return []
 
@@ -89,19 +100,13 @@ def top_k_match_country(
         [eid[:2].lower() == target for eid in bank.eurio_ids],
         dtype=bool,
     )
-    n_match = int(mask.sum())
-    if n_match == 0:
+    if not mask.any():
         return []
 
     sims = bank.matrix @ query_vec
-    masked = np.where(mask, sims, -np.inf)
-    k = min(top_k, n_match)
-    idx_part = np.argpartition(-masked, k - 1)[:k] if k > 1 else np.array([int(np.argmax(masked))])
-    idx_sorted = idx_part[np.argsort(-masked[idx_part])]
-    return [
-        Match(eurio_id=bank.eurio_ids[int(i)], sim=float(sims[int(i)]))
-        for i in idx_sorted
-    ]
+    best = _best_sim_by_eurio(sims, bank.eurio_ids, mask=mask)  # classes distinctes
+    ranked = sorted(best.items(), key=lambda kv: kv[1], reverse=True)[:top_k]
+    return [Match(eurio_id=eid, sim=s) for eid, s in ranked]
 
 
 def spread(matches: list[Match]) -> float:

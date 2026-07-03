@@ -495,6 +495,43 @@ CREATE INDEX IF NOT EXISTS idx_dino_pred_top1
 -- la colonne soit ajoutée via _ensure_column (sinon executescript()
 -- pète sur les bases pré-existantes qui n'ont pas encore la colonne).
 
+-- ─── Références Dino multi-exemplaires (improvement-loop B) ────────────────
+-- La banque de suggestions `2eur_all` n'est plus 1 ancre canonique/classe : par
+-- classe on garde le canonique + jusqu'à K vrais crops validés, choisis pour la
+-- DIVERSITÉ d'apparence (farthest-point sampling dans l'espace DINO, plancher de
+-- validité) — un crop sombre/tilté/usé matche mieux les photos réelles qu'un
+-- énième scan parfait. Cette table trace la sélection (affichage coin-detail +
+-- audit + override humain).
+--   method : 'canonical'      = l'avers Numista (toujours présent, filet)
+--            'fps'            = choisi auto par farthest-point sampling
+--            'manual_pin'     = épinglé par un humain (toujours dans la banque)
+--            'manual_exclude' = banni par un humain (jamais dans la banque)
+-- Les rows 'canonical'/'fps' sont RÉÉCRITES à chaque build d'ancres ; les rows
+-- 'manual_*' PERSISTENT (le builder les honore : pin forcé, exclude retiré).
+CREATE TABLE IF NOT EXISTS dino_class_references (
+  anchors_kind  TEXT NOT NULL DEFAULT '2eur_all',
+  class_id      TEXT NOT NULL,            -- design_group ou eurio_id (maille classe)
+  eurio_id      TEXT NOT NULL,            -- membre de la classe dont vient le crop
+  asset_id      TEXT REFERENCES image_assets(id) ON DELETE CASCADE,  -- NULL = canonique
+  method        TEXT NOT NULL
+                CHECK (method IN ('canonical','fps','manual_pin','manual_exclude')),
+  rank          INTEGER,                  -- ordre de sélection (0 = canonique)
+  selected_sim  REAL,                     -- sim au set déjà retenu au moment du pick (FPS)
+  built_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  -- NB SQLite : une colonne NULLABLE dans une PK n'est PAS dédupliquée (NULL ≠
+  -- NULL) → la PK ci-dessous ne garantit l'unicité que pour les rows à asset_id
+  -- non-NULL. L'unicité du canonique (asset_id NULL, 1 par classe) est imposée
+  -- par l'index partiel `idx_dino_class_refs_canonical` plus bas.
+  PRIMARY KEY (anchors_kind, class_id, eurio_id, asset_id)
+);
+CREATE INDEX IF NOT EXISTS idx_dino_class_refs_asset
+  ON dino_class_references(asset_id) WHERE asset_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_dino_class_refs_class
+  ON dino_class_references(anchors_kind, class_id);
+-- Un seul canonique par classe (la PK ne le garantit pas, asset_id étant NULL).
+CREATE UNIQUE INDEX IF NOT EXISTS idx_dino_class_refs_canonical
+  ON dino_class_references(anchors_kind, class_id) WHERE asset_id IS NULL;
+
 -- ─── Listing text signals (chunk 5 auto-validation) ───────────────────────
 -- Sortie de l'extracteur ml/sources/text_signals/ pour chaque source_image.
 -- 1 row par source_image_id. Pas de comparaison vs target ici (chunk 6) :
@@ -1830,6 +1867,21 @@ CREATE TABLE IF NOT EXISTS cohort_training_scan_results (
   intruder_reason TEXT,                             -- 'margin' | 'outlier' | 'margin+outlier'
   face_verdict    TEXT,                             -- verdict P2 (obverse/reverse), NULL si non calculé
   face_written    INTEGER NOT NULL DEFAULT 0,       -- 1 si image_assets.face a été écrit
+  -- Phase 2 funnel — suggestion typée dérivée du scan (reject/reassign/exclude),
+  -- pour la worklist « À vérifier ». reject = denom≠2€ / hors sujet (sim absolue
+  -- basse) / revers ; reassign = une autre classe cohorte le réclame (margin) ;
+  -- exclude = outlier intra-classe + qualité basse.
+  denom_score       REAL,                           -- probe 2€-ness (denom_probe), NULL si probe absente
+  denom_verdict     TEXT CHECK (denom_verdict IS NULL OR denom_verdict IN ('2eur','not_2eur')),
+  abs_max_sim       REAL,                           -- max sim à TOUTE la banque (hors sujet si < plancher)
+  suggestion        TEXT CHECK (suggestion IS NULL OR suggestion IN ('reject','reassign','exclude')),
+  suggestion_reason TEXT,                           -- 'denom' | 'off_topic' | 'reverse' | 'margin' | 'outlier+quality'
+  suggestion_applied    INTEGER NOT NULL DEFAULT 0, -- 1 = geste appliqué par l'humain (bulk/one-shot)
+  suggestion_applied_at TEXT,
+  -- Le PO a tranché « faux positif, garde-le au train » : override humain du
+  -- verdict intrus. training-crops lit `is_intruder AND NOT dismissed`, donc le
+  -- badge disparaît sans réécrire is_intruder (audit du scan préservé).
+  dismissed       INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (scan_id, asset_id)
 );
 CREATE INDEX IF NOT EXISTS idx_training_scan_results_scan

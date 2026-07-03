@@ -279,6 +279,15 @@ onMounted(() => void load())
             <Crop class="h-3 w-3" style="color: #fff;" />
           </span>
 
+          <!-- Réf Dino (B) : ce crop sert d'exemplaire à la banque de
+               suggestions — épinglé (vert) ou choisi auto (indigo). -->
+          <span
+            v-if="a.dino_reference === 'fps' || a.dino_reference === 'manual_pin'"
+            class="absolute bottom-1 left-1 flex h-4 items-center gap-0.5 rounded px-1 text-[8px] font-semibold text-white"
+            :style="{ background: a.dino_reference === 'manual_pin' ? 'var(--success)' : 'var(--indigo-700)' }"
+            :title="a.dino_reference === 'manual_pin' ? 'Référence Dino épinglée' : 'Référence Dino (choisie auto)'"
+          >★ réf</span>
+
           <!-- Status label (bottom) — needs_review / rejected uniquement -->
           <span
             v-if="statusVisual(a.resolution_status).label"

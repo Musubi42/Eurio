@@ -37,6 +37,12 @@ class ScanResultRow:
     intruder_reason: str | None = None
     face_verdict: str | None = None
     face_written: bool = False
+    # Phase 2 funnel — signaux + suggestion typée pour la worklist « À vérifier ».
+    denom_score: float | None = None          # probe 2€-ness (NULL si probe absente)
+    denom_verdict: str | None = None          # '2eur' | 'not_2eur' | NULL
+    abs_max_sim: float | None = None          # max sim à TOUTE la banque
+    suggestion: str | None = None             # 'reject' | 'reassign' | 'exclude' | NULL
+    suggestion_reason: str | None = None      # 'denom'|'off_topic'|'reverse'|'margin'|'outlier+quality'
 
 
 def training_scan_start(
@@ -115,14 +121,17 @@ def training_scan_upsert_results(
         "INSERT OR REPLACE INTO cohort_training_scan_results "
         "(scan_id, asset_id, assigned_class, assigned_sim, anchor_sim, "
         " consensus_sim, top1_class, top1_eurio_id, top1_sim, margin, "
-        " is_intruder, intruder_reason, face_verdict, face_written) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        " is_intruder, intruder_reason, face_verdict, face_written, "
+        " denom_score, denom_verdict, abs_max_sim, suggestion, suggestion_reason) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         [
             (scan_id, r.asset_id, r.assigned_class, r.assigned_sim,
              r.anchor_sim, r.consensus_sim,
              r.top1_class, r.top1_eurio_id, r.top1_sim, r.margin,
              1 if r.is_intruder else 0, r.intruder_reason, r.face_verdict,
-             1 if r.face_written else 0)
+             1 if r.face_written else 0,
+             r.denom_score, r.denom_verdict, r.abs_max_sim,
+             r.suggestion, r.suggestion_reason)
             for r in rows
         ],
     )
@@ -142,6 +151,51 @@ def latest_training_scan(
         f"ORDER BY started_at DESC, id DESC LIMIT 1",
         params,
     ).fetchone()
+
+
+def training_scan_dismiss_intruder(
+    conn: sqlite3.Connection, asset_id: str, *, cohort_id: str | None = None,
+) -> int:
+    """Override humain du verdict intrus : marque ``dismissed=1`` la row de cet
+    asset. N'écrit PAS ``is_intruder`` → l'audit du scan reste intact ;
+    ``training-crops`` filtre sur ``is_intruder AND NOT dismissed``. Un re-scan
+    (REPLACE) remet ``dismissed=0`` et ré-évalue à neuf.
+
+    ``cohort_id`` fourni (dismiss « faux positif » depuis le panneau) : cible le
+    **dernier scan done de CETTE cohorte** — exactement celui que training-crops
+    affiche (``latest_training_scan(cohort_id, done)``). Sans lui (réassignation :
+    le crop a changé de classe, verdict périmé partout) : cible le dernier scan
+    done qui contient l'asset, toutes cohortes confondues.
+    Retourne le nombre de rows touchées (0 si l'asset n'a aucun verdict)."""
+    if cohort_id is not None:
+        cur = conn.execute(
+            """
+            UPDATE cohort_training_scan_results SET dismissed=1
+             WHERE asset_id=? AND scan_id = (
+               SELECT id FROM cohort_training_scans
+                WHERE cohort_id=? AND status='done'
+                ORDER BY started_at DESC, id DESC
+                LIMIT 1
+             )
+            """,
+            (asset_id, cohort_id),
+        )
+    else:
+        cur = conn.execute(
+            """
+            UPDATE cohort_training_scan_results SET dismissed=1
+             WHERE asset_id=? AND scan_id = (
+               SELECT r.scan_id
+                 FROM cohort_training_scan_results r
+                 JOIN cohort_training_scans s ON s.id = r.scan_id
+                WHERE r.asset_id=? AND s.status='done'
+                ORDER BY s.started_at DESC, s.id DESC
+                LIMIT 1
+             )
+            """,
+            (asset_id, asset_id),
+        )
+    return cur.rowcount
 
 
 def training_scan_results(

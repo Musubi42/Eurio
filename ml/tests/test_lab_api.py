@@ -793,6 +793,136 @@ def test_cohort_training_crops_merges_scan_verdicts_and_health(client):
     assert cls_a["confused_with"] == [{"class_id": "grp-b", "n": 2}]
 
 
+def _seed_intruder_scan(client):
+    """Cohorte 'ci' : a1 flaggé intrus au train, a2 propre. Retourne (a1, a2)."""
+    from store import ScanResultRow, training_scan_start, training_scan_finish
+    from store import training_scan_upsert_results
+
+    c, store, _ = client
+    with store._writing() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO design_groups (id, designation) VALUES "
+            "(?, ?), (?, ?)", ("grp-a", "A", "grp-b", "B"),
+        )
+        _seed_coin(conn, "xx-2016-a", 930001, "grp-a")
+        _seed_coin(conn, "xx-2016-b", 930002, "grp-b")
+        a1 = _seed_crop(conn, "xx-2016-a", face="obverse", eligible=True,
+                        status="manual", quality=0.9)
+        a2 = _seed_crop(conn, "xx-2016-a", face="obverse", eligible=True,
+                        status="manual", quality=0.95)
+    store.create_cohort(ExperimentCohortRow(
+        id="ci", name="cohort-intruder", eurio_ids=["xx-2016-a", "xx-2016-b"],
+        status="frozen",
+    ))
+    with store._writing() as conn:
+        scan_id = training_scan_start(
+            conn, cohort_id="ci", anchors_kind="2eur_all",
+            encoder_version="dinov2-vitl14", intruder_margin=0.05, n_total=2,
+        )
+        training_scan_upsert_results(conn, scan_id, [
+            ScanResultRow(
+                asset_id=a1, assigned_class="grp-a", assigned_sim=0.61,
+                top1_class="grp-b", top1_eurio_id="xx-2016-b", top1_sim=0.72,
+                margin=0.11, is_intruder=True, intruder_reason="margin",
+            ),
+            ScanResultRow(
+                asset_id=a2, assigned_class="grp-a", assigned_sim=0.80,
+                top1_class="grp-a", top1_eurio_id="xx-2016-a", top1_sim=0.80,
+                margin=0.0, is_intruder=False,
+            ),
+        ])
+        training_scan_finish(conn, scan_id, status="done", n_done=2,
+                             n_intruders=1, n_faces_written=0, n_skipped=0)
+    return a1, a2
+
+
+def test_intruder_dismiss_clears_badge_keeps_eligible(client):
+    """« Faux positif — garde-le au train » : dismiss retire le badge et le
+    compteur d'intrus SANS toucher training_eligible ni is_intruder (audit)."""
+    c, store, _ = client
+    a1, _ = _seed_intruder_scan(client)
+
+    before = c.get("/lab/cohorts/ci/training-crops").json()
+    cls = next(cl for cl in before["classes"] if cl["class_id"] == "grp-a")
+    assert cls["n_intruders"] == 1
+    assert cls["crops"][0]["asset_id"] == a1
+    assert cls["crops"][0]["intruder_suspect"] is True
+
+    resp = c.post(f"/lab/assets/{a1}/intruder-dismiss?cohort_id=ci")
+    assert resp.status_code == 200
+    assert resp.json() == {"asset_id": a1, "dismissed": True}
+
+    after = c.get("/lab/cohorts/ci/training-crops").json()
+    cls = next(cl for cl in after["classes"] if cl["class_id"] == "grp-a")
+    assert cls["n_intruders"] == 0
+    a1_crop = next(cr for cr in cls["crops"] if cr["asset_id"] == a1)
+    assert a1_crop["intruder_suspect"] is False
+    # Toujours au train : le dismiss ne l'exclut pas.
+    assert a1_crop["training_eligible"] is True
+    # L'audit du scan est intact (is_intruder non réécrit).
+    with store._writing() as conn:
+        row = conn.execute(
+            "SELECT is_intruder, dismissed FROM cohort_training_scan_results "
+            "WHERE asset_id=?", (a1,),
+        ).fetchone()
+    assert row["is_intruder"] == 1
+    assert row["dismissed"] == 1
+
+
+def test_training_crops_reconciles_unrouted_needs_review(client):
+    """C · réconciliation C4↔C5 : un needs_review sans row review_queue ouverte
+    est compté `n_review_unrouted` (routed=False) ; un needs_review avec une row
+    ouverte est routed=True et n'est PAS compté (il atteindra l'écran de review)."""
+    import uuid
+    c, store, _ = client
+    with store._writing() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO design_groups (id, designation) VALUES (?, ?)",
+            ("grp-r", "R"),
+        )
+        _seed_coin(conn, "xx-2016-a", 930010, "grp-r")
+        routed = _seed_crop(conn, "xx-2016-a", face="obverse", eligible=False,
+                            status="needs_review", quality=0.5)
+        _unrouted = _seed_crop(conn, "xx-2016-a", face="obverse", eligible=False,
+                               status="needs_review", quality=0.5)
+        # Seule la 1ʳᵉ est enfilée (row review_queue ouverte).
+        conn.execute(
+            "INSERT INTO review_queue (id, image_asset_id, status, lane) "
+            "VALUES (?, ?, 'open', 'manual')", (uuid.uuid4().hex, routed),
+        )
+    store.create_cohort(ExperimentCohortRow(
+        id="cr", name="cohort-reconcile", eurio_ids=["xx-2016-a"],
+        status="frozen",
+    ))
+    body = c.get("/lab/cohorts/cr/training-crops").json()
+    cls = next(cl for cl in body["classes"] if cl["class_id"] == "grp-r")
+    assert cls["n_review_unrouted"] == 1
+    by_id = {cr["asset_id"]: cr for cr in cls["crops"]}
+    assert by_id[routed]["routed"] is True
+    assert by_id[_unrouted]["routed"] is False
+
+
+def test_intruder_dismiss_404_on_unknown_asset(client):
+    c, _, _ = client
+    assert c.post("/lab/assets/nope/intruder-dismiss").status_code == 404
+
+
+def test_reassign_clears_stale_intruder_verdict(client):
+    """Réassigner (même vers la même classe = override du choix Dino) périme le
+    verdict → le badge intrus disparaît au read suivant."""
+    c, _, _ = client
+    a1, _ = _seed_intruder_scan(client)
+    # Réassigner a1 vers grp-b (la classe que Dino préférait).
+    resp = c.post(f"/lab/assets/{a1}/reassign", json={"eurio_id": "xx-2016-b"})
+    assert resp.status_code == 200
+    body = c.get("/lab/cohorts/ci/training-crops").json()
+    # a1 a quitté grp-a ; où qu'il soit, plus de badge intrus (verdict périmé).
+    for cl in body["classes"]:
+        for cr in cl["crops"]:
+            if cr["asset_id"] == a1:
+                assert cr["intruder_suspect"] is False
+
+
 def test_training_scan_status_idle_then_running(client):
     from store import training_scan_start
 
@@ -843,3 +973,119 @@ def test_reassign_asset_404_on_unknown_target_coin(client):
                          status="manual", quality=0.9)
     resp = c.post(f"/lab/assets/{aid}/reassign", json={"eurio_id": "does-not-exist"})
     assert resp.status_code == 404
+
+
+def test_reopen_review_demotes_train_crop_and_requeues(client):
+    """« Repasser en reviewer » : un crop au train (manual/eligible) redevient
+    needs_review + training_eligible=0 ET obtient une row review_queue OUVERTE
+    (réapparaît dans l'écran Review)."""
+    c, store, _ = client
+    with store._writing() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO design_groups (id, designation) VALUES (?, ?)",
+            ("grp-a", "A"),
+        )
+        _seed_coin(conn, "xx-2016-a", 930001, "grp-a")
+        aid = _seed_crop(conn, "xx-2016-a", face="obverse", eligible=True,
+                         status="manual", quality=0.9)
+
+    resp = c.post(f"/lab/assets/{aid}/reopen-review")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["asset_id"] == aid
+    assert body["review_id"]
+
+    with store._writing() as conn:
+        row = conn.execute(
+            "SELECT resolution_status, training_eligible, resolved_at "
+            "FROM image_assets WHERE id = ?", (aid,),
+        ).fetchone()
+        assert row["resolution_status"] == "needs_review"
+        assert row["training_eligible"] == 0
+        assert row["resolved_at"] is None
+        rq = conn.execute(
+            "SELECT status FROM review_queue WHERE image_asset_id = ?", (aid,),
+        ).fetchone()
+        assert rq is not None
+        assert rq["status"] == "open"
+
+
+def test_reopen_review_upserts_existing_done_row(client):
+    """Un crop déjà tranché porte une row review_queue 'done' → l'UPSERT la
+    ré-ouvre au lieu de violer UNIQUE(image_asset_id)."""
+    c, store, _ = client
+    import uuid
+    with store._writing() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO design_groups (id, designation) VALUES (?, ?)",
+            ("grp-a", "A"),
+        )
+        _seed_coin(conn, "xx-2016-a", 930002, "grp-a")
+        aid = _seed_crop(conn, "xx-2016-a", face="obverse", eligible=True,
+                         status="manual", quality=0.9)
+        conn.execute(
+            "INSERT INTO review_queue (id, image_asset_id, status, priority, "
+            "enqueued_at, kind, lane, lane_source) VALUES "
+            "(?, ?, 'done', 100, '2026-01-01', 'single', 'manual', 'human')",
+            (uuid.uuid4().hex, aid),
+        )
+
+    resp = c.post(f"/lab/assets/{aid}/reopen-review")
+    assert resp.status_code == 200
+    with store._writing() as conn:
+        rows = conn.execute(
+            "SELECT status FROM review_queue WHERE image_asset_id = ?", (aid,),
+        ).fetchall()
+    assert len(rows) == 1              # UPSERT, pas une 2ᵉ ligne
+    assert rows[0]["status"] == "open"
+
+
+def test_reopen_review_404_on_unknown_asset(client):
+    c, *_ = client
+    assert c.post("/lab/assets/nope/reopen-review").status_code == 404
+
+
+def test_accept_training_promotes_needs_review_crop(client):
+    """« Accepter au train » un crop needs_review : passe manual + eligible et
+    ferme sa file de review → il sort de « À reviewer » vers « Au train »."""
+    c, store, _ = client
+    import uuid
+    with store._writing() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO design_groups (id, designation) VALUES (?, ?)",
+            ("grp-a", "A"),
+        )
+        _seed_coin(conn, "xx-2016-a", 940001, "grp-a")
+        # Crop encore à reviewer (needs_review), non éligible.
+        aid = _seed_crop(conn, "xx-2016-a", face="obverse", eligible=False,
+                         status="needs_review", quality=0.8)
+        conn.execute(
+            "INSERT INTO review_queue (id, image_asset_id, status, priority, "
+            "enqueued_at, kind, lane, lane_source) VALUES "
+            "(?, ?, 'open', 100, '2026-01-01', 'single', 'manual', 'human')",
+            (uuid.uuid4().hex, aid),
+        )
+
+    resp = c.post(f"/lab/assets/{aid}/accept-training")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["resolution_status"] == "manual"
+    assert body["training_eligible"] is True
+
+    with store._writing() as conn:
+        row = conn.execute(
+            "SELECT resolution_status, training_eligible, resolved_at "
+            "FROM image_assets WHERE id = ?", (aid,),
+        ).fetchone()
+        assert row["resolution_status"] == "manual"
+        assert row["training_eligible"] == 1
+        assert row["resolved_at"] is not None
+        rq = conn.execute(
+            "SELECT status FROM review_queue WHERE image_asset_id = ?", (aid,),
+        ).fetchone()
+        assert rq["status"] == "done"
+
+
+def test_accept_training_404_on_unknown_asset(client):
+    c, *_ = client
+    assert c.post("/lab/assets/nope/accept-training").status_code == 404

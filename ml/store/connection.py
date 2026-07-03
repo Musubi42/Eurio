@@ -120,8 +120,11 @@ class StoreBase:
                     conn, table="cohort_jobs", column="pid", decl="INTEGER"
                 )
             # Scan v2 du Jeu d'entraînement : composantes d'audit du verdict
-            # (ancre canonique vs consensus intra-classe) sur les DB qui ont
-            # la table v1. Pas d'index dessus → ALTER simple, idempotent.
+            # (ancre canonique vs consensus intra-classe) + Phase 2 funnel
+            # (denom-probe, sim absolue, suggestion typée) sur les DB qui ont
+            # la table v1. Pas d'index dessus → ALTER simple, idempotent. Le
+            # CHECK des valeurs vit dans schema.sql (fresh) ; l'ALTER pose la
+            # colonne nue — le code garantit les valeurs.
             if conn.execute(
                 "SELECT 1 FROM sqlite_master WHERE type='table' "
                 "AND name='cohort_training_scan_results'"
@@ -130,6 +133,14 @@ class StoreBase:
                     ("anchor_sim", "REAL"),
                     ("consensus_sim", "REAL"),
                     ("intruder_reason", "TEXT"),
+                    ("dismissed", "INTEGER NOT NULL DEFAULT 0"),
+                    ("denom_score", "REAL"),
+                    ("denom_verdict", "TEXT"),
+                    ("abs_max_sim", "REAL"),
+                    ("suggestion", "TEXT"),
+                    ("suggestion_reason", "TEXT"),
+                    ("suggestion_applied", "INTEGER NOT NULL DEFAULT 0"),
+                    ("suggestion_applied_at", "TEXT"),
                 ):
                     self._ensure_column(
                         conn, table="cohort_training_scan_results",

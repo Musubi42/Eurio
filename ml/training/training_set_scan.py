@@ -56,6 +56,14 @@ logger = logging.getLogger(__name__)
 # inter-classes. Surchargeable par scan (endpoint ?margin= / CLI --margin).
 DEFAULT_INTRUDER_MARGIN = 0.05
 
+# Plancher de similarité absolue (Phase 2 funnel) : un crop dont la MEILLEURE
+# sim à TOUTE la banque 2€ reste sous ce seuil ne ressemble à AUCUNE 2€ connue
+# → « hors sujet » (cent/1€/pas une pièce que la denom-probe raterait ; le
+# closed-set seul ne le voit pas car il rattache toujours à la moins mauvaise
+# classe). Départ = plancher d'exemplaires FPS (anchors.DEFAULT_EXEMPLAR_FLOOR_SIM
+# = 0.45) — À RE-BENCHER sur mix-zone-17 avant d'y accorder trop de confiance.
+ABSOLUTE_SIM_FLOOR = 0.45
+
 # Contributeurs minimum au centroïde de consensus (après leave-one-out).
 # En-dessous, la classe n'a pas assez de crops validés pour définir son
 # « allure réelle » → on retombe sur l'ancre canonique seule. Garde-fou :
@@ -109,6 +117,12 @@ class CropForVerdict:
     effective_face: str | None
     face_verdict: str | None = None
     face_written: bool = False
+    # Phase 2 funnel — signaux non-Dino calculés en passe 1, pour la suggestion
+    # typée (denom-probe + qualité). `quality_bad` : bonne pièce mais image
+    # inutilisable (undercrop/tilt) → candidate « exclure ».
+    denom_score: float | None = None
+    denom_verdict: str | None = None
+    quality_bad: bool = False
 
 
 def compute_closed_set_verdicts(
@@ -119,6 +133,7 @@ def compute_closed_set_verdicts(
     bank_matrix: np.ndarray,
     intruder_margin: float,
     min_consensus: int = MIN_CONSENSUS_CROPS,
+    absolute_sim_floor: float = ABSOLUTE_SIM_FLOOR,
 ) -> list[ScanResultRow]:
     """Cœur P1, pur numpy (testable offline) — verdict intrus par crop.
 
@@ -239,6 +254,33 @@ def compute_closed_set_verdicts(
             else "outlier" if by_outlier
             else None
         )
+
+        # ── Suggestion typée (Phase 2 funnel) ────────────────────────────
+        # Priorité reject > reassign > exclude. `abs_max_sim` = meilleure sim à
+        # TOUTE la banque (pas seulement la classe assignée) : un crop loin de
+        # tout = hors sujet. denom/reverse priment (ce n'est pas une 2€ de cette
+        # classe) ; sinon margin = une autre classe la réclame ; sinon un
+        # outlier de mauvaise qualité = sa pièce, déformée.
+        abs_max_sim = (
+            float(anchor_sims[i].max()) if anchor_sims.shape[1] else None
+        )
+        denom_reject = c.denom_verdict == "not_2eur"
+        off_topic = abs_max_sim is not None and abs_max_sim < absolute_sim_floor
+        reverse_reject = c.effective_face == "reverse"
+        if denom_reject or off_topic or reverse_reject:
+            suggestion = "reject"
+            suggestion_reason = (
+                "denom" if denom_reject
+                else "off_topic" if off_topic
+                else "reverse"
+            )
+        elif by_margin:
+            suggestion, suggestion_reason = "reassign", "margin"
+        elif by_outlier and c.quality_bad:
+            suggestion, suggestion_reason = "exclude", "outlier+quality"
+        else:
+            suggestion = suggestion_reason = None
+
         out.append(ScanResultRow(
             asset_id=c.asset_id,
             assigned_class=c.assigned_class,
@@ -253,6 +295,11 @@ def compute_closed_set_verdicts(
             intruder_reason=reason,
             face_verdict=c.face_verdict,
             face_written=c.face_written,
+            denom_score=c.denom_score,
+            denom_verdict=c.denom_verdict,
+            abs_max_sim=abs_max_sim,
+            suggestion=suggestion,
+            suggestion_reason=suggestion_reason,
         ))
     return out
 
@@ -271,7 +318,8 @@ def _scope_sql_and_params(members: list[str]) -> tuple[str, list]:
     member_ph = ",".join("?" for _ in members)
     status_ph = ",".join("?" for _ in TRIAGE_STATUSES)
     sql = f"""
-        SELECT a.id, a.eurio_id, a.face, a.training_eligible, a.storage_path
+        SELECT a.id, a.eurio_id, a.face, a.training_eligible, a.storage_path,
+               a.quality_score, a.quality_reason, a.tilt_deg, a.tilt_trustworthy
           FROM image_assets a
           JOIN source_images s ON s.id = a.source_image_id
          WHERE s.source = 'ebay'
@@ -313,6 +361,8 @@ def run_training_set_scan(
     """
     # Briques Dino partagées avec la review/le backfill — mêmes banques, mêmes
     # singletons, même verdict de face (τ benché C7).
+    import cv2
+
     from shared.storage.local_cache import local_path
     from sources._base.steps.auto_validate import (
         _decide_face,
@@ -321,6 +371,14 @@ def run_training_set_scan(
         _get_reverse_bank,
     )
     from training.foundation import SUGGESTIONS_ANCHORS_KIND, encode_image
+    # Phase 2 funnel : denom-probe (2€ vs junk) + seuils qualité de la review
+    # (source unique, pas de duplication) pour typer la suggestion.
+    from review.validation.experts import (
+        _CROP_BAD_REASONS,
+        _QUALITY_MIN,
+        _TILT_MAX_DEG,
+    )
+    from vision.denom_probe import decide_denom, denom_score
 
     conn = store._connection()  # noqa: SLF001
     cohort = store.get_cohort(cohort_id)
@@ -336,17 +394,20 @@ def run_training_set_scan(
     rev_bank = _get_reverse_bank()  # None → P2 sautée (dégrade proprement)
     encoder, device, transform = _get_encoder_singleton(bank.encoder_version)
 
-    # Index closed-set : classe → indices de ses ancres dans la banque.
+    # Index closed-set : classe → indices de ses ancres dans la banque. Depuis
+    # B, un eurio_id a PLUSIEURS lignes (canonique + exemplaires FPS) → on les
+    # collecte toutes ; compute_closed_set_verdicts max-poole sur les lignes.
     descriptors = _class_descriptors(store, cohort)
-    anchor_index = {eid: i for i, eid in enumerate(bank.eurio_ids)}
+    anchor_rows_by_eid: dict[str, list[int]] = {}
+    for i, eid in enumerate(bank.eurio_ids):
+        anchor_rows_by_eid.setdefault(eid, []).append(i)
     class_anchor_rows: dict[str, list[tuple[int, str]]] = {}
     class_of_member: dict[str, str] = {}
     for d in descriptors:
         rows = []
         for eid in d.eurio_ids:
             class_of_member[eid] = d.class_id
-            i = anchor_index.get(eid)
-            if i is not None:
+            for i in anchor_rows_by_eid.get(eid, ()):
                 rows.append((i, eid))
         class_anchor_rows[d.class_id] = rows
     classes_without_anchor = sorted(
@@ -403,6 +464,27 @@ def run_training_set_scan(
                     face_written = True
                     n_faces += 1
 
+        # Denom-probe (2€ vs junk) — réutilise l'embedding vitl14 déjà calculé ;
+        # RELIT l'image (cv2) pour le bimetal_score. Dégrade en None si la probe
+        # est absente (ou l'image illisible).
+        bgr = cv2.imread(str(crop_p))
+        d_score = denom_score(vec, bgr) if bgr is not None else None
+        d_verdict = decide_denom(d_score)
+
+        # Qualité « exclure » : MÊME priorité EXCLUSIVE que l'expert crop de la
+        # review (experts.crop_signal, source unique) — label humain, SINON
+        # undercrop seul (qui COURT-CIRCUITE le tilt), SINON tilt fiable. On
+        # reproduit l'ordre if/elif (pas un OR, qui divergerait de l'expert et
+        # flaguerait un crop bien cadré mais incliné). Signaux dormants → False.
+        if r["quality_reason"] in _CROP_BAD_REASONS:
+            quality_bad = True
+        elif r["quality_score"] is not None:
+            quality_bad = r["quality_score"] < _QUALITY_MIN
+        elif bool(r["tilt_trustworthy"]) and r["tilt_deg"] is not None:
+            quality_bad = r["tilt_deg"] >= _TILT_MAX_DEG
+        else:
+            quality_bad = False
+
         crops.append(CropForVerdict(
             asset_id=aid,
             assigned_class=class_of_member[r["eurio_id"]],
@@ -410,6 +492,9 @@ def run_training_set_scan(
             effective_face=r["face"] or face_verdict,
             face_verdict=face_verdict,
             face_written=face_written,
+            denom_score=d_score,
+            denom_verdict=d_verdict,
+            quality_bad=quality_bad,
         ))
         vec_list.append(vec)
         n_done += 1

@@ -56,6 +56,7 @@ import { ML_API } from '@/shared/api/ml-api'
 import { HAS_LOCAL_ML_API } from '@/shared/config/deploy-target'
 import { coinDisplayName } from '@/shared/utils/coin-display'
 import EnrichmentGallery from '../components/EnrichmentGallery.vue'
+import DinoReferencesSection from '../components/DinoReferencesSection.vue'
 import VariantBadge from '../components/VariantBadge.vue'
 
 const route = useRoute()
@@ -996,6 +997,10 @@ const numistaTotalMintage = computed<number | null>(() => {
           :selected-url="selectedImage?.url ?? null"
           @select="onEnrichmentSelect"
         />
+
+        <!-- Références Dino (B) : ce qui sert au calcul (canonique + exemplaires
+             divers), avec épingler / bannir. -->
+        <DinoReferencesSection :eurio-id="coin.eurio_id" />
       </div>
 
       <!-- ═══ RIGHT : Metadata ═══ -->

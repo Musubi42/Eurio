@@ -95,6 +95,11 @@ class AnchorBank:
     anchors_kind: str
     built_at: str
     source_paths: list[str] = field(default_factory=list)
+    # improvement-loop B : provenance de chaque ligne. Une classe peut avoir
+    # PLUSIEURS lignes (canonique + exemplaires réels FPS) → même eurio_id
+    # répété, asset_id distinct. ``None`` = ligne canonique (avers Numista).
+    # Vide (banques mono-ancre commemo/standard) ⇒ toutes canoniques.
+    asset_ids: list[str | None] = field(default_factory=list)
 
     @property
     def count(self) -> int:
@@ -121,11 +126,15 @@ def save_anchors(bank: AnchorBank) -> Path:
             "dim": bank.dim,
         }
     )
+    # asset_ids parallèle aux eurio_ids ("" = ligne canonique). Aligné sur count
+    # (les vieilles banques mono-ancre passent []) pour un chargement homogène.
+    asset_ids = bank.asset_ids or [None] * bank.count
     np.savez(
         path,
         matrix=bank.matrix,
         eurio_ids=np.array(bank.eurio_ids, dtype=np.str_),
         source_paths=np.array(bank.source_paths, dtype=np.str_),
+        asset_ids=np.array([a or "" for a in asset_ids], dtype=np.str_),
         meta=np.array([meta], dtype=np.str_),
     )
     logger.info(
@@ -151,7 +160,84 @@ def load_anchors(kind: str) -> AnchorBank | None:
         source_paths=[str(x) for x in npz["source_paths"].tolist()]
         if "source_paths" in npz.files
         else [],
+        asset_ids=[(str(x) or None) for x in npz["asset_ids"].tolist()]
+        if "asset_ids" in npz.files
+        else [],
     )
+
+
+# ---------------------------------------------------------------------------
+# Sélection d'exemplaires par diversité (improvement-loop B)
+# ---------------------------------------------------------------------------
+
+# Plancher de validité : un exemplaire FPS doit rester au moins aussi proche
+# du centroïde de sa classe que ce cosinus. Empêche FPS d'aller chercher le
+# déchet extrême (crop mal cadré/mal étiqueté = « très nouveau » mais nuisible).
+# Diversité À L'INTÉRIEUR d'une boule de validité.
+DEFAULT_EXEMPLAR_FLOOR_SIM = 0.45
+# Nb max d'exemplaires réels FPS par classe (hors canonique + pins). Le coût de
+# calcul est négligeable (un produit matriciel) ; K est borné par la PRÉCISION
+# (un exemplaire douteux = faux attracteur), pas par la vitesse.
+DEFAULT_EXEMPLARS_PER_CLASS = 10
+
+
+def farthest_point_select(
+    vecs: np.ndarray,
+    *,
+    candidate_idx: list[int],
+    k: int,
+    seed_vecs: np.ndarray | None = None,
+    floor_sim: float = DEFAULT_EXEMPLAR_FLOOR_SIM,
+    centroid: np.ndarray | None = None,
+) -> list[tuple[int, float]]:
+    """Farthest-Point Sampling dans l'espace d'embedding (pur numpy, testable).
+
+    Choisit jusqu'à ``k`` indices parmi ``candidate_idx`` en maximisant la
+    diversité d'apparence : à chaque tour on prend le candidat dont la
+    similarité MAX à l'ensemble déjà retenu est la plus basse (le plus
+    « nouveau à l'œil de DINO »). ``seed_vecs`` = vecteurs déjà dans l'ensemble
+    (canonique + pins) ; s'il est vide, on amorce par le médoïde (candidat le
+    plus proche du centroïde = le plus représentatif).
+
+    Plancher de validité : seuls les candidats à cosinus ≥ ``floor_sim`` du
+    centroïde de classe sont éligibles — un scan parfait quasi-dupliqué du
+    canonique ne sera de toute façon jamais choisi (trop proche du set), et le
+    déchet trop lointain est écarté par le plancher.
+
+    ``vecs`` : (N, D) L2-normalisés. Retourne ``[(idx, sim_au_set)]`` du plus
+    divers au moins divers (``sim_au_set`` basse = très diversifiant)."""
+    if k <= 0 or not candidate_idx:
+        return []
+    if centroid is None:
+        c = vecs[candidate_idx].mean(axis=0)
+        norm = float(np.linalg.norm(c))
+        centroid = c / norm if norm > 0 else c
+    # Plancher de validité.
+    pool = [j for j in candidate_idx if float(vecs[j] @ centroid) >= floor_sim]
+    if not pool:
+        return []
+
+    selected: list[np.ndarray] = []
+    if seed_vecs is not None and len(seed_vecs):
+        selected = [row for row in np.asarray(seed_vecs)]
+    picked: list[tuple[int, float]] = []
+    if not selected:
+        # Amorce = médoïde (le plus proche du centroïde).
+        medoid = max(pool, key=lambda j: float(vecs[j] @ centroid))
+        picked.append((medoid, 1.0))
+        selected.append(vecs[medoid])
+        pool = [j for j in pool if j != medoid]
+
+    while len(picked) < k and pool:
+        set_mat = np.stack(selected)              # (S, D)
+        sims = vecs[pool] @ set_mat.T             # (P, S)
+        max_sim = sims.max(axis=1)                # (P,)
+        bi = int(np.argmin(max_sim))              # le plus lointain du set
+        j = pool[bi]
+        picked.append((j, float(max_sim[bi])))
+        selected.append(vecs[j])
+        pool.pop(bi)
+    return picked
 
 
 # ---------------------------------------------------------------------------
@@ -379,21 +465,98 @@ def build_anchors_2eur_standard(
     )
 
 
+# Nb max de vrais crops candidats à ENCODER par classe (le pool où FPS pioche).
+# Borne le coût d'encodage du build ; FPS garde les plus divers parmi eux. Pas
+# de tri par qualité (biaiserait vers les scans parfaits) — ordre stable par id.
+MAX_CANDIDATES_PER_CLASS = 40
+_VALIDATED_STATUSES = ("manual", "auto_name", "auto_phash")
+
+
+def _class_specs_2eur_all(
+    conn: sqlite3.Connection, datasets_dir: Path,
+) -> list[dict[str, Any]]:
+    """Classes de la banque de suggestions : canonique + membres.
+
+    ``[{class_id, canonical_path, members}]`` — ``class_id`` = eurio_id du
+    représentant (commémo : lui-même ; standard : rep du design group), qui est
+    aussi la clé sous laquelle TOUTES les lignes de la classe (canonique +
+    exemplaires) sont indexées dans la banque (cohérent avec les consumers).
+    ``members`` = eurio_ids dont les crops peuvent servir d'exemplaires (avers
+    partagé pour un groupe standard)."""
+    specs: list[dict[str, Any]] = []
+    for eid, path in _commemo_paths_with_eid(conn, datasets_dir):
+        specs.append({"class_id": eid, "canonical_path": path, "members": [eid]})
+    for members in _select_2eur_standard_groups(conn):
+        rep = members[0]["eurio_id"]
+        path: Path | None = None
+        for m in members:
+            if m["numista_id"] is not None:
+                path = _resolve_obverse_path(int(m["numista_id"]), datasets_dir)
+                if path is not None:
+                    break
+        if path is None:
+            continue
+        specs.append({
+            "class_id": rep, "canonical_path": path,
+            "members": [m["eurio_id"] for m in members],
+        })
+    return specs
+
+
+def _candidate_crops_for_class(
+    conn: sqlite3.Connection, members: list[str],
+) -> list[dict[str, Any]]:
+    """Crops éligibles comme exemplaires : avers validés, 2€, au train, présents.
+    ``[{asset_id, eurio_id, storage_path}]`` (borné, ordre stable par id)."""
+    if not members:
+        return []
+    member_ph = ",".join("?" for _ in members)
+    status_ph = ",".join("?" for _ in _VALIDATED_STATUSES)
+    rows = conn.execute(
+        f"""
+        SELECT id, eurio_id, storage_path
+          FROM image_assets
+         WHERE eurio_id IN ({member_ph})
+           AND face = 'obverse'
+           AND (denom IS NULL OR denom != 'not_2eur')
+           AND resolution_status IN ({status_ph})
+           AND training_eligible = 1
+           AND storage_status = 'present'
+         ORDER BY id
+         LIMIT ?
+        """,
+        (*members, *_VALIDATED_STATUSES, MAX_CANDIDATES_PER_CLASS),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
 def build_anchors_2eur_all(
     *,
     conn: sqlite3.Connection,
     datasets_dir: Path = DATASETS_DIR,
     encoder_version: str = SUGGESTIONS_ENCODER_VERSION,
     force_recompute: bool = False,
+    exemplars_per_class: int = DEFAULT_EXEMPLARS_PER_CLASS,
+    floor_sim: float = DEFAULT_EXEMPLAR_FLOOR_SIM,
+    write_references: bool = True,
 ) -> AnchorBank:
-    """Banque unifiée = commémo + standards (banque des SUGGESTIONS review).
+    """Banque de SUGGESTIONS = commémo + standards, MULTI-EXEMPLAIRES (B).
 
-    Encode from scratch — son encodeur (vitl14) diffère des sous-banques
-    consensus (vits14), un concat serait incohérent. ~550 images, coût
-    négligeable vs un backfill.
-    """
+    Par classe : le canonique Numista + jusqu'à ``exemplars_per_class`` vrais
+    crops validés choisis pour la DIVERSITÉ d'apparence (farthest-point sampling,
+    plancher de validité) — un crop réel sombre/tilté/usé fait mieux matcher les
+    photos eBay qu'un énième scan parfait. Les overrides humains (pin/exclude) de
+    ``dino_class_references`` sont honorés. La sélection est tracée dans cette
+    table (``write_references``). Toutes les lignes d'une classe partagent
+    l'eurio_id du représentant (clé de classe des consumers)."""
+    from shared.storage.local_cache import local_path
+    from store.dino_references import (
+        DinoRefRow,
+        get_reference_overrides,
+        replace_auto_references,
+    )
+
     kind = "2eur_all"
-
     if not force_recompute:
         cached = load_anchors(kind)
         if cached is not None and cached.encoder_version == encoder_version:
@@ -403,26 +566,135 @@ def build_anchors_2eur_all(
             )
             return cached
 
-    commemo = _commemo_paths_with_eid(conn, datasets_dir)
-    standard = _standard_paths_with_eid(conn, datasets_dir)
-
-    overlap = {e for e, _ in commemo} & {e for e, _ in standard}
-    if overlap:
+    specs = _class_specs_2eur_all(conn, datasets_dir)
+    if not specs:
         raise RuntimeError(
-            f"{len(overlap)} eurio_ids present in both selections "
-            f"(ex. {sorted(overlap)[:3]}) — selections must be disjoint"
+            f"No 2€ obverse found under {datasets_dir} — did you bootstrap the dataset?"
         )
+    overrides = get_reference_overrides(conn, kind)
 
-    paths_with_eid = commemo + standard
-    if not paths_with_eid:
-        raise RuntimeError(
-            f"No 2€ obverse found under {datasets_dir} — "
-            "did you bootstrap the dataset?"
-        )
+    # ── Rassemble tout ce qu'il faut encoder : canoniques + crops candidats ──
+    # meta indexé par chemin (chemins uniques) : encode_paths peut sauter un
+    # fichier illisible, on ré-aligne via kept_paths.
+    meta_by_path: dict[str, dict[str, Any]] = {}
+    all_paths: list[Path] = []
+    for spec in specs:
+        cpath = spec["canonical_path"]
+        meta_by_path[str(cpath)] = {
+            "class_id": spec["class_id"], "eurio_id": spec["class_id"],
+            "asset_id": None, "canonical": True,
+        }
+        all_paths.append(cpath)
+        for cand in _candidate_crops_for_class(conn, spec["members"]):
+            try:
+                cp = local_path("enrichment-crops", cand["storage_path"])
+            except Exception:  # noqa: BLE001 — chemin illisible → on saute
+                continue
+            meta_by_path[str(cp)] = {
+                "class_id": spec["class_id"], "eurio_id": cand["eurio_id"],
+                "asset_id": cand["id"], "canonical": False,
+            }
+            all_paths.append(cp)
 
-    return _encode_and_save(
-        kind=kind, paths_with_eid=paths_with_eid, encoder_version=encoder_version
+    logger.info(
+        "2eur_all multi-exemplaires : %d classes, %d images à encoder (vitl14)…",
+        len(specs), len(all_paths),
     )
+    encoder, device = load_encoder(encoder_version=encoder_version)
+    transform = build_transform()
+    kept_paths, matrix = encode_paths(
+        all_paths, encoder=encoder, device=device, transform=transform,
+    )
+    # Vecteurs alignés sur kept_paths → regroupés par classe.
+    vec_by_path = {str(p): matrix[i] for i, p in enumerate(kept_paths)}
+    by_class: dict[str, dict[str, Any]] = {}
+    for spec in specs:
+        by_class[spec["class_id"]] = {"canonical": None, "cands": []}
+    for path_s, vec in vec_by_path.items():
+        m = meta_by_path.get(path_s)
+        if m is None:
+            continue
+        slot = by_class[m["class_id"]]
+        if m["canonical"]:
+            slot["canonical"] = {"vec": vec, "path": path_s}
+        else:
+            slot["cands"].append({
+                "vec": vec, "path": path_s,
+                "eurio_id": m["eurio_id"], "asset_id": m["asset_id"],
+            })
+
+    # ── Sélection par classe : canonique + pins + FPS(candidats − exclus) ──
+    bank_eids: list[str] = []
+    bank_assets: list[str | None] = []
+    bank_paths: list[str] = []
+    bank_vecs: list[np.ndarray] = []
+    ref_rows: list = []
+    for class_id, slot in by_class.items():
+        ov = overrides.get(class_id, [])
+        pinned = {r["asset_id"] for r in ov if r["method"] == "manual_pin"}
+        excluded = {r["asset_id"] for r in ov if r["method"] == "manual_exclude"}
+
+        rank = 0
+        seed_vecs: list[np.ndarray] = []
+        if slot["canonical"] is not None:
+            v = slot["canonical"]["vec"]
+            bank_eids.append(class_id); bank_assets.append(None)
+            bank_paths.append(slot["canonical"]["path"]); bank_vecs.append(v)
+            seed_vecs.append(v)
+            ref_rows.append(DinoRefRow(class_id, class_id, None, "canonical", rank, None))
+            rank += 1
+
+        cands = [c for c in slot["cands"] if c["asset_id"] not in excluded]
+        cand_vecs = np.stack([c["vec"] for c in cands]) if cands else np.zeros((0, 0))
+
+        # Pins d'abord (toujours dans la banque), puis FPS pour le reste.
+        forced = [i for i, c in enumerate(cands) if c["asset_id"] in pinned]
+        for i in forced:
+            c = cands[i]
+            bank_eids.append(class_id); bank_assets.append(c["asset_id"])
+            bank_paths.append(c["path"]); bank_vecs.append(c["vec"])
+            seed_vecs.append(c["vec"])
+            ref_rows.append(DinoRefRow(
+                class_id, c["eurio_id"], c["asset_id"], "manual_pin", rank, None))
+            rank += 1
+
+        budget = max(0, exemplars_per_class - len(forced))
+        pool = [i for i in range(len(cands)) if i not in set(forced)]
+        picks = farthest_point_select(
+            cand_vecs, candidate_idx=pool, k=budget,
+            seed_vecs=np.stack(seed_vecs) if seed_vecs else None,
+            floor_sim=floor_sim,
+        ) if pool and budget else []
+        for idx, sim_to_set in picks:
+            c = cands[idx]
+            bank_eids.append(class_id); bank_assets.append(c["asset_id"])
+            bank_paths.append(c["path"]); bank_vecs.append(c["vec"])
+            ref_rows.append(DinoRefRow(
+                class_id, c["eurio_id"], c["asset_id"], "fps", rank, sim_to_set))
+            rank += 1
+
+    if not bank_vecs:
+        raise RuntimeError("2eur_all : aucune ligne encodée (dataset absent ?)")
+    bank = AnchorBank(
+        eurio_ids=bank_eids,
+        matrix=np.stack(bank_vecs).astype(np.float32),
+        encoder_version=encoder_version,
+        anchors_kind=kind,
+        built_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        source_paths=bank_paths,
+        asset_ids=bank_assets,
+    )
+    save_anchors(bank)
+    n_exemplars = sum(1 for a in bank_assets if a is not None)
+    logger.info(
+        "2eur_all : %d lignes (%d canoniques + %d exemplaires réels) sur %d classes",
+        bank.count, bank.count - n_exemplars, n_exemplars, len(by_class),
+    )
+    if write_references:
+        # La transaction est gérée par l'appelant (Store._writing) — pas de
+        # commit ici (il casserait le BEGIN IMMEDIATE/COMMIT du contexte).
+        replace_auto_references(conn, kind, ref_rows)
+    return bank
 
 
 def build_anchors_reverse_2eur(

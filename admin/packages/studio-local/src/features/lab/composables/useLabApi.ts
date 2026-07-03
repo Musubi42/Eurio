@@ -293,6 +293,34 @@ export async function fetchTrainingScanStatus(
 }
 
 /**
+ * « Repasser en reviewer » : un crop promu au train qu'on veut retrancher.
+ * Remet needs_review + training_eligible=0 et ré-enfile une row review_queue
+ * ouverte → le crop réapparaît dans l'écran Review (§C4).
+ */
+export async function reopenAssetReview(
+  assetId: string,
+): Promise<import('../types').ReopenReviewResult> {
+  return json<import('../types').ReopenReviewResult>(
+    `/lab/assets/${encodeURIComponent(assetId)}/reopen-review`,
+    { method: 'POST' },
+  )
+}
+
+/**
+ * « Accepter au train » un crop needs_review : décision de review one-clic qui
+ * confirme le crop dans sa classe (manual + eligible), le sort de « À reviewer »
+ * et ferme sa file de review. Symétrique de reopenAssetReview.
+ */
+export async function acceptAssetTraining(
+  assetId: string,
+): Promise<import('../types').AcceptTrainingResult> {
+  return json<import('../types').AcceptTrainingResult>(
+    `/lab/assets/${encodeURIComponent(assetId)}/accept-training`,
+    { method: 'POST' },
+  )
+}
+
+/**
  * Réassigne un crop à une autre pièce (eurio_id) — redirige un intrus vers la
  * bonne classe. Ne touche que `image_assets.eurio_id` (training_eligible/face
  * préservés) ; l'asset change de classe au prochain read du Jeu d'entraînement.
@@ -304,6 +332,24 @@ export async function reassignAsset(
   return json<import('../types').ReassignAssetResult>(
     `/lab/assets/${encodeURIComponent(assetId)}/reassign`,
     { method: 'POST', body: JSON.stringify({ eurio_id: eurioId }) },
+  )
+}
+
+/**
+ * « Faux positif — garde-le au train » : override humain du badge intrus, sans
+ * changer de classe ni exclure. Le verdict du dernier scan passe `dismissed=1`
+ * (l'audit `is_intruder` reste) → le crop quitte la sous-liste « Intrus ? ».
+ */
+export async function dismissIntruder(
+  assetId: string,
+  cohortId: string,
+): Promise<{ asset_id: string; dismissed: boolean }> {
+  // cohort_id : scope le dismiss au scan de la cohorte affichée (un crop peut
+  // être scanné dans plusieurs cohortes — on ne touche que la bonne).
+  return json<{ asset_id: string; dismissed: boolean }>(
+    `/lab/assets/${encodeURIComponent(assetId)}/intruder-dismiss`
+    + `?cohort_id=${encodeURIComponent(cohortId)}`,
+    { method: 'POST' },
   )
 }
 

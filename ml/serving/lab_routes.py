@@ -18,7 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from store import (
@@ -28,7 +28,9 @@ from store import (
     Store,
     cohort_job_set_pid,
     cohort_job_start,
+    emit_state_event,
     latest_training_scan,
+    training_scan_dismiss_intruder,
     training_scan_results,
     training_scan_set_pid,
     training_scan_start,
@@ -2011,6 +2013,10 @@ class TrainingCrop(BaseModel):
     quality_score: float | None = None
     training_eligible: bool
     resolution_status: str
+    # « routé » = une row review_queue OUVERTE existe pour ce crop → il atteindra
+    # l'écran de review (compté par §C4 « Review crops »). Un needs_review NON
+    # routé est bloqué : jamais enfilé, invisible à la review (cf. n_unrouted).
+    routed: bool = False
     # ── P1 · verdict du dernier scan (cohort_training_scan_results) ──
     # « probable intrus » = margin (une autre classe de la cohorte le réclame)
     # et/ou outlier (ne ressemble pas à ses camarades — vraie classe hors
@@ -2040,6 +2046,11 @@ class TrainingCropClass(BaseModel):
     n_unknown_face: int  # éligibles face NULL/'unknown' (à confirmer — P2 les résout)
     n_reverse_flagged: int  # éligibles face='reverse' (hors bake depuis P3)
     n_rejected: int
+    # needs_review de cette classe SANS row review_queue ouverte → jamais enfilés,
+    # invisibles à §C4 « Review crops ». Réconcilie l'écart « 0 solo à trancher »
+    # (C4, file vivante) vs « N à reviewer » (C5, resolution_status) : la
+    # différence, ce sont ces non-routés bloqués.
+    n_review_unrouted: int = 0
     n_intruders: int  # P1 · suspects levés par le dernier scan
     r_at_1: float | None = None  # R@1 studio (dernière itération), moyenné sur les membres
     # ── P5 · Δ vs itération benchée précédente ──
@@ -2213,7 +2224,11 @@ def _cohort_training_crops(store: Store, cohort_id: str) -> CohortTrainingCropsR
         rows = conn.execute(
             f"""
             SELECT a.id, a.eurio_id, a.face, a.denom, a.quality_score,
-                   a.training_eligible, a.resolution_status, s.source
+                   a.training_eligible, a.resolution_status, s.source,
+                   EXISTS(
+                     SELECT 1 FROM review_queue rq
+                      WHERE rq.image_asset_id = a.id AND rq.status = 'open'
+                   ) AS routed
               FROM image_assets a
               JOIN source_images s ON s.id = a.source_image_id
              WHERE a.eurio_id IN ({member_ph})
@@ -2241,7 +2256,11 @@ def _cohort_training_crops(store: Store, cohort_id: str) -> CohortTrainingCropsR
                 quality_score=r["quality_score"],
                 training_eligible=bool(r["training_eligible"]),
                 resolution_status=r["resolution_status"],
-                intruder_suspect=bool(v["is_intruder"]) if v is not None else False,
+                routed=bool(r["routed"]),
+                intruder_suspect=(
+                    bool(v["is_intruder"]) and not bool(v["dismissed"])
+                    if v is not None else False
+                ),
                 intruder_reason=v["intruder_reason"] if v is not None else None,
                 intruder_top1_class=v["top1_class"] if v is not None else None,
                 intruder_top1_eurio_id=v["top1_eurio_id"] if v is not None else None,
@@ -2269,6 +2288,12 @@ def _cohort_training_crops(store: Store, cohort_id: str) -> CohortTrainingCropsR
             1 for c in crops if c.training_eligible and c.face == "obverse"
         )
         n_rejected = sum(1 for c in crops if c.resolution_status == "rejected")
+        # Réconciliation C4↔C5 : needs_review jamais enfilés dans une lane
+        # ouverte → invisibles à la review, bloqués. C'est l'écart honnête.
+        n_review_unrouted = sum(
+            1 for c in crops
+            if c.resolution_status == "needs_review" and not c.routed
+        )
         # Compteur d'en-tête = intrus AU TRAIN (ce qui pollue le modèle) ; les
         # flags sur needs_review/rejetés restent visibles via les filtres.
         n_intruders = sum(
@@ -2286,7 +2311,8 @@ def _cohort_training_crops(store: Store, cohort_id: str) -> CohortTrainingCropsR
             class_id=d.class_id, class_kind=d.class_kind,
             member_eurio_ids=members, n_eligible=n_eligible,
             n_unknown_face=n_unknown, n_reverse_flagged=n_reverse,
-            n_rejected=n_rejected, n_intruders=n_intruders,
+            n_rejected=n_rejected, n_review_unrouted=n_review_unrouted,
+            n_intruders=n_intruders,
             r_at_1=r_at_1,
             r_at_1_prev=r_at_1_prev,
             r_at_1_delta=(
@@ -2376,6 +2402,135 @@ def set_asset_training_eligible(
     }
 
 
+class ReopenReviewResult(BaseModel):
+    asset_id: str
+    eurio_id: str | None
+    review_id: str
+
+
+@router.post("/assets/{asset_id}/reopen-review", response_model=ReopenReviewResult)
+def reopen_asset_review(asset_id: str) -> ReopenReviewResult:
+    """« Repasser en reviewer » depuis le Jeu d'entraînement : un crop promu au
+    train qu'on veut retrancher (erreur de promotion).
+
+    Remet ``resolution_status='needs_review'`` + ``resolved_at=NULL`` ET
+    ``training_eligible=0`` (le crop QUITTE le train tant qu'il n'est pas
+    re-décidé — sinon le prochain bake le reprendrait malgré son retour en
+    review), puis RÉ-ENFILE une row ``review_queue`` OUVERTE (UPSERT sur la
+    contrainte ``UNIQUE(image_asset_id)`` : ré-ouvre la ligne 'done' existante
+    ou en crée une) → le crop réapparaît dans l'écran Review (§C4). Le dernier
+    ``eurio_id`` est conservé comme indice ; la review le confirme ou le
+    corrige. Symétrique de la décision de review (qui, à l'acceptation, remet
+    ``training_eligible=1``). Même patron que ``/assets/reflag-needs-review``,
+    scopé à un asset et avec la bascule d'éligibilité en plus."""
+    store = _get_store()
+    conn = store._connection()  # noqa: SLF001
+    row = conn.execute(
+        "SELECT id, eurio_id FROM image_assets WHERE id = ?", (asset_id,),
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Crop introuvable")
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    new_id = uuid.uuid4().hex
+    note = "repassé en review depuis le jeu d'entraînement"
+    conn.execute(
+        "UPDATE image_assets SET resolution_status = 'needs_review', "
+        "resolved_at = NULL, training_eligible = 0 WHERE id = ?",
+        (asset_id,),
+    )
+    # review_queue.UNIQUE(image_asset_id) : un crop déjà tranché porte une ligne
+    # 'done' → UPSERT pour la ré-ouvrir (reset décision + lane manuelle) plutôt
+    # que violer la contrainte. Identique au reflag /assets (coin detail).
+    conn.execute(
+        """
+        INSERT INTO review_queue (
+            id, image_asset_id, status, priority, enqueued_at, kind,
+            decision_notes, lane, lane_source
+        ) VALUES (?, ?, 'open', 100, ?, 'single', ?, 'manual', 'human')
+        ON CONFLICT(image_asset_id) DO UPDATE SET
+            status = 'open',
+            priority = 100,
+            enqueued_at = excluded.enqueued_at,
+            kind = 'single',
+            decision_notes = excluded.decision_notes,
+            lane = 'manual',
+            lane_source = 'human',
+            decided_eurio_id = NULL,
+            decided_face = NULL,
+            decided_variant_kind = NULL,
+            decided_at = NULL,
+            decided_by = NULL
+        """,
+        (new_id, asset_id, now, note),
+    )
+    emit_state_event(
+        conn, asset_id=asset_id, to_state="queued", actor="human",
+        reason="reopened_from_training_set",
+    )
+    conn.commit()
+    rid_row = conn.execute(
+        "SELECT id FROM review_queue WHERE image_asset_id = ?", (asset_id,),
+    ).fetchone()
+    return ReopenReviewResult(
+        asset_id=asset_id, eurio_id=row["eurio_id"], review_id=rid_row["id"],
+    )
+
+
+class AcceptTrainingResult(BaseModel):
+    asset_id: str
+    eurio_id: str | None
+    resolution_status: str
+    training_eligible: bool
+
+
+@router.post("/assets/{asset_id}/accept-training", response_model=AcceptTrainingResult)
+def accept_asset_training(asset_id: str) -> AcceptTrainingResult:
+    """« Accepter au train » un crop ``needs_review`` depuis le Jeu
+    d'entraînement : décision de review one-clic qui CONFIRME le crop dans sa
+    classe courante (on garde ``eurio_id``/``face`` tels quels — le crop est
+    dans cette classe parce que son ``eurio_id`` en est membre).
+
+    Miroir de la décision de review (``review_queue/writes.py`` decide_review) :
+    ``resolution_status='manual'`` + ``resolution_confidence=1.0`` +
+    ``training_eligible=1`` + ``resolved_at`` ; marque la row ``review_queue``
+    ouverte 'done' (si elle existe) et émet l'event 'resolved'. Symétrique de
+    ``/reopen-review``. Le simple flip ``training-eligible`` ne suffisait pas :
+    la pièce restait ``needs_review`` donc affichée sous « À reviewer » (le
+    classement met needs_review avant l'éligibilité)."""
+    store = _get_store()
+    conn = store._connection()  # noqa: SLF001
+    row = conn.execute(
+        "SELECT id, eurio_id, face FROM image_assets WHERE id = ?", (asset_id,),
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Crop introuvable")
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    conn.execute(
+        "UPDATE image_assets SET resolution_status = 'manual', "
+        "resolution_confidence = 1.0, training_eligible = 1, resolved_at = ? "
+        "WHERE id = ?",
+        (now, asset_id),
+    )
+    # Ferme la file de review ouverte pour ce crop (s'il y en a une) — même
+    # effet qu'une décision humaine dans l'écran Review.
+    conn.execute(
+        "UPDATE review_queue SET status = 'done', decided_eurio_id = ?, "
+        "decided_face = ?, decided_at = ?, decided_by = 'human', "
+        "decision_notes = 'accepté au train depuis le jeu d''entraînement' "
+        "WHERE image_asset_id = ? AND status = 'open'",
+        (row["eurio_id"], row["face"], now, asset_id),
+    )
+    emit_state_event(
+        conn, asset_id=asset_id, to_state="resolved", actor="human",
+        reason="accepted_from_training_set", eurio_id=row["eurio_id"],
+    )
+    conn.commit()
+    return AcceptTrainingResult(
+        asset_id=asset_id, eurio_id=row["eurio_id"],
+        resolution_status="manual", training_eligible=True,
+    )
+
+
 class ReassignAssetPayload(BaseModel):
     eurio_id: str
 
@@ -2410,12 +2565,45 @@ def reassign_asset(asset_id: str, payload: ReassignAssetPayload) -> dict:
     conn.execute(
         "UPDATE image_assets SET eurio_id = ? WHERE id = ?", (target, asset_id),
     )
+    # Le crop a changé de classe → son verdict intrus (calculé sur l'ancienne
+    # classe) est périmé. On le dismisse pour que le badge disparaisse au read
+    # suivant (y compris quand on réassigne vers la MÊME classe = « le choix
+    # Dino était faux, garde-le »). Réversible via re-scan.
+    training_scan_dismiss_intruder(conn, asset_id)
     conn.commit()
     return {
         "asset_id": asset_id,
         "eurio_id": target,
         "previous_eurio_id": row["eurio_id"],
     }
+
+
+class IntruderDismissResult(BaseModel):
+    asset_id: str
+    dismissed: bool  # False = aucun verdict à dismisser (déjà propre)
+
+
+@router.post("/assets/{asset_id}/intruder-dismiss", response_model=IntruderDismissResult)
+def intruder_dismiss(
+    asset_id: str, cohort_id: str | None = Query(default=None),
+) -> IntruderDismissResult:
+    """« Faux positif — garde-le au train » : override humain du badge intrus
+    depuis le Jeu d'entraînement, SANS changer de classe ni exclure. Marque le
+    verdict du dernier scan ``dismissed=1`` (l'audit ``is_intruder`` reste) →
+    le crop quitte la sous-liste « Intrus ? » et reste éligible tel quel.
+
+    ``cohort_id`` scope le dismiss au scan de la cohorte affichée (un même crop
+    peut être scanné dans plusieurs cohortes — on ne touche que la bonne)."""
+    store = _get_store()
+    conn = store._connection()  # noqa: SLF001
+    row = conn.execute(
+        "SELECT 1 FROM image_assets WHERE id = ?", (asset_id,),
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Crop introuvable")
+    touched = training_scan_dismiss_intruder(conn, asset_id, cohort_id=cohort_id)
+    conn.commit()
+    return IntruderDismissResult(asset_id=asset_id, dismissed=touched > 0)
 
 
 # ── Scan Dino du Jeu d'entraînement (P1 intrus + P2 face) ────────────────────

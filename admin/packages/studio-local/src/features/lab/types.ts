@@ -718,6 +718,9 @@ export interface TrainingCrop {
   quality_score: number | null
   training_eligible: boolean
   resolution_status: string
+  /** Une row review_queue OUVERTE existe → atteindra l'écran de review (§C4).
+   *  Un needs_review non routé est bloqué (jamais enfilé, invisible à C4). */
+  routed: boolean
   /** P1 · verdict du dernier scan : margin (une autre classe le réclame)
    *  et/ou outlier (ne ressemble pas à ses camarades). */
   intruder_suspect: boolean
@@ -744,6 +747,9 @@ export interface TrainingCropClass {
   /** Éligibles face='reverse' — anneau ambre, hors bake depuis P3. */
   n_reverse_flagged: number
   n_rejected: number
+  /** needs_review sans row review_queue ouverte → bloqués, invisibles à §C4.
+   *  Réconcilie « 0 solo à trancher » (C4) vs « N à reviewer » (C5). */
+  n_review_unrouted: number
   /** P1 · probables intrus levés par le dernier scan. */
   n_intruders: number
   /** R@1 studio (dernière itération), moyenné sur les membres. */
@@ -807,6 +813,19 @@ export interface ReassignAssetResult {
   asset_id: string
   eurio_id: string
   previous_eurio_id: string | null
+}
+
+export interface ReopenReviewResult {
+  asset_id: string
+  eurio_id: string | null
+  review_id: string
+}
+
+export interface AcceptTrainingResult {
+  asset_id: string
+  eurio_id: string | null
+  resolution_status: string
+  training_eligible: boolean
 }
 
 export interface LiveTestsSyncResult {

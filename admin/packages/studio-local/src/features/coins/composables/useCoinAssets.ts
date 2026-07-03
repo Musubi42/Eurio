@@ -34,6 +34,31 @@ export interface CoinAsset {
   resolved_at: string | null
   width: number | null
   height: number | null
+  /** B · si ce crop sert de référence Dino : 'fps' | 'manual_pin' |
+   *  'manual_exclude'. null = n'en est pas une. */
+  dino_reference: DinoRefMethod | null
+}
+
+export type DinoRefMethod = 'canonical' | 'fps' | 'manual_pin' | 'manual_exclude'
+
+export interface DinoReferenceEntry {
+  asset_id: string | null // null = ligne canonique (avers Numista)
+  eurio_id: string
+  method: DinoRefMethod
+  rank: number | null
+  selected_sim: number | null
+  file_url: string | null // promu absolu client-side ; null pour le canonique
+  face: 'obverse' | 'reverse' | 'unknown' | null
+  resolution_status: CoinAssetStatus | null
+}
+
+export interface DinoReferencesResponse {
+  eurio_id: string
+  class_id: string
+  anchors_kind: string
+  /** true = banque jamais bâtie en multi-exemplaires (lancer le build). */
+  never_built: boolean
+  entries: DinoReferenceEntry[]
 }
 
 export interface CoinAssetsPage {
@@ -98,6 +123,48 @@ export async function reflagAssetsNeedsReview(
     throw new Error(`reflagAssetsNeedsReview failed: ${resp.status}`)
   }
   return (await resp.json()) as ReflagResponse
+}
+
+// ─── Références Dino (improvement-loop B) ─────────────────────────────────
+
+/** Références Dino de la CLASSE d'une pièce (canonique + exemplaires FPS +
+ *  overrides), pour la section « Références Dino » de la page coin-detail. */
+export async function fetchDinoReferences(
+  eurioId: string,
+): Promise<DinoReferencesResponse> {
+  if (!HAS_LOCAL_ML_API) {
+    return { eurio_id: eurioId, class_id: eurioId, anchors_kind: '2eur_all', never_built: true, entries: [] }
+  }
+  const resp = await fetch(
+    `${ML_API}/coins/${encodeURIComponent(eurioId)}/dino-references`,
+  )
+  if (!resp.ok) throw new Error(`fetchDinoReferences failed: ${resp.status}`)
+  const body = (await resp.json()) as DinoReferencesResponse
+  return {
+    ...body,
+    entries: body.entries.map((e) => ({
+      ...e,
+      file_url: e.file_url ? promoteUrl(e.file_url) : null,
+    })),
+  }
+}
+
+/** Épingle / bannit / réinitialise un crop comme référence Dino. L'effet
+ *  s'applique au prochain build d'ancres (pas de rebuild live). */
+export async function setDinoReference(
+  assetId: string,
+  action: 'pin' | 'exclude' | 'clear',
+): Promise<{ asset_id: string; action: string; applied: boolean; rebuild_required: boolean }> {
+  const resp = await fetch(
+    `${ML_API}/coins/assets/${encodeURIComponent(assetId)}/dino-reference`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action }),
+    },
+  )
+  if (!resp.ok) throw new Error(`setDinoReference failed: ${resp.status}`)
+  return await resp.json()
 }
 
 // ─── Visual helpers ─────────────────────────────────────────────────────

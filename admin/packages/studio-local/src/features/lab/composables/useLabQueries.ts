@@ -32,6 +32,9 @@ import {
   setAssetTrainingEligible,
   startTrainingScan,
   reassignAsset,
+  reopenAssetReview,
+  acceptAssetTraining,
+  dismissIntruder,
   fetchDashboard,
   fetchIterationAugmentations,
   fetchIterationProgress,
@@ -572,6 +575,86 @@ export function useReassignAssetMutation(cohortId: MaybeRefOrGetter<string>) {
       reassignAsset(vars.assetId, vars.eurioId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: LAB_KEYS.trainingCrops(toValue(cohortId)) })
+    },
+  })
+}
+
+/**
+ * « Repasser en reviewer » : renvoie un crop du train vers la file de review
+ * vivante (needs_review + training_eligible=0 + review_queue ré-ouverte).
+ * L'asset saute de la sous-liste « Au train » vers « À reviewer » (routé) → on
+ * invalide training-crops et on relit l'état serveur (comme reassign). Invalide
+ * aussi triage/funnel pour rafraîchir les compteurs de l'écran Review (§C4).
+ */
+export function useReopenReviewMutation(cohortId: MaybeRefOrGetter<string>) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (vars: { assetId: string }) => reopenAssetReview(vars.assetId),
+    onSuccess: () => {
+      const id = toValue(cohortId)
+      qc.invalidateQueries({ queryKey: LAB_KEYS.trainingCrops(id) })
+      qc.invalidateQueries({ queryKey: LAB_KEYS.triageStats(id) })
+      qc.invalidateQueries({ queryKey: LAB_KEYS.funnelStatus(id) })
+    },
+  })
+}
+
+/**
+ * « Accepter au train » un crop needs_review : décision de review one-clic
+ * (manual + eligible + review_queue 'done'). Le crop change de statut ET de
+ * sous-liste (« À reviewer » → « Au train ») → on invalide training-crops +
+ * triage/funnel (compteurs Review). Miroir de useReopenReviewMutation.
+ */
+export function useAcceptTrainingMutation(cohortId: MaybeRefOrGetter<string>) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (vars: { assetId: string }) => acceptAssetTraining(vars.assetId),
+    onSuccess: () => {
+      const id = toValue(cohortId)
+      qc.invalidateQueries({ queryKey: LAB_KEYS.trainingCrops(id) })
+      qc.invalidateQueries({ queryKey: LAB_KEYS.triageStats(id) })
+      qc.invalidateQueries({ queryKey: LAB_KEYS.funnelStatus(id) })
+    },
+  })
+}
+
+/**
+ * « Faux positif → garde-le au train » : dismisse le badge intrus d'un crop.
+ * Optimistic : le crop quitte la sous-liste « Intrus ? » et son compteur
+ * `n_intruders` décroît aussitôt (comme le backend : seuls les intrus AU TRAIN
+ * comptent). Rollback si l'appel échoue.
+ */
+export function useDismissIntruderMutation(cohortId: MaybeRefOrGetter<string>) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (vars: { assetId: string }) =>
+      dismissIntruder(vars.assetId, toValue(cohortId)),
+    onMutate: async (vars) => {
+      const key = LAB_KEYS.trainingCrops(toValue(cohortId))
+      await qc.cancelQueries({ queryKey: key })
+      const prev = qc.getQueryData<import('../types').CohortTrainingCrops>(key)
+      if (prev) {
+        qc.setQueryData<import('../types').CohortTrainingCrops>(key, {
+          ...prev,
+          classes: prev.classes.map((cls) => {
+            const hit = cls.crops.find((c) => c.asset_id === vars.assetId)
+            if (!hit || !hit.intruder_suspect) return cls
+            return {
+              ...cls,
+              n_intruders: Math.max(0, cls.n_intruders - (hit.training_eligible ? 1 : 0)),
+              crops: cls.crops.map((c) =>
+                c.asset_id === vars.assetId
+                  ? { ...c, intruder_suspect: false }
+                  : c,
+              ),
+            }
+          }),
+        })
+      }
+      return { prev, key }
+    },
+    onError: (_e, _vars, ctx) => {
+      if (ctx?.prev) qc.setQueryData(ctx.key, ctx.prev)
     },
   })
 }

@@ -22,6 +22,15 @@ from .cohorts import CohortsMixin, ExperimentCohortRow
 from .common import ClassRef
 from .connection import StoreBase, _SCHEMA_PATH, _register_phash_udfs
 from .dino import DinoMixin, DinoPredictionRow
+from .dino_references import (
+    DinoRefRow,
+    clear_reference_override,
+    get_class_references,
+    get_reference_overrides,
+    get_references_for_assets,
+    replace_auto_references,
+    set_reference_override,
+)
 from .events import emit_state_event
 from .iterations import (
     AugVsRealRow,
@@ -35,6 +44,7 @@ from .staging import StagingMixin
 from .training_scan import (
     ScanResultRow,
     latest_training_scan,
+    training_scan_dismiss_intruder,
     training_scan_finish,
     training_scan_progress,
     training_scan_results,
@@ -79,6 +89,7 @@ __all__ = [
     "ClassMetricRow",
     "ClassRef",
     "DinoPredictionRow",
+    "DinoRefRow",
     "EpochRow",
     "ExperimentCohortRow",
     "ExperimentIterationRow",
@@ -93,8 +104,15 @@ __all__ = [
     "cohort_job_progress",
     "cohort_job_set_pid",
     "cohort_job_start",
+    "clear_reference_override",
+    "get_class_references",
+    "get_reference_overrides",
+    "get_references_for_assets",
+    "replace_auto_references",
+    "set_reference_override",
     "emit_state_event",
     "latest_training_scan",
+    "training_scan_dismiss_intruder",
     "resolve_db_path",
     "training_scan_finish",
     "training_scan_progress",

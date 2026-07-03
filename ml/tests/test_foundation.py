@@ -126,6 +126,82 @@ def test_match_to_dict():
 
 
 # ---------------------------------------------------------------------------
+# B · banque multi-exemplaires : dédup par classe + FPS + round-trip asset_ids
+# ---------------------------------------------------------------------------
+
+
+def _multi_exemplar_bank() -> AnchorBank:
+    """Classe 'a' a 3 lignes (1 canonique + 2 exemplaires), 'b' a 1 ligne."""
+    rng = np.random.default_rng(7)
+    raw = rng.standard_normal((4, 8)).astype(np.float32)
+    raw /= np.linalg.norm(raw, axis=1, keepdims=True)
+    return AnchorBank(
+        eurio_ids=["a", "a", "a", "b"],
+        matrix=raw,
+        encoder_version="test", anchors_kind="2eur_all",
+        built_at=datetime.now(timezone.utc).isoformat(),
+        source_paths=["can_a", "crop1", "crop2", "can_b"],
+        asset_ids=[None, "as1", "as2", None],
+    )
+
+
+def test_top_k_match_dedups_classes_takes_max_line():
+    """Une classe multi-lignes ne sort qu'UNE fois, à sa meilleure ligne."""
+    bank = _multi_exemplar_bank()
+    # Query = la 2ᵉ ligne de 'a' (exemplaire) → 'a' top1 à sim ~1, une seule fois.
+    matches = top_k_match(bank.matrix[1].copy(), bank, top_k=5)
+    eids = [m.eurio_id for m in matches]
+    assert eids.count("a") == 1               # dédup : pas 3× 'a'
+    assert set(eids) == {"a", "b"}
+    assert matches[0].eurio_id == "a"
+    assert matches[0].sim == pytest.approx(1.0, abs=1e-5)
+
+
+def test_anchor_bank_roundtrip_preserves_asset_ids(tmp_path, monkeypatch):
+    """save/load conservent asset_ids (None = canonique)."""
+    from training.foundation import anchors as anchors_mod
+    monkeypatch.setattr(anchors_mod, "STATE_DIR", tmp_path)
+    bank = _multi_exemplar_bank()
+    save_anchors(bank)
+    loaded = load_anchors("2eur_all")
+    assert loaded is not None
+    assert loaded.eurio_ids == ["a", "a", "a", "b"]
+    assert loaded.asset_ids == [None, "as1", "as2", None]
+
+
+def test_farthest_point_select_prefers_diverse_over_duplicate():
+    """FPS choisit le point NOUVEAU, pas le quasi-doublon du canonique."""
+    from training.foundation.anchors import farthest_point_select
+    # canonique = e0 ; candidats : c0 ≈ canonique (doublon), c1 orthogonal-ish.
+    canon = np.array([1.0, 0.0, 0.0], dtype=np.float32)
+    dup = np.array([0.99, 0.14, 0.0], dtype=np.float32)
+    dup /= np.linalg.norm(dup)
+    diverse = np.array([0.5, 0.86, 0.0], dtype=np.float32)
+    diverse /= np.linalg.norm(diverse)
+    vecs = np.stack([dup, diverse])
+    picks = farthest_point_select(
+        vecs, candidate_idx=[0, 1], k=1, seed_vecs=canon[None, :],
+        floor_sim=0.0,
+    )
+    assert len(picks) == 1
+    assert picks[0][0] == 1  # 'diverse' choisi, pas le doublon
+
+
+def test_farthest_point_select_floor_rejects_outliers():
+    """Le plancher de validité écarte un candidat trop loin du centroïde."""
+    from training.foundation.anchors import farthest_point_select
+    a = np.array([1.0, 0.0, 0.0], dtype=np.float32)
+    b = np.array([0.98, 0.2, 0.0], dtype=np.float32); b /= np.linalg.norm(b)
+    junk = np.array([0.0, 0.0, 1.0], dtype=np.float32)  # orthogonal = outlier
+    vecs = np.stack([a, b, junk])
+    picks = farthest_point_select(
+        vecs, candidate_idx=[0, 1, 2], k=3, seed_vecs=None, floor_sim=0.5,
+    )
+    chosen = {i for i, _ in picks}
+    assert 2 not in chosen  # 'junk' sous le plancher → jamais choisi
+
+
+# ---------------------------------------------------------------------------
 # Country-restricted matcher (chunk 3.5 — re-rank within target ISO2)
 # ---------------------------------------------------------------------------
 

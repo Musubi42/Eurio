@@ -181,6 +181,161 @@ def test_min_consensus_guard_falls_back_to_anchor():
         assert r.is_intruder is True  # l'ancre faible ne les sauve pas
 
 
+# ─── Phase 2 funnel — suggestions typées (reject / reassign / exclude) ────────
+# Banque « saine » : l'ancre A = l'allure réelle des crops (u1) → les crops de A
+# matchent bien leur ancre (abs_max_sim élevé, pas « hors sujet »).
+BANK_OK = np.stack([_n(U1), _n(U2)])
+CLASS_OK = {"A": [(0, "a-coin")], "B": [(1, "b-coin")]}
+CLEAN_A = [_n([1.0, 0.02 * i, 0.0, 0.0]) for i in range(4)]  # 4 crops propres de A
+
+
+def _clean(extra=()):
+    crops = [
+        CropForVerdict(asset_id=f"ok-{i}", assigned_class="A",
+                       eligible=True, effective_face="obverse")
+        for i in range(len(CLEAN_A))
+    ]
+    vecs = list(CLEAN_A)
+    for c, v in extra:
+        crops.append(c)
+        vecs.append(v)
+    return crops, np.stack(vecs)
+
+
+def _run(crops, vecs):
+    return {
+        r.asset_id: r for r in compute_closed_set_verdicts(
+            crops, vecs, class_anchor_rows=CLASS_OK, bank_matrix=BANK_OK,
+            intruder_margin=0.05,
+        )
+    }
+
+
+def test_suggestion_reject_on_bad_denom():
+    # denom-probe dit not_2eur (un cent/1€) → reject/denom, quel que soit le reste.
+    junk = (CropForVerdict(asset_id="junk", assigned_class="A", eligible=True,
+                           effective_face="obverse", denom_verdict="not_2eur"),
+            _n(U1))
+    by_id = _run(*_clean([junk]))
+    assert by_id["junk"].suggestion == "reject"
+    assert by_id["junk"].suggestion_reason == "denom"
+
+
+def test_suggestion_reject_off_topic_when_far_from_all():
+    # Loin de TOUTE ancre (sim ≈ 0 < plancher) → « hors sujet » = reject.
+    off = (CropForVerdict(asset_id="off", assigned_class="A", eligible=True,
+                          effective_face="obverse"),
+           _n([0.0, 0.0, 0.0, 1.0]))  # u4 : orthogonal à u1 et u2
+    by_id = _run(*_clean([off]))
+    assert by_id["off"].abs_max_sim is not None and by_id["off"].abs_max_sim < 0.45
+    assert by_id["off"].suggestion == "reject"
+    assert by_id["off"].suggestion_reason == "off_topic"
+
+
+def test_suggestion_reject_on_reverse():
+    rev = (CropForVerdict(asset_id="rev", assigned_class="A", eligible=True,
+                          effective_face="reverse"),
+           _n(U1))  # colle à l'ancre A (donc pas off_topic) mais c'est un revers
+    by_id = _run(*_clean([rev]))
+    assert by_id["rev"].suggestion == "reject"
+    assert by_id["rev"].suggestion_reason == "reverse"
+
+
+def test_suggestion_reassign_on_margin():
+    # Une autre classe de la cohorte le réclame (margin) → reassign.
+    intr = (CropForVerdict(asset_id="intr", assigned_class="A", eligible=True,
+                           effective_face="obverse", denom_verdict="2eur"),
+            _n(U2))  # c'est une B
+    by_id = _run(*_clean([intr]))
+    assert by_id["intr"].is_intruder is True
+    assert by_id["intr"].suggestion == "reassign"
+    assert by_id["intr"].suggestion_reason == "margin"
+
+
+def test_suggestion_exclude_on_outlier_with_bad_quality():
+    # Outlier intra-classe (ne ressemble pas à ses camarades) MAIS proche d'une
+    # ancre (pas hors sujet) ET qualité basse → exclude. Sans qualité basse :
+    # pas de suggestion (l'outlier seul ne dit pas quoi faire).
+    reals = [
+        (CropForVerdict(asset_id=f"r{i}", assigned_class="A", eligible=True,
+                        effective_face="obverse"), _n(U1))
+        for i in range(5)
+    ]
+    out_bad = (CropForVerdict(asset_id="odd", assigned_class="A", eligible=True,
+                              effective_face="obverse", denom_verdict="2eur",
+                              quality_bad=True),
+               _n([0.7, 0.7, 0.0, 0.0]))  # sim 0.707 à A et B → pas off_topic
+    crops = [c for c, _ in reals] + [out_bad[0]]
+    vecs = np.stack([v for _, v in reals] + [out_bad[1]])
+    by_id = {r.asset_id: r for r in compute_closed_set_verdicts(
+        crops, vecs, class_anchor_rows=CLASS_OK, bank_matrix=BANK_OK,
+        intruder_margin=0.05)}
+    odd = by_id["odd"]
+    assert odd.is_intruder is True and odd.intruder_reason == "outlier"
+    assert odd.suggestion == "exclude"
+    assert odd.suggestion_reason == "outlier+quality"
+
+
+def test_outlier_without_bad_quality_gives_no_suggestion():
+    reals = [
+        (CropForVerdict(asset_id=f"r{i}", assigned_class="A", eligible=True,
+                        effective_face="obverse"), _n(U1))
+        for i in range(5)
+    ]
+    odd = (CropForVerdict(asset_id="odd", assigned_class="A", eligible=True,
+                          effective_face="obverse", denom_verdict="2eur",
+                          quality_bad=False),
+           _n([0.7, 0.7, 0.0, 0.0]))
+    crops = [c for c, _ in reals] + [odd[0]]
+    vecs = np.stack([v for _, v in reals] + [odd[1]])
+    by_id = {r.asset_id: r for r in compute_closed_set_verdicts(
+        crops, vecs, class_anchor_rows=CLASS_OK, bank_matrix=BANK_OK,
+        intruder_margin=0.05)}
+    # Flaggé outlier (is_intruder) mais AUCUNE suggestion typée sans qualité basse.
+    assert by_id["odd"].is_intruder is True
+    assert by_id["odd"].suggestion is None
+
+
+def test_suggestion_priority_reject_beats_reassign():
+    # Déclencheurs SIMULTANÉS : denom not_2eur (reject) ET une autre classe le
+    # réclame (margin/reassign) → reject l'emporte (priorité reject > reassign).
+    both = (CropForVerdict(asset_id="both", assigned_class="A", eligible=True,
+                           effective_face="obverse", denom_verdict="not_2eur"),
+            _n(U2))  # colle à B → by_margin
+    by_id = _run(*_clean([both]))
+    assert by_id["both"].is_intruder is True          # margin bien détecté
+    assert by_id["both"].suggestion == "reject"       # mais reject prime
+    assert by_id["both"].suggestion_reason == "denom"
+
+
+def test_suggestion_priority_reject_beats_exclude():
+    # Outlier de mauvaise qualité (exclude) MAIS aussi hors sujet (sim absolue
+    # basse → reject/off_topic) : reject l'emporte sur exclude.
+    reals = [
+        (CropForVerdict(asset_id=f"r{i}", assigned_class="A", eligible=True,
+                        effective_face="obverse"), _n(U1))
+        for i in range(5)
+    ]
+    far_bad = (CropForVerdict(asset_id="fb", assigned_class="A", eligible=True,
+                              effective_face="obverse", quality_bad=True),
+               _n([0.0, 0.0, 0.0, 1.0]))  # loin de tout → off_topic
+    crops = [c for c, _ in reals] + [far_bad[0]]
+    vecs = np.stack([v for _, v in reals] + [far_bad[1]])
+    by_id = {r.asset_id: r for r in compute_closed_set_verdicts(
+        crops, vecs, class_anchor_rows=CLASS_OK, bank_matrix=BANK_OK,
+        intruder_margin=0.05)}
+    assert by_id["fb"].suggestion == "reject"
+    assert by_id["fb"].suggestion_reason == "off_topic"
+
+
+def test_clean_crop_has_no_suggestion():
+    by_id = _run(*_clean())
+    for i in range(4):
+        r = by_id[f"ok-{i}"]
+        assert r.suggestion is None
+        assert r.denom_verdict is None       # pas de probe fournie → None
+
+
 if __name__ == "__main__":
     import pytest
 

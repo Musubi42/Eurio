@@ -29,7 +29,14 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from store import Store, emit_state_event
+from store import (
+    Store,
+    clear_reference_override,
+    emit_state_event,
+    get_class_references,
+    get_references_for_assets,
+    set_reference_override,
+)
 
 from .crop_edit import apply_manual_crop, load_crop_edit_context
 from review.review_queue_routes import (
@@ -82,6 +89,10 @@ class CoinAsset(BaseModel):
     resolved_at: str | None = None
     width: int | None = None
     height: int | None = None
+    # improvement-loop B : si ce crop sert de référence Dino (banque de
+    # suggestions), sa méthode ('fps'|'manual_pin'|'manual_exclude') — pour
+    # badger la vignette dans la galerie. None = n'est pas une référence.
+    dino_reference: str | None = None
 
 
 class CoinAssetsPage(BaseModel):
@@ -214,6 +225,12 @@ def list_coin_assets(
     ).fetchall()
 
     assets = [_row_to_asset(r) for r in rows]
+    # Badge « réf Dino » : marque les crops qui servent d'exemplaires (B).
+    ref_map = get_references_for_assets(conn, [a.id for a in assets])
+    for a in assets:
+        r = ref_map.get(a.id)
+        if r is not None:
+            a.dino_reference = r["method"]
     next_offset = offset + limit if offset + limit < total else None
 
     return CoinAssetsPage(
@@ -317,6 +334,152 @@ def reflag_assets(payload: ReflagPayload) -> ReflagResponse:
         skipped_reasons=reasons,
         review_ids=review_ids,
     )
+
+
+# ── Références Dino multi-exemplaires (improvement-loop B) ────────────────
+# La banque de suggestions garde, par classe, le canonique + ~10 vrais crops
+# choisis pour la diversité (FPS). Ces endpoints exposent cette sélection à la
+# page coin-detail (section dédiée) et laissent l'humain épingler/bannir un crop
+# (override honoré au prochain build d'ancres — la banque n'est pas rebuild live).
+
+DINO_REF_KIND = "2eur_all"
+
+
+class DinoReferenceEntry(BaseModel):
+    asset_id: str | None  # None = ligne canonique (avers Numista, pas un crop)
+    eurio_id: str
+    method: str           # 'canonical'|'fps'|'manual_pin'|'manual_exclude'
+    rank: int | None = None
+    selected_sim: float | None = None
+    file_url: str | None = None      # None pour le canonique
+    face: str | None = None
+    resolution_status: str | None = None
+
+
+class DinoReferencesResponse(BaseModel):
+    eurio_id: str
+    class_id: str
+    anchors_kind: str
+    # True si la banque n'a jamais été bâtie en multi-exemplaires (aucune row) —
+    # le front invite alors à lancer `go-task ml:dino-anchors:build`.
+    never_built: bool
+    entries: list[DinoReferenceEntry]
+
+
+def _class_id_for(conn: sqlite3.Connection, eurio_id: str) -> str | None:
+    """class_id d'une pièce EXACTEMENT comme le builder d'ancres le keye
+    (``anchors._class_specs_2eur_all``) — sinon la lecture des références et des
+    overrides ne retrouve jamais la classe des 2€ standard (le builder keye sur
+    l'eurio_id du REPRÉSENTANT du design group, pas sur le slug design_group_id).
+
+    - Commémo : classe = son propre eurio_id (le builder ne groupe pas les
+      commémo).
+    - Standard : rep du design group = plus ancien millésime (year, eurio_id),
+      mêmes filtres que ``_select_2eur_standard_groups`` du builder.
+    """
+    row = conn.execute(
+        "SELECT is_commemorative, COALESCE(design_group_id, eurio_id) AS grp "
+        "FROM coins WHERE eurio_id = ?",
+        (eurio_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    if row["is_commemorative"]:
+        return eurio_id
+    rep = conn.execute(
+        "SELECT eurio_id FROM coins "
+        " WHERE face_value = 2.0 AND is_commemorative = 0 "
+        "   AND canonical_eurio_id IS NULL "
+        "   AND COALESCE(design_group_id, eurio_id) = ? "
+        " ORDER BY year ASC, eurio_id ASC LIMIT 1",
+        (row["grp"],),
+    ).fetchone()
+    return rep["eurio_id"] if rep else eurio_id
+
+
+# Consumed by: admin/.../coins/composables/useCoinAssets.ts (fetchDinoReferences)
+@router.get("/{eurio_id}/dino-references", response_model=DinoReferencesResponse)
+def list_dino_references(eurio_id: str) -> DinoReferencesResponse:
+    """Références Dino de la CLASSE de ``eurio_id`` (canonique + exemplaires +
+    overrides), pour la section « Références Dino » de la page coin-detail."""
+    conn = _conn()
+    class_id = _class_id_for(conn, eurio_id)
+    if class_id is None:
+        raise HTTPException(status_code=404, detail="Pièce inconnue")
+    rows = get_class_references(conn, class_id, DINO_REF_KIND)
+    entries: list[DinoReferenceEntry] = []
+    for r in rows:
+        aid = r["asset_id"]
+        file_url = face = status = None
+        if aid:
+            a = conn.execute(
+                "SELECT s.source, a.face, a.resolution_status "
+                "FROM image_assets a JOIN source_images s ON s.id = a.source_image_id "
+                "WHERE a.id = ?", (aid,),
+            ).fetchone()
+            if a is not None:
+                file_url = f"/sources/{a['source']}/assets/{aid}/file"
+                face, status = a["face"], a["resolution_status"]
+        entries.append(DinoReferenceEntry(
+            asset_id=aid, eurio_id=r["eurio_id"], method=r["method"],
+            rank=r["rank"], selected_sim=r["selected_sim"],
+            file_url=file_url, face=face, resolution_status=status,
+        ))
+    return DinoReferencesResponse(
+        eurio_id=eurio_id, class_id=class_id, anchors_kind=DINO_REF_KIND,
+        never_built=not entries, entries=entries,
+    )
+
+
+class DinoRefActionPayload(BaseModel):
+    action: str  # 'pin' | 'exclude' | 'clear'
+
+
+class DinoRefActionResult(BaseModel):
+    asset_id: str
+    action: str
+    # L'override est persisté, mais la banque n'est réécrite qu'au prochain build
+    # (`go-task ml:dino-anchors:build`) — le front l'indique honnêtement.
+    applied: bool
+    rebuild_required: bool = True
+
+
+# Consumed by: admin/.../coins/composables/useCoinAssets.ts (setDinoReference)
+@router.post("/assets/{asset_id}/dino-reference", response_model=DinoRefActionResult)
+def set_asset_dino_reference(
+    asset_id: str, payload: DinoRefActionPayload,
+) -> DinoRefActionResult:
+    """Épingle (``pin``), bannit (``exclude``) ou réinitialise (``clear``) un
+    crop comme référence Dino. Persisté dans ``dino_class_references`` ; effet au
+    prochain build d'ancres (pas de rebuild live)."""
+    conn = _conn()
+    a = conn.execute(
+        "SELECT eurio_id FROM image_assets WHERE id = ?", (asset_id,),
+    ).fetchone()
+    if a is None:
+        raise HTTPException(status_code=404, detail="Crop introuvable")
+    eurio_id = a["eurio_id"]
+    if payload.action != "clear" and not eurio_id:
+        raise HTTPException(
+            status_code=422, detail="Crop sans eurio_id — réassigne-le d'abord",
+        )
+    class_id = _class_id_for(conn, eurio_id) or eurio_id
+    with conn:
+        if payload.action == "clear":
+            clear_reference_override(conn, asset_id=asset_id, anchors_kind=DINO_REF_KIND)
+        elif payload.action == "pin":
+            set_reference_override(
+                conn, class_id=class_id, eurio_id=eurio_id, asset_id=asset_id,
+                method="manual_pin", anchors_kind=DINO_REF_KIND,
+            )
+        elif payload.action == "exclude":
+            set_reference_override(
+                conn, class_id=class_id, eurio_id=eurio_id, asset_id=asset_id,
+                method="manual_exclude", anchors_kind=DINO_REF_KIND,
+            )
+        else:
+            raise HTTPException(status_code=422, detail=f"action invalide : {payload.action}")
+    return DinoRefActionResult(asset_id=asset_id, action=payload.action, applied=True)
 
 
 # ── Re-crop manuel EN PLACE (galerie enrichment, page coin-detail) ────────
