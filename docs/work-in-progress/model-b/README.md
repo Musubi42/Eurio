@@ -14,6 +14,13 @@ Le **canonique** = une base **SQLite sur le VPS**, contactée **via l'API**
 des **répliques locales** (copies de travail) et **poussent** leurs runs au VPS
 (`/ingest/run`). Pas de lease, pas de writer unique sérialisé — l'API arbitre.
 
+> 🔄 **Extension livrée (2026-07-03) : [local-sync](../local-sync/README.md)** —
+> les **écritures interactives** (classification, review, crops manuels) sont
+> désormais répliquées multi-maître par event-log (op_id/machine/HLC, worker
+> debounce, LWW-par-champ) : le travail local converge automatiquement sur le
+> canonique et redescend sur l'autre machine. Ferme le trou du handoff
+> `local-canonical-double-write-HANDOFF.md`.
+
 ## Pourquoi (le « pourquoi » qui guide tout)
 
 - **Multi-PC sans conflit** : Model A faisait vivre la DB dans MinIO derrière un

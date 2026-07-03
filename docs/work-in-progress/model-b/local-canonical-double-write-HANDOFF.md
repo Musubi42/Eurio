@@ -1,5 +1,10 @@
 # Handoff — Double-write local ↔ canonique VPS (SQLite)
 
+> ✅ **ARCHITECTURE TRANCHÉE ET LIVRÉE (2026-07-03)** — l'option **A (sync par
+> event-log)** a été implémentée : voir **[`../local-sync/`](../local-sync/README.md)**
+> (doctrine, schéma, backend, front, walkthrough de validation). Ce handoff
+> reste comme trace du raisonnement ; il n'est plus le document de travail.
+
 > **But de ce document.** Reprendre, dans une **session dédiée**, le gros morceau
 > d'architecture : faire en sorte que les écritures faites sur la base SQLite
 > **locale** (Mac / PC) — classification du Jeu d'entraînement, review, crops —

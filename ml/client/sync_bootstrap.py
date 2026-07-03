@@ -108,11 +108,19 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--db", default=os.environ.get("EURIO_DB_PATH", "state/eurio.db"),
-        help="base locale à rattraper (défaut : EURIO_DB_PATH ou state/eurio.db)",
+        help="base qui REÇOIT les events de rattrapage (défaut : EURIO_DB_PATH "
+             "ou state/eurio.db)",
+    )
+    parser.add_argument(
+        "--from", dest="from_db", default=None,
+        help="base portant les DÉCISIONS locales à sauver (défaut : --db). "
+             "Cas post-seed : --from <sauvegarde> --db <fichier seedé> — le "
+             "canonique de référence devient alors --db lui-même.",
     )
     parser.add_argument(
         "--replica", default=None,
-        help="réplique canonique déjà téléchargée (sinon pull automatique en tmp)",
+        help="réplique canonique de référence déjà sur disque (sinon : --db si "
+             "--from est fourni, sinon pull automatique en tmp)",
     )
     parser.add_argument(
         "--apply", action="store_true",
@@ -122,18 +130,26 @@ def main(argv: list[str] | None = None) -> int:
 
     local_path = Path(args.db)
     if not local_path.exists():
-        print(f"base locale introuvable : {local_path}")
+        print(f"base cible introuvable : {local_path}")
+        return 1
+    source_path = Path(args.from_db) if args.from_db else local_path
+    if not source_path.exists():
+        print(f"base source (--from) introuvable : {source_path}")
         return 1
 
     if args.replica:
         replica_path = Path(args.replica)
+    elif args.from_db:
+        # Post-seed : le fichier cible vient d'être écrasé par la réplique →
+        # il EST l'état canonique de référence.
+        replica_path = local_path
     else:
         tmp = Path(tempfile.mkdtemp(prefix="eurio-bootstrap-")) / "canon.db"
         print(f"pull réplique canonique → {tmp} …")
         replica_path = pull_replica(tmp)
 
     canon = _connect_ro(replica_path)
-    local_ro = _connect_ro(local_path)
+    local_ro = _connect_ro(source_path)
     diff = _diff(local_ro, canon)
     local_ro.close()
     canon.close()
