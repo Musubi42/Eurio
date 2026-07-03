@@ -537,9 +537,19 @@ tasks:
   # cohérent), bosse en local, puis pousse ses runs via `/ingest/run` (--push).
   # Plus de lease/MinIO pour la DB (retiré en R2 — MinIO ne garde que les images).
   db:pull-replica:
-    desc: "Réplique read-only de eurio.db tirée du VPS (GET /db/replica, vérif sha). Pour le calcul lourd qui lit sans bloquer le canonique."
+    desc: "Rebase BULK depuis le canonique VPS (GET /db/replica, vérif sha) — écrase le fichier cible. Refuse si sync_outbox a du pending (events non poussés) : lancer d'abord go-task ml:db:sync."
     cmds:
       - "{{.VENV}}/python -m client.replica {{.CLI_ARGS}}"
+
+  db:sync:
+    desc: "Cycle de sync event-log → canonique (push outbox, pull des autres machines, purge). Normalement automatique (worker debounce de ml:api) ; utile à la main avant de changer de machine ou si l'API est down."
+    cmds:
+      - "{{.VENV}}/python -m client.sync {{.CLI_ARGS}}"
+
+  db:sync-bootstrap:
+    desc: "Migration one-shot vers le mode « local + sync » : diffe l'ancienne base locale vs une réplique fraîche (colonnes autoritatives), émet des events de rattrapage. Dry-run par défaut ; -- --apply pour exécuter."
+    cmds:
+      - "{{.VENV}}/python -m client.sync_bootstrap {{.CLI_ARGS}}"
 
   # ---------- Review collaborative (service VPS + pont eurio.db) ----------
   # Service review = review.db SQLite + FastAPI, hors lease (toujours allumé sur
@@ -587,19 +597,11 @@ tasks:
     cmds:
       - "{{.VENV}}/python -m uvicorn serving.server:app --port 8042"
 
-  api-replica:
-    desc: "Start the ML API sur la RÉPLIQUE fraîche du VPS (state/eurio.replica.db). Lance d'abord `go-task ml:db:pull-replica`. Modèle B : le lab lit la donnée canonique du VPS sans toucher au fichier de travail local."
-    env:
-      EURIO_DB_PATH: "{{.TASKFILE_DIR}}/state/eurio.replica.db"
-    cmds:
-      - "{{.VENV}}/python -m uvicorn serving.server:app --port 8042 --reload"
-
-  api-replica-prod:
-    desc: "Lab sur la RÉPLIQUE VPS SANS --reload. À utiliser pour une VRAIE run d'entraînement/bench : --reload redémarre uvicorn à chaque edit de serving/*.py et TUE le subprocess train/bench en cours. Lance d'abord `go-task ml:db:pull-replica`."
-    env:
-      EURIO_DB_PATH: "{{.TASKFILE_DIR}}/state/eurio.replica.db"
-    cmds:
-      - "{{.VENV}}/python -m uvicorn serving.server:app --port 8042"
+  # api-replica / api-replica-prod SUPPRIMÉES (local-sync 2026-07). Le mode
+  # unique est « local + sync » : state/eurio.db seedée du canonique (bootstrap
+  # one-shot, cf. docs/work-in-progress/local-sync/) + worker debounce qui
+  # pousse/tire les events autoritatifs. Pour une vraie run train/bench :
+  # api-prod (--reload tue les subprocess ET relance le worker à chaque edit).
 
   lab:clean-orphans:
     desc: "Supprime les artefacts disque d'itérations lab orphelines (plus en DB). Dry-run par défaut ; ajouter -- --apply pour supprimer. Filet pour les runs morts (subprocess tué)."
