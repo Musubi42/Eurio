@@ -33,11 +33,11 @@ const message = computed(() => {
   // Mode PAT (local).
   switch (session.status) {
     case 'missing':
-      return 'eurio-api : aucun PAT configuré. Crée un .env.local depuis .env.example pour activer les features qui en dépendent.'
+      return 'eurio-api : aucun PAT. Lance le front via `go-task front:dev` depuis le shell direnv du repo — le PAT vient de secrets/dev.env (EURIO_API_TOKEN).'
     case 'invalid':
       return (
         session.error ||
-        'eurio-api : PAT invalide ou expiré. Génère un nouveau token (page « Mes tokens ») puis MAJ .env.local.'
+        'eurio-api : PAT invalide ou expiré. Régénère EURIO_API_TOKEN (`go-task secrets:edit`), puis `direnv reload` et relance `go-task front:dev`.'
       )
     case 'error':
       return `eurio-api injoignable : ${session.error ?? 'erreur inconnue'}`

@@ -298,8 +298,9 @@ def _create_pat(
     print("  └──────────────────────────────────────────────────────────────────────────────┘")
     print()
     print(
-        "  Colle dans admin/packages/studio-local/.env.local :",
-        f"\n    VITE_EURIO_PAT={full}",
+        "  Ajoute-le à secrets/dev.env via `go-task secrets:edit` :",
+        f"\n    EURIO_API_TOKEN={full}",
+        "\n  (le front le lit via VITE_EURIO_PAT, aliasé par .envrc — pas de .env.local)",
     )
     return 0
 

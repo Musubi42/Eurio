@@ -5,9 +5,10 @@ import yaml from 'js-yaml'
 import { defineConfig } from 'vite'
 import type { Plugin } from 'vite'
 
-// Vite 6 ne propage pas automatiquement les vars shell vers import.meta.env.
-// On lit depuis process.env (peuplé par direnv) et on injecte via define.
-// Les valeurs viennent de .envrc (gitignore) — zéro .env file.
+// Vite expose déjà les vars shell préfixées VITE_ (process.env, peuplé par
+// direnv) vers import.meta.env — dont VITE_EURIO_PAT (aliasé sur
+// EURIO_API_TOKEN par .envrc). Le `define` ci-dessous n'est qu'un
+// belt-and-suspenders pour 2 vars de build spécifiques ; zéro .env file requis.
 
 interface MaestroConfig {
   appId?: string

@@ -87,7 +87,7 @@ export const useEurioSession = defineStore('eurio-session', () => {
           }
           error.value = 'Connexion Authentik échouée ou refusée — réessaie, ou contacte un admin.'
         } else {
-          error.value = 'PAT invalide ou expiré — régénère-le (page « Mes tokens ») et MAJ .env.local.'
+          error.value = 'PAT invalide ou expiré — régénère EURIO_API_TOKEN dans secrets/dev.env (`go-task secrets:edit`), puis `direnv reload` + relance `go-task front:dev`.'
         }
       } else {
         status.value = 'error'
