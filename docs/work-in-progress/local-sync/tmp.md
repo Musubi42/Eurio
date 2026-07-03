@@ -30,3 +30,9 @@ sudo nixos-rebuild switch
 whoami                       # ton user PC (pour le ssh config Mac)
 hostname                     # confirme que c'est bien "desktop"
 ip -4 addr show | grep inet  # note l'IP LAN (192.168.x.x) au cas où mDNS traîne
+
+## Infos récupérées (2026-07-03)
+
+whoami   → raphael
+hostname → desktop
+IP LAN   → 192.168.1.163  (wlp6s0, /24, DHCP dynamique)
