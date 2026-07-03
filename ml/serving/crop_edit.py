@@ -23,7 +23,7 @@ from pathlib import Path
 import cv2
 from fastapi import HTTPException
 
-from store import Store
+from store import Store, emit_field_event, record_tombstone
 
 logger = logging.getLogger(__name__)
 
@@ -300,10 +300,25 @@ def apply_manual_crop(
     # 4. DB : nouveau cercle + method 'manual' + dims + phash.
     bbox = {"x": cx - r, "y": cy - r, "w": 2 * r, "h": 2 * r}
     new_h, new_w = res.image.shape[0], res.image.shape[1]
+    new_phash = compute_phash(res.image)
     conn.execute(
         "UPDATE image_assets SET bbox_json = ?, detection_method = 'manual', "
         "width = ?, height = ?, phash = ? WHERE id = ?",
-        (json.dumps(bbox), new_w, new_h, compute_phash(res.image), row["asset_id"]),
+        (json.dumps(bbox), new_w, new_h, new_phash, row["asset_id"]),
+    )
+    # Sync : un recrop manuel est autoritatif (non recomputable). Le binaire
+    # est ré-uploadé sur la MÊME clé MinIO → seules les colonnes voyagent ;
+    # cache_invalidate dit aux autres machines de purger leur PNG périmé.
+    emit_field_event(
+        conn, asset_id=row["asset_id"], reason="manual_recrop",
+        fields={
+            "image_assets.bbox_json": json.dumps(bbox),
+            "image_assets.detection_method": "manual",
+            "image_assets.width": new_w,
+            "image_assets.height": new_h,
+            "image_assets.phash": new_phash,
+        },
+        detail={"cache_invalidate": crop_sp},
     )
     conn.commit()
 
@@ -472,10 +487,31 @@ def create_manual_crop(
         "UPDATE image_assets SET storage_status='present' WHERE id = ?",
         (asset_id,),
     )
+    # Sync : snapshot INSERT complet en row_ops — une machine distante n'a pas
+    # cette row, l'event doit suffire à la créer (binaire déjà sur MinIO).
     emit_state_event(
         conn, asset_id=asset_id, to_state="detected", actor="human",
         reason="manual_add_crop", target_eurio_id=si["target_eurio_id"],
         run_id=run_id,
+        detail={"row_ops": [{
+            "op": "upsert", "table": "image_assets", "key": {"id": asset_id},
+            "values": {
+                "source_image_id": source_image_id,
+                "crop_index": crop_index,
+                "bbox_json": json.dumps(bbox),
+                "detection_method": "manual_add",
+                "resolution_status": "needs_review",
+                "candidate_eurio_ids_json":
+                    json.dumps(candidate_list) if candidate_list else None,
+                "phash": phash_value,
+                "storage_path": storage_key,
+                "storage_status": "present",
+                "width": new_w,
+                "height": new_h,
+                "run_id": run_id,
+            },
+        }]},
+        detail_fields={},
     )
     conn.commit()
 
@@ -519,6 +555,14 @@ def create_manual_crop(
         conn, asset_id=asset_id, to_state="queued", actor="human",
         reason="manual_add_enqueued", target_eurio_id=si["target_eurio_id"],
         run_id=run_id,
+        detail_fields={
+            "review_queue.status": "open",
+            "review_queue.priority": priority,
+            "review_queue.candidate_eurio_ids_json":
+                json.dumps(candidate_list) if candidate_list else None,
+            "review_queue.kind": kind,
+            "review_queue.lane": lane,
+        },
     )
     conn.commit()
 
@@ -569,6 +613,11 @@ def delete_crop(store: Store, asset_id: str) -> None:
         except Exception as exc:  # noqa: BLE001
             logger.warning("[delete-crop] file delete failed asset=%s: %s",
                            asset_id, exc)
+    # Tombstone AVANT le DELETE (même transaction) : le CASCADE emporte les
+    # events de l'asset, la suppression voyage donc par sync_tombstones.
+    record_tombstone(
+        conn, asset_id=asset_id, storage_path=storage_key, reason="manual_delete",
+    )
     conn.execute("DELETE FROM image_assets WHERE id = ?", (asset_id,))
     conn.commit()
-    logger.info("[delete-crop] asset=%s purged (row + cascade)", asset_id)
+    logger.info("[delete-crop] asset=%s purged (row + cascade + tombstone)", asset_id)
