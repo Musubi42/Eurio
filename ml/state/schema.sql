@@ -1003,6 +1003,15 @@ CREATE TABLE IF NOT EXISTS sync_state (
   value TEXT
 );
 
+-- Events reçus dont l'asset n'existe pas encore localement (FK image_assets) :
+-- parkés ici, re-tentés à chaque apply_remote (l'asset arrive plus tard via
+-- /ingest/run ou pull-replica — la sync event ne réplique que l'autoritatif).
+CREATE TABLE IF NOT EXISTS sync_orphan_events (
+  op_id        TEXT PRIMARY KEY,
+  payload_json TEXT NOT NULL,
+  received_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- Jobs cohorte observables (scrape eBay, recrop-zero). Remplace le dict
 -- in-memory _recrop_jobs (perdu au restart FastAPI). Le worker écrit sa
 -- progression au fil de l'eau → polling réel + survit aux restarts (corrige B2).

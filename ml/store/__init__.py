@@ -33,6 +33,7 @@ from .dino_references import (
 )
 from .events import emit_field_event, emit_state_event, record_tombstone
 from .hlc import hlc_merge, hlc_now, hlc_parse, machine_id
+from .sync_replay import ReplayStats, apply_remote, event_to_wire, tombstone_to_wire
 from .iterations import (
     AugVsRealRow,
     ExperimentIterationRow,
@@ -118,6 +119,10 @@ __all__ = [
     "hlc_now",
     "hlc_parse",
     "machine_id",
+    "ReplayStats",
+    "apply_remote",
+    "event_to_wire",
+    "tombstone_to_wire",
     "latest_training_scan",
     "training_scan_dismiss_intruder",
     "resolve_db_path",
