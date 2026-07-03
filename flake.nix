@@ -160,7 +160,8 @@
         # dev (mac/pc), de façon idempotente à chaque entrée de shell. Sans ça,
         # un clone frais côté PC oublie facilement codeberg et tout `git push`
         # part sur github seul (incident 2026-07-01). Doctrine repo cleanup :
-        # origin = codeberg (source de vérité), github = backup.
+        # deux remotes nommés par leur hôte — codeberg (source de vérité) et
+        # github (backup), pas d'« origin » opaque.
         # N'agit QUE si le remote est absent ou pointe ailleurs — silencieux
         # sinon. Ne touche jamais le VPS (checkout de déploiement).
         gitRemotesHook = ''
@@ -176,7 +177,7 @@
                 echo "  🔗 git remote '$name' corrigé → $want"
               fi
             }
-            ensure_remote origin https://codeberg.org/Musubi42/Eurio.git
+            ensure_remote codeberg https://codeberg.org/Musubi42/Eurio.git
             ensure_remote github git@github.com:Musubi42/Eurio.git
           fi
         '';

@@ -16,6 +16,7 @@ import base64
 import json
 import logging
 import mimetypes
+import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -25,7 +26,11 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_BASE_URL = "http://127.0.0.1:3002"
+# ccproxy est un service GLOBAL partagé entre projets (~/Taskfile.yml,
+# namespace global:ccproxy:*), pas une instance locale à Eurio. Port fixe
+# 3042 — voir ~/.claude/CLAUDE.md §Services globaux locaux. Overridable via
+# CCPROXY_BASE_URL pour un déploiement alternatif (jamais commit de 3002/8042).
+DEFAULT_BASE_URL = os.environ.get("CCPROXY_BASE_URL", "http://127.0.0.1:3042")
 DEFAULT_TIMEOUT = 120  # seconds (vision peut être plus lent)
 
 

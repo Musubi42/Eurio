@@ -68,6 +68,76 @@ tasks:
     cmds:
       - adb devices -l
 
+  wifi-connect:
+    desc: "Bascule adb en Wi-Fi depuis un device branché en USB (port 5555 fixe). Timeout 30s, pas de boucle infinie."
+    summary: |
+      Prérequis 1 fois par téléphone (Réglages > Options développeur — activer
+      via 7 taps sur le numéro de build si absent) :
+        - Débogage USB : ON
+        - Débogage sans fil : ON
+      Puis brancher le téléphone en USB une fois et lancer cette tâche.
+      Une fois connecté, le câble USB peut être débranché — go-task android:run
+      etc. fonctionnent ensuite en Wi-Fi tant que le téléphone reste sur le
+      même réseau. Si la connexion se perd (téléphone qui dort, changement de
+      réseau), rebrancher en USB et relancer cette tâche.
+    cmds:
+      - |
+        set -e
+
+        # Reset : purge toute connexion Wi-Fi adb périmée (ex. ancienne IP hors
+        # ligne) avant de repartir d'un état propre sur USB. Sans ça, adb peut
+        # rester accroché à un endpoint mort et on croit qu'"il ne trouve pas
+        # le port" alors que le device n'était simplement pas joignable.
+        adb disconnect >/dev/null 2>&1 || true
+
+        # Device USB requis : un serial adb ne contient jamais ':' (les devices
+        # déjà en Wi-Fi apparaissent en <ip>:<port>). On exclut ces derniers
+        # pour ne cibler qu'un vrai lien USB.
+        USB_SERIAL=$(adb devices | awk 'NR>1 && $2=="device" && $1 !~ /:/ {print $1; exit}')
+
+        if [ -z "$USB_SERIAL" ]; then
+          echo "✗ Aucun device USB détecté."
+          echo ""
+          echo "  Pour activer le Wi-Fi adb sur ce téléphone :"
+          echo "    1. Réglages > À propos du téléphone > taper 7× sur 'Numéro de build'"
+          echo "       (active Options développeur si pas déjà fait)"
+          echo "    2. Réglages > Options développeur :"
+          echo "         - Débogage USB : ON"
+          echo "         - Débogage sans fil : ON"
+          echo "    3. Brancher le téléphone en USB une fois, autoriser l'ordinateur"
+          echo "       si une popup apparaît sur le téléphone"
+          echo "    4. Relancer : go-task android:wifi-connect"
+          exit 1
+        fi
+
+        echo "→ Device USB détecté : $USB_SERIAL"
+
+        DEVICE_IP=$(adb -s "$USB_SERIAL" shell ip -f inet addr show wlan0 2>/dev/null | awk '/inet /{print $2}' | cut -d/ -f1)
+
+        if [ -z "$DEVICE_IP" ]; then
+          echo "✗ Impossible de lire l'IP Wi-Fi du téléphone (wlan0)."
+          echo "  Vérifie que le téléphone est bien connecté à un réseau Wi-Fi, puis relance."
+          exit 1
+        fi
+
+        echo "→ IP Wi-Fi : $DEVICE_IP"
+        adb -s "$USB_SERIAL" tcpip 5555 >/dev/null
+        sleep 2
+
+        echo "→ Connexion à $DEVICE_IP:5555 (timeout 30s)…"
+        for i in $(seq 1 15); do
+          if adb connect "$DEVICE_IP:5555" 2>/dev/null | grep -q "connected"; then
+            echo "✓ Connecté en Wi-Fi : $DEVICE_IP:5555 — le câble USB peut être débranché."
+            exit 0
+          fi
+          sleep 2
+        done
+
+        echo "✗ Pas de connexion Wi-Fi après 30s."
+        echo "  Vérifie que le Mac/PC et le téléphone sont sur le MÊME réseau Wi-Fi,"
+        echo "  puis rebranche le câble USB et relance : go-task android:wifi-connect"
+        exit 1
+
   pull-debug:
     desc: Pull debug captures from the device into ./debug_pull/TIMESTAMP/
     vars:

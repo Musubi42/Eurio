@@ -7,7 +7,7 @@ classer chaque crop (cf. ``foundation.standard_gate_review`` pour le contrat) :
 
 Mesure si « cette histoire de design_group » filtre correctement. LECTURE SEULE
 (n'écrit rien — voir ``scripts.gate_standard_vision`` pour l'action de rejet).
-ccproxy user-owned (port 3002).
+ccproxy = service global partagé (port 3042, ``task -g global:ccproxy:start``).
 
 Usage :
     python -m scripts.eval_obverse_attribution_vision --country BE --per-group 8
@@ -93,7 +93,7 @@ def main() -> int:
     parser.add_argument("--per-group", type=int, default=8)
     parser.add_argument("--db", default=str(DEFAULT_DB))
     parser.add_argument("--model", default=DEFAULT_MODEL_ALIAS, choices=list(MODELS))
-    parser.add_argument("--base-url", default="http://127.0.0.1:3002")
+    parser.add_argument("--base-url", default=ccproxy_client.DEFAULT_BASE_URL)
     args = parser.parse_args()
 
     try:

@@ -43,8 +43,10 @@ if str(_ML_DIR) not in sys.path:
     sys.path.insert(0, str(_ML_DIR))
 
 from shared.storage.local_cache import local_path
+from shared.ccproxy_client import DEFAULT_BASE_URL
 
-CCPROXY_URL = "http://localhost:3002/v1/chat/completions"
+# ccproxy = service global partagé (port 3042, task -g global:ccproxy:start).
+CCPROXY_URL = f"{DEFAULT_BASE_URL}/v1/chat/completions"
 MODEL = "claude-sonnet-4-6"
 MAX_RAW_SHORT_SIDE = 1024
 

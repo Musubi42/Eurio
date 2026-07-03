@@ -5,8 +5,9 @@ membres à Claude et vérifie qu'ils partagent bien le **même avers**. Valide a
 posteriori le groupage (déterministe) — n'écrit RIEN, ne re-groupe RIEN. Sortie =
 liste d'anomalies pour review PO.
 
-ccproxy est **user-owned** (port 3002) : le script échoue proprement si le proxy
-est down (pré-flight ``/health``), ne lance aucun scrape ni écriture.
+ccproxy est le service **global partagé** (port 3042, ``task -g global:ccproxy:start``) :
+le script échoue proprement si le proxy est down (pré-flight ``/health``), ne lance
+aucun scrape ni écriture.
 
 Codes de sortie : 0 = tous cohérents ; 1 = anomalie(s) (avers divergent / outlier) ;
 2 = erreur d'exécution (ccproxy down, avers manquant, parse fail).
@@ -77,7 +78,7 @@ def main() -> int:
     parser.add_argument("--country", required=True, help="ISO2 (ex. BE)")
     parser.add_argument("--db", default=str(DEFAULT_DB))
     parser.add_argument("--model", default=DEFAULT_MODEL_ALIAS, choices=list(MODELS))
-    parser.add_argument("--base-url", default="http://127.0.0.1:3002")
+    parser.add_argument("--base-url", default=ccproxy_client.DEFAULT_BASE_URL)
     parser.add_argument(
         "--include-singletons", action="store_true",
         help="review aussi les groupes mono-membre (trivialement cohérents, skip par défaut)",

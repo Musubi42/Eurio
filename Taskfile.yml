@@ -37,6 +37,31 @@ tasks:
     cmds:
       - node scripts/generate_android_tokens.mjs
 
+  front:dev:
+    desc: "Lance le front admin studio-local (HMR, port 5173). Mode local par défaut (PAT + ML lourd :8042 actif) — cf. CLAUDE.md §Architecture frontend."
+    # Le PAT vient de l'environnement shell (VITE_EURIO_PAT, aliasé sur
+    # EURIO_API_TOKEN par .envrc — source unique secrets/dev.env). Aucun .env.local.
+    preconditions:
+      - sh: '[ -n "$VITE_EURIO_PAT" ]'
+        msg: "VITE_EURIO_PAT absent — lance depuis le shell direnv du repo (secrets/dev.env → EURIO_API_TOKEN). `direnv reload` si besoin."
+    cmds:
+      - pnpm -C admin/packages/studio-local dev
+
+  front:build:
+    desc: Build le front admin studio-local (typecheck + vite build)
+    cmds:
+      - pnpm -C admin/packages/studio-local build
+
+  front:typecheck:
+    desc: Typecheck seul du front admin studio-local (vue-tsc --noEmit)
+    cmds:
+      - pnpm -C admin/packages/studio-local typecheck
+
+  front:preview:
+    desc: Preview du build studio-local (vite preview)
+    cmds:
+      - pnpm -C admin/packages/studio-local preview
+
   proto:dev:
     desc: Serve the Vue proto (HMR, port 5174) for human design audit
     cmds:
@@ -136,34 +161,24 @@ tasks:
     cmds:
       - ./.venv/bin/python -c 'from augmentations.overlays import sanity_check_textures; import sys; sys.exit(sanity_check_textures())'
 
-  ccproxy:build:
-    desc: "Compile le binaire ccproxy (proxy OpenAI-compat vers claude CLI). À relancer après chaque modif des sources Go."
-    dir: services/ccproxy
-    cmds:
-      - go build -o bin/ccproxy .
-      - echo "✓ ccproxy built → services/ccproxy/bin/ccproxy"
-
+  # ccproxy est un service GLOBAL partagé entre projets (~/Taskfile.yml,
+  # namespace global:ccproxy:*), plus une instance locale à Eurio. Ces tâches
+  # délèguent — pas de code Go ni de port local ici. Voir ~/.claude/CLAUDE.md
+  # §Services globaux locaux et bizz/CCPROXY-GLOBAL-MIGRATION.md.
   ccproxy:start:
-    desc: "Démarre ccproxy en avant-plan (port 3002). Logs visibles, Ctrl-C pour stopper. Requis pour /review/ccproxy et le bench Claude."
-    dir: services/ccproxy
+    desc: "Démarre ccproxy global (port 3042, idempotent, background)."
     cmds:
-      - |
-        if [ ! -x bin/ccproxy ]; then
-          echo "Binaire ccproxy absent — exécute d'abord : go-task ccproxy:build"
-          exit 1
-        fi
-      - ./bin/ccproxy --debug
+      - task -g global:ccproxy:start
+
+  ccproxy:status:
+    desc: "État du ccproxy global (up/down + PID + port)."
+    cmds:
+      - task -g global:ccproxy:status
 
   ccproxy:health:
-    desc: "Ping rapide /health du ccproxy local (port 3002). Utile pour vérifier qu'il tourne avant un batch."
+    desc: "Payload /health brut du ccproxy global."
     cmds:
-      - |
-        if curl -s --max-time 3 http://127.0.0.1:3002/health; then
-          echo ""
-        else
-          echo "ccproxy down — lance-le avec [go-task ccproxy:start]"
-          exit 1
-        fi
+      - task -g global:ccproxy:health
 
   loan:build-catalog:
     desc: "Génère catalog.json + télécharge images dans public/coins/ (local only, requires SUPABASE_SERVICE_ROLE_KEY)"

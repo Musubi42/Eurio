@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from shared.ccproxy_client import ChatResult, chat, image_part, parse_json_response, text_part
+from shared.ccproxy_client import DEFAULT_BASE_URL, ChatResult, chat, image_part, parse_json_response, text_part
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +97,7 @@ def judge(
     target_label: str,
     listing_title: str,
     model_alias: str = DEFAULT_MODEL_ALIAS,
-    base_url: str = "http://127.0.0.1:3002",
+    base_url: str = DEFAULT_BASE_URL,
 ) -> ClaudeJudgement:
     """Single-shot : appelle Claude, parse, retourne le verdict structuré.
 

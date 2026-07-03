@@ -81,7 +81,7 @@ tasks:
 
   # ---------- Foundation (DINOv2 anchors for auto-validation) ----------
   dino-anchors:build:
-    desc: "Build DINOv2 obverse anchor bank for the auto-validation pipeline. Kinds: 2eur_commemo (consensus, vits14), 2eur_standard (design groups courantes, vits14), 2eur_all (commémo+standards, banque des suggestions review, ENCODÉE EN vitl14). Reads coins from eurio.db and ml/datasets/<numista>/obverse.jpg. Writes ml/state/foundation_anchors_<kind>.npz. Usage: go-task ml:dino-anchors:build [-- --force] [-- --kind 2eur_all]. Après un renommage de slugs : rebâtir 2eur_commemo ET 2eur_all --force PUIS re-backfiller les prédictions."
+    desc: "Build DINOv2 obverse anchor bank for the auto-validation pipeline. Kinds: 2eur_commemo (consensus, vits14), 2eur_standard (design groups courantes, vits14), 2eur_all (commémo+standards, banque des suggestions review, ENCODÉE EN vitl14 — MULTI-EXEMPLAIRES depuis improvement-loop B : canonique + ~10 vrais crops validés choisis par diversité FPS, overrides pin/exclude honorés, sélection tracée dans dino_class_references). Reads coins from eurio.db and ml/datasets/<numista>/obverse.jpg (+ crops eBay validés pour 2eur_all). Writes ml/state/foundation_anchors_<kind>.npz. Usage: go-task ml:dino-anchors:build [-- --force] [-- --kind 2eur_all]. Après un renommage de slugs : rebâtir 2eur_commemo ET 2eur_all --force PUIS re-backfiller les prédictions."
     cmds:
       - "{{.VENV}}/python -m scripts.build_dino_anchors -v {{.CLI_ARGS}}"
 

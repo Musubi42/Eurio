@@ -12,7 +12,8 @@ Réversible : un faux rejet se restaure via la liste des rejetés (endpoint
 ``/review/rejected`` + restore). On NE rejette PAS ``wrong_era`` (vrai standard mal
 groupé → laissé à l'humain) ni ``correct`` / ``reverse_cant_tell``.
 
-Dry-run par défaut (classe + rapporte, n'écrit rien). ccproxy user-owned (port 3002).
+Dry-run par défaut (classe + rapporte, n'écrit rien). ccproxy = service global
+partagé (port 3042, ``task -g global:ccproxy:start``).
 
 Usage :
     python -m scripts.gate_standard_vision --country BE                 # dry-run
@@ -139,7 +140,7 @@ def main() -> int:
     parser.add_argument("--limit", type=int, default=None, help="cap le nombre de crops classés")
     parser.add_argument("--db", default=str(DEFAULT_DB))
     parser.add_argument("--model", default=DEFAULT_MODEL_ALIAS, choices=list(MODELS))
-    parser.add_argument("--base-url", default="http://127.0.0.1:3002")
+    parser.add_argument("--base-url", default=ccproxy_client.DEFAULT_BASE_URL)
     args = parser.parse_args()
 
     try:

@@ -275,9 +275,12 @@ def _predict_one(
         country_matches = top_k_match_country(
             vec, bank, target_country=target_country, top_k=_TOP_K_STORE,
         )
-        country_anchors_count = sum(
-            1 for eid in bank.eurio_ids if eid[:2].lower() == target_country.lower()
-        )
+        # Compte des CLASSES distinctes (bank multi-exemplaires : plusieurs
+        # lignes/eurio_id), pas des lignes de la banque.
+        country_anchors_count = len({
+            eid for eid in bank.eurio_ids
+            if eid[:2].lower() == target_country.lower()
+        })
 
     duration_ms = int((time.perf_counter() - t0) * 1000)
     if not matches:
@@ -292,7 +295,7 @@ def _predict_one(
         asset_id=asset_id,
         encoder_version=bank.encoder_version,
         anchors_kind=anchors_kind,
-        anchors_count=bank.count,
+        anchors_count=len(set(bank.eurio_ids)),  # classes distinctes, pas lignes
         top_k=[m.to_dict() for m in matches],
         top1_eurio_id=top1.eurio_id,
         top1_sim=float(top1.sim),
@@ -566,15 +569,20 @@ def rank_eurio_ids_for_crop(
     encoder, device, transform = _get_encoder_singleton(bank.encoder_version)
     vec = encode_image(crop_path, encoder=encoder, device=device, transform=transform)
     sims = bank.matrix @ vec  # (N,) — banque L2-normalisée, vec L2-normalisé
-    index = {eid: i for i, eid in enumerate(bank.eurio_ids)}
+    # Max-pool par eurio_id : depuis B, une classe a plusieurs lignes (canonique
+    # + exemplaires FPS) → la sim de la classe = la meilleure de ses lignes.
+    best: dict[str, float] = {}
+    for i, eid in enumerate(bank.eurio_ids):
+        s = float(sims[i])
+        if eid not in best or s > best[eid]:
+            best[eid] = s
     ranked: list[dict[str, Any]] = []
     missing: list[str] = []
     for eid in eurio_ids:
-        i = index.get(eid)
-        if i is None:
-            missing.append(eid)
+        if eid in best:
+            ranked.append({"eurio_id": eid, "sim": best[eid]})
         else:
-            ranked.append({"eurio_id": eid, "sim": float(sims[i])})
+            missing.append(eid)
     ranked.sort(key=lambda r: r["sim"], reverse=True)
     return {
         "anchors_kind": anchors_kind,

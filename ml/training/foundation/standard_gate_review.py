@@ -21,7 +21,7 @@ import logging
 from dataclasses import dataclass
 from pathlib import Path
 
-from shared.ccproxy_client import ChatResult, chat, image_part, parse_json_response, text_part
+from shared.ccproxy_client import DEFAULT_BASE_URL, ChatResult, chat, image_part, parse_json_response, text_part
 
 from training.foundation.claude_review import DEFAULT_MODEL_ALIAS, MODELS
 
@@ -70,7 +70,7 @@ def classify_crop(
     year_range: str,
     listing_title: str,
     model_alias: str = DEFAULT_MODEL_ALIAS,
-    base_url: str = "http://127.0.0.1:3002",
+    base_url: str = DEFAULT_BASE_URL,
 ) -> CropVerdict:
     """Classe un crop vs les avers canoniques d'un groupe. Erreurs capturées."""
     model_id = MODELS.get(model_alias, model_alias)
