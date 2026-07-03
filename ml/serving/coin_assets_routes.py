@@ -32,6 +32,7 @@ from pydantic import BaseModel, Field
 from store import (
     Store,
     clear_reference_override,
+    emit_field_event,
     emit_state_event,
     get_class_references,
     get_references_for_assets,
@@ -320,6 +321,22 @@ def reflag_assets(payload: ReflagPayload) -> ReflagResponse:
             emit_state_event(
                 conn, asset_id=asset_id, to_state="queued", actor="human",
                 reason="reflagged_from_coin",
+                detail_fields={
+                    "image_assets.resolution_status": "needs_review",
+                    "image_assets.resolved_at": None,
+                    "review_queue.status": "open",
+                    "review_queue.priority": 100,
+                    "review_queue.enqueued_at": now,
+                    "review_queue.kind": "single",
+                    "review_queue.decision_notes": "re-flagged from coin detail",
+                    "review_queue.lane": "manual",
+                    "review_queue.lane_source": "human",
+                    "review_queue.decided_eurio_id": None,
+                    "review_queue.decided_face": None,
+                    "review_queue.decided_variant_kind": None,
+                    "review_queue.decided_at": None,
+                    "review_queue.decided_by": None,
+                },
             )
         review_ids.append(rid_row["id"])
         n_reflagged += 1
@@ -467,18 +484,37 @@ def set_asset_dino_reference(
     with conn:
         if payload.action == "clear":
             clear_reference_override(conn, asset_id=asset_id, anchors_kind=DINO_REF_KIND)
-        elif payload.action == "pin":
+            # Delete générique par égalité de clé → un row_op par méthode
+            # manuelle (le replay ne sait pas exprimer un IN).
+            row_ops = [
+                {"op": "delete", "table": "dino_class_references",
+                 "key": {"anchors_kind": DINO_REF_KIND, "asset_id": asset_id,
+                         "method": m}}
+                for m in ("manual_pin", "manual_exclude")
+            ]
+            reason = "dino_ref_clear"
+        elif payload.action in ("pin", "exclude"):
+            method = "manual_pin" if payload.action == "pin" else "manual_exclude"
             set_reference_override(
                 conn, class_id=class_id, eurio_id=eurio_id, asset_id=asset_id,
-                method="manual_pin", anchors_kind=DINO_REF_KIND,
+                method=method, anchors_kind=DINO_REF_KIND,
             )
-        elif payload.action == "exclude":
-            set_reference_override(
-                conn, class_id=class_id, eurio_id=eurio_id, asset_id=asset_id,
-                method="manual_exclude", anchors_kind=DINO_REF_KIND,
-            )
+            row_ops = [{
+                "op": "upsert", "table": "dino_class_references",
+                "key": {"anchors_kind": DINO_REF_KIND, "class_id": class_id,
+                        "asset_id": asset_id},
+                "values": {"eurio_id": eurio_id, "method": method,
+                           "rank": None, "selected_sim": None},
+            }]
+            reason = f"dino_ref_{payload.action}"
         else:
             raise HTTPException(status_code=422, detail=f"action invalide : {payload.action}")
+        # Override humain de la banque d'ancres = autoritatif (non recomputable) →
+        # voyage par row_ops (ligne non adressable par asset_id seul).
+        emit_field_event(
+            conn, asset_id=asset_id, reason=reason, fields={},
+            detail={"row_ops": row_ops},
+        )
     return DinoRefActionResult(asset_id=asset_id, action=payload.action, applied=True)
 
 

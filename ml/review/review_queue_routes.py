@@ -72,7 +72,7 @@ _AUTO_DINO_ENGINE_VERSION = (
     f"-d{DINO_VERDICT_THRESHOLDS['country_spread_min']}"
 )
 from vision.normalize_snap import normalize_listing_with_detections
-from store import Store, emit_state_event
+from store import Store, emit_field_event, emit_state_event
 
 from serving.crop_edit import (
     CropEditContextData,
@@ -1101,6 +1101,22 @@ def restore_rejected(payload: RestorePayload) -> RestoreResult:
             emit_state_event(
                 conn, asset_id=rq["image_asset_id"], to_state="queued",
                 actor="human", reason="restored",
+                detail_fields={
+                    "image_assets.resolution_status": "needs_review",
+                    "image_assets.training_eligible": 1,
+                    "image_assets.quality_reason": None,
+                    "image_assets.resolved_at": None,
+                    "review_queue.status": "open",
+                    "review_queue.priority": _RESTORE_PRIORITY,
+                    "review_queue.decided_at": None,
+                    "review_queue.decided_by": None,
+                    "review_queue.decided_eurio_id": None,
+                    "review_queue.decided_face": None,
+                    "review_queue.decided_variant_kind": None,
+                    "review_queue.decision_notes": _RESTORED_NOTE,
+                    "review_queue.decision_engine_version": None,
+                    "review_queue.decision_metadata_json": "{}",
+                },
             )
             conn.execute("COMMIT")
             restored += 1
@@ -1929,9 +1945,31 @@ def decide_lot(listing_key: str, payload: LotDecidePayload) -> LotDecideResponse
                         f"asset {asg.asset_id} decided concurrently — skipped"
                     )
                     continue
+                applied = conn.execute(
+                    "SELECT variant_kind FROM image_assets WHERE id = ?",
+                    (asg.asset_id,),
+                ).fetchone()
                 emit_state_event(
                     conn, asset_id=asg.asset_id, to_state="resolved",
                     actor="human", reason="human_decided_lot", eurio_id=asg.eurio_id,
+                    detail_fields={
+                        "image_assets.eurio_id": asg.eurio_id,
+                        "image_assets.face": face,
+                        "image_assets.variant_kind": applied["variant_kind"],
+                        "image_assets.resolution_status": "manual",
+                        "image_assets.resolution_confidence": 1.0,
+                        "image_assets.training_eligible": 1,
+                        "image_assets.resolved_at": now_iso,
+                        "review_queue.status": "done",
+                        "review_queue.decided_eurio_id": asg.eurio_id,
+                        "review_queue.decided_face": face,
+                        "review_queue.decided_variant_kind": asg.variant_kind,
+                        "review_queue.decided_at": now_iso,
+                        "review_queue.decided_by": "admin",
+                        "review_queue.decision_engine_version": _HUMAN_ENGINE_VERSION,
+                        "review_queue.decision_metadata_json":
+                            json.dumps({"context": "lot_bulk", "face_chosen": face}),
+                    },
                 )
                 n_done += 1
 
@@ -1975,6 +2013,20 @@ def decide_lot(listing_key: str, payload: LotDecidePayload) -> LotDecideResponse
                 emit_state_event(
                     conn, asset_id=asg.asset_id, to_state="rejected",
                     actor="human", reason=f"trash_{asg.reject_reason}",
+                    detail_fields={
+                        "image_assets.resolution_status": "rejected",
+                        "image_assets.training_eligible": 0,
+                        "image_assets.quality_reason": "rejected_in_review",
+                        "image_assets.resolved_at": now_iso,
+                        "review_queue.status": "done",
+                        "review_queue.decision_notes": asg.reject_reason,
+                        "review_queue.decided_at": now_iso,
+                        "review_queue.decided_by": "admin",
+                        "review_queue.decision_engine_version": _HUMAN_ENGINE_VERSION,
+                        "review_queue.decision_metadata_json": json.dumps(
+                            {"reason": asg.reject_reason, "context": "lot_bulk"}
+                        ),
+                    },
                 )
                 n_rejected += 1
 
@@ -1993,6 +2045,7 @@ def decide_lot(listing_key: str, payload: LotDecidePayload) -> LotDecideResponse
                 emit_state_event(
                     conn, asset_id=asg.asset_id, to_state="skipped",
                     actor="human", reason="deferred_lot",
+                    detail_fields={"review_queue.status": "skipped"},
                 )
                 n_skipped += 1
 
@@ -2144,9 +2197,30 @@ def decide_review(review_id: str, payload: DecidePayload) -> dict[str, str]:
                 status_code=409,
                 detail="Review already decided concurrently by another voie.",
             )
+        applied = conn.execute(
+            "SELECT variant_kind FROM image_assets WHERE id = ?", (asset_id,),
+        ).fetchone()
         emit_state_event(
             conn, asset_id=asset_id, to_state="resolved", actor="human",
             reason="human_decided", eurio_id=payload.eurio_id,
+            detail_fields={
+                "image_assets.eurio_id": payload.eurio_id,
+                "image_assets.face": payload.face,
+                "image_assets.variant_kind": applied["variant_kind"],
+                "image_assets.resolution_status": "manual",
+                "image_assets.resolution_confidence": 1.0,
+                "image_assets.training_eligible": 1,
+                "image_assets.resolved_at": now_iso,
+                "review_queue.status": "done",
+                "review_queue.decided_eurio_id": payload.eurio_id,
+                "review_queue.decided_face": payload.face,
+                "review_queue.decided_variant_kind": payload.variant_kind,
+                "review_queue.decision_notes": payload.notes,
+                "review_queue.decided_at": now_iso,
+                "review_queue.decided_by": "admin",
+                "review_queue.decision_engine_version": _HUMAN_ENGINE_VERSION,
+                "review_queue.decision_metadata_json": metadata,
+            },
         )
         conn.execute("COMMIT")
     except HTTPException:
@@ -2300,6 +2374,19 @@ def requalify_lot(review_id: str) -> RequalifyLotResponse:
     ph = ",".join("?" * len(sids))
 
     with conn:
+        affected = [
+            r["image_asset_id"] for r in conn.execute(
+                f"""
+                SELECT image_asset_id FROM review_queue
+                 WHERE status = 'open' AND kind != 'lot'
+                   AND image_asset_id IN (
+                       SELECT a.id FROM image_assets a
+                        WHERE a.source_image_id IN ({ph})
+                   )
+                """,  # noqa: S608
+                sids,
+            ).fetchall()
+        ]
         cur = conn.execute(
             f"""
             UPDATE review_queue
@@ -2313,6 +2400,13 @@ def requalify_lot(review_id: str) -> RequalifyLotResponse:
             sids,
         )
         n_requalified = cur.rowcount or 0
+        # Sync : un event par row basculée (listing_text_signals reste local —
+        # hors périmètre v1, cf. docs/work-in-progress/local-sync/).
+        for aid in affected:
+            emit_field_event(
+                conn, asset_id=aid, reason="requalify",
+                fields={"review_queue.kind": "lot"},
+            )
         # Taxonomie : marque le listing en 'lot' (manuel → non ré-écrasé par C2).
         conn.execute(
             f"""
@@ -2351,6 +2445,19 @@ def requalify_single(listing_key: str) -> RequalifyLotResponse:
     ph = ",".join("?" * len(sids))
 
     with conn:
+        affected = [
+            r["image_asset_id"] for r in conn.execute(
+                f"""
+                SELECT image_asset_id FROM review_queue
+                 WHERE status = 'open' AND kind != 'single'
+                   AND image_asset_id IN (
+                       SELECT a.id FROM image_assets a
+                        WHERE a.source_image_id IN ({ph})
+                   )
+                """,  # noqa: S608
+                sids,
+            ).fetchall()
+        ]
         cur = conn.execute(
             f"""
             UPDATE review_queue
@@ -2364,6 +2471,11 @@ def requalify_single(listing_key: str) -> RequalifyLotResponse:
             sids,
         )
         n_requalified = cur.rowcount or 0
+        for aid in affected:
+            emit_field_event(
+                conn, asset_id=aid, reason="requalify",
+                fields={"review_queue.kind": "single"},
+            )
         conn.execute(
             f"""
             UPDATE listing_text_signals
@@ -2547,6 +2659,19 @@ def reject_review(
         emit_state_event(
             conn, asset_id=rq["image_asset_id"], to_state="rejected",
             actor="human", reason=(f"trash_{reason}" if reason else "rejected"),
+            detail_fields={
+                "image_assets.resolution_status": "rejected",
+                "image_assets.training_eligible": 0,
+                "image_assets.quality_reason": quality_reason,
+                "image_assets.resolved_at": now_iso,
+                "review_queue.status": "done",
+                "review_queue.decision_notes": reason or "rejected",
+                "review_queue.decided_at": now_iso,
+                "review_queue.decided_by": "admin",
+                "review_queue.decision_engine_version": _HUMAN_ENGINE_VERSION,
+                "review_queue.decision_metadata_json":
+                    json.dumps({"reason": reason or "rejected"}),
+            },
         )
         conn.execute("COMMIT")
     except HTTPException:
@@ -3388,6 +3513,10 @@ def skip_review(review_id: str) -> dict[str, Any]:
     emit_state_event(
         conn, asset_id=rq["image_asset_id"], to_state="skipped",
         actor="human", reason="deferred",
+        detail_fields={
+            "review_queue.priority": rq["priority"] + _SKIP_PRIORITY_BUMP,
+            "review_queue.decision_notes": "skipped",
+        },
     )
     new_priority = rq["priority"] + _SKIP_PRIORITY_BUMP
     logger.info("[review] skipped id=%s new_priority=%d", review_id, new_priority)
@@ -3413,6 +3542,16 @@ def move_lane(review_id: str) -> dict[str, str]:
             status_code=404,
             detail="Review item introuvable ou non-ouvert (déjà décidé ?).",
         )
+    rq = conn.execute(
+        "SELECT image_asset_id FROM review_queue WHERE id = ?", (review_id,),
+    ).fetchone()
+    emit_field_event(
+        conn, asset_id=rq["image_asset_id"], reason="move_lane",
+        fields={
+            "review_queue.lane": "manual",
+            "review_queue.lane_source": "human",
+        },
+    )
     logger.info("[review] move-lane id=%s → manual (human)", review_id)
     return {"status": "ok", "id": review_id, "lane": "manual"}
 

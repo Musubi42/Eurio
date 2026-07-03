@@ -31,7 +31,7 @@ from .dino_references import (
     replace_auto_references,
     set_reference_override,
 )
-from .events import emit_state_event, record_tombstone
+from .events import emit_field_event, emit_state_event, record_tombstone
 from .hlc import hlc_merge, hlc_now, hlc_parse, machine_id
 from .iterations import (
     AugVsRealRow,
@@ -111,6 +111,7 @@ __all__ = [
     "get_references_for_assets",
     "replace_auto_references",
     "set_reference_override",
+    "emit_field_event",
     "emit_state_event",
     "record_tombstone",
     "hlc_merge",

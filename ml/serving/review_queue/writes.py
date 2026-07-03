@@ -132,9 +132,32 @@ def decide_review(
                 status_code=409,
                 detail="Review already decided concurrently by another voie.",
             )
+        # variant_kind : COALESCE côté UPDATE → la valeur syncée est celle
+        # réellement en base (relue), pas le payload potentiellement None.
+        applied = conn.execute(
+            "SELECT variant_kind FROM image_assets WHERE id = ?", (asset_id,),
+        ).fetchone()
         emit_state_event(
             conn, asset_id=asset_id, to_state="resolved", actor="human",
             reason="human_decided", eurio_id=payload.eurio_id,
+            detail_fields={
+                "image_assets.eurio_id": payload.eurio_id,
+                "image_assets.face": payload.face,
+                "image_assets.variant_kind": applied["variant_kind"],
+                "image_assets.resolution_status": "manual",
+                "image_assets.resolution_confidence": 1.0,
+                "image_assets.training_eligible": 1,
+                "image_assets.resolved_at": now_iso,
+                "review_queue.status": "done",
+                "review_queue.decided_eurio_id": payload.eurio_id,
+                "review_queue.decided_face": payload.face,
+                "review_queue.decided_variant_kind": payload.variant_kind,
+                "review_queue.decision_notes": payload.notes,
+                "review_queue.decided_at": now_iso,
+                "review_queue.decided_by": "admin",
+                "review_queue.decision_engine_version": _HUMAN_ENGINE_VERSION,
+                "review_queue.decision_metadata_json": metadata,
+            },
         )
         conn.commit()
     except HTTPException:
@@ -205,6 +228,19 @@ def reject_review(
         emit_state_event(
             conn, asset_id=rq["image_asset_id"], to_state="rejected", actor="human",
             reason=(f"trash_{reason}" if reason else "rejected"),
+            detail_fields={
+                "image_assets.resolution_status": "rejected",
+                "image_assets.training_eligible": 0,
+                "image_assets.quality_reason": quality_reason,
+                "image_assets.resolved_at": now_iso,
+                "review_queue.status": "done",
+                "review_queue.decision_notes": reason or "rejected",
+                "review_queue.decided_at": now_iso,
+                "review_queue.decided_by": "admin",
+                "review_queue.decision_engine_version": _HUMAN_ENGINE_VERSION,
+                "review_queue.decision_metadata_json":
+                    json.dumps({"reason": reason or "rejected"}),
+            },
         )
         conn.commit()
     except HTTPException:
@@ -249,6 +285,10 @@ def skip_review(
         emit_state_event(
             conn, asset_id=rq["image_asset_id"], to_state="skipped", actor="human",
             reason="deferred",
+            detail_fields={
+                "review_queue.priority": rq["priority"] + _SKIP_PRIORITY_BUMP,
+                "review_queue.decision_notes": "skipped",
+            },
         )
         conn.commit()
     except HTTPException:
@@ -311,6 +351,22 @@ def restore_rejected(
             emit_state_event(
                 conn, asset_id=rq["image_asset_id"], to_state="queued", actor="human",
                 reason="restored",
+                detail_fields={
+                    "image_assets.resolution_status": "needs_review",
+                    "image_assets.training_eligible": 1,
+                    "image_assets.quality_reason": None,
+                    "image_assets.resolved_at": None,
+                    "review_queue.status": "open",
+                    "review_queue.priority": _RESTORE_PRIORITY,
+                    "review_queue.decided_at": None,
+                    "review_queue.decided_by": None,
+                    "review_queue.decided_eurio_id": None,
+                    "review_queue.decided_face": None,
+                    "review_queue.decided_variant_kind": None,
+                    "review_queue.decision_notes": _RESTORED_NOTE,
+                    "review_queue.decision_engine_version": None,
+                    "review_queue.decision_metadata_json": "{}",
+                },
             )
             conn.commit()
             restored += 1

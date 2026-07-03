@@ -152,6 +152,37 @@ def emit_state_event(
     return event_id
 
 
+def emit_field_event(
+    conn: sqlite3.Connection,
+    *,
+    asset_id: str,
+    reason: str,
+    fields: dict,
+    actor: str = "human",
+    detail: dict | None = None,
+    eurio_id: str | None = None,
+) -> int:
+    """Event de mutation de champs SANS transition d'état (self-transition).
+
+    Pour les décisions qui changent des colonnes (training_eligible, eurio_id,
+    lane, recrop…) sans déplacer le crop dans la machine à états : l'event
+    porte le payload sync (``fields``) et reste ordonnable par HLC. L'état
+    courant est reconduit tel quel (fallback ``resolved`` si le crop n'est pas
+    encore journalisé — warn-and-write tolère).
+    """
+    row = conn.execute(
+        "SELECT current_state FROM image_state_current WHERE asset_id=?",
+        (asset_id,),
+    ).fetchone()
+    state = (row["current_state"] if isinstance(row, sqlite3.Row) else row[0]) \
+        if row is not None else "resolved"
+    return emit_state_event(
+        conn, asset_id=asset_id, to_state=state, from_state=state if row else None,
+        actor=actor, reason=reason, eurio_id=eurio_id,
+        detail=detail, detail_fields=fields,
+    )
+
+
 def record_tombstone(
     conn: sqlite3.Connection,
     *,

@@ -28,6 +28,7 @@ from store import (
     Store,
     cohort_job_set_pid,
     cohort_job_start,
+    emit_field_event,
     emit_state_event,
     latest_training_scan,
     training_scan_dismiss_intruder,
@@ -2391,10 +2392,21 @@ def set_asset_training_eligible(
             "quality_reason = 'manual_triage' WHERE id = ?",
             (asset_id,),
         )
-    conn.commit()
     new = conn.execute(
-        "SELECT training_eligible FROM image_assets WHERE id = ?", (asset_id,),
+        "SELECT training_eligible, quality_reason FROM image_assets WHERE id = ?",
+        (asset_id,),
     ).fetchone()
+    # quality_reason relu APRÈS l'UPDATE : la branche re-inclusion l'efface
+    # conditionnellement (CASE manual_triage) — le payload sync porte la
+    # valeur réellement écrite, pas l'intention.
+    emit_field_event(
+        conn, asset_id=asset_id, reason="training_eligible",
+        fields={
+            "image_assets.training_eligible": int(new["training_eligible"]),
+            "image_assets.quality_reason": new["quality_reason"],
+        },
+    )
+    conn.commit()
     return {
         "asset_id": asset_id,
         "eurio_id": row["eurio_id"],
@@ -2466,6 +2478,23 @@ def reopen_asset_review(asset_id: str) -> ReopenReviewResult:
     emit_state_event(
         conn, asset_id=asset_id, to_state="queued", actor="human",
         reason="reopened_from_training_set",
+        detail_fields={
+            "image_assets.resolution_status": "needs_review",
+            "image_assets.resolved_at": None,
+            "image_assets.training_eligible": 0,
+            "review_queue.status": "open",
+            "review_queue.priority": 100,
+            "review_queue.enqueued_at": now,
+            "review_queue.kind": "single",
+            "review_queue.decision_notes": note,
+            "review_queue.lane": "manual",
+            "review_queue.lane_source": "human",
+            "review_queue.decided_eurio_id": None,
+            "review_queue.decided_face": None,
+            "review_queue.decided_variant_kind": None,
+            "review_queue.decided_at": None,
+            "review_queue.decided_by": None,
+        },
     )
     conn.commit()
     rid_row = conn.execute(
@@ -2523,6 +2552,19 @@ def accept_asset_training(asset_id: str) -> AcceptTrainingResult:
     emit_state_event(
         conn, asset_id=asset_id, to_state="resolved", actor="human",
         reason="accepted_from_training_set", eurio_id=row["eurio_id"],
+        detail_fields={
+            "image_assets.resolution_status": "manual",
+            "image_assets.resolution_confidence": 1.0,
+            "image_assets.training_eligible": 1,
+            "image_assets.resolved_at": now,
+            "review_queue.status": "done",
+            "review_queue.decided_eurio_id": row["eurio_id"],
+            "review_queue.decided_face": row["face"],
+            "review_queue.decided_at": now,
+            "review_queue.decided_by": "human",
+            "review_queue.decision_notes":
+                "accepté au train depuis le jeu d'entraînement",
+        },
     )
     conn.commit()
     return AcceptTrainingResult(
@@ -2570,6 +2612,11 @@ def reassign_asset(asset_id: str, payload: ReassignAssetPayload) -> dict:
     # suivant (y compris quand on réassigne vers la MÊME classe = « le choix
     # Dino était faux, garde-le »). Réversible via re-scan.
     training_scan_dismiss_intruder(conn, asset_id)
+    emit_field_event(
+        conn, asset_id=asset_id, reason="reassign", eurio_id=target,
+        fields={"image_assets.eurio_id": target},
+        detail={"previous_eurio_id": row["eurio_id"]},
+    )
     conn.commit()
     return {
         "asset_id": asset_id,
@@ -2602,6 +2649,14 @@ def intruder_dismiss(
     if row is None:
         raise HTTPException(status_code=404, detail="Crop introuvable")
     touched = training_scan_dismiss_intruder(conn, asset_id, cohort_id=cohort_id)
+    # Verdict scan = dérivé (recomputable), mais l'override humain est une
+    # décision : journalisée pour la sync, rejouée best-effort à distance
+    # (UPDATE si la ligne de scan existe, no-op sinon).
+    emit_field_event(
+        conn, asset_id=asset_id, reason="intruder_dismiss",
+        fields={"cohort_training_scan_results.dismissed": 1},
+        detail={"cohort_id": cohort_id} if cohort_id else None,
+    )
     conn.commit()
     return IntruderDismissResult(asset_id=asset_id, dismissed=touched > 0)
 
