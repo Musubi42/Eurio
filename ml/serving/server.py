@@ -112,6 +112,12 @@ app.include_router(ingest_routes.router)
 from serving import db_routes  # noqa: E402
 app.include_router(db_routes.router)
 
+# local-sync : push/pull d'events — monté par parité FULL↔LEAN (inutilisé en
+# pratique côté workstation : c'est le client sync qui parle au VPS).
+from serving import sync_routes  # noqa: E402
+sync_routes.bind(_store)
+app.include_router(sync_routes.router)
+
 # Wire augmentation routes to the shared store (Modèle B : sources d'aperçu
 # résolues via MinIO, plus de dépendance Supabase).
 augmentation_routes.bind(_store)

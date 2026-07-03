@@ -27,6 +27,11 @@ services:
       # On force `vps` pour que /whoami soit lisible (le canonique ne stampe jamais
       # created_on lui-même, mais l'info reste cohérente).
       EURIO_MACHINE_ORIGIN: vps
+      # local-sync : identité HLC stable + mode hub (le VPS stampe ses events
+      # machine='vps' mais n'alimente pas d'outbox — il ne pousse vers personne,
+      # ses writes review redescendent aux machines via GET /db/events/pull).
+      EURIO_MACHINE_ID: vps
+      EURIO_SYNC_MODE: hub
       EURIO_API_AUTH_REQUIRED: "1"          # auth bearer OBLIGATOIRE sur le VPS
       EURIO_API_CORS_ORIGINS: "https://eurio-admin.musubi.dev,http://localhost:5173"
       # OIDC Authentik (auth-redesign C2). URLs publiques, OK en clair.
