@@ -31,7 +31,8 @@ from .dino_references import (
     replace_auto_references,
     set_reference_override,
 )
-from .events import emit_state_event
+from .events import emit_state_event, record_tombstone
+from .hlc import hlc_merge, hlc_now, hlc_parse, machine_id
 from .iterations import (
     AugVsRealRow,
     ExperimentIterationRow,
@@ -111,6 +112,11 @@ __all__ = [
     "replace_auto_references",
     "set_reference_override",
     "emit_state_event",
+    "record_tombstone",
+    "hlc_merge",
+    "hlc_now",
+    "hlc_parse",
+    "machine_id",
     "latest_training_scan",
     "training_scan_dismiss_intruder",
     "resolve_db_path",

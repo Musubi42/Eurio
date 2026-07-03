@@ -922,13 +922,22 @@ CREATE TABLE IF NOT EXISTS image_state_events (
   eurio_id        TEXT,                                -- eurio_id posé à cette transition (si applicable)
   target_eurio_id TEXT,                                -- clé de découverte (scoping cohorte)
   run_id          TEXT,                                -- source_runs.id OU cohort_jobs.id (pas de FK : 2 cibles)
-  detail_json     TEXT,                                -- libre : {sim, spread, top1, reject_reason, …}
-  created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+  detail_json     TEXT,                                -- libre : {v, fields, sim, spread, …} — 'fields' = payload sync rejouable
+  created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  -- Sync multi-machine (local-sync 2026-07) : identité globale + horloge HLC.
+  -- NULL = event legacy pré-sync (jamais poussé rétroactivement). Sur les DB
+  -- antérieures, colonnes posées par le PRE-bootstrap _ensure_column (les index
+  -- partiels ci-dessous sont créés par executescript → colonnes requises avant).
+  op_id           TEXT,                                -- uuid4 hex — idempotence push/pull
+  machine         TEXT,                                -- machine émettrice ('vps', 'macbook-a1b2', …)
+  hlc             TEXT                                 -- '{ts_ms:013d}-{count:04d}-{machine}' : ordre lexico = ordre HLC
 );
 CREATE INDEX IF NOT EXISTS idx_ise_asset   ON image_state_events(asset_id, id DESC);
 CREATE INDEX IF NOT EXISTS idx_ise_target  ON image_state_events(target_eurio_id, to_state);
 CREATE INDEX IF NOT EXISTS idx_ise_run     ON image_state_events(run_id);
 CREATE INDEX IF NOT EXISTS idx_ise_created ON image_state_events(created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ise_op_id ON image_state_events(op_id) WHERE op_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_ise_hlc     ON image_state_events(hlc) WHERE hlc IS NOT NULL;
 
 -- État courant matérialisé : 1 ligne par crop, tenue à jour par emit_state_event
 -- dans la même transaction que l'INSERT du journal (chunk C2). Source des
@@ -949,6 +958,50 @@ CREATE TABLE IF NOT EXISTS image_state_current (
 );
 CREATE INDEX IF NOT EXISTS idx_isc_target_state ON image_state_current(target_eurio_id, current_state);
 CREATE INDEX IF NOT EXISTS idx_isc_state        ON image_state_current(current_state);
+
+-- ════════════════════════════════════════════════════════════════════════
+-- Sync event-log local ↔ canonique (local-sync, 2026-07)
+-- ════════════════════════════════════════════════════════════════════════
+-- Doctrine : docs/work-in-progress/local-sync/. Chaque mutation autoritative
+-- appende un event estampillé (op_id, machine, hlc) ; un worker debounce
+-- pousse/tire les events vers le canonique VPS ; chaque base matérialise en
+-- rejouant par ordre HLC (LWW-par-champ). Le log d'audit n'est JAMAIS purgé —
+-- seule la file d'envoi (sync_outbox) l'est, avec une marge d'un cycle.
+
+-- File d'envoi locale. Une ligne par op à pousser (event ou tombstone).
+-- 'pending' → poussé au prochain cycle ; 'pushed' → purgé au cycle réussi
+-- SUIVANT (marge PO d'un sync). Vide en mode hub (VPS : EURIO_SYNC_MODE=hub).
+CREATE TABLE IF NOT EXISTS sync_outbox (
+  op_id      TEXT PRIMARY KEY,
+  kind       TEXT NOT NULL DEFAULT 'event' CHECK (kind IN ('event','tombstone')),
+  event_id   INTEGER REFERENCES image_state_events(id) ON DELETE CASCADE,  -- NULL si tombstone
+  asset_id   TEXT,                                                          -- dénormalisé (debug/tombstone)
+  status     TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','pushed')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  pushed_at  TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_sync_outbox_status ON sync_outbox(status, created_at);
+
+-- Tombstones de suppression : delete_crop CASCADE efface les events de l'asset,
+-- donc la suppression voyage dans sa propre table (jamais CASCADE-ée). Terminal :
+-- au replay, tout event d'un asset tombstoné est ignoré (delete gagne, v1).
+CREATE TABLE IF NOT EXISTS sync_tombstones (
+  asset_id     TEXT PRIMARY KEY,
+  op_id        TEXT NOT NULL UNIQUE,
+  machine      TEXT NOT NULL,
+  hlc          TEXT NOT NULL,
+  storage_path TEXT,                                   -- pour invalider le cache local au replay
+  reason       TEXT,
+  created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- KV persistant du moteur de sync (survit aux restarts / --reload).
+-- Clés : machine_id, hlc_last, pull_cursor_hlc, last_sync_at, last_sync_ok,
+--        last_error, last_push_count, last_pull_count.
+CREATE TABLE IF NOT EXISTS sync_state (
+  key   TEXT PRIMARY KEY,
+  value TEXT
+);
 
 -- Jobs cohorte observables (scrape eBay, recrop-zero). Remplace le dict
 -- in-memory _recrop_jobs (perdu au restart FastAPI). Le worker écrit sa

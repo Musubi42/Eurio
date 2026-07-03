@@ -215,6 +215,20 @@ class StoreBase:
                     decl="TEXT NOT NULL DEFAULT 'auto' "
                          "CHECK (lane_source IN ('auto','human'))",
                 )
+            # local-sync pre-bootstrap : op_id/machine/hlc sur image_state_events
+            # AVANT executescript, car schema.sql crée les index partiels
+            # idx_ise_op_id / idx_ise_hlc → planteraient sur "no such column"
+            # pour les DB antérieures. Fresh DB : la table n'existe pas encore,
+            # executescript la crée avec les 3 colonnes.
+            if conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' "
+                "AND name='image_state_events'"
+            ).fetchone():
+                for column in ("op_id", "machine", "hlc"):
+                    self._ensure_column(
+                        conn, table="image_state_events", column=column,
+                        decl="TEXT",
+                    )
             # Model B (C6b) pre-bootstrap : run_id sur image_asset_dino_predictions
             # AVANT executescript, car schema.sql crée idx_dino_pred_run ON (run_id)
             # → planterait sur "no such column: run_id" pour les DB antérieures.
