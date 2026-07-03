@@ -43,12 +43,16 @@ _ML = Path(__file__).resolve().parents[1]
 if str(_ML) not in sys.path:
     sys.path.insert(0, str(_ML))
 
+from client.ingest import push_crops  # noqa: E402
+from client.http import sync_enabled  # noqa: E402
 from vision.normalize_snap import (  # noqa: E402
     _crop_mask_resize_float,
     detect_circles_multi,
 )
 from scripts.crop_quality_diag import _raw_local_path  # noqa: E402
 from sources._base.phash import compute_phash  # noqa: E402
+
+_PUSH_BATCH = 200
 
 _DB = _ML / "state" / "eurio.db"
 _CACHE = Path.home() / ".cache" / "eurio"
@@ -105,6 +109,7 @@ def main() -> None:
 
     n = {"si_seen": 0, "si_skip_noraw": 0, "si_skip_mismatch": 0, "si_done": 0,
          "assets_changed": 0, "assets_skip_corrected": 0, "minio_fail": 0}
+    push_to_vps = sync_enabled()
     t0 = time.time()
 
     for si in si_rows:
@@ -138,6 +143,7 @@ def main() -> None:
             n["si_skip_mismatch"] += 1
             continue
 
+        lot_push_batch: list[dict] = []
         for asset, det in zip(assets, accepted):
             method0 = asset["detection_method"] or ""
             # ``detect_circles_multi`` produit nativement des methods contenant
@@ -167,21 +173,37 @@ def main() -> None:
                     upload_through("enrichment-crops", asset["crop_sp"], data)
                 except Exception:  # noqa: BLE001
                     n["minio_fail"] += 1
-            # 3. DB : bbox per-pièce + method nettoyé (sans refine) + dims + phash
+            # 3. bbox per-pièce + method nettoyé (sans refine) + dims + phash
             bbox = {"x": float(det.cx - det.r), "y": float(det.cy - det.r),
                     "w": float(2 * det.r), "h": float(2 * det.r)}
-            conn.execute(
-                "UPDATE image_assets SET bbox_json=?, detection_method=?, "
-                "width=?, height=?, phash=? WHERE id=?",
-                (json.dumps(bbox), det.method + "+lotcrop", res.image.shape[1],
-                 res.image.shape[0], compute_phash(res.image), asset["aid"]),
-            )
+            new_method = det.method + "+lotcrop"
+            new_phash = compute_phash(res.image)
+            if push_to_vps:
+                # Direction A : batché par lot (un seul POST /ingest/crops par
+                # source_image), lecture seule en local (cf. C4a).
+                lot_push_batch.append({
+                    "asset_id": asset["aid"], "bbox_json": json.dumps(bbox),
+                    "detection_method": new_method,
+                    "width": res.image.shape[1], "height": res.image.shape[0],
+                    "phash": new_phash,
+                })
+            else:
+                # Fallback Model A (dev local, pas d'EURIO_API_URL).
+                conn.execute(
+                    "UPDATE image_assets SET bbox_json=?, detection_method=?, "
+                    "width=?, height=?, phash=? WHERE id=?",
+                    (json.dumps(bbox), new_method, res.image.shape[1],
+                     res.image.shape[0], new_phash, asset["aid"]),
+                )
+        if push_to_vps and lot_push_batch:
+            push_crops(lot_push_batch)
         n["si_done"] += 1
         if args.commit and n["si_done"] % 50 == 0:
-            conn.commit()
+            if not push_to_vps:
+                conn.commit()
             print(f"  {n['si_done']} images traitées ({time.time()-t0:.0f}s)", flush=True)
 
-    if args.commit:
+    if not push_to_vps and args.commit:
         conn.commit()
     conn.close()
     mode = "COMMIT" if args.commit else "DRY-RUN"

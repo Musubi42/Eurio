@@ -20,6 +20,12 @@ annule. Idempotent (re-run = mêmes valeurs).
 Usage :
     python scripts/backfill_quality_score.py            # dry-run (distribution)
     python scripts/backfill_quality_score.py --commit   # écrit en base
+
+⚠️  MIGRATION VPS-ONLY sous Direction A (docs/work-in-progress/local-sync/
+migration-direction-a.md §C7) : ce script écrit le canonique (``UPDATE
+image_assets`` non transporté par une route ``/ingest``). Ne PAS le lancer
+contre une réplique locale (Mac/PC read-only ou client d'un VPS canonique) —
+refuse automatiquement sauf ``--i-know-this-is-canonical``.
 """
 
 from __future__ import annotations
@@ -27,8 +33,15 @@ from __future__ import annotations
 import argparse
 import csv
 import sqlite3
+import sys
 from collections import Counter
 from pathlib import Path
+
+_ML_DIR = Path(__file__).resolve().parent.parent
+if str(_ML_DIR) not in sys.path:
+    sys.path.insert(0, str(_ML_DIR))
+
+from scripts._vps_only_guard import guard_vps_only  # noqa: E402
 
 # Version du pipeline de score (oracle r_ratio v1) — tracée pour invalidation.
 QUALITY_PIPELINE_VERSION = 1
@@ -68,7 +81,12 @@ def main() -> None:
     ap.add_argument("--csv", type=Path, default=_DEFAULT_CSV)
     ap.add_argument("--db", type=Path, default=_DEFAULT_DB)
     ap.add_argument("--commit", action="store_true", help="écrit en base (défaut = dry-run)")
+    ap.add_argument(
+        "--i-know-this-is-canonical", action="store_true", dest="allow_non_vps",
+        help="Bypass le garde-fou VPS-only (Direction A) — --db pointe une copie canonique.",
+    )
     args = ap.parse_args()
+    guard_vps_only("backfill_quality_score", allow=args.allow_non_vps)
 
     scores = load_scores(args.csv)
     conn = sqlite3.connect(args.db)

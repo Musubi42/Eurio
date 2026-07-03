@@ -55,39 +55,17 @@ class _ApiTransport:
         return _http.download(_REPLICA_PATH, dest) or None
 
 
-def _pending_ops(db: Path) -> int:
-    """Ops locales non poussées (sync_outbox pending) — 0 si table/DB absente."""
-    if not db.exists():
-        return 0
-    try:
-        conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
-        try:
-            return conn.execute(
-                "SELECT COUNT(*) FROM sync_outbox WHERE status='pending'"
-            ).fetchone()[0]
-        finally:
-            conn.close()
-    except sqlite3.Error:
-        return 0
-
-
 def pull_replica(dest: Path | None = None, *, transport=None, force: bool = False) -> Path:
     """Télécharge une réplique read-only de eurio.db depuis le VPS + vérifie le SHA.
 
     ``transport`` injectable (tests) — objet exposant ``sha()`` et ``download(dest)``.
     Retourne le chemin de la réplique. Lève si le SHA téléchargé ne correspond pas
-    au SHA annoncé par le serveur, OU si le fichier cible contient des events de
-    sync non poussés (l'écraser les perdrait — ``go-task ml:db:sync`` d'abord ;
-    ``force=True`` outrepasse en connaissance de cause).
+    au SHA annoncé par le serveur. ``force`` est conservé pour compat CLI (no-op
+    désormais : Direction A n'a plus d'ops locales pending à perdre — les writes
+    transitent directement au VPS via ``POST /ingest/*``).
     """
     dest = Path(dest) if dest else _DEFAULT_REPLICA
     dest.parent.mkdir(parents=True, exist_ok=True)
-    pending = _pending_ops(dest)
-    if pending and not force:
-        raise RuntimeError(
-            f"{dest} contient {pending} op(s) de sync non poussée(s) — les écraser "
-            "les perdrait. Lance `go-task ml:db:sync` d'abord (ou --force)."
-        )
     transport = transport or _ApiTransport()
 
     expected_sha = transport.sha()
@@ -137,7 +115,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--force", action="store_true",
-        help="écrase même si des ops de sync locales ne sont pas poussées",
+        help="conservé pour compat CLI — no-op (Direction A n'a plus d'ops locales pending)",
     )
     args = parser.parse_args(argv)
 

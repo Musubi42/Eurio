@@ -1,5 +1,11 @@
 # local-sync — backend
 
+> **⚠️ ARCHIVÉ (2026-07-04).** Décrit l'infra event-log (émission/replay/hlc),
+> retirée en C6a/b/c au profit de Direction A (writer canonique unique VPS,
+> pas de merge). Conservé comme archive du raisonnement. Voir
+> [`migration-direction-a.md`](./migration-direction-a.md) et le nouveau
+> [`walkthrough-tests.md`](./walkthrough-tests.md).
+
 ## Émission (chemin chaud, zéro réseau)
 
 `ml/store/events.py::emit_state_event` stampe chaque event (`op_id`, `machine`,

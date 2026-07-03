@@ -3,7 +3,6 @@ import type { NavItem } from '@/app/nav'
 import { navSections } from '@/app/nav'
 import EurioSessionBanner from '@/shared/ui/EurioSessionBanner.vue'
 import LocalOnlyNotice from '@/shared/ui/LocalOnlyNotice.vue'
-import SyncStatusBadge from '@/shared/ui/SyncStatusBadge.vue'
 import { useNavState } from '@/shared/composables/useNavState'
 import { useCapabilities } from '@/stores/capabilities'
 import { useEurioSession } from '@/stores/eurio-session'
@@ -140,10 +139,6 @@ function isActive(itemRoute: string) {
           </ul>
         </div>
       </nav>
-
-      <!-- Badge de sync (local-sync) : uniquement quand l'API ML locale est là
-           (en hébergé le worker n'existe pas — rien à afficher). -->
-      <SyncStatusBadge v-if="caps.hasLocalMlApi" :collapsed="collapsed" />
 
       <!-- User identity (depuis useEurioSession). Pas de signOut : déconnexion
            = retirer/modifier .env.local (cf. PAT-WORKFLOW.md). -->

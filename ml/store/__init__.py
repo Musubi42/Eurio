@@ -31,9 +31,7 @@ from .dino_references import (
     replace_auto_references,
     set_reference_override,
 )
-from .events import emit_field_event, emit_state_event, record_tombstone
-from .hlc import hlc_merge, hlc_now, hlc_parse, machine_id
-from .sync_replay import ReplayStats, apply_remote, event_to_wire, tombstone_to_wire
+from .events import emit_field_event, emit_state_event
 from .iterations import (
     AugVsRealRow,
     ExperimentIterationRow,
@@ -83,6 +81,18 @@ def resolve_db_path(default: str | Path) -> Path:
     return Path(env) if env else Path(default)
 
 
+def resolve_db_readonly() -> bool:
+    """Lit ``EURIO_DB_READONLY`` (Direction A, C5) : vrai → la DB locale (une
+    réplique pull-ée du VPS) s'ouvre en ``mode=ro`` et le bootstrap est
+    no-op. Opt-in explicite — le défaut reste False (comportement actuel,
+    écriture locale). Non câblé sur les entrypoints d'écriture existants
+    tant que C3/C4 ne couvrent pas 100% des writers (cf. migration-direction-a.md
+    §C5)."""
+    return os.environ.get("EURIO_DB_READONLY", "").strip().lower() in (
+        "1", "true", "yes",
+    )
+
+
 __all__ = [
     "AugVsRealRow",
     "AugmentationRecipeRow",
@@ -114,15 +124,7 @@ __all__ = [
     "set_reference_override",
     "emit_field_event",
     "emit_state_event",
-    "record_tombstone",
-    "hlc_merge",
-    "hlc_now",
-    "hlc_parse",
-    "machine_id",
-    "ReplayStats",
-    "apply_remote",
-    "event_to_wire",
-    "tombstone_to_wire",
+    "resolve_db_readonly",
     "latest_training_scan",
     "training_scan_dismiss_intruder",
     "resolve_db_path",

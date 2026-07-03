@@ -514,7 +514,7 @@ def run_training_set_scan(
     # rend la face visible au funnel qui la lit du VPS. Best-effort : un échec
     # réseau ne casse pas le scan (le prochain scan re-tentera sur les NULL/unknown).
     if face_writes:
-        from client.sync import sync_enabled
+        from client.http import sync_enabled
 
         if sync_enabled():
             try:

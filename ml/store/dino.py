@@ -121,17 +121,19 @@ def _row_to_dino_prediction(r: sqlite3.Row) -> DinoPredictionRow:
     )
 
 
-class DinoMixin:
+def _upsert_dino_rows_sql(conn: sqlite3.Connection, rows: list[DinoPredictionRow]) -> None:
+    """UPSERT bas-niveau, SQL-pur, commit-free (le caller possède la transaction).
 
-    # ─── Dino predictions on scraped crops ───────────────────────────────
-
-    def upsert_dino_predictions(self, rows: list[DinoPredictionRow]) -> int:
-        if not rows:
-            return 0
-        with self._writing() as c:
-            c.executemany(
-                """
-                INSERT INTO image_asset_dino_predictions (
+    Factorisée entre ``DinoMixin.upsert_dino_predictions`` (écriture locale via
+    ``self._writing()``) et ``apply_ingest_dino`` (write-half ``POST
+    /ingest/dino``, Direction A C4d) — même contrat que ``store/crops.py`` /
+    ``store/faces.py`` : un seul point de vérité pour le SQL.
+    """
+    if not rows:
+        return
+    conn.executemany(
+        """
+        INSERT INTO image_asset_dino_predictions (
                   asset_id, encoder_version, anchors_kind, anchors_count,
                   top_k_json, top1_eurio_id, top1_sim, top2_eurio_id,
                   top2_sim, spread,
@@ -198,7 +200,69 @@ class DinoMixin:
                     )
                     for r in rows
                 ],
+    )
+
+
+def apply_ingest_dino(conn: sqlite3.Connection, predictions) -> dict:
+    """Écrit des prédictions Dino calculées client-side — write-half SQL-pure
+    (Direction A, C4d). Miroir de ``store/crops.py::apply_ingest_crops`` /
+    ``store/faces.py::apply_ingest_faces`` : commit-free (le caller possède la
+    transaction), UPSERT idempotent, asset_id inconnus tolérés (``missing``).
+
+    ``predictions`` = itérable d'objets duck-typés (pydantic OU dataclass) avec
+    les mêmes champs que ``DinoPredictionRow`` (asset_id, encoder_version,
+    anchors_kind, anchors_count, top_k, ...). Retourne
+    ``{"updated": n, "missing": [asset_id…]}``.
+    """
+    valid_rows: list[DinoPredictionRow] = []
+    missing: list = []
+    for p in predictions:
+        row = conn.execute(
+            "SELECT id FROM image_assets WHERE id = ?", (p.asset_id,),
+        ).fetchone()
+        if row is None:
+            missing.append(p.asset_id)
+            continue
+        valid_rows.append(
+            DinoPredictionRow(
+                asset_id=p.asset_id,
+                encoder_version=p.encoder_version,
+                anchors_kind=p.anchors_kind,
+                anchors_count=p.anchors_count,
+                top_k=p.top_k,
+                top1_eurio_id=p.top1_eurio_id,
+                top1_sim=p.top1_sim,
+                top2_eurio_id=p.top2_eurio_id,
+                top2_sim=p.top2_sim,
+                spread=p.spread,
+                target_country=p.target_country,
+                country_anchors_count=p.country_anchors_count,
+                top_k_country=p.top_k_country,
+                top1_country_eurio_id=p.top1_country_eurio_id,
+                top1_country_sim=p.top1_country_sim,
+                top2_country_eurio_id=p.top2_country_eurio_id,
+                top2_country_sim=p.top2_country_sim,
+                country_spread=p.country_spread,
+                reverse_sim=p.reverse_sim,
+                face_margin=p.face_margin,
+                denom_2eur_score=p.denom_2eur_score,
+                duration_ms=p.duration_ms,
+                run_id=p.run_id,
             )
+        )
+    _upsert_dino_rows_sql(conn, valid_rows)
+    return {"updated": len(valid_rows), "missing": missing}
+
+
+class DinoMixin:
+
+    # ─── Dino predictions on scraped crops ───────────────────────────────
+
+    def upsert_dino_predictions(self, rows: list[DinoPredictionRow]) -> int:
+        if not rows:
+            return 0
+        with self._writing() as c:
+            _upsert_dino_rows_sql(c, rows)
         return len(rows)
 
     def get_dino_prediction(

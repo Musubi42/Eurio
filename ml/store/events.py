@@ -1,31 +1,19 @@
 """Machine à états des crops : journalisation des transitions (image_state_*).
 
-Depuis le chantier local-sync (2026-07), chaque event est aussi estampillé
-``(op_id, machine, hlc)`` et enfilé dans ``sync_outbox`` — c'est le substrat de
-la réplication multi-machine (docs/work-in-progress/local-sync/). Le VPS, hub
-de merge, stampe mais n'enfile pas (``EURIO_SYNC_MODE=hub``).
+Direction A (2026-07, C6b) : le journal reste l'audit trail local des
+transitions de crops (``image_state_events``), mais le transport multi-machine
+(event-log/outbox/HLC) a été retiré — le canonique est le VPS, les writes y
+transitent directement via ``POST /ingest/*`` (docs/work-in-progress/local-sync/
+migration-direction-a.md).
 """
 
 from __future__ import annotations
 
 import json
 import logging
-import os
 import sqlite3
-import uuid
-
-from .hlc import hlc_now, machine_id
 
 logger = logging.getLogger(__name__)
-
-
-def _sync_is_hub() -> bool:
-    """Mode hub (VPS) : point de merge, ne pousse vers personne → pas d'outbox.
-
-    Lu à chaque appel (pas au module-load) pour rester testable et suivre un
-    changement d'env sans redémarrage d'interpréteur.
-    """
-    return os.environ.get("EURIO_SYNC_MODE", "").strip().lower() == "hub"
 
 
 # ─── Modèle d'état explicite des crops (cohort-pipeline rebuild) ──────────────
@@ -112,28 +100,16 @@ def emit_state_event(
         body["v"] = 1
         body["fields"] = detail_fields
 
-    op_id = uuid.uuid4().hex
-    machine = machine_id(conn)
-    hlc = hlc_now(conn, machine)
-
     ev = conn.execute(
         "INSERT INTO image_state_events "
         "(asset_id, from_state, to_state, actor, reason, eurio_id, "
-        " target_eurio_id, run_id, detail_json, created_at, op_id, machine, hlc) "
-        "VALUES (?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?)",
+        " target_eurio_id, run_id, detail_json, created_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?,datetime('now'))",
         (asset_id, from_state, to_state, actor, reason, eurio_id,
          target_eurio_id, run_id,
-         json.dumps(body) if body else None,
-         op_id, machine, hlc),
+         json.dumps(body) if body else None),
     )
     event_id = int(ev.lastrowid)
-
-    if not _sync_is_hub():
-        conn.execute(
-            "INSERT INTO sync_outbox (op_id, kind, event_id, asset_id) "
-            "VALUES (?, 'event', ?, ?)",
-            (op_id, event_id, asset_id),
-        )
 
     conn.execute(
         "INSERT INTO image_state_current "
@@ -166,7 +142,7 @@ def emit_field_event(
 
     Pour les décisions qui changent des colonnes (training_eligible, eurio_id,
     lane, recrop…) sans déplacer le crop dans la machine à états : l'event
-    porte le payload sync (``fields``) et reste ordonnable par HLC. L'état
+    journalise les valeurs affectées (``fields``) pour l'audit. L'état
     courant est reconduit tel quel (fallback ``resolved`` si le crop n'est pas
     encore journalisé — warn-and-write tolère).
     """
@@ -181,38 +157,3 @@ def emit_field_event(
         actor=actor, reason=reason, eurio_id=eurio_id,
         detail=detail, detail_fields=fields,
     )
-
-
-def record_tombstone(
-    conn: sqlite3.Connection,
-    *,
-    asset_id: str,
-    storage_path: str | None = None,
-    reason: str | None = None,
-) -> str:
-    """Journalise la suppression d'un asset AVANT son DELETE (même transaction).
-
-    Le DELETE CASCADE efface les events de l'asset — la suppression voyage donc
-    dans ``sync_tombstones`` (jamais cascadée) + une entrée outbox dédiée.
-    Sémantique : terminal, delete gagne sur toute édition concurrente (v1).
-    Retourne l'``op_id`` du tombstone. Idempotent par asset (re-delete = upsert).
-    """
-    op_id = uuid.uuid4().hex
-    machine = machine_id(conn)
-    hlc = hlc_now(conn, machine)
-    conn.execute(
-        "INSERT INTO sync_tombstones (asset_id, op_id, machine, hlc, storage_path, reason) "
-        "VALUES (?,?,?,?,?,?) "
-        "ON CONFLICT(asset_id) DO UPDATE SET "
-        "  op_id=excluded.op_id, machine=excluded.machine, hlc=excluded.hlc, "
-        "  storage_path=COALESCE(excluded.storage_path, sync_tombstones.storage_path), "
-        "  reason=COALESCE(excluded.reason, sync_tombstones.reason)",
-        (asset_id, op_id, machine, hlc, storage_path, reason),
-    )
-    if not _sync_is_hub():
-        conn.execute(
-            "INSERT INTO sync_outbox (op_id, kind, event_id, asset_id) "
-            "VALUES (?, 'tombstone', NULL, ?)",
-            (op_id, asset_id),
-        )
-    return op_id

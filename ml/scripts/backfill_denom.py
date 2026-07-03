@@ -21,6 +21,15 @@ Réutilise STRICTEMENT les helpers existants (auto_validate + enqueue + denom_pr
 Usage :
     python -m scripts.backfill_denom [--run PREFIX] [--limit N] [--dry] [-v]
     python -m scripts.backfill_denom --reject   # après validation PO
+
+⚠️  MIGRATION VPS-ONLY sous Direction A (docs/work-in-progress/local-sync/
+migration-direction-a.md §C7) : ce script écrit le canonique (``UPDATE
+image_assets`` non transporté par une route ``/ingest``). Ne PAS le lancer
+contre une réplique locale (Mac/PC read-only ou client d'un VPS canonique) —
+refuse automatiquement sauf ``--i-know-this-is-canonical``. Dépend de la probe
+DINO (torch) : sur une machine GPU non-VPS, pointer ``--db`` vers une copie
+synchronisée du canonique puis pousser le résultat (procédure non encore
+tranchée, cf. docs/work-in-progress/local-sync/vps-only-migrations.md).
 """
 
 from __future__ import annotations
@@ -36,6 +45,7 @@ import cv2
 ML_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ML_DIR))
 
+from scripts._vps_only_guard import guard_vps_only  # noqa: E402
 from sources._base.steps.auto_validate import (  # noqa: E402
     SUGGESTIONS_ANCHORS_KIND,
     _get_bank,
@@ -230,7 +240,12 @@ def main() -> int:
     ap.add_argument("--dry", action="store_true", help="Calcule + affiche, n'écrit rien.")
     ap.add_argument("--db", default=str(DB_PATH))
     ap.add_argument("--verbose", "-v", action="store_true")
+    ap.add_argument(
+        "--i-know-this-is-canonical", action="store_true", dest="allow_non_vps",
+        help="Bypass le garde-fou VPS-only (Direction A) — --db pointe une copie canonique.",
+    )
     args = ap.parse_args()
+    guard_vps_only("backfill_denom", allow=args.allow_non_vps)
 
     logging.basicConfig(
         level=logging.INFO if args.verbose else logging.WARNING,

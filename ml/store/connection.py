@@ -55,9 +55,11 @@ def _register_phash_udfs(conn: sqlite3.Connection) -> None:
 
 
 class StoreBase:
-    def __init__(self, db_path: Path) -> None:
+    def __init__(self, db_path: Path, *, read_only: bool = False) -> None:
         self._db_path = Path(db_path)
-        self._db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._read_only = read_only
+        if not read_only:
+            self._db_path.parent.mkdir(parents=True, exist_ok=True)
         self._write_lock = threading.Lock()
         self._local = threading.local()
         self._bootstrap()
@@ -66,24 +68,48 @@ class StoreBase:
     def db_path(self) -> Path:
         return self._db_path
 
+    @property
+    def read_only(self) -> bool:
+        return self._read_only
+
     def _connection(self) -> sqlite3.Connection:
         conn = getattr(self._local, "conn", None)
         if conn is None:
-            conn = sqlite3.connect(
-                self._db_path,
-                check_same_thread=False,
-                isolation_level=None,
-                detect_types=sqlite3.PARSE_DECLTYPES,
-            )
+            if self._read_only:
+                # `mode=ro` : refuse toute écriture au niveau du driver SQLite
+                # (pas seulement une convention côté appli). Pas de PRAGMA
+                # d'écriture ici — journal_mode=WAL/synchronous modifient le
+                # fichier et échouent ("attempt to write a readonly database")
+                # sur une réplique pull-ée en mode non-WAL (post VACUUM INTO).
+                conn = sqlite3.connect(
+                    f"file:{self._db_path}?mode=ro",
+                    uri=True,
+                    check_same_thread=False,
+                    isolation_level=None,
+                    detect_types=sqlite3.PARSE_DECLTYPES,
+                )
+            else:
+                conn = sqlite3.connect(
+                    self._db_path,
+                    check_same_thread=False,
+                    isolation_level=None,
+                    detect_types=sqlite3.PARSE_DECLTYPES,
+                )
+                conn.execute("PRAGMA journal_mode=WAL")
+                conn.execute("PRAGMA foreign_keys=ON")
+                conn.execute("PRAGMA synchronous=NORMAL")
             conn.row_factory = sqlite3.Row
-            conn.execute("PRAGMA journal_mode=WAL")
-            conn.execute("PRAGMA foreign_keys=ON")
-            conn.execute("PRAGMA synchronous=NORMAL")
             _register_phash_udfs(conn)
             self._local.conn = conn
         return conn
 
     def _bootstrap(self) -> None:
+        if self._read_only:
+            # Précondition Direction A (C5) : une réplique pull-ée depuis le
+            # VPS a TOUJOURS un schéma à jour — le canonique applique son
+            # propre bootstrap en écriture. En lecture seule on ne peut de
+            # toute façon rien migrer (fichier `mode=ro`), donc no-op complet.
+            return
         schema = _SCHEMA_PATH.read_text()
         with self._write_lock:
             conn = self._connection()
@@ -215,20 +241,6 @@ class StoreBase:
                     decl="TEXT NOT NULL DEFAULT 'auto' "
                          "CHECK (lane_source IN ('auto','human'))",
                 )
-            # local-sync pre-bootstrap : op_id/machine/hlc sur image_state_events
-            # AVANT executescript, car schema.sql crée les index partiels
-            # idx_ise_op_id / idx_ise_hlc → planteraient sur "no such column"
-            # pour les DB antérieures. Fresh DB : la table n'existe pas encore,
-            # executescript la crée avec les 3 colonnes.
-            if conn.execute(
-                "SELECT 1 FROM sqlite_master WHERE type='table' "
-                "AND name='image_state_events'"
-            ).fetchone():
-                for column in ("op_id", "machine", "hlc"):
-                    self._ensure_column(
-                        conn, table="image_state_events", column=column,
-                        decl="TEXT",
-                    )
             # Model B (C6b) pre-bootstrap : run_id sur image_asset_dino_predictions
             # AVANT executescript, car schema.sql crée idx_dino_pred_run ON (run_id)
             # → planterait sur "no such column: run_id" pour les DB antérieures.

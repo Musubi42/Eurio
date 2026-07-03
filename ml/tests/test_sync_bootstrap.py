@@ -1,17 +1,20 @@
-"""Tests C7 local-sync — bootstrap backfill + garde pull-replica."""
+"""Tests C7 local-sync — bootstrap backfill (diff local vs canonique).
+
+Le garde-fou pull-replica sur ops locales pending (sync_outbox) a été retiré
+en C6b : Direction A n'a plus d'ops locales à perdre, les writes transitent
+directement au VPS via ``POST /ingest/*``.
+"""
 
 from __future__ import annotations
 
 import sys
 from pathlib import Path
 
-import pytest
-
 ML_DIR = Path(__file__).parent.parent
 if str(ML_DIR) not in sys.path:
     sys.path.insert(0, str(ML_DIR))
 
-from store import Store, emit_field_event  # noqa: E402
+from store import Store  # noqa: E402
 
 
 def _seed(conn, *, eligible=1, status="needs_review"):
@@ -49,18 +52,3 @@ def test_diff_detects_local_divergence(tmp_path):
     assert f["review_queue.status"] == "done"  # row locale absente du canonique
     # Champ identique → pas de bruit.
     assert "image_assets.eurio_id" not in f
-
-
-def test_pull_replica_refuses_pending_ops(tmp_path):
-    from client.replica import pull_replica
-
-    db = tmp_path / "work.db"
-    store = Store(db)
-    conn = store._connection()  # noqa: SLF001
-    _seed(conn)
-    emit_field_event(
-        conn, asset_id="a1", reason="training_eligible",
-        fields={"image_assets.training_eligible": 0},
-    )
-    with pytest.raises(RuntimeError, match="non poussée"):
-        pull_replica(db)

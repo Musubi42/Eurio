@@ -156,30 +156,20 @@ def _build_parser() -> argparse.ArgumentParser:
                    help=f"Path to the SQLite store (default: {_DEFAULT_DB}).")
     p.add_argument("--push", action="store_true",
                    help="Modèle B : lit/écrit une réplique read-only "
-                        "(pull depuis le VPS) et POST le run au serveur "
-                        "canonique via /ingest/run. Sans ce flag : Modèle A "
-                        "(écrit la DB Mac canonique, comportement par défaut). "
+                        "(pull depuis le VPS) au lieu de la DB Mac canonique "
+                        "passée via --db. Le push du run au serveur "
+                        "canonique (POST /ingest/run) est maintenant "
+                        "AUTOMATIQUE dès qu'EURIO_API_URL est configuré, "
+                        "avec ou sans ce flag (chunk C4c, orchestrator.py) — "
+                        "--push ne contrôle plus que la source de lecture. "
                         "Requiert EURIO_API_URL (VPS) + EURIO_API_TOKEN (PAT "
                         "scope ingest:run).")
+    p.add_argument("--no-push", action="store_true",
+                   help="Force le Modèle A (aucun push au canonique VPS) "
+                        "même si EURIO_API_URL est configuré — échappatoire "
+                        "explicite pour un run volontairement local-only.")
     p.add_argument("-v", "--verbose", action="store_true", help="DEBUG-level logs.")
     return p
-
-
-def _push_run_to_server(store, run_id: str) -> None:
-    """Modèle B : POST le run au serveur canonique via /ingest/run, imprime le bilan."""
-    from client.runbatch import push_run
-
-    res = push_run(store._connection(), run_id)  # noqa: SLF001
-    print()
-    if res.get("already_applied"):
-        print(f"[model-b] push {run_id} → déjà appliqué (no-op idempotent)")
-    else:
-        counts = res.get("counts", {})
-        total = sum(counts.values()) if isinstance(counts, dict) else 0
-        print(f"[model-b] push {run_id} → {total} ligne(s) appliquée(s) au canonique")
-        for table, n in (counts or {}).items():
-            if n:
-                print(f"            {table:<32} {n}")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -189,12 +179,21 @@ def main(argv: list[str] | None = None) -> int:
         format="%(message)s",
     )
 
+    if args.push and args.no_push:
+        raise SystemExit("--push et --no-push sont mutuellement exclusifs.")
     if args.push and args.dry_run:
         raise SystemExit("--push est incompatible avec --dry-run (rien à pousser).")
 
+    # Direction A (chunk C4c) : le push au canonique VPS est automatique dès
+    # qu'EURIO_API_URL est configuré (voir orchestrator._maybe_push_run),
+    # quel que soit l'entrypoint (CLI, serving.sources_routes, …). --no-push
+    # est la seule échappatoire pour forcer un run local-only (Modèle A).
+    push_override: bool | None = False if args.no_push else None
+
     # Modèle B : le compute lit/écrit une réplique read-only tirée du VPS
-    # (GET /db/replica) et pousse le run au serveur canonique. Modèle A
-    # (défaut) : on écrit directement la DB Mac canonique passée via --db.
+    # (GET /db/replica). Modèle A (défaut) : on écrit directement la DB Mac
+    # canonique passée via --db. Indépendant du push (ci-dessus) : --push
+    # ne choisit plus que la SOURCE de lecture, pas le transport.
     if args.push:
         from client.replica import pull_replica
 
@@ -207,7 +206,9 @@ def main(argv: list[str] | None = None) -> int:
     # Crop-on-demand path : crop a previous --download-only run. No adapter
     # load (no eBay token needed), no discovery — just the deferred crop steps.
     if args.crop_pending:
-        result = process_downloaded(store=store, run_id=args.crop_pending)
+        result = process_downloaded(
+            store=store, run_id=args.crop_pending, push=push_override,
+        )
         print()
         print(f"run_id        {result.run_id}")
         print(f"n_pending     {result.n_pending}")
@@ -222,8 +223,6 @@ def main(argv: list[str] | None = None) -> int:
             print(f"current_step  {row['current_step']}")
             if row["error_summary"]:
                 print(f"error_summary {row['error_summary']}")
-            if args.push:
-                _push_run_to_server(store, args.crop_pending)
             return 1 if row["status"] == "failed" else 0
         return 0
 
@@ -316,6 +315,7 @@ def main(argv: list[str] | None = None) -> int:
     run_id = run_pipeline(
         adapter, query, store=store,
         dry_run=args.dry_run, download_only=args.download_only, force=args.force,
+        push=push_override,
     )
 
     row = store._connection().execute(
@@ -336,9 +336,6 @@ def main(argv: list[str] | None = None) -> int:
     print(f"n_errors         {row['n_errors']}")
     if row["error_summary"]:
         print(f"error_summary    {row['error_summary']}")
-
-    if args.push:
-        _push_run_to_server(store, run_id)
 
     return 1 if row["status"] == "failed" else 0
 

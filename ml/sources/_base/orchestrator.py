@@ -44,6 +44,49 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _maybe_push_run(store: "Store", run_id: str, *, push: bool | None = None) -> None:
+    """Direction A : pousse le run au canonique VPS si la sync est activée.
+
+    Transport générique (chunk C4c) — remplace le ``--push`` opt-in de
+    ``sources.cli`` comme SEUL point de bascule. Tout appelant de
+    ``run_pipeline``/``process_downloaded``/``resume_failed_downloads``
+    (CLI, ``serving.sources_routes``, scripts futurs) traverse ce même
+    chemin : plus d'entrypoint qui écrirait silencieusement en Modèle A
+    alors qu'``EURIO_API_URL`` est configuré. Sans ``EURIO_API_URL``
+    (``client.http.sync_enabled()`` faux), no-op — Modèle A dev inchangé.
+
+    ``push`` : ``None``/``True`` (défaut) = pousse automatiquement si la
+    sync est configurée ; ``False`` = échappatoire explicite (``--no-push``
+    CLI) qui force le Modèle A local même quand ``EURIO_API_URL`` est set.
+
+    Best-effort : une erreur réseau/HTTP est loguée, pas levée (le run local
+    reste valide même si le push échoue ; à rejouer via ``--push`` CLI ou un
+    retry manuel — pas de compensation automatique dans ce chunk).
+    """
+    if push is False:
+        return
+    from client.http import sync_enabled  # noqa: PLC0415 — évite import cycle au chargement
+
+    if not sync_enabled():
+        return
+    from client.runbatch import push_run  # noqa: PLC0415
+
+    try:
+        res = push_run(store._connection(), run_id)  # noqa: SLF001
+    except Exception:  # noqa: BLE001
+        logger.exception(
+            "[direction-a] push run=%s vers le canonique a échoué (run local "
+            "conservé, à repousser manuellement)", run_id,
+        )
+        return
+    if res.get("already_applied"):
+        logger.info("[direction-a] push run=%s → déjà appliqué (no-op)", run_id)
+    else:
+        counts = res.get("counts", {})
+        total = sum(counts.values()) if isinstance(counts, dict) else 0
+        logger.info("[direction-a] push run=%s → %d ligne(s) appliquée(s)", run_id, total)
+
+
 def run_pipeline(
     adapter: SourceAdapter,
     query: SourceQuery,
@@ -52,6 +95,7 @@ def run_pipeline(
     dry_run: bool = False,
     download_only: bool = False,
     force: bool = False,
+    push: bool | None = None,
 ) -> str:
     """Execute the 9-step pipeline for one source.
 
@@ -64,6 +108,11 @@ def run_pipeline(
     deferred — call [process_downloaded] on the returned run_id to crop on
     demand. Lets a big scrape persist raws without burning the CPU on crops.
     `dry_run` wins if both are set (it stops earlier).
+
+    `push` (chunk C4c) : transmis à [_maybe_push_run] — ``None``/``True``
+    (défaut) pousse automatiquement le run au canonique VPS si
+    ``EURIO_API_URL`` est configuré ; ``False`` force le Modèle A local
+    (aucun push) même quand la sync est configurée.
 
     Returns the run_id either way so the caller (CLI / front) can
     fetch counters and the log.
@@ -137,6 +186,8 @@ def run_pipeline(
                 "[%s] download-only: stopping after download (crop deferred)",
                 adapter.source_id,
             )
+            conn.commit()
+            _maybe_push_run(store, run.run_id, push=push)
             return run.run_id
 
         # ── 4. Detect & crop ─────────────────────────────────────────
@@ -195,6 +246,8 @@ def run_pipeline(
             run.end("partial", error_summary=f"{n_errors} item(s) failed — see logs")
         else:
             run.end("success")
+        conn.commit()
+        _maybe_push_run(store, run.run_id, push=push)
         return run.run_id
 
 
@@ -211,6 +264,7 @@ def process_downloaded(
     *,
     store: "Store",
     run_id: str,
+    push: bool | None = None,
 ) -> CropPendingResult:
     """Crop à la demande les raws d'un run lancé en `download_only`.
 
@@ -223,6 +277,10 @@ def process_downloaded(
 
     N'a pas besoin de l'adapter (les steps crop→… ne prennent qu'un `source_id`),
     donc tourne sans credentials de la source (pas de token eBay requis).
+
+    `push` (chunk C4c) : cf. [_maybe_push_run] — ``None``/``True`` pousse
+    automatiquement si ``EURIO_API_URL`` est configuré, ``False`` force le
+    Modèle A local.
     """
     conn = store._connection()  # noqa: SLF001
     run_row = conn.execute(
@@ -292,6 +350,7 @@ def process_downloaded(
             "[%s] crop-pending run=%s done — crops_added=%d",
             source, run_id, row["n_crops_added"] - crops_before,
         )
+        _maybe_push_run(store, run_id, push=push)
         return CropPendingResult(
             run_id, n_pending, row["n_crops_added"] - crops_before,
         )
@@ -316,6 +375,7 @@ def resume_failed_downloads(
     *,
     store: "Store",
     run_id: str,
+    push: bool | None = None,
 ) -> ResumeResult:
     """Rejoue download → … → price_aggregate pour les listings échoués d'un run.
 
@@ -329,6 +389,8 @@ def resume_failed_downloads(
     Le resume s'attache au **même** ``source_runs`` (pas de nouveau run) :
     les compteurs cumulent, le statut final est recalculé (success si plus
     aucun échec, partial sinon).
+
+    `push` (chunk C4c) : cf. [_maybe_push_run].
     """
     conn = store._connection()  # noqa: SLF001
     run_row = conn.execute(
@@ -412,6 +474,7 @@ def resume_failed_downloads(
             "[%s] resume run=%s done — recovered %d / still failed %d",
             source, run_id, len(recovered), n_still_failed,
         )
+        _maybe_push_run(store, run_id, push=push)
         return ResumeResult(run_id, n_failed_before, len(recovered), n_still_failed)
     except Exception as exc:  # noqa: BLE001
         run.end("failed", error_summary=f"resume_failed_downloads crashed: {exc}")

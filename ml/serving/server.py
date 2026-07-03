@@ -112,29 +112,9 @@ app.include_router(ingest_routes.router)
 from serving import db_routes  # noqa: E402
 app.include_router(db_routes.router)
 
-# local-sync : push/pull d'events — monté par parité FULL↔LEAN (inutilisé en
-# pratique côté workstation : c'est le client sync qui parle au VPS).
-from serving import sync_routes  # noqa: E402
-sync_routes.bind(_store)
-app.include_router(sync_routes.router)
-
-# local-sync : statut + trigger du worker debounce (badge sidebar). Local
-# UNIQUEMENT — le VPS (hub) n'a ni outbox ni worker.
-from serving import sync_local_routes  # noqa: E402
-app.include_router(sync_local_routes.router)
-
-
-@app.on_event("startup")
-def _sync_worker_startup() -> None:
-    """Démarre le worker de sync debounce (thread démon, singleton).
-
-    Sans EURIO_API_URL le worker se termine aussitôt (sync désactivée, le
-    badge l'affiche). --reload le tue/relance avec le process : sans état
-    in-memory critique (tout est dans sync_outbox/sync_state), c'est inoffensif.
-    """
-    from serving.sync_worker import start_worker
-
-    start_worker(_store)
+# local-sync (event-log/outbox/worker) retiré C6a (démonté) + C6b (modules
+# supprimés) — Direction A remplace le cycle push/pull/hlc par des POST
+# directs /ingest/* (crops/faces/dino/run).
 
 # Wire augmentation routes to the shared store (Modèle B : sources d'aperçu
 # résolues via MinIO, plus de dépendance Supabase).

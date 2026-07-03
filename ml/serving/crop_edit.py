@@ -23,7 +23,7 @@ from pathlib import Path
 import cv2
 from fastapi import HTTPException
 
-from store import Store, emit_field_event, record_tombstone
+from store import Store, emit_field_event
 
 logger = logging.getLogger(__name__)
 
@@ -322,6 +322,27 @@ def apply_manual_crop(
     )
     conn.commit()
 
+    # Remontée canonique au VPS (Direction A, C4d). L'écriture locale ci-dessus
+    # reste (cache réplique servi immédiatement par cette même requête) ; le
+    # forward rend la géométrie visible au canonique (gap identifié en C4a :
+    # le re-crop manuel n'était pas encore routé, contrairement aux scripts
+    # batch recrop_*). Best-effort : un échec réseau ne casse pas le re-crop
+    # déjà committé localement.
+    from client.http import sync_enabled
+
+    if sync_enabled():
+        try:
+            from client.ingest import push_crops
+
+            push_crops([{
+                "asset_id": row["asset_id"], "bbox_json": json.dumps(bbox),
+                "detection_method": "manual", "width": new_w, "height": new_h,
+                "phash": new_phash,
+            }])
+        except Exception as exc:  # noqa: BLE001 — forward best-effort
+            logger.warning("[manual-crop] forward /ingest/crops échoué asset=%s: %s",
+                           row["asset_id"], exc)
+
     logger.info("[manual-crop] asset=%s cx=%.1f cy=%.1f r=%.1f minio=%s",
                 row["asset_id"], cx, cy, r, minio_ok)
 
@@ -613,11 +634,6 @@ def delete_crop(store: Store, asset_id: str) -> None:
         except Exception as exc:  # noqa: BLE001
             logger.warning("[delete-crop] file delete failed asset=%s: %s",
                            asset_id, exc)
-    # Tombstone AVANT le DELETE (même transaction) : le CASCADE emporte les
-    # events de l'asset, la suppression voyage donc par sync_tombstones.
-    record_tombstone(
-        conn, asset_id=asset_id, storage_path=storage_key, reason="manual_delete",
-    )
     conn.execute("DELETE FROM image_assets WHERE id = ?", (asset_id,))
     conn.commit()
-    logger.info("[delete-crop] asset=%s purged (row + cascade + tombstone)", asset_id)
+    logger.info("[delete-crop] asset=%s purged (row + cascade)", asset_id)

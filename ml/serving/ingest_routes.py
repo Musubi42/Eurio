@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from client.runbatch import ingest_run
 from serving.auth_principal import require_scope
 from store.crops import apply_ingest_crops
+from store.dino import apply_ingest_dino
 from store.faces import apply_ingest_faces
 
 router = APIRouter(prefix="/ingest", tags=["ingest"])
@@ -89,6 +90,55 @@ def ingest_faces_route(payload: IngestFacesPayload) -> dict:
     conn.execute("BEGIN")
     try:
         result = apply_ingest_faces(conn, payload.faces)
+        conn.execute("COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+    return result
+
+
+class DinoPrediction(BaseModel):
+    asset_id: str
+    encoder_version: str
+    anchors_kind: str
+    anchors_count: int
+    top_k: list[dict] = []
+    top1_eurio_id: str | None = None
+    top1_sim: float | None = None
+    top2_eurio_id: str | None = None
+    top2_sim: float | None = None
+    spread: float | None = None
+    target_country: str | None = None
+    country_anchors_count: int | None = None
+    top_k_country: list[dict] | None = None
+    top1_country_eurio_id: str | None = None
+    top1_country_sim: float | None = None
+    top2_country_eurio_id: str | None = None
+    top2_country_sim: float | None = None
+    country_spread: float | None = None
+    reverse_sim: float | None = None
+    face_margin: float | None = None
+    denom_2eur_score: float | None = None
+    duration_ms: int | None = None
+    run_id: str | None = None
+
+
+class IngestDinoPayload(BaseModel):
+    predictions: list[DinoPrediction]
+
+
+@router.post("/dino", dependencies=[Depends(require_scope("ingest:write"))])
+def ingest_dino_route(payload: IngestDinoPayload) -> dict:
+    """Écrit des prédictions Dino (rescore consensus/suggestions/face/denom)
+    calculées client-side (recrop manuel, review score-guided). SQL-pur, UPSERT
+    idempotent (préserve ``run_id`` backfill existant), atomique. Retourne
+    ``{updated, missing}``."""
+    if _store is None:
+        raise HTTPException(status_code=500, detail="ingest non câblé (bind manquant)")
+    conn = _store._connection()  # noqa: SLF001
+    conn.execute("BEGIN")
+    try:
+        result = apply_ingest_dino(conn, payload.predictions)
         conn.execute("COMMIT")
     except Exception:
         conn.execute("ROLLBACK")

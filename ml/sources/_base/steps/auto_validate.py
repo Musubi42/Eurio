@@ -534,6 +534,25 @@ def predict_and_persist_kinds(
                         ap.denom_2eur_score = ds
     if out:
         store.upsert_dino_predictions(list(out.values()))
+        # Remontée canonique au VPS (Direction A, C4d). L'écriture locale
+        # ci-dessus reste (cache réplique + lecture immédiate par la review UI,
+        # cf. review/review_queue_routes._build_dino_response — même pattern que
+        # le forward face dans training/training_set_scan.py). Best-effort : un
+        # échec réseau ne casse pas le recompute déjà committé localement (le
+        # prochain recompute/backfill re-tentera).
+        from client.http import sync_enabled  # noqa: PLC0415
+
+        if sync_enabled():
+            try:
+                from client.ingest import push_dino_predictions  # noqa: PLC0415
+
+                push_dino_predictions([r.to_dict() for r in out.values()])
+            except Exception as exc:  # noqa: BLE001 — forward best-effort
+                logger.warning(
+                    "predict_and_persist_kinds: forward /ingest/dino échoué "
+                    "asset=%s (%d prediction(s)): %s",
+                    asset_id, len(out), exc,
+                )
     return out
 
 

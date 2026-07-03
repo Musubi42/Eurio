@@ -1,5 +1,12 @@
 # local-sync — schéma de données
 
+> **⚠️ ARCHIVÉ (2026-07-04).** Décrit les colonnes/tables sync (`op_id`,
+> `machine`, `hlc`, `sync_outbox`, `sync_tombstones`, `sync_orphan_events`),
+> retirées du schéma des DB neuves en C6c (dormantes sur les DB de prod
+> existantes, plus aucun écrivain). Conservé comme archive. Voir
+> [`migration-direction-a.md`](./migration-direction-a.md) §6c et
+> [`walkthrough-tests.md`](./walkthrough-tests.md).
+
 ## Colonnes additives sur `image_state_events`
 
 | Colonne | Type | Rôle |

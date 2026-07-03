@@ -28,7 +28,6 @@ import argparse
 import json
 import os
 import sqlite3
-import sys
 from pathlib import Path
 
 ML_DIR = Path(__file__).resolve().parents[1]
@@ -37,7 +36,7 @@ DB_PATH = ML_DIR / "state" / "eurio.db"
 
 def _run_single_coin_job(
     *, coin: str, job_id: str, run_id: str, tau: float,
-    recrop_zero_for_coin, register_udfs,
+    recrop_zero_for_coin, register_udfs, push: bool = False,
 ) -> int:
     """Exécute UN recrop-zero en mode détaché et clôt son cohort_jobs lui-même.
 
@@ -46,7 +45,14 @@ def _run_single_coin_job(
     l'endpoint ; ici on ne fait qu'avancer ``n_done`` (commit par raw) puis
     ``finish``. Toute exception → ``finish(status='failed', error=…)`` pour qu'un
     crash soit visible in-row (jamais de zombie silencieux). Sortie 0 = OK,
-    1 = échec (déjà persisté)."""
+    1 = échec (déjà persisté).
+
+    ``push`` (Direction A / Modèle B) : le bookkeeping du job (``cohort_jobs``
+    progress/finish) reste TOUJOURS sur la DB Mac locale (``conn``, état
+    opérationnel de la workstation) — seule l'écriture des crops bascule sur
+    une réplique pull-ée (``client.replica.pull_replica``) suivie d'un
+    ``push_run`` vers le canonique VPS, comme le fait déjà le mode batch
+    ``--push`` (sans ``--coin``) plus bas dans ce fichier."""
     from store import cohort_job_finish, cohort_job_progress
 
     conn = sqlite3.connect(DB_PATH, timeout=30)
@@ -59,19 +65,36 @@ def _run_single_coin_job(
     n_total = (n_total[0] if n_total else 0) or 0
 
     def _progress(n: int) -> None:
-        # Même connexion que recrop_zero_for_coin → pas de lock concurrent ;
-        # le commit rend l'avancement (et les crops déjà faits) visibles à l'API.
+        # Bookkeeping toujours sur la connexion locale (job status), même en
+        # mode --push (la connexion de travail des crops, elle, est distincte).
         cohort_job_progress(conn, job_id, n_done=n)
         conn.commit()
 
+    work_conn = conn
+    if push:
+        from client.replica import pull_replica
+        from store import Store
+        db_path = pull_replica()
+        print(f"[model-b] réplique read-only → {db_path}", flush=True)
+        work_conn = Store(db_path)._connection()  # noqa: SLF001
+
     try:
         counts = recrop_zero_for_coin(
-            conn, coin, run_id=run_id, commit=True, progress_cb=_progress,
+            work_conn, coin, run_id=run_id, commit=True, progress_cb=_progress,
         )
         note = None
         if counts["crops"] == 0:
             note = (f"épuisé à τ={tau} — 0 crop récupérable "
                     f"({n_total} raws déjà tentés)")
+        if push:
+            from client.runbatch import push_run
+            res = push_run(work_conn, run_id)
+            if res.get("already_applied"):
+                print(f"[model-b] push {run_id} → déjà appliqué (no-op)", flush=True)
+            else:
+                total = sum((res.get("counts") or {}).values())
+                print(f"[model-b] push {run_id} → {total} ligne(s) appliquée(s) "
+                      "au canonique", flush=True)
         cohort_job_finish(
             conn, job_id, status="done", n_done=n_total or counts["scanned"],
             n_produced=counts["crops"], note=note,
@@ -85,6 +108,8 @@ def _run_single_coin_job(
         print(f"[recrop-zero] {coin} crashed: {exc}", flush=True)
         return 1
     finally:
+        if push:
+            work_conn.close()
         conn.close()
 
 
@@ -101,16 +126,14 @@ def main() -> int:
                          "écrit lui-même progress/finish → survit au --reload")
     ap.add_argument("--run-id", dest="run_id", default=None, help="run_id override")
     ap.add_argument("--push", action="store_true",
-                    help="Modèle B : recrop la cohorte sur une réplique "
-                         "read-only (pull depuis le VPS) puis POST le run au "
-                         "canonique via /ingest/run. Implique --commit. Sans ce "
-                         "flag : écrit la DB Mac (Modèle A).")
+                    help="Direction A / Modèle B : recrop (cohorte ou --coin) "
+                         "sur une réplique read-only (pull depuis le VPS) puis "
+                         "POST le run au canonique via /ingest/run. Implique "
+                         "--commit. En mode --coin, le bookkeeping cohort_jobs "
+                         "reste sur la DB Mac locale — seule l'écriture des "
+                         "crops bascule sur la réplique. Sans ce flag : écrit "
+                         "la DB Mac (Modèle A).")
     args = ap.parse_args()
-
-    if args.push and args.coin:
-        print("ERROR: --push n'est pas supporté en mode --coin (job endpoint, Modèle A)",
-              file=sys.stderr)
-        return 1
 
     os.environ["EURIO_CENSUS_DETECT"] = "1"
     if args.tau is not None:
@@ -133,6 +156,7 @@ def main() -> int:
             run_id=args.run_id or f"recrop-zero-{args.coin}", tau=tau,
             recrop_zero_for_coin=recrop_zero_for_coin,
             register_udfs=_register_phash_udfs,
+            push=args.push,
         )
 
     run_id = f"census-recover-{args.cohort}"

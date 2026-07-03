@@ -33,6 +33,8 @@ _ML = Path(__file__).resolve().parents[1]
 if str(_ML) not in sys.path:
     sys.path.insert(0, str(_ML))
 
+from client.ingest import push_crops  # noqa: E402
+from client.http import sync_enabled  # noqa: E402
 from sources._base.phash import compute_phash  # noqa: E402
 from store import Store  # noqa: E402
 from vision.score_recover import search_best_crop  # noqa: E402
@@ -40,6 +42,7 @@ from vision.score_recover import search_best_crop  # noqa: E402
 _CACHE = Path.home() / ".cache" / "eurio"
 _REPLACE_FLOOR = 0.55   # le crop retenu doit passer le gate (pièce entière valide)
 _REPLACE_MARGIN = 0.12  # et battre le crop courant d'au moins ça (sinon on n'y touche pas)
+_PUSH_BATCH = 200
 
 
 def _hint_from_bbox(bbox_json: str) -> dict | None:
@@ -87,6 +90,8 @@ def main() -> int:
     n = {"seen": 0, "skip_noraw": 0, "skip_nohint": 0, "skip_nocrop": 0,
          "kept_good": 0, "replaced": 0, "minio_fail": 0, "redino": 0}
     deltas = []
+    push_to_vps = sync_enabled()
+    push_batch: list[dict] = []
     t0 = time.time()
     changed_paths: list[tuple[str, Path]] = []
 
@@ -137,17 +142,39 @@ def main() -> int:
                 "w": float(2 * res.r), "h": float(2 * res.r)}
         method0 = r["method0"] or ""
         new_method = method0 + "+scorerefine" if "scorerefine" not in method0 else method0
-        conn.execute(
-            "UPDATE image_assets SET bbox_json=?, detection_method=?, width=?, height=?, "
-            "phash=? WHERE id=?",
-            (json.dumps(bbox), new_method, res.image.shape[1], res.image.shape[0],
-             compute_phash(res.image), r["aid"]),
-        )
+        new_phash = compute_phash(res.image)
+        if push_to_vps:
+            # Direction A (C4a) : géométrie poussée au canonique (VPS) au lieu
+            # d'un UPDATE local (lecture seule ici).
+            push_batch.append({
+                "asset_id": r["aid"], "bbox_json": json.dumps(bbox),
+                "detection_method": new_method,
+                "width": res.image.shape[1], "height": res.image.shape[0],
+                "phash": new_phash,
+            })
+            if len(push_batch) >= _PUSH_BATCH:
+                push_crops(push_batch)
+                push_batch = []
+        else:
+            # Fallback Model A (dev local, pas d'EURIO_API_URL).
+            conn.execute(
+                "UPDATE image_assets SET bbox_json=?, detection_method=?, width=?, height=?, "
+                "phash=? WHERE id=?",
+                (json.dumps(bbox), new_method, res.image.shape[1], res.image.shape[0],
+                 new_phash, r["aid"]),
+            )
         changed_paths.append((r["aid"], cp))
         if n["replaced"] % 50 == 0:
             print(f"  {n['replaced']} remplacés ({time.time() - t0:.0f}s)", flush=True)
 
-    # Re-Dino les crops changés (suggestions à jour pour la review).
+    if push_to_vps and push_batch:
+        push_crops(push_batch)
+
+    # Re-Dino les crops changés (suggestions à jour pour la review). Le second
+    # write path (image_asset_dino_predictions, hors run_id) est désormais
+    # routé au canonique via predict_and_persist_one → predict_and_persist_kinds
+    # (POST /ingest/dino best-effort quand sync_enabled(), cf. C4d) — rien à
+    # changer ici, le forward est interne à la fonction appelée.
     if args.commit and changed_paths:
         from sources._base.steps.auto_validate import predict_and_persist_one
         print(f"\n[redino] {len(changed_paths)} crops changés…", flush=True)

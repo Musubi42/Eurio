@@ -1,5 +1,12 @@
 # local-sync — frontend (badge sidebar)
 
+> **⚠️ ARCHIVÉ (2026-07-04).** Décrit le badge de sync (`SyncStatusBadge.vue`,
+> `sync-api.ts`, `features/sync/`), retiré en C6a (unmount) puis supprimé en
+> C6b au profit de Direction A (POST direct à l'API VPS, pas de worker de sync
+> à afficher). Conservé comme archive. Voir
+> [`migration-direction-a.md`](./migration-direction-a.md) et
+> [`walkthrough-tests.md`](./walkthrough-tests.md).
+
 ## Composants
 
 - **`src/shared/ui/SyncStatusBadge.vue`** — bloc fixé en bas de sidebar, entre

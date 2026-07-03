@@ -1,9 +1,11 @@
-"""Tests C2b local-sync — les crops manuels émettent des events rejouables.
+"""Tests crop_edit — les crops manuels émettent des events d'audit.
 
 recrop en place → event ``manual_recrop`` (colonnes + cache_invalidate) ;
-add-crop → snapshot INSERT complet en row_ops ; delete → tombstone qui survit
-au DELETE CASCADE. Couches lourdes (MinIO, Dino, cascade fichier) mockées —
-on teste le contrat DB/event, pas le pipeline image.
+add-crop → snapshot INSERT complet en row_ops ; delete → row + events cascadés
+(plus de tombstone/outbox depuis le retrait du transport event-log, C6b —
+Direction A pousse au VPS via ``POST /ingest/*``). Couches lourdes (MinIO,
+Dino, cascade fichier) mockées — on teste le contrat DB/event, pas le
+pipeline image.
 """
 
 from __future__ import annotations
@@ -96,10 +98,6 @@ def test_apply_manual_crop_emits_replayable_event(env):
     assert f["image_assets.width"] == row["width"]
     assert f["image_assets.height"] == row["height"]
     assert f["image_assets.phash"] == row["phash"]
-    ob = conn.execute(
-        "SELECT status FROM sync_outbox WHERE op_id=?", (ev["op_id"],),
-    ).fetchone()
-    assert ob["status"] == "pending"
 
 
 def test_create_manual_crop_snapshots_full_row(env):
@@ -141,7 +139,7 @@ def test_create_manual_crop_snapshots_full_row(env):
     assert f["review_queue.priority"] == rq["priority"]
 
 
-def test_delete_crop_records_tombstone(env, monkeypatch):
+def test_delete_crop_purges_row_and_cascades(env, monkeypatch):
     import shared.storage.cascade as cascade
     monkeypatch.setattr(
         cascade, "delete_asset_cascade", lambda *a, **kw: None, raising=False,
@@ -159,13 +157,3 @@ def test_delete_crop_records_tombstone(env, monkeypatch):
     assert conn.execute(
         "SELECT COUNT(*) FROM image_state_events WHERE asset_id='a1'"
     ).fetchone()[0] == 0  # cascadés
-    ts = conn.execute(
-        "SELECT * FROM sync_tombstones WHERE asset_id='a1'"
-    ).fetchone()
-    assert ts is not None
-    assert ts["storage_path"] == "crops/a1.png"
-    assert ts["reason"] == "manual_delete"
-    ob = conn.execute(
-        "SELECT kind, status FROM sync_outbox WHERE op_id=?", (ts["op_id"],),
-    ).fetchone()
-    assert ob["kind"] == "tombstone" and ob["status"] == "pending"

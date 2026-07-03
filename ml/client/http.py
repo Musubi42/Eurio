@@ -19,6 +19,17 @@ def base_url() -> str:
     return os.environ.get("EURIO_API_URL", "http://127.0.0.1:8042").rstrip("/")
 
 
+def sync_enabled() -> bool:
+    """Le forward vers le canonique VPS exige une cible explicite.
+
+    Sans ``EURIO_API_URL``, on ne pousse jamais vers le défaut localhost — le
+    poste est en Modèle A (dev local, pas de canonique distant). Utilisé pour
+    gater tous les writes qui doivent transiter par ``/ingest/*`` sous
+    Direction A (crops/faces/dino/run) plutôt qu'écrire ``eurio.db`` en direct.
+    """
+    return bool(os.environ.get("EURIO_API_URL", "").strip())
+
+
 def _headers() -> dict[str, str]:
     h = {"Content-Type": "application/json", "User-Agent": "eurio-client/1.0"}
     token = os.environ.get("EURIO_API_TOKEN")

@@ -537,19 +537,9 @@ tasks:
   # cohérent), bosse en local, puis pousse ses runs via `/ingest/run` (--push).
   # Plus de lease/MinIO pour la DB (retiré en R2 — MinIO ne garde que les images).
   db:pull-replica:
-    desc: "Rebase BULK depuis le canonique VPS (GET /db/replica, vérif sha) — écrase le fichier cible. Refuse si sync_outbox a du pending (events non poussés) : lancer d'abord go-task ml:db:sync."
+    desc: "Rebase BULK depuis le canonique VPS (GET /db/replica, vérif sha) — écrase le fichier cible. Lecture seule : aucune op locale à perdre (Direction A pousse directement au VPS via POST /ingest/*)."
     cmds:
       - "{{.VENV}}/python -m client.replica {{.CLI_ARGS}}"
-
-  db:sync:
-    desc: "Cycle de sync event-log → canonique (push outbox, pull des autres machines, purge). Normalement automatique (worker debounce de ml:api) ; utile à la main avant de changer de machine ou si l'API est down."
-    cmds:
-      - "{{.VENV}}/python -m client.sync {{.CLI_ARGS}}"
-
-  db:sync-bootstrap:
-    desc: "Migration one-shot vers le mode « local + sync » : diffe l'ancienne base locale vs une réplique fraîche (colonnes autoritatives), émet des events de rattrapage. Dry-run par défaut ; -- --apply pour exécuter."
-    cmds:
-      - "{{.VENV}}/python -m client.sync_bootstrap {{.CLI_ARGS}}"
 
   # ---------- Review collaborative (service VPS + pont eurio.db) ----------
   # Service review = review.db SQLite + FastAPI, hors lease (toujours allumé sur

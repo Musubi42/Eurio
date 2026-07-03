@@ -157,13 +157,9 @@ def healthz() -> dict:
 ingest_routes.bind(_store)
 app.include_router(ingest_routes.router)
 
-# ─── local-sync : push/pull d'events (hub de merge) ──────────────────────────
-# SQL pur → cœur garanti. Le VPS stampe machine='vps' + mode hub (compose :
-# EURIO_MACHINE_ID / EURIO_SYNC_MODE) — ses writes review redescendent au pull.
-from serving import sync_routes  # noqa: E402
-
-sync_routes.bind(_store)
-app.include_router(sync_routes.router)
+# local-sync (event-log/outbox hub de merge) retiré C6a (démonté) + C6b
+# (module supprimé) — Direction A pousse directement au canonique via
+# /ingest/* (crops/faces/dino/run).
 
 # ─── Routers interactifs légers, best-effort (skip si dep lourde absente) ────
 # (nom, module, a un bind(store) ?). Les heavy (review_queue/coin_assets : cv2/

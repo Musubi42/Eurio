@@ -2811,6 +2811,16 @@ def recrop_zero_coin(cohort_id: str, eurio_id: str) -> dict:
         "--cohort", cohort_id, "--coin", eurio_id,
         "--job-id", job_id, "--run-id", run_id, "--tau", str(tau),
     ]
+    # Direction A / Modèle B (C4b) : si EURIO_API_URL est configuré, le job
+    # tourne toujours en compute local (GPU workstation) mais écrit les crops
+    # sur une réplique pull-ée puis les POST au canonique VPS (--push), au
+    # lieu d'écrire directement le eurio.db Mac. Le bookkeeping cohort_jobs
+    # (progress/finish) reste local dans tous les cas (cf. recrop_cohort_census
+    # ::_run_single_coin_job). En hébergé/Model A pur (pas d'EURIO_API_URL),
+    # comportement inchangé (écriture locale directe).
+    from client.http import sync_enabled  # noqa: PLC0415 — évite import cycle au chargement
+    if sync_enabled():
+        cmd.append("--push")
     logf = log_path.open("w")
     try:
         proc = subprocess.Popen(

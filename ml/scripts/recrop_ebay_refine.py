@@ -39,9 +39,13 @@ _ML = Path(__file__).resolve().parents[1]
 if str(_ML) not in sys.path:
     sys.path.insert(0, str(_ML))
 
+from client.ingest import push_crops  # noqa: E402
+from client.http import sync_enabled  # noqa: E402
 from vision.crop_detectors import crop_with_detector  # noqa: E402
 from scripts.crop_quality_diag import _oracle_from_raw, _raw_local_path  # noqa: E402
 from sources._base.phash import compute_phash  # noqa: E402
+
+_PUSH_BATCH = 200
 
 _DB = _ML / "state" / "eurio.db"
 _CACHE = Path.home() / ".cache" / "eurio"
@@ -87,6 +91,8 @@ def main() -> None:
 
     n = {"seen": 0, "skip_refined": 0, "skip_noraw": 0, "skip_nodet": 0,
          "changed": 0, "minio_fail": 0, "smaller": 0, "bigger": 0}
+    push_to_vps = sync_enabled()
+    push_batch: list[dict] = []
     t0 = time.time()
     for r in rows:
         if args.limit and n["seen"] >= args.limit:
@@ -142,17 +148,36 @@ def main() -> None:
             new_method = method0
         else:
             new_method = method0 + "+rimrefine"
-        conn.execute(
-            "UPDATE image_assets SET bbox_json=?, detection_method=?, "
-            "width=?, height=?, phash=? WHERE id=?",
-            (json.dumps(bbox), new_method, res.image.shape[1], res.image.shape[0],
-             compute_phash(res.image), r["aid"]),
-        )
+        new_phash = compute_phash(res.image)
+        if push_to_vps:
+            # Direction A : le canonique est le VPS — on POST la géométrie au lieu
+            # d'écrire la réplique locale (lecture seule ici, cf. C4a).
+            push_batch.append({
+                "asset_id": r["aid"], "bbox_json": json.dumps(bbox),
+                "detection_method": new_method,
+                "width": res.image.shape[1], "height": res.image.shape[0],
+                "phash": new_phash,
+            })
+            if len(push_batch) >= _PUSH_BATCH:
+                push_crops(push_batch)
+                push_batch = []
+        else:
+            # Fallback Model A (dev local, pas d'EURIO_API_URL) : écriture directe.
+            conn.execute(
+                "UPDATE image_assets SET bbox_json=?, detection_method=?, "
+                "width=?, height=?, phash=? WHERE id=?",
+                (json.dumps(bbox), new_method, res.image.shape[1], res.image.shape[0],
+                 new_phash, r["aid"]),
+            )
         if n["changed"] % 200 == 0:
-            conn.commit()
+            if not push_to_vps:
+                conn.commit()
             print(f"  {n['changed']} re-cropés ({time.time()-t0:.0f}s)", flush=True)
 
-    if args.commit:
+    if push_to_vps:
+        if push_batch:
+            push_crops(push_batch)
+    elif args.commit:
         conn.commit()
     conn.close()
     mode = "COMMIT" if args.commit else "DRY-RUN"

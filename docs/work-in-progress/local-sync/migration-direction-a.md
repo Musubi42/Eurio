@@ -158,10 +158,33 @@ C2.
   `sync_orphan_events`, worker debounce, badge, `ml:db:sync*`,
   `sync_routes`/`sync_replay`/`client/sync*`. Livrable : code mort supprimé.
   *Vérif : suite de tests verte sans les modules sync.*
-- **C7 — Migrations one-shot** rebranchées sur le canonique VPS. Livrable :
-  `backfill_*`/`migrate_*` documentés « run VPS-only ». *Vérif : dry-run VPS.*
-- **C8 — Walkthrough PO revu** : nouveau flux (aucun bootstrap par machine, juste
-  « pull replica »). Remplace `walkthrough-tests.md`.
+- **C7 — Migrations one-shot. ✅ FAIT (2026-07-04).** Garde-fou automatique
+  (`scripts/_vps_only_guard.py::guard_vps_only`, bypass
+  `--i-know-this-is-canonical`) câblé sur `backfill_face.py`/`backfill_denom.py`/
+  `backfill_quality_score.py` : refuse de tourner si `EURIO_DB_READONLY` (C5)
+  ou `EURIO_API_URL` (client Direction A) sont configurés — ces scripts
+  mutent `image_assets.face`/`denom`/`quality_score` par `UPDATE` brut, hors
+  transport `/ingest/*`. `migrate_canonical_schema.py`/`migrate_to_minio.py`
+  restent couverts par leur bandeau `DEPRECATED` existant (déjà hors chemin
+  actif, pas de garde auto ajouté). Doc dédiée :
+  `docs/work-in-progress/local-sync/vps-only-migrations.md` (liste des 5
+  scripts + point non tranché : `backfill_face`/`backfill_denom` dépendent de
+  torch/DINO donc doivent tourner GPU, ce qui contredit « VPS-only » strict —
+  remonté PO, pas résolu). *Vérif ✅ : guard refuse avec `EURIO_DB_READONLY=1`
+  et avec `EURIO_API_URL` set (exit 1 + message stderr), no-op sans ces env
+  vars, bypass `--i-know-this-is-canonical` fonctionne — 4 tests
+  `test_vps_only_guard.py`.*
+- **C8 — Walkthrough PO revu. ✅ FAIT (2026-07-04).** `walkthrough-tests.md`
+  réécrit : plus de Phase 0 bootstrap, plus de Phase de rattrapage —
+  setup machine = `go-task ml:db:pull-replica` seul, décision = POST direct
+  VPS (visible immédiatement, pas de cycle à attendre), reprise PC = simple
+  pull sans merge. `README.md`/`backend.md`/`frontend.md`/`data-schema.md`
+  déjà bannés ARCHIVÉ (README l'était depuis C1 ; backend/frontend/data-schema
+  bannés dans ce chunk) et pointent vers ce document. Commandes vérifiées :
+  seul `ml:db:pull-replica` cité (existe dans `ml/tasks.yml`), `ml:db:sync` /
+  `ml:db:sync-bootstrap` absents (retirés C6b). *Vérif ✅ : grep sur le nouveau
+  walkthrough — zéro occurrence de `sync_outbox`/`hlc`/`bootstrap`/
+  `image_state_events`/badge.*
 
 ## 6. Décisions ouvertes (à trancher avec le PO avant les chunks concernés)
 
