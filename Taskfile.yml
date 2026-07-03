@@ -5,7 +5,11 @@ includes:
     taskfile: ./app-android/Taskfile.yml
     dir: .
   ml:
-    taskfile: ./ml/Taskfile.yml
+    # Fichier nommé `tasks.yml` (PAS `Taskfile.yml`) exprès : go-task n'auto-découvre
+    # que `Taskfile.yml`. En le renommant, `go-task ml:<task>` marche depuis la racine
+    # ET depuis n'importe quel sous-dossier (go-task remonte l'arbo jusqu'à CE fichier
+    # racine sans se faire court-circuiter par un Taskfile.yml dans ml/).
+    taskfile: ./ml/tasks.yml
     dir: ./ml
 
 tasks:

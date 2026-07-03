@@ -3,18 +3,24 @@
 > À dérouler une fois le code tiré sur chaque machine. Le VPS est déjà déployé
 > (endpoints `/db/events/push|pull` live, vérifiés au déploiement). Prérequis
 > par machine : `direnv` chargé (EURIO_API_URL + EURIO_API_TOKEN exportés).
+>
+> **Où lancer les commandes** : depuis la **racine du repo** (ou n'importe quel
+> sous-dossier — `go-task ml:*` remonte tout seul jusqu'au Taskfile racine). Les
+> tasks `ml:*` tournent déjà dans `ml/` (`dir: ./ml`), donc les chemins relatifs
+> comme `state/eurio.db` pointent sur `ml/state/eurio.db` sans qu'on ait à `cd`.
 
 ## Phase 0 — Bootstrap du Mac (une fois, ~10 min)
 
 ```bash
-cd ml
 # 1. Dry-run : qu'est-ce qui diverge entre ma base locale et le canonique ?
 go-task ml:db:sync-bootstrap
 # → liste {asset: champs}. Sanity-check : ça doit ressembler à ton travail
 #   récent (tri mix-zone-17, recrops…). Rien d'aberrant ?
 
 # 2. Sauvegarde + seed du fichier de travail depuis le canonique
-cp state/eurio.db "state/eurio.db.pre-sync-$(date +%F)"
+#    (le `cp` est du shell brut → chemin depuis la racine = `ml/state/…` ;
+#     les `go-task ml:*` tournent déjà dans ml/, d'où `state/…` sans préfixe.)
+cp ml/state/eurio.db "ml/state/eurio.db.pre-sync-$(date +%F)"
 go-task ml:db:pull-replica -- --dest state/eurio.db --force   # --force : on vient de sauvegarder
 
 # 3. Rattrapage : ré-émet tes décisions locales par-dessus le seed
@@ -99,5 +105,5 @@ print(*r, sep=chr(10))
 - Badge rouge → popover : l'erreur exacte (réseau ? 401 PAT ? 422 payload).
   Backoff auto 60→900 s ; `POST /sync/trigger` pour forcer.
 - API locale down → `go-task ml:db:sync` (même cycle, en CLI).
-- Diagnostic : `sqlite3 state/eurio.db "SELECT status, COUNT(*) FROM sync_outbox GROUP BY status"`
+- Diagnostic : `sqlite3 ml/state/eurio.db "SELECT status, COUNT(*) FROM sync_outbox GROUP BY status"`
   et `SELECT * FROM sync_state`.

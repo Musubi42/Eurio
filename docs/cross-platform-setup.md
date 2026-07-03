@@ -14,7 +14,7 @@ Notes consolidées des ajustements faits pour que la même stack tourne sur les 
 
 ### Venv qui hérite des packages Nix
 - `ml/.venv/pyvenv.cfg` : `include-system-site-packages = true` — sans ça `uvicorn`/`fastapi`/`numpy`/`pillow` (servis par le devShell Nix via `python312.withPackages`) ne sont pas vus par le venv.
-- `ml/Taskfile.yml` task `setup` recrée le venv avec `python3 -m venv --system-site-packages` si la config est absente.
+- `ml/tasks.yml` task `setup` recrée le venv avec `python3 -m venv --system-site-packages` si la config est absente.
 
 ### torch par plateforme via markers PEP 508
 - `ml/pyproject.toml` :
@@ -59,7 +59,7 @@ Pas obligatoire pour `go-task` (qui passe par `{{.VENV}}/python` en absolu) mais
 
 | Avant | Après | Raison |
 |---|---|---|
-| `/bin/cp …` (×3 dans `ml/Taskfile.yml` task `deploy`) | `cp …` | NixOS n'a pas de `/bin/cp` (pas de FHS). `cp` via `$PATH` marche partout. |
+| `/bin/cp …` (×3 dans `ml/tasks.yml` task `deploy`) | `cp …` | NixOS n'a pas de `/bin/cp` (pas de FHS). `cp` via `$PATH` marche partout. |
 | `Taskfile.yml` task `filament:install-matc` télécharge toujours `filament-v1.71.0-mac.tgz` | `case "$(uname -s)"` → `linux.tgz` ou `mac.tgz` | Le binaire mac plante en `exec format error` sur Linux. Le tarball Linux tourne sur NixOS via `nix-ld`. |
 
 ## Android — signature debug partagée
