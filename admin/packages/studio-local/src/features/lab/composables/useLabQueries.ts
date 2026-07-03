@@ -26,7 +26,8 @@ import {
   fetchCohortFunnelStatus,
   fetchCohortProgress,
   fetchCohortTestBuildInfo,
-  fetchCohortTrainingCrops,
+  fetchCohortTrainingCropsState,
+  fetchCohortTrainingOverlay,
   fetchCohorts,
   fetchTrainingScanStatus,
   setAssetTrainingEligible,
@@ -72,9 +73,14 @@ import {
 import { fetchTriageStats } from '@/features/review/composables/useReviewApi'
 import type {
   CohortStatus,
+  CohortTrainingCrops,
+  CohortTrainingCropsState,
+  CohortTrainingOverlay,
   IterationCreatePayload,
   IterationDetail,
   IterationStatus,
+  TrainingCrop,
+  TrainingCropClass,
 } from '../types'
 
 export const LAB_KEYS = {
@@ -104,6 +110,9 @@ export const LAB_KEYS = {
     ['lab', 'cohort', cohortId, 'iterations', iterationId, 'build-info'] as const,
   liveTests: (cohortId: string, iterationId: string) =>
     ['lab', 'cohort', cohortId, 'iterations', iterationId, 'live-tests'] as const,
+  // C3 (Direction A) : état canonique (VPS) et overlay Dino (local) sont fetchés
+  // et mergés DANS la queryFn de useCohortTrainingCropsQuery, enregistrés sous
+  // cette seule clé → scan/dismiss/reassign l'invalident (re-fetch état+overlay).
   trainingCrops: (cohortId: string) =>
     ['lab', 'cohort', cohortId, 'training-crops'] as const,
   trainingScan: (cohortId: string) =>
@@ -477,15 +486,120 @@ export function useCloneCohortMutation() {
 }
 
 /**
+ * Merge état (VPS canonique) ⊕ overlay (dérivé GPU+FS, LOCAL) — reconstitue la
+ * forme `CohortTrainingCrops` consommée par CohortTrainingSet.vue, à l'IDENTIQUE
+ * de la fusion full-server (`lab_routes._cohort_training_crops`, C3). Overlay
+ * absent (hébergé / ML local éteint) → dégrade gracieusement : intruder_suspect
+ * =false, has_numista_ref=false, n_bce_ref=0, r_at_1/confused_with masqués (null
+ * / []), scan=null — mêmes défauts que le backend full-server sans scan/bench.
+ */
+function mergeTrainingCrops(
+  state: CohortTrainingCropsState,
+  overlay: CohortTrainingOverlay | null,
+): CohortTrainingCrops {
+  const classesOverlay = overlay?.classes ?? {}
+  const assetsOverlay = overlay?.assets ?? {}
+
+  const classes: TrainingCropClass[] = state.classes.map((cs) => {
+    const ov = classesOverlay[cs.class_id]
+    const crops: TrainingCrop[] = cs.crops.map((cr) => {
+      const aov = assetsOverlay[cr.asset_id]
+      return {
+        ...cr,
+        intruder_suspect: aov?.intruder_suspect ?? false,
+        intruder_reason: aov?.intruder_reason ?? null,
+        intruder_top1_class: aov?.intruder_top1_class ?? null,
+        intruder_top1_eurio_id: aov?.intruder_top1_eurio_id ?? null,
+        intruder_margin: aov?.intruder_margin ?? null,
+      }
+    })
+    // Miroir du tri backend : intrus AU TRAIN d'abord (polluent le modèle), puis
+    // intrus hors train, puis le reste ; marge décroissante pour les intrus.
+    crops.sort((a, b) => {
+      const rank = (c: TrainingCrop) =>
+        c.intruder_suspect && c.training_eligible ? 0 : c.intruder_suspect ? 1 : 2
+      const ra = rank(a)
+      const rb = rank(b)
+      if (ra !== rb) return ra - rb
+      if (a.intruder_suspect || b.intruder_suspect) {
+        return (b.intruder_margin ?? 0) - (a.intruder_margin ?? 0)
+      }
+      return 0
+    })
+    // Compteur d'en-tête = intrus AU TRAIN uniquement (ce qui pollue le modèle).
+    const n_intruders = crops.filter((c) => c.intruder_suspect && c.training_eligible).length
+    return {
+      class_id: cs.class_id,
+      class_kind: cs.class_kind,
+      member_eurio_ids: cs.member_eurio_ids,
+      n_eligible: cs.n_eligible,
+      n_unknown_face: cs.n_unknown_face,
+      n_reverse_flagged: cs.n_reverse_flagged,
+      n_rejected: cs.n_rejected,
+      n_review_unrouted: cs.n_review_unrouted,
+      n_intruders,
+      r_at_1: ov?.r_at_1 ?? null,
+      r_at_1_prev: ov?.r_at_1_prev ?? null,
+      r_at_1_delta: ov?.r_at_1_delta ?? null,
+      n_real_last_bake: ov?.n_real_last_bake ?? null,
+      n_real_prev_bake: ov?.n_real_prev_bake ?? null,
+      n_obverse: cs.n_obverse,
+      has_numista_ref: ov?.has_numista_ref ?? false,
+      n_bce_ref: ov?.n_bce_ref ?? 0,
+      underfed: cs.underfed,
+      confused_with: ov?.confused_with ?? [],
+      crops,
+    }
+  })
+
+  // Miroir du tri backend : « à inspecter d'abord » = R@1 bas (non-évalué en
+  // tête), puis plus d'intrus, puis plus de faces à confirmer.
+  classes.sort((a, b) => {
+    const r1a = a.r_at_1 ?? -1
+    const r1b = b.r_at_1 ?? -1
+    if (r1a !== r1b) return r1a - r1b
+    if (a.n_intruders !== b.n_intruders) return b.n_intruders - a.n_intruders
+    return b.n_unknown_face - a.n_unknown_face
+  })
+
+  return {
+    cohort_id: state.cohort_id,
+    cohort_name: state.cohort_name,
+    benchmark_run_id: overlay?.benchmark_run_id ?? null,
+    prev_benchmark_run_id: overlay?.prev_benchmark_run_id ?? null,
+    min_real: state.min_real,
+    scan: overlay?.scan ?? null,
+    classes,
+  }
+}
+
+/**
  * Crops d'entraînement par classe design_group (triage des déchets). Couplé au
  * R@1 studio par classe. Refetch au mount — la couverture bouge à chaque
  * exclusion/review.
+ *
+ * C3 (Direction A) : LISTE (état-DB-portable) lue sur le VPS canonique
+ * (`fetchCohortTrainingCropsState`, marche en hébergé aussi) ; OVERLAY (dérivé
+ * GPU+FS) lu en LOCAL (`fetchCohortTrainingOverlay`, ML_API) quand dispo.
+ * `allSettled` : une source KO (VPS injoignable → erreur surfacée ; ML local
+ * off/hébergé → overlay silencieusement absent) dégrade sans casser l'autre.
  */
 export function useCohortTrainingCropsQuery(cohortId: MaybeRefOrGetter<string>) {
   return useQuery({
     queryKey: computed(() => LAB_KEYS.trainingCrops(toValue(cohortId))),
-    queryFn: () => fetchCohortTrainingCrops(toValue(cohortId)),
-    enabled: computed(() => !!toValue(cohortId) && HAS_LOCAL_ML_API),
+    queryFn: async () => {
+      const cid = toValue(cohortId)
+      const [stateRes, overlayRes] = await Promise.allSettled([
+        fetchCohortTrainingCropsState(cid),
+        HAS_LOCAL_ML_API
+          ? fetchCohortTrainingOverlay(cid)
+          : Promise.reject(new Error('overlay indisponible (pas de ML local)')),
+      ])
+      if (stateRes.status === 'rejected') throw stateRes.reason
+      const overlay = overlayRes.status === 'fulfilled' ? overlayRes.value : null
+      return mergeTrainingCrops(stateRes.value, overlay)
+    },
+    enabled: computed(() => !!toValue(cohortId)),
   })
 }
 
@@ -573,8 +687,20 @@ export function useReassignAssetMutation(cohortId: MaybeRefOrGetter<string>) {
   return useMutation({
     mutationFn: (vars: { assetId: string; eurioId: string }) =>
       reassignAsset(vars.assetId, vars.eurioId),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: LAB_KEYS.trainingCrops(toValue(cohortId)) })
+    onSuccess: async (_data, vars) => {
+      const id = toValue(cohortId)
+      // Reassign (eurio_id) est CANONIQUE (VPS). Le verdict intrus est un overlay
+      // LOCAL calculé sur l'ancienne classe → périmé après changement de classe.
+      // On le dismisse en local best-effort pour que le badge disparaisse ; absent
+      // en hosted (pas d'overlay). Un échec ne bloque pas le reassign canonique.
+      if (HAS_LOCAL_ML_API) {
+        try {
+          await dismissIntruder(vars.assetId, id)
+        } catch {
+          /* overlay best-effort */
+        }
+      }
+      qc.invalidateQueries({ queryKey: LAB_KEYS.trainingCrops(id) })
     },
   })
 }

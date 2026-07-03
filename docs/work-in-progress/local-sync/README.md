@@ -1,10 +1,16 @@
 # local-sync — écritures locales à pleine vitesse, convergence sur le canonique
 
-> **Statut : LIVRÉ (2026-07-03).** Architecture tranchée et implémentée dans la
-> session double-write (suite directe de
-> [`../model-b/local-canonical-double-write-HANDOFF.md`](../model-b/local-canonical-double-write-HANDOFF.md)).
-> Reste : la migration bootstrap par machine (walkthrough) + calibrage du
-> debounce à l'usage.
+> **⚠️ ARCHI ABANDONNÉE (2026-07-03). NE PAS REPARTIR DESSUS.** L'event-log
+> décrit plus bas **ne converge pas à l'usage** (diagnostic triangulé Mac/VPS/PC :
+> même log, états différents ; le bulk ne voyage pas + colonnes autoritatives
+> écrites hors-event). Le PO a tranché **Direction A = writer canonique UNIQUE
+> (VPS), Mac/PC = clients replica+forward.** Plan de remplacement :
+> [`migration-direction-a.md`](./migration-direction-a.md). Le reste de ce
+> document est conservé comme **archive du raisonnement** (pourquoi l'event-log
+> semblait bon, pourquoi il a échoué).
+>
+> _Statut historique : « LIVRÉ (2026-07-03) » dans la session double-write, puis
+> invalidé le même jour au walkthrough PO._
 
 ## Le problème (rappel d'une phrase)
 

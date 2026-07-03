@@ -32,12 +32,15 @@ import math
 TRAINING_TARGET = 100
 
 # Plancher de sources eBay RÉELLES en-dessous duquel la classe est flaggée pauvre.
-MIN_REAL = 10
-
 # Réfs canoniques officielles utilisables comme sources de training (avers).
 # numista_api est exclu : pas de local_path — l'avers Numista est lu sur le FS
 # (``datasets/<numista_id>/obverse.*``). Source unique pour le bake ET l'affichage.
-CANONICAL_REF_SOURCES = ("bce_official", "eurlex_jo")
+#
+# Relocalisées (C3, Direction A) dans store/funnel_constants.py — stdlib-only,
+# pour que store/funnel.py (lecture lean VPS) les importe sans tirer numpy/torch
+# (ce module-ci tire numpy via training.foundation.__init__). Ré-exportées ici
+# pour préserver tous les usages existants (bake, lab_routes, etc.).
+from store.funnel_constants import CANONICAL_REF_SOURCES, MIN_REAL  # noqa: E402
 
 
 def aug_factor(seed: int) -> int:

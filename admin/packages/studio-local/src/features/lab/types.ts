@@ -803,6 +803,71 @@ export interface CohortTrainingCrops {
   classes: TrainingCropClass[]
 }
 
+// ─── C3 (Direction A) : état-DB-portable (VPS canonique) + overlay dérivé (local) ──
+// La LISTE (crops/classes/compteurs état) vient du VPS ; les champs GPU
+// (R@1/confused_with/intruder_*) et FS (has_numista_ref/n_bce_ref) viennent
+// de l'overlay LOCAL et sont mergés par asset_id/class_id côté front pour
+// reconstituer la forme `CohortTrainingCrops` ci-dessus (zéro rendu nouveau,
+// cf. R1). Voir docs/work-in-progress/local-sync/migration-direction-a.md §C3.
+
+/** Sous-ensemble état-DB-portable de `TrainingCrop`, tel que servi par le VPS
+ *  (`GET /lab/cohorts/{id}/training-crops`, lean, scope `lab:read`). */
+export type TrainingCropState = Omit<
+  TrainingCrop,
+  'intruder_suspect' | 'intruder_reason' | 'intruder_top1_class' | 'intruder_top1_eurio_id' | 'intruder_margin'
+>
+
+/** Sous-ensemble état-DB-portable de `TrainingCropClass` — pas de R@1/confusions
+ *  (GPU) ni has_numista_ref/n_bce_ref (FS). `n_intruders` n'existe pas côté état
+ *  (calculé au merge, à partir de l'overlay). */
+export type TrainingCropClassState = Omit<
+  TrainingCropClass,
+  | 'n_intruders' | 'r_at_1' | 'r_at_1_prev' | 'r_at_1_delta'
+  | 'n_real_last_bake' | 'n_real_prev_bake' | 'has_numista_ref' | 'n_bce_ref'
+  | 'confused_with' | 'crops'
+> & { crops: TrainingCropState[] }
+
+/** Forme renvoyée par le VPS canonique (lean, `serving/lab_read_routes.py`). */
+export interface CohortTrainingCropsState {
+  cohort_id: string
+  cohort_name: string
+  min_real: number
+  classes: TrainingCropClassState[]
+}
+
+/** Dérivé GPU (R@1/confusions/intrus) + FS (refs Numista/BCE) d'une classe —
+ *  posé en overlay LOCAL par-dessus l'état VPS. */
+export interface ClassOverlay {
+  r_at_1: number | null
+  r_at_1_prev: number | null
+  r_at_1_delta: number | null
+  confused_with: ClassConfusion[]
+  n_real_last_bake: number | null
+  n_real_prev_bake: number | null
+  has_numista_ref: boolean
+  n_bce_ref: number
+}
+
+/** Verdict intrus (scan Dino) d'un asset — dérivé GPU, overlay LOCAL. */
+export interface AssetOverlay {
+  intruder_suspect: boolean
+  intruder_reason: 'margin' | 'outlier' | 'margin+outlier' | null
+  intruder_top1_class: string | null
+  intruder_top1_eurio_id: string | null
+  intruder_margin: number | null
+}
+
+/** Overlay LOCAL (`GET /lab/cohorts/{id}/training-overlay`, full-server only,
+ *  jamais servi sur l'image lean — le VPS n'a pas de GPU). Absent en hosted
+ *  ou si le ML local est éteint → merge dégrade gracieusement (badges masqués). */
+export interface CohortTrainingOverlay {
+  benchmark_run_id: string | null
+  prev_benchmark_run_id: string | null
+  scan: TrainingScanInfo | null
+  classes: Record<string, ClassOverlay>
+  assets: Record<string, AssetOverlay>
+}
+
 export interface SetTrainingEligibleResult {
   asset_id: string
   eurio_id: string | null

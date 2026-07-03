@@ -29,12 +29,25 @@ from store import (
     cohort_job_set_pid,
     cohort_job_start,
     emit_field_event,
-    emit_state_event,
     latest_training_scan,
     training_scan_dismiss_intruder,
     training_scan_results,
     training_scan_set_pid,
     training_scan_start,
+)
+from store.decisions import (
+    DecisionError,
+    apply_accept_training,
+    apply_reassign,
+    apply_reopen_review,
+    apply_set_training_eligible,
+)
+from store.funnel import list_training_crops
+from serving.decision_models import (
+    AcceptTrainingResult,
+    ReassignAssetPayload,
+    ReopenReviewResult,
+    SetTrainingEligiblePayload,
 )
 
 from training.foundation.enrichment import (
@@ -1998,10 +2011,10 @@ def cohort_funnel_status(cohort_id: str) -> dict:
 # les rejetés (pour pouvoir restaurer). On NE touche PAS resolution_status à
 # l'exclusion — seul training_eligible bascule, donc le crop reste visible et le
 # prochain bake le drop (filtre training_eligible=1). Cf. 02-pipeline-map.
-# Source de vérité partagée avec le scan (même périmètre panneau ↔ scan).
-from training.training_set_scan import TRIAGE_STATUSES as _TRIAGE_STATUSES  # noqa: E402
-
-_TRIAGE_MAX_PER_CLASS = 400
+# Source de vérité partagée avec le scan (même périmètre panneau ↔ scan) : la
+# requête SQL vit désormais dans ``store/funnel.py`` (état-DB-portable, C3,
+# partagé avec l'image lean du VPS) — ``TRIAGE_STATUSES``/le LIMIT par classe y
+# sont importés depuis ``store.funnel_constants``/``store.funnel`` directement.
 
 
 class TrainingCrop(BaseModel):
@@ -2089,6 +2102,41 @@ class CohortTrainingCropsResponse(BaseModel):
     classes: list[TrainingCropClass]
 
 
+# ── Overlay dérivé (GPU + FS) — C3, Direction A ──────────────────────────────
+# Tout ce qui n'est PAS état-DB-portable : verdicts intrus (scan Dino, GPU),
+# R@1/confusions (bench studio, GPU), refs Numista/BCE (checks filesystem).
+# Servi UNIQUEMENT full-server (``GET /lab/cohorts/{id}/training-overlay``,
+# jamais sur l'image lean) ; se merge côté front par-dessus l'état VPS
+# (``store.funnel.list_training_crops`` / ``serving.lab_read_routes``).
+
+
+class ClassOverlay(BaseModel):
+    r_at_1: float | None = None
+    r_at_1_prev: float | None = None
+    r_at_1_delta: float | None = None
+    confused_with: list[ClassConfusion] = []
+    n_real_last_bake: int | None = None
+    n_real_prev_bake: int | None = None
+    has_numista_ref: bool = False  # avers canonique Numista sur le FS
+    n_bce_ref: int = 0             # réfs officielles BCE/EUR-Lex présentes sur le FS
+
+
+class AssetOverlay(BaseModel):
+    intruder_suspect: bool = False
+    intruder_reason: str | None = None
+    intruder_top1_class: str | None = None
+    intruder_top1_eurio_id: str | None = None
+    intruder_margin: float | None = None
+
+
+class TrainingOverlayResponse(BaseModel):
+    benchmark_run_id: str | None = None
+    prev_benchmark_run_id: str | None = None
+    scan: TrainingScanInfo | None = None
+    classes: dict[str, ClassOverlay]
+    assets: dict[str, AssetOverlay]
+
+
 def _benched_iterations(store: Store, cohort_id: str) -> list:
     """Paires ``(iteration, bench)`` de la cohorte dont le benchmark est
     COMPLETED, la plus récente d'abord. Un bench failed n'a ni per_coin ni
@@ -2137,13 +2185,12 @@ def _aug_real_by_key(store: Store, iteration_id: str | None) -> dict[str, int]:
     }
 
 
-def _cohort_training_crops(store: Store, cohort_id: str) -> CohortTrainingCropsResponse:
-    """Cœur (testable offline) de ``GET /lab/cohorts/{id}/training-crops``."""
+def _cohort_training_overlay_data(store: Store, cohort: ExperimentCohortRow) -> dict:
+    """Cœur (dict pur, réutilisé par la route ``/training-overlay`` ET par
+    ``_cohort_training_crops`` pour le merge full-server) du DÉRIVÉ GPU+FS de la
+    cohorte : verdicts intrus (scan Dino), R@1/confusions (bench studio), refs
+    Numista/BCE (FS). AUCUN état-DB-portable ici (cf. ``store.funnel``)."""
     from training.eval.class_resolver import build_resolver
-
-    cohort = store.get_cohort(cohort_id)
-    if cohort is None:
-        raise HTTPException(status_code=404, detail="Cohort introuvable")
 
     resolver = build_resolver(force_eurio_id=False, db_path=store.db_path)
     descriptors, _unresolved = resolver.classes_for_eurio_ids(cohort.eurio_ids)
@@ -2201,8 +2248,7 @@ def _cohort_training_crops(store: Store, cohort_id: str) -> CohortTrainingCropsR
         vals = [table[k] for k in (class_id, *members) if k in table]
         return max(vals) if vals else None
 
-    status_ph = ",".join("?" for _ in _TRIAGE_STATUSES)
-    classes: list[TrainingCropClass] = []
+    classes_overlay: dict[str, dict] = {}
     for d in descriptors:
         members = list(d.eurio_ids)
         confusions = [
@@ -2212,60 +2258,85 @@ def _cohort_training_crops(store: Store, cohort_id: str) -> CohortTrainingCropsR
                 key=lambda kv: -kv[1],
             )[:3]
         ]
-        if not members:
-            classes.append(TrainingCropClass(
-                class_id=d.class_id, class_kind=d.class_kind,
-                member_eurio_ids=members, n_eligible=0, n_unknown_face=0,
-                n_reverse_flagged=0, n_rejected=0, n_intruders=0,
-                r_at_1=None, confused_with=confusions, underfed=True,
-                crops=[],
-            ))
-            continue
-        member_ph = ",".join("?" for _ in members)
-        rows = conn.execute(
-            f"""
-            SELECT a.id, a.eurio_id, a.face, a.denom, a.quality_score,
-                   a.training_eligible, a.resolution_status, s.source,
-                   EXISTS(
-                     SELECT 1 FROM review_queue rq
-                      WHERE rq.image_asset_id = a.id AND rq.status = 'open'
-                   ) AS routed
-              FROM image_assets a
-              JOIN source_images s ON s.id = a.source_image_id
-             WHERE a.eurio_id IN ({member_ph})
-               AND a.resolution_status IN ({status_ph})
-               AND a.storage_status = 'present'
-             ORDER BY
-               CASE WHEN a.face = 'obverse' THEN 1 ELSE 0 END ASC,
-               CASE WHEN a.denom = 'not_2eur' THEN 0 ELSE 1 END ASC,
-               a.quality_score ASC,
-               a.id
-             LIMIT ?
-            """,
-            (*members, *_TRIAGE_STATUSES, _TRIAGE_MAX_PER_CLASS),
-        ).fetchall()
-        crops = []
-        for r in rows:
-            v = scan_verdicts.get(r["id"])
+        member_r1 = [per_coin_r1[m] for m in members if m in per_coin_r1]
+        r_at_1 = sum(member_r1) / len(member_r1) if member_r1 else None
+        member_r1_prev = [
+            per_coin_r1_prev[m] for m in members if m in per_coin_r1_prev
+        ]
+        r_at_1_prev = (
+            sum(member_r1_prev) / len(member_r1_prev) if member_r1_prev else None
+        )
+        classes_overlay[d.class_id] = {
+            "r_at_1": r_at_1,
+            "r_at_1_prev": r_at_1_prev,
+            "r_at_1_delta": (
+                r_at_1 - r_at_1_prev
+                if (r_at_1 is not None and r_at_1_prev is not None) else None
+            ),
+            "confused_with": confusions,
+            "n_real_last_bake": _real_at_bake(real_last, d.class_id, members),
+            "n_real_prev_bake": _real_at_bake(real_prev, d.class_id, members),
+            "has_numista_ref": any(
+                _has_obverse(coin_lookup.numista_id_for(m)) for m in members
+            ),
+            "n_bce_ref": max(
+                (_count_canonical_refs(conn, m) for m in members), default=0,
+            ),
+        }
+
+    assets_overlay: dict[str, dict] = {
+        asset_id: {
+            "intruder_suspect": bool(v["is_intruder"]) and not bool(v["dismissed"]),
+            "intruder_reason": v["intruder_reason"],
+            "intruder_top1_class": v["top1_class"],
+            "intruder_top1_eurio_id": v["top1_eurio_id"],
+            "intruder_margin": v["margin"],
+        }
+        for asset_id, v in scan_verdicts.items()
+    }
+
+    return {
+        "benchmark_run_id": benchmark_run_id,
+        "prev_benchmark_run_id": prev_benchmark_run_id,
+        "scan": scan_info,
+        "classes": classes_overlay,
+        "assets": assets_overlay,
+    }
+
+
+def _cohort_training_crops(store: Store, cohort_id: str) -> CohortTrainingCropsResponse:
+    """Cœur (testable offline) de ``GET /lab/cohorts/{id}/training-crops``
+    (full-server, LOCAL). Compose l'état-DB-portable (``store.funnel
+    .list_training_crops`` — SOURCE UNIQUE, partagée avec l'image lean du VPS,
+    cf. ``serving/lab_read_routes.py``) et l'overlay dérivé GPU+FS
+    (``_cohort_training_overlay_data``), merge par ``class_id``/``asset_id``.
+    Garantit la parité full-local == VPS-lecture ⊕ overlay-local (C3)."""
+    cohort = store.get_cohort(cohort_id)
+    if cohort is None:
+        raise HTTPException(status_code=404, detail="Cohort introuvable")
+
+    conn = store._connection()  # noqa: SLF001
+    try:
+        state = list_training_crops(conn, cohort.id)
+    except DecisionError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail)
+    overlay = _cohort_training_overlay_data(store, cohort)
+    classes_overlay = overlay["classes"]
+    assets_overlay = overlay["assets"]
+
+    classes: list[TrainingCropClass] = []
+    for cs in state["classes"]:
+        ov = classes_overlay.get(cs["class_id"], {})
+        crops: list[TrainingCrop] = []
+        for cr in cs["crops"]:
+            aov = assets_overlay.get(cr["asset_id"], {})
             crops.append(TrainingCrop(
-                asset_id=r["id"],
-                source=r["source"],
-                file_url=f"/sources/{r['source']}/assets/{r['id']}/file",
-                eurio_id=r["eurio_id"],
-                face=r["face"],
-                denom=r["denom"],
-                quality_score=r["quality_score"],
-                training_eligible=bool(r["training_eligible"]),
-                resolution_status=r["resolution_status"],
-                routed=bool(r["routed"]),
-                intruder_suspect=(
-                    bool(v["is_intruder"]) and not bool(v["dismissed"])
-                    if v is not None else False
-                ),
-                intruder_reason=v["intruder_reason"] if v is not None else None,
-                intruder_top1_class=v["top1_class"] if v is not None else None,
-                intruder_top1_eurio_id=v["top1_eurio_id"] if v is not None else None,
-                intruder_margin=v["margin"] if v is not None else None,
+                **cr,
+                intruder_suspect=aov.get("intruder_suspect", False),
+                intruder_reason=aov.get("intruder_reason"),
+                intruder_top1_class=aov.get("intruder_top1_class"),
+                intruder_top1_eurio_id=aov.get("intruder_top1_eurio_id"),
+                intruder_margin=aov.get("intruder_margin"),
             ))
         # P1 : les probables intrus en TÊTE — ceux AU TRAIN d'abord (ils
         # polluent le modèle), puis les flagués hors-train (rescue), marge
@@ -2275,62 +2346,30 @@ def _cohort_training_crops(store: Store, cohort_id: str) -> CohortTrainingCropsR
             else 1 if c.intruder_suspect else 2,
             -(c.intruder_margin or 0.0) if c.intruder_suspect else 0.0,
         ))
-        n_eligible = sum(
-            1 for c in crops if c.training_eligible and c.face != "reverse"
-        )
-        n_unknown = sum(
-            1 for c in crops
-            if c.training_eligible and (c.face is None or c.face == "unknown")
-        )
-        n_reverse = sum(
-            1 for c in crops if c.training_eligible and c.face == "reverse"
-        )
-        n_obverse = sum(
-            1 for c in crops if c.training_eligible and c.face == "obverse"
-        )
-        n_rejected = sum(1 for c in crops if c.resolution_status == "rejected")
-        # Réconciliation C4↔C5 : needs_review jamais enfilés dans une lane
-        # ouverte → invisibles à la review, bloqués. C'est l'écart honnête.
-        n_review_unrouted = sum(
-            1 for c in crops
-            if c.resolution_status == "needs_review" and not c.routed
-        )
         # Compteur d'en-tête = intrus AU TRAIN (ce qui pollue le modèle) ; les
         # flags sur needs_review/rejetés restent visibles via les filtres.
         n_intruders = sum(
             1 for c in crops if c.intruder_suspect and c.training_eligible
         )
-        member_r1 = [per_coin_r1[m] for m in members if m in per_coin_r1]
-        r_at_1 = sum(member_r1) / len(member_r1) if member_r1 else None
-        member_r1_prev = [
-            per_coin_r1_prev[m] for m in members if m in per_coin_r1_prev
-        ]
-        r_at_1_prev = (
-            sum(member_r1_prev) / len(member_r1_prev) if member_r1_prev else None
-        )
         classes.append(TrainingCropClass(
-            class_id=d.class_id, class_kind=d.class_kind,
-            member_eurio_ids=members, n_eligible=n_eligible,
-            n_unknown_face=n_unknown, n_reverse_flagged=n_reverse,
-            n_rejected=n_rejected, n_review_unrouted=n_review_unrouted,
+            class_id=cs["class_id"], class_kind=cs["class_kind"],
+            member_eurio_ids=cs["member_eurio_ids"],
+            n_eligible=cs["n_eligible"],
+            n_unknown_face=cs["n_unknown_face"],
+            n_reverse_flagged=cs["n_reverse_flagged"],
+            n_rejected=cs["n_rejected"],
+            n_review_unrouted=cs["n_review_unrouted"],
             n_intruders=n_intruders,
-            r_at_1=r_at_1,
-            r_at_1_prev=r_at_1_prev,
-            r_at_1_delta=(
-                r_at_1 - r_at_1_prev
-                if (r_at_1 is not None and r_at_1_prev is not None) else None
-            ),
-            n_real_last_bake=_real_at_bake(real_last, d.class_id, members),
-            n_real_prev_bake=_real_at_bake(real_prev, d.class_id, members),
-            n_obverse=n_obverse,
-            has_numista_ref=any(
-                _has_obverse(coin_lookup.numista_id_for(m)) for m in members
-            ),
-            n_bce_ref=max(
-                (_count_canonical_refs(conn, m) for m in members), default=0,
-            ),
-            underfed=n_eligible < MIN_REAL,
-            confused_with=confusions,
+            r_at_1=ov.get("r_at_1"),
+            r_at_1_prev=ov.get("r_at_1_prev"),
+            r_at_1_delta=ov.get("r_at_1_delta"),
+            n_real_last_bake=ov.get("n_real_last_bake"),
+            n_real_prev_bake=ov.get("n_real_prev_bake"),
+            n_obverse=cs["n_obverse"],
+            has_numista_ref=ov.get("has_numista_ref", False),
+            n_bce_ref=ov.get("n_bce_ref", 0),
+            underfed=cs["underfed"],
+            confused_with=ov.get("confused_with", []),
             crops=crops,
         ))
 
@@ -2343,23 +2382,48 @@ def _cohort_training_crops(store: Store, cohort_id: str) -> CohortTrainingCropsR
     ))
     return CohortTrainingCropsResponse(
         cohort_id=cohort.id, cohort_name=cohort.name,
-        benchmark_run_id=benchmark_run_id,
-        prev_benchmark_run_id=prev_benchmark_run_id,
-        min_real=MIN_REAL,
-        scan=scan_info,
+        benchmark_run_id=overlay["benchmark_run_id"],
+        prev_benchmark_run_id=overlay["prev_benchmark_run_id"],
+        min_real=state["min_real"],
+        scan=overlay["scan"],
         classes=classes,
+    )
+
+
+def _cohort_training_overlay(store: Store, cohort_id: str) -> TrainingOverlayResponse:
+    """Cœur (testable offline) de ``GET /lab/cohorts/{id}/training-overlay``
+    (full-server, LOCAL uniquement — jamais sur l'image lean)."""
+    cohort = store.get_cohort(cohort_id)
+    if cohort is None:
+        raise HTTPException(status_code=404, detail="Cohort introuvable")
+    data = _cohort_training_overlay_data(store, cohort)
+    return TrainingOverlayResponse(
+        benchmark_run_id=data["benchmark_run_id"],
+        prev_benchmark_run_id=data["prev_benchmark_run_id"],
+        scan=data["scan"],
+        classes={cid: ClassOverlay(**v) for cid, v in data["classes"].items()},
+        assets={aid: AssetOverlay(**v) for aid, v in data["assets"].items()},
     )
 
 
 @router.get("/cohorts/{cohort_id}/training-crops", response_model=CohortTrainingCropsResponse)
 def cohort_training_crops(cohort_id: str) -> CohortTrainingCropsResponse:
     """Crops d'entraînement par classe design_group de la cohorte, rangés suspect
-    d'abord et couplés au R@1 studio — pour le triage des déchets (read-only)."""
+    d'abord et couplés au R@1 studio — pour le triage des déchets (read-only).
+
+    Fusion FULL-SERVER de l'état-DB-portable (``store.funnel.list_training_crops``,
+    identique à ``GET /lab/cohorts/{id}/training-crops`` servi sur l'image lean du
+    VPS) et de l'overlay dérivé GPU+FS local (``training-overlay`` ci-dessous)."""
     return _cohort_training_crops(_get_store(), cohort_id)
 
 
-class SetTrainingEligiblePayload(BaseModel):
-    eligible: bool
+@router.get("/cohorts/{cohort_id}/training-overlay", response_model=TrainingOverlayResponse)
+def cohort_training_overlay(cohort_id: str) -> TrainingOverlayResponse:
+    """Overlay dérivé GPU+FS de la cohorte (verdicts intrus du dernier scan Dino,
+    R@1/confusions du dernier bench studio, refs Numista/BCE sur le FS) — LOCAL
+    uniquement, jamais servi sur l'image lean (le VPS n'a pas de GPU). Se merge
+    côté front par-dessus l'état VPS (``asset_id``/``class_id``, C3)."""
+    return _cohort_training_overlay(_get_store(), cohort_id)
 
 
 @router.post("/assets/{asset_id}/training-eligible")
@@ -2371,53 +2435,17 @@ def set_asset_training_eligible(
     Exclure pose ``quality_reason='manual_triage'`` (traçable) sans toucher
     ``resolution_status`` ni ``eurio_id`` — le crop reste visible au triage, et
     le prochain bake le drop (filtre ``training_eligible=1``). Restaurer efface
-    le ``quality_reason`` posé par le triage (laisse intacts les autres motifs)."""
-    store = _get_store()
-    conn = store._connection()  # noqa: SLF001
-    row = conn.execute(
-        "SELECT id, eurio_id FROM image_assets WHERE id = ?", (asset_id,),
-    ).fetchone()
-    if row is None:
-        raise HTTPException(status_code=404, detail="Crop introuvable")
-    if payload.eligible:
-        conn.execute(
-            "UPDATE image_assets SET training_eligible = 1, "
-            "quality_reason = CASE WHEN quality_reason = 'manual_triage' "
-            "THEN NULL ELSE quality_reason END WHERE id = ?",
-            (asset_id,),
-        )
-    else:
-        conn.execute(
-            "UPDATE image_assets SET training_eligible = 0, "
-            "quality_reason = 'manual_triage' WHERE id = ?",
-            (asset_id,),
-        )
-    new = conn.execute(
-        "SELECT training_eligible, quality_reason FROM image_assets WHERE id = ?",
-        (asset_id,),
-    ).fetchone()
-    # quality_reason relu APRÈS l'UPDATE : la branche re-inclusion l'efface
-    # conditionnellement (CASE manual_triage) — le payload sync porte la
-    # valeur réellement écrite, pas l'intention.
-    emit_field_event(
-        conn, asset_id=asset_id, reason="training_eligible",
-        fields={
-            "image_assets.training_eligible": int(new["training_eligible"]),
-            "image_assets.quality_reason": new["quality_reason"],
-        },
-    )
+    le ``quality_reason`` posé par le triage (laisse intacts les autres motifs).
+
+    Logique SQL déléguée à ``store.decisions.apply_set_training_eligible`` (source
+    unique partagée avec l'image lean du VPS — cf. C2a)."""
+    conn = _get_store()._connection()  # noqa: SLF001
+    try:
+        result = apply_set_training_eligible(conn, asset_id, payload.eligible)
+    except DecisionError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail)
     conn.commit()
-    return {
-        "asset_id": asset_id,
-        "eurio_id": row["eurio_id"],
-        "training_eligible": bool(new["training_eligible"]),
-    }
-
-
-class ReopenReviewResult(BaseModel):
-    asset_id: str
-    eurio_id: str | None
-    review_id: str
+    return result
 
 
 @router.post("/assets/{asset_id}/reopen-review", response_model=ReopenReviewResult)
@@ -2434,82 +2462,17 @@ def reopen_asset_review(asset_id: str) -> ReopenReviewResult:
     ``eurio_id`` est conservé comme indice ; la review le confirme ou le
     corrige. Symétrique de la décision de review (qui, à l'acceptation, remet
     ``training_eligible=1``). Même patron que ``/assets/reflag-needs-review``,
-    scopé à un asset et avec la bascule d'éligibilité en plus."""
-    store = _get_store()
-    conn = store._connection()  # noqa: SLF001
-    row = conn.execute(
-        "SELECT id, eurio_id FROM image_assets WHERE id = ?", (asset_id,),
-    ).fetchone()
-    if row is None:
-        raise HTTPException(status_code=404, detail="Crop introuvable")
-    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    new_id = uuid.uuid4().hex
-    note = "repassé en review depuis le jeu d'entraînement"
-    conn.execute(
-        "UPDATE image_assets SET resolution_status = 'needs_review', "
-        "resolved_at = NULL, training_eligible = 0 WHERE id = ?",
-        (asset_id,),
-    )
-    # review_queue.UNIQUE(image_asset_id) : un crop déjà tranché porte une ligne
-    # 'done' → UPSERT pour la ré-ouvrir (reset décision + lane manuelle) plutôt
-    # que violer la contrainte. Identique au reflag /assets (coin detail).
-    conn.execute(
-        """
-        INSERT INTO review_queue (
-            id, image_asset_id, status, priority, enqueued_at, kind,
-            decision_notes, lane, lane_source
-        ) VALUES (?, ?, 'open', 100, ?, 'single', ?, 'manual', 'human')
-        ON CONFLICT(image_asset_id) DO UPDATE SET
-            status = 'open',
-            priority = 100,
-            enqueued_at = excluded.enqueued_at,
-            kind = 'single',
-            decision_notes = excluded.decision_notes,
-            lane = 'manual',
-            lane_source = 'human',
-            decided_eurio_id = NULL,
-            decided_face = NULL,
-            decided_variant_kind = NULL,
-            decided_at = NULL,
-            decided_by = NULL
-        """,
-        (new_id, asset_id, now, note),
-    )
-    emit_state_event(
-        conn, asset_id=asset_id, to_state="queued", actor="human",
-        reason="reopened_from_training_set",
-        detail_fields={
-            "image_assets.resolution_status": "needs_review",
-            "image_assets.resolved_at": None,
-            "image_assets.training_eligible": 0,
-            "review_queue.status": "open",
-            "review_queue.priority": 100,
-            "review_queue.enqueued_at": now,
-            "review_queue.kind": "single",
-            "review_queue.decision_notes": note,
-            "review_queue.lane": "manual",
-            "review_queue.lane_source": "human",
-            "review_queue.decided_eurio_id": None,
-            "review_queue.decided_face": None,
-            "review_queue.decided_variant_kind": None,
-            "review_queue.decided_at": None,
-            "review_queue.decided_by": None,
-        },
-    )
+    scopé à un asset et avec la bascule d'éligibilité en plus.
+
+    Logique SQL déléguée à ``store.decisions.apply_reopen_review`` (source unique
+    partagée avec l'image lean du VPS — cf. C2a)."""
+    conn = _get_store()._connection()  # noqa: SLF001
+    try:
+        result = apply_reopen_review(conn, asset_id)
+    except DecisionError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail)
     conn.commit()
-    rid_row = conn.execute(
-        "SELECT id FROM review_queue WHERE image_asset_id = ?", (asset_id,),
-    ).fetchone()
-    return ReopenReviewResult(
-        asset_id=asset_id, eurio_id=row["eurio_id"], review_id=rid_row["id"],
-    )
-
-
-class AcceptTrainingResult(BaseModel):
-    asset_id: str
-    eurio_id: str | None
-    resolution_status: str
-    training_eligible: bool
+    return ReopenReviewResult(**result)
 
 
 @router.post("/assets/{asset_id}/accept-training", response_model=AcceptTrainingResult)
@@ -2525,56 +2488,17 @@ def accept_asset_training(asset_id: str) -> AcceptTrainingResult:
     ouverte 'done' (si elle existe) et émet l'event 'resolved'. Symétrique de
     ``/reopen-review``. Le simple flip ``training-eligible`` ne suffisait pas :
     la pièce restait ``needs_review`` donc affichée sous « À reviewer » (le
-    classement met needs_review avant l'éligibilité)."""
-    store = _get_store()
-    conn = store._connection()  # noqa: SLF001
-    row = conn.execute(
-        "SELECT id, eurio_id, face FROM image_assets WHERE id = ?", (asset_id,),
-    ).fetchone()
-    if row is None:
-        raise HTTPException(status_code=404, detail="Crop introuvable")
-    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    conn.execute(
-        "UPDATE image_assets SET resolution_status = 'manual', "
-        "resolution_confidence = 1.0, training_eligible = 1, resolved_at = ? "
-        "WHERE id = ?",
-        (now, asset_id),
-    )
-    # Ferme la file de review ouverte pour ce crop (s'il y en a une) — même
-    # effet qu'une décision humaine dans l'écran Review.
-    conn.execute(
-        "UPDATE review_queue SET status = 'done', decided_eurio_id = ?, "
-        "decided_face = ?, decided_at = ?, decided_by = 'human', "
-        "decision_notes = 'accepté au train depuis le jeu d''entraînement' "
-        "WHERE image_asset_id = ? AND status = 'open'",
-        (row["eurio_id"], row["face"], now, asset_id),
-    )
-    emit_state_event(
-        conn, asset_id=asset_id, to_state="resolved", actor="human",
-        reason="accepted_from_training_set", eurio_id=row["eurio_id"],
-        detail_fields={
-            "image_assets.resolution_status": "manual",
-            "image_assets.resolution_confidence": 1.0,
-            "image_assets.training_eligible": 1,
-            "image_assets.resolved_at": now,
-            "review_queue.status": "done",
-            "review_queue.decided_eurio_id": row["eurio_id"],
-            "review_queue.decided_face": row["face"],
-            "review_queue.decided_at": now,
-            "review_queue.decided_by": "human",
-            "review_queue.decision_notes":
-                "accepté au train depuis le jeu d'entraînement",
-        },
-    )
+    classement met needs_review avant l'éligibilité).
+
+    Logique SQL déléguée à ``store.decisions.apply_accept_training`` (source unique
+    partagée avec l'image lean du VPS — cf. C2a)."""
+    conn = _get_store()._connection()  # noqa: SLF001
+    try:
+        result = apply_accept_training(conn, asset_id)
+    except DecisionError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail)
     conn.commit()
-    return AcceptTrainingResult(
-        asset_id=asset_id, eurio_id=row["eurio_id"],
-        resolution_status="manual", training_eligible=True,
-    )
-
-
-class ReassignAssetPayload(BaseModel):
-    eurio_id: str
+    return AcceptTrainingResult(**result)
 
 
 @router.post("/assets/{asset_id}/reassign")
@@ -2586,43 +2510,22 @@ def reassign_asset(asset_id: str, payload: ReassignAssetPayload) -> dict:
     ``denom`` et ``resolution_status`` sont préservés (un crop bien cadré mais mal
     classé reste un bon crop, juste sur une autre pièce). ``source_images`` est
     laissé intact (provenance du scrape). Symétrique de ``training-eligible`` ;
-    l'asset quitte sa classe source et rejoint la classe cible au prochain read."""
-    target = payload.eurio_id.strip()
-    if not target:
-        raise HTTPException(status_code=422, detail="eurio_id cible requis")
-    store = _get_store()
-    conn = store._connection()  # noqa: SLF001
-    row = conn.execute(
-        "SELECT id, eurio_id FROM image_assets WHERE id = ?", (asset_id,),
-    ).fetchone()
-    if row is None:
-        raise HTTPException(status_code=404, detail="Crop introuvable")
-    coin = conn.execute(
-        "SELECT eurio_id FROM coins WHERE eurio_id = ?", (target,),
-    ).fetchone()
-    if coin is None:
-        raise HTTPException(
-            status_code=404, detail=f"Pièce cible inconnue : {target}",
-        )
-    conn.execute(
-        "UPDATE image_assets SET eurio_id = ? WHERE id = ?", (target, asset_id),
-    )
-    # Le crop a changé de classe → son verdict intrus (calculé sur l'ancienne
-    # classe) est périmé. On le dismisse pour que le badge disparaisse au read
-    # suivant (y compris quand on réassigne vers la MÊME classe = « le choix
-    # Dino était faux, garde-le »). Réversible via re-scan.
+    l'asset quitte sa classe source et rejoint la classe cible au prochain read.
+
+    Écriture eurio_id déléguée à ``store.decisions.apply_reassign`` (canonique,
+    partagée avec l'image lean du VPS — cf. C2a). Le dismiss du verdict intrus est
+    un OVERLAY LOCAL (hors canonique) → fait ICI en full-server (la table de scan
+    est locale) ; en Direction A c'est le FRONT qui le déclenche (dismissIntruder
+    via l'API ML locale) au succès du reassign VPS. Cf. C3/CodeReview."""
+    conn = _get_store()._connection()  # noqa: SLF001
+    try:
+        result = apply_reassign(conn, asset_id, payload.eurio_id)
+    except DecisionError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail)
+    # Overlay local : le verdict intrus (calculé sur l'ancienne classe) est périmé.
     training_scan_dismiss_intruder(conn, asset_id)
-    emit_field_event(
-        conn, asset_id=asset_id, reason="reassign", eurio_id=target,
-        fields={"image_assets.eurio_id": target},
-        detail={"previous_eurio_id": row["eurio_id"]},
-    )
     conn.commit()
-    return {
-        "asset_id": asset_id,
-        "eurio_id": target,
-        "previous_eurio_id": row["eurio_id"],
-    }
+    return result
 
 
 class IntruderDismissResult(BaseModel):

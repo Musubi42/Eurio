@@ -23,18 +23,9 @@ from pathlib import Path
 from typing import Any
 
 
-def _now_iso() -> str:
-    """Timestamp UTC ISO-8601 avec suffixe Z explicite.
-
-    Format unique pour les ``decided_at``, ``resolved_at``, ``acked_at``
-    écrits côté Python — garantit un tri lexicographique cohérent et
-    élimine l'ambiguïté de timezone (chunk F, GAP 9 de l'audit).
-
-    Exemple : ``2026-05-25T14:30:00Z``.
-    """
-    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace(
-        "+00:00", "Z"
-    )
+# `_now_iso`, `_HUMAN_ENGINE_VERSION`, `_VALID_FACES`, `_VALID_REJECT_REASONS`,
+# `_LISTING_KEY_SQL` → déplacés dans `store.decisions` (source unique partagée
+# avec l'image lean du VPS, C2a) ; ré-importés plus bas.
 
 import cv2
 from fastapi import APIRouter, HTTPException, Query
@@ -66,13 +57,27 @@ from training.foundation.thresholds import (
 # quelle version d'algorithme a tranché une décision passée. Bumper si on
 # change la logique du verdict ou les seuils — c'est la trace canonique
 # de la calibration en vigueur au moment de l'écriture.
-_HUMAN_ENGINE_VERSION = "human@v1"
+# `_HUMAN_ENGINE_VERSION` : voir store.decisions (ré-importé en tête).
 _AUTO_DINO_ENGINE_VERSION = (
     f"auto_dino@s{DINO_VERDICT_THRESHOLDS['top1_country_sim_min']}"
     f"-d{DINO_VERDICT_THRESHOLDS['country_spread_min']}"
 )
 from vision.normalize_snap import normalize_listing_with_detections
 from store import Store, emit_field_event, emit_state_event
+from store.decisions import (
+    _HUMAN_ENGINE_VERSION,
+    _LISTING_KEY_SQL,
+    _VALID_FACES,
+    _VALID_REJECT_REASONS,
+    _now_iso,
+    apply_lot_decide,
+)
+from store.decisions import DecisionError as _DecisionError
+from serving.decision_models import (
+    LotAssignment,
+    LotDecidePayload,
+    LotDecideResponse,
+)
 
 from serving.crop_edit import (
     CropEditContextData,
@@ -84,7 +89,6 @@ from serving.crop_edit import (
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/review-queue", tags=["review-queue"])
 
-_VALID_FACES = ("obverse", "reverse", "unknown")
 _SKIP_PRIORITY_BUMP = 50
 
 # Marqueur (review_queue.decision_notes) d'un item qu'un humain a ré-ouvert
@@ -101,21 +105,7 @@ _NOT_RESTORED_SQL = (
 )
 _VALID_KINDS = ("single", "lot", "all")
 _VALID_LANES = ("manual", "auto_accept")
-_VALID_REJECT_REASONS = (
-    "not_a_coin", "out_of_scope", "duplicate_in_listing", "unreadable", "other",
-)
-
-# listing_key extraction — eBay : `ebay_<itemId>` via raw_payload_json.
-# Pour les autres sources (catawiki, etc.), fallback à `source_ref` en
-# attendant que l'adapter dédié arrive avec son propre pattern.
-_LISTING_KEY_SQL = """
-CASE
-  WHEN si.source = 'ebay'
-   AND json_extract(si.raw_payload_json, '$.ebay_item_id') IS NOT NULL
-    THEN 'ebay_' || json_extract(si.raw_payload_json, '$.ebay_item_id')
-  ELSE si.source_ref
-END
-"""
+# `_VALID_REJECT_REASONS` + `_LISTING_KEY_SQL` → store.decisions (ré-importés en tête).
 
 
 def _store() -> Store:
@@ -1824,24 +1814,8 @@ def sync_lot_crops(listing_key: str, source_image_id: str) -> LotSyncCropsRespon
     )
 
 
-class LotAssignment(BaseModel):
-    asset_id: str
-    eurio_id: str | None = None
-    face: str | None = None
-    variant_kind: str | None = None
-    reject_reason: str | None = None
-    skip: bool = False
-
-
-class LotDecidePayload(BaseModel):
-    assignments: list[LotAssignment]
-
-
-class LotDecideResponse(BaseModel):
-    done: int
-    rejected: int
-    skipped: int
-    errors: list[str]
+# LotAssignment / LotDecidePayload / LotDecideResponse → serving.decision_models
+# (contrat wire, source unique partagée avec l'image lean — importés en tête).
 
 
 # Consumed by: admin/packages/web/src/features/review/composables/useLotReview.ts (decideLot)
@@ -1860,212 +1834,26 @@ def decide_lot(listing_key: str, payload: LotDecidePayload) -> LotDecideResponse
     on l'ajoute aux errors mais on poursuit.
     Validation : chaque asset_id doit appartenir au listing — sinon erreur.
     """
-    if not payload.assignments:
-        return LotDecideResponse(done=0, rejected=0, skipped=0, errors=[])
-
     conn = _store()._connection()  # noqa: SLF001
-    # Récupère tous les assets du listing avec leur review_id.
-    listing_assets = {
-        r["asset_id"]: r
-        for r in conn.execute(
-            f"""
-            SELECT a.id AS asset_id,
-                   rq.id AS review_id,
-                   rq.status AS rq_status
-              FROM source_images si
-              JOIN image_assets a ON a.source_image_id = si.id
-              LEFT JOIN review_queue rq ON rq.image_asset_id = a.id
-             WHERE {_LISTING_KEY_SQL} = ?
-            """,
-            (listing_key,),
-        ).fetchall()
-    }
-    if not listing_assets:
-        raise HTTPException(status_code=404, detail=f"Lot '{listing_key}' not found.")
-
-    now_iso = _now_iso()
-    n_done = 0
-    n_rejected = 0
-    n_skipped = 0
-    errors: list[str] = []
-
+    # Logique déléguée à store.decisions.apply_lot_decide (source unique partagée
+    # avec l'image lean du VPS, C2a). Enveloppe transactionnelle explicite
+    # conservée (connexion Store isolation_level=None → BEGIN/COMMIT requis).
     conn.execute("BEGIN")
     try:
-        for asg in payload.assignments:
-            asset_row = listing_assets.get(asg.asset_id)
-            if asset_row is None:
-                errors.append(f"asset {asg.asset_id} does not belong to lot {listing_key}")
-                continue
-            review_id = asset_row["review_id"]
-            rq_status = asset_row["rq_status"]
-            if review_id is None:
-                errors.append(f"asset {asg.asset_id} has no review_queue row")
-                continue
-            if rq_status != "open":
-                errors.append(f"asset {asg.asset_id} already {rq_status}")
-                continue
-
-            # Decide path
-            if asg.eurio_id:
-                face = asg.face or "unknown"
-                if face not in _VALID_FACES:
-                    errors.append(f"asset {asg.asset_id} invalid face '{face}'")
-                    continue
-                conn.execute(
-                    """
-                    UPDATE image_assets
-                       SET eurio_id = ?, face = ?,
-                           variant_kind = COALESCE(?, variant_kind),
-                           resolution_status = 'manual',
-                           resolution_confidence = 1.0,
-                           training_eligible = 1,
-                           resolved_at = ?
-                     WHERE id = ?
-                    """,
-                    (asg.eurio_id, face, asg.variant_kind, now_iso, asg.asset_id),
-                )
-                cur = conn.execute(
-                    """
-                    UPDATE review_queue
-                       SET status = 'done',
-                           decided_eurio_id = ?, decided_face = ?,
-                           decided_variant_kind = ?, decided_at = ?,
-                           decided_by = 'admin',
-                           decision_engine_version = ?,
-                           decision_metadata_json = ?
-                     WHERE id = ? AND status = 'open'
-                    """,
-                    (asg.eurio_id, face, asg.variant_kind, now_iso,
-                     _HUMAN_ENGINE_VERSION,
-                     json.dumps({"context": "lot_bulk", "face_chosen": face}),
-                     review_id),
-                )
-                if cur.rowcount != 1:
-                    errors.append(
-                        f"asset {asg.asset_id} decided concurrently — skipped"
-                    )
-                    continue
-                applied = conn.execute(
-                    "SELECT variant_kind FROM image_assets WHERE id = ?",
-                    (asg.asset_id,),
-                ).fetchone()
-                emit_state_event(
-                    conn, asset_id=asg.asset_id, to_state="resolved",
-                    actor="human", reason="human_decided_lot", eurio_id=asg.eurio_id,
-                    detail_fields={
-                        "image_assets.eurio_id": asg.eurio_id,
-                        "image_assets.face": face,
-                        "image_assets.variant_kind": applied["variant_kind"],
-                        "image_assets.resolution_status": "manual",
-                        "image_assets.resolution_confidence": 1.0,
-                        "image_assets.training_eligible": 1,
-                        "image_assets.resolved_at": now_iso,
-                        "review_queue.status": "done",
-                        "review_queue.decided_eurio_id": asg.eurio_id,
-                        "review_queue.decided_face": face,
-                        "review_queue.decided_variant_kind": asg.variant_kind,
-                        "review_queue.decided_at": now_iso,
-                        "review_queue.decided_by": "admin",
-                        "review_queue.decision_engine_version": _HUMAN_ENGINE_VERSION,
-                        "review_queue.decision_metadata_json":
-                            json.dumps({"context": "lot_bulk", "face_chosen": face}),
-                    },
-                )
-                n_done += 1
-
-            # Reject path
-            elif asg.reject_reason:
-                if asg.reject_reason not in _VALID_REJECT_REASONS:
-                    errors.append(
-                        f"asset {asg.asset_id} invalid reject_reason "
-                        f"'{asg.reject_reason}' — accepted: {_VALID_REJECT_REASONS}"
-                    )
-                    continue
-                conn.execute(
-                    """
-                    UPDATE image_assets
-                       SET resolution_status = 'rejected',
-                           training_eligible = 0,
-                           quality_reason = 'rejected_in_review',
-                           resolved_at = ?
-                     WHERE id = ?
-                    """,
-                    (now_iso, asg.asset_id),
-                )
-                cur = conn.execute(
-                    """
-                    UPDATE review_queue
-                       SET status = 'done',
-                           decision_notes = ?, decided_at = ?, decided_by = 'admin',
-                           decision_engine_version = ?,
-                           decision_metadata_json = ?
-                     WHERE id = ? AND status = 'open'
-                    """,
-                    (asg.reject_reason, now_iso, _HUMAN_ENGINE_VERSION,
-                     json.dumps({"reason": asg.reject_reason, "context": "lot_bulk"}),
-                     review_id),
-                )
-                if cur.rowcount != 1:
-                    errors.append(
-                        f"asset {asg.asset_id} decided concurrently — skipped"
-                    )
-                    continue
-                emit_state_event(
-                    conn, asset_id=asg.asset_id, to_state="rejected",
-                    actor="human", reason=f"trash_{asg.reject_reason}",
-                    detail_fields={
-                        "image_assets.resolution_status": "rejected",
-                        "image_assets.training_eligible": 0,
-                        "image_assets.quality_reason": "rejected_in_review",
-                        "image_assets.resolved_at": now_iso,
-                        "review_queue.status": "done",
-                        "review_queue.decision_notes": asg.reject_reason,
-                        "review_queue.decided_at": now_iso,
-                        "review_queue.decided_by": "admin",
-                        "review_queue.decision_engine_version": _HUMAN_ENGINE_VERSION,
-                        "review_queue.decision_metadata_json": json.dumps(
-                            {"reason": asg.reject_reason, "context": "lot_bulk"}
-                        ),
-                    },
-                )
-                n_rejected += 1
-
-            # Skip path
-            elif asg.skip:
-                cur = conn.execute(
-                    "UPDATE review_queue SET status = 'skipped' "
-                    " WHERE id = ? AND status = 'open'",
-                    (review_id,),
-                )
-                if cur.rowcount != 1:
-                    errors.append(
-                        f"asset {asg.asset_id} decided concurrently — skipped"
-                    )
-                    continue
-                emit_state_event(
-                    conn, asset_id=asg.asset_id, to_state="skipped",
-                    actor="human", reason="deferred_lot",
-                    detail_fields={"review_queue.status": "skipped"},
-                )
-                n_skipped += 1
-
-            else:
-                errors.append(
-                    f"asset {asg.asset_id} has no action "
-                    "(provide eurio_id, reject_reason, or skip=true)"
-                )
+        result = apply_lot_decide(conn, listing_key, payload.assignments)
         conn.execute("COMMIT")
+    except _DecisionError as exc:
+        conn.execute("ROLLBACK")
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail)
     except Exception:
         conn.execute("ROLLBACK")
         raise
-
     logger.info(
         "[lot] decide listing=%s done=%d rejected=%d skipped=%d errors=%d",
-        listing_key, n_done, n_rejected, n_skipped, len(errors),
+        listing_key, result["done"], result["rejected"], result["skipped"],
+        len(result["errors"]),
     )
-    return LotDecideResponse(
-        done=n_done, rejected=n_rejected, skipped=n_skipped, errors=errors,
-    )
+    return LotDecideResponse(**result)
 
 
 # ── Single review fetch / mutations (existing) ────────────────────────────

@@ -46,11 +46,13 @@ from serving import (
     tokens_routes,
     users_routes,
 )
-from serving.auth_principal import require_principal
+from serving.auth_principal import require_principal, require_scope
 from serving.coin_series import router as coin_series_router
 from serving import iteration_sync_routes, recipe_routes, whoami_routes
 from serving.review_queue import router as review_queue_router
 from serving.review_queue.writes import router as review_writes_router
+from serving.funnel_writes import router as funnel_writes_router
+from serving.lab_read_routes import router as lab_read_router
 from serving.sources import router as sources_router
 from store import Store
 
@@ -127,6 +129,18 @@ app.include_router(review_queue_router)
 # legacy `review.review_queue_routes` (mêmes paths + crops cv2) → ne PAS monter ici-bas
 # dans server.py (routes dupliquées).
 app.include_router(review_writes_router)
+# C2a (Direction A) : décisions funnel (accept-training/reopen/training-eligible/
+# reassign) + décision de lot, SQL-pures (logique dans store.decisions), cv2-free
+# → portées sur l'image lean (scope review:write). Chemins identiques aux routes
+# locales lourdes → NE PAS monter sur server.py (collision, comme review_writes).
+app.include_router(funnel_writes_router)
+# C3 (Direction A) : lecture funnel — état-DB-portable autoritatif (crops/
+# classes, statut/éligibilité/routage), SQL-pure (logique dans store.funnel),
+# cv2/torch/numpy-free → portée sur l'image lean (scope lab:read). Miroir
+# lecture de funnel_writes_router. Chemin identique à la route locale lourde
+# (serving/lab_routes.cohort_training_crops) → NE PAS monter sur server.py
+# (collision, comme funnel_writes/review_writes).
+app.include_router(lab_read_router)
 # R2 (Model B) : réplique servie DIRECTEMENT par le writer unique (snapshot
 # VACUUM INTO cohérent), remplace le détour `canonical_sync → MinIO`. Léger
 # (stdlib + sqlite3) → mount inconditionnel sur l'image lean. Scope ingest:run.
@@ -163,6 +177,10 @@ _CANDIDATES = [
     ("review_queue", "review.review_queue_routes", False),
     ("coin_assets", "serving.coin_assets_routes", True),
 ]
+# C2a : peer_arbitration écrit les mêmes colonnes de décision que decide/reject
+# → durci de `require_principal` (tout principal authentifié) à `review:write`
+# (owner/admin/reviewer), aligné sur la famille review. Additif, reste vert.
+_SCOPE_OVERRIDES = {"peer_arbitration": require_scope("review:write")}
 _mounted: list[str] = []
 _skipped: list[str] = []
 for _name, _modpath, _has_bind in _CANDIDATES:
@@ -174,7 +192,8 @@ for _name, _modpath, _has_bind in _CANDIDATES:
         # via table api_tokens) → require_principal (cookie OIDC + PAT). Le
         # legacy bearer n'est plus accepté sur ces routes ; les workflows
         # Mac/PC doivent utiliser un PAT (eurio_<43 base64url>).
-        app.include_router(_mod.router, dependencies=[Depends(require_principal)])
+        _dep = _SCOPE_OVERRIDES.get(_name, require_principal)
+        app.include_router(_mod.router, dependencies=[Depends(_dep)])
         _mounted.append(_name)
     except (ImportError, ModuleNotFoundError) as exc:
         # Skip uniquement si une dépendance lourde (cv2/torch/dino…) est absente

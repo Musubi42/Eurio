@@ -90,7 +90,10 @@ MIN_OUTLIER_MEMBERS = 5
 # training-crops — serving/lab_routes importe cette constante). On scanne
 # aussi les rejetés/needs_review : badge cohérent partout + rescue (un rejeté
 # qui est en fait une autre pièce de la cohorte devient réassignable).
-TRIAGE_STATUSES = ("auto_name", "auto_phash", "manual", "needs_review", "rejected")
+# Relocalisée (C3, Direction A) dans store/funnel_constants.py — stdlib-only,
+# pour que store/funnel.py (lecture lean VPS) l'importe sans tirer numpy/torch.
+# Ré-exportée ici pour préserver tous les usages existants de ce module.
+from store.funnel_constants import TRIAGE_STATUSES  # noqa: E402
 
 _RESULTS_BATCH = 128
 _PROGRESS_EVERY = 8
@@ -433,6 +436,10 @@ def run_training_set_scan(
     n_skipped = 0
     crops: list[CropForVerdict] = []
     vec_list: list[np.ndarray] = []
+    # Direction A (C3) : `face` est canonique (lue du VPS par le funnel). Le scan
+    # tourne en local → on collecte les verdicts pour les REMONTER au VPS après la
+    # passe 1 (sinon split : le funnel lit une face écrite en local seulement).
+    face_writes: list[tuple[str, str]] = []
     for r in rows:
         aid = r["id"]
         try:
@@ -463,6 +470,7 @@ def run_training_set_scan(
                 if cur.rowcount:
                     face_written = True
                     n_faces += 1
+                    face_writes.append((aid, face_verdict))
 
         # Denom-probe (2€ vs junk) — réutilise l'embedding vitl14 déjà calculé ;
         # RELIT l'image (cv2) pour le bimetal_score. Dégrade en None si la probe
@@ -500,6 +508,27 @@ def run_training_set_scan(
         n_done += 1
         if n_done % _PROGRESS_EVERY == 0:
             training_scan_progress(conn, scan_id, n_done=n_done)
+
+    # Remontée canonique des verdicts face au VPS (Direction A). L'écriture locale
+    # ci-dessus reste (cache réplique, même valeur → pas de divergence) ; le forward
+    # rend la face visible au funnel qui la lit du VPS. Best-effort : un échec
+    # réseau ne casse pas le scan (le prochain scan re-tentera sur les NULL/unknown).
+    if face_writes:
+        from client.sync import sync_enabled
+
+        if sync_enabled():
+            try:
+                from client import http as _http
+
+                _http.post_json("/ingest/faces", {
+                    "faces": [{"asset_id": a, "face": f} for a, f in face_writes],
+                })
+                logger.info("training-scan: %d verdict(s) face remonté(s) au VPS",
+                            len(face_writes))
+            except Exception as exc:  # noqa: BLE001 — forward best-effort
+                logger.warning("training-scan: forward /ingest/faces échoué "
+                               "(%d faces, réécrites au prochain scan): %s",
+                               len(face_writes), exc)
 
     # ── Passe 2 : verdict intrus (closed-set + consensus, pur numpy) ─────
     results = compute_closed_set_verdicts(

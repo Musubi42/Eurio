@@ -248,24 +248,45 @@ export async function triggerRecropZeroCoin(
   )
 }
 
-// ─── QA crops d'entraînement par classe ──────────────────────────────────
+// ─── QA crops d'entraînement par classe (C3, Direction A) ────────────────
+//
+// La LISTE (état-DB-portable : crops/classes/compteurs) se lit désormais sur
+// le VPS canonique via `eurioApi` — même chemin public que l'ancien serving
+// local (`/lab/cohorts/{id}/training-crops`), juste une autre base URL (auth
+// Bearer PAT en local, cookie OIDC en hébergé, cf. shared/api/eurio-api.ts).
+// Les DÉRIVÉS GPU (R@1/confused_with/intruder_*) et FS
+// (has_numista_ref/n_bce_ref) restent LOCAUX (`/lab/cohorts/{id}/training-
+// overlay`, ML_API, full-server only — jamais servi sur l'image lean, le VPS
+// n'a pas de GPU) et se mergent côté front par asset_id/class_id (cf.
+// useCohortTrainingCropsQuery dans useLabQueries.ts).
 
-export async function fetchCohortTrainingCrops(
+/** État-DB-portable de la cohorte (VPS canonique, scope `lab:read`). */
+export async function fetchCohortTrainingCropsState(
   cohortId: string,
-): Promise<import('../types').CohortTrainingCrops> {
-  return json<import('../types').CohortTrainingCrops>(
+): Promise<import('../types').CohortTrainingCropsState> {
+  return eurioApi.get<import('../types').CohortTrainingCropsState>(
     `/lab/cohorts/${encodeURIComponent(cohortId)}/training-crops`,
   )
 }
 
-/** Inclut/exclut un crop du train (réversible). */
+/** Overlay dérivé GPU+FS (LOCAL, ML_API) — absent en hébergé ou ML éteint. */
+export async function fetchCohortTrainingOverlay(
+  cohortId: string,
+): Promise<import('../types').CohortTrainingOverlay> {
+  return json<import('../types').CohortTrainingOverlay>(
+    `/lab/cohorts/${encodeURIComponent(cohortId)}/training-overlay`,
+  )
+}
+
+/** Inclut/exclut un crop du train (réversible). Écriture canonique → VPS
+ *  (scope `review:write`, C2a `funnel_writes.py`, même chemin public). */
 export async function setAssetTrainingEligible(
   assetId: string,
   eligible: boolean,
 ): Promise<import('../types').SetTrainingEligibleResult> {
-  return json<import('../types').SetTrainingEligibleResult>(
+  return eurioApi.post<import('../types').SetTrainingEligibleResult>(
     `/lab/assets/${encodeURIComponent(assetId)}/training-eligible`,
-    { method: 'POST', body: JSON.stringify({ eligible }) },
+    { eligible },
   )
 }
 
@@ -295,28 +316,28 @@ export async function fetchTrainingScanStatus(
 /**
  * « Repasser en reviewer » : un crop promu au train qu'on veut retrancher.
  * Remet needs_review + training_eligible=0 et ré-enfile une row review_queue
- * ouverte → le crop réapparaît dans l'écran Review (§C4).
+ * ouverte → le crop réapparaît dans l'écran Review (§C4). Écriture canonique
+ * → VPS (C2a `funnel_writes.py`, même chemin public).
  */
 export async function reopenAssetReview(
   assetId: string,
 ): Promise<import('../types').ReopenReviewResult> {
-  return json<import('../types').ReopenReviewResult>(
+  return eurioApi.post<import('../types').ReopenReviewResult>(
     `/lab/assets/${encodeURIComponent(assetId)}/reopen-review`,
-    { method: 'POST' },
   )
 }
 
 /**
  * « Accepter au train » un crop needs_review : décision de review one-clic qui
  * confirme le crop dans sa classe (manual + eligible), le sort de « À reviewer »
- * et ferme sa file de review. Symétrique de reopenAssetReview.
+ * et ferme sa file de review. Symétrique de reopenAssetReview. Écriture
+ * canonique → VPS (C2a `funnel_writes.py`, même chemin public).
  */
 export async function acceptAssetTraining(
   assetId: string,
 ): Promise<import('../types').AcceptTrainingResult> {
-  return json<import('../types').AcceptTrainingResult>(
+  return eurioApi.post<import('../types').AcceptTrainingResult>(
     `/lab/assets/${encodeURIComponent(assetId)}/accept-training`,
-    { method: 'POST' },
   )
 }
 
@@ -324,14 +345,15 @@ export async function acceptAssetTraining(
  * Réassigne un crop à une autre pièce (eurio_id) — redirige un intrus vers la
  * bonne classe. Ne touche que `image_assets.eurio_id` (training_eligible/face
  * préservés) ; l'asset change de classe au prochain read du Jeu d'entraînement.
+ * Écriture canonique → VPS (C2a `funnel_writes.py`, même chemin public).
  */
 export async function reassignAsset(
   assetId: string,
   eurioId: string,
 ): Promise<import('../types').ReassignAssetResult> {
-  return json<import('../types').ReassignAssetResult>(
+  return eurioApi.post<import('../types').ReassignAssetResult>(
     `/lab/assets/${encodeURIComponent(assetId)}/reassign`,
-    { method: 'POST', body: JSON.stringify({ eurio_id: eurioId }) },
+    { eurio_id: eurioId },
   )
 }
 
