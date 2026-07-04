@@ -80,6 +80,12 @@
           # Secrets : SOPS + age. Voir README.md §Secrets.
           pkgs.sops
           pkgs.age
+          # Réplique eurio.db incrémentale (Direction A) : sqlite3_rsync
+          # (officiel SQLite, ≥3.50 = protocole efficace) synchronise la
+          # réplique locale depuis le canonique VPS au niveau page, base
+          # vivante des deux côtés. Requis sur les DEUX bouts du ssh —
+          # baseInputs le met sur mac/pc/vps. Cf. ml/client/replica.py.
+          pkgs.sqlite-rsync
         ];
 
         androidInputs = [

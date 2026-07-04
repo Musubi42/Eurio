@@ -537,7 +537,7 @@ tasks:
   # cohérent), bosse en local, puis pousse ses runs via `/ingest/run` (--push).
   # Plus de lease/MinIO pour la DB (retiré en R2 — MinIO ne garde que les images).
   db:pull-replica:
-    desc: "Rebase BULK depuis le canonique VPS (GET /db/replica, vérif sha) — écrase le fichier cible. Lecture seule : aucune op locale à perdre (Direction A pousse directement au VPS via POST /ingest/*)."
+    desc: "Rafraîchit la réplique locale depuis le canonique VPS. Transport auto : sqlite3_rsync incrémental (pages modifiées seules, ~3 s) via la clé dédiée ~/.ssh/eurio_replica, fallback GET /db/replica (complet, vérif sha). Lecture seule : aucune op locale à perdre (Direction A pousse directement au VPS via POST /ingest/*)."
     cmds:
       - "{{.VENV}}/python -m client.replica {{.CLI_ARGS}}"
 
