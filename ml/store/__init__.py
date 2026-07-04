@@ -83,14 +83,15 @@ def resolve_db_path(default: str | Path) -> Path:
 
 def resolve_db_readonly() -> bool:
     """Lit ``EURIO_DB_READONLY`` (Direction A, C5) : vrai → la DB locale (une
-    réplique pull-ée du VPS) s'ouvre en ``mode=ro`` et le bootstrap est
-    no-op. Opt-in explicite — le défaut reste False (comportement actuel,
-    écriture locale). Non câblé sur les entrypoints d'écriture existants
-    tant que C3/C4 ne couvrent pas 100% des writers (cf. migration-direction-a.md
-    §C5)."""
-    return os.environ.get("EURIO_DB_READONLY", "").strip().lower() in (
-        "1", "true", "yes",
-    )
+    réplique pull-ée du VPS) s'ouvre en ``mode=ro`` et le bootstrap est no-op.
+    CÂBLÉ (durcissement post-C5) : ``StoreBase.__init__`` résout ce flag par
+    défaut — tout Store construit sans ``read_only`` explicite l'honore. Le
+    writer canonique (``serving/server_serve.py``) passe ``read_only=False``
+    explicite. Opt-in : le défaut sans env var reste False (écriture locale,
+    dev Model A)."""
+    from .connection import _env_readonly
+
+    return _env_readonly()
 
 
 __all__ = [

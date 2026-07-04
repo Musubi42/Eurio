@@ -11,7 +11,7 @@ from pydantic import BaseModel
 
 from client.runbatch import ingest_run
 from serving.auth_principal import require_scope
-from store.crops import apply_ingest_crops
+from store.crops import apply_delete_assets, apply_ingest_crops
 from store.dino import apply_ingest_dino
 from store.faces import apply_ingest_faces
 
@@ -63,6 +63,26 @@ def ingest_crops_route(payload: IngestCropsPayload) -> dict:
     conn.execute("BEGIN")
     try:
         result = apply_ingest_crops(conn, payload.crops)
+        conn.execute("COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+    return result
+
+
+@router.delete("/assets/{asset_id}", dependencies=[Depends(require_scope("ingest:write"))])
+def ingest_delete_asset_route(asset_id: str) -> dict:
+    """Supprime un crop du canonique (delete propagé, Direction A). La row
+    ``image_assets`` part avec sa cascade (review_queue, prédictions Dino,
+    state events) ; le binaire MinIO est supprimé par le client initiateur
+    (clé partagée). Idempotent : un id déjà absent → ``missing``, pas de 404
+    (un retry après succès réussit). Retourne ``{deleted, missing}``."""
+    if _store is None:
+        raise HTTPException(status_code=500, detail="ingest non câblé (bind manquant)")
+    conn = _store._connection()  # noqa: SLF001
+    conn.execute("BEGIN")
+    try:
+        result = apply_delete_assets(conn, [asset_id])
         conn.execute("COMMIT")
     except Exception:
         conn.execute("ROLLBACK")

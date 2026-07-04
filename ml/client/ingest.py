@@ -52,3 +52,21 @@ def push_dino_predictions(predictions: list[dict[str, Any]]) -> dict | None:
     from client import http as _http  # noqa: PLC0415
 
     return _http.post_json("/ingest/dino", {"predictions": predictions})
+
+
+def push_delete_asset(asset_id: str) -> dict | None:
+    """DELETE ``/ingest/assets/{id}`` si la sync est activée, sinon no-op (``None``).
+
+    Contrairement aux push géométrie/verdict (best-effort : recomputables),
+    l'appelant d'un delete DOIT traiter un échec comme bloquant — un delete
+    non propagé ressuscite au prochain pull-replica (gap MAJOR 1, Direction A).
+    Retourne le payload serveur ``{"deleted": n, "missing": [...]}`` ou ``None``
+    si sync désactivée.
+    """
+    from client.http import sync_enabled  # noqa: PLC0415 — évite import cycle au chargement
+
+    if not sync_enabled():
+        return None
+    from client import http as _http  # noqa: PLC0415
+
+    return _http.delete_json(f"/ingest/assets/{asset_id}")

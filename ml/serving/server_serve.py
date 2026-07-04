@@ -69,7 +69,10 @@ _applied = db_migrate.run_migrations(_DB_PATH)
 if _applied:
     log.info("db_migrate: applied %d migration(s): %s", len(_applied), _applied)
 
-_store = Store(_DB_PATH)
+# read_only=False EXPLICITE : ce process est le writer canonique unique
+# (Direction A) — il doit rester inscriptible même si un EURIO_DB_READONLY
+# traîne dans l'environnement (le défaut StoreBase résout ce flag).
+_store = Store(_DB_PATH, read_only=False)
 api_auth.bind(_store)
 
 # Boot guard : refuse de démarrer si EURIO_DEV_BYPASS=1 dans un contexte prod.

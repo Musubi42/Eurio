@@ -28,6 +28,11 @@ from store import Store  # noqa: E402
 def env(tmp_path, monkeypatch):
     import cv2
 
+    # Baseline déterministe : le shell direnv exporte EURIO_API_URL → sans ça,
+    # les forwards Direction A (recrop/delete) tenteraient le VRAI VPS pendant
+    # les tests. Les tests de forward re-set l'env explicitement.
+    monkeypatch.delenv("EURIO_API_URL", raising=False)
+
     store = Store(tmp_path / "t.db")
     conn = store._connection()  # noqa: SLF001
     conn.execute(
@@ -157,3 +162,46 @@ def test_delete_crop_purges_row_and_cascades(env, monkeypatch):
     assert conn.execute(
         "SELECT COUNT(*) FROM image_state_events WHERE asset_id='a1'"
     ).fetchone()[0] == 0  # cascadés
+
+
+def test_delete_crop_forwards_to_canonical(env, monkeypatch):
+    """Direction A : delete local propagé au VPS via DELETE /ingest/assets/{id}."""
+    import shared.storage.cascade as cascade
+    monkeypatch.setattr(
+        cascade, "delete_asset_cascade", lambda *a, **kw: None, raising=False,
+    )
+    monkeypatch.setenv("EURIO_API_URL", "https://eurio-api.test")
+    calls = []
+    monkeypatch.setattr(
+        "client.http.delete_json",
+        lambda path, **kw: calls.append(path) or {"deleted": 1, "missing": []},
+    )
+    from serving.crop_edit import delete_crop
+
+    store, conn = env
+    delete_crop(store, "a1")
+    assert calls == ["/ingest/assets/a1"]
+    assert conn.execute(
+        "SELECT COUNT(*) FROM image_assets WHERE id='a1'").fetchone()[0] == 0
+
+
+def test_delete_crop_refuses_local_delete_when_forward_fails(env, monkeypatch):
+    """Un delete non propagé ressusciterait au pull-replica → on refuse (502)
+    et la row locale RESTE (pas de divergence silencieuse)."""
+    from fastapi import HTTPException
+
+    monkeypatch.setenv("EURIO_API_URL", "https://eurio-api.test")
+
+    def _boom(path, **kw):
+        raise OSError("réseau coupé")
+
+    monkeypatch.setattr("client.http.delete_json", _boom)
+    from serving.crop_edit import delete_crop
+    import pytest as _pytest
+
+    store, conn = env
+    with _pytest.raises(HTTPException) as exc_info:
+        delete_crop(store, "a1")
+    assert exc_info.value.status_code == 502
+    assert conn.execute(
+        "SELECT COUNT(*) FROM image_assets WHERE id='a1'").fetchone()[0] == 1

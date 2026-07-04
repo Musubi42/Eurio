@@ -59,3 +59,26 @@ def apply_ingest_crops(conn, crops) -> dict:
         )
         updated += 1
     return {"updated": updated, "missing": missing}
+
+
+def apply_delete_assets(conn, asset_ids) -> dict:
+    """Supprime des rows ``image_assets`` du canonique (Direction A, delete
+    propagé). Le ``ON DELETE CASCADE`` du schéma purge ``review_queue`` +
+    prédictions Dino + ``image_state_events`` (la connexion Store a
+    ``PRAGMA foreign_keys=ON``). SQL-pur : le binaire MinIO est supprimé par le
+    client qui a initié le delete (``delete_asset_cascade``), pas ici.
+
+    Même contrat transactionnel que ``apply_ingest_crops`` : ni BEGIN ni COMMIT
+    (le caller possède la transaction). Idempotent : un asset_id déjà absent va
+    dans ``missing`` (un retry après succès partiel réussit). Retourne
+    ``{"deleted": n, "missing": [asset_id…]}``.
+    """
+    deleted = 0
+    missing: list = []
+    for asset_id in asset_ids:
+        cur = conn.execute("DELETE FROM image_assets WHERE id = ?", (asset_id,))
+        if cur.rowcount:
+            deleted += 1
+        else:
+            missing.append(asset_id)
+    return {"deleted": deleted, "missing": missing}

@@ -58,10 +58,12 @@ def main() -> int:
         help="Path to the training SQLite DB (default: ml/state/eurio.db).",
     )
     parser.add_argument(
-        "--push", action="store_true",
-        help="Modèle B : backfill sur une réplique read-only (pull depuis le "
-             "VPS) puis POST les prédictions au canonique via /ingest/run. "
-             "Sans ce flag : écrit la DB Mac (Modèle A).",
+        "--push", action=argparse.BooleanOptionalAction, default=None,
+        help="Backfill sur une réplique fraîche (pull depuis le VPS) puis POST "
+             "les prédictions au canonique via /ingest/run. Défaut : ACTIVÉ si "
+             "EURIO_API_URL est configurée (Direction A — un backfill local "
+             "seul ferait diverger la machine du canonique), désactivé sinon "
+             "(dev Model A). --no-push force l'écriture locale seule.",
     )
     parser.add_argument("--verbose", "-v", action="store_true")
     args = parser.parse_args()
@@ -73,11 +75,21 @@ def main() -> int:
     for name in ("training.foundation", "sources._base.steps.auto_validate"):
         logging.getLogger(name).setLevel(logging.INFO)
 
-    if args.push:
+    # Direction A (C4d) : push par défaut dès que la sync est configurée —
+    # même bascule que l'orchestrateur C4c (_maybe_push_run). --no-push est
+    # l'échappatoire explicite (dev Model A).
+    from client.http import sync_enabled
+    push = sync_enabled() if args.push is None else args.push
+
+    if push:
         from client.replica import pull_replica
         db_path = pull_replica()
-        print(f"[model-b] réplique read-only → {db_path}")
-        store = Store(db_path)
+        print(f"[model-b] réplique scratch → {db_path}")
+        # read_only=False explicite : cette réplique pull-ée est un SCRATCH de
+        # travail (stub source_runs + prédictions y sont écrits avant push_run),
+        # pas le cache réplique de la machine — elle doit rester inscriptible
+        # même sous EURIO_DB_READONLY (C5).
+        store = Store(db_path, read_only=False)
     else:
         store = Store(Path(args.db))
 
@@ -112,7 +124,7 @@ def main() -> int:
     if result.n_predicted:
         print(f"Per-asset average:  {dt / result.n_predicted * 1000:.1f}ms")
 
-    if args.push:
+    if push:
         from client.runbatch import push_run
         res = push_run(conn, run_id)
         if res.get("already_applied"):

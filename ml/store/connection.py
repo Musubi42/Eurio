@@ -7,6 +7,7 @@ un write lock. Le swap de driver (libSQL, chunk 6) se localisera ici.
 from __future__ import annotations
 
 import logging
+import os
 import sqlite3
 import threading
 from contextlib import contextmanager
@@ -17,6 +18,16 @@ logger = logging.getLogger(__name__)
 
 # schema.sql reste sous state/ jusqu'à la restructure (chunk 7).
 _SCHEMA_PATH = Path(__file__).resolve().parent.parent / "state" / "schema.sql"
+
+
+def _env_readonly() -> bool:
+    """Lit ``EURIO_DB_READONLY`` (Direction A, C5). Vrai → tout Store construit
+    sans ``read_only`` explicite s'ouvre en ``mode=ro`` (la DB locale est une
+    réplique pull-ée du VPS, jamais un canonique). Source unique de vérité de
+    la sémantique du flag — ``store.resolve_db_readonly()`` délègue ici."""
+    return os.environ.get("EURIO_DB_READONLY", "").strip().lower() in (
+        "1", "true", "yes",
+    )
 
 
 def _register_phash_udfs(conn: sqlite3.Connection) -> None:
@@ -55,7 +66,14 @@ def _register_phash_udfs(conn: sqlite3.Connection) -> None:
 
 
 class StoreBase:
-    def __init__(self, db_path: Path, *, read_only: bool = False) -> None:
+    def __init__(self, db_path: Path, *, read_only: bool | None = None) -> None:
+        # C5 (Direction A) : sans choix explicite du caller, le mode vient de
+        # ``EURIO_DB_READONLY`` — poser le flag sur une machine cliente (Mac/PC)
+        # bascule TOUS les Store en ``mode=ro`` sans toucher les ~40 call-sites.
+        # Le writer canonique (serving/server_serve.py) passe ``read_only=False``
+        # explicite et reste immunisé contre le flag.
+        if read_only is None:
+            read_only = _env_readonly()
         self._db_path = Path(db_path)
         self._read_only = read_only
         if not read_only:

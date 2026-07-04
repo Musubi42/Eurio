@@ -111,6 +111,49 @@ def test_missing_scope_403(tmp_path):
     assert client.post("/ingest/crops", json={"crops": [_crop("a5")]}).status_code == 403
 
 
+# ── DELETE /ingest/assets/{id} (delete propagé — gap MAJOR 1 Direction A) ────
+
+
+def test_delete_asset_purges_row_and_cascades(env):
+    conn, client = env
+    _seed_asset(conn, "d1")  # seed avec review_queue 'open' (rq_d1)
+    r = client.delete("/ingest/assets/d1")
+    assert r.status_code == 200, r.text
+    assert r.json() == {"deleted": 1, "missing": []}
+    assert conn.execute(
+        "SELECT COUNT(*) FROM image_assets WHERE id='d1'").fetchone()[0] == 0
+    assert conn.execute(
+        "SELECT COUNT(*) FROM review_queue WHERE image_asset_id='d1'"
+    ).fetchone()[0] == 0  # cascade FK
+
+
+def test_delete_asset_unknown_goes_to_missing(env):
+    conn, client = env
+    r = client.delete("/ingest/assets/ghost")
+    assert r.status_code == 200, r.text
+    assert r.json() == {"deleted": 0, "missing": ["ghost"]}
+
+
+def test_delete_asset_idempotent_retry(env):
+    conn, client = env
+    _seed_asset(conn, "d2")
+    assert client.delete("/ingest/assets/d2").json() == {"deleted": 1, "missing": []}
+    # retry après succès : missing, pas d'erreur
+    assert client.delete("/ingest/assets/d2").json() == {"deleted": 0, "missing": ["d2"]}
+
+
+def test_delete_asset_missing_scope_403(tmp_path):
+    from serving import ingest_routes
+
+    store = Store(tmp_path / "t.db")
+    ingest_routes.bind(store)
+    app = FastAPI()
+    app.include_router(ingest_routes.router)
+    app.dependency_overrides[require_principal] = lambda: _principal({"ingest:run"})
+    _seed_asset(store._connection(), "d3")  # noqa: SLF001
+    assert TestClient(app).delete("/ingest/assets/d3").status_code == 403
+
+
 # ── /ingest/faces (C3 — remontée des verdicts face du scan Dino au VPS) ──────
 
 

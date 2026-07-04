@@ -91,3 +91,45 @@ def test_read_write_store_unchanged(tmp_path: Path) -> None:
         "SELECT count(*) AS n FROM source_runs WHERE id='test-rw-ok'"
     ).fetchone()
     assert row["n"] == 1
+
+
+# ── Câblage env (durcissement post-C5) : StoreBase résout EURIO_DB_READONLY ──
+
+
+def test_env_flag_defaults_store_to_readonly(tmp_path: Path, monkeypatch) -> None:
+    """EURIO_DB_READONLY=1 → un Store construit SANS read_only explicite
+    s'ouvre en mode=ro (le câblage MAJOR 2 : plus besoin de toucher les
+    call-sites, le flag machine suffit)."""
+    db = tmp_path / "eurio.db"
+    monkeypatch.delenv("EURIO_DB_READONLY", raising=False)
+    Store(db)  # bootstrap initial en écriture
+
+    monkeypatch.setenv("EURIO_DB_READONLY", "1")
+    store = Store(db)
+    assert store.read_only is True
+    with pytest.raises(sqlite3.OperationalError):
+        store._connection().execute(
+            "INSERT INTO source_runs (id, source, kind) VALUES "
+            "('test-env-ro', 'ebay', 'dry')"
+        )
+
+
+def test_explicit_read_only_false_overrides_env(tmp_path: Path, monkeypatch) -> None:
+    """Le writer canonique (server_serve) passe read_only=False explicite et
+    reste inscriptible même si le flag traîne dans l'env."""
+    db = tmp_path / "eurio.db"
+    monkeypatch.setenv("EURIO_DB_READONLY", "1")
+    store = Store(db, read_only=False)
+    assert store.read_only is False
+    with store._writing() as wconn:
+        wconn.execute(
+            "INSERT INTO source_runs (id, source, kind) VALUES "
+            "('test-env-override', 'ebay', 'dry')"
+        )
+
+
+def test_env_flag_absent_keeps_write_default(tmp_path: Path, monkeypatch) -> None:
+    """Sans env var (dev Model A), le défaut reste l'écriture locale."""
+    monkeypatch.delenv("EURIO_DB_READONLY", raising=False)
+    store = Store(tmp_path / "eurio.db")
+    assert store.read_only is False

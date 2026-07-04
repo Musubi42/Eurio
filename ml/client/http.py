@@ -69,6 +69,10 @@ def get_json(path: str, *, timeout: int = 60) -> dict:
     return _request(path, method="GET", payload=None, timeout=timeout)
 
 
+def delete_json(path: str, *, timeout: int = 60) -> dict:
+    return _request(path, method="DELETE", payload=None, timeout=timeout)
+
+
 def download(path: str, dest, *, timeout: int = 300, chunk: int = 1 << 20) -> str:
     """GET ``path`` et streame le corps binaire vers ``dest`` (sans charger en RAM).
 

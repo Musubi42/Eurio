@@ -621,6 +621,28 @@ def delete_crop(store: Store, asset_id: str) -> None:
     ).fetchone()
     if row is None:
         return
+
+    # Propagation canonique AVANT le delete local (Direction A). Contrairement
+    # au forward recrop (best-effort : la géométrie est recomputable), un delete
+    # non propagé RESSUSCITE au prochain pull-replica — on refuse donc de
+    # supprimer localement si le canonique n'a pas confirmé. Sur le VPS
+    # (sync désactivée), le delete local EST le canonique.
+    from client.http import sync_enabled
+
+    if sync_enabled():
+        try:
+            from client.ingest import push_delete_asset
+
+            push_delete_asset(asset_id)
+        except Exception as exc:  # noqa: BLE001
+            logger.error("[delete-crop] forward DELETE /ingest/assets échoué "
+                         "asset=%s: %s", asset_id, exc)
+            raise HTTPException(
+                status_code=502,
+                detail=f"Delete non propagé au canonique ({exc}) — "
+                       "suppression locale refusée (le crop ressusciterait).",
+            ) from exc
+
     storage_key = row["storage_path"]
     if storage_key:
         # Fichier d'abord (la cascade DB suit). Best-effort : un orphelin MinIO
