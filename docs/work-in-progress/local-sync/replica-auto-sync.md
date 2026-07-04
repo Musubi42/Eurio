@@ -39,7 +39,13 @@
    `restrict,command="/home/dontpanic/bin/eurio-replica-cmd" ssh-ed25519 …`
    Le forced command (`~/bin/eurio-replica-cmd`) ne laisse passer QUE
    `sqlite3_rsync` sur le SEUL `/opt/eurio/infra/eurio-api/data/eurio.db` —
-   cette clé ne donne ni shell ni autre fichier.
+   cette clé ne donne ni shell ni autre fichier. ⚠️ Le wrapper normalise les
+   DEUX formes de commande émises selon la version de sqlite3_rsync
+   (`… 2>/dev/null` en 1er essai, `PATH=…:$PATH …` en retry — observé PC
+   2026-07-04) AVANT le filtre anti-métacaractères, sinon rejet →
+   **no-op silencieux** : sqlite3_rsync sort rc=0 même quand le distant
+   refuse. Ceinture côté client : `pull_replica_rsync` traite tout stderr
+   comme un échec (un run sain n'écrit rien sur stderr).
 3. Binaire côté VPS : `nix profile install nixpkgs#sqlite-rsync`
    (→ `~/.nix-profile/bin/sqlite3_rsync`). ⚠️ Imperatif — à migrer dans
    `environment.systemPackages` de la config NixOS du VPS à l'occasion.

@@ -121,7 +121,11 @@ def pull_replica_rsync(dest: Path | None = None) -> Path:
         str(dest),
     ]
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
-    if proc.returncode != 0:
+    # ⚠️ sqlite3_rsync peut sortir rc=0 alors que le bout distant a REFUSÉ
+    # (forced command) → no-op silencieux, réplique périmée sans erreur
+    # (observé : PC, wrapper rejetant `2>/dev/null`). Un run sain n'écrit
+    # RIEN sur stderr (stats -v sur stdout) — tout stderr = échec.
+    if proc.returncode != 0 or proc.stderr.strip():
         raise RuntimeError(
             f"sqlite3_rsync a échoué (rc={proc.returncode}): "
             f"{proc.stderr.strip() or proc.stdout.strip()}"
