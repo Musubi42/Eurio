@@ -119,6 +119,78 @@ def test_export_collects_full_run(tmp_path):
     assert all("id" not in e for e in tables["image_state_events"])
 
 
+# ── coin_source_status (D1 : verdict de disponibilité canonique via run-batch) ──
+# Contrairement à coin_market_quotes/source_images (pas de FK dimension), la table
+# a de vraies FK (eurio_id→coins, source→source_registry) : elle ne s'ingère QUE
+# là où ces dimensions existent (le canonique VPS les a). D'où le seed explicite
+# des dimensions ci-dessous, côté src ET dst (modèle réel).
+
+
+def _seed_source_status_dims(conn, run_id=RUN) -> None:
+    conn.execute(
+        "INSERT OR IGNORE INTO source_registry (id, display_name, kind) "
+        "VALUES ('ebay','eBay','reference')"
+    )
+    conn.execute("INSERT OR IGNORE INTO source_runs (id, source, kind) "
+                 "VALUES (?, 'ebay', 'run')", (run_id,))
+    conn.execute(
+        "INSERT OR IGNORE INTO coins (eurio_id, country, year, face_value) "
+        "VALUES (?, 'be', 2007, 2.0)",
+        (f"be-2007-{run_id}",),
+    )
+
+
+def test_export_source_status_scoped_by_last_run_id(tmp_path):
+    """Seules les rows coin_source_status posées par CE run (last_run_id=run_id)
+    voyagent ; le backfill dérivé local (last_run_id NULL) reste sur place."""
+    store = Store(tmp_path / "a.db")
+    conn = store._connection()  # noqa: SLF001
+    _seed_source_status_dims(conn)
+    conn.execute(
+        "INSERT INTO coin_source_status (eurio_id, source, state, last_run_id) "
+        "VALUES (?, 'ebay', 'ok', ?)",
+        (f"be-2007-{RUN}", RUN),
+    )
+    # Backfill dérivé local : verdict sans run_id → ne doit PAS être aspiré.
+    conn.execute(
+        "INSERT OR IGNORE INTO coins (eurio_id, country, year, face_value) "
+        "VALUES ('be-2007-derived', 'be', 2007, 2.0)"
+    )
+    conn.execute(
+        "INSERT INTO coin_source_status (eurio_id, source, state, last_run_id) "
+        "VALUES ('be-2007-derived', 'ebay', 'never', NULL)"
+    )
+    rows = export_run(conn, RUN)["tables"]["coin_source_status"]
+    assert len(rows) == 1
+    assert rows[0]["eurio_id"] == f"be-2007-{RUN}"
+    assert rows[0]["last_run_id"] == RUN
+
+
+def test_source_status_roundtrip_into_canonical(tmp_path):
+    """Round-trip export→ingest : la row voyage et se reconstruit à l'identique
+    sur un canonique qui possède déjà les dimensions (coins, source_registry)."""
+    src = Store(tmp_path / "src.db")
+    sconn = src._connection()  # noqa: SLF001
+    _seed_source_status_dims(sconn)
+    sconn.execute(
+        "INSERT INTO coin_source_status (eurio_id, source, state, last_run_id) "
+        "VALUES (?, 'ebay', 'ok', ?)",
+        (f"be-2007-{RUN}", RUN),
+    )
+    batch = export_run(sconn, RUN)
+    assert len(batch["tables"]["coin_source_status"]) == 1
+
+    dst = Store(tmp_path / "dst.db")
+    dconn = dst._connection()  # noqa: SLF001
+    _seed_source_status_dims(dconn)  # le canonique a déjà les dimensions
+    ingest_run(dconn, batch)
+
+    got = dconn.execute(
+        "SELECT eurio_id, source, state, last_run_id FROM coin_source_status"
+    ).fetchall()
+    assert [tuple(r) for r in got] == [(f"be-2007-{RUN}", "ebay", "ok", RUN)]
+
+
 def test_parity_export_then_ingest_into_fresh_db(tmp_path):
     src = Store(tmp_path / "src.db")
     sconn = src._connection()  # noqa: SLF001

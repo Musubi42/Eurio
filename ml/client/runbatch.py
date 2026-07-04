@@ -39,6 +39,9 @@ _TABLE_ORDER = [
     "review_queue",
     "consensus_verdicts",
     "coin_market_quotes",
+    # Disponibilité par source (D1 : canonique, voyage via run-batch). Après
+    # source_runs (FK last_run_id) ; scopé par last_run_id dans export_run.
+    "coin_source_status",
     # ── Training (C6c) ── métadonnées d'entraînement, scopées par run_id (le
     # training_run.id est sa propre clé, AUCUN lien source_runs → pas de stub).
     # `augmentation_recipes` AVANT training_runs (FK aug_recipe_id, closure
@@ -138,7 +141,8 @@ def export_run(conn: sqlite3.Connection, run_id: str) -> dict[str, Any]:
     ultérieur garde son ``run_id`` first-seen mais doit rester transportée par CHAQUE
     run qui l'a touchée) ; ``coin_market_quotes`` par ``run_id`` ; ``image_assets``
     par ``run_id`` OU ``source_image_id`` du run (couvre scrape ET recrop) ; enfants
-    par asset/source_image ; ``image_state_events`` par ``run_id`` (l'id AUTOINCREMENT
+    par asset/source_image ; ``coin_source_status`` par ``last_run_id`` (verdicts de
+    disponibilité posés par les refresh réseau) ; ``image_state_events`` par ``run_id`` (l'id AUTOINCREMENT
     est retiré). Toutes les requêtes sont ``ORDER BY`` → sérialisation déterministe.
     """
     tables: dict[str, list[dict]] = {}
@@ -214,6 +218,16 @@ def export_run(conn: sqlite3.Connection, run_id: str) -> dict[str, Any]:
     ) if asset_ids else []
     tables["coin_market_quotes"] = _rows(
         conn, "SELECT * FROM coin_market_quotes WHERE run_id=? ORDER BY id", (run_id,)
+    )
+    # coin_source_status : verdicts de disponibilité par source, scopés par
+    # last_run_id (les writers réseau posent last_run_id=run_id). Vide pour un run
+    # scrape/recrop/dino/training. Les rows de backfill dérivé (last_run_id NULL)
+    # ne voyagent pas — migration locale, cf. D1.
+    tables["coin_source_status"] = _rows(
+        conn,
+        "SELECT * FROM coin_source_status WHERE last_run_id=? "
+        "ORDER BY eurio_id, source",
+        (run_id,),
     )
 
     # ── Training (C6c) ── ne se peuple que pour un run_id = training_runs.id ; vide
