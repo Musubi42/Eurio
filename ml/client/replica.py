@@ -186,6 +186,58 @@ def pull_replica(dest: Path | None = None, *, transport=None, force: bool = Fals
     return dest
 
 
+def start_autopull_thread(
+    dest: Path | None = None, *, interval_s: int | None = None, stop_event=None,
+):
+    """Rafraîchit la réplique en tâche de fond (thread daemon), toutes les
+    ``interval_s`` secondes (défaut ``EURIO_REPLICA_AUTOPULL_INTERVAL`` ou 120).
+
+    Démarré par le serveur ML local (``serving/server.py``) : tant que tu
+    travailles (serveur :8042 up), la réplique reste fraîche sans commande.
+    Choisi plutôt qu'un agent launchd sur macOS : TCC interdit à launchd de
+    LIRE ~/Documents (le repo), alors que le serveur hérite des droits du
+    terminal. Sur le PC NixOS, le timer systemd user double ce thread (couvre
+    les périodes serveur éteint).
+
+    Gates : ``EURIO_REPLICA_AUTOPULL=0`` désactive ; sans transport rsync
+    (binaire/clé absents) on ne démarre PAS (un GET /db/replica complet toutes
+    les 2 min serait un gâchis — le fallback API reste réservé aux pulls
+    manuels). Retourne le Thread démarré, ou None si gated. ``stop_event``
+    (threading.Event) injectable pour les tests."""
+    import threading
+    import time as _time
+
+    if os.environ.get("EURIO_REPLICA_AUTOPULL", "").strip() == "0":
+        logger.info("réplique autopull désactivé (EURIO_REPLICA_AUTOPULL=0)")
+        return None
+    if not rsync_available():
+        logger.info(
+            "réplique autopull non démarré : transport rsync indisponible "
+            "(sqlite3_rsync ou %s manquant)", _RSYNC_KEY,
+        )
+        return None
+    interval = interval_s or int(
+        os.environ.get("EURIO_REPLICA_AUTOPULL_INTERVAL", "120")
+    )
+    stop = stop_event or threading.Event()
+
+    def _loop() -> None:
+        while not stop.is_set():
+            try:
+                pull_replica_rsync(dest)
+                stamp = (Path(dest) if dest else _DEFAULT_REPLICA).parent
+                (stamp / ".replica-last-pull").touch()
+            except Exception as exc:  # noqa: BLE001 — le thread ne meurt jamais
+                logger.warning("réplique autopull : pull échoué (%s)", exc)
+            stop.wait(interval)
+
+    t = threading.Thread(target=_loop, name="eurio-replica-autopull", daemon=True)
+    t.stop_event = stop  # exposé pour les tests / arrêt propre
+    t.start()
+    logger.info("réplique autopull démarré (rsync, toutes les %ds)", interval)
+    return t
+
+
 def _count_coins(db: Path) -> int | None:
     """Compte les lignes de ``coins`` dans la réplique (confirmation post-pull)."""
     try:
@@ -217,7 +269,30 @@ def main(argv: list[str] | None = None) -> int:
              "(GET /db/replica complet), ou auto = rsync si disponible sinon api "
              "(défaut).",
     )
+    parser.add_argument(
+        "--status", action="store_true",
+        help="n'effectue AUCUN pull : affiche l'âge de la réplique locale "
+             "(fraîcheur) et sort 0 si elle existe, 1 sinon.",
+    )
     args = parser.parse_args(argv)
+
+    if args.status:
+        import time as _time
+
+        dest = Path(args.dest) if args.dest else _DEFAULT_REPLICA
+        if not dest.exists():
+            print(f"réplique absente : {dest}")
+            return 1
+        age = int(_time.time() - dest.stat().st_mtime)
+        n = _count_coins(dest)
+        coins = f"{n} coins" if n is not None else "coins illisibles"
+        stamp = dest.parent / ".replica-last-pull"
+        checked = (
+            f", dernier pull réussi il y a {int(_time.time() - stamp.stat().st_mtime)}s"
+            if stamp.exists() else ""
+        )
+        print(f"réplique {dest} — dernier changement il y a {age}s ({coins}{checked})")
+        return 0
 
     dest_arg = Path(args.dest) if args.dest else None
     if args.mode == "rsync":

@@ -77,3 +77,43 @@ def test_pull_replica_rsync_raises_on_failure(monkeypatch, tmp_path):
     )
     with pytest.raises(RuntimeError, match="boom"):
         replica.pull_replica_rsync(tmp_path / "r.db")
+
+
+# ── Autopull en tâche de fond (thread daemon du serveur ML local) ────────────
+
+
+def test_autopull_gated_off_by_env(monkeypatch):
+    monkeypatch.setenv("EURIO_REPLICA_AUTOPULL", "0")
+    assert replica.start_autopull_thread() is None
+
+
+def test_autopull_gated_without_rsync(monkeypatch):
+    monkeypatch.delenv("EURIO_REPLICA_AUTOPULL", raising=False)
+    monkeypatch.setattr(replica, "rsync_available", lambda: False)
+    assert replica.start_autopull_thread() is None
+
+
+def test_autopull_pulls_periodically_and_survives_failures(monkeypatch, tmp_path):
+    import threading
+
+    monkeypatch.delenv("EURIO_REPLICA_AUTOPULL", raising=False)
+    monkeypatch.setattr(replica, "rsync_available", lambda: True)
+    calls = []
+    done = threading.Event()
+
+    def _pull(dest=None):
+        calls.append(dest)
+        if len(calls) == 1:
+            raise RuntimeError("réseau coupé")  # le thread ne doit pas mourir
+        if len(calls) >= 3:
+            done.set()
+        return tmp_path / "r.db"
+
+    monkeypatch.setattr(replica, "pull_replica_rsync", _pull)
+    t = replica.start_autopull_thread(tmp_path / "r.db", interval_s=1)
+    assert t is not None
+    assert done.wait(timeout=10), "le thread n'a pas continué après l'échec"
+    t.stop_event.set()
+    t.join(timeout=5)
+    assert len(calls) >= 3  # a survécu à l'échec du 1er pull
+    assert (tmp_path / ".replica-last-pull").exists()

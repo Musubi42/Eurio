@@ -182,6 +182,24 @@ app.include_router(referential_routes.router)
 
 
 @app.on_event("startup")
+def _replica_autopull_startup() -> None:
+    """Direction A — transparence de sync : rafraîchit la réplique locale
+    (``state/eurio.replica.db``) en tâche de fond tant que le serveur tourne
+    (sqlite3_rsync incrémental, ~3 s / 2 min, clé dédiée). No-op si le
+    transport rsync n'est pas provisionné ou EURIO_REPLICA_AUTOPULL=0.
+    Cf. docs/work-in-progress/local-sync/replica-auto-sync.md."""
+    try:
+        from client.replica import start_autopull_thread
+
+        start_autopull_thread()
+    except Exception as exc:  # noqa: BLE001 — confort, jamais bloquant au boot
+        import logging
+        logging.getLogger(__name__).warning(
+            "réplique autopull non démarré: %s", exc
+        )
+
+
+@app.on_event("startup")
 def _augmentation_startup() -> None:
     """Sweep stale preview dirs (TTL = 24h) at each API startup."""
     try:
