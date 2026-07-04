@@ -66,6 +66,7 @@ Review multi-agents (Fable 5 pilote + 76 sous-agents) → **58 findings confirm�
 | **2** | 5 chemins serving/export routés via `resolve_db_path` | `serving/sources_aggregator.py`, `export/app_export/io.py`, `export/sync_to_supabase.py`, `serving/auth.py` (CLI), `shared/storage/cascade.py` (docstring) | no-op sans `EURIO_DB_PATH` confirmé ; routage effectif quand posé |
 | **3** | **39 scripts CLI** : 38 routés `resolve_db_path` + 14 gardes `resolve_db_readonly` | `ml/scripts/*.py` (39 fichiers) | `wipe_referential --apply` refuse sous `READONLY=1`, `--dry-run` OK ; suite 1341 pass / 17 rouges pré-existants (zéro régression) |
 | **4c** | `coin_source_status` ajouté au run-batch (D1) : entrée `_TABLE_ORDER` (après `source_runs`, idx 9/15) + bloc `export_run` scopé `WHERE last_run_id=?`. **Serveur inchangé** (`ingest_routes.py` : dict ouvert, pas d'allowlist ; `_TABLE_ORDER` EST le gate). | `ml/client/runbatch.py`, `ml/tests/test_runbatch.py` | 12 tests runbatch verts (2 nouveaux : scoping `last_run_id` NULL exclu + round-trip avec dimensions `coins`/`source_registry` seedées) ; suite 1343 pass / 17 rouges pré-existants (zéro régression, `test_model_b_c2_c3::test_ingest_route…` confirmé pré-existant par stash) |
+| **5** | Durcissement transport rsync : (a) stderr — filtre le warning host-key bénin (`_significant_stderr`), échoue toujours sur rc≠0 OU stderr significatif (no-op silencieux préservé) ; (b) wrapper ssh — `StrictHostKeyChecking=accept-new` + `UserKnownHostsFile` stable local ; (c) **flock** `state/replica.lock` non-bloquant dans `pull_replica_rsync` → couvre thread-serveur ET timer systemd (skip si tenu, PAS de fallback API) ; (d) fallback API — l'en-tête `X-Eurio-DB-Sha256` devient l'autorité (immunisé au rebuild snapshot TTL) + 1 retry sur transfert corrompu, `/sha` = filet vieux-serveur ; (e) import mort `time` retiré + commentaire faux `-v` corrigé. | `ml/client/replica.py`, `ml/tests/test_replica_rsync.py`, `.gitignore` | 17 tests replica verts (3 nouveaux : stderr bénin toléré, stderr significatif rc=0 rejeté, lock tenu→skip) + `pull_replica` verify/corrupt inchangés ; suite 1346 pass / 17 rouges pré-existants (zéro régression) |
 
 Détails chunk 3 :
 - Gardes **scopées derrière `--apply`/`--commit`/`--push`** → les lectures dry-run marchent sur réplique.
@@ -102,7 +103,7 @@ grep -rn 'sqlite3.connect' scripts/*.py | grep -iE 'state.*eurio\.db' | grep -v 
 | 3 | **4b** | Route `/ingest/referential-fix` : le client calcule le diff de mutation (aujourd'hui dans `referential_fix_apply._mutate_db`), le VPS l'applique. **Le plus gros morceau** (le router referential n'est même pas monté sur le VPS lean : cv2/PIL absents — voir leçon #3). (D3) | serveur | ~1 j |
 | 4 | **6** | Split local-state : donner au pipeline source (staging `detect_crop.py:192`/`auto_validate`/`orchestrator._maybe_push_run`) et aux jobs (cohort_jobs, training_scan, runs) un **scratch inscriptible distinct** de la réplique ro. **Prérequis du flip** (sinon l'ingestion `--push` throw au staging). | D1 | ~3 h |
 | 5 | **1a** | Poser `EURIO_DB_PATH=…/eurio.replica.db` + `EURIO_DB_READONLY=1` dans le devShell Mac/PC (`.envrc`/`flake.nix` par profil `hostname`) + garde export routé (D5). **LE FLIP FINAL.** | 4a,4b,4c,6 | ~2 h |
-| 6 | **5** | Durcir transport rsync (`replica.py`) : stderr-warning ≠ échec, `StrictHostKeyChecking=accept-new`, flock thread/timer, fallback sha. **Indépendant**, à glisser quand on veut. | — | ~1-2 h |
+| ~~6~~ | ✅ **5** | **FAIT** (2026-07-05). stderr-warning bénin toléré, `accept-new`+known_hosts stable, flock thread/timer, en-tête sha autoritaire + retry. Cf. §1.2. | — | fait |
 
 **Writers encore à traiter (hors chunk 3, appartiennent à 4/6)** :
 - `ml/serving/bench_routes.py:1330-1398` (crops/exclude) → chunk 4a.
@@ -195,10 +196,9 @@ touche des writers (4a/4b) : envelopper via `BEGIN`/`COMMIT`/`ROLLBACK` ou `stor
 
 ## 4. Prochaine action recommandée
 
-~~**Chunk 4c**~~ **FAIT** (2026-07-05). Prochains : **chunk 5** (rsync) est totalement indépendant
-et sans risque de données — bon candidat. Sinon **chunk 4a** (route `/ingest` bench/gate, nécessite
-D2) ou **4b** (`/ingest/referential-fix`, le plus gros). Le flip final (1a) ne doit être tenté
-qu'après 4a+4b+6 (4c désormais clos).
+~~**Chunk 4c**~~ + ~~**chunk 5**~~ **FAITS** (2026-07-05). Prochains : **chunk 4a** (route `/ingest`
+bench/gate, nécessite D2) ou **4b** (`/ingest/referential-fix`, le plus gros). Le flip final (1a)
+ne doit être tenté qu'après 4a+4b+6 (4c et 5 désormais clos).
 
 Avant de committer quoi que ce soit : **staging explicite par fichier** (jamais `git add -A` — cf.
 CLAUDE.md), et le P0 secrets (§2.3) devrait précéder tout push sur les remotes partagés.

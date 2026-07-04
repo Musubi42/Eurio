@@ -20,9 +20,15 @@
 > serveur (l'ingest n'a pas d'allowlist ; `_TABLE_ORDER` est le seul gate). 2 tests ajoutés
 > (`test_runbatch.py` : scoping `last_run_id` NULL exclu + round-trip avec dimensions seedées).
 > Suite 1343 pass / 17 rouges pré-existants (zéro régression).
+>
+> **MAJ 2026-07-05 (bis)** — Chunk **5 ✅** : durcissement transport rsync (`ml/client/replica.py`)
+> — stderr host-key bénin toléré (`_significant_stderr`, no-op silencieux toujours détecté),
+> `StrictHostKeyChecking=accept-new` + `UserKnownHostsFile` stable, **flock** `state/replica.lock`
+> non-bloquant couvrant thread-serveur ET timer systemd (skip si tenu), en-tête `X-Eurio-DB-Sha256`
+> autoritaire + retry (fin de la course TTL du `/sha` séparé), import mort + commentaire faux
+> retirés. 3 tests ajoutés ; suite 1346 pass / 17 rouges pré-existants.
 > **Reste** : chunk 4a (route /ingest bench-exclude + gate-reject), 4b (/ingest/referential-fix),
-> 6 (split local-state scratch), **1a** (flip `EURIO_DB_PATH`+`READONLY=1` — EN DERNIER),
-> 5 (durcissement rsync).
+> 6 (split local-state scratch), **1a** (flip `EURIO_DB_PATH`+`READONLY=1` — EN DERNIER).
 
 Contexte : Direction A = writer unique VPS (`/var/lib/eurio/eurio.db`, process
 `server_serve.py` avec `read_only=False` explicite à `server_serve.py:75`) + réplique locale

@@ -68,6 +68,10 @@ def test_ssh_wrapper_is_executable_and_pins_key(monkeypatch, tmp_path):
     body = wrapper.read_text()
     assert "/home/u/.ssh/eurio_replica" in body
     assert "BatchMode=yes" in body and "ClearAllForwardings=yes" in body
+    # host-key : accept-new + known_hosts stable local au repo (pas de prompt,
+    # pas de warning récurrent qui ferait échouer un pull sain).
+    assert "StrictHostKeyChecking=accept-new" in body
+    assert f"UserKnownHostsFile={tmp_path / '.replica_known_hosts'}" in body
 
 
 def test_pull_replica_rsync_raises_on_failure(monkeypatch, tmp_path):
@@ -77,6 +81,57 @@ def test_pull_replica_rsync_raises_on_failure(monkeypatch, tmp_path):
     )
     with pytest.raises(RuntimeError, match="boom"):
         replica.pull_replica_rsync(tmp_path / "r.db")
+
+
+def test_pull_replica_rsync_tolerates_benign_hostkey_stderr(monkeypatch, tmp_path):
+    """rc=0 + warning host-key bénin (accept-new, 1er contact) = SUCCÈS (ne doit
+    plus faire échouer un rsync réussi). Régression du faux échec observé."""
+    import sqlite3 as _sqlite
+
+    dest = tmp_path / "r.db"
+    _sqlite.connect(str(dest)).close()  # DB valide → quick_check 'ok'
+    monkeypatch.setattr(
+        replica.subprocess, "run",
+        lambda *a, **kw: subprocess.CompletedProcess(
+            a, 0, stdout="",
+            stderr="Warning: Permanently added 'host' to the list of known hosts.\n",
+        ),
+    )
+    assert replica.pull_replica_rsync(dest) == dest
+
+
+def test_pull_replica_rsync_fails_on_significant_stderr_rc0(monkeypatch, tmp_path):
+    """rc=0 MAIS stderr significatif (ex. refus forced-command) = ÉCHEC : la
+    détection du no-op silencieux (réplique périmée sans erreur) est préservée."""
+    monkeypatch.setattr(
+        replica.subprocess, "run",
+        lambda *a, **kw: subprocess.CompletedProcess(
+            a, 0, stdout="", stderr="This service allows sqlite3_rsync only\n",
+        ),
+    )
+    with pytest.raises(RuntimeError, match="sqlite3_rsync only"):
+        replica.pull_replica_rsync(tmp_path / "r.db")
+
+
+def test_pull_replica_rsync_skips_when_lock_held(monkeypatch, tmp_path):
+    """Lock partagé tenu par un autre puller → SKIP (pas d'exception, pas de
+    subprocess) : mutuelle exclusion thread-serveur ↔ timer systemd."""
+    import fcntl
+
+    dest = tmp_path / "r.db"
+    held = open(tmp_path / replica._REPLICA_LOCK, "w")
+    fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    try:
+        called = []
+        monkeypatch.setattr(
+            replica.subprocess, "run",
+            lambda *a, **kw: called.append(a) or subprocess.CompletedProcess(a, 0, "", ""),
+        )
+        assert replica.pull_replica_rsync(dest) == dest
+        assert called == []  # rsync JAMAIS lancé tant que le lock est tenu
+    finally:
+        fcntl.flock(held, fcntl.LOCK_UN)
+        held.close()
 
 
 # ── Autopull en tâche de fond (thread daemon du serveur ML local) ────────────

@@ -128,6 +128,11 @@ ml/state/eurio.db.bak-*
 ml/state/eurio.replica.db
 ml/state/eurio.replica.db-wal
 ml/state/eurio.replica.db-shm
+# Artefacts runtime du transport réplique (générés à chaque pull, jamais versionnés)
+ml/state/.replica_ssh.sh
+ml/state/.replica_known_hosts
+ml/state/replica.lock
+ml/state/.replica-last-pull
 ml/state/numista_cache/
 # ml/state/cohort_csvs/
 # Sources refacto — local-only, each machine autonomous (decisions.md D-06)

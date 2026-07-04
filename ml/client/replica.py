@@ -26,9 +26,11 @@ Cf. docs/work-in-progress/local-sync/replica-auto-sync.md.
 from __future__ import annotations
 
 import argparse
+import fcntl
 import hashlib
 import logging
 import os
+import re
 import shutil
 import sqlite3
 import subprocess
@@ -40,6 +42,21 @@ logger = logging.getLogger(__name__)
 
 _ML_ROOT = Path(__file__).resolve().parent.parent
 _DEFAULT_REPLICA = _ML_ROOT / "state" / "eurio.replica.db"
+_REPLICA_LOCK = "replica.lock"  # verrou partagé thread-serveur ↔ timer systemd
+
+# stderr ssh bénin : `StrictHostKeyChecking=accept-new` écrit UNE ligne de
+# warning au 1er contact d'un host (avant que le known_hosts stable soit peuplé).
+# Tout le RESTE reste significatif — y compris un refus forced-command produisant
+# rc=0 (no-op silencieux : réplique périmée sans erreur).
+_BENIGN_STDERR_RE = re.compile(
+    r"^\s*Warning: Permanently added .* to the list of known hosts\.\s*$"
+)
+
+
+def _significant_stderr(stderr: str) -> str:
+    """Lignes stderr NON bénignes (chaîne vide = rien d'anormal)."""
+    sig = [ln for ln in stderr.splitlines() if ln.strip() and not _BENIGN_STDERR_RE.match(ln)]
+    return "\n".join(sig)
 
 _REPLICA_PATH = "/db/replica"
 _REPLICA_SHA_PATH = "/db/replica/sha"
@@ -89,9 +106,14 @@ def _write_ssh_wrapper(state_dir: Path) -> Path:
     """Écrit le wrapper ssh du transport rsync (``--ssh`` de sqlite3_rsync ne
     prend qu'un exécutable sans arguments). Idempotent, régénéré à chaque pull."""
     wrapper = state_dir / ".replica_ssh.sh"
+    # known_hosts stable et local au repo : accept-new mémorise la clé host au
+    # 1er contact (pas de prompt interactif possible sous BatchMode), puis les
+    # pulls suivants sont silencieux — plus de warning host-key sur stderr.
+    known_hosts = state_dir / ".replica_known_hosts"
     wrapper.write_text(
         "#!/bin/sh\n"
         f'exec ssh -i "{_RSYNC_KEY}" -o IdentitiesOnly=yes -o BatchMode=yes '
+        f'-o StrictHostKeyChecking=accept-new -o "UserKnownHostsFile={known_hosts}" '
         '-o ClearAllForwardings=yes "$@"\n'
     )
     wrapper.chmod(0o755)
@@ -112,32 +134,52 @@ def pull_replica_rsync(dest: Path | None = None) -> Path:
     portent des transactions committées."""
     dest = Path(dest) if dest else _DEFAULT_REPLICA
     dest.parent.mkdir(parents=True, exist_ok=True)
-    wrapper = _write_ssh_wrapper(dest.parent)
-    cmd = [
-        "sqlite3_rsync",
-        "--ssh", str(wrapper),
-        "--exe", "sqlite3_rsync",  # résolu côté VPS par le forced command
-        f"{_RSYNC_SSH_HOST}:{_RSYNC_ORIGIN}",
-        str(dest),
-    ]
-    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
-    # ⚠️ sqlite3_rsync peut sortir rc=0 alors que le bout distant a REFUSÉ
-    # (forced command) → no-op silencieux, réplique périmée sans erreur
-    # (observé : PC, wrapper rejetant `2>/dev/null`). Un run sain n'écrit
-    # RIEN sur stderr (stats -v sur stdout) — tout stderr = échec.
-    if proc.returncode != 0 or proc.stderr.strip():
-        raise RuntimeError(
-            f"sqlite3_rsync a échoué (rc={proc.returncode}): "
-            f"{proc.stderr.strip() or proc.stdout.strip()}"
-        )
-    conn = sqlite3.connect(f"file:{dest}?mode=ro", uri=True)
+
+    # Verrou partagé thread-serveur ↔ timer systemd (même fichier lock) : un seul
+    # sqlite3_rsync à la fois, sinon collision (BUSY) sur la réplique. Non
+    # bloquant : lock tenu → on SKIP (l'autre pull rafraîchit la vue). SURTOUT
+    # pas d'exception ici, sinon pull_replica_auto retomberait sur un download
+    # API complet (106 Mo) alors qu'un pull incrémental est déjà en cours.
+    lock_fd = open(dest.parent / _REPLICA_LOCK, "w")
     try:
-        check = conn.execute("PRAGMA quick_check").fetchone()[0]
+        fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        logger.info("réplique : pull déjà en cours (lock tenu) — skip")
+        lock_fd.close()
+        return dest
+    try:
+        wrapper = _write_ssh_wrapper(dest.parent)
+        cmd = [
+            "sqlite3_rsync",
+            "--ssh", str(wrapper),
+            "--exe", "sqlite3_rsync",  # résolu côté VPS par le forced command
+            f"{_RSYNC_SSH_HOST}:{_RSYNC_ORIGIN}",
+            str(dest),
+        ]
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        # ⚠️ sqlite3_rsync peut sortir rc=0 alors que le bout distant a REFUSÉ
+        # (forced command) → no-op silencieux, réplique périmée sans erreur
+        # (observé : PC). Un run sain n'écrit RIEN de significatif sur stderr
+        # (aucun -v n'est passé) → on échoue sur rc≠0 OU stderr significatif,
+        # mais on tolère le warning host-key bénin de accept-new (1er contact),
+        # sinon le tout premier pull échouerait à tort.
+        significant = _significant_stderr(proc.stderr)
+        if proc.returncode != 0 or significant:
+            raise RuntimeError(
+                f"sqlite3_rsync a échoué (rc={proc.returncode}): "
+                f"{significant or proc.stdout.strip()}"
+            )
+        conn = sqlite3.connect(f"file:{dest}?mode=ro", uri=True)
+        try:
+            check = conn.execute("PRAGMA quick_check").fetchone()[0]
+        finally:
+            conn.close()
+        if check != "ok":
+            raise RuntimeError(f"Réplique corrompue post-rsync (quick_check: {check})")
+        return dest
     finally:
-        conn.close()
-    if check != "ok":
-        raise RuntimeError(f"Réplique corrompue post-rsync (quick_check: {check})")
-    return dest
+        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        lock_fd.close()
 
 
 def pull_replica_auto(dest: Path | None = None) -> tuple[Path, str]:
@@ -157,34 +199,55 @@ def pull_replica(dest: Path | None = None, *, transport=None, force: bool = Fals
     """Télécharge une réplique read-only de eurio.db depuis le VPS + vérifie le SHA.
 
     ``transport`` injectable (tests) — objet exposant ``sha()`` et ``download(dest)``.
-    Retourne le chemin de la réplique. Lève si le SHA téléchargé ne correspond pas
-    au SHA annoncé par le serveur. ``force`` est conservé pour compat CLI (no-op
+    Retourne le chemin de la réplique. ``force`` est conservé pour compat CLI (no-op
     désormais : Direction A n'a plus d'ops locales pending à perdre — les writes
     transitent directement au VPS via ``POST /ingest/*``).
+
+    Intégrité : l'en-tête ``X-Eurio-DB-Sha256`` du download EST le sha du fichier
+    exactement servi (self-consistant, cf. ``serving.db_routes``) → c'est
+    l'autorité, immunisée au rebuild du snapshot serveur (TTL) entre deux
+    requêtes. Un désaccord en-tête↔contenu = transfert tronqué → 1 retry.
+    ``GET /db/replica/sha`` n'est plus qu'un filet pour les serveurs sans en-tête.
     """
     dest = Path(dest) if dest else _DEFAULT_REPLICA
     dest.parent.mkdir(parents=True, exist_ok=True)
     transport = transport or _ApiTransport()
 
-    expected_sha = transport.sha()
-    if not expected_sha:
-        raise RuntimeError(
-            "Le serveur n'a pas renvoyé de sha de réplique (GET /db/replica/sha) — "
-            "canonique indisponible ?"
-        )
     _drop_sidecars(dest)
     tmp = dest.with_suffix(".db.replica-tmp")
-    header_sha = transport.download(tmp)
-    got = _sha256(tmp)
-    # Vérif contre le sha du endpoint /sha (source d'autorité) ET, si fourni,
-    # contre l'en-tête du download (cohérence du même snapshot servi).
-    if got != expected_sha or (header_sha and header_sha != got):
+    header_sha = ""
+    got = ""
+    for _attempt in range(2):
+        header_sha = transport.download(tmp) or ""
+        got = _sha256(tmp)
+        if not header_sha or header_sha == got:
+            break  # pas d'en-tête (vieux serveur) OU transfert cohérent
+        logger.warning(
+            "réplique : en-tête sha %s ≠ contenu %s — transfert corrompu, retry",
+            header_sha, got,
+        )
+        tmp.unlink(missing_ok=True)
+    else:
         tmp.unlink(missing_ok=True)
         raise RuntimeError(
-            f"Intégrité réplique : sha {got} ≠ attendu {expected_sha}"
-            + (f" (en-tête download {header_sha})" if header_sha else "")
-            + "."
+            f"Intégrité réplique : en-tête {header_sha} ≠ contenu {got} après retry."
         )
+
+    if not header_sha:
+        # Serveur sans en-tête : /sha comme autorité dégradée (course TTL possible).
+        expected_sha = transport.sha()
+        if not expected_sha:
+            tmp.unlink(missing_ok=True)
+            raise RuntimeError(
+                "Ni en-tête X-Eurio-DB-Sha256 ni GET /db/replica/sha — "
+                "canonique indisponible ?"
+            )
+        if got != expected_sha:
+            tmp.unlink(missing_ok=True)
+            raise RuntimeError(
+                f"Intégrité réplique : sha {got} ≠ attendu {expected_sha}."
+            )
+
     tmp.replace(dest)
     _drop_sidecars(dest)
     return dest
@@ -209,7 +272,6 @@ def start_autopull_thread(
     manuels). Retourne le Thread démarré, ou None si gated. ``stop_event``
     (threading.Event) injectable pour les tests."""
     import threading
-    import time as _time
 
     if os.environ.get("EURIO_REPLICA_AUTOPULL", "").strip() == "0":
         logger.info("réplique autopull désactivé (EURIO_REPLICA_AUTOPULL=0)")
