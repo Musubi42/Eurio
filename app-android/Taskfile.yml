@@ -326,6 +326,11 @@ tasks:
     vars:
       COHORT: '{{.COHORT}}'
       ITERATION: '{{.ITERATION}}'
+      # Optionnel (sessions corpus scan-quality) : prescrire les pièces d'une
+      # AUTRE cohorte que celle du modèle, et/ou désactiver l'échantillonnage
+      # OQ-4 (>30 pièces → 3). Cf. scan-quality/session-protocol-mix-owned-42.md.
+      PRESCRIBE_COHORT: '{{.PRESCRIBE_COHORT}}'
+      NO_SAMPLE: '{{.NO_SAMPLE}}'
       # Use TASKFILE_DIR (always app-android/) instead of ROOT_DIR
       # (varies: monorepo-root when invoked via `go-task android:...`,
       # app-android/ when invoked via `-t app-android/Taskfile.yml`).
@@ -335,7 +340,7 @@ tasks:
       - sh: 'test -n "{{.COHORT}}" && test -n "{{.ITERATION}}"'
         msg: "COHORT and ITERATION required (e.g. COHORT=green-v1 ITERATION=8a92f1b3)"
     cmds:
-      - cd {{.TASKFILE_DIR}}/../ml && .venv/bin/python -m scripts.build_cohort_bundle --source lab --cohort {{.COHORT}} --iteration {{.ITERATION}} --out {{.OUT}}
+      - cd {{.TASKFILE_DIR}}/../ml && .venv/bin/python -m scripts.build_cohort_bundle --source lab --cohort {{.COHORT}} --iteration {{.ITERATION}} --out {{.OUT}}{{if .PRESCRIBE_COHORT}} --prescribe-cohort {{.PRESCRIBE_COHORT}}{{end}}{{if .NO_SAMPLE}} --no-sample{{end}}
       - rm -rf {{.BUNDLE_DIR}}
       - mkdir -p {{.BUNDLE_DIR}}
       - cp {{.OUT}}/* {{.BUNDLE_DIR}}/
