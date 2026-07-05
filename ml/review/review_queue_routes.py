@@ -218,11 +218,11 @@ def _build_target_candidate(
         if row["t_face_value"] is not None
         else ""
     )
-    thumb = (
-        f"/images/{int(row['t_numista_id'])}/source"
-        if row["t_numista_id"]
-        else ""
-    )
+    # Vignette canonique par eurio_id via la route /referential/canonical
+    # (fallback MinIO). Pas de `conn` dans ce helper → on défère la résolution
+    # au request-time (comme le front) plutôt que d'appeler canonical_obverse_url.
+    # Legacy /images/<numista>/source retiré (layout ml/datasets/ absent des migrées).
+    thumb = f"/referential/canonical/{row['t_eurio_id']}/obverse/thumb"
     return ReviewCandidate(
         eurio_id=row["t_eurio_id"],
         score=1.0,  # prior — pas un score Dino, juste un marqueur "défaut"
@@ -267,11 +267,12 @@ def _build_dino_top1_candidate(
         if row["face_value"] is not None
         else ""
     )
-    thumb = (
-        f"/images/{int(row['numista_id'])}/source"
-        if row["numista_id"]
-        else ""
-    )
+    from serving._coin_helpers import canonical_obverse_url
+
+    # Vignette canonique par eurio_id (MinIO/CDN via canonical_obverse_url) —
+    # pas l'endpoint legacy /images/<numista>/source (layout ml/datasets/
+    # déprécié, absent des machines migrées → 404).
+    thumb = canonical_obverse_url(conn, row["eurio_id"]) or ""
     return ReviewCandidate(
         eurio_id=row["eurio_id"],
         score=float(sim),
@@ -291,6 +292,8 @@ def _fetch_group_candidates(
     candidats sélectionnables quand le theme-match n'a pas tranché (chunk
     5b). `pairs` est petit (≤ nb de groupes du run), une requête par paire
     reste cheap. Clé du dict : `(country, year)`."""
+    from serving._coin_helpers import canonical_obverse_url
+
     out: dict[tuple[str, int], list[ReviewCandidate]] = {}
     for country, year in pairs:
         rows = conn.execute(
@@ -321,10 +324,9 @@ def _fetch_group_candidates(
                     if r["face_value"] is not None else ""
                 ),
                 year=r["year"],
-                canonical_thumb_url=(
-                    f"/images/{int(r['numista_id'])}/source"
-                    if r["numista_id"] else ""
-                ),
+                # Vignette canonique par eurio_id (MinIO/CDN) — legacy
+                # /images/<numista>/source retiré (absent des machines migrées).
+                canonical_thumb_url=canonical_obverse_url(conn, r["eurio_id"]) or "",
             ))
         out[(country, year)] = cands
     return out
@@ -389,10 +391,9 @@ def _fetch_standard_candidates(
                     if r["face_value"] is not None else ""
                 ),
                 year=r["year"],
-                canonical_thumb_url=canonical_obverse_url(conn, r["eurio_id"]) or (
-                    f"/images/{int(r['numista_id'])}/source"
-                    if r["numista_id"] else ""
-                ),
+                # Legacy /images/<numista>/source retiré du fallback : sur machine
+                # migrée il 404 (layout ml/datasets/ absent), donc sans valeur.
+                canonical_thumb_url=canonical_obverse_url(conn, r["eurio_id"]) or "",
             ))
         cands.sort(key=lambda c: (c.year or 0))
         out[country] = cands
@@ -2599,7 +2600,7 @@ class DinoSuggestion(BaseModel):
     theme: str | None = None
     denomination: float | None = None
     is_commemorative: bool | None = None
-    obverse_url: str | None = None  # /images/<numista_id>/source if available
+    obverse_url: str | None = None  # canonical par eurio_id (MinIO/CDN via /referential/canonical)
 
 
 class DinoCriterionOut(BaseModel):
@@ -2703,6 +2704,8 @@ def _enrich_top_k(
         """,
         eids,
     ).fetchall()
+    from serving._coin_helpers import canonical_obverse_url
+
     by_eid = {r["eurio_id"]: r for r in rows}
     enriched: list[DinoSuggestion] = []
     for entry in top_k:
@@ -2711,7 +2714,9 @@ def _enrich_top_k(
         if row is None:
             enriched.append(DinoSuggestion(eurio_id=eid, sim=float(entry["sim"])))
             continue
-        nid = row["numista_id"]
+        # Vignette canonique par `eurio_id` (MinIO/CDN via /referential/canonical),
+        # pas l'endpoint legacy `/images/<numista>/source` (layout `ml/datasets/`
+        # déprécié, absent des machines migrées → 404). Cf. sibling repository.py.
         enriched.append(
             DinoSuggestion(
                 eurio_id=eid,
@@ -2722,7 +2727,8 @@ def _enrich_top_k(
                 theme=row["theme"],
                 denomination=float(row["face_value"]) if row["face_value"] else None,
                 is_commemorative=bool(row["is_commemorative"]),
-                obverse_url=f"/images/{int(nid)}/source" if nid else None,
+                obverse_url=canonical_obverse_url(conn, eid)
+                or f"/referential/canonical/{eid}/obverse",
             )
         )
     return enriched
@@ -3500,10 +3506,11 @@ def run_auto_accept(
         ]
         target_label = " · ".join(b for b in label_bits if b) \
             or verdict.decided_eurio_id
-        thumb = (
-            f"/images/{int(row['t_numista_id'])}/source"
-            if row["t_numista_id"] else None
-        )
+        from serving._coin_helpers import canonical_obverse_url
+
+        # Vignette canonique par eurio_id (MinIO/CDN) — legacy
+        # /images/<numista>/source retiré (absent des machines migrées).
+        thumb = canonical_obverse_url(conn, verdict.decided_eurio_id)
         crop_url = f"/sources/{row['source']}/assets/{row['image_asset_id']}/file"
         sim = row["top1_country_sim"] if row["top1_country_sim"] is not None \
             else row["top1_sim"]

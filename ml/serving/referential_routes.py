@@ -137,40 +137,48 @@ def _serve_canonical(
         if fallback not in candidates:
             candidates.append(fallback)
 
-    path: Path | None = None
-    chosen_source: str | None = None
+    # MinIO key = path relative to the canonical FS root (same convention the
+    # upload script uses: ``{eurio_id}/{role}_{tag}.webp``).
+    bucket = _bucket_keys()
+
+    # 1. FS = source de vérité : un fichier local gagne. On redirige vers le CDN
+    #    quand l'objet y est miroité, sinon on stream le fichier local.
     for src in candidates:
         p = canonical_path(eurio_id, role, src, thumb=thumb)
-        if p.is_file():
-            path = p
-            chosen_source = src
-            break
-
-    if path is None:
-        raise HTTPException(
-            status_code=404,
-            detail=f"no canonical file on disk for {eurio_id}/{role} "
-                   f"(tried sources: {candidates})",
+        if not p.is_file():
+            continue
+        storage_key = p.relative_to(CANONICAL_DIR).as_posix()
+        if storage_key in bucket:
+            return RedirectResponse(public_url(storage_key), status_code=302)
+        return FileResponse(
+            p,
+            media_type="image/webp",
+            headers={
+                # Cache 1h côté navigateur — invalidation côté serveur via le nom (source+role).
+                "Cache-Control": "public, max-age=3600",
+                # Chrome bloque les `<img>` cross-origin (ORB) sans ce header. CORS suffit
+                # pour les fetch() XHR mais pas pour les `<img>` no-cors qui sont opaques.
+                "Cross-Origin-Resource-Policy": "cross-origin",
+            },
         )
-    _ = chosen_source  # noqa: F841 — kept for future logging/headers
 
-    # MinIO key = path relative to the canonical FS root (same convention the
-    # upload script uses: ``{eurio_id}/{role}_{tag}.webp``). Redirect to the CDN
-    # when the object is confirmed present, else fall back to streaming the FS file.
-    storage_key = path.relative_to(CANONICAL_DIR).as_posix()
-    if storage_key in _bucket_keys():
-        return RedirectResponse(public_url(storage_key), status_code=302)
+    # 2. Aucune copie locale (machine fraîche : `ml/canonical_images/` absent) —
+    #    le canonique vit dans MinIO. On sert directement depuis le CDN si l'objet
+    #    y est, même sans fichier local. Même ordre de candidats. C'est ce qui
+    #    permet à une machine dev non hydratée d'afficher les vignettes.
+    for src in candidates:
+        storage_key = (
+            canonical_path(eurio_id, role, src, thumb=thumb)
+            .relative_to(CANONICAL_DIR)
+            .as_posix()
+        )
+        if storage_key in bucket:
+            return RedirectResponse(public_url(storage_key), status_code=302)
 
-    return FileResponse(
-        path,
-        media_type="image/webp",
-        headers={
-            # Cache 1h côté navigateur — invalidation côté serveur via le nom (source+role).
-            "Cache-Control": "public, max-age=3600",
-            # Chrome bloque les `<img>` cross-origin (ORB) sans ce header. CORS suffit
-            # pour les fetch() XHR mais pas pour les `<img>` no-cors qui sont opaques.
-            "Cross-Origin-Resource-Policy": "cross-origin",
-        },
+    raise HTTPException(
+        status_code=404,
+        detail=f"no canonical for {eurio_id}/{role} on disk or in MinIO "
+               f"(tried sources: {candidates})",
     )
 
 

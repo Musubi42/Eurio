@@ -114,10 +114,10 @@ export async function searchCoins(filters: CoinSearchFilters): Promise<CoinSearc
       denomination: filters.denomination!,
       year: coin.year,
       label: `${countryMeta?.label ?? coin.country} · ${denomMeta.label} · ${coin.year}`,
-      // Vignette servie par l'API ML (même chemin que les suggestions Dino).
-      canonical_thumb_url: coin.numista_id
-        ? `${ML_API}/images/${coin.numista_id}/source`
-        : null,
+      // Vignette canonique servie par l'API ML depuis MinIO (CDN redirect),
+      // clé `eurio_id` — pas `numista_id` (endpoint legacy `/images/<nid>/source`
+      // = layout `ml/datasets/` déprécié, absent des machines migrées).
+      canonical_thumb_url: `${ML_API}/referential/canonical/${coin.eurio_id}/obverse/thumb`,
       is_commemorative: coin.is_commemorative,
     }))
 }
@@ -173,9 +173,9 @@ export async function searchCoinsByText(
       denomination,
       year: coin.year,
       label,
-      canonical_thumb_url: coin.numista_id
-        ? `${ML_API}/images/${coin.numista_id}/source`
-        : null,
+      // Cf. searchCoins : vignette canonique par `eurio_id` (MinIO/CDN), pas
+      // l'endpoint legacy `numista_id`.
+      canonical_thumb_url: `${ML_API}/referential/canonical/${coin.eurio_id}/obverse/thumb`,
       is_commemorative: coin.is_commemorative,
     }
   })
