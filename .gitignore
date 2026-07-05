@@ -251,3 +251,9 @@ ml/state/**/*.jpg
 ml/state/**/*.jpeg
 ml/state/**/*.webp
 ml/state/**/*.html
+
+# Services globaux partagés (ccproxy, …) — source UNIQUE ~/Documents/Musubi42/infra/*.
+# Règle globale : ne JAMAIS re-vendorer/dupliquer un service global par projet ; un
+# projet qui en a besoin pointe vers l'instance déjà lancée. Garde anti-réintroduction
+# (un `services/ccproxy` copié en local est apparu côté PC — incident 2026-07-05).
+/services/
