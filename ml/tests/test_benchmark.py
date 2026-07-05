@@ -114,7 +114,7 @@ def test_store_list_filters_by_model_and_recipe(store: Store):
 
 def test_hold_out_gate_rejects_real_photos(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     # Redirect REAL_PHOTOS_DIR to our tmpdir so we can construct paths under it.
-    import train_embedder as te
+    import training.train_embedder as te
 
     fake_root = (tmp_path / "real_photos").resolve()
     fake_root.mkdir()
@@ -134,7 +134,7 @@ def test_hold_out_gate_rejects_real_photos(tmp_path: Path, monkeypatch: pytest.M
 
 
 def test_check_real_photos_flags_single_session(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    import check_real_photos as crp
+    import training.eval.check_real_photos as crp
 
     # No Supabase in tests.
     monkeypatch.setattr(crp, "_fetch_zones", lambda ids: {})
@@ -169,7 +169,7 @@ def test_check_real_photos_flags_single_session(tmp_path: Path, monkeypatch: pyt
 
 
 def test_aggregate_empty_returns_zero_metrics():
-    import evaluate_real_photos as erp
+    import training.eval.evaluate_real_photos as erp
 
     metrics, per_zone, per_coin, per_cond, confusion, top = erp._aggregate([], top_n=5)
     assert metrics["r_at_1"] == 0.0
@@ -181,8 +181,10 @@ def test_aggregate_empty_returns_zero_metrics():
 
 
 def test_aggregate_computes_hits_and_top_confusions():
-    import evaluate_real_photos as erp
+    import training.eval.evaluate_real_photos as erp
 
+    # hit_at_eq mirrors hit_at: without an equivalence map loaded, the eq
+    # metric equals the strict one (cf. evaluate_real_photos._aggregate comment).
     results = [
         erp.PhotoResult(
             photo_path=f"ml/data/real_photos/fr-2007/0{i}.jpg",
@@ -190,6 +192,7 @@ def test_aggregate_computes_hits_and_top_confusions():
             zone="green",
             top5=[("fr-2007", 0.9), ("de-2005", 0.5)],
             hit_at={1: True, 3: True, 5: True},
+            hit_at_eq={1: True, 3: True, 5: True},
         )
         for i in range(3)
     ]
@@ -201,6 +204,7 @@ def test_aggregate_computes_hits_and_top_confusions():
             zone="orange",
             top5=[("at-2005", 0.81), ("de-2005", 0.80)],
             hit_at={1: False, 3: True, 5: True},
+            hit_at_eq={1: False, 3: True, 5: True},
         )
     )
     metrics, per_zone, per_coin, per_cond, confusion, top = erp._aggregate(results, top_n=5)
@@ -215,7 +219,7 @@ def test_aggregate_computes_hits_and_top_confusions():
 
 
 def test_aggregate_per_condition_buckets():
-    import evaluate_real_photos as erp
+    import training.eval.evaluate_real_photos as erp
 
     results = [
         erp.PhotoResult(
@@ -224,6 +228,7 @@ def test_aggregate_per_condition_buckets():
             zone="green",
             top5=[("fr-2007", 0.9), ("de-2005", 0.5)],
             hit_at={1: True, 3: True, 5: True},
+            hit_at_eq={1: True, 3: True, 5: True},
             conditions={"lighting": "natural-direct", "angle": "0deg"},
         )
         for i in range(2)
@@ -235,6 +240,7 @@ def test_aggregate_per_condition_buckets():
             zone="green",
             top5=[("de-2005", 0.80), ("fr-2007", 0.79)],
             hit_at={1: False, 3: True, 5: True},
+            hit_at_eq={1: False, 3: True, 5: True},
             conditions={"lighting": "artificial-warm", "angle": "45deg"},
         )
     )
@@ -249,7 +255,7 @@ def test_aggregate_per_condition_buckets():
 
 
 def test_centroid_covers_semantics():
-    import evaluate_real_photos as erp
+    import training.eval.evaluate_real_photos as erp
 
     c_group = erp.Centroid(
         class_id="de-1euro-n111",
@@ -272,7 +278,7 @@ def test_centroid_covers_semantics():
 
 
 def test_match_topk_orders_by_similarity():
-    import evaluate_real_photos as erp
+    import training.eval.evaluate_real_photos as erp
 
     centroids = [
         erp.Centroid("a", "eurio_id", {"a"}, np.array([1.0, 0.0], dtype=np.float32)),
