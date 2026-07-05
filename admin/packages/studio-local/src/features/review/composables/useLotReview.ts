@@ -219,16 +219,19 @@ export async function decideLot(
   listingKey: string,
   assignments: LotAssignment[],
 ): Promise<LotDecideResponse> {
-  const resp = await fetch(
-    `${ML_API}/review-queue/lots/${encodeURIComponent(listingKey)}/decide`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ assignments }),
-    },
-  )
-  if (!resp.ok) throw await parseError(resp)
-  return (await resp.json()) as LotDecideResponse
+  // Direction A / C3 : la décision de lot est une écriture CANONIQUE → VPS
+  // (jumeau `serving/funnel_writes.decide_lot`, chemin identique) via eurioApi,
+  // PAS l'API ML locale (readonly sous le flip). Le compute lourd (detect/
+  // add-crop/sync-crops ci-dessous) reste sur ML_API — lui seul touche cv2.
+  try {
+    return await eurioApi.post<LotDecideResponse>(
+      `/review-queue/lots/${encodeURIComponent(listingKey)}/decide`,
+      { assignments },
+    )
+  } catch (err) {
+    if (err instanceof EurioApiError) throw new Error(`${err.status} ${err.message}`)
+    throw err
+  }
 }
 
 export interface LotImageDetectResponse {

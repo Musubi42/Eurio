@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
 from datetime import datetime
 from pathlib import Path
 
@@ -94,6 +95,39 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ─── Garde Direction A (C5) : canonique read-only sur cette machine ──────────
+# Sous le flip (`EURIO_DB_READONLY=1` + réplique pull-ée), toute route locale
+# qui tente encore une écriture canonique voit son `conn.execute(<write>)` lever
+# `sqlite3.OperationalError: attempt to write a readonly database`. Sans garde,
+# c'est un 500 opaque. Ce handler le TRADUIT en 503 actionnable : le hot-path
+# (décisions review/funnel/lot, reassign) est déjà routé au VPS côté front
+# (eurioApi) ; les writers résiduels non encore routés (requalify/lane/correct,
+# crops cv2) refusent alors BRUYAMMENT + CLAIREMENT au lieu de corrompre en
+# silence (leçon #1). SQLite échoue au 1er DML sans rien committer → aucune
+# transaction partielle à nettoyer, la traduction est sûre.
+@app.exception_handler(sqlite3.OperationalError)
+async def _readonly_write_guard(request, exc):  # noqa: ANN001
+    from fastapi.responses import JSONResponse
+
+    msg = str(exc)
+    if "readonly database" in msg or "attempt to write" in msg:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "detail": (
+                    "Canonique en lecture seule sur cette machine (Direction A / "
+                    "flip EURIO_DB_READONLY). Cette écriture doit passer par le "
+                    "writer unique VPS (eurio-api). Route non encore reroutée — "
+                    f"path={request.url.path}."
+                ),
+                "code": "canonical_readonly",
+            },
+        )
+    # Autres OperationalError (lock, corruption…) : re-lever tel quel (500).
+    raise exc
+
 
 # ─── Shared state ───
 
@@ -1435,8 +1469,6 @@ def _confusion_db_connect():
     """Connexion read-only à la eurio.db locale (F02/C2 : coin_confusion_map est
     rapatriée de Supabase). ``CANONICAL_DB`` honore déjà ``EURIO_DB_PATH`` /
     réplique. Retourne None si le fichier n'existe pas (dev sans DB)."""
-    import sqlite3
-
     if not CANONICAL_DB.exists():
         return None
     conn = sqlite3.connect(f"file:{CANONICAL_DB}?mode=ro", uri=True)
