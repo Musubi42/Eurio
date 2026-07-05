@@ -173,11 +173,13 @@ def main() -> int:
     # connexion brute (FK OFF, comportement Modèle A historique).
     commit = args.commit or args.push
     if args.push:
-        from store import Store
-        from client.replica import pull_replica
-        db_path = pull_replica()
-        print(f"[model-b] réplique read-only → {db_path}")
-        conn = Store(db_path)._connection()
+        from store import staging_store
+        # SCRATCH inscriptible dédié (pas le cache autopull `eurio.replica.db` :
+        # course avec le pull, et ro sous le flip) — même correctif que
+        # _run_single_coin_job. Le batch pousse depuis ce scratch via push_run.
+        _push_store = staging_store(prefix="eurio-recrop-batch-")
+        print(f"[model-b] réplique scratch inscriptible → {_push_store.db_path}")
+        conn = _push_store._connection()
     else:
         if commit:
             from store import resolve_db_readonly
