@@ -213,10 +213,15 @@
         '';
 
         # ─── Profiles ─────────────────────────────────────────────────────────
+        # ⚠️ Flip 1a DÉSACTIVÉ (2026-07-05) : le flip a été activé puis retiré car il a
+        # révélé que le routage Direction A des WRITERS CANONIQUES du lab est incomplet
+        # (apply_manual_crop, apply_reassign, scan face-write, … écrivent le canonique en
+        # direct → OperationalError readonly sous le flip). Le flip lui-même est prouvé sain
+        # (split bookkeeping OK, readonly enforcement OK, échec bruyant). Re-flipper = remettre
+        # ${flipHook} dans les 2 shells APRÈS avoir routé/gardé tous les writers. Cf. fiche 01 §6.
         macShell = pkgs.mkShell (commonEnv // {
           buildInputs = baseInputs ++ fullInputs;
           shellHook = ''
-            ${flipHook}
             ${gitRemotesHook}
             ${fullBannerHook "mac"}
             ${staleVenvCheckHook}
@@ -227,7 +232,6 @@
           buildInputs = baseInputs ++ fullInputs;
           shellHook = ''
             ${nvidiaHook}
-            ${flipHook}
             ${gitRemotesHook}
             ${fullBannerHook "pc"}
             ${staleVenvCheckHook}
