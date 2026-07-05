@@ -16,6 +16,18 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
+def _isolate_local_state_db(monkeypatch, tmp_path):
+    """Isole le store d'état local (``eurio.local.db``, bookkeeping cohort_jobs/
+    scans) sur un tmp unique PAR TEST. Sans ça, ``local_state_store()`` taperait
+    le vrai ``ml/state/eurio.local.db`` → tests non-hermétiques + pollution. Le
+    cache par-chemin de ``local_state_store`` rend automatiquement un store frais
+    par path unique."""
+    monkeypatch.setenv(
+        "EURIO_LOCAL_STATE_DB", str(tmp_path / "eurio.local.db"),
+    )
+
+
+@pytest.fixture(autouse=True)
 def _stub_minio_client(monkeypatch):
     """Replace storage._s3_client with a MagicMock for the test's duration.
 

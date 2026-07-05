@@ -67,7 +67,7 @@ CANONICAL_DB = Path(os.environ.get("EURIO_DB_PATH") or (STATE_DIR / "eurio.db"))
 import sys as _sys
 if str(ML_DIR) not in _sys.path:
     _sys.path.insert(0, str(ML_DIR))
-from store import Store  # noqa: E402
+from store import Store, local_state_store  # noqa: E402
 import jobs as _jobs  # noqa: E402  — rail jobs/ générique (refacto-ml ADR D1)
 
 # ─── App ───
@@ -250,7 +250,7 @@ def _recrop_startup() -> None:
     survit au `--reload`, donc on ne tue QUE les jobs dont le PID n'existe plus
     (cf. `lab_routes.reap_orphan_cohort_jobs`)."""
     try:
-        n = lab_routes.reap_orphan_cohort_jobs(_store)
+        n = lab_routes.reap_orphan_cohort_jobs(local_state_store())
         if n:
             import logging
             logging.getLogger(__name__).info(
@@ -263,7 +263,7 @@ def _recrop_startup() -> None:
         )
     # Même doctrine pour les scans du Jeu d'entraînement (subprocess détaché).
     try:
-        n = lab_routes.reap_orphan_training_scans(_store)
+        n = lab_routes.reap_orphan_training_scans(local_state_store())
         if n:
             import logging
             logging.getLogger(__name__).info(

@@ -983,7 +983,10 @@ CREATE TABLE IF NOT EXISTS cohort_jobs (
   id                  TEXT PRIMARY KEY,                -- uuid hex
   kind                TEXT NOT NULL
                       CHECK (kind IN ('scrape_ebay','recrop_zero','census_recover')),
-  cohort_id           TEXT NOT NULL REFERENCES experiment_cohorts(id) ON DELETE CASCADE,
+  -- Bookkeeping LOCAL (eurio.local.db, split Direction A) : `cohort_id` référence
+  -- experiment_cohorts(id) qui vit dans le canonique (autre fichier) → lien
+  -- LOGIQUE, pas de FK DB (impossible cross-DB). Cf. store.local_state_store.
+  cohort_id           TEXT NOT NULL,
   eurio_id            TEXT,                            -- NULL = job cohorte entière
   target_eurio_id     TEXT,                            -- pièce ciblée par le scrape (B1)
   run_id              TEXT,                            -- lien source_runs.id / image_assets.run_id
@@ -1847,7 +1850,9 @@ CREATE TABLE IF NOT EXISTS api_tokens (
 -- CHECK kind est gelé sur les DB existantes) mais mêmes conventions.
 CREATE TABLE IF NOT EXISTS cohort_training_scans (
   id               TEXT PRIMARY KEY,                -- uuid hex
-  cohort_id        TEXT NOT NULL REFERENCES experiment_cohorts(id) ON DELETE CASCADE,
+  -- Bookkeeping LOCAL (split) : lien LOGIQUE vers experiment_cohorts (canonique,
+  -- autre fichier) — pas de FK DB cross-DB. Cf. store.local_state_store.
+  cohort_id        TEXT NOT NULL,
   status           TEXT NOT NULL DEFAULT 'running'
                    CHECK (status IN ('running','done','failed')),
   anchors_kind     TEXT,                            -- banque closed-set (2eur_all)
@@ -1879,7 +1884,9 @@ CREATE INDEX IF NOT EXISTS idx_training_scans_running
 -- réassignation existante.
 CREATE TABLE IF NOT EXISTS cohort_training_scan_results (
   scan_id         TEXT NOT NULL REFERENCES cohort_training_scans(id) ON DELETE CASCADE,
-  asset_id        TEXT NOT NULL REFERENCES image_assets(id) ON DELETE CASCADE,
+  -- `asset_id` référence image_assets (canonique, autre fichier) → lien LOGIQUE,
+  -- pas de FK DB (bookkeeping local). La FK scan_id ci-dessus reste (local↔local).
+  asset_id        TEXT NOT NULL,
   assigned_class  TEXT NOT NULL,                    -- classe (design_group/eurio) au scan
   assigned_sim    REAL,                             -- max(anchor_sim, consensus_sim)
   anchor_sim      REAL,                             -- meilleure ancre canonique de sa classe

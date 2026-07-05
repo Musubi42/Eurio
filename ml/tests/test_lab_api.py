@@ -696,7 +696,7 @@ def test_cohort_training_crops_merges_scan_verdicts_and_health(client):
     par classe est calculée, le Δ R@1 vs l'itération benchée précédente aussi,
     et les confusions du bench sont agrégées à la maille classe."""
     from store import ScanResultRow, training_scan_start, training_scan_finish
-    from store import training_scan_upsert_results
+    from store import training_scan_upsert_results, local_state_store
 
     c, store, _ = client
     with store._writing() as conn:
@@ -739,31 +739,34 @@ def test_cohort_training_crops_merges_scan_verdicts_and_health(client):
         id="it-last", cohort_id="cs", name="last", status="completed",
         benchmark_run_id="b-last", finished_at="2026-06-20T00:00:00Z",
     ))
+    # cohort_training_scans/_results = store d'état LOCAL (split bookkeeping) ;
+    # les seeds canoniques (iteration_aug_vs_real) restent sur `conn`.
+    lconn = local_state_store()._connection()
     with store._writing() as conn:
         conn.executemany(
             "INSERT INTO iteration_aug_vs_real (iteration_id, eurio_id, "
             "num_real, num_aug, cosine, dino_version) VALUES (?,?,?,?,0.5,'v')",
             [("it-prev", "grp-a", 2, 20), ("it-last", "grp-a", 3, 30)],
         )
-        # Scan done : a1 = probable intrus (Dino préfère grp-b), a2 = ok.
-        scan_id = training_scan_start(
-            conn, cohort_id="cs", anchors_kind="2eur_all",
-            encoder_version="dinov2-vitl14", intruder_margin=0.05, n_total=4,
-        )
-        training_scan_upsert_results(conn, scan_id, [
-            ScanResultRow(
-                asset_id=a1, assigned_class="grp-a", assigned_sim=0.61,
-                top1_class="grp-b", top1_eurio_id="xx-2016-b", top1_sim=0.72,
-                margin=0.11, is_intruder=True,
-            ),
-            ScanResultRow(
-                asset_id=a2, assigned_class="grp-a", assigned_sim=0.80,
-                top1_class="grp-a", top1_eurio_id="xx-2016-a", top1_sim=0.80,
-                margin=0.0, is_intruder=False,
-            ),
-        ])
-        training_scan_finish(conn, scan_id, status="done", n_done=4,
-                             n_intruders=1, n_faces_written=0, n_skipped=0)
+    # Scan done : a1 = probable intrus (Dino préfère grp-b), a2 = ok.
+    scan_id = training_scan_start(
+        lconn, cohort_id="cs", anchors_kind="2eur_all",
+        encoder_version="dinov2-vitl14", intruder_margin=0.05, n_total=4,
+    )
+    training_scan_upsert_results(lconn, scan_id, [
+        ScanResultRow(
+            asset_id=a1, assigned_class="grp-a", assigned_sim=0.61,
+            top1_class="grp-b", top1_eurio_id="xx-2016-b", top1_sim=0.72,
+            margin=0.11, is_intruder=True,
+        ),
+        ScanResultRow(
+            asset_id=a2, assigned_class="grp-a", assigned_sim=0.80,
+            top1_class="grp-a", top1_eurio_id="xx-2016-a", top1_sim=0.80,
+            margin=0.0, is_intruder=False,
+        ),
+    ])
+    training_scan_finish(lconn, scan_id, status="done", n_done=4,
+                         n_intruders=1, n_faces_written=0, n_skipped=0)
 
     body = c.get("/lab/cohorts/cs/training-crops").json()
     assert body["benchmark_run_id"] == "b-last"
@@ -796,7 +799,7 @@ def test_cohort_training_crops_merges_scan_verdicts_and_health(client):
 def _seed_intruder_scan(client):
     """Cohorte 'ci' : a1 flaggé intrus au train, a2 propre. Retourne (a1, a2)."""
     from store import ScanResultRow, training_scan_start, training_scan_finish
-    from store import training_scan_upsert_results
+    from store import training_scan_upsert_results, local_state_store
 
     c, store, _ = client
     with store._writing() as conn:
@@ -814,25 +817,25 @@ def _seed_intruder_scan(client):
         id="ci", name="cohort-intruder", eurio_ids=["xx-2016-a", "xx-2016-b"],
         status="frozen",
     ))
-    with store._writing() as conn:
-        scan_id = training_scan_start(
-            conn, cohort_id="ci", anchors_kind="2eur_all",
-            encoder_version="dinov2-vitl14", intruder_margin=0.05, n_total=2,
-        )
-        training_scan_upsert_results(conn, scan_id, [
-            ScanResultRow(
-                asset_id=a1, assigned_class="grp-a", assigned_sim=0.61,
-                top1_class="grp-b", top1_eurio_id="xx-2016-b", top1_sim=0.72,
-                margin=0.11, is_intruder=True, intruder_reason="margin",
-            ),
-            ScanResultRow(
-                asset_id=a2, assigned_class="grp-a", assigned_sim=0.80,
-                top1_class="grp-a", top1_eurio_id="xx-2016-a", top1_sim=0.80,
-                margin=0.0, is_intruder=False,
-            ),
-        ])
-        training_scan_finish(conn, scan_id, status="done", n_done=2,
-                             n_intruders=1, n_faces_written=0, n_skipped=0)
+    lconn = local_state_store()._connection()  # scan bookkeeping = local
+    scan_id = training_scan_start(
+        lconn, cohort_id="ci", anchors_kind="2eur_all",
+        encoder_version="dinov2-vitl14", intruder_margin=0.05, n_total=2,
+    )
+    training_scan_upsert_results(lconn, scan_id, [
+        ScanResultRow(
+            asset_id=a1, assigned_class="grp-a", assigned_sim=0.61,
+            top1_class="grp-b", top1_eurio_id="xx-2016-b", top1_sim=0.72,
+            margin=0.11, is_intruder=True, intruder_reason="margin",
+        ),
+        ScanResultRow(
+            asset_id=a2, assigned_class="grp-a", assigned_sim=0.80,
+            top1_class="grp-a", top1_eurio_id="xx-2016-a", top1_sim=0.80,
+            margin=0.0, is_intruder=False,
+        ),
+    ])
+    training_scan_finish(lconn, scan_id, status="done", n_done=2,
+                         n_intruders=1, n_faces_written=0, n_skipped=0)
     return a1, a2
 
 
@@ -859,12 +862,12 @@ def test_intruder_dismiss_clears_badge_keeps_eligible(client):
     assert a1_crop["intruder_suspect"] is False
     # Toujours au train : le dismiss ne l'exclut pas.
     assert a1_crop["training_eligible"] is True
-    # L'audit du scan est intact (is_intruder non réécrit).
-    with store._writing() as conn:
-        row = conn.execute(
-            "SELECT is_intruder, dismissed FROM cohort_training_scan_results "
-            "WHERE asset_id=?", (a1,),
-        ).fetchone()
+    # L'audit du scan est intact (is_intruder non réécrit) — table LOCALE.
+    from store import local_state_store
+    row = local_state_store()._connection().execute(
+        "SELECT is_intruder, dismissed FROM cohort_training_scan_results "
+        "WHERE asset_id=?", (a1,),
+    ).fetchone()
     assert row["is_intruder"] == 1
     assert row["dismissed"] == 1
 
@@ -924,7 +927,7 @@ def test_reassign_clears_stale_intruder_verdict(client):
 
 
 def test_training_scan_status_idle_then_running(client):
-    from store import training_scan_start
+    from store import training_scan_start, local_state_store
 
     c, store, _ = client
     store.create_cohort(ExperimentCohortRow(
@@ -933,11 +936,11 @@ def test_training_scan_status_idle_then_running(client):
     assert c.get("/lab/cohorts/ct/training-scan/status").json() == {
         "status": "idle",
     }
-    with store._writing() as conn:
-        training_scan_start(
-            conn, cohort_id="ct", anchors_kind="2eur_all",
-            encoder_version="dinov2-vitl14", intruder_margin=0.05, n_total=7,
-        )
+    # cohort_training_scans = store d'état LOCAL (split bookkeeping).
+    training_scan_start(
+        local_state_store()._connection(), cohort_id="ct", anchors_kind="2eur_all",
+        encoder_version="dinov2-vitl14", intruder_margin=0.05, n_total=7,
+    )
     body = c.get("/lab/cohorts/ct/training-scan/status").json()
     assert body["status"] == "running"
     assert body["n_total"] == 7

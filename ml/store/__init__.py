@@ -98,6 +98,37 @@ def resolve_local_state_db() -> Path:
     return Path(__file__).resolve().parents[1] / "state" / "eurio.local.db"
 
 
+_LOCAL_STATE_STORES: "dict[Path, Store]" = {}
+
+
+def local_state_store() -> "Store":
+    """Store process-singleton sur ``eurio.local.db`` — l'état d'observabilité
+    lab **inscriptible** qui ne voyage PAS au canonique (``cohort_jobs``,
+    ``cohort_training_scans``, ``cohort_training_scan_results``). **Toujours**
+    ``read_only=False`` : cette DB n'est jamais la réplique, elle reste writable
+    même sous le flip ``EURIO_DB_READONLY=1``.
+
+    Les writers ET readers de ces 3 tables passent par ce store, distinct du
+    canonique (réplique ro sous le flip). Une écriture de bookkeeping va donc
+    TOUJOURS au bon fichier — jamais d'ambiguïté, avant comme après le flip.
+
+    Bootstrap complet (schema.sql) : la DB porte tout le schéma mais seules les 3
+    tables bookkeeping sont écrites, le reste reste vide (fichier ~minuscule).
+    Réutiliser le bootstrap testé vaut mieux qu'un DDL minimal dupliqué (dette R0).
+    Le thread-local de ``Store._connection()`` rend ce singleton thread-safe.
+
+    Injectable en test via ``EURIO_LOCAL_STATE_DB`` (cf. ``resolve_local_state_db``)
+    ou en passant un store dédié à ``lab_routes.bind(..., local_store=...)``. Le
+    cache est keyé sur le chemin résolu : changer l'env (tests hermétiques,
+    tmp_path unique) rend un store frais, la prod garde son singleton stable."""
+    path = resolve_local_state_db()
+    store = _LOCAL_STATE_STORES.get(path)
+    if store is None:
+        store = Store(path, read_only=False)
+        _LOCAL_STATE_STORES[path] = store
+    return store
+
+
 def staging_store(*, prefix: str = "eurio-staging-") -> "Store":
     """Réplique SCRATCH **inscriptible** (tempfile dédié) pour stager un run avant
     ``push_run`` — JAMAIS le cache autopull ``eurio.replica.db`` (course avec le
@@ -161,6 +192,7 @@ __all__ = [
     "emit_state_event",
     "resolve_db_readonly",
     "resolve_local_state_db",
+    "local_state_store",
     "staging_store",
     "latest_training_scan",
     "training_scan_dismiss_intruder",

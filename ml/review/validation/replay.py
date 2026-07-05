@@ -70,10 +70,15 @@ def _snapshot(conn: sqlite3.Connection, asset_id: str):
 
 
 def _mix_zone_assets(conn: sqlite3.Connection, cohort_id: str) -> set[str]:
-    """asset_ids issus des runs de la cohorte (``cohort_jobs.run_id``)."""
+    """asset_ids issus des runs de la cohorte (``cohort_jobs.run_id``).
+
+    ``cohort_jobs`` = bookkeeping LOCAL (store d'état local) ; ``image_assets``
+    reste canonique (``conn``)."""
+    from store import local_state_store
+    lconn = local_state_store()._connection()  # noqa: SLF001
     runs = [
         r["run_id"]
-        for r in conn.execute(
+        for r in lconn.execute(
             "SELECT DISTINCT run_id FROM cohort_jobs WHERE cohort_id=? AND run_id IS NOT NULL",
             (cohort_id,),
         )

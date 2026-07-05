@@ -59,22 +59,25 @@ def _run_single_coin_job(
     une réplique pull-ée (``client.replica.pull_replica``) suivie d'un
     ``push_run`` vers le canonique VPS, comme le fait déjà le mode batch
     ``--push`` (sans ``--coin``) plus bas dans ce fichier."""
-    from store import cohort_job_finish, cohort_job_progress
+    from store import cohort_job_finish, cohort_job_progress, local_state_store
 
     conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout=30000")  # cohabite avec les écritures API
     register_udfs(conn)
-    n_total = conn.execute(
+    # cohort_jobs = bookkeeping LOCAL (store d'état local, writable même sous le
+    # flip). Le job a été ouvert par l'endpoint sur ce même eurio.local.db
+    # (EURIO_LOCAL_STATE_DB hérité via l'env du subprocess). Le travail crops, lui,
+    # reste sur `conn` (canonique) ou une réplique scratch (mode --push).
+    lconn = local_state_store()._connection()  # noqa: SLF001
+    n_total = lconn.execute(
         "SELECT n_total FROM cohort_jobs WHERE id=?", (job_id,)
     ).fetchone()
     n_total = (n_total[0] if n_total else 0) or 0
 
     def _progress(n: int) -> None:
-        # Bookkeeping toujours sur la connexion locale (job status), même en
-        # mode --push (la connexion de travail des crops, elle, est distincte).
-        cohort_job_progress(conn, job_id, n_done=n)
-        conn.commit()
+        cohort_job_progress(lconn, job_id, n_done=n)  # lconn = autocommit
+        conn.commit()  # flush le travail crops (mode non-push) ; no-op en push
 
     work_conn = conn
     if push:
@@ -104,14 +107,14 @@ def _run_single_coin_job(
                 print(f"[model-b] push {run_id} → {total} ligne(s) appliquée(s) "
                       "au canonique", flush=True)
         cohort_job_finish(
-            conn, job_id, status="done", n_done=n_total or counts["scanned"],
+            lconn, job_id, status="done", n_done=n_total or counts["scanned"],
             n_produced=counts["crops"], note=note,
         )
-        conn.commit()
+        conn.commit()  # flush le travail crops canonique ; no-op en push
         print(f"[recrop-zero] {coin} done: {counts}", flush=True)
         return 0
     except Exception as exc:  # noqa: BLE001 — surfacé via cohort_jobs.error
-        cohort_job_finish(conn, job_id, status="failed", error=str(exc))
+        cohort_job_finish(lconn, job_id, status="failed", error=str(exc))
         conn.commit()
         print(f"[recrop-zero] {coin} crashed: {exc}", flush=True)
         return 1

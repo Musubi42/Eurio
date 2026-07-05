@@ -34,7 +34,7 @@ from sources._base.dedup import SourceImageRow, upsert_source_image
 from sources._base.orchestrator import run_pipeline
 from sources._base.run_logger import RunAlreadyRunning
 from sources.ebay.standards import COMMEMO_IN_STANDARD_PREFIX
-from store import Store, cohort_job_start
+from store import Store, cohort_job_start, local_state_store
 
 from . import sources_aggregator
 
@@ -361,8 +361,10 @@ def trigger_run(
     # un échec d'écriture ne doit jamais faire échouer le scrape lui-même.
     if source_id == "ebay" and payload.cohort_id and not dry_run:
         try:
+            # cohort_jobs = bookkeeping LOCAL (source_runs/rid restent canoniques).
             cohort_job_start(
-                conn, kind="scrape_ebay", cohort_id=payload.cohort_id,
+                local_state_store()._connection(),  # noqa: SLF001
+                kind="scrape_ebay", cohort_id=payload.cohort_id,
                 eurio_id=payload.target_eurio_id,
                 target_eurio_id=payload.target_eurio_id, run_id=rid,
             )

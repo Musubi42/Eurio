@@ -383,7 +383,10 @@ def run_training_set_scan(
     )
     from vision.denom_probe import decide_denom, denom_score
 
-    conn = store._connection()  # noqa: SLF001
+    conn = store._connection()  # noqa: SLF001 — canonique (image_assets, coins, …)
+    # cohort_training_scans/_results = bookkeeping LOCAL (writable même sous le flip).
+    from store import local_state_store
+    lconn = local_state_store()._connection()  # noqa: SLF001
     cohort = store.get_cohort(cohort_id)
     if cohort is None:
         raise RuntimeError(f"Cohort introuvable : {cohort_id}")
@@ -507,7 +510,7 @@ def run_training_set_scan(
         vec_list.append(vec)
         n_done += 1
         if n_done % _PROGRESS_EVERY == 0:
-            training_scan_progress(conn, scan_id, n_done=n_done)
+            training_scan_progress(lconn, scan_id, n_done=n_done)
 
     # Remontée canonique des verdicts face au VPS (Direction A). L'écriture locale
     # ci-dessus reste (cache réplique, même valeur → pas de divergence) ; le forward
@@ -545,11 +548,11 @@ def run_training_set_scan(
     )
     for start in range(0, len(results), _RESULTS_BATCH):
         training_scan_upsert_results(
-            conn, scan_id, results[start:start + _RESULTS_BATCH],
+            lconn, scan_id, results[start:start + _RESULTS_BATCH],
         )
 
     training_scan_finish(
-        conn, scan_id, status="done",
+        lconn, scan_id, status="done",
         n_done=n_done, n_intruders=n_intruders,
         n_faces_written=n_faces, n_skipped=n_skipped,
     )

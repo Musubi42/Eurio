@@ -50,6 +50,7 @@ def main() -> int:
     from store import (
         Store,
         latest_training_scan,
+        local_state_store,
         resolve_db_path,
         training_scan_finish,
         training_scan_start,
@@ -65,7 +66,8 @@ def main() -> int:
     )
 
     store = Store(resolve_db_path(ML_DIR / "state" / "eurio.db"))
-    conn = store._connection()  # noqa: SLF001
+    conn = store._connection()  # noqa: SLF001 — canonique (scan work via run_training_set_scan)
+    lconn = local_state_store()._connection()  # noqa: SLF001 — cohort_training_scans = local
     margin = args.margin if args.margin is not None else DEFAULT_INTRUDER_MARGIN
 
     scan_id = args.scan_id
@@ -75,7 +77,7 @@ def main() -> int:
             print(f"Cohort introuvable : {args.cohort}", file=sys.stderr)
             return 1
         scan_id = training_scan_start(
-            conn,
+            lconn,
             cohort_id=args.cohort,
             anchors_kind=SUGGESTIONS_ANCHORS_KIND,
             encoder_version=SUGGESTIONS_ENCODER_VERSION,
@@ -89,7 +91,7 @@ def main() -> int:
             store, args.cohort, scan_id, intruder_margin=margin,
         )
     except Exception as exc:  # noqa: BLE001 — clôture failed visible in-row
-        training_scan_finish(conn, scan_id, status="failed", error=str(exc))
+        training_scan_finish(lconn, scan_id, status="failed", error=str(exc))
         raise
 
     print(
@@ -99,7 +101,7 @@ def main() -> int:
     )
 
     if args.stats:
-        rows = conn.execute(
+        rows = lconn.execute(
             "SELECT assigned_class, top1_class, margin, is_intruder "
             "FROM cohort_training_scan_results WHERE scan_id=? "
             "AND margin IS NOT NULL ORDER BY margin DESC",
@@ -111,7 +113,7 @@ def main() -> int:
             flag = " ⟵ INTRUS" if r["is_intruder"] else ""
             print(f"  {r['assigned_class']:>40} → {r['top1_class']:<40} "
                   f"marge {r['margin']:+.4f}{flag}")
-        row = latest_training_scan(conn, args.cohort)
+        row = latest_training_scan(lconn, args.cohort)
         if row is not None:
             print(f"\nstatus final : {row['status']}")
     return 0

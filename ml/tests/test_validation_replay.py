@@ -71,7 +71,10 @@ def _dino(c, aid):
 
 
 def _seed(c):
-    c.execute(
+    # cohort_jobs = bookkeeping LOCAL (split) : seed dans le store d'état local
+    # (EURIO_LOCAL_STATE_DB isolé par le conftest), que lit replay._mix_zone_assets.
+    from store import local_state_store
+    local_state_store()._connection().execute(
         "INSERT INTO cohort_jobs (id, kind, cohort_id, status, n_done, n_produced, "
         " n_attributed_target, started_at, run_id, target_eurio_id) "
         "VALUES ('j1', 'scrape_ebay', ?, 'done', 0, 0, 0, 't', 'run-mz', 'x')",

@@ -104,22 +104,21 @@ def test_single_coin_job_push_uses_replica_and_push_run(tmp_path, monkeypatch):
     local_db = tmp_path / "local.db"
     replica_db = tmp_path / "replica.db"
 
-    from store import Store
-    Store(local_db)  # bootstrap schema
+    from store import Store, local_state_store
+    Store(local_db)  # bootstrap schema (DB canonique de travail)
     Store(replica_db)  # bootstrap schema
 
     monkeypatch.setattr(mod, "DB_PATH", local_db)
 
-    conn = sqlite3.connect(local_db)
+    # cohort_jobs = bookkeeping LOCAL (split) : on seed dans le store d'état local
+    # isolé par le conftest (EURIO_LOCAL_STATE_DB) — le MÊME que lit le code.
     job_id = "job-1"
-    conn.execute(
+    local_state_store()._connection().execute(
         "INSERT INTO cohort_jobs (id, kind, cohort_id, eurio_id, target_eurio_id, "
         "run_id, status, n_total, started_at) VALUES (?,?,?,?,?,?,?,?,datetime('now'))",
         (job_id, "recrop_zero", "cohort-1", "2eur_be_2007", "2eur_be_2007",
          "run-1", "running", 0),
     )
-    conn.commit()
-    conn.close()
 
     seen_conns = []
 
@@ -154,10 +153,8 @@ def test_single_coin_job_push_uses_replica_and_push_run(tmp_path, monkeypatch):
     # c'est bien la réplique qui reçoit l'écriture, pas le eurio.db Mac.
     assert len(seen_conns) == 1
 
-    conn2 = sqlite3.connect(local_db)
-    row = conn2.execute(
+    row = local_state_store()._connection().execute(
         "SELECT status, n_produced FROM cohort_jobs WHERE id=?", (job_id,)
     ).fetchone()
-    conn2.close()
     assert row[0] == "done"
     assert row[1] == 1

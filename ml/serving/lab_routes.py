@@ -30,6 +30,7 @@ from store import (
     cohort_job_start,
     emit_field_event,
     latest_training_scan,
+    local_state_store,
     training_scan_dismiss_intruder,
     training_scan_results,
     training_scan_set_pid,
@@ -96,18 +97,32 @@ router = APIRouter(prefix="/lab", tags=["lab"])
 
 _store: Store | None = None
 _runner: IterationRunner | None = None
+_local_store: Store | None = None
 
 
-def bind(store: Store, runner: IterationRunner) -> None:
-    global _store, _runner
+def bind(store: Store, runner: IterationRunner, local_store: Store | None = None) -> None:
+    """Câble le store canonique + le runner. ``local_store`` = store d'état local
+    (bookkeeping cohort_jobs/scans, writable, cf. ``local_state_store()``) ; None →
+    singleton par défaut sur ``eurio.local.db``. Les tests passent un store tmp
+    dédié pour rester hermétiques."""
+    global _store, _runner, _local_store
     _store = store
     _runner = runner
+    _local_store = local_store or local_state_store()
 
 
 def _get_store() -> Store:
     if _store is None:
         raise RuntimeError("lab_routes.bind() not called")
     return _store
+
+
+def _get_local_store() -> Store:
+    """Store d'état local (bookkeeping). Writable même sous le flip readonly —
+    les writes cohort_jobs/scans y vont, jamais dans la réplique canonique."""
+    if _local_store is None:
+        raise RuntimeError("lab_routes.bind() not called")
+    return _local_store
 
 
 def _get_runner() -> IterationRunner:
@@ -2206,10 +2221,13 @@ def _cohort_training_overlay_data(store: Store, cohort: ExperimentCohortRow) -> 
     real_prev = _aug_real_by_key(store, prev_it.id if prev_it else None)
 
     # ── P1 · verdicts du dernier scan TERMINÉ ──
-    conn = store._connection()  # noqa: SLF001
-    scan_row = latest_training_scan(conn, cohort.id, status="done")
+    # cohort_training_scans/_results vivent dans le store d'état LOCAL (bookkeeping) ;
+    # les réfs canoniques (_count_canonical_refs, plus bas) restent sur `conn`.
+    conn = store._connection()  # noqa: SLF001 — canonique
+    lconn = _get_local_store()._connection()  # noqa: SLF001 — scan bookkeeping local
+    scan_row = latest_training_scan(lconn, cohort.id, status="done")
     scan_verdicts = (
-        training_scan_results(conn, scan_row["id"]) if scan_row is not None else {}
+        training_scan_results(lconn, scan_row["id"]) if scan_row is not None else {}
     )
     scan_info = (
         TrainingScanInfo(
@@ -2522,9 +2540,9 @@ def reassign_asset(asset_id: str, payload: ReassignAssetPayload) -> dict:
         result = apply_reassign(conn, asset_id, payload.eurio_id)
     except DecisionError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.detail)
-    # Overlay local : le verdict intrus (calculé sur l'ancienne classe) est périmé.
-    training_scan_dismiss_intruder(conn, asset_id)
-    conn.commit()
+    # Overlay LOCAL (cohort_training_scan_results) : le verdict intrus (calculé sur
+    # l'ancienne classe) est périmé → dismiss dans le store d'état local.
+    training_scan_dismiss_intruder(_get_local_store()._connection(), asset_id)  # noqa: SLF001
     return result
 
 
@@ -2551,7 +2569,11 @@ def intruder_dismiss(
     ).fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail="Crop introuvable")
-    touched = training_scan_dismiss_intruder(conn, asset_id, cohort_id=cohort_id)
+    # Dismiss = overlay LOCAL (cohort_training_scan_results) ; l'audit image_assets
+    # et l'event de sync restent canoniques (conn).
+    touched = training_scan_dismiss_intruder(
+        _get_local_store()._connection(), asset_id, cohort_id=cohort_id,  # noqa: SLF001
+    )
     # Verdict scan = dérivé (recomputable), mais l'override humain est une
     # décision : journalisée pour la sync, rejouée best-effort à distance
     # (UPDATE si la ligne de scan existe, no-op sinon).
@@ -2635,8 +2657,10 @@ def start_training_scan(cohort_id: str, margin: float | None = None) -> dict:
     if cohort is None:
         raise HTTPException(status_code=404, detail="Cohort introuvable")
 
-    conn = store._connection()  # noqa: SLF001
-    running = latest_training_scan(conn, cohort_id, status="running")
+    # cohort_training_scans = bookkeeping LOCAL (writable même sous le flip readonly).
+    # scan_scope_count lit le canonique via `store`.
+    lconn = _get_local_store()._connection()  # noqa: SLF001
+    running = latest_training_scan(lconn, cohort_id, status="running")
     if running is not None:
         raise HTTPException(
             status_code=409,
@@ -2646,7 +2670,7 @@ def start_training_scan(cohort_id: str, margin: float | None = None) -> dict:
     eff_margin = margin if margin is not None else DEFAULT_INTRUDER_MARGIN
     n_total = scan_scope_count(store, cohort)
     scan_id = training_scan_start(
-        conn,
+        lconn,
         cohort_id=cohort_id,
         anchors_kind=SUGGESTIONS_ANCHORS_KIND,
         encoder_version=SUGGESTIONS_ENCODER_VERSION,
@@ -2676,8 +2700,8 @@ def start_training_scan(cohort_id: str, margin: float | None = None) -> dict:
         )
     finally:
         logf.close()
-    training_scan_set_pid(conn, scan_id, proc.pid)
-    conn.commit()
+    training_scan_set_pid(lconn, scan_id, proc.pid)
+    lconn.commit()
     logger.info("[training-scan] %s spawned subprocess pid=%s scan=%s log=%s",
                 cohort_id, proc.pid, scan_id, log_path)
     return {"status": "started", "scan_id": scan_id,
@@ -2689,7 +2713,7 @@ def start_training_scan(cohort_id: str, margin: float | None = None) -> dict:
 def training_scan_status(cohort_id: str) -> dict:
     """Statut du dernier scan de la cohorte (persisté, survit au restart).
     ``idle`` si aucun scan n'a jamais tourné."""
-    conn = _get_store()._connection()  # noqa: SLF001
+    conn = _get_local_store()._connection()  # noqa: SLF001 — cohort_training_scans = local
     row = latest_training_scan(conn, cohort_id)
     if row is None:
         return {"status": "idle"}
@@ -2767,8 +2791,9 @@ def recrop_zero_coin(cohort_id: str, eurio_id: str) -> dict:
     if eurio_id not in cohort.eurio_ids:
         raise HTTPException(status_code=404, detail="Pièce absente de la cohort")
 
-    conn0 = store._connection()  # noqa: SLF001
-    running = conn0.execute(
+    conn0 = store._connection()  # noqa: SLF001 — canonique (raws/crops)
+    lconn = _get_local_store()._connection()  # noqa: SLF001 — cohort_jobs = bookkeeping local
+    running = lconn.execute(
         "SELECT id FROM cohort_jobs WHERE kind='recrop_zero' AND eurio_id=? "
         "AND status='running' LIMIT 1",
         (eurio_id,),
@@ -2789,7 +2814,7 @@ def recrop_zero_coin(cohort_id: str, eurio_id: str) -> dict:
         (eurio_id,),
     ).fetchone()[0]
     job_id = cohort_job_start(
-        conn0, kind="recrop_zero", cohort_id=cohort_id, eurio_id=eurio_id,
+        lconn, kind="recrop_zero", cohort_id=cohort_id, eurio_id=eurio_id,
         target_eurio_id=eurio_id, run_id=run_id, n_total=n_total, tau=tau,
     )
 
@@ -2830,8 +2855,8 @@ def recrop_zero_coin(cohort_id: str, eurio_id: str) -> dict:
         )
     finally:
         logf.close()  # le child garde son propre fd ouvert
-    cohort_job_set_pid(conn0, job_id, proc.pid)
-    conn0.commit()
+    cohort_job_set_pid(lconn, job_id, proc.pid)
+    lconn.commit()
     logger.info("[recrop-zero] %s spawned subprocess pid=%s job=%s log=%s",
                 eurio_id, proc.pid, job_id, log_path)
     return {"status": "started", "run_id": run_id, "eurio_id": eurio_id,
@@ -2842,7 +2867,7 @@ def recrop_zero_coin(cohort_id: str, eurio_id: str) -> dict:
 def recrop_zero_status(cohort_id: str, eurio_id: str) -> dict:
     """Statut du dernier job recrop-zero de la pièce, lu depuis cohort_jobs
     (persisté, survit au restart). ``idle`` si aucun job."""
-    conn = _get_store()._connection()  # noqa: SLF001
+    conn = _get_local_store()._connection()  # noqa: SLF001 — cohort_jobs = local
     row = conn.execute(
         "SELECT id, status, n_total, n_done, n_produced, tau, note, error, "
         "       started_at, finished_at, run_id "
@@ -2853,16 +2878,22 @@ def recrop_zero_status(cohort_id: str, eurio_id: str) -> dict:
     return dict(row) if row is not None else {"status": "idle"}
 
 
-def _reconcile_scrape_jobs(conn: sqlite3.Connection, cohort_id: str) -> None:
+def _reconcile_scrape_jobs(
+    conn: sqlite3.Connection, lconn: sqlite3.Connection, cohort_id: str,
+) -> None:
     """Réconcilie les `cohort_jobs` scrape 'running' depuis `source_runs` (BUG-3).
 
     Le scrape eBay s'exécute dans un thread sources : `source_runs` est la source
     de vérité (statut, compteurs, reaper « orphan run »). Le `cohort_jobs` scrape
     est une trace in-row du cockpit, ouverte au trigger et **projetée en lecture**
     depuis le run lié — pas de thread lab fragile, survit au `--reload`, et un run
-    `failed` devient visible in-row. `conn` est en autocommit (isolation_level=None).
+    `failed` devient visible in-row.
+
+    ``conn`` = canonique (``source_runs``/``coins``/``image_assets``, lecture) ;
+    ``lconn`` = store d'état LOCAL (``cohort_jobs``, lecture+écriture). Autocommit
+    des deux côtés (isolation_level=None).
     """
-    jobs = conn.execute(
+    jobs = lconn.execute(
         "SELECT id, run_id, target_eurio_id FROM cohort_jobs "
         "WHERE cohort_id=? AND kind='scrape_ebay' AND status='running'",
         (cohort_id,),
@@ -2879,7 +2910,7 @@ def _reconcile_scrape_jobs(conn: sqlite3.Connection, cohort_id: str) -> None:
             continue
         if run["status"] == "running":
             # Avancement live : crops produits jusqu'ici.
-            conn.execute(
+            lconn.execute(
                 "UPDATE cohort_jobs SET n_done=?, n_produced=?, "
                 "n_total=COALESCE(n_total, ?) WHERE id=?",
                 (run["n_crops_added"], run["n_crops_added"],
@@ -2921,7 +2952,7 @@ def _reconcile_scrape_jobs(conn: sqlite3.Connection, cohort_id: str) -> None:
                         f"« {target_class} » — offre eBay ~nulle pour cette ère ; "
                         "le reste est attribué aux autres classes du pays (utile pour "
                         "elles), cette classe s'entraîne sur Numista augmenté")
-        conn.execute(
+        lconn.execute(
             "UPDATE cohort_jobs SET status=?, n_total=COALESCE(n_total, ?), "
             "n_done=?, n_produced=?, n_attributed_target=?, "
             "note=COALESCE(note, ?), error=COALESCE(error, ?), "
@@ -2935,9 +2966,10 @@ def _reconcile_scrape_jobs(conn: sqlite3.Connection, cohort_id: str) -> None:
 def cohort_jobs_list(cohort_id: str) -> dict:
     """Jobs observables de la cohorte (scrape/recrop), récents d'abord.
     Source du statut + barre de progression in-row du cockpit (corrige B2)."""
-    conn = _get_store()._connection()  # noqa: SLF001
-    _reconcile_scrape_jobs(conn, cohort_id)  # projette source_runs → cohort_jobs scrape
-    rows = conn.execute(
+    conn = _get_store()._connection()  # noqa: SLF001 — canonique (source_runs/coins)
+    lconn = _get_local_store()._connection()  # noqa: SLF001 — cohort_jobs = local
+    _reconcile_scrape_jobs(conn, lconn, cohort_id)  # projette source_runs → cohort_jobs
+    rows = lconn.execute(
         "SELECT id, kind, eurio_id, target_eurio_id, status, n_total, n_done, "
         "       n_produced, n_attributed_target, tau, note, error, "
         "       started_at, finished_at FROM cohort_jobs "
