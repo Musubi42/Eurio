@@ -23,7 +23,7 @@ from pathlib import Path
 import cv2
 from fastapi import HTTPException
 
-from store import Store, emit_field_event
+from store import Store, emit_field_event, resolve_db_readonly
 
 logger = logging.getLogger(__name__)
 
@@ -301,26 +301,34 @@ def apply_manual_crop(
     bbox = {"x": cx - r, "y": cy - r, "w": 2 * r, "h": 2 * r}
     new_h, new_w = res.image.shape[0], res.image.shape[1]
     new_phash = compute_phash(res.image)
-    conn.execute(
-        "UPDATE image_assets SET bbox_json = ?, detection_method = 'manual', "
-        "width = ?, height = ?, phash = ? WHERE id = ?",
-        (json.dumps(bbox), new_w, new_h, new_phash, row["asset_id"]),
-    )
-    # Sync : un recrop manuel est autoritatif (non recomputable). Le binaire
-    # est ré-uploadé sur la MÊME clé MinIO → seules les colonnes voyagent ;
-    # cache_invalidate dit aux autres machines de purger leur PNG périmé.
-    emit_field_event(
-        conn, asset_id=row["asset_id"], reason="manual_recrop",
-        fields={
-            "image_assets.bbox_json": json.dumps(bbox),
-            "image_assets.detection_method": "manual",
-            "image_assets.width": new_w,
-            "image_assets.height": new_h,
-            "image_assets.phash": new_phash,
-        },
-        detail={"cache_invalidate": crop_sp},
-    )
-    conn.commit()
+    # Direction A (C5) : sous le flip (canonique local = réplique READONLY), on
+    # NE touche PAS le canonique local — le forward `push_crops` ci-dessous écrit
+    # la géométrie au VPS, où `store.crops.apply_ingest_crops` fait le MÊME UPDATE
+    # image_assets + emit_field_event canoniquement (vérifié). Guarder ici évite
+    # l'`OperationalError: readonly database` (leçon #1) sans rien perdre : la
+    # réplique récupère la géométrie au prochain pull. En Model A (pas de flip),
+    # on écrit local comme avant ; le forward est alors best-effort (C4d).
+    if not resolve_db_readonly():
+        conn.execute(
+            "UPDATE image_assets SET bbox_json = ?, detection_method = 'manual', "
+            "width = ?, height = ?, phash = ? WHERE id = ?",
+            (json.dumps(bbox), new_w, new_h, new_phash, row["asset_id"]),
+        )
+        # Sync : un recrop manuel est autoritatif (non recomputable). Le binaire
+        # est ré-uploadé sur la MÊME clé MinIO → seules les colonnes voyagent ;
+        # cache_invalidate dit aux autres machines de purger leur PNG périmé.
+        emit_field_event(
+            conn, asset_id=row["asset_id"], reason="manual_recrop",
+            fields={
+                "image_assets.bbox_json": json.dumps(bbox),
+                "image_assets.detection_method": "manual",
+                "image_assets.width": new_w,
+                "image_assets.height": new_h,
+                "image_assets.phash": new_phash,
+            },
+            detail={"cache_invalidate": crop_sp},
+        )
+        conn.commit()
 
     # Remontée canonique au VPS (Direction A, C4d). L'écriture locale ci-dessus
     # reste (cache réplique servi immédiatement par cette même requête) ; le
@@ -656,6 +664,14 @@ def delete_crop(store: Store, asset_id: str) -> None:
         except Exception as exc:  # noqa: BLE001
             logger.warning("[delete-crop] file delete failed asset=%s: %s",
                            asset_id, exc)
-    conn.execute("DELETE FROM image_assets WHERE id = ?", (asset_id,))
-    conn.commit()
+    # Direction A (C5) : sous le flip, le canonique local est READONLY et le VPS
+    # a DÉJÀ supprimé la row (+cascade) via le forward `push_delete_asset`
+    # ci-dessus (`apply_delete_assets`). On saute donc le DELETE local (sinon
+    # `OperationalError` → 503 alors que le delete canonique a RÉUSSI). Le binaire
+    # MinIO reste supprimé côté client (au-dessus) — `apply_delete_assets` ne le
+    # touche pas volontairement. La réplique perd la row au prochain pull. En
+    # Model A (pas de flip), le DELETE local EST le canonique, inchangé.
+    if not resolve_db_readonly():
+        conn.execute("DELETE FROM image_assets WHERE id = ?", (asset_id,))
+        conn.commit()
     logger.info("[delete-crop] asset=%s purged (row + cascade)", asset_id)

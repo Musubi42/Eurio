@@ -205,3 +205,68 @@ def test_delete_crop_refuses_local_delete_when_forward_fails(env, monkeypatch):
     assert exc_info.value.status_code == 502
     assert conn.execute(
         "SELECT COUNT(*) FROM image_assets WHERE id='a1'").fetchone()[0] == 1
+
+
+# ── Direction A / flip (EURIO_DB_READONLY) : le canonique local est une réplique
+#    read-only. Les writers cv2 (compute local) doivent SAUTER l'écriture locale
+#    et laisser le forward /ingest écrire au VPS — sans lever OperationalError. ──
+
+
+def test_apply_manual_crop_readonly_skips_local_write_forwards_vps(env, monkeypatch):
+    """Sous le flip : recrop manuel calcule + upload MinIO + forward push_crops,
+    mais NE touche PAS le canonique local (réplique ro). Pas de throw, pas
+    d'écriture locale ; le VPS (apply_ingest_crops) persiste géométrie + event."""
+    import serving.crop_edit as ce
+
+    monkeypatch.setattr(ce, "resolve_db_readonly", lambda: True)
+    monkeypatch.setenv("EURIO_API_URL", "https://eurio-api.test")
+    pushed = []
+    monkeypatch.setattr(
+        "client.ingest.push_crops",
+        lambda crops, **kw: pushed.append(crops) or {"updated": 1, "missing": []},
+    )
+
+    store, conn = env
+    data = ce.apply_manual_crop(store, "a1", 200.0, 200.0, 100.0)
+
+    # Forward au VPS avec la géométrie calculée localement.
+    assert len(pushed) == 1 and pushed[0][0]["asset_id"] == "a1"
+    assert pushed[0][0]["detection_method"] == "manual"
+    # Aucune écriture canonique locale : bbox reste NULL, aucun event local.
+    row = conn.execute(
+        "SELECT bbox_json, detection_method FROM image_assets WHERE id='a1'"
+    ).fetchone()
+    assert row["bbox_json"] is None
+    assert conn.execute(
+        "SELECT COUNT(*) FROM image_state_events WHERE asset_id='a1' "
+        "AND reason='manual_recrop'"
+    ).fetchone()[0] == 0
+    # MinIO/compute a tourné (le crop est bien produit).
+    assert data.minio_ok
+
+
+def test_delete_crop_readonly_skips_local_delete_after_forward(env, monkeypatch):
+    """Sous le flip : delete forwardé au VPS (apply_delete_assets supprime la row
+    canonique + cascade) ; le DELETE local est SAUTÉ (réplique ro) sans throw ni
+    503. La row locale disparaîtra au prochain pull-replica."""
+    import shared.storage.cascade as cascade
+    import serving.crop_edit as ce
+
+    monkeypatch.setattr(
+        cascade, "delete_asset_cascade", lambda *a, **kw: None, raising=False,
+    )
+    monkeypatch.setattr(ce, "resolve_db_readonly", lambda: True)
+    monkeypatch.setenv("EURIO_API_URL", "https://eurio-api.test")
+    calls = []
+    monkeypatch.setattr(
+        "client.http.delete_json",
+        lambda path, **kw: calls.append(path) or {"deleted": 1, "missing": []},
+    )
+
+    store, conn = env
+    ce.delete_crop(store, "a1")  # ne doit pas lever
+
+    assert calls == ["/ingest/assets/a1"]  # forward canonique fait
+    # DELETE local sauté : la row reste en attendant le pull (pas d'écriture ro).
+    assert conn.execute(
+        "SELECT COUNT(*) FROM image_assets WHERE id='a1'").fetchone()[0] == 1
