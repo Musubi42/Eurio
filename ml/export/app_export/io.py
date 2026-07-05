@@ -45,7 +45,8 @@ _BATCH_SIZE = 500
 # ---------------------------------------------------------------------------
 
 def get_sqlite_con() -> sqlite3.Connection:
-    """Return a read-only connection to ml/state/eurio.db with row_factory=Row."""
+    """Read-only connection to eurio.db (``_DB_PATH``, résolu via ``EURIO_DB_PATH``
+    / réplique Direction A ; défaut ``ml/state/eurio.db``), row_factory=Row."""
     uri = f"file:{_DB_PATH}?mode=ro"
     con = sqlite3.connect(uri, uri=True)
     con.row_factory = sqlite3.Row

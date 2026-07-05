@@ -55,6 +55,29 @@ des **répliques locales** (copies de travail) et **poussent** leurs runs au VPS
   Training : on tire la réplique (métadonnées) + les **images depuis MinIO** en
   cache local le temps du run.
 
+#### Supabase = projection app-facing read-only (décision F02/C1 — Option A, 2026-07-05)
+
+`eurio.db` reste **LA** source de vérité. Supabase n'est **pas** un second store
+canonique : c'est une **projection read-only app-facing** dérivée d'`eurio.db` par
+la chaîne d'export (`ml/export/app_export/` + `upload_app_obverse.py`). L'app
+Android lit ce miroir (tables projetées + Storage `coin-images`) parce que le
+catalogue (~1000+ pièces, images/descriptions/prix) est trop lourd pour tout
+bundler dans l'APK — Supabase sert la bande passante (free tier : DB 0,5 Go,
+egress 5 Go). C'est cohérent avec la mémoire projet « Supabase app schema V2 ».
+
+Conséquences actées :
+- **On NE réécrit PAS l'export en tout-SQLite** (l'option B est écartée).
+- La chaîne d'export lit `eurio.db` **via le resolver commun** (`store.resolve_db_path`
+  → `EURIO_DB_PATH` / réplique) — plus de `ml/state/eurio.db` codé en dur qui
+  projetterait du périmé en silence (F02/C5, cf. `export/app_export/io.py`).
+- **La `service_role` globale n'est PAS révoquée**, mais elle doit être remplacée
+  par une **clé dédiée scopée** aux seules tables de projection + bucket
+  `coin-images` (action dashboard Supabase, hors-code). Tant que la clé scopée
+  n'est pas posée, l'export tourne encore avec la `service_role` (rotée en P0).
+- **Interne ML rapatrié dans `eurio.db`** (ne transite plus par Supabase) :
+  cartographie de confusion (`coin_confusion_map`, F02/C2), zones d'augmentation
+  (`zone_resolver`, F02/C3). Ces données ne sont **pas** app-facing.
+
 ### Front
 
 > ✅ **Livré (R1, 2026-06-30).** Tout ce qui suit est **fait** : un seul codebase
