@@ -45,8 +45,9 @@ sys.path.insert(0, str(ML_DIR))
 from shared.storage.local_cache import local_path  # noqa: E402
 from training.foundation.anchors import load_anchors  # noqa: E402
 from training.foundation.encoder import build_transform, load_encoder  # noqa: E402
+from store import resolve_db_path  # noqa: E402
 
-DB_PATH = ML_DIR / "state" / "eurio.db"
+DB_PATH = resolve_db_path(ML_DIR / "state" / "eurio.db")
 REPO_ROOT = ML_DIR.parent
 REVERSE_ASSETS = [
     REPO_ROOT / "app-android" / "src" / "main" / "assets" / "shared_reverse" / "reverse_2eur_v1.webp",

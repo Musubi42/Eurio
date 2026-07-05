@@ -37,6 +37,8 @@ ML_DIR = Path(__file__).resolve().parent.parent
 if str(ML_DIR) not in sys.path:
     sys.path.insert(0, str(ML_DIR))
 
+from store import resolve_db_path  # noqa: E402
+
 
 WIPE_SCOPE_TABLES: list[str] = [
     "coins",
@@ -161,7 +163,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--current",
-        default=str(ML_DIR / "state" / "eurio.db"),
+        default=str(resolve_db_path(ML_DIR / "state" / "eurio.db")),
         help="Path to current eurio.db (default: ml/state/eurio.db)",
     )
     parser.add_argument(

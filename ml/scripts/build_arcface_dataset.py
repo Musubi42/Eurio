@@ -47,8 +47,9 @@ from training.foundation.anchors import (  # noqa: E402
     _standard_paths_with_eid,  # noqa: PLC2701
 )
 from scripts.audit_dino_suggestions import _standard_rep_map  # noqa: E402
+from store import resolve_db_path  # noqa: E402
 
-DB_PATH = ML_DIR / "state" / "eurio.db"
+DB_PATH = resolve_db_path(ML_DIR / "state" / "eurio.db")
 DEFAULT_ROOT = ML_DIR / "datasets" / "arcface_vits14_v1"
 
 

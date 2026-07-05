@@ -44,10 +44,11 @@ from client.http import sync_enabled  # noqa: E402
 from vision.crop_detectors import crop_with_detector  # noqa: E402
 from scripts.crop_quality_diag import _oracle_from_raw, _raw_local_path  # noqa: E402
 from sources._base.phash import compute_phash  # noqa: E402
+from store import resolve_db_path  # noqa: E402
 
 _PUSH_BATCH = 200
 
-_DB = _ML / "state" / "eurio.db"
+_DB = resolve_db_path(_ML / "state" / "eurio.db")
 _CACHE = Path.home() / ".cache" / "eurio"
 
 
@@ -63,6 +64,15 @@ def main() -> None:
     ap.add_argument("--no-minio", action="store_true", help="Cache+DB seulement.")
     ap.add_argument("--force", action="store_true", help="Re-traite même les '+rimrefine'.")
     args = ap.parse_args()
+
+    if args.commit:
+        from store import resolve_db_readonly
+
+        if resolve_db_readonly():
+            raise SystemExit(
+                "DB en lecture seule (réplique Direction A) — writer canonique = VPS. "
+                "Poser EURIO_DB_READONLY=0 seulement sur le host canonique."
+            )
 
     upload_through = None
     if args.commit and not args.no_minio:

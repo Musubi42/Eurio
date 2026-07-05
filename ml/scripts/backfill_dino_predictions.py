@@ -82,8 +82,14 @@ def main() -> int:
     push = sync_enabled() if args.push is None else args.push
 
     if push:
+        import tempfile
+
         from client.replica import pull_replica
-        db_path = pull_replica()
+        # dest DÉDIÉ : ne PAS écrire dans le cache réplique de la machine
+        # (`eurio.replica.db`, alimenté par le thread autopull) — on pull dans
+        # un scratch jetable propre à ce backfill pour éviter la course.
+        scratch = Path(tempfile.mkdtemp(prefix="dino-backfill-")) / "dino_scratch.db"
+        db_path = pull_replica(dest=scratch)
         print(f"[model-b] réplique scratch → {db_path}")
         # read_only=False explicite : cette réplique pull-ée est un SCRATCH de
         # travail (stub source_runs + prédictions y sont écrits avant push_run),

@@ -64,9 +64,11 @@ from referential.refetch_numista_2eur import (  # noqa: E402
     api_type_details,
 )
 
+from store import resolve_db_path  # noqa: E402
+
 logger = logging.getLogger("discover_numista_standards")
 
-DEFAULT_DB = ROOT / "state" / "eurio.db"
+DEFAULT_DB = resolve_db_path(ROOT / "state" / "eurio.db")
 DEFAULT_CACHE = ROOT / "state" / "numista_cache"
 THROTTLE = 0.4  # politeness delay between API calls
 
@@ -271,6 +273,15 @@ def main() -> int:
     p.add_argument("--year-to", type=int, default=None)
     p.add_argument("--dry-run", action="store_true")
     args = p.parse_args()
+
+    if not args.dry_run:
+        from store import resolve_db_readonly
+
+        if resolve_db_readonly():
+            raise SystemExit(
+                "DB en lecture seule (réplique Direction A) — writer canonique = VPS. "
+                "Poser EURIO_DB_READONLY=0 seulement sur le host canonique."
+            )
 
     countries = ([c.upper() for c in args.countries]
                  if args.countries else list(NUMISTA_ISSUER_CODE.keys()))

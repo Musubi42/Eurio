@@ -31,8 +31,9 @@ from review.validation.consensus import RULE_VERSION, consensus_verdict
 from review.validation.experts import collect_signals
 from review.validation.persist import upsert_consensus_verdict
 from review.validation.replay import DEFAULT_GOLD, load_gold
+from store import resolve_db_path
 
-_DB = Path(__file__).resolve().parents[1] / "state" / "eurio.db"
+_DB = resolve_db_path(Path(__file__).resolve().parents[1] / "state" / "eurio.db")
 
 _SCOPE_SQL = {
     "dino": (
@@ -62,6 +63,15 @@ def main() -> None:
     ap.add_argument("--gold", type=Path, default=DEFAULT_GOLD)
     ap.add_argument("--apply", action="store_true", help="écrit (sinon dry-run)")
     args = ap.parse_args()
+
+    if args.apply:
+        from store import resolve_db_readonly
+
+        if resolve_db_readonly():
+            raise SystemExit(
+                "DB en lecture seule (réplique Direction A) — writer canonique = VPS. "
+                "Poser EURIO_DB_READONLY=0 seulement sur le host canonique."
+            )
 
     # Garantit que ``consensus_verdicts`` existe (bootstrap schema, idempotent) —
     # la table est nouvelle, la DB live ne l'a pas tant qu'aucun Store n'a démarré.

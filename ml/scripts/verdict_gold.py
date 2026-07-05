@@ -24,8 +24,9 @@ from review.validation.replay import (
     replay_gold,
     save_gold,
 )
+from store import resolve_db_path
 
-_DB = Path(__file__).resolve().parents[1] / "state" / "eurio.db"
+_DB = resolve_db_path(Path(__file__).resolve().parents[1] / "state" / "eurio.db")
 
 
 def main() -> None:

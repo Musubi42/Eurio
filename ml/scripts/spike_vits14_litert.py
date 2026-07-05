@@ -50,7 +50,9 @@ from training.foundation import (  # noqa: E402
     load_anchors,
 )
 
-DB_PATH = ML_DIR / "state" / "eurio.db"
+from store import resolve_db_path  # noqa: E402
+
+DB_PATH = resolve_db_path(ML_DIR / "state" / "eurio.db")
 OUT_DIR = ML_DIR / "output" / "spike"
 INPUT_PX = 224
 

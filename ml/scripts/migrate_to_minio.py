@@ -47,7 +47,12 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 ML_ROOT = REPO_ROOT / "ml"
 DATASETS_DIR = ML_ROOT / "datasets"
 SOURCES_DIR = ML_ROOT / "state" / "sources"
-DB_PATH = ML_ROOT / "state" / "eurio.db"
+if str(ML_ROOT) not in sys.path:
+    sys.path.insert(0, str(ML_ROOT))
+
+from store import resolve_db_path  # noqa: E402
+
+DB_PATH = resolve_db_path(ML_ROOT / "state" / "eurio.db")
 MANIFEST_PATH = REPO_ROOT / "docs" / "harmonisation-images" / "migration-manifest.jsonl"
 
 CONTENT_TYPES = {
@@ -322,6 +327,13 @@ def _ensure_legacy_columns(conn: sqlite3.Connection) -> None:
 
 
 def cmd_db(args: argparse.Namespace) -> int:
+    from store import resolve_db_readonly
+
+    if resolve_db_readonly():
+        raise SystemExit(
+            "DB en lecture seule (réplique Direction A) — writer canonique = VPS. "
+            "Poser EURIO_DB_READONLY=0 seulement sur le host canonique."
+        )
     entries = _read_manifest()
     rewrites = [e for e in entries if e.table and e.row_id]
     print(f"rewriting {len(rewrites)} rows across {len({e.table for e in rewrites})} tables…")

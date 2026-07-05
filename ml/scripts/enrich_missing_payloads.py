@@ -49,10 +49,11 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from referential.numista_keys import KeyManager  # noqa: E402
+from store import resolve_db_path  # noqa: E402
 
 logger = logging.getLogger("enrich_missing_payloads")
 
-DEFAULT_DB = ROOT / "state" / "eurio.db"
+DEFAULT_DB = resolve_db_path(ROOT / "state" / "eurio.db")
 API_BASE = "https://api.numista.com/v3"
 THROTTLE_SECONDS = 0.5  # courtesy delay between calls
 
@@ -216,6 +217,15 @@ def main() -> int:
     parser.add_argument("--limit", type=int, default=None,
                         help="N'enrichit que les N premiers (pour sample-run)")
     args = parser.parse_args()
+
+    if not args.dry_run:
+        from store import resolve_db_readonly
+
+        if resolve_db_readonly():
+            raise SystemExit(
+                "DB en lecture seule (réplique Direction A) — writer canonique = VPS. "
+                "Poser EURIO_DB_READONLY=0 seulement sur le host canonique."
+            )
 
     km = KeyManager(db_path=args.db)
     logger.info("Numista keys loaded: %d", len(km._keys))  # noqa: SLF001

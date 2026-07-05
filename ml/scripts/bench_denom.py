@@ -39,8 +39,9 @@ sys.path.insert(0, str(ML_DIR))
 
 from shared.storage.local_cache import local_path  # noqa: E402
 from vision.denom_geometry import bimetal_score  # noqa: E402
+from store import resolve_db_path  # noqa: E402
 
-DB_PATH = ML_DIR / "state" / "eurio.db"
+DB_PATH = resolve_db_path(ML_DIR / "state" / "eurio.db")
 OUT_DIR = ML_DIR / "state" / "denom_bench"
 LOT_REASONS = ("multi_coin_photo", "is_lot_suspected", "listing_kind_lot")
 

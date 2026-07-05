@@ -46,8 +46,9 @@ from training.foundation import (  # noqa: E402
     top_k_match,
     top_k_match_country,
 )
+from store import resolve_db_path  # noqa: E402
 
-DB_PATH = ML_DIR / "state" / "eurio.db"
+DB_PATH = resolve_db_path(ML_DIR / "state" / "eurio.db")
 BENCH_KIND = "2eur_all"
 TOP_K = 5
 

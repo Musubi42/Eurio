@@ -54,10 +54,11 @@ from referential.refetch_numista_2eur import (  # noqa: E402
     api_search,
     api_type_details,
 )
+from store import resolve_db_path  # noqa: E402
 
 logger = logging.getLogger("discover_numista_recent")
 
-DEFAULT_DB = ROOT / "state" / "eurio.db"
+DEFAULT_DB = resolve_db_path(ROOT / "state" / "eurio.db")
 THROTTLE = 0.4  # courtesy delay between API calls
 
 # 24 codes : on retire `germany` et `lithuania` qui pointent vers issuers
@@ -319,6 +320,15 @@ def main() -> int:
                    help="Liste d'ISO2 à limiter (default: tous)")
     p.add_argument("--dry-run", action="store_true")
     args = p.parse_args()
+
+    if not args.dry_run:
+        from store import resolve_db_readonly
+
+        if resolve_db_readonly():
+            raise SystemExit(
+                "DB en lecture seule (réplique Direction A) — writer canonique = VPS. "
+                "Poser EURIO_DB_READONLY=0 seulement sur le host canonique."
+            )
 
     now_year = datetime.now(timezone.utc).year
     year_from = args.year_from if args.year_from is not None else now_year - 1

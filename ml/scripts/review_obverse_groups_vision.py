@@ -37,7 +37,9 @@ from training.foundation.obverse_group_review import (  # noqa: E402
     review_group,
 )
 
-DEFAULT_DB = ML_DIR / "state" / "eurio.db"
+from store import resolve_db_path  # noqa: E402
+
+DEFAULT_DB = resolve_db_path(ML_DIR / "state" / "eurio.db")
 ACCEPTED_PATH = ML_DIR / "data" / "obverse_review_accepted.json"
 
 

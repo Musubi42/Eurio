@@ -42,9 +42,10 @@ from vision.normalize_snap import (  # noqa: E402
     detect_circles_multi,
 )
 from shared.storage.local_cache import local_path  # noqa: E402
+from store import resolve_db_path  # noqa: E402
 
 
-_DB = _ML_DIR / "state" / "eurio.db"
+_DB = resolve_db_path(_ML_DIR / "state" / "eurio.db")
 _OUT = _ML_DIR / "state" / "listing_bimetal_bench"
 _BG_COLOR = (24, 24, 24)
 _OVERLAY_MAX_DIM = 700

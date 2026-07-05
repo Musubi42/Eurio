@@ -51,10 +51,11 @@ if str(ROOT) not in sys.path:
 from export.sync_to_supabase import load_env  # noqa: E402
 from referential.canonical_image_local import canonical_path, relative_path  # noqa: E402
 from referential.coin_image_storage import BUCKET_NAME, source_file_tag  # noqa: E402
+from store import resolve_db_path  # noqa: E402
 
 logger = logging.getLogger("push_to_supabase")
 
-DEFAULT_DB = ROOT / "state" / "eurio.db"
+DEFAULT_DB = resolve_db_path(ROOT / "state" / "eurio.db")
 
 
 def _supabase_url_for(supabase_url: str, eurio_id: str, role: str, source: str, *, thumb: bool = False) -> str:
@@ -353,6 +354,15 @@ def main() -> int:
     p.add_argument("--skip-cleanup", action="store_true",
                    help="Skip zombie DELETE")
     args = p.parse_args()
+
+    if not args.dry_run:
+        from store import resolve_db_readonly
+
+        if resolve_db_readonly():
+            raise SystemExit(
+                "DB en lecture seule (réplique Direction A) — writer canonique = VPS. "
+                "Poser EURIO_DB_READONLY=0 seulement sur le host canonique."
+            )
 
     env = load_env()
     # Make env vars available for sync_to_supabase subprocess

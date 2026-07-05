@@ -42,7 +42,9 @@ from training.foundation.anchors import (  # noqa: E402
     _standard_paths_with_eid,  # noqa: PLC2701
 )
 
-DB_PATH = ML_DIR / "state" / "eurio.db"
+from store import resolve_db_path  # noqa: E402
+
+DB_PATH = resolve_db_path(ML_DIR / "state" / "eurio.db")
 DATASET_ROOT = ML_DIR / "datasets" / "arcface_vits14_v1"
 DEFAULT_CKPT = ML_DIR / "checkpoints" / "arcface_vits14_v1" / "best_model.pth"
 TOP_K = 5

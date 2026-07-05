@@ -30,8 +30,9 @@ from training.foundation.claude_review import DEFAULT_MODEL_ALIAS, MODELS  # noq
 from training.foundation.obverse_group_review import canonical_obverse_path  # noqa: E402
 from training.foundation.standard_gate_review import classify_crop  # noqa: E402
 from shared.storage.local_cache import local_path  # noqa: E402
+from store import resolve_db_path  # noqa: E402
 
-DEFAULT_DB = ML_DIR / "state" / "eurio.db"
+DEFAULT_DB = resolve_db_path(ML_DIR / "state" / "eurio.db")
 
 
 def _open_ro(db_path: Path) -> sqlite3.Connection:

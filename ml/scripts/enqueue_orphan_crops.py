@@ -21,10 +21,16 @@ from __future__ import annotations
 
 import argparse
 import sqlite3
+import sys
 from pathlib import Path
 
 ML_DIR = Path(__file__).resolve().parents[1]
-DB_PATH = ML_DIR / "state" / "eurio.db"
+if str(ML_DIR) not in sys.path:
+    sys.path.insert(0, str(ML_DIR))
+
+from store import resolve_db_path  # noqa: E402
+
+DB_PATH = resolve_db_path(ML_DIR / "state" / "eurio.db")
 
 
 def main() -> int:
@@ -85,6 +91,14 @@ def main() -> int:
         print("[DRY-RUN — rien écrit]")
         conn.close()
         return 0
+
+    from store import resolve_db_readonly
+
+    if resolve_db_readonly():
+        raise SystemExit(
+            "DB en lecture seule (réplique Direction A) — writer canonique = VPS. "
+            "Poser EURIO_DB_READONLY=0 seulement sur le host canonique."
+        )
 
     with start_run(conn, source="ebay", kind="run", force=True,
                    filters={"op": "enqueue_orphans", "cohort": None if args.all else args.cohort}) as run:

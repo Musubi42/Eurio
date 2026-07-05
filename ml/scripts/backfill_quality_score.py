@@ -42,13 +42,14 @@ if str(_ML_DIR) not in sys.path:
     sys.path.insert(0, str(_ML_DIR))
 
 from scripts._vps_only_guard import guard_vps_only  # noqa: E402
+from store import resolve_db_path  # noqa: E402
 
 # Version du pipeline de score (oracle r_ratio v1) — tracée pour invalidation.
 QUALITY_PIPELINE_VERSION = 1
 
 _ML_ROOT = Path(__file__).resolve().parents[1]
 _DEFAULT_CSV = _ML_ROOT / "state" / "crop_diag" / "results.csv"
-_DEFAULT_DB = _ML_ROOT / "state" / "eurio.db"
+_DEFAULT_DB = resolve_db_path(_ML_ROOT / "state" / "eurio.db")
 
 
 def quality_score_from_r_ratio(r_ratio: float) -> float:

@@ -47,6 +47,8 @@ ML_DIR = Path(__file__).resolve().parent.parent
 if str(ML_DIR) not in sys.path:
     sys.path.insert(0, str(ML_DIR))
 
+from store import resolve_db_path  # noqa: E402
+
 
 # ─── Wipe scope ────────────────────────────────────────────────────────────
 
@@ -286,6 +288,13 @@ def _smoke_test(conn: sqlite3.Connection) -> list[str]:
 
 
 def apply(db_path: Path, *, skip_confirm: bool = False) -> int:
+    from store import resolve_db_readonly
+
+    if resolve_db_readonly():
+        raise SystemExit(
+            "DB en lecture seule (réplique Direction A) — writer canonique = VPS. "
+            "Poser EURIO_DB_READONLY=0 seulement sur le host canonique."
+        )
     if not db_path.exists():
         print(f"DB not found: {db_path}", file=sys.stderr)
         return 1
@@ -398,7 +407,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--db",
-        default=str(ML_DIR / "state" / "eurio.db"),
+        default=str(resolve_db_path(ML_DIR / "state" / "eurio.db")),
         help="Path to eurio.db (default: ml/state/eurio.db)",
     )
     mode = parser.add_mutually_exclusive_group()

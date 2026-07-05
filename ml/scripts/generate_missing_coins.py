@@ -40,9 +40,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from referential.eurio_referential import compute_eurio_id, slugify  # noqa: E402
-from store import Store  # noqa: E402
+from store import Store, resolve_db_path  # noqa: E402
 
-DEFAULT_DB = ROOT / "state" / "eurio.db"
+DEFAULT_DB = resolve_db_path(ROOT / "state" / "eurio.db")
 COUNTRY_MAPPING = ROOT / "datasets" / "country_mapping.json"
 DATASETS = ROOT / "datasets"
 
@@ -264,6 +264,13 @@ def _backup(db_path: Path) -> Path:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     if not args.dry_run:
+        from store import resolve_db_readonly
+
+        if resolve_db_readonly():
+            raise SystemExit(
+                "DB en lecture seule (réplique Direction A) — writer canonique = VPS. "
+                "Poser EURIO_DB_READONLY=0 seulement sur le host canonique."
+            )
         print(f"Backup : {_backup(args.db).name}")
     store = Store(args.db)
     conn = store._connection()  # noqa: SLF001

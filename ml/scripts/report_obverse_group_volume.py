@@ -33,7 +33,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 ML_DIR = Path(__file__).resolve().parents[1]
-DEFAULT_DB = ML_DIR / "state" / "eurio.db"
+
+from store import resolve_db_path  # noqa: E402
+
+DEFAULT_DB = resolve_db_path(ML_DIR / "state" / "eurio.db")
 
 
 def _open_ro(db_path: Path) -> sqlite3.Connection:

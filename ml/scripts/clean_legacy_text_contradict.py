@@ -25,10 +25,17 @@ from __future__ import annotations
 
 import argparse
 import sqlite3
+import sys
 from collections import Counter
 from pathlib import Path
 
-_DB = Path(__file__).resolve().parents[1] / "state" / "eurio.db"
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from store import resolve_db_path  # noqa: E402
+
+_DB = resolve_db_path(ROOT / "state" / "eurio.db")
 
 
 def main() -> None:
@@ -57,6 +64,14 @@ def main() -> None:
     if not args.apply:
         print("  (dry-run — rien supprimé ; --apply pour exécuter)")
         return
+
+    from store import resolve_db_readonly
+
+    if resolve_db_readonly():
+        raise SystemExit(
+            "DB en lecture seule (réplique Direction A) — writer canonique = VPS. "
+            "Poser EURIO_DB_READONLY=0 seulement sur le host canonique."
+        )
 
     cur_d = conn.execute(
         "DELETE FROM discarded_listings WHERE reason LIKE 'text_contradict_%'"

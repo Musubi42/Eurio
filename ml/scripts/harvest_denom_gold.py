@@ -36,7 +36,11 @@ from collections import Counter
 from pathlib import Path
 
 ML_DIR = Path(__file__).resolve().parent.parent
-DB_PATH = ML_DIR / "state" / "eurio.db"
+sys.path.insert(0, str(ML_DIR))
+
+from store import resolve_db_path  # noqa: E402
+
+DB_PATH = resolve_db_path(ML_DIR / "state" / "eurio.db")
 GOLD = ML_DIR / "state" / "denom_bench" / "denom_gold.jsonl"
 
 REVIEW_ADMIN_SQL = """

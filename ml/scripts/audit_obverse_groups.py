@@ -33,9 +33,10 @@ from bootstrap.obverse_groups import (  # noqa: E402
     load_overrides,
     load_standard_coins,
 )
+from store import resolve_db_path  # noqa: E402
 
 EXPECTED_PATH = ML_DIR / "data" / "design_groups_obverse_expected.json"
-DEFAULT_DB = ML_DIR / "state" / "eurio.db"
+DEFAULT_DB = resolve_db_path(ML_DIR / "state" / "eurio.db")
 
 
 def _open_ro(db_path: Path) -> sqlite3.Connection:

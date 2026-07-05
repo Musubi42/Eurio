@@ -32,7 +32,10 @@ from pathlib import Path
 import numpy as np
 
 ML_DIR = Path(__file__).resolve().parent.parent
-DB_PATH = ML_DIR / "state" / "eurio.db"
+
+from store import resolve_db_path  # noqa: E402
+
+DB_PATH = resolve_db_path(ML_DIR / "state" / "eurio.db")
 OUT_DIR = ML_DIR / "state" / "crop_undercrop"
 
 

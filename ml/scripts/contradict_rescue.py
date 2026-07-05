@@ -26,8 +26,9 @@ from pathlib import Path
 
 from review.validation.consensus import consensus_verdict
 from review.validation.experts import collect_signals
+from store import resolve_db_path
 
-_DB = Path(__file__).resolve().parents[1] / "state" / "eurio.db"
+_DB = resolve_db_path(Path(__file__).resolve().parents[1] / "state" / "eurio.db")
 
 # Crops issus d'un listing tué pour text_contradict_* : on remonte
 # discarded_listings → source_images (clé source+source_ref) → image_assets.

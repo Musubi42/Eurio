@@ -35,8 +35,9 @@ from training.foundation.anchors import (  # noqa: E402
     encoder_version_for_kind,
     load_anchors,
 )
+from store import resolve_db_path  # noqa: E402
 
-DB_PATH = ML_DIR / "state" / "eurio.db"
+DB_PATH = resolve_db_path(ML_DIR / "state" / "eurio.db")
 
 
 @dataclass

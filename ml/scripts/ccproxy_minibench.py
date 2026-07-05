@@ -28,7 +28,9 @@ ML_DIR = Path(__file__).resolve().parents[1]
 if str(ML_DIR) not in sys.path:
     sys.path.insert(0, str(ML_DIR))
 
-DB_PATH = ML_DIR / "state" / "eurio.db"
+from store import resolve_db_path  # noqa: E402
+
+DB_PATH = resolve_db_path(ML_DIR / "state" / "eurio.db")
 
 
 def main() -> int:

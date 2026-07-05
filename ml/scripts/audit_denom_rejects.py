@@ -28,8 +28,9 @@ ML_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ML_DIR))
 
 from scripts.bench_denom import _load_bgr  # noqa: E402
+from store import resolve_db_path  # noqa: E402
 
-DB_PATH = ML_DIR / "state" / "eurio.db"
+DB_PATH = resolve_db_path(ML_DIR / "state" / "eurio.db")
 OUT_DIR = ML_DIR / "state" / "denom_bench"
 
 OPEN_REJECTS_SQL = """

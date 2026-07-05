@@ -33,11 +33,12 @@ if str(_ML) not in sys.path:
     sys.path.insert(0, str(_ML))
 
 from scripts.bench_listing_bimetal import _probe_true_rim  # noqa: E402
+from store import resolve_db_path  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-_DB = _ML / "state" / "eurio.db"
+_DB = resolve_db_path(_ML / "state" / "eurio.db")
 _CACHE = Path.home() / ".cache" / "eurio"
 _OUT = _ML / "state" / "crop_diag"
 
