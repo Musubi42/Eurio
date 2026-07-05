@@ -160,8 +160,32 @@ tromper), robustesse face/usure/tilt.
 
 ## 8. Prochaines actions (graine)
 
-- [ ] **Construire le banc d'éval honnête** (pilier C / phase-4) — prérequis bloquant de toute comparaison.
+> **Le banc honnête existe en graine** : la boucle cohort-test (vue §I4d,
+> best-of + eq, par condition) est le banc **in-the-wild** ; le gap connu est
+> qu'elle **n'est pas rejouable** (JSONL = prédictions seules). D'où la brique
+> n°1 ci-dessous.
+
+- [x] **Corpus de scan rejouable** → **[`corpus-spec.md`](./corpus-spec.md)**
+      — **implémenté (2026-07-06, lots 1-5)** : store `ml/store/scan_corpus.py`
+      + `scan_corpus.db`, archivage device au SNAP (raw q95 + crop PNG,
+      `raw_sha`/`crop_sha` JSONL, conditions `glare`/`inhand`), pull étendu,
+      `import_scan_corpus.py` (nominal + backfill photo_snaps),
+      `replay_corpus.py` (scorecard §8 + McNemar §8bis, chemins fast/full),
+      baseline épinglée, [`exp-template.md`](./exp-template.md). Tâches :
+      `go-task ml:scan-corpus:{import,replay,test}`.
+- [x] `exp-01-centroids` (`train_mean` vs `val_mean`) = **rodage du funnel** →
+      **[`exp-01-centroids.md`](./exp-01-centroids.md)** — **terminée
+      (2026-07-06)** sur les 73 frames réelles (backfill device, corpus
+      `9b1bc705525d`) : train_mean +8.2 pts R@1 eq (0.767 vs 0.685), gain sur
+      les 3 conditions, **mais McNemar p=0.18** → pas de promotion ; agrandir
+      le corpus (cible 150–300 frames) et re-répliquer.
 - [ ] Écrire `exp-backbones.md` : matrice backbones × tier device × (précision, latence, taille), baseline MobileNetV3-Small.
 - [ ] Décider la politique **1 modèle universel** vs **universel + premium flagship** (§1) — dépend des premiers benchs.
 - [ ] Unifier « détection photo mauvaise qualité + re-take » avec le quality scorer best-frame (pilier A).
 - [ ] (Prérequis capture) trancher F03 : permission caméra + bind CameraX (sinon les ratés capture polluent la mesure modèle).
+
+### Acquis récents (2026-07-05)
+- **Sync live-tests fiabilisé** : dédup best-of canonique + verdict cohérent
+  (`serving/lab_routes.py`, `store/iterations.py`) — le §I4d ne ment plus.
+- **Étapes post-train sur CUDA** (`compute_embeddings.py`, `validate_per_class.py`)
+  — parité prouvée (max|Δ| = 1e-6). Contexte du travail sur le corpus.
