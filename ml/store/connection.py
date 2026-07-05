@@ -286,6 +286,13 @@ class StoreBase:
                     decl="TEXT REFERENCES source_runs(id) ON DELETE SET NULL",
                 )
             conn.executescript(schema)
+            # Seed source_registry (idempotent, INSERT OR IGNORE) : la FK
+            # coin_source_refs.source → source_registry (ON DELETE RESTRICT) est
+            # enforced dès le 1er run touchant price_aggregate. Sans ce seed au
+            # bootstrap, toute DB fraîche crashe en IntegrityError opaque. Le seed
+            # est une propriété du schéma, pas un rite manuel (F05 #3).
+            from .source_registry_seed import seed_source_registry
+            seed_source_registry(conn)
             self._ensure_column(
                 conn,
                 table="training_runs",

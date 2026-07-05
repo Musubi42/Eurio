@@ -17,9 +17,11 @@ Cette indirection permet aux requêtes existantes filtrant
 post-doctrine — seul le moment de l'écriture dans une table data-aware
 traduit via `to_registry_source()`.
 
-La FK n'est encore enclenchée qu'à partir du recreate P.6 du wipe script.
-D'ici là, les producers peuvent déjà écrire le vocabulaire registry pour
-rester FK-clean post-wipe.
+La FK est enforced **dès aujourd'hui** (`StoreBase` active `PRAGMA
+foreign_keys=ON`) et `source_registry` est seedé au bootstrap du Store
+(`store/source_registry_seed.py`, appelé par `connection._bootstrap`). Tout
+producer doit donc écrire le vocabulaire registry (`to_registry_source()`),
+sinon l'INSERT lève une FK violation immédiate.
 """
 
 from __future__ import annotations
@@ -29,8 +31,8 @@ from __future__ import annotations
 # → registry id (source_registry.id, utilisé en data-aware writes).
 #
 # Quand on ajoute une nouvelle source pipeline : ajouter ici ET dans
-# `ml/scripts/seed_source_registry.py` (SEED). Sinon `to_registry_source()`
-# lèvera une KeyError ou l'INSERT lèvera FK violation post-P.6.
+# `ml/store/source_registry_seed.py` (SEED). Sinon `to_registry_source()`
+# lèvera une KeyError ou l'INSERT lèvera une FK violation immédiate.
 PIPELINE_TO_REGISTRY: dict[str, str] = {
     # Adapters actifs
     "ebay":     "ebay_browse",

@@ -27,45 +27,7 @@ if str(ML_DIR) not in sys.path:
     sys.path.insert(0, str(ML_DIR))
 
 from store import Store  # noqa: E402
-
-
-# (id, display_name, kind, base_url, notes)
-SEED: list[tuple[str, str, str, str | None, str]] = [
-    ("numista_api",   "Numista API v3",           "reference",
-     "https://api.numista.com/api/v3",
-     "Source primaire référentiel — titre, issuer, year, value, mint releases, prices."),
-    ("bce_official",  "BCE — pages officielles",  "official",
-     "https://www.ecb.europa.eu/euro/coins/comm/",
-     "Date émission, mintage total, image officielle (obverse)."),
-    ("eurlex_jo",     "Journal Officiel UE (EUR-Lex)", "official",
-     "https://eur-lex.europa.eu",
-     "JO série C — avis officiels pièces commémoratives 2€ : image côté national, "
-     "date d'émission, URL annonce. Référentiel de couverture (exhaustif par obligation légale)."),
-    ("bundesbank",    "Deutsche Bundesbank",      "official",
-     None,
-     "Mintage DE par atelier (A/D/F/G/J) — PDFs annuels."),
-    ("mdp",           "Monnaie de Paris",         "official",
-     "https://www.monnaiedeparis.fr",
-     "Prix BU/BE neufs, descriptions FR, MdP-spécifique."),
-    ("lmdlp",         "La Monnaie de la Pièce",   "community",
-     "https://lamonnaiedelapiece.com",
-     "Prix boutique 2€ commémoratives par qualité (UNC/BU/BE), via WooCommerce Store API."),
-    ("wikipedia",     "Wikipedia",                "community",
-     None,
-     "Mintage, variants, contexte historique. Source de fallback."),
-    ("ebay_browse",   "eBay Browse API",          "community",
-     None,
-     "Annonces actives — prix marché courant."),
-    ("2euros_org",    "2euros.org",               "reference",
-     "https://www.2euros.org",
-     "Compilation référentielle FR — mintage par atelier × qualité, rareté éditoriale."),
-    ("eurio_derived", "Eurio — calcul interne",   "derived",
-     None,
-     "Facts dérivés en lecture (agreement_count, indice rareté dérivé, ...)."),
-    ("manual",        "Curation manuelle",        "manual",
-     None,
-     "Décisions éditoriales admin Raphaël (tranche A/B, corrections, etc.)."),
-]
+from store.source_registry_seed import SEED  # noqa: E402  — source unique du seed
 
 
 def main() -> int:

@@ -258,8 +258,10 @@ def test_coin_source_status_fks_enforced(tmp_path: Path) -> None:
         "INSERT INTO coins (eurio_id, country, year, face_value, currency, is_commemorative) "
         "VALUES ('c1', 'eu', 2025, 2.0, 'EUR', 1)"
     )
+    # numista_api est désormais seedé au bootstrap du Store (F05 #3) → OR IGNORE
+    # pour rester idempotent (sinon UNIQUE constraint sur la PK).
     conn.execute(
-        "INSERT INTO source_registry (id, display_name, kind) "
+        "INSERT OR IGNORE INTO source_registry (id, display_name, kind) "
         "VALUES ('numista_api', 'Numista', 'reference')"
     )
     conn.commit()
