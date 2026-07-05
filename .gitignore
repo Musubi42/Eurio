@@ -133,6 +133,10 @@ ml/state/.replica_ssh.sh
 ml/state/.replica_known_hosts
 ml/state/replica.lock
 ml/state/.replica-last-pull
+# État local inscriptible (observabilité jobs) — distinct de la réplique, jamais versionné
+ml/state/eurio.local.db
+ml/state/eurio.local.db-wal
+ml/state/eurio.local.db-shm
 ml/state/numista_cache/
 # ml/state/cohort_csvs/
 # Sources refacto — local-only, each machine autonomous (decisions.md D-06)

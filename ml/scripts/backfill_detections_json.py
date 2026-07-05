@@ -39,7 +39,8 @@ import cv2  # noqa: E402
 
 from vision.normalize_snap import normalize_listing_with_detections  # noqa: E402
 from sources._base.steps.detect_crop import _crop_strategy, _detection_to_dict  # noqa: E402
-from store import Store  # noqa: E402
+from store import Store, resolve_db_path  # noqa: E402
+from scripts._vps_only_guard import guard_vps_only  # noqa: E402
 from shared.storage.local_cache import local_path  # noqa: E402
 
 
@@ -68,9 +69,18 @@ def main() -> int:
                     help="liste sans écrire")
     ap.add_argument("--limit", type=int, default=None,
                     help="traiter au plus N source_images (debug)")
+    ap.add_argument(
+        "--i-know-this-is-canonical", action="store_true", dest="allow_non_vps",
+        help="Autorise l'écriture hors VPS (copie canonique). Sinon refuse sur "
+             "une machine cliente Direction A.",
+    )
     args = ap.parse_args()
 
-    store = Store(_ML_DIR / "state" / "eurio.db")
+    # UPDATE brut de source_images.detections_json non transporté par /ingest →
+    # réservé au canonique. Le --dry (lecture seule) reste permis sur un client.
+    if not args.dry:
+        guard_vps_only("backfill_detections_json", allow=args.allow_non_vps)
+    store = Store(resolve_db_path(_ML_DIR / "state" / "eurio.db"))
     conn = store._connection()  # noqa: SLF001
 
     where = ["s.storage_path IS NOT NULL"]

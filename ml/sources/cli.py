@@ -195,13 +195,18 @@ def main(argv: list[str] | None = None) -> int:
     # canonique passée via --db. Indépendant du push (ci-dessus) : --push
     # ne choisit plus que la SOURCE de lecture, pas le transport.
     if args.push:
-        from client.replica import pull_replica
+        # Stage sur une réplique SCRATCH inscriptible dédiée (pas le cache
+        # autopull `eurio.replica.db` : course avec le thread/timer de pull, et
+        # ro sous EURIO_DB_READONLY). read_only=False explicite → writable même
+        # sous le flip. Cf. store.staging_store / backfill_dino_predictions.
+        from store import staging_store
 
-        db_path = pull_replica()
-        print(f"[model-b] réplique read-only → {db_path}")
+        store = staging_store(prefix="eurio-source-")
+        db_path = store.db_path
+        print(f"[model-b] réplique scratch inscriptible → {db_path}")
     else:
         db_path = args.db
-    store = Store(db_path)
+        store = Store(db_path)
 
     # Crop-on-demand path : crop a previous --download-only run. No adapter
     # load (no eBay token needed), no discovery — just the deferred crop steps.

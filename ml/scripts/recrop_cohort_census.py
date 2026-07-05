@@ -28,10 +28,16 @@ import argparse
 import json
 import os
 import sqlite3
+import sys
 from pathlib import Path
 
 ML_DIR = Path(__file__).resolve().parents[1]
-DB_PATH = ML_DIR / "state" / "eurio.db"
+if str(ML_DIR) not in sys.path:
+    sys.path.insert(0, str(ML_DIR))
+
+from store import resolve_db_path  # noqa: E402
+
+DB_PATH = resolve_db_path(ML_DIR / "state" / "eurio.db")
 
 
 def _run_single_coin_job(
@@ -72,11 +78,13 @@ def _run_single_coin_job(
 
     work_conn = conn
     if push:
-        from client.replica import pull_replica
-        from store import Store
-        db_path = pull_replica()
-        print(f"[model-b] réplique read-only → {db_path}", flush=True)
-        work_conn = Store(db_path)._connection()  # noqa: SLF001
+        from store import staging_store
+        # SCRATCH inscriptible dédié (pas le cache autopull `eurio.replica.db` :
+        # course avec le pull, et ro sous le flip). Le bookkeeping (cohort_job_*)
+        # reste sur `conn` local — cf. précondition flip « split bookkeeping ».
+        work_store = staging_store(prefix="eurio-recrop-")
+        print(f"[model-b] réplique scratch inscriptible → {work_store.db_path}", flush=True)
+        work_conn = work_store._connection()  # noqa: SLF001
 
     try:
         counts = recrop_zero_for_coin(
@@ -171,6 +179,14 @@ def main() -> int:
         print(f"[model-b] réplique read-only → {db_path}")
         conn = Store(db_path)._connection()
     else:
+        if commit:
+            from store import resolve_db_readonly
+
+            if resolve_db_readonly():
+                raise SystemExit(
+                    "DB en lecture seule (réplique Direction A) — writer canonique = VPS. "
+                    "Poser EURIO_DB_READONLY=0 seulement sur le host canonique."
+                )
         conn = sqlite3.connect(DB_PATH)
         conn.row_factory = sqlite3.Row
         _register_phash_udfs(conn)   # hamming() / phash_match() UDFs (dédup C4)

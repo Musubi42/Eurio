@@ -81,6 +81,40 @@ def resolve_db_path(default: str | Path) -> Path:
     return Path(env) if env else Path(default)
 
 
+def resolve_local_state_db() -> Path:
+    """Chemin d'une DB locale **inscriptible** distincte de la réplique read-only,
+    pour l'état d'observabilité qui ne voyage PAS au canonique (``cohort_jobs``,
+    ``cohort_training_scans*``). Honore ``EURIO_LOCAL_STATE_DB``, défaut
+    ``ml/state/eurio.local.db``. Ne pointe JAMAIS la réplique — reste writable même
+    sous ``EURIO_DB_READONLY=1``.
+
+    ⚠️ Le câblage complet des writers/readers de bookkeeping sur cette DB est une
+    précondition documentée du flip (les tables sont aujourd'hui JOINTES avec des
+    tables canoniques — cf. ``store/decisions.py`` — donc un split physique exige
+    ATTACH ou une décision d'archi). Ce resolver pose l'infrastructure."""
+    env = os.environ.get("EURIO_LOCAL_STATE_DB", "").strip()
+    if env:
+        return Path(env)
+    return Path(__file__).resolve().parents[1] / "state" / "eurio.local.db"
+
+
+def staging_store(*, prefix: str = "eurio-staging-") -> "Store":
+    """Réplique SCRATCH **inscriptible** (tempfile dédié) pour stager un run avant
+    ``push_run`` — JAMAIS le cache autopull ``eurio.replica.db`` (course avec le
+    thread/timer de pull). ``read_only=False`` explicite → reste writable sous
+    ``EURIO_DB_READONLY=1``. Modèle : ``scripts/backfill_dino_predictions.py``.
+
+    Le scratch vit dans un ``tempfile.mkdtemp`` (nettoyé par l'OS / best-effort) ;
+    l'appelant le jette après push. Retourne un ``Store`` ouvert sur le scratch."""
+    import tempfile
+
+    from client.replica import pull_replica
+
+    scratch = Path(tempfile.mkdtemp(prefix=prefix)) / "eurio_scratch.db"
+    pull_replica(dest=scratch)
+    return Store(scratch, read_only=False)
+
+
 def resolve_db_readonly() -> bool:
     """Lit ``EURIO_DB_READONLY`` (Direction A, C5) : vrai → la DB locale (une
     réplique pull-ée du VPS) s'ouvre en ``mode=ro`` et le bootstrap est no-op.
@@ -126,6 +160,8 @@ __all__ = [
     "emit_field_event",
     "emit_state_event",
     "resolve_db_readonly",
+    "resolve_local_state_db",
+    "staging_store",
     "latest_training_scan",
     "training_scan_dismiss_intruder",
     "resolve_db_path",

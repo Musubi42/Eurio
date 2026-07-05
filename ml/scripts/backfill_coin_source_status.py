@@ -24,7 +24,8 @@ if str(ML_DIR) not in sys.path:
     sys.path.insert(0, str(ML_DIR))
 
 from state.source_status import get_network_verdicted_ids, upsert_source_status  # noqa: E402
-from store import Store  # noqa: E402
+from store import Store, resolve_db_path  # noqa: E402
+from scripts._vps_only_guard import guard_vps_only  # noqa: E402
 
 logger = logging.getLogger("backfill_source_status")
 
@@ -159,10 +160,18 @@ def main() -> int:
     parser.add_argument("--limit", type=int, default=None,
                         help="Throttle : max N coins par source (smoke test).")
     parser.add_argument("--verbose", "-v", action="store_true")
+    parser.add_argument(
+        "--i-know-this-is-canonical", action="store_true", dest="allow_non_vps",
+        help="Autorise hors VPS (--db pointe une copie canonique). Sinon refuse "
+             "sur une machine cliente Direction A (backfill non transporté par /ingest).",
+    )
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO if args.verbose else logging.WARNING,
                         format="%(message)s")
-    store = Store(Path(args.db))
+    # UPDATE brut de coin_source_status (dérivé local, last_run_id NULL → NE
+    # voyage PAS via le run-batch C4c) : réservé au canonique.
+    guard_vps_only("backfill_coin_source_status", allow=args.allow_non_vps)
+    store = Store(resolve_db_path(args.db))
     stats = run_backfill(store, force=args.force, limit=args.limit)
     total = sum(stats.values())
     print(f"backfill coin_source_status : {total} rows ok")
