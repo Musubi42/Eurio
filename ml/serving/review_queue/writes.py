@@ -376,3 +376,72 @@ def restore_rejected(
 
     logger.info("[review] restored %d rejected (skipped=%d)", restored, len(skipped))
     return RestoreResult(restored=restored, skipped=skipped)
+
+
+# ── Corrections de routage review (SQL-pures, logique dans store.decisions) ───
+# Jumeaux lean des routes lourdes `review/review_queue_routes.py` (skippées sur le
+# VPS via `import cv2`). Chemins IDENTIQUES → le front (Direction A) les appelle
+# sur le VPS via `eurioApi`. Même contrat que funnel_writes : `_commit` wrappe le
+# apply_*, traduit DecisionError→HTTPException.
+
+
+class CorrectListingPayload(BaseModel):
+    listing_kind: str | None = None
+    condition: str | None = None
+
+
+def _commit(conn: sqlite3.Connection, work):
+    """Exécute ``work()`` (un apply_* de store.decisions) dans la transaction de
+    la requête : commit au succès, rollback + traduction HTTP sur DecisionError,
+    rollback + propagation sinon."""
+    from store.decisions import DecisionError
+
+    conn.execute("PRAGMA busy_timeout=5000")
+    try:
+        result = work()
+        conn.commit()
+        return result
+    except DecisionError as exc:
+        conn.rollback()
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail)
+    except Exception:
+        conn.rollback()
+        raise
+
+
+@router.post("/review-queue/{review_id}/correct-listing", status_code=200)
+def correct_listing(
+    review_id: str, payload: CorrectListingPayload,
+    principal: PrincipalDep, conn: ConnDep,
+) -> dict[str, Any]:
+    from store.decisions import apply_correct_listing
+
+    return _commit(conn, lambda: apply_correct_listing(
+        conn, review_id, payload.listing_kind, payload.condition))
+
+
+@router.post("/review-queue/{review_id}/requalify-lot", status_code=200)
+def requalify_lot(
+    review_id: str, principal: PrincipalDep, conn: ConnDep,
+) -> dict[str, Any]:
+    from store.decisions import apply_requalify_lot
+
+    return _commit(conn, lambda: apply_requalify_lot(conn, review_id))
+
+
+@router.post("/review-queue/lots/{listing_key}/requalify-single", status_code=200)
+def requalify_single(
+    listing_key: str, principal: PrincipalDep, conn: ConnDep,
+) -> dict[str, Any]:
+    from store.decisions import apply_requalify_single
+
+    return _commit(conn, lambda: apply_requalify_single(conn, listing_key))
+
+
+@router.post("/review-queue/{review_id}/move-lane", status_code=200)
+def move_lane(
+    review_id: str, principal: PrincipalDep, conn: ConnDep,
+) -> dict[str, str]:
+    from store.decisions import apply_move_lane
+
+    return _commit(conn, lambda: apply_move_lane(conn, review_id))

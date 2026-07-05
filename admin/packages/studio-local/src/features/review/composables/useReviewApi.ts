@@ -298,13 +298,11 @@ export async function correctListing(
   id: string,
   payload: { listing_kind?: ListingKind; condition?: ConditionTier },
 ): Promise<void> {
-  const real = await safeFetch<unknown>(
+  // Direction A / C3 : correction canonique → VPS (jumeau lean
+  // serving/review_queue/writes.py, chemin identique) via eurioApi.
+  const real = await safeFetchEurioWrite<unknown>(
     `/review-queue/${encodeURIComponent(id)}/correct-listing`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    },
+    payload,
   )
   if (real === null) {
     await delay(20)
@@ -325,9 +323,9 @@ export interface RequalifyLotResult {
 }
 
 export async function requalifyReviewAsLot(id: string): Promise<RequalifyLotResult> {
-  const real = await safeFetch<RequalifyLotResult>(
+  // Direction A / C3 : requalif canonique → VPS (jumeau lean) via eurioApi.
+  const real = await safeFetchEurioWrite<RequalifyLotResult>(
     `/review-queue/${encodeURIComponent(id)}/requalify-lot`,
-    { method: 'POST' },
   )
   if (real === null) {
     throw new Error('Backend indisponible — la requalification en lot n’a pas pu être enregistrée.')
@@ -574,9 +572,9 @@ export async function fetchTriageStats(cohortId?: string | null): Promise<Triage
  * Sticky côté backend (lane_source='human') : aucun recalcul Dino ne le re-route.
  */
 export async function moveReviewLaneToManual(id: string): Promise<void> {
-  await safeFetch<unknown>(
+  // Direction A / C3 : mutation canonique du routage review → VPS (jumeau lean).
+  await safeFetchEurioWrite<unknown>(
     `/review-queue/${encodeURIComponent(id)}/move-lane`,
-    { method: 'POST' },
   )
 }
 

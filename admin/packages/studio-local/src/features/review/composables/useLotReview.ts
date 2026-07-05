@@ -338,10 +338,15 @@ export interface RequalifySingleResponse {
 export async function requalifyLotAsSingle(
   listingKey: string,
 ): Promise<RequalifySingleResponse> {
-  const resp = await fetch(
-    `${ML_API}/review-queue/lots/${encodeURIComponent(listingKey)}/requalify-single`,
-    { method: 'POST' },
-  )
-  if (!resp.ok) throw await parseError(resp)
-  return (await resp.json()) as RequalifySingleResponse
+  // Direction A / C3 : requalif canonique (lot→single) → VPS (jumeau lean
+  // serving/review_queue/writes.py, chemin identique) via eurioApi, PAS ML_API.
+  try {
+    return await eurioApi.post<RequalifySingleResponse>(
+      `/review-queue/lots/${encodeURIComponent(listingKey)}/requalify-single`,
+      undefined,
+    )
+  } catch (err) {
+    if (err instanceof EurioApiError) throw new Error(`${err.status} ${err.message}`)
+    throw err
+  }
 }

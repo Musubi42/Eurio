@@ -2024,9 +2024,8 @@ def decide_review(review_id: str, payload: DecidePayload) -> dict[str, str]:
 
 
 # ── Correction listing_kind / condition (chunk C4) ────────────────────────
-
-_VALID_LISTING_KINDS = ("single", "lot", "coffret", "graded_slab")
-_VALID_CONDITIONS = ("UNC", "TTB", "TB")
+# Validation + SQL vivent dans ``store.decisions`` (constantes _VALID_* incluses),
+# partagées avec le jumeau lean VPS. Ce handler ne fait plus que déléguer.
 
 
 class CorrectListingPayload(BaseModel):
@@ -2044,77 +2043,22 @@ def correct_listing(review_id: str, payload: CorrectListingPayload) -> dict[str,
     step C2 ``text_signal`` ne ré-écrasera plus ces signaux. Indépendant
     de la décision d'attribution — la review reste ``open``.
     """
-    if payload.listing_kind is None and payload.condition is None:
-        raise HTTPException(
-            status_code=422, detail="Provide listing_kind and/or condition.",
-        )
-    if payload.listing_kind is not None and payload.listing_kind not in _VALID_LISTING_KINDS:
-        raise HTTPException(
-            status_code=422,
-            detail=f"listing_kind must be one of {_VALID_LISTING_KINDS}",
-        )
-    if payload.condition is not None and payload.condition not in _VALID_CONDITIONS:
-        raise HTTPException(
-            status_code=422,
-            detail=f"condition must be one of {_VALID_CONDITIONS}",
-        )
+    # Logique SQL déléguée à ``store.decisions.apply_correct_listing`` (source
+    # unique partagée avec le jumeau lean VPS ``serving/review_queue/writes.py``).
+    from store.decisions import DecisionError, apply_correct_listing
 
     conn = _store()._connection()  # noqa: SLF001
-    si = conn.execute(
-        """
-        SELECT s.id AS sid, s.source, s.source_url
-          FROM review_queue rq
-          JOIN image_assets a ON a.id = rq.image_asset_id
-          JOIN source_images s ON s.id = a.source_image_id
-         WHERE rq.id = ?
-        """,
-        (review_id,),
-    ).fetchone()
-    if si is None:
-        raise HTTPException(status_code=404, detail="Review item not found.")
-
-    # Toutes les source_images du même listing — identité = source_url
-    # (page de l'annonce, partagée par les N photos). Fallback : la row
-    # seule si l'URL est absente.
-    if si["source_url"]:
-        sibling_ids = [
-            r["id"] for r in conn.execute(
-                "SELECT id FROM source_images WHERE source = ? AND source_url = ?",
-                (si["source"], si["source_url"]),
-            ).fetchall()
-        ]
-    else:
-        sibling_ids = [si["sid"]]
-
-    sets = ["extractor_version = 'manual'", "computed_at = datetime('now')"]
-    args: list[Any] = []
-    if payload.listing_kind is not None:
-        sets.append("listing_kind = ?")
-        sets.append("listing_kind_confidence = 1.0")
-        args.append(payload.listing_kind)
-    if payload.condition is not None:
-        sets.append("condition_normalized = ?")
-        sets.append("condition_confidence = 1.0")
-        args.append(payload.condition)
-
-    placeholders = ",".join("?" * len(sibling_ids))
-    conn.execute(
-        f"UPDATE listing_text_signals SET {', '.join(sets)} "  # noqa: S608
-        f"WHERE source_image_id IN ({placeholders})",
-        (*args, *sibling_ids),
-    )
-    conn.commit()
+    try:
+        result = apply_correct_listing(
+            conn, review_id, payload.listing_kind, payload.condition)
+        conn.commit()
+    except DecisionError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail)
     logger.info(
         "[review] correct-listing id=%s kind=%s condition=%s → %d images",
-        review_id, payload.listing_kind, payload.condition, len(sibling_ids),
+        review_id, payload.listing_kind, payload.condition, result["n_images"],
     )
-    return {
-        "status": "ok",
-        "id": review_id,
-        "n_images": len(sibling_ids),
-        "listing_kind": payload.listing_kind,
-        "condition": payload.condition,
-    }
+    return result
 
 
 class RequalifyLotResponse(BaseModel):
@@ -2135,84 +2079,20 @@ def requalify_lot(review_id: str) -> RequalifyLotResponse:
     apparaissent dans le flow lot (groupé par ``listing_key``). On marque
     aussi ``listing_kind='lot'`` (taxonomie, ``extractor_version='manual'``)
     pour cohérence + empêcher une re-classification auto en single."""
+    # Logique SQL déléguée à ``store.decisions.apply_requalify_lot`` (source
+    # unique partagée avec le jumeau lean VPS ``serving/review_queue/writes.py``).
+    from store.decisions import DecisionError, apply_requalify_lot
+
     conn = _store()._connection()  # noqa: SLF001
-    row = conn.execute(
-        f"""
-        SELECT {_LISTING_KEY_SQL} AS listing_key
-          FROM review_queue rq
-          JOIN image_assets a ON a.id = rq.image_asset_id
-          JOIN source_images si ON si.id = a.source_image_id
-         WHERE rq.id = ?
-        """,
-        (review_id,),
-    ).fetchone()
-    if row is None or not row["listing_key"]:
-        raise HTTPException(status_code=404, detail="Review item not found.")
-    listing_key = row["listing_key"]
-
-    # Toutes les source_images du listing (même listing_key) → leurs rows.
-    sids = [
-        r["sid"] for r in conn.execute(
-            f"SELECT si.id AS sid FROM source_images si "  # noqa: S608
-            f"WHERE {_LISTING_KEY_SQL} = ?",
-            (listing_key,),
-        ).fetchall()
-    ]
-    if not sids:
-        raise HTTPException(status_code=404, detail="Listing has no images.")
-    ph = ",".join("?" * len(sids))
-
-    with conn:
-        affected = [
-            r["image_asset_id"] for r in conn.execute(
-                f"""
-                SELECT image_asset_id FROM review_queue
-                 WHERE status = 'open' AND kind != 'lot'
-                   AND image_asset_id IN (
-                       SELECT a.id FROM image_assets a
-                        WHERE a.source_image_id IN ({ph})
-                   )
-                """,  # noqa: S608
-                sids,
-            ).fetchall()
-        ]
-        cur = conn.execute(
-            f"""
-            UPDATE review_queue
-               SET kind = 'lot'
-             WHERE status = 'open' AND kind != 'lot'
-               AND image_asset_id IN (
-                   SELECT a.id FROM image_assets a
-                    WHERE a.source_image_id IN ({ph})
-               )
-            """,  # noqa: S608
-            sids,
-        )
-        n_requalified = cur.rowcount or 0
-        # Sync : un event par row basculée (listing_text_signals reste local —
-        # hors périmètre v1, cf. docs/work-in-progress/local-sync/).
-        for aid in affected:
-            emit_field_event(
-                conn, asset_id=aid, reason="requalify",
-                fields={"review_queue.kind": "lot"},
-            )
-        # Taxonomie : marque le listing en 'lot' (manuel → non ré-écrasé par C2).
-        conn.execute(
-            f"""
-            UPDATE listing_text_signals
-               SET listing_kind = 'lot', listing_kind_confidence = 1.0,
-                   extractor_version = 'manual', computed_at = datetime('now')
-             WHERE source_image_id IN ({ph})
-            """,  # noqa: S608
-            sids,
-        )
-
+    try:
+        with conn:
+            result = apply_requalify_lot(conn, review_id)
+    except DecisionError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail)
     logger.info("[review] requalify-lot id=%s listing=%s rows=%d images=%d",
-                review_id, listing_key, n_requalified, len(sids))
-    return RequalifyLotResponse(
-        status="ok", listing_key=listing_key,
-        n_requalified=n_requalified, n_images=len(sids),
-    )
+                review_id, result["listing_key"], result["n_requalified"],
+                result["n_images"])
+    return RequalifyLotResponse(**result)
 
 
 # Consumed by: admin/.../review/composables/useLotReview.ts (requalifyLotAsSingle)
@@ -2221,66 +2101,19 @@ def requalify_single(listing_key: str) -> RequalifyLotResponse:
     """Inverse de requalify-lot : le listing n'est PAS un lot (faux positif de
     la classif v2). Rebascule toutes ses rows ``open`` en ``kind='single'`` +
     ``listing_kind='single'`` → elles repartent dans le flow single."""
+    # Logique SQL déléguée à ``store.decisions.apply_requalify_single`` (source
+    # unique partagée avec le jumeau lean VPS ``serving/review_queue/writes.py``).
+    from store.decisions import DecisionError, apply_requalify_single
+
     conn = _store()._connection()  # noqa: SLF001
-    sids = [
-        r["sid"] for r in conn.execute(
-            f"SELECT si.id AS sid FROM source_images si "  # noqa: S608
-            f"WHERE {_LISTING_KEY_SQL} = ?",
-            (listing_key,),
-        ).fetchall()
-    ]
-    if not sids:
-        raise HTTPException(status_code=404, detail=f"Lot '{listing_key}' not found.")
-    ph = ",".join("?" * len(sids))
-
-    with conn:
-        affected = [
-            r["image_asset_id"] for r in conn.execute(
-                f"""
-                SELECT image_asset_id FROM review_queue
-                 WHERE status = 'open' AND kind != 'single'
-                   AND image_asset_id IN (
-                       SELECT a.id FROM image_assets a
-                        WHERE a.source_image_id IN ({ph})
-                   )
-                """,  # noqa: S608
-                sids,
-            ).fetchall()
-        ]
-        cur = conn.execute(
-            f"""
-            UPDATE review_queue
-               SET kind = 'single'
-             WHERE status = 'open' AND kind != 'single'
-               AND image_asset_id IN (
-                   SELECT a.id FROM image_assets a
-                    WHERE a.source_image_id IN ({ph})
-               )
-            """,  # noqa: S608
-            sids,
-        )
-        n_requalified = cur.rowcount or 0
-        for aid in affected:
-            emit_field_event(
-                conn, asset_id=aid, reason="requalify",
-                fields={"review_queue.kind": "single"},
-            )
-        conn.execute(
-            f"""
-            UPDATE listing_text_signals
-               SET listing_kind = 'single', listing_kind_confidence = 1.0,
-                   extractor_version = 'manual', computed_at = datetime('now')
-             WHERE source_image_id IN ({ph})
-            """,  # noqa: S608
-            sids,
-        )
-
+    try:
+        with conn:
+            result = apply_requalify_single(conn, listing_key)
+    except DecisionError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail)
     logger.info("[review] requalify-single listing=%s rows=%d images=%d",
-                listing_key, n_requalified, len(sids))
-    return RequalifyLotResponse(
-        status="ok", listing_key=listing_key,
-        n_requalified=n_requalified, n_images=len(sids),
-    )
+                listing_key, result["n_requalified"], result["n_images"])
+    return RequalifyLotResponse(**result)
 
 
 class BatchRequalifyLotResponse(BaseModel):
@@ -3325,29 +3158,18 @@ def move_lane(review_id: str) -> dict[str, str]:
     re-route post-Dino) ne pourra le ré-router. Seul sens utile désormais :
     auto_accept→manual (sortir un item de l'auto-accept pour le trancher à la
     main). N'agit que sur un item ``open``."""
+    # Logique SQL déléguée à ``store.decisions.apply_move_lane`` (source unique
+    # partagée avec le jumeau lean VPS ``serving/review_queue/writes.py``).
+    from store.decisions import DecisionError, apply_move_lane
+
     conn = _store()._connection()  # noqa: SLF001
-    cur = conn.execute(
-        "UPDATE review_queue SET lane = 'manual', lane_source = 'human' "
-        "WHERE id = ? AND status = 'open'",
-        (review_id,),
-    )
-    if cur.rowcount != 1:
-        raise HTTPException(
-            status_code=404,
-            detail="Review item introuvable ou non-ouvert (déjà décidé ?).",
-        )
-    rq = conn.execute(
-        "SELECT image_asset_id FROM review_queue WHERE id = ?", (review_id,),
-    ).fetchone()
-    emit_field_event(
-        conn, asset_id=rq["image_asset_id"], reason="move_lane",
-        fields={
-            "review_queue.lane": "manual",
-            "review_queue.lane_source": "human",
-        },
-    )
+    try:
+        result = apply_move_lane(conn, review_id)
+        conn.commit()
+    except DecisionError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail)
     logger.info("[review] move-lane id=%s → manual (human)", review_id)
-    return {"status": "ok", "id": review_id, "lane": "manual"}
+    return result
 
 
 # ── Auto-accept déterministe (Dino + texte, pas de Claude) ────────────────

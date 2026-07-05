@@ -488,3 +488,198 @@ def apply_lot_decide(conn, listing_key: str, assignments) -> dict:
         "done": n_done, "rejected": n_rejected,
         "skipped": n_skipped, "errors": errors,
     }
+
+
+# ── Corrections de routage review (requalif kind, lane, taxonomie listing) ────
+# SQL-pures comme les décisions ci-dessus → servies à l'identique par la route
+# lourde locale (`review/review_queue_routes.py`, skippée sur le VPS à cause d'un
+# `import cv2`) ET le jumeau lean VPS (`serving/review_queue/writes.py`). Direction
+# A : le front les appelle sur le VPS via `eurioApi` (chemins identiques).
+
+_VALID_LISTING_KINDS = ("single", "lot", "coffret", "graded_slab")
+_VALID_CONDITIONS = ("UNC", "TTB", "TB")
+
+
+def apply_correct_listing(
+    conn, review_id: str, listing_kind: str | None = None,
+    condition: str | None = None,
+) -> dict:
+    """Corrige manuellement ``listing_kind`` et/ou ``condition`` d'un listing.
+    Propage à TOUTES les source_images du listing (identité = ``source_url``) et
+    pose ``extractor_version='manual'`` (le step C2 text_signal ne ré-écrasera
+    plus). Indépendant de l'attribution — la review reste ``open``."""
+    if listing_kind is None and condition is None:
+        raise DecisionError(422, "Provide listing_kind and/or condition.")
+    if listing_kind is not None and listing_kind not in _VALID_LISTING_KINDS:
+        raise DecisionError(422, f"listing_kind must be one of {_VALID_LISTING_KINDS}")
+    if condition is not None and condition not in _VALID_CONDITIONS:
+        raise DecisionError(422, f"condition must be one of {_VALID_CONDITIONS}")
+
+    si = conn.execute(
+        """
+        SELECT s.id AS sid, s.source, s.source_url
+          FROM review_queue rq
+          JOIN image_assets a ON a.id = rq.image_asset_id
+          JOIN source_images s ON s.id = a.source_image_id
+         WHERE rq.id = ?
+        """,
+        (review_id,),
+    ).fetchone()
+    if si is None:
+        raise DecisionError(404, "Review item not found.")
+
+    if si["source_url"]:
+        sibling_ids = [
+            r["id"] for r in conn.execute(
+                "SELECT id FROM source_images WHERE source = ? AND source_url = ?",
+                (si["source"], si["source_url"]),
+            ).fetchall()
+        ]
+    else:
+        sibling_ids = [si["sid"]]
+
+    sets = ["extractor_version = 'manual'", "computed_at = datetime('now')"]
+    args: list = []
+    if listing_kind is not None:
+        sets.append("listing_kind = ?")
+        sets.append("listing_kind_confidence = 1.0")
+        args.append(listing_kind)
+    if condition is not None:
+        sets.append("condition_normalized = ?")
+        sets.append("condition_confidence = 1.0")
+        args.append(condition)
+
+    placeholders = ",".join("?" * len(sibling_ids))
+    conn.execute(
+        f"UPDATE listing_text_signals SET {', '.join(sets)} "  # noqa: S608
+        f"WHERE source_image_id IN ({placeholders})",
+        (*args, *sibling_ids),
+    )
+    return {
+        "status": "ok", "id": review_id, "n_images": len(sibling_ids),
+        "listing_kind": listing_kind, "condition": condition,
+    }
+
+
+def _requalify_rows(conn, sids: list, target_kind: str) -> int:
+    """Bascule les rows review ``open`` des source_images ``sids`` vers
+    ``target_kind`` ('lot' | 'single') + event par row + taxonomie
+    ``listing_text_signals.listing_kind``. Idempotent (filtre ``kind != target``).
+    Retourne le nb de rows basculées."""
+    ph = ",".join("?" * len(sids))
+    affected = [
+        r["image_asset_id"] for r in conn.execute(
+            f"""
+            SELECT image_asset_id FROM review_queue
+             WHERE status = 'open' AND kind != ?
+               AND image_asset_id IN (
+                   SELECT a.id FROM image_assets a
+                    WHERE a.source_image_id IN ({ph})
+               )
+            """,  # noqa: S608
+            (target_kind, *sids),
+        ).fetchall()
+    ]
+    cur = conn.execute(
+        f"""
+        UPDATE review_queue SET kind = ?
+         WHERE status = 'open' AND kind != ?
+           AND image_asset_id IN (
+               SELECT a.id FROM image_assets a
+                WHERE a.source_image_id IN ({ph})
+           )
+        """,  # noqa: S608
+        (target_kind, target_kind, *sids),
+    )
+    for aid in affected:
+        emit_field_event(
+            conn, asset_id=aid, reason="requalify",
+            fields={"review_queue.kind": target_kind},
+        )
+    conn.execute(
+        f"""
+        UPDATE listing_text_signals
+           SET listing_kind = ?, listing_kind_confidence = 1.0,
+               extractor_version = 'manual', computed_at = datetime('now')
+         WHERE source_image_id IN ({ph})
+        """,  # noqa: S608
+        (target_kind, *sids),
+    )
+    return cur.rowcount or 0
+
+
+def apply_requalify_lot(conn, review_id: str) -> dict:
+    """« Ce single est en fait un lot » : bascule TOUT le listing du crop en
+    ``kind='lot'`` (les rows quittent la queue single → flow lot)."""
+    row = conn.execute(
+        f"""
+        SELECT {_LISTING_KEY_SQL} AS listing_key
+          FROM review_queue rq
+          JOIN image_assets a ON a.id = rq.image_asset_id
+          JOIN source_images si ON si.id = a.source_image_id
+         WHERE rq.id = ?
+        """,  # noqa: S608
+        (review_id,),
+    ).fetchone()
+    if row is None or not row["listing_key"]:
+        raise DecisionError(404, "Review item not found.")
+    listing_key = row["listing_key"]
+    sids = [
+        r["sid"] for r in conn.execute(
+            f"SELECT si.id AS sid FROM source_images si "  # noqa: S608
+            f"WHERE {_LISTING_KEY_SQL} = ?",
+            (listing_key,),
+        ).fetchall()
+    ]
+    if not sids:
+        raise DecisionError(404, "Listing has no images.")
+    n = _requalify_rows(conn, sids, "lot")
+    return {
+        "status": "ok", "listing_key": listing_key,
+        "n_requalified": n, "n_images": len(sids),
+    }
+
+
+def apply_requalify_single(conn, listing_key: str) -> dict:
+    """Inverse : ce listing n'est PAS un lot (faux positif v2) → rebascule ses
+    rows ``open`` en ``kind='single'`` (repartent dans le flow single)."""
+    sids = [
+        r["sid"] for r in conn.execute(
+            f"SELECT si.id AS sid FROM source_images si "  # noqa: S608
+            f"WHERE {_LISTING_KEY_SQL} = ?",
+            (listing_key,),
+        ).fetchall()
+    ]
+    if not sids:
+        raise DecisionError(404, f"Lot '{listing_key}' not found.")
+    n = _requalify_rows(conn, sids, "single")
+    return {
+        "status": "ok", "listing_key": listing_key,
+        "n_requalified": n, "n_images": len(sids),
+    }
+
+
+def apply_move_lane(conn, review_id: str) -> dict:
+    """Déplace un item ``open`` vers la lane MANUELLE (sticky ``lane_source=
+    'human'`` → aucun recalcul Dino ne le ré-routera). Sens utile : sortir un
+    item de l'auto-accept pour le trancher à la main."""
+    cur = conn.execute(
+        "UPDATE review_queue SET lane = 'manual', lane_source = 'human' "
+        "WHERE id = ? AND status = 'open'",
+        (review_id,),
+    )
+    if cur.rowcount != 1:
+        raise DecisionError(
+            404, "Review item introuvable ou non-ouvert (déjà décidé ?).",
+        )
+    rq = conn.execute(
+        "SELECT image_asset_id FROM review_queue WHERE id = ?", (review_id,),
+    ).fetchone()
+    emit_field_event(
+        conn, asset_id=rq["image_asset_id"], reason="move_lane",
+        fields={
+            "review_queue.lane": "manual",
+            "review_queue.lane_source": "human",
+        },
+    )
+    return {"status": "ok", "id": review_id, "lane": "manual"}
