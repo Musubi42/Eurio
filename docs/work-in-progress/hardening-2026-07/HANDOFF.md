@@ -1,19 +1,28 @@
 # HANDOFF — Hardening Eurio (reprise en session fraîche)
 
-> **Point d'entrée unique.** Lis-le en entier avant d'agir. Épinglé au SHA `6b93aab`
-> (`sources-jo-wikipedia`) — si `HEAD` a avancé, re-vérifie avant de suivre (leçon #6).
+> **Point d'entrée unique.** Lis-le en entier avant d'agir. Épinglé au SHA `ce3a802`
+> (`sources-jo-wikipedia`, chunks C3+B2a livrés) — si `HEAD` a avancé, re-vérifie avant de
+> suivre (leçon #6).
 
 ---
 
-## 0. TL;DR — où on en est (2026-07-05, nuit)
+## 0. TL;DR — où on en est (2026-07-06)
 
-- **État machine** : **Model A actif, lab 100% fonctionnel** (scan intrus+face Dino re-testé OK,
-  manual-crop OK). Tout committé + **poussé codeberg+github** (`HEAD=6b93aab`). **Suite ML : 0 rouge
-  / 1393 verts.** 3 machines : Mac à jour ; **PC et VPS à `git pull`** (voir §5).
-- **Énorme progrès cette session** : harmonisation 3 machines, F05 (A/B/C), F02 (C3/C2/C5), **split
-  bookkeeping** (précond flip), et **flip 1a tenté + validé sur son périmètre puis rollback**.
-- **🎯 LE PROCHAIN CHANTIER = §2** : compléter le **routage Direction A des writers canoniques du
-  lab** (révélé par le flip). Une fois fait → **re-flip → clôt F01** → re-validation globale.
+- **État machine** : Model A actif. Branche `sources-jo-wikipedia`, `HEAD` avancé de 3 commits
+  depuis `6b93aab` (voir ci-dessous). Suite verte sur le périmètre touché.
+- **🎯 CHANTIER §2 EN COURS — approche PO = « C3 front-reroute + gardes »** (PAS les /ingest
+  par-writer du plan initial : l'audit précis a montré que les writers de décision ont DÉJÀ
+  leurs jumeaux canoniques sur le VPS + que le front route DÉJÀ la plupart via `eurioApi` →
+  /ingest par-writer aurait dupliqué `funnel_writes.py`, R0). Détail corrigé en §2.
+- **Fait cette session (2 chunks committés + vérifiés)** :
+  - `8dc06b3` **C3 hot-path** : `decideLot` (front) reroutée `ML_API`→`eurioApi` (dernier gap
+    décision) + **garde DRY** = 1 exception handler `sqlite3.OperationalError` dans `server.py`
+    (write canonique local sous le flip → 503 `canonical_readonly` actionnable, pas 500 opaque).
+  - `ce3a802` **B2a** : gardes `resolve_db_readonly()` sur `apply_manual_crop`+`delete_crop`
+    (compute local + forward VPS, skip write local sous le flip) — clôt le live-repro manual-crop.
+- **Effet : le flip est maintenant LIVABLE pour le cœur du lab** (toutes décisions review/funnel/
+  lot + reassign → VPS ; recrop + delete manuels → OK sous le flip ; tout le reste refuse
+  proprement en 503). Reste B2b + stragglers (§2) avant flip 100%.
 - **Backups pré-flip faits** (Mac+VPS, `integrity=ok`) — cf. §3. Rien perdu, réplique jamais écrite.
 
 ---
@@ -37,49 +46,50 @@ Détail par fiche : `README.md` (index 58 findings) + `01-…md` (F01 sync) + `0
 
 ## 2. 🎯 CHANTIER ACTIF — compléter le routage Direction A des writers canoniques
 
-### Le problème (ce que le flip a révélé)
+### ⚠️ Le plan initial était FAUX — audit précis (2026-07-06) qui le corrige
 
-Sous le flip (`EURIO_DB_READONLY=1` + `EURIO_DB_PATH=replica`), **toute opération du lab qui édite le
-canonique en DIRECT lève `sqlite3.OperationalError: attempt to write a readonly database`** — échec
-**BRUYANT** (mode sûr, zéro perte/divergence silencieuse). Reproduit live : `POST
-/coins/assets/{id}/manual-crop` → `crop_edit.py:304 apply_manual_crop` → `conn.execute(UPDATE
-image_assets…)`.
+Le HANDOFF disait « créer un `/ingest/*` par writer (reassign, lot-decide, review-queue…) ».
+**L'audit précis montre que c'est redondant** : les writers de **décision** ont DÉJÀ leurs
+jumeaux canoniques montés **inconditionnellement** sur le VPS (`serving/funnel_writes.py`,
+`serving/review_queue/writes.py`, `serving/lab_read`), **chemins publics identiques** aux routes
+locales lourdes. Et le **front route DÉJÀ** la plupart des writes canoniques via le client
+`eurioApi` (→ `eurio-api.musubi.dev`), distinct de `ml-api.ts` (→ `:8042` local). Construire des
+`/ingest` par-writer aurait **dupliqué `funnel_writes.py`** (R0). → **PO a tranché : approche
+« C3 front-reroute + gardes »** (`AskUserQuestion` 2026-07-06).
 
-**Cause racine** : Direction A veut que les écritures canoniques partent au VPS (`/ingest/*`,
-writer unique) pendant que les machines dev lisent la réplique ro. F01 a routé CERTAINS writers
-(crops/exclude, gate/reject, referential-fix, delete-asset, confusion-map) mais PAS tous, et ceux
-qui ont un forward écrivent souvent le **local d'abord** (non gardé sous readonly) → throw avant le
-forward. `resolve_db_readonly()` (existe, `store/__init__.py`) n'est **garde d'écriture nulle part**.
+Les writers tombent en **3 buckets réels** :
 
-### Worklist (writers canoniques reachable du lab, à router)
-
-| Fichier | # writes canoniques | forward `/ingest` déjà ? | action |
+| Bucket | Writers | Fix réel | État |
 |---|---|---|---|
-| `review/review_queue_routes.py` | 16 | ❌ | garde readonly + endpoint(s) `/ingest` + forward |
-| `store/decisions.py` (`apply_reassign`, `apply_lot_decide`, …) | 12 | ❌ | idem — writers décision review |
-| `serving/review_queue/writes.py` | 7 | ❌ | idem |
-| `serving/crop_edit.py` (`apply_manual_crop`, `delete_crop`, …) | 4 | ✅ (8 refs) | **garder le write local sous `resolve_db_readonly()`** (le forward existe déjà) |
-| `serving/coin_assets_routes.py` | 4 | ❌ | garde + endpoint + forward |
-| `serving/{lab,coins}_routes.py` | 1+1 | — | vérifier au cas par cas |
+| **B1 — décisions avec jumeau VPS** (`decisions.py apply_*`, `review_queue/writes.py`) : reassign, accept/reopen/training-eligible, lot-decide, decide/skip/reject/restore | le **front** appelle le jumeau VPS via `eurioApi` (chemin identique) | ✅ **FAIT** : single+funnel déjà sur `eurioApi` ; **lot-decide** reroutée `8dc06b3` (dernier gap) |
+| **B2 — writers cv2 lourds** (compute obligatoirement local) : recrop, delete, **add-crop**, lot detect/sync-crops | garde `resolve_db_readonly()` (skip write local) + forward `/ingest` (compute local → push VPS) | 🟡 **B2a FAIT** (`ce3a802` : recrop+delete gardés, forwards existants) ; **B2b RESTE** |
+| **B3 — filet de sécurité** : tout write canonique local résiduel sous le flip | 1 exception handler DRY → 503 `canonical_readonly` | ✅ **FAIT** (`8dc06b3`, `server.py`) |
 
-_(Comptes obtenus par grep `INSERT/UPDATE/DELETE (image_assets|coins|review_queue|source_images|coin_source_*|coin_canonical)` ; refaire l'audit précis en début de session.)_
+### RESTE (B2b + stragglers) — le vrai backlog
 
-### Le pattern de fix (par writer)
+1. **B2b — `create_manual_crop` (add-crop)** : écrit un NOUVEAU crop + row review, mais n'a **pas**
+   de forward `/ingest` (utilise encore l'event-log défunt `emit_state_event` row_ops). Sous le
+   flip → 503 (refus propre via le handler). Pour le rendre **fonctionnel** sous le flip : créer un
+   endpoint `/ingest/*` « nouveau crop + review » (client `push_*` + `store.apply_ingest_*` +
+   **déployer VPS**). Idem lot **detect** (`detections_json`) + **sync-crops** (review_queue_routes).
+2. **Stragglers SANS jumeau VPS** (vivent SEULEMENT dans `review/review_queue_routes.py`, skippé sur
+   le VPS) : `requalify-single` / `requalify-lot` (+batch) / `correct-listing` / `move-lane→manual`.
+   Ce sont des décisions **SQL-pures** → **DÉCISION À PRENDRE** : (a) extraire un jumeau lean dans
+   `review_queue/writes.py` ou `funnel_writes.py` (comme decide/lot l'ont été) + reroute front
+   `eurioApi`, OU (b) acter ces features **indisponibles sous le flip** (refus 503, features rares).
+3. **C6 (event-log)** : `emit_state_event`/`emit_field_event` écrivent ENCORE le canonique
+   `image_state_events`+`image_state_current`. Pas bloquant (gardes + handler couvrent le readonly),
+   mais c'est du poids mort sous Direction A → retrait C6 à cadrer (cf. `migration-direction-a.md`).
+4. **Scan face-write** : `training/training_set_scan.py:469` écrit `image_assets.face` (déjà gardé
+   par `sync_enabled()` + push_faces ? **à re-vérifier** avant re-flip — sinon throw/503 au scan).
 
-1. **Garder l'écriture locale** : `if not resolve_db_readonly(): conn.execute(<write local>)`.
-   Sous le flip → skip le local (pas de throw) ; en Model A → écrit local comme avant.
-2. **Forward VPS** : sous `sync_enabled()` (`EURIO_API_URL` posé), POST vers un endpoint
-   **`/ingest/*`** (dans `serving/ingest_routes.py`, TOUJOURS monté sur le VPS — les routers
-   `review_queue`/`coin_assets`/`referential` sont **skippés** sur le VPS, PIL/cv2 absents, cf.
-   leçon #3). Pattern client déjà en place : `client/ingest.py` (`push_crops`, `push_delete_asset`,
-   `push_confusion_map`) + `store/*.py` `apply_ingest_*` (validation bruyante). En créer pour :
-   reassign, lot-decide, review-queue mutations, coin-assets, manual-crop-géométrie…
-3. **Déployer** `server_serve.py` sur le VPS pour exposer les nouveaux `/ingest/*` **avant** de
-   re-flipper (les forwards 404 sinon — bruyant).
+### Le pattern (B2b, par writer cv2)
 
-⚠️ **Attention scan face-write** : `training/training_set_scan.py` écrit `image_assets.face`
-(canonique) pendant le scan → même traitement (garde + forward). Le scan a marché en Model A
-re-testé, mais throwera sous le flip s'il n'est pas gardé.
+`client/http.py` a le client générique (`post_json`/`delete_json` → `EURIO_API_URL` + Bearer).
+`client/ingest.py` a `push_crops`/`push_delete_asset`/`push_confusion_map` + `store/*.apply_ingest_*`
+(validation bruyante). Pour add-crop : nouvel endpoint `/ingest/*` (VPS lean, TOUJOURS monté ;
+`review_queue`/`coin_assets` sont skippés — PIL/cv2 absents, leçon #3) + `push_*` + `apply_ingest_*`,
+puis **déployer `server_serve.py` VPS AVANT de re-flipper** (sinon forward 404).
 
 ### Preuve que le flip marche + comment re-flipper
 
