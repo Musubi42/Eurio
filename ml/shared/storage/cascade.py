@@ -37,10 +37,24 @@ STATUS_REMOVED = "removed_via_admin"
 
 
 def _db_path() -> Path:
-    """Locate the eurio.db. Override via EURIO_DB env var."""
-    env = os.environ.get("EURIO_DB")
+    """Locate the eurio.db, honoring EURIO_DB_PATH (convention repo).
+
+    Utilise EURIO_DB_PATH (la convention du repo, honorée par serving/*, store/*), pas
+    l'ancien EURIO_DB : sinon cette cascade lit/écrit un fichier DIFFÉRENT de celui du
+    serveur quand EURIO_DB_PATH est reconfiguré (ex. réplique Direction A), et le
+    storage_status diverge silencieusement du reste de l'app. EURIO_DB reste accepté en
+    fallback pour compat, avec un warning."""
+    env = os.environ.get("EURIO_DB_PATH")
     if env:
         return Path(env)
+    legacy = os.environ.get("EURIO_DB")
+    if legacy:
+        import warnings
+        warnings.warn(
+            "cascade._db_path lit EURIO_DB (déprécié) — migrer vers EURIO_DB_PATH.",
+            DeprecationWarning, stacklevel=2,
+        )
+        return Path(legacy)
     # ml/storage/cascade.py → parents[1] = ml/, then state/eurio.db
     return Path(__file__).resolve().parents[1] / "state" / "eurio.db"
 

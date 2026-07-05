@@ -308,7 +308,7 @@ def _create_pat(
 def main(argv: list[str] | None = None) -> int:
     import argparse
 
-    from store import Store
+    from store import Store, resolve_db_path
 
     parser = argparse.ArgumentParser(prog="python -m serving.auth", description=__doc__)
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -353,7 +353,7 @@ def main(argv: list[str] | None = None) -> int:
             expires_days=args.expires_days,
         )
 
-    store = Store(_DEFAULT_DB)
+    store = Store(resolve_db_path(_DEFAULT_DB))
     conn = store._connection()  # noqa: SLF001
     if args.cmd == "add-token":
         print(

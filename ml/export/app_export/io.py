@@ -32,8 +32,11 @@ if str(_ML_ROOT) not in sys.path:
     sys.path.insert(0, str(_ML_ROOT))
 
 from export.sync_to_supabase import load_env  # noqa: E402
+from store import resolve_db_path  # noqa: E402
 
-_DB_PATH = _ML_ROOT / "state" / "eurio.db"
+# Honore EURIO_DB_PATH (réplique Direction A) : sans ça l'export catalogue lirait
+# un ml/state/eurio.db legacy périmé sur Mac/PC. Défaut = chemin historique.
+_DB_PATH = resolve_db_path(_ML_ROOT / "state" / "eurio.db")
 _BATCH_SIZE = 500
 
 

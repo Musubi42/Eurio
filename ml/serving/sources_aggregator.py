@@ -508,7 +508,9 @@ def _count_bce_enriched_sqlite() -> int | None:
         return None
 
     import sqlite3
-    db_path = ML_DIR / "state" / "eurio.db"
+
+    from store import resolve_db_path
+    db_path = resolve_db_path(ML_DIR / "state" / "eurio.db")
     if not db_path.is_file():
         return None
     try:
