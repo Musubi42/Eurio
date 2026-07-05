@@ -21,6 +21,11 @@ result
 # Les secrets vivent dans `secrets/dev.env` (chiffré via SOPS+age).
 # Override local optionnel uniquement.
 .envrc.local
+# Garde-fou anti-fuite : toute copie/variante d'.envrc (ex. `.envrc copy`) contient
+# des secrets en clair et ne doit JAMAIS être trackée.
+.envrc copy
+.envrc*copy*
+*.envrc.bak
 
 # Filament toolchain (matc) — installed locally via `go-task filament:install-matc`,
 # pinned to v1.71.0 to match the runtime shipped in SceneView 4.0.0.
@@ -98,6 +103,8 @@ ml/state/training.db-*
 ml/state/training.db.bak-*
 ml/state/eurio.db.bak-*
 ml/state/eurio.db.fix-attempt-*
+ml/state/eurio.db.pre-*
+ml/state/.tcc-write-probe
 # Sorties de run/probe en vrac à la racine de state/.
 ml/state/*.log
 ml/state/*_results.jsonl
