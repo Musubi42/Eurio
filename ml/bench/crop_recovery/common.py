@@ -21,10 +21,20 @@ _RAW_BUCKET = "enrichment-raws"
 
 def load_raw(key_or_path: str) -> np.ndarray | None:
     """Charge un raw : clé bucket `enrichment-raws` OU chemin local absolu
-    (fragments synthétiques D3b). Retourne BGR ou None."""
+    (fragments synthétiques D3b, restreint à l'arbre ml/). Retourne BGR ou None.
+
+    Un chemin absolu n'est accepté que s'il reste sous ML_DIR après résolution des
+    symlinks — sinon on retombe sur la clé bucket. Empêche toute lecture de fichier
+    hors du repo via un `key` malveillant côté API (cf. crop_recovery_routes)."""
     p = Path(key_or_path)
-    if p.is_absolute() and p.exists():
-        return cv2.imread(str(p), cv2.IMREAD_COLOR)
+    if p.is_absolute():
+        try:
+            resolved = p.resolve()
+            resolved.relative_to(ML_DIR)
+            if resolved.exists():
+                return cv2.imread(str(resolved), cv2.IMREAD_COLOR)
+        except (ValueError, OSError):
+            pass
     from shared.storage.local_cache import local_path
     try:
         return cv2.imread(str(local_path(_RAW_BUCKET, key_or_path)), cv2.IMREAD_COLOR)

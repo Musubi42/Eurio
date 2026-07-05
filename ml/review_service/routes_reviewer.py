@@ -170,7 +170,8 @@ def decide(
             (item_id, token),
         )
         if cur.rowcount != 1:
-            conn.execute("ROLLBACK")
+            # Pas de ROLLBACK manuel ici : writing() l'exécute dans son except.
+            # (Un double ROLLBACK lèverait OperationalError et masquerait ce 409 en 500.)
             raise HTTPException(
                 status_code=409,
                 detail="Item plus disponible (claim expiré ou déjà décidé).",

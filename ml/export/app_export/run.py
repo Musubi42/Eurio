@@ -85,6 +85,12 @@ BuilderFn = Callable[..., list[dict]]
 
 _BUILDERS: dict[str, BuilderFn | None] = {t: None for t in TABLES}
 
+# Tables dont le builder module a échoué à l'IMPORT (dépendance manquante, import
+# circulaire, typo dans un import transitif…). Distinct d'un builder simplement
+# pas encore écrit : ici le module EXISTE mais casse — on doit le voir, pas l'avaler
+# en "skipped". Voir run() qui transforme ça en exit_code=1.
+_IMPORT_FAILED: dict[str, str] = {}
+
 # Domain builders live in consolidated modules (one module per domain, not per
 # table).  We import from the actual files produced by the domain agents.
 
@@ -93,8 +99,9 @@ try:
     from export.app_export.builders.coin import build_coin, build_shared_reverse
     _BUILDERS["coin"] = build_coin
     _BUILDERS["shared_reverse"] = build_shared_reverse
-except ImportError:
-    pass
+except ImportError as exc:
+    for _t in ("coin", "shared_reverse"):
+        _IMPORT_FAILED[_t] = str(exc)
 
 # --- relational.py: build_design_group, build_mint, build_coin_mint_release,
 #                    build_coin_credit, build_coin_topic ---
@@ -111,8 +118,9 @@ try:
     _BUILDERS["coin_mint_release"] = build_coin_mint_release
     _BUILDERS["coin_credit"] = build_coin_credit
     _BUILDERS["coin_topic"] = build_coin_topic
-except ImportError:
-    pass
+except ImportError as exc:
+    for _t in ("design_group", "mint", "coin_mint_release", "coin_credit", "coin_topic"):
+        _IMPORT_FAILED[_t] = str(exc)
 
 # --- i18n.py: build_coin_name_i18n + build_coin_description_i18n ---
 try:
@@ -122,15 +130,16 @@ try:
     )
     _BUILDERS["coin_name_i18n"] = build_coin_name_i18n
     _BUILDERS["coin_description_i18n"] = build_coin_description_i18n
-except ImportError:
-    pass
+except ImportError as exc:
+    for _t in ("coin_name_i18n", "coin_description_i18n"):
+        _IMPORT_FAILED[_t] = str(exc)
 
 # --- coin_price.py: build_coin_price ---
 try:
     from export.app_export.builders.coin_price import build_coin_price
     _BUILDERS["coin_price"] = build_coin_price
-except ImportError:
-    pass
+except ImportError as exc:
+    _IMPORT_FAILED["coin_price"] = str(exc)
 
 
 # ---------------------------------------------------------------------------
@@ -159,7 +168,14 @@ def run(apply: bool, only: str | None) -> int:
         for table in tables:
             builder = _BUILDERS.get(table)
             if builder is None:
-                print(f"  {table}: [skipped — builder not implemented yet]")
+                if table in _IMPORT_FAILED:
+                    # Le module builder existe mais casse à l'import : NE PAS traiter comme
+                    # un skip normal — sinon la table n'est jamais rafraîchie en silence.
+                    print(f"  {table}: BUILDER IMPORT ERROR — {_IMPORT_FAILED[table]}",
+                          file=sys.stderr)
+                    exit_code = 1
+                else:
+                    print(f"  {table}: [skipped — builder not implemented yet]")
                 continue
             try:
                 built[table] = builder(con)

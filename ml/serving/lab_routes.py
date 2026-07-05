@@ -1032,7 +1032,6 @@ def update_iteration(
     return _iteration_with_run_metrics(updated) if updated else {}
 
 
-@router.delete("/cohorts/{cohort_id}/iterations/{iteration_id}")
 def _purge_iteration_artifacts(iteration_id: str) -> None:
     """Supprime les artefacts disque (régénérables) d'une itération — l'« événement
     de fin ». Couvre : ``lab/iterations/<iid>`` (modèle/tflite/embeddings/previews/
@@ -1052,6 +1051,7 @@ def _purge_iteration_artifacts(iteration_id: str) -> None:
         shutil.rmtree(aug, ignore_errors=True)
 
 
+@router.delete("/cohorts/{cohort_id}/iterations/{iteration_id}")
 def delete_iteration(cohort_id: str, iteration_id: str) -> dict:
     it = _get_store().get_iteration(iteration_id)
     if it is None or it.cohort_id != cohort_id:

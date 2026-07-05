@@ -50,12 +50,27 @@ def run_detail(strategy: str) -> dict:
             "metrics": m, "cases": result["cases"]}
 
 
+def _safe_local(key: str) -> Path | None:
+    """Résout un chemin absolu SEULEMENT s'il reste sous l'arbre ml/ (state/datasets/cache).
+    Empêche la lecture de fichier arbitraire (`?key=/Users/.../keys.txt`) : tout chemin qui
+    s'échappe de _ML_DIR après résolution des symlinks est rejeté (retourne None)."""
+    p = Path(key)
+    if not p.is_absolute():
+        return None
+    try:
+        resolved = p.resolve()
+        resolved.relative_to(_ML_DIR.resolve())  # lève ValueError si hors de ml/
+    except (ValueError, OSError):
+        return None
+    return resolved if resolved.exists() else None
+
+
 @router.get("/raw")
 def raw(key: str = Query(...)) -> FileResponse:
-    """Sert un raw (clé bucket enrichment-raws OU chemin local D3b)."""
-    p = Path(key)
-    if p.is_absolute() and p.exists():
-        return FileResponse(str(p))
+    """Sert un raw (clé bucket enrichment-raws OU chemin local D3b, restreint à l'arbre ml/)."""
+    safe = _safe_local(key)
+    if safe is not None:
+        return FileResponse(str(safe))
     from shared.storage.local_cache import local_path
     try:
         fp = local_path("enrichment-raws", key)

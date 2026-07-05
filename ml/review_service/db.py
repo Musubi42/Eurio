@@ -76,5 +76,11 @@ class ReviewDB:
                 yield conn
                 conn.execute("COMMIT")
             except Exception:
-                conn.execute("ROLLBACK")
+                # ROLLBACK défensif : si le call-site a déjà rollback (ou n'a pas de
+                # transaction active), ne pas masquer l'exception d'origine par une
+                # OperationalError "no transaction is active".
+                try:
+                    conn.execute("ROLLBACK")
+                except sqlite3.OperationalError:
+                    pass
                 raise

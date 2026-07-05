@@ -21,7 +21,22 @@ _COOKIE_MAX_AGE = 30 * 24 * 3600  # 30 j — confort, pas sécurité forte
 
 
 def _secret() -> bytes:
-    return os.environ.get("REVIEW_SESSION_SECRET", "dev-insecure-secret").encode()
+    """Clé de signature des cookies de session.
+
+    Fail-hard si REVIEW_SESSION_SECRET est absent : sans ça, le service signerait
+    silencieusement tous les cookies avec une constante publique ('dev-insecure-secret'),
+    permettant à quiconque connaît cette valeur de forger une session valide pour
+    n'importe quel reviewer. En dev local, poser REVIEW_ALLOW_INSECURE_SECRET=1 pour
+    accepter explicitement le fallback (jamais en déploiement)."""
+    secret = os.environ.get("REVIEW_SESSION_SECRET")
+    if secret:
+        return secret.encode()
+    if os.environ.get("REVIEW_ALLOW_INSECURE_SECRET") == "1":
+        return b"dev-insecure-secret"
+    raise RuntimeError(
+        "REVIEW_SESSION_SECRET absent. Poser le secret (SOPS) au déploiement, "
+        "ou REVIEW_ALLOW_INSECURE_SECRET=1 pour un dev local explicite."
+    )
 
 
 def _sign(token: str) -> str:
