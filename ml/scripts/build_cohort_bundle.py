@@ -59,7 +59,9 @@ BUNDLE_META_VERSION = 2
 # (one per coin × 3 conditions) becomes unmanageable. Cap at 9 tests
 # (3 coins × 3 conditions) sampled deterministically. Sprint 4 may revisit
 # the sampling strategy (zone-stratified, etc).
-TEST_CONDITIONS: tuple[str, ...] = ("bright", "dim", "tilt")
+# glare/inhand ajoutés pour le corpus de scan (scan-quality/corpus-spec.md §Q2) ;
+# worn/dirty restent hors vocabulaire prescrit ce cycle (pièces propres).
+TEST_CONDITIONS: tuple[str, ...] = ("bright", "dim", "tilt", "glare", "inhand")
 SAMPLE_COIN_THRESHOLD = 30
 SAMPLED_COIN_COUNT = 3
 

@@ -167,6 +167,13 @@ private fun RunFlow(bundle: CohortBundle) {
                 // Live tests are one-shot only (D-005), so leave the
                 // analyzer in photoMode.
                 it.photoMode = true
+                // Scan-corpus archive (Lot 2, corpus-spec §6): every snap also
+                // persists raw.jpg + crop.png under frames/<iteration>/ so
+                // `cohort-test:pull-tests` can pull them alongside the JSONL.
+                it.snapArchiveDir = java.io.File(
+                    context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS),
+                    "eurio_live_tests/frames/${bundle.iterationId}",
+                ).apply { mkdirs() }
             }
         }.onSuccess { analyzer = it }
          .onFailure { initError = it.message ?: it::class.java.simpleName }

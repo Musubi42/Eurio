@@ -396,5 +396,9 @@ tasks:
     cmds:
       - mkdir -p {{.LOGS_DIR_LOCAL}}
       - adb pull {{.LOGS_DIR_DEVICE}}/{{.ITERATION}}.jsonl {{.LOGS_DIR_LOCAL}}/{{.ITERATION}}.jsonl
+      # Scan-corpus frames (Lot 2, corpus-spec §6). Tolerant: old sessions
+      # predate frame archiving and have no frames/ dir on the device.
+      - mkdir -p {{.LOGS_DIR_LOCAL}}/frames
+      - adb pull {{.LOGS_DIR_DEVICE}}/frames/{{.ITERATION}} {{.LOGS_DIR_LOCAL}}/frames/ || echo "no frames dir on device (ok)"
       - 'curl -fsS -X POST {{.ML_API}}/lab/cohorts/_/iterations/{{.ITERATION}}/live-tests/sync -H "Content-Type: application/json" -d "{}"'
       - echo "\nSynced. Refresh §5 in /lab/cohorts/<name>/iterations/{{.ITERATION}}."

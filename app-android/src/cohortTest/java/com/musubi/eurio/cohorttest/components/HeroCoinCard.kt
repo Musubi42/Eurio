@@ -171,6 +171,8 @@ private fun conditionVisual(condition: String): ConditionVisual = when (conditio
     "bright" -> ConditionVisual("☀️", "Lumière vive")
     "dim" -> ConditionVisual("🌙", "Faible lumière")
     "tilt" -> ConditionVisual("📐", "Inclinée")
+    "glare" -> ConditionVisual("✨", "Reflets")
+    "inhand" -> ConditionVisual("✋", "En main")
     else -> ConditionVisual("•", condition)
 }
 

@@ -188,6 +188,8 @@ fun LiveTestsScreen(
                     } ?: false,
                     error = errorMsg,
                     ts = logger.isoNow(),
+                    rawSha = scan.snapRawSha,
+                    cropSha = scan.snapCropSha,
                 )
                 // Re-snap toujours autorisé : on (ré)écrit le résultat du test
                 // courant. Avant, un test déjà enregistré (sans erreur) rendait

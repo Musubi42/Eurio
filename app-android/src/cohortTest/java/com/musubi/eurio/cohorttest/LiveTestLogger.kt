@@ -93,6 +93,8 @@ class LiveTestLogger(
                         ?: (obj["is_correct"] as JsonPrimitive).boolean,
                     error = nullableString(obj["error"]),
                     ts = (obj["ts"] as JsonPrimitive).content,
+                    rawSha = nullableString(obj["raw_sha"]),
+                    cropSha = nullableString(obj["crop_sha"]),
                 )
             } catch (e: Exception) {
                 Log.w(TAG, "Skipping malformed line: ${line.take(80)}…", e)
@@ -141,6 +143,11 @@ class LiveTestLogger(
             append(",\"is_correct_eq\":${result.isCorrectEq}")
             append(",\"error\":${result.error?.let { esc(it) } ?: "null"}")
             append(",\"ts\":${esc(result.ts)}")
+            // Scan-corpus link (Lot 2, corpus-spec §6) — additive fields only,
+            // the pre-existing schema stays valid for older consumers.
+            append(",\"raw_sha\":${result.rawSha?.let { esc(it) } ?: "null"}")
+            append(",\"crop_sha\":${result.cropSha?.let { esc(it) } ?: "null"}")
+            append(",\"device_model\":${esc(android.os.Build.MODEL)}")
             append('}')
         }
         outputFile.appendText(line + "\n")

@@ -3703,7 +3703,7 @@ def cohort_test_build_info(cohort_id: str, iteration_id: str) -> dict:
 
 LIVE_TEST_LOGS_DIR = _ML_DIR / "state" / "live_test_logs"
 LIVE_TEST_SCHEMA_VERSION = 1
-LIVE_TEST_CONDITIONS = {"bright", "dim", "tilt"}
+LIVE_TEST_CONDITIONS = {"bright", "dim", "tilt", "glare", "inhand"}
 
 
 def _safe_repo_relative(p: Path) -> str:

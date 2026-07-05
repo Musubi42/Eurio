@@ -79,6 +79,13 @@ data class ScanResult(
     // selection (chunk-3b) reads the buffer snapshot directly.
     val bufferSize: Int = 0,
     val bufferCapacity: Int = 0,
+    // Corpus archive (scan-quality Lot 2, cohort-test only). Set when
+    // [CoinAnalyzer.snapArchiveDir] is non-null and the snap produced a crop:
+    // snapCaptureId = sha256(raw jpeg bytes)[:16], snapRawSha / snapCropSha =
+    // full hex digests of the exact bytes written to disk. Null in prod scan.
+    val snapCaptureId: String? = null,
+    val snapRawSha: String? = null,
+    val snapCropSha: String? = null,
 ) {
     val detected: Boolean get() = detections.isNotEmpty() && selectedDetectionIndex >= 0
     val bestDetection: Detection? get() = detections.getOrNull(selectedDetectionIndex)
@@ -176,6 +183,16 @@ class CoinAnalyzer(
 
     @Volatile
     var captureContext: CaptureContext? = null
+
+    /**
+     * Corpus archive directory (scan-quality Lot 2). Null by default → no
+     * behavior change in prod. When set (cohort-test), every successful snap
+     * also persists `<dir>/<captureId>.raw.jpg` (JPEG q95, frame post-rotation
+     * pré-crop) + `<dir>/<captureId>.crop.png` (lossless masked 224² crop) and
+     * surfaces the hashes on [ScanResult]. Archive failures never fail the scan.
+     */
+    @Volatile
+    var snapArchiveDir: java.io.File? = null
 
     /**
      * Release the cached green-ring frame ([lastCircleFrame]). Call from the
@@ -455,6 +472,8 @@ class CoinAnalyzer(
             cropSize = masked.width,
             norm = norm,
         )
+        // Corpus archive (Lot 2) — must run BEFORE masked.recycle().
+        val archive = archiveSnap(raw = bitmap, crop = masked)
         masked.recycle()
 
         val top1 = matches.getOrNull(0)?.similarity ?: Float.NEGATIVE_INFINITY
@@ -487,8 +506,55 @@ class CoinAnalyzer(
             cropWidth = masked.width,
             cropHeight = masked.height,
             photoSnapCropPath = cropPath,
+            snapCaptureId = archive?.captureId,
+            snapRawSha = archive?.rawSha,
+            snapCropSha = archive?.cropSha,
         )
     }
+
+    private data class SnapArchive(
+        val captureId: String,
+        val rawSha: String,
+        val cropSha: String,
+    )
+
+    /**
+     * Persist the raw frame + normalized crop into [snapArchiveDir] for the
+     * replayable scan corpus (spec: docs/work-in-progress/scan-quality/
+     * corpus-spec.md §2/§6). Content-addressed: captureId = sha256 of the
+     * exact JPEG bytes written, so the PC-side import can re-hash the file
+     * and verify `sha256(raw.jpg)[:16] == captureId`. Returns null when the
+     * archive dir is unset or on any failure — archiving must never fail the
+     * scan itself.
+     */
+    private fun archiveSnap(raw: Bitmap, crop: Bitmap): SnapArchive? {
+        val dir = snapArchiveDir ?: return null
+        return try {
+            dir.mkdirs()
+            val rawOut = java.io.ByteArrayOutputStream()
+            raw.compress(Bitmap.CompressFormat.JPEG, 95, rawOut)
+            val rawBytes = rawOut.toByteArray()
+            val rawSha = sha256Hex(rawBytes)
+            val captureId = rawSha.take(16)
+            java.io.File(dir, "$captureId.raw.jpg").writeBytes(rawBytes)
+
+            val cropOut = java.io.ByteArrayOutputStream()
+            crop.compress(Bitmap.CompressFormat.PNG, 100, cropOut)
+            val cropBytes = cropOut.toByteArray()
+            val cropSha = sha256Hex(cropBytes)
+            java.io.File(dir, "$captureId.crop.png").writeBytes(cropBytes)
+
+            SnapArchive(captureId = captureId, rawSha = rawSha, cropSha = cropSha)
+        } catch (e: Exception) {
+            Log.w("CoinAnalyzer", "Snap archive failed (scan unaffected)", e)
+            null
+        }
+    }
+
+    private fun sha256Hex(bytes: ByteArray): String =
+        java.security.MessageDigest.getInstance("SHA-256")
+            .digest(bytes)
+            .joinToString("") { "%02x".format(it) }
 
     /**
      * Persist a snap to disk. Always writes the raw frame and meta.json; the

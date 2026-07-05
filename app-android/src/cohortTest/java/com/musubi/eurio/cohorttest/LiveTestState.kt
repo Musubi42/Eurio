@@ -62,6 +62,14 @@ data class TestResult(
     val isCorrectEq: Boolean,
     val error: String?,
     val ts: String,
+    /**
+     * Scan-corpus archive hashes (Lot 2, corpus-spec §6). Full sha256 hex of
+     * the exact `frames/<iteration>/<captureId>.raw.jpg` / `.crop.png` bytes
+     * written at snap time; `captureId == rawSha[:16]`. Null when archiving
+     * was disabled or failed (the scan itself never fails on archive errors).
+     */
+    val rawSha: String? = null,
+    val cropSha: String? = null,
 )
 
 data class TopMatch(

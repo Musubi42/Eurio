@@ -525,7 +525,7 @@ def test_live_tests_get_returns_matrix(live_test_client):
     assert resp.status_code == 200
     body = resp.json()
     assert body["cohort_name"] == "cohort-x"
-    assert body["conditions"] == ["bright", "dim", "tilt"]
+    assert body["conditions"] == ["bright", "dim", "glare", "inhand", "tilt"]
     assert "fr-2007" in body["matrix"]
     assert set(body["matrix"]["fr-2007"]) == {"bright", "dim"}
     assert body["summary"]["total"] == 2
