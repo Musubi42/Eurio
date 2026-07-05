@@ -31,10 +31,17 @@ from typing import Any
 
 import httpx
 
+from store import resolve_db_path
+from store.referential_fix import (
+    ReferentialFixConflict,
+    apply_referential_fix,
+    preflight_coins,
+)
+
 logger = logging.getLogger(__name__)
 
 _ML_ROOT = Path(__file__).resolve().parents[1]
-_DB_PATH = _ML_ROOT / "state" / "eurio.db"
+_DB_DEFAULT = _ML_ROOT / "state" / "eurio.db"
 _FIX_PROPOSALS_PATH = _ML_ROOT / "state" / "referential_fix_proposals.json"
 _CANONICAL_ROOT = _ML_ROOT / "canonical_images"
 _BACKUP_DIR = _ML_ROOT / "state"
@@ -81,81 +88,49 @@ def _load_case(case_id: str) -> dict:
     raise ApplyError(f"case_id not found: {case_id}", http_status=404)
 
 
+def _preflight_dict(case: dict) -> dict:
+    """Les attendus du preflight (partagés client↔serveur via le diff)."""
+    swap = case.get("swap") or {}
+    new_row = case.get("new_row") or {}
+    return {
+        "existing_eurio_id": swap["eurio_id"],
+        "current_numista_id": swap["current_numista_id"],
+        "new_row_eurio_id": new_row["eurio_id"],
+        "new_row_numista_id": new_row["numista_id"],
+        "swap_new_numista_id": swap["new_numista_id"],
+    }
+
+
 def _preflight(conn: sqlite3.Connection, case: dict) -> dict:
-    """Vérifie que la DB est dans un état compatible avec le case."""
+    """Vérifie que la DB est dans un état compatible avec le case (checks coins
+    délégués à ``store.referential_fix.preflight_coins``, source unique)."""
     if case.get("shape") != "B":
         raise ApplyError(
             f"Only shape=B is implemented; got shape={case.get('shape')!r}",
             http_status=400,
         )
-    swap = case.get("swap") or {}
-    new_row = case.get("new_row") or {}
-
-    existing_id: str = swap["eurio_id"]
-    expected_current_nid: int = swap["current_numista_id"]
-    new_nid_for_existing: int = swap["new_numista_id"]
-    new_row_id: str = new_row["eurio_id"]
-    new_row_nid: int = new_row["numista_id"]
-
-    # Existing row must exist with the expected current numista_id.
-    row = conn.execute(
-        "SELECT numista_id FROM coins WHERE eurio_id = ?", (existing_id,)
-    ).fetchone()
-    if row is None:
-        raise ApplyError(
-            f"Pre-flight failed: existing eurio_id={existing_id!r} not found in coins",
-            http_status=409,
-        )
-    current_nid = row[0]
-    if current_nid != expected_current_nid:
-        raise ApplyError(
-            f"Pre-flight failed: {existing_id} has numista_id={current_nid}, "
-            f"expected {expected_current_nid} (DB state diverged from proposal)",
-            http_status=409,
-        )
-
-    # New row eurio_id must not already exist.
-    if conn.execute(
-        "SELECT 1 FROM coins WHERE eurio_id = ?", (new_row_id,)
-    ).fetchone():
-        raise ApplyError(
-            f"Pre-flight failed: target eurio_id={new_row_id!r} already exists",
-            http_status=409,
-        )
-
-    # The new numista_ids (for the swap target and the new row) must not
-    # already be used by *another* row.
-    for nid, expected_owner in (
-        (new_nid_for_existing, existing_id),  # owner-to-be after swap
-        (new_row_nid, new_row_id),            # owner-to-be after insert
-    ):
-        rows = conn.execute(
-            "SELECT eurio_id FROM coins WHERE numista_id = ?", (nid,)
-        ).fetchall()
-        for (other,) in rows:
-            if other != expected_owner and other != existing_id:
-                raise ApplyError(
-                    f"Pre-flight failed: numista_id={nid} already linked to {other!r}",
-                    http_status=409,
-                )
-
+    pf = _preflight_dict(case)
+    try:
+        preflight_coins(conn, **pf)
+    except ReferentialFixConflict as exc:
+        raise ApplyError(f"Pre-flight failed: {exc}", http_status=409) from exc
     return _step(
         "preflight",
-        existing_eurio_id=existing_id,
-        new_row_eurio_id=new_row_id,
-        current_numista_id=current_nid,
-        target_swap_numista_id=new_nid_for_existing,
-        target_new_row_numista_id=new_row_nid,
+        existing_eurio_id=pf["existing_eurio_id"],
+        new_row_eurio_id=pf["new_row_eurio_id"],
+        current_numista_id=pf["current_numista_id"],
+        target_swap_numista_id=pf["swap_new_numista_id"],
+        target_new_row_numista_id=pf["new_row_numista_id"],
     )
 
 
 # ── Step 2 — Backup ─────────────────────────────────────────────────────────
 
 
-def _backup_db(case_id: str) -> tuple[Path, dict]:
+def _backup_db(case_id: str, db_path: Path) -> tuple[Path, dict]:
     ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     backup_path = _BACKUP_DIR / f"eurio.db.bak-fix-{case_id}-{ts}"
-    shutil.copy2(_DB_PATH, backup_path)
+    shutil.copy2(db_path, backup_path)
     return backup_path, _step(
         "backup",
         backup_path=str(backup_path.relative_to(_ML_ROOT.parent)),
@@ -229,7 +204,10 @@ def _build_new_row_payload(new_row: dict, country_name: str) -> dict:
     }
 
 
-def _mutate_db(conn: sqlite3.Connection, case: dict) -> dict:
+def _compute_coins_diff(conn: sqlite3.Connection, case: dict) -> tuple[dict, dict, list[dict]]:
+    """Calcule le diff ``coins`` (pur : lit la réplique, construit les payloads,
+    N'ÉCRIT RIEN). Retourne ``(coins_insert, coins_update, attributions_moved)``.
+    Miroir de l'ancien ``_mutate_db`` sans les ``conn.execute`` d'écriture."""
     swap = case["swap"]
     new_row = case["new_row"]
     existing_id: str = swap["eurio_id"]
@@ -244,11 +222,8 @@ def _mutate_db(conn: sqlite3.Connection, case: dict) -> dict:
     existing_payload = json.loads(existing["raw_payload_json"]) if existing["raw_payload_json"] else {}
     country_name = _load_country_name(conn, new_row["country"])
 
-    # Build new row payload.
     new_payload = _build_new_row_payload(new_row, country_name)
 
-    # Move source attributions flagged as target='new' (lmdlp only here; BCE
-    # FS moves happen in step 4).
     attributions_moved: list[dict] = []
     for sa in case.get("source_attributions") or []:
         if sa.get("recommended_target") != "new":
@@ -259,78 +234,47 @@ def _mutate_db(conn: sqlite3.Connection, case: dict) -> dict:
         if moved:
             attributions_moved.append({"source": sa["source"], "feature_text": sa.get("feature_text")})
 
-    # Update existing row's cross_refs.numista_id to point at the post-swap id.
     existing_payload.setdefault("cross_refs", {})["numista_id"] = swap["new_numista_id"]
     existing_payload.setdefault("provenance", {})["last_updated"] = today
 
-    # Single transaction.
-    with conn:
-        conn.execute(
-            """
-            INSERT INTO coins (
-                eurio_id, country, country_name, year, face_value,
-                is_commemorative, theme, numista_id, raw_payload_json,
-                ref_source, ref_native_id, currency, collector_only,
-                design_description, status, needs_review, updated_at
-            )
-            VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, 'numista', ?, 'EUR', 0, ?, 'referenced', 0, ?)
-            """,
-            (
-                new_row_id,
-                new_row["country"],
-                country_name,
-                new_row["year"],
-                new_row["face_value"],
-                new_row.get("theme"),
-                new_row["numista_id"],
-                json.dumps(new_payload, ensure_ascii=False),
-                str(new_row["numista_id"]),
-                new_row.get("design_description"),
-                today,
-            ),
-        )
-        conn.execute(
-            """
-            UPDATE coins
-               SET numista_id = ?,
-                   ref_native_id = ?,
-                   raw_payload_json = ?,
-                   updated_at = ?
-             WHERE eurio_id = ?
-            """,
-            (
-                swap["new_numista_id"],
-                str(swap["new_numista_id"]),
-                json.dumps(existing_payload, ensure_ascii=False),
-                today,
-                existing_id,
-            ),
-        )
-
-    return _step(
-        "mutate_db",
-        inserted_eurio_id=new_row_id,
-        inserted_numista_id=new_row["numista_id"],
-        updated_eurio_id=existing_id,
-        updated_numista_id=swap["new_numista_id"],
-        attributions_moved=attributions_moved,
-    )
+    coins_insert = {
+        "eurio_id": new_row_id,
+        "country": new_row["country"],
+        "country_name": country_name,
+        "year": new_row["year"],
+        "face_value": new_row["face_value"],
+        "theme": new_row.get("theme"),
+        "numista_id": new_row["numista_id"],
+        "raw_payload_json": json.dumps(new_payload, ensure_ascii=False),
+        "ref_native_id": str(new_row["numista_id"]),
+        "design_description": new_row.get("design_description"),
+        "updated_at": today,
+    }
+    coins_update = {
+        "eurio_id": existing_id,
+        "numista_id": swap["new_numista_id"],
+        "ref_native_id": str(swap["new_numista_id"]),
+        "raw_payload_json": json.dumps(existing_payload, ensure_ascii=False),
+        "updated_at": today,
+    }
+    return coins_insert, coins_update, attributions_moved
 
 
 # ── Step 4 — Move BCE FS sidecars ───────────────────────────────────────────
 
 
-def _move_bce_sidecar(conn: sqlite3.Connection, existing_id: str, new_id: str) -> dict:
+def _move_bce_sidecar(existing_id: str, new_id: str) -> tuple[dict, dict | None]:
     """Move ``obverse_bce.{webp,_thumb.webp,json}`` from existing → new row
-    directory, and update ``coin_canonical_images`` accordingly. No-op if
-    the existing row has no BCE sidecar.
+    directory (FS, client-side). Retourne ``(step, reparent_intent | None)`` — le
+    re-parent DB de ``coin_canonical_images`` voyage dans le diff, pas ici. No-op
+    si la row existante n'a pas de sidecar BCE.
     """
     src_dir = _CANONICAL_ROOT / existing_id
     dst_dir = _CANONICAL_ROOT / new_id
     files = ["obverse_bce.webp", "obverse_bce_thumb.webp", "obverse_bce.json"]
     present = [f for f in files if (src_dir / f).is_file()]
     if not present:
-        return _step("move_bce_sidecar", status="skipped", reason="no BCE sidecar on existing row")
+        return _step("move_bce_sidecar", status="skipped", reason="no BCE sidecar on existing row"), None
 
     dst_dir.mkdir(parents=True, exist_ok=True)
     moved: list[str] = []
@@ -355,39 +299,20 @@ def _move_bce_sidecar(conn: sqlite3.Connection, existing_id: str, new_id: str) -
         except json.JSONDecodeError:
             pass
 
-    # Update coin_canonical_images: row keyed on (eurio_id, source, role).
-    # source='bce_comm' per existing convention.
-    with conn:
-        # Drop any pre-existing canonical for the new row (defensive).
-        conn.execute(
-            "DELETE FROM coin_canonical_images WHERE eurio_id = ? AND source = ? AND role = ?",
-            (new_id, "bce_comm", "obverse"),
-        )
-        # Re-parent the existing canonical row.
-        cur = conn.execute(
-            "UPDATE coin_canonical_images SET eurio_id = ?, local_path = ?, url = NULL "
-            "WHERE eurio_id = ? AND source = ? AND role = ?",
-            (
-                new_id,
-                f"ml/canonical_images/{new_id}/obverse_bce.webp",
-                existing_id,
-                "bce_comm",
-                "obverse",
-            ),
-        )
-        rewired = cur.rowcount
-
-    return _step(
-        "move_bce_sidecar",
-        moved_files=moved,
-        canonical_rows_rewired=rewired,
-        from_=existing_id,
-        to=new_id,
-    )
+    intent = {
+        "op": "reparent",
+        "from_eurio_id": existing_id,
+        "to_eurio_id": new_id,
+        "source": "bce_comm",  # convention existante
+        "role": "obverse",
+        "local_path": f"ml/canonical_images/{new_id}/obverse_bce.webp",
+    }
+    return _step("move_bce_sidecar", moved_files=moved, from_=existing_id, to=new_id), intent
 
 
-def _step_move_sidecars(conn: sqlite3.Connection, case: dict) -> dict:
-    """Move BCE sidecars per source_attributions[*].recommended_target=='new'."""
+def _step_move_sidecars(case: dict) -> tuple[dict, dict | None]:
+    """Move BCE sidecars per source_attributions[*].recommended_target=='new'.
+    Retourne ``(step, reparent_intent | None)``."""
     swap_id: str = case["swap"]["eurio_id"]
     new_id: str = case["new_row"]["eurio_id"]
     bce_target_new = any(
@@ -395,8 +320,8 @@ def _step_move_sidecars(conn: sqlite3.Connection, case: dict) -> dict:
         for sa in case.get("source_attributions") or []
     )
     if not bce_target_new:
-        return _step("move_bce_sidecar", status="skipped", reason="no BCE attribution with target=new")
-    return _move_bce_sidecar(conn, swap_id, new_id)
+        return _step("move_bce_sidecar", status="skipped", reason="no BCE attribution with target=new"), None
+    return _move_bce_sidecar(swap_id, new_id)
 
 
 # ── Step 5 — Fetch Numista images ───────────────────────────────────────────
@@ -439,7 +364,10 @@ def _fetch_numista_image(km, eurio_id: str, numista_id: int) -> dict:
     }
 
 
-def _step_fetch_numista(conn: sqlite3.Connection, case: dict) -> dict:
+def _step_fetch_numista(case: dict) -> tuple[dict, list[dict]]:
+    """Fetch les images Numista (client : PIL + clés + arbre canonical_images) et
+    retourne ``(step, upsert_intents)`` — les rows ``coin_canonical_images``
+    voyagent dans le diff."""
     KeyManager = _import_keymanager()
     km = KeyManager()
     targets = [
@@ -448,6 +376,7 @@ def _step_fetch_numista(conn: sqlite3.Connection, case: dict) -> dict:
     ]
     results = []
     failures = []
+    intents: list[dict] = []
     for eurio_id, nid in targets:
         try:
             res = _fetch_numista_image(km, eurio_id, nid)
@@ -456,17 +385,15 @@ def _step_fetch_numista(conn: sqlite3.Connection, case: dict) -> dict:
             continue
         results.append(res)
         if res["status"] in ("fetched", "already_present"):
-            with conn:
-                conn.execute(
-                    """
-                    INSERT OR REPLACE INTO coin_canonical_images
-                        (eurio_id, source, role, url, local_path)
-                    VALUES (?, 'numista_api', 'obverse', NULL, ?)
-                    """,
-                    (eurio_id, f"ml/canonical_images/{eurio_id}/obverse_numista.webp"),
-                )
+            intents.append({
+                "op": "upsert",
+                "eurio_id": eurio_id,
+                "source": "numista_api",
+                "role": "obverse",
+                "local_path": f"ml/canonical_images/{eurio_id}/obverse_numista.webp",
+            })
     status = "ok" if not failures else "failed"
-    return _step("fetch_numista", status=status, results=results, failures=failures)
+    return _step("fetch_numista", status=status, results=results, failures=failures), intents
 
 
 # ── Step 6+7 — Push Supabase ────────────────────────────────────────────────
@@ -540,6 +467,43 @@ def _audit_after() -> dict:
     )
 
 
+# ── Apply diff (canonique) ──────────────────────────────────────────────────
+
+
+def _apply_diff(diff: dict, db_path: Path) -> dict:
+    """Applique le diff au canonique. Direction A (sync active) : forward
+    ``POST /ingest/referential-fix`` — un 409/erreur réseau est FATAL (jamais de
+    fallback local qui écrirait la réplique). Model A pur (sync off) : applique
+    localement dans une transaction. Retourne un ``_step("apply_diff", …)``."""
+    from client.http import sync_enabled  # noqa: PLC0415
+
+    if sync_enabled():
+        from client.ingest import push_referential_fix  # noqa: PLC0415
+
+        try:
+            res = push_referential_fix(diff) or {}
+            return _step("apply_diff", mode="ingest", **res)
+        except Exception as e:  # noqa: BLE001 — 409/réseau = échec fatal du fix
+            logger.exception("apply_diff forward échoué")
+            return _step("apply_diff", status="failed", mode="ingest", error=str(e)[:300])
+
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            res = apply_referential_fix(conn, diff)
+            conn.execute("COMMIT")
+        except ReferentialFixConflict as e:
+            conn.execute("ROLLBACK")
+            return _step("apply_diff", status="failed", mode="local", error=str(e))
+        except Exception:
+            conn.execute("ROLLBACK")
+            raise
+    finally:
+        conn.close()
+    return _step("apply_diff", mode="local", **res)
+
+
 # ── Orchestrator ────────────────────────────────────────────────────────────
 
 
@@ -555,40 +519,60 @@ def apply_fix(case_id: str) -> dict:
     steps: list[dict] = []
     backup_path: Path | None = None
     case = _load_case(case_id)
+    db_path = resolve_db_path(_DB_DEFAULT)
 
-    conn = sqlite3.connect(_DB_PATH)
-    conn.row_factory = sqlite3.Row
+    # Lectures (preflight, diff, backup) sur une connexion READ-ONLY : sous
+    # Direction A, db_path est la réplique (jamais écrite localement) ; les
+    # écritures voyagent via le diff (/ingest) ou, en Model A pur, s'appliquent
+    # localement dans _apply_diff.
+    ro = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    ro.row_factory = sqlite3.Row
     try:
-        # 1. Pre-flight (fatal if fails)
-        steps.append(_preflight(conn, case))
+        # 1. Pre-flight (fatal if fails — raises ApplyError)
+        steps.append(_preflight(ro, case))
 
-        # 2. Backup
-        backup_path, backup_step = _backup_db(case_id)
+        # 2. Backup (snapshot de la DB lue)
+        backup_path, backup_step = _backup_db(case_id, db_path)
         steps.append(backup_step)
 
-        # 3. Mutate eurio.db
-        steps.append(_mutate_db(conn, case))
-
-        # 4. Move BCE sidecars (and re-parent coin_canonical_images row)
-        steps.append(_step_move_sidecars(conn, case))
-
-        # 5. Fetch Numista image for both rows (existing post-swap + new row)
-        try:
-            steps.append(_step_fetch_numista(conn, case))
-        except Exception as e:
-            logger.exception("fetch_numista crashed")
-            steps.append(_step("fetch_numista", status="failed", error=str(e)[:300]))
+        # 3. Diff coins (pur, aucune écriture)
+        coins_insert, coins_update, attrs_moved = _compute_coins_diff(ro, case)
     finally:
-        conn.close()
+        ro.close()
 
-    # 6+7. Push Supabase (non-fatal per decision 2026-05-25)
-    steps.append(_push_supabase())
+    # 4. Move BCE sidecars FS (client) → intent de re-parent DB
+    move_step, reparent_intent = _step_move_sidecars(case)
+    steps.append(move_step)
 
-    # 8. Verification
-    steps.append(_audit_after())
+    # 5. Fetch Numista image (client : PIL + clés) → intents d'upsert DB
+    try:
+        fetch_step, upsert_intents = _step_fetch_numista(case)
+    except Exception as e:
+        logger.exception("fetch_numista crashed")
+        fetch_step, upsert_intents = _step("fetch_numista", status="failed", error=str(e)[:300]), []
+    steps.append(fetch_step)
+
+    # Assemble le diff et l'applique au canonique (forward /ingest si sync, sinon
+    # local en Model A). Fatal si l'apply échoue → on n'enchaîne pas Supabase.
+    diff = {
+        "case_id": case_id,
+        "preflight": _preflight_dict(case),
+        "coins_insert": coins_insert,
+        "coins_update": coins_update,
+        "canonical_images": ([reparent_intent] if reparent_intent else []) + upsert_intents,
+    }
+    apply_step = _apply_diff(diff, db_path)
+    apply_step["diagnostic"]["attributions_moved"] = attrs_moved
+    steps.append(apply_step)
+
+    if apply_step["status"] != "failed":
+        # 6+7. Push Supabase (non-fatal per decision 2026-05-25)
+        steps.append(_push_supabase())
+        # 8. Verification
+        steps.append(_audit_after())
 
     finished = datetime.now(timezone.utc)
-    fatal_steps = {"preflight", "backup", "mutate_db"}
+    fatal_steps = {"preflight", "backup", "apply_diff"}
     success = all(
         s["status"] != "failed" for s in steps if s["name"] in fatal_steps
     ) and not any(

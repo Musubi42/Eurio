@@ -16,6 +16,7 @@ from store.dino import apply_ingest_dino
 from store.faces import apply_ingest_faces
 from store.gate import ENGINE_VERSION as _GATE_ENGINE_VERSION
 from store.gate import apply_gate_reject
+from store.referential_fix import ReferentialFixConflict, apply_referential_fix
 
 router = APIRouter(prefix="/ingest", tags=["ingest"])
 
@@ -216,6 +217,36 @@ def ingest_dino_route(payload: IngestDinoPayload) -> dict:
     try:
         result = apply_ingest_dino(conn, payload.predictions)
         conn.execute("COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+    return result
+
+
+class ReferentialFixPayload(BaseModel):
+    case_id: str
+    preflight: dict
+    coins_insert: dict
+    coins_update: dict
+    canonical_images: list[dict] = []
+
+
+@router.post("/referential-fix", dependencies=[Depends(require_scope("ingest:write"))])
+def ingest_referential_fix_route(payload: ReferentialFixPayload) -> dict:
+    """Applique un fix référentiel (shape B) calculé client-side : 2 rows ``coins``
+    (swap numista_id + nouvelle commémo) + re-parents ``coin_canonical_images``.
+    SQL-pur, preflight ré-vérifié canonique-side (409 si divergent), atomique.
+    Retourne ``{applied, coins_inserted, coins_updated, canonical_rows}``."""
+    if _store is None:
+        raise HTTPException(status_code=500, detail="ingest non câblé (bind manquant)")
+    conn = _store._connection()  # noqa: SLF001
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        result = apply_referential_fix(conn, payload.model_dump())
+        conn.execute("COMMIT")
+    except ReferentialFixConflict as exc:
+        conn.execute("ROLLBACK")
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except Exception:
         conn.execute("ROLLBACK")
         raise

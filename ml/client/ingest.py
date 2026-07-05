@@ -96,6 +96,25 @@ def push_gate_reject(
     )
 
 
+def push_referential_fix(diff: dict[str, Any]) -> dict | None:
+    """POST ``/ingest/referential-fix`` si la sync est activée, sinon no-op (``None``).
+
+    ``diff`` = ``{case_id, preflight, coins_insert, coins_update, canonical_images}``
+    calculé côté client (réplique + FS + fetch image). Une erreur HTTP (409
+    preflight divergent) ou réseau est levée à l'appelant → le fix est fatal (pas
+    de fallback local qui écrirait la réplique). Retourne
+    ``{applied, coins_inserted, coins_updated, canonical_rows}`` ou ``None`` si
+    sync désactivée (Model A → l'appelant applique localement).
+    """
+    from client.http import sync_enabled  # noqa: PLC0415 — évite import cycle au chargement
+
+    if not sync_enabled():
+        return None
+    from client import http as _http  # noqa: PLC0415
+
+    return _http.post_json("/ingest/referential-fix", diff)
+
+
 def push_delete_asset(asset_id: str) -> dict | None:
     """DELETE ``/ingest/assets/{id}`` si la sync est activée, sinon no-op (``None``).
 
