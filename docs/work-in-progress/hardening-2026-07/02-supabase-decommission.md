@@ -54,6 +54,37 @@ de zones au training. La doctrine et le pipeline de shipping se contredisent : i
 Point clé : les trois premières chaînes doivent migrer **quelle que soit** la décision produit.
 Seule la chaîne export conditionne le sort final de Supabase et de la clé.
 
+> ### ✅ État 2026-07-05 — C3/C2/C5 livrés (`79f3359`/`50ffabf`/`b7cc8dd`, poussés), **C1=Option A**
+>
+> **Corrections à la fiche** (vérifiées contre la vraie eurio.db) : (a) **C5 était déjà fait** en F01
+> `3663703` — `app_export/io.py._DB_PATH` route via `resolve_db_path` ; `build_app_core.py:48` est le
+> chemin de SORTIE `app_core.db`, pas un read à router (la fiche l'a mal identifié). (b)
+> `coin_confusion_map` vit dans `serving/migrations/0002` (pas `schema.sql`) et était **vide** (le
+> one-shot n'a jamais convergé).
+>
+> - **C3 zone_resolver → SQLite** ✅ (lecture `coin_confusion_map` via resolver ; table absente →
+>   défaut orange ; autre `OperationalError` propagée). 4 tests.
+> - **C2 confusion-map** ✅ CODE (écriture ET lecture hors Supabase) : `store/confusion.py`
+>   (`apply_ingest_confusion_map`, validation bruyante), `POST /ingest/confusion-map` (canonique),
+>   `client.ingest.push_confusion_map` (Direction A) + fallback write local Model A ; routes lecture
+>   `server.py` repointées eurio.db ; guard anti-double-run refait (`_spawn_detached_job` + PID
+>   sidecar, fix `--reload`) ; `migrate_orphan_supabase.py` supprimé. 7 tests. **RESTE : déployer
+>   `server_serve.py` au VPS** pour exposer `/ingest/confusion-map` avant tout compute Direction A.
+> - **C5 export** ✅ (routage déjà OK ; docstring corrigé ; Option A documentée dans model-b/README).
+>   **RESTE : créer la clé Supabase scopée** (dashboard, action user) ; `service_role` NON révoquée.
+> - **C4 coins_review** ❌ **BLOQUÉ — DÉCISION PO REQUISE** : le modèle de données de la feature
+>   n'existe PLUS dans eurio.db (colonnes `review_action_hint`/`review_payload`/`cross_refs`/`images`
+>   absentes ; writer legacy `apply_3e_enrich_context.py` Supabase-only ; les 6 `needs_review` réels
+>   portent le schéma récent `review_reason=variant_canonical_*` sans mapping vers les 3 buckets du
+>   front). Un rewrite « au jugé » inventerait du produit (R0/R1) ou viderait la file en silence. **À
+>   trancher** : (a) porter l'enrichissement review-context dans eurio.db + réconcilier le front avec
+>   `variant_canonical_*`, ou (b) retirer cette feature legacy. `coins_review` **garde donc sa
+>   dépendance `service_role`** — ne pas révoquer en croyant F02 l'a couverte.
+> - **C6** (secrets SOPS) = action user : purger `VITE_SUPABASE_*` ; garder `SUPABASE_SERVICE_ROLE_KEY`
+>   pour l'export Option A jusqu'à la clé scopée.
+>
+> Suite : **1393 pass / 0 rouge** (11 tests neufs, zéro régression), vérifié dans le checkout principal.
+
 ## Plan en chunks ordonnés
 
 ### P0 — Rotation + purge des secrets (BLOQUANT, avant tout le reste)
