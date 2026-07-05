@@ -18,7 +18,7 @@ from torch.utils.data import DataLoader
 from torchvision.datasets import ImageFolder
 
 from training.eval.class_resolver import MANIFEST_FILENAME, read_manifest
-from training.train_embedder import build_embedder, get_val_transforms
+from training.train_embedder import build_embedder, get_device, get_val_transforms
 
 CATALOG_PATH = Path(__file__).parent.parent / "datasets" / "coin_catalog.json"
 
@@ -33,16 +33,21 @@ def load_display_names() -> dict[str, str]:
 
 @torch.no_grad()
 def compute(args: argparse.Namespace) -> None:
-    device = torch.device("cpu")
+    device = get_device(getattr(args, "device", "auto"))
 
-    checkpoint = torch.load(args.model, map_location=device, weights_only=False)
+    # Load weights on CPU (map_location) then move the model to the compute
+    # device. Forward runs on CUDA/MPS when available; outputs are pulled back
+    # to CPU before .numpy() so the centroid math (and its 6-decimal rounding)
+    # stays byte-identical to the historical CPU path within float tolerance.
+    checkpoint = torch.load(args.model, map_location="cpu", weights_only=False)
     embedding_dim = checkpoint["embedding_dim"]
     backbone = checkpoint.get("backbone", "mobilenet_v3_small")
     model = build_embedder(backbone, embedding_dim)
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
+    model.to(device)
 
-    print(f"Model from epoch {checkpoint['epoch']}, dim={embedding_dim}")
+    print(f"Model from epoch {checkpoint['epoch']}, dim={embedding_dim} | device={device}")
 
     dataset_root = Path(args.dataset)
     manifest = read_manifest(dataset_root / MANIFEST_FILENAME)
@@ -91,7 +96,7 @@ def compute(args: argparse.Namespace) -> None:
             return
         loader = DataLoader(ds, batch_size=32, shuffle=False, num_workers=0)
         for images, labels in loader:
-            emb = model(images).numpy()
+            emb = model(images.to(device)).cpu().numpy()
             for i, label in enumerate(labels):
                 cls_name = ds.classes[label]
                 class_embeddings.setdefault(cls_name, []).append(emb[i])
@@ -134,7 +139,7 @@ def compute(args: argparse.Namespace) -> None:
             loader = DataLoader(dataset, batch_size=32, shuffle=False, num_workers=0)
 
             for images, labels in loader:
-                emb = model(images).numpy()
+                emb = model(images.to(device)).cpu().numpy()
                 for i, label in enumerate(labels):
                     cls_name = dataset.classes[label]
                     class_embeddings.setdefault(cls_name, []).append(emb[i])
@@ -225,6 +230,12 @@ def main():
         choices=["auto", "val_mean", "train_mean", "arcface_w"],
         default="auto",
         help="Per-class centroid source (cf. C1). auto=val-mean+W fallback (legacy).",
+    )
+    parser.add_argument(
+        "--device",
+        type=str,
+        default="auto",
+        help="Compute device (auto|cuda|mps|cpu). auto picks cuda→mps→cpu.",
     )
     args = parser.parse_args()
     compute(args)

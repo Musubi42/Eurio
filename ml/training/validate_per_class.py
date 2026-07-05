@@ -35,7 +35,7 @@ if str(ML_DIR) not in sys.path:
 from training.augmentations import AugmentationPipeline
 from training.augmentations.recipes import ZONE_RECIPES
 from training.eval.class_resolver import MANIFEST_FILENAME, build_resolver, read_manifest
-from training.train_embedder import CoinEmbedder, get_val_transforms
+from training.train_embedder import CoinEmbedder, get_device, get_val_transforms
 from training.zone_resolver import fetch_eurio_zones, resolve_class_zones
 
 DEFAULT_N_PER_CLASS = 50
@@ -110,12 +110,13 @@ def _augmented_batches(
 
 @torch.no_grad()
 def compute(args: argparse.Namespace) -> None:
-    device = torch.device("cpu")
-    ckpt = torch.load(args.model, map_location=device, weights_only=False)
+    device = get_device(getattr(args, "device", "auto"))
+    ckpt = torch.load(args.model, map_location="cpu", weights_only=False)
     embedding_dim = ckpt["embedding_dim"]
     model = CoinEmbedder(embedding_dim=embedding_dim)
     model.load_state_dict(ckpt["model_state_dict"])
     model.eval()
+    model.to(device)
 
     arcface = _load_arcface_prototypes(ckpt)
     if arcface is None:
@@ -157,7 +158,7 @@ def compute(args: argparse.Namespace) -> None:
     sims_by_class: dict[str, list[float]] = defaultdict(list)
     margins_by_class: dict[str, list[float]] = defaultdict(list)
 
-    centroid_tensor = torch.tensor(centroids)  # [C, dim]
+    centroid_tensor = torch.tensor(centroids).to(device)  # [C, dim]
 
     for cls_name, sources in sources_by_class.items():
         if cls_name not in class_index:
@@ -176,8 +177,10 @@ def compute(args: argparse.Namespace) -> None:
         for batch in _augmented_batches(
             sources, pipelines[zone], eval_transform, args.n_per_class
         ):
-            emb = model(batch)
-            sims = emb @ centroid_tensor.T  # [B, C]
+            emb = model(batch.to(device))
+            # Pull sims back to CPU so the downstream mask/argmax/tolist logic
+            # (and its numerics) is byte-for-byte the historical CPU path.
+            sims = (emb @ centroid_tensor.T).cpu()  # [B, C]
             preds = sims.argmax(dim=1).tolist()
             total_by_class[cls_name] += len(preds)
             correct_by_class[cls_name] += sum(1 for p in preds if p == true_idx)
@@ -259,6 +262,12 @@ def main():
         type=int,
         default=DEFAULT_N_PER_CLASS,
         help="Number of synthetic augmentations sampled per class (default 50).",
+    )
+    parser.add_argument(
+        "--device",
+        type=str,
+        default="auto",
+        help="Compute device (auto|cuda|mps|cpu). auto picks cuda→mps→cpu.",
     )
     args = parser.parse_args()
     compute(args)
