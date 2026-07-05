@@ -179,6 +179,17 @@ tromper), robustesse face/usure/tilt.
       `9b1bc705525d`) : train_mean +8.2 pts R@1 eq (0.767 vs 0.685), gain sur
       les 3 conditions, **mais McNemar p=0.18** → pas de promotion ; agrandir
       le corpus (cible 150–300 frames) et re-répliquer.
+- [x] `exp-02` arcface_w → **[`exp-02-centroids-arcfacew.md`](./exp-02-centroids-arcfacew.md)**
+      — no-go (+5.5 pts mais battu par train_mean, p=0.48).
+- [x] `exp-03` re-crop full-path → **[`exp-03-recrop-full-path.md`](./exp-03-recrop-full-path.md)**
+      — exploratoire : re-crop PC +1.4/+4.1 pts sur les 2 candidats, confondu
+      avec les artefacts JPEG du backfill ; re-mesurer sur corpus natif.
+- [x] `exp-04` abstention → **[`exp-04-abstention-margin.md`](./exp-04-abstention-margin.md)**
+      — exploratoire : la marge top1−top2 écrase le score absolu (0.955 de
+      précision à 60 % de couverture, train_mean) ; seuils à valider hors-échantillon.
+- [ ] **Agrandir le corpus** (prérequis pour trancher exp-01/03/04) : session
+      cohort-test avec le build à archivage natif, conditions ×5
+      (`glare`/`inhand` incluses), cible 150–300 frames.
 - [ ] Écrire `exp-backbones.md` : matrice backbones × tier device × (précision, latence, taille), baseline MobileNetV3-Small.
 - [ ] Décider la politique **1 modèle universel** vs **universel + premium flagship** (§1) — dépend des premiers benchs.
 - [ ] Unifier « détection photo mauvaise qualité + re-take » avec le quality scorer best-frame (pilier A).
