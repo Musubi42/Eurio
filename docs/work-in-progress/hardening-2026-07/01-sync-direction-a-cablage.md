@@ -27,8 +27,19 @@
 > non-bloquant couvrant thread-serveur ET timer systemd (skip si tenu), en-tête `X-Eurio-DB-Sha256`
 > autoritaire + retry (fin de la course TTL du `/sha` séparé), import mort + commentaire faux
 > retirés. 3 tests ajoutés ; suite 1346 pass / 17 rouges pré-existants.
-> **Reste** : chunk 4a (route /ingest bench-exclude + gate-reject), 4b (/ingest/referential-fix),
-> 6 (split local-state scratch), **1a** (flip `EURIO_DB_PATH`+`READONLY=1` — EN DERNIER).
+>
+> **MAJ 2026-07-05 (ter)** — Chunks **4a ✅ / 4b ✅ / 6 ✅** livrés+committés (zéro régression,
+> suite 1365 pass / 17 rouges pré-existants) :
+> - **4a** : routes `POST /ingest/crops/exclude` + `POST /ingest/gate/reject` (`ingest_routes.py`,
+>   helpers `store.crops.apply_exclude_crops` / `store.gate.apply_gate_reject`). `bench_routes` et
+>   `gate_standard_vision._reject` forward via `client.ingest` quand sync active.
+> - **4b** : `POST /ingest/referential-fix` (`store.referential_fix`, lean-safe) ; client calcule
+>   le diff coins+canonical sur la réplique et POSTe ; serveur re-preflight (409) + applique.
+> - **6** : `resolve_local_state_db()` + `staging_store()` ; `sources/cli` et `recrop_cohort_census`
+>   stagent sur scratch dédié (corrige la course cache autopull) ; garde VPS-only sur les 2 backfills.
+> - **1a** : **PRÉPARÉ, NON ACTIVÉ** — patch + checklist ci-dessous (§Activation 1a).
+> **Reste (préconditions du flip, PAS committées)** : voir §Activation 1a — déploiement VPS des
+> nouvelles routes (bloqué P0 secrets), split bookkeeping local-state, puis flip.
 
 Contexte : Direction A = writer unique VPS (`/var/lib/eurio/eurio.db`, process
 `server_serve.py` avec `read_only=False` explicite à `server_serve.py:75`) + réplique locale
@@ -238,3 +249,62 @@ Trois défauts qui se renforcent :
 Le gain immédiat est concentré sur **Chunk 0 + Chunk 1** (~3 h) : après eux, la réplique
 auto-sync livrée en `4c06cfb` sert enfin à quelque chose, et l'invariant « la réplique n'est
 jamais écrite localement » est garanti par le code plutôt que par la discipline.
+
+---
+
+## 6. Activation 1a — LE FLIP (préparé, NON activé au 2026-07-05)
+
+> ⚠️ **Ne PAS appliquer le patch tant que les 2 préconditions ne sont pas remplies.** Le flip
+> bascule le devShell Mac/PC en lecture réplique read-only : appliqué trop tôt, les flux qui
+> tapent les nouvelles routes `/ingest` (exclude-crops, gate-reject, referential-fix) renvoient
+> 404 (routes pas encore déployées VPS), et le bookkeeping lab (cohort_jobs / training_scans)
+> throw `readonly` tant que le split n'est pas câblé.
+
+### Préconditions (dans l'ordre)
+
+1. **P0 secrets** (hors périmètre agent) : révoquer/rotater les clés de `.envrc copy`, purger
+   l'historique (`git-filter-repo`), puis **push** sur les remotes partagés. Cf.
+   `docs/operations/secrets-followup.md`. Tant que ce n'est pas fait, rien ne peut être poussé,
+   donc **le VPS ne peut pas être déployé**.
+2. **Déploiement VPS des routes 4a/4b** : après push, rebuild eurio-api et **vérifier live** que
+   les 3 routes existent :
+   ```bash
+   ssh serverOimNixDontpanic 'docker exec eurio-api python -c "from serving.server_serve import app; import sys; [print(sorted(r.methods), r.path) for r in app.routes if \"/ingest/\" in r.path]"'
+   # attendu : /ingest/crops/exclude, /ingest/gate/reject, /ingest/referential-fix présents
+   ```
+3. **Split bookkeeping local-state** (chunk 6 reste — NON fait, précondition explicite) : câbler
+   les writers ET readers de `cohort_jobs` / `cohort_training_scans` / `cohort_training_scan_results`
+   sur `resolve_local_state_db()` (`ml/state/eurio.local.db`, writable). **Blocage d'archi connu** :
+   ces tables sont JOINTES avec des tables canoniques (`store/decisions.py`,
+   `serving/review_queue/repository.py`) → un split physique impose soit un `ATTACH DATABASE`
+   (la connexion canonique attache `eurio.local.db AS localstate`, les helpers écrivent
+   `localstate.cohort_jobs`), soit de trancher que ces tables restent canoniques (et acceptent de
+   ne pas voyager). **Décision PO + vérif lab live requises** (27 statements SQL, 11 fichiers —
+   call-sites écriture : `lab_routes.py` ×6, `sources_routes.py`, `recrop_cohort_census.py`,
+   `lab_training_scan.py`). Tant que non fait, sous le flip le lab throw à la 1re écriture
+   cohort_jobs (échec BRUYANT, pas silencieux — acceptable en attendant, mais bloque le lab).
+
+### Patch prêt-à-appliquer (`flake.nix`)
+
+Ajouter aux shells **mac** ET **pc** uniquement (PAS `vpsShell`, PAS `commonEnv` — le VPS force
+`read_only=False` et reçoit `EURIO_DB_PATH` du compose) :
+
+```nix
+# dans macShell (flake.nix:~202-209) et pcShell (flake.nix:~211-219), attrs de mkShell :
+EURIO_DB_PATH = "${toString ./ml/state/eurio.replica.db}";
+EURIO_DB_READONLY = "1";
+```
+
+### Vérification post-flip
+
+```bash
+direnv reload
+python -c "from serving.server import CANONICAL_DB; print(CANONICAL_DB)"   # → …/eurio.replica.db
+# un Store sans read_only explicite est ro :
+python -c "from store import Store; Store('ml/state/eurio.replica.db')"      # → RuntimeError (garde 1b)
+# une session lab complète (review lecture, bench, suggestions Dino) sans throw `readonly`
+# un run source `--push` stage sur scratch et pousse (pas de throw)
+```
+
+**Réversibilité** : retirer les 2 lignes de `flake.nix` + `direnv reload` restaure l'écriture
+locale (Model A). Aucune donnée perdue (le flip ne change que la SOURCE de lecture).

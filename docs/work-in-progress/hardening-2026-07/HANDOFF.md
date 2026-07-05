@@ -67,6 +67,10 @@ Review multi-agents (Fable 5 pilote + 76 sous-agents) → **58 findings confirm�
 | **3** | **39 scripts CLI** : 38 routés `resolve_db_path` + 14 gardes `resolve_db_readonly` | `ml/scripts/*.py` (39 fichiers) | `wipe_referential --apply` refuse sous `READONLY=1`, `--dry-run` OK ; suite 1341 pass / 17 rouges pré-existants (zéro régression) |
 | **4c** | `coin_source_status` ajouté au run-batch (D1) : entrée `_TABLE_ORDER` (après `source_runs`, idx 9/15) + bloc `export_run` scopé `WHERE last_run_id=?`. **Serveur inchangé** (`ingest_routes.py` : dict ouvert, pas d'allowlist ; `_TABLE_ORDER` EST le gate). | `ml/client/runbatch.py`, `ml/tests/test_runbatch.py` | 12 tests runbatch verts (2 nouveaux : scoping `last_run_id` NULL exclu + round-trip avec dimensions `coins`/`source_registry` seedées) ; suite 1343 pass / 17 rouges pré-existants (zéro régression, `test_model_b_c2_c3::test_ingest_route…` confirmé pré-existant par stash) |
 | **5** | Durcissement transport rsync : (a) stderr — filtre le warning host-key bénin (`_significant_stderr`), échoue toujours sur rc≠0 OU stderr significatif (no-op silencieux préservé) ; (b) wrapper ssh — `StrictHostKeyChecking=accept-new` + `UserKnownHostsFile` stable local ; (c) **flock** `state/replica.lock` non-bloquant dans `pull_replica_rsync` → couvre thread-serveur ET timer systemd (skip si tenu, PAS de fallback API) ; (d) fallback API — l'en-tête `X-Eurio-DB-Sha256` devient l'autorité (immunisé au rebuild snapshot TTL) + 1 retry sur transfert corrompu, `/sha` = filet vieux-serveur ; (e) import mort `time` retiré + commentaire faux `-v` corrigé. | `ml/client/replica.py`, `ml/tests/test_replica_rsync.py`, `.gitignore` | 17 tests replica verts (3 nouveaux : stderr bénin toléré, stderr significatif rc=0 rejeté, lock tenu→skip) + `pull_replica` verify/corrupt inchangés ; suite 1346 pass / 17 rouges pré-existants (zéro régression) |
+| **4a** | `POST /ingest/crops/exclude` + `POST /ingest/gate/reject` (`ingest_routes.py`, helpers lean `store.crops.apply_exclude_crops` / `store.gate.apply_gate_reject`, scope `ingest:write`). `bench_routes` + `gate_standard_vision._reject` forward via `client.ingest` quand sync active, écrivent local sinon (D2). | `ml/store/{crops,gate}.py`, `ml/serving/{ingest_routes,bench_routes}.py`, `ml/scripts/gate_standard_vision.py`, `ml/client/ingest.py`, `ml/tests/test_ingest_gate_exclude.py` | 9 tests neufs (exclusion, garde run, reject 3-écritures review-first, review close→no-op, scope 403, push no-op) ; suite 1355 pass / 17 pré-existants |
+| **4b** | `POST /ingest/referential-fix` (`store.referential_fix` lean : preflight_coins + apply, `ReferentialFixConflict`→409). Client (`referential_fix_apply` refactoré) calcule le diff coins+canonical sur la réplique (ro), FS/fetch image restent client, forward via `client.ingest.push_referential_fix` sinon local (D3). | `ml/store/referential_fix.py`, `ml/serving/{ingest_routes,referential_fix_apply}.py`, `ml/client/ingest.py`, `ml/tests/test_ingest_referential_fix.py`, `test_referential_fix_client.py` | 7 tests neufs (apply/reparent/upsert, 409 divergence, one-shot conflict, scope, diff pur, apply local) ; suite 1362 pass / 17 pré-existants |
+| **6** | Split local-state (borné) : `resolve_local_state_db()` + `staging_store()` (`store/__init__.py`). `sources/cli` + `recrop_cohort_census` (work_conn) stagent sur scratch dédié (corrige la course cache autopull, existe DÉJÀ). Garde VPS-only sur `backfill_coin_source_status` + `backfill_detections_json`. **Bookkeeping cohort_jobs/scans : précondition flip documentée** (JOINs canoniques → ATTACH/décision archi). | `ml/store/__init__.py`, `ml/sources/cli.py`, `ml/scripts/{recrop_cohort_census,backfill_coin_source_status,backfill_detections_json}.py`, `.gitignore`, `ml/tests/test_local_state_split.py` | 3 tests neufs (resolver ≠ réplique, staging writable sous READONLY) ; guard refuse sous `READONLY=1` ; suite 1365 pass / 17 pré-existants |
+| **1a** | **PRÉPARÉ, NON ACTIVÉ** — patch `flake.nix` (mac+pc) + checklist d'activation (2 préconditions : P0 secrets→push→déploiement VPS ; split bookkeeping) dans fiche `01-…md` §6. | `docs/…/01-sync-direction-a-cablage.md` (§Activation 1a) | patch prêt, non appliqué |
 
 Détails chunk 3 :
 - Gardes **scopées derrière `--apply`/`--commit`/`--push`** → les lectures dry-run marchent sur réplique.
@@ -96,22 +100,18 @@ grep -rn 'sqlite3.connect' scripts/*.py | grep -iE 'state.*eurio\.db' | grep -v 
 > avant d'avoir fermé/routé tous les writers convertirait certains en **no-op silencieux** et
 > casserait l'ingestion source (elle stage en local avant de pousser). Voir leçon #1.
 
-| Ordre | Chunk | Quoi | Dépend de | Effort |
-|---|---|---|---|---|
-| ~~1~~ | ✅ **4c** | **FAIT** (2026-07-05). `coin_source_status` au run-batch (`_TABLE_ORDER` + `export_run` scopé `last_run_id`). Aucun ingest VPS à ajouter (pas d'allowlist serveur). Cf. §1.2. | — | fait |
-| 2 | **4a** | Route `/ingest` VPS pour bench-exclude (`bench_routes.py:1330-1398`) + gate-reject (`gate_standard_vision._reject`, `serving`?). Reroute client via `client/ingest.py`. (D2) | serveur | ~2-3 h |
-| 3 | **4b** | Route `/ingest/referential-fix` : le client calcule le diff de mutation (aujourd'hui dans `referential_fix_apply._mutate_db`), le VPS l'applique. **Le plus gros morceau** (le router referential n'est même pas monté sur le VPS lean : cv2/PIL absents — voir leçon #3). (D3) | serveur | ~1 j |
-| 4 | **6** | Split local-state : donner au pipeline source (staging `detect_crop.py:192`/`auto_validate`/`orchestrator._maybe_push_run`) et aux jobs (cohort_jobs, training_scan, runs) un **scratch inscriptible distinct** de la réplique ro. **Prérequis du flip** (sinon l'ingestion `--push` throw au staging). | D1 | ~3 h |
-| 5 | **1a** | Poser `EURIO_DB_PATH=…/eurio.replica.db` + `EURIO_DB_READONLY=1` dans le devShell Mac/PC (`.envrc`/`flake.nix` par profil `hostname`) + garde export routé (D5). **LE FLIP FINAL.** | 4a,4b,4c,6 | ~2 h |
-| ~~6~~ | ✅ **5** | **FAIT** (2026-07-05). stderr-warning bénin toléré, `accept-new`+known_hosts stable, flock thread/timer, en-tête sha autoritaire + retry. Cf. §1.2. | — | fait |
+**Tous les chunks CODE sont FAITS** (4c, 5, 4a, 4b, 6 — committés 2026-07-05, cf. §1.2). Ne reste
+que le **flip 1a**, préparé mais **NON activé**, gaté sur 2 préconditions non-agent :
 
-**Writers encore à traiter (hors chunk 3, appartiennent à 4/6)** :
-- `ml/serving/bench_routes.py:1330-1398` (crops/exclude) → chunk 4a.
-- `ml/scripts/gate_standard_vision.py:101-130` (`_reject`) → chunk 4a.
-- `ml/serving/referential_fix_apply.py:37,559` → chunk 4b (**laissé intact exprès** : le router seul
-  déplacerait le silent-write vers la réplique — attendre la route /ingest).
-- `ml/scripts/backfill_detections_json.py`, `backfill_coin_source_status.py` → chunk 4 (garde-fou
-  VPS-only à étendre, cf. `vps-only-migrations.md` inventaire incomplet).
+| Ordre | Étape | Quoi | Bloqué par |
+|---|---|---|---|
+| ~~1-4~~ | ✅ **4c/5/4a/4b/6** | **FAITS** — routes `/ingest` (exclude/gate/referential-fix), run-batch `coin_source_status`, durcissement rsync, staging scratch. Cf. §1.2. | — |
+| 1 | **P0 secrets** | Révoquer/rotater clés `.envrc copy` + `git-filter-repo` + **push**. §2.3. | utilisateur |
+| 2 | **Déploiement VPS** | Rebuild eurio-api (après push) + vérifier les 3 routes `/ingest` live. | P0 secrets |
+| 3 | **Split bookkeeping** | Câbler cohort_jobs/scans read+write sur `eurio.local.db` (blocage archi : JOINs canoniques → ATTACH/décision PO + vérif lab live). | décision PO |
+| 4 | **1a — LE FLIP** | Appliquer le patch `flake.nix` (mac+pc). Patch + checklist : fiche `01-…md` §6. | 1+2+3 |
+
+Détail complet, patch prêt-à-appliquer et vérifications : **fiche `01-sync-direction-a-cablage.md` §6 « Activation 1a »**.
 
 ### 2.2 Autres fiches (non démarrées)
 
@@ -196,9 +196,11 @@ touche des writers (4a/4b) : envelopper via `BEGIN`/`COMMIT`/`ROLLBACK` ou `stor
 
 ## 4. Prochaine action recommandée
 
-~~**Chunk 4c**~~ + ~~**chunk 5**~~ **FAITS** (2026-07-05). Prochains : **chunk 4a** (route `/ingest`
-bench/gate, nécessite D2) ou **4b** (`/ingest/referential-fix`, le plus gros). Le flip final (1a)
-ne doit être tenté qu'après 4a+4b+6 (4c et 5 désormais clos).
+**Tout le CODE F01 est livré+committé** (4c, 5, 4a, 4b, 6 — 2026-07-05, branche
+`sources-jo-wikipedia`, **non poussé**). Il ne reste QUE le flip 1a, gaté sur 3 préconditions
+séquentielles (§2.1) : **P0 secrets → déploiement VPS → split bookkeeping → flip**. Le patch et la
+checklist d'activation sont dans la fiche `01-…md` §6.
 
-Avant de committer quoi que ce soit : **staging explicite par fichier** (jamais `git add -A` — cf.
-CLAUDE.md), et le P0 secrets (§2.3) devrait précéder tout push sur les remotes partagés.
+**Prochaine action côté utilisateur** : traiter le **P0 secrets** (§2.3) — c'est le blocage racine
+(rien ne peut être poussé, donc le VPS ne peut pas être déployé, donc le flip ne peut pas être
+activé). Avant tout push : **staging explicite par fichier** (jamais `git add -A` — cf. CLAUDE.md).
