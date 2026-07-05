@@ -1,8 +1,8 @@
 # HANDOFF — Hardening Eurio (reprise en session fraîche)
 
-> **Point d'entrée unique.** Lis-le en entier avant d'agir. Épinglé au SHA `ce3a802`
-> (`sources-jo-wikipedia`, chunks C3+B2a livrés) — si `HEAD` a avancé, re-vérifie avant de
-> suivre (leçon #6).
+> **Point d'entrée unique.** Lis-le en entier avant d'agir. Épinglé au SHA `b03c86c`
+> (`sources-jo-wikipedia`, tail Direction A livré+déployé sauf add-crop) — si `HEAD` a avancé,
+> re-vérifie avant de suivre (leçon #6).
 
 ---
 
@@ -20,9 +20,17 @@
     (write canonique local sous le flip → 503 `canonical_readonly` actionnable, pas 500 opaque).
   - `ce3a802` **B2a** : gardes `resolve_db_readonly()` sur `apply_manual_crop`+`delete_crop`
     (compute local + forward VPS, skip write local sous le flip) — clôt le live-repro manual-crop.
-- **Effet : le flip est maintenant LIVABLE pour le cœur du lab** (toutes décisions review/funnel/
-  lot + reassign → VPS ; recrop + delete manuels → OK sous le flip ; tout le reste refuse
-  proprement en 503). Reste B2b + stragglers (§2) avant flip 100%.
+- **Tail QUASI FINI + DÉPLOYÉ VPS (2026-07-06)** — flip validé sur PC par le PO (scan intrus +
+  fast-dino OK). Commits `f36a22a` (stragglers → jumeaux lean VPS + front eurioApi) + `b03c86c`
+  (B2b détect → `/ingest/detections`). **VPS rebuild + vérifié live** : les 4 jumeaux review
+  (correct-listing/requalify-lot/requalify-single/move-lane) + `/ingest/detections` montés
+  (401 sans auth, pas 404) ; healthz 200. Suite ML **1404 verts / 0 rouge**.
+- **Effet : le flip est LIVABLE pour tout le lab SAUF add-crop** (toutes décisions review/funnel/
+  lot + reassign + requalify/lane/correct → VPS ; recrop/delete/scan-face/détect/**sync-crops** OK
+  sous le flip). **SEUL RESTANT = add-crop** (`create_manual_crop`) : refuse proprement en 503 sous
+  le flip (handler DRY), forward correct = chunk dédié (cf. §2). Outil de rattrapage rare.
+- **Flip `flake.nix` = working-tree Mac, NON committé** (laissé au PO pour éviter de perturber sa
+  session PC active + conflits de merge inter-machines ; réversible : `git checkout flake.nix`).
 - **Backups pré-flip faits** (Mac+VPS, `integrity=ok`) — cf. §3. Rien perdu, réplique jamais écrite.
 
 ---
@@ -61,35 +69,36 @@ Les writers tombent en **3 buckets réels** :
 
 | Bucket | Writers | Fix réel | État |
 |---|---|---|---|
-| **B1 — décisions avec jumeau VPS** (`decisions.py apply_*`, `review_queue/writes.py`) : reassign, accept/reopen/training-eligible, lot-decide, decide/skip/reject/restore | le **front** appelle le jumeau VPS via `eurioApi` (chemin identique) | ✅ **FAIT** : single+funnel déjà sur `eurioApi` ; **lot-decide** reroutée `8dc06b3` (dernier gap) |
-| **B2 — writers cv2 lourds** (compute obligatoirement local) : recrop, delete, **add-crop**, lot detect/sync-crops | garde `resolve_db_readonly()` (skip write local) + forward `/ingest` (compute local → push VPS) | 🟡 **B2a FAIT** (`ce3a802` : recrop+delete gardés, forwards existants) ; **B2b RESTE** |
+| **B1 — décisions avec jumeau VPS** (`decisions.py apply_*`, `review_queue/writes.py`) : reassign, accept/reopen/training-eligible, lot-decide, decide/skip/reject/restore | le **front** appelle le jumeau VPS via `eurioApi` (chemin identique) | ✅ **FAIT** (`8dc06b3` lot-decide + single/funnel déjà OK) |
+| **B1bis — stragglers SANS jumeau** (requalify-lot/single, correct-listing, move-lane) | extraire primitive SQL-pure → jumeau lean `review_writes` → front `eurioApi` (comme decide/lot) | ✅ **FAIT + DÉPLOYÉ** (`f36a22a`) — batch requalify (maintenance, no-front) reste 503-sous-flip, assumé |
+| **B2 — writers cv2 lourds** : recrop, delete, scan-face, lot **detect**, **sync-crops**, add-crop | garde `resolve_db_readonly()` + forward `/ingest` (compute local → push VPS) | ✅ **FAIT** recrop/delete (`ce3a802`) + scan-face (`11dd11b`) + **detect** (`b03c86c`, `/ingest/detections` déployé) ; sync-crops OK par composition. 🟡 **add-crop RESTE** |
 | **B3 — filet de sécurité** : tout write canonique local résiduel sous le flip | 1 exception handler DRY → 503 `canonical_readonly` | ✅ **FAIT** (`8dc06b3`, `server.py`) |
 
-### RESTE (B2b + stragglers) — le vrai backlog
+### RESTE — le vrai backlog (réduit à 1 writer + 2 items de fond)
 
-1. **B2b — `create_manual_crop` (add-crop)** : écrit un NOUVEAU crop + row review, mais n'a **pas**
-   de forward `/ingest` (utilise encore l'event-log défunt `emit_state_event` row_ops). Sous le
-   flip → 503 (refus propre via le handler). Pour le rendre **fonctionnel** sous le flip : créer un
-   endpoint `/ingest/*` « nouveau crop + review » (client `push_*` + `store.apply_ingest_*` +
-   **déployer VPS**). Idem lot **detect** (`detections_json`) + **sync-crops** (review_queue_routes).
-2. **Stragglers SANS jumeau VPS** (vivent SEULEMENT dans `review/review_queue_routes.py`, skippé sur
-   le VPS) : `requalify-single` / `requalify-lot` (+batch) / `correct-listing` / `move-lane→manual`.
-   Ce sont des décisions **SQL-pures** → **DÉCISION À PRENDRE** : (a) extraire un jumeau lean dans
-   `review_queue/writes.py` ou `funnel_writes.py` (comme decide/lot l'ont été) + reroute front
-   `eurioApi`, OU (b) acter ces features **indisponibles sous le flip** (refus 503, features rares).
-3. **C6 (event-log)** : `emit_state_event`/`emit_field_event` écrivent ENCORE le canonique
+1. **add-crop (`serving/crop_edit.create_manual_crop`) — SEUL writer non fonctionnel sous le flip.**
+   Crée un NOUVEAU crop + row review. **Fail-clean 503** aujourd'hui (handler DRY) → SÛR mais pas
+   fonctionnel. Forward CORRECT = chunk dédié : (a) `/ingest/crops/add` (`store.crops.apply_ingest_add_crop`
+   = INSERT image_assets via `upsert_image_asset` cv2-free + INSERT review_queue) ; (b) **remonter
+   AUSSI les prédictions Dino** (`push_dino_predictions`, endpoint `/ingest/dino` existe) car
+   `compute_lane` en dépend ; (c) **recomputer la lane côté VPS** (vérifier `review.review_lanes`
+   cv2-free) — un forward qui miscompute la lane review serait pire qu'un 503 (R0). Utilisé par
+   l'add-crop manuel ET la branche CREATE de sync-crops (rattrapage rare de pièces ratées).
+2. **C6 (event-log)** : `emit_state_event`/`emit_field_event` écrivent ENCORE le canonique
    `image_state_events`+`image_state_current`. Pas bloquant (gardes + handler couvrent le readonly),
-   mais c'est du poids mort sous Direction A → retrait C6 à cadrer (cf. `migration-direction-a.md`).
-4. **Scan face-write** : `training/training_set_scan.py:469` écrit `image_assets.face` (déjà gardé
-   par `sync_enabled()` + push_faces ? **à re-vérifier** avant re-flip — sinon throw/503 au scan).
+   mais poids mort sous Direction A → retrait C6 à cadrer (cf. `migration-direction-a.md`).
+3. **Commit du flip** : `flake.nix` (`${flipHook}` dans mac+pc shells) est en working-tree, NON
+   committé (choix : ne pas perturber la session PC active du PO + éviter conflits de merge). Le PO
+   le committe quand il veut Direction A durable multi-machines.
 
-### Le pattern (B2b, par writer cv2)
+### Le pattern (déjà rôdé, pour le RESTE)
 
-`client/http.py` a le client générique (`post_json`/`delete_json` → `EURIO_API_URL` + Bearer).
-`client/ingest.py` a `push_crops`/`push_delete_asset`/`push_confusion_map` + `store/*.apply_ingest_*`
-(validation bruyante). Pour add-crop : nouvel endpoint `/ingest/*` (VPS lean, TOUJOURS monté ;
-`review_queue`/`coin_assets` sont skippés — PIL/cv2 absents, leçon #3) + `push_*` + `apply_ingest_*`,
-puis **déployer `server_serve.py` VPS AVANT de re-flipper** (sinon forward 404).
+- **Décisions SQL-pures** → primitive `store/decisions.py` (DecisionError) + jumeau lean
+  `review_queue/writes.py` (chemin identique, `_commit`) + heavy delegate + front `eurioApi` +
+  **deploy VPS**. Exemples faits : decide/lot/requalify/correct/lane.
+- **Writers cv2** → garde `resolve_db_readonly()` (skip local) + forward `/ingest/*`
+  (`store.crops.apply_ingest_*` cv2-free + `client.ingest.push_*` gated `sync_enabled()`) +
+  **deploy VPS**. Exemples faits : recrop/delete/scan-face/detect.
 
 ### Preuve que le flip marche + comment re-flipper
 
