@@ -84,7 +84,10 @@ def _seed_open_review(store: Store) -> tuple[str, str]:
     return "rq1", "ia1"
 
 
-def test_reject_marks_rejected_and_closes_review(tmp_path):
+def test_reject_marks_rejected_and_closes_review(tmp_path, monkeypatch):
+    # sync off → _reject prend le chemin local (store.gate.apply_gate_reject) ;
+    # le chemin forward VPS est couvert par test_ingest_gate_exclude.py.
+    monkeypatch.setattr("client.http.sync_enabled", lambda: False)
     store = Store(tmp_path / "t.db")
     rq, ia = _seed_open_review(store)
     ok = _reject(store._connection(), review_id=rq, asset_id=ia, label="wrong_coin", conf=0.9)
@@ -106,7 +109,8 @@ def test_reject_marks_rejected_and_closes_review(tmp_path):
     assert ev["to_state"] == "rejected" and ev["actor"] == "ccproxy"
 
 
-def test_reject_is_idempotent_on_closed_review(tmp_path):
+def test_reject_is_idempotent_on_closed_review(tmp_path, monkeypatch):
+    monkeypatch.setattr("client.http.sync_enabled", lambda: False)
     store = Store(tmp_path / "t.db")
     rq, ia = _seed_open_review(store)
     assert _reject(store._connection(), review_id=rq, asset_id=ia, label="junk", conf=0.9)

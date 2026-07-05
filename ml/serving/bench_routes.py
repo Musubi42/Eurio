@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 
 from serving._coin_helpers import canonical_obverse_url
 from scripts.bench_theme_match import SEED_YEARS, replay_bench
+from store.crops import apply_exclude_crops
 
 router = APIRouter(prefix="/bench", tags=["bench"])
 
@@ -1344,58 +1345,38 @@ def post_bench_run_crops_exclude(
 
     conn = _store()._connection()  # noqa: SLF001
 
-    # Vérifier que le run existe (404 propre si pas).
+    # Vérifier que le run existe (404 propre si pas). En Direction A, la lecture
+    # tape la réplique locale (copie du canonique).
     run_row = conn.execute(
         "SELECT id FROM source_runs WHERE id = ?", (run_id,),
     ).fetchone()
     if run_row is None:
         raise HTTPException(status_code=404, detail=f"Run {run_id} not found.")
 
-    now_iso = datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
-    excluded = 0
-    skipped: list[str] = []
+    # Direction A : l'exclusion est une décision canonique → forward au VPS quand
+    # la sync est active (le serveur reste autoritaire sur l'appartenance au run).
+    # Model A pur (sync off) : écriture locale via le même helper SQL.
+    from client.http import sync_enabled  # noqa: PLC0415
 
-    # Guard d'appartenance : récupère d'un coup les asset_ids du run (set).
-    # On évite N requêtes SELECT ; l'ensemble peut être grand (~milliers) mais
-    # payload.asset_ids est borné par la UI (typiquement < 200 au total).
-    run_asset_ids: set[str] = {
-        row[0]
-        for row in conn.execute(
-            "SELECT id FROM image_assets WHERE run_id = ?", (run_id,)
-        ).fetchall()
-    }
+    if sync_enabled():
+        from client.ingest import push_exclude_crops  # noqa: PLC0415
 
-    to_update = []
-    for aid in payload.asset_ids:
-        if aid not in run_asset_ids:
-            skipped.append(aid)
-        else:
-            to_update.append(aid)
-
-    if to_update:
+        result = push_exclude_crops(run_id, payload.asset_ids)
+        result = result or {"excluded": 0, "skipped": list(payload.asset_ids)}
+    else:
         conn.execute("BEGIN")
         try:
-            conn.executemany(
-                """
-                UPDATE image_assets
-                   SET training_eligible = 0,
-                       quality_reason    = 'too_tilted',
-                       resolved_at       = ?
-                 WHERE id = ?
-                """,
-                [(now_iso, aid) for aid in to_update],
-            )
+            result = apply_exclude_crops(conn, run_id, payload.asset_ids)
             conn.execute("COMMIT")
-            excluded = len(to_update)
         except Exception:
             conn.execute("ROLLBACK")
             raise
 
     logger.info(
-        "[bench] crops exclude run=%s excluded=%d skipped=%d",
-        run_id, excluded, len(skipped),
+        "[bench] crops exclude run=%s excluded=%d skipped=%d sync=%s",
+        run_id, result["excluded"], len(result["skipped"]), sync_enabled(),
     )
-    return CropsExcludeResult(excluded=excluded, skipped=skipped)
+    return CropsExcludeResult(**result)
 
 
 # Consumed by: admin/.../features/bench

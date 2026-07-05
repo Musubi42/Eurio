@@ -16,7 +16,42 @@ asset_id inconnus sont collectés dans ``missing`` (tolérant, pas de 404 global
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from store.events import emit_field_event
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def apply_exclude_crops(conn, run_id: str, asset_ids) -> dict:
+    """Exclut des crops du training (trop inclinés ou raison éditoriale) — miroir
+    DB de l'ancien handler ``POST /bench/runs/{id}/crops/exclude``.
+
+    Seuls ``training_eligible=0``, ``quality_reason='too_tilted'`` et
+    ``resolved_at`` changent (réversible : ``training_eligible=1,
+    quality_reason=NULL``). Garde d'appartenance canonique : les asset_ids qui
+    n'appartiennent pas au run vont dans ``skipped`` (le serveur reste autoritaire
+    même si la réplique cliente est en retard). Ni BEGIN ni COMMIT (le caller
+    possède la transaction). Retourne ``{"excluded": n, "skipped": [asset_id…]}``.
+    """
+    run_asset_ids = {
+        row[0]
+        for row in conn.execute(
+            "SELECT id FROM image_assets WHERE run_id = ?", (run_id,)
+        ).fetchall()
+    }
+    to_update = [aid for aid in asset_ids if aid in run_asset_ids]
+    skipped = [aid for aid in asset_ids if aid not in run_asset_ids]
+    if to_update:
+        now = _now_iso()
+        conn.executemany(
+            "UPDATE image_assets SET training_eligible = 0, "
+            "quality_reason = 'too_tilted', resolved_at = ? WHERE id = ?",
+            [(now, aid) for aid in to_update],
+        )
+    return {"excluded": len(to_update), "skipped": skipped}
 
 
 def apply_ingest_crops(conn, crops) -> dict:

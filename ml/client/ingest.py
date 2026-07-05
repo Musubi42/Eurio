@@ -54,6 +54,48 @@ def push_dino_predictions(predictions: list[dict[str, Any]]) -> dict | None:
     return _http.post_json("/ingest/dino", {"predictions": predictions})
 
 
+def push_exclude_crops(run_id: str, asset_ids: list[str]) -> dict | None:
+    """POST ``/ingest/crops/exclude`` si la sync est activée, sinon no-op (``None``).
+
+    ``asset_ids`` = crops à exclure du training. Le serveur reste autoritaire sur
+    l'appartenance au run (retourne ``skipped``). Liste vide → pas d'appel réseau.
+    Retourne ``{"excluded": n, "skipped": [...]}`` ou ``None`` si sync off / vide.
+    """
+    from client.http import sync_enabled  # noqa: PLC0415 — évite import cycle au chargement
+
+    if not asset_ids or not sync_enabled():
+        return None
+    from client import http as _http  # noqa: PLC0415
+
+    return _http.post_json(
+        "/ingest/crops/exclude", {"run_id": run_id, "asset_ids": list(asset_ids)}
+    )
+
+
+def push_gate_reject(
+    *, review_id: str, asset_id: str, label: str,
+    confidence: float | None, engine_version: str,
+) -> dict | None:
+    """POST ``/ingest/gate/reject`` si la sync est activée, sinon no-op (``None``).
+
+    Comme un delete, un rejet non propagé ressuscite au pull-replica → l'appelant
+    DOIT traiter un ``None`` (sync off) comme le signal de retomber sur l'écriture
+    locale, et un échec réseau comme bloquant. Retourne ``{"written": bool}`` ou
+    ``None`` si sync désactivée.
+    """
+    from client.http import sync_enabled  # noqa: PLC0415 — évite import cycle au chargement
+
+    if not sync_enabled():
+        return None
+    from client import http as _http  # noqa: PLC0415
+
+    return _http.post_json(
+        "/ingest/gate/reject",
+        {"review_id": review_id, "asset_id": asset_id, "label": label,
+         "confidence": confidence, "engine_version": engine_version},
+    )
+
+
 def push_delete_asset(asset_id: str) -> dict | None:
     """DELETE ``/ingest/assets/{id}`` si la sync est activée, sinon no-op (``None``).
 

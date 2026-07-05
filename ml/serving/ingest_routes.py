@@ -11,9 +11,11 @@ from pydantic import BaseModel
 
 from client.runbatch import ingest_run
 from serving.auth_principal import require_scope
-from store.crops import apply_delete_assets, apply_ingest_crops
+from store.crops import apply_delete_assets, apply_exclude_crops, apply_ingest_crops
 from store.dino import apply_ingest_dino
 from store.faces import apply_ingest_faces
+from store.gate import ENGINE_VERSION as _GATE_ENGINE_VERSION
+from store.gate import apply_gate_reject
 
 router = APIRouter(prefix="/ingest", tags=["ingest"])
 
@@ -63,6 +65,60 @@ def ingest_crops_route(payload: IngestCropsPayload) -> dict:
     conn.execute("BEGIN")
     try:
         result = apply_ingest_crops(conn, payload.crops)
+        conn.execute("COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+    return result
+
+
+class CropsExcludePayload(BaseModel):
+    run_id: str
+    asset_ids: list[str]
+
+
+@router.post("/crops/exclude", dependencies=[Depends(require_scope("ingest:write"))])
+def ingest_crops_exclude_route(payload: CropsExcludePayload) -> dict:
+    """Exclut des crops du training (verdict éditorial calculé côté lab). SQL-pur,
+    garde d'appartenance au run canonique-side, atomique. Retourne
+    ``{excluded, skipped}``."""
+    if _store is None:
+        raise HTTPException(status_code=500, detail="ingest non câblé (bind manquant)")
+    conn = _store._connection()  # noqa: SLF001
+    conn.execute("BEGIN")
+    try:
+        result = apply_exclude_crops(conn, payload.run_id, payload.asset_ids)
+        conn.execute("COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+    return result
+
+
+class GateRejectPayload(BaseModel):
+    review_id: str
+    asset_id: str
+    label: str
+    confidence: float | None = None
+    engine_version: str = _GATE_ENGINE_VERSION
+
+
+@router.post("/gate/reject", dependencies=[Depends(require_scope("ingest:write"))])
+def ingest_gate_reject_route(payload: GateRejectPayload) -> dict:
+    """Rejet canonique du gate vision standard (wrong_coin/junk). 3 écritures
+    atomiques (review_queue done + image_assets rejected + state event) ; si la
+    review n'est plus ``open`` → ``{written: false}`` sans mutation. Retourne
+    ``{written: bool}``."""
+    if _store is None:
+        raise HTTPException(status_code=500, detail="ingest non câblé (bind manquant)")
+    conn = _store._connection()  # noqa: SLF001
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        result = apply_gate_reject(
+            conn, review_id=payload.review_id, asset_id=payload.asset_id,
+            label=payload.label, confidence=payload.confidence,
+            engine_version=payload.engine_version,
+        )
         conn.execute("COMMIT")
     except Exception:
         conn.execute("ROLLBACK")

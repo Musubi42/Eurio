@@ -24,11 +24,9 @@ Usage :
 from __future__ import annotations
 
 import argparse
-import json
 import sqlite3
 import sys
 from collections import Counter
-from datetime import datetime, timezone
 from pathlib import Path
 
 ML_DIR = Path(__file__).resolve().parents[1]
@@ -39,16 +37,12 @@ from shared import ccproxy_client  # noqa: E402
 from training.foundation.claude_review import DEFAULT_MODEL_ALIAS, MODELS  # noqa: E402
 from training.foundation.obverse_group_review import canonical_obverse_path  # noqa: E402
 from training.foundation.standard_gate_review import classify_crop  # noqa: E402
-from store import Store, emit_state_event  # noqa: E402
+from store import Store, resolve_db_path  # noqa: E402
+from store.gate import ENGINE_VERSION, apply_gate_reject  # noqa: E402
 from shared.storage.local_cache import local_path  # noqa: E402
 
 DEFAULT_DB = ML_DIR / "state" / "eurio.db"
 REJECT_LABELS = ("wrong_coin", "junk")  # wrong_era = vrai standard mal groupé → on garde
-ENGINE_VERSION = "vision_standard_gate_v1"
-
-
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _group_canon(conn: sqlite3.Connection, country: str) -> dict[str, tuple[str, str, list[Path]]]:
@@ -99,34 +93,31 @@ def _open_items(conn: sqlite3.Connection, country: str, limit: int | None) -> li
 
 
 def _reject(conn: sqlite3.Connection, *, review_id: str, asset_id: str, label: str, conf: float | None) -> bool:
-    """Rejet canonique réversible. Retourne True si écrit (review encore open)."""
-    now = _now_iso()
-    reason = f"vision_standard_gate:{label}"
+    """Rejet canonique réversible. Retourne True si écrit (review encore open).
+
+    Direction A : forward au VPS (``/ingest/gate/reject``) quand la sync est
+    active — un rejet non propagé ressuscite au pull-replica. Model A pur (sync
+    off) : écriture locale via le même helper SQL (``store.gate``).
+    """
+    from client.http import sync_enabled  # noqa: PLC0415
+
+    if sync_enabled():
+        from client.ingest import push_gate_reject  # noqa: PLC0415
+
+        res = push_gate_reject(
+            review_id=review_id, asset_id=asset_id, label=label,
+            confidence=conf, engine_version=ENGINE_VERSION,
+        )
+        return bool(res and res.get("written"))
+
     conn.execute("BEGIN IMMEDIATE")
     try:
-        conn.execute(
-            "UPDATE image_assets SET resolution_status='rejected', training_eligible=0, "
-            "quality_reason=?, resolved_at=? WHERE id=?",
-            ("vision_standard_gate", now, asset_id),
-        )
-        cur = conn.execute(
-            "UPDATE review_queue SET status='done', decision_notes=?, decided_at=?, "
-            "decided_by='vision_gate', decision_engine_version=?, decision_metadata_json=? "
-            "WHERE id=? AND status='open'",
-            (reason, now, ENGINE_VERSION,
-             json.dumps({"reason": reason, "confidence": conf}), review_id),
-        )
-        if cur.rowcount != 1:
-            conn.execute("ROLLBACK")
-            return False
-        # actor enum-contraint (image_state_events) → 'ccproxy' (vision Claude) ;
-        # la provenance fine du gate vit dans `reason` + review_queue.decided_by.
-        emit_state_event(
-            conn, asset_id=asset_id, to_state="rejected",
-            actor="ccproxy", reason=reason,
+        res = apply_gate_reject(
+            conn, review_id=review_id, asset_id=asset_id, label=label,
+            confidence=conf, engine_version=ENGINE_VERSION,
         )
         conn.execute("COMMIT")
-        return True
+        return res["written"]
     except Exception:
         conn.execute("ROLLBACK")
         raise
@@ -138,7 +129,7 @@ def main() -> int:
     parser.add_argument("--apply", action="store_true", help="écrit les rejets (défaut = dry-run)")
     parser.add_argument("--min-confidence", type=float, default=0.85)
     parser.add_argument("--limit", type=int, default=None, help="cap le nombre de crops classés")
-    parser.add_argument("--db", default=str(DEFAULT_DB))
+    parser.add_argument("--db", default=None)
     parser.add_argument("--model", default=DEFAULT_MODEL_ALIAS, choices=list(MODELS))
     parser.add_argument("--base-url", default=ccproxy_client.DEFAULT_BASE_URL)
     args = parser.parse_args()
@@ -149,7 +140,7 @@ def main() -> int:
         print(f"✗ ccproxy injoignable ({exc}).")
         return 2
 
-    store = Store(Path(args.db))
+    store = Store(resolve_db_path(args.db or DEFAULT_DB))
     conn = store._connection()
     canon = _group_canon(conn, args.country)
     items = _open_items(conn, args.country, args.limit)
