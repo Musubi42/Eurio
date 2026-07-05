@@ -447,17 +447,18 @@ class IterationsMixin:
     # ─── Live tests (Sprint 4) ───────────────────────────────────────────
 
     def upsert_live_test(self, row: IterationLiveTestRow) -> bool:
-        """Insert one parsed JSONL line, return True if inserted, False on dupe.
+        """Upsert the representative row for one ``(iteration_id, test_idx)``.
 
-        Dupe detection is structural: a row already exists for
-        ``(iteration_id, test_idx)``. The route uses the boolean to count
-        ``inserted`` vs ``skipped_dupe`` for resync idempotency.
+        Return True if newly inserted, False if an existing row was replaced.
+        The route builds ``row`` as the best-of frame across all JSONL lines
+        sharing that ``test_idx`` (a coin re-scanned N times), so this must
+        replace **every** field — prediction *and* verdict come from the same
+        frame. (The historical bug refreshed only the verdict on dupe, leaving
+        the first frame's prediction glued to a later frame's verdict.)
 
-        On dupe we still **refresh the verdict** (``is_correct`` /
-        ``is_correct_eq``): re-syncing after the equivalence logic improved
-        must re-grade existing rows, not freeze the stale on-device verdict.
-        The raw fields (predictions, ts) are immutable — only the verdict is
-        re-derived server-side, so refreshing it is safe and idempotent.
+        Re-syncing the same log is idempotent: the representative is recomputed
+        deterministically, so an existing row is overwritten with an identical
+        (or freshly re-graded) representative.
         """
         with self._writing() as c:
             existing = c.execute(
@@ -467,12 +468,24 @@ class IterationsMixin:
             ).fetchone()
             if existing is not None:
                 c.execute(
-                    "UPDATE iteration_live_tests "
-                    "SET is_correct = ?, is_correct_eq = ? "
-                    "WHERE iteration_id = ? AND test_idx = ?",
+                    """
+                    UPDATE iteration_live_tests SET
+                      expected_eurio_id = ?, condition = ?,
+                      predicted_top3_json = ?, predicted_top1 = ?,
+                      similarity_top1 = ?, is_correct = ?, is_correct_eq = ?,
+                      error = ?, ts = ?
+                    WHERE iteration_id = ? AND test_idx = ?
+                    """,
                     (
+                        row.expected_eurio_id,
+                        row.condition,
+                        json.dumps(row.predicted_top3),
+                        row.predicted_top1,
+                        row.similarity_top1,
                         1 if row.is_correct else 0,
                         1 if row.is_correct_eq else 0,
+                        row.error,
+                        row.ts,
                         row.iteration_id,
                         row.test_idx,
                     ),

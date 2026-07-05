@@ -3812,6 +3812,37 @@ def _live_tests_summary(
     }
 
 
+def _best_of_representative(
+    frames: list[IterationLiveTestRow], eq_map,
+) -> IterationLiveTestRow:
+    """Collapse all frames of one test_idx into a single best-of row.
+
+    Each frame is graded server-side (never trust the on-device flag, cf.
+    bc17d955): ``strict`` = exact eurio_id match, ``eq`` = design_group
+    equivalence. The representative is the argmax frame by
+    ``(strict, eq, similarity)`` — so:
+
+      * ``is_correct`` (= rep.strict) equals OR(strict) over frames, and
+      * ``is_correct_eq`` (= rep.eq) equals OR(eq) over frames
+
+    (strict ⊆ eq, since an exact match is always equivalent). Best-of: the
+    test counts correct if ANY re-scan got it, and the shown prediction is the
+    frame that earned the verdict (or the most-confident miss when all fail).
+    """
+    def _graded(row: IterationLiveTestRow) -> tuple[bool, bool, float]:
+        pred = row.predicted_top1
+        strict = pred is not None and pred == row.expected_eurio_id
+        eq = bool(eq_map.are_equivalent(pred, row.expected_eurio_id))
+        sim = row.similarity_top1 if row.similarity_top1 is not None else float("-inf")
+        return strict, eq, sim
+
+    rep = max(frames, key=_graded)
+    strict, eq, _ = _graded(rep)
+    rep.is_correct = strict
+    rep.is_correct_eq = eq
+    return rep
+
+
 @router.post("/cohorts/_/iterations/{iteration_id}/live-tests/sync")
 def sync_live_tests(
     iteration_id: str, payload: LiveTestsSyncPayload | None = None,
@@ -3844,9 +3875,16 @@ def sync_live_tests(
     from training.eval.equivalence import build_equivalence_map
 
     eq_map = build_equivalence_map(db_path=store.db_path)
-    inserted = 0
-    skipped_dupe = 0
     parse_errors: list[str] = []
+
+    # A coin is often re-scanned several times → multiple JSONL frames share one
+    # test_idx. Group them and collapse each group to ONE representative row so
+    # prediction and verdict always come from the same frame (cf. the historical
+    # desync bug). Canonical policy = **best-of**: a test counts correct if ANY
+    # frame got it. `_best_of_representative` picks the argmax frame by
+    # (strict, eq, similarity), which makes the stored verdict equal the OR over
+    # frames while keeping the displayed prediction coherent.
+    frames_by_test: dict[int, list[IterationLiveTestRow]] = {}
     with log_path.open("r", encoding="utf-8") as fh:
         for line_idx, raw in enumerate(fh, start=1):
             row, err = _parse_live_test_line(
@@ -3857,13 +3895,16 @@ def sync_live_tests(
                 continue
             if row is None:
                 continue
-            pred = row.predicted_top1
-            row.is_correct = pred is not None and pred == row.expected_eurio_id
-            row.is_correct_eq = eq_map.are_equivalent(pred, row.expected_eurio_id)
-            if store.upsert_live_test(row):
-                inserted += 1
-            else:
-                skipped_dupe += 1
+            frames_by_test.setdefault(row.test_idx, []).append(row)
+
+    inserted = 0
+    skipped_dupe = 0  # existing test rows replaced (resync idempotency signal)
+    for frames in frames_by_test.values():
+        rep = _best_of_representative(frames, eq_map)
+        if store.upsert_live_test(rep):
+            inserted += 1
+        else:
+            skipped_dupe += 1
 
     rows = store.list_live_tests(iteration_id)
     summary = _live_tests_summary(rows, iteration)
