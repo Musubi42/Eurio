@@ -254,9 +254,11 @@ jamais écrite localement » est garanti par le code plutôt que par la discipli
 
 ## 6. Activation 1a — LE FLIP (préparé, NON activé)
 
-> **État 2026-07-05 (soir)** : préconditions **1 ✅ et 2 ✅ FAITES**. Ne reste que la **3 (split
-> bookkeeping)** avant d'appliquer le patch. Appliqué trop tôt, le bookkeeping lab (cohort_jobs /
-> training_scans) throw `readonly` tant que le split n'est pas câblé.
+> **État 2026-07-05 (nuit)** : préconditions **1 ✅, 2 ✅ ET 3 ✅ FAITES** (split CODÉ+committé
+> `1a43426`+`7f3f3e0`, vérifié : simulation flip OK, suite verte). **Le flip 1a peut maintenant être
+> appliqué** — reste : (a) lancer la migration one-time `scripts.migrate_bookkeeping_to_local`
+> (historique cohort_* → eurio.local.db), (b) appliquer le patch `flake.nix` (2 lignes), (c) vérifier
+> une session lab live sans throw readonly.
 
 ### Préconditions
 
@@ -273,10 +275,21 @@ jamais écrite localement » est garanti par le code plutôt que par la discipli
    ```bash
    ssh serverOimNixDontpanic 'docker exec eurio-api python -c "from serving.server_serve import app; [print(sorted(r.methods), r.path) for r in app.routes if getattr(r,\"path\",\"\").startswith(\"/ingest\")]"'
    ```
-3. **Split bookkeeping local-state** — ✅ **DÉCIDÉ (2026-07-05) : Option A = LOCAL** (`eurio.local.db`).
-   Câbler les writers ET readers de `cohort_jobs` / `cohort_training_scans` /
-   `cohort_training_scan_results` sur `resolve_local_state_db()` (`ml/state/eurio.local.db`, writable,
-   déjà existant).
+3. **Split bookkeeping local-state** — ✅ **FAIT (2026-07-05, Option A = LOCAL, `1a43426`+`7f3f3e0`).**
+   Writers ET readers de `cohort_jobs` / `cohort_training_scans` / `cohort_training_scan_results`
+   routés sur `store.local_state_store()` (`eurio.local.db`, writable). Archi = **2 connexions
+   explicites** (pas d'ATTACH — voir décision ci-dessous). Vérifié : suite verte (zéro régression),
+   simulation flip (`READONLY=1` → `cohort_job_start` local OK, write canonique refusé).
+
+   > **Découverte à l'implémentation** : les 3 tables portaient **3 FK CROSS-DB** (cohort_id →
+   > experiment_cohorts ×2, scan_results.asset_id → image_assets) — impossibles une fois les tables
+   > dans un autre fichier. Retirées de `schema.sql` → liens **logiques** app-level (la FK local↔local
+   > scan_id → cohort_training_scans reste). Le « point à vérifier » (enrichissement liste-intrus) =
+   > déjà Python-side, aucun JOIN caché.
+   >
+   > **Migration one-time requise** (précond du flip) : `scripts.migrate_bookkeeping_to_local` copie
+   > l'historique cohort_* du eurio.db canonique → eurio.local.db AVANT le flip (sinon il est perdu
+   > quand le flip remplace le canonique par la réplique VPS vide). Idempotent.
 
    > ⚠️ **Le « blocage d'archi JOINs canoniques » de la version initiale de cette fiche était un
    > FAUX PROBLÈME** (vérifié le 2026-07-05, lecture de tous les statements SQL touchant les 3
@@ -301,6 +314,18 @@ jamais écrite localement » est garanti par le code plutôt que par la discipli
    sous le flip le lab throw à la 1re écriture cohort_jobs (échec BRUYANT, pas silencieux — bloque le
    lab mais ne corrompt rien).
 
+### Étape 0 (AVANT le patch) — migration one-time du bookkeeping
+
+Sur chaque machine dev (mac/pc), pendant qu'elle est encore en Model A (eurio.db canonique local
+avec l'historique) :
+
+```bash
+cd ml && ./.venv/bin/python -m scripts.migrate_bookkeeping_to_local   # eurio.db → eurio.local.db
+```
+
+Idempotent. Sans ça, l'historique cohort_jobs/scans (et la provenance mix_zone_17 de `replay`)
+est perdu quand le flip pointe la lecture sur la réplique VPS (où ces tables sont vides).
+
 ### Patch prêt-à-appliquer (`flake.nix`)
 
 Ajouter aux shells **mac** ET **pc** uniquement (PAS `vpsShell`, PAS `commonEnv` — le VPS force
@@ -320,6 +345,8 @@ python -c "from serving.server import CANONICAL_DB; print(CANONICAL_DB)"   # →
 # un Store sans read_only explicite est ro :
 python -c "from store import Store; Store('ml/state/eurio.replica.db')"      # → RuntimeError (garde 1b)
 # une session lab complète (review lecture, bench, suggestions Dino) sans throw `readonly`
+# un scan Jeu d'entraînement + un recrop-zero : cohort_*/training-scan écrits SANS throw
+#   (bookkeeping → eurio.local.db writable, split fait) — vérifier les rows dans eurio.local.db
 # un run source `--push` stage sur scratch et pousse (pas de throw)
 ```
 
