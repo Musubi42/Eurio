@@ -2,16 +2,17 @@
 
 > **Point d'entrée unique** pour reprendre le travail de robustesse. Lis-le en entier avant d'agir.
 >
-> **État 2026-07-05 (soir)** : **TOUT le code F01 est committé + poussé (codeberg+github,
-> `HEAD=2355eccd` sur `sources-jo-wikipedia`) + DÉPLOYÉ sur le VPS** (eurio-api rebuild, 3 routes
-> `/ingest` vérifiées live → 401 non-auth). P0 secrets **traité** (détracké+révoqué, sans réécriture
-> d'historique — décision PO). **Il ne reste QUE** : (a) le **split bookkeeping** (à discuter PO,
-> cf. §Activation 1a précond. 3) puis (b) le **flip 1a** (patch prêt, non activé). Détail chunk par
-> chunk : §1 + fiche `01-…md §6`. Ordre historique des chunks conservé plus bas pour référence.
+> **État 2026-07-05 (soir)** : **TOUT le code F01 est committé + poussé (codeberg+github) +
+> DÉPLOYÉ sur le VPS** (eurio-api rebuild, 3 routes `/ingest` vérifiées live → 401 non-auth). P0
+> secrets **traité** (détracké+révoqué, sans réécriture d'historique — décision PO).
+> **Harmonisation Mac↔PC↔VPS FAITE** (2026-07-05, §1.3) : les 7 fichiers locaux du PC rapatriés
+> sur Mac + committés + poussés, `HEAD=1449a1d` **sur les 3 machines**, vérifié live (route
+> canonique, CUDA PC, VPS rebuild). **Il ne reste QUE** : (a) le **split bookkeeping** (à discuter
+> PO, cf. §Activation 1a précond. 3) puis (b) le **flip 1a** (patch prêt, non activé). Détail chunk
+> par chunk : §1 + fiche `01-…md §6`. Ordre historique des chunks conservé plus bas pour référence.
 >
-> ⚠️ Le PC (`ssh pc`) est à `4c06cfb0` avec 7 fichiers source non-committés (travail local) + un
-> souci d'auth codeberg en session non-interactive : **à synchroniser manuellement** par l'opérateur
-> (ne pas forcer — risque de clobber le travail local).
+> ✅ Le PC (`ssh pc`) est désormais **synchronisé** (`HEAD=1449a1d`, `git status` propre). Pull via
+> `ssh -A pc` (agent forward) + `git pull github` (SSH) — codeberg https échoue en non-interactif.
 
 ## 0. Carte des documents (ne rien dupliquer)
 
@@ -95,6 +96,45 @@ EURIO_DB_READONLY=1 ./.venv/bin/python -m scripts.wipe_referential --dry-run    
 # aucun sqlite3.connect hardcodé restant dans les scripts :
 grep -rn 'sqlite3.connect' scripts/*.py | grep -iE 'state.*eurio\.db' | grep -v resolve_db_path   # → vide
 ```
+
+### 1.3 Harmonisation Mac ↔ PC ↔ VPS (2026-07-05, committé+poussé+déployé)
+
+Le PC portait **7 fichiers modifiés localement** (« petits bricolages pour que ça
+tourne »). Diagnostic : **aucun n'était réellement spécifique-machine** — c'étaient
+des **corrections universelles** que le Mac n'avait pas, des bugs latents ne se
+déclenchant que sur une machine **migrée** (sans `ml/datasets/` local) ou **avec
+GPU**. Doctrine appliquée : **un seul code source, adaptation au runtime**, jamais
+de fork par machine. Le `flake.nix` reste inchangé (le `nvidiaHook` PC suffit).
+
+Rapatriés sur Mac + committés (HEAD `1449a1d`, 4 commits `c351113`→`1449a1d`) :
+
+| Thème | Fichiers | Cause racine |
+|---|---|---|
+| **Vignettes canoniques par `eurio_id`** | `useCoinsSearch.ts`, `referential_routes.py` (`_serve_canonical` : fallback MinIO **sans fichier local**), `review_queue_routes.py` (`_enrich_top_k` + **balayage des 5 legacy** `/images/<numista>/source`) | Le legacy lit le layout `ml/datasets/` local → 404 sur machine migrée. Sert désormais par `eurio_id` via `/referential/canonical` (MinIO/CDN). |
+| **Best-of live-tests** | `lab_routes.py` (+`_best_of_representative`), `store/iterations.py` (UPDATE tous champs) | Bug de désync : le verdict et la prédiction venaient de frames différents. |
+| **Device auto** (`cuda→mps→cpu`) | `compute_embeddings.py`, `validate_per_class.py` | `torch.device('cpu')` hardcodé → PC (1080 Ti) tournait sur CPU. `get_device('auto')` s'adapte au runtime. |
+| **Gitignore** | `.gitignore` | Garde `/services/` anti-re-vendorage ccproxy (un `services/ccproxy` copié était apparu côté PC). |
+
+**Vérif 3 machines** (2026-07-05) :
+- **Mac** : `py_compile` OK, import-smoke 7 modules OK, MPS détecté, route canonique
+  **live** `302` → CDN `eurio-images.musubi.dev` → `200 image/webp`, `404` gracieux.
+- **PC** : `git checkout -- <7>` + `git pull` (github/SSH via agent forward — codeberg
+  https échoue en session non-interactive) → HEAD `1449a1d`, **`git status` propre**
+  (réplique+`services/ccproxy`+backups tous ignorés). **CUDA True** (GTX 1080 Ti,
+  cu12.6) dans le vrai runtime **nix devShell + venv uv** (`torch+cu121`). ⚠️ Le torch
+  **nix** est CPU-only (flake sans `cudaSupport`) → CUDA passe **uniquement** par le
+  venv uv + `nvidiaHook` LD_LIBRARY_PATH, jamais par `nix develop -c python3`.
+- **VPS** : `git pull` → HEAD `1449a1d`, eurio-api rebuild+restart. **Aucune régression** :
+  `referential`/`review_queue` restent skippés (PIL/cv2, cf. leçon #3), et l'ancien
+  `/images/<nid>/source` était de toute façon un `@app.get` de `serving/server.py`
+  (API ML **locale** `:8042`), jamais servi par l'API légère VPS. Ces vignettes sont
+  des features **lourdes/locales** par nature.
+
+**Laissé à la main de l'utilisateur** : le binaire `services/ccproxy/bin/ccproxy`
+(10 Mo) reste physiquement sur le PC — c'est le **seul** ccproxy trouvé sur la machine
+(pas de `~/Documents/Musubi42/infra/ccproxy` côté PC). Le gitignore le sort de git
+(objectif atteint) ; sa **suppression physique** est laissée à l'utilisateur car il
+pourrait être le ccproxy réellement exécuté par le PC.
 
 ---
 
@@ -204,6 +244,7 @@ touche des writers (4a/4b) : envelopper via `BEGIN`/`COMMIT`/`ROLLBACK` ou `stor
 ## 4. Prochaine action recommandée
 
 **Tout le CODE F01 est livré + committé + poussé + déployé** (2026-07-05). P0 secrets traité (§2.3).
+**Harmonisation Mac↔PC↔VPS faite** (§1.3) — 3 machines sur `HEAD=1449a1d`, PC synchronisé.
 Préconditions 1+2 du flip **faites** ; il ne reste QUE la précondition **3 (split bookkeeping)**,
 puis le **flip 1a** (patch prêt, non activé — fiche `01-…md §6`).
 
