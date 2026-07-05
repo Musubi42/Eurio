@@ -30,6 +30,25 @@ d'un entraînement **en cours** sans erreur.
 
 ---
 
+> ### ✅ État 2026-07-05 — Classe B (bugs de prod) TRAITÉE
+>
+> - **#1 CRITICAL `wipe_referential`** — ✅ corrigé (`117ad75`, Option 3 : wipe FK-off).
+>   **Le bug était plus large que cette fiche** : pas 5 tables mais **9+** tables FK→coins
+>   cascade-détruites (mesuré 20015 lignes) — les 5 P.3a **+** `coin_descriptions_i18n`
+>   (~10k i18n), `coin_topics`, `coin_source_status`, `wikipedia_nl_coins`. D'où un
+>   post-check par **critère** (orphelin attendu ssi parent ∈ WIPE_TABLES), pas par liste
+>   figée. Gate intégrité réel = `foreign_key_check` **post-refetch** (à documenter au runbook).
+> - **#2 CRITICAL décorateur DELETE iterations** — ✅ **déjà corrigé** depuis la rédaction de
+>   la fiche (décorateur sur `delete_iteration`, guard 409 vivant, `test_delete_iteration` vert).
+> - **#3 HIGH `source_registry` non seedé** — ✅ corrigé (`771821c`, seed idempotent au
+>   bootstrap via `store/source_registry_seed.py`).
+>
+> **Reste (Classe A/C, non traité)** : #4 (`test_benchmark` imports plats ×7), #5
+> (`test_normalize_listing` cv2 vs YOLO ×4), #6 (fixture `_seed_min_run` M:N), #7 (~~`==10`~~
+> ✅ corrigé au passage), #8 (couverture front). + un rouge pré-existant hors fiche :
+> `test_eurio_referential::enrich_lmdlp` (import mort `scrape_lmdlp`). Suite : **14 rouges
+> pré-existants, 1368 verts** (zéro régression).
+
 ## 1. Table des findings
 
 | # | Finding | Classe | Sévérité | Preuve (file:line) | Verdict |

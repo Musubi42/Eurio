@@ -273,17 +273,33 @@ jamais écrite localement » est garanti par le code plutôt que par la discipli
    ```bash
    ssh serverOimNixDontpanic 'docker exec eurio-api python -c "from serving.server_serve import app; [print(sorted(r.methods), r.path) for r in app.routes if getattr(r,\"path\",\"\").startswith(\"/ingest\")]"'
    ```
-3. **Split bookkeeping local-state** (SEULE précondition restante — à discuter PO) : câbler
-   les writers ET readers de `cohort_jobs` / `cohort_training_scans` / `cohort_training_scan_results`
-   sur `resolve_local_state_db()` (`ml/state/eurio.local.db`, writable). **Blocage d'archi connu** :
-   ces tables sont JOINTES avec des tables canoniques (`store/decisions.py`,
-   `serving/review_queue/repository.py`) → un split physique impose soit un `ATTACH DATABASE`
-   (la connexion canonique attache `eurio.local.db AS localstate`, les helpers écrivent
-   `localstate.cohort_jobs`), soit de trancher que ces tables restent canoniques (et acceptent de
-   ne pas voyager). **Décision PO + vérif lab live requises** (27 statements SQL, 11 fichiers —
-   call-sites écriture : `lab_routes.py` ×6, `sources_routes.py`, `recrop_cohort_census.py`,
-   `lab_training_scan.py`). Tant que non fait, sous le flip le lab throw à la 1re écriture
-   cohort_jobs (échec BRUYANT, pas silencieux — acceptable en attendant, mais bloque le lab).
+3. **Split bookkeeping local-state** — ✅ **DÉCIDÉ (2026-07-05) : Option A = LOCAL** (`eurio.local.db`).
+   Câbler les writers ET readers de `cohort_jobs` / `cohort_training_scans` /
+   `cohort_training_scan_results` sur `resolve_local_state_db()` (`ml/state/eurio.local.db`, writable,
+   déjà existant).
+
+   > ⚠️ **Le « blocage d'archi JOINs canoniques » de la version initiale de cette fiche était un
+   > FAUX PROBLÈME** (vérifié le 2026-07-05, lecture de tous les statements SQL touchant les 3
+   > tables). **Aucun** statement ne joint une table bookkeeping à une table canonique :
+   > - `store/training_scan.py:190` : `cohort_training_scan_results JOIN cohort_training_scans` =
+   >   local ↔ local.
+   > - `review_queue_routes.py:804` (le « cohort_clause ») : filtre `si.target_eurio_id IN (liste
+   >   Python d'eurio_ids)` sur `review_queue`/`image_assets`/`source_images` **100% canoniques** —
+   >   la liste vient de `cohorts.eurio_ids_json` (colonne JSON lue en Python), **pas d'un JOIN**.
+   > - `store/decisions.py:252` le dit déjà : `cohort_training_scan_results` = « OVERLAY LOCAL,
+   >   absente du canonique VPS ».
+   >
+   > **Donc PAS d'`ATTACH DATABASE` nécessaire** : deux connexions Store séparées (réplique ro +
+   > `eurio.local.db` writable) suffisent. Le pont bookkeeping↔canonique est déjà fait côté Python
+   > (liste d'eurio_ids en bind-params), jamais en SQL.
+
+   **Implémentation** = rewire mécanique de ~27 statements (11 fichiers — call-sites écriture :
+   `lab_routes.py` ×6, `sources_routes.py`, `recrop_cohort_census.py`, `lab_training_scan.py`) vers
+   le Store local. **Point à vérifier en implémentant** : la liste d'intrus (lecture de
+   `cohort_training_scan_results`) — si l'enrichissement du label coin est déjà Python-side, rien à
+   faire ; si un JOIN se cache, le scinder en 2 requêtes. Vérif lab live requise. Tant que non fait,
+   sous le flip le lab throw à la 1re écriture cohort_jobs (échec BRUYANT, pas silencieux — bloque le
+   lab mais ne corrompt rien).
 
 ### Patch prêt-à-appliquer (`flake.nix`)
 
