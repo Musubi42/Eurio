@@ -38,6 +38,15 @@ def _seed_min_run(conn, run_id=RUN) -> None:
         "VALUES (?, 'ebay', ?, ?)",
         (f"si_{run_id}", f"ebay_{run_id}", run_id),
     )
+    # Lien M:N run ↔ source_image : INVARIANT prod maintenu partout par
+    # sources/_base/dedup.py:_link_source_image_run (INSERT OR IGNORE). export_run
+    # (client/runbatch.py) collecte les source_images STRICTEMENT via
+    # source_image_runs WHERE run_id=? ; sans ce lien l'export sort des image_assets
+    # orphelines → ingest_run échoue en FK au COMMIT. En prod cet état n'existe jamais.
+    conn.execute(
+        "INSERT INTO source_image_runs (source_image_id, run_id) VALUES (?, ?)",
+        (f"si_{run_id}", run_id),
+    )
     conn.execute(
         "INSERT INTO image_assets (id, source_image_id, run_id, crop_index, storage_path) "
         "VALUES (?, ?, ?, 0, ?)",
@@ -127,6 +136,9 @@ def test_ingest_route_applies_and_status(ingest_client, tmp_path):
     src = Store(tmp_path / "src.db")
     _seed_min_run(src._connection())  # noqa: SLF001
     batch = export_run(src._connection(), RUN)  # noqa: SLF001
+    # Garde-fou : l'export contient bien la source_image parente (le bug de fixture
+    # M:N manquant sortait des image_assets orphelines → FK au COMMIT de l'ingest).
+    assert batch["tables"]["source_images"], "export sans source_image parente (lien M:N manquant ?)"
 
     r = client.post("/ingest/run", json=batch)
     assert r.status_code == 200, r.text
