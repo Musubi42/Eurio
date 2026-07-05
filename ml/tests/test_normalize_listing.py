@@ -16,12 +16,46 @@ import numpy as np
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from vision import normalize_snap  # noqa: E402
 from vision.normalize_snap import (  # noqa: E402
     CircleDetection,
     NormalizationResult,
     detect_circles_multi,
     normalize_listing,
 )
+
+
+# ─── YOLO stub ──────────────────────────────────────────────────────────
+#
+# Le pipeline est passé YOLO-first (refacto détection unifiée) : `detect_circles_multi`
+# appelle `_yolo_detect_bboxes` puis ne fait tourner Hough QUE dans les bboxes YOLO.
+# YOLO ne reconnaît pas les cercles cv2 peints (et ses poids `output/…best.pt` ne sont
+# pas versionnés). Ces tests visent la logique Hough-refine + post-filtres
+# (off_edge / radius / dedup / normalize), PAS YOLO : on remplace donc l'étage YOLO
+# par un détecteur de contours déterministe sur les disques synthétiques. Chaque test
+# exerce le vrai refine et les vrais gardes dans les bboxes fournies.
+
+def _fake_yolo_bboxes(bgr, conf: float = 0.0):
+    """Renvoie une bbox (x1,y1,x2,y2,conf) par disque peint, via contours cv2."""
+    if bgr is None or bgr.size == 0:
+        return []
+    gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
+    _, mask = cv2.threshold(gray, 100, 255, cv2.THRESH_BINARY)
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    boxes = []
+    for c in contours:
+        x, y, w, h = cv2.boundingRect(c)
+        if w < 8 or h < 8:
+            continue  # bruit
+        boxes.append((float(x), float(y), float(x + w), float(y + h), 0.9))
+    # Ordonné par confiance décroissante (ici constante) puis position, déterministe.
+    boxes.sort(key=lambda b: (-b[4], b[0], b[1]))
+    return boxes
+
+
+@pytest.fixture(autouse=True)
+def _stub_yolo(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(normalize_snap, "_yolo_detect_bboxes", _fake_yolo_bboxes)
 
 
 # ─── Fixture helpers ────────────────────────────────────────────────────
@@ -33,12 +67,21 @@ def _make_listing(circles: list[tuple[int, int, int]],
 
     `circles` is a list of ``(cx, cy, r)`` tuples in native pixel coords.
     Coins drawn as filled grey circles (intentionally distinct from BG so
-    Hough has a clear gradient).
+    Hough has a clear gradient), with speckle texture inside so the disc passes
+    the structure guard (`_STRUCTURE_MIN_LAP_MEANABS` : un disque parfaitement
+    lisse est rejeté `low_structure` — comportement prod voulu).
     """
     h, w = size[1], size[0]
     img = np.full((h, w, 3), bg_color, dtype=np.uint8)
+    rng = np.random.default_rng(1234)  # déterministe
     for cx, cy, r in circles:
         cv2.circle(img, (cx, cy), r, (220, 200, 180), -1)
+        # Texture interne (relief pièce) pour dépasser le seuil Laplacien du guard.
+        mask = np.zeros((h, w), dtype=np.uint8)
+        cv2.circle(mask, (cx, cy), max(1, r - 2), 255, -1)
+        noise = rng.integers(-70, 70, size=(h, w, 3), dtype=np.int16)
+        textured = np.clip(img.astype(np.int16) + noise, 0, 255).astype(np.uint8)
+        img[mask == 255] = textured[mask == 255]
         cv2.circle(img, (cx, cy), r, (40, 40, 40), 3)  # rim contrast for Hough
     return img
 
@@ -60,7 +103,8 @@ def test_detect_one_coin_centered():
     assert abs(d.cx - 600) < 15
     assert abs(d.cy - 450) < 15
     assert abs(d.r - 200) < 15
-    assert d.method == "hough_strict"
+    # Pipeline YOLO-first : method = "yolo+hough"/"yolo+bbox" (+ suffixes polish/rimrefine).
+    assert d.method.startswith("yolo+")
     assert d.reject_reason is None
 
 
@@ -102,10 +146,11 @@ def test_detect_radius_too_small_rejected():
 def test_detect_returns_circle_detection_dataclass():
     img = _make_listing([(600, 450, 200)])
     detections = detect_circles_multi(img)
+    assert detections, "au moins une détection attendue sur un disque net"
     for d in detections:
         assert isinstance(d, CircleDetection)
         assert isinstance(d.accepted, bool)
-        assert d.method.startswith("hough_")
+        assert d.method.startswith("yolo+")
 
 
 # ─── normalize_listing ─────────────────────────────────────────────────
