@@ -252,27 +252,28 @@ jamais écrite localement » est garanti par le code plutôt que par la discipli
 
 ---
 
-## 6. Activation 1a — LE FLIP (préparé, NON activé au 2026-07-05)
+## 6. Activation 1a — LE FLIP (préparé, NON activé)
 
-> ⚠️ **Ne PAS appliquer le patch tant que les 2 préconditions ne sont pas remplies.** Le flip
-> bascule le devShell Mac/PC en lecture réplique read-only : appliqué trop tôt, les flux qui
-> tapent les nouvelles routes `/ingest` (exclude-crops, gate-reject, referential-fix) renvoient
-> 404 (routes pas encore déployées VPS), et le bookkeeping lab (cohort_jobs / training_scans)
-> throw `readonly` tant que le split n'est pas câblé.
+> **État 2026-07-05 (soir)** : préconditions **1 ✅ et 2 ✅ FAITES**. Ne reste que la **3 (split
+> bookkeeping)** avant d'appliquer le patch. Appliqué trop tôt, le bookkeeping lab (cohort_jobs /
+> training_scans) throw `readonly` tant que le split n'est pas câblé.
 
-### Préconditions (dans l'ordre)
+### Préconditions
 
-1. **P0 secrets** (hors périmètre agent) : révoquer/rotater les clés de `.envrc copy`, purger
-   l'historique (`git-filter-repo`), puis **push** sur les remotes partagés. Cf.
-   `docs/operations/secrets-followup.md`. Tant que ce n'est pas fait, rien ne peut être poussé,
-   donc **le VPS ne peut pas être déployé**.
-2. **Déploiement VPS des routes 4a/4b** : après push, rebuild eurio-api et **vérifier live** que
-   les 3 routes existent :
+1. ✅ **P0 secrets — FAIT** : clés `.envrc copy` **révoquées** (PO) ; fichier **détracké** (commit
+   `d15cd4a`) + patterns gitignore anti-réintroduction. **Décision PO : PAS de réécriture
+   d'historique** (`git-filter-repo`) — les clés sont mortes, `.envrc copy` reste dans l'ancien
+   historique (inerte) plutôt que réécrire ~20 refs + force-push 2 remotes + reset 3 machines.
+2. ✅ **Déploiement VPS — FAIT** : tout F01 poussé (codeberg+github, `2355eccd`), VPS `/opt/eurio`
+   pull-é + `eurio-api` rebuild. **Vérifié live** : `/ingest/crops/exclude`, `/ingest/gate/reject`,
+   `/ingest/referential-fix` présents (`docker exec eurio-api python -c "…app.routes…"`) et
+   joignables via la gateway publique (`POST /ingest/referential-fix` non-auth → **401**, pas 404).
+   Les routers `referential`/`review_queue`/`coin_assets` restent skippés (PIL/cv2 absents) — d'où
+   le choix 4b de porter la mutation dans `ingest_routes` (toujours monté). Repro :
    ```bash
-   ssh serverOimNixDontpanic 'docker exec eurio-api python -c "from serving.server_serve import app; import sys; [print(sorted(r.methods), r.path) for r in app.routes if \"/ingest/\" in r.path]"'
-   # attendu : /ingest/crops/exclude, /ingest/gate/reject, /ingest/referential-fix présents
+   ssh serverOimNixDontpanic 'docker exec eurio-api python -c "from serving.server_serve import app; [print(sorted(r.methods), r.path) for r in app.routes if getattr(r,\"path\",\"\").startswith(\"/ingest\")]"'
    ```
-3. **Split bookkeeping local-state** (chunk 6 reste — NON fait, précondition explicite) : câbler
+3. **Split bookkeeping local-state** (SEULE précondition restante — à discuter PO) : câbler
    les writers ET readers de `cohort_jobs` / `cohort_training_scans` / `cohort_training_scan_results`
    sur `resolve_local_state_db()` (`ml/state/eurio.local.db`, writable). **Blocage d'archi connu** :
    ces tables sont JOINTES avec des tables canoniques (`store/decisions.py`,

@@ -1,11 +1,17 @@
-# HANDOFF — Session robustesse & chantier F01 (2026-07-04)
+# HANDOFF — Session robustesse & chantier F01 (2026-07-04 → 05)
 
 > **Point d'entrée unique** pour reprendre le travail de robustesse. Lis-le en entier avant d'agir.
 >
-> **État git au moment de l'écriture** : branche `sources-jo-wikipedia`, `HEAD = 1594d30`.
-> **RIEN N'EST COMMITTÉ** — tout le travail décrit vit dans le **working tree** (non stagé).
-> Si `git log` a avancé au-delà de `1594d30`, ce handoff peut être partiellement périmé :
-> vérifie l'état réel des fichiers cités avant de t'y fier (cf. leçon #6 plus bas).
+> **État 2026-07-05 (soir)** : **TOUT le code F01 est committé + poussé (codeberg+github,
+> `HEAD=2355eccd` sur `sources-jo-wikipedia`) + DÉPLOYÉ sur le VPS** (eurio-api rebuild, 3 routes
+> `/ingest` vérifiées live → 401 non-auth). P0 secrets **traité** (détracké+révoqué, sans réécriture
+> d'historique — décision PO). **Il ne reste QUE** : (a) le **split bookkeeping** (à discuter PO,
+> cf. §Activation 1a précond. 3) puis (b) le **flip 1a** (patch prêt, non activé). Détail chunk par
+> chunk : §1 + fiche `01-…md §6`. Ordre historique des chunks conservé plus bas pour référence.
+>
+> ⚠️ Le PC (`ssh pc`) est à `4c06cfb0` avec 7 fichiers source non-committés (travail local) + un
+> souci d'auth codeberg en session non-interactive : **à synchroniser manuellement** par l'opérateur
+> (ne pas forcer — risque de clobber le travail local).
 
 ## 0. Carte des documents (ne rien dupliquer)
 
@@ -120,11 +126,12 @@ F02 (Supabase décommission), F03 (Android caméra/bind), F04 (front health-chec
 F06 (duplication : contrat app_core 3-langages), F07 (atomicité `lab_routes` 5 handlers),
 F08 (docs + garde-fous : règle R7 anti-échec-silencieux proposée). Voir `README.md`.
 
-### 2.3 ⚠️ P0 UTILISATEUR (hors périmètre agent — PAS FAIT)
+### 2.3 ✅ P0 secrets — TRAITÉ (2026-07-05)
 
-`.envrc copy` (secrets `service_role`/eBay PROD/Numista en clair) était poussé sur codeberg +
-github. Détracké, mais **clés NON révoquées + historique NON purgé**. → **Révoquer/rotater +
-`git-filter-repo` + force-push.** Détail : `docs/operations/secrets-followup.md`.
+`.envrc copy` (secrets `service_role`/eBay PROD/Numista) : clés **révoquées** (PO) + fichier
+**détracké** (commit `d15cd4a`) + patterns gitignore anti-réintroduction. **Décision PO : PAS de
+`git-filter-repo`/force-push** — les clés étant mortes, le fichier reste dans l'ancien historique
+(inerte) plutôt que réécrire ~20 refs sur 2 remotes + reset 3 machines. Rien d'autre à faire.
 
 ---
 
@@ -196,11 +203,11 @@ touche des writers (4a/4b) : envelopper via `BEGIN`/`COMMIT`/`ROLLBACK` ou `stor
 
 ## 4. Prochaine action recommandée
 
-**Tout le CODE F01 est livré+committé** (4c, 5, 4a, 4b, 6 — 2026-07-05, branche
-`sources-jo-wikipedia`, **non poussé**). Il ne reste QUE le flip 1a, gaté sur 3 préconditions
-séquentielles (§2.1) : **P0 secrets → déploiement VPS → split bookkeeping → flip**. Le patch et la
-checklist d'activation sont dans la fiche `01-…md` §6.
+**Tout le CODE F01 est livré + committé + poussé + déployé** (2026-07-05). P0 secrets traité (§2.3).
+Préconditions 1+2 du flip **faites** ; il ne reste QUE la précondition **3 (split bookkeeping)**,
+puis le **flip 1a** (patch prêt, non activé — fiche `01-…md §6`).
 
-**Prochaine action côté utilisateur** : traiter le **P0 secrets** (§2.3) — c'est le blocage racine
-(rien ne peut être poussé, donc le VPS ne peut pas être déployé, donc le flip ne peut pas être
-activé). Avant tout push : **staging explicite par fichier** (jamais `git add -A` — cf. CLAUDE.md).
+**Prochaine action** : **discuter le split bookkeeping** (précond. 3, fiche §6) — décision d'archi
+(`ATTACH` vs garder ces tables canoniques), car `cohort_jobs`/`cohort_training_scans` sont jointes
+au canonique (`store/decisions.py`, `review_queue`). Une fois tranché + câblé + vérifié en lab live,
+appliquer le patch flip. **Puis** : re-validation globale de la phase review/refacto (F01→F08).
