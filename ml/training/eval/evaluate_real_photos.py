@@ -140,7 +140,15 @@ class TFLiteEmbedder:
         self.interpreter.allocate_tensors()
         self.input_detail = self.interpreter.get_input_details()[0]
         self.output_detail = self.interpreter.get_output_details()[0]
-        _, h, w, _ = self.input_detail["shape"]
+        # Layout : les exports historiques sont NHWC (1,H,W,3) ; le bundle
+        # cohort/prod exporté depuis torch est NCHW (1,3,H,W) — même contrat
+        # que l'Android CoinEmbedder (NCHW, /255, mean/std torchvision).
+        shape = [int(d) for d in self.input_detail["shape"]]
+        self._nchw = len(shape) == 4 and shape[1] == 3 and shape[3] != 3
+        if self._nchw:
+            _, _, h, w = shape
+        else:
+            _, h, w, _ = shape
         self._hw = (int(h), int(w))
         self.embedding_dim = int(self.output_detail["shape"][-1])
         self.model_name = checkpoint_path.stem
@@ -154,6 +162,9 @@ class TFLiteEmbedder:
         std = np.array([0.229, 0.224, 0.225], dtype=np.float32)
         arr = (arr - mean) / std
         arr = arr[None, ...]
+        if self._nchw:
+            arr = np.transpose(arr, (0, 3, 1, 2))
+        arr = np.ascontiguousarray(arr)
         self.interpreter.set_tensor(self.input_detail["index"], arr)
         self.interpreter.invoke()
         out = self.interpreter.get_tensor(self.output_detail["index"])[0]

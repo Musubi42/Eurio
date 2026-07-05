@@ -939,6 +939,25 @@ tasks:
     cmds:
       - "{{.VENV}}/python -m scripts.seed_mints {{.CLI_ARGS}}"
 
+  # ─── Corpus de scan rejouable (scan-quality/corpus-spec.md) ───────────────
+  scan-corpus:import:
+    desc: "Import des captures device dans le corpus rejouable (JSONL + frames pullés → scan_corpus.db). Idempotent. Usage: go-task ml:scan-corpus:import ITERATION=<iid> [-- --backfill-debug-snaps <dir>]"
+    preconditions:
+      - sh: 'test -n "{{.ITERATION}}"'
+        msg: "ITERATION required (e.g. ITERATION=5bf8edb0ad7d)"
+    cmds:
+      - "{{.VENV}}/python -m scripts.import_scan_corpus --iteration {{.ITERATION}} {{.CLI_ARGS}}"
+
+  scan-corpus:replay:
+    desc: "Replay d'un candidat {centroïdes, modèle, seuils} sur le corpus → scorecard + predictions + McNemar vs baseline. Usage: go-task ml:scan-corpus:replay -- --candidate <dir|label> [--baseline <dir>] [--cohort-id <id>]"
+    cmds:
+      - "{{.VENV}}/python -m scripts.replay_corpus {{.CLI_ARGS}}"
+
+  scan-corpus:test:
+    desc: "Tests unitaires du corpus rejouable (store + import + replay/McNemar)."
+    cmds:
+      - "{{.VENV}}/python -m pytest tests/test_scan_corpus_store.py tests/test_import_scan_corpus.py tests/test_replay_corpus.py -v"
+
   # ─── Bench best-frame-capture (chunk 7) ───────────────────────────────────
   # Le pull device vit côté android (go-task android:bench:pull). Doc boucle
   # complète : ml/bench/conditions.md.

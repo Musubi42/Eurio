@@ -140,6 +140,16 @@ ml/state/.replica_ssh.sh
 ml/state/.replica_known_hosts
 ml/state/replica.lock
 ml/state/.replica-last-pull
+# Corpus de scan rejouable — lab PC-only, ne voyage jamais (scan-quality/corpus-spec.md §4)
+ml/state/scan_corpus.db
+ml/state/scan_corpus.db-wal
+ml/state/scan_corpus.db-shm
+ml/state/scan_corpus/
+# Baselines épinglées du funnel scan-quality (bundles gelés, binaires lourds — corpus-spec §9)
+ml/state/scan_baselines/
+# Candidats d'expérience + sorties replay (scorecards/predictions régénérables)
+ml/state/scan_experiments/
+ml/state/scan_corpus_runs/
 # État local inscriptible (observabilité jobs) — distinct de la réplique, jamais versionné
 ml/state/eurio.local.db
 ml/state/eurio.local.db-wal
