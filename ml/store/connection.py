@@ -76,6 +76,20 @@ class StoreBase:
             read_only = _env_readonly()
         self._db_path = Path(db_path)
         self._read_only = read_only
+        # Filet Direction A : la réplique locale (`eurio.replica.db`) est écrasée
+        # toutes les 120 s par `sqlite3_rsync` — l'ouvrir en écriture (flag
+        # `EURIO_DB_READONLY` oublié) exécuterait le bootstrap dessus, la ferait
+        # diverger du VPS et entrerait en collision avec le pull concurrent.
+        # Écrire la réplique est TOUJOURS une erreur : on refuse au constructeur
+        # plutôt que de corrompre en silence. Le writer canonique n'est pas
+        # concerné (il pointe `/var/lib/eurio/eurio.db`, jamais la réplique).
+        if not read_only and self._db_path.name == "eurio.replica.db":
+            raise RuntimeError(
+                f"Refus d'ouvrir la réplique {self._db_path.name} en écriture : "
+                "poser EURIO_DB_READONLY=1 (la réplique est un miroir read-only du "
+                "VPS, rafraîchi par sqlite3_rsync). Écrire dessus la ferait diverger "
+                "et entrerait en collision avec le pull autopull."
+            )
         if not read_only:
             self._db_path.parent.mkdir(parents=True, exist_ok=True)
         self._write_lock = threading.Lock()
