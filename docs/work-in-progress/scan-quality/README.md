@@ -187,9 +187,13 @@ tromper), robustesse face/usure/tilt.
 - [x] `exp-04` abstention → **[`exp-04-abstention-margin.md`](./exp-04-abstention-margin.md)**
       — exploratoire : la marge top1−top2 écrase le score absolu (0.955 de
       précision à 60 % de couverture, train_mean) ; seuils à valider hors-échantillon.
-- [ ] **Agrandir le corpus** (prérequis pour trancher exp-01/03/04) : session
-      cohort-test avec le build à archivage natif, conditions ×5
-      (`glare`/`inhand` incluses), cible 150–300 frames.
+- [ ] **Agrandir le corpus** (prérequis pour trancher exp-01/03/04) →
+      **[`session-protocol-mix-owned-42.md`](./session-protocol-mix-owned-42.md)**
+      — montage en place (2026-07-06) : cohorte scan `mix-owned-42`
+      (42 pièces owned, `9ecc2cd3f31a`) + cohorte train `owned-ready-24`
+      (24 classes, `ab28928bcdc2`, itération `base-24c`),
+      `build_cohort_bundle --prescribe-cohort --no-sample`. Cible 400+ frames
+      en sessions courtes. **Reste : sessions de scan physiques.**
 - [ ] Écrire `exp-backbones.md` : matrice backbones × tier device × (précision, latence, taille), baseline MobileNetV3-Small.
 - [ ] Décider la politique **1 modèle universel** vs **universel + premium flagship** (§1) — dépend des premiers benchs.
 - [ ] Unifier « détection photo mauvaise qualité + re-take » avec le quality scorer best-frame (pilier A).

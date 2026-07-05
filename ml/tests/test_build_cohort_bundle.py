@@ -139,3 +139,24 @@ def test_sha256_changes_on_content_change(tmp_path):
     h2 = b._sha256(p)
     assert h1 != h2
     assert len(h1) == 64
+
+
+def test_build_test_list_samples_large_cohorts():
+    ids = [f"coin-{i:03}" for i in range(b.SAMPLE_COIN_THRESHOLD)]
+    tests, sampled = b._build_test_list(ids, {})
+    assert sampled is True
+    assert len(tests) == b.SAMPLED_COIN_COUNT * len(b.TEST_CONDITIONS)
+
+
+def test_build_test_list_no_sample_prescribes_all():
+    # Sessions corpus (scan-quality) : chaque pièce doit être prescrite,
+    # même au-delà du seuil OQ-4.
+    ids = [f"coin-{i:03}" for i in range(42)]
+    tests, sampled = b._build_test_list(ids, {}, no_sample=True)
+    assert sampled is False
+    assert len(tests) == 42 * len(b.TEST_CONDITIONS)
+    assert {t["expected_eurio_id"] for t in tests} == set(ids)
+
+
+def test_conditions_include_glare_inhand():
+    assert {"glare", "inhand"} <= set(b.TEST_CONDITIONS)

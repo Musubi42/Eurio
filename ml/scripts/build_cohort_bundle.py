@@ -179,6 +179,7 @@ def _filter_embeddings(
 def _build_test_list(
     eurio_ids: list[str],
     coin_by_id: dict[str, dict[str, Any]],
+    no_sample: bool = False,
 ) -> tuple[list[dict[str, Any]], bool]:
     """Generate the prescribed test sequence.
 
@@ -187,9 +188,11 @@ def _build_test_list(
     title) without parsing the eurio_id slug on device.
 
     Returns ``(tests, sampled)`` where ``sampled`` is True when the cohort
-    was big enough to trigger OQ-4 stratification.
+    was big enough to trigger OQ-4 stratification. ``no_sample=True``
+    prescribes every coin regardless of size — requis pour les sessions
+    corpus (scan-quality) où chaque pièce doit être scannée.
     """
-    sampled = len(eurio_ids) >= SAMPLE_COIN_THRESHOLD
+    sampled = not no_sample and len(eurio_ids) >= SAMPLE_COIN_THRESHOLD
     coins = sorted(eurio_ids)
     if sampled:
         # Round-robin pick of the first SAMPLED_COIN_COUNT coins for now.
@@ -319,6 +322,19 @@ def main() -> int:
         "--out", required=True,
         help="Destination directory (created if missing)",
     )
+    parser.add_argument(
+        "--prescribe-cohort", default=None,
+        help="Cohort id or name dont les pièces sont PRESCRITES dans les live "
+             "tests, quand elle diffère de la cohorte du modèle (--cohort). "
+             "Usage scan-quality : bundle du modèle owned-ready-24, "
+             "prescriptions mix-owned-42. Le modèle/embeddings restent ceux "
+             "de --cohort/--iteration.",
+    )
+    parser.add_argument(
+        "--no-sample", action="store_true",
+        help="Désactive l'échantillonnage OQ-4 (≥30 pièces → 3) : toutes les "
+             "pièces prescrites. Requis pour les sessions corpus.",
+    )
     args = parser.parse_args()
 
     # Honore EURIO_DB_PATH (Model B : itérations dans la réplique, pas le
@@ -383,7 +399,24 @@ def main() -> int:
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    # Cohorte de prescription : par défaut celle du modèle ; --prescribe-cohort
+    # permet de scanner un ensemble plus large que les classes entraînées
+    # (corpus scan-quality). Les pièces prescrites hors modèle ne peuvent pas
+    # être prédites on-device (attendu — elles alimentent le corpus, pas §I4d).
+    prescribe_cohort = cohort
+    if args.prescribe_cohort:
+        pc = store.get_cohort(args.prescribe_cohort)
+        if pc is None:
+            print(
+                f"error: prescribe-cohort {args.prescribe_cohort!r} not found",
+                file=sys.stderr,
+            )
+            return 2
+        prescribe_cohort = pc
+
     eurio_ids = set(cohort.eurio_ids)
+    prescribe_ids = set(prescribe_cohort.eurio_ids)
+    display_ids = eurio_ids | prescribe_ids
 
     # Maille des labels = COALESCE(design_group_id, eurio_id). Les embeddings
     # sont clés par class_id design_group pour les standards pluri-millésimes
@@ -409,7 +442,7 @@ def main() -> int:
     # Plus de catalog_snapshot.json filtré dans le bundle : il n'était lu par
     # aucun consommateur (l'app cohortTest lit equivalence_map + manifest, et
     # son catalogue vient du code partagé / app_core.db).
-    coin_by_id = _coins_from_app_core_db(eurio_ids)
+    coin_by_id = _coins_from_app_core_db(display_ids)
 
     # Vignette de référence : URL de l'avers canonique par coin (CDN MinIO si
     # dispo, sinon source canonique). Sans ça, l'app affiche un disque générique
@@ -444,11 +477,16 @@ def main() -> int:
     )
 
     # Live tests prescription.
-    tests, sampled = _build_test_list(cohort.eurio_ids, coin_by_id)
+    tests, sampled = _build_test_list(
+        prescribe_cohort.eurio_ids, coin_by_id, no_sample=args.no_sample
+    )
     coins_display = _build_coins_display(coin_by_id)
     manifest = {
         "version": LIVE_TESTS_MANIFEST_VERSION,
         "cohort_id": cohort.id,
+        "prescribe_cohort_id": (
+            prescribe_cohort.id if prescribe_cohort.id != cohort.id else None
+        ),
         "iteration_id": iteration.id,
         "conditions": list(TEST_CONDITIONS),
         "sampled": sampled,
@@ -464,7 +502,7 @@ def main() -> int:
     # ml/eval/equivalence.py, ml/tests/test_equivalence.py). full_map déjà
     # construit plus haut (réutilisé pour le filtrage des embeddings).
     cohort_map = {
-        eid: full_map.eurio_to_group.get(eid) for eid in sorted(eurio_ids)
+        eid: full_map.eurio_to_group.get(eid) for eid in sorted(display_ids)
     }
     (out_dir / "equivalence_map.json").write_text(
         json.dumps(cohort_map, ensure_ascii=False, indent=2, sort_keys=True)
