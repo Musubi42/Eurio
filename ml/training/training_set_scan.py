@@ -41,6 +41,7 @@ import numpy as np
 
 from store import (
     ScanResultRow,
+    resolve_db_readonly,
     training_scan_finish,
     training_scan_progress,
     training_scan_upsert_results,
@@ -465,15 +466,25 @@ def run_training_set_scan(
             rev_sim = float(np.max(rev_bank.matrix @ vec))
             face_verdict = _decide_face(rev_sim, obverse_sim)
             if r["face"] is None or r["face"] == "unknown":
-                cur = conn.execute(
-                    "UPDATE image_assets SET face=? WHERE id=? "
-                    "AND (face IS NULL OR face='unknown')",
-                    (face_verdict, aid),
-                )
-                if cur.rowcount:
+                if resolve_db_readonly():
+                    # Direction A (C5) : canonique local = réplique READONLY. On
+                    # NE touche PAS le canonique local (sinon OperationalError
+                    # crashe le scan) ; le row a bien face NULL/unknown → on
+                    # collecte le verdict pour le forward `/ingest/faces` (le VPS
+                    # `apply_ingest_faces` refait le MÊME UPDATE gardé + event).
                     face_written = True
                     n_faces += 1
                     face_writes.append((aid, face_verdict))
+                else:
+                    cur = conn.execute(
+                        "UPDATE image_assets SET face=? WHERE id=? "
+                        "AND (face IS NULL OR face='unknown')",
+                        (face_verdict, aid),
+                    )
+                    if cur.rowcount:
+                        face_written = True
+                        n_faces += 1
+                        face_writes.append((aid, face_verdict))
 
         # Denom-probe (2€ vs junk) — réutilise l'embedding vitl14 déjà calculé ;
         # RELIT l'image (cv2) pour le bimetal_score. Dégrade en None si la probe
