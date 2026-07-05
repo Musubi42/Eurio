@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from client.runbatch import ingest_run
 from serving.auth_principal import require_scope
+from store.confusion import apply_ingest_confusion_map
 from store.crops import apply_delete_assets, apply_exclude_crops, apply_ingest_crops
 from store.dino import apply_ingest_dino
 from store.faces import apply_ingest_faces
@@ -247,6 +248,42 @@ def ingest_referential_fix_route(payload: ReferentialFixPayload) -> dict:
     except ReferentialFixConflict as exc:
         conn.execute("ROLLBACK")
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+    return result
+
+
+class ConfusionMapRow(BaseModel):
+    eurio_id: str
+    nearest_eurio_id: str | None = None
+    nearest_similarity: float
+    top_k_neighbors: list[dict] = []
+    zone: str
+    computed_at: str | None = None
+
+
+class ConfusionMapIngestPayload(BaseModel):
+    encoder_version: str
+    rows: list[ConfusionMapRow]
+
+
+@router.post("/confusion-map", dependencies=[Depends(require_scope("ingest:write"))])
+def ingest_confusion_map_route(payload: ConfusionMapIngestPayload) -> dict:
+    """Écrit la cartographie de confusion (``coin_confusion_map``) calculée
+    client-side (DINOv2, Mac/PC). SQL-pur, UPSERT idempotent sur la clé naturelle
+    ``(eurio_id, encoder_version)``, atomique. Retourne ``{"upserted": n}``."""
+    if _store is None:
+        raise HTTPException(status_code=500, detail="ingest non câblé (bind manquant)")
+    conn = _store._connection()  # noqa: SLF001
+    conn.execute("BEGIN")
+    try:
+        result = apply_ingest_confusion_map(
+            conn,
+            payload.encoder_version,
+            [r.model_dump() for r in payload.rows],
+        )
+        conn.execute("COMMIT")
     except Exception:
         conn.execute("ROLLBACK")
         raise

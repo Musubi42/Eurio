@@ -6,7 +6,8 @@ an obverse image, this script computes the pairwise cosine similarity matrix
 using a frozen DINOv2 ViT-S/14 encoder, extracts the top-K nearest neighbors
 (excluding coins sharing the same Numista design id — annual re-issues), and
 classifies each coin into green/orange/red zones. Results are upserted into
-the `coin_confusion_map` Supabase table.
+the `coin_confusion_map` table in eurio.db (via the canonical ingest endpoint
+under Direction A, or a direct local write in dev Model A).
 
 Only the **obverse** (national side) is embedded. The reverse is the common
 European side shared by all euro coins and would inflate inter-class similarity.
@@ -44,7 +45,11 @@ CACHE_DIR = ML_DIR / "cache"
 IMAGE_CACHE_DIR = CACHE_DIR / "dinov2_inputs"
 
 sys.path.insert(0, str(ML_DIR))
-from serving.supabase_client import SupabaseClient, load_env  # noqa: E402
+import sqlite3  # noqa: E402
+
+from client.ingest import push_confusion_map  # noqa: E402
+from store import Store, resolve_db_path  # noqa: E402
+from store.confusion import apply_ingest_confusion_map  # noqa: E402
 from training.foundation.encoder import (  # noqa: E402
     DEFAULT_ENCODER_VERSION,
     DINOV2_MODEL,
@@ -106,67 +111,70 @@ class CoinEntry:
 
 
 # ---------------------------------------------------------------------------
-# Supabase fetching
+# eurio.db fetching (F02/C2 — rapatrié de Supabase)
 # ---------------------------------------------------------------------------
 
+# Défaut = ml/state/eurio.db ; honore ``EURIO_DB_PATH`` / réplique (le compute
+# tourne sur Mac/PC et lit la réplique ro Direction A).
+_DEFAULT_DB_PATH = Path(__file__).resolve().parents[2] / "state" / "eurio.db"
 
-def _extract_obverse_url(images: dict | list | None) -> str | None:
-    """Extract the obverse URL from the coins.images payload.
-
-    Supports three payload shapes encountered in the catalogue history:
-
-    - Modern dict-of-arrays:  {"obverse": [{"url": "...", "source": "..."}], ...}
-    - Legacy dict-of-strings: {"obverse": "https://..."}
-    - Legacy list-of-roles:   [{"role": "obverse", "url": "..."}]
-    """
-    if not images:
-        return None
-    if isinstance(images, dict):
-        obv = images.get("obverse") or images.get("obverse_url")
-        if isinstance(obv, str):
-            return obv
-        if isinstance(obv, list) and obv:
-            first = obv[0]
-            if isinstance(first, dict):
-                return first.get("url")
-            if isinstance(first, str):
-                return first
-        return None
-    if isinstance(images, list):
-        match = next((i for i in images if i.get("role") == "obverse"), None)
-        if match:
-            return match.get("url")
-    return None
+# Priorité de source pour l'avers (miroir de export/upload_app_obverse.py) : on
+# embarque l'obverse le plus « officiel » disponible avec une URL téléchargeable.
+_OBVERSE_SOURCE_PRIORITY = {"bce_official": 1, "eurlex_jo": 2, "numista_api": 3}
 
 
 def fetch_coins(
-    sb: SupabaseClient,
+    db_path: str | Path | None = None,
     eurio_ids: list[str] | None = None,
     limit: int | None = None,
 ) -> list[CoinEntry]:
-    """Fetch coins that have a numista_id and an obverse image."""
-    rows = sb.query(
-        "coins",
-        select="eurio_id,images,cross_refs,design_group_id",
-        params={"cross_refs->numista_id": "not.is.null"},
-    )
+    """Fetch coins qui ont un ``numista_id`` et une image d'avers (URL) dans
+    ``eurio.db`` (``coins`` + ``coin_canonical_images`` role='obverse').
 
-    coins: list[CoinEntry] = []
+    Lecture seule (``mode=ro``). Une seule URL d'avers par pièce (meilleure
+    source par priorité, URL non nulle requise — c'est ce que l'embedder
+    télécharge).
+    """
+    resolved = resolve_db_path(db_path or _DEFAULT_DB_PATH)
+    conn = sqlite3.connect(f"file:{resolved}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = conn.execute(
+            """
+            SELECT c.eurio_id, c.numista_id, c.design_group_id,
+                   i.source AS img_source, i.url AS obverse_url
+            FROM coins c
+            JOIN coin_canonical_images i
+              ON i.eurio_id = c.eurio_id AND i.role = 'obverse'
+            WHERE c.numista_id IS NOT NULL AND i.url IS NOT NULL
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    # Une pièce peut avoir plusieurs avers (sources multiples) : on garde le
+    # meilleur par priorité de source, URL déterministe en cas d'égalité.
+    best: dict[str, sqlite3.Row] = {}
     for row in rows:
-        nid = row.get("cross_refs", {}).get("numista_id")
-        if nid is None:
+        eid = row["eurio_id"]
+        prio = _OBVERSE_SOURCE_PRIORITY.get(row["img_source"], 99)
+        cur = best.get(eid)
+        if cur is None:
+            best[eid] = row
             continue
-        obverse = _extract_obverse_url(row.get("images"))
-        if not obverse:
-            continue
-        coins.append(
-            CoinEntry(
-                eurio_id=row["eurio_id"],
-                numista_id=nid,
-                obverse_url=obverse,
-                design_group_id=row.get("design_group_id"),
-            )
+        cur_prio = _OBVERSE_SOURCE_PRIORITY.get(cur["img_source"], 99)
+        if (prio, row["obverse_url"]) < (cur_prio, cur["obverse_url"]):
+            best[eid] = row
+
+    coins: list[CoinEntry] = [
+        CoinEntry(
+            eurio_id=row["eurio_id"],
+            numista_id=row["numista_id"],
+            obverse_url=row["obverse_url"],
+            design_group_id=row["design_group_id"],
         )
+        for row in best.values()
+    ]
 
     if eurio_ids is not None:
         wanted = set(eurio_ids)
@@ -482,6 +490,24 @@ def _write_status(status_path: Path | None, **fields: object) -> None:
     tmp.replace(status_path)
 
 
+def _write_confusion_map(encoder_version: str, payload: list[dict]) -> None:
+    """Persiste la cartographie (``coin_confusion_map``) selon Direction A.
+
+    - Sync configurée (``EURIO_API_URL``) → ``POST /ingest/confusion-map`` sur le
+      canonique VPS (writer unique). Une erreur réseau/HTTP est propagée : une
+      cartographie non propagée laisserait le canonique sur des zones périmées.
+    - Sinon (dev Model A) → écriture directe de la DB locale inscriptible.
+    """
+    result = push_confusion_map(encoder_version, payload)
+    if result is not None:
+        logger.info("Pushed confusion map to canonical: %s", result)
+        return
+    store = Store(resolve_db_path(_DEFAULT_DB_PATH))
+    with store._writing() as conn:  # noqa: SLF001
+        apply_ingest_confusion_map(conn, encoder_version, payload)
+    logger.info("Wrote confusion map to local eurio.db (%s)", store.db_path)
+
+
 def run(
     *,
     dry_run: bool,
@@ -492,133 +518,117 @@ def run(
     status_path: Path | None = None,
     thresholds_mode: str = "percentile",
 ) -> dict:
-    env = load_env()
-    url = env.get("SUPABASE_URL", "")
-    key = env.get("SUPABASE_SERVICE_ROLE_KEY", "")
-    if not url or not key:
-        raise RuntimeError(
-            "SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY missing from environment"
+    logger.info("Fetching coins from eurio.db…")
+    _write_status(status_path, stage="fetching", current=0, total=0)
+    coins = fetch_coins(eurio_ids=eurio_ids, limit=limit)
+    logger.info("Fetched %d candidate coins with obverse image", len(coins))
+    if len(coins) < 2:
+        logger.warning("Need at least 2 coins to compute confusion — aborting")
+        _write_status(
+            status_path, stage="done", current=0, total=0, rows=0
         )
+        return {"rows": 0, "coins": len(coins)}
 
-    sb = SupabaseClient(url, key)
-    try:
-        logger.info("Fetching coins from Supabase…")
-        _write_status(status_path, stage="fetching", current=0, total=0)
-        coins = fetch_coins(sb, eurio_ids=eurio_ids, limit=limit)
-        logger.info("Fetched %d candidate coins with obverse image", len(coins))
-        if len(coins) < 2:
-            logger.warning("Need at least 2 coins to compute confusion — aborting")
-            _write_status(
-                status_path, stage="done", current=0, total=0, rows=0
-            )
-            return {"rows": 0, "coins": len(coins)}
+    device = pick_device()
+    logger.info("Using device: %s", device)
 
-        device = pick_device()
-        logger.info("Using device: %s", device)
+    encoder = load_encoder(device)
 
-        encoder = load_encoder(device)
+    _write_status(
+        status_path,
+        stage="embedding",
+        current=0,
+        total=len(coins),
+        rows=0,
+    )
 
+    def _on_progress(current: int, total: int) -> None:
         _write_status(
             status_path,
             stage="embedding",
-            current=0,
-            total=len(coins),
+            current=current,
+            total=total,
             rows=0,
         )
 
-        def _on_progress(current: int, total: int) -> None:
-            _write_status(
-                status_path,
-                stage="embedding",
-                current=current,
-                total=total,
-                rows=0,
+    eurio_ids_out, matrix = embed_coins(
+        coins, encoder, device, on_progress=_on_progress
+    )
+    logger.info("Embedded %d coins (matrix shape: %s)", len(eurio_ids_out), matrix.shape)
+
+    if matrix.shape[0] >= 1:
+        url_by_eid = {c.eurio_id: c.obverse_url for c in coins}
+        urls_flat = [url_by_eid.get(eid, "") for eid in eurio_ids_out]
+        save_embedding_cache(encoder_version, eurio_ids_out, urls_flat, matrix)
+
+    _write_status(
+        status_path,
+        stage="matrix",
+        current=0,
+        total=len(coins),
+        rows=0,
+    )
+    rows = compute_pairwise_neighbors(
+        coins, eurio_ids_out, matrix, thresholds,
+        percentile_mode=(thresholds_mode == "percentile"),
+    )
+    logger.info("Computed %d confusion rows", len(rows))
+
+    zone_counts: dict[str, int] = {"green": 0, "orange": 0, "red": 0}
+    for r in rows:
+        zone_counts[r["zone"]] = zone_counts.get(r["zone"], 0) + 1
+    logger.info(
+        "Zones: green=%d orange=%d red=%d",
+        zone_counts["green"], zone_counts["orange"], zone_counts["red"],
+    )
+
+    if dry_run:
+        logger.info("--dry-run: skipping coin_confusion_map write")
+        sample = rows[:5]
+        for r in sample:
+            logger.info(
+                "  %s → %s @ sim=%.4f [%s]",
+                r["eurio_id"],
+                r["nearest_eurio_id"],
+                r["nearest_similarity"],
+                r["zone"],
             )
-
-        eurio_ids_out, matrix = embed_coins(
-            coins, encoder, device, on_progress=_on_progress
-        )
-        logger.info("Embedded %d coins (matrix shape: %s)", len(eurio_ids_out), matrix.shape)
-
-        if matrix.shape[0] >= 1:
-            url_by_eid = {c.eurio_id: c.obverse_url for c in coins}
-            urls_flat = [url_by_eid.get(eid, "") for eid in eurio_ids_out]
-            save_embedding_cache(encoder_version, eurio_ids_out, urls_flat, matrix)
-
-        _write_status(
-            status_path,
-            stage="matrix",
-            current=0,
-            total=len(coins),
-            rows=0,
-        )
-        rows = compute_pairwise_neighbors(
-            coins, eurio_ids_out, matrix, thresholds,
-            percentile_mode=(thresholds_mode == "percentile"),
-        )
-        logger.info("Computed %d confusion rows", len(rows))
-
-        zone_counts: dict[str, int] = {"green": 0, "orange": 0, "red": 0}
-        for r in rows:
-            zone_counts[r["zone"]] = zone_counts.get(r["zone"], 0) + 1
-        logger.info(
-            "Zones: green=%d orange=%d red=%d",
-            zone_counts["green"], zone_counts["orange"], zone_counts["red"],
-        )
-
-        if dry_run:
-            logger.info("--dry-run: skipping Supabase upsert")
-            sample = rows[:5]
-            for r in sample:
-                logger.info(
-                    "  %s → %s @ sim=%.4f [%s]",
-                    r["eurio_id"],
-                    r["nearest_eurio_id"],
-                    r["nearest_similarity"],
-                    r["zone"],
-                )
-            _write_status(
-                status_path,
-                stage="done",
-                current=len(rows),
-                total=len(rows),
-                rows=len(rows),
-                dry_run=True,
-            )
-            return {"rows": len(rows), "coins": len(coins), "zones": zone_counts}
-
-        _write_status(
-            status_path,
-            stage="writing",
-            current=0,
-            total=len(rows),
-            rows=0,
-        )
-        payload = [
-            {
-                **r,
-                "encoder_version": encoder_version,
-                "computed_at": datetime.now(timezone.utc).isoformat(),
-            }
-            for r in rows
-        ]
-        sb.upsert(
-            "coin_confusion_map",
-            payload,
-            on_conflict="eurio_id,encoder_version",
-        )
-        logger.info("Upserted %d rows into coin_confusion_map", len(rows))
-
         _write_status(
             status_path,
             stage="done",
             current=len(rows),
             total=len(rows),
             rows=len(rows),
+            dry_run=True,
         )
         return {"rows": len(rows), "coins": len(coins), "zones": zone_counts}
-    finally:
-        sb.close()
+
+    _write_status(
+        status_path,
+        stage="writing",
+        current=0,
+        total=len(rows),
+        rows=0,
+    )
+    payload = [
+        {
+            **r,
+            "encoder_version": encoder_version,
+            "computed_at": datetime.now(timezone.utc).isoformat(),
+        }
+        for r in rows
+    ]
+    _write_confusion_map(encoder_version, payload)
+    logger.info("Wrote %d rows into coin_confusion_map", len(rows))
+
+    _write_status(
+        status_path,
+        stage="done",
+        current=len(rows),
+        total=len(rows),
+        rows=len(rows),
+    )
+    return {"rows": len(rows), "coins": len(coins), "zones": zone_counts}
 
 
 # ---------------------------------------------------------------------------
@@ -633,7 +643,7 @@ def build_argparser() -> argparse.ArgumentParser:
     p.add_argument(
         "--dry-run",
         action="store_true",
-        help="Log what would be written without touching Supabase.",
+        help="Log what would be written without touching coin_confusion_map.",
     )
     p.add_argument(
         "--eurio-ids",

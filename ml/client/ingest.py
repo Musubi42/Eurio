@@ -115,6 +115,30 @@ def push_referential_fix(diff: dict[str, Any]) -> dict | None:
     return _http.post_json("/ingest/referential-fix", diff)
 
 
+def push_confusion_map(
+    encoder_version: str, rows: list[dict[str, Any]]
+) -> dict | None:
+    """POST ``/ingest/confusion-map`` si la sync est activée, sinon no-op (``None``).
+
+    ``rows`` = lignes de cartographie (``eurio_id, nearest_eurio_id,
+    nearest_similarity, top_k_neighbors, zone, computed_at?``). Une erreur HTTP
+    ou réseau est levée à l'appelant — une cartographie non propagée laisserait le
+    canonique sur des zones périmées (le compute est lourd/manuel, on échoue
+    bruyamment plutôt que d'avaler la perte). Retourne ``{"upserted": n}`` ou
+    ``None`` si sync désactivée (Model A → l'appelant écrit la DB locale).
+    """
+    from client.http import sync_enabled  # noqa: PLC0415 — évite import cycle au chargement
+
+    if not sync_enabled():
+        return None
+    from client import http as _http  # noqa: PLC0415
+
+    return _http.post_json(
+        "/ingest/confusion-map",
+        {"encoder_version": encoder_version, "rows": rows},
+    )
+
+
 def push_delete_asset(asset_id: str) -> dict | None:
     """DELETE ``/ingest/assets/{id}`` si la sync est activée, sinon no-op (``None``).
 

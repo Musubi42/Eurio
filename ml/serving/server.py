@@ -1091,6 +1091,71 @@ def training_estimate(payload: EstimatePayload) -> dict:
 
 # ─── Export TFLite ───
 
+# ─── Jobs détachés (garde anti-double-run robuste au `--reload`) ──────────────
+# BUG-1 (documenté server.py:246-276, corrigé dans lab_routes/cohort) : un job
+# lancé par `threading.Thread(subprocess.run)` + flag mémoire `running` perd sa
+# garde à chaque `--reload` (le flag repasse False) → double compute possible
+# écrasant checkpoints/prod. Correctif : Popen `start_new_session=True` (le
+# process détaché survit au reload) + PID persisté dans un sidecar ; la garde
+# lit la vivacité du PID, pas un flag mémoire volatil.
+_JOBS_DIR = ML_DIR / "cache" / "jobs"
+
+
+def _pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def _job_running(pid_file: Path) -> bool:
+    """Vrai ssi un sidecar PID existe ET son process est vivant. Nettoie un
+    sidecar périmé (process mort) au passage — pas de zombie qui bloque à jamais."""
+    if not pid_file.exists():
+        return False
+    try:
+        pid = int(pid_file.read_text().strip())
+    except (OSError, ValueError):
+        pid_file.unlink(missing_ok=True)
+        return False
+    if _pid_alive(pid):
+        return True
+    pid_file.unlink(missing_ok=True)
+    return False
+
+
+def _spawn_detached_job(pid_file: Path, cmd: list[str], log_path: Path, on_done=None) -> int:
+    """Popen détaché (nouvelle session → survit au `--reload` du worker uvicorn),
+    PID persisté avant retour. Un thread attend la fin, retire le sidecar puis
+    appelle ``on_done(returncode, log_path)``. Retourne le PID."""
+    import subprocess
+    import threading
+
+    _JOBS_DIR.mkdir(parents=True, exist_ok=True)
+    log_fh = open(log_path, "w")  # noqa: SIM115 — fermé dans le thread waiter
+    proc = subprocess.Popen(
+        cmd, cwd=str(ML_DIR), stdout=log_fh, stderr=subprocess.STDOUT,
+        start_new_session=True,
+    )
+    pid_file.write_text(str(proc.pid))
+
+    def _wait() -> None:
+        try:
+            rc = proc.wait()
+        finally:
+            log_fh.close()
+            pid_file.unlink(missing_ok=True)
+        if on_done is not None:
+            on_done(rc, log_path)
+
+    threading.Thread(target=_wait, daemon=True).start()
+    return proc.pid
+
+
+_EXPORT_PID_FILE = _JOBS_DIR / "export_tflite.pid"
 _export_status: dict = {"running": False, "error": None, "last_export": None}
 
 
@@ -1131,7 +1196,7 @@ def export_status() -> dict:
         pass
 
     return {
-        "running": _export_status["running"],
+        "running": _job_running(_EXPORT_PID_FILE),
         "error": _export_status["error"],
         "tflite": tflite_info,
         "compiled_classes": compiled_classes,
@@ -1143,36 +1208,29 @@ def export_status() -> dict:
 
 @app.post("/export/tflite")
 def trigger_export() -> dict:
-    """Trigger TFLite export in background."""
-    if _export_status["running"]:
+    """Trigger TFLite export in a detached background job (guard anti-double-run
+    robuste au `--reload` : PID persisté + vivacité, cf. `_spawn_detached_job`)."""
+    if _job_running(_EXPORT_PID_FILE):
         raise HTTPException(status_code=409, detail="Export déjà en cours")
 
-    import threading
+    _export_status["error"] = None
+    log_path = _JOBS_DIR / "export_tflite.log"
 
-    def _do_export():
-        _export_status["running"] = True
-        _export_status["error"] = None
-        try:
-            import subprocess
-            result = subprocess.run(
-                [VENV_PYTHON, str(ML_DIR / "export_tflite.py")],
-                cwd=str(ML_DIR),
-                capture_output=True,
-                text=True,
-            )
-            if result.returncode != 0:
-                _export_status["error"] = result.stderr or result.stdout or "Export failed"
-            else:
-                from datetime import datetime
-                _export_status["last_export"] = datetime.utcnow().isoformat()
-        except Exception as e:
-            _export_status["error"] = str(e)
-        finally:
-            _export_status["running"] = False
+    def _on_done(rc: int, log: Path) -> None:
+        if rc != 0:
+            tail = log.read_text()[-4000:] if log.exists() else ""
+            _export_status["error"] = tail.strip() or "Export failed"
+        else:
+            _export_status["error"] = None
+            _export_status["last_export"] = datetime.utcnow().isoformat()
 
-    thread = threading.Thread(target=_do_export, daemon=True)
-    thread.start()
-    return {"started": True}
+    pid = _spawn_detached_job(
+        _EXPORT_PID_FILE,
+        [VENV_PYTHON, str(ML_DIR / "export_tflite.py")],
+        log_path,
+        on_done=_on_done,
+    )
+    return {"started": True, "pid": pid}
 
 
 @app.post("/export/validate")
@@ -1363,14 +1421,78 @@ def augment_designs(req: AugmentRequest) -> dict:
 
 _DEFAULT_CONFUSION_ENCODER = "dinov2-vits14"
 _CONFUSION_STATUS_FILE = ML_DIR / "cache" / "confusion_map_status.json"
+_CONFUSION_PID_FILE = _JOBS_DIR / "confusion_map.pid"
 
 _confusion_status: dict = {
-    "running": False,
     "error": None,
     "job_id": None,
     "last_computed_at": None,
     "progress": {"current": 0, "total": 0, "stage": "idle"},
 }
+
+
+def _confusion_db_connect():
+    """Connexion read-only à la eurio.db locale (F02/C2 : coin_confusion_map est
+    rapatriée de Supabase). ``CANONICAL_DB`` honore déjà ``EURIO_DB_PATH`` /
+    réplique. Retourne None si le fichier n'existe pas (dev sans DB)."""
+    import sqlite3
+
+    if not CANONICAL_DB.exists():
+        return None
+    conn = sqlite3.connect(f"file:{CANONICAL_DB}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def _confusion_last_computed_at(encoder_version: str | None = None) -> str | None:
+    conn = _confusion_db_connect()
+    if conn is None:
+        return None
+    try:
+        if encoder_version:
+            row = conn.execute(
+                "SELECT MAX(computed_at) AS m FROM coin_confusion_map "
+                "WHERE encoder_version = ?",
+                (encoder_version,),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT MAX(computed_at) AS m FROM coin_confusion_map"
+            ).fetchone()
+        return row["m"] if row else None
+    except Exception:  # noqa: BLE001 — table absente (dev) → pas de date
+        return None
+    finally:
+        conn.close()
+
+
+def _confusion_enrich(conn, eurio_ids: list[str]) -> dict[str, dict]:
+    """(country, year, theme, face_value, image_url) pour une liste de coins,
+    depuis eurio.db (coins + coin_canonical_images obverse)."""
+    unique = sorted({e for e in eurio_ids if e})
+    if not unique:
+        return {}
+    ph = ",".join("?" * len(unique))
+    rows = conn.execute(
+        f"SELECT eurio_id, country, year, theme, face_value FROM coins "
+        f"WHERE eurio_id IN ({ph})",
+        unique,
+    ).fetchall()
+    out: dict[str, dict] = {}
+    for c in rows:
+        img = conn.execute(
+            "SELECT url FROM coin_canonical_images WHERE eurio_id = ? "
+            "ORDER BY CASE role WHEN 'obverse' THEN 0 ELSE 1 END LIMIT 1",
+            (c["eurio_id"],),
+        ).fetchone()
+        out[c["eurio_id"]] = {
+            "country": c["country"],
+            "year": c["year"],
+            "theme": c["theme"],
+            "face_value": c["face_value"],
+            "image_url": img["url"] if img else None,
+        }
+    return out
 
 
 def _refresh_confusion_progress() -> None:
@@ -1392,23 +1514,20 @@ def _refresh_confusion_progress() -> None:
 
 @app.post("/confusion-map/compute")
 def confusion_map_compute(req: ConfusionMapComputeRequest | None = None) -> dict:
-    """Trigger DINOv2 confusion cartography in background."""
-    if _confusion_status["running"]:
-        raise HTTPException(
-            status_code=409, detail="Cartographie déjà en cours"
-        )
+    """Trigger DINOv2 confusion cartography in a detached background job.
 
-    import subprocess
-    import threading
+    F02/C2 : le worker écrit désormais ``coin_confusion_map`` dans eurio.db (push
+    canonique Direction A, ou local en Model A). Garde anti-double-run robuste au
+    `--reload` via PID persisté (cf. `_spawn_detached_job`)."""
     import uuid
+
+    if _job_running(_CONFUSION_PID_FILE):
+        raise HTTPException(status_code=409, detail="Cartographie déjà en cours")
 
     payload = req or ConfusionMapComputeRequest()
     encoder_version = payload.encoder_version or _DEFAULT_CONFUSION_ENCODER
     job_id = uuid.uuid4().hex[:12]
 
-    # The script was moved under ml/eval/ during the 2026-04 refactor (commit
-    # 6f84eea). Keep the call self-contained — invoking via `-m` would require
-    # tweaking sys.path inside the worker; the direct path is simpler.
     cmd: list[str] = [
         VENV_PYTHON,
         str(ML_DIR / "training" / "eval" / "confusion_map.py"),
@@ -1426,32 +1545,21 @@ def confusion_map_compute(req: ConfusionMapComputeRequest | None = None) -> dict
     if payload.thresholds_mode:
         cmd.extend(["--thresholds-mode", payload.thresholds_mode])
 
-    def _do_compute() -> None:
-        _confusion_status["running"] = True
-        _confusion_status["error"] = None
-        _confusion_status["job_id"] = job_id
-        _confusion_status["progress"] = {"current": 0, "total": 0, "stage": "starting"}
-        try:
-            result = subprocess.run(
-                cmd,
-                cwd=str(ML_DIR),
-                capture_output=True,
-                text=True,
-            )
-            if result.returncode != 0:
-                _confusion_status["error"] = (
-                    result.stderr.strip() or result.stdout.strip() or "Compute failed"
-                )
-            else:
-                _confusion_status["last_computed_at"] = datetime.utcnow().isoformat()
-        except Exception as exc:  # noqa: BLE001 — surface any failure
-            _confusion_status["error"] = str(exc)
-        finally:
-            _confusion_status["running"] = False
+    _confusion_status["error"] = None
+    _confusion_status["job_id"] = job_id
+    _confusion_status["progress"] = {"current": 0, "total": 0, "stage": "starting"}
 
-    thread = threading.Thread(target=_do_compute, daemon=True)
-    thread.start()
+    def _on_done(rc: int, log: Path) -> None:
+        if rc != 0:
+            tail = log.read_text()[-4000:] if log.exists() else ""
+            _confusion_status["error"] = tail.strip() or "Compute failed"
+        else:
+            _confusion_status["error"] = None
+            _confusion_status["last_computed_at"] = datetime.utcnow().isoformat()
 
+    _spawn_detached_job(
+        _CONFUSION_PID_FILE, cmd, _JOBS_DIR / "confusion_map.log", on_done=_on_done,
+    )
     return {"started": True, "job_id": job_id}
 
 
@@ -1460,22 +1568,12 @@ def confusion_map_status() -> dict:
     """Return current cartography job status + progress."""
     _refresh_confusion_progress()
 
-    last_computed_at = _confusion_status["last_computed_at"]
-    if last_computed_at is None:
-        try:
-            sb = get_supabase()
-            latest = sb.query(
-                "coin_confusion_map",
-                select="computed_at",
-                params={"order": "computed_at.desc", "limit": "1"},
-            )
-            if latest:
-                last_computed_at = latest[0]["computed_at"]
-        except Exception:  # noqa: BLE001
-            pass
+    last_computed_at = (
+        _confusion_status["last_computed_at"] or _confusion_last_computed_at()
+    )
 
     return {
-        "running": _confusion_status["running"],
+        "running": _job_running(_CONFUSION_PID_FILE),
         "error": _confusion_status["error"],
         "job_id": _confusion_status["job_id"],
         "progress": _confusion_status["progress"],
@@ -1485,71 +1583,47 @@ def confusion_map_status() -> dict:
 
 @app.get("/confusion-map/stats")
 def confusion_map_stats(encoder_version: str = _DEFAULT_CONFUSION_ENCODER) -> dict:
-    """Return zone counts + similarity histogram for the current encoder version."""
-    sb = get_supabase()
-    rows = sb.query(
-        "coin_confusion_map",
-        select="zone,nearest_similarity,computed_at",
-        params={"encoder_version": f"eq.{encoder_version}"},
-    )
+    """Return zone counts + similarity histogram for the current encoder version.
 
-    total = len(rows)
+    F02/C2 : lu depuis eurio.db (``coin_confusion_map`` rapatriée de Supabase)."""
     by_zone: dict[str, int] = {"green": 0, "orange": 0, "red": 0}
-    for r in rows:
-        zone = r.get("zone")
-        if zone in by_zone:
-            by_zone[zone] += 1
-
-    # 20 bins over [0, 1].
     bin_count = 20
     histogram = [0] * bin_count
-    for r in rows:
-        sim = float(r.get("nearest_similarity") or 0.0)
-        sim = min(max(sim, 0.0), 1.0)
-        idx = min(int(sim * bin_count), bin_count - 1)
-        histogram[idx] += 1
-    histogram_bins = [
-        {"bin_start": round(i / bin_count, 2), "count": histogram[i]}
-        for i in range(bin_count)
-    ]
+    total = 0
+    last_computed_at: str | None = None
 
-    last_computed_at = max(
-        (r["computed_at"] for r in rows if r.get("computed_at")),
-        default=None,
-    )
+    conn = _confusion_db_connect()
+    if conn is not None:
+        try:
+            rows = conn.execute(
+                "SELECT zone, nearest_similarity, computed_at FROM coin_confusion_map "
+                "WHERE encoder_version = ?",
+                (encoder_version,),
+            ).fetchall()
+        except Exception:  # noqa: BLE001 — table absente (dev) → stats vides
+            rows = []
+        finally:
+            conn.close()
+        total = len(rows)
+        for r in rows:
+            if r["zone"] in by_zone:
+                by_zone[r["zone"]] += 1
+            sim = min(max(float(r["nearest_similarity"] or 0.0), 0.0), 1.0)
+            histogram[min(int(sim * bin_count), bin_count - 1)] += 1
+            cat = r["computed_at"]
+            if cat and (last_computed_at is None or cat > last_computed_at):
+                last_computed_at = cat
 
     return {
         "total": total,
         "by_zone": by_zone,
         "last_computed_at": last_computed_at,
         "encoder_version": encoder_version,
-        "histogram_bins": histogram_bins,
+        "histogram_bins": [
+            {"bin_start": round(i / bin_count, 2), "count": histogram[i]}
+            for i in range(bin_count)
+        ],
     }
-
-
-def _enrich_coins_by_eurio_id(
-    sb: SupabaseClient, eurio_ids: list[str]
-) -> dict[str, dict]:
-    """Fetch (country, year, theme, face_value, image_url) for a list of coins."""
-    unique_ids = sorted({eid for eid in eurio_ids if eid})
-    if not unique_ids:
-        return {}
-    quoted = ",".join(f'"{eid}"' for eid in unique_ids)
-    coins = sb.query(
-        "coins",
-        select="eurio_id,country,year,face_value,theme,images",
-        params={"eurio_id": f"in.({quoted})"},
-    )
-    out: dict[str, dict] = {}
-    for c in coins:
-        out[c["eurio_id"]] = {
-            "country": c.get("country"),
-            "year": c.get("year"),
-            "theme": c.get("theme"),
-            "face_value": c.get("face_value"),
-            "image_url": _extract_image_url(c),
-        }
-    return out
 
 
 @app.get("/confusion-map/pairs")
@@ -1558,106 +1632,108 @@ def confusion_map_pairs(
     zone: str | None = None,
     encoder_version: str = _DEFAULT_CONFUSION_ENCODER,
 ) -> list[dict]:
-    """Top-N unique confused pairs (deduped by sorted eurio_id tuple)."""
+    """Top-N unique confused pairs (deduped by sorted eurio_id tuple). eurio.db."""
     if limit <= 0 or limit > 1000:
         raise HTTPException(status_code=400, detail="limit doit être entre 1 et 1000")
     if zone is not None and zone not in ("green", "orange", "red"):
         raise HTTPException(status_code=400, detail="zone invalide")
 
-    sb = get_supabase()
-    params: dict = {
-        "encoder_version": f"eq.{encoder_version}",
-        "order": "nearest_similarity.desc",
-    }
-    if zone is not None:
-        params["zone"] = f"eq.{zone}"
+    conn = _confusion_db_connect()
+    if conn is None:
+        return []
+    try:
+        sql = (
+            "SELECT eurio_id, nearest_eurio_id, nearest_similarity, zone "
+            "FROM coin_confusion_map "
+            "WHERE encoder_version = ? AND nearest_eurio_id IS NOT NULL"
+        )
+        params: list = [encoder_version]
+        if zone is not None:
+            sql += " AND zone = ?"
+            params.append(zone)
+        sql += " ORDER BY nearest_similarity DESC"
+        try:
+            rows = conn.execute(sql, params).fetchall()
+        except Exception:  # noqa: BLE001 — table absente (dev)
+            return []
 
-    rows = sb.query(
-        "coin_confusion_map",
-        select="eurio_id,nearest_eurio_id,nearest_similarity,zone",
-        params=params,
-    )
-
-    seen: set[tuple[str, str]] = set()
-    pairs: list[dict] = []
-    for r in rows:
-        a = r.get("eurio_id")
-        b = r.get("nearest_eurio_id")
-        if not a or not b:
-            continue
-        key = tuple(sorted((a, b)))
-        if key in seen:
-            continue
-        seen.add(key)
-        pairs.append(
-            {
+        seen: set[tuple[str, str]] = set()
+        pairs: list[dict] = []
+        for r in rows:
+            a, b = r["eurio_id"], r["nearest_eurio_id"]
+            if not a or not b:
+                continue
+            key = tuple(sorted((a, b)))
+            if key in seen:
+                continue
+            seen.add(key)
+            pairs.append({
                 "eurio_id_a": key[0],
                 "eurio_id_b": key[1],
-                "similarity": r.get("nearest_similarity"),
-                "zone": r.get("zone"),
-            }
-        )
-        if len(pairs) >= limit:
-            break
+                "similarity": r["nearest_similarity"],
+                "zone": r["zone"],
+            })
+            if len(pairs) >= limit:
+                break
 
-    ids_to_enrich: list[str] = []
-    for p in pairs:
-        ids_to_enrich.extend([p["eurio_id_a"], p["eurio_id_b"]])
-    enriched = _enrich_coins_by_eurio_id(sb, ids_to_enrich)
-
-    for p in pairs:
-        p["coin_a"] = enriched.get(p["eurio_id_a"])
-        p["coin_b"] = enriched.get(p["eurio_id_b"])
-
-    return pairs
+        ids = [i for p in pairs for i in (p["eurio_id_a"], p["eurio_id_b"])]
+        enriched = _confusion_enrich(conn, ids)
+        for p in pairs:
+            p["coin_a"] = enriched.get(p["eurio_id_a"])
+            p["coin_b"] = enriched.get(p["eurio_id_b"])
+        return pairs
+    finally:
+        conn.close()
 
 
 @app.get("/confusion-map/coin/{eurio_id}")
 def confusion_map_coin(
     eurio_id: str, encoder_version: str = _DEFAULT_CONFUSION_ENCODER
 ) -> dict:
-    """Return cartography details for a single coin, with enriched neighbors."""
-    sb = get_supabase()
-    rows = sb.query(
-        "coin_confusion_map",
-        select="zone,nearest_similarity,nearest_eurio_id,top_k_neighbors,computed_at",
-        params={
-            "eurio_id": f"eq.{eurio_id}",
-            "encoder_version": f"eq.{encoder_version}",
-        },
-    )
-    if not rows:
+    """Return cartography details for a single coin, with enriched neighbors. eurio.db."""
+    conn = _confusion_db_connect()
+    row = None
+    if conn is not None:
+        try:
+            row = conn.execute(
+                "SELECT zone, nearest_similarity, nearest_eurio_id, top_k_neighbors, "
+                "computed_at FROM coin_confusion_map "
+                "WHERE eurio_id = ? AND encoder_version = ?",
+                (eurio_id, encoder_version),
+            ).fetchone()
+        except Exception:  # noqa: BLE001 — table absente (dev)
+            row = None
+    if row is None:
+        if conn is not None:
+            conn.close()
         raise HTTPException(
             status_code=404, detail="Pas de cartographie pour cette pièce"
         )
-    row = rows[0]
-
-    neighbors = row.get("top_k_neighbors") or []
-    if isinstance(neighbors, str):
+    try:
         try:
-            neighbors = json.loads(neighbors)
+            neighbors = json.loads(row["top_k_neighbors"] or "[]")
         except json.JSONDecodeError:
             neighbors = []
-
-    neighbor_ids = [n.get("eurio_id") for n in neighbors if n.get("eurio_id")]
-    enriched = _enrich_coins_by_eurio_id(sb, neighbor_ids)
-
-    return {
-        "eurio_id": eurio_id,
-        "encoder_version": encoder_version,
-        "zone": row.get("zone"),
-        "nearest_eurio_id": row.get("nearest_eurio_id"),
-        "nearest_similarity": row.get("nearest_similarity"),
-        "computed_at": row.get("computed_at"),
-        "top_k_neighbors": [
-            {
-                "eurio_id": n.get("eurio_id"),
-                "similarity": n.get("similarity"),
-                "coin": enriched.get(n.get("eurio_id")),
-            }
-            for n in neighbors
-        ],
-    }
+        neighbor_ids = [n.get("eurio_id") for n in neighbors if n.get("eurio_id")]
+        enriched = _confusion_enrich(conn, neighbor_ids)
+        return {
+            "eurio_id": eurio_id,
+            "encoder_version": encoder_version,
+            "zone": row["zone"],
+            "nearest_eurio_id": row["nearest_eurio_id"],
+            "nearest_similarity": row["nearest_similarity"],
+            "computed_at": row["computed_at"],
+            "top_k_neighbors": [
+                {
+                    "eurio_id": n.get("eurio_id"),
+                    "similarity": n.get("similarity"),
+                    "coin": enriched.get(n.get("eurio_id")),
+                }
+                for n in neighbors
+            ],
+        }
+    finally:
+        conn.close()
 
 
 # ─── Numista Review ───
