@@ -193,3 +193,50 @@ def test_ingest_faces_missing_and_scope(env, tmp_path):
     app2.dependency_overrides[require_principal] = lambda: _principal({"ingest:run"})
     _seed_asset(store2._connection(), "f3")  # noqa: SLF001
     assert TestClient(app2).post("/ingest/faces", json={"faces": [{"asset_id": "f3", "face": "obverse"}]}).status_code == 403
+
+
+# ── /ingest/detections (B2b — remontée du constat de re-détection LIVE) ───────
+
+
+def _seed_source_image(conn, si_id: str) -> None:
+    conn.execute(
+        "INSERT INTO source_images (id, source, source_ref, storage_path) "
+        "VALUES (?, 'ebay', ?, ?)",
+        (si_id, f"ebay_{si_id}", f"/tmp/{si_id}.jpg"),
+    )
+
+
+def test_ingest_detections_writes_json(env):
+    conn, client = env
+    _seed_source_image(conn, "si1")
+    dj = json.dumps([{"cx": 1.0, "cy": 2.0, "r": 3.0, "method": "hough",
+                      "accepted": True, "reject_reason": None}])
+    r = client.post("/ingest/detections",
+                    json={"source_image_id": "si1", "detections_json": dj})
+    assert r.status_code == 200, r.text
+    assert r.json() == {"updated": 1, "missing": False}
+    assert conn.execute(
+        "SELECT detections_json FROM source_images WHERE id='si1'").fetchone()[0] == dj
+
+
+def test_ingest_detections_unknown_missing(env):
+    _conn, client = env
+    r = client.post("/ingest/detections",
+                    json={"source_image_id": "ghost", "detections_json": "[]"})
+    assert r.status_code == 200, r.text
+    assert r.json() == {"updated": 0, "missing": True}
+
+
+def test_ingest_detections_scope_403(tmp_path):
+    from serving import ingest_routes
+
+    store = Store(tmp_path / "t.db")
+    ingest_routes.bind(store)
+    app = FastAPI()
+    app.include_router(ingest_routes.router)
+    app.dependency_overrides[require_principal] = lambda: _principal({"ingest:run"})
+    _seed_source_image(store._connection(), "si2")  # noqa: SLF001
+    assert TestClient(app).post(
+        "/ingest/detections",
+        json={"source_image_id": "si2", "detections_json": "[]"},
+    ).status_code == 403

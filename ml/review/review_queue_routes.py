@@ -1640,14 +1640,32 @@ def detect_lot_image(listing_key: str, source_image_id: str) -> LotImageDetectRe
 
     # Persiste le constat rafraîchi (sans crop_index — dérivé à la lecture par
     # _lot_detections_from_json). Même schéma que detect_crop._detection_to_dict.
-    conn.execute(
-        "UPDATE source_images SET detections_json = ? WHERE id = ?",
-        (json.dumps([{
-            "cx": d.cx, "cy": d.cy, "r": d.r, "method": d.method,
-            "accepted": d.accepted, "reject_reason": d.reject_reason,
-        } for d in detections]), source_image_id),
-    )
-    conn.commit()
+    detections_json = json.dumps([{
+        "cx": d.cx, "cy": d.cy, "r": d.r, "method": d.method,
+        "accepted": d.accepted, "reject_reason": d.reject_reason,
+    } for d in detections])
+    # Direction A (C5) : sous le flip, le canonique local est READONLY → on saute
+    # l'UPDATE local ; le forward `/ingest/detections` écrit le VPS
+    # (apply_ingest_detections, même UPDATE). Le compute cv2 (YOLO+Hough) reste
+    # local. Model A : UPDATE local + forward best-effort.
+    from store import resolve_db_readonly  # noqa: PLC0415
+
+    if not resolve_db_readonly():
+        conn.execute(
+            "UPDATE source_images SET detections_json = ? WHERE id = ?",
+            (detections_json, source_image_id),
+        )
+        conn.commit()
+    from client.http import sync_enabled  # noqa: PLC0415
+
+    if sync_enabled():
+        try:
+            from client.ingest import push_detections  # noqa: PLC0415
+
+            push_detections(source_image_id, detections_json)
+        except Exception as exc:  # noqa: BLE001 — forward best-effort (recomputable)
+            logger.warning("[detect] forward /ingest/detections échoué si=%s: %s",
+                           source_image_id, exc)
     return LotImageDetectResponse(source_image_id=source_image_id, detections=detections)
 
 

@@ -155,3 +155,20 @@ def push_delete_asset(asset_id: str) -> dict | None:
     from client import http as _http  # noqa: PLC0415
 
     return _http.delete_json(f"/ingest/assets/{asset_id}")
+
+
+def push_detections(source_image_id: str, detections_json: str) -> dict | None:
+    """POST ``/ingest/detections`` si la sync est activée, sinon no-op (``None``).
+
+    Remonte le constat de re-détection LIVE (``source_images.detections_json``)
+    calculé côté lab (cv2). Best-effort : la re-détection est recomputable. Retourne
+    le payload serveur ``{"updated": n, "missing": bool}`` ou ``None`` si désactivée."""
+    from client.http import sync_enabled  # noqa: PLC0415 — évite import cycle au chargement
+
+    if not sync_enabled():
+        return None
+    from client import http as _http  # noqa: PLC0415
+
+    return _http.post_json("/ingest/detections", {
+        "source_image_id": source_image_id, "detections_json": detections_json,
+    })

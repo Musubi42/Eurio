@@ -117,3 +117,17 @@ def apply_delete_assets(conn, asset_ids) -> dict:
         else:
             missing.append(asset_id)
     return {"deleted": deleted, "missing": missing}
+
+
+def apply_ingest_detections(conn, source_image_id: str, detections_json: str) -> dict:
+    """Persiste le constat de re-détection LIVE (``source_images.detections_json``)
+    calculé côté client (cv2 : YOLO+Hough). SQL-pur, miroir de la partie DB de
+    ``review.review_queue_routes.detect_lot_image``. Même contrat transactionnel
+    (ni BEGIN ni COMMIT). Idempotent (UPSERT sur une colonne). Retourne
+    ``{"updated": 0|1, "missing": bool}`` (missing = source_image inconnue)."""
+    cur = conn.execute(
+        "UPDATE source_images SET detections_json = ? WHERE id = ?",
+        (detections_json, source_image_id),
+    )
+    n = cur.rowcount or 0
+    return {"updated": n, "missing": n == 0}

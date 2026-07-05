@@ -12,7 +12,12 @@ from pydantic import BaseModel
 from client.runbatch import ingest_run
 from serving.auth_principal import require_scope
 from store.confusion import apply_ingest_confusion_map
-from store.crops import apply_delete_assets, apply_exclude_crops, apply_ingest_crops
+from store.crops import (
+    apply_delete_assets,
+    apply_exclude_crops,
+    apply_ingest_crops,
+    apply_ingest_detections,
+)
 from store.dino import apply_ingest_dino
 from store.faces import apply_ingest_faces
 from store.gate import ENGINE_VERSION as _GATE_ENGINE_VERSION
@@ -67,6 +72,29 @@ def ingest_crops_route(payload: IngestCropsPayload) -> dict:
     conn.execute("BEGIN")
     try:
         result = apply_ingest_crops(conn, payload.crops)
+        conn.execute("COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+    return result
+
+
+class DetectionsPayload(BaseModel):
+    source_image_id: str
+    detections_json: str
+
+
+@router.post("/detections", dependencies=[Depends(require_scope("ingest:write"))])
+def ingest_detections_route(payload: DetectionsPayload) -> dict:
+    """Persiste le constat de re-détection LIVE d'une source_image (cv2 calculé
+    côté lab). SQL-pur, atomique. Retourne ``{updated, missing}``."""
+    if _store is None:
+        raise HTTPException(status_code=500, detail="ingest non câblé (bind manquant)")
+    conn = _store._connection()  # noqa: SLF001
+    conn.execute("BEGIN")
+    try:
+        result = apply_ingest_detections(
+            conn, payload.source_image_id, payload.detections_json)
         conn.execute("COMMIT")
     except Exception:
         conn.execute("ROLLBACK")
