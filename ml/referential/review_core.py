@@ -152,7 +152,7 @@ def enrich_lmdlp(
 ) -> int:
     """Apply a manual lmdlp resolution : append the matching snapshot products
     to `observations.lmdlp_variants`, dedupe by SKU. Returns number added."""
-    from scrape_lmdlp import build_variant_obs, extract_mintage
+    from referential.scrape_lmdlp import build_variant_obs, extract_mintage
 
     target = referential.get(eurio_id)
     if target is None:
