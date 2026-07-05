@@ -198,10 +198,25 @@
           fi
         '';
 
+        # Flip 1a — Direction A (writer unique VPS). Sur les machines dev (mac/pc)
+        # uniquement : la lecture pointe la réplique read-only pull-ée du VPS, et
+        # tout Store sans read_only explicite s'ouvre en mode=ro (les écritures
+        # canoniques passent par l'API eurio-api ; le bookkeeping lab reste writable
+        # via eurio.local.db — cf. split). PAS sur vpsShell (le VPS force
+        # read_only=False + reçoit EURIO_DB_PATH du compose). On passe par $PWD
+        # (racine repo au chargement direnv) et NON un path nix : un `./…replica.db`
+        # en éval flake pure copierait la réplique (~108 Mo) dans le nix store.
+        # Réversibilité : retirer ${flipHook} des shells + direnv reload → Model A.
+        flipHook = ''
+          export EURIO_DB_PATH="$PWD/ml/state/eurio.replica.db"
+          export EURIO_DB_READONLY=1
+        '';
+
         # ─── Profiles ─────────────────────────────────────────────────────────
         macShell = pkgs.mkShell (commonEnv // {
           buildInputs = baseInputs ++ fullInputs;
           shellHook = ''
+            ${flipHook}
             ${gitRemotesHook}
             ${fullBannerHook "mac"}
             ${staleVenvCheckHook}
@@ -212,6 +227,7 @@
           buildInputs = baseInputs ++ fullInputs;
           shellHook = ''
             ${nvidiaHook}
+            ${flipHook}
             ${gitRemotesHook}
             ${fullBannerHook "pc"}
             ${staleVenvCheckHook}

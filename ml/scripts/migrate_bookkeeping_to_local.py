@@ -40,6 +40,25 @@ def migrate(source: Path) -> int:
         return 1
 
     lconn = local_state_store()._connection()  # noqa: SLF001 — dest writable
+
+    # Garde : un eurio.local.db créé AVANT le retrait des FK cross-DB (schema.sql,
+    # commit du split) porte encore `REFERENCES experiment_cohorts/image_assets`
+    # → l'INSERT échoue en FK cryptique (les tables canoniques du local sont vides).
+    # Ce fichier est de l'état local RÉGÉNÉRABLE : si stale, on refuse clairement.
+    ddl = lconn.execute(
+        "SELECT sql FROM sqlite_master WHERE name='cohort_jobs'"
+    ).fetchone()
+    if ddl and ("REFERENCES experiment_cohorts" in ddl[0]
+                or "REFERENCES image_assets" in ddl[0]):
+        db = local_state_store().db_path
+        print(
+            f"❌ {db} porte l'ANCIEN schéma (FK cross-DB, antérieur au split).\n"
+            f"   C'est de l'état local régénérable → supprime-le puis relance :\n"
+            f"     rm {db}*\n"
+            f"     ./.venv/bin/python -m scripts.migrate_bookkeeping_to_local",
+            file=sys.stderr,
+        )
+        return 1
     # ATTACH la source (chemin simple : la connexion Store n'active pas `uri=True`,
     # donc pas de `file:…?mode=ro`). On ne fait QUE des SELECT sur `src` — aucune
     # écriture — donc l'ouvrir en read-write est inoffensif.
