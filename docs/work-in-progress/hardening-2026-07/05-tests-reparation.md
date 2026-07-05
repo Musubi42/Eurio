@@ -43,11 +43,15 @@ d'un entraînement **en cours** sans erreur.
 > - **#3 HIGH `source_registry` non seedé** — ✅ corrigé (`771821c`, seed idempotent au
 >   bootstrap via `store/source_registry_seed.py`).
 >
-> **Reste (Classe A/C, non traité)** : #4 (`test_benchmark` imports plats ×7), #5
-> (`test_normalize_listing` cv2 vs YOLO ×4), #6 (fixture `_seed_min_run` M:N), #7 (~~`==10`~~
-> ✅ corrigé au passage), #8 (couverture front). + un rouge pré-existant hors fiche :
-> `test_eurio_referential::enrich_lmdlp` (import mort `scrape_lmdlp`). Suite : **14 rouges
-> pré-existants, 1368 verts** (zéro régression).
+> ### ✅ Classe A/C AUSSI TRAITÉE (2026-07-05, `62a752e`→`8c0cc44`)
+> - #4 `test_benchmark` : imports plats → `training.*`/`training.eval.*` (+ champ requis `hit_at_eq`).
+> - #5 `test_normalize_listing` : stub `_yolo_detect_bboxes` (contours cv2) + texture disques (structure guard).
+> - #6 fixture `_seed_min_run` : lien M:N `source_image_runs` ajouté (invariant prod).
+> - #7 `==10` : ✅ corrigé (F05-B).
+> - `enrich_lmdlp` (hors fiche) : import mort `scrape_lmdlp` → `referential.scrape_lmdlp` (code prod).
+>
+> **Reste : #8 seul** (couverture front `studio-local` — vitest, dette LOW). **Suite : 0 rouge /
+> 1382 verts.** F05 clôturée hormis #8.
 
 ## 1. Table des findings
 
