@@ -11,13 +11,27 @@ Deux modes :
 * ``--apply`` : crée un backup auto, demande confirmation interactive
   (``Type "WIPE" to confirm``), puis exécute en transaction atomique :
 
-  1. ``DELETE FROM`` des 10 tables wipe-scope.
+  1. ``DELETE FROM`` des 10 tables wipe-scope, **``PRAGMA foreign_keys=OFF``**
+     — sinon ``DELETE FROM coins`` CASCADE sur TOUTES les tables terrain
+     FK→coins : les 5 P.3a (``coin_variants``, ``coin_mint_releases``,
+     ``mint_release_prices``, ``mint_release_observations``, ``coin_credits``)
+     **et aussi** ``coin_descriptions_i18n`` (~10k i18n), ``coin_topics``,
+     ``coin_source_status``, ``wikipedia_nl_coins``, … — ~20k lignes de données
+     difficilement re-fetchables détruites silencieusement (bug CRITICAL, F05 #1).
   2. ``DROP TABLE`` puis ``CREATE TABLE`` des 6 tables source-aware avec
      FK ``source REFERENCES source_registry(id) ON DELETE RESTRICT``.
-  3. Smoke test interne (savepoint rollback) : INSERT avec source valide
-     doit OK, INSERT avec source inconnue doit FK violation.
-  4. Post-checks : integrity_check, foreign_key_check, counts=0 sur les
-     tables wipées, FK source enforced sur les 6 recréées.
+  3. Smoke test post-commit (savepoint rollback, FK ré-activée) : INSERT avec
+     source valide doit OK, INSERT avec source inconnue doit FK violation.
+  4. Post-checks : integrity_check, foreign_key_check (les orphelins des 5
+     tables préservées → coins wipé sont ATTENDUS et transitoires — ils
+     redeviennent valides quand le refetch réinsère les mêmes eurio_id ;
+     seuls les orphelins INATTENDUS échouent), counts=0 sur les tables
+     wipées, FK source enforced sur les 6 recréées.
+
+  ⚠️ **Gate d'intégrité réel = ``foreign_key_check`` POST-refetch** (runbook) :
+  entre le wipe et le refetch, les 5 tables préservées ont des FK orphelines
+  vers ``coins`` (vidé). C'est le contrat du wipe (mêmes ids canoniques,
+  contenu rafraîchi).
 
 Tables wipées (cf. ROADMAP-DB.md §8) :
 
@@ -64,6 +78,21 @@ WIPE_TABLES: list[str] = [
     "coin_market_quotes",
     "coin_national_variants",
 ]
+
+# Beaucoup de tables terrain déclarent ON DELETE CASCADE vers `coins` (ou vers
+# une autre table wipée) : les 5 tables P.3a de la fiche F05 (coin_variants,
+# coin_mint_releases, mint_release_prices, mint_release_observations,
+# coin_credits) MAIS AUSSI coin_descriptions_i18n, coin_topics,
+# coin_source_status, wikipedia_nl_coins, … (l'inventaire évolue avec le schéma).
+# Toutes NE sont PAS dans WIPE_TABLES : leurs lignes doivent SURVIVRE au wipe
+# (le DELETE tourne FK-off). Après wipe elles ont des FK orphelines vers leur
+# parent wipé — transitoire, attendu, résolu par le refetch (mêmes eurio_id).
+#
+# Doctrine : le wipe détruit EXACTEMENT ce qu'il liste (WIPE_TABLES +
+# RECREATE_TABLES), jamais par cascade silencieuse. Le post-check ne code donc
+# PAS une liste de tables préservées (fragile, incomplète) — il classe un
+# orphelin comme ATTENDU ssi son PARENT est une table wipée (cf. _post_checks).
+_WIPE_PARENTS: frozenset[str] = frozenset(WIPE_TABLES)
 
 
 # ─── DDL — 6 tables source-aware recréées avec FK source_registry ─────────
@@ -323,15 +352,20 @@ def apply(db_path: Path, *, skip_confirm: bool = False) -> int:
             return 1
         print("[3/6] confirmation OK.")
 
-    # 4. Transaction atomique
+    # 4. Transaction atomique — FK OFF pour que `DELETE FROM coins` ne CASCADE
+    #    pas sur les 5 tables préservées (cf. PRESERVED_ON_WIPE). `PRAGMA
+    #    foreign_keys` est un no-op DANS une transaction → on le pose AVANT le
+    #    BEGIN, et on ré-active APRÈS le COMMIT.
+    conn.execute("PRAGMA foreign_keys=OFF")
     cursor = conn.cursor()
     try:
         cursor.execute("BEGIN IMMEDIATE")
 
-        # 4a. Wipe rows
+        # 4a. Wipe rows (sans cascade — FK off → les tables P.3a survivent)
         for t in WIPE_TABLES:
             cursor.execute(f"DELETE FROM {t}")
-        print(f"[4/6] DELETE FROM × {len(WIPE_TABLES)} effectué")
+        print(f"[4/6] DELETE FROM × {len(WIPE_TABLES)} effectué "
+              f"(FK off — tables terrain FK→coins préservées intactes)")
 
         # 4b. Drop + recreate
         # Note : on n'utilise PAS executescript() car il commit implicitement
@@ -343,23 +377,30 @@ def apply(db_path: Path, *, skip_confirm: bool = False) -> int:
                 cursor.execute(stmt)
         print(f"[5/6] DROP+RECREATE × {len(RECREATE_TABLES)} effectué")
 
-        # 4c. Smoke test (savepoint, rollback interne, ne pollue pas)
-        smoke_errors = _smoke_test(conn)
-        if smoke_errors:
-            cursor.execute("ROLLBACK")
-            print(f"\n❌ Smoke test failed: {smoke_errors}")
-            print(f"   Rolled back. Backup intact : {backup_path}")
-            conn.close()
-            return 1
-        print("[6/6] smoke test FK source : OK (valid accepted, invalid rejected)")
-
         cursor.execute("COMMIT")
     except Exception as e:
         cursor.execute("ROLLBACK")
+        conn.execute("PRAGMA foreign_keys=ON")
         print(f"\n❌ Transaction error: {e}")
         print(f"   Rolled back. Backup intact : {backup_path}")
         conn.close()
         return 1
+
+    # Ré-active la FK pour le smoke test + l'usage normal en aval.
+    conn.execute("PRAGMA foreign_keys=ON")
+
+    # 4c. Smoke test post-commit (FK ON, savepoint interne → ne persiste rien).
+    #     Valide que les 6 tables RECREATE enforcent la FK source →
+    #     source_registry. Ne peut PAS relancer le DELETE en cas d'échec (déjà
+    #     committé) : c'est un check de structure DDL déterministe, le backup
+    #     couvre le cas improbable d'un échec.
+    smoke_errors = _smoke_test(conn)
+    if smoke_errors:
+        print(f"\n❌ Smoke test failed: {smoke_errors}")
+        print(f"   Wipe committé — restaurer depuis le backup si besoin : {backup_path}")
+        conn.close()
+        return 1
+    print("[6/6] smoke test FK source : OK (valid accepted, invalid rejected)")
 
     # 5. Post-checks
     errors = _post_checks(conn)
@@ -384,9 +425,27 @@ def _post_checks(conn: sqlite3.Connection) -> list[str]:
     if integrity != "ok":
         errors.append(f"integrity_check: {integrity!r}")
 
+    # foreign_key_check retourne (table_enfant, rowid, table_parent, fk_id).
+    # Un orphelin dont le PARENT (v[2]) est une table wipée est ATTENDU : son
+    # parent a été supprimé exprès, la FK redevient valide au refetch. Tout
+    # autre orphelin (parent NON wipé) = vraie corruption → error. Robuste :
+    # pas de liste de tables enfant à maintenir (cf. _WIPE_PARENTS).
     fk_violations = conn.execute("PRAGMA foreign_key_check").fetchall()
-    if fk_violations:
-        errors.append(f"foreign_key_check: {len(fk_violations)} violations")
+    expected = [v for v in fk_violations if v[2] in _WIPE_PARENTS]
+    unexpected = [v for v in fk_violations if v[2] not in _WIPE_PARENTS]
+    if unexpected:
+        tables = sorted({f"{v[0]}→{v[2]}" for v in unexpected})
+        errors.append(
+            f"foreign_key_check: {len(unexpected)} violations INATTENDUES "
+            f"(parent non-wipé) {tables}"
+        )
+    if expected:
+        tables = sorted({v[0] for v in expected})
+        print(
+            f"   ℹ️  {len(expected)} FK orphelines ATTENDUES (tables terrain "
+            f"{tables} → parent wipé). Transitoire : redeviennent valides au "
+            f"refetch. Gate réel = foreign_key_check POST-refetch (runbook)."
+        )
 
     for t in WIPE_TABLES:
         c = conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]

@@ -78,8 +78,10 @@ def test_apply_wipes_and_recreates(db_copy: Path) -> None:
     with sqlite3.connect(db_copy) as conn:
         assert _count(conn, "coins") > 0
         assert _count(conn, "coin_observations") > 0
-        # source_registry seedé en P.4
-        assert _count(conn, "source_registry") == 10
+        # source_registry seedé au bootstrap (≥ 10 sources canoniques ; le
+        # nombre exact évolue quand on ajoute une source — ne pas hardcoder).
+        n_sources = _count(conn, "source_registry")
+        assert n_sources >= 10
 
     rc = wipe_referential.apply(db_copy, skip_confirm=True)
     assert rc == 0
@@ -90,16 +92,24 @@ def test_apply_wipes_and_recreates(db_copy: Path) -> None:
         for t in wipe_referential.WIPE_TABLES:
             assert _count(conn, t) == 0, f"{t} not empty"
 
-        # source_registry préservé
-        assert _count(conn, "source_registry") == 10
+        # source_registry préservé (invariant : inchangé par le wipe)
+        assert _count(conn, "source_registry") == n_sources
 
         # FK source enforced sur les 6 tables recréées
         for t in wipe_referential.RECREATE_TABLES:
             assert _has_fk_to_source_registry(conn, t), f"{t} missing FK source"
 
-        # integrity + FK clean
+        # integrity OK ; FK : les seuls orphelins tolérés sont les enfants de
+        # tables WIPÉES (transitoires — redeviennent valides au refetch qui
+        # réinsère les mêmes eurio_id). Un orphelin pointant une table PRÉSERVÉE
+        # serait une vraie corruption. C'est l'invariant que _post_checks code.
         assert conn.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
-        assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
+        wiped = set(wipe_referential.WIPE_TABLES)
+        unexpected = [
+            v for v in conn.execute("PRAGMA foreign_key_check").fetchall()
+            if v[2] not in wiped
+        ]
+        assert unexpected == [], f"orphelins inattendus (parent non-wipé): {unexpected}"
 
 
 def test_apply_fk_enforced_post_wipe(db_copy: Path) -> None:
@@ -146,6 +156,12 @@ def test_apply_preserves_infra(db_copy: Path) -> None:
         "mint_release_observations",
         "coin_credits",
         "coin_edge_variants",
+        # Enrichissement FK→coins (ON DELETE CASCADE) — l'ancien wipe les
+        # détruisait silencieusement, ils doivent désormais survivre (F05 #1).
+        "coin_descriptions_i18n",
+        "coin_topics",
+        "coin_source_status",
+        "wikipedia_nl_coins",
     ]
     with sqlite3.connect(db_copy) as conn:
         before = {t: _count(conn, t) for t in preserved_tables}
