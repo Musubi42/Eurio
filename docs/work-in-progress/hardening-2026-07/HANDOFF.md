@@ -6,8 +6,8 @@
 > DÉPLOYÉ sur le VPS** (eurio-api rebuild, 3 routes `/ingest` vérifiées live → 401 non-auth). P0
 > secrets **traité** (détracké+révoqué, sans réécriture d'historique — décision PO).
 > **Harmonisation Mac↔PC↔VPS FAITE** (2026-07-05, §1.3) : les 7 fichiers locaux du PC rapatriés
-> sur Mac + committés + poussés, `HEAD=1449a1d` **sur les 3 machines**, vérifié live (route
-> canonique, CUDA PC, VPS rebuild). **Il ne reste QUE** : (a) le **split bookkeeping** (à discuter
+> sur Mac + committés + poussés (code harmonisé `c351113`→`1449a1d`), **3 machines alignées** sur
+> `sources-jo-wikipedia`, vérifié live (route canonique, CUDA PC, VPS rebuild). **Il ne reste QUE** : (a) le **split bookkeeping** (à discuter
 > PO, cf. §Activation 1a précond. 3) puis (b) le **flip 1a** (patch prêt, non activé). Détail chunk
 > par chunk : §1 + fiche `01-…md §6`. Ordre historique des chunks conservé plus bas pour référence.
 >
@@ -244,7 +244,7 @@ touche des writers (4a/4b) : envelopper via `BEGIN`/`COMMIT`/`ROLLBACK` ou `stor
 ## 4. Prochaine action recommandée
 
 **Tout le CODE F01 est livré + committé + poussé + déployé** (2026-07-05). P0 secrets traité (§2.3).
-**Harmonisation Mac↔PC↔VPS faite** (§1.3) — 3 machines sur `HEAD=1449a1d`, PC synchronisé.
+**Harmonisation Mac↔PC↔VPS faite** (§1.3) — code harmonisé `1449a1d`, 3 machines alignées, PC synchronisé.
 Préconditions 1+2 du flip **faites** ; il ne reste QUE la précondition **3 (split bookkeeping)**,
 puis le **flip 1a** (patch prêt, non activé — fiche `01-…md §6`).
 
