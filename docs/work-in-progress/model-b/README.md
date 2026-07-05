@@ -14,12 +14,15 @@ Le **canonique** = une base **SQLite sur le VPS**, contactée **via l'API**
 des **répliques locales** (copies de travail) et **poussent** leurs runs au VPS
 (`/ingest/run`). Pas de lease, pas de writer unique sérialisé — l'API arbitre.
 
-> 🔄 **Extension livrée (2026-07-03) : [local-sync](../local-sync/README.md)** —
-> les **écritures interactives** (classification, review, crops manuels) sont
-> désormais répliquées multi-maître par event-log (op_id/machine/HLC, worker
-> debounce, LWW-par-champ) : le travail local converge automatiquement sur le
-> canonique et redescend sur l'autre machine. Ferme le trou du handoff
-> `local-canonical-double-write-HANDOFF.md`.
+> ⚠️ **CORRECTION (2026-07-04) — l'event-log décrit ci-dessous a été ABANDONNÉ le
+> jour même de son écriture.** Il ne convergeait pas à l'usage (diagnostic triangulé
+> Mac/VPS/PC). Le PO a tranché **Direction A = writer canonique UNIQUE (VPS)** +
+> réplique locale read-only via `sqlite3_rsync`. **Lire [`../local-sync/README.md`](../local-sync/README.md)
+> et [`../local-sync/`](../local-sync/) — PAS le paragraphe barré ci-dessous.**
+>
+> ~~🔄 Extension livrée (2026-07-03) : local-sync — les écritures interactives sont
+> répliquées multi-maître par event-log (op_id/machine/HLC, worker debounce,
+> LWW-par-champ) : le travail local converge automatiquement sur le canonique.~~
 
 ## Pourquoi (le « pourquoi » qui guide tout)
 

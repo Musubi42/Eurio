@@ -1,7 +1,10 @@
 # Review collaborative — Vision & index
 
-> **Statut : CONCEPTION** (2026-06-08). Rien n'est implémenté. Ce dossier découpe
-> la vision en fichiers pour pouvoir chunker le travail ensuite.
+> **Statut (corrigé 2026-07-04) : IMPLÉMENTÉ localement, testé E2E — reste le déploiement
+> VPS.** Le service complet vit dans `ml/review_service/` (app, auth cookie HMAC, db, routes
+> reviewer/admin, régie reviewers — chunks 1/2/4 livrés). Ne PAS re-designer/ré-implémenter :
+> voir `08-implementation-plan.md` pour les chunks restants (déploiement `09-vps-deploy.md`).
+> _(L'ancien statut « CONCEPTION — rien n'est implémenté » du 2026-06-08 était périmé.)_
 
 ## Le problème
 

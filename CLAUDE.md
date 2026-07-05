@@ -136,8 +136,7 @@ go-task android:build            # Assemble debug APK
 go-task android:install          # Build + push APK sur device
 go-task android:run              # install + start
 go-task android:logs             # tail logcat filtré Eurio
-go-task android:snapshot         # Regen catalog_snapshot.json depuis Supabase
-go-task android:snapshot-dry     # Preview snapshot sans écrire
+go-task ml:build-app-core        # Regen l'asset catalogue packagé (app_core.db) — remplace catalog_snapshot.json (P6)
 go-task tokens:generate          # Regen Color/Shape/Spacing depuis tokens.css
 go-task tokens:check             # Vérifier que la génération est à jour (CI)
 ```

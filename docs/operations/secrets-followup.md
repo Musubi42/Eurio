@@ -3,6 +3,18 @@
 > Reliquat à traiter plus tard, après la centralisation SOPS (commit `2d52d5e`,
 > branche `sources-jo-wikipedia`, poussé sur codeberg + github le 2026-06-16).
 
+> ⚠️ **ALERTE (audit hardening 2026-07-04) — l'affirmation « caviardé de tout l'historique »
+> ci-dessous est FAUSSE.** Un fichier `.envrc copy` (693 o) contenait **les mêmes secrets en
+> clair** (`SUPABASE_SERVICE_ROLE_KEY`, `EBAY_CLIENT_ID/SECRET` PROD, clés Numista, anon keys)
+> et était **tracké à HEAD, poussé sur codeberg + github**. Il a été **retiré du tracking git**
+> (`git rm --cached`) + ajouté au `.gitignore` le 2026-07-04, MAIS :
+> - **les clés ne sont TOUJOURS PAS révoquées** (cf. §2, cases `[ ]`) — elles restent actives ;
+> - **l'historique des 2 remotes contient encore les secrets** (le `git rm` ne purge pas
+>   l'historique). Une purge (`git-filter-repo`) + force-push reste à faire.
+>
+> **Action P0 : révoquer/rotater d'abord (§2), purger l'historique ensuite.** Tant que ce n'est
+> pas fait, considérer `service_role` / eBay PROD / Numista comme **compromis publiquement**.
+
 ## Contexte (déjà fait)
 
 - **Source unique** : tous les secrets vivent dans `secrets/dev.env` (SOPS+age),
@@ -10,9 +22,9 @@
   (`load_env` / `require` / `numista_api_key`) — plus aucun parsing de `.env`.
 - Numista : tout passe par `KeyManager` (8 clés `MUSUBIxx`, rotation + quota).
 - Commandes : `go-task secrets:edit` / `secrets:list` / `secrets:check`.
-- Historique git nettoyé : les secrets en clair (eBay PROD, Supabase service_role)
-  ont été **caviardés** de tout l'historique. Backup intégral hors-ligne :
-  `bizz/Eurio-backup-full-a3a7c5b.git`.
+- Historique git nettoyé une première fois (commit `2d52d5e`) — **MAIS re-fuité ensuite**
+  via `.envrc copy` (cf. alerte en tête). Le caviardage initial ne couvre donc PAS l'état
+  actuel des remotes. Backup intégral hors-ligne : `bizz/Eurio-backup-full-a3a7c5b.git`.
 
 ## À faire
 
