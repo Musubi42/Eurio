@@ -45,6 +45,7 @@
 | **F02 C3/C2/C5** (décommission Supabase, **C1=Option A**) | ✅ code | `c9481c8` | zone_resolver→SQLite ; confusion-map→eurio.db (Direction A, `store/confusion.py`+`/ingest/confusion-map`+client, guard `--reload` refait) ; export routé + Option A doc |
 | **Split bookkeeping** (précond flip) | ✅ | `1a43426`, `7f3f3e0` (migration) | cohort_jobs/scans/results → `store.local_state_store()` (eurio.local.db writable) ; 3 FK cross-DB retirées ; 2-conn (pas d'ATTACH) ; simulation flip OK |
 | **Flip 1a** | ⏪ tenté + **rollback** | `af27126` (activé), `6b93aab` (désactivé) | **prouvé sain** (split écrit local, lecture réplique ro, write canonique refusé bruyamment) — MAIS révèle §2 |
+| **F09 — sync dimensions lab** (cohorts/iterations → VPS) | ✅ **déployé + vérifié E2E** (2026-07-06) | `96ed9cb7` | clôt le « push séparé différé » (`runbatch.py:49`) : `/ingest/cohort` (upsert/delete), garde FK 409 sur PUT `/iterations`, push best-effort ancré sur tous les writers lab + transitions runner (cohorte AVANT itération), backfill `go-task ml:lab:push-dimensions` (9/9). E2E prod : create local → visible VPS → delete local → disparue. Spec : `09-lab-dimensions-sync.md` |
 
 Détail par fiche : `README.md` (index 58 findings) + `01-…md` (F01 sync) + `02-…md` (Supabase) +
 `05-…md` (tests). Mémoires : `project_hardening_review_2026_07`, `project_sync_direction_a_single_writer`,
