@@ -70,6 +70,51 @@ class CohortsMixin:
                 ),
             )
 
+    def upsert_cohort(self, cohort: ExperimentCohortRow) -> None:
+        """Écrit le snapshot COMPLET d'une cohorte (INSERT ou REMPLACE tout).
+
+        Utilisé par le canonique (F09) : une machine de calcul pousse l'état de
+        sa cohorte à chaque write lab local ; le canonique remplace la row
+        entière (id uuid4 = propriété d'une seule machine → last-writer-wins
+        sans conflit réel). Préserve ``created_at`` de la SOURCE quand fourni
+        (miroir de ``upsert_iteration``) ; ``updated_at`` = valeur source ou
+        ``datetime('now')`` à défaut.
+        """
+        with self._writing() as c:
+            c.execute(
+                """
+                INSERT INTO experiment_cohorts (
+                  id, name, description, zone, eurio_ids_json, status,
+                  frozen_at, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?,
+                          COALESCE(?, datetime('now')),
+                          COALESCE(?, datetime('now')))
+                ON CONFLICT(id) DO UPDATE SET
+                  name           = excluded.name,
+                  description    = excluded.description,
+                  zone           = excluded.zone,
+                  eurio_ids_json = excluded.eurio_ids_json,
+                  status         = excluded.status,
+                  frozen_at      = excluded.frozen_at,
+                  created_at     = CASE WHEN ? IS NULL
+                                        THEN experiment_cohorts.created_at
+                                        ELSE excluded.created_at END,
+                  updated_at     = excluded.updated_at
+                """,
+                (
+                    cohort.id,
+                    cohort.name,
+                    cohort.description,
+                    cohort.zone,
+                    json.dumps(cohort.eurio_ids),
+                    cohort.status,
+                    cohort.frozen_at,
+                    cohort.created_at,
+                    cohort.updated_at,
+                    cohort.created_at,
+                ),
+            )
+
     def update_cohort(
         self,
         cohort_id: str,

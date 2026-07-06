@@ -101,8 +101,9 @@ def _canonical_push_enabled() -> bool:
         return False
     if override in ("1", "true", "yes"):
         return True
-    url = os.environ.get("EURIO_API_URL", "").strip()
-    return bool(url) and "127.0.0.1" not in url and "localhost" not in url
+    from client.http import remote_sync_enabled  # noqa: PLC0415 — import léger, gate partagé (F09)
+
+    return remote_sync_enabled()
 
 
 PROGRESS_DIR = ML_DIR / "state" / "training_progress"
@@ -338,7 +339,8 @@ class IterationRunner:
         l'origine ne vit que dans le snapshot canonique) et dénormalise le résumé
         des métriques pour que le canonique affiche les chiffres sans les tables
         lourdes. Appelé à chaque transition (create / training / completed / failed
-        / benchmark).
+        / benchmark). Pousse la COHORTE d'abord (F09, parent FK → enfant) : sans
+        elle, le PUT itération est refusé (409) côté canonique.
         """
         if not _canonical_push_enabled():
             return
@@ -346,18 +348,28 @@ class IterationRunner:
             it = self._store.get_iteration(iteration_id)
             if it is None:
                 return
-            from serving.iteration_summary import build_iteration_summary
-            from shared.machine import machine_origin
+            from serving.iteration_summary import build_iteration_push_payload
             from client import http as api_http
+            from client import ingest as api_ingest
 
-            it.created_on = machine_origin()
-            it.summary = build_iteration_summary(self._store, it)
-            api_http.put_json(f"/iterations/{iteration_id}", it.to_dict(), timeout=15)
+            cohort = self._store.get_cohort(it.cohort_id)
+            if cohort is not None:
+                api_ingest.push_cohort(cohort.to_dict())
+            payload = build_iteration_push_payload(self._store, it)
+            api_http.put_json(f"/iterations/{iteration_id}", payload, timeout=15)
         except Exception as exc:  # noqa: BLE001
             logger.warning(
                 "R3 canonical push failed for %s: %s (best-effort, ignoré)",
                 iteration_id, exc,
             )
+
+    def sync_canonical(self, iteration_id: str) -> None:
+        """Alias public de :meth:`_sync_canonical` (best-effort, ne lève jamais).
+
+        Exposé pour les writers HORS runner (``lab_routes.update_iteration``)
+        qui mutent une itération et doivent propager son nouvel état (F09).
+        """
+        self._sync_canonical(iteration_id)
 
     def launch_training(self, iteration_id: str) -> ExperimentIterationRow:
         """Spawn the chained ``training → export → benchmark`` flow.
@@ -499,6 +511,7 @@ class IterationRunner:
                 finished_at=_iso_now(),
             )
             _set_progress_phase(it.id, "failed", error="Interrupted by API restart")
+            self._sync_canonical(it.id)  # F09 : l'échec réconcilié est visible partout
             cleaned += 1
         # Benchmark-stuck → training+export had completed; the model is
         # usable. Promote the iteration to ``completed`` and mark the
@@ -528,6 +541,7 @@ class IterationRunner:
                 it.id, "benchmark_failed",
                 error="Interrupted by API restart",
             )
+            self._sync_canonical(it.id)  # F09 : l'état réconcilié est visible partout
             cleaned += 1
         return cleaned
 

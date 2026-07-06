@@ -6,11 +6,14 @@ le scope ``ingest:run`` (PAT owner/admin via ``serving.auth_principal.require_sc
 """
 from __future__ import annotations
 
+import sqlite3
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from client.runbatch import ingest_run
 from serving.auth_principal import require_scope
+from store import ExperimentCohortRow
 from store.confusion import apply_ingest_confusion_map
 from store.crops import (
     apply_delete_assets,
@@ -316,6 +319,66 @@ def ingest_confusion_map_route(payload: ConfusionMapIngestPayload) -> dict:
         conn.execute("ROLLBACK")
         raise
     return result
+
+
+class CohortSnapshot(BaseModel):
+    """Snapshot de cohorte poussé par une machine de calcul (miroir de
+    ``ExperimentCohortRow.to_dict()``, F09). ``created_at``/``updated_at``
+    viennent de la source ; le canonique n'invente rien."""
+
+    id: str
+    name: str
+    description: str | None = None
+    zone: str | None = None
+    eurio_ids: list[str] = []
+    status: str = "draft"
+    frozen_at: str | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
+@router.post("/cohort", dependencies=[Depends(require_scope("ingest:write"))])
+def ingest_cohort_route(payload: CohortSnapshot) -> dict:
+    """Upsert d'une cohorte lab (dimension, F09). Le lab local reste la source
+    du calcul ; le canonique remplace la row entière par ``id`` (last-writer-
+    wins, idempotent). Retourne ``{id, op}``."""
+    if _store is None:
+        raise HTTPException(status_code=500, detail="ingest non câblé (bind manquant)")
+    _store.upsert_cohort(ExperimentCohortRow(**payload.model_dump()))
+    return {"id": payload.id, "op": "upserted"}
+
+
+@router.delete("/cohort/{cohort_id}", dependencies=[Depends(require_scope("ingest:write"))])
+def ingest_delete_cohort_route(cohort_id: str) -> dict:
+    """Supprime une cohorte du canonique (delete propagé, F09). Idempotent :
+    un id déjà absent → ``op='absent'``, pas de 404 (un retry après succès
+    réussit). Refuse (409) si des itérations canoniques la référencent encore
+    — pousser leur suppression d'abord évite de perdre l'historique par
+    cascade silencieuse."""
+    if _store is None:
+        raise HTTPException(status_code=500, detail="ingest non câblé (bind manquant)")
+    conn = _store._connection()  # noqa: SLF001
+    referent = conn.execute(
+        "SELECT id FROM experiment_iterations WHERE cohort_id = ? LIMIT 1",
+        (cohort_id,),
+    ).fetchone()
+    if referent is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"cohorte {cohort_id!r} encore référencée par des itérations "
+                f"canoniques (ex. {referent['id']!r}) — supprime-les d'abord "
+                "(DELETE /iterations/{id})."
+            ),
+        )
+    try:
+        deleted = _store.delete_cohort(cohort_id)
+    except sqlite3.IntegrityError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=f"cohorte {cohort_id!r} encore référencée (FK) : {exc}",
+        ) from exc
+    return {"id": cohort_id, "op": "deleted" if deleted else "absent"}
 
 
 @router.get("/run/{run_id}", dependencies=[Depends(require_scope("ingest:run"))])

@@ -28,6 +28,21 @@ def _isolate_local_state_db(monkeypatch, tmp_path):
 
 
 @pytest.fixture(autouse=True)
+def _no_ambient_canonical(monkeypatch):
+    """Neutralise le canonique distant ambiant pendant les tests.
+
+    L'env dev (direnv/SOPS) exporte ``EURIO_API_URL`` vers le VRAI VPS — sans ce
+    delenv, les pushes best-effort (F09 : ancrages lab_routes /
+    ``iteration_runner._sync_canonical``) partiraient réellement au canonique
+    depuis la suite de tests. Les tests qui exercent le gating posent leur propre
+    ``monkeypatch.setenv`` (qui gagne sur ce fixture autouse).
+    """
+    monkeypatch.delenv("EURIO_API_URL", raising=False)
+    monkeypatch.delenv("EURIO_API_TOKEN", raising=False)
+    monkeypatch.delenv("EURIO_ITERATION_PUSH", raising=False)
+
+
+@pytest.fixture(autouse=True)
 def _stub_minio_client(monkeypatch):
     """Replace storage._s3_client with a MagicMock for the test's duration.
 

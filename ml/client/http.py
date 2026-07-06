@@ -30,6 +30,19 @@ def sync_enabled() -> bool:
     return bool(os.environ.get("EURIO_API_URL", "").strip())
 
 
+def remote_sync_enabled() -> bool:
+    """Vrai si ``EURIO_API_URL`` pointe un canonique DISTANT (pas localhost).
+
+    Gate des pushes de dimensions lab (cohortes/itérations, F09) : en dev local
+    le serveur :8042 n'expose pas les routes canoniques et pousser vers soi-même
+    n'a pas de sens. Même sémantique URL que le gate historique du runner
+    (``iteration_runner._canonical_push_enabled``), SANS l'override
+    ``EURIO_ITERATION_PUSH`` (spécifique aux itérations).
+    """
+    url = os.environ.get("EURIO_API_URL", "").strip()
+    return bool(url) and "127.0.0.1" not in url and "localhost" not in url
+
+
 def _headers() -> dict[str, str]:
     h = {"Content-Type": "application/json", "User-Agent": "eurio-client/1.0"}
     token = os.environ.get("EURIO_API_TOKEN")

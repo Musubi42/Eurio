@@ -9,6 +9,8 @@ monté sur le canonique `eurio-api` :
 - ``GET /iterations/{id}``       (scope ``lab:read``) → détail métadonnée.
 - ``PUT /iterations/{id}``       (scope ``ingest:write``) → **upsert** d'un
   snapshot poussé par une machine de calcul (last-writer-wins par itération).
+- ``DELETE /iterations/{id}``    (scope ``ingest:write``) → delete propagé par
+  le lab local (idempotent, F09).
 
 Il ne remplace PAS les routes lab lourdes (`/lab/.../bake`, `launch-training`) qui
 restent sur le ML local :8042. Le canonique ne stocke que l'état, jamais le calcul.
@@ -96,6 +98,21 @@ def upsert_iteration(iteration_id: str, payload: IterationSnapshot) -> dict:
     store = _get_store()
     data = payload.model_dump()
 
+    # Garde FK lisible (F09) : la cohorte est le PARENT (FK `cohort_id`,
+    # `foreign_keys=ON`) et n'est jamais nullable — sans elle l'upsert
+    # exploserait en 500 FK opaque. On échoue tôt avec la marche à suivre.
+    exists = store._connection().execute(  # noqa: SLF001
+        "SELECT 1 FROM experiment_cohorts WHERE id = ?", (data["cohort_id"],)
+    ).fetchone()
+    if exists is None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"cohorte {data['cohort_id']!r} absente du canonique — "
+                "pousse la cohorte d'abord (POST /ingest/cohort)"
+            ),
+        )
+
     # Tolérance FK : une itération poussée référence des rows qui ne vivent pas
     # sur le canonique — recette/parent legacy, et SURTOUT les runs
     # (training_run_id / benchmark_run_id) qui restent locaux (MVP R3 =
@@ -115,3 +132,12 @@ def upsert_iteration(iteration_id: str, payload: IterationSnapshot) -> dict:
     store.upsert_iteration(row)
     saved = store.get_iteration(iteration_id)
     return saved.to_dict() if saved else row.to_dict()
+
+
+@router.delete("/{iteration_id}", dependencies=_WRITE)
+def delete_iteration(iteration_id: str) -> dict:
+    """Supprime une itération du canonique (delete propagé par le lab local,
+    F09). Idempotent : un id déjà absent → ``op='absent'``, pas de 404 (un
+    retry après succès réussit)."""
+    deleted = _get_store().delete_iteration(iteration_id)
+    return {"id": iteration_id, "op": "deleted" if deleted else "absent"}

@@ -58,3 +58,18 @@ def build_iteration_summary(store: "Store", it: "ExperimentIterationRow") -> dic
         "benchmark_summary": benchmark_summary,
         "training_summary": training_summary,
     }
+
+
+def build_iteration_push_payload(store: "Store", it: "ExperimentIterationRow") -> dict:
+    """Snapshot d'itération PRÊT à pousser au canonique (PUT /iterations/{id}).
+
+    Source unique de la construction (F09) — partagée par
+    ``iteration_runner._sync_canonical`` et ``scripts.push_lab_dimensions`` :
+    stampe ``created_on`` = cette machine (jamais persisté localement — l'origine
+    ne vit que dans le snapshot canonique) et dénormalise ``summary``.
+    """
+    from shared.machine import machine_origin  # noqa: PLC0415 — léger (socket)
+
+    it.created_on = machine_origin()
+    it.summary = build_iteration_summary(store, it)
+    return it.to_dict()

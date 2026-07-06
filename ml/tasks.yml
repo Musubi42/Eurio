@@ -541,6 +541,11 @@ tasks:
     cmds:
       - "{{.VENV}}/python -m client.replica {{.CLI_ARGS}}"
 
+  lab:push-dimensions:
+    desc: "Backfill F09 : pousse toutes les cohortes PUIS itérations lab locales au canonique VPS (upsert par id, idempotent, ordre parent→enfant). Exige EURIO_API_URL distant. Usage: go-task ml:lab:push-dimensions [-- --dry]"
+    cmds:
+      - "{{.VENV}}/python -m scripts.push_lab_dimensions {{.CLI_ARGS}}"
+
   # ---------- Review collaborative (service VPS + pont eurio.db) ----------
   # Service review = review.db SQLite + FastAPI, hors lease (toujours allumé sur
   # le VPS). publish/reconcile = pont avec eurio.db (lease requis, côté Mac).

@@ -66,6 +66,10 @@ def test_canonical_push_enabled(monkeypatch, env, expected):
 def test_sync_pushes_snapshot_with_origin_and_summary(tmp_path, monkeypatch):
     runner, _ = _runner_with_iteration(tmp_path)
     monkeypatch.setenv("EURIO_ITERATION_PUSH", "1")
+    # Hermétique vs l'env ambiant (direnv exporte EURIO_API_URL) : sans URL
+    # distante, le push cohorte (gate F09 `remote_sync_enabled`) est no-op et
+    # seul le PUT itération (override EURIO_ITERATION_PUSH) part.
+    monkeypatch.delenv("EURIO_API_URL", raising=False)
     monkeypatch.setenv("EURIO_MACHINE_ORIGIN", "pc")
 
     calls: list[tuple[str, dict]] = []
@@ -106,6 +110,46 @@ def test_sync_swallows_transport_errors(tmp_path, monkeypatch):
     monkeypatch.setattr("client.http.put_json", boom)
     # Ne doit PAS lever : un run ne dépend pas de la joignabilité du canonique.
     runner._sync_canonical("it1")
+
+
+def test_sync_pushes_cohort_before_iteration(tmp_path, monkeypatch):
+    """F09 : ordre parent→enfant — la cohorte (POST /ingest/cohort) part AVANT
+    l'itération (PUT /iterations/{id}), sinon le canonique refuse (409 FK)."""
+    runner, _ = _runner_with_iteration(tmp_path)
+    # URL distante : active à la fois le push runner ET le gate cohort
+    # (client.http.remote_sync_enabled).
+    monkeypatch.setenv("EURIO_API_URL", "https://eurio-api.musubi.dev")
+
+    calls: list[tuple[str, str, dict]] = []
+    monkeypatch.setattr(
+        "client.http.post_json",
+        lambda path, payload, **kw: calls.append(("POST", path, payload)) or {},
+    )
+    monkeypatch.setattr(
+        "client.http.put_json",
+        lambda path, payload, **kw: calls.append(("PUT", path, payload)) or {},
+    )
+
+    runner._sync_canonical("it1")
+
+    assert [(m, p) for m, p, _ in calls] == [
+        ("POST", "/ingest/cohort"),
+        ("PUT", "/iterations/it1"),
+    ]
+    assert calls[0][2]["id"] == "c1"          # snapshot cohorte complet
+    assert calls[1][2]["cohort_id"] == "c1"
+
+
+def test_public_sync_canonical_wraps_private(tmp_path, monkeypatch):
+    runner, _ = _runner_with_iteration(tmp_path)
+    monkeypatch.setenv("EURIO_API_URL", "https://eurio-api.musubi.dev")
+    calls: list[str] = []
+    monkeypatch.setattr("client.http.post_json", lambda *a, **k: {})
+    monkeypatch.setattr(
+        "client.http.put_json", lambda path, *a, **k: calls.append(path) or {}
+    )
+    runner.sync_canonical("it1")
+    assert calls == ["/iterations/it1"]
 
 
 def test_sync_noop_on_missing_iteration(tmp_path, monkeypatch):

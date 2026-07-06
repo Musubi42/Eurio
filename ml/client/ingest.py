@@ -139,6 +139,52 @@ def push_confusion_map(
     )
 
 
+def push_cohort(cohort: dict[str, Any]) -> dict | None:
+    """POST ``/ingest/cohort`` si un canonique DISTANT est configuré, sinon no-op.
+
+    ``cohort`` = dict au schéma ``ExperimentCohortRow.to_dict()`` (F09). Gate =
+    ``remote_sync_enabled()`` (PAS ``sync_enabled()`` : pousser une dimension
+    lab vers le serveur local :8042 n'a pas de sens). Best-effort : les erreurs
+    HTTP/réseau sont levées à l'appelant — c'est LUI qui décide (lab_routes /
+    runner les avalent, le backfill les compte). Retourne ``{id, op}`` ou
+    ``None`` si sync distante désactivée.
+    """
+    from client.http import remote_sync_enabled  # noqa: PLC0415 — évite import cycle au chargement
+
+    if not remote_sync_enabled():
+        return None
+    from client import http as _http  # noqa: PLC0415
+
+    return _http.post_json("/ingest/cohort", cohort, timeout=15)
+
+
+def push_cohort_delete(cohort_id: str) -> dict | None:
+    """DELETE ``/ingest/cohort/{id}`` si un canonique DISTANT est configuré,
+    sinon no-op (``None``). Idempotent côté serveur (``op='absent'`` si déjà
+    parti) ; 409 si des itérations canoniques la référencent encore — l'erreur
+    est levée à l'appelant (F09)."""
+    from client.http import remote_sync_enabled  # noqa: PLC0415 — évite import cycle au chargement
+
+    if not remote_sync_enabled():
+        return None
+    from client import http as _http  # noqa: PLC0415
+
+    return _http.delete_json(f"/ingest/cohort/{cohort_id}", timeout=15)
+
+
+def push_iteration_delete(iteration_id: str) -> dict | None:
+    """DELETE ``/iterations/{id}`` si un canonique DISTANT est configuré, sinon
+    no-op (``None``). Idempotent côté serveur (F09). Erreurs levées à
+    l'appelant."""
+    from client.http import remote_sync_enabled  # noqa: PLC0415 — évite import cycle au chargement
+
+    if not remote_sync_enabled():
+        return None
+    from client import http as _http  # noqa: PLC0415
+
+    return _http.delete_json(f"/iterations/{iteration_id}", timeout=15)
+
+
 def push_delete_asset(asset_id: str) -> dict | None:
     """DELETE ``/ingest/assets/{id}`` si la sync est activée, sinon no-op (``None``).
 

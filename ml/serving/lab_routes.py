@@ -131,6 +131,30 @@ def _get_runner() -> IterationRunner:
     return _runner
 
 
+def _push_cohort_canonical(cohort_id: str) -> None:
+    """Propage (best-effort) l'état d'une cohorte au canonique VPS (F09).
+
+    Relit la row locale : présente → ``POST /ingest/cohort`` (upsert), absente
+    → ``DELETE /ingest/cohort/{id}`` (delete propagé). No-op si aucun canonique
+    distant configuré (``client.http.remote_sync_enabled()``). **Ne lève
+    jamais** : une action lab locale ne dépend pas de la joignabilité du VPS —
+    le backfill (``go-task ml:lab:push-dimensions``) rattrape.
+    """
+    try:
+        from client import ingest as _ingest  # noqa: PLC0415 — import léger, lazy
+
+        row = _get_store().get_cohort(cohort_id)
+        if row is None:
+            _ingest.push_cohort_delete(cohort_id)
+        else:
+            _ingest.push_cohort(row.to_dict())
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "F09 cohort push failed for %s: %s (best-effort, ignoré)",
+            cohort_id, exc,
+        )
+
+
 # ─── Payloads ──────────────────────────────────────────────────────────────
 
 
@@ -346,6 +370,7 @@ def create_cohort(payload: CohortCreatePayload) -> dict:
         eurio_ids=eurio_ids,
     )
     _get_store().create_cohort(row)
+    _push_cohort_canonical(cohort_id)
     created = _get_store().get_cohort(cohort_id)
     return _cohort_summary(created) if created else row.to_dict()
 
@@ -495,6 +520,7 @@ def update_cohort(cohort_id: str, payload: CohortUpdatePayload) -> dict:
         description=payload.description,
         zone=payload.zone,
     )
+    _push_cohort_canonical(cohort_id)
     updated = _get_store().get_cohort(cohort_id)
     return _cohort_summary(updated) if updated else {}
 
@@ -504,6 +530,7 @@ def delete_cohort(cohort_id: str) -> dict:
     deleted = _get_store().delete_cohort(cohort_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Cohort introuvable")
+    _push_cohort_canonical(cohort_id)  # row absente → delete propagé (F09)
     return {"deleted": True, "id": cohort_id}
 
 
@@ -523,6 +550,7 @@ def add_coins_to_cohort(
         # No-op: every requested coin was already in the cohort.
         return _cohort_summary(cohort)
     _get_store().update_cohort(cohort.id, eurio_ids=merged)
+    _push_cohort_canonical(cohort.id)
     updated = _get_store().get_cohort(cohort.id)
     return _cohort_summary(updated) if updated else cohort.to_dict()
 
@@ -577,6 +605,7 @@ def remove_coin_from_cohort(cohort_id: str, eurio_id: str) -> dict:
             detail="Un cohort doit contenir au moins une pièce — supprime-le plutôt.",
         )
     _get_store().update_cohort(cohort.id, eurio_ids=remaining)
+    _push_cohort_canonical(cohort.id)
     updated = _get_store().get_cohort(cohort.id)
     return _cohort_summary(updated) if updated else cohort.to_dict()
 
@@ -602,6 +631,7 @@ def clone_cohort(cohort_id: str, payload: CohortClonePayload) -> dict:
         frozen_at=None,
     )
     _get_store().create_cohort(row)
+    _push_cohort_canonical(new_id)  # pousse le CLONE (la source n'a pas bougé)
     created = _get_store().get_cohort(new_id)
     return _cohort_summary(created) if created else row.to_dict()
 
@@ -665,6 +695,7 @@ def create_iteration(cohort_id: str, payload: IterationCreatePayload) -> dict:
         _get_store().update_cohort(
             cohort.id, status="frozen", frozen_at=_iso_now()
         )
+        _push_cohort_canonical(cohort.id)  # F09 : la cohorte FROZEN est poussée
     return _iteration_with_run_metrics(row)
 
 
@@ -1043,6 +1074,15 @@ def update_iteration(
 
     if patch:
         _get_store().update_iteration(iteration_id, **patch)
+        # F09 : propage le nouvel état (notes/verdict_override/recipe…) au
+        # canonique via le rail runner (cohorte poussée d'abord, best-effort).
+        try:
+            _get_runner().sync_canonical(iteration_id)
+        except Exception as exc:  # noqa: BLE001 — un push raté ne casse pas l'édition
+            logger.warning(
+                "F09 iteration push failed for %s: %s (best-effort, ignoré)",
+                iteration_id, exc,
+            )
     updated = _get_store().get_iteration(iteration_id)
     return _iteration_with_run_metrics(updated) if updated else {}
 
@@ -1078,6 +1118,17 @@ def delete_iteration(cohort_id: str, iteration_id: str) -> dict:
         )
     _get_store().delete_iteration(iteration_id)
     _purge_iteration_artifacts(iteration_id)
+    # F09 : delete propagé au canonique (best-effort — le backfill ne peut PAS
+    # rattraper un delete raté, mais un delete local ne doit pas dépendre du VPS).
+    try:
+        from client import ingest as _ingest  # noqa: PLC0415 — import léger, lazy
+
+        _ingest.push_iteration_delete(iteration_id)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "F09 iteration delete push failed for %s: %s (best-effort, ignoré)",
+            iteration_id, exc,
+        )
     return {"deleted": True, "id": iteration_id}
 
 
