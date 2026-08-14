@@ -1,3 +1,23 @@
+# ⚠️ PAS de `name:` ici, et c'est délibéré (2026-08-14).
+#
+# Cette stack tourne actuellement sous le nom de projet `review` — générique,
+# donc exposé à la même collision que celle corrigée pour infra/minio : toute
+# autre stack dans un dossier `review/` viserait les mêmes conteneurs.
+#
+# Mais contrairement aux trois autres, ajouter `name: eurio-review` CHANGERAIT
+# le nom de projet du conteneur en service. Docker compose ne reconnaîtrait plus
+# le conteneur existant (il appartiendrait à l'ancien projet `review`), et comme
+# `container_name: eurio-review` est figé, un `up` sous le nouveau nom échouerait
+# sur un conflit de nom.
+#
+# Procédure, à jouer en connaissance de cause pendant une fenêtre d'arrêt :
+#   cd /opt/eurio/infra/review
+#   docker compose -p review down          # arrête sous l'ANCIEN nom
+#   # puis décommenter la ligne ci-dessous et redéployer
+#   sops exec-env ../../secrets/dev.env "docker compose up -d --build"
+#
+# name: eurio-review
+
 services:
   review:
     build:

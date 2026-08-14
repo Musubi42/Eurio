@@ -1,3 +1,15 @@
+# Explicit project name — isolates this stack from any other compose project
+# that might share the directory name "minio" (notably /opt/betterShortForge/infra/minio/,
+# qui existe réellement sur le VPS). Without this, both stacks default to project
+# name "minio" and `docker compose` commands from either side would target each
+# other's containers — un `down` depuis l'un tuerait les conteneurs de l'autre.
+#
+# Rapatrié le 2026-08-14 depuis le `main` local du VPS (commit 8cdd7403, 2026-06-08),
+# où il vivait seul : jamais poussé, absent de toutes les autres branches.
+# Le conteneur tourne DÉJÀ sous le projet `eurio-minio` — ce fichier ne fait que
+# rattraper la réalité, aucun redéploiement n'est nécessaire.
+name: eurio-minio
+
 services:
   minio:
     image: minio/minio:latest

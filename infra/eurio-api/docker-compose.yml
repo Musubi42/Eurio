@@ -1,3 +1,8 @@
+# Nom de projet explicite. Il valait déjà `eurio-api` par défaut (dérivé du nom
+# de dossier `eurio-api`) : le figer ici ne change rien au runtime, mais rend
+# l'isolation intentionnelle plutôt qu'accidentelle. Cf. infra/minio.
+name: eurio-api
+
 services:
   eurio-api:
     build:
