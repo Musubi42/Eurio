@@ -37,7 +37,7 @@ Compose complets morts** (~500 lignes) encore documentés comme « portage livr�
 | 🔴 High (bug) | `app-android/src/main/java/com/musubi/eurio/features/scan/components/CameraPreview.kt:105-134` + `features/scan/ScanUiState.kt:24-53` | Échec `bindToLifecycle` avalé : `catch (_: Exception) { /* surfaces via the host's state machine */ }` — mais aucun `ScanUiState.CameraError` n'existe et `onCameraReady` n'est simplement jamais appelé. Écran Ink noir sans feedback ni retry. |
 | 🔴 High (dette) | `app-android/src/main/java/com/musubi/eurio/data/local/bootstrap/AppCoreBootstrapper.kt:39-44,215-218` | `const val APP_CORE_VERSION = 1` maintenu à la main ; en release le bootstrap est skip si `storedVersion >= APP_CORE_VERSION`. Aucun tooling (`ml:build-app-core`, Taskfile, CI) ne bump ni ne vérifie la constante → catalogue silencieusement périmé post-update. |
 | 🟡 Medium (arch) | `app-android/src/main/java/com/musubi/eurio/features/scan/ScanViewModel.kt:179-206,364-378` + `domain/scan/ScanReducer.kt` | Deux machines à états scan en parallèle : UI pilotée par le legacy `_state` (mutations directes lignes 786/1007/1204), effets réels pilotés par `_scanMachineState`/ScanReducer via des `emitScanEvent(...)` dispersés. `applySideEffect(ConfirmPossession)` (l.364-378) lit le gate `alreadyOwned` dans le legacy et `eurioId`/`captureId` dans le reducer → désync silencieuse au moindre site non appairé. Auto-documenté « Wiring debt » (l.179-192). |
-| 🟡 Medium (tokens) | `app-android/.../features/scan/components/ScanRevealLayer.kt`, `ScanIdleLayer.kt`, `CameraPreview.kt:80` + `scripts/generate_android_tokens.mjs:125` + `shared/tokens.css:79` | `Color.White/Black.copy(alpha=X)` hardcodés partout dans le scan (X = 0.1, 0.3, 0.45, 0.55, 0.7, 0.78, 0.85, 0.92 selon fichier pour un même rôle sémantique). Cause racine : le générateur saute les tokens `rgba()` (`if (!lit) continue`), donc `--scan-idle: rgba(255,255,255,0.55)` n'est jamais émis en Kotlin. Violation de l'interdiction « pas de couleurs hardcodées ». |
+| 🟡 Medium (tokens) | `app-android/.../features/scan/components/ScanRevealLayer.kt`, `ScanIdleLayer.kt`, `CameraPreview.kt:80` + `scripts/generate_tokens.mjs:131` + `shared/tokens.css:79` | `Color.White/Black.copy(alpha=X)` hardcodés partout dans le scan (X = 0.1, 0.3, 0.45, 0.55, 0.7, 0.78, 0.85, 0.92 selon fichier pour un même rôle sémantique). Cause racine : le générateur saute les tokens `rgba()` (`if (!lit) continue`), donc `--scan-idle: rgba(255,255,255,0.55)` n'est jamais émis en Kotlin. Violation de l'interdiction « pas de couleurs hardcodées ». |
 | 🟡 Medium (code mort) | `app-android/.../features/scan/components/ScanAcceptedCard.kt` (258 l.), `ScanNotIdentifiedSheet.kt` (247 l.) + `docs/design/_shared/scene-parity.md:35-36` | Deux composables complets jamais appelés (grep : zéro call-site hors de leur propre fichier ; `ScanScreen.kt:33-38` n'importe que Idle/Detecting/Failure/Reveal/DebugOverlay — `ScanRevealLayer` a absorbé matched/not-identified). `scene-parity.md` les affiche pourtant « Portage livré ». |
 | 🟡 Medium (doc) | `CLAUDE.md:139-140` + `app-android/Taskfile.yml:298-299` | CLAUDE.md documente `go-task android:snapshot` / `android:snapshot-dry` ; ces tasks n'existent plus (remplacées par `go-task ml:build-app-core`, cf. commentaire P6 dans le Taskfile). Suivre la doc verbatim → « task not found ». |
 
@@ -172,7 +172,7 @@ hors du mapping unique.
 
 ### C2. Tokens rgba : faire émettre les couleurs translucides par le générateur
 
-**État actuel** : `scripts/generate_android_tokens.mjs:125` (`if (!lit) continue //
+**État actuel** : `scripts/generate_tokens.mjs:131` (`if (!lit) continue //
 skip rgba, var refs, etc.`) saute les tokens `rgba()` de `shared/tokens.css` (ex.
 `--scan-idle: rgba(255,255,255,0.55)`, tokens.css:79). Résultat : `ScanRevealLayer.kt`,
 `ScanIdleLayer.kt`, `CameraPreview.kt:80` (et ~20 fichiers scan/dev/onboarding)
@@ -220,7 +220,7 @@ affiche « Portage livré ».
 | **2** | A2 bind failure (callback erreur + état + overlay retry) | `CameraPreview.kt:105-134`, `ScanViewModel.kt`, `ScanScreen.kt:113-120` (+ scène proto, cf. note R1) | Caméra occupée → overlay erreur + « Réessayer » fonctionnel | ~2-3 h (+ proto ~1 h) |
 | **3** | B hash-based bootstrap (+ fix CLAUDE.md:139-140) | `AppCoreBootstrapper.kt:30-50,211-221`, `CLAUDE.md` | Asset modifié ⇒ re-bootstrap loggé sans bump manuel ; APK identique ⇒ skip | ~1-2 h |
 | **4** | C3 suppression composables morts + scene-parity | `ScanAcceptedCard.kt`, `ScanNotIdentifiedSheet.kt`, `scene-parity.md:35-36` | Build vert, grep zéro hit | ~30 min |
-| **5** | C2 générateur rgba + remplacement hardcodes scan | `generate_android_tokens.mjs:125`, `shared/tokens.css`, fichiers scan | `tokens:check` vert, grep `.copy(alpha` scan = 0, screenshots identiques | ~2-3 h |
+| **5** | C2 générateur rgba + remplacement hardcodes scan | `generate_tokens.mjs:131`, `shared/tokens.css`, fichiers scan | `tokens:check` vert, grep `.copy(alpha` scan = 0, screenshots identiques | ~2-3 h |
 | **6** | C1 migration 6.2b — reducer source unique | `ScanViewModel.kt:179-206,364-378`, `ScanReducer.kt` | Tests reducer verts + flow device scan→coffre + gate alreadyOwned + zéro mutation `_state` directe | ~0,5-1 j |
 
 Chunks 1-2 sont indépendants de 3-6 ; 4 avant 5 (moins de fichiers à migrer) ; 6 en

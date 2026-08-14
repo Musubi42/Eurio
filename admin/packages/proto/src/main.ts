@@ -6,7 +6,7 @@ import { router } from './router'
 import { useCollectionStore } from './stores/collection'
 
 // CSS — ordre canonique : tokens (R2, shared/) → components → shell.
-import '@shared/tokens.css'
+import '@eurio/shared/tokens.css'
 import './styles/components.css'
 import './styles/shell.css'
 

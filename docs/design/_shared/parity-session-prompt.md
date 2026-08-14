@@ -29,7 +29,7 @@ Concevoir le **workflow de maintien de parité** entre le prototype HTML (source
 
 ### Tokens auto-générés
 
-`shared/tokens.css` → `scripts/generate_android_tokens.mjs` → `Color.kt`, `Shape.kt`, `Spacing.kt`
+`shared/tokens.css` → `scripts/generate_tokens.mjs` → `Color.kt`, `Shape.kt`, `Spacing.kt`
 Les tokens sont synchronisés automatiquement. Ce n'est PAS un problème de parité.
 
 ## Ce qui ne fonctionne pas encore

@@ -10,8 +10,8 @@ import { allCoins } from '@/api'
 import { now } from '@/api/parity'
 import { CHASE_DEFINITIONS, TIERS } from '@/api/fixtures/achievements'
 import { chaseIsComplete } from '@/lib/achievements'
-import presetPopulated from '@shared/fixtures/preset-populated.json'
-import presetProfileDemo from '@shared/fixtures/preset-profile-demo.json'
+import presetPopulated from '@eurio/shared/fixtures/preset-populated.json'
+import presetProfileDemo from '@eurio/shared/fixtures/preset-profile-demo.json'
 
 // Presets de seed du coffre — générés par le dump QA (build_app_core_qa.py)
 // depuis la curation, et lus TELS QUELS ici comme côté Android

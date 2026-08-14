@@ -19,7 +19,7 @@ Eurio/
 │   └── packages/parity/               # Tooling QA local-only (Playwright, Maestro flows, screenshots)
 ├── ml/                                # Python standalone : FastAPI, entraînement, fetch (Numista/Wiki/eBay)
 ├── supabase/                          # Migrations SQL + types générés (legacy, en cours de retrait)
-├── shared/                            # Sources partagées (tokens.css, fixtures/)
+├── shared/                            # Package workspace `@eurio/shared` : tokens.css (R2) + fixtures/
 ├── scripts/                           # Générateurs et utilitaires cross-module (Node)
 ├── infra/
 │   ├── eurio-api/                     # FastAPI léger sur VPS (eurio-api.musubi.dev)
@@ -113,6 +113,17 @@ Pour modifier un token :
 3. Committer les deux fichiers dans le même commit
 
 **Jamais d'édition manuelle de Color.kt / Shape.kt / Spacing.kt.** Les fichiers Type.kt et Theme.kt restent hand-written (dépendent de ressources Android et de slots M3 sémantiques).
+
+Le générateur (`scripts/generate_tokens.mjs`) est **multi-cible** depuis 2026-08-14 :
+`android` est la seule cible aujourd'hui, en ajouter une (iOS…) = une entrée dans son
+registre `TARGETS`. `go-task tokens:check` ne dépend plus de git — il compare le contenu
+généré au contenu sur disque et sort en 2 sur dérive. Contrat détaillé :
+`docs/design/_shared/parity-rules.md` §Générateur.
+
+**Côté JS, `shared/` se consomme comme un package** : `@eurio/shared/tokens.css` et
+`@eurio/shared/fixtures/<nom>.json` — jamais en chemin relatif remontant la racine.
+Côté Android QA, les fixtures sont copiées au build par la tâche Gradle `syncQaFixtures`
+(l'ancien symlink `src/qa/assets/fixtures` a été retiré : il cassait au clone).
 
 ### R3. Parité proto ↔ Android trackée en tables
 

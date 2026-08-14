@@ -128,9 +128,28 @@ Ne recopie pas ces chiffres ailleurs, renvoie-y.
 > abandonné) dans des docs qui le disent explicitement, ou jamais écrit
 > (`dashboard_logic.py`, proposition de sprint).
 
-### ⬜ Lot 3 — `@eurio/tokens` + générateur multi-cible
-Package = `tokens.css` + `shared/fixtures/`. Tue au passage le symlink
-`app-android/src/qa/assets/fixtures`.
+### ✅ Lot 3 — package partagé + générateur multi-cible *(2026-08-14)*
+- [x] `shared/` devient **`@eurio/shared`** (et non `@eurio/tokens` : il porte aussi
+      `fixtures/`, un nom « tokens » aurait menti). Package workspace privé, `exports`
+      sur `./tokens.css` et `./fixtures/*.json`, entrée `../shared` dans
+      `admin/pnpm-workspace.yaml`
+- [x] Les 5 imports relatifs remontant la racine sont supprimés (proto, studio-local,
+      review) — **les 3 builds passent**, `--indigo-700` présent dans le CSS produit
+- [x] `generate_android_tokens.mjs` → **`generate_tokens.mjs`**, multi-cible : registre
+      `TARGETS`, `--target`, `--check`, `--help`. Sortie Kotlin **identique au bit près**
+      hors la ligne d'en-tête nommant le script
+- [x] `tokens:check` **ne dépend plus de git** (avant : `git diff --exit-code`) : compare
+      le généré au disque, sortie 2 sur dérive. Marche sur arbre sale et hors dépôt
+- [x] **Symlink `app-android/src/qa/assets/fixtures` supprimé** → tâche Gradle
+      `syncQaFixtures` (`Sync` sur `preBuild`, sortie gitignorée), **exécutée et vérifiée**
+- [x] 🔴 `infra/review/Dockerfile` réparé : il ne copiait que `tokens.css`, le
+      `pnpm install --frozen-lockfile` aurait échoué **au déploiement**
+- [ ] Supprimer le middleware `/shared/` de `studio-local/vite.config.ts` — plus aucun
+      demandeur (vérifié), annoté VESTIGE. Attend une vérif de `go-task parity:*`
+
+> **À retenir : le piège n'était pas dans le code applicatif mais dans les images
+> Docker.** Rendre `shared/` membre du workspace change ce que `pnpm install` exige au
+> build. Toucher au workspace ⇒ relire `infra/*/Dockerfile`.
 
 ### ⬜ Lot 4 — Registre d'artefacts MinIO
 Le gros morceau. Sort les binaires de git **et** rend le split possible.

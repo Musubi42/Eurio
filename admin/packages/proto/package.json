@@ -10,10 +10,11 @@
     "typecheck": "vue-tsc --noEmit"
   },
   "dependencies": {
+    "@eurio/shared": "workspace:*",
     "pinia": "^3.0.2",
+    "three": "0.160.0",
     "vue": "^3.5.13",
-    "vue-router": "^4.5.0",
-    "three": "0.160.0"
+    "vue-router": "^4.5.0"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.2.3",

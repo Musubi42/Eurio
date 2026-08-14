@@ -1,5 +1,5 @@
 /* Front reviewer — styles. Tokens partagés (source of truth). */
-@import '../../../../shared/tokens.css';
+@import '@eurio/shared/tokens.css';
 
 * {
   box-sizing: border-box;

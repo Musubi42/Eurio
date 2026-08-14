@@ -24,11 +24,14 @@ WORKDIR /admin
 COPY --from=admin pnpm-workspace.yaml pnpm-lock.yaml package.json ./
 COPY --from=admin packages/review packages/review
 
-# Tokens canoniques (shared/tokens.css). Les fronts les importent en relatif :
-#   src/styles.css → `@import '../../../../shared/tokens.css'`
-# Soit, depuis /admin/packages/<pkg>/src, le chemin /shared/tokens.css.
-# On reproduit donc le layout repo à la racine du stage.
-COPY --from=shared tokens.css /shared/tokens.css
+# Tokens canoniques. Depuis 2026-08-14 (ADR-007) `shared/` est un package du
+# workspace pnpm (`@eurio/shared`), déclaré dans admin/pnpm-workspace.yaml par
+# l'entrée `../shared`. WORKDIR étant /admin, `../shared` résout vers /shared —
+# on reproduit donc le layout du repo à la racine du stage.
+#
+# ⚠️ Copier le dossier ENTIER, pas seulement tokens.css : sans son package.json
+# le workspace ne résout pas et `pnpm install --frozen-lockfile` échoue.
+COPY --from=shared . /shared/
 
 RUN pnpm install \
       --filter eurio-review-front... \

@@ -227,3 +227,32 @@ val compileFilamentMaterials by tasks.registering(Exec::class) {
     )
 }
 tasks.named("preBuild") { dependsOn(compileFilamentMaterials) }
+
+// ── QA fixtures ──────────────────────────────────────────────────────────────
+// Copie shared/fixtures/preset-*.json → src/qa/assets/fixtures/, lus au runtime
+// par MainActivity.seedFromFixture() (`assets.open("fixtures/preset-<nom>.json")`).
+//
+// Remplace un symlink `src/qa/assets/fixtures -> ../../../../shared/fixtures`
+// (retiré le 2026-08-14) : un symlink qui sort du module casse au clone d'un
+// dépôt isolé et rend le module non déplaçable. Même contrat que
+// compileFilamentMaterials ci-dessus — sortie générée, gitignorée, régénérée au
+// build. Cf. docs/adr/007-pas-de-split-eurio-avant-artefacts.md.
+//
+// `Sync` (et non `Copy`) : le dossier cible est un miroir strict de la source,
+// un preset supprimé côté shared/ disparaît aussi des assets.
+val syncQaFixtures by tasks.registering(Sync::class) {
+    description = "Mirror shared/fixtures/preset-*.json into the QA assets"
+    val srcDir = file("${rootProject.projectDir}/shared/fixtures")
+    doFirst {
+        if (!srcDir.isDirectory) {
+            throw GradleException(
+                "shared/fixtures introuvable à $srcDir — le module attend le monorepo. " +
+                    "Si app-android est extrait un jour, remplacer cette tâche par une " +
+                    "dépendance au package de tokens/fixtures publié (ADR-007)."
+            )
+        }
+    }
+    from(srcDir) { include("preset-*.json") }
+    into("src/qa/assets/fixtures")
+}
+tasks.named("preBuild") { dependsOn(syncQaFixtures) }

@@ -141,8 +141,15 @@ function devMiddleware(): Plugin {
           return
         }
 
-        // Serve shared/ assets from repo root — needed because proto CSS
-        // uses @import '../../../../shared/tokens.css' which resolves to /shared/tokens.css
+        // Serve shared/ assets from repo root.
+        //
+        // ⚠️ VESTIGE (2026-08-14). Motif d'origine : le CSS du proto faisait
+        // `@import '../../../../shared/tokens.css'`, résolu en URL /shared/tokens.css.
+        // Ce n'est plus le cas — le proto passe par le package `@eurio/shared`
+        // (ADR-007) et plus aucune source ni aucun bundle ne demande /shared/.
+        // Conservé par prudence : le viewer de parité n'a pas pu être testé lors
+        // du changement. À SUPPRIMER dès qu'une session vérifie que
+        // `go-task parity:*` fonctionne sans lui.
         if (req.url?.startsWith('/shared/')) {
           const relPath = req.url.split('?')[0].split('#')[0]
           const filePath = path.join(repoRoot, relPath)

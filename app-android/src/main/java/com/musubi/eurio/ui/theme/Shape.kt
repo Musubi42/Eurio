@@ -1,6 +1,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // AUTO-GENERATED from shared/tokens.css — DO NOT EDIT MANUALLY.
-// Run `go-task tokens:generate` (or `node scripts/generate_android_tokens.mjs`)
+// Run `go-task tokens:generate` (or `node scripts/generate_tokens.mjs`)
 // after editing shared/tokens.css to regenerate this file.
 // See docs/design/_shared/parity-rules.md §R1.
 // ─────────────────────────────────────────────────────────────────────────────

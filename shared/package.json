@@ -1,0 +1,16 @@
+{
+  "name": "@eurio/shared",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Source canonique des design tokens Eurio (R2) et des fixtures QA partagées.",
+  "type": "module",
+  "files": [
+    "tokens.css",
+    "fixtures"
+  ],
+  "exports": {
+    "./tokens.css": "./tokens.css",
+    "./fixtures/*.json": "./fixtures/*.json",
+    "./package.json": "./package.json"
+  }
+}

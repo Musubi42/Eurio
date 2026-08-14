@@ -9,7 +9,7 @@
 ### R1. Tokens = single source of truth, auto-generated
 
 - `shared/tokens.css` est **canonique**. Aucune autre source de vérité pour les tokens de couleur, espacement, rayon, durée.
-- Les fichiers Kotlin `ui/theme/Color.kt`, `Shape.kt`, `Spacing.kt` sont **auto-générés** depuis `tokens.css` par `scripts/generate_android_tokens.mjs`.
+- Les fichiers Kotlin `ui/theme/Color.kt`, `Shape.kt`, `Spacing.kt` sont **auto-générés** depuis `tokens.css` par `scripts/generate_tokens.mjs`.
 - **Ne jamais éditer ces fichiers à la main.** Chaque fichier généré commence par un header `AUTO-GENERATED — DO NOT EDIT`.
 - Pour modifier un token :
   1. Éditer `shared/tokens.css`
@@ -113,7 +113,7 @@ Liste fermée de différences proto↔Android qu'on ne cherche pas à éliminer 
 
 ## Générateur de tokens — contrat
 
-Le script `scripts/generate_android_tokens.mjs` :
+Le script `scripts/generate_tokens.mjs` :
 
 - Lit `shared/tokens.css`
 - Parse les propriétés CSS custom du bloc `:root { }`
@@ -121,14 +121,41 @@ Le script `scripts/generate_android_tokens.mjs` :
 - Applique le mapping de noms :
   - kebab-case → PascalCase (ex : `--indigo-700` → `Indigo700`)
   - **override** `surface` → `PaperSurface` (évite le shadow avec le composable `androidx.compose.material3.Surface`)
-- Émet trois fichiers Kotlin :
+- Émet, **par cible**. Cible `android` (la seule aujourd'hui) → trois fichiers Kotlin :
   - `app-android/src/main/java/com/musubi/eurio/ui/theme/Color.kt`
   - `app-android/src/main/java/com/musubi/eurio/ui/theme/Shape.kt`
   - `app-android/src/main/java/com/musubi/eurio/ui/theme/Spacing.kt`
 - Ignore les valeurs non-hex (rgba, var refs, cubic-bezier, tailles non-px)
-- Exit 0 si succès, 1 si erreur de parse
+- Exit 0 si succès, 1 si erreur de parse, **2 si dérive détectée en `--check`**
 
-**Invariant** : `generate_android_tokens.mjs` doit être idempotent. Deux runs consécutifs produisent des fichiers identiques.
+**Invariant** : `generate_tokens.mjs` doit être idempotent. Deux runs consécutifs produisent des fichiers identiques.
+
+### Multi-cible (depuis 2026-08-14)
+
+Le parsing, le CLI, `--check` et le rapport sont **mutualisés** ; chaque plateforme est
+une entrée du registre `TARGETS` avec un contrat minimal :
+
+```js
+{ name, description, outputs(tokens) -> [{ path, content }] }
+```
+
+Ajouter iOS = ajouter une entrée dont `outputs()` émet du Swift. Rien d'autre à toucher.
+
+> ⚠️ **Ne pas créer de cible sans consommateur** : une cible que personne ne lit est de
+> la dette (R0). La cible `ios` s'écrira le jour où un projet iOS existe.
+
+Commandes :
+
+| Commande | Effet |
+|---|---|
+| `go-task tokens:generate` | Génère toutes les cibles |
+| `go-task tokens:generate -- --target android` | Une seule cible |
+| `go-task tokens:check` | **N'écrit rien.** Sortie 2 si un fichier généré a dérivé |
+| `go-task tokens:targets` | Liste les cibles disponibles |
+
+`tokens:check` ne dépend **plus de git** (avant : `git diff --exit-code`) : il compare le
+contenu généré en mémoire au contenu sur disque. Il fonctionne donc sur un arbre sale,
+hors dépôt, et en CI le jour où il y en aura une.
 
 ## Docs liés
 

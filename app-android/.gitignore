@@ -2,3 +2,6 @@
 # Assets QA générés (go-task ml:build-app-core-qa) — hermétiques, régénérables
 /src/qa/assets/app_core.db
 /src/qa/assets/coin-images/
+# Miroir de shared/fixtures/preset-*.json, généré au build par la tâche Gradle
+# syncQaFixtures (remplace l'ancien symlink, cf. ADR-007).
+/src/qa/assets/fixtures/

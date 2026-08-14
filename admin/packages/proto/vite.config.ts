@@ -42,7 +42,8 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, './src'),
       // Tokens canoniques (R2 : shared/tokens.css, jamais édités côté proto).
-      '@shared': path.resolve(__dirname, '../../../shared'),
+      // `@shared` (alias vers ../../../shared) retiré le 2026-08-14 : les tokens
+      // et fixtures passent par le package workspace `@eurio/shared` (ADR-007).
     },
   },
   server: {

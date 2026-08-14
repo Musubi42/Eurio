@@ -37,9 +37,14 @@ tasks:
     silent: true
 
   tokens:generate:
-    desc: Regenerate Android theme files (Color/Shape/Spacing) from shared/tokens.css
+    desc: Regenerate platform theme files from shared/tokens.css (R2). --target <nom> pour une seule cible
     cmds:
-      - node scripts/generate_android_tokens.mjs
+      - node scripts/generate_tokens.mjs {{.CLI_ARGS}}
+
+  tokens:targets:
+    desc: List the platforms the token generator can emit for
+    cmds:
+      - node scripts/generate_tokens.mjs --help
 
   front:dev:
     desc: "Lance le front admin studio-local (HMR, port 5173). Mode local par défaut (PAT + ML lourd :8042 actif) — cf. CLAUDE.md §Architecture frontend."
@@ -108,10 +113,12 @@ tasks:
       - pnpm -C admin/packages/parity capture:admin
 
   tokens:check:
-    desc: Run the token generator and fail if it produces unstaged changes (CI guard)
+    desc: Fail if a generated theme file has drifted from shared/tokens.css (R2 guard)
     cmds:
-      - node scripts/generate_android_tokens.mjs
-      - git diff --exit-code app-android/src/main/java/com/musubi/eurio/ui/theme/Color.kt app-android/src/main/java/com/musubi/eurio/ui/theme/Shape.kt app-android/src/main/java/com/musubi/eurio/ui/theme/Spacing.kt
+      # --check n'écrit rien et ne dépend pas de git : marche sur un arbre sale,
+      # hors dépôt, et en CI le jour où il y en aura une.
+      # Sortie 2 = dérive, 1 = erreur de parsing/IO.
+      - node scripts/generate_tokens.mjs --check
 
   augment-textures-generate:
     desc: Procedurally (re)generate overlay textures (patina/dust/scratches/fingerprints)

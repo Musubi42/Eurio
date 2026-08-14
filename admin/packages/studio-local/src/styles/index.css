@@ -5,7 +5,7 @@
  *  3. Mappings shadcn-vue (CSS vars HSL)
  */
 
-@import '../../../../../shared/tokens.css';
+@import '@eurio/shared/tokens.css';
 
 /* ───────── Admin parchment override ─────────
  * On override les surfaces pour donner à l'admin un feel "specimen sheet /
