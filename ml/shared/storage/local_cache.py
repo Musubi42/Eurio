@@ -35,6 +35,32 @@ def _max_gb() -> float:
     return float(os.environ.get("EURIO_CACHE_MAX_GB", "0"))
 
 
+# ─── Deux casiers sous une seule racine ──────────────────────────────────────
+#
+# `EURIO_CACHE_ROOT` reste LA variable à déplacer (serveur de calcul, conteneur,
+# Windows…) : tout vit dessous. Mais images et artefacts de build n'ont ni la
+# même taille, ni la même valeur, ni la même conséquence en cas de suppression :
+#
+#   <root>/<bucket>/…     images — re-téléchargeables, volumineuses, plafond
+#                         EURIO_CACHE_MAX_GB
+#   <root>/artifacts/…    modèles épinglés par un manifeste — petits, requis
+#                         par le build, plafond EURIO_ARTIFACTS_MAX_GB
+#
+# L'éviction des images NE DOIT PAS toucher `artifacts/` : un modèle évincé
+# casse un build hors ligne, et l'échec ressemble à un bug plutôt qu'à un cache
+# vide. D'où le cloisonnement explicite ci-dessous.
+
+_ARTIFACTS_DIRNAME = "artifacts"
+
+
+def _artifacts_root() -> Path:
+    return _cache_root() / _ARTIFACTS_DIRNAME
+
+
+def _artifacts_max_gb() -> float:
+    return float(os.environ.get("EURIO_ARTIFACTS_MAX_GB", "5"))
+
+
 # Backoff schedule for transient download failures (in seconds, AFTER the
 # first attempt). MinIO behind the VPS proxy returns sporadic 403s under
 # bursts of distinct-key reads — empirically ~100% recover on an immediate
@@ -194,11 +220,13 @@ def upload_through(
     ) from last_exc
 
 
-def _evict_if_needed() -> None:
-    """LRU eviction: remove oldest-atime files until under MAX_GB."""
-    root = _cache_root()
-    if not root.exists():
-        return
+def _lru_evict(root: Path, max_gb: float) -> int:
+    """LRU eviction under `root`: remove oldest-atime files until under max_gb.
+
+    Returns the number of files removed. A max_gb of 0 disables eviction.
+    """
+    if max_gb <= 0 or not root.exists():
+        return 0
     files: list[tuple[float, Path, int]] = []
     for f in root.rglob("*"):
         if f.is_file() and not f.name.endswith(".tmp"):
@@ -206,7 +234,42 @@ def _evict_if_needed() -> None:
             files.append((st.st_atime, f, st.st_size))
     files.sort(key=lambda t: t[0])  # oldest first
     total = sum(s for _, _, s in files)
+    max_bytes = int(max_gb * 1024**3)
+    removed = 0
+    while total > max_bytes and files:
+        _, victim, sz = files.pop(0)
+        try:
+            victim.unlink()
+            total -= sz
+            removed += 1
+        except FileNotFoundError:
+            pass
+    return removed
+
+
+def _evict_if_needed() -> None:
+    """LRU eviction des IMAGES, plafond EURIO_CACHE_MAX_GB.
+
+    Ne touche jamais `<root>/artifacts/` : les modèles ont leur propre plafond
+    (`_evict_artifacts_if_needed`). Un modèle évincé casserait un build.
+    """
+    root = _cache_root()
+    if not root.exists():
+        return
     max_bytes = int(_max_gb() * 1024**3)
+    if max_bytes <= 0:
+        return
+    artifacts = _artifacts_root()
+    files: list[tuple[float, Path, int]] = []
+    for f in root.rglob("*"):
+        if not f.is_file() or f.name.endswith(".tmp"):
+            continue
+        if artifacts in f.parents:
+            continue  # casier artefacts — plafond séparé
+        st = f.stat()
+        files.append((st.st_atime, f, st.st_size))
+    files.sort(key=lambda t: t[0])  # oldest first
+    total = sum(s for _, _, s in files)
     while total > max_bytes and files:
         _, victim, sz = files.pop(0)
         try:
@@ -214,6 +277,11 @@ def _evict_if_needed() -> None:
             total -= sz
         except FileNotFoundError:
             pass
+
+
+def _evict_artifacts_if_needed() -> None:
+    """LRU eviction des ARTEFACTS, plafond EURIO_ARTIFACTS_MAX_GB (défaut 5)."""
+    _lru_evict(_artifacts_root(), _artifacts_max_gb())
 
 
 def cache_stats() -> dict:
@@ -237,3 +305,91 @@ def purge_cache() -> None:
     root = _cache_root()
     if root.exists():
         shutil.rmtree(root)
+
+
+# ─── Artefacts de build ──────────────────────────────────────────────────────
+
+ARTIFACTS_BUCKET: Bucket = "model-artifacts"
+
+
+def sha256_of(path: Path) -> str:
+    """sha256 hexdigest d'un fichier, lu par blocs (les modèles font ~10 Mo)."""
+    import hashlib
+    h = hashlib.sha256()
+    with path.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def artifact_path(storage_key: str, *, sha256: str) -> Path:
+    """Chemin local d'un artefact de build, téléchargé si besoin et VÉRIFIÉ.
+
+    Contrairement à `local_path()`, le contenu est validé contre le `sha256`
+    attendu (celui du manifeste `shared/model-assets.json`) :
+
+    - fichier présent et sha conforme  → retour immédiat, atime touché ;
+    - fichier présent mais sha faux    → supprimé et re-téléchargé (cache
+      corrompu, ou clé réécrite en amont — ce qui ne devrait pas arriver
+      puisque la version est portée par la clé) ;
+    - après téléchargement, sha faux   → ValueError. On ne place JAMAIS un
+      artefact non conforme dans les assets : un modèle silencieusement faux
+      est pire qu'un build cassé.
+
+    Vit sous `<EURIO_CACHE_ROOT>/artifacts/`, plafond séparé
+    `EURIO_ARTIFACTS_MAX_GB` — l'éviction des images ne peut pas l'emporter.
+    """
+    target = _artifacts_root() / storage_key
+    if target.exists():
+        if sha256_of(target) == sha256:
+            st = target.stat()
+            os.utime(target, ns=(time.time_ns(), st.st_mtime_ns))
+            return target
+        target.unlink()  # cache corrompu — on retélécharge
+
+    _evict_artifacts_if_needed()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp = target.with_suffix(target.suffix + ".tmp")
+    last_exc: BaseException | None = None
+    for delay in (0.0, *_DOWNLOAD_RETRY_DELAYS):
+        if delay:
+            time.sleep(delay)
+        try:
+            _client().download_file(ARTIFACTS_BUCKET, storage_key, str(tmp))
+            got = sha256_of(tmp)
+            if got != sha256:
+                tmp.unlink(missing_ok=True)
+                raise ValueError(
+                    f"sha256 mismatch pour {ARTIFACTS_BUCKET}/{storage_key} : "
+                    f"attendu {sha256}, obtenu {got}. "
+                    f"Le manifeste et le bucket sont désynchronisés."
+                )
+            os.replace(tmp, target)
+            return target
+        except ValueError:
+            raise  # mismatch : ne pas retenter, c'est déterministe
+        except Exception as e:  # noqa: BLE001
+            tmp.unlink(missing_ok=True)
+            if _is_not_found(e):
+                raise FileNotFoundError(
+                    f"Artefact absent du bucket : {ARTIFACTS_BUCKET}/{storage_key}. "
+                    f"Publie-le avec `go-task ml:assets:publish`."
+                ) from e
+            last_exc = e
+    raise FileNotFoundError(
+        f"Cannot fetch {ARTIFACTS_BUCKET}/{storage_key} after "
+        f"{len(_DOWNLOAD_RETRY_DELAYS) + 1} attempts: {last_exc}"
+    ) from last_exc
+
+
+def artifacts_stats() -> dict:
+    """Stats du casier artefacts (plafond distinct des images)."""
+    root = _artifacts_root()
+    n, sz = 0, 0
+    if root.exists():
+        for f in root.rglob("*"):
+            if f.is_file():
+                n += 1
+                sz += f.stat().st_size
+    return {"root": str(root), "n_files": n, "size_bytes": sz,
+            "max_gb": _artifacts_max_gb()}

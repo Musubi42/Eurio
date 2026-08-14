@@ -23,7 +23,9 @@
         "arn:aws:s3:::enrichment-raws",
         "arn:aws:s3:::enrichment-raws/*",
         "arn:aws:s3:::enrichment-crops",
-        "arn:aws:s3:::enrichment-crops/*"
+        "arn:aws:s3:::enrichment-crops/*",
+        "arn:aws:s3:::model-artifacts",
+        "arn:aws:s3:::model-artifacts/*"
       ]
     }
   ]

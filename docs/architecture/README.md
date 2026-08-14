@@ -81,6 +81,18 @@ Scrape/crop écrivent dans MinIO ; la lecture passe par `local_path(bucket, key)
 déjà là (`if target.exists()`), en touchant seulement l'atime pour le LRU. Donc **sur
 cache chaud, le hors-ligne fonctionne**.
 
+**Deux casiers, une seule racine** (depuis 2026-08-14) :
+
+```
+$EURIO_CACHE_ROOT/          ← une seule variable à déplacer (défaut ~/.cache/eurio)
+├── <bucket>/…              images    · plafond EURIO_CACHE_MAX_GB     (20 Go)
+└── artifacts/…             modèles   · plafond EURIO_ARTIFACTS_MAX_GB  (5 Go)
+```
+
+L'éviction des images **ne touche jamais** `artifacts/` : un modèle évincé casserait un
+build sans rapport, et l'échec ressemblerait à un bug plutôt qu'à un cache vide.
+Trois tests couvrent ce cloisonnement (`ml/tests/test_storage.py`).
+
 ⚠️ **Pas de fallback sur cache froid** : MinIO injoignable ou clé absente ⇒
 `FileNotFoundError`. Et le LRU (`_evict_if_needed()`, plafond `EURIO_CACHE_MAX_GB`) peut
 **évincer** un fichier déjà téléchargé — un artefact de build évincé casserait un build

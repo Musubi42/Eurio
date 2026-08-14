@@ -256,3 +256,23 @@ val syncQaFixtures by tasks.registering(Sync::class) {
     into("src/qa/assets/fixtures")
 }
 tasks.named("preBuild") { dependsOn(syncQaFixtures) }
+
+// ── Modèles ML embarqués ─────────────────────────────────────────────────────
+// Les .tflite / centroïdes / meta ne vivent plus dans git (ADR-004) : ils sont
+// publiés sur MinIO et épinglés par shared/model-assets.json, committé. La
+// tâche délègue à `ml/scripts/model_assets.py` plutôt que de réimplémenter S3
+// en Gradle — on réutilise ainsi l'auth, le retry et la vérification sha256 de
+// la couche storage existante.
+//
+// ⚠️ NON WIRED sur preBuild tant que le bucket `model-artifacts` n'existe pas
+// et que les fichiers restent commités : brancher une dépendance réseau au
+// build avant que le chemin soit prouvé casserait le build de tout le monde.
+// À activer (décommenter la ligne dependsOn) au même commit que le `git rm`
+// des 4 assets — cf. docs/work-in-progress/repo-refactor/README.md lot 4.
+val fetchModelAssets by tasks.registering(Exec::class) {
+    description = "Fetch the pinned ML model assets from MinIO (shared/model-assets.json)"
+    val repoRoot = rootProject.projectDir
+    workingDir = File(repoRoot, "ml")
+    commandLine = listOf("bash", "-c", "./.venv/bin/python -m scripts.model_assets fetch")
+}
+// tasks.named("preBuild") { dependsOn(fetchModelAssets) }   // ← lot 4, étape finale

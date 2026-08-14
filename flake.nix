@@ -118,6 +118,20 @@
           JAVA_HOME = "${pkgs.jdk17}";
           ANDROID_HOME = "${androidSdk}/libexec/android-sdk";
           ANDROID_SDK_ROOT = "${androidSdk}/libexec/android-sdk";
+
+          # ─── Cache local (deux casiers sous une seule racine) ─────────────
+          # EURIO_CACHE_ROOT (défaut ~/.cache/eurio) reste LA variable à
+          # déplacer si la machine l'exige (serveur de calcul, conteneur).
+          #
+          # Images : plafond posé le 2026-08-14. Avant, `EURIO_CACHE_MAX_GB`
+          # n'était réglé nulle part → défaut "0" → aucune éviction, et le
+          # cache avait atteint 5,8 Go en croissance libre.
+          EURIO_CACHE_MAX_GB = "20";
+          # Artefacts de build (modèles épinglés par shared/model-assets.json).
+          # Plafond distinct : l'éviction des images ne les touche pas, sinon un
+          # modèle disparaît et casse un build sans rapport. ~14 Mo par jeu, donc
+          # 5 Go laissent largement de quoi garder l'historique des versions.
+          EURIO_ARTIFACTS_MAX_GB = "5";
         };
 
         bannerHook = profile: ''
@@ -213,16 +227,21 @@
         '';
 
         # ─── Profiles ─────────────────────────────────────────────────────────
-        # ⚠️ Flip 1a DÉSACTIVÉ (2026-07-05) : le flip a été activé puis retiré car il a
-        # révélé que le routage Direction A des WRITERS CANONIQUES du lab est incomplet
-        # (apply_manual_crop, apply_reassign, scan face-write, … écrivent le canonique en
-        # direct → OperationalError readonly sous le flip). Le flip lui-même est prouvé sain
-        # (split bookkeeping OK, readonly enforcement OK, échec bruyant). Re-flipper = remettre
-        # ${flipHook} dans les 2 shells APRÈS avoir routé/gardé tous les writers. Cf. fiche 01 §6.
+        # 🔁 Flip 1a RÉ-ACTIVÉ (2026-07-06, validation du CŒUR) : le hot-path des
+        # writers canoniques du lab est désormais routé (C3 : décisions review/funnel/
+        # lot + reassign → VPS via eurioApi ; B2a : recrop/delete/scan-face gardés
+        # resolve_db_readonly + forward /ingest). Les writers RÉSIDUELS non encore routés
+        # (add-crop, requalify/lane/correct — B2b/stragglers) refusent proprement en 503
+        # `canonical_readonly` (garde DRY server.py) au lieu de corrompre. But de ce flip :
+        # VALIDER que le cœur du lab est livable sous Direction A avant de finir la longue
+        # traîne. Réversibilité : retirer ${flipHook} des 2 shells + direnv reload → Model A.
+        # Précond activation : `go-task ml:db:pull-replica` (réplique fraîche) PUIS
+        # relancer l'API ML (elle lit EURIO_DB_READONLY/PATH au boot). Cf. fiche 01 §6.
         macShell = pkgs.mkShell (commonEnv // {
           buildInputs = baseInputs ++ fullInputs;
           shellHook = ''
             ${gitRemotesHook}
+            ${flipHook}
             ${fullBannerHook "mac"}
             ${staleVenvCheckHook}
           '';
@@ -233,6 +252,7 @@
           shellHook = ''
             ${nvidiaHook}
             ${gitRemotesHook}
+            ${flipHook}
             ${fullBannerHook "pc"}
             ${staleVenvCheckHook}
           '';

@@ -21,7 +21,16 @@ from __future__ import annotations
 import os
 from typing import Literal
 
-Bucket = Literal["numista-canonical", "enrichment-raws", "enrichment-crops"]
+Bucket = Literal[
+    "numista-canonical",
+    "enrichment-raws",
+    "enrichment-crops",
+    # Artefacts de build épinglés par shared/model-assets.json (modèles TFLite,
+    # centroïdes, meta). Privé : ce ne sont pas des images publiques.
+    # Versionné par la CLÉ d'objet — le versioning S3 est banni côté MinIO
+    # (cf. infra/minio/README.md §Anti-patterns).
+    "model-artifacts",
+]
 
 PUBLIC_HOST = "https://eurio-images.musubi.dev"
 S3_ENDPOINT = "https://eurio-s3.musubi.dev"

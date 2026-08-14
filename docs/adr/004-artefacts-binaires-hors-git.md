@@ -55,6 +55,46 @@ Application par étapes, du plus sûr au plus risqué :
 délibéré de le committer (« reproducible builds without Supabase access »). Le sortir
 revient sur cette décision — sujet distinct.
 
+## Exécution (2026-08-14) — mécanisme livré, bascule en attente
+
+Périmètre arbitré par le PO : **modèles de l'APK uniquement**. `best.pt` reste dans git
+(le transport Mac→PC n'est pas touché, donc **rien ne peut casser le PC**), et
+`app_core.db` reste committé (§Décision).
+
+| Livré | Détail |
+|---|---|
+| **Deux casiers sous une racine** | `EURIO_CACHE_ROOT` (défaut `~/.cache/eurio`) reste la seule variable à déplacer. Images sous `<root>/<bucket>/`, artefacts sous `<root>/artifacts/`, **plafonds séparés** |
+| **Plafond images posé** | `EURIO_CACHE_MAX_GB=20` dans `flake.nix`. Il n'était réglé **nulle part** : défaut `"0"` = aucune éviction, et le cache avait atteint **5,8 Go** en croissance libre |
+| **Plafond artefacts** | `EURIO_ARTIFACTS_MAX_GB=5`. Un jeu de modèles fait ~14 Mo — de quoi garder l'historique des versions |
+| **Cloisonnement prouvé** | `_evict_if_needed()` balayait toute la racine. Il exclut désormais `artifacts/`. **3 tests** : un artefact volontairement le plus ancien du cache survit à une éviction qui supprime bien l'image la plus ancienne |
+| **Vérification sha256** | `artifact_path()` refuse un contenu non conforme (`ValueError`), re-télécharge un cache corrompu, et ne laisse jamais de `.tmp` derrière |
+| **Adressage par contenu** | clé `models/<nom>/<sha256[:12]>/<fichier>` — le versioning S3 étant banni, la version est portée par la clé. Republier à l'identique est un no-op ; un contenu différent ne peut jamais écraser l'ancien |
+| **Manifeste committé** | `shared/model-assets.json`. Le commit détermine entièrement les poids qui partent dans l'APK : un `git checkout` ancien récupère les modèles de ce commit. **La reproductibilité que donnait le fait de committer les binaires est conservée, sans les binaires** |
+| **Outil** | `ml/scripts/model_assets.py` — `status` / `publish` / `fetch`, exposé en `go-task ml:assets:*` |
+| **Tâche Gradle** | `fetchModelAssets`, enregistrée et appelable, **délibérément pas branchée sur `preBuild`** |
+| **Bucket + policy** | `model-artifacts` ajouté à `infra/minio/bootstrap.sh` et à `eurio-app-policy.json` |
+
+### Ce qui bloque la bascule, et pourquoi c'est sain
+
+La clé applicative `eurio-app` **n'a pas le droit `CreateBucket`** — c'est voulu, elle est
+scopée aux buckets existants. Le bucket se crée avec les creds admin, sur le VPS :
+
+```
+cd /opt/eurio/infra/minio && ./bootstrap.sh      # idempotent
+```
+
+Tant que ce n'est pas fait, `go-task ml:assets:publish` sort avec un message qui donne
+cette commande. **Aucun fichier n'a été retiré de git**, et `fetchModelAssets` n'est pas
+branchée sur `preBuild` : brancher une dépendance réseau au build avant d'avoir prouvé le
+chemin casserait le build de tout le monde. La séquence restante, dans l'ordre :
+
+1. `./bootstrap.sh` sur le VPS
+2. `go-task ml:assets:publish` (écrit `shared/model-assets.json`)
+3. supprimer les 4 assets du disque, `go-task ml:assets:fetch`, vérifier qu'ils reviennent
+   identiques
+4. **au même commit** : `git rm --cached` des 4 assets + gitignore + décommenter le
+   `dependsOn(fetchModelAssets)`
+
 ## Alternatives considérées
 
 | Option | Verdict |

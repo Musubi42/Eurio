@@ -176,3 +176,89 @@ def test_cache_stats_empty(tmp_cache):
     stats = cache_stats()
     assert stats["n_files"] == 0
     assert stats["size_bytes"] == 0
+
+
+# ─── Casier artefacts : cloisonné de l'éviction des images ───────────────────
+
+
+def test_image_eviction_never_touches_artifacts(tmp_cache, monkeypatch):
+    """Un modèle ne doit JAMAIS être évincé par le plafond des images.
+
+    Régression visée : `_evict_if_needed()` balayait toute la racine du cache.
+    Avec les artefacts sous `<root>/artifacts/`, un cache d'images saturé
+    supprimait un .tflite requis par le build — panne silencieuse et différée,
+    qui ressemble à un bug plutôt qu'à un cache vide.
+    """
+    from shared.storage import local_cache
+
+    monkeypatch.setenv("EURIO_CACHE_MAX_GB", str(1 / 1024 / 1024))  # 1 MB
+    payload = b"x" * (500 * 1024)
+
+    bucket_dir = tmp_cache / "enrichment-crops"
+    bucket_dir.mkdir(parents=True)
+    images = []
+    for i, name in enumerate(("old.png", "mid.png", "new.png")):
+        p = bucket_dir / name
+        p.write_bytes(payload)
+        os.utime(p, (1000.0 + i, 1000.0 + i))
+        images.append(p)
+
+    # L'artefact est le plus ANCIEN de tout le cache : sans cloisonnement il
+    # serait la première victime du LRU.
+    art_dir = tmp_cache / "artifacts" / "models" / "coin_detector" / "abc123def456"
+    art_dir.mkdir(parents=True)
+    artifact = art_dir / "coin_detector.tflite"
+    artifact.write_bytes(payload)
+    os.utime(artifact, (1.0, 1.0))
+
+    fake = _make_fake_client({("enrichment-crops", "fresh.png"): payload})
+    monkeypatch.setattr(storage, "_s3_client", fake)
+    local_cache.local_path("enrichment-crops", "fresh.png")
+
+    assert artifact.exists(), "un artefact ne doit jamais être évincé par le cap images"
+    assert not images[0].exists(), "l'image la plus ancienne devait être évincée"
+
+
+def test_artifact_path_verifies_sha256(tmp_cache, monkeypatch):
+    """Un artefact au sha non conforme n'atterrit jamais sur disque."""
+    import hashlib
+
+    from shared.storage import local_cache
+
+    payload = b"weights-v1"
+    good_sha = hashlib.sha256(payload).hexdigest()
+    key = "models/coin_detector/deadbeef/coin_detector.tflite"
+
+    fake = _make_fake_client({(local_cache.ARTIFACTS_BUCKET, key): payload})
+    monkeypatch.setattr(storage, "_s3_client", fake)
+
+    path = local_cache.artifact_path(key, sha256=good_sha)
+    assert path.read_bytes() == payload
+    assert path.parent.parent.parent.parent.name == "artifacts"
+
+    # Même clé, sha attendu différent → refus, et rien de laissé derrière.
+    path.unlink()
+    with pytest.raises(ValueError, match="sha256 mismatch"):
+        local_cache.artifact_path(key, sha256="0" * 64)
+    assert not path.exists()
+    assert not path.with_suffix(path.suffix + ".tmp").exists()
+
+
+def test_artifact_path_redownloads_corrupted_cache(tmp_cache, monkeypatch):
+    """Un fichier en cache dont le sha ne correspond plus est retéléchargé."""
+    import hashlib
+
+    from shared.storage import local_cache
+
+    payload = b"weights-v2"
+    sha = hashlib.sha256(payload).hexdigest()
+    key = "models/eurio_embedder_v1/cafe1234/eurio_embedder_v1.tflite"
+
+    stale = tmp_cache / "artifacts" / key
+    stale.parent.mkdir(parents=True)
+    stale.write_bytes(b"corrompu")
+
+    fake = _make_fake_client({(local_cache.ARTIFACTS_BUCKET, key): payload})
+    monkeypatch.setattr(storage, "_s3_client", fake)
+
+    assert local_cache.artifact_path(key, sha256=sha).read_bytes() == payload

@@ -75,6 +75,10 @@ docker exec eurio-minio mc alias set local http://127.0.0.1:9000 "${ROOT_USER}" 
 docker exec eurio-minio mc mb --ignore-existing local/numista-canonical
 docker exec eurio-minio mc mb --ignore-existing local/enrichment-raws
 docker exec eurio-minio mc mb --ignore-existing local/enrichment-crops
+# Artefacts de build de l'APK (modèles TFLite, centroïdes, meta) — ADR-004.
+# PRIVÉ : contrairement à numista-canonical, aucune policy anonyme n'est posée
+# dessus (cf. Step 4). Ce ne sont pas des images publiques.
+docker exec eurio-minio mc mb --ignore-existing local/model-artifacts
 # numista-canonical: anonymous read (served via eurio-images.musubi.dev)
 docker exec eurio-minio mc anonymous set download local/numista-canonical
 # Disable bucket versioning explicitly (vision §"Décisions actées" #8)

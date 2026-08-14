@@ -151,9 +151,35 @@ Ne recopie pas ces chiffres ailleurs, renvoie-y.
 > Docker.** Rendre `shared/` membre du workspace change ce que `pnpm install` exige au
 > build. Toucher au workspace ⇒ relire `infra/*/Dockerfile`.
 
-### ⬜ Lot 4 — Registre d'artefacts MinIO
-Le gros morceau. Sort les binaires de git **et** rend le split possible.
-**Le fetch doit être vérifié sur le PC avant tout `git rm`.**
+### 🟡 Lot 4 — Registre d'artefacts MinIO *(mécanisme livré 2026-08-14, bascule en attente)*
+
+Périmètre arbitré : **modèles de l'APK uniquement**. `best.pt` reste dans git → le
+transport Mac→PC n'est pas touché → **rien ne peut casser le PC**. `app_core.db` reste
+committé (décision délibérée du `.gitignore`, liée au retrait de Supabase).
+
+- [x] Deux casiers sous `EURIO_CACHE_ROOT` : images `<root>/<bucket>/`, artefacts
+      `<root>/artifacts/`, **plafonds séparés**
+- [x] **Plafond images `20` Go** posé dans `flake.nix` — il n'était réglé nulle part
+      (défaut `"0"` = aucune éviction) et le cache était à **5,8 Go** en croissance libre
+- [x] Plafond artefacts `5` Go (`EURIO_ARTIFACTS_MAX_GB`)
+- [x] `_evict_if_needed()` exclut `artifacts/` — **3 tests** le prouvent
+- [x] `artifact_path()` : vérification sha256, re-téléchargement d'un cache corrompu,
+      refus net d'un contenu non conforme
+- [x] `ml/scripts/model_assets.py` (`status`/`publish`/`fetch`) + `go-task ml:assets:*`
+- [x] Manifeste `shared/model-assets.json`, adressage par contenu
+      (`models/<nom>/<sha[:12]>/<fichier>`)
+- [x] Bucket `model-artifacts` + policy dans `infra/minio/{bootstrap.sh,policies/}`
+- [x] Tâche Gradle `fetchModelAssets` enregistrée, **pas branchée sur `preBuild`**
+- [ ] **← PO : `cd /opt/eurio/infra/minio && ./bootstrap.sh` sur le VPS** (la clé
+      applicative n'a pas `CreateBucket`, et c'est voulu)
+- [ ] `go-task ml:assets:publish`
+- [ ] Vérifier le round-trip : supprimer les 4 assets, `fetch`, comparer les sha
+- [ ] **Au même commit** : `git rm --cached` des 4 assets + gitignore + décommenter
+      `dependsOn(fetchModelAssets)`
+
+> **Rien n'a été retiré de git.** Le fetch n'est pas prouvé de bout en bout tant que le
+> bucket n'existe pas — brancher une dépendance réseau au build avant ça casserait le
+> build de tout le monde.
 
 ### ⬜ Lot 5 — Remaster git
 Sur un arbre déjà propre. Statuer sur `source-lmdlp-rebuild` (+4, travail fini non mergé)

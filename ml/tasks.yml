@@ -819,6 +819,21 @@ tasks:
       - "{{.VENV}}/python -m scripts.migrate_to_minio lock-fs"
 
   # ---------- Local cache ----------
+  assets:status:
+    desc: "Artefacts de modèle de l'APK : compare le disque au manifeste shared/model-assets.json"
+    cmds:
+      - "{{.VENV}}/python -m scripts.model_assets status"
+
+  assets:publish:
+    desc: "Publie les modèles de l'APK vers MinIO et réécrit le manifeste (--dry-run possible)"
+    cmds:
+      - "{{.VENV}}/python -m scripts.model_assets publish {{.CLI_ARGS}}"
+
+  assets:fetch:
+    desc: "Récupère les modèles épinglés par le manifeste dans app-android/src/main/assets/"
+    cmds:
+      - "{{.VENV}}/python -m scripts.model_assets fetch"
+
   cache-stats:
     desc: "Show local cache size + n_files (~/.cache/eurio)."
     cmds:
