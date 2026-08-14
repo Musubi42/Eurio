@@ -172,15 +172,15 @@ Un hostname inconnu fait échouer `direnv allow` avec un message d'aide listant 
 - **Côté code** : le Python lit les secrets via `shared.env.load_env()` / `require()` / `numista_api_key()` (lecture `os.environ` uniquement, peuplé par `.envrc`). Jamais de parsing de `.env` à la main. Les clés Numista (8, en rotation) passent par `referential.numista_keys.KeyManager` — il n'existe **pas** de `NUMISTA_API_KEY` au singulier.
 - Frontières hors-SOPS (runtimes distants) :
   - **Vercel** (projet `loan/` + web, en cours de décommissionnement — cf. `docs/work-in-progress/auth-redesign/`) gère ses secrets via le dashboard Vercel.
-  - **VPS** : pattern **SOPS via direnv**. Le `.envrc` racine déchiffre `secrets/dev.env` (SOPS+age) au `cd /opt/eurio` et exporte les vars dans le shell. `docker compose up` les forwarde au container via `environment: { VAR: ${VAR:?missing} }` dans `docker-compose.yml`. Aucun fichier secret en clair sur disque côté `infra/*/`. La clé age reste sur la machine (`~/.config/sops/age/keys.txt`, jamais committée). Pour les contextes scriptés (cron, systemd), fallback explicite : `sops exec-env /opt/eurio/secrets/dev.env "docker compose up ..."`. Le pattern legacy Docker secrets (fichiers `infra/*/secrets/<name>` + `*_FILE` env var) est **déprécié** : `infra/eurio-api/` a migré (juin 2026) ; `infra/review/` sera supprimé à C9 de la refonte auth.
+  - **VPS** : pattern **SOPS via direnv**. Le `.envrc` racine déchiffre `secrets/dev.env` (SOPS+age) au `cd /opt/eurio` et exporte les vars dans le shell. `docker compose up` les forwarde au container via `environment: { VAR: ${VAR:?missing} }` dans `docker-compose.yml`. Aucun fichier secret en clair sur disque côté `infra/*/`. La clé age reste sur la machine (`~/.config/sops/age/keys.txt`, jamais committée). Pour les contextes scriptés (cron, systemd), fallback explicite : `sops exec-env /opt/eurio/secrets/dev.env "docker compose up ..."`. Le pattern legacy Docker secrets (fichiers `infra/*/secrets/<name>` + `*_FILE` env var) est **déprécié** : `infra/eurio-api/` a migré (juin 2026). `infra/review/` reste **en service** (`eurio-review.musubi.dev`) : le C9 qui devait le supprimer n'existe plus — le sujet vivant est le chantier **K2** (`docs/work-in-progress/auth-redesign/ROADMAP.md`), non tranché.
 - Bootstrap d'une nouvelle machine : voir `README.md §Secrets`.
 
 ### Supabase
 
 - Accès via clé API (Postgrest) pour l'admin et l'export snapshot
-- L'app Android est **offline-first** avec un snapshot catalogue packagé dans l'APK (`app-android/src/main/assets/catalog_snapshot.json`)
+- L'app Android est **offline-first** avec un catalogue packagé dans l'APK (`app-android/src/main/assets/app_core.db`, généré par `go-task ml:build-app-core`). L'ancien `catalog_snapshot.json` n'existe plus depuis P6
 - Pas d'auth utilisateur pour v1 (le vault est 100% local côté Room)
-- Schéma de vérité : `supabase/types/database.ts` (généré)
+- Schéma de vérité : `ml/state/schema.sql` (le canonique SQLite). ⚠️ `supabase/types/database.ts` n'est **ni généré ni importé** par quoi que ce soit — c'est de la doc de schéma historique, pas une source
 
 ### Stack technique Android
 

@@ -82,7 +82,7 @@ Tous au-dessus de 0.80. **Aucune corrélation avec la perf live** : IT-2016 (pir
 ## Décisions
 
 - [x] **Aller en design_group only.** Plus de mix `eurio_id` + `design_group_id` dans une même cohort. Une itération = un seul niveau de classification.
-- [x] **Le bench doit reporter R@1 strict eurio_id et R@1 design_group côte à côte.** À implémenter dans `ml/api/` ou `ml/eval/`. Sans ça on continuera à valider des baselines fantômes.
+- [x] **Le bench doit reporter R@1 strict eurio_id et R@1 design_group côte à côte.** À implémenter dans `ml/serving/` ou `ml/eval/`. Sans ça on continuera à valider des baselines fantômes.
 - [x] **Démarrer un journal d'itérations** (ce dossier).
 
 ## Suite

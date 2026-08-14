@@ -80,7 +80,7 @@ avec toutes les infos nécessaires.
   - Top-K Dino suggestions (si `dino_predictions` ont tourné).
   - Verdict text_signal visible.
 - [ ] Endpoint utilisé : `GET /review-queue?source=ebay&status=open`
-      (cf. `ml/api/review_queue_routes.py:186`).
+      (cf. `ml/review/review_queue_routes.py:186`).
 - [ ] Vérifier le compte : `n_review_enqueued` (sur le run) ==
       nombre de lignes `review_queue.status='open'` pour ce run.
 
@@ -160,7 +160,7 @@ opérations destructives, ré-ajouter le flag dans `.mcp.json`.
 | Pipeline orchestrateur | `ml/sources/_base/orchestrator.py` |
 | Text signal (titre ↔ coin) | `ml/sources/_base/steps/text_signal.py` |
 | Crop detection + dispatch studio/listing | `ml/sources/_base/steps/detect_crop.py` + `ml/scan/normalize_snap.py` |
-| Review endpoints | `ml/api/review_queue_routes.py` |
+| Review endpoints | `ml/review/review_queue_routes.py` |
 | Review UI | `admin/packages/web/src/features/review/` |
 | MinIO write-through helpers | `ml/storage/local_cache.py`, `ml/sources/_base/storage.py` |
 | Vision buckets (canonical vs enrichment) | `docs/harmonisation-images/vision.md` |

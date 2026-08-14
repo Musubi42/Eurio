@@ -68,7 +68,7 @@ pour eux aussi (chemin générique, hors vue commémo).
   `(denom,country,year)`, garde ceux présents dans `v_ebay_freshness_groups`.
 - **CLI** `ml/sources/cli.py` : flag `--cohort-id` (branche eBay, préflight quota,
   log des `non_scrapable`).
-- **API** `ml/api/sources_routes.py` : `RunQueryBody.cohort_id` → expansion dans
+- **API** `ml/serving/sources_routes.py` : `RunQueryBody.cohort_id` → expansion dans
   `trigger_run` avant build de la query ; `TriggerResponse.non_scrapable`.
 
 **Validé offline (aucun appel eBay)** sur mix-zone-16 :

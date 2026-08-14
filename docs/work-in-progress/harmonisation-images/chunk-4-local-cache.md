@@ -149,7 +149,7 @@ def source_image_local_path(si_row) -> Path:
 
 ### 4.3 API ML : 302 redirect pour le front admin
 
-`ml/api/sources_routes.py` (modifier l'existant) :
+`ml/serving/sources_routes.py` (modifier l'existant) :
 
 ```python
 from fastapi.responses import RedirectResponse

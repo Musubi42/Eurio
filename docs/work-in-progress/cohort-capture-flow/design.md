@@ -66,7 +66,7 @@ Le user peut donc toujours capturer "sans frontend" en mode démo via l'asset bu
 
 **Pourquoi** :
 - 17 coins × 6 angles = 102 fichiers. Chaque fichier passe par `normalize_device_path` (Hough + crop + resize 224). Coût mesuré ~0.1–0.3s/fichier sur Mac M4 → ~15–30s pour le worst case.
-- L'infra background task n'existe pas dans `ml/api/`. La rajouter pour ce besoin = sur-ingénierie.
+- L'infra background task n'existe pas dans `ml/serving/`. La rajouter pour ce besoin = sur-ingénierie.
 - Le user clique "Synchroniser", attend, voit un `{ok, copied: 102, skipped: 0, failures: []}`. Si jamais ça grossit (multi-cohort batch), on async-ifiera plus tard.
 
 ---
@@ -141,7 +141,7 @@ de-2020-2eur-50-years-since-the-kniefall-von-warschau;226447;Allemagne 2020 — 
 
 ---
 
-## 4. Endpoints backend (FastAPI, dans `ml/api/lab_routes.py`)
+## 4. Endpoints backend (FastAPI, dans `ml/serving/lab_routes.py`)
 
 Tous sous le prefix `/lab/cohorts/{cohort_id}/captures/`.
 
@@ -356,7 +356,7 @@ Layout cible (cohort `frozen`) : §1 et §3 deviennent read-only, §2 garde la l
 
 ### 6.1. Helper de mapping `eurio_id ↔ numista_id`
 
-À ajouter dans `ml/api/` (ou `ml/scan/` si plus naturel) — un module `coin_lookup.py` qui :
+À ajouter dans `ml/serving/` (ou `ml/scan/` si plus naturel) — un module `coin_lookup.py` qui :
 - charge `ml/datasets/coin_catalog.json` (déjà la source de vérité — voir mémoire utilisateur "Coin catalog convention")
 - cache un dict `{eurio_id: numista_id}` et l'inverse
 - expose `numista_id_for(eurio_id) -> int | None` et `eurio_id_for(numista_id) -> str | None`
@@ -516,8 +516,8 @@ Le kickoff dit pourtant :
 |---|---|
 | `ml/state/store.py` (& schema) | + colonnes `status`, `frozen_at`, helpers |
 | `ml/state/types.py` (ou équivalent dataclass) | + `status` sur `ExperimentCohortRow` |
-| `ml/api/lab_routes.py` | + 6 endpoints, + auto-freeze, + `status` filter |
-| `ml/api/coin_lookup.py` | **nouveau** — mapping eurio↔numista |
+| `ml/serving/lab_routes.py` | + 6 endpoints, + auto-freeze, + `status` filter |
+| `ml/serving/coin_lookup.py` | **nouveau** — mapping eurio↔numista |
 | `ml/scan/sync_eval_real.py` | + flag `--also-write-captures` |
 
 ### Front

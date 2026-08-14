@@ -191,7 +191,7 @@ Gate existante (`diff_kotlin_python.py`) : `CENTER_TOL_PX=2`, `RADIUS_TOL_PX=2`,
 
 ### 6.2 Flux de données
 ```
-Vue (packages/web)  ──GET /crop-bench/sample?n=100&bias=undercrop──▶  FastAPI (ml/api/crop_bench_routes.py)
+Vue (packages/web)  ──GET /crop-bench/sample?n=100&bias=undercrop──▶  FastAPI (ml/serving/crop_bench_routes.py)
                     ◀── {raws[], algos:[hough,fitellipse,edcircles,...]} ─┘
 Vue  ──POST /crop-bench/recrop {raw_id, algo, config}──▶ recrop in-mem
      ◀── {crop_png_b64, cx,cy,r, quality_score, oracle_r_ratio} ────────┘
@@ -252,7 +252,7 @@ Header: filtres (bimétal/mono, fond uni/texturé, undercrop-only), n=10/100,
 ## 9. Journal d'avancement
 
 ### Chunk 0 — Banc admin lecture seule (livré 2026-06-02)
-- Backend `ml/api/crop_bench_routes.py` (`/crop-bench/stats|sample|overlay`), réutilise l'oracle du diagnostic → overlay raw avec 🔴 cercle pipeline vs 🟢 vrai rim. Front `admin/.../features/crop-bench/`. Images servies par les endpoints `/sources/.../file` existants (cache local, zéro quota). Vérifié HTTP (stats == diagnostic).
+- Backend `ml/serving/crop_bench_routes.py` (`/crop-bench/stats|sample|overlay`), réutilise l'oracle du diagnostic → overlay raw avec 🔴 cercle pipeline vs 🟢 vrai rim. Front `admin/.../features/crop-bench/`. Images servies par les endpoints `/sources/.../file` existants (cache local, zéro quota). Vérifié HTTP (stats == diagnostic).
 - **Audit visuel** : les pires cas (r̂≈0.50) sont des bimétal single-coin (disque interne cropé) + des photos multi-objets (coincards/certificats « Zertifikat » → cause E confirmée).
 
 ### Chunk 1 — Détecteur fitEllipse + sélecteur de cercle externe (livré 2026-06-02)

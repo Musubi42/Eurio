@@ -255,7 +255,7 @@ Si un run échoue après `detect_crop` mais avant `resolve` :
 
 ### T4 — skip_review ne change pas status → état fantôme
 
-**Fichier** : `ml/api/review_queue_routes.py:skip_review` (ligne ~2387)
+**Fichier** : `ml/review/review_queue_routes.py:skip_review` (ligne ~2387)
 
 Le skip pose `decision_notes='skipped'` mais laisse `status='open'`. Les 15 items globalement skippés (14 auto_accept + 1 ccproxy dans la cohorte) :
 - Restent dans `n_pending` (compteur cockpit)
@@ -375,7 +375,7 @@ La cause n'est pas un bug d'algorithme : `eras_for_year` calculerait correctemen
 
 ## Étape 3 — Pourquoi l'UI dit "jamais scrapé"
 
-**Fichiers : `ml/api/lab_routes.py:1314–1335` (`_coin_tail`) + `1585` + `admin/packages/web/src/features/lab/components/CohortDrawerEbay.vue:292–295`**
+**Fichiers : `ml/serving/lab_routes.py:1314–1335` (`_coin_tail`) + `1585` + `admin/packages/web/src/features/lab/components/CohortDrawerEbay.vue:292–295`**
 
 La requête backend exacte qui détermine `never_scraped` :
 
@@ -564,7 +564,7 @@ Le bouton "Recropper N" propose une action qui **ne peut pas fonctionner** car l
 
 ### 1. Architecture actuelle de _recrop_jobs
 
-`ml/api/lab_routes.py:1730` :
+`ml/serving/lab_routes.py:1730` :
 ```python
 _recrop_jobs: dict[str, dict] = {}   # keyed by eurio_id, in-process only
 _recrop_jobs_lock = threading.Lock()

@@ -92,8 +92,8 @@ OBJECTIF :
 À LIRE d'abord :
 - docs/operations/crop-quality-overhaul/00-diagnostic-and-architecture.md
 - admin/packages/web/src/features/review/ (pages + composables ; ReviewPage.vue, useReviewApi.ts)
-- ml/api/review_queue_routes.py (endpoints decide/reject/correct-listing/skip — où brancher)
-- ml/api/crop_bench_routes.py (PRÉCÉDENT direct : sert raw/crop, recrop via
+- ml/review/review_queue_routes.py (endpoints decide/reject/correct-listing/skip — où brancher)
+- ml/serving/crop_bench_routes.py (PRÉCÉDENT direct : sert raw/crop, recrop via
   crop_with_detector, écrit le crop — réutiliser le pattern)
 - ml/scan/normalize_snap.py::_crop_mask_resize_float (LE format de crop à
   réutiliser : (cx,cy,r) natifs → 224 masqué — NE PAS réinventer)

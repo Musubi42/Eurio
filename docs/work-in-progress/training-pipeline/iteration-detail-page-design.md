@@ -299,7 +299,7 @@ plutôt que dans la section Inputs cachée.
 
 ### B-001 — Exposer les métriques de training en cours
 
-**Fichier** : `ml/api/iteration_runner.py` + `ml/api/server.py`
+**Fichier** : `ml/serving/iteration_runner.py` + `ml/serving/server.py`
 
 Ajouter dans `IterationRunner` une structure `_current_task_state: dict`
 mise à jour par `_chain_steps` :
@@ -315,7 +315,7 @@ qui lit le dernier `.log` de ce training sans toucher au runner.
 
 ### B-002 — Recipe name dans la réponse iteration
 
-**Fichier** : `ml/api/lab_routes.py`
+**Fichier** : `ml/serving/lab_routes.py`
 
 Actuellement `iteration.recipe_id` est un UUID. Joindre `recipe.name`
 dans la réponse de `GET /lab/cohorts/{cid}/iterations/{iid}` pour

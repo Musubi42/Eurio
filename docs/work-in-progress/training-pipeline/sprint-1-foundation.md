@@ -123,11 +123,11 @@ Donner à une iteration sa vraie identité reproductible :
 ### Backend
 - `ml/state/store.py` — colonne seed, helpers
 - `ml/state/schema.sql` — colonne seed
-- `ml/api/lab_routes.py` — endpoints regenerate/list/stop, payloads
-- `ml/api/iteration_runner.py` — méthode `stop()`, lecture seed à la création
+- `ml/serving/lab_routes.py` — endpoints regenerate/list/stop, payloads
+- `ml/serving/iteration_runner.py` — méthode `stop()`, lecture seed à la création
 - `ml/training/train_embedder.py` (ou nom équivalent) — signal handler,
   consommation augmentations disque, écriture sample_*.jpg
-- `ml/api/server.py` — endpoint statique pour servir augmentations
+- `ml/serving/server.py` — endpoint statique pour servir augmentations
 
 ### Front
 - `admin/packages/web/src/features/lab/composables/useLabQueries.ts` — 3

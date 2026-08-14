@@ -223,7 +223,7 @@ def delete_asset_cascade(
     conn.close()
 ```
 
-L'API admin (`ml/api/sources_routes.py` route DELETE asset, à
+L'API admin (`ml/serving/sources_routes.py` route DELETE asset, à
 implémenter quand l'UI le demande) appelle cette fonction.
 
 ### 9.3 Script `cascade_sync.py` (audit + repair périodique)

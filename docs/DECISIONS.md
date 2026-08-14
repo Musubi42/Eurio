@@ -1,5 +1,12 @@
 # Eurio — Journal des décisions
 
+> **⚠️ INDEX HISTORIQUE (dernière mise à jour 2026-04-15).** L'index vivant des
+> décisions est **[`adr/README.md`](./adr/README.md)** : une ligne par ADR, statut, date.
+> Ce fichier-ci reste utile pour les décisions **design/produit** d'avril, mais il n'a
+> pas suivi le code — exemple vérifié : il prescrit « tests en stdlib `unittest`, pas
+> pytest », alors que le repo compte **131 fichiers pytest**. Ne pas s'y fier sans
+> recoupement. À réconcilier ou archiver (chantier `repo-refactor`, lot 1).
+
 > **Point unique** pour retrouver ce qui a été tranché, quand, et où se trouve le détail.
 >
 > Ce fichier est un **index**, pas un document de conception. Il liste les décisions majeures du projet et pointe vers la source autoritaire pour le détail complet. Quand une décision change, l'ancienne est marquée ⚪️ *superseded* avec un lien vers la nouvelle.

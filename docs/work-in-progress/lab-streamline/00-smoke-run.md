@@ -100,7 +100,7 @@ Bonus : log « from Supabase » → « from eurio.db » dans `prepare_dataset.py
 ## Fichiers touchés
 
 - `admin/.../features/lab/csv.ts` (nouveau) + `CohortNewPage.vue` — import CSV (chunk 01).
-- `ml/api/training_runner.py` — `_prepare` (classes_added) + `_run_subprocess` (PYTHONPATH).
+- `ml/serving/training_runner.py` — `_prepare` (classes_added) + `_run_subprocess` (PYTHONPATH).
 - `ml/eval/class_resolver.py` — `coin_refs_from_sqlite` + `build_resolver` sur eurio.db.
 - `ml/training/prepare_dataset.py` — message de log.
 

@@ -1,5 +1,14 @@
 # Mission — Migrer `ml/datasets/` vers MinIO (2 buckets) sans casser le local
 
+> **⛔️ ARCHIVÉ (2026-08-14) — CHIFFRES FAUX.** Ce plan parle de « 2,5 Go, ~8895
+> fichiers committés » sous `ml/datasets/` : la réalité mesurée est **33 Mo pour
+> 3900 fichiers trackés**. Le raisonnement (buckets, `dataset_path()` local-first,
+> `git rm --cached` tardif) reste valable et a été repris ; les volumes non.
+>
+> **Successeur : [ADR-004](../adr/004-artefacts-binaires-hors-git.md)** — et il couvre
+> en plus les **modèles**, absents de ce plan.
+> Chiffres à jour : [`../architecture/artifacts.md`](../architecture/artifacts.md) §Volumes.
+
 > **Statut : PLAN, pas démarré.** Mission séparée du refacto-ml (chunks 1-8). À faire
 > étape par étape, chaque phase validée avant la suivante. **Principe directeur : rien
 > de destructif (suppression git/local) tant que la transition n'est pas validée

@@ -251,7 +251,7 @@ Conséquences :
 - Le pipeline d'augmentation (hors-scope ici, cf. `docs/research/training-pipeline.md`) n'est pas affecté dans sa logique, juste dans le label assigné aux samples.
 - Les images de training pour un design_group peuvent venir de **n'importe lequel** de ses membres. Avantage pratique : plus de samples par classe.
 
-### 6.2 Scan / inférence (app Android, `ml/api/`)
+### 6.2 Scan / inférence (app Android, `ml/serving/`)
 
 Pipeline cible en deux passes :
 

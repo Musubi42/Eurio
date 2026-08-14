@@ -155,7 +155,7 @@ de validation device.
 - `ml/state/schema.sql` — table `iteration_live_tests` (déjà décrite dans
   `filesystem.md`)
 - `ml/state/store.py` — CRUD
-- `ml/api/lab_routes.py` — 2 endpoints
+- `ml/serving/lab_routes.py` — 2 endpoints
 
 ### Tasks
 - `app-android/Taskfile.yml` — `cohort-test:pull-tests`

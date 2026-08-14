@@ -5,7 +5,7 @@
 
 ## Backend
 
-`GET /review-queue` (`ml/api/review_queue_routes.py::list_queue`) gagne un param
+`GET /review-queue` (`ml/review/review_queue_routes.py::list_queue`) gagne un param
 optionnel **`cohort_id`**. Quand fourni : charge la cohort (`Store.get_cohort`) et
 ajoute `AND s.target_eurio_id IN (<eurio_ids>)` — soit les items dont le coin
 theme-matché appartient à la cohort. Cohort vide → `[]`, cohort inconnue → 404.

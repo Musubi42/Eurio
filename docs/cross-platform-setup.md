@@ -30,8 +30,8 @@ Plus aucun hardcoded `"mps"`. Tous les chemins reçoivent `device="auto"` qui r�
 |---|---|
 | `ml/training/train_embedder.py` | `get_device("auto")` → cuda → mps → cpu |
 | `ml/training/train_detector.py` | helper local `_resolve_device("auto")` (ultralytics n'accepte pas `auto`) |
-| `ml/api/training_runner.py:97` | `self._device = "auto"` forwardé en `--device` au subprocess |
-| `ml/api/server.py:160` | Pydantic `TrainConfig.device: str = "auto"` |
+| `ml/serving/training_runner.py:97` | `self._device = "auto"` forwardé en `--device` au subprocess |
+| `ml/serving/server.py:160` | Pydantic `TrainConfig.device: str = "auto"` |
 | `ml/eval/confusion_map.py:223` | `pick_device()` → cuda → mps → cpu |
 
 ## Spécificités Nix

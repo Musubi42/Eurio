@@ -96,7 +96,7 @@ def prefetch_for_run(
 ### 5.3 Wiring dans le runner
 
 ```python
-# ml/api/training_runner.py
+# ml/serving/training_runner.py
 from pathlib import Path
 import shutil
 

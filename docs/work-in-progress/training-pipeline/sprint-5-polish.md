@@ -95,8 +95,8 @@ Trois choses :
 ## Files à toucher
 
 ### Backend
-- `ml/api/lab_routes.py` — 2 endpoints DELETE + dashboard endpoint
-- `ml/api/dashboard_logic.py` (ou inline) — agrégations
+- `ml/serving/lab_routes.py` — 2 endpoints DELETE + dashboard endpoint
+- `ml/serving/dashboard_logic.py` (ou inline) — agrégations
 
 ### Front
 - `admin/packages/web/src/features/lab/pages/LabDashboardPage.vue`

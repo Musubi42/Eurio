@@ -29,7 +29,7 @@ Formule : `n_images ≈ 10 × (n_real_eligible + n_numista_ref + n_bce_ref)` doi
 
 `cohorte → ① discover/filtre/attribution → ② persist/text_signal → ③ download → ④ detect/crop → ⑤ resolve+DINOv2 → ⑥ review/reclassement → ⑦ export training → ⑧ enrichissement`
 
-Code : `ml/sources/_base/orchestrator.py` + `steps/*.py` ; adaptateur `ml/sources/ebay/*.py` ; API `ml/api/*.py` ; front `admin/packages/web/src/features/{lab,bench,crop-bench,review}`.
+Code : `ml/sources/_base/orchestrator.py` + `steps/*.py` ; adaptateur `ml/sources/ebay/*.py` ; API `ml/serving/*.py` ; front `admin/packages/web/src/features/{lab,bench,crop-bench,review}`.
 
 **4 ruptures de la chaîne (état réel mix-zone-17, 2026-06-04) :**
 - **A — Fin de chaîne débranchée** *(fondateur)* : `ml/training/prepare_dataset.py` lit le **FS** (`datasets/<nid>/real_*.jpg`), **pas** `image_assets.training_eligible` ; cible 100 inexistante (`_MIN_REAL_SOURCES=15` seul seuil). → les crops validés ne rejoignent jamais le dataset.

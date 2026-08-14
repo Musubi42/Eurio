@@ -85,7 +85,7 @@ Le dashboard `/operations` est le tableau de bord qui orchestre la décision "OK
 | Cascade-sync MinIO write-through | Chunks 1-4 livrés | `docs/harmonisation-images/` |
 | Stockage local images canoniques `ml/canonical_images/` | Livré 2026-05-24 (Chunk A) | `ml/referential/canonical_image_local.py` |
 | Dashboard `/operations` (pulse + readiness + diversité + cohorts) | Livré 2026-05-24 | `docs/operations/dashboard-j1.md` |
-| Page `/referential` (Heal + Discover + Push + Joint issues) | Livrée 2026-05-25 (Chunks B/C) | `ml/api/referential_routes.py` |
+| Page `/referential` (Heal + Discover + Push + Joint issues) | Livrée 2026-05-25 (Chunks B/C) | `ml/serving/referential_routes.py` |
 | Trust model par provenance tracée | Acté 2026-05-25 | memory `project_trust_model_referential` |
 
 ---
@@ -296,7 +296,7 @@ Memories pertinentes : `project_crop_format_ablation`, `reference_crop_format_re
     **download-only** (s'arrête après download, raws persistés, `pipeline_state='downloaded'`) + un
     déclencheur crop séparé (CLI/endpoint "crop-only" sur les items `downloaded`, idempotent). But :
     pouvoir scraper en masse sans surchauffer le CPU, et différer le crop jusqu'à ce que le format
-    soit figé. Touche : `orchestrator.py`, `cli.py`, `ml/api/sources_routes.py`, front `/sources`.
+    soit figé. Touche : `orchestrator.py`, `cli.py`, `ml/serving/sources_routes.py`, front `/sources`.
     **Pré-requis avant tout gros scrape.**
 
 ### Training pipeline (GELÉ jusqu'aux captures 2026-05-29)

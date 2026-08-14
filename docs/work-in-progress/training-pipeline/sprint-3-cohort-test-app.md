@@ -180,7 +180,7 @@ go-task -t app-android/Taskfile.yml cohort-test:install \
 
 ### Backend
 - `ml/scripts/build_cohort_bundle.py` — nouveau
-- `ml/api/lab_routes.py` — endpoint build-info
+- `ml/serving/lab_routes.py` — endpoint build-info
 
 ### Front
 - `admin/packages/web/src/features/lab/composables/useLabQueries.ts`

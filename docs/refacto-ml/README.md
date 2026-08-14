@@ -13,7 +13,7 @@
 - **augmentation** (recipes, bake-on-disk)
 - **training** (ArcFace, DINOv2 foundation, embeddings, compute)
 - **review / référentiel** (review_queue, lot-review, auto_validate, fix-proposals)
-- **API** (FastAPI `ml/api/` qui sert tout l'admin + déclenche les jobs)
+- **API** (FastAPI `ml/serving/` qui sert tout l'admin + déclenche les jobs)
 
 Tout cohabite dans un seul process FastAPI + un paquet de scripts. Pas de frontières de service
 claires, du couplage fort (cf. graphify : `Store` = god node à 176 edges), des responsabilités qui

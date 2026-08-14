@@ -8,7 +8,7 @@
 
 Construire le pont manquant entre :
 - les **captures device** (photos de pièces réelles prises avec l'app Android en mode debug)
-- le **modèle admin** (Cohort / Iteration / Benchmark dans `admin/packages/web` + backend `ml/api/lab_routes.py`)
+- le **modèle admin** (Cohort / Iteration / Benchmark dans `admin/packages/web` + backend `ml/serving/lab_routes.py`)
 
 Aujourd'hui ces deux mondes vivent en parallèle : le user prend des photos avec son téléphone, fait `adb pull`, lance des scripts à la main pour synchroniser les datasets, puis va dans le front Lab pour créer une cohorte et un benchmark — sans aucun lien explicite entre les deux. On veut que le front pilote ce flow de bout en bout, en disant à l'utilisateur quelles commandes shell exécuter à chaque étape.
 
@@ -28,7 +28,7 @@ Lire `CLAUDE.md` à la racine. Points critiques :
 - **Pas de `git add -A` ni `git add .`** : staging par fichier
 - **Pas de `TODO:` dans le code** : la dette est explicite via docs, pas enfouie
 
-Stack admin : Vue 3 + Vite + pnpm workspace. Vit dans `admin/packages/web/`. Backend ML standalone Python en `ml/api/` (FastAPI). Voir `CLAUDE.md` §"Monorepo" et §"Déploiement admin".
+Stack admin : Vue 3 + Vite + pnpm workspace. Vit dans `admin/packages/web/`. Backend ML standalone Python en `ml/serving/` (FastAPI). Voir `CLAUDE.md` §"Monorepo" et §"Déploiement admin".
 
 Backend storage : Supabase (Postgrest), schéma de vérité dans `supabase/types/database.ts`. Le state local de training/lab/benchmark est dans `ml/state/training.db` (SQLite, source de vérité côté ML). Voir mémoire utilisateur "Training pipeline refacto".
 
@@ -196,7 +196,7 @@ Question : est-ce qu'on bloque le user pendant ça (synchrone, simple) ou on lan
 
 ### Backend ML (`ml/`)
 
-- `ml/api/lab_routes.py` — endpoints :
+- `ml/serving/lab_routes.py` — endpoints :
   - `GET /lab/cohorts/<id>/captures/status` → liste {coin_id, has_captures, num_files}
   - `POST /lab/cohorts/<id>/captures/csv` → génère + retourne le CSV delta
   - `POST /lab/cohorts/<id>/captures/sync` → dispatch des fichiers depuis `debug_pull/<ts>/`
@@ -230,7 +230,7 @@ admin/packages/web/src/features/lab/types.ts                   # modèle admin a
 admin/packages/web/src/features/lab/pages/CohortDetailPage.vue # page à enrichir
 admin/packages/web/src/features/lab/pages/CohortNewPage.vue
 admin/packages/web/src/features/coins/pages/CoinsPage.vue      # bouton à refactor
-ml/api/lab_routes.py                                           # endpoints actuels (à étendre)
+ml/serving/lab_routes.py                                           # endpoints actuels (à étendre)
 ml/scan/sync_eval_real.py                                      # script de sync existant
 app-android/src/main/assets/capture_coins.csv                  # format du CSV (eurio_id;numista_id;display_name)
 ml/datasets/coin_catalog.json                                  # mapping eurio_id ↔ numista_id

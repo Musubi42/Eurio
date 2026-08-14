@@ -42,7 +42,7 @@ n'est plus lu par ce module.
 ## Fichiers / artefacts
 
 - `docs/lab-streamline/slug-reconciliation.json` — la map (auditable).
-- `ml/api/coin_lookup.py` — migré sur eurio.db.
+- `ml/serving/coin_lookup.py` — migré sur eurio.db.
 - `eval_real_norm/` + `datasets/<nid>/captures/` — peuplés pour les 16.
 
 ## Journal

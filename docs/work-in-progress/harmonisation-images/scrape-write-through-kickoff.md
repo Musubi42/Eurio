@@ -64,8 +64,8 @@ de batch), pas de partage cross-machine, contraire à la vision
 | `ml/sources/_base/steps/download.py` | Réécriture : adapter écrit en cache → upload_through MinIO → storage_path = S3 key + storage_status='present' |
 | `ml/sources/_base/steps/detect_crop.py` | Read raws via `local_path("enrichment-raws", key)`. Write crops via cache + upload_through. Pre-gen asset_id pour storage_key. UPDATE storage_status='present' post-upsert |
 | `ml/sources/_base/steps/auto_validate.py` | Read crops via `local_path("enrichment-crops", key)` |
-| `ml/api/sources_routes.py` | `/sources/.../assets/.../file` et `/sources/.../raws/.../file` → local_path() au lieu de FileResponse(Path) |
-| `ml/api/review_queue_routes.py` | `_compute_detections` lit raw via local_path() |
+| `ml/serving/sources_routes.py` | `/sources/.../assets/.../file` et `/sources/.../raws/.../file` → local_path() au lieu de FileResponse(Path) |
+| `ml/review/review_queue_routes.py` | `_compute_detections` lit raw via local_path() |
 | `ml/scripts/recrop_ebay_orphans.py` | `_cleanup_orphan_crop_files` → DEPRECATED stub (cascade_sync audit handles MinIO orphans) |
 
 ## 5. Architecture cible
@@ -135,9 +135,9 @@ Tous les `Path(storage_path)` actuels doivent devenir
 |---|---|
 | `ml/sources/_base/steps/detect_crop.py` | 89, 119–120 |
 | `ml/sources/_base/steps/auto_validate.py` | 359 |
-| `ml/api/coin_assets_routes.py` | grep storage_path |
-| `ml/api/review_queue_routes.py` | idem |
-| `ml/api/sources_routes.py` | idem |
+| `ml/serving/coin_assets_routes.py` | grep storage_path |
+| `ml/review/review_queue_routes.py` | idem |
+| `ml/serving/sources_routes.py` | idem |
 | `ml/scripts/recrop_ebay_orphans.py` | 72, 75, 77 |
 | `ml/scripts/cascade_sync.py` | déjà OK (manipule juste les strings) |
 
@@ -216,7 +216,7 @@ le scrape (RuntimeError → l'orchestrateur le note dans
 - **Adapter Mock** (`ml/sources/_mock/adapter.py`) — utilisé par les
   tests, doit aussi être migré (pas de S3 réel — peut bypasser
   upload via flag test, ou utiliser moto).
-- **API admin** (`ml/api/coin_assets_routes.py` et siblings) — la
+- **API admin** (`ml/serving/coin_assets_routes.py` et siblings) — la
   vue admin web doit afficher les crops. Aujourd'hui elle sert le
   fichier local. Demain → presigned URL via `signed_url(bucket, key)`.
 - **`ml/scripts/recrop_ebay_orphans.py`** — script utilitaire de

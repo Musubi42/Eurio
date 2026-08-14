@@ -241,8 +241,8 @@ pattern `store._bootstrap()` / pré-bootstrap (cf. ce qui a été fait pour
 
 ## 8. Pointeurs techniques (fichiers de la session précédente)
 
-- Backend funnel : `ml/api/lab_routes.py` (`_cohort_funnel_status`, `_coin_tail`).
-- Review/lanes : `ml/api/review_queue_routes.py`, `ml/foundation/review_lanes.py`.
+- Backend funnel : `ml/serving/lab_routes.py` (`_cohort_funnel_status`, `_coin_tail`).
+- Review/lanes : `ml/review/review_queue_routes.py`, `ml/foundation/review_lanes.py`.
 - Enrichissement : `ml/foundation/enrichment.py`, `ml/training/iteration_augmentations.py`.
 - Recrop : `ml/scan/recrop_zero.py`, endpoint `POST …/coins/{eurio_id}/recrop-zero`
   (thread mémoire `_recrop_jobs` dans `lab_routes.py` — à remplacer par une table jobs).

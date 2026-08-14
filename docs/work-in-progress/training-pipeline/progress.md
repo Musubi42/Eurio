@@ -65,7 +65,7 @@ dedans. Aucun blocage.
   via `_ensure_column` (back-compat NULL pour rows existantes). Champ
   exposé sur `ExperimentIterationRow`.
 - Helper `augmentations_dir_for(numista_id, iteration_id)` exposé dans
-  `ml/api/lab_routes.py` ; constante `AUGMENTATIONS_BASE` aussi.
+  `ml/serving/lab_routes.py` ; constante `AUGMENTATIONS_BASE` aussi.
 - Nouveau module `ml/training/iteration_augmentations.py` :
   `generate_for_iteration` / `clear_for_iteration` / `list_for_iteration`
   (+ CLI `python -m training.iteration_augmentations --iteration-id <iid>`).
@@ -222,7 +222,7 @@ dedans. Aucun blocage.
   FK ON DELETE CASCADE vers `experiment_iterations`) ; dataclass
   `AugVsRealRow` exposée via `state` ; CRUD `upsert_aug_vs_real`,
   `list_aug_vs_real`, `clear_aug_vs_real`.
-- Nouveau module `ml/api/distance_logic.py` :
+- Nouveau module `ml/serving/distance_logic.py` :
   - `compute_aug_vs_real(iteration_id, store, force=False)` — encode
     captures + samples via DINOv2 ViT-S/14 (réutilise
     `eval/confusion_map.load_encoder` + `_build_transform`), centroid
@@ -468,7 +468,7 @@ dedans. Aucun blocage.
 **Decisions taken** :
 - **OQ-1 (où vit le TFLite)** : `ml/output/eurio_embedder_v1.tflite` est
   l'export global produit par `python -m training.export_tflite` (path
-  confirmé via `grep` dans `ml/api/server.py` et `ml/training/export_tflite.py`).
+  confirmé via `grep` dans `ml/serving/server.py` et `ml/training/export_tflite.py`).
   Le bundle script copie ce fichier as-is mais **vérifie son mtime** :
   s'il est antérieur à `iteration.finished_at`, exit 4 avec message
   demandant de re-runner l'export. `--allow-stale-tflite` opt-out.
@@ -541,7 +541,7 @@ dedans. Aucun blocage.
   `IterationLiveTestRow` exposée via `state` ; CRUD `upsert_live_test`
   (retourne `bool` pour distinguer insert vs dupe), `list_live_tests`,
   `clear_live_tests`.
-- Backend `ml/api/lab_routes.py` :
+- Backend `ml/serving/lab_routes.py` :
   - `POST /lab/cohorts/_/iterations/{iid}/live-tests/sync` : lit
     `ml/state/live_test_logs/<iid>.jsonl`, valide ligne par ligne
     (`schema_version=1`, `iteration_id` matche, `condition` ∈
@@ -556,7 +556,7 @@ dedans. Aucun blocage.
     patchent `LIVE_TEST_LOGS_DIR` à un tmpdir hors-repo).
   - `LIVE_TEST_SCHEMA_VERSION = 1`, `LIVE_TEST_CONDITIONS = {bright,
     dim, tilt}` exposés au top du module.
-- Backend `ml/api/iteration_runner.py` : nouveau pas
+- Backend `ml/serving/iteration_runner.py` : nouveau pas
   `_export_tflite(iteration_id)` invoqué dans `_chain_steps` entre la
   fin du training et le démarrage du benchmark. Lance
   `python -m training.export_tflite` via le venv Python du module ML.
@@ -812,7 +812,7 @@ dedans. Aucun blocage.
   - `admin/packages/web/src/features/lab/components/LiveTestsSection.vue`
 - **Fichiers modifiés** :
   - `ml/state/schema.sql`, `ml/state/store.py`, `ml/state/__init__.py`
-  - `ml/api/lab_routes.py`, `ml/api/iteration_runner.py`
+  - `ml/serving/lab_routes.py`, `ml/serving/iteration_runner.py`
   - `ml/tests/test_lab_api.py` (+6 tests)
   - `app-android/Taskfile.yml` (+ `cohort-test:pull-tests`)
   - `app-android/src/cohortTest/java/com/musubi/eurio/cohorttest/CohortTestActivity.kt`
@@ -827,7 +827,7 @@ dedans. Aucun blocage.
 ## 2026-04-30 · Sprint 5 · Polish — pipeline complète
 
 **Done** :
-- Backend (`ml/api/lab_routes.py`) :
+- Backend (`ml/serving/lab_routes.py`) :
   - `GET /lab/dashboard` : aggrège cross-cohort en 3 vues —
     `top_recipes` (recipe_id × moyenne live R@1, fallback studio),
     `difficult_coins` (live R@1 < 0.5 sur ≥3 iterations distinctes),
@@ -1008,7 +1008,7 @@ dedans. Aucun blocage.
   - `admin/packages/web/src/features/lab/components/DashboardSection.vue`
   - `docs/training-pipeline/USER_GUIDE.md`
 - **Fichiers modifiés** :
-  - `ml/api/lab_routes.py` (+3 endpoints)
+  - `ml/serving/lab_routes.py` (+3 endpoints)
   - `admin/packages/web/src/features/lab/types.ts`
   - `admin/packages/web/src/features/lab/composables/useLabApi.ts`
   - `admin/packages/web/src/features/lab/composables/useLabQueries.ts`
@@ -1080,7 +1080,7 @@ dedans. Aucun blocage.
   À vérifier au démarrage de la prochaine session.
 - **Fichiers modifiés** :
   - `ml/scan/sync_eval_real.py` (fix CAPTURES_BASE)
-  - `ml/api/iteration_runner.py` (strict bake check)
+  - `ml/serving/iteration_runner.py` (strict bake check)
   - `admin/packages/web/src/features/augmentation/composables/useRecipeEditor.ts` (nouveau)
   - `admin/packages/web/src/features/augmentation/components/RecipeConfigurator.vue` (nouveau)
   - `admin/packages/web/src/features/lab/pages/IterationDetailPage.vue`

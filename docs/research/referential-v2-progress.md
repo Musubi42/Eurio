@@ -34,7 +34,7 @@ Décisions architecturales actées (D1–D8) : voir `referential-v2.md` §7.
 | **3b**| REMATCH × 37 + unresolved × 21 (needs_review=true)       | ✅ appliquée | `ml/referential/apply_3b_rematch.py` + `go-task ml:apply-3b[-dry]`       |
 | **3c**| MOVE_TO_VARIANT × 15 + UNCERTAIN absorbed × 2 (3 buckets) | ✅ appliquée | `ml/referential/apply_3c_move_to_variant.py` + `go-task ml:apply-3c[-dry]` |
 | **3d**| ADD_AS_VARIANT × 25 (4 buckets : A/B1/B2/B3)              | ✅ appliquée | `ml/referential/apply_3d_add_as_variant.py` + `go-task ml:apply-3d[-dry]` |
-| **3e**| REVIEW QUEUE infra × 32 cas (script + table + API + UI)  | ✅ livré     | `apply_3e_flag_uncertain.py` + `apply_3e_enrich_context.py` + migration `20260516_coins_review_context.sql` + `ml/api/coins_review_routes.py` + UI `admin/.../CoinsNeedsReviewPage.vue` |
+| **3e**| REVIEW QUEUE infra × 32 cas (script + table + API + UI)  | ✅ livré     | `apply_3e_flag_uncertain.py` + `apply_3e_enrich_context.py` + migration `20260516_coins_review_context.sql` + `ml/review/coins_review_routes.py` + UI `admin/.../CoinsNeedsReviewPage.vue` |
 | **3f**| Standards orphans × 15 (1st/2nd map, MT/VA portraits)    | ✅ appliquée | `ml/referential/apply_3f_standards.py` + `go-task ml:apply-3f[-dry]`     |
 | 4     | **Refetch Numista propre (greenfield 2€)**               | ❌ todo      | Voir `docs/research/numista-clean-refetch-kickoff.md` — annule l'ancien Phase 4 « nouveautés 2025/2026 ». Couvre wipe full 2€ + slug deterministe + prices via /issues/{id}/prices + multi-key quota rotation |
 | 5     | Multi-source ingestion (MdP/LMDLP/BCE → Type Candidates) | ❌ todo      | Refactor scrapers + dedup service                                         |
@@ -225,7 +225,7 @@ en 3f, à surveiller en Phase 4).
      + index partiels.
    - `apply_3e_enrich_context.py` a backfillé ces 2 colonnes pour les 32 cas
      (distribution : 21 rebind / 4 verify_parent / 7 confirm_or_rematch_uncertain).
-   - `ml/api/coins_review_routes.py` expose 5 endpoints `/coins-review/*` :
+   - `ml/review/coins_review_routes.py` expose 5 endpoints `/coins-review/*` :
      `GET /queue`, `GET /search-numista` (local catalog + Numista live API
      fallback avec ASCII fold), `POST /{eid}/rebind`, `POST /{eid}/no-coverage`,
      `POST /{eid}/delete-redirect`.

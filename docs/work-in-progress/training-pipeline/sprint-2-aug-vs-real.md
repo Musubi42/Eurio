@@ -40,7 +40,7 @@ cohort).
 ### A. Backend : calcul distance DINO (~½ jour)
 
 1. **Helper `compute_aug_vs_real(iteration_id)`** dans
-   `ml/api/distance_logic.py` (nouveau fichier) :
+   `ml/serving/distance_logic.py` (nouveau fichier) :
    - pour chaque pièce de la cohort :
      - charge les captures réelles (`<numista_id>/captures/*.jpg`)
      - charge les samples d'augmentations (`<numista_id>/augmentations/<iid>/*.jpg`)
@@ -103,8 +103,8 @@ cohort).
 ## Files à toucher
 
 ### Backend
-- `ml/api/distance_logic.py` — nouveau, helper DINO distance
-- `ml/api/lab_routes.py` — 2 endpoints
+- `ml/serving/distance_logic.py` — nouveau, helper DINO distance
+- `ml/serving/lab_routes.py` — 2 endpoints
 - `ml/state/schema.sql` + `store.py` — table + CRUD
 - `ml/training/compute_embeddings.py` — exposer si nécessaire un wrapper
   DINO réutilisable

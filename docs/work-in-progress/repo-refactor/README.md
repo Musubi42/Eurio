@@ -85,28 +85,33 @@ Ne recopie pas ces chiffres ailleurs, renvoie-y.
 - [ ] **Pousser ce tarball sur pCloud** ← PO
 - [ ] Tarball complet de l'arbre de travail (`.git` inclus) → pCloud, **restauration testée**
 
-### 🟡 Lot 1 — Déchets francs *(en cours)*
+### ✅ Lot 1 — Déchets francs *(terminé 2026-08-14)*
 - [x] `05be2dd` — 6 variantes de quantization + 3 résidus onnx2tf + 2 `labels.cache`
       retirés de l'index (`--cached`, rien ne quitte le disque). −30 395 lignes, ~33 Mo
-- [ ] `rm -rf` local des 3 packages admin morts
-- [ ] `ml/swagger.yaml` — c'est la spec **de Numista**, zéro référence dans le repo
-- [ ] Chemins morts **`ml/api/` → `ml/serving/`** dans **35 docs vivantes**
-      (87 en comptant `docs/archive/`, qu'on ne touche pas). Liste exacte :
-      `grep -rl 'ml/api/' docs/ | grep -v docs/archive`
-      ⚠️ **Ne PAS toucher `ml/review/`** : ce chemin existe toujours (12 fichiers
-      trackés), les 13 docs qui le citent sont justes.
-- [ ] Cocher **K1 ✅** dans `auth-redesign/ROADMAP.md` (travail fait, doc en retard)
-- [ ] Ré-adresser `docs/research/sources-admin-page.md` (pointe `admin/packages/web/`)
-- [ ] `local-sync/HANDOFF-next-session.md` → `docs/archive/` (**périmé et trompeur** :
-      dit « C4-C8 pas déployé » alors que si)
-- [ ] Réconcilier ou archiver `docs/DECISIONS.md` (2026-04-15, contredit par le repo)
-- [ ] `docs/work-in-progress/datasets-minio-migration.md` → `docs/archive/` : plan jamais
-      démarré, **avec des chiffres faux** (2,5 Go / 8895 fichiers). Le laisser vivant est
-      exactement le piège que ce chantier veut supprimer
-- [ ] Référencer ce chantier dans `docs/work-in-progress/README.md` (sinon un agent qui
-      suit le chemin canonique ne le trouve pas)
-- [ ] Corriger `CLAUDE.md` : `catalog_snapshot.json` n'existe plus (c'est `app_core.db`) ;
-      `supabase/types/database.ts` n'est ni généré ni importé ; `infra/review/` ≠ C9
+- [x] `rm -rf` local des 3 packages admin morts (`dist/` + `node_modules/` gitignorés,
+      régénérables par `pnpm install && build`)
+- [x] `ml/swagger.yaml` retiré — c'était la spec **de Numista**, zéro référence
+- [x] Chemins morts **`ml/api/` → `ml/serving/`** : 77 occurrences dans 34 docs vivantes
+- [x] **K1 ✅** coché dans `auth-redesign/ROADMAP.md`
+- [x] Bannière sur `docs/research/sources-admin-page.md` (visait `admin/packages/web/`)
+- [x] `local-sync/HANDOFF-next-session.md` → `docs/archive/local-sync/` + bannière ⛔️
+- [x] Bannière sur `docs/DECISIONS.md` renvoyant vers `docs/adr/README.md`
+- [x] `datasets-minio-migration.md` → `docs/archive/` + bannière (chiffres faux)
+- [x] Chantier référencé dans `docs/work-in-progress/README.md` (focus remis à jour)
+- [x] `CLAUDE.md` : 3 corrections (`app_core.db`, schéma de vérité, `infra/review/`)
+
+> **⚠️ Piège rencontré, à retenir.** Le remplacement `ml/api/` → `ml/serving/` **n'est
+> pas un `sed` global**. Deux fichiers ont migré vers `ml/review/`, pas `ml/serving/` :
+> `coins_review_routes.py` et `review_queue_routes.py`. Un `sed` aveugle aurait créé
+> deux chemins faux. Vérifier l'existence de chaque cible avant tout renommage de masse :
+> ```
+> grep -rho "ml/serving/[a-zA-Z0-9_/]*\.py" docs/ | grep -v docs/archive | sort -u \
+>   | while read p; do [ -f "$p" ] || echo "INTROUVABLE: $p"; done
+> ```
+> Six chemins restent introuvables **et c'est normal** : ils désignent du code
+> délibérément supprimé (`bootstrap_canonical.py` en C2, les `sync_*` de l'event-log
+> abandonné) dans des docs qui le disent explicitement, ou jamais écrit
+> (`dashboard_logic.py`, proposition de sprint).
 
 ### ⬜ Lot 2 — Extraction de `loan/`
 Couper `loan/src/app/globals.css:2`, créer le dépôt, basculer l'alimentation sur MinIO.

@@ -70,7 +70,7 @@ n'est pas décisionnel en V1.
 | `ml/sources/_base/adapter.py` | `DiscoveryGroup` : `+ kind` (`commemorative`/`standard`), `year` optionnel + validation. |
 | `ml/sources/ebay/adapter.py` | `discover` dispatch par `kind` ; helpers `_attribute_commemo_row` / `_attribute_standard_row` ; `_resolve_group` standard-aware. |
 | `ml/sources/cohort_scope.py` | `EbayGroup` (dataclass typé + `kind`) ; route les standards via `v_ebay_standard_groups`. |
-| `ml/sources/cli.py`, `ml/api/sources_routes.py`, `ml/api/lab_routes.py` | threadent `kind` / `year=None` (CLI cohort+freshness, `GroupSpec`, ebay-status). |
+| `ml/sources/cli.py`, `ml/serving/sources_routes.py`, `ml/serving/lab_routes.py` | threadent `kind` / `year=None` (CLI cohort+freshness, `GroupSpec`, ebay-status). |
 
 ## Validation offline (zéro appel eBay)
 

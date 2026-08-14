@@ -1,8 +1,22 @@
 # Work in progress — chantiers à reprendre et clore
 
-## 🎯 Focus actuel (2026-06-30) — par où commencer
+## 🎯 Focus actuel (2026-08-14) — par où commencer
 
 > **Un agent qui arrive lit CE bloc, pas tout le reste.**
+
+**En cours : [`repo-refactor/`](./repo-refactor/) — remise au propre du dépôt.**
+Sa section « Déjà établi » contient des faits vérifiés qui ont coûté cher à découvrir
+(provenance du dataset, rôle de `best.pt`, quelles bases existent vraiment).
+**Lis-la avant de lancer la moindre exploration.** État du système :
+[`../architecture/README.md`](../architecture/README.md) · décisions :
+[`../adr/README.md`](../adr/README.md).
+
+**Chantier au front avant cette pause : [`scan-quality/`](./scan-quality/)** — tout
+l'outillage est livré, il manque les **sessions de scan physiques** (corpus à 73 frames,
+il en faut 400+). Voir `session-protocol-mix-owned-42.md`.
+
+<details>
+<summary>Focus précédent (2026-06-30) — conservé pour mémoire</summary>
 
 1. **Model B est quasi clos.** Le canonique = SQLite sur VPS derrière l'API ;
    compute Mac/PC sur réplique locale ; images dans MinIO. **R1 (front fusionné)** et
@@ -19,6 +33,8 @@
    (sprints livrés) ; chemin de données amont = `model-b/README.md` §Données.
 
 Le reste ci-dessous = catalogue des autres chantiers, à reprendre au besoin.
+
+</details>
 
 ---
 

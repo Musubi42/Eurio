@@ -83,7 +83,7 @@ zombie *mémoire* (B2 d'origine) par un zombie *persisté*. Le front affiche le 
 - Purger les 2 jobs zombies actuels : `UPDATE cohort_jobs SET status='failed', error='thread mort (debug)' WHERE status='running'` (après backup).
 
 Endpoints concernés : `POST /lab/cohorts/{id}/coins/{eurio_id}/recrop-zero` +
-le thread `_runner` dans `ml/api/lab_routes.py` (~l.1772) ; lecture front
+le thread `_runner` dans `ml/serving/lab_routes.py` (~l.1772) ; lecture front
 `GET /lab/cohorts/{id}/jobs` (`cohort_jobs_list`).
 
 ### BUG-2 — be-2007 : libellés contradictoires (quick win, front pur)
@@ -191,13 +191,13 @@ Chacun = un chunk auditable (le PO valide visuellement, cf. feedback_chunk_audit
 Backups DB avant toute migration/purge (`ml/state/eurio.db.bak-*`).
 
 ## 5. Pointeurs techniques
-- Jobs/recrop : `ml/api/lab_routes.py` (`recrop_zero_coin`, `_runner`, `_open_recrop_conn`,
+- Jobs/recrop : `ml/serving/lab_routes.py` (`recrop_zero_coin`, `_runner`, `_open_recrop_conn`,
   `cohort_jobs_list`, `recrop_zero_status`) ; `ml/scan/recrop_zero.py` (`recrop_zero_for_coin`,
   `progress_cb`) ; `ml/state/store.py` (`cohort_job_start/progress/finish`).
 - Census/DINO chargé par recrop : `ml/scan/normalize_snap.py` (`normalize_listing(census=True)`),
   `ml/scan/census.py` (`load_face_probe`, encoder). Précédent qui marche en subprocess :
-  `ml/api/training_runner.py` (`_run_subprocess`, PYTHONPATH).
-- Scrape : `ml/api/sources_routes.py` (`POST /sources/ebay/runs`), orchestrateur
+  `ml/serving/training_runner.py` (`_run_subprocess`, PYTHONPATH).
+- Scrape : `ml/serving/sources_routes.py` (`POST /sources/ebay/runs`), orchestrateur
   `ml/sources/_base/orchestrator.py`, `ml/sources/ebay/*`.
 - Front : `admin/.../features/lab/components/{CohortDrawerEbay,CohortFlowHeader,CohortDrawerCrop}.vue`,
   `composables/{useLabApi,useLabQueries}.ts`, `features/review/composables/useReviewApi.ts`,

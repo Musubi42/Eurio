@@ -1,5 +1,13 @@
 # HANDOFF — reprise Direction A (Mac ↔ VPS ↔ PC synchronisés)
 
+> **⛔️ ARCHIVÉ (2026-08-14) — PÉRIMÉ ET TROMPEUR. NE PAS SUIVRE.**
+> Daté du 2026-07-04, ce document affirme que C4→C8 ne sont « pas poussés / pas
+> déployés » — **c'est faux depuis 5 commits** : ils sont livrés et déployés
+> (audit `hardening-2026-07`). Conservé pour la trace du raisonnement.
+>
+> **Point d'entrée vivant : [`../../work-in-progress/hardening-2026-07/HANDOFF.md`](../../work-in-progress/hardening-2026-07/HANDOFF.md).**
+> État réel de l'architecture : [`../../architecture/README.md`](../../architecture/README.md).
+
 > Point d'entrée UNIQUE pour une nouvelle session. Lis ce fichier en entier
 > avant d'agir. Date du handoff : 2026-07-04. Branche : `sources-jo-wikipedia`.
 

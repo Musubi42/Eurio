@@ -70,7 +70,7 @@ implémenté, à étendre).
 
 | # | Chantier | Statut |
 |---|---|---|
-| K1 | Suppression `admin/packages/review-admin/` (legacy auth régie reviewer) | ⬜ |
+| K1 | Suppression `admin/packages/review-admin/` (legacy auth régie reviewer) | ✅ **FAIT** (`29dab17`, 2026-06-19) — 0 fichier tracké ; il ne restait qu'un `dist/` local |
 | K2 | Décision et exécution sur `admin/packages/review/` (mini-app reviewer) | ⬜ (cf. `ARCHITECTURE.md §7`) |
 | K3 | Suppression handoffs obsolètes (C6/C7/C8/C9 originaux) ou marquage "superseded" | ⬜ |
 | K4 | Spec markdown future "friends review" feature | ⬜ |

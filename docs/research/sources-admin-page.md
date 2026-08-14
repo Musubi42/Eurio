@@ -1,3 +1,8 @@
+> **⚠️ Cible périmée (note du 2026-08-14).** Ce document vise `admin/packages/web/`,
+> **package supprimé** depuis la fusion R1. Le front unique est
+> **`admin/packages/studio-local/`** (cf. `CLAUDE.md` §Architecture frontend).
+> Le raisonnement de design reste valable ; seuls les chemins sont à transposer.
+
 ---
 title: Prompt — session de design de la page Sources admin
 date: 2026-04-26
@@ -70,7 +75,7 @@ Une nouvelle page admin — probablement `/sources` dans `admin/packages/web/` �
    - Quotas restants : Numista c'est déjà dans SQLite via `quota_status()`, eBay c'est à construire
 
 3. **Déclenchement de fetch depuis l'UI :**
-   - Le FastAPI (`ml/api/server.py`) pourrait exposer des endpoints POST `/sources/ebay/fetch`, `/sources/numista/fetch`
+   - Le FastAPI (`ml/serving/server.py`) pourrait exposer des endpoints POST `/sources/ebay/fetch`, `/sources/numista/fetch`
    - Ces endpoints lancent les scripts en subprocess ou asyncio
    - L'admin appelle ces endpoints — mais attention : les fetches prennent des minutes, il faut un pattern job async (SSE ou polling de statut)
    - Est-ce qu'on veut ça maintenant, ou juste l'affichage d'état sans bouton de déclenchement pour commencer ?
@@ -91,7 +96,7 @@ Une nouvelle page admin — probablement `/sources` dans `admin/packages/web/` �
 ```
 ml/referential/numista_keys.py        # quota_status(), _MONTHLY_LIMIT
 ml/market/scrape_ebay.py              # args + structure du run eBay
-ml/api/server.py                      # endpoints FastAPI existants
+ml/serving/server.py                      # endpoints FastAPI existants
 admin/packages/web/src/app/nav.ts     # pour voir où insérer /sources
 admin/packages/web/src/features/      # pour voir le pattern d'une feature admin
 ml/ib/ebay-market-prices.md           # stratégie + données empiriques eBay

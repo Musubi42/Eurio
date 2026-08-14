@@ -96,7 +96,7 @@ pnpm dev
 ```
 
 CORS configuré pour les ports 5173-5177. Si Vite prend 5178+, ajouter
-au CORS dans `ml/api/server.py:60-65`.
+au CORS dans `ml/serving/server.py:60-65`.
 
 ### 2.3 Sanity check live admin
 
@@ -369,7 +369,7 @@ depuis P.8b.2 (`1e50877`).
 ### 9.5 — Vite ports fluctuants
 
 Vite prend 5173 si dispo, sinon 5174, 5175, 5176, 5177... CORS configuré
-pour les 5 ports. Si Vite prend 5178+, ajouter à `ml/api/server.py:60-65`.
+pour les 5 ports. Si Vite prend 5178+, ajouter à `ml/serving/server.py:60-65`.
 
 ### 9.6 — `api.server` import résolution dans tests pytest
 
