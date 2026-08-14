@@ -200,6 +200,59 @@ Quand iOS arrive. Après le lot 4, c'est du déplacement de dossiers.
 | 6 | `source-lmdlp-rebuild` : merger ou abandonner ? | Lot 5 |
 | 7 | **`app-android/…/assets/models/test_model.tflite`** (19 Mo, non tracké, aucun consommateur identifié, daté 2026-04-09) : résidu de spike ou artefact utile ? | Lot 4 |
 
+## État du VPS — relevé du 2026-08-14 (lecture seule)
+
+Accès : `ssh serverOimNixDontpanic`, projet dans `/opt/eurio`.
+
+| Élément | État |
+|---|---|
+| Branche | `scan-corpus-funnel` à **`7528d91`** — **2 commits derrière le local** (`d1f5812`), et évidemment sans `repo-cleanup`. Arbre propre |
+| Conteneurs | `eurio-api`, `eurio-admin`, `eurio-minio`, `eurio-review` **up 4 semaines** · `eurio-scrape-tor` **unhealthy** |
+| `eurio-review` | **HTTP 200** → la feature K2 est **vivante**, pas dormante |
+| Canonique | `eurio.db` = **149 Mo**, dernière écriture **12 juillet** |
+| MinIO | **6,8 Go** de données |
+| Disque | 287 Go / 393 Go utilisés, **86 Go libres** (77 %) |
+
+### 🔴 Les sauvegardes ne tournent pas
+
+Vérifié par quatre chemins indépendants : **aucun timer systemd**, **aucune entrée cron**
+(utilisateur ni système), **`rclone` n'est pas installé**, **aucune trace dans le
+journal**, et **aucune archive** nulle part sur le disque.
+
+Ce qui existe : `infra/backup/eurio-backup.sh` + sa doc, et une clé age dans
+`~/.config/eurio-backup/age-key.txt` datée du **17 juin**. Le dispositif a donc été
+préparé puis **jamais branché**.
+
+Sont concernés : **6,8 Go d'images MinIO** (raws, crops, canoniques) et le canonique
+`eurio.db` de 149 Mo. Le tarball du 2026-08-14 sauve le dépôt local, **pas** ces données.
+
+### Conséquence sur une règle existante
+
+`infra/minio/README.md` §Anti-patterns interdit le versioning S3 avec ce motif :
+
+> « The protection model is **"weekly tarball + audit"**, not S3 native versioning. »
+
+**La prémisse est fausse** : il n'y a pas de tarball hebdomadaire. La règle interdit donc
+un filet de sécurité au nom d'un autre filet qui n'existe pas. À rediscuter — soit on
+branche la sauvegarde et la règle redevient fondée, soit on réexamine le versioning.
+
+## Objectifs de la prochaine session
+
+Par ordre de priorité assumé :
+
+1. **Brancher la sauvegarde du VPS.** C'est le seul point où une panne fait perdre des
+   données non reproductibles. Passe avant tout le reste.
+2. **Boucler le lot 4** : `./bootstrap.sh` sur le VPS → `ml:assets:publish` → vérifier le
+   round-trip → `git rm --cached` + `dependsOn`. ⚠️ **Prérequis** : le VPS doit avoir les
+   fichiers `infra/minio/` à jour, or ils sont sur `repo-cleanup` qui n'est pas poussée.
+3. **Rediscuter le versioning S3** à la lumière du point 1.
+4. **Trancher K2** — le service tourne et répond, la question n'est plus « est-il mort »
+   mais « le garde-t-on ».
+5. **Lot 5, le remaster git** — en dernier, et pas avant que le lot 4 soit bouclé (sinon
+   on grave dans la nouvelle base les binaires qu'on s'apprête à sortir). Décision encore
+   ouverte : `source-lmdlp-rebuild` (+4, travail fini) — merger ou abandonner.
+6. `eurio-scrape-tor` unhealthy depuis un moment — diagnostiquer.
+
 ## Doc encore à écrire
 
 `docs/architecture/` ne couvre **que** le stockage et le transport de la donnée. Zones
