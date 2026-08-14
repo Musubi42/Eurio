@@ -1,4 +1,4 @@
-# Architecture Eurio — où vit la donnée, qui écrit quoi
+# Données et artefacts — où vit la donnée, qui écrit quoi
 
 > **Lis ce fichier avant de chercher où se trouve une donnée.** Il décrit l'état
 > **réel** au 2026-08-14, vérifié dans le code, pas l'état visé.
@@ -6,6 +6,13 @@
 > Détail des artefacts (producteur, consommateur, régénérable ?) : [`artifacts.md`](./artifacts.md).
 > Décisions et leur raison : [`../adr/README.md`](../adr/README.md).
 > Chantier de refonte en cours : [`../work-in-progress/repo-refactor/README.md`](../work-in-progress/repo-refactor/README.md).
+
+> ⚠️ **Périmètre : le stockage et le transport de la donnée, rien d'autre.** Ce fichier
+> ne décrit **pas** l'app Android (Compose/Room/flavors), le front admin `studio-local`,
+> le pipeline de scan (scrape→crop→embed→match), l'entraînement (`ml/lab/iterations`,
+> cohortes), la review, les sources eBay/Numista, ni le mécanisme `local-sync` (HLC,
+> outbox, `GET /db/events/pull`). Ces pages **restent à écrire** — voir la liste dans
+> le chantier `repo-refactor`. Ne conclus pas de leur absence ici qu'elles n'existent pas.
 
 ## En une phrase
 
@@ -70,8 +77,14 @@ Scrape/crop écrivent dans MinIO ; la lecture passe par `local_path(bucket, key)
 (`ml/shared/storage/local_cache.py`) : cache read-through sur disque, racine
 `EURIO_CACHE_ROOT` (défaut `~/.cache/eurio`), éviction LRU.
 
-⚠️ **Pas de fallback par design** : MinIO injoignable ou clé absente ⇒ `FileNotFoundError`.
-Toute chaîne qui en dépend devient **non fonctionnelle hors ligne**.
+**Le cache est persistant** : `local_path()` retourne immédiatement si le fichier est
+déjà là (`if target.exists()`), en touchant seulement l'atime pour le LRU. Donc **sur
+cache chaud, le hors-ligne fonctionne**.
+
+⚠️ **Pas de fallback sur cache froid** : MinIO injoignable ou clé absente ⇒
+`FileNotFoundError`. Et le LRU (`_evict_if_needed()`, plafond `EURIO_CACHE_MAX_GB`) peut
+**évincer** un fichier déjà téléchargé — un artefact de build évincé casserait un build
+hors ligne qui marchait la veille.
 
 ### 3. Modèles et poids — MANUEL, VIA GIT ⚠️
 
@@ -97,9 +110,12 @@ eurio.db (VPS)
   ▼
 Supabase  (projection app-facing v2 : table `coin`)
   │  ml/export/build_app_core.py  (LIT Supabase, pas eurio.db)
-  ▼
-app_core.db  →  écrit DIRECTEMENT dans app-android/src/main/assets/  →  commité
+  ├─▶ app_core.db   → app-android/src/main/assets/   (COMMITÉ)
+  └─▶ app_core.json → admin/packages/proto/public/data/   (gitignoré, régénéré)
 ```
+
+Le script écrit donc dans **deux modules voisins** — c'est précisément le couplage qui
+bloque un découpage en dépôts séparés (cf. [ADR-007](../adr/007-pas-de-split-eurio-avant-artefacts.md)).
 
 **Pourquoi passer par Supabase et pas par `eurio.db` ?** C'est délibéré : le docstring
 de `build_app_core.py` l'assume — *« C3 is a strict SUBSET of Supabase. By reading from
@@ -118,12 +134,13 @@ incrément ⇒ l'app **skippe le bootstrap en silence**.
 | # | Entrée | Source → cible | État |
 |---|---|---|---|
 | A | `go-task ml:deploy` | `ml/output/` → assets Android | ⚠️ **obsolète** : `ml/serving/server.py` déclare `ml/output/` supprimé, la tâche y pointe toujours |
-| B | `python -m scripts.promote_prod_assets` | `ml/prod/current/` → assets | courant, **PC uniquement** |
+| B | `ml/scripts/promote_prod_assets.py` (lancé depuis `ml/`) | `ml/prod/current/` → assets | courant, **PC uniquement** |
 | C | `POST /export/deploy` | `ml/prod/current/` → assets | ⚠️ **skip silencieux** si source absente : renvoie `200 {count: 0}` |
 
-Et `coin_detector.tflite` **n'est couvert par aucun des trois** : copié à la main,
-jamais retouché depuis le déplacement `app/` → `app-android/`. Probablement désynchronisé
-du `best.pt` tracké.
+Et `coin_detector.tflite` **n'est couvert par aucun des trois** : copié à la main, un
+seul commit le concernant (`a085379`, le déplacement `app/` → `app-android/`).
+**Question ouverte** : correspond-il au `best.pt` tracké depuis (`d1f5812`, postérieur) ?
+Aucun des deux n'a de sha ni de meta, donc **on ne peut pas le savoir en l'état**.
 
 ## Ce qui n'existe pas (et qu'on croit souvent exister)
 
@@ -133,3 +150,14 @@ du `best.pt` tracké.
 - **Aucun générateur de types** ml ↔ front. Les types TS sont retapés à la main.
   `ml/swagger.yaml` est la spec **de Numista**, pas d'Eurio, et n'est référencée nulle part.
 - **`supabase/types/database.ts` n'a aucun import** — c'est de la doc de schéma.
+
+## Corrections à porter dans `CLAUDE.md`
+
+`CLAUDE.md` fait autorité sur les règles, mais deux de ses affirmations factuelles sont
+périmées — ce fichier-ci est à jour, `CLAUDE.md` ne l'est pas :
+
+| `CLAUDE.md` dit | Réalité |
+|---|---|
+| snapshot catalogue = `app-android/src/main/assets/catalog_snapshot.json` | Ce fichier **n'existe plus** : c'est `app_core.db` depuis P6 |
+| « Schéma de vérité : `supabase/types/database.ts` (généré) » | **Aucun import, aucun générateur.** C'est de la doc de schéma, pas une source |
+| `infra/review/` « sera supprimé à C9 » | C9 n'existe plus (`auth-redesign/ROADMAP.md`). Le sujet vivant est **K2**, qui porte sur `admin/packages/review/` |

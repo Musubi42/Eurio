@@ -43,9 +43,16 @@ Détail : [`../../architecture/README.md`](../../architecture/README.md).
 `dist/` + `node_modules/` gitignorés sur le disque. Rien à committer, juste un `rm -rf` local.
 
 **`admin/packages/review/` est vivant** — 10 fichiers trackés, buildé par
-`infra/review/Dockerfile`, servi sur `eurio-review.musubi.dev`. C'est le chantier **K2
-non tranché**, et son déclencheur de suppression a disparu (`CLAUDE.md` dit « supprimé
-à C9 », or C9 n'existe plus).
+`infra/review/Dockerfile`, servi sur `eurio-review.musubi.dev`. C'est le chantier
+**K2 non tranché** (`auth-redesign/ROADMAP.md` : « Décision et exécution sur
+`admin/packages/review/` »). Ne pas confondre avec `CLAUDE.md`, qui parle de
+**`infra/review/`** (le déploiement Docker) et le dit supprimable « à C9 » — or C9
+n'existe plus. Deux objets distincts, deux statuts distincts.
+
+**`ml/review/` n'est PAS un chemin mort** — 12 fichiers trackés (`coins_review_routes.py`,
+`peer_arbitration_routes.py`, `review_lanes.py`, `publish_cli.py`, `validation/`…).
+Seul **`ml/api/`** est mort (renommé `ml/serving/`). Les 13 docs qui citent `ml/review/`
+sont **correctes** : ne pas les toucher.
 
 **Supabase n'est pas décoratif** : `build_app_core.py` **lit Supabase** pour produire
 `app_core.db`, le catalogue offline de l'APK. Le retrait de Supabase et la publication
@@ -60,11 +67,18 @@ d'`app_core` sont donc **le même chantier**.
 
 **Chiffres corrigés** (des docs anciennes en citent de faux) :
 `scan-corpus-funnel` est **+374** sur `main` (pas 21) · `ml/datasets/` tracké = **33 Mo**
-(pas 2,5 Go) · `.git` = **198 Mo**.
+(pas 2,5 Go) · `.git` = **146 Mo**.
+→ **Source unique des volumes : [`../../architecture/artifacts.md`](../../architecture/artifacts.md) §Volumes.**
+Ne recopie pas ces chiffres ailleurs, renvoie-y.
 
 ## Lots
 
-### ✅ Lot 0 — Filet de sécurité *(partiel)*
+### 🟡 Lot 0 — Filet de sécurité *(partiel — BLOQUANT)*
+
+> 👉 **Prochaine action du chantier.** Le lot 0 conditionne tout ce qui supprime
+> quoi que ce soit. Ne pas entamer les lots 2+ tant que le tarball complet n'est pas
+> pris **et restauré à blanc au moins une fois**.
+
 - [x] Tarball des 30 négatifs + provenance Roboflow →
       `~/Documents/Musubi42/eurio-backups/eurio-detection-negatives-20260814.tar.gz`
       (2,5 Mo, sha256 `85ba18d5…`)
@@ -76,15 +90,23 @@ d'`app_core` sont donc **le même chantier**.
       retirés de l'index (`--cached`, rien ne quitte le disque). −30 395 lignes, ~33 Mo
 - [ ] `rm -rf` local des 3 packages admin morts
 - [ ] `ml/swagger.yaml` — c'est la spec **de Numista**, zéro référence dans le repo
-- [ ] Chemins morts `ml/api/` → `ml/serving/` dans **12 docs vivantes**
-      (`docs/roadmap.md`, `docs/refacto-ml/README.md`, `docs/work-in-progress/README.md`,
-      `hardening-2026-07/README.md`, `dino-suggestions/KICKOFF.md`,
-      `cohort-readiness/HANDOFF.md`…)
+- [ ] Chemins morts **`ml/api/` → `ml/serving/`** dans **35 docs vivantes**
+      (87 en comptant `docs/archive/`, qu'on ne touche pas). Liste exacte :
+      `grep -rl 'ml/api/' docs/ | grep -v docs/archive`
+      ⚠️ **Ne PAS toucher `ml/review/`** : ce chemin existe toujours (12 fichiers
+      trackés), les 13 docs qui le citent sont justes.
 - [ ] Cocher **K1 ✅** dans `auth-redesign/ROADMAP.md` (travail fait, doc en retard)
 - [ ] Ré-adresser `docs/research/sources-admin-page.md` (pointe `admin/packages/web/`)
 - [ ] `local-sync/HANDOFF-next-session.md` → `docs/archive/` (**périmé et trompeur** :
       dit « C4-C8 pas déployé » alors que si)
 - [ ] Réconcilier ou archiver `docs/DECISIONS.md` (2026-04-15, contredit par le repo)
+- [ ] `docs/work-in-progress/datasets-minio-migration.md` → `docs/archive/` : plan jamais
+      démarré, **avec des chiffres faux** (2,5 Go / 8895 fichiers). Le laisser vivant est
+      exactement le piège que ce chantier veut supprimer
+- [ ] Référencer ce chantier dans `docs/work-in-progress/README.md` (sinon un agent qui
+      suit le chemin canonique ne le trouve pas)
+- [ ] Corriger `CLAUDE.md` : `catalog_snapshot.json` n'existe plus (c'est `app_core.db`) ;
+      `supabase/types/database.ts` n'est ni généré ni importé ; `infra/review/` ≠ C9
 
 ### ⬜ Lot 2 — Extraction de `loan/`
 Couper `loan/src/app/globals.css:2`, créer le dépôt, basculer l'alimentation sur MinIO.
@@ -108,12 +130,30 @@ Quand iOS arrive. Après le lot 4, c'est du déplacement de dossiers.
 
 | # | Question | Bloque |
 |---|---|---|
-| 1 | **Le build APK doit-il rester possible hors ligne ?** `local_path()` n'a pas de fallback par design | Lot 4 |
+| 1 | **Faut-il exempter les artefacts de build de l'éviction LRU du cache MinIO ?** (le cache est déjà persistant : le hors-ligne marche sur cache chaud. Le risque est qu'un `_evict_if_needed()` supprime un artefact et casse un build qui marchait) | Lot 4 |
 | 2 | Nom du **dossier parent** (`Documents/Musubi42/bizz/…`) accueillant `eurio/` et `loan/` | Lot 2 |
 | 3 | `loan` lit-il le **même artefact `app_core`** que l'app (schéma v2), ou garde-t-il son `catalog.json` ? | Lot 2 |
 | 4 | **K2** : le service `eurio-review.musubi.dev` tourne-t-il encore, feature abandonnée ou différée ? | Lot 1 |
 | 5 | Plan de retrait de **Supabase** : par quoi est-il remplacé pour l'app ? | Lot 4 |
 | 6 | `source-lmdlp-rebuild` : merger ou abandonner ? | Lot 5 |
+| 7 | **`app-android/…/assets/models/test_model.tflite`** (19 Mo, non tracké, aucun consommateur identifié, daté 2026-04-09) : résidu de spike ou artefact utile ? | Lot 4 |
+
+## Doc encore à écrire
+
+`docs/architecture/` ne couvre **que** le stockage et le transport de la donnée. Zones
+importantes sans aucune page, par ordre d'utilité pour un agent qui arrive :
+
+1. **`local-sync`** — HLC, outbox, `EURIO_SYNC_MODE: hub`, `GET /db/events/pull`. C'est le
+   mécanisme central du modèle « writer unique » et il n'est décrit nulle part.
+2. **`ml/serving/server.py`** — 1400+ lignes, structure `*_routes.py`, endpoints. On sait
+   seulement qu'il en a un mort.
+3. **Schéma de `eurio.db`** et où vivent ses migrations (`ml/state/schema.sql`,
+   `ml/serving/migrations/`).
+4. **Pipeline de scan** : scrape → crop → embed → match.
+5. **Entraînement** : `ml/lab/iterations/`, `promote_iteration`, cohortes.
+6. **Sources eBay / Numista** — et pourquoi `ml/datasets/sources/` est 🔴 irremplaçable.
+7. **Front admin `studio-local`** (196 fichiers) et **app Android** (Compose/Room/flavors).
+8. **Procédures de base** : entrer dans le devShell, lancer l'API, lancer les tests.
 
 ## Pièges à ne pas réintroduire
 

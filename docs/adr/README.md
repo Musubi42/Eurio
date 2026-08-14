@@ -30,7 +30,8 @@
 
 > ⚠️ `docs/DECISIONS.md` (2026-04-15) est un ancien index, **partiellement périmé** —
 > il porte par exemple une décision « tests en `unittest`, pas pytest » contredite par
-> les 123 fichiers pytest du repo. À réconcilier ou archiver.
+> les **131** fichiers pytest du repo (dont 116 dans `ml/`). À réconcilier ou archiver :
+> deux index de décisions concurrents, c'est un index de trop.
 
 ## Écrire une ADR
 

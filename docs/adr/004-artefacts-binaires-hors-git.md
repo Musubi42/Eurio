@@ -15,9 +15,12 @@ pourtant ~50 Mo d'artefacts binaires y sont **trackés** : ils ont été force-a
 par `git fetch && git reset --hard origin/<branche>`.
 
 Conséquences observées :
-- `.git` est remonté à **198 Mo** après avoir été ramené de 1,3 Go à 109 Mo en juin ;
-- chaque ré-export du détecteur ajoute ~37 Mo **définitifs** à l'historique de **deux**
-  remotes (codeberg + github) ;
+- `.git` pèse **146 Mo** après avoir été ramené de 1,3 Go à 109 Mo en juin — il a donc
+  regrossi d'un tiers en six semaines, principalement par force-add
+  (chiffres : [`../architecture/artifacts.md`](../architecture/artifacts.md) §Volumes) ;
+- le problème n'est pas la taille absolue mais le **taux** : chaque ré-export du
+  détecteur ajoute ~37 Mo **définitifs** à l'historique de **deux** remotes
+  (codeberg + github), et rien ne borne le nombre de ré-exports ;
 - le dernier commit a embarqué au passage 30 395 lignes d'artefacts de toolchain onnx2tf
   (`schema_generated.py`, `schema.fbs`, rapport de correspondance) — du bruit pur.
 
@@ -42,7 +45,9 @@ Application par étapes, du plus sûr au plus risqué :
    3 résidus onnx2tf, 2 `labels.cache`. −30 395 lignes, ~33 Mo.
 2. **Modèles de l'APK** (`coin_detector.tflite`, `eurio_embedder_v1.tflite`,
    `coin_embeddings.json`, `model_meta.json`) → fetch au build Gradle, sur le modèle de
-   `compileFilamentMaterials`.
+   `compileFilamentMaterials`. ⚠️ **Qualifier d'abord `test_model.tflite`** (19 Mo, non
+   tracké, aucun consommateur identifié) : ne pas le porter dans le nouveau mécanisme
+   sans savoir à quoi il sert.
 3. **Poids et dataset de détection** (`best.pt`, les 3786 labels) → MinIO, **avec un
    remplacement du transport Mac→PC vérifié sur le PC avant tout `git rm`**.
 
@@ -54,7 +59,7 @@ revient sur cette décision — sujet distinct.
 
 | Option | Verdict |
 |---|---|
-| Statu quo (git comme transport) | Historique qui enfle sans borne sur 2 remotes ; déjà 198 Mo |
+| Statu quo (git comme transport) | Historique qui enfle sans borne sur 2 remotes : 109 Mo → 146 Mo en six semaines |
 | Git LFS | Ajoute un service et un coût ; MinIO est déjà là et déjà utilisé pour les images |
 | `ml/state/archive.py` (tarball 500 Mo–1 Go, `ml:export-state-full`) | Existe, mais manuel et grossier — tout ou rien, pas de granularité par artefact |
 | **MinIO + manifeste sha256** | Réutilise le cache read-through et le pattern `cohort_bundle` existants |
@@ -67,17 +72,20 @@ revient sur cette décision — sujet distinct.
 - Le transport Mac↔PC devient explicite au lieu d'être un effet de bord de git.
 
 **Mauvaises, à assumer**
-- ⚠️ **Le build APK ne sera plus possible hors ligne.** `local_path()` est explicite :
-  *« pas de fallback »* — MinIO injoignable ⇒ `FileNotFoundError`. **Décision ouverte :
-  faut-il un cache local persistant pour préserver le build hors ligne ?**
+- ⚠️ **Le premier build après un clone exigera le réseau.** Nuance importante : le cache
+  de `local_path()` **est déjà persistant** (retour immédiat si `target.exists()`), donc
+  le hors-ligne marche sur cache chaud. Le risque réel est ailleurs : l'**éviction LRU**
+  (`_evict_if_needed()`, plafond `EURIO_CACHE_MAX_GB`) peut supprimer un artefact déjà
+  téléchargé et casser un build qui fonctionnait la veille. **Décision ouverte : faut-il
+  exempter les artefacts de build de l'éviction LRU, ou les stocker hors du cache MinIO ?**
 - ⚠️ **Risque de casse silencieuse du PC** : si on retire les poids de git avant que le
   fetch marche, le prochain `reset --hard` les fait disparaître sans erreur ; l'échec
   n'apparaît qu'au premier appel de `ml/vision/normalize_snap.py`.
 - ⚠️ **Le nouveau code de fetch ne sera pas testé par défaut** : `ml/tests/conftest.py`
   a une fixture **autouse** qui remplace le client MinIO par un `MagicMock`. Tout test du
   fetch demande un opt-out explicite.
-- Sortir les fichiers de l'index ne réduit pas `.git` : seul un `filter-repo` le fait
-  (cf. [ADR-005](./005-remaster-historique-git.md)).
+- Sortir les fichiers de l'index ne réduit **pas** `.git` : seul un `filter-repo` ou un
+  remaster le fait (cf. [ADR-005](./005-remaster-historique-git.md)).
 
 ## Références
 

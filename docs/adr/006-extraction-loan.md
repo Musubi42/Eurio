@@ -19,7 +19,8 @@ nuance retenue par le PO : un second exemplaire garde de la valeur si l'état d'
 - **Un seul lien de code** : `loan/src/app/globals.css:2` → `@import "../../../shared/tokens.css"`.
 - Aucun import de code Eurio. `node_modules` et lockfile propres, **hors du workspace pnpm**.
   Sa propre doc l'affirme : *« le code dans `loan/src/` n'importe jamais rien »*.
-- Aucun code Eurio ne référence `loan/` : seulement 3 tâches wrapper dans `Taskfile.yml`.
+- Aucun code Eurio ne référence `loan/` : seulement 4 tâches wrapper dans `Taskfile.yml`
+  (`loan:build-catalog`, `loan:dev`, `loan:env-check`, `loan:deploy`).
 - Les données transitent par **Supabase** : `loan/scripts/build-catalog.ts` lit
   `coins` + `coin_market_prices` avec `SUPABASE_SERVICE_ROLE_KEY` et produit
   `loan/public/catalog.json` (gitignoré).

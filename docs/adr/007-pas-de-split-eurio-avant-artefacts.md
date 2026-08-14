@@ -15,7 +15,7 @@ couplages les plus coûteux du repo** :
 **1. `ml/` écrit directement dans `app-android/` et `admin/packages/proto/`.**
 `ml/export/build_app_core.py` écrit dans `admin/packages/proto/public/data/` **et**
 `app-android/src/main/assets/`. Six chemins d'écriture croisés au total
-(`build_app_core_qa.py`, `promote_prod_assets.py`, `ml/tasks.yml`,
+(`build_app_core_qa.py`, `ml/scripts/promote_prod_assets.py`, `ml/tasks.yml`,
 `build_shared_reverse_assets.py`, et l'endpoint HTTP `POST /export/deploy`), plus deux
 lectures en sens inverse — `ml/training/foundation/anchors.py` lit les assets Android
 **comme entrée d'entraînement**. Tous ces scripts résolvent `_REPO_ROOT = ml/..` : dans
