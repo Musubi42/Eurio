@@ -184,30 +184,8 @@ tasks:
     cmds:
       - task -g global:ccproxy:health
 
-  loan:build-catalog:
-    desc: "Génère catalog.json + télécharge images dans public/coins/ (local only, requires SUPABASE_SERVICE_ROLE_KEY)"
-    dir: loan
-    cmds:
-      - pnpm tsx scripts/build-catalog.ts
-
-  loan:dev:
-    desc: "Dev server Next.js pour loan/"
-    dir: loan
-    cmds:
-      - pnpm dev
-
-  loan:env-check:
-    desc: "Vérifie que les secrets Supabase ne sont pas dans le build loan"
-    dir: loan
-    cmds:
-      - "! grep -r 'service_role' .next .vercel/output 2>/dev/null"
-      - "! grep -r 'SUPABASE_SERVICE_ROLE_KEY' .next .vercel/output 2>/dev/null"
-
-  loan:deploy:
-    desc: "Build local + env-check + deploy --prebuilt vers Vercel prod"
-    dir: loan
-    cmds:
-      - task: loan:build-catalog
-      - vercel build --prod
-      - task: loan:env-check
-      - vercel deploy --prebuilt --prod
+  # ─── loan ─────────────────────────────────────────────────────────────────
+  # Extrait du monorepo le 2026-08-14 (ADR-006) vers ../loan, dépôt séparé.
+  # Ses tâches (build-catalog, dev, env-check, deploy) vivent désormais dans
+  # son propre Taskfile. Transition de l'alimentation Supabase → MinIO :
+  # voir ../loan/docs/migration-vers-minio.md

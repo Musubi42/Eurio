@@ -1,7 +1,8 @@
 # ADR-006 — `loan/` extrait dans son propre dépôt
 
 **Date :** 2026-08-14
-**Statut :** 🟡 Proposée — principe validé par le PO, dépôt cible non créé
+**Statut :** ✅ **Acceptée et exécutée le 2026-08-14** — extraction faite, transition
+des données restant à faire (voir §Exécution)
 
 ## Contexte
 
@@ -46,6 +47,22 @@ Deux ruptures à traiter :
 | Garder `loan` dans le monorepo | Pollue chaque recherche, indexation et `grep` ; produit distinct, cycle de vie distinct |
 | Extraire en gardant l'alimentation Supabase | Rate l'occasion : garde un consommateur du `service_role` et fige la divergence v1/v2 |
 | **Extraire + alimentation MinIO** | Détache, débranche du Supabase mourant, supprime un usage du `service_role` |
+
+## Exécution (2026-08-14)
+
+Nouvelle topographie : `bizz/EurioProject/` contient `Eurio/` et `loan/` côte à côte.
+
+| Fait | Détail |
+|---|---|
+| `loan/` détracké et déplacé | 116 fichiers ; `EurioProject/loan`, dépôt git autonome (`ef98288`) |
+| Couplage de code coupé | `shared/tokens.css` **vendoré** dans `loan/src/styles/tokens.css`, avec bandeau de provenance. À remplacer par `@eurio/tokens` le jour où [ADR-007](./007-pas-de-split-eurio-avant-artefacts.md) est livrée |
+| 4 tâches `loan:*` retirées | `Taskfile.yml` d'Eurio, remplacées par un commentaire pointant la doc de migration |
+| `CLAUDE.md` mis à jour | la mention Vercel renvoie désormais au dépôt séparé |
+| Secrets | `.env.local` et `.vercel/` suivent le dossier sur disque, **jamais dans git** (vérifié avant le premier commit) |
+| Doc de transition | **`loan/docs/migration-vers-minio.md`** — contexte produit, 4 mondes de données, 12 champs consommés, divergence v1/v2, plan en 7 étapes, 4 décisions ouvertes |
+
+**Non fait, et c'est volontaire** : l'alimentation reste sur Supabase. `loan` n'est pas
+prioritaire ; la doc de migration existe pour que la reprise ne recommence pas l'enquête.
 
 ## Conséquences
 

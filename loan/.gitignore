@@ -1,8 +1,0 @@
-node_modules/
-.next/
-.vercel/
-.env.local
-public/coins/
-public/catalog.json
-.vercel
-.env*.local

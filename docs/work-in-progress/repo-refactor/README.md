@@ -5,6 +5,10 @@
 > qui ont coûté cher à découvrir. Ne les re-cherche pas, complète-les.
 >
 > Démarré le 2026-08-14 · Branche `repo-cleanup` (partie de `scan-corpus-funnel`)
+>
+> ⚠️ **Le dépôt a déménagé** : `bizz/Eurio` → **`bizz/EurioProject/Eurio`**, avec
+> `bizz/EurioProject/loan` à côté. Après un `cd`, relancer `direnv allow` — le devShell
+> et le `flipHook` de `flake.nix` résolvent des chemins depuis `$PWD`.
 
 ## Objectif
 
@@ -73,17 +77,28 @@ Ne recopie pas ces chiffres ailleurs, renvoie-y.
 
 ## Lots
 
-### 🟡 Lot 0 — Filet de sécurité *(partiel — BLOQUANT)*
-
-> 👉 **Prochaine action du chantier.** Le lot 0 conditionne tout ce qui supprime
-> quoi que ce soit. Ne pas entamer les lots 2+ tant que le tarball complet n'est pas
-> pris **et restauré à blanc au moins une fois**.
-
+### ✅ Lot 0 — Filet de sécurité *(2026-08-14)*
 - [x] Tarball des 30 négatifs + provenance Roboflow →
       `~/Documents/Musubi42/eurio-backups/eurio-detection-negatives-20260814.tar.gz`
       (2,5 Mo, sha256 `85ba18d5…`)
-- [ ] **Pousser ce tarball sur pCloud** ← PO
-- [ ] Tarball complet de l'arbre de travail (`.git` inclus) → pCloud, **restauration testée**
+- [x] **Tarball complet** → `bizz/EurioProject/eurio-full-20260814.tar` (**5,3 Go**,
+      52 853 entrées). Exclut `node_modules`, `.venv`, `__pycache__`, `.next`,
+      `.gradle`, `build`, `.cxx` (régénérables, 3,5 Go). Contient `.git`, `loan`,
+      `best.pt`, les `.tflite`, les golds annotés, les 30 négatifs
+- [x] **Restauration testée** : `.git` seul extrait dans un dossier temporaire →
+      `git checkout` restaure **6094 fichiers**, `git fsck` **0 erreur**, HEAD correct
+- [ ] **Pousser les deux tarballs sur pCloud** ← PO (ils sont sur disque local)
+
+### ✅ Lot 2 — Extraction de `loan/` *(2026-08-14)*
+- [x] `loan/` détracké (116 fichiers) et déplacé → `bizz/EurioProject/loan`
+- [x] Dépôt git autonome initialisé, premier commit `ef98288`, 118 fichiers versionnés,
+      **aucun secret dans l'index** (`.env.local` / `.vercel/` couverts par `.gitignore`)
+- [x] Couplage CSS coupé : `shared/tokens.css` **vendoré** dans `loan/src/styles/tokens.css`
+- [x] 4 tâches `loan:*` retirées du `Taskfile.yml`, `CLAUDE.md` mis à jour
+- [x] **`loan/docs/migration-vers-minio.md`** écrit : contexte produit, 4 mondes de
+      données, 12 champs consommés, divergence v1/v2, plan en 7 étapes, 4 décisions
+- [ ] Créer le dépôt distant et pousser ← PO (URL à fournir)
+- [ ] La migration Supabase → MinIO elle-même (non prioritaire, documentée)
 
 ### ✅ Lot 1 — Déchets francs *(terminé 2026-08-14)*
 - [x] `05be2dd` — 6 variantes de quantization + 3 résidus onnx2tf + 2 `labels.cache`
@@ -112,9 +127,6 @@ Ne recopie pas ces chiffres ailleurs, renvoie-y.
 > délibérément supprimé (`bootstrap_canonical.py` en C2, les `sync_*` de l'event-log
 > abandonné) dans des docs qui le disent explicitement, ou jamais écrit
 > (`dashboard_logic.py`, proposition de sprint).
-
-### ⬜ Lot 2 — Extraction de `loan/`
-Couper `loan/src/app/globals.css:2`, créer le dépôt, basculer l'alimentation sur MinIO.
 
 ### ⬜ Lot 3 — `@eurio/tokens` + générateur multi-cible
 Package = `tokens.css` + `shared/fixtures/`. Tue au passage le symlink
