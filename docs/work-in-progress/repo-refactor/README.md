@@ -200,13 +200,36 @@ Quand iOS arrive. Après le lot 4, c'est du déplacement de dossiers.
 | 6 | `source-lmdlp-rebuild` : merger ou abandonner ? | Lot 5 |
 | 7 | **`app-android/…/assets/models/test_model.tflite`** (19 Mo, non tracké, aucun consommateur identifié, daté 2026-04-09) : résidu de spike ou artefact utile ? | Lot 4 |
 
-## État du VPS — relevé du 2026-08-14 (lecture seule)
+## État du VPS — relevé du 2026-08-14, **mis à jour après bascule**
 
 Accès : `ssh serverOimNixDontpanic`, projet dans `/opt/eurio`.
 
+> ✅ **Mac et VPS sont alignés depuis le 2026-08-14.** `repo-cleanup` poussée sur
+> **codeberg et github** (`f5660724`), VPS basculé dessus. Les deux machines ont
+> désormais les **mêmes deux remotes** (`codeberg`, `github`) — sur le VPS, `origin`
+> a été renommé `codeberg` pour coller au Mac.
+>
+> **Vérifié après bascule** : les 4 conteneurs n'ont pas redémarré (up depuis le
+> 2026-07-12), `eurio-admin`/`eurio-review`/MinIO en HTTP 200, `eurio-api` sain
+> (`/healthz` 200, `/whoami` 200, `/db/replica` 401 = protégé ✅ — attention,
+> **`/health` n'existe pas sur eurio-api**, c'est `/healthz`). `eurio.db` 149 Mo et
+> les 6,8 Go MinIO intacts.
+>
+> **Filet posé avant l'opération** : le `main` local du VPS portait une lignée
+> pré-réécriture unique. Sauvegardé en `git bundle` (910 Mo, historique complet,
+> vérifié) → `bizz/EurioProject/vps-main-preswitch-20260814.bundle` sur le Mac, plus
+> un tag local `vps-main-preswitch-20260814` sur le VPS. **Ce bundle n'a
+> délibérément PAS été poussé** : c'est de la lignée antérieure au `filter-repo` de
+> juin, la pousser réintroduirait les objets que cette purge avait retirés.
+> Une copie reste dans `/tmp` du VPS (868 Mo) — supprimable, elle fait doublon.
+>
+> ⚠️ Piège écarté au passage : `infra/minio/data` **est tracké** — mais un seul
+> fichier, la sentinelle `.do-not-delete`. Les 6,8 Go sont hors git et la bascule
+> n'a touché aucun fichier sous ce chemin (vérifié avant d'agir).
+
 | Élément | État |
 |---|---|
-| Branche | `scan-corpus-funnel` à **`7528d91`** — **2 commits derrière le local** (`d1f5812`), et évidemment sans `repo-cleanup`. Arbre propre |
+| Branche | **`repo-cleanup` à `f5660724`**, alignée sur le Mac (depuis la bascule du 2026-08-14). `scan-corpus-funnel`, `main` et `sources-jo-wikipedia` conservées localement |
 | Conteneurs | `eurio-api`, `eurio-admin`, `eurio-minio`, `eurio-review` **up 4 semaines** · `eurio-scrape-tor` **unhealthy** |
 | `eurio-review` | **HTTP 200** → la feature K2 est **vivante**, pas dormante |
 | Canonique | `eurio.db` = **149 Mo**, dernière écriture **12 juillet** |
@@ -243,8 +266,9 @@ Par ordre de priorité assumé :
 1. **Brancher la sauvegarde du VPS.** C'est le seul point où une panne fait perdre des
    données non reproductibles. Passe avant tout le reste.
 2. **Boucler le lot 4** : `./bootstrap.sh` sur le VPS → `ml:assets:publish` → vérifier le
-   round-trip → `git rm --cached` + `dependsOn`. ⚠️ **Prérequis** : le VPS doit avoir les
-   fichiers `infra/minio/` à jour, or ils sont sur `repo-cleanup` qui n'est pas poussée.
+   round-trip → `git rm --cached` + `dependsOn`. ✅ **Prérequis levé** : le VPS a les
+   fichiers `infra/minio/` à jour depuis la bascule — `bootstrap.sh` y créera bien
+   `model-artifacts` et réappliquera la policy.
 3. **Rediscuter le versioning S3** à la lumière du point 1.
 4. **Trancher K2** — le service tourne et répond, la question n'est plus « est-il mort »
    mais « le garde-t-on ».
