@@ -230,8 +230,9 @@ admin/packages/parity/screenshots/android/*
 # ⚠️ Ce répertoire contient des DONNÉES, pas seulement des artefacts : un
 #    `git clean -xdf` le détruit. Ne jamais l'y exposer.
 infra/backup/staging/
-# Baseline du dernier verify réussi (comparée par l'invariant de non-décroissance).
-infra/backup/last-verified-manifest.json
+# Verrou d'exécution de `stage` (hors staging : un verrou n'a rien à faire
+# dans l'artefact de sauvegarde).
+infra/backup/.stage.lock
 
 # MinIO bucket data (the volume mounted into the eurio-minio container).
 # Keep the .do-not-delete marker so the dir exists at clone time.

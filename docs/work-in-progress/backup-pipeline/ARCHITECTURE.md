@@ -35,8 +35,15 @@ backup-temp/`, Duplicati sauvegarde la stack. Le motif technique est bon et on l
 │   ├── enrichment-raws/
 │   ├── numista-canonical/
 │   └── eurio-db/                         (modèles ML)
+├── baseline-manifest.json                référence du dernier verify réussi
 └── manifest.json                         T1, T2, sha256, comptages, invariants
 ```
+
+`baseline-manifest.json` vit **dans** le staging, donc Duplicati le sauvegarde. Ce
+n'est pas un détail : sans référence, l'invariant de non-décroissance est inopérant —
+or c'est lui le critère d'acceptation d'une restauration ([D-13](./DECISIONS.md)).
+Une référence gardée hors du staging disparaîtrait avec la machine qu'elle sert
+précisément à restaurer.
 
 `staging/` doit être **gitignoré** (il vit sous `infra/backup/`, qui est dans le dépôt).
 

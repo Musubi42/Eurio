@@ -73,7 +73,14 @@ def utc_of(epoch: float) -> str:
 
 
 def describe_db(path: str, source: str, source_mtime: str | None) -> dict:
-    """Ouvre la base EN LECTURE SEULE et en extrait tout ce que le verify compare."""
+    """Ouvre la base EN LECTURE SEULE et en extrait tout ce que le verify compare.
+
+    Une base illisible ne fait pas échouer la construction : elle produit un
+    manifeste qui **décrit la corruption**. Sans ça, `stage` sortirait en
+    traceback et laisserait un staging sans manifeste — techniquement
+    détectable, mais muet sur la cause. Mieux vaut un manifeste qui dit
+    pourquoi, et un `verify` qui rougit sur l'invariant précis.
+    """
     con = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
     try:
         integrity = con.execute("pragma integrity_check").fetchone()[0]
@@ -94,6 +101,9 @@ def describe_db(path: str, source: str, source_mtime: str | None) -> dict:
             migrations = [
                 r[0] for r in con.execute("select filename from _schema_migrations order by filename")
             ]
+    except sqlite3.DatabaseError as exc:
+        integrity = f"illisible : {exc}"
+        fk_violations, user_version, tables, counts, migrations = -1, None, [], {}, []
     finally:
         con.close()
 
@@ -152,8 +162,16 @@ def main() -> int:
     mtimes = {}
     for item in args.source_mtime:
         name, _, epoch = item.partition("=")
-        if epoch:
+        epoch = epoch.strip()
+        if not epoch:
+            continue
+        try:
             mtimes[name] = utc_of(float(epoch))
+        except ValueError:
+            # Le manifeste sortira sans `source_mtime_utc` ; le verify le
+            # signalera. Mieux vaut un manifeste incomplet et signalé qu'un
+            # `stage` qui échoue en laissant des bases sans manifeste.
+            print(f"⚠️  mtime illisible pour {name} : {epoch!r}", file=sys.stderr)
 
     sources = {
         "eurio.db": "eurio-api:/var/lib/eurio/eurio.db",

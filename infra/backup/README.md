@@ -33,8 +33,8 @@ n'a le système de fichiers pour surface valide :
 |---|---|
 | `eurio-backup.sh` | Orchestration : `stage`, `verify` |
 | `build_manifest.py` | Produit `manifest.json` — le contrat entre `stage` et `verify` |
-| `verify_invariants.py` | La suite d'invariants (5 niveaux, cf. VERIFICATION.md) |
-| `test_verify.sh` | **Test négatif** — 9 cas où le verify doit échouer |
+| `verify_invariants.py` | La suite d'invariants — niveaux 1 à 3 (les 4 et 5 sont l'exercice humain) |
+| `test_verify.sh` | **Test négatif** — 16 cas : 14 corruptions à détecter + 2 contrôles de non-régression |
 | `README-RESTORE.md` | Procédure de restauration ⚠️ décrit encore l'ancien chemin |
 | `rclone.conf.example` | Modèle de configuration rclone (remotes `minio`, `pcloud`) |
 
@@ -43,7 +43,7 @@ Produits, **gitignorés** :
 | Chemin | Contenu |
 |---|---|
 | `staging/` | Ce que Duplicati sauvegarde. Jusqu'à ~6,5 Go au lot 3 |
-| `last-verified-manifest.json` | Référence du dernier `verify` réussi |
+|  `staging/baseline-manifest.json` | Référence du dernier `verify` réussi |
 
 > ⚠️ `staging/` contient des **données**, pas des artefacts régénérables à volonté.
 > Un `git clean -xdf` le détruit.
@@ -86,7 +86,15 @@ propriétés qui distinguent « la sauvegarde a marché » de « la sauvegarde e
 - **non-décroissance** des 17 + 4 tables surveillées, contre la référence précédente ;
 - une **pièce canari** se résout (`coins` → noms → images canoniques) ;
 - cohérence DB ↔ MinIO, `dangling == 0` (dès le lot 3) ;
-- **fraîcheur** : un staging figé passe tout le reste, et n'est pas une sauvegarde.
+- **fraîcheur du staging** : un staging figé passe tout le reste, et n'est pas une
+  sauvegarde ;
+- **vivacité des sources** : si la source n'a pas bougé depuis la référence, la
+  non-décroissance est vraie par construction — `verify` le **dit** au lieu d'afficher
+  un ✅ qui ne couvre rien.
+
+Trois états et pas deux : un contrôle qu'on n'a pas pu faire s'affiche ⚠️, jamais ✅.
+« Aucune référence », « miroir absent », « source figée » sont des **contrôles
+inopérants**, et les confondre avec des réussites est le défaut que ce chantier corrige.
 
 Pourquoi « calculé, jamais lu » : `storage_status` vaut `'present'` sur 100 % des lignes,
 **y compris sur celles qui pointent vers un objet absent**. Un invariant bâti dessus
@@ -104,11 +112,19 @@ go-task backup:verify -- --accept-baseline
 ### Le test négatif est ce qui rend la suite crédible
 
 Une suite qui ne sort jamais en erreur ne prouve rien. `go-task backup:test` fabrique
-9 stagings volontairement cassés et exige que chacun soit détecté : base tronquée, base
-**vide mais structurellement parfaite** (`integrity_check` répond `ok` — seul le canari
-la rejette), schéma désaligné, fichier altéré après le manifeste, staging périmé,
-manifeste absent, base manquante. Plus un cas de contrôle : un staging sain doit passer,
-sinon un script qui échoue toujours réussirait tous les tests.
+**16 stagings** volontairement cassés et exige que chacun soit détecté **sur le bon
+invariant** — un cas qui rougirait pour une autre raison que celle visée serait un
+invariant inopérant déguisé en test réussi.
+
+Parmi eux : base tronquée · base **vide mais structurellement parfaite**
+(`integrity_check` répond `ok`, seul le canari la rejette) · **table surveillée
+supprimée** · base obligatoire absente du manifeste · migration inconnue du dépôt ·
+migration partiellement appliquée · fichier altéré après le manifeste · staging périmé ·
+sources figées · base réellement corrompue (doit rougir, pas produire un traceback).
+
+Plus deux contrôles de non-régression : un staging sain **doit** passer — sinon un
+script qui échoue toujours réussirait tous les tests — et `--accept-baseline` ne doit
+jamais absoudre autre chose qu'une décroissance.
 
 ## État — 2026-08-15
 

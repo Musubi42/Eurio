@@ -53,7 +53,8 @@ Calculés sur la **copie du staging**, jamais sur la source vivante, et comparé
 | 5 | Nombre d'orphelins dans une bande attendue | suppression anormale côté MinIO, dérive |
 | 6 | 20 objets tirés au hasard : présents dans le miroir **et** sha256 conforme à la source S3 | corruption silencieuse du corpus |
 | 7 | Une pièce connue se résout : `coins` → `coin_names_i18n` → `coin_canonical_images` | la base est **utilisable**, pas seulement valide |
-| 8 | **Fraîcheur** : `mtime` de la source vs `t1` du manifeste ; le staging ne doit jamais être plus vieux que N jours | **le staging a cessé d'être régénéré** — un miroir figé passe les invariants 1 à 7 |
+| 8a | **Fraîcheur du staging** : âge de `created_utc` | **le script a cessé de tourner** |
+| 8b | **Vivacité des sources** : âge du `mtime` de la source vivante ; et si elle n'a pas bougé depuis la référence, dire que l'invariant 3 **ne prouve rien** | **les données sont figées** — l'invariant 3 est alors vrai par construction |
 | 9 | **La destination a reçu** : le job Duplicati a fini en succès (anneau 3, [`ARCHITECTURE.md`](./ARCHITECTURE.md) §5) | **la sauvegarde n'arrive nulle part** |
 
 ### Notes sur trois d'entre eux

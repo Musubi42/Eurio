@@ -43,7 +43,13 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 STAGING="${EURIO_BACKUP_STAGING:-$SCRIPT_DIR/staging}"
-BASELINE="${EURIO_BACKUP_BASELINE:-$SCRIPT_DIR/last-verified-manifest.json}"
+# La référence vit DANS le staging : sans elle, la non-décroissance est
+# inopérante — or c'est le critère d'acceptation d'une restauration (D-13).
+# Hors staging, elle disparaîtrait avec la machine qu'elle sert à restaurer.
+BASELINE="${EURIO_BACKUP_BASELINE:-$STAGING/baseline-manifest.json}"
+# Verrou d'exécution : hors staging, un fichier de verrou n'a rien à faire
+# dans l'artefact de sauvegarde.
+LOCKFILE="${EURIO_BACKUP_LOCK:-$SCRIPT_DIR/.stage.lock}"
 
 # Bases canoniques : conteneur, chemin dans le conteneur, nom dans le staging.
 # ⚠️ Il existe DEUX review.db sur le VPS. Le bon est celui du conteneur
@@ -68,21 +74,25 @@ snapshot_db() {
   docker exec "$container" sh -c "rm -f '$tmp_in_container'" \
     || die "$label : impossible de nettoyer le temporaire dans $container."
 
+  # stdout redirigé : cette fonction ne doit écrire QUE le mtime, qui est
+  # capturé par substitution de commande. Une ligne parasite le corromprait.
   docker exec "$container" python -c "
 import sqlite3
 sqlite3.connect('$src').execute('VACUUM INTO \"$tmp_in_container\"')
-" || die "$label : VACUUM INTO a échoué."
+" >/dev/null || die "$label : VACUUM INTO a échoué."
 
   docker cp "$container:$tmp_in_container" "$dest" >/dev/null \
     || die "$label : docker cp a échoué."
   docker exec "$container" rm -f "$tmp_in_container" || true
 
   # mtime de la SOURCE VIVANTE, pas du snapshot : c'est lui qui dit si les
-  # données bougent encore (invariant de fraîcheur, cf. DECISIONS.md D-17).
+  # données bougent encore (invariant de vivacité, cf. DECISIONS.md D-17).
+  # Un échec ici est bruyant : sans mtime, l'invariant est muet, et un
+  # invariant muet qui se lit comme un invariant vert est le défaut qu'on corrige.
   docker exec "$container" python -c "
 import os
 print(int(os.path.getmtime('$src')))
-" 2>/dev/null || echo ""
+" || die "$label : relevé du mtime de la source impossible."
 }
 
 # ── Sous-commandes ───────────────────────────────────────────────────────────
@@ -90,15 +100,14 @@ print(int(os.path.getmtime('$src')))
 cmd_stage() {
   command -v docker >/dev/null 2>&1 || die "docker absent : impossible de snapshoter les bases."
 
-  local t1 lock
+  local t1
   mkdir -p "$STAGING"
 
   # Un seul `stage` à la fois : deux passes concurrentes produiraient un
   # staging mi-ancien mi-neuf, que le sha du manifeste signalerait après coup
   # au lieu de l'empêcher.
-  lock="$STAGING/.stage.lock"
-  exec 9>"$lock"
-  flock -n 9 || die "un autre 'stage' est déjà en cours ($lock)."
+  exec 9>"$LOCKFILE"
+  flock -n 9 || die "un autre 'stage' est déjà en cours ($LOCKFILE)."
 
   t1="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   echo "=== staging  $t1"
