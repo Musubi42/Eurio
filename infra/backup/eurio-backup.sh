@@ -96,11 +96,24 @@ ok()  { echo "✅ $*"; }
 # Une notification qui echoue ne fait JAMAIS echouer la sauvegarde — mais elle
 # le dit. L'inverse (echouer la sauvegarde parce que Kuma est down) serait
 # absurde ; le silence, lui, serait le defaut qu'on corrige.
+#
+# Le 5e parametre est le DIALECTE, et il n'est pas cosmetique :
+#
+#   kuma : l'etat passe en parametre de requete (?status=up|down).
+#   hc   : healthchecks.io ignore les parametres de requete. L'etat est porte
+#          par le CHEMIN — `<url>` = succes, `<url>/fail` = echec. Envoyer
+#          `?status=down` a l'URL de base y enregistre donc un SUCCES : l'anneau
+#          dirait « tout va bien » au moment precis ou tout va mal, et le test
+#          afficherait un vert rassurant. C'est la panne silencieuse que ce
+#          chantier entier combat, logee dans le detecteur lui-meme.
 notify() {
-  local url="$1" status="$2" msg="$3" label="$4"
+  local url="$1" status="$2" msg="$3" label="$4" flavor="${5:-kuma}"
   if [ -z "$url" ]; then
     echo "   ⚠️  anneau « $label » non configuré (voir $NOTIFY_CONF) — aucune alerte ne partira"
     return 0
+  fi
+  if [ "$flavor" = "hc" ] && [ "$status" = "down" ]; then
+    url="${url%/}/fail"
   fi
   if curl -fsS -m 15 --get "$url" \
        --data-urlencode "status=$status" \
@@ -184,7 +197,15 @@ cmd_stage() {
   # La notification part quoi qu'il arrive, y compris si `stage` meurt en
   # cours de route. Sans trap, un echec au milieu ne produirait AUCUN signal —
   # et le silence est indiscernable du succes.
-  local stage_rc=1
+  #
+  # stage_rc est GLOBAL, jamais `local` : le trap EXIT s'execute APRES le
+  # retour de cmd_stage, donc apres la disparition de toute variable locale.
+  # En `local`, les deux sous-shells du trap echouaient sur `unbound variable`
+  # (set -u) et notify partait avec un statut VIDE — que Kuma interprete comme
+  # un succes. Le declencheur d'alerte annoncait donc « tout va bien » au
+  # moment precis ou stage venait de mourir. Trouve en execution reelle, pas
+  # par la suite de tests : elle n'exerce pas le chemin d'echec du trap.
+  stage_rc=1
   trap 'notify "$KUMA_STAGING_URL" \
         "$([ $stage_rc -eq 0 ] && echo up || echo down)" \
         "$([ $stage_rc -eq 0 ] && echo "staging OK" || echo "stage a echoue (rc=$stage_rc)")" \
@@ -258,7 +279,7 @@ cmd_verify() {
     # healthchecks.io n'est pingé QUE si tout est vert. C'est un dead man's
     # switch hors site : son silence doit vouloir dire « quelque chose ne va
     # pas », jamais « le job a tourné mais les données sont mauvaises ».
-    notify "$HEALTHCHECKS_URL" up "invariants OK" "healthchecks (hors site)"
+    notify "$HEALTHCHECKS_URL" up "invariants OK" "healthchecks (hors site)" hc
   else
     notify "$KUMA_VERIFY_URL" down "invariants en defaut (rc=$rc)" "eurio-verify"
     echo "   healthchecks NON pingé : son silence est le signal."
@@ -278,7 +299,7 @@ cmd_notify_test() {
   notify "$KUMA_STAGING_URL"  down "TEST — ignorer" "eurio-staging"
   notify "$KUMA_VERIFY_URL"   down "TEST — ignorer" "eurio-verify"
   notify "$KUMA_DRILL_URL"    down "TEST — ignorer" "eurio-drill"
-  notify "$HEALTHCHECKS_URL"  down "TEST — ignorer" "healthchecks (hors site)"
+  notify "$HEALTHCHECKS_URL"  down "TEST — ignorer" "healthchecks (hors site)" hc
   echo
   echo "→ Vérifie Discord, puis relance 'stage' et 'verify' pour repasser au vert."
 }

@@ -25,7 +25,7 @@ se lit à la demande.
 | 2 | Invariants + test négatif | ✅ |
 | 3 | Miroir MinIO + cohérence inter-stores | ✅ |
 | 4 | Job Duplicati + ordonnancement NixOS | ✅ |
-| **5** | **Alerting** | 🟡 **code fait, monitors à créer** |
+| **5** | **Alerting** | ✅ **4 anneaux sur 5 branchés et prouvés** (reste `eurio-drill`, cf. ci-dessous) |
 | 6 | Restauration + exercice à froid | ⬜ |
 | 7 | Décommissionnement de l'ancien chemin | ⬜ |
 
@@ -75,7 +75,72 @@ pas par l'existence du fichier.
 
 ---
 
-## 🔴 Travail immédiat — finir le lot 5
+## ✅ Lot 5 — état au 2026-08-16 01:00 CEST
+
+Les anneaux sont branchés dans `infra/backup/notify.conf` (gitignoré, `chmod 600`).
+**Chacun a été prouvé par un `down` réel arrivé sur Discord**, pas par une lecture de code.
+
+| # | Anneau | Support | État |
+|---|---|---|---|
+| 1 | `eurio-staging` | Kuma push | ✅ up/down prouvés |
+| 2 | `eurio-verify` | Kuma push | ✅ up/down prouvés |
+| 3 | `eurio-uploaded` | Duplicati job 17 | ✅ configuré — 1re preuve à 03:00 UTC |
+| 4 | healthchecks.io | hors site | ✅ up/down prouvés |
+| 5 | `eurio-drill` | Kuma push | 🟡 URL en main, **branchement différé au lot 6** |
+
+### Deux défauts trouvés en branchant — les deux inversaient le signal
+
+Aucun n'était visible en lecture, ni attrapé par les 20 cas du test négatif. Les deux
+faisaient dire « tout va bien » au dispositif **au moment précis où tout allait mal**.
+
+1. **healthchecks.io ignore les paramètres de requête.** `notify` envoyait
+   `?status=down` à l'URL de base — ce qui y enregistre un **succès**. L'état se porte
+   par le chemin (`<url>/fail`). Corrigé : `notify` prend un 5e paramètre de dialecte
+   (`kuma` | `hc`).
+2. **`stage_rc` était `local`.** Le trap `EXIT` s'exécute *après* le retour de
+   `cmd_stage`, donc après la disparition des variables locales : sous `set -u`, les
+   sous-shells du trap échouaient et `notify` partait avec un **statut vide**, que Kuma
+   lit comme un succès. Un `stage` mort en cours de route annonçait donc « up ».
+   Corrigé (variable globale) et **le chemin d'échec est désormais exercé** :
+   `EURIO_DB_CONTAINER=inexistant ./eurio-backup.sh stage` ⇒ `→ eurio-staging : down`.
+
+> La suite de tests ne couvrait pas le chemin d'échec du trap, et ne pouvait pas
+> découvrir le dialecte de healthchecks : elle n'appelait aucun endpoint réel. **Un
+> anneau ne se valide qu'en le débranchant pour de vrai.** C'est la même limite que
+> celle relevée au lot 2 : un test écrit par l'auteur du code teste ce qu'il a pensé à
+> tester.
+
+### `send-http-level = Success`, et non `all`
+
+Le plan initial disait `all`. C'est faux, pour la raison n°1 ci-dessus : un monitor Push
+passe au vert **dès qu'il reçoit un ping**, quel qu'en soit le contenu. Avec `all`,
+Duplicati pingerait aussi après un échec ⇒ Kuma vert sur une sauvegarde ratée.
+
+Avec `Success`, seule une exécution réussie pinge, et **c'est le silence qui alerte**
+(dépassement des 25 h). Un run terminé en *Warning* ne pinge pas non plus : il déclenche
+donc une alerte, ce qui est le bon défaut — on préfère regarder un avertissement de trop
+que manquer une sauvegarde partielle.
+
+### `eurio-drill` — différé au lot 6, délibérément
+
+Kuma **plafonne l'intervalle à 2 073 600 s (24 j)**, alors que l'exercice de restauration
+est trimestriel (~90 j). Un monitor à 24 j serait donc rouge en permanence entre deux
+exercices.
+
+Ne pas le laisser rouge « en attendant » : **un monitor perpétuellement rouge apprend à
+ignorer les alertes**, ce qui est exactement la pathologie du chantier. Deux options à
+trancher au lot 6, quand le script d'exercice existera :
+
+- **(recommandé)** porter l'anneau 5 sur **healthchecks.io**, qui accepte des périodes
+  jusqu'à 365 j — et qui est de toute façon hors site ;
+- ou garder Kuma et accepter une cadence d'exercice mensuelle (24 j).
+
+En attendant : **mettre le monitor `eurio-drill` en pause dans Kuma**. Sa Push URL est
+déjà dans `notify.conf`, rien à recréer.
+
+---
+
+## 🔴 Travail immédiat — *(historique : lot 5 terminé, conservé pour la trace)*
 
 ### Étape 1 — Créer 4 push monitors dans Uptime Kuma *(humain, ~3 min)*
 
@@ -238,9 +303,11 @@ transposables.
 
 | # | Action | Bloque |
 |---|---|---|
-| 1 | Créer les 4 push monitors Kuma et **me transmettre les 4 Push URLs** *(étape 1)* | Lot 5 |
-| 2 | Créer le check healthchecks.io et **me transmettre la Ping URL** *(étape 2)* | Lot 5 |
-| 0 | **Vérifier que le timer du 2026-08-16 04:00 CEST a bien tiré** : `journalctl -u eurio-backup-stage -u eurio-backup-verify --since today` — c'est ce qui fait passer l'ordonnancement d'« armé » à « prouvé » | Lot 5 |
+| 1 | ~~Créer les 4 push monitors Kuma~~ | ✅ fait |
+| 2 | ~~Créer le check healthchecks.io~~ | ✅ fait |
+| 0 | **Vérifier que le timer du 2026-08-16 04:00 CEST a bien tiré** : `journalctl -u eurio-backup-stage -u eurio-backup-verify --since today` — c'est ce qui fait passer l'ordonnancement d'« armé » à « prouvé » | — |
+| 0bis | **Vérifier que `eurio-uploaded` est passé au vert** après le run Duplicati de 03:00 UTC — c'est la 1re preuve de l'anneau 3, le seul qui atteste que la destination a reçu | — |
+| 0ter | **Mettre `eurio-drill` en pause dans Kuma** jusqu'au lot 6 (cf. §Lot 5) | — |
 | 3 | Supprimer `/opt/stacks/oim-duplicati/api-config-export-20260815/` — **identifiants WebDAV en clair** | — |
 | 4 | Confirmer que `infra/minio/secrets` et `infra/review/secrets` sont couverts par la session « secrets » | Lot 6 |
 | 5 | Décider du nettoyage des 8 sauvegardes ad hoc de `infra/eurio-api/data/` (~640 Mo) — suppression irréversible, je ne l'ai pas faite | — |
