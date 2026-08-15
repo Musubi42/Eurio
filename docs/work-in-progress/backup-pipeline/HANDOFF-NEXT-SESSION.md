@@ -86,7 +86,7 @@ Les anneaux sont branchés dans `infra/backup/notify.conf` (gitignoré, `chmod 6
 | 2 | `eurio-verify` | Kuma push | ✅ up/down prouvés |
 | 3 | `eurio-uploaded` | Duplicati job 17 | ✅ configuré — 1re preuve à 03:00 UTC |
 | 4 | healthchecks.io | hors site | ✅ up/down prouvés |
-| 5 | `eurio-drill` | Kuma push | 🟡 URL en main, **branchement différé au lot 6** |
+| 5 | `eurio-drill` | → healthchecks.io | 🟡 monitor Kuma **en pause**, à porter au lot 6 (**D-26**) |
 
 ### Deux défauts trouvés en branchant — les deux inversaient le signal
 
@@ -135,8 +135,23 @@ trancher au lot 6, quand le script d'exercice existera :
   jusqu'à 365 j — et qui est de toute façon hors site ;
 - ou garder Kuma et accepter une cadence d'exercice mensuelle (24 j).
 
-En attendant : **mettre le monitor `eurio-drill` en pause dans Kuma**. Sa Push URL est
-déjà dans `notify.conf`, rien à recréer.
+En attendant : monitor `eurio-drill` **mis en pause dans Kuma le 2026-08-16** ✅. Sa Push
+URL est déjà dans `notify.conf`, rien à recréer. Décision complète : **D-26**.
+
+### Les `403 Forbidden` du miroir MinIO — élucidés, bénins, non masqués
+
+`stage` émet quelques `NOTICE: Failed to read metadata: HeadObject 403` (une poignée sur
+33 953 objets). **L'intégrité est intacte**, vérifié objet par objet : `sha256` local ≡
+`sha256` distant, taille ≡ taille, `mtime` préservé.
+
+Cause : Cloudflare devant `eurio-s3.musubi.dev` **rate-limite les HEAD signés sous
+rafale** (`--transfers 8`) — alternance 403/OK pendant un burst, 8/8 OK au repos, et 200
+en HEAD non authentifié depuis le cache CDN. Ce n'est pas une permission manquante.
+
+`rclone sync` bâtit son plan depuis **LIST** (qui porte taille et `mtime`) : un HEAD
+refusé ne retire aucun objet du transfert. On a **écarté `--s3-no-head-object`**, qui
+ferait taire le message : on ne masque pas un avertissement pour retrouver une sortie
+propre. Détail complet et chiffres : **D-27**.
 
 ---
 

@@ -25,7 +25,7 @@ Eurio/
 │   ├── eurio-api/                     # FastAPI léger sur VPS (eurio-api.musubi.dev)
 │   ├── eurio-admin/                   # Nginx static sur VPS (eurio-admin.musubi.dev)
 │   ├── minio/                         # MinIO assets (eurio-s3.musubi.dev)
-│   └── backup/                        # eurio-backup.sh + rclone pCloud
+│   └── backup/                        # Chaîne de sauvegarde — VPS UNIQUEMENT (cf. §Sauvegarde)
 ├── docs/
 │   ├── work-in-progress/auth-redesign/# DESIGN.md + ARCHITECTURE.md + RESUME + chunks
 │   ├── app-implem-phases/             # Plan des 6 phases d'implémentation Android
@@ -186,6 +186,21 @@ Un hostname inconnu fait échouer `direnv allow` avec un message d'aide listant 
   - **VPS** : pattern **SOPS via direnv**. Le `.envrc` racine déchiffre `secrets/dev.env` (SOPS+age) au `cd /opt/eurio` et exporte les vars dans le shell. `docker compose up` les forwarde au container via `environment: { VAR: ${VAR:?missing} }` dans `docker-compose.yml`. Aucun fichier secret en clair sur disque côté `infra/*/`. La clé age reste sur la machine (`~/.config/sops/age/keys.txt`, jamais committée). Pour les contextes scriptés (cron, systemd), fallback explicite : `sops exec-env /opt/eurio/secrets/dev.env "docker compose up ..."`. Le pattern legacy Docker secrets (fichiers `infra/*/secrets/<name>` + `*_FILE` env var) est **déprécié** : `infra/eurio-api/` a migré (juin 2026). `infra/review/` reste **en service** (`eurio-review.musubi.dev`) : le C9 qui devait le supprimer n'existe plus — le sujet vivant est le chantier **K2** (`docs/work-in-progress/auth-redesign/ROADMAP.md`), non tranché.
 - Bootstrap d'une nouvelle machine : voir `README.md §Secrets`.
 
+### Sauvegarde — tourne sur le VPS, jamais sur Mac/PC
+
+Chantier `backup-pipeline`, lots 0 à 5 livrés. **Hub :
+`docs/work-in-progress/backup-pipeline/HANDOFF-NEXT-SESSION.md`** (état, pièges, chiffres
+de référence) ; les décisions et ce qu'elles écartent sont dans `DECISIONS.md` (27
+entrées).
+
+`go-task backup:stage` · `backup:verify` · `backup:test` **ne fonctionnent que sur le
+VPS** : ils dépendent de conteneurs Docker locaux (`eurio-api`, `eurio-review`, MinIO),
+d'un staging de 6,6 Go et de `infra/backup/notify.conf` — tous **gitignorés**, donc
+absents sur Mac/PC. Ne pas tenter de les lancer ailleurs ni de « réparer » leur absence.
+
+⚠️ **`infra/backup/staging/` contient 6,6 Go de DONNÉES** gitignorées sur le VPS. Un
+`git clean -xdf` les détruit.
+
 ### Supabase
 
 - Accès via clé API (Postgrest) pour l'admin et l'export snapshot
@@ -220,6 +235,7 @@ Voir `docs/research/detection-pipeline-unified.md`. Pipeline actuelle : YOLO11-n
 | Schéma local Room | `docs/design/_shared/data-contracts.md` |
 | Stratégie offline/sync | `docs/design/_shared/offline-first.md` |
 | Parité proto ↔ Android | `docs/design/_shared/parity-rules.md` |
+| **Sauvegarde / restauration** | `docs/work-in-progress/backup-pipeline/HANDOFF-NEXT-SESSION.md` |
 | Phase spécifique | `docs/app-implem-phases/phase-N-*.md` |
 
 ## Interdictions

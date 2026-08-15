@@ -417,3 +417,89 @@ définitivement une classe entière d'accidents.
 *Contexte* : les 14 autres montages de ce conteneur sont en lecture-écriture. On ne les
 change pas ici — ce n'est pas le périmètre de ce chantier — mais c'est un candidat
 évident pour le durcissement des 10 autres jobs.
+
+---
+
+### D-24 — Un anneau Push est acquitté par le SILENCE, jamais par le contenu du ping
+**2026-08-16 · lot 5**
+
+`send-http-level = Success` sur le job Duplicati 17, et non `all` comme le prévoyait le
+plan initial. Idem pour healthchecks.io, pingé uniquement si les 18 invariants passent.
+
+*Écarté* : `all`, qui paraissait plus informatif — « on saura tout ce qui se passe ».
+*Pourquoi* : un monitor Push passe au vert **dès qu'il reçoit une requête**, quel qu'en
+soit le contenu. Avec `all`, Duplicati pingerait aussi après un échec : Kuma afficherait
+vert sur une sauvegarde ratée. Le contenu du ping n'est lu par personne ; seule son
+**arrivée** est un signal.
+*Conséquence* : c'est l'absence de ping qui alerte, au dépassement des 25 h. Un run
+terminé en *Warning* ne pinge pas non plus et déclenche donc une alerte — bon défaut :
+mieux vaut regarder un avertissement de trop que manquer une sauvegarde partielle.
+
+---
+
+### D-25 — Chaque anneau a un DIALECTE explicite, jamais une URL générique
+**2026-08-16 · lot 5**
+
+`notify()` prend un 5e paramètre : `kuma` (état en paramètre de requête) ou `hc`
+(état dans le chemin — `<url>` = succès, `<url>/fail` = échec).
+
+*Écarté* : une fonction unique envoyant `?status=up|down` à toutes les destinations.
+*Pourquoi* : **healthchecks.io ignore les paramètres de requête**. Un `?status=down`
+envoyé à l'URL de base y enregistrait un *succès* — l'anneau annonçait « tout va bien »
+au moment précis où tout allait mal, et `notify-test` affichait un vert rassurant.
+*Contexte* : trouvé en branchant l'anneau pour de vrai, pas par les 20 cas du test
+négatif — qui n'appellent aucun endpoint réel et ne pouvaient donc pas connaître le
+dialecte du destinataire. **Un anneau ne se valide qu'en le débranchant réellement.**
+*Voir aussi* : le même jour, `stage_rc` en `local` faisait partir un statut **vide**
+depuis le trap `EXIT` (exécuté après la disparition des locales, `set -u`) — que Kuma lit
+comme un succès. Deux bugs distincts, une seule signature : *le détecteur ment dans le
+sens rassurant*.
+
+---
+
+### D-26 — L'anneau `eurio-drill` ne vivra pas dans Kuma
+**2026-08-16 · lot 5, à exécuter au lot 6**
+
+Kuma plafonne l'intervalle de heartbeat à **2 073 600 s (24 jours)**. L'exercice de
+restauration étant trimestriel (~90 j, cf. D-12), un monitor Push y serait **rouge en
+permanence** entre deux exercices.
+
+*Écarté* : (a) laisser le monitor rouge « en attendant » ; (b) ramener l'exercice à une
+cadence de 24 j pour tenir dans l'outil.
+*Pourquoi* : (a) un monitor perpétuellement rouge **apprend à ignorer les alertes** —
+c'est la pathologie même que ce chantier corrige, et la raison pour laquelle 924
+notifications Duplicati n'étaient pas acquittées. (b) laisser l'outil dicter la cadence
+d'un rituel, plutôt que l'inverse.
+*Décision* : porter l'anneau 5 sur **healthchecks.io** (périodes jusqu'à 365 j), qui est
+de toute façon hors site. En attendant le lot 6, le monitor `eurio-drill` est **en
+pause** dans Kuma ; sa Push URL reste dans `notify.conf`, rien à recréer.
+
+---
+
+### D-27 — Les `403 Forbidden` du miroir MinIO sont du bruit Cloudflare, et on le dit
+**2026-08-16 · lot 5**
+
+Pendant `stage`, rclone émet quelques `NOTICE: Failed to read metadata: HeadObject
+403` (une poignée sur 33 953 objets). **Aucun impact sur l'intégrité** — vérifié
+objet par objet :
+
+| Contrôle | Résultat |
+|---|---|
+| `sha256` local ≡ `sha256` distant (GET) | identiques |
+| Taille annoncée par LIST ≡ taille locale | 3 488 o = 3 488 o |
+| `mtime` distant préservé localement | 2026-06-14 22:35:38 des deux côtés |
+
+*Cause* : `eurio-s3.musubi.dev` est derrière Cloudflare (2 edges). Les 403 n'apparaissent
+que sur les HEAD **signés**, **sous rafale** (`--transfers 8`) : en séquence alternée
+pendant un burst, puis 8/8 OK au repos. Un HEAD non authentifié renvoie 200 depuis le
+cache CDN sur les deux edges. C'est donc du **rate-limiting / WAF**, pas une permission
+manquante — cousin du `v2_auth` déjà nécessaire ici *(cf. mémoire projet Cloudflare)*.
+*Pourquoi c'est bénin* : `rclone sync` construit son plan depuis **LIST**, qui porte déjà
+taille et `mtime`. Le HEAD n'est qu'un complément de métadonnées ; son échec ne retire
+aucun objet du transfert.
+*Écarté* : `--s3-no-head-object`, qui **supprimerait le message**. On ne fait pas taire
+un avertissement pour retrouver une sortie propre — c'est exactement ainsi qu'on cesse de
+voir les vrais. Le message reste bruyant et documenté ici.
+*Reste à faire (lot 6)* : l'invariant [6] ne re-vérifie que **20 objets sur 13 989**.
+Ce n'est pas ce 403 qui l'exige, mais l'échantillon est mince pour un miroir de 6,6 Go —
+à rediscuter avec le coût d'un échantillon plus large ou tournant.
