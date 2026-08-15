@@ -8,8 +8,8 @@
 
 | Lot | Description | Statut | Date |
 |---|---|---|---|
-| **0** | Copie manuelle immédiate hors site | ⬜ **next** | |
-| 1 | `eurio-backup.sh stage` + `manifest.json` | ⬜ | |
+| 0 | Copie manuelle immédiate hors site | ✅ | 2026-08-15 |
+| **1** | `eurio-backup.sh stage` + `manifest.json` | ⬜ **next** | |
 | 2 | Suite d'invariants (niveaux 1-2-3) | ⬜ | |
 | 3 | Miroir MinIO + invariants inter-stores | ⬜ | |
 | 4 | Duplicati + timer NixOS | ⬜ | |
@@ -19,20 +19,50 @@
 
 ---
 
-## Lot 0 — La copie la plus bête qui marche
+## Lot 0 — La copie la plus bête qui marche ✅ **2026-08-15**
 
-**Pourquoi maintenant** : la dernière copie de `eurio.db` date du 17 juin, `review.db`
-n'a jamais été sauvegardé. Une sauvegarde imparfaite qui existe bat une sauvegarde
-parfaite qui n'existe pas.
+**Pourquoi maintenant** : la dernière copie de `eurio.db` datait du 17 juin, `review.db`
+n'avait **jamais** été sauvegardé. Une sauvegarde imparfaite qui existe bat une
+sauvegarde parfaite qui n'existe pas.
 
-- [ ] `VACUUM INTO` sur `eurio.db` et `review.db`
-- [ ] sha256 des deux
-- [ ] Copie hors site *(destination à confirmer par le PO)*
-- [ ] Vérifier que la copie est lisible **depuis la destination**, pas depuis la source
+- [x] `VACUUM INTO` sur `eurio.db` (155,6 → 144,1 Mo après compaction) et `review.db`
+- [x] sha256 des deux + `manifest.json` (comptages de 12 + 4 tables)
+- [x] Copie hors site **chiffrée** → `pcloud_crypt:lot0-manuel-20260815/`
+      (= `pcloud:backups/serverOimNix/Eurio/lot0-manuel-20260815/`)
+- [x] Manifeste déposé **aussi en clair** hors crypt, lisible sans la clé
+- [x] Vérifié **depuis la destination** : re-téléchargement complet, sha256 conformes,
+      `integrity_check` ok, `foreign_key_check` à 0, comptages identiques
 
-**Critère de fin** : une copie fraîche des deux bases existe hors du VPS, et on a ouvert
-la copie distante pour le prouver.
-**Coût** : ~155 Mo, quelques minutes. Aucune automatisation, aucun risque.
+**Résultat** :
+
+| | `eurio.db` | `review.db` |
+|---|---|---|
+| Taille | 144 056 320 o | 950 272 o |
+| sha256 | `2f0fbb7bffba33…` | `9c972f074e55a6…` |
+| `integrity_check` | ok | ok |
+| Violations FK | 0 | 0 |
+
+Chiffrement confirmé côté stockage : les octets bruts sur pCloud commencent par
+`52 43 4c 4f 4e 45` (en-tête rclone crypt), pas par `53 51 4c 69 74 65` (« SQLite »).
+
+**Ce que ce lot a produit en plus de la copie** : le format de `manifest.json` — date,
+tailles, sha256, `integrity_check`, violations FK, comptages par table. C'est la graine
+du manifeste du lot 1 et de l'invariant de non-décroissance du lot 2, écrite en la
+faisant plutôt qu'en la spécifiant.
+
+**Chiffres de référence figés le 2026-08-15** (base de comparaison pour l'invariant 3) :
+
+```
+coins 689 · image_assets 11162 · source_images 15991 · review_queue 10663
+consensus_verdicts 8484 · coin_observations 10626 · image_state_events 22968
+coin_descriptions_i18n 11345 · mint_release_prices 12161 · training_runs 34
+coin_canonical_images 1924 · _schema_migrations 5
+review.db : review_items 575 · decisions 3 · reviewers 1 · meta 1
+```
+
+> ⚠️ Cette copie dépend de la clé age de `~/.config/eurio-backup/age-key.txt`. Sa
+> récupérabilité relève de la session « secrets » (D-09). Elle **ne remplace pas** le
+> dispositif automatisé — c'est un filet ponctuel, non répété, qui vieillira.
 
 ---
 

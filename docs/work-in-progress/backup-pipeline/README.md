@@ -53,8 +53,8 @@ D'où les trois exigences non négociables de ce chantier :
 
 | Lot | Description | Statut |
 |---|---|---|
-| **0** | Copie manuelle immédiate `eurio.db` + `review.db` hors site | ⬜ **next** |
-| 1 | `eurio-backup.sh stage` — VACUUM INTO ×2 + `manifest.json` | ⬜ |
+| 0 | Copie manuelle immédiate `eurio.db` + `review.db` hors site | ✅ 2026-08-15 |
+| **1** | `eurio-backup.sh stage` — VACUUM INTO ×2 + `manifest.json` | ⬜ **next** |
 | 2 | Suite d'invariants (niveaux 1-2-3), autonome et testée | ⬜ |
 | 3 | Miroir MinIO dans le staging + invariants inter-stores | ⬜ |
 | 4 | Job Duplicati « Eurio » + timer NixOS + import du module | ⬜ |

@@ -27,9 +27,12 @@ tourné avec succès. Détail : [`ETAT-DES-LIEUX.md`](./ETAT-DES-LIEUX.md) §3.
 
 | # | Action | Bloque |
 |---|---|---|
-| 1 | **Choisir la destination du lot 0** — où part la copie manuelle des deux bases ? (le job Eurio n'existe pas encore ; une copie manuelle reste utile d'ici là) | Lot 0 |
-| 2 | **Créer le compte healthchecks.io** et brancher sa notification sur Discord — un compte externe, ça ne peut pas se faire depuis le VPS | Lot 5 |
-| 3 | **Valider l'édition de `/opt/stacks/oim-duplicati/compose.yaml`** — ajout du bind `/opt/eurio/infra/backup/staging` **et** correction de casse `oim-Beszel` → `oim-beszel`, puis recréation du conteneur. Hors dépôt Eurio, sur une stack partagée | Lot 4 |
+| 1 | **Créer le compte healthchecks.io** et brancher sa notification sur Discord — un compte externe, ça ne peut pas se faire depuis le VPS | Lot 5 |
+| 2 | **Valider l'édition de `/opt/stacks/oim-duplicati/compose.yaml`** — ajout du bind `/opt/eurio/infra/backup/staging` **et** correction de casse `oim-Beszel` → `oim-beszel`, puis recréation du conteneur. Hors dépôt Eurio, sur une stack partagée | Lot 4 |
+
+> **Lot 0 fait le 2026-08-15** : copie chiffrée des deux bases dans
+> `pcloud_crypt:lot0-manuel-20260815/`, vérifiée depuis la destination. Le trou de deux
+> mois est bouché — mais c'est un filet ponctuel qui vieillira, pas un dispositif.
 
 ## Actions humaines requises — non bloquantes
 
