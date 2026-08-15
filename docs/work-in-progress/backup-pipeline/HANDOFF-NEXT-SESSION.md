@@ -29,16 +29,24 @@ se lit à la demande.
 | 6 | Restauration + exercice à froid | ⬜ |
 | 7 | Décommissionnement de l'ancien chemin | ⬜ |
 
-**Ce qui tourne tout seul depuis cette nuit** :
+**Ce qui est ordonnancé** :
 
 ```
-02:00 UTC  eurio-backup-stage.service    (timer NixOS actif)
-02:30 UTC  eurio-backup-verify.service   (timer NixOS actif)
+02:00 UTC  eurio-backup-stage.service    (timer NixOS armé)
+02:30 UTC  eurio-backup-verify.service   (timer NixOS armé)
 03:00 UTC  Duplicati job « Eurio » (ID 17) → pCloud
 ```
 
-**Première sauvegarde réussie** : 33 957 fichiers, 6,47 Gio examinés, 5,61 Gio poussés
-en 8 min 59, zéro erreur, zéro avertissement.
+> ⚠️ **Armé ≠ prouvé.** Au 2026-08-16 00:20 CEST, `systemctl list-timers 'eurio-*'`
+> affiche `LAST = -` sur les deux unités : **elles n'ont encore jamais tiré**, ayant été
+> installées après l'heure de déclenchement. Le staging et la première sauvegarde ont été
+> produits **à la main**. La première exécution automatique est le 2026-08-16 à 04:00 CEST.
+> C'est la distinction n°1 du chantier appliquée à l'ordonnancement lui-même : tant que le
+> timer n'a pas tiré une fois et laissé une trace dans le journal, on a un dispositif
+> préparé, pas un dispositif qui tourne.
+
+**Première sauvegarde réussie** (déclenchée à la main) : 33 957 fichiers, 6,47 Gio
+examinés, 5,61 Gio poussés en 8 min 59, zéro erreur, zéro avertissement.
 
 > ⚠️ **Le dispositif tourne, mais personne ne sera prévenu s'il s'arrête.** C'est
 > exactement la situation des 10 jobs Duplicati pendant neuf mois. La différence est
@@ -46,21 +54,65 @@ en 8 min 59, zéro erreur, zéro avertissement.
 
 ---
 
+## Contre-vérification indépendante — 2026-08-16 00:20 CEST
+
+Refaite depuis la machine, sans se fier aux statuts affichés.
+
+| Contrôle | Commande | Résultat |
+|---|---|---|
+| **Arrivée à destination** | `rclone size pcloud:Applications/DuplicatiBackup/Oim/Eurio` | **235 objets · 5,613 GiB** |
+| **Archive refermée** | `rclone lsl …` | `duplicati-20260815T214948Z.dlist.zip.aes` — dlist récent, extension `.aes` ⇒ chiffré |
+| **Invariants** | `go-task backup:verify` | **16/18 ✅ + 2 ⚠️ attendus** |
+| **Ordonnancement** | `systemctl list-timers 'eurio-*'` | armé, `LAST = -` ⇒ **jamais tiré** |
+| **Alerting** | idem | **0 anneau sur 4 configuré** |
+
+La présence d'un `dlist` daté prouve une archive complète et refermée, pas un dépôt
+d'orphelins — c'est le contrôle qui distingue « des fichiers sont arrivés » de « une
+sauvegarde restaurable existe ».
+
+Le `.stage.lock` résiduel est **inoffensif** : le script verrouille par `flock` (l. 182),
+pas par l'existence du fichier.
+
+---
+
 ## 🔴 Travail immédiat — finir le lot 5
 
 ### Étape 1 — Créer 4 push monitors dans Uptime Kuma *(humain, ~3 min)*
 
-Sur `uptime.musubi.dev` → **Add New Monitor** → type **Push** :
+Sur `uptime.musubi.dev` → **Add New Monitor** → **Monitor Type = Push** :
 
-| Nom | Heartbeat Interval | Retries | Notification |
+| Nom (Friendly Name) | Heartbeat Interval | Retries | Notification |
 |---|---|---|---|
-| `eurio-staging` | `90000` s (25 h) | 0 | ☑ Musubi Discord |
-| `eurio-verify` | `90000` s (25 h) | 0 | ☑ Musubi Discord |
-| `eurio-uploaded` | `90000` s (25 h) | 0 | ☑ Musubi Discord |
-| `eurio-drill` | `8640000` s (100 j) | 0 | ☑ Musubi Discord |
+| `eurio-staging` | `90000` s (25 h) | `0` | ☑ Musubi Discord |
+| `eurio-verify` | `90000` s (25 h) | `0` | ☑ Musubi Discord |
+| `eurio-uploaded` | `90000` s (25 h) | `0` | ☑ Musubi Discord |
+| `eurio-drill` | `8640000` s (100 j) | `0` | ☑ Musubi Discord |
 
 25 h et non 24 h : le job tourne toutes les 24 h, la marge évite une alerte au premier
 retard de quelques minutes.
+
+**`Retries = 0` est délibéré** : sur un monitor *Push*, un « retry » ne re-teste rien —
+Kuma attend passivement un ping qui, par construction, n'arrivera pas avant le prochain
+cycle de 24 h. Une valeur non nulle ne ferait que **retarder l'alerte d'un cycle entier**.
+
+Chaque monitor, une fois créé, affiche sa **Push URL** :
+`https://uptime.musubi.dev/api/push/<token>` — c'est ce `<token>` qui compte.
+
+### Ce qu'il faut me fournir
+
+Les **5 URLs** ci-dessous. Elles contiennent des jetons ⇒ elles atterrissent dans
+`notify.conf`, **gitignoré**, jamais dans un commit.
+
+```
+eurio-staging   → https://uptime.musubi.dev/api/push/XXXXXXXX
+eurio-verify    → https://uptime.musubi.dev/api/push/XXXXXXXX
+eurio-uploaded  → https://uptime.musubi.dev/api/push/XXXXXXXX
+eurio-drill     → https://uptime.musubi.dev/api/push/XXXXXXXX
+healthchecks.io → https://hc-ping.com/XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX
+```
+
+Note l'asymétrie : `eurio-uploaded` ne va **pas** dans `notify.conf` — il se branche
+dans Duplicati (étape 4), seul à savoir si l'upload a réussi.
 
 **Je n'ai pas créé ces monitors moi-même** : Kuma n'a pas d'API REST de création, et
 écrire dans `kuma.db` à la main sur un service de monitoring partagé en production est
@@ -71,11 +123,26 @@ Chaque monitor donne une **Push URL** de la forme
 
 ### Étape 2 — Créer un compte healthchecks.io *(humain, ~5 min)*
 
-Offre gratuite. Un check « Eurio backup », période 1 jour, grâce 6 h, **notification vers
-Discord** (Integrations → Discord). Récupérer l'URL de ping.
+Offre gratuite (20 checks, largement au-delà du besoin).
 
-C'est le seul anneau **hors site**. Kuma et ntfy tournent sur le VPS qu'ils surveillent :
-aucun des deux ne peut signaler la mort de cette machine, et il n'y a qu'un seul VPS.
+1. **Add Check** → Name `Eurio backup`
+2. **Period** = `1 day` · **Grace Time** = `6 hours`
+   *(grâce 6 h : le staging à 02:00 UTC + Duplicati à 03:00 UTC + marge de dérive ;
+   plus court alerterait sur une simple nuit lente, plus long masquerait un jour perdu)*
+3. **Integrations → Discord** → connecter le webhook du serveur Musubi, puis **cocher
+   l'intégration sur le check** *(une intégration créée mais non cochée sur le check ne
+   notifie rien — c'est le même piège que les 10 jobs Duplicati sans destinataire)*
+4. Copier la **Ping URL** (`https://hc-ping.com/<uuid>`)
+
+**Pourquoi ce quatrième anneau, alors que Kuma alerte déjà ?** C'est le seul anneau
+**hors site**, et c'est le seul qui fonctionne *par absence*. Kuma et ntfy tournent sur le
+VPS qu'ils surveillent, et il n'y a qu'un seul VPS : si la machine meurt, Kuma meurt avec
+elle et **personne n'envoie l'alerte**. healthchecks.io, lui, n'attend rien d'autre qu'un
+ping quotidien — c'est son silence qui déclenche. Un dead man's switch ne peut pas vivre
+sur la machine qu'il surveille.
+
+Corollaire : le ping n'est envoyé **que si tous les invariants passent**. Un ping
+inconditionnel transformerait le dispositif en « le VPS est allumé », ce qu'on sait déjà.
 
 ### Étape 3 — Remplir `notify.conf` *(moi, dès que j'ai les URLs)*
 
@@ -171,8 +238,9 @@ transposables.
 
 | # | Action | Bloque |
 |---|---|---|
-| 1 | Créer les 4 push monitors Kuma *(étape 1 ci-dessus)* | Lot 5 |
-| 2 | Créer le compte healthchecks.io *(étape 2)* | Lot 5 |
+| 1 | Créer les 4 push monitors Kuma et **me transmettre les 4 Push URLs** *(étape 1)* | Lot 5 |
+| 2 | Créer le check healthchecks.io et **me transmettre la Ping URL** *(étape 2)* | Lot 5 |
+| 0 | **Vérifier que le timer du 2026-08-16 04:00 CEST a bien tiré** : `journalctl -u eurio-backup-stage -u eurio-backup-verify --since today` — c'est ce qui fait passer l'ordonnancement d'« armé » à « prouvé » | Lot 5 |
 | 3 | Supprimer `/opt/stacks/oim-duplicati/api-config-export-20260815/` — **identifiants WebDAV en clair** | — |
 | 4 | Confirmer que `infra/minio/secrets` et `infra/review/secrets` sont couverts par la session « secrets » | Lot 6 |
 | 5 | Décider du nettoyage des 8 sauvegardes ad hoc de `infra/eurio-api/data/` (~640 Mo) — suppression irréversible, je ne l'ai pas faite | — |
