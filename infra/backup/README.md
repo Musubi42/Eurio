@@ -25,7 +25,16 @@ n'a le système de fichiers pour surface valide :
   autonome et compacte.
 - MinIO stocke ses objets dans un **format interne** (`xl.meta` + parts). On ne peut pas
   calculer le sha256 d'un objet sans le réassembler : sauvegarder le répertoire brut
-  rendrait toute vérification impossible. D'où le miroir par API S3 (lot 3).
+  rendrait toute vérification impossible. D'où le miroir par API S3.
+
+Le miroir utilise `rclone sync`, pas `copy` : c'est un point-dans-le-temps **fidèle**,
+suppressions comprises. L'historique est le travail de la rétention Duplicati, pas le
+sien. Contrepartie assumée : un wipe de MinIO se propage au miroir — c'est la comparaison
+à la référence (invariant 5) qui l'attrape, pas le miroir lui-même.
+
+Le bucket legacy `eurio-db` est miroité **sauf sa copie de `eurio.db`** : un doublon
+périmé de ce que le staging capture déjà en frais, et deux `eurio.db` dans une même
+sauvegarde sont un piège de restauration.
 
 ## Fichiers
 
@@ -34,7 +43,7 @@ n'a le système de fichiers pour surface valide :
 | `eurio-backup.sh` | Orchestration : `stage`, `verify` |
 | `build_manifest.py` | Produit `manifest.json` — le contrat entre `stage` et `verify` |
 | `verify_invariants.py` | La suite d'invariants — niveaux 1 à 3 (les 4 et 5 sont l'exercice humain) |
-| `test_verify.sh` | **Test négatif** — 16 cas : 14 corruptions à détecter + 2 contrôles de non-régression |
+| `test_verify.sh` | **Test négatif** — 20 cas : 17 corruptions à détecter + 3 contrôles de non-régression |
 | `README-RESTORE.md` | Procédure de restauration ⚠️ décrit encore l'ancien chemin |
 | `rclone.conf.example` | Modèle de configuration rclone (remotes `minio`, `pcloud`) |
 
@@ -85,7 +94,10 @@ propriétés qui distinguent « la sauvegarde a marché » de « la sauvegarde e
 - migrations appliquées ≡ migrations du dépôt (`ml/serving/migrations/`) ;
 - **non-décroissance** des 17 + 4 tables surveillées, contre la référence précédente ;
 - une **pièce canari** se résout (`coins` → noms → images canoniques) ;
-- cohérence DB ↔ MinIO, `dangling == 0` (dès le lot 3) ;
+- **cohérence DB ↔ MinIO** : `dangling == 0` — aucune ligne ne référence un objet absent
+  du miroir, hors `mock/` et chemins absolus de machine de dev ;
+- **objets MinIO non décroissants** par bucket, contre la référence ;
+- **échantillon** de 20 objets tirés au hasard : sha du miroir ≡ sha enregistré en base ;
 - **fraîcheur du staging** : un staging figé passe tout le reste, et n'est pas une
   sauvegarde ;
 - **vivacité des sources** : si la source n'a pas bougé depuis la référence, la
@@ -112,7 +124,7 @@ go-task backup:verify -- --accept-baseline
 ### Le test négatif est ce qui rend la suite crédible
 
 Une suite qui ne sort jamais en erreur ne prouve rien. `go-task backup:test` fabrique
-**16 stagings** volontairement cassés et exige que chacun soit détecté **sur le bon
+**20 stagings** volontairement cassés et exige que chacun soit détecté **sur le bon
 invariant** — un cas qui rougirait pour une autre raison que celle visée serait un
 invariant inopérant déguisé en test réussi.
 
@@ -120,7 +132,9 @@ Parmi eux : base tronquée · base **vide mais structurellement parfaite**
 (`integrity_check` répond `ok`, seul le canari la rejette) · **table surveillée
 supprimée** · base obligatoire absente du manifeste · migration inconnue du dépôt ·
 migration partiellement appliquée · fichier altéré après le manifeste · staging périmé ·
-sources figées · base réellement corrompue (doit rougir, pas produire un traceback).
+sources figées · base réellement corrompue (doit rougir, pas produire un traceback) ·
+**référence sans objet dans le miroir** · **objets disparus d'un bucket** ·
+**contenu d'objet altéré** (l'objet est là, ses octets ont changé).
 
 Plus deux contrôles de non-régression : un staging sain **doit** passer — sinon un
 script qui échoue toujours réussirait tous les tests — et `--accept-baseline` ne doit
@@ -132,12 +146,16 @@ jamais absoudre autre chose qu'une décroissance.
 |---|---|---|
 | 1 | `stage` + manifeste | ✅ |
 | 2 | Invariants + test négatif | ✅ |
-| 3 | Miroir MinIO + cohérence inter-stores | ⬜ |
+| 3 | Miroir MinIO + cohérence inter-stores | ✅ |
 | 4 | Job Duplicati + timer NixOS | ⬜ |
 | 5 | Alerting Kuma + healthchecks.io | ⬜ |
 
+Staging : **6,6 Go**, 33 953 objets. Premier `sync` 12 min 50, les suivants incrémentaux.
+Un garde-fou refuse de miroiter sous 10 Go libres.
+
 **Rien n'est encore ordonnancé** : `stage` et `verify` se lancent à la main. Le timer
-systemd arrive au lot 4, l'alerting au lot 5.
+systemd arrive au lot 4, l'alerting au lot 5. Tant que le lot 4 n'est pas fait, **ce
+staging ne part nulle part** — c'est un outil vérifié, pas encore une sauvegarde.
 
 ## Historique — l'ancien chemin
 

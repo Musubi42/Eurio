@@ -32,11 +32,12 @@ tourné avec succès. Détail : [`ETAT-DES-LIEUX.md`](./ETAT-DES-LIEUX.md) §3.
 | 1 | **Créer le compte healthchecks.io** et brancher sa notification sur Discord — un compte externe, ça ne peut pas se faire depuis le VPS | Lot 5 |
 | 2 | **Valider l'édition de `/opt/stacks/oim-duplicati/compose.yaml`** — ajout du bind `/opt/eurio/infra/backup/staging` **et** correction de casse `oim-Beszel` → `oim-beszel`, puis recréation du conteneur. Hors dépôt Eurio, sur une stack partagée | Lot 4 |
 
-> **Lots 0, 1 et 2 faits le 2026-08-15.**
+> **Lots 0 à 3 faits le 2026-08-15.**
 > Lot 0 : copie chiffrée des deux bases dans `pcloud_crypt:lot0-manuel-20260815/`,
 > vérifiée depuis la destination — un filet ponctuel qui vieillira, pas un dispositif.
-> Lots 1 et 2 : `go-task backup:stage` / `backup:verify` / `backup:test`. 11 invariants
-> passent sur les données réelles, 9 cas négatifs sont détectés.
+> Lots 1 à 3 : `go-task backup:stage` / `backup:verify` / `backup:test`. Staging de
+> 6,6 Go (bases + miroir MinIO), **16 invariants verts** sur les données réelles dont
+> `dangling == 0`, et **20 cas négatifs** détectés.
 > **Rien n'est encore ordonnancé** : `stage` et `verify` se lancent à la main jusqu'au
 > lot 4.
 
@@ -46,7 +47,7 @@ tourné avec succès. Détail : [`ETAT-DES-LIEUX.md`](./ETAT-DES-LIEUX.md) §3.
 |---|---|---|
 | 3 | Confirmer que `infra/minio/secrets` et `infra/review/secrets` sont couverts par la session « secrets » | Avant le lot 6 |
 | 4 | Décider du sort du volume Docker anonyme de `eurio-scrape-tor` (clés d'identité Tor) | Avant le lot 7 |
-| 5 | Ouvrir des tickets pour les trois sauvegardes incomplètes : Traefik/`acme.json` (permissions), Immich (photothèque non montée), Authentik (`pg_dump` figé depuis nov. 2025). Cf. [`ETAT-DES-LIEUX.md`](./ETAT-DES-LIEUX.md) §8 | Hors chantier |
+| 4 | Ouvrir des tickets pour les trois sauvegardes incomplètes : Traefik/`acme.json` (permissions), Immich (photothèque non montée), Authentik (`pg_dump` figé depuis nov. 2025). Cf. [`ETAT-DES-LIEUX.md`](./ETAT-DES-LIEUX.md) §8 | Hors chantier |
 
 > **Résolus** : la rétention est `keep-versions = 30` (lue en clair, pas 30 jours) ·
 > la destination pCloud est `Applications/DuplicatiBackup/Oim/<Service>`, confirmée par
@@ -54,12 +55,21 @@ tourné avec succès. Détail : [`ETAT-DES-LIEUX.md`](./ETAT-DES-LIEUX.md) §3.
 
 ## Ordre d'exécution proposé pour la prochaine session
 
-**Lot 3** — le miroir MinIO. Premier `rclone sync` de 6,43 GiB (transfert local,
-quelques minutes), puis les invariants inter-stores. Attention au contrôle
-`bootstrap.sh` / `.minio.sys` : c'est une hypothèse jamais testée.
+**Lot 4** — le premier qui touche la production. Trois opérations distinctes, à ne pas
+mélanger :
 
-Puis **lots 4 et 5**, qui touchent la production (compose partagé, `nixos-rebuild`,
-conteneurs). À ne pas enchaîner dans la même session que le lot 3.
+1. **Éditer `/opt/stacks/oim-duplicati/compose.yaml`** — ajouter le bind
+   `/opt/eurio/infra/backup/staging` **et** corriger `oim-Beszel` → `oim-beszel`.
+   Copie horodatée du compose et de `appdata-test` avant, `docker compose config` pour
+   valider, puis recréation du conteneur, puis vérifier que les 10 jobs sont toujours là.
+2. **Créer le job Duplicati « Eurio »** — destination
+   `pcloud://api.pcloud.com/Applications/DuplicatiBackup/Oim/Eurio?authid=…`,
+   `keep-time` explicite, `--send-http-url` vers Kuma.
+3. **Réorienter et importer `nix/eurio-vps.nix`** — `stage` à 02:00 UTC, `verify` à
+   02:30. ⚠️ Retirer `systemd.services.eurio-minio` d'abord (son `ExecStop` couperait
+   MinIO), et `nixos-rebuild build` avant le `switch`.
+
+Puis **lot 5** (alerting), à ne pas enchaîner dans la même session.
 
 ## Pièges identifiés, à ne pas redécouvrir
 
@@ -104,10 +114,9 @@ Duplicati         dernier succès 2026-05-25   ·   401 depuis 2026-05-26
                   keep-versions = 30 (versions, pas jours)   ·   456 erreurs
 ```
 
-## Question ouverte, à trancher en séance
+## Question tranchée le 2026-08-15
 
-**Le miroir MinIO doit-il inclure le bucket `eurio-db` ?** Il contient les modèles ML
-(`transfers/arcface_*`, ~110 Mo) mais aussi une copie de `eurio.db` datant du modèle
-pré-R2 — or [`data-layer-unification`](../data-layer-unification/README.md) prévoit de
-tuer ce bucket en phase 5. Sauvegarder quelque chose qu'on prévoit de supprimer mérite
-une décision explicite plutôt qu'un `sync` par défaut.
+**Le miroir MinIO doit-il inclure le bucket `eurio-db` ?** Oui pour ses artefacts ML
+(`transfers/`, 105 Mo, issus de runs d'entraînement), **non** pour sa copie de `eurio.db`
+figée au 29 juin — doublon périmé et piège de restauration. Détail :
+[`DECISIONS.md`](./DECISIONS.md) D-20.

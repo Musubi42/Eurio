@@ -29,6 +29,10 @@ PASS=0; FAIL=0
 BUILD="$SCRIPT_DIR/build_manifest.py"
 V() { python3 "$SCRIPT_DIR/verify_invariants.py" "$@"; }
 remanifest() { python3 "$BUILD" "$1" --t1 "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >/dev/null; }
+remanifest_minio() {
+  python3 "$BUILD" "$1" --t1 "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    --minio-root "$1/minio" --t2 "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >/dev/null
+}
 
 # Fabrique un staging minimal mais VALIDE, que chaque cas abîme ensuite.
 # Les migrations du dépôt y sont enregistrées : sans elles, tous les cas
@@ -75,6 +79,35 @@ con.executemany("insert into review_items values (?)", [(i,) for i in range(50)]
 con.commit(); con.close()
 PY
   remanifest "$dir"
+}
+
+# Ajoute un miroir MinIO minuscule au staging, et les lignes DB qui le
+# référencent. Permet d'exercer les invariants inter-stores (4, 5, 6) sans
+# toucher aux 6 Go du miroir réel.
+add_minio_fixture() {
+  local dir="$1"
+  python3 - "$dir" <<'PY'
+import hashlib, os, sqlite3, sys
+d = sys.argv[1]
+root = f"{d}/minio"
+con = sqlite3.connect(f"{d}/eurio.db")
+for bucket, table, ext in (("enrichment-crops", "image_assets", "png"),
+                           ("enrichment-raws", "source_images", "jpg")):
+    for i in range(10):
+        key = f"src/{i:02d}/obj{i}.{ext}"
+        path = os.path.join(root, bucket, key)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        blob = f"contenu-{bucket}-{i}".encode()
+        open(path, "wb").write(blob)
+        con.execute(f"insert into {table} values (?,?)",
+                    (key, hashlib.sha256(blob).hexdigest()))
+    # Une ligne exclue par construction : chemin absolu de machine de dev.
+    con.execute(f"insert into {table} values (?,?)",
+                ("/Users/musubi42/.cache/eurio/legacy.bin", None))
+con.commit(); con.close()
+PY
+  python3 "$BUILD" "$dir" --t1 "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    --minio-root "$dir/minio" --t2 "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >/dev/null
 }
 
 # expect_fail <nom> <motif ANCRÉ sur la ligne rouge attendue> -- <commande...>
@@ -294,6 +327,52 @@ fi
 # Cas 15 — --accept-baseline ne doit JAMAIS absoudre un autre invariant.
 expect_fail "[15] --accept-baseline n'absout pas un autre invariant" "canari" -- \
   V "$WORK/vide" --repo-root "$REPO_ROOT" --accept-baseline
+
+# ── Invariants inter-stores (lot 3) ──────────────────────────────────────────
+
+# Cas 16 — contrôle : un miroir cohérent doit passer, et les chemins absolus
+# de machine de dev doivent être exclus sans faire rougir le dangling.
+make_fixture "$WORK/minio-sain"
+add_minio_fixture "$WORK/minio-sain"
+expect_pass "[16] miroir cohérent accepté (chemins absolus exclus)" \
+  V "$WORK/minio-sain" --repo-root "$REPO_ROOT"
+
+# Cas 17 — dangling : la base référence un objet absent du miroir. C'est le
+# mode de corruption propre à Eurio, invisible store par store.
+make_fixture "$WORK/dangling"
+add_minio_fixture "$WORK/dangling"
+python3 - "$WORK/dangling" <<'PY'
+import sqlite3, sys
+con = sqlite3.connect(f"{sys.argv[1]}/eurio.db")
+con.execute("insert into image_assets values ('src/99/disparu.png','deadbeef')")
+con.commit(); con.close()
+PY
+remanifest_minio "$WORK/dangling"
+expect_fail "[17] référence sans objet dans le miroir" "dangling" -- \
+  V "$WORK/dangling" --repo-root "$REPO_ROOT"
+
+# Cas 18 — objets supprimés côté MinIO. `rclone sync` propage les suppressions,
+# donc le miroir seul ne peut pas s'en apercevoir : seule la référence le voit.
+make_fixture "$WORK/minio-vide"
+add_minio_fixture "$WORK/minio-vide"
+cp "$WORK/minio-vide/manifest.json" "$WORK/baseline-minio.json"
+rm -rf "$WORK/minio-vide/minio/enrichment-raws/src/0"[0-4]
+remanifest_minio "$WORK/minio-vide"
+expect_fail "[18] objets disparus d'un bucket" "MinIO non décroissants" -- \
+  V "$WORK/minio-vide" --baseline "$WORK/baseline-minio.json" --repo-root "$REPO_ROOT"
+
+# Cas 19 — pourrissement silencieux : l'objet est là, son contenu a changé.
+# Ni le comptage ni le dangling ne le voient ; seul l'échantillonnage.
+make_fixture "$WORK/pourri"
+add_minio_fixture "$WORK/pourri"
+python3 - "$WORK/pourri" <<'PY'
+import glob, sys
+for p in sorted(glob.glob(f"{sys.argv[1]}/minio/enrichment-raws/src/*/*.jpg")):
+    open(p, "wb").write(b"contenu silencieusement altere")
+PY
+remanifest_minio "$WORK/pourri"
+expect_fail "[19] contenu d'objets altéré (pourrissement)" "sha256 divergent" -- \
+  V "$WORK/pourri" --repo-root "$REPO_ROOT" --sample-size 20
 
 echo
 echo "=== $PASS réussis, $FAIL en défaut ==="

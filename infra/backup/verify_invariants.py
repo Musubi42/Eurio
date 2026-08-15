@@ -352,6 +352,107 @@ def check_canary(staging: str, report: Report) -> None:
         )
 
 
+def check_minio_counts(manifest: dict, baseline: dict | None, report: Report) -> None:
+    """Nombre d'objets par bucket, non décroissant (invariant 5).
+
+    `rclone sync` propage les suppressions au miroir — c'est voulu (D-05), mais
+    ça veut dire qu'un wipe de MinIO se propage aussi. Le miroir seul ne peut
+    donc pas s'en apercevoir : c'est la comparaison à la référence qui le voit.
+    """
+    current = manifest.get("minio")
+    if not current:
+        return  # déjà signalé par check_cross_store
+    previous = (baseline or {}).get("minio")
+    if not previous:
+        report.add("[5] objets MinIO non décroissants", WARN, "aucune référence — contrôle INOPÉRANT")
+        return
+
+    regressions = []
+    for bucket, was in previous.items():
+        now = current.get(bucket)
+        if now is None:
+            regressions.append(f"{bucket} : {was['objects']} objets → BUCKET ABSENT")
+        elif now["objects"] < was["objects"]:
+            delta = now["objects"] - was["objects"]
+            regressions.append(f"{bucket} : {was['objects']} → {now['objects']} objets ({delta:+d})")
+
+    if regressions:
+        report.add("[5] objets MinIO non décroissants", FAIL, " ; ".join(regressions))
+        report.ack_rows.append("[5] objets MinIO non décroissants")
+    else:
+        total = sum(b["objects"] for b in current.values())
+        report.check("[5] objets MinIO non décroissants", True, f"{total} objets sur {len(current)} buckets")
+
+
+def check_sample_integrity(staging: str, manifest: dict, sample_size: int, report: Report) -> None:
+    """Échantillonnage aléatoire : le contenu du miroir est-il conforme (invariant 6) ?
+
+    On tire au hasard des objets dont la base connaît le sha256 et on recalcule
+    celui du fichier miroité. Sur un an, l'échantillonnage couvre
+    statistiquement les ~34 000 objets sans jamais tout relire — bien plus
+    efficace qu'un `rclone check` intégral, et bien meilleur détecteur de
+    pourrissement lent.
+
+    ⚠️ `image_assets.sha256` est NULL sur 100 % des lignes (DONNEES.md §4,
+    bug n°1) : les crops ne sont donc pas couverts par ce contrôle. La
+    couverture réelle est affichée, précisément pour qu'on ne la surestime pas.
+    """
+    minio_root = os.path.join(staging, "minio")
+    db_path = os.path.join(staging, "eurio.db")
+    if not manifest.get("minio") or not os.path.isdir(minio_root) or not os.path.exists(db_path):
+        return
+
+    import random
+
+    with guarded(report, "[6] échantillonnage"):
+        con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        try:
+            candidates = []
+            for table, bucket in DB_TO_BUCKET.items():
+                rows = con.execute(
+                    f"select storage_path, sha256 from {table} "
+                    "where sha256 is not null and sha256 <> '' "
+                    "and storage_path is not null and storage_path <> ''"
+                ).fetchall()
+                candidates += [
+                    (bucket, path, sha)
+                    for path, sha in rows
+                    if not path.startswith(EXCLUDED_PREFIXES)
+                ]
+        finally:
+            con.close()
+
+        if not candidates:
+            report.add(
+                "[6] échantillon miroir ≡ sha256 de la base",
+                WARN,
+                "aucun objet ne porte de sha256 en base — contrôle INOPÉRANT",
+            )
+            return
+
+        sample = random.sample(candidates, min(sample_size, len(candidates)))
+        missing, mismatched = [], []
+        for bucket, path, expected in sample:
+            full = os.path.join(minio_root, bucket, path)
+            if not os.path.exists(full):
+                missing.append(f"{bucket}/{path}")
+            elif sha256_of(full) != expected:
+                mismatched.append(f"{bucket}/{path}")
+
+        problems = []
+        if missing:
+            problems.append(f"{len(missing)} absent(s) du miroir (ex. {missing[0]})")
+        if mismatched:
+            problems.append(f"{len(mismatched)} sha256 divergent(s) (ex. {mismatched[0]})")
+        report.check(
+            "[6] échantillon miroir ≡ sha256 de la base",
+            not problems,
+            " · ".join(problems)
+            if problems
+            else f"{len(sample)} objets vérifiés sur {len(candidates)} vérifiables",
+        )
+
+
 def check_cross_store(staging: str, manifest: dict, report: Report) -> None:
     """Intégrité référentielle DB ↔ MinIO — l'invariant propre à Eurio.
 
@@ -425,6 +526,8 @@ def main() -> int:
     )
     parser.add_argument("--max-age-hours", type=float, default=36.0)
     parser.add_argument("--max-source-age-days", type=float, default=90.0)
+    parser.add_argument("--sample-size", type=int, default=20,
+                        help="Objets MinIO tirés au hasard pour la vérification de contenu")
     parser.add_argument("--repo-root", default=None)
     args = parser.parse_args()
 
@@ -450,6 +553,8 @@ def main() -> int:
     check_source_liveness(manifest, baseline, args.max_source_age_days, report)
     check_canary(args.staging, report)
     check_cross_store(args.staging, manifest, report)
+    check_minio_counts(manifest, baseline, report)
+    check_sample_integrity(args.staging, manifest, args.sample_size, report)
     check_freshness(manifest, args.max_age_hours, report)
 
     report.render()

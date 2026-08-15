@@ -54,13 +54,22 @@ Un écart signale une restauration partielle des objets.
 - [ ] Faut-il recréer les réseaux Docker (`traefik`) à la main ?
 - [ ] Le comportement de `eurio-api` au démarrage sur une base restaurée : rejoue-t-il
       des migrations ? *(`_schema_migrations` = 5 aujourd'hui)*
-- [ ] 🔴 **`bootstrap.sh` recrée-t-il vraiment *tout* ce qui vit dans `.minio.sys/` ?**
-      Le miroir par API S3 capture les **objets**, jamais la configuration MinIO :
-      users IAM, service accounts, policies attachées, config serveur. L'étape 3
-      **suppose** que `bootstrap.sh` + `infra/minio/policies/` suffisent — hypothèse
-      jamais énoncée comme telle, jamais testée. Si le service account utilisé par
-      `eurio-api` n'est pas recréé, la restauration s'arrête à l'étape 6. **À vérifier
-      au lot 3**, pas au lot 6.
+- [x] ✅ **`bootstrap.sh` recrée la configuration MinIO** — vérifié le 2026-08-15.
+      Le miroir par API S3 capture les objets, jamais `.minio.sys/` (users IAM, service
+      accounts, policies). `bootstrap.sh` reconstruit bien : buckets, `anonymous set
+      download` sur `numista-canonical`, `version suspend`, utilisateur `eurio-app`,
+      policy `eurio-app-policy` depuis `infra/minio/policies/`, et son attachement.
+      **Sous une condition** : `infra/minio/secrets/` doit être restauré d'abord — c'est
+      lui qui porte les identifiants, et `bootstrap.sh` les *régénère* s'ils sont
+      absents, ce qui produirait un MinIO fonctionnel mais avec des identifiants que
+      `eurio-api` ne connaît pas. Le nœud reste donc la session « secrets » (D-09).
+
+      ⚠️ **Deux écarts entre `bootstrap.sh` et la réalité du serveur**, à connaître
+      avant de restaurer :
+      `bootstrap.sh` crée `model-artifacts`, qui **n'existe pas encore** sur le serveur
+      (ADR-004, mécanisme livré, bascule en attente) ; et il ne crée **pas** `eurio-db`,
+      qui existe et dont on miroite `transfers/` (cf. [D-20](./DECISIONS.md)). Restaurer
+      ce bucket demande donc un `mc mb` manuel.
 
 **Chaque case non cochée est une raison de plus de faire l'exercice tôt.** Une procédure
 de restauration écrite mais jamais exécutée est exactement la même illusion que le

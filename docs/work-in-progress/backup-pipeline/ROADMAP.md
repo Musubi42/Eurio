@@ -11,8 +11,8 @@
 | 0 | Copie manuelle immédiate hors site | ✅ | 2026-08-15 |
 | 1 | `eurio-backup.sh stage` + `manifest.json` | ✅ | 2026-08-15 |
 | 2 | Suite d'invariants (niveaux 1-2-3) | ✅ | 2026-08-15 |
-| **3** | Miroir MinIO + invariants inter-stores | ⬜ **next** | |
-| 4 | Duplicati + timer NixOS | ⬜ | |
+| 3 | Miroir MinIO + invariants inter-stores | ✅ | 2026-08-15 |
+| **4** | Duplicati + timer NixOS | ⬜ **next** | |
 | 5 | Kuma ×3 + healthchecks.io | ⬜ | |
 | 6 | Restauration + premier exercice à froid | ⬜ | |
 | 7 | Décommissionnement de l'ancien chemin pCloud | ⬜ | |
@@ -130,23 +130,51 @@ non-décroissance *et* `foreign_key_check` (147 violations). Deux angles, même 
 
 ---
 
-## Lot 3 — Miroir MinIO et cohérence inter-stores
+## Lot 3 — Miroir MinIO et cohérence inter-stores ✅ **2026-08-15**
 
-- [ ] `rclone sync` des buckets vers `staging/minio/`, **après** le snapshot des bases
-- [ ] Trancher l'inclusion du bucket `eurio-db` (voir la question ouverte du HANDOFF)
-- [ ] Invariants 4, 5, 6
-- [ ] Exclusion propre des 546 chemins absolus et des 10 lignes `mock/`
-      (cf. [`DONNEES.md`](./DONNEES.md) §4, bug n°2)
-- [ ] Échantillonnage aléatoire de 20 objets, sha miroir ↔ source S3
-- [ ] 🔴 **Vérifier que `bootstrap.sh` recrée les users/policies/service accounts de
-      `.minio.sys/`** — le miroir ne les capture pas
+- [x] `rclone sync` des buckets vers `staging/minio/`, **après** le snapshot des bases
+- [x] Inclusion du bucket `eurio-db` tranchée — cf. [D-20](./DECISIONS.md)
+- [x] Invariants 4 (dangling), 5 (objets non décroissants), 6 (échantillonnage sha)
+- [x] Exclusion des 546 chemins absolus et des 10 lignes `mock/` — vérifiée sur données
+      réelles : `dangling == 0` sans exclusion manuelle
+- [x] Échantillonnage aléatoire de 20 objets
+- [x] 🔴 **Question tranchée** : `bootstrap.sh` recrée bien users, policy et ACLs
       (cf. [`RESTAURATION.md`](./RESTAURATION.md) §3)
-- [ ] Vérifier l'impact disque réel (attendu : `/opt/eurio` 9,0 → ~15,3 Go)
+- [x] Impact disque mesuré
 
-**Critère de fin** : `dangling == 0` constaté automatiquement, et le premier miroir
-complet passe sans erreur.
-**Attention** : le premier `sync` transfère 6,43 GiB depuis MinIO (6,23 sans
-`eurio-db`) — transfert local, quelques minutes. Les suivants sont incrémentaux.
+**Critère de fin atteint**, sur données réelles :
+
+```
+✅ [3] image_assets  ↔ enrichment-crops : aucun dangling
+       11 157 références résolues, 1 841 orphelins
+✅ [3] source_images ↔ enrichment-raws  : aucun dangling
+       13 989 références résolues, 3 140 orphelins
+✅ [5] objets MinIO non décroissants — 33 953 objets sur 4 buckets
+✅ [6] échantillon miroir ≡ sha256 de la base — 20 objets sur 13 989 vérifiables
+```
+
+Les chiffres reproduisent **exactement** la mesure manuelle du 2026-08-14
+([`DONNEES.md`](./DONNEES.md) §2). L'invariant propre à Eurio est opérationnel.
+
+**Découverte de l'invariant 6** : il valide empiriquement que `source_images.sha256`
+**est bien le sha256 du contenu de l'objet** — hypothèse sur laquelle reposait tout
+l'invariant, et qui n'avait jamais été vérifiée. 20 objets tirés au hasard, 20 conformes.
+
+**Volumétrie mesurée** :
+
+| | Objets | Taille |
+|---|---|---|
+| `enrichment-raws` | 17 129 | 5,3 Go |
+| `enrichment-crops` | 12 998 | 1,1 Go |
+| `numista-canonical` | 3 824 | 90 Mo |
+| `eurio-db/transfers/` | 2 | 105 Mo |
+| **staging total** | **33 953** | **6,6 Go** |
+
+Disque : `/` passe de 78 % à **80 %**, 78 Go libres. Premier `sync` : **12 min 50**.
+Les suivants sont incrémentaux. Un garde-fou refuse de miroiter sous 10 Go libres.
+
+**Ordre vérifié dans le manifeste** : `t1_databases 21:15:22Z` → `t2_minio 21:28:08Z`.
+Le référençant avant le référencé.
 
 ---
 

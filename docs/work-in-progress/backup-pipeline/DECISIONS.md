@@ -337,3 +337,41 @@ capturé** — volumes, comptages, présence de fichiers attendus — pas sur so
 *Portée* : c'est la justification directe du niveau 3
 ([`VERIFICATION.md`](./VERIFICATION.md)) et de l'invariant de fraîcheur (D-17), et la
 preuve que le besoin dépasse Eurio.
+
+---
+
+### D-20 — Le bucket `eurio-db` est miroité, sauf sa copie de `eurio.db`
+**2026-08-15 · lot 3**
+
+Le miroir garde `eurio-db/transfers/` (artefacts ML, 105 Mo) et **exclut**
+`eurio.db` / `eurio.db.*` (104 Mo, figés au 2026-06-29).
+
+*Contexte* : ce bucket est legacy —
+[`data-layer-unification`](../data-layer-unification/README.md) phase 5 prévoit sa
+suppression, et `infra/minio/bootstrap.sh` ne le recrée pas (il crée
+`numista-canonical`, `enrichment-raws`, `enrichment-crops` et `model-artifacts`).
+*Pourquoi garder `transfers/`* : ce sont des poids issus de runs d'entraînement.
+Reproductibles en théorie, très chers en pratique.
+*Pourquoi exclure `eurio.db`* : c'est un doublon **périmé** de ce que le staging
+capture déjà en frais par `VACUUM INTO`. Deux `eurio.db` dans une même sauvegarde,
+datés de deux mois d'écart, sont un **piège de restauration** — exactement la classe de
+problème des deux `review.db` du VPS (ETAT-DES-LIEUX §1). Économie annexe : 104 Mo.
+*À revoir* : quand la phase 5 tuera le bucket, l'entrée disparaît d'elle-même. Si
+`transfers/` doit survivre, il faudra lui trouver un domicile — probablement
+`model-artifacts` (ADR-004).
+
+---
+
+### D-21 — Le miroir n'est pas une copie, et le dire est un invariant
+**2026-08-15 · lot 3**
+
+`rclone sync` (et non `copy`) : le miroir est un point-dans-le-temps **fidèle**, y
+compris pour les suppressions.
+
+*Conséquence assumée* : un wipe de MinIO se propage au miroir. Le miroir seul ne peut
+donc **pas** s'en apercevoir — il refléterait fidèlement le vide.
+*Ce qui l'attrape* : la comparaison à la référence (invariant 5, objets par bucket non
+décroissants), au même titre que les comptages de tables. Et la rétention Duplicati
+laisse le temps de remonter à la version d'avant.
+*Écarté* : un miroir cumulatif (`copy` sans suppression). Il divergerait de la source,
+rendrait l'invariant d'orphelins muet, et ferait doublon avec l'historique Duplicati.

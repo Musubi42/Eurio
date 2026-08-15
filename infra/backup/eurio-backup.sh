@@ -35,8 +35,8 @@ set -euo pipefail
 
 # ── Self-reexec dans un nix shell si les outils manquent ─────────────────────
 # Permet au script d'être portable sur tout système Nix sans setup préalable.
-if ! command -v python3 >/dev/null 2>&1; then
-  exec nix shell nixpkgs#python3 --command "$0" "$@"
+if ! command -v python3 >/dev/null 2>&1 || ! command -v rclone >/dev/null 2>&1; then
+  exec nix shell nixpkgs#python3 nixpkgs#rclone --command "$0" "$@"
 fi
 
 # ── Config (overridable via env) ─────────────────────────────────────────────
@@ -59,6 +59,20 @@ EURIO_DB_CONTAINER="${EURIO_DB_CONTAINER:-eurio-api}"
 EURIO_DB_PATH="${EURIO_DB_PATH:-/var/lib/eurio/eurio.db}"
 REVIEW_DB_CONTAINER="${REVIEW_DB_CONTAINER:-eurio-review}"
 REVIEW_DB_PATH="${REVIEW_DB_PATH:-/var/lib/eurio/review.db}"
+
+# Miroir MinIO : lu par l'API S3, jamais depuis le répertoire de données.
+# La disposition sur disque de MinIO (`xl.meta` + parts) est un format interne :
+# on ne peut pas calculer le sha256 d'un objet sans le réassembler, donc un
+# répertoire brut serait invérifiable. Cf. DECISIONS.md D-03.
+# Vider la liste (EURIO_BACKUP_BUCKETS=) désactive le miroir : le manifeste
+# sortira sans bloc `minio` et `verify` le signalera comme contrôle inopérant.
+MINIO_REMOTE="${EURIO_BACKUP_MINIO_REMOTE:-minio}"
+# shellcheck disable=SC2206
+MIRROR_BUCKETS=(${EURIO_BACKUP_BUCKETS-enrichment-crops enrichment-raws numista-canonical eurio-db})
+# Espace libre exigé avant de lancer le miroir (Go). Le premier `sync` écrit
+# ~6,3 Go ; un disque plein en cours de route laisserait un miroir tronqué que
+# seul l'invariant de cohérence rattraperait, et après coup.
+MIN_FREE_GB="${EURIO_BACKUP_MIN_FREE_GB:-10}"
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 die() { echo "❌ $*" >&2; exit 1; }
@@ -95,6 +109,31 @@ print(int(os.path.getmtime('$src')))
 " || die "$label : relevé du mtime de la source impossible."
 }
 
+# Miroir d'un bucket MinIO vers le staging, par l'API S3.
+#
+# `sync` et non `copy` : le miroir doit être un point-dans-le-temps FIDÈLE, y
+# compris pour les suppressions. L'historique n'est pas son travail — c'est
+# celui de la rétention Duplicati (D-05). Un miroir qui accumulerait les objets
+# supprimés divergerait de la source et rendrait l'invariant d'orphelins muet.
+mirror_bucket() {
+  local bucket="$1" dest="$2"
+  local -a filters=()
+
+  # `eurio-db` est un bucket legacy (data-layer-unification phase 5 prévoit sa
+  # suppression). On garde ses artefacts ML — chers à reproduire, ils viennent
+  # de runs d'entraînement — mais on EXCLUT sa copie de `eurio.db`, figée au
+  # 2026-06-29 : c'est un doublon périmé de ce que le staging capture déjà en
+  # frais, et deux `eurio.db` dans une sauvegarde sont un piège de restauration.
+  if [ "$bucket" = "eurio-db" ]; then
+    filters+=(--exclude "eurio.db" --exclude "eurio.db.*")
+  fi
+
+  rclone sync "$MINIO_REMOTE:$bucket" "$dest/$bucket" \
+    --fast-list --transfers 8 --stats=30s --stats-one-line \
+    "${filters[@]}" \
+    || die "miroir du bucket $bucket : rclone sync a échoué."
+}
+
 # ── Sous-commandes ───────────────────────────────────────────────────────────
 
 cmd_stage() {
@@ -125,14 +164,35 @@ cmd_stage() {
   echo ">>> review.db"
   mtime_review="$(snapshot_db "$REVIEW_DB_CONTAINER" "$REVIEW_DB_PATH" "$STAGING/review.db" "review.db")"
 
-  echo
-  echo ">>> manifeste"
   local -a manifest_args=("$STAGING" --t1 "$t1")
   [ -n "$mtime_eurio" ]  && manifest_args+=(--source-mtime "eurio.db=$mtime_eurio")
   [ -n "$mtime_review" ] && manifest_args+=(--source-mtime "review.db=$mtime_review")
-  # Le miroir MinIO arrive au lot 3 ; le manifeste porte déjà son emplacement.
-  [ -d "$STAGING/minio" ] && manifest_args+=(--minio-root "$STAGING/minio" --t2 "$(date -u +%Y-%m-%dT%H:%M:%SZ)")
 
+  # ── Miroir MinIO — APRÈS les bases, jamais avant ──────────────────────────
+  # Le décalage entre les deux captures est inévitable ; il n'est pas
+  # symétrique. Bases puis MinIO ⇒ le miroir est un sur-ensemble de ce que la
+  # base référence ⇒ orphelins (bénins). L'ordre inverse produirait des
+  # références pendantes, soit une corruption silencieuse à la restauration.
+  # Cf. DONNEES.md §3 et DECISIONS.md D-04.
+  if [ "${#MIRROR_BUCKETS[@]}" -gt 0 ]; then
+    local free_gb
+    free_gb="$(df -BG --output=avail "$STAGING" | tail -1 | tr -dc '0-9')"
+    [ "${free_gb:-0}" -ge "$MIN_FREE_GB" ] \
+      || die "espace libre insuffisant : ${free_gb} Go < ${MIN_FREE_GB} Go exigés."
+
+    echo
+    echo ">>> miroir MinIO (${MIRROR_BUCKETS[*]})"
+    mkdir -p "$STAGING/minio"
+    local bucket
+    for bucket in "${MIRROR_BUCKETS[@]}"; do
+      echo "  --- $bucket"
+      mirror_bucket "$bucket" "$STAGING/minio"
+    done
+    manifest_args+=(--minio-root "$STAGING/minio" --t2 "$(date -u +%Y-%m-%dT%H:%M:%SZ)")
+  fi
+
+  echo
+  echo ">>> manifeste"
   python3 "$SCRIPT_DIR/build_manifest.py" "${manifest_args[@]}" || die "construction du manifeste échouée."
 
   echo
