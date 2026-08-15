@@ -1,5 +1,25 @@
 # Stratégie de sauvegarde du VPS — plan
 
+> ## ⚠️ REMPLACÉ — voir [`../work-in-progress/backup-pipeline/`](../work-in-progress/backup-pipeline/)
+>
+> Ce document est conservé comme **trace du raisonnement initial**. Il ne doit plus
+> servir de référence : plusieurs de ses prémisses ont été infirmées par une inspection
+> directe du VPS le même jour.
+>
+> Corrections principales (détail dans
+> [`ETAT-DES-LIEUX.md`](../work-in-progress/backup-pipeline/ETAT-DES-LIEUX.md) §1) :
+> - une sauvegarde hors site **existe** (pCloud, 3,842 GiB, 2026-06-17) et sa clé de
+>   déchiffrement fonctionne — elle est simplement figée depuis deux mois ;
+> - le VPS fait déjà tourner **Duplicati avec 10 jobs quotidiens** ; Eurio en est la
+>   seule stack absente. La bonne question n'était pas « quelle politique inventer »
+>   mais « comment y faire entrer Eurio » ;
+> - les questions ouvertes 1, 2 et 3 du §5 ont des réponses déjà écrites ou sans objet ;
+> - le mécanisme de notification retenu n'est pas l'astuce éditer/poster de §3, mais
+>   Uptime Kuma + healthchecks.io
+>   ([D-06](../work-in-progress/backup-pipeline/DECISIONS.md), D-07) ;
+> - le §4 teste le transport, pas la validité du contenu — voir
+>   [`VERIFICATION.md`](../work-in-progress/backup-pipeline/VERIFICATION.md) §1.
+
 > **Statut : PLAN, non implémenté.** Écrit le 2026-08-14.
 > Implémentation prévue en session dédiée sur le VPS (`ssh serverOimNixDontpanic`,
 > projet dans `/opt/eurio`).
