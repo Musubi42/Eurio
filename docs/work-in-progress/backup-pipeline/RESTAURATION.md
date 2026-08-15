@@ -14,7 +14,7 @@ L'ordre n'est pas négociable : chaque étape dépend de la précédente.
 | # | Étape | Dépend de | Piège |
 |---|---|---|---|
 | 1 | `git clone` → code, compose, secrets SOPS | — | La clé age SOPS doit être présente sur la machine (`~/.config/sops/age/keys.txt`) |
-| 2 | Restaurer `infra/minio/secrets` et `infra/review/secrets` | Duplicati | ⚠️ **Gitignorés — donc absents du clone.** Sans eux on s'arrête ici |
+| 2 | **Régénérer** `infra/minio/secrets` et `infra/review/secrets` **depuis SOPS** | 1 | ✅ Plus de dépendance à Duplicati depuis le 2026-08-16 (**D-29**). Les 6 valeurs sont dans `secrets/dev.env` : le clone + la clé age suffisent |
 | 3 | Démarrer MinIO **vide**, puis `infra/minio/bootstrap.sh` | 1, 2 | Crée les buckets et les policies. Restaurer des objets sans les policies donne un MinIO que l'app ne peut pas lire |
 | 4 | `rclone sync staging/minio/<bucket> → minio:<bucket>` | 3 | **Le store référencé d'abord** (cf. [`DONNEES.md`](./DONNEES.md) §3) |
 | 5 | Poser `eurio.db` et `review.db` dans les binds | 2 | Ne **pas** restaurer de fichiers `-wal` / `-shm` : le `VACUUM INTO` produit une base autonome et propre |

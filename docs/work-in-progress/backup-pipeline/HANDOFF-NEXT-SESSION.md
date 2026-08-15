@@ -307,8 +307,9 @@ Si tout le reste est oublié, garder ça.
 | 5 | **Authentik : `pg_dump` documenté, jamais automatisé** — `backup-temp/` contient un dump du 8 nov. 2025, resauvegardé chaque nuit depuis | ⬜ ticket à ouvrir |
 | 6 | **924 notifications non acquittées** dans Duplicati | ⬜ à purger |
 | 7 | **`/etc/nixos` n'est dans aucun job Duplicati** | ⬜ à vérifier |
-| 8 | **`/opt/eurio` n'est dans aucun job** — donc ni `infra/minio/secrets`, ni `infra/review/secrets` (gitignorés, absents du clone). Sans eux, `bootstrap.sh` régénère des identifiants MinIO que `eurio-api` ne sait plus lire | 🔴 **bloque le drill (lot 6, étape 2)** |
+| 8 | **`/opt/eurio` n'est dans aucun job** — donc ni `infra/minio/secrets`, ni `infra/review/secrets` (gitignorés, absents du clone). Sans eux, `bootstrap.sh` régénère des identifiants MinIO que `eurio-api` ne sait plus lire | ✅ **levé le 2026-08-16** — les 6 secrets sont dans SOPS (**D-29**), le clone est auto-suffisant |
 | 9 | **La config Duplicati (`/opt/stacks/oim-duplicati/`) n'est dans aucun job** — elle porte les passphrases et jetons `authid` des **11** jobs. Ceux d'Eurio sont désormais dans SOPS (**D-28**) ; **les 10 autres restent sur la seule machine qu'ils sont censés pouvoir remplacer** | 🔴 ticket à ouvrir |
+| 10 | **`eurio-review` utilise les identifiants ROOT de MinIO** — `infra/review/secrets/minio_{access,secret}_key` sont bit pour bit `minio_root_{user,password}`, alors que le compte scopé `eurio-app` existe déjà. Pleins pouvoirs (buckets, policies, users) pour un service qui lit et écrit quelques préfixes | 🔴 ticket : compte scopé **puis rotation du mot de passe root** (**D-30**) |
 
 Les points 3, 4 et 5 sont la même pathologie : **des jobs verts qui protègent moins que
 leur nom** (D-19). L'anneau 3 et les invariants de niveau 3 sont directement

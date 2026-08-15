@@ -544,3 +544,52 @@ la clé ne doit jamais être uniquement à l'intérieur de ce qu'elle ouvre.
 *Reste à couvrir* : `infra/minio/secrets` et `infra/review/secrets`, gitignorés et dans
 aucun job — sans eux, `bootstrap.sh` régénère des identifiants MinIO que `eurio-api` ne
 sait plus lire (cf. Pièges du HANDOFF). À traiter avant le drill de l'étape 2.
+
+---
+
+### D-29 — Les secrets d'infrastructure vont dans SOPS, pas dans l'archive
+**2026-08-16 · lot 6, étape 0 (suite)**
+
+Les 6 secrets de `infra/minio/secrets/` et `infra/review/secrets/` sont désormais dans
+`secrets/dev.env`. Trois y ont été ajoutés (`MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`,
+`REVIEW_SESSION_SECRET`) ; les trois autres y étaient déjà et ont été **vérifiés
+identiques** aux fichiers, par empreinte salée.
+
+*Écarté* : ajouter `/opt/eurio` aux sources du job Duplicati 17.
+*Pourquoi* : (a) les secrets n'y seraient protégés que par le chiffrement Duplicati, pas
+par age ; (b) ça élargit un job dont le périmètre était volontairement « le staging, rien
+d'autre » (D-01) ; (c) surtout, **c'est circulaire** — les identifiants MinIO servent à
+remonter l'infrastructure qui héberge les données que l'archive contient. Même piège que
+D-28 : la clé ne doit pas être uniquement dans ce qu'elle ouvre.
+*Conséquence voulue* : **le clone devient auto-suffisant.** `git clone` + clé age =
+tout le nécessaire hors données. C'est ce qui rend le drill réalisable ailleurs que sur
+le VPS — sur le Mac, par exemple, ce qui est le seul exercice qui teste vraiment « la
+machine a brûlé ».
+*Note d'implémentation* : les fichiers `infra/*/secrets/*` restent la surface consommée
+par `docker compose` (pattern `*_FILE`). SOPS en est la **source**, eux la projection.
+Les régénérer depuis SOPS est l'étape 2 de `RESTAURATION.md` ; le script du lot 6 doit
+le faire, et non les restaurer depuis l'archive.
+
+---
+
+### D-30 — `eurio-review` tourne avec les identifiants ROOT de MinIO *(anomalie, à corriger)*
+**2026-08-16 · découvert au lot 6**
+
+En cartographiant les secrets, les empreintes ont révélé que
+`infra/review/secrets/minio_access_key` et `minio_secret_key` sont **exactement**
+`minio_root_user` et `minio_root_password`.
+
+`eurio-review` dispose donc des pleins pouvoirs sur MinIO — création et suppression de
+buckets, gestion des politiques et des utilisateurs — alors qu'il n'a besoin que de lire
+et écrire quelques préfixes. Le compte applicatif restreint `eurio-app` existe pourtant
+déjà (créé par `bootstrap.sh`, politique dans `infra/minio/policies/`), et c'est celui
+qu'utilise `eurio-api`.
+
+*Ce n'est pas un défaut de sauvegarde* — d'où une décision distincte plutôt qu'un
+élargissement du lot 6. Mais ça a une conséquence directe sur la restauration : un drill
+qui remonte MinIO avec des identifiants root **ne teste pas** le chemin de permissions
+réel de la production. Le drill doit donc utiliser les comptes applicatifs.
+
+*À faire, hors chantier sauvegarde* : donner à `eurio-review` son propre compte MinIO
+scopé, puis **rotater le mot de passe root** — il a fuité dans la surface de deux
+services. Ticket ouvert dans le HANDOFF (§découvertes, n° 10).
