@@ -375,3 +375,45 @@ décroissants), au même titre que les comptages de tables. Et la rétention Dup
 laisse le temps de remonter à la version d'avant.
 *Écarté* : un miroir cumulatif (`copy` sans suppression). Il divergerait de la source,
 rendrait l'invariant d'orphelins muet, et ferait doublon avec l'historique Duplicati.
+
+---
+
+### D-22 — Le module NixOS s'importe par un input flake, jamais par chemin absolu
+**2026-08-15 · lot 4**
+
+Dans `/etc/nixos/flake.nix` :
+
+```nix
+inputs.eurio-nix = { url = "path:/opt/eurio/nix"; flake = false; };
+modules = [ … "${eurio-nix}/eurio-vps.nix" ];
+```
+
+*Écarté* : `imports = [ /opt/eurio/nix/eurio-vps.nix ]`, la méthode que le module
+documentait lui-même depuis juin.
+*Pourquoi* : elle **ne peut pas fonctionner** sur ce système. Le VPS est construit par
+un flake, et un flake est hermétique — vérifié en le tentant :
+`error: access to absolute path '/opt/eurio/nix/eurio-vps.nix' is forbidden in pure
+evaluation mode`. C'est une raison de plus pour laquelle l'ordonnancement n'avait jamais
+été branché : la procédure écrite était inapplicable, et personne ne l'avait tentée.
+*Écarté aussi* : `--impure` (défait la reproductibilité du système entier pour un
+fichier de 150 lignes) et copier le module dans `/etc/nixos` (duplication qui dérive).
+*Pourquoi `/opt/eurio/nix` et non `/opt/eurio`* : un input `path:` copie l'arborescence
+dans le store. La racine du dépôt pèse **plusieurs Go**, staging de sauvegarde compris.
+Cibler le sous-dossier ne copie que quelques Ko.
+*Friction acceptée* : modifier le module exige `nix flake update eurio-nix`. Pour un
+ordonnanceur de sauvegardes en production, une modification qui laisse une trace dans
+`flake.lock` est un avantage, pas une gêne.
+
+---
+
+### D-23 — Le staging est monté en LECTURE SEULE dans Duplicati
+**2026-08-15 · lot 4**
+
+`- /opt/eurio/infra/backup/staging:/eurio-source:ro`
+
+*Pourquoi* : un outil de sauvegarde n'a aucune raison de pouvoir écrire dans les données
+qu'il sauvegarde. Le montage en lecture seule coûte deux caractères et retire
+définitivement une classe entière d'accidents.
+*Contexte* : les 14 autres montages de ce conteneur sont en lecture-écriture. On ne les
+change pas ici — ce n'est pas le périmètre de ce chantier — mais c'est un candidat
+évident pour le durcissement des 10 autres jobs.

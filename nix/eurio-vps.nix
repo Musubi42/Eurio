@@ -1,21 +1,48 @@
-# NixOS module — Eurio VPS services (MinIO + weekly pCloud backup chiffré).
+# NixOS module — ordonnancement du staging de sauvegarde Eurio.
 #
-# Imported from /etc/nixos/configuration.nix via absolute path :
+# ⚠️ NE PAS importer par chemin absolu. Le système du VPS est construit par un
+# flake, et un flake est hermétique :
 #
 #     imports = [ /opt/eurio/nix/eurio-vps.nix ];
+#     → error: access to absolute path '/opt/eurio/nix/eurio-vps.nix'
+#              is forbidden in pure evaluation mode
 #
-# Conditioned on `config.networking.hostName == "nixos"` so importing this
-# on another host is a no-op (override via `eurio.vps.enable = true;`).
+# Import correct, dans /etc/nixos/flake.nix :
+#
+#     inputs.eurio-nix = { url = "path:/opt/eurio/nix"; flake = false; };
+#     outputs = inputs@{ ..., eurio-nix, ... }:
+#       modules = [ ... "${eurio-nix}/eurio-vps.nix" ];
+#
+# On cible `/opt/eurio/nix` et non la racine du dépôt : seuls ces quelques Ko
+# sont copiés dans le store, là où la racine pèse plusieurs Go (staging inclus).
+# Après toute modification de ce fichier : `nix flake update eurio-nix` puis
+# `nixos-rebuild switch`.
+#
+# Conditionné sur `config.networking.hostName == "nixos"` : l'importer sur un
+# autre hôte est un no-op (forçable via `eurio.vps.enable = true;`).
 #
 # Services installés :
 #
-#   eurio-minio.service       oneshot wrapper around `docker compose up -d`
-#   eurio-backup.service      ./infra/backup/eurio-backup.sh run (rclone crypt)
-#   eurio-backup.timer        weekly trigger (default: Sun 03:00 UTC)
+#   eurio-backup-stage.service   `eurio-backup.sh stage`   — 02:00 UTC
+#   eurio-backup-verify.service  `eurio-backup.sh verify`  — 02:30 UTC
 #
-# Le backup utilise `rclone crypt` avec une clé Age dédiée à
-# `~/.config/eurio-backup/age-key.txt` (mode 400, jamais dans le store).
-# Voir infra/backup/README.md.
+# Pourquoi un service NixOS déclaratif plutôt qu'un cron : il survit à une
+# réinstallation, et il est versionné avec le code qu'il lance. C'est la
+# réponse directe au constat du 2026-08-14 — le dispositif précédent existait,
+# fonctionnait, et n'avait simplement jamais été branché.
+#
+# Pourquoi 02:00 / 02:30 : les jobs Duplicati démarrent à 03:00 UTC. Le staging
+# doit être terminé et vérifié AVANT que Duplicati ne le ramasse.
+#
+# Ce module ne parle pas au distant. Duplicati est le moteur unique : transport,
+# chiffrement, rétention, historique. Voir
+# docs/work-in-progress/backup-pipeline/ARCHITECTURE.md §4.
+#
+# ⚠️ Ce module ne gère PAS MinIO. Une version antérieure définissait un
+# `eurio-minio.service` dont l'`ExecStop` faisait `docker compose down` : tout
+# `systemctl stop`, toute désactivation future du module aurait coupé MinIO —
+# et avec lui eurio-api, eurio-review et le miroir. MinIO tourne très bien sans
+# systemd ; on ne lui ajoute pas un interrupteur qu'on n'a pas demandé.
 #
 # Le module reste dormant tant qu'il n'est pas importé.
 
@@ -23,7 +50,22 @@
 
 let
   cfg = config.eurio.vps;
-  repoRoot = "/opt/eurio";
+  script = "${cfg.repoRoot}/infra/backup/eurio-backup.sh";
+
+  # Les deux unités partagent leur environnement : même utilisateur, mêmes
+  # outils, même répertoire. Seule la commande change.
+  commonService = {
+    after = [ "docker.service" "network-online.target" ];
+    wants = [ "network-online.target" ];
+    path = with pkgs; [ docker python3 rclone coreutils util-linux gawk gnused gnugrep bash nix ];
+    serviceConfig = {
+      Type = "oneshot";
+      User = cfg.user;
+      WorkingDirectory = cfg.repoRoot;
+      StandardOutput = "journal";
+      StandardError = "journal";
+    };
+  };
 in
 {
   options.eurio.vps = {
@@ -31,103 +73,93 @@ in
       type = lib.types.bool;
       default = config.networking.hostName == "nixos";
       description = ''
-        Whether to enable the Eurio VPS services (MinIO + backup).
-        Defaults to true on the host whose hostname is "nixos" (the
-        actual VPS) and false elsewhere.
+        Activer l'ordonnancement du staging de sauvegarde Eurio.
+        Vrai par défaut sur l'hôte dont le hostname est "nixos" (le VPS).
       '';
     };
 
     repoRoot = lib.mkOption {
       type = lib.types.path;
-      default = repoRoot;
-      description = "Absolute path to the Eurio repo on this host.";
+      default = "/opt/eurio";
+      description = "Chemin absolu du dépôt Eurio sur cet hôte.";
     };
 
-    backup = {
-      enable = lib.mkOption {
-        type = lib.types.bool;
-        default = true;
-        description = "Activer le timer hebdomadaire de backup pCloud.";
-      };
+    user = lib.mkOption {
+      type = lib.types.str;
+      default = "dontpanic";
+      description = ''
+        Utilisateur qui produit le staging. Doit pouvoir :
+        - parler au démon Docker (snapshot des bases par `docker exec`) ;
+        - lire ~/.config/rclone/rclone.conf (remote `minio` pour le miroir) ;
+        - écrire dans ''${repoRoot}/infra/backup/staging/.
+      '';
+    };
 
-      user = lib.mkOption {
-        type = lib.types.str;
-        default = "dontpanic";
-        description = ''
-          Utilisateur qui exécute le backup. Doit avoir :
-          - ~/.config/eurio-backup/age-key.txt (mode 400)
-          - ~/.config/rclone/rclone.conf avec [pcloud], [pcloud_crypt], [minio]
-          Pas besoin d'accès au volume MinIO : on lit via l'API S3.
-        '';
-      };
+    stageOnCalendar = lib.mkOption {
+      type = lib.types.str;
+      default = "*-*-* 02:00:00 UTC";
+      description = "Quand produire le staging. Doit précéder Duplicati (03:00 UTC).";
+    };
 
-      onCalendar = lib.mkOption {
-        type = lib.types.str;
-        default = "Sun 03:00 UTC";
-        description = "systemd OnCalendar pour le backup hebdomadaire.";
-      };
+    verifyOnCalendar = lib.mkOption {
+      type = lib.types.str;
+      default = "*-*-* 02:30:00 UTC";
+      description = "Quand vérifier les invariants. Entre le staging et Duplicati.";
     };
   };
 
   config = lib.mkIf cfg.enable {
 
-    # ── Pre-reqs ──────────────────────────────────────────────────────────
+    # `mkDefault` : on déclare une dépendance, on n'impose rien à un hôte qui
+    # aurait déjà sa propre configuration Docker.
     virtualisation.docker.enable = lib.mkDefault true;
 
-    # Outils utilisés par le module et l'usage ad-hoc.
-    environment.systemPackages = with pkgs; [
-      docker
-      docker-compose
-      rclone
-      age
-      curl
-    ];
+    environment.systemPackages = with pkgs; [ rclone ];
 
-    # ── eurio-minio.service ───────────────────────────────────────────────
-    systemd.services.eurio-minio = {
-      description = "Eurio MinIO (docker compose at ${cfg.repoRoot}/infra/minio)";
-      after = [ "docker.service" "network-online.target" ];
-      wants = [ "docker.service" "network-online.target" ];
-      wantedBy = [ "multi-user.target" ];
-      path = [ pkgs.docker pkgs.docker-compose ];
-
-      serviceConfig = {
-        Type = "oneshot";
-        RemainAfterExit = true;
-        WorkingDirectory = "${cfg.repoRoot}/infra/minio";
-        ExecStart  = "${pkgs.docker}/bin/docker compose -f ${cfg.repoRoot}/infra/minio/docker-compose.yml up -d";
-        ExecStop   = "${pkgs.docker}/bin/docker compose -f ${cfg.repoRoot}/infra/minio/docker-compose.yml down";
-        ExecReload = "${pkgs.docker}/bin/docker compose -f ${cfg.repoRoot}/infra/minio/docker-compose.yml up -d --force-recreate";
+    # ── Production du staging ─────────────────────────────────────────────
+    systemd.services.eurio-backup-stage = commonService // {
+      description = "Eurio — production du staging de sauvegarde";
+      serviceConfig = commonService.serviceConfig // {
+        ExecStart = "${script} stage";
+        # Le miroir MinIO du premier run prend ~13 min ; les suivants ~2 min.
+        # La borne protège la fenêtre avant Duplicati sans être serrée.
+        TimeoutStartSec = "45min";
       };
     };
 
-    # ── eurio-backup.service + timer ──────────────────────────────────────
-    # Le service appelle `eurio-backup.sh run` depuis le repo. Le script
-    # lit la clé Age dans le HOME de l'utilisateur configuré, configure
-    # les env vars rclone et exec rclone copy pour chaque bucket.
-    systemd.services.eurio-backup = lib.mkIf cfg.backup.enable {
-      description = "Backup MinIO → pCloud chiffré (rclone crypt + Age)";
-      after = [ "eurio-minio.service" "network-online.target" ];
-      wants = [ "network-online.target" ];
-      requires = [ "eurio-minio.service" ];
-      path = [ pkgs.rclone pkgs.age pkgs.coreutils pkgs.gawk pkgs.gnused pkgs.gnugrep pkgs.bash ];
-
-      serviceConfig = {
-        Type = "oneshot";
-        User = cfg.backup.user;
-        WorkingDirectory = cfg.repoRoot;
-        ExecStart = "${cfg.repoRoot}/infra/backup/eurio-backup.sh run";
-        StandardOutput = "journal";
-        StandardError = "journal";
-      };
-    };
-
-    systemd.timers.eurio-backup = lib.mkIf cfg.backup.enable {
-      description = "Trigger hebdomadaire du backup pCloud d'Eurio";
+    systemd.timers.eurio-backup-stage = {
+      description = "Déclencheur quotidien du staging Eurio";
       wantedBy = [ "timers.target" ];
       timerConfig = {
-        OnCalendar = cfg.backup.onCalendar;
-        Persistent = true;  # rejoue si le VPS était down au moment prévu
+        OnCalendar = cfg.stageOnCalendar;
+        # Rejoue si la machine était éteinte à l'heure prévue. Un staging en
+        # retard vaut mieux qu'un staging sauté — et l'invariant de fraîcheur
+        # signalera de toute façon un staging trop vieux.
+        Persistent = true;
+      };
+    };
+
+    # ── Vérification des invariants ───────────────────────────────────────
+    # Unité SÉPARÉE, et pas un `ExecStartPost` du staging : les deux échouent
+    # pour des raisons différentes et appellent des actions différentes.
+    # « Le staging n'a pas tourné » est un problème d'infrastructure ;
+    # « verify est rouge » est un problème de données. Les confondre dans une
+    # seule unité rendrait l'alerting du lot 5 incapable de les distinguer.
+    systemd.services.eurio-backup-verify = commonService // {
+      description = "Eurio — vérification des invariants du staging";
+      after = commonService.after ++ [ "eurio-backup-stage.service" ];
+      serviceConfig = commonService.serviceConfig // {
+        ExecStart = "${script} verify";
+        TimeoutStartSec = "20min";
+      };
+    };
+
+    systemd.timers.eurio-backup-verify = {
+      description = "Déclencheur quotidien de la vérification Eurio";
+      wantedBy = [ "timers.target" ];
+      timerConfig = {
+        OnCalendar = cfg.verifyOnCalendar;
+        Persistent = true;
       };
     };
   };

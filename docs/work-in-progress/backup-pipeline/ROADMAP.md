@@ -12,8 +12,8 @@
 | 1 | `eurio-backup.sh stage` + `manifest.json` | ✅ | 2026-08-15 |
 | 2 | Suite d'invariants (niveaux 1-2-3) | ✅ | 2026-08-15 |
 | 3 | Miroir MinIO + invariants inter-stores | ✅ | 2026-08-15 |
-| **4** | Duplicati + timer NixOS | ⬜ **next** | |
-| 5 | Kuma ×3 + healthchecks.io | ⬜ | |
+| 4 | Duplicati + timer NixOS | 🟡 reste le `switch` | 2026-08-15 |
+| **5** | Kuma ×4 + healthchecks.io | ⬜ **next** | |
 | 6 | Restauration + premier exercice à froid | ⬜ | |
 | 7 | Décommissionnement de l'ancien chemin pCloud | ⬜ | |
 
@@ -178,54 +178,73 @@ Le référençant avant le référencé.
 
 ---
 
-## Lot 4 — Duplicati et timer NixOS
+## Lot 4 — Duplicati et timer NixOS 🟡 **2026-08-15 — reste le `switch`**
 
 > ### ✅ Prérequis levé le 2026-08-15 : les 10 jobs Duplicati sont réparés
-> Basculés du WebDAV Basic Auth vers le backend pCloud natif en OAuth, avec le jeton
-> rclone existant comme `authid`. Les 10 ont tourné avec succès
+> Basculés du WebDAV Basic Auth vers le backend pCloud natif en OAuth
 > (cf. [`ETAT-DES-LIEUX.md`](./ETAT-DES-LIEUX.md) §3).
->
-> - [x] Diagnostiquer la panne — vérification d'appareil pCloud sur Basic Auth
-> - [x] Basculer les 10 jobs sur `pcloud://api.pcloud.com/…?authid=…`
-> - [x] Confirmer que les jobs réussissent — 8/10 avec écriture réelle sur pCloud
-> - [ ] **Vérifier la passe automatique de 03:00 UTC** — c'est elle qui prouve que ça
->       tient sans intervention
-> - [ ] Acquitter les 456 erreurs / 468 avertissements
-> - [ ] Supprimer `/opt/stacks/oim-duplicati/api-config-export-20260815/`
->       (contient les identifiants WebDAV en clair)
 
-- [ ] 🔴 **Ajouter un bind `/opt/eurio/infra/backup/staging` au conteneur Duplicati** —
-      il n'en a aucun aujourd'hui (14 binds, tous sous `/opt/stacks`). Édition de
-      `/opt/stacks/oim-duplicati/compose.yaml` **hors dépôt Eurio** + recréation du
-      conteneur, sur une stack partagée
-- [ ] **Dans la même édition** : corriger `oim-Beszel` → `oim-beszel` (cf.
-      [`ETAT-DES-LIEUX.md`](./ETAT-DES-LIEUX.md) §8.1)
-- [ ] Job Duplicati « Eurio », destination
-      `pcloud://api.pcloud.com/Applications/DuplicatiBackup/Oim/Eurio?authid=…`
-      (même AuthID que les 10 autres), source = `infra/backup/staging/`,
-      **`keep-time` explicite** (pas seulement `keep-versions = 30`)
-- [ ] `--send-http-url` vers le push monitor Kuma `eurio-uploaded`, avec
-      `--send-http-level=all` (anneau 3)
-- [ ] Réorienter `nix/eurio-vps.nix` : `run` → `stage`, quotidien **02:00 UTC**,
-      + service `verify` à 02:30 UTC
-- [ ] Importer le module dans `/etc/nixos/configuration.nix`
-- [ ] `nixos-rebuild switch`
+### 4a — Compose Duplicati ✅
 
-**Critère de fin** : **3 nuits consécutives vertes**, staging + verify + job Duplicati
-**+ anneau 3 confirmant l'upload**. Une seule nuit ne prouve rien.
+- [x] Copie horodatée de `compose.yaml` + ré-export des 10 configs par l'API
+- [x] Bind `/opt/eurio/infra/backup/staging:/eurio-source:**ro**` — lecture seule
+      ([D-23](./DECISIONS.md))
+- [x] Correction de casse `oim-Beszel` → `oim-beszel` dans la même édition
+- [x] `docker compose config` puis recréation du conteneur
+- [x] **Les 10 jobs ont survécu** : mêmes IDs, mêmes destinations, mêmes bases
+      locales, mêmes planifications
 
-> ⚠️ **Précautions `nixos-rebuild`.** Cette machine héberge 60+ conteneurs (Immich,
-> Vaultwarden, Authentik, Traefik, torhub…). Le module ajoute `rclone`, `age`, `curl` en
-> `systemPackages` et déclare `virtualisation.docker.enable`, déjà actif.
-> Faire un `nixos-rebuild build` (ou `dry-activate`) **avant** le `switch`, et vérifier
-> qu'aucune option Docker n'entre en conflit avec la configuration existante.
->
-> **`systemd.services.eurio-minio` doit être retiré ou neutralisé avant l'import.** Le
-> risque principal n'est pas son `ExecStart` (`docker compose up -d`, idempotent) mais
-> son **`ExecStop = docker compose down`** : tout `systemctl stop`, toute désactivation
-> future du module, tout `nixos-rebuild` qui décide d'arrêter l'unité **coupe MinIO** —
-> et donc `eurio-api`, `eurio-review` et le miroir. Le service n'apporte rien : MinIO
-> tourne déjà et n'a pas demandé à être géré par systemd.
+**Preuve immédiate de la correction de casse** : Beszel a examiné **10 fichiers et
+envoyé 727 575 octets**, contre `ExaminedFiles: 0` sur tous ses runs depuis
+novembre 2025.
+
+### 4b — Job Duplicati « Eurio » ✅
+
+- [x] Job **ID 17**, destination
+      `pcloud://api.pcloud.com/Applications/DuplicatiBackup/Oim/Eurio`
+- [x] Source `/eurio-source/`, chiffrement AES, **même passphrase que les 10 autres**
+      (un seul secret à protéger, cohérent avec le reste)
+- [x] **`keep-time = 30D`** et non `keep-versions` : une borne *temporelle* définit
+      « combien de temps j'ai pour détecter une corruption » ([D-05](./DECISIONS.md))
+- [x] Planifié `1D` à 03:00 UTC, comme les 10 autres
+- [ ] `--send-http-url` vers Kuma — **reporté au lot 5**, le monitor n'existe pas encore
+
+### 4c — Ordonnancement NixOS 🟡 construit et validé, **pas encore activé**
+
+- [x] `nix/eurio-vps.nix` réécrit : `eurio-backup-stage` (02:00 UTC) et
+      `eurio-backup-verify` (02:30 UTC), deux unités **séparées**
+- [x] **`systemd.services.eurio-minio` supprimé** — son `ExecStop` faisait
+      `docker compose down` : tout `systemctl stop` ou toute désactivation future du
+      module aurait coupé MinIO, et avec lui `eurio-api`, `eurio-review` et le miroir
+- [x] Import par **input flake** et non par chemin absolu — la méthode documentée
+      depuis juin était **inapplicable** ([D-22](./DECISIONS.md))
+- [x] `nixos-rebuild build` **réussi**, diff de closure vérifié
+- [ ] 🔴 **`nixos-rebuild switch` — À FAIRE PAR LE PO** (nécessite `sudo`)
+
+**Diff de closure vérifié** — rien de retiré sur un VPS à 60+ conteneurs :
+
+```
+rclone: ∅ → 1.74.4, 99.2 MiB
+unit-eurio-backup-stage.service   ∅ → ε
+unit-eurio-backup-stage.timer     ∅ → ε
+unit-eurio-backup-verify.service  ∅ → ε
+unit-eurio-backup-verify.timer    ∅ → ε
+```
+
+**La commande qui reste**, à lancer par le PO :
+
+```bash
+sudo nixos-rebuild switch --flake /etc/nixos#nixos
+systemctl list-timers 'eurio-*'          # doit lister les deux timers
+```
+
+Retours arrière préparés : `/etc/nixos/flake.nix.bak-20260815`,
+`/etc/nixos/configuration.nix.bak-20260815` (non modifié au final),
+`/opt/stacks/oim-duplicati/compose.yaml.bak-20260815-234703`.
+`/etc/nixos` est un dépôt git : `git diff` y montre exactement les deux ajouts.
+
+**Critère de fin** : **3 nuits consécutives vertes**, staging + verify + job Duplicati.
+Une seule nuit ne prouve rien.
 
 ---
 

@@ -146,9 +146,12 @@ inutile, et un conteneur de sauvegarde qui obtient les pleins pouvoirs sur l'hô
 ramasse à son heure et ne sait rien d'Eurio. C'est plus simple, et c'est déjà ce que la
 doctrine du VPS décrit pour Authentik (le `pg_dump` y est une étape séparée).
 
-Le timer est déclaré dans **`nix/eurio-vps.nix`**, qui existe déjà et qu'il suffit de
-réorienter (`run` → `stage`) puis d'importer dans `/etc/nixos/configuration.nix`. Un
-service NixOS déclaratif survit à une réinstallation, contrairement à un cron.
+Les timers sont déclarés dans **`nix/eurio-vps.nix`**, importé dans `/etc/nixos` par un
+**input flake** (`path:/opt/eurio/nix`, `flake = false`) et **non** par chemin absolu :
+le système du VPS est construit par un flake, et l'évaluation pure refuse les chemins
+hors du flake. Détail et raisonnement : [D-22](./DECISIONS.md).
+
+Un service NixOS déclaratif survit à une réinstallation, contrairement à un cron.
 C'est la réponse à la question « quel ordonnanceur » du plan initial.
 
 **Conséquence à ne pas rater** : un `nixos-rebuild switch` sera nécessaire, et il

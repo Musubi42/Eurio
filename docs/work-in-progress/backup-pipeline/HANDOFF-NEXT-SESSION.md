@@ -30,9 +30,9 @@ tourné avec succès. Détail : [`ETAT-DES-LIEUX.md`](./ETAT-DES-LIEUX.md) §3.
 | # | Action | Bloque |
 |---|---|---|
 | 1 | **Créer le compte healthchecks.io** et brancher sa notification sur Discord — un compte externe, ça ne peut pas se faire depuis le VPS | Lot 5 |
-| 2 | **Valider l'édition de `/opt/stacks/oim-duplicati/compose.yaml`** — ajout du bind `/opt/eurio/infra/backup/staging` **et** correction de casse `oim-Beszel` → `oim-beszel`, puis recréation du conteneur. Hors dépôt Eurio, sur une stack partagée | Lot 4 |
+| 2 | 🔴 **`sudo nixos-rebuild switch --flake /etc/nixos#nixos`** — construit et validé, mais le `switch` demande un mot de passe que je n'ai pas. Diff de closure vérifié : rclone + 4 unités, **rien de retiré** | Lot 4 (fin) |
 
-> **Lots 0 à 3 faits le 2026-08-15.**
+> **Lots 0 à 4 faits le 2026-08-15**, sauf le `nixos-rebuild switch`.
 > Lot 0 : copie chiffrée des deux bases dans `pcloud_crypt:lot0-manuel-20260815/`,
 > vérifiée depuis la destination — un filet ponctuel qui vieillira, pas un dispositif.
 > Lots 1 à 3 : `go-task backup:stage` / `backup:verify` / `backup:test`. Staging de
@@ -55,21 +55,15 @@ tourné avec succès. Détail : [`ETAT-DES-LIEUX.md`](./ETAT-DES-LIEUX.md) §3.
 
 ## Ordre d'exécution proposé pour la prochaine session
 
-**Lot 4** — le premier qui touche la production. Trois opérations distinctes, à ne pas
-mélanger :
+**Finir le lot 4** : `sudo nixos-rebuild switch --flake /etc/nixos#nixos`, puis
+`systemctl list-timers 'eurio-*'`. Tout le reste est fait et vérifié.
 
-1. **Éditer `/opt/stacks/oim-duplicati/compose.yaml`** — ajouter le bind
-   `/opt/eurio/infra/backup/staging` **et** corriger `oim-Beszel` → `oim-beszel`.
-   Copie horodatée du compose et de `appdata-test` avant, `docker compose config` pour
-   valider, puis recréation du conteneur, puis vérifier que les 10 jobs sont toujours là.
-2. **Créer le job Duplicati « Eurio »** — destination
-   `pcloud://api.pcloud.com/Applications/DuplicatiBackup/Oim/Eurio?authid=…`,
-   `keep-time` explicite, `--send-http-url` vers Kuma.
-3. **Réorienter et importer `nix/eurio-vps.nix`** — `stage` à 02:00 UTC, `verify` à
-   02:30. ⚠️ Retirer `systemd.services.eurio-minio` d'abord (son `ExecStop` couperait
-   MinIO), et `nixos-rebuild build` avant le `switch`.
-
-Puis **lot 5** (alerting), à ne pas enchaîner dans la même session.
+**Lot 5** — l'alerting, et c'est lui qui rend le dispositif honnête. Quatre push
+monitors Kuma (`eurio-staging`, `eurio-verify`, `eurio-uploaded`, `eurio-drill`),
+branchés sur le canal Musubi Discord déjà existant, plus healthchecks.io hors site.
+L'anneau `eurio-uploaded` (`--send-http-url` de Duplicati) est le plus important : c'est
+son absence qui a laissé 10 jobs mourir sans témoin. Critère de fin : **un échec
+provoqué doit effectivement arriver sur Discord**.
 
 ## Pièges identifiés, à ne pas redécouvrir
 
