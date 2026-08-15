@@ -13,18 +13,20 @@ Tailles = `ls -lh` sur disque. **Tracké** ou non indiqué explicitement.
 
 | Artefact | Taille | Tracké | Produit par | Consommé par | Perte |
 |---|---|---|---|---|---|
-| `assets/models/coin_detector.tflite` | 10 Mo | oui | `ml/training/train_detector.py --export` → `ml/output/`, puis **copie manuelle** | `CoinDetector.kt` | 🟡 dérivé de `best.pt` |
-| `assets/models/eurio_embedder_v1.tflite` | 4,4 Mo | oui | `ml/training/export_tflite.py` → `ml/prod/current/` → `ml/scripts/promote_prod_assets.py` | `CoinEmbedder.kt`, `CoinAnalyzerFactory.kt` | 🟡 seulement si l'itération lab source existe encore (`ml/lab/iterations/` est gitignoré) |
+| `assets/models/coin_detector.tflite` | 10 Mo | **non** *(MinIO, ADR-004)* | `ml/training/train_detector.py --export` → `ml/output/`, puis **copie manuelle** | `CoinDetector.kt` | 🟢 `fetchModelAssets` — la version est épinglée par `shared/model-assets.json` |
+| `assets/models/eurio_embedder_v1.tflite` | 4,4 Mo | **non** *(MinIO, ADR-004)* | `ml/training/export_tflite.py` → `ml/prod/current/` → `ml/scripts/promote_prod_assets.py` | `CoinEmbedder.kt`, `CoinAnalyzerFactory.kt` | 🟢 idem |
 | ⚠️ `assets/models/test_model.tflite` | **19 Mo** | **non** | **inconnu** | **inconnu** (aucun consommateur identifié) | ❓ **À qualifier** — c'est le plus gros fichier des assets, daté du 2026-04-09, jamais documenté. Résidu de spike ? |
-| `assets/data/coin_embeddings.json` | 61 ko | oui | `ml/training/compute_embeddings.py` | `EmbeddingMatcher.kt` | 🟡 idem — c'est la table de centroïdes du run promu |
-| `assets/data/model_meta.json` | 958 o | oui | `ml/training/export_tflite.py` | `CoinEmbedder.kt` | 🟡 couplé au `.tflite` |
+| `assets/data/coin_embeddings.json` | 61 ko | **non** *(MinIO, ADR-004)* | `ml/training/compute_embeddings.py` | `EmbeddingMatcher.kt` | 🟢 idem — c'est la table de centroïdes du run promu |
+| `assets/data/model_meta.json` | 958 o | **non** *(MinIO, ADR-004)* | `ml/training/export_tflite.py` | `CoinEmbedder.kt` | 🟢 couplé au `.tflite`, publié avec lui |
 | `assets/app_core.db` | 3,2 Mo | oui | `ml/export/build_app_core.py` (**lit Supabase**) | `AppCoreBootstrapper.kt` | 🟢 `go-task ml:build-app-core` |
 | `src/qa/assets/app_core.db` | 147 ko | non | `ml/export/build_app_core_qa.py` | variante QA | 🟢 |
 | `assets/shared_reverse/reverse_2eur_v{1,2}.webp` | 186 ko | oui | `ml/export/build_shared_reverse_assets.py` (re-télécharge + ré-encode) | `CoinRepository.kt` | 🟢 |
 | `assets/capture_coins.csv` | 1,5 ko | oui | édité à la main | app | 🔴 donnée primaire |
 
-⚠️ Aucun de ces fichiers n'a de **sha ni de version vérifiée** dans l'APK. Le seul
-mécanisme sha256 du projet est le manifeste du `cohort_bundle` (variante de test).
+⚠️ Aucun de ces fichiers n'a de **sha ni de version vérifiée** dans l'APK. ~~Le seul
+mécanisme sha256 du projet est le manifeste du `cohort_bundle`~~ → depuis le 2026-08-16,
+les 4 artefacts de modèle en ont un : `shared/model-assets.json`, committé, vérifié à
+chaque `fetch`. `app_core.db`, `capture_coins.csv` et les WebP restent sans sha.
 
 ## Poids d'entraînement
 

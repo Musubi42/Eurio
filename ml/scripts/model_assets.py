@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import sys
 from datetime import datetime, timezone
@@ -69,6 +70,27 @@ def _manifest_index(manifest: dict) -> dict[str, dict]:
     return {a["dest"]: a for a in manifest.get("assets", [])}
 
 
+def _require_credentials() -> None:
+    """Sort avec un message actionnable si les creds MinIO ne sont pas dans
+    l'environnement.
+
+    Sans ça, l'absence de creds remonte en `KeyError: 'MINIO_ACCESS_KEY'` depuis
+    `shared.storage._client()` — illisible, et surtout indiscernable d'un vrai
+    problème de bucket ou de policy. Le cas est fréquent : shell non interactif,
+    build lancé depuis Android Studio, cron — tous des contextes où direnv n'a
+    pas tourné.
+    """
+    missing = [k for k in ("MINIO_ACCESS_KEY", "MINIO_SECRET_KEY") if k not in os.environ]
+    if missing:
+        raise SystemExit(
+            f"\nerror: {', '.join(missing)} absent(s) de l'environnement.\n"
+            f"\nLes secrets vivent dans `secrets/dev.env` (SOPS+age) et sont exportés\n"
+            f"par direnv. Si le shell n'a pas direnv (non interactif, Android Studio,\n"
+            f"cron), utilise le fallback documenté :\n"
+            f"    sops exec-env secrets/dev.env 'go-task ml:assets:fetch'\n"
+        )
+
+
 def _ensure_bucket() -> None:
     """Vérifie l'accès au bucket. Ne le crée PAS : la clé applicative n'a pas
     (et ne doit pas avoir) le droit `CreateBucket`.
@@ -77,9 +99,18 @@ def _ensure_bucket() -> None:
     `infra/minio/bootstrap.sh` + `infra/minio/policies/eurio-app-policy.json`,
     à jouer sur le VPS avec les creds admin.
     """
+    _require_credentials()
     try:
         local_cache._client().head_bucket(Bucket=ARTIFACTS_BUCKET)
     except Exception as e:  # noqa: BLE001
+        status = getattr(e, "response", {}).get("ResponseMetadata", {}).get("HTTPStatusCode")
+        if status == 403:
+            raise SystemExit(
+                f"\nerror: bucket `{ARTIFACTS_BUCKET}` refusé (403) — la clé eurio-app\n"
+                f"existe mais sa policy ne couvre pas ce bucket.\n"
+                f"Sur le VPS, réapplique la policy versionnée :\n"
+                f"    infra/minio/policies/eurio-app-policy.json\n"
+            ) from e
         raise SystemExit(
             f"\nerror: bucket `{ARTIFACTS_BUCKET}` inaccessible ({e.__class__.__name__}).\n"
             f"\nLa clé applicative eurio-app ne peut pas créer de bucket — c'est voulu.\n"
@@ -195,6 +226,9 @@ def cmd_fetch(_args) -> int:
             print(f"  = {entry['dest']} déjà conforme")
             fresh += 1
             continue
+        # Seulement ici : un fetch dont tout est déjà conforme ne doit exiger ni
+        # réseau ni creds — c'est ce qui rend le branchement sur `preBuild` sûr.
+        _require_credentials()
         cached = local_cache.artifact_path(entry["key"], sha256=entry["sha256"])
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(cached, dest)

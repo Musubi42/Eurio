@@ -38,8 +38,10 @@ Supabase. Confusion fréquente : `infra/eurio-api/docker-compose.yml` monte
 | `numista-canonical` | Images de référence Numista | lecture **anonyme** via CDN `eurio-images.musubi.dev` |
 | `enrichment-raws` | Photos scrapées brutes (eBay…) | privé, URL signée |
 | `enrichment-crops` | Crops normalisés — entrée d'entraînement | privé, URL signée 6 h |
+| `model-artifacts` | Modèles de l'APK (2 `.tflite`, centroïdes, meta) — ADR-004, depuis le 2026-08-16 | privé |
+| `eurio-db` | **Legacy** — transferts de réplique, remplacé en R2 par `db_routes.py`. Retrait prévu en phase 5 de `data-layer-unification` | privé |
 
-Pas de bucket modèles/datasets à ce jour. Versioning S3 **délibérément désactivé**
+Versioning S3 **délibérément désactivé**
 (cf. `infra/minio/README.md` §Anti-patterns) : la protection, c'est tarball hebdo + audit.
 Un versionnage d'artefact doit donc passer par la **clé d'objet** ou un **manifeste sha256**.
 
@@ -98,16 +100,21 @@ Trois tests couvrent ce cloisonnement (`ml/tests/test_storage.py`).
 **évincer** un fichier déjà téléchargé — un artefact de build évincé casserait un build
 hors ligne qui marchait la veille.
 
-### 3. Modèles et poids — MANUEL, VIA GIT ⚠️
+### 3. Modèles et poids — moitié automatisée depuis le 2026-08-16
 
-C'est la dette la plus visible. `best.pt` et les `.tflite` sont **force-ajoutés**
-dans git (`ml/output/` est pourtant gitignoré) parce que **git sert de transport
-Mac→PC** : cf. commit `d1f5812 "Add .pt and .tflite for PC"` et
-`docs/work-in-progress/HANDOFF-pc-full-training.md` qui prescrit `git reset --hard`.
+**Les 4 artefacts de l'APK** (`coin_detector.tflite`, `eurio_embedder_v1.tflite`,
+`coin_embeddings.json`, `model_meta.json`) ne sont **plus dans git** : ils vivent dans
+le bucket `model-artifacts`, épinglés par le manifeste committé
+`shared/model-assets.json`, et le `preBuild` Gradle (`fetchModelAssets`) les rapatrie.
+Un `fetch` dont les sha correspondent ne touche ni le réseau ni les credentials.
+Publier : `go-task ml:assets:publish`. État : `go-task ml:assets:status`.
 
-**Conséquence à connaître avant tout nettoyage** : sortir ces fichiers de git sans
-remplacement casse le PC **silencieusement** au prochain `reset --hard`.
-Cible décidée : [ADR-004](../adr/004-artefacts-binaires-hors-git.md).
+**`best.pt` et le dataset de détection restent dans git**, et c'est délibéré : **git
+sert encore de transport Mac→PC** pour eux (cf. `d1f5812 "Add .pt and .tflite for PC"`
+et `docs/work-in-progress/HANDOFF-pc-full-training.md`, qui prescrit `git reset --hard`).
+**Conséquence à connaître avant tout nettoyage** : les sortir de git sans remplacement
+casse le PC **silencieusement** au prochain `reset --hard`.
+Étape 3 de [ADR-004](../adr/004-artefacts-binaires-hors-git.md), non faite.
 
 ### 4. Photos éditées Mac → PC — MANUEL, one-shot
 

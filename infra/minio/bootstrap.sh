@@ -85,6 +85,7 @@ docker exec eurio-minio mc anonymous set download local/numista-canonical
 docker exec eurio-minio mc version suspend local/numista-canonical || true
 docker exec eurio-minio mc version suspend local/enrichment-raws   || true
 docker exec eurio-minio mc version suspend local/enrichment-crops  || true
+docker exec eurio-minio mc version suspend local/model-artifacts   || true
 
 echo "==> Step 5/5: create app user 'eurio-app' with scoped policy"
 # Add user (silently no-ops if user already exists with same key).

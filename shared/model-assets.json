@@ -1,0 +1,31 @@
+{
+  "_comment": "\u00c9pingle les artefacts de mod\u00e8le de l'APK. G\u00e9n\u00e9r\u00e9 par `go-task ml:assets:publish` \u2014 ne pas \u00e9diter \u00e0 la main. Le build Android les r\u00e9cup\u00e8re via `go-task ml:assets:fetch`.",
+  "generated_at": "2026-08-15T23:05:00+00:00",
+  "bucket": "model-artifacts",
+  "assets": [
+    {
+      "dest": "app-android/src/main/assets/models/coin_detector.tflite",
+      "key": "models/coin_detector/a0dcbee919fa/coin_detector.tflite",
+      "sha256": "a0dcbee919fafd2e0d5ca84ed535c8faa6a058ff28f47c0f9150c21775781dea",
+      "size": 10434784
+    },
+    {
+      "dest": "app-android/src/main/assets/models/eurio_embedder_v1.tflite",
+      "key": "models/eurio_embedder_v1/818d65cf66b0/eurio_embedder_v1.tflite",
+      "sha256": "818d65cf66b0466e66e1b7fba9365f66f09aaf465a9862dc5983a0c5fb1af910",
+      "size": 4431492
+    },
+    {
+      "dest": "app-android/src/main/assets/data/coin_embeddings.json",
+      "key": "models/coin_embeddings/b53794894867/coin_embeddings.json",
+      "sha256": "b53794894867138e25ddc79f60b1c51f8d8039f5480c806325d0a7badbf03b35",
+      "size": 61268
+    },
+    {
+      "dest": "app-android/src/main/assets/data/model_meta.json",
+      "key": "models/model_meta/a0c9bc3953a3/model_meta.json",
+      "sha256": "a0c9bc3953a3bab59c3e4e554831d19cc35272af5e774367a560d777db464dfe",
+      "size": 958
+    }
+  ]
+}

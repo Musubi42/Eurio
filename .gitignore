@@ -35,6 +35,16 @@ tools/filament/
 # by `go-task filament:compile-materials` (auto-run by Gradle preBuild).
 app-android/src/main/assets/materials/
 
+# Modèles ML embarqués dans l'APK — hors git depuis ADR-004, fetchés depuis le
+# bucket MinIO `model-artifacts` par le preBuild Gradle (`fetchModelAssets`).
+# La version n'est pas « la dernière » : elle est épinglée par le manifeste
+# committé `shared/model-assets.json`, donc un checkout ancien récupère les
+# modèles de ce commit. Les sortir de git n'a rien retiré à la reproductibilité.
+app-android/src/main/assets/models/coin_detector.tflite
+app-android/src/main/assets/models/eurio_embedder_v1.tflite
+app-android/src/main/assets/data/coin_embeddings.json
+app-android/src/main/assets/data/model_meta.json
+
 # Offline core (C3) — generated from Supabase by `go-task ml:build-app-core`.
 # The Android prebuilt SQLite IS committed (packaged in the APK, reproducible
 # builds without Supabase access). The proto JSON copy stays gitignored.

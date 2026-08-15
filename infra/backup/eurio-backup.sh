@@ -69,7 +69,7 @@ REVIEW_DB_PATH="${REVIEW_DB_PATH:-/var/lib/eurio/review.db}"
 # sortira sans bloc `minio` et `verify` le signalera comme contrôle inopérant.
 MINIO_REMOTE="${EURIO_BACKUP_MINIO_REMOTE:-minio}"
 # shellcheck disable=SC2206
-MIRROR_BUCKETS=(${EURIO_BACKUP_BUCKETS-enrichment-crops enrichment-raws numista-canonical eurio-db})
+MIRROR_BUCKETS=(${EURIO_BACKUP_BUCKETS-enrichment-crops enrichment-raws numista-canonical model-artifacts eurio-db})
 # Espace libre exigé avant de lancer le miroir (Go). Le premier `sync` écrit
 # ~6,3 Go ; un disque plein en cours de route laisserait un miroir tronqué que
 # seul l'invariant de cohérence rattraperait, et après coup.

@@ -264,15 +264,29 @@ tasks.named("preBuild") { dependsOn(syncQaFixtures) }
 // en Gradle — on réutilise ainsi l'auth, le retry et la vérification sha256 de
 // la couche storage existante.
 //
-// ⚠️ NON WIRED sur preBuild tant que le bucket `model-artifacts` n'existe pas
-// et que les fichiers restent commités : brancher une dépendance réseau au
-// build avant que le chemin soit prouvé casserait le build de tout le monde.
-// À activer (décommenter la ligne dependsOn) au même commit que le `git rm`
-// des 4 assets — cf. docs/work-in-progress/repo-refactor/README.md lot 4.
+// Branchée sur preBuild depuis le 2026-08-16, au même commit que le `git rm`
+// des 4 assets. Ce n'est pas une dépendance réseau à chaque build : `fetch`
+// compare le sha256 du fichier sur disque au manifeste AVANT de construire le
+// client MinIO. Assets déjà conformes ⇒ ni réseau ni credentials. Le réseau
+// n'est requis qu'après un clone, un `reset --hard`, ou un changement de
+// manifeste — c'est-à-dire exactement quand les fichiers manquent vraiment.
 val fetchModelAssets by tasks.registering(Exec::class) {
     description = "Fetch the pinned ML model assets from MinIO (shared/model-assets.json)"
     val repoRoot = rootProject.projectDir
     workingDir = File(repoRoot, "ml")
-    commandLine = listOf("bash", "-c", "./.venv/bin/python -m scripts.model_assets fetch")
+    // Le garde sur la venv est là pour la lisibilité de l'échec : sans lui,
+    // une machine sans `go-task ml:setup` verrait le build Android mourir sur
+    // un « no such file or directory » qui ne dit pas quoi faire.
+    commandLine = listOf(
+        "bash", "-c",
+        """
+        if [ ! -x ./.venv/bin/python ]; then
+          echo "error: ml/.venv absent — les modèles de l'APK sont fetchés depuis MinIO (ADR-004)." >&2
+          echo "       Lance 'go-task ml:setup' une fois, puis relance le build." >&2
+          exit 1
+        fi
+        ./.venv/bin/python -m scripts.model_assets fetch
+        """.trimIndent(),
+    )
 }
-// tasks.named("preBuild") { dependsOn(fetchModelAssets) }   // ← lot 4, étape finale
+tasks.named("preBuild") { dependsOn(fetchModelAssets) }

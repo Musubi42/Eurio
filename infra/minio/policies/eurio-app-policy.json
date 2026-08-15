@@ -27,6 +27,21 @@
         "arn:aws:s3:::model-artifacts",
         "arn:aws:s3:::model-artifacts/*"
       ]
+    },
+    {
+      "Sid": "LegacyEurioDbBucketToRemoveInDataLayerUnificationPhase5",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject",
+        "s3:ListBucket",
+        "s3:GetObjectAttributes"
+      ],
+      "Resource": [
+        "arn:aws:s3:::eurio-db",
+        "arn:aws:s3:::eurio-db/*"
+      ]
     }
   ]
 }

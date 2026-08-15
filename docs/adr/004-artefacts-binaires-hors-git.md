@@ -1,7 +1,10 @@
 # ADR-004 — Artefacts binaires hors de git, fetchés au build
 
 **Date :** 2026-08-14
-**Statut :** 🟡 Proposée — principe validé par le PO, mécanisme non implémenté
+**Statut :** ✅ **Acceptée et appliquée** (2026-08-16) pour les **modèles de l'APK**.
+Les 4 assets sont hors git, fetchés par le `preBuild` Gradle. `best.pt` et le dataset
+de détection (étape 3 de §Décision) restent dans git : le transport Mac→PC n'est pas
+touché, donc **rien ne peut casser le PC**.
 
 ## Contexte
 
@@ -95,6 +98,39 @@ chemin casserait le build de tout le monde. La séquence restante, dans l'ordre 
 4. **au même commit** : `git rm --cached` des 4 assets + gitignore + décommenter le
    `dependsOn(fetchModelAssets)`
 
+## Bascule (2026-08-16) — faite, et vérifiée dans les deux sens
+
+La séquence prévue ci-dessus a été jouée intégralement.
+
+| Étape | Résultat |
+|---|---|
+| 1. Bucket `model-artifacts` créé sur le VPS | ✅ — **sans lancer `bootstrap.sh` en entier** : son étape 3 fait un `docker compose up -d` sur MinIO, dont dépendent `eurio-api`, `eurio-review` et le miroir de backup. Un `mc mb` + `mc version suspend` + réapplication de la policy suffisaient et ne touchent pas au conteneur |
+| 2. `go-task ml:assets:publish` | ✅ 4 objets, 14,9 Mo, clés `models/<nom>/<sha12>/<fichier>` |
+| 3. Suppression des 4 fichiers puis `fetch` | ✅ **4/4 identiques au sha256 près** |
+| 4. `git rm --cached` + gitignore + `dependsOn(fetchModelAssets)` | ✅ même commit |
+
+**Vérifié au-delà du protocole**, parce que c'est là que se cache la casse silencieuse :
+
+- build complet `assembleDebug` avec les assets présents → vert, **aucun appel réseau**
+  (`fetch` compare le sha au manifeste avant de construire le client MinIO) ;
+- cas « clone frais » — les 4 fichiers supprimés du disque :
+  - **sans credentials** → échec net, et le message actionnable remonte bien dans la
+    sortie Gradle (vérifié : il n'est pas avalé par le `Exec`) ;
+  - **avec credentials** → les 4 sont retéléchargés et `assembleDebug` passe.
+
+### Un défaut trouvé au passage : la policy MinIO du repo avait divergé de la prod
+
+`infra/minio/policies/eurio-app-policy.json` **ne contenait pas** le bucket `eurio-db`,
+alors que la policy en production, elle, l'accorde. L'appliquer telle quelle aurait
+**retiré cet accès** à `eurio-app` — un bucket legacy, certes (remplacé en R2 par
+`ml/serving/db_routes.py`, retrait prévu en phase 5 de `data-layer-unification`), mais
+encore miroité par le backup. Le bucket a donc été **remis dans le fichier**, isolé dans
+un statement `LegacyEurioDbBucketToRemoveInDataLayerUnificationPhase5` : son retrait
+redevient un acte délibéré au lieu d'un effet de bord.
+
+Corrigé aussi : `bootstrap.sh` créait `model-artifacts` sans `mc version suspend`, seul
+des quatre buckets à ne pas expliciter l'interdiction de versioning.
+
 ## Alternatives considérées
 
 | Option | Verdict |
@@ -116,8 +152,11 @@ chemin casserait le build de tout le monde. La séquence restante, dans l'ordre 
   de `local_path()` **est déjà persistant** (retour immédiat si `target.exists()`), donc
   le hors-ligne marche sur cache chaud. Le risque réel est ailleurs : l'**éviction LRU**
   (`_evict_if_needed()`, plafond `EURIO_CACHE_MAX_GB`) peut supprimer un artefact déjà
-  téléchargé et casser un build qui fonctionnait la veille. **Décision ouverte : faut-il
-  exempter les artefacts de build de l'éviction LRU, ou les stocker hors du cache MinIO ?**
+  téléchargé et casser un build qui fonctionnait la veille. ~~Décision ouverte~~ →
+  **tranchée** : `artifacts/` est un casier à part, exempté de l'éviction des images et
+  doté de son propre plafond (`EURIO_ARTIFACTS_MAX_GB`), avec 3 tests dédiés.
+  Et depuis la bascule, l'éviction du casier artefacts ne casserait pas un build non
+  plus : `fetch` retéléchargerait, puisque le manifeste porte la clé et le sha.
 - ⚠️ **Risque de casse silencieuse du PC** : si on retire les poids de git avant que le
   fetch marche, le prochain `reset --hard` les fait disparaître sans erreur ; l'échec
   n'apparaît qu'au premier appel de `ml/vision/normalize_snap.py`.
