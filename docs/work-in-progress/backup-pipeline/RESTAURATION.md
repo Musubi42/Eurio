@@ -48,7 +48,12 @@ Un écart signale une restauration partielle des objets.
 À compléter au lot 6, par l'exercice lui-même :
 
 - [ ] La commande exacte de restauration depuis Duplicati (interface web ou CLI ?)
-- [ ] Où trouver la passphrase Duplicati sans le VPS *(session « secrets »)*
+- [x] ✅ **Où trouver la passphrase Duplicati sans le VPS** — résolu le 2026-08-16
+      (**D-28**). `DUPLICATI_EURIO_PASSPHRASE` et `DUPLICATI_PCLOUD_AUTHID` sont dans
+      `secrets/dev.env` (SOPS+age), et la passphrase est vérifiée identique à celle du
+      password manager. Découverte au passage : **aucun des 11 jobs ne sauvegarde
+      `/opt/eurio` ni la config Duplicati** — la clé ne vivait que sur la machine
+      qu'elle est censée pouvoir remplacer.
 - [ ] Le temps réel de restauration des 6,43 GiB depuis pCloud
 - [ ] Les policies MinIO exactes attendues par `eurio-api` après bootstrap
 - [ ] Faut-il recréer les réseaux Docker (`traefik`) à la main ?

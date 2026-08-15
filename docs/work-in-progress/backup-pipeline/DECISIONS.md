@@ -503,3 +503,44 @@ voir les vrais. Le message reste bruyant et documenté ici.
 *Reste à faire (lot 6)* : l'invariant [6] ne re-vérifie que **20 objets sur 13 989**.
 Ce n'est pas ce 403 qui l'exige, mais l'échantillon est mince pour un miroir de 6,6 Go —
 à rediscuter avec le coût d'un échantillon plus large ou tournant.
+
+---
+
+### D-28 — Les secrets de RESTAURATION vivent dans SOPS, pas seulement dans Duplicati
+**2026-08-16 · lot 6, étape 0**
+
+`DUPLICATI_EURIO_PASSPHRASE` et `DUPLICATI_PCLOUD_AUTHID` sont désormais dans
+`secrets/dev.env` (SOPS+age), donc versionnés chiffrés et présents sur toute machine
+autorisée.
+
+*Découverte qui l'impose* : **aucun des 11 jobs Duplicati ne sauvegarde `/opt/eurio` ni
+`/opt/stacks/oim-duplicati/`.** Les sources sont `/oim-<stack>-source/` pour les 10
+autres, et `/eurio-source/` (le staging seul) pour Eurio. La passphrase et le jeton
+pCloud ne vivaient donc **que** dans la configuration Duplicati du VPS.
+
+*Conséquence si on n'avait rien fait* : le VPS meurt ⇒ 5,61 Gio d'archive chiffrée,
+vérifiée, hors site… et aucune clé pour l'ouvrir. **Une sauvegarde indéchiffrable n'est
+pas une sauvegarde.** Et c'est invisible : tous les anneaux du lot 5 restent verts dans
+ce scénario, puisqu'ils prouvent l'écriture, jamais la lecture.
+
+*Écarté* : se reposer sur le seul password manager. Il reste le recours hors ligne — et
+la passphrase y a été **vérifiée identique le 2026-08-16**, par comparaison d'empreintes
+salées, sans qu'aucune valeur ne transite en clair. Mais un secret que seul un humain
+peut aller chercher ne peut pas être utilisé par un script d'exercice (D-12).
+*Écarté aussi* : sauvegarder la configuration Duplicati elle-même. C'est souhaitable et
+ça fait l'objet d'un ticket, mais ça ne remplace pas ceci — restaurer la config Duplicati
+depuis une archive Duplicati exige déjà la passphrase. **La circularité est le piège** :
+la clé ne doit jamais être uniquement à l'intérieur de ce qu'elle ouvre.
+
+*Chaîne de survie après cette décision*, chaque maillon hors du VPS :
+
+| Maillon | Où | Survit à la perte du VPS ? |
+|---|---|---|
+| Code + `secrets/dev.env` chiffré | Codeberg (+ GitHub) | ✅ |
+| Clé privée age | password manager | ✅ |
+| Passphrase + `authid` | dans SOPS **et** password manager | ✅ |
+| Archive chiffrée | pCloud | ✅ |
+
+*Reste à couvrir* : `infra/minio/secrets` et `infra/review/secrets`, gitignorés et dans
+aucun job — sans eux, `bootstrap.sh` régénère des identifiants MinIO que `eurio-api` ne
+sait plus lire (cf. Pièges du HANDOFF). À traiter avant le drill de l'étape 2.
