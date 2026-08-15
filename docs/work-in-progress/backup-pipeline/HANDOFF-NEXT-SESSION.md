@@ -1,7 +1,7 @@
 # Handoff — prochaine session
 
-> Écrit le 2026-08-14, mis à jour le 2026-08-15. **Rien n'est encore implémenté côté
-> Eurio** — mais la panne Duplicati découverte en chemin a été réparée.
+> Écrit le 2026-08-14, mis à jour le 2026-08-15. **Lots 0, 1 et 2 livrés.** La panne
+> Duplicati découverte en chemin a été réparée. Rien n'est encore ordonnancé.
 
 ## Où on en est
 
@@ -10,7 +10,9 @@
 - Architecture arbitrée, **19 décisions** consignées ([`DECISIONS.md`](./DECISIONS.md)).
 - 8 lots découpés avec critères de fin ([`ROADMAP.md`](./ROADMAP.md)).
 - **Duplicati réparé** (10 jobs, transport OAuth) — le prérequis du lot 4 est levé.
-- Côté Eurio : **aucun code écrit, aucun `nixos-rebuild`, aucun compose modifié.**
+- **Lots 0-1-2 livrés** : copie hors site, `stage` + manifeste, suite d'invariants avec
+  son test négatif. 11 invariants verts sur les données réelles, 9 cas négatifs détectés.
+- Reste intact : **aucun `nixos-rebuild`, aucun compose modifié, aucun ordonnancement.**
 
 ## ✅ Fait le 2026-08-15 — Duplicati réparé
 
@@ -30,17 +32,21 @@ tourné avec succès. Détail : [`ETAT-DES-LIEUX.md`](./ETAT-DES-LIEUX.md) §3.
 | 1 | **Créer le compte healthchecks.io** et brancher sa notification sur Discord — un compte externe, ça ne peut pas se faire depuis le VPS | Lot 5 |
 | 2 | **Valider l'édition de `/opt/stacks/oim-duplicati/compose.yaml`** — ajout du bind `/opt/eurio/infra/backup/staging` **et** correction de casse `oim-Beszel` → `oim-beszel`, puis recréation du conteneur. Hors dépôt Eurio, sur une stack partagée | Lot 4 |
 
-> **Lot 0 fait le 2026-08-15** : copie chiffrée des deux bases dans
-> `pcloud_crypt:lot0-manuel-20260815/`, vérifiée depuis la destination. Le trou de deux
-> mois est bouché — mais c'est un filet ponctuel qui vieillira, pas un dispositif.
+> **Lots 0, 1 et 2 faits le 2026-08-15.**
+> Lot 0 : copie chiffrée des deux bases dans `pcloud_crypt:lot0-manuel-20260815/`,
+> vérifiée depuis la destination — un filet ponctuel qui vieillira, pas un dispositif.
+> Lots 1 et 2 : `go-task backup:stage` / `backup:verify` / `backup:test`. 11 invariants
+> passent sur les données réelles, 9 cas négatifs sont détectés.
+> **Rien n'est encore ordonnancé** : `stage` et `verify` se lancent à la main jusqu'au
+> lot 4.
 
 ## Actions humaines requises — non bloquantes
 
 | # | Action | Quand |
 |---|---|---|
-| 4 | Confirmer que `infra/minio/secrets` et `infra/review/secrets` sont couverts par la session « secrets » | Avant le lot 6 |
-| 5 | Décider du sort du volume Docker anonyme de `eurio-scrape-tor` (clés d'identité Tor) | Avant le lot 7 |
-| 6 | Ouvrir des tickets pour les trois sauvegardes incomplètes : Traefik/`acme.json` (permissions), Immich (photothèque non montée), Authentik (`pg_dump` figé depuis nov. 2025). Cf. [`ETAT-DES-LIEUX.md`](./ETAT-DES-LIEUX.md) §8 | Hors chantier |
+| 3 | Confirmer que `infra/minio/secrets` et `infra/review/secrets` sont couverts par la session « secrets » | Avant le lot 6 |
+| 4 | Décider du sort du volume Docker anonyme de `eurio-scrape-tor` (clés d'identité Tor) | Avant le lot 7 |
+| 5 | Ouvrir des tickets pour les trois sauvegardes incomplètes : Traefik/`acme.json` (permissions), Immich (photothèque non montée), Authentik (`pg_dump` figé depuis nov. 2025). Cf. [`ETAT-DES-LIEUX.md`](./ETAT-DES-LIEUX.md) §8 | Hors chantier |
 
 > **Résolus** : la rétention est `keep-versions = 30` (lue en clair, pas 30 jours) ·
 > la destination pCloud est `Applications/DuplicatiBackup/Oim/<Service>`, confirmée par
@@ -48,16 +54,12 @@ tourné avec succès. Détail : [`ETAT-DES-LIEUX.md`](./ETAT-DES-LIEUX.md) §3.
 
 ## Ordre d'exécution proposé pour la prochaine session
 
-1. **Lot 0** dès que la destination est confirmée — 15 minutes, aucun risque, et ça
-   supprime le trou de deux mois.
-2. **Lot 1** — refactorisation de `eurio-backup.sh`. Purement local, réversible,
-   n'affecte rien en production.
-3. **Lot 2** — la suite d'invariants, **y compris son test négatif** (une base
-   volontairement tronquée doit faire sortir le script en ≠ 0). C'est le lot le plus
-   important du chantier ; ne pas le bâcler pour aller au 3.
+**Lot 3** — le miroir MinIO. Premier `rclone sync` de 6,43 GiB (transfert local,
+quelques minutes), puis les invariants inter-stores. Attention au contrôle
+`bootstrap.sh` / `.minio.sys` : c'est une hypothèse jamais testée.
 
-Les lots 3 à 5 touchent la production (disque, `nixos-rebuild`, conteneurs). À ne pas
-enchaîner dans la même session que les lots 1-2.
+Puis **lots 4 et 5**, qui touchent la production (compose partagé, `nixos-rebuild`,
+conteneurs). À ne pas enchaîner dans la même session que le lot 3.
 
 ## Pièges identifiés, à ne pas redécouvrir
 
@@ -65,17 +67,17 @@ enchaîner dans la même session que les lots 1-2.
 |---|---|
 | 🔴 **Duplicati ne voit pas `/opt/eurio`** | 14 binds, tous sous `/opt/stacks`. Aucun job Eurio n'est possible sans ajouter un montage et **recréer le conteneur** |
 | 🔴 **Deux `review.db`** | Le vrai est `infra/review/data/review.db` (954 368 o, `reviewers` + 575 items). Celui de `infra/eurio-api/data/` (49 152 o) est un **résidu** sans table `reviewers` |
-| 🔴 **`.gitignore` du staging AVANT la première exécution** | Sinon 6,4 Go d'untracked, et un `git clean -xdf` (branche `repo-cleanup` !) détruit le staging et son manifeste |
+| 🔴 **`staging/` contient des DONNÉES** | Gitignoré depuis le lot 1, donc invisible dans `git status` — mais un `git clean -xdf` le détruit quand même (branche `repo-cleanup` !). Jusqu'à 6,5 Go au lot 3 |
 | **`systemd.services.eurio-minio`** | Son `ExecStop = docker compose down` fait de tout `systemctl stop` ou de toute désactivation du module un **arrêt de MinIO**. À retirer ou neutraliser avant l'import — le `ExecStart` n'est pas le risque |
 | **`nixos-rebuild` sur ce VPS** | 60+ conteneurs en production. `nixos-rebuild build` ou `dry-activate` **avant** le `switch` |
 | **Fenêtre horaire** | Duplicati démarre à 03:00 UTC ; en régime sain les 10 jobs prennent **6 minutes**. Les horaires de 04:59 visibles aujourd'hui sont des horaires de panne — ne pas dimensionner dessus. D'où 02:00 / 02:30 |
 | **Premier `rclone sync`** | 6,43 GiB depuis MinIO, transfert local, quelques minutes. Les suivants sont incrémentaux |
-| **Course staging ↔ Duplicati** | Aucun verrou dans le design. Écrire dans `staging.tmp/` puis `mv`, ou déposer `manifest.json` en dernier comme sentinelle |
+| **Course staging ↔ Duplicati** | Traité au lot 1 : `flock` contre deux `stage` concurrents, et `manifest.json` écrit en dernier comme sentinelle (son sha détecte un fichier modifié après lui) |
 | **`.minio.sys/` n'est pas dans le miroir** | Users IAM, service accounts, policies. On **suppose** que `bootstrap.sh` les recrée — non vérifié, à faire au lot 3 |
 | **Deux archives pCloud du 17 juin** | `pcloud:backups/serverOimNix/Eurio` **et** `pcloud:eurio-backup`. N'en traiter qu'une laisse une orpheline |
-| **`VACUUM INTO`** | S'exécute **dans** le conteneur `eurio-api` puis `docker cp`. Échouer proprement si Docker est absent |
+| **`VACUUM INTO`** | S'exécute **dans** les conteneurs `eurio-api` et `eurio-review` puis `docker cp`. Traité au lot 1 |
 | **Ne pas restaurer les `-wal` / `-shm`** | `VACUUM INTO` produit une base autonome ; restaurer des fichiers WAL à côté est une source de corruption |
-| **L'invariant `dangling == 0` naît rouge** | Sans exclusion des 546 chemins absolus et des 10 lignes `mock/` |
+| **L'invariant `dangling == 0` naît rouge** | Sans exclusion des 546 chemins absolus et des 10 lignes `mock/`. L'exclusion est déjà codée (`EXCLUDED_PREFIXES`), non testée sur données réelles avant le lot 3 |
 | **Ne pas supprimer l'archive du 17 juin** | Avant le lot 6. C'est la seule copie hors site existante |
 
 ## Chiffres de référence, mesurés le 2026-08-14

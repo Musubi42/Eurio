@@ -1,219 +1,152 @@
 #!/usr/bin/env bash
 #
-# Eurio MinIO backup → pCloud (rclone crypt, clé Age).
+# Eurio — production et vérification du staging de sauvegarde.
 #
-# Architecture (voir infra/backup/README.md) :
-#   - Source     : MinIO `eurio-s3.musubi.dev` (4 buckets)
-#   - Destination: pCloud, dossier `backups/serverOimNix/Eurio/`
-#   - Chiffrement: rclone `crypt` (contenu chiffré, noms de fichiers en clair)
-#   - Secret     : clé privée Age, lue au runtime depuis ~/.config/eurio-backup/age-key.txt
-#                  (jamais dans le Nix store, jamais committée)
+# Architecture (voir docs/work-in-progress/backup-pipeline/ARCHITECTURE.md) :
 #
-# Le script ne contient AUCUN secret. Il lit la clé Age sur disque au runtime
-# et la passe à rclone via env vars (RCLONE_CONFIG_<NAME>_PASSWORD).
+#   Duplicati est le MOTEUR UNIQUE : transport, chiffrement, rétention,
+#   historique. Ce script ne parle pas au distant. Il produit seulement un
+#   répertoire de staging que Duplicati ramasse à 03:00 UTC.
+#
+#   Pourquoi un staging plutôt que pointer Duplicati sur les binds : Duplicati
+#   sauvegarde des chemins de fichiers, or ni `eurio.db` (SQLite en WAL) ni
+#   MinIO (format objet interne) n'ont le système de fichiers pour surface
+#   valide. On matérialise donc des artefacts cohérents et vérifiables.
+#
+#   staging/
+#   ├── eurio.db        VACUUM INTO depuis le conteneur eurio-api      (T1)
+#   ├── review.db       VACUUM INTO depuis le conteneur eurio-review   (T1)
+#   ├── minio/          miroir rclone par API S3                       (T2) — lot 3
+#   └── manifest.json   écrit EN DERNIER : sentinelle + intégrité + comptages
+#
+#   L'ordre T1 puis T2 n'est pas cosmétique : on capture le store RÉFÉRENÇANT
+#   avant le store RÉFÉRENCÉ, pour que le décalage inévitable entre les deux
+#   snapshots ne produise que des orphelins (bénins) et jamais des références
+#   pendantes (corruption silencieuse à la restauration). Cf. DONNEES.md §3.
 #
 # Usage :
-#   eurio-backup.sh keygen                # one-time: générer la clé Age
-#   eurio-backup.sh run                   # backup les 4 buckets
-#   eurio-backup.sh verify                # check --one-way + sha256 DB
-#   eurio-backup.sh upload-readme         # uploade README-RESTORE.md sur pCloud (clair)
-#   eurio-backup.sh rclone <args...>      # escape hatch (rclone avec env vars set)
+#   eurio-backup.sh stage                 # produit le staging
+#   eurio-backup.sh verify [args...]      # vérifie les invariants du staging
+#   eurio-backup.sh help
 #
-# Restauration : voir README-RESTORE.md (à la racine du backup pCloud).
+# Restauration : voir README-RESTORE.md.
 
 set -euo pipefail
 
-# ── Self-reexec dans un nix shell si rclone/age manquants en PATH ────────────
+# ── Self-reexec dans un nix shell si les outils manquent ─────────────────────
 # Permet au script d'être portable sur tout système Nix sans setup préalable.
-if ! command -v rclone >/dev/null 2>&1 || ! command -v age-keygen >/dev/null 2>&1; then
-  exec nix shell nixpkgs#rclone nixpkgs#age --command "$0" "$@"
+if ! command -v python3 >/dev/null 2>&1; then
+  exec nix shell nixpkgs#python3 --command "$0" "$@"
 fi
 
 # ── Config (overridable via env) ─────────────────────────────────────────────
-EURIO_BACKUP_AGE_KEY="${EURIO_BACKUP_AGE_KEY:-$HOME/.config/eurio-backup/age-key.txt}"
-EURIO_BACKUP_REMOTE_SRC="${EURIO_BACKUP_REMOTE_SRC:-minio}"
-EURIO_BACKUP_REMOTE_DST="${EURIO_BACKUP_REMOTE_DST:-pcloud_crypt}"
-# Buckets MinIO = IMAGES uniquement (Modèle B / R2 : la DB n'est plus dans MinIO).
-# shellcheck disable=SC2206
-EURIO_BACKUP_BUCKETS=(${EURIO_BACKUP_BUCKETS:-enrichment-crops enrichment-raws numista-canonical})
-# Canonique eurio.db : sauvegardé DIRECTEMENT depuis le conteneur eurio-api du VPS
-# (writer unique, Model B/R2) → pCloud crypt, sous le même chemin `eurio-db/eurio.db`
-# (layout de restauration inchangé). Plus de détour MinIO.
-EURIO_BACKUP_DB_BUCKET="${EURIO_BACKUP_DB_BUCKET:-eurio-db}"
-EURIO_BACKUP_DB_OBJECT="${EURIO_BACKUP_DB_OBJECT:-eurio.db}"
-EURIO_BACKUP_DB_CONTAINER="${EURIO_BACKUP_DB_CONTAINER:-eurio-api}"
-EURIO_BACKUP_DB_PATH="${EURIO_BACKUP_DB_PATH:-/var/lib/eurio/eurio.db}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+STAGING="${EURIO_BACKUP_STAGING:-$SCRIPT_DIR/staging}"
+BASELINE="${EURIO_BACKUP_BASELINE:-$SCRIPT_DIR/last-verified-manifest.json}"
+
+# Bases canoniques : conteneur, chemin dans le conteneur, nom dans le staging.
+# ⚠️ Il existe DEUX review.db sur le VPS. Le bon est celui du conteneur
+#    eurio-review ; celui de infra/eurio-api/data/ est un résidu de 49 ko sans
+#    table `reviewers`. Cf. ETAT-DES-LIEUX.md §1.
+EURIO_DB_CONTAINER="${EURIO_DB_CONTAINER:-eurio-api}"
+EURIO_DB_PATH="${EURIO_DB_PATH:-/var/lib/eurio/eurio.db}"
+REVIEW_DB_CONTAINER="${REVIEW_DB_CONTAINER:-eurio-review}"
+REVIEW_DB_PATH="${REVIEW_DB_PATH:-/var/lib/eurio/review.db}"
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 die() { echo "❌ $*" >&2; exit 1; }
 ok()  { echo "✅ $*"; }
 
-load_age_key() {
-  [ -f "$EURIO_BACKUP_AGE_KEY" ] || die "Clé Age absente : $EURIO_BACKUP_AGE_KEY
-   → Restaurer depuis Bitwarden (entry 'Eurio backup Age key') ou bout de papier.
-   → Voir infra/backup/README-RESTORE.md."
+# Snapshot cohérent d'une SQLite en WAL : VACUUM INTO vers un chemin neuf DANS
+# le conteneur (la commande échoue si la cible existe), puis docker cp.
+# Une copie fichier serait corrompue : le WAL vit à côté de la base.
+snapshot_db() {
+  local container="$1" src="$2" dest="$3" label="$4"
+  local tmp_in_container="/tmp/eurio-stage-$(basename "$dest")"
 
-  local age_secret age_salt
-  age_secret="$(grep '^AGE-SECRET-KEY-' "$EURIO_BACKUP_AGE_KEY" || true)"
-  [ -n "$age_secret" ] || die "Format invalide : pas de ligne 'AGE-SECRET-KEY-' dans $EURIO_BACKUP_AGE_KEY"
+  docker exec "$container" sh -c "rm -f '$tmp_in_container'" \
+    || die "$label : impossible de nettoyer le temporaire dans $container."
 
-  # Salt dérivé déterministe : sha256(secret + suffixe). Permet à rclone crypt
-  # d'avoir un password2 distinct du password sans secret supplémentaire.
-  age_salt="$(printf '%s-salt' "$age_secret" | sha256sum | awk '{print $1}')"
+  docker exec "$container" python -c "
+import sqlite3
+sqlite3.connect('$src').execute('VACUUM INTO \"$tmp_in_container\"')
+" || die "$label : VACUUM INTO a échoué."
 
-  # rclone obscure pour env var (encodage non secret mais format attendu par rclone).
-  export RCLONE_CONFIG_PCLOUD_CRYPT_PASSWORD
-  export RCLONE_CONFIG_PCLOUD_CRYPT_PASSWORD2
-  RCLONE_CONFIG_PCLOUD_CRYPT_PASSWORD="$(rclone obscure "$age_secret")"
-  RCLONE_CONFIG_PCLOUD_CRYPT_PASSWORD2="$(rclone obscure "$age_salt")"
+  docker cp "$container:$tmp_in_container" "$dest" >/dev/null \
+    || die "$label : docker cp a échoué."
+  docker exec "$container" rm -f "$tmp_in_container" || true
+
+  # mtime de la SOURCE VIVANTE, pas du snapshot : c'est lui qui dit si les
+  # données bougent encore (invariant de fraîcheur, cf. DECISIONS.md D-17).
+  docker exec "$container" python -c "
+import os
+print(int(os.path.getmtime('$src')))
+" 2>/dev/null || echo ""
 }
 
-# ── Subcommands ──────────────────────────────────────────────────────────────
+# ── Sous-commandes ───────────────────────────────────────────────────────────
 
-cmd_keygen() {
-  if [ -f "$EURIO_BACKUP_AGE_KEY" ]; then
-    die "Clé Age existe déjà : $EURIO_BACKUP_AGE_KEY
-   → Si tu veux régénérer (ATTENTION : invalide TOUT le backup chiffré existant),
-     supprimer le fichier manuellement d'abord."
-  fi
-  local dir
-  dir="$(dirname "$EURIO_BACKUP_AGE_KEY")"
-  mkdir -p "$dir"
-  chmod 700 "$dir"
-  age-keygen -o "$EURIO_BACKUP_AGE_KEY"
-  chmod 400 "$EURIO_BACKUP_AGE_KEY"
-  echo
-  ok "Clé générée : $EURIO_BACKUP_AGE_KEY"
-  echo
-  echo "📋 SAUVEGARDER LA CLÉ MAINTENANT :"
-  echo "   1. Bitwarden — entry suggérée 'Eurio backup Age key'"
-  echo "      → copier le contenu intégral du fichier"
-  echo "   2. Papier (optionnel) — noter la ligne AGE-SECRET-KEY-1..."
-  echo
-  echo "   Sans cette clé, le backup pCloud est IRRÉCUPÉRABLE."
-  echo
-  echo "── Contenu de la clé ──"
-  cat "$EURIO_BACKUP_AGE_KEY"
-  echo "──────────────────────"
-}
+cmd_stage() {
+  command -v docker >/dev/null 2>&1 || die "docker absent : impossible de snapshoter les bases."
 
-# Snapshot cohérent du canonique eurio.db (VACUUM INTO sous WAL, dans le conteneur)
-# → pCloud crypt sous `eurio-db/eurio.db` (+ `.sha256` sidecar pour le verify).
-# Model B / R2 : la DB n'est plus dans MinIO, on la sauvegarde direct du writer.
-backup_canonical_db() {
-  echo ">>> canonical eurio.db  $(date -Is)"
-  command -v docker >/dev/null 2>&1 || die "docker absent : impossible de snapshot le canonique."
-  local tmp snap sha
-  tmp="$(mktemp -d)"
-  snap="$tmp/eurio.db"
-  # VACUUM INTO un chemin neuf DANS le conteneur (échoue si la cible existe).
-  docker exec "$EURIO_BACKUP_DB_CONTAINER" sh -c \
-    "rm -f /tmp/eurio-backup-snap.db && python -c \"import sqlite3; sqlite3.connect('$EURIO_BACKUP_DB_PATH').execute('VACUUM INTO \\\"/tmp/eurio-backup-snap.db\\\"')\"" \
-    || die "VACUUM INTO du canonique a échoué."
-  docker cp "$EURIO_BACKUP_DB_CONTAINER:/tmp/eurio-backup-snap.db" "$snap" || die "docker cp du snapshot a échoué."
-  docker exec "$EURIO_BACKUP_DB_CONTAINER" rm -f /tmp/eurio-backup-snap.db || true
-  sha="$(sha256sum "$snap" | awk '{print $1}')"
-  echo "$sha" > "$tmp/eurio.db.sha256"
-  rclone copyto "$snap" "$EURIO_BACKUP_REMOTE_DST:$EURIO_BACKUP_DB_BUCKET/$EURIO_BACKUP_DB_OBJECT"
-  rclone copyto "$tmp/eurio.db.sha256" "$EURIO_BACKUP_REMOTE_DST:$EURIO_BACKUP_DB_BUCKET/$EURIO_BACKUP_DB_OBJECT.sha256"
-  rm -rf "$tmp"
-  echo "<<< canonical eurio.db  sha=${sha:0:12}…  $(date -Is)"
-}
+  local t1 lock
+  mkdir -p "$STAGING"
 
-cmd_run() {
-  load_age_key
-  local start end b
-  start=$(date -Is)
-  echo "=== Eurio backup run  $start ==="
-  echo "  src    : $EURIO_BACKUP_REMOTE_SRC: (images) + conteneur $EURIO_BACKUP_DB_CONTAINER (canonique)"
-  echo "  dst    : $EURIO_BACKUP_REMOTE_DST: (rclone crypt over pcloud)"
-  echo "  buckets: ${EURIO_BACKUP_BUCKETS[*]}"
+  # Un seul `stage` à la fois : deux passes concurrentes produiraient un
+  # staging mi-ancien mi-neuf, que le sha du manifeste signalerait après coup
+  # au lieu de l'empêcher.
+  lock="$STAGING/.stage.lock"
+  exec 9>"$lock"
+  flock -n 9 || die "un autre 'stage' est déjà en cours ($lock)."
+
+  t1="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  echo "=== staging  $t1"
+  echo "    destination : $STAGING"
   echo
-  backup_canonical_db
+
+  # Le manifeste est la sentinelle : on le retire d'abord, pour qu'un staging
+  # interrompu en cours de route soit détectable (manifeste absent) plutôt que
+  # de laisser un manifeste périmé décrire des fichiers neufs.
+  rm -f "$STAGING/manifest.json"
+
+  local mtime_eurio mtime_review
+  echo ">>> eurio.db"
+  mtime_eurio="$(snapshot_db "$EURIO_DB_CONTAINER" "$EURIO_DB_PATH" "$STAGING/eurio.db" "eurio.db")"
+  echo ">>> review.db"
+  mtime_review="$(snapshot_db "$REVIEW_DB_CONTAINER" "$REVIEW_DB_PATH" "$STAGING/review.db" "review.db")"
+
   echo
-  for b in "${EURIO_BACKUP_BUCKETS[@]}"; do
-    echo ">>> $b  $(date -Is)"
-    rclone copy "$EURIO_BACKUP_REMOTE_SRC:$b" "$EURIO_BACKUP_REMOTE_DST:$b/" \
-      --fast-list --transfers 8 --stats=10s --stats-one-line
-    echo "<<< $b  rc=$?  $(date -Is)"
-  done
-  end=$(date -Is)
-  echo "=== Eurio backup run END  $end ==="
+  echo ">>> manifeste"
+  local -a manifest_args=("$STAGING" --t1 "$t1")
+  [ -n "$mtime_eurio" ]  && manifest_args+=(--source-mtime "eurio.db=$mtime_eurio")
+  [ -n "$mtime_review" ] && manifest_args+=(--source-mtime "review.db=$mtime_review")
+  # Le miroir MinIO arrive au lot 3 ; le manifeste porte déjà son emplacement.
+  [ -d "$STAGING/minio" ] && manifest_args+=(--minio-root "$STAGING/minio" --t2 "$(date -u +%Y-%m-%dT%H:%M:%SZ)")
+
+  python3 "$SCRIPT_DIR/build_manifest.py" "${manifest_args[@]}" || die "construction du manifeste échouée."
+
+  echo
+  ok "staging prêt — $(du -sh "$STAGING" | cut -f1)"
+  echo "   Vérifier maintenant : $0 verify"
 }
 
 cmd_verify() {
-  load_age_key
-  echo "=== Eurio backup verify  $(date -Is) ==="
-  local b fail=0
-  for b in "${EURIO_BACKUP_BUCKETS[@]}"; do
-    echo "--- $b ---"
-    echo -n "  source : "; rclone size "$EURIO_BACKUP_REMOTE_SRC:$b" 2>&1 | tail -2 | tr '\n' ' '; echo
-    echo -n "  backup : "; rclone size "$EURIO_BACKUP_REMOTE_DST:$b" 2>&1 | tail -2 | tr '\n' ' '; echo
-    if rclone check "$EURIO_BACKUP_REMOTE_SRC:$b" "$EURIO_BACKUP_REMOTE_DST:$b" --one-way 2>&1 | tail -5; then
-      :
-    else
-      fail=1
-    fi
-  done
-
-  echo
-  echo "=== Sanity sha256 canonique ($EURIO_BACKUP_DB_BUCKET/$EURIO_BACKUP_DB_OBJECT) ==="
-  # Model B/R2 : le canonique change en continu → on ne compare PAS à une source
-  # vivante. On vérifie que le BACKUP est intact/restaurable : sha recalculé du
-  # fichier sauvegardé ≡ sidecar `.sha256` poussé en même temps que lui.
-  local tmp got want
-  tmp="$(mktemp -d)"
-  trap 'rm -rf "$tmp"' RETURN
-  rclone copyto "$EURIO_BACKUP_REMOTE_DST:$EURIO_BACKUP_DB_BUCKET/$EURIO_BACKUP_DB_OBJECT" "$tmp/backup.db" >/dev/null 2>&1
-  rclone copyto "$EURIO_BACKUP_REMOTE_DST:$EURIO_BACKUP_DB_BUCKET/$EURIO_BACKUP_DB_OBJECT.sha256" "$tmp/backup.db.sha256" >/dev/null 2>&1
-  if [ ! -s "$tmp/backup.db" ] || [ ! -s "$tmp/backup.db.sha256" ]; then
-    echo "❌ backup canonique introuvable (lance d'abord 'run')" >&2
-    fail=1
-  else
-    got="$(sha256sum "$tmp/backup.db" | awk '{print $1}')"
-    want="$(tr -d '[:space:]' < "$tmp/backup.db.sha256")"
-    echo "  backup   : $got"
-    echo "  sidecar  : $want"
-    if [ "$got" = "$want" ]; then
-      ok "sha256 backup ≡ sidecar (restaurable)"
-    else
-      echo "❌ sha256 mismatch (backup corrompu)" >&2
-      fail=1
-    fi
-  fi
-
-  [ "$fail" -eq 0 ] && ok "verify OK" || die "verify FAIL"
-}
-
-cmd_upload_readme() {
-  load_age_key
-  local readme="$SCRIPT_DIR/README-RESTORE.md"
-  [ -f "$readme" ] || die "README-RESTORE.md introuvable : $readme"
-  # Uploader EN CLAIR sur pCloud, à la racine du backup (et non via crypt).
-  # → on contourne pcloud_crypt et on écrit directement sur pcloud:
-  local target="pcloud:backups/serverOimNix/Eurio/README-RESTORE.md"
-  echo "Uploading $readme → $target (CLAIR, hors crypt)"
-  rclone copyto "$readme" "$target"
-  ok "README-RESTORE.md publié en clair sur pCloud : $target"
-}
-
-cmd_rclone() {
-  load_age_key
-  exec rclone "$@"
+  [ -d "$STAGING" ] || die "staging absent : $STAGING — lancer '$0 stage' d'abord."
+  python3 "$SCRIPT_DIR/verify_invariants.py" "$STAGING" \
+    --baseline "$BASELINE" \
+    --repo-root "$REPO_ROOT" \
+    "$@"
 }
 
 cmd_help() {
-  sed -n '2,/^set -euo/p' "$0" | sed -n '/^# Usage/,/^#$/p' | sed 's/^# \?//'
+  sed -n '/^# Usage :/,/^$/p' "$0" | sed 's/^# \?//'
 }
 
 # ── Dispatch ─────────────────────────────────────────────────────────────────
 case "${1:-help}" in
-  keygen)        cmd_keygen ;;
-  run)           cmd_run ;;
-  verify)        cmd_verify ;;
-  upload-readme) cmd_upload_readme ;;
-  rclone)        shift; cmd_rclone "$@" ;;
+  stage)          cmd_stage ;;
+  verify)         shift; cmd_verify "$@" ;;
   help|-h|--help) cmd_help ;;
   *) cmd_help; exit 2 ;;
 esac

@@ -224,6 +224,15 @@ admin/packages/parity/screenshots/android/*
 # Spec: docs/harmonisation-images/vision.md, infra/minio/README.md
 # ───────────────────────────────────────────────────────────────────────
 
+# Backup staging : snapshots des bases + miroir MinIO produits par
+# `eurio-backup.sh stage`. Jusqu'à ~6,5 Go — c'est ce que Duplicati ramasse.
+# Spec: docs/work-in-progress/backup-pipeline/ARCHITECTURE.md §1
+# ⚠️ Ce répertoire contient des DONNÉES, pas seulement des artefacts : un
+#    `git clean -xdf` le détruit. Ne jamais l'y exposer.
+infra/backup/staging/
+# Baseline du dernier verify réussi (comparée par l'invariant de non-décroissance).
+infra/backup/last-verified-manifest.json
+
 # MinIO bucket data (the volume mounted into the eurio-minio container).
 # Keep the .do-not-delete marker so the dir exists at clone time.
 infra/minio/data/*

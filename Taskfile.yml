@@ -19,6 +19,21 @@ tasks:
       - task --list-all
     silent: true
 
+  backup:stage:
+    desc: "Produit le staging de sauvegarde (snapshots VACUUM INTO des bases + manifeste). C'est ce que Duplicati ramasse."
+    cmds:
+      - ./infra/backup/eurio-backup.sh stage
+
+  backup:verify:
+    desc: "Vérifie les invariants du staging (transport, structure, plausibilité). Sort en 2 sur anomalie. Ajouter -- --accept-baseline pour acquitter une décroissance légitime."
+    cmds:
+      - ./infra/backup/eurio-backup.sh verify {{.CLI_ARGS}}
+
+  backup:test:
+    desc: "Test NÉGATIF de la suite d'invariants : vérifie qu'elle sait dire non (base tronquée, base vide, schéma désaligné…)."
+    cmds:
+      - ./infra/backup/test_verify.sh
+
   secrets:edit:
     desc: "Éditer les secrets (secrets/dev.env). Déchiffre dans $EDITOR, re-chiffre à la sauvegarde. SOURCE UNIQUE de tous les secrets."
     cmds:

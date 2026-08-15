@@ -9,9 +9,9 @@
 | Lot | Description | Statut | Date |
 |---|---|---|---|
 | 0 | Copie manuelle immédiate hors site | ✅ | 2026-08-15 |
-| **1** | `eurio-backup.sh stage` + `manifest.json` | ⬜ **next** | |
-| 2 | Suite d'invariants (niveaux 1-2-3) | ⬜ | |
-| 3 | Miroir MinIO + invariants inter-stores | ⬜ | |
+| 1 | `eurio-backup.sh stage` + `manifest.json` | ✅ | 2026-08-15 |
+| 2 | Suite d'invariants (niveaux 1-2-3) | ✅ | 2026-08-15 |
+| **3** | Miroir MinIO + invariants inter-stores | ⬜ **next** | |
 | 4 | Duplicati + timer NixOS | ⬜ | |
 | 5 | Kuma ×3 + healthchecks.io | ⬜ | |
 | 6 | Restauration + premier exercice à froid | ⬜ | |
@@ -66,53 +66,67 @@ review.db : review_items 575 · decisions 3 · reviewers 1 · meta 1
 
 ---
 
-## Lot 1 — `eurio-backup.sh stage`
+## Lot 1 — `eurio-backup.sh stage` ✅ **2026-08-15**
 
 Refactorisation, pas réécriture (cf. [`ARCHITECTURE.md`](./ARCHITECTURE.md) §6).
 
-- [ ] **Gitignorer `infra/backup/staging/` — EN PREMIER** (voir l'encadré ci-dessous)
-- [ ] `cmd_run` → `cmd_stage`, écriture dans `infra/backup/staging/`
-- [ ] Ajouter **`review.db`**, en nommant explicitement `infra/review/data/review.db`
+- [x] **Gitignorer `infra/backup/staging/` — EN PREMIER** (voir l'encadré ci-dessous)
+- [x] `cmd_run` → `cmd_stage`, écriture dans `infra/backup/staging/`
+- [x] Ajouter **`review.db`**, en nommant explicitement `infra/review/data/review.db`
       et **pas** le résidu de `infra/eurio-api/data/`
-- [ ] Écriture atomique : produire dans `staging.tmp/` puis `mv`, ou déposer
+- [x] Écriture atomique : produire dans `staging.tmp/` puis `mv`, ou déposer
       `manifest.json` **en dernier** comme sentinelle
-- [ ] Produire `manifest.json` : `t1` (DB), `t2` (MinIO), sha256, comptages par table,
+- [x] Produire `manifest.json` : `t1` (DB), `t2` (MinIO), sha256, comptages par table,
       version de schéma, `mtime` des sources (invariant 8)
-- [ ] Retirer `cmd_keygen`, `cmd_upload_readme`, la logique `rclone crypt`
-- [ ] Trancher le sort de `cmd_verify` (= niveau 1 déjà écrit, à récupérer au lot 2) et
+- [x] Retirer `cmd_keygen`, `cmd_upload_readme`, la logique `rclone crypt`
+- [x] Trancher le sort de `cmd_verify` (= niveau 1 déjà écrit, à récupérer au lot 2) et
       de `cmd_rclone`
-- [ ] Garder le self-reexec `nix shell` (portabilité)
+- [x] Garder le self-reexec `nix shell` (portabilité)
 - [ ] Nettoyer les 8 sauvegardes ad hoc de `infra/eurio-api/data/` (~640 Mo)
+      — **non fait volontairement** : suppression irréversible de données, décision du PO
 
-> ⚠️ **Le `.gitignore` d'abord, avant la première exécution.** `infra/backup/staging/`
-> n'est **pas** ignoré aujourd'hui (vérifié). Trois raisons de ne pas inverser l'ordre :
-> 6,4 Go d'untracked dans `git status` ; un `git clean -xdf` détruit le staging et son
-> `manifest.json` — réflexe d'autant plus probable que la branche courante s'appelle
-> `repo-cleanup` ; et l'interdiction `git add -A` du CLAUDE.md devient une garde de
-> sécurité pour les **données**, plus seulement pour les secrets.
+**Livré** : `eurio-backup.sh` (`stage` / `verify`) + `build_manifest.py`.
+Le `.gitignore` a été posé **avant** la première exécution : les 139 Mo de staging
+n'apparaissent pas dans `git status` (vérifié).
 
-**Critère de fin** : `staging/` peuplé des deux bases et d'un `manifest.json` lisible ;
-la commande est idempotente (deux exécutions de suite ne cassent rien).
-**Attention** : le `VACUUM INTO` s'exécute **dans** le conteneur `eurio-api` puis
-`docker cp`. Le script doit échouer proprement si Docker est absent.
+**Critère de fin atteint** : `staging/` contient les deux bases et un `manifest.json`
+lisible ; trois exécutions successives donnent le même résultat (idempotence vérifiée).
+Le `VACUUM INTO` s'exécute dans les conteneurs `eurio-api` et `eurio-review` puis
+`docker cp` ; un `flock` empêche deux `stage` concurrents.
 
 ---
 
-## Lot 2 — La suite d'invariants
+## Lot 2 — La suite d'invariants ✅ **2026-08-15**
 
 **Avant** d'élargir la surface sauvegardée. C'est délibéré et c'est le cœur de la
 correction d'erreur : en juin on a construit le transport sans le moyen de le vérifier.
 
-- [ ] Script autonome, exécutable sur n'importe quel `staging/` ou stack restaurée
-- [ ] Invariants 1, 2, 3, 7 de [`VERIFICATION.md`](./VERIFICATION.md) §3
-- [ ] **Figer la liste des ~15 tables surveillées** pour la non-décroissance
-- [ ] Comparaison au `manifest.json` précédent, avec tolérance et acquittement humain
+- [x] Script autonome, exécutable sur n'importe quel `staging/` ou stack restaurée
+- [x] Invariants 1, 2, 3, 7 de [`VERIFICATION.md`](./VERIFICATION.md) §3
+- [x] **Figer la liste des ~15 tables surveillées** pour la non-décroissance
+- [x] Comparaison au `manifest.json` précédent, avec tolérance et acquittement humain
       sur décroissance
-- [ ] Code de retour ≠ 0 et message exploitable en cas d'échec
+- [x] Code de retour ≠ 0 et message exploitable en cas d'échec
 
-**Critère de fin** : le script sort en ≠ 0 sur une base **volontairement tronquée** et
-sur une base au schéma désaligné. Tant que ce test négatif n'est pas fait, la suite ne
-prouve rien.
+**Livré** : `verify_invariants.py` + `test_verify.sh` + tâches `go-task backup:*`.
+
+**Critère de fin atteint — 9 cas, 0 en défaut** (`go-task backup:test`) :
+
+| # | Cas | Attrapé par |
+|---|---|---|
+| 0 | staging **sain** accepté | *contrôle* — sans lui, un script qui échoue toujours passerait |
+| 1 | base tronquée (100 → 0 lignes) | non-décroissance |
+| 2 | base **vide mais structurellement parfaite** | pièce canari (`integrity_check` répond `ok` !) |
+| 3 | migrations du dépôt non appliquées | comparaison à `ml/serving/migrations/` |
+| 4 | fichier modifié après le manifeste | sha256 ≡ manifeste (atomicité) |
+| 5 | staging figé | fraîcheur |
+| 6 | manifeste absent (`stage` interrompu) | sentinelle |
+| 7 | base absente du staging | présence |
+| 8 | `--accept-baseline` lève la décroissance, et elle seule | acquittement humain |
+
+**Vérifié aussi sur les données réelles** : une suppression de 3 554 lignes de
+`review_queue` (10 663 → 7 109) fait échouer **deux** invariants indépendants — la
+non-décroissance *et* `foreign_key_check` (147 violations). Deux angles, même dégât.
 
 ---
 

@@ -23,7 +23,7 @@
 > **Un dispositif préparé n'est pas un dispositif qui tourne, et un dispositif qui
 > tourne n'est pas un dispositif qui restaure.** Les trois se vérifient séparément.
 
-Ce n'est pas une formule : c'est le constat du 2026-08-14, et il s'est vérifié **trois
+Ce n'est pas une formule : c'est le constat du 2026-08-14, et il s'est vérifié **cinq
 fois** sur cette machine.
 
 1. **Eurio** — le script, la clé de chiffrement, le module systemd et le token pCloud
@@ -39,14 +39,13 @@ fois** sur cette machine.
    faute de permissions.
 
 Cinq formes de la même illusion : *écrit ≠ ordonnancé ≠ exécuté ≠ arrivé ≠ complet ≠
-restaurable*. D'où les exigences ci-dessous, et l'insistance de ce chantier à séparer
-ces six états au lieu de les confondre dans un « ✅ ».
+restaurable*. Six états que le « ✅ » d'un job confond en un seul.
 
 D'où les trois exigences non négociables de ce chantier :
 
 1. **La sauvegarde tourne** — ordonnancée déclarativement, pas à la main.
-2. **La sauvegarde est bonne** — vérifiée par des invariants calculés, pas par un
-   code de retour.
+2. **La sauvegarde est bonne** — vérifiée par des invariants **calculés**, pas par un
+   code de retour. Et la suite de vérification doit prouver qu'elle sait dire *non*.
 3. **Son absence se remarque** — surveillée par un système *extérieur* à elle.
 
 ## Statut
@@ -54,9 +53,9 @@ D'où les trois exigences non négociables de ce chantier :
 | Lot | Description | Statut |
 |---|---|---|
 | 0 | Copie manuelle immédiate `eurio.db` + `review.db` hors site | ✅ 2026-08-15 |
-| **1** | `eurio-backup.sh stage` — VACUUM INTO ×2 + `manifest.json` | ⬜ **next** |
-| 2 | Suite d'invariants (niveaux 1-2-3), autonome et testée | ⬜ |
-| 3 | Miroir MinIO dans le staging + invariants inter-stores | ⬜ |
+| 1 | `eurio-backup.sh stage` — VACUUM INTO ×2 + `manifest.json` | ✅ 2026-08-15 |
+| 2 | Suite d'invariants (niveaux 1-2-3), autonome et testée | ✅ 2026-08-15 |
+| **3** | Miroir MinIO dans le staging + invariants inter-stores | ⬜ **next** |
 | 4 | Job Duplicati « Eurio » + timer NixOS + import du module | ⬜ |
 | 5 | Kuma ×3 + healthchecks.io | ⬜ |
 | 6 | Procédure de restauration + **premier exercice à froid** | ⬜ |
@@ -82,9 +81,10 @@ Détail et critères de fin : [`ROADMAP.md`](./ROADMAP.md).
 - **La récupérabilité des secrets** (clé age du backup, creds MinIO, passphrase
   Duplicati) — traitée dans une session dédiée. Voir [`DECISIONS.md`](./DECISIONS.md) D-09.
 - **La généralisation aux 10 autres jobs** de l'alerting construit ici — le problème est
-  plus large qu'Eurio, et Eurio sert de prototype. ⚠️ En revanche **la réparation du
-  401 est bloquante** et fait partie du lot 4 : voir
-  [`ETAT-DES-LIEUX.md`](./ETAT-DES-LIEUX.md) §3-4.
+  plus large qu'Eurio, et Eurio sert de prototype.
+- **Les trois sauvegardes qui protègent moins que leur nom** (Beszel, Traefik, Immich) —
+  tickets séparés, sauf la faute de casse de Beszel qui se corrige dans la même édition
+  de compose que le lot 4. Voir [`ETAT-DES-LIEUX.md`](./ETAT-DES-LIEUX.md) §8.
 - **Les bugs de qualité de données** trouvés en chemin (sha256 non renseignés,
   chemins absolus de Mac dans la base) — tickets séparés, sauf ce qui bloque un
   invariant. Voir [`DONNEES.md`](./DONNEES.md) §4.
@@ -94,7 +94,7 @@ Détail et critères de fin : [`ROADMAP.md`](./ROADMAP.md).
 - [`../../operations/backup-strategy.md`](../../operations/backup-strategy.md) — le plan
   initial du 2026-08-14, **remplacé par ce chantier** (certaines de ses prémisses étaient
   fausses, cf. [`ETAT-DES-LIEUX.md`](./ETAT-DES-LIEUX.md) §1)
-- [`../../../infra/backup/README.md`](../../../infra/backup/README.md) — le dispositif
-  existant, à refactoriser (lot 1)
+- [`../../../infra/backup/README.md`](../../../infra/backup/README.md) — mode d'emploi
+  opérationnel de `stage` / `verify` / `test` (lots 1 et 2, livrés)
 - `/opt/stacks/oim-duplicati/BACKUP_STRATEGY.md` — **hors dépôt**, sur le VPS : la
   doctrine de sauvegarde des 10 autres stacks, dont Eurio doit devenir le 11ᵉ cas

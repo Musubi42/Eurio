@@ -1,150 +1,135 @@
-# `infra/backup/` — Backup chiffré (canonique + MinIO images) → pCloud
+# `infra/backup/` — staging et vérification de la sauvegarde Eurio
 
-> Backup off-site vers pCloud, chiffré côté client avec `rclone crypt`. Deux
-> sources (Model B / R2) : (1) le **canonique `eurio.db`** snapshoté directement
-> du conteneur `eurio-api` (writer unique — `VACUUM INTO`), (2) les **images
-> MinIO** (crops + raws + canonical). La DB n'est **plus** dans MinIO. Le secret
-> est une clé Age dédiée, qui ne touche jamais le store Nix ni le repo. La logique
-> vit dans le repo (portable d'un serveur à l'autre), seul le runtime est sur le
-> serveur.
+> **Duplicati est le moteur unique** : transport, chiffrement, rétention, historique.
+> Ce répertoire ne parle pas au distant. Il produit un **staging** — des artefacts
+> cohérents et vérifiables — que Duplicati ramasse à 03:00 UTC.
+>
+> Chantier et raisonnement complets :
+> [`docs/work-in-progress/backup-pipeline/`](../../docs/work-in-progress/backup-pipeline/)
 
-## TL;DR opérationnel
-
-```bash
-# One-time, sur un nouveau serveur :
-./infra/backup/eurio-backup.sh keygen    # génère ~/.config/eurio-backup/age-key.txt
-                                         # → SAUVEGARDER dans Bitwarden + papier !
-
-# Récurrent :
-./infra/backup/eurio-backup.sh run       # snapshot canonique + 3 buckets images → pcloud_crypt:
-./infra/backup/eurio-backup.sh verify    # check --one-way images + sha256 backup canonique
-```
-
-## Pourquoi ce design
-
-- **Logique dans le repo** (`infra/backup/`) — pas dans `/etc/nixos` ni dans un
-  ailleurs serveur-spécifique. Si on change de serveur : `git clone` + restaurer
-  la clé Age depuis Bitwarden + recréer `rclone.conf` = repartis.
-- **Chiffrement côté client** — pCloud est sécurisé et nous appartient, mais on
-  ne fait pas confiance au stockage cloud par principe. `rclone crypt` chiffre
-  avant l'upload, déchiffre après le download. pCloud ne voit que des bytes.
-- **Noms de fichiers en CLAIR** (`filename_encryption = off`) — trade-off
-  délibéré : on accepte que pCloud voie `eurio-db/eurio.db`, on gagne la
-  lisibilité (debug, restauration partielle) et un README clair.
-- **Clé Age dédiée** — séparée de la clé Age utilisée par SOPS pour
-  `secrets/dev.env`. Si la clé dev fuite, le backup reste safe (et vice-versa).
-- **Clé jamais dans le store** — vit à `~/.config/eurio-backup/age-key.txt`
-  (mode 400), lue au runtime par le wrapper qui exporte les env vars rclone.
-  Le `rclone.conf` ne contient PAS le password.
-
-## Architecture
-
-```
-┌─────────────────┐                    ┌──────────────────────────────────┐
-│ eurio-api (VPS) │   VACUUM INTO      │  pCloud (compte US)              │
-│  /var/lib/...   │   docker cp + sha  │  backups/serverOimNix/Eurio/     │
-│  eurio.db       │   ── rclone copy ──▶│  ├─ eurio-db/eurio.db (CHIFFRÉ) │
-│ MinIO (images)  │      via crypt     │  ├─ enrichment-...  (CHIFFRÉ)    │
-│  3 buckets      │                    │  └─ README-RESTORE.md  (CLAIR)   │
-                                       └──────────────────────────────────┘
-       ▲                                              ▲
-       │                                              │
-       └─────────── eurio-backup.sh run ──────────────┘
-                          │
-                          │ lit la clé Age
-                          ▼
-              ~/.config/eurio-backup/age-key.txt
-                  (mode 400, hors store, hors repo)
-                  ← sauvegarde Bitwarden + papier
-```
-
-## Setup d'un nouveau serveur (procédure complète)
-
-### 1. Prérequis NixOS
-
-`rclone` et `age` doivent être disponibles. Au choix :
-- Importer le module `nix/eurio-vps.nix` dans la config NixOS du serveur
-  (ajoute `rclone`, `age`, `curl` en `environment.systemPackages`), OU
-- Le script `eurio-backup.sh` se re-exec dans `nix shell nixpkgs#rclone
-  nixpkgs#age` automatiquement si les binaires manquent (lent au 1er run).
-
-### 2. Cloner le repo
+## TL;DR
 
 ```bash
-git clone git@codeberg.org:Musubi42/Eurio.git /opt/eurio
-cd /opt/eurio
+go-task backup:stage     # snapshots VACUUM INTO des deux bases + manifest.json
+go-task backup:verify    # invariants : transport, structure, plausibilité
+go-task backup:test      # test NÉGATIF : la suite sait-elle dire non ?
 ```
 
-### 3. Configurer rclone
+## Pourquoi un staging plutôt que pointer Duplicati sur les binds
+
+Duplicati sauvegarde des **chemins de fichiers**. Or aucune des données qui comptent
+n'a le système de fichiers pour surface valide :
+
+- `eurio.db` est une **SQLite en WAL** sous écriture — une copie fichier est corrompue,
+  le journal vivant à côté de la base. D'où `VACUUM INTO`, qui produit une base
+  autonome et compacte.
+- MinIO stocke ses objets dans un **format interne** (`xl.meta` + parts). On ne peut pas
+  calculer le sha256 d'un objet sans le réassembler : sauvegarder le répertoire brut
+  rendrait toute vérification impossible. D'où le miroir par API S3 (lot 3).
+
+## Fichiers
+
+| Fichier | Rôle |
+|---|---|
+| `eurio-backup.sh` | Orchestration : `stage`, `verify` |
+| `build_manifest.py` | Produit `manifest.json` — le contrat entre `stage` et `verify` |
+| `verify_invariants.py` | La suite d'invariants (5 niveaux, cf. VERIFICATION.md) |
+| `test_verify.sh` | **Test négatif** — 9 cas où le verify doit échouer |
+| `README-RESTORE.md` | Procédure de restauration ⚠️ décrit encore l'ancien chemin |
+| `rclone.conf.example` | Modèle de configuration rclone (remotes `minio`, `pcloud`) |
+
+Produits, **gitignorés** :
+
+| Chemin | Contenu |
+|---|---|
+| `staging/` | Ce que Duplicati sauvegarde. Jusqu'à ~6,5 Go au lot 3 |
+| `last-verified-manifest.json` | Référence du dernier `verify` réussi |
+
+> ⚠️ `staging/` contient des **données**, pas des artefacts régénérables à volonté.
+> Un `git clean -xdf` le détruit.
+
+## Le manifeste, et ses trois rôles
+
+`manifest.json` est écrit **en dernier** par `stage`. Il sert à trois choses :
+
+1. **Sentinelle d'atomicité** — il porte le sha256 de chaque fichier qu'il décrit. Un
+   staging interrompu n'a pas de manifeste ; un fichier modifié après lui produit un
+   écart de sha. Dans les deux cas, `verify` refuse.
+2. **Enregistrement d'intégrité** — sha256, `integrity_check`, violations de clés
+   étrangères, au moment de la capture.
+3. **Base de comparaison** — comptages par table, pour l'invariant de non-décroissance.
+
+## L'ordre de capture n'est pas cosmétique
+
+`stage` capture **les bases d'abord, le miroir MinIO ensuite**.
+
+`eurio.db` référence des objets MinIO (`image_assets.storage_path`,
+`source_images.storage_path`) sans transaction commune. Le décalage entre les deux
+snapshots est inévitable, mais il n'est pas symétrique :
+
+| Ordre | Effet du décalage | Verdict |
+|---|---|---|
+| MinIO puis bases | la base référence des objets absents du miroir → **dangling** | ☠️ corruption silencieuse |
+| **Bases puis MinIO** | le miroir est un sur-ensemble → **orphelins** | ✅ bénin |
+
+On capture donc toujours le store **référençant** avant le store **référencé**.
+À la restauration, c'est l'inverse : les objets d'abord, les bases ensuite.
+
+## Vérifier, et savoir dire non
+
+`verify` ne se contente pas d'un code de retour. Il calcule — **jamais ne lit** — les
+propriétés qui distinguent « la sauvegarde a marché » de « la sauvegarde est bonne » :
+
+- sha256 recalculé ≡ manifeste ;
+- `integrity_check` et `foreign_key_check` sur les deux bases ;
+- migrations appliquées ≡ migrations du dépôt (`ml/serving/migrations/`) ;
+- **non-décroissance** des 17 + 4 tables surveillées, contre la référence précédente ;
+- une **pièce canari** se résout (`coins` → noms → images canoniques) ;
+- cohérence DB ↔ MinIO, `dangling == 0` (dès le lot 3) ;
+- **fraîcheur** : un staging figé passe tout le reste, et n'est pas une sauvegarde.
+
+Pourquoi « calculé, jamais lu » : `storage_status` vaut `'present'` sur 100 % des lignes,
+**y compris sur celles qui pointent vers un objet absent**. Un invariant bâti dessus
+serait un mensonge.
+
+### Une décroissance exige un humain
+
+Un comptage qui baisse peut être légitime (purge volontaire). `verify` échoue quand même,
+et n'avance pas la référence. Après examen :
 
 ```bash
-mkdir -p ~/.config/rclone
-# Coller les sections [pcloud] [pcloud_crypt] [minio] depuis rclone.conf.example
-$EDITOR ~/.config/rclone/rclone.conf
-# Pour pcloud : générer le token via `rclone authorize pcloud` sur une machine
-# avec navigateur, puis coller le blob dans rclone.conf.
-# Pour minio : récupérer les creds root depuis infra/minio/secrets/.
+go-task backup:verify -- --accept-baseline
 ```
 
-### 4. Restaurer (ou générer) la clé Age
+### Le test négatif est ce qui rend la suite crédible
 
-**Si c'est un nouveau setup** :
-```bash
-./infra/backup/eurio-backup.sh keygen
-# → affiche la clé. La copier dans Bitwarden + papier IMMÉDIATEMENT.
-```
+Une suite qui ne sort jamais en erreur ne prouve rien. `go-task backup:test` fabrique
+9 stagings volontairement cassés et exige que chacun soit détecté : base tronquée, base
+**vide mais structurellement parfaite** (`integrity_check` répond `ok` — seul le canari
+la rejette), schéma désaligné, fichier altéré après le manifeste, staging périmé,
+manifeste absent, base manquante. Plus un cas de contrôle : un staging sain doit passer,
+sinon un script qui échoue toujours réussirait tous les tests.
 
-**Si on restaure un setup existant** :
-```bash
-mkdir -p ~/.config/eurio-backup && chmod 700 ~/.config/eurio-backup
-$EDITOR ~/.config/eurio-backup/age-key.txt
-# → coller le contenu depuis Bitwarden
-chmod 400 ~/.config/eurio-backup/age-key.txt
-```
+## État — 2026-08-15
 
-### 5. Test
+| Lot | | |
+|---|---|---|
+| 1 | `stage` + manifeste | ✅ |
+| 2 | Invariants + test négatif | ✅ |
+| 3 | Miroir MinIO + cohérence inter-stores | ⬜ |
+| 4 | Job Duplicati + timer NixOS | ⬜ |
+| 5 | Alerting Kuma + healthchecks.io | ⬜ |
 
-```bash
-./infra/backup/eurio-backup.sh rclone lsd pcloud_crypt:
-# → doit lister les buckets en clair (eurio-db, enrichment-crops, …)
-```
+**Rien n'est encore ordonnancé** : `stage` et `verify` se lancent à la main. Le timer
+systemd arrive au lot 4, l'alerting au lot 5.
 
-### 6. Premier backup
+## Historique — l'ancien chemin
 
-```bash
-./infra/backup/eurio-backup.sh run
-./infra/backup/eurio-backup.sh verify
-./infra/backup/eurio-backup.sh upload-readme
-```
+Jusqu'au 2026-08-15, ce répertoire poussait directement vers pCloud via `rclone crypt`
+et une clé age dédiée (`keygen`, `run`, `verify`, `upload-readme`). Ce chemin est
+**retiré** : il doublonnait Duplicati, n'a tourné qu'une fois (le 2026-06-17) et n'a
+jamais été ordonnancé.
 
-## Automation (optionnel — module Nix)
-
-Le module `nix/eurio-vps.nix` définit un `systemd.timers.eurio-backup`
-hebdomadaire (dimanche 03:00 UTC). Pour l'activer :
-
-```nix
-# /etc/nixos/configuration.nix
-imports = [ /opt/eurio/nix/eurio-vps.nix ];
-```
-
-Le module reste dormant tant qu'il n'est pas importé.
-
-## Restauration
-
-Voir `README-RESTORE.md` (uploadé en clair sur pCloud).
-
-## Trade-offs
-
-- **Pas de retention multi-snapshot** — `rclone copy` est append/overwrite :
-  un objet supprimé côté source n'est pas supprimé côté backup (bénin), un
-  objet modifié écrase. Si on a besoin de versioning, ajouter `--backup-dir`
-  ou passer à un outil dédié (restic, borg).
-- **Salt déterministe** — le `password2` rclone est dérivé du `password`
-  (`sha256(secret+"-salt")`). Avantage : 1 secret à protéger. Inconvénient :
-  pas d'isolation cryptographique entre password et salt. Acceptable pour ce
-  usage (secret unique de toute façon).
-- **Pas de notification ntfy** (présente dans la version V1 weekly tarball)
-  — réintroduisable trivialement dans le wrapper si besoin opérationnel.
-- **Pas de re-encryption à la rotation de clé** — si la clé Age est compromise,
-  il faut générer une nouvelle clé ET re-uploader tout le backup (rclone
-  crypt n'a pas de notion de rotation). Pour un perso, accepté.
+L'archive qu'il a produite reste sur pCloud et **n'est pas supprimée** avant le premier
+exercice de restauration réussi (lot 6). `README-RESTORE.md` décrit encore cette
+ancienne procédure — sa réécriture fait partie du lot 6.
