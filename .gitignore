@@ -233,6 +233,8 @@ infra/backup/staging/
 # Verrou d'exécution de `stage` (hors staging : un verrou n'a rien à faire
 # dans l'artefact de sauvegarde).
 infra/backup/.stage.lock
+# Points de notification : contiennent des jetons de push (Kuma, healthchecks).
+infra/backup/notify.conf
 
 # MinIO bucket data (the volume mounted into the eurio-minio container).
 # Keep the .do-not-delete marker so the dir exists at clone time.

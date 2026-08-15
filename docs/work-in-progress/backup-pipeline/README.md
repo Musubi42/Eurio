@@ -56,8 +56,8 @@ D'où les trois exigences non négociables de ce chantier :
 | 1 | `eurio-backup.sh stage` — VACUUM INTO ×2 + `manifest.json` | ✅ 2026-08-15 |
 | 2 | Suite d'invariants (niveaux 1-2-3), autonome et testée | ✅ 2026-08-15 |
 | 3 | Miroir MinIO dans le staging + invariants inter-stores | ✅ 2026-08-15 |
-| 4 | Job Duplicati « Eurio » + timer NixOS | 🟡 reste le `switch` |
-| **5** | Kuma ×4 + healthchecks.io | ⬜ **next** |
+| 4 | Job Duplicati « Eurio » + timer NixOS | ✅ 2026-08-16 |
+| **5** | Kuma ×4 + healthchecks.io | 🟡 **code fait, monitors à créer** |
 | 6 | Procédure de restauration + **premier exercice à froid** | ⬜ |
 | 7 | Décommissionnement de l'ancien chemin pCloud | ⬜ |
 

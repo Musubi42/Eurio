@@ -12,8 +12,8 @@
 | 1 | `eurio-backup.sh stage` + `manifest.json` | ✅ | 2026-08-15 |
 | 2 | Suite d'invariants (niveaux 1-2-3) | ✅ | 2026-08-15 |
 | 3 | Miroir MinIO + invariants inter-stores | ✅ | 2026-08-15 |
-| 4 | Duplicati + timer NixOS | 🟡 reste le `switch` | 2026-08-15 |
-| **5** | Kuma ×4 + healthchecks.io | ⬜ **next** | |
+| 4 | Duplicati + timer NixOS | ✅ | 2026-08-16 |
+| **5** | Kuma ×4 + healthchecks.io | 🟡 **code fait, monitors à créer** | |
 | 6 | Restauration + premier exercice à froid | ⬜ | |
 | 7 | Décommissionnement de l'ancien chemin pCloud | ⬜ | |
 
@@ -178,7 +178,7 @@ Le référençant avant le référencé.
 
 ---
 
-## Lot 4 — Duplicati et timer NixOS 🟡 **2026-08-15 — reste le `switch`**
+## Lot 4 — Duplicati et timer NixOS ✅ **2026-08-16**
 
 > ### ✅ Prérequis levé le 2026-08-15 : les 10 jobs Duplicati sont réparés
 > Basculés du WebDAV Basic Auth vers le backend pCloud natif en OAuth
@@ -219,7 +219,9 @@ novembre 2025.
 - [x] Import par **input flake** et non par chemin absolu — la méthode documentée
       depuis juin était **inapplicable** ([D-22](./DECISIONS.md))
 - [x] `nixos-rebuild build` **réussi**, diff de closure vérifié
-- [ ] 🔴 **`nixos-rebuild switch` — À FAIRE PAR LE PO** (nécessite `sudo`)
+- [x] ✅ **`nixos-rebuild switch` fait le 2026-08-16** — les deux timers sont armés :
+      `eurio-backup-stage.timer` → 04:00 CEST (02:00 UTC),
+      `eurio-backup-verify.timer` → 04:30 CEST (02:30 UTC)
 
 **Diff de closure vérifié** — rien de retiré sur un VPS à 60+ conteneurs :
 
@@ -231,12 +233,16 @@ unit-eurio-backup-verify.service  ∅ → ε
 unit-eurio-backup-verify.timer    ∅ → ε
 ```
 
-**La commande qui reste**, à lancer par le PO :
+**Activation confirmée** :
 
-```bash
-sudo nixos-rebuild switch --flake /etc/nixos#nixos
-systemctl list-timers 'eurio-*'          # doit lister les deux timers
 ```
+NEXT                          LEFT       UNIT
+Sun 2026-08-16 04:00:00 CEST  3h 52min   eurio-backup-stage.timer
+Sun 2026-08-16 04:30:00 CEST  4h 22min   eurio-backup-verify.timer
+```
+
+**Première sauvegarde Eurio** : `Success`, 33 957 fichiers / 6,47 Gio examinés,
+**5,61 Gio poussés en 8 min 59**, 0 erreur, 0 avertissement.
 
 Retours arrière préparés : `/etc/nixos/flake.nix.bak-20260815`,
 `/etc/nixos/configuration.nix.bak-20260815` (non modifié au final),
@@ -248,18 +254,36 @@ Une seule nuit ne prouve rien.
 
 ---
 
-## Lot 5 — Alerting
+## Lot 5 — Alerting 🟡 **2026-08-16 — code fait, monitors à créer**
 
-- [ ] Push monitors Kuma : `eurio-staging`, `eurio-verify`, **`eurio-uploaded`**,
-      `eurio-drill` (~100 j)
-- [ ] Les brancher sur le canal **Musubi Discord** (déjà configuré, déjà par défaut)
-- [ ] Compte healthchecks.io, ping depuis `verify` uniquement si tous les invariants
-      passent
-- [ ] Notification healthchecks.io → Discord
+**Fait** :
 
-**Critère de fin** : **un échec provoqué** (couper le réseau, tronquer une base) arrive
-effectivement sur Discord. Un canal d'alerte non testé est une alerte qui n'existe pas —
-c'est la même erreur que le backup non branché.
+- [x] Plomberie `notify()` dans `eurio-backup.sh` — battement de cœur vers un push
+      monitor, jamais l'état complet : c'est Kuma qui possède l'alerte ([D-06](./DECISIONS.md))
+- [x] `stage` notifie sous **trap** : le signal part même si le script meurt en cours de
+      route. Sans ça, un échec au milieu ne produirait aucun signal, et le silence est
+      indiscernable du succès
+- [x] `verify` notifie up/down, et ne pingue healthchecks.io **que si tout est vert** —
+      son silence doit vouloir dire « quelque chose ne va pas », jamais « ça a tourné
+      mais les données sont mauvaises »
+- [x] Un anneau non configuré est **signalé bruyamment** à chaque exécution, jamais tu sous silence
+- [x] Une notification injoignable ne fait **jamais** échouer la sauvegarde, mais le dit
+- [x] `notify.conf.example` + `notify.conf` gitignoré (les URLs portent des jetons)
+- [x] Commande `notify-test` : envoie un `down` réel sur chaque anneau
+
+**Reste** — détail dans [`HANDOFF-NEXT-SESSION.md`](./HANDOFF-NEXT-SESSION.md) :
+
+- [ ] Créer 4 push monitors Kuma *(humain, ~3 min)* — pas de création par API dans Kuma,
+      et écrire dans `kuma.db` sur un service partagé en production serait le raccourci
+      que R0 interdit
+- [ ] Créer le compte healthchecks.io *(humain)*
+- [ ] Remplir `notify.conf`
+- [ ] `--send-http-url` + `--send-http-level=all` sur le job Duplicati « Eurio »
+      (**anneau 3** — le plus important, cf. [D-16](./DECISIONS.md))
+
+**Critère de fin** : `notify-test` provoque un échec qui **arrive effectivement sur
+Discord**. Un canal d'alerte non testé est une alerte qui n'existe pas — les 10 jobs
+criaient dans une interface sans lecteur depuis neuf mois.
 
 ---
 

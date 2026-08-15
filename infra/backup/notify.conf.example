@@ -1,0 +1,39 @@
+# Points de notification de la chaîne de sauvegarde Eurio.
+#
+# Copier en `notify.conf` (gitignoré — ces URLs contiennent des jetons) et
+# remplir. Une variable vide = anneau désactivé, et le script le DIT à chaque
+# exécution : un anneau silencieusement absent serait exactement le défaut que
+# ce chantier corrige.
+#
+# Spec : docs/work-in-progress/backup-pipeline/ARCHITECTURE.md §5
+
+# ── Anneau 1 — le staging a été produit ──────────────────────────────────────
+# Push monitor Uptime Kuma. Détecte : script cassé, Docker HS, disque plein.
+# Intervalle conseillé : 90000 s (25 h) — le staging tourne toutes les 24 h,
+# la marge évite une alerte au premier retard de quelques minutes.
+KUMA_STAGING_URL=""
+
+# ── Anneau 2 — les invariants sont passés ────────────────────────────────────
+# Détecte : sauvegarde réussie mais MAUVAISE (base tronquée, dangling, source
+# figée). C'est l'anneau qui distingue « ça a tourné » de « c'est bon ».
+KUMA_VERIFY_URL=""
+
+# ── Anneau 4 — dead man's switch HORS SITE ───────────────────────────────────
+# healthchecks.io (offre gratuite). Pingé UNIQUEMENT si tous les invariants
+# passent. C'est son ABSENCE de ping qui déclenche l'alerte — donc lui seul
+# couvre « le VPS entier est mort », que Kuma ne peut pas signaler puisqu'il
+# tourne sur la machine qu'il surveille.
+HEALTHCHECKS_URL=""
+
+# ── Anneau 5 — l'exercice de restauration trimestriel a eu lieu ──────────────
+# Push monitor Kuma d'intervalle ~100 jours, acquitté uniquement par le script
+# d'exercice. Un rituel humain non surveillé ne se fait pas : la preuve est la
+# case « Monthly DR Test » de /opt/stacks/oim-duplicati/BACKUP_STRATEGY.md,
+# jamais cochée depuis novembre 2025.
+KUMA_DRILL_URL=""
+
+# ── Anneau 3 — la destination a reçu ─────────────────────────────────────────
+# PAS ici : il se configure DANS Duplicati (job « Eurio », option
+# `--send-http-url` + `--send-http-level=all`), parce que Duplicati est le seul
+# à savoir si l'upload a réussi. C'est l'anneau dont l'absence a laissé 10 jobs
+# mourir sans témoin pendant neuf mois.

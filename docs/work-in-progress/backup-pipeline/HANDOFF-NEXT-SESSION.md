@@ -1,116 +1,257 @@
-# Handoff — prochaine session
+# Handoff — reprise de session
 
-> Écrit le 2026-08-14, mis à jour le 2026-08-15. **Lots 0, 1 et 2 livrés.** La panne
-> Duplicati découverte en chemin a été réparée. Rien n'est encore ordonnancé.
+> Écrit le 2026-08-16 à la fin d'une longue session. **Lots 0 à 4 livrés, lot 5 à
+> moitié.** Eurio a sa première sauvegarde automatisée hors site, et l'ordonnancement
+> est actif. Ce qui manque : les alertes.
 
-## Où on en est
+## Lire dans cet ordre en reprenant
 
-- Étude des données faite et mesurée ([`ETAT-DES-LIEUX.md`](./ETAT-DES-LIEUX.md),
-  [`DONNEES.md`](./DONNEES.md)).
-- Architecture arbitrée, **19 décisions** consignées ([`DECISIONS.md`](./DECISIONS.md)).
-- 8 lots découpés avec critères de fin ([`ROADMAP.md`](./ROADMAP.md)).
-- **Duplicati réparé** (10 jobs, transport OAuth) — le prérequis du lot 4 est levé.
-- **Lots 0-1-2 livrés** : copie hors site, `stage` + manifeste, suite d'invariants avec
-  son test négatif. 11 invariants verts sur les données réelles, 9 cas négatifs détectés.
-- Reste intact : **aucun `nixos-rebuild`, aucun compose modifié, aucun ordonnancement.**
+1. Ce fichier, en entier.
+2. [`README.md`](./README.md) — le principe directeur et la table des lots.
+3. [`DECISIONS.md`](./DECISIONS.md) — 23 décisions, chacune avec ce qu'elle **écarte**.
+4. [`ROADMAP.md`](./ROADMAP.md) lot 5 — le travail immédiat.
 
-## ✅ Fait le 2026-08-15 — Duplicati réparé
+Le reste (`ETAT-DES-LIEUX`, `DONNEES`, `ARCHITECTURE`, `VERIFICATION`, `RESTAURATION`)
+se lit à la demande.
 
-Les 10 jobs sont passés du WebDAV Basic Auth au backend pCloud natif OAuth, et ont tous
-tourné avec succès. Détail : [`ETAT-DES-LIEUX.md`](./ETAT-DES-LIEUX.md) §3.
+---
 
-| # | Vérification restante | Priorité |
+## Où on en est vraiment
+
+| Lot | | Statut |
 |---|---|---|
-| 0a | **Contrôler la passe automatique de 03:00 UTC** — c'est elle qui prouve que ça tient sans intervention humaine | 🔴 lendemain matin |
-| 0b | Acquitter les **456 erreurs + 468 avertissements** dans `duplicati.musubi.dev` | après 0a |
-| 0c | Supprimer `/opt/stacks/oim-duplicati/api-config-export-20260815/` — contient les **identifiants WebDAV en clair** | après 0a |
+| 0 | Copie manuelle hors site | ✅ |
+| 1 | `stage` + manifeste | ✅ |
+| 2 | Invariants + test négatif | ✅ |
+| 3 | Miroir MinIO + cohérence inter-stores | ✅ |
+| 4 | Job Duplicati + ordonnancement NixOS | ✅ |
+| **5** | **Alerting** | 🟡 **code fait, monitors à créer** |
+| 6 | Restauration + exercice à froid | ⬜ |
+| 7 | Décommissionnement de l'ancien chemin | ⬜ |
 
-## Actions humaines requises — bloquantes
+**Ce qui tourne tout seul depuis cette nuit** :
+
+```
+02:00 UTC  eurio-backup-stage.service    (timer NixOS actif)
+02:30 UTC  eurio-backup-verify.service   (timer NixOS actif)
+03:00 UTC  Duplicati job « Eurio » (ID 17) → pCloud
+```
+
+**Première sauvegarde réussie** : 33 957 fichiers, 6,47 Gio examinés, 5,61 Gio poussés
+en 8 min 59, zéro erreur, zéro avertissement.
+
+> ⚠️ **Le dispositif tourne, mais personne ne sera prévenu s'il s'arrête.** C'est
+> exactement la situation des 10 jobs Duplicati pendant neuf mois. La différence est
+> qu'on sait précisément quel signal manque — et c'est le lot 5.
+
+---
+
+## 🔴 Travail immédiat — finir le lot 5
+
+### Étape 1 — Créer 4 push monitors dans Uptime Kuma *(humain, ~3 min)*
+
+Sur `uptime.musubi.dev` → **Add New Monitor** → type **Push** :
+
+| Nom | Heartbeat Interval | Retries | Notification |
+|---|---|---|---|
+| `eurio-staging` | `90000` s (25 h) | 0 | ☑ Musubi Discord |
+| `eurio-verify` | `90000` s (25 h) | 0 | ☑ Musubi Discord |
+| `eurio-uploaded` | `90000` s (25 h) | 0 | ☑ Musubi Discord |
+| `eurio-drill` | `8640000` s (100 j) | 0 | ☑ Musubi Discord |
+
+25 h et non 24 h : le job tourne toutes les 24 h, la marge évite une alerte au premier
+retard de quelques minutes.
+
+**Je n'ai pas créé ces monitors moi-même** : Kuma n'a pas d'API REST de création, et
+écrire dans `kuma.db` à la main sur un service de monitoring partagé en production est
+exactement le raccourci que R0 interdit. Trois minutes d'interface valent mieux.
+
+Chaque monitor donne une **Push URL** de la forme
+`https://uptime.musubi.dev/api/push/<token>`.
+
+### Étape 2 — Créer un compte healthchecks.io *(humain, ~5 min)*
+
+Offre gratuite. Un check « Eurio backup », période 1 jour, grâce 6 h, **notification vers
+Discord** (Integrations → Discord). Récupérer l'URL de ping.
+
+C'est le seul anneau **hors site**. Kuma et ntfy tournent sur le VPS qu'ils surveillent :
+aucun des deux ne peut signaler la mort de cette machine, et il n'y a qu'un seul VPS.
+
+### Étape 3 — Remplir `notify.conf` *(moi, dès que j'ai les URLs)*
+
+```bash
+cp infra/backup/notify.conf.example infra/backup/notify.conf   # gitignoré
+```
+
+Quatre variables : `KUMA_STAGING_URL`, `KUMA_VERIFY_URL`, `KUMA_DRILL_URL`,
+`HEALTHCHECKS_URL`. La plomberie est **déjà écrite et testée** — un anneau vide est
+signalé bruyamment à chaque exécution, jamais silencieux.
+
+### Étape 4 — Anneau 3 dans Duplicati *(moi)*
+
+Ajouter au job « Eurio » (ID 17), par l'API :
+
+```
+--send-http-url   = <push URL de eurio-uploaded>
+--send-http-level = all
+```
+
+**C'est l'anneau le plus important du chantier.** Les invariants tournent tous sur le
+staging *local* : aucun ne prouve que Duplicati a poussé quoi que ce soit. Un staging
+impeccable et une destination qui refuse tout produisent le même signal — vert. C'est
+littéralement ce qui s'est passé pendant neuf mois. Et il est directement réutilisable
+pour les 10 autres jobs.
+
+### Étape 5 — Le critère de fin *(moi)*
+
+```bash
+./infra/backup/eurio-backup.sh notify-test    # envoie un `down` réel sur chaque anneau
+```
+
+**Un échec provoqué doit effectivement arriver sur Discord.** Tant que ce test n'est pas
+passé, le lot 5 n'est pas fini : un canal d'alerte non testé est une alerte qui n'existe
+pas.
+
+---
+
+## Commandes
+
+```bash
+go-task backup:stage          # snapshots VACUUM INTO + miroir MinIO + manifeste
+go-task backup:verify         # 18 invariants
+go-task backup:verify -- --accept-baseline   # acquitter une décroissance légitime
+go-task backup:test           # 20 cas négatifs — la suite sait-elle dire non ?
+./infra/backup/eurio-backup.sh notify-test   # teste les anneaux
+
+systemctl list-timers 'eurio-*'
+journalctl -u eurio-backup-stage -u eurio-backup-verify --since today
+```
+
+---
+
+## Les cinq idées qui gouvernent tout ce chantier
+
+Si tout le reste est oublié, garder ça.
+
+1. **Un dispositif préparé ≠ qui tourne ≠ qui arrive ≠ complet ≠ restaurable.** Cinq
+   états que le « ✅ » d'un job confond en un seul. Vérifié **cinq fois** sur cette
+   machine (README §Principe directeur).
+2. **Les invariants sont calculés, jamais lus.** `storage_status` vaut `'present'` sur
+   100 % des lignes, y compris celles qui pointent vers un objet absent (D-10).
+3. **L'absence de preuve n'est pas une preuve.** Un contrôle qu'on n'a pas pu faire
+   s'affiche ⚠️, jamais ✅. C'est par là que passent les pertes silencieuses.
+4. **On capture le store référençant avant le store référencé.** DB puis MinIO ⇒
+   orphelins (bénins). L'inverse ⇒ dangling (corruption silencieuse) (D-04).
+5. **Le critère d'acceptation d'une restauration est la suite de tests nocturne.** Un
+   seul corpus, deux usages : ils ne peuvent pas diverger (D-13).
+
+---
+
+## Ce qui a été découvert en chemin, et qui dépasse Eurio
+
+À traiter hors de ce chantier, mais **ne pas perdre** :
+
+| # | Découverte | État |
+|---|---|---|
+| 1 | **Les 10 jobs Duplicati n'écrivaient plus rien depuis 3 à 9 mois** — WebDAV Basic Auth déclenchait la vérification d'appareil pCloud, chaque nuit à 3 h | ✅ **réparé** (backend pCloud OAuth) |
+| 2 | **Beszel sauvegardait un répertoire vide** depuis nov. 2025 — faute de casse `oim-Beszel` / `oim-beszel` | ✅ **corrigé**, 727 ko envoyés depuis |
+| 3 | **Traefik n'envoie que 1 818 octets** — `acme.json` exclu faute de permissions (Duplicati tourne en PUID/PGID) | ⬜ ticket à ouvrir |
+| 4 | **Immich sauvegarde sa config, pas la photothèque** — ligne commentée dans le compose, données sur `/mnt/hetzner-storage` non monté | ⬜ ticket à ouvrir |
+| 5 | **Authentik : `pg_dump` documenté, jamais automatisé** — `backup-temp/` contient un dump du 8 nov. 2025, resauvegardé chaque nuit depuis | ⬜ ticket à ouvrir |
+| 6 | **924 notifications non acquittées** dans Duplicati | ⬜ à purger |
+| 7 | **`/etc/nixos` n'est dans aucun job Duplicati** | ⬜ à vérifier |
+
+Les points 3, 4 et 5 sont la même pathologie : **des jobs verts qui protègent moins que
+leur nom** (D-19). L'anneau 3 et les invariants de niveau 3 sont directement
+transposables.
+
+---
+
+## Actions humaines en attente
 
 | # | Action | Bloque |
 |---|---|---|
-| 1 | **Créer le compte healthchecks.io** et brancher sa notification sur Discord — un compte externe, ça ne peut pas se faire depuis le VPS | Lot 5 |
-| 2 | 🔴 **`sudo nixos-rebuild switch --flake /etc/nixos#nixos`** — construit et validé, mais le `switch` demande un mot de passe que je n'ai pas. Diff de closure vérifié : rclone + 4 unités, **rien de retiré** | Lot 4 (fin) |
+| 1 | Créer les 4 push monitors Kuma *(étape 1 ci-dessus)* | Lot 5 |
+| 2 | Créer le compte healthchecks.io *(étape 2)* | Lot 5 |
+| 3 | Supprimer `/opt/stacks/oim-duplicati/api-config-export-20260815/` — **identifiants WebDAV en clair** | — |
+| 4 | Confirmer que `infra/minio/secrets` et `infra/review/secrets` sont couverts par la session « secrets » | Lot 6 |
+| 5 | Décider du nettoyage des 8 sauvegardes ad hoc de `infra/eurio-api/data/` (~640 Mo) — suppression irréversible, je ne l'ai pas faite | — |
+| 6 | Décider du sort du volume Docker anonyme de `eurio-scrape-tor` (clés Tor) | Lot 7 |
 
-> **Lots 0 à 4 faits le 2026-08-15**, sauf le `nixos-rebuild switch`.
-> Lot 0 : copie chiffrée des deux bases dans `pcloud_crypt:lot0-manuel-20260815/`,
-> vérifiée depuis la destination — un filet ponctuel qui vieillira, pas un dispositif.
-> Lots 1 à 3 : `go-task backup:stage` / `backup:verify` / `backup:test`. Staging de
-> 6,6 Go (bases + miroir MinIO), **16 invariants verts** sur les données réelles dont
-> `dangling == 0`, et **20 cas négatifs** détectés.
-> **Rien n'est encore ordonnancé** : `stage` et `verify` se lancent à la main jusqu'au
-> lot 4.
+---
 
-## Actions humaines requises — non bloquantes
-
-| # | Action | Quand |
-|---|---|---|
-| 3 | Confirmer que `infra/minio/secrets` et `infra/review/secrets` sont couverts par la session « secrets » | Avant le lot 6 |
-| 4 | Décider du sort du volume Docker anonyme de `eurio-scrape-tor` (clés d'identité Tor) | Avant le lot 7 |
-| 4 | Ouvrir des tickets pour les trois sauvegardes incomplètes : Traefik/`acme.json` (permissions), Immich (photothèque non montée), Authentik (`pg_dump` figé depuis nov. 2025). Cf. [`ETAT-DES-LIEUX.md`](./ETAT-DES-LIEUX.md) §8 | Hors chantier |
-
-> **Résolus** : la rétention est `keep-versions = 30` (lue en clair, pas 30 jours) ·
-> la destination pCloud est `Applications/DuplicatiBackup/Oim/<Service>`, confirmée par
-> l'inspection et par les 10 jobs réparés.
-
-## Ordre d'exécution proposé pour la prochaine session
-
-**Finir le lot 4** : `sudo nixos-rebuild switch --flake /etc/nixos#nixos`, puis
-`systemctl list-timers 'eurio-*'`. Tout le reste est fait et vérifié.
-
-**Lot 5** — l'alerting, et c'est lui qui rend le dispositif honnête. Quatre push
-monitors Kuma (`eurio-staging`, `eurio-verify`, `eurio-uploaded`, `eurio-drill`),
-branchés sur le canal Musubi Discord déjà existant, plus healthchecks.io hors site.
-L'anneau `eurio-uploaded` (`--send-http-url` de Duplicati) est le plus important : c'est
-son absence qui a laissé 10 jobs mourir sans témoin. Critère de fin : **un échec
-provoqué doit effectivement arriver sur Discord**.
-
-## Pièges identifiés, à ne pas redécouvrir
+## Pièges à ne pas redécouvrir
 
 | Piège | Détail |
 |---|---|
-| 🔴 **Duplicati ne voit pas `/opt/eurio`** | 14 binds, tous sous `/opt/stacks`. Aucun job Eurio n'est possible sans ajouter un montage et **recréer le conteneur** |
-| 🔴 **Deux `review.db`** | Le vrai est `infra/review/data/review.db` (954 368 o, `reviewers` + 575 items). Celui de `infra/eurio-api/data/` (49 152 o) est un **résidu** sans table `reviewers` |
-| 🔴 **`staging/` contient des DONNÉES** | Gitignoré depuis le lot 1, donc invisible dans `git status` — mais un `git clean -xdf` le détruit quand même (branche `repo-cleanup` !). Jusqu'à 6,5 Go au lot 3 |
-| **`systemd.services.eurio-minio`** | Son `ExecStop = docker compose down` fait de tout `systemctl stop` ou de toute désactivation du module un **arrêt de MinIO**. À retirer ou neutraliser avant l'import — le `ExecStart` n'est pas le risque |
-| **`nixos-rebuild` sur ce VPS** | 60+ conteneurs en production. `nixos-rebuild build` ou `dry-activate` **avant** le `switch` |
-| **Fenêtre horaire** | Duplicati démarre à 03:00 UTC ; en régime sain les 10 jobs prennent **6 minutes**. Les horaires de 04:59 visibles aujourd'hui sont des horaires de panne — ne pas dimensionner dessus. D'où 02:00 / 02:30 |
-| **Premier `rclone sync`** | 6,43 GiB depuis MinIO, transfert local, quelques minutes. Les suivants sont incrémentaux |
-| **Course staging ↔ Duplicati** | Traité au lot 1 : `flock` contre deux `stage` concurrents, et `manifest.json` écrit en dernier comme sentinelle (son sha détecte un fichier modifié après lui) |
-| **`.minio.sys/` n'est pas dans le miroir** | Users IAM, service accounts, policies. On **suppose** que `bootstrap.sh` les recrée — non vérifié, à faire au lot 3 |
-| **Deux archives pCloud du 17 juin** | `pcloud:backups/serverOimNix/Eurio` **et** `pcloud:eurio-backup`. N'en traiter qu'une laisse une orpheline |
-| **`VACUUM INTO`** | S'exécute **dans** les conteneurs `eurio-api` et `eurio-review` puis `docker cp`. Traité au lot 1 |
-| **Ne pas restaurer les `-wal` / `-shm`** | `VACUUM INTO` produit une base autonome ; restaurer des fichiers WAL à côté est une source de corruption |
-| **L'invariant `dangling == 0` naît rouge** | Sans exclusion des 546 chemins absolus et des 10 lignes `mock/`. L'exclusion est déjà codée (`EXCLUDED_PREFIXES`), non testée sur données réelles avant le lot 3 |
-| **Ne pas supprimer l'archive du 17 juin** | Avant le lot 6. C'est la seule copie hors site existante |
+| **Import NixOS par chemin absolu** | **Impossible** : le VPS est flake-based, l'évaluation pure refuse `/opt/eurio/nix/...`. Passer par l'input `eurio-nix`. Après modif du module : `nix flake update eurio-nix` **puis** `nixos-rebuild switch` (D-22) |
+| **Deux `review.db`** | Le vrai : `infra/review/data/` (954 ko). Le résidu : `infra/eurio-api/data/` (49 ko, sans table `reviewers`) |
+| **`staging/` contient des DONNÉES** | 6,6 Go gitignorés. Un `git clean -xdf` le détruit — d'autant que la branche s'appelle `repo-cleanup` |
+| **`eurio-minio.service`** | **Supprimé** du module Nix. Son `ExecStop` faisait `docker compose down` : tout `systemctl stop` aurait coupé MinIO, `eurio-api`, `eurio-review` et le miroir |
+| **Rétention Duplicati** | Les 10 jobs : `keep-versions = 30` (**versions**, pas jours). Le job Eurio : `keep-time = 30D`, borne temporelle explicite |
+| **`bootstrap.sh` régénère les secrets MinIO** | S'ils manquent, il en crée de nouveaux → MinIO fonctionnel que `eurio-api` ne sait plus lire. Restaurer `infra/minio/secrets` **avant** |
+| **Deux archives pCloud du 17 juin** | `pcloud:backups/serverOimNix/Eurio` **et** `pcloud:eurio-backup`. Ne pas en traiter qu'une |
+| **Ne rien supprimer avant le lot 6** | Les archives de juin et la copie du lot 0 restent jusqu'au premier exercice de restauration réussi (D-14) |
 
-## Chiffres de référence, mesurés le 2026-08-14
+---
 
-À recomparer à chaque étape pour détecter une dérive.
+## Chiffres de référence — 2026-08-16
 
 ```
-eurio.db          155 648 000 o   mtime 2026-07-12   80 tables applicatives
-review.db         954 368 o       infra/review/data/  (review_items 575)
-                  49 152 o        infra/eurio-api/data/  ← RÉSIDU, ne pas utiliser
-MinIO (API S3)    6,430 GiB       33 956 objets sur 4 buckets
-  enrichment-raws      17 129 obj / 5,168 GiB
-  enrichment-crops     12 998 obj / 1011,811 MiB
-  numista-canonical     3 824 obj / 78,678 MiB
-  eurio-db                  5 obj / 201,760 MiB
-Cohérence         dangling réel = 0   (556 exclus : 546 chemins Mac + 10 mock)
-                  orphelins = 4 981
-Disque            /opt/eurio 9,0 Go   ·   85 Go libres   ·   78 %
-pCloud            2 TiB total   ·   1,191 TiB libres
-Archives juin     pcloud:backups/serverOimNix/Eurio   3,842 GiB / 21 661 obj
-                  pcloud:eurio-backup                 3,841 GiB / 21 661 obj
-                  déchiffrables toutes deux   ·   2026-06-17
-Duplicati         dernier succès 2026-05-25   ·   401 depuis 2026-05-26
-                  keep-versions = 30 (versions, pas jours)   ·   456 erreurs
+Staging          6,6 Go · 33 953 objets · stage incrémental ~1 min 40
+eurio.db         144 056 320 o (VACUUM INTO)   mtime source 2026-07-12
+review.db        950 272 o                      infra/review/data/
+MinIO (API S3)   enrichment-raws 17 129 · enrichment-crops 12 998
+                 numista-canonical 3 824 · eurio-db/transfers 2
+Cohérence        dangling = 0 · orphelins 4 981
+                 (556 exclus : 546 chemins Mac + 10 mock)
+Disque /         80 % · 78 Go libres
+pCloud           Applications/DuplicatiBackup = 6,82 GiB (11 jobs)
+                 dont Oim/Eurio = 5,61 GiB / 235 objets
+Invariants       18 sur le staging réel (16 ✅ + 2 ⚠️ attendus)
+Test négatif     20 cas, 0 en défaut
 ```
 
-## Question tranchée le 2026-08-15
+Les 2 ⚠️ attendus : `vivacité de la source` — `eurio.db` n'a pas bougé depuis le
+12 juillet, donc la non-décroissance est vraie par construction et **ne prouve rien**.
+Ils passeront au vert dès que le projet reprendra des écritures. C'est voulu : un
+contrôle inopérant doit se voir.
 
-**Le miroir MinIO doit-il inclure le bucket `eurio-db` ?** Oui pour ses artefacts ML
-(`transfers/`, 105 Mo, issus de runs d'entraînement), **non** pour sa copie de `eurio.db`
-figée au 29 juin — doublon périmé et piège de restauration. Détail :
-[`DECISIONS.md`](./DECISIONS.md) D-20.
+---
+
+## Commits de la session
+
+```
+d9744fef  feat(backup): lot 4 — Eurio entre dans Duplicati, ordonnancement NixOS
+deb17258  feat(backup): lot 3 — miroir MinIO et invariants inter-stores
+a1cadd35  fix(backup): corrige 6 defauts trouves par la revue adversariale
+fb3a1a9b  feat(backup): lots 1 et 2 — staging verifiable + suite d'invariants
+3624550d  docs(backup): lot 0 — copie chiffree des deux bases sur pCloud
+7cfab826  docs(backup): chantier backup-pipeline + reparation Duplicati
+```
+
+Hors dépôt Eurio, modifié sur le VPS (retours arrière préparés) :
+
+- `/opt/stacks/oim-duplicati/compose.yaml` — bind `:ro` + casse Beszel
+  *(→ `compose.yaml.bak-20260815-234703`)*
+- `/etc/nixos/flake.nix` — input `eurio-nix` *(→ `flake.nix.bak-20260815`, dépôt git)*
+- Les 11 jobs Duplicati — destination pCloud OAuth
+  *(→ `api-config-export-20260815/`)*
+
+---
+
+## La leçon de la session
+
+On est parti pour sauvegarder Eurio. On a trouvé **cinq façons différentes d'avoir tort
+en croyant être protégé** : un dispositif jamais branché, dix jobs qui échouent sans
+destinataire, un dump figé depuis novembre, un job sur un dossier vide, un autre qui
+exclut les certificats faute de permissions.
+
+Aucune ne se voyait en regardant un statut. Toutes se voient en regardant **ce qui est
+réellement arrivé à destination**.
+
+Et la revue adversariale du lot 2 a trouvé trois trous dans la suite de vérification
+elle-même — écrite justement pour attraper ces pertes silencieuses. Le test négatif
+passait alors à 9/9 : il testait ce que j'avais pensé à tester. **C'est la limite
+structurelle de tout test écrit par l'auteur du code**, et la raison de faire relire par
+un tiers ce dont dépendent des données irremplaçables.

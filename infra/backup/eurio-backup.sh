@@ -27,6 +27,7 @@
 # Usage :
 #   eurio-backup.sh stage                 # produit le staging
 #   eurio-backup.sh verify [args...]      # vérifie les invariants du staging
+#   eurio-backup.sh notify-test           # teste les anneaux de notification
 #   eurio-backup.sh help
 #
 # Restauration : voir README-RESTORE.md.
@@ -74,9 +75,41 @@ MIRROR_BUCKETS=(${EURIO_BACKUP_BUCKETS-enrichment-crops enrichment-raws numista-
 # seul l'invariant de cohérence rattraperait, et après coup.
 MIN_FREE_GB="${EURIO_BACKUP_MIN_FREE_GB:-10}"
 
+# Points de notification (cf. notify.conf.example). Absents = anneaux
+# desactives, et le script le dit — un anneau silencieusement absent serait
+# exactement le defaut qu'on corrige.
+NOTIFY_CONF="${EURIO_BACKUP_NOTIFY_CONF:-$SCRIPT_DIR/notify.conf}"
+KUMA_STAGING_URL=""; KUMA_VERIFY_URL=""; HEALTHCHECKS_URL=""; KUMA_DRILL_URL=""
+# shellcheck source=/dev/null
+[ -f "$NOTIFY_CONF" ] && . "$NOTIFY_CONF"
+
 # ── Helpers ──────────────────────────────────────────────────────────────────
 die() { echo "❌ $*" >&2; exit 1; }
 ok()  { echo "✅ $*"; }
+
+# Battement de coeur vers un push monitor.
+#
+# Le job ne pousse PAS son etat : il pousse un battement, et c'est Kuma qui
+# possede l'alerte (D-06). Detecter une absence est un travail de machine ;
+# demander au dispositif d'annoncer sa propre mort ne marche pas.
+#
+# Une notification qui echoue ne fait JAMAIS echouer la sauvegarde — mais elle
+# le dit. L'inverse (echouer la sauvegarde parce que Kuma est down) serait
+# absurde ; le silence, lui, serait le defaut qu'on corrige.
+notify() {
+  local url="$1" status="$2" msg="$3" label="$4"
+  if [ -z "$url" ]; then
+    echo "   ⚠️  anneau « $label » non configuré (voir $NOTIFY_CONF) — aucune alerte ne partira"
+    return 0
+  fi
+  if curl -fsS -m 15 --get "$url" \
+       --data-urlencode "status=$status" \
+       --data-urlencode "msg=$msg" >/dev/null 2>&1; then
+    echo "   → $label : $status"
+  else
+    echo "   ⚠️  $label : notification INJOIGNABLE (le job continue)" >&2
+  fi
+}
 
 # Snapshot cohérent d'une SQLite en WAL : VACUUM INTO vers un chemin neuf DANS
 # le conteneur (la commande échoue si la cible existe), puis docker cp.
@@ -148,6 +181,15 @@ cmd_stage() {
   exec 9>"$LOCKFILE"
   flock -n 9 || die "un autre 'stage' est déjà en cours ($LOCKFILE)."
 
+  # La notification part quoi qu'il arrive, y compris si `stage` meurt en
+  # cours de route. Sans trap, un echec au milieu ne produirait AUCUN signal —
+  # et le silence est indiscernable du succes.
+  local stage_rc=1
+  trap 'notify "$KUMA_STAGING_URL" \
+        "$([ $stage_rc -eq 0 ] && echo up || echo down)" \
+        "$([ $stage_rc -eq 0 ] && echo "staging OK" || echo "stage a echoue (rc=$stage_rc)")" \
+        "eurio-staging"' EXIT
+
   t1="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   echo "=== staging  $t1"
   echo "    destination : $STAGING"
@@ -196,16 +238,49 @@ cmd_stage() {
   python3 "$SCRIPT_DIR/build_manifest.py" "${manifest_args[@]}" || die "construction du manifeste échouée."
 
   echo
+  stage_rc=0
   ok "staging prêt — $(du -sh "$STAGING" | cut -f1)"
   echo "   Vérifier maintenant : $0 verify"
 }
 
 cmd_verify() {
   [ -d "$STAGING" ] || die "staging absent : $STAGING — lancer '$0 stage' d'abord."
+
+  local rc=0
   python3 "$SCRIPT_DIR/verify_invariants.py" "$STAGING" \
     --baseline "$BASELINE" \
     --repo-root "$REPO_ROOT" \
-    "$@"
+    "$@" || rc=$?
+
+  echo
+  if [ "$rc" -eq 0 ]; then
+    notify "$KUMA_VERIFY_URL" up "invariants OK" "eurio-verify"
+    # healthchecks.io n'est pingé QUE si tout est vert. C'est un dead man's
+    # switch hors site : son silence doit vouloir dire « quelque chose ne va
+    # pas », jamais « le job a tourné mais les données sont mauvaises ».
+    notify "$HEALTHCHECKS_URL" up "invariants OK" "healthchecks (hors site)"
+  else
+    notify "$KUMA_VERIFY_URL" down "invariants en defaut (rc=$rc)" "eurio-verify"
+    echo "   healthchecks NON pingé : son silence est le signal."
+  fi
+  return "$rc"
+}
+
+# Un canal d'alerte non testé est une alerte qui n'existe pas. Ce n'est pas une
+# formule : les 10 jobs Duplicati criaient dans une interface sans lecteur
+# depuis neuf mois. Cette commande envoie un `down` réel sur chaque anneau —
+# il DOIT arriver sur Discord.
+cmd_notify_test() {
+  echo "=== test des anneaux de notification ==="
+  echo "    Un « down » réel part sur chaque anneau configuré."
+  echo "    Il doit arriver sur Discord. Sinon l'anneau n'existe pas."
+  echo
+  notify "$KUMA_STAGING_URL"  down "TEST — ignorer" "eurio-staging"
+  notify "$KUMA_VERIFY_URL"   down "TEST — ignorer" "eurio-verify"
+  notify "$KUMA_DRILL_URL"    down "TEST — ignorer" "eurio-drill"
+  notify "$HEALTHCHECKS_URL"  down "TEST — ignorer" "healthchecks (hors site)"
+  echo
+  echo "→ Vérifie Discord, puis relance 'stage' et 'verify' pour repasser au vert."
 }
 
 cmd_help() {
@@ -216,6 +291,7 @@ cmd_help() {
 case "${1:-help}" in
   stage)          cmd_stage ;;
   verify)         shift; cmd_verify "$@" ;;
+  notify-test)    cmd_notify_test ;;
   help|-h|--help) cmd_help ;;
   *) cmd_help; exit 2 ;;
 esac
