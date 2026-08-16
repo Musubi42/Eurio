@@ -167,14 +167,23 @@ app.include_router(ingest_routes.router)
 # ─── Routers interactifs légers, best-effort (skip si dep lourde absente) ────
 # (nom, module, a un bind(store) ?). Les heavy (review_queue/coin_assets : cv2/
 # crop_edit) sont listés mais échoueront à l'import sur l'image lean → skippés.
+#
+# ⚠️ L'ORDRE COMPTE, et `coin_assets` doit rester AVANT `coins`.
+# FastAPI résout dans l'ordre d'enregistrement. `coins_routes` déclare
+# `GET /coins/{eurio_id}` : monté en premier, il avale `/coins/enrichment-counts`
+# et répond « coin enrichment-counts not found » — un 404 parfaitement crédible
+# qui ressemble à une route absente, alors que le routeur est bien monté.
+# `serving/server.py` (ML API local) applique le même ordre, sans quoi le bug
+# n'apparaîtrait que sur le VPS. Ne pas réordonner cette liste par confort de
+# lecture. Verrouillé par `tests/test_serve_router_order.py`.
 _CANDIDATES = [
+    ("coin_assets", "serving.coin_assets_routes", True),
     ("coins", "serving.coins_routes", True),
     ("sets", "serving.sets_routes", True),
     ("operations", "serving.operations_routes", False),
     ("referential", "serving.referential_routes", False),
     ("peer_arbitration", "review.peer_arbitration_routes", False),
     ("review_queue", "review.review_queue_routes", False),
-    ("coin_assets", "serving.coin_assets_routes", True),
 ]
 # C2a : peer_arbitration écrit les mêmes colonnes de décision que decide/reject
 # → durci de `require_principal` (tout principal authentifié) à `review:write`
