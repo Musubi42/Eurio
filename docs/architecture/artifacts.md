@@ -106,12 +106,48 @@ Le fichier déclarait aussi un split `test:` qui **n'a jamais existé sur disque
 |---|---|---|
 | `ml/datasets/` | 33 Mo | 1,0 Go |
 | `ml/output/` | 6,2 Mo *(après `05be2dd`, ne reste que `best.pt`)* | 599 Mo |
-| `ml/state/` | ~10 Mo | 2,5 Go |
+| `ml/state/` | ~10 Mo | **970 Mo** *(2,5 Go avant le 2026-08-16 — voir ci-dessous)* |
 | `app-android/src/main/assets/` | 17,7 Mo | 36 Mo *(dont `test_model.tflite`, 19 Mo, non tracké)* |
 | **`.git`** | — | **146 Mo** *(`size-pack` 143,3 Mio, mesuré après repack)* |
 
 Le tracké total en jeu est de l'ordre de **~50 Mo**, pas de 2,5 Go. Le vrai poids est
 dans l'**historique**, que seul un `filter-repo` récupère.
+
+## Les sauvegardes ad hoc de `ml/state/` — supprimées le 2026-08-16
+
+`ml/state/` portait **1,7 Go de `.bak-*` / `.pre-*` / `.fix-*`** : 44 SQLite et 2 `.npz`
+nommés par chantier (`pre-obverse`, `pre-lanes`, `prebcewipe`…), de mai à juillet, sans
+manifeste ni politique de rétention. De la donnée périmée qui ressemble à de la donnée
+vivante — le premier endroit où se tromper de fichier.
+
+**Ce qu'ils contenaient d'unique**, mesuré contre le canonique : **5 034 éléments**
+— 135 décisions de review, 1 840 crops et 3 059 raws référencés nulle part ailleurs.
+
+> **Trouvaille au passage, à reporter dans le chantier backup** : les « ~4 981 orphelins
+> bénins » de MinIO (cf. [`DONNEES.md`](../work-in-progress/backup-pipeline/DONNEES.md)
+> §4) **ne sont pas des déchets**. 1 836 des 1 841 crops et 3 059 des 3 140 raws
+> orphelins ont une fiche, et elle vivait uniquement dans ces `.bak`. 134 décisions
+> humaines (dont 82 identifiant une pièce) pointent vers des crops toujours présents dans
+> MinIO. La phrase « ils occupent de la place sans que rien ne les réclame » est vraie du
+> point de vue du canonique et fausse du point de vue de la donnée.
+
+Tout l'apport propre est extrait dans **`eurio-bak-recovery-20260816.db`** (2,54 Mo,
+sha256 `c3df5703ac78b0784f4ba29c3ffb31f5a681e68ab1673d9944223095120fac7e`), avec la
+provenance de chaque ligne. Il vit **hors du dépôt** : copie locale dans
+`~/Documents/Musubi42/eurio-backups/` et copie hors machine sur pCloud
+(`backups/eurio/`). La couverture a été vérifiée par recomparaison à l'union des 44
+fichiers — 5 034/5 034 — avec un test de mutation qui la fait échouer sur 4 lignes
+retirées.
+
+⚠️ Le tarball des 30 négatifs (`eurio-detection-negatives-20260814.tar.gz`) **n'était
+jamais arrivé sur pCloud** malgré ce que ce fichier affirmait ; il y est depuis le
+2026-08-16, sha vérifié en relecture. Les négatifs sont par ailleurs dans l'artefact
+MinIO du dataset.
+
+**Reste à faire** : réinjecter les 134 décisions dans le canonique par `/ingest/*`. 82
+d'entre elles désignent une pièce par un identifiant de l'ancien schéma (le référentiel a
+été re-clé et réduit : 2 628 pièces en mai, 689 aujourd'hui) — il faut les remapper, ou
+les réinjecter en « à re-décider » avec le crop rattaché.
 
 *Mesuré le 2026-08-14. `.git` avait été ramené de 1,3 Go à 109 Mo en juin ; il est
 remonté depuis, principalement à cause des artefacts force-ajoutés.*
