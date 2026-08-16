@@ -360,12 +360,25 @@ def promote(args: argparse.Namespace) -> int:
         logger.info("Wrote %s", meta_path)
 
         embeddings_path = PROD_CURRENT / "embeddings" / "embeddings_v1.json"
-        if args.replace_all:
-            new_classes = set(
-                json.loads(embeddings_path.read_text()).get("coins", {})
+        if args.no_supabase:
+            # Séparer le geste LOCAL (prod/current + assets APK) du geste de
+            # PRODUCTION (Supabase, que consomme l'app). Sans cette option, la
+            # chaîne était intestable à blanc : `--dry-run` ne fait rien du tout,
+            # et tout le reste écrivait en prod. Même raison que le découplage de
+            # `build_app_core` d'avec Supabase (cf. architecture/README.md).
+            print(
+                "--no-supabase : prod/current écrit, Supabase INTACT. "
+                "La projection est donc en retard sur prod/current — pousse-la "
+                f"avec `.venv/bin/python bootstrap/seed_supabase.py --embeddings "
+                f"{embeddings_path}` quand c'est voulu."
             )
-            _delete_supabase_classes_not_in(new_classes)
-        _push_supabase(embeddings_path)
+        else:
+            if args.replace_all:
+                new_classes = set(
+                    json.loads(embeddings_path.read_text()).get("coins", {})
+                )
+                _delete_supabase_classes_not_in(new_classes)
+            _push_supabase(embeddings_path)
 
     print(json.dumps({
         "promoted": iter_meta["id"],
@@ -394,9 +407,23 @@ def main() -> int:
     parser.add_argument(
         "--replace-all", action="store_true",
         help="DELETE Supabase rows whose class_id/eurio_id is absent from the "
-             "promotion before upserting. Default: accumulate (keep stale rows).",
+             "promotion before upserting. Default: accumulate (keep stale rows). "
+             "N'affecte QUE Supabase : les artefacts de prod/current sont "
+             "remplacés en bloc dans tous les cas.",
     )
-    return promote(parser.parse_args())
+    parser.add_argument(
+        "--no-supabase", action="store_true",
+        help="Promeut en LOCAL seulement (prod/current + promoted_from.json), "
+             "sans écrire dans Supabase. Permet d'exercer la chaîne sans "
+             "toucher à la production.",
+    )
+    args = parser.parse_args()
+    if args.no_supabase and args.replace_all:
+        raise SystemExit(
+            "--replace-all et --no-supabase sont contradictoires : "
+            "--replace-all n'agit QUE sur Supabase, que --no-supabase ne touche pas."
+        )
+    return promote(args)
 
 
 if __name__ == "__main__":
