@@ -294,8 +294,8 @@ criaient dans une interface sans lecteur depuis neuf mois.
 - [x] **Premier exercice à froid**, protocole §4 — **données restaurées et vérifiées**
 - [ ] Compléter les 6 points ouverts de [`RESTAURATION.md`](./RESTAURATION.md) §3
       *(2 fermés le 2026-08-16 : commande exacte, temps réel)*
-- [ ] **Niveau 4** : remonter la stack applicative sur la copie restaurée
-      (ports et projet compose distincts) — non fait, cf. ci-dessous
+- [x] **Niveau 4** : stack applicative remontée sur la copie restaurée, projet compose
+      et ports distincts — harnais rejouable dans `infra/backup/drill/`
 - [x] Noter la date ci-dessous
 
 | Exercice | Date | Résultat | Corrections apportées |
@@ -398,11 +398,37 @@ plus récente est donc invérifiable** — c'est elle qu'on restaurerait en urge
 L'exercice a été fait sur la version 1. Arbitrage toujours ouvert (sentinelle bloquante
 vs. sauvegarde périmée), mais le coût n'est plus hypothétique.
 
+### Niveau 4 — l'application tourne sur la copie restaurée
+
+Fait dans la foulée, sur une seconde restauration complète (la première ayant été
+détruite). Stack jetable `eurio-drill` : réseau propre — jamais `traefik` —, ports sur
+`127.0.0.1` (19000 / 18042 / 18048), identifiants d'infra **régénérés depuis SOPS**.
+
+| Contrôle | Résultat |
+|---|---|
+| `eurio-api` démarre sur `eurio.db` restaurée | ✅ `db_migrate: no pending migration (5 already applied)` |
+| `GET /coins` | ✅ 200, 658 pièces canoniques servies |
+| crop : DB → URL signée par l'API → MinIO restauré | ✅ 200, **sha256 ≡ le fichier restauré** |
+| `eurio-review` sur `review.db` restaurée | ✅ `/admin/flow` → 572 en attente, reviewer `raph` |
+| 33 953 objets réinjectés avec le compte `eurio-app` | ✅ la policy du dépôt suffit |
+
+Ce qui a résisté, et qui compte pour le jour J :
+
+- **`bootstrap.sh` était inutilisable en exercice** : câblé en dur sur le conteneur
+  `eurio-minio` et sur `infra/minio/`, avec un `docker compose up` dans le répertoire
+  de production — alors que RESTAURATION.md §1 en fait l'étape 3. Trois variables
+  (`MINIO_CONTAINER`, `MINIO_SECRETS_DIR`, `MINIO_SKIP_COMPOSE`) le rendent pointable
+  ailleurs, défaut inchangé.
+- **Il imprimait le mot de passe applicatif** en fin d'exécution. Supprimé : la source
+  unique est SOPS, et l'afficher le versait dans les journaux et les transcripts.
+- **Pas d'Authentik dans un exercice** : l'accès passe par
+  `serving.auth create-pat`, une commande qui se décrit elle-même comme
+  « break-glass ». C'est exactement son cas d'usage, il fallait le savoir.
+- Les fichiers restaurés sont en **lecture seule** et appartiennent à un autre
+  utilisateur : les bases doivent être copiées puis `chmod`, pas montées telles quelles.
+
 **Ce qui reste :**
 
-- [ ] **Niveau 4** (`VERIFICATION.md` §2) : remonter `eurio-api` + MinIO sur la copie
-      restaurée, ports et projet compose distincts. Le niveau 3 est prouvé sur la
-      donnée ; « l'application démarre dessus » ne l'est pas.
 - [ ] **Créer le push monitor `eurio-drill` dans Kuma** : son URL répond
       `404 Monitor not found or not active`. L'anneau 5 n'existe pas, donc l'exercice
       trimestriel n'est surveillé par personne — le défaut même qu'il devait corriger.

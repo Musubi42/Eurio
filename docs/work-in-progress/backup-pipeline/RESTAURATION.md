@@ -4,11 +4,14 @@
 > stores dans un état mutuellement cohérent**, dans un ordre imposé par les dépendances,
 > puis le **prouver**.
 >
-> **Statut au 2026-08-16 : la partie « récupérer la donnée » a été exécutée** — 6,470
-> GiB rapatriés depuis pCloud et vérifiés par les invariants (16/18, 2 avertissements
-> attendus). La partie « remonter la stack » (§1 étapes 2 à 6) ne l'a **pas** encore
-> été : c'est le niveau 4 de [`VERIFICATION.md`](./VERIFICATION.md) §2, et il reste
-> ouvert. Les commandes exactes vivent désormais dans
+> **Statut au 2026-08-16 : la procédure a été exécutée de bout en bout.** 6,470 GiB
+> rapatriés depuis pCloud, invariants verts sur la copie (16/18, 2 avertissements
+> attendus), puis **stack remontée sur la copie restaurée** (§1 étapes 2 à 7) —
+> `eurio-api` et `eurio-review` servent la donnée, et un crop traverse
+> DB → URL signée → MinIO restauré avec un sha256 conforme. C'est le niveau 4 de
+> [`VERIFICATION.md`](./VERIFICATION.md) §2. Le harnais est rejouable :
+> [`infra/backup/drill/`](../../../infra/backup/drill/README.md). Les commandes de
+> récupération vivent dans
 > [`README-RESTORE.md`](../../../infra/backup/README-RESTORE.md), corrigé *par*
 > l'exercice — c'était son but.
 
@@ -65,10 +68,25 @@ Un écart signale une restauration partielle des objets.
 - [x] ✅ **Le temps réel de restauration** — 2026-08-16 : **30 min 58 s** pour 33 957
       fichiers / 6,470 GiB, plus ~4 min de reconstruction d'index et ~1 min de lecture
       des versions. Compter ~40 min pour récupérer la donnée.
-- [ ] Les policies MinIO exactes attendues par `eurio-api` après bootstrap
-- [ ] Faut-il recréer les réseaux Docker (`traefik`) à la main ?
-- [ ] Le comportement de `eurio-api` au démarrage sur une base restaurée : rejoue-t-il
-      des migrations ? *(`_schema_migrations` = 5 aujourd'hui)*
+- [x] ✅ **Les policies MinIO attendues par `eurio-api`** — `eurio-app-policy` du dépôt
+      suffit, vérifiée le 2026-08-16 de bout en bout : `eurio-api` a signé une URL de
+      crop, l'objet a été servi, et ses octets sont ceux du fichier restauré. Deux
+      gestes manuels restent nécessaires : `mc mb local/eurio-db` (bucket legacy que
+      `bootstrap.sh` ne crée pas, D-20), et **écrire les objets avec le compte
+      `eurio-app`, jamais le root** — sinon l'exercice valide un chemin de permissions
+      que la production n'emprunte pas (D-30).
+- [x] ✅ **Réseaux Docker** — un exercice n'a **pas** besoin de `traefik` : la stack
+      jetable a son propre réseau, ce qui est aussi sa barrière d'isolation. En
+      revanche `bootstrap.sh` exige `traefik` (il refuse de démarrer sinon) : pour une
+      vraie remise en production, le réseau doit exister avant, et pour l'exercice on
+      passe `MINIO_SKIP_COMPOSE=1`.
+- [x] ✅ **`eurio-api` ne rejoue rien** sur une base restaurée : au démarrage,
+      `db_migrate: no pending migration (5 already applied)`. La base restaurée porte
+      déjà son état de migration, il n'y a pas de fenêtre où un schéma serait modifié
+      sous les pieds de la restauration.
+      ⚠️ Deux routers ne montent pas dans l'image de production (`referential` sans
+      `PIL`, `review_queue` sans `cv2`) — pré-existant, sans rapport avec la
+      restauration, mais à ne pas prendre pour un symptôme le jour J.
 - [x] ✅ **`bootstrap.sh` recrée la configuration MinIO** — vérifié le 2026-08-15.
       Le miroir par API S3 capture les objets, jamais `.minio.sys/` (users IAM, service
       accounts, policies). `bootstrap.sh` reconstruit bien : buckets, `anonymous set

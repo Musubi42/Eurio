@@ -1,0 +1,91 @@
+# Exercice de restauration — stack JETABLE, isolée de la production.
+#
+# Ce qu'elle vérifie : le niveau 4 de VERIFICATION.md §2 — « l'application
+# démarrerait-elle sur la donnée restaurée ? ». Le niveau 3 (les invariants)
+# ne répond qu'à « la donnée est-elle crédible ».
+#
+# Isolation, trois barrières :
+#   - nom de projet `eurio-drill` et noms de conteneurs suffixés `-drill` ;
+#   - réseau propre, PAS `traefik` : rien n'est exposé publiquement, aucun
+#     routeur ne peut capter un hostname de production ;
+#   - ports publiés sur 127.0.0.1 uniquement, et décalés (19000 / 18042).
+#
+# À détruire après l'exercice : `docker compose -p eurio-drill down -v`
+# puis `rm -rf /opt/eurio-restore-test`.
+
+name: eurio-drill
+
+services:
+  minio:
+    image: minio/minio:latest
+    container_name: eurio-minio-drill
+    command: server /data --console-address :9001
+    volumes:
+      - ./minio-data:/data
+      # Identifiants root REGÉNÉRÉS DEPUIS SOPS (RESTAURATION.md §1 étape 2),
+      # jamais repris du serveur perdu.
+      - ./secrets:/run/secrets:ro
+    environment:
+      MINIO_ROOT_USER_FILE: /run/secrets/minio_root_user
+      MINIO_ROOT_PASSWORD_FILE: /run/secrets/minio_root_password
+    ports:
+      - "127.0.0.1:19000:9000"
+    networks: [drill]
+
+  api:
+    image: eurio-api:latest
+    container_name: eurio-api-drill
+    depends_on: [minio]
+    volumes:
+      - ./api-data:/var/lib/eurio
+    environment:
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?missing - lancer via sops exec-env}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?missing - lancer via sops exec-env}
+      EURIO_DB_PATH: /var/lib/eurio/eurio.db
+      EURIO_MACHINE_ORIGIN: vps
+      EURIO_MACHINE_ID: drill
+      EURIO_SYNC_MODE: hub
+      # Auth désactivée : l'exercice n'a pas de session OIDC et la table
+      # api_tokens du canonique est vide. On teste que l'application SERT la
+      # donnée restaurée ; l'authentification n'est pas ce que la sauvegarde
+      # met en jeu. À dire dans le compte rendu, pas à oublier en silence.
+      EURIO_API_AUTH_REQUIRED: "0"
+      EURIO_API_CORS_ORIGINS: "http://127.0.0.1:5173"
+      EURIO_SESSION_SECRET: ${EURIO_SESSION_SECRET:?missing}
+      EURIO_OIDC_CLIENT_SECRET: ${EURIO_OIDC_CLIENT_SECRET:?missing}
+      MINIO_ENDPOINT: eurio-minio-drill:9000
+      MINIO_USE_SSL: "false"
+      # Les URLs présignées doivent pointer sur le MinIO de l'exercice, pas sur
+      # eurio-s3.musubi.dev — sinon on validerait la prod en croyant tester la
+      # copie restaurée.
+      MINIO_PUBLIC_ENDPOINT: 127.0.0.1:19000
+      MINIO_PUBLIC_USE_SSL: "false"
+    ports:
+      - "127.0.0.1:18042:8042"
+    networks: [drill]
+
+  review:
+    image: eurio-review:latest
+    container_name: eurio-review-drill
+    depends_on: [minio]
+    volumes:
+      - ./review-data:/var/lib/eurio
+      - ./secrets:/run/secrets:ro
+    environment:
+      REVIEW_ADMIN_TOKEN_FILE: /run/secrets/review_admin_token
+      REVIEW_SESSION_SECRET_FILE: /run/secrets/review_session_secret
+      # Compte APPLICATIF scopé, pas root : un exercice qui remonte MinIO en
+      # root ne teste pas le chemin de permissions de la production (D-30).
+      MINIO_ACCESS_KEY_FILE: /run/secrets/eurio_app_user
+      MINIO_SECRET_KEY_FILE: /run/secrets/eurio_app_password
+      REVIEW_DB_PATH: /var/lib/eurio/review.db
+      REVIEW_CORS_ORIGINS: http://127.0.0.1:18048
+      REVIEW_COOKIE_SECURE: "false"
+      MINIO_ENDPOINT: eurio-minio-drill:9000
+      MINIO_USE_SSL: "false"
+    ports:
+      - "127.0.0.1:18048:8048"
+    networks: [drill]
+
+networks:
+  drill:
