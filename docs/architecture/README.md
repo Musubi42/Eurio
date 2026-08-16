@@ -129,10 +129,28 @@ aucun besoin des 47 Mo du dataset, donc `training-assets` n'est **pas** branché
 > donc pas « sortir `best.pt` de git casse le PC », il était « une panne de disque perd
 > les négatifs ».
 
-Étape 3 de [ADR-004](../adr/004-artefacts-binaires-hors-git.md) : **mécanisme livré et
-vérifié sur le Mac** (reconstruction depuis un dataset absent et un cache vide, 7 580
-fichiers identiques octet à octet). Reste le `git rm` des labels et de `best.pt`, à ne
-faire qu'après un `training-assets:fetch` réussi **depuis le PC**.
+Étape 3 de [ADR-004](../adr/004-artefacts-binaires-hors-git.md) : **faite**. Le `git rm`
+des 3 790 fichiers de `ml/datasets/detection` et de `best.pt` a été joué après
+vérification sur le PC (`244f5a2`).
+
+> ⚠️ **Séquence à connaître au premier pull.** Le commit qui retire ces fichiers de
+> l'index les **supprime du disque** au `git pull` — c'est le comportement normal de git,
+> pas un bug. La réparation tient en une commande :
+>
+> ```bash
+> go-task ml:training-assets:status   # « disque INCOMPLET » — la condition est nommée
+> go-task ml:training-assets:fetch    # ~13 s, restaure 7 580 fichiers
+> ```
+>
+> C'est précisément ce que l'ancienne situation ne permettait pas : avant, un fichier
+> manquant sur la machine de compute ne se voyait qu'au moment où un entraînement
+> échouait. Vérifié de bout en bout sur le PC le 2026-08-16 — pull, disparition des
+> labels et de `best.pt`, `status` explicite, `fetch`, retour à 3 786 images dont les
+> 30 négatifs, `git status` vide.
+
+**Ce que ça a révélé sur l'état réel du PC** : avant ce chantier il avait 16 Mo de
+dataset et **zéro image**. Il ne pouvait pas ré-entraîner le détecteur, et rien ne le
+signalait.
 
 **Identité d'un artefact-arbre.** Elle ne vient pas du sha de l'archive mais d'un
 `content_digest` calculé sur le contenu seul — sha256 des paires
