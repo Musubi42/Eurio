@@ -4,8 +4,13 @@
 > stores dans un état mutuellement cohérent**, dans un ordre imposé par les dépendances,
 > puis le **prouver**.
 >
-> ⚠️ **Statut : procédure conçue, jamais exécutée.** Elle ne vaut rien tant que le lot 6
-> n'a pas eu lieu. Ce document sera corrigé *par* le premier exercice — c'est son but.
+> **Statut au 2026-08-16 : la partie « récupérer la donnée » a été exécutée** — 6,470
+> GiB rapatriés depuis pCloud et vérifiés par les invariants (16/18, 2 avertissements
+> attendus). La partie « remonter la stack » (§1 étapes 2 à 6) ne l'a **pas** encore
+> été : c'est le niveau 4 de [`VERIFICATION.md`](./VERIFICATION.md) §2, et il reste
+> ouvert. Les commandes exactes vivent désormais dans
+> [`README-RESTORE.md`](../../../infra/backup/README-RESTORE.md), corrigé *par*
+> l'exercice — c'était son but.
 
 ## 1. Ordre de restauration
 
@@ -47,14 +52,19 @@ Un écart signale une restauration partielle des objets.
 
 À compléter au lot 6, par l'exercice lui-même :
 
-- [ ] La commande exacte de restauration depuis Duplicati (interface web ou CLI ?)
+- [x] ✅ **La commande exacte de restauration** — trouvée et exécutée le 2026-08-16 :
+      `duplicati-cli repair` puis `duplicati-cli restore`, destination et passphrase
+      passées par `--parameters-file` (jamais dans `argv`). Détail et pièges dans
+      [`README-RESTORE.md`](../../../infra/backup/README-RESTORE.md) §4 et §6.
 - [x] ✅ **Où trouver la passphrase Duplicati sans le VPS** — résolu le 2026-08-16
       (**D-28**). `DUPLICATI_EURIO_PASSPHRASE` et `DUPLICATI_PCLOUD_AUTHID` sont dans
       `secrets/dev.env` (SOPS+age), et la passphrase est vérifiée identique à celle du
       password manager. Découverte au passage : **aucun des 11 jobs ne sauvegarde
       `/opt/eurio` ni la config Duplicati** — la clé ne vivait que sur la machine
       qu'elle est censée pouvoir remplacer.
-- [ ] Le temps réel de restauration des 6,43 GiB depuis pCloud
+- [x] ✅ **Le temps réel de restauration** — 2026-08-16 : **30 min 58 s** pour 33 957
+      fichiers / 6,470 GiB, plus ~4 min de reconstruction d'index et ~1 min de lecture
+      des versions. Compter ~40 min pour récupérer la donnée.
 - [ ] Les policies MinIO exactes attendues par `eurio-api` après bootstrap
 - [ ] Faut-il recréer les réseaux Docker (`traefik`) à la main ?
 - [ ] Le comportement de `eurio-api` au démarrage sur une base restaurée : rejoue-t-il
@@ -89,6 +99,11 @@ dispositif du 17 juin.
 1. Créer un répertoire jetable hors `/opt/eurio`.
 2. Restaurer depuis **pCloud via Duplicati**, pas depuis le staging local — l'exercice
    doit traverser toute la chaîne, y compris le déchiffrement et le réseau.
+   ⚠️ **Choisir la version : la plus récente n'est pas forcément restaurable en
+   confiance.** `stage` retire `manifest.json` avant de commencer ; s'il échoue,
+   Duplicati téléverse quand même un staging sans sentinelle. Vérifier la présence du
+   manifeste dans la version visée (`duplicati-cli find … '*.json'`) et remonter d'un
+   cran sinon. Constaté le 2026-08-16 sur la version la plus récente.
 3. Dérouler les étapes 1 à 6 du §1, sur des ports et un projet compose distincts pour ne
    pas toucher la production.
 4. Exécuter la suite d'invariants (étape 7) contre la stack restaurée.

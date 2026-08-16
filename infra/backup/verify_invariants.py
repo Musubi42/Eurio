@@ -580,10 +580,20 @@ def main() -> int:
         return 2
 
     if args.baseline:
-        with open(args.baseline, "w") as fh:
-            json.dump(manifest, fh, indent=2, ensure_ascii=False)
-            fh.write("\n")
-        print(f"   référence mise à jour : {args.baseline}")
+        # Une référence non promouvable n'est PAS un échec d'invariant : c'est
+        # le cas normal quand on vérifie une copie restaurée, en lecture seule
+        # et posée par un autre utilisateur. Rencontré pendant l'exercice #1 du
+        # 2026-08-16 : les 19 invariants venaient de passer, et le script
+        # mourait sur une PermissionError — une trace Python à la place d'un
+        # verdict, sur le seul chemin que l'exercice existe pour valider.
+        try:
+            with open(args.baseline, "w") as fh:
+                json.dump(manifest, fh, indent=2, ensure_ascii=False)
+                fh.write("\n")
+            print(f"   référence mise à jour : {args.baseline}")
+        except OSError as exc:
+            print(f"   ⚠️  référence NON mise à jour ({exc.strerror}) : {args.baseline}")
+            print("      Attendu sur une copie restaurée ; anormal sur le staging de production.")
 
     passed = len(report.rows) - len(failures) - len(report.warnings)
     summary = f"✅ {passed}/{len(report.rows)} invariants passés"

@@ -289,18 +289,19 @@ criaient dans une interface sans lecteur depuis neuf mois.
 
 ## Lot 6 — Restauration et premier exercice
 
-- [ ] **Mettre à jour** `infra/backup/README-RESTORE.md` d'après
-      [`RESTAURATION.md`](./RESTAURATION.md) §1 — ⚠️ le fichier **existe déjà** (159
-      lignes, tracké) et décrit l'ancien chemin `rclone crypt` ; il ne s'agit pas de
-      l'écrire mais de le réécrire pour Duplicati
-- [ ] **Premier exercice à froid**, protocole §4
+- [x] **Réécrire** `infra/backup/README-RESTORE.md` pour Duplicati — fait le 2026-08-16,
+      pendant l'exercice et à partir de ce qu'il a réellement fallu taper
+- [x] **Premier exercice à froid**, protocole §4 — **données restaurées et vérifiées**
 - [ ] Compléter les 6 points ouverts de [`RESTAURATION.md`](./RESTAURATION.md) §3
-- [ ] Corriger `README-RESTORE.md` de tout ce qui a manqué
-- [ ] Noter la date ci-dessous
+      *(2 fermés le 2026-08-16 : commande exacte, temps réel)*
+- [ ] **Niveau 4** : remonter la stack applicative sur la copie restaurée
+      (ports et projet compose distincts) — non fait, cf. ci-dessous
+- [x] Noter la date ci-dessous
 
 | Exercice | Date | Résultat | Corrections apportées |
 |---|---|---|---|
 | #1 (partiel) | 2026-08-16 | ⚠️ **Chaîne réparée et prouvée, restauration non aboutie** | cf. ci-dessous |
+| #1 (suite, session VPS) | 2026-08-16 | ✅ **Restauration complète depuis pCloud, 16/18 invariants verts** | anneaux réparés, `README-RESTORE.md` réécrit, 2 pièges Duplicati documentés |
 
 ### Exercice #1 — ce qu'il a trouvé avant même de restaurer
 
@@ -315,11 +316,16 @@ systemd.
 
 **Trois défauts de conception mis au jour par cette panne :**
 
-1. **Aucun anneau de notification ne fonctionne.** Les trois — Kuma staging, Kuma
-   verify, healthchecks — répondent « INJOIGNABLE » alors que `notify.conf` est
-   renseigné. La sentinelle a correctement détecté l'absence de manifeste ; personne
-   n'en a été informé. *Un dispositif de détection dont l'alerte est muette a la même
-   valeur qu'aucun dispositif.*
+1. ~~**Aucun anneau de notification ne fonctionne.**~~ **Résolu le 2026-08-16**
+   (`146df69c`). Les trois — Kuma staging, Kuma verify, healthchecks — répondaient
+   « INJOIGNABLE » alors que `notify.conf` était renseigné. Cause : **`curl` n'était
+   pas dans le `path` déclaré par `nix/eurio-vps.nix`**, donc absent du PATH des
+   unités ; les mêmes URLs répondent 200 depuis un shell. Jumeau exact du piège
+   `DOCKER_HOST`. La sentinelle avait correctement détecté l'absence de manifeste ;
+   personne n'en a été informé. *Un dispositif de détection dont l'alerte est muette a
+   la même valeur qu'aucun dispositif.* Prouvé réparé en rejouant l'environnement exact
+   de l'unité. **Reste : l'anneau 5 `eurio-drill` répond 404 — le monitor n'existe pas
+   côté Kuma.**
 2. **Un `verify` en échec n'empêche pas Duplicati de téléverser.** Les deux sont
    planifiés indépendamment (verify 02:30 UTC, Duplicati 03:00). Le 16 août,
    Duplicati a fidèlement sauvegardé un staging que la sentinelle venait de
@@ -345,18 +351,63 @@ expliqués.
       chemin `backups/serverOimNix/Eurio` que décrit encore `README-RESTORE.md`.
 - [x] Passphrase et identifiants **récupérables sans le VPS** (SOPS) *et*
       lisibles depuis le serveur Duplicati (API `/api/v1/backup/17`).
-- [ ] **La restauration elle-même.** Trois invocations de `duplicati-cli restore`
-      ont échoué (`Value cannot be null (Parameter 'url')`, dans
-      `ApplySecretProvider`). Le binaire correct est `/app/duplicati/duplicati-cli` —
-      pas `/app/duplicati/duplicati`, qui est le serveur TrayIcon et *core dump* si
-      on lui passe une commande. La forme exacte de l'appel reste à trouver, ou
-      l'exercice se fait par l'interface web.
-- [ ] Temps réel de restauration des 6,43 Gio (non mesuré : rien n'a été rapatrié).
-- [ ] Réécrire `README-RESTORE.md`, qui décrit encore la chaîne `rclone crypt`
-      abandonnée — mauvais chemin distant, mauvais outil, mauvaise clé.
+- [x] **La restauration elle-même** — faite le 2026-08-16 en soirée, cf. §suite.
+- [x] Temps réel de restauration : **30 min 58 s** pour 33 957 fichiers / 6,470 Gio.
+- [x] Réécrire `README-RESTORE.md` — fait, à partir des commandes réellement tapées.
 
 **Critère de fin** : restauration réussie, invariants verts sur la stack restaurée,
 document corrigé.
+
+### Exercice #1 (suite) — la restauration a eu lieu
+
+**Restauré depuis pCloud dans `/opt/stacks/oim-duplicati/test-restore/eurio-drill`,
+puis détruit** : 33 957 fichiers, 6,470 Gio, **30 min 58 s**. Invariants sur la copie
+restaurée : **16/18 verts, 2 avertissements** — les deux attendus (sources figées
+depuis 35 j, donc la non-décroissance ne prouve rien sur elles). sha256 des deux bases
+conformes au manifeste, `integrity_check` ok, 0 violation FK, 0 dangling des deux
+côtés, 33 953 objets MinIO, échantillon de 20 objets conforme.
+
+**Les secrets sont venus de SOPS, pas du serveur Duplicati** : D-28 n'est plus une
+intention, c'est un chemin exercé. *(L'API du serveur, elle, a répondu 401 — sans
+conséquence, justement parce qu'on n'en dépend plus.)*
+
+**Trois pièges trouvés, tous documentés dans `README-RESTORE.md` :**
+
+1. **`Value cannot be null (Parameter 'url')` n'a rien à voir avec un secret
+   provider.** L'URL contient `?authid=…` : une couche de shell la déguillemette et
+   tout ce qui suit `?` disparaît. La forme fiable passe destination *et* passphrase
+   par `--parameters-file` (`--target=…`), donc aucun secret dans `argv`.
+2. **`restore --version=N` sans base locale reconstruit l'index partiellement**, laisse
+   les dlist des autres versions sans fileset et meurt sur sa propre incohérence
+   (`DatabaseInconsistency`) après 13 min. Il faut `repair` d'abord.
+3. **`verify_invariants.py` mourait sur une trace Python** en promouvant la référence :
+   une copie restaurée est en lecture seule. Les 18 invariants venaient de passer et le
+   verdict n'était jamais imprimé — sur le seul chemin que l'exercice existe pour
+   valider. Corrigé : c'est un avertissement, pas une exception.
+
+**Un défaut de conception passe du théorique au constaté — le 6.2 :**
+
+| Version distante | Date | `manifest.json` |
+|---|---|---|
+| 0 (la plus récente) | 2026-08-16 03:01 UTC | ❌ **absent** |
+| 1 | 2026-08-15 21:49 UTC | ✅ présent |
+
+`stage` retire le manifeste **avant** de commencer ; il a échoué à 02:00 UTC ; Duplicati
+a téléversé une heure plus tard, planifié indépendamment. **La sauvegarde hors site la
+plus récente est donc invérifiable** — c'est elle qu'on restaurerait en urgence.
+L'exercice a été fait sur la version 1. Arbitrage toujours ouvert (sentinelle bloquante
+vs. sauvegarde périmée), mais le coût n'est plus hypothétique.
+
+**Ce qui reste :**
+
+- [ ] **Niveau 4** (`VERIFICATION.md` §2) : remonter `eurio-api` + MinIO sur la copie
+      restaurée, ports et projet compose distincts. Le niveau 3 est prouvé sur la
+      donnée ; « l'application démarre dessus » ne l'est pas.
+- [ ] **Créer le push monitor `eurio-drill` dans Kuma** : son URL répond
+      `404 Monitor not found or not active`. L'anneau 5 n'existe pas, donc l'exercice
+      trimestriel n'est surveillé par personne — le défaut même qu'il devait corriger.
+- [ ] `nixos-rebuild switch` pour que `curl` entre dans le PATH des unités (le repli
+      côté script couvre l'intervalle).
 
 ---
 
