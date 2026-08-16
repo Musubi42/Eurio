@@ -300,7 +300,60 @@ criaient dans une interface sans lecteur depuis neuf mois.
 
 | Exercice | Date | Résultat | Corrections apportées |
 |---|---|---|---|
-| #1 | — | — | — |
+| #1 (partiel) | 2026-08-16 | ⚠️ **Chaîne réparée et prouvée, restauration non aboutie** | cf. ci-dessous |
+
+### Exercice #1 — ce qu'il a trouvé avant même de restaurer
+
+**La chaîne automatisée n'avait jamais fonctionné.** Le timer `eurio-backup-stage`
+avait tourné **une fois** depuis son installation et échoué ; zéro succès. Cause :
+le VPS fait tourner Docker en **rootless**, les conteneurs vivent sur
+`/run/user/<uid>/docker.sock`, et une unité systemd *système* ne charge pas le
+profil qui pose `DOCKER_HOST` — `docker exec eurio-api` répondait « No such
+container » pendant que `docker ps` le montrait à l'écran. Corrigé dans
+`eurio-backup.sh` (`a46b887`), pas dans l'unité, pour que ça vaille aussi hors
+systemd.
+
+**Trois défauts de conception mis au jour par cette panne :**
+
+1. **Aucun anneau de notification ne fonctionne.** Les trois — Kuma staging, Kuma
+   verify, healthchecks — répondent « INJOIGNABLE » alors que `notify.conf` est
+   renseigné. La sentinelle a correctement détecté l'absence de manifeste ; personne
+   n'en a été informé. *Un dispositif de détection dont l'alerte est muette a la même
+   valeur qu'aucun dispositif.*
+2. **Un `verify` en échec n'empêche pas Duplicati de téléverser.** Les deux sont
+   planifiés indépendamment (verify 02:30 UTC, Duplicati 03:00). Le 16 août,
+   Duplicati a fidèlement sauvegardé un staging que la sentinelle venait de
+   déclarer invalide. À arbitrer : sentinelle bloquante, ou assumé.
+3. **`command -v docker` ne prouvait rien.** Il vérifiait la présence du binaire,
+   jamais qu'il s'adresse au bon démon — l'exacte chose qui a échoué.
+   `require_container` remplace ce contrôle décoratif.
+
+**Après correction, la chaîne passe de bout en bout pour la première fois** :
+staging 6,7 Go produit, manifeste écrit, puis **17/18 invariants verts** (le 18e est
+un avertissement attendu : `review.db` inchangée depuis 35 j, donc la
+non-décroissance ne prouve rien sur elle). Zéro dangling des deux côtés, 1 841 et
+3 140 orphelins — exactement les chiffres que l'audit des `.bak` du même jour a
+expliqués.
+
+**Ce qui reste à faire pour clore le lot 6 :**
+
+- [x] La sauvegarde distante **existe et est fraîche** : job Duplicati « Eurio »,
+      dernier run 2026-08-16 03:01 UTC en 1 min 23, **5,627 Gio sur la destination**,
+      2 versions, 33 956 fichiers source.
+- [x] Destination confirmée :
+      `pcloud://api.pcloud.com/Applications/DuplicatiBackup/Oim/Eurio` — et non le
+      chemin `backups/serverOimNix/Eurio` que décrit encore `README-RESTORE.md`.
+- [x] Passphrase et identifiants **récupérables sans le VPS** (SOPS) *et*
+      lisibles depuis le serveur Duplicati (API `/api/v1/backup/17`).
+- [ ] **La restauration elle-même.** Trois invocations de `duplicati-cli restore`
+      ont échoué (`Value cannot be null (Parameter 'url')`, dans
+      `ApplySecretProvider`). Le binaire correct est `/app/duplicati/duplicati-cli` —
+      pas `/app/duplicati/duplicati`, qui est le serveur TrayIcon et *core dump* si
+      on lui passe une commande. La forme exacte de l'appel reste à trouver, ou
+      l'exercice se fait par l'interface web.
+- [ ] Temps réel de restauration des 6,43 Gio (non mesuré : rien n'a été rapatrié).
+- [ ] Réécrire `README-RESTORE.md`, qui décrit encore la chaîne `rclone crypt`
+      abandonnée — mauvais chemin distant, mauvais outil, mauvaise clé.
 
 **Critère de fin** : restauration réussie, invariants verts sur la stack restaurée,
 document corrigé.
