@@ -1,5 +1,13 @@
 # Passation — terminer l'exercice de restauration (lot 6), depuis le VPS
 
+> ✅ **Traité le 2026-08-16 au soir.** La restauration a eu lieu (6,470 Gio,
+> 30 min 58 s, 16/18 invariants), les anneaux de notification sont réparés
+> (`curl` absent du PATH systemd), et `README-RESTORE.md` est réécrit. Résultats
+> et pièges : [`ROADMAP.md`](./ROADMAP.md) §« Exercice #1 (suite) ». Ce document
+> reste utile pour son diagnostic ; ses §3 et §4 sont **périmés** — la forme
+> d'appel qui marche est dans
+> [`README-RESTORE.md`](../../../infra/backup/README-RESTORE.md) §4.
+
 > **Pour qui** : une session Claude Code qui tourne **sur le VPS** (`nixos`,
 > 176.9.107.216), avec accès direct aux conteneurs, aux composes de
 > `/opt/stacks/`, et à la configuration NixOS de `/home/dontpanic/nixos`.
