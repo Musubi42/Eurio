@@ -216,6 +216,40 @@ app.include_router(referential_routes.router)
 
 
 @app.on_event("startup")
+def _warn_if_lab_work_stays_local() -> None:
+    """Crie au boot si le travail du lab ne pourra PAS atteindre le canonique.
+
+    En mode compute (``EURIO_DB_READONLY`` vide) les écritures lab vont dans le
+    SQLite local, et la remontée au canonique est un push **best-effort** (F09) :
+    sans ``EURIO_API_URL``, il est un no-op silencieux. Créer une cohorte ou une
+    itération répond alors ``200`` alors que rien n'atteindra jamais le VPS —
+    invisible depuis les autres machines, et découvert seulement quand on va
+    chercher le résultat ailleurs.
+
+    Sous le flip, ce cas échoue franchement (``lab_writes._require_remote`` →
+    503). C'est donc précisément le mode compute qui a besoin de l'alerte.
+
+    Vécu le 2026-08-16 (exercice #2 du parcours 4) : une API lancée sur le PC
+    sans ``sops exec-env`` a créé une itération que le Mac n'a jamais vue.
+    """
+    import logging
+
+    try:
+        from store import resolve_db_readonly
+        from client.http import remote_sync_enabled
+
+        if not resolve_db_readonly() and not remote_sync_enabled():
+            logging.getLogger(__name__).warning(
+                "MODE COMPUTE SANS CANONIQUE — EURIO_API_URL absent : cohortes "
+                "et itérations resteront LOCALES (push F09 no-op). Elles ne "
+                "seront visibles depuis aucune autre machine. Relance sous "
+                "`sops exec-env secrets/dev.env` si ce n'est pas voulu."
+            )
+    except Exception as exc:  # noqa: BLE001 — un avertissement ne bloque pas un boot
+        logging.getLogger(__name__).debug("garde canonique non évaluée: %s", exc)
+
+
+@app.on_event("startup")
 def _replica_autopull_startup() -> None:
     """Direction A — transparence de sync : rafraîchit la réplique locale
     (``state/eurio.replica.db``) en tâche de fond tant que le serveur tourne

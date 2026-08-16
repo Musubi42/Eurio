@@ -246,6 +246,95 @@ def test_bake_regenerates_a_v1_snapshot(tmp_path, monkeypatch):
     assert mtimes_1 != mtimes_0
 
 
+def test_bake_regenerates_when_the_recipe_config_changes_in_place(
+    tmp_path, monkeypatch
+):
+    """`PUT /lab/recipes/{id}` modifie une recette EN PLACE, sans changer son id.
+
+    Hacher l'id laissait donc réutiliser un snapshot produit par l'ancienne
+    config, pendant que le manifeste affirmait la nouvelle — le mensonge de
+    provenance que le digest existe pour supprimer. On hache la config.
+    """
+    import training.iteration_augmentations as ia
+    from store import AugmentationRecipeRow
+
+    ia_, store, _sources, out_dir, _mk = _bake_env(tmp_path, monkeypatch)
+    recipe = AugmentationRecipeRow(
+        id="r1", name="r1", zone=None,
+        config={"count": 100, "layers": []},
+    )
+    store.create_recipe(recipe)
+    store.update_iteration("it1", recipe_id="r1")
+
+    ia_.generate_for_iteration(iteration_id="it1", store=store)
+    manifest_1, mtimes_1 = _snapshot_state(out_dir)
+
+    # L'admin édite la recette dans le front : même id, config différente.
+    store.update_recipe(
+        "r1", config={"count": 100, "layers": [], "jitter": 0.4},
+    )
+    ia_.generate_for_iteration(iteration_id="it1", store=store)
+    manifest_2, mtimes_2 = _snapshot_state(out_dir)
+
+    assert manifest_2["inputs_digest"] != manifest_1["inputs_digest"]
+    assert mtimes_2 != mtimes_1          # les images ont bien été refaites
+
+
+def test_bake_regenerates_when_a_source_disappears(tmp_path, monkeypatch):
+    """Retrait d'une source à cible constante — le pendant de l'ajout."""
+    ia_, store, sources, out_dir, mk = _bake_env(tmp_path, monkeypatch)
+    sources.append(mk("s2.jpg", (30, 30, 200)))
+    ia_.generate_for_iteration(iteration_id="it1", store=store)
+    manifest_1, mtimes_1 = _snapshot_state(out_dir)
+    assert len(manifest_1["sources"]) == 2
+
+    sources.pop()                        # la review a retiré le crop
+    ia_.generate_for_iteration(iteration_id="it1", store=store)
+    manifest_2, mtimes_2 = _snapshot_state(out_dir)
+
+    assert manifest_2["inputs_digest"] != manifest_1["inputs_digest"]
+    assert [s["name"] for s in manifest_2["sources"]] == ["s1.jpg"]
+    assert mtimes_2 != mtimes_1
+
+
+def test_bake_regenerates_on_a_corrupted_manifest(tmp_path, monkeypatch):
+    """Un manifeste illisible ne prouve rien → on régénère plutôt que supposer."""
+    ia_, store, _sources, out_dir, _mk = _bake_env(tmp_path, monkeypatch)
+    ia_.generate_for_iteration(iteration_id="it1", store=store)
+    _m0, mtimes_0 = _snapshot_state(out_dir)
+
+    (out_dir / "_manifest.json").write_text("{ ceci n'est pas du JSON")
+    ia_.generate_for_iteration(iteration_id="it1", store=store)
+    manifest_1, mtimes_1 = _snapshot_state(out_dir)
+
+    assert manifest_1["version"] == 2
+    assert mtimes_1 != mtimes_0
+
+
+def test_clear_covers_out_of_cohort_members(tmp_path, monkeypatch):
+    """`clear` doit balayer l'ensemble baké, pas la seule cohorte.
+
+    La maille design_group tire des pièces hors cohorte (56 % du dataset mesuré
+    sur une cohorte de 27). Quand `clear` les ignorait, « regénérer » laissait
+    intacte la moitié des augmentations.
+    """
+    import training.iteration_augmentations as ia
+
+    ia_, store, _sources, out_dir, _mk = _bake_env(tmp_path, monkeypatch)
+    ia_.generate_for_iteration(iteration_id="it1", store=store)
+    assert out_dir.is_dir()
+
+    # L'ensemble baké contient une pièce que la cohorte ne liste pas : c'est
+    # le cas design_group, simulé ici au niveau de la fonction partagée.
+    monkeypatch.setattr(
+        ia_, "bake_member_ids", lambda ids, st: (None, ["sister", "c"]),
+    )
+    removed = ia_.clear_for_iteration(iteration_id="it1", store=store)
+
+    assert removed == 1
+    assert not out_dir.exists()          # le membre hors cohorte a bien été balayé
+
+
 def test_bake_drops_leftovers_when_the_target_shrinks(tmp_path, monkeypatch):
     """Cible qui baisse → plus de samples orphelins (le staging symlinke TOUT)."""
     ia, store, _sources, out_dir, _mk = _bake_env(tmp_path, monkeypatch, target=5)
