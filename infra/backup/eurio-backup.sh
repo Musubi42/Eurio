@@ -180,10 +180,53 @@ mirror_bucket() {
     || die "miroir du bucket $bucket : rclone sync a échoué."
 }
 
+# ── Docker rootless ──────────────────────────────────────────────────────────
+
+# Le VPS fait tourner Docker en mode **rootless** : les conteneurs Eurio vivent
+# sur la socket de l'utilisateur (`/run/user/<uid>/docker.sock`), pas sur celle
+# de root. Un shell interactif l'apprend par `DOCKER_HOST`, posé dans le profil.
+# Un service systemd **système** ne charge pas ce profil : `docker` retombe donc
+# sur `/var/run/docker.sock`, où aucun conteneur Eurio n'existe.
+#
+# Symptôme vécu le 2026-08-16 : `docker exec eurio-api` répond
+# « No such container: eurio-api » alors que `docker ps` le montre dans le shell.
+# Le timer de staging avait tourné UNE fois et échoué ainsi ; zéro succès depuis
+# son installation, et la notification d'alerte était elle-même injoignable —
+# donc personne n'a rien su.
+#
+# On résout ici plutôt que dans l'unité systemd pour que ça vaille aussi pour
+# cron, un appel manuel hors profil, ou une autre machine. Un `DOCKER_HOST`
+# déjà posé gagne toujours : on ne fait que combler un vide.
+resolve_docker_host() {
+  [ -n "${DOCKER_HOST:-}" ] && return 0
+  local sock="/run/user/$(id -u)/docker.sock"
+  if [ -S "$sock" ]; then
+    export DOCKER_HOST="unix://$sock"
+    echo "    docker : socket rootless — DOCKER_HOST=$DOCKER_HOST"
+  fi
+}
+
+# Vérifie qu'on parle bien au démon qui héberge les conteneurs attendus.
+# `command -v docker` ne prouvait que la présence du binaire — pas qu'il
+# s'adresse au bon démon, ce qui est exactement ce qui a échoué.
+require_container() {
+  local name="$1"
+  docker inspect -f '{{.State.Running}}' "$name" >/dev/null 2>&1 \
+    || die "conteneur '$name' introuvable sur ${DOCKER_HOST:-le démon par défaut}.
+   Docker rootless ? Les conteneurs d'un autre utilisateur ne sont pas visibles.
+   Vérifier : docker ps | grep $name"
+}
+
 # ── Sous-commandes ───────────────────────────────────────────────────────────
 
 cmd_stage() {
   command -v docker >/dev/null 2>&1 || die "docker absent : impossible de snapshoter les bases."
+  resolve_docker_host
+  # Les deux conteneurs sont vérifiés AVANT de commencer : découvrir au
+  # deuxième snapshot que le démon n'est pas le bon laisserait un staging
+  # à moitié produit, que la sentinelle signalerait sans dire pourquoi.
+  require_container "$EURIO_DB_CONTAINER"
+  require_container "$REVIEW_DB_CONTAINER"
 
   local t1
   mkdir -p "$STAGING"
