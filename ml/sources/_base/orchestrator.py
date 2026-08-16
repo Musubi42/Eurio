@@ -14,6 +14,7 @@ orchestrator only sequences them.
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING
 
@@ -306,9 +307,12 @@ def process_downloaded(
     source_image_ids = {r["source_ref"]: r["id"] for r in downloaded}
     run = RunHandle(run_id=run_id, source=source, _conn=conn)
     conn.execute(
-        "UPDATE source_runs SET status='running', ended_at=NULL, error_summary=NULL "
-        "WHERE id = ?",
-        (run_id,),
+        # Réclame le pid du process courant (CLI foreground / thread serving) au
+        # reattach : sinon le pid périmé du run initial survit et `reset_orphan_runs`
+        # (startup backend / --reload) tue ce run vivant comme « orphan run » (B5).
+        "UPDATE source_runs SET status='running', ended_at=NULL, error_summary=NULL, "
+        "pid=? WHERE id = ?",
+        (os.getpid(), run_id),
     )
     conn.commit()
     logger.info(
@@ -414,9 +418,12 @@ def resume_failed_downloads(
     source_image_ids = {r["source_ref"]: r["id"] for r in failed}
     run = RunHandle(run_id=run_id, source=source, _conn=conn)
     conn.execute(
-        "UPDATE source_runs SET status='running', ended_at=NULL, error_summary=NULL "
-        "WHERE id = ?",
-        (run_id,),
+        # Réclame le pid du process courant (CLI foreground / thread serving) au
+        # reattach : sinon le pid périmé du run initial survit et `reset_orphan_runs`
+        # (startup backend / --reload) tue ce run vivant comme « orphan run » (B5).
+        "UPDATE source_runs SET status='running', ended_at=NULL, error_summary=NULL, "
+        "pid=? WHERE id = ?",
+        (os.getpid(), run_id),
     )
     conn.commit()
     logger.info(

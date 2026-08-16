@@ -153,6 +153,46 @@ def test_detect_returns_circle_detection_dataclass():
         assert d.method.startswith("yolo+")
 
 
+# ─── Cap de résolution de détection (B2) ───────────────────────────────
+#
+# `detect_circles_multi` plafonne la résolution SUR LAQUELLE il détecte
+# (LISTING_DETECT_MAX_LONG_SIDE) parce que Hough/rim-refine sont ~O(pixels) et
+# gelaient le run sur des photos vendeur pleine résolution. Il doit ensuite
+# re-projeter les coordonnées vers l'espace image d'origine, sinon le caller
+# extrait des crops décentrés — et rien ne lève d'erreur : le seul symptôme
+# serait des crops silencieusement faux. D'où ces deux tests.
+
+def test_detect_oversized_image_returns_native_space_coords():
+    long_side = normalize_snap.LISTING_DETECT_MAX_LONG_SIDE + 552   # au-dessus du cap
+    h = int(long_side * 0.75)
+    cx, cy, r = long_side // 2, h // 2, long_side // 8
+    img = _make_listing([(cx, cy, r)], size=(long_side, h))
+
+    accepted = [d for d in detect_circles_multi(img) if d.accepted]
+    assert len(accepted) == 1, "le cap ne doit pas faire perdre la pièce"
+    d = accepted[0]
+    # Tolérance en fraction du rayon : sans re-projection, les coordonnées
+    # sortiraient divisées par det_scale (~1,27) — soit ~27 % d'écart, très
+    # au-delà de ce seuil.
+    assert abs(d.cx - cx) < r * 0.1, f"cx={d.cx} attendu ~{cx} (espace natif)"
+    assert abs(d.cy - cy) < r * 0.1, f"cy={d.cy} attendu ~{cy} (espace natif)"
+    assert abs(d.r - r) < r * 0.1, f"r={d.r} attendu ~{r} (espace natif)"
+
+
+def test_detect_below_cap_is_untouched_by_the_cap():
+    """Le cas nominal doit rester strictement identique : une image sous le cap
+    ne subit aucun redimensionnement, donc aucune perte de précision."""
+    assert normalize_snap.LISTING_DETECT_MAX_LONG_SIDE > 1600, (
+        "le cap doit rester au-dessus de la taille eBay courante, sinon le "
+        "chemin nominal change de comportement"
+    )
+    img = _make_listing([(600, 450, 200)])          # 1200×900, sous le cap
+    accepted = [d for d in detect_circles_multi(img) if d.accepted]
+    assert len(accepted) == 1
+    d = accepted[0]
+    assert abs(d.cx - 600) < 15 and abs(d.cy - 450) < 15 and abs(d.r - 200) < 15
+
+
 # ─── normalize_listing ─────────────────────────────────────────────────
 
 def test_normalize_listing_emits_one_per_accepted():

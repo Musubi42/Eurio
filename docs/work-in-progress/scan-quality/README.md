@@ -155,6 +155,7 @@ tromper), robustesse face/usure/tilt.
 | Normalisation crop on-device (parité) | mémoire `project_scan_normalization` |
 | Qualité de crop (training data) | `work-in-progress/crop-quality-overhaul/` |
 | Robustesse app scan/caméra (prérequis) | `work-in-progress/hardening-2026-07/03-android-robustesse.md` (F03) |
+| **Bugs & dette du pipeline scrape→crop→review→coins** | `pipeline-findings-and-debt.md` (tracker vivant : quota split-brain, gel détection images géantes, compteur enrichissement local≠VPS, …) |
 
 ---
 

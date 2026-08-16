@@ -103,11 +103,21 @@ def run_detect_crop(
 
     for source_ref, sid in source_image_ids.items():
         row = conn.execute(
-            "SELECT id, storage_path, storage_status, raw_payload_json, target_eurio_id "
+            "SELECT id, storage_path, storage_status, raw_payload_json, target_eurio_id, "
+            "crop_status "
             "FROM source_images WHERE id = ?",
             (sid,),
         ).fetchone()
         if row is None or not row["storage_path"]:
+            continue
+        # Resume (B6) : ne pas re-détecter une image déjà TENTÉE sans crop
+        # (`zero_crops`) ou en erreur de chargement (`error`) — le détecteur est
+        # déterministe, ré-exécuter donne le même résultat et re-broie tout le
+        # backlog zéro-crop à chaque reprise (l'opérateur croit que « ça ne fait
+        # que des 0 crops »). Les `success` passent par le skip idempotent plus bas
+        # (collecte des chemins de crops). Les `NULL` (jamais tentées) sont détectées.
+        if row["crop_status"] in ("zero_crops", "error"):
+            n_skipped += 1
             continue
         # group_candidates : extrait du raw_payload du source_image (eBay
         # multi-coin groups). Permet à la review queue de désambiguïser

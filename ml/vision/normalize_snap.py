@@ -43,6 +43,15 @@ OUTPUT_SIZE = 224
 COIN_MARGIN = 0.02
 BG_COLOR = (0, 0, 0)
 WORKING_RES = 1024
+# Safety cap for the LISTING detector (`detect_circles_multi`). Detection compute
+# (Hough refine / rim-refine / Laplacian) is ~O(pixels) ; a pathologically large
+# input (ex. photos vendeur eBay pleine résolution ~42 Mpx) fait boucler Hough
+# plusieurs minutes → run gelé (finding B2, cf. docs/work-in-progress/scan-quality/
+# pipeline-findings-and-debt.md). On plafonne la résolution de DÉTECTION ; les crops
+# restent extraits en pleine résolution depuis l'image d'origine via des coordonnées
+# re-projetées → qualité de crop inchangée. Seuil > taille eBay courante (1600) pour
+# laisser le cas nominal strictement identique ; seules les images anormales sont réduites.
+LISTING_DETECT_MAX_LONG_SIDE = 2048
 
 
 @dataclass(frozen=True)
@@ -842,6 +851,20 @@ def detect_circles_multi(bgr: np.ndarray,
     if bgr is None or bgr.size == 0:
         return []
     census = _census_detect_enabled() if census is None else census
+    # Cap de sécurité B2 : la détection tourne sur une image plafonnée à
+    # LISTING_DETECT_MAX_LONG_SIDE ; `det_scale` re-projette les coordonnées vers
+    # l'espace image d'origine à la fin (le crop est extrait plein-res par le caller
+    # depuis le `bgr` original). Nominal (≤ cap) → no-op, det_scale=1.0, comportement
+    # strictement inchangé.
+    det_scale = 1.0
+    _h0, _w0 = bgr.shape[:2]
+    if max(_h0, _w0) > LISTING_DETECT_MAX_LONG_SIDE:
+        det_scale = max(_h0, _w0) / LISTING_DETECT_MAX_LONG_SIDE
+        bgr = cv2.resize(
+            bgr,
+            (max(1, int(round(_w0 / det_scale))), max(1, int(round(_h0 / det_scale)))),
+            interpolation=cv2.INTER_AREA,
+        )
     h_img, w_img = bgr.shape[:2]
     short = min(h_img, w_img)
     rmin_frac = _CENSUS_RMIN_FRAC if census else _LISTING_RMIN_FRAC_STRICT
@@ -987,6 +1010,15 @@ def detect_circles_multi(bgr: np.ndarray,
     # pièce » observée en review lot. Marque les doublons rejetés (debug-visible,
     # exclus des crops). Toujours actif (géométrique, aucun coût modèle).
     _dedup_duplicate_circles(detections, short)
+
+    # B2 : re-projette les coordonnées de l'espace détection (plafonné) vers l'espace
+    # image d'origine, pour que le crop soit extrait en pleine résolution. No-op si
+    # aucun downscale n'a eu lieu (det_scale == 1.0 → cas nominal).
+    if det_scale != 1.0:
+        for d in detections:
+            d.cx = int(round(d.cx * det_scale))
+            d.cy = int(round(d.cy * det_scale))
+            d.r = int(round(d.r * det_scale))
 
     return detections
 
