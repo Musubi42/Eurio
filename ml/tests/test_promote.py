@@ -129,3 +129,64 @@ def test_hash_tree_stable(isolated_prod):
     (iter_dir / "embeddings" / "embeddings_v1.json").write_text("{}")
     h3 = p._hash_tree(iter_dir / "embeddings")
     assert h3 != h1
+
+
+# ─── Garde de traçabilité (exercice #1 du parcours 4, 2026-08-16) ────────────
+#
+# La promotion résout sa base par EURIO_DB_PATH, que le devShell pointe sur la
+# RÉPLIQUE du canonique. Or le canonique null les `*_run_id` (les tables de run
+# ne lui sont jamais poussées) : l'itération y est `completed` avec `run=NULL`
+# pendant que la base de calcul porte le vrai lien. Sans garde, la promotion
+# réussit et écrit un `promoted_from.json` sans `training_run_id` — plus rien ne
+# relie le modèle en prod à ce qui l'a produit.
+
+
+def _store_with_iteration(tmp_path, iid, *, training_run_id):
+    from store import ExperimentCohortRow, ExperimentIterationRow, Store
+
+    store = Store(tmp_path / f"{iid}.db")
+    if training_run_id is not None:
+        # FK `training_run_id` → la ligne de run doit exister dans CETTE base.
+        # C'est précisément la différence entre la base de calcul et la réplique.
+        store._connection().execute(  # noqa: SLF001
+            "INSERT INTO training_runs (id, version, status, config_json, "
+            "classes_before_json, classes_after_json, classes_added_json, "
+            "classes_removed_json) VALUES (?, 1, 'completed', '{}', '[]', '[]', "
+            "'[]', '[]')",
+            (training_run_id,),
+        )
+    store.upsert_cohort(ExperimentCohortRow(id="co", name="co", eurio_ids=["a"]))
+    store.upsert_iteration(
+        ExperimentIterationRow(
+            id=iid, cohort_id="co", name=iid, status="completed",
+            verdict="baseline", training_run_id=training_run_id,
+        )
+    )
+    return store
+
+
+def test_promotion_refuses_a_db_without_the_run(isolated_prod, tmp_path, monkeypatch):
+    """Réplique : `completed` mais `training_run_id` NULL → refus explicite."""
+    _build_iter_dir(p.LAB_ITERATIONS_DIR, "iid-repl", ["a"])
+    store = _store_with_iteration(tmp_path, "iid-repl", training_run_id=None)
+    monkeypatch.setattr(p, "STATE_DB", store.db_path)
+
+    with pytest.raises(SystemExit) as exc:
+        p._validate_iteration("iid-repl", force=False)
+    msg = str(exc.value)
+    assert "training_run_id" in msg
+    assert "EURIO_DB_PATH" in msg          # la sortie nomme le geste réparateur
+
+    # --force reste possible, en connaissance de cause.
+    meta = p._validate_iteration("iid-repl", force=True)
+    assert meta["training_run_id"] is None
+
+
+def test_promotion_accepts_the_compute_db(isolated_prod, tmp_path, monkeypatch):
+    """Base de calcul : le lien vers le run est là → la promotion passe."""
+    _build_iter_dir(p.LAB_ITERATIONS_DIR, "iid-work", ["a"])
+    store = _store_with_iteration(tmp_path, "iid-work", training_run_id="run-42")
+    monkeypatch.setattr(p, "STATE_DB", store.db_path)
+
+    meta = p._validate_iteration("iid-work", force=False)
+    assert meta["training_run_id"] == "run-42"

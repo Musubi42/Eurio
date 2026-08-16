@@ -37,14 +37,20 @@ ML_DIR = Path(__file__).parent.parent
 if str(ML_DIR) not in sys.path:
     sys.path.insert(0, str(ML_DIR))
 
-from store import Store  # noqa: E402
+from store import Store, resolve_db_path  # noqa: E402
 
 LAB_ITERATIONS_DIR = ML_DIR / "lab" / "iterations"
 PROD_DIR = ML_DIR / "prod"
 PROD_CURRENT = PROD_DIR / "current"
 PROD_ARCHIVE = PROD_DIR / "archive"
 PROD_LOCK = PROD_DIR / ".promote.lock"
-STATE_DB = ML_DIR / "state" / "eurio.db"
+# Même DB que le serveur et que les entrypoints détachés (`training/run_*.py`) :
+# `EURIO_DB_PATH` d'abord, `state/eurio.db` en repli. Le chemin était codé en dur
+# ici, ce qui rendait la promotion IMPOSSIBLE dès que l'itération avait été
+# calculée ailleurs — le mode compute du flip Direction A écrit dans
+# `state/eurio.work.db`, et `promote_iteration <iid>` répondait « not found in
+# …/eurio.db » alors que le modèle et ses artefacts étaient complets sur disque.
+STATE_DB = resolve_db_path(ML_DIR / "state" / "eurio.db")
 VENV_PYTHON = str(ML_DIR / ".venv" / "bin" / "python")
 
 VALID_VERDICTS = {"baseline", "better"}
@@ -110,7 +116,12 @@ def _validate_iteration(iid: str, *, force: bool) -> dict:
     store = Store(STATE_DB)
     it = store.get_iteration(iid)
     if it is None:
-        raise SystemExit(f"Iteration {iid} not found in {STATE_DB}")
+        raise SystemExit(
+            f"Iteration {iid} not found in {STATE_DB} "
+            f"(EURIO_DB_PATH={os.environ.get('EURIO_DB_PATH') or '<absent>'}). "
+            "Si l'itération a été calculée sous un autre EURIO_DB_PATH (mode "
+            "compute, réplique…), relance la promotion avec le même."
+        )
     if it.status != "completed" and not force:
         raise SystemExit(
             f"Iteration {iid} is status={it.status!r}, expected 'completed' "
@@ -121,6 +132,25 @@ def _validate_iteration(iid: str, *, force: bool) -> dict:
         raise SystemExit(
             f"Iteration {iid} verdict={verdict!r}, expected one of "
             f"{sorted(VALID_VERDICTS)} (use --force to override)."
+        )
+    # Promouvoir depuis une base qui ne porte pas le run, c'est perdre la
+    # traçabilité en silence : `promoted_from.json` enregistrerait
+    # `training_run_id: null`, et plus rien ne relierait le modèle en prod à ce
+    # qui l'a produit. Le cas est atteignable sans le vouloir — le devShell
+    # pointe `EURIO_DB_PATH` sur la RÉPLIQUE, et le canonique null les
+    # `*_run_id` (les tables de run ne lui sont jamais poussées, cf.
+    # `serving/iteration_sync_routes.py`). La réplique dit donc `completed`
+    # avec `run=NULL` pendant que la base de calcul porte le vrai lien.
+    # Constaté pendant l'exercice #1 du parcours 4 (2026-08-16).
+    if it.training_run_id is None and not force:
+        raise SystemExit(
+            f"Iteration {iid} est 'completed' mais SANS training_run_id dans "
+            f"{STATE_DB}. Cette base ne porte pas le run — c'est typiquement la "
+            "réplique du canonique, qui n'a jamais reçu les tables de run. "
+            "Promeus depuis la base de CALCUL (celle où l'entraînement a "
+            "tourné) : EURIO_DB_PATH=<…/eurio.work*.db>. "
+            "--force passe outre, au prix d'un promoted_from.json sans lien "
+            "vers le run."
         )
     iter_dir = LAB_ITERATIONS_DIR / iid
     missing = [
