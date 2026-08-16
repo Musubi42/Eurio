@@ -12,7 +12,11 @@ go-task ml:db:pull-replica
 
 # 2) API ML sur la réplique, SANS --reload (crucial : --reload tue le subprocess
 #    train/bench à chaque sauvegarde de fichier)
-go-task ml:api-replica-prod
+go-task ml:api-prod
+#    (`ml:api-replica-prod` a été SUPPRIMÉE avec le chantier local-sync en
+#     juillet 2026 — cf. le commentaire dans `ml/tasks.yml`. La tâche restante
+#     est `ml:api-prod` ; elle honore `EURIO_DB_PATH` si tu veux pointer la
+#     réplique explicitement.)
 #    → laisse ce terminal ouvert. Vérifie dans un autre :
 curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8042/health   # attendu 200
 
@@ -56,7 +60,7 @@ avant que le training n'écrive son premier JSON de progression.
   pool leurs sources → plus de blocage préflight « 1 source < m_per_class=4 ». La run
   tire donc des pièces **hors-cohorte** (membres des mêmes groupes) — attendu.
 - **Ne touche aucun fichier `serving/*.py` pendant la run** si jamais tu repasses en
-  `ml:api` (`--reload`) : ça redémarre uvicorn et tue le subprocess. D'où `api-replica-prod`.
+  `ml:api` (`--reload`) : ça redémarre uvicorn et tue le subprocess. D'où `api-prod`.
 - **Bench à 0 photo** : corrigé (le bench pointe les centroïdes de l'itération, pas
   `prod/current`). Si ça réapparaît, vérifier `lab/iterations/<iid>/embeddings/embeddings_v1.json`.
 - **Supprimer une itération bloquée en `running`** : si un subprocess est mort en
