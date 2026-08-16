@@ -316,7 +316,7 @@ def _jobs_startup() -> None:
     restés `running` dont le PID est mort (process précédent tué). Les jobs qui ont
     survécu au `--reload` (PID vivant) sont préservés. Cf. `jobs.reaper.reap_orphans`."""
     try:
-        n = _jobs.reap_orphans(_store._connection())  # noqa: SLF001
+        n = _jobs.reap_orphans(_jobs.connection())
         if n:
             import logging
             logging.getLogger(__name__).info(

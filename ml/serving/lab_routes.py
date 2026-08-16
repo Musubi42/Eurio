@@ -3344,8 +3344,10 @@ def _launch_aug_bake(iteration_id: str, *, clear: bool) -> dict:
     Garde de concurrence : si un bake de CETTE itération tourne déjà (PID vivant),
     on renvoie son job existant au lieu d'en lancer un 2e (le bouton Générer peut
     être recliqué). Retourne ``{job_id, status}``."""
-    store = _get_store()
-    conn = store._connection()  # noqa: SLF001
+    # Bookkeeping de job → DB locale inscriptible, jamais le canonique
+    # (cf. `jobs/conn.py`). Sous le flip C5, ouvrir le job sur la réplique
+    # rendait 503 et le bake restait figé à 0/N sans dire pourquoi.
+    conn = jobs.connection()
     existing = jobs.job_by_param(conn, "iteration_id", iteration_id, kind="augmentation")
     if existing and existing["status"] == "running":
         pid = existing.get("pid")
@@ -3486,7 +3488,7 @@ def augmentation_job_status(cohort_id: str, iteration_id: str) -> dict:
     """Statut du bake d'augmentation détaché de l'itération (poll par le front).
     `idle` si aucun bake n'a (encore) été lancé."""
     job = jobs.job_by_param(
-        _get_store()._connection(), "iteration_id", iteration_id, kind="augmentation",  # noqa: SLF001
+        jobs.connection(), "iteration_id", iteration_id, kind="augmentation",
     )
     if job is None:
         return {"status": "idle"}

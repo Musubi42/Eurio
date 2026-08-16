@@ -19,6 +19,12 @@ from serving.training_runner import TrainingRunner
 from store import Store
 
 
+@pytest.fixture(autouse=True)
+def _local_jobs_db(tmp_path, monkeypatch):
+    """Isole la DB de bookkeeping des jobs (cf. `jobs/conn.py`)."""
+    monkeypatch.setenv("EURIO_LOCAL_STATE_DB", str(tmp_path / "jobs.db"))
+
+
 @pytest.fixture
 def runner(tmp_path):
     store = Store(tmp_path / "it.db")
@@ -26,7 +32,8 @@ def runner(tmp_path):
 
 
 def _conn(runner):
-    return runner._store._connection()  # noqa: SLF001
+    # Le bookkeeping des jobs vit dans la DB locale, pas dans le store métier.
+    return jobs.connection()
 
 
 def test_launch_chain_wiring(runner, monkeypatch):

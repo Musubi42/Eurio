@@ -30,7 +30,10 @@ def main() -> int:
     args = ap.parse_args()
 
     store = Store(resolve_db_path(ML_DIR / "state" / "eurio.db"))
-    conn = store._connection()  # noqa: SLF001
+    # Le bookkeeping du job va dans la DB LOCALE, la même que celle où le
+    # parent a ouvert le job — sinon la progression n'atteindrait jamais
+    # l'écran, et sous le flip C5 l'écriture serait refusée (réplique ro).
+    conn = jobs.connection()
 
     from training.iteration_augmentations import (
         clear_for_iteration,

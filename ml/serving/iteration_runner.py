@@ -190,7 +190,7 @@ class IterationRunner:
         phases (training, export, benchmark). Côté API : lit la tail du fichier de
         log du job détaché. Vide si aucune chaîne n'a (encore) tourné."""
         job = jobs.job_by_param(
-            self._store._connection(), "iteration_id", iteration_id, kind="iteration",  # noqa: SLF001
+            jobs.connection(), "iteration_id", iteration_id, kind="iteration",
         )
         if not job or not job.get("log_path"):
             # Dans le process détaché lui-même, la row job peut ne pas être visible
@@ -222,13 +222,13 @@ class IterationRunner:
         # kind='iteration' : ne PAS confondre avec un job 'augmentation' qui porte
         # le même iteration_id (bake standalone). Cf. lab_routes augmentations.
         return jobs.job_by_param(
-            self._store._connection(), "iteration_id", iteration_id, kind="iteration",  # noqa: SLF001
+            jobs.connection(), "iteration_id", iteration_id, kind="iteration",
         )
 
     def is_busy(self) -> bool:
         """True si une itération tourne actuellement (job détaché vivant). Garde
         de concurrence côté API : une seule chaîne à la fois (GPU + best_model.pth)."""
-        job = jobs.job_latest(self._store._connection(), "iteration")  # noqa: SLF001
+        job = jobs.job_latest(jobs.connection(), "iteration")
         if not job or job["status"] != "running":
             return False
         pid = job.get("pid")
@@ -422,7 +422,7 @@ class IterationRunner:
         """Lance la chaîne (`full` = training→export→benchmark, ou `benchmark`
         seul) en subprocess DÉTACHÉ via le rail `jobs/` → survit au `--reload`."""
         jobs.launch(
-            self._store._connection(),  # noqa: SLF001
+            jobs.connection(),
             kind="iteration",
             cmd_builder=lambda jid: [
                 VENV_PYTHON, RUN_ITERATION_SCRIPT,

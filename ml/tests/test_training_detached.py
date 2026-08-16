@@ -20,6 +20,14 @@ from serving.training_runner import TrainingRunner
 from store import ClassRef, EpochRow, RunRow, Store
 
 
+@pytest.fixture(autouse=True)
+def _local_jobs_db(tmp_path, monkeypatch):
+    """Le rail `jobs/` écrit dans la DB LOCALE (`jobs/conn.py`), pas dans le
+    store métier : sans ce redirect, les tests écriraient dans la vraie DB de
+    bookkeeping de la machine."""
+    monkeypatch.setenv("EURIO_LOCAL_STATE_DB", str(tmp_path / "jobs.db"))
+
+
 @pytest.fixture
 def runner(tmp_path):
     return TrainingRunner(Store(tmp_path / "d.db"))
@@ -60,7 +68,7 @@ def _seed_detached_run(store: Store, run_id: str, pid: int, log_text: str, tmp_p
     store.create_run(RunRow(id=run_id, version=1, status="running", config={"epochs": 40}))
     log = tmp_path / f"{run_id}.log"
     log.write_text(log_text)
-    conn = store._connection()
+    conn = jobs.connection()
     jid = jobs.job_start(conn, kind="training", params={"run_id": run_id})
     jobs.job_set_pid(conn, jid, pid)
     conn.execute("UPDATE jobs SET log_path=? WHERE id=?", (str(log), jid))

@@ -8,6 +8,7 @@ Voir `docs/refacto-ml/adr.md` D1. API publique :
   - `reap_orphans(conn)`               → reaper boot (hook startup serving)
 """
 
+from .conn import connection
 from .db import (
     job_by_param,
     job_finish,
@@ -22,6 +23,7 @@ from .runner import job_id_from_argv, launch, proc_dead, stop_process_group
 
 __all__ = [
     "_pid_alive",
+    "connection",
     "job_by_param",
     "job_finish",
     "job_get",

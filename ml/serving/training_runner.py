@@ -70,7 +70,7 @@ class TrainingRunner:
         return None
 
     def _job_for(self, run_id: str) -> dict | None:
-        return jobs.job_by_param(self._store._connection(), "run_id", run_id)  # noqa: SLF001
+        return jobs.job_by_param(jobs.connection(), "run_id", run_id)
 
     def _tail_job_log(self, run_id: str, n: int) -> list[str]:
         job = self._job_for(run_id)
@@ -193,7 +193,7 @@ class TrainingRunner:
         row = self.create_run_row(added=added, removed=removed, config=config)
         run_id = row.id
         jobs.launch(
-            self._store._connection(),  # noqa: SLF001
+            jobs.connection(),
             kind="training",
             cmd_builder=lambda jid: [
                 VENV_PYTHON, RUN_PIPELINE_SCRIPT,
@@ -210,7 +210,7 @@ class TrainingRunner:
         whose job PID is still alive survived the reload → left untouched."""
         from training.pipeline import _now_iso
 
-        conn = self._store._connection()  # noqa: SLF001
+        conn = jobs.connection()
         for r in self._store.list_runs(status="running"):
             job = jobs.job_by_param(conn, "run_id", r.id)
             pid = job.get("pid") if job else None
