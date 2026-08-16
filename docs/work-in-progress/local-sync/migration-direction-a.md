@@ -177,6 +177,46 @@ C2.
   > Reste hors périmètre : les écritures de *résultats de compute* (runs
   > d'entraînement, bench) et le funnel par-asset, qui ont leur propre transport
   > (`/ingest/*`, déjà routé côté front).
+
+  > **Rail `jobs/` : ✅ fait le 2026-08-16.** Deuxième mur, trouvé en déroulant le
+  > lab : le bake d'augmentation restait figé à `0/600`. Cause — la table `jobs`
+  > (PID, log, avancement) vivait dans le SQLite canonique, alors qu'elle est du
+  > **bookkeeping de machine** : domaine-agnostique, aucune FK, aucun JOIN
+  > canonique. Sous le flip, ouvrir un job levait `readonly database` → 503, et
+  > comme le job n'existait pas, le compteur ne bougeait jamais. Déplacé vers
+  > `local_state_store()` (où vivent déjà `cohort_jobs` & co.) via une source
+  > unique, `jobs/conn.py` — parent et subprocess détaché doivent écrire dans le
+  > **même** fichier, sinon la progression n'atteint pas l'écran. Les
+  > augmentations, elles, ne touchaient pas la DB (SELECT + sortie disque).
+
+  > ### ⛔ Mur suivant, NON franchi : les runs d'entraînement
+  >
+  > Lancer un entraînement sous le flip échoue en
+  > `attempt to write a readonly database` — `TrainingRunner.create_run_row`
+  > écrit `training_runs` + steps + epochs dans le canonique. *(L'échec est
+  > désormais **visible** : le job est enregistré `failed` avec sa raison, ce qui
+  > n'était pas le cas avant le correctif du rail.)*
+  >
+  > Ce n'est pas un oubli de câblage, c'est **la décision d'archi que
+  > `store.resolve_local_state_db()` signale déjà** : ces tables sont
+  > *locales par nature* (le compute vit sur la machine GPU, et le MVP R3 ne
+  > pousse au canonique que la métadonnée d'itération, jamais les tables
+  > lourdes) mais elles sont **JOINTES avec des tables canoniques** — un split
+  > physique exige un `ATTACH` ou un arbitrage. Trois options, à trancher :
+  >
+  > 1. `training_runs`/`epochs`/`steps` → `local_state_store()`, avec `ATTACH`
+  >    pour les lectures jointes.
+  > 2. Les pousser au canonique par `/ingest/*` (contredit « tables lourdes
+  >    jamais poussées »).
+  > 3. Assumer un mode « compute » explicite : la machine GPU travaille sur une
+  >    DB locale inscriptible, seules les dimensions remontent (c'est ce qui a
+  >    servi de contournement le 2026-08-16 — snapshot `VACUUM INTO` depuis la
+  >    réplique, run complète, `completed` repropagé au canonique par F09).
+  >
+  > ⚠️ Piège rencontré en préparant ce contournement : **copier la réplique avec
+  > `cp` perd les écritures récentes** restées dans le sidecar `-wal` — deux
+  > cohortes manquaient à l'appel, silencieusement. `VACUUM INTO` donne un
+  > snapshot cohérent.
 - **C6 — Retirer l'infra event-log** (§6.4) : `image_state_events` colonnes
   sync (op_id/machine/hlc), `sync_outbox`, `sync_tombstones`,
   `sync_orphan_events`, worker debounce, badge, `ml:db:sync*`,
