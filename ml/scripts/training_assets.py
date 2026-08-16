@@ -201,15 +201,31 @@ def cmd_status(_args) -> int:
             print(f"  {name:24} NON PUBLIÉ ({n} fichiers, {size/1e6:.1f} Mo, {digest[:12]})")
             drift += 1
         elif entry["content_digest"] != digest:
+            # Une dérive est ambiguë : le disque peut être EN AVANCE (à publier)
+            # ou INCOMPLET (à rapatrier). Ne jamais suggérer `publish` par défaut
+            # — sur une machine au dataset appauvri, ça écraserait le manifeste
+            # avec une version pire. Vécu sur le PC le 2026-08-16 : 0 image sur
+            # disque, et le message d'alors disait « à publier ».
+            delta = n - entry["n_files"]
+            sense = (
+                "disque INCOMPLET" if delta < 0
+                else "disque EN AVANCE" if delta > 0
+                else "contenu MODIFIÉ à nombre de fichiers égal"
+            )
             print(
-                f"  {name:24} DÉRIVE — disque {digest[:12]} ≠ manifeste "
-                f"{entry['content_digest'][:12]}"
+                f"  {name:24} DÉRIVE, {sense} — disque {digest[:12]} "
+                f"({n} fichiers) ≠ manifeste {entry['content_digest'][:12]} "
+                f"({entry['n_files']} fichiers)"
             )
             drift += 1
         else:
             print(f"  {name:24} à jour ({n} fichiers, {size/1e6:.1f} Mo, {digest[:12]})")
     if drift:
-        print(f"\n{drift} artefact(s) à publier — `go-task ml:training-assets:publish`")
+        print(
+            f"\n{drift} artefact(s) en écart. Choisis selon le sens :\n"
+            f"  · le disque fait autorité  → `go-task ml:training-assets:publish`\n"
+            f"  · le manifeste fait autorité → `go-task ml:training-assets:fetch`"
+        )
         return 2
     return 0
 
