@@ -215,7 +215,16 @@ class AppCoreBootstrapper(
         // Increment this constant whenever a new app_core.db is packaged.
         // On first install (storedVersion == null) or when this is higher than
         // the stored value, the catalog tables are flushed and repopulated.
-        const val APP_CORE_VERSION = 1
+        //
+        // ⚠️ Oublier l'incrément ne casse rien de visible : l'app garde son
+        // ancien catalogue et log « déjà à jour ». C'est une panne muette, et
+        // elle s'est produite — la constante est restée à 1 pendant que
+        // app_core.db était régénéré. Tant qu'elle est manuelle, la régénérer
+        // et l'incrémenter vont ensemble, dans le même commit.
+        //
+        // 2 — 2026-08-16 : rafraîchissement de la projection, 5 → 46
+        //     design_group et le rattachement de 56 pièces.
+        const val APP_CORE_VERSION = 2
 
         private const val KEY_APP_CORE_VERSION = "app_core_version"
     }
