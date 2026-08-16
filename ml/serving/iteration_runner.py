@@ -325,8 +325,13 @@ class IterationRunner:
             verdict="pending",
             augmentations_seed=seed,
         )
-        self._store.create_iteration(row)
-        self._sync_canonical(iid)
+        # Direction A / C5 : sous le flip (`EURIO_DB_READONLY=1`) le SQLite local
+        # est une réplique — la row part au canonique, qui fait autorité, et la
+        # réplique est rafraîchie pour que la relecture suivante la voie. Hors
+        # flip, écriture locale puis push F09 best-effort (inchangé).
+        from serving import lab_writes  # noqa: PLC0415 — évite un cycle d'import
+
+        lab_writes.write_iteration(self._store, row)
         return row
 
     def _sync_canonical(self, iteration_id: str) -> None:

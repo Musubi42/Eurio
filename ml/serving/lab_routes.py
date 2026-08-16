@@ -14,9 +14,12 @@ import sqlite3
 import subprocess
 import sys
 import uuid
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from serving import lab_writes as _lab_writes
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
@@ -131,28 +134,13 @@ def _get_runner() -> IterationRunner:
     return _runner
 
 
-def _push_cohort_canonical(cohort_id: str) -> None:
-    """Propage (best-effort) l'état d'une cohorte au canonique VPS (F09).
-
-    Relit la row locale : présente → ``POST /ingest/cohort`` (upsert), absente
-    → ``DELETE /ingest/cohort/{id}`` (delete propagé). No-op si aucun canonique
-    distant configuré (``client.http.remote_sync_enabled()``). **Ne lève
-    jamais** : une action lab locale ne dépend pas de la joignabilité du VPS —
-    le backfill (``go-task ml:lab:push-dimensions``) rattrape.
-    """
-    try:
-        from client import ingest as _ingest  # noqa: PLC0415 — import léger, lazy
-
-        row = _get_store().get_cohort(cohort_id)
-        if row is None:
-            _ingest.push_cohort_delete(cohort_id)
-        else:
-            _ingest.push_cohort(row.to_dict())
-    except Exception as exc:  # noqa: BLE001
-        logger.warning(
-            "F09 cohort push failed for %s: %s (best-effort, ignoré)",
-            cohort_id, exc,
-        )
+# Les écritures de dimensions lab (cohortes, itérations) passent toutes par
+# `serving/lab_writes.py` — seul endroit qui décide où va une écriture selon
+# que le SQLite local est un canonique ou une réplique read-only (Direction A,
+# C5). L'ancien `_push_cohort_canonical` (push F09 best-effort APRÈS écriture
+# locale) y a été absorbé : sous le flip, une écriture locale n'est plus
+# possible, et le canonique n'est plus une destination secondaire mais LA
+# destination.
 
 
 # ─── Payloads ──────────────────────────────────────────────────────────────
@@ -369,8 +357,7 @@ def create_cohort(payload: CohortCreatePayload) -> dict:
         zone=payload.zone,
         eurio_ids=eurio_ids,
     )
-    _get_store().create_cohort(row)
-    _push_cohort_canonical(cohort_id)
+    _lab_writes.write_cohort(_get_store(), row)
     created = _get_store().get_cohort(cohort_id)
     return _cohort_summary(created) if created else row.to_dict()
 
@@ -514,23 +501,23 @@ def update_cohort(cohort_id: str, payload: CohortUpdatePayload) -> dict:
             )
     if payload.zone is not None:
         _validate_zone(payload.zone)
-    _get_store().update_cohort(
-        cohort_id,
-        name=payload.name,
-        description=payload.description,
-        zone=payload.zone,
+    merged = replace(
+        existing,
+        name=payload.name if payload.name is not None else existing.name,
+        description=(
+            payload.description if payload.description is not None else existing.description
+        ),
+        zone=payload.zone if payload.zone is not None else existing.zone,
     )
-    _push_cohort_canonical(cohort_id)
+    _lab_writes.write_cohort(_get_store(), merged)
     updated = _get_store().get_cohort(cohort_id)
-    return _cohort_summary(updated) if updated else {}
+    return _cohort_summary(updated) if updated else merged.to_dict()
 
 
 @router.delete("/cohorts/{cohort_id}")
 def delete_cohort(cohort_id: str) -> dict:
-    deleted = _get_store().delete_cohort(cohort_id)
-    if not deleted:
+    if not _lab_writes.delete_cohort(_get_store(), cohort_id):
         raise HTTPException(status_code=404, detail="Cohort introuvable")
-    _push_cohort_canonical(cohort_id)  # row absente → delete propagé (F09)
     return {"deleted": True, "id": cohort_id}
 
 
@@ -549,8 +536,7 @@ def add_coins_to_cohort(
     if merged == sorted(cohort.eurio_ids):
         # No-op: every requested coin was already in the cohort.
         return _cohort_summary(cohort)
-    _get_store().update_cohort(cohort.id, eurio_ids=merged)
-    _push_cohort_canonical(cohort.id)
+    _lab_writes.write_cohort(_get_store(), replace(cohort, eurio_ids=merged))
     updated = _get_store().get_cohort(cohort.id)
     return _cohort_summary(updated) if updated else cohort.to_dict()
 
@@ -604,8 +590,7 @@ def remove_coin_from_cohort(cohort_id: str, eurio_id: str) -> dict:
             status_code=400,
             detail="Un cohort doit contenir au moins une pièce — supprime-le plutôt.",
         )
-    _get_store().update_cohort(cohort.id, eurio_ids=remaining)
-    _push_cohort_canonical(cohort.id)
+    _lab_writes.write_cohort(_get_store(), replace(cohort, eurio_ids=remaining))
     updated = _get_store().get_cohort(cohort.id)
     return _cohort_summary(updated) if updated else cohort.to_dict()
 
@@ -630,8 +615,7 @@ def clone_cohort(cohort_id: str, payload: CohortClonePayload) -> dict:
         status="draft",
         frozen_at=None,
     )
-    _get_store().create_cohort(row)
-    _push_cohort_canonical(new_id)  # pousse le CLONE (la source n'a pas bougé)
+    _lab_writes.write_cohort(_get_store(), row)  # le CLONE ; la source n'a pas bougé
     created = _get_store().get_cohort(new_id)
     return _cohort_summary(created) if created else row.to_dict()
 
@@ -692,10 +676,10 @@ def create_iteration(cohort_id: str, payload: IterationCreatePayload) -> dict:
     # every benchmark from now on is comparable. Recipe stays editable
     # at iteration level (PUT /iterations/{iid}).
     if cohort.status == "draft":
-        _get_store().update_cohort(
-            cohort.id, status="frozen", frozen_at=_iso_now()
+        _lab_writes.write_cohort(
+            _get_store(),
+            replace(cohort, status="frozen", frozen_at=_iso_now()),
         )
-        _push_cohort_canonical(cohort.id)  # F09 : la cohorte FROZEN est poussée
     return _iteration_with_run_metrics(row)
 
 
@@ -1073,16 +1057,9 @@ def update_iteration(
         clear_for_iteration(iteration_id=iteration_id, store=_get_store())
 
     if patch:
-        _get_store().update_iteration(iteration_id, **patch)
-        # F09 : propage le nouvel état (notes/verdict_override/recipe…) au
-        # canonique via le rail runner (cohorte poussée d'abord, best-effort).
-        try:
-            _get_runner().sync_canonical(iteration_id)
-        except Exception as exc:  # noqa: BLE001 — un push raté ne casse pas l'édition
-            logger.warning(
-                "F09 iteration push failed for %s: %s (best-effort, ignoré)",
-                iteration_id, exc,
-            )
+        # Le patch est appliqué sur la row lue, puis écrite par le writer qui
+        # fait autorité (canonique sous flip C5, local sinon + push F09).
+        _lab_writes.write_iteration(_get_store(), replace(it, **patch))
     updated = _get_store().get_iteration(iteration_id)
     return _iteration_with_run_metrics(updated) if updated else {}
 
@@ -1116,19 +1093,11 @@ def delete_iteration(cohort_id: str, iteration_id: str) -> dict:
             status_code=409,
             detail="Impossible de supprimer une itération en cours.",
         )
-    _get_store().delete_iteration(iteration_id)
+    # Le delete part au writer qui fait autorité (canonique sous flip C5, local
+    # sinon + push F09). Les artefacts disque restent locaux : ils ne vivent que
+    # sur la machine de compute, le canonique ne porte que la métadonnée.
+    _lab_writes.delete_iteration(_get_store(), iteration_id)
     _purge_iteration_artifacts(iteration_id)
-    # F09 : delete propagé au canonique (best-effort — le backfill ne peut PAS
-    # rattraper un delete raté, mais un delete local ne doit pas dépendre du VPS).
-    try:
-        from client import ingest as _ingest  # noqa: PLC0415 — import léger, lazy
-
-        _ingest.push_iteration_delete(iteration_id)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning(
-            "F09 iteration delete push failed for %s: %s (best-effort, ignoré)",
-            iteration_id, exc,
-        )
     return {"deleted": True, "id": iteration_id}
 
 

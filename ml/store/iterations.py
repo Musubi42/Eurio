@@ -215,7 +215,12 @@ class IterationsMixin:
         itération à chaque transition ; le canonique remplace la row entière (id
         uuid4 = propriété d'une seule machine → last-writer-wins sans conflit
         réel). Préserve `created_at`/`created_on` de la SOURCE (l'origine et
-        l'horodatage de création viennent de la machine, pas du canonique).
+        l'horodatage de création viennent de la machine, pas du canonique) —
+        avec `COALESCE(?, datetime('now'))` sur `created_at`, miroir exact de
+        `upsert_cohort`. Sans ce défaut, une row qui n'a jamais touché un SQLite
+        local — créée directement au canonique sous Direction A / C5, donc sans
+        passer par l'INSERT qui stampe l'horodatage — violait
+        `NOT NULL constraint failed: experiment_iterations.created_at`.
         """
         with self._writing() as c:
             c.execute(
@@ -228,7 +233,8 @@ class IterationsMixin:
                   delta_vs_parent_json, diff_from_parent_json,
                   notes, error, augmentations_seed,
                   created_at, started_at, finished_at, created_on, summary_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                          COALESCE(?, datetime('now')), ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                   cohort_id            = excluded.cohort_id,
                   parent_iteration_id  = excluded.parent_iteration_id,
