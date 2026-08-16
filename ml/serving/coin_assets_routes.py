@@ -29,6 +29,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from shared.storage import signed_url
 from store import (
     Store,
     clear_reference_override,
@@ -39,14 +40,28 @@ from store import (
     set_reference_override,
 )
 
-from .crop_edit import apply_manual_crop, load_crop_edit_context
-from review.review_queue_routes import (
-    CropEditContext,
-    ManualCropPayload,
-    ManualCropResponse,
-    _crop_edit_context_response,
-    _manual_crop_response,
-)
+# Les deux imports ci-dessous tirent cv2 (édition de crop). L'image lean du VPS
+# ne l'embarque pas : au niveau module, ils faisaient échouer l'import de TOUT
+# ce fichier, et `server_serve.py` skippait le routeur entier — y compris
+# `/coins/enrichment-counts` et `/coins/{id}/assets`, qui ne sont pourtant que
+# du SQL. Ils étaient lourds **par voisinage, pas par nature**, et c'est ce qui
+# rendait le compteur d'enrichissement impossible à servir depuis le canonique
+# (B3). On gate donc les deux routes d'édition, pas le fichier.
+try:
+    from .crop_edit import apply_manual_crop, load_crop_edit_context
+    from review.review_queue_routes import (
+        CropEditContext,
+        ManualCropPayload,
+        ManualCropResponse,
+        _crop_edit_context_response,
+        _manual_crop_response,
+    )
+    CROP_EDIT_AVAILABLE = True
+except ImportError:
+    # Pas de repli en 503 : on n'enregistre tout simplement pas ces routes.
+    # Une route qui existe et explose vaut moins qu'une route absente — le front
+    # découvre la capacité par `hasLocalMlApi`, pas par un essai/erreur HTTP.
+    CROP_EDIT_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/coins", tags=["coins"])
@@ -122,6 +137,31 @@ class ReflagResponse(BaseModel):
 # ── Helpers ───────────────────────────────────────────────────────────────
 
 
+def _asset_file_url(row: sqlite3.Row) -> str:
+    """URL d'affichage du crop.
+
+    **Absolue et signée** dès que possible : le chemin relatif
+    `/sources/{source}/assets/{id}/file` est servi par `sources_routes.py`, qui
+    n'est monté QUE sur le ML API local — le canonique ne l'expose pas. Depuis
+    que la galerie lit le canonique (B3, direction 1), un chemin relatif
+    donnerait des images cassées.
+
+    Le front promeut déjà les URLs relatives en absolues via `ML_API` et
+    documente que « le jour où le serveur renverra des URLs absolues, la
+    promotion sera un no-op » — c'est ce jour-là.
+
+    Repli sur le chemin relatif si la signature échoue (creds MinIO absentes,
+    typiquement un test) : mieux vaut une URL que le ML API local sait servir
+    qu'une exception qui ferait échouer toute la page.
+    """
+    if row["storage_path"]:
+        try:
+            return signed_url("enrichment-crops", row["storage_path"])
+        except Exception:  # noqa: BLE001 — creds absentes, MinIO injoignable…
+            logger.warning("signature d'URL impossible pour l'asset %s", row["id"])
+    return f"/sources/{row['source']}/assets/{row['id']}/file"
+
+
 def _row_to_asset(row: sqlite3.Row) -> CoinAsset:
     return CoinAsset(
         id=row["id"],
@@ -129,7 +169,7 @@ def _row_to_asset(row: sqlite3.Row) -> CoinAsset:
         source_ref=row["source_ref"],
         listing_url=row["source_url"],
         listing_title=row["listing_title"],
-        file_url=f"/sources/{row['source']}/assets/{row['id']}/file",
+        file_url=_asset_file_url(row),
         face=row["face"],
         variant_kind=row["variant_kind"],
         resolution_status=row["resolution_status"],
@@ -211,6 +251,7 @@ def list_coin_assets(
         f"""
         SELECT a.id, a.face, a.variant_kind, a.resolution_status,
                a.resolution_confidence, a.resolved_at, a.width, a.height,
+               a.storage_path,
                s.source, s.source_ref, s.source_url, s.listing_title,
                (SELECT decided_by FROM review_queue rq
                  WHERE rq.image_asset_id = a.id
@@ -531,18 +572,18 @@ def _bound_store() -> Store:
     return _store
 
 
-# Consumed by: admin/.../coins/composables/useCoinAssets.ts (fetchAssetCropEditContext)
-@router.get("/assets/{asset_id}/crop-edit-context", response_model=CropEditContext)
-def get_asset_crop_edit_context(asset_id: str) -> CropEditContext:
-    """Contexte de l'éditeur de cercle pour un asset (raw + cercle de départ)."""
-    ctx = load_crop_edit_context(_bound_store(), asset_id)
-    return _crop_edit_context_response(ctx)
+if CROP_EDIT_AVAILABLE:
+    # Consumed by: admin/.../coins/composables/useCoinAssets.ts (fetchAssetCropEditContext)
+    @router.get("/assets/{asset_id}/crop-edit-context", response_model=CropEditContext)
+    def get_asset_crop_edit_context(asset_id: str) -> CropEditContext:
+        """Contexte de l'éditeur de cercle pour un asset (raw + cercle de départ)."""
+        ctx = load_crop_edit_context(_bound_store(), asset_id)
+        return _crop_edit_context_response(ctx)
 
-
-# Consumed by: admin/.../coins/composables/useCoinAssets.ts (manualCropAsset)
-@router.post("/assets/{asset_id}/manual-crop", response_model=ManualCropResponse)
-def manual_crop_asset(asset_id: str, payload: ManualCropPayload) -> ManualCropResponse:
-    """Re-croppe l'asset en place (écrase cache + MinIO + DB au format prod).
-    Statut / eurio_id inchangés."""
-    data = apply_manual_crop(_bound_store(), asset_id, payload.cx, payload.cy, payload.r)
-    return _manual_crop_response(data)
+    # Consumed by: admin/.../coins/composables/useCoinAssets.ts (manualCropAsset)
+    @router.post("/assets/{asset_id}/manual-crop", response_model=ManualCropResponse)
+    def manual_crop_asset(asset_id: str, payload: ManualCropPayload) -> ManualCropResponse:
+        """Re-croppe l'asset en place (écrase cache + MinIO + DB au format prod).
+        Statut / eurio_id inchangés."""
+        data = apply_manual_crop(_bound_store(), asset_id, payload.cx, payload.cy, payload.r)
+        return _manual_crop_response(data)

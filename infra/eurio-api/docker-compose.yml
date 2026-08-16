@@ -63,6 +63,13 @@ services:
       # le conteneur).
       MINIO_ENDPOINT: eurio-minio:9000
       MINIO_USE_SSL: "false"
+      # Hôte utilisé pour SIGNER les URLs destinées au navigateur. Sans lui, les
+      # URLs présignées portent `eurio-minio:9000` — un nom du réseau Docker, que
+      # le navigateur ne résout pas. L'API répond alors 200 avec une URL
+      # parfaitement formée et seule l'image ne s'affiche pas : la panne est
+      # muette côté serveur. Cf. `shared/storage._public_client`.
+      MINIO_PUBLIC_ENDPOINT: eurio-s3.musubi.dev
+      MINIO_PUBLIC_USE_SSL: "true"
     networks:
       - traefik
     labels:

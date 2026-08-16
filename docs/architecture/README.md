@@ -38,6 +38,7 @@ Supabase. Confusion fréquente : `infra/eurio-api/docker-compose.yml` monte
 | `numista-canonical` | Images de référence Numista | lecture **anonyme** via CDN `eurio-images.musubi.dev` |
 | `enrichment-raws` | Photos scrapées brutes (eBay…) | privé, URL signée |
 | `enrichment-crops` | Crops normalisés — entrée d'entraînement | privé, URL signée 6 h |
+| | ⚠️ Les URLs signées destinées au **navigateur** doivent l'être avec l'hôte public (`MINIO_PUBLIC_ENDPOINT`) : le VPS parle à MinIO par le réseau Docker, et une URL signée avec `eurio-minio:9000` est inaffichable — sans aucune erreur côté serveur | |
 | `model-artifacts` | Modèles de l'APK (2 `.tflite`, centroïdes, meta) — ADR-004, depuis le 2026-08-16 | privé |
 | `eurio-db` | **Legacy** — transferts de réplique, remplacé en R2 par `db_routes.py`. Retrait prévu en phase 5 de `data-layer-unification` | privé |
 

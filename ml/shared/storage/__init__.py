@@ -56,6 +56,32 @@ def public_url(storage_key: str) -> str:
 
 
 _s3_client = None
+_s3_public_client = None
+
+
+def _endpoint_url(host: str, use_ssl_default: str = "true", ssl_var: str = "MINIO_USE_SSL") -> str:
+    """`MINIO_ENDPOINT` est host-only (ex. « eurio-s3.musubi.dev ») par
+    compatibilité SDK (le SDK Go de MinIO refuse un schéma/chemin). boto3 veut
+    une URL complète — on la reconstruit ici."""
+    if "://" in host:
+        return host
+    use_ssl = os.environ.get(ssl_var, use_ssl_default).lower() == "true"
+    return f"{'https' if use_ssl else 'http'}://{host}"
+
+
+def _build_client(endpoint: str):
+    import boto3
+    from botocore.client import Config
+
+    return boto3.client(
+        "s3",
+        endpoint_url=endpoint,
+        aws_access_key_id=os.environ["MINIO_ACCESS_KEY"],
+        aws_secret_access_key=os.environ["MINIO_SECRET_KEY"],
+        # Force path-style addressing — virtual-host style requires a
+        # wildcard cert per bucket-host, which we don't set up.
+        config=Config(s3={"addressing_style": "path"}),
+    )
 
 
 def _client():
@@ -66,27 +92,33 @@ def _client():
     """
     global _s3_client
     if _s3_client is None:
-        import boto3
-        from botocore.client import Config
-
-        endpoint = os.environ.get("MINIO_ENDPOINT", S3_ENDPOINT)
-        # MINIO_ENDPOINT is host-only (e.g. "eurio-s3.musubi.dev") for SDK
-        # compatibility (MinIO Go SDK rejects URLs with scheme/path). boto3
-        # however needs a full URL — reconstruct it here from MINIO_USE_SSL.
-        if "://" not in endpoint:
-            use_ssl = os.environ.get("MINIO_USE_SSL", "true").lower() == "true"
-            endpoint = f"{'https' if use_ssl else 'http'}://{endpoint}"
-
-        _s3_client = boto3.client(
-            "s3",
-            endpoint_url=endpoint,
-            aws_access_key_id=os.environ["MINIO_ACCESS_KEY"],
-            aws_secret_access_key=os.environ["MINIO_SECRET_KEY"],
-            # Force path-style addressing — virtual-host style requires a
-            # wildcard cert per bucket-host, which we don't set up.
-            config=Config(s3={"addressing_style": "path"}),
-        )
+        _s3_client = _build_client(_endpoint_url(os.environ.get("MINIO_ENDPOINT", S3_ENDPOINT)))
     return _s3_client
+
+
+def _public_client():
+    """Client dédié à la **signature d'URLs destinées à un navigateur**.
+
+    Le VPS parle à MinIO par le réseau Docker interne
+    (`MINIO_ENDPOINT=eurio-minio:9000`) : une URL présignée avec ce client
+    pointe un hôte que le navigateur ne peut pas résoudre. Le symptôme est
+    silencieux — l'API répond 200 avec une URL parfaitement formée, et seule
+    l'image ne s'affiche pas.
+
+    `MINIO_PUBLIC_ENDPOINT` (défaut : `MINIO_ENDPOINT`) porte l'hôte joignable
+    depuis l'extérieur. On ne se repose PAS sur le fait qu'une présignature
+    SigV2 ignore l'en-tête Host : ce serait dépendre d'un repli implicite de
+    boto3 qu'une mise à jour peut basculer en SigV4, où le Host est signé.
+    """
+    global _s3_public_client
+    if _s3_public_client is None:
+        public_host = os.environ.get("MINIO_PUBLIC_ENDPOINT", "").strip()
+        if not public_host:
+            return _client()
+        _s3_public_client = _build_client(
+            _endpoint_url(public_host, ssl_var="MINIO_PUBLIC_USE_SSL")
+        )
+    return _s3_public_client
 
 
 def signed_url(
@@ -99,7 +131,9 @@ def signed_url(
         raise ValueError(
             "Use public_url() for numista-canonical (it's anonymous-readable)."
         )
-    return _client().generate_presigned_url(
+    # `_public_client` : l'URL part vers un navigateur, elle doit porter un hôte
+    # joignable depuis l'extérieur (cf. sa docstring).
+    return _public_client().generate_presigned_url(
         "get_object",
         Params={"Bucket": bucket, "Key": storage_key},
         ExpiresIn=expires_seconds,

@@ -31,7 +31,7 @@ Mémoires liées : `pc-ml-state-artifacts-missing`, `ebay-quota-split-brain-db`,
 |---|---------|----------|------|--------|
 | B1 | Quota eBay split-brain (2 fichiers DB) | 🔴 haute | Bug correctness | ✅ **fixé 2026-08-16** |
 | B2 | Détection sans cap de taille → gel sur images géantes | 🔴 haute | Bug perf/robustesse | ✅ **fixé 2026-07-08** |
-| B3 | Compteur enrichissement lit le local, review écrit le VPS | 🟠 moyenne | Bug incohérence | 🔴 **à trancher** — le correctif proposé repose sur une prémisse fausse (cf. §B3) |
+| B3 | Compteur enrichissement lit le local, review écrit le VPS | 🟠 moyenne | Bug incohérence | ✅ **fixé 2026-08-16** — direction 1, tranchée par le PO (cf. §B3) |
 | B4 | Pas de vue détail depuis `lab/cohorts` (run-id tronqué) | 🟡 UX | Manque feature | ✅ **fixé 2026-08-16** |
 | B5 | Reprise `process_downloaded` reapée en « orphan run » (pid non réclamé) | 🔴 haute | Bug correctness | ✅ **fixé 2026-07-08** |
 | B6 | Reprise re-broie le backlog `zero_crops` (skip idempotent incomplet) | 🟠 moyenne | Bug efficacité/UX | ✅ **fixé 2026-07-08**, corrigé 2026-08-16 (voir §B6) |
@@ -171,7 +171,46 @@ Ne PAS se reposer sur le cap crop tardif. Ajouter un garde-fou de log si une ima
 
 ---
 
-## B3 — Compteur d'enrichissement (local) ≠ écriture review (VPS) 🟠
+## B3 — Compteur d'enrichissement (local) ≠ écriture review (VPS) 🟠 ✅ FIXÉ 2026-08-16
+
+> **Direction 1 tranchée par le PO.** Compteurs, galerie **et** reflag passent au
+> canonique (`eurioApi`), comme les métadonnées et la file de review. Trois choses
+> manquaient pour que ce soit possible — le rebranchement front n'était que la
+> dernière :
+>
+> 1. **Gating fin de `coin_assets_routes`.** Ses deux imports lourds (`crop_edit` et
+>    `review.review_queue_routes`, tous deux cv2) ne servent qu'aux **deux** routes
+>    d'édition de crop, en fin de fichier. Au niveau module, ils faisaient échouer
+>    l'import de tout le fichier et le VPS skippait le routeur entier. Ils sont
+>    maintenant enveloppés, et les deux routes lourdes ne sont **enregistrées que si**
+>    cv2 est là. Pas de repli en 503 : une route absente vaut mieux qu'une route qui
+>    existe et explose — le front découvre la capacité via `hasLocalMlApi`.
+> 2. **Les URLs d'images.** `file_url` valait `/sources/{source}/assets/{id}/file`, une
+>    route que le canonique n'expose pas. Il renvoie désormais une **URL S3 signée
+>    absolue** (le bucket `enrichment-crops` est privé — c'est le pattern déjà
+>    documenté). Le front anticipait exactement ça : son `promoteUrl` devient un no-op,
+>    comme son commentaire le prévoyait depuis le début.
+> 3. **Un défaut latent, découvert en chemin** : le VPS signait ses URLs avec
+>    `MINIO_ENDPOINT=eurio-minio:9000`, un nom du réseau Docker que **le navigateur ne
+>    résout pas**. Les crops de la review étaient donc déjà cassés en mode hébergé, en
+>    silence : l'API répond 200 avec une URL parfaitement formée, seule l'image
+>    manque. `shared/storage._public_client` signe avec `MINIO_PUBLIC_ENDPOINT`
+>    (`eurio-s3.musubi.dev`), ajouté au compose. On ne s'est **pas** reposé sur le fait
+>    qu'une présignature SigV2 ignore l'en-tête Host : ce serait dépendre d'un repli
+>    implicite de boto3 qu'une montée de version peut basculer en SigV4.
+>
+> **Conséquence assumée** (celle que la direction 1 portait dès l'origine) : les crops
+> produits localement en `--no-push` n'apparaissent qu'une fois poussés au canonique.
+>
+> **Le reflag change de camp aussi** — et c'est une correction, pas un effet de bord :
+> sous Direction A le canonique est le writer unique, donc un reflag écrit en local
+> n'était jamais vu par la file de review, lue depuis le VPS.
+>
+> ⚠️ **Déploiement couplé** : tant que `eurio-api` n'est pas reconstruit, le front
+> (local comme hébergé) reçoit des 404 sur ces deux routes. Backend d'abord.
+>
+> 6 tests ajoutés, dont la garde qui rend la direction possible — le module doit
+> s'importer sans cv2 — vérifiée par mutation.
 
 **Symptôme.** En review manuelle (`/review/manual`), valider des crops n'augmente **jamais** le
 nombre d'images d'enrichissement affiché dans `coins` (badge liste + `total` de la gallery).

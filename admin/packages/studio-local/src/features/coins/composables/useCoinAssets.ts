@@ -3,12 +3,20 @@
 //   GET  /coins/{eurio_id}/assets?include_unresolved=&limit=&offset=
 //   POST /coins/assets/reflag-needs-review
 //
-// Le `file_url` retourné est relatif (`/sources/<source>/assets/<id>/file`)
-// — on le promeut en absolu via ML_API au moment du parse, comme
-// `useDinoSuggestions` ou `useReviewApi`. Quand on basculera vers un
-// backend S3 distant (cf. doc kickoff storage), le serveur renverra
-// déjà des URLs absolues : la promotion sera no-op, pas de breaking.
+// B3 (direction 1, 2026-08-16) : compteurs, galerie et reflag lisent/écrivent le
+// CANONIQUE (`eurioApi`), comme les métadonnées de la pièce et la file de review.
+// Avant, le compteur lisait le ML API local pendant que la review écrivait sur le
+// VPS : valider un crop n'incrémentait jamais le badge.
+//
+// Conséquence assumée : les crops produits localement en `--no-push` n'apparaissent
+// qu'une fois poussés au canonique.
+//
+// Le `file_url` est désormais une URL S3 signée **absolue** — `promoteUrl` devient
+// un no-op, exactement comme ce fichier l'avait anticipé. Les routes Dino et
+// l'édition de crop restent sur ML_API : elles sont lourdes (cv2) et absentes de
+// l'image lean du VPS.
 
+import { eurioApi } from '@/shared/api/eurio-api'
 import { ML_API } from '@/features/training/composables/useTrainingApi'
 import { HAS_LOCAL_ML_API } from '@/shared/config/deploy-target'
 
@@ -84,18 +92,13 @@ export async function fetchCoinAssets(
   eurioId: string,
   opts: { includeUnresolved?: boolean; limit?: number; offset?: number } = {},
 ): Promise<CoinAssetsPage> {
-  if (!HAS_LOCAL_ML_API) return { eurio_id: eurioId, total: 0, assets: [], next_offset: null }
   const params = new URLSearchParams()
   if (opts.includeUnresolved) params.set('include_unresolved', 'true')
   params.set('limit', String(opts.limit ?? 60))
   params.set('offset', String(opts.offset ?? 0))
-  const resp = await fetch(
-    `${ML_API}/coins/${encodeURIComponent(eurioId)}/assets?${params.toString()}`,
+  const body = await eurioApi.get<CoinAssetsPage>(
+    `/coins/${encodeURIComponent(eurioId)}/assets?${params.toString()}`,
   )
-  if (!resp.ok) {
-    throw new Error(`fetchCoinAssets failed: ${resp.status}`)
-  }
-  const body = (await resp.json()) as CoinAssetsPage
   return {
     ...body,
     assets: body.assets.map((a) => ({ ...a, file_url: promoteUrl(a.file_url) })),
@@ -105,24 +108,22 @@ export async function fetchCoinAssets(
 /** Compteur global eurio_id → n_enrichment, pour les badges sur la
  *  liste des coins. Une seule query côté ML — coût ~ms. */
 export async function fetchEnrichmentCounts(): Promise<Record<string, number>> {
-  if (!HAS_LOCAL_ML_API) return {}
-  const resp = await fetch(`${ML_API}/coins/enrichment-counts`)
-  if (!resp.ok) return {}
-  return (await resp.json()) as Record<string, number>
+  try {
+    return await eurioApi.get<Record<string, number>>('/coins/enrichment-counts')
+  } catch {
+    return {}   // badge absent plutôt qu'une liste de coins en erreur
+  }
 }
 
 export async function reflagAssetsNeedsReview(
   assetIds: string[],
 ): Promise<ReflagResponse> {
-  const resp = await fetch(`${ML_API}/coins/assets/reflag-needs-review`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ asset_ids: assetIds }),
+  // Écriture → canonique, comme la décision de review. Sous Direction A,
+  // `eurio-api` est le writer unique : un reflag écrit en local ne serait jamais
+  // vu par la file de review, qui est lue depuis le VPS.
+  return await eurioApi.post<ReflagResponse>('/coins/assets/reflag-needs-review', {
+    asset_ids: assetIds,
   })
-  if (!resp.ok) {
-    throw new Error(`reflagAssetsNeedsReview failed: ${resp.status}`)
-  }
-  return (await resp.json()) as ReflagResponse
 }
 
 // ─── Références Dino (improvement-loop B) ─────────────────────────────────

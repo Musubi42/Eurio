@@ -70,6 +70,45 @@ def test_signed_url_calls_boto_for_private_bucket():
     assert call.kwargs["ExpiresIn"] == 60
 
 
+def test_signed_url_signs_with_the_public_endpoint(monkeypatch):
+    """L'URL part vers un navigateur : elle doit porter l'hôte PUBLIC.
+
+    Sur le VPS, `MINIO_ENDPOINT` vaut `eurio-minio:9000` — un nom du réseau
+    Docker. Une URL signée avec ce client est parfaitement formée, renvoyée en
+    200, et pourtant inaffichable : la panne ne se voit que dans le navigateur.
+    """
+    monkeypatch.setenv("MINIO_ENDPOINT", "eurio-minio:9000")
+    monkeypatch.setenv("MINIO_USE_SSL", "false")
+    monkeypatch.setenv("MINIO_PUBLIC_ENDPOINT", "eurio-s3.musubi.dev")
+    monkeypatch.setenv("MINIO_PUBLIC_USE_SSL", "true")
+    monkeypatch.setattr(storage, "_s3_public_client", None)
+
+    seen: dict[str, str] = {}
+
+    def _fake_build(endpoint: str):
+        seen["endpoint"] = endpoint
+        fake = MagicMock()
+        fake.generate_presigned_url.return_value = f"{endpoint}/signed"
+        return fake
+
+    monkeypatch.setattr(storage, "_build_client", _fake_build)
+    url = signed_url("enrichment-crops", "ebay/run-1/a.png")
+
+    assert seen["endpoint"] == "https://eurio-s3.musubi.dev"
+    assert url.startswith("https://eurio-s3.musubi.dev")
+    assert "eurio-minio" not in url
+
+
+def test_public_client_falls_back_to_the_internal_one(monkeypatch):
+    """Sans `MINIO_PUBLIC_ENDPOINT` (Mac/PC : l'endpoint est déjà public), on ne
+    construit pas un second client pour rien."""
+    monkeypatch.delenv("MINIO_PUBLIC_ENDPOINT", raising=False)
+    monkeypatch.setattr(storage, "_s3_public_client", None)
+    sentinel = MagicMock()
+    with patch.object(storage, "_s3_client", sentinel):
+        assert storage._public_client() is sentinel
+
+
 # ─── local_cache ────────────────────────────────────────────────────────────
 
 
