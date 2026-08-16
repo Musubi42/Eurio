@@ -316,11 +316,19 @@ async function onRecrop(c: CohortFunnelCoin) {
         </details>
 
         <!-- Badge run live (visible uniquement si un run eBay tourne) -->
-        <div v-if="liveRun" class="live-badge">
+        <!-- B4 : lien vers la page détail, qui affiche funnel/searches/listings
+             en direct. L'id est tronqué à 8 pour l'affichage seulement — le
+             lien porte l'id complet, sans quoi la page ne trouverait rien. -->
+        <RouterLink
+          v-if="liveRun"
+          :to="`/sources/ebay/runs/${liveRun.id}`"
+          class="live-badge"
+          title="Voir le détail du run (funnel, recherches, listings)"
+        >
           <Loader2 class="h-3 w-3 animate-spin" />
           run {{ liveRun.id.slice(0, 8) }} · {{ liveRun.current_step ?? 'init' }}
           <span class="font-mono">+{{ liveRun.n_raws_added }} raws · +{{ liveRun.n_crops_added }} crops</span>
-        </div>
+        </RouterLink>
 
         <!-- Barre d'action scrape cohort -->
         <div class="mt-3 flex flex-wrap items-center gap-3">

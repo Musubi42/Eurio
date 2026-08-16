@@ -12,7 +12,7 @@ import hashlib
 import os
 from pathlib import Path
 
-from shared.api_quota import DEFAULT_DB, QuotaTracker
+from shared.api_quota import QuotaTracker
 
 _SOURCE = "numista"
 _WINDOW = "monthly"
@@ -26,7 +26,7 @@ def _key_hash(key: str) -> str:
 class KeyManager:
     """Pick the best available Numista key and track its quota."""
 
-    def __init__(self, db_path: Path = DEFAULT_DB) -> None:
+    def __init__(self, db_path: Path | None = None) -> None:
         self._tracker = QuotaTracker(_SOURCE, _WINDOW, _MONTHLY_LIMIT, db_path=db_path)
         self._keys = self._load_keys()
         if not self._keys:

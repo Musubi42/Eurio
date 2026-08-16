@@ -26,7 +26,7 @@ def main() -> int:
     store = Store(db_path)
     conn = store._connection()  # noqa: SLF001
 
-    calls = ebay_calls_today(store)
+    calls = ebay_calls_today()
     avg = estimate_calls_per_eurio_id(store)
 
     print("=" * 60)

@@ -425,6 +425,21 @@ export async function fetchSourceRun(_id: SourceId, runId: string): Promise<RunS
     return await eurioApi.get<RunSnapshot>(`/source-runs/${runId}`)
   } catch (err) {
     if (err instanceof EurioApiError) {
+      // B4 — un run déclenché depuis le drawer lab passe par ML_API (:8042) et
+      // vit donc dans la DB LOCALE : le canonique ne le connaît pas. Sans ce
+      // repli, la page détail d'un run local afficherait une erreur, et le lien
+      // depuis le drawer serait un cul-de-sac. On ne replie que sur 404 — une
+      // 401/500 du canonique doit rester visible telle quelle, sinon on
+      // masquerait une panne d'auth derrière un « run introuvable ».
+      if (err.status === 404) {
+        try {
+          const local = await getViaMlApi<RunSnapshot>(`/source-runs/${runId}`)
+          if (local) return local
+        } catch {
+          // ML API absent (mode hébergé) ou run inconnu des deux côtés :
+          // on retombe sur l'erreur du canonique, plus parlante.
+        }
+      }
       throw new TriggerError(err.status, err.message)
     }
     throw err

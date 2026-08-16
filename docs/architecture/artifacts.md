@@ -85,7 +85,7 @@ peut pas le vérifier depuis le dépôt.*
 | Artefact | Question |
 |---|---|
 | `ml/state/review.db` + `-wal` + `-shm` | Une SQLite **avec ses sidecars WAL** dans git est incohérente par construction. Intentionnel ? |
-| `ml/shared/state/eurio.db` | Tracké, rôle non établi |
+| `ml/shared/state/eurio.db` | ~~Rôle non établi~~ → **élucidé le 2026-08-16** : c'était la DB de quota d'API (table `api_call_log`, seule table du fichier), écrite par un chemin codé en dur qui ignorait `EURIO_DB_PATH` — la cause du bug B1. Le quota vit désormais dans `ml/state/eurio.local.db` (gitignorée). Ce fichier n'est plus lu ; **reste tracké** en attendant que chaque machine ait joué la reprise des compteurs. Le détracker est une décision PO |
 | `ml/state/denom_bench/gold_vitl14.npz` (3,3 Mo) | Cache d'embeddings. Régénérable mais coûteux (recalcul ViT-L/14 sur tout le gold) |
 
 ## Volumes — pour calibrer les attentes

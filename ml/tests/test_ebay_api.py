@@ -74,12 +74,27 @@ def _seed_minimal_referential(store: Store, *, never_count=3, stale_count=2, fre
 
 
 @pytest.fixture()
-def client(tmp_path: Path):
+def quota_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Isole la DB de quota du test.
+
+    Le quota vit dans la DB locale **inscriptible** (`EURIO_LOCAL_STATE_DB`), pas
+    dans le canonique : Mac/PC n'en ont qu'une réplique read-only. Sans ce
+    monkeypatch, les tests écriraient dans la vraie DB de quota de la machine.
+    """
+    import shared.api_quota as api_quota
+
+    path = tmp_path / "quota.db"
+    monkeypatch.setenv("EURIO_LOCAL_STATE_DB", str(path))
+    # Le garde process-wide mémorise les chemins déjà provisionnés ; un tmpdir
+    # neuf à chaque test le contournerait, mais on le vide par sécurité.
+    api_quota._schema_ready.clear()
+    api_quota.ensure_schema(path)
+    return path
+
+
+@pytest.fixture()
+def client(tmp_path: Path, quota_db: Path):
     test_store = Store(tmp_path / "t.db")
-    # api_call_log is provisioned by api_quota.ensure_schema (separate from
-    # state/schema.sql, see api_quota.py) — load it for the test DB.
-    from shared.api_quota import ensure_schema as ensure_quota_schema
-    ensure_quota_schema(tmp_path / "t.db")
     _seed_minimal_referential(test_store)
 
     # Build a minimal FastAPI app — bypass server.py boot which loads
@@ -116,23 +131,53 @@ def test_quota_status_zero_at_start(client: TestClient):
     assert body["avg_calls_per_eurio_id"] == 7.0
 
 
-def test_quota_status_reflects_api_call_log(client: TestClient):
-    """Inserer manuellement des calls dans api_call_log doit se refléter."""
+def _seed_calls(quota_db: Path, n: int) -> None:
+    """Écrit `n` appels eBay du jour dans la DB du quota (celle du tracker)."""
+    import sqlite3
+
     from serving.sources_routes import _today_period
 
-    conn = client.test_store._connection()  # type: ignore[attr-defined]
-    conn.execute(
-        """
-        INSERT INTO api_call_log (source, key_hash, window, period, calls, exhausted, last_call_at)
-        VALUES ('ebay', '', 'daily', ?, 1234, 0, datetime('now'))
-        """,
-        (_today_period(),),
-    )
+    with sqlite3.connect(quota_db) as conn:
+        conn.execute(
+            """
+            INSERT INTO api_call_log (source, key_hash, window, period, calls, exhausted, last_call_at)
+            VALUES ('ebay', '', 'daily', ?, ?, 0, datetime('now'))
+            """,
+            (_today_period(), n),
+        )
+
+
+def test_quota_status_reflects_api_call_log(client: TestClient, quota_db: Path):
+    """Inserer manuellement des calls dans api_call_log doit se refléter."""
+    _seed_calls(quota_db, 1234)
 
     resp = client.get("/sources/ebay/quota-status")
     body = resp.json()
     assert body["calls_today"] == 1234
     assert body["remaining"] == 5000 - 1234
+
+
+def test_quota_status_sees_what_the_tracker_wrote(client: TestClient):
+    """Régression B1 — écrivain et lecteur doivent partager le même fichier.
+
+    C'est le test qui manquait : le compteur s'écrivait dans un troisième
+    `eurio.db` codé en dur pendant que l'endpoint interrogeait le canonique.
+    Résultat en production : « 5000/5000 restants » affiché alors que 4733
+    appels avaient été consommés, et un garde-fou pre-flight qui autorisait un
+    nouveau gros run sur un quota déjà épuisé. On n'insère donc rien à la main
+    ici — on passe par le vrai chemin d'écriture.
+    """
+    from shared.api_quota import QuotaTracker
+
+    tracker = QuotaTracker("ebay", "daily", 5000)
+    for _ in range(3):
+        tracker.record()
+
+    body = client.get("/sources/ebay/quota-status").json()
+    assert body["calls_today"] == 3, (
+        "l'endpoint doit lire la DB où le tracker écrit"
+    )
+    assert body["remaining"] == 4997
 
 
 # ── /sources/ebay/freshness ────────────────────────────────────────────────
@@ -199,20 +244,10 @@ def test_estimate_uses_history_when_3_plus_runs(client: TestClient):
 # ── pre-flight check sur POST /runs ─────────────────────────────────────────
 
 
-def test_trigger_run_returns_409_if_quota_insufficient(client: TestClient):
+def test_trigger_run_returns_409_if_quota_insufficient(client: TestClient, quota_db: Path):
     """Avec moins de 5000-bootstrap*7*1.3 = 4936 quota restant et 100 eurio_ids
     en target, le pre-flight refuse avec 409 quota_insufficient."""
-    from serving.sources_routes import _today_period
-
-    conn = client.test_store._connection()  # type: ignore[attr-defined]
-    # Consomme 4900 calls aujourd'hui → reste 100
-    conn.execute(
-        """
-        INSERT INTO api_call_log (source, key_hash, window, period, calls, exhausted, last_call_at)
-        VALUES ('ebay', '', 'daily', ?, 4900, 0, datetime('now'))
-        """,
-        (_today_period(),),
-    )
+    _seed_calls(quota_db, 4900)   # → reste 100
 
     # Demande un batch de 50 → estimate = 50*7 = 350, *1.3 = 455 > 100 → refuse
     resp = client.post(

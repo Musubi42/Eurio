@@ -772,16 +772,13 @@ def _today_period() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
 
-def ebay_calls_today(conn: sqlite3.Connection) -> int:
-    row = conn.execute(
-        """
-        SELECT COALESCE(SUM(calls), 0) AS n
-          FROM api_call_log
-         WHERE source = 'ebay' AND window = 'daily' AND period = ?
-        """,
-        (_today_period(),),
-    ).fetchone()
-    return int(row["n"] or 0)
+def ebay_calls_today() -> int:
+    """Lu via le `QuotaTracker` qui écrit, pas via le canonique — cf. B1
+    (`docs/work-in-progress/scan-quality/pipeline-findings-and-debt.md`)."""
+    from shared.api_quota import QuotaTracker
+    from sources.market.ebay_client import EBAY_DAILY_LIMIT
+
+    return QuotaTracker("ebay", "daily", EBAY_DAILY_LIMIT).total().calls
 
 
 def _count_group_coins(
@@ -837,7 +834,7 @@ def estimate_calls_per_eurio_id(conn: sqlite3.Connection) -> float:
 
 
 def ebay_quota_status(conn: sqlite3.Connection) -> dict[str, Any]:
-    calls = ebay_calls_today(conn)
+    calls = ebay_calls_today()
     return {
         "calls_today": calls,
         "limit": EBAY_DAILY_QUOTA,

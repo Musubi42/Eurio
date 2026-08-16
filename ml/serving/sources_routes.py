@@ -248,11 +248,13 @@ def trigger_run(
                 },
             )
 
-    adapter = _load_adapter(source_id, store=store)
-    if dry_run and hasattr(adapter, "dry_run"):
-        adapter.dry_run = True
-
     # Pre-flight quota check (D-27) — eBay only, skip if dry_run.
+    #
+    # AVANT `_load_adapter` : le garde est purement local (un compteur SQLite),
+    # alors que charger l'adaptateur exige les credentials et va chercher un
+    # token eBay par le réseau. Refuser un batch trop gros ne doit pas coûter un
+    # aller-retour réseau, et un quota épuisé doit primer sur un défaut de
+    # credentials — c'est la raison la moins chère à diagnostiquer.
     if source_id == "ebay" and not dry_run:
         n = _count_query_coins(store, query)
         if n > 0:
@@ -272,6 +274,10 @@ def trigger_run(
                         ),
                     },
                 )
+
+    adapter = _load_adapter(source_id, store=store)
+    if dry_run and hasattr(adapter, "dry_run"):
+        adapter.dry_run = True
 
     # Pre-flight: open the run synchronously so the caller gets a real
     # run_id (and a clean 409 if anti-double-run trips). The actual
@@ -2074,18 +2080,18 @@ def _today_period() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
 
-def ebay_calls_today(store: Store) -> int:
-    """Total calls eBay sur la période 'daily' du jour courant."""
-    conn = store._connection()  # noqa: SLF001
-    row = conn.execute(
-        """
-        SELECT COALESCE(SUM(calls), 0) AS n
-          FROM api_call_log
-         WHERE source = 'ebay' AND window = 'daily' AND period = ?
-        """,
-        (_today_period(),),
-    ).fetchone()
-    return int(row["n"] or 0)
+def ebay_calls_today() -> int:
+    """Total calls eBay sur la période 'daily' du jour courant.
+
+    Lit par le **même** `QuotaTracker` que celui qui écrit (`EbayClient._request`).
+    Cette fonction interrogeait auparavant le Store canonique, où le tracker
+    n'écrit jamais : le compteur restait à 0 pendant qu'on brûlait le quota, et
+    `check_ebay_quota` autorisait des runs sur un quota déjà épuisé (B1).
+    """
+    from shared.api_quota import QuotaTracker
+    from sources.market.ebay_client import EBAY_DAILY_LIMIT
+
+    return QuotaTracker("ebay", "daily", EBAY_DAILY_LIMIT).total().calls
 
 
 def _count_group_coins(
@@ -2177,7 +2183,7 @@ def check_ebay_quota(store: Store, *, n_eurio_ids: int) -> dict[str, Any]:
     """
     avg = estimate_calls_per_eurio_id(store)
     estimate = int(round(avg * n_eurio_ids))
-    remaining = max(EBAY_DAILY_QUOTA - ebay_calls_today(store), 0)
+    remaining = max(EBAY_DAILY_QUOTA - ebay_calls_today(), 0)
     safe_threshold = estimate * ESTIMATE_SAFETY_FACTOR
     ok = remaining >= safe_threshold
     max_safe = int(remaining / (avg * ESTIMATE_SAFETY_FACTOR)) if avg > 0 else 0
@@ -2204,7 +2210,7 @@ class EbayQuotaStatus(BaseModel):
 @router.get("/ebay/quota-status", response_model=EbayQuotaStatus)
 def ebay_quota_status() -> EbayQuotaStatus:
     store = _store()
-    calls = ebay_calls_today(store)
+    calls = ebay_calls_today()
     return EbayQuotaStatus(
         calls_today=calls,
         limit=EBAY_DAILY_QUOTA,

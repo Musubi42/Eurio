@@ -29,10 +29,10 @@ Mémoires liées : `pc-ml-state-artifacts-missing`, `ebay-quota-split-brain-db`,
 
 | # | Finding | Sévérité | Type | Statut |
 |---|---------|----------|------|--------|
-| B1 | Quota eBay split-brain (2 fichiers DB) | 🔴 haute | Bug correctness | à corriger |
+| B1 | Quota eBay split-brain (2 fichiers DB) | 🔴 haute | Bug correctness | ✅ **fixé 2026-08-16** |
 | B2 | Détection sans cap de taille → gel sur images géantes | 🔴 haute | Bug perf/robustesse | ✅ **fixé 2026-07-08** |
-| B3 | Compteur enrichissement lit le local, review écrit le VPS | 🟠 moyenne | Bug incohérence | à corriger |
-| B4 | Pas de vue détail depuis `lab/cohorts` (run-id tronqué) | 🟡 UX | Manque feature | à câbler |
+| B3 | Compteur enrichissement lit le local, review écrit le VPS | 🟠 moyenne | Bug incohérence | 🔴 **à trancher** — le correctif proposé repose sur une prémisse fausse (cf. §B3) |
+| B4 | Pas de vue détail depuis `lab/cohorts` (run-id tronqué) | 🟡 UX | Manque feature | ✅ **fixé 2026-08-16** |
 | B5 | Reprise `process_downloaded` reapée en « orphan run » (pid non réclamé) | 🔴 haute | Bug correctness | ✅ **fixé 2026-07-08** |
 | B6 | Reprise re-broie le backlog `zero_crops` (skip idempotent incomplet) | 🟠 moyenne | Bug efficacité/UX | ✅ **fixé 2026-07-08** |
 | N1 | Détecteur YOLO mal adapté au domaine eBay (61% zéro-crop) | 🟠 moyenne | Non-opti qualité | à investiguer |
@@ -42,7 +42,40 @@ Mémoires liées : `pc-ml-state-artifacts-missing`, `ebay-quota-split-brain-db`,
 
 ---
 
-## B1 — Quota eBay : split-brain entre deux fichiers `eurio.db` 🔴
+## B1 — Quota eBay : split-brain entre deux fichiers `eurio.db` 🔴 ✅ FIXÉ 2026-08-16
+
+> **Correctif appliqué.** Ni l'une ni l'autre des deux directions proposées ci-dessous
+> telles quelles : « faire respecter `EURIO_DB_PATH` » aurait fait écrire le compteur
+> dans la **réplique read-only** (Direction A : `eurio-api` est le writer unique), donc
+> échouer. Le quota est de l'observabilité **par machine** — il ne voyage pas au
+> canonique. Il vit désormais dans la DB locale inscriptible déjà prévue par l'archi
+> (`store.resolve_local_state_db()`, `EURIO_LOCAL_STATE_DB`, gitignorée), et les
+> lecteurs (`sources_routes.ebay_calls_today`, `sources/repository.ebay_calls_today`)
+> passent par le **même `QuotaTracker`** que l'écrivain au lieu de faire du SQL sur le
+> Store. Les compteurs de l'ancien fichier sont repris une fois, en `INSERT OR IGNORE`
+> — sans ça le mois Numista en cours repartait à zéro et le KeyManager surconsommait
+> les 8 clés jusqu'au 429.
+>
+> **Trouvé en corrigeant** : le garde-fou `check_ebay_quota` s'exécutait **après**
+> `_load_adapter`, qui exige les credentials eBay et va chercher un token par le
+> réseau. Un garde purement local ne doit pas coûter un aller-retour réseau — il passe
+> désormais avant. Effet de bord révélateur : le test
+> `test_trigger_run_returns_409_if_quota_insufficient` ne testait rien (il sortait en
+> 503 avant d'atteindre le garde). Il teste maintenant vraiment le 409.
+>
+> **Test de régression** : `test_quota_status_sees_what_the_tracker_wrote` n'insère
+> rien à la main — il appelle `QuotaTracker.record()` puis lit l'endpoint. C'est le
+> seul test qui aurait attrapé le split-brain.
+>
+> **Reste ouvert** : `ml/shared/state/eurio.db` est encore **tracké dans git** alors
+> que plus personne ne le lit — les compteurs de quota de chaque machine partaient
+> donc dans l'historique. Son rôle, jusqu'ici « non établi » dans
+> `docs/architecture/artifacts.md`, est maintenant identifié : c'était la DB de quota.
+> Le détracker est une décision du PO (supprimer de la donnée), à faire une fois que
+> chaque machine a joué la reprise.
+>
+> L'annexe ci-dessous (estimation « ~N appels » qui ignore les `get_item`
+> d'hydratation, 47 estimés vs 4733 réels) **reste ouverte**.
 
 **Symptôme.** Pendant un gros scrape, le widget affiche « 5000/5000 restants » et le quota eBay
 ne descend jamais, alors que des milliers d'appels sont réellement consommés.
@@ -130,6 +163,29 @@ nombre d'images d'enrichissement affiché dans `coins` (badge liste + `total` de
 
 **Impact.** Le feedback d'enrichissement est faux/muet pour l'opérateur en review.
 
+> ### ⚠️ Vérifié le 2026-08-16 : la direction 1 n'est PAS un rebranchement de front
+>
+> Elle suppose que `eurioApi` sert déjà ces endpoints. Il ne les sert pas :
+>
+> - Log de démarrage du conteneur `eurio-api` :
+>   `routers montés : ['coins', 'sets', 'operations', 'peer_arbitration']` /
+>   `routers skippés : [… "coin_assets (ModuleNotFoundError: No module named 'cv2')"]`.
+>   `coin_assets_routes` importe `.crop_edit` **au niveau module** → cv2 → skip sur
+>   l'image lean. Les deux endpoints sont pourtant du SQL pur : ils sont lourds **par
+>   voisinage, pas par nature**.
+> - L'OpenAPI du VPS ne contient **aucune** route `assets` ni `enrichment`
+>   (une route bidon répond 401 comme les autres : le middleware d'auth répond avant
+>   le routage, donc un 401 ne prouve rien — c'est l'OpenAPI qui tranche).
+> - Et surtout : `file_url` vaut `/sources/{source}/assets/{id}/file`, route **absente
+>   du routeur `sources` lean du VPS**. Lire la galerie depuis le canonique afficherait
+>   des images cassées tant que le canonique ne sait pas servir les octets — or les
+>   assets vivent dans MinIO, donc la vraie réponse est une **URL signée**, pas un
+>   proxy de fichier.
+>
+> La direction 1 coûte donc : gating fin des routes lourdes + une histoire d'URL
+> d'images côté canonique + rebranchement front + déploiement VPS — et fait
+> disparaître les crops locaux `--no-push`. **Décision d'archi, pas correctif.**
+
 **Correctif proposé (2 directions).**
 1. **(recommandé)** Brancher `/coins/enrichment-counts` + `/coins/{id}/assets` sur le **canonique**
    (`eurioApi`), comme les métadonnées et la review. ⚠️ mais alors les crops produits **localement**
@@ -143,7 +199,16 @@ du VPS. La file de review lisant le VPS, ils n'y apparaissent pas. Tension Modè
 
 ---
 
-## B4 — Pas de vue détail temps réel depuis `lab/cohorts` 🟡
+## B4 — Pas de vue détail temps réel depuis `lab/cohorts` 🟡 ✅ FIXÉ 2026-08-16
+
+> **Correctif appliqué**, caveat levé d'abord — sans quoi le lien aurait été un
+> cul-de-sac. `fetchSourceRun` (`useSourceDetail.ts`) se replie sur `ML_API`
+> **uniquement sur 404** du canonique : un run déclenché depuis le drawer lab passe
+> par `:8042` et vit dans la DB locale, que le VPS ne connaît pas. On ne replie pas
+> sur 401/500 — masquer une panne d'auth derrière un « run introuvable » coûterait
+> plus cher que le bug d'origine. Le badge de `CohortDrawerEbay.vue` est devenu un
+> `RouterLink` vers `/sources/ebay/runs/{id}`, avec l'**id complet** (la troncature à
+> 8 reste de l'affichage). `front:typecheck` vert.
 
 **Symptôme.** Le scrape lancé depuis `lab/cohorts/:id` n'affiche qu'un résumé (badge `run fc47cc3c`,
 `+N raws`, `+N crops`) ; pas de détail (funnel, listings, searches) ni de quotas visibles en direct.
