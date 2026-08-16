@@ -28,6 +28,7 @@
 #   eurio-backup.sh stage                 # produit le staging
 #   eurio-backup.sh verify [args...]      # vérifie les invariants du staging
 #   eurio-backup.sh notify-test           # teste les anneaux de notification
+#   eurio-backup.sh drill-ack             # acquitte l'anneau 5 (exercice fait)
 #   eurio-backup.sh help
 #
 # Restauration : voir README-RESTORE.md.
@@ -80,8 +81,26 @@ MIN_FREE_GB="${EURIO_BACKUP_MIN_FREE_GB:-10}"
 # exactement le defaut qu'on corrige.
 NOTIFY_CONF="${EURIO_BACKUP_NOTIFY_CONF:-$SCRIPT_DIR/notify.conf}"
 KUMA_STAGING_URL=""; KUMA_VERIFY_URL=""; HEALTHCHECKS_URL=""; KUMA_DRILL_URL=""
+DRILL_URL=""
 # shellcheck source=/dev/null
 [ -f "$NOTIFY_CONF" ] && . "$NOTIFY_CONF"
+
+# Anneau 5 — l'exercice de restauration a eu lieu.
+#
+# Il vit sur healthchecks.io et non sur Kuma : **Kuma plafonne l'intervalle d'un
+# push monitor à 2 073 600 s (24 jours)** alors que l'exercice est trimestriel.
+# Un monitor Kuma serait donc rouge en permanence — une alerte qui hurle tout le
+# temps ne se lit plus, et c'est exactement la case « Monthly DR Test » jamais
+# cochée depuis novembre 2025 qu'on essaie de remplacer. healthchecks.io accepte
+# jusqu'à 365 jours de période et 30 jours de sursis.
+#
+# `KUMA_DRILL_URL` reste accepté pour ne pas casser une conf existante, mais son
+# monitor n'existait plus côté Kuma (404) — vérifié le 2026-08-16.
+DRILL_FLAVOR="hc"
+if [ -z "$DRILL_URL" ] && [ -n "$KUMA_DRILL_URL" ]; then
+  DRILL_URL="$KUMA_DRILL_URL"
+  DRILL_FLAVOR="kuma"
+fi
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 die() { echo "❌ $*" >&2; exit 1; }
@@ -365,10 +384,27 @@ cmd_notify_test() {
   echo
   notify "$KUMA_STAGING_URL"  down "TEST — ignorer" "eurio-staging"
   notify "$KUMA_VERIFY_URL"   down "TEST — ignorer" "eurio-verify"
-  notify "$KUMA_DRILL_URL"    down "TEST — ignorer" "eurio-drill"
+  notify "$DRILL_URL"         down "TEST — ignorer" "eurio-drill" "$DRILL_FLAVOR"
   notify "$HEALTHCHECKS_URL"  down "TEST — ignorer" "healthchecks (hors site)" hc
   echo
   echo "→ Vérifie Discord, puis relance 'stage' et 'verify' pour repasser au vert."
+}
+
+# Acquitte l'anneau 5 : l'exercice de restauration a eu lieu.
+#
+# Appelé par `infra/backup/drill/smoke.sh` quand TOUS ses contrôles passent —
+# jamais à la main « parce qu'on a bien travaillé ». Le point du dispositif est
+# qu'un exercice raté ou non fait laisse l'anneau silencieux, et que ce silence
+# déclenche l'alerte au bout d'un trimestre.
+cmd_drill_ack() {
+  if [ -z "$DRILL_URL" ]; then
+    echo "   ⚠️  anneau « eurio-drill » non configuré (DRILL_URL dans $NOTIFY_CONF)"
+    echo "      L'exercice n'est surveillé par personne : rien ne signalera son absence"
+    echo "      au trimestre prochain. Voir notify.conf.example §anneau 5."
+    return 1
+  fi
+  notify "$DRILL_URL" up "exercice de restauration réussi le $(date -u +%Y-%m-%d)" \
+         "eurio-drill" "$DRILL_FLAVOR"
 }
 
 cmd_help() {
@@ -380,6 +416,7 @@ case "${1:-help}" in
   stage)          cmd_stage ;;
   verify)         shift; cmd_verify "$@" ;;
   notify-test)    cmd_notify_test ;;
+  drill-ack)      cmd_drill_ack ;;
   help|-h|--help) cmd_help ;;
   *) cmd_help; exit 2 ;;
 esac

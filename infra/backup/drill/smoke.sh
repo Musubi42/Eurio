@@ -94,6 +94,15 @@ else
 fi
 
 echo
-[ $fail -eq 0 ] && echo "✅ niveau 4 : l'application sert la donnée restaurée" \
-                || echo "🔴 niveau 4 : au moins un contrôle a échoué"
+if [ $fail -eq 0 ]; then
+  echo "✅ niveau 4 : l'application sert la donnée restaurée"
+  # Anneau 5 : l'acquittement est ICI, conditionné à la réussite, et jamais à la
+  # main. Un exercice raté ou non fait laisse l'anneau silencieux, et c'est ce
+  # silence qui alertera au trimestre prochain (étape 7 du protocole).
+  echo "=== 5. acquittement de l'anneau eurio-drill ==="
+  "$(dirname "$0")/../eurio-backup.sh" drill-ack || fail=1
+else
+  echo "🔴 niveau 4 : au moins un contrôle a échoué"
+  echo "   L'anneau eurio-drill n'est PAS acquitté : l'exercice ne compte pas."
+fi
 exit $fail

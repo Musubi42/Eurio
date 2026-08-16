@@ -26,10 +26,27 @@ KUMA_VERIFY_URL=""
 HEALTHCHECKS_URL=""
 
 # ── Anneau 5 — l'exercice de restauration trimestriel a eu lieu ──────────────
-# Push monitor Kuma d'intervalle ~100 jours, acquitté uniquement par le script
-# d'exercice. Un rituel humain non surveillé ne se fait pas : la preuve est la
-# case « Monthly DR Test » de /opt/stacks/oim-duplicati/BACKUP_STRATEGY.md,
-# jamais cochée depuis novembre 2025.
+# Check healthchecks.io acquitté UNIQUEMENT par `eurio-backup.sh drill-ack`, que
+# `infra/backup/drill/smoke.sh` appelle quand tous ses contrôles passent. Un
+# rituel humain non surveillé ne se fait pas : la preuve est la case « Monthly
+# DR Test » de /opt/stacks/oim-duplicati/BACKUP_STRATEGY.md, jamais cochée
+# depuis novembre 2025.
+#
+# ⚠️ Pourquoi healthchecks.io et pas Kuma, comme les anneaux 1 et 2 : **Kuma
+# plafonne l'intervalle d'un push monitor à 2 073 600 s (24 jours)**, alors que
+# l'exercice est trimestriel. Le monitor serait rouge en permanence, et une
+# alerte qui hurle tout le temps ne se lit plus — on aurait remplacé une case
+# jamais cochée par un voyant rouge jamais regardé. healthchecks.io accepte
+# jusqu'à 365 jours de période et 30 jours de sursis.
+#
+# À créer : healthchecks.io → « Add Check », nom `eurio-drill`,
+# Period = 90 days, Grace = 30 days, même canal Discord que les autres.
+# Coller ici l'URL de ping (https://hc-ping.com/<uuid>).
+DRILL_URL=""
+
+# Ancienne variable Kuma. Encore acceptée (repli automatique) pour ne pas casser
+# une conf existante, mais son monitor n'existe plus : l'URL répondait
+# `404 Monitor not found or not active` le 2026-08-16. Vider après migration.
 KUMA_DRILL_URL=""
 
 # ── Anneau 3 — la destination a reçu ─────────────────────────────────────────

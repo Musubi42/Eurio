@@ -429,9 +429,15 @@ Ce qui a résisté, et qui compte pour le jour J :
 
 **Ce qui reste :**
 
-- [ ] **Créer le push monitor `eurio-drill` dans Kuma** : son URL répond
-      `404 Monitor not found or not active`. L'anneau 5 n'existe pas, donc l'exercice
-      trimestriel n'est surveillé par personne — le défaut même qu'il devait corriger.
+- [x] **Anneau 5 porté sur healthchecks.io** (D-32) : le monitor Kuma n'existait plus
+      (404). `DRILL_URL` + `eurio-backup.sh drill-ack`, appelé par `drill/smoke.sh`
+      uniquement si tous les contrôles passent. ⏳ **Reste un geste humain** : créer le
+      check `eurio-drill` (Period 90 j, Grace 30 j) et coller son URL dans `notify.conf`.
+- [x] **Portier du téléversement** (D-31) : `infra/backup/pre-upload-gate.py`, monté en
+      lecture seule dans `oim-duplicati`, testé dans ses trois chemins.
+      ⏳ **Reste un geste humain** : ajouter `--run-script-before=/eurio-gate.py` au job
+      17 dans l'interface Duplicati — l'API du serveur refuse le mot de passe de son
+      propre compose (401), il n'y a pas de voie scriptable.
 - [ ] `nixos-rebuild switch` pour que `curl` entre dans le PATH des unités (le repli
       côté script couvre l'intervalle).
 

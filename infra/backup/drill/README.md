@@ -62,6 +62,9 @@ bash infra/backup/drill/smoke.sh "$RESTORED" "$WORK"
 python3 infra/backup/verify_invariants.py "$RESTORED" \
   --baseline "$RESTORED/baseline-manifest.json" --repo-root .
 
+# `smoke.sh` acquitte l'anneau 5 (eurio-drill) lui-même, et seulement si tout
+# passe. Rien à pinguer à la main : un exercice raté doit rester silencieux.
+
 # 8. détruire
 docker compose -f infra/backup/drill/compose.yml --project-directory $WORK down -v
 rm -rf "$WORK" "$RESTORED"

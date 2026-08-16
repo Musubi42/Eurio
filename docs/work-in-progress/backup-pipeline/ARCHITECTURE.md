@@ -169,7 +169,20 @@ détection d'absence appartient à un système extérieur au dispositif surveill
 | 2 | Kuma push `eurio-verify` | niveaux 1-2-3 passés | **sauvegarde réussie mais mauvaise** | Discord |
 | 3 | **Kuma push `eurio-uploaded`** | **le job Duplicati a fini en succès** | **la destination ne reçoit rien** | Discord |
 | 4 | **healthchecks.io** | ping uniquement si tout est vert | **VPS mort, Kuma mort** | Discord |
-| 5 | Kuma push `eurio-drill` (~100 j) | l'exercice trimestriel a eu lieu | le rituel humain oublié | Discord |
+| 5 | **healthchecks.io `eurio-drill`** (90 j / 30 j de sursis) | l'exercice trimestriel a eu lieu | le rituel humain oublié | Discord |
+
+L'anneau 5 a quitté Kuma (D-26, exécuté en D-32) : Kuma plafonne l'intervalle d'un push
+monitor à 24 jours, un rituel trimestriel y serait rouge en permanence. Il s'acquitte par
+`eurio-backup.sh drill-ack`, que `infra/backup/drill/smoke.sh` appelle **seulement si
+tous ses contrôles passent** — jamais à la main, sinon l'anneau redevient une case à
+cocher.
+
+**Le téléversement a un portier** (D-31) : `infra/backup/pre-upload-gate.py`, monté en
+lecture seule dans le conteneur Duplicati et câblé sur le job par
+`--run-script-before`. Il refuse (code 5 : erreur + ne pas lancer) un staging sans
+manifeste, périmé, ou dont le manifeste décrit un fichier absent. Il ne notifie rien :
+en faisant échouer le job, il supprime le ping de succès, et l'anneau 3 rougit de
+lui-même.
 
 **Des monitors distincts** parce qu'ils échouent pour des raisons différentes et
 appellent des actions différentes : « le staging n'a pas tourné » est un problème

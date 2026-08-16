@@ -593,3 +593,60 @@ réel de la production. Le drill doit donc utiliser les comptes applicatifs.
 *À faire, hors chantier sauvegarde* : donner à `eurio-review` son propre compte MinIO
 scopé, puis **rotater le mot de passe root** — il a fuité dans la surface de deux
 services. Ticket ouvert dans le HANDOFF (§découvertes, n° 10).
+
+---
+
+### D-31 — Duplicati refuse de téléverser un staging sans manifeste
+**2026-08-16 · lot 6, après l'exercice**
+
+`stage` (02:00 UTC), `verify` (02:30) et le job Duplicati (03:00) sont trois
+planifications **indépendantes**. Le 16 août, `stage` a échoué ; il retire
+`manifest.json` avant de commencer, précisément pour qu'un staging interrompu soit
+détectable. Une heure plus tard, Duplicati a téléversé ce staging sans sentinelle et a
+rapporté un succès. **L'exercice de restauration l'a constaté depuis l'autre bout :** la
+version distante la plus récente n'avait pas de manifeste, donc était invérifiable —
+c'est celle qu'on aurait prise en urgence.
+
+*Écarté* : (a) laisser les trois planifications indépendantes et « faire attention » ;
+(b) fusionner stage+verify+upload en une seule unité ; (c) faire échouer `verify` plus
+fort.
+*Pourquoi* : (a) c'est ce qui a produit la panne, et personne ne l'a vue pendant
+neuf mois de jobs morts ; (b) ça remettrait le transport dans notre script alors que
+Duplicati est le moteur unique (D-01) ; (c) `verify` criait déjà correctement — le
+problème n'est pas la détection, c'est que le téléversement ne l'écoute pas.
+*Décision* : un **portier** (`infra/backup/pre-upload-gate.py`) monté en lecture seule
+dans le conteneur Duplicati, câblé sur le job via `--run-script-before`. Il sort en
+**code 5** (erreur + ne pas lancer) si le manifeste est absent, illisible, vieux de plus
+de 36 h, ou s'il décrit un fichier absent.
+
+*L'arbitrage, explicitement* : bloquer peut faire sauter une nuit de sauvegarde. On
+l'accepte parce que la rétention se compte en **30 versions, pas en 30 jours**. Une nuit
+sautée ne consomme aucune version et laisse intacte la dernière bonne ; une nuit
+téléversée par-dessus un staging mort en consomme une et repousse l'archive utilisable
+d'un cran dans l'historique. Sauter est réversible, empiler du vide l'est moins.
+
+*Comment on l'apprend* : le portier ne notifie **rien**. En sortant en erreur, il empêche
+le job de réussir, donc d'émettre son ping de succès — et c'est l'absence de ping qui
+fait rougir l'anneau 3 `eurio-uploaded`. Un détecteur qui porte sa propre alerte est le
+défaut que ce chantier corrige (D-06).
+
+---
+
+### D-32 — L'anneau 5 est un check healthchecks.io, et il s'acquitte tout seul
+**2026-08-16 · lot 6, exécution de D-26**
+
+Exécution de la décision D-26, plus une correction : le monitor Kuma `eurio-drill`
+n'était pas « en pause », il **n'existait plus** — son URL répondait
+`404 Monitor not found or not active`. L'anneau 5 était donc doublement inopérant :
+mauvais outil, et plus de destination.
+
+*Décision* : `DRILL_URL` (healthchecks.io, Period 90 j / Grace 30 j) remplace
+`KUMA_DRILL_URL`, qui reste accepté en repli pour ne pas casser une conf existante.
+L'acquittement est une sous-commande, `eurio-backup.sh drill-ack`, appelée par
+`infra/backup/drill/smoke.sh` **uniquement quand tous ses contrôles passent** — jamais à
+la main.
+
+*Pourquoi le conditionner au résultat* : un acquittement manuel transformerait l'anneau
+en case à cocher, c'est-à-dire en la chose exacte qu'il remplace (la case « Monthly DR
+Test » de `BACKUP_STRATEGY.md`, jamais cochée depuis novembre 2025). Un exercice raté
+laisse l'anneau silencieux, et ce silence alerte au trimestre suivant.
