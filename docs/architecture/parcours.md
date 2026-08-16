@@ -17,7 +17,7 @@
 | 2 | Crop → crops MinIO + `image_assets` | à écrire |
 | 3 | Review / décision humaine → `review_queue` | à écrire |
 | **4** | **Cohorte → itération → bake → entraînement** | **✅ ci-dessous (2026-08-16)** |
-| 5 | Promotion d'un modèle → MinIO → APK | à écrire (ADR-004 fait) |
+| **5** | **Promotion d'un modèle → MinIO → APK** | **🚧 tracé et mesuré (2026-08-16), jamais exécuté — cf. §5 en bas** |
 | 6 | Export catalogue → Supabase → `app_core.db` | à écrire (décrit partiellement dans `README.md`) |
 | 7 | Fetch référentiel (Numista / Wiki) | à écrire |
 | 8 | Scan dans l'app → coffre Room | à écrire |
@@ -413,3 +413,103 @@ au boot de l'API le signale désormais (`serving/server.py`).
 - **À côté** : le détecteur YOLO (dataset de détection + `best.pt`) a sa **propre**
   chaîne, `ml:training-assets:*`, décrite dans [`README.md` §3](./README.md). Il ne
   passe pas par le lab.
+
+---
+
+# Parcours 5 — Promotion d'un modèle → MinIO → APK
+
+> Tracé dans le code et mesuré le **2026-08-16**. ⚠️ **Jamais exécuté** : à la
+> différence du parcours 4, rien ici n'est prouvé par une exécution. Ce qui suit
+> dit ce que le code fait et ce que l'état actuel permet de mesurer — pas ce
+> qu'on a vu marcher.
+
+## Le trajet, et ses quatre outils
+
+```
+ml/lab/iterations/<iid>/          (sortie du parcours 4)
+   │  scripts/promote_iteration.py <iid>
+   │     • copie ATOMIQUE des 3 dossiers → prod/current   (archive l'ancien)
+   │     • écrit promoted_from.json (sha256 de chaque fichier)
+   │     • POUSSE SUPABASE — pas optionnel, cf. ci-dessous
+   ▼
+ml/prod/current/{checkpoints,embeddings,tflite}
+   │  scripts/promote_prod_assets.py     (docs : « PC uniquement »)
+   ▼
+app-android/src/main/assets/{models,data}
+   │  go-task ml:assets:publish  → MinIO `model-artifacts` + réécrit
+   │                                shared/model-assets.json (committé)
+   ▼
+MinIO  ──  go-task ml:assets:fetch  (preBuild Gradle)  ──▶  APK
+```
+
+Quatre étapes, trois outils distincts, dont **un documenté comme obsolète**
+(`ml:deploy` → `ml/output/`, supprimé) et **un troisième chemin** qui fait la même
+chose en silence (`POST /export/deploy`, qui renvoie `200 {count: 0}` si la source
+manque). Cf. `README.md` §« Trois mécanismes de déploiement d'assets ».
+
+## Ce que l'état actuel dit — mesures
+
+**Le modèle en production tient en 23 classes.** Récupéré depuis MinIO par
+`ml:assets:fetch` : `coin_embeddings.json`, 23 entrées, clés = `numista_id`.
+
+**Sa liste de classes est périmée.** `model_meta.json` nomme les classes par des
+slugs qui n'existent plus au référentiel : `at-2eur-standard-2002` (aujourd'hui
+`at-2002-2eur-standard-1st-map`), `es-2016-2eur-old-city-of-segovia…`
+(`…-old-town-…`), `de-2007-2eur-schwerin-castle…`
+(`…-state-of-mecklenburg-vorpommern`). Sans conséquence fonctionnelle immédiate —
+l'app matche sur la clé `numista_id`, stable — mais toute lecture humaine de ce
+fichier est trompeuse.
+
+**Les deux espaces de clés coexistent, et c'est voulu.** Le lab produit
+`coin_embeddings.json` (plat, clés `numista_id` → ce que lit `EmbeddingMatcher`)
+**et** `embeddings_v1.json` (riche, clés `class_id` → ce que pousse Supabase et ce
+que compare le diff de promotion). Vérifié sur une itération réelle. Promouvoir ne
+casserait donc pas le scan.
+
+## Le piège principal : la promotion REMPLACE, elle n'accumule pas
+
+`_atomic_copy` remplace `prod/current` en bloc. Le fichier d'embeddings embarqué
+dans l'APK est donc **substitué**, pas fusionné. Or le nom du drapeau
+`--replace-all` et le vocabulaire du diff (`added` / `kept` / `absent_in_promotion`)
+suggèrent le contraire : `--replace-all` ne pilote QUE la suppression des **lignes
+Supabase** devenues orphelines. Les classes listées dans `absent_in_promotion` sont
+exactement celles qui **disparaîtront de l'APK**, sans que rien ne les retienne.
+
+Mesuré sur l'itération du PC (`03f767f998ef`) contre la production actuelle :
+
+| | classes |
+|---|---|
+| en production aujourd'hui | 23 |
+| itération du PC | **61** (l'expansion design_group, cf. parcours 4 ③) |
+| communes | 20 |
+| **perdues** si on promeut | **3** — `fr-1999-2eur-standard-1st-map`, `fr-2007-2eur-standard-2nd-map`, `es-2010-2eur-standard-juan-carlos-i-2nd-type-2nd-map` |
+| gagnées | 41 |
+
+Le bilan net est très favorable (23 → 61), mais trois pièces reconnues aujourd'hui
+cesseraient de l'être. Ce n'est pas un bug : c'est le contrat du script. C'est un
+**arbitrage produit**, et il doit être fait en le sachant.
+
+## Le second piège : promouvoir écrit en production, sans option
+
+`promote()` appelle `_push_supabase()` **inconditionnellement** (hors `--dry-run`,
+qui ne fait rien du tout). Il n'existe aucun `--no-supabase`. Conséquence : on ne
+peut pas exercer la chaîne locale — copier vers `prod/current`, vérifier les sha,
+rafraîchir les assets — **sans écrire dans la base que consomme l'app en prod**.
+C'est le même couplage que celui qui faisait échouer `build-app-core` quand
+Supabase était injoignable (cf. `README.md`), et il rend le parcours 5 impossible à
+répéter à blanc.
+
+## Ce qu'il faudrait pour l'exercer proprement
+
+1. Un `--no-supabase` (ou `--local-only`) sur `promote_iteration`, pour séparer le
+   geste local du geste de production.
+2. Trancher le sort des 3 classes perdues : les accepter, ou entraîner une
+   itération dont la cohorte les couvre.
+3. Alors seulement : promotion réelle → `promote_prod_assets` → `ml:assets:publish`
+   → rebuild de l'APK → vérifier que le scan reconnaît une pièce nouvellement
+   couverte.
+
+⚠️ Et un détail qui mordra à l'étape 3 : `AppCoreBootstrapper.kt` gate le
+rechargement du catalogue sur `APP_CORE_VERSION`, **constante codée en dur jamais
+incrémentée** (cf. `README.md`). Ça concerne `app_core.db`, pas les embeddings,
+mais c'est le même genre de piège dans la même étape.
