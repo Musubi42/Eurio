@@ -1,0 +1,29 @@
+{
+  "_comment": "\u00c9pingle les artefacts n\u00e9cessaires \u00e0 un r\u00e9-entra\u00eenement. G\u00e9n\u00e9r\u00e9 par `go-task ml:training-assets:publish` \u2014 ne pas \u00e9diter \u00e0 la main. Une machine de compute les rapatrie via `go-task ml:training-assets:fetch`.",
+  "generated_at": "2026-08-16T14:41:25+00:00",
+  "bucket": "model-artifacts",
+  "assets": [
+    {
+      "name": "detection_dataset",
+      "kind": "tree",
+      "dest": "ml/datasets/detection",
+      "key": "training/detection_dataset/5dd7a1b88105/detection_dataset.tar.gz",
+      "content_digest": "5dd7a1b88105b7f24ad8ec441410887a025f2c88ff114449c647cc17e4bbc648",
+      "n_files": 7580,
+      "content_size": 47500604,
+      "object_sha256": "266614bb61f74221412c0bd316c87b12e23aefb20a27239eb954223541b7850b",
+      "object_size": 43453961
+    },
+    {
+      "name": "coin_detector_weights",
+      "kind": "file",
+      "dest": "ml/output/detection/coin_detector/weights/best.pt",
+      "key": "training/coin_detector_weights/ab6e746976ef/best.pt",
+      "content_digest": "ab6e746976ef51ffa72607f4dc6313b30f26a400b05f487d54c724f79bcd99a6",
+      "n_files": 1,
+      "content_size": 6221866,
+      "object_sha256": "ab6e746976ef51ffa72607f4dc6313b30f26a400b05f487d54c724f79bcd99a6",
+      "object_size": 6221866
+    }
+  ]
+}

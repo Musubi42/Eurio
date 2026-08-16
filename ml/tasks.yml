@@ -834,6 +834,24 @@ tasks:
     cmds:
       - "{{.VENV}}/python -m scripts.model_assets fetch"
 
+  # Artefacts d'ENTRAÎNEMENT (dataset de détection + best.pt) — distincts des
+  # artefacts d'APK ci-dessus : une machine de compute en a besoin, un build
+  # Android non. Les mêler ferait télécharger 67 Mo à chaque build.
+  training-assets:status:
+    desc: "Dataset de détection + poids : compare le disque au manifeste shared/training-assets.json"
+    cmds:
+      - "{{.VENV}}/python -m scripts.training_assets status"
+
+  training-assets:publish:
+    desc: "Publie le dataset de détection et best.pt vers MinIO, réécrit le manifeste (--dry-run possible)"
+    cmds:
+      - "{{.VENV}}/python -m scripts.training_assets publish {{.CLI_ARGS}}"
+
+  training-assets:fetch:
+    desc: "Rapatrie le dataset de détection et best.pt épinglés par le manifeste (à jouer sur la machine de compute)"
+    cmds:
+      - "{{.VENV}}/python -m scripts.training_assets fetch"
+
   cache-stats:
     desc: "Show local cache size + n_files (~/.cache/eurio)."
     cmds:

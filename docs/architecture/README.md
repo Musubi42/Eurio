@@ -110,12 +110,38 @@ le bucket `model-artifacts`, épinglés par le manifeste committé
 Un `fetch` dont les sha correspondent ne touche ni le réseau ni les credentials.
 Publier : `go-task ml:assets:publish`. État : `go-task ml:assets:status`.
 
-**`best.pt` et le dataset de détection restent dans git**, et c'est délibéré : **git
-sert encore de transport Mac→PC** pour eux (cf. `d1f5812 "Add .pt and .tflite for PC"`
-et `docs/work-in-progress/HANDOFF-pc-full-training.md`, qui prescrit `git reset --hard`).
-**Conséquence à connaître avant tout nettoyage** : les sortir de git sans remplacement
-casse le PC **silencieusement** au prochain `reset --hard`.
-Étape 3 de [ADR-004](../adr/004-artefacts-binaires-hors-git.md), non faite.
+**Les artefacts d'entraînement ont leur propre chaîne depuis le 2026-08-16** : le dataset
+de détection et `best.pt` sont publiés dans `model-artifacts` sous le préfixe `training/`,
+épinglés par `shared/training-assets.json`, et rapatriés par
+`go-task ml:training-assets:fetch`. Publier : `ml:training-assets:publish`. État :
+`ml:training-assets:status`.
+
+Chaîne **distincte** de celle des modèles d'APK, et c'est voulu : un build Android n'a
+aucun besoin des 47 Mo du dataset, donc `training-assets` n'est **pas** branché sur
+`preBuild`. C'est la machine de compute qui l'appelle.
+
+> ⚠️ **Ce que disait ce paragraphe avant, et qui était faux.** « `best.pt` et le dataset
+> de détection restent dans git, git sert de transport Mac→PC pour eux. » Mesuré le
+> 2026-08-16 : git ne contenait que **3 788 labels `.txt`** (14,7 Mo) et `best.pt`
+> (5,9 Mo) — **aucune image**. Les 1 908 images (47,5 Mo de contenu, dont nos 30
+> négatifs irremplaçables) n'étaient dans **aucun** transport et n'existaient que sur le
+> disque du Mac ; les labels arrivaient au PC sans ce qu'ils annotent. Le risque n'était
+> donc pas « sortir `best.pt` de git casse le PC », il était « une panne de disque perd
+> les négatifs ».
+
+Étape 3 de [ADR-004](../adr/004-artefacts-binaires-hors-git.md) : **mécanisme livré et
+vérifié sur le Mac** (reconstruction depuis un dataset absent et un cache vide, 7 580
+fichiers identiques octet à octet). Reste le `git rm` des labels et de `best.pt`, à ne
+faire qu'après un `training-assets:fetch` réussi **depuis le PC**.
+
+**Identité d'un artefact-arbre.** Elle ne vient pas du sha de l'archive mais d'un
+`content_digest` calculé sur le contenu seul — sha256 des paires
+`<chemin relatif>\0<sha256 du fichier>` triées. Raison : un tar n'est pas reproductible
+par défaut, donc l'adresser par le sha de son archive créerait une clé neuve à chaque
+publication d'un contenu identique. L'archive est tout de même produite de façon
+déterministe (vérifié par test) — dont un piège trouvé à l'occasion : `gzip.GzipFile`
+écrit le nom du `fileobj` dans l'en-tête, ce qui faisait dépendre le sha de l'archive du
+nom du fichier temporaire. Il faut passer `filename=""`.
 
 ### 4. Photos éditées Mac → PC — MANUEL, one-shot
 

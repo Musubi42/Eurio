@@ -1,6 +1,13 @@
-train: /Users/musubi42/Documents/Musubi42/Eurio/ml/datasets/detection/coin_detect/train/images
-val: /Users/musubi42/Documents/Musubi42/Eurio/ml/datasets/detection/coin_detect/val/images
-test: /Users/musubi42/Documents/Musubi42/Eurio/ml/datasets/detection/coin_detect/test/images
+# Dataset de détection mono-classe — « où est la pièce », pas « quelle pièce ».
+# Chemins RELATIFS au dossier de ce fichier : le dataset est un artefact
+# rapatriable (`go-task ml:training-assets:fetch`), il ne peut donc pas
+# supposer un emplacement absolu. Les chemins absolus précédents pointaient
+# vers un ancien layout du dépôt et cassaient sur toute machine.
+path: .
+train: train/images
+val: val/images
+
+# Pas de split `test` : il était déclaré mais n'a jamais existé sur disque.
 
 nc: 1
 names: ['coin']

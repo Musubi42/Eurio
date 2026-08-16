@@ -32,7 +32,7 @@ chaque `fetch`. `app_core.db`, `capture_coins.csv` et les WebP restent sans sha.
 
 | Artefact | Taille | Produit par | Consommé par | Perte |
 |---|---|---|---|---|
-| `ml/output/detection/coin_detector/weights/best.pt` | 5,9 Mo | `ml/training/train_detector.py` (YOLOv8-nano) | **prod** : `ml/vision/normalize_snap.py`, + évals | 🟡 régénérable (dataset re-téléchargeable, voir plus bas) mais **pas bit-à-bit** |
+| `ml/output/detection/coin_detector/weights/best.pt` | 5,9 Mo | `ml/training/train_detector.py` (YOLOv8-nano) | **prod** : `ml/vision/normalize_snap.py`, + évals | 🟢 depuis le 2026-08-16 : publié dans MinIO, épinglé par `shared/training-assets.json`, rapatrié par `go-task ml:training-assets:fetch`. Un ré-entraînement, lui, ne le refait **pas bit-à-bit** |
 | `ml/output/…/tflite_out/best_*.tflite` (6 variantes) | 32 Mo | `train_detector.py --export` | **aucun consommateur** | 🟢 — **retirés de git le 2026-08-14** (`05be2dd`) |
 
 **Ce que fait `best.pt`** : YOLOv8-nano **mono-classe** (`names: ['coin']`). Il ne
@@ -55,11 +55,18 @@ circulaires et produit des dizaines de faux candidats. Raison écrite dans
 métallique », pas l'identification. S'entraîner sur des pièces non-euro *aide* la
 généralisation.
 
+> ✅ **Depuis le 2026-08-16, l'ensemble du dossier `ml/datasets/detection/` est un
+> artefact rapatriable** — 7 580 fichiers, 47,5 Mo de contenu, publié dans
+> `model-artifacts` sous `training/detection_dataset/<content_digest[:12]>/` et épinglé
+> par `shared/training-assets.json`. `go-task ml:training-assets:fetch` le reconstruit
+> intégralement. Vérifié : dataset supprimé + cache vidé → reconstruction de 7 580
+> fichiers identiques octet à octet.
+
 | Élément | Perte | Détail |
 |---|---|---|
-| Les 1878 images Roboflow | 🟢 | Re-téléchargeables. ⚠️ **le script de re-fetch a été retiré du repo** (`ml/tasks.yml`) — seule l'URL du `data.yaml` reste |
-| Les **30 `negative_*.jpg`** (2,5 Mo) | 🔴 | Nos images sans pièce, pour réduire les faux positifs. **Leurs 30 labels sont trackés dans git, pas leurs images.** |
-| Les **3788** `.txt` de labels | 🟡 | Trackés dans git, répartis sur les **deux** vues (`coin_detect/` 1908 + `roboflow_raw/` 1880). Inutiles sans les images |
+| Les 1878 images Roboflow | 🟢 | Dans l'artefact. Re-téléchargeables par ailleurs, mais ⚠️ **le script de re-fetch a été retiré du repo** — seule l'URL du `data.yaml` reste |
+| Les **30 `negative_*.jpg`** (2,5 Mo) | 🟢 | ~~🔴~~ Nos images sans pièce, pour réduire les faux positifs. Elles étaient sur **un seul disque** (leurs labels dans git, pas elles) ; elles sont maintenant dans l'artefact MinIO, donc dans la chaîne de sauvegarde |
+| Les **3788** `.txt` de labels | 🟢 | Dans l'artefact, avec les images qu'ils annotent. Encore trackés dans git en double — le `git rm` attend une vérification depuis le PC |
 
 🔴 **Sauvegarde des 30 négatifs** : `eurio-detection-negatives-20260814.tar.gz`
 (2,5 Mo, sha256 `85ba18d584c929c361b822d8852647170b52ab2cc54562bf00861aa0b4cd98a6`),
@@ -67,8 +74,10 @@ avec les `data.yaml` et README Roboflow pour la provenance. → pCloud.
 *Ce fichier vit **hors du repo** (`~/Documents/Musubi42/eurio-backups/`) : un agent ne
 peut pas le vérifier depuis le dépôt.*
 
-⚠️ `coin_detect/data.yaml` contient des **chemins absolus périmés**
-(`…/Musubi42/Eurio/…` au lieu de `…/Musubi42/bizz/Eurio/…`) : cassé sur le Mac actuel.
+~~⚠️ `coin_detect/data.yaml` contient des **chemins absolus périmés**~~ → **corrigé le
+2026-08-16**, en même temps que le passage en artefact : un dataset rapatriable ne peut
+pas supposer un emplacement absolu. Les chemins sont maintenant relatifs (`path: .`).
+Le fichier déclarait aussi un split `test:` qui **n'a jamais existé sur disque** — retiré.
 
 ## Données primaires — à garder en git, jamais régénérables
 
