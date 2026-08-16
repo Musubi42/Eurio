@@ -680,7 +680,11 @@ def create_iteration(cohort_id: str, payload: IterationCreatePayload) -> dict:
             _get_store(),
             replace(cohort, status="frozen", frozen_at=_iso_now()),
         )
-    return _iteration_with_run_metrics(row)
+    # Relecture : `created_at` est stampé par le writer (SQLite local, ou le
+    # canonique sous flip), pas par la row en mémoire — la renvoyer telle quelle
+    # afficherait « créée le — » pour une itération qui a bien une date.
+    persisted = _get_store().get_iteration(row.id)
+    return _iteration_with_run_metrics(persisted or row)
 
 
 @router.post("/cohorts/{cohort_id}/iterations/{iteration_id}/launch-training")
