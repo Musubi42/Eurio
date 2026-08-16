@@ -513,3 +513,48 @@ répéter à blanc.
 rechargement du catalogue sur `APP_CORE_VERSION`, **constante codée en dur jamais
 incrémentée** (cf. `README.md`). Ça concerne `app_core.db`, pas les embeddings,
 mais c'est le même genre de piège dans la même étape.
+
+## Exercice #3 — la chaîne locale, parcourue pour la première fois (2026-08-16)
+
+`--no-supabase` ajouté, la chaîne a été exercée **sur le PC** jusqu'à la frontière
+de la production :
+
+- `promote_iteration 03f767f998ef --no-supabase` → **`ml/prod/current/` existe
+  enfin**, avec `promoted_from.json` : itération, run `46a6db10`, benchmark,
+  verdict, auteur, horodatage et **150 fichiers empreintés en sha256**. C'est la
+  première promotion de l'histoire du dépôt.
+- `promote_prod_assets --dry-run` → annonce les 3 copies attendues
+  (`eurio_embedder_v1.tflite`, `coin_embeddings.json`, `model_meta.json`).
+  **`coin_detector.tflite` n'en fait pas partie** — le détecteur n'est couvert par
+  aucune promotion, ce que `README.md` disait déjà.
+
+⚠️ **Piège de lecture confirmé au passage** : le diff de promotion annonce
+`n_new: 24` (espace `class_id`) alors que l'APK recevra **61 entrées** (espace
+`numista_id`). Les deux fichiers d'embeddings n'ont pas la même cardinalité — un
+opérateur qui lit « 24 » et voit 61 lignes arriver a raison de s'inquiéter, et tort
+de conclure à un bug.
+
+## Pourquoi on s'est arrêté là : la promotion est bloquée EN AMONT
+
+Publier cette itération ferait passer l'APK de 23 à 61 entrées — et lui ferait
+**perdre trois classes** :
+
+| Perdue | Groupe de design | Crops eBay disponibles |
+|---|---|---|
+| `fr-1999-2eur-standard-1st-map` | `fr-2euro-standard-t1` | 4 |
+| `fr-2007-2eur-standard-2nd-map` | `fr-2euro-standard-t1` | 1 |
+| `es-2010-2eur-standard-juan-carlos-i-2nd-type-2nd-map` | `es-2euro-juan-carlos-i-t2` | 4 |
+
+Vérifié : ces deux groupes sont **réellement absents** de l'itération, pas
+seulement leurs clés `numista_id`. Ce sont des **2 € standard**, c'est-à-dire les
+pièces les plus courantes en circulation — les perdre serait une régression
+produit visible, pas un détail de catalogue.
+
+Et on ne peut pas simplement les ajouter à la cohorte : avec 4, 1 et 4 crops eBay,
+elles sont **sous le plancher du préflight** (≥ 10 crops eBay pour ne pas être en
+`warn`, et les `warn` bloquent la création d'itération). La promotion est donc
+bloquée par un **manque d'enrichissement**, en amont — c'est-à-dire par les
+parcours 1 et 2.
+
+C'est le premier endroit où les parcours se chaînent vraiment : *le modèle ne peut
+pas être déployé parce que le scrape n'a pas assez nourri trois classes.*
