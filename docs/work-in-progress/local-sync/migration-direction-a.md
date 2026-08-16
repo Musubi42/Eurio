@@ -86,6 +86,7 @@ reste un `UPDATE image_assets` local hors-VPS.
 | `review/peer_arbitration_routes.py` | idem + | décision humaine | Y | → write API VPS |
 | `serving/review_queue/writes.py` | idem | décision humaine | Y | → write API VPS |
 | `serving/lab_routes.py` | eurio_id, quality_reason, resolution_status, training_eligible | décision humaine (funnel) | Y | → write API VPS (chemin chaud : write-behind) |
+| `serving/lab_routes.py` — **dimensions** (cohortes, itérations) | `experiment_cohorts`, `experiment_iterations` | authoring lab | Y | ✅ **FAIT 2026-08-16** — `serving/lab_writes.py` : sous le flip, écriture au canonique (autoritative, 502 si refusée) + rafraîchissement incrémental de la réplique (~1 s). Hors flip : local + push F09 inchangé |
 | `serving/coin_assets_routes.py` | eurio_id, resolution_status | décision humaine | Y | → write API VPS |
 | `serving/crop_edit.py` | bbox_json, detection_method, dims, phash, storage_status | recrop manuel | Y | → write API VPS (bulk : le PNG part sur la même clé MinIO ; seules les colonnes voyagent) |
 | `sources/_base/steps/enqueue.py` | quality_reason, resolution_status, training_eligible | pipeline (routage) | Y | → write API VPS (résultat d'ingest) |
@@ -153,6 +154,29 @@ C2.
   read-only (rafraîchi par pull-replica / transport §6.2). Retirer toute
   capacité d'écriture locale. Livrable : Mac/PC lisent, n'écrivent jamais.
   *Vérif : ouverture en `mode=ro` ne casse rien.*
+
+  > **Dimensions lab : ✅ fait le 2026-08-16.** Le flip était **déjà actif** dans
+  > le devShell (`flake.nix` exporte `EURIO_DB_READONLY=1` + la réplique) alors
+  > que `lab_routes` écrivait encore en local : créer une cohorte rendait 503
+  > « Route non encore reroutée ». Le Lab était donc en lecture seule dans le
+  > shell standard — regarder oui, créer non. Corrigé par
+  > `serving/lab_writes.py`, seul endroit qui décide où part une écriture.
+  >
+  > Trois choses apprises en le faisant :
+  > 1. **Le canonique doit être autoritatif, pas best-effort.** Le push F09
+  >    existant était un « après coup » tolérant à l'échec ; sous le flip, un
+  >    échec de push signifie que l'écriture n'existe **nulle part**. Elle rend
+  >    donc 502, jamais 200.
+  > 2. **Le piège du no-op.** `push_cohort` est documenté comme no-op quand
+  >    aucun canonique n'est configuré. Sous le flip, cela aurait rendu 200 sans
+  >    rien écrire nulle part — le pire des deux mondes. Garde explicite (503).
+  > 3. **Read-your-writes est abordable** parce que `sqlite3_rsync` est
+  >    incrémental (**~1 s** mesuré) et fourni par le devShell. Le repli HTTP
+  >    (snapshot ~156 Mo, ~20 s) n'est délibérément **pas** pris en ligne.
+  >
+  > Reste hors périmètre : les écritures de *résultats de compute* (runs
+  > d'entraînement, bench) et le funnel par-asset, qui ont leur propre transport
+  > (`/ingest/*`, déjà routé côté front).
 - **C6 — Retirer l'infra event-log** (§6.4) : `image_state_events` colonnes
   sync (op_id/machine/hlc), `sync_outbox`, `sync_tombstones`,
   `sync_orphan_events`, worker debounce, badge, `ml:db:sync*`,
