@@ -1,8 +1,28 @@
-"""Build the offline core (C3) from the Supabase app-facing projection (C2).
+"""Build the offline core (C3) from the canonical eurio.db, via the projection
+builders — the same ones that feed Supabase (C2).
 
-C3 is a strict SUBSET of Supabase: the light + stable data the app/proto can
-hold offline. By reading from Supabase (not eurio.db) we guarantee C3 ⊆ C2 by
-construction. Two serializations of the SAME projection are emitted:
+C3 is a strict SUBSET of C2: the light + stable data the app/proto can hold
+offline.
+
+**Pourquoi ça ne lit plus Supabase.** La version précédente lisait la
+projection Supabase pour garantir `C3 ⊆ C2` *par construction*. Le raisonnement
+était juste, mais il obtenait la propriété au lieu de la vérifier, et mettait
+la **prod sur le chemin critique du build** : le 2026-08-16, le projet Supabase
+étant injoignable, `go-task ml:build-app-core` échouait alors que toute la
+matière était intacte sur le VPS. Un incident de disponibilité de la façade de
+prod ne doit jamais empêcher de reconstruire un artefact de préprod.
+
+La propriété est conservée, mais **calculée** : `--verify` compare le core
+produit à ce que Supabase expose et échoue sur violation. C'est la règle que
+`docs/work-in-progress/backup-pipeline/DONNEES.md` a tirée de `storage_status` —
+*les invariants doivent être calculés, jamais lus*.
+
+`C3 ⊆ C2` reste vrai par un chemin plus court : les deux naissent des **mêmes
+builders** (`export.app_export.builders`), C3 n'étant qu'un sous-ensemble de
+colonnes et de lignes de ce qu'ils produisent. Une transformation, deux
+consommateurs.
+
+Two serializations of the SAME projection are emitted:
 
     admin/packages/proto/public/data/app_core.json   # proto Vue (browser, nested per coin)
     app-android/src/main/assets/app_core.db           # Android (prebuilt SQLite, normalized)
@@ -21,8 +41,15 @@ What's NOT in the core (online / on-demand):
     - catalogue prices (kind='catalogue' — "compléter sa collection" feature)
 
 Usage::
-    python -m export.build_app_core            # write both artifacts
+    python -m export.build_app_core                  # canonique, aucun réseau
+    python -m export.build_app_core --verify         # + contrôle C3 ⊆ Supabase
     python -m export.build_app_core --json-only
+
+Codes de sortie : 0 ok · 1 erreur · 3 violation de `C3 ⊆ C2` · 4 Supabase
+injoignable alors que `--verify` était demandé. Les codes 3 et 4 sont
+distincts **exprès** : « la prod contredit le canonique » et « la prod ne
+répond pas » demandent des gestes opposés, et les confondre est ce qui a fait
+passer une panne de disponibilité pour un problème de build.
 """
 
 from __future__ import annotations
@@ -84,8 +111,87 @@ def _group_by(rows: list[dict], key: str) -> dict[str, list[dict]]:
     return out
 
 
+# ---------------------------------------------------------------------------
+# Source canonique — les builders de la projection, sans réseau
+# ---------------------------------------------------------------------------
+
+# Colonnes retenues par table pour C3. `None` = toutes celles du builder.
+# C'est la définition du sous-ensemble : ce qui n'est pas là ne part pas dans
+# l'APK. Doit rester aligné avec les `select` PostgREST de `fetch_core`, dont
+# `_subset_signature` vérifie l'équivalence.
+_CORE_COLS: dict[str, list[str]] = {
+    "coins": _COIN_COLS,
+    "shared_reverse": ["id", "label", "asset_name", "map_version", "applies_to"],
+    "design_group": ["id", "designation", "designation_i18n_json"],
+    "mint": ["id", "country", "mark", "city", "display_name"],
+    "coin_mint_release": ["id", "parent_type_id", "mint_year", "mint_id", "issue_type", "mintage"],
+    "coin_credit": ["eurio_id", "role", "name", "position"],
+    "coin_topic": ["eurio_id", "lang", "topic"],
+    "coin_name_i18n": ["eurio_id", "lang", "title"],
+    "coin_description_i18n": ["eurio_id", "lang", "title", "description"],
+    "coin_price": [
+        "eurio_id", "grade", "p_low", "p_mid", "p_high", "currency", "source", "sampled_at",
+    ],
+}
+
+
+def _project(rows: list[dict], cols: list[str]) -> list[dict]:
+    return [{c: r.get(c) for c in cols} for r in rows]
+
+
+def fetch_core_from_canonical(con: Any) -> dict[str, Any]:
+    """Construit C3 depuis eurio.db en réutilisant les builders de la projection.
+
+    Aucun réseau. Les filtres reproduisent exactement ceux que les requêtes
+    PostgREST appliquaient : langues hors-ligne, prix de marché seulement.
+    """
+    from export.app_export.run import _BUILDERS, _IMPORT_FAILED
+
+    def rows(table: str) -> list[dict]:
+        if table in _IMPORT_FAILED:
+            # Un builder cassé produirait un core silencieusement amputé — la
+            # panne muette que ce dépôt collectionne. On refuse de construire.
+            raise SystemExit(
+                f"error: le builder `{table}` a échoué à l'import "
+                f"({_IMPORT_FAILED[table]}). Le core serait incomplet."
+            )
+        builder = _BUILDERS.get(table)
+        if builder is None:
+            raise SystemExit(f"error: aucun builder pour `{table}`.")
+        return builder(con)
+
+    langs = set(_OFFLINE_LANGS)
+    core = {
+        "coins": _project(rows("coin"), _CORE_COLS["coins"]),
+        "shared_reverse": _project(rows("shared_reverse"), _CORE_COLS["shared_reverse"]),
+        "design_group": _project(rows("design_group"), _CORE_COLS["design_group"]),
+        "mint": _project(rows("mint"), _CORE_COLS["mint"]),
+        "coin_mint_release": _project(rows("coin_mint_release"), _CORE_COLS["coin_mint_release"]),
+        "coin_credit": _project(rows("coin_credit"), _CORE_COLS["coin_credit"]),
+        "coin_topic": _project(
+            [r for r in rows("coin_topic") if r.get("lang") in langs], _CORE_COLS["coin_topic"]
+        ),
+        "coin_name_i18n": _project(
+            [r for r in rows("coin_name_i18n") if r.get("lang") in langs],
+            _CORE_COLS["coin_name_i18n"],
+        ),
+        "coin_description_i18n": _project(
+            [r for r in rows("coin_description_i18n") if r.get("lang") in langs],
+            _CORE_COLS["coin_description_i18n"],
+        ),
+        "coin_price": _project(
+            [r for r in rows("coin_price") if r.get("kind") == "market"], _CORE_COLS["coin_price"]
+        ),
+    }
+    return core
+
+
 def fetch_core(client: httpx.Client) -> dict[str, Any]:
-    """Fetch the C3 subset from Supabase as plain row lists."""
+    """Fetch the C3 subset from Supabase as plain row lists.
+
+    Conservé comme **référence de comparaison** pour `--verify`, plus comme
+    source de build.
+    """
     lang_filter = f"in.({','.join(_OFFLINE_LANGS)})"
     return {
         "coins": _fetch(client, "coin", ",".join(_COIN_COLS)),
@@ -234,19 +340,136 @@ def build_sqlite(core: dict[str, Any], path: Path) -> None:
         con.close()
 
 
+# ---------------------------------------------------------------------------
+# Vérification C3 ⊆ C2 — calculée, pas supposée
+# ---------------------------------------------------------------------------
+
+# `id` est une PK surrogate régénérée à chaque rafraîchissement complet de la
+# projection : la comparer opposerait deux numérotations, pas deux contenus.
+_SURROGATE = {"coin_credit", "coin_topic", "coin_price", "coin_mint_release"}
+
+
+def _norm(v: Any) -> Any:
+    """Ramène SQLite et JSON PostgREST sur un terrain commun.
+
+    Sans ça, `8.5` (float SQLite) et `"8.5"` (numeric PostgREST sérialisé en
+    chaîne) compteraient comme différents et la vérification crierait au loup
+    sur des lignes identiques.
+    """
+    if v is None:
+        return None
+    if isinstance(v, bool):
+        return int(v)
+    if isinstance(v, (int, float)):
+        return round(float(v), 6)
+    s = str(v)
+    try:
+        return round(float(s), 6)
+    except ValueError:
+        pass
+    # Horodatages : trois écritures pour le même instant se croisent ici —
+    # `2026-05-29`, `2026-05-29T…Z` (SQLite) et `2026-05-29T…+00:00`
+    # (PostgREST). Sans cette normalisation la vérification signalait 1 651
+    # fausses divergences sur `coin_price.sampled_at` ; un contrôle qui crie au
+    # loup finit par ne plus être lu. La date nue devient minuit UTC, ce qui est
+    # exactement ce que fait Postgres en la promouvant en timestamptz.
+    if len(s) >= 10 and s[4] == "-" and s[7] == "-" and (len(s) == 10 or s[10] in "T "):
+        try:
+            dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        except ValueError:
+            return s
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc).isoformat()
+    return s
+
+
+def _rowset(rows: list[dict], cols: list[str], drop_id: bool) -> set[tuple]:
+    keys = [c for c in cols if not (drop_id and c == "id")]
+    return {tuple(_norm(r.get(c)) for c in keys) for r in rows}
+
+
+def verify_subset(core: dict[str, Any], remote: dict[str, Any]) -> list[str]:
+    """Renvoie la liste des violations. Vide = `C3 ⊆ C2` tient."""
+    problems = []
+    for table, cols in _CORE_COLS.items():
+        drop_id = table in _SURROGATE
+        local = _rowset(core[table], cols, drop_id)
+        dist = _rowset(remote[table], cols, drop_id)
+        missing = local - dist
+        status = "ok" if not missing else f"{len(missing)} ligne(s) absente(s) de Supabase"
+        print(f"    {table:24} local={len(local):>6}  prod={len(dist):>6}  {status}")
+        if missing:
+            ex = sorted(str(m)[:90] for m in list(missing)[:2])
+            problems.append(f"{table}: {len(missing)} ligne(s) hors projection — ex. {ex}")
+    return problems
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--json-only", action="store_true", help="Skip the SQLite artifact.")
+    ap.add_argument(
+        "--verify",
+        action="store_true",
+        help="Vérifie que le core produit est inclus dans la projection Supabase.",
+    )
+    ap.add_argument(
+        "--source",
+        choices=("canonical", "supabase"),
+        default="canonical",
+        help="Source du core. `supabase` ne sert qu'à reproduire l'ancien comportement.",
+    )
     args = ap.parse_args()
 
-    client = get_pg_client()
-    try:
-        core = fetch_core(client)
-    finally:
-        client.close()
+    if args.source == "canonical":
+        from export.app_export.io import get_sqlite_con
+
+        con = get_sqlite_con()
+        try:
+            core = fetch_core_from_canonical(con)
+        finally:
+            con.close()
+        print("  source: canonique (eurio.db via les builders de la projection)")
+    else:
+        client = get_pg_client()
+        try:
+            core = fetch_core(client)
+        finally:
+            client.close()
+        print("  source: Supabase")
 
     counts = {k: len(v) for k, v in core.items()}
     print("  fetched:", ", ".join(f"{k}={v}" for k, v in counts.items()))
+
+    if args.verify:
+        print("  vérification C3 ⊆ Supabase :")
+        try:
+            client = get_pg_client()
+            try:
+                remote = fetch_core(client)
+            finally:
+                client.close()
+        except Exception as exc:  # noqa: BLE001
+            print(
+                f"    Supabase injoignable ({exc.__class__.__name__}) — vérification "
+                f"IMPOSSIBLE, pas invalidée.\n"
+                f"    Les artefacts n'ont pas été écrits : on ne publie pas un core "
+                f"non vérifié quand la vérification a été demandée.",
+                file=sys.stderr,
+            )
+            return 4
+        problems = verify_subset(core, remote)
+        if problems:
+            print("\n  VIOLATION de C3 ⊆ C2 — artefacts NON écrits :", file=sys.stderr)
+            for p in problems:
+                print(f"    · {p}", file=sys.stderr)
+            print(
+                "\n  La projection Supabase est en retard sur le canonique. "
+                "Rejoue `python -m export.app_export.run --apply`.",
+                file=sys.stderr,
+            )
+            return 3
+        print("    ✓ inclusion vérifiée")
 
     payload = build_json(core)
     _JSON_PATH.parent.mkdir(parents=True, exist_ok=True)

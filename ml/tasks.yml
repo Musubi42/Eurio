@@ -303,9 +303,14 @@ tasks:
       - "{{.VENV}}/python -m export.build_shared_reverse_assets"
 
   build-app-core:
-    desc: "Build the offline core (C3) from Supabase → app_core.json (proto) + app_core.db (Android prebuilt SQLite)."
+    desc: "Build the offline core (C3) depuis le CANONIQUE → app_core.json (proto) + app_core.db (Android prebuilt SQLite). Aucun réseau : une panne de Supabase ne bloque plus le build."
     cmds:
       - "{{.VENV}}/python -m export.build_app_core {{.CLI_ARGS}}"
+
+  build-app-core:verify:
+    desc: "Idem, mais vérifie en plus que le core produit est inclus dans la projection Supabase (C3 ⊆ C2). Sort en 3 sur violation, en 4 si Supabase est injoignable."
+    cmds:
+      - "{{.VENV}}/python -m export.build_app_core --verify {{.CLI_ARGS}}"
 
   build-app-core-qa:
     desc: "Build the QA core (3rd profile): hermetic frozen subset from eurio.db → app_core_qa.json + bundled webps + Android src/qa SQLite. Offline, no Supabase."

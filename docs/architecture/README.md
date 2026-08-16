@@ -170,24 +170,49 @@ le dit : *« le transfert se fait une fois »*. Pas de synchro continue.
 
 ```
 eurio.db (VPS)
-  │  ml/export/app_export/run.py  →  push PostgREST
-  ▼
-Supabase  (projection app-facing v2 : table `coin`)
-  │  ml/export/build_app_core.py  (LIT Supabase, pas eurio.db)
-  ├─▶ app_core.db   → app-android/src/main/assets/   (COMMITÉ)
-  └─▶ app_core.json → admin/packages/proto/public/data/   (gitignoré, régénéré)
+  │
+  ├─ export/app_export/builders/*  ─┬─▶ run.py --apply  →  push PostgREST  →  Supabase (C2)
+  │   (LA transformation, une seule) │                                          │
+  │                                  └─▶ build_app_core.py  (sous-ensemble)     │
+  │                                        ├─▶ app_core.db   → assets Android (COMMITÉ)
+  │                                        └─▶ app_core.json → proto (gitignoré)
+  │                                                    ▲
+  └────────────────────────────────────────────────────┴── --verify : contrôle C3 ⊆ C2
 ```
 
 Le script écrit donc dans **deux modules voisins** — c'est précisément le couplage qui
 bloque un découpage en dépôts séparés (cf. [ADR-007](../adr/007-pas-de-split-eurio-avant-artefacts.md)).
 
-**Pourquoi passer par Supabase et pas par `eurio.db` ?** C'est délibéré : le docstring
-de `build_app_core.py` l'assume — *« C3 is a strict SUBSET of Supabase. By reading from
-Supabase (not eurio.db) we guarantee C3 ⊆ C2 by construction »*. Le catalogue offline ne
-peut donc jamais contenir quelque chose que l'app ne retrouverait pas en ligne.
+**Pourquoi ça ne lit plus Supabase (changé le 2026-08-16).** L'ancienne version lisait la
+projection pour garantir `C3 ⊆ C2` *par construction*. Le raisonnement était juste, mais il
+**obtenait** la propriété au lieu de la **vérifier**, et mettait la prod sur le chemin
+critique du build : Supabase étant injoignable ce jour-là, `go-task ml:build-app-core`
+échouait alors que toute la matière était intacte sur le VPS.
 
-**Tension connue** : ça fait de Supabase un maillon **obligatoire** du build, ce qui
-contredit « Supabase = legacy en cours de retrait » (`CLAUDE.md`). Non tranché.
+Aujourd'hui les deux artefacts naissent du canonique, **par les mêmes builders** que ceux
+qui alimentent Supabase. `C3 ⊆ C2` tient donc par un chemin plus court — une
+transformation, deux consommateurs — et la propriété est **calculée** à la demande :
+
+```bash
+go-task ml:build-app-core          # canonique, aucun réseau
+go-task ml:build-app-core:verify   # + contrôle C3 ⊆ C2
+```
+
+Codes de sortie **3** (violation) et **4** (Supabase injoignable) sont distincts exprès :
+« la prod contredit le canonique » et « la prod ne répond pas » appellent des gestes
+opposés, et les confondre est ce qui a fait passer une panne de disponibilité pour un
+problème de build.
+
+> **Ce que la vérification a trouvé dès sa première exécution** : la projection Supabase
+> est **en retard sur le canonique** — 5 `design_group` publiés contre **46** au canonique,
+> 56 pièces dont le `design_group_id` est nul en prod, 120 prix absents. Le travail sur les
+> design-groups n'avait jamais été poussé, et rien ne le signalait. Remédiation :
+> `python -m export.app_export.run --apply`.
+
+⚠️ **Piège de comparaison, réglé mais à connaître si on en écrit une autre** : SQLite et
+PostgREST écrivent le même instant de trois façons (`2026-05-29`, `…T…Z`, `…T…+00:00`).
+Sans normalisation, la vérification signalait **1 651 fausses divergences** sur
+`coin_price.sampled_at`. Un contrôle qui crie au loup finit par ne plus être lu.
 
 ⚠️ `AppCoreBootstrapper.kt` gate le rechargement sur `APP_CORE_VERSION`, **constante
 codée en dur, valeur 1, jamais incrémentée**. Un `app_core.db` au contenu neuf sans
