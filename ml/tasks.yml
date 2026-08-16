@@ -852,6 +852,16 @@ tasks:
     cmds:
       - "{{.VENV}}/python -m scripts.training_assets publish {{.CLI_ARGS}}"
 
+  freshness:
+    desc: "De quand date ce que j'ai sous la main ? Local seulement, instantané, sans réseau ni secrets. Sort en 2 si quelque chose est en retard."
+    cmds:
+      - "{{.VENV}}/python -m scripts.freshness {{.CLI_ARGS}}"
+
+  freshness:probe:
+    desc: "Idem + interroge le canonique (retard de la réplique) et la prod (retard de la projection). Réseau et secrets requis."
+    cmds:
+      - "{{.VENV}}/python -m scripts.freshness --probe"
+
   training-assets:fetch:
     desc: "Rapatrie le dataset de détection et best.pt épinglés par le manifeste (à jouer sur la machine de compute)"
     cmds:

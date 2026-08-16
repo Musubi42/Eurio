@@ -44,6 +44,37 @@ _BATCH_SIZE = 500
 # SQLite
 # ---------------------------------------------------------------------------
 
+def announce_source(prefix: str = "  ") -> None:
+    """Dit à voix haute quelle base est lue, et crie si ce n'est pas la réplique.
+
+    Vécu le 2026-08-16 : un ``run --apply`` et un ``build-app-core`` lancés hors
+    devShell ont lu ``ml/state/eurio.db`` — la base de travail pré-flip, qui
+    diverge du canonique — et **poussé le résultat en production** sans que rien
+    ne le signale. Les deux bases portent le même schéma et des comptes proches,
+    donc la sortie paraissait normale.
+
+    C'est le piège n°1 du dépôt (« quel fichier ? », cf. le skill
+    `eurio-data-writes`) : hors devShell, ``EURIO_DB_PATH`` n'est pas posé et la
+    résolution retombe sur le défaut. Un export qui alimente la prod doit dire
+    d'où il tire, à chaque fois.
+    """
+    import os
+    import sys as _sys
+
+    is_replica = "replica" in _DB_PATH.name
+    print(f"{prefix}source : {_DB_PATH}", file=_sys.stderr)
+    if not is_replica:
+        env = os.environ.get("EURIO_DB_PATH")
+        print(
+            f"{prefix}⚠️  ce n'est PAS la réplique du canonique."
+            f"{'' if env else '  EURIO_DB_PATH non défini — shell hors direnv ?'}\n"
+            f"{prefix}    Sous Direction A, Mac et PC lisent "
+            f"`ml/state/eurio.replica.db`. Relance dans le devShell "
+            f"(`direnv allow`, ou `nix develop .#mac`) avant de pousser en prod.",
+            file=_sys.stderr,
+        )
+
+
 def get_sqlite_con() -> sqlite3.Connection:
     """Read-only connection to eurio.db (``_DB_PATH``, résolu via ``EURIO_DB_PATH``
     / réplique Direction A ; défaut ``ml/state/eurio.db``), row_factory=Row."""

@@ -422,8 +422,9 @@ def main() -> int:
     args = ap.parse_args()
 
     if args.source == "canonical":
-        from export.app_export.io import get_sqlite_con
+        from export.app_export.io import announce_source, get_sqlite_con
 
+        announce_source()
         con = get_sqlite_con()
         try:
             core = fetch_core_from_canonical(con)

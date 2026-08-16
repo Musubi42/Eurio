@@ -28,12 +28,15 @@ from __future__ import annotations
 import argparse
 import fcntl
 import hashlib
+import json
 import logging
 import os
 import re
 import shutil
 import sqlite3
 import subprocess
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 from client import http as _http
@@ -182,6 +185,53 @@ def pull_replica_rsync(dest: Path | None = None) -> Path:
         lock_fd.close()
 
 
+def _safe_write_sync_receipt(dest: Path, mode: str) -> None:
+    """Enveloppe inconditionnelle : voir la docstring ci-dessous."""
+    try:
+        _write_sync_receipt(dest, mode)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("reçu de synchro non écrit (%s: %s)", exc.__class__.__name__, exc)
+
+
+def _write_sync_receipt(dest: Path, mode: str) -> None:
+    """Note à côté de la réplique quand elle a été synchronisée, et contre quoi.
+
+    Sans ce reçu, la seule mesure de fraîcheur disponible est le mtime du
+    fichier — et il ment : un pull rsync qui n'a **rien** à transférer ne le
+    touche pas, donc une réplique parfaitement à jour paraît vieille.
+
+    **On n'y met délibérément pas le sha du canonique.** C'était l'idée
+    première — comparer l'annonce du serveur au dernier pull à son annonce
+    actuelle pour dire « le canonique a bougé depuis ». Mesuré : ce sha change
+    en moins de 75 s même sans aucune écriture métier, parce que
+    ``pat_tokens.last_used_at`` est mis à jour **à chaque requête
+    authentifiée** — y compris celle qui va chercher le sha. Le marqueur est
+    auto-invalidant : le mesurer change ce qu'il mesure, et le verdict aurait
+    été « en retard » en permanence. Il coûtait en prime un ``VACUUM INTO`` de
+    155 Mo au VPS à chaque pull.
+
+    La fraîcheur métier se mesure ailleurs, sur un agrégat qui ne bouge que
+    quand la donnée bouge (cf. ``scripts.freshness``).
+
+    Best-effort de bout en bout : un reçu manquant dégrade le diagnostic, il ne
+    doit jamais faire échouer un pull qui a réussi. La garde est au **niveau de
+    la fonction entière**, pas seulement autour des I/O : une faute de frappe
+    dans la construction du reçu a fait échouer un pull par ailleurs réussi —
+    un diagnostic ne doit pas pouvoir casser ce qu'il diagnostique.
+    """
+    receipt = {
+        "pulled_at": time.time(),
+        "pulled_at_iso": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "transport": mode,
+        "size_bytes": dest.stat().st_size if dest.exists() else None,
+    }
+    try:
+        path = dest.with_suffix(dest.suffix + ".sync.json")
+        path.write_text(json.dumps(receipt, indent=1) + "\n", encoding="utf-8")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("reçu de synchro non écrit (%s)", exc)
+
+
 def pull_replica_auto(dest: Path | None = None) -> tuple[Path, str]:
     """Transport préféré (rsync incrémental) avec fallback API transparent.
 
@@ -189,10 +239,14 @@ def pull_replica_auto(dest: Path | None = None) -> tuple[Path, str]:
     (launchd/systemd) et du CLI par défaut."""
     if rsync_available():
         try:
-            return pull_replica_rsync(dest), "rsync"
+            path = pull_replica_rsync(dest)
+            _safe_write_sync_receipt(path, "rsync")
+            return path, "rsync"
         except Exception as exc:  # noqa: BLE001 — fallback assumé
             logger.warning("pull rsync échoué (%s) — fallback API", exc)
-    return pull_replica(dest), "api"
+    path = pull_replica(dest)
+    _safe_write_sync_receipt(path, "api")
+    return path, "api"
 
 
 def pull_replica(dest: Path | None = None, *, transport=None, force: bool = False) -> Path:

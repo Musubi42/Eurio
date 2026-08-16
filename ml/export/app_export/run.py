@@ -151,6 +151,9 @@ def run(apply: bool, only: str | None) -> int:
 
     Returns an exit code: 0 = success, 1 = one or more builders failed.
     """
+    from export.app_export.io import announce_source
+
+    announce_source()
     tables = [only] if only else TABLES
     for t in tables:
         if t not in TABLES:
