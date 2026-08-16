@@ -75,8 +75,13 @@ def _import_legacy_rows(conn: sqlite3.Connection, db_path: Path) -> None:
     """
     if not _LEGACY_DB.exists() or _LEGACY_DB.resolve() == db_path.resolve():
         return
+    # Chemin NU, pas un nom de fichier URI (`file:…?mode=ro`) : la connexion
+    # principale est ouverte sans `uri=True`, donc SQLITE_OPEN_URI est désactivé
+    # et SQLite prendrait la chaîne au pied de la lettre — l'ATTACH échouerait
+    # systématiquement, et l'`except` en ferait un no-op silencieux. On ne lit
+    # que des SELECT sur cette base ; le read-only ne vaut pas un import mort.
     try:
-        conn.execute("ATTACH DATABASE ? AS legacy", (f"file:{_LEGACY_DB}?mode=ro",))
+        conn.execute("ATTACH DATABASE ? AS legacy", (str(_LEGACY_DB),))
     except sqlite3.Error:
         return  # legacy illisible/verrouillé : jamais bloquant pour le tracker
     try:
@@ -90,10 +95,21 @@ def _import_legacy_rows(conn: sqlite3.Connection, db_path: Path) -> None:
                 "SELECT source, key_hash, window, period, calls, exhausted, last_call_at "
                 "FROM legacy.api_call_log"
             )
+            # Obligatoire AVANT le DETACH : l'INSERT ouvre la transaction
+            # implicite de sqlite3, et un DETACH sous transaction lève
+            # « database legacy is locked ».
+            conn.commit()
     except sqlite3.Error:
         pass
     finally:
-        conn.execute("DETACH DATABASE legacy")
+        try:
+            conn.execute("DETACH DATABASE legacy")
+        except sqlite3.Error:
+            # Un DETACH raté laisse une base attachée sur une connexion qu'on
+            # referme juste après — sans conséquence. Le laisser remonter, en
+            # revanche, ferait échouer `QuotaTracker.__init__`, donc TOUT appel
+            # eBay et Numista.
+            pass
 
 
 def ensure_schema(db_path: Path | None = None) -> None:

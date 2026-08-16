@@ -774,11 +774,18 @@ def _today_period() -> str:
 
 def ebay_calls_today() -> int:
     """Lu via le `QuotaTracker` qui écrit, pas via le canonique — cf. B1
-    (`docs/work-in-progress/scan-quality/pipeline-findings-and-debt.md`)."""
-    from shared.api_quota import QuotaTracker
-    from sources.market.ebay_client import EBAY_DAILY_LIMIT
+    (`docs/work-in-progress/scan-quality/pipeline-findings-and-debt.md`).
 
-    return QuotaTracker("ebay", "daily", EBAY_DAILY_LIMIT).total().calls
+    ⚠️ Ne PAS importer `sources.market.ebay_client` ici pour la limite :
+    `infra/eurio-api/Dockerfile` ne copie pas `ml/sources` dans l'image lean
+    (« On NE copie PAS sources/vision/training »), et ce module tourne sous
+    `server_serve.py`. L'import lèverait `ModuleNotFoundError` à la requête,
+    donc un 500 sur `/sources/ebay/quota-status`. La constante locale
+    `EBAY_DAILY_QUOTA` porte la même valeur.
+    """
+    from shared.api_quota import QuotaTracker
+
+    return QuotaTracker("ebay", "daily", EBAY_DAILY_QUOTA).total().calls
 
 
 def _count_group_coins(

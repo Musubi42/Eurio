@@ -34,7 +34,7 @@ Mémoires liées : `pc-ml-state-artifacts-missing`, `ebay-quota-split-brain-db`,
 | B3 | Compteur enrichissement lit le local, review écrit le VPS | 🟠 moyenne | Bug incohérence | 🔴 **à trancher** — le correctif proposé repose sur une prémisse fausse (cf. §B3) |
 | B4 | Pas de vue détail depuis `lab/cohorts` (run-id tronqué) | 🟡 UX | Manque feature | ✅ **fixé 2026-08-16** |
 | B5 | Reprise `process_downloaded` reapée en « orphan run » (pid non réclamé) | 🔴 haute | Bug correctness | ✅ **fixé 2026-07-08** |
-| B6 | Reprise re-broie le backlog `zero_crops` (skip idempotent incomplet) | 🟠 moyenne | Bug efficacité/UX | ✅ **fixé 2026-07-08** |
+| B6 | Reprise re-broie le backlog `zero_crops` (skip idempotent incomplet) | 🟠 moyenne | Bug efficacité/UX | ✅ **fixé 2026-07-08**, corrigé 2026-08-16 (voir §B6) |
 | N1 | Détecteur YOLO mal adapté au domaine eBay (61% zéro-crop) | 🟠 moyenne | Non-opti qualité | à investiguer |
 | N2 | Anchor bank commémo à couverture partielle (239/630) | 🟡 basse | Non-opti données | à compléter |
 | N3 | Suggestions DINO faibles sur les nouveaux crops eBay (banque review stale/petite) | 🟠 moyenne | Non-opti qualité | à corriger |
@@ -73,6 +73,28 @@ Mémoires liées : `pc-ml-state-artifacts-missing`, `ebay-quota-split-brain-db`,
 > `docs/architecture/artifacts.md`, est maintenant identifié : c'était la DB de quota.
 > Le détracker est une décision du PO (supprimer de la donnée), à faire une fois que
 > chaque machine a joué la reprise.
+>
+> **Corrigé après revue adversariale** (même jour) — trois défauts de la première
+> version du correctif, tous silencieux :
+>
+> 1. La reprise des compteurs **ne s'exécutait jamais** : l'`ATTACH` employait un nom
+>    de fichier URI (`file:…?mode=ro`) sur une connexion ouverte sans `uri=True`, donc
+>    SQLite prenait la chaîne au pied de la lettre. L'échec était avalé par l'`except`
+>    juste en dessous. Reproduit puis corrigé (chemin nu) ; 5 tests dédiés, dont un qui
+>    échoue si l'on remet la forme URI.
+> 2. Le `DETACH` du `finally` **lève** « database legacy is locked » dès que l'ATTACH
+>    réussit, l'`INSERT` ayant ouvert la transaction implicite de sqlite3 — et comme il
+>    était hors `try`, il serait remonté jusqu'à `QuotaTracker.__init__`, tuant **tout**
+>    appel eBay et Numista. `commit()` avant, `DETACH` protégé.
+> 3. `ebay_calls_today` importait `sources.market.ebay_client` pour la limite, or
+>    `infra/eurio-api/Dockerfile` ne copie **pas** `ml/sources` dans l'image lean →
+>    `ModuleNotFoundError` à la requête, donc 500 sur `/sources/ebay/quota-status`.
+>    Constante locale (même valeur).
+>
+> Et un quatrième, de périmètre : le **widget** interrogeait `eurioApi`, c'est-à-dire
+> le VPS — dont le tracker n'enregistre jamais rien, puisque les appels eBay partent de
+> la machine qui scrape. Le garde-fou était corrigé, l'affichage non : le symptôme
+> d'origine survivait à l'écran. `fetchEbayQuotaStatus` passe par `ML_API`.
 >
 > L'annexe ci-dessous (estimation « ~N appels » qui ignore les `get_item`
 > d'hydratation, 47 estimés vs 4733 réels) **reste ouverte**.
@@ -113,6 +135,16 @@ recherches, pas les milliers de `get_item` d'hydratation (47 estimé vs 4733 ré
 > coordonnées (`det_scale`) en fin de fonction. Le crop reste extrait plein-res (coords re-scalées) → qualité
 > intacte. Cas nominal (≤2048, soit 6679/6683 images du run) = no-op strict. Vérifié : l'image 42 Mpx passe
 > de gel (minutes/h) → **3,7 s**, 8 détections en coords plein-res. Reste applicable à tout futur run.
+>
+> **Complété après revue adversariale (2026-08-16)** : la re-projection ne touchait que
+> les `CircleDetection`. Les entrées de `trace` (`cx`, `cy`, `bcx`, `bcy`, `r_final`,
+> `r_bbox`, `r_hough`, `r_polish`, `r_rim`) restaient en espace **détection**, alors que
+> `bench/crop_recovery/common.detect_hint` les lit comme des coordonnées natives — il
+> les compare à des bboxes gold mesurées sur le raw, puis passe le hint à
+> `recover_crop(bgr_original, …)`. L'association gold et le banc de recovery se
+> dégradaient donc en silence, et **uniquement** sur les images au-dessus du cap :
+> exactement les photos vendeur pleine résolution que B2 vise. Deux tests couvrent
+> désormais la re-projection (dont un vérifié par mutation).
 
 
 **Symptôme.** Le job de crop semble « gelé » : process à ~98% CPU (`State=R`), aucun log ni
@@ -209,6 +241,22 @@ du VPS. La file de review lisant le VPS, ils n'y apparaissent pas. Tension Modè
 > plus cher que le bug d'origine. Le badge de `CohortDrawerEbay.vue` est devenu un
 > `RouterLink` vers `/sources/ebay/runs/{id}`, avec l'**id complet** (la troncature à
 > 8 reste de l'affichage). `front:typecheck` vert.
+>
+> **Corrigé après revue adversariale** — la première version du repli était un no-op
+> et la page restait un cul-de-sac, pour deux raisons :
+>
+> 1. **Les chemins diffèrent selon le backend.** Le canonique expose
+>    `/source-runs/{id}` ; `:8042` (`sources_routes.py`, prefix `/sources`) expose
+>    `/sources/{source_id}/runs/{id}`. Le repli visait le chemin canonique côté ML_API
+>    → 404 → repli sans effet, en silence.
+> 2. **Ce n'est pas le snapshot qui bloque la page**, c'est le *breakdown* :
+>    `SourceRunDetailPage.load()` lève sur son échec (le snapshot est explicitement
+>    secondaire). `fetchRunBreakdown` était canonique-only, donc corriger le seul
+>    snapshot ne changeait rien à l'écran.
+>
+> Le repli est devenu un helper partagé, `fetchWithLocalRunFallback(canonique, mlApi)`,
+> utilisé par les deux appels — les deux chemins sont donnés explicitement, précisément
+> parce que les supposer identiques était le bug.
 
 **Symptôme.** Le scrape lancé depuis `lab/cohorts/:id` n'affiche qu'un résumé (badge `run fc47cc3c`,
 `+N raws`, `+N crops`) ; pas de détail (funnel, listings, searches) ni de quotas visibles en direct.
@@ -244,6 +292,24 @@ du CLI. Édition de code (reload) pendant une reprise = run tué.
 process CLI/thread courant, vivant) → le reaper l'épargne. `import os` ajouté.
 
 ## B6 — Reprise re-broie le backlog `zero_crops` 🟠 ✅ FIXÉ 2026-07-08
+
+> **Deux régressions corrigées le 2026-08-16 (revue adversariale).** Le skip était trop
+> large et rendait muettes deux surfaces entières :
+>
+> 1. **Les scripts `recrop_*` étaient neutralisés.** `recrop_zero_score_guided.py`
+>    sélectionne `WHERE crop_status = 'zero_crops'` et passe exactement ces ids à
+>    `run_detect_crop` — c'est toute sa raison d'être. Chaque cible tombait sur le
+>    nouveau `continue` : `0 récupéré sur N`, sans la moindre erreur.
+>    `recrop_ebay_orphans.py` était touché aussi (il cible `pipeline_state='downloaded'`,
+>    or une image zéro-crop n'atteint jamais `'cropped'`, donc elles y dominent).
+>    → paramètre `retry_zero_crops`, que les deux scripts passent.
+> 2. **`error` n'aurait jamais dû être skippé.** Son unique écrivain est le
+>    `FileNotFoundError` « raw absent de MinIO » — une indisponibilité réseau, pas un
+>    verdict du détecteur. Le skipper à vie faisait qu'un hoquet MinIO excluait ces
+>    images définitivement, sans reprise possible. Seul `zero_crops` est déterministe.
+>
+> 5 tests ajoutés (`test_detect_crop_resume.py`), dont une garde de contrat sur les deux
+> scripts : s'ils cessent de passer l'opt-out, ils redeviendraient inopérants en silence.
 
 **Symptôme.** À la reprise (`--crop-pending`), le CLI ne semble « faire que des 0 crops » et les
 compteurs ne bougent pas — l'opérateur croit que c'est cassé et le tue.

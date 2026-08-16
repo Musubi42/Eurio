@@ -93,7 +93,12 @@ def run_detect_crop(
     run: RunHandle,
     source_id: str,
     source_image_ids: dict[str, str],
+    retry_zero_crops: bool = False,
 ) -> DetectCropResult:
+    """`retry_zero_crops=True` désactive le skip B6 pour les images déjà tentées
+    sans crop. Les scripts de récupération (`recrop_*`) ciblent **précisément**
+    ces images : sans cet opt-out, le skip les viderait de leur objet et ils
+    rapporteraient 0 récupéré sur N sans qu'aucune erreur ne se lève."""
     n_crops_added = 0
     n_skipped = 0
     n_errors = 0
@@ -111,12 +116,17 @@ def run_detect_crop(
         if row is None or not row["storage_path"]:
             continue
         # Resume (B6) : ne pas re-détecter une image déjà TENTÉE sans crop
-        # (`zero_crops`) ou en erreur de chargement (`error`) — le détecteur est
-        # déterministe, ré-exécuter donne le même résultat et re-broie tout le
-        # backlog zéro-crop à chaque reprise (l'opérateur croit que « ça ne fait
-        # que des 0 crops »). Les `success` passent par le skip idempotent plus bas
-        # (collecte des chemins de crops). Les `NULL` (jamais tentées) sont détectées.
-        if row["crop_status"] in ("zero_crops", "error"):
+        # (`zero_crops`) — le détecteur est déterministe, ré-exécuter donne le
+        # même résultat et re-broie tout le backlog zéro-crop à chaque reprise
+        # (l'opérateur croit que « ça ne fait que des 0 crops »). Les `success`
+        # passent par le skip idempotent plus bas (collecte des chemins de crops).
+        # Les `NULL` (jamais tentées) sont détectées.
+        #
+        # `error` n'est PAS skippé : son seul écrivain est le `FileNotFoundError`
+        # « raw absent de MinIO » plus bas — une indisponibilité réseau, pas un
+        # verdict du détecteur. Le skipper à vie ferait qu'un hoquet MinIO exclut
+        # définitivement ces images, qu'aucune reprise ne pourrait rattraper.
+        if row["crop_status"] == "zero_crops" and not retry_zero_crops:
             n_skipped += 1
             continue
         # group_candidates : extrait du raw_payload du source_image (eBay

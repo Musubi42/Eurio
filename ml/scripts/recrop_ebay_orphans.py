@@ -114,6 +114,11 @@ def main() -> int:
             run=run,
             source_id=_SOURCE_ID,
             source_image_ids=orphans,
+            # Les orphelins sont sélectionnés sur `pipeline_state='downloaded'` ;
+            # une image zéro-crop n'atteint jamais `'cropped'` (cette transition
+            # exige au moins un crop), donc elles dominent la cible. Sans l'opt-out,
+            # le skip de reprise (B6) viderait ce script de son objet.
+            retry_zero_crops=True,
         )
         run.end("success")
 

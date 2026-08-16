@@ -2,7 +2,8 @@
 //
 // Backend : ml/serving/sources/router.py → get_run_breakdown.
 
-import { eurioApi, EurioApiError } from '@/shared/api/eurio-api'
+import { EurioApiError } from '@/shared/api/eurio-api'
+import { fetchWithLocalRunFallback } from './useSourceDetail'
 import type { SourceId } from './useSourcesApi'
 
 export interface RunBreakdownEntry {
@@ -45,14 +46,27 @@ export class RunBreakdownError extends Error {
 }
 
 export async function fetchRunBreakdown(
-  _sourceId: SourceId,
+  sourceId: SourceId,
   runId: string,
 ): Promise<RunBreakdown> {
+  // B4 — le breakdown est l'appel BLOQUANT de la page détail (`SourceRunDetailPage.load`
+  // lève sur son échec, le snapshot est secondaire). Sans le même repli local que
+  // `fetchSourceRun`, un run déclenché depuis le drawer lab afficherait toujours
+  // « Run introuvable » : corriger le seul snapshot ne suffisait pas.
   try {
-    return await eurioApi.get<RunBreakdown>(`/source-runs/${runId}/breakdown`)
+    return await fetchWithLocalRunFallback<RunBreakdown>(
+      `/source-runs/${runId}/breakdown`,
+      `/sources/${sourceId}/runs/${runId}/breakdown`,
+    )
   } catch (err) {
     if (err instanceof EurioApiError) {
       throw new RunBreakdownError(err.status, err.message)
+    }
+    // `fetchWithLocalRunFallback` enveloppe l'erreur canonique dans TriggerError ;
+    // la page ne reconnaît que RunBreakdownError pour afficher « Run introuvable ».
+    const status = (err as { status?: number })?.status
+    if (typeof status === 'number') {
+      throw new RunBreakdownError(status, err instanceof Error ? err.message : String(err))
     }
     throw err
   }

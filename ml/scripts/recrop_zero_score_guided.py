@@ -100,8 +100,11 @@ def main() -> int:
                    filters={"reason": "score-guided zero_crops recovery",
                             "n_targets": len(targets), "src_run": args.run}) as run:
         run.set_step("detect")
+        # `retry_zero_crops=True` : ce script cible EXCLUSIVEMENT les
+        # `crop_status='zero_crops'`. Sans l'opt-out, le skip de reprise (B6) les
+        # écarterait toutes et le script rapporterait 0 récupéré sur N, sans erreur.
         result = run_detect_crop(conn=conn, run=run, source_id=_SOURCE_ID,
-                                 source_image_ids=targets)
+                                 source_image_ids=targets, retry_zero_crops=True)
         run.end("success")
     run_id = run.run_id
 

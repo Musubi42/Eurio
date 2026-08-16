@@ -179,6 +179,35 @@ def test_detect_oversized_image_returns_native_space_coords():
     assert abs(d.r - r) < r * 0.1, f"r={d.r} attendu ~{r} (espace natif)"
 
 
+def test_detect_oversized_image_reprojects_the_trace_too():
+    """Le `trace` doit sortir dans le MÊME espace que les détections.
+
+    `bench/crop_recovery/common.detect_hint` lit `cx`/`cy`/`r_final` du trace comme
+    des coordonnées natives : il les compare à des bboxes gold mesurées sur le raw
+    d'origine, puis passe le hint à `recover_crop(bgr_original, …)`. Un trace resté
+    en espace détection dégraderait l'association gold et le banc de recovery sans
+    lever la moindre erreur — et seulement sur les images au-dessus du cap.
+    """
+    long_side = normalize_snap.LISTING_DETECT_MAX_LONG_SIDE + 552
+    h = int(long_side * 0.75)
+    cx, cy, r = long_side // 2, h // 2, long_side // 8
+    img = _make_listing([(cx, cy, r)], size=(long_side, h))
+
+    trace: list[dict] = []
+    accepted = [d for d in detect_circles_multi(img, trace=trace) if d.accepted]
+    assert accepted and trace, "il faut une détection et une trace pour comparer"
+
+    kept = [t for t in trace if t.get("accepted")]
+    assert kept, "la trace doit contenir la détection acceptée"
+    t = kept[0]
+    assert abs(t["cx"] - cx) < r * 0.1, f"trace cx={t['cx']} attendu ~{cx} (espace natif)"
+    assert abs(t["cy"] - cy) < r * 0.1, f"trace cy={t['cy']} attendu ~{cy} (espace natif)"
+    assert abs(t["r_final"] - r) < r * 0.1
+    # Et cohérent avec la détection correspondante, qui est la référence.
+    assert abs(t["cx"] - accepted[0].cx) <= 2
+    assert abs(t["r_final"] - accepted[0].r) <= 2
+
+
 def test_detect_below_cap_is_untouched_by_the_cap():
     """Le cas nominal doit rester strictement identique : une image sous le cap
     ne subit aucun redimensionnement, donc aucune perte de précision."""

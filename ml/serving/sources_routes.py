@@ -2089,9 +2089,10 @@ def ebay_calls_today() -> int:
     `check_ebay_quota` autorisait des runs sur un quota déjà épuisé (B1).
     """
     from shared.api_quota import QuotaTracker
-    from sources.market.ebay_client import EBAY_DAILY_LIMIT
 
-    return QuotaTracker("ebay", "daily", EBAY_DAILY_LIMIT).total().calls
+    # Constante locale volontairement : `ml/sources` n'est pas dans l'image lean
+    # du VPS (cf. `serving/sources/repository.ebay_calls_today`). Même valeur.
+    return QuotaTracker("ebay", "daily", EBAY_DAILY_QUOTA).total().calls
 
 
 def _count_group_coins(

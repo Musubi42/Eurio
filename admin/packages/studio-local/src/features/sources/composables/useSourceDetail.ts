@@ -373,8 +373,15 @@ export interface EbayFreshnessGroupsResponse {
 }
 
 export async function fetchEbayQuotaStatus(): Promise<EbayQuotaStatus | null> {
+  // B1 — via ML_API, pas le canonique. Le quota est compté là où les appels
+  // eBay partent : la machine qui scrape. Le tracker du VPS, lui, n'enregistre
+  // jamais rien, donc le canonique répondrait toujours « 5000/5000 restants » —
+  // exactement le symptôme que B1 corrige. En mode hébergé (pas de :8042) le
+  // widget renvoie null et disparaît, ce qui est honnête : l'information
+  // n'existe pas de ce côté.
+  // `getViaMlApi` lève sur 404 ; ici un échec doit rester silencieux (widget).
   try {
-    return await eurioApi.get<EbayQuotaStatus>('/sources/ebay/quota-status')
+    return await getViaMlApi<EbayQuotaStatus>('/sources/ebay/quota-status')
   } catch { return null }
 }
 
@@ -420,20 +427,32 @@ export async function triggerSourceRun(
   return resp.json()
 }
 
-export async function fetchSourceRun(_id: SourceId, runId: string): Promise<RunSnapshot> {
+/**
+ * B4 — repli « run local » pour les lectures de run.
+ *
+ * Un run déclenché depuis le drawer lab passe par ML_API (:8042) et vit dans la
+ * DB LOCALE : le canonique ne le connaît pas, et la page détail affichait
+ * « Run introuvable ». On ne replie que sur **404** — replier sur 401/500
+ * masquerait une panne d'auth derrière un run manquant, ce qui coûte plus cher
+ * que le bug d'origine.
+ *
+ * ⚠️ Les chemins diffèrent d'un backend à l'autre, et c'est le piège :
+ * le canonique (`serving/sources/router.py`) expose `/source-runs/{id}`, alors
+ * que `:8042` (`serving/sources_routes.py`, prefix `/sources`) expose
+ * `/sources/{source_id}/runs/{id}`. Utiliser le chemin canonique côté ML_API
+ * donne un 404 → le repli ne fait rien du tout, en silence.
+ */
+export async function fetchWithLocalRunFallback<T>(
+  canonicalPath: string,
+  mlApiPath: string,
+): Promise<T> {
   try {
-    return await eurioApi.get<RunSnapshot>(`/source-runs/${runId}`)
+    return await eurioApi.get<T>(canonicalPath)
   } catch (err) {
     if (err instanceof EurioApiError) {
-      // B4 — un run déclenché depuis le drawer lab passe par ML_API (:8042) et
-      // vit donc dans la DB LOCALE : le canonique ne le connaît pas. Sans ce
-      // repli, la page détail d'un run local afficherait une erreur, et le lien
-      // depuis le drawer serait un cul-de-sac. On ne replie que sur 404 — une
-      // 401/500 du canonique doit rester visible telle quelle, sinon on
-      // masquerait une panne d'auth derrière un « run introuvable ».
       if (err.status === 404) {
         try {
-          const local = await getViaMlApi<RunSnapshot>(`/source-runs/${runId}`)
+          const local = await getViaMlApi<T>(mlApiPath)
           if (local) return local
         } catch {
           // ML API absent (mode hébergé) ou run inconnu des deux côtés :
@@ -444,6 +463,13 @@ export async function fetchSourceRun(_id: SourceId, runId: string): Promise<RunS
     }
     throw err
   }
+}
+
+export async function fetchSourceRun(id: SourceId, runId: string): Promise<RunSnapshot> {
+  return fetchWithLocalRunFallback<RunSnapshot>(
+    `/source-runs/${runId}`,
+    `/sources/${id}/runs/${runId}`,
+  )
 }
 
 /**

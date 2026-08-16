@@ -1019,6 +1019,19 @@ def detect_circles_multi(bgr: np.ndarray,
             d.cx = int(round(d.cx * det_scale))
             d.cy = int(round(d.cy * det_scale))
             d.r = int(round(d.r * det_scale))
+        # Le `trace` aussi : `bench/crop_recovery/common.detect_hint` lit `cx`,
+        # `cy`, `r_final` comme des coordonnées NATIVES (il les compare à des
+        # bboxes gold mesurées sur le raw d'origine, puis passe le hint à
+        # `recover_crop(bgr_original, …)`). Les laisser dans l'espace détection
+        # dégraderait l'association gold et le banc de recovery en silence — et
+        # seulement sur les images > cap, c'est-à-dire précisément les photos
+        # vendeur pleine résolution que B2 vise.
+        for t in trace or ():
+            for k in ("cx", "cy", "bcx", "bcy",
+                      "r_final", "r_bbox", "r_hough", "r_polish", "r_rim"):
+                if isinstance(t.get(k), (int, float)):
+                    scaled = t[k] * det_scale
+                    t[k] = int(round(scaled)) if isinstance(t[k], int) else round(scaled, 2)
 
     return detections
 
