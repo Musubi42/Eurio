@@ -102,6 +102,10 @@ ml/state/fragment_probe/
 ml/state/numista_cache/
 ml/state/run_logs/
 ml/state/job_logs/
+# Reçu de synchro de la réplique : état LOCAL de la machine (quand ce disque
+# a pullé, par quel transport). Le committer ferait croire à une autre
+# machine qu'elle est à jour alors qu'elle n'a jamais pullé.
+ml/state/*.sync.json
 ml/state/crop_scores/
 !ml/state/crop_scores/gold/
 ml/state/discovery_bench/
