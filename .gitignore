@@ -164,6 +164,13 @@ ml/state/scan_corpus_runs/
 ml/state/eurio.local.db
 ml/state/eurio.local.db-wal
 ml/state/eurio.local.db-shm
+
+# Snapshot inscriptible ponctuel (mode compute — `VACUUM INTO` depuis la
+# réplique, cf. skill `eurio-run-local`). ~140 Mo : ne doit JAMAIS entrer dans
+# git, et c'est un dérivé — la vérité est le canonique VPS.
+ml/state/eurio.work.db
+ml/state/eurio.work.db-wal
+ml/state/eurio.work.db-shm
 ml/state/numista_cache/
 # ml/state/cohort_csvs/
 # Sources refacto — local-only, each machine autonomous (decisions.md D-06)

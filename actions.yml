@@ -1,0 +1,48 @@
+project: eurio
+ports: 6100-6199        # tranche allouée — source de vérité : fs/03-ops/ports.md (registre musu-os)
+services:
+  - name: studio-local
+    kind: native
+    port: 5173           # Taskfile.yml front:dev (task front:dev) — vite server.port strictPort, admin/packages/studio-local/vite.config.ts
+    health: http://localhost:5173/  # TODO migrer vers 61xx
+  - name: proto
+    kind: native
+    port: 5174            # Taskfile.yml proto:dev — vite server.port strictPort, admin/packages/proto/vite.config.ts
+    health: http://localhost:5174/  # TODO migrer vers 61xx
+  - name: review-front
+    kind: native
+    port: 5180            # admin/packages/review/vite.config.ts server.port (pas de tâche Taskfile racine dédiée)
+    health: http://localhost:5180/  # TODO migrer vers 61xx
+  - name: ml-api
+    kind: native
+    port: 8042            # ml/tasks.yml task `api` (go-task ml:api) — uvicorn serving.server:app --port 8042
+    health: http://localhost:8042/health  # TODO migrer vers 61xx
+  - name: review-service
+    kind: native
+    port: 8048            # ml/tasks.yml task `review:serve` — uvicorn review_service.app:app --port 8048
+    health: http://localhost:8048/health  # TODO migrer vers 61xx
+  # minio (docker, S3 interne :9000 / console :9001) : pas publié en localhost
+  # (réseau traefik VPS uniquement, cf. infra/minio/docker-compose.yml) — donc
+  # pas déclaré ici : un service non exposé localement serait probé « down » en
+  # permanence. À déclarer (tranche 61xx) le jour où il est exposé en local.
+actions:
+  - name: status
+    description: Statut du repo (branche, changements, derniers commits)
+    run: git status --short --branch && git log --oneline -5
+    tier: auto
+  - name: typecheck
+    description: Typecheck du front admin (vue-tsc)
+    run: task front:typecheck
+    tier: auto
+  - name: secrets-check
+    description: Vérifie que les secrets sops sont déchiffrables et bien formés
+    run: task secrets:check
+    tier: auto
+  - name: tokens-check
+    description: Vérifie que les design tokens générés sont à jour (CI guard)
+    run: task tokens:check
+    tier: auto
+  - name: build-front
+    description: Build du front admin (typecheck + vite build)
+    run: task front:build
+    tier: auto

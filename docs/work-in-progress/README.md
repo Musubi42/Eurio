@@ -1,8 +1,21 @@
 # Work in progress — chantiers à reprendre et clore
 
-## 🎯 Focus actuel (2026-08-14) — par où commencer
+## 🎯 Focus actuel (2026-08-16) — par où commencer
 
 > **Un agent qui arrive lit CE bloc, pas tout le reste.**
+
+**Point de reprise : [`HANDOFF-2026-08-16.md`](./HANDOFF-2026-08-16.md).** Le Lab
+est redevenu utilisable de bout en bout (cohorte → bake → entraînement), mais
+l'entraînement ne tourne que dans un **mode compute explicite** : la place des
+`training_runs` sous Direction A est **la décision qui bloque la suite**, et elle
+est posée avec ses trois options dans ce handoff.
+
+**Avant de toucher au code, charge les skills du repo** (`.claude/skills/`,
+indexées dans `CLAUDE.md`) : le devShell pose le flip Direction A — une écriture
+locale échoue par défaut, et c'est le piège n°1 du dépôt.
+
+<details>
+<summary>Focus précédent (2026-08-14) — remise au propre du dépôt</summary>
 
 **En cours : [`repo-refactor/`](./repo-refactor/) — remise au propre du dépôt.**
 Sa section « Déjà établi » contient des faits vérifiés qui ont coûté cher à découvrir
@@ -33,6 +46,8 @@ il en faut 400+). Voir `session-protocol-mix-owned-42.md`.
    (sprints livrés) ; chemin de données amont = `model-b/README.md` §Données.
 
 Le reste ci-dessous = catalogue des autres chantiers, à reprendre au besoin.
+
+</details>
 
 </details>
 

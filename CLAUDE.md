@@ -134,6 +134,19 @@ Avant de créer un écran ou un composant, vérifier :
 
 Une entrée `❌ à proto'er` **bloque** le démarrage du code Android correspondant. Une entrée sans delta documenté est considérée comme du drift à corriger.
 
+## Skills du repo (`.claude/skills/`)
+
+Connaissance compilée, à charger **avant** d'attaquer le sujet correspondant —
+chacune existe parce qu'on a payé le prix de son absence.
+
+| Skill | Quand |
+|---|---|
+| `eurio-data-writes` | Avant de toucher une route qui écrit ; devant un `readonly database` / 503 `canonical_readonly`. **Le devShell pose le flip Direction A** — c'est le piège n°1 du repo |
+| `eurio-run-local` | Lancer la stack, dérouler le lab (cohorte → bake → entraînement) |
+| `eurio-vps-deploy` | Tout `docker compose up` sur le VPS ; une route qui marche en local et pas en prod |
+| `eurio-verify` | Avant de déclarer qu'un correctif marche. **Ici les pannes sont muettes** |
+| `eurio-driver` | Actions méta exposées à musu-os (`actions.yml`) |
+
 ## Conventions de travail
 
 ### Commandes
