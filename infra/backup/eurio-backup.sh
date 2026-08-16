@@ -87,6 +87,26 @@ KUMA_STAGING_URL=""; KUMA_VERIFY_URL=""; HEALTHCHECKS_URL=""; KUMA_DRILL_URL=""
 die() { echo "❌ $*" >&2; exit 1; }
 ok()  { echo "✅ $*"; }
 
+# Le binaire curl, résolu explicitement — même piège que DOCKER_HOST.
+#
+# Le PATH d'un service systemd est celui déclaré dans `nix/eurio-vps.nix`, et
+# RIEN d'autre : il ne contenait pas curl. Les quatre anneaux répondaient donc
+# « INJOIGNABLE » à chaque exécution automatique alors qu'ils répondent 200
+# depuis un shell interactif. Conséquence vécue le 2026-08-16 : la sentinelle a
+# parfaitement détecté l'absence de manifeste, et personne ne l'a su.
+#
+# Résolu ici et pas seulement dans l'unité, pour que ça vaille aussi pour cron,
+# un appel hors profil, ou un système où le rebuild n'a pas encore eu lieu.
+CURL=""
+resolve_curl() {
+  if command -v curl >/dev/null 2>&1; then CURL="curl"; return 0; fi
+  local c
+  for c in /run/current-system/sw/bin/curl /usr/bin/curl /bin/curl; do
+    [ -x "$c" ] && { CURL="$c"; return 0; }
+  done
+}
+resolve_curl
+
 # Battement de coeur vers un push monitor.
 #
 # Le job ne pousse PAS son etat : il pousse un battement, et c'est Kuma qui
@@ -115,7 +135,11 @@ notify() {
   if [ "$flavor" = "hc" ] && [ "$status" = "down" ]; then
     url="${url%/}/fail"
   fi
-  if curl -fsS -m 15 --get "$url" \
+  if [ -z "$CURL" ]; then
+    echo "   ⚠️  $label : curl INTROUVABLE — aucun anneau ne peut partir (PATH=$PATH)" >&2
+    return 0
+  fi
+  if "$CURL" -fsS -m 15 --get "$url" \
        --data-urlencode "status=$status" \
        --data-urlencode "msg=$msg" >/dev/null 2>&1; then
     echo "   → $label : $status"

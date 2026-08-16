@@ -57,7 +57,10 @@ let
   commonService = {
     after = [ "docker.service" "network-online.target" ];
     wants = [ "network-online.target" ];
-    path = with pkgs; [ docker python3 rclone coreutils util-linux gawk gnused gnugrep bash nix ];
+    # `curl` porte les quatre anneaux de notification. Son absence de cette
+    # liste rendait TOUTE alerte muette en exécution automatique (2026-08-16) :
+    # les URLs répondaient 200 depuis un shell, « INJOIGNABLE » sous systemd.
+    path = with pkgs; [ docker python3 rclone curl coreutils util-linux gawk gnused gnugrep bash nix ];
     serviceConfig = {
       Type = "oneshot";
       User = cfg.user;
