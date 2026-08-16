@@ -129,8 +129,9 @@ bake ne veut donc rien dire sans préciser l'état du cache.
 `POST …/launch-training` → job détaché → `training/run_iteration.py` →
 `IterationRunner._do_training_phase`.
 
-- **Re-bake idempotent** avant de lancer (`_launch_training`, ligne 931) : si le
-  compte y est, rien n'est régénéré.
+- **Re-bake idempotent** avant de lancer (`_launch_training`) : rien n'est
+  régénéré **si les entrées sont identiques** — comparaison sur `inputs_digest`,
+  pas sur le nombre de fichiers (cf. piège ④).
 - Le dataset d'entraînement est `ml/lab/iterations/<iid>/dataset/train`, un
   **symlink** vers `ml/datasets/iterations/<iid>/`, lui-même un arbre de symlinks
   vers les samples persistants. Trois niveaux d'indirection, tous locaux.
@@ -273,9 +274,15 @@ réattribution d'un crop) faisait attribuer les samples à des sources qui ne le
 avaient pas produits, **sans que rien ne le signale**.
 
 Depuis, l'idempotence porte sur **l'identité des entrées** : le manifeste (v2)
-embarque un `inputs_digest` = recette + seed + cible + liste ordonnée des sources
-(chemin et taille), et le snapshot n'est réutilisé que si ce digest, le nombre de
-samples et les fichiers listés concordent. Sinon on régénère — c'est déterministe
+embarque un `inputs_digest` = **configuration** de la recette + seed + cible +
+liste ordonnée des sources (chemin et taille), et le snapshot n'est réutilisé que
+si ce digest, le nombre de samples et les fichiers listés concordent.
+
+> La première version hachait le `recipe_id` et non la config — creux, puisque
+> `PUT /lab/recipes/{id}` modifie une recette **en place**. Éditer une recette
+> puis re-baker réutilisait alors l'ancien travail en affirmant la nouvelle
+> recette. Trouvé par revue adversariale, pas par le test : mes tests ne
+> faisaient varier que les sources. Sinon on régénère — c'est déterministe
 (même seed, mêmes sources ⇒ mêmes octets), donc un faux négatif ne coûte que du
 CPU alors qu'un faux positif écrivait une provenance fausse. Et le manifeste
 n'est plus écrit que par le chemin qui produit réellement les images.
@@ -294,12 +301,24 @@ sur le code d'avant.
 Vérifié par `git check-ignore` : `ml/datasets/iterations/`,
 `ml/datasets/*/augmentations/`, `ml/lab/iterations/`, `ml/state/*.db`,
 `ml/state/training_progress/` — **tous ignorés**. Et la chaîne de sauvegarde
-(`infra/backup/`) tourne **sur le VPS uniquement**, sur `eurio.db` et MinIO.
+(`infra/backup/`) tourne **sur le VPS uniquement**.
+
+Ce qu'elle couvre, vérifié dans la copie hors site (4 Go sur pCloud, lot 0) :
+`eurio.db` canonique, `review.db`, et les trois buckets MinIO. Autrement dit
+**tout ce qui est canonique, et rien de ce qui est calculé**.
 
 Donc : un `git clean -xdf` ou une panne de disque sur la machine de calcul
 détruit les checkpoints, les datasets augmentés **et les lignes de run**. Les
 samples sont régénérables (seed + sources), les lignes de `training_runs` ne le
-sont pas. La perte réelle est l'historique, pas les images.
+sont pas — elles n'existent que dans un `eurio.work*.db` local, gitignoré et hors
+sauvegarde. La perte réelle est l'historique, pas les images.
+
+⚠️ Corollaire de procédure, appris de justesse le 2026-08-16 : **ne jamais
+recréer une base de calcul en écrasant** (`rm` + `VACUUM INTO`), ce qui était la
+recette écrite dans la skill. `VACUUM INTO` un **fichier neuf** et pointer
+`EURIO_DB_PATH` dessus. Le motif `.gitignore` a été élargi à `eurio.work*.db`
+en conséquence — un fichier de 145 Mo non ignoré n'attend qu'un `git add`
+distrait.
 
 ### ⑥ Des résidus locaux sans propriétaire
 
@@ -341,9 +360,40 @@ piège ②), et le fait que la suite de tests était inexploitable depuis le she
 dev standard — 246 échecs + 252 erreurs dus au seul flip ambiant, ramenés à 1 échec
 préexistant par un fixture `_no_ambient_flip` dans `ml/tests/conftest.py`.
 
-⚠️ **Ce que l'exercice n'a PAS couvert** : la phase inter-machines (le PC entraîne,
-le Mac observe). C'est la seule affirmation du parcours qui reste vérifiée par
-lecture du code et par l'état historique, pas par une exécution conduite.
+### Exercice #2 — le PC entraîne, le Mac observe
+
+Rejoué le même jour sur la frontière inter-machines, avec un run **long
+délibérément** (40 epochs, 44 min) : à 80 s, il n'y a aucune fenêtre pour observer
+depuis l'autre machine. Cohorte `ab28928bcdc2` (27 pièces), itération
+`03f767f998ef`, GPU du PC.
+
+Suivi de bout en bout **depuis le Mac, sans jamais interroger le PC** : `created_on=pc`,
+les transitions `pending → training → completed`, puis verdict `baseline` et
+métriques (**R@1 0,924 sur 317 photos**, 16 pièces). Et à l'arrivée, la frontière
+tient exactement comme décrite : 19 Mo d'artefacts et les lignes de run
+(`46a6db10`) **restent sur le PC** ; au canonique, `training_run_id` et
+`benchmark_run_id` sont NULL.
+
+Trois choses que seule l'échelle a montrées :
+
+- **L'expansion design_group est massive** : 27 pièces de cohorte → **61 pièces
+  bakées**, 5051 samples. 56 % du dataset vient de pièces que personne n'a
+  choisies (contre 14 % sur la petite cohorte). C'est ce chiffre qui a révélé que
+  `clear_for_iteration` et la galerie, qui ne balayaient que la cohorte, en
+  ignoraient la moitié.
+- **Le rail `jobs/` tient sa promesse** : l'API a été tuée en plein bake ; le
+  subprocess détaché a survécu et fini ses 5051 samples.
+- **Le Mac ne voit pas l'exécution, seulement l'état.** Epochs, loss et ETA vivent
+  dans `ml/state/training_progress/<iid>.json` **sur la machine de calcul** ; le
+  canonique n'expose aucune route de progression. Pour suivre une run en direct,
+  il faut être sur la machine — ou passer par ssh.
+
+⚠️ **Et une panne muette, trouvée là** : une API lancée en mode compte **sans**
+`EURIO_API_URL` (hors `sops exec-env`) crée des cohortes et des itérations qui
+n'atteignent **jamais** le canonique — HTTP 200, push F09 no-op, invisible
+ailleurs. Sous le flip le même cas échoue franchement en 503 ; c'est donc
+précisément le mode dans lequel on entraîne qui était aveugle. Un avertissement
+au boot de l'API le signale désormais (`serving/server.py`).
 
 ## Frontières de ce parcours
 
@@ -351,7 +401,15 @@ lecture du code et par l'état historique, pas par une exécution conduite.
   3. Une cohorte refusée au préflight se répare **là-bas**, pas dans le lab.
 - **En aval** : `scripts/promote_iteration.py` (lab → `ml/prod/current/`) puis
   `ml:assets:publish` (→ MinIO `model-artifacts` → APK) sont le **parcours 5**.
-  `ml/prod/` **n'existe pas sur le Mac** (vérifié) : la promotion est PC-only.
+
+  ⚠️ **Cette suite n'a jamais été parcourue.** Mesuré le 2026-08-16 : `ml/prod/`
+  n'existe **ni sur le Mac ni sur le PC**, et le manifeste `shared/model-assets.json`
+  montre que les artefacts publiés dans MinIO viennent de
+  `app-android/src/main/assets/…`, donc des fichiers copiés à la main de l'époque
+  — pas d'une promotion. Aucun modèle entraîné dans le lab n'est jamais arrivé
+  dans l'APK par ce chemin. (À ne pas confondre avec « la promotion est PC-only » :
+  `promote_iteration` crée `ml/prod/` à la demande sur n'importe quelle machine.
+  C'est le script *legacy* `promote_prod_assets.py` qui est PC-only.)
 - **À côté** : le détecteur YOLO (dataset de détection + `best.pt`) a sa **propre**
   chaîne, `ml:training-assets:*`, décrite dans [`README.md` §3](./README.md). Il ne
   passe pas par le lab.
