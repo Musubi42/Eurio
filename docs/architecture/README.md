@@ -4,15 +4,18 @@
 > **réel** au 2026-08-14, vérifié dans le code, pas l'état visé.
 >
 > Détail des artefacts (producteur, consommateur, régénérable ?) : [`artifacts.md`](./artifacts.md).
+> Lecture **par geste** (« je fais ça, où part la donnée ? ») : [`parcours.md`](./parcours.md).
 > Décisions et leur raison : [`../adr/README.md`](../adr/README.md).
 > Chantier de refonte en cours : [`../work-in-progress/repo-refactor/README.md`](../work-in-progress/repo-refactor/README.md).
 
 > ⚠️ **Périmètre : le stockage et le transport de la donnée, rien d'autre.** Ce fichier
 > ne décrit **pas** l'app Android (Compose/Room/flavors), le front admin `studio-local`,
-> le pipeline de scan (scrape→crop→embed→match), l'entraînement (`ml/lab/iterations`,
-> cohortes), la review, les sources eBay/Numista, ni le mécanisme `local-sync` (HLC,
+> le pipeline de scan (scrape→crop→embed→match), la review, les sources
+> eBay/Numista, ni le mécanisme `local-sync` (HLC,
 > outbox, `GET /db/events/pull`). Ces pages **restent à écrire** — voir la liste dans
 > le chantier `repo-refactor`. Ne conclus pas de leur absence ici qu'elles n'existent pas.
+> L'entraînement (cohorte → itération → bake → run) **est écrit**, mais dans
+> [`parcours.md` §4](./parcours.md).
 
 ## En une phrase
 
