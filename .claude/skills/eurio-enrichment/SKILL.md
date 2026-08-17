@@ -56,10 +56,16 @@ review  →  voir la skill `eurio-review`
 ## Lancer un enrichissement
 
 ```bash
-sops exec-env secrets/dev.env 'nix develop .#mac --command bash -c \
-  "cd ml && .venv/bin/python -m sources.cli --source ebay \
-     --target-eurio-ids <id1>,<id2> --push"'
+go-task ml:src:ebay:run -- --target-eurio-ids <id1>,<id2> --push
 ```
+
+⛔ **Passe par la tâche, jamais par `python -m sources.cli` en direct.** La tâche
+pose `EURIO_CENSUS_RECOVER=1` (`ml/tasks.yml:717-725`), **OFF par défaut**
+(`vision/normalize_snap.py:539`), qui active la passe de récupération
+score-guided des bimétal sous-croppés — **~77 % du parc**, validée le
+2026-06-15. L'invocation brute la désactive en silence et une grosse part des
+raws repart en `zero_crops`. Les autres portes : `ml:src:ebay:dry` (découverte
+seule), `ml:src:ebay:limit`, `ml:src:ebay:status`.
 
 - **`--push` est mal nommé** : il ne contrôle **pas** le transport, il choisit la
   **source de lecture/écriture** — une réplique scratch **inscriptible**
@@ -76,14 +82,21 @@ sops exec-env secrets/dev.env 'nix develop .#mac --command bash -c \
 | | |
 |---|---|
 | 3 pièces ciblées (FR + ES) | découverte = **1 requête par groupe × marché × langue** — « Frankreich / Francia / Spanien / España » |
-| découverte | 1762 listings vus, **803 raws**, **622 crops** |
+| découverte | 1762 listings vus, **801 raws**, **622 crops** |
 | review créée | **528 items** (369 lot / 159 single) |
 | durée | ~1 h (téléchargement + crop OpenCV) |
-| quota eBay | 5000/jour, compté dans `eurio.local.db` (`shared/api_quota`, table `api_call_log`) |
+| **quota eBay réellement brûlé** | **740 appels** sur 5000/jour |
 
-Le compteur du run n'a rapporté que **3 appels** — c'est le compte des requêtes de
-recherche, pas des appels d'hydratation `item/{id}`. Ne pas s'en servir pour
-estimer le quota consommé.
+Le compteur du run (`source_runs.n_calls`) a rapporté **3 appels** — c'est le
+compte des requêtes de recherche, pas des hydratations `item/{id}`. Le préflight
+quota ment dans le même sens (`estimate: 1`). **Le seul chiffre vrai est dans
+`eurio.local.db`** :
+
+```bash
+sqlite3 -readonly ml/state/eurio.local.db \
+  "select period, calls from api_call_log where source='ebay' order by rowid desc limit 1;"
+# 2026-08-16|740
+```
 
 ⚠️ **La découverte est par GROUPE, jamais par pièce.** Cibler trois pièces
 françaises et espagnoles lance les requêtes « 2 euro Frankreich / Francia /
@@ -103,22 +116,54 @@ perdu : les crops arrivent en review sans suggestion exploitable.
 dans la description de `ml:dino-anchors:build`, et ça n'avait jamais été fait :
 
 ```bash
-# 1. rebâtir les deux banques (2eur_all est celle des suggestions de review)
+# 1. rebâtir les deux banques
 go-task ml:dino-anchors:build -- --force --kind 2eur_commemo
 go-task ml:dino-anchors:build -- --force --kind 2eur_all
 # 2. recalculer les prédictions et les pousser au canonique
 go-task ml:dino-predictions:backfill -- --kind 2eur_all --force --push
 ```
 
-Effet mesuré le 2026-08-17 sur les deux classes qui bloquaient une promotion :
+⚠️ **Les deux banques ne servent pas la même chose, et ce n'est pas celle qu'on
+croit qui alimente la review.** Corrigé le 2026-08-17 :
 
-| Classe | candidats avant | après reconstruction |
-|---|---|---|
-| `fr-2euro-standard-t1` | 38 | 38 |
-| `es-2euro-juan-carlos-i-t2` | **0** | **24** |
+| Banque | Qui la lit |
+|---|---|
+| `2eur_commemo` | **le verdict de review** — `repository.py::fetch_verdict_signal_rows` l. 1091, **en dur** |
+| `2eur_all` | les requêtes de candidats, le backfill, l'analyse |
+
+Et `2eur_commemo` ne contient **aucune** étiquette de pièce standard (0 sur 446,
+contre 18 sur 378 pour `2eur_all`). Reconstruire `2eur_all` n'allume donc **rien**
+dans l'écran de review d'une classe standard. Détail et conséquences :
+**`eurio-review`** §« la review est aveugle sur les standards ».
+
+**Avant de rebâtir, vérifie que c'est nécessaire** — c'est 4 min d'encodage plus
+1 h 26 de backfill. Le `.npz` porte sa date et son encodeur :
+
+```bash
+cd ml && ./.venv/bin/python -c "
+import numpy as np; d=np.load('state/foundation_anchors_2eur_all.npz', allow_pickle=True)
+print(dict(d)['meta'] if 'meta' in d else d.files)"
+```
+
+L'encodeur doit être celui qu'attend `encoder_version_for_kind(<kind>)` — sinon
+`auto_validate` traite la banque comme absente.
+
+Effet mesuré le 2026-08-17 sur les deux classes qui bloquaient la promotion,
+**par la requête du §Vérifier ci-dessous** (candidats *par prédiction*,
+`2eur_all`, marge ≥ 0,05) :
+
+| Classe | avant reconstruction | après | au 2026-08-17 (soir) |
+|---|---|---|---|
+| `fr-2euro-standard-t1` | 38 | 38 | **59** |
+| `es-2euro-juan-carlos-i-t2` | **0** | 24 | **29** |
 
 Une classe entière était invisible faute d'ancres à jour. Aucun scrape, si gros
-soit-il, ne l'aurait débloquée.
+soit-il, ne l'aurait débloquée. La troisième colonne dit autre chose : **ces
+chiffres bougent d'un jour à l'autre**, donc remesure au lieu de citer.
+
+⚠️ `dino_class_references` est **vide dans les six bases** de cette machine (0
+ligne partout, réplique comprise) : la sélection FPS des ancres n'est traçable
+nulle part. C'est le piège `--db` ci-dessous, réalisé et jamais rattrapé.
 
 ### Pièges de ces deux commandes
 
@@ -160,6 +205,39 @@ select c.design_group_id,
 
 La condition de **marge** n'est pas décorative — voir `eurio-review`, c'est elle
 qui sépare une suggestion utile d'un tirage au sort.
+
+Trois précautions sur ce chiffre, toutes vécues :
+
+1. **Il compte les crops PRÉDITS comme la classe**, pas ceux qui la **ciblent**.
+   Les deux populations sont légitimes et différentes ; deux mesures honnêtes de
+   « les candidats de `fr-2euro-standard-t1` » ont rendu **59** et **0** pour
+   cette seule raison. Dis toujours laquelle tu comptes.
+2. **Il inclut des items déjà tranchés.** Joins `review_queue` et ajoute
+   `and rq.status in ('open','in_progress')` pour le stock réellement
+   exploitable (mesuré : 29 candidats → **26** ouverts sur la classe espagnole).
+3. **Un candidat n'est pas un crop gagné.** Il faut encore qu'un humain le
+   tranche — voir `eurio-review`. Le run du 2026-08-16 a laissé 528 items
+   `open` ; le préflight n'a pas bougé d'un pouce.
+
+### Avant de scraper : vérifie que le scrape est bien le geste
+
+Le préflight distingue `block` (sources réelles < `m_per_class`) de `warn`
+(crops eBay < 10). Un `warn` se répare **souvent en review, pas en scrapant** :
+mesuré le 2026-08-17 sur `es-2euro-juan-carlos-i-t2` — il manquait **6 crops
+acceptés** pour passer le plancher, et **26 candidats attendaient déjà** en file.
+Le scrape de la veille avait rendu **3** crops à cette classe, aucun au-dessus de
+la marge, pour ~30 min et ~400 appels.
+
+Lance le préflight réel plutôt que de deviner :
+
+```bash
+sops exec-env secrets/dev.env 'curl -s -H "Authorization: Bearer $EURIO_API_TOKEN" \
+  "http://127.0.0.1:8042/lab/cohorts/<cohort_id>/training-readiness"'
+```
+
+Il rend le verdict par classe **et** la raison textuelle. Utile aussi pour voir
+que la cohorte est de toute façon bloquée par une **autre** classe : enrichir la
+tienne ne la débloquera pas.
 
 ## Ensuite
 

@@ -10,7 +10,7 @@ description: Trancher les crops scrapés et décider ce qui entre en training (t
 > aucun calcul : c'est la vérité-terrain de l'entraînement. Une erreur ici ne
 > plante rien, elle dégrade le modèle des mois plus tard.
 
-## La règle numéro un : la review se fait DANS le front de review
+## La review se fait DANS le front de review
 
 `go-task front:dev` → `http://localhost:5173/review`. Les pages existent déjà et
 sont marquées `meta.heavy` (donc locales, cf. `CLAUDE.md` §R0bis) :
@@ -28,11 +28,41 @@ Les cinq premières sont `meta.heavy` (donc locales). **`peer-arbitration` ne l'
 pas, volontairement** — « GET arbitrage léger + URLs images ML », accessible en
 hébergé (`router.ts`).
 
+### Les paramètres d'URL — sans eux la page ne sert à rien
+
+C'est la moitié du travail d'orientation, et c'est le seul endroit où elle est
+écrite. Le front écoute sur `[::1]:5173` : `localhost` répond, `127.0.0.1` non.
+
+| But | URL |
+|---|---|
+| **Lots d'une classe** (le vrai gisement) | `/review/manual?mode=lot&design_group=<design_group_id>` |
+| Une annonce précise | `/review/lot/<listing_key urlencodé>` |
+| Singles d'une pièce | `/review/manual?eurio_id=<eurio_id d'un MEMBRE>` |
+
+⛔ **`?eurio_id=` n'accepte pas un `design_group_id`.** Passer
+`fr-2euro-standard-t1` renvoie **0 item, sans erreur** — la requête tombe dans la
+branche `s.target_eurio_id = ?`. Il faut l'`eurio_id` d'un membre.
+
+⛔ **Et pour une pièce non commémorative, `?eurio_id=` n'est pas un filtre de
+classe.** `repository.py::list_queue` élargit à tout le pool ambigu du pays
+(`source='ebay' AND listing_country=? AND listing_year IS NULL`). Mesuré sur
+`fr-1999-2eur-standard-1st-map` : **98 items affichés, ~8 utiles**. Le reste
+cible des commémoratives françaises ou une **autre** classe standard (t2). Sur
+une classe standard, passe par les lots.
+
+`?design_group=` n'existe **que** côté lot (`LotReviewView.vue`). Côté single,
+il n'y a pas d'équivalent — c'est un manque connu, pas une erreur d'usage.
+
 ⛔ **Ne fabrique pas d'outil de review parallèle.** Vécu le 2026-08-17 : une
 planche HTML de 111 vignettes a été produite pour faire trancher un humain, alors
 que le front existait — et elle affichait 24 candidats espagnols dont **2** bons,
-parce qu'elle interrogeait la table brute au lieu du verdict du projet (voir
-ci-dessous). Le front, lui, applique la bonne règle.
+parce qu'elle interrogeait la table brute au lieu du verdict du projet. Le front,
+lui, applique la bonne règle, et son bouton **écrit**.
+
+*(Incident consigné, pas règle cardinale : une épreuve de contrôle du 2026-08-17
+a montré qu'un agent sans cette skill trouve le front seul et renonce de lui-même
+à la planche. Ce qui suit — les paramètres d'URL et la cécité du verdict sur les
+standards — est ce que cette skill apporte réellement.)*
 
 ## Le verdict, et pourquoi la marge compte plus que le seuil
 
@@ -58,18 +88,120 @@ top1_country_sim_min = 0.55      # similarité, comparaison scopée au PAYS cibl
 country_spread_min   = 0.05      # écart top1 − top2  ← le garde-fou qui compte
 ```
 
-**Une similarité élevée ne prouve rien sans marge.** Mesuré le 2026-08-17 :
+Le commentaire de `thresholds.py` dit pourquoi : *« la SIM top1 ne sépare RIEN —
+médiane hors-scope 0,834 ≈ médiane des top1 corrects 0,836 ; le SPREAD sépare
+bien »*.
 
-| Classe | écart top1−top2 moyen | candidats à `sim ≥ 0,855` | dont marge ≥ 0,05 |
+### ⛔ Le piège qui invalide tout le reste : la review est AVEUGLE sur les standards
+
+`repository.py::fetch_verdict_signal_rows` (l. 1091) joint **en dur** :
+
+```sql
+AND p.anchors_kind = '2eur_commemo'
+```
+
+Or cette banque ne contient **aucune** pièce standard. Mesuré le 2026-08-17 sur
+la réplique :
+
+```sql
+-- étiquettes distinctes dont le design_group contient « standard »
+2eur_commemo :   0 / 446        2eur_all :  18 / 378
+-- items de review OUVERTS ciblant la classe, ayant une prédiction :
+fr-2euro-standard-t1        66 ouverts → 2eur_commemo:  0   2eur_all: 66
+es-2euro-juan-carlos-i-t2   16 ouverts → 2eur_commemo:  0   2eur_all: 16
+```
+
+Conséquence : **aucun crop de pièce standard ne peut jamais être
+`auto_candidate`** — tous tombent en `unknown` par la règle 1. Vérifié dans le
+payload de l'API : à l'écran de lot, chaque crop porte `candidate_eurio_ids`
+avec **`score: 0.0`** et `current_eurio_id: null`. Il n'y a pas de suggestion
+DINO à l'écran, juste la liste plate des membres du groupe.
+
+Donc pour une classe standard : n'attends pas l'auto-accept, il ne se
+déclenchera pas ; la décision est **100 % à l'œil**, et le calibrage « ~10 % de
+faux à 0,855 » ne s'applique pas puisqu'aucun score n'est affiché.
+
+⚠️ Les prédictions existent (`2eur_all`, 66/66) — c'est la jointure qui les
+ignore.
+
+### Le point de bascule est unique depuis le 2026-08-18
+
+`ml/shared/verdict_scope.py` — **stdlib pure**, parce que l'image lean du VPS
+n'embarque pas `training/` (le `Dockerfile` copie `shared/`, pas `training/` :
+y mettre la constante aurait fait disparaître une route du VPS en silence, son
+montage étant dans un `try/except`).
+
+```python
+VERDICT_ANCHORS_KIND     = "2eur_commemo"      # défaut historique
+VERDICT_ENCODER_VERSION  = "dinov2-vits14"
+```
+
+Les **10 sites** du chemin du verdict l'importent (repository lean, jumeau lourd
+`review_queue_routes`, `auto_validate`, `review_lanes`, `peer_arbitration`,
+`publish_cli`). Un test paramétré rougit si quelqu'un rebrode le littéral.
+
+⛔ **`anchors_kind` et `encoder_version` sont indissociables.** En base :
+`2eur_all` n'existe **qu'en `dinov2-vitl14`**, `2eur_commemo` **qu'en
+`dinov2-vits14`**. Basculer le seul kind donne un JOIN à **zéro ligne** — donc
+tout en `unknown`, sans la moindre erreur. Ne touche jamais l'un sans l'autre.
+
+### Ce que coûterait la bascule — mesuré, non appliqué
+
+Sur 6899 items ouverts, verdict recalculé par la vraie fonction :
+
+| verdict | `2eur_commemo` | `2eur_all` |
+|---|---:|---:|
+| `auto_candidate` | 230 | **930** |
+| `unknown` | 3165 | 2268 |
+
+**2221 items changent de verdict (32 %).** Les standards passent de
+**0 → 74** `auto_candidate` et de **849 → 0** `unknown`.
+
+Le risque, mesuré contre les items déjà tranchés par un humain : concordance
+**495/496** (dont **0 faux sur 31 standards**) — mais sur les crops que l'humain
+avait **refusé** de labelliser, les `auto_candidate` passent de 27 à **130**.
+
+⚠️ **La bascule n'est pas un correctif** : les seuils
+(`top1_country_sim_min 0,55` / `country_spread_min 0,05`) sont calibrés sur les
+sims **vits14**. Les 130 faux positifs sont plausiblement un artefact de seuil.
+Avant de basculer : re-replay du gold sous vitl14, **re-calibrage de
+`country_spread_min`**, et bump de `_ENGINE_VERSION` pour distinguer l'avant de
+l'après.
+
+⛔ **Le repli « `2eur_commemo` puis `2eur_all` si vide » est la pire option** :
+le scope deviendrait dépendant de l'item, deux crops voisins seraient jugés sur
+deux banques et deux encodeurs avec des seuils calibrés sur un seul, et
+`decision_engine_version` ne tracerait plus rien.
+
+### La marge, quand elle s'applique (classes commémoratives)
+
+**Une similarité élevée ne prouve rien sans marge.** Mesuré le 2026-08-17, par
+la requête ci-dessous — *candidats par PRÉDICTION* (crops dont le `top1` tombe
+dans la classe), à ne pas confondre avec les crops qui la **ciblent** :
+
+```sql
+select count(*), avg(coalesce(p.country_spread, p.spread))
+  from image_asset_dino_predictions p join image_assets a on a.id = p.asset_id
+ where p.anchors_kind = '2eur_all' and a.training_eligible IS NOT 1
+   and p.top1_eurio_id in (select eurio_id from coins where design_group_id = ?)
+```
+
+| Classe | top1 ∈ classe | dont marge ≥ 0,05 | marge moyenne |
 |---|---|---|---|
-| `fr-2euro-standard-t1` | **0,169** | 38 | **38** |
-| `es-2euro-juan-carlos-i-t2` | **0,006 – 0,031** | 24 | **2** |
+| `fr-2euro-standard-t1` | 62 | **59** | 0,216 |
+| `es-2euro-juan-carlos-i-t2` | 89 | **29** | 0,037 |
 
-Les 2ᵉˢ hypothèses des crops espagnols étaient Philippe, Benoît XVI, Albert II :
+Les 2ᵉˢ hypothèses des crops espagnols sont Philippe, Benoît XVI, Albert II :
 pour DINO, **tous les standards à portrait se ressemblent**, et le top1 gagne au
-bruit. L'humain qui a regardé la planche a dit « deux ou trois sont vraiment des
-Juan Carlos » — la marge en garde 2. L'œil et le seuil du projet tombent
-d'accord ; le seuil seul, non.
+bruit. La marge élimine les deux tiers.
+
+⚠️ **Tout chiffre ici porte sa requête, et pas seulement sa date.** Sans elle il
+est irreproductible : deux mesures honnêtes de « les candidats de
+`fr-2euro-standard-t1` » ont donné **59** et **0** parce qu'elles comptaient
+deux populations différentes.
+
+⚠️ Ces candidats incluent des items **déjà tranchés**. Ajoute
+`and rq.status in ('open','in_progress')` si tu veux le stock exploitable.
 
 ⚠️ Donc : **ne jamais trier sur `top1_sim` seul.** Mieux : ne pas interroger la
 table du tout et passer par le verdict. Si tu dois vraiment écrire du SQL, sache
@@ -121,20 +253,51 @@ Le bake ne prend un crop eBay que si **tout** est vrai (`iteration_augmentations
 - l'attribution qui fait foi est **`image_assets.eurio_id`** (le label tranché),
   pas `source_images.target_eurio_id` (la cible de découverte). Un crop réattribué
   suit son nouveau label ;
-- ⚠️ **et une 5ᵉ condition qui n'est pas en base** : le fichier doit exister dans
-  le cache local (`local_path("enrichment-crops", …)`), sinon il est **ignoré en
-  silence**. Un crop parfaitement éligible en base n'entre pas au bake si le cache
-  ne l'a pas — c'est une des façons dont un bake « réussit » avec moins de sources
-  que prévu.
+- ⚠️ **et une 5ᵉ condition, mais pas celle qu'on croit.** `_ebay_training_sources`
+  fait `p = local_path("enrichment-crops", sp)` puis `if p.exists()`. Ce
+  `p.exists()` **ne filtre jamais rien** : `local_path` télécharge depuis MinIO
+  au premier appel et **lève `FileNotFoundError`** si l'objet est réellement
+  absent (`shared/storage/local_cache.py` l. 71-116). Un cache local vide ne
+  fait donc rien perdre — il ralentit.
+
+  Le vrai silence est en amont : sur un 404 confirmé, `local_path` appelle
+  `cascade.mark_missing_in_storage()`, qui bascule `storage_status` en base.
+  C'est le bake **suivant** qui verra moins de sources — sans rien dire, puisque
+  le filtre `storage_status='present'` les écarte proprement. Voilà comment un
+  bake « réussit » avec moins de sources que prévu.
 
 Et le compte se fait **par classe**, pas par pièce (cf. `eurio-enrichment`).
 
 ## Où va l'écriture
 
-Sous le flip Direction A, une décision de review part au **canonique** (C3 :
-décisions review/funnel/lot + reassign sont reroutées). Si une route répond
-`503 canonical_readonly`, elle n'a pas encore été reroutée — lire
-**`eurio-data-writes`**, ne pas contourner en écrivant en local.
+**Le reroutage est fait côté FRONT, pas côté API.** `useReviewApi.ts` /
+`useLotReview.ts` appellent `eurioApi` (base `https://eurio-api.musubi.dev`,
+Bearer PAT) et **jamais** `ML_API`. L'API locale `:8042` n'est pas dans le
+chemin — elle tourne sous le flip et traduirait toute écriture en
+`503 canonical_readonly`.
+
+Corollaire : **le Mac ne voit pas ses propres décisions** tant qu'il n'a pas fait
+`go-task ml:db:pull-replica`. Un préflight relancé sans ce pull affichera encore
+l'ancien compte.
+
+### ⛔ L'échec muet du front — celui qui coûtera le plus cher
+
+`useReviewApi.ts` (l. ~145-159) : sur `TypeError` — réseau coupé, DNS lent, VPS
+injoignable — `safeFetchEurioWrite` renvoie `null` et le code se contente d'un
+`console.info('[mock fallback] decide', …)`. **L'UI affiche un succès et rien
+n'est écrit.** Les 401/503 remontent proprement ; c'est la coupure réseau qui est
+silencieuse. Quelqu'un peut « trancher » quarante crops et n'en avoir écrit
+aucun.
+
+Le contrôle le plus rapide, après une session de review :
+
+```bash
+sops exec-env secrets/dev.env 'curl -s -H "Authorization: Bearer $EURIO_API_TOKEN" \
+  "$EURIO_API_URL/review-queue/stats"'      # n_done_today doit avoir bougé
+```
+
+Si une route répond `503 canonical_readonly`, elle n'a pas encore été reroutée —
+lire **`eurio-data-writes`**, ne pas contourner en écrivant en local.
 
 ## Ensuite
 

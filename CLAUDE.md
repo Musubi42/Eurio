@@ -153,9 +153,13 @@ Mac et PC lisent une **réplique read-only** du canonique et écrivent par HTTP
 — bake, entraînement, artefacts — reste **local à la machine qui calcule** et ne
 voyage pas.
 
-⚠️ Le rerouting n'est **pas terminé** : les writers résiduels (add-crop,
-requalify/lane/correct) répondent `503 canonical_readonly` au lieu d'écrire. Un
-503 n'est donc pas une panne, c'est une route pas encore reroutée — lire
+⚠️ Le rerouting n'est **pas terminé**, mais un `503 canonical_readonly` ne dit
+pas lequel des deux cas tu as. Vérifié le 2026-08-17 : `requalify` / `move-lane`
+/ `correct-listing` **ont leur jumeau au VPS et le front les y envoie déjà** —
+leur 503 sur `:8042` signale un appelant qui tape la mauvaise adresse, pas un
+rerouting manquant. Les vrais résiduels mesurés : `POST
+/review-queue/requalify-lot/batch` et `POST /coins/assets/reflag-needs-review`.
+Trancher = lire l'OpenAPI du canonique. Un 503 n'est jamais une panne — lire
 `eurio-data-writes` avant de contourner. Détail et mesures : [`docs/architecture/README.md`](docs/architecture/README.md)
 (par stockage), [`parcours.md`](docs/architecture/parcours.md) (par geste),
 [`artifacts.md`](docs/architecture/artifacts.md) (par artefact).
@@ -171,8 +175,9 @@ Elles se chaînent : chaque skill dit vers laquelle aller ensuite.
 |---|---|
 | `eurio-enrichment` | une classe est trop pauvre pour entraîner — scrape eBay, crop, **ancres DINO** |
 | `eurio-review` | trancher des crops, décider ce qui entre en training |
-| `eurio-run-local` | lancer la stack, monter une cohorte, dérouler le lab (bake → entraînement) |
-| *(à écrire)* `eurio-cohort`, `eurio-promote` | composer une cohorte · mettre un modèle dans l'APK |
+| `eurio-cohort` | composer une cohorte, passer le préflight, comprendre l'expansion `design_group` |
+| `eurio-run-local` | lancer la stack, dérouler le lab (bake → entraînement) |
+| `eurio-promote` | mettre un modèle dans l'APK — **la promotion remplace, elle n'accumule pas** |
 
 **Les transverses, à charger dès qu'on touche au sujet :**
 
@@ -186,6 +191,13 @@ Elles se chaînent : chaque skill dit vers laquelle aller ensuite.
 ⚠️ **Si tu t'apprêtes à improviser un outil ou une procédure, c'est le signe
 qu'une skill manque.** Cherche d'abord ; si rien ne couvre le geste, écris la
 skill à la fin — c'est ainsi que cette liste s'est constituée.
+
+📐 **Écrire ou corriger une skill : la méthode est écrite, et elle a été
+observée** — [`docs/skills/comment-tester-une-skill.md`](docs/skills/comment-tester-une-skill.md).
+Deux règles s'appliquent dès la première ligne : *ne l'écris pas de mémoire juste
+après avoir vécu la chose* (relance les commandes, colle leur sortie), et *tout
+chiffre porte sa requête, pas seulement sa date* — sinon il est irreproductible,
+donc inutilisable.
 
 ## Conventions de travail
 
