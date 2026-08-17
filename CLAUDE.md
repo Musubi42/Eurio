@@ -134,18 +134,58 @@ Avant de créer un écran ou un composant, vérifier :
 
 Une entrée `❌ à proto'er` **bloque** le démarrage du code Android correspondant. Une entrée sans delta documenté est considérée comme du drift à corriger.
 
-## Skills du repo (`.claude/skills/`)
+## L'infra en gros — trois machines, trois stockages
 
-Connaissance compilée, à charger **avant** d'attaquer le sujet correspondant —
-chacune existe parce qu'on a payé le prix de son absence.
+| Machine | Rôle | À savoir |
+|---|---|---|
+| **Mac** (`Musubi42s-MacBook-Air-Oim`) | dev, admin, scraping, crop, review | pas de GPU (MPS) |
+| **PC** (`desktop`, NixOS, 1080 Ti) | entraînement | seule machine à GPU |
+| **VPS** (`nixos`) | **writer canonique**, MinIO, API, fronts | devShell allégé |
+
+| Stockage | Rôle |
+|---|---|
+| `eurio.db` (SQLite WAL, VPS) | **le canonique** — référentiel, review, cohortes, itérations |
+| MinIO (`eurio-s3.musubi.dev`) | images : raws, crops, canoniques, artefacts de modèle |
+| Supabase | projection read-only pour l'app en prod |
+
+Mac et PC lisent une **réplique read-only** du canonique et écrivent par HTTP
+(`lab_writes` pour les dimensions, `/ingest/*` pour crops et assets). Le calcul
+— bake, entraînement, artefacts — reste **local à la machine qui calcule** et ne
+voyage pas.
+
+⚠️ Le rerouting n'est **pas terminé** : les writers résiduels (add-crop,
+requalify/lane/correct) répondent `503 canonical_readonly` au lieu d'écrire. Un
+503 n'est donc pas une panne, c'est une route pas encore reroutée — lire
+`eurio-data-writes` avant de contourner. Détail et mesures : [`docs/architecture/README.md`](docs/architecture/README.md)
+(par stockage), [`parcours.md`](docs/architecture/parcours.md) (par geste),
+[`artifacts.md`](docs/architecture/artifacts.md) (par artefact).
+
+## Skills du repo (`.claude/skills/`) — lis-les AVANT d'agir
+
+Connaissance compilée, chacune existe parce qu'on a payé le prix de son absence.
+Elles se chaînent : chaque skill dit vers laquelle aller ensuite.
+
+**Le flux métier, dans l'ordre où on le parcourt :**
+
+| Skill | Se déclenche quand |
+|---|---|
+| `eurio-enrichment` | une classe est trop pauvre pour entraîner — scrape eBay, crop, **ancres DINO** |
+| `eurio-review` | trancher des crops, décider ce qui entre en training |
+| `eurio-run-local` | lancer la stack, monter une cohorte, dérouler le lab (bake → entraînement) |
+| *(à écrire)* `eurio-cohort`, `eurio-promote` | composer une cohorte · mettre un modèle dans l'APK |
+
+**Les transverses, à charger dès qu'on touche au sujet :**
 
 | Skill | Quand |
 |---|---|
 | `eurio-data-writes` | Avant de toucher une route qui écrit ; devant un `readonly database` / 503 `canonical_readonly`. **Le devShell pose le flip Direction A** — c'est le piège n°1 du repo |
-| `eurio-run-local` | Lancer la stack, dérouler le lab (cohorte → bake → entraînement) |
-| `eurio-vps-deploy` | Tout `docker compose up` sur le VPS ; une route qui marche en local et pas en prod |
 | `eurio-verify` | Avant de déclarer qu'un correctif marche. **Ici les pannes sont muettes** |
+| `eurio-vps-deploy` | Tout `docker compose up` sur le VPS ; une route qui marche en local et pas en prod |
 | `eurio-driver` | Actions méta exposées à musu-os (`actions.yml`) |
+
+⚠️ **Si tu t'apprêtes à improviser un outil ou une procédure, c'est le signe
+qu'une skill manque.** Cherche d'abord ; si rien ne couvre le geste, écris la
+skill à la fin — c'est ainsi que cette liste s'est constituée.
 
 ## Conventions de travail
 
@@ -217,7 +257,8 @@ absents sur Mac/PC. Ne pas tenter de les lancer ailleurs ni de « réparer » le
 ### Supabase
 
 - Accès via clé API (Postgrest) pour l'admin et l'export snapshot
-- L'app Android est **offline-first** avec un catalogue packagé dans l'APK (`app-android/src/main/assets/app_core.db`, généré par `go-task ml:build-app-core`). L'ancien `catalog_snapshot.json` n'existe plus depuis P6
+- L'app Android est **offline-first** avec un catalogue packagé dans l'APK
+  (`app-android/src/main/assets/app_core.db`, généré par `go-task ml:build-app-core`)
 - Pas d'auth utilisateur pour v1 (le vault est 100% local côté Room)
 - Schéma de vérité : `ml/state/schema.sql` (le canonique SQLite). ⚠️ `supabase/types/database.ts` n'est **ni généré ni importé** par quoi que ce soit — c'est de la doc de schéma historique, pas une source
 

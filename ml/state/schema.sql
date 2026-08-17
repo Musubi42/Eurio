@@ -681,7 +681,7 @@ CREATE INDEX IF NOT EXISTS idx_review_queue_lane_status
 
 -- ─── Verdicts Claude (chunk ccproxy) ─────────────────────────────────────
 -- Un verdict Claude vision par review_queue item. La pipeline batch
--- ml/api/review_queue_routes.py (run_claude_batch) appelle ccproxy →
+-- ml/serving/review_queue/ (run_claude_batch) appelle ccproxy →
 -- Sonnet 4.6 et persiste ici. L'humain acquitte ensuite via la page
 -- /review/ccproxy (chunk 4), ce qui passe status à 'acked' ET commit la
 -- décision finale dans review_queue (decided_by='claude_ack_human').
