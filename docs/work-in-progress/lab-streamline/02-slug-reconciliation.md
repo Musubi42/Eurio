@@ -19,7 +19,7 @@ trouvé par `prepare_dataset` (qui cherche `eval_real_norm/<new_eurio_id>/`).
    thème équivalent) → artefact auditable `slug-reconciliation.json`.
 2. **Pull réconcilié** : symlinks `eurio_debug/eval_real/<new_eurio_id>` → dossiers
    raws originaux (non-destructif).
-3. **Re-sync** `scan.sync_eval_real --also-write-captures --overwrite` → écrit
+3. **Re-sync** `vision.sync_eval_real --also-write-captures --overwrite` → écrit
    `eval_real_norm/<new_eurio_id>/` (96/96 normalisés) + `datasets/<nid>/captures/`.
 
 ## 2ᵉ bug câblage trouvé : `coin_lookup` stale (corrigé)

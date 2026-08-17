@@ -811,7 +811,7 @@ def train_arcface(args):
     print(f"Val:   {len(val_dataset)} images  ← {args.val_dataset}")
     if len(val_dataset) == 0:
         print("       (val empty — per-epoch R@1 will be n/a; "
-              "populate via `python -m scan.sync_eval_real <debug_pull>`)")
+              "populate via `python -m vision.sync_eval_real <debug_pull>`)")
     print(f"Classes: {train_dataset.classes}")
 
     output_dir = Path(args.output)
