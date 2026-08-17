@@ -13,6 +13,10 @@ import sqlite3
 from dataclasses import dataclass
 from typing import Literal, NamedTuple
 
+from shared.verdict_scope import (
+    VERDICT_ANCHORS_KIND,
+    VERDICT_ENCODER_VERSION,
+)
 from training.foundation.thresholds import DINO_VERDICT_THRESHOLDS
 
 AutoValidateLevel = Literal["auto_candidate", "partial", "divergent", "unknown"]
@@ -138,8 +142,8 @@ def fetch_and_resolve_signals(
     conn: sqlite3.Connection,
     asset_id: str,
     *,
-    encoder_version: str = "dinov2-vits14",
-    anchors_kind: str = "2eur_commemo",
+    encoder_version: str = VERDICT_ENCODER_VERSION,
+    anchors_kind: str = VERDICT_ANCHORS_KIND,
 ) -> ResolvedSignals | None:
     """Surface publique de la résolution des signaux d'un asset (None s'il est
     introuvable). Partagée par le verdict (foundation) et les experts
@@ -171,8 +175,8 @@ def compute_auto_validate_verdict(
     conn: sqlite3.Connection,
     asset_id: str,
     *,
-    encoder_version: str = "dinov2-vits14",
-    anchors_kind: str = "2eur_commemo",
+    encoder_version: str = VERDICT_ENCODER_VERSION,
+    anchors_kind: str = VERDICT_ANCHORS_KIND,
 ) -> AutoValidateVerdict:
     """Compute le verdict d'auto-validation pour un image_asset donné.
 
@@ -351,8 +355,8 @@ def compute_auto_validate_view(
     conn: sqlite3.Connection,
     asset_id: str,
     *,
-    encoder_version: str = "dinov2-vits14",
-    anchors_kind: str = "2eur_commemo",
+    encoder_version: str = VERDICT_ENCODER_VERSION,
+    anchors_kind: str = VERDICT_ANCHORS_KIND,
 ) -> AutoValidateView:
     """Verdict global + détail par critère pour un image_asset.
 

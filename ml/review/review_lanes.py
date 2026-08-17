@@ -38,6 +38,10 @@ from __future__ import annotations
 import sqlite3
 from typing import Literal
 
+from shared.verdict_scope import (
+    VERDICT_ANCHORS_KIND,
+    VERDICT_ENCODER_VERSION,
+)
 from training.foundation.auto_validate import (
     AutoValidateVerdict,
     compute_auto_validate_verdict,
@@ -70,8 +74,8 @@ def compute_lane(
     conn: sqlite3.Connection,
     image_asset_id: str,
     *,
-    encoder_version: str = "dinov2-vits14",
-    anchors_kind: str = "2eur_commemo",
+    encoder_version: str = VERDICT_ENCODER_VERSION,
+    anchors_kind: str = VERDICT_ANCHORS_KIND,
 ) -> tuple[AutoValidateVerdict, Lane]:
     """``(verdict, lane)`` pour un image_asset — réutilise le verdict Dino
     existant (pas de duplication de la logique de seuils). Utilisé par l'enqueue,

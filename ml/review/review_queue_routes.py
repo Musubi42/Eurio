@@ -35,6 +35,10 @@ from sources.ebay.standards import design_group_lot_scope
 from review.validation.consensus import consensus_verdict
 from review.validation.experts import collect_signals
 from review.validation.persist import load_consensus_verdict
+from shared.verdict_scope import (
+    VERDICT_ANCHORS_KIND,
+    VERDICT_ENCODER_VERSION,
+)
 from training.foundation.auto_validate import (
     compute_auto_validate_verdict,
     compute_auto_validate_verdict_from_row,
@@ -640,8 +644,8 @@ def list_queue(
           LEFT JOIN coins t   ON t.eurio_id = s.target_eurio_id
           LEFT JOIN image_asset_dino_predictions p
                  ON p.asset_id = a.id
-                AND p.encoder_version = 'dinov2-vits14'
-                AND p.anchors_kind = '2eur_commemo'
+                AND p.encoder_version = '{VERDICT_ENCODER_VERSION}'
+                AND p.anchors_kind = '{VERDICT_ANCHORS_KIND}'
          WHERE {where}
          ORDER BY {order_clause}
          LIMIT ?
@@ -836,8 +840,8 @@ def queue_triage_stats(
           JOIN source_images si ON si.id = a.source_image_id
           LEFT JOIN image_asset_dino_predictions p
                  ON p.asset_id = a.id
-                AND p.encoder_version = 'dinov2-vits14'
-                AND p.anchors_kind = '2eur_commemo'
+                AND p.encoder_version = '{VERDICT_ENCODER_VERSION}'
+                AND p.anchors_kind = '{VERDICT_ANCHORS_KIND}'
           LEFT JOIN listing_text_signals lts
                  ON lts.source_image_id = si.id
          WHERE {where}{cohort_clause}
@@ -1883,7 +1887,7 @@ def decide_lot(listing_key: str, payload: LotDecidePayload) -> LotDecideResponse
 def get_review(review_id: str) -> ReviewItem:
     conn = _store()._connection()  # noqa: SLF001
     row = conn.execute(
-        """
+        f"""
         SELECT rq.id, rq.image_asset_id, rq.priority, rq.enqueued_at,
                rq.candidate_eurio_ids_json AS rq_candidates,
                a.bbox_json, a.candidate_eurio_ids_json, a.face, a.quality_score,
@@ -1911,8 +1915,8 @@ def get_review(review_id: str) -> ReviewItem:
           LEFT JOIN coins t   ON t.eurio_id = s.target_eurio_id
           LEFT JOIN image_asset_dino_predictions p
                  ON p.asset_id = a.id
-                AND p.encoder_version = 'dinov2-vits14'
-                AND p.anchors_kind = '2eur_commemo'
+                AND p.encoder_version = '{VERDICT_ENCODER_VERSION}'
+                AND p.anchors_kind = '{VERDICT_ANCHORS_KIND}'
          WHERE rq.id = ?
         """,
         (review_id,),
@@ -3310,8 +3314,8 @@ def run_auto_accept(
           LEFT JOIN coins c ON c.eurio_id = s.target_eurio_id
           LEFT JOIN image_asset_dino_predictions p
                  ON p.asset_id = a.id
-                AND p.encoder_version = 'dinov2-vits14'
-                AND p.anchors_kind = '2eur_commemo'
+                AND p.encoder_version = '{VERDICT_ENCODER_VERSION}'
+                AND p.anchors_kind = '{VERDICT_ANCHORS_KIND}'
          WHERE {where}
          ORDER BY rq.priority ASC, rq.enqueued_at ASC
          LIMIT ?

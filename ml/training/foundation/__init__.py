@@ -13,6 +13,8 @@ from training.foundation.anchors import (
     CONSENSUS_ANCHORS_KIND,
     REVERSE_ANCHORS_KIND,
     SUGGESTIONS_ANCHORS_KIND,
+    VERDICT_ANCHORS_KIND,
+    VERDICT_ENCODER_VERSION,
     AnchorBank,
     anchor_path,
     build_anchors_2eur_all,
@@ -43,6 +45,8 @@ from training.foundation.matcher import Match, spread, top_k_match, top_k_match_
 
 __all__ = [
     "CONSENSUS_ANCHORS_KIND",
+    "VERDICT_ANCHORS_KIND",
+    "VERDICT_ENCODER_VERSION",
     "REVERSE_ANCHORS_KIND",
     "DEFAULT_ENCODER_VERSION",
     "DINOV2_MODEL",

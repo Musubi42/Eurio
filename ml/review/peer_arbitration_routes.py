@@ -20,6 +20,10 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from store import Store, emit_state_event
+from shared.verdict_scope import (
+    VERDICT_ANCHORS_KIND,
+    VERDICT_ENCODER_VERSION,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/peer-arbitration", tags=["peer-arbitration"])
@@ -63,7 +67,7 @@ def list_pending(limit: int = 200) -> dict:
     """Décisions en attente d'arbitrage, enrichies pour la vue rapide."""
     conn = _store()._connection()  # noqa: SLF001
     rows = conn.execute(
-        """
+        f"""
         SELECT pr.*, s.source AS asset_source,
                p.top1_country_eurio_id AS dino_country, p.top1_eurio_id AS dino_global
           FROM peer_review_decisions pr
@@ -71,8 +75,8 @@ def list_pending(limit: int = 200) -> dict:
           LEFT JOIN source_images s ON s.id = a.source_image_id
           LEFT JOIN image_asset_dino_predictions p
                  ON p.asset_id = pr.image_asset_id
-                AND p.encoder_version = 'dinov2-vits14'
-                AND p.anchors_kind = '2eur_commemo'
+                AND p.encoder_version = '{VERDICT_ENCODER_VERSION}'
+                AND p.anchors_kind = '{VERDICT_ANCHORS_KIND}'
          WHERE pr.arbitration_status = 'pending'
          ORDER BY pr.decided_at
          LIMIT ?

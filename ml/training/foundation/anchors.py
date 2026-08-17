@@ -30,6 +30,12 @@ from typing import Any
 
 import numpy as np
 
+from shared.verdict_scope import (
+    VERDICT_ANCHORS_KIND as _VERDICT_ANCHORS_KIND,
+)
+from shared.verdict_scope import (
+    VERDICT_ENCODER_VERSION as _VERDICT_ENCODER_VERSION,
+)
 from training.foundation.encoder import (
     DEFAULT_ENCODER_VERSION,
     SUGGESTIONS_ENCODER_VERSION,
@@ -85,6 +91,17 @@ ENCODER_VERSION_FOR_KIND = {
 
 def encoder_version_for_kind(kind: str) -> str:
     return ENCODER_VERSION_FOR_KIND.get(kind, DEFAULT_ENCODER_VERSION)
+
+
+# ─── Scope du VERDICT de review — ré-export du point de bascule unique ──────
+#
+# La valeur vit dans `shared/verdict_scope.py` (stdlib pure) parce que l'image
+# lean du VPS (`serving/review_queue/`) doit la lire sans numpy ni torch. On la
+# ré-exporte ici pour que `training.foundation` garde une surface unique.
+# Cohérence (kind, encoder) entre les deux modules : vérifiée par
+# `tests/test_verdict_anchors_scope.py`.
+VERDICT_ANCHORS_KIND = _VERDICT_ANCHORS_KIND
+VERDICT_ENCODER_VERSION = _VERDICT_ENCODER_VERSION
 
 
 @dataclass

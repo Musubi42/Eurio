@@ -9,6 +9,10 @@ import sqlite3
 from datetime import datetime, timedelta
 
 from serving._coin_helpers import canonical_obverse_url
+from shared.verdict_scope import (
+    VERDICT_ANCHORS_KIND,
+    VERDICT_ENCODER_VERSION,
+)
 
 from .models import (
     LotListItem,
@@ -350,7 +354,7 @@ def _cohort_eurio_ids(
 # ─── /review-queue (list) ───────────────────────────────────────────────────
 
 
-_LIST_SELECT_SQL = """
+_LIST_SELECT_SQL = f"""
 SELECT rq.id, rq.image_asset_id, rq.priority, rq.enqueued_at,
        rq.candidate_eurio_ids_json AS rq_candidates,
        a.bbox_json, a.candidate_eurio_ids_json, a.face, a.quality_score,
@@ -378,8 +382,8 @@ SELECT rq.id, rq.image_asset_id, rq.priority, rq.enqueued_at,
   LEFT JOIN coins t   ON t.eurio_id = s.target_eurio_id
   LEFT JOIN image_asset_dino_predictions p
          ON p.asset_id = a.id
-        AND p.encoder_version = 'dinov2-vits14'
-        AND p.anchors_kind = '2eur_commemo'
+        AND p.encoder_version = '{VERDICT_ENCODER_VERSION}'
+        AND p.anchors_kind = '{VERDICT_ANCHORS_KIND}'
 """
 
 
@@ -1087,8 +1091,8 @@ def fetch_verdict_signal_rows(
           JOIN source_images si ON si.id = a.source_image_id
           LEFT JOIN image_asset_dino_predictions p
                  ON p.asset_id = a.id
-                AND p.encoder_version = 'dinov2-vits14'
-                AND p.anchors_kind = '2eur_commemo'
+                AND p.encoder_version = '{VERDICT_ENCODER_VERSION}'
+                AND p.anchors_kind = '{VERDICT_ANCHORS_KIND}'
           LEFT JOIN listing_text_signals lts
                  ON lts.source_image_id = si.id
          WHERE {where}{cohort_clause}
