@@ -52,9 +52,19 @@ PROD_LOCK = PROD_DIR / ".promote.lock"
 # …/eurio.db » alors que le modèle et ses artefacts étaient complets sur disque.
 STATE_DB = resolve_db_path(ML_DIR / "state" / "eurio.db")
 VENV_PYTHON = str(ML_DIR / ".venv" / "bin" / "python")
+# L'asset RÉELLEMENT embarqué dans l'APK — l'état de production observable
+# quand `ml/prod/` n'existe pas sur cette machine. Clé = `numista_id` (c'est
+# `EmbeddingMatcher` qui le lit, et c'est lui qui décide ce que l'app reconnaît).
+APK_EMBEDDINGS = (
+    ML_DIR.parent / "app-android" / "src" / "main" / "assets" / "data"
+    / "coin_embeddings.json"
+)
 
 VALID_VERDICTS = {"baseline", "better"}
 ARTIFACT_SUBDIRS = ("checkpoints", "embeddings", "tflite")
+# Tables que `bootstrap/seed_supabase.py` upserte. Vérifiées AVANT toute
+# écriture locale : au 2026-08-17 elles n'existent pas dans le projet ciblé.
+SUPABASE_MODEL_TABLES = ("model_classes", "coin_embeddings")
 
 logger = logging.getLogger("promote")
 
@@ -111,6 +121,12 @@ def _promote_lock():
             PROD_LOCK.unlink()
 
 
+def _warn_force(message: str) -> None:
+    """Un override doit être BRUYANT. stderr, pas logging : le script est lu à
+    travers un pipe qui ne garde souvent que la queue de stdout (le JSON)."""
+    print(f"⚠️  {message}", file=sys.stderr, flush=True)
+
+
 def _validate_iteration(iid: str, *, force: bool) -> dict:
     """Check that the iteration exists, is completed, and has a valid verdict."""
     store = Store(STATE_DB)
@@ -122,35 +138,68 @@ def _validate_iteration(iid: str, *, force: bool) -> dict:
             "Si l'itération a été calculée sous un autre EURIO_DB_PATH (mode "
             "compute, réplique…), relance la promotion avec le même."
         )
-    if it.status != "completed" and not force:
-        raise SystemExit(
-            f"Iteration {iid} is status={it.status!r}, expected 'completed' "
-            "(use --force to override)."
+    # `--force` couvre TROIS contrôles à la fois (statut, verdict, traçabilité).
+    # Quelqu'un qui le pose pour un verdict `pending` désarme la traçabilité sans
+    # le savoir. On enregistre donc ce qu'il a réellement désarmé, et on le crie.
+    force_overrides: list[str] = []
+    if it.status != "completed":
+        if not force:
+            raise SystemExit(
+                f"Iteration {iid} is status={it.status!r}, expected 'completed' "
+                "(use --force to override)."
+            )
+        force_overrides.append("status")
+        _warn_force(
+            f"--force : statut={it.status!r} (attendu 'completed') — promotion "
+            "d'une itération non terminée."
         )
     verdict = it.verdict_override or it.verdict
-    if verdict not in VALID_VERDICTS and not force:
-        raise SystemExit(
-            f"Iteration {iid} verdict={verdict!r}, expected one of "
-            f"{sorted(VALID_VERDICTS)} (use --force to override)."
+    if verdict not in VALID_VERDICTS:
+        if not force:
+            raise SystemExit(
+                f"Iteration {iid} verdict={verdict!r}, expected one of "
+                f"{sorted(VALID_VERDICTS)} (use --force to override)."
+            )
+        force_overrides.append("verdict")
+        _warn_force(
+            f"--force : verdict={verdict!r} (attendu {sorted(VALID_VERDICTS)}) — "
+            "aucun benchmark ne soutient cette promotion."
         )
     # Promouvoir depuis une base qui ne porte pas le run, c'est perdre la
     # traçabilité en silence : `promoted_from.json` enregistrerait
     # `training_run_id: null`, et plus rien ne relierait le modèle en prod à ce
     # qui l'a produit. Le cas est atteignable sans le vouloir — le devShell
-    # pointe `EURIO_DB_PATH` sur la RÉPLIQUE, et le canonique null les
-    # `*_run_id` (les tables de run ne lui sont jamais poussées, cf.
-    # `serving/iteration_sync_routes.py`). La réplique dit donc `completed`
-    # avec `run=NULL` pendant que la base de calcul porte le vrai lien.
-    # Constaté pendant l'exercice #1 du parcours 4 (2026-08-16).
-    if it.training_run_id is None and not force:
-        raise SystemExit(
-            f"Iteration {iid} est 'completed' mais SANS training_run_id dans "
-            f"{STATE_DB}. Cette base ne porte pas le run — c'est typiquement la "
-            "réplique du canonique, qui n'a jamais reçu les tables de run. "
-            "Promeus depuis la base de CALCUL (celle où l'entraînement a "
-            "tourné) : EURIO_DB_PATH=<…/eurio.work*.db>. "
-            "--force passe outre, au prix d'un promoted_from.json sans lien "
-            "vers le run."
+    # pointe `EURIO_DB_PATH` sur la RÉPLIQUE.
+    #
+    # ⚠️ Le message disait que la réplique « n'a jamais reçu les tables de run ».
+    # C'est FAUX : mesuré le 2026-08-17, elle porte 34 `training_runs`, et des
+    # itérations `completed` y gardent leur lien. Le vrai mécanisme est au
+    # canonique — `serving/iteration_sync_routes.py:126-129` annule le lien AU
+    # CAS PAR CAS, quand la ligne de run ne lui a pas été poussée :
+    #     if data.get("training_run_id") and store.get_run(...) is None:
+    #         data["training_run_id"] = None
+    # Corollaire : « promeus depuis la base de calcul » n'est pas toujours une
+    # sortie — le 2026-08-17, 3 itérations `completed` étaient sans run dans les
+    # DEUX bases. D'où le libellé prudent ci-dessous.
+    if it.training_run_id is None:
+        if not force:
+            raise SystemExit(
+                f"Iteration {iid} est 'completed' mais SANS training_run_id dans "
+                f"{STATE_DB}. Le lien vers le run a été annulé au cas par cas "
+                "par le canonique à la synchro (serving/iteration_sync_routes.py"
+                ":126-129 : le run référencé ne lui avait pas été poussé), ou "
+                "n'a jamais existé. Essaie la base de CALCUL, celle où "
+                "l'entraînement a tourné : EURIO_DB_PATH=<…/eurio.work*.db> — "
+                "mais elle peut refuser aussi (mesuré : 3 itérations sans run "
+                "des deux côtés). --force passe outre, au prix d'un "
+                "promoted_from.json avec training_run_id: null."
+            )
+        force_overrides.append("traceability")
+        _warn_force(
+            "--force : TRAÇABILITÉ DÉSARMÉE — training_run_id est NULL dans "
+            f"{STATE_DB}. `promoted_from.json` sera écrit avec "
+            "training_run_id: null : rien ne reliera le modèle en production "
+            "au run qui l'a produit."
         )
     iter_dir = LAB_ITERATIONS_DIR / iid
     missing = [
@@ -172,24 +221,95 @@ def _validate_iteration(iid: str, *, force: bool) -> dict:
         "verdict": verdict,
         "training_run_id": it.training_run_id,
         "benchmark_run_id": it.benchmark_run_id,
+        "force_overrides": force_overrides,
         "iter_dir": iter_dir,
     }
 
 
+def _apk_numista_ids() -> set[str]:
+    """Les numista_id que l'APK reconnaît aujourd'hui (asset embarqué)."""
+    data = json.loads(APK_EMBEDDINGS.read_text())
+    if isinstance(data, dict) and isinstance(data.get("coins"), dict):
+        data = data["coins"]
+    return {str(k) for k in data}
+
+
 def _diff_classes(iter_dir: Path) -> dict:
-    """Compare iter embeddings classes vs current prod embeddings classes."""
+    """Ce que la promotion AJOUTE et ce qu'elle FAIT PERDRE, contre une référence.
+
+    La promotion REMPLACE : les entrées listées `absent_in_promotion` sont
+    exactement celles que l'app cessera de reconnaître.
+
+    Le choix de la référence, du plus fidèle au moins fidèle :
+
+    1. ``prod/current/embeddings/embeddings_v1.json`` — la prod locale, espace
+       `class_id`. C'est la comparaison exacte quand elle est disponible.
+    2. À défaut, l'asset **réellement embarqué dans l'APK**
+       (``app-android/.../coin_embeddings.json``), espace `numista_id`. C'est
+       un espace d'identifiants différent, donc une comparaison approchée — mais
+       c'est l'état RÉEL de la production, et il est disponible sur toutes les
+       machines du repo. `numista_ids` est porté par chaque classe de
+       `embeddings_v1.json`, la traduction est donc exacte dans ce sens.
+    3. Aucune des deux : le diff est **aveugle** et le dit (`blind: True`,
+       champs à `None`). Il ne renvoie SURTOUT pas `absent_in_promotion: []`.
+
+    L'ancien code prenait `set()` comme référence quand `prod/current` manquait :
+    `absent_in_promotion` valait alors TOUJOURS `[]`. Sur le Mac, où `ml/prod/`
+    n'existe pas, le dry-run de `4aaac6865ca9` annonçait « rien de perdu » alors
+    que la comparaison à l'asset de l'APK donne 16 pièces perdues sur 23. Un
+    défaut plausible (la liste vide) là où il fallait un aveu d'ignorance.
+    """
     new_path = iter_dir / "embeddings" / "embeddings_v1.json"
+    new_coins = json.loads(new_path.read_text()).get("coins", {})
+
     cur_path = PROD_CURRENT / "embeddings" / "embeddings_v1.json"
-    new_classes = set(json.loads(new_path.read_text()).get("coins", {}))
-    cur_classes: set[str] = set()
+    reference = "none"
+    id_space = None
+    reference_path = None
+    new_ids: set[str] = set()
+    cur_ids: set[str] = set()
+
     if cur_path.exists():
-        cur_classes = set(json.loads(cur_path.read_text()).get("coins", {}))
+        reference, id_space, reference_path = "prod_current", "class_id", cur_path
+        new_ids = {str(k) for k in new_coins}
+        cur_ids = {str(k) for k in json.loads(cur_path.read_text()).get("coins", {})}
+    elif APK_EMBEDDINGS.exists():
+        new_ids = {
+            str(nid)
+            for payload in new_coins.values()
+            if isinstance(payload, dict)
+            for nid in (payload.get("numista_ids") or [])
+        }
+        if new_ids:
+            reference, id_space = "apk_asset", "numista_id"
+            reference_path = APK_EMBEDDINGS
+            cur_ids = _apk_numista_ids()
+
+    if reference == "none":
+        # Ni prod locale, ni asset APK exploitable : on ne sait pas ce qui se
+        # perd. `None` — jamais `[]`, qui se lirait « rien ne se perd ».
+        return {
+            "reference": "none",
+            "reference_path": None,
+            "id_space": None,
+            "blind": True,
+            "added": None,
+            "kept": None,
+            "absent_in_promotion": None,
+            "n_new": len(new_coins),
+            "n_current": None,
+        }
+
     return {
-        "added": sorted(new_classes - cur_classes),
-        "kept": sorted(new_classes & cur_classes),
-        "absent_in_promotion": sorted(cur_classes - new_classes),
-        "n_new": len(new_classes),
-        "n_current": len(cur_classes),
+        "reference": reference,
+        "reference_path": str(reference_path),
+        "id_space": id_space,
+        "blind": False,
+        "added": sorted(new_ids - cur_ids),
+        "kept": sorted(new_ids & cur_ids),
+        "absent_in_promotion": sorted(cur_ids - new_ids),
+        "n_new": len(new_ids),
+        "n_current": len(cur_ids),
     }
 
 
@@ -252,6 +372,10 @@ def _write_promoted_from(iter_meta: dict, hashes: dict[str, str]) -> Path:
         "training_run_id": iter_meta["training_run_id"],
         "benchmark_run_id": iter_meta["benchmark_run_id"],
         "verdict": iter_meta["verdict"],
+        # Trace de ce que `--force` a réellement désarmé (statut / verdict /
+        # traçabilité). Sans ça, un promoted_from.json avec
+        # `training_run_id: null` ne dit pas si c'était un accident ou un choix.
+        "force_overrides": iter_meta.get("force_overrides", []),
         "promoted_at": _iso_now(),
         "promoted_by": getpass.getuser(),
         "sha256": hashes,
@@ -259,6 +383,71 @@ def _write_promoted_from(iter_meta: dict, hashes: dict[str, str]) -> Path:
     out = PROD_CURRENT / "promoted_from.json"
     out.write_text(json.dumps(payload, indent=2, sort_keys=True))
     return out
+
+
+def _supabase_credentials() -> tuple[str, str]:
+    from training.eval.class_resolver import load_env
+
+    env = load_env()
+    url = env.get("SUPABASE_URL", "")
+    key = env.get("SUPABASE_SERVICE_ROLE_KEY", "")
+    if not url or not key:
+        raise SystemExit(
+            "Push Supabase demandé mais SUPABASE_URL / "
+            "SUPABASE_SERVICE_ROLE_KEY sont absents de l'environnement "
+            "(devShell + secrets/dev.env). Utilise --no-supabase pour "
+            "promouvoir en local seulement."
+        )
+    return url, key
+
+
+def _check_supabase_target() -> None:
+    """Préflight : la cible Supabase existe-t-elle, AVANT le point de non-retour ?
+
+    `promote()` remplaçait `prod/current` puis poussait Supabase. Or les deux
+    tables upsertées par `bootstrap/seed_supabase.py` n'existent pas dans le
+    projet ciblé (2026-08-17, `to_regclass` → null pour les deux ; le projet
+    porte la projection catalogue `coin`/`design_group`/`sets`). La promotion
+    réussissait donc localement puis plantait : état à moitié promu, sans que
+    rien ne le dise. On vérifie ici, avant tout écrasement.
+
+    Aucune DDL n'est émise : créer ces tables serait une modification de schéma
+    en production, hors périmètre de ce script.
+    """
+    import httpx
+
+    url, key = _supabase_credentials()
+    rest_base = url.rstrip("/") + "/rest/v1"
+    headers = {"apikey": key, "Authorization": f"Bearer {key}"}
+    missing: list[str] = []
+    unreachable: list[str] = []
+    with httpx.Client(headers=headers, timeout=30) as client:
+        for table in SUPABASE_MODEL_TABLES:
+            try:
+                resp = client.get(f"{rest_base}/{table}?select=*&limit=0")
+            except Exception as exc:  # réseau, DNS, TLS…
+                unreachable.append(f"{table}: {type(exc).__name__}: {exc}")
+                continue
+            if resp.status_code == 404:
+                missing.append(table)
+            elif resp.status_code >= 400:
+                unreachable.append(
+                    f"{table}: HTTP {resp.status_code} {resp.text[:200]}"
+                )
+    if missing or unreachable:
+        details = []
+        if missing:
+            details.append("absente(s) du projet : " + ", ".join(missing))
+        if unreachable:
+            details.append("injoignable(s) : " + " | ".join(unreachable))
+        raise SystemExit(
+            "Cible Supabase inutilisable — " + " ; ".join(details) + ". "
+            f"Projet : {url}. Rien n'a été écrit : prod/current est INTACT. "
+            "Ne crée pas ces tables depuis ce script (DDL en production). "
+            "Relance avec --no-supabase pour promouvoir en local seulement, "
+            "et pousse la projection séparément quand le schéma existe."
+        )
+    logger.info("Préflight Supabase OK (%s)", ", ".join(SUPABASE_MODEL_TABLES))
 
 
 def _delete_supabase_classes_not_in(coin_class_ids: set[str]) -> None:
@@ -330,9 +519,35 @@ def promote(args: argparse.Namespace) -> int:
         "dry_run": args.dry_run,
     }, indent=2))
 
+    if diff["blind"] and not getattr(args, "allow_blind_diff", False):
+        raise SystemExit(
+            "Diff de perte AVEUGLE : ni prod/current ni asset APK exploitable "
+            f"comme référence ({APK_EMBEDDINGS}). Impossible de dire ce que "
+            "cette promotion fera perdre — et la promotion REMPLACE. "
+            "Rapatrie une prod de référence, ou passe --allow-blind-diff pour "
+            "promouvoir en assumant de ne pas savoir."
+        )
+    if diff["blind"]:
+        _warn_force(
+            "--allow-blind-diff : aucune référence de production. Ce que cette "
+            "promotion fait perdre est INCONNU."
+        )
+    elif diff["absent_in_promotion"]:
+        _warn_force(
+            f"{len(diff['absent_in_promotion'])} entrée(s) sur "
+            f"{diff['n_current']} ({diff['id_space']}) présentes en production "
+            f"et ABSENTES de cette promotion — l'app cessera de les "
+            f"reconnaître. Référence : {diff['reference']}."
+        )
+
     if args.dry_run:
         print("--dry-run: no copy, no Supabase write.")
         return 0
+
+    # Préflight AVANT le point de non-retour : `_archive_current` +
+    # `_atomic_copy` sont irréversibles du point de vue de l'opérateur.
+    if not args.no_supabase:
+        _check_supabase_target()
 
     with _promote_lock():
         prev_iid = _read_prev_iid()
@@ -398,7 +613,15 @@ def main() -> int:
     parser.add_argument("iteration_id")
     parser.add_argument(
         "--force", action="store_true",
-        help="Bypass status / verdict checks. Use with care.",
+        help="Désarme TROIS contrôles à la fois : statut, verdict ET "
+             "traçabilité (training_run_id). Chaque override est annoncé sur "
+             "stderr et enregistré dans promoted_from.json.force_overrides.",
+    )
+    parser.add_argument(
+        "--allow-blind-diff", action="store_true",
+        help="Promouvoir alors qu'aucune référence de production n'est "
+             "disponible (ni prod/current, ni asset APK) : on ne peut alors "
+             "PAS dire ce que la promotion fait perdre.",
     )
     parser.add_argument(
         "--dry-run", action="store_true",
