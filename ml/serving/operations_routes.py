@@ -14,6 +14,7 @@ Endpoints
 
 from __future__ import annotations
 
+import json
 import logging
 import sqlite3
 from typing import Any
@@ -394,6 +395,23 @@ class CohortResponse(BaseModel):
     cohorts: list[CohortRow]
 
 
+def _n_members(eurio_ids_json: str | None) -> int:
+    """Taille de la liste de membres, tolérante au NULL et au JSON abîmé.
+
+    Décodé en Python et non par ``json_array_length()`` : l'image lean du VPS
+    ne garantit pas l'extension JSON1 de SQLite, et une cohorte comptée à zéro
+    est exactement le bug qu'on répare.
+    """
+    if not eurio_ids_json:
+        return 0
+    try:
+        parsed = json.loads(eurio_ids_json)
+    except (TypeError, ValueError):
+        logger.warning("eurio_ids_json illisible sur une cohorte — compté 0")
+        return 0
+    return len(parsed) if isinstance(parsed, list) else 0
+
+
 @router.get("/cohorts", response_model=CohortResponse)
 def cohorts() -> CohortResponse:
     """Cohort status from eurio.db. Capture counts live on the PC filesystem
@@ -401,10 +419,16 @@ def cohorts() -> CohortResponse:
     """
     conn = _conn()
     try:
+        # Les membres vivent dans ``eurio_ids_json`` — c'est ce que
+        # ``/ingest/cohort`` écrit et ce que le lab lit. La table normalisée
+        # ``cohort_members`` n'est alimentée que par
+        # ``scripts/migrate_canonical_schema.py`` et n'est maintenue par aucun
+        # writer : la compter rendait ``n_members: 0`` pour toutes les cohortes
+        # (mesuré au canonique le 2026-08-17, 8 cohortes peuplées, 0 ligne).
         rows = conn.execute(
             """
             SELECT c.id, c.name, c.status, c.zone, c.frozen_at, c.created_at,
-                   COALESCE((SELECT COUNT(*) FROM cohort_members m WHERE m.cohort_id = c.id), 0) AS n_members
+                   c.eurio_ids_json
             FROM experiment_cohorts c
             ORDER BY (c.status = 'frozen') DESC, c.created_at DESC
             """
@@ -415,7 +439,7 @@ def cohorts() -> CohortResponse:
     cohort_rows = [
         CohortRow(
             id=r[0], name=r[1], status=r[2], zone=r[3],
-            frozen_at=r[4], created_at=r[5], n_members=int(r[6] or 0),
+            frozen_at=r[4], created_at=r[5], n_members=_n_members(r[6]),
         )
         for r in rows
     ]
