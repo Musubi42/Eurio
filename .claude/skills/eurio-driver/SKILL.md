@@ -21,17 +21,41 @@ le front d'Eurio lui-même, pas dans l'OS.
 
 ## Actions exposées
 
-| Action | Description | Tier | Commande |
-|---|---|---|---|
-| `status` | Statut du repo (branche, changements, derniers commits) | `auto` | `git status --short --branch && git log --oneline -5` |
-| `typecheck` | Typecheck du front admin (vue-tsc) | `auto` | `task front:typecheck` |
-| `secrets-check` | Vérifie que les secrets sops sont déchiffrables et bien formés | `auto` | `task secrets:check` |
-| `tokens-check` | Vérifie que les design tokens générés sont à jour (CI guard) | `auto` | `task tokens:check` |
-| `build-front` | Build du front admin (typecheck + vite build) | `auto` | `task front:build` |
+| Action | Description | Tier |
+|---|---|---|
+| `status` | Statut du repo (branche, changements, derniers commits) | `auto` |
+| `typecheck` | Typecheck du front admin (vue-tsc) | `auto` |
+| `secrets-check` | Secrets sops déchiffrables et bien formés | `auto` |
+| `tokens-check` | Design tokens générés à jour (garde R2) | `auto` |
+| `build-front` | Build du front admin (typecheck + vite build) | `auto` |
+| `ml-tests` | Suite ML **ciblée** (lab, écritures, promotion, bake) | `auto` |
+| `stack-status` | Quels services locaux écoutent — `up`/`down` seulement | `auto` |
+| `canonical-status` | Le canonique VPS répond-il, et combien de routes sert-il | `auto` |
+| `replica-freshness` | Âge du dernier pull de la réplique locale | `auto` |
 
 Toutes en `tier: auto` (lecture/vérification/build, rien de destructif ni de
 publiant — pas de déploiement Vercel ici, la prod Eurio tourne sur le VPS et se
 déploie via son propre process infra, hors du driver v1).
+
+**Les commandes passent par `go-task`, jamais `task`** (CLAUDE.md
+§Interdictions). Les deux résolvent au même binaire dans le devShell, mais la
+convention du repo fait foi.
+
+### Deux nuances qui ont failli faire déraper le principe méta
+
+- **`ml-tests` ne lance PAS toute la suite** — il n'existe pas de tâche pour ça,
+  et la suite complète a des échecs pré-existants hors-scope. L'action cible les
+  fichiers du flux lab/promotion (cf. `eurio-verify`). Une action qui rendrait
+  systématiquement rouge ne serait pas un check, ce serait du bruit.
+- **`canonical-status` sonde l'`openapi.json`, pas `/health`** — qui n'existe pas
+  au canonique (404). Elle rend un **nombre de routes servies**, pas leur
+  contenu : c'est du méta (le service est-il debout et complet), pas de la donnée
+  métier. La frontière est là, et elle est fine : « 125 routes servies » est du
+  statut ; « 6918 items en file de review » n'en serait pas.
+
+⚠️ **Une action se livre exécutée.** Les quatre ci-dessus ont été lancées telles
+qu'écrites avant d'être commitées. Une action non testée est un piège posé à
+quelqu'un qui vous fait confiance.
 
 Le gateway musu-os les expose sous le nom `eurio:<name>` (ex. `eurio:status`),
 scanné depuis `syscalls/registry.yml` du repo musu-os qui référence ce repo.

@@ -25,6 +25,12 @@ services:
   # (réseau traefik VPS uniquement, cf. infra/minio/docker-compose.yml) — donc
   # pas déclaré ici : un service non exposé localement serait probé « down » en
   # permanence. À déclarer (tranche 61xx) le jour où il est exposé en local.
+# Toutes les commandes passent par `go-task` (jamais `task`) — cf. CLAUDE.md
+# §Interdictions. Les deux résolvent au même binaire dans le devShell, mais la
+# convention du repo est explicite et c'est elle qui fait foi.
+#
+# ⚠️ Principe Photoshop : aucune action ne rend de DONNÉE MÉTIER (pièces, crops,
+# contenu de eurio.db). Uniquement du méta — statut, résultat de check, build.
 actions:
   - name: status
     description: Statut du repo (branche, changements, derniers commits)
@@ -32,17 +38,58 @@ actions:
     tier: auto
   - name: typecheck
     description: Typecheck du front admin (vue-tsc)
-    run: task front:typecheck
+    run: go-task front:typecheck
     tier: auto
   - name: secrets-check
     description: Vérifie que les secrets sops sont déchiffrables et bien formés
-    run: task secrets:check
+    run: go-task secrets:check
     tier: auto
   - name: tokens-check
     description: Vérifie que les design tokens générés sont à jour (CI guard)
-    run: task tokens:check
+    run: go-task tokens:check
     tier: auto
   - name: build-front
     description: Build du front admin (typecheck + vite build)
-    run: task front:build
+    run: go-task front:build
+    tier: auto
+
+  # ── Ajouts 2026-08-17 — toujours méta, jamais de donnée métier ────────────
+  - name: ml-tests
+    description: >-
+      Suite ML ciblée (lab, écritures, promotion, bake). Il n'existe PAS de
+      tâche « toute la suite » : la suite complète a des échecs pré-existants
+      hors-scope. Cf. skill eurio-verify.
+    run: >-
+      cd ml && ./.venv/bin/python -m pytest -q
+      tests/test_lab_api.py tests/test_lab_writes.py tests/test_promote.py
+      tests/test_iteration_augmentations.py tests/test_storage.py
+    tier: auto
+  - name: stack-status
+    description: Quels services locaux écoutent (ML API 8042, front 5173) — up/down seulement
+    run: >-
+      for p in 8042 5173 5174 8048; do
+        printf '%-6s ' "$p";
+        lsof -ti :"$p" >/dev/null 2>&1 && echo up || echo down;
+      done
+    tier: auto
+  - name: canonical-status
+    description: >-
+      Le canonique VPS répond-il, et combien de routes sert-il ? Sonde publique
+      (openapi.json) — l'OpenAPI fait autorité, pas le code HTTP. Aucun secret,
+      aucune donnée métier.
+    run: >-
+      curl -sf -m 20 https://eurio-api.musubi.dev/openapi.json
+      | python3 -c "import json,sys; d=json.load(sys.stdin);
+      print('canonique OK —', len(d['paths']), 'routes servies')"
+    tier: auto
+  - name: replica-freshness
+    description: >-
+      Âge de la réplique read-only locale (horodatage du dernier pull, transport
+      utilisé, taille). Statut opérationnel — ne lit aucune ligne de la base.
+    run: >-
+      python3 -c "import json,time,pathlib;
+      p=pathlib.Path('ml/state/eurio.replica.db.sync.json');
+      d=json.loads(p.read_text()) if p.exists() else None;
+      print('réplique absente — go-task ml:db:pull-replica') if d is None else
+      print(f\"pull {d['pulled_at_iso']} ({(time.time()-d['pulled_at'])/3600:.1f} h) via {d['transport']}, {d['size_bytes']/1e6:.0f} Mo\")"
     tier: auto

@@ -30,8 +30,30 @@ Le symptôme quand une route n'a pas été reroutée :
 ```
 
 Ce 503 vient d'un handler global (`serving/server.py`) qui traduit
-`sqlite3.OperationalError: attempt to write a readonly database`. **Le message
-dit la vérité** : la route écrit encore en local alors qu'elle ne devrait plus.
+`sqlite3.OperationalError: attempt to write a readonly database`.
+
+⚠️ **Mais son message ment par omission, et c'est tout le diagnostic.** Il dit
+« Route non encore reroutée » dans **deux** cas très différents :
+
+| Cas | Ce qui se passe | Ce qu'il faut faire |
+|---|---|---|
+| **Vrai résiduel** — aucun jumeau au VPS | la route n'existe nulle part ailleurs | rerouter (§ plus bas) |
+| **Faux positif** — le jumeau existe déjà au VPS | le handler `:8042` est mort-mais-vivant ; c'est l'**appelant** qui tape la mauvaise adresse | corriger l'appelant, pas le backend |
+
+Trancher prend une commande — **l'OpenAPI du canonique fait autorité** :
+
+```bash
+curl -s https://eurio-api.musubi.dev/openapi.json \
+  | python3 -c "import json,sys; [print(k) for k in sorted(json.load(sys.stdin)['paths'])]" \
+  | grep '<le chemin>'
+```
+
+Vérifié le 2026-08-17 : `move-lane`, `requalify-lot`, `correct-listing` et
+`requalify-single` **ont tous leur jumeau au VPS**, et le front les y envoie déjà
+(`useReviewApi.ts` → `eurioApi`). Le commentaire de `server.py` qui les liste
+comme « résiduels » décrit `:8042`, pas le produit. Les vrais résiduels mesurés
+ce jour-là : `POST /review-queue/requalify-lot/batch` et
+`POST /coins/assets/reflag-needs-review`.
 
 ## Les quatre SQLite d'une machine de dev
 
@@ -40,10 +62,26 @@ dit la vérité** : la route écrit encore en local alors qu'elle ne devrait plu
 | `ml/state/eurio.replica.db` | **Réplique read-only** du canonique VPS, rafraîchie par `sqlite3_rsync` | ❌ jamais — `StoreBase` refuse même de l'ouvrir en écriture |
 | `ml/state/eurio.db` | DB de travail « Model A » (pré-flip). Peut être **périmée** | ✅ si le flip est levé |
 | `ml/state/eurio.local.db` | **Bookkeeping local** : `jobs`, `cohort_jobs`, `cohort_training_scans*` | ✅ **toujours**, même sous le flip |
-| `ml/state/eurio.work.db` | Snapshot inscriptible ponctuel (mode compute) — pas un standard | ✅ |
+| `ml/state/eurio.work*.db` | Snapshots inscriptibles ponctuels (mode compute) — pas un standard | ✅ |
 
-`ml/shared/state/eurio.db` est un **cinquième**, legacy : c'était la DB de quota
-d'API (`api_call_log`). Plus lu depuis le 2026-08-16, encore tracké dans git.
+⚠️ **La question porte sur le process, pas sur ton shell.** L'API peut avoir été
+lancée avec d'autres variables que celles que `env` te montre. C'est pour ça que
+le diagnostic ci-dessous lit `/proc`-équivalent du PID qui écoute, plutôt que
+d'importer `serving.server` dans un process neuf — qui répondrait à une autre
+question (*qu'utiliserait une nouvelle API*), en chargeant `cv2` et torch au
+passage.
+
+Ce que `ls ml/state/*.db` montre en plus, et qui n'est **pas** une destination :
+
+| Fichier | Statut |
+|---|---|
+| `ml/shared/state/eurio.db` | legacy — ancienne DB de quota (`api_call_log`). Plus lu depuis le 2026-08-16, encore tracké dans git |
+| `ml/state/review.db` | **legacy / autre système** — c'est la base du service de peer-review multi-utilisateur (`review_items`), pas la file `review_queue`. Ne rien y écrire |
+| `ml/state/training.db` | legacy, froid depuis juin 2026. Ne rien y écrire |
+
+Une machine de dev active en porte donc **huit ou neuf**, dont quatre seulement
+sont des destinations. Le nombre de fichiers n'est pas un guide : la table du
+haut l'est.
 
 ## Où part quoi
 
@@ -70,11 +108,8 @@ d'API (`api_call_log`). Plus lu depuis le 2026-08-16, encore tracké dans git.
 ## Diagnostiquer en 30 secondes
 
 ```bash
-# Quel fichier l'API utilise-t-elle vraiment ?
-cd ml && ./.venv/bin/python -c "
-import sys; sys.path.insert(0,'.')
-from serving import server
-print(server.CANONICAL_DB, '| read_only =', server._store._read_only)"
+# Quel fichier l'API QUI TOURNE utilise-t-elle ? (50 ms, rien à importer)
+ps eww -o command= -p $(lsof -ti :8042) | tr ' ' '\n' | grep -E '^EURIO_(DB|API)'
 
 # Un job détaché a-t-il échoué en silence ?
 ./.venv/bin/python -c "

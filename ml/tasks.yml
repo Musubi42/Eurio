@@ -45,7 +45,12 @@ tasks:
 
   # ---------- Eval-real (device golden set) ----------
   eval-real:sync:
-    desc: "Normalize the device-pulled eval_real/ snaps into datasets/eval_real_norm/. Usage: go-task ml:eval-real:sync -- <debug_pull_dir>"
+    desc: "Normalize the device-pulled eval_real/ snaps into datasets/eval_real_norm/ (ADDITIF : n'efface rien, les classes déjà présentes sont conservées). Usage: go-task ml:eval-real:sync -- <debug_pull_dir>"
+    cmds:
+      - "{{.VENV}}/python -m vision.sync_eval_real {{.CLI_ARGS}}"
+
+  eval-real:sync:clear:
+    desc: "⚠️ DESTRUCTIF — même chose mais EFFACE d'abord tout datasets/eval_real_norm/. À n'utiliser que pour repartir d'un set propre à partir d'un pull complet : lancé sur UN seul debug_pull, il détruit les captures normalisées de tous les autres. Usage: go-task ml:eval-real:sync:clear -- <debug_pull_dir>"
     cmds:
       - "{{.VENV}}/python -m vision.sync_eval_real {{.CLI_ARGS}} --clear"
 
@@ -81,7 +86,7 @@ tasks:
 
   # ---------- Foundation (DINOv2 anchors for auto-validation) ----------
   dino-anchors:build:
-    desc: "Build DINOv2 obverse anchor bank for the auto-validation pipeline. Kinds: 2eur_commemo (consensus, vits14), 2eur_standard (design groups courantes, vits14), 2eur_all (commémo+standards, banque des suggestions review, ENCODÉE EN vitl14 — MULTI-EXEMPLAIRES depuis improvement-loop B : canonique + ~10 vrais crops validés choisis par diversité FPS, overrides pin/exclude honorés, sélection tracée dans dino_class_references). Reads coins from eurio.db and ml/datasets/<numista>/obverse.jpg (+ crops eBay validés pour 2eur_all). Writes ml/state/foundation_anchors_<kind>.npz. Usage: go-task ml:dino-anchors:build [-- --force] [-- --kind 2eur_all]. Après un renommage de slugs : rebâtir 2eur_commemo ET 2eur_all --force PUIS re-backfiller les prédictions."
+    desc: "Build DINOv2 obverse anchor bank for the auto-validation pipeline. Kinds: 2eur_commemo (consensus, vits14), 2eur_standard (design groups courantes, vits14), 2eur_all (commémo+standards, banque des suggestions review, ENCODÉE EN vitl14 — MULTI-EXEMPLAIRES depuis improvement-loop B : canonique + ~10 vrais crops validés choisis par diversité FPS, overrides pin/exclude honorés, sélection tracée dans dino_class_references). Reads coins from eurio.db and ml/datasets/<numista>/obverse.jpg (+ crops eBay validés pour 2eur_all). Writes ml/state/foundation_anchors_<kind>.npz. Usage: go-task ml:dino-anchors:build [-- --force] [-- --kind 2eur_all]. Après un renommage de slugs : rebâtir 2eur_commemo ET 2eur_all --force PUIS re-backfiller les prédictions. ⚠️ 2eur_all TRACE sa sélection en base : sous le devShell (EURIO_DB_READONLY=1) la commande refuse de démarrer — relancer avec EURIO_DB_READONLY= , ou --skip-references pour le .npz seul."
     cmds:
       - "{{.VENV}}/python -m scripts.build_dino_anchors -v {{.CLI_ARGS}}"
 
@@ -443,9 +448,25 @@ tasks:
 
   # ---------- Market & editorial scrapes ----------
   scrape-ebay:
-    desc: "Enrich referential with eBay market prices (passes through CLI args, e.g. --countries=FR,DE --limit 5)"
+    desc: "⛔ SUPPRIMÉE — panneau indicateur. market/scrape_ebay.py n'existe plus. La bonne porte est ml:src:ebay:run (elle pose EURIO_CENSUS_RECOVER=1, OFF par défaut, qui récupère ~77 % du parc bimétal sous-croppé). Échoue exprès."
+    silent: true
     cmds:
-      - "{{.VENV}}/python market/scrape_ebay.py {{.CLI_ARGS}}"
+      - |
+        cat >&2 <<'EOF'
+        ⛔ go-task ml:scrape-ebay n'existe plus (market/scrape_ebay.py a été supprimé).
+
+           Pour scraper eBay, utilise :
+             go-task ml:src:ebay:run  -- --target-eurio-ids <id1>,<id2> --push
+             go-task ml:src:ebay:dry  -- ...   (découverte seule, aucun téléchargement)
+             go-task ml:src:ebay:status
+
+           N'appelle PAS `python -m sources.cli` en direct : la tâche pose
+           EURIO_CENSUS_RECOVER=1, OFF par défaut. Sans elle, une grosse part
+           des raws bimétal repart en zero_crops, en silence.
+
+           Détail : .claude/skills/eurio-enrichment/SKILL.md
+        EOF
+        exit 1
 
   scrape-lmdlp:
     desc: "Scrape La Maison de la Pièce 2€ catalogue → ml/datasets/sources/lmdlp_<date>.json"

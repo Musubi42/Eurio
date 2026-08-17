@@ -328,7 +328,7 @@ def _override_val_with_eval_real(
         eval_real_dir = Path(__file__).parent.parent / "datasets" / "eval_real_norm"
     if not eval_real_dir.exists():
         print(f"\n(no eval_real_norm/ found — val stays studio-derived; "
-              f"run `python -m scan.sync_eval_real <debug_pull>` to populate)")
+              f"run `python -m vision.sync_eval_real <debug_pull>` to populate)")
         return
 
     (output_dir / "val").mkdir(parents=True, exist_ok=True)

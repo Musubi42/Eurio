@@ -43,6 +43,24 @@ un import lourd → gate les **routes** lourdes, pas le fichier
 Même piège côté fonctions : un `from sources.market… import` **dans** un
 handler passe les tests locaux et lève `ModuleNotFoundError` à la requête en prod.
 
+⛔ **Un routeur « skippé » ne veut pas dire que son préfixe est absent.** Les noms
+de `_CANDIDATES` sont des étiquettes, pas des préfixes d'URL — et deux modules
+distincts peuvent servir le **même** préfixe. Mesuré le 2026-08-17 :
+
+```
+WARNING routers skippés : ["review_queue (ModuleNotFoundError: No module named 'cv2')"]
+$ curl .../review-queue/stats   →  HTTP 200 {"n_pending":6918,...}
+```
+
+Il n'y a pas de contradiction : le skippé est `review.review_queue_routes`
+(lourd — `detect`, `manual-crop`, `crop-edit-context`, `requalify-lot/batch`),
+tandis que `serving.review_queue` est importé **au niveau module** dans
+`server_serve.py` et sert `/review-queue/*` sans cv2. Ce que la prod perd, ce
+sont les **routes lourdes** de ce préfixe, pas le préfixe.
+
+Donc : le log dit ce qui a échoué à l'import, **l'OpenAPI dit ce qui est
+servi**. Lis les deux, dans cet ordre, et ne conclus jamais du premier seul.
+
 **2. L'OpenAPI fait autorité, pas le code HTTP.** Un middleware d'auth global
 répond **401 avant le routage** : une route inexistante répond 401 comme les
 autres. Ne conclus jamais d'un 401/404 nu.

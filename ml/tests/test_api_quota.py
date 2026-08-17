@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import sqlite3
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -94,8 +95,16 @@ def test_legacy_counters_are_imported_once(tmp_path, monkeypatch):
 
 def test_legacy_import_never_overwrites_and_is_replayable(tmp_path, monkeypatch):
     """`INSERT OR IGNORE` : une ligne déjà présente gagne, et rejouer est un no-op."""
+    # ⚠️ La période DOIT être celle du jour courant, calculée comme le fait
+    # `QuotaTracker._period()` (`datetime.now(UTC)`). Ce test a longtemps codé
+    # `'2026-08-16'` en dur : `record()` écrivant sous la date du jour, il ne
+    # pouvait passer QUE le 2026-08-16, et il est devenu rouge à perpétuité au
+    # changement de date — sans que rien ne signale qu'il avait cessé de tester
+    # la fusion legacy. Même famille que le reste du catalogue `eurio-verify`.
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
     legacy = tmp_path / "legacy.db"
-    _make_legacy(legacy, [("ebay", "", "daily", "2026-08-16", 4733, 0, "x")])
+    _make_legacy(legacy, [("ebay", "", "daily", today, 4733, 0, "x")])
     monkeypatch.setattr(api_quota, "_LEGACY_DB", legacy)
     target = tmp_path / "q.db"
     monkeypatch.setenv("EURIO_LOCAL_STATE_DB", str(target))
@@ -109,7 +118,8 @@ def test_legacy_import_never_overwrites_and_is_replayable(tmp_path, monkeypatch)
 
     with sqlite3.connect(target) as conn:
         (calls,) = conn.execute(
-            "SELECT calls FROM api_call_log WHERE source='ebay' AND period='2026-08-16'"
+            "SELECT calls FROM api_call_log WHERE source='ebay' AND period=?",
+            (today,),
         ).fetchone()
     assert calls == 4734
 

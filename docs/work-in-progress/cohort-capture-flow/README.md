@@ -49,7 +49,7 @@ Dans **§2 Captures** :
 5. Reviens à l'ordi : `go-task -t app-android/Taskfile.yml pull-debug` —
    pull les fichiers dans `debug_pull/<ts>/`.
 6. Dans le front, clique **"Synchroniser"** — le backend lance
-   `scan.sync_eval_real --also-write-captures`, dispatche les fichiers
+   `vision.sync_eval_real --also-write-captures`, dispatche les fichiers
    normalisés vers `ml/datasets/<numista_id>/captures/` et
    `ml/datasets/eval_real_norm/<eurio_id>/`.
 

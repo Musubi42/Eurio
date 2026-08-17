@@ -28,6 +28,34 @@ correctif était du code mort** : l'`ATTACH` employait un nom de fichier URI sur
 une connexion sans `uri=True`, échouait toujours, et l'exception était avalée
 par l'`except` juste en dessous. Aucun test ne le disait.
 
+## Le second niveau : un test qui échoue peut quand même ne rien prouver
+
+Une fois la mutation validée, pose la question suivante : **le test exerce-t-il
+le chemin qui a causé le bug, ou seulement le prédicat qui le corrige ?**
+
+Cas vécu le 2026-08-17, garde de `promote_iteration`. Les quatre mutations font
+bien rougir (garde neutralisée, garde inversée, `--force` retiré, message
+tronqué) — donc les tests ne sont pas tautologiques. Mais ils font
+`monkeypatch.setattr(p, "STATE_DB", store.db_path)` : **`resolve_db_path` et
+`EURIO_DB_PATH`, c'est-à-dire la cause même du bug, ne sont jamais exercés.** Une
+régression dans la résolution de chemin repasserait au vert.
+
+Le complément coûte deux commandes, et c'est lui qui prouve quelque chose :
+
+```bash
+cd ml
+EURIO_DB_PATH="$PWD/state/eurio.replica.db" ./.venv/bin/python -m scripts.promote_iteration <iid> --dry-run  # doit refuser
+EURIO_DB_PATH="$PWD/state/eurio.work.db"    ./.venv/bin/python -m scripts.promote_iteration <iid> --dry-run  # doit passer
+```
+
+Règle : **fais tourner le vrai point d'entrée au moins une fois**, avec la vraie
+variable d'environnement. Les tests unitaires gardent le prédicat ; seule
+l'exécution garde le câblage.
+
+⚠️ Et ne lis pas le code de sortie à travers un pipe : `cmd | tail -12; echo $?`
+rend le statut de `tail`, pas celui de la commande. Un refus manifeste a ainsi
+été rapporté comme `exit=0`.
+
 ## Catalogue des silences déjà rencontrés
 
 | Symptôme observable | Cause réelle |
@@ -66,7 +94,8 @@ aurait fallu une erreur.
 
 ```bash
 cd ml && ./.venv/bin/python -m pytest tests/test_lab_api.py tests/test_lab_writes.py \
-  tests/test_ebay_api.py tests/test_normalize_listing.py tests/test_storage.py -q
+  tests/test_ebay_api.py tests/test_normalize_listing.py tests/test_storage.py \
+  tests/test_promote.py tests/test_iteration_augmentations.py -q
 go-task front:typecheck        # via nix develop si hors devShell
 ```
 

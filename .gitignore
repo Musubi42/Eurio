@@ -171,10 +171,14 @@ ml/state/eurio.local.db-shm
 
 # Snapshot inscriptible ponctuel (mode compute — `VACUUM INTO` depuis la
 # réplique, cf. skill `eurio-run-local`). ~140 Mo : ne doit JAMAIS entrer dans
-# git, et c'est un dérivé — la vérité est le canonique VPS.
-ml/state/eurio.work.db
-ml/state/eurio.work.db-wal
-ml/state/eurio.work.db-shm
+# git. Dérivé pour l'essentiel — MAIS il porte les `training_runs` locaux, qui
+# eux n'existent nulle part ailleurs (cf. `docs/architecture/parcours.md` §4).
+# Glob et non nom exact : la procédure corrigée crée des bases datées
+# (`eurio.work-<label>.db`) au lieu d'écraser l'existante, et un fichier de
+# 145 Mo non ignoré n'attend qu'un `git add` distrait.
+ml/state/eurio.work*.db
+ml/state/eurio.work*.db-wal
+ml/state/eurio.work*.db-shm
 ml/state/numista_cache/
 # ml/state/cohort_csvs/
 # Sources refacto — local-only, each machine autonomous (decisions.md D-06)

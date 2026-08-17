@@ -1090,7 +1090,7 @@ class IterationRunner:
             _iter_dir(iteration.id) / "embeddings" / "embeddings_v1.json"
         )
         # Cohort/iteration captures land under `datasets/eval_real_norm/`
-        # via `scan.sync_eval_real`. The script's default real-photos
+        # via `vision.sync_eval_real`. The script's default real-photos
         # path is `ml/data/real_photos/` (legacy manual-benchmark dir).
         # Without --real-photos we'd evaluate on the wrong source.
         real_photos_root = ML_DIR / "datasets" / "eval_real_norm"

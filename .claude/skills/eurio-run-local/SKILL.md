@@ -24,6 +24,16 @@ Deux pièges d'entrée :
 
 Vérifier le PAT : `curl -H "Authorization: Bearer $EURIO_API_TOKEN" "$EURIO_API_URL/me"` → 200.
 
+## ⛔ Arrêter l'API : jamais `pkill -f` avec un motif qu'on retape
+
+`pkill -f "uvicorn serving.server"` matche **aussi la ligne de commande du shell
+qui l'exécute** : le shell se tue lui-même. Vécu le 2026-08-16 — plus aucun shell
+n'a redémarré de la session, exercice interrompu.
+
+```bash
+lsof -ti :8042 | xargs kill        # par PID, le motif n'apparaît nulle part
+```
+
 ## Hors shell interactif (agent, CI, script)
 
 direnv n'est pas chargé. Deux enveloppes cumulables :
@@ -64,16 +74,51 @@ for k,v in sorted(d.items(), key=lambda kv:-kv[1])[:10]: print(f'{v:4d}  {k}')"
 C'est une décision d'archi ouverte (cf. skill `eurio-data-writes`). Mode
 compute explicite en attendant :
 
+### ☠️ Ne JAMAIS écraser une `work.db` existante
+
+`VACUUM INTO` **refuse** d'écrire sur un fichier existant (« output file already
+exists »). Le réflexe — `rm ml/state/eurio.work.db` puis re-VACUUM — est
+**destructeur** : `work.db` est le SEUL endroit où vivent les `training_runs` /
+`benchmark_runs` des itérations calculées sur cette machine. Rien ne les
+sauvegarde, rien ne les régénère, elles ne remontent pas au canonique (c'est le
+design R3 : seul l'état voyage, jamais le modèle). Un `rm` efface pour de bon le
+résultat de chaque entraînement joué ici.
+
+**Si `work.db` existe déjà : on la garde et on la réutilise telle quelle.** Elle
+se répare, elle ne se refait pas.
+
 ```bash
-nix develop .#mac --command sqlite3 ml/state/eurio.replica.db \
+# 1. Créer work.db — UNIQUEMENT si elle n'existe pas
+[ -e ml/state/eurio.work.db ] || nix develop .#mac --command \
+  sqlite3 ml/state/eurio.replica.db \
   "VACUUM INTO 'ml/state/eurio.work.db'"          # jamais `cp` : WAL
+
+# 2. Besoin d'une base *fraîche* (réplique à jour) sans perdre les runs :
+#    VACUUM INTO un fichier NEUF, et pointer EURIO_DB_PATH dessus.
+nix develop .#mac --command sqlite3 ml/state/eurio.replica.db \
+  "VACUUM INTO 'ml/state/eurio.work-2026-08-16.db'"
 
 EURIO_DB_READONLY= EURIO_DB_PATH="$PWD/ml/state/eurio.work.db" go-task ml:api-prod
 ```
 
+Le prix du fichier neuf : les runs de l'ancienne `work.db` n'y sont pas. C'est un
+arbitrage conscient (fraîcheur du référentiel contre historique de compute), pas
+un effet de bord — et l'ancienne reste sur le disque, donc réversible.
+
 Les dimensions continuent de remonter au canonique par F09 (le statut
 `completed` de l'itération y arrive). Les **résultats** (runs, métriques)
 restent dans `work.db` : relancer l'API sans ces variables les rend invisibles.
+
+⚠️ **La promotion doit tourner sous le MÊME `EURIO_DB_PATH`** — sinon elle lit
+`state/eurio.db`, où l'itération n'existe pas :
+
+```bash
+cd ml && EURIO_DB_PATH="$PWD/state/eurio.work.db" \
+  .venv/bin/python -m scripts.promote_iteration <iid> --dry-run
+```
+
+(Le script honore `EURIO_DB_PATH` depuis le 2026-08-16 ; avant, le chemin était
+codé en dur et la promotion était **impossible** en mode compute.)
 
 ## Suivre ce qui se passe
 

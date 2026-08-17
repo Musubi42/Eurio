@@ -5,6 +5,20 @@ Sprint 1 / D-004 — augmentations are baked once on disk under
 The training pipeline then reads that snapshot directly (no on-the-fly
 recipe), so re-running the same iteration_id yields identical inputs.
 
+**Idempotence : sur l'identité des entrées, pas sur le compte de fichiers.**
+Le bake ne réutilise un snapshot que si le ``_manifest.json`` posé à côté porte
+le même ``inputs_digest`` — recipe + seed + cible + liste ordonnée des sources
+(chemin et taille). Sinon il régénère. La version d'avant comparait seulement
+``len(existing) >= target`` puis **réécrivait le manifeste** en re-dérivant
+``sources[i % len(sources)]`` sur la liste de sources *du moment* : une review
+qui ajoutait ou retirait un crop sans changer la cible faisait attribuer les
+samples à des sources qui ne les avaient pas produits, sans rien signaler.
+Mesuré le 2026-08-16 sur ``4aaac6865ca9`` : samples datés de 02:05 UTC,
+manifestes stampés 02:11 UTC par un re-bake qui n'avait régénéré aucune image.
+Le digest retient la **taille** et non un sha256 du contenu : une éviction LRU
+du cache suivie d'un re-téléchargement rend les mêmes octets, et re-hasher
+chaque source à chaque bake annulerait le bénéfice de la réutilisation.
+
 Design notes:
 
 - One ``AugmentationPipeline`` per coin, seeded deterministically from
@@ -60,7 +74,7 @@ from training.foundation.enrichment import (
     MIN_REAL,
     projection,
 )
-from store import Store
+from store import Store, resolve_db_path
 
 DATASETS_DIR = ML_DIR / "datasets"
 ITERATION_TRAIN_ROOTS = DATASETS_DIR / "iterations"
@@ -85,6 +99,102 @@ class CoinAugReport:
     n_real_ebay: int = 0          # crops eBay reviewés (training_eligible=1) utilisés
     n_ref_images: int = 0         # réfs officielles BCE / EUR-Lex JO utilisées
     below_floor_real: bool = False  # True si < FLOOR_REAL_EBAY crops eBay réels
+
+
+# Schéma du ``_manifest.json`` par pièce. v1 = sans ``inputs_digest`` (on ne peut
+# pas prouver que ses samples viennent des sources listées) → toujours régénéré.
+MANIFEST_VERSION = 2
+MANIFEST_NAME = "_manifest.json"
+
+
+def _inputs_digest(
+    sources: list[Path], *, seed: int, recipe_cfg: dict, target: int
+) -> str:
+    """Empreinte des entrées d'un bake de pièce.
+
+    Tout ce qui change les images produites y entre : la **configuration** de la
+    recette, le seed par-pièce, la cible (elle pilote le nombre ET le cyclage sur
+    les sources) et la liste ORDONNÉE des sources — l'ordre compte,
+    ``sources[i % len]`` en dépend. Chaque source est identifiée par son chemin
+    et sa taille (cf. docstring du module pour le choix taille vs sha256).
+
+    ⚠️ On hache la **config**, pas le ``recipe_id`` : ``PUT /lab/recipes/{id}``
+    modifie une recette **en place** (``store.update_recipe``), sans changer son
+    id. Hacher l'id laissait donc réutiliser un snapshot produit par l'ANCIENNE
+    config pendant que le manifeste et ``experiment_iterations.recipe_id``
+    affirment la nouvelle — le mensonge de provenance que ce digest existe pour
+    supprimer. Ça couvre aussi le cas ``recipe_id=None`` (``DEFAULT_RECIPE``),
+    qui n'entrait pas du tout dans l'empreinte.
+    """
+    h = hashlib.sha256()
+    recipe_fingerprint = json.dumps(recipe_cfg, sort_keys=True, default=str)
+    h.update(f"v{MANIFEST_VERSION}|{recipe_fingerprint}|{seed}|{target}\0".encode())
+    for p in sources:
+        try:
+            size = p.stat().st_size
+        except OSError:
+            size = -1  # source disparue entre la collecte et ici → digest différent
+        h.update(f"{p}\0{size}\0".encode())
+    return h.hexdigest()
+
+
+def _reusable_snapshot(
+    out_dir: Path, *, digest: str, target: int
+) -> bool:
+    """Vrai si le snapshot sur disque est PROUVÉ conforme aux entrées courantes.
+
+    Exige un manifeste v2 au bon digest, exactement ``target`` samples, et que
+    chaque fichier qu'il liste soit encore là. Au moindre doute on renvoie False
+    : régénérer est déterministe (même seed, mêmes sources ⇒ mêmes octets), donc
+    le pire coût d'un faux négatif est du temps CPU — alors qu'un faux positif
+    laisse une provenance fausse dans le manifeste.
+    """
+    manifest_path = out_dir / MANIFEST_NAME
+    if not manifest_path.is_file():
+        return False
+    try:
+        manifest = json.loads(manifest_path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return False
+    if manifest.get("version") != MANIFEST_VERSION:
+        return False
+    if manifest.get("inputs_digest") != digest:
+        return False
+    samples = manifest.get("samples") or []
+    if len(samples) != target:
+        return False
+    if len(list(out_dir.glob("sample_*.jpg"))) != target:
+        return False
+    return all((out_dir / s.get("file", "")).is_file() for s in samples)
+
+
+def bake_member_ids(cohort_eurio_ids: list[str], store: Store):
+    """(resolver, eurio_ids RÉELLEMENT bakés) pour une liste de pièces de cohorte.
+
+    Maille design_group : une classe = ``COALESCE(design_group_id, eurio_id)`` et
+    elle s'entraîne sur TOUS ses membres — y compris des pièces **hors cohorte**
+    (be-1999 nourrit la classe de be-2007 même si seule be-2007 est listée).
+    L'ensemble baké est donc l'union des membres des groupes de la cohorte, et il
+    est franchement plus grand : mesuré le 2026-08-16, une cohorte de 27 pièces en
+    bake 61.
+
+    Fonction partagée **exprès** : le bake, le nettoyage et la galerie doivent
+    raisonner sur le MÊME ensemble. Quand `clear_for_iteration` bouclait sur la
+    seule cohorte, un « regénérer » laissait intacts les snapshots des membres
+    hors cohorte — c'est-à-dire une bonne moitié du dataset.
+    """
+    from training.eval.class_resolver import build_resolver
+
+    resolver = build_resolver(force_eurio_id=False, db_path=store.db_path)
+    descriptors, _ = resolver.classes_for_eurio_ids(cohort_eurio_ids)
+    out: list[str] = []
+    seen: set[str] = set()
+    for d in descriptors:
+        for eid in d.eurio_ids:
+            if eid not in seen:
+                seen.add(eid)
+                out.append(eid)
+    return resolver, out
 
 
 def _per_coin_seed(iteration_seed: int, numista_id: int) -> int:
@@ -252,15 +362,18 @@ def generate_for_iteration(
 ) -> list[CoinAugReport]:
     """(Re)generate augmentations for every coin in the iteration's cohort.
 
-    Existing snapshots are reused: if ``<nid>/augmentations/<iid>/`` already
-    contains the expected number of files, the coin is left untouched.
-    Callers that want a forced rebuild should clear the directory first
-    (the regenerate endpoint does that).
+    Un snapshot n'est réutilisé que s'il est **prouvé conforme** aux entrées
+    courantes (manifeste v2 au bon ``inputs_digest``, cf. ``_reusable_snapshot``
+    et le docstring du module). Toute dérive des sources, de la recette, du seed
+    ou de la cible régénère la pièce — y compris quand le nombre de fichiers,
+    lui, n'aurait pas bougé. Les snapshots v1 (sans digest) sont toujours
+    régénérés une fois. Un rebuild inconditionnel reste possible en vidant le
+    dossier d'abord (ce que fait l'endpoint regenerate).
 
     ``on_progress(done, total)`` (optional) is called before processing each coin
     — used by the detached bake runner (`run_augmentation.py`) to report progress.
     """
-    store = store or Store(ML_DIR / "state" / "eurio.db")
+    store = store or Store(resolve_db_path(ML_DIR / "state" / "eurio.db"))
     it = store.get_iteration(iteration_id)
     if it is None:
         raise ValueError(f"Iteration {iteration_id!r} not found")
@@ -294,24 +407,7 @@ def generate_for_iteration(
     if train_root.exists():
         shutil.rmtree(train_root)
     train_root.mkdir(parents=True, exist_ok=True)
-    from training.eval.class_resolver import build_resolver
-    _resolver = build_resolver(force_eurio_id=False, db_path=store.db_path)
-
-    # Maille design_group : une classe = COALESCE(design_group_id, eurio_id),
-    # et elle s'entraîne sur TOUS ses eurio_id membres — y compris des pièces
-    # hors-cohorte (ex. be-1999 nourrit la classe de be-2007 même si seule
-    # be-2007 est listée dans la cohorte). On étend donc l'ensemble à baker à
-    # l'union des membres des groupes de la cohorte. Le préflight agrège déjà
-    # sur ce même ensemble → cohérence préflight ↔ donnée réelle (pas de
-    # faux-vert : be-2007 hérite vraiment des crops de be-1999).
-    _cohort_descriptors, _ = _resolver.classes_for_eurio_ids(cohort.eurio_ids)
-    bake_eurio_ids: list[str] = []
-    _seen: set[str] = set()
-    for _d in _cohort_descriptors:
-        for _eid in _d.eurio_ids:
-            if _eid not in _seen:
-                _seen.add(_eid)
-                bake_eurio_ids.append(_eid)
+    _resolver, bake_eurio_ids = bake_member_ids(cohort.eurio_ids, store)
 
     reports: list[CoinAugReport] = []
     total = len(bake_eurio_ids)
@@ -357,20 +453,30 @@ def generate_for_iteration(
 
         out_dir = DATASETS_DIR / str(nid) / "augmentations" / iteration_id
         out_dir.mkdir(parents=True, exist_ok=True)
-        existing = sorted(out_dir.glob("sample_*.jpg"))
-        manifest_samples: list[dict] = []
-        if len(existing) >= target_per_coin:
-            written = len(existing)
-            for i, f in enumerate(existing[:target_per_coin]):
-                src_path = sources[i % len(sources)]
-                manifest_samples.append({"file": f.name, "source": src_path.name})
+        seed = _per_coin_seed(it.augmentations_seed, nid)
+        digest = _inputs_digest(
+            sources, seed=seed, recipe_cfg=recipe_cfg, target=target_per_coin
+        )
+
+        if _reusable_snapshot(out_dir, digest=digest, target=target_per_coin):
+            # Entrées identiques et provenance déjà prouvée : on ne régénère pas
+            # et on NE RÉÉCRIT PAS le manifeste — le réécrire ne pourrait que
+            # remplacer une provenance vraie par une provenance re-devinée.
+            written = target_per_coin
         else:
+            # Le manifeste part EN PREMIER : entre l'effacement des samples et
+            # sa réécriture en fin de boucle, un crash du job détaché laisserait
+            # sur disque un manifeste décrivant des fichiers qui ne sont plus
+            # ceux-là. Mieux vaut pas de preuve qu'une preuve fausse — et
+            # l'absence de manifeste force de toute façon la régénération.
+            (out_dir / MANIFEST_NAME).unlink(missing_ok=True)
             # Always start clean when we need to (re)generate so we don't end
-            # up with a mix of partial old + new samples.
-            for f in existing:
+            # up with a mix of partial old + new samples — ni de reliquats quand
+            # la cible BAISSE (le staging symlinke tout ``sample_*.jpg``).
+            for f in sorted(out_dir.glob("sample_*.jpg")):
                 f.unlink()
-            seed = _per_coin_seed(it.augmentations_seed, nid)
             pipeline = AugmentationPipeline(recipe_cfg, seed=seed)
+            manifest_samples: list[dict] = []
             written = 0
             for i in range(target_per_coin):
                 src_path = sources[i % len(sources)]
@@ -385,22 +491,35 @@ def generate_for_iteration(
                 })
                 written += 1
 
-        # Audit trail: explicit per-coin manifest of which source (obverse ou
-        # crop eBay reviewé) fed which baked sample. Cheap (≤target rows, plain
-        # dicts), and the only way to verify le mix de sources réelles sans
-        # re-lire le code (captures device toujours absentes — Doctrine A).
-        manifest = {
-            "iteration_id": iteration_id,
-            "eurio_id": eurio_id,
-            "numista_id": nid,
-            "recipe_id": it.recipe_id,
-            "seed": _per_coin_seed(it.augmentations_seed, nid),
-            "samples": manifest_samples,
-            "generated_at": datetime.now(timezone.utc)
-                .isoformat(timespec="seconds")
-                .replace("+00:00", "Z"),
-        }
-        (out_dir / "_manifest.json").write_text(json.dumps(manifest, indent=2))
+            # Audit trail: explicit per-coin manifest of which source (obverse
+            # ou crop eBay reviewé) fed which baked sample. Écrit UNIQUEMENT
+            # par le chemin qui produit les images — c'est ce qui rend sa
+            # provenance vérifiable (captures device toujours absentes —
+            # Doctrine A). ``inputs_digest`` + ``sources`` permettent au bake
+            # suivant de décider sans re-deviner.
+            manifest = {
+                "version": MANIFEST_VERSION,
+                "iteration_id": iteration_id,
+                "eurio_id": eurio_id,
+                "numista_id": nid,
+                "recipe_id": it.recipe_id,
+                "seed": seed,
+                "target": target_per_coin,
+                "inputs_digest": digest,
+                "sources": [
+                    {
+                        "path": str(p),
+                        "name": p.name,
+                        "size": p.stat().st_size if p.exists() else None,
+                    }
+                    for p in sources
+                ],
+                "samples": manifest_samples,
+                "generated_at": datetime.now(timezone.utc)
+                    .isoformat(timespec="seconds")
+                    .replace("+00:00", "Z"),
+            }
+            (out_dir / MANIFEST_NAME).write_text(json.dumps(manifest, indent=2))
 
         # Stage symlinks sous la racine d'entraînement → layout ImageFolder
         # standard, UN sous-dossier par CLASSE (maille design_group canonique).
@@ -438,8 +557,13 @@ def clear_for_iteration(*, iteration_id: str, store: Store | None = None) -> int
 
     Returns the number of per-coin snapshots removed. Used by the regenerate
     endpoint to force a clean rebuild.
+
+    Balaie l'ensemble RÉELLEMENT baké (``bake_member_ids``), pas la seule
+    cohorte : sinon « regénérer » laisse en place les snapshots des membres
+    hors cohorte tirés par la maille design_group — plus de la moitié du
+    dataset sur une grande cohorte.
     """
-    store = store or Store(ML_DIR / "state" / "eurio.db")
+    store = store or Store(resolve_db_path(ML_DIR / "state" / "eurio.db"))
     it = store.get_iteration(iteration_id)
     if it is None:
         raise ValueError(f"Iteration {iteration_id!r} not found")
@@ -448,7 +572,8 @@ def clear_for_iteration(*, iteration_id: str, store: Store | None = None) -> int
         raise ValueError(f"Cohort {it.cohort_id!r} not found")
 
     removed = 0
-    for eurio_id in cohort.eurio_ids:
+    _resolver, bake_ids = bake_member_ids(cohort.eurio_ids, store)
+    for eurio_id in bake_ids:
         nid = coin_lookup.numista_id_for(eurio_id)
         if nid is None:
             continue
@@ -467,8 +592,13 @@ def list_for_iteration(
     iteration_id: str,
     store: Store | None = None,
 ) -> list[dict]:
-    """Return per-coin lists of augmentation paths (relative to ``ml/``)."""
-    store = store or Store(ML_DIR / "state" / "eurio.db")
+    """Return per-coin lists of augmentation paths (relative to ``ml/``).
+
+    Sur l'ensemble RÉELLEMENT baké (``bake_member_ids``) : la galerie doit
+    montrer ce qui entre dans le dataset, membres hors cohorte compris —
+    sinon elle cache les pièces qui en constituent la plus grosse part.
+    """
+    store = store or Store(resolve_db_path(ML_DIR / "state" / "eurio.db"))
     it = store.get_iteration(iteration_id)
     if it is None:
         raise ValueError(f"Iteration {iteration_id!r} not found")
@@ -476,7 +606,8 @@ def list_for_iteration(
     if cohort is None:
         raise ValueError(f"Cohort {it.cohort_id!r} not found")
     out: list[dict] = []
-    for eurio_id in cohort.eurio_ids:
+    _resolver, bake_ids = bake_member_ids(cohort.eurio_ids, store)
+    for eurio_id in bake_ids:
         nid = coin_lookup.numista_id_for(eurio_id)
         samples: list[str] = []
         if nid is not None:
@@ -509,7 +640,7 @@ def class_sample_counts(
     membres du groupe — miroir exact de l'expansion ``bake_eurio_ids`` du bake.
     Sert au garde-fou de launch-training (cf. ``IterationRunner``).
     """
-    store = store or Store(ML_DIR / "state" / "eurio.db")
+    store = store or Store(resolve_db_path(ML_DIR / "state" / "eurio.db"))
     it = store.get_iteration(iteration_id)
     if it is None:
         raise ValueError(f"Iteration {iteration_id!r} not found")

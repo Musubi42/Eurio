@@ -17,8 +17,8 @@ to the raw ``eurio_id`` (backward-compatible for commemoratives, where
 class_id == eurio_id anyway).
 
 Usage:
-    python -m scan.sync_eval_real <debug_pull_dir>
-    python -m scan.sync_eval_real <debug_pull_dir> --also-write-captures
+    python -m vision.sync_eval_real <debug_pull_dir>
+    python -m vision.sync_eval_real <debug_pull_dir> --also-write-captures
 
 When ``--also-write-captures`` is set, every successfully normalized image is
 *additionally* copied into ``ml/datasets/<numista_id>/captures/<step>.jpg``

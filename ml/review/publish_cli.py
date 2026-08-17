@@ -24,6 +24,11 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
+from shared.verdict_scope import (
+    VERDICT_ANCHORS_KIND,
+    VERDICT_ENCODER_VERSION,
+)
+
 _ML_ROOT = Path(__file__).resolve().parent.parent
 _DB_PATH = _ML_ROOT / "state" / "eurio.db"
 
@@ -154,7 +159,7 @@ def publish(limit: int) -> int:
     store = Store(_DB_PATH)
     conn = store._connection()  # noqa: SLF001
     rows = conn.execute(
-        """
+        f"""
         SELECT rq.id, rq.image_asset_id, rq.priority,
                a.storage_path, a.candidate_eurio_ids_json,
                s.source, s.listing_title, s.target_eurio_id,
@@ -165,8 +170,8 @@ def publish(limit: int) -> int:
           JOIN source_images s ON s.id = a.source_image_id
           LEFT JOIN image_asset_dino_predictions p
                  ON p.asset_id = a.id
-                AND p.encoder_version = 'dinov2-vits14'
-                AND p.anchors_kind = '2eur_commemo'
+                AND p.encoder_version = '{VERDICT_ENCODER_VERSION}'
+                AND p.anchors_kind = '{VERDICT_ANCHORS_KIND}'
          WHERE rq.status = 'open'
            AND (rq.lane = 'manual' OR rq.lane IS NULL)
          ORDER BY rq.priority, rq.enqueued_at

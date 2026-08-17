@@ -43,6 +43,25 @@ def _no_ambient_canonical(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_ambient_flip(monkeypatch):
+    """Neutralise le flip Direction A ambiant pendant les tests.
+
+    Le devShell (``flake.nix``) exporte ``EURIO_DB_READONLY=1`` et pointe
+    ``EURIO_DB_PATH`` sur la réplique. Sans ce delenv, tout ``Store(tmp/…)``
+    construit sans ``read_only`` explicite s'ouvre en ``mode=ro`` (le défaut se
+    résout sur l'env, cf. ``store/connection.py``) et le test échoue en
+    ``attempt to write a readonly database`` — alors que le même test passe hors
+    devShell. Le résultat d'un test ne doit pas dépendre du shell qui le lance.
+
+    Constaté le 2026-08-16 : 8 tests (dont 2 antérieurs à ce chantier) passaient
+    hors direnv et échouaient dedans. Les tests qui veulent exercer le flip
+    posent leur propre ``monkeypatch.setenv`` — qui gagne sur cet autouse.
+    """
+    monkeypatch.delenv("EURIO_DB_READONLY", raising=False)
+    monkeypatch.delenv("EURIO_DB_PATH", raising=False)
+
+
+@pytest.fixture(autouse=True)
 def _stub_minio_client(monkeypatch):
     """Replace storage._s3_client with a MagicMock for the test's duration.
 
@@ -52,4 +71,10 @@ def _stub_minio_client(monkeypatch):
     to the MagicMock on teardown, not None, so the next test stays stubbed.
     """
     from shared import storage
-    monkeypatch.setattr(storage, "_s3_client", MagicMock())
+    client = MagicMock()
+    # Un MagicMock nu rend un MagicMock pour `generate_presigned_url()`, que les
+    # modèles pydantic des routes refusent (`file_url: str`). Le stub doit rendre
+    # le TYPE que rend le vrai client, sinon il déplace la panne au lieu de
+    # l'éviter. Les tests qui veulent une URL précise réassignent le client.
+    client.generate_presigned_url.return_value = "https://minio.test/stub-url"
+    monkeypatch.setattr(storage, "_s3_client", client)
