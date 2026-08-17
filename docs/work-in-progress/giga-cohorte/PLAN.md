@@ -130,9 +130,23 @@ critique — d'où le découpage.
 
 ### 🌊 Vague 1 — 40 classes, sans scraper une image
 
+**Cohorte créée le 2026-08-18 : `888cbc5d3a9e` — `giga-40-vague1`**, 129 pièces,
+40 classes, en `draft` (rien n'est figé). Vérifiée au canonique.
+
+Son écran de préparation dit aujourd'hui : `ready=False · block=2 · warn=9`.
+Les **11** classes du bloc B sont donc bien les seules à débloquer — dont deux
+en refus **dur** (`de-2006-schleswig-holstein`, `de-2009-saarland` : moins de 4
+sources au total, pas seulement moins de 10 photos eBay). Même geste pour les
+corriger : valider des photos.
+
+Suivre l'avancement :
+```
+http://localhost:5173/lab/cohorts/888cbc5d3a9e
+```
+
+- [x] Créer la cohorte `giga-40-vague1` en `draft`
 - [ ] **Trier 71 photos** (bloc B ci-dessus). Elles sont **déjà en base**, il n'y
       a rien à aller chercher.
-- [ ] Créer la cohorte `giga-40` en `draft` (les 40 classes prêtes + triées)
 - [ ] Vérifier l'écran de préparation : tout doit être vert **avant** de créer
       l'itération — la création **gèle** la cohorte, c'est irréversible
 - [ ] Lancer bake + entraînement **sur le PC**
@@ -205,6 +219,12 @@ Chacun a déjà coûté du temps au projet.
 2026-08-18, il porte **19 pièces / 114 photos** sans doublon. Et la chaîne
 `android:bench:pull` → `annotate` → `replay` → `compare` existe pour mesurer de
 vraies sessions de scan.
+
+**À traiter plus tard, pas maintenant** : le rangement de la donnée a des
+reliquats (tables prévues puis abandonnées, colonnes jamais alimentées, noms qui
+se ressemblent). Le flux, lui, fonctionne. Inventaire mesuré :
+[`docs/architecture/dette-de-stockage.md`](../../architecture/dette-de-stockage.md).
+Rien là-dedans ne bloque cette cohorte.
 
 **Jamais fait** : mettre un modèle entraîné dans l'APK de bout en bout. La chaîne
 existe, elle a été exercée à mi-parcours une fois. C'est une première — à faire
