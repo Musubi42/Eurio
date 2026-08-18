@@ -215,6 +215,40 @@ CREATE INDEX IF NOT EXISTS idx_experiment_iterations_parent ON experiment_iterat
 CREATE INDEX IF NOT EXISTS idx_experiment_iterations_created ON experiment_iterations(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_experiment_iterations_status ON experiment_iterations(status);
 
+-- ─── Seuils d'entraînement (migration 0006) ──────────────────────────────
+-- Les trois seuils (m_per_class / min_real / training_target) vivaient en
+-- constantes Python : les changer imposait un redéploiement, donc le plancher
+-- de 10 n'a jamais été éprouvé. Résolution : classe → cohorte → global →
+-- constante (store/thresholds.py). Table vide = comportement d'avant.
+-- Doctrine : docs/work-in-progress/refacto-page-cohorte/DECISIONS.md §D5
+CREATE TABLE IF NOT EXISTS training_thresholds (
+  scope       TEXT NOT NULL CHECK (scope IN ('global','cohort','class')),
+  scope_id    TEXT NOT NULL DEFAULT '',   -- '' pour le global
+  key         TEXT NOT NULL CHECK (key IN ('m_per_class','min_real','training_target')),
+  value       INTEGER NOT NULL CHECK (value >= 1),
+  note        TEXT,
+  updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_by  TEXT,
+  PRIMARY KEY (scope, scope_id, key)
+);
+
+-- Une classe qui redevient incomplète parce que le plancher est monté n'a pas
+-- régressé : la règle a changé. L'écran a besoin de cet historique pour le dire.
+CREATE TABLE IF NOT EXISTS training_threshold_changes (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  scope       TEXT NOT NULL,
+  scope_id    TEXT NOT NULL DEFAULT '',
+  key         TEXT NOT NULL,
+  old_value   INTEGER,
+  new_value   INTEGER,
+  note        TEXT,
+  changed_by  TEXT,
+  changed_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_threshold_changes_at
+  ON training_threshold_changes(changed_at DESC);
+
 -- ─── Aug ↔ réelles cache (Sprint 2) ──────────────────────────────────────
 -- DINO cosine distance per (iteration, eurio_id). Cache key includes
 -- dino_version + counts so a model swap or capture/aug delta forces

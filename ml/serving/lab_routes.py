@@ -259,7 +259,10 @@ def _require_classes_ready(cohort: ExperimentCohortRow) -> None:
     resolver = build_resolver(force_eurio_id=False, db_path=store.db_path)
     descriptors, unresolved = resolver.classes_for_eurio_ids(cohort.eurio_ids)
     refs = [ClassRef(d.class_id, d.class_kind) for d in descriptors]
-    report = preflight_classes(refs, store, resolver=resolver)
+    th = _thresholds(store, cohort.id)
+    report = preflight_classes(
+        refs, store, m_per_class=th.m_per_class, min_real=th.min_real, resolver=resolver,
+    )
     not_ready = report.blocked + report.warned
     if not unresolved and not not_ready:
         return
@@ -380,6 +383,20 @@ MIN_REAL = _ENRICH_MIN_REAL
 # Alias legacy conservé pour ne pas casser les usages existants (n_real_sources,
 # colonne `enough`) le temps d'un éventuel nettoyage ultérieur.
 _MIN_REAL_SOURCES = MIN_REAL
+
+
+def _thresholds(store: Store, cohort_id: str | None = None):
+    """Les trois seuils qui s'appliquent, résolus au plus précis (classe →
+    cohorte → global → constante). Cf. store/thresholds.py.
+
+    ⚠️ Sur Mac/PC, ce store lit une RÉPLIQUE du canonique rafraîchie toutes les
+    120 s : un seuil qu'on vient de changer peut mettre jusqu'à deux minutes à
+    changer le verdict ici. C'est pourquoi les réponses renvoient les seuils
+    UTILISÉS — le front compare avec ceux du canonique et annonce l'attente
+    plutôt que de laisser croire à un blocage."""
+    from store.thresholds import resolve as _resolve_thresholds
+
+    return _resolve_thresholds(store._connection(), cohort_id=cohort_id)  # noqa: SLF001
 
 
 def _has_obverse(numista_id: int | None) -> bool:
@@ -563,7 +580,10 @@ def cohort_training_readiness(cohort_id: str) -> dict:
     resolver = build_resolver(force_eurio_id=False, db_path=store.db_path)
     descriptors, unresolved = resolver.classes_for_eurio_ids(cohort.eurio_ids)
     refs = [ClassRef(d.class_id, d.class_kind) for d in descriptors]
-    report = preflight_classes(refs, store, resolver=resolver)
+    th = _thresholds(store, cohort.id)
+    report = preflight_classes(
+        refs, store, m_per_class=th.m_per_class, min_real=th.min_real, resolver=resolver,
+    )
     not_ready = report.blocked + report.warned
     return {
         "cohort_id": cohort.id,
@@ -571,6 +591,10 @@ def cohort_training_readiness(cohort_id: str) -> dict:
         "n_classes": len(refs),
         "unresolved": unresolved,
         "preflight": report.to_dict(),
+        # Les seuils que CE préflight a utilisés, lus sur la réplique locale.
+        # Le front les compare à ceux du canonique : s'ils diffèrent, le verdict
+        # n'a pas encore intégré le changement (≤120 s) et l'écran le dit.
+        "thresholds": th.to_dict(),
     }
 
 
@@ -656,6 +680,14 @@ def create_iteration(cohort_id: str, payload: IterationCreatePayload) -> dict:
     # vérité unique). Bloque sur block ET warn (un run cohorte se veut propre).
     _require_classes_ready(cohort)
 
+    # GEL DES SEUILS. Le réglage vit (on peut monter le plancher demain, et des
+    # classes prêtes redeviendront incomplètes — c'est voulu, cf. DECISIONS §D1).
+    # Mais la trace de CE run ne bouge plus : sans ça, on ne peut plus dire avec
+    # quel plancher un modèle a été entraîné et comparer deux runs perd son sens.
+    # Une valeur passée explicitement dans le payload gagne (essai manuel).
+    frozen = _thresholds(_get_store(), cohort.id).frozen_config()
+    frozen.update(payload.training_config or {})
+
     runner = _get_runner()
     try:
         row = runner.create_iteration(
@@ -665,7 +697,7 @@ def create_iteration(cohort_id: str, payload: IterationCreatePayload) -> dict:
             parent_iteration_id=payload.parent_iteration_id,
             recipe_id=payload.recipe_id,
             variant_count=payload.variant_count,
-            training_config=payload.training_config or {},
+            training_config=frozen,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -1782,6 +1814,10 @@ def _cohort_funnel_status(store: Store, cohort_id: str) -> dict:
     groups, non_scrapable = cohort_ebay_groups(store, cohort_id)
     non_set = set(non_scrapable)
     conn = store._connection()  # noqa: SLF001
+    # Les seuils de CETTE cohorte (pas les constantes) : `enough`,
+    # `below_real_floor` et `gap_to_target` doivent répondre à la règle en
+    # vigueur, sinon deux écrans donnent deux verdicts sur la même classe.
+    th = _thresholds(store, cohort.id)
 
     # ── per_coin (tail + sourcing) ─────────────────────────────────────
     # Tail funnel (post-attribution) + le bout « sourcing » fusionné depuis
@@ -1857,12 +1893,12 @@ def _cohort_funnel_status(store: Store, cohort_id: str) -> dict:
         n_bce_ref = max((_count_canonical_refs(conn, m) for m in class_eids), default=0)
         n_seed = n_training + n_numista_ref + n_bce_ref
         n_real = n_seed
-        aug_factor, n_projected = _enrich_projection(n_seed)
-        gap_to_target = max(0, TRAINING_TARGET - n_projected)
+        aug_factor, n_projected = _enrich_projection(n_seed, th.training_target)
+        gap_to_target = max(0, th.training_target - n_projected)
         # Signal santé réel : la cible ≥100 est toujours atteignable par
         # augmentation dès seed≥1 ; ce qui compte c'est d'avoir assez de crops
         # eBay RÉELS (diversité). En-dessous du plancher → aller chercher + d'eBay.
-        below_real_floor = n_training < MIN_REAL
+        below_real_floor = n_training < th.min_real
         never_scraped = tail["n_source_images"] == 0
         per_coin.append({
             "eurio_id": eid,
@@ -1872,7 +1908,7 @@ def _cohort_funnel_status(store: Store, cohort_id: str) -> dict:
             "n_real_sources": n_real,
             "n_seed": n_seed,
             "aug_factor": aug_factor,
-            "enough": n_training >= MIN_REAL,
+            "enough": n_training >= th.min_real,
             "below_real_floor": below_real_floor,
             "n_numista_ref": n_numista_ref,
             "n_bce_ref": n_bce_ref,
@@ -2024,8 +2060,10 @@ def _cohort_funnel_status(store: Store, cohort_id: str) -> dict:
         ],
         "non_scrapable": non_scrapable,
         "quota": quota,
-        "min_real_sources": _MIN_REAL_SOURCES,
-        "training_target": TRAINING_TARGET,
+        "min_real_sources": th.min_real,
+        "training_target": th.training_target,
+        # Les trois seuils + la provenance de chacun ('code'/'global'/'cohort').
+        "thresholds": th.to_dict(),
     }
 
 
@@ -2137,6 +2175,7 @@ class CohortTrainingCropsResponse(BaseModel):
     benchmark_run_id: str | None = None
     prev_benchmark_run_id: str | None = None  # P5 · itération benchée précédente
     min_real: int = MIN_REAL  # plancher qualité (P4) — légende du front
+    thresholds: dict | None = None  # les 3 seuils résolus + leur provenance
     scan: TrainingScanInfo | None = None
     classes: list[TrainingCropClass]
 
@@ -2427,6 +2466,7 @@ def _cohort_training_crops(store: Store, cohort_id: str) -> CohortTrainingCropsR
         benchmark_run_id=overlay["benchmark_run_id"],
         prev_benchmark_run_id=overlay["prev_benchmark_run_id"],
         min_real=state["min_real"],
+        thresholds=state.get("thresholds"),
         scan=overlay["scan"],
         classes=classes,
     )
@@ -2855,6 +2895,15 @@ def recrop_zero_coin(cohort_id: str, eurio_id: str) -> dict:
     env = dict(os.environ)
     existing = env.get("PYTHONPATH", "")
     env["PYTHONPATH"] = str(_ML_DIR) + (os.pathsep + existing if existing else "")
+    # Passe de secours score-guided (vision/score_recover.py), OFF par défaut en
+    # prod (R0). Le recrop-zero EST le mode census serveur (enrichment offline)
+    # auquel ce module se destine — jamais le scan device. Sans elle, les bimétal
+    # dont la détection accroche le motif central sortent sous-croppés, le gate
+    # les jette, et le job conclut « épuisé à τ » sur un stock intact : mesuré le
+    # 2026-08-18 sur 60 raws/pièce à τ=0.55 — fr-2010-degaulle 0→42 crops,
+    # cy-2008 0→46, it-2002 0→45, de-2009-saarland 0→46. Même porte que
+    # `ml:src:ebay:run` (ml/tasks.yml), qui la pose pour la même raison.
+    env["EURIO_CENSUS_RECOVER"] = "1"
     cmd = [
         sys.executable, "scripts/recrop_cohort_census.py", "--commit",
         "--cohort", cohort_id, "--coin", eurio_id,

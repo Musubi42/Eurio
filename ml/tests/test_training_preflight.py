@@ -39,17 +39,17 @@ def _resolver(coins: list[CoinRef]) -> Resolver:
 def test_verdict_tiers():
     m = 4
     # seed 0 → block (réf morte / jamais acquise)
-    assert pf._verdict(0, 0, m)[0] == "block"
+    assert pf._verdict(0, 0, m, MIN_REAL)[0] == "block"
     # 0 < seed < m → block (doublons rééchantillonnés, pas de signal)
-    assert pf._verdict(3, 3, m)[0] == "block"
-    assert pf._verdict(1, 0, m)[0] == "block"
+    assert pf._verdict(3, 3, m, MIN_REAL)[0] == "block"
+    assert pf._verdict(1, 0, m, MIN_REAL)[0] == "block"
     # seed ≥ m mais eBay réels < MIN_REAL → warn (s'appuie sur l'augmentation)
-    s, _ = pf._verdict(m, m, m)
+    s, _ = pf._verdict(m, m, m, MIN_REAL)
     assert s == "warn"
-    assert pf._verdict(20, MIN_REAL - 1, m)[0] == "warn"
+    assert pf._verdict(20, MIN_REAL - 1, m, MIN_REAL)[0] == "warn"
     # seed ≥ m ET eBay réels ≥ MIN_REAL → ok
-    assert pf._verdict(20, MIN_REAL, m) == ("ok", None)
-    assert pf._verdict(20, MIN_REAL + 5, m) == ("ok", None)
+    assert pf._verdict(20, MIN_REAL, m, MIN_REAL) == ("ok", None)
+    assert pf._verdict(20, MIN_REAL + 5, m, MIN_REAL) == ("ok", None)
 
 
 # ─── preflight_classes ───────────────────────────────────────────────────

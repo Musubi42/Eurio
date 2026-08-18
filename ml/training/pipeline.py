@@ -183,7 +183,7 @@ class TrainingPipeline:
         Les classes « pauvres en eBay » (warn) n'arrêtent pas le run.
         """
         from training.eval.class_resolver import build_resolver
-        from training.foundation.preflight import preflight_classes
+        from training.foundation.preflight import DEFAULT_MIN_REAL, preflight_classes
 
         row = self._store.get_run(run_id)
         if row is None:
@@ -192,6 +192,11 @@ class TrainingPipeline:
         staged = row.classes_added if iter_dir is not None else row.classes_after
         class_kind = row.config.get("class_kind", "design_group")
         m_per_class = int(row.config.get("m_per_class", 4))
+        # Seuils GELÉS à la création de l'itération (store/thresholds →
+        # training_config_json). On relit la trace du run, pas la base : entre
+        # la création et le passage GPU, quelqu'un a pu déplacer le plancher —
+        # le run doit rester jugé selon la règle sous laquelle il a été admis.
+        min_real = int(row.config.get("min_real", DEFAULT_MIN_REAL))
 
         # Resolver lié à la DB du run (et non au défaut de class_resolver, qui
         # pointe à côté) → cohérent avec le Store du pipeline.
@@ -200,7 +205,8 @@ class TrainingPipeline:
             db_path=self._store.db_path,
         )
         report = preflight_classes(
-            staged, self._store, m_per_class=m_per_class, resolver=resolver
+            staged, self._store, m_per_class=m_per_class, min_real=min_real,
+            resolver=resolver,
         )
         self._emit_log(report.summary())
         if not staged:

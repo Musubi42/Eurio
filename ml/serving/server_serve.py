@@ -53,6 +53,7 @@ from serving.review_queue import router as review_queue_router
 from serving.review_queue.writes import router as review_writes_router
 from serving.funnel_writes import router as funnel_writes_router
 from serving.lab_read_routes import router as lab_read_router
+from serving.thresholds_routes import router as thresholds_router
 from serving.sources import router as sources_router
 from store import Store
 
@@ -144,6 +145,12 @@ app.include_router(funnel_writes_router)
 # (serving/lab_routes.cohort_training_crops) → NE PAS monter sur server.py
 # (collision, comme funnel_writes/review_writes).
 app.include_router(lab_read_router)
+# Seuils d'entraînement (plancher/cible/refus dur) : configuration, donc état,
+# donc canonique. stdlib + sqlite3 (logique dans store.thresholds) → mount
+# inconditionnel. Lecture lab:read, écriture lab:write. PAS sur server.py : la
+# workstation lit une réplique en lecture seule, y écrire ne produirait qu'un
+# `readonly database` déguisé (cf. l'en-tête de serving/thresholds_routes.py).
+app.include_router(thresholds_router)
 # R2 (Model B) : réplique servie DIRECTEMENT par le writer unique (snapshot
 # VACUUM INTO cohérent), remplace le détour `canonical_sync → MinIO`. Léger
 # (stdlib + sqlite3) → mount inconditionnel sur l'image lean. Scope ingest:run.

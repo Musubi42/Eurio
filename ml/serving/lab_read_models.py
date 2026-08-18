@@ -48,4 +48,7 @@ class CohortTrainingCropsStateResponse(BaseModel):
     cohort_id: str
     cohort_name: str
     min_real: int
+    # Les trois seuils résolus + la provenance de chacun ('code'/'global'/
+    # 'cohort'/'class'). Le front n'en définit aucun : il lit celui-ci.
+    thresholds: dict | None = None
     classes: list[TrainingCropClassState]

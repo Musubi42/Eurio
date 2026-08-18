@@ -150,7 +150,7 @@ def _bake_env(tmp_path, monkeypatch, *, target: int = 3):
     monkeypatch.setattr(ia, "DATASETS_DIR", datasets)
     monkeypatch.setattr(ia, "ITERATION_TRAIN_ROOTS", datasets / "iterations")
     monkeypatch.setattr(ia.coin_lookup, "numista_id_for", lambda eid: 42)
-    monkeypatch.setattr(ia, "_target_per_coin", lambda n, vc: target)
+    monkeypatch.setattr(ia, "_target_per_coin", lambda n, vc, t=None: target)
 
     def _source(name: str, colour: tuple[int, int, int]):
         from PIL import Image as PILImage
@@ -341,7 +341,7 @@ def test_bake_drops_leftovers_when_the_target_shrinks(tmp_path, monkeypatch):
     ia.generate_for_iteration(iteration_id="it1", store=store)
     assert len(list(out_dir.glob("sample_*.jpg"))) == 5
 
-    monkeypatch.setattr(ia, "_target_per_coin", lambda n, vc: 2)
+    monkeypatch.setattr(ia, "_target_per_coin", lambda n, vc, t=None: 2)
     ia.generate_for_iteration(iteration_id="it1", store=store)
 
     assert sorted(p.name for p in out_dir.glob("sample_*.jpg")) == [

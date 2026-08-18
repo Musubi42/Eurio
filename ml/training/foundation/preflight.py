@@ -34,13 +34,18 @@ from dataclasses import dataclass, field
 
 from store import ClassRef, Store
 from training.eval.class_resolver import Resolver, build_resolver
-from training.foundation.enrichment import MIN_REAL
+from store.funnel_constants import M_PER_CLASS, MIN_REAL
 from training.iteration_augmentations import real_training_sources
 
 # Plancher mécanique dur : en-dessous, ArcFace ne voit que des doublons
 # rééchantillonnés avec remise (MPerClassSampler). Aligné par défaut sur
 # ``m_per_class`` du run, qui pilote combien d'exemplaires/classe par batch.
-DEFAULT_M_PER_CLASS = 4
+#
+# DÉFAUTS uniquement : les valeurs qui s'appliquent sont résolues en base
+# (``store/thresholds.resolve``) et passées par l'appelant. Elles restent le
+# filet quand la table n'existe pas encore.
+DEFAULT_M_PER_CLASS = M_PER_CLASS
+DEFAULT_MIN_REAL = MIN_REAL
 
 
 @dataclass
@@ -73,6 +78,7 @@ class ClassPreflight:
 class PreflightReport:
     classes: list[ClassPreflight] = field(default_factory=list)
     m_per_class: int = DEFAULT_M_PER_CLASS
+    min_real: int = DEFAULT_MIN_REAL
 
     @property
     def blocked(self) -> list[ClassPreflight]:
@@ -90,6 +96,9 @@ class PreflightReport:
         return {
             "ok": self.ok,
             "m_per_class": self.m_per_class,
+            # Le plancher SOUS LEQUEL une classe est dite pauvre. Exposé pour
+            # que le front n'ait pas à le deviner (il n'en définit aucun).
+            "min_real": self.min_real,
             "n_total": len(self.classes),
             "n_blocked": len(self.blocked),
             "n_warned": len(self.warned),
@@ -104,7 +113,8 @@ class PreflightReport:
         lines = [
             f"preflight: {len(self.classes)} classe(s) "
             f"({len(self.blocked)} block, {len(self.warned)} warn) "
-            f"— seuil dur = {self.m_per_class} sources réelles/classe",
+            f"— seuil dur = {self.m_per_class} sources réelles/classe, "
+            f"plancher = {self.min_real} crops eBay/classe",
             f"  {'classe':<55} {'seed':>4} {'num':>3} {'ebay':>4} {'ref':>3}  statut",
         ]
         for c in sorted(self.classes, key=lambda x: (x.status != "block", x.status != "warn", x.class_id)):
@@ -122,13 +132,20 @@ def preflight_classes(
     store: Store,
     *,
     m_per_class: int = DEFAULT_M_PER_CLASS,
+    min_real: int = DEFAULT_MIN_REAL,
     resolver: Resolver | None = None,
 ) -> PreflightReport:
     """Évalue chaque classe stagée. Voir le module pour les tiers.
 
+    ``m_per_class`` (refus dur) et ``min_real`` (plancher « classe pauvre »)
+    viennent de ``store/thresholds.resolve`` chez l'appelant : deux notions
+    distinctes, réglables séparément. Les passer explicitement est ce qui
+    garantit que le 409 de création d'itération et le verdict affiché parlent
+    du même seuil.
+
     ``resolver`` injectable pour les tests ; sinon construit depuis eurio.db.
     """
-    report = PreflightReport(m_per_class=m_per_class)
+    report = PreflightReport(m_per_class=m_per_class, min_real=min_real)
     if not classes:
         return report  # ok==False (blocked vide mais .ok regarde block ; cf. pipeline)
 
@@ -167,7 +184,7 @@ def preflight_classes(
                 missing.append(eurio_id)
         seed = n_numista + n_ebay + n_ref
 
-        status, reason = _verdict(seed, n_ebay, m_per_class)
+        status, reason = _verdict(seed, n_ebay, m_per_class, min_real)
         report.classes.append(
             ClassPreflight(
                 class_id=ref.class_id,
@@ -193,7 +210,9 @@ def _numista_of(resolver: Resolver, eurio_id: str) -> int | None:
     return None
 
 
-def _verdict(seed: int, n_ebay: int, m_per_class: int) -> tuple[str, str | None]:
+def _verdict(
+    seed: int, n_ebay: int, m_per_class: int, min_real: int
+) -> tuple[str, str | None]:
     if seed == 0:
         return "block", "aucune source réelle (avers Numista, crop eBay ni réf BCE/EUR-Lex)"
     if seed < m_per_class:
@@ -202,10 +221,10 @@ def _verdict(seed: int, n_ebay: int, m_per_class: int) -> tuple[str, str | None]
             f"{seed} source(s) réelle(s) < m_per_class={m_per_class} "
             "→ entraînement sur doublons rééchantillonnés (pas de signal)",
         )
-    if n_ebay < MIN_REAL:
+    if n_ebay < min_real:
         return (
             "warn",
-            f"{n_ebay} crop(s) eBay réel(s) < {MIN_REAL} "
+            f"{n_ebay} crop(s) eBay réel(s) < {min_real} "
             "→ s'appuie sur l'augmentation (aller chercher plus d'eBay)",
         )
     return "ok", None

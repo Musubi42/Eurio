@@ -25,7 +25,8 @@ import sqlite3
 
 from store.class_resolver import ClassDescriptor, CoinRef, Resolver
 from store.decisions import DecisionError
-from store.funnel_constants import MIN_REAL, TRIAGE_STATUSES
+from store.funnel_constants import TRIAGE_STATUSES
+from store.thresholds import resolve as resolve_thresholds
 
 _TRIAGE_MAX_PER_CLASS = 400
 
@@ -63,9 +64,13 @@ def _resolver_from_conn(conn: sqlite3.Connection) -> Resolver:
     return Resolver(coins)
 
 
-def _class_state(conn: sqlite3.Connection, d: ClassDescriptor) -> dict:
+def _class_state(conn: sqlite3.Connection, d: ClassDescriptor, min_real: int) -> dict:
     """État-DB-portable d'une classe : crops (statut/éligibilité/routage) +
-    compteurs purement dérivés de ces colonnes. AUCUN champ GPU/FS (overlay)."""
+    compteurs purement dérivés de ces colonnes. AUCUN champ GPU/FS (overlay).
+
+    ``min_real`` est le plancher RÉSOLU pour la cohorte (store/thresholds), pas
+    la constante : ``underfed`` doit répondre à la règle en vigueur, sinon deux
+    écrans donnent deux verdicts sur la même classe."""
     members = list(d.eurio_ids)
     if not members:
         return {
@@ -142,7 +147,7 @@ def _class_state(conn: sqlite3.Connection, d: ClassDescriptor) -> dict:
         "n_eligible": n_eligible, "n_unknown_face": n_unknown,
         "n_reverse_flagged": n_reverse, "n_rejected": n_rejected,
         "n_review_unrouted": n_review_unrouted, "n_obverse": n_obverse,
-        "underfed": n_eligible < MIN_REAL,
+        "underfed": n_eligible < min_real,
         "crops": crops,
     }
 
@@ -164,11 +169,15 @@ def list_training_crops(conn: sqlite3.Connection, cohort_id: str) -> dict:
     resolver = _resolver_from_conn(conn)
     descriptors, _unresolved = resolver.classes_for_eurio_ids(eurio_ids)
 
-    classes = [_class_state(conn, d) for d in descriptors]
+    thresholds = resolve_thresholds(conn, cohort_id=cohort_row["id"])
+    classes = [_class_state(conn, d, thresholds.min_real) for d in descriptors]
 
     return {
         "cohort_id": cohort_row["id"],
         "cohort_name": cohort_row["name"],
-        "min_real": MIN_REAL,
+        "min_real": thresholds.min_real,
+        # Les trois seuils AVEC leur provenance : l'écran doit pouvoir dire
+        # « plancher 25 (réglage de cette cohorte) » et non un nombre orphelin.
+        "thresholds": thresholds.to_dict(),
         "classes": classes,
     }

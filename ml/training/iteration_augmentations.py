@@ -72,6 +72,7 @@ from training.augmentations.recipes import DEFAULT_RECIPE
 from training.foundation.enrichment import (
     CANONICAL_REF_SOURCES,
     MIN_REAL,
+    TRAINING_TARGET,
     projection,
 )
 from store import Store, resolve_db_path
@@ -341,7 +342,9 @@ def real_training_sources(
     )
 
 
-def _target_per_coin(n_sources: int, variant_count: int | None) -> int:
+def _target_per_coin(
+    n_sources: int, variant_count: int | None, target: int | None = None
+) -> int:
     """Cible d'images augmentées d'une classe : facteur dynamique ceil(100/seed).
 
     Le facteur entier ``ceil(100 / n_sources)`` est appliqué uniformément à
@@ -350,7 +353,7 @@ def _target_per_coin(n_sources: int, variant_count: int | None) -> int:
     comme plancher optionnel s'il dépasse la cible dynamique. Source de vérité :
     ``foundation/enrichment.py`` (partagée avec l'affichage cockpit).
     """
-    _factor, projected = projection(n_sources)
+    _factor, projected = projection(n_sources, target)
     return max(projected, int(variant_count or 0))
 
 
@@ -387,6 +390,14 @@ def generate_for_iteration(
             f"Iteration {iteration_id!r} has no augmentations_seed — was it created "
             "before the sprint-1 migration?"
         )
+
+    # Seuils GELÉS à la création de l'itération (store/thresholds →
+    # training_config_json). On bake avec la règle sous laquelle l'itération a
+    # été admise, pas avec celle d'aujourd'hui : sinon un rebake silencieux
+    # changerait la cible d'un run déjà mesuré.
+    _cfg = it.training_config or {}
+    frozen_target = int(_cfg.get("training_target", TRAINING_TARGET))
+    frozen_min_real = int(_cfg.get("min_real", MIN_REAL))
 
     recipe_cfg: dict
     if it.recipe_id:
@@ -449,7 +460,9 @@ def generate_for_iteration(
             continue
 
         # Cible > 100/classe : ×10 par source réelle, plancher 100 (cf. spec).
-        target_per_coin = _target_per_coin(len(sources), it.variant_count)
+        target_per_coin = _target_per_coin(
+            len(sources), it.variant_count, frozen_target
+        )
 
         out_dir = DATASETS_DIR / str(nid) / "augmentations" / iteration_id
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -545,7 +558,7 @@ def generate_for_iteration(
                 sources_used=len(sources),
                 n_real_ebay=real_ebay,
                 n_ref_images=ref_sources,
-                below_floor_real=real_ebay < MIN_REAL,
+                below_floor_real=real_ebay < frozen_min_real,
             )
         )
 
