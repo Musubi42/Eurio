@@ -38,10 +38,7 @@ ROLE_SCOPES: dict[str, set[str]] = {
         "review:read", "review:write",
         "training:run",
         "ingest:run", "ingest:write",
-        # lab:write = régler les seuils d'entraînement (plancher, cible, refus
-        # dur). Déplacer le plancher redéfinit ce qu'« entraînable » veut dire
-        # pour toutes les cohortes — owner/admin seulement, jamais reviewer.
-        "lab:read", "lab:write",
+        "lab:read",
         "users:read", "users:manage",
         "tokens:manage_own",
     },
@@ -52,7 +49,7 @@ ROLE_SCOPES: dict[str, set[str]] = {
         "review:read", "review:write",
         "training:run",
         "ingest:run", "ingest:write",
-        "lab:read", "lab:write",
+        "lab:read",
         "users:read",
         "tokens:manage_own",
     },

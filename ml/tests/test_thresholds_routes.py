@@ -2,7 +2,7 @@
 
 Miroir de ``test_lab_read_routes.py`` : on vérifie le CÂBLAGE réel de l'image
 lean — dep ``db_connection`` (via ``EURIO_DB_PATH``), scopes ``lab:read`` /
-``lab:write``, commit effectif, 404 sur cohorte inconnue. La logique de
+``training:run``, commit effectif, 404 sur cohorte inconnue. La logique de
 résolution est testée séparément dans ``test_thresholds.py``.
 
 Le test qui compte le plus est le dernier : **une base sans la migration doit
@@ -36,7 +36,7 @@ def _principal(scopes):
     )
 
 
-def _client(scopes=("lab:read", "lab:write")):
+def _client(scopes=("lab:read", "training:run")):
     from serving import thresholds_routes
 
     app = FastAPI()

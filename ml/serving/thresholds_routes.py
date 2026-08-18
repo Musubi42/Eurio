@@ -39,7 +39,16 @@ router = APIRouter(tags=["lab"])
 
 ConnDep = Annotated[sqlite3.Connection, Depends(db_connection)]
 ReadDep = Annotated[Principal, Depends(require_scope("lab:read"))]
-WriteDep = Annotated[Principal, Depends(require_scope("lab:write"))]
+# Écriture = `training:run`, PAS un scope neuf. Deux raisons, dans cet ordre :
+#
+# · SÉMANTIQUE — déplacer le plancher, c'est redéfinir ce qui part à
+#   l'entraînement. C'est exactement l'autorité que ce scope nomme. Un reviewer
+#   ne l'a pas : il tranche des crops, il ne change pas la règle.
+# · PRATIQUE — les scopes d'un PAT sont FIGÉS à sa création (intersection avec
+#   les rôles courants, cf. auth_principal). Inventer un scope oblige à
+#   ré-émettre tous les jetons existants pour une capacité qu'ils devraient
+#   déjà avoir. Le coût retombe sur l'utilisateur, pas sur le code.
+WriteDep = Annotated[Principal, Depends(require_scope("training:run"))]
 
 
 class ThresholdPayload(BaseModel):

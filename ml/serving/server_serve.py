@@ -147,7 +147,7 @@ app.include_router(funnel_writes_router)
 app.include_router(lab_read_router)
 # Seuils d'entraînement (plancher/cible/refus dur) : configuration, donc état,
 # donc canonique. stdlib + sqlite3 (logique dans store.thresholds) → mount
-# inconditionnel. Lecture lab:read, écriture lab:write. PAS sur server.py : la
+# inconditionnel. Lecture lab:read, écriture training:run. PAS sur server.py : la
 # workstation lit une réplique en lecture seule, y écrire ne produirait qu'un
 # `readonly database` déguisé (cf. l'en-tête de serving/thresholds_routes.py).
 app.include_router(thresholds_router)
