@@ -48,3 +48,21 @@ VERDICT_ENCODER_VERSION_FOR_KIND: Final[dict[str, str]] = {
 VERDICT_ENCODER_VERSION: Final[str] = VERDICT_ENCODER_VERSION_FOR_KIND[
     VERDICT_ANCHORS_KIND
 ]
+
+# ── La banque des SUGGESTIONS, distincte de celle du verdict ────────────────
+#
+# `2eur_all` est la seule banque qui contienne des pièces COURANTES (38 des 56
+# au 2026-08-19 ; `2eur_commemo` en a zéro). C'est elle qui alimente les
+# suggestions de review — et c'est elle qu'il faut joindre pour TRIER une file
+# par ce que le modèle reconnaît : trier sur la banque du verdict ne trierait
+# sur rien dès qu'on travaille une pièce courante.
+#
+# Ces constantes vivent ICI et pas dans `training.foundation.anchors` (qui les
+# définit aussi) parce que ce module-ci est stdlib-only : l'image lean du VPS
+# l'importe, et `training.foundation` y tirerait numpy et torch. Le miroir
+# entre les deux est verrouillé par `tests/test_verdict_anchors_scope.py`.
+SUGGESTIONS_ANCHORS_KIND: Final[str] = "2eur_all"
+
+SUGGESTIONS_ENCODER_VERSION: Final[str] = VERDICT_ENCODER_VERSION_FOR_KIND[
+    SUGGESTIONS_ANCHORS_KIND
+]

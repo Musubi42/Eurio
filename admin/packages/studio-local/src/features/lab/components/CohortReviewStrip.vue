@@ -24,9 +24,15 @@ const props = defineProps<{
   source: 'live' | 'loading' | 'fallback'
   /** Décalage à annoncer en repli sur la copie locale. */
   lagSeconds: number
+  /** Trier par ce que DINO reconnaît plutôt que par l'ordre de la file. */
+  sortByDino: boolean
+  /** Ne montrer que les crops dont le top-1 tombe dans cette classe. */
+  dinoTop1Only: boolean
 }>()
 
 const emit = defineEmits<{
+  (e: 'sort', value: boolean): void
+  (e: 'top1-only', value: boolean): void
   (e: 'next'): void
   (e: 'mode', value: 'single' | 'lot'): void
   (e: 'close'): void
@@ -115,6 +121,21 @@ const offerLot = computed(
         :disabled="klass.openLot === 0"
         @click="emit('mode', 'lot')"
       >{{ klass.openLot }} en lots</button>
+      <button
+        type="button"
+        class="chip chip--sort"
+        :class="{ 'chip--on': sortByDino }"
+        title="Classer la file par ce que le modèle reconnaît : les crops qu'il rattache le plus nettement à cette classe d'abord, ceux qu'il n'a jamais vus en queue."
+        @click="emit('sort', !sortByDino)"
+      >⌁ tri DINO</button>
+      <button
+        v-if="sortByDino"
+        type="button"
+        class="chip"
+        :class="{ 'chip--on': dinoTop1Only }"
+        title="Ne garder que les crops que le modèle rattache à CETTE classe. Attention : il ne voit que ce qui est dans sa banque d'ancres."
+        @click="emit('top1-only', !dinoTop1Only)"
+      >cette classe seulement</button>
       <span class="strip__sync" :class="{ 'strip__sync--wait': late }" :title="sourceHint">
         {{ sourceLabel }}
       </span>
@@ -226,6 +247,7 @@ const offerLot = computed(
 }
 .chip:disabled { opacity: 0.4; cursor: not-allowed; }
 .chip--on { border-color: var(--ink); color: var(--ink); font-weight: 500; }
+.chip--sort { border-style: dashed; }
 .chip--offer { border-color: var(--gold); color: var(--gold-700); }
 .chip:focus-visible, .btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
 

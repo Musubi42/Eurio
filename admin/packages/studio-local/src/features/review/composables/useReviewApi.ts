@@ -80,6 +80,13 @@ export interface ReviewItem {
   // eurio_id mort. Sert au bouton « Accept Dino (D) » 1-clic dans
   // SingleReviewView — face hardcodée obverse (ancres = obverses Numista).
   dino_top1?: ReviewCandidate | null
+  // Signaux de la banque des SUGGESTIONS (`2eur_all`) — celle qui couvre les
+  // pièces courantes, contrairement à celle du verdict. Ils portent le tri
+  // `order=dino` : les afficher est ce qui permet à l'opérateur de savoir
+  // POURQUOI ce crop est en tête.
+  sugg_top1_eurio_id?: string | null
+  sugg_top1_sim?: number | null
+  sugg_spread?: number | null
   // Chunk C4 — contexte listing pour la carte d'audit « Listing & marché ».
   // Issu de C1 (source_images) + C2 (listing_text_signals). Optionnels :
   // null sur les rows antérieures / les mocks.
@@ -199,14 +206,28 @@ export async function fetchReviewQueue(
     eurioId?: string | null
     /** IDs review_queue explicites (galerie enrichment → review ciblée). */
     reviewIds?: string[] | null
+    /**
+     * `'dino'` = ce que le modèle rattache le plus nettement d'abord, les
+     * crops jamais scorés en queue. Défaut `'priority'` (l'ordre historique).
+     */
+    order?: 'priority' | 'enqueued_at' | 'dino'
+    /** Ne garder que les crops au-dessus de ce spread (palier d'auto-accept). */
+    dinoMinSpread?: number | null
+    /** Ne garder que ceux dont le top-1 tombe dans la classe travaillée. */
+    dinoTop1Only?: boolean
   } = {},
 ): Promise<ReviewItem[]> {
   const limit = opts.limit ?? 30
-  const params = new URLSearchParams({ limit: String(limit), order: 'priority' })
+  const params = new URLSearchParams({
+    limit: String(limit),
+    order: opts.order ?? 'priority',
+  })
   if (opts.cohortId) params.set('cohort_id', opts.cohortId)
   if (opts.lane) params.set('lane', opts.lane)
   if (opts.eurioId) params.set('eurio_id', opts.eurioId)
   if (opts.reviewIds && opts.reviewIds.length) params.set('review_ids', opts.reviewIds.join(','))
+  if (opts.dinoMinSpread != null) params.set('dino_min_spread', String(opts.dinoMinSpread))
+  if (opts.dinoTop1Only) params.set('dino_top1_only', 'true')
   // Phase 2c-b : porté sur eurio-api (Bearer PAT).
   const real = await safeFetchEurio<ReviewItem[]>(`/review-queue?${params.toString()}`)
   if (real !== null) {

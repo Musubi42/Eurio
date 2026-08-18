@@ -53,9 +53,14 @@ def list_queue(
     cohort_id: str | None = Query(default=None),
     eurio_id: str | None = Query(default=None),
     review_ids: str | None = Query(default=None),
+    dino_min_spread: float | None = Query(default=None, ge=0.0, le=1.0),
+    dino_top1_only: bool = Query(default=False),
 ) -> list[ReviewItem]:
-    if order not in ("priority", "enqueued_at"):
-        raise HTTPException(status_code=422, detail="order must be 'priority' or 'enqueued_at'")
+    if order not in ("priority", "enqueued_at", "dino"):
+        raise HTTPException(
+            status_code=422,
+            detail="order must be 'priority', 'enqueued_at' or 'dino'",
+        )
     if kind not in repository.VALID_KINDS:
         raise HTTPException(
             status_code=422, detail=f"kind must be one of {repository.VALID_KINDS}",
@@ -71,6 +76,7 @@ def list_queue(
         return repository.list_queue(
             conn, status=status, limit=limit, order=order, kind=kind,
             lane=lane, cohort_id=cohort_id, eurio_id=eurio_id, review_ids=rids,
+            dino_min_spread=dino_min_spread, dino_top1_only=dino_top1_only,
         )
     except repository.CohortNotFound:
         raise HTTPException(status_code=404, detail="Cohort introuvable")

@@ -35,7 +35,10 @@ from sources.ebay.standards import design_group_lot_scope
 from review.validation.consensus import consensus_verdict
 from review.validation.experts import collect_signals
 from review.validation.persist import load_consensus_verdict
+from shared.bank_classes import bank_class_ids, bank_class_ids_for_many
 from shared.verdict_scope import (
+    SUGGESTIONS_ANCHORS_KIND,
+    SUGGESTIONS_ENCODER_VERSION,
     VERDICT_ANCHORS_KIND,
     VERDICT_ENCODER_VERSION,
 )
@@ -528,6 +531,9 @@ def _row_to_item(
         group_candidates=group_candidates,
         standard_candidates=standard_candidates,
         dino_top1=dino_top1,
+        sugg_top1_eurio_id=_opt("sugg_top1_eurio_id"),
+        sugg_top1_sim=_opt("sugg_top1_sim"),
+        sugg_spread=_opt("sugg_spread"),
     )
 
 
@@ -542,9 +548,14 @@ def list_queue(
     cohort_id: str | None = Query(default=None),
     eurio_id: str | None = Query(default=None),
     review_ids: str | None = Query(default=None),
+    dino_min_spread: float | None = Query(default=None, ge=0.0, le=1.0),
+    dino_top1_only: bool = Query(default=False),
 ) -> list[ReviewItem]:
-    if order not in ("priority", "enqueued_at"):
-        raise HTTPException(status_code=422, detail="order must be 'priority' or 'enqueued_at'")
+    if order not in ("priority", "enqueued_at", "dino"):
+        raise HTTPException(
+            status_code=422,
+            detail="order must be 'priority', 'enqueued_at' or 'dino'",
+        )
     if kind not in _VALID_KINDS:
         raise HTTPException(
             status_code=422, detail=f"kind must be one of {_VALID_KINDS}",
@@ -553,8 +564,15 @@ def list_queue(
         raise HTTPException(
             status_code=422, detail=f"lane must be one of {_VALID_LANES}",
         )
-    order_clause = "rq.priority ASC, rq.enqueued_at ASC" \
-        if order == "priority" else "rq.enqueued_at ASC"
+    # Miroir de `serving/review_queue/repository.list_queue` — les paramètres
+    # des deux implémentations doivent rester identiques.
+    order_clause = {
+        "priority": "rq.priority ASC, rq.enqueued_at ASC",
+        "dino": (
+            "COALESCE(ps.spread, -1.0) DESC, "
+            "rq.priority ASC, rq.enqueued_at ASC"
+        ),
+    }.get(order, "rq.enqueued_at ASC")
 
     store = _store()
     conn = store._connection()  # noqa: SLF001
@@ -629,6 +647,24 @@ def list_queue(
             f"({','.join('?' * len(cohort.eurio_ids))})"
         )
         args.extend(cohort.eurio_ids)
+
+    # ── Filtres DINO — miroir de serving/review_queue/repository.list_queue ──
+    if dino_min_spread is not None:
+        where += " AND ps.spread >= ?"
+        args.append(float(dino_min_spread))
+    if dino_top1_only:
+        # La banque indexe une courante sous le plus ancien millésime de son
+        # ère, pas sous l'identifiant demandé — cf. shared/bank_classes.
+        if eurio_id:
+            wanted = bank_class_ids(conn, eurio_id)
+        elif cohort_id:
+            wanted = bank_class_ids_for_many(conn, list(cohort.eurio_ids))
+        else:
+            wanted = []
+        if wanted:
+            where += f" AND ps.top1_eurio_id IN ({','.join('?' * len(wanted))})"
+            args.extend(wanted)
+
     args.append(limit)
 
     rows = conn.execute(
@@ -652,7 +688,10 @@ def list_queue(
                p.top1_country_eurio_id AS dino_top1_country_eurio_id,
                p.top1_country_sim      AS dino_top1_country_sim,
                p.top1_eurio_id         AS dino_top1_eurio_id,
-               p.top1_sim              AS dino_top1_sim
+               p.top1_sim              AS dino_top1_sim,
+               ps.top1_eurio_id        AS sugg_top1_eurio_id,
+               ps.top1_sim             AS sugg_top1_sim,
+               ps.spread               AS sugg_spread
           FROM review_queue rq
           JOIN image_assets a ON a.id = rq.image_asset_id
           JOIN source_images s ON s.id = a.source_image_id
@@ -662,6 +701,12 @@ def list_queue(
                  ON p.asset_id = a.id
                 AND p.encoder_version = '{VERDICT_ENCODER_VERSION}'
                 AND p.anchors_kind = '{VERDICT_ANCHORS_KIND}'
+          -- Jointure dédiée au TRI (banque des suggestions, la seule qui
+          -- couvre les pièces courantes). Jamais lue par le verdict.
+          LEFT JOIN image_asset_dino_predictions ps
+                 ON ps.asset_id = a.id
+                AND ps.encoder_version = '{SUGGESTIONS_ENCODER_VERSION}'
+                AND ps.anchors_kind = '{SUGGESTIONS_ANCHORS_KIND}'
          WHERE {where}
          ORDER BY {order_clause}
          LIMIT ?

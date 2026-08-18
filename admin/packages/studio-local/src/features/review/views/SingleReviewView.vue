@@ -206,6 +206,20 @@ const reviewIds = computed<string[] | null>(() => {
   return ids.length ? ids : null
 })
 
+// ── Tri par ce que DINO reconnaît (?tri=dino) ───────────────────────────────
+// Lu dans l'URL comme tout le reste du périmètre, pour que la page cohorte
+// puisse le poser sans prop et que le rechargement le conserve.
+const order = computed<'priority' | 'dino'>(
+  () => (route.query.tri === 'dino' ? 'dino' : 'priority'),
+)
+const dinoMinSpread = computed<number | null>(() => {
+  const raw = route.query.dino_min
+  if (typeof raw !== 'string' || !raw) return null
+  const n = Number.parseFloat(raw)
+  return Number.isFinite(n) ? n : null
+})
+const dinoTop1Only = computed(() => route.query.dino_top1 === '1')
+
 // Valider exige un candidat ET un type/état renseignés : on ne fige pas
 // une attribution sans avoir tranché le contexte listing (C4).
 // EXCEPTION (C4c) — en contexte cohort, la review est centrée « bonne pièce ? » :
@@ -236,6 +250,9 @@ async function load() {
       lane: lane.value,
       eurioId: eurioId.value,
       reviewIds: reviewIds.value,
+      order: order.value,
+      dinoMinSpread: dinoMinSpread.value,
+      dinoTop1Only: dinoTop1Only.value,
     }),
     fetchReviewStats(),
   ])
@@ -262,6 +279,9 @@ async function loadMore() {
       lane: lane.value,
       eurioId: eurioId.value,
       reviewIds: reviewIds.value,
+      order: order.value,
+      dinoMinSpread: dinoMinSpread.value,
+      dinoTop1Only: dinoTop1Only.value,
     })
     const known = new Set(queue.value.map((r) => r.id))
     if (pendingCommit.value) known.add(pendingCommit.value.reviewId)
@@ -356,7 +376,9 @@ onMounted(() => {
 
 // Reload the queue when the cohort scope, the lane, the per-coin scope, or the
 // explicit id list changes.
-watch([cohortId, lane, eurioId, reviewIds], () => {
+// Le tri fait partie du périmètre : l'oublier ici donnerait un premier écran
+// trié puis une pagination qui ne l'est plus — panne muette parfaite.
+watch([cohortId, lane, eurioId, reviewIds, order, dinoMinSpread, dinoTop1Only], () => {
   void load()
 })
 

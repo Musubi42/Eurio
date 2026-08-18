@@ -56,6 +56,13 @@ class ReviewItem(BaseModel):
     group_candidates: list[ReviewCandidate] = []
     standard_candidates: list[ReviewCandidate] = []
     dino_top1: ReviewCandidate | None = None
+    # Signaux de la banque des SUGGESTIONS (`2eur_all`), pas de celle du
+    # verdict. Ils portent le tri : sans eux, l'écran classerait les crops par
+    # un critère qu'il ne peut pas montrer, et l'opérateur n'aurait aucun moyen
+    # de savoir pourquoi celui-ci est en tête.
+    sugg_top1_eurio_id: str | None = None
+    sugg_top1_sim: float | None = None
+    sugg_spread: float | None = None
 
 
 # ─── Stats ──────────────────────────────────────────────────────────────────

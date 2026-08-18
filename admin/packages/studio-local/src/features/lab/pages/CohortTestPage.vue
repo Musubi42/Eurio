@@ -97,6 +97,24 @@ function setView(v: CohortView) {
   void router.replace({ query: { etape: v } })
 }
 
+// ── Tri de la review : ordre de file, ou ce que DINO reconnaît ─────────────
+// Dans l'URL comme le reste du périmètre — et surtout ré-émis par scopeQuery :
+// sans ça, prendre une classe effacerait le réglage.
+const sortByDino = computed(() => route.query.tri === 'dino')
+const dinoTop1Only = computed(() => route.query.dino_top1 === '1')
+
+function setSort(dino: boolean) {
+  const q: Record<string, unknown> = { ...route.query }
+  if (dino) { q.tri = 'dino' } else { delete q.tri; delete q.dino_top1 }
+  void router.replace({ query: q as Record<string, string> })
+}
+function setTop1Only(on: boolean) {
+  const q: Record<string, unknown> = { ...route.query, tri: 'dino' }
+  if (on) q.dino_top1 = '1'
+  else delete q.dino_top1
+  void router.replace({ query: q as Record<string, string> })
+}
+
 const held = computed<CohortClass | null>(
   () => classes.value.find(c => c.id === heldId.value) ?? null,
 )
@@ -105,7 +123,13 @@ const nGreen = computed(() => nTotal.value - nBelow.value)
 
 /** Périmètre passé aux vues de review, reconstruit à chaque prise (jamais cumulé). */
 function scopeQuery(k: CohortClass, m: Mode): Record<string, string> {
-  const base = { etape: 'validees', classe: k.id, mode: m, cohort: cohortId.value }
+  const base: Record<string, string> = {
+    etape: 'validees', classe: k.id, mode: m, cohort: cohortId.value,
+  }
+  // Le tri survit au changement de classe : scopeQuery reconstruit la query
+  // ENTIÈRE, donc tout réglage absent d'ici serait perdu à la prise suivante.
+  if (sortByDino.value) base.tri = 'dino'
+  if (dinoTop1Only.value) base.dino_top1 = '1'
   if (m === 'lot') return { ...base, ...k.lotScope }
   // La file single ne sait filtrer que par pièce. Les classes de la vague 1
   // n'ont qu'un millésime chacune ; pour une classe multi-millésimes il faudra
@@ -333,9 +357,13 @@ watch(heldId, (id) => {
             :klass="held"
             :floor="floor"
             :mode="mode"
+            :sort-by-dino="sortByDino"
+            :dino-top1-only="dinoTop1Only"
             :since-change="sinceChange"
             :source="countsSource"
             :lag-seconds="lagSeconds"
+            @sort="setSort"
+            @top1-only="setTop1Only"
             @next="nextClass"
             @mode="setMode"
             @close="close"
