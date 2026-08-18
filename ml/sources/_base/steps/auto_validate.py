@@ -85,7 +85,13 @@ LIVE_ANCHORS_KINDS: tuple[str, ...] = (
 
 def _kind_in_scope(kind: str, face_value, is_commemorative) -> bool:
     """Le target du listing rend-il ce kind pertinent pour le crop ?"""
-    if face_value is None or float(face_value) != 2.0:
+    if face_value is None:
+        # Pas de target attribué : le crop appartient au POOL AMBIGU. Les
+        # banques scopées (commémo / courantes) ne peuvent rien en dire, mais
+        # `2eur_all` couvre tout le 2 € — et c'est justement sur ce pool que
+        # le modèle est le plus utile. Cf. `_select_assets_for_backfill`.
+        return kind == "2eur_all"
+    if float(face_value) != 2.0:
         return False
     if kind == "2eur_commemo":
         return bool(is_commemorative)
@@ -227,13 +233,21 @@ def _select_assets_for_backfill(
           JOIN source_images s ON s.id = a.source_image_id
      LEFT JOIN coins c ON c.eurio_id = s.target_eurio_id
          WHERE a.storage_path IS NOT NULL
-           AND c.face_value = 2.0
     """
     if anchors_kind == "2eur_commemo":
-        sql += " AND c.is_commemorative = 1"
+        sql += " AND c.face_value = 2.0 AND c.is_commemorative = 1"
     elif anchors_kind == "2eur_standard":
-        sql += " AND c.is_commemorative = 0"
-    # 2eur_all : tout target 2€, commémo ou courante.
+        sql += " AND c.face_value = 2.0 AND c.is_commemorative = 0"
+    else:
+        # 2eur_all : tout target 2€ — ET le POOL AMBIGU (listing sans target).
+        #
+        # `LEFT JOIN coins` suivi de `WHERE c.face_value = 2.0` se comportait en
+        # INNER JOIN : un listing sans `target_eurio_id` a `face_value` NULL et
+        # sortait du périmètre. Mesuré le 2026-08-19 : 2 193 crops ouverts sur
+        # 6 897 — c'est-à-dire précisément ceux dont personne ne sait à quelle
+        # pièce ils appartiennent, donc ceux qui auraient le plus besoin du
+        # modèle. Ils viennent d'une recherche 2 € de toute façon.
+        sql += " AND (c.face_value = 2.0 OR s.target_eurio_id IS NULL)"
     sql += " ORDER BY a.fetched_at ASC"
     if limit:
         sql += f" LIMIT {int(limit)}"

@@ -302,6 +302,7 @@ Voir `docs/research/detection-pipeline-unified.md`. Pipeline actuelle : YOLO11-n
 | Stratégie offline/sync | `docs/design/_shared/offline-first.md` |
 | Parité proto ↔ Android | `docs/design/_shared/parity-rules.md` |
 | **Sauvegarde / restauration** | `docs/work-in-progress/backup-pipeline/HANDOFF-NEXT-SESSION.md` |
+| **Banque d'ancres DINO, seuils, choix d'encodeur** | `docs/work-in-progress/banque-dino/CONSTAT.md` |
 | Phase spécifique | `docs/app-implem-phases/phase-N-*.md` |
 
 ## Interdictions

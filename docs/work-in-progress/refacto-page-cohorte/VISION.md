@@ -124,6 +124,14 @@ mentir en silence.** Quand un compteur ne bouge pas, il doit dire pourquoi.
   où l'on éprouve les vues avant de trancher.
 - Les écrans de review existants restent : on les réutilise, on ne les réécrit pas.
 
+## Ce qui a débordé de ce dossier
+
+La vue 4 a rendu visible un problème qu'elle ne pouvait pas résoudre : une
+classe qui affiche 116 crops à trancher dont 3 la concernent. La cause est dans
+la banque d'ancres DINO et dans le verdict d'auto-validation — ingestion,
+review et entraînement, pas seulement la page cohorte. Le sujet a donc son
+propre dossier : [`../banque-dino/CONSTAT.md`](../banque-dino/CONSTAT.md).
+
 ## Ordre de lecture
 
 1. `VISION.md` — ce fichier
