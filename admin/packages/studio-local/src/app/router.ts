@@ -197,6 +197,13 @@ const router = createRouter({
           meta: heavy,
         },
         {
+          // Page sœur « ce qui manque pour entraîner », maille classe. Tape le
+          // preflight + le funnel du ML API local → heavy (grisée en hébergé).
+          path: 'lab/cohorts-test/:id',
+          component: () => import('@/features/lab/pages/CohortTestPage.vue'),
+          meta: heavy,
+        },
+        {
           path: 'lab/cohorts/:id/iterations/new',
           component: () => import('@/features/lab/pages/IterationNewPage.vue'),
           meta: heavy,

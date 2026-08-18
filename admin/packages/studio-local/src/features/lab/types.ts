@@ -23,6 +23,51 @@ export interface CohortSummary {
   updated_at: string | null
 }
 
+// ─── Les trois seuils d'entraînement ────────────────────────────────────────
+// Ils ne vivent plus dans le code (ni Python, ni ici) : ils sont résolus en base
+// au canonique — classe → cohorte → global → constante. Le front n'en DÉFINIT
+// aucun, il lit celui que le back annonce.
+// Cf. docs/work-in-progress/refacto-page-cohorte/DECISIONS.md §D5.
+
+export type ThresholdKey = 'm_per_class' | 'min_real' | 'training_target'
+
+/** D'où vient la valeur servie. `code` = personne n'a rien réglé, c'est le
+ *  défaut Python — à afficher comme tel, pas comme une décision. */
+export type ThresholdSource = 'code' | 'global' | 'cohort' | 'class'
+
+export interface ResolvedThresholds {
+  /** Refus dur : sous ce nombre de sources réelles, le run est refusé. */
+  m_per_class: number
+  /** Le PLANCHER : sous ce nombre de crops eBay validés, la classe est pauvre. */
+  min_real: number
+  /** Cible d'images APRÈS augmentation (le facteur en est dérivé). */
+  training_target: number
+  source: Record<ThresholdKey, ThresholdSource>
+}
+
+/** Un changement de seuil. Sert à dire « le plancher est passé de 10 à 50 le
+ *  3 septembre » plutôt que de laisser 12 classes repasser au rouge sans raison. */
+export interface ThresholdChange {
+  scope: string
+  scope_id: string | null
+  key: ThresholdKey
+  old_value: number | null
+  new_value: number | null
+  changed_at: string
+  note: string | null
+}
+
+export interface ThresholdState {
+  effective: ResolvedThresholds
+  defaults: Record<ThresholdKey, number>
+  bounds: Record<ThresholdKey, [number, number]>
+  /** Surcharges posées au niveau global / sur cette cohorte (clés absentes = héritées). */
+  global: Partial<Record<ThresholdKey, number>>
+  cohort: Partial<Record<ThresholdKey, number>>
+  cohort_id: string | null
+  history: ThresholdChange[]
+}
+
 // ─── Garde-fou « prêt à entraîner » (staging implicite = cohort.eurio_ids) ──
 export interface PreflightClass {
   class_id: string
@@ -39,6 +84,8 @@ export interface PreflightClass {
 export interface PreflightReport {
   ok: boolean
   m_per_class: number
+  /** Le plancher sous lequel une classe est dite pauvre (`warn`). */
+  min_real: number
   n_total: number
   n_blocked: number
   n_warned: number
@@ -52,6 +99,10 @@ export interface CohortReadiness {
   n_classes: number
   unresolved: string[]
   preflight: PreflightReport
+  /** Les seuils que CE préflight a utilisés — lus sur la réplique locale, donc
+   *  potentiellement en retard de ≤120 s sur le canonique. À comparer, et à
+   *  annoncer quand ils divergent : sinon l'attente se lit comme un blocage. */
+  thresholds?: ResolvedThresholds
 }
 
 export interface CoinCaptureStatus {
@@ -297,6 +348,9 @@ export interface CohortFunnelStatus {
   quota: EbayQuotaInfo | null
   min_real_sources: number
   training_target: number
+  /** Les trois seuils résolus + leur provenance (même valeurs que ci-dessus,
+   *  mais avec l'origine — « plancher 25 (réglage de cette cohorte) »). */
+  thresholds?: ResolvedThresholds
 }
 
 // C2 cohort-pipeline : résumé des rejets eBay scopé cohort (GET /lab/cohorts/{id}/discard-summary).
@@ -832,6 +886,8 @@ export interface CohortTrainingCropsState {
   cohort_id: string
   cohort_name: string
   min_real: number
+  /** Résolus AU CANONIQUE : c'est la référence, sans décalage de réplique. */
+  thresholds?: ResolvedThresholds
   classes: TrainingCropClassState[]
 }
 

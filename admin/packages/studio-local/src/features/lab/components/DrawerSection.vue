@@ -4,7 +4,8 @@
 
 import type { DrawerState } from '@/features/lab/types'
 import { ChevronDown, ChevronRight, Lock } from 'lucide-vue-next'
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 
 const props = withDefaults(
   defineProps<{
@@ -23,8 +24,57 @@ const props = withDefaults(
   },
 )
 
+// ── Lien profond : `?tiroir=c3` ouvre le tiroir §C3 et le fait défiler à vue.
+// Posé ICI plutôt que dans chaque page : tous les tiroirs (cohorte, itération)
+// en héritent d'un coup, sans prop à faire descendre.
+// ⚠ La clé est le NUMÉRO du tiroir : il doit rester unique par page. La page
+// cohorte va de C1 à C6 sans collision depuis que le Jeu d'entraînement est
+// passé de C5 à C6 — deux tiroirs au même numéro s'ouvriraient ensemble.
+const route = useRoute()
+const anchor = computed(() => `tiroir-${props.number.toLowerCase()}`)
+const targeted = computed(
+  () => String(route.query.tiroir ?? '').toLowerCase() === props.number.toLowerCase(),
+)
+
 const userToggled = ref(false)
 const open = ref(false)
+const root = ref<HTMLElement | null>(null)
+
+// Le corps des tiroirs se remplit APRÈS leurs requêtes — le funnel eBay met
+// ~3,6 s — et la page grandit d'autant au-dessus de la cible. Un seul scroll
+// viserait une position déjà périmée. On repasse donc plusieurs fois pendant
+// que la mise en page se stabilise, et on ARRÊTE dès que l'utilisateur touche
+// la molette ou le clavier : jamais reprendre la main à quelqu'un qui l'a prise.
+const RETRIES_MS = [0, 400, 1200, 2600, 4200]
+let timers: ReturnType<typeof setTimeout>[] = []
+
+function cancelReveal() {
+  timers.forEach(clearTimeout)
+  timers = []
+  window.removeEventListener('wheel', cancelReveal)
+  window.removeEventListener('touchmove', cancelReveal)
+  window.removeEventListener('keydown', cancelReveal)
+}
+
+async function revealIfTargeted() {
+  cancelReveal()
+  if (!targeted.value) return
+  userToggled.value = false   // la cible reprend la main sur l'état auto
+  open.value = true
+  await nextTick()
+  window.addEventListener('wheel', cancelReveal, { passive: true })
+  window.addEventListener('touchmove', cancelReveal, { passive: true })
+  window.addEventListener('keydown', cancelReveal)
+  // Saut DIRECT, pas « smooth » : un défilement animé sur une longue distance
+  // se fait interrompre par chaque recalcul de mise en page au-dessus de la
+  // cible, et n'arrive jamais au bout (constaté le 2026-08-18).
+  timers = RETRIES_MS.map(ms =>
+    setTimeout(() => root.value?.scrollIntoView({ behavior: 'auto', block: 'start' }), ms),
+  )
+}
+watch(targeted, revealIfTargeted)
+onMounted(revealIfTargeted)
+onUnmounted(cancelReveal)
 
 function autoOpen(state: DrawerState, defaultOpen: boolean | undefined) {
   if (defaultOpen !== undefined) return defaultOpen
@@ -34,7 +84,8 @@ function autoOpen(state: DrawerState, defaultOpen: boolean | undefined) {
 watch(
   () => [props.state, props.defaultOpen] as const,
   ([s, d]) => {
-    if (!userToggled.value) open.value = autoOpen(s, d)
+    if (userToggled.value || targeted.value) return
+    open.value = autoOpen(s, d)
   },
   { immediate: true },
 )
@@ -77,9 +128,11 @@ const stateLabel = computed(() => {
 
 <template>
   <section
-    class="overflow-hidden rounded-lg border"
+    :id="anchor"
+    ref="root"
+    class="overflow-hidden rounded-lg border scroll-mt-4"
     :style="{
-      borderColor: 'var(--surface-3)',
+      borderColor: targeted ? 'var(--gold)' : 'var(--surface-3)',
       background: 'var(--surface)',
       opacity: locked ? 0.65 : 1,
     }"

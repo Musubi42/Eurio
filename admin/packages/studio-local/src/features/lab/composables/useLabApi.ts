@@ -260,6 +260,52 @@ export async function triggerRecropZeroCoin(
 // n'a pas de GPU) et se mergent côté front par asset_id/class_id (cf.
 // useCohortTrainingCropsQuery dans useLabQueries.ts).
 
+// ─── Les trois seuils d'entraînement (canonique) ─────────────────────────
+//
+// Ils vivent au VPS : un seuil est un fait de configuration, donc de l'état.
+// On les LIT et on les ÉCRIT là, jamais sur le ML local — qui, sur Mac/PC, lit
+// une réplique en lecture seule. Conséquence à afficher : le préflight local
+// peut mettre jusqu'à 120 s à intégrer un changement fait ici.
+// Cf. docs/work-in-progress/refacto-page-cohorte/DECISIONS.md §D5.
+
+/** Seuils effectifs pour une cohorte + surcharges posées + historique. */
+export async function fetchCohortThresholds(
+  cohortId: string,
+): Promise<import('../types').ThresholdState> {
+  return eurioApi.get<import('../types').ThresholdState>(
+    `/lab/cohorts/${encodeURIComponent(cohortId)}/thresholds`,
+  )
+}
+
+/** Surcharge un seuil POUR CETTE COHORTE. `value: null` retire la surcharge —
+ *  la cohorte retombe sur le défaut global (et le suivra s'il rebouge). */
+export async function setCohortThreshold(
+  cohortId: string,
+  key: import('../types').ThresholdKey,
+  value: number | null,
+  note?: string,
+): Promise<{ state: import('../types').ThresholdState }> {
+  return eurioApi.put<{ state: import('../types').ThresholdState }>(
+    `/lab/cohorts/${encodeURIComponent(cohortId)}/thresholds`,
+    { key, value, note: note ?? null },
+  )
+}
+
+/** Change le DÉFAUT GLOBAL — s'applique à toutes les cohortes sans surcharge,
+ *  y compris celles déjà entraînées : leurs classes seront rejugées à la
+ *  nouvelle règle (voulu, cf. D1). Les itérations déjà créées, elles, gardent
+ *  le seuil gelé dans leur config. */
+export async function setGlobalThreshold(
+  key: import('../types').ThresholdKey,
+  value: number,
+  note?: string,
+): Promise<{ state: import('../types').ThresholdState }> {
+  return eurioApi.put<{ state: import('../types').ThresholdState }>(
+    '/lab/thresholds',
+    { key, value, note: note ?? null },
+  )
+}
+
 /** État-DB-portable de la cohorte (VPS canonique, scope `lab:read`). */
 export async function fetchCohortTrainingCropsState(
   cohortId: string,

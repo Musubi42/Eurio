@@ -535,7 +535,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onCarouselKey))
 
 <template>
   <DrawerSection
-    number="C5"
+    number="C6"
     title="Jeu d'entraînement"
     :state="state"
     :summary="summary"
