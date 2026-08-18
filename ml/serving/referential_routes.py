@@ -53,6 +53,31 @@ def _resolve_role(role: str) -> str:
     return role
 
 
+def _lookup_url(eurio_id: str, role: str) -> str | None:
+    """URL externe du référentiel pour ce (pièce, face), s'il y en a une.
+
+    Dernier recours de ``_serve_canonical`` : 166 pièces sur 658 n'ont AUCUN
+    binaire (ni WebP local, ni objet MinIO) mais portent une URL Numista
+    parfaitement chargeable. Même ordre de priorité que ``_lookup_source``."""
+    conn = _store()._connection()  # noqa: SLF001
+    row = conn.execute(
+        """
+        SELECT url FROM coin_canonical_images
+         WHERE eurio_id = ? AND role = ? AND url IS NOT NULL AND url != ''
+         ORDER BY CASE source
+                    WHEN 'numista'      THEN 1
+                    WHEN 'numista_api'  THEN 1
+                    WHEN 'bce_comm'     THEN 2
+                    WHEN 'bce_official' THEN 2
+                    WHEN 'eurlex_jo'    THEN 3
+                    ELSE 9 END
+         LIMIT 1
+        """,
+        (eurio_id, role),
+    ).fetchone()
+    return row["url"] if row is not None else None
+
+
 def _lookup_source(eurio_id: str, role: str) -> str | None:
     """Renvoie le ``source`` (numista/bce_comm/unknown) du fichier canonique
     de meilleure priorité pour ce (coin, role). Préfère numista > bce_comm >
@@ -175,10 +200,28 @@ def _serve_canonical(
         if storage_key in bucket:
             return RedirectResponse(public_url(storage_key), status_code=302)
 
+    # 3. Ni fichier local, ni objet MinIO — mais le référentiel connaît une URL
+    #    externe. C'est le cas de 166 pièces sur 658 (mesuré le 2026-08-19) :
+    #    elles n'ont QUE la ligne `numista_api`, dont le binaire n'a jamais été
+    #    rapatrié (l'étape 3 de `/referential/heal` invoque un script déplacé
+    #    dans `ml/archive/`, donc morte en silence).
+    #
+    #    Sans cette retombée, la route 404 alors que l'image existe et se charge
+    #    — et TOUS les appelants héritent du trou : la vignette de la sélection
+    #    libre, la fiche pièce, la review. Les corriger un par un rejouerait le
+    #    même geste à chaque nouvel appelant ; ici c'est réparé en un point.
+    #
+    #    Ce n'est pas un substitut à l'hydratation : on dépend d'un tiers et on
+    #    sert du plein format là où on voulait une vignette. Mais un 302 vers une
+    #    image qui s'affiche vaut mieux qu'un 404 sur une image qu'on possède.
+    external = _lookup_url(eurio_id, role)
+    if external:
+        return RedirectResponse(external, status_code=302)
+
     raise HTTPException(
         status_code=404,
-        detail=f"no canonical for {eurio_id}/{role} on disk or in MinIO "
-               f"(tried sources: {candidates})",
+        detail=f"no canonical for {eurio_id}/{role} on disk, in MinIO, nor as a "
+               f"referential URL (tried sources: {candidates})",
     )
 
 
