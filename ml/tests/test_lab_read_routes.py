@@ -163,6 +163,8 @@ import store.class_resolver  # noqa: F401
 import store.decisions  # noqa: F401
 import serving.lab_read_models  # noqa: F401
 import serving.lab_read_routes  # noqa: F401
+import store.thresholds  # noqa: F401
+import serving.thresholds_routes  # noqa: F401
 leaked = {{m for m in ("numpy", "torch", "cv2") if m in sys.modules}}
 assert not leaked, f"lean import chain pulled in: {{leaked}}"
 print("OK")
@@ -172,7 +174,8 @@ print("OK")
 def test_lab_read_chain_does_not_import_numpy_torch_cv2():
     """Filet anti-contamination (blocker #3) : la chaîne d'imports servie sur
     l'image lean VPS (store.funnel + store.funnel_constants +
-    store.class_resolver + serving.lab_read_routes/_models) ne doit tirer NI
+    store.class_resolver + serving.lab_read_routes/_models + store.thresholds +
+    serving.thresholds_routes) ne doit tirer NI
     numpy NI torch NI cv2 — sinon l'image lean (sans ces deps lourdes) casse
     au démarrage. Vérifié dans un sous-process frais pour ne pas être faussé
     par d'autres tests de la même session pytest qui auraient déjà importé

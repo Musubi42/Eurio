@@ -202,6 +202,7 @@ class ReviewItem(BaseModel):
 def _build_target_candidate(
     row: sqlite3.Row,
     target_eurio_id: str | None,
+    conn: sqlite3.Connection | None = None,
 ) -> ReviewCandidate | None:
     """Construit le ReviewCandidate enrichi de la pièce proposée (attribuée
     au listing par le theme-match) à partir d'une row SQL où on a JOIN
@@ -222,11 +223,26 @@ def _build_target_candidate(
         if row["t_face_value"] is not None
         else ""
     )
-    # Vignette canonique par eurio_id via la route /referential/canonical
-    # (fallback MinIO). Pas de `conn` dans ce helper → on défère la résolution
-    # au request-time (comme le front) plutôt que d'appeler canonical_obverse_url.
-    # Legacy /images/<numista>/source retiré (layout ml/datasets/ absent des migrées).
-    thumb = f"/referential/canonical/{row['t_eurio_id']}/obverse/thumb"
+    from serving._coin_helpers import canonical_obverse_url
+
+    # Vignette canonique : l'URL du référentiel D'ABORD, la route locale en
+    # secours — l'inverse de ce qu'on faisait.
+    #
+    # Ce helper était le SEUL constructeur de candidat à ignorer
+    # `canonical_obverse_url` : il renvoyait toujours
+    # `/referential/canonical/{id}/obverse/thumb`, une route qui ne connaît ni
+    # la colonne `url` ni `ml/datasets/` et qui 404 dès que la pièce n'a ni WebP
+    # local ni objet MinIO. Mesuré le 2026-08-19 sur 49 pièces proposées tirées
+    # de la file : **16 en 404 (33 %)**, discriminant parfait = absence de
+    # `ml/canonical_images/{eurio_id}/`. Côté écran, ça donnait une image cassée
+    # dans SplitCompare pendant que la vignette DINO de la même pièce
+    # s'affichait — dont cy-2008 et it-2002, qu'on a crus « sans photo
+    # canonique » alors que leur URL était en base et se charge en 200.
+    # 100 % des lignes `role='obverse'` portent une `url` (1235/1235).
+    thumb = (
+        (canonical_obverse_url(conn, row["t_eurio_id"]) if conn is not None else None)
+        or f"/referential/canonical/{row['t_eurio_id']}/obverse/thumb"
+    )
     return ReviewCandidate(
         eurio_id=row["t_eurio_id"],
         score=1.0,  # prior — pas un score Dino, juste un marqueur "défaut"
@@ -449,7 +465,7 @@ def _row_to_item(
     target_eurio_id: str | None = (
         row["target_eurio_id"] if "target_eurio_id" in row.keys() else None
     )
-    target_candidate = _build_target_candidate(row, target_eurio_id)
+    target_candidate = _build_target_candidate(row, target_eurio_id, conn)
 
     cols = row.keys()
 
@@ -1584,7 +1600,7 @@ def get_lot(listing_key: str) -> LotDetail:
         listing_key=listing_key,
         source=header["source"],
         target_eurio_id=header["target_eurio_id"],
-        target_candidate=_build_target_candidate(header, header["target_eurio_id"]),
+        target_candidate=_build_target_candidate(header, header["target_eurio_id"], conn),
         listing_title=header["listing_title"],
         listing_price=header["listing_price"],
         listing_currency=header["listing_currency"] or "EUR",

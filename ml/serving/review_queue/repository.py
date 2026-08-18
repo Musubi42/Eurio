@@ -69,7 +69,9 @@ class CohortNotFound(Exception):
 
 
 def _build_target_candidate(
-    row: sqlite3.Row, target_eurio_id: str | None,
+    row: sqlite3.Row,
+    target_eurio_id: str | None,
+    conn: sqlite3.Connection | None = None,
 ) -> ReviewCandidate | None:
     if not target_eurio_id or "t_eurio_id" not in row.keys() or not row["t_eurio_id"]:
         return None
@@ -82,9 +84,19 @@ def _build_target_candidate(
         f"{float(row['t_face_value']):.2f} EUR"
         if row["t_face_value"] is not None else ""
     )
+    # Vignette : l'URL du référentiel (`coin_canonical_images`) D'ABORD.
+    #
+    # `/images/<numista_id>/source` est un endpoint LEGACY qui sert le layout
+    # `ml/datasets/<nid>/`, absent des machines migrées — et surtout absent du
+    # VPS, qui est justement celui qui sert cette file au front (la queue est
+    # lue via `eurioApi`, pas via l'API locale). Le front préfixe l'URL relative
+    # avec l'adresse du ML local, et on obtient une image cassée pour une pièce
+    # dont la photo existe pourtant en base : mesuré le 2026-08-19 sur cy-2008
+    # et cy-2026, et c'est ce qui a fait croire à des « pièces sans photo
+    # canonique ». 100 % des lignes `role='obverse'` portent une `url`.
     thumb = (
-        f"/images/{int(row['t_numista_id'])}/source"
-        if row["t_numista_id"] else ""
+        (canonical_obverse_url(conn, row["t_eurio_id"]) if conn is not None else None)
+        or (f"/images/{int(row['t_numista_id'])}/source" if row["t_numista_id"] else "")
     )
     return ReviewCandidate(
         eurio_id=row["t_eurio_id"],
@@ -121,9 +133,11 @@ def _build_dino_top1_candidate(
         f"{float(row['face_value']):.2f} EUR"
         if row["face_value"] is not None else ""
     )
+    # Même raison que dans `_build_target_candidate` : le référentiel d'abord,
+    # l'endpoint legacy en dernier recours.
     thumb = (
-        f"/images/{int(row['numista_id'])}/source"
-        if row["numista_id"] else ""
+        canonical_obverse_url(conn, row["eurio_id"])
+        or (f"/images/{int(row['numista_id'])}/source" if row["numista_id"] else "")
     )
     return ReviewCandidate(
         eurio_id=row["eurio_id"],
@@ -266,7 +280,7 @@ def _row_to_item(
     target_eurio_id: str | None = (
         row["target_eurio_id"] if "target_eurio_id" in row.keys() else None
     )
-    target_candidate = _build_target_candidate(row, target_eurio_id)
+    target_candidate = _build_target_candidate(row, target_eurio_id, conn)
 
     cols = row.keys()
 

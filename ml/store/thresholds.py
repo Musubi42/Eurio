@@ -116,6 +116,17 @@ class Thresholds:
         }
 
 
+def _table_missing(exc: sqlite3.OperationalError) -> bool:
+    """La table n'existe pas encore — le SEUL cas où le silence est correct.
+
+    ``sqlite3.OperationalError`` couvre aussi ``database is locked``, ``disk I/O
+    error`` et ``database disk image is malformed``. Les avaler rendrait le
+    défaut du code pour une valeur réglée : le préflight jugerait 40 classes à
+    10 pendant que la base dit 25, et l'écran l'annoncerait comme un fait. On
+    ne tait donc QUE la table manquante ; tout le reste remonte."""
+    return "no such table" in str(exc).lower()
+
+
 def _rows(conn: sqlite3.Connection, scope: str, scope_id: str) -> dict[str, int]:
     """Les surcharges d'un scope, ou rien si la table n'existe pas encore."""
     try:
@@ -124,9 +135,11 @@ def _rows(conn: sqlite3.Connection, scope: str, scope_id: str) -> dict[str, int]
             "WHERE scope = ? AND scope_id = ?",
             (scope, scope_id),
         )
-    except sqlite3.OperationalError:
+    except sqlite3.OperationalError as exc:
         # Base antérieure à la migration 0006 (ou réplique d'un canonique plus
         # vieux). On sert les défauts — exacts, simplement non surchargés.
+        if not _table_missing(exc):
+            raise
         return {}
     return {r[0]: int(r[1]) for r in cur.fetchall() if r[0] in KEYS}
 
@@ -200,7 +213,9 @@ def read_history(
     params.append(str(int(limit)))
     try:
         cur = conn.execute(sql, params)
-    except sqlite3.OperationalError:
+    except sqlite3.OperationalError as exc:
+        if not _table_missing(exc):
+            raise
         return []
     return [
         {
@@ -214,6 +229,23 @@ def read_history(
         }
         for r in cur.fetchall()
     ]
+
+
+def _require_table(conn: sqlite3.Connection) -> None:
+    """La LECTURE se dégrade en silence sur une base sans la migration ; pas
+    l'ÉCRITURE. Sans ce garde-fou, l'INSERT partirait quand même et l'appelant
+    recevrait un 500 nu sur exactement le cas que ce module promet de dégrader
+    proprement."""
+    row = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'training_thresholds'",
+    ).fetchone()
+    if row is None:
+        raise ThresholdError(
+            503,
+            "La table des seuils n'existe pas sur cette base : la migration 0006 "
+            "n'a pas encore été appliquée au canonique. Les valeurs affichées sont "
+            "les défauts du code — elles sont justes, simplement pas réglables.",
+        )
 
 
 def _check(key: str, scope: str, scope_id: str) -> None:
@@ -252,6 +284,7 @@ def set_threshold(
     if before == value:
         return {"key": key, "value": value, "changed": False, "previous": before}
 
+    _require_table(conn)
     conn.execute(
         "INSERT INTO training_thresholds (scope, scope_id, key, value, note, "
         "updated_at, updated_by) VALUES (?, ?, ?, ?, ?, datetime('now'), ?) "
@@ -283,6 +316,7 @@ def clear_threshold(
     before = _rows(conn, scope, scope_id).get(key)
     if before is None:
         return {"key": key, "value": None, "changed": False, "previous": None}
+    _require_table(conn)
     conn.execute(
         "DELETE FROM training_thresholds WHERE scope = ? AND scope_id = ? AND key = ?",
         (scope, scope_id, key),

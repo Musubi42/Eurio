@@ -138,3 +138,29 @@ def test_gel_dans_literation(conn):
     frozen = th.resolve(conn, cohort_id="giga").frozen_config()
 
     assert frozen == {"m_per_class": 4, "min_real": 25, "training_target": 100}
+
+
+def test_une_erreur_sqlite_qui_nest_pas_labsence_de_table_remonte():
+    """Le filet ne doit couvrir QUE « no such table ».
+
+    Un `database is locked` avalé rendrait le défaut du code pour une valeur
+    réglée : le préflight jugerait les classes à 10 pendant que la base dit 25,
+    et l'écran l'annoncerait comme un fait. C'est la panne muette que tout ce
+    dossier existe pour empêcher."""
+
+    class Locked:
+        def execute(self, *_a, **_k):
+            raise sqlite3.OperationalError("database is locked")
+
+    with pytest.raises(sqlite3.OperationalError):
+        th.resolve(Locked())  # type: ignore[arg-type]
+    with pytest.raises(sqlite3.OperationalError):
+        th.read_history(Locked())  # type: ignore[arg-type]
+
+
+def test_ecrire_sans_la_table_dit_pourquoi_au_lieu_de_500():
+    bare = sqlite3.connect(":memory:")
+    with pytest.raises(th.ThresholdError) as exc:
+        th.set_threshold(bare, "min_real", 25, scope="global")
+    assert exc.value.status_code == 503
+    assert "0006" in exc.value.detail
