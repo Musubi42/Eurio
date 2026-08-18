@@ -565,14 +565,11 @@ def list_queue(
             status_code=422, detail=f"lane must be one of {_VALID_LANES}",
         )
     # Miroir de `serving/review_queue/repository.list_queue` — les paramètres
-    # des deux implémentations doivent rester identiques.
-    order_clause = {
-        "priority": "rq.priority ASC, rq.enqueued_at ASC",
-        "dino": (
-            "COALESCE(ps.spread, -1.0) DESC, "
-            "rq.priority ASC, rq.enqueued_at ASC"
-        ),
-    }.get(order, "rq.enqueued_at ASC")
+    # ET l'ordre doivent rester identiques. Le tri `dino` met la classe
+    # travaillée devant, puis le plus net : le seul spread remonterait ce dont
+    # le modèle est le plus sûr, y compris que ce n'est PAS la classe.
+    order_clause = "rq.priority ASC, rq.enqueued_at ASC" \
+        if order == "priority" else "rq.enqueued_at ASC"
 
     store = _store()
     conn = store._connection()  # noqa: SLF001
@@ -648,22 +645,33 @@ def list_queue(
         )
         args.extend(cohort.eurio_ids)
 
-    # ── Filtres DINO — miroir de serving/review_queue/repository.list_queue ──
+    # ── Tri et filtres DINO — miroir de serving/review_queue/repository ─────
+    # La banque indexe une courante sous le plus ancien millésime de son ère,
+    # pas sous l'identifiant demandé (cf. shared/bank_classes).
+    wanted_classes: list[str] = []
+    if order == "dino" or dino_top1_only:
+        if eurio_id:
+            wanted_classes = bank_class_ids(conn, eurio_id)
+        elif cohort_id:
+            wanted_classes = bank_class_ids_for_many(conn, list(cohort.eurio_ids))
+
     if dino_min_spread is not None:
         where += " AND ps.spread >= ?"
         args.append(float(dino_min_spread))
-    if dino_top1_only:
-        # La banque indexe une courante sous le plus ancien millésime de son
-        # ère, pas sous l'identifiant demandé — cf. shared/bank_classes.
-        if eurio_id:
-            wanted = bank_class_ids(conn, eurio_id)
-        elif cohort_id:
-            wanted = bank_class_ids_for_many(conn, list(cohort.eurio_ids))
-        else:
-            wanted = []
-        if wanted:
-            where += f" AND ps.top1_eurio_id IN ({','.join('?' * len(wanted))})"
-            args.extend(wanted)
+    if dino_top1_only and wanted_classes:
+        ph = ",".join("?" * len(wanted_classes))
+        where += f" AND ps.top1_eurio_id IN ({ph})"
+        args.extend(wanted_classes)
+
+    if order == "dino":
+        bits = []
+        if wanted_classes:
+            ph = ",".join("?" * len(wanted_classes))
+            bits.append(f"(ps.top1_eurio_id IN ({ph})) DESC")
+            args.extend(wanted_classes)
+        bits.append("COALESCE(ps.spread, -1.0) DESC")
+        bits.append("rq.priority ASC, rq.enqueued_at ASC")
+        order_clause = ", ".join(bits)
 
     args.append(limit)
 

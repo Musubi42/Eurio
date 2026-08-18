@@ -434,18 +434,46 @@ def list_queue(
     dino_min_spread: float | None = None,
     dino_top1_only: bool = False,
 ) -> list[ReviewItem]:
-    # `dino` : ce que le modèle rattache le plus nettement d'abord.
+    # `dino` : d'abord ce que le modèle rattache à LA CLASSE TRAVAILLÉE, puis
+    # du plus net au plus flou.
     #
-    # COALESCE(-1) plutôt que de laisser NULL : un crop jamais scoré doit finir
-    # en queue, et l'écrire explicitement évite de dépendre de la place des
-    # NULL dans le tri SQLite (qui change entre ASC et DESC).
-    order_clause = {
-        "priority": "rq.priority ASC, rq.enqueued_at ASC",
-        "dino": (
-            "COALESCE(ps.spread, -1.0) DESC, "
-            "rq.priority ASC, rq.enqueued_at ASC"
-        ),
-    }.get(order, "rq.enqueued_at ASC")
+    # Les deux critères comptent, et dans cet ordre. Trier par le seul spread
+    # remonterait ce dont le modèle est le plus sûr — y compris quand il est
+    # sûr que ce n'est PAS la classe : mesuré, la file « Philippe » ouvrait sur
+    # un Spa-Francorchamps 2025 à 0,28 de spread. Utile à savoir, mais ce n'est
+    # pas ce qu'on est venu trancher.
+    #
+    # COALESCE(-1) plutôt que de laisser NULL : un crop jamais scoré finit en
+    # queue, et l'écrire évite de dépendre de la place des NULL dans le tri
+    # SQLite (qui change entre ASC et DESC).
+    # ⚠️ La banque n'indexe PAS une pièce courante sous son propre identifiant
+    # mais sous celui du plus ancien millésime de son ère. Traduire est
+    # obligatoire : sans ça, tri comme filtre porteraient sur un identifiant
+    # que la banque ne connaît pas, et renverraient un résultat vide ou non
+    # trié — parfaitement plausible, donc invisible. Cf. shared/bank_classes.
+    wanted_classes: list[str] = []
+    if order == "dino" or dino_top1_only:
+        if eurio_id:
+            wanted_classes = bank_class_ids(conn, eurio_id)
+        elif cohort_id:
+            _eids, _ = _cohort_eurio_ids(conn, cohort_id)
+            wanted_classes = bank_class_ids_for_many(conn, _eids)
+
+    order_args: list[object] = []
+    if order == "dino":
+        bits = []
+        if wanted_classes:
+            ph = ",".join("?" * len(wanted_classes))
+            bits.append(f"(ps.top1_eurio_id IN ({ph})) DESC")
+            order_args.extend(wanted_classes)
+        bits.append("COALESCE(ps.spread, -1.0) DESC")
+        bits.append("rq.priority ASC, rq.enqueued_at ASC")
+        order_clause = ", ".join(bits)
+    else:
+        order_clause = (
+            "rq.priority ASC, rq.enqueued_at ASC" if order == "priority"
+            else "rq.enqueued_at ASC"
+        )
     where = "rq.status = ?"
     args: list[object] = [status]
     if kind != "all":
@@ -491,23 +519,12 @@ def list_queue(
     if dino_min_spread is not None:
         where += " AND ps.spread >= ?"
         args.append(float(dino_min_spread))
-    if dino_top1_only:
-        # ⚠️ La banque n'indexe PAS une pièce courante sous son propre
-        # identifiant mais sous celui du plus ancien millésime de son ère.
-        # Filtrer sur l'eurio_id demandé renverrait zéro ligne sur toute
-        # courante non représentante — une liste vide parfaitement plausible.
-        # `bank_class_ids` traduit ; sans lui ce filtre serait un piège.
-        if eurio_id:
-            wanted = bank_class_ids(conn, eurio_id)
-        elif cohort_id:
-            eids2, _ = _cohort_eurio_ids(conn, cohort_id)
-            wanted = bank_class_ids_for_many(conn, eids2)
-        else:
-            wanted = []
-        if wanted:
-            where += f" AND ps.top1_eurio_id IN ({','.join('?' * len(wanted))})"
-            args.extend(wanted)
+    if dino_top1_only and wanted_classes:
+        ph = ",".join("?" * len(wanted_classes))
+        where += f" AND ps.top1_eurio_id IN ({ph})"
+        args.extend(wanted_classes)
 
+    args.extend(order_args)
     args.append(limit)
 
     rows = conn.execute(

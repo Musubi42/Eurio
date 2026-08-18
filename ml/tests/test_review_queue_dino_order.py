@@ -140,3 +140,21 @@ def test_filtre_top1_sur_une_courante_non_representante(conn):
         "le crop de l'ère doit remonter : la banque l'indexe sous le plus "
         "ancien millésime, pas sous la pièce demandée"
     )
+
+
+def test_la_classe_travaillee_passe_devant_un_spread_plus_net(conn):
+    """Le critère qui manquait, et qui se voyait à l'écran : trier par le seul
+    spread remonte ce dont le modèle est le plus sûr — y compris qu'il ne
+    s'agit PAS de la classe. Mesuré en vrai : la file « Philippe » ouvrait sur
+    un Spa-Francorchamps 2025 à 0,28. Utile, mais pas ce qu'on vient trancher.
+    """
+    _crop(conn, ref="autre", spread=0.28, top1="be-2025-spa")
+    _crop(conn, ref="laclasse", spread=0.01, top1="be-1999-std")
+
+    got = repository.list_queue(
+        conn, status="open", limit=10, order="dino", kind="single",
+        lane=None, cohort_id=None, eurio_id="be-2007-std", review_ids=None,
+    )
+    assert _ids(got) == ["rq-laclasse", "rq-autre"], (
+        "la classe travaillée passe devant, même moins nette"
+    )
