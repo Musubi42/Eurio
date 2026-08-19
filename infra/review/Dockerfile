@@ -35,23 +35,40 @@ COPY --from=shared . /shared/
 
 # ⚠️ `--filter eurio-review-front` SANS les trois points de suffixe.
 #
-# `eurio-review-front...` sélectionne le paquet **et ses dépendances de
-# workspace** — donc `@eurio/shared`, qui vit hors de la racine du workspace
-# (`../shared`). Dans ce cas pnpm 9.12 n'installe **rien du tout et sort en 0** :
+# `eurio-review-front...` ajoute au périmètre les dépendances de workspace du
+# paquet, donc `@eurio/shared`. Ici — et seulement ici — pnpm 9.12 n'installe
+# alors **rien du tout, et sort en 0** :
 #
 #   Scope: 2 of 3 workspace projects
 #   Done in 596ms
 #
-# Aucune erreur, aucun avertissement — l'échec n'apparaît que deux couches plus
+# Aucune erreur, aucun avertissement. L'échec n'apparaît que deux couches plus
 # loin, en `sh: vue-tsc: not found`, qui envoie chercher un problème de PATH ou
-# de devDependencies qui n'existe pas. Mesuré le 2026-08-19 : sans les points,
-# 62 paquets installés, `@eurio/shared` correctement lié, `vue-tsc` puis `vite
-# build` passent. Le lien vers `@eurio/shared` est posé par la dépendance
-# elle-même ; il n'a jamais eu besoin du `...`.
+# de devDependencies qui n'existe pas.
+#
+# **Ce ne sont pas les trois points en eux-mêmes.** `infra/eurio-admin` porte la
+# même ligne (`--filter "eurio-studio-local..."`) et installe ses 190 paquets
+# sans broncher. Ce qui diffère est la POSITION DU WORKSPACE : ce stage-ci
+# travaillait dans `/admin`, donc le `../shared` de `pnpm-workspace.yaml`
+# résolvait vers `/shared`, **à la racine du système de fichiers** ; eurio-admin
+# travaille dans `/build/admin`, avec `/build/shared` à côté. Matrice mesurée le
+# 2026-08-19, à quatre variantes, tout le reste égal :
+#
+#   layout /admin   + `...`  → 0 paquet installé, exit 0   ← la panne
+#   layout /admin   sans     → 62 paquets, build OK
+#   layout /build   + `...`  → 62 paquets, build OK
+#   layout /build   sans     → 62 paquets, build OK
+#
+# Retirer `...` est donc le correctif minimal ET suffisant : le lien vers
+# `@eurio/shared` est posé par la dépendance elle-même, vérifié
+# (`node_modules/@eurio/shared -> ../../../../../shared`), et `vue-tsc` puis
+# `vite build` passent. Déplacer le layout sous `/build` marcherait aussi ;
+# on ne le fait pas ici pour ne pas remuer les chemins du stage 2 sans
+# nécessité.
 #
 # Découvert par l'exercice de restauration, qui construit depuis un clone nu :
-# l'image en service datait d'avant la régression et personne ne l'avait
-# reconstruite depuis.
+# l'image en service datait de juin, personne ne l'avait reconstruite depuis, et
+# `docker build` échouait déjà depuis /opt/eurio.
 RUN pnpm install \
       --filter eurio-review-front \
       --frozen-lockfile
