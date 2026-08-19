@@ -33,8 +33,27 @@ COPY --from=admin packages/review packages/review
 # le workspace ne résout pas et `pnpm install --frozen-lockfile` échoue.
 COPY --from=shared . /shared/
 
+# ⚠️ `--filter eurio-review-front` SANS les trois points de suffixe.
+#
+# `eurio-review-front...` sélectionne le paquet **et ses dépendances de
+# workspace** — donc `@eurio/shared`, qui vit hors de la racine du workspace
+# (`../shared`). Dans ce cas pnpm 9.12 n'installe **rien du tout et sort en 0** :
+#
+#   Scope: 2 of 3 workspace projects
+#   Done in 596ms
+#
+# Aucune erreur, aucun avertissement — l'échec n'apparaît que deux couches plus
+# loin, en `sh: vue-tsc: not found`, qui envoie chercher un problème de PATH ou
+# de devDependencies qui n'existe pas. Mesuré le 2026-08-19 : sans les points,
+# 62 paquets installés, `@eurio/shared` correctement lié, `vue-tsc` puis `vite
+# build` passent. Le lien vers `@eurio/shared` est posé par la dépendance
+# elle-même ; il n'a jamais eu besoin du `...`.
+#
+# Découvert par l'exercice de restauration, qui construit depuis un clone nu :
+# l'image en service datait d'avant la régression et personne ne l'avait
+# reconstruite depuis.
 RUN pnpm install \
-      --filter eurio-review-front... \
+      --filter eurio-review-front \
       --frozen-lockfile
 
 # L'API est servie par la même origine → chemins relatifs côté front. Si on
