@@ -110,6 +110,15 @@ dispositif du 17 juin.
 
 ## 4. Protocole de l'exercice trimestriel
 
+> **Depuis le 2026-08-19, l'exercice est une commande et il est ordonnancé.**
+> `go-task backup:drill` déroule les huit étapes ci-dessous ; `eurio-backup-drill.timer`
+> le rejoue les 5 janvier / avril / juillet / octobre. Le succès acquitte l'anneau 5 et
+> détruit les 14 Go ; l'échec passe l'anneau au rouge et conserve tout pour l'autopsie.
+> Harnais : [`infra/backup/drill/`](../../../infra/backup/drill/README.md).
+>
+> Le protocole manuel ci-dessous reste la référence — c'est ce que le script exécute, et
+> c'est ce qu'on rejoue à la main le jour où le script lui-même est en cause.
+
 > Règle du jeu : **on n'utilise que `README-RESTORE.md`.** Pas d'historique de shell, pas
 > d'assistant, pas de mémoire. Si une étape manque, c'est un bug du document, corrigé
 > immédiatement.

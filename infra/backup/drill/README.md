@@ -25,10 +25,22 @@ d'écrire dans `/opt/eurio`.
 ## Dérouler — une commande
 
 ```bash
-go-task backup:drill          # ~1 h 15, ~14 Go de disque, ne touche pas la production
+go-task backup:drill          # 28 min mesurées, ~14 Go de disque, ne touche pas la production
 go-task backup:drill:status   # où en est l'exercice
 go-task backup:drill:down     # détruire (à lancer même après un échec)
 ```
+
+**Il est aussi ordonnancé** — `eurio-backup-drill.timer` (`nix/eurio-vps.nix`),
+les 5 janvier / avril / juillet / octobre à 04:00 UTC, après la fenêtre
+Duplicati. Un succès acquitte l'anneau 5 puis **détruit** les 14 Go ; un échec
+passe l'anneau au rouge (`eurio-backup.sh drill-fail`) et **conserve** la stack
+et les journaux. Compter sur la seule absence d'acquittement laisserait 90 j de
+période + 30 j de grâce avant le moindre signal.
+
+Chiffres du premier exercice automatisé (2026-08-19) : clone 15 s · images
+2 min 30 · choix de version 20 s · index 11 min · restauration **10 min 27**
+pour 7,0 Gio · MinIO et stack 3 min · contrôles 10 s. 16/18 invariants,
+`/coins` → 658 pièces, un crop servi ≡ octet pour octet.
 
 `run-drill.sh` enchaîne les six étapes et pose un marqueur après chacune : un
 échec en étape 5 se reprend **sans re-télécharger 6 Go** (`go-task backup:drill

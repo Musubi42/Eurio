@@ -109,6 +109,17 @@ in
       default = "*-*-* 02:30:00 UTC";
       description = "Quand vérifier les invariants. Entre le staging et Duplicati.";
     };
+
+    drillOnCalendar = lib.mkOption {
+      type = lib.types.str;
+      default = "*-01,04,07,10-05 04:00:00 UTC";
+      description = ''
+        Quand rejouer l'exercice de restauration complet. Trimestriel par
+        défaut (5 janvier / avril / juillet / octobre), après la fenêtre de
+        sauvegarde : l'exercice tape la même destination pCloud et n'a aucune
+        raison de courir contre le job Duplicati de 03:00.
+      '';
+    };
   };
 
   config = lib.mkIf cfg.enable {
@@ -163,6 +174,45 @@ in
       timerConfig = {
         OnCalendar = cfg.verifyOnCalendar;
         Persistent = true;
+      };
+    };
+
+    # ── Exercice de restauration ──────────────────────────────────────────
+    # Les deux unités ci-dessus vérifient que la sauvegarde est CRÉDIBLE.
+    # Celle-ci vérifie qu'elle est RESTAURABLE — ce n'est pas la même question,
+    # et seule la seconde répond à « le VPS est perdu, est-ce que je récupère
+    # Eurio ? ». Elle clone le dépôt, reconstruit les images, rapatrie depuis
+    # pCloud, remonte une stack isolée et lui demande de servir la donnée.
+    #
+    # Pourquoi l'ordonnancer plutôt que le laisser en rituel humain : la case
+    # « Monthly DR Test » de /opt/stacks/oim-duplicati/BACKUP_STRATEGY.md n'a
+    # jamais été cochée depuis novembre 2025. Un rituel trimestriel non
+    # ordonnancé ne se fait pas — c'est la pathologie même de ce chantier.
+    #
+    # Elle a besoin de plus que les deux autres : `git` et `openssh` pour
+    # cloner Codeberg, `sops`/`age` pour les secrets du clone, `nix` pour le
+    # duplicati-cli du jour J, `docker` pour construire et remonter.
+    systemd.services.eurio-backup-drill = commonService // {
+      description = "Eurio — exercice de restauration complet (trimestriel)";
+      path = commonService.path ++ (with pkgs; [ git openssh sops age docker-compose ]);
+      serviceConfig = commonService.serviceConfig // {
+        ExecStart = "${cfg.repoRoot}/infra/backup/drill/run-drill.sh all";
+        # Mesuré le 2026-08-19 : 28 min de bout en bout (index 11 min,
+        # restauration 10 min, le reste local). La borne laisse la marge d'un
+        # pCloud lent sans laisser un exercice bloqué occuper le disque.
+        TimeoutStartSec = "3h";
+      };
+    };
+
+    systemd.timers.eurio-backup-drill = {
+      description = "Déclencheur trimestriel de l'exercice de restauration Eurio";
+      wantedBy = [ "timers.target" ];
+      timerConfig = {
+        OnCalendar = cfg.drillOnCalendar;
+        Persistent = true;
+        # Le seul timer des trois qui a besoin d'être dispersé : il tire un
+        # jour fixe à heure fixe, et rien d'autre ne dépend de son instant.
+        RandomizedDelaySec = "30min";
       };
     };
   };

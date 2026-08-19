@@ -20,7 +20,7 @@
 #      d'écrire dans /opt/eurio.
 #
 # Usage :
-#   ./run-drill.sh all          # tout, dans l'ordre (~1 h 15)
+#   ./run-drill.sh all          # tout, dans l'ordre (~28 min, mesuré 2026-08-19)
 #   ./run-drill.sh <étape>      # clone build pick restore up smoke
 #   ./run-drill.sh status       # où en est l'exercice
 #   ./run-drill.sh down         # détruit la stack et $WORK
@@ -35,6 +35,12 @@
 #   DRILL_VERSION   version Duplicati à restaurer (défaut: la plus récente
 #                   QUI PORTE UN MANIFESTE — cf. `pick`)
 #   DRILL_DUPLICATI_CMD  binaire duplicati-cli  (défaut: via `nix shell`)
+#   DRILL_KEEP      1 = ne pas détruire après un succès (défaut: destruction)
+#   DRILL_MIN_FREE_GB  garde-fou d'espace libre        (défaut: 20)
+#
+# Ordonnancé trimestriellement par `nix/eurio-vps.nix`
+# (eurio-backup-drill.timer). Un succès acquitte l'anneau 5 puis détruit tout ;
+# un échec passe l'anneau au rouge et CONSERVE la stack pour l'autopsie.
 #
 # Protocole complet : docs/work-in-progress/backup-pipeline/RESTAURATION.md §4
 set -uo pipefail
@@ -62,6 +68,22 @@ REVIEW_IMAGE="eurio-review:drill"
 
 FORCE=""
 [ "${2:-}" = "--force" ] && FORCE=1
+
+# Le VPS fait tourner Docker en **rootless** : les conteneurs vivent sur
+# /run/user/<uid>/docker.sock. Un shell interactif l'apprend par son profil, un
+# service systemd système ne le charge pas — `docker ps` montre alors un démon
+# vide, et le message ne dit pas pourquoi. C'est le piège qui a fait échouer le
+# timer de staging pendant toute son existence (2026-08-16). Explication
+# complète dans eurio-backup.sh §« Docker rootless » ; résolu ici aussi, parce
+# que ce script s'ordonnance désormais et ne peut pas compter sur un profil.
+if [ -z "${DOCKER_HOST:-}" ] && [ -S "/run/user/$(id -u)/docker.sock" ]; then
+  export DOCKER_HOST="unix:///run/user/$(id -u)/docker.sock"
+fi
+
+# Place nécessaire, mesurée le 2026-08-19 : 7,0 G de copie restaurée + 7,1 G
+# réinjectés dans le MinIO de l'exercice + les images. Un exercice qui remplit
+# le disque du VPS ne prouve rien et casse la production qu'il devait protéger.
+DRILL_MIN_FREE_GB="${DRILL_MIN_FREE_GB:-20}"
 
 say()  { echo -e "\n\033[1m▶ $*\033[0m"; }
 ok()   { echo "  ✅ $*"; }
@@ -95,6 +117,12 @@ dup() {
 step_clone() {
   say "1/6 — clone du canonique"
   if done_p clone; then ok "déjà cloné ($REPO)"; return 0; fi
+
+  local free_gb; free_gb="$(df -BG --output=avail "$(dirname "$WORK")" | tail -1 | tr -dc '0-9')"
+  [ "${free_gb:-0}" -ge "$DRILL_MIN_FREE_GB" ] \
+    || die "espace libre insuffisant : ${free_gb} G, il en faut ${DRILL_MIN_FREE_GB}"
+  ok "${free_gb} G libres"
+
   rm -rf "$REPO"
   mkdir -p "$WORK"; chmod 700 "$WORK"
 
@@ -310,7 +338,20 @@ step_down() {
   docker compose -f "$COMPOSE" --project-directory "$WORK" down -v 2>/dev/null \
     || docker compose -p eurio-drill down -v 2>/dev/null
   docker rmi "$API_IMAGE" "$REVIEW_IMAGE" 2>/dev/null
+
+  # Duplicati restaure les répertoires en `dr-xr-xr-x` — même avec
+  # `--restore-permissions=false`. `rm -rf` échoue alors sur chaque dossier
+  # (il faut le droit d'écriture sur le PARENT pour retirer une entrée), et
+  # 7 Go survivent. Mesuré le 2026-08-19 : la destruction annonçait un succès
+  # en laissant tout en place — un nettoyage qui ment est pire que pas de
+  # nettoyage, puisqu'il fait croire que le disque a été rendu.
+  [ -e "$WORK" ] && chmod -R u+w "$WORK" 2>/dev/null
   rm -rf "$WORK"
+
+  # On VÉRIFIE. C'est la règle du dépôt : ici les pannes sont muettes.
+  if [ -e "$WORK" ]; then
+    die "$WORK existe encore ($(du -sh "$WORK" 2>/dev/null | cut -f1)) — destruction INCOMPLÈTE"
+  fi
   ok "stack et $WORK détruits"
 }
 
@@ -323,8 +364,32 @@ step_status() {
   docker ps --filter name=-drill --format '  {{.Names}}  {{.Status}}'
 }
 
+# Ordonnancé, l'exercice n'a plus de spectateur : il doit donc conclure
+# lui-même. En cas de succès il se détruit (sinon 14 G restent sur le VPS
+# jusqu'au trimestre suivant) ; en cas d'échec il laisse TOUT en place, parce
+# que c'est ce jour-là qu'on veut les journaux et la stack encore debout.
+cmd_all() {
+  if step_clone && step_build && step_pick && step_restore && step_up && step_smoke; then
+    say "exercice réussi"
+    if [ -n "${DRILL_KEEP:-}" ]; then
+      ok "DRILL_KEEP posé — $WORK conservé (à détruire : run-drill.sh down)"
+    else
+      step_down
+    fi
+    return 0
+  fi
+  say "exercice ÉCHOUÉ"
+  # L'anneau 5 passe au rouge MAINTENANT. Compter sur l'absence
+  # d'acquittement laisserait 90 j de période + 30 j de grâce avant le moindre
+  # signal — quatre mois de silence sur un exercice raté.
+  "$SCRIPT_DIR/../eurio-backup.sh" drill-fail || true
+  warn "$WORK et la stack sont CONSERVÉS pour l'autopsie — journaux dans $LOGS"
+  warn "détruire quand c'est compris : $0 down"
+  return 1
+}
+
 case "${1:-all}" in
-  all)     step_clone && step_build && step_pick && step_restore && step_up && step_smoke ;;
+  all)     cmd_all ;;
   clone)   step_clone ;;
   build)   step_build ;;
   pick)    step_pick ;;

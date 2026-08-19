@@ -29,6 +29,7 @@
 #   eurio-backup.sh verify [args...]      # vérifie les invariants du staging
 #   eurio-backup.sh notify-test           # teste les anneaux de notification
 #   eurio-backup.sh drill-ack             # acquitte l'anneau 5 (exercice fait)
+#   eurio-backup.sh drill-fail            # signale un exercice ÉCHOUÉ (anneau 5 rouge)
 #   eurio-backup.sh help
 #
 # Restauration : voir README-RESTORE.md.
@@ -407,6 +408,22 @@ cmd_drill_ack() {
          "eurio-drill" "$DRILL_FLAVOR"
 }
 
+# Le pendant de `drill-ack`, et il n'existe que depuis que l'exercice est
+# ordonnancé (2026-08-19). Tant qu'on le lançait à la main, un échec était vu
+# par celui qui l'avait lancé. Ordonnancé, il ne l'est par personne : le seul
+# signal restant serait l'ABSENCE d'acquittement, qui n'alerte qu'au bout de la
+# période (90 j) plus le délai de grâce (30 j). Quatre mois de silence après un
+# exercice raté est exactement la pathologie que ce chantier corrige, appliquée
+# au dispositif de surveillance du dispositif.
+cmd_drill_fail() {
+  if [ -z "$DRILL_URL" ]; then
+    echo "   ⚠️  anneau « eurio-drill » non configuré (DRILL_URL dans $NOTIFY_CONF)"
+    return 1
+  fi
+  notify "$DRILL_URL" down "exercice de restauration ÉCHOUÉ le $(date -u +%Y-%m-%d)" \
+         "eurio-drill" "$DRILL_FLAVOR"
+}
+
 cmd_help() {
   sed -n '/^# Usage :/,/^$/p' "$0" | sed 's/^# \?//'
 }
@@ -417,6 +434,7 @@ case "${1:-help}" in
   verify)         shift; cmd_verify "$@" ;;
   notify-test)    cmd_notify_test ;;
   drill-ack)      cmd_drill_ack ;;
+  drill-fail)     cmd_drill_fail ;;
   help|-h|--help) cmd_help ;;
   *) cmd_help; exit 2 ;;
 esac

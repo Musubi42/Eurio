@@ -302,6 +302,44 @@ criaient dans une interface sans lecteur depuis neuf mois.
 |---|---|---|---|
 | #1 (partiel) | 2026-08-16 | ⚠️ **Chaîne réparée et prouvée, restauration non aboutie** | cf. ci-dessous |
 | #1 (suite, session VPS) | 2026-08-16 | ✅ **Restauration complète depuis pCloud, 16/18 invariants verts** | anneaux réparés, `README-RESTORE.md` réécrit, 2 pièges Duplicati documentés |
+| #2 (premier automatisé) | 2026-08-19 | ✅ **28 min de bout en bout, clone → images → pCloud → stack → 16/18** | a trouvé que `eurio-review` n'était plus reconstructible ; portier et anneau 5 prouvés ; destruction corrigée |
+
+### Exercice #2 — le premier qui parte d'un dépôt nu
+
+`go-task backup:drill`, une commande, six étapes. **28 minutes** :
+
+| Étape | Durée | Mesure |
+|---|---|---|
+| clone Codeberg + déchiffrement SOPS | ~15 s | `b7beb09`, clé age validée avant de rapatrier quoi que ce soit |
+| build des deux images | 2 min 30 | `eurio-api:drill`, `eurio-review:drill` |
+| choix de version | 20 s | 6 versions listées, **v0 retenue après contrôle du manifeste** |
+| `repair` (index) | 11 min | |
+| `restore` | **10 min 27** | 7,0 Gio |
+| MinIO + import + stack | 3 min | 36 054 objets, compte `eurio-app` |
+| smoke + invariants | 10 s | 16/18 ✅ + 2 ⚠️ attendus |
+
+Contrôles applicatifs : `/healthz` 200, `/coins` **658 pièces**, un crop
+DB → URL signée → MinIO restauré **≡ octet pour octet**, `/admin/flow` 572 en
+attente. PAT break-glass créé sur la base restaurée : le chemin d'auth est
+exercé, pas contourné.
+
+**Ce que l'exercice a trouvé — et qu'aucun exercice manuel ne pouvait trouver :**
+
+1. **`eurio-review` n'était plus reconstructible depuis le dépôt.** L'image en
+   service datait du **8 juin** ; `docker build` échouait déjà depuis
+   `/opt/eurio`. Le jour J, on restaurait la donnée sans pouvoir remonter le
+   service qui la sert. L'ancien harnais réutilisait l'image locale — c'est-à-dire
+   exactement ce que le sinistre emporte. Cause mesurée, matrice à 4 variantes :
+   ce n'est pas le `...` du filtre pnpm (eurio-admin porte la même ligne et
+   installe ses 190 paquets) mais la **position du workspace** — avec
+   `WORKDIR /admin`, `../shared` résout vers `/shared`, à la racine du système de
+   fichiers, et pnpm 9.12 installe **0 paquet en sortant en 0**.
+2. **La destruction mentait.** Duplicati restaure les répertoires en
+   `dr-xr-xr-x` : `rm -rf` échouait sur chacun, 7 Go survivaient, et le script
+   annonçait `✅ détruits`. Corrigé (`chmod -R u+w` puis **vérification** que le
+   répertoire a disparu, sinon échec bruyant).
+3. **Duplicati 2.3.0.1 (nixpkgs) lit les archives du 2.2.0** — point donné comme
+   non vérifié par `README-RESTORE.md` §3.
 
 ### Exercice #1 — ce qu'il a trouvé avant même de restaurer
 
@@ -463,8 +501,23 @@ Ce qui a résisté, et qui compte pour le jour J :
         conséquence — le run qui a suivi n'émet **aucun** avertissement d'option non
         supportée, et le portier a bien été appelé. À savoir avant de s'en alarmer en
         relisant `Duplicati-server.sqlite`.
-- [ ] `nixos-rebuild switch` pour que `curl` entre dans le PATH des unités (le repli
-      côté script couvre l'intervalle).
+- [ ] `nixos-rebuild switch` — pour que `curl` entre dans le PATH des unités **et**
+      pour armer `eurio-backup-drill.timer`. Vérifié le 2026-08-19 : le PATH de
+      l'unité en service ne contient toujours pas `curl` (`systemctl show
+      eurio-backup-stage -p Environment`) ; les anneaux ne fonctionnent que par le
+      repli `/run/current-system/sw/bin/curl` posé dans le script. Ça marche, mais
+      c'est un filet, pas le dispositif.
+- [x] **L'exercice est ordonnancé** — 2026-08-19, `eurio-backup-drill.service` +
+      `.timer` dans `nix/eurio-vps.nix`, trimestriel (5 jan/avr/juil/oct, 04:00 UTC,
+      après la fenêtre Duplicati). Un rituel trimestriel non ordonnancé ne se fait
+      pas : la case « Monthly DR Test » de `BACKUP_STRATEGY.md` n'a jamais été
+      cochée depuis novembre 2025. Le succès acquitte l'anneau 5 **et détruit** les
+      14 Go ; l'échec passe l'anneau au rouge par `eurio-backup.sh drill-fail`
+      (nouveau) **et conserve** la stack pour l'autopsie. Compter sur la seule
+      absence d'acquittement laisserait 90 j de période + 30 j de grâce avant le
+      moindre signal. Environnement nu (sans profil, sans agent, sans direnv)
+      prouvé : clone Codeberg ✅, déchiffrement SOPS ✅, `DOCKER_HOST` rootless
+      résolu ✅.
 - [x] **L'exercice est devenu une commande** — 2026-08-19, `infra/backup/drill/run-drill.sh`
       et `go-task backup:drill`. Il enchaîne les six étapes et **ferme trois trous de
       fidélité** que le harnais du 16 août laissait ouverts : il fait son propre
