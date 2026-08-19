@@ -183,6 +183,7 @@ Elles se chaînent : chaque skill dit vers laquelle aller ensuite.
 
 | Skill | Quand |
 |---|---|
+| `eurio-backup` | Sauvegarde et restauration — avant de toucher `infra/backup/`, avant de répondre « est-ce qu'on est sauvegardés ? », et le jour J |
 | `eurio-data-writes` | Avant de toucher une route qui écrit ; devant un `readonly database` / 503 `canonical_readonly`. **Le devShell pose le flip Direction A** — c'est le piège n°1 du repo |
 | `eurio-verify` | Avant de déclarer qu'un correctif marche. **Ici les pannes sont muettes** |
 | `eurio-vps-deploy` | Tout `docker compose up` sur le VPS ; une route qui marche en local et pas en prod |
@@ -301,7 +302,7 @@ Voir `docs/research/detection-pipeline-unified.md`. Pipeline actuelle : YOLO11-n
 | Schéma local Room | `docs/design/_shared/data-contracts.md` |
 | Stratégie offline/sync | `docs/design/_shared/offline-first.md` |
 | Parité proto ↔ Android | `docs/design/_shared/parity-rules.md` |
-| **Sauvegarde / restauration** | `docs/work-in-progress/backup-pipeline/HANDOFF-NEXT-SESSION.md` |
+| **Sauvegarde / restauration** | skill `eurio-backup`, puis `docs/work-in-progress/backup-pipeline/ROADMAP.md` |
 | **Banque d'ancres DINO, seuils, choix d'encodeur** | `docs/work-in-progress/banque-dino/CONSTAT.md` |
 | Phase spécifique | `docs/app-implem-phases/phase-N-*.md` |
 
