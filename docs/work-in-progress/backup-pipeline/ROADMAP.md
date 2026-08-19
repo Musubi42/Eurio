@@ -568,9 +568,22 @@ automatique** — `/opt/eurio-restore-test` absent, 0 conteneur `-drill`, 0 imag
 
 - [ ] Retirer la logique `rclone crypt` / pCloud direct de `infra/backup/`
 - [ ] Mettre à jour `infra/backup/README.md`
-- [ ] Décider du sort des **deux** archives du 17 juin — `pcloud:backups/serverOimNix/Eurio`
-      **et** `pcloud:eurio-backup` (cf. [`ETAT-DES-LIEUX.md`](./ETAT-DES-LIEUX.md) §7).
-      N'en traiter qu'une laisse une orpheline dont plus personne ne connaîtra la clé
+- [x] **Les deux archives orphelines sont supprimées** — 2026-08-20, **~7,7 Gio libérés**.
+      `pcloud:eurio-backup` (21 661 objets, 3,841 GiB) purgé entièrement ;
+      `pcloud:backups/serverOimNix/Eurio` purgé de ses 4 sous-dossiers de mai-juin
+      (`enrichment-crops`, `enrichment-raws`, `eurio-db`, `numista-canonical`).
+
+      ⚠️ **Une chose a été conservée, et délibérément** : `lot0-manuel-20260815/`
+      (6 objets, 138,3 MiB — `eurio.db` 144 Mo, `review.db`, leurs sommes et le
+      manifeste). Ce n'est pas une orpheline : c'est la copie manuelle du lot 0,
+      **en clair**, qui ne dépend ni de Duplicati ni de sa passphrase. C'est la
+      seule copie hors site qui survit à la perte de la clé, elle coûte 138 Mo,
+      et l'inventaire d'avant purge la confondait avec l'archive de juin — c'est
+      la mesure (`rclone lsl … | awk '{print substr($2,1,7)}' | sort | uniq -c`,
+      8 652 objets de mai + 13 009 de juin + **6 d'août**) qui l'a distinguée.
+
+      Conséquence assumée : plus aucun retour en arrière avant le 15 août n'est
+      possible. La fenêtre est désormais celle de Duplicati, `keep-time = 30D`.
 - [x] ~~Marquer `docs/operations/backup-strategy.md` comme remplacé~~ — fait le 2026-08-14
 - [ ] Retirer la clé age dédiée du backup si elle n'a plus d'usage
       *(coordination avec la session « secrets »)*
