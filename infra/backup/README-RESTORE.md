@@ -63,9 +63,12 @@ possible.
 
 - **Sur le VPS**, si le conteneur vit encore : `/app/duplicati/duplicati-cli`
   dans `oim-duplicati`.
-- **Ailleurs** : `nix shell nixpkgs#duplicati` (2.3.x au 2026-08-16) ou l'image
-  `duplicati/duplicati:2.2.0`. Une 2.3 lit une sauvegarde 2.2 — non vérifié
-  ici, préfère l'image épinglée si tu as le choix.
+- **Ailleurs** : `nix shell nixpkgs#duplicati` (2.3.0.1 au 2026-08-19) ou
+  l'image `duplicati/duplicati:2.2.0`. **Une 2.3 lit bien une sauvegarde
+  2.2** — vérifié le 2026-08-19 : `duplicati-cli find` déchiffre et liste les
+  5 `dlist` écrits par le 2.2.0 du conteneur. C'est le chemin par défaut de
+  l'exercice automatisé, puisque c'est celui du jour J : le conteneur
+  `oim-duplicati` est ce que le sinistre emporte.
 
 Deux binaires voisins à ne pas confondre :
 

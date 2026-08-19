@@ -33,7 +33,11 @@ services:
     networks: [drill]
 
   api:
-    image: eurio-api:latest
+    # Image construite par run-drill.sh depuis le CLONE, taguée `:drill` :
+    # écraser `:latest` reviendrait à casser la production pendant l'exercice
+    # censé prouver qu'on sait la remonter. Le défaut garde le harnais
+    # utilisable à la main là où l'image de production existe déjà.
+    image: ${DRILL_API_IMAGE:-eurio-api:latest}
     container_name: eurio-api-drill
     depends_on: [minio]
     volumes:
@@ -65,7 +69,7 @@ services:
     networks: [drill]
 
   review:
-    image: eurio-review:latest
+    image: ${DRILL_REVIEW_IMAGE:-eurio-review:latest}
     container_name: eurio-review-drill
     depends_on: [minio]
     volumes:

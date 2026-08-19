@@ -431,15 +431,54 @@ Ce qui a résisté, et qui compte pour le jour J :
 
 - [x] **Anneau 5 porté sur healthchecks.io** (D-32) : le monitor Kuma n'existait plus
       (404). `DRILL_URL` + `eurio-backup.sh drill-ack`, appelé par `drill/smoke.sh`
-      uniquement si tous les contrôles passent. ⏳ **Reste un geste humain** : créer le
-      check `eurio-drill` (Period 90 j, Grace 30 j) et coller son URL dans `notify.conf`.
+      uniquement si tous les contrôles passent. ✅ **Bouclé le 2026-08-19** : check
+      `eurio-drill` créé (Period 90 j, Grace 30 j), URL dans `notify.conf`, et
+      **les deux sens prouvés** — `drill-ack` → `up`, puis `GET <url>/fail` → 200 et
+      alerte reçue. Le sens `fail` n'est pas une formalité : c'est exactement là que
+      se logeaient les deux bugs du lot 5, et il ne se valide qu'en débranchant.
 - [x] **Portier du téléversement** (D-31) : `infra/backup/pre-upload-gate.py`, monté en
       lecture seule dans `oim-duplicati`, testé dans ses trois chemins.
-      ⏳ **Reste un geste humain** : ajouter `--run-script-before=/eurio-gate.py` au job
-      17 dans l'interface Duplicati — l'API du serveur refuse le mot de passe de son
-      propre compose (401), il n'y a pas de voie scriptable.
+      ✅ **Câblé le 2026-08-19** : `--run-script-before=/eurio-gate.py` posé sur le job 17
+      par l'interface, et **prouvé en le faisant refuser pour de vrai** — manifeste
+      retiré du staging, job déclenché, résultat :
+
+      ```
+      [Error-…RunScript-InvalidExitCode]: The script "/eurio-gate.py" returned with
+      exit code 5: REFUS DU TÉLÉVERSEMENT — manifeste absent : /eurio-source/manifest.json
+      ```
+
+      Manifeste remis, run suivant `ParsedResult: Success`, 0 warning, 0 erreur.
+      Un portier qu'on n'a pas vu refuser est indiscernable d'un portier absent.
+
+      **Deux corrections au passage :**
+
+      - ~~l'API du serveur refuse le mot de passe de son propre compose (401)~~ —
+        **faux**. `duplicati-server-util --password "$DUPLICATI__WEBSERVICE_PASSWORD"`
+        depuis le conteneur répond : `list-backups`, `run <id>`, `status` fonctionnent.
+        C'est ce qui a rendu le test ci-dessus possible sans passer par l'interface.
+        La voie scriptable existe donc pour les 10 autres jobs.
+      - **l'interface réécrit les noms d'options avec un préfixe `--`** en sauvegardant :
+        le job 17 porte désormais `--send-http-url`, `--send-http-level`,
+        `--run-script-before`, là où les jobs 7 à 16 ont des noms nus. Vérifié sans
+        conséquence — le run qui a suivi n'émet **aucun** avertissement d'option non
+        supportée, et le portier a bien été appelé. À savoir avant de s'en alarmer en
+        relisant `Duplicati-server.sqlite`.
 - [ ] `nixos-rebuild switch` pour que `curl` entre dans le PATH des unités (le repli
       côté script couvre l'intervalle).
+- [x] **L'exercice est devenu une commande** — 2026-08-19, `infra/backup/drill/run-drill.sh`
+      et `go-task backup:drill`. Il enchaîne les six étapes et **ferme trois trous de
+      fidélité** que le harnais du 16 août laissait ouverts : il fait son propre
+      `git clone` depuis Codeberg (l'exercice partait de `/opt/eurio`, donc supposait
+      la machine perdue *et* présente), il **reconstruit** `eurio-api` et `eurio-review`
+      depuis ce clone au lieu de réutiliser les `:latest` locales — c'est-à-dire
+      l'artefact que le sinistre emporte —, et il rapatrie lui-même depuis pCloud.
+      Un rituel trimestriel en huit étapes manuelles ne se fait pas : c'est la
+      pathologie que ce chantier corrige, appliquée à son propre protocole.
+      Mesuré au passage : **Duplicati 2.3.0.1 (nixpkgs) lit les archives écrites par
+      le 2.2.0 du conteneur** — les 5 `dlist` se déchiffrent et se listent
+      (`duplicati-cli find`, 2026-08-19). `README-RESTORE.md` §3 donnait ce point
+      comme non vérifié ; il l'est. Le chemin par défaut de l'exercice est donc
+      `nix shell nixpkgs#duplicati`, pas le conteneur de production.
 
 ---
 

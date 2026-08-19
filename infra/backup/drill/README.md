@@ -22,7 +22,53 @@ Aucune commande d'ici ne doit pouvoir toucher la production, même mal tapée :
 Le répertoire de travail vit **hors du dépôt** ; `prepare-secrets.sh` refuse
 d'écrire dans `/opt/eurio`.
 
-## Dérouler
+## Dérouler — une commande
+
+```bash
+go-task backup:drill          # ~1 h 15, ~14 Go de disque, ne touche pas la production
+go-task backup:drill:status   # où en est l'exercice
+go-task backup:drill:down     # détruire (à lancer même après un échec)
+```
+
+`run-drill.sh` enchaîne les six étapes et pose un marqueur après chacune : un
+échec en étape 5 se reprend **sans re-télécharger 6 Go** (`go-task backup:drill
+-- up`). Ce que le harnais du 2026-08-16 laissait à la main et qui est
+désormais dedans :
+
+| Étape | Ce qu'elle prouve, et que l'exercice #1 ne prouvait pas |
+|---|---|
+| 1 `clone` | le dépôt Codeberg **+ la clé age suffisent** — l'exercice partait de `/opt/eurio`, donc supposait la machine perdue |
+| 2 `build` | on sait **reconstruire** `eurio-api` et `eurio-review` depuis ce clone. Il réutilisait les `:latest` locales, c'est-à-dire l'artefact que le sinistre emporte |
+| 3 `pick` | la version retenue **porte un `manifest.json`** — contrôle automatisé, plus une consigne de README |
+| 4 `restore` | `repair` puis `restore` depuis pCloud, secrets jamais dans `argv` |
+| 5 `up` | secrets régénérés depuis SOPS, MinIO bootstrapé, objets avant bases |
+| 6 `smoke` | l'application sert la donnée, puis les invariants, puis l'anneau 5 |
+
+**Deux préalables, tous les deux non négociables :**
+
+- **Committer et pousser le harnais avant de lancer.** L'exercice tourne depuis
+  le clone, pas depuis `/opt/eurio` : c'est tout l'intérêt. Une modification non
+  poussée n'est donc pas testée. `run-drill.sh` refuse de continuer si le
+  compose du clone ignore `DRILL_API_IMAGE`.
+- **`nix shell nixpkgs#duplicati`** est le chemin par défaut, délibérément : le
+  conteneur `oim-duplicati` est justement ce que le sinistre emporte. Vérifié le
+  2026-08-19 — le 2.3.0.1 de nixpkgs lit les archives écrites par le 2.2.0 du
+  conteneur (les 5 `dlist` se déchiffrent et se listent). Pour repasser par le
+  conteneur : `DRILL_DUPLICATI_CMD="docker exec oim-duplicati /app/duplicati/duplicati-cli"`,
+  à condition que `$WORK` soit sous un bind visible du conteneur.
+
+Réglages : `WORK`, `DRILL_REF`, `DRILL_EMAIL`, `DRILL_VERSION`,
+`DRILL_DUPLICATI_CMD`.
+
+## Une quatrième barrière d'isolation : le tag des images
+
+Les images de l'exercice sont taguées **`:drill`**, jamais `:latest`. Un
+`docker build` qui écrase le tag de production serait un exercice qui casse ce
+qu'il prétend savoir remonter — le compose les lit via
+`${DRILL_API_IMAGE:-eurio-api:latest}`, le défaut gardant le harnais utilisable
+à la main.
+
+## Dérouler à la main, étape par étape
 
 ```bash
 WORK=/opt/eurio-restore-test          # jetable, hors du dépôt

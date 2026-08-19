@@ -34,6 +34,21 @@ tasks:
     cmds:
       - ./infra/backup/test_verify.sh
 
+  backup:drill:
+    desc: "Exercice de restauration COMPLET (~1 h 15) : clone Codeberg → build des images → restauration pCloud → stack isolée → invariants. Ne touche pas la production. Étape précise : -- <clone|build|pick|restore|up|smoke>."
+    cmds:
+      - ./infra/backup/drill/run-drill.sh {{.CLI_ARGS | default "all"}}
+
+  backup:drill:status:
+    desc: "Où en est l'exercice de restauration en cours (étapes franchies, version Duplicati retenue, conteneurs -drill)."
+    cmds:
+      - ./infra/backup/drill/run-drill.sh status
+
+  backup:drill:down:
+    desc: "Détruit la stack d'exercice et son répertoire jetable. À lancer même après un échec — sinon 13 Go restent sur le disque."
+    cmds:
+      - ./infra/backup/drill/run-drill.sh down
+
   secrets:edit:
     desc: "Éditer les secrets (secrets/dev.env). Déchiffre dans $EDITOR, re-chiffre à la sauvegarde. SOURCE UNIQUE de tous les secrets."
     cmds:
