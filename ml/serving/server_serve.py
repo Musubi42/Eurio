@@ -53,6 +53,7 @@ from serving.review_queue import router as review_queue_router
 from serving.review_queue.writes import router as review_writes_router
 from serving.funnel_writes import router as funnel_writes_router
 from serving.lab_read_routes import router as lab_read_router
+from serving.dino_thresholds_routes import router as dino_thresholds_router
 from serving.thresholds_routes import router as thresholds_router
 from serving.sources import router as sources_router
 from store import Store
@@ -151,6 +152,10 @@ app.include_router(lab_read_router)
 # workstation lit une réplique en lecture seule, y écrire ne produirait qu'un
 # `readonly database` déguisé (cf. l'en-tête de serving/thresholds_routes.py).
 app.include_router(thresholds_router)
+# Seuils DINO : même doctrine, table distincte — valeurs réelles et portée
+# (banque, encodeur) au lieu de la cohorte. stdlib + sqlite3 (logique dans
+# store.dino_thresholds) → mount inconditionnel.
+app.include_router(dino_thresholds_router)
 # R2 (Model B) : réplique servie DIRECTEMENT par le writer unique (snapshot
 # VACUUM INTO cohérent), remplace le détour `canonical_sync → MinIO`. Léger
 # (stdlib + sqlite3) → mount inconditionnel sur l'image lean. Scope ingest:run.

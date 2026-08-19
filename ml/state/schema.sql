@@ -600,6 +600,41 @@ CREATE TABLE IF NOT EXISTS dino_anchor_builds (
 CREATE INDEX IF NOT EXISTS idx_dino_builds_kind
   ON dino_anchor_builds(anchors_kind, built_at DESC);
 
+-- ─── Seuils DINO (migration 0008) ─────────────────────────────────────────
+-- Séparés de training_thresholds : valeurs RÉELLES (pas des entiers), et
+-- portée = le couple (banque, encodeur) et non la cohorte. Un seuil calibré
+-- sur vits14 ne dit rien de vitl14. Filet : shared/dino_threshold_defaults.py.
+CREATE TABLE IF NOT EXISTS dino_thresholds (
+  anchors_kind    TEXT NOT NULL,
+  encoder_version TEXT NOT NULL,
+  key             TEXT NOT NULL CHECK (key IN (
+                    'top1_country_sim_min','country_spread_min',
+                    'spread_uncertain_max','spread_confident_min',
+                    'spread_auto_accept_min')),
+  value           REAL NOT NULL CHECK (value >= 0.0 AND value <= 1.0),
+  calibrated_on   TEXT,      -- le set qui a produit la valeur
+  precision_at    REAL,      -- la précision mesurée à cette valeur
+  n_samples       INTEGER,
+  note            TEXT,
+  updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_by      TEXT,
+  PRIMARY KEY (anchors_kind, encoder_version, key)
+);
+
+CREATE TABLE IF NOT EXISTS dino_threshold_changes (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  anchors_kind    TEXT NOT NULL,
+  encoder_version TEXT NOT NULL,
+  key             TEXT NOT NULL,
+  old_value       REAL,
+  new_value       REAL,
+  note            TEXT,
+  changed_by      TEXT,
+  changed_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_dino_threshold_changes_at
+  ON dino_threshold_changes(changed_at DESC);
+
 -- ─── Listing text signals (chunk 5 auto-validation) ───────────────────────
 -- Sortie de l'extracteur ml/sources/text_signals/ pour chaque source_image.
 -- 1 row par source_image_id. Pas de comparaison vs target ici (chunk 6) :
