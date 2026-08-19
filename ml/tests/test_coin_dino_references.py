@@ -93,7 +93,7 @@ def test_standard_design_group_resolves_to_rep_not_slug(client):
         _seed_std_coin(conn, "be-1999-albert", 201, dg="be-albert-slug", year=1999)
         _seed_asset_only(conn, "be-2007-albert", "asX")
         # Le builder écrit les refs sous le REP (be-1999-albert).
-        replace_auto_references(conn, "2eur_all", [
+        replace_auto_references(conn, "2eur_all", encoder_version="dinov2-vitl14", rows=[
             DinoRefRow("be-1999-albert", "be-1999-albert", None, "canonical", 0, None),
             DinoRefRow("be-1999-albert", "be-2007-albert", "asX", "fps", 1, 0.5),
         ])
@@ -116,7 +116,7 @@ def test_dino_references_section_and_badge(client):
     with store._writing() as conn:
         _seed_coin_and_asset(conn, "fr-2015-a", "as1")
         # Une sélection auto : canonique + as1 (fps).
-        replace_auto_references(conn, "2eur_all", [
+        replace_auto_references(conn, "2eur_all", encoder_version="dinov2-vitl14", rows=[
             DinoRefRow("fr-2015-a", "fr-2015-a", None, "canonical", 0, None),
             DinoRefRow("fr-2015-a", "fr-2015-a", "as1", "fps", 1, 0.55),
         ])

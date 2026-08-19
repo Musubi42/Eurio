@@ -22,11 +22,13 @@ from __future__ import annotations
 
 import json
 import logging
+import socket
 import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import numpy as np
 
@@ -117,6 +119,10 @@ class AnchorBank:
     # répété, asset_id distinct. ``None`` = ligne canonique (avers Numista).
     # Vide (banques mono-ancre commemo/standard) ⇒ toutes canoniques.
     asset_ids: list[str | None] = field(default_factory=list)
+    # Renseignés par `build_anchors_2eur_all` seulement : de quoi POUSSER la
+    # traçabilité au canonique (Direction A — la base locale est une réplique).
+    build: Any | None = None
+    ref_rows: list = field(default_factory=list)
 
     @property
     def count(self) -> int:
@@ -315,13 +321,15 @@ def _commemo_paths_with_eid(
     """(eurio_id, obverse_path) pour toutes les 2€ commémo avec image."""
     coins = _select_2eur_commemo(conn)
     logger.info("Selected %d 2€ commemorative coins from DB", len(coins))
-    out: list[tuple[str, Path]] = []
+    out: list[tuple[str, Path | None]] = []
     skipped = 0
     for c in coins:
         path = _resolve_obverse_path(int(c["numista_id"]), datasets_dir)
         if path is None:
             skipped += 1
-            continue
+            # On garde quand même la pièce : `2eur_all` sait bâtir une classe
+            # sur ses seuls crops validés (cf. `_class_specs_2eur_all`). Les
+            # banques mono-image, elles, filtrent ce None plus bas.
         out.append((c["eurio_id"], path))
     if skipped:
         logger.info(
@@ -432,7 +440,14 @@ def build_anchors_2eur_commemo(
             )
             return cached
 
-    paths_with_eid = _commemo_paths_with_eid(conn, datasets_dir)
+    # Banque MONO-image : sans canonique, il n'y a rien à encoder. On filtre
+    # donc les None que `_commemo_paths_with_eid` laisse passer désormais pour
+    # `2eur_all` (qui, lui, sait bâtir une classe sur ses crops validés).
+    paths_with_eid = [
+        (eid, path)
+        for eid, path in _commemo_paths_with_eid(conn, datasets_dir)
+        if path is not None
+    ]
     if not paths_with_eid:
         raise RuntimeError(
             f"No 2€ commemorative obverse found under {datasets_dir} — "
@@ -511,8 +526,14 @@ def _class_specs_2eur_all(
                 path = _resolve_obverse_path(int(m["numista_id"]), datasets_dir)
                 if path is not None:
                     break
-        if path is None:
-            continue
+        # `canonical_path=None` est désormais ACCEPTÉ (cf. build_anchors_2eur_all).
+        #
+        # Avant, une classe sans avers Numista sur le disque était éliminée
+        # ENTIÈREMENT — même avec quarante crops validés. Mesuré le 2026-08-19 :
+        # 130 pièces sur 658 dans ce cas, dont des pays presque complets
+        # (LU 33/41, MT 27/34, LT 18/21). Le canonique est une GRAINE, pas un
+        # prérequis : une classe qui a des exemplaires validés sait se décrire
+        # sans lui.
         specs.append({
             "class_id": rep, "canonical_path": path,
             "members": [m["eurio_id"] for m in members],
@@ -568,8 +589,10 @@ def build_anchors_2eur_all(
     l'eurio_id du représentant (clé de classe des consumers)."""
     from shared.storage.local_cache import local_path
     from store.dino_references import (
+        DinoBuild,
         DinoRefRow,
         get_reference_overrides,
+        record_build,
         replace_auto_references,
     )
 
@@ -595,13 +618,20 @@ def build_anchors_2eur_all(
     # fichier illisible, on ré-aligne via kept_paths.
     meta_by_path: dict[str, dict[str, Any]] = {}
     all_paths: list[Path] = []
+    n_no_canonical = 0
     for spec in specs:
         cpath = spec["canonical_path"]
-        meta_by_path[str(cpath)] = {
-            "class_id": spec["class_id"], "eurio_id": spec["class_id"],
-            "asset_id": None, "canonical": True,
-        }
-        all_paths.append(cpath)
+        if cpath is None:
+            # Classe portée par ses seuls exemplaires. Aucune ligne canonique
+            # n'est écrite : la sélection FPS amorcera sur le médoïde des
+            # crops validés (cf. `farthest_point_select`, seed=None).
+            n_no_canonical += 1
+        else:
+            meta_by_path[str(cpath)] = {
+                "class_id": spec["class_id"], "eurio_id": spec["class_id"],
+                "asset_id": None, "canonical": True,
+            }
+            all_paths.append(cpath)
         for cand in _candidate_crops_for_class(conn, spec["members"]):
             try:
                 cp = local_path("enrichment-crops", cand["storage_path"])
@@ -614,8 +644,9 @@ def build_anchors_2eur_all(
             all_paths.append(cp)
 
     logger.info(
-        "2eur_all multi-exemplaires : %d classes, %d images à encoder (vitl14)…",
-        len(specs), len(all_paths),
+        "2eur_all multi-exemplaires : %d classes (%d sans canonique, portées "
+        "par leurs crops validés), %d images à encoder (vitl14)…",
+        len(specs), n_no_canonical, len(all_paths),
     )
     encoder, device = load_encoder(encoder_version=encoder_version)
     transform = build_transform()
@@ -707,10 +738,36 @@ def build_anchors_2eur_all(
         "2eur_all : %d lignes (%d canoniques + %d exemplaires réels) sur %d classes",
         bank.count, bank.count - n_exemplars, n_exemplars, len(by_class),
     )
+    # Le build, vu comme un fait daté : un identifiant partagé par toutes les
+    # lignes, l'encodeur, et le compte des classes portées sans canonique — ce
+    # dernier est la mesure de santé du référentiel image.
+    build = DinoBuild(
+        build_id=uuid4().hex,
+        anchors_kind=kind,
+        encoder_version=encoder_version,
+        built_at=bank.built_at,
+        n_classes=len(by_class),
+        n_rows=bank.count,
+        n_canonical=bank.count - n_exemplars,
+        n_exemplars=n_exemplars,
+        n_no_canonical=n_no_canonical,
+        exemplars_per_class=exemplars_per_class,
+        floor_sim=floor_sim,
+        host=socket.gethostname(),
+    )
     if write_references:
         # La transaction est gérée par l'appelant (Store._writing) — pas de
         # commit ici (il casserait le BEGIN IMMEDIATE/COMMIT du contexte).
-        replace_auto_references(conn, kind, ref_rows)
+        record_build(conn, build)
+        replace_auto_references(
+            conn, kind, ref_rows,
+            encoder_version=encoder_version, build_id=build.build_id,
+        )
+    # Le build est retourné pour que l'appelant puisse le POUSSER au canonique
+    # (Direction A : sur Mac/PC la base locale est une réplique, l'écrire ne
+    # servirait à rien — cf. scripts/build_dino_anchors.py).
+    bank.build = build
+    bank.ref_rows = ref_rows
     return bank
 
 

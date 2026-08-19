@@ -30,26 +30,90 @@ class DinoRefRow:
     method: str
     rank: int | None = None
     selected_sim: float | None = None
+    #: Le chemin RÉELLEMENT encodé. Pour le canonique (asset_id None) c'est la
+    #: seule trace de l'avers utilisé — il n'est enregistré nulle part ailleurs.
+    source_path: str | None = None
+
+    def to_dict(self) -> dict:
+        return {
+            "class_id": self.class_id, "eurio_id": self.eurio_id,
+            "asset_id": self.asset_id, "method": self.method,
+            "rank": self.rank, "selected_sim": self.selected_sim,
+            "source_path": self.source_path,
+        }
+
+
+@dataclass
+class DinoBuild:
+    """Un build de banque, vu comme un fait daté et attribuable.
+
+    Sans ce regroupement, `built_at` était un DEFAULT par ligne : mille deux
+    cents horodatages voisins mais distincts, impossibles à recoller."""
+
+    build_id: str
+    anchors_kind: str
+    encoder_version: str
+    built_at: str
+    n_classes: int
+    n_rows: int
+    n_canonical: int
+    n_exemplars: int
+    n_no_canonical: int = 0
+    exemplars_per_class: int | None = None
+    floor_sim: float | None = None
+    host: str | None = None
+    note: str | None = None
+
+    def to_dict(self) -> dict:
+        return dict(self.__dict__)
+
+
+def record_build(conn: sqlite3.Connection, build: DinoBuild) -> None:
+    """Journalise un build. L'appelant possède la transaction."""
+    conn.execute(
+        "INSERT OR REPLACE INTO dino_anchor_builds "
+        "(build_id, anchors_kind, encoder_version, built_at, n_classes, n_rows,"
+        " n_canonical, n_exemplars, n_no_canonical, exemplars_per_class,"
+        " floor_sim, host, note) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (build.build_id, build.anchors_kind, build.encoder_version,
+         build.built_at, build.n_classes, build.n_rows, build.n_canonical,
+         build.n_exemplars, build.n_no_canonical, build.exemplars_per_class,
+         build.floor_sim, build.host, build.note),
+    )
 
 
 def replace_auto_references(
-    conn: sqlite3.Connection, anchors_kind: str, rows: list[DinoRefRow],
+    conn: sqlite3.Connection,
+    anchors_kind: str,
+    rows: list[DinoRefRow],
+    *,
+    encoder_version: str,
+    build_id: str | None = None,
 ) -> None:
-    """Réécrit les rows AUTO (``canonical`` + ``fps``) d'un kind, en gardant
-    intactes les rows ``manual_*``. Appelé par le builder après un rebuild."""
+    """Réécrit les rows AUTO (``canonical`` + ``fps``) d'un kind POUR UN
+    ENCODEUR, en gardant intactes les rows ``manual_*``.
+
+    ⚠️ Le `DELETE` est scopé sur ``(anchors_kind, encoder_version)`` et pas sur
+    le seul kind : sans ça, bâtir la banque avec un encodeur candidat
+    effacerait la trace de l'encodeur en production. Les lignes antérieures à
+    la migration 0007 ont `encoder_version` NULL — on les purge aussi, elles
+    décrivent forcément l'encodeur historique du kind."""
     conn.execute(
         "DELETE FROM dino_class_references "
-        "WHERE anchors_kind=? AND method IN ('canonical','fps')",
-        (anchors_kind,),
+        " WHERE anchors_kind = ? AND method IN ('canonical','fps') "
+        "   AND (encoder_version = ? OR encoder_version IS NULL)",
+        (anchors_kind, encoder_version),
     )
     if rows:
         conn.executemany(
             "INSERT OR REPLACE INTO dino_class_references "
-            "(anchors_kind, class_id, eurio_id, asset_id, method, rank, selected_sim) "
-            "VALUES (?,?,?,?,?,?,?)",
+            "(anchors_kind, encoder_version, build_id, class_id, eurio_id, "
+            " asset_id, method, rank, selected_sim, source_path) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?)",
             [
-                (anchors_kind, r.class_id, r.eurio_id, r.asset_id, r.method,
-                 r.rank, r.selected_sim)
+                (anchors_kind, encoder_version, build_id, r.class_id,
+                 r.eurio_id, r.asset_id, r.method, r.rank, r.selected_sim,
+                 r.source_path)
                 for r in rows
             ],
         )

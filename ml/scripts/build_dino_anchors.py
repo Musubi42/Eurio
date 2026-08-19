@@ -62,7 +62,7 @@ class ReadOnlyTraceabilityError(RuntimeError):
 
 
 def preflight_db_traceability(
-    store: Store, kind: str, *, skip_references: bool
+    store: Store, kind: str, *, skip_references: bool, push: bool = False
 ) -> bool:
     """Décide AVANT l'encodage si la sélection sera tracée en base.
 
@@ -81,6 +81,15 @@ def preflight_db_traceability(
     coûteux, il ne doit jamais être perdu).
     """
     if kind not in WRITING_KINDS:
+        return False
+    if push:
+        # Direction A : la trace part au canonique par HTTP, pas dans la base
+        # locale — qui est une réplique, et que le prochain pull écraserait.
+        # Exiger ici une base inscriptible n'aurait aucun sens.
+        logger.info(
+            "traçabilité : envoyée au canonique (POST /ingest/dino-references) ; "
+            "la base locale n'est pas écrite.",
+        )
         return False
     if skip_references:
         logger.warning(
@@ -105,11 +114,14 @@ def preflight_db_traceability(
             f"l'encodage (~4 min) tournerait pour rien et l'écriture de "
             f"dino_class_references échouerait à la toute fin.\n"
             f"\n"
-            f"Deux sorties :\n"
-            f"  • tracer la sélection  : EURIO_DB_READONLY= go-task ml:dino-anchors:build -- "
-            f"--kind {kind} --db <base inscriptible>\n"
-            f"  • s'en passer          : ajouter --skip-references (le .npz est "
-            f"écrit, dino_class_references reste vide)\n"
+            f"Trois sorties, dans l'ordre de préférence :\n"
+            f"  • pousser au canonique : --push  (Direction A — la trace est de "
+            f"l'état, elle va au VPS ; c'est le chemin normal sur Mac/PC)\n"
+            f"  • écrire en local      : EURIO_DB_READONLY= … --db <base "
+            f"inscriptible>  (seulement si tu SAIS que cette base est la bonne — "
+            f"une réplique serait écrasée au prochain pull)\n"
+            f"  • s'en passer          : --skip-references (le .npz est écrit, "
+            f"la trace est perdue)\n"
             f"\n"
             f"Voir .claude/skills/eurio-data-writes/SKILL.md"
         ) from exc
@@ -157,6 +169,18 @@ def main() -> int:
         help="Ne pas tracer la sélection dans dino_class_references (2eur_all). "
              "Permet de bâtir le .npz depuis une base read-only.",
     )
+    parser.add_argument(
+        "--push",
+        action="store_true",
+        default=None,
+        help="Envoyer la traçabilité au canonique (POST /ingest/dino-references). "
+             "Activé par défaut dès que la sync est configurée (EURIO_API_URL) — "
+             "c'est le chemin normal sous Direction A.",
+    )
+    parser.add_argument(
+        "--no-push", dest="push", action="store_false",
+        help="Ne pas envoyer la traçabilité au canonique.",
+    )
     parser.add_argument("--verbose", "-v", action="store_true")
     args = parser.parse_args()
 
@@ -168,12 +192,16 @@ def main() -> int:
     # this CLI.
     logging.getLogger("training.foundation").setLevel(logging.INFO)
 
+    from client.http import sync_enabled
+
+    push = sync_enabled() if args.push is None else bool(args.push)
+
     store = Store(Path(args.db))
     # AVANT l'encodage (~4 min) : une base non inscriptible doit se voir ici,
     # pas à la dernière ligne du build.
     try:
         write_references = preflight_db_traceability(
-            store, args.kind, skip_references=args.skip_references,
+            store, args.kind, skip_references=args.skip_references, push=push,
         )
     except ReadOnlyTraceabilityError as exc:
         print(f"\n{exc}\n", file=sys.stderr)
@@ -192,7 +220,30 @@ def main() -> int:
     print(f"Dim:         {bank.dim}")
     print(f"Path:        {ML_DIR / 'state' / f'foundation_anchors_{bank.anchors_kind}.npz'}")
     print(f"Total time:  {dt:.1f}s")
-    print(f"References:  {'tracées dans dino_class_references' if write_references else 'NON tracées'}")
+    # Envoi de la trace au canonique. Ce n'est PAS du best-effort : sans elle,
+    # personne ne peut dire ce que contient la banque qu'on vient de servir.
+    pushed = None
+    if push and getattr(bank, "build", None) is not None:
+        from client.ingest import push_dino_references
+
+        pushed = push_dino_references(
+            bank.build.to_dict(), [r.to_dict() for r in bank.ref_rows],
+        )
+        if pushed is None:
+            print(
+                "\nATTENTION : --push demandé mais la sync n'est pas configurée "
+                "(EURIO_API_URL/TOKEN absents) — la trace n'a été écrite NULLE PART.",
+                file=sys.stderr,
+            )
+
+    if write_references:
+        trace = "tracées en base locale"
+    elif pushed:
+        trace = f"poussées au canonique (build {pushed.get('build_id','?')[:12]}, "\
+                f"{pushed.get('n_rows', 0)} lignes)"
+    else:
+        trace = "NON tracées"
+    print(f"References:  {trace}")
     return 0
 
 

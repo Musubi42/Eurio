@@ -556,15 +556,49 @@ CREATE TABLE IF NOT EXISTS dino_class_references (
   -- NULL) → la PK ci-dessous ne garantit l'unicité que pour les rows à asset_id
   -- non-NULL. L'unicité du canonique (asset_id NULL, 1 par classe) est imposée
   -- par l'index partiel `idx_dino_class_refs_canonical` plus bas.
+  -- Migration 0007 — sans ces trois colonnes la table ne pouvait dire ni avec
+  -- quel encodeur, ni de quel build, ni quelle image a servi au canonique.
+  encoder_version TEXT,
+  build_id        TEXT,
+  source_path     TEXT,
   PRIMARY KEY (anchors_kind, class_id, eurio_id, asset_id)
 );
 CREATE INDEX IF NOT EXISTS idx_dino_class_refs_asset
   ON dino_class_references(asset_id) WHERE asset_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_dino_class_refs_class
   ON dino_class_references(anchors_kind, class_id);
--- Un seul canonique par classe (la PK ne le garantit pas, asset_id étant NULL).
+CREATE INDEX IF NOT EXISTS idx_dino_class_refs_build
+  ON dino_class_references(build_id);
+-- Un seul canonique par classe ET PAR ENCODEUR (la PK ne le garantit pas,
+-- asset_id étant NULL). L'encodeur est dans la clé : sans lui, deux banques du
+-- même kind ne peuvent pas coexister et toute comparaison d'encodeurs serait
+-- bloquée dès le premier build. Même contrat que image_asset_dino_predictions.
 CREATE UNIQUE INDEX IF NOT EXISTS idx_dino_class_refs_canonical
-  ON dino_class_references(anchors_kind, class_id) WHERE asset_id IS NULL;
+  ON dino_class_references(anchors_kind, encoder_version, class_id)
+  WHERE asset_id IS NULL;
+
+-- Un build de banque, vu comme un fait daté et attribuable. `built_at` de
+-- dino_class_references est un DEFAULT par ligne (mille horodatages voisins) :
+-- c'est ici qu'on lit l'heure, l'encodeur et la santé du build. Miroir : 0007.
+CREATE TABLE IF NOT EXISTS dino_anchor_builds (
+  build_id        TEXT PRIMARY KEY,
+  anchors_kind    TEXT NOT NULL,
+  encoder_version TEXT NOT NULL,
+  built_at        TEXT NOT NULL,
+  n_classes       INTEGER NOT NULL,
+  n_rows          INTEGER NOT NULL,
+  n_canonical     INTEGER NOT NULL,
+  n_exemplars     INTEGER NOT NULL,
+  -- Classes portées par leurs seuls crops validés, faute d'avers canonique :
+  -- la mesure de santé du référentiel image.
+  n_no_canonical  INTEGER NOT NULL DEFAULT 0,
+  exemplars_per_class INTEGER,
+  floor_sim       REAL,
+  host            TEXT,
+  note            TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_dino_builds_kind
+  ON dino_anchor_builds(anchors_kind, built_at DESC);
 
 -- ─── Listing text signals (chunk 5 auto-validation) ───────────────────────
 -- Sortie de l'extracteur ml/sources/text_signals/ pour chaque source_image.

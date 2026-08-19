@@ -255,6 +255,76 @@ def ingest_dino_route(payload: IngestDinoPayload) -> dict:
     return result
 
 
+# ── Traçabilité de la banque d'ancres ───────────────────────────────────────
+#
+# Pourquoi une route d'ingestion et pas une écriture locale : sous Direction A,
+# Mac et PC lisent une RÉPLIQUE. Le build écrivait sa trace dans cette réplique
+# — quand il y arrivait — et le prochain `pull-replica` l'écrasait. Résultat
+# mesuré : `dino_class_references` vide dans les 8 bases locales ET au
+# canonique, alors que la banque servie date du 2026-08-16. Le calcul reste
+# local (c'est du GPU), la trace part ici.
+
+
+class DinoBuildPayload(BaseModel):
+    build_id: str
+    anchors_kind: str
+    encoder_version: str
+    built_at: str
+    n_classes: int
+    n_rows: int
+    n_canonical: int
+    n_exemplars: int
+    n_no_canonical: int = 0
+    exemplars_per_class: int | None = None
+    floor_sim: float | None = None
+    host: str | None = None
+    note: str | None = None
+
+
+class DinoReferenceRowPayload(BaseModel):
+    class_id: str
+    eurio_id: str
+    asset_id: str | None = None
+    method: str
+    rank: int | None = None
+    selected_sim: float | None = None
+    source_path: str | None = None
+
+
+class IngestDinoReferencesPayload(BaseModel):
+    build: DinoBuildPayload
+    references: list[DinoReferenceRowPayload] = []
+
+
+@router.post("/dino-references", dependencies=[Depends(require_scope("ingest:write"))])
+def ingest_dino_references_route(payload: IngestDinoReferencesPayload) -> dict:
+    """Enregistre un build de banque et la sélection qui le compose.
+
+    Remplace en bloc les lignes AUTO du couple (kind, encodeur) en préservant
+    les overrides humains — même contrat que `replace_auto_references`."""
+    if _store is None:
+        raise HTTPException(status_code=500, detail="ingest non câblé (bind manquant)")
+    from store.dino_references import DinoBuild, DinoRefRow, record_build
+    from store.dino_references import replace_auto_references as _replace
+
+    build = DinoBuild(**payload.build.model_dump())
+    rows = [DinoRefRow(**r.model_dump()) for r in payload.references]
+
+    conn = _store._connection()  # noqa: SLF001
+    conn.execute("BEGIN")
+    try:
+        record_build(conn, build)
+        _replace(
+            conn, build.anchors_kind, rows,
+            encoder_version=build.encoder_version, build_id=build.build_id,
+        )
+        conn.execute("COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+    return {"build_id": build.build_id, "n_rows": len(rows)}
+
+
 class ReferentialFixPayload(BaseModel):
     case_id: str
     preflight: dict

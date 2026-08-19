@@ -285,6 +285,22 @@ class StoreBase:
                     conn, table="image_asset_dino_predictions", column="run_id",
                     decl="TEXT REFERENCES source_runs(id) ON DELETE SET NULL",
                 )
+            # Migration 0007 — sur une base ANTÉRIEURE, `dino_class_references`
+            # existe sans ces colonnes : `CREATE TABLE IF NOT EXISTS` ne les
+            # ajoute pas, et l'index qui les référence échoue ensuite en
+            # « no such column ». Même patron que run_id ci-dessus.
+            if conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' "
+                "AND name='dino_class_references'"
+            ).fetchone():
+                for column in ("encoder_version", "build_id", "source_path"):
+                    self._ensure_column(
+                        conn, table="dino_class_references", column=column,
+                        decl="TEXT",
+                    )
+                # L'ancien index unique n'a pas l'encodeur : le laisser
+                # empêcherait deux banques du même kind de coexister.
+                conn.execute("DROP INDEX IF EXISTS idx_dino_class_refs_canonical")
             conn.executescript(schema)
             # Seed source_registry (idempotent, INSERT OR IGNORE) : la FK
             # coin_source_refs.source → source_registry (ON DELETE RESTRICT) est

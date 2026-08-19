@@ -54,6 +54,25 @@ def push_dino_predictions(predictions: list[dict[str, Any]]) -> dict | None:
     return _http.post_json("/ingest/dino", {"predictions": predictions})
 
 
+def push_dino_references(build: dict[str, Any], references: list[dict[str, Any]]) -> dict | None:
+    """POST ``/ingest/dino-references`` si la sync est activée, sinon ``None``.
+
+    La trace d'un build de banque est de l'état : sous Direction A elle ne peut
+    pas s'écrire localement (Mac/PC lisent une réplique, que le prochain pull
+    écrase). Le calcul reste local, la trace part au canonique — même partage
+    que ``push_dino_predictions``.
+    """
+    from client.http import sync_enabled  # noqa: PLC0415
+
+    if not build or not sync_enabled():
+        return None
+    from client import http as _http  # noqa: PLC0415
+
+    return _http.post_json(
+        "/ingest/dino-references", {"build": build, "references": references},
+    )
+
+
 def push_exclude_crops(run_id: str, asset_ids: list[str]) -> dict | None:
     """POST ``/ingest/crops/exclude`` si la sync est activée, sinon no-op (``None``).
 

@@ -48,7 +48,7 @@ def test_replace_auto_preserves_manual_overrides(tmp_path):
         set_reference_override(conn, class_id="grp-a", eurio_id="a1",
                                asset_id="ban1", method="manual_exclude")
         # 1er build : canonique + un fps.
-        replace_auto_references(conn, "2eur_all", [
+        replace_auto_references(conn, "2eur_all", encoder_version="dinov2-vitl14", rows=[
             DinoRefRow("grp-a", "a1", None, "canonical", 0, None),
             DinoRefRow("grp-a", "a1", "fps1", "fps", 1, 0.6),
         ])
@@ -60,7 +60,7 @@ def test_replace_auto_preserves_manual_overrides(tmp_path):
 
     # 2ᵉ build : les auto changent, les manuels restent.
     with store._writing() as conn:
-        replace_auto_references(conn, "2eur_all", [
+        replace_auto_references(conn, "2eur_all", encoder_version="dinov2-vitl14", rows=[
             DinoRefRow("grp-a", "a1", None, "canonical", 0, None),
             DinoRefRow("grp-a", "a1", "fps2", "fps", 1, 0.7),
         ])
@@ -98,7 +98,7 @@ def test_get_references_for_assets_maps_badge(tmp_path):
     store = _store(tmp_path)
     with store._writing() as conn:
         _seed_assets(conn, "fps1")
-        replace_auto_references(conn, "2eur_all", [
+        replace_auto_references(conn, "2eur_all", encoder_version="dinov2-vitl14", rows=[
             DinoRefRow("grp-a", "a1", "fps1", "fps", 1, 0.6),
         ])
         m = get_references_for_assets(conn, ["fps1", "nope"])
