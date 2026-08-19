@@ -303,6 +303,7 @@ criaient dans une interface sans lecteur depuis neuf mois.
 | #1 (partiel) | 2026-08-16 | ⚠️ **Chaîne réparée et prouvée, restauration non aboutie** | cf. ci-dessous |
 | #1 (suite, session VPS) | 2026-08-16 | ✅ **Restauration complète depuis pCloud, 16/18 invariants verts** | anneaux réparés, `README-RESTORE.md` réécrit, 2 pièges Duplicati documentés |
 | #2 (premier automatisé) | 2026-08-19 | ✅ **28 min de bout en bout, clone → images → pCloud → stack → 16/18** | a trouvé que `eurio-review` n'était plus reconstructible ; portier et anneau 5 prouvés ; destruction corrigée |
+| #3 (premier **sous systemd**) | 2026-08-20 | ✅ **20 min 04 s, `Result=success`, `ExecMainStatus=0`** | l'unité a tiré, s'est acquittée et s'est détruite seule |
 
 ### Exercice #2 — le premier qui parte d'un dépôt nu
 
@@ -465,6 +466,29 @@ Ce qui a résisté, et qui compte pour le jour J :
 - Les fichiers restaurés sont en **lecture seule** et appartiennent à un autre
   utilisateur : les bases doivent être copiées puis `chmod`, pas montées telles quelles.
 
+### Exercice #3 — armé ≠ tire
+
+Le #2 avait été lancé depuis un shell, et l'environnement nu simulé par `env -i`.
+Ce n'est pas la même chose que systemd qui l'exécute. Les deux pannes fondatrices du
+chantier — `DOCKER_HOST` absent, `curl` absent — étaient exactement de cette famille :
+tout marchait depuis un shell, rien ne marchait sous systemd.
+
+`sudo systemctl start eurio-backup-drill.service`, 2026-08-20 00:20 CEST :
+
+```
+Active: inactive · Result: success · ExecMainStatus: 0
+Consumed 13min 41.963s CPU time over 20min 4.684s wall clock time, 8G memory peak,
+9.5G read from disk, 14.1G written to disk, 6.5G in / 6.8G out
+```
+
+Franchis sous systemd, sans profil ni agent : clone SSH Codeberg, déchiffrement SOPS,
+`docker build` des deux images (donc socket rootless résolue), `nix shell duplicati`,
+restauration, stack, 16/18 invariants, acquittement de l'anneau 5, **puis destruction
+automatique** — `/opt/eurio-restore-test` absent, 0 conteneur `-drill`, 0 image
+`:drill`, disque revenu à 75 G libres.
+
+**Le lot 6 est clos.**
+
 **Ce qui reste :**
 
 - [x] **Anneau 5 porté sur healthchecks.io** (D-32) : le monitor Kuma n'existait plus
@@ -501,12 +525,15 @@ Ce qui a résisté, et qui compte pour le jour J :
         conséquence — le run qui a suivi n'émet **aucun** avertissement d'option non
         supportée, et le portier a bien été appelé. À savoir avant de s'en alarmer en
         relisant `Duplicati-server.sqlite`.
-- [ ] `nixos-rebuild switch` — pour que `curl` entre dans le PATH des unités **et**
-      pour armer `eurio-backup-drill.timer`. Vérifié le 2026-08-19 : le PATH de
-      l'unité en service ne contient toujours pas `curl` (`systemctl show
-      eurio-backup-stage -p Environment`) ; les anneaux ne fonctionnent que par le
-      repli `/run/current-system/sw/bin/curl` posé dans le script. Ça marche, mais
-      c'est un filet, pas le dispositif.
+- [x] **`nix flake update eurio-nix` puis `nixos-rebuild switch`** — fait le 2026-08-20.
+      ⚠️ **Le `switch` seul ne suffit pas** : `nix/eurio-vps.nix` est un input de flake
+      **épinglé** dans `/etc/nixos/flake.lock`, donc un rebuild reconstruit fidèlement
+      la copie épinglée et rien ne signale l'écart. Constaté : rebuild passé,
+      `eurio-backup-drill.service` toujours `No files found` et `curl` toujours absent
+      du PATH. Après `nix flake update eurio-nix` : **3 timers**, `curl` présent.
+      Le repli `/run/current-system/sw/bin/curl` du script avait masqué le problème
+      pendant quatre jours — il a fait son travail, et c'est précisément pourquoi
+      personne ne s'en était aperçu.
 - [x] **L'exercice est ordonnancé** — 2026-08-19, `eurio-backup-drill.service` +
       `.timer` dans `nix/eurio-vps.nix`, trimestriel (5 jan/avr/juil/oct, 04:00 UTC,
       après la fenêtre Duplicati). Un rituel trimestriel non ordonnancé ne se fait
