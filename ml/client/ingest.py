@@ -237,3 +237,24 @@ def push_detections(source_image_id: str, detections_json: str) -> dict | None:
     return _http.post_json("/ingest/detections", {
         "source_image_id": source_image_id, "detections_json": detections_json,
     })
+
+
+def push_encoder_bench(
+    run: dict[str, Any], predictions: list[dict[str, Any]]
+) -> dict | None:
+    """POST ``/ingest/encoder-bench`` si la sync est activée, sinon ``None``.
+
+    Même doctrine que ``push_dino_references`` : le calcul (encodage, matching)
+    est local à la machine qui a le GPU, la trace part au canonique — sous
+    Direction A elle ne peut de toute façon pas s'écrire ici, la réplique est
+    en lecture seule et le prochain pull l'écraserait.
+    """
+    from client.http import sync_enabled  # noqa: PLC0415
+
+    if not run or not sync_enabled():
+        return None
+    from client import http as _http  # noqa: PLC0415
+
+    return _http.post_json(
+        "/ingest/encoder-bench", {"run": run, "predictions": predictions},
+    )

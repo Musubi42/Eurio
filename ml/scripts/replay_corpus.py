@@ -36,7 +36,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -46,6 +45,7 @@ import numpy as np
 ML_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ML_DIR))
 
+from shared.stats.paired import mcnemar_exact as _mcnemar_exact  # noqa: E402
 from store.scan_corpus import ScanCapture, ScanCorpusStore, corpus_version  # noqa: E402
 
 DEFAULT_RUNS_DIR = ML_DIR / "state" / "scan_corpus_runs"
@@ -268,18 +268,12 @@ def build_scorecard(
 # ─── McNemar §8bis ──────────────────────────────────────────────────────────
 
 
-def mcnemar_exact(b: int, c: int) -> float:
-    """Test de McNemar exact (binomial bilatéral) sur les paires discordantes.
-
-    b = baseline correcte & candidat incorrect ; c = l'inverse. À petit n le
-    χ² asymptotique ment — on somme la binomiale exacte (p=0.5).
-    """
-    n = b + c
-    if n == 0:
-        return 1.0
-    k = min(b, c)
-    tail = sum(math.comb(n, i) for i in range(0, k + 1)) / (2**n)
-    return min(1.0, 2.0 * tail)
+# ``mcnemar_exact`` a déménagé dans ``shared.stats.paired`` (paquet stdlib-only,
+# importable par l'image lean du VPS) : le banc multi-encodeurs en a besoin sans
+# tirer numpy ni torch. On le ré-exporte ici sous le même nom — les appelants et
+# ``tests/test_replay_corpus.py`` continuent de faire
+# ``from scripts.replay_corpus import mcnemar_exact`` et obtiennent le MÊME objet.
+mcnemar_exact = _mcnemar_exact
 
 
 def crossed_stats(

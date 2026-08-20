@@ -6,6 +6,7 @@ le scope ``ingest:run`` (PAT owner/admin via ``serving.auth_principal.require_sc
 """
 from __future__ import annotations
 
+import logging
 import sqlite3
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -26,6 +27,8 @@ from store.faces import apply_ingest_faces
 from store.gate import ENGINE_VERSION as _GATE_ENGINE_VERSION
 from store.gate import apply_gate_reject
 from store.referential_fix import ReferentialFixConflict, apply_referential_fix
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/ingest", tags=["ingest"])
 
@@ -469,4 +472,197 @@ def run_status(run_id: str) -> dict:
         "batch_sha": row["batch_sha"],
         "applied_at": row["applied_at"],
         "counts_json": row["counts_json"],
+    }
+
+
+class EncoderBenchRunPayload(BaseModel):
+    """Miroir de ``store.encoder_bench.EncoderBenchRun`` (colonnes obligatoires
+    d'abord). ``provisional`` vaut 1 par défaut : un run promouvable est
+    l'exception qu'il faut justifier, pas l'inverse."""
+
+    run_id: str
+    created_at: str
+    gold_version: str
+    gold_n_crops: int
+    anchors_kind: str
+    encoder_spec: str
+    encoder_version: str
+    n_in_scope: int
+    gold_sample_n: int | None = None
+    bank_build_id: str | None = None
+    bank_n_anchors: int | None = None
+    bank_n_classes: int | None = None
+    embed_dim: int | None = None
+    n_params_m: float | None = None
+    input_px: int | None = None
+    device: str | None = None
+    ms_per_img: float | None = None
+    recall1: float | None = None
+    recall5: float | None = None
+    country_n: int | None = None
+    country_recall1: float | None = None
+    country_recall5: float | None = None
+    spread_at_p97: float | None = None
+    coverage_at_p97: float | None = None
+    precision_at_p97: float | None = None
+    sweep_json: str | None = None
+    baseline_run_id: str | None = None
+    mcnemar_p: float | None = None
+    mcnemar_b: int | None = None
+    mcnemar_c: int | None = None
+    #: Crops réellement communs au run et à sa baseline (D16). Sans lui, un
+    #: McNemar sur recouvrement partiel est indiscernable d'un McNemar complet.
+    n_paired: int | None = None
+    provisional: int = 1
+    provisional_reason: str | None = None
+    host: str | None = None
+    git_commit: str | None = None
+    note: str | None = None
+
+
+class EncoderBenchPredictionPayload(BaseModel):
+    asset_id: str
+    # ``class_id`` de la banque, pas un ``coins.eurio_id`` (D5) — cf. le
+    # commentaire de la colonne dans state/schema.sql.
+    truth_class_id: str
+    correct: int
+    in_top5: int
+    top1_eurio_id: str | None = None
+    top1_sim: float | None = None
+    top2_sim: float | None = None
+    spread: float | None = None
+    country_top1_eurio_id: str | None = None
+    country_correct: int | None = None
+
+
+class IngestEncoderBenchPayload(BaseModel):
+    run: EncoderBenchRunPayload
+    predictions: list[EncoderBenchPredictionPayload] = []
+
+
+@router.post("/encoder-bench", dependencies=[Depends(require_scope("ingest:write"))])
+def ingest_encoder_bench_route(payload: IngestEncoderBenchPayload) -> dict:
+    """Enregistre un run du banc multi-encodeurs et ses prédictions.
+
+    Le calcul (encodage, matching) reste local à la machine qui a un GPU ; seuls
+    les scalaires de décision montent au canonique — c'est ce qui rend la page
+    admin possible depuis le front hébergé, et l'apparié rejouable sans
+    ré-encoder.
+
+    Les prédictions ne sont remplacées en bloc QUE si la liste est fournie
+    (D9) : ré-envoyer un run pour corriger sa ``note`` ou son ``mcnemar_p``
+    ne doit pas effacer ce pour quoi la table existe. La réponse distingue les
+    deux cas — ``predictions_replaced=False`` avec ``n_predictions=0`` dit
+    « rien reçu, rien touché », pas « zéro ligne écrite ».
+
+    ⚠️ **M2 — le verdict de calibration est REMESURÉ ici, le payload ne fait
+    pas foi.** Cette route recopiait ``provisional`` et ``provisional_reason``
+    tels quels, et ne confrontait ni ``gold_sample_n`` ni ``n_paired`` à ce que
+    la base sait mesurer. (Les deux derniers restent recopiés : ce sont la
+    trace de ce que l'appelant a déclaré. Ils ne sont plus CRUS — le premier
+    devient un bloqueur, le second est recompté par ``paired_overlap``.) Sonde du
+    2026-08-20, contre la vraie route, base ``mkdtemp`` : un payload
+    ``gold_n_crops=1958, gold_sample_n=99999, baseline_run_id='une-baseline',
+    n_paired=1, provisional=0`` rendait ``HTTP 200`` et laissait en base
+    ``provisional=0, provisional_reason=NULL`` — exactement la ligne que la
+    page admin lit « ✔ promouvable ». Le même triplet soumis à
+    ``calibration_blockers`` rendait quatre bloqueurs (P3, P1, échantillon,
+    apparié). Le garde avait la bonne réponse et personne ne le consultait.
+
+    **Corriger plutôt que refuser (4xx) — pourquoi.** Les deux se défendent ;
+    ce qui ne se défend pas, c'est le silence. Trois raisons de corriger :
+
+    1. Sous Direction A, l'appelant mesure ses bloqueurs sur une **réplique**,
+       le serveur sur le **canonique**. Un désaccord est le cas NORMAL, pas
+       une attaque : la réplique retarde. Refuser ferait perdre des heures de
+       GPU pour un champ que le serveur sait recalculer seul.
+    2. Le run porte des mesures que le serveur ne peut pas refaire (recall,
+       ms/img, courbe de balayage) et un seul champ qu'il peut : le verdict.
+       Jeter les premières pour la seconde est un mauvais échange — c'est déjà
+       la doctrine de ``push_run``, qui dépose son payload sur disque plutôt
+       que de le perdre.
+    3. Le sens de la correction est toujours le sûr : ``0 → 1``. On ne promeut
+       jamais un run que l'appelant disait provisoire ; on démote un run que
+       l'appelant disait promouvable.
+
+    La correction est **bruyante** : journal côté serveur, et la réponse porte
+    ``provisional``, ``blockers`` et ``corrections``. Une correction que
+    l'appelant ne peut pas voir serait la même maladie déplacée d'un cran.
+    """
+    if _store is None:
+        raise HTTPException(status_code=500, detail="ingest non câblé (bind manquant)")
+    from store.encoder_bench import EncoderBenchPrediction, EncoderBenchRun
+    from store.encoder_bench import (
+        measured_blockers,
+        measured_overlap,
+        record_predictions,
+        record_run,
+    )
+
+    run = EncoderBenchRun(**payload.run.model_dump())
+    rows = [EncoderBenchPrediction(**p.model_dump()) for p in payload.predictions]
+
+    conn = _store._connection()  # noqa: SLF001
+    conn.execute("BEGIN")
+    try:
+        # Les prédictions D'ABORD : c'est ce qui rend le recouvrement apparié
+        # mesurable (``measured_overlap`` joint deux jeux de prédictions). Les
+        # écrire après la ligne de run laisserait le garde juger un
+        # ``n_paired`` déclaré alors que la base pouvait le recompter.
+        n = record_predictions(conn, run.run_id, rows)
+
+        corrections: list[str] = []
+        if run.baseline_run_id:
+            mesure = measured_overlap(conn, run.run_id, run.baseline_run_id)
+            if mesure is not None and mesure != run.n_paired:
+                corrections.append(
+                    f"n_paired: declare {run.n_paired}, mesure {mesure} "
+                    "(store.encoder_bench.paired_overlap)"
+                )
+                run.n_paired = mesure
+
+        blockers = measured_blockers(conn, run)
+        if blockers:
+            if int(run.provisional or 0) == 0:
+                corrections.append(
+                    "provisional: declare 0, corrige a 1 — "
+                    f"{len(blockers)} bloqueur(s) mesures au canonique"
+                )
+            raison = " | ".join(blockers)
+            if run.provisional_reason != raison:
+                corrections.append("provisional_reason: remplace par la mesure serveur")
+            run.provisional = 1
+            run.provisional_reason = raison
+
+        if corrections:
+            # Journalisé ET remonté : l'un pour l'exploitant, l'autre pour
+            # l'appelant. Un seul des deux laisserait la correction muette
+            # pour quelqu'un.
+            #
+            # Le niveau distingue deux choses très différentes. Réécrire le
+            # SEUL ``provisional_reason`` d'un run déjà provisoire est le cas
+            # NORMAL sous Direction A (réplique en retard sur le canonique) :
+            # le passer en WARNING mettrait un avertissement sur chaque run du
+            # banc et apprendrait à ne plus les lire. Un verdict retourné ou un
+            # ``n_paired`` faux, eux, sont des divergences qui décident.
+            durs = [c for c in corrections if not c.startswith("provisional_reason:")]
+            logger.log(
+                logging.WARNING if durs else logging.INFO,
+                "ingest/encoder-bench %s : payload corrige par la mesure serveur — %s",
+                run.run_id,
+                " ; ".join(corrections),
+            )
+
+        record_run(conn, run)
+        conn.execute("COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+    return {
+        "run_id": run.run_id,
+        "n_predictions": n,
+        "predictions_replaced": bool(rows),
+        "provisional": int(run.provisional),
+        "blockers": blockers,
+        "corrections": corrections,
     }

@@ -1,0 +1,13 @@
+{
+  "builder": "Musubi42s-MacBook-Air-Oim",
+  "built_at": "2026-08-19T12:36:54+00:00",
+  "db_mtime": "2026-08-19T00:22:48+00:00",
+  "db_path": "/Users/musubi42/Documents/Musubi42/bizz/EurioProject/Eurio/ml/state/eurio.replica.db",
+  "git_commit": "97d1791fc394070c3d3fa37a26e6fc0ced9e80e9",
+  "gold_version": "0ecbb1d70e3c",
+  "n_classes": 188,
+  "n_crops": 1958,
+  "n_training_eligible": 1911,
+  "n_truth_eurio_ids": 194,
+  "selection_sql": "SELECT rq.image_asset_id            AS asset_id,\n       rq.decided_eurio_id          AS truth_eurio_id,\n       a.storage_path               AS storage_path,\n       COALESCE(rq.decided_face, a.face) AS face,\n       rq.decided_at                AS decided_at,\n       rq.decided_by                AS decided_by,\n       rq.kind                      AS review_kind,\n       COALESCE(a.training_eligible, 0) AS training_eligible\n  FROM review_queue rq\n  JOIN image_assets a  ON a.id = rq.image_asset_id\n  JOIN source_images s ON s.id = a.source_image_id  -- restreint la POPULATION, ne fournit plus aucune colonne\n WHERE rq.status = 'done'\n   AND rq.decided_eurio_id IS NOT NULL\n   AND a.storage_path IS NOT NULL\n ORDER BY rq.image_asset_id"
+}

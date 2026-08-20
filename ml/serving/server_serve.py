@@ -54,6 +54,7 @@ from serving.review_queue.writes import router as review_writes_router
 from serving.funnel_writes import router as funnel_writes_router
 from serving.lab_read_routes import router as lab_read_router
 from serving.dino_thresholds_routes import router as dino_thresholds_router
+from serving.encoder_bench_routes import router as encoder_bench_router
 from serving.thresholds_routes import router as thresholds_router
 from serving.sources import router as sources_router
 from store import Store
@@ -156,6 +157,12 @@ app.include_router(thresholds_router)
 # (banque, encodeur) au lieu de la cohorte. stdlib + sqlite3 (logique dans
 # store.dino_thresholds) → mount inconditionnel.
 app.include_router(dino_thresholds_router)
+# Banc multi-encodeurs (0009) : les résultats sont une DONNÉE, pas une sortie
+# terminal — la page admin qui les affiche est servie par le front HÉBERGÉ, qui
+# n'a pas accès au ML local. Lecture seule (lab:read) ; l'écriture passe par
+# POST /ingest/encoder-bench. stdlib + sqlite3 (logique dans store.encoder_bench),
+# aucun import lourd → mount inconditionnel sur l'image lean.
+app.include_router(encoder_bench_router)
 # R2 (Model B) : réplique servie DIRECTEMENT par le writer unique (snapshot
 # VACUUM INTO cohérent), remplace le détour `canonical_sync → MinIO`. Léger
 # (stdlib + sqlite3) → mount inconditionnel sur l'image lean. Scope ingest:run.
