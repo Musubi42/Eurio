@@ -126,17 +126,33 @@ SELECT COUNT(*), SUM(pays_piece = pays_annonce),
 | **standards** validés | 386 | **93,8 %** |
 | commémoratives validées | 1733 | 99,2 % |
 
-Donc un filtre « annonce du pays de la classe » coûterait **~6 % des vrais
-positifs** et couperait, sur ES, **82 % du bruit** (76 → 14). C'est le geste le
-moins cher et le mieux étayé pour la suite. Il reste à trancher (cf.
-[`DECISIONS.md`](DECISIONS.md) §Q1) : filtre par défaut avec échappatoire, ou
-simple palier proposé à côté de la marge.
+Le filtre a été **mesuré, puis livré le même jour** — actif par défaut, avec le
+compte de ce qu'il masque. Le comparatif des trois options (dont le top-1 scopé
+pays, **écarté après mesure**) est en [`DECISIONS.md`](DECISIONS.md) §D9.
 
-Piste à instruire au même moment : les colonnes
-`top1_country_eurio_id` / `country_spread` de `image_asset_dino_predictions`
-portent déjà une comparaison **scopée au pays**. Le verdict s'en sert
-(`top1_country_sim`) ; la pêche, elle, lit le top-1 global. Vérifier si le
-top-1 scopé pays ne fait pas le travail sans filtre applicatif.
+| option | servis | justes | précision |
+|---|---:|---:|---:|
+| top-1 global *(l'existant)* | 392 | 358 | 91,3 % |
+| top-1 **scopé pays** | 362 | 335 | 92,5 % |
+| global + **filtre `listing_country`** | 343 | 340 | **99,1 %** |
+
+⚠️ Le top-1 scopé pays (`top1_country_eurio_id`) **ne fait pas le travail** :
+1,2 point de gain, et `target_country` est NULL sur tout le pool ambigu — 2254
+des 6651 crops ouverts, la moitié du pool des classes standard.
+
+```sql
+SELECT CASE WHEN si.target_eurio_id IS NULL THEN 'cible NULL (pool ambigu)'
+            ELSE 'cible posee' END,
+       COUNT(*), SUM(si.listing_country IS NOT NULL),
+       SUM(p.target_country IS NOT NULL)
+  FROM review_queue rq
+  JOIN image_assets a ON a.id=rq.image_asset_id
+  JOIN source_images si ON si.id=a.source_image_id
+  JOIN image_asset_dino_predictions p ON p.asset_id=a.id AND p.anchors_kind='2eur_all'
+ WHERE rq.status='open' GROUP BY 1;
+-- cible NULL : 2254 crops · listing_country 2254 · target_country    0
+-- cible posee: 4397 crops · listing_country 4397 · target_country 4397
+```
 
 ## Deux pannes trouvées en chemin, et réparées
 

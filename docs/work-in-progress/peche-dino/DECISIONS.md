@@ -101,29 +101,64 @@ s'oublie, et le coût du mock n'est pas son existence mais le fait qu'il soit
 
 ---
 
-## Q1 · La question ouverte, pour la prochaine session
+## D9 · La pêche est restreinte au PAYS DE LA CLASSE, par défaut
 
-**Faut-il restreindre la pêche aux annonces du pays de la classe ?**
+*(Ex-Q1, tranchée le 2026-08-20 après mesure. Les trois options étaient : filtre
+applicatif, top-1 scopé pays, ou rien.)*
 
-Les chiffres sont dans `CONSTAT.md` : ça coûterait **~6 %** des vrais positifs
-(93,8 % des standards validés viennent d'une annonce du bon pays) et couperait
-**82 % du bruit** sur l'Espagne (76 → 14).
+**Mesuré** sur les crops déjà tranchés par un humain, maille classe, banque
+`2eur_all` :
 
-Trois formes possibles, à trancher :
+| option | servis | justes | précision |
+|---|---:|---:|---:|
+| A · top-1 global *(l'existant)* | 392 | 358 | 91,3 % |
+| B · top-1 **scopé pays** (`top1_country_eurio_id`) | 362 | 335 | 92,5 % |
+| C · global + **filtre `listing_country`** | 343 | 340 | **99,1 %** |
 
-1. **filtre par défaut + échappatoire** — le plus efficace, mais il cache 6 % de
-   matière sans le dire à qui ne connaît pas le réglage ;
-2. **un palier de plus à côté de la marge** (`tous pays` / `pays de la classe`) —
-   cohérent avec ce qui existe, laisse le choix, ne cache rien ;
-3. **ne rien filtrer, et lire le top-1 SCOPÉ PAYS** (`top1_country_eurio_id`,
-   déjà en base et déjà utilisé par le verdict) — potentiellement le vrai
-   correctif, à mesurer avant tout code.
+```sql
+-- population : a.resolution_status='manual', ct.is_commemorative=0
+-- classe_A = COALESCE(cga.design_group_id, p.top1_eurio_id)
+-- C ajoute : si.listing_country = cga.country
+-- (requête complète dans CONSTAT.md §Le levier mesuré)
+```
 
-⚠️ **Mesurer 3 avant d'implémenter 1 ou 2.** Si le top-1 scopé pays fait le
-travail, un filtre applicatif serait une rustine posée par-dessus une colonne
-qui existait déjà.
+**Décidé : C, actif par défaut, avec le compte de ce qu'il masque affiché.**
 
-## Q2 · Ce que ce chantier ne prétend pas résoudre
+Il vaut pour les deux populations, avec une régularité frappante :
+
+| | précision A → C | vrais positifs gardés |
+|---|---|---:|
+| courantes | 91,3 % → **99,1 %** | 340/358 = **95,0 %** |
+| commémoratives | 94,6 % → **98,4 %** | 1587/1664 = **95,4 %** |
+
+Effet sur les pools ouverts : IT 123 → 61, BE 80 → 44, **ES 78 → 14**.
+
+**Écarté : B, le top-1 scopé pays.** C'était l'hypothèse de départ, et elle est
+fausse — 1,2 point de gain, et une couverture trouée : `target_country` dérive
+de `target_eurio_id`, **NULL sur tout le pool ambigu** (2254 des 6651 crops
+ouverts, la moitié du pool des classes standard). L'utiliser écarterait la
+moitié de la file en silence. Ce résultat négatif a économisé le backfill d'1 h
+26 qu'on envisageait. **Ne pas rouvrir cette piste sans une nouvelle mesure.**
+
+**Écarté aussi : le filtre en simple palier éteint par défaut.** Cohérent avec
+D3, mais il laisse l'Espagne inutilisable pour qui ouvre la page sans connaître
+le réglage — et c'est exactement ce qui s'est produit en séance.
+
+**Ce qui rend le défaut acceptable** : la pastille dit ce qu'elle retire
+(« pays ES · 57 masqués ») et un clic les ramène. Un filtre par défaut qui
+tairait son effet mentirait par omission — d'autant qu'il écarte 5 % de vrais
+positifs, dont **13 sur 18 venaient d'annonces belges** : des coffrets
+multi-pays, un profil qu'on reconnaît et où l'on pense à lever le filtre.
+
+Deux garde-fous, écrits dans le code :
+
+- une classe dont le pays ne se résout pas **désactive** le filtre au lieu de
+  vider la file — mordre sur une valeur inconnue renverrait zéro ligne, ce qui
+  se lit « rien à trancher » : plausible, et faux ;
+- le marquage ⌁ des crops **dans** un lot ouvert ignore le filtre. Il choisit
+  quels *listings* entrent dans la file, pas quels *crops* sont marqués dedans.
+
+## Q1 · Ce que ce chantier ne prétend pas résoudre
 
 La banque confond les standards à portrait entre eux. C'est un sujet
 d'**encodeur et de banque**, pas d'écran : il vit dans
