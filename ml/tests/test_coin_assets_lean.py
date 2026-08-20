@@ -36,9 +36,25 @@ def _paths(mod) -> set[str]:
 
 @pytest.fixture()
 def restore_module():
-    """Le reload sous cv2 absent laisse le module amputé — on le remet après."""
+    """Le reload sous cv2 absent laisse le module amputé — on le remet après.
+
+    On restaure l'OBJET module d'origine, on ne le ré-importe pas. Un
+    `sys.modules.pop` suivi d'un import neuf fabrique un SECOND objet
+    `serving.crop_edit` : les modules qui en gardaient une référence (dont
+    `serving.review_queue`) continuent de pointer l'ancien, et un
+    `monkeypatch.setattr(crop_edit, "create_manual_crop", …)` posé par un autre
+    test ne porte plus sur la fonction réellement appelée — la route part alors
+    chercher le raw sur MinIO et rend un 410. C'est exactement la panne muette
+    qui faisait échouer `test_review_lots_api::test_add_lot_crop_returns_new_crop`
+    en suite complète alors qu'il passait isolément.
+    `importlib.reload`, lui, réutilise l'objet existant : les références tiennent.
+    """
+    original = sys.modules.get("serving.crop_edit")
     yield
-    sys.modules.pop("serving.crop_edit", None)
+    if original is not None:
+        sys.modules["serving.crop_edit"] = original
+    else:
+        sys.modules.pop("serving.crop_edit", None)
     importlib.reload(importlib.import_module(_MODULE))
 
 
