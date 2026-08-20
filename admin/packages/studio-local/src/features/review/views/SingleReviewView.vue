@@ -52,6 +52,12 @@ import type { DinoSuggestion } from '../composables/useDinoSuggestions'
 
 const queue = ref<ReviewItem[]>([])
 const currentIndex = ref(0)
+// La file n'a pas pu être lue. Un état À PART de « vide » : une file vide veut
+// dire « il n'y a plus rien à trancher », une file en erreur veut dire « on ne
+// sait pas ». Les confondre, c'est ce que faisait le repli sur des données
+// fictives — et l'écran servait alors des pièces slovènes inventées dans une
+// classe espagnole, sans un mot.
+const loadError = ref<string | null>(null)
 // Pagination « infinie » : la queue se recharge à l'approche de la fin du batch
 // local (cf. loadMore). `drained` = le backend n'a plus rien de nouveau pour ce
 // scope (vrai écran vide). `loadingMore` garde-fou anti-concurrence.
@@ -254,6 +260,19 @@ const validateBlockedReason = computed<string | null>(() => {
 // ─── Loaders ────────────────────────────────────────────────────────────
 
 async function load() {
+  loadError.value = null
+  try {
+    await loadInner()
+  } catch (err) {
+    // On VIDE la file : garder à l'écran un item d'un chargement précédent
+    // ferait trancher sur un périmètre qui n'est plus celui affiché.
+    queue.value = []
+    drained.value = false
+    loadError.value = err instanceof Error ? err.message : String(err)
+  }
+}
+
+async function loadInner() {
   const [q, s] = await Promise.all([
     fetchReviewQueue({
       limit: 30,
@@ -283,7 +302,7 @@ async function load() {
 // attente (commit différé, status reste 'open' tant que sa fenêtre d'undo n'a
 // pas flush). On exclut les deux pour ne jamais empiler de doublon.
 async function loadMore() {
-  if (loadingMore.value || drained.value) return
+  if (loadingMore.value || drained.value || loadError.value) return
   loadingMore.value = true
   try {
     const more = await fetchReviewQueue({
@@ -306,6 +325,9 @@ async function loadMore() {
     } else {
       queue.value = [...queue.value, ...fresh]
     }
+  } catch (err) {
+    // Une pagination qui échoue ne doit pas se lire « plus rien à trancher ».
+    loadError.value = err instanceof Error ? err.message : String(err)
   } finally {
     loadingMore.value = false
   }
@@ -857,6 +879,28 @@ useReviewKeybinds(keyboardEnabled, {
       >
         Chargement de la suite…
       </p>
+    </section>
+
+    <!-- ═══ La file n'a pas pu être lue — À NE PAS CONFONDRE avec « vide » ═══ -->
+    <section
+      v-else-if="loadError"
+      class="flex flex-1 flex-col items-center justify-center gap-4 px-8 py-16 text-center"
+    >
+      <p class="font-display text-4xl italic font-semibold" style="color: var(--danger);">
+        La file n'a pas pu être lue.
+      </p>
+      <p class="max-w-xl text-sm" style="color: var(--ink-600);">{{ loadError }}</p>
+      <p class="max-w-xl text-[11.5px]" style="color: var(--ink-400);">
+        Rien n'est affiché plutôt que des données fausses. Jusqu'au 2026-08-20,
+        cet écran servait ici une file de démonstration — trente pièces
+        inventées — sans le signaler.
+      </p>
+      <button
+        type="button"
+        class="rounded-md border px-4 py-2 text-sm"
+        style="border-color: var(--indigo-700); color: var(--indigo-700);"
+        @click="load()"
+      >Réessayer</button>
     </section>
 
     <!-- ═══ Empty state (queue réellement vidée) ═══ -->

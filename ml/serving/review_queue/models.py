@@ -152,6 +152,10 @@ class DinoCandidatesSummary(BaseModel):
     min_spread: float | None
     n_open_single: int
     n_open_lot: int
+    #: La meilleure marge disponible dans chaque file. Un compte sans elle ment
+    #: par omission : « 4 à l'unité » peut être quatre faux positifs à 0,02.
+    best_spread_single: float | None = None
+    best_spread_lot: float | None = None
     #: Crops en `needs_review` SANS ligne de review ouverte : jamais enfilés,
     #: invisibles partout. Ils ne deviennent péchables qu'après un enfilage
     #: explicite (POST /coins/assets/reflag-needs-review) — on ne les enfile

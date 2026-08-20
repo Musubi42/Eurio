@@ -8,10 +8,25 @@
 //   POST   /review-queue/:id/reject
 //   GET    /review-queue/stats
 //
-// Network-down fallback: returns the embedded MOCK_QUEUE so the page
-// stays usable in pure-front dev (no FastAPI running). When a real
-// backend with no review items returns an empty array, we surface the
-// empty state truthfully (no mock substitution).
+// ⛔ IL N'Y A PLUS DE REPLI SUR DES DONNÉES FICTIVES. Retiré le 2026-08-20,
+// après l'avoir vu mordre.
+//
+// Ce module servait un `MOCK_QUEUE` de trente pièces inventées dès qu'un fetch
+// échouait au niveau RÉSEAU (`TypeError`) — pensé pour le développement front
+// sans backend. Ce qui s'est passé en vrai : le conteneur `eurio-api` a été
+// recréé pendant une session de tri (`docker compose up -d --build`, quelques
+// secondes d'indisponibilité). Les requêtes en vol ont échoué, la file s'est
+// remplie de fausses pièces SLOVÈNES à 1 EUR — dans un écran cadré sur une
+// pièce ESPAGNOLE — sans un mot à l'écran. L'opérateur a conclu que la
+// fonctionnalité était cassée, et a « trié » quatre items qui n'existaient pas.
+//
+// Pire, côté écriture : `decide`/`skip`/`reject` renvoyaient un succès et se
+// contentaient d'un `console.info('[mock fallback] …')`. On pouvait trancher
+// quarante crops et n'en écrire aucun.
+//
+// La règle, désormais : une lecture qui échoue LÈVE, et l'écran le dit. Une
+// écriture qui échoue LÈVE, et rien ne prétend qu'elle a eu lieu. Un écran
+// vide et honnête vaut mieux qu'un écran plein et faux.
 
 import { eurioApi, EurioApiError } from '@/shared/api/eurio-api'
 import { ML_API } from '@/features/training/composables/useTrainingApi'
@@ -132,35 +147,54 @@ async function safeFetch<T>(path: string, init?: RequestInit): Promise<T | null>
   }
 }
 
-/** Variante eurio-api (Bearer PAT) — pour les endpoints READ portés en Phase 2c-b. */
-async function safeFetchEurio<T>(path: string): Promise<T | null> {
+/** Lecture eurio-api (Bearer PAT). Échoue bruyamment — jamais de substitution.
+ *
+ * `status: 0` = échec RÉSEAU (canonique injoignable, conteneur en cours de
+ * recréation, DNS, coupure). On le distingue d'un code HTTP pour que l'écran
+ * puisse dire laquelle des deux choses s'est produite. */
+async function fetchEurio<T>(path: string): Promise<T> {
   try {
     return await eurioApi.get<T>(path)
   } catch (err) {
     if (err instanceof EurioApiError) {
-      // Pour la liste/detail, on remonte les 4xx/5xx au caller (surface error).
       throw new ReviewApiError(err.status, err.message)
     }
-    if (err instanceof TypeError) return null  // network down → fallback
+    if (err instanceof TypeError) {
+      throw new ReviewApiError(
+        0,
+        'Canonique injoignable (eurio-api). Rien n\'est affiché plutôt que '
+        + 'des données fausses — réessaie dans quelques secondes ; si ça '
+        + 'persiste, vérifie que le conteneur tourne.',
+      )
+    }
     throw err
   }
 }
 
-/** Variante eurio-api pour les ÉCRITURES review (TC2, Model B) : POST Bearer PAT
- * vers le canonique, avec `keepalive` (commit-on-unload, fenêtre d'undo). Renvoie
- * null sur erreur réseau (→ fallback mock), remonte les 4xx/5xx en ReviewApiError. */
-async function safeFetchEurioWrite<T>(
+/** ÉCRITURE review (TC2, Model B) : POST Bearer PAT vers le canonique, avec
+ * `keepalive` (commit-on-unload, fenêtre d'undo).
+ *
+ * Échoue bruyamment. Une décision de review est la seule donnée du projet
+ * qu'aucun calcul ne régénère : la perdre en silence est la pire chose que
+ * cette couche puisse faire. */
+async function fetchEurioWrite<T>(
   path: string,
   body?: unknown,
   opts: CommitOpts = {},
-): Promise<T | null> {
+): Promise<T> {
   try {
     return await eurioApi.post<T>(path, body, { keepalive: opts.keepalive })
   } catch (err) {
     if (err instanceof EurioApiError) {
       throw new ReviewApiError(err.status, err.message)
     }
-    if (err instanceof TypeError) return null  // network down → fallback
+    if (err instanceof TypeError) {
+      throw new ReviewApiError(
+        0,
+        'Canonique injoignable : la décision N\'A PAS été écrite. '
+        + 'Réessaie — ne passe pas au crop suivant en croyant l\'avoir tranché.',
+      )
+    }
     throw err
   }
 }
@@ -241,43 +275,23 @@ export async function fetchReviewQueue(
   if (opts.dinoClass) params.set('dino_class', opts.dinoClass)
   if (opts.dinoRank) params.set('dino_rank', String(opts.dinoRank))
   // Phase 2c-b : porté sur eurio-api (Bearer PAT).
-  const real = await safeFetchEurio<ReviewItem[]>(`/review-queue?${params.toString()}`)
-  if (real !== null) {
-    return real.map(promoteItemUrls)
-  }
-  await delay(120)
-  return MOCK_QUEUE.slice(0, limit)
+  const items = await fetchEurio<ReviewItem[]>(`/review-queue?${params.toString()}`)
+  return items.map(promoteItemUrls)
 }
 
 export async function fetchReviewItem(id: string): Promise<ReviewItem> {
   // Phase 2c-b : porté sur eurio-api.
-  const real = await safeFetchEurio<ReviewItem>(`/review-queue/${encodeURIComponent(id)}`)
-  if (real !== null) {
-    return promoteItemUrls(real)
-  }
-  await delay(60)
-  const item = MOCK_QUEUE.find((r) => r.id === id)
-  if (!item) throw new Error(`Review introuvable : ${id}`)
-  return item
+  return promoteItemUrls(
+    await fetchEurio<ReviewItem>(`/review-queue/${encodeURIComponent(id)}`),
+  )
 }
 
 export async function fetchReviewStats(): Promise<ReviewStats> {
-  // Phase 2c : porté sur eurio-api (Bearer PAT).
-  try {
-    return await eurioApi.get<ReviewStats>('/review-queue/stats')
-  } catch (err) {
-    if (err instanceof EurioApiError) {
-      throw new ReviewApiError(err.status, err.message)
-    }
-    // Fallback mock — backend hors-ligne.
-    await delay(60)
-    return {
-      n_pending: 1247,
-      n_done_today: 47,
-      median_seconds_per_decision: 8.3,
-      n_done_this_week: 314,
-    }
-  }
+  // Phase 2c : porté sur eurio-api (Bearer PAT). Ces compteurs servaient
+  // autrefois `n_pending: 1247` en dur quand le backend était absent — un
+  // tableau de bord qui invente ses chiffres est pire qu'un tableau de bord
+  // vide.
+  return fetchEurio<ReviewStats>('/review-queue/stats')
 }
 
 // `keepalive` permet au POST de survivre à un unload de page (fermeture
@@ -293,33 +307,21 @@ export async function decideReviewItem(
   opts: CommitOpts = {},
 ): Promise<void> {
   // TC2 (Model B) : écriture review portée sur eurio-api (Bearer PAT → canonique).
-  const real = await safeFetchEurioWrite<unknown>(
+  await fetchEurioWrite<unknown>(
     `/review-queue/${encodeURIComponent(id)}/decide`, payload, opts,
   )
-  if (real === null) {
-    await delay(40)
-    console.info('[mock fallback] decide', id, payload)
-  }
 }
 
 export async function skipReviewItem(id: string, opts: CommitOpts = {}): Promise<void> {
-  const real = await safeFetchEurioWrite<unknown>(
+  await fetchEurioWrite<unknown>(
     `/review-queue/${encodeURIComponent(id)}/skip`, undefined, opts,
   )
-  if (real === null) {
-    await delay(20)
-    console.info('[mock fallback] skip', id)
-  }
 }
 
 export async function rejectReviewItem(id: string, opts: CommitOpts = {}): Promise<void> {
-  const real = await safeFetchEurioWrite<unknown>(
+  await fetchEurioWrite<unknown>(
     `/review-queue/${encodeURIComponent(id)}/reject`, undefined, opts,
   )
-  if (real === null) {
-    await delay(20)
-    console.info('[mock fallback] reject', id)
-  }
 }
 
 /**
@@ -333,14 +335,10 @@ export async function correctListing(
 ): Promise<void> {
   // Direction A / C3 : correction canonique → VPS (jumeau lean
   // serving/review_queue/writes.py, chemin identique) via eurioApi.
-  const real = await safeFetchEurioWrite<unknown>(
+  await fetchEurioWrite<unknown>(
     `/review-queue/${encodeURIComponent(id)}/correct-listing`,
     payload,
   )
-  if (real === null) {
-    await delay(20)
-    console.info('[mock fallback] correct-listing', id, payload)
-  }
 }
 
 /**
@@ -357,13 +355,9 @@ export interface RequalifyLotResult {
 
 export async function requalifyReviewAsLot(id: string): Promise<RequalifyLotResult> {
   // Direction A / C3 : requalif canonique → VPS (jumeau lean) via eurioApi.
-  const real = await safeFetchEurioWrite<RequalifyLotResult>(
+  return fetchEurioWrite<RequalifyLotResult>(
     `/review-queue/${encodeURIComponent(id)}/requalify-lot`,
   )
-  if (real === null) {
-    throw new Error('Backend indisponible — la requalification en lot n’a pas pu être enregistrée.')
-  }
-  return real
 }
 
 // ─── Re-crop manuel (chantier crop-quality-overhaul, Session B) ──────────
@@ -583,7 +577,7 @@ export interface TriageStats {
 export async function fetchTriageStats(cohortId?: string | null): Promise<TriageStats> {
   const qs = cohortId ? `?cohort_id=${encodeURIComponent(cohortId)}` : ''
   // Phase 2c-b : porté sur eurio-api.
-  const real = await safeFetchEurio<TriageStats>(`/review-queue/triage-stats${qs}`)
+  const real = await fetchEurio<TriageStats>(`/review-queue/triage-stats${qs}`)
   if (real !== null) return real
   // Mock fallback (backend off) — zéros honnêtes.
   return {
@@ -606,7 +600,7 @@ export async function fetchTriageStats(cohortId?: string | null): Promise<Triage
  */
 export async function moveReviewLaneToManual(id: string): Promise<void> {
   // Direction A / C3 : mutation canonique du routage review → VPS (jumeau lean).
-  await safeFetchEurioWrite<unknown>(
+  await fetchEurioWrite<unknown>(
     `/review-queue/${encodeURIComponent(id)}/move-lane`,
   )
 }
@@ -652,7 +646,7 @@ export async function fetchRejectedCrops(
 /** Ré-ouvre des reviews rejetées : elles repassent en queue manuelle. */
 export async function restoreRejected(reviewIds: string[]): Promise<RestoreResult> {
   // TC2 (Model B) : écriture portée sur eurio-api (Bearer PAT → canonique).
-  const real = await safeFetchEurioWrite<RestoreResult>('/review-queue/restore', {
+  const real = await fetchEurioWrite<RestoreResult>('/review-queue/restore', {
     review_ids: reviewIds,
   })
   if (real === null) {
@@ -742,186 +736,6 @@ export async function fetchMarketQuotes(
 
 // ─── Mock data ──────────────────────────────────────────────────────────
 
-function delay(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms))
-}
-
-function thumb(seed: string, w = 224, h = 224): string {
-  const palette = ['EDEDF5/1A1B4B', 'F5EBD3/8F7637', 'D8D9E8/0E0E1F', 'E2E0D6/55566C']
-  const c = palette[seed.charCodeAt(0) % palette.length]
-  return `https://placehold.co/${w}x${h}/${c}?text=${encodeURIComponent(seed)}`
-}
-
-const COUNTRY_LABEL: Record<string, string> = {
-  BE: 'Belgique', FR: 'France', DE: 'Allemagne', IT: 'Italie', ES: 'Espagne',
-  NL: 'Pays-Bas', LU: 'Luxembourg', IE: 'Irlande', PT: 'Portugal', FI: 'Finlande',
-  GR: 'Grèce', AT: 'Autriche', CY: 'Chypre', MT: 'Malte', SK: 'Slovaquie',
-  SI: 'Slovénie', EE: 'Estonie', LV: 'Lettonie', LT: 'Lituanie', HR: 'Croatie',
-  BG: 'Bulgarie',
-}
-
-function makeCandidate(country: string, denom: string, year: number | null, score: number): ReviewCandidate {
-  const id = `${country}-${denom.toLowerCase().replace(/\s/g, '')}-${year ?? 'na'}`
-  return {
-    eurio_id: id,
-    score,
-    label: `${COUNTRY_LABEL[country] ?? country} · ${denom}${year ? ` · ${year}` : ''}`,
-    country,
-    denomination: denom,
-    year,
-    canonical_thumb_url: thumb(id, 160, 160),
-  }
-}
-
-// 30 reviews variés couvrant les cas typiques.
-export const MOCK_QUEUE: ReviewItem[] = [
-  {
-    id: 'rev-001',
-    crop_url: thumb('crop-be-2002-a', 480, 480),
-    bbox: { x: 120, y: 80, w: 224, h: 224 },
-    source: 'ebay',
-    source_ref: 'ebay/195832104221',
-    listing_title: '2 euros belgique 2002 albert II rare !!',
-    listing_url: 'https://ebay.example/item/195832104221',
-    listing_price: 4.5,
-    candidates: [
-      makeCandidate('BE', '2 EUR', 2002, 0.87),
-      makeCandidate('BE', '2 EUR', 2008, 0.74),
-      makeCandidate('NL', '2 EUR', 2002, 0.41),
-      makeCandidate('LU', '2 EUR', 2002, 0.39),
-      makeCandidate('FR', '2 EUR', 2002, 0.32),
-    ],
-    face_detected: 'obverse',
-    priority: 30,
-    is_multi_coin_lot: false,
-    quality_score: 0.78,
-    enqueued_at: '2026-04-26T10:14:02Z',
-  },
-  {
-    id: 'rev-002',
-    crop_url: thumb('crop-de-2020', 480, 480),
-    bbox: null,
-    source: 'catawiki',
-    source_ref: 'catawiki/auction-9912',
-    listing_title: 'Allemagne 2 € commémorative Brandebourg 2020',
-    listing_url: null,
-    listing_price: 12.0,
-    candidates: [
-      makeCandidate('DE', '2 EUR Brandebourg', 2020, 0.94),
-      makeCandidate('DE', '2 EUR', 2020, 0.61),
-      makeCandidate('DE', '2 EUR Saxe', 2020, 0.42),
-      makeCandidate('DE', '2 EUR Bavière', 2020, 0.39),
-      makeCandidate('AT', '2 EUR', 2020, 0.18),
-    ],
-    face_detected: 'reverse',
-    priority: 20,
-    is_multi_coin_lot: false,
-    quality_score: 0.88,
-    enqueued_at: '2026-04-26T11:02:18Z',
-  },
-  {
-    id: 'rev-003',
-    crop_url: thumb('crop-trash', 480, 480),
-    bbox: null,
-    source: 'ebay',
-    source_ref: 'ebay/195999999111',
-    listing_title: 'lot pieces euros - vrac voir photos',
-    listing_url: 'https://ebay.example/item/195999999111',
-    listing_price: null,
-    candidates: [
-      makeCandidate('FR', '1 EUR', 2010, 0.18),
-      makeCandidate('IT', '1 EUR', null, 0.16),
-      makeCandidate('BE', '50c', null, 0.14),
-    ],
-    face_detected: null,
-    priority: 80,
-    is_multi_coin_lot: true,
-    quality_score: 0.21,
-    enqueued_at: '2026-04-26T12:30:11Z',
-  },
-  {
-    id: 'rev-004',
-    crop_url: thumb('crop-fr-2019', 480, 480),
-    bbox: { x: 60, y: 40, w: 280, h: 280 },
-    source: 'mdp',
-    source_ref: 'mdp/2019-mona-lisa',
-    listing_title: 'Pièce de 2 € Léonard de Vinci 500e anniversaire',
-    listing_url: null,
-    listing_price: 28.5,
-    candidates: [
-      makeCandidate('FR', '2 EUR Léonard', 2019, 0.96),
-      makeCandidate('IT', '2 EUR Léonard', 2019, 0.52),
-      makeCandidate('FR', '2 EUR', 2019, 0.31),
-      makeCandidate('FR', '2 EUR Mitterrand', 2016, 0.18),
-      makeCandidate('FR', '2 EUR Rugby', 2023, 0.12),
-    ],
-    face_detected: 'reverse',
-    priority: 10,
-    is_multi_coin_lot: false,
-    quality_score: 0.93,
-    enqueued_at: '2026-04-26T13:45:50Z',
-  },
-  {
-    id: 'rev-005',
-    crop_url: thumb('crop-bad-meta', 480, 480),
-    bbox: null,
-    source: 'ebay',
-    source_ref: 'ebay/195111222333',
-    listing_title: 'piece rare ancienne collection',
-    listing_url: 'https://ebay.example/item/195111222333',
-    listing_price: 8.0,
-    candidates: [
-      makeCandidate('XX', '?', null, 0.22),
-      makeCandidate('XX', '?', null, 0.19),
-    ],
-    face_detected: 'unknown',
-    priority: 70,
-    is_multi_coin_lot: false,
-    quality_score: 0.45,
-    enqueued_at: '2026-04-26T14:01:30Z',
-  },
-  // Ajout de 25 entrées plus variées (boucle pour densité)
-  ...Array.from({ length: 25 }, (_, i): ReviewItem => {
-    const idx = i + 6
-    const countries = ['IT', 'ES', 'NL', 'PT', 'GR', 'AT', 'IE', 'FI', 'LU', 'SI']
-    const country = countries[i % countries.length]
-    const year = 2002 + (i % 24)
-    const denoms = ['2 EUR', '1 EUR', '50c', '2 EUR commémo']
-    const denom = denoms[i % denoms.length]
-    const goodTop5 = i % 4 !== 3
-    const isLot = i % 8 === 5
-    return {
-      id: `rev-${String(idx).padStart(3, '0')}`,
-      crop_url: thumb(`crop-${country}-${year}-${i}`, 480, 480),
-      bbox: i % 3 === 0 ? null : { x: 80 + (i % 5) * 12, y: 60 + (i % 4) * 10, w: 240, h: 240 },
-      source: (['ebay', 'catawiki', 'mdp', 'lmdlp'] as ReviewSource[])[i % 4],
-      source_ref: `${(['ebay', 'catawiki', 'mdp', 'lmdlp'] as ReviewSource[])[i % 4]}/${100000 + idx}`,
-      listing_title:
-        goodTop5
-          ? `${COUNTRY_LABEL[country]} ${denom} ${year}${i % 5 === 0 ? ' SUP' : ''}`
-          : `lot pieces - vrac collection`,
-      listing_url: i % 2 === 0 ? `https://example/${idx}` : null,
-      listing_price: i % 3 === 0 ? null : 3 + (i % 18),
-      candidates: goodTop5
-        ? [
-            makeCandidate(country, denom, year, 0.7 + (i % 25) / 100),
-            makeCandidate(country, denom, year + 1, 0.42),
-            makeCandidate(country, denom, year - 1, 0.35),
-            makeCandidate(country, denom, null, 0.22),
-            makeCandidate(country, '1 EUR', year, 0.14),
-          ]
-        : [
-            makeCandidate(country, denom, year, 0.25),
-            makeCandidate(country, '1 EUR', year, 0.18),
-          ],
-      face_detected: (['obverse', 'reverse', 'unknown', null] as (ReviewFace | null)[])[i % 4],
-      priority: 30 + (i % 60),
-      is_multi_coin_lot: isLot,
-      quality_score: 0.4 + (i % 50) / 100,
-      enqueued_at: new Date(Date.parse('2026-04-26T08:00:00Z') + idx * 600 * 1000).toISOString(),
-    }
-  }),
-]
 
 // ─── Pêche — ce que la banque propose pour une classe ──────────────────────
 
@@ -933,6 +747,10 @@ export interface DinoCandidatesSummary {
   min_spread: number | null
   n_open_single: number
   n_open_lot: number
+  /** La meilleure marge disponible dans chaque file — un compte seul ment par
+   *  omission : « 4 à l'unité » peut être quatre faux positifs à 0,02. */
+  best_spread_single: number | null
+  best_spread_lot: number | null
   /** needs_review SANS ligne de review ouverte : invisibles partout. */
   n_orphans: number
   orphan_asset_ids: string[]
@@ -955,7 +773,16 @@ export async function fetchDinoCandidates(
   const params = new URLSearchParams({ dino_class: classId })
   if (opts.rank) params.set('dino_rank', String(opts.rank))
   if (opts.minSpread != null) params.set('dino_min_spread', String(opts.minSpread))
-  return safeFetchEurio<DinoCandidatesSummary>(
-    `/review-queue/dino-candidates/summary?${params.toString()}`,
-  )
+  try {
+    return await fetchEurio<DinoCandidatesSummary>(
+      `/review-queue/dino-candidates/summary?${params.toString()}`,
+    )
+  } catch {
+    // Seule exception au « échouer bruyamment » de ce module, et elle est
+    // délibérée : c'est un COMPTEUR d'en-tête, pas la file. `null` s'affiche
+    // « … », c'est-à-dire « on ne sait pas » — un état honnête. Inventer un
+    // nombre serait mentir ; faire tomber l'écran priverait l'opérateur d'une
+    // file qui, elle, a très bien répondu.
+    return null
+  }
 }

@@ -938,9 +938,15 @@ def dino_candidates_summary(
 
     join_sql = suggestions_join_sql("ps")
 
+    # La MEILLEURE MARGE par mode, à côté du compte. Un compte seul ment par
+    # omission : la file ES « 4 à l'unité » était faite de quatre annonces
+    # FRANÇAISES à 0,023 de marge au mieux — quatre skips pour rien, et
+    # l'impression que l'écran est cassé. Le compte dit combien il y a à voir,
+    # la marge dit si ça vaut le coup de regarder.
     rows = conn.execute(
         f"""
-        SELECT rq.kind AS kind, COUNT(*) AS n
+        SELECT rq.kind AS kind, COUNT(*) AS n,
+               MAX(COALESCE(ps.country_spread, ps.spread)) AS best
           FROM review_queue rq
           JOIN image_assets a ON a.id = rq.image_asset_id
           {join_sql}
@@ -950,6 +956,7 @@ def dino_candidates_summary(
         scope.args,
     ).fetchall()
     by_kind = {r["kind"]: int(r["n"]) for r in rows}
+    best_by_kind = {r["kind"]: r["best"] for r in rows}
 
     # Orphelin = needs_review, aucune ligne de review OUVERTE. Une ligne `done`
     # ne suffit pas à disqualifier : un crop peut avoir été tranché puis
@@ -1026,6 +1033,8 @@ def dino_candidates_summary(
         min_spread=dino_min_spread,
         n_open_single=by_kind.get("single", 0),
         n_open_lot=by_kind.get("lot", 0),
+        best_spread_single=best_by_kind.get("single"),
+        best_spread_lot=best_by_kind.get("lot"),
         n_orphans=int(n_orphans),
         orphan_asset_ids=orphan_ids,
         n_training_eligible=int(n_eligible),

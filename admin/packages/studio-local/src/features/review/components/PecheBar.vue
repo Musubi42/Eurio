@@ -43,6 +43,28 @@ const SPREADS: { value: number | null; label: string; hint: string }[] = [
 const nSingle = computed(() => props.summary?.n_open_single ?? null)
 const nLot = computed(() => props.summary?.n_open_lot ?? null)
 const nOrphans = computed(() => props.summary?.n_orphans ?? 0)
+
+/** « 4 à l'unité » ne dit pas si ça vaut le coup de regarder. La meilleure
+ *  marge, si. Vécu : quatre annonces FRANÇAISES à 0,023 au mieux dans la file
+ *  d'une classe espagnole — quatre skips, et l'impression d'un écran cassé. */
+function margeLabel(best: number | null | undefined): string {
+  if (best == null) return ''
+  return ` · marge max ${best.toFixed(3)}`
+}
+function margeTitle(best: number | null | undefined, n: number | null): string {
+  if (best == null || !n) return 'Aucun candidat dans cette file.'
+  if (best >= 0.10) return `Meilleure marge ${best.toFixed(3)} — au-dessus du palier d'auto-acceptation : le modèle est net sur au moins un crop.`
+  if (best >= 0.05) return `Meilleure marge ${best.toFixed(3)} — au-dessus du seuil du verdict, sans plus. À l'œil.`
+  return `Meilleure marge ${best.toFixed(3)} — SOUS le seuil du verdict (0,05). Le modèle n'est net sur AUCUN crop de cette file : ce sont probablement des faux positifs, ou des pièces que la banque ne connaît pas (une piécette de coffret, par exemple). Regarde l'autre mode, ou élargis le rang.`
+}
+const singleFaible = computed(
+  () => props.summary != null && props.summary.n_open_single > 0
+    && (props.summary.best_spread_single ?? 0) < 0.05,
+)
+const lotFaible = computed(
+  () => props.summary != null && props.summary.n_open_lot > 0
+    && (props.summary.best_spread_lot ?? 0) < 0.05,
+)
 </script>
 
 <template>
@@ -60,13 +82,19 @@ const nOrphans = computed(() => props.summary?.n_orphans ?? 0)
 
     <span class="stock">
       <button
-        type="button" class="chip" :class="{ 'chip--on': mode === 'single' }"
-        :disabled="nSingle === 0" @click="emit('mode', 'single')"
-      >{{ nSingle ?? '…' }} à l'unité</button>
+        type="button" class="chip"
+        :class="{ 'chip--on': mode === 'single', 'chip--faible': singleFaible }"
+        :disabled="nSingle === 0"
+        :title="margeTitle(summary?.best_spread_single, nSingle)"
+        @click="emit('mode', 'single')"
+      >{{ nSingle ?? '…' }} à l'unité{{ margeLabel(summary?.best_spread_single) }}</button>
       <button
-        type="button" class="chip" :class="{ 'chip--on': mode === 'lot' }"
-        :disabled="nLot === 0" @click="emit('mode', 'lot')"
-      >{{ nLot ?? '…' }} en lots</button>
+        type="button" class="chip"
+        :class="{ 'chip--on': mode === 'lot', 'chip--faible': lotFaible }"
+        :disabled="nLot === 0"
+        :title="margeTitle(summary?.best_spread_lot, nLot)"
+        @click="emit('mode', 'lot')"
+      >{{ nLot ?? '…' }} en lots{{ margeLabel(summary?.best_spread_lot) }}</button>
     </span>
 
     <span class="ranks" title="Jusqu'où descendre dans les hypothèses du modèle. Top 1 = sa première réponse. Top 3 / Top 5 élargissent le filet quand la classe est affamée, au prix de plus de faux à écarter à l'œil.">
@@ -147,6 +175,9 @@ const nOrphans = computed(() => props.summary?.n_orphans ?? 0)
 }
 .chip--on { border-color: var(--indigo-700); color: var(--indigo-700); background: color-mix(in srgb, var(--indigo-700) 8%, var(--surface)); }
 .chip--rank { padding-inline: 7px; }
+/* Aucun crop au-dessus du seuil du verdict : la file existe, elle ne vaut
+   probablement rien. On le montre, on ne désactive pas — c'est un avis. */
+.chip--faible { border-style: dashed; color: var(--warning); border-color: var(--warning); }
 .chip--orphan {
   display: inline-flex; align-items: center; gap: 5px;
   border-color: var(--warning); color: var(--warning);

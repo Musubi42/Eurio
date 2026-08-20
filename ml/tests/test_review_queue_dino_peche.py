@@ -209,3 +209,28 @@ def test_le_resume_compte_le_train_comme_le_preflight(conn):
         "le revers commun n'entre jamais au bake : le compter ici ferait "
         "mentir la barre de progression"
     )
+
+
+def test_le_resume_dit_la_meilleure_marge_de_chaque_file(conn):
+    """Un compte seul ment par omission.
+
+    Vécu le 2026-08-20 : la file « 4 à l'unité » d'une classe ESPAGNOLE était
+    faite de quatre annonces FRANÇAISES dont la meilleure marge plafonnait à
+    0,023 — quatre skips pour rien, et l'impression que l'écran était cassé.
+    Le compte dit combien il y a à voir ; la marge dit si ça vaut le coup.
+    """
+    _crop(conn, "20sf", kind="single", top1="it-2002-std", spread=0.02)
+    _crop(conn, "21sf", kind="single", top1="it-2002-std", spread=0.01)
+    _crop(conn, "22ln", kind="lot", top1="it-2002-std", spread=0.31)
+
+    s = repository.dino_candidates_summary(conn, dino_class=CLASSE)
+    assert (s.n_open_single, s.n_open_lot) == (2, 1)
+    assert s.best_spread_single == pytest.approx(0.02)
+    assert s.best_spread_lot == pytest.approx(0.31)
+
+
+def test_une_file_vide_n_a_pas_de_marge(conn):
+    """`None` = « pas de candidat », à ne pas confondre avec une marge nulle."""
+    _crop(conn, "23lot", kind="lot", top1="it-2002-std", spread=0.20)
+    s = repository.dino_candidates_summary(conn, dino_class=CLASSE)
+    assert s.n_open_single == 0 and s.best_spread_single is None
