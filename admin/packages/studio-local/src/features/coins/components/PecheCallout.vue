@@ -104,21 +104,21 @@ async function enqueueOrphans() {
     </div>
 
     <p v-if="summary" class="peche__txt">
-      Le modèle rattache <b>{{ nTop1 }}</b> crop<span v-if="nTop1 > 1">s</span> non validé<span v-if="nTop1 > 1">s</span>
+      Le modèle rattache <b>{{ nTop1 }}</b> {{ nTop1 > 1 ? 'crops non validés' : 'crop non validé' }}
       à cette classe
       <span class="peche__d">({{ summary.n_open_single }} à l'unité · {{ summary.n_open_lot }} en lots)</span>.
       <template v-if="nTop3 > nTop1">
         En élargissant au Top 3, <b>{{ nTop3 }}</b>.
       </template>
       <template v-if="summary.n_training_eligible">
-        Cette classe compte déjà <b>{{ summary.n_training_eligible }}</b> photo<span v-if="summary.n_training_eligible > 1">s</span>
-        au train.
+        Cette classe compte déjà <b>{{ summary.n_training_eligible }}</b>
+        {{ summary.n_training_eligible > 1 ? 'photos' : 'photo' }} au train.
       </template>
     </p>
 
     <div class="peche__actions">
       <button v-if="nTop1 > 0" type="button" class="btn btn--go" @click="fish(1)">
-        Pêcher {{ nTop1 }} crop<span v-if="nTop1 > 1">s</span>
+        <span>Pêcher {{ nTop1 }} crop{{ nTop1 > 1 ? 's' : '' }}</span>
       </button>
       <button v-if="nTop3 > nTop1" type="button" class="btn" @click="fish(3)">
         Élargir au Top 3 ({{ nTop3 }})
