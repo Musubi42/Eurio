@@ -179,6 +179,8 @@ export async function fetchLots(
     /** Position de la classe dans le top-k qui suffit à la retenir (1 | 3 | 5). */
     dinoRank?: number | null
     dinoMinSpread?: number | null
+    /** `false` lève le filtre pays (actif par défaut côté API). */
+    dinoCountryOnly?: boolean
   } = {},
 ): Promise<LotListResponse> {
   const params = new URLSearchParams()
@@ -189,6 +191,7 @@ export async function fetchLots(
   if (opts.dinoClass) params.set('dino_class', opts.dinoClass)
   if (opts.dinoRank) params.set('dino_rank', String(opts.dinoRank))
   if (opts.dinoMinSpread != null) params.set('dino_min_spread', String(opts.dinoMinSpread))
+  if (opts.dinoCountryOnly === false) params.set('dino_country_only', 'false')
   if (opts.designGroup) params.set('design_group', opts.designGroup)
   if (opts.targetEurioId) params.set('target_eurio_id', opts.targetEurioId)
   if (opts.cohortId) params.set('cohort_id', opts.cohortId)

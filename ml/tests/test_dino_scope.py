@@ -167,3 +167,73 @@ def test_une_classe_inconnue_ne_ramene_rien_sans_lever(conn):
     _asset(conn, "x", top_k=["it-2002-std"], top1="it-2002-std")
     scope = build_dino_scope(conn, dino_class="zz-inexistante")
     assert _matching(conn, scope) == []
+
+
+# ─── Le filtre pays ────────────────────────────────────────────────────────
+
+
+def _listed(conn, ref, country, top1):
+    """Un crop, avec le pays de son ANNONCE (pas celui de la pièce)."""
+    import json as _json
+    conn.execute(
+        "INSERT INTO source_images (id, source, source_ref, listing_country, "
+        "storage_path) VALUES (?,?,?,?,'x.jpg')",
+        (f"si-{ref}", "ebay", f"r-{ref}", country),
+    )
+    conn.execute(
+        "INSERT INTO image_assets (id, source_image_id, storage_path, "
+        f"storage_status) VALUES ('a-{ref}','si-{ref}','c.jpg','present')",
+    )
+    conn.execute(
+        "INSERT INTO image_asset_dino_predictions (asset_id, encoder_version, "
+        "anchors_kind, anchors_count, top_k_json, top1_eurio_id, top1_sim, "
+        "spread) VALUES (?,?,?,?,?,?,?,?)",
+        (f"a-{ref}", SUGGESTIONS_ENCODER_VERSION, SUGGESTIONS_ANCHORS_KIND, 10,
+         _json.dumps([{"eurio_id": top1, "sim": 0.8}]), top1, 0.8, 0.2),
+    )
+    conn.commit()
+
+
+def _matching_listed(conn, scope) -> list[str]:
+    rows = conn.execute(
+        f"SELECT a.id FROM image_assets a "
+        f"JOIN source_images si ON si.id = a.source_image_id "
+        f"{suggestions_join_sql()} WHERE {scope.sql} ORDER BY a.id",
+        scope.args,
+    ).fetchall()
+    return [r["id"] for r in rows]
+
+
+def test_le_pays_d_une_classe_se_resout(conn):
+    from shared.dino_scope import class_country
+    assert class_country(conn, "it-2euro-standard-t1") == "IT"
+    assert class_country(conn, "fr-2016-commemo") == "FR"
+    # Classe inconnue : `None`, ce qui DÉSACTIVE le filtre chez l'appelant.
+    # Renvoyer un pays faux réduirait la file à zéro sans rien dire.
+    assert class_country(conn, "zz-inexistante") is None
+
+
+def test_le_filtre_pays_ecarte_les_annonces_etrangeres(conn):
+    _listed(conn, "ital", "IT", "it-2002-std")
+    _listed(conn, "alle", "DE", "it-2002-std")
+
+    sans = build_dino_scope(conn, dino_class="it-2euro-standard-t1")
+    avec = build_dino_scope(
+        conn, dino_class="it-2euro-standard-t1", country_only=True,
+    )
+    assert set(_matching_listed(conn, sans)) == {"a-ital", "a-alle"}
+    assert _matching_listed(conn, avec) == ["a-ital"]
+    assert avec.country == "IT" and sans.country is None
+
+
+def test_une_classe_sans_pays_n_est_pas_reduite_a_zero(conn):
+    """Le filtre se DÉSACTIVE plutôt que de vider la file.
+
+    Une classe dont on ne sait pas résoudre le pays doit être servie entière :
+    un filtre qui mord sur une valeur inconnue renverrait zéro ligne, ce qui se
+    lit « rien à trancher » — parfaitement plausible, et faux.
+    """
+    _listed(conn, "orph", "DE", "zz-inconnue")
+    scope = build_dino_scope(conn, dino_class="zz-inconnue", country_only=True)
+    assert scope.country is None
+    assert _matching_listed(conn, scope) == ["a-orph"]

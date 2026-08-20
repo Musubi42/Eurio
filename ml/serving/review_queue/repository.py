@@ -436,6 +436,7 @@ def list_queue(
     dino_top1_only: bool = False,
     dino_class: str | None = None,
     dino_rank: int = 1,
+    dino_country_only: bool = True,
 ) -> list[ReviewItem]:
     # `dino` : d'abord ce que le modèle rattache à LA CLASSE TRAVAILLÉE, puis
     # du plus net au plus flou.
@@ -460,9 +461,14 @@ def list_queue(
     # LA PLACE du scope par cible (eurio_id / cohort_id) au lieu de s'y ajouter
     # — les combiner rendrait les lots inatteignables, qui sont précisément le
     # gisement qu'on vient chercher. Cf. shared/dino_scope.
+    # ⚠️ `country_alias='s'` : dans CETTE requête, source_images porte l'alias
+    # `s`. Se tromper d'alias donne un `no such column` bruyant — c'est voulu,
+    # un filtre pays qui rate en silence servirait le pool entier en croyant
+    # l'avoir restreint.
     scope = build_dino_scope(
         conn, dino_class=dino_class, rank=dino_rank,
         min_spread=dino_min_spread,
+        country_only=dino_country_only, country_alias="s",
     )
 
     wanted_classes: list[str] = []
@@ -701,6 +707,7 @@ def _lot_scope(
     dino_class: str | None = None,
     dino_rank: int = 1,
     dino_min_spread: float | None = None,
+    dino_country_only: bool = True,
 ) -> tuple[str, str, str, list[object]]:
     """Le périmètre d'une file de lots, en un seul endroit.
 
@@ -725,6 +732,7 @@ def _lot_scope(
         scope = build_dino_scope(
             conn, dino_class=dino_class, rank=dino_rank,
             min_spread=dino_min_spread,
+            country_only=dino_country_only, country_alias="si",
         )
         if scope.is_empty:  # classe absente ET marge absente : rien à pêcher
             return "", "", "", []
@@ -813,6 +821,7 @@ def list_lots(
     dino_class: str | None = None,
     dino_rank: int = 1,
     dino_min_spread: float | None = None,
+    dino_country_only: bool = True,
 ) -> tuple[list[LotListItem], int]:
     """Liste les listings ayant ≥ 1 row review_queue.kind='lot' status='open'.
 
@@ -828,6 +837,7 @@ def list_lots(
             conn, cohort_id=cohort_id, target_eurio_id=target_eurio_id,
             design_group=design_group, dino_class=dino_class,
             dino_rank=dino_rank, dino_min_spread=dino_min_spread,
+            dino_country_only=dino_country_only,
         )
     except ValueError:
         return [], 0
@@ -919,6 +929,7 @@ def dino_candidates_summary(
     dino_class: str,
     dino_rank: int = 1,
     dino_min_spread: float | None = None,
+    dino_country_only: bool = True,
 ):
     """Combien de crops la banque rattache à cette classe, et où ils sont.
 
@@ -932,11 +943,37 @@ def dino_candidates_summary(
     scope = build_dino_scope(
         conn, dino_class=dino_class, rank=dino_rank,
         min_spread=dino_min_spread,
+        country_only=dino_country_only, country_alias="si",
     )
     if scope.is_empty:
         raise ValueError("dino_class requis")
 
     join_sql = suggestions_join_sql("ps")
+
+    def _count(sc) -> int:
+        return conn.execute(
+            f"""
+            SELECT COUNT(*) AS n
+              FROM review_queue rq
+              JOIN image_assets a ON a.id = rq.image_asset_id
+              JOIN source_images si ON si.id = a.source_image_id
+              {join_sql}
+             WHERE rq.status = 'open' AND {sc.sql}
+            """,
+            sc.args,
+        ).fetchone()["n"]
+
+    # Ce que le filtre pays MASQUE, compté et rendu. Un filtre actif par défaut
+    # qui ne dit pas ce qu'il retire est un filtre qui ment par omission — et
+    # celui-ci retire 5 % de vrais positifs (mesuré : 340 gardés sur 358). Le
+    # nombre s'affiche à côté de la pastille, et un clic les ramène.
+    n_other_country = 0
+    if scope.country:
+        sans_filtre = build_dino_scope(
+            conn, dino_class=dino_class, rank=dino_rank,
+            min_spread=dino_min_spread, country_alias="si",
+        )
+        n_other_country = max(_count(sans_filtre) - _count(scope), 0)
 
     # La MEILLEURE MARGE par mode, à côté du compte. Un compte seul ment par
     # omission : la file ES « 4 à l'unité » était faite de quatre annonces
@@ -955,6 +992,7 @@ def dino_candidates_summary(
                MAX(COALESCE(ps.country_spread, ps.spread)) AS best
           FROM review_queue rq
           JOIN image_assets a ON a.id = rq.image_asset_id
+          JOIN source_images si ON si.id = a.source_image_id
           {join_sql}
          WHERE rq.status = 'open' AND {scope.sql}
          GROUP BY rq.kind
@@ -971,6 +1009,7 @@ def dino_candidates_summary(
         f"""
         SELECT a.id AS asset_id
           FROM image_assets a
+          JOIN source_images si ON si.id = a.source_image_id
           {join_sql}
          WHERE a.resolution_status = 'needs_review'
            AND a.training_eligible IS NOT 1
@@ -994,6 +1033,7 @@ def dino_candidates_summary(
             f"""
             SELECT COUNT(*) AS n
               FROM image_assets a
+              JOIN source_images si ON si.id = a.source_image_id
               {join_sql}
              WHERE a.resolution_status = 'needs_review'
                AND a.training_eligible IS NOT 1
@@ -1041,6 +1081,8 @@ def dino_candidates_summary(
         n_open_lot=by_kind.get("lot", 0),
         best_spread_single=best_by_kind.get("single"),
         best_spread_lot=best_by_kind.get("lot"),
+        country=scope.country,
+        n_other_country=n_other_country,
         n_orphans=int(n_orphans),
         orphan_asset_ids=orphan_ids,
         n_training_eligible=int(n_eligible),
@@ -1088,6 +1130,7 @@ def lot_siblings(
     dino_class: str | None = None,
     dino_rank: int = 1,
     dino_min_spread: float | None = None,
+    dino_country_only: bool = True,
 ) -> tuple[str | None, str | None]:
     """Le lot précédent et le suivant **dans le périmètre courant**.
 
@@ -1101,6 +1144,7 @@ def lot_siblings(
             conn, cohort_id=cohort_id, target_eurio_id=target_eurio_id,
             design_group=design_group, dino_class=dino_class,
             dino_rank=dino_rank, dino_min_spread=dino_min_spread,
+            dino_country_only=dino_country_only,
         )
     except ValueError:
         return None, None
@@ -1126,6 +1170,7 @@ def get_lot_detail(
     dino_class: str | None = None,
     dino_rank: int = 1,
     dino_min_spread: float | None = None,
+    dino_country_only: bool = True,
 ):
     """Lot detail — version sans re-détection live (image lean).
 
@@ -1184,6 +1229,11 @@ def get_lot_detail(
 
     matching_assets: set[str] | None = None
     if dino_class:
+        # Volontairement SANS `country_only` : le filtre pays choisit quels
+        # LISTINGS entrent dans la file, pas quels crops sont marqués dedans.
+        # Une fois le coffret ouvert, un crop du bon design reste un crop du bon
+        # design — masquer son ⌁ parce que l'annonce est étrangère mentirait sur
+        # ce que le modèle a dit.
         _scope = build_dino_scope(
             conn, dino_class=dino_class, rank=dino_rank,
             min_spread=dino_min_spread,
@@ -1301,6 +1351,7 @@ def get_lot_detail(
         cohort_id=cohort_id, target_eurio_id=target_eurio_id,
         design_group=design_group, dino_class=dino_class,
         dino_rank=dino_rank, dino_min_spread=dino_min_spread,
+        dino_country_only=dino_country_only,
     )
 
     return LotDetail(

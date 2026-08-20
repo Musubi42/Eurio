@@ -156,6 +156,13 @@ class DinoCandidatesSummary(BaseModel):
     #: par omission : « 4 à l'unité » peut être quatre faux positifs à 0,02.
     best_spread_single: float | None = None
     best_spread_lot: float | None = None
+    #: Le pays sur lequel le filtre mord, ou `None` s'il est désactivé / la
+    #: classe n'a pas de pays résoluble.
+    country: str | None = None
+    #: Combien de crops le filtre pays MASQUE. Un filtre actif par défaut qui ne
+    #: dit pas ce qu'il retire ment par omission — celui-ci écarte ~5 % de vrais
+    #: positifs, des coffrets multi-pays.
+    n_other_country: int = 0
     #: Crops en `needs_review` SANS ligne de review ouverte : jamais enfilés,
     #: invisibles partout. Ils ne deviennent péchables qu'après un enfilage
     #: explicite (POST /coins/assets/reflag-needs-review) — on ne les enfile

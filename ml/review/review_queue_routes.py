@@ -553,6 +553,7 @@ def list_queue(
     dino_top1_only: bool = Query(default=False),
     dino_class: str | None = Query(default=None),
     dino_rank: int = Query(default=1),
+    dino_country_only: bool = Query(default=True),
 ) -> list[ReviewItem]:
     if order not in ("priority", "enqueued_at", "dino"):
         raise HTTPException(
@@ -663,9 +664,12 @@ def list_queue(
     # LA PLACE du scope par cible — les combiner rendrait les lots
     # inatteignables, qui sont le gisement qu'on vient chercher.
     # Miroir exact de `serving/review_queue/repository.list_queue`.
+    # `country_alias='s'` : ici source_images porte l'alias `s`. Miroir exact
+    # de `serving/review_queue/repository.list_queue`.
     scope = build_dino_scope(
         conn, dino_class=dino_class, rank=dino_rank,
         min_spread=dino_min_spread,
+        country_only=dino_country_only, country_alias="s",
     )
 
     wanted_classes: list[str] = []
@@ -1257,6 +1261,7 @@ def dino_candidates_summary(
     dino_class: str = Query(...),
     dino_rank: int = Query(default=1),
     dino_min_spread: float | None = Query(default=None, ge=0.0, le=1.0),
+    dino_country_only: bool = Query(default=True),
 ):
     """Ce que la banque propose pour une classe — jumeau lourd, même corps.
 
@@ -1274,6 +1279,7 @@ def dino_candidates_summary(
         return _lean.dino_candidates_summary(
             conn, dino_class=dino_class, dino_rank=dino_rank,
             dino_min_spread=dino_min_spread,
+            dino_country_only=dino_country_only,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -1290,6 +1296,7 @@ def list_lots(
     dino_class: str | None = Query(default=None),
     dino_rank: int = Query(default=1),
     dino_min_spread: float | None = Query(default=None, ge=0.0, le=1.0),
+    dino_country_only: bool = Query(default=True),
 ) -> LotListResponse:
     """Liste les listings ayant ≥ 1 row review_queue.kind='lot' status='open'.
 
@@ -1323,6 +1330,7 @@ def list_lots(
         target_eurio_id=target_eurio_id, design_group=design_group,
         dino_class=dino_class, dino_rank=dino_rank,
         dino_min_spread=dino_min_spread,
+        dino_country_only=dino_country_only,
     )
     return LotListResponse(
         items=[LotListItem(**it.model_dump()) for it in items],
@@ -1522,6 +1530,7 @@ def _siblings(
     dino_class: str | None = None,
     dino_rank: int = 1,
     dino_min_spread: float | None = None,
+    dino_country_only: bool = True,
 ) -> tuple[str | None, str | None]:
     """Le lot précédent et le suivant **dans le périmètre courant**.
 
@@ -1539,6 +1548,7 @@ def _siblings(
         cohort_id=cohort_id, target_eurio_id=target_eurio_id,
         design_group=design_group, dino_class=dino_class,
         dino_rank=dino_rank, dino_min_spread=dino_min_spread,
+        dino_country_only=dino_country_only,
     )
 
 
@@ -1552,6 +1562,7 @@ def get_lot(
     dino_class: str | None = Query(default=None),
     dino_rank: int = Query(default=1),
     dino_min_spread: float | None = Query(default=None, ge=0.0, le=1.0),
+    dino_country_only: bool = Query(default=True),
 ) -> LotDetail:
     """Le lot, et ses voisins DANS LE PÉRIMÈTRE passé en query.
 
@@ -1676,6 +1687,7 @@ def get_lot(
         cohort_id=cohort_id, target_eurio_id=target_eurio_id,
         design_group=design_group, dino_class=dino_class,
         dino_rank=dino_rank, dino_min_spread=dino_min_spread,
+        dino_country_only=dino_country_only,
     )
 
     return LotDetail(

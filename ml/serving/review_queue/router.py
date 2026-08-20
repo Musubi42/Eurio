@@ -59,6 +59,7 @@ def list_queue(
     dino_top1_only: bool = Query(default=False),
     dino_class: str | None = Query(default=None),
     dino_rank: int = Query(default=1),
+    dino_country_only: bool = Query(default=True),
 ) -> list[ReviewItem]:
     if order not in ("priority", "enqueued_at", "dino"):
         raise HTTPException(
@@ -86,6 +87,7 @@ def list_queue(
             lane=lane, cohort_id=cohort_id, eurio_id=eurio_id, review_ids=rids,
             dino_min_spread=dino_min_spread, dino_top1_only=dino_top1_only,
             dino_class=dino_class, dino_rank=dino_rank,
+            dino_country_only=dino_country_only,
         )
     except repository.CohortNotFound:
         raise HTTPException(status_code=404, detail="Cohort introuvable")
@@ -133,6 +135,7 @@ def dino_candidates_summary(
     dino_class: str = Query(...),
     dino_rank: int = Query(default=1),
     dino_min_spread: float | None = Query(default=None, ge=0.0, le=1.0),
+    dino_country_only: bool = Query(default=True),
 ) -> DinoCandidatesSummary:
     """Ce que la banque propose pour une classe — pour la porte d'entrée Coins.
 
@@ -148,6 +151,7 @@ def dino_candidates_summary(
         return repository.dino_candidates_summary(
             conn, dino_class=dino_class, dino_rank=dino_rank,
             dino_min_spread=dino_min_spread,
+            dino_country_only=dino_country_only,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -168,6 +172,7 @@ def list_lots(
     dino_class: str | None = Query(default=None),
     dino_rank: int = Query(default=1),
     dino_min_spread: float | None = Query(default=None, ge=0.0, le=1.0),
+    dino_country_only: bool = Query(default=True),
 ) -> LotListResponse:
     if dino_rank not in DINO_RANKS:
         raise HTTPException(
@@ -178,6 +183,7 @@ def list_lots(
         target_eurio_id=target_eurio_id, design_group=design_group,
         dino_class=dino_class, dino_rank=dino_rank,
         dino_min_spread=dino_min_spread,
+        dino_country_only=dino_country_only,
     )
     return LotListResponse(items=items, total=total)
 
@@ -193,6 +199,7 @@ def get_lot(
     dino_class: str | None = Query(default=None),
     dino_rank: int = Query(default=1),
     dino_min_spread: float | None = Query(default=None, ge=0.0, le=1.0),
+    dino_country_only: bool = Query(default=True),
 ) -> LotDetail:
     """Le lot, et ses voisins DANS LE PÉRIMÈTRE passé en query.
 
@@ -210,6 +217,7 @@ def get_lot(
             cohort_id=cohort_id, target_eurio_id=target_eurio_id,
             design_group=design_group, dino_class=dino_class,
             dino_rank=dino_rank, dino_min_spread=dino_min_spread,
+            dino_country_only=dino_country_only,
         )
     except repository.LotNotFound as exc:
         raise HTTPException(

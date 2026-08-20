@@ -77,6 +77,7 @@ __all__ = [
     "DINO_RANKS",
     "DinoScope",
     "build_dino_scope",
+    "class_country",
     "suggestions_join_sql",
 ]
 
@@ -102,6 +103,24 @@ def suggestions_join_sql(alias: str = "ps") -> str:
     )
 
 
+def class_country(conn: sqlite3.Connection, class_id: str) -> str | None:
+    """Le pays d'une classe (ISO2), ou `None` si on ne peut pas trancher.
+
+    `None` DÉSACTIVE le filtre pays chez l'appelant plutôt que de le rendre
+    vide : une classe dont on ignore le pays doit être servie entière, pas
+    silencieusement réduite à zéro.
+    """
+    row = conn.execute(
+        "SELECT country FROM coins "
+        " WHERE COALESCE(design_group_id, eurio_id) = ? AND country IS NOT NULL "
+        " GROUP BY country ORDER BY COUNT(*) DESC LIMIT 1",
+        (class_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    return row[0] if not isinstance(row, sqlite3.Row) else row["country"]
+
+
 @dataclass(frozen=True)
 class DinoScope:
     """Un périmètre par prédiction, prêt à coller dans un WHERE.
@@ -116,6 +135,10 @@ class DinoScope:
     #: Vide si aucune classe n'a été demandée.
     class_ids: tuple[str, ...]
     rank: int
+    #: Le pays sur lequel le filtre a mordu, ou `None` s'il ne s'applique pas
+    #: (désactivé, ou classe sans pays résoluble). L'écran doit pouvoir dire
+    #: qu'il filtre, et sur quoi.
+    country: str | None = None
 
     @property
     def is_empty(self) -> bool:
@@ -129,6 +152,8 @@ def build_dino_scope(
     rank: int = 1,
     min_spread: float | None = None,
     alias: str = "ps",
+    country_only: bool = False,
+    country_alias: str = "si",
 ) -> DinoScope:
     """Construit « la prédiction pointe cette classe », en SQL.
 
@@ -145,6 +170,24 @@ def build_dino_scope(
 
     `min_spread` filtre sur `COALESCE(country_spread, spread)`, la grandeur que
     le verdict utilise réellement.
+
+    `country_only` restreint aux annonces du PAYS DE LA CLASSE
+    (`{country_alias}.listing_country`). Mesuré le 2026-08-20 sur les crops déjà
+    tranchés par un humain, à la maille classe :
+
+        courantes       precision 91,3 % (n=392)  -> 99,1 %   vrais gardés 340/358 = 95,0 %
+        commémoratives  precision 94,6 % (n=1759) -> 98,4 %   vrais gardés 1587/1664 = 95,4 %
+
+    Il coupe ~91 % des faux positifs pour ~5 % de vrais — et les 5 % perdus ont
+    un profil identifiable : des coffrets multi-pays (13 des 18 crops perdus
+    venaient d'annonces belges). D'où un réglage, et non une règle en dur.
+
+    ⛔ **Ne pas confondre avec le top-1 SCOPÉ PAYS** (`top1_country_eurio_id`,
+    déjà en base). Mesuré le même jour : il ne gagne que 1,2 point (91,3 →
+    92,5 %) et sa couverture est trouée — `target_country` dérive de
+    `target_eurio_id`, NULL sur tout le pool ambigu, soit 2254 des 6651 crops
+    ouverts et la moitié du pool des classes standard. Piste écartée APRÈS
+    mesure ; ne pas la rouvrir sans en refaire une.
     """
     if rank not in DINO_RANKS:
         raise ValueError(
@@ -181,9 +224,17 @@ def build_dino_scope(
         )
         args.append(float(min_spread))
 
+    country: str | None = None
+    if country_only and dino_class:
+        country = class_country(conn, dino_class)
+        if country:
+            bits.append(f"{country_alias}.listing_country = ?")
+            args.append(country)
+
     return DinoScope(
         sql=" AND ".join(bits),
         args=tuple(args),
         class_ids=class_ids,
         rank=rank,
+        country=country,
     )

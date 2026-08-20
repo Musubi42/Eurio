@@ -46,6 +46,11 @@ const minSpread = computed<number | null>(() => {
   const n = Number.parseFloat(raw)
   return Number.isFinite(n) ? n : null
 })
+// Filtre pays — ACTIF par défaut, et l'URL ne porte que la LEVÉE (`pays=tous`).
+// Un défaut qui ne s'écrit pas dans l'URL garde les liens courts et rend le
+// réglage non-défaut visible d'un coup d'œil dans la barre d'adresse.
+const countryOnly = computed(() => queryParam(route, 'pays') !== 'tous')
+
 const mode = computed<'single' | 'lot'>(
   () => (queryParam(route, 'mode') === 'lot' ? 'lot' : 'single'),
 )
@@ -66,14 +71,21 @@ function setMinSpread(v: number | null) {
   patch({ dino_min: v == null ? undefined : String(v), lot: undefined })
 }
 function setMode(m: 'single' | 'lot') { patch({ mode: m, lot: undefined }) }
+function setCountryOnly(on: boolean) {
+  // Comme le rang et la marge : changer le périmètre relâche le lot ouvert,
+  // qui peut ne plus en faire partie.
+  patch({ pays: on ? undefined : 'tous', lot: undefined })
+}
 
 // La query que lisent les vues de review (SingleReviewView lit `dino_class`,
 // `dino_rank`, `tri` et `dino_min` directement dans l'URL).
-watch([classId, rank, minSpread], () => {
+watch([classId, rank, minSpread, countryOnly], () => {
   if (!classId.value) return
   const q: Record<string, unknown> = { ...route.query, tri: 'dino' }
   q.dino_class = classId.value
   q.dino_rank = String(rank.value)
+  if (countryOnly.value) delete q.dino_country_only
+  else q.dino_country_only = 'false'
   if (minSpread.value == null) delete q.dino_min
   else q.dino_min = String(minSpread.value)
   void router.replace({ query: q as Record<string, string> })
@@ -86,6 +98,7 @@ const lotScope = computed<Record<string, string>>(() => {
   out.dino_class = classId.value
   out.dino_rank = String(rank.value)
   if (minSpread.value != null) out.dino_min_spread = String(minSpread.value)
+  if (!countryOnly.value) out.dino_country_only = 'false'
   return out
 })
 const {
@@ -102,12 +115,13 @@ async function loadSummary() {
   try {
     summary.value = await fetchDinoCandidates(classId.value, {
       rank: rank.value, minSpread: minSpread.value,
+      countryOnly: countryOnly.value,
     })
   } finally {
     loading.value = false
   }
 }
-watch([classId, rank, minSpread], loadSummary, { immediate: true })
+watch([classId, rank, minSpread, countryOnly], loadSummary, { immediate: true })
 
 // Le mode par défaut suit le stock. Sans ça, une classe dont les singles sont
 // épuisés ouvre sur « Tout est résolu » alors que quatre-vingts crops de lots
@@ -192,12 +206,14 @@ const nothingHere = computed(
       :rank="rank"
       :min-spread="minSpread"
       :mode="mode"
+      :country-only="countryOnly"
       :summary="summary"
       :loading="loading"
       :enqueuing="enqueuing"
       @rank="setRank"
       @min-spread="setMinSpread"
       @mode="setMode"
+      @country-only="setCountryOnly"
       @enqueue-orphans="enqueueOrphans"
     />
     <p v-if="enqueueMsg" class="msg msg--info">{{ enqueueMsg }}</p>
@@ -213,8 +229,9 @@ const nothingHere = computed(
 
     <div v-else-if="nothingHere" class="msg">
       <b>Rien à pêcher pour cette classe</b> au rang {{ rank }}<span v-if="minSpread"> et à la marge ≥ {{ minSpread }}</span>.
-      Élargis le filet (Top 3, Top 5, marge « toutes »), ou la classe manque
-      simplement de matière — c'est alors un sujet de scrape, pas de tri.
+      Élargis le filet (Top 3, Top 5, marge « toutes »<span v-if="countryOnly">,
+      ou lève le filtre pays</span>), ou la classe manque simplement de
+      matière — c'est alors un sujet de scrape, pas de tri.
     </div>
 
     <div v-else class="flex-1 overflow-hidden">

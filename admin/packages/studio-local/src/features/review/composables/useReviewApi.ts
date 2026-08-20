@@ -259,6 +259,13 @@ export async function fetchReviewQueue(
     dinoClass?: string | null
     /** Position dans le top-k qui suffit à retenir un crop : 1, 3 ou 5. */
     dinoRank?: number | null
+    /**
+     * Restreindre aux annonces du PAYS DE LA CLASSE. **Actif par défaut côté
+     * API** : mesuré le 2026-08-20, il fait passer la précision du top-1 de
+     * 91,3 % à 99,1 % sur les courantes, en gardant 95 % des vrais positifs.
+     * Passer `false` explicitement pour le lever.
+     */
+    dinoCountryOnly?: boolean
   } = {},
 ): Promise<ReviewItem[]> {
   const limit = opts.limit ?? 30
@@ -274,6 +281,7 @@ export async function fetchReviewQueue(
   if (opts.dinoTop1Only) params.set('dino_top1_only', 'true')
   if (opts.dinoClass) params.set('dino_class', opts.dinoClass)
   if (opts.dinoRank) params.set('dino_rank', String(opts.dinoRank))
+  if (opts.dinoCountryOnly === false) params.set('dino_country_only', 'false')
   // Phase 2c-b : porté sur eurio-api (Bearer PAT).
   const items = await fetchEurio<ReviewItem[]>(`/review-queue?${params.toString()}`)
   return items.map(promoteItemUrls)
@@ -751,6 +759,11 @@ export interface DinoCandidatesSummary {
    *  omission : « 4 à l'unité » peut être quatre faux positifs à 0,02. */
   best_spread_single: number | null
   best_spread_lot: number | null
+  /** Le pays sur lequel le filtre mord, `null` s'il est levé. */
+  country: string | null
+  /** Combien de crops le filtre pays MASQUE — un filtre actif par défaut qui
+   *  ne dit pas ce qu'il retire ment par omission. */
+  n_other_country: number
   /** needs_review SANS ligne de review ouverte : invisibles partout. */
   n_orphans: number
   orphan_asset_ids: string[]
@@ -768,11 +781,17 @@ export interface DinoCandidatesSummary {
  */
 export async function fetchDinoCandidates(
   classId: string,
-  opts: { rank?: number; minSpread?: number | null } = {},
+  opts: {
+    rank?: number
+    minSpread?: number | null
+    /** `false` lève le filtre pays (actif par défaut côté API). */
+    countryOnly?: boolean
+  } = {},
 ): Promise<DinoCandidatesSummary | null> {
   const params = new URLSearchParams({ dino_class: classId })
   if (opts.rank) params.set('dino_rank', String(opts.rank))
   if (opts.minSpread != null) params.set('dino_min_spread', String(opts.minSpread))
+  if (opts.countryOnly === false) params.set('dino_country_only', 'false')
   try {
     return await fetchEurio<DinoCandidatesSummary>(
       `/review-queue/dino-candidates/summary?${params.toString()}`,

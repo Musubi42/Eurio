@@ -132,11 +132,26 @@ def test_la_peche_ignore_le_pool_ambigu_pays(conn):
     assert _peche(conn) == ["rq-03bon"]
 
 
-def test_la_peche_traverse_les_pays_de_listing(conn):
-    """Une italienne photographiée dans une annonce allemande est pêchable :
-    le pays du LISTING n'est pas le pays de la PIÈCE."""
+def test_le_filtre_pays_est_actif_par_defaut_et_se_leve(conn):
+    """Le pays du LISTING n'est pas le pays de la PIÈCE — mais il le prédit bien.
+
+    Mesuré le 2026-08-20 sur les crops déjà tranchés : restreindre aux annonces
+    du pays de la classe fait passer la précision de 91,3 % à 99,1 % sur les
+    courantes, en gardant 340 des 358 vrais positifs (95 %). Les 5 % perdus sont
+    des coffrets multi-pays — d'où un filtre qu'on peut LEVER, et qui dit
+    combien il masque.
+    """
     _crop(conn, "05de", country="DE", top1="it-2002-std", spread=0.30)
-    assert _peche(conn) == ["rq-05de"]
+    _crop(conn, "05it", country="IT", top1="it-2002-std", spread=0.30)
+
+    # Par défaut : l'annonce allemande est écartée.
+    assert _peche(conn) == ["rq-05it"]
+    # Filtre levé : elle revient.
+    assert set(_peche(conn, dino_country_only=False)) == {"rq-05it", "rq-05de"}
+
+    # Et le résumé DIT combien il masque — un filtre muet mentirait par omission.
+    s = repository.dino_candidates_summary(conn, dino_class=CLASSE)
+    assert s.country == "IT" and s.n_other_country == 1
 
 
 def test_le_rang_elargit_le_filet(conn):

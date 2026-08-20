@@ -20,6 +20,8 @@ const props = defineProps<{
   rank: number
   minSpread: number | null
   mode: 'single' | 'lot'
+  /** Filtre « annonce du pays de la classe » — actif par défaut. */
+  countryOnly: boolean
   summary: DinoCandidatesSummary | null
   loading: boolean
   enqueuing: boolean
@@ -29,6 +31,7 @@ const emit = defineEmits<{
   (e: 'rank', value: number): void
   (e: 'min-spread', value: number | null): void
   (e: 'mode', value: 'single' | 'lot'): void
+  (e: 'country-only', value: boolean): void
   (e: 'enqueue-orphans'): void
 }>()
 
@@ -105,6 +108,24 @@ const lotFaible = computed(
       >Top {{ r }}</button>
     </span>
 
+    <!-- Le filtre pays. Actif par défaut, et il DIT ce qu'il masque : mesuré
+         le 2026-08-20, il coupe ~91 % des faux positifs mais écarte aussi ~5 %
+         de vrais (des coffrets multi-pays). Un filtre muet mentirait par
+         omission ; celui-ci porte son propre compte. -->
+    <button
+      type="button"
+      class="chip chip--pays"
+      :class="{ 'chip--on': countryOnly }"
+      :title="countryOnly
+        ? `Seules les annonces du pays de la classe sont servies. Mesuré : la précision du top-1 passe de 91,3 % à 99,1 % sur une pièce courante, en gardant 95 % des vrais positifs. Les ${summary?.n_other_country ?? 0} crops masqués sont surtout des coffrets multi-pays — clique pour les ramener.`
+        : 'Filtre levé : les annonces de tous les pays sont servies. Sur une classe courante, environ un crop sur dix est alors un faux positif d\'un autre pays.'"
+      @click="emit('country-only', !countryOnly)"
+    >
+      {{ countryOnly ? `pays ${summary?.country ?? '—'}` : 'tous pays' }}<span
+        v-if="countryOnly && (summary?.n_other_country ?? 0) > 0"
+      > · {{ summary?.n_other_country }} masqués</span>
+    </button>
+
     <span class="ranks">
       <button
         v-for="s in SPREADS" :key="String(s.value)" type="button"
@@ -178,6 +199,7 @@ const lotFaible = computed(
 /* Aucun crop au-dessus du seuil du verdict : la file existe, elle ne vaut
    probablement rien. On le montre, on ne désactive pas — c'est un avis. */
 .chip--faible { border-style: dashed; color: var(--warning); border-color: var(--warning); }
+.chip--pays { border-style: dashed; }
 .chip--orphan {
   display: inline-flex; align-items: center; gap: 5px;
   border-color: var(--warning); color: var(--warning);

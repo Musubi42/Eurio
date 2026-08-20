@@ -108,6 +108,10 @@ function setView(v: CohortView) {
 // la pêche 137 tous utiles — dont 136 en lots, invisibles jusqu'ici.
 const sortByDino = computed(() => route.query.tri === 'dino')
 /** Jusqu'où descendre dans les hypothèses du modèle : 1, 3 ou 5. */
+// Filtre pays — ACTIF par défaut ; l'URL ne porte que sa LEVÉE (`pays=tous`).
+// Un défaut absent de l'URL garde les liens courts, et rend un réglage
+// non-défaut visible d'un coup d'œil dans la barre d'adresse.
+const countryOnly = computed(() => route.query.pays !== 'tous')
 const dinoRank = computed(() => {
   const n = Number.parseInt(String(route.query.dino_rank ?? '1'), 10)
   return [1, 3, 5].includes(n) ? n : 1
@@ -116,6 +120,13 @@ const dinoRank = computed(() => {
 function setSort(dino: boolean) {
   const q: Record<string, unknown> = { ...route.query }
   if (dino) { q.tri = 'dino' } else { delete q.tri; delete q.dino_rank; delete q.lot }
+  void router.replace({ query: q as Record<string, string> })
+}
+function setCountryOnly(on: boolean) {
+  const q: Record<string, unknown> = { ...route.query, tri: 'dino' }
+  if (on) delete q.pays
+  else q.pays = 'tous'
+  delete q.lot   // le périmètre change : le lot ouvert peut ne plus en être
   void router.replace({ query: q as Record<string, string> })
 }
 function setRank(rank: number) {
@@ -146,7 +157,11 @@ function scopeQuery(k: CohortClass, m: Mode): Record<string, string> {
     // les `kind`, les pays de listing et les cibles de scrape. C'est aussi lui
     // qui donne au « lot suivant » son ordre : sans lui, la nav déroule la file
     // lot globale (5413 items) et sort de la classe au premier clic.
-    return { ...base, tri: 'dino', dino_class: k.id, dino_rank: String(dinoRank.value) }
+    const q: Record<string, string> = {
+      ...base, tri: 'dino', dino_class: k.id, dino_rank: String(dinoRank.value),
+    }
+    if (!countryOnly.value) { q.pays = 'tous'; q.dino_country_only = 'false' }
+    return q
   }
   if (m === 'lot') return { ...base, ...k.lotScope }
   // La file single par cible ne sait filtrer que par pièce. Les classes de la
@@ -189,7 +204,10 @@ function nextClass() {
 // qu'un `watch` évalue sa source dès le setup : les laisser plus bas mettrait
 // la ref en zone morte temporelle, et la page planterait au montage.
 // Ils sont remplis par le watch de la section « pêche », plus bas.
-const peche = ref<{ single: number; lot: number; orphans: number } | null>(null)
+const peche = ref<{
+  single: number; lot: number; orphans: number
+  country: string | null; otherCountry: number
+} | null>(null)
 
 // Plus rien à trancher sur cette classe → on passe à la suivante. On ne bascule
 // PAS sur un compteur atteint : au plancher on est autorisé à partir, jamais
@@ -257,6 +275,7 @@ const lotScope = computed<Record<string, string>>(() => {
   if (sortByDino.value) {
     out.dino_class = held.value.id
     out.dino_rank = String(dinoRank.value)
+    if (!countryOnly.value) out.dino_country_only = 'false'
     return out
   }
   const sc = held.value.lotScope
@@ -275,14 +294,19 @@ const {
 // au-dessus d'une file qui sert dix fois plus serait précisément l'écran
 // plausible et faux que cette page existe pour ne plus produire.
 watch(
-  [heldId, () => sortByDino.value, dinoRank],
+  [heldId, () => sortByDino.value, dinoRank, countryOnly],
   async () => {
     if (!heldId.value || !sortByDino.value) { peche.value = null; return }
-    const s = await fetchDinoCandidates(heldId.value, { rank: dinoRank.value })
+    const s = await fetchDinoCandidates(heldId.value, {
+      rank: dinoRank.value, countryOnly: countryOnly.value,
+    })
     // `null` = le canonique n'a pas répondu. On garde `null` plutôt que des
     // zéros : un zéro faux désactiverait les boutons et dirait « classe vide ».
     peche.value = s
-      ? { single: s.n_open_single, lot: s.n_open_lot, orphans: s.n_orphans }
+      ? {
+          single: s.n_open_single, lot: s.n_open_lot, orphans: s.n_orphans,
+          country: s.country, otherCountry: s.n_other_country,
+        }
       : null
   },
   { immediate: true },
@@ -452,12 +476,14 @@ watch(heldId, (id) => {
             :mode="mode"
             :sort-by-dino="sortByDino"
             :dino-rank="dinoRank"
+            :country-only="countryOnly"
             :peche="peche"
             :since-change="sinceChange"
             :source="countsSource"
             :lag-seconds="lagSeconds"
             @sort="setSort"
             @rank="setRank"
+            @country-only="setCountryOnly"
             @next="nextClass"
             @mode="setMode"
             @close="close"
