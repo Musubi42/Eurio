@@ -304,6 +304,7 @@ Voir `docs/research/detection-pipeline-unified.md`. Pipeline actuelle : YOLO11-n
 | Stratégie offline/sync | `docs/design/_shared/offline-first.md` |
 | Parité proto ↔ Android | `docs/design/_shared/parity-rules.md` |
 | **Sauvegarde / restauration** | skill `eurio-backup`, puis `docs/work-in-progress/backup-pipeline/ROADMAP.md` |
+| **File de review scopée par la prédiction (« pêche »)** | `docs/work-in-progress/peche-dino/CONSTAT.md` |
 | **Banque d'ancres DINO, seuils, choix d'encodeur** | la skill `eurio-banque` d'abord ; puis `docs/work-in-progress/scan-sans-retrain/` et `docs/work-in-progress/banque-dino/CONSTAT.md` |
 | Phase spécifique | `docs/app-implem-phases/phase-N-*.md` |
 
