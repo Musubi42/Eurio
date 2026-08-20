@@ -6,9 +6,16 @@ Updates coin_catalog.json with the cached URLs.
 
 Costs: 1 API call per missing entry (≤ 20 calls for the default 56-item queue).
 
+Écritures : le FILESYSTEM seulement (``datasets/<numista_id>/*.jpg`` et le
+cache d'URLs ``datasets/coin_catalog.json``). Aucune base SQLite n'est touchée —
+le script est donc sûr sous le flip Direction A (réplique read-only).
+
 Usage:
     cd ml && python -m referential.fetch_review_images
     cd ml && python -m referential.fetch_review_images --dry-run
+    # cible explicite, hors file de review (ex. les classes sans canonique
+    # repérées par `build_anchors_2eur_all` — `n_no_canonical`) :
+    cd ml && python -m referential.fetch_review_images --ids 375327,576180
 """
 
 from __future__ import annotations
@@ -41,12 +48,26 @@ def has_image(numista_id: int) -> bool:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--ids",
+        help="Numista ids explicites (séparés par des virgules) à rapatrier, au "
+             "lieu de la file de review. Sert aux classes sans avers canonique "
+             "sur disque, qui ne passent par aucune file.",
+    )
     args = parser.parse_args()
 
-    queue: list[dict] = json.loads(REVIEW_PATH.read_text())
+    if args.ids:
+        queue = [
+            {"numista_id": int(x), "numista_name": f"#{x} (--ids)"}
+            for x in (part.strip() for part in args.ids.split(",")) if x
+        ]
+        source = "--ids"
+    else:
+        queue = json.loads(REVIEW_PATH.read_text())
+        source = "review queue"
     missing = [item for item in queue if not has_image(item["numista_id"])]
 
-    print(f"Review queue: {len(queue)} items, {len(missing)} missing images")
+    print(f"{source}: {len(queue)} items, {len(missing)} missing images")
     if not missing:
         print("All images present — nothing to do.")
         return 0
