@@ -215,6 +215,16 @@ export async function fetchReviewQueue(
     dinoMinSpread?: number | null
     /** Ne garder que ceux dont le top-1 tombe dans la classe travaillée. */
     dinoTop1Only?: boolean
+    /**
+     * PÊCHE — le périmètre devient « ce que la banque rattache à cette classe »
+     * et REMPLACE le périmètre par cible (`eurioId` / `cohortId`). C'est ce qui
+     * rend atteignables les crops qu'aucun scrape ne visait : sur l'italienne
+     * standard, la file par cible sert 57 items dont 2 utiles, la pêche 137
+     * tous utiles.
+     */
+    dinoClass?: string | null
+    /** Position dans le top-k qui suffit à retenir un crop : 1, 3 ou 5. */
+    dinoRank?: number | null
   } = {},
 ): Promise<ReviewItem[]> {
   const limit = opts.limit ?? 30
@@ -228,6 +238,8 @@ export async function fetchReviewQueue(
   if (opts.reviewIds && opts.reviewIds.length) params.set('review_ids', opts.reviewIds.join(','))
   if (opts.dinoMinSpread != null) params.set('dino_min_spread', String(opts.dinoMinSpread))
   if (opts.dinoTop1Only) params.set('dino_top1_only', 'true')
+  if (opts.dinoClass) params.set('dino_class', opts.dinoClass)
+  if (opts.dinoRank) params.set('dino_rank', String(opts.dinoRank))
   // Phase 2c-b : porté sur eurio-api (Bearer PAT).
   const real = await safeFetchEurio<ReviewItem[]>(`/review-queue?${params.toString()}`)
   if (real !== null) {
@@ -910,3 +922,40 @@ export const MOCK_QUEUE: ReviewItem[] = [
     }
   }),
 ]
+
+// ─── Pêche — ce que la banque propose pour une classe ──────────────────────
+
+export interface DinoCandidatesSummary {
+  class_id: string
+  /** Étiquettes sous lesquelles la banque indexe la classe (voir bank_classes). */
+  bank_class_ids: string[]
+  rank: number
+  min_spread: number | null
+  n_open_single: number
+  n_open_lot: number
+  /** needs_review SANS ligne de review ouverte : invisibles partout. */
+  n_orphans: number
+  orphan_asset_ids: string[]
+  /** Compté comme le préflight compte `n_ebay` — le même fait, le même nombre. */
+  n_training_eligible: number
+}
+
+/**
+ * Combien de crops la banque rattache à cette classe, et où ils sont.
+ *
+ * Sert les compteurs du bandeau en mode pêche : ceux du funnel comptent le
+ * périmètre PAR CIBLE, qui n'est pas celui qu'on est en train de dérouler.
+ * Afficher « 15 à l'unité » au-dessus d'une file qui en sert 137 serait
+ * exactement le genre d'écran plausible et faux que cette page combat.
+ */
+export async function fetchDinoCandidates(
+  classId: string,
+  opts: { rank?: number; minSpread?: number | null } = {},
+): Promise<DinoCandidatesSummary | null> {
+  const params = new URLSearchParams({ dino_class: classId })
+  if (opts.rank) params.set('dino_rank', String(opts.rank))
+  if (opts.minSpread != null) params.set('dino_min_spread', String(opts.minSpread))
+  return safeFetchEurio<DinoCandidatesSummary>(
+    `/review-queue/dino-candidates/summary?${params.toString()}`,
+  )
+}

@@ -36,6 +36,7 @@ from review.validation.consensus import consensus_verdict
 from review.validation.experts import collect_signals
 from review.validation.persist import load_consensus_verdict
 from shared.bank_classes import bank_class_ids, bank_class_ids_for_many
+from shared.dino_scope import DINO_RANKS, build_dino_scope
 from shared.verdict_scope import (
     SUGGESTIONS_ANCHORS_KIND,
     SUGGESTIONS_ENCODER_VERSION,
@@ -550,6 +551,8 @@ def list_queue(
     review_ids: str | None = Query(default=None),
     dino_min_spread: float | None = Query(default=None, ge=0.0, le=1.0),
     dino_top1_only: bool = Query(default=False),
+    dino_class: str | None = Query(default=None),
+    dino_rank: int = Query(default=1),
 ) -> list[ReviewItem]:
     if order not in ("priority", "enqueued_at", "dino"):
         raise HTTPException(
@@ -606,6 +609,12 @@ def list_queue(
     # tout le POOL standard du pays (``listing_country = pays AND listing_year
     # IS NULL``), y compris les crops NULL — c'est exactement « toutes les 2 €
     # standard du pays », que le reviewer trie contre les 3 designs.
+    #
+    # ⚠️ `dino_class` passe AVANT : en pêche, le périmètre est la prédiction,
+    # et surtout pas le pool ambigu pays — c'est précisément ce pool (57 items
+    # dont 2 utiles sur it-2002) qu'on cherche à ne plus servir.
+    elif dino_class:
+        pass  # périmètre appliqué plus bas, avec le reste des filtres DINO
     elif eurio_id:
         std_coin = conn.execute(
             "SELECT country, face_value FROM coins "
@@ -648,17 +657,30 @@ def list_queue(
     # ── Tri et filtres DINO — miroir de serving/review_queue/repository ─────
     # La banque indexe une courante sous le plus ancien millésime de son ère,
     # pas sous l'identifiant demandé (cf. shared/bank_classes).
+    #
+    # `dino_class` renverse la définition du périmètre : la file n'est plus
+    # « ce que le scrape visait » mais « ce que la banque reconnaît ». Il PREND
+    # LA PLACE du scope par cible — les combiner rendrait les lots
+    # inatteignables, qui sont le gisement qu'on vient chercher.
+    # Miroir exact de `serving/review_queue/repository.list_queue`.
+    scope = build_dino_scope(
+        conn, dino_class=dino_class, rank=dino_rank,
+        min_spread=dino_min_spread,
+    )
+
     wanted_classes: list[str] = []
     if order == "dino" or dino_top1_only:
-        if eurio_id:
+        if dino_class:
+            wanted_classes = list(scope.class_ids)
+        elif eurio_id:
             wanted_classes = bank_class_ids(conn, eurio_id)
         elif cohort_id:
             wanted_classes = bank_class_ids_for_many(conn, list(cohort.eurio_ids))
 
-    if dino_min_spread is not None:
-        where += " AND ps.spread >= ?"
-        args.append(float(dino_min_spread))
-    if dino_top1_only and wanted_classes:
+    if not scope.is_empty:
+        where += f" AND {scope.sql}"
+        args.extend(scope.args)
+    if dino_top1_only and wanted_classes and not dino_class:
         ph = ",".join("?" * len(wanted_classes))
         where += f" AND ps.top1_eurio_id IN ({ph})"
         args.extend(wanted_classes)
@@ -1220,11 +1242,41 @@ class LotListItem(BaseModel):
     n_crops_in_review: int
     oldest_enqueued_at: str
     thumb_url: str | None  # raw image URL, pour la card grille
+    # Combien de crops de CE listing la banque rattache à la classe pêchée.
+    # `None` hors pêche — « pas demandé » ≠ « zéro ».
+    n_matching_crops: int | None = None
 
 
 class LotListResponse(BaseModel):
     items: list[LotListItem]
     total: int
+
+
+@router.get("/dino-candidates/summary")
+def dino_candidates_summary(
+    dino_class: str = Query(...),
+    dino_rank: int = Query(default=1),
+    dino_min_spread: float | None = Query(default=None, ge=0.0, le=1.0),
+):
+    """Ce que la banque propose pour une classe — jumeau lourd, même corps.
+
+    Délègue au repository lean : le compte affiché sur la page d'une pièce ne
+    doit pas dépendre de l'hôte interrogé.
+    """
+    from serving.review_queue import repository as _lean
+
+    if dino_rank not in DINO_RANKS:
+        raise HTTPException(
+            status_code=422, detail=f"dino_rank must be one of {DINO_RANKS}",
+        )
+    conn = _store()._connection()  # noqa: SLF001
+    try:
+        return _lean.dino_candidates_summary(
+            conn, dino_class=dino_class, dino_rank=dino_rank,
+            dino_min_spread=dino_min_spread,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 # Consumed by: admin/packages/web/src/features/review/composables/useLotReview.ts (fetchLots)
@@ -1235,96 +1287,47 @@ def list_lots(
     cohort_id: str | None = Query(default=None),
     target_eurio_id: str | None = Query(default=None),
     design_group: str | None = Query(default=None),
+    dino_class: str | None = Query(default=None),
+    dino_rank: int = Query(default=1),
+    dino_min_spread: float | None = Query(default=None, ge=0.0, le=1.0),
 ) -> LotListResponse:
     """Liste les listings ayant ≥ 1 row review_queue.kind='lot' status='open'.
 
-    Groupé par listing_key (cf. _LISTING_KEY_SQL — eBay : ebay_<itemId>).
-    Tri : oldest_enqueued_at ASC (le reviewer commence par les plus vieux).
-    Scope (par ``si.target_eurio_id``, clé de découverte), priorité décroissante :
-    - ``design_group`` (prioritaire) → les lots d'UNE **ère** standard : prior +
-      membres + pool ambigu du pays (cf. ``design_group_lot_scope``). C'est l'unité
-      d'un standard, dont l'avers — donc la classe ArcFace — est partagé sur toutes
-      les années (ex. be-1999 ⊕ be-2007) ;
+    Groupé par listing_key (eBay : ebay_<itemId>). Tri : oldest_enqueued_at ASC.
+    Scope, priorité décroissante :
+
+    - ``dino_class`` (prioritaire) → **la pêche** : les listings qui contiennent
+      ≥ 1 crop que la banque rattache à cette classe, quelle que soit la cible du
+      scrape et le pays de l'annonce. Le lot entier reste servi : un coffret ne se
+      tranche pas en regardant une pièce sur trente ;
+    - ``design_group`` → les lots d'UNE **ère** standard : prior + membres + pool
+      ambigu du pays. C'est l'unité d'un standard, dont l'avers — donc la classe
+      ArcFace — est partagé sur toutes les années (ex. be-1999 ⊕ be-2007) ;
     - ``target_eurio_id`` → les lots d'UNE classe précise (commémo) ;
     - sinon ``cohort_id`` → tous les lots des coins de la cohort (§C4-lot).
+
+    ⚠️ **Le corps délègue au repository lean** (`serving/review_queue`). Cette
+    route et son jumeau du VPS servaient deux copies du même SQL ; les faire
+    diverger n'aurait levé aucune erreur, seulement rendu deux réponses
+    différentes selon l'hôte interrogé. Une seule requête, deux portes.
     """
+    from serving.review_queue import repository as _lean
+
     conn = _store()._connection()  # noqa: SLF001
-    if design_group:
-        try:
-            cohort_clause, cohort_args = design_group_lot_scope(conn, design_group)
-        except ValueError:
-            return LotListResponse(items=[], total=0)
-        cohort_empty = False
-    elif target_eurio_id:
-        cohort_clause, cohort_args, cohort_empty = (
-            " AND si.target_eurio_id = ?", [target_eurio_id], False,
+    if dino_rank not in DINO_RANKS:
+        raise HTTPException(
+            status_code=422, detail=f"dino_rank must be one of {DINO_RANKS}",
         )
-    else:
-        cohort_clause, cohort_args, cohort_empty = _cohort_filter(cohort_id, alias="si")
-    if cohort_empty:
-        return LotListResponse(items=[], total=0)
-
-    total = conn.execute(
-        f"""
-        SELECT COUNT(DISTINCT {_LISTING_KEY_SQL}) AS n
-          FROM review_queue rq
-          JOIN image_assets a ON a.id = rq.image_asset_id
-          JOIN source_images si ON si.id = a.source_image_id
-         WHERE rq.kind = 'lot' AND rq.status = 'open'{cohort_clause}
-        """,
-        cohort_args,
-    ).fetchone()["n"]
-
-    rows = conn.execute(
-        f"""
-        WITH grouped AS (
-          SELECT {_LISTING_KEY_SQL} AS listing_key,
-                 si.source             AS source,
-                 si.target_eurio_id    AS target_eurio_id,
-                 MAX(si.listing_title) AS listing_title,
-                 MAX(si.listing_price) AS listing_price,
-                 MAX(si.listing_currency) AS listing_currency,
-                 MAX(si.is_lot_suspected) AS is_lot_suspected,
-                 COUNT(DISTINCT si.id)    AS n_images,
-                 COUNT(DISTINCT a.id)     AS n_crops_in_review,
-                 MIN(rq.enqueued_at)      AS oldest_enqueued_at,
-                 (SELECT si2.id FROM source_images si2
-                   WHERE si2.source = si.source
-                     AND {_LISTING_KEY_SQL.replace('si.', 'si2.')} = {_LISTING_KEY_SQL}
-                   ORDER BY si2.fetched_at ASC LIMIT 1) AS thumb_si_id
-            FROM review_queue rq
-            JOIN image_assets a ON a.id = rq.image_asset_id
-            JOIN source_images si ON si.id = a.source_image_id
-           WHERE rq.kind = 'lot' AND rq.status = 'open'{cohort_clause}
-           GROUP BY listing_key
-        )
-        SELECT * FROM grouped
-         ORDER BY oldest_enqueued_at ASC
-         LIMIT ? OFFSET ?
-        """,
-        (*cohort_args, limit, offset),
-    ).fetchall()
-
-    items = [
-        LotListItem(
-            listing_key=r["listing_key"],
-            source=r["source"],
-            target_eurio_id=r["target_eurio_id"],
-            listing_title=r["listing_title"],
-            listing_price=r["listing_price"],
-            listing_currency=r["listing_currency"] or "EUR",
-            is_lot_suspected=bool(r["is_lot_suspected"]),
-            n_images=r["n_images"],
-            n_crops_in_review=r["n_crops_in_review"],
-            oldest_enqueued_at=r["oldest_enqueued_at"],
-            thumb_url=(
-                f"/sources/{r['source']}/raws/{r['thumb_si_id']}/file"
-                if r["thumb_si_id"] else None
-            ),
-        )
-        for r in rows
-    ]
-    return LotListResponse(items=items, total=int(total or 0))
+    items, total = _lean.list_lots(
+        conn, limit=limit, offset=offset, cohort_id=cohort_id,
+        target_eurio_id=target_eurio_id, design_group=design_group,
+        dino_class=dino_class, dino_rank=dino_rank,
+        dino_min_spread=dino_min_spread,
+    )
+    return LotListResponse(
+        items=[LotListItem(**it.model_dump()) for it in items],
+        total=total,
+    )
 
 
 class LotCrop(BaseModel):
@@ -1509,35 +1512,56 @@ def _lot_detections_from_json(
     return out
 
 
-def _siblings(conn: sqlite3.Connection, listing_key: str
-              ) -> tuple[str | None, str | None]:
-    """Find the previous and next listing_key in the open lots queue (by
-    oldest enqueued_at — same order as `GET /review-queue/lots`). Returns
-    `(prev, next)`, either side ``None`` at the boundaries."""
-    rows = conn.execute(
-        f"""
-        SELECT {_LISTING_KEY_SQL} AS listing_key,
-               MIN(rq.enqueued_at) AS oldest_enqueued_at
-          FROM review_queue rq
-          JOIN image_assets a ON a.id = rq.image_asset_id
-          JOIN source_images si ON si.id = a.source_image_id
-         WHERE rq.kind = 'lot' AND rq.status = 'open'
-         GROUP BY listing_key
-         ORDER BY oldest_enqueued_at ASC, listing_key ASC
-        """,
-    ).fetchall()
-    keys = [r["listing_key"] for r in rows]
-    if listing_key not in keys:
-        return None, None
-    i = keys.index(listing_key)
-    prev_key = keys[i - 1] if i > 0 else None
-    next_key = keys[i + 1] if i + 1 < len(keys) else None
-    return prev_key, next_key
+def _siblings(
+    conn: sqlite3.Connection,
+    listing_key: str,
+    *,
+    cohort_id: str | None = None,
+    target_eurio_id: str | None = None,
+    design_group: str | None = None,
+    dino_class: str | None = None,
+    dino_rank: int = 1,
+    dino_min_spread: float | None = None,
+) -> tuple[str | None, str | None]:
+    """Le lot précédent et le suivant **dans le périmètre courant**.
+
+    Jusqu'au 2026-08-20 cette fonction parcourait TOUTE la file lot ouverte
+    (5413 items), sans le moindre scope : « lot suivant » éjectait de la classe
+    au premier clic. Elle délègue maintenant à `serving.review_queue.repository`,
+    qui applique le périmètre de `GET /review-queue/lots` — c'est ce qui garantit
+    que « suivant » suit ce que l'écran a annoncé, et que les deux jumeaux ne
+    peuvent pas répondre deux ordres différents.
+    """
+    from serving.review_queue import repository as _lean
+
+    return _lean.lot_siblings(
+        conn, listing_key,
+        cohort_id=cohort_id, target_eurio_id=target_eurio_id,
+        design_group=design_group, dino_class=dino_class,
+        dino_rank=dino_rank, dino_min_spread=dino_min_spread,
+    )
 
 
 # Consumed by: admin/packages/web/src/features/review/composables/useLotReview.ts (fetchLotDetail)
 @router.get("/lots/{listing_key}", response_model=LotDetail)
-def get_lot(listing_key: str) -> LotDetail:
+def get_lot(
+    listing_key: str,
+    cohort_id: str | None = Query(default=None),
+    target_eurio_id: str | None = Query(default=None),
+    design_group: str | None = Query(default=None),
+    dino_class: str | None = Query(default=None),
+    dino_rank: int = Query(default=1),
+    dino_min_spread: float | None = Query(default=None, ge=0.0, le=1.0),
+) -> LotDetail:
+    """Le lot, et ses voisins DANS LE PÉRIMÈTRE passé en query.
+
+    Les paramètres de périmètre ne changent pas le contenu du lot, seulement
+    `prev/next_listing_key`. Un appel sans eux déroule la file lot globale.
+    """
+    if dino_rank not in DINO_RANKS:
+        raise HTTPException(
+            status_code=422, detail=f"dino_rank must be one of {DINO_RANKS}",
+        )
     conn = _store()._connection()  # noqa: SLF001
     # Header (depuis n'importe quelle source_image du listing).
     # JOIN coins pour enrichir target_candidate (idem _row_to_item).
@@ -1647,7 +1671,12 @@ def get_lot(listing_key: str) -> LotDetail:
         and any(len(im.crops) > 1 for im in images)
     )
 
-    prev_key, next_key = _siblings(conn, listing_key)
+    prev_key, next_key = _siblings(
+        conn, listing_key,
+        cohort_id=cohort_id, target_eurio_id=target_eurio_id,
+        design_group=design_group, dino_class=dino_class,
+        dino_rank=dino_rank, dino_min_spread=dino_min_spread,
+    )
 
     return LotDetail(
         listing_key=listing_key,

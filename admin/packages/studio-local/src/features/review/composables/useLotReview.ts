@@ -18,6 +18,9 @@ export interface LotListItem {
   is_lot_suspected: boolean
   n_images: number
   n_crops_in_review: number
+  /** Crops de ce listing que la banque rattache à la classe pêchée.
+   *  `null` hors pêche : « pas demandé » ≠ « zéro ». */
+  n_matching_crops?: number | null
   oldest_enqueued_at: string
   thumb_url: string | null
 }
@@ -158,12 +161,21 @@ export async function fetchLots(
     cohortId?: string | null
     targetEurioId?: string | null
     designGroup?: string | null
+    /** Pêche : les listings qui contiennent ≥ 1 crop de cette classe. */
+    dinoClass?: string | null
+    /** Position de la classe dans le top-k qui suffit à la retenir (1 | 3 | 5). */
+    dinoRank?: number | null
+    dinoMinSpread?: number | null
   } = {},
 ): Promise<LotListResponse> {
   const params = new URLSearchParams()
   if (opts.limit) params.set('limit', String(opts.limit))
   if (opts.offset) params.set('offset', String(opts.offset))
-  // Priorité côté API : design_group (ère standard) > target_eurio_id (commémo) > cohort_id.
+  // Priorité côté API : dino_class (pêche) > design_group (ère standard)
+  // > target_eurio_id (commémo) > cohort_id.
+  if (opts.dinoClass) params.set('dino_class', opts.dinoClass)
+  if (opts.dinoRank) params.set('dino_rank', String(opts.dinoRank))
+  if (opts.dinoMinSpread != null) params.set('dino_min_spread', String(opts.dinoMinSpread))
   if (opts.designGroup) params.set('design_group', opts.designGroup)
   if (opts.targetEurioId) params.set('target_eurio_id', opts.targetEurioId)
   if (opts.cohortId) params.set('cohort_id', opts.cohortId)
@@ -189,12 +201,24 @@ function promoteCandidate(c: LotCandidate): LotCandidate {
   return { ...c, canonical_thumb_url: withMlApi(c.canonical_thumb_url) ?? '' }
 }
 
-export async function fetchLot(listingKey: string): Promise<LotDetail> {
+export async function fetchLot(
+  listingKey: string,
+  /**
+   * Périmètre de la file qu'on déroule, passé tel quel en query. Il ne change
+   * pas le contenu du lot — seulement `prev/next_listing_key`. L'omettre fait
+   * dérouler la file lot GLOBALE : « suivant » sort alors de la classe au
+   * premier clic, sans que rien ne le signale.
+   */
+  scope?: Record<string, string>,
+): Promise<LotDetail> {
   // Phase 2c-b : porté sur eurio-api (Bearer PAT).
+  const qs = scope && Object.keys(scope).length
+    ? `?${new URLSearchParams(scope).toString()}`
+    : ''
   let body: LotDetail
   try {
     body = await eurioApi.get<LotDetail>(
-      `/review-queue/lots/${encodeURIComponent(listingKey)}`,
+      `/review-queue/lots/${encodeURIComponent(listingKey)}${qs}`,
     )
   } catch (err) {
     if (err instanceof EurioApiError) throw new Error(`${err.status} ${err.message}`)

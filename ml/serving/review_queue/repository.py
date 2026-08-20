@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 
 from serving._coin_helpers import canonical_obverse_url
 from shared.bank_classes import bank_class_ids, bank_class_ids_for_many
+from shared.dino_scope import build_dino_scope, suggestions_join_sql
 from shared.verdict_scope import (
     SUGGESTIONS_ANCHORS_KIND,
     SUGGESTIONS_ENCODER_VERSION,
@@ -433,6 +434,8 @@ def list_queue(
     review_ids: list[str] | None,
     dino_min_spread: float | None = None,
     dino_top1_only: bool = False,
+    dino_class: str | None = None,
+    dino_rank: int = 1,
 ) -> list[ReviewItem]:
     # `dino` : d'abord ce que le modèle rattache à LA CLASSE TRAVAILLÉE, puis
     # du plus net au plus flou.
@@ -451,9 +454,22 @@ def list_queue(
     # obligatoire : sans ça, tri comme filtre porteraient sur un identifiant
     # que la banque ne connaît pas, et renverraient un résultat vide ou non
     # trié — parfaitement plausible, donc invisible. Cf. shared/bank_classes.
+    #
+    # `dino_class` renverse la définition du périmètre : la file n'est plus
+    # « ce que le scrape visait » mais « ce que la banque reconnaît ». Il PREND
+    # LA PLACE du scope par cible (eurio_id / cohort_id) au lieu de s'y ajouter
+    # — les combiner rendrait les lots inatteignables, qui sont précisément le
+    # gisement qu'on vient chercher. Cf. shared/dino_scope.
+    scope = build_dino_scope(
+        conn, dino_class=dino_class, rank=dino_rank,
+        min_spread=dino_min_spread,
+    )
+
     wanted_classes: list[str] = []
     if order == "dino" or dino_top1_only:
-        if eurio_id:
+        if dino_class:
+            wanted_classes = list(scope.class_ids)
+        elif eurio_id:
             wanted_classes = bank_class_ids(conn, eurio_id)
         elif cohort_id:
             _eids, _ = _cohort_eurio_ids(conn, cohort_id)
@@ -489,6 +505,8 @@ def list_queue(
     if review_ids:
         where += f" AND rq.id IN ({','.join('?' * len(review_ids))})"
         args.extend(review_ids)
+    elif dino_class:
+        pass  # le périmètre est la prédiction (appliqué plus bas), pas la cible
     elif eurio_id:
         std_coin = conn.execute(
             "SELECT country, face_value FROM coins "
@@ -516,10 +534,14 @@ def list_queue(
         args.extend(eids)
 
     # ── Filtres DINO (banque des suggestions, jamais celle du verdict) ──────
-    if dino_min_spread is not None:
-        where += " AND ps.spread >= ?"
-        args.append(float(dino_min_spread))
-    if dino_top1_only and wanted_classes:
+    # La marge et l'appartenance à la classe viennent toutes deux du scope
+    # partagé : `dino_min_spread` y est lu en COALESCE(country_spread, spread),
+    # la grandeur que le verdict utilise réellement — un filtre sur la seule
+    # colonne country écarte en silence des crops que le verdict évalue.
+    if not scope.is_empty:
+        where += f" AND {scope.sql}"
+        args.extend(scope.args)
+    if dino_top1_only and wanted_classes and not dino_class:
         ph = ",".join("?" * len(wanted_classes))
         where += f" AND ps.top1_eurio_id IN ({ph})"
         args.extend(wanted_classes)
@@ -670,6 +692,97 @@ def _format_target_label(country: str | None, year: int | None, theme: str | Non
 # ─── /review-queue/lots ─────────────────────────────────────────────────────
 
 
+def _lot_scope(
+    conn: sqlite3.Connection,
+    *,
+    cohort_id: str | None,
+    target_eurio_id: str | None,
+    design_group: str | None,
+    dino_class: str | None = None,
+    dino_rank: int = 1,
+    dino_min_spread: float | None = None,
+) -> tuple[str, str, str, list[object]]:
+    """Le périmètre d'une file de lots, en un seul endroit.
+
+    Renvoie ``(join_sql, where_clause, match_expr, args)`` :
+
+    - ``join_sql`` — la jointure vers la banque des suggestions, vide hors pêche
+    - ``where_clause`` — le filtre par CIBLE de découverte (cohorte / classe /
+      ère), vide en mode pêche
+    - ``match_expr`` — l'expression 0/1 « ce crop est de la classe pêchée »,
+      vide hors pêche
+    - ``args`` — les paramètres, dans l'ordre ``where`` puis ``match``
+
+    ⚠️ En mode pêche, le périmètre par prédiction **remplace** celui par cible
+    et ne filtre PAS les crops : il sélectionne les LISTINGS qui en contiennent
+    au moins un. On ouvre ensuite le lot entier — un coffret ne se tranche pas
+    en regardant une pièce sur trente.
+
+    Lève ``ValueError`` si ``design_group`` est inconnu (même contrat
+    qu'auparavant : l'appelant renvoie une liste vide).
+    """
+    if dino_class:
+        scope = build_dino_scope(
+            conn, dino_class=dino_class, rank=dino_rank,
+            min_spread=dino_min_spread,
+        )
+        if scope.is_empty:  # classe absente ET marge absente : rien à pêcher
+            return "", "", "", []
+        return (
+            suggestions_join_sql("ps"),
+            "",
+            f"CASE WHEN {scope.sql} THEN 1 ELSE 0 END",
+            list(scope.args),
+        )
+
+    if design_group:
+        clause, args = _design_group_lot_scope(conn, design_group)  # peut lever
+        return "", clause, "", args
+    if target_eurio_id:
+        return "", " AND si.target_eurio_id = ?", "", [target_eurio_id]
+
+    eids, empty = _cohort_eurio_ids(conn, cohort_id)
+    if cohort_id and empty:
+        raise ValueError(f"cohort {cohort_id!r} sans pièce")
+    if eids:
+        ph = ",".join("?" * len(eids))
+        return "", f" AND si.target_eurio_id IN ({ph})", "", list(eids)
+    return "", "", "", []
+
+
+def _lot_keys_in_scope(
+    conn: sqlite3.Connection,
+    *,
+    join_sql: str,
+    where_clause: str,
+    match_expr: str,
+    args: list[object],
+) -> list[str]:
+    """Les listing_key du périmètre, dans l'ordre de la file (le plus ancien
+    d'abord) — la même liste que sert ``list_lots``, sans pagination.
+
+    C'est elle qui fait exister « lot suivant » : la nav prev/next DOIT lire
+    exactement l'ordre que l'écran a annoncé, sinon « suivant » emmène ailleurs.
+    """
+    having = " HAVING SUM(m) > 0" if match_expr else ""
+    rows = conn.execute(
+        f"""
+        SELECT {LISTING_KEY_SQL} AS listing_key,
+               MIN(rq.enqueued_at) AS oldest_enqueued_at,
+               {match_expr or '0'} AS m
+          FROM review_queue rq
+          JOIN image_assets a ON a.id = rq.image_asset_id
+          JOIN source_images si ON si.id = a.source_image_id
+          {join_sql}
+         WHERE rq.kind = 'lot' AND rq.status = 'open'{where_clause}
+         GROUP BY listing_key{having}
+         ORDER BY oldest_enqueued_at ASC, listing_key ASC
+        """,
+        args,
+    ).fetchall()
+    return [r["listing_key"] for r in rows]
+
+
 def list_lots(
     conn: sqlite3.Connection,
     *,
@@ -678,42 +791,47 @@ def list_lots(
     cohort_id: str | None,
     target_eurio_id: str | None,
     design_group: str | None,
+    dino_class: str | None = None,
+    dino_rank: int = 1,
+    dino_min_spread: float | None = None,
 ) -> tuple[list[LotListItem], int]:
     """Liste les listings ayant ≥ 1 row review_queue.kind='lot' status='open'.
 
     Scope (priorité décroissante) :
+    - `dino_class` → les listings qui contiennent ≥ 1 crop que la banque
+      rattache à cette classe, quelle que soit la cible du scrape (pêche)
     - `design_group` → membres + pool ambigu du pays (cf. _design_group_lot_scope)
     - `target_eurio_id` → une classe précise
     - `cohort_id` → tous les lots des coins de la cohort
     """
-    if design_group:
-        try:
-            cohort_clause, cohort_args = _design_group_lot_scope(conn, design_group)
-        except ValueError:
-            return [], 0
-    elif target_eurio_id:
-        cohort_clause = " AND si.target_eurio_id = ?"
-        cohort_args = [target_eurio_id]
-    else:
-        eids, empty = _cohort_eurio_ids(conn, cohort_id)
-        if cohort_id and empty:
-            return [], 0
-        if eids:
-            cohort_clause = f" AND si.target_eurio_id IN ({','.join('?' * len(eids))})"
-            cohort_args = list(eids)
-        else:
-            cohort_clause = ""
-            cohort_args = []
+    try:
+        join_sql, where_clause, match_expr, scope_args = _lot_scope(
+            conn, cohort_id=cohort_id, target_eurio_id=target_eurio_id,
+            design_group=design_group, dino_class=dino_class,
+            dino_rank=dino_rank, dino_min_spread=dino_min_spread,
+        )
+    except ValueError:
+        return [], 0
+
+    # `n_matching` sert deux fois : à filtrer les listings (HAVING) et à dire à
+    # l'écran combien de pièces y sont à trouver. SQLite accepte l'alias d'un
+    # agrégat dans HAVING — on ne duplique donc ni l'expression ni ses args.
+    having = " HAVING n_matching_crops > 0" if match_expr else ""
 
     total = conn.execute(
         f"""
-        SELECT COUNT(DISTINCT {LISTING_KEY_SQL}) AS n
-          FROM review_queue rq
-          JOIN image_assets a ON a.id = rq.image_asset_id
-          JOIN source_images si ON si.id = a.source_image_id
-         WHERE rq.kind = 'lot' AND rq.status = 'open'{cohort_clause}
+        SELECT COUNT(*) AS n FROM (
+          SELECT {LISTING_KEY_SQL} AS listing_key,
+                 SUM({match_expr or '0'}) AS n_matching_crops
+            FROM review_queue rq
+            JOIN image_assets a ON a.id = rq.image_asset_id
+            JOIN source_images si ON si.id = a.source_image_id
+            {join_sql}
+           WHERE rq.kind = 'lot' AND rq.status = 'open'{where_clause}
+           GROUP BY listing_key{having}
+        )
         """,
-        cohort_args,
+        scope_args,
     ).fetchone()["n"]
 
     rows = conn.execute(
@@ -728,6 +846,7 @@ def list_lots(
                  MAX(si.is_lot_suspected) AS is_lot_suspected,
                  COUNT(DISTINCT si.id)    AS n_images,
                  COUNT(DISTINCT a.id)     AS n_crops_in_review,
+                 SUM({match_expr or '0'}) AS n_matching_crops,
                  MIN(rq.enqueued_at)      AS oldest_enqueued_at,
                  (SELECT si2.id FROM source_images si2
                    WHERE si2.source = si.source
@@ -736,14 +855,15 @@ def list_lots(
             FROM review_queue rq
             JOIN image_assets a ON a.id = rq.image_asset_id
             JOIN source_images si ON si.id = a.source_image_id
-           WHERE rq.kind = 'lot' AND rq.status = 'open'{cohort_clause}
-           GROUP BY listing_key
+            {join_sql}
+           WHERE rq.kind = 'lot' AND rq.status = 'open'{where_clause}
+           GROUP BY listing_key{having}
         )
         SELECT * FROM grouped
          ORDER BY oldest_enqueued_at ASC
          LIMIT ? OFFSET ?
         """,
-        (*cohort_args, limit, offset),
+        (*scope_args, limit, offset),
     ).fetchall()
 
     items = [
@@ -762,10 +882,135 @@ def list_lots(
                 f"/sources/{r['source']}/raws/{r['thumb_si_id']}/file"
                 if r["thumb_si_id"] else None
             ),
+            n_matching_crops=(
+                int(r["n_matching_crops"]) if match_expr else None
+            ),
         )
         for r in rows
     ]
     return items, int(total or 0)
+
+
+ORPHAN_IDS_CAP = 500
+
+
+def dino_candidates_summary(
+    conn: sqlite3.Connection,
+    *,
+    dino_class: str,
+    dino_rank: int = 1,
+    dino_min_spread: float | None = None,
+):
+    """Combien de crops la banque rattache à cette classe, et où ils sont.
+
+    Lecture pure. Les orphelins sont COMPTÉS, jamais enfilés : enfiler est une
+    écriture, et une écriture qui se déclencherait au fil d'une lecture serait
+    invisible à celui qui la provoque. Le front propose un bouton explicite qui
+    appelle `POST /coins/assets/reflag-needs-review`.
+    """
+    from .models import DinoCandidatesSummary
+
+    scope = build_dino_scope(
+        conn, dino_class=dino_class, rank=dino_rank,
+        min_spread=dino_min_spread,
+    )
+    if scope.is_empty:
+        raise ValueError("dino_class requis")
+
+    join_sql = suggestions_join_sql("ps")
+
+    rows = conn.execute(
+        f"""
+        SELECT rq.kind AS kind, COUNT(*) AS n
+          FROM review_queue rq
+          JOIN image_assets a ON a.id = rq.image_asset_id
+          {join_sql}
+         WHERE rq.status IN ('open', 'in_progress') AND {scope.sql}
+         GROUP BY rq.kind
+        """,
+        scope.args,
+    ).fetchall()
+    by_kind = {r["kind"]: int(r["n"]) for r in rows}
+
+    # Orphelin = needs_review, aucune ligne de review OUVERTE. Une ligne `done`
+    # ne suffit pas à disqualifier : un crop peut avoir été tranché puis
+    # re-flaggé. C'est bien l'absence de file OUVERTE qui le rend invisible.
+    orphans = conn.execute(
+        f"""
+        SELECT a.id AS asset_id
+          FROM image_assets a
+          {join_sql}
+         WHERE a.resolution_status = 'needs_review'
+           AND a.training_eligible IS NOT 1
+           AND NOT EXISTS (
+                 SELECT 1 FROM review_queue rq2
+                  WHERE rq2.image_asset_id = a.id
+                    AND rq2.status IN ('open', 'in_progress')
+               )
+           AND {scope.sql}
+         ORDER BY a.id
+         LIMIT ?
+        """,
+        (*scope.args, ORPHAN_IDS_CAP + 1),
+    ).fetchall()
+    orphan_ids = [r["asset_id"] for r in orphans]
+    n_orphans = len(orphan_ids)
+    if n_orphans > ORPHAN_IDS_CAP:
+        # On dit le vrai compte même quand on ne rend pas tous les ids : un
+        # plafond silencieux se lit « on a tout couvert » alors qu'il tronque.
+        n_orphans = conn.execute(
+            f"""
+            SELECT COUNT(*) AS n
+              FROM image_assets a
+              {join_sql}
+             WHERE a.resolution_status = 'needs_review'
+               AND a.training_eligible IS NOT 1
+               AND NOT EXISTS (
+                     SELECT 1 FROM review_queue rq2
+                      WHERE rq2.image_asset_id = a.id
+                        AND rq2.status IN ('open', 'in_progress')
+                   )
+               AND {scope.sql}
+            """,
+            scope.args,
+        ).fetchone()["n"]
+        orphan_ids = orphan_ids[:ORPHAN_IDS_CAP]
+
+    # Déjà au train. Compté EXACTEMENT comme le préflight compte `n_ebay`
+    # (`training/iteration_augmentations._ebay_training_sources`) : source eBay,
+    # training_eligible, fichier présent, revers exclu — et sur le LABEL tranché
+    # (`image_assets.eurio_id`), pas sur la cible de découverte, car un crop
+    # réattribué suit son nouveau label.
+    #
+    # ⚠️ Reproduire ces quatre conditions n'est pas du zèle : un compteur qui
+    # dirait 8 là où l'écran de cohorte dit 6 ferait douter des deux. La règle
+    # du projet est qu'un même fait porte partout le même nombre.
+    n_eligible = conn.execute(
+        """
+        SELECT COUNT(*) AS n
+          FROM image_assets a
+          JOIN source_images si ON si.id = a.source_image_id
+          JOIN coins c ON c.eurio_id = a.eurio_id
+         WHERE si.source = 'ebay'
+           AND a.training_eligible = 1
+           AND a.storage_status = 'present'
+           AND (a.face IS NULL OR a.face != 'reverse')
+           AND COALESCE(c.design_group_id, c.eurio_id) = ?
+        """,
+        (dino_class,),
+    ).fetchone()["n"]
+
+    return DinoCandidatesSummary(
+        class_id=dino_class,
+        bank_class_ids=list(scope.class_ids),
+        rank=dino_rank,
+        min_spread=dino_min_spread,
+        n_open_single=by_kind.get("single", 0),
+        n_open_lot=by_kind.get("lot", 0),
+        n_orphans=int(n_orphans),
+        orphan_asset_ids=orphan_ids,
+        n_training_eligible=int(n_eligible),
+    )
 
 
 def _design_group_lot_scope(
@@ -799,13 +1044,66 @@ def _design_group_lot_scope(
 # ─── /review-queue/lots/{listing_key} ───────────────────────────────────────
 
 
+def lot_siblings(
+    conn: sqlite3.Connection,
+    listing_key: str,
+    *,
+    cohort_id: str | None = None,
+    target_eurio_id: str | None = None,
+    design_group: str | None = None,
+    dino_class: str | None = None,
+    dino_rank: int = 1,
+    dino_min_spread: float | None = None,
+) -> tuple[str | None, str | None]:
+    """Le lot précédent et le suivant **dans le périmètre courant**.
+
+    Le listing courant peut être hors périmètre (on l'a ouvert par son URL, ou
+    on vient d'en trancher tous les crops et il a quitté la file) : dans ce cas
+    on ne devine pas — `(None, None)`, et l'écran le dit plutôt que de sauter
+    quelque part au hasard.
+    """
+    try:
+        join_sql, where_clause, match_expr, args = _lot_scope(
+            conn, cohort_id=cohort_id, target_eurio_id=target_eurio_id,
+            design_group=design_group, dino_class=dino_class,
+            dino_rank=dino_rank, dino_min_spread=dino_min_spread,
+        )
+    except ValueError:
+        return None, None
+    keys = _lot_keys_in_scope(
+        conn, join_sql=join_sql, where_clause=where_clause,
+        match_expr=match_expr, args=args,
+    )
+    if listing_key not in keys:
+        return None, None
+    i = keys.index(listing_key)
+    return (
+        keys[i - 1] if i > 0 else None,
+        keys[i + 1] if i + 1 < len(keys) else None,
+    )
+
+
 def get_lot_detail(
     conn: sqlite3.Connection, listing_key: str,
+    *,
+    cohort_id: str | None = None,
+    target_eurio_id: str | None = None,
+    design_group: str | None = None,
+    dino_class: str | None = None,
+    dino_rank: int = 1,
+    dino_min_spread: float | None = None,
 ):
     """Lot detail — version sans re-détection live (image lean).
 
     Lit les détections persistées dans source_images.detections_json. NE PAS
-    appeler `_compute_detections` (cv2 requis). Ouvert pour extension Phase 6.
+    appeler `_compute_detections` (cv2 requis).
+
+    Les paramètres de périmètre sont ceux de `list_lots`, et ils ne servent
+    qu'à une chose : calculer `prev/next_listing_key` **dans la file qu'on est
+    en train de dérouler**. Sans eux, « lot suivant » sortirait de la classe au
+    premier clic ; sans eux du tout — c'était le cas ici jusqu'au 2026-08-20,
+    les deux clés étant renvoyées `None` en dur — le chaînage n'existe pas et
+    les flèches restent grises pour toujours.
     """
     from .models import LotCrop, LotDetail, LotDetection, LotImage
 
@@ -918,9 +1216,13 @@ def get_lot_detail(
             crops=crops,
         ))
 
-    # Navigation prev/next listing_key sur la même cohorte/scope serait coûteux
-    # à reproduire ici ; on les laisse None (le legacy le fait via une query
-    # globale sur la queue). Le front dégrade gracieusement.
+    prev_key, next_key = lot_siblings(
+        conn, listing_key,
+        cohort_id=cohort_id, target_eurio_id=target_eurio_id,
+        design_group=design_group, dino_class=dino_class,
+        dino_rank=dino_rank, dino_min_spread=dino_min_spread,
+    )
+
     return LotDetail(
         listing_key=listing_key,
         source=source,
@@ -932,8 +1234,8 @@ def get_lot_detail(
         is_lot_suspected=is_lot_suspected,
         is_multi_crop_single=is_multi_crop_single,
         images=images,
-        prev_listing_key=None,
-        next_listing_key=None,
+        prev_listing_key=prev_key,
+        next_listing_key=next_key,
     )
 
 

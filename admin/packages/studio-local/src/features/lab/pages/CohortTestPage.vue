@@ -32,7 +32,6 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeft } from 'lucide-vue-next'
 import SingleReviewView from '@/features/review/views/SingleReviewView.vue'
-import LotReviewView from '@/features/review/views/LotReviewView.vue'
 import CohortClassList from '@/features/lab/components/CohortClassList.vue'
 import CohortCropList from '@/features/lab/components/CohortCropList.vue'
 import CohortFinishLine from '@/features/lab/components/CohortFinishLine.vue'
@@ -41,6 +40,9 @@ import CohortModelPanel from '@/features/lab/components/CohortModelPanel.vue'
 import CohortRail, { type CohortView } from '@/features/lab/components/CohortRail.vue'
 import CohortReviewStrip from '@/features/lab/components/CohortReviewStrip.vue'
 import CohortSourcingList from '@/features/lab/components/CohortSourcingList.vue'
+import LotDetailView from '@/features/review/views/LotDetailView.vue'
+import { fetchDinoCandidates } from '@/features/review/composables/useReviewApi'
+import { fetchLots } from '@/features/review/composables/useLotReview'
 import CohortThresholdBar from '@/features/lab/components/CohortThresholdBar.vue'
 import { useCohortQuery } from '@/features/lab/composables/useLabQueries'
 import { useCohortClasses, type CohortClass } from '@/features/lab/composables/useCohortFloor'
@@ -100,18 +102,29 @@ function setView(v: CohortView) {
 // ── Tri de la review : ordre de file, ou ce que DINO reconnaît ─────────────
 // Dans l'URL comme le reste du périmètre — et surtout ré-émis par scopeQuery :
 // sans ça, prendre une classe effacerait le réglage.
+// « Pêche » allumée = le périmètre de la file devient la PRÉDICTION, et non
+// plus la cible du scrape. C'est ce qui rend atteignables les crops de LOTS :
+// mesuré sur l'italienne standard, la file par cible en sert 57 dont 2 utiles,
+// la pêche 137 tous utiles — dont 136 en lots, invisibles jusqu'ici.
 const sortByDino = computed(() => route.query.tri === 'dino')
-const dinoTop1Only = computed(() => route.query.dino_top1 === '1')
+/** Jusqu'où descendre dans les hypothèses du modèle : 1, 3 ou 5. */
+const dinoRank = computed(() => {
+  const n = Number.parseInt(String(route.query.dino_rank ?? '1'), 10)
+  return [1, 3, 5].includes(n) ? n : 1
+})
 
 function setSort(dino: boolean) {
   const q: Record<string, unknown> = { ...route.query }
-  if (dino) { q.tri = 'dino' } else { delete q.tri; delete q.dino_top1 }
+  if (dino) { q.tri = 'dino' } else { delete q.tri; delete q.dino_rank; delete q.lot }
   void router.replace({ query: q as Record<string, string> })
 }
-function setTop1Only(on: boolean) {
+function setRank(rank: number) {
+  // Changer de rang change le périmètre : le lot en cours peut ne plus en
+  // faire partie. On le relâche plutôt que de garder ouvert un lot que la file
+  // ne contient plus — ses voisins seraient alors introuvables.
   const q: Record<string, unknown> = { ...route.query, tri: 'dino' }
-  if (on) q.dino_top1 = '1'
-  else delete q.dino_top1
+  q.dino_rank = String(rank)
+  delete q.lot
   void router.replace({ query: q as Record<string, string> })
 }
 
@@ -126,14 +139,19 @@ function scopeQuery(k: CohortClass, m: Mode): Record<string, string> {
   const base: Record<string, string> = {
     etape: 'validees', classe: k.id, mode: m, cohort: cohortId.value,
   }
-  // Le tri survit au changement de classe : scopeQuery reconstruit la query
+  // Le réglage survit au changement de classe : scopeQuery reconstruit la query
   // ENTIÈRE, donc tout réglage absent d'ici serait perdu à la prise suivante.
-  if (sortByDino.value) base.tri = 'dino'
-  if (dinoTop1Only.value) base.dino_top1 = '1'
+  if (sortByDino.value) {
+    // PÊCHE — un seul périmètre pour les deux modes : la classe. Il traverse
+    // les `kind`, les pays de listing et les cibles de scrape. C'est aussi lui
+    // qui donne au « lot suivant » son ordre : sans lui, la nav déroule la file
+    // lot globale (5413 items) et sort de la classe au premier clic.
+    return { ...base, tri: 'dino', dino_class: k.id, dino_rank: String(dinoRank.value) }
+  }
   if (m === 'lot') return { ...base, ...k.lotScope }
-  // La file single ne sait filtrer que par pièce. Les classes de la vague 1
-  // n'ont qu'un millésime chacune ; pour une classe multi-millésimes il faudra
-  // les enchaîner (limite connue, cf. useCohortFloor).
+  // La file single par cible ne sait filtrer que par pièce. Les classes de la
+  // vague 1 n'ont qu'un millésime chacune ; pour une classe multi-millésimes il
+  // faudra les enchaîner (limite connue, cf. useCohortFloor).
   return { ...base, eurio_id: k.members[0] ?? k.id }
 }
 
@@ -167,15 +185,29 @@ function nextClass() {
   else close()
 }
 
+// Compteurs du périmètre pêché — déclarés ICI parce que `stockNow` les lit et
+// qu'un `watch` évalue sa source dès le setup : les laisser plus bas mettrait
+// la ref en zone morte temporelle, et la page planterait au montage.
+// Ils sont remplis par le watch de la section « pêche », plus bas.
+const peche = ref<{ single: number; lot: number; orphans: number } | null>(null)
+
 // Plus rien à trancher sur cette classe → on passe à la suivante. On ne bascule
 // PAS sur un compteur atteint : au plancher on est autorisé à partir, jamais
 // poussé. Ici c'est différent — il n'y a littéralement plus rien à faire.
-watch(
-  () => (held.value ? held.value.openSingle + held.value.openLot : -1),
-  (stock, before) => {
-    if (held.value && stock === 0 && before !== undefined && before > 0) nextClass()
-  },
-)
+//
+// ⚠️ Le stock lu doit être celui du PÉRIMÈTRE SERVI. En pêche, les compteurs du
+// funnel (par cible) peuvent tomber à zéro alors que la file pêchée est encore
+// pleine — sur l'italienne standard, 1 à l'unité par cible contre 137 pêchés.
+// Lire le mauvais compteur ferait sauter de classe sous les doigts de quelqu'un
+// qui a encore cent crops à trancher.
+const stockNow = computed(() => {
+  if (!held.value) return -1
+  if (sortByDino.value) return peche.value ? peche.value.single + peche.value.lot : -1
+  return held.value.openSingle + held.value.openLot
+})
+watch(stockNow, (stock, before) => {
+  if (held.value && stock === 0 && before !== undefined && before > 0) nextClass()
+})
 
 // Le stock singles/lots vient du funnel (3,6 s) : on ne le rafraîchit qu'aux
 // moments qui comptent — changement de classe ou de mode.
@@ -212,6 +244,107 @@ onUnmounted(() => {
   window.removeEventListener('keydown', onKey)
   if (ticker) clearInterval(ticker)
 })
+
+// ── Les lots, un par un ────────────────────────────────────────────────────
+// Pas de grille de vignettes : le lot ouvert défile comme l'unité. Valider ou
+// skipper enchaîne sur le suivant DU PÉRIMÈTRE, et l'écran s'arrête quand il
+// n'y en a plus. Le lot courant vit dans l'URL (`?lot=`) comme le reste du
+// périmètre — rechargement et retour arrière retombent au même endroit.
+const heldLot = computed(() => {
+  const q = route.query.lot
+  return typeof q === 'string' && q ? q : null
+})
+
+/** Ce qu'on passe à `GET /review-queue/lots{,/{key}}` — le même que la file. */
+const lotScope = computed<Record<string, string>>(() => {
+  const out: Record<string, string> = {}
+  if (!held.value) return out
+  if (sortByDino.value) {
+    out.dino_class = held.value.id
+    out.dino_rank = String(dinoRank.value)
+    return out
+  }
+  const sc = held.value.lotScope
+  if ('design_group' in sc) out.design_group = sc.design_group
+  else out.target_eurio_id = sc.target
+  return out
+})
+
+const lotLoading = ref(false)
+const lotExhausted = ref(false)
+
+/** Ouvre le premier lot du périmètre. Appelé à l'entrée en mode lot. */
+async function openFirstLot() {
+  if (!held.value) return
+  lotLoading.value = true
+  lotExhausted.value = false
+  try {
+    const resp = await fetchLots({ limit: 1, ...lotScopeArgs() })
+    const first = resp.items[0]?.listing_key ?? null
+    if (first) void router.replace({ query: { ...route.query, lot: first } })
+    else lotExhausted.value = true
+  } finally {
+    lotLoading.value = false
+  }
+}
+
+function lotScopeArgs() {
+  const sc = lotScope.value
+  return {
+    dinoClass: sc.dino_class ?? null,
+    dinoRank: sc.dino_rank ? Number(sc.dino_rank) : null,
+    designGroup: sc.design_group ?? null,
+    targetEurioId: sc.target_eurio_id ?? null,
+  }
+}
+
+function gotoLot(key: string) {
+  void router.replace({ query: { ...route.query, lot: key } })
+}
+
+/** Plus de lot dans le périmètre : on le dit, et on propose la suite. */
+function lotsExhausted() {
+  const q = { ...route.query }
+  delete q.lot
+  lotExhausted.value = true
+  void router.replace({ query: q as Record<string, string> })
+}
+
+// Entrer en mode lot (ou changer de périmètre) ouvre le premier lot. On ne le
+// fait pas quand un lot est déjà à l'écran : ce serait ramener l'opérateur au
+// début de la file à chaque refetch.
+// ⚠️ On observe `held.value?.id`, PAS `heldId` : `heldId` vient de l'URL et
+// vaut déjà quelque chose au premier rendu, alors que la CLASSE n'arrive
+// qu'après le chargement du préflight. Observer l'URL ferait passer l'unique
+// déclenchement à un moment où `held` est encore nul — l'écran resterait sur
+// « Ouverture du premier lot… » pour toujours, sans la moindre erreur.
+watch(
+  [() => held.value?.id, mode, () => sortByDino.value, dinoRank],
+  () => {
+    if (mode.value !== 'lot' || !held.value) return
+    if (heldLot.value) return
+    void openFirstLot()
+  },
+  { immediate: true },
+)
+
+// ── Compteurs du périmètre pêché ───────────────────────────────────────────
+// Ceux du funnel comptent le périmètre PAR CIBLE. En pêche, les afficher
+// au-dessus d'une file qui sert dix fois plus serait précisément l'écran
+// plausible et faux que cette page existe pour ne plus produire.
+watch(
+  [heldId, () => sortByDino.value, dinoRank],
+  async () => {
+    if (!heldId.value || !sortByDino.value) { peche.value = null; return }
+    const s = await fetchDinoCandidates(heldId.value, { rank: dinoRank.value })
+    // `null` = le canonique n'a pas répondu. On garde `null` plutôt que des
+    // zéros : un zéro faux désactiverait les boutons et dirait « classe vide ».
+    peche.value = s
+      ? { single: s.n_open_single, lot: s.n_open_lot, orphans: s.n_orphans }
+      : null
+  },
+  { immediate: true },
+)
 
 const reviewBox = ref<HTMLElement | null>(null)
 watch(heldId, (id) => {
@@ -351,19 +484,38 @@ watch(heldId, (id) => {
         <section v-if="held" ref="reviewBox" class="review">
           <div class="review__frame">
             <SingleReviewView v-if="mode === 'single'" :key="`s-${held.id}`" />
-            <LotReviewView v-else :key="`l-${held.id}`" />
+            <LotDetailView
+              v-else-if="heldLot"
+              :key="`l-${heldLot}`"
+              :listing-key="heldLot"
+              :scope="lotScope"
+              @navigate="gotoLot"
+              @exhausted="lotsExhausted"
+            />
+            <p v-else-if="lotLoading" class="lotmsg">Ouverture du premier lot…</p>
+            <p v-else-if="lotExhausted" class="lotmsg">
+              <b>Plus de lot à trancher</b> dans ce périmètre.
+              <button type="button" class="linkish" @click="setMode('single')">
+                Passer à l'unité
+              </button>
+              <template v-if="!sortByDino">
+                · ou allumer la <b>pêche DINO</b> pour atteindre les lots que le
+                scrape ne visait pas.
+              </template>
+            </p>
           </div>
           <CohortReviewStrip
             :klass="held"
             :floor="floor"
             :mode="mode"
             :sort-by-dino="sortByDino"
-            :dino-top1-only="dinoTop1Only"
+            :dino-rank="dinoRank"
+            :peche="peche"
             :since-change="sinceChange"
             :source="countsSource"
             :lag-seconds="lagSeconds"
             @sort="setSort"
-            @top1-only="setTop1Only"
+            @rank="setRank"
             @next="nextClass"
             @mode="setMode"
             @close="close"
@@ -507,6 +659,15 @@ watch(heldId, (id) => {
   min-height: 560px;
   overflow: auto;
 }
+
+.lotmsg {
+  padding: 40px 24px;
+  font-size: 13.5px;
+  color: var(--ink-500);
+  max-width: 74ch;
+  line-height: 1.55;
+}
+.lotmsg b { color: var(--ink); font-weight: 600; }
 
 .linkish {
   background: none;

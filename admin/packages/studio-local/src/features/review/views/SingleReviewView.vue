@@ -31,6 +31,7 @@ import {
   type ReviewStats,
 } from '../composables/useReviewApi'
 import { useReviewKeybinds } from '../composables/useReviewKeybinds'
+import { queryParam } from '../composables/useQueryScope'
 import type { CoinSearchEntry } from '../composables/useCoinsSearch'
 import SplitCompare from '../components/SplitCompare.vue'
 import CircleCropEditor from '../components/CircleCropEditor.vue'
@@ -162,11 +163,25 @@ const focusedMarketQuote = computed<MarketQuote | null>(() => {
 
 // Optional cohort scope, driven by the `?cohort=<id>` query (set in ReviewPage).
 const route = useRoute()
-const cohortId = computed(() =>
-  typeof route.query.cohort === 'string' && route.query.cohort
-    ? route.query.cohort
-    : null,
-)
+const cohortId = computed(() => queryParam(route, 'cohort'))
+// ── PÊCHE (?dino_class=) — le périmètre par PRÉDICTION ─────────────────────
+// Il remplace celui par cible côté API : « ce que la banque reconnaît » au lieu
+// de « ce que le scrape visait ». C'est ce qui rend atteignables les crops
+// qu'aucun scrape ne visait — sur l'italienne standard, 57 items dont 2 utiles
+// deviennent 137 tous utiles.
+const dinoClass = computed(() => queryParam(route, 'dino_class'))
+const dinoRank = computed<number | null>(() => {
+  const raw = queryParam(route, 'dino_rank')
+  if (!raw) return null
+  const n = Number.parseInt(raw, 10)
+  // Trois paliers, pas un curseur : un rang inconnu ferait répondre 422 à
+  // l'API. On retombe sur le plus strict plutôt que d'élargir sans le dire.
+  return [1, 3, 5].includes(n) ? n : 1
+})
+// IDS explicites (?ids=a,b,c) : review déclenchée depuis la galerie enrichment
+// d'une page coin (reflag → ces rows review_queue EXACTES). Prioritaire absolu
+// sur eurio_id/cohort — robuste aux crops rescués. Vide → ignoré.
+
 // WS1 : lane persistée à reviewer (manual/auto_accept). SingleReviewView
 // EST l'écran manuel (auto_accept a sa page dédiée) → il filtre sur sa lane,
 // donc le compteur de la lane décroît à chaque décision.
@@ -181,27 +196,23 @@ const cohortId = computed(() =>
 // EXCEPTION ?ids= (galerie enrichment) : sert des rows EXACTES toutes lanes
 // confondues (crops rescués, target ≠ pièce assignée) → pas de filtre lane.
 const lane = computed<string | null>(() => {
-  const q = route.query.lane
-  if (typeof q === 'string' && ['manual', 'auto_accept'].includes(q)) {
-    return q
-  }
-  if (typeof route.query.ids === 'string' && route.query.ids) return null
+  const q = queryParam(route, 'lane')
+  if (q && ['manual', 'auto_accept'].includes(q)) return q
+  if (queryParam(route, 'ids')) return null
+  // PÊCHE : le périmètre est la prédiction, pas la lane. Un crop rangé en
+  // auto_accept est le même crop ; le laisser hors de la file rendrait le
+  // compteur du bandeau faux et cacherait du stock sans le dire.
+  if (dinoClass.value) return null
   return 'manual'
 })
 // Scope PAR PIÈCE (?eurio_id=) : review déclenchée depuis une row coin du
 // cockpit. Ne sert QUE les crops de cette pièce → trancher fait bouger SA ligne
 // (corrige « Reviewer N » qui servait toute la cohorte). Prioritaire backend.
-const eurioId = computed(() =>
-  typeof route.query.eurio_id === 'string' && route.query.eurio_id
-    ? route.query.eurio_id
-    : null,
-)
-// IDS explicites (?ids=a,b,c) : review déclenchée depuis la galerie enrichment
-// d'une page coin (reflag → ces rows review_queue EXACTES). Prioritaire absolu
-// sur eurio_id/cohort — robuste aux crops rescués. Vide → ignoré.
+const eurioId = computed(() => queryParam(route, 'eurio_id'))
+
 const reviewIds = computed<string[] | null>(() => {
-  const raw = route.query.ids
-  if (typeof raw !== 'string' || !raw) return null
+  const raw = queryParam(route, 'ids')
+  if (!raw) return null
   const ids = raw.split(',').filter(Boolean)
   return ids.length ? ids : null
 })
@@ -210,15 +221,15 @@ const reviewIds = computed<string[] | null>(() => {
 // Lu dans l'URL comme tout le reste du périmètre, pour que la page cohorte
 // puisse le poser sans prop et que le rechargement le conserve.
 const order = computed<'priority' | 'dino'>(
-  () => (route.query.tri === 'dino' ? 'dino' : 'priority'),
+  () => (queryParam(route, 'tri') === 'dino' ? 'dino' : 'priority'),
 )
 const dinoMinSpread = computed<number | null>(() => {
-  const raw = route.query.dino_min
-  if (typeof raw !== 'string' || !raw) return null
+  const raw = queryParam(route, 'dino_min')
+  if (!raw) return null
   const n = Number.parseFloat(raw)
   return Number.isFinite(n) ? n : null
 })
-const dinoTop1Only = computed(() => route.query.dino_top1 === '1')
+const dinoTop1Only = computed(() => queryParam(route, 'dino_top1') === '1')
 
 // Valider exige un candidat ET un type/état renseignés : on ne fige pas
 // une attribution sans avoir tranché le contexte listing (C4).
@@ -253,6 +264,8 @@ async function load() {
       order: order.value,
       dinoMinSpread: dinoMinSpread.value,
       dinoTop1Only: dinoTop1Only.value,
+      dinoClass: dinoClass.value,
+      dinoRank: dinoRank.value,
     }),
     fetchReviewStats(),
   ])
@@ -282,6 +295,8 @@ async function loadMore() {
       order: order.value,
       dinoMinSpread: dinoMinSpread.value,
       dinoTop1Only: dinoTop1Only.value,
+      dinoClass: dinoClass.value,
+      dinoRank: dinoRank.value,
     })
     const known = new Set(queue.value.map((r) => r.id))
     if (pendingCommit.value) known.add(pendingCommit.value.reviewId)
@@ -378,7 +393,8 @@ onMounted(() => {
 // explicit id list changes.
 // Le tri fait partie du périmètre : l'oublier ici donnerait un premier écran
 // trié puis une pagination qui ne l'est plus — panne muette parfaite.
-watch([cohortId, lane, eurioId, reviewIds, order, dinoMinSpread, dinoTop1Only], () => {
+watch([cohortId, lane, eurioId, reviewIds, order, dinoMinSpread, dinoTop1Only,
+       dinoClass, dinoRank], () => {
   void load()
 })
 

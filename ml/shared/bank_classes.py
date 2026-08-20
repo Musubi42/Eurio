@@ -82,3 +82,34 @@ def bank_class_ids_for_many(
                 seen.add(cid)
                 out.append(cid)
     return out
+
+
+def bank_class_ids_for_class(
+    conn: sqlite3.Connection, class_id: str
+) -> list[str]:
+    """Les identifiants sous lesquels la banque peut indexer CETTE CLASSE.
+
+    Entrée : un `class_id` — c'est-à-dire un `design_group_id` (courante) ou un
+    `eurio_id` (commémorative), la maille à laquelle le préflight, le bake et la
+    banque raisonnent tous. Les deux surfaces qui appellent cette fonction (la
+    file cohorte et la page pêche) tiennent un `class_id`, pas un `eurio_id` :
+    passer par `bank_class_ids` obligerait chaque appelant à choisir un membre
+    au hasard — et un membre non-représentant renvoie zéro ligne sans rien dire.
+
+    Renvoie l'union des étiquettes de tous les membres, `class_id` inclus quand
+    il désigne lui-même une pièce. Une classe inconnue renvoie ``[class_id]`` :
+    le filtre ne ramènera rien, ce qui est correct, et l'appelant n'a pas à
+    distinguer.
+    """
+    rows = conn.execute(
+        "SELECT eurio_id FROM coins "
+        " WHERE COALESCE(design_group_id, eurio_id) = ? "
+        " ORDER BY eurio_id ASC",
+        (class_id,),
+    ).fetchall()
+    members = [
+        (r[0] if not isinstance(r, sqlite3.Row) else r["eurio_id"]) for r in rows
+    ]
+    if not members:
+        return [class_id]
+    return bank_class_ids_for_many(conn, members)

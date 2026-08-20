@@ -13,9 +13,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from serving.auth_principal import Principal, require_scope
 from serving.deps import db_connection
+from shared.dino_scope import DINO_RANKS
 
 from . import repository, service
 from .models import (
+    DinoCandidatesSummary,
     LotDetail,
     LotListResponse,
     RejectedCrop,
@@ -55,6 +57,8 @@ def list_queue(
     review_ids: str | None = Query(default=None),
     dino_min_spread: float | None = Query(default=None, ge=0.0, le=1.0),
     dino_top1_only: bool = Query(default=False),
+    dino_class: str | None = Query(default=None),
+    dino_rank: int = Query(default=1),
 ) -> list[ReviewItem]:
     if order not in ("priority", "enqueued_at", "dino"):
         raise HTTPException(
@@ -69,6 +73,10 @@ def list_queue(
         raise HTTPException(
             status_code=422, detail=f"lane must be one of {repository.VALID_LANES}",
         )
+    if dino_rank not in DINO_RANKS:
+        raise HTTPException(
+            status_code=422, detail=f"dino_rank must be one of {DINO_RANKS}",
+        )
     rids = [x for x in (review_ids or "").split(",") if x] or None
     if review_ids and not rids:
         return []
@@ -77,6 +85,7 @@ def list_queue(
             conn, status=status, limit=limit, order=order, kind=kind,
             lane=lane, cohort_id=cohort_id, eurio_id=eurio_id, review_ids=rids,
             dino_min_spread=dino_min_spread, dino_top1_only=dino_top1_only,
+            dino_class=dino_class, dino_rank=dino_rank,
         )
     except repository.CohortNotFound:
         raise HTTPException(status_code=404, detail="Cohort introuvable")
@@ -111,7 +120,40 @@ def rejected(
     return repository.list_rejected(conn, cohort_id=cohort_id, limit=limit)
 
 
-# ─── Lots (déclarés AVANT /{review_id} pour ne pas être capturés) ──────────
+# ─── Pêche & lots (déclarés AVANT /{review_id} pour ne pas être capturés) ──
+
+
+@router.get(
+    "/review-queue/dino-candidates/summary",
+    response_model=DinoCandidatesSummary,
+)
+def dino_candidates_summary(
+    principal: PrincipalDep,
+    conn: ConnDep,
+    dino_class: str = Query(...),
+    dino_rank: int = Query(default=1),
+    dino_min_spread: float | None = Query(default=None, ge=0.0, le=1.0),
+) -> DinoCandidatesSummary:
+    """Ce que la banque propose pour une classe — pour la porte d'entrée Coins.
+
+    Lecture pure : les orphelins sont comptés et leurs ids rendus, mais rien
+    n'est enfilé ici (l'enfilage est un POST explicite, cf. la docstring du
+    repository).
+    """
+    if dino_rank not in DINO_RANKS:
+        raise HTTPException(
+            status_code=422, detail=f"dino_rank must be one of {DINO_RANKS}",
+        )
+    try:
+        return repository.dino_candidates_summary(
+            conn, dino_class=dino_class, dino_rank=dino_rank,
+            dino_min_spread=dino_min_spread,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+# ─── Lots ─────────────────────────────────────────────────────────────────
 
 
 @router.get("/review-queue/lots", response_model=LotListResponse)
@@ -123,10 +165,19 @@ def list_lots(
     cohort_id: str | None = Query(default=None),
     target_eurio_id: str | None = Query(default=None),
     design_group: str | None = Query(default=None),
+    dino_class: str | None = Query(default=None),
+    dino_rank: int = Query(default=1),
+    dino_min_spread: float | None = Query(default=None, ge=0.0, le=1.0),
 ) -> LotListResponse:
+    if dino_rank not in DINO_RANKS:
+        raise HTTPException(
+            status_code=422, detail=f"dino_rank must be one of {DINO_RANKS}",
+        )
     items, total = repository.list_lots(
         conn, limit=limit, offset=offset, cohort_id=cohort_id,
         target_eurio_id=target_eurio_id, design_group=design_group,
+        dino_class=dino_class, dino_rank=dino_rank,
+        dino_min_spread=dino_min_spread,
     )
     return LotListResponse(items=items, total=total)
 
@@ -136,9 +187,30 @@ def get_lot(
     listing_key: str,
     principal: PrincipalDep,
     conn: ConnDep,
+    cohort_id: str | None = Query(default=None),
+    target_eurio_id: str | None = Query(default=None),
+    design_group: str | None = Query(default=None),
+    dino_class: str | None = Query(default=None),
+    dino_rank: int = Query(default=1),
+    dino_min_spread: float | None = Query(default=None, ge=0.0, le=1.0),
 ) -> LotDetail:
+    """Le lot, et ses voisins DANS LE PÉRIMÈTRE passé en query.
+
+    Les paramètres de périmètre sont facultatifs et purement navigationnels :
+    ils ne changent pas le contenu du lot, seulement `prev/next_listing_key`.
+    Un appel sans eux déroule la file lot globale — l'ancien comportement.
+    """
+    if dino_rank not in DINO_RANKS:
+        raise HTTPException(
+            status_code=422, detail=f"dino_rank must be one of {DINO_RANKS}",
+        )
     try:
-        return repository.get_lot_detail(conn, listing_key)
+        return repository.get_lot_detail(
+            conn, listing_key,
+            cohort_id=cohort_id, target_eurio_id=target_eurio_id,
+            design_group=design_group, dino_class=dino_class,
+            dino_rank=dino_rank, dino_min_spread=dino_min_spread,
+        )
     except repository.LotNotFound as exc:
         raise HTTPException(
             status_code=404, detail=f"Listing '{listing_key}' introuvable",

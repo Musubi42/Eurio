@@ -24,15 +24,26 @@ const props = defineProps<{
   source: 'live' | 'loading' | 'fallback'
   /** Décalage à annoncer en repli sur la copie locale. */
   lagSeconds: number
-  /** Trier par ce que DINO reconnaît plutôt que par l'ordre de la file. */
+  /**
+   * PÊCHE. Allumé, le périmètre de la file n'est plus « ce que le scrape
+   * visait » mais « ce que la banque reconnaît » — et il traverse les lots.
+   * Éteint, on retombe sur le périmètre par cible (le comportement d'origine),
+   * qui reste la seule porte vers les crops que la banque classe ailleurs.
+   */
   sortByDino: boolean
-  /** Ne montrer que les crops dont le top-1 tombe dans cette classe. */
-  dinoTop1Only: boolean
+  /** Position dans le top-k qui suffit à retenir un crop : 1, 3 ou 5. */
+  dinoRank: number
+  /**
+   * Compteurs du périmètre PÊCHÉ, quand il est actif. `null` = pas encore lus.
+   * Ceux de `klass` comptent le périmètre par cible : les afficher au-dessus
+   * d'une file qui en sert dix fois plus serait un écran plausible et faux.
+   */
+  peche: { single: number; lot: number; orphans: number } | null
 }>()
 
 const emit = defineEmits<{
   (e: 'sort', value: boolean): void
-  (e: 'top1-only', value: boolean): void
+  (e: 'rank', value: number): void
   (e: 'next'): void
   (e: 'mode', value: 'single' | 'lot'): void
   (e: 'close'): void
@@ -78,10 +89,22 @@ const stuckWhy = computed(() => {
 const stuckUnknown = computed(
   () => props.klass.reverseFlagged === null || props.klass.unknownFace === null,
 )
+// Le stock affiché suit le périmètre RÉELLEMENT servi. En pêche il vient du
+// canonique (`/review-queue/dino-candidates/summary`) ; tant qu'il n'est pas
+// arrivé on garde celui du funnel plutôt que d'afficher zéro — un zéro faux
+// désactiverait les boutons et ferait croire la classe vide.
+const nSingle = computed(() =>
+  props.sortByDino && props.peche ? props.peche.single : props.klass.openSingle,
+)
+const nLot = computed(() =>
+  props.sortByDino && props.peche ? props.peche.lot : props.klass.openLot,
+)
+const RANKS = [1, 3, 5]
+
 // Singles épuisés mais des lots restent : on PROPOSE la bascule, on ne l'impose
 // pas — la vue lot change les touches sous les doigts (J/K, S requalifie).
 const offerLot = computed(
-  () => props.mode === 'single' && props.klass.openSingle === 0 && props.klass.openLot > 0,
+  () => props.mode === 'single' && nSingle.value === 0 && nLot.value > 0,
 )
 </script>
 
@@ -111,31 +134,38 @@ const offerLot = computed(
         type="button"
         class="chip"
         :class="{ 'chip--on': mode === 'single' }"
-        :disabled="klass.openSingle === 0"
+        :disabled="nSingle === 0"
         @click="emit('mode', 'single')"
-      >{{ klass.openSingle }} à l'unité</button>
+      >{{ nSingle }} à l'unité</button>
       <button
         type="button"
         class="chip"
         :class="{ 'chip--on': mode === 'lot', 'chip--offer': offerLot }"
-        :disabled="klass.openLot === 0"
+        :disabled="nLot === 0"
         @click="emit('mode', 'lot')"
-      >{{ klass.openLot }} en lots</button>
+      >{{ nLot }} en lots</button>
       <button
         type="button"
         class="chip chip--sort"
         :class="{ 'chip--on': sortByDino }"
-        title="Classer la file par ce que le modèle reconnaît : les crops qu'il rattache le plus nettement à cette classe d'abord, ceux qu'il n'a jamais vus en queue."
+        title="PÊCHE — la file n'est plus « ce que le scrape visait » mais « ce que le modèle rattache à cette classe » : les crops de LOTS et ceux des annonces d'autres pays deviennent atteignables. Éteint, on retombe sur le périmètre par cible."
         @click="emit('sort', !sortByDino)"
-      >⌁ tri DINO</button>
-      <button
-        v-if="sortByDino"
-        type="button"
-        class="chip"
-        :class="{ 'chip--on': dinoTop1Only }"
-        title="Ne garder que les crops que le modèle rattache à CETTE classe. Attention : il ne voit que ce qui est dans sa banque d'ancres."
-        @click="emit('top1-only', !dinoTop1Only)"
-      >cette classe seulement</button>
+      >⌁ pêche DINO</button>
+      <span v-if="sortByDino" class="ranks" title="Jusqu'où descendre dans les hypothèses du modèle. Top 1 = il en fait sa première réponse (le plus sûr). Top 3 / Top 5 élargissent le filet quand la classe est affamée — au prix de plus de faux à écarter à l'œil.">
+        <button
+          v-for="r in RANKS"
+          :key="r"
+          type="button"
+          class="chip chip--rank"
+          :class="{ 'chip--on': dinoRank === r }"
+          @click="emit('rank', r)"
+        >Top {{ r }}</button>
+      </span>
+      <span
+        v-if="sortByDino && peche && peche.orphans > 0"
+        class="strip__stuck"
+        :title="`${peche.orphans} crop(s) que le modèle rattache à cette classe n'ont AUCUNE ligne de review ouverte : ils ne sont dans aucune file. Ils s'enfilent depuis la page de la pièce.`"
+      >⚠ {{ peche.orphans }} hors file</span>
       <span class="strip__sync" :class="{ 'strip__sync--wait': late }" :title="sourceHint">
         {{ sourceLabel }}
       </span>
@@ -248,6 +278,8 @@ const offerLot = computed(
 .chip:disabled { opacity: 0.4; cursor: not-allowed; }
 .chip--on { border-color: var(--ink); color: var(--ink); font-weight: 500; }
 .chip--sort { border-style: dashed; }
+.ranks { display: inline-flex; gap: 3px; }
+.chip--rank { padding-inline: 7px; }
 .chip--offer { border-color: var(--gold); color: var(--gold-700); }
 .chip:focus-visible, .btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
 

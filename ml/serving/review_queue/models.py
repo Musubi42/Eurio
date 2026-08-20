@@ -130,6 +130,37 @@ class LotListItem(BaseModel):
     n_crops_in_review: int
     oldest_enqueued_at: str
     thumb_url: str | None
+    # Combien de crops de CE listing la banque rattache à la classe pêchée.
+    # `None` hors périmètre pêche : « la question n'a pas été posée » ne se
+    # confond pas avec « la réponse est zéro » — un listing à 0 ne sort pas.
+    n_matching_crops: int | None = None
+
+
+class DinoCandidatesSummary(BaseModel):
+    """Ce que la banque propose pour UNE classe, et ce qui est atteignable.
+
+    Trois populations, jamais additionnées à l'écran : deux sont déjà dans une
+    file, la troisième n'est dans aucune — et c'est précisément le genre de
+    stock qu'un écran ne doit pas taire.
+    """
+
+    class_id: str
+    #: Les étiquettes sous lesquelles la banque indexe cette classe (une
+    #: courante est indexée sous le plus ancien millésime de son ère).
+    bank_class_ids: list[str]
+    rank: int
+    min_spread: float | None
+    n_open_single: int
+    n_open_lot: int
+    #: Crops en `needs_review` SANS ligne de review ouverte : jamais enfilés,
+    #: invisibles partout. Ils ne deviennent péchables qu'après un enfilage
+    #: explicite (POST /coins/assets/reflag-needs-review) — on ne les enfile
+    #: JAMAIS au fil d'une lecture.
+    n_orphans: int
+    #: Plafonné (cf. `ORPHAN_IDS_CAP`) : de quoi enfiler, pas de quoi pagier.
+    orphan_asset_ids: list[str]
+    #: Déjà validés pour l'entraînement — le dénominateur du « il en manque N ».
+    n_training_eligible: int
 
 
 class LotListResponse(BaseModel):
