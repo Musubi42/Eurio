@@ -1,0 +1,401 @@
+session;ordre;eurio_id;numista_id;strate;condition;n_captures;fond;passe;pays;annee;titre;n_fps_banque;n_gold_review
+1;1;be-2014-2eur-100th-anniversary-of-the-beginning-of-ww-i;59828;canonique;bright;3;papier-blanc;1;BE;2014;100Th Anniversary Of The Beginning Of Ww I;0;2
+1;2;be-2014-2eur-100th-anniversary-of-the-beginning-of-ww-i;59828;canonique;tilt;3;bois-clair;1;BE;2014;100Th Anniversary Of The Beginning Of Ww I;0;2
+1;3;be-2014-2eur-100th-anniversary-of-the-beginning-of-ww-i;59828;canonique;dim;3;papier-blanc;1;BE;2014;100Th Anniversary Of The Beginning Of Ww I;0;2
+1;4;fi-2016-2eur-90th-anniversary-of-the-death-of-the-writer-eino-leino;86837;riche;glare;2;tissu-gris;1;FI;2016;90Th Anniversary Of The Death Of The Writer Eino Leino;10;16
+1;5;fi-2016-2eur-90th-anniversary-of-the-death-of-the-writer-eino-leino;86837;riche;dim;2;table-sombre;1;FI;2016;90Th Anniversary Of The Death Of The Writer Eino Leino;10;16
+1;6;fi-2016-2eur-90th-anniversary-of-the-death-of-the-writer-eino-leino;86837;riche;inhand;2;tissu-gris;1;FI;2016;90Th Anniversary Of The Death Of The Writer Eino Leino;10;16
+1;7;it-2002-2eur-standard-1st-map;136;moyenne;dim;2;papier-blanc;1;IT;2002;Standard 1St Map;2;3
+1;8;it-2002-2eur-standard-1st-map;136;moyenne;bright;2;bois-clair;1;IT;2002;Standard 1St Map;2;3
+1;9;it-2002-2eur-standard-1st-map;136;moyenne;inhand;2;papier-blanc;1;IT;2002;Standard 1St Map;2;3
+1;10;de-2013-2eur-50th-anniversary-of-the-elysee-treaty;41786;canonique;bright;3;papier-blanc;1;DE;2013;50Th Anniversary Of The Elysee Treaty;0;0
+1;11;de-2013-2eur-50th-anniversary-of-the-elysee-treaty;41786;canonique;glare;3;bois-clair;1;DE;2013;50Th Anniversary Of The Elysee Treaty;0;0
+1;12;de-2013-2eur-50th-anniversary-of-the-elysee-treaty;41786;canonique;dim;3;papier-blanc;1;DE;2013;50Th Anniversary Of The Elysee Treaty;0;0
+1;13;fr-2018-2eur-simone-veil;141382;riche;glare;2;tissu-gris;1;FR;2018;Simone Veil;10;18
+1;14;fr-2018-2eur-simone-veil;141382;riche;bright;2;table-sombre;1;FR;2018;Simone Veil;10;18
+1;15;fr-2018-2eur-simone-veil;141382;riche;dim;2;tissu-gris;1;FR;2018;Simone Veil;10;18
+1;16;be-2010-2eur-belgian-presidency-of-the-european-union;11550;moyenne;dim;2;papier-blanc;1;BE;2010;Belgian Presidency Of The European Union;2;2
+1;17;be-2010-2eur-belgian-presidency-of-the-european-union;11550;moyenne;glare;2;bois-clair;1;BE;2010;Belgian Presidency Of The European Union;2;2
+1;18;be-2010-2eur-belgian-presidency-of-the-european-union;11550;moyenne;bright;2;papier-blanc;1;BE;2010;Belgian Presidency Of The European Union;2;2
+1;19;de-2008-2eur-standard-2nd-map;6323;hors_banque;dim;3;table-sombre;1;DE;2008;Standard 2Nd Map;0;2
+1;20;de-2008-2eur-standard-2nd-map;6323;hors_banque;glare;3;tissu-gris;1;DE;2008;Standard 2Nd Map;0;2
+1;21;de-2008-2eur-standard-2nd-map;6323;hors_banque;bright;3;table-sombre;1;DE;2008;Standard 2Nd Map;0;2
+1;22;de-2009-2eur-10th-anniversary-of-economic-and-monetary-union;5054;canonique;tilt;3;bois-clair;1;DE;2009;10Th Anniversary Of Economic And Monetary Union;0;14
+1;23;de-2009-2eur-10th-anniversary-of-economic-and-monetary-union;5054;canonique;bright;3;papier-blanc;1;DE;2009;10Th Anniversary Of Economic And Monetary Union;0;14
+1;24;de-2009-2eur-10th-anniversary-of-economic-and-monetary-union;5054;canonique;dim;3;bois-clair;1;DE;2009;10Th Anniversary Of Economic And Monetary Union;0;14
+1;25;de-2007-2eur-state-of-mecklenburg-vorpommern;2201;riche;dim;2;tissu-gris;1;DE;2007;State Of Mecklenburg Vorpommern;10;35
+1;26;de-2007-2eur-state-of-mecklenburg-vorpommern;2201;riche;glare;2;table-sombre;1;DE;2007;State Of Mecklenburg Vorpommern;10;35
+1;27;de-2007-2eur-state-of-mecklenburg-vorpommern;2201;riche;tilt;2;tissu-gris;1;DE;2007;State Of Mecklenburg Vorpommern;10;35
+1;28;fr-2014-2eur-70th-anniversary-of-d-day;60800;canonique;glare;3;papier-blanc;1;FR;2014;70Th Anniversary Of D Day;0;0
+1;29;fr-2014-2eur-70th-anniversary-of-d-day;60800;canonique;inhand;3;bois-clair;1;FR;2014;70Th Anniversary Of D Day;0;0
+1;30;fr-2014-2eur-70th-anniversary-of-d-day;60800;canonique;bright;3;papier-blanc;1;FR;2014;70Th Anniversary Of D Day;0;0
+1;31;fi-2007-2eur-standard-2nd-type-2nd-map;8714;moyenne;inhand;2;papier-blanc;1;FI;2007;Standard 2Nd Type 2Nd Map;1;1
+1;32;fi-2007-2eur-standard-2nd-type-2nd-map;8714;moyenne;tilt;2;bois-clair;1;FI;2007;Standard 2Nd Type 2Nd Map;1;1
+1;33;fi-2007-2eur-standard-2nd-type-2nd-map;8714;moyenne;glare;2;papier-blanc;1;FI;2007;Standard 2Nd Type 2Nd Map;1;1
+1;34;be-2015-2eur-30th-anniversary-of-the-flag-of-the-european-union;77181;canonique;glare;3;bois-clair;1;BE;2015;30Th Anniversary Of The Flag Of The European Union;0;1
+1;35;be-2015-2eur-30th-anniversary-of-the-flag-of-the-european-union;77181;canonique;inhand;3;papier-blanc;1;BE;2015;30Th Anniversary Of The Flag Of The European Union;0;1
+1;36;be-2015-2eur-30th-anniversary-of-the-flag-of-the-european-union;77181;canonique;dim;3;bois-clair;1;BE;2015;30Th Anniversary Of The Flag Of The European Union;0;1
+1;37;es-2016-2eur-old-town-of-segovia-and-its-aqueduct;81058;riche;dim;2;bois-clair;1;ES;2016;Old Town Of Segovia And Its Aqueduct;10;35
+1;38;es-2016-2eur-old-town-of-segovia-and-its-aqueduct;81058;riche;tilt;2;papier-blanc;1;ES;2016;Old Town Of Segovia And Its Aqueduct;10;35
+1;39;es-2016-2eur-old-town-of-segovia-and-its-aqueduct;81058;riche;bright;2;bois-clair;1;ES;2016;Old Town Of Segovia And Its Aqueduct;10;35
+2;1;be-2012-2eur-10-years-of-euro-cash;28325;moyenne;inhand;2;bois-clair;1;BE;2012;10 Years Of Euro Cash;1;1
+2;2;be-2012-2eur-10-years-of-euro-cash;28325;moyenne;tilt;2;papier-blanc;1;BE;2012;10 Years Of Euro Cash;1;1
+2;3;be-2012-2eur-10-years-of-euro-cash;28325;moyenne;dim;2;bois-clair;1;BE;2012;10 Years Of Euro Cash;1;1
+2;4;gr-2004-2eur-xxviiith-olympic-games-2004-in-athens;2190;canonique;inhand;3;bois-clair;1;GR;2004;Xxviiith Olympic Games 2004 In Athens;0;0
+2;5;gr-2004-2eur-xxviiith-olympic-games-2004-in-athens;2190;canonique;glare;3;papier-blanc;1;GR;2004;Xxviiith Olympic Games 2004 In Athens;0;0
+2;6;gr-2004-2eur-xxviiith-olympic-games-2004-in-athens;2190;canonique;bright;3;bois-clair;1;GR;2004;Xxviiith Olympic Games 2004 In Athens;0;0
+2;7;fi-2012-2eur-150th-birthday-of-helene-schjerfbeck;38356;riche;glare;2;table-sombre;1;FI;2012;150Th Birthday Of Helene Schjerfbeck;9;45
+2;8;fi-2012-2eur-150th-birthday-of-helene-schjerfbeck;38356;riche;bright;2;tissu-gris;1;FI;2012;150Th Birthday Of Helene Schjerfbeck;9;45
+2;9;fi-2012-2eur-150th-birthday-of-helene-schjerfbeck;38356;riche;inhand;2;table-sombre;1;FI;2012;150Th Birthday Of Helene Schjerfbeck;9;45
+2;10;at-2018-2eur-100-years-republic-of-austria;131199;moyenne;inhand;2;bois-clair;1;AT;2018;100 Years Republic Of Austria;6;27
+2;11;at-2018-2eur-100-years-republic-of-austria;131199;moyenne;glare;2;papier-blanc;1;AT;2018;100 Years Republic Of Austria;6;27
+2;12;at-2018-2eur-100-years-republic-of-austria;131199;moyenne;dim;2;bois-clair;1;AT;2018;100 Years Republic Of Austria;6;27
+2;13;nl-2007-2eur-standard-beatrix-2nd-map;6481;hors_banque;tilt;3;table-sombre;1;NL;2007;Standard Beatrix 2Nd Map;0;0
+2;14;nl-2007-2eur-standard-beatrix-2nd-map;6481;hors_banque;inhand;3;tissu-gris;1;NL;2007;Standard Beatrix 2Nd Map;0;0
+2;15;nl-2007-2eur-standard-beatrix-2nd-map;6481;hors_banque;glare;3;table-sombre;1;NL;2007;Standard Beatrix 2Nd Map;0;0
+2;16;fr-2013-2eur-50th-anniversary-of-the-elysee-treaty;41904;canonique;dim;3;tissu-gris;1;FR;2013;50Th Anniversary Of The Elysee Treaty;0;1
+2;17;fr-2013-2eur-50th-anniversary-of-the-elysee-treaty;41904;canonique;inhand;3;table-sombre;1;FR;2013;50Th Anniversary Of The Elysee Treaty;0;1
+2;18;fr-2013-2eur-50th-anniversary-of-the-elysee-treaty;41904;canonique;bright;3;tissu-gris;1;FR;2013;50Th Anniversary Of The Elysee Treaty;0;1
+2;19;es-1999-2eur-standard-juan-carlos-i-1st-type-1st-map;88;riche;glare;2;bois-clair;1;ES;1999;Standard Juan Carlos I 1St Type 1St Map;10;22
+2;20;es-1999-2eur-standard-juan-carlos-i-1st-type-1st-map;88;riche;dim;2;papier-blanc;1;ES;1999;Standard Juan Carlos I 1St Type 1St Map;10;22
+2;21;es-1999-2eur-standard-juan-carlos-i-1st-type-1st-map;88;riche;inhand;2;bois-clair;1;ES;1999;Standard Juan Carlos I 1St Type 1St Map;10;22
+2;22;fr-2015-2eur-70th-anniversary-of-the-end-of-world-war-ii;69366;canonique;tilt;3;bois-clair;1;FR;2015;70Th Anniversary Of The End Of World War Ii;0;2
+2;23;fr-2015-2eur-70th-anniversary-of-the-end-of-world-war-ii;69366;canonique;dim;3;papier-blanc;1;FR;2015;70Th Anniversary Of The End Of World War Ii;0;2
+2;24;fr-2015-2eur-70th-anniversary-of-the-end-of-world-war-ii;69366;canonique;inhand;3;bois-clair;1;FR;2015;70Th Anniversary Of The End Of World War Ii;0;2
+2;25;ee-2011-2eur-standard-2nd-map;16593;moyenne;glare;2;papier-blanc;1;EE;2011;Standard 2Nd Map;1;1
+2;26;ee-2011-2eur-standard-2nd-map;16593;moyenne;tilt;2;bois-clair;1;EE;2011;Standard 2Nd Map;1;1
+2;27;ee-2011-2eur-standard-2nd-map;16593;moyenne;inhand;2;papier-blanc;1;EE;2011;Standard 2Nd Map;1;1
+2;28;lv-2016-2eur-latvian-farming-and-countryside;85889;canonique;inhand;3;bois-clair;1;LV;2016;Latvian Farming And Countryside;0;0
+2;29;lv-2016-2eur-latvian-farming-and-countryside;85889;canonique;dim;3;papier-blanc;1;LV;2016;Latvian Farming And Countryside;0;0
+2;30;lv-2016-2eur-latvian-farming-and-countryside;85889;canonique;glare;3;bois-clair;1;LV;2016;Latvian Farming And Countryside;0;0
+2;31;be-2011-2eur-100th-international-womens-day;19734;riche;inhand;2;table-sombre;1;BE;2011;100Th International Womens Day;10;40
+2;32;be-2011-2eur-100th-international-womens-day;19734;riche;bright;2;tissu-gris;1;BE;2011;100Th International Womens Day;10;40
+2;33;be-2011-2eur-100th-international-womens-day;19734;riche;dim;2;table-sombre;1;BE;2011;100Th International Womens Day;10;40
+2;34;de-2019-2eur-30-years-of-the-fall-of-the-berlin-wall;180626;moyenne;dim;2;papier-blanc;1;DE;2019;30 Years Of The Fall Of The Berlin Wall;1;1
+2;35;de-2019-2eur-30-years-of-the-fall-of-the-berlin-wall;180626;moyenne;bright;2;bois-clair;1;DE;2019;30 Years Of The Fall Of The Berlin Wall;1;1
+2;36;de-2019-2eur-30-years-of-the-fall-of-the-berlin-wall;180626;moyenne;inhand;2;papier-blanc;1;DE;2019;30 Years Of The Fall Of The Berlin Wall;1;1
+2;37;it-2013-2eur-200th-anniversary-of-the-birth-of-giuseppe-verdi;45254;canonique;bright;3;bois-clair;1;IT;2013;200Th Anniversary Of The Birth Of Giuseppe Verdi;0;1
+2;38;it-2013-2eur-200th-anniversary-of-the-birth-of-giuseppe-verdi;45254;canonique;dim;3;papier-blanc;1;IT;2013;200Th Anniversary Of The Birth Of Giuseppe Verdi;0;1
+2;39;it-2013-2eur-200th-anniversary-of-the-birth-of-giuseppe-verdi;45254;canonique;tilt;3;bois-clair;1;IT;2013;200Th Anniversary Of The Birth Of Giuseppe Verdi;0;1
+3;1;de-2002-2eur-standard-1st-map;112;riche;dim;2;table-sombre;1;DE;2002;Standard 1St Map;10;11
+3;2;de-2002-2eur-standard-1st-map;112;riche;tilt;2;tissu-gris;1;DE;2002;Standard 1St Map;10;11
+3;3;de-2002-2eur-standard-1st-map;112;riche;bright;2;table-sombre;1;DE;2002;Standard 1St Map;10;11
+3;4;de-2018-2eur-state-of-berlin;132935;canonique;glare;3;tissu-gris;1;DE;2018;State Of Berlin;0;0
+3;5;de-2018-2eur-state-of-berlin;132935;canonique;bright;3;table-sombre;1;DE;2018;State Of Berlin;0;0
+3;6;de-2018-2eur-state-of-berlin;132935;canonique;dim;3;tissu-gris;1;DE;2018;State Of Berlin;0;0
+3;7;gr-2002-2eur-standard-1st-map;120;moyenne;bright;2;table-sombre;1;GR;2002;Standard 1St Map;1;1
+3;8;gr-2002-2eur-standard-1st-map;120;moyenne;tilt;2;tissu-gris;1;GR;2002;Standard 1St Map;1;1
+3;9;gr-2002-2eur-standard-1st-map;120;moyenne;dim;2;table-sombre;1;GR;2002;Standard 1St Map;1;1
+3;10;be-2009-2eur-standard-albert-ii-2nd-map-2nd-type-1st-portrait;6311;hors_banque;glare;3;tissu-gris;1;BE;2009;Standard Albert Ii 2Nd Map 2Nd Type 1St Portrait;0;9
+3;11;be-2009-2eur-standard-albert-ii-2nd-map-2nd-type-1st-portrait;6311;hors_banque;dim;3;table-sombre;1;BE;2009;Standard Albert Ii 2Nd Map 2Nd Type 1St Portrait;0;9
+3;12;be-2009-2eur-standard-albert-ii-2nd-map-2nd-type-1st-portrait;6311;hors_banque;bright;3;tissu-gris;1;BE;2009;Standard Albert Ii 2Nd Map 2Nd Type 1St Portrait;0;9
+3;13;sk-2018-2eur-25th-anniversary-of-the-establishment-of-the-slovak-republic;131970;canonique;glare;3;table-sombre;1;SK;2018;25Th Anniversary Of The Establishment Of The Slovak Republic;0;0
+3;14;sk-2018-2eur-25th-anniversary-of-the-establishment-of-the-slovak-republic;131970;canonique;dim;3;tissu-gris;1;SK;2018;25Th Anniversary Of The Establishment Of The Slovak Republic;0;0
+3;15;sk-2018-2eur-25th-anniversary-of-the-establishment-of-the-slovak-republic;131970;canonique;bright;3;table-sombre;1;SK;2018;25Th Anniversary Of The Establishment Of The Slovak Republic;0;0
+3;16;fr-2016-2eur-euro-2016-football-championship;82237;riche;bright;2;papier-blanc;1;FR;2016;Euro 2016 Football Championship;10;25
+3;17;fr-2016-2eur-euro-2016-football-championship;82237;riche;tilt;2;bois-clair;1;FR;2016;Euro 2016 Football Championship;10;25
+3;18;fr-2016-2eur-euro-2016-football-championship;82237;riche;dim;2;papier-blanc;1;FR;2016;Euro 2016 Football Championship;10;25
+3;19;es-2010-2eur-standard-juan-carlos-i-2nd-type-2nd-map;10862;moyenne;inhand;2;papier-blanc;1;ES;2010;Standard Juan Carlos I 2Nd Type 2Nd Map;4;9
+3;20;es-2010-2eur-standard-juan-carlos-i-2nd-type-2nd-map;10862;moyenne;glare;2;bois-clair;1;ES;2010;Standard Juan Carlos I 2Nd Type 2Nd Map;4;9
+3;21;es-2010-2eur-standard-juan-carlos-i-2nd-type-2nd-map;10862;moyenne;dim;2;papier-blanc;1;ES;2010;Standard Juan Carlos I 2Nd Type 2Nd Map;4;9
+3;22;it-2011-2eur-150th-anniversary-of-italian-unification;20892;canonique;tilt;3;table-sombre;1;IT;2011;150Th Anniversary Of Italian Unification;0;2
+3;23;it-2011-2eur-150th-anniversary-of-italian-unification;20892;canonique;dim;3;tissu-gris;1;IT;2011;150Th Anniversary Of Italian Unification;0;2
+3;24;it-2011-2eur-150th-anniversary-of-italian-unification;20892;canonique;bright;3;table-sombre;1;IT;2011;150Th Anniversary Of Italian Unification;0;2
+3;25;es-2015-2eur-standard-felipe-vi;69470;riche;glare;2;table-sombre;1;ES;2015;Standard Felipe Vi;10;30
+3;26;es-2015-2eur-standard-felipe-vi;69470;riche;tilt;2;tissu-gris;1;ES;2015;Standard Felipe Vi;10;30
+3;27;es-2015-2eur-standard-felipe-vi;69470;riche;bright;2;table-sombre;1;ES;2015;Standard Felipe Vi;10;30
+3;28;pt-2016-2eur-portuguese-olympic-team-for-rio-2016;84061;canonique;tilt;3;tissu-gris;1;PT;2016;Portuguese Olympic Team For Rio 2016;0;0
+3;29;pt-2016-2eur-portuguese-olympic-team-for-rio-2016;84061;canonique;glare;3;table-sombre;1;PT;2016;Portuguese Olympic Team For Rio 2016;0;0
+3;30;pt-2016-2eur-portuguese-olympic-team-for-rio-2016;84061;canonique;bright;3;tissu-gris;1;PT;2016;Portuguese Olympic Team For Rio 2016;0;0
+3;31;at-2016-2eur-200th-anniversary-of-the-national-bank;80926;moyenne;inhand;2;table-sombre;1;AT;2016;200Th Anniversary Of The National Bank;6;39
+3;32;at-2016-2eur-200th-anniversary-of-the-national-bank;80926;moyenne;glare;2;tissu-gris;1;AT;2016;200Th Anniversary Of The National Bank;6;39
+3;33;at-2016-2eur-200th-anniversary-of-the-national-bank;80926;moyenne;tilt;2;table-sombre;1;AT;2016;200Th Anniversary Of The National Bank;6;39
+3;34;ad-2014-2eur-standard-1st-type;68395;riche;inhand;2;bois-clair;1;AD;2014;Standard 1St Type;10;22
+3;35;ad-2014-2eur-standard-1st-type;68395;riche;dim;2;papier-blanc;1;AD;2014;Standard 1St Type;10;22
+3;36;ad-2014-2eur-standard-1st-type;68395;riche;glare;2;bois-clair;1;AD;2014;Standard 1St Type;10;22
+3;37;lt-2017-2eur-vilnius-capital-of-culture-and-art;116893;canonique;bright;3;bois-clair;1;LT;2017;Vilnius Capital Of Culture And Art;0;0
+3;38;lt-2017-2eur-vilnius-capital-of-culture-and-art;116893;canonique;inhand;3;papier-blanc;1;LT;2017;Vilnius Capital Of Culture And Art;0;0
+3;39;lt-2017-2eur-vilnius-capital-of-culture-and-art;116893;canonique;glare;3;bois-clair;1;LT;2017;Vilnius Capital Of Culture And Art;0;0
+4;1;be-2016-2eur-child-focus;87173;moyenne;glare;2;tissu-gris;1;BE;2016;Child Focus;1;1
+4;2;be-2016-2eur-child-focus;87173;moyenne;bright;2;table-sombre;1;BE;2016;Child Focus;1;1
+4;3;be-2016-2eur-child-focus;87173;moyenne;tilt;2;tissu-gris;1;BE;2016;Child Focus;1;1
+4;4;ie-2007-2eur-standard-2nd-map;6334;hors_banque;dim;3;tissu-gris;1;IE;2007;Standard 2Nd Map;0;0
+4;5;ie-2007-2eur-standard-2nd-map;6334;hors_banque;glare;3;table-sombre;1;IE;2007;Standard 2Nd Map;0;0
+4;6;ie-2007-2eur-standard-2nd-map;6334;hors_banque;tilt;3;tissu-gris;1;IE;2007;Standard 2Nd Map;0;0
+4;7;it-2017-2eur-bimillenary-of-the-death-of-titus-livius;107085;canonique;dim;3;table-sombre;1;IT;2017;Bimillenary Of The Death Of Titus Livius;0;0
+4;8;it-2017-2eur-bimillenary-of-the-death-of-titus-livius;107085;canonique;tilt;3;tissu-gris;1;IT;2017;Bimillenary Of The Death Of Titus Livius;0;0
+4;9;it-2017-2eur-bimillenary-of-the-death-of-titus-livius;107085;canonique;bright;3;table-sombre;1;IT;2017;Bimillenary Of The Death Of Titus Livius;0;0
+4;10;fr-2016-2eur-100th-anniversary-of-the-birth-of-francois-mitterrand;91431;riche;tilt;2;tissu-gris;1;FR;2016;100Th Anniversary Of The Birth Of Francois Mitterrand;10;33
+4;11;fr-2016-2eur-100th-anniversary-of-the-birth-of-francois-mitterrand;91431;riche;inhand;2;table-sombre;1;FR;2016;100Th Anniversary Of The Birth Of Francois Mitterrand;10;33
+4;12;fr-2016-2eur-100th-anniversary-of-the-birth-of-francois-mitterrand;91431;riche;glare;2;tissu-gris;1;FR;2016;100Th Anniversary Of The Birth Of Francois Mitterrand;10;33
+4;13;nl-1999-2eur-standard-beatrix-1st-map;152;moyenne;bright;2;papier-blanc;1;NL;1999;Standard Beatrix 1St Map;1;1
+4;14;nl-1999-2eur-standard-beatrix-1st-map;152;moyenne;tilt;2;bois-clair;1;NL;1999;Standard Beatrix 1St Map;1;1
+4;15;nl-1999-2eur-standard-beatrix-1st-map;152;moyenne;inhand;2;papier-blanc;1;NL;1999;Standard Beatrix 1St Map;1;1
+4;16;lu-2017-2eur-the-50th-anniversary-of-the-voluntariness-of-the-luxembourg-army;100577;canonique;inhand;3;table-sombre;1;LU;2017;The 50Th Anniversary Of The Voluntariness Of The Luxembourg Army;0;0
+4;17;lu-2017-2eur-the-50th-anniversary-of-the-voluntariness-of-the-luxembourg-army;100577;canonique;tilt;3;tissu-gris;1;LU;2017;The 50Th Anniversary Of The Voluntariness Of The Luxembourg Army;0;0
+4;18;lu-2017-2eur-the-50th-anniversary-of-the-voluntariness-of-the-luxembourg-army;100577;canonique;dim;3;table-sombre;1;LU;2017;The 50Th Anniversary Of The Voluntariness Of The Luxembourg Army;0;0
+4;19;fi-2017-2eur-100-years-of-independence;113429;riche;inhand;2;papier-blanc;1;FI;2017;100 Years Of Independence;10;27
+4;20;fi-2017-2eur-100-years-of-independence;113429;riche;bright;2;bois-clair;1;FI;2017;100 Years Of Independence;10;27
+4;21;fi-2017-2eur-100-years-of-independence;113429;riche;tilt;2;papier-blanc;1;FI;2017;100 Years Of Independence;10;27
+4;22;lu-2016-2eur-50-years-of-grand-duchess-charlotte-bridge;84907;canonique;dim;3;tissu-gris;1;LU;2016;50 Years Of Grand Duchess Charlotte Bridge;0;0
+4;23;lu-2016-2eur-50-years-of-grand-duchess-charlotte-bridge;84907;canonique;tilt;3;table-sombre;1;LU;2016;50 Years Of Grand Duchess Charlotte Bridge;0;0
+4;24;lu-2016-2eur-50-years-of-grand-duchess-charlotte-bridge;84907;canonique;inhand;3;tissu-gris;1;LU;2016;50 Years Of Grand Duchess Charlotte Bridge;0;0
+4;25;fr-2019-2eur-30-years-of-the-fall-of-the-berlin-wall;160246;moyenne;bright;2;papier-blanc;1;FR;2019;30 Years Of The Fall Of The Berlin Wall;1;1
+4;26;fr-2019-2eur-30-years-of-the-fall-of-the-berlin-wall;160246;moyenne;dim;2;bois-clair;1;FR;2019;30 Years Of The Fall Of The Berlin Wall;1;1
+4;27;fr-2019-2eur-30-years-of-the-fall-of-the-berlin-wall;160246;moyenne;tilt;2;papier-blanc;1;FR;2019;30 Years Of The Fall Of The Berlin Wall;1;1
+4;28;de-2020-2eur-brandenburg-the-bundeslander-series;193506;riche;glare;2;table-sombre;1;DE;2020;Brandenburg The Bundeslander Series;10;33
+4;29;de-2020-2eur-brandenburg-the-bundeslander-series;193506;riche;dim;2;tissu-gris;1;DE;2020;Brandenburg The Bundeslander Series;10;33
+4;30;de-2020-2eur-brandenburg-the-bundeslander-series;193506;riche;bright;2;table-sombre;1;DE;2020;Brandenburg The Bundeslander Series;10;33
+4;31;fr-2017-2eur-25th-anniversary-of-the-pink-ribbon-symbol-of-the-fight-against-breast-cancer;122799;canonique;tilt;3;table-sombre;1;FR;2017;25Th Anniversary Of The Pink Ribbon Symbol Of The Fight Against Breast Cancer;0;1
+4;32;fr-2017-2eur-25th-anniversary-of-the-pink-ribbon-symbol-of-the-fight-against-breast-cancer;122799;canonique;bright;3;tissu-gris;1;FR;2017;25Th Anniversary Of The Pink Ribbon Symbol Of The Fight Against Breast Cancer;0;1
+4;33;fr-2017-2eur-25th-anniversary-of-the-pink-ribbon-symbol-of-the-fight-against-breast-cancer;122799;canonique;inhand;3;table-sombre;1;FR;2017;25Th Anniversary Of The Pink Ribbon Symbol Of The Fight Against Breast Cancer;0;1
+4;34;be-2012-2eur-75th-anniversary-of-queen-elisabeth-music-competition;32526;moyenne;dim;2;tissu-gris;1;BE;2012;75Th Anniversary Of Queen Elisabeth Music Competition;3;17
+4;35;be-2012-2eur-75th-anniversary-of-queen-elisabeth-music-competition;32526;moyenne;glare;2;table-sombre;1;BE;2012;75Th Anniversary Of Queen Elisabeth Music Competition;3;17
+4;36;be-2012-2eur-75th-anniversary-of-queen-elisabeth-music-competition;32526;moyenne;tilt;2;tissu-gris;1;BE;2012;75Th Anniversary Of Queen Elisabeth Music Competition;3;17
+4;37;be-2007-2eur-standard-albert-ii-2nd-map-1st-type-1st-portrait;6292;hors_banque;dim;3;papier-blanc;1;BE;2007;Standard Albert Ii 2Nd Map 1St Type 1St Portrait;0;0
+4;38;be-2007-2eur-standard-albert-ii-2nd-map-1st-type-1st-portrait;6292;hors_banque;tilt;3;bois-clair;1;BE;2007;Standard Albert Ii 2Nd Map 1St Type 1St Portrait;0;0
+4;39;be-2007-2eur-standard-albert-ii-2nd-map-1st-type-1st-portrait;6292;hors_banque;inhand;3;papier-blanc;1;BE;2007;Standard Albert Ii 2Nd Map 1St Type 1St Portrait;0;0
+5;1;de-2008-2eur-federal-state-of-hamburg;2994;canonique;glare;3;papier-blanc;1;DE;2008;Federal State Of Hamburg;0;0
+5;2;de-2008-2eur-federal-state-of-hamburg;2994;canonique;inhand;3;bois-clair;1;DE;2008;Federal State Of Hamburg;0;0
+5;3;de-2008-2eur-federal-state-of-hamburg;2994;canonique;tilt;3;papier-blanc;1;DE;2008;Federal State Of Hamburg;0;0
+5;4;fr-2008-2eur-french-presidency-of-the-council-of-the-european-union;3561;riche;bright;2;table-sombre;1;FR;2008;French Presidency Of The Council Of The European Union;10;49
+5;5;fr-2008-2eur-french-presidency-of-the-council-of-the-european-union;3561;riche;glare;2;tissu-gris;1;FR;2008;French Presidency Of The Council Of The European Union;10;49
+5;6;fr-2008-2eur-french-presidency-of-the-council-of-the-european-union;3561;riche;tilt;2;table-sombre;1;FR;2008;French Presidency Of The Council Of The European Union;10;49
+5;7;nl-2011-2eur-erasmus-500th-anniversary-of-the-praise-of-folly;19021;canonique;glare;3;bois-clair;1;NL;2011;Erasmus 500Th Anniversary Of The Praise Of Folly;0;0
+5;8;nl-2011-2eur-erasmus-500th-anniversary-of-the-praise-of-folly;19021;canonique;tilt;3;papier-blanc;1;NL;2011;Erasmus 500Th Anniversary Of The Praise Of Folly;0;0
+5;9;nl-2011-2eur-erasmus-500th-anniversary-of-the-praise-of-folly;19021;canonique;bright;3;bois-clair;1;NL;2011;Erasmus 500Th Anniversary Of The Praise Of Folly;0;0
+5;10;fr-2018-2eur-100th-anniversary-of-the-end-of-the-first-world-war-bleuet-de-france;134685;moyenne;dim;2;bois-clair;1;FR;2018;100Th Anniversary Of The End Of The First World War Bleuet De France;4;17
+5;11;fr-2018-2eur-100th-anniversary-of-the-end-of-the-first-world-war-bleuet-de-france;134685;moyenne;tilt;2;papier-blanc;1;FR;2018;100Th Anniversary Of The End Of The First World War Bleuet De France;4;17
+5;12;fr-2018-2eur-100th-anniversary-of-the-end-of-the-first-world-war-bleuet-de-france;134685;moyenne;bright;2;bois-clair;1;FR;2018;100Th Anniversary Of The End Of The First World War Bleuet De France;4;17
+5;13;it-2016-2eur-2200th-anniversary-of-the-death-of-plautus;84714;riche;bright;2;tissu-gris;1;IT;2016;2200Th Anniversary Of The Death Of Plautus;10;47
+5;14;it-2016-2eur-2200th-anniversary-of-the-death-of-plautus;84714;riche;inhand;2;table-sombre;1;IT;2016;2200Th Anniversary Of The Death Of Plautus;10;47
+5;15;it-2016-2eur-2200th-anniversary-of-the-death-of-plautus;84714;riche;glare;2;tissu-gris;1;IT;2016;2200Th Anniversary Of The Death Of Plautus;10;47
+5;16;be-2006-2eur-reopening-of-the-brussels-atomium;2166;canonique;tilt;3;tissu-gris;1;BE;2006;Reopening Of The Brussels Atomium;0;0
+5;17;be-2006-2eur-reopening-of-the-brussels-atomium;2166;canonique;dim;3;table-sombre;1;BE;2006;Reopening Of The Brussels Atomium;0;0
+5;18;be-2006-2eur-reopening-of-the-brussels-atomium;2166;canonique;inhand;3;tissu-gris;1;BE;2006;Reopening Of The Brussels Atomium;0;0
+5;19;be-2009-2eur-200th-anniversary-of-louis-brailles-birth;8070;moyenne;glare;2;bois-clair;1;BE;2009;200Th Anniversary Of Louis Brailles Birth;2;2
+5;20;be-2009-2eur-200th-anniversary-of-louis-brailles-birth;8070;moyenne;tilt;2;papier-blanc;1;BE;2009;200Th Anniversary Of Louis Brailles Birth;2;2
+5;21;be-2009-2eur-200th-anniversary-of-louis-brailles-birth;8070;moyenne;bright;2;bois-clair;1;BE;2009;200Th Anniversary Of Louis Brailles Birth;2;2
+5;22;de-2020-2eur-german-polish-reconciliation;226447;riche;inhand;2;bois-clair;1;DE;2020;German Polish Reconciliation;10;17
+5;23;de-2020-2eur-german-polish-reconciliation;226447;riche;glare;2;papier-blanc;1;DE;2020;German Polish Reconciliation;10;17
+5;24;de-2020-2eur-german-polish-reconciliation;226447;riche;tilt;2;bois-clair;1;DE;2020;German Polish Reconciliation;10;17
+5;25;de-2006-2eur-state-of-schleswig-holstein;2169;canonique;glare;3;bois-clair;1;DE;2006;State Of Schleswig Holstein;0;22
+5;26;de-2006-2eur-state-of-schleswig-holstein;2169;canonique;bright;3;papier-blanc;1;DE;2006;State Of Schleswig Holstein;0;22
+5;27;de-2006-2eur-state-of-schleswig-holstein;2169;canonique;dim;3;bois-clair;1;DE;2006;State Of Schleswig Holstein;0;22
+5;28;de-2012-2eur-state-of-bavaria;29694;canonique;glare;3;tissu-gris;1;DE;2012;State Of Bavaria;0;0
+5;29;de-2012-2eur-state-of-bavaria;29694;canonique;bright;3;table-sombre;1;DE;2012;State Of Bavaria;0;0
+5;30;de-2012-2eur-state-of-bavaria;29694;canonique;inhand;3;tissu-gris;1;DE;2012;State Of Bavaria;0;0
+5;31;fi-1999-2eur-standard-1st-type-1st-map;96;moyenne;dim;2;tissu-gris;1;FI;1999;Standard 1St Type 1St Map;1;1
+5;32;fi-1999-2eur-standard-1st-type-1st-map;96;moyenne;bright;2;table-sombre;1;FI;1999;Standard 1St Type 1St Map;1;1
+5;33;fi-1999-2eur-standard-1st-type-1st-map;96;moyenne;glare;2;tissu-gris;1;FI;1999;Standard 1St Type 1St Map;1;1
+5;34;mc-2009-2eur-standard-albert-ii-2nd-map;15757;hors_banque;bright;3;tissu-gris;1;MC;2009;Standard Albert Ii 2Nd Map;0;1
+5;35;mc-2009-2eur-standard-albert-ii-2nd-map;15757;hors_banque;dim;3;table-sombre;1;MC;2009;Standard Albert Ii 2Nd Map;0;1
+5;36;mc-2009-2eur-standard-albert-ii-2nd-map;15757;hors_banque;tilt;3;tissu-gris;1;MC;2009;Standard Albert Ii 2Nd Map;0;1
+5;37;it-2016-2eur-550th-anniversary-of-the-death-of-donatello;82330;riche;dim;2;papier-blanc;1;IT;2016;550Th Anniversary Of The Death Of Donatello;10;29
+5;38;it-2016-2eur-550th-anniversary-of-the-death-of-donatello;82330;riche;glare;2;bois-clair;1;IT;2016;550Th Anniversary Of The Death Of Donatello;10;29
+5;39;it-2016-2eur-550th-anniversary-of-the-death-of-donatello;82330;riche;inhand;2;papier-blanc;1;IT;2016;550Th Anniversary Of The Death Of Donatello;10;29
+6;1;de-2016-2eur-state-of-saxony;80927;canonique;tilt;3;bois-clair;1;DE;2016;State Of Saxony;0;0
+6;2;de-2016-2eur-state-of-saxony;80927;canonique;bright;3;papier-blanc;1;DE;2016;State Of Saxony;0;0
+6;3;de-2016-2eur-state-of-saxony;80927;canonique;dim;3;bois-clair;1;DE;2016;State Of Saxony;0;0
+6;4;sk-2009-2eur-standard-1st-type;5091;moyenne;tilt;2;papier-blanc;1;SK;2009;Standard 1St Type;1;1
+6;5;sk-2009-2eur-standard-1st-type;5091;moyenne;inhand;2;bois-clair;1;SK;2009;Standard 1St Type;1;1
+6;6;sk-2009-2eur-standard-1st-type;5091;moyenne;dim;2;papier-blanc;1;SK;2009;Standard 1St Type;1;1
+6;7;at-2005-2eur-50th-anniversary-of-the-austrian-state-treaty;2193;riche;tilt;2;papier-blanc;1;AT;2005;50Th Anniversary Of The Austrian State Treaty;10;111
+6;8;at-2005-2eur-50th-anniversary-of-the-austrian-state-treaty;2193;riche;dim;2;bois-clair;1;AT;2005;50Th Anniversary Of The Austrian State Treaty;10;111
+6;9;at-2005-2eur-50th-anniversary-of-the-austrian-state-treaty;2193;riche;glare;2;papier-blanc;1;AT;2005;50Th Anniversary Of The Austrian State Treaty;10;111
+6;10;fr-2015-2eur-30th-anniversary-of-the-flag-of-the-european-union;76635;canonique;glare;3;table-sombre;1;FR;2015;30Th Anniversary Of The Flag Of The European Union;0;0
+6;11;fr-2015-2eur-30th-anniversary-of-the-flag-of-the-european-union;76635;canonique;tilt;3;tissu-gris;1;FR;2015;30Th Anniversary Of The Flag Of The European Union;0;0
+6;12;fr-2015-2eur-30th-anniversary-of-the-flag-of-the-european-union;76635;canonique;bright;3;table-sombre;1;FR;2015;30Th Anniversary Of The Flag Of The European Union;0;0
+6;13;fr-2010-2eur-degaulles-radio-speech-on-june-18th-1940-70th-anniversary-of-the-appeal-of-june-18;11526;moyenne;inhand;2;bois-clair;1;FR;2010;Degaulles Radio Speech On June 18Th 1940 70Th Anniversary Of The Appeal Of June 18;3;29
+6;14;fr-2010-2eur-degaulles-radio-speech-on-june-18th-1940-70th-anniversary-of-the-appeal-of-june-18;11526;moyenne;glare;2;papier-blanc;1;FR;2010;Degaulles Radio Speech On June 18Th 1940 70Th Anniversary Of The Appeal Of June 18;3;29
+6;15;fr-2010-2eur-degaulles-radio-speech-on-june-18th-1940-70th-anniversary-of-the-appeal-of-june-18;11526;moyenne;tilt;2;bois-clair;1;FR;2010;Degaulles Radio Speech On June 18Th 1940 70Th Anniversary Of The Appeal Of June 18;3;29
+6;16;ee-2016-2eur-100th-anniversary-of-the-birth-of-paul-keres;80919;canonique;inhand;3;table-sombre;1;EE;2016;100Th Anniversary Of The Birth Of Paul Keres;0;0
+6;17;ee-2016-2eur-100th-anniversary-of-the-birth-of-paul-keres;80919;canonique;bright;3;tissu-gris;1;EE;2016;100Th Anniversary Of The Birth Of Paul Keres;0;0
+6;18;ee-2016-2eur-100th-anniversary-of-the-birth-of-paul-keres;80919;canonique;dim;3;table-sombre;1;EE;2016;100Th Anniversary Of The Birth Of Paul Keres;0;0
+6;19;be-2008-2eur-standard-albert-ii-2nd-map-2nd-type-2nd-portrait;6293;riche;bright;2;table-sombre;1;BE;2008;Standard Albert Ii 2Nd Map 2Nd Type 2Nd Portrait;10;8
+6;20;be-2008-2eur-standard-albert-ii-2nd-map-2nd-type-2nd-portrait;6293;riche;glare;2;tissu-gris;1;BE;2008;Standard Albert Ii 2Nd Map 2Nd Type 2Nd Portrait;10;8
+6;21;be-2008-2eur-standard-albert-ii-2nd-map-2nd-type-2nd-portrait;6293;riche;dim;2;table-sombre;1;BE;2008;Standard Albert Ii 2Nd Map 2Nd Type 2Nd Portrait;10;8
+6;22;de-2021-2eur-bundeslander-series-saxony-anhalt;267621;canonique;glare;3;tissu-gris;1;DE;2021;Bundeslander Series Saxony Anhalt;0;0
+6;23;de-2021-2eur-bundeslander-series-saxony-anhalt;267621;canonique;inhand;3;table-sombre;1;DE;2021;Bundeslander Series Saxony Anhalt;0;0
+6;24;de-2021-2eur-bundeslander-series-saxony-anhalt;267621;canonique;dim;3;tissu-gris;1;DE;2021;Bundeslander Series Saxony Anhalt;0;0
+6;25;be-2014-2eur-standard-philippe;56039;moyenne;tilt;2;table-sombre;1;BE;2014;Standard Philippe;4;4
+6;26;be-2014-2eur-standard-philippe;56039;moyenne;inhand;2;tissu-gris;1;BE;2014;Standard Philippe;4;4
+6;27;be-2014-2eur-standard-philippe;56039;moyenne;bright;2;table-sombre;1;BE;2014;Standard Philippe;4;4
+6;28;es-2007-2eur-standard-juan-carlos-i-1st-type-2nd-map;6364;hors_banque;inhand;3;tissu-gris;1;ES;2007;Standard Juan Carlos I 1St Type 2Nd Map;0;1
+6;29;es-2007-2eur-standard-juan-carlos-i-1st-type-2nd-map;6364;hors_banque;tilt;3;table-sombre;1;ES;2007;Standard Juan Carlos I 1St Type 2Nd Map;0;1
+6;30;es-2007-2eur-standard-juan-carlos-i-1st-type-2nd-map;6364;hors_banque;dim;3;tissu-gris;1;ES;2007;Standard Juan Carlos I 1St Type 2Nd Map;0;1
+6;31;fi-2016-2eur-100th-anniversary-of-the-birth-of-georg-henrik-von-wright;93999;riche;inhand;2;bois-clair;1;FI;2016;100Th Anniversary Of The Birth Of Georg Henrik Von Wright;10;26
+6;32;fi-2016-2eur-100th-anniversary-of-the-birth-of-georg-henrik-von-wright;93999;riche;dim;2;papier-blanc;1;FI;2016;100Th Anniversary Of The Birth Of Georg Henrik Von Wright;10;26
+6;33;fi-2016-2eur-100th-anniversary-of-the-birth-of-georg-henrik-von-wright;93999;riche;glare;2;bois-clair;1;FI;2016;100Th Anniversary Of The Birth Of Georg Henrik Von Wright;10;26
+6;34;de-2013-2eur-state-of-baden-wurttemberg;42149;canonique;glare;3;table-sombre;1;DE;2013;State Of Baden Wurttemberg;0;0
+6;35;de-2013-2eur-state-of-baden-wurttemberg;42149;canonique;tilt;3;tissu-gris;1;DE;2013;State Of Baden Wurttemberg;0;0
+6;36;de-2013-2eur-state-of-baden-wurttemberg;42149;canonique;bright;3;table-sombre;1;DE;2013;State Of Baden Wurttemberg;0;0
+6;37;cy-2008-2eur-standard-1st-type;2180;moyenne;inhand;2;papier-blanc;1;CY;2008;Standard 1St Type;1;16
+6;38;cy-2008-2eur-standard-1st-type;2180;moyenne;bright;2;bois-clair;1;CY;2008;Standard 1St Type;1;16
+6;39;cy-2008-2eur-standard-1st-type;2180;moyenne;tilt;2;papier-blanc;1;CY;2008;Standard 1St Type;1;16
+7;1;at-2002-2eur-standard-1st-map;64;riche;inhand;2;tissu-gris;1;AT;2002;Standard 1St Map;10;67
+7;2;at-2002-2eur-standard-1st-map;64;riche;glare;2;table-sombre;1;AT;2002;Standard 1St Map;10;67
+7;3;at-2002-2eur-standard-1st-map;64;riche;tilt;2;tissu-gris;1;AT;2002;Standard 1St Map;10;67
+7;4;lu-2017-2eur-200th-anniversary-of-the-birth-of-william-iii;126563;canonique;bright;3;papier-blanc;1;LU;2017;200Th Anniversary Of The Birth Of William Iii;0;0
+7;5;lu-2017-2eur-200th-anniversary-of-the-birth-of-william-iii;126563;canonique;glare;3;bois-clair;1;LU;2017;200Th Anniversary Of The Birth Of William Iii;0;0
+7;6;lu-2017-2eur-200th-anniversary-of-the-birth-of-william-iii;126563;canonique;inhand;3;papier-blanc;1;LU;2017;200Th Anniversary Of The Birth Of William Iii;0;0
+7;7;be-2014-2eur-100th-anniversary-of-the-beginning-of-ww-i;59828;canonique;inhand;3;table-sombre;2;BE;2014;100Th Anniversary Of The Beginning Of Ww I;0;2
+7;8;be-2014-2eur-100th-anniversary-of-the-beginning-of-ww-i;59828;canonique;glare;3;tissu-gris;2;BE;2014;100Th Anniversary Of The Beginning Of Ww I;0;2
+7;9;fi-2016-2eur-90th-anniversary-of-the-death-of-the-writer-eino-leino;86837;riche;tilt;2;papier-blanc;2;FI;2016;90Th Anniversary Of The Death Of The Writer Eino Leino;10;16
+7;10;fi-2016-2eur-90th-anniversary-of-the-death-of-the-writer-eino-leino;86837;riche;bright;2;bois-clair;2;FI;2016;90Th Anniversary Of The Death Of The Writer Eino Leino;10;16
+7;11;it-2002-2eur-standard-1st-map;136;moyenne;glare;2;table-sombre;2;IT;2002;Standard 1St Map;2;3
+7;12;it-2002-2eur-standard-1st-map;136;moyenne;tilt;2;tissu-gris;2;IT;2002;Standard 1St Map;2;3
+7;13;de-2013-2eur-50th-anniversary-of-the-elysee-treaty;41786;canonique;tilt;3;table-sombre;2;DE;2013;50Th Anniversary Of The Elysee Treaty;0;0
+7;14;de-2013-2eur-50th-anniversary-of-the-elysee-treaty;41786;canonique;inhand;3;tissu-gris;2;DE;2013;50Th Anniversary Of The Elysee Treaty;0;0
+7;15;fr-2018-2eur-simone-veil;141382;riche;tilt;2;papier-blanc;2;FR;2018;Simone Veil;10;18
+7;16;fr-2018-2eur-simone-veil;141382;riche;inhand;2;bois-clair;2;FR;2018;Simone Veil;10;18
+7;17;be-2010-2eur-belgian-presidency-of-the-european-union;11550;moyenne;tilt;2;table-sombre;2;BE;2010;Belgian Presidency Of The European Union;2;2
+7;18;be-2010-2eur-belgian-presidency-of-the-european-union;11550;moyenne;inhand;2;tissu-gris;2;BE;2010;Belgian Presidency Of The European Union;2;2
+7;19;de-2008-2eur-standard-2nd-map;6323;hors_banque;tilt;3;bois-clair;2;DE;2008;Standard 2Nd Map;0;2
+7;20;de-2008-2eur-standard-2nd-map;6323;hors_banque;inhand;3;papier-blanc;2;DE;2008;Standard 2Nd Map;0;2
+7;21;de-2009-2eur-10th-anniversary-of-economic-and-monetary-union;5054;canonique;inhand;3;tissu-gris;2;DE;2009;10Th Anniversary Of Economic And Monetary Union;0;14
+7;22;de-2009-2eur-10th-anniversary-of-economic-and-monetary-union;5054;canonique;glare;3;table-sombre;2;DE;2009;10Th Anniversary Of Economic And Monetary Union;0;14
+7;23;de-2007-2eur-state-of-mecklenburg-vorpommern;2201;riche;inhand;2;papier-blanc;2;DE;2007;State Of Mecklenburg Vorpommern;10;35
+7;24;de-2007-2eur-state-of-mecklenburg-vorpommern;2201;riche;bright;2;bois-clair;2;DE;2007;State Of Mecklenburg Vorpommern;10;35
+7;25;fr-2014-2eur-70th-anniversary-of-d-day;60800;canonique;tilt;3;table-sombre;2;FR;2014;70Th Anniversary Of D Day;0;0
+7;26;fr-2014-2eur-70th-anniversary-of-d-day;60800;canonique;dim;3;tissu-gris;2;FR;2014;70Th Anniversary Of D Day;0;0
+7;27;fi-2007-2eur-standard-2nd-type-2nd-map;8714;moyenne;dim;2;table-sombre;2;FI;2007;Standard 2Nd Type 2Nd Map;1;1
+7;28;fi-2007-2eur-standard-2nd-type-2nd-map;8714;moyenne;bright;2;tissu-gris;2;FI;2007;Standard 2Nd Type 2Nd Map;1;1
+7;29;be-2015-2eur-30th-anniversary-of-the-flag-of-the-european-union;77181;canonique;bright;3;tissu-gris;2;BE;2015;30Th Anniversary Of The Flag Of The European Union;0;1
+7;30;be-2015-2eur-30th-anniversary-of-the-flag-of-the-european-union;77181;canonique;tilt;3;table-sombre;2;BE;2015;30Th Anniversary Of The Flag Of The European Union;0;1
+7;31;es-2016-2eur-old-town-of-segovia-and-its-aqueduct;81058;riche;inhand;2;tissu-gris;2;ES;2016;Old Town Of Segovia And Its Aqueduct;10;35
+7;32;es-2016-2eur-old-town-of-segovia-and-its-aqueduct;81058;riche;glare;2;table-sombre;2;ES;2016;Old Town Of Segovia And Its Aqueduct;10;35
+7;33;be-2012-2eur-10-years-of-euro-cash;28325;moyenne;glare;2;tissu-gris;2;BE;2012;10 Years Of Euro Cash;1;1
+7;34;be-2012-2eur-10-years-of-euro-cash;28325;moyenne;bright;2;table-sombre;2;BE;2012;10 Years Of Euro Cash;1;1
+7;35;gr-2004-2eur-xxviiith-olympic-games-2004-in-athens;2190;canonique;dim;3;tissu-gris;2;GR;2004;Xxviiith Olympic Games 2004 In Athens;0;0
+7;36;gr-2004-2eur-xxviiith-olympic-games-2004-in-athens;2190;canonique;tilt;3;table-sombre;2;GR;2004;Xxviiith Olympic Games 2004 In Athens;0;0
+7;37;fi-2012-2eur-150th-birthday-of-helene-schjerfbeck;38356;riche;dim;2;bois-clair;2;FI;2012;150Th Birthday Of Helene Schjerfbeck;9;45
+7;38;fi-2012-2eur-150th-birthday-of-helene-schjerfbeck;38356;riche;tilt;2;papier-blanc;2;FI;2012;150Th Birthday Of Helene Schjerfbeck;9;45
+7;39;at-2018-2eur-100-years-republic-of-austria;131199;moyenne;bright;2;tissu-gris;2;AT;2018;100 Years Republic Of Austria;6;27
+7;40;at-2018-2eur-100-years-republic-of-austria;131199;moyenne;tilt;2;table-sombre;2;AT;2018;100 Years Republic Of Austria;6;27
+8;1;nl-2007-2eur-standard-beatrix-2nd-map;6481;hors_banque;bright;3;bois-clair;2;NL;2007;Standard Beatrix 2Nd Map;0;0
+8;2;nl-2007-2eur-standard-beatrix-2nd-map;6481;hors_banque;dim;3;papier-blanc;2;NL;2007;Standard Beatrix 2Nd Map;0;0
+8;3;fr-2013-2eur-50th-anniversary-of-the-elysee-treaty;41904;canonique;glare;3;papier-blanc;2;FR;2013;50Th Anniversary Of The Elysee Treaty;0;1
+8;4;fr-2013-2eur-50th-anniversary-of-the-elysee-treaty;41904;canonique;tilt;3;bois-clair;2;FR;2013;50Th Anniversary Of The Elysee Treaty;0;1
+8;5;es-1999-2eur-standard-juan-carlos-i-1st-type-1st-map;88;riche;bright;2;tissu-gris;2;ES;1999;Standard Juan Carlos I 1St Type 1St Map;10;22
+8;6;es-1999-2eur-standard-juan-carlos-i-1st-type-1st-map;88;riche;tilt;2;table-sombre;2;ES;1999;Standard Juan Carlos I 1St Type 1St Map;10;22
+8;7;fr-2015-2eur-70th-anniversary-of-the-end-of-world-war-ii;69366;canonique;glare;3;tissu-gris;2;FR;2015;70Th Anniversary Of The End Of World War Ii;0;2
+8;8;fr-2015-2eur-70th-anniversary-of-the-end-of-world-war-ii;69366;canonique;bright;3;table-sombre;2;FR;2015;70Th Anniversary Of The End Of World War Ii;0;2
+8;9;ee-2011-2eur-standard-2nd-map;16593;moyenne;bright;2;table-sombre;2;EE;2011;Standard 2Nd Map;1;1
+8;10;ee-2011-2eur-standard-2nd-map;16593;moyenne;dim;2;tissu-gris;2;EE;2011;Standard 2Nd Map;1;1
+8;11;lv-2016-2eur-latvian-farming-and-countryside;85889;canonique;tilt;3;tissu-gris;2;LV;2016;Latvian Farming And Countryside;0;0
+8;12;lv-2016-2eur-latvian-farming-and-countryside;85889;canonique;bright;3;table-sombre;2;LV;2016;Latvian Farming And Countryside;0;0
+8;13;be-2011-2eur-100th-international-womens-day;19734;riche;glare;2;bois-clair;2;BE;2011;100Th International Womens Day;10;40
+8;14;be-2011-2eur-100th-international-womens-day;19734;riche;tilt;2;papier-blanc;2;BE;2011;100Th International Womens Day;10;40
+8;15;de-2019-2eur-30-years-of-the-fall-of-the-berlin-wall;180626;moyenne;tilt;2;table-sombre;2;DE;2019;30 Years Of The Fall Of The Berlin Wall;1;1
+8;16;de-2019-2eur-30-years-of-the-fall-of-the-berlin-wall;180626;moyenne;glare;2;tissu-gris;2;DE;2019;30 Years Of The Fall Of The Berlin Wall;1;1
+8;17;it-2013-2eur-200th-anniversary-of-the-birth-of-giuseppe-verdi;45254;canonique;inhand;3;tissu-gris;2;IT;2013;200Th Anniversary Of The Birth Of Giuseppe Verdi;0;1
+8;18;it-2013-2eur-200th-anniversary-of-the-birth-of-giuseppe-verdi;45254;canonique;glare;3;table-sombre;2;IT;2013;200Th Anniversary Of The Birth Of Giuseppe Verdi;0;1
+8;19;de-2002-2eur-standard-1st-map;112;riche;inhand;2;bois-clair;2;DE;2002;Standard 1St Map;10;11
+8;20;de-2002-2eur-standard-1st-map;112;riche;glare;2;papier-blanc;2;DE;2002;Standard 1St Map;10;11
+8;21;de-2018-2eur-state-of-berlin;132935;canonique;tilt;3;papier-blanc;2;DE;2018;State Of Berlin;0;0
+8;22;de-2018-2eur-state-of-berlin;132935;canonique;inhand;3;bois-clair;2;DE;2018;State Of Berlin;0;0
+8;23;gr-2002-2eur-standard-1st-map;120;moyenne;glare;2;bois-clair;2;GR;2002;Standard 1St Map;1;1
+8;24;gr-2002-2eur-standard-1st-map;120;moyenne;inhand;2;papier-blanc;2;GR;2002;Standard 1St Map;1;1
+8;25;be-2009-2eur-standard-albert-ii-2nd-map-2nd-type-1st-portrait;6311;hors_banque;tilt;3;papier-blanc;2;BE;2009;Standard Albert Ii 2Nd Map 2Nd Type 1St Portrait;0;9
+8;26;be-2009-2eur-standard-albert-ii-2nd-map-2nd-type-1st-portrait;6311;hors_banque;inhand;3;bois-clair;2;BE;2009;Standard Albert Ii 2Nd Map 2Nd Type 1St Portrait;0;9
+8;27;sk-2018-2eur-25th-anniversary-of-the-establishment-of-the-slovak-republic;131970;canonique;tilt;3;bois-clair;2;SK;2018;25Th Anniversary Of The Establishment Of The Slovak Republic;0;0
+8;28;sk-2018-2eur-25th-anniversary-of-the-establishment-of-the-slovak-republic;131970;canonique;inhand;3;papier-blanc;2;SK;2018;25Th Anniversary Of The Establishment Of The Slovak Republic;0;0
+8;29;fr-2016-2eur-euro-2016-football-championship;82237;riche;glare;2;table-sombre;2;FR;2016;Euro 2016 Football Championship;10;25
+8;30;fr-2016-2eur-euro-2016-football-championship;82237;riche;inhand;2;tissu-gris;2;FR;2016;Euro 2016 Football Championship;10;25
+8;31;es-2010-2eur-standard-juan-carlos-i-2nd-type-2nd-map;10862;moyenne;tilt;2;table-sombre;2;ES;2010;Standard Juan Carlos I 2Nd Type 2Nd Map;4;9
+8;32;es-2010-2eur-standard-juan-carlos-i-2nd-type-2nd-map;10862;moyenne;bright;2;tissu-gris;2;ES;2010;Standard Juan Carlos I 2Nd Type 2Nd Map;4;9
+8;33;it-2011-2eur-150th-anniversary-of-italian-unification;20892;canonique;inhand;3;bois-clair;2;IT;2011;150Th Anniversary Of Italian Unification;0;2
+8;34;it-2011-2eur-150th-anniversary-of-italian-unification;20892;canonique;glare;3;papier-blanc;2;IT;2011;150Th Anniversary Of Italian Unification;0;2
+8;35;es-2015-2eur-standard-felipe-vi;69470;riche;dim;2;bois-clair;2;ES;2015;Standard Felipe Vi;10;30
+8;36;es-2015-2eur-standard-felipe-vi;69470;riche;inhand;2;papier-blanc;2;ES;2015;Standard Felipe Vi;10;30
+8;37;pt-2016-2eur-portuguese-olympic-team-for-rio-2016;84061;canonique;dim;3;papier-blanc;2;PT;2016;Portuguese Olympic Team For Rio 2016;0;0
+8;38;pt-2016-2eur-portuguese-olympic-team-for-rio-2016;84061;canonique;inhand;3;bois-clair;2;PT;2016;Portuguese Olympic Team For Rio 2016;0;0
+8;39;at-2016-2eur-200th-anniversary-of-the-national-bank;80926;moyenne;bright;2;bois-clair;2;AT;2016;200Th Anniversary Of The National Bank;6;39
+8;40;at-2016-2eur-200th-anniversary-of-the-national-bank;80926;moyenne;dim;2;papier-blanc;2;AT;2016;200Th Anniversary Of The National Bank;6;39
+9;1;ad-2014-2eur-standard-1st-type;68395;riche;bright;2;tissu-gris;2;AD;2014;Standard 1St Type;10;22
+9;2;ad-2014-2eur-standard-1st-type;68395;riche;tilt;2;table-sombre;2;AD;2014;Standard 1St Type;10;22
+9;3;lt-2017-2eur-vilnius-capital-of-culture-and-art;116893;canonique;dim;3;tissu-gris;2;LT;2017;Vilnius Capital Of Culture And Art;0;0
+9;4;lt-2017-2eur-vilnius-capital-of-culture-and-art;116893;canonique;tilt;3;table-sombre;2;LT;2017;Vilnius Capital Of Culture And Art;0;0
+9;5;be-2016-2eur-child-focus;87173;moyenne;dim;2;papier-blanc;2;BE;2016;Child Focus;1;1
+9;6;be-2016-2eur-child-focus;87173;moyenne;inhand;2;bois-clair;2;BE;2016;Child Focus;1;1
+9;7;ie-2007-2eur-standard-2nd-map;6334;hors_banque;bright;3;papier-blanc;2;IE;2007;Standard 2Nd Map;0;0
+9;8;ie-2007-2eur-standard-2nd-map;6334;hors_banque;inhand;3;bois-clair;2;IE;2007;Standard 2Nd Map;0;0
+9;9;it-2017-2eur-bimillenary-of-the-death-of-titus-livius;107085;canonique;inhand;3;bois-clair;2;IT;2017;Bimillenary Of The Death Of Titus Livius;0;0
+9;10;it-2017-2eur-bimillenary-of-the-death-of-titus-livius;107085;canonique;glare;3;papier-blanc;2;IT;2017;Bimillenary Of The Death Of Titus Livius;0;0
+9;11;fr-2016-2eur-100th-anniversary-of-the-birth-of-francois-mitterrand;91431;riche;bright;2;papier-blanc;2;FR;2016;100Th Anniversary Of The Birth Of Francois Mitterrand;10;33
+9;12;fr-2016-2eur-100th-anniversary-of-the-birth-of-francois-mitterrand;91431;riche;dim;2;bois-clair;2;FR;2016;100Th Anniversary Of The Birth Of Francois Mitterrand;10;33
+9;13;nl-1999-2eur-standard-beatrix-1st-map;152;moyenne;glare;2;table-sombre;2;NL;1999;Standard Beatrix 1St Map;1;1
+9;14;nl-1999-2eur-standard-beatrix-1st-map;152;moyenne;dim;2;tissu-gris;2;NL;1999;Standard Beatrix 1St Map;1;1
+9;15;lu-2017-2eur-the-50th-anniversary-of-the-voluntariness-of-the-luxembourg-army;100577;canonique;glare;3;bois-clair;2;LU;2017;The 50Th Anniversary Of The Voluntariness Of The Luxembourg Army;0;0
+9;16;lu-2017-2eur-the-50th-anniversary-of-the-voluntariness-of-the-luxembourg-army;100577;canonique;bright;3;papier-blanc;2;LU;2017;The 50Th Anniversary Of The Voluntariness Of The Luxembourg Army;0;0
+9;17;fi-2017-2eur-100-years-of-independence;113429;riche;glare;2;table-sombre;2;FI;2017;100 Years Of Independence;10;27
+9;18;fi-2017-2eur-100-years-of-independence;113429;riche;dim;2;tissu-gris;2;FI;2017;100 Years Of Independence;10;27
+9;19;lu-2016-2eur-50-years-of-grand-duchess-charlotte-bridge;84907;canonique;bright;3;papier-blanc;2;LU;2016;50 Years Of Grand Duchess Charlotte Bridge;0;0
+9;20;lu-2016-2eur-50-years-of-grand-duchess-charlotte-bridge;84907;canonique;glare;3;bois-clair;2;LU;2016;50 Years Of Grand Duchess Charlotte Bridge;0;0
+9;21;fr-2019-2eur-30-years-of-the-fall-of-the-berlin-wall;160246;moyenne;glare;2;table-sombre;2;FR;2019;30 Years Of The Fall Of The Berlin Wall;1;1
+9;22;fr-2019-2eur-30-years-of-the-fall-of-the-berlin-wall;160246;moyenne;inhand;2;tissu-gris;2;FR;2019;30 Years Of The Fall Of The Berlin Wall;1;1
+9;23;de-2020-2eur-brandenburg-the-bundeslander-series;193506;riche;tilt;2;bois-clair;2;DE;2020;Brandenburg The Bundeslander Series;10;33
+9;24;de-2020-2eur-brandenburg-the-bundeslander-series;193506;riche;inhand;2;papier-blanc;2;DE;2020;Brandenburg The Bundeslander Series;10;33
+9;25;fr-2017-2eur-25th-anniversary-of-the-pink-ribbon-symbol-of-the-fight-against-breast-cancer;122799;canonique;glare;3;bois-clair;2;FR;2017;25Th Anniversary Of The Pink Ribbon Symbol Of The Fight Against Breast Cancer;0;1
+9;26;fr-2017-2eur-25th-anniversary-of-the-pink-ribbon-symbol-of-the-fight-against-breast-cancer;122799;canonique;dim;3;papier-blanc;2;FR;2017;25Th Anniversary Of The Pink Ribbon Symbol Of The Fight Against Breast Cancer;0;1
+9;27;be-2012-2eur-75th-anniversary-of-queen-elisabeth-music-competition;32526;moyenne;inhand;2;papier-blanc;2;BE;2012;75Th Anniversary Of Queen Elisabeth Music Competition;3;17
+9;28;be-2012-2eur-75th-anniversary-of-queen-elisabeth-music-competition;32526;moyenne;bright;2;bois-clair;2;BE;2012;75Th Anniversary Of Queen Elisabeth Music Competition;3;17
+9;29;be-2007-2eur-standard-albert-ii-2nd-map-1st-type-1st-portrait;6292;hors_banque;bright;3;table-sombre;2;BE;2007;Standard Albert Ii 2Nd Map 1St Type 1St Portrait;0;0
+9;30;be-2007-2eur-standard-albert-ii-2nd-map-1st-type-1st-portrait;6292;hors_banque;glare;3;tissu-gris;2;BE;2007;Standard Albert Ii 2Nd Map 1St Type 1St Portrait;0;0
+9;31;de-2008-2eur-federal-state-of-hamburg;2994;canonique;dim;3;table-sombre;2;DE;2008;Federal State Of Hamburg;0;0
+9;32;de-2008-2eur-federal-state-of-hamburg;2994;canonique;bright;3;tissu-gris;2;DE;2008;Federal State Of Hamburg;0;0
+9;33;fr-2008-2eur-french-presidency-of-the-council-of-the-european-union;3561;riche;dim;2;bois-clair;2;FR;2008;French Presidency Of The Council Of The European Union;10;49
+9;34;fr-2008-2eur-french-presidency-of-the-council-of-the-european-union;3561;riche;inhand;2;papier-blanc;2;FR;2008;French Presidency Of The Council Of The European Union;10;49
+9;35;nl-2011-2eur-erasmus-500th-anniversary-of-the-praise-of-folly;19021;canonique;inhand;3;tissu-gris;2;NL;2011;Erasmus 500Th Anniversary Of The Praise Of Folly;0;0
+9;36;nl-2011-2eur-erasmus-500th-anniversary-of-the-praise-of-folly;19021;canonique;dim;3;table-sombre;2;NL;2011;Erasmus 500Th Anniversary Of The Praise Of Folly;0;0
+9;37;fr-2018-2eur-100th-anniversary-of-the-end-of-the-first-world-war-bleuet-de-france;134685;moyenne;glare;2;tissu-gris;2;FR;2018;100Th Anniversary Of The End Of The First World War Bleuet De France;4;17
+9;38;fr-2018-2eur-100th-anniversary-of-the-end-of-the-first-world-war-bleuet-de-france;134685;moyenne;inhand;2;table-sombre;2;FR;2018;100Th Anniversary Of The End Of The First World War Bleuet De France;4;17
+9;39;it-2016-2eur-2200th-anniversary-of-the-death-of-plautus;84714;riche;tilt;2;papier-blanc;2;IT;2016;2200Th Anniversary Of The Death Of Plautus;10;47
+9;40;it-2016-2eur-2200th-anniversary-of-the-death-of-plautus;84714;riche;dim;2;bois-clair;2;IT;2016;2200Th Anniversary Of The Death Of Plautus;10;47
+10;1;be-2006-2eur-reopening-of-the-brussels-atomium;2166;canonique;glare;3;papier-blanc;2;BE;2006;Reopening Of The Brussels Atomium;0;0
+10;2;be-2006-2eur-reopening-of-the-brussels-atomium;2166;canonique;bright;3;bois-clair;2;BE;2006;Reopening Of The Brussels Atomium;0;0
+10;3;be-2009-2eur-200th-anniversary-of-louis-brailles-birth;8070;moyenne;dim;2;tissu-gris;2;BE;2009;200Th Anniversary Of Louis Brailles Birth;2;2
+10;4;be-2009-2eur-200th-anniversary-of-louis-brailles-birth;8070;moyenne;inhand;2;table-sombre;2;BE;2009;200Th Anniversary Of Louis Brailles Birth;2;2
+10;5;de-2020-2eur-german-polish-reconciliation;226447;riche;dim;2;tissu-gris;2;DE;2020;German Polish Reconciliation;10;17
+10;6;de-2020-2eur-german-polish-reconciliation;226447;riche;bright;2;table-sombre;2;DE;2020;German Polish Reconciliation;10;17
+10;7;de-2006-2eur-state-of-schleswig-holstein;2169;canonique;inhand;3;tissu-gris;2;DE;2006;State Of Schleswig Holstein;0;22
+10;8;de-2006-2eur-state-of-schleswig-holstein;2169;canonique;tilt;3;table-sombre;2;DE;2006;State Of Schleswig Holstein;0;22
+10;9;de-2012-2eur-state-of-bavaria;29694;canonique;tilt;3;papier-blanc;2;DE;2012;State Of Bavaria;0;0
+10;10;de-2012-2eur-state-of-bavaria;29694;canonique;dim;3;bois-clair;2;DE;2012;State Of Bavaria;0;0
+10;11;fi-1999-2eur-standard-1st-type-1st-map;96;moyenne;tilt;2;papier-blanc;2;FI;1999;Standard 1St Type 1St Map;1;1
+10;12;fi-1999-2eur-standard-1st-type-1st-map;96;moyenne;inhand;2;bois-clair;2;FI;1999;Standard 1St Type 1St Map;1;1
+10;13;mc-2009-2eur-standard-albert-ii-2nd-map;15757;hors_banque;glare;3;papier-blanc;2;MC;2009;Standard Albert Ii 2Nd Map;0;1
+10;14;mc-2009-2eur-standard-albert-ii-2nd-map;15757;hors_banque;inhand;3;bois-clair;2;MC;2009;Standard Albert Ii 2Nd Map;0;1
+10;15;it-2016-2eur-550th-anniversary-of-the-death-of-donatello;82330;riche;tilt;2;table-sombre;2;IT;2016;550Th Anniversary Of The Death Of Donatello;10;29
+10;16;it-2016-2eur-550th-anniversary-of-the-death-of-donatello;82330;riche;bright;2;tissu-gris;2;IT;2016;550Th Anniversary Of The Death Of Donatello;10;29
+10;17;de-2016-2eur-state-of-saxony;80927;canonique;inhand;3;tissu-gris;2;DE;2016;State Of Saxony;0;0
+10;18;de-2016-2eur-state-of-saxony;80927;canonique;glare;3;table-sombre;2;DE;2016;State Of Saxony;0;0
+10;19;sk-2009-2eur-standard-1st-type;5091;moyenne;glare;2;table-sombre;2;SK;2009;Standard 1St Type;1;1
+10;20;sk-2009-2eur-standard-1st-type;5091;moyenne;bright;2;tissu-gris;2;SK;2009;Standard 1St Type;1;1
+10;21;at-2005-2eur-50th-anniversary-of-the-austrian-state-treaty;2193;riche;inhand;2;table-sombre;2;AT;2005;50Th Anniversary Of The Austrian State Treaty;10;111
+10;22;at-2005-2eur-50th-anniversary-of-the-austrian-state-treaty;2193;riche;bright;2;tissu-gris;2;AT;2005;50Th Anniversary Of The Austrian State Treaty;10;111
+10;23;fr-2015-2eur-30th-anniversary-of-the-flag-of-the-european-union;76635;canonique;dim;3;bois-clair;2;FR;2015;30Th Anniversary Of The Flag Of The European Union;0;0
+10;24;fr-2015-2eur-30th-anniversary-of-the-flag-of-the-european-union;76635;canonique;inhand;3;papier-blanc;2;FR;2015;30Th Anniversary Of The Flag Of The European Union;0;0
+10;25;fr-2010-2eur-degaulles-radio-speech-on-june-18th-1940-70th-anniversary-of-the-appeal-of-june-18;11526;moyenne;dim;2;tissu-gris;2;FR;2010;Degaulles Radio Speech On June 18Th 1940 70Th Anniversary Of The Appeal Of June 18;3;29
+10;26;fr-2010-2eur-degaulles-radio-speech-on-june-18th-1940-70th-anniversary-of-the-appeal-of-june-18;11526;moyenne;bright;2;table-sombre;2;FR;2010;Degaulles Radio Speech On June 18Th 1940 70Th Anniversary Of The Appeal Of June 18;3;29
+10;27;ee-2016-2eur-100th-anniversary-of-the-birth-of-paul-keres;80919;canonique;tilt;3;bois-clair;2;EE;2016;100Th Anniversary Of The Birth Of Paul Keres;0;0
+10;28;ee-2016-2eur-100th-anniversary-of-the-birth-of-paul-keres;80919;canonique;glare;3;papier-blanc;2;EE;2016;100Th Anniversary Of The Birth Of Paul Keres;0;0
+10;29;be-2008-2eur-standard-albert-ii-2nd-map-2nd-type-2nd-portrait;6293;riche;tilt;2;bois-clair;2;BE;2008;Standard Albert Ii 2Nd Map 2Nd Type 2Nd Portrait;10;8
+10;30;be-2008-2eur-standard-albert-ii-2nd-map-2nd-type-2nd-portrait;6293;riche;inhand;2;papier-blanc;2;BE;2008;Standard Albert Ii 2Nd Map 2Nd Type 2Nd Portrait;10;8
+10;31;de-2021-2eur-bundeslander-series-saxony-anhalt;267621;canonique;tilt;3;papier-blanc;2;DE;2021;Bundeslander Series Saxony Anhalt;0;0
+10;32;de-2021-2eur-bundeslander-series-saxony-anhalt;267621;canonique;bright;3;bois-clair;2;DE;2021;Bundeslander Series Saxony Anhalt;0;0
+10;33;be-2014-2eur-standard-philippe;56039;moyenne;glare;2;bois-clair;2;BE;2014;Standard Philippe;4;4
+10;34;be-2014-2eur-standard-philippe;56039;moyenne;dim;2;papier-blanc;2;BE;2014;Standard Philippe;4;4
+10;35;es-2007-2eur-standard-juan-carlos-i-1st-type-2nd-map;6364;hors_banque;bright;3;papier-blanc;2;ES;2007;Standard Juan Carlos I 1St Type 2Nd Map;0;1
+10;36;es-2007-2eur-standard-juan-carlos-i-1st-type-2nd-map;6364;hors_banque;glare;3;bois-clair;2;ES;2007;Standard Juan Carlos I 1St Type 2Nd Map;0;1
+10;37;fi-2016-2eur-100th-anniversary-of-the-birth-of-georg-henrik-von-wright;93999;riche;bright;2;tissu-gris;2;FI;2016;100Th Anniversary Of The Birth Of Georg Henrik Von Wright;10;26
+10;38;fi-2016-2eur-100th-anniversary-of-the-birth-of-georg-henrik-von-wright;93999;riche;tilt;2;table-sombre;2;FI;2016;100Th Anniversary Of The Birth Of Georg Henrik Von Wright;10;26
+10;39;de-2013-2eur-state-of-baden-wurttemberg;42149;canonique;inhand;3;bois-clair;2;DE;2013;State Of Baden Wurttemberg;0;0
+10;40;de-2013-2eur-state-of-baden-wurttemberg;42149;canonique;dim;3;papier-blanc;2;DE;2013;State Of Baden Wurttemberg;0;0
+11;1;cy-2008-2eur-standard-1st-type;2180;moyenne;glare;2;table-sombre;2;CY;2008;Standard 1St Type;1;16
+11;2;cy-2008-2eur-standard-1st-type;2180;moyenne;dim;2;tissu-gris;2;CY;2008;Standard 1St Type;1;16
+11;3;at-2002-2eur-standard-1st-map;64;riche;bright;2;papier-blanc;2;AT;2002;Standard 1St Map;10;67
+11;4;at-2002-2eur-standard-1st-map;64;riche;dim;2;bois-clair;2;AT;2002;Standard 1St Map;10;67
+11;5;lu-2017-2eur-200th-anniversary-of-the-birth-of-william-iii;126563;canonique;tilt;3;table-sombre;2;LU;2017;200Th Anniversary Of The Birth Of William Iii;0;0
+11;6;lu-2017-2eur-200th-anniversary-of-the-birth-of-william-iii;126563;canonique;dim;3;tissu-gris;2;LU;2017;200Th Anniversary Of The Birth Of William Iii;0;0

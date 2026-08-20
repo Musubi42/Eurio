@@ -1,0 +1,83 @@
+# Cohorte de prescription du corpus de scan (P5) — générée par
+# ml/scripts/build_scan_prescription.py. Une ligne par classe.
+eurio_id;numista_id;display_name
+ad-2014-2eur-standard-1st-type;68395;Standard 1St Type
+at-2002-2eur-standard-1st-map;64;Standard 1St Map
+at-2005-2eur-50th-anniversary-of-the-austrian-state-treaty;2193;50Th Anniversary Of The Austrian State Treaty
+at-2016-2eur-200th-anniversary-of-the-national-bank;80926;200Th Anniversary Of The National Bank
+at-2018-2eur-100-years-republic-of-austria;131199;100 Years Republic Of Austria
+be-2006-2eur-reopening-of-the-brussels-atomium;2166;Reopening Of The Brussels Atomium
+be-2007-2eur-standard-albert-ii-2nd-map-1st-type-1st-portrait;6292;Standard Albert Ii 2Nd Map 1St Type 1St Portrait
+be-2008-2eur-standard-albert-ii-2nd-map-2nd-type-2nd-portrait;6293;Standard Albert Ii 2Nd Map 2Nd Type 2Nd Portrait
+be-2009-2eur-200th-anniversary-of-louis-brailles-birth;8070;200Th Anniversary Of Louis Brailles Birth
+be-2009-2eur-standard-albert-ii-2nd-map-2nd-type-1st-portrait;6311;Standard Albert Ii 2Nd Map 2Nd Type 1St Portrait
+be-2010-2eur-belgian-presidency-of-the-european-union;11550;Belgian Presidency Of The European Union
+be-2011-2eur-100th-international-womens-day;19734;100Th International Womens Day
+be-2012-2eur-10-years-of-euro-cash;28325;10 Years Of Euro Cash
+be-2012-2eur-75th-anniversary-of-queen-elisabeth-music-competition;32526;75Th Anniversary Of Queen Elisabeth Music Competition
+be-2014-2eur-100th-anniversary-of-the-beginning-of-ww-i;59828;100Th Anniversary Of The Beginning Of Ww I
+be-2014-2eur-standard-philippe;56039;Standard Philippe
+be-2015-2eur-30th-anniversary-of-the-flag-of-the-european-union;77181;30Th Anniversary Of The Flag Of The European Union
+be-2016-2eur-child-focus;87173;Child Focus
+cy-2008-2eur-standard-1st-type;2180;Standard 1St Type
+de-2002-2eur-standard-1st-map;112;Standard 1St Map
+de-2006-2eur-state-of-schleswig-holstein;2169;State Of Schleswig Holstein
+de-2007-2eur-state-of-mecklenburg-vorpommern;2201;State Of Mecklenburg Vorpommern
+de-2008-2eur-federal-state-of-hamburg;2994;Federal State Of Hamburg
+de-2008-2eur-standard-2nd-map;6323;Standard 2Nd Map
+de-2009-2eur-10th-anniversary-of-economic-and-monetary-union;5054;10Th Anniversary Of Economic And Monetary Union
+de-2012-2eur-state-of-bavaria;29694;State Of Bavaria
+de-2013-2eur-50th-anniversary-of-the-elysee-treaty;41786;50Th Anniversary Of The Elysee Treaty
+de-2013-2eur-state-of-baden-wurttemberg;42149;State Of Baden Wurttemberg
+de-2016-2eur-state-of-saxony;80927;State Of Saxony
+de-2018-2eur-state-of-berlin;132935;State Of Berlin
+de-2019-2eur-30-years-of-the-fall-of-the-berlin-wall;180626;30 Years Of The Fall Of The Berlin Wall
+de-2020-2eur-brandenburg-the-bundeslander-series;193506;Brandenburg The Bundeslander Series
+de-2020-2eur-german-polish-reconciliation;226447;German Polish Reconciliation
+de-2021-2eur-bundeslander-series-saxony-anhalt;267621;Bundeslander Series Saxony Anhalt
+ee-2011-2eur-standard-2nd-map;16593;Standard 2Nd Map
+ee-2016-2eur-100th-anniversary-of-the-birth-of-paul-keres;80919;100Th Anniversary Of The Birth Of Paul Keres
+es-1999-2eur-standard-juan-carlos-i-1st-type-1st-map;88;Standard Juan Carlos I 1St Type 1St Map
+es-2007-2eur-standard-juan-carlos-i-1st-type-2nd-map;6364;Standard Juan Carlos I 1St Type 2Nd Map
+es-2010-2eur-standard-juan-carlos-i-2nd-type-2nd-map;10862;Standard Juan Carlos I 2Nd Type 2Nd Map
+es-2015-2eur-standard-felipe-vi;69470;Standard Felipe Vi
+es-2016-2eur-old-town-of-segovia-and-its-aqueduct;81058;Old Town Of Segovia And Its Aqueduct
+fi-1999-2eur-standard-1st-type-1st-map;96;Standard 1St Type 1St Map
+fi-2007-2eur-standard-2nd-type-2nd-map;8714;Standard 2Nd Type 2Nd Map
+fi-2012-2eur-150th-birthday-of-helene-schjerfbeck;38356;150Th Birthday Of Helene Schjerfbeck
+fi-2016-2eur-100th-anniversary-of-the-birth-of-georg-henrik-von-wright;93999;100Th Anniversary Of The Birth Of Georg Henrik Von Wright
+fi-2016-2eur-90th-anniversary-of-the-death-of-the-writer-eino-leino;86837;90Th Anniversary Of The Death Of The Writer Eino Leino
+fi-2017-2eur-100-years-of-independence;113429;100 Years Of Independence
+fr-2008-2eur-french-presidency-of-the-council-of-the-european-union;3561;French Presidency Of The Council Of The European Union
+fr-2010-2eur-degaulles-radio-speech-on-june-18th-1940-70th-anniversary-of-the-appeal-of-june-18;11526;Degaulles Radio Speech On June 18Th 1940 70Th Anniversary Of The Appeal Of June 18
+fr-2013-2eur-50th-anniversary-of-the-elysee-treaty;41904;50Th Anniversary Of The Elysee Treaty
+fr-2014-2eur-70th-anniversary-of-d-day;60800;70Th Anniversary Of D Day
+fr-2015-2eur-30th-anniversary-of-the-flag-of-the-european-union;76635;30Th Anniversary Of The Flag Of The European Union
+fr-2015-2eur-70th-anniversary-of-the-end-of-world-war-ii;69366;70Th Anniversary Of The End Of World War Ii
+fr-2016-2eur-100th-anniversary-of-the-birth-of-francois-mitterrand;91431;100Th Anniversary Of The Birth Of Francois Mitterrand
+fr-2016-2eur-euro-2016-football-championship;82237;Euro 2016 Football Championship
+fr-2017-2eur-25th-anniversary-of-the-pink-ribbon-symbol-of-the-fight-against-breast-cancer;122799;25Th Anniversary Of The Pink Ribbon Symbol Of The Fight Against Breast Cancer
+fr-2018-2eur-100th-anniversary-of-the-end-of-the-first-world-war-bleuet-de-france;134685;100Th Anniversary Of The End Of The First World War Bleuet De France
+fr-2018-2eur-simone-veil;141382;Simone Veil
+fr-2019-2eur-30-years-of-the-fall-of-the-berlin-wall;160246;30 Years Of The Fall Of The Berlin Wall
+gr-2002-2eur-standard-1st-map;120;Standard 1St Map
+gr-2004-2eur-xxviiith-olympic-games-2004-in-athens;2190;Xxviiith Olympic Games 2004 In Athens
+ie-2007-2eur-standard-2nd-map;6334;Standard 2Nd Map
+it-2002-2eur-standard-1st-map;136;Standard 1St Map
+it-2011-2eur-150th-anniversary-of-italian-unification;20892;150Th Anniversary Of Italian Unification
+it-2013-2eur-200th-anniversary-of-the-birth-of-giuseppe-verdi;45254;200Th Anniversary Of The Birth Of Giuseppe Verdi
+it-2016-2eur-2200th-anniversary-of-the-death-of-plautus;84714;2200Th Anniversary Of The Death Of Plautus
+it-2016-2eur-550th-anniversary-of-the-death-of-donatello;82330;550Th Anniversary Of The Death Of Donatello
+it-2017-2eur-bimillenary-of-the-death-of-titus-livius;107085;Bimillenary Of The Death Of Titus Livius
+lt-2017-2eur-vilnius-capital-of-culture-and-art;116893;Vilnius Capital Of Culture And Art
+lu-2016-2eur-50-years-of-grand-duchess-charlotte-bridge;84907;50 Years Of Grand Duchess Charlotte Bridge
+lu-2017-2eur-200th-anniversary-of-the-birth-of-william-iii;126563;200Th Anniversary Of The Birth Of William Iii
+lu-2017-2eur-the-50th-anniversary-of-the-voluntariness-of-the-luxembourg-army;100577;The 50Th Anniversary Of The Voluntariness Of The Luxembourg Army
+lv-2016-2eur-latvian-farming-and-countryside;85889;Latvian Farming And Countryside
+mc-2009-2eur-standard-albert-ii-2nd-map;15757;Standard Albert Ii 2Nd Map
+nl-1999-2eur-standard-beatrix-1st-map;152;Standard Beatrix 1St Map
+nl-2007-2eur-standard-beatrix-2nd-map;6481;Standard Beatrix 2Nd Map
+nl-2011-2eur-erasmus-500th-anniversary-of-the-praise-of-folly;19021;Erasmus 500Th Anniversary Of The Praise Of Folly
+pt-2016-2eur-portuguese-olympic-team-for-rio-2016;84061;Portuguese Olympic Team For Rio 2016
+sk-2009-2eur-standard-1st-type;5091;Standard 1St Type
+sk-2018-2eur-25th-anniversary-of-the-establishment-of-the-slovak-republic;131970;25Th Anniversary Of The Establishment Of The Slovak Republic

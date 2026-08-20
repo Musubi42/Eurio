@@ -17,6 +17,7 @@
 | [005](./005-remaster-historique-git.md) | Remaster de l'historique git sur une base propre | 🟡 | 2026-08-14 | Nouveau `main` en commits thématiques ; ancien historique archivé en tarball hors ligne |
 | [006](./006-extraction-loan.md) | `loan/` extrait dans son propre dépôt | 🟡 | 2026-08-14 | Produit distinct, couplage réduit à une ligne de CSS ; données via MinIO |
 | [007](./007-pas-de-split-eurio-avant-artefacts.md) | Ne pas découper Eurio avant d'avoir des artefacts publiés | 🟡 | 2026-08-14 | Un split par dossier casse R1/R2 ; il faut d'abord publier tokens et catalogue |
+| [008](./008-deux-voies-backbone-gele-et-arcface.md) | Deux voies vers le modèle embarqué : backbone gelé + banque, à côté d'ArcFace | 🟡 | 2026-08-19 | Ajouter une classe ne doit plus coûter un réentraînement ; le corpus de scan départagera |
 
 ## Où vit quelle information
 

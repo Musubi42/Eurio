@@ -68,6 +68,13 @@ rend le statut de `tail`, pas celui de la commande. Un refus manifeste a ainsi
 | Crops décentrés, aucune exception | Coordonnées laissées dans l'espace de détection |
 | Deux cohortes disparues d'une copie | `cp` sur un SQLite en WAL |
 | Reprise qui exclut des images à vie | Un état transitoire (`error` = panne réseau) traité comme un verdict |
+| Banque d'ancres 30 % trop petite pendant des semaines, aucun log | Un `DB_PATH` littéral : le script lisait `eurio.db` (6205 assets) au lieu de la réplique (12454). **Une base périmée répond normalement** — cf. `eurio-banque` §5(a) |
+| Un garde de calibration qui rend toujours « périmé » | Comparaison de dates **en chaînes** entre deux formats (`' '` 0x20 < `'T'` 0x54) : `12454` contre `0` avec `datetime()` des deux côtés — cf. `eurio-banque` §5(b) |
+| Un garde posé, testé, muté — et jamais appelé | Il gardait le CLI ; le chemin réel était la route HTTP. Sept instances en deux jours (`FINDINGS.md` §8.9) |
+| « La base n'a pas bougé : son `mtime` est inchangé » | **En WAL, les écritures vont d'abord dans le `-wal`.** Le 2026-08-20 la réplique portait `mtime` 03:22 et son `-wal` la seconde courante ; 64 items de review avaient changé d'état dans la journée. Le `mtime` du `.db` ne prouve rien : regarde `-wal`, ou un `MAX(<colonne de date>)` (`FINDINGS.md` §8.12 S9) |
+| Un seuil « réglé », `source='db'`, et un comportement de seuil désarmé | La valeur est un **compte** relu en `int()` : `min_exemplars = 1,9` franchissait les bornes `[0, 50]` et posait un plancher effectif de **1** (S1). Un seuil entier stocké en REAL doit être refusé fractionnaire à l'écriture |
+| Un `--dry-run` qui n'empêche rien | Le drapeau existait dans `argparse` et n'était **lu nulle part** : `--dry-run --execute --yes` brûlait le quota (S2). `grep -n <dest>` le montre en une seconde — un drapeau qui n'apparaît qu'une fois dans le fichier ne décide de rien |
+| Un plan chiffré « impossible à dépasser » | Le préflight qui devait l'arrêter comptait sur `source_runs.n_calls` (3 pour 740 appels réels) et rendait `estimate=8` pour une vague à 1040 (S3). **Un garde branché sur un compteur faux est un garde absent** |
 
 Le motif commun : **une valeur par défaut plausible** (0, vide, absent) là où il
 aurait fallu une erreur.

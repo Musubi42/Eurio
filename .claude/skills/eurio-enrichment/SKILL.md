@@ -136,14 +136,23 @@ contre 18 sur 378 pour `2eur_all`). Reconstruire `2eur_all` n'allume donc **rien
 dans l'écran de review d'une classe standard. Détail et conséquences :
 **`eurio-review`** §« la review est aveugle sur les standards ».
 
-**Avant de rebâtir, vérifie que c'est nécessaire** — c'est 4 min d'encodage plus
-1 h 26 de backfill. Le `.npz` porte sa date et son encodeur :
+**Avant de rebâtir, vérifie que c'est nécessaire** — mesuré le 2026-08-19 :
+**237 s** d'encodage plus **28 min** de backfill pour les 12454 crops
+(`23:20:42 → 23:48:36`, `vitl14` sur MPS). Le `.npz` porte sa date, son encodeur
+et son compte :
 
 ```bash
 cd ml && ./.venv/bin/python -c "
-import numpy as np; d=np.load('state/foundation_anchors_2eur_all.npz', allow_pickle=True)
-print(dict(d)['meta'] if 'meta' in d else d.files)"
+import numpy as np, json
+d = np.load('state/foundation_anchors_2eur_all.npz', allow_pickle=True)
+print(json.loads(str(d['meta'][0])))"
+# {'encoder_version': 'dinov2-vitl14', 'anchors_kind': '2eur_all',
+#  'built_at': '2026-08-19T14:36:14+00:00', 'count': 1533, 'dim': 1024, 'bank_id': 'a0fec2b0…'}
 ```
+
+⚠️ **`bank_id` n'est PAS le `build_id`** de `dino_anchor_builds`, et le rebuild
+a d'autres pièges (refus sous devShell, refus faute de migration 0010 au
+canonique, `--no-serve`) : lire **`eurio-banque`** §7 avant de le lancer.
 
 L'encodeur doit être celui qu'attend `encoder_version_for_kind(<kind>)` — sinon
 `auto_validate` traite la banque comme absente.
@@ -161,30 +170,61 @@ Une classe entière était invisible faute d'ancres à jour. Aucun scrape, si gr
 soit-il, ne l'aurait débloquée. La troisième colonne dit autre chose : **ces
 chiffres bougent d'un jour à l'autre**, donc remesure au lieu de citer.
 
-⚠️ `dino_class_references` est **vide dans les six bases** de cette machine (0
-ligne partout, réplique comprise) : la sélection FPS des ancres n'est traçable
-nulle part. C'est le piège `--db` ci-dessous, réalisé et jamais rattrapé.
+✅ **Corrigé le 2026-08-19** — cette skill affirmait que `dino_class_references`
+était vide partout. Elle ne l'est plus : le rebuild avec le `--db` réparé a
+tracé la sélection FPS.
+
+```bash
+sqlite3 -readonly ml/state/eurio.replica.db "
+SELECT anchors_kind, method, COUNT(*), COUNT(DISTINCT class_id)
+  FROM dino_class_references GROUP BY 1,2;"
+# 2eur_all|canonical|671|671
+# 2eur_all|fps|862|182
+```
+
+**671 classes, 1533 ancres, 182 classes à exemplaires** (contre 125 avant :
+la banque était bâtie sur 6205 assets au lieu de 12454). Lecture, maille et
+pièges : **`eurio-banque`**.
 
 ### Pièges de ces deux commandes
 
 - **`build_dino_anchors --db` est un leurre.** Le drapeau laisse croire qu'on
   choisit la base ; `Store(path)` hérite du `read_only` de l'environnement, donc
-  sous le devShell l'écriture de `dino_class_references` échoue — **après** les
-  4 minutes d'encodage. Le `.npz` est écrit avant, donc le travail coûteux est
-  sauvé, mais le job sort en erreur. Lancer avec `EURIO_DB_READONLY=` si on veut
-  la traçabilité en base (cf. `eurio-data-writes`).
-- Le backfill est **long** : 9095 crops en **1 h 26** (565 ms/crop, `vitl14` sur
-  MPS). Il ne loge rien avant la fin ; pour suivre, compter les lignes dans sa
-  base scratch (`/tmp/**/dino_scratch.db`), pas dans les logs.
+  sous le devShell l'écriture de `dino_class_references` échoue. **Depuis le
+  2026-08-19 la commande refuse de démarrer** sous `EURIO_DB_READONLY=1` au lieu
+  de mourir après l'encodage — relancer avec `EURIO_DB_READONLY=` , ou
+  `--skip-references` pour le `.npz` seul (cf. `eurio-data-writes`).
+  ⛔ **Et aujourd'hui elle refusera de tracer même hors devShell** : le canonique
+  est à la migration `0008`, `dino_class_references` n'a pas l'encodeur dans sa
+  clé, et le writer refuse bruyamment (`CleSansEncodeurError`). Il faut d'abord
+  redémarrer `eurio-api` sur le VPS. Détail : **`eurio-banque`** §7.
+- **Un témoin de volume, pas un « 0 erreurs ».** Les deux commandes impriment
+  ce qu'elles ont **vu** : `1533` ancres (banque à jour) contre `1250`
+  (périmée) ; `12454` candidate assets (base saine) contre `6205` (base
+  périmée). Une base périmée répond normalement — elle rend simplement moins de
+  lignes. C'est le défaut qui a fait bâtir la banque sur un demi-corpus pendant
+  des semaines (`FINDINGS.md` §8.7).
+- Le backfill a duré **28 min** pour 12454 crops le 2026-08-19 (`vitl14` sur
+  MPS) — l'ancien chiffre « 9095 crops en 1 h 26 » est périmé. Il ne loge rien
+  avant la fin ; pour suivre, compter les lignes dans sa base scratch
+  (`/tmp/**/dino_scratch.db`), pas dans les logs. ⚠️ **Il sort en code 0 même en
+  erreur** (dette M8) : la preuve est
+  `store.encoder_bench.calibration_blockers(...) → []`, pas le code de sortie.
 - **Une pièce sans `obverse.jpg` n'a pas d'ancre, donc ne peut jamais être
   suggérée.** Le constructeur le dit dans son log (« Skipped N coins (no
-  obverse.jpg) ») ; mesuré sur le Mac le 2026-08-17 : **122 dossiers sur 688**
-  n'en ont pas. Vérifier `ml/datasets/<numista_id>/obverse.jpg` avant de conclure
-  qu'une classe est « introuvable » :
+  obverse.jpg) »). ✅ **Le trou est bouché depuis le 2026-08-19** — remesuré le
+  2026-08-20 : **695 dossiers, 695 `obverse.jpg`, aucun manquant** (et
+  `n_no_canonical = 0` dans le build `23c637d93b43`, contre 7 au build
+  précédent). L'ancien « 122 sur 688 » est périmé. Le contrôle reste bon marché,
+  refais-le avant de conclure qu'une classe est « introuvable » :
 
   ```bash
-  ls ml/datasets/[0-9]*/obverse.jpg | wc -l   # combien en ont un
-  ls -d ml/datasets/[0-9]*        | wc -l     # combien de pièces au total
+  ls ml/datasets/[0-9]*/obverse.jpg | wc -l   # 695 — combien en ont un
+  ls -d ml/datasets/[0-9]*        | wc -l     # 695 — combien de pièces au total
+  sqlite3 -readonly ml/state/eurio.replica.db \
+    "SELECT substr(build_id,1,12), n_no_canonical FROM dino_anchor_builds ORDER BY built_at DESC;"
+  # 23c637d93b43|0    ← 0 classe portée par ses seuls crops
+  # 42d17f9e7083|7
   ```
 
 ## Vérifier que l'enrichissement a servi
@@ -239,13 +279,45 @@ Il rend le verdict par classe **et** la raison textuelle. Utile aussi pour voir
 que la cohorte est de toute façon bloquée par une **autre** classe : enrichir la
 tienne ne la débloquera pas.
 
+### Et vérifie qu'il y a bien un goulot de SCRAPE — mesuré le 2026-08-20
+
+Pour les **489 classes de banque à zéro exemplaire** (671 − 182), le goulot
+n'est pas le même partout. Compté sur les crops de la **file ouverte** dont le
+top-1 DINO tombe dans la classe (`2eur_all`/`vitl14`, requête complète dans
+**`eurio-banque`** §8) :
+
+| crops en file ouverte | 0 | 1 | 2 | 3-4 | 5-7 | ≥ 8 |
+|---|---:|---:|---:|---:|---:|---:|
+| classes | **305** | 78 | 36 | 26 | 21 | 23 |
+
+- **305 classes n'ont rien en file** → c'est là, et là seulement, que le scrape
+  est le geste.
+- **78 n'ont qu'un crop** → le valider seul **dégraderait** la classe (la courbe
+  donne N=1 à 50,1 % contre N=0 à 53,1 %). Il faut d'abord scraper de quoi en
+  avoir trois.
+- **23 seulement** peuvent atteindre la cible de 8 sans un appel eBay de plus.
+
+⚠️ Ce compte est *par prédiction*. La même mesure *par cible de scrape*
+(`source_images.target_eurio_id`) rend 433 / 9 / 5 / 12 / 10 / 20. Les deux sont
+légitimes — dis toujours laquelle tu comptes.
+
+⚠️ Et le plancher `MIN_REAL = 10` du préflight n'est **pas** la cible de la
+banque. La courbe dit **8 crops validés par classe** (arbitrage, pas plateau) et
+**jamais 1**. Les deux garde-fous répondent à deux voies différentes : le
+préflight sert l'entraînement ArcFace (voie A), la banque sert les suggestions
+(voie B). Cf. **`eurio-banque`** §3 et §8.
+
 ## Ensuite
 
 → **`eurio-review`** : trancher les crops et les rendre `training_eligible`.
+→ **`eurio-banque`** : combien de crops une classe mérite, et ce que coûte un
+  rebuild d'ancres.
 → puis **`eurio-run-local`** : monter l'itération et entraîner.
 
 ## Ce que cette skill ne couvre PAS
 
+- La banque d'ancres elle-même — maille `class_id`, rangs FPS, seuils, banc
+  d'encodeurs, courbe références/classe : **`eurio-banque`**.
 - Le détail du pipeline en 8 étapes : `ml/sources/_base/orchestrator.py`.
 - La construction des requêtes eBay : `ml/sources/ebay/queries.py` (+ `filters.py`
   pour le funnel et la détection de lots).

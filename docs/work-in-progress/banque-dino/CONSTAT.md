@@ -3,6 +3,11 @@
 > Chaque chiffre porte sa requête. Base lue : `ml/state/eurio.replica.db`
 > (réplique du canonique), sauf mention contraire. Suite du chantier
 > `docs/work-in-progress/dino-suggestions/` (juin 2026).
+>
+> ⚠️ **Deux constats de ce doc sont périmés depuis le soir du 2026-08-19** — les
+> §« La couverture de la banque » et §« La traçabilité n'existe pas » portent
+> désormais leur correction datée, avec l'état antérieur conservé. Mesures :
+> [`../scan-sans-retrain/FINDINGS.md`](../scan-sans-retrain/FINDINGS.md).
 
 ## Le point de départ
 
@@ -80,9 +85,26 @@ précision.
 
 ## La couverture de la banque : rien ne manque, tout est en retard
 
+> 🔴 **CORRIGÉ le 2026-08-19 (soir).** Le chiffre « 130 pièces sans ancre »
+> ci-dessous est **périmé** : il décrivait un build antérieur. Au build du
+> 2026-08-19T00:28, **664 classes portent leur canonique** et **7 seulement**
+> n'en avaient pas (`n_no_canonical = 7`). Les 7 ont été rapatriées le soir même
+> par `cd ml && .venv/bin/python -m referential.fetch_review_images --ids
+> 375327,576180,194605,581307,581165,578765,576181` → « Done: 7 downloaded, 0
+> failed », et `_class_specs_2eur_all` rend désormais `sans canonique: 0`.
+>
+> **Le trou réel s'est déplacé** : il n'est plus dans les canoniques mais dans
+> les **exemplaires**. 125 classes en portent, **182** pourraient en porter — et
+> la cause est trouvée : `build_dino_anchors.py` codait son `--db` par défaut en
+> dur sur `ml/state/eurio.db` (6205 `image_assets`) au lieu d'honorer
+> `EURIO_DB_PATH` → la réplique (12454). Correctif écrit, rebuild non lancé.
+> Cf. [`../scan-sans-retrain/PREREQUIS.md`](../scan-sans-retrain/PREREQUIS.md) §P1.
+>
+> Le mécanisme décrit ci-dessous reste **exact** — c'est lui qu'il faut retenir.
+
 **130 pièces sur 658 n'ont aucune ancre. Les 130 ont pourtant une image
-canonique en base.** Le trou n'est pas « les nouveautés » : ce sont des pays
-entiers.
+canonique en base.** *(état antérieur, conservé pour la trace)* Le trou n'est
+pas « les nouveautés » : ce sont des pays entiers.
 
 | Pays | Sans ancre / total |
 |---|---:|
@@ -104,15 +126,39 @@ filesystem).
 
 ## La traçabilité n'existe pas
 
-`dino_class_references` est **vide dans les 8 bases locales et au canonique**.
+> 🔴 **CORRIGÉ le 2026-08-19 (soir).** `dino_class_references` **n'est plus
+> vide** : le build de la nuit a poussé sa trace au canonique par `--push`.
+>
+> ```bash
+> sqlite3 "file:ml/state/eurio.replica.db?mode=ro" \
+>   "select count(*) from dino_class_references;
+>    select count(*) from dino_anchor_builds;
+>    select method, count(*) from dino_class_references group by 1;"
+> # 1250 | 1 | canonical|664  fps|586
+> ```
+>
+> Le bug est corrigé à la source : `ml/scripts/build_dino_anchors.py:65-130`
+> porte désormais `preflight_db_traceability()`, qui **sonde réellement
+> l'écriture** (CREATE + DROP dans `store._writing()`) **avant** les quatre
+> minutes d'encodage, et lève `ReadOnlyTraceabilityError` en nommant ses trois
+> sorties. Le chemin nominal sous Direction A est `--push` →
+> `client.ingest.push_dino_references` → `POST /ingest/dino-references` (route
+> présente dans l'OpenAPI de production).
+>
+> **On peut donc désormais dire ce que contient la banque servie sans ouvrir le
+> `.npz`** — mais seulement pour `2eur_all` : c'est le seul kind qui écrit
+> (`WRITING_KINDS`). Le diagnostic d'origine, ci-dessous, reste la référence sur
+> *pourquoi* la panne était muette.
+
+`dino_class_references` était **vide dans les 8 bases locales et au canonique**.
 La cause est écrite dans le code (`ml/scripts/build_dino_anchors.py:64-82`) :
 `BEGIN IMMEDIATE` réussit sur une connexion en lecture seule, et l'échec
 n'arrive qu'à la première vraie écriture — après quatre minutes d'encodage, à
 la dernière ligne du build. Sous le flip Direction A, tous les builds ont donc
 écrit leur `.npz` et perdu leur trace.
 
-Il n'existe aujourd'hui aucun moyen de dire ce que contient la banque servie
-sans ouvrir le `.npz`.
+Il n'existait alors aucun moyen de dire ce que contient la banque servie sans
+ouvrir le `.npz`.
 
 ## Le pool ambigu n'était jamais scoré
 

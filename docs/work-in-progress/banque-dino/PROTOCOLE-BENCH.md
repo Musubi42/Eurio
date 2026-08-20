@@ -4,6 +4,24 @@
 > `dinov2-vits14`, `dinov2-vitl14` et **DINOv3** sur une mesure, pas sur un
 > benchmark public.
 
+
+> **Mis à jour le 2026-08-19 (soir).** Les **quatre manques** listés ici et les
+> **deux blocages structurels** sont comblés : gold figé
+> (`gold_version=0ecbb1d70e3c`, 1958 crops), `mcnemar_exact` extrait dans
+> `ml/shared/stats/paired.py`, balayage de seuils par encodeur
+> (`shared/stats/sweep.py` + `calibration.py`), tables `encoder_bench_*`
+> (migration 0009 + miroir `schema.sql`), et `anchor_path` scopé par encodeur.
+>
+> **Ce qui reste** : le câblage du banc lui-même — `bench_encoder_dino.py` rejoue
+> encore sa propre requête de sélection au lieu du gold figé, et n'écrit rien
+> dans `encoder_bench_runs`. Plus 16 dettes mesurées, dont 5 pannes muettes :
+> [`../scan-sans-retrain/FINDINGS.md`](../scan-sans-retrain/FINDINGS.md) §7 et §8.
+>
+> **La licence DINOv3 est levée** : redistribution permise, sous obligation
+> d'inclure l'accord et d'afficher « Built with DINOv3 ». La note « le PO avait
+> indiqué pas d'usage commercial à ce stade » n'est plus le sujet — le sujet est
+> ces deux mentions dans l'APK. Cf. [ADR-008](../../adr/008-deux-voies-backbone-gele-et-arcface.md).
+
 ## Ce qui existe déjà (et qu'il ne faut pas réécrire)
 
 `ml/scripts/bench_encoder_dino.py` fait 90 % du travail : il ré-encode la

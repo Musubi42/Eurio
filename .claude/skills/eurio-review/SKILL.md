@@ -80,8 +80,25 @@ Donc le verdict **ne se joue pas que sur les scores** : un crop qui passe les de
 seuils reste `partial` si le signal texte n'est pas `convergent`, et bascule
 `divergent` si le top1 contredit la cible de découverte.
 
-Seuils canoniques — source : `training/foundation/thresholds.py`, dont
-`review_queue/service.py` est un **miroir** (le front, lui, les lit via l'API) :
+Seuils canoniques — ⚠️ **depuis le 2026-08-19 ils ne sont plus « dans le
+code »** : ils vivent en base (`dino_thresholds`), scopés par couple
+`(banque, encodeur)`, avec des défauts stdlib dans
+`shared/dino_threshold_defaults.py` et une résolution par
+`store/dino_thresholds.py`. `training/foundation/thresholds.py` ne porte plus
+que les valeurs historiques du verdict. Ne lis pas un seuil dans un fichier —
+résous-le, et regarde d'où il vient :
+
+```bash
+cd ml && ./.venv/bin/python -c "
+import sqlite3, store.dino_thresholds as dt
+c = sqlite3.connect('file:state/eurio.replica.db?mode=ro', uri=True)
+r = dt.resolve(c, anchors_kind='2eur_commemo', encoder_version='dinov2-vits14')
+print(r.values); print(r.source)"
+# {'top1_country_sim_min': 0.55, 'country_spread_min': 0.05, 'spread_uncertain_max': 0.02,
+#  'spread_confident_min': 0.05, 'spread_auto_accept_min': 0.1, 'min_exemplars': 1}
+#                                            ↑ 1 = plancher d'exemplaires INACTIF
+# {…: 'code', …}   ← 'code' partout : la table est encore VIDE, ce sont les défauts
+```
 
 ```
 top1_country_sim_min = 0.55      # similarité, comparaison scopée au PAYS cible
@@ -92,6 +109,25 @@ Le commentaire de `thresholds.py` dit pourquoi : *« la SIM top1 ne sépare RIEN
 médiane hors-scope 0,834 ≈ médiane des top1 corrects 0,836 ; le SPREAD sépare
 bien »*.
 
+⛔ **Un seuil appartient à un encodeur.** Les sims de vits14 et vitl14 ne sont
+pas sur la même échelle ; servir la mauvaise valeur ne lève aucune erreur, elle
+déplace silencieusement le taux de faux positifs. Voir **`eurio-banque`** §4.
+
+### Le palier d'auto-acceptation, et sa précision mesurée
+
+`spread_auto_accept_min = 0,10` (banque `2eur_all` / `vitl14`). Vérifié le
+2026-08-20 contre le gold figé `0ecbb1d70e3c`, précision du top-1
+(`top1_eurio_id == truth_eurio_id`, `spread` global ≥ 0,10) :
+
+| population | n | précision |
+|---|---:|---:|
+| crops **hors** banque | 463 | **98,5 %** |
+| crops qui **sont** des ancres | 821 | 97,4 % |
+
+Le palier tient donc **mieux** sur ce que la banque n'a jamais vu : il n'est pas
+un artefact du fait que 858 des 1958 crops du gold soient eux-mêmes des ancres.
+La requête complète est dans **`eurio-banque`** §4 — recopie-la, pas le nombre.
+
 ### ⛔ Le piège qui invalide tout le reste : la review est AVEUGLE sur les standards
 
 `repository.py::fetch_verdict_signal_rows` (l. 1091) joint **en dur** :
@@ -100,13 +136,27 @@ bien »*.
 AND p.anchors_kind = '2eur_commemo'
 ```
 
-Or cette banque ne contient **aucune** pièce standard. Mesuré le 2026-08-17 sur
-la réplique :
+Or cette banque ne contient **aucune** pièce standard. **Toujours vrai après le
+rebuild du 2026-08-19**, remesuré le 2026-08-20 sur les `.npz` servis :
+
+```bash
+cd ml && ./.venv/bin/python -c "
+import numpy as np
+for k in ('2eur_all','2eur_commemo'):
+    d = np.load(f'state/foundation_anchors_{k}.npz', allow_pickle=True)
+    ids = set(d['eurio_ids'].tolist())
+    print(k, 'lignes', len(d['eurio_ids']), 'étiquettes', len(ids),
+          'dont standard', sum('standard' in i for i in ids))"
+# 2eur_all     lignes 1533 étiquettes 671 dont standard 41
+# 2eur_commemo lignes  508 étiquettes 508 dont standard  0
+```
+
+*(Le rebuild a fait passer `2eur_all` de 378 à 671 étiquettes et de 18 à 41
+standard ; `2eur_commemo` reste à 0 sur 508. Les vieux chiffres 0/446 et 18/378
+sont périmés — remesure, ne cite pas.)*
 
 ```sql
--- étiquettes distinctes dont le design_group contient « standard »
-2eur_commemo :   0 / 446        2eur_all :  18 / 378
--- items de review OUVERTS ciblant la classe, ayant une prédiction :
+-- items de review OUVERTS ciblant la classe, ayant une prédiction (2026-08-17) :
 fr-2euro-standard-t1        66 ouverts → 2eur_commemo:  0   2eur_all: 66
 es-2euro-juan-carlos-i-t2   16 ouverts → 2eur_commemo:  0   2eur_all: 16
 ```
@@ -145,7 +195,14 @@ Les **10 sites** du chemin du verdict l'importent (repository lean, jumeau lourd
 `dinov2-vits14`**. Basculer le seul kind donne un JOIN à **zéro ligne** — donc
 tout en `unknown`, sans la moindre erreur. Ne touche jamais l'un sans l'autre.
 
-### Ce que coûterait la bascule — mesuré, non appliqué
+### Ce que coûterait la bascule — mesuré le 2026-08-17, **à remesurer**
+
+⚠️ **Les chiffres qui suivent datent d'AVANT le rebuild du 2026-08-19 16:36.**
+La banque `2eur_all` est passée de 1250 à **1533 ancres** et de 125 à **182
+classes à exemplaires**, et les 12454 prédictions ont été recalculées dessus
+(`build 23c637d93b43`). Les comptes ci-dessous sont donc **périmés** : ils
+restent utiles pour l'**ordre de grandeur** et pour le raisonnement, pas comme
+mesure. Toute décision de bascule les remesure. Cf. **`eurio-banque`**.
 
 Sur 6899 items ouverts, verdict recalculé par la vraie fonction :
 
@@ -225,9 +282,49 @@ attention, `training_eligible != 1` exclut les NULL en SQL — préfère
 `lane` ∈ `manual` / `auto_accept` / `ccproxy` / NULL ·
 `lane_source` ∈ `auto` / `human`.
 
-État au 2026-08-17 : **6918 items ouverts** (5332 lot, 1586 single). Le stock est
-donc profond : une session de review n'a de sens que **cadrée** — par classe, par
-lane, ou par run. Ne pas « vider la file ».
+État au **2026-08-20 à 14:03 UTC** : **6798 items ouverts** (5413 lot, 1385
+single), 5060 `done`, 54 `skipped` — `SELECT status, kind, COUNT(*) FROM
+review_queue GROUP BY 1,2` sur `ml/state/eurio.replica.db`. ⚠️ **Ce compte bouge
+d'heure en heure** : le même jour à 09:00 UTC il rendait 6894 ouverts / 4964
+`done` (le total 11 858 est stable, ce sont des items qui se décident). Cite
+l'horodatage **à la minute** avec le chiffre, ou relance la requête. Le stock
+est profond : une session de
+review n'a de sens que **cadrée** — par classe, par lane, ou par run. Ne pas
+« vider la file ».
+
+### Combien viser par classe — la courbe l'a chiffré le 2026-08-20
+
+Ce n'est plus une question d'intuition. Précision held-out en fonction du nombre
+de crops validés qui entrent en banque pour la classe (`dinov2_vits14`,
+`COURBE-REFERENCES.md`) :
+
+```
+N=0 : 53,1 %   N=1 : 50,1 % ← RÉGRESSION   N=2 : 54,6 %
+N=3 : 57,3 %   N=5 : 66,4 %   N=8 : 73,9 %   N=10 : 75,5 %
+```
+
+⚠️ **« Ne laisse jamais une classe à UN seul crop validé » : cette règle a été
+RETIRÉE le 2026-08-20.** Elle avait été codée en plancher `min_exemplars = 2` ;
+la mesure restreinte l'a réfutée — donner à 57 classes exactement un exemplaire
+**améliore** leurs propres crops (`vitl14` 67,6 → 69,1 %, p=0,048 ; `vits14`
+41,6 → 45,5 %, p=4,5e-10). Le creux à N=1 de la courbe ci-dessus est un agrégat
+« toutes les classes plafonnées à 1 », pas une règle par classe, et il vient de
+l'**ordre** du FPS, pas du nombre. Défaut revenu à `min_exemplars = 1`
+(inactif). Détail : **`eurio-banque` §3**.
+
+**Ce qui reste vrai côté review** : un crop de plus rapporte toujours, et le
+premier crop d'une classe est le plus atypique de son pool. **Cadrer une session
+sur une classe pauvre rapporte plus que d'approfondir une classe riche** — mais
+un crop unique n'est plus une raison de s'abstenir.
+
+**La cible pratique est 8 crops validés par classe** — arbitrage coût/bénéfice
+(~2,5 pt/réf avant, ~0,8 après), *pas* un plateau. Au-delà de 10, le plafond
+`exemplars_per_class` fait que les crops n'entrent plus dans la banque du tout :
+ils servent l'entraînement ArcFace, pas les suggestions. Or la médiane du pool
+des 55 classes déjà pleines est de **25 crops décidés** — ces classes ont été
+sur-reviewées d'un facteur 2,5 pour rien. **Cadrer par classe pauvre rapporte
+plus que d'approfondir une classe riche.** Détail et budget : **`eurio-banque`**
+§8.
 
 Lecture : `GET /review-queue` (+ `/triage-stats`, `/stats`, `/lots`, `/rejected`).
 Décision : `POST /review-queue/{review_id}/decide` · `/skip` · `/reject` ·
@@ -301,11 +398,15 @@ lire **`eurio-data-writes`**, ne pas contourner en écrivant en local.
 
 ## Ensuite
 
+→ **`eurio-banque`** : dès que tu touches à un seuil, à la banque d'ancres, ou
+  que tu veux savoir combien de crops une classe mérite.
 → **`eurio-run-local`** : créer l'itération sur la cohorte enfin nourrie.
 → Puis la promotion : `docs/architecture/parcours.md` §5.
 
 ## Ce que cette skill ne couvre PAS
 
+- La **banque d'ancres** elle-même — comment elle se lit, ce que valent ses
+  suggestions, ce que coûte un rebuild : **`eurio-banque`**.
 - Le moteur de décision complet : `ml/serving/review_queue/service.py` (~400 l.)
   et `ml/training/foundation/auto_validate.py` pour les signaux (face, denom,
   texte, DINO).

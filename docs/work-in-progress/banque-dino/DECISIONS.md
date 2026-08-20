@@ -89,3 +89,23 @@ ambigu produirait des prédictions structurellement bancales.
   réponse que pour les seuils d'entraînement : le schéma le portera, l'écran ne
   l'exposera pas tant qu'aucune mesure ne dira laquelle est difficile.
 - Le choix de l'encodeur. Cf. [`PROTOCOLE-BENCH.md`](PROTOCOLE-BENCH.md).
+
+## Ajout du 2026-08-19 (soir) — ce que la session « scan sans réentraînement » a changé
+
+Aucune décision ci-dessus n'est annulée. Trois compléments :
+
+- **D4 (palier ≥ 0,10) est mesuré sur des prédictions périmées.** Les 12 454
+  prédictions `2eur_all`/`dinov2-vitl14` sont **toutes** antérieures au build
+  courant de la banque (requête dans
+  [`../scan-sans-retrain/FINDINGS.md`](../scan-sans-retrain/FINDINGS.md) §7.3).
+  Le palier reste le bon geste opérationnel, mais tout **re**calibrage devra
+  attendre P3 — et `shared.stats.calibration.propose_threshold()` refuse
+  désormais de rendre un seuil « officiel » sous blocage.
+- **D5 (table `dino_thresholds`) a un frère** : `encoder_bench_runs` /
+  `encoder_bench_predictions` (migration 0009), au **canonique** et pour les
+  mêmes raisons — la page admin hébergée n'a pas accès au ML local, et une
+  décision doit vivre au même endroit que sa preuve.
+- **Le choix de l'encodeur est outillé, pas tranché.** Le banc porte désormais
+  deux encodeurs sans les écraser, le gold est figé
+  (`gold_version=0ecbb1d70e3c`), la licence DINOv3 est levée. Reste le câblage
+  et les mesures. Cadre : [ADR-008](../../adr/008-deux-voies-backbone-gele-et-arcface.md).
