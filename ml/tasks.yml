@@ -86,7 +86,7 @@ tasks:
 
   # ---------- Foundation (DINOv2 anchors for auto-validation) ----------
   dino-anchors:build:
-    desc: "Build DINOv2 obverse anchor bank for the auto-validation pipeline. Kinds: 2eur_commemo (consensus, vits14), 2eur_standard (design groups courantes, vits14), 2eur_all (commémo+standards, banque des suggestions review, ENCODÉE EN vitl14 — MULTI-EXEMPLAIRES depuis improvement-loop B : canonique + ~10 vrais crops validés choisis par diversité FPS, overrides pin/exclude honorés, sélection tracée dans dino_class_references). Reads coins from eurio.db and ml/datasets/<numista>/obverse.jpg (+ crops eBay validés pour 2eur_all). Writes ml/state/foundation_anchors_<kind>.npz. Usage: go-task ml:dino-anchors:build [-- --force] [-- --kind 2eur_all]. Après un renommage de slugs : rebâtir 2eur_commemo ET 2eur_all --force PUIS re-backfiller les prédictions. ⚠️ 2eur_all TRACE sa sélection en base : sous le devShell (EURIO_DB_READONLY=1) la commande refuse de démarrer — relancer avec EURIO_DB_READONLY= , ou --skip-references pour le .npz seul."
+    desc: "Build DINOv2 obverse anchor bank for the auto-validation pipeline. Kinds: 2eur_commemo (consensus, vits14), 2eur_standard (design groups courantes, vits14), 2eur_all (commémo+standards, banque des suggestions review, ENCODÉE EN vitl14 — MULTI-EXEMPLAIRES depuis improvement-loop B : canonique + ~10 vrais crops validés choisis par diversité FPS, overrides pin/exclude honorés, sélection tracée dans dino_class_references). Reads coins from eurio.db and ml/datasets/<numista>/obverse.jpg (+ crops eBay validés pour 2eur_all). Écrit DEUX fichiers aux rôles distincts : foundation_anchors_<kind>__<encodeur>.npz = l'artefact de banc (toujours écrit, un par couple kind×encodeur, lu seulement par qui demande un encodeur explicite) et foundation_anchors_<kind>.npz = la banque SERVIE que la review lit (slot unique par kind, écrite sur intention explicite du CLI). --no-serve bâtit l'artefact SANS toucher la banque servie : c'est ce qu'il faut pour un bras baseline de banc, dinov2-vitl14 étant à la fois l'encodeur servi et le bras de référence. Sans ce drapeau la banque servie est remplacée — comportement voulu d'un rebuild de prod, et journalisé (WARNING avec les comptes avant/après). Écriture atomique : un build interrompu ne laisse plus un .npz tronqué à la place de la banque servie. La ligne de sortie n'annonce que les fichiers VÉRIFIÉS sur disque. Usage: go-task ml:dino-anchors:build [-- --force] [-- --kind 2eur_all] [-- --no-serve]. Après un renommage de slugs : rebâtir 2eur_commemo ET 2eur_all --force PUIS re-backfiller les prédictions. ⚠️ AVANT le premier build d'un encodeur CANDIDAT, la migration 0010 doit être appliquée au canonique (redémarrage de eurio-api sur le VPS, cf. le commentaire en tête de la section « Banc multi-encodeurs ») : sans elle, l'encodeur n'est pas dans la clé de dino_class_references et le build candidat ÉCRASE les références de la production (M1). Le writer refuse désormais d'écrire sur une table à l'ancienne clé — le refus est bruyant et nomme 0010. ⚠️ PLANCHER D'EXEMPLAIRES (2eur_all) : une classe entre en banque avec >= min_exemplars exemplaires ou avec son canonique SEUL. ⛔ LE DÉFAUT EST 1, C'EST-À-DIRE PLANCHER INACTIF (depuis le 2026-08-20 au soir) : il a valu 2 pendant une journée, sur la lecture du point N=1 de la courbe held-out (50,1 % contre 53,1 % à N=0) — lecture FAUSSE, ce point signifie « toutes les classes plafonnées à 1 », pas « ces 68 classes-ci à 1 ». La mesure restreinte a réfuté la prémisse : donner à 57 classes exactement UN exemplaire améliore leurs propres crops (vitl14 67,6 -> 69,1 %, p=0,048 ; vits14 41,6 -> 45,5 %, p=4,5e-10), et le creux agrégé vient de l'ORDRE du FPS, pas du nombre (--rank-order last rend 77,8 % contre 73,8 % en vitl14, à nombre d'ancres identique). Le mécanisme reste ENTIER et testé : reposer 2 est une ligne dans dino_thresholds. ⚠️ LA BANQUE SERVIE AUJOURD'HUI PORTE ENCORE LE PLANCHER (build 365dcab2a253, 68 classes ramenées au canonique seul) : LE PROCHAIN REBUILD CHANGERA SA FORME — ces classes retrouveront leur exemplaire — ET LE GARDE P1 NE LE DIRA PAS (il compte les classes à >= 2 exemplaires, compte invariant par ce retour). Le seuil est résolu EN BASE, sur la base pointée par --db : sous Direction A c'est la RÉPLIQUE, alors qu'il s'écrit au canonique — une valeur posée par le PO n'atteint le build qu'après un pull de réplique. Le journal et dino_anchor_builds.note disent la valeur, son état (ACTIF/INACTIF) ET sa provenance (source=db|code) : c'est là qu'on vérifie, pas dans la commande. Le compte de classes ramenées au canonique seul ne se prédit PAS depuis un compte de pool (ce qui décide est la sortie du FPS) : le chiffre qui fait foi est celui de la note du build. ⚠️ 2eur_all TRACE sa sélection en base : sous le devShell (EURIO_DB_READONLY=1) la commande refuse de démarrer — relancer avec EURIO_DB_READONLY= , ou --skip-references pour le .npz seul."
     cmds:
       - "{{.VENV}}/python -m scripts.build_dino_anchors -v {{.CLI_ARGS}}"
 
@@ -96,9 +96,97 @@ tasks:
       - "{{.VENV}}/python -m pytest tests/test_foundation.py -v"
 
   dino-predictions:backfill:
-    desc: "Compute DINOv2 top-K predictions for every existing crop in scope that doesn't yet have a row in image_asset_dino_predictions. Kinds: 2eur_commemo (défaut, consensus) | 2eur_all (suggestions review, targets 2€ commémo + courantes) | 2eur_standard. Idempotent. Usage: go-task ml:dino-predictions:backfill [-- --kind 2eur_all] [-- --force] [-- --limit 50]"
+    desc: >-
+      Recalcule les top-K DINO de chaque crop du périmètre dans
+      image_asset_dino_predictions. Kinds : 2eur_commemo (défaut, consensus) |
+      2eur_all (suggestions review : 2€ commémo + courantes) | 2eur_standard.
+      Idempotent sans --force (les crops déjà prédits sont sautés) ; --force les
+      recalcule, ce qu'il FAUT après un rebuild de banque — sinon la file de
+      review continue de trier sur des vecteurs de l'ancienne banque.
+      QUELLE BASE : jamais un chemin codé en dur. Sous --push (ACTIF par défaut
+      dès que EURIO_API_URL est configurée, donc dans le devShell) le script
+      pull une réplique scratch NEUVE du canonique et travaille dessus — --db
+      est alors ignoré, et il le dit maintenant dans un warning. Sous --no-push
+      il ouvre EURIO_DB_PATH (la réplique locale sous Direction A), repli hors
+      devShell state/eurio.replica.db ; l'écriture y est refusée bruyamment,
+      c'est voulu (règle de repli : docstring de store.resolve_db_path).
+      COMMENT ON SAIT QUE C'EST COMPLET — quatre lignes, dans l'ordre :
+      (1) « anchor bank 2eur_all loaded (N anchors …) » avec N = la banque
+      courante (1533 au build 23c637d93b43 du 2026-08-19 ; 1250 = banque
+      périmée, arrêter) ; (2) « backfill: N candidate assets in scope 2eur_all »
+      avec N ≈ 12454, JAMAIS ≈ 6205 — 6205 est la base de travail périmée, c'est
+      le témoin direct du défaut de chemin corrigé le 2026-08-19 ; (3)
+      « Predicted: N   Errors: 0 » avec Skipped=0 sous --force ; (4) la ligne de
+      push « → n ligne(s) appliquée(s) au canonique » — sans elle rien n'est
+      tracé. Contre-vérification, réplique à jour :
+      sqlite3 "file:ml/state/eurio.replica.db?mode=ro" "SELECT COUNT(*) FROM
+      image_asset_dino_predictions WHERE anchors_kind='2eur_all';" → 12454.
+      Durée ⚠️ estimation (extrapolée de 4 et 60 assets sur MPS, ~84 ms/asset) :
+      ≈ 18 min pour 12454, plus le pull (~106 Mo).
+      Usage: go-task ml:dino-predictions:backfill [-- --kind 2eur_all] [-- --force] [-- --limit 50] [-- --no-push]
     cmds:
       - "{{.VENV}}/python -m scripts.backfill_dino_predictions -v {{.CLI_ARGS}}"
+
+  # ─── Banc multi-encodeurs (docs/work-in-progress/banque-dino/PROTOCOLE-BENCH.md) ───
+  # Le banc compare des encodeurs GELÉS sur NOS crops. Ordre des gestes :
+  # bench-gold:build (figer le jeu) → encoder-bench:run (mesurer) → lire les
+  # résultats sur /lab/encoder-bench/runs. Tant que P1 (rebuild de banque) et P3
+  # (backfill des prédictions) ne sont pas passés, tout chiffre de calibration
+  # sort marqué `provisional` — c'est voulu, pas un bug.
+  # État au 2026-08-19 : P1 est PASSÉ au canonique (build 23c637d93b43 —
+  # 671 classes / 1533 ancres / 182 classes à exemplaires, contre 664/1250/125).
+  # La réplique locale affiche encore 1250/125 tant qu'elle n'a pas rattrapé :
+  # c'est Direction A, pas une régression, et le bloqueur P1 reste donc levé
+  # en local. P3 n'est PAS passé (`dino-predictions:backfill --force`).
+  #
+  # ⚠️ DEUX MIGRATIONS ATTENDENT LE VPS — 0009 (tables du banc) et 0010
+  # (l'encodeur entre dans la clé primaire de `dino_class_references`, défaut
+  # M1). Il n'existe PAS de tâche go-task qui les applique : elles sont jouées
+  # par `serving/db_migrate.run_migrations` au DÉMARRAGE du conteneur
+  # canonique. Le geste, humain, est celui de la skill `eurio-vps-deploy` :
+  #   cd /opt/eurio && git pull
+  #   cd infra/eurio-api && direnv exec /opt/eurio docker compose up -d --build
+  # Contrôle après redémarrage (le compte doit être INCHANGÉ) :
+  #   SELECT encoder_version, method, COUNT(*) FROM dino_class_references
+  #    GROUP BY 1,2;   -- attendu : dinov2-vitl14|canonical|671 et …|fps|862
+  # ⚠️ À faire AVANT le premier `dino-anchors:build` d'un encodeur CANDIDAT :
+  # sans 0010, ce build écrase les références de la production (M1). Répétition
+  # faite le 2026-08-20 sur copie /tmp de la réplique via le vrai runner :
+  # 1250 lignes avant, 1250 après, 4 index présents, `foreign_key_check` vide.
+  bench-gold:build:
+    desc: "P4 — fige le jeu d'évaluation du banc (crops décidés en review) dans state/validation_gold/encoder_bench_gold.jsonl + son sidecar .meta.json, et calcule son gold_version. Mesuré le 2026-08-19 sur la réplique : 1958 crops / 194 eurio_id / 188 class_id / gold_version=0ecbb1d70e3c. Le défaut de --db suit EURIO_DB_PATH (la réplique sous Direction A), pas state/eurio.db en dur. LECTURE SEULE en base. La version hache asset_id|truth_eurio_id|class_id — une re-décision humaine la fait donc bouger (D2) ; le pays du gold (truth_country) vient de decided_eurio_id, jamais de la cible du scrape (D6). ⚠️ Le manifeste est COMMITTÉ : sans lui, deux machines ne comparent pas le même jeu. Refuse d'écraser un gold existant sans --force (il affiche d'abord le diff, y compris les class_id changés). Un gold d'un schéma antérieur est refusé bruyamment, pas chargé de travers. Usage: go-task ml:bench-gold:build [-- --force] [-- --db state/eurio.replica.db]"
+    cmds:
+      - "{{.VENV}}/python -m scripts.bench_gold build {{.CLI_ARGS}}"
+
+  bench-gold:show:
+    desc: "Résume le gold figé : nombre de crops, de classes, part non training_eligible, et combien de crops ont un class_id de banque différent de leur eurio_id (repli sur le représentant de groupe de dessin — 105 crops au 2026-08-19 ; les ignorer plafonnerait le recall à 94,6 % sur TOUS les encodeurs, sans rien signaler). Usage: go-task ml:bench-gold:show"
+    cmds:
+      - "{{.VENV}}/python -m scripts.bench_gold show {{.CLI_ARGS}}"
+
+  bench-gold:diff:
+    desc: "Compare le gold figé à ce que la base rendrait AUJOURD'HUI (la file de review bouge). À lancer avant d'interpréter un vieux run : si le diff est gros, les runs d'avant et d'après ne sont pas comparables et il faut refiger (bench-gold:build --force) puis tout rejouer. Usage: go-task ml:bench-gold:diff"
+    cmds:
+      - "{{.VENV}}/python -m scripts.bench_gold diff {{.CLI_ARGS}}"
+
+  encoder-bench:run:
+    desc: "Ré-encode la banque 2eur_all ET les crops du GOLD FIGÉ (bench-gold:build) avec chaque encodeur candidat, imprime recall@1/@5 global + bande pays + McNemar apparié contre le bras de référence, et POUSSE le run dans encoder_bench_runs par POST /ingest/encoder-bench (Direction A — aucune écriture locale). Spécifier les modèles : noms torch.hub DINOv2 (dinov2_vits14, dinov2_vitl14) ou timm:<model> (DINOv3, TinyViT…). N'ÉCRIT PAS dans les .npz. Lourd : GPU/MPS, plusieurs minutes par encodeur. ⚠️ Le garde de calibration est maintenant DANS le chemin exécutable : les bloqueurs P1/P3 sont mesurés par store.encoder_bench.calibration_blockers et la bannière ⚠ CALIBRATION PROVISOIRE s'imprime en tête ET en pied, plus dans le rapport --out. Tant qu'un bloqueur tient, AUCUN seuil n'est rendu (--allow-provisional rend le chiffre marqué « provisoire » — mais la colonne provisional en base ne suit jamais l'option). ⚠️ Depuis la fermeture de M2, c'est le CANONIQUE qui tranche `provisional`, pas le banc : store.encoder_bench.record_run refuse d'écrire provisional=0 dans une base qui mesure des bloqueurs, et POST /ingest/encoder-bench remesure sur SA connexion (bloqueurs, plus n_paired recompté par paired_overlap), corrige dans le sens sûr (0 → 1) et renvoie provisional/blockers/corrections. Le banc imprime alors « ⚠ CORRIGÉ PAR LE CANONIQUE : … » — la bannière locale est calculée sur la réplique, EN RETARD sous Direction A, donc un désaccord est normal et se lit sur cette ligne, pas dans la bannière. P3 ne bloque PAS la comparaison : le banc ré-encode tout, les recall sortent, seul spread_at_p97 est retenu. Un run non tracé (sync coupée, POST en erreur) sort en code 1 et dépose son payload rejouable dans state/encoder_bench_pending/ ; --no-push est la façon explicite de ne pas tracer. Usage: go-task ml:encoder-bench:run [-- --models dinov2_vitl14 timm:vit_small_patch16_dinov3.lvd1689m] [-- --baseline dinov2_vitl14] [-- --limit 200] [-- --gold <jsonl>] [-- --allow-provisional] [-- --no-push] [-- --note '…'] [-- --out bench.md]"
+    cmds:
+      - "{{.VENV}}/python -m scripts.bench_encoder_dino {{.CLI_ARGS}}"
+
+  encoder-bench:test:
+    desc: "Tests du banc multi-encodeurs : gold figé (P4), scoping des banques par encodeur et rôle servi ↔ artefact de banc (P6-1/P6-2), store + route d'ingest encoder_bench_* (P6-5), balayage de seuils et McNemar apparié (P6-3/P6-4), câblage du banc lui-même (gold lu, bannière, seuil refusé, run poussé), miroir migration ↔ schema.sql, convention de repli de base des CLI (store.resolve_db_path — le défaut du 2026-08-19 qui a fait bâtir la banque sur un demi-corpus), l'encodeur DANS la clé de dino_class_references + la migration 0010 (M1), et la FAMILLE du garde de calibration : invariant dans record_run + inventaire AST des chemins qui écrivent un run (M2 — un cinquième chemin fait rougir le test). Rapide, aucun modèle chargé — bench_encoder_dino y est exercé avec son encodage doublé."
+    cmds:
+      - "{{.VENV}}/python -m pytest tests/test_bench_gold.py tests/test_anchor_encoder_scope.py tests/test_anchor_bank_serving.py tests/test_bench_encoder_dino.py tests/test_encoder_bench_store.py tests/test_ingest_encoder_bench.py tests/test_threshold_sweep.py tests/test_threshold_calibration.py tests/test_paired_stats.py tests/test_schema_mirror.py tests/test_db_path_defaults_cli.py tests/test_dino_refs_encoder_key.py tests/test_encoder_bench_guard_family.py -v"
+
+  refs-curve:run:
+    desc: "Étape 3 du chantier scan-sans-retrain — la courbe « combien de références wild par classe ? ». Sous-échantillonne la banque 2eur_all EN MÉMOIRE par le rang FPS de dino_class_references (canoniques + fps de rang ≤ N) au lieu de la rebâtir N fois : un seul encodage des 1533 ancres + 1958 crops du gold figé, ~1 min en vits14 / ~7 min en vitl14. LECTURE SEULE — ni base, ni .npz, ni push. ⚠️ 858 des 1958 crops du gold SONT des lignes de la banque : les noter contre elle mesure une similarité de 1,0 avec eux-mêmes. Le script les EXCLUT (1100 crops held-out / 72 classes) ; --include-leaked ajoute la courbe fuitée pour chiffrer l'écart (mesuré : vits14 85,9 % fuitée contre 75,5 % honnête à N=10), jamais comme mesure. DEUX LECTURES séparées, jamais mélangées : population VARIABLE (toutes les classes held-out, plafonnées à ce qu'elles ont — ce que vit l'utilisateur) et population CONSTANTE (les 52 classes held-out à 10 exemplaires — ce qui isole l'effet du nombre). Le garde check_bank_matches_build refuse de mesurer si le .npz et le build tracé divergent. ⚠️ C'est la tâche REVIEW (photos de vendeurs eBay) ; la courbe du SCAN exige le corpus de capture, encore vide. ⚠️ IL N'Y A PAS DE PLATEAU MESURÉ : « coude à N=8 » (annoncé ici jusqu'au 2026-08-20) était un artefact du maillage 5/8/10 — sur 4..10 le détecteur ne trouve plus rien, 8→9 est du bruit (z=0,50) et 9→10 reste significatif (+1,36 pt, z=2,54). Viser 8 est un arbitrage de budget, pas une lecture de plateau (COURBE §3.5). ⚠️ UN PALIER N SIGNIFIE « TOUTES LES CLASSES PLAFONNÉES À N », JAMAIS « CES CLASSES-CI À N, LES AUTRES PLEINES ». Le script ne connaît pas min_exemplars (défaut S6) : il tronque par rang FPS. C'est exactement cette confusion qui a fait poser le plancher min_exemplars=2 le 2026-08-20 (retiré le soir même). Il mesure le rendement d'un exemplaire de plus, il ne prédit pas la forme d'une banque réelle. ✅ POUR POSER LA QUESTION PAR CLASSE, trois drapeaux depuis le 2026-08-20 : --bank-classes @fichier (le plafond N ne s'applique QU'À ces class_id, les autres gardent toute leur banque), --gold-classes @fichier (seuls ces crops sont notés ; un ensemble vide est REFUSÉ, il ne vaut pas « aucune restriction »), --rank-order last (garde les rangs FPS les MOINS diversifiants — sonde de mécanisme, ne correspond à AUCUN build possible : ne cite jamais son chiffre comme une prédiction). Chaque palier porte en outre sa p-value de McNemar exact (shared/stats/paired.py) contre le palier précédent : un écart sans sa p-value ne se cite pas. Résultats : docs/work-in-progress/scan-sans-retrain/COURBE-REFERENCES.md. Usage: go-task ml:refs-curve:run [-- --model dinov2_vitl14] [-- --refs 0 1 2 3 5 8 10] [-- --include-leaked] [-- --bank-classes @classes.txt] [-- --gold-classes @classes.txt] [-- --rank-order last] [-- --out courbe.md] [-- --json courbe.json]"
+    cmds:
+      - "{{.VENV}}/python -m scripts.bench_refs_curve {{.CLI_ARGS}}"
+
+  refs-curve:test:
+    desc: "Tests du protocole de la courbe de références : sous-échantillonnage par rang FPS, garde .npz ↔ dino_anchor_builds, séparation des deux populations et exclusion des crops fuités, détection du coude (y compris le creux réel à N=1, qui fait rendre « coude à N=0 » à un détecteur naïf), et les restrictions --bank-classes / --gold-classes / --rank-order (plafond limité aux classes demandées, absence de restriction identique au comportement historique, classe inconnue sans effet, order inconnu refusé, ensemble VIDE refusé au lieu de passer pour « aucune restriction »). Aucun modèle chargé, ~1,4 s."
+    cmds:
+      - "{{.VENV}}/python -m pytest tests/test_refs_curve.py -v"
 
   backfill-face:
     desc: "C7 — Détecte la face (avers vs revers commun 2€) sur les crops face IS NULL, rejette les revers (ré-ouvrables) et re-route les listings touchés (bucket funnel 'revers commun 2€'). Idempotent. Usage: go-task ml:backfill-face [-- --limit 200] [-- --dry]"
@@ -762,6 +850,11 @@ tasks:
     cmds:
       - "{{.VENV}}/python -m sources.ebay.status_cli"
 
+  ebay:allocate:
+    desc: "Plan d'allocation du quota eBay (5000 appels/jour, du VRAI ARGENT) par déficit d'exemplaires. La maille n'est pas la classe mais le GROUPE DE DÉCOUVERTE (commémo → (2€, pays, année), standard → (2€, pays, None)) : les 671 classes de la banque 2eur_all se replient sur 416 groupes, dont ~380 portent un déficit — une décision sert plusieurs classes pour un coût constant. Dry-run par défaut : N'APPELLE PAS eBay, imprime le plan et les commandes. Réel : -- --execute --yes (les deux, --execute seul refuse) ; --dry-run et --execute sont EXCLUSIFS depuis le défaut S2 (avant, --dry-run n'était lu nulle part et la paire brûlait le quota). Ne vise jamais 1 exemplaire (--min-need 2, la courbe donne N=1 pire que N=0), soustrait ce qui attend déjà en review, et pondère ×2 les classes coincées à 1. ⚠️ Les coûts (130 appels par groupe commémo, 240 par standard) sont ESTIMÉS sur 15 groupes observés en 3 journées : un plan à 4920 appels peut en coûter 4000 ou 6000. Le préflight de sources.cli ne rattrape pas (il estime sur source_runs.n_calls, mesuré faux : 3 pour 740 appels réels) ; c'est l'allocateur qui relit api_call_log AVANT CHAQUE VAGUE et s'arrête si le restant passe sous le coût prévu × 1,3 (défaut S4). Premier lancement réel recommandé : -- --execute --yes --max-groups 2, puis confronter le coût prévu au compteur réel (sqlite3 -readonly state/eurio.local.db \"select period, calls from api_call_log where source=ebay\"). ⚠️ discovery_searches n'a pas été alimentée par le run du 2026-08-16 : le cooldown est aveugle aux runs passés par --target-eurio-ids. Doc : docs/work-in-progress/scan-sans-retrain/ALLOCATEUR-SCRAPE.md"
+    cmds:
+      - "{{.VENV}}/python -m scripts.allocate_ebay_scrape {{.CLI_ARGS}}"
+
   bootstrap-coins:
     desc: "Mirror eurio_referential.json → SQLite coins table (D-20). Idempotent."
     cmds:
@@ -1014,6 +1107,11 @@ tasks:
       - "{{.VENV}}/python -m scripts.seed_mints {{.CLI_ARGS}}"
 
   # ─── Corpus de scan rejouable (scan-quality/corpus-spec.md) ───────────────
+  scan-corpus:prescribe:
+    desc: "Plan de capture photo stratifié (P5) — lit la base en LECTURE SEULE (défaut de --db résolu à l'appel par store.resolve_db_path : EURIO_DB_PATH, sinon state/eurio.replica.db ; la valeur retenue est imprimée), sort le CSV de prescription classe × condition + la cohorte CSV. N'écrit rien en base. Cinq strates : riche / moyenne / canonique / hors_banque / orpheline. Une classe SANS FRÈRE en banque est « orpheline » et reste HORS PLAN par défaut (quota 0) — la photographier ne mesure pas une reconnaissance que rien ne peut faire, et la compter en hors_banque diluerait la seule strate qui mesure la maille eq. L'inclure est explicite : --classes-par-strate orpheline=all. Le récapitulatif imprime les classes ÉCARTÉES et pourquoi. Mesuré le 2026-08-19 sur la réplique : 80 classes / 400 cellules / 985 captures / 11 sessions, 0 orpheline. Usage: go-task ml:scan-corpus:prescribe [-- --classes-par-strate riche=15,orpheline=all --captures-canonique 4 --out <csv>]"
+    cmds:
+      - "{{.VENV}}/python -m scripts.build_scan_prescription {{.CLI_ARGS}}"
+
   scan-corpus:import:
     desc: "Import des captures device dans le corpus rejouable (JSONL + frames pullés → scan_corpus.db). Idempotent. Usage: go-task ml:scan-corpus:import ITERATION=<iid> [-- --backfill-debug-snaps <dir>]"
     preconditions:
@@ -1030,7 +1128,7 @@ tasks:
   scan-corpus:test:
     desc: "Tests unitaires du corpus rejouable (store + import + replay/McNemar)."
     cmds:
-      - "{{.VENV}}/python -m pytest tests/test_scan_corpus_store.py tests/test_import_scan_corpus.py tests/test_replay_corpus.py -v"
+      - "{{.VENV}}/python -m pytest tests/test_scan_corpus_store.py tests/test_import_scan_corpus.py tests/test_replay_corpus.py tests/test_build_scan_prescription.py -v"
 
   # ─── Bench best-frame-capture (chunk 7) ───────────────────────────────────
   # Le pull device vit côté android (go-task android:bench:pull). Doc boucle
