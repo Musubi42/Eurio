@@ -526,7 +526,12 @@ def set_asset_dino_reference(
         if payload.action == "clear":
             clear_reference_override(conn, asset_id=asset_id, anchors_kind=DINO_REF_KIND)
             # Delete générique par égalité de clé → un row_op par méthode
-            # manuelle (le replay ne sait pas exprimer un IN).
+            # manuelle (le replay ne sait pas exprimer un IN). Ici la `key`
+            # n'est VOLONTAIREMENT pas la PRIMARY KEY : c'est un PRÉDICAT de
+            # suppression, calqué sur le `DELETE … WHERE anchors_kind=? AND
+            # asset_id=? AND method IN (…)` de `clear_reference_override`. Il
+            # doit balayer la ligne quel que soit son encodeur — un override
+            # humain n'en a pas.
             row_ops = [
                 {"op": "delete", "table": "dino_class_references",
                  "key": {"anchors_kind": DINO_REF_KIND, "asset_id": asset_id,
@@ -540,12 +545,23 @@ def set_asset_dino_reference(
                 conn, class_id=class_id, eurio_id=eurio_id, asset_id=asset_id,
                 method=method, anchors_kind=DINO_REF_KIND,
             )
+            # La `key` nomme TOUTE la PRIMARY KEY de la table — (anchors_kind,
+            # encoder_version, class_id, eurio_id, asset_id) depuis la
+            # migration 0010 — sinon l'`ON CONFLICT` d'un applicateur de replay
+            # ne viserait pas une ligne unique. `encoder_version=''` se lit
+            # « aucun encodeur attribué » : une décision d'humain vaut pour
+            # tous les encodeurs, et c'est la valeur que `set_reference_override`
+            # laisse écrire par le DEFAULT de la colonne (le builder ré-émet les
+            # `manual_*` avec la même valeur, cf. training/foundation/anchors).
+            # Verrouillé par `tests/test_coin_dino_references.py`
+            # ::test_le_row_op_du_pin_nomme_toute_la_cle_primaire, qui lit la PK
+            # par `PRAGMA table_info` au lieu de la recopier.
             row_ops = [{
                 "op": "upsert", "table": "dino_class_references",
-                "key": {"anchors_kind": DINO_REF_KIND, "class_id": class_id,
+                "key": {"anchors_kind": DINO_REF_KIND, "encoder_version": "",
+                        "class_id": class_id, "eurio_id": eurio_id,
                         "asset_id": asset_id},
-                "values": {"eurio_id": eurio_id, "method": method,
-                           "rank": None, "selected_sim": None},
+                "values": {"method": method, "rank": None, "selected_sim": None},
             }]
             reason = f"dino_ref_{payload.action}"
         else:

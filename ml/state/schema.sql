@@ -558,10 +558,23 @@ CREATE TABLE IF NOT EXISTS dino_class_references (
   -- par l'index partiel `idx_dino_class_refs_canonical` plus bas.
   -- Migration 0007 — sans ces trois colonnes la table ne pouvait dire ni avec
   -- quel encodeur, ni de quel build, ni quelle image a servi au canonique.
-  encoder_version TEXT,
+  -- NOT NULL DEFAULT '' depuis 0010 : l'encodeur est dans la CLÉ, donc il ne
+  -- peut pas être NULL (une PK nullable ne déduplique pas). `''` se lit
+  -- « aucun encodeur attribué » — c'est le cas des overrides humains
+  -- (`manual_*`, une décision d'humain vaut pour tous les encodeurs) et des
+  -- rares lignes auto antérieures à 0007. Aucune requête d'encodeur ne les
+  -- ramasse : `encoder_version = 'dinov2-vitl14'` ne matche pas `''`.
+  encoder_version TEXT NOT NULL DEFAULT '',
   build_id        TEXT,
   source_path     TEXT,
-  PRIMARY KEY (anchors_kind, class_id, eurio_id, asset_id)
+  -- L'ENCODEUR EST DANS L'IDENTITÉ DE LA LIGNE (0010, défaut M1). Sans lui,
+  -- deux encodeurs qui piochent le même crop — le cas nominal, c'est le même
+  -- pool de crops validés — ont la même clé : le `INSERT OR REPLACE` du
+  -- builder (`store/dino_references.replace_auto_references`) fait alors
+  -- disparaître la banque de production au premier build d'un candidat, sans
+  -- un mot (le .npz servi ne bouge pas). Sonde : 200 classes, deux encodeurs
+  -- → `prod=200 cand=0` puis `prod=0 cand=200`, total 200 lignes.
+  PRIMARY KEY (anchors_kind, encoder_version, class_id, eurio_id, asset_id)
 );
 CREATE INDEX IF NOT EXISTS idx_dino_class_refs_asset
   ON dino_class_references(asset_id) WHERE asset_id IS NOT NULL;
@@ -569,10 +582,14 @@ CREATE INDEX IF NOT EXISTS idx_dino_class_refs_class
   ON dino_class_references(anchors_kind, class_id);
 CREATE INDEX IF NOT EXISTS idx_dino_class_refs_build
   ON dino_class_references(build_id);
--- Un seul canonique par classe ET PAR ENCODEUR (la PK ne le garantit pas,
--- asset_id étant NULL). L'encodeur est dans la clé : sans lui, deux banques du
--- même kind ne peuvent pas coexister et toute comparaison d'encodeurs serait
--- bloquée dès le premier build. Même contrat que image_asset_dino_predictions.
+-- Un seul canonique par classe ET PAR ENCODEUR. Toujours nécessaire après
+-- 0010 : la PK porte bien l'encodeur désormais, mais `asset_id` y est NULL
+-- pour un canonique, et une PK dont une colonne est NULL ne déduplique RIEN.
+-- Cet index partiel est donc la seule contrainte qui tienne pour ces lignes —
+-- et il ne devient réellement contraignant qu'avec `encoder_version NOT NULL`
+-- (0010) : tant que la colonne était nullable, deux canoniques à encodeur NULL
+-- pour la même classe étaient légaux (NULL ≠ NULL dans un index UNIQUE).
+-- Même contrat que image_asset_dino_predictions.
 CREATE UNIQUE INDEX IF NOT EXISTS idx_dino_class_refs_canonical
   ON dino_class_references(anchors_kind, encoder_version, class_id)
   WHERE asset_id IS NULL;
@@ -604,14 +621,21 @@ CREATE INDEX IF NOT EXISTS idx_dino_builds_kind
 -- Séparés de training_thresholds : valeurs RÉELLES (pas des entiers), et
 -- portée = le couple (banque, encodeur) et non la cohorte. Un seuil calibré
 -- sur vits14 ne dit rien de vitl14. Filet : shared/dino_threshold_defaults.py.
+-- `min_exemplars` (migration 0011) partage cette table sans en partager
+-- l'échelle : c'est un COMPTE, pas une similarité. D'où la borne
+-- conditionnelle à la clé — relâcher [0,1] à [0,50] pour tout le monde
+-- laisserait passer `spread_auto_accept_min = 7`, qui gèlerait
+-- l'auto-acceptation en silence.
 CREATE TABLE IF NOT EXISTS dino_thresholds (
   anchors_kind    TEXT NOT NULL,
   encoder_version TEXT NOT NULL,
   key             TEXT NOT NULL CHECK (key IN (
                     'top1_country_sim_min','country_spread_min',
                     'spread_uncertain_max','spread_confident_min',
-                    'spread_auto_accept_min')),
-  value           REAL NOT NULL CHECK (value >= 0.0 AND value <= 1.0),
+                    'spread_auto_accept_min','min_exemplars')),
+  value           REAL NOT NULL CHECK (
+                    value >= 0.0 AND value <= (
+                      CASE WHEN key = 'min_exemplars' THEN 50.0 ELSE 1.0 END)),
   calibrated_on   TEXT,      -- le set qui a produit la valeur
   precision_at    REAL,      -- la précision mesurée à cette valeur
   n_samples       INTEGER,
@@ -634,6 +658,98 @@ CREATE TABLE IF NOT EXISTS dino_threshold_changes (
 );
 CREATE INDEX IF NOT EXISTS idx_dino_threshold_changes_at
   ON dino_threshold_changes(changed_at DESC);
+
+-- ─── Banc multi-encodeurs (migration 0009) ────────────────────────────────
+-- MIROIR de serving/migrations/0009_encoder_bench.sql. Le double-écrit est la
+-- convention du repo depuis 0007 : les migrations ne tournent QUE au démarrage
+-- de serving/server_serve.py (le canonique VPS), les bases locales ne
+-- connaissent que ce fichier. Une table déclarée d'un seul côté manque de
+-- l'autre. Toute modification se fait DANS LES DEUX fichiers, à l'identique.
+--
+-- Pourquoi au canonique et pas dans un store local (façon scan_corpus.db) :
+-- la page admin de PROTOCOLE-BENCH.md est servie par le front HÉBERGÉ, qui n'a
+-- pas accès au ML local (hasLocalMlApi=false) ; et dino_thresholds — que la
+-- promotion écrit à partir de ces chiffres — est déjà ici. Une décision et sa
+-- preuve vivent au même endroit. Volume : <1 Mo par balayage complet.
+-- Restent LOCAUX : .npz, embeddings, images. Écriture sous Direction A par
+-- POST /ingest/encoder-bench (client.ingest.push_encoder_bench), jamais en
+-- INSERT direct depuis Mac/PC.
+CREATE TABLE IF NOT EXISTS encoder_bench_runs (
+  run_id            TEXT PRIMARY KEY,
+  created_at        TEXT NOT NULL,
+  -- Le jeu d'évaluation est FIGÉ et versionné (P4) : sans ça, deux runs à deux
+  -- semaines d'écart ne sont pas comparables, la file de review ayant bougé.
+  gold_version      TEXT NOT NULL,          -- review.bench_gold.gold_version
+  gold_n_crops      INTEGER NOT NULL,
+  gold_sample_n     INTEGER,                -- non-NULL = run sur échantillon, pas sur le gold entier
+  anchors_kind      TEXT NOT NULL,
+  encoder_spec      TEXT NOT NULL,          -- la spec CLI : 'dinov2_vitl14' | 'timm:vit_small_patch16_dinov3.lvd1689m'
+  encoder_version   TEXT NOT NULL,          -- le nom canonique stocké dans le .npz
+  bank_build_id     TEXT,                   -- dino_anchor_builds.build_id, si connu
+  bank_n_anchors    INTEGER,
+  bank_n_classes    INTEGER,
+  embed_dim         INTEGER,
+  n_params_m        REAL,
+  input_px          INTEGER,
+  device            TEXT,
+  ms_per_img        REAL,
+  n_in_scope        INTEGER NOT NULL,
+  recall1           REAL,
+  recall5           REAL,
+  country_n         INTEGER,
+  country_recall1   REAL,
+  country_recall5   REAL,
+  spread_at_p97     REAL,
+  coverage_at_p97   REAL,
+  precision_at_p97  REAL,
+  sweep_json        TEXT,
+  baseline_run_id   TEXT,
+  mcnemar_p         REAL,
+  mcnemar_b         INTEGER,
+  mcnemar_c         INTEGER,
+  -- Nombre de crops RÉELLEMENT communs au run et à sa baseline (jointure sur
+  -- asset_id, cf. store.encoder_bench.paired_overlap). Sans lui, un McNemar
+  -- calculé sur un recouvrement partiel est indiscernable d'un McNemar complet
+  -- (D16) : b et c ne disent pas sur combien de paires ils portent. NULL est
+  -- légitime — un run sans baseline_run_id n'a pas de recouvrement.
+  n_paired          INTEGER,
+  -- 1 = les chiffres de calibration ne sont PAS promouvables en l'état.
+  -- Aujourd'hui TOUJOURS 1 : la banque servie est amputée de 57 classes (P1)
+  -- et les 12454 prédictions sont périmées (P3, non lancé).
+  -- Le défaut est 1 : un run promouvable est l'exception qu'il faut justifier.
+  provisional       INTEGER NOT NULL DEFAULT 1,
+  provisional_reason TEXT,
+  host              TEXT,
+  git_commit        TEXT,
+  note              TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_encoder_bench_runs_couple
+  ON encoder_bench_runs(anchors_kind, encoder_version, created_at DESC);
+
+-- ~120 o/ligne. Volontairement SANS `top_k_json` : c'est ce qui fait peser
+-- 975 o/ligne à `image_asset_dino_predictions` (19,7 Mo pour 20 234 lignes).
+-- Ici on garde strictement ce dont McNemar et le balayage de seuils ont besoin.
+CREATE TABLE IF NOT EXISTS encoder_bench_predictions (
+  run_id        TEXT NOT NULL,
+  asset_id      TEXT NOT NULL,
+  -- ⚠️ C'est le `class_id` de la BANQUE, pas un `coins.eurio_id` (D5). La banque
+  -- indexe une pièce sous le représentant de son groupe de dessin ; comparer
+  -- au `decided_eurio_id` compterait fausses toutes les pièces repliées sur
+  -- un représentant — 105 crops sur 1958 au 2026-08-19 (5,4 %), qui ne
+  -- joignent donc PAS `coins.eurio_id`. La colonne s'appelait `truth_eurio_id`
+  -- jusqu'au 2026-08-19 ; renommée pendant que la table était vide partout.
+  truth_class_id TEXT NOT NULL,
+  top1_eurio_id TEXT,
+  top1_sim      REAL,
+  top2_sim      REAL,
+  spread        REAL,
+  correct       INTEGER NOT NULL,
+  in_top5       INTEGER NOT NULL,
+  country_top1_eurio_id TEXT,
+  country_correct INTEGER,
+  PRIMARY KEY (run_id, asset_id)
+);
 
 -- ─── Listing text signals (chunk 5 auto-validation) ───────────────────────
 -- Sortie de l'extracteur ml/sources/text_signals/ pour chaque source_image.

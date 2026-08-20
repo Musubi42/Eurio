@@ -106,7 +106,10 @@ def _kind_in_scope(kind: str, face_value, is_commemorative) -> bool:
 # Les kinds live tournent sur des encodeurs différents (consensus=vits14,
 # suggestions=vitl14) → un singleton PAR encoder_version.
 _encoder_cache: dict[str, tuple[Any, Any, Any]] = {}
-_bank_cache: dict[str, AnchorBank] = {}
+# Clé = le COUPLE (anchors_kind, encoder_version) : deux encodeurs peuvent
+# être benchés sur le même kind dans un même process, ils ne doivent pas se
+# rendre le même objet.
+_bank_cache: dict[tuple[str, str], AnchorBank] = {}
 
 
 @dataclass
@@ -127,18 +130,41 @@ def _get_encoder_singleton(encoder_version: str = DEFAULT_ENCODER_VERSION):
     return _encoder_cache[encoder_version]
 
 
-def _get_bank(anchors_kind: str) -> AnchorBank | None:
-    if anchors_kind in _bank_cache:
-        return _bank_cache[anchors_kind]
-    bank = load_anchors(anchors_kind)
+def _get_bank(
+    anchors_kind: str, encoder_version: str | None = None
+) -> AnchorBank | None:
+    """Banque d'ancres pour un couple (kind, encodeur).
+
+    ``encoder_version=None`` → la **banque SERVIE**
+    (``state/foundation_anchors_{kind}.npz``), celle que lisent aussi les ~9
+    scripts historiques. On vérifie qu'elle porte bien l'encodeur de
+    production du kind (``encoder_version_for_kind``) ; sinon elle est traitée
+    comme absente **et journalisée en ERROR**.
+
+    ⚠️ Ne PAS remplacer cette lecture par ``load_anchors(kind, encodeur_de_prod)``
+    (c'est ce que faisait la version P6-1, et c'est D3+D10) : l'artefact scopé
+    du couple ``(kind, dinov2-vitl14)`` est aussi le **bras baseline du banc**.
+    La review se serait mise à servir la banque du dernier run de banc, et le
+    garde « banque périmée » serait devenu muet — ``load_anchors`` avalait le
+    mismatch avant d'arriver ici.
+
+    Un encodeur explicite charge l'artefact de banc de ce couple, sans que la
+    banque servie soit traitée comme « stale »."""
+    expected = encoder_version or encoder_version_for_kind(anchors_kind)
+    key = (anchors_kind, expected)
+    if key in _bank_cache:
+        return _bank_cache[key]
+    bank = (
+        load_anchors(anchors_kind)                     # banque SERVIE
+        if encoder_version is None
+        else load_anchors(anchors_kind, encoder_version)  # artefact de banc
+    )
     if bank is None:
         return None
-    expected = encoder_version_for_kind(anchors_kind)
     if bank.encoder_version != expected:
-        # Banque stale (ex. 2eur_all encore en vits14 après la bascule
-        # suggestions→vitl14) : la servir écrirait des prédictions sous un
-        # encoder_version que les routes ne lisent plus → on la traite
-        # comme absente, l'opérateur doit la rebâtir.
+        # Banque périmée : c'est exactement le geste « bascule d'encodeur » qui
+        # a motivé ce garde. Il doit rester BRUYANT — la review deviendrait
+        # sinon aveugle (zéro suggestion) sans un mot dans les logs.
         logger.error(
             "auto_validate: anchor bank %s has encoder=%s, expected %s — "
             "treating as missing (rebuild: go-task ml:dino-anchors:build "
@@ -146,7 +172,7 @@ def _get_bank(anchors_kind: str) -> AnchorBank | None:
             anchors_kind, bank.encoder_version, expected, anchors_kind,
         )
         return None
-    _bank_cache[anchors_kind] = bank
+    _bank_cache[key] = bank
     logger.info(
         "auto_validate: anchor bank %s loaded (%d anchors, dim=%d, encoder=%s)",
         anchors_kind, bank.count, bank.dim, bank.encoder_version,

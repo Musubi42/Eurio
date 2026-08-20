@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -178,3 +179,63 @@ def test_never_built_when_no_references(client):
     refs = c.get("/coins/fr-2015-a/dino-references").json()
     assert refs["never_built"] is True
     assert refs["entries"] == []
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# La `key` d'un row_op doit décrire la clé de la TABLE, pas celle qu'on a en
+# tête (famille M1/M2 : le garde branché sur le chemin imaginé).
+#
+# `set_asset_dino_reference` émet un `row_op` d'upsert que le canonique
+# rejouera. Sa `key` doit adresser UNE ligne et une seule — c'est-à-dire nommer
+# toutes les colonnes de la PRIMARY KEY. Elle valait
+# `{anchors_kind, class_id, asset_id}` : il lui manquait `eurio_id` (trou
+# préexistant) et, depuis la migration 0010 qui met l'encodeur dans la clé,
+# `encoder_version`. Un applicateur qui construit son `ON CONFLICT` à partir de
+# cette `key` ne viserait pas la bonne ligne — et il n'y a aucun applicateur
+# aujourd'hui pour le dire tout haut, donc rien ne le signalerait.
+#
+# Le test ne recopie PAS la liste des colonnes : il la lit dans la base par
+# `PRAGMA table_info`. Le jour où la clé rebouge, c'est le test qui suit.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _cles_primaires(conn, table: str) -> list[str]:
+    rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
+    return [r["name"] for r in sorted((r for r in rows if r["pk"]), key=lambda r: r["pk"])]
+
+
+def _row_ops(conn, asset_id: str, reason: str) -> list[dict]:
+    ev = conn.execute(
+        "SELECT detail_json FROM image_state_events "
+        "WHERE asset_id=? AND reason=? ORDER BY id DESC LIMIT 1",
+        (asset_id, reason),
+    ).fetchone()
+    assert ev is not None, f"aucun event {reason} pour {asset_id}"
+    return json.loads(ev["detail_json"])["row_ops"]
+
+
+def test_le_row_op_du_pin_nomme_toute_la_cle_primaire(client):
+    store, c = client
+    with store._writing() as conn:
+        _seed_coin_and_asset(conn, "fr-2015-a", "as1")
+
+    assert c.post("/coins/assets/as1/dino-reference",
+                  json={"action": "pin"}).status_code == 200
+
+    with store._writing() as conn:
+        pk = _cles_primaires(conn, "dino_class_references")
+        ops = _row_ops(conn, "as1", "dino_ref_pin")
+        assert len(ops) == 1 and ops[0]["op"] == "upsert"
+        key = ops[0]["key"]
+        manquantes = [c_ for c_ in pk if c_ not in key]
+        assert not manquantes, (
+            "la `key` du row_op n'adresse pas une ligne unique : colonnes de "
+            f"PRIMARY KEY absentes = {manquantes} (clé émise : {sorted(key)}, "
+            f"PK réelle : {pk})"
+        )
+        # Et elle doit effectivement sélectionner UNE ligne dans la vraie table.
+        where = " AND ".join(f"{k} IS ?" for k in key)
+        n = conn.execute(
+            f"SELECT COUNT(*) FROM dino_class_references WHERE {where}",
+            tuple(key[k] for k in key),
+        ).fetchone()[0]
+        assert n == 1, f"la clé émise sélectionne {n} ligne(s), pas 1"

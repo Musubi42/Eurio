@@ -3,7 +3,10 @@
 Frère de ``store/thresholds.py`` (les seuils d'entraînement), avec deux
 différences qui justifient une table distincte plutôt qu'une extension :
 
-* les valeurs sont des **flottants**, pas des entiers ;
+* les valeurs sont des **flottants**, pas des entiers (l'exception,
+  ``min_exemplars``, est un compte stocké en REAL et relu en ``int`` — la
+  migration 0011 lui donne sa propre borne SQL plutôt que d'élargir celle des
+  similarités) ;
 * la portée n'est pas la cohorte mais le couple **(banque, encodeur)**. Un
   seuil de 0,55 calibré sur les similarités de `dinov2-vits14` ne veut rien
   dire pour `dinov2-vitl14` : les deux échelles ne sont pas comparables.
@@ -27,7 +30,7 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import dataclass
 
-from shared.dino_threshold_defaults import BOUNDS, KEYS, defaults_for
+from shared.dino_threshold_defaults import BOUNDS, CLES_ENTIERES, KEYS, defaults_for
 
 
 class DinoThresholdError(ValueError):
@@ -182,12 +185,56 @@ def set_threshold(
     lo, hi = BOUNDS[key]
     if not lo <= value <= hi:
         raise DinoThresholdError(400, f"{key} = {value} hors bornes [{lo}, {hi}]")
+    if key in CLES_ENTIERES and value != int(value):
+        # S1 : ce seuil est un COMPTE, relu en `int()` par le builder. 1,9
+        # franchissait les bornes et rendait un plancher effectif de 1 — le
+        # régime que le plancher interdit — avec `source='db'` pour caution.
+        raise DinoThresholdError(
+            400,
+            f"{key} = {value} : ce seuil est un COMPTE d'exemplaires, il doit "
+            "être entier. Le builder le relit en int() : 1.9 poserait un "
+            "plancher effectif de 1, soit le régime N=1 (50,1 % held-out) que "
+            "ce plancher existe pour interdire. Pose 2 (ou 0 pour désarmer).",
+        )
 
     before = _rows(conn, anchors_kind, encoder_version).get(key)
     if before is not None and abs(before - value) < 1e-12:
         return {"key": key, "value": value, "changed": False, "previous": before}
 
     _require_table(conn)
+    try:
+        _insert(conn, anchors_kind, encoder_version, key, value, calibrated_on,
+                precision_at, n_samples, note, changed_by)
+    except sqlite3.IntegrityError as exc:
+        # La table d'avant la migration 0011 refuse `min_exemplars` (CHECK sur
+        # `key`) et refuse une valeur > 1 (CHECK sur `value`, écrit pour des
+        # similarités). Sans ce garde, le message brut de SQLite — « CHECK
+        # constraint failed » — n'oriente vers rien.
+        raise DinoThresholdError(
+            503,
+            f"La base refuse {key} = {value} : « {exc} ». Si la clé est "
+            "'min_exemplars', c'est la forme d'avant la migration 0011 "
+            "(serving/migrations/0011_dino_thresholds_min_exemplars.sql) — au "
+            "canonique, c'est le redémarrage de eurio-api qui l'applique ; une "
+            "base locale déjà créée doit être migrée à la main "
+            "(CREATE TABLE IF NOT EXISTS ne reconstruit rien).",
+        ) from exc
+    _log(conn, anchors_kind, encoder_version, key, before, value, note, changed_by)
+    return {"key": key, "value": value, "changed": True, "previous": before}
+
+
+def _insert(
+    conn: sqlite3.Connection,
+    anchors_kind: str,
+    encoder_version: str,
+    key: str,
+    value: float,
+    calibrated_on: str | None,
+    precision_at: float | None,
+    n_samples: int | None,
+    note: str | None,
+    changed_by: str | None,
+) -> None:
     conn.execute(
         "INSERT INTO dino_thresholds (anchors_kind, encoder_version, key, value, "
         " calibrated_on, precision_at, n_samples, note, updated_at, updated_by) "
@@ -200,8 +247,6 @@ def set_threshold(
         (anchors_kind, encoder_version, key, value, calibrated_on, precision_at,
          n_samples, note, changed_by),
     )
-    _log(conn, anchors_kind, encoder_version, key, before, value, note, changed_by)
-    return {"key": key, "value": value, "changed": True, "previous": before}
 
 
 def clear_threshold(

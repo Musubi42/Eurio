@@ -22,6 +22,9 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import re
+import shutil
 import socket
 import sqlite3
 from dataclasses import dataclass, field
@@ -123,6 +126,11 @@ class AnchorBank:
     # traçabilité au canonique (Direction A — la base locale est une réplique).
     build: Any | None = None
     ref_rows: list = field(default_factory=list)
+    # Identifiant du CONTENU écrit sur disque (posé par `_write_bank_npz`).
+    # Deux fichiers issus du même `save_anchors` le partagent : c'est ce qui
+    # rend lisible « ces deux .npz sont la même banque » vs « ils ont divergé ».
+    # ``None`` pour une banque en mémoire ou un .npz d'avant ce champ.
+    bank_id: str | None = None
 
     @property
     def count(self) -> int:
@@ -133,13 +141,117 @@ class AnchorBank:
         return int(self.matrix.shape[1]) if self.matrix.size else 0
 
 
-def anchor_path(kind: str) -> Path:
+# ─── Deux rôles, deux fichiers : la banque SERVIE et les banques de BANC ────
+#
+# Historique : `anchor_path(kind)` ne portait que le kind. Bencher un second
+# encodeur sur `2eur_all` ÉCRASAIT donc la banque que la review sert en
+# production — panne muette.
+#
+# Le scoping par encodeur (P6-1) a réglé le cas « autre encodeur », mais pas
+# celui du BRAS BASELINE : `dinov2-vitl14` est à la fois l'encodeur servi et
+# le bras de référence du banc. Deux banques légitimes portent donc le même
+# couple (kind, encodeur), et un nom de fichier ne peut pas les distinguer.
+#
+# STRATÉGIE RETENUE (D10/D11) — séparer par le RÔLE, pas par le contenu :
+#
+#   * `state/foundation_anchors_{kind}.npz` = **LA BANQUE SERVIE**. C'est ce
+#     que lisent la review (`_get_bank(kind)`) et les ~9 scripts qui appellent
+#     `load_anchors(kind)`. Un seul slot par kind, et il n'est écrit QUE sur
+#     intention explicite (`save_anchors(..., write_legacy=True)`, que seul
+#     `scripts/build_dino_anchors.py` passe).
+#   * `state/foundation_anchors_{kind}__{encoder_slug}.npz` = **artefact de
+#     banc**, un par (kind, encodeur). Toujours écrit par `save_anchors`, lu
+#     seulement par qui demande un encodeur explicite
+#     (`load_anchors(kind, encoder)`).
+#
+# Pourquoi pas les deux autres options examinées :
+#
+#   - « le legacy devient un alias/lien du scopé » : le lien ferait suivre la
+#     banque servie à chaque rebuild du bras baseline — exactement le défaut
+#     D10, rendu structurel au lieu d'accidentel.
+#   - « écrire les deux atomiquement + vérifier la cohérence à la lecture » :
+#     ne dit toujours pas LEQUEL des deux contenus est le bon quand baseline
+#     et production divergent légitimement ; on détecterait un désaccord sans
+#     pouvoir le trancher.
+#
+# Avec la séparation par rôle, une divergence ne peut plus être silencieuse
+# parce qu'il n'y a plus deux fichiers pour la même chose : il y a un fichier
+# servi, et des artefacts de banc. Ce qui reste bruyant :
+#
+#   - écraser la banque servie par un contenu différent → WARNING avec les
+#     comptes avant/après (`save_anchors`) ;
+#   - bâtir la banque de l'encodeur de production SANS la servir → WARNING
+#     « la banque servie n'est pas mise à jour » ;
+#   - servir une banque dont le meta annonce un autre encodeur que celui de
+#     production → ERROR + banque traitée comme absente (`_get_bank`, D3) ;
+#   - demander un encodeur alors que seule la banque servie existe et qu'elle
+#     en annonce un autre → ERROR (`load_anchors`, D3).
+#
+# Les écritures sont ATOMIQUES (`.tmp` + `os.replace`) : un `save_anchors`
+# interrompu laisse la banque servie intacte, jamais un .npz tronqué.
+#
+# Les 4 .npz déjà sur disque (`foundation_anchors_2eur_all.npz`,
+# `_2eur_commemo.npz`, `_2eur_standard.npz`, `_reverse_2eur.npz`) sont les
+# banques servies et restent lus tels quels — aucun d'eux n'est touché par ce
+# chantier. `adopt_legacy_bank()` en fait une COPIE sous le nom scopé sans
+# rien recalculer ni rien supprimer.
+
+_SLUG_UNSAFE = re.compile(r"[^a-z0-9._-]+")
+
+
+def encoder_slug(encoder_version: str) -> str:
+    """Nom de fichier sûr pour un identifiant d'encodeur.
+
+    Minuscules, tout caractère hors ``[a-z0-9._-]`` (``:`` inclus) remplacé
+    par ``-`` :
+
+    - ``'dinov2-vitl14'`` → ``'dinov2-vitl14'``
+    - ``'timm:vit_small_patch16_dinov3.lvd1689m'``
+      → ``'timm-vit_small_patch16_dinov3.lvd1689m'``
+
+    Injectif sur les specs qu'on manipule (verrouillé par
+    ``tests/test_anchor_encoder_scope.py``)."""
+    slug = _SLUG_UNSAFE.sub("-", encoder_version.strip().lower())
+    return slug.strip("-") or "unknown"
+
+
+def legacy_anchor_path(kind: str) -> Path:
+    """Le chemin de la banque **SERVIE** : ``state/foundation_anchors_{kind}.npz``.
+
+    Nom historique conservé (les ~9 scripts qui font ``load_anchors(kind)``
+    n'ont pas bougé d'un caractère). ``served_anchor_path`` en est l'alias
+    lisible : c'est ce fichier, et lui seul, que la review consomme."""
     return STATE_DIR / f"foundation_anchors_{kind}.npz"
 
 
-def save_anchors(bank: AnchorBank) -> Path:
-    path = anchor_path(bank.anchors_kind)
+#: Alias explicite — même fichier, nom qui dit le rôle plutôt que l'histoire.
+served_anchor_path = legacy_anchor_path
+
+
+def anchor_path(kind: str, encoder_version: str | None = None) -> Path:
+    """Chemin du .npz d'une banque.
+
+    ``encoder_version=None`` → la banque SERVIE (chemin historique ; la
+    signature à un argument garde exactement son comportement).
+    Sinon → l'artefact de banc ``state/foundation_anchors_{kind}__{slug}.npz``."""
+    if encoder_version is None:
+        return legacy_anchor_path(kind)
+    return STATE_DIR / f"foundation_anchors_{kind}__{encoder_slug(encoder_version)}.npz"
+
+
+def _write_bank_npz(bank: AnchorBank, path: Path, *, bank_id: str | None = None) -> str:
+    """Écrit la banque en .npz de façon ATOMIQUE et renvoie son ``bank_id``.
+
+    L'écriture passe par un temporaire dans le même dossier puis
+    ``os.replace`` : une interruption (Ctrl-C, disque plein, OOM) laisse le
+    fichier précédent intact au lieu d'un .npz tronqué que ``np.load``
+    rejetterait au prochain démarrage de la review. Le temporaire est nettoyé
+    même en cas d'échec — et l'exception REMONTE, elle n'est pas avalée.
+
+    ``bank_id`` identifie le contenu écrit : deux fichiers issus du même
+    ``save_anchors`` le partagent, ce qui rend une divergence lisible."""
     path.parent.mkdir(parents=True, exist_ok=True)
+    bank_id = bank_id or uuid4().hex
     meta = json.dumps(
         {
             "encoder_version": bank.encoder_version,
@@ -147,30 +259,100 @@ def save_anchors(bank: AnchorBank) -> Path:
             "built_at": bank.built_at,
             "count": bank.count,
             "dim": bank.dim,
+            "bank_id": bank_id,
         }
     )
     # asset_ids parallèle aux eurio_ids ("" = ligne canonique). Aligné sur count
     # (les vieilles banques mono-ancre passent []) pour un chargement homogène.
     asset_ids = bank.asset_ids or [None] * bank.count
-    np.savez(
-        path,
-        matrix=bank.matrix,
-        eurio_ids=np.array(bank.eurio_ids, dtype=np.str_),
-        source_paths=np.array(bank.source_paths, dtype=np.str_),
-        asset_ids=np.array([a or "" for a in asset_ids], dtype=np.str_),
-        meta=np.array([meta], dtype=np.str_),
-    )
+    tmp = path.parent / f".{path.name}.{uuid4().hex[:8]}.tmp.npz"
+    try:
+        np.savez(
+            tmp,
+            matrix=bank.matrix,
+            eurio_ids=np.array(bank.eurio_ids, dtype=np.str_),
+            source_paths=np.array(bank.source_paths, dtype=np.str_),
+            asset_ids=np.array([a or "" for a in asset_ids], dtype=np.str_),
+            meta=np.array([meta], dtype=np.str_),
+        )
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
+    return bank_id
+
+
+def _peek_meta(path: Path) -> dict:
+    """Meta d'un .npz sans charger la matrice. ``{}`` si illisible (journalisé)."""
+    try:
+        with np.load(path, allow_pickle=False) as npz:
+            raw = npz["meta"][0] if npz["meta"].size else "{}"
+            return json.loads(str(raw))
+    except Exception as exc:  # noqa: BLE001 — on journalise, on ne masque pas
+        logger.error("Banque illisible %s : %s", path, exc)
+        return {}
+
+
+def save_anchors(bank: AnchorBank, *, write_legacy: bool = False) -> Path:
+    """Écrit l'artefact de banc (kind + encodeur) et renvoie son chemin.
+
+    La banque **SERVIE** (``legacy_anchor_path``) n'est écrite QUE si
+    ``write_legacy=True``. C'est une INTENTION, jamais une déduction : avant
+    ce correctif (D10) le défaut était déduit de « la banque porte l'encodeur
+    de production », or ``dinov2-vitl14`` est à la fois l'encodeur servi et le
+    bras baseline du banc — un rebuild de baseline écrasait donc la banque que
+    la review sert, sans un mot. Seul ``scripts/build_dino_anchors.py`` passe
+    ``write_legacy=True`` (drapeau ``--no-serve`` pour y renoncer).
+
+    Rien n'est silencieux ici :
+
+    - remplacer une banque servie par un contenu différent → WARNING avec les
+      comptes avant/après ;
+    - bâtir la banque de l'encodeur de production sans la servir → WARNING
+      disant que la banque servie n'est PAS mise à jour ;
+    - servir une banque qui n'est pas celle de l'encodeur de production →
+      WARNING (échappatoire volontaire, pas un accident).
+    """
+    scoped = anchor_path(bank.anchors_kind, bank.encoder_version)
+    served = legacy_anchor_path(bank.anchors_kind)
+    prod = encoder_version_for_kind(bank.anchors_kind)
+
+    bank_id = _write_bank_npz(bank, scoped)
+
+    if write_legacy and served != scoped:
+        before = _peek_meta(served) if served.exists() else None
+        if before and before.get("bank_id") != bank_id:
+            logger.warning(
+                "save_anchors: la banque SERVIE %s est remplacée — %s ancres "
+                "(encoder=%s, built_at=%s) → %d ancres (encoder=%s, built_at=%s)",
+                served.name, before.get("count", "?"),
+                before.get("encoder_version", "?"), before.get("built_at", "?"),
+                bank.count, bank.encoder_version, bank.built_at,
+            )
+        if bank.encoder_version != prod:
+            logger.warning(
+                "save_anchors: la banque servie %s va porter encoder=%s alors "
+                "que l'encodeur de production de ce kind est %s — "
+                "les lecteurs historiques compareront des cosinus inter-espaces",
+                served.name, bank.encoder_version, prod,
+            )
+        _write_bank_npz(bank, served, bank_id=bank_id)
+    elif bank.encoder_version == prod and served != scoped:
+        logger.warning(
+            "save_anchors: %s bâtie avec l'encodeur de PRODUCTION (%s) mais "
+            "write_legacy=False — la banque servie %s n'est PAS mise à jour "
+            "(c'est le comportement attendu d'un bras baseline de banc)",
+            scoped.name, bank.encoder_version, served.name,
+        )
+
     logger.info(
-        "Saved %d anchors (%s, dim=%d) → %s",
-        bank.count, bank.anchors_kind, bank.dim, path,
+        "Saved %d anchors (%s, encoder=%s, dim=%d, bank_id=%s) → %s%s",
+        bank.count, bank.anchors_kind, bank.encoder_version, bank.dim,
+        bank_id[:12], scoped, " (+ banque servie)" if write_legacy else "",
     )
-    return path
+    return scoped
 
 
-def load_anchors(kind: str) -> AnchorBank | None:
-    path = anchor_path(kind)
-    if not path.exists():
-        return None
+def _read_bank_npz(path: Path, kind: str) -> AnchorBank:
     npz = np.load(path, allow_pickle=False)
     meta_raw = npz["meta"][0] if npz["meta"].size else "{}"
     meta = json.loads(str(meta_raw))
@@ -186,7 +368,66 @@ def load_anchors(kind: str) -> AnchorBank | None:
         asset_ids=[(str(x) or None) for x in npz["asset_ids"].tolist()]
         if "asset_ids" in npz.files
         else [],
+        bank_id=meta.get("bank_id"),
     )
+
+
+def load_anchors(kind: str, encoder_version: str | None = None) -> AnchorBank | None:
+    """Charge une banque, ``None`` si absente.
+
+    ``encoder_version=None`` : la banque SERVIE, et rien d'autre — comportement
+    historique inchangé.
+    ``encoder_version`` fourni : l'artefact de banc de ce couple ; s'il manque
+    on retombe sur la banque servie UNIQUEMENT si son ``meta.encoder_version``
+    correspond. Sinon on rend ``None`` **en le journalisant en ERROR** : rendre
+    une banque d'un autre encodeur produirait des similarités inter-espaces
+    silencieusement fausses, et rendre ``None`` sans un mot rendrait la review
+    aveugle le jour d'une bascule d'encodeur (D3)."""
+    if encoder_version is None:
+        path = legacy_anchor_path(kind)
+        return _read_bank_npz(path, kind) if path.exists() else None
+
+    scoped = anchor_path(kind, encoder_version)
+    if scoped.exists():
+        return _read_bank_npz(scoped, kind)
+    served = legacy_anchor_path(kind)
+    if not served.exists():
+        return None
+    bank = _read_bank_npz(served, kind)
+    if bank.encoder_version == encoder_version:
+        return bank
+    logger.error(
+        "load_anchors(%s, %s) : aucun artefact %s sur disque, et la banque "
+        "servie %s annonce encoder=%s — banque traitée comme ABSENTE. "
+        "Rebuild : go-task ml:dino-anchors:build -- --kind %s --force",
+        kind, encoder_version, scoped.name, served.name,
+        bank.encoder_version, kind,
+    )
+    return None
+
+
+def adopt_legacy_bank(kind: str, *, dry_run: bool = False) -> Path | None:
+    """Copie un .npz legacy vers son nom scopé, d'après son propre meta.
+
+    Migration de NOMMAGE : rien n'est recalculé, le legacy n'est jamais
+    supprimé (les appelants historiques continuent de le lire). Idempotente :
+    si le scopé existe déjà, on le renvoie sans réécrire. ``None`` si aucun
+    legacy sur disque. Personne ne l'appelle automatiquement — c'est un geste
+    d'opérateur, câblé par l'intégration."""
+    legacy = legacy_anchor_path(kind)
+    if not legacy.exists():
+        return None
+    bank = _read_bank_npz(legacy, kind)
+    scoped = anchor_path(kind, bank.encoder_version)
+    if scoped == legacy or scoped.exists():
+        return scoped
+    if dry_run:
+        return scoped
+    scoped.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(legacy, scoped)
+    logger.info("adopt_legacy_bank: %s → %s (encoder=%s)",
+                legacy.name, scoped.name, bank.encoder_version)
+    return scoped
 
 
 # ---------------------------------------------------------------------------
@@ -382,6 +623,7 @@ def _encode_and_save(
     kind: str,
     paths_with_eid: list[tuple[str, Path]],
     encoder_version: str,
+    write_legacy: bool = False,
 ) -> AnchorBank:
     """Encode une liste (eurio_id, image_path) et persiste la banque."""
     logger.info(
@@ -412,7 +654,7 @@ def _encode_and_save(
         built_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
         source_paths=aligned_paths,
     )
-    save_anchors(bank)
+    save_anchors(bank, write_legacy=write_legacy)
     return bank
 
 
@@ -422,6 +664,7 @@ def build_anchors_2eur_commemo(
     datasets_dir: Path = DATASETS_DIR,
     encoder_version: str = DEFAULT_ENCODER_VERSION,
     force_recompute: bool = False,
+    write_legacy: bool = False,
 ) -> AnchorBank:
     """Encode all 2€ commemorative obverses available on disk into a fresh bank.
 
@@ -432,7 +675,9 @@ def build_anchors_2eur_commemo(
     kind = "2eur_commemo"
 
     if not force_recompute:
-        cached = load_anchors(kind)
+        # Cache scopé : bencher un autre encodeur ne doit pas « hit » sur la
+        # banque de production (et inversement).
+        cached = load_anchors(kind, encoder_version)
         if cached is not None and cached.encoder_version == encoder_version:
             logger.info(
                 "Anchors cache hit (%s, %d entries, encoder=%s) — skipping rebuild",
@@ -455,7 +700,8 @@ def build_anchors_2eur_commemo(
         )
 
     return _encode_and_save(
-        kind=kind, paths_with_eid=paths_with_eid, encoder_version=encoder_version
+        kind=kind, paths_with_eid=paths_with_eid, encoder_version=encoder_version,
+        write_legacy=write_legacy,
     )
 
 
@@ -465,6 +711,7 @@ def build_anchors_2eur_standard(
     datasets_dir: Path = DATASETS_DIR,
     encoder_version: str = DEFAULT_ENCODER_VERSION,
     force_recompute: bool = False,
+    write_legacy: bool = False,
 ) -> AnchorBank:
     """Une ancre par design group de 2€ courante (avers national partagé).
 
@@ -477,7 +724,9 @@ def build_anchors_2eur_standard(
     kind = "2eur_standard"
 
     if not force_recompute:
-        cached = load_anchors(kind)
+        # Cache scopé : bencher un autre encodeur ne doit pas « hit » sur la
+        # banque de production (et inversement).
+        cached = load_anchors(kind, encoder_version)
         if cached is not None and cached.encoder_version == encoder_version:
             logger.info(
                 "Anchors cache hit (%s, %d entries, encoder=%s) — skipping rebuild",
@@ -493,7 +742,8 @@ def build_anchors_2eur_standard(
         )
 
     return _encode_and_save(
-        kind=kind, paths_with_eid=paths_with_eid, encoder_version=encoder_version
+        kind=kind, paths_with_eid=paths_with_eid, encoder_version=encoder_version,
+        write_legacy=write_legacy,
     )
 
 
@@ -576,7 +826,9 @@ def build_anchors_2eur_all(
     force_recompute: bool = False,
     exemplars_per_class: int = DEFAULT_EXEMPLARS_PER_CLASS,
     floor_sim: float = DEFAULT_EXEMPLAR_FLOOR_SIM,
+    min_exemplars: int | None = None,
     write_references: bool = True,
+    write_legacy: bool = False,
 ) -> AnchorBank:
     """Banque de SUGGESTIONS = commémo + standards, MULTI-EXEMPLAIRES (B).
 
@@ -586,8 +838,26 @@ def build_anchors_2eur_all(
     photos eBay qu'un énième scan parfait. Les overrides humains (pin/exclude) de
     ``dino_class_references`` sont honorés. La sélection est tracée dans cette
     table (``write_references``). Toutes les lignes d'une classe partagent
-    l'eurio_id du représentant (clé de classe des consumers)."""
+    l'eurio_id du représentant (clé de classe des consumers).
+
+    ``min_exemplars`` — le PLANCHER : sous ce nombre d'exemplaires FPS, une
+    classe garde son canonique SEUL. La valeur vient de la base
+    (``dino_thresholds``, scopée par le couple banque × encodeur, décision D5) ;
+    passer l'argument la force, ce qui ne sert qu'aux tests et aux essais.
+
+    ⚠️ **Le défaut est revenu à 1, donc le plancher est INACTIF** (2026-08-20).
+    Il a valu 2 pendant une journée, sur la foi du creux agrégé de la courbe
+    (N=0 53,1 %, N=1 50,1 %). Mesuré depuis, à la maille qui manquait : donner
+    à 57 classes exactement un exemplaire AMÉLIORE leurs propres crops (vitl14
+    67,6 → 69,1 %, p = 0,048 ; vits14 41,6 → 45,5 %, p = 4,5e-10, 1073 crops),
+    et le creux agrégé tient à l'ORDRE du FPS — à nombre d'ancres égal, garder
+    le rang le moins diversifiant au lieu du plus diversifiant donne 77,8 % au
+    lieu de 73,8 % (vitl14). Le raisonnement complet, les réserves et la
+    commande qui rejoue tout ça : ``shared/dino_threshold_defaults.py``, couple
+    ``("2eur_all", "dinov2-vitl14")``. Le mécanisme reste ici pour qu'un
+    plancher se repose en une ligne le jour où une mesure le demandera."""
     from shared.storage.local_cache import local_path
+    from store import dino_thresholds as dino_seuils
     from store.dino_references import (
         DinoBuild,
         DinoRefRow,
@@ -598,7 +868,9 @@ def build_anchors_2eur_all(
 
     kind = "2eur_all"
     if not force_recompute:
-        cached = load_anchors(kind)
+        # Cache scopé : bencher un autre encodeur ne doit pas « hit » sur la
+        # banque de production (et inversement).
+        cached = load_anchors(kind, encoder_version)
         if cached is not None and cached.encoder_version == encoder_version:
             logger.info(
                 "Anchors cache hit (%s, %d entries, encoder=%s) — skipping rebuild",
@@ -612,6 +884,52 @@ def build_anchors_2eur_all(
             f"No 2€ obverse found under {datasets_dir} — did you bootstrap the dataset?"
         )
     overrides = get_reference_overrides(conn, kind)
+
+    # ── Le plancher d'exemplaires, résolu AVANT les ~4 min d'encodage ────────
+    # D5 : le seuil vit en base, scopé par (banque, encodeur). Ligne absente,
+    # table absente (réplique en retard, canonique pas redéployé) → le défaut
+    # du code, et on DIT lequel : un plancher qui retomberait en silence sur
+    # une autre valeur que celle réglée déplacerait la composition de la banque
+    # sans laisser de trace.
+    if min_exemplars is None:
+        seuils = dino_seuils.resolve(
+            conn, anchors_kind=kind, encoder_version=encoder_version
+        )
+        brut = float(seuils["min_exemplars"])
+        if brut != int(brut):
+            # S1 : la porte d'écriture refuse désormais une valeur
+            # fractionnaire, mais une ligne posée avant ce garde (ou par un
+            # SQL à la main) reste lisible. La tronquer en silence poserait le
+            # régime N=1 sous couvert d'un réglage.
+            logger.warning(
+                "min_exemplars vaut %s en base — ce seuil est un COMPTE, il "
+                "est tronqué : plancher effectif : %d. Repose une valeur "
+                "entière (store.dino_thresholds.set_threshold la refuse "
+                "désormais fractionnaire).",
+                brut, int(brut),
+            )
+        min_exemplars = int(brut)
+        source_plancher = seuils.source["min_exemplars"]
+    else:
+        source_plancher = "argument"
+    plancher = int(min_exemplars)
+    if plancher > exemplars_per_class:
+        # Un plancher au-dessus du plafond viderait la banque de TOUS ses
+        # exemplaires — l'inverse de ce qu'il vise. On clampe, bruyamment.
+        logger.warning(
+            "min_exemplars=%d > exemplars_per_class=%d : plancher ramené à %d "
+            "(sinon aucune classe ne pourrait l'atteindre et la banque perdrait "
+            "tous ses exemplaires).",
+            plancher, exemplars_per_class, exemplars_per_class,
+        )
+        plancher = exemplars_per_class
+    logger.info(
+        "plancher d'exemplaires : min_exemplars=%d (source=%s, couple=%s/%s) — "
+        "%s. Une classe sous le plancher garde son canonique SEUL.",
+        plancher, source_plancher, kind, encoder_version,
+        "INACTIF (1 : aucune classe n'est ramenée au canonique seul)"
+        if plancher <= 1 else "ACTIF",
+    )
 
     # ── Rassemble tout ce qu'il faut encoder : canoniques + crops candidats ──
     # meta indexé par chemin (chemins uniques) : encode_paths peut sauter un
@@ -677,6 +995,8 @@ def build_anchors_2eur_all(
     bank_paths: list[str] = []
     bank_vecs: list[np.ndarray] = []
     ref_rows: list = []
+    sous_plancher: list[tuple[str, int]] = []   # classes ramenées au canonique seul
+    sans_canonique_gardees: list[str] = []      # gardées sous le plancher, faute de canonique
     for class_id, slot in by_class.items():
         ov = overrides.get(class_id, [])
         pinned = {r["asset_id"] for r in ov if r["method"] == "manual_pin"}
@@ -713,6 +1033,33 @@ def build_anchors_2eur_all(
             seed_vecs=np.stack(seed_vecs) if seed_vecs else None,
             floor_sim=floor_sim,
         ) if pool and budget else []
+        # ── Plancher : sous le seuil, la classe reste sur son canonique ────
+        # Les pins ne sont JAMAIS retirés (décision d'humain sur un crop) ; le
+        # plancher ne coupe que la part automatique.
+        #
+        # Le cas limite tranché : une classe SANS canonique garde ses
+        # exemplaires même sous le plancher. La rejeter la ferait disparaître
+        # de la banque — recall 0 garanti, pire que dégradé. Combien de classes
+        # sont dans ce cas : ZÉRO au dernier build (`n_no_canonical` = 0 pour
+        # 23c637d93b43, et `SELECT COUNT(*) FROM (SELECT class_id FROM
+        # dino_class_references WHERE anchors_kind='2eur_all' GROUP BY 1 HAVING
+        # SUM(method='canonical')=0)` → 0 sur eurio.replica.db, 2026-08-20). La
+        # règle est écrite pour le cas qui ne se présente pas — pour qu'il ne
+        # se tranche pas tout seul le jour où il se présentera.
+        if (
+            slot["canonical"] is not None
+            and picks
+            and len(forced) + len(picks) < plancher
+        ):
+            sous_plancher.append((class_id, len(forced) + len(picks)))
+            picks = []
+        elif (
+            slot["canonical"] is None
+            and picks
+            and len(forced) + len(picks) < plancher
+        ):
+            sans_canonique_gardees.append(class_id)
+
         for idx, sim_to_set in picks:
             c = cands[idx]
             bank_eids.append(class_id); bank_assets.append(c["asset_id"])
@@ -720,6 +1067,21 @@ def build_anchors_2eur_all(
             ref_rows.append(DinoRefRow(
                 class_id, c["eurio_id"], c["asset_id"], "fps", rank, sim_to_set))
             rank += 1
+
+    if sous_plancher:
+        logger.info(
+            "plancher : %d classes ramenées au canonique seul (moins de %d "
+            "exemplaires) — ex. %s",
+            len(sous_plancher), plancher,
+            ", ".join(f"{c}({n})" for c, n in sous_plancher[:5]),
+        )
+    if sans_canonique_gardees:
+        logger.warning(
+            "plancher : %d classes SANS canonique gardées malgré moins de %d "
+            "exemplaires (les rejeter les ferait disparaître de la banque) : %s",
+            len(sans_canonique_gardees), plancher,
+            ", ".join(sans_canonique_gardees[:5]),
+        )
 
     if not bank_vecs:
         raise RuntimeError("2eur_all : aucune ligne encodée (dataset absent ?)")
@@ -732,7 +1094,7 @@ def build_anchors_2eur_all(
         source_paths=bank_paths,
         asset_ids=bank_assets,
     )
-    save_anchors(bank)
+    save_anchors(bank, write_legacy=write_legacy)
     n_exemplars = sum(1 for a in bank_assets if a is not None)
     logger.info(
         "2eur_all : %d lignes (%d canoniques + %d exemplaires réels) sur %d classes",
@@ -754,6 +1116,14 @@ def build_anchors_2eur_all(
         exemplars_per_class=exemplars_per_class,
         floor_sim=floor_sim,
         host=socket.gethostname(),
+        # La composition d'une banque ne se relit pas depuis le .npz : sans
+        # cette note, « pourquoi cette classe n'a-t-elle plus d'exemplaire ? »
+        # n'a pas de réponse six semaines plus tard.
+        note=(
+            f"min_exemplars={plancher} (source={source_plancher}); "
+            f"{len(sous_plancher)} classes ramenées au canonique seul; "
+            f"{len(sans_canonique_gardees)} sans canonique gardées sous le plancher"
+        ),
     )
     if write_references:
         # La transaction est gérée par l'appelant (Store._writing) — pas de
@@ -777,6 +1147,7 @@ def build_anchors_reverse_2eur(
     datasets_dir: Path = DATASETS_DIR,
     encoder_version: str = SUGGESTIONS_ENCODER_VERSION,
     force_recompute: bool = False,
+    write_legacy: bool = False,
 ) -> AnchorBank:
     """Banque du revers commun 2€ : 2 designs canoniques (APK) + revers wild.
 
@@ -790,7 +1161,9 @@ def build_anchors_reverse_2eur(
     kind = REVERSE_ANCHORS_KIND
 
     if not force_recompute:
-        cached = load_anchors(kind)
+        # Cache scopé : bencher un autre encodeur ne doit pas « hit » sur la
+        # banque de production (et inversement).
+        cached = load_anchors(kind, encoder_version)
         if cached is not None and cached.encoder_version == encoder_version:
             logger.info(
                 "Anchors cache hit (%s, %d entries, encoder=%s) — skipping rebuild",
@@ -821,5 +1194,6 @@ def build_anchors_reverse_2eur(
                     _REVERSE_WILD_FILE.name)
 
     return _encode_and_save(
-        kind=kind, paths_with_eid=paths_with_eid, encoder_version=encoder_version
+        kind=kind, paths_with_eid=paths_with_eid, encoder_version=encoder_version,
+        write_legacy=write_legacy,
     )

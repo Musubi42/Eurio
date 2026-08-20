@@ -163,7 +163,10 @@ def test_anchor_bank_roundtrip_preserves_asset_ids(tmp_path, monkeypatch):
     monkeypatch.setattr(anchors_mod, "STATE_DIR", tmp_path)
     bank = _multi_exemplar_bank()
     save_anchors(bank)
-    loaded = load_anchors("2eur_all")
+    # La banque porte un encodeur ("test") qui n'est pas celui de production
+    # pour `2eur_all` : depuis le scoping, elle n'écrit QUE son chemin scopé
+    # (c'est précisément ce qui l'empêche d'écraser la banque servie).
+    loaded = load_anchors("2eur_all", "test")
     assert loaded is not None
     assert loaded.eurio_ids == ["a", "a", "a", "b"]
     assert loaded.asset_ids == [None, "as1", "as2", None]
@@ -297,7 +300,7 @@ def test_anchor_bank_roundtrip(tmp_path, monkeypatch):
     saved_path = save_anchors(bank)
     assert saved_path.exists()
 
-    loaded = load_anchors("roundtrip_test")
+    loaded = load_anchors("roundtrip_test", bank.encoder_version)
     assert loaded is not None
     assert loaded.eurio_ids == bank.eurio_ids
     assert loaded.encoder_version == bank.encoder_version

@@ -7,9 +7,21 @@ vrais crops choisis pour la diversité (FPS), plus les overrides humains
 
 Doctrine de réécriture :
 - ``replace_auto_references`` : le builder d'ancres remplace en bloc les rows
-  ``canonical`` + ``fps`` d'un kind (les auto), en PRÉSERVANT les ``manual_*``.
+  ``canonical`` + ``fps`` d'un kind **POUR UN ENCODEUR**, en PRÉSERVANT les
+  ``manual_*``.
 - ``get_reference_overrides`` : lu AVANT le rebuild pour honorer pin/exclude.
 - ``set_reference_override`` / ``clear_reference_override`` : l'UI coin-detail.
+
+L'encodeur dans la clé (migration 0010, défaut M1) :
+    L'identité d'une ligne AUTO est ``(anchors_kind, encoder_version, class_id,
+    eurio_id, asset_id)``. Deux banques du même kind — production et candidat
+    au banc — doivent coexister, et elles piochent dans le MÊME pool de crops
+    validés : sans l'encodeur dans la clé, le ``INSERT OR REPLACE`` du second
+    build efface le premier, en silence.
+
+    Les lignes ``manual_*`` portent ``encoder_version = ''``, « aucun encodeur
+    attribué » : une décision d'humain sur un crop vaut pour tous les
+    encodeurs, elle ne se duplique pas par banque.
 """
 
 from __future__ import annotations
@@ -68,6 +80,40 @@ class DinoBuild:
         return dict(self.__dict__)
 
 
+class CleSansEncodeurError(RuntimeError):
+    """La table n'a pas la clé de 0010 : écrire y détruirait un autre encodeur."""
+
+
+def _exige_encodeur_dans_la_cle(conn: sqlite3.Connection) -> None:
+    """Refuse d'écrire sur une ``dino_class_references`` d'avant 0010.
+
+    Le garde est ICI, sur le chemin où la chose arrive, et pas seulement dans
+    la migration — c'est la leçon de M1/M2. Une base locale créée avant 0010
+    garde son ancienne clé pour toujours : ``CREATE TABLE IF NOT EXISTS``
+    (le bootstrap `schema.sql`) ne reconstruit pas une table existante, et
+    ``serving/migrations/`` n'est rejoué que par le conteneur canonique du VPS
+    (FINDINGS §6.1). Sur une telle base, ce writer écraserait silencieusement
+    la banque de l'autre encodeur ; mieux vaut un refus qui nomme le remède.
+
+    Coût : un ``PRAGMA table_info`` par build (une fois toutes les ~4 min).
+    """
+    cols = conn.execute("PRAGMA table_info(dino_class_references)").fetchall()
+    if not cols:
+        return  # table absente : le bootstrap schema.sql la créera à la bonne forme
+    # `pk` vaut 0 hors clé primaire, sinon le rang de la colonne dans la PK.
+    dans_la_pk = {c[1] for c in cols if c[5]}
+    if "encoder_version" not in dans_la_pk:
+        raise CleSansEncodeurError(
+            "dino_class_references a l'ancienne clé primaire "
+            f"({sorted(dans_la_pk)}) : `encoder_version` n'en fait pas partie. "
+            "Écrire ici ferait disparaître les références de l'autre encodeur "
+            "en silence (défaut M1). Appliquer la migration "
+            "serving/migrations/0010_dino_refs_encoder_dans_la_cle.sql sur "
+            "cette base — au canonique, c'est le redémarrage de eurio-api qui "
+            "l'applique."
+        )
+
+
 def record_build(conn: sqlite3.Connection, build: DinoBuild) -> None:
     """Journalise un build. L'appelant possède la transaction."""
     conn.execute(
@@ -95,13 +141,27 @@ def replace_auto_references(
 
     ⚠️ Le `DELETE` est scopé sur ``(anchors_kind, encoder_version)`` et pas sur
     le seul kind : sans ça, bâtir la banque avec un encodeur candidat
-    effacerait la trace de l'encodeur en production. Les lignes antérieures à
-    la migration 0007 ont `encoder_version` NULL — on les purge aussi, elles
-    décrivent forcément l'encodeur historique du kind."""
+    effacerait la trace de l'encodeur en production. Les lignes auto
+    antérieures à la migration 0007 portent ``encoder_version = ''`` (NULL
+    avant 0010) — on les purge aussi, elles décrivent forcément l'encodeur
+    historique du kind.
+
+    ⚠️ Scoper le DELETE ne suffisait pas, et c'est le défaut M1 : jusqu'à la
+    migration 0010, la CLÉ PRIMAIRE de la table ne portait pas l'encodeur, donc
+    l'``INSERT OR REPLACE`` ci-dessous écrasait la ligne de l'autre encodeur
+    dès que les deux choisissaient le même crop — le cas nominal, c'est le même
+    pool de crops validés. D'où le garde en tête : ce writer refuse d'écrire
+    sur une table à l'ancienne clé (cf. ``_exige_encodeur_dans_la_cle``).
+
+    Les rows ``manual_*`` que le builder ré-émet (il honore les pins) sont
+    écrites avec ``encoder_version = ''`` : une décision d'humain sur un crop
+    n'appartient à aucun encodeur. Sans ça, chaque encodeur en fabriquerait sa
+    copie et ``get_reference_overrides`` rendrait N lignes pour un seul pin."""
+    _exige_encodeur_dans_la_cle(conn)
     conn.execute(
         "DELETE FROM dino_class_references "
         " WHERE anchors_kind = ? AND method IN ('canonical','fps') "
-        "   AND (encoder_version = ? OR encoder_version IS NULL)",
+        "   AND encoder_version IN (?, '')",
         (anchors_kind, encoder_version),
     )
     if rows:
@@ -111,7 +171,9 @@ def replace_auto_references(
             " asset_id, method, rank, selected_sim, source_path) "
             "VALUES (?,?,?,?,?,?,?,?,?,?)",
             [
-                (anchors_kind, encoder_version, build_id, r.class_id,
+                (anchors_kind,
+                 "" if r.method in _MANUAL_METHODS else encoder_version,
+                 build_id, r.class_id,
                  r.eurio_id, r.asset_id, r.method, r.rank, r.selected_sim,
                  r.source_path)
                 for r in rows
