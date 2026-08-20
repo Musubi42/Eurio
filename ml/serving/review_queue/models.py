@@ -177,6 +177,11 @@ class LotCrop(BaseModel):
     current_eurio_id: str | None
     candidate_eurio_ids: list[ReviewCandidate]
     bbox: ReviewBbox | None
+    # PÊCHE : la banque rattache-t-elle CE crop à la classe qu'on pêche ?
+    # `None` hors pêche. Sans ce drapeau, un coffret de 36 vignettes dont une
+    # seule est la classe se trie entièrement à l'œil — l'écran saurait laquelle
+    # et ne le dirait pas.
+    matches_dino_class: bool | None = None
 
 
 class LotDetection(BaseModel):

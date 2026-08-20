@@ -750,6 +750,21 @@ def _lot_scope(
     return "", "", "", []
 
 
+def lot_order_sql(peche: bool) -> str:
+    """L'ordre d'une file de lots — le MÊME pour la liste et pour la nav.
+
+    Hors pêche : le plus vieux d'abord, l'ordre historique de la file.
+
+    En pêche : **le plus fourni d'abord**. La règle « plus ancien d'abord »
+    ouvrait la file italienne sur un coffret français de 36 crops dont UN seul
+    appartenait à la classe — 35 vignettes à écarter à l'œil avant la première
+    utile. Quand on pêche, on commence là où sont les poissons.
+    """
+    if peche:
+        return "n_matching_crops DESC, oldest_enqueued_at ASC, listing_key ASC"
+    return "oldest_enqueued_at ASC, listing_key ASC"
+
+
 def _lot_keys_in_scope(
     conn: sqlite3.Connection,
     *,
@@ -758,25 +773,29 @@ def _lot_keys_in_scope(
     match_expr: str,
     args: list[object],
 ) -> list[str]:
-    """Les listing_key du périmètre, dans l'ordre de la file (le plus ancien
-    d'abord) — la même liste que sert ``list_lots``, sans pagination.
+    """Les listing_key du périmètre, dans son ordre — la même liste que sert
+    ``list_lots``, sans pagination.
 
     C'est elle qui fait exister « lot suivant » : la nav prev/next DOIT lire
     exactement l'ordre que l'écran a annoncé, sinon « suivant » emmène ailleurs.
+    D'où l'ordre partagé, cf. ``LOT_ORDER_SQL``.
     """
-    having = " HAVING SUM(m) > 0" if match_expr else ""
+    # ⚠️ `match_expr` porte des `?` : il ne doit apparaître QU'UNE fois dans la
+    # requête, sinon les paramètres ne correspondent plus. D'où l'alias réutilisé
+    # dans HAVING (SQLite l'accepte) plutôt qu'une seconde copie de l'expression.
+    having = " HAVING n_matching_crops > 0" if match_expr else ""
     rows = conn.execute(
         f"""
         SELECT {LISTING_KEY_SQL} AS listing_key,
                MIN(rq.enqueued_at) AS oldest_enqueued_at,
-               {match_expr or '0'} AS m
+               SUM({match_expr or '0'}) AS n_matching_crops
           FROM review_queue rq
           JOIN image_assets a ON a.id = rq.image_asset_id
           JOIN source_images si ON si.id = a.source_image_id
           {join_sql}
          WHERE rq.kind = 'lot' AND rq.status = 'open'{where_clause}
          GROUP BY listing_key{having}
-         ORDER BY oldest_enqueued_at ASC, listing_key ASC
+         ORDER BY {lot_order_sql(bool(match_expr))}
         """,
         args,
     ).fetchall()
@@ -860,7 +879,7 @@ def list_lots(
            GROUP BY listing_key{having}
         )
         SELECT * FROM grouped
-         ORDER BY oldest_enqueued_at ASC
+         ORDER BY {lot_order_sql(bool(match_expr))}
          LIMIT ? OFFSET ?
         """,
         (*scope_args, limit, offset),
@@ -1126,6 +1145,29 @@ def get_lot_detail(
     if not si_rows:
         raise LotNotFound(listing_key)
 
+    # PÊCHE — quels crops de CE listing la banque rattache-t-elle à la classe ?
+    # Une seule requête pour tout le listing : sans ce marquage, un coffret de
+    # 36 vignettes dont une seule appartient à la classe se trie entièrement à
+    # l'œil, alors que la réponse est en base.
+    matching_assets: set[str] | None = None
+    if dino_class:
+        _scope = build_dino_scope(
+            conn, dino_class=dino_class, rank=dino_rank,
+            min_spread=dino_min_spread,
+        )
+        if not _scope.is_empty:
+            _rows = conn.execute(
+                f"""
+                SELECT a.id AS asset_id
+                  FROM image_assets a
+                  JOIN source_images si ON si.id = a.source_image_id
+                  {suggestions_join_sql("ps")}
+                 WHERE {LISTING_KEY_SQL} = ? AND {_scope.sql}
+                """,
+                (listing_key, *_scope.args),
+            ).fetchall()
+            matching_assets = {r["asset_id"] for r in _rows}
+
     head = si_rows[0]
     source = head["source"]
     target_eurio_id = head["target_eurio_id"]
@@ -1193,6 +1235,10 @@ def get_lot_detail(
                 except (json.JSONDecodeError, TypeError):
                     pass
             crops.append(LotCrop(
+                matches_dino_class=(
+                    a["asset_id"] in matching_assets
+                    if matching_assets is not None else None
+                ),
                 asset_id=a["asset_id"],
                 review_id=a["review_id"] or "",
                 crop_url=f"/sources/{source}/assets/{a['asset_id']}/file",

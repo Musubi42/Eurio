@@ -56,6 +56,13 @@ export interface LotCrop {
   current_eurio_id: string | null
   candidate_eurio_ids: LotCandidate[]
   bbox: LotBbox | null
+  /**
+   * PÊCHE : la banque rattache-t-elle CE crop à la classe pêchée ?
+   * `null`/absent hors pêche — « la question n'a pas été posée » ne vaut pas
+   * « non ». Un coffret de 36 vignettes dont une seule est la classe se
+   * trierait à l'œil sans ce drapeau, alors que la réponse est en base.
+   */
+  matches_dino_class?: boolean | null
 }
 
 export interface LotDetection {

@@ -162,6 +162,16 @@ const allDecided = computed(
 )
 
 const activeCrop = computed(() => actionableCrops.value[activeCropIndex.value] ?? null)
+
+// ── PÊCHE — quels crops de ce lot sont de la classe qu'on pêche ────────────
+// Un coffret peut porter 36 vignettes dont UNE seule appartient à la classe.
+// Le back le sait (`matches_dino_class`) : l'écran le montre, et s'ouvre
+// dessus. Sans ça, on rouvre à chaque lot la même corvée de balayage.
+const pecheOn = computed(() => Boolean(props.scope?.dino_class))
+const matchingCrops = computed(
+  () => actionableCrops.value.filter(({ crop }) => crop.matches_dino_class === true),
+)
+const nMatching = computed(() => matchingCrops.value.length)
 const activeAssetId = computed(() => activeCrop.value?.crop.asset_id ?? null)
 
 // Mappe crop_index ↔ asset_id pour l'image active (lien overlay → card).
@@ -255,6 +265,16 @@ async function load(key: string) {
     loading.value = false
   }
 }
+
+// À l'ouverture d'un lot pêché, le curseur se pose sur le premier crop de la
+// classe plutôt que sur le crop 1. Le tri, c'est l'acte ; balayer trente-cinq
+// vignettes avant lui, c'est la corvée qu'on est venu supprimer.
+watch(matchingCrops, (list) => {
+  if (!pecheOn.value || !list.length) return
+  const first = list[0].crop.asset_id
+  const idx = globalIndexByAssetId.value[first]
+  if (idx != null && idx !== activeCropIndex.value) setActiveIndex(idx)
+})
 
 // `immediate: true` couvre déjà le montage initial — pas de onMounted en
 // double (sinon 2 appels identiques au endpoint lourd). Couvre aussi la
@@ -1035,6 +1055,9 @@ function detectionBadgeColor(cropIndex: number | null): string {
             <span class="opacity-50 ml-2">global :</span>
             <span style="color: var(--gold-600);">{{ decidedCount }}</span>
             / {{ totalActionable }} décidés
+            <span v-if="pecheOn" class="ml-2" style="color: var(--indigo-700);">
+              · ⌁ {{ nMatching }} de la classe pêchée
+            </span>
           </p>
           <div class="flex gap-2 overflow-x-auto pb-1">
             <button
@@ -1084,6 +1107,17 @@ function detectionBadgeColor(cropIndex: number | null): string {
                   color: 'var(--surface)',
                 }"
               >{{ tagNumberByAssetId[crop.asset_id] ?? crop.crop_index + 1 }}</span>
+
+              <!-- PÊCHE : c'est CE crop que la banque rattache à la classe.
+                   Une suggestion, pas un verdict — à 0,10 de marge, un
+                   standard sur vingt est faux. On le montre, on ne le coche
+                   pas. -->
+              <span
+                v-if="crop.matches_dino_class"
+                class="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full font-mono text-[9px]"
+                style="background: var(--indigo-700); color: var(--surface);"
+                title="Le modèle rattache ce crop à la classe pêchée. À vérifier à l'œil : sur une pièce courante, environ un sur vingt est faux."
+              >⌁</span>
 
               <!-- Thumbnail -->
               <div class="aspect-square overflow-hidden rounded border" style="border-color: var(--surface-3); background: var(--surface-1);">

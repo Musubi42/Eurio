@@ -169,3 +169,89 @@ def test_la_liste_compte_les_crops_de_la_classe(conn):
         design_group=None,
     )
     assert items[0].n_matching_crops is None
+
+
+def test_en_peche_le_lot_le_plus_fourni_passe_devant(conn):
+    """Vu à l'écran avant correction : la file italienne ouvrait sur un coffret
+    FRANÇAIS de 36 crops dont UN seul appartenait à la classe — 35 vignettes à
+    écarter à l'œil avant la première utile. Quand on pêche, on commence là où
+    sont les poissons.
+    """
+    # `pauvre` est le plus ancien : sous l'ordre historique il passait devant.
+    _lot(conn, "pauvre", day=1, top1="it-2002-std")
+    # Un second listing à trois crops de la classe.
+    conn.execute(
+        "INSERT INTO source_images (id, source, source_ref, listing_country, "
+        "storage_path) VALUES ('si-riche','ebay','riche','IT','x.jpg')",
+    )
+    for i in range(3):
+        conn.execute(
+            "INSERT INTO image_assets (id, source_image_id, storage_path, "
+            "storage_status, crop_index) VALUES (?,'si-riche','c.jpg','present',?)",
+            (f"a-riche{i}", i),
+        )
+        conn.execute(
+            "INSERT INTO review_queue (id, image_asset_id, status, kind, lane, "
+            f"priority, enqueued_at) VALUES ('rq-riche{i}','a-riche{i}','open',"
+            "'lot','manual',5,'2026-01-09')",
+        )
+        conn.execute(
+            "INSERT INTO image_asset_dino_predictions (asset_id, encoder_version,"
+            " anchors_kind, anchors_count, top_k_json, top1_eurio_id, top1_sim,"
+            " spread) VALUES (?,?,?,?,?,?,?,?)",
+            (f"a-riche{i}", SUGGESTIONS_ENCODER_VERSION, SUGGESTIONS_ANCHORS_KIND,
+             10, json.dumps([{"eurio_id": "it-2002-std", "sim": 0.8}]),
+             "it-2002-std", 0.8, 0.30),
+        )
+    conn.commit()
+
+    items, _ = repository.list_lots(
+        conn, limit=50, offset=0, cohort_id=None, target_eurio_id=None,
+        design_group=None, dino_class=CLASSE,
+    )
+    assert [it.listing_key for it in items] == ["riche", "pauvre"]
+    assert items[0].n_matching_crops == 3
+
+    # Et la nav suit le même ordre, sinon « suivant » contredirait la liste.
+    assert repository.lot_siblings(conn, "riche", dino_class=CLASSE)[1] == "pauvre"
+
+    # Hors pêche, l'ordre historique est intact : le plus ancien d'abord.
+    items, _ = repository.list_lots(
+        conn, limit=50, offset=0, cohort_id=None, target_eurio_id=None,
+        design_group=None,
+    )
+    assert [it.listing_key for it in items] == ["pauvre", "riche"]
+
+
+def test_le_lot_dit_QUEL_crop_est_de_la_classe(conn):
+    """36 vignettes, une seule utile : l'écran sait laquelle, il doit le dire."""
+    _lot(conn, "mixte", day=1, top1="it-2002-std")
+    # Un second crop du même listing, que la banque attribue ailleurs.
+    conn.execute(
+        "INSERT INTO image_assets (id, source_image_id, storage_path, "
+        "storage_status, crop_index) VALUES ('a-autre','si-mixte','c.jpg',"
+        "'present',1)",
+    )
+    conn.execute(
+        "INSERT INTO review_queue (id, image_asset_id, status, kind, lane, "
+        "priority, enqueued_at) VALUES ('rq-autre','a-autre','open','lot',"
+        "'manual',5,'2026-01-01')",
+    )
+    conn.execute(
+        "INSERT INTO image_asset_dino_predictions (asset_id, encoder_version,"
+        " anchors_kind, anchors_count, top_k_json, top1_eurio_id, top1_sim,"
+        " spread) VALUES (?,?,?,?,?,?,?,?)",
+        ("a-autre", SUGGESTIONS_ENCODER_VERSION, SUGGESTIONS_ANCHORS_KIND, 10,
+         json.dumps([{"eurio_id": "de-2009-saarland", "sim": 0.9}]),
+         "de-2009-saarland", 0.9, 0.40),
+    )
+    conn.commit()
+
+    d = repository.get_lot_detail(conn, "mixte", dino_class=CLASSE)
+    flags = {c.asset_id: c.matches_dino_class for im in d.images for c in im.crops}
+    assert flags == {"a-mixte": True, "a-autre": False}
+
+    # Hors pêche, la question n'est pas posée — et `None` ne dit pas « non ».
+    d = repository.get_lot_detail(conn, "mixte")
+    flags = {c.matches_dino_class for im in d.images for c in im.crops}
+    assert flags == {None}
