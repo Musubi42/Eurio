@@ -943,6 +943,12 @@ def dino_candidates_summary(
     # FRANÇAISES à 0,023 de marge au mieux — quatre skips pour rien, et
     # l'impression que l'écran est cassé. Le compte dit combien il y a à voir,
     # la marge dit si ça vaut le coup de regarder.
+    # ⚠️ `status = 'open'` EXACTEMENT, comme `list_queue` : ce compteur annonce
+    # ce que la file va servir, et deux populations légèrement différentes pour
+    # un même fait, c'est un badge qui dit 4 au-dessus d'une file qui en sert 3.
+    # (`in_progress` n'est écrit nulle part dans ce système — l'inclure était
+    # une largeur morte qui ne pouvait que diverger. Il reste dans le test
+    # d'orphelinat ci-dessous, où la largeur protège au lieu de nuire.)
     rows = conn.execute(
         f"""
         SELECT rq.kind AS kind, COUNT(*) AS n,
@@ -950,7 +956,7 @@ def dino_candidates_summary(
           FROM review_queue rq
           JOIN image_assets a ON a.id = rq.image_asset_id
           {join_sql}
-         WHERE rq.status IN ('open', 'in_progress') AND {scope.sql}
+         WHERE rq.status = 'open' AND {scope.sql}
          GROUP BY rq.kind
         """,
         scope.args,

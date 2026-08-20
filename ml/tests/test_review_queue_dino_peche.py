@@ -234,3 +234,24 @@ def test_une_file_vide_n_a_pas_de_marge(conn):
     _crop(conn, "23lot", kind="lot", top1="it-2002-std", spread=0.20)
     s = repository.dino_candidates_summary(conn, dino_class=CLASSE)
     assert s.n_open_single == 0 and s.best_spread_single is None
+
+
+def test_le_compteur_compte_exactement_ce_que_la_file_sert(conn):
+    """Le badge et la file doivent porter la MÊME population.
+
+    Le résumé comptait `status IN ('open','in_progress')` là où `list_queue`
+    sert `status='open'`. Aucun `in_progress` n'existe dans ce système, donc ça
+    n'a jamais mordu — mais c'était un badge qui pouvait annoncer 4 au-dessus
+    d'une file qui en sert 3, et ce genre d'écart ne se remarque que le jour où
+    il compte.
+    """
+    _crop(conn, "30ok", kind="single", top1="it-2002-std", spread=0.3)
+    _crop(conn, "31no", kind="single", top1="it-2002-std", spread=0.3,
+          status="skipped")
+
+    s = repository.dino_candidates_summary(conn, dino_class=CLASSE)
+    servis = repository.list_queue(
+        conn, status="open", limit=50, order="dino", kind="single", lane=None,
+        cohort_id=None, eurio_id=None, review_ids=None, dino_class=CLASSE,
+    )
+    assert s.n_open_single == len(servis) == 1
