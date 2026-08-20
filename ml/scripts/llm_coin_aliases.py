@@ -54,9 +54,17 @@ ML_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ML_DIR))
 
 from sources.ebay.theme_tokens import normalize  # noqa: E402
-from store import Store  # noqa: E402
+from store import Store, resolve_db_path  # noqa: E402
 
-DB_PATH = ML_DIR / "state" / "eurio.db"
+# Défaut résolu par `store.resolve_db_path` : la base que le RESTE de la
+# machine lit (`EURIO_DB_PATH` — la réplique sous Direction A, le canonique
+# sur le VPS), jamais un chemin codé en dur. Mesuré le 2026-08-19 :
+# `state/eurio.db` porte 6205 `image_assets` (5466 prédictions `2eur_all`)
+# contre 12454 / 12454 dans `state/eurio.replica.db` — la banque `2eur_all`
+# avait été bâtie dessus pendant des semaines.
+# Repli hors devShell : `state/eurio.replica.db`. La règle et son arbitrage
+# (2026-08-19) sont dans la docstring de `store.resolve_db_path`.
+DB_PATH = resolve_db_path(ML_DIR / "state" / "eurio.replica.db")
 BENCH_DIR = ML_DIR / "state" / "discovery_bench"
 BATCH_PATH = BENCH_DIR / "aliases_batch.jsonl"
 ALIASES_PATH = BENCH_DIR / "aliases_llm.jsonl"

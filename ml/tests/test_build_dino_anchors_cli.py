@@ -85,7 +85,8 @@ def test_dispatcher_propagates_write_references_and_avoids_the_write_txn(
     store = Store(db)
     seen = {}
 
-    def _fake_builder(*, conn, datasets_dir, force_recompute, write_references=None):
+    def _fake_builder(*, conn, datasets_dir, force_recompute,
+                      write_references=None, write_legacy=None):
         seen["write_references"] = write_references
         seen["in_transaction"] = conn.in_transaction
         return object()
@@ -104,7 +105,8 @@ def test_dispatcher_opens_the_write_txn_when_tracing(db, monkeypatch):
     store = Store(db)
     seen = {}
 
-    def _fake_builder(*, conn, datasets_dir, force_recompute, write_references=None):
+    def _fake_builder(*, conn, datasets_dir, force_recompute,
+                      write_references=None, write_legacy=None):
         seen["in_transaction"] = conn.in_transaction
         return object()
 
@@ -120,3 +122,24 @@ def test_readonly_db_is_fine_for_non_writing_kinds(db, monkeypatch, kind):
     store = Store(db)
     assert kind not in WRITING_KINDS
     assert preflight_db_traceability(store, kind, skip_references=False) is False
+
+
+def test_db_path_defaut_honore_eurio_db_path(monkeypatch, tmp_path):
+    """Le défaut de `--db` suit `EURIO_DB_PATH`, pas `state/eurio.db` en dur.
+
+    Régression du 2026-08-19 : la banque `2eur_all` servie avait été bâtie sur
+    `ml/state/eurio.db` (base de travail périmée, 6205 `image_assets`) alors
+    que la review lit la réplique (12454). Conséquence mesurée : 125 classes
+    avec exemplaires FPS au lieu des 182 qui en ont des candidats — 57 classes
+    de review déjà tranchée absentes de la banque.
+    """
+    import importlib
+
+    replique = tmp_path / "eurio.replica.db"
+    monkeypatch.setenv("EURIO_DB_PATH", str(replique))
+    module = importlib.reload(bda)
+    try:
+        assert module.DB_PATH == replique
+    finally:
+        monkeypatch.delenv("EURIO_DB_PATH", raising=False)
+        importlib.reload(bda)

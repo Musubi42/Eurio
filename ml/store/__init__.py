@@ -76,7 +76,44 @@ def resolve_db_path(default: str | Path) -> Path:
     qu'ils ouvrent la MÊME DB que le serveur. Sinon le serveur lit la réplique
     (``EURIO_DB_PATH``) mais le subprocess lit ``state/eurio.db`` → l'itération
     créée via le serveur est « introuvable » côté bake/training. Fallback sur
-    ``default`` quand l'env est absent (dev local sans réplique)."""
+    ``default`` quand l'env est absent (dev local sans réplique).
+
+    RÈGLE DE REPLI DU REPO (arbitrée le 2026-08-19) — **le ``default`` passé par
+    un entrypoint est ``<ML_DIR>/state/eurio.replica.db``, jamais
+    ``state/eurio.db``.**
+
+    Le repli n'est atteint que HORS devShell : le devShell mac/pc pose
+    ``EURIO_DB_PATH`` sur la réplique, le VPS sur ``/var/lib/eurio/eurio.db``.
+    La question est donc uniquement : que doit-il arriver à l'opérateur qui a
+    oublié le shell ? Les deux candidats ne se départagent pas sur « lecteur vs
+    écrivain » mais sur **bruit vs silence** :
+
+    * repli ``state/eurio.db`` — un LECTEUR lit une base de travail périmée sans
+      le savoir (mesuré le 2026-08-19 : 6205 ``image_assets`` contre 12454 dans
+      la réplique ; c'est ainsi que la banque ``2eur_all`` a été bâtie des
+      semaines sur un demi-corpus). Un ÉCRIVAIN sur une machine où le fichier
+      n'existe pas (le VPS) le voit **créé et bootstrappé vide** par ``Store``,
+      puis annonce « 0 candidats, 0 erreurs ». Les deux issues sont muettes.
+    * repli ``state/eurio.replica.db`` — un LECTEUR lit le vrai corpus. Un
+      ÉCRIVAIN est refusé au constructeur, par nom de fichier et avec la marche
+      à suivre (``store/connection.py`` : « Refus d'ouvrir la réplique … en
+      écriture »). Les deux issues sont bruyantes.
+
+    Dans un repo dont le mode de panne dominant est le silence (cf. la skill
+    ``eurio-verify``), on choisit le repli qui parle. Un dev Model A qui veut
+    réellement écrire la base de travail locale le dit explicitement :
+    ``EURIO_DB_PATH=$PWD/state/eurio.db``.
+
+    Corollaire : ``resolve_db_path`` ne s'applique qu'au **DÉFAUT**. Ne jamais
+    écrire ``Store(resolve_db_path(args.db))`` — le resolver rend
+    ``EURIO_DB_PATH`` quel que soit son argument, ce qui écrase en silence la
+    valeur choisie par l'opérateur.
+
+    ⚠️ Dette connue : ~39 entrypoints portent encore un littéral
+    ``state/eurio.db`` comme défaut (inventaire dans
+    ``docs/work-in-progress/scan-sans-retrain/FINDINGS.md`` §8, défaut C12).
+    Ils ne sont pas conformes à cette règle ; la converger demande de les
+    mesurer un par un, pas un sed global."""
     env = os.environ.get("EURIO_DB_PATH", "").strip()
     return Path(env) if env else Path(default)
 

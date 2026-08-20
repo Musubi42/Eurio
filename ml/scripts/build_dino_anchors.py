@@ -2,8 +2,12 @@
 
 Picks coins from the local SQLite catalog (`coins` table) according to
 the requested scope, encodes their `<datasets>/<numista_id>/obverse.jpg`
-through DINOv2 ViT-S/14, and writes the bank to
-`ml/state/foundation_anchors_<kind>.npz`.
+through DINOv2 ViT-S/14, et écrit DEUX fichiers :
+
+  - l'artefact de banc `ml/state/foundation_anchors_<kind>__<encodeur>.npz`,
+    toujours ;
+  - la banque SERVIE `ml/state/foundation_anchors_<kind>.npz` (celle que lit
+    la review et les scripts historiques), sauf `--no-serve`.
 
 Usage:
     .venv/bin/python -m scripts.build_dino_anchors                # 2eur_commemo, cache hit OK
@@ -35,13 +39,22 @@ from training.foundation.anchors import (  # noqa: E402
     build_anchors_2eur_commemo,
     build_anchors_2eur_standard,
     build_anchors_reverse_2eur,
+    anchor_path,
     load_anchors,
+    served_anchor_path,
 )
-from store import Store  # noqa: E402
+from store import Store, resolve_db_path  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
-DB_PATH = ML_DIR / "state" / "eurio.db"
+# Défaut du `--db` : la base que le RESTE de la machine lit, c'est-à-dire celle
+# que pointe `EURIO_DB_PATH` (la réplique, sous Direction A) — pas `eurio.db`
+# codé en dur. Mesuré le 2026-08-19 : la banque `2eur_all` servie avait été
+# bâtie sur `state/eurio.db` (périmée : 6205 image_assets contre 12454 dans la
+# réplique), d'où 125 classes avec exemplaires au lieu de 182 — 57 classes de
+# review déjà validée invisibles de la banque. Le même resolver est utilisé par
+# ~70 autres entrypoints (`store.resolve_db_path`).
+DB_PATH = resolve_db_path(ML_DIR / "state" / "eurio.db")
 
 # Seule `2eur_all` ÉCRIT en base : elle trace sa sélection FPS dans
 # `dino_class_references`. Les autres banques ne font que lire les `coins`.
@@ -128,11 +141,58 @@ def preflight_db_traceability(
     return True
 
 
-def _build_dispatcher(kind: str, store: Store, force: bool, *, write_references: bool):
+def _holds_bank(path: Path, bank) -> bool:
+    """Ce .npz contient-il BIEN la banque qu'on vient d'obtenir ?
+
+    Comparaison par ``bank_id`` (posé par ``_write_bank_npz``), avec repli sur
+    ``built_at`` + ``count`` pour les .npz d'avant ce champ."""
+    if not path.exists():
+        return False
+    from training.foundation.anchors import _peek_meta  # noqa: PLC0415
+
+    meta = _peek_meta(path)
+    if not meta:
+        return False
+    if meta.get("bank_id") and bank.bank_id:
+        return meta["bank_id"] == bank.bank_id
+    return (meta.get("built_at"), meta.get("count")) == (bank.built_at, bank.count)
+
+
+def written_paths(bank, *, serve: bool) -> list[tuple[str, str]]:
+    """Les chemins à IMPRIMER, chacun vérifié sur disque — pas un nom codé en dur.
+
+    D13 : l'ancienne ligne « Path: » affichait toujours
+    ``state/foundation_anchors_<kind>.npz``, c'est-à-dire la banque SERVIE,
+    même quand le run n'avait écrit que son artefact de banc — voire rien du
+    tout (cache hit). Ici chaque ligne dit si le fichier contient BIEN la
+    banque que ce run vient de rendre."""
+    scoped = anchor_path(bank.anchors_kind, bank.encoder_version)
+    served = served_anchor_path(bank.anchors_kind)
+    rows: list[tuple[str, str]] = []
+    for label, path in (("Path", scoped), ("Servie", served)):
+        if label == "Servie" and served == scoped:
+            continue
+        if _holds_bank(path, bank):
+            rows.append((label, str(path)))
+            continue
+        why = ("--no-serve" if label == "Servie" and not serve
+               else "non écrit — cache hit (relancer avec --force)")
+        rows.append((label, f"{path}  (NE CONTIENT PAS cette banque : {why})"))
+    return rows
+
+
+def _build_dispatcher(
+    kind: str, store: Store, force: bool, *,
+    write_references: bool, write_legacy: bool = True,
+):
     builder = _BUILDERS.get(kind)
     if builder is None:
         raise ValueError(f"Unknown anchors kind: {kind!r}")
-    kwargs = {"datasets_dir": DATASETS_DIR, "force_recompute": force}
+    kwargs = {
+        "datasets_dir": DATASETS_DIR,
+        "force_recompute": force,
+        "write_legacy": write_legacy,
+    }
     if kind in WRITING_KINDS:
         kwargs["write_references"] = write_references
     if write_references:
@@ -142,7 +202,7 @@ def _build_dispatcher(kind: str, store: Store, force: bool, *, write_references:
     return builder(conn=store._connection(), **kwargs)  # noqa: SLF001
 
 
-def main() -> int:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--kind",
@@ -158,7 +218,10 @@ def main() -> int:
     parser.add_argument(
         "--db",
         default=str(DB_PATH),
-        help="Path to the training SQLite DB (default: ml/state/eurio.db). "
+        help=f"Fichier SQLite à lire (défaut : {DB_PATH}, résolu par "
+             "store.resolve_db_path — c'est EURIO_DB_PATH quand il est posé, "
+             "et donc la RÉPLIQUE sous Direction A ; ml/state/eurio.db n'est "
+             "que le repli quand la variable est absente). "
              "ATTENTION : choisit le fichier, pas le mode — le mode vient de "
              "EURIO_DB_READONLY. La commande refuse de démarrer si la base "
              "n'est pas inscriptible et que la traçabilité est demandée.",
@@ -181,8 +244,19 @@ def main() -> int:
         "--no-push", dest="push", action="store_false",
         help="Ne pas envoyer la traçabilité au canonique.",
     )
+    parser.add_argument(
+        "--no-serve", dest="serve", action="store_false", default=True,
+        help="Bâtir l'artefact de banc SANS mettre à jour la banque servie "
+             f"({served_anchor_path('<kind>').name}). À utiliser pour un bras "
+             "baseline de banc : sans ce drapeau, la banque que la review sert "
+             "est remplacée (c'est le comportement voulu d'un rebuild de prod).",
+    )
     parser.add_argument("--verbose", "-v", action="store_true")
-    args = parser.parse_args()
+    return parser
+
+
+def main() -> int:
+    args = build_parser().parse_args()
 
     logging.basicConfig(
         level=logging.INFO if args.verbose else logging.WARNING,
@@ -210,6 +284,7 @@ def main() -> int:
     t0 = time.perf_counter()
     bank = _build_dispatcher(
         args.kind, store, args.force, write_references=write_references,
+        write_legacy=args.serve,
     )
     dt = time.perf_counter() - t0
 
@@ -218,7 +293,11 @@ def main() -> int:
     print(f"Built at:    {bank.built_at}")
     print(f"Anchors:     {bank.count}")
     print(f"Dim:         {bank.dim}")
-    print(f"Path:        {ML_DIR / 'state' / f'foundation_anchors_{bank.anchors_kind}.npz'}")
+    # D13 : imprimer les chemins RÉELLEMENT écrits, pas un nom codé en dur.
+    # Une banque bâtie avec un encodeur non-production n'écrit pas la banque
+    # servie ; annoncer celle-ci désignait un fichier que le run n'a pas touché.
+    for label, path in written_paths(bank, serve=args.serve):
+        print(f"{label + ':':<13}{path}")
     print(f"Total time:  {dt:.1f}s")
     # Envoi de la trace au canonique. Ce n'est PAS du best-effort : sans elle,
     # personne ne peut dire ce que contient la banque qu'on vient de servir.

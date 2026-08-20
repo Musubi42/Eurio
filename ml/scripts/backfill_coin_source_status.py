@@ -29,7 +29,15 @@ from scripts._vps_only_guard import guard_vps_only  # noqa: E402
 
 logger = logging.getLogger("backfill_source_status")
 
-DB_PATH = ML_DIR / "state" / "eurio.db"
+# Défaut résolu par `store.resolve_db_path` : la base que le RESTE de la
+# machine lit (`EURIO_DB_PATH` — la réplique sous Direction A, le canonique
+# sur le VPS), jamais un chemin codé en dur. Mesuré le 2026-08-19 :
+# `state/eurio.db` porte 6205 `image_assets` (5466 prédictions `2eur_all`)
+# contre 12454 / 12454 dans `state/eurio.replica.db` — la banque `2eur_all`
+# avait été bâtie dessus pendant des semaines.
+# Repli hors devShell : `state/eurio.replica.db`. La règle et son arbitrage
+# (2026-08-19) sont dans la docstring de `store.resolve_db_path`.
+DB_PATH = resolve_db_path(ML_DIR / "state" / "eurio.replica.db")
 
 # registry id → fonction de dérivation. Chaque fonction renvoie
 # {eurio_id: {axe: valeur}} pour les coins ayant ≥1 axe porteur.
@@ -171,7 +179,12 @@ def main() -> int:
     # UPDATE brut de coin_source_status (dérivé local, last_run_id NULL → NE
     # voyage PAS via le run-batch C4c) : réservé au canonique.
     guard_vps_only("backfill_coin_source_status", allow=args.allow_non_vps)
-    store = Store(resolve_db_path(args.db))
+    # `--db` doit primer : `resolve_db_path(args.db)` ignorait la valeur
+    # passée dès que `EURIO_DB_PATH` était posé (le devShell le pose
+    # toujours) — le drapeau était un leurre, alors même que le message
+    # de `guard_vps_only` invite à s'en servir pour désigner une copie
+    # canonique. Le défaut, lui, est déjà résolu (cf. DB_PATH).
+    store = Store(Path(args.db))
     stats = run_backfill(store, force=args.force, limit=args.limit)
     total = sum(stats.values())
     print(f"backfill coin_source_status : {total} rows ok")

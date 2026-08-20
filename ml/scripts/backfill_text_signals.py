@@ -29,9 +29,17 @@ from sources._base.steps.text_signal import (  # noqa: E402
     EXTRACTOR_VERSION,
     run_text_signal_extract,
 )
-from store import Store  # noqa: E402
+from store import Store, resolve_db_path  # noqa: E402
 
-DB_PATH = ML_DIR / "state" / "eurio.db"
+# Défaut résolu par `store.resolve_db_path` : la base que le RESTE de la
+# machine lit (`EURIO_DB_PATH` — la réplique sous Direction A, le canonique
+# sur le VPS), jamais un chemin codé en dur. Mesuré le 2026-08-19 :
+# `state/eurio.db` porte 6205 `image_assets` (5466 prédictions `2eur_all`)
+# contre 12454 / 12454 dans `state/eurio.replica.db` — la banque `2eur_all`
+# avait été bâtie dessus pendant des semaines.
+# Repli hors devShell : `state/eurio.replica.db`. La règle et son arbitrage
+# (2026-08-19) sont dans la docstring de `store.resolve_db_path`.
+DB_PATH = resolve_db_path(ML_DIR / "state" / "eurio.replica.db")
 
 
 def main() -> int:
@@ -55,7 +63,9 @@ def main() -> int:
     parser.add_argument(
         "--db",
         default=str(DB_PATH),
-        help="Path to the training SQLite DB (default: ml/state/eurio.db).",
+        help=f"Fichier SQLite à écrire (défaut : {DB_PATH}, résolu par "
+             "store.resolve_db_path — EURIO_DB_PATH, sinon le repli "
+             "ml/state/eurio.replica.db).",
     )
     parser.add_argument("--verbose", "-v", action="store_true")
     args = parser.parse_args()

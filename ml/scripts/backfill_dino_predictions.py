@@ -28,9 +28,17 @@ ML_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ML_DIR))
 
 from sources._base.steps.auto_validate import run_auto_validate_dino_backfill  # noqa: E402
-from store import Store  # noqa: E402
+from store import Store, resolve_db_path  # noqa: E402
 
-DB_PATH = ML_DIR / "state" / "eurio.db"
+# Défaut résolu par `store.resolve_db_path` : la base que le RESTE de la
+# machine lit (`EURIO_DB_PATH` — la réplique sous Direction A, le canonique
+# sur le VPS), jamais un chemin codé en dur. Mesuré le 2026-08-19 :
+# `state/eurio.db` porte 6205 `image_assets` (5466 prédictions `2eur_all`)
+# contre 12454 / 12454 dans `state/eurio.replica.db` — la banque `2eur_all`
+# avait été bâtie dessus pendant des semaines.
+# Repli hors devShell : `state/eurio.replica.db`. La règle et son arbitrage
+# (2026-08-19) sont dans la docstring de `store.resolve_db_path`.
+DB_PATH = resolve_db_path(ML_DIR / "state" / "eurio.replica.db")
 
 
 def main() -> int:
@@ -54,8 +62,13 @@ def main() -> int:
     )
     parser.add_argument(
         "--db",
-        default=str(DB_PATH),
-        help="Path to the training SQLite DB (default: ml/state/eurio.db).",
+        default=None,
+        help=f"Fichier SQLite à lire/écrire quand --no-push (défaut : {DB_PATH}, "
+             "résolu par store.resolve_db_path — c'est EURIO_DB_PATH quand la "
+             "variable est posée, donc la RÉPLIQUE sous Direction A ; "
+             "ml/state/eurio.replica.db n'est que le repli hors devShell). "
+             "IGNORÉ quand --push est actif : le backfill pull alors sa propre "
+             "réplique scratch depuis le VPS.",
     )
     parser.add_argument(
         "--push", action=argparse.BooleanOptionalAction, default=None,
@@ -81,6 +94,16 @@ def main() -> int:
     from client.http import sync_enabled
     push = sync_enabled() if args.push is None else args.push
 
+    if push and args.db is not None:
+        # Panne muette évitée : sous --push le fichier passé n'est JAMAIS ouvert
+        # (on pull une réplique scratch). Sans ce message l'opérateur croirait
+        # avoir choisi la base.
+        logging.getLogger("backfill_dino_predictions").warning(
+            "--db %s IGNORÉ : --push est actif, le backfill travaille sur une "
+            "réplique scratch pull-ée du canonique. Utiliser --no-push pour "
+            "travailler sur ce fichier.", args.db,
+        )
+
     if push:
         import tempfile
 
@@ -97,7 +120,9 @@ def main() -> int:
         # même sous EURIO_DB_READONLY (C5).
         store = Store(db_path, read_only=False)
     else:
-        store = Store(Path(args.db))
+        db_path = Path(args.db) if args.db else DB_PATH
+        print(f"[model-a] base locale → {db_path}")
+        store = Store(db_path)
 
     # Model B (C6b) : stub source_runs pour CE backfill → export_run collecte les
     # prédictions (sur assets préexistants) par run_id. ISO-timestamp = run_id unique.
