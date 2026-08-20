@@ -1149,6 +1149,24 @@ def get_lot_detail(
     # Une seule requête pour tout le listing : sans ce marquage, un coffret de
     # 36 vignettes dont une seule appartient à la classe se trie entièrement à
     # l'œil, alors que la réponse est en base.
+    # La marge de chaque crop, lue une fois pour tout le listing. Elle est
+    # servie même hors pêche : c'est un signal d'affichage, pas un filtre.
+    spread_by_asset: dict[str, float] = {
+        r["asset_id"]: r["m"]
+        for r in conn.execute(
+            f"""
+            SELECT a.id AS asset_id,
+                   COALESCE(ps.country_spread, ps.spread) AS m
+              FROM image_assets a
+              JOIN source_images si ON si.id = a.source_image_id
+              {suggestions_join_sql("ps")}
+             WHERE {LISTING_KEY_SQL} = ?
+            """,
+            (listing_key,),
+        ).fetchall()
+        if r["m"] is not None
+    }
+
     matching_assets: set[str] | None = None
     if dino_class:
         _scope = build_dino_scope(
@@ -1235,6 +1253,7 @@ def get_lot_detail(
                 except (json.JSONDecodeError, TypeError):
                     pass
             crops.append(LotCrop(
+                dino_spread=spread_by_asset.get(a["asset_id"]),
                 matches_dino_class=(
                     a["asset_id"] in matching_assets
                     if matching_assets is not None else None

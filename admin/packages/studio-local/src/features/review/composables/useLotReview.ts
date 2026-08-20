@@ -63,6 +63,12 @@ export interface LotCrop {
    * trierait à l'œil sans ce drapeau, alors que la réponse est en base.
    */
   matches_dino_class?: boolean | null
+  /**
+   * La MARGE de la prédiction sur ce crop (`COALESCE(country_spread, spread)`).
+   * C'est elle qui sépare, pas la similarité. Servie même hors pêche : c'est un
+   * signal d'affichage. `null` quand la banque n'a pas scoré le crop.
+   */
+  dino_spread?: number | null
 }
 
 export interface LotDetection {

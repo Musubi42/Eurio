@@ -42,7 +42,7 @@ import CohortReviewStrip from '@/features/lab/components/CohortReviewStrip.vue'
 import CohortSourcingList from '@/features/lab/components/CohortSourcingList.vue'
 import LotDetailView from '@/features/review/views/LotDetailView.vue'
 import { fetchDinoCandidates } from '@/features/review/composables/useReviewApi'
-import { fetchLots } from '@/features/review/composables/useLotReview'
+import { useLotChain } from '@/features/review/composables/useLotChain'
 import CohortThresholdBar from '@/features/lab/components/CohortThresholdBar.vue'
 import { useCohortQuery } from '@/features/lab/composables/useLabQueries'
 import { useCohortClasses, type CohortClass } from '@/features/lab/composables/useCohortFloor'
@@ -247,13 +247,8 @@ onUnmounted(() => {
 
 // ── Les lots, un par un ────────────────────────────────────────────────────
 // Pas de grille de vignettes : le lot ouvert défile comme l'unité. Valider ou
-// skipper enchaîne sur le suivant DU PÉRIMÈTRE, et l'écran s'arrête quand il
-// n'y en a plus. Le lot courant vit dans l'URL (`?lot=`) comme le reste du
-// périmètre — rechargement et retour arrière retombent au même endroit.
-const heldLot = computed(() => {
-  const q = route.query.lot
-  return typeof q === 'string' && q ? q : null
-})
+// skipper enchaîne sur le suivant DU PÉRIMÈTRE. La mécanique est dans
+// `useLotChain` — la page pêche déroule la même file avec le même code.
 
 /** Ce qu'on passe à `GET /review-queue/lots{,/{key}}` — le même que la file. */
 const lotScope = computed<Record<string, string>>(() => {
@@ -270,63 +265,10 @@ const lotScope = computed<Record<string, string>>(() => {
   return out
 })
 
-const lotLoading = ref(false)
-const lotExhausted = ref(false)
-
-/** Ouvre le premier lot du périmètre. Appelé à l'entrée en mode lot. */
-async function openFirstLot() {
-  if (!held.value) return
-  lotLoading.value = true
-  lotExhausted.value = false
-  try {
-    const resp = await fetchLots({ limit: 1, ...lotScopeArgs() })
-    const first = resp.items[0]?.listing_key ?? null
-    if (first) void router.replace({ query: { ...route.query, lot: first } })
-    else lotExhausted.value = true
-  } finally {
-    lotLoading.value = false
-  }
-}
-
-function lotScopeArgs() {
-  const sc = lotScope.value
-  return {
-    dinoClass: sc.dino_class ?? null,
-    dinoRank: sc.dino_rank ? Number(sc.dino_rank) : null,
-    designGroup: sc.design_group ?? null,
-    targetEurioId: sc.target_eurio_id ?? null,
-  }
-}
-
-function gotoLot(key: string) {
-  void router.replace({ query: { ...route.query, lot: key } })
-}
-
-/** Plus de lot dans le périmètre : on le dit, et on propose la suite. */
-function lotsExhausted() {
-  const q = { ...route.query }
-  delete q.lot
-  lotExhausted.value = true
-  void router.replace({ query: q as Record<string, string> })
-}
-
-// Entrer en mode lot (ou changer de périmètre) ouvre le premier lot. On ne le
-// fait pas quand un lot est déjà à l'écran : ce serait ramener l'opérateur au
-// début de la file à chaque refetch.
-// ⚠️ On observe `held.value?.id`, PAS `heldId` : `heldId` vient de l'URL et
-// vaut déjà quelque chose au premier rendu, alors que la CLASSE n'arrive
-// qu'après le chargement du préflight. Observer l'URL ferait passer l'unique
-// déclenchement à un moment où `held` est encore nul — l'écran resterait sur
-// « Ouverture du premier lot… » pour toujours, sans la moindre erreur.
-watch(
-  [() => held.value?.id, mode, () => sortByDino.value, dinoRank],
-  () => {
-    if (mode.value !== 'lot' || !held.value) return
-    if (heldLot.value) return
-    void openFirstLot()
-  },
-  { immediate: true },
-)
+const {
+  heldLot, loading: lotLoading, exhausted: lotExhausted,
+  goto: gotoLot, finish: lotsExhausted,
+} = useLotChain(lotScope, () => mode.value === 'lot')
 
 // ── Compteurs du périmètre pêché ───────────────────────────────────────────
 // Ceux du funnel comptent le périmètre PAR CIBLE. En pêche, les afficher

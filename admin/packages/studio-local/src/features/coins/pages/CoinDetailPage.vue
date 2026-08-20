@@ -56,6 +56,7 @@ import { ML_API } from '@/shared/api/ml-api'
 import { HAS_LOCAL_ML_API } from '@/shared/config/deploy-target'
 import { coinDisplayName } from '@/shared/utils/coin-display'
 import EnrichmentGallery from '../components/EnrichmentGallery.vue'
+import PecheCallout from '../components/PecheCallout.vue'
 import DinoReferencesSection from '../components/DinoReferencesSection.vue'
 import VariantBadge from '../components/VariantBadge.vue'
 
@@ -997,6 +998,11 @@ const numistaTotalMintage = computed<number | null>(() => {
           :selected-url="selectedImage?.url ?? null"
           @select="onEnrichmentSelect"
         />
+
+        <!-- Pêche : la matière que le modèle rattache à la CLASSE de cette
+             pièce — y compris les crops de lots, qu'aucune autre porte de cet
+             écran n'atteint. -->
+        <PecheCallout :class-id="designGroupId ?? coin.eurio_id" />
 
         <!-- Références Dino (B) : ce qui sert au calcul (canonique + exemplaires
              divers), avec épingler / bannir. -->

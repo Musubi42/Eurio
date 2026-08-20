@@ -89,6 +89,14 @@ const router = createRouter({
           meta: heavy,
         },
         {
+          // La pêche — file scopée par la PRÉDICTION (`?class=<class_id>`).
+          // `heavy` : elle monte les vues de review, qui tapent `:8042` pour
+          // les suggestions DINO par crop (cf. CLAUDE.md §R0bis).
+          path: 'review/peche',
+          component: () => import('@/features/review/pages/PechePage.vue'),
+          meta: heavy,
+        },
+        {
           path: 'review/recover',
           component: () => import('@/features/review/pages/RecoverRejectedPage.vue'),
           meta: heavy,

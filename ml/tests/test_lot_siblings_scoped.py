@@ -255,3 +255,42 @@ def test_le_lot_dit_QUEL_crop_est_de_la_classe(conn):
     d = repository.get_lot_detail(conn, "mixte")
     flags = {c.matches_dino_class for im in d.images for c in im.crops}
     assert flags == {None}
+
+
+def test_le_lot_porte_la_marge_de_chaque_crop(conn):
+    """La marge est un SIGNAL, servi même hors pêche.
+
+    Elle sert d'abord à ouvrir le lot sur le crop le plus net : un coffret
+    mélange 1 cent et 2 €, et la banque — qui ne contient que des 2 € — attribue
+    la piécette à la classe la plus proche avec une marge ridicule. Sans la
+    marge, l'écran s'ouvrait sur cette piécette.
+    """
+    _lot(conn, "net", day=1, top1="it-2002-std", spread=0.30)
+    conn.execute(
+        "INSERT INTO image_assets (id, source_image_id, storage_path, "
+        "storage_status, crop_index) VALUES ('a-flou','si-net','c.jpg',"
+        "'present',1)",
+    )
+    conn.execute(
+        "INSERT INTO review_queue (id, image_asset_id, status, kind, lane, "
+        "priority, enqueued_at) VALUES ('rq-flou','a-flou','open','lot',"
+        "'manual',5,'2026-01-01')",
+    )
+    conn.execute(
+        "INSERT INTO image_asset_dino_predictions (asset_id, encoder_version,"
+        " anchors_kind, anchors_count, top_k_json, top1_eurio_id, top1_sim,"
+        " spread) VALUES (?,?,?,?,?,?,?,?)",
+        ("a-flou", SUGGESTIONS_ENCODER_VERSION, SUGGESTIONS_ANCHORS_KIND, 10,
+         json.dumps([{"eurio_id": "it-2002-std", "sim": 0.7}]),
+         "it-2002-std", 0.7, 0.018),
+    )
+    conn.commit()
+
+    d = repository.get_lot_detail(conn, "net", dino_class=CLASSE)
+    spreads = {c.asset_id: c.dino_spread for im in d.images for c in im.crops}
+    assert spreads == {"a-net": 0.30, "a-flou": 0.018}
+
+    # Hors pêche aussi : c'est un signal d'affichage, pas un filtre.
+    d = repository.get_lot_detail(conn, "net")
+    spreads = {c.asset_id: c.dino_spread for im in d.images for c in im.crops}
+    assert spreads == {"a-net": 0.30, "a-flou": 0.018}

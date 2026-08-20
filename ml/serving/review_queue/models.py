@@ -182,6 +182,12 @@ class LotCrop(BaseModel):
     # seule est la classe se trie entièrement à l'œil — l'écran saurait laquelle
     # et ne le dirait pas.
     matches_dino_class: bool | None = None
+    # La MARGE de la prédiction sur ce crop (COALESCE(country_spread, spread)),
+    # lue dans la banque des suggestions. C'est elle qui sépare, pas la
+    # similarité — et elle sert ici à deux choses : ouvrir le lot sur le crop le
+    # plus net plutôt que sur le premier venu, et dire à l'écran à quel point la
+    # proposition tient. `None` quand la banque n'a pas scoré le crop.
+    dino_spread: float | None = None
 
 
 class LotDetection(BaseModel):

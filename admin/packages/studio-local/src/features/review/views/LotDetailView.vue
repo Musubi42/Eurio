@@ -168,10 +168,18 @@ const activeCrop = computed(() => actionableCrops.value[activeCropIndex.value] ?
 // Le back le sait (`matches_dino_class`) : l'écran le montre, et s'ouvre
 // dessus. Sans ça, on rouvre à chaque lot la même corvée de balayage.
 const pecheOn = computed(() => Boolean(props.scope?.dino_class))
+// Triés par MARGE décroissante, et c'est le point : un coffret mélange 1 cent
+// et 2 €, et la banque — qui ne contient que des 2 € — rattache la piécette à
+// la classe la plus proche avec une marge dérisoire. Ouvrir sur le premier
+// crop par index, c'était ouvrir sur elle. Le crop le plus NET d'abord.
 const matchingCrops = computed(
-  () => actionableCrops.value.filter(({ crop }) => crop.matches_dino_class === true),
+  () => actionableCrops.value
+    .filter(({ crop }) => crop.matches_dino_class === true)
+    .sort((a, b) => (b.crop.dino_spread ?? -1) - (a.crop.dino_spread ?? -1)),
 )
 const nMatching = computed(() => matchingCrops.value.length)
+/** La marge du meilleur candidat — dit d'un coup d'œil ce que vaut ce lot. */
+const bestSpread = computed(() => matchingCrops.value[0]?.crop.dino_spread ?? null)
 const activeAssetId = computed(() => activeCrop.value?.crop.asset_id ?? null)
 
 // Mappe crop_index ↔ asset_id pour l'image active (lien overlay → card).
@@ -1056,7 +1064,8 @@ function detectionBadgeColor(cropIndex: number | null): string {
             <span style="color: var(--gold-600);">{{ decidedCount }}</span>
             / {{ totalActionable }} décidés
             <span v-if="pecheOn" class="ml-2" style="color: var(--indigo-700);">
-              · ⌁ {{ nMatching }} de la classe pêchée
+              · ⌁ {{ nMatching }} de la classe pêchée<span v-if="bestSpread != null">
+                · meilleure marge {{ bestSpread.toFixed(3) }}</span>
             </span>
           </p>
           <div class="flex gap-2 overflow-x-auto pb-1">
@@ -1116,7 +1125,7 @@ function detectionBadgeColor(cropIndex: number | null): string {
                 v-if="crop.matches_dino_class"
                 class="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full font-mono text-[9px]"
                 style="background: var(--indigo-700); color: var(--surface);"
-                title="Le modèle rattache ce crop à la classe pêchée. À vérifier à l'œil : sur une pièce courante, environ un sur vingt est faux."
+                :title="`Le modèle rattache ce crop à la classe pêchée${crop.dino_spread != null ? ` (marge ${crop.dino_spread.toFixed(3)})` : ''}. À vérifier à l'œil : sur une pièce courante, environ un sur vingt est faux — et une marge sous 0,05 signale souvent une pièce que la banque ne connaît pas du tout, comme une piécette dans un coffret.`"
               >⌁</span>
 
               <!-- Thumbnail -->

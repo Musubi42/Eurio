@@ -1,4 +1,4 @@
-import { Activity, BookOpen, Brain, CircleAlert, ClipboardCheck, ClipboardList, Coins, Crop, Database, Eye, FlaskConical, Gavel, KeyRound, LayoutDashboard, Layers, Network, Scale, ShieldQuestion, Users } from 'lucide-vue-next'
+import { Activity, BookOpen, Brain, CircleAlert, ClipboardCheck, ClipboardList, Coins, Crop, Database, Eye, Fish, FlaskConical, Gavel, KeyRound, LayoutDashboard, Layers, Network, Scale, ShieldQuestion, Users } from 'lucide-vue-next'
 import type { Component } from 'vue'
 
 export interface NavItem {
@@ -76,6 +76,13 @@ export const navSections: NavSection[] = [
         label: 'Review queue',
         icon: ClipboardCheck,
         route: '/review',
+        heavy: true,
+      },
+      {
+        id: 'peche',
+        label: 'Pêche',
+        icon: Fish,
+        route: '/review/peche',
         heavy: true,
       },
       {
