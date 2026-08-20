@@ -174,6 +174,7 @@ Elles se chaînent : chaque skill dit vers laquelle aller ensuite.
 | Skill | Se déclenche quand |
 |---|---|
 | `eurio-enrichment` | une classe est trop pauvre pour entraîner — scrape eBay, crop, **ancres DINO** |
+| `eurio-banque` | **avant de toucher à la banque d'ancres, aux seuils DINO, ou de comparer deux encodeurs** — la maille `class_id`, la courbe références/classe, les rebuilds |
 | `eurio-review` | trancher des crops, décider ce qui entre en training |
 | `eurio-cohort` | composer une cohorte, passer le préflight, comprendre l'expansion `design_group` |
 | `eurio-run-local` | lancer la stack, dérouler le lab (bake → entraînement) |
@@ -303,8 +304,27 @@ Voir `docs/research/detection-pipeline-unified.md`. Pipeline actuelle : YOLO11-n
 | Stratégie offline/sync | `docs/design/_shared/offline-first.md` |
 | Parité proto ↔ Android | `docs/design/_shared/parity-rules.md` |
 | **Sauvegarde / restauration** | skill `eurio-backup`, puis `docs/work-in-progress/backup-pipeline/ROADMAP.md` |
-| **Banque d'ancres DINO, seuils, choix d'encodeur** | `docs/work-in-progress/banque-dino/CONSTAT.md` |
+| **Banque d'ancres DINO, seuils, choix d'encodeur** | la skill `eurio-banque` d'abord ; puis `docs/work-in-progress/scan-sans-retrain/` et `docs/work-in-progress/banque-dino/CONSTAT.md` |
 | Phase spécifique | `docs/app-implem-phases/phase-N-*.md` |
+
+### Dépôts git — github d'abord, codeberg abandonné
+
+**`github` est le dépôt de référence.** Pousse là en premier ; c'est de là que
+le VPS doit tirer (`git pull --ff-only github repo-cleanup`).
+
+⚠️ **Le remote `codeberg` n'est plus alimenté.** Le compte et les dépôts restent
+en place, on ne les supprime pas — on ne s'en sert plus. Deux conséquences
+immédiates, mesurées le 2026-08-20 :
+
+- le push HTTPS vers codeberg **pend puis expire** depuis le Mac (`exit 124`,
+  aucun message) — ne perds pas de temps à le débloquer ;
+- **le clone du VPS (`/opt/eurio`) suit encore `codeberg`** : un `git pull` nu
+  là-bas ramène un arbre en retard. Jusqu'à la bascule, déploie avec
+  `git fetch github repo-cleanup && git merge --ff-only github/repo-cleanup`.
+
+📌 **À faire (non planifié) : passer à GitLab en dépôt principal, github en
+miroir**, et repointer le remote du VPS. Tant que ce n'est pas fait, la règle
+ci-dessus s'applique.
 
 ## Interdictions
 
