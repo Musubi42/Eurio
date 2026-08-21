@@ -8,6 +8,42 @@
 
 ---
 
+## 2026-08-21 — O7 livré, palier 40 au canonique
+
+**Code** : `ml/scripts/reprocess_zero_crops.py` + tâche `ml:src:ebay:reprocess-zero`
+(commit `1572bcbb`), 11 tests, suite à 1942 verts.
+
+**Dry-run** (`-- --dry-run`) : 808 annonces / 1 273 images / 143 classes ;
+`--scope all` : 2 950 / 4 927 (deficit 808, 8-9 63, pleines 1 467, cible
+NULL 612 — les « 92 non représentantes » d'O7 sont résolues par
+`bank_classes` et rejoignent pleines/8-9 ; les 612 sans cible n'étaient pas
+comptées dans la ventilation d'O7).
+
+**Palier 40** (`-- --limit 40 --seed 42 --push`), run `fc6f11c6d754485997b1dc56a3feac2e`,
+13:04:44 → 13:06:53 (**2 min 09**), témoin `recover=ON tau=0.55 scope=deficit
+listings=40 images=61` :
+
+| | |
+|---|---:|
+| images rejouées | 61 |
+| images avec ≥ 1 crop | **48 (79 %)** |
+| crops ajoutés | 48, dont **47 `score_recover`** |
+| restées `zero_crops` | 13 |
+| portes | 4 `reverse`, 1 `not_2eur` → 5 rejetés |
+| enfilés | 42 (37 single, 5 lot) |
+| push `/ingest/run` | 508 lignes |
+
+Vérifié après `go-task ml:db:pull-replica` :
+`SELECT COUNT(*), SUM(detection_method='score_recover') FROM image_assets
+WHERE run_id='fc6f11c6…'` → 48 | 47 ; prédictions `2eur_all` présentes sur les
+48 (écrites par `auto_validate`, pas besoin de backfill) ; dénominateur
+7 483 + 7 037 + 1 290 + 431 = 16 241.
+
+Critère du palier (≥ 50 % d'annonces avec crop) passé → reste des 808 lancé
+dans la foulée (entrée suivante).
+
+---
+
 ## 2026-08-21 — Revue de la vision, ouverture des `zero_crops`, décisions D1–D6
 
 **Contexte.** Revue des docs écrits la veille (`VISION.md`, `FLOW-ADMIN.md`,

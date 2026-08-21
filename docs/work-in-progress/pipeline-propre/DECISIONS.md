@@ -26,6 +26,14 @@ soit fiable — c'est ce qu'on attend d'elles.
 *Écarte* : continuer à servir les 3 612 crops ouverts de classes pleines
 (55 % de la file), et la médiane de 25 crops décidés pour un plafond de 10.
 
+*Précision du 2026-08-21 (soir)* : « pleine » se déclenche à la **cible**
+(`have ≥ target`, 8 ou 5 selon la famille), pas au plafond 10 du builder —
+O1 disait `have ≥ cap`. Le plafond reste exposé (`ClassNeed.cap`) pour
+l'affichage. Implémenté dans `shared/class_need.py::bottleneck_for`, gardé
+par `test_pleine_a_la_cible_pas_au_plafond`. Mesuré sur la réplique :
+671 classes, Σ need 4 426 (4 663 avec 8 partout — D4 économise 237),
+pleine 67 · review 328 · scrape 276.
+
 ## D3 · Les crops des classes pleines sont GARDÉS, pas traités
 
 On ne ferme pas, on ne supprime pas : ces crops serviront la voie A et les
