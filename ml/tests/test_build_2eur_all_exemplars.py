@@ -83,6 +83,9 @@ def _patch_encoder(monkeypatch, tmp_path):
 
 
 def test_build_selects_canonical_plus_diverse_exemplar(tmp_path, monkeypatch):
+    """FPS NU (``medoid_first=False``) : le premier exemplaire est le plus
+    DIVERSIFIANT. Ce n'est plus le défaut du builder depuis O6 (l'amorce au
+    médoïde retiendrait ``dupB``) — cf. tests/test_fps_medoid_seed.py."""
     datasets = tmp_path / "datasets"
     _patch_encoder(monkeypatch, tmp_path)
     store = Store(tmp_path / "t.db")
@@ -91,6 +94,7 @@ def test_build_selects_canonical_plus_diverse_exemplar(tmp_path, monkeypatch):
         bank = A.build_anchors_2eur_all(
             conn=conn, datasets_dir=datasets, encoder_version="dinov2-vitl14",
             force_recompute=True, exemplars_per_class=1, floor_sim=0.0,
+            medoid_first=False,
         )
     # Bank : toutes les lignes keyées sur la classe (rep eurio_id).
     assert bank.eurio_ids[0] == "fr-2015-a"

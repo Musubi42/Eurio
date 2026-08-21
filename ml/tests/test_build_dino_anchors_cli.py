@@ -86,7 +86,8 @@ def test_dispatcher_propagates_write_references_and_avoids_the_write_txn(
     seen = {}
 
     def _fake_builder(*, conn, datasets_dir, force_recompute,
-                      write_references=None, write_legacy=None):
+                      write_references=None, write_legacy=None,
+                      medoid_first=None):
         seen["write_references"] = write_references
         seen["in_transaction"] = conn.in_transaction
         return object()
@@ -106,7 +107,8 @@ def test_dispatcher_opens_the_write_txn_when_tracing(db, monkeypatch):
     seen = {}
 
     def _fake_builder(*, conn, datasets_dir, force_recompute,
-                      write_references=None, write_legacy=None):
+                      write_references=None, write_legacy=None,
+                      medoid_first=None):
         seen["in_transaction"] = conn.in_transaction
         return object()
 

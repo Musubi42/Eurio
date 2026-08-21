@@ -453,6 +453,7 @@ def farthest_point_select(
     seed_vecs: np.ndarray | None = None,
     floor_sim: float = DEFAULT_EXEMPLAR_FLOOR_SIM,
     centroid: np.ndarray | None = None,
+    medoid_first: bool = False,
 ) -> list[tuple[int, float]]:
     """Farthest-Point Sampling dans l'espace d'embedding (pur numpy, testable).
 
@@ -462,6 +463,17 @@ def farthest_point_select(
     « nouveau à l'œil de DINO »). ``seed_vecs`` = vecteurs déjà dans l'ensemble
     (canonique + pins) ; s'il est vide, on amorce par le médoïde (candidat le
     plus proche du centroïde = le plus représentatif).
+
+    ``medoid_first`` — l'AMORCE AU MÉDOÏDE (O6) : le premier choix est le
+    médoïde du pool éligible MÊME quand ``seed_vecs`` est fourni ; les choix
+    suivants restent du FPS ordinaire contre ``seed_vecs`` + choix. Sans elle,
+    un seed (le canonique Numista) fait du premier choix le crop le plus
+    LOINTAIN du canonique — le plus atypique de sa classe, un faux attracteur.
+    Mesuré le 2026-08-20 à nombre d'ancres identique (795 lignes, un
+    exemplaire par classe) : garder le rang le moins diversifiant rend 77,8 %
+    contre 73,8 % au rang 1 (``scripts.bench_refs_curve --rank-order last``).
+    Le ``sim_au_set`` du médoïde est sa similarité MAX au seed (1,0 sans
+    seed) : les rangs restent lisibles comme avant.
 
     Plancher de validité : seuls les candidats à cosinus ≥ ``floor_sim`` du
     centroïde de classe sont éligibles — un scan parfait quasi-dupliqué du
@@ -485,10 +497,16 @@ def farthest_point_select(
     if seed_vecs is not None and len(seed_vecs):
         selected = [row for row in np.asarray(seed_vecs)]
     picked: list[tuple[int, float]] = []
-    if not selected:
-        # Amorce = médoïde (le plus proche du centroïde).
+    if medoid_first or not selected:
+        # Amorce = médoïde (le plus proche du centroïde). Sans seed, c'est la
+        # seule amorce possible ; avec seed, c'est l'amorce O6 — le FPS nu
+        # partirait du point le plus lointain du canonique.
         medoid = max(pool, key=lambda j: float(vecs[j] @ centroid))
-        picked.append((medoid, 1.0))
+        sim_au_set = (
+            float(max(float(vecs[medoid] @ row) for row in selected))
+            if selected else 1.0
+        )
+        picked.append((medoid, sim_au_set))
         selected.append(vecs[medoid])
         pool = [j for j in pool if j != medoid]
 
@@ -827,10 +845,16 @@ def build_anchors_2eur_all(
     exemplars_per_class: int = DEFAULT_EXEMPLARS_PER_CLASS,
     floor_sim: float = DEFAULT_EXEMPLAR_FLOOR_SIM,
     min_exemplars: int | None = None,
+    medoid_first: bool = True,
     write_references: bool = True,
     write_legacy: bool = False,
 ) -> AnchorBank:
     """Banque de SUGGESTIONS = commémo + standards, MULTI-EXEMPLAIRES (B).
+
+    ``medoid_first`` — l'AMORCE du FPS (O6, défaut True) : le premier
+    exemplaire de chaque classe est le médoïde de ses crops, pas le plus
+    lointain du canonique. Tracé dans la note du build (``amorce=medoide`` /
+    ``amorce=fps``) pour que deux banques se comparent sur ce qu'elles sont.
 
     Par classe : le canonique Numista + jusqu'à ``exemplars_per_class`` vrais
     crops validés choisis pour la DIVERSITÉ d'apparence (farthest-point sampling,
@@ -929,6 +953,15 @@ def build_anchors_2eur_all(
         plancher, source_plancher, kind, encoder_version,
         "INACTIF (1 : aucune classe n'est ramenée au canonique seul)"
         if plancher <= 1 else "ACTIF",
+    )
+    amorce = "medoide" if medoid_first else "fps"
+    logger.info(
+        "amorce du FPS : amorce=%s — %s",
+        amorce,
+        "le premier exemplaire de chaque classe est le MÉDOÏDE de ses crops (O6)"
+        if medoid_first else
+        "le premier exemplaire est le crop le plus LOINTAIN du canonique "
+        "(FPS nu, mesuré -4 pts à banque de taille égale)",
     )
 
     # ── Rassemble tout ce qu'il faut encoder : canoniques + crops candidats ──
@@ -1031,7 +1064,7 @@ def build_anchors_2eur_all(
         picks = farthest_point_select(
             cand_vecs, candidate_idx=pool, k=budget,
             seed_vecs=np.stack(seed_vecs) if seed_vecs else None,
-            floor_sim=floor_sim,
+            floor_sim=floor_sim, medoid_first=medoid_first,
         ) if pool and budget else []
         # ── Plancher : sous le seuil, la classe reste sur son canonique ────
         # Les pins ne sont JAMAIS retirés (décision d'humain sur un crop) ; le
@@ -1121,6 +1154,7 @@ def build_anchors_2eur_all(
         # n'a pas de réponse six semaines plus tard.
         note=(
             f"min_exemplars={plancher} (source={source_plancher}); "
+            f"amorce={amorce}; "
             f"{len(sous_plancher)} classes ramenées au canonique seul; "
             f"{len(sans_canonique_gardees)} sans canonique gardées sous le plancher"
         ),

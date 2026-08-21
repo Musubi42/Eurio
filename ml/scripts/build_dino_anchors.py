@@ -184,6 +184,7 @@ def written_paths(bank, *, serve: bool) -> list[tuple[str, str]]:
 def _build_dispatcher(
     kind: str, store: Store, force: bool, *,
     write_references: bool, write_legacy: bool = True,
+    seed_order: str = "medoid",
 ):
     builder = _BUILDERS.get(kind)
     if builder is None:
@@ -195,6 +196,8 @@ def _build_dispatcher(
     }
     if kind in WRITING_KINDS:
         kwargs["write_references"] = write_references
+        # L'amorce du FPS (O6) n'a de sens que pour la banque multi-exemplaires.
+        kwargs["medoid_first"] = seed_order == "medoid"
     if write_references:
         with store._writing() as conn:  # noqa: SLF001 — trace dino_class_references
             return builder(conn=conn, **kwargs)
@@ -251,6 +254,14 @@ def build_parser() -> argparse.ArgumentParser:
              "baseline de banc : sans ce drapeau, la banque que la review sert "
              "est remplacée (c'est le comportement voulu d'un rebuild de prod).",
     )
+    parser.add_argument(
+        "--seed-order", choices=("medoid", "fps"), default="medoid",
+        help="Amorce du FPS par classe (2eur_all) : 'medoid' (défaut, O6) "
+             "retient d'abord le crop le plus représentatif de la classe ; "
+             "'fps' retient d'abord le plus lointain du canonique — l'ancien "
+             "comportement, mesuré -4 pts à taille de banque égale. La note "
+             "du build dit laquelle a servi (amorce=medoide|fps).",
+    )
     parser.add_argument("--verbose", "-v", action="store_true")
     return parser
 
@@ -281,10 +292,16 @@ def main() -> int:
         print(f"\n{exc}\n", file=sys.stderr)
         return 2
 
+    if args.kind in WRITING_KINDS:
+        logger.info(
+            "amorce du FPS : --seed-order %s (%s)", args.seed_order,
+            "médoïde d'abord, O6" if args.seed_order == "medoid"
+            else "point lointain d'abord, FPS nu",
+        )
     t0 = time.perf_counter()
     bank = _build_dispatcher(
         args.kind, store, args.force, write_references=write_references,
-        write_legacy=args.serve,
+        write_legacy=args.serve, seed_order=args.seed_order,
     )
     dt = time.perf_counter() - t0
 
