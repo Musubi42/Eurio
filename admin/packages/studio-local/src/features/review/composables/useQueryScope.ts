@@ -49,3 +49,13 @@ export function queryRunIds(route: RouteLocationNormalizedLoaded): string[] | nu
   const ids = raw.split(',').map((s) => s.trim()).filter(Boolean)
   return ids.length ? ids : null
 }
+
+/**
+ * Le périmètre PAR BESOIN : `?need=1` → ne servir que les crops dont le top-1
+ * DINO tombe dans une classe encore en besoin ; les classes pleines sont
+ * parquées (D2/D3, `docs/work-in-progress/pipeline-propre/DECISIONS.md`).
+ * Côté API : `need_only=true`. Tout autre valeur que `1` = filtre absent.
+ */
+export function queryNeedOnly(route: RouteLocationNormalizedLoaded): boolean {
+  return queryParam(route, 'need') === '1'
+}

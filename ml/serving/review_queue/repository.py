@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 
 from serving._coin_helpers import canonical_obverse_url
 from shared.bank_classes import bank_class_ids, bank_class_ids_for_many
+from shared.class_need import all_needs
 from shared.dino_scope import build_dino_scope, suggestions_join_sql
 from shared.verdict_scope import (
     SUGGESTIONS_ANCHORS_KIND,
@@ -25,6 +26,7 @@ from .models import (
     ReviewCandidate,
     ReviewItem,
     ReviewStats,
+    RunParked,
     RunProgress,
     RunProgressCounts,
     TextSignalsResponse,
@@ -92,6 +94,70 @@ def run_filter_clause(
         return "", []
     ph = ",".join("?" * len(run_ids))
     return f" AND {alias}.run_id IN ({ph})", list(run_ids)
+
+
+# ─── Périmètre par BESOIN (D2 / D3 : les classes pleines sont parquées) ──────
+
+#: Limite de variables liées de SQLite (SQLITE_MAX_VARIABLE_NUMBER, défaut
+#: 32 766). La banque compte 671 classes le 2026-08-21 ; on ne découpe pas, on
+#: refuse bruyamment si un jour la liste s'en approche.
+NEED_IDS_BOUND = 30_000
+
+
+def deficient_class_ids(conn: sqlite3.Connection) -> list[str]:
+    """Les classes de la banque des SUGGESTIONS qui n'ont pas atteint leur cible.
+
+    La règle (`have < target`, 8 ou 5 selon la famille) vit dans UN endroit :
+    `shared.class_need` (O1). Ici on ne fait que lire son verdict : tout ce
+    qui n'est pas `pleine` manque encore d'exemplaires. La réécrire en SQL
+    serait la quatrième copie que O1 a précisément été écrit pour supprimer.
+    """
+    needs = all_needs(
+        conn, anchors_kind=SUGGESTIONS_ANCHORS_KIND,
+        encoder_version=SUGGESTIONS_ENCODER_VERSION,
+    )
+    return [n.class_id for n in needs if n.bottleneck != "pleine"]
+
+
+def need_filter_clause(
+    conn: sqlite3.Connection, need_only: bool, *, alias: str = "a",
+) -> tuple[str, list[object]]:
+    """Le filtre « crops dont le top-1 tombe dans une classe qui en a besoin ».
+
+    D2 : un crop que la banque rattache à une classe pleine n'est pas servi.
+    D3 : il n'est ni fermé ni supprimé — il sort du périmètre, et de lui seul.
+
+    Le top-1 est lu dans la banque des SUGGESTIONS (`2eur_all`), la seule qui
+    couvre les courantes — jamais celle du verdict. Un crop SANS prédiction
+    dans cette banque est écarté aussi : on ne sait pas où il tombe, donc on
+    ne peut pas dire qu'il manque quelque part. `run_progress` les compte à
+    part (`parked.no_prediction`).
+
+    Sous-requête sur `{alias}.id` plutôt qu'une jointure : le filtre s'ajoute
+    ainsi à n'importe quelle requête qui porte `image_assets` — liste, lots,
+    navigation — sans dépendre de ses jointures. `False` → clause vide, aucune
+    requête ne change.
+    """
+    if not need_only:
+        return "", []
+    ids = deficient_class_ids(conn)
+    if len(ids) > NEED_IDS_BOUND:
+        raise RuntimeError(
+            f"{len(ids)} classes en besoin : au-delà de la limite de variables "
+            f"SQLite ({NEED_IDS_BOUND}), le filtre doit être découpé",
+        )
+    if not ids:
+        # Aucune classe en besoin : rien à servir. `AND 0` plutôt que `IN ()`,
+        # que SQLite accepte mais qui se lit comme un oubli.
+        return " AND 0", []
+    ph = ",".join("?" * len(ids))
+    return (
+        f" AND {alias}.id IN (SELECT need_p.asset_id "
+        f"FROM image_asset_dino_predictions need_p "
+        f"WHERE need_p.anchors_kind = ? AND need_p.encoder_version = ? "
+        f"AND need_p.top1_eurio_id IN ({ph}))",
+        [SUGGESTIONS_ANCHORS_KIND, SUGGESTIONS_ENCODER_VERSION, *ids],
+    )
 
 
 # ─── Helpers candidates / row → item ────────────────────────────────────────
@@ -463,10 +529,16 @@ def list_queue(
     dino_rank: int = 1,
     dino_country_only: bool = True,
     run_ids: list[str] | None = None,
+    need_only: bool = False,
 ) -> list[ReviewItem]:
     # `run_ids` : restreindre aux crops créés par ces runs de scrape
     # (`image_assets.run_id`). S'ajoute à tout le reste — cible, pêche, tri —
     # sans rien remplacer. Cf. `run_filter_clause`.
+    #
+    # `need_only` : ne servir que les crops dont le top-1 (banque des
+    # suggestions) tombe dans une classe encore en besoin ; les classes
+    # pleines sont parquées (D2/D3). Même logique d'ajout. Cf.
+    # `need_filter_clause`.
     #
     # `dino` : d'abord ce que le modèle rattache à LA CLASSE TRAVAILLÉE, puis
     # du plus net au plus flou.
@@ -542,6 +614,9 @@ def list_queue(
     run_clause, run_args = run_filter_clause(run_ids, alias="a")
     where += run_clause
     args.extend(run_args)
+    need_clause, need_args = need_filter_clause(conn, need_only, alias="a")
+    where += need_clause
+    args.extend(need_args)
 
     if review_ids:
         where += f" AND rq.id IN ({','.join('?' * len(review_ids))})"
@@ -744,6 +819,7 @@ def _lot_scope(
     dino_min_spread: float | None = None,
     dino_country_only: bool = True,
     run_ids: list[str] | None = None,
+    need_only: bool = False,
 ) -> tuple[str, str, str, list[object]]:
     """Le périmètre d'une file de lots, en un seul endroit.
 
@@ -768,8 +844,15 @@ def _lot_scope(
     choisi, pêche comprise — c'est un filtre sur les crops, donc sur les
     listings qui en ont encore un d'ouvert. Il va dans ``where_clause`` et ses
     args passent en tête, conformément à l'ordre ``where`` puis ``match``.
+
+    ``need_only`` (crops dont le top-1 tombe dans une classe en besoin, D2)
+    suit exactement le même chemin que ``run_ids`` : un filtre sur les crops,
+    ajouté au ``where_clause`` de chaque branche.
     """
     run_clause, run_args = run_filter_clause(run_ids, alias="a")
+    need_clause, need_args = need_filter_clause(conn, need_only, alias="a")
+    run_clause += need_clause
+    run_args = [*run_args, *need_args]
 
     if dino_class:
         scope = build_dino_scope(
@@ -872,6 +955,7 @@ def list_lots(
     dino_min_spread: float | None = None,
     dino_country_only: bool = True,
     run_ids: list[str] | None = None,
+    need_only: bool = False,
 ) -> tuple[list[LotListItem], int]:
     """Liste les listings ayant ≥ 1 row review_queue.kind='lot' status='open'.
 
@@ -883,6 +967,7 @@ def list_lots(
     - `cohort_id` → tous les lots des coins de la cohort
 
     `run_ids` se combine à chacun : seuls les crops créés par ces runs comptent.
+    `need_only` de même : seuls les crops d'une classe encore en besoin (D2).
     """
     try:
         join_sql, where_clause, match_expr, scope_args = _lot_scope(
@@ -890,6 +975,7 @@ def list_lots(
             design_group=design_group, dino_class=dino_class,
             dino_rank=dino_rank, dino_min_spread=dino_min_spread,
             dino_country_only=dino_country_only, run_ids=run_ids,
+            need_only=need_only,
         )
     except ValueError:
         return [], 0
@@ -972,7 +1058,9 @@ def list_lots(
     return items, int(total or 0)
 
 
-def run_progress(conn: sqlite3.Connection, run_ids: list[str]) -> RunProgress:
+def run_progress(
+    conn: sqlite3.Connection, run_ids: list[str], *, need_only: bool = False,
+) -> RunProgress:
     """Où en est la review des crops produits par ces runs.
 
     Une seule requête : les rows `review_queue` des assets dont `run_id` est
@@ -981,8 +1069,45 @@ def run_progress(conn: sqlite3.Connection, run_ids: list[str]) -> RunProgress:
     `skipped`, priorité repoussée), on la compte donc « passée » et non
     « ouverte » — sinon le compteur n'avancerait jamais sur un run qu'on ne
     fait que parcourir. Cf. `RunProgressCounts`.
+
+    `need_only` : `open` ne compte plus que ce que la file servira sous ce
+    filtre ; les rows ouvertes qu'il écarte sortent dans `parked`
+    (`full_class` : top-1 dans une classe pleine, D2 ; `no_prediction` : pas
+    de top-1 dans la banque des suggestions). `total`, `done`, `skipped`
+    restent ceux du run entier : `total = open + done + skipped + parked`.
+    Sans le filtre, la requête est la même qu'avant, au caractère près.
     """
     run_clause, run_args = run_filter_clause(run_ids, alias="a")
+
+    # Sous `need_only`, chaque row est aussi classée par ce que le filtre en
+    # ferait. Les ids en besoin sont ceux-là mêmes que `need_filter_clause`
+    # injecte : les deux lectures ne peuvent pas diverger.
+    need_join, need_col, need_args = "", "", []
+    if need_only:
+        ids = deficient_class_ids(conn)
+        if len(ids) > NEED_IDS_BOUND:
+            raise RuntimeError(
+                f"{len(ids)} classes en besoin : au-delà de la limite de "
+                f"variables SQLite ({NEED_IDS_BOUND})",
+            )
+        in_need = f"need_p.top1_eurio_id IN ({','.join('?' * len(ids))})" if ids else "0"
+        need_join = (
+            "\n          LEFT JOIN image_asset_dino_predictions need_p"
+            "\n                 ON need_p.asset_id = a.id"
+            "\n                AND need_p.anchors_kind = ?"
+            "\n                AND need_p.encoder_version = ?"
+        )
+        need_col = (
+            "\n               CASE"
+            "\n                 WHEN need_p.asset_id IS NULL THEN 'no_prediction'"
+            f"\n                 WHEN {in_need} THEN 'need'"
+            "\n                 ELSE 'full_class'"
+            "\n               END AS need_bucket,"
+        )
+        # Dans l'ordre des `?` du texte : le CASE du SELECT (ids) vient AVANT
+        # le ON de la jointure (kind, encoder).
+        need_args = [*ids, SUGGESTIONS_ANCHORS_KIND, SUGGESTIONS_ENCODER_VERSION]
+
     rows = conn.execute(
         f"""
         SELECT rq.kind AS kind,
@@ -992,20 +1117,26 @@ def run_progress(conn: sqlite3.Connection, run_ids: list[str]) -> RunProgress:
                    OR (rq.status = 'open' AND rq.decision_notes = 'skipped')
                    THEN 'skipped'
                  ELSE 'open'
-               END AS bucket,
+               END AS bucket,{need_col}
                COUNT(*) AS n
           FROM review_queue rq
-          JOIN image_assets a ON a.id = rq.image_asset_id
+          JOIN image_assets a ON a.id = rq.image_asset_id{need_join}
          WHERE 1 = 1{run_clause}
-         GROUP BY kind, bucket
+         GROUP BY {"kind, bucket, need_bucket" if need_only else "kind, bucket"}
         """,
-        run_args,
+        [*need_args, *run_args],
     ).fetchall()
 
     by_kind: dict[str, dict[str, int]] = {}
+    parked = {"full_class": 0, "no_prediction": 0}
     for r in rows:
         k = by_kind.setdefault(r["kind"], {"open": 0, "done": 0, "skipped": 0})
-        k[r["bucket"]] += int(r["n"])
+        n = int(r["n"])
+        if need_only and r["bucket"] == "open" and r["need_bucket"] != "need":
+            # Ouvert, mais hors de la file sous ce filtre : parqué, pas perdu.
+            parked[r["need_bucket"]] += n
+            continue
+        k[r["bucket"]] += n
 
     def _counts(d: dict[str, int]) -> RunProgressCounts:
         return RunProgressCounts(
@@ -1020,11 +1151,14 @@ def run_progress(conn: sqlite3.Connection, run_ids: list[str]) -> RunProgress:
     totals = {
         b: sum(d[b] for d in by_kind.values()) for b in ("open", "done", "skipped")
     }
+    n_parked = parked["full_class"] + parked["no_prediction"]
     return RunProgress(
         run_ids=list(run_ids),
-        total=totals["open"] + totals["done"] + totals["skipped"],
+        need_only=need_only,
+        total=totals["open"] + totals["done"] + totals["skipped"] + n_parked,
         open=totals["open"], done=totals["done"], skipped=totals["skipped"],
         by_kind={k: _counts(d) for k, d in by_kind.items()},
+        parked=RunParked(**parked) if need_only else None,
     )
 
 
@@ -1240,6 +1374,7 @@ def lot_siblings(
     dino_min_spread: float | None = None,
     dino_country_only: bool = True,
     run_ids: list[str] | None = None,
+    need_only: bool = False,
 ) -> tuple[str | None, str | None]:
     """Le lot précédent et le suivant **dans le périmètre courant**.
 
@@ -1254,6 +1389,7 @@ def lot_siblings(
             design_group=design_group, dino_class=dino_class,
             dino_rank=dino_rank, dino_min_spread=dino_min_spread,
             dino_country_only=dino_country_only, run_ids=run_ids,
+            need_only=need_only,
         )
     except ValueError:
         return None, None
@@ -1281,6 +1417,7 @@ def get_lot_detail(
     dino_min_spread: float | None = None,
     dino_country_only: bool = True,
     run_ids: list[str] | None = None,
+    need_only: bool = False,
 ):
     """Lot detail — version sans re-détection live (image lean).
 
@@ -1462,6 +1599,7 @@ def get_lot_detail(
         design_group=design_group, dino_class=dino_class,
         dino_rank=dino_rank, dino_min_spread=dino_min_spread,
         dino_country_only=dino_country_only, run_ids=run_ids,
+        need_only=need_only,
     )
 
     return LotDetail(

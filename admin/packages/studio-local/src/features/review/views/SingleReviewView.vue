@@ -31,7 +31,7 @@ import {
   type ReviewStats,
 } from '../composables/useReviewApi'
 import { useReviewKeybinds } from '../composables/useReviewKeybinds'
-import { queryParam, queryRunIds } from '../composables/useQueryScope'
+import { queryNeedOnly, queryParam, queryRunIds } from '../composables/useQueryScope'
 import type { CoinSearchEntry } from '../composables/useCoinsSearch'
 import SplitCompare from '../components/SplitCompare.vue'
 import CircleCropEditor from '../components/CircleCropEditor.vue'
@@ -245,6 +245,10 @@ const dinoTop1Only = computed(() => queryParam(route, 'dino_top1') === '1')
 // cible, pêche, tri) : c'est la même file, restreinte. Le compteur du bandeau
 // (ReviewPage) lit le même param — cf. queryRunIds.
 const runIds = computed(() => queryRunIds(route))
+// ── Périmètre PAR BESOIN (?need=1) ──────────────────────────────────────────
+// Les crops dont le top-1 DINO tombe dans une classe encore en besoin, et eux
+// seuls : les classes pleines sont parquées, pas servies (D2/D3). Un ET.
+const needOnly = computed(() => queryNeedOnly(route))
 
 // L'hôte (ReviewPage) rafraîchit le compteur d'avancement par run après chaque
 // décision ÉCRITE — émis une fois le POST revenu, jamais avant.
@@ -299,6 +303,7 @@ async function loadInner() {
       dinoClass: dinoClass.value,
       dinoRank: dinoRank.value,
       runIds: runIds.value,
+      needOnly: needOnly.value,
     }),
     fetchReviewStats(),
   ])
@@ -331,6 +336,7 @@ async function loadMore() {
       dinoClass: dinoClass.value,
       dinoRank: dinoRank.value,
       runIds: runIds.value,
+      needOnly: needOnly.value,
     })
     const known = new Set(queue.value.map((r) => r.id))
     if (pendingCommit.value) known.add(pendingCommit.value.reviewId)
@@ -431,7 +437,7 @@ onMounted(() => {
 // Le tri fait partie du périmètre : l'oublier ici donnerait un premier écran
 // trié puis une pagination qui ne l'est plus — panne muette parfaite.
 watch([cohortId, lane, eurioId, reviewIds, order, dinoMinSpread, dinoTop1Only,
-       dinoClass, dinoRank, () => runIds.value?.join(',') ?? null], () => {
+       dinoClass, dinoRank, () => runIds.value?.join(',') ?? null, needOnly], () => {
   void load()
 })
 

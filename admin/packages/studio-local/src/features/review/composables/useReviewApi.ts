@@ -272,6 +272,12 @@ export async function fetchReviewQueue(
      * Cf. `queryRunIds` (`?run=a,b`) et `fetchRunProgress` pour le compteur.
      */
     runIds?: string[] | null
+    /**
+     * Ne servir que les crops dont le top-1 DINO tombe dans une classe ENCORE
+     * EN BESOIN ; les classes pleines sont parquées, jamais fermées (D2/D3).
+     * Les crops sans prédiction sortent aussi. Cf. `queryNeedOnly` (`?need=1`).
+     */
+    needOnly?: boolean
   } = {},
 ): Promise<ReviewItem[]> {
   const limit = opts.limit ?? 30
@@ -289,6 +295,7 @@ export async function fetchReviewQueue(
   if (opts.dinoRank) params.set('dino_rank', String(opts.dinoRank))
   if (opts.dinoCountryOnly === false) params.set('dino_country_only', 'false')
   if (opts.runIds && opts.runIds.length) params.set('run_id', opts.runIds.join(','))
+  if (opts.needOnly) params.set('need_only', 'true')
   // Phase 2c-b : porté sur eurio-api (Bearer PAT).
   const items = await fetchEurio<ReviewItem[]>(`/review-queue?${params.toString()}`)
   return items.map(promoteItemUrls)
@@ -306,15 +313,31 @@ export interface RunProgressCounts {
   skipped: number
 }
 
+/** Les rows OUVERTES que `need_only` écarte de la file (D2/D3) : top-1 dans
+ *  une classe pleine, ou pas de top-1 du tout. Parquées, jamais fermées. */
+export interface RunParked {
+  full_class: number
+  no_prediction: number
+}
+
 export interface RunProgress extends RunProgressCounts {
   run_ids: string[]
+  need_only: boolean
   by_kind: Record<'single' | 'lot', RunProgressCounts> & Record<string, RunProgressCounts>
+  /** Présent sous `need_only` seulement ; alors `total = open + done + skipped
+   *  + parked.full_class + parked.no_prediction`. */
+  parked: RunParked | null
 }
 
 /** Où en est la review des crops produits par ces runs — TOUTES les rows,
- *  pas seulement l'ouvert que sert `fetchReviewQueue`. */
-export async function fetchRunProgress(runIds: string[]): Promise<RunProgress> {
+ *  pas seulement l'ouvert que sert `fetchReviewQueue`. Sous `needOnly`,
+ *  `open` ne compte que ce que la file servira et `parked` dit le reste. */
+export async function fetchRunProgress(
+  runIds: string[],
+  needOnly = false,
+): Promise<RunProgress> {
   const params = new URLSearchParams({ run_id: runIds.join(',') })
+  if (needOnly) params.set('need_only', 'true')
   return fetchEurio<RunProgress>(`/review-queue/run-progress?${params.toString()}`)
 }
 

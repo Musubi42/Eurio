@@ -13,7 +13,7 @@ import { useCohortsQuery } from '@/features/lab/composables/useLabQueries'
 import SingleReviewView from '../views/SingleReviewView.vue'
 import LotReviewView from '../views/LotReviewView.vue'
 import RunProgressLine from '../components/RunProgressLine.vue'
-import { queryRunIds } from '../composables/useQueryScope'
+import { queryNeedOnly, queryRunIds } from '../composables/useQueryScope'
 
 type ReviewMode = 'single' | 'lot'
 
@@ -41,6 +41,9 @@ function setCohort(id: string) {
 // le reste de la query (tous les `router.replace` ci-dessous la spreadent),
 // donc un changement de mode ou une navigation de lot le garde.
 const runIds = computed(() => queryRunIds(route) ?? [])
+// `?need=1` : le compteur doit lire le même filtre que la file, sinon il
+// annonce des ouverts que la file ne servira jamais (classes pleines, D2).
+const needOnly = computed(() => queryNeedOnly(route))
 const progressKey = ref(0)
 function onDecided() { progressKey.value++ }
 
@@ -150,7 +153,12 @@ watch(mode, () => {})
     </header>
 
     <!-- ═══ Avancement par run (seulement quand ?run= est posé) ═══ -->
-    <RunProgressLine v-if="runIds.length" :run-ids="runIds" :refresh-key="progressKey" />
+    <RunProgressLine
+      v-if="runIds.length"
+      :run-ids="runIds"
+      :need-only="needOnly"
+      :refresh-key="progressKey"
+    />
 
     <!-- ═══ Vue mountée selon le mode ═══ -->
     <SingleReviewView v-if="mode === 'single'" @decided="onDecided" />

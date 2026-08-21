@@ -197,13 +197,30 @@ class RunProgressCounts(BaseModel):
     skipped: int
 
 
+class RunParked(BaseModel):
+    """Les rows OUVERTES que le filtre `need_only` écarte de la file (D2/D3).
+
+    - `full_class` : top-1 (banque des suggestions) dans une classe déjà à sa
+      cible — parquée, ni fermée ni supprimée
+    - `no_prediction` : pas de top-1 dans cette banque ; on ne sait pas où le
+      crop tombe, donc on ne le sert pas sous ce filtre
+    """
+    full_class: int
+    no_prediction: int
+
+
 class RunProgress(BaseModel):
     run_ids: list[str]
+    need_only: bool = False
     total: int
     open: int
     done: int
     skipped: int
     by_kind: dict[str, RunProgressCounts]
+    #: Présent seulement sous `need_only` ; alors `total = open + done +
+    #: skipped + parked.full_class + parked.no_prediction` (et `by_kind[*].open`
+    #: ne compte que les rows en besoin).
+    parked: RunParked | None = None
 
 
 class LotCrop(BaseModel):

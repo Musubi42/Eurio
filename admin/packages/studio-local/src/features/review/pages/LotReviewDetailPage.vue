@@ -14,7 +14,7 @@ import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import LotDetailView from '../views/LotDetailView.vue'
 import RunProgressLine from '../components/RunProgressLine.vue'
-import { queryParam, queryRunIds } from '../composables/useQueryScope'
+import { queryNeedOnly, queryParam, queryRunIds } from '../composables/useQueryScope'
 
 const route = useRoute()
 const router = useRouter()
@@ -34,6 +34,9 @@ const SCOPE_KEYS = [
 // d'avancement se rafraîchit à chaque changement de lot — c'est-à-dire après
 // chaque décision, puisque trancher un lot mène au suivant ou à la grille.
 const runIds = computed(() => queryRunIds(route) ?? [])
+// Périmètre par besoin : `?need=1` dans l'URL, `need_only=true` côté API —
+// les voisins comme le compteur l'appliquent (D2/D3).
+const needOnly = computed(() => queryNeedOnly(route))
 
 const scope = computed<Record<string, string>>(() => {
   const out: Record<string, string> = {}
@@ -42,6 +45,7 @@ const scope = computed<Record<string, string>>(() => {
     if (v) out[k] = v
   }
   if (runIds.value.length) out.run_id = runIds.value.join(',')
+  if (needOnly.value) out.need_only = 'true'
   return out
 })
 
@@ -65,6 +69,7 @@ function leave() {
     <RunProgressLine
       v-if="runIds.length"
       :run-ids="runIds"
+      :need-only="needOnly"
       :refresh-key="listingKey"
     />
     <LotDetailView

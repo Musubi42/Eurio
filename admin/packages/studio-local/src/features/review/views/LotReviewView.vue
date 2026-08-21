@@ -10,7 +10,7 @@ import {
   fetchLots, LotReviewError,
   type LotListItem,
 } from '../composables/useLotReview'
-import { queryRunIds } from '../composables/useQueryScope'
+import { queryNeedOnly, queryRunIds } from '../composables/useQueryScope'
 import LotCard from '../components/LotCard.vue'
 
 const router = useRouter()
@@ -39,6 +39,9 @@ const designGroup = computed(() =>
 // Scope PAR RUN SOURCE : ?run=a,b → seulement les listings ayant un crop ouvert
 // créé par ces runs. Se combine aux scopes ci-dessus.
 const runIds = computed(() => queryRunIds(route))
+// Scope PAR BESOIN : ?need=1 → seulement les listings ayant un crop ouvert
+// dont le top-1 tombe dans une classe encore en besoin (D2/D3).
+const needOnly = computed(() => queryNeedOnly(route))
 
 const lots = ref<LotListItem[]>([])
 const total = ref(0)
@@ -55,6 +58,7 @@ async function load() {
       targetEurioId: targetEurioId.value,
       designGroup: designGroup.value,
       runIds: runIds.value,
+      needOnly: needOnly.value,
     })
     lots.value = resp.items
     total.value = resp.total
@@ -67,7 +71,7 @@ async function load() {
 
 onMounted(load)
 watch(
-  [cohortId, targetEurioId, designGroup, () => runIds.value?.join(',') ?? null],
+  [cohortId, targetEurioId, designGroup, () => runIds.value?.join(',') ?? null, needOnly],
   () => { void load() },
 )
 
@@ -76,9 +80,12 @@ function openLot(key: string) {
   // Le périmètre par run suit : sans lui, « lot suivant » repartirait dans la
   // file lot GLOBALE et le compteur du détail disparaîtrait.
   const run = runIds.value?.join(',')
+  const query: Record<string, string> = {}
+  if (run) query.run = run
+  if (needOnly.value) query.need = '1'
   void router.push({
     path: `/review/lot/${encodeURIComponent(key)}`,
-    query: run ? { run } : {},
+    query,
   })
 }
 </script>

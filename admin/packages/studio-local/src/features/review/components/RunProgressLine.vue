@@ -16,8 +16,12 @@ import { fetchRunProgress, type RunProgress } from '../composables/useReviewApi'
 
 const props = withDefaults(defineProps<{
   runIds: string[]
+  /** `?need=1` : l'ouvert ne compte que ce que la file sert, et les parqués
+   *  (classe pleine / sans prédiction) s'affichent à part — D3 exige qu'ils
+   *  restent visibles. */
+  needOnly?: boolean
   refreshKey?: number | string
-}>(), { refreshKey: 0 })
+}>(), { needOnly: false, refreshKey: 0 })
 
 const progress = ref<RunProgress | null>(null)
 const error = ref<string | null>(null)
@@ -25,7 +29,7 @@ const error = ref<string | null>(null)
 async function load() {
   if (!props.runIds.length) { progress.value = null; return }
   try {
-    progress.value = await fetchRunProgress(props.runIds)
+    progress.value = await fetchRunProgress(props.runIds, props.needOnly)
     error.value = null
   } catch (err) {
     // On garde le dernier chiffre connu et on dit que celui-ci a échoué :
@@ -35,7 +39,7 @@ async function load() {
 }
 
 watch(
-  [() => props.runIds.join(','), () => props.refreshKey],
+  [() => props.runIds.join(','), () => props.needOnly, () => props.refreshKey],
   () => { void load() },
   { immediate: true },
 )
@@ -76,6 +80,18 @@ function short(id: string): string {
         <span class="font-semibold" style="color: var(--ink);">{{ progress.skipped.toLocaleString('fr-FR') }}</span>
         <span class="ml-1" style="color: var(--ink-400);">passés</span>
       </span>
+      <template v-if="progress.parked">
+        <span class="opacity-50">·</span>
+        <span>
+          <span class="font-semibold" style="color: var(--ink);">{{ progress.parked.full_class.toLocaleString('fr-FR') }}</span>
+          <span class="ml-1" style="color: var(--ink-400);">parqués (classe pleine)</span>
+        </span>
+        <span v-if="progress.parked.no_prediction" class="opacity-50">·</span>
+        <span v-if="progress.parked.no_prediction">
+          <span class="font-semibold" style="color: var(--ink);">{{ progress.parked.no_prediction.toLocaleString('fr-FR') }}</span>
+          <span class="ml-1" style="color: var(--ink-400);">sans prédiction</span>
+        </span>
+      </template>
     </template>
     <span v-else-if="!error" style="color: var(--ink-400);">…</span>
     <span v-if="error" style="color: var(--danger);">compteur indisponible — {{ error }}</span>

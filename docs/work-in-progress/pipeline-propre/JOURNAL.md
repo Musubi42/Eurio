@@ -8,6 +8,39 @@
 
 ---
 
+## 2026-08-21 (soir) — La file par run servait des classes pleines : D2 oubliée
+
+**Constat PO** en reviewant `/review/manual?run=10408fc2…,fc6f11c6…` :
+`at-2euro-standard-t1` (10/10 fps, 151 validés) et `ad-2euro-standard-t1`
+(10/10, 22 validés) revenaient sans cesse.
+
+**Cause** : le reprocess a été cadré par la **cible du scrape** (annonces
+visant une classe déficitaire) et l'URL par le **run** ; ni l'un ni l'autre
+ne regarde **ce que DINO reconnaît**. Sur les 770 items ouverts avec
+prédiction : top-1 = cible **366**, top-1 ≠ cible **404** ; **267** top-1
+tombent dans une classe déjà pleine (≥ 8 fps), 503 dans une déficitaire.
+
+```sql
+WITH run_items AS (SELECT rq.id, s.target_eurio_id tgt, p.top1_eurio_id top1
+  FROM review_queue rq JOIN image_assets a ON a.id=rq.image_asset_id
+  JOIN source_images s ON s.id=a.source_image_id
+  LEFT JOIN image_asset_dino_predictions p ON p.asset_id=a.id AND p.anchors_kind='2eur_all'
+  WHERE rq.status='open' AND a.run_id IN ('10408fc2d40945e491d656cb0b75d2b5','fc6f11c6d754485997b1dc56a3feac2e')),
+have AS (SELECT class_id, SUM(method='fps') n FROM dino_class_references WHERE anchors_kind='2eur_all' GROUP BY 1)
+SELECT COUNT(*) FROM run_items r JOIN have h ON h.class_id=r.top1 WHERE h.n>=8;   -- 267
+```
+
+Le chiffre était déjà dans l'entrée précédente (« top-1 vers une classe
+pleine : 269 ») ; il n'avait pas été traduit en filtre. **Leçon** : un
+périmètre de review doit appliquer D2 (filtre par la prédiction) quel que
+soit son mode d'entrée — run, cohorte, cible. Le run n'est qu'un sous-ensemble.
+
+**Correctif** : `?need=1` sur la file (`need_only` côté API), calculé par
+`shared.class_need` (top-1 dans une classe à `have < target`) ; les autres
+sont **parqués** (D3) et comptés dans le bandeau.
+
+---
+
 ## 2026-08-21 — O7 : les 808 annonces déficitaires rejouées
 
 Run `10408fc2d40945e491d656cb0b75d2b5` (`go-task ml:src:ebay:reprocess-zero -- --push`),
