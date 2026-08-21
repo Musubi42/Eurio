@@ -44,6 +44,8 @@ CORRIGES = [
     "llm_coin_aliases",
     "mine_coin_aliases",
     "sweep_bce_empty_upstream",
+    # Né conforme (2026-08-21) : le reprocess O7 des annonces sans crop.
+    "reprocess_zero_crops",
 ]
 
 

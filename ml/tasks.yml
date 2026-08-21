@@ -833,6 +833,15 @@ tasks:
     cmds:
       - "{{.VENV}}/python -m sources.cli --source ebay {{.CLI_ARGS}}"
 
+  src:ebay:reprocess-zero:
+    desc: "Rejoue la détection sur les annonces eBay dont AUCUNE image n'a rendu de crop (O7, décision D5), avec la passe de secours score_recover ACTIVE — témoin : le log de run commence par `recover=ON tau=… scope=… listings=N images=M` ; sans cette ligne, aucun run n'est créé (exit 2). Zéro appel eBay (les raws sont en MinIO). Défaut : --scope deficit = les annonces visant une classe de banque à moins de 8 exemplaires fps (808 annonces, 143 classes au 2026-08-21) ; --scope all = les 2950. Aperçu : -- --dry-run [--scope all]. Essai : -- --limit 20 --seed 42. La chaîne aval est celle du scrape (resolve → auto_validate → enqueue) et le run est poussé au canonique dès qu'EURIO_API_URL est posé (--push = réplique scratch, --no-push = local seul). Spec : docs/work-in-progress/pipeline-propre/outils/O7-reprocess-zero-crops.md"
+    # Même passe de secours que src:ebay:run — le script la pose aussi lui-même et
+    # vérifie le témoin ; l'env ici garantit qu'un `--dry-run` la voit déjà active.
+    env:
+      EURIO_CENSUS_RECOVER: "1"
+    cmds:
+      - "{{.VENV}}/python -m scripts.reprocess_zero_crops {{.CLI_ARGS}}"
+
   src:ebay:dry:
     desc: "Preview eBay batch (Discover only) — no quota consumed beyond the search calls."
     cmds:
