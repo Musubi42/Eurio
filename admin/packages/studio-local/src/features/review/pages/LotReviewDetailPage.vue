@@ -13,7 +13,8 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import LotDetailView from '../views/LotDetailView.vue'
-import { queryParam } from '../composables/useQueryScope'
+import RunProgressLine from '../components/RunProgressLine.vue'
+import { queryParam, queryRunIds } from '../composables/useQueryScope'
 
 const route = useRoute()
 const router = useRouter()
@@ -29,12 +30,18 @@ const SCOPE_KEYS = [
   'dino_class', 'dino_rank', 'dino_min_spread',
 ] as const
 
+// Périmètre par run : `?run=a,b` dans l'URL, `run_id=a,b` côté API. Le bandeau
+// d'avancement se rafraîchit à chaque changement de lot — c'est-à-dire après
+// chaque décision, puisque trancher un lot mène au suivant ou à la grille.
+const runIds = computed(() => queryRunIds(route) ?? [])
+
 const scope = computed<Record<string, string>>(() => {
   const out: Record<string, string> = {}
   for (const k of SCOPE_KEYS) {
     const v = queryParam(route, k)
     if (v) out[k] = v
   }
+  if (runIds.value.length) out.run_id = runIds.value.join(',')
   return out
 })
 
@@ -54,11 +61,18 @@ function leave() {
 </script>
 
 <template>
-  <LotDetailView
-    :key="listingKey"
-    :listing-key="listingKey"
-    :scope="scope"
-    @navigate="goto"
-    @exhausted="leave"
-  />
+  <div class="flex h-full flex-col">
+    <RunProgressLine
+      v-if="runIds.length"
+      :run-ids="runIds"
+      :refresh-key="listingKey"
+    />
+    <LotDetailView
+      :key="listingKey"
+      :listing-key="listingKey"
+      :scope="scope"
+      @navigate="goto"
+      @exhausted="leave"
+    />
+  </div>
 </template>

@@ -58,6 +58,7 @@ export function useLotChain(
       designGroup: sc.design_group ?? null,
       targetEurioId: sc.target_eurio_id ?? null,
       cohortId: sc.cohort_id ?? null,
+      runIds: sc.run_id ? sc.run_id.split(',').filter(Boolean) : null,
     }
   }
 

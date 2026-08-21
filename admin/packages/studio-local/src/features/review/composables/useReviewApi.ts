@@ -266,6 +266,12 @@ export async function fetchReviewQueue(
      * Passer `false` explicitement pour le lever.
      */
     dinoCountryOnly?: boolean
+    /**
+     * Ne servir que les crops CRÉÉS PAR CES RUNS de scrape (`image_assets.
+     * run_id`). Se combine à tout le reste — c'est un ET, pas un remplacement.
+     * Cf. `queryRunIds` (`?run=a,b`) et `fetchRunProgress` pour le compteur.
+     */
+    runIds?: string[] | null
   } = {},
 ): Promise<ReviewItem[]> {
   const limit = opts.limit ?? 30
@@ -282,9 +288,34 @@ export async function fetchReviewQueue(
   if (opts.dinoClass) params.set('dino_class', opts.dinoClass)
   if (opts.dinoRank) params.set('dino_rank', String(opts.dinoRank))
   if (opts.dinoCountryOnly === false) params.set('dino_country_only', 'false')
+  if (opts.runIds && opts.runIds.length) params.set('run_id', opts.runIds.join(','))
   // Phase 2c-b : porté sur eurio-api (Bearer PAT).
   const items = await fetchEurio<ReviewItem[]>(`/review-queue?${params.toString()}`)
   return items.map(promoteItemUrls)
+}
+
+// ─── Avancement par run source ──────────────────────────────────────────
+
+/** `total = open + done + skipped`. `skipped` = passé par l'opérateur : la
+ *  row reste servie par la file (status `open`), mais elle est comptée à part
+ *  pour que le compteur avance sur un run qu'on ne fait que parcourir. */
+export interface RunProgressCounts {
+  total: number
+  open: number
+  done: number
+  skipped: number
+}
+
+export interface RunProgress extends RunProgressCounts {
+  run_ids: string[]
+  by_kind: Record<'single' | 'lot', RunProgressCounts> & Record<string, RunProgressCounts>
+}
+
+/** Où en est la review des crops produits par ces runs — TOUTES les rows,
+ *  pas seulement l'ouvert que sert `fetchReviewQueue`. */
+export async function fetchRunProgress(runIds: string[]): Promise<RunProgress> {
+  const params = new URLSearchParams({ run_id: runIds.join(',') })
+  return fetchEurio<RunProgress>(`/review-queue/run-progress?${params.toString()}`)
 }
 
 export async function fetchReviewItem(id: string): Promise<ReviewItem> {

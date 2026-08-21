@@ -25,6 +25,8 @@ from .models import (
     ReviewCandidate,
     ReviewItem,
     ReviewStats,
+    RunProgress,
+    RunProgressCounts,
     TextSignalsResponse,
 )
 
@@ -67,6 +69,29 @@ class TextSignalsNotFound(Exception):
 
 class CohortNotFound(Exception):
     pass
+
+
+# ─── Périmètre par RUN SOURCE ───────────────────────────────────────────────
+
+
+def run_filter_clause(
+    run_ids: list[str] | None, *, alias: str = "a",
+) -> tuple[str, list[object]]:
+    """Le filtre « crops produits par ces runs », prêt à coller après un WHERE.
+
+    `image_assets.run_id` est le run de scrape qui a créé le crop. Le périmètre
+    se COMBINE avec les autres (statut, kind, lane, cible, pêche) : c'est un
+    ET, jamais un remplacement — un reviewer qui ouvre « la file de ces deux
+    runs » veut la même file qu'avant, restreinte. `None` ou vide → clause
+    vide, aucune requête ne change.
+
+    `alias` est celui de `image_assets` dans la requête appelante ; un mauvais
+    alias donne un `no such column` bruyant, ce qui est voulu.
+    """
+    if not run_ids:
+        return "", []
+    ph = ",".join("?" * len(run_ids))
+    return f" AND {alias}.run_id IN ({ph})", list(run_ids)
 
 
 # ─── Helpers candidates / row → item ────────────────────────────────────────
@@ -437,7 +462,12 @@ def list_queue(
     dino_class: str | None = None,
     dino_rank: int = 1,
     dino_country_only: bool = True,
+    run_ids: list[str] | None = None,
 ) -> list[ReviewItem]:
+    # `run_ids` : restreindre aux crops créés par ces runs de scrape
+    # (`image_assets.run_id`). S'ajoute à tout le reste — cible, pêche, tri —
+    # sans rien remplacer. Cf. `run_filter_clause`.
+    #
     # `dino` : d'abord ce que le modèle rattache à LA CLASSE TRAVAILLÉE, puis
     # du plus net au plus flou.
     #
@@ -507,6 +537,11 @@ def list_queue(
         else:
             where += " AND rq.lane = ?"
             args.append(lane)
+    # Posé AVANT la branche de périmètre : il vaut pour les deux chemins
+    # (cible / pêche) et pour `review_ids`.
+    run_clause, run_args = run_filter_clause(run_ids, alias="a")
+    where += run_clause
+    args.extend(run_args)
 
     if review_ids:
         where += f" AND rq.id IN ({','.join('?' * len(review_ids))})"
@@ -708,6 +743,7 @@ def _lot_scope(
     dino_rank: int = 1,
     dino_min_spread: float | None = None,
     dino_country_only: bool = True,
+    run_ids: list[str] | None = None,
 ) -> tuple[str, str, str, list[object]]:
     """Le périmètre d'une file de lots, en un seul endroit.
 
@@ -727,7 +763,14 @@ def _lot_scope(
 
     Lève ``ValueError`` si ``design_group`` est inconnu (même contrat
     qu'auparavant : l'appelant renvoie une liste vide).
+
+    ``run_ids`` (crops créés par ces runs, ``a.run_id``) s'AJOUTE au périmètre
+    choisi, pêche comprise — c'est un filtre sur les crops, donc sur les
+    listings qui en ont encore un d'ouvert. Il va dans ``where_clause`` et ses
+    args passent en tête, conformément à l'ordre ``where`` puis ``match``.
     """
+    run_clause, run_args = run_filter_clause(run_ids, alias="a")
+
     if dino_class:
         scope = build_dino_scope(
             conn, dino_class=dino_class, rank=dino_rank,
@@ -738,24 +781,30 @@ def _lot_scope(
             return "", "", "", []
         return (
             suggestions_join_sql("ps"),
-            "",
+            run_clause,
             f"CASE WHEN {scope.sql} THEN 1 ELSE 0 END",
-            list(scope.args),
+            [*run_args, *scope.args],
         )
 
     if design_group:
         clause, args = _design_group_lot_scope(conn, design_group)  # peut lever
-        return "", clause, "", args
+        return "", clause + run_clause, "", [*args, *run_args]
     if target_eurio_id:
-        return "", " AND si.target_eurio_id = ?", "", [target_eurio_id]
+        return (
+            "", " AND si.target_eurio_id = ?" + run_clause, "",
+            [target_eurio_id, *run_args],
+        )
 
     eids, empty = _cohort_eurio_ids(conn, cohort_id)
     if cohort_id and empty:
         raise ValueError(f"cohort {cohort_id!r} sans pièce")
     if eids:
         ph = ",".join("?" * len(eids))
-        return "", f" AND si.target_eurio_id IN ({ph})", "", list(eids)
-    return "", "", "", []
+        return (
+            "", f" AND si.target_eurio_id IN ({ph})" + run_clause, "",
+            [*eids, *run_args],
+        )
+    return "", run_clause, "", list(run_args)
 
 
 def lot_order_sql(peche: bool) -> str:
@@ -822,6 +871,7 @@ def list_lots(
     dino_rank: int = 1,
     dino_min_spread: float | None = None,
     dino_country_only: bool = True,
+    run_ids: list[str] | None = None,
 ) -> tuple[list[LotListItem], int]:
     """Liste les listings ayant ≥ 1 row review_queue.kind='lot' status='open'.
 
@@ -831,13 +881,15 @@ def list_lots(
     - `design_group` → membres + pool ambigu du pays (cf. _design_group_lot_scope)
     - `target_eurio_id` → une classe précise
     - `cohort_id` → tous les lots des coins de la cohort
+
+    `run_ids` se combine à chacun : seuls les crops créés par ces runs comptent.
     """
     try:
         join_sql, where_clause, match_expr, scope_args = _lot_scope(
             conn, cohort_id=cohort_id, target_eurio_id=target_eurio_id,
             design_group=design_group, dino_class=dino_class,
             dino_rank=dino_rank, dino_min_spread=dino_min_spread,
-            dino_country_only=dino_country_only,
+            dino_country_only=dino_country_only, run_ids=run_ids,
         )
     except ValueError:
         return [], 0
@@ -918,6 +970,62 @@ def list_lots(
         for r in rows
     ]
     return items, int(total or 0)
+
+
+def run_progress(conn: sqlite3.Connection, run_ids: list[str]) -> RunProgress:
+    """Où en est la review des crops produits par ces runs.
+
+    Une seule requête : les rows `review_queue` des assets dont `run_id` est
+    dans la liste, ventilées par kind × statut. La lecture des statuts suit la
+    file elle-même : `skip` ne ferme pas la row (elle reste `open`, note
+    `skipped`, priorité repoussée), on la compte donc « passée » et non
+    « ouverte » — sinon le compteur n'avancerait jamais sur un run qu'on ne
+    fait que parcourir. Cf. `RunProgressCounts`.
+    """
+    run_clause, run_args = run_filter_clause(run_ids, alias="a")
+    rows = conn.execute(
+        f"""
+        SELECT rq.kind AS kind,
+               CASE
+                 WHEN rq.status = 'done' THEN 'done'
+                 WHEN rq.status = 'skipped'
+                   OR (rq.status = 'open' AND rq.decision_notes = 'skipped')
+                   THEN 'skipped'
+                 ELSE 'open'
+               END AS bucket,
+               COUNT(*) AS n
+          FROM review_queue rq
+          JOIN image_assets a ON a.id = rq.image_asset_id
+         WHERE 1 = 1{run_clause}
+         GROUP BY kind, bucket
+        """,
+        run_args,
+    ).fetchall()
+
+    by_kind: dict[str, dict[str, int]] = {}
+    for r in rows:
+        k = by_kind.setdefault(r["kind"], {"open": 0, "done": 0, "skipped": 0})
+        k[r["bucket"]] += int(r["n"])
+
+    def _counts(d: dict[str, int]) -> RunProgressCounts:
+        return RunProgressCounts(
+            total=d["open"] + d["done"] + d["skipped"],
+            open=d["open"], done=d["done"], skipped=d["skipped"],
+        )
+
+    # Les deux kinds servis par l'écran sont toujours présents, même à zéro :
+    # le bandeau les affiche sans avoir à tester leur existence.
+    for k in ("single", "lot"):
+        by_kind.setdefault(k, {"open": 0, "done": 0, "skipped": 0})
+    totals = {
+        b: sum(d[b] for d in by_kind.values()) for b in ("open", "done", "skipped")
+    }
+    return RunProgress(
+        run_ids=list(run_ids),
+        total=totals["open"] + totals["done"] + totals["skipped"],
+        open=totals["open"], done=totals["done"], skipped=totals["skipped"],
+        by_kind={k: _counts(d) for k, d in by_kind.items()},
+    )
 
 
 ORPHAN_IDS_CAP = 500
@@ -1131,6 +1239,7 @@ def lot_siblings(
     dino_rank: int = 1,
     dino_min_spread: float | None = None,
     dino_country_only: bool = True,
+    run_ids: list[str] | None = None,
 ) -> tuple[str | None, str | None]:
     """Le lot précédent et le suivant **dans le périmètre courant**.
 
@@ -1144,7 +1253,7 @@ def lot_siblings(
             conn, cohort_id=cohort_id, target_eurio_id=target_eurio_id,
             design_group=design_group, dino_class=dino_class,
             dino_rank=dino_rank, dino_min_spread=dino_min_spread,
-            dino_country_only=dino_country_only,
+            dino_country_only=dino_country_only, run_ids=run_ids,
         )
     except ValueError:
         return None, None
@@ -1171,6 +1280,7 @@ def get_lot_detail(
     dino_rank: int = 1,
     dino_min_spread: float | None = None,
     dino_country_only: bool = True,
+    run_ids: list[str] | None = None,
 ):
     """Lot detail — version sans re-détection live (image lean).
 
@@ -1351,7 +1461,7 @@ def get_lot_detail(
         cohort_id=cohort_id, target_eurio_id=target_eurio_id,
         design_group=design_group, dino_class=dino_class,
         dino_rank=dino_rank, dino_min_spread=dino_min_spread,
-        dino_country_only=dino_country_only,
+        dino_country_only=dino_country_only, run_ids=run_ids,
     )
 
     return LotDetail(

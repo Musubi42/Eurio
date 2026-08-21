@@ -181,6 +181,9 @@ export async function fetchLots(
     dinoMinSpread?: number | null
     /** `false` lève le filtre pays (actif par défaut côté API). */
     dinoCountryOnly?: boolean
+    /** Seuls les listings ayant un crop ouvert CRÉÉ PAR CES RUNS. Se combine
+     *  au périmètre choisi au lieu de le remplacer. */
+    runIds?: string[] | null
   } = {},
 ): Promise<LotListResponse> {
   const params = new URLSearchParams()
@@ -195,6 +198,7 @@ export async function fetchLots(
   if (opts.designGroup) params.set('design_group', opts.designGroup)
   if (opts.targetEurioId) params.set('target_eurio_id', opts.targetEurioId)
   if (opts.cohortId) params.set('cohort_id', opts.cohortId)
+  if (opts.runIds && opts.runIds.length) params.set('run_id', opts.runIds.join(','))
   const qs = params.size ? `?${params.toString()}` : ''
   // Phase 2c-b : porté sur eurio-api (Bearer PAT).
   let body: LotListResponse

@@ -10,6 +10,7 @@ import {
   fetchLots, LotReviewError,
   type LotListItem,
 } from '../composables/useLotReview'
+import { queryRunIds } from '../composables/useQueryScope'
 import LotCard from '../components/LotCard.vue'
 
 const router = useRouter()
@@ -35,6 +36,10 @@ const designGroup = computed(() =>
     : null,
 )
 
+// Scope PAR RUN SOURCE : ?run=a,b → seulement les listings ayant un crop ouvert
+// créé par ces runs. Se combine aux scopes ci-dessus.
+const runIds = computed(() => queryRunIds(route))
+
 const lots = ref<LotListItem[]>([])
 const total = ref(0)
 const loading = ref(true)
@@ -49,6 +54,7 @@ async function load() {
       cohortId: cohortId.value,
       targetEurioId: targetEurioId.value,
       designGroup: designGroup.value,
+      runIds: runIds.value,
     })
     lots.value = resp.items
     total.value = resp.total
@@ -60,11 +66,20 @@ async function load() {
 }
 
 onMounted(load)
-watch([cohortId, targetEurioId, designGroup], () => { void load() })
+watch(
+  [cohortId, targetEurioId, designGroup, () => runIds.value?.join(',') ?? null],
+  () => { void load() },
+)
 
 function openLot(key: string) {
   // Navigate to the full-page review detail (Phase 2 chunk 5).
-  void router.push(`/review/lot/${encodeURIComponent(key)}`)
+  // Le périmètre par run suit : sans lui, « lot suivant » repartirait dans la
+  // file lot GLOBALE et le compteur du détail disparaîtrait.
+  const run = runIds.value?.join(',')
+  void router.push({
+    path: `/review/lot/${encodeURIComponent(key)}`,
+    query: run ? { run } : {},
+  })
 }
 </script>
 
@@ -78,6 +93,11 @@ function openLot(key: string) {
       <p class="font-mono text-[11px] tabular-nums" style="color: var(--ink-500);">
         <span class="font-semibold" style="color: var(--gold-600);">{{ total }}</span>
         <span class="ml-1 uppercase tracking-wider" style="color: var(--ink-400);">listings à reviewer</span>
+        <span
+          v-if="runIds"
+          class="ml-2 rounded-full px-2 py-0.5 text-[10px] tracking-wider"
+          style="background: color-mix(in srgb, var(--gold-600) 14%, var(--surface)); color: var(--gold-600);"
+        >run · {{ runIds.length }}</span>
         <span
           v-if="designGroup"
           class="ml-2 rounded-full px-2 py-0.5 text-[10px] tracking-wider"

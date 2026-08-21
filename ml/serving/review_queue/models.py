@@ -179,6 +179,33 @@ class LotListResponse(BaseModel):
     total: int
 
 
+# ─── Avancement par run source ──────────────────────────────────────────────
+
+
+class RunProgressCounts(BaseModel):
+    """`total = open + done + skipped`, à la maille d'un kind ou de l'ensemble.
+
+    - `done` : `review_queue.status = 'done'` (accepté OU rejeté — tranché)
+    - `skipped` : passé par l'opérateur ; ces rows restent servies par la file
+      (`status='open'`, `decision_notes='skipped'`, priorité repoussée), donc
+      elles sont « restantes » au sens de la file mais comptées à part
+    - `open` : le reste — jamais vu
+    """
+    total: int
+    open: int
+    done: int
+    skipped: int
+
+
+class RunProgress(BaseModel):
+    run_ids: list[str]
+    total: int
+    open: int
+    done: int
+    skipped: int
+    by_kind: dict[str, RunProgressCounts]
+
+
 class LotCrop(BaseModel):
     asset_id: str
     review_id: str

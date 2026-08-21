@@ -34,3 +34,18 @@ export function queryParam(
   }
   return typeof raw === 'string' && raw ? raw : null
 }
+
+/**
+ * Le périmètre PAR RUN SOURCE : `?run=a,b` → `['a', 'b']`, `null` sans param.
+ *
+ * Un seul endroit pour le découpage, parce que trois écrans le lisent (file
+ * single, grille des lots, détail d'un lot) et que le bandeau d'avancement
+ * doit compter EXACTEMENT ce que la file sert : deux parsings qui divergent
+ * donneraient un « 0 / 777 » au-dessus d'une file de 500.
+ */
+export function queryRunIds(route: RouteLocationNormalizedLoaded): string[] | null {
+  const raw = queryParam(route, 'run')
+  if (!raw) return null
+  const ids = raw.split(',').map((s) => s.trim()).filter(Boolean)
+  return ids.length ? ids : null
+}

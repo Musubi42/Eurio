@@ -6,12 +6,14 @@
 //
 // Cf. docs/sources-refacto/lot-review-kickoff.md §L-D-5.
 
-import { computed, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeft, Layers, Package } from 'lucide-vue-next'
 import { useCohortsQuery } from '@/features/lab/composables/useLabQueries'
 import SingleReviewView from '../views/SingleReviewView.vue'
 import LotReviewView from '../views/LotReviewView.vue'
+import RunProgressLine from '../components/RunProgressLine.vue'
+import { queryRunIds } from '../composables/useQueryScope'
 
 type ReviewMode = 'single' | 'lot'
 
@@ -33,6 +35,14 @@ const selectedCohort = computed<string>(() =>
 function setCohort(id: string) {
   void router.replace({ query: { ...route.query, cohort: id || undefined } })
 }
+
+// Périmètre par run (`?run=a,b`) : la file — single comme lot — ne sert que
+// les crops de ces runs, et un bandeau dit où on en est. Le param voyage avec
+// le reste de la query (tous les `router.replace` ci-dessous la spreadent),
+// donc un changement de mode ou une navigation de lot le garde.
+const runIds = computed(() => queryRunIds(route) ?? [])
+const progressKey = ref(0)
+function onDecided() { progressKey.value++ }
 
 function setMode(next: ReviewMode) {
   if (mode.value === next) return
@@ -139,8 +149,11 @@ watch(mode, () => {})
       </div>
     </header>
 
+    <!-- ═══ Avancement par run (seulement quand ?run= est posé) ═══ -->
+    <RunProgressLine v-if="runIds.length" :run-ids="runIds" :refresh-key="progressKey" />
+
     <!-- ═══ Vue mountée selon le mode ═══ -->
-    <SingleReviewView v-if="mode === 'single'" />
+    <SingleReviewView v-if="mode === 'single'" @decided="onDecided" />
     <LotReviewView v-else />
   </div>
 </template>

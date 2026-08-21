@@ -31,7 +31,7 @@ import {
   type ReviewStats,
 } from '../composables/useReviewApi'
 import { useReviewKeybinds } from '../composables/useReviewKeybinds'
-import { queryParam } from '../composables/useQueryScope'
+import { queryParam, queryRunIds } from '../composables/useQueryScope'
 import type { CoinSearchEntry } from '../composables/useCoinsSearch'
 import SplitCompare from '../components/SplitCompare.vue'
 import CircleCropEditor from '../components/CircleCropEditor.vue'
@@ -209,6 +209,10 @@ const lane = computed<string | null>(() => {
   // auto_accept est le même crop ; le laisser hors de la file rendrait le
   // compteur du bandeau faux et cacherait du stock sans le dire.
   if (dinoClass.value) return null
+  // RUN (?run=) : même raison — le périmètre est le run, pas la lane. 202 des
+  // 777 items du reprocess du 2026-08-21 étaient rangés en auto_accept ; les
+  // cacher rendrait le compteur « n / 777 » faux sans le dire.
+  if (runIds.value && runIds.value.length) return null
   return 'manual'
 })
 // Scope PAR PIÈCE (?eurio_id=) : review déclenchée depuis une row coin du
@@ -236,6 +240,15 @@ const dinoMinSpread = computed<number | null>(() => {
   return Number.isFinite(n) ? n : null
 })
 const dinoTop1Only = computed(() => queryParam(route, 'dino_top1') === '1')
+// ── Périmètre PAR RUN SOURCE (?run=a,b) ─────────────────────────────────────
+// Les crops créés par ces runs, et eux seuls. S'AJOUTE à tout le reste (lane,
+// cible, pêche, tri) : c'est la même file, restreinte. Le compteur du bandeau
+// (ReviewPage) lit le même param — cf. queryRunIds.
+const runIds = computed(() => queryRunIds(route))
+
+// L'hôte (ReviewPage) rafraîchit le compteur d'avancement par run après chaque
+// décision ÉCRITE — émis une fois le POST revenu, jamais avant.
+const emit = defineEmits<{ (e: 'decided'): void }>()
 
 // Valider exige un candidat ET un type/état renseignés : on ne fige pas
 // une attribution sans avoir tranché le contexte listing (C4).
@@ -285,6 +298,7 @@ async function loadInner() {
       dinoTop1Only: dinoTop1Only.value,
       dinoClass: dinoClass.value,
       dinoRank: dinoRank.value,
+      runIds: runIds.value,
     }),
     fetchReviewStats(),
   ])
@@ -316,6 +330,7 @@ async function loadMore() {
       dinoTop1Only: dinoTop1Only.value,
       dinoClass: dinoClass.value,
       dinoRank: dinoRank.value,
+      runIds: runIds.value,
     })
     const known = new Set(queue.value.map((r) => r.id))
     if (pendingCommit.value) known.add(pendingCommit.value.reviewId)
@@ -416,7 +431,7 @@ onMounted(() => {
 // Le tri fait partie du périmètre : l'oublier ici donnerait un premier écran
 // trié puis une pagination qui ne l'est plus — panne muette parfaite.
 watch([cohortId, lane, eurioId, reviewIds, order, dinoMinSpread, dinoTop1Only,
-       dinoClass, dinoRank], () => {
+       dinoClass, dinoRank, () => runIds.value?.join(',') ?? null], () => {
   void load()
 })
 
@@ -601,6 +616,7 @@ async function commitPending(p: PendingCommit, opts: { keepalive?: boolean } = {
     } else if (p.kind === 'skip') {
       await skipReviewItem(p.reviewId, opts)
     }
+    emit('decided')
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     flashTopNotice(`Échec de l'enregistrement : ${msg}`)

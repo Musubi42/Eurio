@@ -23,6 +23,7 @@ from .models import (
     RejectedCrop,
     ReviewItem,
     ReviewStats,
+    RunProgress,
     TextSignalsResponse,
     TriageStats,
 )
@@ -33,6 +34,12 @@ _require_read = require_scope("review:read")
 
 ConnDep = Annotated[sqlite3.Connection, Depends(db_connection)]
 PrincipalDep = Annotated[Principal, Depends(_require_read)]
+
+
+def _split_ids(raw: str | None) -> list[str] | None:
+    """`"a,b,,c"` → `["a","b","c"]` ; vide ou absent → `None`."""
+    ids = [x for x in (raw or "").split(",") if x]
+    return ids or None
 
 
 @router.get("/review-queue/healthcheck")
@@ -60,7 +67,10 @@ def list_queue(
     dino_class: str | None = Query(default=None),
     dino_rank: int = Query(default=1),
     dino_country_only: bool = Query(default=True),
+    run_id: str | None = Query(default=None),
 ) -> list[ReviewItem]:
+    """`run_id` : liste séparée par des virgules de `source_runs.id` — ne
+    servir que les crops créés par ces runs. Se combine aux autres filtres."""
     if order not in ("priority", "enqueued_at", "dino"):
         raise HTTPException(
             status_code=422,
@@ -78,7 +88,7 @@ def list_queue(
         raise HTTPException(
             status_code=422, detail=f"dino_rank must be one of {DINO_RANKS}",
         )
-    rids = [x for x in (review_ids or "").split(",") if x] or None
+    rids = _split_ids(review_ids)
     if review_ids and not rids:
         return []
     try:
@@ -88,9 +98,28 @@ def list_queue(
             dino_min_spread=dino_min_spread, dino_top1_only=dino_top1_only,
             dino_class=dino_class, dino_rank=dino_rank,
             dino_country_only=dino_country_only,
+            run_ids=_split_ids(run_id),
         )
     except repository.CohortNotFound:
         raise HTTPException(status_code=404, detail="Cohort introuvable")
+
+
+@router.get("/review-queue/run-progress", response_model=RunProgress)
+def run_progress(
+    principal: PrincipalDep,
+    conn: ConnDep,
+    run_id: str = Query(..., description="source_runs.id, séparés par des virgules"),
+) -> RunProgress:
+    """Avancement de la review sur les crops produits par ces runs.
+
+    C'est le compteur « n / N tranchés » du bandeau de review scopé par run.
+    Il compte TOUTES les rows review_queue de ces assets, quel que soit leur
+    statut — à la différence de `GET /review-queue`, qui ne sert que l'ouvert.
+    """
+    ids = _split_ids(run_id)
+    if not ids:
+        raise HTTPException(status_code=422, detail="run_id requis")
+    return repository.run_progress(conn, ids)
 
 
 @router.get("/review-queue/triage-stats", response_model=TriageStats)
@@ -173,6 +202,7 @@ def list_lots(
     dino_rank: int = Query(default=1),
     dino_min_spread: float | None = Query(default=None, ge=0.0, le=1.0),
     dino_country_only: bool = Query(default=True),
+    run_id: str | None = Query(default=None),
 ) -> LotListResponse:
     if dino_rank not in DINO_RANKS:
         raise HTTPException(
@@ -184,6 +214,7 @@ def list_lots(
         dino_class=dino_class, dino_rank=dino_rank,
         dino_min_spread=dino_min_spread,
         dino_country_only=dino_country_only,
+        run_ids=_split_ids(run_id),
     )
     return LotListResponse(items=items, total=total)
 
@@ -200,6 +231,7 @@ def get_lot(
     dino_rank: int = Query(default=1),
     dino_min_spread: float | None = Query(default=None, ge=0.0, le=1.0),
     dino_country_only: bool = Query(default=True),
+    run_id: str | None = Query(default=None),
 ) -> LotDetail:
     """Le lot, et ses voisins DANS LE PÉRIMÈTRE passé en query.
 
@@ -218,6 +250,7 @@ def get_lot(
             design_group=design_group, dino_class=dino_class,
             dino_rank=dino_rank, dino_min_spread=dino_min_spread,
             dino_country_only=dino_country_only,
+            run_ids=_split_ids(run_id),
         )
     except repository.LotNotFound as exc:
         raise HTTPException(
