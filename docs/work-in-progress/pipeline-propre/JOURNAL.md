@@ -8,6 +8,44 @@
 
 ---
 
+## 2026-08-21 — O7 : les 808 annonces déficitaires rejouées
+
+Run `10408fc2d40945e491d656cb0b75d2b5` (`go-task ml:src:ebay:reprocess-zero -- --push`),
+13:07:44 → 13:58:53 (**51 min**, Mac MPS), témoin `recover=ON tau=0.55
+scope=deficit listings=771 images=1215` (les 40 du palier étaient déjà sortis
+du périmètre : elles ont des assets). Push 9 589 lignes, vérifié après
+`ml:db:pull-replica`. Bilan cumulé des deux runs (`fc6f11c6…` + `10408fc2…`) :
+
+| plaque (grain annonce) | | requête |
+|---|---:|---|
+| annonces rejouées | **811** | `n_listings` des deux bilans |
+| images rejouées | 1 276 | |
+| images avec ≥ 1 crop | 935 (73 %) | |
+| **annonces récupérées** (≥ 1 crop) | **669 (82 %)** | `annonces sans crop 2 950 → 2 281` (requête de l'entrée précédente) |
+| crops ajoutés | 936, dont **923 `score_recover`** | `SELECT COUNT(*), SUM(detection_method='score_recover') FROM image_assets WHERE run_id IN (…)` |
+| portes | 138 `reverse`, 5 `not_2eur` → 134 `done` (rejet terminal) | `review_queue` joint sur `image_assets.run_id` |
+| **en file ouverte** | **777** (669 single, 108 lot) | idem, `status='open'` |
+| dont marge ≥ 0,10 / ≥ 0,05 | 443 / 564 | `COALESCE(country_spread, spread)` sur `2eur_all` |
+| top-1 vers une classe déficitaire / pleine | 508 / 269 | jointure `dino_class_references` grain banque |
+
+Dénominateur : 6 596 + 7 924 + 1 290 + 431 = 16 241. `calibration_blockers('2eur_all','dinov2-vitl14')` → `[]`
+(prédictions écrites par `auto_validate`, aucun backfill requis).
+
+**Effet sur le besoin** (`shared.class_need.all_needs`, avant → après) :
+scrape 276 → **260**, review 328 → **344**, pleine 67, Σ need 4 426 inchangé —
+la banque ne bouge qu'à la review puis au rebuild.
+
+**Ce que recover rate encore** : 341 images toujours `zero_crops` parmi les
+rejouées, dont **106 sans aucun cercle** (recover n'a pas d'indice) et 151
+carrées ; `reject_reason` restants : `radius_too_small` 1 226,
+`gated_fragment` 754. C'est la population du **repli plein cadre** (O7 §étape 5)
+— à bencher sur D1/D3 de crop-recovery avant d'ouvrir le jalon.
+
+**Non rejoué** (D3) : 1 467 annonces de classes pleines + 63 à 8–9 + 612 sans
+cible. Elles attendent le mécanisme « parqué ».
+
+---
+
 ## 2026-08-21 — O7 livré, palier 40 au canonique
 
 **Code** : `ml/scripts/reprocess_zero_crops.py` + tâche `ml:src:ebay:reprocess-zero`

@@ -1,6 +1,13 @@
 # O7 · Reprocesser les 2 950 annonces sans crop
 
-> **Statut : spec, non implémentée — mais le geste est prioritaire (D5).**
+> **Statut : LIVRÉ le 2026-08-21** — `ml/scripts/reprocess_zero_crops.py`,
+> tâche `ml:src:ebay:reprocess-zero`, 811 annonces déficitaires rejouées,
+> **669 récupérées (82 %)**, 936 crops, 777 en file. Chiffres et requêtes :
+> [`../JOURNAL.md`](../JOURNAL.md). Reste ouvert : l'étape 5 (repli plein
+> cadre) pour les 341 images encore à zéro, et les 2 142 annonces non
+> déficitaires qui attendent le mécanisme « parqué » (D3).
+>
+> *(Spec d'origine ci-dessous, écrite avant le run.)*
 > Station 3 du [flow](../FLOW-ADMIN.md). Première version écrite le
 > 2026-08-21 matin sous le titre « instrumenter » ; **réécrite l'après-midi**
 > après avoir ouvert les images et rejoué le détecteur. L'étape

@@ -67,6 +67,26 @@ score-guided des bimétal sous-croppés — **~77 % du parc**, validée le
 raws repart en `zero_crops`. Les autres portes : `ml:src:ebay:dry` (découverte
 seule), `ml:src:ebay:limit`, `ml:src:ebay:status`.
 
+🔴 **Mesuré le 2026-08-21 : cette passe n'avait JAMAIS tourné en prod.** Le run
+du 2026-08-16 porte 0 crop `detection_method='score_recover'` sur 601, et 54 %
+de `zero_crops`. Au grain **annonce** (l'unité de coût eBay, un `item/{id}`
+par annonce), 2 950 annonces sur 7 662 n'avaient produit aucun crop — 70 %
+montrent une pièce seule plein cadre que YOLO ne voit pas. Le remède, sans un
+appel eBay :
+
+```bash
+go-task ml:src:ebay:reprocess-zero -- --dry-run            # le périmètre, rien d'écrit
+go-task ml:src:ebay:reprocess-zero -- --limit 40 --seed 42 --push
+go-task ml:src:ebay:reprocess-zero -- --push               # défaut : classes de banque < 8 fps
+```
+
+Le témoin est la **première ligne du log** : `recover=ON tau=0.55 scope=…
+listings=N images=M` — sans elle, le script refuse de créer un run (exit 2).
+Résultat du 2026-08-21 : 811 annonces rejouées, **669 récupérées (82 %)**,
+936 crops dont 923 `score_recover`, 777 en file ouverte, 51 min sur Mac.
+Détail, requêtes et ce qui reste à zéro :
+`docs/work-in-progress/pipeline-propre/JOURNAL.md`.
+
 - **`--push` est mal nommé** : il ne contrôle **pas** le transport, il choisit la
   **source de lecture/écriture** — une réplique scratch **inscriptible**
   (`staging_store`). C'est pour ça qu'il est le mode normal : sans lui, le
@@ -325,4 +345,7 @@ préflight sert l'entraînement ArcFace (voie A), la banque sert les suggestions
   `ml/vision/normalize_snap.py`. Note : `0 crop` n'est **pas** une erreur (photos
   de certificat, emballages) et **seuls les zéros sont logués** — un log plein de
   « returned 0 crops » ne veut pas dire que rien ne marche. Compter les fichiers
-  produits sous `~/.cache/eurio/enrichment-crops` pour savoir.
+  produits sous `~/.cache/eurio/enrichment-crops` pour savoir. ⚠️ Mais **ne
+  conclus pas non plus que les zéros sont des emballages** : mesuré le
+  2026-08-21, 70 % étaient des pièces seules plein cadre (cf. §« Lancer un
+  enrichissement »).

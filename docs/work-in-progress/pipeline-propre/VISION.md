@@ -140,7 +140,9 @@ correction agrandit le gisement au lieu de le réduire :
   Les 7 531 raws sont tous `storage_status='present'` en MinIO.
 
 Ordre de grandeur : **~2 000 crops propres sans un appel eBay**, pour 2 157
-`training_eligible` depuis le début du projet. → [`outils/O7`](outils/O7-reprocess-zero-crops.md),
+`training_eligible` depuis le début du projet. ✅ **Fait le soir même** sur les
+811 annonces déficitaires : 669 récupérées (82 %), 936 crops, 777 en file
+ouverte — cf. [`JOURNAL.md`](JOURNAL.md). → [`outils/O7`](outils/O7-reprocess-zero-crops.md),
 qui passe d'« instrumenter » à « reprocesser ».
 
 **Rendement mesuré d'un run de scrape** (2026-08-16, `ALLOCATEUR-SCRAPE.md`) :
