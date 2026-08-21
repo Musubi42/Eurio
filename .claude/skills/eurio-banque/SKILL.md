@@ -142,10 +142,17 @@ SELECT COUNT(DISTINCT class_id), COUNT(DISTINCT eurio_id)
 # 124|130
 ```
 
-Pourquoi : `class_id = COALESCE(design_group_id, eurio_id)`, et
-`eurio_id` nomme le **membre du groupe dont vient le crop**. Six classes
-portent des crops venus de plusieurs membres, tous repliés sur le représentant
-du groupe (`ORDER BY year, eurio_id`). Chercher l'étiquette d'un membre
+Pourquoi : `class_id` est l'**`eurio_id` du représentant** de la classe —
+la commémorative elle-même, ou pour une courante le premier membre de son
+groupe (`ORDER BY year, eurio_id`, `_class_specs_2eur_all`) — et `eurio_id`
+nomme le **membre du groupe dont vient le crop**. ✅ **Corrigé le 2026-08-21** :
+cette skill disait `class_id = COALESCE(design_group_id, eurio_id)` ; c'est
+faux, vérifié — **0** `class_id` de la banque est un `design_group_id`
+(`SELECT COUNT(*) FROM (SELECT DISTINCT class_id FROM dino_class_references
+WHERE anchors_kind='2eur_all') WHERE class_id IN (SELECT design_group_id FROM
+coins WHERE design_group_id IS NOT NULL)` → 0). La traduction depuis une pièce
+passe par `shared/bank_classes.py`, jamais par un `COALESCE` naïf. Six classes
+portent des crops venus de plusieurs membres, tous repliés sur le représentant. Chercher l'étiquette d'un membre
 — `fr-2007-2eur-standard-2nd-map` — ne rend **rien**, et ce n'est pas un manque
 de données (cf. `eurio-enrichment` §« la règle qui évite la plupart des
 erreurs »).
@@ -511,13 +518,15 @@ remplaçant `sp` par `csp if csp is not None else sp` (ajoute `country_spread` a
 🔍 **Les deux lignes `class_id` sont volontairement retirées de la table plutôt
 que recopiées.** Elles y figuraient à `99,4 % / 99,4 %` et **ne se reproduisent
 pas** : le `class_id` du gold est le *eurio_id représentant* du groupe de dessin
-(`ORDER BY year, eurio_id`), alors que `dino_class_references.class_id` est
-`COALESCE(design_group_id, eurio_id)` (`training/foundation/anchors.py:544`) —
-deux conventions différentes pour le même nom de colonne. Vérifié : sur les 1958
-crops du gold, 546 ont un `class_id` différent de `COALESCE(design_group_id,
-eurio_id)` de leur `truth_eurio_id`, et même en repliant sur le représentant il
-en reste 99. **C'est le défaut Q13**, non diagnostiqué. Tant qu'il l'est, aucune
-métrique « à la maille classe » ne doit être citée depuis cette skill.
+(`ORDER BY year, eurio_id`), et `dino_class_references.class_id` l'est
+**aussi** (vérifié le 2026-08-21, cf. §2) — mais `coins` raisonne en
+`COALESCE(design_group_id, eurio_id)`, et les requêtes de ce tableau mélangeaient
+les deux. Vérifié : sur les 1958 crops du gold, 546 ont un `class_id` différent
+de `COALESCE(design_group_id, eurio_id)` de leur `truth_eurio_id`, et même en
+repliant sur le représentant il en reste 99 (à expliquer : ce reste est le vrai
+résidu Q13). **Diagnostic posé dans
+`docs/work-in-progress/pipeline-propre/VISION.md` §V4** ; les deux lignes
+seront recalculées avec `bank_classes` avant d'être citées.
 
 ⚠️ **Effectifs 463/821 → 500/744** : la version précédente de ce tableau datait
 du 2026-08-20 13:58 UTC, soit **avant** le rebuild de 14:27 ; elle cohabitait
