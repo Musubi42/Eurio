@@ -116,6 +116,40 @@ print(sum(1 for x in n if x.have >= 8), sum(1 for x in n if x.n_train_eligible >
 C'est le chiffre à regarder pour composer une cohorte d'entraînement : **71
 classes** passent le plancher `MIN_REAL = 10` aujourd'hui.
 
+### Backfill P3 — fait et vérifié
+
+`go-task ml:dino-predictions:backfill -- --kind 2eur_all --force --push`,
+**29 min 53** pour 13 390 crops (133,9 ms/asset, `vitl14` sur MPS),
+`18:14:50 → 18:44:35 UTC`, 0 erreur, 13 391 lignes poussées au canonique.
+
+La preuve retenue n'est **pas** le code de sortie (défaut M8 : le backfill
+sort en 0 même en erreur) :
+
+```bash
+cd ml && ./.venv/bin/python -c "
+import sqlite3; from store.encoder_bench import calibration_blockers
+c = sqlite3.connect('file:state/eurio.replica.db?mode=ro', uri=True)
+print(calibration_blockers(c, anchors_kind='2eur_all', encoder_version='dinov2-vitl14'))"
+# []
+```
+
+Et le contrôle de fraîcheur en `datetime()` — **jamais en chaînes**, c'est le
+piège du garde P1/P3 (`'2026-08-22 18:14:50'` contre
+`'2026-08-22T18:06:22+00:00'` : l'espace vaut `0x20`, le `T` vaut `0x54`) :
+
+```sql
+SELECT SUM(datetime(computed_at) < datetime('2026-08-22T18:06:22+00:00'))
+  FROM image_asset_dino_predictions
+ WHERE anchors_kind='2eur_all' AND encoder_version='dinov2-vitl14';   -- 0
+```
+
+Banque servie (`.npz`) et références au canonique concordent : 1909 des deux
+côtés, `built_at 2026-08-22T18:06:22+00:00`.
+
+**Effet du re-tri sur le besoin** : `review` 307 → **293**, `scrape` 274 →
+**288** (les prédictions ont changé, donc `pending` s'est redistribué) ;
+Σ besoin inchangé à **4 066** — la banque ne bouge qu'au rebuild suivant.
+
 ---
 
 ## 2026-08-21 (soir) — La file par run servait des classes pleines : D2 oubliée
