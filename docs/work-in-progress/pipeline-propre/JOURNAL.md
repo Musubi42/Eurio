@@ -8,6 +8,116 @@
 
 ---
 
+## 2026-08-22 — O6 mesuré proprement : l'amorce au médoïde vaut +3,7 pts, et le creux à N=1 disparaît
+
+**Le geste.** Review du PO terminée côté singles (429 acceptés), puis :
+seuil `min_exemplars=2` posé au canonique (option A) → rebuild `2eur_all`
+amorce **médoïde** → **bras témoin `fps` sur exactement les mêmes données** →
+courbes held-out. Le bras témoin est ce qui rend le gain attribuable ; sans
+lui on aurait comparé une banque à 1495 ancres (20/08) à une banque à 1831,
+c'est-à-dire l'amorce **et** les 429 crops de la review en même temps.
+
+**Protocole du bras témoin, à réutiliser.** Le second build tourne sur une
+**copie identique** de la base (`cp` du scratch du premier build), en
+`--no-push --db <scratch>` : les références se tracent dans le scratch, la
+courbe le lit via `EURIO_DB_PATH`, **le canonique n'est jamais touché**. Seul
+le `.npz` servi local est remplacé le temps de la mesure.
+
+```bash
+cp $S/eurio_build_scratch.db $S/fps_arm.db
+cd ml && EURIO_DB_READONLY= ./.venv/bin/python -m scripts.build_dino_anchors \
+  -v --force --kind 2eur_all --seed-order fps --no-push --db $S/fps_arm.db
+EURIO_DB_PATH=$S/fps_arm.db ./.venv/bin/python -m scripts.bench_refs_curve \
+  --model dinov2_vitl14 --refs 0 1 2 3 5 8 10
+```
+
+**Résultat — held-out, population variable, `dinov2_vitl14`, 1831 ancres des
+deux côtés, `min_exemplars=2` des deux côtés :**
+
+| N réf./classe | bras `fps` (témoin) | bras **médoïde** (O6) | delta |
+|---:|---:|---:|---:|
+| 0 *(contrôle)* | 76,2 % | 76,0 % | **−0,2** ✅ |
+| 1 | **71,8 %** | **86,8 %** | **+15,0** |
+| 2 | 73,5 % | 86,0 % | +12,5 |
+| 3 | 75,4 % | 85,7 % | +10,3 |
+| 5 | 79,0 % | 86,6 % | +7,6 |
+| 8 | 83,3 % | 87,5 % | +4,2 |
+| 10 | **84,3 %** | **88,0 %** | **+3,7** |
+
+- **Le contrôle passe** : à N=0 les deux banques sont les 671 canoniques seuls
+  et rendent le même score à 0,2 pt près. Les populations held-out diffèrent
+  de 6 crops (1191 contre 1185) — la sélection d'exemplaires n'est pas la même,
+  donc le complémentaire non plus.
+- **Le creux à N=1 est supprimé, pas atténué** : `fps` fait 76,2 → **71,8**
+  (−4,4, le premier exemplaire DÉGRADE sa classe) ; médoïde fait 76,0 →
+  **86,8** (+10,8). C'est le mécanisme « le rang 1 du FPS est un faux
+  attracteur » corrigé à la source, et c'est la preuve la plus solide : elle ne
+  dépend pas du niveau absolu.
+- **Le gain décroît avec N**, ce qui est cohérent : plus la classe a
+  d'exemplaires, moins l'identité du premier compte.
+
+⚠️ **Ce que cette mesure ne dit pas.** Aucun **McNemar entre les deux bras**
+n'a été calculé : le JSON de `bench_refs_curve` est agrégé (pas de
+prédiction par crop), et les deux populations held-out ne sont pas
+identiques — un test apparié demanderait leur intersection. Les p-values des
+tables de sortie sont **internes à chaque bras** (chaque palier contre son
+propre N=0). L'écart de +3,7 pts à N=10 et sa monotonie sur sept paliers sont
+l'argument ; ce n'est pas un test apparié.
+
+**Décision.** L'amorce médoïde reste le défaut du builder (`--seed-order
+medoid`, commit `244c06b3`). Le plancher `min_exemplars` est **remis à
+INACTIF** au canonique (`PUT /lab/dino-thresholds`, value `null` → défaut
+code 1) : la mesure du 2026-08-20 dit qu'il coûte ~1 pt et qu'un exemplaire
+unique aide sa classe — et sous l'amorce médoïde cet exemplaire unique est
+désormais le **médoïde** de la classe, donc l'argument est renforcé.
+
+### La banque de production qui en sort — build `a55e6594da32`
+
+```
+note du build : min_exemplars=1 (source=code); amorce=medoide;
+                0 classes ramenées au canonique seul
+```
+
+| | banque du 20/08 (`365dcab2a253`) | **banque de production (`a55e6594da32`)** |
+|---|---:|---:|
+| ancres | 1495 | **1909** (671 canoniques + 1238 exemplaires) |
+| classes à exemplaires | 124 | **250** |
+| classes à la cible (`need = 0`) | 64 | **90** |
+| held-out N=10 `vitl14` | 84,8 % | **88,5 %** |
+| Σ besoin (671 classes) | 4 663 | **4 066** |
+
+Distribution des exemplaires : 421 classes à 0 · 66 à 1 · 35 à 2 · 25 à 3 ·
+15 à 4 · 9 à 5 · 12 à 6 · 5 à 7 · 3 à 8 · 9 à 9 · **71 à 10**.
+Goulots : `pleine` 90 · `review` 307 · `scrape` 274.
+
+⚠️ Les +3,7 pts du tableau A/B et les +3,7 pts entre 84,8 % et 88,5 % sont
+**deux choses différentes qu'il ne faut pas additionner** : le premier est
+l'amorce seule (données identiques), le second cumule l'amorce, les 429 crops
+de la review et le retour des 67 exemplaires uniques. Coïncidence de valeur,
+pas somme.
+
+### Combien de classes sont prêtes, par voie
+
+```bash
+cd ml && ./.venv/bin/python -c "
+import sqlite3, sys; sys.path.insert(0,'.')
+from shared.class_need import all_needs
+c = sqlite3.connect('file:state/eurio.replica.db?mode=ro', uri=True); c.row_factory = sqlite3.Row
+n = all_needs(c, anchors_kind='2eur_all', encoder_version='dinov2-vitl14')
+print(sum(1 for x in n if x.have >= 8), sum(1 for x in n if x.n_train_eligible >= 10))"
+```
+
+| | classes |
+|---|---:|
+| **voie B** — banque, ≥ 8 exemplaires | **83** |
+| **voie A** — cohorte, ≥ 10 crops eBay validés (`MIN_REAL`) | **71** |
+| voie A à ≥ 8 · à ≥ 4 | 86 · 132 |
+
+C'est le chiffre à regarder pour composer une cohorte d'entraînement : **71
+classes** passent le plancher `MIN_REAL = 10` aujourd'hui.
+
+---
+
 ## 2026-08-21 (soir) — La file par run servait des classes pleines : D2 oubliée
 
 **Constat PO** en reviewant `/review/manual?run=10408fc2…,fc6f11c6…` :
