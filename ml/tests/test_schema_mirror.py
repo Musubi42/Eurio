@@ -134,6 +134,16 @@ def test_toute_migration_neuve_est_declaree_ou_exclue_sciemment():
         "0004_dino_predictions_run_id.sql",
         "0005_iteration_origin_summary.sql",
         "0007_dino_reference_traceability.sql",
+        # 0012 n'ajoute qu'un INDEX à `peer_review_decisions`, table déclarée par
+        # `state/schema.sql` et non par une migration. Elle n'est donc pas
+        # applicable sur une base vide, ce que la comparaison de miroir exige —
+        # d'où l'exclusion, PAS un oubli.
+        #
+        # La propriété qui compte est tenue autrement, et elle est vérifiée :
+        # l'index EST dans `schema.sql` (une base neuve naît avec), et
+        # `test_review_quarantine.test_la_course_sur_la_quarantaine_est_barree_en_base`
+        # prouve qu'il mord.
+        "0012_peer_review_une_seule_decision_pendante.sql",
     }
     connues = set(MIROIR_ATTENDU) | exclues
     presentes = {f.name for f in MIGRATIONS.glob("*.sql")}

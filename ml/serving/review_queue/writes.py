@@ -22,6 +22,7 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
+import uuid
 from datetime import datetime, timezone
 from typing import Annotated, Any
 
@@ -37,9 +38,12 @@ logger = logging.getLogger("eurio-api.review_writes")
 router = APIRouter(tags=["review-queue"])
 
 _require_write = require_scope("review:write")
+# `restore` DÉFAIT une décision : c'est un geste d'arbitre, pas de reviewer.
+_require_arbitrate = require_scope("review:arbitrate")
 
 ConnDep = Annotated[sqlite3.Connection, Depends(db_connection)]
 PrincipalDep = Annotated[Principal, Depends(_require_write)]
+ArbiterDep = Annotated[Principal, Depends(_require_arbitrate)]
 
 _HUMAN_ENGINE_VERSION = "human@v1"
 _VALID_FACES = ("obverse", "reverse", "unknown")
@@ -49,10 +53,185 @@ _RESTORE_PRIORITY = 5
 _RESTORED_NOTE = "restored"
 
 
+_ARBITRATE_SCOPE = "review:arbitrate"
+_PEER_ENGINE_VERSION = "peer@v1"
+
+
 def _now_iso() -> str:
     """Timestamp UTC ISO-8601 avec suffixe Z (tri lexicographique cohérent)."""
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace(
         "+00:00", "Z"
+    )
+
+
+def _display_name(conn: sqlite3.Connection, principal: Principal) -> str:
+    """Nom lisible du décideur, pour les vues d'arbitrage (jamais pour joindre).
+
+    La JOINTURE se fait toujours sur ``users.id`` ; ce nom n'est qu'un libellé
+    dénormalisé, figé au moment de la décision — si l'ami change d'e-mail plus
+    tard, l'historique garde ce qu'on affichait à l'époque.
+
+    Ne lève JAMAIS : ``users`` vient des migrations (`db_migrate`) et non de
+    ``state/schema.sql``, donc une base qui ne les a pas appliquées n'a pas la
+    table. Perdre le libellé est acceptable ; perdre la décision de l'ami ne
+    l'est pas."""
+    try:
+        row = conn.execute(
+            "SELECT name, email FROM users WHERE id = ?", (principal.user_id,)
+        ).fetchone()
+    except sqlite3.Error:
+        row = None
+    if row is not None:
+        return row["name"] or row["email"] or principal.user_id
+    return principal.email or principal.user_id
+
+
+def _can_arbitrate(principal: Principal) -> bool:
+    """Vrai si ce principal écrit DIRECTEMENT le canonique.
+
+    Faux ⇒ ses décisions partent en quarantaine (`peer_review_decisions`). La clé
+    est un SCOPE et non un rôle : les scopes effectifs étant `jeton ∩ rôles`, un
+    PAT restreint rejoue exactement l'expérience d'un ami depuis un compte owner,
+    donc la quarantaine se teste sans créer de compte Authentik.
+    Cf. review-collaborative-v2 DECISIONS.md D7."""
+    if _ARBITRATE_SCOPE in principal.scopes:
+        return True
+
+    # Un COOKIE OIDC porté par un owner/admin sans le scope ne peut être qu'un
+    # identifiant PÉRIMÉ : le cookie est signé au login avec les scopes dérivés
+    # des rôles (`auth_routes`), il ne peut donc pas être volontairement
+    # restreint. On REFUSE plutôt que de mettre en quarantaine : le détournement
+    # silencieux serait la pire des issues — le PO reviewrait une session
+    # entière, verrait chaque item confirmé (le front jette le corps de la
+    # réponse), et RIEN n'atteindrait `image_assets`.
+    #
+    # ⚠️ Un PAT, LUI, se restreint délibérément : les scopes effectifs valent
+    # `jeton ∩ rôles`, et c'est exactement ainsi qu'on rejoue l'expérience d'un
+    # ami depuis un compte owner sans créer de compte Authentik (DECISIONS D7).
+    # Refuser sur le rôle seul rendait ce mécanisme inutilisable — et ne
+    # distinguait de toute façon PAS un jeton périmé d'un jeton restreint, les
+    # deux étant identiques vus d'ici. Pour un PAT on met donc en quarantaine, en
+    # le journalisant : son porteur est un développeur devant ses logs, pas un
+    # ami devant un écran.
+    if principal.auth_method == "oidc" and {"owner", "admin"} & set(principal.roles):
+        logger.warning(
+            "[review] session OIDC de %s (rôles %s) sans le scope %s — cookie "
+            "émis avant son introduction. Décision REFUSÉE.",
+            principal.user_id, principal.roles, _ARBITRATE_SCOPE,
+        )
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Session périmée : ton compte a le rôle "
+                f"{'/'.join(sorted({'owner', 'admin'} & set(principal.roles)))} "
+                f"mais ta session a été ouverte avant le scope '{_ARBITRATE_SCOPE}'. "
+                "Décision NON enregistrée, pour ne pas la détourner en quarantaine "
+                "sans te le dire. Remède : déconnecte-toi et reconnecte-toi."
+            ),
+        )
+    if {"owner", "admin"} & set(principal.roles):
+        logger.warning(
+            "[review] PAT de %s (rôles %s) sans le scope %s : décision mise en "
+            "QUARANTAINE. Volontaire si le jeton est restreint pour tester ; "
+            "sinon régénère-le.",
+            principal.user_id, principal.roles, _ARBITRATE_SCOPE,
+        )
+    return False
+
+
+def _pending_peer_decision(conn: sqlite3.Connection, asset_id: str) -> bool:
+    """Un crop déjà mis en quarantaine par quelqu'un n'est pas re-décidable."""
+    return conn.execute(
+        "SELECT 1 FROM peer_review_decisions "
+        " WHERE image_asset_id = ? AND arbitration_status = 'pending' LIMIT 1",
+        (asset_id,),
+    ).fetchone() is not None
+
+
+def _quarantine(
+    conn: sqlite3.Connection,
+    principal: Principal,
+    *,
+    review_id: str,
+    asset_id: str,
+    action: str,
+    decided_eurio_id: str | None = None,
+    decided_face: str | None = None,
+    decided_variant_kind: str | None = None,
+    quality_reason: str | None = None,
+    notes: str | None = None,
+) -> dict[str, str]:
+    """Enregistre la décision SANS toucher au canonique, et rend la main.
+
+    ``review_queue`` reste `open` et ``image_assets`` intact : rien n'entre en
+    entraînement avant arbitrage. L'item ne remonte pas dans la file pour autant —
+    `repository.list_queue` exclut les crops portant une décision `pending`.
+
+    Le retour ressemble à celui d'une décision normale (`status`, `id`) pour que le
+    front n'ait rien de spécial à faire ; `pending: true` lui permet, s'il le veut,
+    d'afficher « en attente de validation ».
+    """
+    # Garde LUE — attrape le cas courant et donne un message clair.
+    if _pending_peer_decision(conn, asset_id):
+        raise HTTPException(
+            status_code=409,
+            detail="Ce crop porte déjà une décision en attente d'arbitrage.",
+        )
+    now_iso = _now_iso()
+    try:
+        _insert_quarantine(
+            conn, principal, review_id=review_id, asset_id=asset_id,
+            action=action, decided_eurio_id=decided_eurio_id,
+            decided_face=decided_face, decided_variant_kind=decided_variant_kind,
+            quality_reason=quality_reason, notes=notes, now_iso=now_iso,
+        )
+    except sqlite3.IntegrityError as exc:
+        # Garde ÉCRITE (migration 0012, index unique partiel) — attrape la course
+        # que la lecture ci-dessus laisse passer : deux reviewers servis le même
+        # crop décident en même temps. Sans elle, les deux lignes entraient
+        # `pending` et l'arbitrage en marquait une `superseded` : le travail de
+        # quelqu'un disparaissait sans un mot.
+        conn.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Ce crop vient d'être tranché par quelqu'un d'autre.",
+        ) from exc
+    conn.commit()
+    logger.info(
+        "[review] QUARANTAINE id=%s action=%s eurio_id=%s by=%s",
+        review_id, action, decided_eurio_id, principal.user_id,
+    )
+    return {"status": "pending_arbitration", "id": review_id, "pending": "true"}
+
+
+def _insert_quarantine(
+    conn: sqlite3.Connection,
+    principal: Principal,
+    *,
+    review_id: str,
+    asset_id: str,
+    action: str,
+    decided_eurio_id: str | None,
+    decided_face: str | None,
+    decided_variant_kind: str | None,
+    quality_reason: str | None,
+    notes: str | None,
+    now_iso: str,
+) -> None:
+    conn.execute(
+        """
+        INSERT INTO peer_review_decisions
+          (id, image_asset_id, review_item_id, reviewer_token, reviewer_name,
+           action, decided_eurio_id, decided_face, decided_variant_kind,
+           quality_reason, notes, decided_at, arbitration_status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
+        """,
+        (
+            uuid.uuid4().hex, asset_id, review_id,
+            principal.user_id, _display_name(conn, principal),
+            action, decided_eurio_id, decided_face, decided_variant_kind,
+            quality_reason, notes, now_iso,
+        ),
     )
 
 
@@ -97,8 +276,19 @@ def decide_review(
             detail=f"Review already {rq['status']} — cannot decide twice.",
         )
 
-    now_iso = _now_iso()
     asset_id = rq["image_asset_id"]
+
+    # Quarantaine (lot 3) : sans `review:arbitrate`, la décision est ENREGISTRÉE
+    # mais n'écrit pas le canonique — elle attend l'arbitrage en lot.
+    if not _can_arbitrate(principal):
+        return _quarantine(
+            conn, principal, review_id=review_id, asset_id=asset_id,
+            action="accept", decided_eurio_id=payload.eurio_id,
+            decided_face=payload.face, decided_variant_kind=payload.variant_kind,
+            notes=payload.notes,
+        )
+
+    now_iso = _now_iso()
     try:
         conn.execute(
             """
@@ -119,12 +309,12 @@ def decide_review(
             UPDATE review_queue
                SET status = 'done', decided_eurio_id = ?, decided_face = ?,
                    decided_variant_kind = ?, decision_notes = ?, decided_at = ?,
-                   decided_by = 'admin', decision_engine_version = ?,
+                   decided_by = ?, decision_engine_version = ?,
                    decision_metadata_json = ?
              WHERE id = ? AND status = 'open'
             """,
             (payload.eurio_id, payload.face, payload.variant_kind, payload.notes,
-             now_iso, _HUMAN_ENGINE_VERSION, metadata, review_id),
+             now_iso, principal.user_id, _HUMAN_ENGINE_VERSION, metadata, review_id),
         )
         if cur.rowcount != 1:
             conn.rollback()
@@ -154,7 +344,7 @@ def decide_review(
                 "review_queue.decided_variant_kind": payload.variant_kind,
                 "review_queue.decision_notes": payload.notes,
                 "review_queue.decided_at": now_iso,
-                "review_queue.decided_by": "admin",
+                "review_queue.decided_by": principal.user_id,
                 "review_queue.decision_engine_version": _HUMAN_ENGINE_VERSION,
                 "review_queue.decision_metadata_json": metadata,
             },
@@ -197,6 +387,13 @@ def reject_review(
             detail=f"Review already {rq['status']} — cannot reject twice.",
         )
 
+    if not _can_arbitrate(principal):
+        return _quarantine(
+            conn, principal, review_id=review_id, asset_id=rq["image_asset_id"],
+            action="reject", quality_reason=quality_reason,
+            notes=reason or "rejected",
+        )
+
     now_iso = _now_iso()
     try:
         conn.execute(
@@ -212,11 +409,11 @@ def reject_review(
             """
             UPDATE review_queue
                SET status = 'done', decision_notes = ?, decided_at = ?,
-                   decided_by = 'admin', decision_engine_version = ?,
+                   decided_by = ?, decision_engine_version = ?,
                    decision_metadata_json = ?
              WHERE id = ? AND status = 'open'
             """,
-            (reason or "rejected", now_iso, _HUMAN_ENGINE_VERSION,
+            (reason or "rejected", now_iso, principal.user_id, _HUMAN_ENGINE_VERSION,
              json.dumps({"reason": reason or "rejected"}), review_id),
         )
         if cur.rowcount != 1:
@@ -236,7 +433,7 @@ def reject_review(
                 "review_queue.status": "done",
                 "review_queue.decision_notes": reason or "rejected",
                 "review_queue.decided_at": now_iso,
-                "review_queue.decided_by": "admin",
+                "review_queue.decided_by": principal.user_id,
                 "review_queue.decision_engine_version": _HUMAN_ENGINE_VERSION,
                 "review_queue.decision_metadata_json":
                     json.dumps({"reason": reason or "rejected"}),
@@ -304,7 +501,7 @@ def skip_review(
 
 @router.post("/review-queue/restore", response_model=RestoreResult)
 def restore_rejected(
-    payload: RestorePayload, principal: PrincipalDep, conn: ConnDep,
+    payload: RestorePayload, principal: ArbiterDep, conn: ConnDep,
 ) -> RestoreResult:
     """Ré-ouvre des reviews rejetées (inverse de reject). Un id introuvable ou
     dont l'image n'est pas `rejected` est ignoré (listé dans `skipped`)."""

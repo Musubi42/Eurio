@@ -35,7 +35,7 @@ ROLE_SCOPES: dict[str, set[str]] = {
         "sources:read", "sources:write",
         "coins:read", "coins:write",
         "audit:read",
-        "review:read", "review:write",
+        "review:read", "review:write", "review:arbitrate",
         "training:run",
         "ingest:run", "ingest:write",
         "lab:read",
@@ -46,18 +46,26 @@ ROLE_SCOPES: dict[str, set[str]] = {
         "sources:read", "sources:write",
         "coins:read", "coins:write",
         "audit:read",
-        "review:read", "review:write",
+        "review:read", "review:write", "review:arbitrate",
         "training:run",
         "ingest:run", "ingest:write",
         "lab:read",
         "users:read",
         "tokens:manage_own",
     },
+    # `reviewer` = un ami invité (review-collaborative-v2). Il TRANCHE mais
+    # n'ARBITRE pas : sans `review:arbitrate`, ses décisions partent en
+    # quarantaine dans `peer_review_decisions` au lieu d'écrire le canonique
+    # (cf. review_queue/writes.py). Clé volontairement portée par un SCOPE et
+    # non par un rôle : les scopes effectifs étant `jeton ∩ rôles`, un PAT
+    # restreint suffit à rejouer toute l'expérience d'un ami depuis un compte
+    # owner — donc à la tester sans créer de compte Authentik (DECISIONS D7).
+    # Pas de `tokens:manage_own` : un ami s'authentifie par cookie OIDC, il n'a
+    # aucun usage d'un PAT — et « Mes tokens » n'a rien à faire dans sa nav.
     "reviewer": {
         "coins:read",
         "review:read", "review:write",
         "lab:read",
-        "tokens:manage_own",
     },
 }
 
@@ -284,6 +292,44 @@ def require_scope(scope: str):
                 status_code=403,
                 detail=f"missing scope: {scope}",
             )
+        return principal
+    return _dep
+
+
+#: Méthodes qui ne modifient rien. Tout le reste est traité comme une écriture —
+#: y compris une méthode inconnue : en cas de doute on exige le scope le plus fort.
+_SAFE_METHODS: frozenset[str] = frozenset({"GET", "HEAD", "OPTIONS"})
+
+
+def require_scope_by_method(read_scope: str, write_scope: str):
+    """Dépendance de MONTAGE : exige `read_scope` sur GET/HEAD, `write_scope` sinon.
+
+    Pourquoi cette forme plutôt qu'un scope par route
+    -------------------------------------------------
+    Les routers du serve-role mélangent tous lecture et écriture (`coins_routes` :
+    17 GET, 1 PATCH, 1 POST, 1 PUT, 1 DELETE). Les monter avec un scope unique
+    serait soit trop lâche pour les écritures, soit trop strict pour les lectures
+    — et les annoter une par une, c'est une centaine d'endroits où en oublier un.
+    Le verbe HTTP porte déjà exactement la distinction que le vocabulaire de
+    scopes encode (`coins:read` / `coins:write`).
+
+    Ce que ça ferme, concrètement : avant, ces routers étaient montés avec
+    `require_principal` — *tout principal authentifié*. Un ami en rôle `reviewer`
+    ne VOYAIT plus la page Pièces (filtrage de nav, lot 4), mais pouvait encore
+    `PATCH /coins/{id}` à la main. Le filtrage de nav est du confort ; ceci est
+    la garde.
+
+    Une route qui a besoin d'un scope PLUS fort que son verbe le laisse croire
+    garde le sien, déclaré sur la route : les deux dépendances s'additionnent.
+    """
+    def _dep(
+        request: Request,
+        principal: Principal = Depends(require_principal),
+    ) -> Principal:
+        needed = read_scope if request.method in _SAFE_METHODS else write_scope
+        if needed not in principal.scopes:
+            raise HTTPException(
+                status_code=403, detail=f"missing scope: {needed}")
         return principal
     return _dep
 

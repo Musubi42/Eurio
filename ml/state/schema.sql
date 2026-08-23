@@ -2031,6 +2031,15 @@ CREATE INDEX IF NOT EXISTS idx_peer_review_pending
 CREATE INDEX IF NOT EXISTS idx_peer_review_reviewer
   ON peer_review_decisions(reviewer_token);
 
+-- UNE SEULE décision en attente par crop (migration 0012). Index PARTIEL :
+-- l'historique garde volontairement plusieurs lignes par crop (approved /
+-- rejected / superseded) — c'est la trace de qui a proposé quoi. Seul `pending`
+-- est contraint, pour que deux reviewers servis le même crop ne puissent pas
+-- entrer deux décisions dont l'arbitrage en jetterait une en silence.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_peer_review_une_pendante_par_crop
+  ON peer_review_decisions(image_asset_id)
+  WHERE arbitration_status = 'pending';
+
 -- ─── Modèle B : run-batch ingest (chunk C1) ──────────────────────────────────
 -- Journal des run-batches appliqués au canonique (serveur = writer unique).
 -- Le calcul lourd (scraping/crop/dino) tourne sur réplique read-only puis pousse
