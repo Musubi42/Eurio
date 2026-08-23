@@ -25,6 +25,18 @@ backend mort.
 `ml/tasks.yml:667-690` — les 5 tâches `review:serve`, `review:reviewer:add`,
 `review:reviewer:list`, `review:publish`, `review:reconcile`.
 
+### Front — ce que le lot 8 a rendu redondant
+
+| Chemin | Quoi | Remplacé par |
+|---|---|---|
+| `admin/.../review/pages/PeerArbitrationPage.vue` | arbitrage UNITAIRE (une décision à la fois, + table par reviewer) | `ArbitrageBulkPage.vue` (`/review/arbitrage`) |
+| route `review/peer-arbitration` (`app/router.ts`) | — | rediriger vers `/review/arbitrage` |
+
+⚠️ Conservée **délibérément** jusqu'ici (D10 : on ne supprime pas au fil de l'eau,
+on supprime quand le remplaçant est prouvé). Sa page d'état vide pointe déjà vers
+la vue en lot. Au moment de la retirer, vérifier qu'elle n'est plus le seul accès
+à `/peer-arbitration/reviewers` (les onglets de la vue bulk la consomment aussi).
+
 ### Références résiduelles
 
 | Fichier | Ligne | Quoi |

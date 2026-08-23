@@ -1,4 +1,4 @@
-# Reprise — état au 2026-08-23, et ce qu'il reste pour clore
+# Reprise — état au 2026-08-23 (soir), et ce qu'il reste pour clore
 
 > À lire en premier dans une nouvelle session. Le reste du chantier est dans
 > [`CONSTAT.md`](CONSTAT.md) (mesures), [`DECISIONS.md`](DECISIONS.md) (D1-D11),
@@ -7,70 +7,41 @@
 
 ## Où on en est
 
-**Déployé en production** (commit `7654cbf7`, VPS à jour) et **utilisé pour de vrai** :
-le PO a créé un compte reviewer dans Authentik, s'est connecté sur
-`https://eurio-admin.musubi.dev`, et la review fonctionne.
+**La boucle est fermée.** Déployé en production au commit `071312d9` (backend puis
+front, VPS à jour), et utilisé pour de vrai : le PO a un compte reviewer dans
+Authentik et tranche des crops depuis `https://eurio-admin.musubi.dev`.
 
-Livrés et vérifiés : lots 0, 1, 1b, 2, 3, 4, 4b, 5, 6a.
-Un ami peut aujourd'hui : voir la file, voir le crop et le canonique, lire les
-suggestions DINO, chercher une pièce librement, trancher — sa décision partant en
-quarantaine sans toucher le canonique.
+Livrés et vérifiés : lots 0, 1, 1b, 2, 3, 4, 4b, 5, 6a, **D11**, **8**, et **6b**
+(déployé, une vérif d'écriture restant à la recette).
 
-## Le défaut trouvé à l'usage — à corriger en premier
+Un ami peut aujourd'hui :
 
-Le PO, avec son compte reviewer : *« pour faire la review, on nous dit que c'est en
-local »*.
+- voir la file, le crop et le canonique, lire les suggestions DINO, chercher une
+  pièce librement, **trancher** — sa décision partant en quarantaine sans toucher
+  le canonique ;
+- **recadrer** un crop mal cadré, à distance, servi par le canonique (lot 6b) ;
+- sans jamais voir le mot « local », un numéro de port, ni un bouton mort (D11).
 
-**Cause exacte, déjà diagnostiquée** — pas besoin de la rechercher :
-`ReviewDashboardPage` (la page `/review`, celle où l'ami arrive) propose deux entrées,
-`/review/manual` et `/review/auto-accept`. La seconde porte encore `meta: heavy` **et**
-relève de l'arbitre. L'ami clique et tombe sur la page pleine « Cette vue tourne en
-local » (`shared/ui/LocalOnlyNotice.vue`).
+Et le PO peut **relire tout ça en lot** : `/review/arbitrage`, désaccords DINO en
+tête et non cochés, approuver ou rejeter en un geste (lot 8).
 
-Le lot 5 avait masqué le *bouton* `AUTO-ACCEPT` de la barre de review, mais pas la
-*carte* du tableau de bord. `/review/recover` est dans le même cas (heavy + arbitre).
+## Ce qui reste
 
-**Ce qu'il faut faire** : cf. [`DECISIONS.md`](DECISIONS.md) **D11**. En résumé, pour un
-principal sans `review:arbitrate` : ne pas proposer les entrées `heavy`, **masquer**
-(et non griser) les contrôles gatés par la machine, et ne jamais afficher « local » ni
-`:8042`. Le grisé reste pour l'arbitre sur son poste.
-
-⚠️ C'est un revirement partiel d'une décision du lot 5, assumé et motivé dans D11 —
-ne le re-tranche pas dans l'autre sens sans lire pourquoi.
-
-## Ce qui reste, dans l'ordre conseillé
-
-| Lot | Objet | Pourquoi cet ordre |
+| Lot | Objet | Pourquoi ce n'est pas urgent |
 |---|---|---|
-| **D11** | Ne plus rien montrer de « local » à un ami | Le PO le voit **aujourd'hui**, en prod. Court. |
-| **8** | La vue bulk d'arbitrage | Sans elle le PO ne peut pas relire ce que son ami a produit. C'est la moitié manquante de la boucle. |
-| **6b** | Le recadrage à distance (`opencv-python-headless`) | 18,4 % des crops sont recadrés à la main : sans ça, l'ami ne fait que la moitié du travail. Rend D11 en partie caduc. |
-| 7 | Le bail sur la file | Utile seulement à partir de 2 amis simultanés. |
-| 9 | Full clean | En dernier, quand tout est prouvé. |
+| **6b — la vérif d'écriture** | Un vrai recadrage contre le VPS | **C'est la seule chose à faire tout de suite** — cf. la recette ci-dessous |
+| 7 | Le bail sur la file (`claimed_by`/`claimed_at`) | Utile seulement à partir de **2 amis simultanés**. Le 409 de `decide` reste le filet en attendant |
+| 9 | Full clean | En dernier, quand tout est prouvé. Il fait tomber `eurio-review.musubi.dev` : inventaire dans [`NETTOYAGE.md`](NETTOYAGE.md), à ne pas jouer un jour de recette |
 
-Le détail de chaque lot est dans [`ROADMAP.md`](ROADMAP.md).
+## La recette, à jouer ensemble
 
-### Sur le lot 8 — ce qui est déjà écrit
-
-`AutoAcceptReviewPage.vue` fait **déjà** exactement ce que le PO a décrit : grille
-`lg:grid-cols-2` de `ReviewCard` (props `crop-url` + `canonical-url` + `selected` +
-`@toggle`), **tout coché par défaut**, garde `BULK_CONFIRM_THRESHOLD`. La vue
-d'arbitrage, c'est cette page avec une autre source : onglets par personne, scroll
-infini, et `POST /peer-arbitration/approve-batch` (à ajouter — la boucle sur
-`approve()` existe déjà, `peer_arbitration_routes.py:156`, y compris le cas
-`superseded` quand une voie locale a tranché entre-temps).
-
-**Tri décidé (D8)** : désaccords avec DINO **en tête et non cochés**, le reste coché.
-Mesuré : 62,6 % des décisions rejoignent DINO top-1 (67,3 % avec le re-rank pays).
-Sans ce tri, un scroll tout-coché est un tampon en caoutchouc.
-
-## Le scénario de recette, à jouer ensemble en fin de session
-
-1. **L'ami** se connecte sur `https://eurio-admin.musubi.dev` avec le compte reviewer
-   et tranche une dizaine de crops — dont au moins un qu'il **recadre** (donc après 6b)
+1. **L'ami** se connecte sur `https://eurio-admin.musubi.dev` avec le compte
+   reviewer et tranche une dizaine de crops — dont au moins un qu'il **recadre**
    et un où il **contredit DINO** via la recherche libre `F`.
-   → Rien de « local » ne doit apparaître à l'écran. Aucun port. Aucun bouton mort.
-2. **Vérifier en base** que le canonique n'a pas bougé et que les lignes sont `pending` :
+   → Rien de « local » ne doit apparaître. Aucun port. Aucun bouton mort.
+
+2. **Vérifier en base** que le canonique n'a pas bougé et que les lignes sont
+   `pending` :
    ```bash
    ssh serverOimNixDontpanic 'docker exec eurio-api python -c "
    import sqlite3
@@ -79,33 +50,70 @@ Sans ce tri, un scroll tout-coché est un tampon en caoutchouc.
      \"select reviewer_name, action, arbitration_status from peer_review_decisions \"
      \"order by decided_at desc limit 10\")])"'
    ```
-3. **L'admin** se reconnecte avec son compte, ouvre la **vue bulk d'arbitrage**, voit
-   les décisions de l'ami (crop recadré ↔ canonique de la classe), décoche les
+
+3. **Le recadrage — la vérif qui manque au lot 6b.** Sur le crop recadré, vérifier
+   que l'objet MinIO a bien changé et que la géométrie a suivi. Relever l'ETag
+   AVANT le recadrage pour que la comparaison veuille dire quelque chose :
+   ```bash
+   # avant : ETag + bbox
+   ssh serverOimNixDontpanic 'docker exec eurio-api python -c "
+   import sqlite3
+   c=sqlite3.connect(\"file:/var/lib/eurio/eurio.db?mode=ro\",uri=True); c.row_factory=sqlite3.Row
+   print([dict(r) for r in c.execute(
+     \"select id, storage_path, detection_method, bbox_json, width, height \"
+     \"from image_assets where id = ?\", (\"<asset_id>\",))])"'
+   mc stat eurio/enrichment-crops/<storage_path>   # ETag + taille avant
+   # … recadrer dans l'UI …
+   mc stat eurio/enrichment-crops/<storage_path>   # ETag DIFFÉRENT
+   # et en base : detection_method='manual', bbox = le nouveau cercle, 224×224
+   ```
+   Puis que la prédiction DINO périmée est bien partie (D6) :
+   ```sql
+   SELECT count(*) FROM image_asset_dino_predictions WHERE asset_id = '<asset_id>';
+   -- attendu 0 ; `go-task ml:dino-predictions:backfill` la rebâtira depuis le Mac
+   ```
+
+4. **L'admin** se reconnecte avec son compte, ouvre `/review/arbitrage` (carte
+   III du tableau de bord, ou l'entrée « Arbitrage » de la nav), voit les
+   décisions de l'ami — crop **recadré** ↔ canonique de la classe —, décoche les
    mauvaises, approuve le reste en un geste.
-4. **Vérifier** que les approuvées ont bien `training_eligible = 1` et
+
+5. **Vérifier** que les approuvées ont `training_eligible = 1` et
    `review_queue.decided_by` = l'identifiant de l'ami, et que les rejetées sont
    **revenues dans la file**.
 
-## Trois pièges qui ont coûté cher — ne pas les repayer
+## Quatre pièges qui ont coûté cher — ne pas les repayer
 
-1. **Un screenshot ne prouve que la branche qu'il traverse.** Le lot 6a a été déclaré
-   vert sur un crop `confident` ; la branche `uncertain` plantait. Vérifier l'état réel
-   du DOM, et chaque cas, pas un.
-2. **`serving/server.py` ≠ `serving/server_serve.py`.** Le layered `review_queue/` n'est
-   monté que par le lean (VPS). Tester sur `:8042` n'exerce pas le code de production.
-3. **Vite met le PAT en cache au transform.** Sans `--force`, le bundle ressert l'ancien
-   jeton en silence. Et `pkill -f "vite --port 5174"` ne matche rien : la ligne réelle
-   est `vite.js --port 5174` — tuer par PID.
+1. **Un screenshot ne prouve que la branche qu'il traverse.** Le lot 6a a été
+   déclaré vert sur un crop `confident` ; la branche `uncertain` plantait.
+   Vérifier l'état réel du DOM, et chaque cas, pas un. *(Rejoué au lot 8 : la
+   branche « DINO en désaccord » n'existait pas naturellement dans le jeu du rig
+   — elle a été fabriquée sur la COPIE avant d'être regardée.)*
+2. **`serving/server.py` ≠ `serving/server_serve.py`.** Le layered
+   `review_queue/` n'est monté que par le lean (VPS). Tester sur `:8042`
+   n'exerce pas le code de production.
+3. **Vite met le PAT en cache au transform.** Sans `--force`, le bundle ressert
+   l'ancien jeton en silence. Et `pkill -f "vite --port 5174"` ne matche rien :
+   la ligne réelle est `vite.js --port 5174` — tuer par PID.
+4. **Il y a DEUX banques DINO, et elles ne disent pas la même chose.** Celle du
+   VERDICT (`vits14`/`2eur_commemo`) alimente le candidat étiqueté `DINO` sur
+   l'écran de review et le tri de D8 ; celle des SUGGESTIONS
+   (`vitl14`/`2eur_all`) alimente le panneau « SUGGESTIONS DINO » et la pêche.
+   Sur les 82 décisions du rig : 71 concordent avec la première, **1** avec la
+   seconde. Comparer contre la mauvaise ferait lire « DINO d'accord » sur la foi
+   d'un modèle que personne n'a vu.
 
 Le rig complet (API lean locale + front sur port mort) est décrit dans
 [`ROADMAP.md`](ROADMAP.md) §« Le rig de vérification ».
 
-## Deux dettes ouvertes, mesurées
+## Dettes ouvertes
 
-- **`referential` est skippé sur le VPS** (`ModuleNotFoundError: No module named 'PIL'`).
-  Sans effet aujourd'hui : les **689 pièces sur 689** ont une URL canonique externe
-  absolue, donc le repli relatif ne se déclenche jamais. À reprendre avec `cv2` au
-  lot 6b.
-- **Le front ne dit pas à l'ami que sa décision attend un arbitrage** — choix assumé
-  (« sans les fliquer »). Le serveur renvoie déjà `{"status": "pending_arbitration"}`
-  si on change d'avis.
+- **Le front ne dit pas à l'ami que sa décision attend un arbitrage** — choix
+  assumé (« sans les fliquer »). Le serveur renvoie déjà
+  `{"status": "pending_arbitration"}` si on change d'avis.
+- **La page unitaire `/review/peer-arbitration` survit** à côté de la vue en lot.
+  Conservée tant que la vue bulk n'est pas éprouvée ; sa suppression est inscrite
+  au lot 9 (D10 : on ne supprime pas au fil de l'eau).
+- ~~`referential` est skippé sur le VPS faute de PIL~~ — **soldé au lot 6b** :
+  l'import Pillow est descendu dans `encode_webp`, et le router est monté depuis
+  le 2026-08-23.

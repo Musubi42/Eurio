@@ -161,6 +161,11 @@ la moitié — d'où le fichier tenu dès maintenant.
 
 ## D11 — Un ami ne doit jamais voir le mot « local », ni un numéro de port
 
+> ✅ **Appliqué le 2026-08-23** — la règle vit dans
+> `shared/composables/useHeavyGate.ts` (`showHeavyGesture = canRunHeavy ||
+> canArbitrate`), vérifiée au DOM sur les deux profils. Détail :
+> [`ROADMAP.md`](ROADMAP.md) §D11.
+
 **Constaté en production le 2026-08-23**, par le PO, avec un vrai compte reviewer :
 « pour faire la review, on nous dit que c'est en local ».
 
@@ -187,3 +192,10 @@ de port est du bruit inquiétant. Le grisé RESTE pour qui a `review:arbitrate`.
 **Le vrai remède reste le lot 6b** : quand le recadrage tournera sur le VPS, il n'y
 aura plus rien à masquer. D11 est ce qu'on fait en attendant — et ce qui restera vrai
 pour les rares gestes qui resteront à jamais locaux.
+
+**Ce que 6b a effectivement retiré** (même journée) : le recadrage n'est plus gaté
+du tout, ni masqué ni grisé — il marche pour un ami. Ce que D11 continue de masquer
+est donc ce qui restera local pour de bon : la DÉTECTION (auto-crop, re-détecter,
+sync crops, crop manuel), qui charge un modèle. La décision ne perd pas son objet
+en devenant plus étroite — elle gagne en précision : on masque ce qui n'arrivera
+jamais, on ne masque pas ce qui n'est pas encore arrivé.

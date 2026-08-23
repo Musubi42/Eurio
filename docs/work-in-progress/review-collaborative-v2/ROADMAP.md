@@ -14,28 +14,148 @@
 | 4b | Durcir les routers montés sans scope | ✅ **vérifié en conditions réelles** |
 | 5 | Page review taillée pour un ami | ✅ **vérifié au navigateur, 2 profils** |
 | 6a | `dino-suggestions` en lecture pure sur le lean | ✅ **vérifié au navigateur** |
-| **D11** | **Ne plus rien montrer de « local » à un ami** | ⬜ **prioritaire — vu en prod par le PO** |
-| 8 | La vue bulk d'arbitrage | ⬜ |
-| 6b | Le recadrage à distance (cv2-headless) | ⬜ |
+| D11 | Ne plus rien montrer de « local » à un ami | ✅ **vérifié au DOM, 2 profils** |
+| 8 | La vue bulk d'arbitrage | ✅ **vérifié en base** (65 approuvées, 3 rejetées) |
+| 6b | Le recadrage à distance (cv2-headless) | 🟡 **déployé et vérifié en lecture** — l'écriture MinIO se joue à la recette |
 | 7 | Le bail sur la file | ⬜ |
 | 9 | Full clean | ⬜ |
 
-> **Déployé en production le 2026-08-23** et **utilisé** — le PO a créé un compte
-> reviewer dans Authentik et la review fonctionne. Résultats des contrôles :
-> [`DEPLOIEMENT.md`](DEPLOIEMENT.md). Reprise et défaut trouvé à l'usage :
+> **Déployé en production le 2026-08-23**, deux fois : d'abord les lots 0-6a, puis
+> D11 + 8 + 6b au commit `071312d9`. Résultats des contrôles :
+> [`DEPLOIEMENT.md`](DEPLOIEMENT.md). Reprise et recette :
 > **[`REPRISE.md`](REPRISE.md)**.
 
-## D11 — ne plus rien montrer de « local » à un ami (prioritaire)
+## D11 — fait (2026-08-23)
 
-Trouvé à l'usage, pas par un test. `ReviewDashboardPage` propose `/review/manual` ET
-`/review/auto-accept` ; la seconde est `meta: heavy` et relève de l'arbitre → l'ami
-clique et tombe sur « Cette vue tourne en local ». Le lot 5 avait masqué le *bouton*
-`AUTO-ACCEPT`, pas la *carte* du tableau de bord. `/review/recover` est dans le même cas.
+La règle de rendu vit maintenant dans **un seul endroit**,
+`shared/composables/useHeavyGate.ts` :
 
-À faire : masquer les entrées `heavy` et les contrôles gatés machine pour qui n'a pas
-`review:arbitrate` ; plus aucun « local » ni `:8042` à l'écran. Motivation et ce que ça
-écarte : [`DECISIONS.md`](DECISIONS.md) D11 — c'est un revirement partiel du lot 5,
-assumé.
+```
+showHeavyGesture = canRunHeavy || canArbitrate
+```
+
+Grisé pour l'arbitre (son poste, il sait ce qu'est `:8042` et il peut y aller),
+**absent** pour un ami. Les deux axes du lot 5 restent distincts ; ce qui change,
+c'est le RENDU du second quand la machine ne peut pas.
+
+Six endroits corrigés : la nav (les entrées lourdes ne sont plus proposées), les
+routes lourdes (`LocalOnlyNotice` a désormais deux rendus, technique et neutre),
+la **carte AUTO-ACCEPT du tableau de bord** — la cause exacte du défaut —, les
+gestes lourds de la review single et de la vue de lot, et sur `/besoin` la moitié
+ACHETER (qui lit `eurio.local.db`).
+
+⚠️ **Un gate périmé trouvé en chemin** : `/besoin` barrait le geste « pêcher » à
+qui n'a pas l'API ML, avec une infobulle qui parlait d'un port et d'un Mac. Or
+`/review/peche` n'est plus lourde depuis le lot 1. Le gate barrait donc à un ami
+— et à lui seul — la file que cette page venait de lui désigner. Dégaté.
+
+### Vérifié au DOM, deux profils, ML sur port mort
+
+| Profil ami (PAT restreint) | Profil arbitre (PAT complet) |
+|---|---|
+| 0 occurrence de « local », `:8042`, ou d'un nom de machine | Auto-crop et Recadrer **grisés** avec leur infobulle |
+| nav à 5 entrées (Tableau de bord · Pièces · Besoin · Review queue · Pêche) | nav complète, pastilles « local » sur les items lourds |
+| une seule carte au tableau de bord (Queue manuelle) | trois cartes (dont AUTO-ACCEPT et Arbitrage) |
+| `/review/auto-accept` en direct → « Cette page n'est pas disponible » | même URL → la notice technique avec `go-task ml:api` |
+| `/besoin` : pas de panneau ACHETER, 200 liens « pêcher » vivants | panneau ACHETER présent |
+
+## Lot 8 — fait (2026-08-23)
+
+Page `/review/arbitrage` (`ArbitrageBulkPage.vue`), plus une carte **III —
+Arbitrage** au tableau de bord (le CSS `.card-indigo` l'attendait depuis toujours)
+et une entrée de nav sous `review:arbitrate`.
+
+**Le tri est fait en SQL**, pas côté client : trié page par page, il ne survivrait
+pas au scroll infini — la page 2 rejouerait des concordances déjà vues et
+laisserait des désaccords derrière. `ORDER BY concords, decided_at, id`.
+
+**Trois états, pas deux.** `dino_state` vaut `concords` | `disagrees` | `absent` :
+un SILENCE de DINO appelle le même geste qu'un désaccord (ne pas cocher) mais ne
+se lit pas pareil à l'écran. Les deux passent devant.
+
+⚠️ **Contre quelle banque DINO l'accord se mesure-t-il ?** Contre celle du
+**VERDICT** (`dinov2-vits14` / `2eur_commemo`) — c'est-à-dire exactement la
+prédiction que l'écran de l'ami étiquette `DINO`, et celle sur laquelle repose le
+chiffre de D8 (67,3 % avec le re-rank pays). Pas contre la banque des
+**SUGGESTIONS** (`dinov2-vitl14` / `2eur_all`), qui alimente le panneau du même
+nom et le tri de la pêche. Les confondre ferait lire « DINO d'accord » sur la foi
+d'un modèle que personne n'a vu. Mesuré sur les 82 décisions du rig : 71 concordent
+avec le verdict, 1 seule avec les suggestions — les deux banques ne disent pas la
+même chose, et le tri de D8 changerait du tout au tout selon celle qu'on lit.
+
+Back : `_approve_one` extrait du handler unitaire (une seconde implémentation de
+l'écriture canonique aurait dérivé sans que rien n'échoue), `approve-batch` et
+`reject-batch` bouclent dessus, **chaque décision dans sa propre transaction** —
+un 409 « déjà arbitrée » est un cas normal, pas une panne, et ne doit pas emporter
+les 99 autres.
+
+**`reject-batch` n'est pas un confort** : sans lui, ce que l'arbitre décoche reste
+`pending`, donc hors de la file pour toujours — le crop disparaîtrait sans que
+personne ne l'ait tranché.
+
+### Vérifié EN BASE, pas sur un 200
+
+Rig : 82 décisions posées **par l'API avec le jeton d'un ami** (pas par SQL), puis
+65 approuvées en un geste depuis l'UI.
+
+| Contrôle | Résultat |
+|---|---|
+| `review_queue` des approuvées | `status=done`, `decision_engine_version=peer@v1` |
+| Qui a tranché | `decided_by` = l'ami, jointure `users` OK sur les 65 |
+| Le canonique | `training_eligible=1`, `resolution_status=manual`, `eurio_id` = sa décision (65/65) |
+| Les non approuvées | 17 toujours `pending`, `review_queue.status=open`, `decided_by NULL` |
+| Rejet en lot (3) | `status=open`, `training_eligible=0`, `eurio_id NULL` — canonique intact |
+| **Les rejetées reviennent dans la file** | **3/3 servies par `GET /review-queue`** (0/3 avant le rejet) |
+| Un ami sur `approve-batch` / `reject-batch` | **403** · l'arbitre : 200 |
+
+9 tests neufs (`test_peer_arbitration_bulk.py`).
+
+## Lot 6b — déployé (2026-08-23)
+
+`opencv-python-headless` + numpy dans l'image ; `vision/` et `sources/` copiés
+pour `_crop_mask_resize_float` (LE format de prod) et `phash`.
+
+**Ce qui débloquait vraiment l'affaire n'était pas cv2.** Le CONTRAT du recadrage
+(trois modèles pydantic + l'habillage) vivait dans `review/review_queue_routes` :
+l'importer traînait `sources.ebay`, `review.validation` et leur suite. Extrait
+dans `serving/crop_edit_api.py`. Du coup `coin_assets_routes` enregistre enfin ses
+propres routes de recadrage sur le lean, en plus du nouveau
+`serving/review_queue/crop_routes.py`.
+
+Scope `review:write` : **recadrer n'est pas arbitrer**. C'est la DÉCISION qui part
+en quarantaine, pas le cadrage — et le cadrage prend effet tout de suite (D9).
+
+**DINO à réencoder, sans colonne ni table** : après un recadrage sans encodeur, les
+prédictions du cadrage d'AVANT sont SUPPRIMÉES. Le marqueur EST cette absence —
+`backfill_dino_predictions` encode exactement les assets qui n'ont pas de ligne
+pour `(encoder_version, anchors_kind)`, donc `go-task ml:dino-predictions:backfill`
+draine sans commande neuve. Et ça retire surtout une suggestion devenue fausse,
+calculée sur le cadrage que l'humain vient de corriger : une prédiction confiante
+et périmée est pire qu'un panneau vide, qui dit au moins la vérité.
+
+**Dette soldée** : `referential` n'est plus skippé sur le VPS. L'import Pillow est
+descendu dans `encode_webp`, le seul à en avoir besoin — l'API, elle, ne demandait
+à ce module que des helpers de CHEMIN. Boot du 2026-08-23 :
+`routers montés : [… 'referential', 'peer_arbitration']`.
+
+### Vérifié — et ce qui reste à vérifier
+
+✅ 8 tests (format 224 de prod, géométrie et phash en base, écrasement sur la MÊME
+clé MinIO, cercle hors raw en 422, attribution NON touchée, prédiction périmée
+supprimée sous `ImportError`, routes montées sur le lean **et pas deux fois**,
+contrat sans import lourd, `referential` importable sans Pillow).
+
+✅ Rig, ML sur port mort : l'éditeur de cercle s'ouvre **avec un jeton d'ami**, le
+raw se charge (960 px, HTTP 200 depuis l'extérieur) — servi par le seul canonique.
+
+✅ Production : `/review-queue/{id}/crop-edit-context` répond des URLs MinIO
+présignées qui se chargent réellement de l'extérieur.
+
+🟡 **Ce qui manque pour passer le lot en ✅ : un vrai recadrage contre le VPS**,
+puis vérifier que l'objet MinIO a changé et que `detection_method` vaut `manual`.
+Volontairement laissé à la recette : un recadrage **écrase l'objet en place**
+(D9), et choisir un cercle au hasard depuis un rig abîmerait une vraie image de
+production. C'est au PO de désigner un crop qui en a besoin.
 
 ## Le rig de vérification (à réutiliser à chaque lot)
 
@@ -441,15 +561,11 @@ en cause.
 
 ## Lot 6b — Le recadrage à distance
 
-`infra/eurio-api/Dockerfile` : `opencv-python-headless` (sans GUI ni CUDA). Corriger
-le commentaire « PAS de torch/cv2/ultralytics », qui amalgame trois raisons.
-
-Monter `crop_edit` (contexte + `manual-crop`) sur `server_serve.py`, **sans**
-`predict_and_persist_kinds` → marquer le crop « DINO à réencoder », rattrapé en lot par
-le Mac. Porter `dino-suggestions` en lecture pure sur l'image lean.
-
-**Vérif.** Recadrer contre le VPS (pas `:8042`), puis vérifier que l'objet MinIO a
-changé et que `detection_method` vaut `manual`.
+🟡 Déployé le 2026-08-23 — le détail est en tête de ce fichier. Reste **la vérif
+d'écriture** : recadrer contre le VPS (pas `:8042`), puis vérifier que l'objet
+MinIO a changé et que `detection_method` vaut `manual`. Elle se joue à la recette,
+parce qu'un recadrage écrase l'objet en place (D9) et que le cercle doit être
+choisi par quelqu'un qui regarde la pièce.
 
 ## Lot 7 — Le bail sur la file
 
@@ -460,15 +576,7 @@ changé et que `detection_method` vaut `manual`.
 
 ## Lot 8 — La vue bulk d'arbitrage
 
-Page `/review/arbitrage` sous `review:arbitrate`. C'est `AutoAcceptReviewPage.vue`
-avec une autre source : onglets par personne, scroll infini, `grid lg:grid-cols-2` de
-`ReviewCard` (crop recadré ↔ canonique).
-
-Back : `POST /peer-arbitration/approve-batch`, boucle sur l'`approve()` existant
-(`peer_arbitration_routes.py:156`), qui gère déjà le cas `superseded` quand une voie
-locale a tranché entre-temps.
-
-Tri : désaccords DINO en tête et **non cochés** (cf. D8).
+✅ Fait le 2026-08-23 — le détail et les mesures sont en tête de ce fichier.
 
 ## Lot 9 — Full clean
 
