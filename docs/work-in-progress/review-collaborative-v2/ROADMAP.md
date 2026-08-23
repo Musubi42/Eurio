@@ -19,6 +19,9 @@
 | 8 | La vue bulk d'arbitrage | ⬜ |
 | 9 | Full clean | ⬜ |
 
+> **Déployé en production le 2026-08-23**, commit `419ed6c6`. Résultats et
+> contrôles : [`DEPLOIEMENT.md`](DEPLOIEMENT.md).
+
 ## Le rig de vérification (à réutiliser à chaque lot)
 
 Il reproduit le mode hébergé **sans rien déployer** : l'app LEAN du VPS tourne en local

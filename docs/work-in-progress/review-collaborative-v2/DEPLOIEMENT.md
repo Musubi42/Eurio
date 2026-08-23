@@ -89,6 +89,32 @@ curl -s -o /tmp/c.png -w "%{http_code} %{size_download}\n" "<crop_url renvoyé>"
 file /tmp/c.png     # doit dire « PNG image data »
 ```
 
+## Fait le 2026-08-23 — ce que les contrôles ont donné
+
+Déployé au commit `419ed6c6` (7 commits), backend puis front.
+
+| Contrôle | Résultat |
+|---|---|
+| Migration 0012 | ✅ `applied 1 migration(s)` |
+| Boot | ✅ `serve-role prêt … auth=True` — donc les 7 routers ont bien leurs scopes déclarés |
+| Routers montés | `coin_assets, coins, sets, operations, peer_arbitration` |
+| Routers skippés | `referential` (PIL), `review_queue` (cv2) — **préexistant**, ces modules n'ont pas été touchés |
+| **`crop_url`** | `/sources/…/file` → **`https://eurio-s3.musubi.dev/enrichment-crops/…`** |
+| L'image se charge vraiment | ✅ HTTP 200, 67 017 octets, `PNG image data, 224 x 224` — depuis l'extérieur, sans en-tête d'auth |
+| Suggestions DINO | ✅ `dinov2-vitl14 / 2eur_all`, `duration_ms: 0` (lu en base), 5 candidats, seuils d'abstention servis |
+| Front hébergé | ✅ 200 ; `review:arbitrate` et « disponible uniquement en local » présents dans les chunks `SingleReviewView`, `LotDetailView`, `ReviewPage` |
+
+### Sur les deux routers skippés
+
+Un routeur skippé **ne veut pas dire que son préfixe est absent** : `/review-queue/*`
+reste servi par `serving.review_queue`, monté au niveau module. Ce que la prod perd,
+ce sont les routes LOURDES de ce préfixe (`detect`, `manual-crop`, `crop-edit-context`).
+
+`referential` est skippé faute de `PIL`. Conséquence théorique : le repli relatif
+`/referential/canonical/{id}/obverse` répond 404. Mesuré — **il ne se déclenche
+jamais** : les 689 pièces du référentiel ont toutes une URL canonique externe
+absolue. À reprendre au lot 6b, en même temps que `cv2`.
+
 ## ⚠️ Ta session sera périmée — et c'est voulu
 
 `review:arbitrate` n'existait pas quand ta session a été ouverte. Les scopes d'un
