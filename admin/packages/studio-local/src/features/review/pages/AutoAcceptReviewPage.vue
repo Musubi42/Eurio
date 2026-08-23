@@ -22,6 +22,15 @@ import {
   type AutoAcceptPreviewItem,
 } from '../composables/useReviewApi'
 import ReviewCard from '../components/ReviewCard.vue'
+import { ML_API } from '@/features/training/composables/useTrainingApi'
+
+// Les URLs de cette page viennent de l'API ML LOCALE (`safeFetch`, `:8042`) et
+// sont relatives : c'est à elle de les résoudre, pas à `ReviewCard` (qui sert
+// aussi l'arbitrage, dont les URLs viennent du VPS).
+function mlUrl(url: string | null | undefined): string {
+  if (!url) return ''
+  return url.startsWith('http') ? url : `${ML_API}${url}`
+}
 
 type Status = 'loading' | 'ready' | 'submitting' | 'done' | 'error'
 
@@ -334,8 +343,8 @@ watch(cohortId, () => { void load() })
         <ReviewCard
           v-for="item in items"
           :key="item.review_id"
-          :crop-url="item.crop_url"
-          :canonical-url="item.target_thumb_url"
+          :crop-url="mlUrl(item.crop_url)"
+          :canonical-url="mlUrl(item.target_thumb_url)"
           :eurio-id="item.target_eurio_id"
           :target-label="item.target_label"
           :listing-title="item.listing_title"

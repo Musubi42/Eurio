@@ -1,6 +1,10 @@
 <script setup lang="ts">
-// Card partagée crop ↔ canonical + métadonnées listing, utilisée par les
-// pages d'acquittement batch (AutoAccept déterministe + Claude ccproxy).
+// Card partagée crop ↔ canonical + métadonnées listing, utilisée par les vues
+// en grille : auto-accept déterministe (voie locale) et arbitrage des décisions
+// d'amis (lot 8, voie VPS).
+//
+// ⚠️ Elle attend des URLs SERVABLES telles quelles — la résolution appartient à
+// l'appelant, qui seul sait quelle API a produit le chemin.
 //
 // Le slot `metrics` permet à chaque page d'injecter les métriques
 // spécifiques de sa voie (sim/spread/face pour AutoAccept, verdict/
@@ -10,7 +14,6 @@
 // les chiffres et codes, lucide icons.
 
 import { ExternalLink, CheckSquare, Square } from 'lucide-vue-next'
-import { ML_API } from '@/features/training/composables/useTrainingApi'
 
 defineProps<{
   cropUrl: string
@@ -32,9 +35,12 @@ defineEmits<{
   (e: 'toggle'): void
 }>()
 
+// La card ne RÉSOUT plus les URLs : chaque page lui passe des URLs déjà
+// servables. Elle les préfixait par `ML_API` (`127.0.0.1:8042`), ce qui est juste
+// pour l'auto-accept (servi par l'app full) et FAUX pour l'arbitrage (servi par
+// le VPS) — une seule composante ne peut pas trancher pour ses deux appelants.
 function img(url: string | null | undefined): string | null {
-  if (!url) return null
-  return url.startsWith('http') ? url : `${ML_API}${url}`
+  return url || null
 }
 </script>
 

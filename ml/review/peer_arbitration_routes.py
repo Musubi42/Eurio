@@ -1,13 +1,22 @@
 """FastAPI router `/peer-arbitration` — arbitrage admin des décisions amis.
 
-Les décisions des amis reviewers sont tirées dans `eurio.db.peer_review_decisions`
-(staging) par `go-task ml:review:reconcile`. Cette surface permet à Raphaël de les
-arbitrer dans une vue rapide :
+Un ami sans le scope `review:arbitrate` voit sa décision atterrir en QUARANTAINE
+dans `peer_review_decisions` au lieu d'écrire le canonique (D7,
+`serving/review_queue/writes.py`). Ce router est l'autre moitié de la boucle :
   - approve → applique la décision au canonique (même chemin que decide_review,
-    mais provenance peer@v1 / actor=peer_admin, confiance peer_review).
-  - reject  → laisse le canonique intact, marque la décision rejetée.
+    mais provenance peer@v1 / actor=human, `review_queue.decided_by` = l'ami).
+  - reject  → laisse le canonique intact, marque la décision rejetée — et le crop
+    RETOURNE dans la file, puisque la file n'exclut que les décisions `pending`.
+  - approve-batch → la même chose sur une sélection (lot 8, la vue bulk).
 
-cf. docs/work-in-progress/collaborative-review/05-admin-arbitration.md
+⚠️ Il n'y a plus de « staging tiré par `ml:review:reconcile` » : le pont
+publish/reconcile et `review.db` sont morts avec D1 — les amis écrivent
+directement le canonique via `eurio-api`.
+
+Écritures gardées par `review:arbitrate` via `require_scope_by_method` (lot 4b,
+`serving/router_scopes.py`) : un ami ne peut PAS approuver sa propre décision.
+
+cf. docs/work-in-progress/review-collaborative-v2/
 """
 
 from __future__ import annotations
@@ -19,6 +28,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from serving._coin_helpers import canonical_obverse_url
 from store import Store, emit_state_event
 from shared.verdict_scope import (
     VERDICT_ANCHORS_KIND,
@@ -62,59 +72,124 @@ def _coin_label(conn, eurio_id: str | None) -> str | None:
 # ─── Liste ───────────────────────────────────────────────────────────────────
 
 
+def _crop_url(source: str | None, asset_id: str, storage_path: str | None) -> str | None:
+    """URL servable du crop — **absolue** dès qu'on connaît sa clé MinIO.
+
+    Même doctrine, même raison qu'au lot 1 (`serving/review_queue/repository.py`) :
+    le chemin relatif `/sources/…/assets/…/file` n'est servi que par l'app full de
+    la workstation, et le front le résolvait contre `:8042`. Sans ça, la vue
+    d'arbitrage est aveugle partout ailleurs que sur le Mac — c'est-à-dire là où
+    elle sert.
+    """
+    if storage_path:
+        try:
+            from shared.storage import signed_url
+
+            return signed_url("enrichment-crops", storage_path)
+        except Exception:  # noqa: BLE001 — couche d'affichage, jamais fatale
+            pass
+    return f"/sources/{source}/assets/{asset_id}/file" if source else None
+
+
+def _decision_row_to_item(conn, r) -> dict:
+    dino_top1 = r["dino_country"] or r["dino_global"]
+    target = r["decided_eurio_id"]
+    return {
+        "id": r["id"],
+        "image_asset_id": r["image_asset_id"],
+        "crop_url": _crop_url(r["asset_source"], r["image_asset_id"], r["asset_storage_path"]),
+        "canonical_url": canonical_obverse_url(conn, target) if target else None,
+        "listing_title": r["listing_title"] or "",
+        "listing_url": r["listing_url"],
+        "source": r["asset_source"] or "—",
+        "reviewer_name": r["reviewer_name"],
+        "reviewer_token": r["reviewer_token"],
+        "action": r["action"],
+        "decided_eurio_id": target,
+        "decided_label": _coin_label(conn, target),
+        "decided_face": r["decided_face"],
+        "quality_reason": r["quality_reason"],
+        "notes": r["notes"],
+        "decided_at": r["decided_at"],
+        "dino_top1_eurio_id": dino_top1,
+        "dino_top1_label": _coin_label(conn, dino_top1),
+        "concords": bool(r["concords"]),
+        # Trois états, pas deux : « la machine dit autre chose » et « la machine
+        # ne dit rien » se rangent tous deux du côté non coché (ni l'un ni
+        # l'autre n'est une confirmation), mais les confondre à l'écran ferait
+        # lire un désaccord là où il n'y a qu'un silence.
+        "dino_state": (
+            "concords" if r["concords"]
+            else ("absent" if not dino_top1 else "disagrees")
+        ),
+    }
+
+
+# `concords` calculé en SQL et NON en Python : c'est la clé de TRI (D8 — les
+# désaccords en tête et non cochés). Trié en Python, l'ordre ne survivrait pas à
+# la pagination du scroll infini : la page 2 rejouerait des concordances déjà vues
+# et laisserait des désaccords derrière.
+_CONCORDS_SQL = """
+    CASE WHEN pr.action = 'accept'
+          AND pr.decided_eurio_id IS NOT NULL
+          AND pr.decided_eurio_id = COALESCE(p.top1_country_eurio_id, p.top1_eurio_id)
+         THEN 1 ELSE 0 END
+"""
+
+_LIST_FROM_SQL = f"""
+      FROM peer_review_decisions pr
+      LEFT JOIN image_assets a ON a.id = pr.image_asset_id
+      LEFT JOIN source_images s ON s.id = a.source_image_id
+      LEFT JOIN image_asset_dino_predictions p
+             ON p.asset_id = pr.image_asset_id
+            AND p.encoder_version = '{VERDICT_ENCODER_VERSION}'
+            AND p.anchors_kind = '{VERDICT_ANCHORS_KIND}'
+     WHERE pr.arbitration_status = 'pending'
+"""
+
+
 @router.get("")
-def list_pending(limit: int = 200) -> dict:
-    """Décisions en attente d'arbitrage, enrichies pour la vue rapide."""
+def list_pending(
+    limit: int = 60,
+    offset: int = 0,
+    reviewer: str | None = None,
+) -> dict:
+    """Décisions en attente d'arbitrage, enrichies pour la vue bulk.
+
+    Tri (D8) : **désaccords avec DINO d'abord**, puis par ancienneté. « Tout
+    validé par défaut » sur un scroll infini est un tampon en caoutchouc ; les
+    deux tiers concordants peuvent défiler vite, le tiers où l'humain contredit
+    la machine exige un geste positif — donc il passe devant.
+
+    `reviewer` filtre sur `reviewer_token` (les onglets par personne).
+    `limit`/`offset` paginent le scroll infini ; `total` dit quand s'arrêter.
+    """
     conn = _store()._connection()  # noqa: SLF001
+    params: list = []
+    where_reviewer = ""
+    if reviewer:
+        where_reviewer = " AND pr.reviewer_token = ?"
+        params.append(reviewer)
+
+    total = conn.execute(
+        f"SELECT count(*) {_LIST_FROM_SQL}{where_reviewer}", params
+    ).fetchone()[0]
+
     rows = conn.execute(
         f"""
-        SELECT pr.*, s.source AS asset_source,
-               p.top1_country_eurio_id AS dino_country, p.top1_eurio_id AS dino_global
-          FROM peer_review_decisions pr
-          LEFT JOIN image_assets a ON a.id = pr.image_asset_id
-          LEFT JOIN source_images s ON s.id = a.source_image_id
-          LEFT JOIN image_asset_dino_predictions p
-                 ON p.asset_id = pr.image_asset_id
-                AND p.encoder_version = '{VERDICT_ENCODER_VERSION}'
-                AND p.anchors_kind = '{VERDICT_ANCHORS_KIND}'
-         WHERE pr.arbitration_status = 'pending'
-         ORDER BY pr.decided_at
-         LIMIT ?
+        SELECT pr.*, s.source AS asset_source, a.storage_path AS asset_storage_path,
+               s.listing_title AS listing_title, s.source_url AS listing_url,
+               p.top1_country_eurio_id AS dino_country, p.top1_eurio_id AS dino_global,
+               {_CONCORDS_SQL} AS concords
+        {_LIST_FROM_SQL}{where_reviewer}
+         ORDER BY concords ASC, pr.decided_at ASC, pr.id ASC
+         LIMIT ? OFFSET ?
         """,
-        (limit,),
+        [*params, limit, offset],
     ).fetchall()
 
-    items = []
-    for r in rows:
-        dino_top1 = r["dino_country"] or r["dino_global"]
-        concords = bool(
-            r["action"] == "accept"
-            and r["decided_eurio_id"]
-            and dino_top1
-            and r["decided_eurio_id"] == dino_top1
-        )
-        crop_url = (
-            f"/sources/{r['asset_source']}/assets/{r['image_asset_id']}/file"
-            if r["asset_source"] else None
-        )
-        items.append({
-            "id": r["id"],
-            "image_asset_id": r["image_asset_id"],
-            "crop_url": crop_url,
-            "reviewer_name": r["reviewer_name"],
-            "reviewer_token": r["reviewer_token"],
-            "action": r["action"],
-            "decided_eurio_id": r["decided_eurio_id"],
-            "decided_label": _coin_label(conn, r["decided_eurio_id"]),
-            "decided_face": r["decided_face"],
-            "quality_reason": r["quality_reason"],
-            "notes": r["notes"],
-            "decided_at": r["decided_at"],
-            "dino_top1_eurio_id": dino_top1,
-            "dino_top1_label": _coin_label(conn, dino_top1),
-            "concords": concords,
-        })
-    return {"items": items}
+    items = [_decision_row_to_item(conn, r) for r in rows]
+    return {"items": items, "total": total, "limit": limit, "offset": offset}
 
 
 @router.get("/reviewers")
@@ -153,11 +228,14 @@ def _fetch_pending(conn, decision_id: str):
     return row
 
 
-@router.post("/{decision_id}/approve")
-def approve(decision_id: str) -> dict:
-    """Applique la décision de l'ami au canonique (provenance peer)."""
-    store = _store()
-    conn = store._connection()  # noqa: SLF001
+def _approve_one(conn, decision_id: str) -> dict:
+    """Le corps de l'approbation, partagé par `/approve` et `/approve-batch`.
+
+    Extrait tel quel du handler unitaire au lot 8 : la vue bulk devait boucler
+    dessus, et une seconde implémentation de l'écriture canonique aurait été
+    exactement le genre de divergence muette contre laquelle `eurio-verify`
+    existe — deux chemins d'écriture qui dérivent sans que rien n'échoue.
+    """
     pr = _fetch_pending(conn, decision_id)
     asset_id = pr["image_asset_id"]
     rq_id = pr["review_item_id"]
@@ -254,8 +332,119 @@ def approve(decision_id: str) -> dict:
     return {"status": "approved", "id": decision_id}
 
 
+@router.post("/{decision_id}/approve")
+def approve(decision_id: str) -> dict:
+    """Applique la décision de l'ami au canonique (provenance peer)."""
+    store = _store()
+    return _approve_one(store._connection(), decision_id)  # noqa: SLF001
+
+
+class ApproveBatchPayload(BaseModel):
+    ids: list[str]
+
+
+@router.post("/approve-batch")
+def approve_batch(payload: ApproveBatchPayload) -> dict:
+    """Approuve une sélection en un geste (lot 8 — la vue bulk).
+
+    Chaque décision est traitée par `_approve_one`, dans SA propre transaction.
+    Une décision qui échoue ne fait donc PAS tomber le lot : elle est rangée dans
+    `failed` avec sa raison et les autres passent. C'est le comportement voulu
+    ici — sur un lot de cent, un 409 « déjà arbitrée » (une voie locale est
+    passée entre-temps) est un cas NORMAL, pas une panne, et perdre les
+    quatre-vingt-dix-neuf autres pour lui serait absurde.
+
+    `superseded` remonte tel quel : la ligne `review_queue` avait déjà été
+    tranchée localement, le canonique n'est pas réécrit.
+    """
+    if not payload.ids:
+        raise HTTPException(status_code=400, detail="Aucun identifiant fourni.")
+    # Borne franche plutôt qu'un lot d'une taille arbitraire : la vue bulk
+    # pagine par 60, le garde-fou à 50 du front demande déjà un second clic.
+    if len(payload.ids) > 500:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Lot trop grand ({len(payload.ids)} > 500) — pagine.",
+        )
+
+    store = _store()
+    conn = store._connection()  # noqa: SLF001
+    approved: list[str] = []
+    superseded: list[str] = []
+    failed: list[dict] = []
+
+    for decision_id in payload.ids:
+        try:
+            res = _approve_one(conn, decision_id)
+        except HTTPException as exc:
+            failed.append({"id": decision_id, "detail": str(exc.detail), "status": exc.status_code})
+            continue
+        except Exception as exc:  # noqa: BLE001 — un lot ne tombe pas pour un item
+            logger.exception("[peer-arbitration] approve-batch id=%s", decision_id)
+            failed.append({"id": decision_id, "detail": str(exc), "status": 500})
+            continue
+        (superseded if res["status"] == "superseded" else approved).append(decision_id)
+
+    logger.info(
+        "[peer-arbitration] approve-batch demandées=%d approuvées=%d supersédées=%d échouées=%d",
+        len(payload.ids), len(approved), len(superseded), len(failed),
+    )
+    return {
+        "requested": len(payload.ids),
+        "approved": approved,
+        "superseded": superseded,
+        "failed": failed,
+    }
+
+
 class RejectPayload(BaseModel):
     notes: str | None = None
+
+
+class RejectBatchPayload(BaseModel):
+    ids: list[str]
+    notes: str | None = None
+
+
+@router.post("/reject-batch")
+def reject_batch(payload: RejectBatchPayload) -> dict:
+    """Rejette une sélection — le canonique reste intact (lot 8).
+
+    Le jumeau indispensable d'`approve-batch` : ce que l'arbitre écarte doit
+    RETOURNER dans la file. Laisser la décision `pending` la garderait hors de
+    la file indéfiniment (`NOT_QUARANTINED_SQL`), donc le crop disparaîtrait
+    sans que personne ne l'ait tranché — une perte muette.
+    """
+    if not payload.ids:
+        raise HTTPException(status_code=400, detail="Aucun identifiant fourni.")
+    if len(payload.ids) > 500:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Lot trop grand ({len(payload.ids)} > 500) — pagine.",
+        )
+    store = _store()
+    conn = store._connection()  # noqa: SLF001
+    rejected: list[str] = []
+    failed: list[dict] = []
+    for decision_id in payload.ids:
+        try:
+            _fetch_pending(conn, decision_id)
+        except HTTPException as exc:
+            failed.append({"id": decision_id, "detail": str(exc.detail), "status": exc.status_code})
+            continue
+        with store._writing() as wconn:  # noqa: SLF001
+            wconn.execute(
+                "UPDATE peer_review_decisions "
+                "SET arbitration_status = 'rejected', arbitrated_at = ?, arbitration_notes = ? "
+                "WHERE id = ? AND arbitration_status = 'pending'",
+                (_now_iso(), payload.notes, decision_id),
+            )
+        rejected.append(decision_id)
+    logger.info(
+        "[peer-arbitration] reject-batch demandées=%d rejetées=%d échouées=%d",
+        len(payload.ids), len(rejected), len(failed),
+    )
+    return {"requested": len(payload.ids), "rejected": rejected, "failed": failed}
 
 
 @router.post("/{decision_id}/reject")

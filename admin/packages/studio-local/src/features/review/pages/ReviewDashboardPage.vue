@@ -20,10 +20,19 @@ import {
   Eye,
   Wand2,
   RotateCcw,
+  Stamp,
 } from 'lucide-vue-next'
 import { fetchTriageStats, type TriageStats } from '../composables/useReviewApi'
+import { usePeerArbitrationApi } from '../composables/usePeerArbitrationApi'
+import { useHeavyGate } from '@/shared/composables/useHeavyGate'
 
 const router = useRouter()
+
+// D11 — le plateau AUTO-ACCEPT relève de l'arbitre ET tape `:8042` : pour un ami,
+// il n'est pas proposé. C'était le défaut vu en production le 2026-08-23 — le lot 5
+// avait masqué le BOUTON `AUTO-ACCEPT` de la barre de review, pas cette CARTE, et le
+// clic tombait sur la page pleine « Cette vue tourne en local ».
+const { canArbitrate } = useHeavyGate()
 const status = ref<'loading' | 'ready' | 'error'>('loading')
 const error = ref<string | null>(null)
 const stats = ref<TriageStats | null>(null)
@@ -40,7 +49,10 @@ async function load() {
   }
 }
 
-onMounted(load)
+onMounted(() => {
+  void load()
+  void loadPeer()
+})
 
 // ─── Dérivés ─────────────────────────────────────────────────────────────
 
@@ -55,6 +67,25 @@ const manualCount = computed(() => {
 })
 
 const autoCount = computed(() => stats.value?.by_verdict.auto_candidate ?? 0)
+
+// Plateau III — les décisions d'amis en quarantaine (lot 8). Chargé à part des
+// stats de triage : il vit dans `peer_review_decisions`, pas dans `review_queue`,
+// et son absence ne doit pas faire échouer la page.
+const peerApi = usePeerArbitrationApi()
+const peerPending = ref<number | null>(null)
+const peerReviewers = ref(0)
+
+async function loadPeer() {
+  if (!canArbitrate.value) return
+  try {
+    const stats = await peerApi.fetchReviewerStats()
+    peerPending.value = stats.reduce((n, r) => n + r.pending, 0)
+    peerReviewers.value = stats.filter((r) => r.pending > 0).length
+  } catch {
+    // Silencieux : la carte affiche « — » plutôt que de casser le tableau de bord.
+    peerPending.value = null
+  }
+}
 
 const segments = computed(() => {
   if (!stats.value || stats.value.n_pending === 0) return []
@@ -99,7 +130,14 @@ function fmt(n: number): string {
           Review.
         </h1>
         <p class="mt-2 max-w-md text-sm" style="color: var(--ink-500);">
-          Deux voies d'identification pour les images scrapées. Choisissez le plateau d'examen.
+          <!-- Un ami ne voit qu'un plateau (D11) : annoncer « deux voies » en
+               afficherait une de plus que ce qu'il a sous les yeux. -->
+          <template v-if="canArbitrate">
+            Deux voies d'identification pour les images scrapées. Choisissez le plateau d'examen.
+          </template>
+          <template v-else>
+            Les images scrapées à identifier, une par une.
+          </template>
         </p>
       </div>
 
@@ -192,8 +230,9 @@ function fmt(n: number): string {
             </footer>
           </article>
 
-          <!-- II — AUTO-ACCEPT -->
+          <!-- II — AUTO-ACCEPT (arbitre seulement, cf. D11) -->
           <article
+            v-if="canArbitrate"
             class="card card-active card-gold"
             :style="{ '--enter-delay': '120ms' }"
             @click="go('/review/auto-accept')"
@@ -234,6 +273,52 @@ function fmt(n: number): string {
                 {{ autoCount === 0 ? 'Aucun candidat' : `Réviser ${fmt(autoCount)}` }}
               </span>
               <ArrowUpRight v-if="autoCount > 0" :size="14" :stroke-width="1.6" />
+            </footer>
+          </article>
+
+
+          <!-- III — ARBITRAGE (arbitre seulement) : ce que les amis ont produit. -->
+          <article
+            v-if="canArbitrate"
+            class="card card-active card-indigo"
+            :style="{ '--enter-delay': '200ms' }"
+            @click="go('/review/arbitrage')"
+            role="link"
+            tabindex="0"
+            @keydown.enter="go('/review/arbitrage')"
+          >
+            <header class="card-head">
+              <span class="card-roman">III</span>
+              <span class="card-eyebrow">Plateau des pairs</span>
+            </header>
+
+            <div class="card-icon">
+              <Stamp :size="18" :stroke-width="1.4" />
+            </div>
+
+            <h2 class="card-title">Arbitrage</h2>
+
+            <div class="card-number-row">
+              <span class="card-number" :class="{ 'is-skeleton': peerPending === null }">
+                {{ peerPending === null ? '—' : fmt(peerPending) }}
+              </span>
+              <span class="card-number-unit">décisions<br />en quarantaine</span>
+            </div>
+
+            <p class="card-sub">
+              Tranchées par un ami, le canonique intact tant que tu n'as pas relu.
+              <template v-if="peerReviewers > 0">
+                <span class="dot">·</span>
+                <span class="font-mono tabular-nums" style="color: var(--ink-700);">{{ peerReviewers }}</span>
+                personne{{ peerReviewers > 1 ? 's' : '' }}
+              </template>
+            </p>
+
+            <footer class="card-cta">
+              <span class="card-cta-label">
+                {{ peerPending ? `Arbitrer ${fmt(peerPending)}` : 'Rien en attente' }}
+              </span>
+              <ArrowUpRight v-if="peerPending" :size="14" :stroke-width="1.6" />
             </footer>
           </article>
 

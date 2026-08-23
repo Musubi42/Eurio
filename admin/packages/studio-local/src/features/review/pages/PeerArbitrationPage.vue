@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { RouterLink } from 'vue-router'
 import {
   cropSrc,
   usePeerArbitrationApi,
@@ -21,8 +22,8 @@ async function load() {
   loading.value = true
   error.value = null
   try {
-    const [pending, stats] = await Promise.all([api.fetchPending(), api.fetchReviewerStats()])
-    items.value = pending
+    const [page, stats] = await Promise.all([api.fetchPending(), api.fetchReviewerStats()])
+    items.value = page.items
     reviewers.value = stats
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
@@ -111,8 +112,9 @@ onMounted(load)
     <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
     <p v-if="loading" class="text-sm opacity-70">Chargement…</p>
     <p v-else-if="!items.length" class="text-sm opacity-70">
-      Rien à arbitrer. Lance <code>go-task ml:review:reconcile</code> pour tirer
-      les décisions des amis.
+      Rien à arbitrer. Les décisions des amis arrivent ici directement — le pont
+      <code>publish</code>/<code>reconcile</code> n'existe plus (D1).
+      <RouterLink to="/review/arbitrage" class="underline">Vue en lot</RouterLink>.
     </p>
 
     <!-- Grille d'arbitrage -->

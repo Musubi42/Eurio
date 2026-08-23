@@ -111,8 +111,16 @@ const router = createRouter({
           meta: heavy,
         },
         {
-          // Mixte (GET arbitrage léger + URLs images ML) : accessible en hébergé,
-          // les images cassées dégradent proprement.
+          // La vue BULK d'arbitrage (lot 8) — la seconde moitié de la boucle de
+          // review collaborative. Pas `heavy` : elle ne lit que le canonique et
+          // des URLs MinIO présignées. La garde est serveur (`review:arbitrate`
+          // sur les POST, lot 4b) ; la nav ne fait que du confort.
+          path: 'review/arbitrage',
+          component: () => import('@/features/review/pages/ArbitrageBulkPage.vue'),
+        },
+        {
+          // La vue UNITAIRE, antérieure au lot 8. Conservée tant que la vue bulk
+          // n'est pas éprouvée — sa suppression est inscrite au lot 9 (D10).
           path: 'review/peer-arbitration',
           component: () => import('@/features/review/pages/PeerArbitrationPage.vue'),
         },

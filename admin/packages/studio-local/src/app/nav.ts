@@ -1,4 +1,4 @@
-import { Activity, BookOpen, Brain, CircleAlert, ClipboardCheck, ClipboardList, Coins, Crop, Database, Eye, Fish, FlaskConical, Gavel, KeyRound, LayoutDashboard, Layers, Network, Scale, ShieldQuestion, Target, Users } from 'lucide-vue-next'
+import { Activity, BookOpen, Brain, CircleAlert, ClipboardCheck, ClipboardList, Coins, Crop, Database, Eye, Fish, FlaskConical, Gavel, KeyRound, LayoutDashboard, Layers, Network, Scale, ShieldQuestion, Stamp, Target, Users } from 'lucide-vue-next'
 import type { Component } from 'vue'
 
 export interface NavItem {
@@ -18,11 +18,11 @@ export interface NavItem {
    * a-t-elle le droit ? ». Une entrée sans `scope` est visible de tout principal
    * authentifié.
    *
-   * ⚠️ C'est du CONFORT, pas une garde. La garde est serveur (`require_scope`) et
-   * elle est INÉGALE aujourd'hui : les routers montés via `_CANDIDATES` dans
-   * `server_serve.py` le sont avec `require_principal`, donc sans scope — un
-   * `reviewer` peut encore atteindre `/coins/*` en écriture par appel direct.
-   * Durcissement suivi en lot 4b de `docs/work-in-progress/review-collaborative-v2/`.
+   * ⚠️ C'est du CONFORT, pas une garde. La garde est serveur : `require_scope`,
+   * et `require_scope_by_method` pour les routers montés via `_CANDIDATES` dans
+   * `server_serve.py` (lot 4b — leur couple lecture/écriture est déclaré dans
+   * `serving/router_scopes.py`, et un router sans couple fait échouer le boot).
+   * Un ami qui devine une URL prend donc un 403, pas une page.
    */
   scope?: string
 }
@@ -112,6 +112,15 @@ export const navSections: NavSection[] = [
         icon: Fish,
         route: '/review/peche',
         scope: 'review:read',
+      },
+      {
+        // Arbitrage des décisions des amis (lot 8). `review:arbitrate` : un ami
+        // ne la voit pas — et le serveur la lui refuserait de toute façon.
+        id: 'arbitrage-peer',
+        label: 'Arbitrage',
+        icon: Stamp,
+        route: '/review/arbitrage',
+        scope: 'review:arbitrate',
       },
       {
         id: 'audit',
