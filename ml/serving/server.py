@@ -152,6 +152,14 @@ app.include_router(db_routes.router)
 from serving.class_need_routes import router as class_need_router  # noqa: E402
 app.include_router(class_need_router)
 
+# La moitié ACHETER de `/besoin` (lot 5). LOURDE et montée ICI SEULEMENT : elle
+# lit `ml/state/eurio.local.db` (`api_call_log`), qui est l'état d'observabilité
+# de CETTE machine et n'existe pas sur le VPS. La page `/besoin`, elle, reste
+# non-`heavy` : elle s'affiche entièrement en hébergé, ce bloc-ci grisé.
+# Lecture pure : deux connexions `mode=ro`, zéro appel eBay.
+from serving.scrape_plan_routes import router as scrape_plan_router  # noqa: E402
+app.include_router(scrape_plan_router)
+
 # local-sync (event-log/outbox/worker) retiré C6a (démonté) + C6b (modules
 # supprimés) — Direction A remplace le cycle push/pull/hlc par des POST
 # directs /ingest/* (crops/faces/dino/run).

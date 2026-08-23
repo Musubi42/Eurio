@@ -411,3 +411,48 @@ def test_le_quota_relu_ne_bloque_pas_quand_il_reste_de_la_marge(db, tmp_path, mo
     calls: list[list[str]] = []
     rc = alloc.execute(a, groups_per_run=1, runner=lambda c: calls.append(c) or 0)
     assert rc == 0 and len(calls) == len(a.planned)
+
+
+# ── 6. Le cadrage par pays (lot 5 — la moitié ACHETER de `/besoin`) ──────────
+
+
+def test_le_filtre_pays_cadre_le_plan_sans_rien_changer_dautre(db, tmp_path):
+    """`countries=` ne garde que les groupes du pays — mêmes coûts, même score.
+
+    La moitié ACHETER propose « le plan LU » : sans ce cadrage, le lien
+    ouvrirait le plan COMPLET sous un libellé qui promet un pays. C'est le même
+    défaut que le badge qui annonce 4 au-dessus d'une file qui en sert 3.
+    """
+    complet = _alloc(db, tmp_path)
+    fr = _alloc(db, tmp_path, countries=frozenset({"FR"}))
+
+    assert {g.key.country for g in fr.planned} == {"FR"}
+    # Les groupes FR du plan complet sont exactement ceux du plan cadré.
+    assert [g.key.label() for g in fr.planned] == [
+        g.key.label() for g in complet.planned if g.key.country == "FR"
+    ]
+    # Le coût d'un groupe ne dépend pas du cadrage.
+    assert fr.cost == sum(g.cost for g in complet.planned if g.key.country == "FR")
+    assert fr.cost < complet.cost
+
+
+def test_un_pays_inconnu_rend_un_plan_vide_jamais_le_plan_complet(db, tmp_path):
+    """Un périmètre qui rate se ferme, il ne s'élargit pas en silence.
+
+    Sans ce refus, une faute de frappe dans le code pays financerait TOUTE
+    l'Europe en croyant financer Saint-Marin.
+    """
+    a = _alloc(db, tmp_path, countries=frozenset({"ZZ"}))
+    assert a.planned == [] and a.cost == 0
+    assert a.review_covered == []
+
+
+def test_le_cadrage_pays_passe_par_la_ligne_de_commande(db, tmp_path, capsys):
+    """`--country` existe vraiment : c'est la commande affichée par l'écran."""
+    rc = alloc.main(["--db", str(db), "--budget", "10000", "--today", "2026-08-20",
+                     "--country", "fr", "--format", "json"])
+    assert rc == 0
+    import json as _json
+    payload = _json.loads(capsys.readouterr().out)
+    assert payload["groups"], "le plan FR ne doit pas être vide"
+    assert {g["country"] for g in payload["groups"]} == {"FR"}

@@ -12,6 +12,7 @@
 // Aucun chiffre n'est calculé ici : tout vient de `totals` / `parked`.
 
 import { computed } from 'vue'
+import BesoinAcheter from './BesoinAcheter.vue'
 import type { ClassNeedResponse, ClassNeedRow, Palier } from '../composables/useClassNeed'
 
 const props = defineProps<{
@@ -56,16 +57,6 @@ const palier1 = computed(() => {
     aPortee: avecCandidats.length,
     aScraper: zeros.length - avecCandidats.length,
   }
-})
-
-const scrapeParPays = computed(() => {
-  const m = new Map<string, number>()
-  for (const r of props.data.classes) {
-    if (r.bottleneck !== 'scrape') continue
-    const c = r.country ?? '—'
-    m.set(c, (m.get(c) ?? 0) + 1)
-  }
-  return [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10)
 })
 
 function fmt(n: number): string {
@@ -178,26 +169,13 @@ function fmt(n: number): string {
         </button>
       </div>
 
-      <div class="panel panel--heavy">
-        <span class="eyebrow">
-          Acheter
-          <span v-if="heavyLocked" class="local">· local seulement</span>
-        </span>
-        <span class="big">{{ fmt(t.sum_need - t.sum_reachable) }}<small> à aller chercher</small></span>
-        <ul class="sub list">
-          <li>{{ fmt(t.by_bottleneck.scrape ?? 0) }} classes sans aucun candidat</li>
-          <li class="mono tiny">
-            {{ scrapeParPays.map(([c, n]) => `${c} ${n}`).join(' · ') }}
-          </li>
-        </ul>
-        <p class="reserve">
-          Le préflight quota de <code>sources/cli.py</code> est faux d'un facteur
-          ~130 · le budget vrai est dans <code>eurio.local.db</code>, pas au canonique.
-        </p>
-        <button type="button" class="btn btn--ghost" disabled title="Le plan de scrape arrive au lot 5.">
-          Plan de scrape — à venir (lot 5)
-        </button>
-      </div>
+      <!-- La moitié ACHETER est LOURDE (elle lit `eurio.local.db`), la page ne
+           l'est pas : elle se grise seule et le dit. Lot 5. -->
+      <BesoinAcheter
+        :a-chercher="t.sum_need - t.sum_reachable"
+        :n-classes-scrape="t.by_bottleneck.scrape ?? 0"
+        :heavy-locked="heavyLocked"
+      />
     </div>
   </div>
 </template>
@@ -220,15 +198,10 @@ function fmt(n: number): string {
 .panel--btn { cursor: pointer; transition: border-color 120ms; }
 .panel--btn:hover { border-color: var(--indigo-300); }
 .panel--on { border-color: var(--indigo-700); box-shadow: inset 0 0 0 1px var(--indigo-700); }
-.panel--heavy {
-  background: repeating-linear-gradient(135deg, var(--surface-1), var(--surface-1) 9px,
-    var(--surface-2) 9px, var(--surface-2) 18px);
-}
 .eyebrow {
   font-size: 10px; text-transform: uppercase; letter-spacing: 0.2em;
   color: var(--ink-400); font-weight: 600;
 }
-.local { text-transform: none; letter-spacing: 0; color: var(--ink-300); }
 .big {
   font-family: var(--font-mono); font-size: 25px; color: var(--ink);
   letter-spacing: -0.02em; margin: 8px 0 4px;
@@ -245,7 +218,6 @@ function fmt(n: number): string {
 .tiny { font-size: 10.5px; margin-top: 6px; }
 .list { list-style: none; margin: 8px 0 12px; }
 .list li { padding: 1px 0; }
-.mono { font-family: var(--font-mono); }
 
 .histo { display: flex; align-items: stretch; gap: 3px; height: 92px; margin: 14px 0 8px; }
 .histo > div {
@@ -263,18 +235,11 @@ function fmt(n: number): string {
 .dot--wip { background: var(--indigo-700); }
 .dot--full { background: var(--ink-300); }
 
-.reserve {
-  font-size: 11px; color: var(--warning);
-  border-left: 2px solid var(--warning); padding-left: 8px; margin: 8px 0 12px;
-}
-.reserve code { font-family: var(--font-mono); }
 .btn {
   font-size: 12.5px; font-weight: 500; padding: 7px 14px; border-radius: 8px;
   border: 1px solid var(--indigo-700); background: var(--indigo-700);
   color: var(--surface); cursor: pointer; align-self: flex-start;
 }
-.btn--ghost { background: transparent; color: var(--ink-400); border-color: var(--surface-3); }
-.btn[disabled] { opacity: 0.5; cursor: not-allowed; border-style: dashed; }
 .linkish {
   font-size: 11.5px; color: var(--indigo-700); text-decoration: underline;
   text-underline-offset: 2px; cursor: pointer; background: none; border: none; padding: 0 0 0 4px;

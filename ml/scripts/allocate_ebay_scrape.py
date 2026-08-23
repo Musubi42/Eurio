@@ -600,7 +600,18 @@ def build_allocation(
     max_groups: int | None,
     anchors_kind: str = ANCHORS_KIND,
     datasets_dir: Path = DATASETS_DIR,
+    countries: frozenset[str] | None = None,
 ) -> Allocation:
+    """`countries` cadre le plan à un ou plusieurs pays (ISO2), sans rien changer
+    d'autre : mêmes coûts, même score, même budget.
+
+    Le filtre s'applique aux **classes**, avant le repli sur les groupes — et
+    non aux groupes après coup : un groupe appartient à un pays et un seul
+    (`DiscoveryGroupKey.country`), donc les deux rendraient le même ensemble,
+    mais filtrer en amont garde `review_covered` cohérent avec le cadrage.
+    Un pays inconnu rend un plan **vide**, jamais le plan complet : un
+    périmètre qui rate ne s'élargit pas en silence.
+    """
     states = build_class_states(
         conn,
         anchors_kind=anchors_kind,
@@ -609,6 +620,8 @@ def build_allocation(
         regression_weight=regression_weight,
         datasets_dir=datasets_dir,
     )
+    if countries is not None:
+        states = [s for s in states if s.country in countries]
     plans = build_group_plans(
         states, history=_search_history(conn), min_need=min_need
     )
@@ -635,6 +648,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--db", type=Path, default=None,
                    help=f"Base à LIRE (read-only). Défaut : {default_db()}")
     p.add_argument("--anchors-kind", default=ANCHORS_KIND)
+    p.add_argument("--country", action="append", default=None, metavar="ISO2",
+                   help="Cadre le plan à ce(s) pays (répétable). Un pays inconnu "
+                        "rend un plan vide, jamais le plan complet.")
     p.add_argument("--target", type=int, default=DEFAULT_TARGET_EXEMPLARS,
                    help=f"Exemplaires visés par classe (défaut {DEFAULT_TARGET_EXEMPLARS}, "
                         f"plafond banque {HARD_CAP}).")
@@ -698,6 +714,9 @@ def main(argv: list[str] | None = None) -> int:
             cooldown_days=args.cooldown_days,
             max_groups=args.max_groups,
             anchors_kind=args.anchors_kind,
+            countries=(
+                frozenset(c.upper() for c in args.country) if args.country else None
+            ),
         )
     finally:
         conn.close()
