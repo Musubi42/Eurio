@@ -105,9 +105,20 @@ class ClassNeed:
     pending: int             # crops en file OUVERTE dont le top-1 tombe ici
     pending_scoped: int      # idem, après les filtres par signaux (O4) — cf. note
     best_margin: float | None  # max COALESCE(country_spread, spread) parmi pending
-    need: int                # max(0, target − have)
+    need: int                # max(0, target − have) — la BANQUE, cf. note
     bottleneck: str          # pleine | review | scrape
     n_train_eligible: int    # voie A, pour affichage seulement — JAMAIS pour le verdict
+    accepted_pending: int    # ACQUIS : validés, pas encore en banque (D8)
+
+    # NOTE `need` vs `bottleneck` : ils ne comptent PAS la même chose, et c'est
+    # voulu. `need` est ce qui manque À LA BANQUE (`target − have`) : il alimente
+    # le budget (Σ 4 066 exemplaires) et ne bouge qu'au rebuild, parce que la
+    # banque, elle, ne bouge qu'au rebuild. `bottleneck` compte en plus les
+    # ACQUIS, parce qu'il décide s'il faut encore SERVIR cette classe — et
+    # servir une classe déjà remplie est du temps humain perdu (D8).
+    # Une classe peut donc légitimement afficher `need = 1` ET `pleine` :
+    # « il manque encore un exemplaire en banque, mais il est déjà acquis ».
+    # Aligner les deux ferait mentir l'un des deux.
 
     # NOTE `pending_scoped` : les filtres par signaux d'O4 ne sont pas
     # implémentés dans ce lot ; `pending_scoped == pending` jusque-là. Le champ
@@ -120,22 +131,30 @@ def target_for_family(family: str) -> int:
     return TARGET_EMISSION_COMMUNE if family == EMISSION_COMMUNE else DEFAULT_TARGET
 
 
-def bottleneck_for(*, have: int, target: int, pending_scoped: int) -> str:
+def bottleneck_for(
+    *, have: int, target: int, pending_scoped: int, accepted_pending: int = 0,
+) -> str:
     """Le verdict. L'ordre compte, il est exclusif, et il est le cœur de l'outil.
 
-    1. have ≥ target        → 'pleine'  (on arrête de servir, D2 : « une classe
-                                          à ≥ 8 en banque ne reçoit plus de
-                                          travail » — la CIBLE, pas le plafond
-                                          10 du builder, qui reste `cap` pour
-                                          l'affichage)
-    2. pending_scoped > 0   → 'review'  (il y a de quoi trancher)
-    3. sinon                → 'scrape'  (rien à trancher : aller chercher)
+    1. have + accepted_pending ≥ target → 'pleine'
+    2. pending_scoped > 0               → 'review'  (il y a de quoi trancher)
+    3. sinon                            → 'scrape'  (aller chercher)
 
     ⛔ `pending_scoped`, pas `pending` : une classe dont tous les candidats
     disparaissent une fois les filtres appliqués doit dire `scrape`, sinon
     l'écran envoie l'opérateur vers une file vide.
+
+    ⛔ `have + accepted_pending`, pas `have` seul (D8) — et c'est ce qui rend
+    l'exigence du PO réalisable. `have` ne bouge qu'au `build_dino_anchors`
+    suivant : pendant une session de review il est FIGÉ, donc un verdict
+    calculé sur lui seul continue de servir une classe qu'on vient de remplir.
+    C'est l'arête que FLOW-ADMIN §3 signale comme n'existant « sous aucune
+    forme ». `need_only` seul ne suffit pas à la fermer.
+
+    La cible reste la CIBLE (8, ou 5 en émission commune), jamais le plafond 10
+    du builder — celui-ci reste exposé en `ClassNeed.cap` pour l'affichage.
     """
-    if have >= target:
+    if have + accepted_pending >= target:
         return "pleine"
     if pending_scoped > 0:
         return "review"
@@ -197,6 +216,53 @@ def _train_key(eurio_id: str, design_group_id: str | None, is_commemorative) -> 
     if is_commemorative:
         return eurio_id
     return design_group_id or eurio_id
+
+
+def _accepted_pending_by_class(
+    conn: sqlite3.Connection, anchors_kind: str, encoder_version: str
+) -> dict[str, int]:
+    """Les ACQUIS : validés par un humain, pas encore entrés en banque (D8).
+
+    Grain BANQUE, via `top1_eurio_id` — la même clé que `_pending_by_class`.
+
+    CE QUE CE COMPTE RÉPARE
+    -----------------------
+    Accepter un crop écrit `training_eligible = 1`. Ça n'ajoute AUCUN
+    exemplaire : `have` ne bouge qu'au `build_dino_anchors` suivant. Sans ce
+    champ, `have` et `bottleneck` sont figés pendant toute une session de
+    review, et la file ressert une classe qu'on vient de remplir.
+
+    LES QUATRE CONDITIONS, ET POURQUOI CHACUNE
+    ------------------------------------------
+    `training_eligible = 1`   : validé par un humain.
+    `storage_status='present'`: le fichier existe encore.
+    `face != 'reverse'`       : le revers commun n'apprend rien, le builder
+                                l'ignore — le compter promettrait un exemplaire
+                                qui n'arrivera jamais.
+    `asset_id NOT IN (banque)`: PAS ENCORE bâti. C'est tout l'objet du champ ;
+                                sans cette clause on recompterait ce que `have`
+                                compte déjà, et une classe pleine paraîtrait
+                                doublement pleine.
+
+    Mesuré le 2026-08-22 (banque a55e6594) : 1 451 crops acceptés hors banque,
+    dont 76 seulement poseraient un exemplaire — le reste tombe dans des
+    classes déjà à leur cible. Ce rapport EST la mesure de la sur-review.
+    """
+    rows = conn.execute(
+        "SELECT p.top1_eurio_id, COUNT(*) "
+        "  FROM image_assets a "
+        "  JOIN image_asset_dino_predictions p ON p.asset_id = a.id "
+        " WHERE a.training_eligible = 1 "
+        "   AND a.storage_status = 'present' "
+        "   AND (a.face IS NULL OR a.face != 'reverse') "
+        "   AND p.anchors_kind = ? AND p.encoder_version = ? "
+        "   AND p.top1_eurio_id IS NOT NULL "
+        "   AND a.id NOT IN (SELECT asset_id FROM dino_class_references "
+        "                     WHERE anchors_kind = ? AND asset_id IS NOT NULL) "
+        " GROUP BY p.top1_eurio_id",
+        (anchors_kind, encoder_version, anchors_kind),
+    ).fetchall()
+    return {r[0]: int(r[1]) for r in rows}
 
 
 def _train_eligible_by_key(conn: sqlite3.Connection) -> dict[str, int]:
@@ -263,6 +329,7 @@ def _build(
     if not class_ids:
         return []
     pending = _pending_by_class(conn, anchors_kind, encoder_version)
+    accepted = _accepted_pending_by_class(conn, anchors_kind, encoder_version)
     train = _train_eligible_by_key(conn)
     coins = _coins_for(conn, class_ids)
     ec_groups = emission_commune_group_ids(conn)
@@ -283,6 +350,7 @@ def _build(
         n_pending, best_margin = pending.get(class_id, (0, None))
         pending_scoped = n_pending  # O4 non implémenté : cf. note sur le champ
         target = target_for_family(family)
+        n_accepted = accepted.get(class_id, 0)
         out.append(ClassNeed(
             class_id=class_id,
             label=_label(row),
@@ -295,8 +363,12 @@ def _build(
             pending_scoped=pending_scoped,
             best_margin=best_margin,
             need=max(0, target - h),
-            bottleneck=bottleneck_for(have=h, target=target, pending_scoped=pending_scoped),
+            bottleneck=bottleneck_for(
+                have=h, target=target, pending_scoped=pending_scoped,
+                accepted_pending=n_accepted,
+            ),
             n_train_eligible=train.get(_train_key(class_id, dgid, is_commemo), 0),
+            accepted_pending=n_accepted,
         ))
     return out
 

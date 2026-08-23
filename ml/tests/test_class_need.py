@@ -340,3 +340,140 @@ def test_le_label_est_lisible(conn):
     assert by["it-2002-std"].label == "IT 2€ standard (1er type)"
     assert by["fr-2016-commemo"].label == "FR 2016 — thème"
     assert by["it-2002-std"].country == "IT"
+
+
+# ── D8 · les ACQUIS : validés, pas encore en banque ──────────────────────────
+#
+# Pourquoi ce bloc existe : `have` ne bouge qu'au `build_dino_anchors` suivant.
+# Sans ce compte, `bottleneck` est FIGÉ pendant toute une session de review et
+# la file ressert une classe qu'on vient de remplir. Mesuré le 2026-08-22
+# (banque a55e6594) : 1 451 crops acceptés hors banque, dont 76 seulement
+# poseraient un exemplaire — le reste tombe dans des classes déjà à leur cible.
+
+
+def _accepte(conn, ref, top1, *, storage="present", face=None):
+    """Un crop VALIDÉ par un humain, avec sa prédiction — pas encore en banque."""
+    aid = _asset(conn, ref, eligible=1, storage=storage, face=face)
+    conn.execute(
+        "INSERT INTO image_asset_dino_predictions (asset_id, encoder_version, anchors_kind,"
+        " anchors_count, top_k_json, top1_eurio_id, top1_sim, spread)"
+        " VALUES (?,?,?,?,?,?,?,0.2)",
+        (aid, ENC, KIND, 10, json.dumps([{"eurio_id": top1, "sim": 0.8}]), top1, 0.8),
+    )
+    conn.commit()
+    return aid
+
+
+def test_un_crop_accepte_compte_dans_les_acquis(conn):
+    _coin(conn, "fr-2016-c", "FR", 2016, commemo=True)
+    _bank(conn, "fr-2016-c", 3)
+    _accepte(conn, "acq1", "fr-2016-c")
+    _accepte(conn, "acq2", "fr-2016-c")
+
+    n = _by_id(all_needs(conn, anchors_kind=KIND, encoder_version=ENC))["fr-2016-c"]
+    assert n.have == 3, "la banque n'a pas bougé — elle ne bouge qu'au rebuild"
+    assert n.accepted_pending == 2
+
+
+def test_le_verdict_compte_les_acquis_sinon_la_file_ressert_une_classe_pleine(conn):
+    """LE test du lot. C'est lui qui rend l'exigence du PO réalisable.
+
+    7 en banque + 1 acquis = la cible 8 est atteinte. `have` vaut toujours 7 et
+    vaudra 7 jusqu'au rebuild : un verdict calculé sur lui seul dirait `review`
+    et renverrait l'opérateur trancher une classe déjà remplie.
+    """
+    _coin(conn, "fr-2016-c", "FR", 2016, commemo=True)
+    _bank(conn, "fr-2016-c", 7)
+    _open(conn, "encore", "fr-2016-c")        # il reste des candidats en file
+    _accepte(conn, "acq1", "fr-2016-c")
+
+    n = _by_id(all_needs(conn, anchors_kind=KIND, encoder_version=ENC))["fr-2016-c"]
+    assert n.have == 7 and n.accepted_pending == 1
+    assert n.pending == 1, "la file a bien encore de quoi servir"
+    assert n.bottleneck == "pleine", "et pourtant on ne sert plus : 7 + 1 ≥ 8"
+
+
+def test_need_reste_sur_la_banque_meme_quand_le_verdict_est_pleine(conn):
+    """`need` et `bottleneck` ne comptent pas la même chose, et c'est voulu.
+
+    `need` alimente le BUDGET (ce qui manque à la banque, et qui manquera
+    jusqu'au rebuild). `bottleneck` décide s'il faut SERVIR. Les aligner ferait
+    mentir l'un des deux : soit le budget oublierait des exemplaires à bâtir,
+    soit la file resservirait une classe remplie.
+    """
+    _coin(conn, "fr-2016-c", "FR", 2016, commemo=True)
+    _bank(conn, "fr-2016-c", 7)
+    _accepte(conn, "acq1", "fr-2016-c")
+
+    n = _by_id(all_needs(conn, anchors_kind=KIND, encoder_version=ENC))["fr-2016-c"]
+    assert n.need == 1, "il manque toujours un exemplaire À LA BANQUE"
+    assert n.bottleneck == "pleine", "mais il est déjà acquis"
+
+
+def test_un_crop_deja_en_banque_n_est_pas_compte_deux_fois(conn):
+    """Sans la clause `NOT IN (banque)`, une classe pleine paraîtrait doublement
+    pleine et le bandeau « un rebuild poserait N » serait faux."""
+    _coin(conn, "fr-2016-c", "FR", 2016, commemo=True)
+    _bank(conn, "fr-2016-c", 2)
+    # L'asset qui porte déjà l'exemplaire fps n°0, marqué validé et prédit.
+    aid = conn.execute(
+        "SELECT asset_id FROM dino_class_references "
+        " WHERE method='fps' AND rank=0 AND class_id='fr-2016-c'",
+    ).fetchone()[0]
+    conn.execute("UPDATE image_assets SET training_eligible=1 WHERE id=?", (aid,))
+    conn.execute(
+        "INSERT INTO image_asset_dino_predictions (asset_id, encoder_version, anchors_kind,"
+        " anchors_count, top_k_json, top1_eurio_id, top1_sim, spread)"
+        " VALUES (?,?,?,?,?,?,0.8,0.2)",
+        (aid, ENC, KIND, 10, json.dumps([{"eurio_id": "fr-2016-c", "sim": 0.8}]), "fr-2016-c"),
+    )
+    conn.commit()
+
+    n = _by_id(all_needs(conn, anchors_kind=KIND, encoder_version=ENC))["fr-2016-c"]
+    assert n.have == 2
+    assert n.accepted_pending == 0, "il est DÉJÀ bâti : ce n'est pas un acquis"
+
+
+def test_les_acquis_appliquent_les_memes_portes_que_le_builder(conn):
+    """Un revers ou un fichier absent ne deviendra JAMAIS un exemplaire.
+
+    Les compter promettrait un exemplaire qui n'arrivera pas, et le bandeau
+    « un rebuild poserait N » annoncerait plus que ce qu'il pose.
+    """
+    _coin(conn, "fr-2016-c", "FR", 2016, commemo=True)
+    _bank(conn, "fr-2016-c", 1)
+    _accepte(conn, "bon", "fr-2016-c")
+    _accepte(conn, "revers", "fr-2016-c", face="reverse")
+    _accepte(conn, "absent", "fr-2016-c", storage="missing_in_storage")
+
+    n = _by_id(all_needs(conn, anchors_kind=KIND, encoder_version=ENC))["fr-2016-c"]
+    assert n.accepted_pending == 1, "seul le crop exploitable compte"
+
+
+def test_les_acquis_ne_melangent_pas_les_banques(conn):
+    """Même exigence que `pending` : le couple (kind, encoder) est obligatoire."""
+    _coin(conn, "fr-2016-c", "FR", 2016, commemo=True)
+    _bank(conn, "fr-2016-c", 1)
+    aid = _asset(conn, "autre", eligible=1)
+    conn.execute(
+        "INSERT INTO image_asset_dino_predictions (asset_id, encoder_version, anchors_kind,"
+        " anchors_count, top_k_json, top1_eurio_id, top1_sim, spread)"
+        " VALUES (?,?,?,?,?,?,0.8,0.2)",
+        (aid, ENC, "2eur_commemo", 10,
+         json.dumps([{"eurio_id": "fr-2016-c", "sim": 0.8}]), "fr-2016-c"),
+    )
+    conn.commit()
+
+    n = _by_id(all_needs(conn, anchors_kind=KIND, encoder_version=ENC))["fr-2016-c"]
+    assert n.accepted_pending == 0
+
+
+def test_bottleneck_for_accepte_les_acquis_en_argument():
+    """Le verdict reste testable seul, sans base."""
+    from shared.class_need import bottleneck_for
+    assert bottleneck_for(have=7, target=8, pending_scoped=5) == "review"
+    assert bottleneck_for(
+        have=7, target=8, pending_scoped=5, accepted_pending=1) == "pleine"
+    # Les acquis ne fabriquent pas de candidats : sans file, c'est du scrape.
+    assert bottleneck_for(
+        have=0, target=8, pending_scoped=0, accepted_pending=3) == "scrape"
