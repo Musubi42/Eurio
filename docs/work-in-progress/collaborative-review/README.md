@@ -1,5 +1,21 @@
 # Review collaborative — Vision & index
 
+> ## ⛔ SUPERSÉDÉ (2026-08-23) — ne pas implémenter depuis ce dossier
+>
+> Ce chantier est remplacé par
+> [`../review-collaborative-v2/`](../review-collaborative-v2/README.md).
+>
+> Son architecture (tampon `review.db` + pont publish/reconcile) supposait que
+> `eurio.db` vivait derrière un lease sur le Mac. Sous **Direction A** le canonique
+> **est** sur le VPS : le tampon recopierait la donnée d'un serveur vers lui-même.
+> Les amis écrivent désormais le canonique directement (cf. v2 `DECISIONS.md` D1).
+>
+> Ce dossier est conservé le temps du chantier v2 pour la traçabilité des décisions
+> de juin 2026 ; il est **supprimé au lot 9** (cf. v2 `NETTOYAGE.md`).
+>
+> _Statut historique ci-dessous, laissé tel quel._
+
+
 > **Statut (corrigé 2026-07-04) : IMPLÉMENTÉ localement, testé E2E — reste le déploiement
 > VPS.** Le service complet vit dans `ml/review_service/` (app, auth cookie HMAC, db, routes
 > reviewer/admin, régie reviewers — chunks 1/2/4 livrés). Ne PAS re-designer/ré-implémenter :

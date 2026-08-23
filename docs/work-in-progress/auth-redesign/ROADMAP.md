@@ -71,9 +71,9 @@ implémenté, à étendre).
 | # | Chantier | Statut |
 |---|---|---|
 | K1 | Suppression `admin/packages/review-admin/` (legacy auth régie reviewer) | ✅ **FAIT** (`29dab17`, 2026-06-19) — 0 fichier tracké ; il ne restait qu'un `dist/` local |
-| K2 | Décision et exécution sur `admin/packages/review/` (mini-app reviewer) | ⬜ (cf. `ARCHITECTURE.md §7`) |
+| K2 | Décision et exécution sur `admin/packages/review/` (mini-app reviewer) | 🟡 **TRANCHÉ** (2026-08-23) — option β retenue : les amis passent par `studio-local` hébergé en rôle `reviewer`. Exécution = lot 9 de [`../review-collaborative-v2/`](../review-collaborative-v2/README.md) |
 | K3 | Suppression handoffs obsolètes (C6/C7/C8/C9 originaux) ou marquage "superseded" | ⬜ |
-| K4 | Spec markdown future "friends review" feature | ⬜ |
+| K4 | Spec markdown future "friends review" feature | ✅ **FAIT** — [`../review-collaborative-v2/`](../review-collaborative-v2/README.md) (CONSTAT + DECISIONS D1-D10 + ROADMAP) |
 
 ## Chunks originaux abandonnés / superseded
 
