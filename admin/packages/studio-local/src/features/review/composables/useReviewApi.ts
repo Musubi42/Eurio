@@ -828,6 +828,17 @@ export interface DinoCandidatesSummary {
   orphan_asset_ids: string[]
   /** Compté comme le préflight compte `n_ebay` — le même fait, le même nombre. */
   n_training_eligible: number
+  /** Le résumé est-il cadré par le besoin (D9) ? Les comptes ci-dessus sont
+   *  alors ceux que la FILE SERT, pas ceux du pool brut. */
+  need_only: boolean
+  /** Ce que ce cadrage retire — parqué, ni fermé ni supprimé (D3). Sur une
+   *  classe pleine c'est tout le pool : sans ce nombre l'écran afficherait
+   *  « 0 à l'unité » et se lirait « rien à trancher ». */
+  n_parked: number
+  /** L'état de la classe, pour dire POURQUOI c'est parqué. */
+  class_have: number | null
+  class_target: number | null
+  class_bottleneck: string | null
 }
 
 /**
@@ -845,12 +856,14 @@ export async function fetchDinoCandidates(
     minSpread?: number | null
     /** `false` lève le filtre pays (actif par défaut côté API). */
     countryOnly?: boolean
+    needOnly?: boolean
   } = {},
 ): Promise<DinoCandidatesSummary | null> {
   const params = new URLSearchParams({ dino_class: classId })
   if (opts.rank) params.set('dino_rank', String(opts.rank))
   if (opts.minSpread != null) params.set('dino_min_spread', String(opts.minSpread))
   if (opts.countryOnly === false) params.set('dino_country_only', 'false')
+  if (opts.needOnly) params.set('need_only', 'true')
   try {
     return await fetchEurio<DinoCandidatesSummary>(
       `/review-queue/dino-candidates/summary?${params.toString()}`,

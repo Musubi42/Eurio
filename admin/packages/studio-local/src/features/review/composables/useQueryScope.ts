@@ -51,11 +51,27 @@ export function queryRunIds(route: RouteLocationNormalizedLoaded): string[] | nu
 }
 
 /**
- * Le périmètre PAR BESOIN : `?need=1` → ne servir que les crops dont le top-1
- * DINO tombe dans une classe encore en besoin ; les classes pleines sont
- * parquées (D2/D3, `docs/work-in-progress/pipeline-propre/DECISIONS.md`).
- * Côté API : `need_only=true`. Tout autre valeur que `1` = filtre absent.
+ * Le périmètre PAR BESOIN — **ACTIF PAR DÉFAUT** (D9, 2026-08-23).
+ *
+ * Ne servir que les crops dont le top-1 DINO tombe dans une classe encore en
+ * besoin ; les classes à leur cible sont **parquées** (D2/D3) — ni fermées ni
+ * supprimées, et le compte s'affiche. Côté API : `need_only=true`.
+ *
+ * LE DÉFAUT EST RENVERSÉ, ET C'EST LE CŒUR DU LOT 4.
+ * Mesuré le 2026-08-23 sur le canonique : **4 999 des 6 574 crops ouverts
+ * (76 %)** tombent dans une classe qui n'a plus besoin de rien. Les servir,
+ * c'est du temps humain perdu par construction — et c'est ce que faisait
+ * l'admin, parce que le filtre existait mais était opt-in (`?need=1`) et que
+ * la pêche ne le passait pas du tout.
+ *
+ * On lève donc explicitement (`?need=0`), jamais l'inverse. Un opérateur qui
+ * VEUT voir les parqués le demande ; il n'a pas à savoir qu'un filtre existe
+ * pour éviter d'en perdre les trois quarts.
+ *
+ * ⛔ Toute valeur autre que `0` laisse le filtre ACTIF — y compris `?need=1`,
+ * qui reste valide et redondant (les liens déjà partagés continuent de
+ * marcher). Un typo ne doit pas rendre 76 % de bruit en silence.
  */
 export function queryNeedOnly(route: RouteLocationNormalizedLoaded): boolean {
-  return queryParam(route, 'need') === '1'
+  return queryParam(route, 'need') !== '0'
 }

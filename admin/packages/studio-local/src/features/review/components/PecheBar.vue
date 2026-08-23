@@ -33,6 +33,7 @@ const emit = defineEmits<{
   (e: 'mode', value: 'single' | 'lot'): void
   (e: 'country-only', value: boolean): void
   (e: 'enqueue-orphans'): void
+  (e: 'need-only', value: boolean): void
 }>()
 
 const RANKS = [1, 3, 5]
@@ -65,6 +66,12 @@ function margeTitle(best: number | null | undefined, n: number | null): string {
  *  le summary dit ce qui a été SERVI. Afficher la demande au-dessus d'une file
  *  qui n'y obéit pas, c'est le filtre muet qu'on cherche à éliminer. */
 const disarmed = computed(() => props.summary?.country_disarmed === true)
+
+/** D9 — ce que le cadrage par le besoin retire de cette classe. Il ne se tait
+ *  pas : « parqué » doit être une lecture RÉVERSIBLE et VISIBLE (D3), jamais
+ *  une disparition. */
+const nParked = computed(() => props.summary?.n_parked ?? 0)
+const classePleine = computed(() => props.summary?.class_bottleneck === 'pleine')
 
 const singleFaible = computed(
   () => props.summary != null && props.summary.n_open_single > 0
@@ -157,6 +164,16 @@ const lotFaible = computed(
       ⚠ {{ nOrphans }} hors file — enfiler
     </button>
 
+    <button
+      v-if="nParked > 0"
+      type="button"
+      class="chip chip--parked"
+      :title="classePleine
+        ? `Cette classe est à sa cible (${summary?.class_have}/${summary?.class_target}) : ses ${nParked} crops ouverts ne sont plus servis (D2). Ils ne sont NI fermés NI supprimés — ils restent en base, retrouvables, et serviront la voie A. Clique pour les revoir quand même.`
+        : `${nParked} crop(s) de cette classe tombent, selon la banque, dans une classe déjà à sa cible : ils sont parqués (D2/D3). Clique pour les revoir.`"
+      @click="emit('need-only', false)"
+    >{{ nParked }} parqué{{ nParked > 1 ? 's' : '' }}<span v-if="classePleine"> · classe pleine {{ summary?.class_have }}/{{ summary?.class_target }}</span></button>
+
     <span class="bar__note">
       Une suggestion, pas un verdict : à marge ≥ 0,10, environ un standard sur
       vingt est faux.
@@ -208,6 +225,11 @@ const lotFaible = computed(
 /* Aucun crop au-dessus du seuil du verdict : la file existe, elle ne vaut
    probablement rien. On le montre, on ne désactive pas — c'est un avis. */
 .chip--faible { border-style: dashed; color: var(--warning); border-color: var(--warning); }
+.chip--parked {
+  border-color: var(--ink-300);
+  color: var(--ink-500);
+  background: var(--surface-2);
+}
 .chip--disarmed {
   border-color: var(--warning);
   color: var(--warning);

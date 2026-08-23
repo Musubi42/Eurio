@@ -16,13 +16,13 @@
 // dont 136 en lots — inatteignables autrement.
 
 import { computed, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { ArrowLeft } from 'lucide-vue-next'
 import SingleReviewView from '../views/SingleReviewView.vue'
 import LotDetailView from '../views/LotDetailView.vue'
 import PecheBar from '../components/PecheBar.vue'
 import { useLotChain } from '../composables/useLotChain'
-import { queryParam } from '../composables/useQueryScope'
+import { queryNeedOnly, queryParam } from '../composables/useQueryScope'
 import {
   fetchDinoCandidates, type DinoCandidatesSummary,
 } from '../composables/useReviewApi'
@@ -50,6 +50,11 @@ const minSpread = computed<number | null>(() => {
 // Un défaut qui ne s'écrit pas dans l'URL garde les liens courts et rend le
 // réglage non-défaut visible d'un coup d'œil dans la barre d'adresse.
 const countryOnly = computed(() => queryParam(route, 'pays') !== 'tous')
+// Périmètre PAR BESOIN — actif par défaut (D9). La pêche ne le passait PAS,
+// donc elle servait les classes pleines : 4 999 des 6 574 crops ouverts.
+// `queryNeedOnly` porte le défaut ; ici on ne fait que le relayer aux lots et
+// au résumé (les vues single le lisent elles-mêmes dans la route).
+const needOnly = computed(() => queryNeedOnly(route))
 
 const mode = computed<'single' | 'lot'>(
   () => (queryParam(route, 'mode') === 'lot' ? 'lot' : 'single'),
@@ -71,6 +76,13 @@ function setMinSpread(v: number | null) {
   patch({ dino_min: v == null ? undefined : String(v), lot: undefined })
 }
 function setMode(m: 'single' | 'lot') { patch({ mode: m, lot: undefined }) }
+// Lever le cadrage par le besoin change le PÉRIMÈTRE : le lot ouvert peut ne
+// plus en faire partie. Comme le rang et la marge, on le relâche. Et le défaut
+// ne s'écrit pas dans l'URL — seule la LEVÉE s'y voit (`?need=0`), ce qui garde
+// les liens courts et rend le réglage non-défaut visible d'un coup d'œil.
+function setNeedOnly(on: boolean) {
+  patch({ need: on ? undefined : '0', lot: undefined })
+}
 function setCountryOnly(on: boolean) {
   // Comme le rang et la marge : changer le périmètre relâche le lot ouvert,
   // qui peut ne plus en faire partie.
@@ -99,6 +111,11 @@ const lotScope = computed<Record<string, string>>(() => {
   out.dino_rank = String(rank.value)
   if (minSpread.value != null) out.dino_min_spread = String(minSpread.value)
   if (!countryOnly.value) out.dino_country_only = 'false'
+  // Sans ça, le mode LOT de la pêche resterait le seul endroit non cadré par
+  // le besoin — et c'est là que vivent la plupart des crops (60 sur 66 pour
+  // `lu-2002-…henri-i`). Un périmètre à moitié appliqué est pire qu'aucun :
+  // les deux modes d'un même écran ne serviraient pas la même population.
+  if (needOnly.value) out.need_only = 'true'
   return out
 })
 const {
@@ -116,12 +133,17 @@ async function loadSummary() {
     summary.value = await fetchDinoCandidates(classId.value, {
       rank: rank.value, minSpread: minSpread.value,
       countryOnly: countryOnly.value,
+      // Le bandeau doit compter CE QUE LA FILE SERT. Compter le pool brut
+      // au-dessus d'une file cadrée, c'est le badge qui annonce 4 sur une
+      // file qui en sert 3 — et sur une classe pleine il annoncerait 257
+      // au-dessus de zéro.
+      needOnly: needOnly.value,
     })
   } finally {
     loading.value = false
   }
 }
-watch([classId, rank, minSpread, countryOnly], loadSummary, { immediate: true })
+watch([classId, rank, minSpread, countryOnly, needOnly], loadSummary, { immediate: true })
 
 // Le mode par défaut suit le stock. Sans ça, une classe dont les singles sont
 // épuisés ouvre sur « Tout est résolu » alors que quatre-vingts crops de lots
@@ -215,6 +237,7 @@ const nothingHere = computed(
       @mode="setMode"
       @country-only="setCountryOnly"
       @enqueue-orphans="enqueueOrphans"
+      @need-only="setNeedOnly"
     />
     <p v-if="enqueueMsg" class="msg msg--info">{{ enqueueMsg }}</p>
 
@@ -225,6 +248,18 @@ const nothingHere = computed(
       <code>design_group_id</code> pour une pièce courante
       (<code>it-2euro-standard-t1</code>), son <code>eurio_id</code> pour une
       commémorative.
+    </div>
+
+    <div v-else-if="nothingHere && (summary?.n_parked ?? 0) > 0" class="msg">
+      <b>Cette classe est pleine — {{ summary?.class_have }}/{{ summary?.class_target }} en banque.</b>
+      Ses <b>{{ summary?.n_parked }} crops ouverts sont parqués</b> : on ne les
+      sert plus (D2), mais ils ne sont <b>ni fermés ni supprimés</b> — ils
+      restent en base, retrouvables, et serviront la voie A.
+      <button type="button" class="linkish" @click="setNeedOnly(false)">
+        Les revoir quand même
+      </button>
+      — ou retourne au <RouterLink class="linkish" to="/besoin">besoin</RouterLink>
+      pour une classe qui en a encore.
     </div>
 
     <div v-else-if="nothingHere" class="msg">
