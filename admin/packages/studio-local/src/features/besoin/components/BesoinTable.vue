@@ -21,7 +21,6 @@ import {
 
 const props = defineProps<{
   rows: ClassNeedRow[]
-  heavyLocked: boolean
 }>()
 
 /** Les pastilles de la colonne BANQUE. On dessine la CIBLE (8 ou 5), pas le
@@ -154,14 +153,16 @@ const anyDisarmed = computed(() => props.rows.some((r) => r.country_disarmed))
           <td><span class="v" :class="`v--${r.bottleneck}`">{{ r.bottleneck }}</span></td>
 
           <td>
+            <!-- Le geste mène à `/review/peche`, qui n'est PLUS lourde depuis le
+                 lot 1 de review-collaborative-v2 (crops présignés + suggestions DINO
+                 lues en base par le VPS). Le gate `heavyLocked` posé ici était donc
+                 périmé : il barrait à un ami — et à lui seul — la file que cette
+                 page vient de lui désigner, avec une infobulle qui lui parlait d'un
+                 port et d'un Mac (D11). -->
             <RouterLink
-              v-if="gestureHref(r) && !heavyLocked"
+              v-if="gestureHref(r)"
               class="geste" :to="gestureHref(r)!"
             >→ {{ gesteLabel(r) }}</RouterLink>
-            <span
-              v-else-if="gestureHref(r)" class="geste geste--locked"
-              title="Trancher demande l'API ML locale (:8042). Ouvre le studio sur ton Mac. La lecture de cette page, elle, ne dépend de rien."
-            >⊘ {{ gesteLabel(r) }} — local</span>
             <span
               v-else class="geste geste--none"
               :title="`Le geste d'une classe sans candidat n'est pas une file, c'est un PLAN : il se compose au grain groupe de découverte (pays · dénomination · année), pas à la classe — deux commémoratives d'un même pays et d'une même année ne coûtent qu'une recherche. Il vit dans la moitié ACHETER, en haut de cette page${r.country ? ` (pays ${r.country})` : ''}.`"
@@ -242,8 +243,7 @@ tbody tr.parked .cls { color: var(--ink-400); }
   font-size: 11.5px; color: var(--indigo-700); text-decoration: underline;
   text-underline-offset: 2px; white-space: nowrap;
 }
-.geste--none, .geste--locked { color: var(--ink-300); text-decoration: none; cursor: default; }
-.geste--locked { cursor: help; }
+.geste--none { color: var(--ink-300); text-decoration: none; cursor: default; }
 
 .empty { padding: 26px 12px; color: var(--ink-500); font-size: 13px; }
 .empty b { color: var(--ink); }

@@ -42,8 +42,7 @@ import AutoValidateVerdict from '../components/AutoValidateVerdict.vue'
 import ReviewRightColumn from '../components/ReviewRightColumn.vue'
 import ListingContextCard from '../components/ListingContextCard.vue'
 import TextSignals from '../components/TextSignals.vue'
-import { useEurioSession } from '@/stores/eurio-session'
-import { useCapabilities } from '@/stores/capabilities'
+import { useHeavyGate } from '@/shared/composables/useHeavyGate'
 import { withCacheBust } from '@/shared/url'
 
 // Ordre de cycle des corrections clavier (K / C).
@@ -58,19 +57,20 @@ import type { DinoSuggestion } from '../composables/useDinoSuggestions'
 //
 //   `canArbitrate`   — DROIT   : « cette personne a-t-elle le droit ? »
 //                      Masque les gestes qui structurent le travail des autres.
-//   `hasLocalMlApi`  — MACHINE : « ce poste peut-il ? »
-//                      Grise les gestes qui encodent des pixels (cv2 sur :8042),
-//                      indisponibles en hébergé jusqu'au lot 6b.
+//   `canRunHeavy`    — MACHINE : « ce poste peut-il ? »
+//                      Gate les gestes qui encodent des pixels (cv2 sur :8042),
+//                      indisponibles en hébergé jusqu'au lot 6b. Rendu par public
+//                      (D11) : GRISÉ pour l'arbitre, ABSENT pour un ami —
+//                      `showHeavyGesture`.
 //
 // Un ami sur son navigateur tombe sous les DEUX : il ne requalifie pas (droit)
 // et ne recadre pas encore (machine). Les mélanger reviendrait à rendre un
 // geste de recadrage « interdit » alors qu'il est seulement hors de portée —
 // et il redeviendra possible pour lui au lot 6b, sans changer ses droits.
 
-const session = useEurioSession()
-const caps = useCapabilities()
-const canArbitrate = computed(() => session.hasScope('review:arbitrate'))
-const canRunHeavy = computed(() => caps.hasLocalMlApi)
+// D11 : `showHeavyGesture` porte la question « faut-il DESSINER ce geste lourd ? »
+// — grisé pour l'arbitre, absent pour un ami. La règle vit dans `useHeavyGate`.
+const { canArbitrate, canRunHeavy, showHeavyGesture } = useHeavyGate()
 
 // ─── State ──────────────────────────────────────────────────────────────
 
@@ -1005,12 +1005,15 @@ useReviewKeybinds(keyboardEnabled, {
                 Requalifier en lot
                 <span class="font-mono text-[9px] opacity-70">L</span>
               </button>
-              <!-- Auto-crop et Recadrer encodent des pixels (cv2 sur :8042) :
-                   GRISÉS par capacité machine, pas masqués par droit. Ils ne
-                   sont pas interdits à un ami — ils sont hors de portée tant
-                   que le recadrage n'est pas porté sur le VPS (lot 6b). -->
+              <!-- Auto-crop et Recadrer encodent des pixels (cv2 sur :8042).
+                   Rendu par public (D11) : GRISÉS pour l'arbitre — sur son poste
+                   le geste existe, il lui manque juste l'API ML ; ABSENTS pour un
+                   ami — le geste ne lui sera possible qu'au lot 6b, et un bouton
+                   mort qui parle d'un port ne lui apprend rien. Ils ne sont
+                   toujours pas *interdits* : c'est la machine qui manque. -->
               <button
-                type="button"
+                v-if="showHeavyGesture"
+                type="button""
                 class="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-mono uppercase tracking-wider transition-colors disabled:cursor-not-allowed disabled:opacity-60"
                 style="border-color: var(--surface-3); color: var(--indigo-700); background: var(--surface-1);"
                 :title="canRunHeavy
@@ -1029,6 +1032,7 @@ useReviewKeybinds(keyboardEnabled, {
                 <span class="font-mono text-[9px] opacity-70">A</span>
               </button>
               <button
+                v-if="showHeavyGesture"
                 type="button"
                 class="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-mono uppercase tracking-wider transition-colors disabled:cursor-not-allowed disabled:opacity-60"
                 style="border-color: var(--surface-3); color: var(--indigo-700); background: var(--surface-1);"

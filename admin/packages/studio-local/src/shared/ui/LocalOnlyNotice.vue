@@ -1,20 +1,39 @@
 <script setup lang="ts">
 /**
- * Notice plein-panneau rendue à la place d'une vue lourde quand `hasLocalMlApi` est faux
+ * Notice rendue à la place d'une vue lourde quand `hasLocalMlApi` est faux
  * (hébergé, ou API ML `:8042` non lancée). Model B / R1 — cf. AppLayout + stores/capabilities.
+ *
+ * DEUX rendus, un par public (D11) :
+ *  - **technique** (l'arbitre sur son poste) : la marche à suivre complète, avec le
+ *    port et les commandes. Il sait ce qu'est `:8042`, il peut y aller.
+ *  - **neutre** (un ami) : le geste n'existe pas ici, point. Aucun « local », aucun
+ *    port, aucun nom de machine — ils ne lui apprendraient rien et l'inquiéteraient.
+ *
+ * `technical` non passé ⇒ déduit du scope `review:arbitrate` : tout appelant est
+ * correct par défaut.
  */
-import { useRoute } from 'vue-router'
+import { computed } from 'vue'
+import { RouterLink, useRoute } from 'vue-router'
 
 import { IS_HOSTED } from '@/shared/config/deploy-target'
+import { useHeavyGate } from '@/shared/composables/useHeavyGate'
 import { useCapabilities } from '@/stores/capabilities'
+
+const props = defineProps<{ technical?: boolean }>()
 
 const route = useRoute()
 const caps = useCapabilities()
+const { canArbitrate } = useHeavyGate()
+
+const showTechnical = computed(() =>
+  props.technical === undefined ? canArbitrate.value : props.technical,
+)
 </script>
 
 <template>
   <div class="local-only">
-    <div class="card">
+    <!-- Rendu TECHNIQUE — pour qui peut agir dessus (arbitre). -->
+    <div v-if="showTechnical" class="card">
       <div class="icon">🖥️</div>
       <h2>Cette vue tourne en local</h2>
       <p v-if="IS_HOSTED">
@@ -33,6 +52,16 @@ const caps = useCapabilities()
           Ouvre <code>http://localhost:5173{{ route.path }}</code> (auth via ton PAT).
         </li>
       </ol>
+    </div>
+
+    <!-- Rendu NEUTRE — pour un ami (D11). Même carte, aucun détail de machine. -->
+    <div v-else class="card">
+      <div class="icon">🗂️</div>
+      <h2>Cette page n'est pas disponible</h2>
+      <p>
+        Il n'y a rien à faire ici pour l'instant. La review, elle, t'attend.
+      </p>
+      <RouterLink class="back" to="/review">Retour à la review</RouterLink>
     </div>
   </div>
 </template>
@@ -78,6 +107,18 @@ ol {
 }
 ol li {
   margin: 4px 0;
+}
+.back {
+  display: inline-block;
+  font-size: 13px;
+  color: var(--text, #1a1a1a);
+  border: 1px solid var(--border, #e2e2e2);
+  border-radius: var(--radius-md, 8px);
+  padding: 6px 14px;
+  text-decoration: none;
+}
+.back:hover {
+  border-color: var(--text-secondary, #555);
 }
 code {
   font-family: ui-monospace, monospace;

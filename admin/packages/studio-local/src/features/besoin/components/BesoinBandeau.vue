@@ -13,6 +13,7 @@
 
 import { computed } from 'vue'
 import BesoinAcheter from './BesoinAcheter.vue'
+import { useHeavyGate } from '@/shared/composables/useHeavyGate'
 import type { ClassNeedResponse, ClassNeedRow, Palier } from '../composables/useClassNeed'
 
 const props = defineProps<{
@@ -26,6 +27,9 @@ const emit = defineEmits<{
   (e: 'palier', value: Palier): void
   (e: 'bottleneck', value: 'review' | 'scrape' | 'pleine' | 'tous'): void
 }>()
+
+// D11 — la moitié ACHETER n'est proposée qu'à qui peut y donner suite.
+const { showHeavyGesture } = useHeavyGate()
 
 const t = computed(() => props.data.totals)
 
@@ -170,8 +174,13 @@ function fmt(n: number): string {
       </div>
 
       <!-- La moitié ACHETER est LOURDE (elle lit `eurio.local.db`), la page ne
-           l'est pas : elle se grise seule et le dit. Lot 5. -->
+           l'est pas : elle se grise seule et le dit. Lot 5.
+           D11 — ce « elle le dit » s'adresse à l'arbitre, qui peut aller sur sa
+           machine. Pour un ami, le panneau entier est ABSENT : il n'a rien à
+           acheter, et sa seule version affichable lui parlerait de
+           `ml/state/eurio.local.db`. -->
       <BesoinAcheter
+        v-if="showHeavyGesture"
         :a-chercher="t.sum_need - t.sum_reachable"
         :n-classes-scrape="t.by_bottleneck.scrape ?? 0"
         :heavy-locked="heavyLocked"

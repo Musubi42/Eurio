@@ -43,8 +43,7 @@ import SplitCompare from '../components/SplitCompare.vue'
 import CircleCropEditor from '../components/CircleCropEditor.vue'
 import type { CoinSearchEntry } from '../composables/useCoinsSearch'
 import type { DinoSuggestion } from '../composables/useDinoSuggestions'
-import { useEurioSession } from '@/stores/eurio-session'
-import { useCapabilities } from '@/stores/capabilities'
+import { useHeavyGate } from '@/shared/composables/useHeavyGate'
 import { withCacheBust } from '@/shared/url'
 
 const props = defineProps<{
@@ -69,17 +68,17 @@ const emit = defineEmits<{
 // ─── Les DEUX axes de gating (review-collaborative-v2, lots 4 et 5) ─────
 //
 //   `canArbitrate`  — DROIT   : « cette personne a-t-elle le droit ? »
-//   `canRunHeavy`   — MACHINE : « ce poste peut-il ? » (cv2 sur :8042)
+//   `canRunHeavy`   — MACHINE : « ce poste peut-il ? » (cv2 sur :8042). Rendu par
+//                     public (D11) : grisé pour l'arbitre, absent pour un ami.
 //
 // Sur cette vue la distinction est nette : « Pas un lot » écrit le canonique
 // via eurio-api (donc un DROIT), tandis que re-détecter / sync / crop manuel /
 // éditer encodent des pixels (donc une CAPACITÉ). Avant le lot 5 aucun des
 // deux n'était gaté : en hébergé, un clic partait vers un `:8042` injoignable
 // et rendait une erreur réseau nue.
-const session = useEurioSession()
-const caps = useCapabilities()
-const canArbitrate = computed(() => session.hasScope('review:arbitrate'))
-const canRunHeavy = computed(() => caps.hasLocalMlApi)
+// D11 : `showHeavyGesture` = « faut-il DESSINER ce geste lourd ? » — grisé pour
+// l'arbitre (son poste, il peut y aller), absent pour un ami. Cf. `useHeavyGate`.
+const { canArbitrate, canRunHeavy, showHeavyGesture } = useHeavyGate()
 
 // ─── State ─────────────────────────────────────────────────────────────
 
@@ -1005,9 +1004,10 @@ function detectionBadgeColor(cropIndex: number | null): string {
 
         <!-- Barre compacte (mode comparaison) : éditer le crop actif à un clic ;
              le plateau complet (re-détecter / sync / crop manuel) est sur D. -->
-        <div v-if="!showOverlay && activeImage" class="flex flex-wrap items-center gap-2 shrink-0">
+        <div v-if="!showOverlay && activeImage && showHeavyGesture" class="flex flex-wrap items-center gap-2 shrink-0">
           <button
             type="button"
+            v-if="showHeavyGesture"
             class="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 font-mono text-[10px] disabled:opacity-40"
             style="border-color: var(--surface-3); color: var(--ink-700); background: var(--surface);"
             :disabled="!activeCrop?.crop.review_id || !canRunHeavy"
@@ -1041,6 +1041,7 @@ function detectionBadgeColor(cropIndex: number | null): string {
           <span style="color: var(--surface-3);">·</span>
           <button
             type="button"
+            v-if="showHeavyGesture"
             class="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 font-mono text-[10px]"
             style="border-color: var(--surface-3); color: var(--indigo-700); background: var(--surface);"
             :disabled="detecting || !canRunHeavy"
@@ -1055,6 +1056,7 @@ function detectionBadgeColor(cropIndex: number | null): string {
           </button>
           <button
             type="button"
+            v-if="showHeavyGesture"
             class="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 font-mono text-[10px] disabled:opacity-40"
             style="border-color: var(--surface-3); color: var(--indigo-700); background: var(--surface);"
             :disabled="detecting || !activeImageCrops.length || !canRunHeavy"
@@ -1067,6 +1069,7 @@ function detectionBadgeColor(cropIndex: number | null): string {
           </button>
           <button
             type="button"
+            v-if="showHeavyGesture"
             class="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 font-mono text-[10px]"
             style="border-color: var(--surface-3); color: var(--success); background: var(--surface);"
             :disabled="!canRunHeavy"
@@ -1079,6 +1082,7 @@ function detectionBadgeColor(cropIndex: number | null): string {
           </button>
           <button
             type="button"
+            v-if="showHeavyGesture"
             class="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 font-mono text-[10px] disabled:opacity-40"
             style="border-color: var(--surface-3); color: var(--ink-700); background: var(--surface);"
             :disabled="!activeCrop?.crop.review_id || !canRunHeavy"
@@ -1242,6 +1246,7 @@ function detectionBadgeColor(cropIndex: number | null): string {
           </button>
           <button
             type="button"
+            v-if="showHeavyGesture"
             class="inline-flex items-center gap-1 rounded-md border px-2 py-1 font-mono text-[10px] disabled:cursor-not-allowed disabled:opacity-40"
             style="border-color: var(--surface-3); color: var(--ink-500); background: var(--surface);"
             :disabled="!canRunHeavy"

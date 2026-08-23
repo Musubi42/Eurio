@@ -59,7 +59,9 @@ const docsUrl =
     <button v-if="showLogin" class="login" @click="startOidcLogin()">
       Se connecter avec Authentik
     </button>
-    <a v-else class="link" :href="docsUrl" target="_blank" rel="noopener">
+    <!-- « Doc PAT » ne veut rien dire pour un ami en cookie OIDC — et le chemin
+         pointe dans le dépôt, donc chez lui un lien mort (D11). -->
+    <a v-else-if="!cookieMode" class="link" :href="docsUrl" target="_blank" rel="noopener">
       Doc PAT
     </a>
     <button class="close" aria-label="Masquer" @click="dismissed = true">×</button>

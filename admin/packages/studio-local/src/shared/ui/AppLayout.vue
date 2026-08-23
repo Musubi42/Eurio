@@ -5,6 +5,7 @@ import EurioSessionBanner from '@/shared/ui/EurioSessionBanner.vue'
 import LocalOnlyNotice from '@/shared/ui/LocalOnlyNotice.vue'
 import { useNavState } from '@/shared/composables/useNavState'
 import { useCapabilities } from '@/stores/capabilities'
+import { useHeavyGate } from '@/shared/composables/useHeavyGate'
 import { useEurioSession } from '@/stores/eurio-session'
 import { ChevronsLeft, ChevronsRight } from 'lucide-vue-next'
 import { computed, ref } from 'vue'
@@ -18,6 +19,13 @@ const { badges: navBadges } = useNavState()
 // Gating des features lourdes (Model B / R1) : en hébergé (ou API ML locale absente),
 // les items `heavy` sont grisés/non-cliquables et les routes `meta.heavy` rendent une
 // notice « ceci tourne en local » au lieu de la vue.
+//
+// D11 — ce rendu grisé est celui de l'ARBITRE sur son poste. Pour un ami (pas de
+// `review:arbitrate`), l'entrée n'est pas proposée du tout : elle disparaît de la nav
+// comme si elle n'existait pas. Un item grisé portant la pastille « local » lui
+// promet un geste qu'il ne pourra jamais faire, et le mène à une page qui parle d'un
+// port. Cf. `shared/composables/useHeavyGate`.
+const { canArbitrate, showHeavyGesture } = useHeavyGate()
 const heavyLocked = computed(() => !caps.hasLocalMlApi)
 function isLocked(item: NavItem): boolean {
   return Boolean(item.heavy) && heavyLocked.value
@@ -33,6 +41,8 @@ const routeLocked = computed(() => Boolean(route.meta.heavy) && heavyLocked.valu
 // sinon la nav clignoterait vide au boot, le temps de l'aller-retour `/me`.
 const scopesKnown = computed(() => session.status === 'ok')
 function isVisible(item: NavItem): boolean {
+  // D11 : une entrée lourde hors de portée n'est pas proposée à qui n'arbitre pas.
+  if (isLocked(item) && !showHeavyGesture.value) return false
   if (!item.scope || !scopesKnown.value) return true
   return session.hasScope(item.scope)
 }
@@ -185,7 +195,7 @@ function isActive(itemRoute: string) {
       <!-- Bandeau eurio-api session (PAT manquant/invalide/erreur) -->
       <EurioSessionBanner />
       <div class="flex-1 overflow-y-auto">
-        <LocalOnlyNotice v-if="routeLocked" />
+        <LocalOnlyNotice v-if="routeLocked" :technical="canArbitrate" />
         <RouterView v-else />
       </div>
     </main>

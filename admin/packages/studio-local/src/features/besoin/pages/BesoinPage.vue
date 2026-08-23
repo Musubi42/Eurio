@@ -152,7 +152,7 @@ onMounted(() => {
         </span>
       </div>
 
-      <BesoinTable :rows="shown" :heavy-locked="heavyLocked" />
+      <BesoinTable :rows="shown" />
 
       <p v-if="!showAll && rows.length > LIMIT" class="more">
         {{ rows.length - LIMIT }} classes de plus ne sont pas affichées —
