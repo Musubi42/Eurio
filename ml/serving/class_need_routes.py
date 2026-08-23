@@ -214,7 +214,17 @@ def get_class_need(
         n_classes=len(needs),
         coverage=sum(1 for n in needs if n.have >= 1),
         sum_need=sum(n.need for n in needs),
-        sum_reachable=sum(min(n.need, n.pending_scoped) for n in needs),
+        # ⛔ `bottleneck != 'pleine'` n'est pas un raffinement. Une classe
+        # pleine PAR LES ACQUIS (D8) garde `need > 0` — `need = target − have`
+        # et `have` ne bouge qu'au rebuild — ET `pending_scoped > 0`. Mais ses
+        # crops sont parqués : la file ne les sert plus. Les compter annonçait
+        # « à portée de la file » 55 exemplaires (mesuré le 2026-08-23, 19
+        # classes) que la file refuse de servir, dans un nombre qui alimente à
+        # la fois la barre PROFONDEUR et le titre du panneau TRANCHER.
+        sum_reachable=sum(
+            min(n.need, n.pending_scoped)
+            for n in needs if n.bottleneck != "pleine"
+        ),
         accepted_pending=sum(n.accepted_pending for n in needs),
         rebuild_would_place=sum(min(n.need, n.accepted_pending) for n in needs),
         n_open=n_open,

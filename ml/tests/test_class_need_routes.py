@@ -281,3 +281,77 @@ def test_l_effet_de_l_ere_traverse_jusqu_au_json(env):
             - rows[NEEDY]["n_hidden_by_era"]
             - rows[NEEDY]["n_hidden_by_country"]
             - rows[NEEDY]["n_hidden_by_denom"]) == rows[NEEDY]["pending_scoped"]
+
+
+# ─── Trous fermés après revue par mutation (2026-08-23) ─────────────────────
+#
+# Ces trois-là survivaient à leur mutation : le code était juste, mais rien ne
+# le tenait. Un test qui ne tue pas sa mutation ne protège rien.
+
+
+def test_le_rebuild_ne_promet_que_ce_qu_il_peut_poser(env):
+    """`rebuild_would_place` est Σ min(need, accepted_pending), pas Σ acquis.
+
+    Un acquis dans une classe déjà pleine ne posera RIEN — le builder s'arrête
+    à la cible. Sommer les acquis bruts ferait annoncer « un rebuild poserait
+    1 622 exemplaires » là où il en pose 196 : un facteur 8 sur le seul chiffre
+    qui décide s'il vaut le coup de rebâtir.
+    """
+    conn, _ = env
+    # FULL est à sa cible (8/8) : ses acquis ne peuvent rien poser.
+    for i in range(5):
+        acq = _asset(conn, f"surplus{i}", country="FR", eligible=1)
+        _predict(conn, acq, FULL)
+    conn.commit()
+
+    t = _client().get("/class-need").json()["totals"]
+    assert t["accepted_pending"] == 6, "5 sur la classe pleine + 1 sur NEEDY"
+    assert t["rebuild_would_place"] == 1, (
+        "seul l'acquis de NEEDY peut devenir un exemplaire ; les 5 autres "
+        "tombent dans une classe qui a déjà sa cible"
+    )
+
+
+def test_le_besoin_inclut_les_classes_sans_candidat(env):
+    """`deficient_class_ids` doit rendre les `scrape`, pas seulement les `review`.
+
+    Une classe sans candidat EST en besoin — elle n'a simplement rien à
+    trancher aujourd'hui. L'exclure ferait parquer ses crops dès qu'un scrape
+    lui en apporterait : le filtre `need_only` se refermerait sur le travail
+    qu'on vient d'aller chercher.
+    """
+    from serving.review_queue.repository import deficient_class_ids
+
+    conn, _ = env
+    ids = set(deficient_class_ids(conn))
+    assert DRY in ids, "une classe `scrape` est en besoin, pas hors besoin"
+    assert EXILE in ids and NEEDY in ids
+    assert FULL not in ids, "la classe à sa cible, elle, sort bien"
+
+
+def test_have_ne_compte_pas_une_autre_banque(env):
+    """Le couple (anchors_kind, encoder_version) est indissociable.
+
+    C'est le refus n°2 que `class_need` s'impose en en-tête. Sans la condition
+    sur l'encodeur, `have` additionnerait les exemplaires de deux banques et
+    des classes paraîtraient pleines sans l'être — un JOIN trop large ne lève
+    rien, il ment.
+    """
+    from shared.class_need import all_needs
+
+    conn, _ = env
+    # Six exemplaires de plus sur NEEDY, mais sous un AUTRE encodeur.
+    for i in range(6):
+        aid = _asset(conn, f"vits{i}")
+        conn.execute(
+            "INSERT INTO dino_class_references (anchors_kind, encoder_version,"
+            " class_id, eurio_id, asset_id, method, rank)"
+            " VALUES (?, 'dinov2-vits14', ?, ?, ?, 'fps', ?)",
+            (KIND, NEEDY, NEEDY, aid, 100 + i),
+        )
+    conn.commit()
+
+    needs = {n.class_id: n for n in all_needs(
+        conn, anchors_kind=KIND, encoder_version=ENC)}
+    assert needs[NEEDY].have == 2, "les 6 exemplaires vits14 ne comptent pas ici"
+    assert needs[NEEDY].bottleneck != "pleine"

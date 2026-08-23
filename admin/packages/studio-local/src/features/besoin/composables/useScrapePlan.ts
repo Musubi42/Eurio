@@ -98,7 +98,6 @@ export interface ScrapeTotals {
 
 export interface ScrapePlanSummary {
   build: ScrapeBuildInfo
-  target: number
   totals: ScrapeTotals
   countries: CountryNeed[]
   measured_yield: YieldMeasure

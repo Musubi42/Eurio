@@ -159,25 +159,39 @@ export function applyFilters(rows: ClassNeedRow[], f: Filters): ClassNeedRow[] {
 }
 
 /**
- * Le lien d'un geste — et il PORTE SON RÉGLAGE.
+ * Le lien d'un geste. Il ne porte QUE ce qui change vraiment le périmètre.
  *
- * C'est la seule subtilité de la page, et elle n'est pas cosmétique : la pêche
- * applique son filtre pays PAR DÉFAUT. Sur une classe désarmée (147 des 293 en
- * besoin, 82 % du palier 1), un lien nu ouvrirait une file qui sert **zéro**
- * alors que la ligne annonce 66 candidats — littéralement le « badge qui dit 4
- * au-dessus d'une file qui en sert 3 ».
+ * 🔴 CORRECTION DU 2026-08-23 — le lien portait `&pays=tous` sur les classes
+ * désarmées, et c'était une régression, pas une précaution.
+ *
+ * Le raisonnement d'origine (« sans ça la pêche réappliquerait son filtre et
+ * servirait zéro ») est FAUX depuis O4c : `build_dino_scope` se désarme
+ * lui-même. Mesuré — pour une classe désarmée, lien nu et `pays=tous` servent
+ * exactement le même nombre de crops. Ce que `pays=tous` changeait, c'est que
+ * le résumé revenait avec `country_disarmed: false`, donc `PecheBar` affichait
+ * « tous pays » au lieu de « ⚠ pays DE — désarmé ».
+ *
+ * Autrement dit : le lien ÉTEIGNAIT l'avertissement, sur les 97 classes (des
+ * 211 en review) où il a précisément quelque chose à dire. L'opérateur ne
+ * pouvait plus distinguer « j'ai levé le filtre » de « le back l'a retiré
+ * parce qu'il ne laissait rien ».
+ *
+ * Règle qui en sort : un lien ne pré-règle un filtre que s'il change ce qui
+ * est SERVI. Un réglage qui ne change que l'affichage doit être laissé au
+ * back, qui sait, lui, pourquoi il l'a pris.
  */
 export function gestureHref(r: ClassNeedRow): string | null {
   const p = new URLSearchParams({ class: r.class_id })
   if (r.bottleneck === 'pleine') {
     // Voir les parqués : on lève explicitement le cadrage par le besoin.
+    // Celui-ci change bien ce qui est servi — il a sa place dans le lien.
     p.set('need', '0')
-  } else if (r.bottleneck === 'review') {
-    p.set('need', '1')
-    if (r.country_disarmed) p.set('pays', 'tous')
-  } else {
-    return null // `scrape` : le geste est un plan, pas une file (lot 5).
+  } else if (r.bottleneck !== 'review') {
+    return null // `scrape` : le geste est un plan, pas une file (moitié ACHETER).
   }
+  // `review` : rien à porter. Le cadrage par le besoin est le DÉFAUT depuis D9,
+  // et l'écrire (`need=1`) brouillerait la règle « seule la levée s'écrit dans
+  // l'URL » que la pêche vient d'établir.
   return `/review/peche?${p.toString()}`
 }
 

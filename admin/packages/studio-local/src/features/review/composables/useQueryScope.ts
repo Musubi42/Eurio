@@ -71,7 +71,31 @@ export function queryRunIds(route: RouteLocationNormalizedLoaded): string[] | nu
  * ⛔ Toute valeur autre que `0` laisse le filtre ACTIF — y compris `?need=1`,
  * qui reste valide et redondant (les liens déjà partagés continuent de
  * marcher). Un typo ne doit pas rendre 76 % de bruit en silence.
+ *
+ * 🔴 SAUF SUR UNE FILE DE COHORTE, ET C'EST UNE CORRECTION DE D9.
+ * Le besoin est un critère de la VOIE B (la banque DINO : « cette classe a ses
+ * 8 exemplaires »). Une cohorte, elle, sert la VOIE A — l'entraînement ArcFace,
+ * dont le critère d'arrêt est `min_real = 10` crops validés par classe. Les
+ * deux comptent autre chose, et `design/DESIGN.md` §5 interdit explicitement de
+ * les confondre : « les deux peuvent être en désaccord légitime sur la même
+ * classe ».
+ *
+ * Appliquer B à une file A retirait, mesuré le 2026-08-23 sur la réplique :
+ *
+ *     cohorte giga-40-vague1        2 825 ouverts →   484 servis  (83 % parqués)
+ *     cohorte again                   493 ouverts →   100 servis  (80 %)
+ *     cohorte parcours4-exercice-1    187 ouverts →    48 servis  (74 %)
+ *
+ * — en silence, et sur un écran dont le message de fin de file dit « Tout est
+ * résolu ». Exactement la panne muette que ce chantier combat.
+ *
+ * Le cadrage reste DEMANDABLE sur une cohorte (`?need=1`) : ce qu'on retire,
+ * c'est le défaut, pas la capacité.
  */
 export function queryNeedOnly(route: RouteLocationNormalizedLoaded): boolean {
-  return queryParam(route, 'need') !== '0'
+  const raw = queryParam(route, 'need')
+  if (raw === '0') return false
+  if (raw === '1') return true
+  // Défaut : actif — sauf si la file est cadrée par une cohorte (voie A).
+  return !queryParam(route, 'cohort')
 }

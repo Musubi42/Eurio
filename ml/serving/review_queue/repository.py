@@ -119,6 +119,15 @@ def deficient_class_ids(conn: sqlite3.Connection) -> list[str]:
     return [n.class_id for n in needs if n.bottleneck != "pleine"]
 
 
+class EmptyBankError(RuntimeError):
+    """La banque des suggestions ne rend aucune classe — on ne peut pas cadrer.
+
+    Distincte d'un `RuntimeError` nu pour que les routes la traduisent en 409
+    (« ta demande ne peut pas être satisfaite ») et non en 500 (« j'ai un
+    bug ») : le service va bien, c'est la banque qui manque.
+    """
+
+
 def need_filter_clause(
     conn: sqlite3.Connection, need_only: bool, *, alias: str = "a",
 ) -> tuple[str, list[object]]:
@@ -147,8 +156,36 @@ def need_filter_clause(
             f"SQLite ({NEED_IDS_BOUND}), le filtre doit être découpé",
         )
     if not ids:
-        # Aucune classe en besoin : rien à servir. `AND 0` plutôt que `IN ()`,
-        # que SQLite accepte mais qui se lit comme un oubli.
+        # 🔴 DEUX CAS SE CACHENT DERRIÈRE CE ZÉRO, ET ILS SONT OPPOSÉS.
+        #
+        #   a) toutes les classes de la banque sont à leur cible — le travail
+        #      est vraiment fini ;
+        #   b) la banque des suggestions ne rend AUCUNE classe : mauvais couple
+        #      (kind, encodeur), réplique périmée, rebuild en cours.
+        #
+        # Depuis D9 le cadrage est le DÉFAUT, donc (b) est devenu atteignable
+        # par accident — et il rendait ` AND 0`, c'est-à-dire une review qui
+        # sert zéro item sous le message « Tout est résolu ». La panne muette
+        # canonique de ce dépôt : plausible, et fausse.
+        #
+        # On distingue donc les deux, et on refuse bruyamment le second — même
+        # traitement que le 409 de `/class-need`, qui refuse déjà de lire une
+        # banque vide comme « tout est à scraper ».
+        n_classes = conn.execute(
+            "SELECT COUNT(DISTINCT class_id) AS n FROM dino_class_references "
+            " WHERE anchors_kind = ? AND encoder_version = ?",
+            (SUGGESTIONS_ANCHORS_KIND, SUGGESTIONS_ENCODER_VERSION),
+        ).fetchone()["n"]
+        if not n_classes:
+            raise EmptyBankError(
+                f"la banque des suggestions ({SUGGESTIONS_ANCHORS_KIND} / "
+                f"{SUGGESTIONS_ENCODER_VERSION}) ne contient aucune classe : "
+                "impossible de savoir ce qui manque. La file n'est pas vide, "
+                "elle est illisible — lever le cadrage (`?need=0`) sert tout, "
+                "sans distinguer ce qui est utile.",
+            )
+        # (a) : le travail est réellement fini. `AND 0` plutôt que `IN ()`, que
+        # SQLite accepte mais qui se lit comme un oubli.
         return " AND 0", []
     ph = ",".join("?" * len(ids))
     return (
@@ -1336,6 +1373,16 @@ def dino_candidates_summary(
     # ⚠️ Reproduire ces quatre conditions n'est pas du zèle : un compteur qui
     # dirait 8 là où l'écran de cohorte dit 6 ferait douter des deux. La règle
     # du projet est qu'un même fait porte partout le même nombre.
+    #
+    # 🔴 ET LE GRAIN — défaut V4, quatrième occurrence de la journée.
+    # `COALESCE(design_group_id, eurio_id) = ?` est la convention `coins`. Or
+    # `dino_class` arrive maintenant au grain BANQUE (`/besoin` construit
+    # `?class=<class_id>`, l'`eurio_id` du représentant). Pour une courante QUI
+    # A un `design_group_id`, le COALESCE rend le GROUPE : la comparaison ne
+    # matche jamais et le compteur rend 0, en silence. Mesuré le 2026-08-23 :
+    # 26 des 41 classes `portrait_standard`, dont 15 atteignables depuis
+    # `/besoin` — pendant que `/besoin` affichait, lui, le bon nombre.
+    # On accepte donc LES DEUX grains, comme `class_country` a dû le faire.
     n_eligible = conn.execute(
         """
         SELECT COUNT(*) AS n
@@ -1346,7 +1393,9 @@ def dino_candidates_summary(
            AND a.training_eligible = 1
            AND a.storage_status = 'present'
            AND (a.face IS NULL OR a.face != 'reverse')
-           AND COALESCE(c.design_group_id, c.eurio_id) = ?
+           AND (COALESCE(c.design_group_id, c.eurio_id) = ?1
+                OR c.design_group_id = (SELECT design_group_id FROM coins
+                                         WHERE eurio_id = ?1))
         """,
         (dino_class,),
     ).fetchone()["n"]

@@ -505,3 +505,48 @@ def test_http_need_only_on_every_route(env):
     # Sans le flag : `parked` est nul, l'ouvert est celui du run entier.
     body = client.get(f"/review-queue/run-progress?run_id={RUN_A},{RUN_B}").json()
     assert body["parked"] is None and body["open"] == 7
+
+
+# ─── Banque illisible : refuser bruyamment plutôt que servir zéro ────────────
+
+
+def test_une_banque_vide_leve_au_lieu_de_vider_la_file(tmp_path, monkeypatch):
+    """Depuis D9 le cadrage est le DÉFAUT, donc ce cas est atteignable par
+    accident : mauvais couple (kind, encodeur), réplique périmée, rebuild en
+    cours. Il rendait ` AND 0` — une review qui sert zéro item sous « Tout est
+    résolu ». La panne muette canonique.
+
+    Le service va bien, c'est la banque qui manque : on lève une erreur
+    DISTINCTE, pour que la route réponde 409 et non 500.
+    """
+    from serving.review_queue.repository import EmptyBankError, need_filter_clause
+
+    db = tmp_path / "vide.db"
+    conn = Store(db)._connection()  # noqa: SLF001
+    monkeypatch.setenv("EURIO_DB_PATH", str(db))
+    # Aucune ligne dans `dino_class_references` : la banque est illisible.
+    with pytest.raises(EmptyBankError, match="ne contient aucune classe"):
+        need_filter_clause(conn, True, alias="a")
+
+    # …et sans cadrage, rien ne change : la clause reste vide.
+    assert need_filter_clause(conn, False, alias="a") == ("", [])
+
+
+def test_une_banque_pleine_a_100_pourcent_vide_la_file_sans_lever(env):
+    """L'autre cas du même zéro, et il est LÉGITIME : toutes les classes sont à
+    leur cible. Là, servir zéro est la bonne réponse — le travail est fini.
+
+    Les distinguer est tout l'objet du correctif : un zéro qui veut dire
+    « terminé » et un zéro qui veut dire « je ne sais pas » ne se traitent pas
+    pareil.
+    """
+    from serving.review_queue.repository import need_filter_clause
+
+    conn, _ = env
+    # NEEDY passe à sa cible (2 + 6 = 8) → plus aucune classe déficiente.
+    for i in range(2, 8):
+        _fps(conn, NEEDY, i)
+    conn.commit()
+
+    clause, args = need_filter_clause(conn, True, alias="a")
+    assert clause == " AND 0" and args == []

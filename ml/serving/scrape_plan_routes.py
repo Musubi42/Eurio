@@ -194,8 +194,17 @@ class ScrapeTotals(BaseModel):
 
 
 class ScrapePlanSummary(BaseModel):
+    #: ⛔ PAS de champ `target` ici, et c'est délibéré (revue du 2026-08-23).
+    #: Il en portait un, recopié depuis la query — mais AUCUN chiffre de cette
+    #: réponse n'en tenait compte : le verdict vient de `all_needs`, qui résout
+    #: la cible PAR FAMILLE (8, ou 5 en émission commune, cf. D4). Prouvé :
+    #: `?target=1` et `?target=10` rendaient des totaux identiques, avec deux
+    #: étiquettes différentes. Une étiquette plausible et fausse posée à côté
+    #: d'un nombre est exactement la panne que ce chantier combat.
+    #: (`/scrape-plan/allocation`, lui, HONORE vraiment son `target` —
+    #: `build_allocation(target=…)`. Deux routes voisines, deux sémantiques :
+    #: raison de plus pour ne pas en faire semblant ici.)
     build: BuildInfo
-    target: int
     totals: ScrapeTotals
     countries: list[CountryNeed]
     measured_yield: YieldMeasure
@@ -342,7 +351,6 @@ def summarize(
     *,
     anchors_kind: str = ANCHORS_KIND,
     encoder_version: str = ENCODER_VERSION,
-    target: int = DEFAULT_TARGET_EXEMPLARS,
     now: datetime | None = None,
 ) -> ScrapePlanSummary:
     """Le besoin `scrape`, par pays, avec son coût et le quota du jour.
@@ -431,7 +439,6 @@ def summarize(
     quota = read_quota(quota_db, now=now)
     return ScrapePlanSummary(
         build=build,
-        target=target,
         totals=ScrapeTotals(
             n_classes=len(scrape),
             n_zero=sum(x.n_zero for x in countries),
@@ -473,7 +480,6 @@ def _quota_db() -> Path:
 def get_scrape_plan_summary(
     anchors_kind: str = Query(default=ANCHORS_KIND),
     encoder_version: str = Query(default=ENCODER_VERSION),
-    target: int = Query(default=DEFAULT_TARGET_EXEMPLARS, ge=1, le=10),
 ) -> ScrapePlanSummary:
     """Ce qui manque, par groupe de découverte, ce que ça coûterait, et le reste
     du quota. **Lecture pure** : deux bases ouvertes en `mode=ro`, zéro appel eBay."""
@@ -483,7 +489,6 @@ def get_scrape_plan_summary(
             conn, _quota_db(),
             anchors_kind=anchors_kind,
             encoder_version=encoder_version,
-            target=target,
         )
     finally:
         conn.close()
