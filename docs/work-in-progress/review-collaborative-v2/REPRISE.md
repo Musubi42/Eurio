@@ -7,8 +7,8 @@
 
 ## Où on en est
 
-**La boucle est fermée.** Déployé en production au commit `071312d9` (backend puis
-front, VPS à jour), et utilisé pour de vrai : le PO a un compte reviewer dans
+**La boucle est fermée.** Déployé en production (backend puis front, VPS à jour ;
+dernier envoi : les correctifs de la première session de review), et utilisé pour de vrai : le PO a un compte reviewer dans
 Authentik et tranche des crops depuis `https://eurio-admin.musubi.dev`.
 
 Livrés et vérifiés : lots 0, 1, 1b, 2, 3, 4, 4b, 5, 6a, **D11**, **8**, et **6b**
@@ -67,10 +67,15 @@ tête et non cochés, approuver ou rejeter en un geste (lot 8).
    mc stat eurio/enrichment-crops/<storage_path>   # ETag DIFFÉRENT
    # et en base : detection_method='manual', bbox = le nouveau cercle, 224×224
    ```
-   Puis que la prédiction DINO périmée est bien partie (D6) :
+   Puis que la prédiction DINO est marquée périmée — **sans avoir disparu**
+   (D6 amendée, migration 0013) :
    ```sql
-   SELECT count(*) FROM image_asset_dino_predictions WHERE asset_id = '<asset_id>';
-   -- attendu 0 ; `go-task ml:dino-predictions:backfill` la rebâtira depuis le Mac
+   SELECT top1_eurio_id, stale_since FROM image_asset_dino_predictions
+    WHERE asset_id = '<asset_id>';
+   -- attendu : la ligne est TOUJOURS là (l'écran continue de la proposer, en
+   -- disant « calculée avant ton recadrage ») et `stale_since` est daté.
+   -- `go-task ml:dino-predictions:backfill` la recalcule depuis le Mac, SANS
+   -- --force, et remet `stale_since` à NULL.
    ```
 
 4. **L'admin** se reconnecte avec son compte, ouvre `/review/arbitrage` (carte
