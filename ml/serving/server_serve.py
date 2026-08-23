@@ -55,6 +55,7 @@ from serving.funnel_writes import router as funnel_writes_router
 from serving.lab_read_routes import router as lab_read_router
 from serving.dino_thresholds_routes import router as dino_thresholds_router
 from serving.encoder_bench_routes import router as encoder_bench_router
+from serving.class_need_routes import router as class_need_router
 from serving.thresholds_routes import router as thresholds_router
 from serving.sources import router as sources_router
 from store import Store
@@ -167,6 +168,12 @@ app.include_router(encoder_bench_router)
 # VACUUM INTO cohérent), remplace le détour `canonical_sync → MinIO`. Léger
 # (stdlib + sqlite3) → mount inconditionnel sur l'image lean. Scope ingest:run.
 app.include_router(db_routes.router)
+# Le besoin par classe (O1/O2) : SQL pur sur le canonique, stdlib + sqlite3,
+# aucun import lourd → mount inconditionnel. C'est TOUT l'enjeu d'O2 §Où elle
+# vit : savoir ce qui manque, et ce que ça coûterait, ne doit pas dépendre d'un
+# Mac allumé. Seuls les GESTES que la page propose sont lourds, et le front les
+# grise tout seul. Lecture lab:read.
+app.include_router(class_need_router)
 
 
 @app.get("/healthz")

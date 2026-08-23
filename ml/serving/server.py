@@ -146,6 +146,12 @@ app.include_router(ingest_routes.router)
 from serving import db_routes  # noqa: E402
 app.include_router(db_routes.router)
 
+# Le besoin par classe (O1/O2). Léger (stdlib + sqlite3) → monté ici comme sur
+# l'image lean (règle de sync FULL↔LEAN dans server_serve). C'est une LECTURE :
+# la workstation la sert depuis sa réplique, le VPS depuis le canonique.
+from serving.class_need_routes import router as class_need_router  # noqa: E402
+app.include_router(class_need_router)
+
 # local-sync (event-log/outbox/worker) retiré C6a (démonté) + C6b (modules
 # supprimés) — Direction A remplace le cycle push/pull/hlc par des POST
 # directs /ingest/* (crops/faces/dino/run).
