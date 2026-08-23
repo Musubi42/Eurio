@@ -270,3 +270,107 @@ def test_le_compteur_compte_exactement_ce_que_la_file_sert(conn):
         cohort_id=None, eurio_id=None, review_ids=None, dino_class=CLASSE,
     )
     assert s.n_open_single == len(servis) == 1
+
+
+# ─── D9 · le résumé compte CE QUE LA FILE SERT (lot 4) ──────────────────────
+#
+# Le bandeau de la pêche vit AU-DESSUS de la file ; les vues, elles, appliquent
+# `need_filter_clause`. Compter ici le pool brut pendant que la file sert le
+# pool cadré, c'est très exactement « un badge qui annonce 4 au-dessus d'une
+# file qui en sert 3 » — et sur une classe pleine il annoncerait 257 au-dessus
+# de zéro. Mesuré le 2026-08-23 : 4 999 des 6 574 crops ouverts (76 %) tombent
+# dans une classe qui n'a plus besoin de rien.
+
+
+def _bank(conn, class_id, n_fps):
+    """Une classe de banque avec `n_fps` exemplaires `fps`."""
+    conn.execute(
+        "INSERT INTO dino_class_references (anchors_kind, encoder_version,"
+        " class_id, eurio_id, method) VALUES (?,?,?,?,'canonical')",
+        (SUGGESTIONS_ANCHORS_KIND, SUGGESTIONS_ENCODER_VERSION, class_id, class_id),
+    )
+    for i in range(n_fps):
+        conn.execute(
+            "INSERT INTO source_images (id, source, source_ref, storage_path)"
+            " VALUES (?,?,?,'x.jpg')", (f"si-ref{class_id}{i}", "ebay", f"rr-{class_id}-{i}"),
+        )
+        conn.execute(
+            "INSERT INTO image_assets (id, source_image_id, storage_path,"
+            " storage_status) VALUES (?,?, 'c.jpg','present')",
+            (f"a-ref{class_id}{i}", f"si-ref{class_id}{i}"),
+        )
+        conn.execute(
+            "INSERT INTO dino_class_references (anchors_kind, encoder_version,"
+            " class_id, eurio_id, asset_id, method, rank) VALUES (?,?,?,?,?,'fps',?)",
+            (SUGGESTIONS_ANCHORS_KIND, SUGGESTIONS_ENCODER_VERSION, class_id,
+             class_id, f"a-ref{class_id}{i}", i),
+        )
+    conn.commit()
+
+
+def test_le_resume_dune_classe_pleine_ne_promet_pas_ce_quil_ne_sert_pas(conn):
+    """LE test du lot 4.
+
+    Sans `need_only`, le bandeau annonce deux crops et la file en sert zéro :
+    l'opérateur croit l'écran cassé. Avec, il annonce zéro SERVI et deux
+    PARQUÉS, et il dit pourquoi.
+    """
+    _bank(conn, "it-2002-std", 8)      # à la cible (8) → `pleine`
+    _crop(conn, "01sgl", top1="it-2002-std", spread=0.30)
+    _crop(conn, "02lot", kind="lot", top1="it-2002-std", spread=0.30)
+
+    brut = repository.dino_candidates_summary(conn, dino_class=CLASSE)
+    assert brut.n_open_single == 1 and brut.n_open_lot == 1
+    assert brut.n_parked == 0, "sans cadrage, rien n'est parqué"
+
+    cadre = repository.dino_candidates_summary(conn, dino_class=CLASSE, need_only=True)
+    assert cadre.n_open_single == 0 and cadre.n_open_lot == 0
+    assert cadre.n_parked == 2
+    assert cadre.need_only is True
+    # …et l'écran doit pouvoir DIRE pourquoi, pas seulement afficher zéro.
+    assert cadre.class_bottleneck == "pleine"
+    assert cadre.class_have == 8 and cadre.class_target == 8
+
+
+def test_le_resume_dune_classe_en_besoin_ne_parque_rien(conn):
+    """Le cadrage ne doit pas mordre là où la classe a encore besoin."""
+    _bank(conn, "it-2002-std", 2)      # sous la cible → `review`
+    _crop(conn, "01sgl", top1="it-2002-std", spread=0.30)
+    _crop(conn, "02lot", kind="lot", top1="it-2002-std", spread=0.30)
+
+    s = repository.dino_candidates_summary(conn, dino_class=CLASSE, need_only=True)
+    assert s.n_open_single == 1 and s.n_open_lot == 1
+    assert s.n_parked == 0
+    assert s.class_bottleneck == "review"
+
+
+def test_les_acquis_ferment_la_classe_avant_le_rebuild(conn):
+    """D8 vu depuis la pêche : `have` est figé, le verdict ne l'est pas.
+
+    7 en banque + 1 validé non bâti = la cible est atteinte. Sans compter les
+    acquis, la pêche resservirait une classe que l'opérateur vient de remplir —
+    ce qu'il a explicitement demandé à ne plus voir.
+    """
+    _bank(conn, "it-2002-std", 7)
+    _crop(conn, "00acq", top1="it-2002-std", spread=0.30, training_eligible=1,
+          enqueue=False)
+    _crop(conn, "01sgl", top1="it-2002-std", spread=0.30)
+
+    s = repository.dino_candidates_summary(conn, dino_class=CLASSE, need_only=True)
+    assert s.class_have == 7, "la banque n'a pas bougé"
+    assert s.class_bottleneck == "pleine", "mais le 8e est déjà acquis"
+    assert s.n_open_single == 0 and s.n_parked == 1
+
+
+def test_le_cadrage_par_defaut_reste_inactif_cote_repository(conn):
+    """Le renversement du défaut vit dans le FRONT (`queryNeedOnly`), pas ici.
+
+    Un appelant direct de l'API — script, curl, autre service — ne doit pas
+    voir son périmètre changer sous ses pieds parce qu'un écran a changé d'avis.
+    Le cadrage est explicite côté serveur, implicite côté opérateur.
+    """
+    _bank(conn, "it-2002-std", 8)
+    _crop(conn, "01sgl", top1="it-2002-std", spread=0.30)
+
+    s = repository.dino_candidates_summary(conn, dino_class=CLASSE)
+    assert s.need_only is False and s.n_open_single == 1

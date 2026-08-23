@@ -179,6 +179,18 @@ class DinoCandidatesSummary(BaseModel):
     orphan_asset_ids: list[str]
     #: Déjà validés pour l'entraînement — le dénominateur du « il en manque N ».
     n_training_eligible: int
+    #: Le résumé a-t-il été cadré par le besoin (D9) ? Les comptes ci-dessus
+    #: sont alors ceux que la FILE SERT, pas ceux du pool brut.
+    need_only: bool = False
+    #: Ce que ce cadrage retire — parqué, ni fermé ni supprimé (D3). Sur une
+    #: classe pleine c'est tout le pool : sans ce nombre, l'écran afficherait
+    #: « 0 à l'unité » et se lirait « rien à trancher », plausible et faux.
+    n_parked: int = 0
+    #: L'état de la classe, pour que l'écran dise POURQUOI c'est parqué.
+    #: `None` si la banque des suggestions n'indexe pas cette classe.
+    class_have: int | None = None
+    class_target: int | None = None
+    class_bottleneck: str | None = None
 
 
 class LotListResponse(BaseModel):

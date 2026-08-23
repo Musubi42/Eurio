@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 
 from serving._coin_helpers import canonical_obverse_url
 from shared.bank_classes import bank_class_ids, bank_class_ids_for_many
-from shared.class_need import all_needs
+from shared.class_need import all_needs, need_for
 from shared.dino_scope import build_dino_scope, suggestions_join_sql
 from shared.verdict_scope import (
     SUGGESTIONS_ANCHORS_KIND,
@@ -1172,6 +1172,7 @@ def dino_candidates_summary(
     dino_rank: int = 1,
     dino_min_spread: float | None = None,
     dino_country_only: bool = True,
+    need_only: bool = False,
 ):
     """Combien de crops la banque rattache à cette classe, et où ils sont.
 
@@ -1179,6 +1180,22 @@ def dino_candidates_summary(
     écriture, et une écriture qui se déclencherait au fil d'une lecture serait
     invisible à celui qui la provoque. Le front propose un bouton explicite qui
     appelle `POST /coins/assets/reflag-needs-review`.
+
+    ⛔ `need_only` N'EST PAS OPTIONNEL POUR L'HONNÊTETÉ DU COMPTE (D9, lot 4).
+    Ce résumé alimente le bandeau AU-DESSUS de la file ; les vues, elles,
+    appliquent `need_filter_clause`. Compter ici le pool brut pendant que la
+    file sert le pool cadré, c'est très exactement « un badge qui annonce 4
+    au-dessus d'une file qui en sert 3 » — sur une classe pleine, le bandeau
+    dirait 257 et la file servirait ZÉRO.
+
+    Les crops écartés ne disparaissent pas du résumé : ils sortent en
+    `n_parked`, avec l'état de la classe (`class_have` / `class_target` /
+    `class_bottleneck`) pour que l'écran dise POURQUOI. « Parqué » est une
+    lecture réversible et visible, jamais une écriture (D3).
+
+    Note : sous `dino_rank`, le périmètre est DÉFINI par la prédiction — toute
+    row de ce pool en a donc une, et la cause `no_prediction` de `RunParked`
+    ne peut pas s'y produire. Le seul parquage possible ici est `full_class`.
     """
     from .models import DinoCandidatesSummary
 
@@ -1191,8 +1208,11 @@ def dino_candidates_summary(
         raise ValueError("dino_class requis")
 
     join_sql = suggestions_join_sql("ps")
+    need_clause, need_args = need_filter_clause(conn, need_only, alias="a")
 
-    def _count(sc) -> int:
+    def _count(sc, *, with_need: bool = True) -> int:
+        extra = need_clause if with_need else ""
+        args = (*sc.args, *need_args) if with_need else sc.args
         return conn.execute(
             f"""
             SELECT COUNT(*) AS n
@@ -1200,9 +1220,9 @@ def dino_candidates_summary(
               JOIN image_assets a ON a.id = rq.image_asset_id
               JOIN source_images si ON si.id = a.source_image_id
               {join_sql}
-             WHERE rq.status = 'open' AND {sc.sql}
+             WHERE rq.status = 'open' AND {sc.sql}{extra}
             """,
-            sc.args,
+            args,
         ).fetchone()["n"]
 
     # Ce que le filtre pays MASQUE, compté et rendu. Un filtre actif par défaut
@@ -1240,10 +1260,10 @@ def dino_candidates_summary(
           JOIN image_assets a ON a.id = rq.image_asset_id
           JOIN source_images si ON si.id = a.source_image_id
           {join_sql}
-         WHERE rq.status = 'open' AND {scope.sql}
+         WHERE rq.status = 'open' AND {scope.sql}{need_clause}
          GROUP BY rq.kind
         """,
-        scope.args,
+        (*scope.args, *need_args),
     ).fetchall()
     by_kind = {r["kind"]: int(r["n"]) for r in rows}
     best_by_kind = {r["kind"]: r["best"] for r in rows}
@@ -1318,9 +1338,41 @@ def dino_candidates_summary(
         (dino_class,),
     ).fetchone()["n"]
 
+    # Ce que `need_only` retire, et l'état de classe qui l'explique. Sans ces
+    # champs le bandeau afficherait « 0 à l'unité · 0 en lots » sur une classe
+    # pleine, ce qui se lit « rien à trancher » — plausible, et faux : il y a
+    # 257 crops, ils sont PARQUÉS (D3), et un clic les ramène.
+    n_parked = 0
+    class_have = class_target = None
+    class_bottleneck = None
+    if need_only:
+        n_parked = max(_count(scope, with_need=False) - _count(scope), 0)
+    # ⚠️ On interroge le besoin avec les ÉTIQUETTES DE BANQUE du périmètre, pas
+    # avec `dino_class` : celui-ci est un `design_group_id` quand la classe est
+    # une courante (grain `coins`), et `need_for` raisonne au grain BANQUE.
+    # Passer l'un pour l'autre rend `None` en silence — le défaut V4, encore.
+    # Les membres d'une même ère partagent leur classe de banque, donc la
+    # première réponse non nulle est LA réponse.
+    for _bank_id in scope.class_ids or (dino_class,):
+        need_state = need_for(
+            conn, _bank_id,
+            anchors_kind=SUGGESTIONS_ANCHORS_KIND,
+            encoder_version=SUGGESTIONS_ENCODER_VERSION,
+        )
+        if need_state is not None:
+            class_have = need_state.have
+            class_target = need_state.target
+            class_bottleneck = need_state.bottleneck
+            break
+
     return DinoCandidatesSummary(
         class_id=dino_class,
         bank_class_ids=list(scope.class_ids),
+        need_only=need_only,
+        n_parked=n_parked,
+        class_have=class_have,
+        class_target=class_target,
+        class_bottleneck=class_bottleneck,
         rank=dino_rank,
         min_spread=dino_min_spread,
         n_open_single=by_kind.get("single", 0),

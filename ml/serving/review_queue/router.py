@@ -174,6 +174,7 @@ def dino_candidates_summary(
     dino_rank: int = Query(default=1),
     dino_min_spread: float | None = Query(default=None, ge=0.0, le=1.0),
     dino_country_only: bool = Query(default=True),
+    need_only: bool = Query(default=False),
 ) -> DinoCandidatesSummary:
     """Ce que la banque propose pour une classe — pour la porte d'entrée Coins.
 
@@ -190,6 +191,7 @@ def dino_candidates_summary(
             conn, dino_class=dino_class, dino_rank=dino_rank,
             dino_min_spread=dino_min_spread,
             dino_country_only=dino_country_only,
+            need_only=need_only,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
