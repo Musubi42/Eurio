@@ -516,10 +516,19 @@ CREATE TABLE IF NOT EXISTS image_asset_dino_predictions (
   -- par asset_id via le run parent de l'asset). export_run scope les prédictions
   -- backfill par run_id (les assets n'appartenant pas au run de backfill).
   run_id          TEXT REFERENCES source_runs(id) ON DELETE SET NULL,
+  -- Migration 0013 : un RECADRAGE a rendu cette prédiction suspecte (elle a été
+  -- calculée sur l'ancien cadrage). Elle reste SERVIE — l'ajustement au micro ne
+  -- la change presque jamais, et la retirer priverait le reviewer de son aide
+  -- juste avant qu'il choisisse la pièce — mais l'écran le dit et le backfill la
+  -- réencode sans `--force`. Remise à NULL par un ré-encodage.
+  stale_since     TEXT,
   PRIMARY KEY (asset_id, encoder_version, anchors_kind)
 );
 CREATE INDEX IF NOT EXISTS idx_dino_pred_run ON image_asset_dino_predictions(run_id)
   WHERE run_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_dino_predictions_stale
+  ON image_asset_dino_predictions(stale_since)
+  WHERE stale_since IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_dino_pred_asset
   ON image_asset_dino_predictions(asset_id);

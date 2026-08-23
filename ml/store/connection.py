@@ -285,6 +285,14 @@ class StoreBase:
                     conn, table="image_asset_dino_predictions", column="run_id",
                     decl="TEXT REFERENCES source_runs(id) ON DELETE SET NULL",
                 )
+                # Migration 0013 — même patron : sur une base antérieure la table
+                # existe sans `stale_since`, `CREATE TABLE IF NOT EXISTS` ne
+                # l'ajoute pas, et l'index partiel qui la référence échoue en
+                # « no such column » AVANT que quoi que ce soit d'autre tourne.
+                self._ensure_column(
+                    conn, table="image_asset_dino_predictions",
+                    column="stale_since", decl="TEXT",
+                )
             # Migration 0007 — sur une base ANTÉRIEURE, `dino_class_references`
             # existe sans ces colonnes : `CREATE TABLE IF NOT EXISTS` ne les
             # ajoute pas, et l'index qui les référence échoue ensuite en

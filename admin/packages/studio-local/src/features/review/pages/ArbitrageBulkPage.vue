@@ -70,6 +70,35 @@ const hasMore = computed(() => items.value.length < total.value)
 /** Les onglets : seules les personnes qui ont quelque chose en attente. */
 const tabs = computed(() => reviewers.value.filter((r) => r.pending > 0))
 
+/** Ce que l'ami a décidé, dit en un mot et une couleur.
+ *
+ *  Constaté à la première vraie session : « on ne voit pas précisément bien
+ *  l'état — est-ce que la pièce a été acceptée ou refusée ? ». C'était noyé dans
+ *  la ligne de métriques, en 10 px gris, à côté de « DINO muet ». Or c'est LA
+ *  chose que l'arbitre lit en premier : approuver un refus et approuver une
+ *  acceptation n'ont rien à voir. */
+const ACTIONS: Record<string, { mot: string; couleur: string; fond: string }> = {
+  accept: { mot: 'Acceptée', couleur: 'var(--success)', fond: 'color-mix(in srgb, var(--success) 12%, var(--surface))' },
+  reject: { mot: 'Refusée',  couleur: 'var(--danger)',  fond: 'color-mix(in srgb, var(--danger) 12%, var(--surface))' },
+  skip:   { mot: 'Passée',   couleur: 'var(--ink-500)', fond: 'var(--surface-1)' },
+}
+
+function etat(it: PeerDecision) {
+  return ACTIONS[it.action] ?? { mot: it.action, couleur: 'var(--ink-500)', fond: 'var(--surface-1)' }
+}
+
+/** Ce que l'arbitre approuverait : une classe, ou un refus motivé. */
+function cible(it: PeerDecision): string {
+  if (it.action === 'accept') return it.decided_eurio_id ?? '—'
+  return it.quality_reason ?? 'sans motif'
+}
+
+function sousTitre(it: PeerDecision): string {
+  if (it.action === 'accept') return it.decided_label ?? ''
+  if (it.action === 'reject') return 'le crop sort du jeu d\'entraînement'
+  return 'remise à plus tard'
+}
+
 function labelDino(it: PeerDecision): { text: string; color: string } {
   if (it.dino_state === 'concords') return { text: 'DINO d\'accord', color: 'var(--success)' }
   if (it.dino_state === 'disagrees') return { text: 'DINO en désaccord', color: 'var(--danger)' }
@@ -424,8 +453,11 @@ function shortName(r: ReviewerStat): string {
             :key="item.id"
             :crop-url="item.crop_url ?? ''"
             :canonical-url="item.canonical_url"
-            :eurio-id="item.decided_eurio_id ?? '—'"
-            :target-label="item.decided_label ?? item.action"
+            :canonical-placeholder="item.action === 'accept'
+              ? 'pas de vignette canonique'
+              : `${etat(item).mot} — pas de pièce cible`"
+            :eurio-id="cible(item)"
+            :target-label="sousTitre(item)"
             :listing-title="item.listing_title"
             :listing-url="item.listing_url"
             :source="item.source"
@@ -433,6 +465,22 @@ function shortName(r: ReviewerStat): string {
             :accent-color="item.dino_state === 'concords' ? 'var(--success)' : 'var(--gold-600)'"
             @toggle="toggle(item.id)"
           >
+            <!-- L'état en gros, au-dessus du reste : approuver un refus et
+                 approuver une acceptation n'ont rien à voir. -->
+            <template #status>
+              <div class="flex items-center justify-between gap-2">
+                <span
+                  class="rounded px-2 py-0.5 font-display text-[15px] italic font-semibold leading-tight"
+                  :style="{ color: etat(item).couleur, background: etat(item).fond }"
+                >
+                  {{ etat(item).mot }}
+                </span>
+                <span class="truncate font-mono text-[10px]" style="color: var(--ink-400);">
+                  {{ item.reviewer_name }}
+                </span>
+              </div>
+            </template>
+
             <template #metrics>
               <div
                 class="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[10px]"
@@ -445,9 +493,6 @@ function shortName(r: ReviewerStat): string {
                   class="truncate"
                 >
                   DINO : {{ item.dino_top1_label }}
-                </span>
-                <span style="color: var(--ink-400);">
-                  {{ item.reviewer_name }} · {{ item.action }}
                 </span>
               </div>
             </template>

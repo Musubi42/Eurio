@@ -29,6 +29,12 @@ defineProps<{
    * Default = var(--success). CCProxy passe la couleur du verdict.
    */
   accentColor?: string
+  /**
+   * Texte affiché À LA PLACE de la vignette cible quand il n'y en a pas.
+   * Un carré vide se lit comme une image cassée ; il faut dire POURQUOI il
+   * est vide (« refusée — pas de pièce cible »).
+   */
+  canonicalPlaceholder?: string
 }>()
 
 defineEmits<{
@@ -77,6 +83,13 @@ function img(url: string | null | undefined): string | null {
           class="absolute inset-0 h-full w-full object-cover"
           loading="lazy"
         />
+        <p
+          v-else-if="canonicalPlaceholder"
+          class="absolute inset-0 flex items-center justify-center px-3 text-center font-mono text-[10px] uppercase leading-relaxed tracking-wider"
+          style="color: var(--ink-400);"
+        >
+          {{ canonicalPlaceholder }}
+        </p>
         <span
           class="absolute right-1 top-1 rounded px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider"
           style="background: var(--indigo-700); color: var(--surface); opacity: 0.85;"
@@ -86,6 +99,12 @@ function img(url: string | null | undefined): string | null {
 
     <!-- Métadonnées -->
     <div class="flex flex-col gap-1.5">
+      <!-- Slot d'ÉTAT : ce que la carte dit d'elle-même en un coup d'œil (une
+           décision acceptée ou refusée, par exemple). Volontairement au-dessus
+           du titre et non noyé dans les métriques : quand la moitié des cartes
+           sont des refus, c'est la première chose à lire. -->
+      <slot name="status" />
+
       <div class="flex items-start justify-between gap-2">
         <div class="min-w-0 flex-1">
           <p

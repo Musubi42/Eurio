@@ -400,37 +400,43 @@ def apply_manual_crop(
 
 
 def _mark_dino_stale(store: Store, asset_id: str) -> None:
-    """« DINO à réencoder » — en supprimant les prédictions du crop d'AVANT.
+    """« DINO à réencoder » — sans retirer la suggestion de l'écran.
 
-    Le marqueur EST l'absence : `backfill_dino_predictions` encode exactement
-    les assets qui n'ont pas de ligne pour `(encoder_version, anchors_kind)`.
-    Supprimer suffit donc à programmer le rattrapage, sans colonne, sans table
-    et sans commande neuve — `go-task ml:dino-predictions:backfill` draine.
+    Première version (lot 6b) : on SUPPRIMAIT les prédictions du crop d'avant,
+    l'absence servant de marqueur. Techniquement propre, et faux à l'usage — le
+    PO l'a dit dès sa première vraie session :
 
-    Et surtout, ça retire une prédiction devenue FAUSSE : elle a été calculée
-    sur l'ancien cadrage, celui que l'humain vient précisément de corriger.
-    La garder afficherait à l'ami suivant une suggestion sûre d'elle et périmée
-    — pire qu'un panneau vide, qui lui dit au moins la vérité.
+        « moi je commence toujours par faire le recadrage et après je pick la
+          bonne pièce. Souvent, la suggestion de Dino de base est bonne. »
+
+    Le geste réel est un ajustement AU MICRO du cadrage, suivi du choix de la
+    pièce. Supprimer retirait l'aide juste avant le moment où elle sert, pour un
+    recadrage qui ne la change presque jamais. On garde donc la prédiction, et on
+    date sa péremption : l'écran peut le dire, l'humain arbitre, et le rattrapage
+    reste programmé — `_existing_keys` traite une ligne périmée comme absente,
+    donc `go-task ml:dino-predictions:backfill` la réencode SANS `--force`.
 
     Best-effort : le recadrage est déjà committé, rien ici ne doit le défaire.
     """
     if resolve_db_readonly():
-        # Réplique en lecture seule (Direction A) : le canonique du VPS a fait
-        # ce ménage de son côté, en même temps que son propre recadrage.
+        # Réplique en lecture seule (Direction A) : le canonique du VPS a fait ce
+        # marquage de son côté, en même temps que son propre recadrage.
         return
     try:
         conn = store._connection()  # noqa: SLF001
         n = conn.execute(
-            "DELETE FROM image_asset_dino_predictions WHERE asset_id = ?",
+            "UPDATE image_asset_dino_predictions SET stale_since = datetime('now') "
+            " WHERE asset_id = ? AND stale_since IS NULL",
             (asset_id,),
         ).rowcount
         conn.commit()
         logger.info(
-            "[manual-crop] asset=%s : %d prédiction(s) DINO périmée(s) retirée(s) — "
-            "à réencoder (go-task ml:dino-predictions:backfill)", asset_id, n,
+            "[manual-crop] asset=%s : %d prédiction(s) DINO marquée(s) périmée(s) — "
+            "toujours servies, à réencoder (go-task ml:dino-predictions:backfill)",
+            asset_id, n,
         )
     except Exception as exc:  # noqa: BLE001
-        logger.warning("[manual-crop] marquage DINO à réencoder échoué asset=%s: %s",
+        logger.warning("[manual-crop] marquage DINO périmé échoué asset=%s: %s",
                        asset_id, exc)
 
 

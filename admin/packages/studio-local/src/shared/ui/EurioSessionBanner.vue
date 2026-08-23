@@ -15,15 +15,50 @@ const dismissed = ref(false)
 
 const cookieMode = computed(() => AUTH_MODE === 'cookie')
 
+// ─── Identifiant PÉRIMÉ : authentifié, mais avec des scopes d'avant ─────────
+//
+// Les scopes effectifs valent `jeton ∩ rôles` : un PAT ne gagne JAMAIS un scope
+// ajouté après son émission — c'est voulu. La conséquence, elle, ne l'était pas :
+// on se retrouve owner/admin sans `review:arbitrate`, donc SANS l'entrée de nav
+// « Arbitrage », SANS la carte du tableau de bord (toutes deux gatées sur ce
+// scope), et avec un 403 nu en console au premier clic. Vécu tel quel le
+// 2026-08-23 : « Review Arbitrage n'a pas de lien, il faut taper dans l'URL »,
+// puis `POST /peer-arbitration/approve-batch 403`.
+//
+// Le serveur journalise déjà ce cas côté écriture (writes.py). Ici on le rend
+// visible AVANT le clic, à qui peut y remédier. Le discriminant est la méthode
+// d'auth : un cookie OIDC recalcule ses scopes à chaque login (il ne peut pas
+// être périmé, seulement vieux de plus de 8 h), un PAT non.
+const SCOPES_ATTENDUS_DES_ARBITRES = ['review:arbitrate']
+
+const identifiantPerime = computed(() => {
+  const p = session.principal
+  if (!p || p.auth_method !== 'api_token') return null
+  const arbitre = p.roles.includes('owner') || p.roles.includes('admin')
+  if (!arbitre) return null
+  const manquants = SCOPES_ATTENDUS_DES_ARBITRES.filter((sc) => !p.scopes.includes(sc))
+  return manquants.length ? manquants : null
+})
+
 const visible = computed(
   () =>
     !dismissed.value &&
     (session.status === 'missing' ||
       session.status === 'invalid' ||
-      session.status === 'error'),
+      session.status === 'error' ||
+      identifiantPerime.value !== null),
 )
 
 const message = computed(() => {
+  if (identifiantPerime.value) {
+    return (
+      `PAT périmé : tu portes le rôle ${session.principal?.roles.join(' · ')} mais `
+      + `pas le scope ${identifiantPerime.value.join(', ')} — il a été ajouté après `
+      + `l'émission de ton jeton, et un jeton ne gagne jamais un scope tout seul. `
+      + `L'arbitrage est donc invisible dans la nav et répond 403. `
+      + `Remède : régénérer EURIO_API_TOKEN, puis go-task secrets:edit + direnv reload.`
+    )
+  }
   // Mode cookie (hébergé) : tout repose sur la session Authentik.
   if (cookieMode.value) {
     if (session.status === 'error')
@@ -47,7 +82,10 @@ const message = computed(() => {
 })
 
 // En mode cookie, propose le login OIDC (sauf si l'API est carrément injoignable).
-const showLogin = computed(() => cookieMode.value && session.status !== 'error')
+// Un PAT périmé, lui, ne se répare pas par un login : rien à proposer.
+const showLogin = computed(
+  () => cookieMode.value && session.status !== 'error' && !identifiantPerime.value,
+)
 
 const docsUrl =
   'docs/work-in-progress/auth-redesign/PAT-WORKFLOW.md'

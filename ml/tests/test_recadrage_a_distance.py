@@ -19,9 +19,13 @@ Ce qui est verrouillé ici, et pourquoi chacun casserait en SILENCE :
 3. **Le format est celui de la PROD.** `_crop_mask_resize_float`, pas un crop
    maison : ces pixels nourrissent l'entraînement (D5).
 
-4. **DINO est marqué « à réencoder ».** Sans ça, le crop garde une prédiction
-   calculée sur l'ANCIEN cadrage — celui que l'humain vient de corriger. Une
-   suggestion sûre d'elle et fausse est pire qu'un panneau vide.
+4. **DINO est marqué « à réencoder » — sans disparaître de l'écran.** La
+   prédiction a été calculée sur l'ANCIEN cadrage, donc elle est suspecte ; mais
+   le geste réel du reviewer est « je recadre au micro, PUIS je choisis la
+   pièce », et la supprimer lui retirait son aide juste au moment où elle sert.
+   On date la péremption (migration 0013) : servie et annoncée comme telle,
+   réencodée en lot. La première version supprimait — corrigée après la première
+   vraie session de review.
 """
 from __future__ import annotations
 
@@ -198,13 +202,18 @@ def test_un_cercle_hors_du_raw_est_refuse(rig):
     assert exc.value.status_code == 422
 
 
-def test_dino_est_marque_a_reencoder_faute_de_torch(rig, monkeypatch):
-    """Sur le VPS il n'y a pas de DINO (D6) : la prédiction périmée doit partir.
+def test_dino_est_marque_perime_mais_reste_servi(rig, monkeypatch):
+    """Sur le VPS il n'y a pas de DINO (D6) — mais la suggestion NE DISPARAÎT PAS.
 
-    Elle a été calculée sur l'ANCIEN cadrage. La garder afficherait à l'ami
-    suivant une suggestion confiante et fausse ; l'absence, elle, programme le
-    rattrapage — `backfill_dino_predictions` encode exactement les assets sans
-    ligne pour `(encoder_version, anchors_kind)`.
+    Première version : on supprimait la prédiction, l'absence servant de marqueur.
+    Le PO l'a réfuté à la première vraie session : « je commence toujours par
+    faire le recadrage et après je pick la bonne pièce. Souvent, la suggestion de
+    Dino de base est bonne. » Le geste réel est un ajustement AU MICRO, suivi du
+    choix de la pièce : supprimer retirait l'aide juste au moment où elle sert.
+
+    On date donc la péremption (migration 0013). La prédiction reste servie,
+    l'écran le dit, et `_existing_keys` la traite comme absente — donc le
+    backfill la réencode SANS `--force`.
     """
     store, conn, asset_id, _, _ = rig
     conn.execute(
@@ -232,10 +241,47 @@ def test_dino_est_marque_a_reencoder_faute_de_torch(rig, monkeypatch):
     monkeypatch.undo()
 
     assert data.dino_recomputed is False
-    reste = conn.execute(
-        "SELECT count(*) FROM image_asset_dino_predictions WHERE asset_id = ?",
-        (asset_id,)).fetchone()[0]
-    assert reste == 0, "la prédiction du cadrage d'AVANT doit disparaître"
+    row = conn.execute(
+        "SELECT top1_eurio_id, stale_since FROM image_asset_dino_predictions "
+        " WHERE asset_id = ?", (asset_id,)).fetchone()
+    assert row is not None, "la prédiction doit RESTER — c'est tout l'objet de 0013"
+    assert row["top1_eurio_id"] == "fr-2015-2eur-paix", "et garder sa suggestion"
+    assert row["stale_since"], "datée comme périmée par le recadrage"
+
+
+def test_une_prediction_perimee_est_a_reencoder_sans_force(rig):
+    """Le marquage ne sert à rien si le backfill continue de la sauter."""
+    from sources._base.steps.auto_validate import _existing_keys
+
+    _, conn, asset_id, _, _ = rig
+    conn.execute(
+        "INSERT INTO image_asset_dino_predictions (asset_id, encoder_version, "
+        "  anchors_kind, anchors_count, top_k_json, top1_eurio_id, top1_sim) "
+        "VALUES (?, 'dinov2-vits14', '2eur_commemo', 8, '[]', 'x', 0.9)",
+        (asset_id,))
+    conn.commit()
+
+    args = ([asset_id], "dinov2-vits14", "2eur_commemo")
+    assert _existing_keys(conn, *args) == {asset_id}, "fraîche → sautée"
+
+    conn.execute(
+        "UPDATE image_asset_dino_predictions SET stale_since = datetime('now') "
+        " WHERE asset_id = ?", (asset_id,))
+    conn.commit()
+    assert _existing_keys(conn, *args) == set(), (
+        "périmée → traitée comme ABSENTE, donc réencodée sans --force"
+    )
+
+
+def test_le_reencodage_leve_la_peremption():
+    """Sinon une prédiction recalculée resterait marquée « à recalculer ».
+
+    Et l'écran continuerait d'annoncer « calculée avant ton recadrage » sur une
+    prédiction qui, elle, est fraîche — un mensonge dans l'autre sens.
+    """
+    source = (ML_DIR / "sources/_base/steps/auto_validate.py").read_text()
+    upsert = source[source.index("ON CONFLICT(asset_id, encoder_version, anchors_kind)"):]
+    assert "stale_since            = NULL" in upsert.split("\"\"\"")[0]
 
 
 def test_referential_n_a_plus_besoin_de_pillow():

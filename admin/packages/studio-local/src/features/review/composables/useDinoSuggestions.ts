@@ -41,6 +41,11 @@ export interface DinoSuggestionsResponse {
   anchors_count: number
   computed_at: string | null
   duration_ms: number | null
+  /** Non-null : un recadrage a rendu cette prédiction suspecte (migration 0013).
+   *  Elle reste servie — un ajustement au micro ne la change presque jamais, et
+   *  le reviewer recadre AVANT de choisir la pièce. On le DIT, on ne la cache
+   *  pas : la cacher lui retirait son aide juste au moment où elle sert. */
+  stale_since?: string | null
   spread: number | null
   top1_eurio_id: string | null
   top1_sim: number | null

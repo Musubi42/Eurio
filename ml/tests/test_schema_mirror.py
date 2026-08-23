@@ -144,6 +144,19 @@ def test_toute_migration_neuve_est_declaree_ou_exclue_sciemment():
         # `test_review_quarantine.test_la_course_sur_la_quarantaine_est_barree_en_base`
         # prouve qu'il mord.
         "0012_peer_review_une_seule_decision_pendante.sql",
+        # 0013 ajoute `stale_since` à `image_asset_dino_predictions` par un ALTER
+        # NU — exactement la forme de 0004 sur la même table, exclue pour la même
+        # raison : inapplicable sur une base vide (la table n'existe pas encore
+        # à ce stade), donc incomparable au miroir.
+        #
+        # La propriété qui compte est tenue ailleurs, et vérifiée : la colonne ET
+        # son index sont dans `schema.sql` (une base neuve naît avec),
+        # `store.connection` la rattrape sur une base ANTÉRIEURE via
+        # `_ensure_column` — sans quoi l'index partiel de `schema.sql` échoue en
+        # « no such column » avant que quoi que ce soit d'autre tourne — et
+        # `test_recadrage_a_distance` prouve qu'un recadrage la pose et que le
+        # backfill la lit.
+        "0013_dino_prediction_perimee_par_recadrage.sql",
     }
     connues = set(MIROIR_ATTENDU) | exclues
     presentes = {f.name for f in MIGRATIONS.glob("*.sql")}

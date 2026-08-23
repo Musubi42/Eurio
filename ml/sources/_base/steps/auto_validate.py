@@ -363,11 +363,16 @@ def _existing_keys(
     if not asset_ids:
         return set()
     placeholders = ",".join("?" for _ in asset_ids)
+    # `stale_since IS NULL` : une prédiction qu'un RECADRAGE a périmée (migration
+    # 0013) compte comme ABSENTE, donc le backfill la réencode sans `--force`.
+    # Elle reste servie à l'écran en attendant — la retirer priverait le reviewer
+    # de son aide juste avant qu'il choisisse la pièce.
     rows = conn.execute(
         f"""
         SELECT asset_id FROM image_asset_dino_predictions
          WHERE asset_id IN ({placeholders})
            AND encoder_version = ? AND anchors_kind = ?
+           AND stale_since IS NULL
         """,
         (*asset_ids, encoder_version, anchors_kind),
     ).fetchall()
@@ -939,7 +944,11 @@ def _flush(conn: sqlite3.Connection, store, rows: list[DinoPredictionRow]) -> No
           face_margin            = excluded.face_margin,
           denom_2eur_score       = excluded.denom_2eur_score,
           duration_ms            = excluded.duration_ms,
-          computed_at            = datetime('now')
+          computed_at            = datetime('now'),
+          -- Le ré-encodage lève la péremption (0013) : la prédiction redevient
+          -- fraîche parce qu'elle a été RECALCULÉE, pas parce qu'on a oublié
+          -- qu'elle ne l'était pas.
+          stale_since            = NULL
         """,
         [
             (

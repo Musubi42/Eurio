@@ -2112,7 +2112,7 @@ def dino_prediction(
         """
         SELECT asset_id, encoder_version, anchors_kind, anchors_count,
                top_k_json, top1_eurio_id, top1_sim, spread,
-               computed_at, duration_ms,
+               computed_at, duration_ms, stale_since,
                target_country, country_anchors_count, top_k_country_json,
                top1_country_eurio_id, top1_country_sim, country_spread
           FROM image_asset_dino_predictions

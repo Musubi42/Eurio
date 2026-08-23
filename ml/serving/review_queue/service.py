@@ -333,6 +333,8 @@ def dino_suggestions(
         anchors_count=pred["anchors_count"],
         computed_at=pred["computed_at"],
         duration_ms=pred["duration_ms"],
+        # Servie même périmée (0013) — c'est l'écran qui le dit, pas le silence.
+        stale_since=pred["stale_since"] if "stale_since" in pred.keys() else None,
         spread=pred["spread"],
         top1_eurio_id=pred["top1_eurio_id"],
         top1_sim=pred["top1_sim"],

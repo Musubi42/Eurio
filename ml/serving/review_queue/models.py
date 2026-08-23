@@ -396,6 +396,11 @@ class DinoSuggestionsResponse(BaseModel):
     anchors_count: int
     computed_at: str | None = None
     duration_ms: int | None = None
+    # Non-null : un RECADRAGE a rendu cette prédiction suspecte (migration 0013).
+    # Elle est servie quand même — l'ajustement au micro ne la change presque
+    # jamais, et le reviewer recadre AVANT de choisir la pièce. L'écran le dit,
+    # l'humain arbitre, le backfill la réencode.
+    stale_since: str | None = None
     spread: float | None = None
     top1_eurio_id: str | None = None
     top1_sim: float | None = None

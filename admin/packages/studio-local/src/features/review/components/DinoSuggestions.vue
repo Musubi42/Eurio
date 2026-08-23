@@ -215,6 +215,24 @@ const previewLabel = computed(() => {
     </p>
 
     <template v-else-if="data">
+      <!-- ── Périmée par un recadrage (0013) : on la SERT quand même. Le geste
+           réel est « je recadre au micro, PUIS je choisis la pièce » — retirer
+           la suggestion la ferait disparaître juste au moment où elle sert, pour
+           un recadrage qui ne la change presque jamais. On le dit, et le Mac la
+           recalculera en lot. ── -->
+      <p
+        v-if="data.stale_since"
+        class="mt-3 rounded-md px-2 py-1 font-mono text-[10px] leading-snug"
+        :style="{
+          color: 'var(--ink-500)',
+          background: 'var(--surface-1)',
+          border: '1px dashed var(--surface-3)',
+        }"
+      >
+        Calculée <strong>avant ton recadrage</strong> — toujours affichée, à
+        recalculer en lot.
+      </p>
+
       <!-- ── Abstention (P5) : spread global sous le seuil — la liste classée
            est probablement trompeuse, on le dit plutôt que de la vendre. ── -->
       <aside
