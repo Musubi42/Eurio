@@ -57,6 +57,7 @@ from serving.router_scopes import RECIPE_SCOPES, ROUTER_SCOPES
 from serving.coin_series import router as coin_series_router
 from serving import iteration_sync_routes, recipe_routes, whoami_routes
 from serving.review_queue import router as review_queue_router
+from serving.review_queue.crop_routes import router as review_crop_router
 from serving.review_queue.writes import router as review_writes_router
 from serving.funnel_writes import router as funnel_writes_router
 from serving.lab_read_routes import router as lab_read_router
@@ -149,6 +150,13 @@ app.include_router(review_queue_router)
 # legacy `review.review_queue_routes` (mêmes paths + crops cv2) → ne PAS monter ici-bas
 # dans server.py (routes dupliquées).
 app.include_router(review_writes_router)
+# Lot 6b (review-collaborative-v2) : le RECADRAGE, servi par le canonique.
+# `opencv-python-headless` est dans l'image (D5) — les pixels restent au serveur
+# parce que `canvas.drawImage` ne rééchantillonne pas comme `INTER_AREA`. DINO,
+# lui, ne monte PAS (D6) : le crop recadré voit ses prédictions supprimées, et le
+# Mac les rebâtit en lot. Chemins identiques aux routes legacy → NE PAS monter
+# sur server.py (collision, comme review_writes).
+app.include_router(review_crop_router)
 # C2a (Direction A) : décisions funnel (accept-training/reopen/training-eligible/
 # reassign) + décision de lot, SQL-pures (logique dans store.decisions), cv2-free
 # → portées sur l'image lean (scope review:write). Chemins identiques aux routes

@@ -30,7 +30,6 @@ import io
 from typing import Any, Literal, TypedDict
 
 import httpx
-from PIL import Image
 
 BUCKET_NAME = "coin-images"
 THUMB_WIDTH = 120
@@ -82,7 +81,18 @@ def encode_webp(
     max_width: int | None = None,
     quality: int = DETAIL_QUALITY,
 ) -> tuple[bytes, int, int]:
-    """Re-encode an image as WebP. Optionally downscale to `max_width` (preserves aspect)."""
+    """Re-encode an image as WebP. Optionally downscale to `max_width` (preserves aspect).
+
+    Pillow est importé ICI et non en tête du module : ce module porte surtout des
+    helpers de CHEMIN (`storage_key`, `source_file_tag`, `public_url`) dont
+    l'API du VPS a besoin, et l'import top-level faisait skipper tout le router
+    `referential` sur l'image lean pour une dépendance que ces helpers-là
+    n'utilisent pas (`ModuleNotFoundError: No module named 'PIL'`, mesuré le
+    2026-08-23). Seul l'ENCODAGE réclame Pillow, et il ne tourne que sur les
+    machines qui fabriquent des images.
+    """
+    from PIL import Image
+
     img = Image.open(io.BytesIO(raw))
     if img.mode in ("RGBA", "P"):
         img = img.convert("RGB")

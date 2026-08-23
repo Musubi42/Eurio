@@ -681,7 +681,9 @@ useLotReviewKeybinds(keyboardEnabled, {
   // Masquer/griser un bouton ne désarme pas son raccourci : `S` requalifierait
   // encore un listing entier, `E` partirait vers un `:8042` injoignable.
   onRequalifySingle: () => { if (canArbitrate.value) void requalifyAsSingle() },
-  onRecropActive: () => { if (canRunHeavy.value) openRecropActive() },
+  // `E` n'a plus de garde machine : le recadrage est servi par le canonique
+  // depuis le lot 6b. Les autres gestes du plateau (détection) gardent la leur.
+  onRecropActive: () => { openRecropActive() },
 })
 
 // D toggle reste géré ici (pas dans le composable car spécifique à
@@ -1004,16 +1006,15 @@ function detectionBadgeColor(cropIndex: number | null): string {
 
         <!-- Barre compacte (mode comparaison) : éditer le crop actif à un clic ;
              le plateau complet (re-détecter / sync / crop manuel) est sur D. -->
-        <div v-if="!showOverlay && activeImage && showHeavyGesture" class="flex flex-wrap items-center gap-2 shrink-0">
+        <!-- Le recadrage n'est plus lourd (lot 6b) : la barre compacte revient
+             pour tout le monde. Seul le PLATEAU de détection (D) reste local. -->
+        <div v-if="!showOverlay && activeImage" class="flex flex-wrap items-center gap-2 shrink-0">
           <button
             type="button"
-            v-if="showHeavyGesture"
             class="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 font-mono text-[10px] disabled:opacity-40"
             style="border-color: var(--surface-3); color: var(--ink-700); background: var(--surface);"
-            :disabled="!activeCrop?.crop.review_id || !canRunHeavy"
-            :title="canRunHeavy
-              ? 'Éditer le crop actif : ajuster le cercle existant sur le raw'
-              : 'Édition du crop — disponible uniquement en local (API ML :8042)'"
+            :disabled="!activeCrop?.crop.review_id"
+            title="Éditer le crop actif : ajuster le cercle existant sur le raw"
             @click="openRecropActive"
           >
             <Crop class="h-3 w-3" /> Éditer le crop <kbd>E</kbd>
@@ -1082,13 +1083,10 @@ function detectionBadgeColor(cropIndex: number | null): string {
           </button>
           <button
             type="button"
-            v-if="showHeavyGesture"
             class="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 font-mono text-[10px] disabled:opacity-40"
             style="border-color: var(--surface-3); color: var(--ink-700); background: var(--surface);"
-            :disabled="!activeCrop?.crop.review_id || !canRunHeavy"
-            :title="canRunHeavy
-              ? 'Éditer le crop actif : ajuster le cercle existant sur le raw (≠ ajouter un crop)'
-              : 'Édition du crop — disponible uniquement en local (API ML :8042)'"
+            :disabled="!activeCrop?.crop.review_id"
+            title="Éditer le crop actif : ajuster le cercle existant sur le raw (≠ ajouter un crop)"
             @click="openRecropActive"
           >
             <Crop class="h-3 w-3" /> Éditer le crop <kbd>E</kbd>
@@ -1246,13 +1244,9 @@ function detectionBadgeColor(cropIndex: number | null): string {
           </button>
           <button
             type="button"
-            v-if="showHeavyGesture"
             class="inline-flex items-center gap-1 rounded-md border px-2 py-1 font-mono text-[10px] disabled:cursor-not-allowed disabled:opacity-40"
             style="border-color: var(--surface-3); color: var(--ink-500); background: var(--surface);"
-            :disabled="!canRunHeavy"
-            :title="canRunHeavy
-              ? 'Recadrer ce crop (éditeur de cercle sur le raw)'
-              : 'Recadrage — disponible uniquement en local (API ML :8042)'"
+            title="Recadrer ce crop (éditeur de cercle sur le raw)"
             @click="openRecropActive"
           >
             <Crop class="h-3 w-3" /> Recadrer <kbd>E</kbd>

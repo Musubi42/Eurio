@@ -833,11 +833,12 @@ useReviewKeybinds(keyboardEnabled, {
   onCycleCondition: cycleCondition,
   onAcceptDino: acceptDino,
   // Masquer un bouton ne désarme PAS son raccourci : sans ces gardes, `L`
-  // requalifierait encore un listing entier pour un ami, et `E`/`A` partiraient
+  // requalifierait encore un listing entier pour un ami, et `A` partirait
   // vers un `:8042` injoignable — l'erreur réseau nue que le gating visuel
-  // était censé éviter.
+  // était censé éviter. `E` (recadrer) n'a plus besoin de garde depuis le
+  // lot 6b : le canonique sert le recadrage.
   onRecrop: () => {
-    if (canRunHeavy.value && currentItem.value) showCropEditor.value = true
+    if (currentItem.value) showCropEditor.value = true
   },
   onAutoCrop: () => { if (canRunHeavy.value) void runAutoCrop() },
   onRequalifyLot: () => { if (canArbitrate.value) void requalifyCurrentAsLot() },
@@ -1031,15 +1032,14 @@ useReviewKeybinds(keyboardEnabled, {
                 >{{ autoCropBadge }}</span>
                 <span class="font-mono text-[9px] opacity-70">A</span>
               </button>
+              <!-- RECADRER n'est plus lourd depuis le lot 6b : le canonique sert
+                   `manual-crop` (cv2-headless sur le VPS, D5). Plus de gate
+                   machine — c'est la moitié du travail qui manquait à un ami. -->
               <button
-                v-if="showHeavyGesture"
                 type="button"
                 class="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-mono uppercase tracking-wider transition-colors disabled:cursor-not-allowed disabled:opacity-60"
                 style="border-color: var(--surface-3); color: var(--indigo-700); background: var(--surface-1);"
-                :title="canRunHeavy
-                  ? 'Re-cropper manuellement (pièce mal cadrée) · E'
-                  : 'Recadrage — disponible uniquement en local (API ML :8042)'"
-                :disabled="!canRunHeavy"
+                title="Re-cropper manuellement (pièce mal cadrée) · E"
                 @click="showCropEditor = true"
               >
                 <Crop class="h-3 w-3" />

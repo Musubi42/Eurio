@@ -36,6 +36,9 @@ class CropEditContextData:
     source: str
     source_image_id: str
     raw_storage_path: str
+    # Clé MinIO du crop actuel — nécessaire pour SIGNER son URL (lot 6b) : le
+    # chemin relatif `/sources/…/file` n'est servi que par l'app full.
+    crop_storage_path: str | None
     raw_width: int | None
     raw_height: int | None
     hint: dict | None  # {cx, cy, r} reconstruit depuis la bbox actuelle, ou None
@@ -185,6 +188,7 @@ def load_crop_edit_context(store: Store, asset_id: str) -> CropEditContextData:
     row = conn.execute(
         """
         SELECT a.id AS asset_id, a.bbox_json,
+               a.storage_path AS crop_storage_path,
                si.id AS source_image_id, si.source AS source,
                si.width AS raw_width, si.height AS raw_height,
                si.storage_path AS raw_storage_path
@@ -216,6 +220,7 @@ def load_crop_edit_context(store: Store, asset_id: str) -> CropEditContextData:
         source=row["source"],
         source_image_id=row["source_image_id"],
         raw_storage_path=row["raw_storage_path"],
+        crop_storage_path=row["crop_storage_path"],
         raw_width=row["raw_width"],
         raw_height=row["raw_height"],
         hint=hint,
@@ -372,9 +377,15 @@ def apply_manual_crop(
             target_country=target_country,
         )
         dino_recomputed = bool(preds)
+    except ImportError:
+        # Machine sans DINO — c'est le cas du VPS, et c'est VOULU (D6) : ni
+        # torch ni banque d'ancres n'y montent. Le recadrage prend effet tout de
+        # suite (D9), l'encodage se rattrape en lot depuis le Mac.
+        _mark_dino_stale(store, row["asset_id"])
     except Exception as exc:  # noqa: BLE001 — suggestion layer, never fatal
         logger.warning("[manual-crop] Dino recompute failed for asset=%s: %s",
                        row["asset_id"], exc)
+        _mark_dino_stale(store, row["asset_id"])
 
     return ManualCropData(
         asset_id=row["asset_id"],
@@ -386,6 +397,41 @@ def apply_manual_crop(
         minio_ok=minio_ok,
         dino_recomputed=dino_recomputed,
     )
+
+
+def _mark_dino_stale(store: Store, asset_id: str) -> None:
+    """« DINO à réencoder » — en supprimant les prédictions du crop d'AVANT.
+
+    Le marqueur EST l'absence : `backfill_dino_predictions` encode exactement
+    les assets qui n'ont pas de ligne pour `(encoder_version, anchors_kind)`.
+    Supprimer suffit donc à programmer le rattrapage, sans colonne, sans table
+    et sans commande neuve — `go-task ml:dino-predictions:backfill` draine.
+
+    Et surtout, ça retire une prédiction devenue FAUSSE : elle a été calculée
+    sur l'ancien cadrage, celui que l'humain vient précisément de corriger.
+    La garder afficherait à l'ami suivant une suggestion sûre d'elle et périmée
+    — pire qu'un panneau vide, qui lui dit au moins la vérité.
+
+    Best-effort : le recadrage est déjà committé, rien ici ne doit le défaire.
+    """
+    if resolve_db_readonly():
+        # Réplique en lecture seule (Direction A) : le canonique du VPS a fait
+        # ce ménage de son côté, en même temps que son propre recadrage.
+        return
+    try:
+        conn = store._connection()  # noqa: SLF001
+        n = conn.execute(
+            "DELETE FROM image_asset_dino_predictions WHERE asset_id = ?",
+            (asset_id,),
+        ).rowcount
+        conn.commit()
+        logger.info(
+            "[manual-crop] asset=%s : %d prédiction(s) DINO périmée(s) retirée(s) — "
+            "à réencoder (go-task ml:dino-predictions:backfill)", asset_id, n,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[manual-crop] marquage DINO à réencoder échoué asset=%s: %s",
+                       asset_id, exc)
 
 
 def _group_candidates_from_payload(raw_payload_json: str | None,

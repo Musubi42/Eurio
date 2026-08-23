@@ -49,12 +49,17 @@ from store import (
 # (B3). On gate donc les deux routes d'édition, pas le fichier.
 try:
     from .crop_edit import apply_manual_crop, load_crop_edit_context
-    from review.review_queue_routes import (
+    # Lot 6b : le contrat vient du module LÉGER, plus du gros router legacy.
+    # Il fallait auparavant importer `review.review_queue_routes` en entier
+    # (sources.ebay, review.validation, …) juste pour trois modèles pydantic —
+    # ce qui condamnait ces deux routes sur l'image lean alors que leur seule
+    # vraie dépendance, cv2, y est désormais présente.
+    from .crop_edit_api import (
         CropEditContext,
         ManualCropPayload,
         ManualCropResponse,
-        _crop_edit_context_response,
-        _manual_crop_response,
+        crop_edit_context_response as _crop_edit_context_response,
+        manual_crop_response as _manual_crop_response,
     )
     CROP_EDIT_AVAILABLE = True
 except ImportError:

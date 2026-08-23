@@ -223,20 +223,6 @@ function promoteUrl(url: string): string {
   return url.startsWith('http') ? url : `${eurioApi.base}${url}`
 }
 
-/**
- * Résout une URL relative renvoyée par l'API ML LOCALE (`safeFetch`, `:8042`).
- *
- * À ne pas confondre avec `promoteUrl` : ces chemins-là (`/sources/…/raws/…/file`,
- * `/sources/…/assets/…/file`) ne sont servis QUE par l'app full de la workstation —
- * `sources_routes` n'est pas monté sur l'image lean du VPS. Ils restent donc
- * résolus vers `ML_API` tant que l'éditeur de crop vit sur le poste (lot 6 de
- * `review-collaborative-v2` les fera basculer).
- */
-function promoteMlUrl(url: string): string {
-  if (!url) return url
-  return url.startsWith('http') ? url : `${ML_API}${url}`
-}
-
 function promoteCandidateThumb(c: ReviewCandidate): ReviewCandidate {
   return { ...c, canonical_thumb_url: promoteUrl(c.canonical_thumb_url) }
 }
@@ -479,40 +465,36 @@ export interface ManualCropResult {
   minio_ok: boolean
 }
 
-/** Charge le raw + le cercle de départ pour l'éditeur. Pas de fallback mock :
- *  l'éditeur n'a de sens qu'avec un vrai backend (raw en cache local). */
+/** Charge le raw + le cercle de départ pour l'éditeur.
+ *
+ * Porté sur eurio-api au lot 6b : le recadrage est servi par le CANONIQUE
+ * (`opencv-python-headless` sur le VPS), plus par l'API ML locale. C'est ce qui
+ * rend le geste possible à un ami — 18,4 % des crops sont recadrés à la main,
+ * sans quoi il ne fait que la moitié du travail. `promoteUrl` (et non
+ * `promoteMlUrl`) : les URLs sont désormais des URLs MinIO présignées. */
 export async function fetchCropEditContext(reviewId: string): Promise<CropEditContext> {
-  const real = await safeFetch<CropEditContext>(
+  const real = await fetchEurio<CropEditContext>(
     `/review-queue/${encodeURIComponent(reviewId)}/crop-edit-context`,
   )
-  if (real === null) {
-    throw new Error('Backend indisponible — le crop manuel requiert l’API ML locale.')
-  }
   return {
     ...real,
-    raw_url: promoteMlUrl(real.raw_url),
-    crop_url: promoteMlUrl(real.crop_url),
+    raw_url: promoteUrl(real.raw_url),
+    crop_url: promoteUrl(real.crop_url),
   }
 }
 
 /** Re-croppe l'asset depuis un cercle (cx,cy,r) en px natifs du raw. Écrase le
- *  crop (cache + MinIO + DB) au format prod ; eurio_id préservé, review inchangée. */
+ *  crop (cache + MinIO + DB) au format prod ; eurio_id préservé, review inchangée.
+ *
+ *  Le navigateur envoie TROIS FLOTTANTS : les pixels restent au serveur (D5). */
 export async function manualCrop(
   reviewId: string,
   circle: { cx: number; cy: number; r: number },
 ): Promise<ManualCropResult> {
-  const real = await safeFetch<ManualCropResult>(
+  return fetchEurioWrite<ManualCropResult>(
     `/review-queue/${encodeURIComponent(reviewId)}/manual-crop`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(circle),
-    },
+    circle,
   )
-  if (real === null) {
-    throw new Error('Backend indisponible — le re-crop manuel n’a pas pu être enregistré.')
-  }
-  return real
 }
 
 // ─── Re-crop manuel keyé ASSET (page coin-detail, hors review queue) ─────
@@ -520,18 +502,17 @@ export async function manualCrop(
 // sur une vignette de la galerie enrichment : recadrage EN PLACE, statut +
 // eurio_id préservés (un recadrage ≠ une décision). Cf. coin_assets_routes.
 
-/** Charge le raw + le cercle de départ pour l'éditeur, depuis un asset_id. */
+/** Charge le raw + le cercle de départ pour l'éditeur, depuis un asset_id.
+ *  Même bascule qu'au-dessus (lot 6b) : `coin_assets_routes` enregistre enfin
+ *  ces routes sur l'image lean, son contrat ne traînant plus le router legacy. */
 export async function fetchAssetCropEditContext(assetId: string): Promise<CropEditContext> {
-  const real = await safeFetch<CropEditContext>(
+  const real = await fetchEurio<CropEditContext>(
     `/coins/assets/${encodeURIComponent(assetId)}/crop-edit-context`,
   )
-  if (real === null) {
-    throw new Error('Backend indisponible — le crop manuel requiert l’API ML locale.')
-  }
   return {
     ...real,
-    raw_url: promoteMlUrl(real.raw_url),
-    crop_url: promoteMlUrl(real.crop_url),
+    raw_url: promoteUrl(real.raw_url),
+    crop_url: promoteUrl(real.crop_url),
   }
 }
 
@@ -540,18 +521,10 @@ export async function manualCropAsset(
   assetId: string,
   circle: { cx: number; cy: number; r: number },
 ): Promise<ManualCropResult> {
-  const real = await safeFetch<ManualCropResult>(
+  return fetchEurioWrite<ManualCropResult>(
     `/coins/assets/${encodeURIComponent(assetId)}/manual-crop`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(circle),
-    },
+    circle,
   )
-  if (real === null) {
-    throw new Error('Backend indisponible — le re-crop manuel n’a pas pu être enregistré.')
-  }
-  return real
 }
 
 // ─── Départage Dino en ensemble fermé (candidats de groupe / standards) ──

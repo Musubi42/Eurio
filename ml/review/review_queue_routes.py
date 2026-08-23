@@ -2468,48 +2468,17 @@ def reject_review(
 # l'attribution (la review reste ``open`` ; l'humain valide ensuite la pièce).
 
 
-class CropEditContext(BaseModel):
-    asset_id: str
-    source: str
-    raw_url: str                 # /sources/{source}/raws/{sid}/file (cache local)
-    crop_url: str                # /sources/{source}/assets/{aid}/file (crop actuel)
-    raw_width: int | None
-    raw_height: int | None
-    # Cercle de départ de l'éditeur = crop actuel, en px NATIFS du raw,
-    # reconstruit depuis bbox_json (x,y,w,h → centre + rayon). None si la
-    # bbox est absente (l'éditeur démarre alors sur un cercle par défaut).
-    hint: dict | None
-    # Cercle dominant détecté dans le raw (px natifs), proposé comme point de
-    # départ quand la source est mono-pièce et le crop stocké mal dimensionné.
-    # null sur les lots / quand aucun cercle probant. L'éditeur démarre dessus
-    # quand présent, sinon sur `hint`.
-    suggested_circle: dict | None = None
-
-
-# Consumed by: admin/.../review/composables/useReviewApi.ts (fetchCropEditContext)
-def _asset_id_for_review(review_id: str) -> str:
-    """Résout review_id → asset_id (le re-crop est une opération sur l'asset)."""
-    conn = _store()._connection()  # noqa: SLF001
-    row = conn.execute(
-        "SELECT image_asset_id FROM review_queue WHERE id = ?", (review_id,),
-    ).fetchone()
-    if row is None or not row["image_asset_id"]:
-        raise HTTPException(status_code=404, detail="Review item not found.")
-    return row["image_asset_id"]
-
-
-def _crop_edit_context_response(ctx: CropEditContextData) -> CropEditContext:
-    """Habille le contexte (keyé asset) en réponse API + URLs servables."""
-    return CropEditContext(
-        asset_id=ctx.asset_id,
-        source=ctx.source,
-        raw_url=f"/sources/{ctx.source}/raws/{ctx.source_image_id}/file",
-        crop_url=f"/sources/{ctx.source}/assets/{ctx.asset_id}/file",
-        raw_width=ctx.raw_width,
-        raw_height=ctx.raw_height,
-        hint=ctx.hint,
-        suggested_circle=ctx.suggested,
-    )
+# Le CONTRAT du recadrage (modèles + habillage) vit dans `serving/crop_edit_api`
+# depuis le lot 6b : il était ici, donc inatteignable sans importer tout ce
+# module lourd — ce qui empêchait le VPS de servir le recadrage alors que sa
+# seule vraie dépendance est cv2. Ré-exporté pour les importeurs existants.
+from serving.crop_edit_api import (  # noqa: E402
+    CropEditContext,
+    ManualCropPayload,
+    ManualCropResponse,
+    crop_edit_context_response as _crop_edit_context_response,
+    manual_crop_response as _manual_crop_response,
+)
 
 
 @router.get("/{review_id}/crop-edit-context", response_model=CropEditContext)
@@ -2518,26 +2487,6 @@ def get_crop_edit_context(review_id: str) -> CropEditContext:
     le cercle de départ (crop actuel, px natifs). Délègue au cœur keyé asset."""
     ctx = load_crop_edit_context(_store(), _asset_id_for_review(review_id))
     return _crop_edit_context_response(ctx)
-
-
-class ManualCropPayload(BaseModel):
-    cx: float = Field(ge=0)
-    cy: float = Field(ge=0)
-    r: float = Field(gt=0)
-
-
-class ManualCropResponse(BaseModel):
-    asset_id: str
-    cx: float
-    cy: float
-    r: float
-    bbox: ReviewBbox
-    width: int
-    height: int
-    detection_method: str
-    crop_b64: str                # data URI PNG du nouveau crop 224
-    minio_ok: bool               # False si le write-through MinIO a échoué
-    dino_recomputed: bool = False  # True si Dino a été recalculé sur le crop recadré
 
 
 # Consumed by: admin/.../review/composables/useReviewApi.ts (manualCrop)
@@ -2551,22 +2500,6 @@ def manual_crop(review_id: str, payload: ManualCropPayload) -> ManualCropRespons
         _store(), _asset_id_for_review(review_id), payload.cx, payload.cy, payload.r,
     )
     return _manual_crop_response(data)
-
-
-def _manual_crop_response(data: ManualCropData) -> ManualCropResponse:
-    """Habille le résultat (keyé asset) en réponse API (+ data-URI base64)."""
-    crop_b64 = "data:image/png;base64," + base64.b64encode(data.png_bytes).decode("ascii")
-    return ManualCropResponse(
-        asset_id=data.asset_id,
-        cx=data.cx, cy=data.cy, r=data.r,
-        bbox=ReviewBbox(x=data.bbox["x"], y=data.bbox["y"],
-                        w=data.bbox["w"], h=data.bbox["h"]),
-        width=data.width, height=data.height,
-        detection_method=data.detection_method,
-        crop_b64=crop_b64,
-        minio_ok=data.minio_ok,
-        dino_recomputed=data.dino_recomputed,
-    )
 
 
 # ── Dino suggestions (auto-validation V1) ─────────────────────────────────
