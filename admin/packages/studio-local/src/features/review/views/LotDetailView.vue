@@ -43,6 +43,9 @@ import SplitCompare from '../components/SplitCompare.vue'
 import CircleCropEditor from '../components/CircleCropEditor.vue'
 import type { CoinSearchEntry } from '../composables/useCoinsSearch'
 import type { DinoSuggestion } from '../composables/useDinoSuggestions'
+import { useEurioSession } from '@/stores/eurio-session'
+import { useCapabilities } from '@/stores/capabilities'
+import { withCacheBust } from '@/shared/url'
 
 const props = defineProps<{
   /** Le listing à ouvrir. */
@@ -62,6 +65,21 @@ const emit = defineEmits<{
   /** Plus de lot dans le périmètre : l'hôte reprend la main. */
   (e: 'exhausted'): void
 }>()
+
+// ─── Les DEUX axes de gating (review-collaborative-v2, lots 4 et 5) ─────
+//
+//   `canArbitrate`  — DROIT   : « cette personne a-t-elle le droit ? »
+//   `canRunHeavy`   — MACHINE : « ce poste peut-il ? » (cv2 sur :8042)
+//
+// Sur cette vue la distinction est nette : « Pas un lot » écrit le canonique
+// via eurio-api (donc un DROIT), tandis que re-détecter / sync / crop manuel /
+// éditer encodent des pixels (donc une CAPACITÉ). Avant le lot 5 aucun des
+// deux n'était gaté : en hébergé, un clic partait vers un `:8042` injoignable
+// et rendait une erreur réseau nue.
+const session = useEurioSession()
+const caps = useCapabilities()
+const canArbitrate = computed(() => session.hasScope('review:arbitrate'))
+const canRunHeavy = computed(() => caps.hasLocalMlApi)
 
 // ─── State ─────────────────────────────────────────────────────────────
 
@@ -661,8 +679,10 @@ useLotReviewKeybinds(keyboardEnabled, {
   onPrevRaw: prevRaw,
   onToggleHelp: toggleHelp,
   onCloseOverlay: closeOverlay,
-  onRequalifySingle: requalifyAsSingle,
-  onRecropActive: openRecropActive,
+  // Masquer/griser un bouton ne désarme pas son raccourci : `S` requalifierait
+  // encore un listing entier, `E` partirait vers un `:8042` injoignable.
+  onRequalifySingle: () => { if (canArbitrate.value) void requalifyAsSingle() },
+  onRecropActive: () => { if (canRunHeavy.value) openRecropActive() },
 })
 
 // D toggle reste géré ici (pas dans le composable car spécifique à
@@ -735,7 +755,10 @@ function detectionRingWidth(cropIndex: number | null): number {
 // `?b=<ts>` ajoute un bust post-recrop in-session (le phash de `detail` n'est
 // pas rafraîchi sans refetch — cf. onCropSaved).
 function cropSrc(crop: { crop_url: string; phash: number | null; asset_id?: string }): string {
-  const base = crop.phash != null ? `${crop.crop_url}?v=${crop.phash}` : crop.crop_url
+  // Le séparateur ne peut PAS être `?` en dur : les crops sont des URLs MinIO
+  // présignées depuis le lot 1, elles ont déjà une query string. Un second `?`
+  // donnait un 400 muet — l'API répondait 200, seule l'image manquait.
+  const base = withCacheBust(crop.crop_url, crop.phash)
   const bust = crop.asset_id ? cropBustByAsset.value[crop.asset_id] : undefined
   if (bust == null) return base
   return `${base}${base.includes('?') ? '&' : '?'}b=${bust}`
@@ -813,7 +836,10 @@ function detectionBadgeColor(cropIndex: number | null): string {
         <button class="nav-btn" :disabled="!detail?.next_listing_key" title="Listing suivant (→)" @click="gotoNext">
           <ArrowRight class="h-4 w-4" />
         </button>
+        <!-- Bascule TOUT le listing vers le flow single : geste structurant,
+             réservé à l'arbitre (lot 5). -->
         <button
+          v-if="canArbitrate"
           class="nav-btn nav-btn--text ml-2"
           :disabled="requalifyingSingle"
           title="Ce listing n'est pas un lot → review single (S)"
@@ -984,8 +1010,10 @@ function detectionBadgeColor(cropIndex: number | null): string {
             type="button"
             class="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 font-mono text-[10px] disabled:opacity-40"
             style="border-color: var(--surface-3); color: var(--ink-700); background: var(--surface);"
-            :disabled="!activeCrop?.crop.review_id"
-            title="Éditer le crop actif : ajuster le cercle existant sur le raw"
+            :disabled="!activeCrop?.crop.review_id || !canRunHeavy"
+            :title="canRunHeavy
+              ? 'Éditer le crop actif : ajuster le cercle existant sur le raw'
+              : 'Édition du crop — disponible uniquement en local (API ML :8042)'"
             @click="openRecropActive"
           >
             <Crop class="h-3 w-3" /> Éditer le crop <kbd>E</kbd>
@@ -1015,8 +1043,10 @@ function detectionBadgeColor(cropIndex: number | null): string {
             type="button"
             class="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 font-mono text-[10px]"
             style="border-color: var(--surface-3); color: var(--indigo-700); background: var(--surface);"
-            :disabled="detecting"
-            title="Relancer la détection sur cette image (rattrapage si le scrape a raté des pièces)"
+            :disabled="detecting || !canRunHeavy"
+            :title="canRunHeavy
+              ? 'Relancer la détection sur cette image (rattrapage si le scrape a raté des pièces)'
+              : 'Re-détection — disponible uniquement en local (API ML :8042)'"
             @click="reDetectActiveImage"
           >
             <Loader2 v-if="detecting" class="h-3 w-3 animate-spin" />
@@ -1027,8 +1057,10 @@ function detectionBadgeColor(cropIndex: number | null): string {
             type="button"
             class="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 font-mono text-[10px] disabled:opacity-40"
             style="border-color: var(--surface-3); color: var(--indigo-700); background: var(--surface);"
-            :disabled="detecting || !activeImageCrops.length"
-            title="Resynchroniser les crops sur les cercles acceptés de l'overlay (re-pointe / crée / supprime + recompute Dino). Refusé si un crop est déjà décidé. Relance Re-détecter d'abord si l'overlay est périmé."
+            :disabled="detecting || !activeImageCrops.length || !canRunHeavy"
+            :title="canRunHeavy
+              ? 'Resynchroniser les crops sur les cercles acceptés de l\'overlay (re-pointe / crée / supprime + recompute Dino). Refusé si un crop est déjà décidé. Relance Re-détecter d\'abord si l\'overlay est périmé.'
+              : 'Sync crops — disponible uniquement en local (API ML :8042)'"
             @click="syncCropsActiveImage"
           >
             <RotateCcw class="h-3 w-3" /> Sync crops
@@ -1037,7 +1069,10 @@ function detectionBadgeColor(cropIndex: number | null): string {
             type="button"
             class="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 font-mono text-[10px]"
             style="border-color: var(--surface-3); color: var(--success); background: var(--surface);"
-            title="Ajouter un crop à la main sur cette image (pièce ratée par la détection)"
+            :disabled="!canRunHeavy"
+            :title="canRunHeavy
+              ? 'Ajouter un crop à la main sur cette image (pièce ratée par la détection)'
+              : 'Crop manuel — disponible uniquement en local (API ML :8042)'"
             @click="openAddCrop()"
           >
             <Plus class="h-3 w-3" /> Crop manuel
@@ -1046,8 +1081,10 @@ function detectionBadgeColor(cropIndex: number | null): string {
             type="button"
             class="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 font-mono text-[10px] disabled:opacity-40"
             style="border-color: var(--surface-3); color: var(--ink-700); background: var(--surface);"
-            :disabled="!activeCrop?.crop.review_id"
-            title="Éditer le crop actif : ajuster le cercle existant sur le raw (≠ ajouter un crop)"
+            :disabled="!activeCrop?.crop.review_id || !canRunHeavy"
+            :title="canRunHeavy
+              ? 'Éditer le crop actif : ajuster le cercle existant sur le raw (≠ ajouter un crop)'
+              : 'Édition du crop — disponible uniquement en local (API ML :8042)'"
             @click="openRecropActive"
           >
             <Crop class="h-3 w-3" /> Éditer le crop <kbd>E</kbd>
@@ -1205,9 +1242,12 @@ function detectionBadgeColor(cropIndex: number | null): string {
           </button>
           <button
             type="button"
-            class="inline-flex items-center gap-1 rounded-md border px-2 py-1 font-mono text-[10px]"
+            class="inline-flex items-center gap-1 rounded-md border px-2 py-1 font-mono text-[10px] disabled:cursor-not-allowed disabled:opacity-40"
             style="border-color: var(--surface-3); color: var(--ink-500); background: var(--surface);"
-            title="Recadrer ce crop (éditeur de cercle sur le raw)"
+            :disabled="!canRunHeavy"
+            :title="canRunHeavy
+              ? 'Recadrer ce crop (éditeur de cercle sur le raw)'
+              : 'Recadrage — disponible uniquement en local (API ML :8042)'"
             @click="openRecropActive"
           >
             <Crop class="h-3 w-3" /> Recadrer <kbd>E</kbd>

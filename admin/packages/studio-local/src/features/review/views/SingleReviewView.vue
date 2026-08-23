@@ -42,11 +42,35 @@ import AutoValidateVerdict from '../components/AutoValidateVerdict.vue'
 import ReviewRightColumn from '../components/ReviewRightColumn.vue'
 import ListingContextCard from '../components/ListingContextCard.vue'
 import TextSignals from '../components/TextSignals.vue'
+import { useEurioSession } from '@/stores/eurio-session'
+import { useCapabilities } from '@/stores/capabilities'
+import { withCacheBust } from '@/shared/url'
 
 // Ordre de cycle des corrections clavier (K / C).
 const KIND_CYCLE: ListingKind[] = ['single', 'lot', 'coffret', 'graded_slab']
 const CONDITION_CYCLE: ConditionTier[] = ['UNC', 'TTB', 'TB']
 import type { DinoSuggestion } from '../composables/useDinoSuggestions'
+
+// ─── Les DEUX axes de gating ────────────────────────────────────────────
+//
+// Ils répondent à des questions différentes et ne doivent jamais être
+// confondus (review-collaborative-v2, lots 4 et 5) :
+//
+//   `canArbitrate`   — DROIT   : « cette personne a-t-elle le droit ? »
+//                      Masque les gestes qui structurent le travail des autres.
+//   `hasLocalMlApi`  — MACHINE : « ce poste peut-il ? »
+//                      Grise les gestes qui encodent des pixels (cv2 sur :8042),
+//                      indisponibles en hébergé jusqu'au lot 6b.
+//
+// Un ami sur son navigateur tombe sous les DEUX : il ne requalifie pas (droit)
+// et ne recadre pas encore (machine). Les mélanger reviendrait à rendre un
+// geste de recadrage « interdit » alors qu'il est seulement hors de portée —
+// et il redeviendra possible pour lui au lot 6b, sans changer ses droits.
+
+const session = useEurioSession()
+const caps = useCapabilities()
+const canArbitrate = computed(() => session.hasScope('review:arbitrate'))
+const canRunHeavy = computed(() => caps.hasLocalMlApi)
 
 // ─── State ──────────────────────────────────────────────────────────────
 
@@ -134,12 +158,13 @@ const currentItem = computed<ReviewItem | null>(
   () => queue.value[currentIndex.value] ?? null,
 )
 
-// URL du crop avec cache-bust : après un re-crop manuel, le fichier est
-// écrasé au même chemin → on force le navigateur à recharger via `?v=`.
-const currentCropUrl = computed<string>(() => {
-  const url = currentItem.value?.crop_url ?? ''
-  return url && cropBust.value ? `${url}?v=${cropBust.value}` : url
-})
+// URL du crop avec cache-bust : après un re-crop manuel, le fichier est écrasé
+// au même chemin → sans ça le navigateur ressert l'ancienne image et l'écran ment.
+// `withCacheBust` choisit le bon séparateur : les crops sont des URLs MinIO
+// présignées, qui portent DÉJÀ une query string (cf. son en-tête).
+const currentCropUrl = computed<string>(() =>
+  withCacheBust(currentItem.value?.crop_url, cropBust.value),
+)
 
 const focusedCandidate = computed<ReviewCandidate | null>(() => {
   if (freeSearchCandidate.value) return freeSearchCandidate.value
@@ -807,9 +832,15 @@ useReviewKeybinds(keyboardEnabled, {
   onCycleKind: cycleKind,
   onCycleCondition: cycleCondition,
   onAcceptDino: acceptDino,
-  onRecrop: () => { if (currentItem.value) showCropEditor.value = true },
-  onAutoCrop: runAutoCrop,
-  onRequalifyLot: requalifyCurrentAsLot,
+  // Masquer un bouton ne désarme PAS son raccourci : sans ces gardes, `L`
+  // requalifierait encore un listing entier pour un ami, et `E`/`A` partiraient
+  // vers un `:8042` injoignable — l'erreur réseau nue que le gating visuel
+  // était censé éviter.
+  onRecrop: () => {
+    if (canRunHeavy.value && currentItem.value) showCropEditor.value = true
+  },
+  onAutoCrop: () => { if (canRunHeavy.value) void runAutoCrop() },
+  onRequalifyLot: () => { if (canArbitrate.value) void requalifyCurrentAsLot() },
 })
 </script>
 
@@ -843,7 +874,9 @@ useReviewKeybinds(keyboardEnabled, {
       <div v-else />
 
       <div class="flex items-center gap-2">
+        <!-- Écriture en masse sur la file : réservé à l'arbitre (lot 5). -->
         <button
+          v-if="canArbitrate"
           type="button"
           class="inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-mono uppercase tracking-wider transition-colors"
           style="border-color: var(--surface-3); color: var(--indigo-700); background: var(--surface-1);"
@@ -958,7 +991,10 @@ useReviewKeybinds(keyboardEnabled, {
           <!-- ── COLONNE GAUCHE ── -->
           <div class="flex min-h-0 flex-col gap-4 overflow-y-auto">
             <div class="flex items-center justify-end gap-2">
+              <!-- Bascule TOUT le listing (donc les crops des autres) dans le
+                   flow lot : geste structurant, réservé à l'arbitre (lot 5). -->
               <button
+                v-if="canArbitrate"
                 type="button"
                 class="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-mono uppercase tracking-wider transition-colors"
                 style="border-color: var(--surface-3); color: var(--ink-700); background: var(--surface-1);"
@@ -969,12 +1005,18 @@ useReviewKeybinds(keyboardEnabled, {
                 Requalifier en lot
                 <span class="font-mono text-[9px] opacity-70">L</span>
               </button>
+              <!-- Auto-crop et Recadrer encodent des pixels (cv2 sur :8042) :
+                   GRISÉS par capacité machine, pas masqués par droit. Ils ne
+                   sont pas interdits à un ami — ils sont hors de portée tant
+                   que le recadrage n'est pas porté sur le VPS (lot 6b). -->
               <button
                 type="button"
-                class="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-mono uppercase tracking-wider transition-colors disabled:opacity-60"
+                class="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-mono uppercase tracking-wider transition-colors disabled:cursor-not-allowed disabled:opacity-60"
                 style="border-color: var(--surface-3); color: var(--indigo-700); background: var(--surface-1);"
-                title="Auto-crop score-guidé (probe) — à tenter avant le recadrage manuel · A"
-                :disabled="autoCropBusy"
+                :title="canRunHeavy
+                  ? 'Auto-crop score-guidé (probe) — à tenter avant le recadrage manuel · A'
+                  : 'Auto-crop — disponible uniquement en local (API ML :8042)'"
+                :disabled="autoCropBusy || !canRunHeavy"
                 @click="runAutoCrop"
               >
                 <Wand2 class="h-3 w-3" :class="{ 'animate-spin': autoCropBusy }" />
@@ -988,9 +1030,12 @@ useReviewKeybinds(keyboardEnabled, {
               </button>
               <button
                 type="button"
-                class="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-mono uppercase tracking-wider transition-colors"
+                class="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-mono uppercase tracking-wider transition-colors disabled:cursor-not-allowed disabled:opacity-60"
                 style="border-color: var(--surface-3); color: var(--indigo-700); background: var(--surface-1);"
-                title="Re-cropper manuellement (pièce mal cadrée) · E"
+                :title="canRunHeavy
+                  ? 'Re-cropper manuellement (pièce mal cadrée) · E'
+                  : 'Recadrage — disponible uniquement en local (API ML :8042)'"
+                :disabled="!canRunHeavy"
                 @click="showCropEditor = true"
               >
                 <Crop class="h-3 w-3" />
@@ -1021,6 +1066,7 @@ useReviewKeybinds(keyboardEnabled, {
               :origin-date="currentItem.listing_origin_date ?? null"
               :sold-qty="currentItem.sold_qty ?? null"
               :market-quote="focusedMarketQuote"
+              :show-market="canArbitrate"
             />
 
             <AutoValidateVerdict

@@ -14,11 +14,18 @@ import SingleReviewView from '../views/SingleReviewView.vue'
 import LotReviewView from '../views/LotReviewView.vue'
 import RunProgressLine from '../components/RunProgressLine.vue'
 import { queryNeedOnly, queryRunIds } from '../composables/useQueryScope'
+import { useEurioSession } from '@/stores/eurio-session'
 
 type ReviewMode = 'single' | 'lot'
 
 const route = useRoute()
 const router = useRouter()
+const session = useEurioSession()
+
+// Axe DROIT (lot 5) — à ne pas confondre avec `hasLocalMlApi`, qui est l'axe
+// MACHINE. Ici : « cette personne a-t-elle le droit ? ». Un ami invité (rôle
+// `reviewer`) ne voit pas les gestes qui structurent le travail des autres.
+const canArbitrate = computed(() => session.hasScope('review:arbitrate'))
 
 const mode = computed<ReviewMode>(() => {
   const m = route.query.mode
@@ -94,9 +101,10 @@ watch(mode, () => {})
       </div>
 
       <div class="flex items-center gap-3">
-        <!-- Cohort scope (Single mode) -->
+        <!-- Cohort scope (Single mode) — cadrer la file sur une cohorte est un
+             geste de pilotage : masqué pour un ami invité (lot 5). -->
         <label
-          v-if="mode === 'single'"
+          v-if="mode === 'single' && canArbitrate"
           class="flex items-center gap-1.5 text-[11px] uppercase tracking-wider"
           style="color: var(--ink-500);"
         >

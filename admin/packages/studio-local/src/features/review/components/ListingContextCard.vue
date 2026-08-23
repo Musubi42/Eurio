@@ -29,6 +29,17 @@ const props = defineProps<{
   originDate: string | null
   soldQty: number | null
   marketQuote: MarketQuote | null
+  /**
+   * Affiche le volet MARCHÉ (prix du listing, référence p50, écart en %).
+   *
+   * Faux pour un ami invité (lot 5) : ces chiffres servent à arbitrer le
+   * référentiel marché, pas à répondre « quelle pièce est-ce ? ». Les lui
+   * montrer, c'est du bruit sur le seul geste qu'on lui demande.
+   *
+   * Prop et non lecture directe du store : cette carte n'affiche que ce qu'on
+   * lui donne (cf. son en-tête), c'est la vue qui connaît le contexte.
+   */
+  showMarket: boolean
 }>()
 
 // Sous ce seuil, le badge passe en ambre : « l'heuristique C2 n'est pas
@@ -102,7 +113,7 @@ const priceAnomaly = computed(
   >
     <div class="flex items-baseline justify-between gap-3">
       <p class="font-mono text-[10px] uppercase tracking-wider" style="color: var(--ink-500);">
-        Listing &amp; marché
+        Listing<template v-if="showMarket"> &amp; marché</template>
       </p>
       <span class="font-mono text-[11px]" style="color: var(--ink-400);">{{ source }}</span>
     </div>
@@ -152,7 +163,7 @@ const priceAnomaly = computed(
       class="mt-2.5 flex flex-wrap items-baseline gap-x-4 gap-y-1 font-mono text-[11px]"
       style="color: var(--ink-500);"
     >
-      <span v-if="price != null">
+      <span v-if="showMarket && price != null">
         <span class="opacity-70">prix&nbsp;·</span>
         <span class="ml-1 font-semibold" style="color: var(--ink);">{{ price.toFixed(2) }} €</span>
       </span>
@@ -166,8 +177,12 @@ const priceAnomaly = computed(
       </span>
     </div>
 
-    <!-- ── Cross-check marché (C3) ── -->
-    <div class="mt-3 border-t border-dashed pt-2" style="border-color: var(--surface-3);">
+    <!-- ── Cross-check marché (C3) — masqué pour un ami invité (lot 5) ── -->
+    <div
+      v-if="showMarket"
+      class="mt-3 border-t border-dashed pt-2"
+      style="border-color: var(--surface-3);"
+    >
       <template v-if="marketQuote && marketQuote.p50 != null">
         <div class="flex flex-wrap items-baseline gap-x-3 font-mono text-[11px]">
           <span class="text-[10px] uppercase tracking-wider" style="color: var(--ink-400);">
