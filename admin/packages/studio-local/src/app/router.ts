@@ -69,6 +69,16 @@ const router = createRouter({
           component: () => import('@/features/sources/pages/SourceRunListingsPage.vue'),
         },
         {
+          // `/besoin` — le poste de pilotage de l'enrichissement DINO (O2).
+          // PAS `meta.heavy`, et c'est délibéré : `GET /class-need` est du SQL
+          // pur sur le canonique (pas de `:8042`, pas de cv2). Savoir ce qui
+          // manque, et ce que ça coûterait, ne doit pas dépendre d'un Mac
+          // allumé. Seuls les GESTES qu'elle propose sont lourds, et la page
+          // les grise elle-même via `hasLocalMlApi`.
+          path: 'besoin',
+          component: () => import('@/features/besoin/pages/BesoinPage.vue'),
+        },
+        {
           path: 'review',
           component: () => import('@/features/review/pages/ReviewDashboardPage.vue'),
           meta: heavy,

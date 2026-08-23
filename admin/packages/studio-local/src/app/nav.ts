@@ -1,4 +1,4 @@
-import { Activity, BookOpen, Brain, CircleAlert, ClipboardCheck, ClipboardList, Coins, Crop, Database, Eye, Fish, FlaskConical, Gavel, KeyRound, LayoutDashboard, Layers, Network, Scale, ShieldQuestion, Users } from 'lucide-vue-next'
+import { Activity, BookOpen, Brain, CircleAlert, ClipboardCheck, ClipboardList, Coins, Crop, Database, Eye, Fish, FlaskConical, Gavel, KeyRound, LayoutDashboard, Layers, Network, Scale, ShieldQuestion, Target, Users } from 'lucide-vue-next'
 import type { Component } from 'vue'
 
 export interface NavItem {
@@ -70,6 +70,15 @@ export const navSections: NavSection[] = [
         label: 'Sources',
         icon: Database,
         route: '/sources',
+      },
+      {
+        // Non-`heavy` : la lecture du besoin est du SQL pur sur le canonique,
+        // donc disponible en hébergé. Les gestes qu'elle propose se grisent
+        // tout seuls (cf. BesoinTable).
+        id: 'besoin',
+        label: 'Besoin',
+        icon: Target,
+        route: '/besoin',
       },
       {
         id: 'review',
