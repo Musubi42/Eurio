@@ -14,13 +14,28 @@
 | 4b | Durcir les routers montés sans scope | ✅ **vérifié en conditions réelles** |
 | 5 | Page review taillée pour un ami | ✅ **vérifié au navigateur, 2 profils** |
 | 6a | `dino-suggestions` en lecture pure sur le lean | ✅ **vérifié au navigateur** |
+| **D11** | **Ne plus rien montrer de « local » à un ami** | ⬜ **prioritaire — vu en prod par le PO** |
+| 8 | La vue bulk d'arbitrage | ⬜ |
 | 6b | Le recadrage à distance (cv2-headless) | ⬜ |
 | 7 | Le bail sur la file | ⬜ |
-| 8 | La vue bulk d'arbitrage | ⬜ |
 | 9 | Full clean | ⬜ |
 
-> **Déployé en production le 2026-08-23**, commit `419ed6c6`. Résultats et
-> contrôles : [`DEPLOIEMENT.md`](DEPLOIEMENT.md).
+> **Déployé en production le 2026-08-23** et **utilisé** — le PO a créé un compte
+> reviewer dans Authentik et la review fonctionne. Résultats des contrôles :
+> [`DEPLOIEMENT.md`](DEPLOIEMENT.md). Reprise et défaut trouvé à l'usage :
+> **[`REPRISE.md`](REPRISE.md)**.
+
+## D11 — ne plus rien montrer de « local » à un ami (prioritaire)
+
+Trouvé à l'usage, pas par un test. `ReviewDashboardPage` propose `/review/manual` ET
+`/review/auto-accept` ; la seconde est `meta: heavy` et relève de l'arbitre → l'ami
+clique et tombe sur « Cette vue tourne en local ». Le lot 5 avait masqué le *bouton*
+`AUTO-ACCEPT`, pas la *carte* du tableau de bord. `/review/recover` est dans le même cas.
+
+À faire : masquer les entrées `heavy` et les contrôles gatés machine pour qui n'a pas
+`review:arbitrate` ; plus aucun « local » ni `:8042` à l'écran. Motivation et ce que ça
+écarte : [`DECISIONS.md`](DECISIONS.md) D11 — c'est un revirement partiel du lot 5,
+assumé.
 
 ## Le rig de vérification (à réutiliser à chaque lot)
 

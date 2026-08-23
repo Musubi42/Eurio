@@ -4,6 +4,9 @@
 > Supersède [`../collaborative-review/`](../collaborative-review/) (juin 2026) et
 > tranche le chunk **K2** de [`../auth-redesign/ROADMAP.md`](../auth-redesign/ROADMAP.md).
 
+> 🟢 **En production depuis le 2026-08-23, et utilisé.** Reprise, défaut connu et
+> scénario de recette : **[`REPRISE.md`](REPRISE.md)** — à lire en premier.
+
 ## En une phrase
 
 Faire reviewer des amis non-techniques depuis leur propre ordinateur, sur
@@ -25,6 +28,7 @@ torch alors qu'il n'y sert que de bibliothèque d'images.
 | [`DECISIONS.md`](DECISIONS.md) | D1-D10 — ce qu'on fait, pourquoi, et ce que ça écarte |
 | [`ROADMAP.md`](ROADMAP.md) | les 10 lots, leur statut, leur vérification |
 | [`NETTOYAGE.md`](NETTOYAGE.md) | l'inventaire de ce qui meurt au lot 9, tenu à jour |
+| [`REPRISE.md`](REPRISE.md) | **où on en est, le défaut trouvé à l'usage, ce qui reste, le scénario de recette** |
 | [`DEPLOIEMENT.md`](DEPLOIEMENT.md) | la procédure, ce qu'elle change en prod, et comment se donner un compte « ami » |
 
 ## Hors périmètre

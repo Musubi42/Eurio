@@ -156,3 +156,34 @@ vérifiés. L'inventaire est tenu à jour en continu dans [`NETTOYAGE.md`](NETTO
 **Pourquoi.** Supprimer au fil de l'eau ferait tomber `eurio-review.musubi.dev` avant
 que son remplaçant soit prouvé. Mais découvrir l'inventaire à la fin, c'est en oublier
 la moitié — d'où le fichier tenu dès maintenant.
+
+---
+
+## D11 — Un ami ne doit jamais voir le mot « local », ni un numéro de port
+
+**Constaté en production le 2026-08-23**, par le PO, avec un vrai compte reviewer :
+« pour faire la review, on nous dit que c'est en local ».
+
+**Cause exacte**, diagnostiquée : la page `/review` (`ReviewDashboardPage`) propose
+DEUX entrées — `/review/manual` et `/review/auto-accept`. La seconde porte encore
+`meta: heavy` **et** relève de l'arbitre. Un ami clique dessus et tombe sur la page
+pleine « Cette vue tourne en local ». Le lot 5 avait masqué le *bouton* `AUTO-ACCEPT`
+dans la barre de review, pas la *carte* du tableau de bord — l'entrée n'avait pas été
+regardée.
+
+**Décision.** Pour un principal SANS `review:arbitrate` :
+1. les entrées qui mènent à une vue `heavy` ne sont **pas proposées** ;
+2. les contrôles gatés par la machine sont **masqués**, pas grisés — un ami ne peut
+   rien faire d'une infobulle « disponible uniquement en local (API ML :8042) » ;
+3. aucun texte visible ne mentionne « local », `:8042`, ni un nom de machine.
+
+**Ce que ça écarte, et pourquoi c'est un revirement partiel du lot 5.** Le lot 5 avait
+tranché « ce qui est hors de portée reste visible et grisé », pour dire à l'utilisateur
+que le geste existe ailleurs. C'est le bon rendu **pour l'arbitre sur son poste** — il
+sait ce qu'est `:8042` et il peut y aller. Ce n'est pas le bon pour un ami : le geste
+n'existera jamais pour lui *tant que 6b n'est pas fait*, et un bouton mort qui parle
+de port est du bruit inquiétant. Le grisé RESTE pour qui a `review:arbitrate`.
+
+**Le vrai remède reste le lot 6b** : quand le recadrage tournera sur le VPS, il n'y
+aura plus rien à masquer. D11 est ce qu'on fait en attendant — et ce qui restera vrai
+pour les rares gestes qui resteront à jamais locaux.
