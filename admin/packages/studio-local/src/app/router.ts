@@ -81,12 +81,10 @@ const router = createRouter({
         {
           path: 'review',
           component: () => import('@/features/review/pages/ReviewDashboardPage.vue'),
-          meta: heavy,
         },
         {
           path: 'review/manual',
           component: () => import('@/features/review/pages/ReviewPage.vue'),
-          meta: heavy,
         },
         {
           path: 'review/auto-accept',
@@ -96,15 +94,16 @@ const router = createRouter({
         {
           path: 'review/lot/:listing_key',
           component: () => import('@/features/review/pages/LotReviewDetailPage.vue'),
-          meta: heavy,
         },
         {
           // La pêche — file scopée par la PRÉDICTION (`?class=<class_id>`).
-          // `heavy` : elle monte les vues de review, qui tapent `:8042` pour
-          // les suggestions DINO par crop (cf. CLAUDE.md §R0bis).
+          // PLUS `heavy` depuis le lot 1 de review-collaborative-v2 : les crops
+          // sont servis en URLs MinIO présignées (absolues) par eurio-api, et les
+          // suggestions DINO sont une LECTURE (0 crop sans prédiction persistée
+          // sur 21 223 — le fallback qui encodait à la demande ne s'allume jamais).
+          // Seul l'éditeur de crop reste local, et il se grise tout seul.
           path: 'review/peche',
           component: () => import('@/features/review/pages/PechePage.vue'),
-          meta: heavy,
         },
         {
           path: 'review/recover',

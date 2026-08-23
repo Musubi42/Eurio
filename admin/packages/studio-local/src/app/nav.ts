@@ -12,6 +12,19 @@ export interface NavItem {
    * non-cliquable en hébergé quand `hasLocalMlApi` est faux (cf. AppLayout / capabilities).
    */
   heavy?: boolean
+  /**
+   * Scope requis pour seulement VOIR l'entrée. Axe **orthogonal** à `heavy` :
+   * `heavy` répond « cette machine peut-elle ? », `scope` répond « cette personne
+   * a-t-elle le droit ? ». Une entrée sans `scope` est visible de tout principal
+   * authentifié.
+   *
+   * ⚠️ C'est du CONFORT, pas une garde. La garde est serveur (`require_scope`) et
+   * elle est INÉGALE aujourd'hui : les routers montés via `_CANDIDATES` dans
+   * `server_serve.py` le sont avec `require_principal`, donc sans scope — un
+   * `reviewer` peut encore atteindre `/coins/*` en écriture par appel direct.
+   * Durcissement suivi en lot 4b de `docs/work-in-progress/review-collaborative-v2/`.
+   */
+  scope?: string
 }
 
 export interface NavSection {
@@ -39,18 +52,21 @@ export const navSections: NavSection[] = [
         label: 'Sets',
         icon: Layers,
         route: '/sets',
+        scope: 'coins:write',
       },
       {
         id: 'coins',
         label: 'Pièces',
         icon: Coins,
         route: '/coins',
+        scope: 'coins:read',
       },
       {
         id: 'numista-review',
         label: 'Revue Numista',
         icon: CircleAlert,
         route: '/coins/numista-review',
+        scope: 'coins:write',
         heavy: true,
       },
       {
@@ -58,6 +74,7 @@ export const navSections: NavSection[] = [
         label: 'Revue référentiel',
         icon: ShieldQuestion,
         route: '/coins/needs-review',
+        scope: 'coins:write',
         heavy: true,
       },
     ],
@@ -70,6 +87,7 @@ export const navSections: NavSection[] = [
         label: 'Sources',
         icon: Database,
         route: '/sources',
+        scope: 'sources:read',
       },
       {
         // Non-`heavy` : la lecture du besoin est du SQL pur sur le canonique,
@@ -79,38 +97,42 @@ export const navSections: NavSection[] = [
         label: 'Besoin',
         icon: Target,
         route: '/besoin',
+        scope: 'lab:read',
       },
       {
         id: 'review',
         label: 'Review queue',
         icon: ClipboardCheck,
         route: '/review',
-        heavy: true,
+        scope: 'review:read',
       },
       {
         id: 'peche',
         label: 'Pêche',
         icon: Fish,
         route: '/review/peche',
-        heavy: true,
+        scope: 'review:read',
       },
       {
         id: 'audit',
         label: 'Audit log',
         icon: ClipboardList,
         route: '/audit',
+        scope: 'audit:read',
       },
       {
         id: 'operations',
         label: 'Operations',
         icon: Activity,
         route: '/operations',
+        scope: 'ingest:run',
       },
       {
         id: 'referential',
         label: 'Référentiel',
         icon: BookOpen,
         route: '/referential',
+        scope: 'coins:write',
       },
     ],
   },
@@ -122,6 +144,7 @@ export const navSections: NavSection[] = [
         label: 'Parity Viewer',
         icon: Eye,
         route: '/parity',
+        scope: 'training:run',
         // Dépend du devMiddleware (endpoints JSON servis seulement en `pnpm dev`).
         heavy: true,
       },
@@ -130,6 +153,7 @@ export const navSections: NavSection[] = [
         label: 'Arbitrage Numista',
         icon: Scale,
         route: '/coins/arbitrage',
+        scope: 'coins:write',
         heavy: true,
       },
       {
@@ -137,6 +161,7 @@ export const navSections: NavSection[] = [
         label: 'Training',
         icon: Brain,
         route: '/training',
+        scope: 'training:run',
         heavy: true,
       },
       {
@@ -144,6 +169,7 @@ export const navSections: NavSection[] = [
         label: 'Cartographie ML',
         icon: Network,
         route: '/confusion',
+        scope: 'training:run',
         heavy: true,
       },
       {
@@ -151,6 +177,7 @@ export const navSections: NavSection[] = [
         label: 'Lab',
         icon: FlaskConical,
         route: '/lab',
+        scope: 'training:run',
         heavy: true,
       },
       {
@@ -158,6 +185,7 @@ export const navSections: NavSection[] = [
         label: 'Studio bench',
         icon: Gavel,
         route: '/bench',
+        scope: 'training:run',
         heavy: true,
       },
       {
@@ -165,6 +193,7 @@ export const navSections: NavSection[] = [
         label: 'Crop Bench',
         icon: Crop,
         route: '/crop-bench',
+        scope: 'training:run',
         heavy: true,
       },
       {
@@ -172,6 +201,7 @@ export const navSections: NavSection[] = [
         label: 'Gold denom',
         icon: Coins,
         route: '/denom-gold',
+        scope: 'training:run',
         heavy: true,
       },
     ],
@@ -184,12 +214,14 @@ export const navSections: NavSection[] = [
         label: 'Utilisateurs',
         icon: Users,
         route: '/users',
+        scope: 'users:read',
       },
       {
         id: 'tokens',
         label: 'Mes tokens',
         icon: KeyRound,
         route: '/me/tokens',
+        scope: 'tokens:manage_own',
       },
     ],
   },

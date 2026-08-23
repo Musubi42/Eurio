@@ -24,6 +24,25 @@ function isLocked(item: NavItem): boolean {
 }
 const routeLocked = computed(() => Boolean(route.meta.heavy) && heavyLocked.value)
 
+// Gating par DROIT (review-collaborative-v2, lot 4) — second axe, orthogonal au
+// précédent. `heavy` répond « cette machine peut-elle ? », `scope` répond « cette
+// personne a-t-elle le droit ? ». Un `reviewer` invité ne voit ainsi que Tableau de
+// bord / Pièces / Review / Besoin, sans qu'on touche à son rôle.
+//
+// Tant que le principal n'est pas chargé (`status` idle/loading), on NE filtre PAS :
+// sinon la nav clignoterait vide au boot, le temps de l'aller-retour `/me`.
+const scopesKnown = computed(() => session.status === 'ok')
+function isVisible(item: NavItem): boolean {
+  if (!item.scope || !scopesKnown.value) return true
+  return session.hasScope(item.scope)
+}
+// Une section dont tous les items sont masqués disparaît avec son titre.
+const visibleSections = computed(() =>
+  navSections
+    .map((s) => ({ ...s, items: s.items.filter(isVisible) }))
+    .filter((s) => s.items.length > 0),
+)
+
 // Sidebar repliable en icônes (plus de viewport pour la review). Persisté.
 const NAV_COLLAPSED_KEY = 'eurio.nav.collapsed'
 const collapsed = ref(localStorage.getItem(NAV_COLLAPSED_KEY) === '1')
@@ -73,7 +92,7 @@ function isActive(itemRoute: string) {
 
       <!-- Nav -->
       <nav class="flex-1 px-3 py-4" :class="collapsed ? 'space-y-2' : 'space-y-6'">
-        <div v-for="section in navSections" :key="section.title ?? 'root'">
+        <div v-for="section in visibleSections" :key="section.title ?? 'root'">
           <p v-if="section.title && !collapsed"
              class="mb-1 px-2 text-xs font-medium uppercase tracking-widest"
              style="color: rgba(255,255,255,0.3);">
