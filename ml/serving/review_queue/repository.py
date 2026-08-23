@@ -1210,7 +1210,11 @@ def dino_candidates_summary(
     # celui-ci retire 5 % de vrais positifs (mesuré : 340 gardés sur 358). Le
     # nombre s'affiche à côté de la pastille, et un clic les ramène.
     n_other_country = 0
-    if scope.country:
+    # `country_active`, pas `country` : sous désarmement (O4c) `scope.country`
+    # nomme le pays visé mais le filtre ne mord plus — comparer les deux
+    # périmètres rendrait 0, ce qui se lirait « rien de masqué » alors que la
+    # bonne lecture est « le filtre s'est retiré ». Le drapeau le dit.
+    if scope.country_active:
         sans_filtre = build_dino_scope(
             conn, dino_class=dino_class, rank=dino_rank,
             min_spread=dino_min_spread, country_alias="si",
@@ -1325,6 +1329,7 @@ def dino_candidates_summary(
         best_spread_lot=best_by_kind.get("lot"),
         country=scope.country,
         n_other_country=n_other_country,
+        country_disarmed=scope.country_disarmed,
         n_orphans=int(n_orphans),
         orphan_asset_ids=orphan_ids,
         n_training_eligible=int(n_eligible),

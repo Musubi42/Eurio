@@ -818,6 +818,11 @@ export interface DinoCandidatesSummary {
   /** Combien de crops le filtre pays MASQUE — un filtre actif par défaut qui
    *  ne dit pas ce qu'il retire ment par omission. */
   n_other_country: number
+  /** 🔴 Le filtre pays s'est-il RETIRÉ parce qu'il ne laissait rien (O4c) ?
+   *  `country` reste renseigné (le pays VISÉ), mais le filtre ne mord plus.
+   *  Sans lire ce drapeau, la barre affiche « pays LV » au-dessus d'une file
+   *  qui sert tous les pays — mesuré : 147 des 293 classes en besoin. */
+  country_disarmed: boolean
   /** needs_review SANS ligne de review ouverte : invisibles partout. */
   n_orphans: number
   orphan_asset_ids: string[]

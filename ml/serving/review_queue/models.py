@@ -163,6 +163,13 @@ class DinoCandidatesSummary(BaseModel):
     #: dit pas ce qu'il retire ment par omission — celui-ci écarte ~5 % de vrais
     #: positifs, des coffrets multi-pays.
     n_other_country: int = 0
+    #: 🔴 Le filtre pays s'est-il RETIRÉ parce qu'il ne laissait rien (O4c) ?
+    #: Sans ce drapeau, `country` est renseigné et l'écran affiche « pays LV »
+    #: au-dessus d'une file qui sert TOUS les pays : le back se désarme, la
+    #: pastille prétend le contraire. Mesuré le 2026-08-23 : ça concerne 147 des
+    #: 293 classes en besoin, soit 82 % du palier 1 — donc la majorité des
+    #: pêches ouvertes depuis `/besoin`.
+    country_disarmed: bool = False
     #: Crops en `needs_review` SANS ligne de review ouverte : jamais enfilés,
     #: invisibles partout. Ils ne deviennent péchables qu'après un enfilage
     #: explicite (POST /coins/assets/reflag-needs-review) — on ne les enfile

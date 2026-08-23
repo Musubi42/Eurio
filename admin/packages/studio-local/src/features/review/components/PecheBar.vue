@@ -60,6 +60,12 @@ function margeTitle(best: number | null | undefined, n: number | null): string {
   if (best >= 0.05) return `Meilleure marge ${best.toFixed(3)} — au-dessus du seuil du verdict, sans plus. À l'œil.`
   return `Meilleure marge ${best.toFixed(3)} — SOUS le seuil du verdict (0,05). Le modèle n'est net sur AUCUN crop de cette file : ce sont probablement des faux positifs, ou des pièces que la banque ne connaît pas (une piécette de coffret, par exemple). Regarde l'autre mode, ou élargis le rang.`
 }
+/** O4c — le back a-t-il retiré le filtre pays parce qu'il ne laissait rien ?
+ *  On le lit du SUMMARY, jamais de l'URL : `?pays=` dit ce qu'on a DEMANDÉ,
+ *  le summary dit ce qui a été SERVI. Afficher la demande au-dessus d'une file
+ *  qui n'y obéit pas, c'est le filtre muet qu'on cherche à éliminer. */
+const disarmed = computed(() => props.summary?.country_disarmed === true)
+
 const singleFaible = computed(
   () => props.summary != null && props.summary.n_open_single > 0
     && (props.summary.best_spread_single ?? 0) < 0.05,
@@ -115,15 +121,18 @@ const lotFaible = computed(
     <button
       type="button"
       class="chip chip--pays"
-      :class="{ 'chip--on': countryOnly }"
-      :title="countryOnly
+      :class="{ 'chip--on': countryOnly && !disarmed, 'chip--disarmed': disarmed }"
+      :title="disarmed
+        ? `Filtre pays DÉSARMÉ (O4c) : il aurait vidé entièrement cette file — aucun candidat ne vient d'une annonce ${summary?.country}. Le back sert donc le pool brut, et le dit plutôt que de rendre zéro. Rappel : listing_country n'est pas le pays de l'annonce mais celui que la recherche VISAIT — là où on n'a jamais scrapé, il ne reste rien.`
+        : countryOnly
         ? `Seules les annonces du pays de la classe sont servies. Mesuré : la précision du top-1 passe de 91,3 % à 99,1 % sur une pièce courante, en gardant 95 % des vrais positifs. Les ${summary?.n_other_country ?? 0} crops masqués sont surtout des coffrets multi-pays — clique pour les ramener.`
         : 'Filtre levé : les annonces de tous les pays sont servies. Sur une classe courante, environ un crop sur dix est alors un faux positif d\'un autre pays.'"
       @click="emit('country-only', !countryOnly)"
     >
-      {{ countryOnly ? `pays ${summary?.country ?? '—'}` : 'tous pays' }}<span
+      <template v-if="disarmed">⚠ pays {{ summary?.country ?? '—' }} — désarmé</template>
+      <template v-else>{{ countryOnly ? `pays ${summary?.country ?? '—'}` : 'tous pays' }}<span
         v-if="countryOnly && (summary?.n_other_country ?? 0) > 0"
-      > · {{ summary?.n_other_country }} masqués</span>
+      > · {{ summary?.n_other_country }} masqués</span></template>
     </button>
 
     <span class="ranks">
@@ -199,6 +208,11 @@ const lotFaible = computed(
 /* Aucun crop au-dessus du seuil du verdict : la file existe, elle ne vaut
    probablement rien. On le montre, on ne désactive pas — c'est un avis. */
 .chip--faible { border-style: dashed; color: var(--warning); border-color: var(--warning); }
+.chip--disarmed {
+  border-color: var(--warning);
+  color: var(--warning);
+  background: rgba(216, 138, 45, 0.1);
+}
 .chip--pays { border-style: dashed; }
 .chip--orphan {
   display: inline-flex; align-items: center; gap: 5px;
