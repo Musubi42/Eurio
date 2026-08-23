@@ -67,6 +67,8 @@ def list_queue(
     dino_class: str | None = Query(default=None),
     dino_rank: int = Query(default=1),
     dino_country_only: bool = Query(default=True),
+    dino_era_only: bool = Query(default=True),
+    dino_min_denom: float | None = Query(default=None, ge=0.0, le=1.0),
     run_id: str | None = Query(default=None),
     need_only: bool = Query(default=False),
 ) -> list[ReviewItem]:
@@ -102,6 +104,7 @@ def list_queue(
             dino_min_spread=dino_min_spread, dino_top1_only=dino_top1_only,
             dino_class=dino_class, dino_rank=dino_rank,
             dino_country_only=dino_country_only,
+            dino_era_only=dino_era_only, dino_min_denom=dino_min_denom,
             run_ids=_split_ids(run_id), need_only=need_only,
         )
     except repository.CohortNotFound:
@@ -174,6 +177,8 @@ def dino_candidates_summary(
     dino_rank: int = Query(default=1),
     dino_min_spread: float | None = Query(default=None, ge=0.0, le=1.0),
     dino_country_only: bool = Query(default=True),
+    dino_era_only: bool = Query(default=True),
+    dino_min_denom: float | None = Query(default=None, ge=0.0, le=1.0),
     need_only: bool = Query(default=False),
 ) -> DinoCandidatesSummary:
     """Ce que la banque propose pour une classe — pour la porte d'entrée Coins.
@@ -191,6 +196,7 @@ def dino_candidates_summary(
             conn, dino_class=dino_class, dino_rank=dino_rank,
             dino_min_spread=dino_min_spread,
             dino_country_only=dino_country_only,
+            dino_era_only=dino_era_only, dino_min_denom=dino_min_denom,
             need_only=need_only,
         )
     except ValueError as exc:
@@ -213,6 +219,8 @@ def list_lots(
     dino_rank: int = Query(default=1),
     dino_min_spread: float | None = Query(default=None, ge=0.0, le=1.0),
     dino_country_only: bool = Query(default=True),
+    dino_era_only: bool = Query(default=True),
+    dino_min_denom: float | None = Query(default=None, ge=0.0, le=1.0),
     run_id: str | None = Query(default=None),
     need_only: bool = Query(default=False),
 ) -> LotListResponse:
@@ -226,6 +234,7 @@ def list_lots(
         dino_class=dino_class, dino_rank=dino_rank,
         dino_min_spread=dino_min_spread,
         dino_country_only=dino_country_only,
+        dino_era_only=dino_era_only, dino_min_denom=dino_min_denom,
         run_ids=_split_ids(run_id), need_only=need_only,
     )
     return LotListResponse(items=items, total=total)
@@ -243,6 +252,8 @@ def get_lot(
     dino_rank: int = Query(default=1),
     dino_min_spread: float | None = Query(default=None, ge=0.0, le=1.0),
     dino_country_only: bool = Query(default=True),
+    dino_era_only: bool = Query(default=True),
+    dino_min_denom: float | None = Query(default=None, ge=0.0, le=1.0),
     run_id: str | None = Query(default=None),
     need_only: bool = Query(default=False),
 ) -> LotDetail:
@@ -263,6 +274,7 @@ def get_lot(
             design_group=design_group, dino_class=dino_class,
             dino_rank=dino_rank, dino_min_spread=dino_min_spread,
             dino_country_only=dino_country_only,
+            dino_era_only=dino_era_only, dino_min_denom=dino_min_denom,
             run_ids=_split_ids(run_id), need_only=need_only,
         )
     except repository.LotNotFound as exc:

@@ -256,3 +256,28 @@ def test_la_route_n_ecrit_rien(env):
     ).lower()
     for verb in ("insert into", "update ", "delete from", "commit()"):
         assert verb not in code, f"ordre d'écriture trouvé : {verb!r}"
+
+
+def test_l_effet_de_l_ere_traverse_jusqu_au_json(env):
+    """O4a/b — la ligne doit dire ce que chaque filtre lui retire.
+
+    Un crop marqué `de-2016-…sachsen` dans une annonce dont le titre ne parle
+    que de 2026 ne peut pas être cette pièce. La ligne le sert donc en moins, et
+    l'écrit : sans ce nombre, `pending` et `pending_scoped` diffèrent sans que
+    rien n'explique l'écart — la dette exacte que le lot 6 ferme.
+    """
+    conn, _ = env
+    conn.execute(
+        "INSERT INTO listing_text_signals (source_image_id, years_json, coverage)"
+        " VALUES ('si-needy1','[2026]','rich')",
+    )
+    conn.commit()
+
+    rows = _rows(_client().get("/class-need").json())
+    assert rows[NEEDY]["pending"] == 2
+    assert rows[NEEDY]["n_hidden_by_era"] == 1
+    assert rows[NEEDY]["n_hidden_by_denom"] == 0, "la porte n'est pas armée"
+    assert (rows[NEEDY]["pending"]
+            - rows[NEEDY]["n_hidden_by_era"]
+            - rows[NEEDY]["n_hidden_by_country"]
+            - rows[NEEDY]["n_hidden_by_denom"]) == rows[NEEDY]["pending_scoped"]

@@ -74,10 +74,13 @@ from shared.verdict_scope import (
 )
 
 __all__ = [
+    "DEFAULT_MIN_DENOM",
     "DINO_RANKS",
+    "ERA_OPEN",
     "DinoScope",
     "build_dino_scope",
     "class_country",
+    "class_era",
     "suggestions_join_sql",
 ]
 
@@ -85,6 +88,19 @@ __all__ = [
 #: rang n'est pas une grandeur continue et un champ libre inviterait à demander
 #: un top-20 dont la précision n'a jamais été mesurée.
 DINO_RANKS: tuple[int, ...] = (1, 3, 5)
+
+#: La borne haute d'une ère encore ouverte (aucun type suivant frappé). Un
+#: entier plutôt que `None` : l'ère est un INTERVALLE, et un intervalle
+#: half-open codé par un `None` se serait propagé jusque dans le SQL, où il se
+#: compare silencieusement à faux.
+ERA_OPEN: int = 9999
+
+#: Le seuil proposé pour la porte dénomination quand un opérateur l'arme (O4b).
+#: **Ce n'est pas un défaut** : `build_dino_scope(min_denom=None)` laisse la
+#: porte ouverte, parce qu'elle coûte ~5 % de vrais positifs (mesuré sur 513
+#: crops labellisés : elle garde 95,3 % des 2 €). C'est un choix d'opérateur,
+#: pas une règle — cf. O4 §b et le tableau des réglages par défaut.
+DEFAULT_MIN_DENOM: float = 0.4
 
 
 def suggestions_join_sql(alias: str = "ps") -> str:
@@ -155,6 +171,126 @@ def class_country(conn: sqlite3.Connection, class_id: str) -> str | None:
     )
 
 
+def class_era(conn: sqlite3.Connection, class_id: str) -> tuple[int, int] | None:
+    """L'ère d'une classe — `(première année, dernière année)`, bornes incluses.
+
+    `None` DÉSACTIVE le filtre d'ère chez l'appelant, exactement comme
+    `class_country` rend `None` : une classe dont on ne sait pas dater le design
+    doit être servie entière, jamais réduite à zéro par une borne inventée.
+
+    LES DEUX RÈGLES, ET POURQUOI ELLES DIFFÈRENT
+    --------------------------------------------
+    - **commémorative** : son millésime, `(year, year)`. Une commémorative n'a
+      pas d'ère, elle a une date.
+    - **courante** : `[première année du groupe, première année du groupe
+      SUIVANT du même pays − 1]`. La borne haute ne se lit PAS dans `coins` :
+      `coins` ne contient que les millésimes déjà catalogués, donc
+      `MAX(year)` d'un type encore frappé serait faux d'autant d'années qu'il
+      reste à frapper. Un design court jusqu'à ce que le suivant paraisse.
+      Mesuré : `es-2euro-juan-carlos-i-t1` = (1999, 2009), `t2` = (2010, 2014),
+      `felipe-vi-t1` = (2015, `ERA_OPEN`).
+
+    LES DEUX GRAINS, ENCORE (cf. `class_country`)
+    ---------------------------------------------
+    `class_id` est tantôt un `eurio_id` (grain BANQUE : tout ce qui vient de
+    `class_need`), tantôt un `design_group_id` (grain `coins` : la pêche saisie
+    à la main). On résout l'`eurio_id` d'abord — c'est lui qui porte le
+    millésime d'une commémorative d'émission commune, que le groupe noierait
+    dans les 18 pays qui l'ont frappée.
+    """
+    row = conn.execute(
+        "SELECT design_group_id, is_commemorative, country, year "
+        "  FROM coins WHERE eurio_id = ?",
+        (class_id,),
+    ).fetchone()
+    if row is not None:
+        dgid, is_commemo, country, year = row[0], row[1], row[2], row[3]
+        if is_commemo:
+            return (int(year), int(year)) if year is not None else None
+        group = dgid or class_id
+    else:
+        # Grain `coins` : le groupe. `MIN(is_commemorative)` vaut 1 seulement si
+        # TOUS les membres sont commémoratifs — un groupe mixte est traité comme
+        # une courante, c'est-à-dire par ère, ce qui est le cas le plus large.
+        g = conn.execute(
+            "SELECT MIN(year), MAX(year), MIN(is_commemorative), country, COUNT(*) "
+            "  FROM coins WHERE COALESCE(design_group_id, eurio_id) = ? "
+            " GROUP BY country ORDER BY COUNT(*) DESC LIMIT 1",
+            (class_id,),
+        ).fetchone()
+        if g is None or g[0] is None:
+            return None
+        if g[2]:
+            return (int(g[0]), int(g[1]))
+        group, country = class_id, g[3]
+    if country is None:
+        return None
+
+    lo = conn.execute(
+        "SELECT MIN(year) FROM coins "
+        " WHERE COALESCE(design_group_id, eurio_id) = ? AND is_commemorative = 0",
+        (group,),
+    ).fetchone()[0]
+    if lo is None:
+        return None
+    nxt = conn.execute(
+        "SELECT MIN(m) FROM ("
+        "  SELECT MIN(year) AS m FROM coins "
+        "   WHERE country = ? AND face_value = 2.0 AND is_commemorative = 0 "
+        "   GROUP BY COALESCE(design_group_id, eurio_id) HAVING m > ?)",
+        (country, int(lo)),
+    ).fetchone()[0]
+    return (int(lo), int(nxt) - 1 if nxt is not None else ERA_OPEN)
+
+
+def _era_predicate(alias: str, era: tuple[int, int]) -> tuple[str, list[object]]:
+    """« le titre de l'annonce ne CONTREDIT pas l'ère de la classe ».
+
+    ⛔ **La sémantique d'intervalle n'est pas un détail d'implémentation.**
+    `years_json = [1999, 2012]` est lu comme l'intervalle `[1999 … 2012]`, PAS
+    comme l'énumération `{1999, 2012}` : un titre « 1999–2012 » ne contient pas
+    littéralement `2004`, et une commémorative de 2004 se ferait écarter à tort.
+    La règle est donc, avec `Y = years_json` :
+
+        contradiction  ⇔  NOT (min(Y) <= era_hi AND era_lo <= max(Y))
+
+    Coût mesuré de la confusion : le rappel des lots tombe de 85,4 % à 74,2 %.
+    Le test de mutation de `tests/test_dino_scope.py` est exactement celui-là.
+
+    `MIN`/`MAX` plutôt que `Y[0]`/`Y[-1]` : même règle, sans parier sur l'ordre
+    d'écriture du tableau.
+
+    Trois façons de NE PAS contredire, et elles passent toutes les trois :
+    aucune ligne de signaux, `years_json` vide, ou les deux intervalles se
+    recoupent. Le silence n'est pas une contradiction — c'est la règle qui rend
+    ce filtre gratuit en vrais positifs.
+    """
+    return (
+        f"NOT EXISTS (SELECT 1 FROM listing_text_signals lts_era"
+        f" WHERE lts_era.source_image_id = {alias}.id"
+        f"   AND json_array_length(lts_era.years_json) > 0"
+        f"   AND NOT ("
+        f"(SELECT MIN(CAST(j.value AS INTEGER)) FROM json_each(lts_era.years_json) j) <= ?"
+        f" AND "
+        f"(SELECT MAX(CAST(j.value AS INTEGER)) FROM json_each(lts_era.years_json) j) >= ?))",
+        [era[1], era[0]],
+    )
+
+
+def _denom_predicate(alias: str, min_denom: float) -> tuple[str, list[object]]:
+    """« la probe ne dit pas que ce crop n'est pas une 2 € ».
+
+    `IS NULL` passe : la probe ne couvre que 7 910 des 12 454 crops, et écarter
+    l'inconnu ferait de cette porte un filtre de couverture déguisé en filtre de
+    dénomination. Un signal absent n'est pas un signal négatif — c'est la même
+    règle que pour l'ère.
+    """
+    return (
+        f"({alias}.denom_2eur_score IS NULL OR {alias}.denom_2eur_score >= ?)",
+        [float(min_denom)],
+    )
+
+
 def _class_predicate(
     alias: str, class_ids: tuple[str, ...], rank: int,
 ) -> tuple[str, list[object]]:
@@ -179,16 +315,30 @@ def _class_predicate(
     )
 
 
-def _probe_country(
+def _probe(
     conn: sqlite3.Connection,
     *,
     bits: list[str],
     args: list[object],
-    country: str,
-) -> tuple[bool, int]:
-    """Le filtre pays viderait-il la file, et combien masque-t-il ?
+    gate_sql: str,
+    gate_args: list[object],
+    country: str | None,
+) -> tuple[int, int, int]:
+    """Ce qu'un filtre retire, sur la file OUVERTE — en une requête.
 
-    Rend `(desarme, n_masques)`.
+    `gate_sql` est la condition dont on mesure l'effet : l'ère au premier
+    passage, la porte dénomination au second (elle se compte alors sur ce qui a
+    déjà survécu à l'ère et au pays, d'où deux appels et non deux colonnes).
+
+    Rend `(brut, apres_gate, apres_gate_et_pays)`. Les trois comptes sont
+    **emboîtés**, dans l'ordre où le WHERE les applique : ère d'abord (elle ne
+    coûte aucun vrai positif), pays ensuite (il en coûte ~5 %). Les compter
+    séparément donnerait deux effets qui ne s'additionnent pas, et un écran qui
+    annonce « 12 masqués par l'ère + 8 par le pays » au-dessus d'une file qui en
+    a perdu 15.
+
+    C'est aussi ce qui décide le désarmement du pays : il se décide sur le pool
+    APRÈS ère, seul pool que la file servira réellement.
 
     LA POPULATION SONDÉE, ET POURQUOI CELLE-LÀ
     ------------------------------------------
@@ -218,26 +368,24 @@ def _probe_country(
     reste rien (VISION §V3).
     """
     where = " AND ".join(bits) if bits else "1"
+    era_ok = gate_sql or "1"
+    pays_ok = "si.listing_country = ?" if country else "1"
     row = conn.execute(
         f"""
         SELECT COUNT(*) AS brut,
-               SUM(CASE WHEN si.listing_country = ? THEN 1 ELSE 0 END) AS pays
+               SUM(CASE WHEN {era_ok} THEN 1 ELSE 0 END) AS apres_gate,
+               SUM(CASE WHEN ({era_ok}) AND ({pays_ok}) THEN 1 ELSE 0 END) AS apres_pays
           FROM review_queue rq
           JOIN image_assets a ON a.id = rq.image_asset_id
           JOIN source_images si ON si.id = a.source_image_id
           {suggestions_join_sql("ps")}
          WHERE rq.status = 'open' AND {where}
         """,
-        (country, *args),
+        (*gate_args, *gate_args, *([country] if country else []), *args),
     ).fetchone()
-    brut = int(row["brut"] or 0)
-    pays = int(row["pays"] or 0)
-    # La règle, telle qu'elle est déjà écrite pour `class_country` : le filtre
-    # se retire plutôt que de rendre zéro. Un pool brut vide n'est PAS un
-    # désarmement — il n'y a simplement rien, et c'est un sujet de scrape.
-    if brut > 0 and pays == 0:
-        return True, 0
-    return False, max(brut - pays, 0)
+    return (
+        int(row[0] or 0), int(row[1] or 0), int(row[2] or 0),
+    )
 
 
 @dataclass(frozen=True)
@@ -246,6 +394,11 @@ class DinoScope:
 
     `sql` est vide quand le périmètre ne contraint rien (ni classe ni marge) :
     l'appelant peut le concaténer sans brancher.
+
+    ⚠️ **La requête de l'appelant DOIT joindre `source_images`** sous le nom
+    passé en `source_alias` : depuis O4a le périmètre par défaut porte le filtre
+    d'ère, qui lit l'annonce. Sans la jointure, `no such column: si.id` — une
+    panne bruyante, préférable de loin à un filtre qui s'évanouit en silence.
     """
 
     sql: str
@@ -268,6 +421,19 @@ class DinoScope:
     #: ne masque alors plus rien). Un filtre actif par défaut qui tait son effet
     #: ment par omission.
     n_hidden_by_country: int = 0
+    #: L'ère de la classe, `(première, dernière)` bornes incluses, ou `None`
+    #: quand elle ne se résout pas — auquel cas le filtre d'ère ne s'applique
+    #: pas, comme `country=None` désactive le filtre pays.
+    era: tuple[int, int] | None = None
+    #: Ce que la contradiction d'ère écarte, sur la file ouverte de la classe.
+    #: Compté AVANT le filtre pays : les trois comptes sont emboîtés dans
+    #: l'ordre du WHERE, jamais additionnables autrement (cf. `_probe`).
+    n_hidden_by_era: int = 0
+    #: Ce que la porte dénomination écarterait en plus, une fois l'ère et le
+    #: pays appliqués. Reste 0 quand la porte n'est pas armée (`min_denom=None`,
+    #: le défaut) : un compteur qui parlerait d'un filtre inactif ferait croire
+    #: à une perte qui n'a pas lieu.
+    n_hidden_by_denom: int = 0
 
     @property
     def is_empty(self) -> bool:
@@ -287,7 +453,9 @@ def build_dino_scope(
     min_spread: float | None = None,
     alias: str = "ps",
     country_only: bool = False,
-    country_alias: str = "si",
+    era_only: bool = True,
+    min_denom: float | None = None,
+    source_alias: str = "si",
 ) -> DinoScope:
     """Construit « la prédiction pointe cette classe », en SQL.
 
@@ -305,8 +473,14 @@ def build_dino_scope(
     `min_spread` filtre sur `COALESCE(country_spread, spread)`, la grandeur que
     le verdict utilise réellement.
 
+    `source_alias` est l'alias de `source_images` DANS LA REQUÊTE DE L'APPELANT
+    — `si` ici, `s` dans `list_queue`. Les deux filtres qui lisent l'annonce
+    (pays et ère) s'y accrochent. Se tromper d'alias donne un `no such column`
+    bruyant, et c'est voulu : un filtre qui rate en silence sert le pool entier
+    en croyant l'avoir restreint.
+
     `country_only` restreint aux annonces du PAYS DE LA CLASSE
-    (`{country_alias}.listing_country`). Mesuré le 2026-08-20 sur les crops déjà
+    (`{source_alias}.listing_country`). Mesuré le 2026-08-20 sur les crops déjà
     tranchés par un humain, à la maille classe :
 
         courantes       precision 91,3 % (n=392)  -> 99,1 %   vrais gardés 340/358 = 95,0 %
@@ -329,7 +503,23 @@ def build_dino_scope(
 
     ⛔ Ce n'est PAS le repli automatique écarté en D1 de `peche-dino` : là-bas le
     périmètre dépendait de l'**item**, ici la bascule dépend de la **classe**,
-    elle est calculée une fois, et elle est affichée. Cf. `_probe_country`.
+    elle est calculée une fois, et elle est affichée. Cf. `_probe`.
+
+    `era_only` (**actif par défaut**, O4a) écarte les crops dont le titre
+    CONTREDIT l'ère de la classe — intervalle contre intervalle, jamais une
+    énumération (cf. `_era_predicate`). Il est actif par défaut parce qu'il ne
+    coûte aucun vrai positif en mesure : lots/courantes 47 servis à 91,5 % →
+    45 à 95,6 %, lots/commémos strictement inchangés, singles/courantes
+    299 → 296 à 100 %. Son premier effet visible est de retirer de la tête de la
+    file belge le lot « 14 Stück (1999–2012) » : 9 crops marqués Philippe dans
+    une annonce où aucune pièce ne peut l'être (ère 2014+).
+
+    `min_denom` (**inactif par défaut**, O4b) est un seuil sur
+    `{alias}.denom_2eur_score`. `DEFAULT_MIN_DENOM = 0,4` garde 95,3 % des 2 €
+    labellisées : il coûte donc ~5 % de vrais positifs, ce qui en fait un choix
+    d'opérateur et non une règle. Ne PAS l'armer par défaut est la décision ; le
+    scope dit `n_hidden_by_denom` pour que l'écran puisse la proposer avec son
+    prix.
 
     ⛔ **Ne pas confondre avec le top-1 SCOPÉ PAYS** (`top1_country_eurio_id`,
     déjà en base). Mesuré le même jour : il ne gagne que 1,2 point (91,3 →
@@ -361,30 +551,79 @@ def build_dino_scope(
         )
         args.append(float(min_spread))
 
+    # Les conditions de la SONDE : les mêmes que le périmètre, mais avec les
+    # alias qu'elle contrôle (`ps` / `si`) — ceux de l'appelant n'existent pas
+    # dans sa requête. Construites une fois, relues par chaque filtre.
+    probe_bits: list[str] = []
+    probe_args: list[object] = []
+    if class_ids:
+        _b, _a = _class_predicate("ps", class_ids, rank)
+        probe_bits.append(_b)
+        probe_args.extend(_a)
+    if min_spread is not None:
+        probe_bits.append("COALESCE(ps.country_spread, ps.spread) >= ?")
+        probe_args.append(float(min_spread))
+
+    # L'ÈRE (O4a). Elle se calcule avant le pays parce que le désarmement du
+    # pays se décide sur le pool que la file servira, c'est-à-dire après ère.
+    era: tuple[int, int] | None = None
+    era_sql, era_args = "", []
+    if era_only and dino_class:
+        era = class_era(conn, dino_class)
+        if era is not None:
+            era_sql, era_args = _era_predicate(source_alias, era)
+            bits.append(era_sql)
+            args.extend(era_args)
+
     country: str | None = None
     disarmed = False
-    n_hidden = 0
-    if country_only and dino_class:
-        country = class_country(conn, dino_class)
+    n_hidden_era = 0
+    n_hidden_country = 0
+    if (era is not None) or (country_only and dino_class):
+        country = (
+            class_country(conn, dino_class) if country_only and dino_class else None
+        )
+        probe_era_sql = _era_predicate("si", era)[0] if era is not None else ""
+        brut, apres_ere, apres_pays = _probe(
+            conn, bits=probe_bits, args=probe_args,
+            gate_sql=probe_era_sql, gate_args=list(era_args), country=country,
+        )
+        n_hidden_era = max(brut - apres_ere, 0)
         if country:
-            # La sonde se rejoue avec les MÊMES conditions que le périmètre,
-            # mais avec les alias qu'elle contrôle (`ps` / `si`) : ceux de
-            # l'appelant n'existent pas dans sa requête.
-            probe_bits: list[str] = []
-            probe_args: list[object] = []
-            if class_ids:
-                b, a = _class_predicate("ps", class_ids, rank)
-                probe_bits.append(b)
-                probe_args.extend(a)
-            if min_spread is not None:
-                probe_bits.append("COALESCE(ps.country_spread, ps.spread) >= ?")
-                probe_args.append(float(min_spread))
-            disarmed, n_hidden = _probe_country(
-                conn, bits=probe_bits, args=probe_args, country=country,
-            )
-            if not disarmed:
-                bits.append(f"{country_alias}.listing_country = ?")
+            # La règle, telle qu'elle est déjà écrite pour `class_country` : le
+            # filtre se retire plutôt que de rendre zéro. Un pool vide AVANT lui
+            # n'est PAS un désarmement — il n'y a simplement rien à trancher, et
+            # c'est un sujet de scrape.
+            disarmed = apres_ere > 0 and apres_pays == 0
+            if disarmed:
+                n_hidden_country = 0
+            else:
+                n_hidden_country = max(apres_ere - apres_pays, 0)
+                bits.append(f"{source_alias}.listing_country = ?")
                 args.append(country)
+
+    # LA PORTE DÉNOMINATION (O4b) — inactive par défaut, en dernier parce
+    # qu'elle se compte sur ce qui reste une fois l'ère et le pays passés.
+    n_hidden_denom = 0
+    if min_denom is not None:
+        denom_sql, denom_args = _denom_predicate(alias, min_denom)
+        if dino_class:
+            probe_bits2 = list(probe_bits)
+            probe_args2 = list(probe_args)
+            if era is not None:
+                probe_bits2.append(_era_predicate("si", era)[0])
+                probe_args2.extend(era_args)
+            if country and not disarmed:
+                probe_bits2.append("si.listing_country = ?")
+                probe_args2.append(country)
+            base, reste, _ = _probe(
+                conn, bits=probe_bits2, args=probe_args2,
+                gate_sql=_denom_predicate("ps", min_denom)[0],
+                gate_args=list(denom_args), country=None,
+            )
+            n_hidden_denom = max(base - reste, 0)
+        bits.append(denom_sql)
+        args.extend(denom_args)
 
     return DinoScope(
         sql=" AND ".join(bits),
@@ -393,5 +632,8 @@ def build_dino_scope(
         rank=rank,
         country=country,
         country_disarmed=disarmed,
-        n_hidden_by_country=n_hidden,
+        n_hidden_by_country=n_hidden_country,
+        era=era,
+        n_hidden_by_era=n_hidden_era,
+        n_hidden_by_denom=n_hidden_denom,
     )

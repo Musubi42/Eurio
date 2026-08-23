@@ -40,7 +40,6 @@ from pydantic import BaseModel
 from serving.auth_principal import Principal, require_scope
 from serving.deps import db_connection
 from shared.class_need import all_needs
-from shared.dino_scope import build_dino_scope
 
 router = APIRouter(tags=["besoin"])
 
@@ -109,7 +108,14 @@ class ClassNeedRow(BaseModel):
     #: L'écran DOIT le lire : sinon il annonce « pays LU » au-dessus d'une file
     #: qui sert tous les pays, et le lien qu'il propose sert zéro.
     country_disarmed: bool
+    #: O4 — ce que CHAQUE filtre retire, dans l'ordre où le WHERE les applique.
+    #: Emboîtés : `pending − era − country − denom = pending_scoped`. Un filtre
+    #: actif par défaut qui tait son effet ment par omission (D9).
+    n_hidden_by_era: int
     n_hidden_by_country: int
+    #: 0 tant que l'opérateur n'arme pas la porte (`?min_denom=`), inactive par
+    #: défaut : elle coûte ~5 % de vrais positifs, c'est un choix, pas une règle.
+    n_hidden_by_denom: int
 
 
 class ClassNeedResponse(BaseModel):
@@ -126,6 +132,8 @@ ClassNeed_FIELDS = (
     "class_id", "label", "country", "family", "have", "cap", "target",
     "need", "pending", "pending_scoped", "best_margin", "bottleneck",
     "n_train_eligible", "accepted_pending",
+    "country_disarmed", "n_hidden_by_era", "n_hidden_by_country",
+    "n_hidden_by_denom",
 )
 
 
@@ -154,6 +162,7 @@ def get_class_need(
     conn: ConnDep,
     anchors_kind: str = Query(default="2eur_all"),
     encoder_version: str = Query(default="dinov2-vitl14"),
+    min_denom: float | None = Query(default=None, ge=0.0, le=1.0),
 ) -> ClassNeedResponse:
     """Le besoin de toutes les classes de la banque, avec l'effet des filtres.
 
@@ -176,21 +185,17 @@ def get_class_need(
 
     needs = all_needs(
         conn, anchors_kind=anchors_kind, encoder_version=encoder_version,
+        min_denom=min_denom,
     )
 
-    rows: list[ClassNeedRow] = []
-    for n in needs:
-        # ⛔ On passe par `build_dino_scope`, jamais par une requête d'effet
-        # pays réécrite ici : deux rédactions de la même règle divergeraient, et
-        # la page annoncerait un désarmement que la pêche n'applique pas.
-        scope = build_dino_scope(
-            conn, dino_class=n.class_id, country_only=True,
-        )
-        rows.append(ClassNeedRow(
-            **{f: getattr(n, f) for f in ClassNeed_FIELDS},
-            country_disarmed=scope.country_disarmed,
-            n_hidden_by_country=scope.n_hidden_by_country,
-        ))
+    # ⛔ L'effet des filtres vient de `ClassNeed`, qui le tient de
+    # `build_dino_scope` — jamais d'une requête réécrite ici. Depuis le lot 6
+    # c'est le MÊME calcul qui décide `pending_scoped`, donc le verdict : une
+    # seconde rédaction ferait diverger la ligne de son propre verdict.
+    rows = [
+        ClassNeedRow(**{f: getattr(n, f) for f in ClassNeed_FIELDS})
+        for n in needs
+    ]
 
     n_open = int(conn.execute(
         "SELECT COUNT(*) AS n FROM review_queue WHERE status = 'open'",

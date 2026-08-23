@@ -53,6 +53,10 @@ from typing import Final
 
 from shared.bank_classes import bank_class_ids
 from shared.class_family import EMISSION_COMMUNE, emission_commune_group_ids, family_from_coin
+from shared.verdict_scope import (
+    SUGGESTIONS_ANCHORS_KIND,
+    SUGGESTIONS_ENCODER_VERSION,
+)
 
 __all__ = [
     "BOTTLENECKS",
@@ -109,6 +113,19 @@ class ClassNeed:
     bottleneck: str          # pleine | review | scrape
     n_train_eligible: int    # voie A, pour affichage seulement — JAMAIS pour le verdict
     accepted_pending: int    # ACQUIS : validés, pas encore en banque (D8)
+    # L'EFFET DE CHAQUE FILTRE, jamais tu (O4). Ces trois comptes sont
+    # EMBOÎTÉS dans l'ordre où le WHERE les applique :
+    #     pending − n_hidden_by_era − n_hidden_by_country − n_hidden_by_denom
+    #       = pending_scoped
+    # Les lire comme trois effets indépendants ferait dire à l'écran « 12 + 8
+    # masqués » au-dessus d'une file qui en a perdu 15.
+    n_hidden_by_era: int = 0
+    n_hidden_by_country: int = 0
+    n_hidden_by_denom: int = 0
+    #: Le filtre pays s'est-il RETIRÉ parce qu'il ne laissait rien (O4c) ? Le
+    #: geste que l'écran propose doit alors porter `pays=tous`, sinon il ouvre
+    #: une file vide sous un compte non nul.
+    country_disarmed: bool = False
 
     # NOTE `need` vs `bottleneck` : ils ne comptent PAS la même chose, et c'est
     # voulu. `need` est ce qui manque À LA BANQUE (`target − have`) : il alimente
@@ -120,10 +137,22 @@ class ClassNeed:
     # « il manque encore un exemplaire en banque, mais il est déjà acquis ».
     # Aligner les deux ferait mentir l'un des deux.
 
-    # NOTE `pending_scoped` : les filtres par signaux d'O4 ne sont pas
-    # implémentés dans ce lot ; `pending_scoped == pending` jusque-là. Le champ
-    # existe dès maintenant pour que le verdict lise la bonne grandeur le jour
-    # où les filtres arrivent — sans que l'écran change.
+    # NOTE `pending_scoped` : c'est ce que LA FILE SERT, filtres d'O4 compris
+    # (ère, pays auto-désarmé, dénomination si l'opérateur l'arme) — le même
+    # périmètre que `/review/peche?class=<class_id>&need=1`, calculé par
+    # `shared.dino_scope`, jamais par une requête réécrite ici. Deux rédactions
+    # de la même règle divergent, et l'écart n'est alors réconciliable qu'à la
+    # soustraction.
+    #
+    # ⚠️ Ce champ décide du verdict `review` : une classe dont TOUS les
+    # candidats tombent sous les filtres bascule en `scrape` — c'est voulu,
+    # l'envoyer en review serait l'envoyer devant une file vide.
+    #
+    # Une seule exception, explicite : sur une banque autre que celle des
+    # SUGGESTIONS (`shared.verdict_scope`), les filtres n'ont pas de sens — ils
+    # lisent les prédictions de cette banque-là — et `pending_scoped` retombe
+    # sur `pending` plutôt que de rendre un nombre bâti sur la mauvaise
+    # population.
 
 
 def target_for_family(family: str) -> int:
@@ -265,6 +294,54 @@ def _accepted_pending_by_class(
     return {r[0]: int(r[1]) for r in rows}
 
 
+def _scoped_pending(
+    conn: sqlite3.Connection, class_id: str, *, min_denom: float | None,
+) -> tuple[int, int, int, int, bool]:
+    """Ce que la file SERT pour cette classe, et ce que chaque filtre lui retire.
+
+    Rend `(pending_scoped, n_hidden_by_era, n_hidden_by_country,
+    n_hidden_by_denom, country_disarmed)`.
+
+    ⛔ Le périmètre est construit par `shared.dino_scope.build_dino_scope`, avec
+    exactement les réglages que la pêche applique par défaut (rang 1, ère active,
+    pays actif et auto-désarmé). Récrire ces filtres ici ferait de `/besoin` un
+    second calcul du même fait : la page annoncerait N, la file en servirait M,
+    et l'écart ne serait réconciliable qu'à la soustraction. C'est précisément la
+    dette que ce lot ferme.
+
+    Le compte se fait sur la même population que `_pending_by_class` —
+    `review_queue.status = 'open'` — parce que c'est elle que `list_queue` sert.
+    """
+    from shared.dino_scope import build_dino_scope
+
+    scope = build_dino_scope(
+        conn, dino_class=class_id, rank=1, country_only=True,
+        min_denom=min_denom,
+    )
+    if scope.is_empty:
+        return 0, 0, 0, 0, False
+    n = int(conn.execute(
+        f"""
+        SELECT COUNT(*) FROM review_queue rq
+          JOIN image_assets a ON a.id = rq.image_asset_id
+          JOIN source_images si ON si.id = a.source_image_id
+          {_suggestions_join()}
+         WHERE rq.status = 'open' AND {scope.sql}
+        """,
+        scope.args,
+    ).fetchone()[0] or 0)
+    return (
+        n, scope.n_hidden_by_era, scope.n_hidden_by_country,
+        scope.n_hidden_by_denom, scope.country_disarmed,
+    )
+
+
+def _suggestions_join() -> str:
+    from shared.dino_scope import suggestions_join_sql
+
+    return suggestions_join_sql("ps")
+
+
 def _train_eligible_by_key(conn: sqlite3.Connection) -> dict[str, int]:
     """Voie A, avec les QUATRE conditions du bake, à la maille `coins`.
 
@@ -323,6 +400,7 @@ def _build(
     anchors_kind: str,
     encoder_version: str,
     only: set[str] | None,
+    min_denom: float | None = None,
 ) -> list[ClassNeed]:
     have = _have_by_class(conn, anchors_kind, encoder_version)
     class_ids = sorted(have if only is None else (set(have) & only))
@@ -333,6 +411,10 @@ def _build(
     train = _train_eligible_by_key(conn)
     coins = _coins_for(conn, class_ids)
     ec_groups = emission_commune_group_ids(conn)
+    is_suggestions_bank = (
+        anchors_kind == SUGGESTIONS_ANCHORS_KIND
+        and encoder_version == SUGGESTIONS_ENCODER_VERSION
+    )
 
     missing = [c for c in class_ids if c not in coins]
     if missing:
@@ -348,7 +430,17 @@ def _build(
         family = family_from_coin(dgid, is_commemo, face_value, ec_groups)
         h = have[class_id]
         n_pending, best_margin = pending.get(class_id, (0, None))
-        pending_scoped = n_pending  # O4 non implémenté : cf. note sur le champ
+        # Les filtres d'O4 lisent les prédictions de la banque des SUGGESTIONS.
+        # Sur une autre banque ils porteraient sur une population qui n'est pas
+        # celle qu'on compte : on retombe alors sur `pending`, sans rien
+        # prétendre filtrer (cf. la note sur le champ).
+        if n_pending and is_suggestions_bank:
+            (pending_scoped, n_era, n_country, n_denom,
+             disarmed) = _scoped_pending(conn, class_id, min_denom=min_denom)
+        else:
+            pending_scoped, n_era, n_country, n_denom, disarmed = (
+                n_pending, 0, 0, 0, False,
+            )
         target = target_for_family(family)
         n_accepted = accepted.get(class_id, 0)
         out.append(ClassNeed(
@@ -369,19 +461,27 @@ def _build(
             ),
             n_train_eligible=train.get(_train_key(class_id, dgid, is_commemo), 0),
             accepted_pending=n_accepted,
+            n_hidden_by_era=n_era,
+            n_hidden_by_country=n_country,
+            n_hidden_by_denom=n_denom,
+            country_disarmed=disarmed,
         ))
     return out
 
 
 def all_needs(
-    conn: sqlite3.Connection, *, anchors_kind: str, encoder_version: str
+    conn: sqlite3.Connection, *, anchors_kind: str, encoder_version: str,
+    min_denom: float | None = None,
 ) -> list[ClassNeed]:
     """Le besoin de TOUTES les classes de la banque `(anchors_kind, encoder_version)`.
 
     Une classe par `class_id` de `dino_class_references`, les pleines comprises.
     Triées par `class_id` — l'écran réordonne.
     """
-    return _build(conn, anchors_kind=anchors_kind, encoder_version=encoder_version, only=None)
+    return _build(
+        conn, anchors_kind=anchors_kind, encoder_version=encoder_version,
+        only=None, min_denom=min_denom,
+    )
 
 
 def need_for(

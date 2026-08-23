@@ -528,6 +528,8 @@ def list_queue(
     dino_class: str | None = None,
     dino_rank: int = 1,
     dino_country_only: bool = True,
+    dino_era_only: bool = True,
+    dino_min_denom: float | None = None,
     run_ids: list[str] | None = None,
     need_only: bool = False,
 ) -> list[ReviewItem]:
@@ -563,14 +565,15 @@ def list_queue(
     # LA PLACE du scope par cible (eurio_id / cohort_id) au lieu de s'y ajouter
     # — les combiner rendrait les lots inatteignables, qui sont précisément le
     # gisement qu'on vient chercher. Cf. shared/dino_scope.
-    # ⚠️ `country_alias='s'` : dans CETTE requête, source_images porte l'alias
-    # `s`. Se tromper d'alias donne un `no such column` bruyant — c'est voulu,
-    # un filtre pays qui rate en silence servirait le pool entier en croyant
-    # l'avoir restreint.
+    # ⚠️ `source_alias='s'` : dans CETTE requête, source_images porte l'alias
+    # `s`. Les deux filtres qui lisent l'annonce (pays, ère) s'y accrochent. Se
+    # tromper d'alias donne un `no such column` bruyant — c'est voulu, un filtre
+    # qui rate en silence servirait le pool entier en croyant l'avoir restreint.
     scope = build_dino_scope(
         conn, dino_class=dino_class, rank=dino_rank,
         min_spread=dino_min_spread,
-        country_only=dino_country_only, country_alias="s",
+        country_only=dino_country_only, era_only=dino_era_only,
+        min_denom=dino_min_denom, source_alias="s",
     )
 
     wanted_classes: list[str] = []
@@ -818,6 +821,8 @@ def _lot_scope(
     dino_rank: int = 1,
     dino_min_spread: float | None = None,
     dino_country_only: bool = True,
+    dino_era_only: bool = True,
+    dino_min_denom: float | None = None,
     run_ids: list[str] | None = None,
     need_only: bool = False,
 ) -> tuple[str, str, str, list[object]]:
@@ -858,7 +863,8 @@ def _lot_scope(
         scope = build_dino_scope(
             conn, dino_class=dino_class, rank=dino_rank,
             min_spread=dino_min_spread,
-            country_only=dino_country_only, country_alias="si",
+            country_only=dino_country_only, era_only=dino_era_only,
+            min_denom=dino_min_denom, source_alias="si",
         )
         if scope.is_empty:  # classe absente ET marge absente : rien à pêcher
             return "", "", "", []
@@ -954,6 +960,8 @@ def list_lots(
     dino_rank: int = 1,
     dino_min_spread: float | None = None,
     dino_country_only: bool = True,
+    dino_era_only: bool = True,
+    dino_min_denom: float | None = None,
     run_ids: list[str] | None = None,
     need_only: bool = False,
 ) -> tuple[list[LotListItem], int]:
@@ -974,7 +982,8 @@ def list_lots(
             conn, cohort_id=cohort_id, target_eurio_id=target_eurio_id,
             design_group=design_group, dino_class=dino_class,
             dino_rank=dino_rank, dino_min_spread=dino_min_spread,
-            dino_country_only=dino_country_only, run_ids=run_ids,
+            dino_country_only=dino_country_only, dino_era_only=dino_era_only,
+            dino_min_denom=dino_min_denom, run_ids=run_ids,
             need_only=need_only,
         )
     except ValueError:
@@ -1172,6 +1181,8 @@ def dino_candidates_summary(
     dino_rank: int = 1,
     dino_min_spread: float | None = None,
     dino_country_only: bool = True,
+    dino_era_only: bool = True,
+    dino_min_denom: float | None = None,
     need_only: bool = False,
 ):
     """Combien de crops la banque rattache à cette classe, et où ils sont.
@@ -1202,7 +1213,8 @@ def dino_candidates_summary(
     scope = build_dino_scope(
         conn, dino_class=dino_class, rank=dino_rank,
         min_spread=dino_min_spread,
-        country_only=dino_country_only, country_alias="si",
+        country_only=dino_country_only, era_only=dino_era_only,
+        min_denom=dino_min_denom, source_alias="si",
     )
     if scope.is_empty:
         raise ValueError("dino_class requis")
@@ -1237,7 +1249,8 @@ def dino_candidates_summary(
     if scope.country_active:
         sans_filtre = build_dino_scope(
             conn, dino_class=dino_class, rank=dino_rank,
-            min_spread=dino_min_spread, country_alias="si",
+            min_spread=dino_min_spread, era_only=dino_era_only,
+            min_denom=dino_min_denom, source_alias="si",
         )
         n_other_country = max(_count(sans_filtre) - _count(scope), 0)
 
@@ -1430,6 +1443,8 @@ def lot_siblings(
     dino_rank: int = 1,
     dino_min_spread: float | None = None,
     dino_country_only: bool = True,
+    dino_era_only: bool = True,
+    dino_min_denom: float | None = None,
     run_ids: list[str] | None = None,
     need_only: bool = False,
 ) -> tuple[str | None, str | None]:
@@ -1445,7 +1460,8 @@ def lot_siblings(
             conn, cohort_id=cohort_id, target_eurio_id=target_eurio_id,
             design_group=design_group, dino_class=dino_class,
             dino_rank=dino_rank, dino_min_spread=dino_min_spread,
-            dino_country_only=dino_country_only, run_ids=run_ids,
+            dino_country_only=dino_country_only, dino_era_only=dino_era_only,
+            dino_min_denom=dino_min_denom, run_ids=run_ids,
             need_only=need_only,
         )
     except ValueError:
@@ -1473,6 +1489,8 @@ def get_lot_detail(
     dino_rank: int = 1,
     dino_min_spread: float | None = None,
     dino_country_only: bool = True,
+    dino_era_only: bool = True,
+    dino_min_denom: float | None = None,
     run_ids: list[str] | None = None,
     need_only: bool = False,
 ):
@@ -1533,14 +1551,15 @@ def get_lot_detail(
 
     matching_assets: set[str] | None = None
     if dino_class:
-        # Volontairement SANS `country_only` : le filtre pays choisit quels
-        # LISTINGS entrent dans la file, pas quels crops sont marqués dedans.
-        # Une fois le coffret ouvert, un crop du bon design reste un crop du bon
-        # design — masquer son ⌁ parce que l'annonce est étrangère mentirait sur
-        # ce que le modèle a dit.
+        # Volontairement SANS `country_only` NI `era_only` : ces deux filtres
+        # choisissent quels LISTINGS entrent dans la file, pas quels crops sont
+        # marqués dedans. Une fois le coffret ouvert, un crop du bon design
+        # reste un crop du bon design — masquer son ⌁ parce que l'annonce est
+        # étrangère, ou parce que son titre couvre une autre décennie,
+        # mentirait sur ce que le modèle a dit.
         _scope = build_dino_scope(
             conn, dino_class=dino_class, rank=dino_rank,
-            min_spread=dino_min_spread,
+            min_spread=dino_min_spread, era_only=False,
         )
         if not _scope.is_empty:
             _rows = conn.execute(
@@ -1655,7 +1674,8 @@ def get_lot_detail(
         cohort_id=cohort_id, target_eurio_id=target_eurio_id,
         design_group=design_group, dino_class=dino_class,
         dino_rank=dino_rank, dino_min_spread=dino_min_spread,
-        dino_country_only=dino_country_only, run_ids=run_ids,
+        dino_country_only=dino_country_only, dino_era_only=dino_era_only,
+            dino_min_denom=dino_min_denom, run_ids=run_ids,
         need_only=need_only,
     )
 

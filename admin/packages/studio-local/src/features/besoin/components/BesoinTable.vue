@@ -53,6 +53,24 @@ function effet(r: ClassNeedRow): { text: string; kind: string; title: string } |
       title: "Aucun crop en file pour cette classe : le goulot n'est pas la review, c'est qu'on n'a jamais interrogé eBay. C'est un sujet de scrape.",
     }
   }
+  // O4a — tout le pool tombe sous les filtres : la classe relève du SCRAPE, et
+  // la ligne doit dire POURQUOI. Sans ce cas, elle afficherait « 0 candidat »
+  // à côté d'un `pending` non nul, ce qui se lit « bug », pas « écarté ».
+  if (r.pending_scoped === 0) {
+    return {
+      text: `${r.pending} candidat${r.pending > 1 ? 's' : ''} écarté${r.pending > 1 ? 's' : ''} par les filtres`,
+      kind: 'none',
+      title: `Les ${r.pending} crops que la banque marque de cette classe ne survivent à aucun filtre : ${r.n_hidden_by_era} contredits par l'ère (le titre de l'annonce ne peut pas contenir cette pièce), ${r.n_hidden_by_country} hors du pays, ${r.n_hidden_by_denom} sous le seuil de dénomination. Il n'y a rien à trancher : c'est un sujet de scrape.`,
+    }
+  }
+  if (r.n_hidden_by_era > 0) {
+    const pays = r.n_hidden_by_country > 0 ? ` · ${r.n_hidden_by_country} par le pays` : ''
+    return {
+      text: `${r.n_hidden_by_era} écarté${r.n_hidden_by_era > 1 ? 's' : ''} par l'ère${pays}`,
+      kind: 'hidden',
+      title: `Le titre de ces annonces couvre des années où cette pièce ne pouvait pas exister (ère de la classe). L'intervalle du titre est comparé à l'ère, jamais année par année — « 1999–2012 » contient 2004. Mesuré : le filtre ne coûte aucun vrai positif sur les lots.`,
+    }
+  }
   if (r.country_disarmed) {
     return {
       text: `pays ${r.country ?? '?'} désarmé — il ne laissait rien`,
@@ -79,8 +97,10 @@ function effet(r: ClassNeedRow): { text: string; kind: string; title: string } |
 
 function gesteLabel(r: ClassNeedRow): string {
   if (r.bottleneck === 'review') return 'pêcher'
-  if (r.bottleneck === 'pleine') return 'voir les parqués'
-  return `plan ${r.country ?? ''}`.trim()
+  // `scrape` n'a pas de libellé ici : son geste est un PLAN, rendu à part
+  // (moitié ACHETER) parce qu'il se compose au grain groupe de découverte et
+  // non à la classe. Une classe n'est jamais l'unité de coût d'un scrape.
+  return 'voir les parqués'
 }
 
 const anyDisarmed = computed(() => props.rows.some((r) => r.country_disarmed))
@@ -142,7 +162,10 @@ const anyDisarmed = computed(() => props.rows.some((r) => r.country_disarmed))
               v-else-if="gestureHref(r)" class="geste geste--locked"
               title="Trancher demande l'API ML locale (:8042). Ouvre le studio sur ton Mac. La lecture de cette page, elle, ne dépend de rien."
             >⊘ {{ gesteLabel(r) }} — local</span>
-            <span v-else class="geste geste--none" title="Le plan de scrape arrive au lot 5.">—</span>
+            <span
+              v-else class="geste geste--none"
+              :title="`Le geste d'une classe sans candidat n'est pas une file, c'est un PLAN : il se compose au grain groupe de découverte (pays · dénomination · année), pas à la classe — deux commémoratives d'un même pays et d'une même année ne coûtent qu'une recherche. Il vit dans la moitié ACHETER, en haut de cette page${r.country ? ` (pays ${r.country})` : ''}.`"
+            >→ plan, en haut</span>
           </td>
         </tr>
         <tr v-if="!rows.length">

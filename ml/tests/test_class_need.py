@@ -477,3 +477,131 @@ def test_bottleneck_for_accepte_les_acquis_en_argument():
     # Les acquis ne fabriquent pas de candidats : sans file, c'est du scrape.
     assert bottleneck_for(
         have=0, target=8, pending_scoped=0, accepted_pending=3) == "scrape"
+
+
+# ── O4 · `pending_scoped` porte enfin ce que la file SERT (lot 6) ────────────
+#
+# La dette que ces tests ferment : jusqu'au 2026-08-23, `pending_scoped` était
+# une copie de `pending`. La page `/besoin` comptait donc le pool BRUT là où la
+# pêche sert le pool FILTRÉ, et l'écart n'était réconciliable qu'à la
+# soustraction. Mesuré sur la réplique une fois le champ réel : Σ pending
+# 6 409 → Σ pending_scoped 3 176, et 50 classes basculent `review` → `scrape`.
+
+
+def _annonce(conn, ref: str, *, country: str | None = None, years=None) -> None:
+    """Le pays et les années de l'ANNONCE d'un crop déjà enfilé par `_open`."""
+    if country is not None:
+        conn.execute(
+            "UPDATE source_images SET listing_country = ? WHERE id = ?",
+            (country, f"si-{ref}"),
+        )
+    if years is not None:
+        conn.execute(
+            "INSERT INTO listing_text_signals (source_image_id, years_json, coverage)"
+            " VALUES (?,?,'rich')",
+            (f"si-{ref}", json.dumps(years)),
+        )
+    conn.commit()
+
+
+def test_une_classe_dont_l_ere_ecarte_tout_bascule_en_scrape(conn):
+    """⛔ C'est un CHANGEMENT DE SENS du verdict, et il est voulu.
+
+    Cas réel : `lu-2016-…charlotte-bridge` portait 20 candidats, tous issus
+    d'annonces belges de 2026 (« 100 Jahre NMBS ») que la banque marquait à
+    tort. Les envoyer en review, c'est envoyer un humain devant une file vide.
+    La classe relève du SCRAPE, et l'écran doit le dire.
+    """
+    _bank(conn, "fr-2016-commemo", 2)
+    for ref in ("faux1", "faux2"):
+        _open(conn, ref, "fr-2016-commemo")
+        _annonce(conn, ref, country="BE", years=[2026])
+
+    n = _by_id(all_needs(conn, anchors_kind=KIND, encoder_version=ENC))["fr-2016-commemo"]
+    assert n.pending == 2, "le pool brut ne bouge pas — il n'est pas censé mentir"
+    assert n.pending_scoped == 0
+    assert n.n_hidden_by_era == 2
+    assert n.bottleneck == "scrape"
+
+
+def test_les_effets_des_filtres_sont_emboites_et_somment(conn):
+    """`pending − era − country − denom = pending_scoped`, exactement.
+
+    Trois effets qu'on lirait comme indépendants donneraient « 1 + 1 masqués »
+    au-dessus d'une file qui en a perdu 2 : le badge et la file diraient deux
+    choses différentes, ce que ce dépôt paie cher à chaque fois.
+    """
+    _bank(conn, "fr-2016-commemo", 2)
+    _open(conn, "bon", "fr-2016-commemo")
+    _annonce(conn, "bon", country="FR", years=[2016])
+    _open(conn, "hors-ere", "fr-2016-commemo")
+    _annonce(conn, "hors-ere", country="FR", years=[2020])
+    _open(conn, "hors-pays", "fr-2016-commemo")
+    _annonce(conn, "hors-pays", country="DE", years=[2016])
+
+    n = _by_id(all_needs(conn, anchors_kind=KIND, encoder_version=ENC))["fr-2016-commemo"]
+    assert (n.pending, n.n_hidden_by_era, n.n_hidden_by_country) == (3, 1, 1)
+    assert n.pending_scoped == 1
+    assert n.pending - n.n_hidden_by_era - n.n_hidden_by_country \
+           - n.n_hidden_by_denom == n.pending_scoped
+    assert n.bottleneck == "review"
+    assert n.country_disarmed is False
+
+
+def test_le_pays_desarme_remonte_jusqu_a_la_ligne(conn):
+    """Sans ce drapeau, le geste proposé par `/besoin` ouvre une file vide.
+
+    La ligne annonce N candidats ; le lien doit alors porter `pays=tous`, sinon
+    la pêche réapplique son filtre par défaut et sert zéro. C'est le « badge qui
+    annonce 4 au-dessus d'une file qui en sert 3 », en pire.
+    """
+    _bank(conn, "fr-2016-commemo", 2)
+    for ref in ("de1", "de2"):
+        _open(conn, ref, "fr-2016-commemo")
+        _annonce(conn, ref, country="DE", years=[2016])
+
+    n = _by_id(all_needs(conn, anchors_kind=KIND, encoder_version=ENC))["fr-2016-commemo"]
+    assert n.country_disarmed is True
+    assert n.n_hidden_by_country == 0, "un filtre retiré ne masque rien"
+    assert (n.pending, n.pending_scoped, n.bottleneck) == (2, 2, "review")
+
+
+def test_la_porte_denomination_ne_se_ferme_que_si_on_l_arme(conn):
+    """Inactive par défaut : elle coûte ~5 % de vrais positifs (choix, pas règle)."""
+    _bank(conn, "fr-2016-commemo", 2)
+    _open(conn, "piecette", "fr-2016-commemo")
+    _annonce(conn, "piecette", country="FR", years=[2016])
+    conn.execute(
+        "UPDATE image_asset_dino_predictions SET denom_2eur_score = 0.05 "
+        "WHERE asset_id = 'a-piecette'",
+    )
+    conn.commit()
+
+    ouverte = _by_id(all_needs(conn, anchors_kind=KIND, encoder_version=ENC))
+    assert ouverte["fr-2016-commemo"].pending_scoped == 1
+    assert ouverte["fr-2016-commemo"].n_hidden_by_denom == 0
+
+    armee = _by_id(all_needs(
+        conn, anchors_kind=KIND, encoder_version=ENC, min_denom=0.4,
+    ))
+    assert armee["fr-2016-commemo"].pending_scoped == 0
+    assert armee["fr-2016-commemo"].n_hidden_by_denom == 1
+    assert armee["fr-2016-commemo"].bottleneck == "scrape"
+
+
+def test_une_autre_banque_ne_pretend_pas_filtrer(conn):
+    """Les filtres lisent les prédictions de la banque des SUGGESTIONS.
+
+    Sur une autre banque ils porteraient sur une population qui n'est pas celle
+    qu'on compte : `pending_scoped` retombe sur `pending` plutôt que de rendre
+    un nombre bâti sur la mauvaise population — et il le fait sans rien
+    prétendre filtrer.
+    """
+    _bank(conn, "fr-2016-commemo", 2, kind="2eur_commemo", enc="dinov2-vitb14")
+    _open(conn, "x", "fr-2016-commemo", kind="2eur_commemo", enc="dinov2-vitb14")
+    _annonce(conn, "x", country="BE", years=[2026])   # contredirait l'ère 2016
+
+    n = _by_id(all_needs(
+        conn, anchors_kind="2eur_commemo", encoder_version="dinov2-vitb14",
+    ))["fr-2016-commemo"]
+    assert (n.pending, n.pending_scoped, n.n_hidden_by_era) == (1, 1, 0)

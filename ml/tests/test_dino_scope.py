@@ -80,8 +80,14 @@ def _asset(conn, ref: str, *, top_k, top1, spread=None, country_spread=None):
 
 
 def _matching(conn, scope) -> list[str]:
+    # ⚠️ La jointure `source_images` n'est pas facultative : depuis O4a, le
+    # périmètre par défaut porte le filtre d'ère, qui lit l'annonce (`si.id`).
+    # Un appelant qui ne joint pas source_images se prend un `no such column`
+    # — bruyamment, et c'est voulu.
     rows = conn.execute(
-        f"SELECT a.id FROM image_assets a {suggestions_join_sql()} "
+        f"SELECT a.id FROM image_assets a "
+        f"JOIN source_images si ON si.id = a.source_image_id "
+        f"{suggestions_join_sql()} "
         f"WHERE {scope.sql} ORDER BY a.id",
         scope.args,
     ).fetchall()
@@ -441,3 +447,293 @@ def test_une_emission_commune_porte_SON_pays_pas_celui_du_groupe(conn):
     assert class_country(conn, "de-2012-cash") == "DE"
     # Le groupe lui-même reste résolu par majorité — c'est l'autre grain.
     assert class_country(conn, "eu-cash-2012") == "DE"
+
+
+# ─── O4a · la contradiction d'ère ───────────────────────────────────────────
+#
+# Ce que ces tests protègent, en un chiffre : lire `years_json = [1999, 2012]`
+# comme une ÉNUMÉRATION au lieu d'un INTERVALLE fait tomber le rappel des lots
+# de 85,4 % à 74,2 % (mesuré le 2026-08-20 ; rejoué le 2026-08-23 sur la
+# réplique : 100 % → 90,8 %, cf. `scripts/measure_o4_filters.py --enumeration`).
+# `test_l_ere_se_lit_en_intervalle_pas_en_enumeration` EST cette mutation.
+
+
+def _signals(conn, ref: str, years: list[int]) -> None:
+    """Les signaux du titre de l'annonce — la seule chose que l'ère lit."""
+    import json as _json
+    conn.execute(
+        "INSERT INTO listing_text_signals (source_image_id, years_json, coverage) "
+        "VALUES (?,?,'rich')",
+        (f"si-{ref}", _json.dumps(years)),
+    )
+    conn.commit()
+
+
+@pytest.fixture()
+def conn_eres(conn):
+    """Deux ères italiennes qui se suivent — sans quoi la borne haute est ouverte.
+
+    La borne haute d'une courante ne se lit pas dans `coins` (qui ne contient
+    que les millésimes déjà catalogués) mais dans le millésime du type SUIVANT.
+    """
+    conn.execute(
+        "INSERT INTO design_groups (id, designation) "
+        "VALUES ('it-2euro-standard-t2','IT 2€ standard (2e type)')",
+    )
+    conn.execute(
+        "INSERT INTO coins (eurio_id, country, year, face_value, numista_id,"
+        " is_commemorative, design_group_id) "
+        "VALUES ('it-2010-std','IT',2010,2.0,7,0,'it-2euro-standard-t2')",
+    )
+    conn.commit()
+    return conn
+
+
+def test_l_ere_d_une_classe_se_resout(conn_eres):
+    from shared.dino_scope import ERA_OPEN, class_era
+
+    # Courante : jusqu'au millésime du type suivant, moins 1.
+    assert class_era(conn_eres, "it-2euro-standard-t1") == (2002, 2009)
+    assert class_era(conn_eres, "it-2002-std") == (2002, 2009), "grain BANQUE"
+    # Le dernier type d'un pays court toujours : borne ouverte, pas MAX(year).
+    assert class_era(conn_eres, "it-2euro-standard-t2") == (2010, ERA_OPEN)
+    # Commémorative : son millésime, pas une ère.
+    assert class_era(conn_eres, "fr-2016-commemo") == (2016, 2016)
+    # Inconnue : `None`, ce qui DÉSACTIVE le filtre plutôt que de vider la file.
+    assert class_era(conn_eres, "zz-inexistante") is None
+
+
+def test_l_ere_ecarte_le_titre_qui_la_contredit(conn_eres):
+    """Le cas du terrain : « 14 Stück (1999–2012) » sous une classe de 2014+.
+
+    Mesuré sur la réplique le 2026-08-23 : ce lot était le PREMIER de la file
+    `be-2euro-philippe-t1` (10 crops marqués, `n_matching_crops DESC`) et il
+    disparaît entièrement — aucune pièce d'une annonce 1999–2012 ne peut être
+    une Philippe.
+    """
+    _listed(conn_eres, "vieux", "IT", "it-2010-std")
+    _signals(conn_eres, "vieux", [1999, 2008])       # tout avant l'ère 2010+
+    _listed(conn_eres, "dedans", "IT", "it-2010-std")
+    _signals(conn_eres, "dedans", [2011])
+
+    scope = build_dino_scope(conn_eres, dino_class="it-2euro-standard-t2")
+    assert _matching_listed(conn_eres, scope) == ["a-dedans"]
+
+
+def test_l_ere_se_lit_en_intervalle_pas_en_enumeration(conn_eres):
+    """⛔ LA MUTATION QUE LE PLAN EXIGE — et la seule qui compte ici.
+
+    `[1999, 2012]` est l'intervalle `1999 … 2012`, pas l'ensemble
+    `{1999, 2012}`. Un titre « 1999–2012 » ne contient pas littéralement
+    « 2004 », et une commémorative de 2004 s'y trouve pourtant. Traiter le
+    tableau en énumération produit une fausse contradiction sur TOUTES les
+    commémoratives des lots : rappel 85,4 % → 74,2 % à la mesure d'origine.
+
+    Si ce test reste vert après avoir forcé l'énumération dans
+    `_era_predicate`, c'est qu'il ne teste pas ce qu'on croit.
+    """
+    conn_eres.execute(
+        "INSERT INTO coins (eurio_id, country, year, face_value, numista_id,"
+        " is_commemorative) VALUES ('fr-2004-commemo','FR',2004,2.0,8,1)",
+    )
+    conn_eres.commit()
+    _listed(conn_eres, "lot", "FR", "fr-2004-commemo")
+    _signals(conn_eres, "lot", [1999, 2012])   # « 14 Stück (1999–2012) »
+
+    scope = build_dino_scope(conn_eres, dino_class="fr-2004-commemo")
+    assert _matching_listed(conn_eres, scope) == ["a-lot"], (
+        "2004 tombe DANS l'intervalle 1999–2012 : le crop reste servi. "
+        "En énumération il serait écarté à tort — c'est la chute de rappel "
+        "de 85,4 % à 74,2 % que la spec interdit."
+    )
+
+
+def test_le_rappel_des_lots_ne_bouge_pas_sous_l_ere(conn_eres):
+    """Le rappel, pas seulement un cas : l'ère ne coûte AUCUN vrai positif ici.
+
+    Cinq commémoratives 2004 réellement présentes dans des lots dont le titre
+    couvre une plage. En intervalle, les cinq restent servies (rappel 100 %).
+    En énumération, seules celles dont le titre nomme littéralement 2004
+    survivent — 2 sur 5, soit 40 %. C'est la même chute qu'à l'échelle réelle,
+    en miniature.
+    """
+    conn_eres.execute(
+        "INSERT INTO coins (eurio_id, country, year, face_value, numista_id,"
+        " is_commemorative) VALUES ('fr-2004-commemo','FR',2004,2.0,8,1)",
+    )
+    conn_eres.commit()
+    titres = {
+        "l1": [1999, 2012], "l2": [2002, 2009], "l3": [1999, 2006],
+        "l4": [2004], "l5": [2004, 2015],
+    }
+    for ref, years in titres.items():
+        _listed(conn_eres, ref, "FR", "fr-2004-commemo")
+        _signals(conn_eres, ref, years)
+
+    scope = build_dino_scope(conn_eres, dino_class="fr-2004-commemo")
+    gardes = _matching_listed(conn_eres, scope)
+    assert len(gardes) == len(titres), (
+        f"rappel {len(gardes)}/{len(titres)} — l'ère doit être gratuite en "
+        "vrais positifs ; en énumération elle n'en garderait que 2 sur 5"
+    )
+    assert scope.n_hidden_by_era == 0
+
+
+def test_le_silence_n_est_pas_une_contradiction(conn_eres):
+    """Trois façons de ne rien dire, trois crops servis.
+
+    Pas de ligne de signaux, `years_json` vide, ou des années qui recoupent :
+    aucune n'est une contradiction. C'est cette règle qui rend le filtre
+    gratuit — l'année manque sur 746 des 6 413 crops ouverts (réplique du
+    2026-08-23), et les écarter ferait de l'ère un filtre de couverture.
+    """
+    _listed(conn_eres, "muet", "IT", "it-2010-std")            # aucune ligne
+    _listed(conn_eres, "vide", "IT", "it-2010-std")
+    _signals(conn_eres, "vide", [])
+    _listed(conn_eres, "chevauche", "IT", "it-2010-std")
+    _signals(conn_eres, "chevauche", [1999, 2025])             # couvre l'ère
+
+    scope = build_dino_scope(conn_eres, dino_class="it-2euro-standard-t2")
+    assert _matching_listed(conn_eres, scope) == [
+        "a-chevauche", "a-muet", "a-vide",
+    ]
+
+
+def test_l_ere_dit_ce_qu_elle_masque(conn_eres):
+    """Un filtre actif par défaut qui tait son effet ment par omission (D9)."""
+    for ref, years in (("out1", [1999]), ("out2", [2001]), ("in", [2012])):
+        _listed(conn_eres, ref, "IT", "it-2010-std")
+        _signals(conn_eres, ref, years)
+        _enqueue(conn_eres, ref)
+
+    scope = build_dino_scope(
+        conn_eres, dino_class="it-2euro-standard-t2", country_only=True,
+    )
+    assert scope.era == (2010, 9999)
+    assert scope.n_hidden_by_era == 2
+    assert scope.n_hidden_by_country == 0
+
+
+def test_l_ere_se_leve(conn_eres):
+    """`era_only=False` rend le pool brut — le réglage existe, et il est lisible."""
+    _listed(conn_eres, "vieux", "IT", "it-2010-std")
+    _signals(conn_eres, "vieux", [1999, 2008])
+
+    scope = build_dino_scope(
+        conn_eres, dino_class="it-2euro-standard-t2", era_only=False,
+    )
+    assert scope.era is None and scope.n_hidden_by_era == 0
+    assert _matching_listed(conn_eres, scope) == ["a-vieux"]
+
+
+def test_le_desarmement_pays_se_decide_APRES_l_ere(conn_eres):
+    """L'ordre des filtres n'est pas cosmétique.
+
+    Le seul crop italien est contredit par son titre : la file ne le servira
+    pas. Décider du désarmement sur le pool AVANT ère croirait la classe pourvue
+    en annonces locales, garderait le filtre pays, et servirait zéro.
+    """
+    _listed(conn_eres, "ital-vieux", "IT", "it-2010-std")
+    _signals(conn_eres, "ital-vieux", [1999])
+    _enqueue(conn_eres, "ital-vieux")
+    _listed(conn_eres, "alle", "DE", "it-2010-std")
+    _signals(conn_eres, "alle", [2012])
+    _enqueue(conn_eres, "alle")
+
+    scope = build_dino_scope(
+        conn_eres, dino_class="it-2euro-standard-t2", country_only=True,
+    )
+    assert scope.n_hidden_by_era == 1
+    assert scope.country_disarmed is True, "le pool APRÈS ère n'a rien d'italien"
+    assert _matching_listed(conn_eres, scope) == ["a-alle"]
+
+
+# ─── O4b · la porte dénomination ────────────────────────────────────────────
+
+
+def _denom(conn, ref: str, score: float | None) -> None:
+    conn.execute(
+        "UPDATE image_asset_dino_predictions SET denom_2eur_score = ? "
+        "WHERE asset_id = ?",
+        (score, f"a-{ref}"),
+    )
+    conn.commit()
+
+
+def test_la_porte_denomination_est_inactive_par_defaut(conn_eres):
+    """Elle coûte ~5 % de vrais positifs : c'est un choix d'opérateur.
+
+    Mesuré sur 513 crops labellisés : `denom_2eur_score >= 0,4` garde 95,3 % des
+    2 €. L'armer par défaut ferait payer ces 5 % à tout le monde sans que
+    personne ne l'ait demandé.
+    """
+    _listed(conn_eres, "piecette", "IT", "it-2010-std")
+    _denom(conn_eres, "piecette", 0.05)
+
+    ouverte = build_dino_scope(conn_eres, dino_class="it-2euro-standard-t2")
+    assert _matching_listed(conn_eres, ouverte) == ["a-piecette"]
+    assert ouverte.n_hidden_by_denom == 0
+
+    from shared.dino_scope import DEFAULT_MIN_DENOM
+    armee = build_dino_scope(
+        conn_eres, dino_class="it-2euro-standard-t2", min_denom=DEFAULT_MIN_DENOM,
+    )
+    assert _matching_listed(conn_eres, armee) == []
+
+
+def test_un_score_absent_n_est_pas_un_score_negatif(conn_eres):
+    """La probe ne couvre que 7 910 des 12 454 crops.
+
+    Écarter l'inconnu ferait de cette porte un filtre de COUVERTURE déguisé en
+    filtre de dénomination — et elle retirerait alors des 2 € que personne n'a
+    jamais scorées.
+    """
+    _listed(conn_eres, "inconnue", "IT", "it-2010-std")   # denom NULL
+    _listed(conn_eres, "grande", "IT", "it-2010-std")
+    _denom(conn_eres, "grande", 0.9)
+    _listed(conn_eres, "piecette", "IT", "it-2010-std")
+    _denom(conn_eres, "piecette", 0.1)
+
+    scope = build_dino_scope(
+        conn_eres, dino_class="it-2euro-standard-t2", min_denom=0.4,
+    )
+    assert _matching_listed(conn_eres, scope) == ["a-grande", "a-inconnue"]
+
+
+def test_la_porte_denomination_dit_ce_qu_elle_masque(conn_eres):
+    for ref, score in (("p1", 0.05), ("p2", 0.2), ("ok", 0.8)):
+        _listed(conn_eres, ref, "IT", "it-2010-std")
+        _denom(conn_eres, ref, score)
+        _enqueue(conn_eres, ref)
+
+    scope = build_dino_scope(
+        conn_eres, dino_class="it-2euro-standard-t2",
+        country_only=True, min_denom=0.4,
+    )
+    assert scope.n_hidden_by_denom == 2
+    assert scope.n_hidden_by_era == 0 and scope.n_hidden_by_country == 0
+
+
+def test_un_pool_vidé_par_l_ere_n_est_pas_un_desarmement_pays(conn_eres):
+    """« rien à trancher » et « le filtre pays m'en empêche » restent distincts.
+
+    Les deux crops sont étrangers ET contredits par leur titre. Décider le
+    désarmement sur le pool BRUT lèverait le filtre pays et annoncerait
+    « pays désarmé » sur une classe qui n'a, en réalité, aucun candidat : la
+    ligne de `/besoin` proposerait alors `pays=tous` vers une file vide, au lieu
+    d'envoyer au scrape. C'est la distinction que porte tout O2 §3.
+    """
+    for ref in ("de1", "de2"):
+        _listed(conn_eres, ref, "DE", "it-2010-std")
+        _signals(conn_eres, ref, [1999])
+        _enqueue(conn_eres, ref)
+
+    scope = build_dino_scope(
+        conn_eres, dino_class="it-2euro-standard-t2", country_only=True,
+    )
+    assert scope.n_hidden_by_era == 2
+    assert scope.country_disarmed is False, (
+        "le pool est vide APRÈS ère : il n'y a rien à servir, et c'est un "
+        "sujet de scrape — pas un filtre pays à lever"
+    )
+    assert _matching_listed(conn_eres, scope) == []

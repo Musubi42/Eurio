@@ -74,7 +74,17 @@ export interface ClassNeedRow {
   accepted_pending: number
   /** O4c — le filtre pays s'est retiré parce qu'il ne laissait rien. */
   country_disarmed: boolean
+  /**
+   * Ce que CHAQUE filtre retire, dans l'ordre où la file les applique. Ils sont
+   * EMBOÎTÉS — `pending − era − country − denom = pending_scoped` — et jamais
+   * additionnables autrement : les lire comme trois effets indépendants ferait
+   * annoncer « 12 + 8 masqués » au-dessus d'une file qui en a perdu 15.
+   */
+  n_hidden_by_era: number
   n_hidden_by_country: number
+  /** 0 tant que la porte dénomination n'est pas armée (`?min_denom=`) : elle
+   *  coûte ~5 % de vrais positifs, c'est un choix d'opérateur. */
+  n_hidden_by_denom: number
 }
 
 export interface ClassNeedResponse {
