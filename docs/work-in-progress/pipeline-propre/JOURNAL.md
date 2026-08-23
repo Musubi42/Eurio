@@ -8,6 +8,78 @@
 
 ---
 
+## 2026-08-23 (suite) — `/besoin` en ligne, et le besoin devient le régime par défaut
+
+**Lot 3 · la page `/besoin`** (commit `05359ec6`). Route NON `meta.heavy` — c'est
+tout l'enjeu d'O2 §Où elle vit. Trois blocs (couverture / profondeur / rebuild),
+l'histogramme `have`, les deux moitiés TRANCHER / ACHETER, 671 lignes filtrables.
+Périmètre resserré par le PO : **aucune surface spécialisée** — pas de mode
+session, pas de refonte de la pêche, pas d'écran « émission commune ». On trie
+ici, on tranche dans les pages existantes.
+
+⛔ **Le front ne calcule aucun fait** : tous les comptes viennent de la route.
+⛔ **Chaque geste est un lien qui porte son réglage** (`&need=1`, plus
+`&pays=tous` si désarmé). Vérifié à l'écran : cliquer le geste de
+`lv-2017-2eur-kurzeme` (35 candidats, pays LV désarmé) ouvre une file de **35** —
+non vide, et du même compte que la ligne. Sans le paramètre, la pêche
+réappliquerait son filtre.
+
+**Dette créée par le lot 0, trouvée en regardant l'écran** (commit `bea6be74`).
+Depuis O4c le back se désarme, mais `DinoCandidatesSummary` ne portait pas
+l'information : la pastille affichait « pays LV » au-dessus d'une file servant
+tous les pays. `country_disarmed` traverse maintenant jusqu'à l'affichage, et
+`n_other_country` ne se calcule plus que si le filtre MORD (`country_active`).
+
+**Lot 4 · D9 — le besoin par défaut** (commits `a1176106`, `a5143214`).
+
+```
+4 999 des 6 574 crops ouverts (76 %) tombent dans une classe
+qui n'a plus besoin de rien.
+```
+
+`queryNeedOnly` se renverse : actif sauf `?need=0`. Tous les consommateurs
+passent par ce point unique — sauf deux, traités à la main : le **mode lot** de
+la pêche (qui construit son périmètre à la main, et où vivent la plupart des
+crops : 60 sur 66 pour `lu-2002-…henri-i`) et le **résumé**, qui doit être
+demandé cadré sinon le bandeau et la file comptent deux populations.
+
+`dino_candidates_summary` gagne `need_only`, `n_parked` et l'état de classe.
+Le défaut **serveur** reste `False` : le renversement vit dans le front — un
+script qui appelle l'API ne doit pas voir son périmètre changer parce qu'un
+écran a changé d'avis.
+
+⚠️ Encore le défaut V4 : `need_for` raisonne au grain BANQUE, `dino_class` est
+un `design_group_id` pour une courante. On interroge avec `scope.class_ids`.
+
+**Déployé et vérifié le 2026-08-23** (couplé, backend d'abord — la file était
+déjà filtrable en prod, pas le résumé ; livrer le front seul aurait recréé le
+badge menteur).
+
+```bash
+sops exec-env secrets/dev.env 'curl -s -H "Authorization: Bearer $EURIO_API_TOKEN" \
+ "https://eurio-api.musubi.dev/review-queue/dino-candidates/summary?dino_class=ad-2014-…&need_only=true"'
+```
+
+| `ad-2014-…council-of-europe` | sans cadrage | cadré (D9) |
+|---|---:|---:|
+| servis (unité / lots) | 1 / 56 | **0 / 0** |
+| `n_parked` | 0 | **57** |
+| état de classe | `pleine` · 10/8 | `pleine` · 10/8 |
+
+À l'écran : la pastille « 57 parqués · classe pleine 10/8 », et le message
+d'écran vide dit enfin *« cette classe est pleine — ses 57 crops sont parqués,
+ni fermés ni supprimés »* au lieu de « rien à pêcher ». `?need=0` les ramène
+tous — parqué est une **lecture**, réversible et visible.
+
+**Ce qui reste ouvert.** `pending_scoped` vaut toujours `pending` dans
+`class_need` (O4a/b non implémentés) : la ligne `/besoin` compte le pool brut,
+la pêche compte le pool filtré pays, et l'écart est affiché (« N masqués »)
+mais demande une soustraction au lecteur. Ça se ferme au lot 6.
+
+**Reste** : lot 5 (moitié ACHETER), lot 6 (ère + dénomination).
+
+---
+
 ## 2026-08-23 — `/besoin` lots 0-2 : O4c, D8, et `GET /class-need` en production
 
 **Le geste.** Session design (D6) avec le PO → `design/` (DESIGN, maquette
