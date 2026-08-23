@@ -90,6 +90,27 @@ contre laquelle la skill `eurio-verify` existe.
 **Décision.** Après un recadrage, le crop est marqué « DINO à réencoder » ; le Mac
 rattrape en lot. Les suggestions DINO sont servies en **lecture pure** par le VPS.
 
+> ⚠️ **Amendé le 2026-08-23 au soir — « marqué » ne veut PAS dire « retiré ».**
+> La première implémentation (lot 6b) SUPPRIMAIT les prédictions du crop d'avant :
+> l'absence servait de marqueur, sans colonne ni table. Réfuté par la première
+> vraie session de review :
+>
+> > « moi je commence toujours par faire le recadrage et après je pick la bonne
+> >   pièce. Souvent, la suggestion de Dino de base est bonne. »
+>
+> Le geste réel est un ajustement **au micro** du cadrage, suivi du choix de la
+> pièce. Supprimer retirait l'aide juste avant le moment où elle sert, pour un
+> recadrage qui ne la change presque jamais.
+>
+> **Corrigé par la migration 0013** (`stale_since`) : la prédiction reste servie
+> et datée comme suspecte, l'écran dit « calculée avant ton recadrage », le
+> backfill la réencode sans `--force`, et un ré-encodage lève la péremption.
+>
+> **Ce que l'erreur enseigne** : « le marqueur EST l'absence » était le plus
+> élégant des deux designs, et le seul à ne rien coûter en schéma. Il supposait
+> qu'une prédiction périmée ne vaut rien. Elle vaut souvent encore la bonne
+> réponse — ce que seul l'usage pouvait dire.
+
 **Pourquoi.** 0 crop sans prédiction persistée sur 21 223 : le fallback lourd ne
 s'allume jamais. Et le recalcul post-recadrage est déjà *best-effort* dans le code.
 

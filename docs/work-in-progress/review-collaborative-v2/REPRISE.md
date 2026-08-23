@@ -82,6 +82,38 @@ tête et non cochés, approuver ou rejeter en un geste (lot 8).
    `review_queue.decided_by` = l'identifiant de l'ami, et que les rejetées sont
    **revenues dans la file**.
 
+## Ce que la première vraie session a appris (2026-08-23, soir)
+
+Le PO a reviewé une douzaine d'images avec son compte test — accept, reject,
+skip — puis est allé arbitrer. Trois retours, tous corrigés et déployés.
+
+| Retour | Cause | Ce qui a changé |
+|---|---|---|
+| « Review Arbitrage n'a pas de lien, il faut taper l'URL » **et** `approve-batch 403` | **Une seule cause** : PAT périmé. Les scopes valent `jeton ∩ rôles` — un jeton émis avant `review:arbitrate` ne l'aura jamais. Or l'entrée de nav ET la carte du tableau de bord sont gatées dessus | Le bandeau de session détecte le cas exact (PAT + rôle owner/admin + scope manquant) et donne le remède. C'était voulu, ce n'est plus muet |
+| « on ne voit pas précisément bien l'état : acceptée ou refusée ? » | L'action était noyée dans la ligne de métriques, 10 px gris, à côté de « DINO muet » | État en tête de carte, en display italique coloré. Et la vignette cible vide d'un refus dit POURQUOI elle est vide |
+| « si on bouge le cadrage, la suggestion de Dino disparaît » | Le lot 6b marquait « à réencoder » en SUPPRIMANT la prédiction | Migration 0013 : elle reste servie, datée comme périmée. Cf. D6, amendé |
+
+**Le troisième est le plus intéressant** : « le marqueur EST l'absence » était le
+design le plus élégant, et le seul à ne rien coûter en schéma. Il supposait
+qu'une prédiction périmée ne vaut rien — alors qu'elle vaut souvent encore la
+bonne réponse, parce que le recadrage réel est un ajustement au micro. Seul
+l'usage pouvait le dire.
+
+### Ton PAT — à régénérer une fois
+
+Tant que c'est un jeton d'avant `review:arbitrate`, l'arbitrage reste invisible
+et refusé depuis `localhost`. En hébergé, aucun problème : le cookie OIDC
+recalcule ses scopes à chaque login.
+
+```bash
+# sur le VPS, ça imprime le jeton UNE fois — à ne pas coller dans un chat
+ssh serverOimNixDontpanic
+docker exec -it eurio-api python -m serving.auth create-pat \
+  --email raphaelthi59@gmail.com --name mac-raph
+# puis, sur le Mac : go-task secrets:edit  (poser EURIO_API_TOKEN)
+#                    direnv reload && relancer go-task front:dev
+```
+
 ## Quatre pièges qui ont coûté cher — ne pas les repayer
 
 1. **Un screenshot ne prouve que la branche qu'il traverse.** Le lot 6a a été

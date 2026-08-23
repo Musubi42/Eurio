@@ -138,6 +138,24 @@ descendu dans `encode_webp`, le seul à en avoir besoin — l'API, elle, ne dema
 à ce module que des helpers de CHEMIN. Boot du 2026-08-23 :
 `routers montés : [… 'referential', 'peer_arbitration']`.
 
+### Amendement du soir même : la suggestion DINO ne disparaît plus
+
+Le marquage par SUPPRESSION a tenu une demi-journée. Première vraie session de
+review, le PO : *« je commence toujours par faire le recadrage et après je pick
+la bonne pièce. Souvent, la suggestion de Dino de base est bonne. »*
+
+Migration **0013** (`stale_since`) : la prédiction reste servie, datée comme
+périmée ; `DinoSuggestions.vue` affiche « calculée avant ton recadrage » ;
+`_existing_keys` la traite comme absente donc le backfill la réencode **sans
+`--force`** ; l'upsert remet la colonne à NULL — fraîche parce que RECALCULÉE.
+
+⚠️ **Le piège que 32 tests ont attrapé** : un `ALTER TABLE ADD COLUMN` doit être
+doublé d'un `_ensure_column` dans `store/connection.py`. Sur une base ANTÉRIEURE,
+`CREATE TABLE IF NOT EXISTS` ne rajoute pas la colonne, et l'index partiel de
+`schema.sql` qui la référence échoue en « no such column » **avant que quoi que
+ce soit d'autre tourne**. Exactement le patron déjà écrit pour `run_id` (0004)
+sur cette même table — la deuxième fois qu'il mord.
+
 ### Vérifié — et ce qui reste à vérifier
 
 ✅ 8 tests (format 224 de prod, géométrie et phash en base, écrasement sur la MÊME
