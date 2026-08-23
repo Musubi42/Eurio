@@ -8,6 +8,96 @@
 
 ---
 
+## 2026-08-23 (fin de session) — lots 5-6 en sous-agents, revue croisée, 6 défauts corrigés
+
+**Le geste.** Lots 5 et 6 implémentés par deux sous-agents en parallèle
+(périmètres de fichiers disjoints, interdiction de committer — deux agents qui
+committent dans le même dépôt se marchent dessus). Puis **trois revues en
+parallèle** sur des angles disjoints : correction/pannes muettes, conformité
+aux décisions, duplication/dette.
+
+**Lot 5 · la moitié ACHETER** (`290c0791`). `GET /scrape-plan/{summary,allocation}`,
+montée sur `server.py` UNIQUEMENT — elle lit `eurio.local.db`, absent du VPS,
+et un test le verrouille. Grain = **groupe de découverte**, pas la classe :
+deux commémos d'un même pays et d'une même année ne coûtent qu'une recherche.
+Rendement **remesuré à chaque appel** avec ses requêtes transportées, le repère
+du 22/08 affiché comme *écart*. Quota lu en `mode=ro` (jamais via
+`QuotaTracker`, dont le constructeur fait un `CREATE TABLE IF NOT EXISTS`).
+
+**Lot 6 · O4a/b + `pending_scoped` réel** (`99a44402`). L'ère en **intervalle**
+(`Y[0] <= era[1] AND era[0] <= Y[-1]`), la dénomination inactive par défaut,
+`n_hidden_by_era`/`n_hidden_by_denom`. `class_need` appelle `build_dino_scope`
+au lieu de réécrire les filtres. Script de mesure sorti du scratchpad :
+`ml/scripts/measure_o4_filters.py`.
+
+**Le déplacement des verdicts, sur instantané figé** (`cp` de la réplique — elle
+se resynchronise en continu, et deux agents la lisaient) :
+
+| verdict | avant | après |
+|---|---:|---:|
+| pleine | 109 | 109 |
+| review | 262 | **213** |
+| scrape | 300 | **349** |
+
+**Les 49 classes qui basculent ne pèsent que 100 crops** : ce ne sont pas des
+files supprimées, ce sont des files **fausses**. `lu-2016-…charlotte-bridge`
+avait 20 candidats, les 20 écartés par l'ère (des annonces belges « 100 Jahre
+NMBS 2026 »). Σ pending 6 371 → **3 150**. Le « 840 à portée » d'hier était
+surévalué de 27 % ; c'est **557** aujourd'hui.
+
+### Les six défauts trouvés par la revue croisée (`64409be8`)
+
+Les trois revues convergent sur **un même motif** : *un filtre par défaut qui ne
+dit pas son effet* — celui que ce chantier passe ses journées à corriger chez
+les autres, reproduit chez lui. **Trois des six défauts venaient de l'auteur
+principal, et les tests étaient verts à chaque étape.**
+
+1. 🔴 **Le cadrage par le besoin s'appliquait aux files de COHORTE.** Critère de
+   voie B appliqué à un travail de voie A (`min_real = 10`), que DESIGN §5
+   interdit explicitement de confondre. Mesuré : `giga-40-vague1` 2 825 ouverts
+   → 484 servis (83 % parqués), sous un écran qui dit « Tout est résolu ».
+   `queryNeedOnly` exempte désormais les files de cohorte.
+2. 🔴 **Le lien de `/besoin` ÉTEIGNAIT l'avertissement d'O4c.** `&pays=tous`
+   faisait revenir le résumé avec `country_disarmed: false` : la pêche affichait
+   « tous pays » au lieu de « ⚠ pays DE — désarmé », sur 97 des 211 classes en
+   review. Le raisonnement qui le justifiait (« sinon la file servirait zéro »)
+   était **faux et mesurable** — le back se désarme seul. *Règle qui en sort :
+   un lien ne pré-règle un filtre que s'il change ce qui est SERVI.*
+3. 🔴 **Une banque illisible vidait la file en silence.** Depuis D9 le cadrage
+   est le défaut, donc `deficient_class_ids() == []` → ` AND 0` → zéro item sous
+   « Tout est résolu ». On distingue maintenant « le travail est fini » de « je
+   ne sais pas » : le second lève `EmptyBankError` (409, comme `/class-need`).
+4. 🟠 **Défaut V4, quatrième occurrence de la journée.** `n_training_eligible`
+   comparait `COALESCE(design_group_id, eurio_id)` à un `dino_class` de grain
+   BANQUE : zéro ligne, en silence, sur 26 des 41 `portrait_standard`. Vérifié
+   après correctif : **0 divergence sur les 41**.
+5. 🟠 **`?target=` sur `/scrape-plan/summary` était une étiquette fausse** :
+   `?target=1` et `?target=10` rendaient des totaux identiques.
+6. 🟠 **`sum_reachable` promettait 55 exemplaires parqués.**
+
+**Trois trous de test fermés**, prouvés par mutation survivante :
+`rebuild_would_place` sans son `min` (196 annoncés contre 1 622),
+`deficient_class_ids` excluant les `scrape`, `_have_by_class` ignorant
+`encoder_version`. Les trois mutations tuent maintenant leur test.
+
+### Vérification
+
+`pytest -q > fichier ; echo $?` → **2089 passed, exit 0**. `pnpm typecheck` et
+`pnpm build` : exit 0. ⚠️ Rappel : `pytest` sort en **code 0** sur un argument
+inconnu, et un `| tail` masque le code de sortie — une suite qui n'avait pas
+tourné a failli passer pour verte pendant cette session.
+
+⛔ **Rien n'a été vu à l'écran pour les lots 5 et 6.** `vue-tsc` et `vite build`
+valident les templates ; ce n'est pas la même chose.
+
+### État de déploiement
+
+Lots 0-4 en production. **Lots 5, 6 et les correctifs de revue : commités, non
+déployés.** La suite — déploiement couplé, vérifications, défauts restants — est
+dans [`REPRENDRE-ICI.md`](REPRENDRE-ICI.md).
+
+---
+
 ## 2026-08-23 (suite) — `/besoin` en ligne, et le besoin devient le régime par défaut
 
 **Lot 3 · la page `/besoin`** (commit `05359ec6`). Route NON `meta.heavy` — c'est

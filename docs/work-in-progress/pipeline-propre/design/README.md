@@ -1,8 +1,11 @@
 # Design `/besoin` — phase D6
 
-> Session du **2026-08-22** avec le PO. **Rien n'est implémenté.**
-> Les maquettes sont **jetables** et ne doivent pas être copiées dans
-> `studio-local`.
+> Session de design du **2026-08-22** avec le PO. **Tout a été implémenté
+> depuis** (lots 0-6, `643d6487..64409be8`).
+>
+> 👉 **Pour l'état du code et la suite : [`../REPRENDRE-ICI.md`](../REPRENDRE-ICI.md).**
+> Ce dossier est la trace de la CONCEPTION, pas de l'état. Les maquettes sont
+> **jetables** et ne doivent pas être copiées dans `studio-local`.
 
 | fichier | quoi |
 |---|---|
@@ -46,9 +49,14 @@ print(len(n), dict(collections.Counter(x.bottleneck for x in n)), sum(x.need for
 |---|---:|
 | couverture (`have ≥ 1`) | 250 / 671 |
 | Σ `need` | 4 066 |
-| file ouverte | 6 574 — dont **4 804 parqués (73 %)** |
-| couvrable par la file | 908 exemplaires · 97 classes comblables |
-| palier 1 à portée | 147 classes · ≈ 338 crops |
-| à scraper | 288 classes, dont **274 jamais visées** |
-| acquis hors banque | 1 451 crops → **76** exemplaires au rebuild |
+| file ouverte | 6 371 — dont **5 041 parqués**, 1 985 écartés par l'ère, 1 236 par le pays |
+| servis (`pending_scoped`) | **3 150** |
+| couvrable par la file | **557** exemplaires |
+| palier 1 à portée | **92** classes (dont 30 à marge ≥ 0,10) |
+| à scraper | **349** classes, dont **323 jamais visées** |
+| acquis hors banque | 1 610 crops → **184** exemplaires au rebuild |
 | rendements mesurés | 6,6 annonces / exemplaire · 2,3 crops tranchés / validé |
+
+⚠️ Les chiffres de la session de design (908 à portée, 147 classes au palier 1)
+étaient calculés **avant** que `pending_scoped` porte les filtres O4. L'écart
+n'est pas une régression — c'est du travail qui n'existait pas.

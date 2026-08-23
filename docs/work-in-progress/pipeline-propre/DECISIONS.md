@@ -122,10 +122,16 @@ c'est de là que venait « 8 ». Sous l'amorce **médoïde**, elle change de for
 **Le premier exemplaire vaut +10,8 points, les neuf suivants +1,2 à eux tous.**
 La Station 0 affiche donc **deux barres**, pas une :
 
-| palier | définition | état (banque `a55e6594`, 22/08 18:06) |
+| palier | définition | état au 23/08 (banque `a55e6594`) |
 |---|---|---|
-| **1 · couverture** | `have ≥ 1` | **250 / 671** — 147 à portée, 274 à scraper |
-| **2 · profondeur** | `have ≥ target` (D1/D4) | Σ `need` **4 066** — 908 à portée |
+| **1 · couverture** | `have ≥ 1` | **250 / 671** — **92** à portée, 329 à scraper |
+| **2 · profondeur** | `have ≥ target` (D1/D4) | Σ `need` **4 066** — **557** à portée |
+
+⚠️ **Les chiffres « 147 à portée » et « 908 à portée » du 22/08 sont PÉRIMÉS**,
+et l'écart n'est pas une régression : depuis le lot 6, `pending_scoped` applique
+les filtres O4 (ère, pays). Les classes disparues n'avaient que des candidats
+**contredits par le titre de l'annonce** — 49 d'entre elles ne pesaient que 100
+crops au total. Le compte d'avant surévaluait le travail atteignable de 27 %.
 
 Le tri par défaut sert le palier 1.
 
@@ -222,10 +228,13 @@ candidats au-dessus d'une file qui en sert 0.
 1. ✅ O6  amorce médoïde — banque a55e6594, +3,7 pts à N=10
 2. ✅ O1 + O5  calcul (class_need, class_family) — sans écran
 3. ✅ design O2 + O4 (D6) — 2026-08-22, cf. `design/`
-4.    O4c  désarmement du filtre pays — PRÉREQUIS d'O2 (D10)
-5.    implémentation O2 + O4 — 8 lots, cf. `design/PLAN-IMPLEM.md`
-6.    O3   entonnoir à huit plaques, au grain annonce
-7.    scrape réel, piloté par O2
+4. ✅ O4c  désarmement du filtre pays (D10)
+5. ✅ implémentation O2 + O4 — 7 lots, cf. `design/PLAN-IMPLEM.md`
+      ⛔ lots 5-6 + correctifs de revue : commités, PAS déployés
+6.    O3   entonnoir à huit plaques, au grain annonce — débloqué, jamais commencé
+7.    scrape réel, piloté par O2 — 323 classes jamais visées, ~1 800 annonces
+
+👉 **Reprise : [`REPRENDRE-ICI.md`](REPRENDRE-ICI.md)**
 ```
 
 ## Ce qui reste ouvert

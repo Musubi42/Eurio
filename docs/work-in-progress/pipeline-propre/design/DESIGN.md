@@ -1,7 +1,13 @@
 # Design — `/besoin`, le poste de pilotage de l'enrichissement DINO
 
-> **Phase de design (D6). Rien ici n'est implémenté.** Les maquettes de ce
-> dossier sont **jetables** : HTML statique autonome, elles ne sont pas du code
+> **⚠️ DOCUMENT DE DESIGN — il dit l'INTENTION, pas l'état.**
+> Écrit en phase D6, avant l'implémentation. Tout a été livré depuis (lots 0-6,
+> commits `643d6487..64409be8`) : **pour savoir où en est le code, lire
+> [`../REPRENDRE-ICI.md`](../REPRENDRE-ICI.md)**, pas ce fichier. Il reste la
+> référence sur le PARCOURS, les ÉTATS et le VOCABULAIRE (§5) — et sur ces
+> points il fait toujours autorité.
+>
+> Les maquettes de ce dossier sont **jetables** : HTML statique autonome, elles ne sont pas du code
 > de production et ne doivent pas être copiées dans `studio-local`.
 >
 > Écrit le **2026-08-22**, en session avec le PO. Banque de référence :

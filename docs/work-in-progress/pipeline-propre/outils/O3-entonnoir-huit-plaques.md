@@ -1,6 +1,9 @@
 # O3 · L'entonnoir à huit plaques
 
-> **Statut : spec, non implémentée.** Station 3 du
+> **Statut : NON IMPLÉMENTÉ — et c'est le seul outil du chantier qui reste.**
+> Débloqué depuis le lot 2 : il consomme `GET /class-need`, qui existe.
+> C'est la suite naturelle une fois `/besoin` déployé et vérifié.
+> Cf. [`../REPRENDRE-ICI.md`](../REPRENDRE-ICI.md). Station 3 du
 > [flow](../FLOW-ADMIN.md). Étend un écran qui existe.
 
 ## Le geste

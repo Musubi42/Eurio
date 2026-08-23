@@ -1,3 +1,17 @@
+# ⚠️ PROMPT CONSOMMÉ — archive
+
+> **Cette session a eu lieu le 2026-08-22, et tout ce qu'elle demandait est
+> livré** (design + lots 0-6). Ce fichier ne sert plus qu'à retrouver ce qui
+> avait été demandé, et sous quelles contraintes.
+>
+> 👉 **Pour reprendre le travail : [`REPRENDRE-ICI.md`](REPRENDRE-ICI.md).**
+>
+> ⛔ Ne pas le recoller dans une nouvelle session : il ouvrirait une phase de
+> design déjà close, et ses chiffres (671 classes, 4 426, 344/276…) sont
+> périmés.
+
+---
+
 # Prompt — session design du front « besoin → review » (D6)
 
 > À coller tel quel dans une nouvelle session Claude Code ouverte à la racine

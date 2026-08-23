@@ -1,7 +1,20 @@
 # O4 · Les filtres par signaux dans le périmètre de pêche
 
-> **Statut : spec, non implémentée.** Station 2 du
-> [flow](../FLOW-ADMIN.md). Dépend de [O5](O5-familles-de-signal.md).
+> **Statut : LIVRÉ le 2026-08-23.** O4c (désarmement pays) au lot 0, O4a/b
+> (ère, dénomination) au lot 6. Station 2 du [flow](../FLOW-ADMIN.md).
+> Dépend de [O5](O5-familles-de-signal.md).
+>
+> Implémentation : `ml/shared/dino_scope.py` (`era_only`, `min_denom`,
+> `country_disarmed`, `n_hidden_by_*`). Mesures rejouables :
+> `ml/scripts/measure_o4_filters.py`.
+>
+> ⚠️ **Deux réserves sur ce document.**
+> 1. Les EFFECTIFS des quatre régimes ne se reproduisent plus (2 861 crops
+>    labellisés le 23/08 contre 2 169 le 20/08 — la base continue d'être
+>    tranchée). Les PRÉCISIONS, elles, retombent au dixième près.
+> 2. **La porte dénomination (§b) n'a aucun appelant** : le paramètre existe de
+>    bout en bout, aucun front ne l'arme. Décision à prendre — la câbler ou la
+>    retirer. Cf. [`../REPRENDRE-ICI.md`](../REPRENDRE-ICI.md).
 > Prolonge `ml/shared/dino_scope.py` et les 9 décisions de
 > [`../../peche-dino/DECISIONS.md`](../../peche-dino/DECISIONS.md).
 

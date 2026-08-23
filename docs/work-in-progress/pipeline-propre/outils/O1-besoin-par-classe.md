@@ -1,6 +1,9 @@
 # O1 · Le besoin par classe, calculé en un seul endroit
 
-> **Statut : spec, non implémentée.** Station 0 du
+> **Statut : LIVRÉ.** `ml/shared/class_need.py` (stdlib-only, contrat lean
+> verrouillé par `tests/test_class_need_lean.py`). Étendu depuis : D8
+> (`accepted_pending`) et `pending_scoped` réel (filtres O4, lot 6).
+> État courant : [`../REPRENDRE-ICI.md`](../REPRENDRE-ICI.md). Station 0 du
 > [flow](../FLOW-ADMIN.md). Dépend de rien ; tout le reste en dépend.
 
 ## Le geste

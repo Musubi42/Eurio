@@ -1,6 +1,10 @@
 # O6 · L'amorce du FPS au médoïde
 
-> **Statut : spec, non implémentée.** Pas de station — c'est la **racine**.
+> **Statut : LIVRÉ le 2026-08-22** (commit `244c06b3`, `--seed-order medoid`
+> devenu le défaut du builder). Mesuré par bras témoin : **+3,7 pts à N=10**,
+> et le creux à N=1 supprimé (76,2 → 71,8 en `fps` ; 76,0 → 86,8 en médoïde).
+> Banque de production `a55e6594da32`. Cf. [`../JOURNAL.md`](../JOURNAL.md).
+> Pas de station — c'est la **racine**.
 > Améliore la pêche, la review, le verdict et le scan d'un coup.
 > Prolonge [`eurio-banque`](../../../../.claude/skills/eurio-banque/SKILL.md) §3
 > et [`COURBE-REFERENCES.md`](../../scan-sans-retrain/COURBE-REFERENCES.md).

@@ -1,6 +1,7 @@
 # O5 · La table « quel signal décide », par famille de classe
 
-> **Statut : spec, non implémentée.** Alimente [O1](O1-besoin-par-classe.md)
+> **Statut : LIVRÉ.** `ml/shared/class_family.py` (stdlib-only).
+> Alimente [O1](O1-besoin-par-classe.md)
 > (le verdict de goulot) et [O4](O4-filtres-par-signaux.md) (les défauts de
 > filtre). Dépend de rien.
 

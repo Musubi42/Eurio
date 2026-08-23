@@ -1,7 +1,16 @@
 # O2 · La vue « classe → 8 »
 
-> **Statut : spec, non implémentée.** Station 0 du
-> [flow](../FLOW-ADMIN.md). Dépend de [O1](O1-besoin-par-classe.md).
+> **Statut : LIVRÉE le 2026-08-23** (lots 2-5), en production pour la lecture.
+> Station 0 du [flow](../FLOW-ADMIN.md). Dépend de [O1](O1-besoin-par-classe.md).
+>
+> Route `GET /class-need` (`ml/serving/class_need_routes.py`), page `/besoin`
+> (`admin/packages/studio-local/src/features/besoin/`). Ce document reste la
+> **spec** : il dit ce que l'écran doit faire, pas ce qu'il fait. L'état réel,
+> les écarts connus et la suite sont dans [`../REPRENDRE-ICI.md`](../REPRENDRE-ICI.md).
+>
+> ⚠️ Les chiffres ci-dessous datent du 2026-08-21 et **sont périmés** — la
+> banque a été rebâtie deux fois depuis, et `pending_scoped` porte désormais les
+> filtres O4. Rejoue les requêtes, ne recopie pas les nombres.
 
 ## Le geste
 

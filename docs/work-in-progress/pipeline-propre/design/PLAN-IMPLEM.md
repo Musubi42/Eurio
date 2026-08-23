@@ -1,6 +1,13 @@
 # Plan d'implémentation — `/besoin`
 
-> **Lots 0-4 livrés et déployés le 2026-08-23** (cf. [`../JOURNAL.md`](../JOURNAL.md)).
+> ✅ **LES 7 LOTS SONT LIVRÉS** (2026-08-23, commits `643d6487..64409be8`).
+> Lots 0-4 **déployés** ; lots 5-6 et les correctifs de revue **commités, pas
+> déployés, jamais vus à l'écran**.
+> 👉 **La suite est dans [`../REPRENDRE-ICI.md`](../REPRENDRE-ICI.md)** —
+> déploiement, vérifications, défauts connus. Ce plan-ci est archivé : il dit ce
+> qu'on avait prévu, pas ce qui reste.
+>
+> *(historique)* **Lots 0-2 livrés et déployés le 2026-08-23** (cf. [`../JOURNAL.md`](../JOURNAL.md)).
 > **Pas de code avant validation du PO.** Chaque lot porte son test de
 > vérification et le déploiement qu'il implique. Écrit le 2026-08-22, en suite
 > de [`DESIGN.md`](DESIGN.md).
@@ -27,8 +34,9 @@ Lot 1  ✅ D8   · accepted_pending dans ClassNeed    (e5c879cf)
 Lot 2  ✅ 🚀   · GET /class-need — EN PRODUCTION    (881820ce, a10db7d1)
 Lot 3  ✅    · /besoin — la page                   (05359ec6)
 Lot 4  ✅ D9 · need_only par défaut + parqués      (a1176106, a5143214) 🚀 déployé
-Lot 5       · la moitié ACHETER (heavy)            ← à faire
-Lot 6  O4ab · ère + dénomination                  ← après mesure de rejeu
+Lot 5  ✅    · la moitié ACHETER (heavy)           (290c0791) — non déployé
+Lot 6  ✅ O4ab · ère + dénomination                (99a44402) — non déployé
+   +   ✅ revue croisée : 6 défauts corrigés      (64409be8) — non déployé
 ```
 
 ---
