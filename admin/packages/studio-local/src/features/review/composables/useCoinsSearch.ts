@@ -5,7 +5,7 @@
 // renvoyait « aucune pièce »). Le selector UI manipule un `denomination`
 // synthétique ('1c'…'2eur-comm') traduit en {face_value, is_commemorative}.
 
-import { ML_API } from '@/features/training/composables/useTrainingApi'
+import { eurioApi } from '@/shared/api/eurio-api'
 
 // Sous-ensemble de la réponse `GET /coins` (CoinDetail) utilisé ici.
 interface CoinDetailLite {
@@ -100,9 +100,12 @@ export async function searchCoins(filters: CoinSearchFilters): Promise<CoinSearc
     country: filters.country,
     limit: String(limit),
   })
-  const resp = await fetch(`${ML_API}/coins?${params.toString()}`)
-  if (!resp.ok) throw new Error(`Recherche pièces échouée (${resp.status})`)
-  const data = (await resp.json()) as { items: CoinDetailLite[] }
+  // Sur `eurio-api` et non le ML local : la recherche libre est LE geste qui suit
+  // un « DINO s'est trompé », elle doit donc marcher à distance. `coins_routes`
+  // est monté sur l'image lean, et cet appel a besoin de l'auth.
+  const data = await eurioApi.get<{ items: CoinDetailLite[] }>(
+    `/coins?${params.toString()}`,
+  )
 
   const countryMeta = EURO_COUNTRIES.find((c) => c.code === filters.country)
   return (data.items ?? [])
@@ -117,7 +120,7 @@ export async function searchCoins(filters: CoinSearchFilters): Promise<CoinSearc
       // Vignette canonique servie par l'API ML depuis MinIO (CDN redirect),
       // clé `eurio_id` — pas `numista_id` (endpoint legacy `/images/<nid>/source`
       // = layout `ml/datasets/` déprécié, absent des machines migrées).
-      canonical_thumb_url: `${ML_API}/referential/canonical/${coin.eurio_id}/obverse/thumb`,
+      canonical_thumb_url: `${eurioApi.base}/referential/canonical/${coin.eurio_id}/obverse/thumb`,
       is_commemorative: coin.is_commemorative,
     }))
 }
@@ -153,9 +156,9 @@ export async function searchCoinsByText(
   if (opts?.fv !== undefined) params.set('fv', String(opts.fv))
   if (opts?.commemo !== undefined) params.set('commemo', opts.commemo ? '1' : '0')
 
-  const resp = await fetch(`${ML_API}/coins?${params.toString()}`)
-  if (!resp.ok) throw new Error(`Recherche pièces échouée (${resp.status})`)
-  const data = (await resp.json()) as { items: CoinDetail[]; total: number }
+  const data = await eurioApi.get<{ items: CoinDetail[]; total: number }>(
+    `/coins?${params.toString()}`,
+  )
 
   return (data.items ?? []).map((coin) => {
     const fvLabel =
@@ -175,7 +178,7 @@ export async function searchCoinsByText(
       label,
       // Cf. searchCoins : vignette canonique par `eurio_id` (MinIO/CDN), pas
       // l'endpoint legacy `numista_id`.
-      canonical_thumb_url: `${ML_API}/referential/canonical/${coin.eurio_id}/obverse/thumb`,
+      canonical_thumb_url: `${eurioApi.base}/referential/canonical/${coin.eurio_id}/obverse/thumb`,
       is_commemorative: coin.is_commemorative,
     }
   })

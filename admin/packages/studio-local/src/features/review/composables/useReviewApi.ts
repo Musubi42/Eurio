@@ -205,7 +205,34 @@ export class ReviewApiError extends Error {
   }
 }
 
+/**
+ * Résout une URL d'image renvoyée par l'API.
+ *
+ * Une URL ABSOLUE passe telle quelle — c'est le cas des crops depuis le lot 1 de
+ * `review-collaborative-v2` (URLs MinIO présignées, cf. `repository._crop_url`) et
+ * des vignettes canoniques Numista.
+ *
+ * Une URL RELATIVE (`/referential/canonical/…`) désigne une route de l'API qui a
+ * produit la réponse, donc `eurioApi.base` — PAS `ML_API`. C'est ce préfixe-là qui
+ * clouait la review au poste hébergeant `:8042` : hors de cette machine, toutes les
+ * images pointaient sur un `127.0.0.1` inexistant et l'écran se remplissait de
+ * vignettes cassées, sans une erreur.
+ */
 function promoteUrl(url: string): string {
+  if (!url) return url
+  return url.startsWith('http') ? url : `${eurioApi.base}${url}`
+}
+
+/**
+ * Résout une URL relative renvoyée par l'API ML LOCALE (`safeFetch`, `:8042`).
+ *
+ * À ne pas confondre avec `promoteUrl` : ces chemins-là (`/sources/…/raws/…/file`,
+ * `/sources/…/assets/…/file`) ne sont servis QUE par l'app full de la workstation —
+ * `sources_routes` n'est pas monté sur l'image lean du VPS. Ils restent donc
+ * résolus vers `ML_API` tant que l'éditeur de crop vit sur le poste (lot 6 de
+ * `review-collaborative-v2` les fera basculer).
+ */
+function promoteMlUrl(url: string): string {
   if (!url) return url
   return url.startsWith('http') ? url : `${ML_API}${url}`
 }
@@ -219,7 +246,7 @@ function promoteItemUrls(r: ReviewItem): ReviewItem {
     ...r,
     crop_url: promoteUrl(r.crop_url),
     // Toutes les listes de candidats ont une vignette canonique (relative
-    // /referential/… ou /images/… → préfixe ML_API requis). Avant, seuls
+    // /referential/… ou /images/… → préfixe API requis). Avant, seuls
     // target_candidate et dino_top1 étaient promus → vignettes cassées dans
     // « candidats auto-name » et « pièces standards » à URL locale.
     candidates: r.candidates?.map(promoteCandidateThumb) ?? r.candidates,
@@ -463,8 +490,8 @@ export async function fetchCropEditContext(reviewId: string): Promise<CropEditCo
   }
   return {
     ...real,
-    raw_url: promoteUrl(real.raw_url),
-    crop_url: promoteUrl(real.crop_url),
+    raw_url: promoteMlUrl(real.raw_url),
+    crop_url: promoteMlUrl(real.crop_url),
   }
 }
 
@@ -503,8 +530,8 @@ export async function fetchAssetCropEditContext(assetId: string): Promise<CropEd
   }
   return {
     ...real,
-    raw_url: promoteUrl(real.raw_url),
-    crop_url: promoteUrl(real.crop_url),
+    raw_url: promoteMlUrl(real.raw_url),
+    crop_url: promoteMlUrl(real.crop_url),
   }
 }
 
@@ -691,9 +718,8 @@ export async function fetchRejectedCrops(
   cohortId?: string | null,
 ): Promise<RejectedCrop[]> {
   const qs = cohortId ? `?cohort_id=${encodeURIComponent(cohortId)}` : ''
-  // Phase 2c : porté sur eurio-api. Les `crop_url` sont des chemins relatifs
-  // /sources/{id}/assets/.../file — résolus vers ML_API local par promoteUrl
-  // (le file-serving reste sur le poste dev — Phase 6).
+  // Porté sur eurio-api. Les `crop_url` sont des URLs MinIO présignées (absolues)
+  // depuis le lot 1 de review-collaborative-v2 — promoteUrl les laisse passer.
   try {
     const real = await eurioApi.get<RejectedCrop[]>(`/review-queue/rejected${qs}`)
     return real.map((r) => ({ ...r, crop_url: promoteUrl(r.crop_url) }))

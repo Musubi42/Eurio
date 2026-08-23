@@ -160,9 +160,20 @@ async function parseError(resp: Response): Promise<LotReviewError> {
   return new LotReviewError(resp.status, msg, detail)
 }
 
-function withMlApi(url: string | null): string | null {
+/**
+ * Résout une URL d'image du lot.
+ *
+ * Les `crop_url` et `raw_url` sont ABSOLUS depuis les lots 1 et 6a (URLs MinIO
+ * présignées) et passent tels quels. Un chemin RELATIF résiduel désigne une route
+ * de l'API qui a produit la réponse — donc `eurioApi.base`, pas `ML_API` : ce
+ * préfixe-là clouait la vue de lot au poste hébergeant `:8042`.
+ *
+ * ⚠️ Ne PAS confondre avec les écritures de crop (`add-crop`, `sync-crops`,
+ * `detect`) plus bas, qui restent sur `ML_API` — elles touchent cv2.
+ */
+function promoteUrl(url: string | null): string | null {
   if (!url) return null
-  return url.startsWith('http') ? url : `${ML_API}${url}`
+  return url.startsWith('http') ? url : `${eurioApi.base}${url}`
 }
 
 // ─── Public API ───────────────────────────────────────────────────────
@@ -216,13 +227,13 @@ export async function fetchLots(
     ...body,
     items: body.items.map((it) => ({
       ...it,
-      thumb_url: withMlApi(it.thumb_url),
+      thumb_url: promoteUrl(it.thumb_url),
     })),
   }
 }
 
 function promoteCandidate(c: LotCandidate): LotCandidate {
-  return { ...c, canonical_thumb_url: withMlApi(c.canonical_thumb_url) ?? '' }
+  return { ...c, canonical_thumb_url: promoteUrl(c.canonical_thumb_url) ?? '' }
 }
 
 export async function fetchLot(
@@ -253,10 +264,10 @@ export async function fetchLot(
     target_candidate: body.target_candidate ? promoteCandidate(body.target_candidate) : null,
     images: body.images.map((im) => ({
       ...im,
-      raw_url: withMlApi(im.raw_url) ?? '',
+      raw_url: promoteUrl(im.raw_url) ?? '',
       crops: im.crops.map((c) => ({
         ...c,
-        crop_url: withMlApi(c.crop_url) ?? '',
+        crop_url: promoteUrl(c.crop_url) ?? '',
         candidate_eurio_ids: c.candidate_eurio_ids.map(promoteCandidate),
       })),
     })),
@@ -330,7 +341,7 @@ export async function addLotCrop(
   const crop = (await resp.json()) as LotCrop
   return {
     ...crop,
-    crop_url: withMlApi(crop.crop_url) ?? '',
+    crop_url: promoteUrl(crop.crop_url) ?? '',
     candidate_eurio_ids: crop.candidate_eurio_ids.map(promoteCandidate),
   }
 }
@@ -365,7 +376,7 @@ export async function syncLotCrops(
     ...data,
     crops: data.crops.map((crop) => ({
       ...crop,
-      crop_url: withMlApi(crop.crop_url) ?? '',
+      crop_url: promoteUrl(crop.crop_url) ?? '',
       candidate_eurio_ids: crop.candidate_eurio_ids.map(promoteCandidate),
     })),
   }

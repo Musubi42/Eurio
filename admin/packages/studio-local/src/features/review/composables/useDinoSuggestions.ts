@@ -13,6 +13,7 @@
 // hard error — Dino is an aid layer, not a blocker.
 
 import { ML_API } from '@/features/training/composables/useTrainingApi'
+import { eurioApi, EurioApiError } from '@/shared/api/eurio-api'
 import type {
   AutoValidateLevel,
   ConsensusLane,
@@ -101,33 +102,46 @@ export interface DinoSuggestionsResponse {
 
 export type AbstentionState = 'confident' | 'low_margin' | 'uncertain' | 'unknown'
 
-/** Returns null if the API doesn't have suggestions yet (404) or is unreachable. */
+/**
+ * Lit les suggestions sur `eurio-api` — le canonique, pas le ML local.
+ *
+ * Ce `fetch` visait `ML_API` (`127.0.0.1:8042`), en clair et sans auth. Hors de la
+ * machine qui héberge le ML, il échouait par le réseau, `TypeError` renvoyait
+ * `null`, et le panneau affichait « Pas de prédiction Dino pour ce crop · hors
+ * scope ou pas encore backfillé » — un message qui accuse la BASE alors que le
+ * coupable était l'ADRESSE. Observé le 2026-08-23 sur un crop dont l'API avait
+ * bel et bien la prédiction (review-collaborative-v2, lot 6a).
+ *
+ * Côté serveur, `/review-queue/{…}/dino-suggestions` est désormais servi en
+ * LECTURE PURE par l'image lean : 404 si la prédiction manque, jamais d'encodage
+ * à la demande. Le `null` reste donc le contrat — Dino est une aide, pas un
+ * prérequis pour reviewer.
+ */
 async function fetchOrNull(path: string): Promise<DinoSuggestionsResponse | null> {
   try {
-    const resp = await fetch(`${ML_API}${path}`)
-    if (resp.status === 404) return null
-    if (!resp.ok) {
-      console.warn(`[dino-suggestions] HTTP ${resp.status} for ${path}`)
-      return null
-    }
-    const body = (await resp.json()) as DinoSuggestionsResponse
-    // Promote relative obverse_url paths to absolute (the FastAPI server
-    // returns paths like "/images/<numista>/source").
+    const body = await eurioApi.get<DinoSuggestionsResponse>(path)
+    // `obverse_url` relative (`/referential/canonical/…`) → résolue contre l'API
+    // qui a produit la réponse, PAS contre `ML_API` (même correctif qu'au lot 1).
     const promoteUrl = (s: DinoSuggestion): DinoSuggestion => ({
       ...s,
       obverse_url: s.obverse_url
         ? s.obverse_url.startsWith('http')
           ? s.obverse_url
-          : `${ML_API}${s.obverse_url}`
+          : `${eurioApi.base}${s.obverse_url}`
         : null,
     })
     return {
       ...body,
-      top_k: body.top_k.map(promoteUrl),
+      top_k: (body.top_k ?? []).map(promoteUrl),
       top_k_country: (body.top_k_country ?? []).map(promoteUrl),
     }
   } catch (err) {
-    if (err instanceof TypeError) return null // network down
+    if (err instanceof EurioApiError) {
+      if (err.status === 404) return null // pas de prédiction pour ce crop
+      console.warn(`[dino-suggestions] HTTP ${err.status} pour ${path}`)
+      return null
+    }
+    if (err instanceof TypeError) return null // réseau coupé
     console.warn('[dino-suggestions] error', err)
     return null
   }
@@ -172,8 +186,9 @@ export async function fetchDinoSuggestionsByAssetId(
 }
 
 /** Force un recalcul Dino (POST) sur un crop puis renvoie la réponse fraîche.
- *  Contrairement au GET (qui ne calcule que si la prédiction manque), ce POST
- *  écrase une prédiction périmée. Même fallback de banque que les lectures. */
+ *  Contrairement au GET, ce POST ENCODE le crop (torch) : il reste donc sur le
+ *  ML LOCAL et n'existe pas sur le VPS. Le bouton qui l'appelle est dans une vue
+ *  `heavy`, grisée en hébergé. Même fallback de banque que les lectures. */
 async function postOrNull(path: string): Promise<DinoSuggestionsResponse | null> {
   try {
     const resp = await fetch(`${ML_API}${path}`, { method: 'POST' })
