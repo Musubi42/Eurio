@@ -1,5 +1,6 @@
 # Plan d'implémentation — `/besoin`
 
+> **Lots 0-2 livrés et déployés le 2026-08-23** (cf. [`../JOURNAL.md`](../JOURNAL.md)).
 > **Pas de code avant validation du PO.** Chaque lot porte son test de
 > vérification et le déploiement qu'il implique. Écrit le 2026-08-22, en suite
 > de [`DESIGN.md`](DESIGN.md).
@@ -21,10 +22,10 @@ livre avant O2**, sinon O2 affiche un écran faux le jour de son branchement —
 82 % des classes du palier 1 y apparaîtraient à zéro candidat.
 
 ```
-Lot 0  O4c  · désarmement pays + transparence     ← prérequis, backend seul
-Lot 1  D8   · accepted_pending dans ClassNeed     ← backend seul
-Lot 2  🚀   · GET /class-need sur eurio-api       ← la route
-Lot 3       · /besoin — la page                   ← le front
+Lot 0  ✅ O4c  · désarmement pays + transparence   (643d6487)
+Lot 1  ✅ D8   · accepted_pending dans ClassNeed    (e5c879cf)
+Lot 2  ✅ 🚀   · GET /class-need — EN PRODUCTION    (881820ce, a10db7d1)
+Lot 3       · /besoin — la page                   ← le front, à faire
 Lot 4  D9   · need_only par défaut + parqués      ← le renversement
 Lot 5       · la moitié ACHETER (heavy)
 Lot 6  O4ab · ère + dénomination                  ← après mesure de rejeu

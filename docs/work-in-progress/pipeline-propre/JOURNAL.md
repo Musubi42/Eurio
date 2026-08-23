@@ -8,6 +8,135 @@
 
 ---
 
+## 2026-08-23 — `/besoin` lots 0-2 : O4c, D8, et `GET /class-need` en production
+
+**Le geste.** Session design (D6) avec le PO → `design/` (DESIGN, maquette
+jetable, QUESTIONS-OUVERTES, PLAN-IMPLEM) et D7-D10 dans
+[`DECISIONS.md`](DECISIONS.md). Puis les trois premiers lots du plan.
+Périmètre resserré par le PO : **`/besoin` seule, aucune surface spécialisée** —
+pas de mode session, pas de refonte de la pêche. Les gestes renvoient vers les
+pages de review existantes, en **portant leur réglage** (`&need=1`,
+`&pays=tous` si désarmé) : sans ça la page annoncerait 66 candidats au-dessus
+d'une file qui en sert 0.
+
+**Lot 0 · O4c — le filtre pays se désarme au lieu de vider** (commit `643d6487`).
+`build_dino_scope` sonde la file ouverte ; quand le filtre ramènerait le pool à
+zéro alors que le pool brut ne l'est pas, il se retire et le dit
+(`country_disarmed`, `n_hidden_by_country`).
+
+```bash
+cd ml && EURIO_DB_PATH=$PWD/state/eurio.replica.db ./.venv/bin/python -c "
+import sqlite3, collections, sys; sys.path.insert(0,'.')
+from shared.class_need import all_needs
+from shared.dino_scope import build_dino_scope
+c = sqlite3.connect('file:state/eurio.replica.db?mode=ro', uri=True); c.row_factory = sqlite3.Row
+rev = [n for n in all_needs(c, anchors_kind='2eur_all', encoder_version='dinov2-vitl14')
+       if n.bottleneck=='review']
+d = [n for n in rev if build_dino_scope(c, dino_class=n.class_id, country_only=True).country_disarmed]
+print(len(rev), len(d), sum(n.pending for n in d))"
+# 293 147 558
+```
+
+| | | |
+|---|---:|---|
+| classes `review` | 293 | |
+| que le filtre pays viderait entièrement | **147** (50 %) | VISION §V3 disait 137/338 |
+| crops redevenus atteignables | **558** | LU 14 · PT 13 · GR 12 · VA 12 · MC 10 |
+| palier 1 (classes à zéro avec candidats) | **120 / 147** (82 %) | |
+
+Sans O4c, le palier 1 fait **27 classes au lieu de 147**.
+
+🔴 **Trouvé en vérifiant : le défaut V4 mordait dans `class_country()`.** La
+requête `WHERE COALESCE(design_group_id, eurio_id) = ?` ne servait que le grain
+`coins` ; pour une pièce qui A un `design_group_id`, chercher par son `eurio_id`
+— ce que fait tout appelant du grain BANQUE — ne matchait jamais. **52 des 293
+classes en besoin** rendaient `None`, donc **filtre pays entièrement désactivé,
+en silence**, sur des pièces dont `coins.country` est renseigné
+(`be-2014-…philippe` → BE). Résolution par grain, l'ordre compte : `eurio_id`
+exact d'abord (une émission commune porte SON pays, pas celui majoritaire de son
+groupe de 18), le `design_group_id` ensuite. Espaces de noms vérifiés disjoints
+(0 `eurio_id` n'est un `design_group_id`).
+
+**Lot 1 · D8 — `accepted_pending`** (commit `e5c879cf`). `have` ne bouge qu'au
+rebuild : pendant une session de review il est figé, et un verdict calculé sur
+lui seul ressert une classe qu'on vient de remplir. `bottleneck_for` compte
+désormais `have + accepted_pending`.
+
+```
+crops acquis hors banque          1 451
+  ce qu'un rebuild poserait          76 exemplaires
+  classes devenant pleines             8
+  classes sortant de zéro             10
+verdicts : pleine 90 → 98 · review 293 → 285
+```
+
+Le rapport 1 451 → 76 est la mesure directe de la **sur-review** : le reste
+tombe dans des classes déjà à leur cible. Cas extrême,
+`at-2002-2eur-standard-1st-map` porte **138 acquis** pour un plafond de 10.
+`need` reste sur la banque seule (le budget), `bottleneck` compte les acquis
+(faut-il servir) — les aligner ferait mentir l'un des deux.
+
+**Lot 2 · `GET /class-need`** (commits `881820ce`, `a10db7d1`). Façade HTTP de
+`class_need` + `dino_scope`, montée **inconditionnellement** sur l'image lean et
+sur la workstation. L'effet du filtre pays passe par `build_dino_scope`, jamais
+par une requête réécrite dans la route : deux rédactions divergeraient, et la
+page annoncerait un désarmement que la pêche n'applique pas.
+
+**Déployé et vérifié le 2026-08-23.** Le clone VPS suit toujours `codeberg` et
+son HEAD était resté à `20477574` : `git pull` nu aurait répondu « à jour ».
+Passé par `git fetch github && git merge --ff-only github/repo-cleanup`
+(fast-forward pur), puis `sops exec-env ../../secrets/dev.env "docker compose
+up -d --build"`.
+
+Vérification dans l'ordre de la skill — logs, **puis** OpenAPI (qui fait
+autorité : un 401 nu ne dit rien), **puis** un vrai PAT :
+
+```bash
+docker logs eurio-api 2>&1 | grep -E "routers (montés|skippés)" | tail -2
+# skippés : referential (PIL), review_queue (cv2) — les deux attendus, aucun neuf.
+# L'app DÉMARRE : la preuve que l'import au niveau module tient sur le lean.
+curl -s https://eurio-api.musubi.dev/openapi.json | tr ',' '\n' | grep -oE '"/class-need"'
+sops exec-env secrets/dev.env 'curl -s -H "Authorization: Bearer $EURIO_API_TOKEN" \
+  "https://eurio-api.musubi.dev/class-need"'
+```
+
+**Le canonique rend EXACTEMENT les mêmes nombres que la réplique** — c'est la
+vérification qui compte :
+
+```json
+build   {"build_id":"a55e6594da3247ec80bc609f93342f51","built_at":"2026-08-22 18:06:23","n_anchors":1909}
+totals  {"n_classes":671,"coverage":250,"sum_need":4066,"sum_reachable":908,
+         "accepted_pending":1451,"rebuild_would_place":76,"n_open":6574,
+         "by_bottleneck":{"pleine":98,"review":285,"scrape":288}}
+parked  {"full_class":4999,"no_prediction":0}
+149 classes à filtre pays désarmé · 0,46 s · 249 ko
+```
+
+`?anchors_kind=2eur_commemo` et `?encoder_version=dinov2-vits14` → **409**,
+jamais 671 classes en `scrape`.
+
+⚠️ `parked.full_class` vaut 4 999 et non les 4 804 du design, et 149 classes
+sont désarmées et non 147 : **c'est D8**, mesuré avant son branchement. Les 8
+classes devenues pleines par leurs acquis emportent leurs 195 crops dans les
+parqués, et 4 des désarmées ont changé de verdict.
+
+**Vérification par mutation**, systématique : neutraliser le désarmement tue 4
+tests, ignorer les acquis dans le verdict en tue 3, neutraliser le 409 / le
+passage de `country_disarmed` / la séparation des parqués tue chacun son test.
+La sonde du contrat lean a son propre garde-fou (un module lourd doit échouer
+sous elle, sinon les autres tests ne prouvent rien). Suite complète **2037
+verts**.
+
+📌 **Piège de méthode rencontré** : `pytest` sort en **code 0** sur un argument
+inconnu, et un `| tail` masque le code de sortie. Un « vert » lu de travers a
+failli valider une suite qui n'avait pas tourné.
+
+**Reste** : lot 3 (la page `/besoin`), lot 4 (`need_only` par défaut), lot 5
+(moitié ACHETER), lot 6 (ère + dénomination). Plan :
+[`design/PLAN-IMPLEM.md`](design/PLAN-IMPLEM.md).
+
+---
+
 ## 2026-08-22 — O6 mesuré proprement : l'amorce au médoïde vaut +3,7 pts, et le creux à N=1 disparaît
 
 **Le geste.** Review du PO terminée côté singles (429 acceptés), puis :
