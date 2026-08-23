@@ -20,6 +20,7 @@ from shared.verdict_scope import (
 )
 
 from .models import (
+    DinoSuggestion,
     LotListItem,
     RejectedCrop,
     ReviewBbox,
@@ -36,6 +37,22 @@ from .models import (
 # ─── Constantes ─────────────────────────────────────────────────────────────
 
 _RESTORED_NOTE = "restored"
+
+# Quarantaine (review-collaborative-v2, lot 3) : un crop sur lequel un ami a
+# tranché attend l'arbitrage. Sa ligne `review_queue` reste `open` — le canonique
+# n'est pas touché tant que la décision n'est pas approuvée — donc l'exclusion se
+# fait à la LECTURE.
+#
+# ⚠️ Ce fragment doit être appliqué PARTOUT où l'on compte ce que la file va
+# servir, pas seulement dans `list_queue`. Un compteur qui annonce 4 au-dessus
+# d'une file qui en sert 3 n'est pas une imprécision : c'est un écran qui a l'air
+# cassé, sans message d'erreur. (Même exigence que le commentaire de
+# `dino_candidates_summary`.)
+NOT_QUARANTINED_SQL = (
+    " AND NOT EXISTS (SELECT 1 FROM peer_review_decisions prd"
+    "                  WHERE prd.image_asset_id = rq.image_asset_id"
+    "                    AND prd.arbitration_status = 'pending')"
+)
 NOT_RESTORED_SQL = (
     f"(rq.decision_notes IS NULL OR rq.decision_notes != '{_RESTORED_NOTE}')"
 )
@@ -198,6 +215,56 @@ def need_filter_clause(
 
 
 # ─── Helpers candidates / row → item ────────────────────────────────────────
+
+
+def _crop_url(source: str | None, asset_id: str, storage_path: str | None) -> str:
+    """URL servable du crop — **absolue** dès qu'on connaît sa clé MinIO.
+
+    Le chemin relatif `/sources/{source}/assets/{id}/file` n'existe QUE sur l'app
+    full (`serving/server.py`, workstation) : `sources_routes` n'est pas monté sur
+    l'image lean du VPS. Et le front préfixe tout chemin relatif par `ML_API`
+    (`useReviewApi.promoteUrl`), c'est-à-dire `127.0.0.1:8042` — donc hors de la
+    machine qui héberge le ML local, toutes les images de la review étaient mortes.
+
+    Une URL présignée MinIO est absolue : `promoteUrl` la laisse passer telle
+    quelle (`url.startsWith('http')`) et n'importe quel navigateur l'affiche. C'est
+    ce qui rend la review utilisable à distance (review-collaborative-v2, lot 1).
+
+    Fallback sur le chemin relatif si la clé manque ou si la signature échoue
+    (MinIO absent en test).
+
+    ⚠️ Ce fallback est aujourd'hui SANS DESTINATION : le front résout les chemins
+    relatifs contre `eurioApi.base` (lot 1), et `sources_routes` n'est pas monté
+    sur l'image lean. Il ne coûte rien parce qu'il ne se déclenche pas — mesuré le
+    2026-08-23, `storage_path` est non-nul sur les 13 390 `image_assets`. Le jour
+    où un crop arriverait sans clé MinIO, il faudra le servir, pas le rediriger.
+    """
+    if storage_path:
+        try:
+            from shared.storage import signed_url
+
+            return signed_url("enrichment-crops", storage_path)
+        except Exception:  # noqa: BLE001 — couche d'affichage, jamais fatale
+            pass
+    return f"/sources/{source}/assets/{asset_id}/file"
+
+
+def _raw_url(source: str | None, source_image_id: str, storage_path: str | None) -> str:
+    """URL servable de l'image SOURCE — même doctrine que `_crop_url`.
+
+    `/sources/{source}/raws/{id}/file` n'existe que sur l'app full : l'éditeur de
+    cercle se dessine sur le raw, et sans URL absolue la vue de lot est aveugle
+    hors de la machine du ML. Bucket `enrichment-raws` (≈ 499 Ko en moyenne, p90
+    944 Ko — chargé un à la fois, jamais en grille).
+    """
+    if storage_path:
+        try:
+            from shared.storage import signed_url
+
+            return signed_url("enrichment-raws", storage_path)
+        except Exception:  # noqa: BLE001 — couche d'affichage, jamais fatale
+            pass
+    return f"/sources/{source}/raws/{source_image_id}/file"
 
 
 def _build_target_candidate(
@@ -441,7 +508,9 @@ def _row_to_item(
 
     return ReviewItem(
         id=row["id"],
-        crop_url=f"/sources/{row['source']}/assets/{row['image_asset_id']}/file",
+        crop_url=_crop_url(
+            row["source"], row["image_asset_id"], row["crop_storage_path"],
+        ),
         bbox=bbox,
         source=row["source"],
         source_ref=row["source_ref"],
@@ -507,6 +576,7 @@ _LIST_SELECT_SQL = f"""
 SELECT rq.id, rq.image_asset_id, rq.priority, rq.enqueued_at,
        rq.candidate_eurio_ids_json AS rq_candidates,
        a.bbox_json, a.candidate_eurio_ids_json, a.face, a.quality_score,
+       a.storage_path AS crop_storage_path,
        s.source, s.source_ref, s.listing_title, s.source_url,
        s.listing_price, s.target_eurio_id,
        s.listing_country, s.listing_year,
@@ -640,6 +710,7 @@ def list_queue(
         )
     where = "rq.status = ?"
     args: list[object] = [status]
+    where += NOT_QUARANTINED_SQL
     if kind != "all":
         where += " AND rq.kind = ?"
         args.append(kind)
@@ -754,7 +825,8 @@ def queue_stats(conn: sqlite3.Connection) -> ReviewStats:
     week_start = (datetime.utcnow() - timedelta(days=7)).strftime("%Y-%m-%d")
 
     n_pending = conn.execute(
-        "SELECT COUNT(*) AS c FROM review_queue WHERE status = 'open'"
+        "SELECT COUNT(*) AS c FROM review_queue rq WHERE rq.status = 'open'"
+        + NOT_QUARANTINED_SQL
     ).fetchone()["c"]
     n_done_today = conn.execute(
         "SELECT COUNT(*) AS c FROM review_queue WHERE status = 'done' AND decided_at >= ?",
@@ -808,7 +880,7 @@ def list_rejected(
     rows = conn.execute(
         f"""
         SELECT rq.id AS review_id, rq.image_asset_id, rq.decided_at,
-               a.quality_reason,
+               a.quality_reason, a.storage_path AS crop_storage_path,
                s.source, s.listing_title, s.target_eurio_id,
                t.country_name AS t_country_name, t.year AS t_year,
                t.theme AS t_theme
@@ -827,7 +899,9 @@ def list_rejected(
         RejectedCrop(
             review_id=r["review_id"],
             image_asset_id=r["image_asset_id"],
-            crop_url=f"/sources/{r['source']}/assets/{r['image_asset_id']}/file",
+            crop_url=_crop_url(
+                r["source"], r["image_asset_id"], r["crop_storage_path"],
+            ),
             listing_title=r["listing_title"],
             quality_reason=r["quality_reason"],
             decided_at=r["decided_at"],
@@ -1310,7 +1384,7 @@ def dino_candidates_summary(
           JOIN image_assets a ON a.id = rq.image_asset_id
           JOIN source_images si ON si.id = a.source_image_id
           {join_sql}
-         WHERE rq.status = 'open' AND {scope.sql}{need_clause}
+         WHERE rq.status = 'open' AND {scope.sql}{need_clause}{NOT_QUARANTINED_SQL}
          GROUP BY rq.kind
         """,
         (*scope.args, *need_args),
@@ -1644,7 +1718,7 @@ def get_lot_detail(
         asset_rows = conn.execute(
             """
             SELECT a.id AS asset_id, a.crop_index, a.bbox_json, a.phash,
-                   a.eurio_id, a.candidate_eurio_ids_json,
+                   a.eurio_id, a.candidate_eurio_ids_json, a.storage_path,
                    rq.id AS review_id
               FROM image_assets a
               LEFT JOIN review_queue rq ON rq.image_asset_id = a.id
@@ -1697,7 +1771,7 @@ def get_lot_detail(
                 ),
                 asset_id=a["asset_id"],
                 review_id=a["review_id"] or "",
-                crop_url=f"/sources/{source}/assets/{a['asset_id']}/file",
+                crop_url=_crop_url(source, a["asset_id"], a["storage_path"]),
                 crop_index=a["crop_index"],
                 phash=a["phash"],
                 current_eurio_id=a["eurio_id"],
@@ -1711,7 +1785,7 @@ def get_lot_detail(
         images.append(LotImage(
             source_image_id=si_id,
             image_index=idx,
-            raw_url=f"/sources/{source}/raws/{si_id}/file",
+            raw_url=_raw_url(source, si_id, si["raw_storage_path"]),
             raw_width=si["raw_width"],
             raw_height=si["raw_height"],
             detections=detections,
@@ -1822,6 +1896,16 @@ def source_image_id_for_asset(conn: sqlite3.Connection, asset_id: str) -> str:
     if row is None:
         raise ReviewItemNotFound(asset_id)
     return row["source_image_id"]
+
+
+def asset_id_for_review(conn: sqlite3.Connection, review_id: str) -> str:
+    """`review_queue.id` → `image_asset_id`. Lève ``ReviewItemNotFound``."""
+    row = conn.execute(
+        "SELECT image_asset_id FROM review_queue WHERE id = ?", (review_id,)
+    ).fetchone()
+    if row is None:
+        raise ReviewItemNotFound(review_id)
+    return row["image_asset_id"]
 
 
 def source_image_id_for_review(conn: sqlite3.Connection, review_id: str) -> str:
@@ -2004,3 +2088,126 @@ def cohort_filter_clause(
         return "", [], False
     clause = f" AND si.target_eurio_id IN ({','.join('?' * len(eids))})"
     return clause, list(eids), False
+
+
+# ─── /review-queue/{…}/dino-suggestions : SQL pur (lot 6a) ──────────────────
+#
+# L'ASSEMBLAGE de la réponse (verdict, abstention, seuils) vit dans `service.py`
+# — ici uniquement des lectures. `service` importe déjà `repository` : l'inverse
+# créerait un cycle, et mettre de la décision ici inverserait les couches
+# (cf. ARCHITECTURE.md §2.2/§2.3).
+
+
+class DinoPredictionMissing(LookupError):
+    """Aucune prédiction persistée pour ce couple (asset, banque)."""
+
+
+def dino_prediction(
+    conn: sqlite3.Connection, asset_id: str, *,
+    encoder_version: str, anchors_kind: str,
+) -> sqlite3.Row:
+    """Row de prédiction persistée. Lève ``DinoPredictionMissing`` si absente —
+    on ne calcule JAMAIS ici (le jumeau lourd, lui, encode à la demande)."""
+    row = conn.execute(
+        """
+        SELECT asset_id, encoder_version, anchors_kind, anchors_count,
+               top_k_json, top1_eurio_id, top1_sim, spread,
+               computed_at, duration_ms,
+               target_country, country_anchors_count, top_k_country_json,
+               top1_country_eurio_id, top1_country_sim, country_spread
+          FROM image_asset_dino_predictions
+         WHERE asset_id = ? AND encoder_version = ? AND anchors_kind = ?
+        """,
+        (asset_id, encoder_version, anchors_kind),
+    ).fetchone()
+    if row is None:
+        raise DinoPredictionMissing(
+            f"asset_id={asset_id} anchors_kind={anchors_kind}")
+    return row
+
+
+def asset_listing_context(
+    conn: sqlite3.Connection, asset_id: str
+) -> sqlite3.Row | None:
+    """(target_eurio_id, listing_title) du listing parent."""
+    return conn.execute(
+        """
+        SELECT si.target_eurio_id, si.listing_title
+          FROM image_assets a JOIN source_images si ON si.id = a.source_image_id
+         WHERE a.id = ?
+        """,
+        (asset_id,),
+    ).fetchone()
+
+
+def verdict_signals(
+    conn: sqlite3.Connection, asset_id: str, *,
+    encoder_version: str, anchors_kind: str,
+) -> sqlite3.Row | None:
+    """Signaux du verdict — mirror du ``_SIGNALS_SQL`` de
+    ``training.foundation.auto_validate``."""
+    return conn.execute(
+        """
+        SELECT a.face, si.target_eurio_id,
+               p.top1_country_eurio_id, p.top1_country_sim, p.country_spread,
+               p.top1_eurio_id, p.top1_sim, p.spread,
+               lts.vs_target_verdict
+          FROM image_assets a
+          JOIN source_images si ON si.id = a.source_image_id
+          LEFT JOIN image_asset_dino_predictions p
+                 ON p.asset_id = a.id AND p.encoder_version = ?
+                AND p.anchors_kind = ?
+          LEFT JOIN listing_text_signals lts ON lts.source_image_id = si.id
+         WHERE a.id = ?
+        """,
+        (encoder_version, anchors_kind, asset_id),
+    ).fetchone()
+
+
+def consensus_verdict_row(
+    conn: sqlite3.Connection, asset_id: str
+) -> sqlite3.Row | None:
+    """Verdict de consensus PERSISTÉ (celui qui a posé la lane), ou None."""
+    return conn.execute(
+        "SELECT outcome, lane, reason, rule, confidence FROM consensus_verdicts "
+        " WHERE image_asset_id = ? ORDER BY rule_version DESC LIMIT 1",
+        (asset_id,),
+    ).fetchone()
+
+
+def enrich_top_k(conn: sqlite3.Connection, top_k: list[dict]) -> list[DinoSuggestion]:
+    """Hydrate un top-K brut ``[{eurio_id, sim}]`` de ses métadonnées de pièce."""
+    if not top_k:
+        return []
+    eids = [str(t["eurio_id"]) for t in top_k]
+    rows = conn.execute(
+        f"""
+        SELECT eurio_id, country, country_name, year, theme,
+               face_value, is_commemorative
+          FROM coins WHERE eurio_id IN ({",".join("?" * len(eids))})
+        """,
+        eids,
+    ).fetchall()
+    by_eid = {r["eurio_id"]: r for r in rows}
+    out: list[DinoSuggestion] = []
+    for entry in top_k:
+        eid = str(entry["eurio_id"])
+        row = by_eid.get(eid)
+        if row is None:
+            out.append(DinoSuggestion(eurio_id=eid, sim=float(entry["sim"])))
+            continue
+        out.append(DinoSuggestion(
+            eurio_id=eid,
+            sim=float(entry["sim"]),
+            country=row["country"],
+            country_name=row["country_name"],
+            year=row["year"],
+            theme=row["theme"],
+            denomination=float(row["face_value"]) if row["face_value"] else None,
+            is_commemorative=bool(row["is_commemorative"]),
+            # Vignette canonique par `eurio_id` — jamais l'endpoint legacy
+            # `/images/<numista>/source` (layout `ml/datasets/` déprécié).
+            obverse_url=canonical_obverse_url(conn, eid)
+            or f"/referential/canonical/{eid}/obverse",
+        ))
+    return out

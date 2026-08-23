@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 # ─── Review item shape (list + detail) ──────────────────────────────────────
@@ -322,3 +322,94 @@ class TextSignalsResponse(BaseModel):
     contradictions: list[str] = []
     convergences: list[str] = []
     computed_at: str | None = None
+
+
+# ─── /review-queue/{…}/dino-suggestions (lot 6a) ────────────────────────────
+#
+# Miroir LEAN de la réponse servie jusqu'ici par le seul
+# `review/review_queue_routes.py` (module `import cv2`, donc absent du VPS).
+# Le contrat est celui que consomme `useDinoSuggestions.ts` — le front n'a rien
+# à changer, il change seulement d'adresse.
+
+
+class DinoSuggestion(BaseModel):
+    """Un candidat du top-K, hydraté de ses métadonnées de pièce."""
+
+    eurio_id: str
+    sim: float
+    country: str | None = None
+    country_name: str | None = None
+    year: int | None = None
+    theme: str | None = None
+    denomination: float | None = None
+    is_commemorative: bool | None = None
+    obverse_url: str | None = None
+
+
+class DinoCriterionOut(BaseModel):
+    key: str   # top1_target | top1_country_sim | country_spread
+    state: str  # pass | fail | absent
+
+
+class AutoValidateVerdictOut(BaseModel):
+    """Détail par critère. N'est PAS le verdict de routage : c'est
+    `consensus_verdict` qui fait foi."""
+
+    level: str
+    reason: str
+    criteria: list[DinoCriterionOut]
+
+
+class ConsensusVerdictOut(BaseModel):
+    """Verdict de CONSENSUS — la décision qui a posé la lane."""
+
+    outcome: str
+    lane: str
+    reason: str
+    rule: str
+    confidence: float
+
+
+class DinoVerdictThresholdsOut(BaseModel):
+    top1_country_sim_min: float
+    country_spread_min: float
+
+
+class DinoAbstentionThresholdsOut(BaseModel):
+    """Seuils d'abstention — le front les AFFICHE (« spread sous 0,02 »).
+
+    Champ NON optionnel : `DinoSuggestions.vue` fait
+    `data.abstention_thresholds.spread_uncertain_max.toFixed(2)` sans garde dès
+    que `abstention_state === 'uncertain'`. L'omettre ne produit pas une valeur
+    manquante mais une exception de rendu — tout le panneau disparaît, et
+    seulement pour les crops incertains, c'est-à-dire ceux où il est le plus
+    utile."""
+
+    spread_uncertain_max: float
+    spread_confident_min: float
+
+
+class DinoSuggestionsResponse(BaseModel):
+    asset_id: str
+    encoder_version: str
+    anchors_kind: str
+    anchors_count: int
+    computed_at: str | None = None
+    duration_ms: int | None = None
+    spread: float | None = None
+    top1_eurio_id: str | None = None
+    top1_sim: float | None = None
+    top_k: list[DinoSuggestion] = Field(default_factory=list)
+    target_country: str | None = None
+    country_anchors_count: int | None = None
+    country_spread: float | None = None
+    top1_country_eurio_id: str | None = None
+    top1_country_sim: float | None = None
+    top_k_country: list[DinoSuggestion] = Field(default_factory=list)
+    target_eurio_id: str | None = None
+    verdict_thresholds: DinoVerdictThresholdsOut
+    abstention_thresholds: DinoAbstentionThresholdsOut
+    auto_validate_verdict: AutoValidateVerdictOut | None = None
+    consensus_verdict: ConsensusVerdictOut | None = None
+    abstention_state: str = "unknown"
+    multi_country_lot: bool = False

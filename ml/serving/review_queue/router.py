@@ -14,10 +14,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from serving.auth_principal import Principal, require_scope
 from serving.deps import db_connection
 from shared.dino_scope import DINO_RANKS
+from shared.verdict_scope import SUGGESTIONS_ANCHORS_KIND
 
 from . import repository, service
 from .models import (
     DinoCandidatesSummary,
+    DinoSuggestionsResponse,
     LotDetail,
     LotListResponse,
     RejectedCrop,
@@ -330,6 +332,66 @@ def text_signals_by_review(
             detail=(
                 "No text signals for this source_image. The text_signal step "
                 "may not have run yet — try `go-task ml:text-signals:backfill`."
+            ),
+        ) from exc
+
+
+# ─── Suggestions DINO — LECTURE PURE (lot 6a) ───────────────────────────────
+#
+# Jumeau lean de `review/review_queue_routes.py` : MÊME chemin, MÊME contrat,
+# mais sans le fallback qui encode le crop à la demande (torch absent du VPS).
+# Prédiction absente ⇒ 404, que le panneau front sait afficher — Dino est une
+# aide, pas un prérequis pour reviewer.
+#
+# ⚠️ Doivent être déclarées AVANT `/review-queue/{review_id}`, sinon ce dernier
+# avale `asset` comme un id de review et répond un 404 parfaitement crédible.
+
+
+@router.get(
+    "/review-queue/asset/{asset_id}/dino-suggestions",
+    response_model=DinoSuggestionsResponse,
+)
+def dino_suggestions_by_asset(
+    asset_id: str,
+    principal: PrincipalDep,
+    conn: ConnDep,
+    anchors_kind: str = Query(default=SUGGESTIONS_ANCHORS_KIND),
+) -> DinoSuggestionsResponse:
+    try:
+        return service.dino_suggestions(conn, asset_id, anchors_kind=anchors_kind)
+    except repository.DinoPredictionMissing as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"Pas de prédiction Dino pour asset_id={asset_id} "
+                f"(anchors_kind={anchors_kind}) : hors scope, ou backfill à faire "
+                "(`go-task ml:dino-predictions:backfill`)."
+            ),
+        ) from exc
+
+
+@router.get(
+    "/review-queue/{review_id}/dino-suggestions",
+    response_model=DinoSuggestionsResponse,
+)
+def dino_suggestions_by_review(
+    review_id: str,
+    principal: PrincipalDep,
+    conn: ConnDep,
+    anchors_kind: str = Query(default=SUGGESTIONS_ANCHORS_KIND),
+) -> DinoSuggestionsResponse:
+    try:
+        asset_id = repository.asset_id_for_review(conn, review_id)
+        return service.dino_suggestions(conn, asset_id, anchors_kind=anchors_kind)
+    except repository.ReviewItemNotFound as exc:
+        raise HTTPException(
+            status_code=404, detail=f"review '{review_id}' introuvable") from exc
+    except repository.DinoPredictionMissing as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"Pas de prédiction Dino pour review_id={review_id} "
+                f"(anchors_kind={anchors_kind}) : hors scope, ou backfill à faire."
             ),
         ) from exc
 

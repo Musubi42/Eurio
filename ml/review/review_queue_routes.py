@@ -2717,26 +2717,10 @@ def _enrich_top_k(
     return enriched
 
 
-# Titres de lots multi-pays — le pays cible du listing n'y contraint pas le
-# pays de chaque crop (cas kickoff : « 2 Euro Kursmünze 2011 — Diverse Länder
-# nach Wahl », target BE, crops de toute la zone euro). Volontairement court
-# et haute-précision : un faux négatif laisse l'UI actuelle, un faux positif
-# démote la bande pays qui aide massivement sur les listings mono-pays
-# (recall@5 90.7 % vs 71.6 % global, audit Phase 0).
-# L'adjectif (divers/verschiedene/mixed…) doit être à ≤ 2 mots d'un mot
-# « pays » — « verschiedene Jahre » (multi-années mono-pays) ne matche pas.
-_MULTI_COUNTRY_TITLE_RE = re.compile(
-    r"(divers\w*|verschieden\w*|gemischt\w*|mixed|various|assortit?\w*"
-    r"|misti|vari[oe]?s?|diff[ée]rente?s?)"
-    r"\W+(?:\w+\W+){0,2}"
-    r"(l[äa]nder\w*|countr\w*|pays|paesi|pa[íi]ses)"
-    r"|aus\s+allen\s+l[äa]ndern|alle\s+l[äa]nder|eurol[äa]nder",
-    re.IGNORECASE,
-)
-
-
-def _is_multi_country_lot(listing_title: str | None) -> bool:
-    return bool(listing_title and _MULTI_COUNTRY_TITLE_RE.search(listing_title))
+# La regex et la règle vivent désormais dans `shared/listing_titles.py` :
+# stdlib-only, donc lisible par l'image lean qui sert la review à distance
+# (review-collaborative-v2, lot 6a). Une seule définition pour les deux voies.
+from shared.listing_titles import is_multi_country_lot as _is_multi_country_lot
 
 
 def _abstention_state(spread: float | None) -> str:
