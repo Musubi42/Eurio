@@ -109,16 +109,135 @@ def class_country(conn: sqlite3.Connection, class_id: str) -> str | None:
     `None` DÉSACTIVE le filtre pays chez l'appelant plutôt que de le rendre
     vide : une classe dont on ignore le pays doit être servie entière, pas
     silencieusement réduite à zéro.
+
+    🔴 **DEUX GRAINS, DEUX LECTURES — c'est le défaut V4, et il mordait ici.**
+    Cette fonction reçoit tantôt un `design_group_id` (grain `coins` : la pêche
+    saisie à la main, `it-2euro-standard-t1`), tantôt l'`eurio_id` du
+    représentant (grain BANQUE : tout ce qui vient de `class_need` et de
+    `dino_class_references`, `be-2014-2eur-standard-philippe`).
+
+    La seule requête `WHERE COALESCE(design_group_id, eurio_id) = ?` ne servait
+    que le premier grain : pour une pièce QUI A un `design_group_id`, le
+    COALESCE rend ce groupe, donc chercher par son `eurio_id` ne matchait
+    jamais. Mesuré le 2026-08-23 sur la réplique : **52 des 293 classes en
+    besoin** rendaient `None` — donc filtre pays entièrement désactivé, en
+    silence, sur des pièces dont `coins.country` est parfaitement renseigné
+    (`be-2014-…philippe` → BE).
+
+    On résout donc PAR GRAIN, et l'ordre compte :
+
+    1. `eurio_id` exact — une pièce précise porte SON pays. Indispensable pour
+       les émissions communes : `de-2012-…euro-cash` appartient au groupe
+       `eu-euro-cash-2012` frappé par 18 pays, et passer par le groupe rendrait
+       le pays MAJORITAIRE, c'est-à-dire faux 17 fois sur 18.
+    2. sinon `design_group_id` — le grain `coins`, majorité (inchangé).
+
+    Les deux espaces de noms sont disjoints (vérifié le 2026-08-23 : 0 `eurio_id`
+    n'est un `design_group_id`), donc l'ordre ne peut pas se retourner.
     """
-    row = conn.execute(
+    def _one(sql: str) -> str | None:
+        row = conn.execute(sql, (class_id,)).fetchone()
+        if row is None:
+            return None
+        return row[0] if not isinstance(row, sqlite3.Row) else row["country"]
+
+    # 1. grain BANQUE : la pièce elle-même.
+    direct = _one(
+        "SELECT country FROM coins WHERE eurio_id = ? AND country IS NOT NULL",
+    )
+    if direct:
+        return direct
+    # 2. grain `coins` : le groupe, par majorité.
+    return _one(
         "SELECT country FROM coins "
         " WHERE COALESCE(design_group_id, eurio_id) = ? AND country IS NOT NULL "
         " GROUP BY country ORDER BY COUNT(*) DESC LIMIT 1",
-        (class_id,),
+    )
+
+
+def _class_predicate(
+    alias: str, class_ids: tuple[str, ...], rank: int,
+) -> tuple[str, list[object]]:
+    """« la prédiction pointe l'une de ces étiquettes », au rang demandé.
+
+    Extrait pour que la SONDE de désarmement (`_probe_country`) et le périmètre
+    rendu à l'appelant soient littéralement la même condition. Deux rédactions
+    du même prédicat finiraient par diverger, et le désarmement se déciderait
+    alors sur une population qui n'est pas celle qu'on sert.
+    """
+    ph = ",".join("?" * len(class_ids))
+    if rank == 1:
+        return f"{alias}.top1_eurio_id IN ({ph})", list(class_ids)
+    # `j.key` est l'index dans le tableau (json_each sur un array) ; `< rank`
+    # garde les `rank` premières positions. top_k_json est trié par sim
+    # décroissante à l'écriture (cf. schema.sql).
+    return (
+        f"EXISTS (SELECT 1 FROM json_each({alias}.top_k_json) j "
+        f"WHERE j.key < ? "
+        f"AND json_extract(j.value, '$.eurio_id') IN ({ph}))",
+        [rank, *class_ids],
+    )
+
+
+def _probe_country(
+    conn: sqlite3.Connection,
+    *,
+    bits: list[str],
+    args: list[object],
+    country: str,
+) -> tuple[bool, int]:
+    """Le filtre pays viderait-il la file, et combien masque-t-il ?
+
+    Rend `(desarme, n_masques)`.
+
+    LA POPULATION SONDÉE, ET POURQUOI CELLE-LÀ
+    ------------------------------------------
+    La file de review OUVERTE (`review_queue.status = 'open'`), exactement comme
+    `class_need._pending_by_class` et `dino_candidates_summary`. Le désarmement
+    est une propriété de **la classe**, calculée une fois — pas de l'item, ni de
+    la requête de l'appelant. C'est ce qui le distingue du repli automatique
+    écarté en D1 de `peche-dino` : là-bas le périmètre dépendait de l'item et
+    deux crops voisins étaient servis par deux règles ; ici la bascule est
+    calculée une fois et elle est AFFICHÉE.
+
+    Conséquence assumée : un appelant qui restreint par ailleurs (un run, une
+    cohorte) hérite du désarmement décidé sur la classe entière. C'est
+    volontaire — sinon le même mot dirait deux choses selon l'écran.
+
+    MESURE QUI JUSTIFIE CE CODE (réplique du 2026-08-22, banque a55e6594)
+    --------------------------------------------------------------------
+        classes 'review'                            293
+          que le filtre pays viderait ENTIÈREMENT   147  (50 %)
+          crops rendus inatteignables               558
+        et 120 des 147 classes du palier 1 (82 %)
+
+    Les pays touchés sont exactement les plus pauvres en ancres : LU 14, PT 13,
+    GR 12, VA 12, MC 10, FI 9, LT 9, SM 9, LV 8, MT 8. Cause racine :
+    `listing_country` n'est pas le pays de l'annonce mais celui que la recherche
+    VISAIT (`sources/ebay/adapter.py:601`) — là où on n'a jamais scrapé, il ne
+    reste rien (VISION §V3).
+    """
+    where = " AND ".join(bits) if bits else "1"
+    row = conn.execute(
+        f"""
+        SELECT COUNT(*) AS brut,
+               SUM(CASE WHEN si.listing_country = ? THEN 1 ELSE 0 END) AS pays
+          FROM review_queue rq
+          JOIN image_assets a ON a.id = rq.image_asset_id
+          JOIN source_images si ON si.id = a.source_image_id
+          {suggestions_join_sql("ps")}
+         WHERE rq.status = 'open' AND {where}
+        """,
+        (country, *args),
     ).fetchone()
-    if row is None:
-        return None
-    return row[0] if not isinstance(row, sqlite3.Row) else row["country"]
+    brut = int(row["brut"] or 0)
+    pays = int(row["pays"] or 0)
+    # La règle, telle qu'elle est déjà écrite pour `class_country` : le filtre
+    # se retire plutôt que de rendre zéro. Un pool brut vide n'est PAS un
+    # désarmement — il n'y a simplement rien, et c'est un sujet de scrape.
+    if brut > 0 and pays == 0:
+        return True, 0
+    return False, max(brut - pays, 0)
 
 
 @dataclass(frozen=True)
@@ -139,10 +258,25 @@ class DinoScope:
     #: (désactivé, ou classe sans pays résoluble). L'écran doit pouvoir dire
     #: qu'il filtre, et sur quoi.
     country: str | None = None
+    #: Le filtre pays s'est-il RETIRÉ parce qu'il ne laissait rien ? Quand c'est
+    #: vrai, `country` nomme toujours le pays visé (l'écran doit pouvoir dire
+    #: lequel il a renoncé à appliquer) mais `sql` ne le contraint plus.
+    #: ⚠️ Un écran qui lit `country` sans lire ce drapeau annoncera « pays LU »
+    #: au-dessus d'une file qui sert tous les pays.
+    country_disarmed: bool = False
+    #: Ce que le filtre pays masque effectivement (0 s'il est désarmé, puisqu'il
+    #: ne masque alors plus rien). Un filtre actif par défaut qui tait son effet
+    #: ment par omission.
+    n_hidden_by_country: int = 0
 
     @property
     def is_empty(self) -> bool:
         return not self.sql
+
+    @property
+    def country_active(self) -> bool:
+        """Le filtre pays mord-il réellement sur cette requête ?"""
+        return self.country is not None and not self.country_disarmed
 
 
 def build_dino_scope(
@@ -182,6 +316,21 @@ def build_dino_scope(
     un profil identifiable : des coffrets multi-pays (13 des 18 crops perdus
     venaient d'annonces belges). D'où un réglage, et non une règle en dur.
 
+    🔴 **Et il SE DÉSARME quand il ne laisse rien** (O4c, D10). Le « 5 % de
+    vrais positifs perdus » ci-dessus est un AGRÉGAT, et il vaut 100 % pour un
+    cinquième du catalogue : mesuré le 2026-08-22, le filtre viderait
+    entièrement **147 des 293 classes en besoin** (558 crops) et **82 % des
+    classes du palier 1**. Quand le pool filtré tombe à zéro alors que le pool
+    brut ne l'est pas, le filtre se retire, `country_disarmed` passe à `True`,
+    et **l'écran doit le dire**. C'est la même règle que `class_country` ci-dessus,
+    étendue du cas « pays inconnu » au cas « pays connu mais jamais scrapé » —
+    parce que les deux produisent la même panne muette : zéro ligne, qui se lit
+    « rien à trancher », plausible et faux.
+
+    ⛔ Ce n'est PAS le repli automatique écarté en D1 de `peche-dino` : là-bas le
+    périmètre dépendait de l'**item**, ici la bascule dépend de la **classe**,
+    elle est calculée une fois, et elle est affichée. Cf. `_probe_country`.
+
     ⛔ **Ne pas confondre avec le top-1 SCOPÉ PAYS** (`top1_country_eurio_id`,
     déjà en base). Mesuré le même jour : il ne gagne que 1,2 point (91,3 →
     92,5 %) et sa couverture est trouée — `target_country` dérive de
@@ -202,21 +351,9 @@ def build_dino_scope(
         from shared.bank_classes import bank_class_ids_for_class
 
         class_ids = tuple(bank_class_ids_for_class(conn, dino_class))
-        ph = ",".join("?" * len(class_ids))
-        if rank == 1:
-            bits.append(f"{alias}.top1_eurio_id IN ({ph})")
-            args.extend(class_ids)
-        else:
-            # `j.key` est l'index dans le tableau (json_each sur un array) ;
-            # `< rank` garde les `rank` premières positions. top_k_json est
-            # trié par sim décroissante à l'écriture (cf. schema.sql).
-            bits.append(
-                f"EXISTS (SELECT 1 FROM json_each({alias}.top_k_json) j "
-                f"WHERE j.key < ? "
-                f"AND json_extract(j.value, '$.eurio_id') IN ({ph}))"
-            )
-            args.append(rank)
-            args.extend(class_ids)
+        bit, bit_args = _class_predicate(alias, class_ids, rank)
+        bits.append(bit)
+        args.extend(bit_args)
 
     if min_spread is not None:
         bits.append(
@@ -225,11 +362,29 @@ def build_dino_scope(
         args.append(float(min_spread))
 
     country: str | None = None
+    disarmed = False
+    n_hidden = 0
     if country_only and dino_class:
         country = class_country(conn, dino_class)
         if country:
-            bits.append(f"{country_alias}.listing_country = ?")
-            args.append(country)
+            # La sonde se rejoue avec les MÊMES conditions que le périmètre,
+            # mais avec les alias qu'elle contrôle (`ps` / `si`) : ceux de
+            # l'appelant n'existent pas dans sa requête.
+            probe_bits: list[str] = []
+            probe_args: list[object] = []
+            if class_ids:
+                b, a = _class_predicate("ps", class_ids, rank)
+                probe_bits.append(b)
+                probe_args.extend(a)
+            if min_spread is not None:
+                probe_bits.append("COALESCE(ps.country_spread, ps.spread) >= ?")
+                probe_args.append(float(min_spread))
+            disarmed, n_hidden = _probe_country(
+                conn, bits=probe_bits, args=probe_args, country=country,
+            )
+            if not disarmed:
+                bits.append(f"{country_alias}.listing_country = ?")
+                args.append(country)
 
     return DinoScope(
         sql=" AND ".join(bits),
@@ -237,4 +392,6 @@ def build_dino_scope(
         class_ids=class_ids,
         rank=rank,
         country=country,
+        country_disarmed=disarmed,
+        n_hidden_by_country=n_hidden,
     )

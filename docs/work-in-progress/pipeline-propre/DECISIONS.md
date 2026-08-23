@@ -106,15 +106,126 @@ l'implémentation lourde une seule fois.
 *Écarte* : coder O2 directement depuis la spec et découvrir au branchement
 que le parcours ne convient pas.
 
+## D7 · Deux paliers : couvrir d'abord, approfondir ensuite
+
+Arbitrée le **2026-08-22** en session design, après l'A/B médoïde du JOURNAL.
+
+Sous l'ancienne amorce `fps` la courbe montait tout du long (76,2 → 84,3) —
+c'est de là que venait « 8 ». Sous l'amorce **médoïde**, elle change de forme :
+
+| N | bras `fps` (témoin) | bras médoïde |
+|---:|---:|---:|
+| 0 | 76,2 % | 76,0 % |
+| 1 | 71,8 % | **86,8 %** |
+| 10 | 84,3 % | 88,0 % |
+
+**Le premier exemplaire vaut +10,8 points, les neuf suivants +1,2 à eux tous.**
+La Station 0 affiche donc **deux barres**, pas une :
+
+| palier | définition | état (banque `a55e6594`, 22/08 18:06) |
+|---|---|---|
+| **1 · couverture** | `have ≥ 1` | **250 / 671** — 147 à portée, 274 à scraper |
+| **2 · profondeur** | `have ≥ target` (D1/D4) | Σ `need` **4 066** — 908 à portée |
+
+Le tri par défaut sert le palier 1.
+
+⚠️ **Réserve non levée.** Le `N` de `bench_refs_curve` est **plafonné par ce que
+chaque classe possède** : à N=1, seules les 250 classes déjà pourvues bougent.
+Une courbe « exactement 1 exemplaire partout » est nécessaire pour confirmer —
+demandée à la session ML, cf. `design/QUESTIONS-OUVERTES.md` Q1.
+
+*Écarte* : trier par distance à 8, ce qui ferait passer 90 classes bien nourries
+devant 421 classes aveugles. **Ne contredit pas D1** — la cible 8 reste la
+cible, elle devient explicitement le second palier.
+
+## D8 · `accepted_pending` — ce qui est acquis mais pas encore bâti
+
+Arbitrée le **2026-08-22**.
+
+Accepter un crop écrit `training_eligible = 1`. Ça n'ajoute **aucun exemplaire à
+la banque** : `have` ne bouge qu'au `build_dino_anchors` suivant — c'est l'arête
+que FLOW-ADMIN §3 signale comme n'existant « sous aucune forme ». Conséquence :
+pendant une session, `have` et `bottleneck` sont figés, et **la file ressert une
+classe qu'on vient de remplir**. D9 seule ne suffit donc pas.
+
+`ClassNeed` gagne un champ, et `bottleneck_for` compare `have +
+accepted_pending` à `target` :
+
+```python
+accepted_pending: int   # training_eligible=1, storage_status='present',
+                        # face != 'reverse', asset_id absent de la banque
+```
+
+Mesuré le 2026-08-22 : **1 451 crops acceptés hors banque** → un rebuild
+poserait **76 exemplaires**, rendrait 8 classes pleines, sortirait 10 classes de
+zéro (couverture 250 → 260). Le rapport 1 451 → 76 est la mesure directe de la
+sur-review ; cas extrême, `at-2002-2eur-standard-1st-map` porte **138 acquis**
+pour un plafond de 10.
+
+La Station 0 **affiche** ce qu'un rebuild poserait et **propose** le geste ; elle
+ne le déclenche jamais seule (un rebuild déplace les prédictions de toute la
+file, donc les verdicts, en pleine session).
+
+*Écarte* : n'afficher que `have` (l'écran ment sur le travail en cours) et le
+rebuild automatique (les verdicts bougeraient sous la main de l'opérateur).
+
+## D9 · `need_only` devient le régime par défaut
+
+Arbitrée le **2026-08-22**, sur exigence explicite du PO.
+
+`need_only` existe de bout en bout depuis le 2026-08-21
+(`need_filter_clause`, `repository.py:123`) mais il est **opt-in** (`?need=1`),
+et **la pêche ne le passe pas du tout** (`PechePage.vue` ne l'émet nulle part).
+
+Le défaut se renverse : **la file sert le besoin**, et on lève le filtre
+explicitement (`?need=0`). Mesuré le 2026-08-22 : **4 804 des 6 574 crops
+ouverts (73 %)** tombent dans une classe à sa cible.
+
+Corollaire pour D3 : **le mécanisme de « parqué » ne reste pas à concevoir, il
+est déjà là.** `RunParked` (`models.py:200`) compte le complément en deux causes
+(`full_class`, `no_prediction`), sans `lane`, sans statut, **sans aucune
+écriture**, réversible en levant le filtre. Il manque seulement le même compte
+**global et par classe** — il n'existe aujourd'hui que par run.
+
+## D10 · O4c est un prérequis d'O2, pas son voisin
+
+Arbitrée le **2026-08-22**. Corrige l'ordre ci-dessous.
+
+En appliquant le filtre pays — *actif par défaut aujourd'hui* — au pool de
+chaque classe :
+
+```
+classes 'review'                                  293
+  que le filtre pays viderait ENTIÈREMENT         147  (50 %)
+  crops rendus inatteignables                     558
+  LU 14 · PT 13 · GR 12 · VA 12 · MC 10 · FI 9 · LT 9 · SM 9 · LV 8 · MT 8
+
+palier 1 : sur les 147 classes à zéro AVEC candidats,
+           120 seraient vidées par le filtre pays        (82 %)
+```
+
+VISION §V3 mesurait 137/338 (41 %) ; c'est désormais **50 % des classes en
+besoin et 82 % du palier 1**. **Sans le désarmement automatique d'O4c, le palier
+1 fait 27 classes au lieu de 147**, et la Station 0 affiche un écran faux le jour
+de son branchement.
+
+Donc : **O4c se livre AVANT O2**, et la Station 0 compte `pending_scoped`
+(filtres appliqués), jamais `pending` brut.
+
+*Écarte* : livrer O2 sur le pool brut « en attendant » — la page annoncerait 13
+candidats au-dessus d'une file qui en sert 0.
+
 ## Ordre qui en découle
 
 ```
-0. O7  reprocess zero_crops (808 annonces déficitaires → puis le reste, parqué)
-1. O6  amorce médoïde — après avoir posé min_exemplars=2 en base (dino_thresholds est vide)
-2. O1 + O5  calcul (class_need, class_family) — sans écran
-3. design O2 + O4 (D6), puis implémentation
-4. O3  entonnoir à huit plaques, au grain annonce
-5. scrape réel, piloté par O2
+0. ✅ O7  reprocess zero_crops (811 annonces rejouées, 669 récupérées)
+1. ✅ O6  amorce médoïde — banque a55e6594, +3,7 pts à N=10
+2. ✅ O1 + O5  calcul (class_need, class_family) — sans écran
+3. ✅ design O2 + O4 (D6) — 2026-08-22, cf. `design/`
+4.    O4c  désarmement du filtre pays — PRÉREQUIS d'O2 (D10)
+5.    implémentation O2 + O4 — 8 lots, cf. `design/PLAN-IMPLEM.md`
+6.    O3   entonnoir à huit plaques, au grain annonce
+7.    scrape réel, piloté par O2
 ```
 
 ## Ce qui reste ouvert
@@ -123,4 +234,7 @@ que le parcours ne convient pas.
 - VISION §8 Q4 : `quality_score` manquant sur 54 % des crops.
 - Le résidu Q13 (99 crops du gold dont le `class_id` ne se replie pas sur le
   représentant) — diagnostic posé en VISION §V4, cause non trouvée.
-- Le mécanisme concret de « parqué » (D3) — sort de la phase design.
+- ~~Le mécanisme concret de « parqué » (D3)~~ — **clos le 2026-08-22** : c'est
+  `need_filter_clause` + `RunParked`, rien à construire (cf. D9).
+- La courbe « exactement 1 exemplaire partout », qui confirme ou infirme D7
+  (`design/QUESTIONS-OUVERTES.md` Q1).
