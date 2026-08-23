@@ -46,7 +46,14 @@ from serving import (
     tokens_routes,
     users_routes,
 )
-from serving.auth_principal import require_principal, require_scope
+from serving.auth_principal import (
+    require_principal,
+    require_scope,
+    require_scope_by_method,
+)
+# La politique d'accès vit à part : elle doit être lisible et testable sans
+# démarrer un serveur (cf. son en-tête).
+from serving.router_scopes import RECIPE_SCOPES, ROUTER_SCOPES
 from serving.coin_series import router as coin_series_router
 from serving import iteration_sync_routes, recipe_routes, whoami_routes
 from serving.review_queue import router as review_queue_router
@@ -112,7 +119,13 @@ app.include_router(coin_series_router)
 # inconditionnel sur l'image lean. Le rendu lourd (/augmentation/preview) reste
 # sur le ML local :8042. Scope aligné sur les autres routes protégées.
 recipe_routes.bind(_store)
-app.include_router(recipe_routes.router, dependencies=[Depends(require_principal)])
+# Lot 4b : `require_principal` nu laissait un `reviewer` créer/supprimer des
+# recettes d'augmentation. Métadonnée de lab → lecture `lab:read`, écriture
+# `training:run`.
+app.include_router(
+    recipe_routes.router,
+    dependencies=[Depends(require_scope_by_method(*RECIPE_SCOPES))],
+)
 # R3 (Model B) : itérations canoniques — état (métadonnée + métriques
 # dénormalisées) partagé Mac↔PC. Router léger (Store + validateur pur). Scopes
 # PAR-ROUTE (lab:read en lecture, ingest:write pour l'upsert poussé par le
@@ -211,10 +224,6 @@ _CANDIDATES = [
     ("peer_arbitration", "review.peer_arbitration_routes", False),
     ("review_queue", "review.review_queue_routes", False),
 ]
-# C2a : peer_arbitration écrit les mêmes colonnes de décision que decide/reject
-# → durci de `require_principal` (tout principal authentifié) à `review:write`
-# (owner/admin/reviewer), aligné sur la famille review. Additif, reste vert.
-_SCOPE_OVERRIDES = {"peer_arbitration": require_scope("review:write")}
 _mounted: list[str] = []
 _skipped: list[str] = []
 for _name, _modpath, _has_bind in _CANDIDATES:
@@ -226,7 +235,16 @@ for _name, _modpath, _has_bind in _CANDIDATES:
         # via table api_tokens) → require_principal (cookie OIDC + PAT). Le
         # legacy bearer n'est plus accepté sur ces routes ; les workflows
         # Mac/PC doivent utiliser un PAT (eurio_<43 base64url>).
-        _dep = _SCOPE_OVERRIDES.get(_name, require_principal)
+        # Pas de défaut permissif : un router sans couple déclaré fait ÉCHOUER le
+        # boot. Un `require_principal` de repli rouvrirait le trou en silence le
+        # jour où quelqu'un ajoute un router sans y penser.
+        if _name not in ROUTER_SCOPES:
+            raise RuntimeError(
+                f"router '{_name}' monté sans scopes déclarés — ajoute son couple "
+                "(lecture, écriture) à _ROUTER_SCOPES."
+            )
+        _read_scope, _write_scope = ROUTER_SCOPES[_name]
+        _dep = require_scope_by_method(_read_scope, _write_scope)
         app.include_router(_mod.router, dependencies=[Depends(_dep)])
         _mounted.append(_name)
     except (ImportError, ModuleNotFoundError) as exc:
