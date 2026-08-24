@@ -464,3 +464,36 @@ def test_le_callback_de_progression_ne_tue_jamais_le_backfill():
     bloc = src.split("def _dire(", 1)[1].split("\n\n", 1)[0]
     assert "except Exception" in bloc, (
         "une exception du report doit être avalée et journalisée, jamais propagée")
+
+
+def test_un_compteur_irreductible_ne_pilote_pas_is_stale(conn):
+    """`n_classes_would_gain_anchor` a un plancher — il ne doit pas rendre la
+    carte rouge à vie.
+
+    🔴 Mesuré après le premier rebuild complet, le 2026-08-24 : 8 classes
+    restaient comptées, dont `fr-2017-…-rodin` avec 9 crops éligibles au SQL et
+    zéro exemplaire. La cause n'est pas la fraîcheur mais `floor_sim = 0,45` —
+    ces crops ne ressemblent pas assez à leur canonique pour servir d'ancre.
+    Aucun rebuild ne les prendra.
+
+    Le faire peser sur `is_stale` réclamait sans fin une heure de calcul sans
+    effet. Un indicateur qu'aucune action ne peut satisfaire apprend à être
+    ignoré — et emporte avec lui les trois autres, qui sont vrais.
+    """
+    _build(conn, "2026-08-22T18:06:22+00:00")
+    # Une classe avec un crop éligible, mais aucune ancre : le cas irréductible.
+    conn.execute("INSERT INTO coins (eurio_id, country, year, face_value, "
+                 " is_commemorative) VALUES ('fr-2017-rodin','FR',2017,2.0,1)")
+    _asset(conn, "A9", eurio_id="fr-2017-rodin", eligible=1)
+    conn.execute("UPDATE image_assets SET face='obverse', "
+                 " resolution_status='manual' WHERE id='A9'")
+    _prediction(conn, "A9", "2026-08-22 18:14:50")
+    conn.commit()
+
+    d = dino_drift(conn, anchors_kind=KIND, encoder_version=ENCODER)
+    assert d.n_classes_would_gain_anchor >= 1, "le nombre reste SERVI, il est réel"
+    assert d.n_predictions_stale == 0 and d.n_assets_without_prediction == 0
+    assert d.n_crops_validated_since == 0
+    assert not d.is_stale, (
+        "rien de ce qu'un rebuild sait faire n'est en retard : la carte doit "
+        "dire « à jour », pas réclamer une heure de calcul sans effet")

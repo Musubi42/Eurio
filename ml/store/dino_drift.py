@@ -44,6 +44,9 @@ class DinoDrift:
     # Ce qui a bougé depuis qu'elle a été bâtie.
     n_crops_validated_since: int
     n_classes_touched_since: int
+    #: Classes à crops éligibles mais sans exemplaire en banque. ⚠️ Ce nombre a
+    #: un PLANCHER IRRÉDUCTIBLE : `floor_sim` écarte les crops trop éloignés de
+    #: leur canonique. Il ne pilote donc PAS `is_stale` — cf. sa docstring.
     n_classes_would_gain_anchor: int
 
     # Ce qui est déjà incohérent avec elle.
@@ -57,17 +60,33 @@ class DinoDrift:
 
     @property
     def is_stale(self) -> bool:
-        """Y a-t-il quelque chose à gagner à relancer maintenant ?
+        """Est-ce que RELANCER changerait quelque chose ?
 
         « Jamais bâtie » compte comme périmé : l'absence de banque n'est pas un
         état neutre, c'est le pire des états — et c'est précisément celui où un
         écart de zéro serait le plus trompeur.
+
+        🔴 `n_classes_would_gain_anchor` n'entre PAS dans ce calcul, et c'est le
+        cœur du correctif du 2026-08-24. Après un rebuild complet il restait 8
+        classes comptées — dont `fr-2017-…-rodin`, 9 crops éligibles au SQL et
+        aucun exemplaire. La cause n'est pas la fraîcheur mais le plancher de
+        similarité (`floor_sim = 0,45`) : ces crops ne ressemblent pas assez à
+        leur canonique pour servir d'ancre. Aucun rebuild ne les prendra.
+
+        Les faire peser sur `is_stale` rendait la carte définitivement rouge et
+        réclamait sans fin une heure de calcul sans effet. Un indicateur qu'aucune
+        action ne peut satisfaire n'incite pas à agir : il apprend à être ignoré,
+        et emporte avec lui les trois autres, qui sont vrais.
+
+        Le nombre reste servi — il dit quelque chose de RÉEL (« ces classes ont
+        des photos que le modèle ne reconnaît pas comme les leurs »), mais c'est
+        un sujet d'enrichissement, pas de rebuild.
         """
         return (
             self.built_at is None
             or self.n_predictions_stale > 0
             or self.n_assets_without_prediction > 0
-            or self.n_classes_would_gain_anchor > 0
+            or self.n_crops_validated_since > 0
         )
 
 
@@ -186,12 +205,31 @@ def dino_drift(
             (anchors_kind, encoder_version),
         )
     }
+    # ⛔ Le prédicat est le MIROIR de la sélection du builder
+    # (`training/foundation/anchors._eligible_crops`), pas une approximation.
+    #
+    # 🔴 Corrigé après le premier vrai rebuild, le 2026-08-24. Il disait
+    # « training_eligible ET présent ET pas un revers », c'est-à-dire bien plus
+    # large que ce que le builder accepte : `face = 'obverse'` STRICTEMENT (un
+    # `face IS NULL` ne passe pas), `denom != 'not_2eur'`, et un
+    # `resolution_status` validé. Résultat : 9 classes restaient comptées comme
+    # « gagneraient une photo » APRÈS un rebuild frais — donc `is_stale` restait
+    # vrai à vie et la carte réclamait éternellement un travail d'une heure qui
+    # n'y changeait rien. C'est le deuxième compteur de ce module à ne pas
+    # pouvoir retomber à zéro ; le premier avait été trouvé en revue.
+    #
+    # Reste hors de portée du SQL : `floor_sim` (0,45), qui écarte après coup un
+    # crop trop éloigné du canonique. Un petit résidu irréductible est donc
+    # possible, et c'est une vraie information — ces classes ont des crops que
+    # le modèle ne reconnaît pas comme les leurs.
     n_gagnantes = 0
     for (eurio_id,) in conn.execute(
         "SELECT DISTINCT a.eurio_id FROM image_assets a "
         " WHERE a.training_eligible = 1 AND a.storage_status = 'present' "
         "   AND a.eurio_id IS NOT NULL "
-        "   AND (a.face IS NULL OR a.face != 'reverse')"
+        "   AND a.face = 'obverse' "
+        "   AND (a.denom IS NULL OR a.denom != 'not_2eur') "
+        "   AND a.resolution_status IN ('manual', 'auto_name', 'auto_phash')"
     ):
         if not (set(bank_class_ids(conn, eurio_id)) & exemplaires):
             n_gagnantes += 1

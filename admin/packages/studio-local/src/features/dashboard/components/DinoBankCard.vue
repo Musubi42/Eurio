@@ -191,10 +191,6 @@ const restant = computed<string | null>(() => {
           </span>
         </p>
         <ul class="mt-1.5 flex flex-col gap-0.5 text-[11px]" style="color: var(--ink-500);">
-          <li v-if="drift.n_classes_would_gain_anchor">
-            <strong>{{ drift.n_classes_would_gain_anchor }}</strong> classes gagneraient
-            une vraie photo (elles n'ont que leur rendu Numista)
-          </li>
           <li v-if="drift.n_predictions_stale">
             <strong>{{ drift.n_predictions_stale }}</strong> prédictions répondent sur
             une banque qui n'existe plus
@@ -207,6 +203,21 @@ const restant = computed<string | null>(() => {
             À jour — rien à gagner à relancer.
           </li>
         </ul>
+
+        <!-- Séparé de la liste ci-dessus, et c'est délibéré : ces classes ne se
+             réparent PAS par un rebuild. Leurs crops sont écartés par le
+             plancher de similarité — le modèle ne les reconnaît pas comme les
+             leurs. C'est un sujet d'enrichissement, pas de bouton. Mélangé aux
+             autres, ce nombre réclamerait à vie une heure de calcul sans effet. -->
+        <p
+          v-if="drift.n_classes_would_gain_anchor"
+          class="mt-1.5 text-[11px]"
+          style="color: var(--ink-400);"
+        >
+          <strong>{{ drift.n_classes_would_gain_anchor }}</strong> classes ont des
+          photos validées qu'aucune ancre ne porte — leurs crops ressemblent trop
+          peu à leur canonique. Un rebuild n'y change rien.
+        </p>
         <p class="mt-1.5 font-mono text-[10px]" style="color: var(--ink-400);">
           build {{ drift.build_id?.slice(0, 12) }} · {{ bati }} ·
           {{ drift.n_classes }} classes / {{ drift.n_rows }} ancres
