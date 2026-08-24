@@ -37,6 +37,17 @@ on supprime quand le remplaçant est prouvé). Sa page d'état vide pointe déj�
 la vue en lot. Au moment de la retirer, vérifier qu'elle n'est plus le seul accès
 à `/peer-arbitration/reviewers` (les onglets de la vue bulk la consomment aussi).
 
+### Champs devenus constants
+
+| Chemin | Quoi | Depuis |
+|---|---|---|
+| `serving/crop_edit_api.py` · `ManualCropResponse.minio_ok` | Vaut désormais **toujours `true`** : un échec d'écriture MinIO lève un 502 et n'écrit rien (revue du 2026-08-24). Le champ ne porte plus d'information | 2026-08-24 |
+| `useReviewApi.ts` · `ManualCropResult.minio_ok` | Typé, jamais lu — il ne l'a jamais été, c'est précisément ce qui rendait l'échec muet | — |
+
+Conservé pour l'instant : le retirer touche trois routers (review, coins, et la
+réponse add-crop du legacy) pour un gain nul tant que le contrat ne bouge pas
+par ailleurs. À faire en même temps que le reste du lot 9, pas avant.
+
 ### Références résiduelles
 
 | Fichier | Ligne | Quoi |

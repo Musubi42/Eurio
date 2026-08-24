@@ -17,7 +17,7 @@
 | D11 | Ne plus rien montrer de « local » à un ami | ✅ **vérifié au DOM, 2 profils** |
 | 8 | La vue bulk d'arbitrage | ✅ **vérifié en base** (65 approuvées, 3 rejetées) |
 | 6b | Le recadrage à distance (cv2-headless) | 🟡 **déployé et vérifié en lecture** — l'écriture MinIO se joue à la recette |
-| 7 | Le bail sur la file | ⬜ |
+| 7 | Le bail sur la file | ⬜ — **à mesurer avant de dimensionner** (§lot 7) |
 | 9 | Full clean | ⬜ |
 
 > **Déployé en production le 2026-08-23**, deux fois : d'abord les lots 0-6a, puis
@@ -125,13 +125,15 @@ propres routes de recadrage sur le lean, en plus du nouveau
 Scope `review:write` : **recadrer n'est pas arbitrer**. C'est la DÉCISION qui part
 en quarantaine, pas le cadrage — et le cadrage prend effet tout de suite (D9).
 
-**DINO à réencoder, sans colonne ni table** : après un recadrage sans encodeur, les
-prédictions du cadrage d'AVANT sont SUPPRIMÉES. Le marqueur EST cette absence —
-`backfill_dino_predictions` encode exactement les assets qui n'ont pas de ligne
-pour `(encoder_version, anchors_kind)`, donc `go-task ml:dino-predictions:backfill`
-draine sans commande neuve. Et ça retire surtout une suggestion devenue fausse,
-calculée sur le cadrage que l'humain vient de corriger : une prédiction confiante
-et périmée est pire qu'un panneau vide, qui dit au moins la vérité.
+**DINO à réencoder** : après un recadrage sans encodeur, les prédictions du
+cadrage d'AVANT sont marquées `stale_since` (migration 0013) — servies quand
+même, et annoncées comme telles à l'écran. `backfill_dino_predictions` les traite
+comme absentes, donc `go-task ml:dino-predictions:backfill` les recalcule sans
+`--force` ni commande neuve, et le ré-encodage lève le marqueur.
+
+> ⚠️ Le premier jet SUPPRIMAIT ces prédictions — « le marqueur EST l'absence »,
+> sans colonne ni table. Réfuté le soir même par l'usage : cf. l'amendement
+> ci-dessous, et D6.
 
 **Dette soldée** : `referential` n'est plus skippé sur le VPS. L'import Pillow est
 descendu dans `encode_webp`, le seul à en avoir besoin — l'API, elle, ne demandait
@@ -634,6 +636,71 @@ choisi par quelqu'un qui regarde la pièce.
 `POST /review-queue/claim` (fenêtre de N, TTL 30 min). La logique existe dans
 `review_routes.py:100` — la rejouer sur la table canonique. Le 409 de `decide`
 (`WHERE status='open'`) reste le filet.
+
+### Ce qui se passe AUJOURD'HUI quand deux amis se marchent dessus
+
+À lire avant de dimensionner le lot : le comportement actuel est **pire que
+« le second perd »**, et pour une raison née de la quarantaine elle-même.
+
+`GET /review-queue?limit=20` sert **la même tête de file à tout le monde** : deux
+amis connectés en même temps travaillent les mêmes crops, dans le même ordre.
+Ensuite, deux garde-fous se déclenchent :
+
+1. `decide` porte `WHERE status='open'` → le second prend un **409** ;
+2. l'index unique partiel de la migration 0012 interdit **deux décisions
+   `pending` sur le même crop** → 409 aussi, même si le premier n'a pas encore
+   été arbitré.
+
+Le second (2) est la nouveauté : avant la quarantaine, la course ne se jouait
+qu'au moment où le canonique bougeait. Maintenant, **deux décisions parfaitement
+légitimes se disputent la même place**, et la seconde est jetée alors que
+personne n'a encore rien validé.
+
+⚠️ **Et le front rend ce 409 hors contexte.** Les décisions partent en *commit
+différé* (fenêtre d'undo, `commitPending`) : le POST arrive APRÈS que l'écran a
+avancé au crop suivant. En cas de collision, l'ami voit passer un bandeau
+« Échec de l'enregistrement… » qui parle d'un crop qu'il a déjà quitté, sans
+savoir lequel, ni quoi refaire. Son travail est perdu **et** illisible.
+
+### Le protocole pour le provoquer exprès — sans mobiliser deux personnes
+
+Deux jetons suffisent : la course est côté serveur, pas côté humain.
+
+```bash
+# Sur le RIG (jamais en prod) : deux PAT reviewer distincts, même file.
+RID=$(curl -s "$API/review-queue?limit=1&lane=manual" -H "Authorization: Bearer $PAT_A" \
+      | python3 -c "import json,sys;d=json.load(sys.stdin);print((d['items'] if isinstance(d,dict) else d)[0]['id'])")
+
+# Les deux tranchent le MÊME crop, en parallèle.
+for P in "$PAT_A" "$PAT_B"; do
+  curl -s -o /dev/null -w "%{http_code}\n" -X POST "$API/review-queue/$RID/decide" \
+    -H "Authorization: Bearer $P" -H "Content-Type: application/json" \
+    -d '{"eurio_id":"<une classe>","face":"obverse","action":"accept"}' &
+done; wait
+```
+
+Attendu aujourd'hui : `200` et `409`. Ce qu'il faut MESURER, et qui n'est pas
+écrit :
+
+- laquelle des deux gardes a mordu (`status='open'` ou l'index 0012) — la
+  réponse change le remède ;
+- combien de lignes `peer_review_decisions` existent après (doit être 1) ;
+- **au navigateur**, avec deux fenêtres et deux jetons : ce que voit réellement
+  le perdant, et à quel moment. C'est la mesure qui décide s'il faut un bail ou
+  simplement rendre le 409 lisible.
+
+### La question de conception que ça pose
+
+Un bail (`claim`) empêche la collision, mais introduit un état à expirer, donc un
+crop qui peut rester bloqué 30 minutes parce que quelqu'un a fermé son onglet.
+
+L'alternative moins chère : **servir des fenêtres disjointes**. `GET
+/review-queue` prend déjà un `offset`-like par le tri ; donner à chaque principal
+une tranche décalée réduit la collision à presque rien sans aucun état à
+nettoyer. Ça ne la supprime pas — mais avec deux ou trois amis, « presque rien »
+et « rien » ont le même goût, et l'un des deux ne s'entretient pas.
+
+À trancher sur la mesure ci-dessus, pas avant.
 
 ## Lot 8 — La vue bulk d'arbitrage
 

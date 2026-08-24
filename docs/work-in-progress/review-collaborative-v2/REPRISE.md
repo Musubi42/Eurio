@@ -29,9 +29,27 @@ tête et non cochés, approuver ou rejeter en un geste (lot 8).
 
 | Lot | Objet | Pourquoi ce n'est pas urgent |
 |---|---|---|
-| **6b — la vérif d'écriture** | Un vrai recadrage contre le VPS | **C'est la seule chose à faire tout de suite** — cf. la recette ci-dessous |
-| 7 | Le bail sur la file (`claimed_by`/`claimed_at`) | Utile seulement à partir de **2 amis simultanés**. Le 409 de `decide` reste le filet en attendant |
+| **6b — la vérif d'écriture** | Un vrai recadrage contre le VPS | **La seule vérification technique en suspens** — cf. la recette ci-dessous |
+| **Accueil** | La première minute d'un ami | Pas un lot technique : un chantier de conception, brouillon dans [`ACCUEIL-AMI.md`](ACCUEIL-AMI.md). Rien n'est implémenté, et trois questions doivent être tranchées avant de dessiner |
+| 7 | Le bail sur la file (`claimed_by`/`claimed_at`) | Se déclenche au **deuxième ami**. Le comportement actuel est pire qu'on ne croyait — à MESURER avant de dimensionner, protocole dans [`ROADMAP.md`](ROADMAP.md) §lot 7 |
 | 9 | Full clean | En dernier, quand tout est prouvé. Il fait tomber `eurio-review.musubi.dev` : inventaire dans [`NETTOYAGE.md`](NETTOYAGE.md), à ne pas jouer un jour de recette |
+
+## Inviter un ami — ce qu'il reste vraiment
+
+**La boucle est déjà parcourue en production** : 12 décisions signées
+`eurio-test` sont arrivées en quarantaine, canonique intact, relues dans la vue
+d'arbitrage. Ce n'était pas un PAT restreint qui simulait un ami — c'était un
+vrai compte Authentik sur le front hébergé.
+
+Il reste donc, techniquement :
+
+1. **créer le compte** dans Authentik, dans le **seul** groupe `eurio-reviewer`
+   (s'il est aussi dans `eurio-admin`, il arbitre et la quarantaine ne se
+   déclenche jamais) — la ligne `users` se crée seule au premier login ;
+2. **un recadrage réel** contre le VPS (point 3 de la recette).
+
+Ce qui retient, ce n'est pas la technique : c'est la **première minute**
+([`ACCUEIL-AMI.md`](ACCUEIL-AMI.md)).
 
 ## La recette, à jouer ensemble
 

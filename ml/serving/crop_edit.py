@@ -551,13 +551,22 @@ def create_manual_crop(
     cache_p = crop_cache_path(si["source"], run_id or "manual", asset_id)
     cache_p.parent.mkdir(parents=True, exist_ok=True)
     cache_p.write_bytes(png_bytes)
-    minio_ok = True
     try:
         upload_through("enrichment-crops", storage_key, png_bytes)
     except Exception as exc:  # noqa: BLE001
-        minio_ok = False
-        logger.warning("[add-crop] MinIO write-through failed for %s: %s",
-                       storage_key, exc)
+        # Même règle que `apply_manual_crop` : un stockage raté ne doit rien
+        # laisser derrière. Ici la ligne `image_assets` n'est pas encore écrite
+        # (`upsert_image_asset` vient APRÈS) — lever maintenant ne laisse aucun
+        # asset qui pointerait une clé MinIO inexistante. Sans ça, le crop
+        # « ajouté à la main » existait en base et nulle part ailleurs.
+        logger.error("[add-crop] écriture MinIO échouée pour %s: %s — "
+                     "aucun asset créé", storage_key, exc)
+        raise HTTPException(
+            status_code=502,
+            detail="Le crop n'a pas pu être stocké — rien n'a été créé. "
+                   "Réessaie dans un instant.",
+        ) from exc
+    minio_ok = True
 
     phash_value = compute_phash(res.image)
     bbox = {"x": cx - r, "y": cy - r, "w": 2 * r, "h": 2 * r}
