@@ -3,7 +3,10 @@
 Frère de `serving/review_queue/writes.py` (qui porte decide/reject/skip/restore
 single-item). Ici : les décisions du **Jeu d'entraînement** (accept-training,
 reopen-review, training-eligible, reassign) + la **décision de lot** — SQL-pures,
-servies sur l'image lean du VPS, scope ``review:write``.
+servies sur l'image lean du VPS, scope ``review:arbitrate`` (D14 — voir la note
+sur ``_require_write`` plus bas : ces routes écrivent le canonique EN DIRECT,
+sans passer par la quarantaine, donc elles ne peuvent pas être ouvertes au scope
+d'un ami).
 
 Toute la logique SQL vit dans ``store.decisions`` (source UNIQUE partagée avec les
 routes lourdes locales `lab_routes`/`review_queue_routes`). Ce module n'est qu'une

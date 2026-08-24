@@ -51,6 +51,12 @@ ROUTER_SCOPES: Final[dict[str, tuple[str, str]]] = {
     "peer_arbitration": ("review:read", "review:arbitrate"),
     # La file de review est le SEUL endroit où un ami écrit — et ses écritures
     # partent en quarantaine (lot 3), elles n'atteignent pas le canonique.
+    #
+    # ⚠️ « Seul endroit » vaut pour les routes de CE routeur. `serving/funnel_writes`
+    # sert aussi des chemins `/review-queue/...` (la décision de LOT) et écrit le
+    # canonique en direct : il est fermé à `review:arbitrate` depuis D14
+    # (2026-08-24), justement parce qu'il n'a pas de quarantaine. Lu seule, cette
+    # ligne laisserait croire que tout `/review-queue/*` est sous quarantaine.
     "review_queue":     ("review:read", "review:write"),
 }
 

@@ -30,7 +30,7 @@ tête et non cochés, approuver ou rejeter en un geste (lot 8).
 | Lot | Objet | Pourquoi ce n'est pas urgent |
 |---|---|---|
 | **6b — la vérif d'écriture** | Un vrai recadrage contre le VPS | **La seule vérification technique en suspens** — cf. la recette ci-dessous |
-| ~~**Accueil**~~ | ~~La première minute d'un ami~~ | ✅ **Livré le 2026-08-24**, non déployé — cf. §Accueil ci-dessous |
+| ~~**Accueil**~~ | ~~La première minute d'un ami~~ | ✅ **Livré ET déployé le 2026-08-24** — cf. §Accueil ci-dessous |
 | 7 | Le bail sur la file (`claimed_by`/`claimed_at`) | Se déclenche au **deuxième ami**. Le comportement actuel est pire qu'on ne croyait — à MESURER avant de dimensionner, protocole dans [`ROADMAP.md`](ROADMAP.md) §lot 7 |
 | 9 | Full clean | En dernier, quand tout est prouvé. Il fait tomber `eurio-review.musubi.dev` : inventaire dans [`NETTOYAGE.md`](NETTOYAGE.md), à ne pas jouer un jour de recette |
 
@@ -212,8 +212,9 @@ qui se disent en mots.
 - la branche « pièce complétée », qui n'existe naturellement chez personne,
   **fabriquée sur la COPIE** puis regardée : 19 / 2 / 1.
 
-Côté écran, mesuré au navigateur (viewport 1710×985, front sur `:5176` contre
-l'app lean `:8043`, PAT d'ami) — **l'accueil RÉEL, pas la maquette** :
+Côté écran, mesuré au navigateur AVANT déploiement (front sur `:5176` contre
+l'app lean `:8043`, PAT d'ami) — **l'accueil RÉEL, pas la maquette**. La recette
+en production, elle, a été jouée par le PO : cf. [`DEPLOIEMENT.md`](DEPLOIEMENT.md).
 
 | Mesuré à l'écran | Calculé côté serveur, indépendamment |
 |---|---|
