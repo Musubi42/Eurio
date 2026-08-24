@@ -1014,7 +1014,7 @@ useReviewKeybinds(keyboardEnabled, {
                    toujours pas *interdits* : c'est la machine qui manque. -->
               <button
                 v-if="showHeavyGesture"
-                type="button""
+                type="button"
                 class="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-mono uppercase tracking-wider transition-colors disabled:cursor-not-allowed disabled:opacity-60"
                 style="border-color: var(--surface-3); color: var(--indigo-700); background: var(--surface-1);"
                 :title="canRunHeavy

@@ -153,8 +153,9 @@ app.include_router(review_writes_router)
 # Lot 6b (review-collaborative-v2) : le RECADRAGE, servi par le canonique.
 # `opencv-python-headless` est dans l'image (D5) — les pixels restent au serveur
 # parce que `canvas.drawImage` ne rééchantillonne pas comme `INTER_AREA`. DINO,
-# lui, ne monte PAS (D6) : le crop recadré voit ses prédictions supprimées, et le
-# Mac les rebâtit en lot. Chemins identiques aux routes legacy → NE PAS monter
+# lui, ne monte PAS (D6) : le crop recadré voit ses prédictions MARQUÉES périmées
+# (`stale_since`, migration 0013) — toujours servies, l'écran le dit — et le Mac
+# les recalcule en lot. Chemins identiques aux routes legacy → NE PAS monter
 # sur server.py (collision, comme review_writes).
 app.include_router(review_crop_router)
 # C2a (Direction A) : décisions funnel (accept-training/reopen/training-eligible/

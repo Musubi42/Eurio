@@ -45,6 +45,8 @@ import pytest
 from store import Store
 from test_review_requalify import _seed_listing
 
+_TARGET = "fr-2015-2eur-paix"  # la cible que `_seed_listing` pose sur le listing
+
 
 # ─── 1. Les routes existent sur l'app lean, et le contrat est léger ─────────
 
@@ -191,6 +193,45 @@ def test_le_recadrage_ecrit_le_format_de_prod_et_la_geometrie(rig):
     assert row["training_eligible"] == 0
 
 
+def test_un_echec_minio_n_ecrit_pas_la_geometrie(rig, monkeypatch):
+    """Sinon la base décrit un crop que MinIO ne contient pas — en silence.
+
+    L'échec était avalé (`minio_ok=False`) et la suite s'exécutait : `bbox_json`,
+    `detection_method='manual'`, 224×224 et un phash tout neuf en base, un 200 à
+    l'écran, le crop redessiné dans l'éditeur… et l'ANCIEN objet dans MinIO. Ce
+    sont ces pixels-là qui partent à l'entraînement, et `minio_ok` n'était lu
+    NULLE PART côté front.
+    """
+    from fastapi import HTTPException
+
+    from shared.storage import local_cache
+
+    store, conn, asset_id, _, _ = rig
+
+    def refuse(bucket, key, data):
+        raise RuntimeError("MinIO injoignable")
+
+    monkeypatch.setattr(local_cache, "upload_through", refuse)
+
+    from serving.crop_edit import apply_manual_crop
+
+    avant = dict(conn.execute(
+        "SELECT bbox_json, detection_method, width, height, phash FROM image_assets "
+        " WHERE id = ?", (asset_id,)).fetchone())
+
+    with pytest.raises(HTTPException) as exc:
+        apply_manual_crop(store, asset_id, cx=300, cy=300, r=200)
+    assert exc.value.status_code == 502
+
+    apres = dict(conn.execute(
+        "SELECT bbox_json, detection_method, width, height, phash FROM image_assets "
+        " WHERE id = ?", (asset_id,)).fetchone())
+    assert apres == avant, (
+        "aucune écriture ne doit survivre à un stockage raté : une géométrie "
+        "qui décrit un objet inexistant est pire qu'un recadrage perdu"
+    )
+
+
 def test_un_cercle_hors_du_raw_est_refuse(rig):
     from fastapi import HTTPException
 
@@ -273,15 +314,89 @@ def test_une_prediction_perimee_est_a_reencoder_sans_force(rig):
     )
 
 
-def test_le_reencodage_leve_la_peremption():
-    """Sinon une prédiction recalculée resterait marquée « à recalculer ».
+def test_le_reencodage_leve_la_peremption_par_le_vrai_chemin(rig):
+    """Le cycle marquer → réencoder → démarquer doit BOUCLER.
 
-    Et l'écran continuerait d'annoncer « calculée avant ton recadrage » sur une
-    prédiction qui, elle, est fraîche — un mensonge dans l'autre sens.
+    ⚠️ La première version de ce test lisait le SQL de
+    `sources/_base/steps/auto_validate.py` avec un `str.index` — un grep, sur la
+    branche `store is None`, celle qui ne tourne JAMAIS en production. Le vrai
+    point de passage est `store/dino.py::_upsert_dino_rows_sql`, partagé par le
+    backfill (qui construit un `Store`) et par le write-half de
+    `POST /ingest/dino`. Il n'avait pas la clause, et rien ne rougissait.
+
+    Ce qui pourrissait des DEUX côtés, en silence :
+      · l'écran annonçait « calculée avant ton recadrage » à jamais, sur une
+        prédiction pourtant fraîche — le mensonge exact que 0013 devait éviter ;
+      · `_existing_keys` la voyait « absente » à CHAQUE backfill, donc la
+        réencodait indéfiniment, pour un coût qui grandit avec les recadrages.
+
+    D'où ce test : on passe par `store.upsert_dino_predictions`, pas par une
+    lecture de fichier.
     """
-    source = (ML_DIR / "sources/_base/steps/auto_validate.py").read_text()
-    upsert = source[source.index("ON CONFLICT(asset_id, encoder_version, anchors_kind)"):]
-    assert "stale_since            = NULL" in upsert.split("\"\"\"")[0]
+    from sources._base.steps.auto_validate import _existing_keys
+    from store.dino import DinoPredictionRow
+
+    store, conn, asset_id, _, _ = rig
+    enc, kind = "dinov2-vits14", "2eur_commemo"
+    ligne = DinoPredictionRow(
+        asset_id=asset_id, encoder_version=enc, anchors_kind=kind,
+        anchors_count=8, top_k=[{"eurio_id": _TARGET, "sim": 0.9}],
+        top1_eurio_id=_TARGET, top1_sim=0.9,
+    )
+    store.upsert_dino_predictions([ligne])
+
+    def stale():
+        return conn.execute(
+            "SELECT stale_since FROM image_asset_dino_predictions WHERE asset_id=?",
+            (asset_id,)).fetchone()["stale_since"]
+
+    assert stale() is None
+    conn.execute(
+        "UPDATE image_asset_dino_predictions SET stale_since='2026-08-23T20:00:00Z' "
+        " WHERE asset_id = ?", (asset_id,))
+    conn.commit()
+    assert stale() is not None
+    assert _existing_keys(conn, [asset_id], enc, kind) == set(), "périmée → à réencoder"
+
+    # Le ré-encodage, par le chemin que le backfill emprunte réellement.
+    store.upsert_dino_predictions([ligne])
+
+    assert stale() is None, (
+        "un ré-encodage doit LEVER la péremption — sinon le bandeau ment pour "
+        "toujours et le backfill réencode le même crop à chaque passage"
+    )
+    assert _existing_keys(conn, [asset_id], enc, kind) == {asset_id}, (
+        "et l'asset doit redevenir « déjà fait », sinon la boucle est infinie"
+    )
+
+
+def test_le_forward_ingest_dino_leve_aussi_la_peremption(rig):
+    """Sous Direction A, le Mac calcule et POSTe : ce chemin-là compte autant.
+
+    Il partage le même SQL — ce test le VERROUILLE, pour qu'une divergence entre
+    les deux write-halves ne puisse pas se réintroduire sans échouer.
+    """
+    from store.dino import DinoPredictionRow, apply_ingest_dino
+
+    store, conn, asset_id, _, _ = rig
+    ligne = DinoPredictionRow(
+        asset_id=asset_id, encoder_version="dinov2-vits14",
+        anchors_kind="2eur_commemo", anchors_count=8,
+        top_k=[{"eurio_id": _TARGET, "sim": 0.9}],
+        top1_eurio_id=_TARGET, top1_sim=0.9,
+    )
+    store.upsert_dino_predictions([ligne])
+    conn.execute(
+        "UPDATE image_asset_dino_predictions SET stale_since='2026-08-23T20:00:00Z' "
+        " WHERE asset_id = ?", (asset_id,))
+    conn.commit()
+
+    res = apply_ingest_dino(conn, [ligne])
+    conn.commit()
+    assert res["updated"] == 1 and not res["missing"]
+    assert conn.execute(
+        "SELECT stale_since FROM image_asset_dino_predictions WHERE asset_id=?",
+        (asset_id,)).fetchone()["stale_since"] is None
 
 
 def test_referential_n_a_plus_besoin_de_pillow():

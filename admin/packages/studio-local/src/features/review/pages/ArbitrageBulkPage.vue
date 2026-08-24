@@ -35,6 +35,7 @@ import {
 
 import ReviewCard from '../components/ReviewCard.vue'
 import {
+  cropSrc,
   usePeerArbitrationApi,
   type BatchResult,
   type PeerDecision,
@@ -99,7 +100,11 @@ function sousTitre(it: PeerDecision): string {
   return 'remise à plus tard'
 }
 
-function labelDino(it: PeerDecision): { text: string; color: string } {
+function labelDino(it: PeerDecision): { text: string; color: string } | null {
+  // Un refus ou un skip ne DÉSIGNE aucune classe : `concords` y vaut 0 par
+  // construction, et afficher « DINO en désaccord » ferait lire un désaccord
+  // là où il n'y a rien à comparer. On ne dit rien plutôt que de dire faux.
+  if (it.action !== 'accept') return null
   if (it.dino_state === 'concords') return { text: 'DINO d\'accord', color: 'var(--success)' }
   if (it.dino_state === 'disagrees') return { text: 'DINO en désaccord', color: 'var(--danger)' }
   return { text: 'DINO muet', color: 'var(--ink-400)' }
@@ -451,8 +456,8 @@ function shortName(r: ReviewerStat): string {
           <ReviewCard
             v-for="item in items"
             :key="item.id"
-            :crop-url="item.crop_url ?? ''"
-            :canonical-url="item.canonical_url"
+            :crop-url="cropSrc(item.crop_url)"
+            :canonical-url="cropSrc(item.canonical_url) || null"
             :canonical-placeholder="item.action === 'accept'
               ? 'pas de vignette canonique'
               : `${etat(item).mot} — pas de pièce cible`"
@@ -486,9 +491,11 @@ function shortName(r: ReviewerStat): string {
                 class="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[10px]"
                 style="color: var(--ink-500);"
               >
-                <span :style="{ color: labelDino(item).color }">{{ labelDino(item).text }}</span>
+                <span v-if="labelDino(item)" :style="{ color: labelDino(item)!.color }">
+                  {{ labelDino(item)!.text }}
+                </span>
                 <span
-                  v-if="item.dino_state === 'disagrees'"
+                  v-if="item.action === 'accept' && item.dino_state === 'disagrees'"
                   :title="item.dino_top1_eurio_id ?? ''"
                   class="truncate"
                 >

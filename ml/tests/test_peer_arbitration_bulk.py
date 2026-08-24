@@ -260,6 +260,10 @@ def test_superseded_quand_une_voie_locale_a_tranche(rig):
     conn.execute("UPDATE review_queue SET status='done' WHERE id=?", (reviews[0],))
     conn.commit()
 
+    avant = dict(conn.execute(
+        "SELECT eurio_id, training_eligible, resolution_status FROM image_assets "
+        " WHERE id = ?", (assets[0],)).fetchone())
+
     body = client.post("/peer-arbitration/approve-batch", json={"ids": [did]}).json()
     assert body["superseded"] == [did]
     assert body["approved"] == []
@@ -267,6 +271,21 @@ def test_superseded_quand_une_voie_locale_a_tranche(rig):
         "SELECT arbitration_status FROM peer_review_decisions WHERE id=?", (did,)
     ).fetchone()
     assert row["arbitration_status"] == "superseded"
+
+    # ⚠️ LE point du test. « Superseded » doit vouloir dire QUE RIEN N'A ÉTÉ
+    # ÉCRIT. Le premier jet consultait le garde APRÈS avoir mis à jour
+    # `image_assets`, puis committait quand même : `eurio_id` NULL →
+    # `fr-2015-2eur-paix`, `training_eligible` 0 → 1, `resolution_status`
+    # needs_review → manual, tandis que `review_queue` gardait la décision
+    # LOCALE. La classe du pair partait à l'entraînement à la place de celle
+    # tranchée sur place, sans une erreur, sans une ligne de log.
+    apres = dict(conn.execute(
+        "SELECT eurio_id, training_eligible, resolution_status FROM image_assets "
+        " WHERE id = ?", (assets[0],)).fetchone())
+    assert apres == avant, (
+        "une décision supersédée ne doit RIEN écrire sur le canonique — "
+        "la voie locale a déjà tranché, c'est elle qui fait foi"
+    )
 
 
 # ─── 3. Le rejet rend le crop à la file ─────────────────────────────────────

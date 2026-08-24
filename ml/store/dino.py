@@ -167,6 +167,16 @@ def _upsert_dino_rows_sql(conn: sqlite3.Connection, rows: list[DinoPredictionRow
                   denom_2eur_score       = excluded.denom_2eur_score,
                   duration_ms            = excluded.duration_ms,
                   computed_at            = datetime('now'),
+                  -- Migration 0013 : le ré-encodage LÈVE la péremption posée par
+                  -- un recadrage. Sans cette ligne, le cycle marquer → réencoder
+                  -- → démarquer ne boucle pas, et les deux bouts pourrissent en
+                  -- silence : l'écran continue d'annoncer « calculée avant ton
+                  -- recadrage » sur une prédiction fraîche, et `_existing_keys`
+                  -- la voit « absente » à CHAQUE backfill, donc la réencode
+                  -- indéfiniment. C'est ICI qu'il faut l'écrire — ce SQL est le
+                  -- point de passage réel (backfill via Store, et le write-half
+                  -- de POST /ingest/dino).
+                  stale_since            = NULL,
                   -- Model B : préserve l'attribution backfill (run_id) si la
                   -- nouvelle écriture est run_id NULL (pipeline scrape normal).
                   run_id                 = COALESCE(excluded.run_id,

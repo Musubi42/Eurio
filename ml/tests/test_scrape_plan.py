@@ -448,8 +448,14 @@ def client(conn, tmp_path, monkeypatch):
     canon = tmp_path / "canon.db"
     # `conn` a écrit dans tmp_path/"t.db" : on sert CE fichier en lecture seule.
     monkeypatch.setattr(sp, "_canonical_db", lambda: tmp_path / "t.db")
+    # ⚠️ La période doit être CELLE DU JOUR : la route lit l'horloge réelle (elle
+    # ne prend pas de `now=`, contrairement à `read_quota` dans les tests
+    # ci-dessus). Figée à « 2026-08-23 », cette ligne rendait le test vert le
+    # jour où elle a été écrite et rouge tous les suivants — constaté le
+    # 2026-08-24 au matin, `assert 0 == 1200`. Un test daté n'est pas un test.
+    aujourdhui = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     monkeypatch.setattr(sp, "_quota_db", lambda: _quota_db(
-        tmp_path / "local.db", [("ebay", "", "daily", "2026-08-23", 1200, 0, None)]
+        tmp_path / "local.db", [("ebay", "", "daily", aujourdhui, 1200, 0, None)]
     ))
     assert not canon.exists()  # aucune base fabriquée au passage
     app = FastAPI()

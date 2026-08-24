@@ -294,13 +294,31 @@ def apply_manual_crop(
     cache_p = cache_path_for("enrichment-crops", crop_sp)
     cache_p.parent.mkdir(parents=True, exist_ok=True)
     cache_p.write_bytes(png_bytes)
-    minio_ok = True
     try:
         upload_through("enrichment-crops", crop_sp, png_bytes)
     except Exception as exc:  # noqa: BLE001
-        minio_ok = False
-        logger.warning("[manual-crop] MinIO write-through failed for %s: %s",
-                       crop_sp, exc)
+        # ÉCHEC DUR, et volontairement : on n'écrit PAS la géométrie.
+        #
+        # Avant, l'échec était avalé (`minio_ok=False`) et la suite s'exécutait :
+        # la base affirmait un cadrage manuel 224×224 avec un phash tout neuf,
+        # l'API répondait 200, le `crop_b64` montrait à l'ami le crop qu'il
+        # venait de dessiner — et MinIO gardait l'ANCIEN crop. Ce sont ces
+        # pixels-là qui partent à l'entraînement. Personne ne lisait `minio_ok`
+        # côté front, donc rien ne le disait.
+        #
+        # Tant que le geste vivait sur le Mac (cache local = source servie) le
+        # trou était théorique. Il traverse maintenant ami → VPS → MinIO, où un
+        # échec réseau est un cas NORMAL. Mieux vaut un 502 que l'utilisateur
+        # voit qu'un jeu d'entraînement pollué que personne ne voit.
+        logger.error("[manual-crop] écriture MinIO échouée pour %s: %s — "
+                     "géométrie NON écrite (base et objet resteraient divergents)",
+                     crop_sp, exc)
+        raise HTTPException(
+            status_code=502,
+            detail="Le crop recadré n'a pas pu être stocké — rien n'a été "
+                   "enregistré. Réessaie dans un instant.",
+        ) from exc
+    minio_ok = True
 
     # 4. DB : nouveau cercle + method 'manual' + dims + phash.
     bbox = {"x": cx - r, "y": cy - r, "w": 2 * r, "h": 2 * r}

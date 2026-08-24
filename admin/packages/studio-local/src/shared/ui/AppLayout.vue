@@ -41,9 +41,14 @@ const routeLocked = computed(() => Boolean(route.meta.heavy) && heavyLocked.valu
 // sinon la nav clignoterait vide au boot, le temps de l'aller-retour `/me`.
 const scopesKnown = computed(() => session.status === 'ok')
 function isVisible(item: NavItem): boolean {
+  // Tant que le principal n'est pas chargé, on ne filtre RIEN — ni par droit ni
+  // par machine. Sans cette garde sur l'axe D11, les entrées lourdes partaient
+  // absentes au boot puis réapparaissaient après l'aller-retour `/me` : une nav
+  // qui clignote, pour un arbitre qui a le droit de tout voir.
+  if (!scopesKnown.value) return true
   // D11 : une entrée lourde hors de portée n'est pas proposée à qui n'arbitre pas.
   if (isLocked(item) && !showHeavyGesture.value) return false
-  if (!item.scope || !scopesKnown.value) return true
+  if (!item.scope) return true
   return session.hasScope(item.scope)
 }
 // Une section dont tous les items sont masqués disparaît avec son titre.

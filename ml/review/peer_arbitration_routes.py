@@ -25,7 +25,7 @@ import json
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from serving._coin_helpers import canonical_obverse_url
@@ -87,7 +87,12 @@ def _crop_url(source: str | None, asset_id: str, storage_path: str | None) -> st
 
             return signed_url("enrichment-crops", storage_path)
         except Exception:  # noqa: BLE001 — couche d'affichage, jamais fatale
-            pass
+            logger.warning("[peer-arbitration] signature MinIO échouée pour %s — "
+                           "repli relatif, qui ne mène nulle part sur l'image lean",
+                           storage_path)
+    # ⚠️ Ce repli n'a PAS de destination sur le VPS : `sources_routes` n'y est pas
+    # monté. Il est conservé pour l'app full de la workstation, et il est
+    # journalisé ci-dessus — un carré gris sans un mot serait pire.
     return f"/sources/{source}/assets/{asset_id}/file" if source else None
 
 
@@ -150,8 +155,11 @@ _LIST_FROM_SQL = f"""
 
 @router.get("")
 def list_pending(
-    limit: int = 60,
-    offset: int = 0,
+    # Borné : chaque ligne coûte deux requêtes d'enrichissement (`_coin_label`,
+    # `canonical_obverse_url`). Un `?limit=999999` ferait travailler le canonique
+    # pendant que les amis attendent, pour une page que personne ne lit.
+    limit: int = Query(default=60, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     reviewer: str | None = None,
 ) -> dict:
     """Décisions en attente d'arbitrage, enrichies pour la vue bulk.
@@ -228,51 +236,44 @@ def _fetch_pending(conn, decision_id: str):
     return row
 
 
-def _approve_one(conn, decision_id: str) -> dict:
+def _approve_one(store: Store, decision_id: str) -> dict:
     """Le corps de l'approbation, partagé par `/approve` et `/approve-batch`.
 
     Extrait tel quel du handler unitaire au lot 8 : la vue bulk devait boucler
     dessus, et une seconde implémentation de l'écriture canonique aurait été
     exactement le genre de divergence muette contre laquelle `eurio-verify`
     existe — deux chemins d'écriture qui dérivent sans que rien n'échoue.
+
+    Transaction : `store._writing()`, comme `reject`. Le premier jet ouvrait un
+    `BEGIN IMMEDIATE` à la main sur `store._connection()` SANS prendre
+    `_write_lock` — donc deux écritures concurrentes (un approve et un reject
+    servis par deux workers du threadpool) se disputaient le verrou SQLite au
+    lieu de faire la queue. Deux chemins d'écriture qui ne suivaient pas la même
+    règle, dans le même fichier : exactement ce que l'extraction devait éviter.
     """
+    conn = store._connection()  # noqa: SLF001 — lecture du préalable
     pr = _fetch_pending(conn, decision_id)
     asset_id = pr["image_asset_id"]
     rq_id = pr["review_item_id"]
     now = _now_iso()
+    superseded = False
 
-    conn.execute("BEGIN IMMEDIATE")
-    try:
-        if pr["action"] == "accept":
-            face = pr["decided_face"] if pr["decided_face"] in _VALID_FACES else "obverse"
-            conn.execute(
-                """
-                UPDATE image_assets
-                   SET eurio_id = ?, face = ?,
-                       variant_kind = COALESCE(?, variant_kind),
-                       resolution_status = 'manual', resolution_confidence = 1.0,
-                       training_eligible = 1, resolved_at = ?
-                 WHERE id = ?
-                """,
-                (pr["decided_eurio_id"], face, pr["decided_variant_kind"], now, asset_id),
-            )
-            to_state, reason = "resolved", "peer_approved"  # actor=human (arbitrage)
-        else:  # reject
-            conn.execute(
-                """
-                UPDATE image_assets
-                   SET resolution_status = 'rejected', training_eligible = 0,
-                       quality_reason = ?, resolved_at = ?
-                 WHERE id = ?
-                """,
-                (pr["quality_reason"] or "rejected_in_peer_review", now, asset_id),
-            )
-            to_state, reason = "rejected", "peer_rejected"
-
-        # Fermer la ligne review_queue d'origine si toujours ouverte. Si une
-        # voie locale l'a déjà tranchée (rowcount=0) → on ne réécrase pas : on
-        # marque la décision peer 'superseded' et on annule le reste.
-        rq_closed = True
+    with store._writing() as conn:  # noqa: SLF001
+        # ─── Le GARDE D'ABORD ────────────────────────────────────────────────
+        #
+        # Fermer la ligne `review_queue` d'origine, mais SEULEMENT si elle est
+        # encore ouverte. Un rowcount de 0 veut dire qu'une voie locale l'a
+        # tranchée entre-temps : la décision du pair est alors `superseded` et
+        # ne doit RIEN écrire.
+        #
+        # ⚠️ Cet ordre n'est pas cosmétique. Le premier jet écrivait
+        # `image_assets` AVANT de consulter le garde, puis committait quand même
+        # dans la branche superseded — le commentaire disait « on annule le
+        # reste », le code faisait l'inverse. Mesuré : `eurio_id` NULL →
+        # `fr-2015-2eur-paix`, `training_eligible` 0 → 1, `resolution_status`
+        # needs_review → manual, alors que `review_queue` gardait la décision
+        # LOCALE. Deux vérités qui divergent sur le même crop, sans une erreur —
+        # et c'est la classe du pair qui partait à l'entraînement.
         if rq_id:
             meta = json.dumps({
                 "peer_reviewer": pr["reviewer_token"],
@@ -293,9 +294,9 @@ def _approve_one(conn, decision_id: str) -> dict:
                     meta, rq_id,
                 ),
             )
-            rq_closed = cur.rowcount == 1
+            superseded = cur.rowcount != 1
 
-        if rq_id and not rq_closed:
+        if superseded:
             conn.execute(
                 "UPDATE peer_review_decisions "
                 "SET arbitration_status = 'superseded', arbitrated_at = ?, "
@@ -303,29 +304,54 @@ def _approve_one(conn, decision_id: str) -> dict:
                 "WHERE id = ?",
                 (now, decision_id),
             )
-            conn.execute("COMMIT")
-            return {"status": "superseded", "id": decision_id}
+        else:
+            # ─── Puis seulement le canonique ─────────────────────────────────
+            if pr["action"] == "accept":
+                face = pr["decided_face"] if pr["decided_face"] in _VALID_FACES else "obverse"
+                conn.execute(
+                    """
+                    UPDATE image_assets
+                       SET eurio_id = ?, face = ?,
+                           variant_kind = COALESCE(?, variant_kind),
+                           resolution_status = 'manual', resolution_confidence = 1.0,
+                           training_eligible = 1, resolved_at = ?
+                     WHERE id = ?
+                    """,
+                    (pr["decided_eurio_id"], face, pr["decided_variant_kind"], now, asset_id),
+                )
+                to_state, reason = "resolved", "peer_approved"
+            else:  # reject
+                conn.execute(
+                    """
+                    UPDATE image_assets
+                       SET resolution_status = 'rejected', training_eligible = 0,
+                           quality_reason = ?, resolved_at = ?
+                     WHERE id = ?
+                    """,
+                    (pr["quality_reason"] or "rejected_in_peer_review", now, asset_id),
+                )
+                to_state, reason = "rejected", "peer_rejected"
 
-        # actor='human' : l'arbitrage est une action humaine (Raphaël). La
-        # provenance pair est tracée ailleurs (review_queue.decided_by=<token>,
-        # decision_engine_version='peer@v1', decision_metadata_json) — évite de
-        # migrer le CHECK figé de image_state_events.actor.
-        emit_state_event(
-            conn, asset_id=asset_id, to_state=to_state, actor="human",
-            reason=reason, eurio_id=pr["decided_eurio_id"],
-        )
-        conn.execute(
-            "UPDATE peer_review_decisions SET arbitration_status = 'approved', "
-            "arbitrated_at = ? WHERE id = ?",
-            (now, decision_id),
-        )
-        conn.execute("COMMIT")
-    except HTTPException:
-        conn.execute("ROLLBACK")
-        raise
-    except Exception:
-        conn.execute("ROLLBACK")
-        raise
+            # actor='human' : l'arbitrage est une action humaine (Raphaël). La
+            # provenance pair est tracée ailleurs (review_queue.decided_by=<token>,
+            # decision_engine_version='peer@v1', decision_metadata_json) — évite de
+            # migrer le CHECK figé de image_state_events.actor.
+            emit_state_event(
+                conn, asset_id=asset_id, to_state=to_state, actor="human",
+                reason=reason, eurio_id=pr["decided_eurio_id"],
+            )
+            conn.execute(
+                "UPDATE peer_review_decisions SET arbitration_status = 'approved', "
+                "arbitrated_at = ? WHERE id = ?",
+                (now, decision_id),
+            )
+    # `_writing()` a committé (ou rollbacké en levant) : plus de COMMIT/ROLLBACK
+    # à la main, donc plus de chemin où l'un des deux manquerait.
+
+    if superseded:
+        logger.info("[peer-arbitration] superseded id=%s — voie locale déjà passée",
+                    decision_id)
+        return {"status": "superseded", "id": decision_id}
 
     logger.info("[peer-arbitration] approved id=%s action=%s eurio_id=%s by=%s",
                 decision_id, pr["action"], pr["decided_eurio_id"], pr["reviewer_token"])
@@ -336,7 +362,7 @@ def _approve_one(conn, decision_id: str) -> dict:
 def approve(decision_id: str) -> dict:
     """Applique la décision de l'ami au canonique (provenance peer)."""
     store = _store()
-    return _approve_one(store._connection(), decision_id)  # noqa: SLF001
+    return _approve_one(store, decision_id)
 
 
 class ApproveBatchPayload(BaseModel):
@@ -375,7 +401,7 @@ def approve_batch(payload: ApproveBatchPayload) -> dict:
 
     for decision_id in payload.ids:
         try:
-            res = _approve_one(conn, decision_id)
+            res = _approve_one(store, decision_id)
         except HTTPException as exc:
             failed.append({"id": decision_id, "detail": str(exc.detail), "status": exc.status_code})
             continue

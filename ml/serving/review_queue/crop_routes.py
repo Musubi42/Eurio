@@ -11,8 +11,10 @@ le bouton lui parlait d'un port qu'il n'atteindra jamais (D11).
   même `_crop_mask_resize_float` que la prod. `opencv-python-headless` monte
   dans l'image (D5) ;
 - ce qui ne bouge PAS : DINO. Ni torch ni banque d'ancres sur le VPS (D6). Le
-  crop recadré voit ses prédictions périmées SUPPRIMÉES — le marqueur « à
-  réencoder » (cf. `crop_edit._mark_dino_stale`), que le Mac draine en lot.
+  crop recadré voit ses prédictions MARQUÉES périmées (`stale_since`, migration
+  0013) : elles restent servies — l'écran dit « calculée avant ton recadrage » —
+  et le Mac les recalcule en lot. Elles étaient supprimées dans le premier jet ;
+  le PO l'a réfuté à l'usage, il recadre AVANT de choisir la pièce.
 
 **Pourquoi pas un crop en Canvas dans le navigateur** (D5) : `canvas.drawImage`
 ne rééchantillonne pas comme `INTER_AREA`, et pas pareil selon le navigateur et
