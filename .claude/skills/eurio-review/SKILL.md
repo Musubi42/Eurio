@@ -415,14 +415,20 @@ Corollaire : **le Mac ne voit pas ses propres décisions** tant qu'il n'a pas fa
 `go-task ml:db:pull-replica`. Un préflight relancé sans ce pull affichera encore
 l'ancien compte.
 
-### ⛔ L'échec muet du front — celui qui coûtera le plus cher
+### ✅ L'échec muet du front — CORRIGÉ le 2026-08-20
 
-`useReviewApi.ts` (l. ~145-159) : sur `TypeError` — réseau coupé, DNS lent, VPS
-injoignable — `safeFetchEurioWrite` renvoie `null` et le code se contente d'un
-`console.info('[mock fallback] decide', …)`. **L'UI affiche un succès et rien
-n'est écrit.** Les 401/503 remontent proprement ; c'est la coupure réseau qui est
-silencieuse. Quelqu'un peut « trancher » quarante crops et n'en avoir écrit
-aucun.
+> Conservé pour la trace : c'est le silence le plus cher qu'ait porté ce dépôt.
+
+`useReviewApi.ts` avait un `safeFetchEurioWrite` qui, sur `TypeError` — réseau
+coupé, DNS lent, VPS injoignable — renvoyait `null` en se contentant d'un
+`console.info('[mock fallback] decide', …)`. **L'UI affichait un succès et rien
+n'était écrit.** Quelqu'un pouvait « trancher » quarante crops et n'en avoir
+écrit aucun.
+
+**Retiré.** `safeFetchEurioWrite` n'existe plus dans l'arbre, et `useReviewApi.ts`
+s'ouvre sur : « ⛔ IL N'Y A PLUS DE REPLI SUR DES DONNÉES FICTIVES. Retiré le
+2026-08-20 » — `fetchEurioWrite` lève désormais. Le contrôle ci-dessous reste
+bon à jouer : il vérifie l'écriture, pas l'absence de repli.
 
 Le contrôle le plus rapide, après une session de review :
 

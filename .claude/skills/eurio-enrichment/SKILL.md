@@ -146,15 +146,16 @@ go-task ml:dino-predictions:backfill -- --kind 2eur_all --force --push
 ⚠️ **Les deux banques ne servent pas la même chose, et ce n'est pas celle qu'on
 croit qui alimente la review.** Corrigé le 2026-08-17 :
 
-| Banque | Qui la lit |
-|---|---|
-| `2eur_commemo` | **le verdict de review** — `repository.py::fetch_verdict_signal_rows` l. 1091, **en dur** |
-| `2eur_all` | les requêtes de candidats, le backfill, l'analyse |
-
-Et `2eur_commemo` ne contient **aucune** étiquette de pièce standard (0 sur 446,
-contre 18 sur 378 pour `2eur_all`). Reconstruire `2eur_all` n'allume donc **rien**
-dans l'écran de review d'une classe standard. Détail et conséquences :
-**`eurio-review`** §« la review est aveugle sur les standards ».
+> ✅ **RÉSOLU le 2026-08-24 — ce bloc décrivait l'état d'avant. Conservé pour la
+> trace du défaut, pas pour agir.** Le verdict de review lisait `2eur_commemo`
+> **en dur**, une banque sans aucune étiquette de pièce standard (0 sur 446) :
+> reconstruire `2eur_all` n'allumait rien dans l'écran de review d'une classe
+> courante. Depuis la bascule, `ml/shared/verdict_scope.py:65` porte
+> `VERDICT_ANCHORS_KIND = "2eur_all"`, et `2eur_commemo` n'apparaît plus dans
+> `serving/review_queue/repository.py`.
+>
+> **Aujourd'hui : reconstruire `2eur_all` allume bien la review, standards
+> compris.**
 
 **Avant de rebâtir, vérifie que c'est nécessaire** — mesuré le 2026-08-19 :
 **237 s** d'encodage plus **28 min** de backfill pour les 12454 crops
@@ -214,10 +215,11 @@ pièges : **`eurio-banque`**.
   2026-08-19 la commande refuse de démarrer** sous `EURIO_DB_READONLY=1` au lieu
   de mourir après l'encodage — relancer avec `EURIO_DB_READONLY=` , ou
   `--skip-references` pour le `.npz` seul (cf. `eurio-data-writes`).
-  ⛔ **Et aujourd'hui elle refusera de tracer même hors devShell** : le canonique
-  est à la migration `0008`, `dino_class_references` n'a pas l'encodeur dans sa
-  clé, et le writer refuse bruyamment (`CleSansEncodeurError`). Il faut d'abord
-  redémarrer `eurio-api` sur le VPS. Détail : **`eurio-banque`** §7.
+  ✅ **Le blocage « migration 0008 » est levé** (vérifié le 2026-08-25 : canonique
+  et réplique à `0013`, clé 0010 présente). Le refus `CleSansEncodeurError` ne
+  concerne plus qu'une base locale créée avant 0010. Détail et la leçon qui
+  reste — *mesurer le schéma sur la base qu'on va écrire, pas sur sa réplique* :
+  **`eurio-banque`** §7.
 - **Un témoin de volume, pas un « 0 erreurs ».** Les deux commandes impriment
   ce qu'elles ont **vu** : `1533` ancres (banque à jour) contre `1250`
   (périmée) ; `12454` candidate assets (base saine) contre `6205` (base

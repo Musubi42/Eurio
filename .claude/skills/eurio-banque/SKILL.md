@@ -20,14 +20,21 @@ description: La banque d'ancres DINO — comment la lire, ce qu'elle vaut, ce qu
 > mécanisme, lui, est resté entier et testé. Le §3 dit pourquoi le raisonnement
 > était faux, ce qui reste vrai, et ce que la mesure restreinte a montré.
 >
-> ⚠️ **Décalage à connaître avant de toucher quoi que ce soit : la banque SERVIE
-> porte encore le plancher, le code ne l'applique plus.** Le build `365dcab2a253`
-> a été bâti avec `min_exemplars=2` (colonne « 1 » vide, 68 classes au canonique
-> seul) ; le prochain rebuild **changera la forme de la banque** — ces classes
-> retrouveront leur exemplaire — et **le garde P1 ne le signalera pas** : il
-> compte les classes à ≥ 2 exemplaires (`USEFUL_MIN_REFS`), un compte que le
-> retour à 1 laisse invariant. C'est voulu (le garde est délibérément découplé du
-> plancher), mais l'inversion sera donc **silencieuse**.
+> ✅ **Le décalage est résorbé — et il s'est produit exactement comme annoncé.**
+> Ce bloc prévenait que la banque servie portait encore `min_exemplars=2` et que
+> le prochain rebuild changerait sa forme en silence. **C'est arrivé le
+> 2026-08-24** : le build `53d22c388ee7` (2 062 ancres, `min_exemplars=1
+> (source=code); amorce=medoide; 0 classes ramenées au canonique seul`) a rendu
+> son exemplaire à **55 classes** — colonne « 1 » : 0 → 55 — et **rien ne l'a
+> dit**, le garde P1 comptant les classes à ≥ 2 (`USEFUL_MIN_REFS`), un compte que
+> ce retour laisse exactement invariant.
+>
+> **Depuis le 2026-08-25, un rebuild compare sa FORME à celle qu'il remplace**
+> (`store/dino_references.py::delta_de_forme`) : tout changement de palier sort en
+> WARNING et s'inscrit dans la note du build. Le seuil de P1 n'a pas bougé — il
+> est juste pour ce qu'il mesure ; ce qui manquait était la comparaison de forme.
+> Vérifie la note du dernier build avant de conclure quoi que ce soit sur une
+> composition.
 
 ⛔ **Lis d'abord `eurio-data-writes`.** Sous Direction A le devShell pose
 `EURIO_DB_PATH=…/eurio.replica.db` et `EURIO_DB_READONLY=1`. `ml/state/eurio.db`
@@ -329,8 +336,10 @@ cd ml && EURIO_DB_PATH=$PWD/state/eurio.replica.db ./.venv/bin/python \
 Le mécanisme « le rang 1 du FPS est un faux attracteur parce qu'il est
 atypique », jusqu'ici inféré, est donc **mesuré**. Le plancher soignait ce
 symptôme en **supprimant des données**. Le vrai levier — amorcer le FPS
-autrement (médoïde plutôt que point le plus lointain) — **n'est pas
-implémenté** : `--rank-order last` est une sonde, pas un builder.
+autrement (médoïde plutôt que point le plus lointain) — ✅ **est implémenté
+depuis, et c'est le défaut** : `build_dino_anchors.py:258`,
+`--seed-order {medoid,fps}` avec `default="medoid"`, tracé dans la note du build
+(`amorce=medoide`). *(`--rank-order last` reste une sonde, pas un builder.)*
 
 **4. L'autre moitié de l'effet, à ne pas taire** : l'exemplaire d'une classe
 *coûte* aux crops des **autres** classes (vitl14 88,5 → 88,0 % à N=1, → 87,6 % à
@@ -660,8 +669,9 @@ Traitée au §3. C'est le seul des trois qui soit une propriété de la **donné
 et pas du code — et **sa parade en dur a été retirée** : le plancher
 `min_exemplars` a valu 2 pendant une journée, la mesure restreinte l'a réfuté,
 le défaut est revenu à 1. Ce qui reste du piège est le mécanisme mesuré : *le
-rang 1 du FPS est le crop le plus atypique de sa classe*. Le levier qui le
-corrigerait — amorcer le FPS au médoïde — **n'est pas implémenté**.
+rang 1 du FPS est le crop le plus atypique de sa classe*. ✅ Le levier qui le
+corrige — amorcer le FPS au médoïde — **est implémenté et actif par défaut**
+(`--seed-order medoid`). Le build du 2026-08-24 le porte : `amorce=medoide`.
 
 ---
 
@@ -707,39 +717,33 @@ go-task ml:dino-anchors:build -- --force --kind 2eur_all --no-serve   # artefact
 - ⛔ **Sous le devShell (`EURIO_DB_READONLY=1`) la commande refuse de
   démarrer** — le traçage en base est une écriture. Relancer avec
   `EURIO_DB_READONLY=` , ou `--skip-references` pour le `.npz` seul.
-- ⛔ **Et aujourd'hui elle refusera de tracer, même hors devShell** : le
-  canonique est à la migration **0008**, `dino_class_references` a l'ancienne
-  clé. Vérifié :
+- ✅ **Le blocage « migration 0008 » est levé — et la contradiction est expliquée.**
+  Ce paragraphe disait que le writer refuserait de tracer parce que le canonique
+  était à la migration `0008` et que `dino_class_references` avait l'ancienne clé,
+  tout en constatant qu'un build **avait pourtant tracé** le 20 août. Les deux
+  étaient vrais : **le canonique portait déjà la clé 0010, la réplique non
+  encore.** Le prédicat était donc mesuré du mauvais côté — la leçon vaut plus
+  que le blocage.
+
+  Vérifié le 2026-08-25, réplique et canonique d'accord :
+
   ```bash
   cd ml && ./.venv/bin/python -c "
   import sqlite3; from store.dino_references import _exige_encodeur_dans_la_cle
   c = sqlite3.connect('file:state/eurio.replica.db?mode=ro', uri=True)
-  try: _exige_encodeur_dans_la_cle(c); print('clé 0010 présente')
-  except Exception as e: print(type(e).__name__, str(e)[:120])"
-  # CleSansEncodeurError dino_class_references a l'ancienne clé primaire
-  # (['anchors_kind', 'asset_id', 'class_id', 'eurio_id']) : `encoder_version` n'en fait pas…
+  _exige_encodeur_dans_la_cle(c); print('clé 0010 présente')
+  print(c.execute('SELECT filename FROM _schema_migrations ORDER BY 1 DESC LIMIT 1').fetchone()[0])"
+  # clé 0010 présente
+  # 0013_dino_prediction_perimee_par_recadrage.sql
   ```
-  Le refus est **bruyant et nomme sa migration** — c'est le bon comportement,
-  pas une panne. Les migrations **0009, 0010, 0011 ne sont pas appliquées au
-  canonique** ; c'est le redémarrage de `eurio-api` sur le VPS qui les applique
-  (**`eurio-vps-deploy`**). À faire **avant** tout premier build d'un encodeur
-  candidat, sinon ce build écraserait les références de la production (M1).
 
-  🔍 **Contradiction observée le 2026-08-20, non expliquée — ne t'appuie pas sur
-  ce garde comme sur un fait.** Le build `365dcab2a253` du 20 août 14:27 **a
-  bien tracé** ses 1495 lignes au canonique (elles sont dans la réplique, avec
-  la ligne de `dino_anchor_builds` et sa note), alors que le prédicat ci-dessus
-  lève toujours `CleSansEncodeurError` sur cette même réplique et que
-  `_schema_migrations` y annonce encore `0008`. L'un des trois est faux : soit
-  le canonique porte la clé 0010 sans que la réplique la reflète, soit le pull
-  de réplique reconstruit son propre schéma, soit le chemin d'écriture emprunté
-  n'est pas celui qu'on croit. **Mesure-le avant de conclure** ; le geste qui
-  tranche est de lire le `PRAGMA index_list`/`table_info` du canonique lui-même,
-  pas de la réplique.
-  ```bash
-  sqlite3 -readonly ml/state/eurio.replica.db \
-    "SELECT * FROM _schema_migrations ORDER BY 1 DESC LIMIT 1;"   # 0008_dino_thresholds.sql|…
-  ```
+  Le refus `CleSansEncodeurError` reste en place et reste **bruyant** — c'est le
+  bon comportement. Il ne se déclenche plus que sur une base locale créée avant
+  0010, jamais sur le canonique ni sur une réplique fraîche.
+
+  📌 **La règle qui reste, elle, ne périme pas** : mesurer l'état d'un schéma sur
+  la base qu'on va **écrire**, jamais sur sa réplique. Une réplique en retard rend
+  un verdict faux sans rien signaler.
 
 ### Recalculer les prédictions (le geste P3)
 
@@ -888,12 +892,13 @@ comptes** — c'est le motif qui a rendu « 59 » et « 0 » pour la même class
 
 ## Ensuite
 
-→ **`eurio-review`** : ce que la banque change à l'écran de review, et pourquoi
-  le verdict est aveugle sur les pièces courantes.
+→ **`eurio-review`** : ce que la banque change à l'écran de review. *(Le verdict
+  n'est plus aveugle sur les pièces courantes — résolu le 2026-08-24, il lit
+  `2eur_all`.)*
 → **`eurio-enrichment`** : quand le goulot est le scrape et pas la review.
 → **`eurio-data-writes`** : dès qu'une écriture répond `readonly database` ou
   `503 canonical_readonly`.
-→ **`eurio-vps-deploy`** : appliquer 0009/0010/0011 au canonique.
+→ **`eurio-vps-deploy`** : déployer et vérifier le canonique. *(Les migrations 0009 à 0013 y sont appliquées depuis le 2026-08-21.)*
 → **`eurio-verify`** : avant de déclarer qu'un correctif de banque marche.
 
 Et deux problèmes **posés par écrit, non résolus**, qui touchent directement ce

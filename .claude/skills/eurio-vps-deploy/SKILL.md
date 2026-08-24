@@ -11,7 +11,7 @@ Accès : `ssh serverOimNixDontpanic`. Le repo y vit dans `/opt/eurio`.
 
 ```bash
 ssh serverOimNixDontpanic
-cd /opt/eurio && git pull
+cd /opt/eurio && git fetch github repo-cleanup && git merge --ff-only github/repo-cleanup
 cd infra/eurio-api && sops exec-env ../../secrets/dev.env "docker compose up -d --build"
 ```
 

@@ -101,13 +101,18 @@ L'écriture passe par `serving/lab_writes.py` : sous le flip Direction A, elle v
 
 ### ⛔ Deux pièges de lecture, tous deux muets
 
-**`/operations/cohorts` renvoie `n_members: 0` pour TOUTES les cohortes.**
-Mesuré le 2026-08-17 : le handler compte `SELECT COUNT(*) FROM cohort_members`
-(`serving/operations_routes.py:407`), une table qui **existe et reste vide** —
-seul `scripts/migrate_canonical_schema.py` la backfille, et aucun writer ne la
-maintient. Les membres vivent dans `experiment_cohorts.eurio_ids_json`. Le
-`COALESCE(…, 0)` transforme l'absence en zéro plausible. La page Operations du
-front affiche donc `0` partout.
+> ✅ **CORRIGÉ — ce piège n'est plus actif. Conservé pour la trace du motif.**
+
+`/operations/cohorts` renvoyait `n_members: 0` pour TOUTES les cohortes (mesuré le
+2026-08-17) : le handler comptait `SELECT COUNT(*) FROM cohort_members`, une table
+qui **existe et reste vide** — seul `scripts/migrate_canonical_schema.py` la
+backfille, aucun writer ne la maintient. Le `COALESCE(…, 0)` transformait
+l'absence en zéro plausible, et la page Operations affichait `0` partout.
+
+**Depuis, `operations_routes.py:398` décode `experiment_cohorts.eurio_ids_json`
+(`_n_members`)**, là où les membres vivent réellement ; `cohort_members` n'y
+apparaît plus qu'en commentaire. Le motif, lui, reste à connaître : *un `COUNT`
+sur une table qu'aucun writer ne remplit rend zéro, et zéro est plausible.*
 
 Pour connaître les membres, lis la réplique (ou le canonique par SSH) :
 
