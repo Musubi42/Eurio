@@ -175,6 +175,49 @@ Volontairement laissé à la recette : un recadrage **écrase l'objet en place**
 (D9), et choisir un cercle au hasard depuis un rig abîmerait une vraie image de
 production. C'est au PO de désigner un crop qui en a besoin.
 
+## Revue du 2026-08-24 — 7 constats, dont 2 bloquants
+
+Une revue de code sur `c79bef82..HEAD` (D11 + lots 8 et 6b + le correctif
+d'usage). Les deux bloquants passaient à travers **la suite complète ET le
+typecheck** — c'est ce qui les rend intéressants.
+
+| # | Constat | Pourquoi c'était muet |
+|---|---|---|
+| 1 | `SingleReviewView.vue` : `type="button""`, une guillemet en trop posée avec le `v-if` de D11 | Le compilateur SFC rend **0 erreur** et émet un attribut dont le NOM est une guillemet. Au montage, `setAttribute('"', '')` lève `InvalidCharacterError` → l'écran de review ne rend plus. Et le bouton n'existe que pour l'ARBITRE : la recette côté ami ne pouvait pas le voir |
+| 2 | `stale_since` n'était jamais levé par un ré-encodage | Le correctif n'était que dans `auto_validate._flush`, branche `store is None` — **du code mort en prod**. Les deux vrais chemins passent par `store/dino.py`. Résultat : bandeau « calculée avant ton recadrage » à vie sur une prédiction fraîche, et réencodage sans fin du même crop |
+| 3 | Le canonique était réécrit sur une décision `superseded` | Le commentaire disait « on annule le reste », le code écrivait `image_assets` AVANT le garde puis committait. La classe du PAIR partait à l'entraînement pendant que `review_queue` gardait la décision LOCALE |
+| 4 | Un recadrage pouvait décrire un objet MinIO inexistant | L'échec d'upload était avalé (`minio_ok=False`), la géométrie écrite quand même, 200 rendu — et `minio_ok` n'était lu **nulle part** côté front |
+| 5 | La vue bulk servait une `canonical_url` potentiellement relative | Résolue contre le nginx statique → 404. Latent : 0 pièce sur 1235 aujourd'hui |
+| 6 | « DINO en désaccord » sur un REFUS | `concords` y vaut 0 par construction : il n'y a rien à comparer |
+| 7 | La nav clignotait au boot | Le filtre D11 s'appliquait avant que `/me` réponde |
+
+### Ce que le n°2 enseigne, et qui vaut plus que le correctif
+
+Le test censé le verrouiller était :
+
+```python
+source = (ML_DIR / "sources/_base/steps/auto_validate.py").read_text()
+assert "stale_since            = NULL" in upsert
+```
+
+Un `grep` sur un fichier. Il était **vert**, sur une branche qui ne tourne
+jamais. Le catalogue d'`eurio-verify` a un nom pour ça : *un garde posé, testé,
+muté — et jamais appelé*. Remplacé par deux tests qui passent par
+`store.upsert_dino_predictions` et `apply_ingest_dino`, et **vérifiés A/B** :
+ils échouent tous les deux quand on retire le correctif.
+
+La règle qui en sort : **un test qui lit du code au lieu de l'exécuter ne prouve
+rien sur le chemin de production.** Il prouve qu'une chaîne de caractères existe
+quelque part.
+
+### Et le n°1 : ce que `vue-tsc` ne regarde pas
+
+`vue-tsc --noEmit` ne valide pas les noms d'attributs statiques d'un template, et
+`compileTemplate` accepte silencieusement `type="button""`. Aucun outil de la
+chaîne ne le voyait. Le contrôle qui l'aurait attrapé tient en trois lignes :
+compiler le SFC et chercher un nom d'attribut illégal dans le code émis —
+c'est ainsi que le correctif a été prouvé, dans les deux sens.
+
 ## Le rig de vérification (à réutiliser à chaque lot)
 
 Il reproduit le mode hébergé **sans rien déployer** : l'app LEAN du VPS tourne en local
