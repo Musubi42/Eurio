@@ -112,17 +112,32 @@ tasks:
       c'est voulu (règle de repli : docstring de store.resolve_db_path).
       COMMENT ON SAIT QUE C'EST COMPLET — quatre lignes, dans l'ordre :
       (1) « anchor bank 2eur_all loaded (N anchors …) » avec N = la banque
-      courante (1533 au build 23c637d93b43 du 2026-08-19 ; 1250 = banque
-      périmée, arrêter) ; (2) « backfill: N candidate assets in scope 2eur_all »
-      avec N ≈ 12454, JAMAIS ≈ 6205 — 6205 est la base de travail périmée, c'est
-      le témoin direct du défaut de chemin corrigé le 2026-08-19 ; (3)
+      courante — 2062 au build 53d22c38 du 2026-08-24. ⛔ Ne compare pas à ce
+      nombre-ci mais à celui du DERNIER build : la banque grossit à chaque
+      rebuild (1250 → 1533 → 1909 → 2062), donc un témoin figé se périme par
+      construction. Le lire :
+      curl -s -H "Authorization: Bearer $EURIO_API_TOKEN" $EURIO_API_URL/dino/drift
+      | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['n_rows'], d['build_id'][:12])"
+      Un N NETTEMENT inférieur = banque périmée, arrêter ;
+      (2) « backfill: N candidate assets in scope 2eur_all » avec N = tout le
+      parc présent (16021 le 2026-08-24), JAMAIS ~6205 — 6205 est la base de
+      travail périmée, témoin direct du défaut de chemin corrigé le
+      2026-08-19 ; (3)
       « Predicted: N   Errors: 0 » avec Skipped=0 sous --force ; (4) la ligne de
       push « → n ligne(s) appliquée(s) au canonique » — sans elle rien n'est
       tracé. Contre-vérification, réplique à jour :
       sqlite3 "file:ml/state/eurio.replica.db?mode=ro" "SELECT COUNT(*) FROM
-      image_asset_dino_predictions WHERE anchors_kind='2eur_all';" → 12454.
-      Durée ⚠️ estimation (extrapolée de 4 et 60 assets sur MPS, ~84 ms/asset) :
-      ≈ 18 min pour 12454, plus le pull (~106 Mo).
+      image_asset_dino_predictions WHERE anchors_kind='2eur_all';" → 16021.
+      Durée ⚠️ MESURÉE le 2026-08-24 sur un run complet (Mac, MPS, vitl14) :
+      47 min pour 16021 crops, soit 176 ms/crop — et NON les 18 min annoncées
+      jusque-là. L'ancien chiffre extrapolait 4 et 60 assets à ~84 ms sur un parc
+      de 12454 : le parc a grossi ET la cadence réelle est le double. C'est ce
+      chiffre périmé qui a fait attendre 20 min un travail d'une heure. Le run
+      complet (ancres + backfill) prend ~55 min : 7 min d'ancres pour 3205
+      images (131 ms/image), puis le backfill. ⛔ Ne pas ré-extrapoler depuis un
+      --limit : un petit lot exclut le chargement du modèle et le cache froid.
+      La mesure se rejoue sur le journal du job :
+      grep -E "images à encoder|ready on mps|predicted=" ml/state/job_logs/dino-rebuild-*.log
       Usage: go-task ml:dino-predictions:backfill [-- --kind 2eur_all] [-- --force] [-- --limit 50] [-- --no-push]
     cmds:
       - "{{.VENV}}/python -m scripts.backfill_dino_predictions -v {{.CLI_ARGS}}"
