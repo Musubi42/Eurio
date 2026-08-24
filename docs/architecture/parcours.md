@@ -341,7 +341,7 @@ commande est `go-task ml:eval-real:sync -- <debug_pull_dir>` (qui appelle
 en bout sur le Mac : cohorte `0b4cb60ce342` (3 pièces) → itération `caf98145032c`
 → bake → entraînement 5 epochs → benchmark → verdict `baseline` → `promote
 --dry-run`. Déroulé complet, chiffres et incidents :
-[`../work-in-progress/HANDOFF-2026-08-16.md`](../work-in-progress/HANDOFF-2026-08-16.md)
+[`../archive/handoffs-2026/HANDOFF-2026-08-16.md`](../archive/handoffs-2026/HANDOFF-2026-08-16.md)
 §Exercice #1.
 
 Ce que l'exécution a confirmé, et que la lecture du code ne pouvait pas :

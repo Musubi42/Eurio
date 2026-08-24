@@ -14,7 +14,7 @@ pourtant ~50 Mo d'artefacts binaires y sont **trackés** : ils ont été force-a
 
 > **git sert aujourd'hui de transport Mac→PC pour les poids.**
 
-`docs/work-in-progress/HANDOFF-pc-full-training.md` confirme : la synchro du PC se fait
+`docs/archive/handoffs-2026/HANDOFF-pc-full-training.md` confirme : la synchro du PC se fait
 par `git fetch && git reset --hard origin/<branche>`.
 
 Conséquences observées :

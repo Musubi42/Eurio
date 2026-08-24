@@ -37,6 +37,6 @@ memories `project_data_referential` / `project_trust_model_referential` / `proje
 
 ## Liens
 
-- Tracker legacy ML/scan (J0→J7) : [`../roadmap.md`](../roadmap.md) — détail de la mission Scan.
+- Trajectoire ML/scan : [`../work-in-progress/`](../work-in-progress/README.md) (chantiers vivants) et [`../architecture/parcours.md`](../architecture/parcours.md) (par geste). Le tracker J0→J7 a été supprimé le 2026-08-24.
 - Phases app Android : [`../app-implem-phases/`](../app-implem-phases/) — détail de la mission App.
 - Vision reconnaissance (scrape/augmentation/model) : [`../features/`](../archive/features/).

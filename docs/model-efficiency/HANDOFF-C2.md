@@ -61,7 +61,7 @@ Voir [VISION.md §Règles](./VISION.md). En résumé :
 | 3 | [C1-reliable-centroids.md](./C1-reliable-centroids.md) | D'où vient le modèle/centroïdes qu'on va brancher sur la review |
 | 4 | [C0-benchmark-ground-truth.md](./C0-benchmark-ground-truth.md) | Le harness d'éval réel + la baseline |
 | 5 | `docs/work-in-progress/dino-suggestions/KICKOFF.md` | Design de l'auto-validation DINOv2 (le pré-classement actuel) |
-| 6 | `docs/work-in-progress/autovalidation-redesign.md` | Consensus verdicts + lanes (review routing) |
+| 6 | `docs/archive/handoffs-2026/autovalidation-redesign.md` | Consensus verdicts + lanes (review routing) |
 | 7 | `docs/work-in-progress/collaborative-review/07-reconciliation.md` | Cycle publish/reconcile review |
 | 8 | `docs/research/ebay-api-strategy.md` | Quota/contraintes API eBay |
 | 9 | `docs/research/detection-pipeline-unified.md` | YOLO11 + Hough (étape detect/crop du scrape) |

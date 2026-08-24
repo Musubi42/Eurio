@@ -221,6 +221,49 @@ Donc : **O4c se livre AVANT O2**, et la Station 0 compte `pending_scoped`
 *Écarte* : livrer O2 sur le pool brut « en attendant » — la page annoncerait 13
 candidats au-dessus d'une file qui en sert 0.
 
+## D15 · un acquis se compte à l'étiquette HUMAINE, jamais au top-1 du modèle
+
+Arbitrée le **2026-08-24**. Corrige D8, ne l'annule pas. *(Le numéro suit la
+série partagée avec `review-collaborative-v2`, qui va jusqu'à D14.)*
+
+D8 comptait `accepted_pending` sous `image_asset_dino_predictions.top1_eurio_id`
+— là où le **modèle** voit le crop. Or le builder range un exemplaire là où
+l'**humain** l'a mis : `anchors._candidate_crops_for_class` filtre sur
+`image_assets.eurio_id IN members`. Les deux clés divergent précisément là où
+l'image ne sépare pas deux variantes d'un même dessin.
+
+Constaté par le PO le 2026-08-24 sur `/besoin` : `lu-2025-…-throne-hologram`
+affiche `0/8` **+6**, alors que `GET /coins/…-hologram/assets` rend `total: 0`.
+Six exemplaires promis à une classe qui n'a aucun crop à son nom — et comme
+`bottleneck_for` tranche sur `have + accepted_pending`, assez pour la déclarer
+`pleine` et **la sortir du travail**.
+
+Mesuré sur la réplique du 2026-08-24 23:29 (`ml/state/eurio.replica.db`,
+banque `2eur_all` / `dinov2-vitl14`) :
+
+| | clé modèle (avant) | clé builder (après) |
+|---|---|---|
+| Σ acquis | 1 560 sur 140 classes | 1 481 sur 89 classes |
+| `rebuild_would_place` | 119 | **42** |
+| classes déclarées `pleine` | — | **8 rouvrent**, 0 ne se ferme |
+
+`_acquired_by_class` reprend **une à une** les portes du builder (`face`,
+`denom`, `resolution_status`, `training_eligible`, `storage_status`, plus
+« pas déjà en banque ») : un compte plus large promet ce que le build refuse,
+un compte plus étroit rouvre une classe déjà nourrie. Il reste un **majorant** —
+le builder borne ensuite le pool et choisit par FPS —, d'où
+`rebuild_would_place = Σ min(need, accepted_pending)` et jamais la somme nue.
+
+Le compte au top-1 n'est pas supprimé : il devient `accepted_by_model`,
+**affiché et jamais décisif**. Il dit « le modèle croit que ces crops validés
+sont de cette classe », ce qui est un signal de confusion entre variantes — le
+seul écran où il vaut quelque chose est celui qui décidera d'un rebuild ou d'un
+scrape ciblé.
+
+*Écarte* : garder la clé modèle « puisqu'elle bouge dans le bon sens » (elle
+ferme des classes qui n'ont rien reçu), et supprimer le compte modèle (il porte
+un signal que rien d'autre ne porte).
+
 ## Ordre qui en découle
 
 ```

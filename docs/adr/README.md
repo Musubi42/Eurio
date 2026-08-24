@@ -37,7 +37,7 @@
 | Règles non-négociables | `CLAUDE.md` |
 
 > 📌 **Cet index est le seul journal de décisions du dépôt.** `docs/DECISIONS.md`
-> (avril 2026) et `docs/refacto-ml/adr.md` (juin 2026) ont été supprimés le 2026-08-24 :
+> (avril 2026) a été supprimé le 2026-08-24 et `docs/refacto-ml/adr.md` (juin 2026) archivé :
 > deux index concurrents, c'était deux index de trop, et le premier se contredisait
 > lui-même (il prescrivait `unittest` contre 131 fichiers pytest dans le dépôt). Ce
 > qu'ils portaient encore de vivant est repris dans les ADR 009 à 015.

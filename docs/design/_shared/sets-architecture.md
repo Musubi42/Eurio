@@ -453,7 +453,7 @@ Condition d'existence : le bootstrap doit avoir posé `issue_type='commemo-commo
 - [`docs/design/_shared/offline-first.md`](./offline-first.md) — stratégie offline
 - [`docs/research/data-referential-architecture.md`](../../research/data-referential-architecture.md) — architecture référentiel `coins`
 - [`docs/design/profile/achievements-engine.md`](../profile/achievements-engine.md) — moteur d'achievements côté profil
-- [`docs/DECISIONS.md`](../../DECISIONS.md) — index des décisions
+- [`docs/adr/README.md`](../../adr/README.md) — index des décisions
 
 ---
 

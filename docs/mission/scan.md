@@ -41,6 +41,6 @@ acceptable.
 
 ## Détail / exécution
 
-`docs/roadmap.md` (J0→J7, tracker legacy), `docs/features/`, `docs/training-pipeline/`,
+`docs/work-in-progress/` (chantiers vivants), `docs/archive/features/`, `docs/archive/training-pipeline/`,
 `docs/scan-normalization/`, chantier ablation dans `roadmap.md §ablation format crop`.
 Memories : `project_crop_format_ablation`, `project_phase1_decisions`, `feedback_crop_deferred_until_bench`.

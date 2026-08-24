@@ -3,7 +3,7 @@
 - **Statut** : ✅ Acceptée
 - **Date** : 2026-07-03 (décision PO) · migration engagée le jour même, `lab_writes` livré le 2026-08-16
 - **Supersède** : l'event-log de `local-sync/` (2026-07-03, invalidé le jour de son écriture),
-  le double-write de `model-b/`, et le lease MinIO sur `eurio.db` décrit dans `refacto-ml/adr.md`
+  le double-write de `model-b/`, et le lease MinIO sur `eurio.db` décrit dans `archive/refacto-ml/adr.md`
 
 ## Contexte
 
