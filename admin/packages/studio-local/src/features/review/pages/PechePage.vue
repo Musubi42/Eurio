@@ -113,6 +113,26 @@ watch([classId, rank, minSpread, countryOnly], () => {
   void router.replace({ query: q as Record<string, string> })
 }, { immediate: true })
 
+// ⛔ LE PÉRIMÈTRE EST-IL DÉJÀ DANS L'URL ?
+//
+// Les vues de review lisent leur périmètre dans la ROUTE (`dino_class`,
+// `dino_rank`…), et c'est le `watch` ci-dessus qui l'y écrit — par un
+// `router.replace`, donc un tick plus tard. Entre le montage de cette page et
+// ce replace, l'URL ne porte que `class=` : une vue montée dans cet
+// intervalle demande la file GLOBALE.
+//
+// 🔴 Mesuré le 2026-08-25, en entrant par le lien que `/besoin` fabrique
+// (`/review/peche?class=…`) : deux requêtes à 2 ms d'écart, une globale et une
+// scopée. La scopée a répondu la première, donc la GLOBALE a écrasé la file, et
+// l'écran a servi une pièce autrichienne sous l'en-tête « PÊCHE
+// lu-2025-…-throne · 6 à l'unité ». Le pire cas d'une file : elle ment sur son
+// périmètre, en silence, et on croit nourrir une classe qu'on ne touche pas.
+//
+// On ne monte donc RIEN tant que l'URL ne porte pas le périmètre décidé ici.
+// (`SingleReviewView` porte en plus une garde d'ordre sur ses réponses — les
+// deux sont nécessaires : celle-ci supprime la requête, l'autre la course.)
+const scopeReady = computed(() => queryParam(route, 'dino_class') === classId.value)
+
 // ── Périmètre côté lots ───────────────────────────────────────────────────
 const lotScope = computed<Record<string, string>>(() => {
   const out: Record<string, string> = {}
@@ -282,6 +302,8 @@ const nothingHere = computed(
       ou lève le filtre pays</span>), ou la classe manque simplement de
       matière — c'est alors un sujet de scrape, pas de tri.
     </div>
+
+    <div v-else-if="!scopeReady" class="msg">Ouverture du périmètre…</div>
 
     <div v-else class="flex-1 overflow-hidden">
       <SingleReviewView v-if="mode === 'single'" :key="`s-${classId}-${rank}-${minSpread}`" />

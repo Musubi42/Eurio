@@ -335,11 +335,33 @@ const validateBlockedReason = computed<string | null>(() => {
 
 // ─── Loaders ────────────────────────────────────────────────────────────
 
+// ⛔ LE NUMÉRO DE CHARGEMENT — une réponse en retard n'écrase JAMAIS la file
+// affichée.
+//
+// Deux `load()` peuvent voler en même temps : le périmètre vit dans l'URL, et
+// l'URL se complète parfois en deux temps (la pêche ajoute `dino_class` par
+// `router.replace` après le montage). Sans garde, l'ordre d'affichage est
+// l'ordre d'ARRIVÉE des réponses, pas celui des demandes.
+//
+// 🔴 Mesuré le 2026-08-25 en entrant par le lien de `/besoin`
+// (`/review/peche?class=…`, sans `dino_class`) : DEUX requêtes à 2 ms d'écart,
+// une GLOBALE et une SCOPÉE ; la scopée a répondu 25 ms avant, donc la globale
+// a gagné. L'écran affichait une pièce autrichienne sous un en-tête
+// « PÊCHE lu-2025-…-throne · 6 à l'unité ». La file mentait sur son périmètre —
+// on croit nourrir une classe, on trie tout autre chose.
+//
+// La cause première est réparée dans `PechePage` (elle ne monte plus la vue
+// avant d'avoir écrit son périmètre). Cette garde-ci reste la défense
+// générale : elle couvre tout changement de rang, de marge ou de filtre.
+let loadSeq = 0
+
 async function load() {
+  const seq = ++loadSeq
   loadError.value = null
   try {
-    await loadInner()
+    await loadInner(seq)
   } catch (err) {
+    if (seq !== loadSeq) return   // périmé : ni erreur ni file à toucher
     // On VIDE la file : garder à l'écran un item d'un chargement précédent
     // ferait trancher sur un périmètre qui n'est plus celui affiché.
     queue.value = []
@@ -348,7 +370,7 @@ async function load() {
   }
 }
 
-async function loadInner() {
+async function loadInner(seq: number) {
   const [q, s] = await Promise.all([
     fetchReviewQueue({
       limit: 30,
@@ -366,6 +388,7 @@ async function loadInner() {
     }),
     fetchReviewStats(),
   ])
+  if (seq !== loadSeq) return   // un chargement plus récent est déjà à l'écran
   queue.value = q
   stats.value = s
   currentIndex.value = 0
@@ -381,6 +404,9 @@ async function loadInner() {
 // pas flush). On exclut les deux pour ne jamais empiler de doublon.
 async function loadMore() {
   if (loadingMore.value || drained.value || loadError.value) return
+  // Même garde que `load()` : une page suivante demandée sous l'ancien
+  // périmètre ne doit pas s'empiler derrière la file d'un nouveau.
+  const seq = loadSeq
   loadingMore.value = true
   try {
     const more = await fetchReviewQueue({
@@ -397,6 +423,7 @@ async function loadMore() {
       runIds: runIds.value,
       needOnly: needOnly.value,
     })
+    if (seq !== loadSeq) return
     const known = new Set(queue.value.map((r) => r.id))
     if (pendingCommit.value) known.add(pendingCommit.value.reviewId)
     const fresh = more.filter((r) => !known.has(r.id))
@@ -406,10 +433,11 @@ async function loadMore() {
       queue.value = [...queue.value, ...fresh]
     }
   } catch (err) {
+    if (seq !== loadSeq) return
     // Une pagination qui échoue ne doit pas se lire « plus rien à trancher ».
     loadError.value = err instanceof Error ? err.message : String(err)
   } finally {
-    loadingMore.value = false
+    if (seq === loadSeq) loadingMore.value = false
   }
 }
 
