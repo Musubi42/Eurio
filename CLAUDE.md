@@ -27,7 +27,11 @@ Eurio/
 │   ├── minio/                         # MinIO assets (eurio-s3.musubi.dev)
 │   └── backup/                        # Chaîne de sauvegarde — VPS UNIQUEMENT (cf. §Sauvegarde)
 ├── docs/
-│   ├── work-in-progress/auth-redesign/# DESIGN.md + ARCHITECTURE.md + RESUME + chunks
+│   ├── adr/                           # 15 ADR — le SEUL journal de décisions
+│   ├── architecture/                  # état réel : par stockage, par geste, par artefact
+│   ├── work-in-progress/              # 13 chantiers VIVANTS (index dans son README.md)
+│   ├── archive/                       # livré ou abandonné — traçabilité, jamais pilotage
+│   ├── BACKLOG.md                     # le reste-à-faire des chantiers archivés
 │   ├── app-implem-phases/             # Plan des 6 phases d'implémentation Android
 │   ├── design/                        # Design docs
 │   │   └── _shared/                   # parity-rules, components-parity, scene-parity, data-contracts, etc.
@@ -60,7 +64,7 @@ Eurio/
   l'item nav `heavy: true`. Pas besoin de gérer le gating ailleurs. Aucune feature n'est
   « interdite » par mode — le lourd se grise tout seul en hébergé.
 
-Cible/raisonnement complet : `docs/work-in-progress/model-b/README.md` §Front.
+Décision et alternatives écartées : [`docs/adr/011-front-admin-unique.md`](docs/adr/011-front-admin-unique.md).
 
 ### Déploiement admin
 
@@ -85,7 +89,7 @@ Il n'y a **qu'un** front (`admin/packages/studio-local`). Avant d'ajouter une fe
 appelle le ML API local (`http://127.0.0.1:8042`) : marque sa **route** `meta: { heavy: true }`
 et son **item nav** `heavy: true`. Elle marche en local et se grise automatiquement en hébergé
 (`hasLocalMlApi` faux) — `AppLayout` rend `LocalOnlyNotice`. Ne réintroduis **pas** un second
-package front. Spec : `docs/work-in-progress/model-b/README.md` §Front.
+package front. Décision : [`docs/adr/011-front-admin-unique.md`](docs/adr/011-front-admin-unique.md).
 
 ### R1. Proto-first design (STRICT) — **pour l'app Android, et elle seule**
 
@@ -266,15 +270,15 @@ Un hostname inconnu fait échouer `direnv allow` avec un message d'aide listant 
 - **Côté code** : le Python lit les secrets via `shared.env.load_env()` / `require()` / `numista_api_key()` (lecture `os.environ` uniquement, peuplé par `.envrc`). Jamais de parsing de `.env` à la main. Les clés Numista (8, en rotation) passent par `referential.numista_keys.KeyManager` — il n'existe **pas** de `NUMISTA_API_KEY` au singulier.
 - Frontières hors-SOPS (runtimes distants) :
   - **Vercel** : `loan` (sorti du monorepo le 2026-08-14, cf. [ADR-006](docs/adr/006-extraction-loan.md)) gère ses secrets via le dashboard Vercel. Il vit maintenant dans `../loan`, dépôt séparé.
-  - **VPS** : pattern **SOPS via direnv**. Le `.envrc` racine déchiffre `secrets/dev.env` (SOPS+age) au `cd /opt/eurio` et exporte les vars dans le shell. `docker compose up` les forwarde au container via `environment: { VAR: ${VAR:?missing} }` dans `docker-compose.yml`. Aucun fichier secret en clair sur disque côté `infra/*/`. La clé age reste sur la machine (`~/.config/sops/age/keys.txt`, jamais committée). Pour les contextes scriptés (cron, systemd), fallback explicite : `sops exec-env /opt/eurio/secrets/dev.env "docker compose up ..."`. Le pattern legacy Docker secrets (fichiers `infra/*/secrets/<name>` + `*_FILE` env var) est **déprécié** : `infra/eurio-api/` a migré (juin 2026). `infra/review/` reste **en service** (`eurio-review.musubi.dev`) : le C9 qui devait le supprimer n'existe plus — le sujet vivant est le chantier **K2** (`docs/work-in-progress/auth-redesign/ROADMAP.md`), non tranché.
+  - **VPS** : pattern **SOPS via direnv**. Le `.envrc` racine déchiffre `secrets/dev.env` (SOPS+age) au `cd /opt/eurio` et exporte les vars dans le shell. `docker compose up` les forwarde au container via `environment: { VAR: ${VAR:?missing} }` dans `docker-compose.yml`. Aucun fichier secret en clair sur disque côté `infra/*/`. La clé age reste sur la machine (`~/.config/sops/age/keys.txt`, jamais committée). Pour les contextes scriptés (cron, systemd), fallback explicite : `sops exec-env /opt/eurio/secrets/dev.env "docker compose up ..."`. Le pattern legacy Docker secrets (fichiers `infra/*/secrets/<name>` + `*_FILE` env var) est **déprécié** : `infra/eurio-api/` a migré (juin 2026). `infra/review/` reste **en service** (`eurio-review.musubi.dev`) : le C9 qui devait le supprimer n'existe plus — K2 est **tranché** (2026-08-23, cf. [ADR-012](docs/adr/012-review-collaborative-ecriture-directe.md)) : les amis passent par `studio-local` hébergé en rôle `reviewer`. L'exécution est le **lot 9** de `docs/work-in-progress/review-collaborative-v2/`, non joué.
 - Bootstrap d'une nouvelle machine : voir `README.md §Secrets`.
 
 ### Sauvegarde — tourne sur le VPS, jamais sur Mac/PC
 
 Chantier `backup-pipeline`, lots 0 à 5 livrés. **Hub :
 `docs/work-in-progress/backup-pipeline/HANDOFF-NEXT-SESSION.md`** (état, pièges, chiffres
-de référence) ; les décisions et ce qu'elles écartent sont dans `DECISIONS.md` (27
-entrées).
+de référence) ; les décisions et ce qu'elles écartent sont dans `DECISIONS.md` (32
+entrées) ; leur synthèse est [ADR-014](docs/adr/014-sauvegarde-duplicati-et-anneaux.md).
 
 `go-task backup:stage` · `backup:verify` · `backup:test` **ne fonctionnent que sur le
 VPS** : ils dépendent de conteneurs Docker locaux (`eurio-api`, `eurio-review`, MinIO),
@@ -312,6 +316,8 @@ Voir `docs/research/detection-pipeline-unified.md`. Pipeline actuelle : YOLO11-n
 
 | Tu touches à… | Lis d'abord… |
 |---|---|
+| **N'importe quoi de structurant** | [`docs/adr/README.md`](docs/adr/README.md) — 15 ADR, une ligne chacune. Tu lis l'index, puis **une seule** |
+| **« Qu'est-ce qui reste à faire ? »** | [`docs/BACKLOG.md`](docs/BACKLOG.md) (chantiers archivés) et [`docs/work-in-progress/README.md`](docs/work-in-progress/README.md) (chantiers vivants) |
 | Nav shell / FAB / bottom bar | `docs/app-implem-phases/research-02-nav-patterns.md` |
 | UX décisions produit | `docs/app-implem-phases/README.md` (14 décisions) |
 | Pipeline ML scan | `docs/research/detection-pipeline-unified.md` |
