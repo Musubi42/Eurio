@@ -343,9 +343,11 @@ immédiates, mesurées le 2026-08-20 :
 
 - le push HTTPS vers codeberg **pend puis expire** depuis le Mac (`exit 124`,
   aucun message) — ne perds pas de temps à le débloquer ;
-- **le clone du VPS (`/opt/eurio`) suit encore `codeberg`** : un `git pull` nu
-  là-bas ramène un arbre en retard. Jusqu'à la bascule, déploie avec
-  `git fetch github repo-cleanup && git merge --ff-only github/repo-cleanup`.
+- ✅ **le clone du VPS (`/opt/eurio`) suit `github` depuis le 2026-08-25**
+  (`branch.*.remote`, `remote.pushDefault`, `checkout.defaultRemote`). Le piège était
+  réel : `codeberg/repo-cleanup` avait **90 commits de retard**. Déploie quand même
+  avec `git fetch github repo-cleanup && git merge --ff-only github/repo-cleanup` —
+  un `--ff-only` explicite refuse au lieu de fabriquer un merge.
 
 📌 **À faire (non planifié) : passer à GitLab en dépôt principal, github en
 miroir**, et repointer le remote du VPS. Tant que ce n'est pas fait, la règle

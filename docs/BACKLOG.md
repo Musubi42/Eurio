@@ -14,11 +14,13 @@
 
 ## 🔴 À traiter en premier
 
+> B1 clos le 2026-08-25. **B2 est le seul item ouvert qui demande un geste du PO.**
+
 | # | Item | Détail | Source |
 |---|---|---|---|
 | B1 | ~~Un `.env` en clair traîne à la racine~~ | ✅ **Fait le 2026-08-25.** Vérifié avant suppression : les 5 valeurs vivantes étaient déjà dans SOPS à l'identique, sa `NUMISTA_API_KEY` était `MUSUBI00`, et sa `ROBOFLOW_API_KEY` n'était ni dans SOPS ni lue par aucun code (`setup_detection_dataset.py` n'existe plus dans l'arbre). Supprimée avec le fichier ; régénérable sur app.roboflow.com si besoin | [ADR-015](./adr/015-secrets-sops-age.md) |
 | B2 | ⚠️ **Roter `NUMISTA_API_KEY_MUSUBI00` et `NUMISTA_API_KEY_MUSUBI01`** | **Geste PO, sur numista.com.** Mesuré le 2026-08-25 : ces deux valeurs sont **inchangées depuis leur fuite** et lisibles en clair dans `.envrc copy` au commit `f7dd22f7` (2026-06-15), accessible depuis `github/repo-cleanup` sur un dépôt **public**. Tout le reste a bien été roté — Supabase, eBay, les 6 autres clés Numista : 0 commit. Elles sont 8 en rotation, roter deux d'entre elles ne coûte rien et **referme la porte sans attendre le remaster** ([ADR-005](./adr/005-remaster-historique-git.md)) | [ADR-005](./adr/005-remaster-historique-git.md) §Correction mesurée |
-| B3 | **46 findings de robustesse non traités** | Audit multi-agents du 2026-07-04 : 58 findings confirmés (4 critical, 21 high, 33 medium), 12 corrigés, **46 cadrés en 9 fiches auto-portées `F01`…`F09`, prêtes à dispatcher** | [`work-in-progress/hardening-2026-07/`](./work-in-progress/hardening-2026-07/) |
+| B3 | **36 findings de robustesse, re-datés** | L'audit du 2026-07-04 comptait 46 non traités. Re-vérifiés un par un sur le code le 2026-08-25 : **26 sont tombés tout seuls**, 2 sont sans objet, **36 tiennent encore** (dont 6 `high`). État et priorités : [`hardening-2026-07/ETAT-2026-08-25.md`](./work-in-progress/hardening-2026-07/ETAT-2026-08-25.md) — **à lire avant les 9 fiches** | [`work-in-progress/hardening-2026-07/`](./work-in-progress/hardening-2026-07/) |
 
 ## Données et stockage
 

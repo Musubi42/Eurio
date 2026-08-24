@@ -61,11 +61,29 @@ print('scoped', sum(x.pending_scoped for x in n), '/ brut', sum(x.pending for x 
 | Lot 2 · `GET /class-need` | ✅ déployé | oui |
 | Lot 3 · la page `/besoin` | ✅ déployé | oui |
 | Lot 4 · D9 besoin par défaut | ✅ déployé | oui |
-| **Lot 5 · moitié ACHETER** | ⛔ **commité, PAS déployé** | **non** |
-| **Lot 6 · ère + dénomination** | ⛔ **commité, PAS déployé** | **non** |
-| **Correctifs de revue** | ⛔ **commité, PAS déployé** | **non** |
+| Lot 5 · moitié ACHETER | ✅ déployé (local-only par design) | **non** — voir §2 |
+| Lot 6 · ère + dénomination | ✅ déployé | ✅ **vérifié en prod le 2026-08-25** |
+| Correctifs de revue | ✅ déployés | partiellement |
 
 Commits : `643d6487` → `64409be8`. Suite **2089 verts**, typecheck et build verts.
+
+> ✅ **Déploiement fait dans la nuit du 24 au 25 août** (images `eurio-api` 23:57,
+> `eurio-admin` 00:10). Vérifié le 2026-08-25 **sur l'API de production**, pas sur
+> l'intention : `GET /class-need` porte `n_hidden_by_era`, `n_hidden_by_denom`,
+> `country_disarmed` et `accepted_pending`, et **le filtre d'ère mord** — 2 612 crops
+> écartés sur 233 classes. Un filtre déployé qui ne mord jamais aurait le même code
+> HTTP ; c'est la mesure qui tranche, pas le 200.
+>
+> État servi au 2026-08-25 : banque `53d22c388ee7` (`built_at 2026-08-24 20:41`,
+> **2 062 ancres**), couverture **269/671**, Σ need **3 921**, bottleneck
+> `pleine 99 · review 249 · scrape 323`, parqués 5 703.
+>
+> ⚠️ **`n_hidden_by_denom` vaut 0 partout** — conforme au défaut 🟡 « la porte
+> dénomination n'a aucun appelant » ci-dessous, pas à une panne. La décision reste
+> à prendre.
+>
+> **La moitié ACHETER n'a toujours pas été regardée à l'écran** : elle dépend de
+> `:8042` et se grise en hébergé, donc seule une session locale peut la valider.
 
 ---
 
@@ -97,8 +115,10 @@ cd infra/eurio-api  && sops exec-env ../../secrets/dev.env "docker compose up -d
 cd ../eurio-admin   && sops exec-env ../../secrets/dev.env "docker compose up -d --build"
 ```
 
-⛔ **Le clone du VPS suit toujours `codeberg`.** Un `git pull` nu y répond « à
-jour » en toute bonne foi. Passer par `fetch github` + `merge --ff-only`.
+✅ **Le clone du VPS suit désormais `github`** (corrigé le 2026-08-25 : `branch.*.remote`,
+`remote.pushDefault` et `checkout.defaultRemote`). Le piège était réel et mesuré —
+`codeberg/repo-cleanup` avait **90 commits de retard**. Un `git pull` nu y est
+maintenant correct ; `fetch github` + `merge --ff-only` reste la forme recommandée.
 Skill : `eurio-vps-deploy`.
 
 Vérifier **dans cet ordre** (les logs, PUIS l'OpenAPI qui fait autorité, PUIS
