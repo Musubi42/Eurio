@@ -8,6 +8,8 @@ import { useCapabilities } from '@/stores/capabilities'
 import { useHeavyGate } from '@/shared/composables/useHeavyGate'
 import { useEurioSession } from '@/stores/eurio-session'
 import { ChevronsLeft, ChevronsRight } from 'lucide-vue-next'
+import { AUTH_MODE } from '@/shared/config/deploy-target'
+import { oidcLogout } from '@/shared/auth/oidc'
 import { computed, ref } from 'vue'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
 
@@ -64,6 +66,15 @@ const collapsed = ref(localStorage.getItem(NAV_COLLAPSED_KEY) === '1')
 function toggleCollapsed() {
   collapsed.value = !collapsed.value
   localStorage.setItem(NAV_COLLAPSED_KEY, collapsed.value ? '1' : '0')
+}
+
+// Le bouton n'a de sens qu'en cookie : en PAT, le jeton est dans le bundle.
+const peutSeDeconnecter = computed(() => AUTH_MODE === 'cookie')
+const deconnexionEnCours = ref(false)
+async function seDeconnecter() {
+  if (deconnexionEnCours.value) return
+  deconnexionEnCours.value = true
+  await oidcLogout()
 }
 
 function isActive(itemRoute: string) {
@@ -174,8 +185,10 @@ function isActive(itemRoute: string) {
         </div>
       </nav>
 
-      <!-- User identity (depuis useEurioSession). Pas de signOut : déconnexion
-           = retirer/modifier .env.local (cf. PAT-WORKFLOW.md). -->
+      <!-- Identité + déconnexion.
+           Le bouton n'apparaît QU'EN mode cookie : en PAT, le jeton est figé
+           dans le bundle au build, donc « se déconnecter » n'aurait aucun effet
+           et serait exactement le bouton mort que D11 interdit. -->
       <div
         v-if="!collapsed"
         class="p-3 border-t text-xs"
@@ -188,6 +201,10 @@ function isActive(itemRoute: string) {
           <div class="truncate">
             {{ session.principal.roles.join(' · ') }}
           </div>
+          <button
+            v-if="peutSeDeconnecter"
+            type="button" class="deco" @click="seDeconnecter"
+          >Se déconnecter</button>
         </template>
         <template v-else>
           <div class="italic">Non connecté</div>
@@ -206,3 +223,22 @@ function isActive(itemRoute: string) {
     </main>
   </div>
 </template>
+
+<style scoped>
+/* Le seul bloc de style de ce fichier : la barre latérale est en Tailwind, mais
+   ce bouton vit sur fond indigo et n'a pas d'équivalent utilitaire lisible. */
+.deco {
+  margin-top: 8px;
+  width: 100%;
+  padding: 3px 8px;
+  font-size: 11px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.55);
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 5px;
+  cursor: pointer;
+}
+.deco:hover { color: #fff; border-color: rgba(255, 255, 255, 0.4); }
+.deco:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+</style>

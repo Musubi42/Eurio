@@ -121,9 +121,9 @@ watch(() => props.rows, (rows) => {
     <table>
       <thead>
         <tr>
-          <th style="width: 32%">Classe</th>
+          <th style="width: 38%">Classe</th>
           <th style="width: 16%">Banque</th>
-          <th style="width: 28%">Candidats</th>
+          <th style="width: 22%">Candidats</th>
           <th style="width: 10%">Goulot</th>
           <th>Geste</th>
         </tr>
@@ -132,7 +132,7 @@ watch(() => props.rows, (rows) => {
         <tr v-for="r in rows" :key="r.class_id" :class="{ parked: r.bottleneck === 'pleine' }">
           <td class="cls-cell">
             <VignettePiece
-              :url="vignettes.urls.value[r.class_id]" :nom="r.label" :taille="26"
+              class="vign" :url="vignettes.urls.value[r.class_id]" :nom="r.label"
             />
             <!-- Le bloc texte reste UN bloc : `.lbl` est en `display: block` et
                  gère son ellipse. Le sortir en frère de la vignette dans un flex
@@ -220,9 +220,16 @@ thead th {
 }
 tbody td { padding: 9px 12px; border-bottom: 1px solid var(--surface-2); vertical-align: top; }
 /* La vignette à gauche, le bloc texte à droite — et ce dernier reste un bloc,
-   sinon le libellé remonte sur la ligne de l'identifiant. */
-.cls-cell { display: flex; align-items: flex-start; gap: 8px; }
+   sinon le libellé remonte sur la ligne de l'identifiant.
+   `align-items: stretch` : la vignette prend TOUTE la hauteur de la ligne, y
+   compris quand le libellé passe sur trois lignes. C'est la demande du PO —
+   on trie des objets qu'on aime regarder, autant les voir. */
+.cls-cell { display: flex; align-items: stretch; gap: 10px; }
 .cls-texte { min-width: 0; flex: 1; }
+/* Carrée et pleine hauteur : `aspect-ratio` fait suivre la largeur, donc la
+   vignette grandit avec la ligne au lieu d'être figée à 26 px. Le plancher
+   garde un disque lisible sur une ligne courte. */
+.vign { height: auto; width: auto; aspect-ratio: 1; align-self: stretch; min-height: 38px; }
 tbody tr:hover { background: var(--surface-1); }
 tbody tr.parked { color: var(--ink-400); }
 tbody tr.parked .cls { color: var(--ink-400); }

@@ -248,9 +248,22 @@ onMounted(() => {
   // Load canonical image index first so firstImageUrl can gate dev rewrites
   // on its presence (avoids 404s on zombie coins not in eurio.db).
   loadCanonicalIndex().then(() => fetchCoins())
+  // 🔴 CORRIGÉ LE 2026-08-24 — la pastille d'enrichissement affichait 0 sur TOUTE
+  // la grille en hébergé, alors que la fiche de la même pièce en montrait 2.
+  //
+  // Cet appel était enfermé dans `if (HAS_LOCAL_ML_API)`, relique de l'époque où
+  // le compteur venait du ML local. B3 (2026-08-16) l'a migré vers le canonique
+  // — `fetchEnrichmentCounts` tape `/coins/enrichment-counts` sur eurio-api,
+  // disponible partout — mais le gate n'a pas été retiré. Or `HAS_LOCAL_ML_API`
+  // vaut `false` en hébergé : `enrichmentCounts` restait `{}`, et le
+  // `?? 0` de la carte rendait un zéro parfaitement crédible.
+  //
+  // Vérifié en prod : `GET /coins/enrichment-counts` rend bien 2 pour la pièce
+  // concernée, et la fiche (`fetchCoinAssets`, sans gate) rend 2 aussi. Le
+  // back était sain des deux côtés — seule la grille ne demandait rien.
+  void loadEnrichmentCounts()
   if (HAS_LOCAL_ML_API) {
     checkMlApi()
-    void loadEnrichmentCounts()
     mlApiInterval = setInterval(checkMlApi, 30_000)
   }
 })

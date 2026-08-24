@@ -25,7 +25,13 @@ const props = defineProps<{
   url?: string | null
   /** Le nom de la pièce — sert de texte alternatif, jamais de légende visible. */
   nom: string
-  /** Diamètre en pixels. 40 sur l'accueil, 26 dans la table dense du besoin. */
+  /**
+   * Diamètre en pixels. 40 sur l'accueil.
+   *
+   * `undefined` = pas de taille imposée : l'appelant dimensionne en CSS. C'est
+   * ce que fait la table du besoin, où la vignette doit prendre TOUTE la hauteur
+   * de la ligne — laquelle varie avec le libellé, donc ne se connaît pas en px.
+   */
   taille?: number
 }>()
 
@@ -38,7 +44,7 @@ watch(() => props.url, () => { echec.value = false })
 <template>
   <span
     class="vignette"
-    :style="{ width: `${taille ?? 40}px`, height: `${taille ?? 40}px` }"
+    :style="taille ? { width: `${taille}px`, height: `${taille}px` } : undefined"
   >
     <img
       v-if="url && !echec"
