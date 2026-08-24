@@ -19,11 +19,12 @@ import {
   hasPat,
 } from '@/shared/api/eurio-api'
 import { AUTH_MODE } from '@/shared/config/deploy-target'
-import { startOidcLogin } from '@/shared/auth/oidc'
+import { OIDC_TRIED_KEY, startOidcLogin } from '@/shared/auth/oidc'
 
 // Garde anti-boucle : on ne redirige vers Authentik qu'UNE fois par session de tab.
 // Si on revient encore non-authentifié, on s'arrête sur le bandeau (login manuel).
-const OIDC_TRIED_KEY = 'eurio.oidc.tried'
+// La clé vit dans `shared/auth/oidc` : `oidcLogout` l'arme aussi, pour que la
+// déconnexion ne soit pas défaite par un auto-login silencieux au retour.
 
 export interface Principal {
   user_id: string

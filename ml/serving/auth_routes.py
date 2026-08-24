@@ -281,10 +281,65 @@ def logout(
             pass
 
     resp = Response(status_code=204)
+    _clear_session_cookie(resp)
+    return resp
+
+
+def _clear_session_cookie(resp: Response) -> None:
+    """Efface ``eurio_session``. Un cookie se supprime en le ré-posant vide avec
+    ``max_age=0`` — mêmes attributs, sinon le navigateur en pose un SECOND au
+    lieu d'écraser le premier."""
     settings = cookie_settings()
-    # Pour supprimer un cookie, set max_age=0
     resp.set_cookie(value="", **{**settings, "max_age": 0})
-    # Note : on n'appelle pas end_session_endpoint Authentik côté serveur
-    # (nécessiterait id_token_hint qu'on n'a pas conservé). Le panel peut
-    # déclencher la déconnexion globale côté browser si besoin.
+
+
+@router.get("/logout")
+def logout_and_redirect(
+    request: Request,
+    eurio_session: str | None = Cookie(default=None),
+) -> Response:
+    """Déconnexion COMPLÈTE : notre cookie **et** la session Authentik.
+
+    🔴 POURQUOI CETTE ROUTE EXISTE (2026-08-24, constaté par le PO).
+
+    Le ``POST /logout`` ci-dessus efface notre cookie et rien d'autre. Or la
+    session **Authentik** survit : le panel revient sur ``/``, prend un 401,
+    déclenche son auto-login OIDC — et Authentik, qui reconnaît encore le
+    navigateur, ré-authentifie **en silence**. Symptôme exact rapporté :
+
+        « j'appuie sur déconnecter, ça rafraîchit, la page Authentik passe sans
+          me demander de login, et je reviens toujours en tant que reviewer »
+
+    Le bouton semblait ne rien faire. Il faisait la moitié du travail, et cette
+    moitié-là était invisible.
+
+    Un GET et non un POST : c'est une NAVIGATION. Il faut que le navigateur
+    quitte le panel pour aller chez Authentik, en emportant ses cookies — un
+    `fetch` ne peut pas produire ça, et ne pourrait pas non plus suivre la
+    redirection cross-origin en y attachant la session Authentik.
+
+    ⛔ Pas de ``post_logout_redirect_uri`` : Authentik n'accepte que les URI
+    enregistrées côté application, et une valeur non déclarée y produit une
+    erreur — on échangerait une déconnexion muette contre une page d'erreur.
+    L'utilisateur atterrit donc sur la page de déconnexion d'Authentik, d'où il
+    peut se reconnecter avec l'autre compte. C'est précisément le geste demandé.
+    """
+    actor = None
+    if eurio_session:
+        try:
+            from .auth_principal import verify_session_cookie
+            payload = verify_session_cookie(eurio_session)
+            actor = payload.get("sub")
+            write_auth_audit(_db_path(), actor_id=actor, event="logout.ok",
+                             target=payload.get("sid"))
+        except Exception:
+            pass
+
+    # Sans `end_session_endpoint` configuré, on ne peut effacer que notre moitié
+    # — mieux vaut ramener au panel que rediriger vers une URL vide.
+    cible = os.environ.get("EURIO_OIDC_END_SESSION_ENDPOINT", "").strip()
+    if not cible:
+        cible = os.environ.get("EURIO_PANEL_ORIGIN", "/").strip() or "/"
+    resp = RedirectResponse(cible, status_code=302)
+    _clear_session_cookie(resp)
     return resp

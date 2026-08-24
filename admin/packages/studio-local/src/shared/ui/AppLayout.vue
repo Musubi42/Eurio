@@ -71,10 +71,10 @@ function toggleCollapsed() {
 // Le bouton n'a de sens qu'en cookie : en PAT, le jeton est dans le bundle.
 const peutSeDeconnecter = computed(() => AUTH_MODE === 'cookie')
 const deconnexionEnCours = ref(false)
-async function seDeconnecter() {
+function seDeconnecter() {
   if (deconnexionEnCours.value) return
   deconnexionEnCours.value = true
-  await oidcLogout()
+  oidcLogout()   // navigation : rien ne revient après cet appel
 }
 
 function isActive(itemRoute: string) {
